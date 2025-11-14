@@ -56,7 +56,7 @@ func (s *streamTupleIterator) Next(ctx context.Context) (*openfgav1.Tuple, error
 			}
 			return nil, err
 		}
-		s.current = fromStorageTuple(resp.Tuple)
+		s.current = fromStorageTuple(resp.GetTuple())
 	}
 
 	// Return cached item and clear it (consume)
@@ -104,7 +104,7 @@ func (s *streamTupleIterator) Head(ctx context.Context) (*openfgav1.Tuple, error
 		return nil, err
 	}
 
-	tuple := fromStorageTuple(resp.Tuple)
+	tuple := fromStorageTuple(resp.GetTuple())
 	s.current = tuple
 
 	return tuple, nil

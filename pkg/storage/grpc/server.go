@@ -29,19 +29,19 @@ func NewServer(datastore storage.OpenFGADatastore) *Server {
 // Read implements StorageService.Read.
 func (s *Server) Read(req *storagev1.ReadRequest, stream storagev1.StorageService_ReadServer) error {
 	filter := storage.ReadFilter{
-		Object:     req.Filter.Object,
-		Relation:   req.Filter.Relation,
-		User:       req.Filter.User,
-		Conditions: req.Filter.Conditions,
+		Object:     req.GetFilter().GetObject(),
+		Relation:   req.GetFilter().GetRelation(),
+		User:       req.GetFilter().GetUser(),
+		Conditions: req.GetFilter().GetConditions(),
 	}
 
 	options := storage.ReadOptions{
 		Consistency: storage.ConsistencyOptions{
-			Preference: openfgav1.ConsistencyPreference(req.Consistency.Preference),
+			Preference: openfgav1.ConsistencyPreference(req.GetConsistency().GetPreference()),
 		},
 	}
 
-	iter, err := s.datastore.Read(stream.Context(), req.Store, filter, options)
+	iter, err := s.datastore.Read(stream.Context(), req.GetStore(), filter, options)
 	if err != nil {
 		return status.Error(codes.Internal, fmt.Sprintf("read failed: %v", err))
 	}
@@ -65,23 +65,23 @@ func (s *Server) Read(req *storagev1.ReadRequest, stream storagev1.StorageServic
 // ReadPage implements StorageService.ReadPage.
 func (s *Server) ReadPage(ctx context.Context, req *storagev1.ReadPageRequest) (*storagev1.ReadPageResponse, error) {
 	filter := storage.ReadFilter{
-		Object:     req.Filter.Object,
-		Relation:   req.Filter.Relation,
-		User:       req.Filter.User,
-		Conditions: req.Filter.Conditions,
+		Object:     req.GetFilter().GetObject(),
+		Relation:   req.GetFilter().GetRelation(),
+		User:       req.GetFilter().GetUser(),
+		Conditions: req.GetFilter().GetConditions(),
 	}
 
 	options := storage.ReadPageOptions{
 		Pagination: storage.PaginationOptions{
-			PageSize: int(req.Pagination.PageSize),
-			From:     req.Pagination.From,
+			PageSize: int(req.GetPagination().GetPageSize()),
+			From:     req.GetPagination().GetFrom(),
 		},
 		Consistency: storage.ConsistencyOptions{
-			Preference: openfgav1.ConsistencyPreference(req.Consistency.Preference),
+			Preference: openfgav1.ConsistencyPreference(req.GetConsistency().GetPreference()),
 		},
 	}
 
-	tuples, token, err := s.datastore.ReadPage(ctx, req.Store, filter, options)
+	tuples, token, err := s.datastore.ReadPage(ctx, req.GetStore(), filter, options)
 	if err != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("read page failed: %v", err))
 	}
@@ -101,11 +101,11 @@ func (s *Server) ReadPage(ctx context.Context, req *storagev1.ReadPageRequest) (
 func (s *Server) ReadUserTuple(ctx context.Context, req *storagev1.ReadUserTupleRequest) (*storagev1.ReadResponse, error) {
 	options := storage.ReadUserTupleOptions{
 		Consistency: storage.ConsistencyOptions{
-			Preference: openfgav1.ConsistencyPreference(req.Consistency.Preference),
+			Preference: openfgav1.ConsistencyPreference(req.GetConsistency().GetPreference()),
 		},
 	}
 
-	tuple, err := s.datastore.ReadUserTuple(ctx, req.Store, fromStorageTupleKey(req.TupleKey), options)
+	tuple, err := s.datastore.ReadUserTuple(ctx, req.GetStore(), fromStorageTupleKey(req.GetTupleKey()), options)
 	if err != nil {
 		if err == storage.ErrNotFound {
 			return nil, status.Error(codes.NotFound, "tuple not found")
@@ -118,25 +118,25 @@ func (s *Server) ReadUserTuple(ctx context.Context, req *storagev1.ReadUserTuple
 
 // ReadUsersetTuples implements StorageService.ReadUsersetTuples.
 func (s *Server) ReadUsersetTuples(req *storagev1.ReadUsersetTuplesRequest, stream storagev1.StorageService_ReadUsersetTuplesServer) error {
-	allowedRefs := make([]*openfgav1.RelationReference, len(req.Filter.AllowedUserTypeRestrictions))
-	for i, ref := range req.Filter.AllowedUserTypeRestrictions {
+	allowedRefs := make([]*openfgav1.RelationReference, len(req.GetFilter().GetAllowedUserTypeRestrictions()))
+	for i, ref := range req.GetFilter().GetAllowedUserTypeRestrictions() {
 		allowedRefs[i] = fromStorageRelationReference(ref)
 	}
 
 	filter := storage.ReadUsersetTuplesFilter{
-		Object:                      req.Filter.Object,
-		Relation:                    req.Filter.Relation,
+		Object:                      req.GetFilter().GetObject(),
+		Relation:                    req.GetFilter().GetRelation(),
 		AllowedUserTypeRestrictions: allowedRefs,
-		Conditions:                  req.Filter.Conditions,
+		Conditions:                  req.GetFilter().GetConditions(),
 	}
 
 	options := storage.ReadUsersetTuplesOptions{
 		Consistency: storage.ConsistencyOptions{
-			Preference: openfgav1.ConsistencyPreference(req.Consistency.Preference),
+			Preference: openfgav1.ConsistencyPreference(req.GetConsistency().GetPreference()),
 		},
 	}
 
-	iter, err := s.datastore.ReadUsersetTuples(stream.Context(), req.Store, filter, options)
+	iter, err := s.datastore.ReadUsersetTuples(stream.Context(), req.GetStore(), filter, options)
 	if err != nil {
 		return status.Error(codes.Internal, fmt.Sprintf("read userset tuples failed: %v", err))
 	}
@@ -159,32 +159,32 @@ func (s *Server) ReadUsersetTuples(req *storagev1.ReadUsersetTuplesRequest, stre
 
 // ReadStartingWithUser implements StorageService.ReadStartingWithUser.
 func (s *Server) ReadStartingWithUser(req *storagev1.ReadStartingWithUserRequest, stream storagev1.StorageService_ReadStartingWithUserServer) error {
-	userFilter := make([]*openfgav1.ObjectRelation, len(req.Filter.UserFilter))
-	for i, obj := range req.Filter.UserFilter {
+	userFilter := make([]*openfgav1.ObjectRelation, len(req.GetFilter().GetUserFilter()))
+	for i, obj := range req.GetFilter().GetUserFilter() {
 		userFilter[i] = fromStorageObjectRelation(obj)
 	}
 
 	objectIDs := storage.NewSortedSet()
-	for _, id := range req.Filter.ObjectIds {
+	for _, id := range req.GetFilter().GetObjectIds() {
 		objectIDs.Add(id)
 	}
 
 	filter := storage.ReadStartingWithUserFilter{
-		ObjectType: req.Filter.ObjectType,
-		Relation:   req.Filter.Relation,
+		ObjectType: req.GetFilter().GetObjectType(),
+		Relation:   req.GetFilter().GetRelation(),
 		UserFilter: userFilter,
 		ObjectIDs:  objectIDs,
-		Conditions: req.Filter.Conditions,
+		Conditions: req.GetFilter().GetConditions(),
 	}
 
 	options := storage.ReadStartingWithUserOptions{
 		Consistency: storage.ConsistencyOptions{
-			Preference: openfgav1.ConsistencyPreference(req.Consistency.Preference),
+			Preference: openfgav1.ConsistencyPreference(req.GetConsistency().GetPreference()),
 		},
-		WithResultsSortedAscending: req.WithResultsSortedAscending,
+		WithResultsSortedAscending: req.GetWithResultsSortedAscending(),
 	}
 
-	iter, err := s.datastore.ReadStartingWithUser(stream.Context(), req.Store, filter, options)
+	iter, err := s.datastore.ReadStartingWithUser(stream.Context(), req.GetStore(), filter, options)
 	if err != nil {
 		return status.Error(codes.Internal, fmt.Sprintf("read starting with user failed: %v", err))
 	}

@@ -163,7 +163,7 @@ func (c *Client) ReadPage(ctx context.Context, store string, filter storage.Read
 		return nil, "", fmt.Errorf("grpc read page failed: %w", err)
 	}
 
-	return fromStorageTuples(resp.Tuples), resp.ContinuationToken, nil
+	return fromStorageTuples(resp.GetTuples()), resp.GetContinuationToken(), nil
 }
 
 func (c *Client) ReadUserTuple(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options storage.ReadUserTupleOptions) (*openfgav1.Tuple, error) {
@@ -185,11 +185,11 @@ func (c *Client) ReadUserTuple(ctx context.Context, store string, tupleKey *open
 	}
 
 	// Guard against improper server implementations that return nil tuple
-	if resp.Tuple == nil {
+	if resp.GetTuple() == nil {
 		return nil, storage.ErrNotFound
 	}
 
-	return fromStorageTuple(resp.Tuple), nil
+	return fromStorageTuple(resp.GetTuple()), nil
 }
 
 func (c *Client) ReadUsersetTuples(ctx context.Context, store string, filter storage.ReadUsersetTuplesFilter, options storage.ReadUsersetTuplesOptions) (storage.TupleIterator, error) {

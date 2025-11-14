@@ -239,7 +239,7 @@ func TestClientReadWithData(t *testing.T) {
 
 		require.Len(t, tuples, 2)
 		for _, tuple := range tuples {
-			require.Equal(t, "doc:1", tuple.Key.Object)
+			require.Equal(t, "doc:1", tuple.GetKey().GetObject())
 		}
 	})
 }
@@ -301,9 +301,9 @@ func TestClientReadUserTupleWithData(t *testing.T) {
 	tuple, err := client.ReadUserTuple(ctx, storeID, tupleKey, storage.ReadUserTupleOptions{})
 	require.NoError(t, err)
 	require.NotNil(t, tuple)
-	require.Equal(t, tupleKey.Object, tuple.Key.Object)
-	require.Equal(t, tupleKey.Relation, tuple.Key.Relation)
-	require.Equal(t, tupleKey.User, tuple.Key.User)
+	require.Equal(t, tupleKey.GetObject(), tuple.GetKey().GetObject())
+	require.Equal(t, tupleKey.GetRelation(), tuple.GetKey().GetRelation())
+	require.Equal(t, tupleKey.GetUser(), tuple.GetKey().GetUser())
 }
 
 func TestClientReadUsersetTuplesWithData(t *testing.T) {
@@ -342,7 +342,7 @@ func TestClientReadUsersetTuplesWithData(t *testing.T) {
 
 	// Should get only the userset tuple
 	require.Len(t, tuples, 1)
-	require.Equal(t, "group:eng#member", tuples[0].Key.User)
+	require.Equal(t, "group:eng#member", tuples[0].GetKey().GetUser())
 }
 
 func TestClientReadStartingWithUserWithData(t *testing.T) {
@@ -387,6 +387,6 @@ func TestClientReadStartingWithUserWithData(t *testing.T) {
 
 	require.Len(t, tuples, 2)
 	for _, tuple := range tuples {
-		require.Equal(t, "user:anne", tuple.Key.User)
+		require.Equal(t, "user:anne", tuple.GetKey().GetUser())
 	}
 }

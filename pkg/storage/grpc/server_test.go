@@ -27,7 +27,7 @@ func TestServerIsReady(t *testing.T) {
 
 	resp, err := server.IsReady(context.Background(), &storagev1.IsReadyRequest{})
 	require.NoError(t, err)
-	require.True(t, resp.IsReady)
+	require.True(t, resp.GetIsReady())
 }
 
 func TestServerReadUserTupleNotFound(t *testing.T) {
@@ -51,7 +51,7 @@ func TestServerReadUserTupleNotFound(t *testing.T) {
 	require.Equal(t, codes.NotFound, st.Code())
 }
 
-// mockStreamServer implements the streaming server interface for testing
+// mockStreamServer implements the streaming server interface for testing.
 type mockReadStreamServer struct {
 	results []*storagev1.ReadResponse
 	ctx     context.Context
@@ -113,7 +113,7 @@ func TestServerReadWithData(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, stream.results, 2)
 		for _, result := range stream.results {
-			require.Equal(t, "doc:1", result.Tuple.Key.Object)
+			require.Equal(t, "doc:1", result.GetTuple().GetKey().GetObject())
 		}
 	})
 }
@@ -144,8 +144,8 @@ func TestServerReadPageWithData(t *testing.T) {
 
 	resp, err := server.ReadPage(ctx, req)
 	require.NoError(t, err)
-	require.Len(t, resp.Tuples, 2)
-	require.NotEmpty(t, resp.ContinuationToken)
+	require.Len(t, resp.GetTuples(), 2)
+	require.NotEmpty(t, resp.GetContinuationToken())
 
 	// Read next page
 	req2 := &storagev1.ReadPageRequest{
@@ -153,15 +153,15 @@ func TestServerReadPageWithData(t *testing.T) {
 		Filter: &storagev1.ReadFilter{},
 		Pagination: &storagev1.PaginationOptions{
 			PageSize: 2,
-			From:     resp.ContinuationToken,
+			From:     resp.GetContinuationToken(),
 		},
 		Consistency: &storagev1.ConsistencyOptions{},
 	}
 
 	resp2, err := server.ReadPage(ctx, req2)
 	require.NoError(t, err)
-	require.Len(t, resp2.Tuples, 1)
-	require.Empty(t, resp2.ContinuationToken)
+	require.Len(t, resp2.GetTuples(), 1)
+	require.Empty(t, resp2.GetContinuationToken())
 }
 
 func TestServerReadUserTupleWithData(t *testing.T) {
@@ -188,10 +188,10 @@ func TestServerReadUserTupleWithData(t *testing.T) {
 
 	resp, err := server.ReadUserTuple(ctx, req)
 	require.NoError(t, err)
-	require.NotNil(t, resp.Tuple)
-	require.Equal(t, tupleKey.Object, resp.Tuple.Key.Object)
-	require.Equal(t, tupleKey.Relation, resp.Tuple.Key.Relation)
-	require.Equal(t, tupleKey.User, resp.Tuple.Key.User)
+	require.NotNil(t, resp.GetTuple())
+	require.Equal(t, tupleKey.GetObject(), resp.GetTuple().GetKey().GetObject())
+	require.Equal(t, tupleKey.GetRelation(), resp.GetTuple().GetKey().GetRelation())
+	require.Equal(t, tupleKey.GetUser(), resp.GetTuple().GetKey().GetUser())
 }
 
 func TestServerReadUsersetTuplesWithData(t *testing.T) {
@@ -223,7 +223,7 @@ func TestServerReadUsersetTuplesWithData(t *testing.T) {
 
 	// Should get only the userset tuple
 	require.Len(t, stream.results, 1)
-	require.Equal(t, "group:eng#member", stream.results[0].Tuple.Key.User)
+	require.Equal(t, "group:eng#member", stream.results[0].GetTuple().GetKey().GetUser())
 }
 
 func TestServerReadStartingWithUserWithData(t *testing.T) {
@@ -257,7 +257,7 @@ func TestServerReadStartingWithUserWithData(t *testing.T) {
 
 	require.Len(t, stream.results, 2)
 	for _, result := range stream.results {
-		require.Equal(t, "user:anne", result.Tuple.Key.User)
+		require.Equal(t, "user:anne", result.GetTuple().GetKey().GetUser())
 	}
 }
 
@@ -278,8 +278,8 @@ func TestServerReadEmptyStore(t *testing.T) {
 
 		resp, err := server.ReadPage(ctx, req)
 		require.NoError(t, err)
-		require.Empty(t, resp.Tuples)
-		require.Empty(t, resp.ContinuationToken)
+		require.Empty(t, resp.GetTuples())
+		require.Empty(t, resp.GetContinuationToken())
 	})
 
 	t.Run("read_stream_empty", func(t *testing.T) {
