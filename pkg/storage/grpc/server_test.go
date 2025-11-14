@@ -437,6 +437,56 @@ func TestServerWrite(t *testing.T) {
 		require.NotNil(t, resp)
 	})
 
+	t.Run("write_with_duplicate_insert_error", func(t *testing.T) {
+		// Write a tuple
+		writeReq := &storagev1.WriteRequest{
+			Store: storeID,
+			Writes: []*storagev1.TupleKey{
+				{Object: "doc:duplicate-server", Relation: "viewer", User: "user:test"},
+			},
+		}
+		_, err := server.Write(ctx, writeReq)
+		require.NoError(t, err)
+
+		// Try to write it again with explicit error option - should fail
+		writeReqWithOpts := &storagev1.WriteRequest{
+			Store: storeID,
+			Writes: []*storagev1.TupleKey{
+				{Object: "doc:duplicate-server", Relation: "viewer", User: "user:test"},
+			},
+			Options: &storagev1.TupleWriteOptions{
+				OnDuplicateInsert: storagev1.OnDuplicateInsert_ON_DUPLICATE_INSERT_ERROR,
+			},
+		}
+		_, err = server.Write(ctx, writeReqWithOpts)
+		require.Error(t, err)
+		// The error should be converted to gRPC error with InvalidArgument code
+		require.Contains(t, err.Error(), "cannot write a tuple which already exists")
+	})
+
+	t.Run("write_with_duplicate_insert_error_default", func(t *testing.T) {
+		// Write a tuple
+		writeReq := &storagev1.WriteRequest{
+			Store: storeID,
+			Writes: []*storagev1.TupleKey{
+				{Object: "doc:duplicate-default-server", Relation: "viewer", User: "user:test"},
+			},
+		}
+		_, err := server.Write(ctx, writeReq)
+		require.NoError(t, err)
+
+		// Try to write it again without options - should fail (default is ERROR)
+		writeReqNoOpts := &storagev1.WriteRequest{
+			Store: storeID,
+			Writes: []*storagev1.TupleKey{
+				{Object: "doc:duplicate-default-server", Relation: "viewer", User: "user:test"},
+			},
+		}
+		_, err = server.Write(ctx, writeReqNoOpts)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "cannot write a tuple which already exists")
+	})
+
 	t.Run("write_with_missing_delete_ignore", func(t *testing.T) {
 		// Try to delete a tuple that doesn't exist with ignore option
 		req := &storagev1.WriteRequest{
@@ -451,6 +501,35 @@ func TestServerWrite(t *testing.T) {
 		resp, err := server.Write(ctx, req)
 		require.NoError(t, err)
 		require.NotNil(t, resp)
+	})
+
+	t.Run("write_with_missing_delete_error", func(t *testing.T) {
+		// Try to delete a tuple that doesn't exist with explicit error option - should fail
+		req := &storagev1.WriteRequest{
+			Store: storeID,
+			Deletes: []*storagev1.TupleKey{
+				{Object: "doc:nonexistent-error-server", Relation: "viewer", User: "user:nobody"},
+			},
+			Options: &storagev1.TupleWriteOptions{
+				OnMissingDelete: storagev1.OnMissingDelete_ON_MISSING_DELETE_ERROR,
+			},
+		}
+		_, err := server.Write(ctx, req)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "cannot delete a tuple which does not exist")
+	})
+
+	t.Run("write_with_missing_delete_error_default", func(t *testing.T) {
+		// Try to delete a tuple that doesn't exist without options - should fail (default is ERROR)
+		req := &storagev1.WriteRequest{
+			Store: storeID,
+			Deletes: []*storagev1.TupleKey{
+				{Object: "doc:nonexistent-default-server", Relation: "viewer", User: "user:nobody"},
+			},
+		}
+		_, err := server.Write(ctx, req)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "cannot delete a tuple which does not exist")
 	})
 
 	t.Run("write_tuples_with_conditions", func(t *testing.T) {

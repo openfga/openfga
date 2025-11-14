@@ -493,12 +493,60 @@ func TestClientWrite(t *testing.T) {
 		require.NoError(t, err)
 	})
 
+	t.Run("write_with_duplicate_insert_error", func(t *testing.T) {
+		// Write a tuple
+		err := client.Write(ctx, storeID, nil, []*openfgav1.TupleKey{
+			{Object: "doc:duplicate", Relation: "viewer", User: "user:test"},
+		})
+		require.NoError(t, err)
+
+		// Try to write it again with explicit error option - should fail
+		err = client.Write(ctx, storeID, nil, []*openfgav1.TupleKey{
+			{Object: "doc:duplicate", Relation: "viewer", User: "user:test"},
+		}, storage.WithOnDuplicateInsert(storage.OnDuplicateInsertError))
+		require.Error(t, err)
+		require.ErrorIs(t, err, storage.ErrInvalidWriteInput)
+	})
+
+	t.Run("write_with_duplicate_insert_error_default", func(t *testing.T) {
+		// Write a tuple
+		err := client.Write(ctx, storeID, nil, []*openfgav1.TupleKey{
+			{Object: "doc:duplicate-default", Relation: "viewer", User: "user:test"},
+		})
+		require.NoError(t, err)
+
+		// Try to write it again without options - should fail (default is ERROR)
+		err = client.Write(ctx, storeID, nil, []*openfgav1.TupleKey{
+			{Object: "doc:duplicate-default", Relation: "viewer", User: "user:test"},
+		})
+		require.Error(t, err)
+		require.ErrorIs(t, err, storage.ErrInvalidWriteInput)
+	})
+
 	t.Run("write_with_missing_delete_ignore", func(t *testing.T) {
 		// Try to delete a tuple that doesn't exist with ignore option
 		err := client.Write(ctx, storeID, []*openfgav1.TupleKeyWithoutCondition{
 			{Object: "doc:nonexistent", Relation: "viewer", User: "user:nobody"},
 		}, nil, storage.WithOnMissingDelete(storage.OnMissingDeleteIgnore))
 		require.NoError(t, err)
+	})
+
+	t.Run("write_with_missing_delete_error", func(t *testing.T) {
+		// Try to delete a tuple that doesn't exist with explicit error option - should fail
+		err := client.Write(ctx, storeID, []*openfgav1.TupleKeyWithoutCondition{
+			{Object: "doc:nonexistent-error", Relation: "viewer", User: "user:nobody"},
+		}, nil, storage.WithOnMissingDelete(storage.OnMissingDeleteError))
+		require.Error(t, err)
+		require.ErrorIs(t, err, storage.ErrInvalidWriteInput)
+	})
+
+	t.Run("write_with_missing_delete_error_default", func(t *testing.T) {
+		// Try to delete a tuple that doesn't exist without options - should fail (default is ERROR)
+		err := client.Write(ctx, storeID, []*openfgav1.TupleKeyWithoutCondition{
+			{Object: "doc:nonexistent-default", Relation: "viewer", User: "user:nobody"},
+		}, nil)
+		require.Error(t, err)
+		require.ErrorIs(t, err, storage.ErrInvalidWriteInput)
 	})
 
 	t.Run("write_tuples_with_conditions", func(t *testing.T) {
