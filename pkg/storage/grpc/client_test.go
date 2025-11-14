@@ -390,3 +390,345 @@ func TestClientReadStartingWithUserWithData(t *testing.T) {
 		require.Equal(t, "user:anne", tuple.GetKey().GetUser())
 	}
 }
+
+// mockErrorDatastore is a datastore that returns specific errors for testing error conversion.
+type mockErrorDatastore struct {
+	storage.OpenFGADatastore
+	errorToReturn error
+}
+
+func (m *mockErrorDatastore) IsReady(ctx context.Context) (storage.ReadinessStatus, error) {
+	if m.errorToReturn != nil {
+		return storage.ReadinessStatus{}, m.errorToReturn
+	}
+	return storage.ReadinessStatus{IsReady: true}, nil
+}
+
+func (m *mockErrorDatastore) Read(ctx context.Context, store string, filter storage.ReadFilter, options storage.ReadOptions) (storage.TupleIterator, error) {
+	if m.errorToReturn != nil {
+		return nil, m.errorToReturn
+	}
+	return &mockEmptyIterator{}, nil
+}
+
+func (m *mockErrorDatastore) ReadPage(ctx context.Context, store string, filter storage.ReadFilter, options storage.ReadPageOptions) ([]*openfgav1.Tuple, string, error) {
+	if m.errorToReturn != nil {
+		return nil, "", m.errorToReturn
+	}
+	return nil, "", nil
+}
+
+func (m *mockErrorDatastore) ReadUserTuple(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options storage.ReadUserTupleOptions) (*openfgav1.Tuple, error) {
+	if m.errorToReturn != nil {
+		return nil, m.errorToReturn
+	}
+	return nil, storage.ErrNotFound
+}
+
+func (m *mockErrorDatastore) ReadUsersetTuples(ctx context.Context, store string, filter storage.ReadUsersetTuplesFilter, options storage.ReadUsersetTuplesOptions) (storage.TupleIterator, error) {
+	if m.errorToReturn != nil {
+		return nil, m.errorToReturn
+	}
+	return &mockEmptyIterator{}, nil
+}
+
+func (m *mockErrorDatastore) ReadStartingWithUser(ctx context.Context, store string, filter storage.ReadStartingWithUserFilter, options storage.ReadStartingWithUserOptions) (storage.TupleIterator, error) {
+	if m.errorToReturn != nil {
+		return nil, m.errorToReturn
+	}
+	return &mockEmptyIterator{}, nil
+}
+
+type mockEmptyIterator struct{}
+
+func (m *mockEmptyIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
+	return nil, storage.ErrIteratorDone
+}
+
+func (m *mockEmptyIterator) Stop() {}
+
+func (m *mockEmptyIterator) Head(ctx context.Context) (*openfgav1.Tuple, error) {
+	return nil, storage.ErrIteratorDone
+}
+
+// setupTestClientServerWithErrorDatastore sets up a test client/server with a mock error datastore.
+func setupTestClientServerWithErrorDatastore(t *testing.T, errorToReturn error) (*Client, func()) {
+	// Create mock backend
+	backend := &mockErrorDatastore{errorToReturn: errorToReturn}
+
+	// Set up gRPC server with bufconn
+	lis := bufconn.Listen(bufSize)
+	grpcServer := grpc.NewServer()
+	storageServer := NewServer(backend)
+	storagev1.RegisterStorageServiceServer(grpcServer, storageServer)
+
+	go func() {
+		if err := grpcServer.Serve(lis); err != nil {
+			t.Logf("Server exited with error: %v", err)
+		}
+	}()
+
+	// Create client
+	bufDialer := func(context.Context, string) (net.Conn, error) {
+		return lis.Dial()
+	}
+
+	conn, err := grpc.NewClient("passthrough://bufnet",
+		grpc.WithContextDialer(bufDialer),
+		grpc.WithTransportCredentials(insecure.NewCredentials()))
+	require.NoError(t, err)
+
+	client := &Client{
+		conn:                   conn,
+		client:                 storagev1.NewStorageServiceClient(conn),
+		maxTuplesPerWriteField: storage.DefaultMaxTuplesPerWrite,
+		maxTypesPerModelField:  storage.DefaultMaxTypesPerAuthorizationModel,
+	}
+
+	cleanup := func() {
+		client.Close()
+		grpcServer.Stop()
+	}
+
+	return client, cleanup
+}
+
+func TestClientErrorHandling(t *testing.T) {
+	ctx := context.Background()
+
+	tests := []struct {
+		name       string
+		storeError error
+	}{
+		{
+			name:       "ErrNotFound is preserved",
+			storeError: storage.ErrNotFound,
+		},
+		{
+			name:       "ErrCollision is preserved",
+			storeError: storage.ErrCollision,
+		},
+		{
+			name:       "ErrInvalidContinuationToken is preserved",
+			storeError: storage.ErrInvalidContinuationToken,
+		},
+		{
+			name:       "ErrInvalidStartTime is preserved",
+			storeError: storage.ErrInvalidStartTime,
+		},
+		{
+			name:       "ErrInvalidWriteInput is preserved",
+			storeError: storage.ErrInvalidWriteInput,
+		},
+		{
+			name:       "ErrTransactionalWriteFailed is preserved",
+			storeError: storage.ErrTransactionalWriteFailed,
+		},
+		{
+			name:       "ErrWriteConflictOnInsert is preserved",
+			storeError: storage.ErrWriteConflictOnInsert,
+		},
+		{
+			name:       "ErrWriteConflictOnDelete is preserved",
+			storeError: storage.ErrWriteConflictOnDelete,
+		},
+		{
+			name:       "ErrTransactionThrottled is preserved",
+			storeError: storage.ErrTransactionThrottled,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client, cleanup := setupTestClientServerWithErrorDatastore(t, tt.storeError)
+			defer cleanup()
+
+			// Test IsReady
+			t.Run("IsReady", func(t *testing.T) {
+				_, err := client.IsReady(ctx)
+				require.Error(t, err)
+				require.ErrorIs(t, err, tt.storeError)
+			})
+
+			// Test ReadPage
+			t.Run("ReadPage", func(t *testing.T) {
+				_, _, err := client.ReadPage(ctx, "test-store", storage.ReadFilter{}, storage.ReadPageOptions{
+					Pagination: storage.PaginationOptions{PageSize: 10},
+				})
+				require.Error(t, err)
+				require.ErrorIs(t, err, tt.storeError)
+			})
+
+			// Test ReadUserTuple
+			t.Run("ReadUserTuple", func(t *testing.T) {
+				_, err := client.ReadUserTuple(ctx, "test-store", &openfgav1.TupleKey{
+					Object:   "doc:1",
+					Relation: "viewer",
+					User:     "user:anne",
+				}, storage.ReadUserTupleOptions{})
+				require.Error(t, err)
+				require.ErrorIs(t, err, tt.storeError)
+			})
+		})
+	}
+}
+
+func TestClientReadUserTupleNotFoundError(t *testing.T) {
+	// Test that ErrNotFound is specifically returned for ReadUserTuple
+	client, cleanup := setupTestClientServerWithErrorDatastore(t, storage.ErrNotFound)
+	defer cleanup()
+
+	ctx := context.Background()
+	tuple, err := client.ReadUserTuple(ctx, "test-store", &openfgav1.TupleKey{
+		Object:   "doc:1",
+		Relation: "viewer",
+		User:     "user:anne",
+	}, storage.ReadUserTupleOptions{})
+
+	require.Error(t, err)
+	require.Nil(t, tuple)
+	require.ErrorIs(t, err, storage.ErrNotFound)
+}
+
+// mockErrorIterator simulates an iterator that returns an error.
+type mockErrorIterator struct {
+	errorToReturn error
+}
+
+func (m *mockErrorIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
+	return nil, m.errorToReturn
+}
+
+func (m *mockErrorIterator) Stop() {}
+
+func (m *mockErrorIterator) Head(ctx context.Context) (*openfgav1.Tuple, error) {
+	return nil, m.errorToReturn
+}
+
+// mockIteratorErrorDatastore returns iterators that produce errors.
+type mockIteratorErrorDatastore struct {
+	storage.OpenFGADatastore
+	errorToReturn error
+}
+
+func (m *mockIteratorErrorDatastore) IsReady(ctx context.Context) (storage.ReadinessStatus, error) {
+	return storage.ReadinessStatus{IsReady: true}, nil
+}
+
+func (m *mockIteratorErrorDatastore) Read(ctx context.Context, store string, filter storage.ReadFilter, options storage.ReadOptions) (storage.TupleIterator, error) {
+	return &mockErrorIterator{errorToReturn: m.errorToReturn}, nil
+}
+
+func (m *mockIteratorErrorDatastore) ReadUsersetTuples(ctx context.Context, store string, filter storage.ReadUsersetTuplesFilter, options storage.ReadUsersetTuplesOptions) (storage.TupleIterator, error) {
+	return &mockErrorIterator{errorToReturn: m.errorToReturn}, nil
+}
+
+func (m *mockIteratorErrorDatastore) ReadStartingWithUser(ctx context.Context, store string, filter storage.ReadStartingWithUserFilter, options storage.ReadStartingWithUserOptions) (storage.TupleIterator, error) {
+	return &mockErrorIterator{errorToReturn: m.errorToReturn}, nil
+}
+
+func TestClientIteratorErrorHandling(t *testing.T) {
+	ctx := context.Background()
+
+	tests := []struct {
+		name  string
+		error error
+	}{
+		{
+			name:  "Iterator NotFound error is preserved",
+			error: storage.ErrNotFound,
+		},
+		{
+			name:  "Iterator Collision error is preserved",
+			error: storage.ErrCollision,
+		},
+		{
+			name:  "Iterator TransactionThrottled error is preserved",
+			error: storage.ErrTransactionThrottled,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create mock backend that returns iterators with errors
+			backend := &mockIteratorErrorDatastore{errorToReturn: tt.error}
+
+			// Set up gRPC server with bufconn
+			lis := bufconn.Listen(bufSize)
+			grpcServer := grpc.NewServer()
+			storageServer := NewServer(backend)
+			storagev1.RegisterStorageServiceServer(grpcServer, storageServer)
+
+			go func() {
+				if err := grpcServer.Serve(lis); err != nil {
+					t.Logf("Server exited with error: %v", err)
+				}
+			}()
+
+			// Create client
+			bufDialer := func(context.Context, string) (net.Conn, error) {
+				return lis.Dial()
+			}
+
+			conn, err := grpc.NewClient("passthrough://bufnet",
+				grpc.WithContextDialer(bufDialer),
+				grpc.WithTransportCredentials(insecure.NewCredentials()))
+			require.NoError(t, err)
+
+			client := &Client{
+				conn:                   conn,
+				client:                 storagev1.NewStorageServiceClient(conn),
+				maxTuplesPerWriteField: storage.DefaultMaxTuplesPerWrite,
+				maxTypesPerModelField:  storage.DefaultMaxTypesPerAuthorizationModel,
+			}
+
+			defer func() {
+				client.Close()
+				grpcServer.Stop()
+			}()
+
+			// Test Read iterator error
+			t.Run("Read iterator", func(t *testing.T) {
+				iter, err := client.Read(ctx, "test-store", storage.ReadFilter{}, storage.ReadOptions{})
+				require.NoError(t, err) // Iterator creation succeeds
+
+				// Error should occur when calling Next
+				_, err = iter.Next(ctx)
+				require.Error(t, err)
+				require.ErrorIs(t, err, tt.error)
+			})
+
+			// Test ReadUsersetTuples iterator error
+			t.Run("ReadUsersetTuples iterator", func(t *testing.T) {
+				iter, err := client.ReadUsersetTuples(ctx, "test-store", storage.ReadUsersetTuplesFilter{
+					Object:   "doc:1",
+					Relation: "viewer",
+				}, storage.ReadUsersetTuplesOptions{})
+				require.NoError(t, err) // Iterator creation succeeds
+
+				// Error should occur when calling Next
+				_, err = iter.Next(ctx)
+				require.Error(t, err)
+				require.ErrorIs(t, err, tt.error)
+			})
+
+			// Test ReadStartingWithUser iterator error
+			t.Run("ReadStartingWithUser iterator", func(t *testing.T) {
+				iter, err := client.ReadStartingWithUser(ctx, "test-store", storage.ReadStartingWithUserFilter{
+					ObjectType: "document",
+					Relation:   "viewer",
+					UserFilter: []*openfgav1.ObjectRelation{
+						{Object: "user:anne"},
+					},
+					ObjectIDs: storage.NewSortedSet(),
+				}, storage.ReadStartingWithUserOptions{})
+				require.NoError(t, err) // Iterator creation succeeds
+
+				// Error should occur when calling Next
+				_, err = iter.Next(ctx)
+				require.Error(t, err)
+				require.ErrorIs(t, err, tt.error)
+			})
+		})
+	}
+}
