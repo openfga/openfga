@@ -607,3 +607,288 @@ func TestServerWrite(t *testing.T) {
 		require.NotNil(t, resp)
 	})
 }
+
+func TestServerReadAuthorizationModel(t *testing.T) {
+	ds := memory.New()
+	server := NewServer(ds)
+	ctx := context.Background()
+	storeID := "test-store"
+
+	t.Run("not_found", func(t *testing.T) {
+		req := &storagev1.ReadAuthorizationModelRequest{
+			Store: storeID,
+			Id:    "non-existent-id",
+		}
+		_, err := server.ReadAuthorizationModel(ctx, req)
+		require.Error(t, err)
+	})
+
+	// Write a model to the datastore
+	model := &openfgav1.AuthorizationModel{
+		Id:            "01HXQZ9F8G7YRTXMN50BQP6XQZ",
+		SchemaVersion: "1.1",
+		TypeDefinitions: []*openfgav1.TypeDefinition{
+			{
+				Type: "user",
+			},
+			{
+				Type: "document",
+				Relations: map[string]*openfgav1.Userset{
+					"viewer": {
+						Userset: &openfgav1.Userset_This{},
+					},
+				},
+				Metadata: &openfgav1.Metadata{
+					Relations: map[string]*openfgav1.RelationMetadata{
+						"viewer": {
+							DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+								{Type: "user"},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	err := ds.WriteAuthorizationModel(ctx, storeID, model)
+	require.NoError(t, err)
+
+	t.Run("read_existing", func(t *testing.T) {
+		req := &storagev1.ReadAuthorizationModelRequest{
+			Store: storeID,
+			Id:    model.GetId(),
+		}
+		resp, err := server.ReadAuthorizationModel(ctx, req)
+		require.NoError(t, err)
+		require.NotNil(t, resp.GetModel())
+		require.Equal(t, model.GetId(), resp.GetModel().GetId())
+		require.Equal(t, model.GetSchemaVersion(), resp.GetModel().GetSchemaVersion())
+		require.Len(t, resp.GetModel().GetTypeDefinitions(), 2)
+	})
+}
+
+func TestServerReadAuthorizationModels(t *testing.T) {
+	ds := memory.New()
+	server := NewServer(ds)
+	ctx := context.Background()
+	storeID := "test-store"
+
+	t.Run("empty_store", func(t *testing.T) {
+		req := &storagev1.ReadAuthorizationModelsRequest{
+			Store: storeID,
+			Pagination: &storagev1.PaginationOptions{
+				PageSize: 10,
+			},
+		}
+		resp, err := server.ReadAuthorizationModels(ctx, req)
+		require.NoError(t, err)
+		require.Empty(t, resp.GetModels())
+		require.Empty(t, resp.GetContinuationToken())
+	})
+
+	// Write multiple models
+	model1 := &openfgav1.AuthorizationModel{
+		Id:            "01HXQZ9F8G7YRTXMN50BQP6XQZ",
+		SchemaVersion: "1.1",
+		TypeDefinitions: []*openfgav1.TypeDefinition{
+			{Type: "user"},
+		},
+	}
+	model2 := &openfgav1.AuthorizationModel{
+		Id:            "01HXQZ9F8G7YRTXMN50BQP6XRA",
+		SchemaVersion: "1.1",
+		TypeDefinitions: []*openfgav1.TypeDefinition{
+			{Type: "user"},
+			{Type: "document"},
+		},
+	}
+
+	err := ds.WriteAuthorizationModel(ctx, storeID, model1)
+	require.NoError(t, err)
+	err = ds.WriteAuthorizationModel(ctx, storeID, model2)
+	require.NoError(t, err)
+
+	t.Run("read_all", func(t *testing.T) {
+		req := &storagev1.ReadAuthorizationModelsRequest{
+			Store: storeID,
+			Pagination: &storagev1.PaginationOptions{
+				PageSize: 10,
+			},
+		}
+		resp, err := server.ReadAuthorizationModels(ctx, req)
+		require.NoError(t, err)
+		require.Len(t, resp.GetModels(), 2)
+		require.Empty(t, resp.GetContinuationToken())
+		// Models should be returned newest first
+		require.Equal(t, model2.GetId(), resp.GetModels()[0].GetId())
+		require.Equal(t, model1.GetId(), resp.GetModels()[1].GetId())
+	})
+
+	t.Run("pagination", func(t *testing.T) {
+		// First page
+		req := &storagev1.ReadAuthorizationModelsRequest{
+			Store: storeID,
+			Pagination: &storagev1.PaginationOptions{
+				PageSize: 1,
+			},
+		}
+		resp, err := server.ReadAuthorizationModels(ctx, req)
+		require.NoError(t, err)
+		require.Len(t, resp.GetModels(), 1)
+		require.NotEmpty(t, resp.GetContinuationToken())
+
+		// Second page
+		req2 := &storagev1.ReadAuthorizationModelsRequest{
+			Store: storeID,
+			Pagination: &storagev1.PaginationOptions{
+				PageSize: 1,
+				From:     resp.GetContinuationToken(),
+			},
+		}
+		resp2, err := server.ReadAuthorizationModels(ctx, req2)
+		require.NoError(t, err)
+		require.Len(t, resp2.GetModels(), 1)
+		require.Empty(t, resp2.GetContinuationToken())
+	})
+}
+
+func TestServerFindLatestAuthorizationModel(t *testing.T) {
+	ds := memory.New()
+	server := NewServer(ds)
+	ctx := context.Background()
+	storeID := "test-store"
+
+	t.Run("not_found", func(t *testing.T) {
+		req := &storagev1.FindLatestAuthorizationModelRequest{
+			Store: storeID,
+		}
+		_, err := server.FindLatestAuthorizationModel(ctx, req)
+		require.Error(t, err)
+	})
+
+	// Write models - the second one should be the latest
+	model1 := &openfgav1.AuthorizationModel{
+		Id:            "01HXQZ9F8G7YRTXMN50BQP6XQZ",
+		SchemaVersion: "1.1",
+		TypeDefinitions: []*openfgav1.TypeDefinition{
+			{Type: "user"},
+		},
+	}
+	model2 := &openfgav1.AuthorizationModel{
+		Id:            "01HXQZ9F8G7YRTXMN50BQP6XRA",
+		SchemaVersion: "1.1",
+		TypeDefinitions: []*openfgav1.TypeDefinition{
+			{Type: "user"},
+			{Type: "document"},
+		},
+	}
+
+	err := ds.WriteAuthorizationModel(ctx, storeID, model1)
+	require.NoError(t, err)
+	err = ds.WriteAuthorizationModel(ctx, storeID, model2)
+	require.NoError(t, err)
+
+	t.Run("find_latest", func(t *testing.T) {
+		req := &storagev1.FindLatestAuthorizationModelRequest{
+			Store: storeID,
+		}
+		resp, err := server.FindLatestAuthorizationModel(ctx, req)
+		require.NoError(t, err)
+		require.NotNil(t, resp.GetModel())
+		require.Equal(t, model2.GetId(), resp.GetModel().GetId())
+		require.Len(t, resp.GetModel().GetTypeDefinitions(), 2)
+	})
+}
+
+func TestServerWriteAuthorizationModel(t *testing.T) {
+	ds := memory.New()
+	server := NewServer(ds)
+	ctx := context.Background()
+	storeID := "test-store"
+
+	model := &openfgav1.AuthorizationModel{
+		Id:            "01HXQZ9F8G7YRTXMN50BQP6XQZ",
+		SchemaVersion: "1.1",
+		TypeDefinitions: []*openfgav1.TypeDefinition{
+			{
+				Type: "user",
+			},
+			{
+				Type: "document",
+				Relations: map[string]*openfgav1.Userset{
+					"viewer": {
+						Userset: &openfgav1.Userset_This{},
+					},
+					"editor": {
+						Userset: &openfgav1.Userset_This{},
+					},
+				},
+				Metadata: &openfgav1.Metadata{
+					Relations: map[string]*openfgav1.RelationMetadata{
+						"viewer": {
+							DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+								{Type: "user"},
+							},
+						},
+						"editor": {
+							DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+								{Type: "user"},
+							},
+						},
+					},
+				},
+			},
+		},
+		Conditions: map[string]*openfgav1.Condition{
+			"is_valid": {
+				Name:       "is_valid",
+				Expression: "param.x < 100",
+				Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+					"x": {
+						TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_INT,
+					},
+				},
+			},
+		},
+	}
+
+	req := &storagev1.WriteAuthorizationModelRequest{
+		Store: storeID,
+		Model: toStorageAuthorizationModel(model),
+	}
+
+	resp, err := server.WriteAuthorizationModel(ctx, req)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+
+	// Verify it was written
+	readModel, err := ds.ReadAuthorizationModel(ctx, storeID, model.GetId())
+	require.NoError(t, err)
+	require.NotNil(t, readModel)
+	require.Equal(t, model.GetId(), readModel.GetId())
+	require.Equal(t, model.GetSchemaVersion(), readModel.GetSchemaVersion())
+	require.Len(t, readModel.GetTypeDefinitions(), 2)
+	require.Len(t, readModel.GetConditions(), 1)
+
+	// Verify document type details
+	var docType *openfgav1.TypeDefinition
+	for _, td := range readModel.GetTypeDefinitions() {
+		if td.GetType() == "document" {
+			docType = td
+			break
+		}
+	}
+	require.NotNil(t, docType)
+	require.Len(t, docType.GetRelations(), 2)
+	require.Contains(t, docType.GetRelations(), "viewer")
+	require.Contains(t, docType.GetRelations(), "editor")
+
+	// Verify condition details
+	require.Contains(t, readModel.GetConditions(), "is_valid")
+	condition := readModel.GetConditions()["is_valid"]
+	require.Equal(t, "is_valid", condition.GetName())
+	require.Equal(t, "param.x < 100", condition.GetExpression())
+	require.Len(t, condition.GetParameters(), 1)
+	require.Contains(t, condition.GetParameters(), "x")
+}
