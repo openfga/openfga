@@ -901,7 +901,6 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 			playgroundAPIToken = config.Authn.Keys[0]
 		}
 
-		// Optionally modify the request before forwarding
 		proxy.Director = func(req *http.Request) {
 			req.URL.Scheme = targetURL.Scheme
 			req.URL.Host = targetURL.Host

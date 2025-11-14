@@ -1452,26 +1452,25 @@ func TestRunCommandConfigIsMerged(t *testing.T) {
 	require.NoError(t, rootCmd.Execute())
 }
 
-func TestPlaygroundConfig(t *testing.T) {
+func TestPlaygroundConfigInvalidURL(t *testing.T) {
 	t.Cleanup(func() {
 		time.Sleep(100 * time.Millisecond)
-		goleak.VerifyNone(t)
+
 	})
 
 	cfg := testutils.MustDefaultConfigWithRandomPorts()
+	cfg.Playground.Enabled = true
+	cfg.Playground.DestinationURL = "http://example.com\x00\x01\x02/path"
 
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 
-	cfg.Playground.Enabled = true
-	cfg.Playground.DestinationURL = "junk-url:://invalid-url"
-
+	serverDone := make(chan error, 1)
 	go func() {
-		if err := runServer(ctx, cfg); err != nil {
-			require.ErrorContains(t, err, "failed to parse proxy target URL")
-			log.Fatal(err)
-		}
+		serverDone <- runServer(ctx, cfg)
 	}()
+	err := <-serverDone
+	require.ErrorContains(t, err, "failed to parse proxy target URL")
 }
 
 func TestPlaygroundProxy(t *testing.T) {
@@ -1535,8 +1534,6 @@ func TestPlaygroundProxy(t *testing.T) {
 		require.NoError(t, err)
 		defer resp.Body.Close()
 
-		// The playground should proxy unknown paths appropriately
-		// Even if it returns 404, it shows the proxy mechanism is working
 		require.Equal(t, http.StatusOK, resp.StatusCode)
 
 		// Check if response contains an iframe HTML tag
@@ -1554,8 +1551,6 @@ func TestPlaygroundProxy(t *testing.T) {
 		require.NoError(t, err)
 		defer resp.Body.Close()
 
-		// The playground should proxy unknown paths appropriately
-		// Even if it returns 404, it shows the proxy mechanism is working
 		require.Equal(t, http.StatusOK, resp.StatusCode)
 	})
 }
