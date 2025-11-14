@@ -870,6 +870,8 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 			return fmt.Errorf("failed to parse proxy target URL: %w", err)
 		}
 
+		s.Logger.Info(fmt.Sprintf("playground proxy target URL: %s", targetURL.String()))
+
 		proxy := httputil.NewSingleHostReverseProxy(targetURL)
 
 		tmpl, err := template.ParseFS(assets.EmbedPlayground, "playground/index.html")

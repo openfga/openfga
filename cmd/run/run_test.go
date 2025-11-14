@@ -1452,6 +1452,28 @@ func TestRunCommandConfigIsMerged(t *testing.T) {
 	require.NoError(t, rootCmd.Execute())
 }
 
+func TestPlaygroundConfig(t *testing.T) {
+	t.Cleanup(func() {
+		time.Sleep(100 * time.Millisecond)
+		goleak.VerifyNone(t)
+	})
+
+	cfg := testutils.MustDefaultConfigWithRandomPorts()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
+	cfg.Playground.Enabled = true
+	cfg.Playground.DestinationURL = "junk-url:://invalid-url"
+
+	go func() {
+		if err := runServer(ctx, cfg); err != nil {
+			require.ErrorContains(t, err, "failed to parse proxy target URL")
+			log.Fatal(err)
+		}
+	}()
+}
+
 func TestPlaygroundProxy(t *testing.T) {
 	t.Cleanup(func() {
 		time.Sleep(100 * time.Millisecond)
