@@ -9,6 +9,8 @@ on:
     paths:
       - 'CHANGELOG.md'
 
+permissions: read-all
+
 jobs:
   create-tag:
     if: >
