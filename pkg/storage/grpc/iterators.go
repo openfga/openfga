@@ -74,7 +74,9 @@ func (s *streamTupleIterator) Stop() {
 	}
 
 	s.done = true
-	s.stream.CloseSend()
+
+	// TODO update storage.TupleIterator interface to support returning an error
+	_ = s.stream.CloseSend()
 }
 
 func (s *streamTupleIterator) Head(ctx context.Context) (*openfgav1.Tuple, error) {
