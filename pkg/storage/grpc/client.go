@@ -7,9 +7,11 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/keepalive"
+	"google.golang.org/grpc/status"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
@@ -117,23 +119,123 @@ func (c *Client) IsReady(ctx context.Context) (storage.ReadinessStatus, error) {
 }
 
 func (c *Client) Read(ctx context.Context, store string, filter storage.ReadFilter, options storage.ReadOptions) (storage.TupleIterator, error) {
-	return nil, nil
+	req := &storagev1.ReadRequest{
+		Store: store,
+		Filter: &storagev1.ReadFilter{
+			Object:     filter.Object,
+			Relation:   filter.Relation,
+			User:       filter.User,
+			Conditions: filter.Conditions,
+		},
+		Consistency: &storagev1.ConsistencyOptions{
+			Preference: storagev1.ConsistencyPreference(options.Consistency.Preference),
+		},
+	}
+
+	stream, err := c.client.Read(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("grpc read failed: %w", err)
+	}
+
+	return newStreamTupleIterator(stream), nil
 }
 
 func (c *Client) ReadPage(ctx context.Context, store string, filter storage.ReadFilter, options storage.ReadPageOptions) ([]*openfgav1.Tuple, string, error) {
-	return nil, "", nil
+	req := &storagev1.ReadPageRequest{
+		Store: store,
+		Filter: &storagev1.ReadFilter{
+			Object:     filter.Object,
+			Relation:   filter.Relation,
+			User:       filter.User,
+			Conditions: filter.Conditions,
+		},
+		Pagination: &storagev1.PaginationOptions{
+			PageSize: int32(options.Pagination.PageSize),
+			From:     options.Pagination.From,
+		},
+		Consistency: &storagev1.ConsistencyOptions{
+			Preference: storagev1.ConsistencyPreference(options.Consistency.Preference),
+		},
+	}
+
+	resp, err := c.client.ReadPage(ctx, req)
+	if err != nil {
+		return nil, "", fmt.Errorf("grpc read page failed: %w", err)
+	}
+
+	return fromStorageTuples(resp.Tuples), resp.ContinuationToken, nil
 }
 
 func (c *Client) ReadUserTuple(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options storage.ReadUserTupleOptions) (*openfgav1.Tuple, error) {
-	return nil, nil
+	req := &storagev1.ReadUserTupleRequest{
+		Store:    store,
+		TupleKey: toStorageTupleKey(tupleKey),
+		Consistency: &storagev1.ConsistencyOptions{
+			Preference: storagev1.ConsistencyPreference(options.Consistency.Preference),
+		},
+	}
+
+	resp, err := c.client.ReadUserTuple(ctx, req)
+	if err != nil {
+		// Check if the error is a NotFound gRPC status code
+		if st, ok := status.FromError(err); ok && st.Code() == codes.NotFound {
+			return nil, storage.ErrNotFound
+		}
+		return nil, fmt.Errorf("grpc read user tuple failed: %w", err)
+	}
+
+	// Guard against improper server implementations that return nil tuple
+	if resp.Tuple == nil {
+		return nil, storage.ErrNotFound
+	}
+
+	return fromStorageTuple(resp.Tuple), nil
 }
 
 func (c *Client) ReadUsersetTuples(ctx context.Context, store string, filter storage.ReadUsersetTuplesFilter, options storage.ReadUsersetTuplesOptions) (storage.TupleIterator, error) {
-	return nil, nil
+	req := &storagev1.ReadUsersetTuplesRequest{
+		Store: store,
+		Filter: &storagev1.ReadUsersetTuplesFilter{
+			Object:                      filter.Object,
+			Relation:                    filter.Relation,
+			AllowedUserTypeRestrictions: toStorageRelationReferences(filter.AllowedUserTypeRestrictions),
+			Conditions:                  filter.Conditions,
+		},
+		Consistency: &storagev1.ConsistencyOptions{
+			Preference: storagev1.ConsistencyPreference(options.Consistency.Preference),
+		},
+	}
+
+	stream, err := c.client.ReadUsersetTuples(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("grpc read userset tuples failed: %w", err)
+	}
+
+	return newStreamTupleIterator(stream), nil
 }
 
 func (c *Client) ReadStartingWithUser(ctx context.Context, store string, filter storage.ReadStartingWithUserFilter, options storage.ReadStartingWithUserOptions) (storage.TupleIterator, error) {
-	return nil, nil
+	req := &storagev1.ReadStartingWithUserRequest{
+		Store: store,
+		Filter: &storagev1.ReadStartingWithUserFilter{
+			ObjectType: filter.ObjectType,
+			Relation:   filter.Relation,
+			UserFilter: toStorageObjectRelations(filter.UserFilter),
+			ObjectIds:  filter.ObjectIDs.Values(),
+			Conditions: filter.Conditions,
+		},
+		Consistency: &storagev1.ConsistencyOptions{
+			Preference: storagev1.ConsistencyPreference(options.Consistency.Preference),
+		},
+		WithResultsSortedAscending: options.WithResultsSortedAscending,
+	}
+
+	stream, err := c.client.ReadStartingWithUser(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("grpc read starting with user failed: %w", err)
+	}
+
+	return newStreamTupleIterator(stream), nil
 }
 
 func (c *Client) Write(ctx context.Context, store string, d storage.Deletes, w storage.Writes, opts ...storage.TupleWriteOption) error {
