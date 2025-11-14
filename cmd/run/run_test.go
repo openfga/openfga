@@ -21,6 +21,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -1454,28 +1455,23 @@ func TestRunCommandConfigIsMerged(t *testing.T) {
 
 func TestPlaygroundConfigInvalidURL(t *testing.T) {
 	t.Cleanup(func() {
-		time.Sleep(100 * time.Millisecond)
-
+		goleak.VerifyNone(t)
 	})
 
 	cfg := testutils.MustDefaultConfigWithRandomPorts()
 	cfg.Playground.Enabled = true
 	cfg.Playground.DestinationURL = "http://example.com\x00\x01\x02/path"
 
-	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
-
-	serverDone := make(chan error, 1)
-	go func() {
-		serverDone <- runServer(ctx, cfg)
-	}()
-	err := <-serverDone
+	err := runServer(context.Background(), cfg)
 	require.ErrorContains(t, err, "failed to parse proxy target URL")
+
 }
 
 func TestPlaygroundProxy(t *testing.T) {
+	var wg sync.WaitGroup
+
 	t.Cleanup(func() {
-		time.Sleep(100 * time.Millisecond)
+		wg.Wait()
 		goleak.VerifyNone(t)
 	})
 
@@ -1495,7 +1491,9 @@ func TestPlaygroundProxy(t *testing.T) {
 	cfg.Playground.Enabled = true
 	cfg.Playground.DestinationURL = mockPlayServer.URL
 
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		if err := runServer(ctx, cfg); err != nil {
 			log.Fatal(err)
 		}
