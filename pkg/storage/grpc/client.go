@@ -408,5 +408,31 @@ func (c *Client) ReadAssertions(ctx context.Context, store, modelID string) ([]*
 }
 
 func (c *Client) ReadChanges(ctx context.Context, store string, filter storage.ReadChangesFilter, options storage.ReadChangesOptions) ([]*openfgav1.TupleChange, string, error) {
-	return nil, "", nil
+	req := &storagev1.ReadChangesRequest{
+		Store: store,
+		Filter: &storagev1.ReadChangesFilter{
+			ObjectType:      filter.ObjectType,
+			HorizonOffsetMs: filter.HorizonOffset.Milliseconds(),
+		},
+		Pagination: &storagev1.PaginationOptions{
+			PageSize: int32(options.Pagination.PageSize),
+			From:     options.Pagination.From,
+		},
+		SortDesc: options.SortDesc,
+	}
+
+	resp, err := c.client.ReadChanges(ctx, req)
+	if err != nil {
+		return nil, "", fromGRPCError(err)
+	}
+
+	changes := fromStorageTupleChanges(resp.GetChanges())
+
+	// Guard against improper server implementations.
+	// Per the contract: "if no changes are found, it should return storage.ErrNotFound and an empty continuation token."
+	if len(changes) == 0 {
+		return nil, "", storage.ErrNotFound
+	}
+
+	return changes, resp.GetContinuationToken(), nil
 }
