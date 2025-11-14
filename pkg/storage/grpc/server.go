@@ -19,14 +19,12 @@ type Server struct {
 	datastore storage.OpenFGADatastore
 }
 
-// NewServer creates a new gRPC storage server.
 func NewServer(datastore storage.OpenFGADatastore) *Server {
 	return &Server{
 		datastore: datastore,
 	}
 }
 
-// Read implements StorageService.Read.
 func (s *Server) Read(req *storagev1.ReadRequest, stream storagev1.StorageService_ReadServer) error {
 	filter := storage.ReadFilter{
 		Object:     req.GetFilter().GetObject(),
@@ -62,7 +60,6 @@ func (s *Server) Read(req *storagev1.ReadRequest, stream storagev1.StorageServic
 	}
 }
 
-// ReadPage implements StorageService.ReadPage.
 func (s *Server) ReadPage(ctx context.Context, req *storagev1.ReadPageRequest) (*storagev1.ReadPageResponse, error) {
 	filter := storage.ReadFilter{
 		Object:     req.GetFilter().GetObject(),
@@ -97,7 +94,6 @@ func (s *Server) ReadPage(ctx context.Context, req *storagev1.ReadPageRequest) (
 	}, nil
 }
 
-// ReadUserTuple implements StorageService.ReadUserTuple.
 func (s *Server) ReadUserTuple(ctx context.Context, req *storagev1.ReadUserTupleRequest) (*storagev1.ReadResponse, error) {
 	options := storage.ReadUserTupleOptions{
 		Consistency: storage.ConsistencyOptions{
@@ -116,7 +112,6 @@ func (s *Server) ReadUserTuple(ctx context.Context, req *storagev1.ReadUserTuple
 	return &storagev1.ReadResponse{Tuple: toStorageTuple(tuple)}, nil
 }
 
-// ReadUsersetTuples implements StorageService.ReadUsersetTuples.
 func (s *Server) ReadUsersetTuples(req *storagev1.ReadUsersetTuplesRequest, stream storagev1.StorageService_ReadUsersetTuplesServer) error {
 	allowedRefs := make([]*openfgav1.RelationReference, len(req.GetFilter().GetAllowedUserTypeRestrictions()))
 	for i, ref := range req.GetFilter().GetAllowedUserTypeRestrictions() {
@@ -157,7 +152,6 @@ func (s *Server) ReadUsersetTuples(req *storagev1.ReadUsersetTuplesRequest, stre
 	}
 }
 
-// ReadStartingWithUser implements StorageService.ReadStartingWithUser.
 func (s *Server) ReadStartingWithUser(req *storagev1.ReadStartingWithUserRequest, stream storagev1.StorageService_ReadStartingWithUserServer) error {
 	userFilter := make([]*openfgav1.ObjectRelation, len(req.GetFilter().GetUserFilter()))
 	for i, obj := range req.GetFilter().GetUserFilter() {
@@ -205,7 +199,6 @@ func (s *Server) ReadStartingWithUser(req *storagev1.ReadStartingWithUserRequest
 	}
 }
 
-// IsReady implements StorageService.IsReady.
 func (s *Server) IsReady(ctx context.Context, req *storagev1.IsReadyRequest) (*storagev1.IsReadyResponse, error) {
 	readinessStatus, err := s.datastore.IsReady(ctx)
 	if err != nil {
