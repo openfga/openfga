@@ -87,7 +87,7 @@ func fromGRPCError(err error) error {
 	for _, detail := range st.Details() {
 		if errInfo, ok := detail.(*errdetails.ErrorInfo); ok {
 			// Map error reason back to storage error
-			switch errInfo.Reason {
+			switch errInfo.GetReason() {
 			case storagev1.StorageErrorReason_NOT_FOUND.String():
 				return storage.ErrNotFound
 			case storagev1.StorageErrorReason_COLLISION.String():
