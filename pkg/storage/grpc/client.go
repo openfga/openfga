@@ -111,8 +111,8 @@ func (c *Client) IsReady(ctx context.Context) (storage.ReadinessStatus, error) {
 	}
 
 	return storage.ReadinessStatus{
-		Message: resp.Message,
-		IsReady: resp.IsReady,
+		Message: resp.GetMessage(),
+		IsReady: resp.GetIsReady(),
 	}, nil
 }
 
