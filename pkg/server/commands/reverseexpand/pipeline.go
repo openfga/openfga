@@ -1046,9 +1046,39 @@ type path struct {
 	trk     atomic.Int64
 }
 
+const (
+	NotSame int = iota
+	SameNode
+	SameType
+)
+
 func (p *path) resolve(source *Node, target Target, trk tracker, status *StatusPool) {
 	if _, ok := p.workers[source]; ok {
 		return
+	}
+
+	isSame := NotSame
+
+	switch source.GetNodeType() {
+	case nodeTypeSpecificType, nodeTypeSpecificTypeAndRelation:
+		if source == target.node {
+			isSame = SameNode
+		}
+	case nodeTypeSpecificTypeWildcard:
+		label := source.GetLabel()
+		typePart := strings.Split(label, ":")[0]
+
+		if source == target.node || typePart == target.node.GetLabel() {
+			isSame = SameType
+		}
+	}
+
+	if isSame != NotSame {
+		// only generate workers when the source reaches the target or the source is the target
+		_, ok := p.pipe.backend.Graph.GetNodeWeight(source, target.node.GetUniqueLabel())
+		if !ok {
+			return
+		}
 	}
 
 	if trk == nil {
@@ -1063,15 +1093,15 @@ func (p *path) resolve(source *Node, target Target, trk tracker, status *StatusP
 
 	p.workers[source] = w
 
-	switch source.GetNodeType() {
-	case nodeTypeSpecificType, nodeTypeSpecificTypeAndRelation:
+	switch isSame {
+	case SameNode:
 		if source == target.node {
 			// source node is the target node.
 			var grp group
 			grp.Items = []Item{{Value: target.id}}
 			w.listen(nil, newStaticProducer(&p.trk, grp), p.pipe.chunkSize, 1) // only one value to consume, so only one processor necessary.
 		}
-	case nodeTypeSpecificTypeWildcard:
+	case SameType:
 		label := source.GetLabel()
 		typePart := strings.Split(label, ":")[0]
 
@@ -1088,7 +1118,8 @@ func (p *path) resolve(source *Node, target Target, trk tracker, status *StatusP
 		return
 	}
 
-	for _, edge := range edges {
+EdgeLoop:
+	for ndx, edge := range edges {
 		var track tracker
 		var stat *StatusPool
 
@@ -1101,7 +1132,30 @@ func (p *path) resolve(source *Node, target Target, trk tracker, status *StatusP
 
 		p.resolve(edge.GetTo(), target, track, stat)
 
-		w.listen(edge, p.workers[edge.GetTo()].subscribe(source), p.pipe.chunkSize, p.pipe.numProcs)
+		// previous call to resolve may not have created a worker for edge.GetTo()
+		// if it did not have a path to the target
+		child, ok := p.workers[edge.GetTo()]
+		if !ok {
+			if source.GetNodeType() == nodeTypeOperator {
+				switch source.GetLabel() {
+				case weightedGraph.ExclusionOperator:
+					if ndx == 0 {
+						p.workers[source] = nil
+
+						break EdgeLoop
+					}
+
+					w.listen(nil, newStaticProducer(&p.trk), p.pipe.chunkSize, 1)
+				case weightedGraph.IntersectionOperator:
+					p.workers[source] = nil
+
+					break EdgeLoop
+				}
+			}
+			// no additional processing to be done, skip edge
+			continue
+		}
+		w.listen(edge, child.subscribe(source), p.pipe.chunkSize, p.pipe.numProcs)
 	}
 }
 

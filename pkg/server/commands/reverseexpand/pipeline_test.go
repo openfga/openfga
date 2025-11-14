@@ -185,30 +185,30 @@ var cases = []testcase{
 				define a2: [resource#a1]
 				define a3: [resource#a2]
 				define a4: [resource#a3]
-              			define a5: [resource#a4]
-              			define a6: [resource#a5]
-              			define a7: [resource#a6]
-              			define a8: [resource#a7]
-              			define a9: [resource#a8]
-              			define a10: [resource#a9]
-              			define a11: [resource#a10]
-              			define a12: [resource#a11]
-              			define a13: [resource#a12]
-              			define a14: [resource#a13]
-              			define a15: [resource#a14]
-              			define a16: [resource#a15]
-              			define a17: [resource#a16]
-              			define a18: [resource#a17]
-              			define a19: [resource#a18]
-              			define a20: [resource#a19]
-              			define a21: [resource#a20]
-              			define a22: [resource#a21]
-              			define a23: [resource#a22]
-              			define a24: [resource#a23]
-              			define a25: [resource#a24]
-              			define a26: [resource#a25]
-              			define a27: [resource#a26]
-              			define can_view: a27
+				define a5: [resource#a4]
+				define a6: [resource#a5]
+				define a7: [resource#a6]
+				define a8: [resource#a7]
+				define a9: [resource#a8]
+				define a10: [resource#a9]
+				define a11: [resource#a10]
+				define a12: [resource#a11]
+				define a13: [resource#a12]
+				define a14: [resource#a13]
+				define a15: [resource#a14]
+				define a16: [resource#a15]
+				define a17: [resource#a16]
+				define a18: [resource#a17]
+				define a19: [resource#a18]
+				define a20: [resource#a19]
+				define a21: [resource#a20]
+				define a22: [resource#a21]
+				define a23: [resource#a22]
+				define a24: [resource#a23]
+				define a25: [resource#a24]
+				define a26: [resource#a25]
+				define a27: [resource#a26]
+				define can_view: a27
 		`,
 		tuples: []string{
 			"resource:1#a27@resource:1#a26",
@@ -307,26 +307,26 @@ var cases = []testcase{
 		},
 		objectType: "folder",
 		relation:   "viewer",
-		user:       &UserRefObject{Object: &openfgav1.Object{Type: "group#member", Id: "fga"}},
+		user:       &UserRefObject{Object: &openfgav1.Object{Type: "group#member_c4", Id: "fga"}},
 		expected:   []string{"folder:1"},
 	},
 	{
 		name: "simple_userset_child_wildcard",
 		model: `
 		model
-            	schema 1.1
-			
-          	type user
-	  
-          	type user2
-		
-          	type group
-            		relations
-              			define member: [user, user:*, user2, user2:*]
+	    schema 1.1
 
-          	type folder
-            		relations
-              			define viewer: [group#member]
+	    type user
+
+	    type user2
+
+		type group
+			relations
+				define member: [user, user:*, user2, user2:*]
+
+		type folder
+			relations
+				define viewer: [group#member]
 		`,
 		tuples: []string{
 			"group:fga#member@user:*",
@@ -350,7 +350,7 @@ var cases = []testcase{
 		type group
 			relations
 				define member: [user, user:*]
-		
+
 		type folder
 			relations
 				define viewer: [user, group#member]
@@ -694,10 +694,10 @@ var cases = []testcase{
 		type user
 
 		type document
-			relations
-				define rel1: [user]
-				define rel2: [user]
-				define rel3: [user]
+  			relations
+    			define rel1: [user]
+    			define rel2: [user]
+    			define rel3: [user]
 				define viewer: rel1 and rel2 and rel3
 		`,
 		tuples: []string{
