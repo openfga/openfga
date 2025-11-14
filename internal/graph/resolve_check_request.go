@@ -26,6 +26,10 @@ type ResolveCheckRequest struct {
 	Consistency               openfgav1.ConsistencyPreference
 	LastCacheInvalidationTime time.Time
 
+	// If cache_controller is enabled, indicates whether we can trust the cache.
+	// If cache_controller is disabled, this will always be true.
+	CacheIsValid bool
+
 	// Invariant parts of a check request are those that don't change in sub-problems
 	// AuthorizationModelID, StoreID, Context, and ContextualTuples.
 	// the invariantCacheKey is computed once per request, and passed to sub-problems via copy in .clone()
@@ -55,6 +59,7 @@ type ResolveCheckRequestParams struct {
 	Context                   *structpb.Struct
 	Consistency               openfgav1.ConsistencyPreference
 	LastCacheInvalidationTime time.Time
+	CacheIsValid              bool
 	AuthorizationModelID      string
 }
 
@@ -87,6 +92,7 @@ func NewResolveCheckRequest(
 		Consistency:          params.Consistency,
 		// avoid having to read from cache consistently by propagating it
 		LastCacheInvalidationTime: params.LastCacheInvalidationTime,
+		CacheIsValid:              params.CacheIsValid,
 	}
 
 	keyBuilder := &strings.Builder{}
@@ -131,6 +137,7 @@ func (r *ResolveCheckRequest) clone() *ResolveCheckRequest {
 		VisitedPaths:              maps.Clone(r.GetVisitedPaths()),
 		Consistency:               r.GetConsistency(),
 		LastCacheInvalidationTime: r.GetLastCacheInvalidationTime(),
+		CacheIsValid:              r.GetCacheIsValid(),
 		invariantCacheKey:         r.GetInvariantCacheKey(),
 	}
 }
@@ -203,4 +210,11 @@ func (r *ResolveCheckRequest) GetInvariantCacheKey() string {
 		return ""
 	}
 	return r.invariantCacheKey
+}
+
+func (r *ResolveCheckRequest) GetCacheIsValid() bool {
+	if r == nil {
+		return false
+	}
+	return r.CacheIsValid
 }

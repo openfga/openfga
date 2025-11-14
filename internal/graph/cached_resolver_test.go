@@ -30,6 +30,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 			Relation: "reader",
 			User:     "user:XYZ",
 		},
+		CacheIsValid: true,
 	})
 	require.NoError(t, err)
 
@@ -49,6 +50,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
+				CacheIsValid:         true,
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
@@ -64,6 +66,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
 				Consistency:          openfgav1.ConsistencyPreference_MINIMIZE_LATENCY,
+				CacheIsValid:         true,
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
@@ -79,6 +82,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
 				Consistency:          openfgav1.ConsistencyPreference_UNSPECIFIED,
+				CacheIsValid:         true,
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
@@ -88,12 +92,29 @@ func TestResolveCheckFromCache(t *testing.T) {
 			},
 		},
 		{
+			name: "same_request_returns_results_does_not_use_cache_if_cache_controller_says_cache_is_invalid",
+			subsequentReqParams: &ResolveCheckRequestParams{
+				StoreID:              "12",
+				AuthorizationModelID: "33",
+				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
+				Consistency:          openfgav1.ConsistencyPreference_UNSPECIFIED,
+				CacheIsValid:         false, // this comes from the cache controller
+			},
+			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
+				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
+			},
+			setTestExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
+				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
+			},
+		},
+		{
 			name: "same_request_does_not_use_cache_if_higher_consistency_requested",
 			subsequentReqParams: &ResolveCheckRequestParams{
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
 				Consistency:          openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
+				CacheIsValid:         true,
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
@@ -115,6 +136,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
 				Consistency:          openfgav1.ConsistencyPreference_MINIMIZE_LATENCY,
+				CacheIsValid:         true,
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
@@ -129,6 +151,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 				StoreID:              "22",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
+				CacheIsValid:         true,
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
@@ -143,6 +166,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 				StoreID:              "12",
 				AuthorizationModelID: "34",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
+				CacheIsValid:         true,
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
@@ -157,6 +181,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abcd", "reader", "user:XYZ"),
+				CacheIsValid:         true,
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
@@ -171,6 +196,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "owner", "user:XYZ"),
+				CacheIsValid:         true,
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
@@ -185,6 +211,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:AAA"),
+				CacheIsValid:         true,
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
@@ -206,6 +233,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 						User:     "user:XYZ",
 					},
 				},
+				CacheIsValid: true,
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
@@ -220,6 +248,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
+				CacheIsValid:         true,
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(nil, fmt.Errorf("Mock error"))
@@ -263,6 +292,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 						User:     "user:XYZ",
 					},
 				},
+				CacheIsValid: true,
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
@@ -306,6 +336,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 						User:     "user:XYZ",
 					},
 				},
+				CacheIsValid: true,
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
@@ -339,6 +370,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 						User:     "user:XYZ",
 					},
 				},
+				CacheIsValid: true,
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
@@ -387,6 +419,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 						User:     "user:XYZ",
 					},
 				},
+				CacheIsValid: true,
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
@@ -418,6 +451,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
+				CacheIsValid:         true,
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
@@ -498,12 +532,12 @@ func TestResolveCheck_ConcurrentCachedReadsAndWrites(t *testing.T) {
 		var err1, err2 error
 		go func() {
 			defer wg.Done()
-			resp1, err1 = dut.ResolveCheck(context.Background(), &ResolveCheckRequest{})
+			resp1, err1 = dut.ResolveCheck(context.Background(), &ResolveCheckRequest{CacheIsValid: true})
 		}()
 
 		go func() {
 			defer wg.Done()
-			resp2, err2 = dut.ResolveCheck(context.Background(), &ResolveCheckRequest{})
+			resp2, err2 = dut.ResolveCheck(context.Background(), &ResolveCheckRequest{CacheIsValid: true})
 		}()
 
 		wg.Wait()

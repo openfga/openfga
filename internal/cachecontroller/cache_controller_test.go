@@ -21,7 +21,9 @@ import (
 func TestNoopCacheController_DetermineInvalidationTime(t *testing.T) {
 	t.Run("returns_zero_time", func(t *testing.T) {
 		ctrl := NewNoopCacheController()
-		require.Zero(t, ctrl.DetermineInvalidationTime(context.Background(), ""))
+		ts, ok := ctrl.DetermineInvalidationTime(context.Background(), "")
+		require.Zero(t, ts)
+		require.True(t, ok)
 	})
 }
 
@@ -33,20 +35,20 @@ func TestInMemoryCacheController_DetermineInvalidationTime(t *testing.T) {
 	defer ctrl.Finish()
 
 	ctx := context.Background()
-
-	cache := mocks.NewMockInMemoryCache[any](ctrl)
-	ds := mocks.NewMockOpenFGADatastore(ctrl)
-
-	cacheController := NewCacheController(ds, cache, 10*time.Second, 10*time.Second)
 	storeID := "id"
-	expectedReadChangesOpts := storage.ReadChangesOptions{
-		SortDesc: true,
-		Pagination: storage.PaginationOptions{
-			PageSize: storage.DefaultPageSize,
-			From:     "",
-		}}
 
 	t.Run("cache_hit_after_ttl", func(t *testing.T) {
+		cache := mocks.NewMockInMemoryCache[any](ctrl)
+		ds := mocks.NewMockOpenFGADatastore(ctrl)
+
+		cacheController := NewCacheController(ds, cache, 10*time.Second, 10*time.Second)
+		expectedReadChangesOpts := storage.ReadChangesOptions{
+			SortDesc: true,
+			Pagination: storage.PaginationOptions{
+				PageSize: storage.DefaultPageSize,
+				From:     "",
+			}}
+
 		changelogTimestamp := time.Now().UTC().Add(-20 * time.Second)
 		gomock.InOrder(
 			cache.EXPECT().Get(storage.GetChangelogCacheKey(storeID)).MinTimes(2).Return(&storage.ChangelogCacheEntry{
@@ -64,19 +66,59 @@ func TestInMemoryCacheController_DetermineInvalidationTime(t *testing.T) {
 			}, "", nil),
 			cache.EXPECT().Set(storage.GetChangelogCacheKey(storeID), gomock.Any(), gomock.Any()),
 		)
-		invalidationTime := cacheController.DetermineInvalidationTime(ctx, storeID)
+		invalidationTime, ok := cacheController.DetermineInvalidationTime(ctx, storeID)
 		require.Zero(t, invalidationTime)
+		require.False(t, ok)
 		cacheController.(*InMemoryCacheController).wg.Wait()
 	})
 	t.Run("cache_hit_before_ttl", func(t *testing.T) {
-		cache.EXPECT().Get(storage.GetChangelogCacheKey(storeID)).
-			Return(&storage.ChangelogCacheEntry{LastModified: time.Now()})
+		cache := mocks.NewMockInMemoryCache[any](ctrl)
+		ds := mocks.NewMockOpenFGADatastore(ctrl)
 
-		invalidationTime := cacheController.DetermineInvalidationTime(ctx, storeID)
+		cacheController := NewCacheController(ds, cache, 10*time.Second, 10*time.Second)
+		expectedReadChangesOpts := storage.ReadChangesOptions{
+			SortDesc: true,
+			Pagination: storage.PaginationOptions{
+				PageSize: storage.DefaultPageSize,
+				From:     "",
+			}}
+
+		changelogTimestamp := time.Now().UTC()
+		cache.EXPECT().Get(storage.GetChangelogCacheKey(storeID)).AnyTimes().
+			Return(&storage.ChangelogCacheEntry{LastModified: time.Now()})
+		ds.EXPECT().ReadChanges(gomock.Any(), storeID, gomock.Any(), expectedReadChangesOpts).MinTimes(1).Return([]*openfgav1.TupleChange{
+			{
+				Operation: openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
+				Timestamp: timestamppb.New(changelogTimestamp),
+				TupleKey: &openfgav1.TupleKey{
+					Object:   "test",
+					Relation: "viewer",
+					User:     "test",
+				}},
+		}, "", nil)
+		cache.EXPECT().Set(storage.GetChangelogCacheKey(storeID), gomock.Any(), gomock.Any()).AnyTimes()
+
+		// Do it once so we have a cacheController.invalidationLog entry
+		_, _ = cacheController.DetermineInvalidationTime(ctx, storeID)
+		cacheController.(*InMemoryCacheController).wg.Wait()
+
+		invalidationTime, ok := cacheController.DetermineInvalidationTime(ctx, storeID)
 		require.NotZero(t, invalidationTime)
+		require.True(t, ok)
 		cacheController.(*InMemoryCacheController).wg.Wait()
 	})
 	t.Run("cache_miss", func(t *testing.T) {
+		cache := mocks.NewMockInMemoryCache[any](ctrl)
+		ds := mocks.NewMockOpenFGADatastore(ctrl)
+
+		cacheController := NewCacheController(ds, cache, 10*time.Second, 10*time.Second)
+		expectedReadChangesOpts := storage.ReadChangesOptions{
+			SortDesc: true,
+			Pagination: storage.PaginationOptions{
+				PageSize: storage.DefaultPageSize,
+				From:     "",
+			}}
+
 		changelogTimestamp := time.Now().UTC().Add(-20 * time.Second)
 
 		gomock.InOrder(
@@ -93,8 +135,9 @@ func TestInMemoryCacheController_DetermineInvalidationTime(t *testing.T) {
 			}, "", nil),
 			cache.EXPECT().Set(storage.GetChangelogCacheKey(storeID), gomock.Any(), gomock.Any()),
 		)
-		invalidationTime := cacheController.DetermineInvalidationTime(ctx, storeID)
+		invalidationTime, ok := cacheController.DetermineInvalidationTime(ctx, storeID)
 		require.Zero(t, invalidationTime)
+		require.False(t, ok)
 		cacheController.(*InMemoryCacheController).wg.Wait()
 	})
 }
