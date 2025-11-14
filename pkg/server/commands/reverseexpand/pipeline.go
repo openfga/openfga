@@ -1113,7 +1113,7 @@ func (p *path) worker(node *Node, trk tracker, status *StatusPool) *worker {
 		nodeName = node.GetUniqueLabel()
 	}
 
-	ctx, span := tracer.Start(p.ctx, "worker", trace.WithAttributes(attribute.String("name", nodeName)))
+	ctx, span := pipelineTracer.Start(p.ctx, "worker", trace.WithAttributes(attribute.String("name", nodeName)))
 
 	ctx, cancel := context.WithCancel(ctx)
 
