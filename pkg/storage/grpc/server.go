@@ -2,10 +2,6 @@ package grpc
 
 import (
 	"context"
-	"fmt"
-
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
@@ -41,7 +37,7 @@ func (s *Server) Read(req *storagev1.ReadRequest, stream storagev1.StorageServic
 
 	iter, err := s.datastore.Read(stream.Context(), req.GetStore(), filter, options)
 	if err != nil {
-		return status.Error(codes.Internal, fmt.Sprintf("read failed: %v", err))
+		return toGRPCError(err)
 	}
 	defer iter.Stop()
 
@@ -51,7 +47,7 @@ func (s *Server) Read(req *storagev1.ReadRequest, stream storagev1.StorageServic
 			if err == storage.ErrIteratorDone {
 				return nil
 			}
-			return status.Error(codes.Internal, fmt.Sprintf("iterator error: %v", err))
+			return toGRPCError(err)
 		}
 
 		if err := stream.Send(&storagev1.ReadResponse{Tuple: toStorageTuple(tuple)}); err != nil {
@@ -80,7 +76,7 @@ func (s *Server) ReadPage(ctx context.Context, req *storagev1.ReadPageRequest) (
 
 	tuples, token, err := s.datastore.ReadPage(ctx, req.GetStore(), filter, options)
 	if err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("read page failed: %v", err))
+		return nil, toGRPCError(err)
 	}
 
 	storageTuples := make([]*storagev1.Tuple, len(tuples))
@@ -103,10 +99,7 @@ func (s *Server) ReadUserTuple(ctx context.Context, req *storagev1.ReadUserTuple
 
 	tuple, err := s.datastore.ReadUserTuple(ctx, req.GetStore(), fromStorageTupleKey(req.GetTupleKey()), options)
 	if err != nil {
-		if err == storage.ErrNotFound {
-			return nil, status.Error(codes.NotFound, "tuple not found")
-		}
-		return nil, status.Error(codes.Internal, fmt.Sprintf("read user tuple failed: %v", err))
+		return nil, toGRPCError(err)
 	}
 
 	return &storagev1.ReadResponse{Tuple: toStorageTuple(tuple)}, nil
@@ -133,7 +126,7 @@ func (s *Server) ReadUsersetTuples(req *storagev1.ReadUsersetTuplesRequest, stre
 
 	iter, err := s.datastore.ReadUsersetTuples(stream.Context(), req.GetStore(), filter, options)
 	if err != nil {
-		return status.Error(codes.Internal, fmt.Sprintf("read userset tuples failed: %v", err))
+		return toGRPCError(err)
 	}
 	defer iter.Stop()
 
@@ -143,7 +136,7 @@ func (s *Server) ReadUsersetTuples(req *storagev1.ReadUsersetTuplesRequest, stre
 			if err == storage.ErrIteratorDone {
 				return nil
 			}
-			return status.Error(codes.Internal, fmt.Sprintf("iterator error: %v", err))
+			return toGRPCError(err)
 		}
 
 		if err := stream.Send(&storagev1.ReadResponse{Tuple: toStorageTuple(tuple)}); err != nil {
@@ -180,7 +173,7 @@ func (s *Server) ReadStartingWithUser(req *storagev1.ReadStartingWithUserRequest
 
 	iter, err := s.datastore.ReadStartingWithUser(stream.Context(), req.GetStore(), filter, options)
 	if err != nil {
-		return status.Error(codes.Internal, fmt.Sprintf("read starting with user failed: %v", err))
+		return toGRPCError(err)
 	}
 	defer iter.Stop()
 
@@ -190,7 +183,7 @@ func (s *Server) ReadStartingWithUser(req *storagev1.ReadStartingWithUserRequest
 			if err == storage.ErrIteratorDone {
 				return nil
 			}
-			return status.Error(codes.Internal, fmt.Sprintf("iterator error: %v", err))
+			return toGRPCError(err)
 		}
 
 		if err := stream.Send(&storagev1.ReadResponse{Tuple: toStorageTuple(tuple)}); err != nil {
@@ -219,7 +212,7 @@ func (s *Server) Write(ctx context.Context, req *storagev1.WriteRequest) (*stora
 
 	err := s.datastore.Write(ctx, req.GetStore(), deletes, writes, opts...)
 	if err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("write failed: %v", err))
+		return nil, toGRPCError(err)
 	}
 
 	return &storagev1.WriteResponse{}, nil
@@ -229,7 +222,7 @@ func (s *Server) Write(ctx context.Context, req *storagev1.WriteRequest) (*stora
 func (s *Server) IsReady(ctx context.Context, req *storagev1.IsReadyRequest) (*storagev1.IsReadyResponse, error) {
 	readinessStatus, err := s.datastore.IsReady(ctx)
 	if err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("is ready failed: %v", err))
+		return nil, toGRPCError(err)
 	}
 
 	return &storagev1.IsReadyResponse{

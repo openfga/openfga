@@ -291,3 +291,52 @@ func TestStreamErrors(t *testing.T) {
 		require.NotErrorIs(t, err, storage.ErrIteratorDone)
 	})
 }
+
+type storageErrorStream struct {
+	storageErr error
+	grpc.ClientStream
+}
+
+func (e *storageErrorStream) Recv() (*storagev1.ReadResponse, error) {
+	// Convert storage error to gRPC error (simulating what server does)
+	return nil, toGRPCError(e.storageErr)
+}
+
+func (e *storageErrorStream) CloseSend() error {
+	return nil
+}
+
+func TestIteratorErrorConversion(t *testing.T) {
+	// Test representative error types to verify error conversion is wired up correctly.
+	tests := []struct {
+		name  string
+		error error
+	}{
+		{
+			name:  "NotFound error is converted",
+			error: storage.ErrNotFound,
+		},
+		{
+			name:  "TransactionThrottled error is converted",
+			error: storage.ErrTransactionThrottled,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			stream := &storageErrorStream{storageErr: tt.error}
+			iter := newStreamTupleIterator(stream)
+			defer iter.Stop()
+
+			// Test Next
+			_, err := iter.Next(context.Background())
+			require.Error(t, err)
+			require.ErrorIs(t, err, tt.error, "Next should preserve storage error")
+
+			// Test Head
+			_, err = iter.Head(context.Background())
+			require.Error(t, err)
+			require.ErrorIs(t, err, tt.error, "Head should preserve storage error")
+		})
+	}
+}

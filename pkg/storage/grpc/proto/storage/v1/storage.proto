@@ -322,3 +322,60 @@ enum OnDuplicateInsert {
   ON_DUPLICATE_INSERT_IGNORE = 1;  // Silently ignore (no-op)
 }
 
+// StorageErrorReason provides standardized error reasons for gRPC error details.
+// Server implementations MUST use these reason codes when returning errors via
+// google.rpc.ErrorInfo.reason to enable proper error handling on the client side.
+//
+// These reasons are embedded in gRPC status error details (google.rpc.ErrorInfo)
+// with domain "openfga.storage" to distinguish specific storage errors that map
+// to the same gRPC status code.
+//
+// Example server usage:
+//   st := status.New(codes.NotFound, "tuple not found")
+//   st, _ = st.WithDetails(&errdetails.ErrorInfo{
+//     Reason: storagev1.StorageErrorReason_NOT_FOUND.String(),
+//     Domain: "openfga.storage",
+//   })
+//   return st.Err()
+enum StorageErrorReason {
+  // STORAGE_ERROR_REASON_UNSPECIFIED is the default value and should not be used.
+  STORAGE_ERROR_REASON_UNSPECIFIED = 0;
+
+  // NOT_FOUND is returned when the object does not exist.
+  // Maps to gRPC status code: NOT_FOUND
+  NOT_FOUND = 1;
+  
+  // COLLISION is returned when an item already exists within the store.
+  // Maps to gRPC status code: ALREADY_EXISTS
+  COLLISION = 2;
+  
+  // INVALID_CONTINUATION_TOKEN is returned when the continuation token is invalid.
+  // Maps to gRPC status code: INVALID_ARGUMENT
+  INVALID_CONTINUATION_TOKEN = 3;
+  
+  // INVALID_START_TIME is returned when start time param for ReadChanges API is invalid.
+  // Maps to gRPC status code: INVALID_ARGUMENT
+  INVALID_START_TIME = 4;
+  
+  // INVALID_WRITE_INPUT is returned when the tuple to be written already existed
+  // or the tuple to be deleted did not exist.
+  // Maps to gRPC status code: INVALID_ARGUMENT
+  INVALID_WRITE_INPUT = 5;
+  
+  // WRITE_CONFLICT_ON_INSERT is returned when two writes attempt to insert the same tuple at the same time.
+  // Maps to gRPC status code: ABORTED
+  WRITE_CONFLICT_ON_INSERT = 6;
+  
+  // WRITE_CONFLICT_ON_DELETE is returned when two writes attempt to delete the same tuple at the same time.
+  // Maps to gRPC status code: ABORTED
+  WRITE_CONFLICT_ON_DELETE = 7;
+  
+  // TRANSACTIONAL_WRITE_FAILED is returned when two writes attempt to write the same tuple at the same time.
+  // Maps to gRPC status code: ABORTED
+  TRANSACTIONAL_WRITE_FAILED = 8;
+  
+  // TRANSACTION_THROTTLED is returned when throttling is applied at the datastore level.
+  // Maps to gRPC status code: RESOURCE_EXHAUSTED
+  TRANSACTION_THROTTLED = 9;
+}
+
