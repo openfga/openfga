@@ -19,26 +19,24 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	StorageService_Read_FullMethodName                          = "/storage.v1.StorageService/Read"
-	StorageService_ReadPage_FullMethodName                      = "/storage.v1.StorageService/ReadPage"
-	StorageService_ReadUserTuple_FullMethodName                 = "/storage.v1.StorageService/ReadUserTuple"
-	StorageService_ReadUsersetTuples_FullMethodName             = "/storage.v1.StorageService/ReadUsersetTuples"
-	StorageService_ReadStartingWithUser_FullMethodName          = "/storage.v1.StorageService/ReadStartingWithUser"
-	StorageService_Write_FullMethodName                         = "/storage.v1.StorageService/Write"
-	StorageService_ReadAuthorizationModel_FullMethodName        = "/storage.v1.StorageService/ReadAuthorizationModel"
-	StorageService_ReadAuthorizationModels_FullMethodName       = "/storage.v1.StorageService/ReadAuthorizationModels"
-	StorageService_FindLatestAuthorizationModel_FullMethodName  = "/storage.v1.StorageService/FindLatestAuthorizationModel"
-	StorageService_WriteAuthorizationModel_FullMethodName       = "/storage.v1.StorageService/WriteAuthorizationModel"
-	StorageService_CreateStore_FullMethodName                   = "/storage.v1.StorageService/CreateStore"
-	StorageService_DeleteStore_FullMethodName                   = "/storage.v1.StorageService/DeleteStore"
-	StorageService_GetStore_FullMethodName                      = "/storage.v1.StorageService/GetStore"
-	StorageService_ListStores_FullMethodName                    = "/storage.v1.StorageService/ListStores"
-	StorageService_WriteAssertions_FullMethodName               = "/storage.v1.StorageService/WriteAssertions"
-	StorageService_ReadAssertions_FullMethodName                = "/storage.v1.StorageService/ReadAssertions"
-	StorageService_ReadChanges_FullMethodName                   = "/storage.v1.StorageService/ReadChanges"
-	StorageService_IsReady_FullMethodName                       = "/storage.v1.StorageService/IsReady"
-	StorageService_MaxTuplesPerWrite_FullMethodName             = "/storage.v1.StorageService/MaxTuplesPerWrite"
-	StorageService_MaxTypesPerAuthorizationModel_FullMethodName = "/storage.v1.StorageService/MaxTypesPerAuthorizationModel"
+	StorageService_Read_FullMethodName                         = "/storage.v1.StorageService/Read"
+	StorageService_ReadPage_FullMethodName                     = "/storage.v1.StorageService/ReadPage"
+	StorageService_ReadUserTuple_FullMethodName                = "/storage.v1.StorageService/ReadUserTuple"
+	StorageService_ReadUsersetTuples_FullMethodName            = "/storage.v1.StorageService/ReadUsersetTuples"
+	StorageService_ReadStartingWithUser_FullMethodName         = "/storage.v1.StorageService/ReadStartingWithUser"
+	StorageService_Write_FullMethodName                        = "/storage.v1.StorageService/Write"
+	StorageService_ReadAuthorizationModel_FullMethodName       = "/storage.v1.StorageService/ReadAuthorizationModel"
+	StorageService_ReadAuthorizationModels_FullMethodName      = "/storage.v1.StorageService/ReadAuthorizationModels"
+	StorageService_FindLatestAuthorizationModel_FullMethodName = "/storage.v1.StorageService/FindLatestAuthorizationModel"
+	StorageService_WriteAuthorizationModel_FullMethodName      = "/storage.v1.StorageService/WriteAuthorizationModel"
+	StorageService_CreateStore_FullMethodName                  = "/storage.v1.StorageService/CreateStore"
+	StorageService_DeleteStore_FullMethodName                  = "/storage.v1.StorageService/DeleteStore"
+	StorageService_GetStore_FullMethodName                     = "/storage.v1.StorageService/GetStore"
+	StorageService_ListStores_FullMethodName                   = "/storage.v1.StorageService/ListStores"
+	StorageService_WriteAssertions_FullMethodName              = "/storage.v1.StorageService/WriteAssertions"
+	StorageService_ReadAssertions_FullMethodName               = "/storage.v1.StorageService/ReadAssertions"
+	StorageService_ReadChanges_FullMethodName                  = "/storage.v1.StorageService/ReadChanges"
+	StorageService_IsReady_FullMethodName                      = "/storage.v1.StorageService/IsReady"
 )
 
 // StorageServiceClient is the client API for StorageService service.
@@ -53,7 +51,7 @@ const (
 // - Store operations: CreateStore, DeleteStore, GetStore, ListStores
 // - Assertion operations: WriteAssertions, ReadAssertions
 // - Changelog operations: ReadChanges
-// - Service operations: IsReady, MaxTuplesPerWrite, MaxTypesPerAuthorizationModel
+// - Service operations: IsReady
 type StorageServiceClient interface {
 	// Read streams tuples matching the provided filter.
 	// Returns an iterator over all matching tuples with no guaranteed order.
@@ -98,10 +96,6 @@ type StorageServiceClient interface {
 	ReadChanges(ctx context.Context, in *ReadChangesRequest, opts ...grpc.CallOption) (*ReadChangesResponse, error)
 	// IsReady checks if the storage backend is ready to accept requests.
 	IsReady(ctx context.Context, in *IsReadyRequest, opts ...grpc.CallOption) (*IsReadyResponse, error)
-	// MaxTuplesPerWrite returns the maximum number of tuple operations per Write call.
-	MaxTuplesPerWrite(ctx context.Context, in *MaxTuplesPerWriteRequest, opts ...grpc.CallOption) (*MaxTuplesPerWriteResponse, error)
-	// MaxTypesPerAuthorizationModel returns the maximum number of types per authorization model.
-	MaxTypesPerAuthorizationModel(ctx context.Context, in *MaxTypesPerAuthorizationModelRequest, opts ...grpc.CallOption) (*MaxTypesPerAuthorizationModelResponse, error)
 }
 
 type storageServiceClient struct {
@@ -319,26 +313,6 @@ func (c *storageServiceClient) IsReady(ctx context.Context, in *IsReadyRequest, 
 	return out, nil
 }
 
-func (c *storageServiceClient) MaxTuplesPerWrite(ctx context.Context, in *MaxTuplesPerWriteRequest, opts ...grpc.CallOption) (*MaxTuplesPerWriteResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(MaxTuplesPerWriteResponse)
-	err := c.cc.Invoke(ctx, StorageService_MaxTuplesPerWrite_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *storageServiceClient) MaxTypesPerAuthorizationModel(ctx context.Context, in *MaxTypesPerAuthorizationModelRequest, opts ...grpc.CallOption) (*MaxTypesPerAuthorizationModelResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(MaxTypesPerAuthorizationModelResponse)
-	err := c.cc.Invoke(ctx, StorageService_MaxTypesPerAuthorizationModel_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 // StorageServiceServer is the server API for StorageService service.
 // All implementations must embed UnimplementedStorageServiceServer
 // for forward compatibility.
@@ -351,7 +325,7 @@ func (c *storageServiceClient) MaxTypesPerAuthorizationModel(ctx context.Context
 // - Store operations: CreateStore, DeleteStore, GetStore, ListStores
 // - Assertion operations: WriteAssertions, ReadAssertions
 // - Changelog operations: ReadChanges
-// - Service operations: IsReady, MaxTuplesPerWrite, MaxTypesPerAuthorizationModel
+// - Service operations: IsReady
 type StorageServiceServer interface {
 	// Read streams tuples matching the provided filter.
 	// Returns an iterator over all matching tuples with no guaranteed order.
@@ -396,10 +370,6 @@ type StorageServiceServer interface {
 	ReadChanges(context.Context, *ReadChangesRequest) (*ReadChangesResponse, error)
 	// IsReady checks if the storage backend is ready to accept requests.
 	IsReady(context.Context, *IsReadyRequest) (*IsReadyResponse, error)
-	// MaxTuplesPerWrite returns the maximum number of tuple operations per Write call.
-	MaxTuplesPerWrite(context.Context, *MaxTuplesPerWriteRequest) (*MaxTuplesPerWriteResponse, error)
-	// MaxTypesPerAuthorizationModel returns the maximum number of types per authorization model.
-	MaxTypesPerAuthorizationModel(context.Context, *MaxTypesPerAuthorizationModelRequest) (*MaxTypesPerAuthorizationModelResponse, error)
 	mustEmbedUnimplementedStorageServiceServer()
 }
 
@@ -463,12 +433,6 @@ func (UnimplementedStorageServiceServer) ReadChanges(context.Context, *ReadChang
 }
 func (UnimplementedStorageServiceServer) IsReady(context.Context, *IsReadyRequest) (*IsReadyResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method IsReady not implemented")
-}
-func (UnimplementedStorageServiceServer) MaxTuplesPerWrite(context.Context, *MaxTuplesPerWriteRequest) (*MaxTuplesPerWriteResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method MaxTuplesPerWrite not implemented")
-}
-func (UnimplementedStorageServiceServer) MaxTypesPerAuthorizationModel(context.Context, *MaxTypesPerAuthorizationModelRequest) (*MaxTypesPerAuthorizationModelResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method MaxTypesPerAuthorizationModel not implemented")
 }
 func (UnimplementedStorageServiceServer) mustEmbedUnimplementedStorageServiceServer() {}
 func (UnimplementedStorageServiceServer) testEmbeddedByValue()                        {}
@@ -794,42 +758,6 @@ func _StorageService_IsReady_Handler(srv interface{}, ctx context.Context, dec f
 	return interceptor(ctx, in, info, handler)
 }
 
-func _StorageService_MaxTuplesPerWrite_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(MaxTuplesPerWriteRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(StorageServiceServer).MaxTuplesPerWrite(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: StorageService_MaxTuplesPerWrite_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(StorageServiceServer).MaxTuplesPerWrite(ctx, req.(*MaxTuplesPerWriteRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _StorageService_MaxTypesPerAuthorizationModel_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(MaxTypesPerAuthorizationModelRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(StorageServiceServer).MaxTypesPerAuthorizationModel(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: StorageService_MaxTypesPerAuthorizationModel_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(StorageServiceServer).MaxTypesPerAuthorizationModel(ctx, req.(*MaxTypesPerAuthorizationModelRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 // StorageService_ServiceDesc is the grpc.ServiceDesc for StorageService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -896,14 +824,6 @@ var StorageService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "IsReady",
 			Handler:    _StorageService_IsReady_Handler,
-		},
-		{
-			MethodName: "MaxTuplesPerWrite",
-			Handler:    _StorageService_MaxTuplesPerWrite_Handler,
-		},
-		{
-			MethodName: "MaxTypesPerAuthorizationModel",
-			Handler:    _StorageService_MaxTypesPerAuthorizationModel_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{
