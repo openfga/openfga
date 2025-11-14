@@ -15,11 +15,14 @@ import (
 	"log"
 	"math/big"
 	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -1451,15 +1454,110 @@ func TestRunCommandConfigIsMerged(t *testing.T) {
 	require.NoError(t, rootCmd.Execute())
 }
 
-func TestHTTPHeaders(t *testing.T) {
+func TestPlaygroundProxy(t *testing.T) {
+	var wg sync.WaitGroup
+
 	t.Cleanup(func() {
+		wg.Wait()
 		goleak.VerifyNone(t)
 	})
+
+	cfg := testutils.MustDefaultConfigWithRandomPorts()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
+	mockPlayServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Mock-Response", "from-play-fga-dev")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"mock": "response from play.fga.dev"}`))
+	}))
+
+	defer mockPlayServer.Close()
+
+	cfg.Playground.Enabled = true
+	mockServerURL, err := url.Parse(mockPlayServer.URL)
+	require.NoError(t, err)
+	cfg.Playground.DestinationHost = mockServerURL.Host
+	cfg.Playground.DestinationScheme = mockServerURL.Scheme
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := runServer(ctx, cfg); err != nil {
+			log.Fatal(err)
+		}
+	}()
+
+	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil)
+
+	httpClient := retryablehttp.NewClient()
+	t.Cleanup(httpClient.HTTPClient.CloseIdleConnections)
+
+	t.Run("playground_responds_with_local_page", func(t *testing.T) {
+		req, err := retryablehttp.NewRequest("GET",
+			fmt.Sprintf("http://localhost:%d", cfg.Playground.Port),
+			nil)
+		require.NoError(t, err)
+		resp, err := httpClient.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		// The playground should proxy unknown paths appropriately
+		// Even if it returns 404, it shows the proxy mechanism is working
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+
+		// Check if response contains an iframe HTML tag
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Contains(t, string(body), "<iframe")
+	})
+
+	t.Run("playground_returns_local_page_for_playground_path", func(t *testing.T) {
+		req, err := retryablehttp.NewRequest("GET",
+			fmt.Sprintf("http://localhost:%d/playground", cfg.Playground.Port),
+			nil)
+		require.NoError(t, err)
+		resp, err := httpClient.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+
+		// Check if response contains an iframe HTML tag
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Contains(t, string(body), "<iframe")
+	})
+
+	t.Run("playground_proxies_to_play_fga_dev", func(t *testing.T) {
+		req, err := retryablehttp.NewRequest("GET",
+			fmt.Sprintf("http://localhost:%d/something-else", cfg.Playground.Port),
+			nil)
+		require.NoError(t, err)
+		resp, err := httpClient.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+	})
+}
+
+func TestHTTPHeaders(t *testing.T) {
+	var wg sync.WaitGroup
+
+	t.Cleanup(func() {
+		wg.Wait()
+		goleak.VerifyNone(t)
+	})
+
 	cfg := testutils.MustDefaultConfigWithRandomPorts()
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		if err := runServer(ctx, cfg); err != nil {
 			log.Fatal(err)
 		}

@@ -9,7 +9,9 @@ import (
 	"html/template"
 	"net"
 	"net/http"
+	"net/http/httputil"
 	"net/http/pprof"
+	"net/url"
 	"os"
 	"os/signal"
 	goruntime "runtime"
@@ -860,7 +862,15 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		}
 
 		playgroundAddr := fmt.Sprintf(":%d", config.Playground.Port)
-		s.Logger.Info(fmt.Sprintf("🛝 starting openfga playground on http://localhost%s/playground", playgroundAddr))
+		s.Logger.Info("🛝 starting openfga playground on http://localhost" + playgroundAddr)
+
+		// Create a reverse proxy to public playground site
+		targetURL := &url.URL{
+			Scheme: config.Playground.DestinationScheme,
+			Host:   config.Playground.DestinationHost,
+		}
+
+		proxy := httputil.NewSingleHostReverseProxy(targetURL)
 
 		tmpl, err := template.ParseFS(assets.EmbedPlayground, "playground/index.html")
 		if err != nil {
@@ -889,8 +899,24 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 			playgroundAPIToken = config.Authn.Keys[0]
 		}
 
+		proxy.Director = func(req *http.Request) {
+			req.URL.Scheme = targetURL.Scheme
+			req.URL.Host = targetURL.Host
+			req.Host = targetURL.Host
+
+			// Add any necessary headers
+			req.Header.Set("X-Forwarded-Host", req.Header.Get("Host"))
+			req.Header.Set("X-Origin-Host", "localhost"+playgroundAddr)
+		}
+
 		mux := http.NewServeMux()
+
 		mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/" || r.URL.Path == "/index.html" {
+				http.Redirect(w, r, "/playground", http.StatusFound)
+				return
+			}
+
 			if strings.HasPrefix(r.URL.Path, "/playground") {
 				if r.URL.Path == "/playground" || r.URL.Path == "/playground/index.html" {
 					err = tmpl.Execute(w, struct {
@@ -912,7 +938,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 				return
 			}
 
-			http.NotFound(w, r)
+			proxy.ServeHTTP(w, r)
 		}))
 
 		playground = &http.Server{Addr: playgroundAddr, Handler: mux}
