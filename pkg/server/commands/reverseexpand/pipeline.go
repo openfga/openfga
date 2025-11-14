@@ -935,8 +935,7 @@ type Pipeline struct {
 }
 
 func (p *Pipeline) Build(ctx context.Context, source Source, target Target) iter.Seq[Item] {
-	ctxParent, span := pipelineTracer.Start(ctx, "Pipeline.Build")
-	defer span.End()
+	ctxParent, span := pipelineTracer.Start(ctx, "pipeline")
 
 	ctxNoCancel := context.WithoutCancel(ctxParent)
 	ctxCancel, cancel := context.WithCancel(ctxNoCancel)
@@ -1004,6 +1003,7 @@ func (p *Pipeline) Build(ctx context.Context, source Source, target Target) iter
 	}()
 
 	return func(yield func(Item) bool) {
+		defer span.End()
 		defer wg.Wait()
 		defer cancel()
 
