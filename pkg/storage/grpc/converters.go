@@ -742,3 +742,45 @@ func fromStorageConditionParamTypeRefMap(params map[string]*storagev1.ConditionP
 	}
 	return result
 }
+
+// Store conversions
+
+func toStorageStore(store *openfgav1.Store) *storagev1.Store {
+	if store == nil {
+		return nil
+	}
+
+	return &storagev1.Store{
+		Id:        store.GetId(),
+		Name:      store.GetName(),
+		CreatedAt: store.GetCreatedAt(),
+		UpdatedAt: store.GetUpdatedAt(),
+		DeletedAt: store.GetDeletedAt(),
+	}
+}
+
+func fromStorageStore(store *storagev1.Store) *openfgav1.Store {
+	if store == nil {
+		return nil
+	}
+
+	return &openfgav1.Store{
+		Id:        store.GetId(),
+		Name:      store.GetName(),
+		CreatedAt: store.GetCreatedAt(),
+		UpdatedAt: store.GetUpdatedAt(),
+		DeletedAt: store.GetDeletedAt(),
+	}
+}
+
+func fromStorageStores(stores []*storagev1.Store) []*openfgav1.Store {
+	if stores == nil {
+		return nil
+	}
+
+	result := make([]*openfgav1.Store, len(stores))
+	for i, s := range stores {
+		result[i] = fromStorageStore(s)
+	}
+	return result
+}

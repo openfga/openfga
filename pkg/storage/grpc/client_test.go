@@ -737,6 +737,31 @@ func (m *mockErrorDatastore) WriteAuthorizationModel(ctx context.Context, store 
 	return m.errorToReturn
 }
 
+func (m *mockErrorDatastore) CreateStore(ctx context.Context, store *openfgav1.Store) (*openfgav1.Store, error) {
+	if m.errorToReturn != nil {
+		return nil, m.errorToReturn
+	}
+	return store, nil
+}
+
+func (m *mockErrorDatastore) GetStore(ctx context.Context, id string) (*openfgav1.Store, error) {
+	if m.errorToReturn != nil {
+		return nil, m.errorToReturn
+	}
+	return nil, storage.ErrNotFound
+}
+
+func (m *mockErrorDatastore) ListStores(ctx context.Context, options storage.ListStoresOptions) ([]*openfgav1.Store, string, error) {
+	if m.errorToReturn != nil {
+		return nil, "", m.errorToReturn
+	}
+	return nil, "", nil
+}
+
+func (m *mockErrorDatastore) DeleteStore(ctx context.Context, id string) error {
+	return m.errorToReturn
+}
+
 type mockEmptyIterator struct{}
 
 func (m *mockEmptyIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
@@ -1045,6 +1070,161 @@ func TestClientWriteAuthorizationModel(t *testing.T) {
 	require.Contains(t, condition.GetParameters(), "x")
 }
 
+func TestClientCreateStore(t *testing.T) {
+	client, datastore, cleanup := setupTestClientServer(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	store := &openfgav1.Store{
+		Id:   "test-store-id",
+		Name: "Test Store",
+	}
+
+	createdStore, err := client.CreateStore(ctx, store)
+	require.NoError(t, err)
+	require.NotNil(t, createdStore)
+	require.Equal(t, store.GetId(), createdStore.GetId())
+	require.Equal(t, store.GetName(), createdStore.GetName())
+	require.NotNil(t, createdStore.GetCreatedAt())
+	require.NotNil(t, createdStore.GetUpdatedAt())
+
+	// Verify it was created in the datastore
+	retrievedStore, err := datastore.GetStore(ctx, store.GetId())
+	require.NoError(t, err)
+	require.Equal(t, store.GetId(), retrievedStore.GetId())
+	require.Equal(t, store.GetName(), retrievedStore.GetName())
+}
+
+func TestClientGetStore(t *testing.T) {
+	client, datastore, cleanup := setupTestClientServer(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	t.Run("not_found", func(t *testing.T) {
+		_, err := client.GetStore(ctx, "non-existent-store")
+		require.Error(t, err)
+		require.Equal(t, storage.ErrNotFound, err)
+	})
+
+	// Create a store directly in the datastore
+	store := &openfgav1.Store{
+		Id:   "existing-store",
+		Name: "Existing Store",
+	}
+	_, err := datastore.CreateStore(ctx, store)
+	require.NoError(t, err)
+
+	t.Run("get_existing", func(t *testing.T) {
+		retrievedStore, err := client.GetStore(ctx, store.GetId())
+		require.NoError(t, err)
+		require.NotNil(t, retrievedStore)
+		require.Equal(t, store.GetId(), retrievedStore.GetId())
+		require.Equal(t, store.GetName(), retrievedStore.GetName())
+	})
+}
+
+func TestClientListStores(t *testing.T) {
+	client, datastore, cleanup := setupTestClientServer(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	t.Run("empty_list", func(t *testing.T) {
+		stores, token, err := client.ListStores(ctx, storage.ListStoresOptions{
+			Pagination: storage.PaginationOptions{PageSize: 10},
+		})
+		require.NoError(t, err)
+		require.Empty(t, stores)
+		require.Empty(t, token)
+	})
+
+	// Create multiple stores
+	store1 := &openfgav1.Store{Id: "store-1", Name: "Store One"}
+	store2 := &openfgav1.Store{Id: "store-2", Name: "Store Two"}
+	store3 := &openfgav1.Store{Id: "store-3", Name: "Store Three"}
+
+	_, err := datastore.CreateStore(ctx, store1)
+	require.NoError(t, err)
+	_, err = datastore.CreateStore(ctx, store2)
+	require.NoError(t, err)
+	_, err = datastore.CreateStore(ctx, store3)
+	require.NoError(t, err)
+
+	t.Run("list_all", func(t *testing.T) {
+		stores, token, err := client.ListStores(ctx, storage.ListStoresOptions{
+			Pagination: storage.PaginationOptions{PageSize: 10},
+		})
+		require.NoError(t, err)
+		require.Len(t, stores, 3)
+		require.Empty(t, token)
+	})
+
+	t.Run("pagination", func(t *testing.T) {
+		// First page
+		stores, token, err := client.ListStores(ctx, storage.ListStoresOptions{
+			Pagination: storage.PaginationOptions{PageSize: 2},
+		})
+		require.NoError(t, err)
+		require.Len(t, stores, 2)
+		require.NotEmpty(t, token)
+
+		// Second page
+		stores2, token2, err := client.ListStores(ctx, storage.ListStoresOptions{
+			Pagination: storage.PaginationOptions{PageSize: 2, From: token},
+		})
+		require.NoError(t, err)
+		require.Len(t, stores2, 1)
+		require.Empty(t, token2)
+	})
+
+	t.Run("filter_by_name", func(t *testing.T) {
+		stores, token, err := client.ListStores(ctx, storage.ListStoresOptions{
+			Name:       "Store Two",
+			Pagination: storage.PaginationOptions{PageSize: 10},
+		})
+		require.NoError(t, err)
+		require.Len(t, stores, 1)
+		require.Equal(t, "store-2", stores[0].GetId())
+		require.Empty(t, token)
+	})
+
+	t.Run("filter_by_ids", func(t *testing.T) {
+		stores, token, err := client.ListStores(ctx, storage.ListStoresOptions{
+			IDs:        []string{"store-1", "store-3"},
+			Pagination: storage.PaginationOptions{PageSize: 10},
+		})
+		require.NoError(t, err)
+		require.Len(t, stores, 2)
+		require.Empty(t, token)
+	})
+}
+
+func TestClientDeleteStore(t *testing.T) {
+	client, datastore, cleanup := setupTestClientServer(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Create a store
+	store := &openfgav1.Store{
+		Id:   "store-to-delete",
+		Name: "Store To Delete",
+	}
+	_, err := datastore.CreateStore(ctx, store)
+	require.NoError(t, err)
+
+	// Delete it
+	err = client.DeleteStore(ctx, store.GetId())
+	require.NoError(t, err)
+
+	// Verify it was deleted
+	_, err = datastore.GetStore(ctx, store.GetId())
+	require.Error(t, err)
+	require.Equal(t, storage.ErrNotFound, err)
+}
+
 func TestClientErrorHandling(t *testing.T) {
 	ctx := context.Background()
 
@@ -1132,6 +1312,35 @@ func TestClientErrorHandling(t *testing.T) {
 					},
 				}
 				err := client.WriteAuthorizationModel(ctx, "test-store", model)
+				require.Error(t, err)
+				require.ErrorIs(t, err, tt.storeError)
+			})
+
+			t.Run("CreateStore", func(t *testing.T) {
+				_, err := client.CreateStore(ctx, &openfgav1.Store{
+					Id:   "test-store",
+					Name: "Test Store",
+				})
+				require.Error(t, err)
+				require.ErrorIs(t, err, tt.storeError)
+			})
+
+			t.Run("GetStore", func(t *testing.T) {
+				_, err := client.GetStore(ctx, "test-store")
+				require.Error(t, err)
+				require.ErrorIs(t, err, tt.storeError)
+			})
+
+			t.Run("ListStores", func(t *testing.T) {
+				_, _, err := client.ListStores(ctx, storage.ListStoresOptions{
+					Pagination: storage.PaginationOptions{PageSize: 10},
+				})
+				require.Error(t, err)
+				require.ErrorIs(t, err, tt.storeError)
+			})
+
+			t.Run("DeleteStore", func(t *testing.T) {
+				err := client.DeleteStore(ctx, "test-store")
 				require.Error(t, err)
 				require.ErrorIs(t, err, tt.storeError)
 			})

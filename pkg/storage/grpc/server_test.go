@@ -892,3 +892,186 @@ func TestServerWriteAuthorizationModel(t *testing.T) {
 	require.Len(t, condition.GetParameters(), 1)
 	require.Contains(t, condition.GetParameters(), "x")
 }
+
+func TestServerCreateStore(t *testing.T) {
+	ds := memory.New()
+	server := NewServer(ds)
+	ctx := context.Background()
+
+	store := &openfgav1.Store{
+		Id:   "test-store-id",
+		Name: "Test Store",
+	}
+
+	req := &storagev1.CreateStoreRequest{
+		Store: toStorageStore(store),
+	}
+
+	resp, err := server.CreateStore(ctx, req)
+	require.NoError(t, err)
+	require.NotNil(t, resp.GetStore())
+	require.Equal(t, store.GetId(), resp.GetStore().GetId())
+	require.Equal(t, store.GetName(), resp.GetStore().GetName())
+	require.NotNil(t, resp.GetStore().GetCreatedAt())
+	require.NotNil(t, resp.GetStore().GetUpdatedAt())
+
+	// Verify it was created in the datastore
+	retrievedStore, err := ds.GetStore(ctx, store.GetId())
+	require.NoError(t, err)
+	require.Equal(t, store.GetId(), retrievedStore.GetId())
+	require.Equal(t, store.GetName(), retrievedStore.GetName())
+}
+
+func TestServerGetStore(t *testing.T) {
+	ds := memory.New()
+	server := NewServer(ds)
+	ctx := context.Background()
+
+	t.Run("not_found", func(t *testing.T) {
+		req := &storagev1.GetStoreRequest{
+			Id: "non-existent-store",
+		}
+		_, err := server.GetStore(ctx, req)
+		require.Error(t, err)
+	})
+
+	// Create a store directly in the datastore
+	store := &openfgav1.Store{
+		Id:   "existing-store",
+		Name: "Existing Store",
+	}
+	_, err := ds.CreateStore(ctx, store)
+	require.NoError(t, err)
+
+	t.Run("get_existing", func(t *testing.T) {
+		req := &storagev1.GetStoreRequest{
+			Id: store.GetId(),
+		}
+		resp, err := server.GetStore(ctx, req)
+		require.NoError(t, err)
+		require.NotNil(t, resp.GetStore())
+		require.Equal(t, store.GetId(), resp.GetStore().GetId())
+		require.Equal(t, store.GetName(), resp.GetStore().GetName())
+	})
+}
+
+func TestServerListStores(t *testing.T) {
+	ds := memory.New()
+	server := NewServer(ds)
+	ctx := context.Background()
+
+	t.Run("empty_list", func(t *testing.T) {
+		req := &storagev1.ListStoresRequest{
+			Pagination: &storagev1.PaginationOptions{
+				PageSize: 10,
+			},
+		}
+		resp, err := server.ListStores(ctx, req)
+		require.NoError(t, err)
+		require.Empty(t, resp.GetStores())
+		require.Empty(t, resp.GetContinuationToken())
+	})
+
+	// Create multiple stores
+	store1 := &openfgav1.Store{Id: "store-1", Name: "Store One"}
+	store2 := &openfgav1.Store{Id: "store-2", Name: "Store Two"}
+	store3 := &openfgav1.Store{Id: "store-3", Name: "Store Three"}
+
+	_, err := ds.CreateStore(ctx, store1)
+	require.NoError(t, err)
+	_, err = ds.CreateStore(ctx, store2)
+	require.NoError(t, err)
+	_, err = ds.CreateStore(ctx, store3)
+	require.NoError(t, err)
+
+	t.Run("list_all", func(t *testing.T) {
+		req := &storagev1.ListStoresRequest{
+			Pagination: &storagev1.PaginationOptions{
+				PageSize: 10,
+			},
+		}
+		resp, err := server.ListStores(ctx, req)
+		require.NoError(t, err)
+		require.Len(t, resp.GetStores(), 3)
+		require.Empty(t, resp.GetContinuationToken())
+	})
+
+	t.Run("pagination", func(t *testing.T) {
+		// First page
+		req := &storagev1.ListStoresRequest{
+			Pagination: &storagev1.PaginationOptions{
+				PageSize: 2,
+			},
+		}
+		resp, err := server.ListStores(ctx, req)
+		require.NoError(t, err)
+		require.Len(t, resp.GetStores(), 2)
+		require.NotEmpty(t, resp.GetContinuationToken())
+
+		// Second page
+		req2 := &storagev1.ListStoresRequest{
+			Pagination: &storagev1.PaginationOptions{
+				PageSize: 2,
+				From:     resp.GetContinuationToken(),
+			},
+		}
+		resp2, err := server.ListStores(ctx, req2)
+		require.NoError(t, err)
+		require.Len(t, resp2.GetStores(), 1)
+		require.Empty(t, resp2.GetContinuationToken())
+	})
+
+	t.Run("filter_by_name", func(t *testing.T) {
+		req := &storagev1.ListStoresRequest{
+			Name: "Store Two",
+			Pagination: &storagev1.PaginationOptions{
+				PageSize: 10,
+			},
+		}
+		resp, err := server.ListStores(ctx, req)
+		require.NoError(t, err)
+		require.Len(t, resp.GetStores(), 1)
+		require.Equal(t, "store-2", resp.GetStores()[0].GetId())
+		require.Empty(t, resp.GetContinuationToken())
+	})
+
+	t.Run("filter_by_ids", func(t *testing.T) {
+		req := &storagev1.ListStoresRequest{
+			Ids: []string{"store-1", "store-3"},
+			Pagination: &storagev1.PaginationOptions{
+				PageSize: 10,
+			},
+		}
+		resp, err := server.ListStores(ctx, req)
+		require.NoError(t, err)
+		require.Len(t, resp.GetStores(), 2)
+		require.Empty(t, resp.GetContinuationToken())
+	})
+}
+
+func TestServerDeleteStore(t *testing.T) {
+	ds := memory.New()
+	server := NewServer(ds)
+	ctx := context.Background()
+
+	// Create a store
+	store := &openfgav1.Store{
+		Id:   "store-to-delete",
+		Name: "Store To Delete",
+	}
+	_, err := ds.CreateStore(ctx, store)
+	require.NoError(t, err)
+
+	// Delete it
+	req := &storagev1.DeleteStoreRequest{
+		Id: store.GetId(),
+	}
+	resp, err := server.DeleteStore(ctx, req)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+
+	// Verify it was deleted
+	_, err = ds.GetStore(ctx, store.GetId())
+	require.Error(t, err)
+	require.Equal(t, storage.ErrNotFound, err)
+}
