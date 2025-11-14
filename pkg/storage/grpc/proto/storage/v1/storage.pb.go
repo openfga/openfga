@@ -115,6 +115,112 @@ func (OnDuplicateInsert) EnumDescriptor() ([]byte, []int) {
 	return file_storage_v1_storage_proto_rawDescGZIP(), []int{1}
 }
 
+// StorageErrorReason provides standardized error reasons for gRPC error details.
+// Server implementations MUST use these reason codes when returning errors via
+// google.rpc.ErrorInfo.reason to enable proper error handling on the client side.
+//
+// These reasons are embedded in gRPC status error details (google.rpc.ErrorInfo)
+// with domain "openfga.storage" to distinguish specific storage errors that map
+// to the same gRPC status code.
+//
+// Example server usage:
+//
+//	st := status.New(codes.NotFound, "tuple not found")
+//	st, _ = st.WithDetails(&errdetails.ErrorInfo{
+//	  Reason: storagev1.StorageErrorReason_NOT_FOUND.String(),
+//	  Domain: "openfga.storage",
+//	})
+//	return st.Err()
+type StorageErrorReason int32
+
+const (
+	// STORAGE_ERROR_REASON_UNSPECIFIED is the default value and should not be used.
+	StorageErrorReason_STORAGE_ERROR_REASON_UNSPECIFIED StorageErrorReason = 0
+	// NOT_FOUND is returned when the object does not exist.
+	// Maps to gRPC status code: NOT_FOUND
+	StorageErrorReason_NOT_FOUND StorageErrorReason = 1
+	// COLLISION is returned when an item already exists within the store.
+	// Maps to gRPC status code: ALREADY_EXISTS
+	StorageErrorReason_COLLISION StorageErrorReason = 2
+	// INVALID_CONTINUATION_TOKEN is returned when the continuation token is invalid.
+	// Maps to gRPC status code: INVALID_ARGUMENT
+	StorageErrorReason_INVALID_CONTINUATION_TOKEN StorageErrorReason = 3
+	// INVALID_START_TIME is returned when start time param for ReadChanges API is invalid.
+	// Maps to gRPC status code: INVALID_ARGUMENT
+	StorageErrorReason_INVALID_START_TIME StorageErrorReason = 4
+	// INVALID_WRITE_INPUT is returned when the tuple to be written already existed
+	// or the tuple to be deleted did not exist.
+	// Maps to gRPC status code: INVALID_ARGUMENT
+	StorageErrorReason_INVALID_WRITE_INPUT StorageErrorReason = 5
+	// WRITE_CONFLICT_ON_INSERT is returned when two writes attempt to insert the same tuple at the same time.
+	// Maps to gRPC status code: ABORTED
+	StorageErrorReason_WRITE_CONFLICT_ON_INSERT StorageErrorReason = 6
+	// WRITE_CONFLICT_ON_DELETE is returned when two writes attempt to delete the same tuple at the same time.
+	// Maps to gRPC status code: ABORTED
+	StorageErrorReason_WRITE_CONFLICT_ON_DELETE StorageErrorReason = 7
+	// TRANSACTIONAL_WRITE_FAILED is returned when two writes attempt to write the same tuple at the same time.
+	// Maps to gRPC status code: ABORTED
+	StorageErrorReason_TRANSACTIONAL_WRITE_FAILED StorageErrorReason = 8
+	// TRANSACTION_THROTTLED is returned when throttling is applied at the datastore level.
+	// Maps to gRPC status code: RESOURCE_EXHAUSTED
+	StorageErrorReason_TRANSACTION_THROTTLED StorageErrorReason = 9
+)
+
+// Enum value maps for StorageErrorReason.
+var (
+	StorageErrorReason_name = map[int32]string{
+		0: "STORAGE_ERROR_REASON_UNSPECIFIED",
+		1: "NOT_FOUND",
+		2: "COLLISION",
+		3: "INVALID_CONTINUATION_TOKEN",
+		4: "INVALID_START_TIME",
+		5: "INVALID_WRITE_INPUT",
+		6: "WRITE_CONFLICT_ON_INSERT",
+		7: "WRITE_CONFLICT_ON_DELETE",
+		8: "TRANSACTIONAL_WRITE_FAILED",
+		9: "TRANSACTION_THROTTLED",
+	}
+	StorageErrorReason_value = map[string]int32{
+		"STORAGE_ERROR_REASON_UNSPECIFIED": 0,
+		"NOT_FOUND":                        1,
+		"COLLISION":                        2,
+		"INVALID_CONTINUATION_TOKEN":       3,
+		"INVALID_START_TIME":               4,
+		"INVALID_WRITE_INPUT":              5,
+		"WRITE_CONFLICT_ON_INSERT":         6,
+		"WRITE_CONFLICT_ON_DELETE":         7,
+		"TRANSACTIONAL_WRITE_FAILED":       8,
+		"TRANSACTION_THROTTLED":            9,
+	}
+)
+
+func (x StorageErrorReason) Enum() *StorageErrorReason {
+	p := new(StorageErrorReason)
+	*p = x
+	return p
+}
+
+func (x StorageErrorReason) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (StorageErrorReason) Descriptor() protoreflect.EnumDescriptor {
+	return file_storage_v1_storage_proto_enumTypes[2].Descriptor()
+}
+
+func (StorageErrorReason) Type() protoreflect.EnumType {
+	return &file_storage_v1_storage_proto_enumTypes[2]
+}
+
+func (x StorageErrorReason) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use StorageErrorReason.Descriptor instead.
+func (StorageErrorReason) EnumDescriptor() ([]byte, []int) {
+	return file_storage_v1_storage_proto_rawDescGZIP(), []int{2}
+}
+
 type ReadRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Store         string                 `protobuf:"bytes,1,opt,name=store,proto3" json:"store,omitempty"`
@@ -2380,7 +2486,18 @@ const file_storage_v1_storage_proto_rawDesc = "" +
 	"\x18ON_MISSING_DELETE_IGNORE\x10\x01*R\n" +
 	"\x11OnDuplicateInsert\x12\x1d\n" +
 	"\x19ON_DUPLICATE_INSERT_ERROR\x10\x00\x12\x1e\n" +
-	"\x1aON_DUPLICATE_INSERT_IGNORE\x10\x012\xad\f\n" +
+	"\x1aON_DUPLICATE_INSERT_IGNORE\x10\x01*\xa0\x02\n" +
+	"\x12StorageErrorReason\x12$\n" +
+	" STORAGE_ERROR_REASON_UNSPECIFIED\x10\x00\x12\r\n" +
+	"\tNOT_FOUND\x10\x01\x12\r\n" +
+	"\tCOLLISION\x10\x02\x12\x1e\n" +
+	"\x1aINVALID_CONTINUATION_TOKEN\x10\x03\x12\x16\n" +
+	"\x12INVALID_START_TIME\x10\x04\x12\x17\n" +
+	"\x13INVALID_WRITE_INPUT\x10\x05\x12\x1c\n" +
+	"\x18WRITE_CONFLICT_ON_INSERT\x10\x06\x12\x1c\n" +
+	"\x18WRITE_CONFLICT_ON_DELETE\x10\a\x12\x1e\n" +
+	"\x1aTRANSACTIONAL_WRITE_FAILED\x10\b\x12\x19\n" +
+	"\x15TRANSACTION_THROTTLED\x10\t2\xad\f\n" +
 	"\x0eStorageService\x12;\n" +
 	"\x04Read\x12\x17.storage.v1.ReadRequest\x1a\x18.storage.v1.ReadResponse0\x01\x12E\n" +
 	"\bReadPage\x12\x1b.storage.v1.ReadPageRequest\x1a\x1c.storage.v1.ReadPageResponse\x12K\n" +
@@ -2414,134 +2531,135 @@ func file_storage_v1_storage_proto_rawDescGZIP() []byte {
 	return file_storage_v1_storage_proto_rawDescData
 }
 
-var file_storage_v1_storage_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
+var file_storage_v1_storage_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
 var file_storage_v1_storage_proto_msgTypes = make([]protoimpl.MessageInfo, 40)
 var file_storage_v1_storage_proto_goTypes = []any{
 	(OnMissingDelete)(0),                         // 0: storage.v1.OnMissingDelete
 	(OnDuplicateInsert)(0),                       // 1: storage.v1.OnDuplicateInsert
-	(*ReadRequest)(nil),                          // 2: storage.v1.ReadRequest
-	(*ReadResponse)(nil),                         // 3: storage.v1.ReadResponse
-	(*ReadPageRequest)(nil),                      // 4: storage.v1.ReadPageRequest
-	(*ReadPageResponse)(nil),                     // 5: storage.v1.ReadPageResponse
-	(*ReadUserTupleRequest)(nil),                 // 6: storage.v1.ReadUserTupleRequest
-	(*ReadUsersetTuplesRequest)(nil),             // 7: storage.v1.ReadUsersetTuplesRequest
-	(*ReadStartingWithUserRequest)(nil),          // 8: storage.v1.ReadStartingWithUserRequest
-	(*WriteRequest)(nil),                         // 9: storage.v1.WriteRequest
-	(*WriteResponse)(nil),                        // 10: storage.v1.WriteResponse
-	(*ReadAuthorizationModelRequest)(nil),        // 11: storage.v1.ReadAuthorizationModelRequest
-	(*ReadAuthorizationModelResponse)(nil),       // 12: storage.v1.ReadAuthorizationModelResponse
-	(*ReadAuthorizationModelsRequest)(nil),       // 13: storage.v1.ReadAuthorizationModelsRequest
-	(*ReadAuthorizationModelsResponse)(nil),      // 14: storage.v1.ReadAuthorizationModelsResponse
-	(*FindLatestAuthorizationModelRequest)(nil),  // 15: storage.v1.FindLatestAuthorizationModelRequest
-	(*FindLatestAuthorizationModelResponse)(nil), // 16: storage.v1.FindLatestAuthorizationModelResponse
-	(*WriteAuthorizationModelRequest)(nil),       // 17: storage.v1.WriteAuthorizationModelRequest
-	(*WriteAuthorizationModelResponse)(nil),      // 18: storage.v1.WriteAuthorizationModelResponse
-	(*CreateStoreRequest)(nil),                   // 19: storage.v1.CreateStoreRequest
-	(*CreateStoreResponse)(nil),                  // 20: storage.v1.CreateStoreResponse
-	(*DeleteStoreRequest)(nil),                   // 21: storage.v1.DeleteStoreRequest
-	(*DeleteStoreResponse)(nil),                  // 22: storage.v1.DeleteStoreResponse
-	(*GetStoreRequest)(nil),                      // 23: storage.v1.GetStoreRequest
-	(*GetStoreResponse)(nil),                     // 24: storage.v1.GetStoreResponse
-	(*ListStoresRequest)(nil),                    // 25: storage.v1.ListStoresRequest
-	(*ListStoresResponse)(nil),                   // 26: storage.v1.ListStoresResponse
-	(*WriteAssertionsRequest)(nil),               // 27: storage.v1.WriteAssertionsRequest
-	(*WriteAssertionsResponse)(nil),              // 28: storage.v1.WriteAssertionsResponse
-	(*ReadAssertionsRequest)(nil),                // 29: storage.v1.ReadAssertionsRequest
-	(*ReadAssertionsResponse)(nil),               // 30: storage.v1.ReadAssertionsResponse
-	(*ReadChangesRequest)(nil),                   // 31: storage.v1.ReadChangesRequest
-	(*ReadChangesResponse)(nil),                  // 32: storage.v1.ReadChangesResponse
-	(*IsReadyRequest)(nil),                       // 33: storage.v1.IsReadyRequest
-	(*IsReadyResponse)(nil),                      // 34: storage.v1.IsReadyResponse
-	(*ReadFilter)(nil),                           // 35: storage.v1.ReadFilter
-	(*ReadUsersetTuplesFilter)(nil),              // 36: storage.v1.ReadUsersetTuplesFilter
-	(*ReadStartingWithUserFilter)(nil),           // 37: storage.v1.ReadStartingWithUserFilter
-	(*ReadChangesFilter)(nil),                    // 38: storage.v1.ReadChangesFilter
-	(*PaginationOptions)(nil),                    // 39: storage.v1.PaginationOptions
-	(*ConsistencyOptions)(nil),                   // 40: storage.v1.ConsistencyOptions
-	(*TupleWriteOptions)(nil),                    // 41: storage.v1.TupleWriteOptions
-	(*Tuple)(nil),                                // 42: storage.v1.types.Tuple
-	(*TupleKey)(nil),                             // 43: storage.v1.types.TupleKey
-	(*AuthorizationModel)(nil),                   // 44: storage.v1.types.AuthorizationModel
-	(*Store)(nil),                                // 45: storage.v1.types.Store
-	(*Assertion)(nil),                            // 46: storage.v1.types.Assertion
-	(*TupleChange)(nil),                          // 47: storage.v1.types.TupleChange
-	(*RelationReference)(nil),                    // 48: storage.v1.types.RelationReference
-	(*ObjectRelation)(nil),                       // 49: storage.v1.types.ObjectRelation
-	(ConsistencyPreference)(0),                   // 50: storage.v1.types.ConsistencyPreference
+	(StorageErrorReason)(0),                      // 2: storage.v1.StorageErrorReason
+	(*ReadRequest)(nil),                          // 3: storage.v1.ReadRequest
+	(*ReadResponse)(nil),                         // 4: storage.v1.ReadResponse
+	(*ReadPageRequest)(nil),                      // 5: storage.v1.ReadPageRequest
+	(*ReadPageResponse)(nil),                     // 6: storage.v1.ReadPageResponse
+	(*ReadUserTupleRequest)(nil),                 // 7: storage.v1.ReadUserTupleRequest
+	(*ReadUsersetTuplesRequest)(nil),             // 8: storage.v1.ReadUsersetTuplesRequest
+	(*ReadStartingWithUserRequest)(nil),          // 9: storage.v1.ReadStartingWithUserRequest
+	(*WriteRequest)(nil),                         // 10: storage.v1.WriteRequest
+	(*WriteResponse)(nil),                        // 11: storage.v1.WriteResponse
+	(*ReadAuthorizationModelRequest)(nil),        // 12: storage.v1.ReadAuthorizationModelRequest
+	(*ReadAuthorizationModelResponse)(nil),       // 13: storage.v1.ReadAuthorizationModelResponse
+	(*ReadAuthorizationModelsRequest)(nil),       // 14: storage.v1.ReadAuthorizationModelsRequest
+	(*ReadAuthorizationModelsResponse)(nil),      // 15: storage.v1.ReadAuthorizationModelsResponse
+	(*FindLatestAuthorizationModelRequest)(nil),  // 16: storage.v1.FindLatestAuthorizationModelRequest
+	(*FindLatestAuthorizationModelResponse)(nil), // 17: storage.v1.FindLatestAuthorizationModelResponse
+	(*WriteAuthorizationModelRequest)(nil),       // 18: storage.v1.WriteAuthorizationModelRequest
+	(*WriteAuthorizationModelResponse)(nil),      // 19: storage.v1.WriteAuthorizationModelResponse
+	(*CreateStoreRequest)(nil),                   // 20: storage.v1.CreateStoreRequest
+	(*CreateStoreResponse)(nil),                  // 21: storage.v1.CreateStoreResponse
+	(*DeleteStoreRequest)(nil),                   // 22: storage.v1.DeleteStoreRequest
+	(*DeleteStoreResponse)(nil),                  // 23: storage.v1.DeleteStoreResponse
+	(*GetStoreRequest)(nil),                      // 24: storage.v1.GetStoreRequest
+	(*GetStoreResponse)(nil),                     // 25: storage.v1.GetStoreResponse
+	(*ListStoresRequest)(nil),                    // 26: storage.v1.ListStoresRequest
+	(*ListStoresResponse)(nil),                   // 27: storage.v1.ListStoresResponse
+	(*WriteAssertionsRequest)(nil),               // 28: storage.v1.WriteAssertionsRequest
+	(*WriteAssertionsResponse)(nil),              // 29: storage.v1.WriteAssertionsResponse
+	(*ReadAssertionsRequest)(nil),                // 30: storage.v1.ReadAssertionsRequest
+	(*ReadAssertionsResponse)(nil),               // 31: storage.v1.ReadAssertionsResponse
+	(*ReadChangesRequest)(nil),                   // 32: storage.v1.ReadChangesRequest
+	(*ReadChangesResponse)(nil),                  // 33: storage.v1.ReadChangesResponse
+	(*IsReadyRequest)(nil),                       // 34: storage.v1.IsReadyRequest
+	(*IsReadyResponse)(nil),                      // 35: storage.v1.IsReadyResponse
+	(*ReadFilter)(nil),                           // 36: storage.v1.ReadFilter
+	(*ReadUsersetTuplesFilter)(nil),              // 37: storage.v1.ReadUsersetTuplesFilter
+	(*ReadStartingWithUserFilter)(nil),           // 38: storage.v1.ReadStartingWithUserFilter
+	(*ReadChangesFilter)(nil),                    // 39: storage.v1.ReadChangesFilter
+	(*PaginationOptions)(nil),                    // 40: storage.v1.PaginationOptions
+	(*ConsistencyOptions)(nil),                   // 41: storage.v1.ConsistencyOptions
+	(*TupleWriteOptions)(nil),                    // 42: storage.v1.TupleWriteOptions
+	(*Tuple)(nil),                                // 43: storage.v1.types.Tuple
+	(*TupleKey)(nil),                             // 44: storage.v1.types.TupleKey
+	(*AuthorizationModel)(nil),                   // 45: storage.v1.types.AuthorizationModel
+	(*Store)(nil),                                // 46: storage.v1.types.Store
+	(*Assertion)(nil),                            // 47: storage.v1.types.Assertion
+	(*TupleChange)(nil),                          // 48: storage.v1.types.TupleChange
+	(*RelationReference)(nil),                    // 49: storage.v1.types.RelationReference
+	(*ObjectRelation)(nil),                       // 50: storage.v1.types.ObjectRelation
+	(ConsistencyPreference)(0),                   // 51: storage.v1.types.ConsistencyPreference
 }
 var file_storage_v1_storage_proto_depIdxs = []int32{
-	35, // 0: storage.v1.ReadRequest.filter:type_name -> storage.v1.ReadFilter
-	40, // 1: storage.v1.ReadRequest.consistency:type_name -> storage.v1.ConsistencyOptions
-	42, // 2: storage.v1.ReadResponse.tuple:type_name -> storage.v1.types.Tuple
-	35, // 3: storage.v1.ReadPageRequest.filter:type_name -> storage.v1.ReadFilter
-	39, // 4: storage.v1.ReadPageRequest.pagination:type_name -> storage.v1.PaginationOptions
-	40, // 5: storage.v1.ReadPageRequest.consistency:type_name -> storage.v1.ConsistencyOptions
-	42, // 6: storage.v1.ReadPageResponse.tuples:type_name -> storage.v1.types.Tuple
-	43, // 7: storage.v1.ReadUserTupleRequest.tuple_key:type_name -> storage.v1.types.TupleKey
-	40, // 8: storage.v1.ReadUserTupleRequest.consistency:type_name -> storage.v1.ConsistencyOptions
-	36, // 9: storage.v1.ReadUsersetTuplesRequest.filter:type_name -> storage.v1.ReadUsersetTuplesFilter
-	40, // 10: storage.v1.ReadUsersetTuplesRequest.consistency:type_name -> storage.v1.ConsistencyOptions
-	37, // 11: storage.v1.ReadStartingWithUserRequest.filter:type_name -> storage.v1.ReadStartingWithUserFilter
-	40, // 12: storage.v1.ReadStartingWithUserRequest.consistency:type_name -> storage.v1.ConsistencyOptions
-	43, // 13: storage.v1.WriteRequest.deletes:type_name -> storage.v1.types.TupleKey
-	43, // 14: storage.v1.WriteRequest.writes:type_name -> storage.v1.types.TupleKey
-	41, // 15: storage.v1.WriteRequest.options:type_name -> storage.v1.TupleWriteOptions
-	44, // 16: storage.v1.ReadAuthorizationModelResponse.model:type_name -> storage.v1.types.AuthorizationModel
-	39, // 17: storage.v1.ReadAuthorizationModelsRequest.pagination:type_name -> storage.v1.PaginationOptions
-	44, // 18: storage.v1.ReadAuthorizationModelsResponse.models:type_name -> storage.v1.types.AuthorizationModel
-	44, // 19: storage.v1.FindLatestAuthorizationModelResponse.model:type_name -> storage.v1.types.AuthorizationModel
-	44, // 20: storage.v1.WriteAuthorizationModelRequest.model:type_name -> storage.v1.types.AuthorizationModel
-	45, // 21: storage.v1.CreateStoreRequest.store:type_name -> storage.v1.types.Store
-	45, // 22: storage.v1.CreateStoreResponse.store:type_name -> storage.v1.types.Store
-	45, // 23: storage.v1.GetStoreResponse.store:type_name -> storage.v1.types.Store
-	39, // 24: storage.v1.ListStoresRequest.pagination:type_name -> storage.v1.PaginationOptions
-	45, // 25: storage.v1.ListStoresResponse.stores:type_name -> storage.v1.types.Store
-	46, // 26: storage.v1.WriteAssertionsRequest.assertions:type_name -> storage.v1.types.Assertion
-	46, // 27: storage.v1.ReadAssertionsResponse.assertions:type_name -> storage.v1.types.Assertion
-	38, // 28: storage.v1.ReadChangesRequest.filter:type_name -> storage.v1.ReadChangesFilter
-	39, // 29: storage.v1.ReadChangesRequest.pagination:type_name -> storage.v1.PaginationOptions
-	47, // 30: storage.v1.ReadChangesResponse.changes:type_name -> storage.v1.types.TupleChange
-	48, // 31: storage.v1.ReadUsersetTuplesFilter.allowed_user_type_restrictions:type_name -> storage.v1.types.RelationReference
-	49, // 32: storage.v1.ReadStartingWithUserFilter.user_filter:type_name -> storage.v1.types.ObjectRelation
-	50, // 33: storage.v1.ConsistencyOptions.preference:type_name -> storage.v1.types.ConsistencyPreference
+	36, // 0: storage.v1.ReadRequest.filter:type_name -> storage.v1.ReadFilter
+	41, // 1: storage.v1.ReadRequest.consistency:type_name -> storage.v1.ConsistencyOptions
+	43, // 2: storage.v1.ReadResponse.tuple:type_name -> storage.v1.types.Tuple
+	36, // 3: storage.v1.ReadPageRequest.filter:type_name -> storage.v1.ReadFilter
+	40, // 4: storage.v1.ReadPageRequest.pagination:type_name -> storage.v1.PaginationOptions
+	41, // 5: storage.v1.ReadPageRequest.consistency:type_name -> storage.v1.ConsistencyOptions
+	43, // 6: storage.v1.ReadPageResponse.tuples:type_name -> storage.v1.types.Tuple
+	44, // 7: storage.v1.ReadUserTupleRequest.tuple_key:type_name -> storage.v1.types.TupleKey
+	41, // 8: storage.v1.ReadUserTupleRequest.consistency:type_name -> storage.v1.ConsistencyOptions
+	37, // 9: storage.v1.ReadUsersetTuplesRequest.filter:type_name -> storage.v1.ReadUsersetTuplesFilter
+	41, // 10: storage.v1.ReadUsersetTuplesRequest.consistency:type_name -> storage.v1.ConsistencyOptions
+	38, // 11: storage.v1.ReadStartingWithUserRequest.filter:type_name -> storage.v1.ReadStartingWithUserFilter
+	41, // 12: storage.v1.ReadStartingWithUserRequest.consistency:type_name -> storage.v1.ConsistencyOptions
+	44, // 13: storage.v1.WriteRequest.deletes:type_name -> storage.v1.types.TupleKey
+	44, // 14: storage.v1.WriteRequest.writes:type_name -> storage.v1.types.TupleKey
+	42, // 15: storage.v1.WriteRequest.options:type_name -> storage.v1.TupleWriteOptions
+	45, // 16: storage.v1.ReadAuthorizationModelResponse.model:type_name -> storage.v1.types.AuthorizationModel
+	40, // 17: storage.v1.ReadAuthorizationModelsRequest.pagination:type_name -> storage.v1.PaginationOptions
+	45, // 18: storage.v1.ReadAuthorizationModelsResponse.models:type_name -> storage.v1.types.AuthorizationModel
+	45, // 19: storage.v1.FindLatestAuthorizationModelResponse.model:type_name -> storage.v1.types.AuthorizationModel
+	45, // 20: storage.v1.WriteAuthorizationModelRequest.model:type_name -> storage.v1.types.AuthorizationModel
+	46, // 21: storage.v1.CreateStoreRequest.store:type_name -> storage.v1.types.Store
+	46, // 22: storage.v1.CreateStoreResponse.store:type_name -> storage.v1.types.Store
+	46, // 23: storage.v1.GetStoreResponse.store:type_name -> storage.v1.types.Store
+	40, // 24: storage.v1.ListStoresRequest.pagination:type_name -> storage.v1.PaginationOptions
+	46, // 25: storage.v1.ListStoresResponse.stores:type_name -> storage.v1.types.Store
+	47, // 26: storage.v1.WriteAssertionsRequest.assertions:type_name -> storage.v1.types.Assertion
+	47, // 27: storage.v1.ReadAssertionsResponse.assertions:type_name -> storage.v1.types.Assertion
+	39, // 28: storage.v1.ReadChangesRequest.filter:type_name -> storage.v1.ReadChangesFilter
+	40, // 29: storage.v1.ReadChangesRequest.pagination:type_name -> storage.v1.PaginationOptions
+	48, // 30: storage.v1.ReadChangesResponse.changes:type_name -> storage.v1.types.TupleChange
+	49, // 31: storage.v1.ReadUsersetTuplesFilter.allowed_user_type_restrictions:type_name -> storage.v1.types.RelationReference
+	50, // 32: storage.v1.ReadStartingWithUserFilter.user_filter:type_name -> storage.v1.types.ObjectRelation
+	51, // 33: storage.v1.ConsistencyOptions.preference:type_name -> storage.v1.types.ConsistencyPreference
 	0,  // 34: storage.v1.TupleWriteOptions.on_missing_delete:type_name -> storage.v1.OnMissingDelete
 	1,  // 35: storage.v1.TupleWriteOptions.on_duplicate_insert:type_name -> storage.v1.OnDuplicateInsert
-	2,  // 36: storage.v1.StorageService.Read:input_type -> storage.v1.ReadRequest
-	4,  // 37: storage.v1.StorageService.ReadPage:input_type -> storage.v1.ReadPageRequest
-	6,  // 38: storage.v1.StorageService.ReadUserTuple:input_type -> storage.v1.ReadUserTupleRequest
-	7,  // 39: storage.v1.StorageService.ReadUsersetTuples:input_type -> storage.v1.ReadUsersetTuplesRequest
-	8,  // 40: storage.v1.StorageService.ReadStartingWithUser:input_type -> storage.v1.ReadStartingWithUserRequest
-	9,  // 41: storage.v1.StorageService.Write:input_type -> storage.v1.WriteRequest
-	11, // 42: storage.v1.StorageService.ReadAuthorizationModel:input_type -> storage.v1.ReadAuthorizationModelRequest
-	13, // 43: storage.v1.StorageService.ReadAuthorizationModels:input_type -> storage.v1.ReadAuthorizationModelsRequest
-	15, // 44: storage.v1.StorageService.FindLatestAuthorizationModel:input_type -> storage.v1.FindLatestAuthorizationModelRequest
-	17, // 45: storage.v1.StorageService.WriteAuthorizationModel:input_type -> storage.v1.WriteAuthorizationModelRequest
-	19, // 46: storage.v1.StorageService.CreateStore:input_type -> storage.v1.CreateStoreRequest
-	21, // 47: storage.v1.StorageService.DeleteStore:input_type -> storage.v1.DeleteStoreRequest
-	23, // 48: storage.v1.StorageService.GetStore:input_type -> storage.v1.GetStoreRequest
-	25, // 49: storage.v1.StorageService.ListStores:input_type -> storage.v1.ListStoresRequest
-	27, // 50: storage.v1.StorageService.WriteAssertions:input_type -> storage.v1.WriteAssertionsRequest
-	29, // 51: storage.v1.StorageService.ReadAssertions:input_type -> storage.v1.ReadAssertionsRequest
-	31, // 52: storage.v1.StorageService.ReadChanges:input_type -> storage.v1.ReadChangesRequest
-	33, // 53: storage.v1.StorageService.IsReady:input_type -> storage.v1.IsReadyRequest
-	3,  // 54: storage.v1.StorageService.Read:output_type -> storage.v1.ReadResponse
-	5,  // 55: storage.v1.StorageService.ReadPage:output_type -> storage.v1.ReadPageResponse
-	3,  // 56: storage.v1.StorageService.ReadUserTuple:output_type -> storage.v1.ReadResponse
-	3,  // 57: storage.v1.StorageService.ReadUsersetTuples:output_type -> storage.v1.ReadResponse
-	3,  // 58: storage.v1.StorageService.ReadStartingWithUser:output_type -> storage.v1.ReadResponse
-	10, // 59: storage.v1.StorageService.Write:output_type -> storage.v1.WriteResponse
-	12, // 60: storage.v1.StorageService.ReadAuthorizationModel:output_type -> storage.v1.ReadAuthorizationModelResponse
-	14, // 61: storage.v1.StorageService.ReadAuthorizationModels:output_type -> storage.v1.ReadAuthorizationModelsResponse
-	16, // 62: storage.v1.StorageService.FindLatestAuthorizationModel:output_type -> storage.v1.FindLatestAuthorizationModelResponse
-	18, // 63: storage.v1.StorageService.WriteAuthorizationModel:output_type -> storage.v1.WriteAuthorizationModelResponse
-	20, // 64: storage.v1.StorageService.CreateStore:output_type -> storage.v1.CreateStoreResponse
-	22, // 65: storage.v1.StorageService.DeleteStore:output_type -> storage.v1.DeleteStoreResponse
-	24, // 66: storage.v1.StorageService.GetStore:output_type -> storage.v1.GetStoreResponse
-	26, // 67: storage.v1.StorageService.ListStores:output_type -> storage.v1.ListStoresResponse
-	28, // 68: storage.v1.StorageService.WriteAssertions:output_type -> storage.v1.WriteAssertionsResponse
-	30, // 69: storage.v1.StorageService.ReadAssertions:output_type -> storage.v1.ReadAssertionsResponse
-	32, // 70: storage.v1.StorageService.ReadChanges:output_type -> storage.v1.ReadChangesResponse
-	34, // 71: storage.v1.StorageService.IsReady:output_type -> storage.v1.IsReadyResponse
+	3,  // 36: storage.v1.StorageService.Read:input_type -> storage.v1.ReadRequest
+	5,  // 37: storage.v1.StorageService.ReadPage:input_type -> storage.v1.ReadPageRequest
+	7,  // 38: storage.v1.StorageService.ReadUserTuple:input_type -> storage.v1.ReadUserTupleRequest
+	8,  // 39: storage.v1.StorageService.ReadUsersetTuples:input_type -> storage.v1.ReadUsersetTuplesRequest
+	9,  // 40: storage.v1.StorageService.ReadStartingWithUser:input_type -> storage.v1.ReadStartingWithUserRequest
+	10, // 41: storage.v1.StorageService.Write:input_type -> storage.v1.WriteRequest
+	12, // 42: storage.v1.StorageService.ReadAuthorizationModel:input_type -> storage.v1.ReadAuthorizationModelRequest
+	14, // 43: storage.v1.StorageService.ReadAuthorizationModels:input_type -> storage.v1.ReadAuthorizationModelsRequest
+	16, // 44: storage.v1.StorageService.FindLatestAuthorizationModel:input_type -> storage.v1.FindLatestAuthorizationModelRequest
+	18, // 45: storage.v1.StorageService.WriteAuthorizationModel:input_type -> storage.v1.WriteAuthorizationModelRequest
+	20, // 46: storage.v1.StorageService.CreateStore:input_type -> storage.v1.CreateStoreRequest
+	22, // 47: storage.v1.StorageService.DeleteStore:input_type -> storage.v1.DeleteStoreRequest
+	24, // 48: storage.v1.StorageService.GetStore:input_type -> storage.v1.GetStoreRequest
+	26, // 49: storage.v1.StorageService.ListStores:input_type -> storage.v1.ListStoresRequest
+	28, // 50: storage.v1.StorageService.WriteAssertions:input_type -> storage.v1.WriteAssertionsRequest
+	30, // 51: storage.v1.StorageService.ReadAssertions:input_type -> storage.v1.ReadAssertionsRequest
+	32, // 52: storage.v1.StorageService.ReadChanges:input_type -> storage.v1.ReadChangesRequest
+	34, // 53: storage.v1.StorageService.IsReady:input_type -> storage.v1.IsReadyRequest
+	4,  // 54: storage.v1.StorageService.Read:output_type -> storage.v1.ReadResponse
+	6,  // 55: storage.v1.StorageService.ReadPage:output_type -> storage.v1.ReadPageResponse
+	4,  // 56: storage.v1.StorageService.ReadUserTuple:output_type -> storage.v1.ReadResponse
+	4,  // 57: storage.v1.StorageService.ReadUsersetTuples:output_type -> storage.v1.ReadResponse
+	4,  // 58: storage.v1.StorageService.ReadStartingWithUser:output_type -> storage.v1.ReadResponse
+	11, // 59: storage.v1.StorageService.Write:output_type -> storage.v1.WriteResponse
+	13, // 60: storage.v1.StorageService.ReadAuthorizationModel:output_type -> storage.v1.ReadAuthorizationModelResponse
+	15, // 61: storage.v1.StorageService.ReadAuthorizationModels:output_type -> storage.v1.ReadAuthorizationModelsResponse
+	17, // 62: storage.v1.StorageService.FindLatestAuthorizationModel:output_type -> storage.v1.FindLatestAuthorizationModelResponse
+	19, // 63: storage.v1.StorageService.WriteAuthorizationModel:output_type -> storage.v1.WriteAuthorizationModelResponse
+	21, // 64: storage.v1.StorageService.CreateStore:output_type -> storage.v1.CreateStoreResponse
+	23, // 65: storage.v1.StorageService.DeleteStore:output_type -> storage.v1.DeleteStoreResponse
+	25, // 66: storage.v1.StorageService.GetStore:output_type -> storage.v1.GetStoreResponse
+	27, // 67: storage.v1.StorageService.ListStores:output_type -> storage.v1.ListStoresResponse
+	29, // 68: storage.v1.StorageService.WriteAssertions:output_type -> storage.v1.WriteAssertionsResponse
+	31, // 69: storage.v1.StorageService.ReadAssertions:output_type -> storage.v1.ReadAssertionsResponse
+	33, // 70: storage.v1.StorageService.ReadChanges:output_type -> storage.v1.ReadChangesResponse
+	35, // 71: storage.v1.StorageService.IsReady:output_type -> storage.v1.IsReadyResponse
 	54, // [54:72] is the sub-list for method output_type
 	36, // [36:54] is the sub-list for method input_type
 	36, // [36:36] is the sub-list for extension type_name
@@ -2560,7 +2678,7 @@ func file_storage_v1_storage_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_storage_v1_storage_proto_rawDesc), len(file_storage_v1_storage_proto_rawDesc)),
-			NumEnums:      2,
+			NumEnums:      3,
 			NumMessages:   40,
 			NumExtensions: 0,
 			NumServices:   1,
