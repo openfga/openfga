@@ -1,0 +1,342 @@
+syntax = "proto3";
+
+package storage.v1;
+
+import "storage/v1/openfga_types.proto";
+
+option go_package = "github.com/openfga/openfga/pkg/storage/grpc/proto/storage/v1;storagev1";
+
+// StorageService provides a gRPC interface for OpenFGA's storage backend.
+//
+// The service is organized into several groups:
+// - Tuple operations: Read, ReadPage, ReadUserTuple, ReadUsersetTuples, ReadStartingWithUser, Write
+// - Authorization model operations: ReadAuthorizationModel, ReadAuthorizationModels, FindLatestAuthorizationModel, WriteAuthorizationModel
+// - Store operations: CreateStore, DeleteStore, GetStore, ListStores
+// - Assertion operations: WriteAssertions, ReadAssertions
+// - Changelog operations: ReadChanges
+// - Service operations: IsReady, MaxTuplesPerWrite, MaxTypesPerAuthorizationModel
+service StorageService {
+  // Read streams tuples matching the provided filter.
+  // Returns an iterator over all matching tuples with no guaranteed order.
+  rpc Read(ReadRequest) returns (stream ReadResponse);
+
+  // ReadPage returns a paginated list of tuples matching the filter.
+  // Use this when you need bounded result sets with continuation tokens.
+  rpc ReadPage(ReadPageRequest) returns (ReadPageResponse);
+
+  // ReadUserTuple returns exactly one tuple matching the provided key.
+  // Returns NOT_FOUND error if no matching tuple exists.
+  rpc ReadUserTuple(ReadUserTupleRequest) returns (ReadResponse);
+
+  // ReadUsersetTuples streams userset tuples for a specified object and relation.
+  // Can be filtered by allowed user type restrictions.
+  rpc ReadUsersetTuples(ReadUsersetTuplesRequest) returns (stream ReadResponse);
+
+  // ReadStartingWithUser performs a reverse read starting from user(s)/userset(s).
+  // Useful for finding all objects a user has access to.
+  rpc ReadStartingWithUser(ReadStartingWithUserRequest) returns (stream ReadResponse);
+
+  // Write performs tuple write and delete operations atomically.
+  // All deletes are performed before writes.
+  rpc Write(WriteRequest) returns (WriteResponse);
+
+  // ReadAuthorizationModel retrieves a specific authorization model by ID.
+  rpc ReadAuthorizationModel(ReadAuthorizationModelRequest) returns (ReadAuthorizationModelResponse);
+
+  // ReadAuthorizationModels returns all authorization models for a store.
+  // Models are returned in descending order (newest first).
+  rpc ReadAuthorizationModels(ReadAuthorizationModelsRequest) returns (ReadAuthorizationModelsResponse);
+
+  // FindLatestAuthorizationModel returns the most recent authorization model for a store.
+  rpc FindLatestAuthorizationModel(FindLatestAuthorizationModelRequest) returns (FindLatestAuthorizationModelResponse);
+
+  // WriteAuthorizationModel creates a new authorization model version.
+  rpc WriteAuthorizationModel(WriteAuthorizationModelRequest) returns (WriteAuthorizationModelResponse);
+
+  // CreateStore creates a new OpenFGA store.
+  rpc CreateStore(CreateStoreRequest) returns (CreateStoreResponse);
+
+  // DeleteStore deletes a store (soft delete).
+  rpc DeleteStore(DeleteStoreRequest) returns (DeleteStoreResponse);
+
+  // GetStore retrieves a store by ID.
+  rpc GetStore(GetStoreRequest) returns (GetStoreResponse);
+
+  // ListStores returns a paginated list of stores.
+  rpc ListStores(ListStoresRequest) returns (ListStoresResponse);
+
+  // WriteAssertions writes test assertions for an authorization model.
+  rpc WriteAssertions(WriteAssertionsRequest) returns (WriteAssertionsResponse);
+
+  // ReadAssertions retrieves assertions for a specific authorization model.
+  rpc ReadAssertions(ReadAssertionsRequest) returns (ReadAssertionsResponse);
+
+  // ReadChanges returns tuple changes (writes and deletes) in chronological order.
+  rpc ReadChanges(ReadChangesRequest) returns (ReadChangesResponse);
+
+  // IsReady checks if the storage backend is ready to accept requests.
+  rpc IsReady(IsReadyRequest) returns (IsReadyResponse);
+
+  // MaxTuplesPerWrite returns the maximum number of tuple operations per Write call.
+  rpc MaxTuplesPerWrite(MaxTuplesPerWriteRequest) returns (MaxTuplesPerWriteResponse);
+
+  // MaxTypesPerAuthorizationModel returns the maximum number of types per authorization model.
+  rpc MaxTypesPerAuthorizationModel(MaxTypesPerAuthorizationModelRequest) returns (MaxTypesPerAuthorizationModelResponse);
+}
+
+message ReadRequest {
+  string store = 1;
+  ReadFilter filter = 2;
+  ConsistencyOptions consistency = 3;
+}
+
+message ReadResponse {
+  storage.v1.types.Tuple tuple = 1;
+}
+
+message ReadPageRequest {
+  string store = 1;
+  ReadFilter filter = 2;
+  PaginationOptions pagination = 3;
+  ConsistencyOptions consistency = 4;
+}
+
+message ReadPageResponse {
+  repeated storage.v1.types.Tuple tuples = 1;
+  string continuation_token = 2;
+}
+
+message ReadUserTupleRequest {
+  string store = 1;
+  storage.v1.types.TupleKey tuple_key = 2;
+  ConsistencyOptions consistency = 3;
+}
+
+message ReadUsersetTuplesRequest {
+  string store = 1;
+  ReadUsersetTuplesFilter filter = 2;
+  ConsistencyOptions consistency = 3;
+}
+
+message ReadStartingWithUserRequest {
+  string store = 1;
+  ReadStartingWithUserFilter filter = 2;
+  ConsistencyOptions consistency = 3;
+  bool with_results_sorted_ascending = 4;
+}
+
+message WriteRequest {
+  string store = 1;
+  // deletes contains tuples to delete. The condition field is ignored for deletes;
+  // deletion matches on user, relation, and object only.
+  repeated storage.v1.types.TupleKey deletes = 2;
+  repeated storage.v1.types.TupleKey writes = 3;
+  TupleWriteOptions options = 4;
+}
+
+message WriteResponse {}
+
+message ReadAuthorizationModelRequest {
+  string store = 1;
+  string id = 2;
+}
+
+message ReadAuthorizationModelResponse {
+  storage.v1.types.AuthorizationModel model = 1;
+}
+
+message ReadAuthorizationModelsRequest {
+  string store = 1;
+  PaginationOptions pagination = 2;
+}
+
+message ReadAuthorizationModelsResponse {
+  repeated storage.v1.types.AuthorizationModel models = 1;
+  string continuation_token = 2;
+}
+
+message FindLatestAuthorizationModelRequest {
+  string store = 1;
+}
+
+message FindLatestAuthorizationModelResponse {
+  storage.v1.types.AuthorizationModel model = 1;
+}
+
+message WriteAuthorizationModelRequest {
+  string store = 1;
+  storage.v1.types.AuthorizationModel model = 2;
+}
+
+message WriteAuthorizationModelResponse {}
+
+message CreateStoreRequest {
+  storage.v1.types.Store store = 1;
+}
+
+message CreateStoreResponse {
+  storage.v1.types.Store store = 1;
+}
+
+message DeleteStoreRequest {
+  string id = 1;
+}
+
+message DeleteStoreResponse {}
+
+message GetStoreRequest {
+  string id = 1;
+}
+
+message GetStoreResponse {
+  storage.v1.types.Store store = 1;
+}
+
+message ListStoresRequest {
+  repeated string ids = 1;
+  string name = 2;
+  PaginationOptions pagination = 3;
+}
+
+message ListStoresResponse {
+  repeated storage.v1.types.Store stores = 1;
+  string continuation_token = 2;
+}
+
+message WriteAssertionsRequest {
+  string store = 1;
+  string model_id = 2;
+  repeated storage.v1.types.Assertion assertions = 3;
+}
+
+message WriteAssertionsResponse {}
+
+message ReadAssertionsRequest {
+  string store = 1;
+  string model_id = 2;
+}
+
+message ReadAssertionsResponse {
+  repeated storage.v1.types.Assertion assertions = 1;
+}
+
+message ReadChangesRequest {
+  string store = 1;
+  ReadChangesFilter filter = 2;
+  PaginationOptions pagination = 3;
+  bool sort_desc = 4;
+}
+
+message ReadChangesResponse {
+  repeated storage.v1.types.TupleChange changes = 1;
+  string continuation_token = 2;
+}
+
+message IsReadyRequest {}
+
+message IsReadyResponse {
+  string message = 1;
+  bool is_ready = 2;
+}
+
+message MaxTuplesPerWriteRequest {}
+
+message MaxTuplesPerWriteResponse {
+  int32 max = 1;
+}
+
+message MaxTypesPerAuthorizationModelRequest {}
+
+message MaxTypesPerAuthorizationModelResponse {
+  int32 max = 1;
+}
+
+// ReadFilter specifies filter criteria for reading tuples.
+// Empty strings act as wildcards (match any value).
+message ReadFilter {
+  // object filters by object ID. Empty string matches any object.
+  string object = 1;
+  // relation filters by relation name. Empty string matches any relation.
+  string relation = 2;
+  // user filters by user or userset. Empty string matches any user.
+  string user = 3;
+  // conditions filters by condition names. Empty list matches any condition.
+  // Can include empty string to match tuples without conditions.
+  repeated string conditions = 4;
+}
+
+// ReadUsersetTuplesFilter specifies filter criteria for reading userset tuples.
+message ReadUsersetTuplesFilter {
+  // object is the object to query (required).
+  string object = 1;
+  // relation is the relation to query (required).
+  string relation = 2;
+  // allowed_user_type_restrictions filters results to only these user types.
+  // Empty list returns all userset tuples.
+  repeated storage.v1.types.RelationReference allowed_user_type_restrictions = 3;
+  // conditions filters by condition names.
+  repeated string conditions = 4;
+}
+
+// ReadStartingWithUserFilter specifies criteria for reverse reads starting from users.
+message ReadStartingWithUserFilter {
+  // object_type is the type of objects to return (required).
+  string object_type = 1;
+  // relation is the relation to check (required).
+  string relation = 2;
+  // user_filter specifies the users/usersets to start from (required).
+  repeated storage.v1.types.ObjectRelation user_filter = 3;
+  // object_ids restricts results to specific object IDs.
+  // Empty list returns results for all objects.
+  // When provided, must be sorted in ascending order.
+  repeated string object_ids = 4;
+  // conditions filters by condition names.
+  repeated string conditions = 5;
+}
+
+// ReadChangesFilter specifies filter criteria for reading changelog entries.
+message ReadChangesFilter {
+  // object_type filters changes to a specific object type.
+  // Empty string returns changes for all object types.
+  string object_type = 1;
+  // horizon_offset_ms specifies how far back to read changes (in milliseconds).
+  // Changes older than this offset are excluded.
+  int64 horizon_offset_ms = 2;
+}
+
+// PaginationOptions controls pagination behavior.
+message PaginationOptions {
+  // page_size is the maximum number of items to return per page.
+  // Must be greater than 0. Default is determined by the storage backend.
+  int32 page_size = 1;
+  // from is a continuation token from a previous response.
+  // Empty string starts from the beginning.
+  string from = 2;
+}
+
+// ConsistencyOptions specifies the desired consistency level.
+message ConsistencyOptions {
+  // preference allows trading off between latency and consistency.
+  storage.v1.types.ConsistencyPreference preference = 1;
+}
+
+// TupleWriteOptions configures behavior for write operations.
+message TupleWriteOptions {
+  // on_missing_delete specifies behavior when deleting a non-existent tuple.
+  OnMissingDelete on_missing_delete = 1;
+  // on_duplicate_insert specifies behavior when inserting an existing tuple.
+  OnDuplicateInsert on_duplicate_insert = 2;
+}
+
+// OnMissingDelete specifies behavior when attempting to delete a non-existent tuple.
+enum OnMissingDelete {
+  ON_MISSING_DELETE_ERROR = 0;   // Return an error
+  ON_MISSING_DELETE_IGNORE = 1;  // Silently ignore (no-op)
+}
+
+// OnDuplicateInsert specifies behavior when attempting to insert an existing tuple.
+enum OnDuplicateInsert {
+  ON_DUPLICATE_INSERT_ERROR = 0;   // Return an error
+  ON_DUPLICATE_INSERT_IGNORE = 1;  // Silently ignore (no-op)
+}
+
