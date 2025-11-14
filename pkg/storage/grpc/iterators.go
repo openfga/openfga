@@ -54,7 +54,7 @@ func (s *streamTupleIterator) Next(ctx context.Context) (*openfgav1.Tuple, error
 				s.done = true
 				return nil, storage.ErrIteratorDone
 			}
-			return nil, fromGRPCError(err)
+			return nil, err
 		}
 		s.current = fromStorageTuple(resp.GetTuple())
 	}
@@ -101,7 +101,7 @@ func (s *streamTupleIterator) Head(ctx context.Context) (*openfgav1.Tuple, error
 			s.done = true
 			return nil, storage.ErrIteratorDone
 		}
-		return nil, fromGRPCError(err)
+		return nil, err
 	}
 
 	tuple := fromStorageTuple(resp.GetTuple())

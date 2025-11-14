@@ -7,9 +7,11 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/keepalive"
+	"google.golang.org/grpc/status"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
@@ -107,7 +109,7 @@ func (c *Client) IsReady(ctx context.Context) (storage.ReadinessStatus, error) {
 
 	resp, err := c.client.IsReady(ctx, req)
 	if err != nil {
-		return storage.ReadinessStatus{}, fromGRPCError(err)
+		return storage.ReadinessStatus{}, fmt.Errorf("grpc is ready failed: %w", err)
 	}
 
 	return storage.ReadinessStatus{
@@ -132,7 +134,7 @@ func (c *Client) Read(ctx context.Context, store string, filter storage.ReadFilt
 
 	stream, err := c.client.Read(ctx, req)
 	if err != nil {
-		return nil, fromGRPCError(err)
+		return nil, fmt.Errorf("grpc read failed: %w", err)
 	}
 
 	return newStreamTupleIterator(stream), nil
@@ -158,7 +160,7 @@ func (c *Client) ReadPage(ctx context.Context, store string, filter storage.Read
 
 	resp, err := c.client.ReadPage(ctx, req)
 	if err != nil {
-		return nil, "", fromGRPCError(err)
+		return nil, "", fmt.Errorf("grpc read page failed: %w", err)
 	}
 
 	return fromStorageTuples(resp.GetTuples()), resp.GetContinuationToken(), nil
@@ -175,7 +177,11 @@ func (c *Client) ReadUserTuple(ctx context.Context, store string, tupleKey *open
 
 	resp, err := c.client.ReadUserTuple(ctx, req)
 	if err != nil {
-		return nil, fromGRPCError(err)
+		// Check if the error is a NotFound gRPC status code
+		if st, ok := status.FromError(err); ok && st.Code() == codes.NotFound {
+			return nil, storage.ErrNotFound
+		}
+		return nil, fmt.Errorf("grpc read user tuple failed: %w", err)
 	}
 
 	// Guard against improper server implementations that return nil tuple
@@ -202,7 +208,7 @@ func (c *Client) ReadUsersetTuples(ctx context.Context, store string, filter sto
 
 	stream, err := c.client.ReadUsersetTuples(ctx, req)
 	if err != nil {
-		return nil, fromGRPCError(err)
+		return nil, fmt.Errorf("grpc read userset tuples failed: %w", err)
 	}
 
 	return newStreamTupleIterator(stream), nil
@@ -226,7 +232,7 @@ func (c *Client) ReadStartingWithUser(ctx context.Context, store string, filter 
 
 	stream, err := c.client.ReadStartingWithUser(ctx, req)
 	if err != nil {
-		return nil, fromGRPCError(err)
+		return nil, fmt.Errorf("grpc read starting with user failed: %w", err)
 	}
 
 	return newStreamTupleIterator(stream), nil
