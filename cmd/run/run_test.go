@@ -16,6 +16,7 @@ import (
 	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -1453,20 +1454,6 @@ func TestRunCommandConfigIsMerged(t *testing.T) {
 	require.NoError(t, rootCmd.Execute())
 }
 
-func TestPlaygroundConfigInvalidURL(t *testing.T) {
-	t.Cleanup(func() {
-		goleak.VerifyNone(t)
-	})
-
-	cfg := testutils.MustDefaultConfigWithRandomPorts()
-	cfg.Playground.Enabled = true
-	cfg.Playground.DestinationURL = "http://example.com\x00\x01\x02/path"
-
-	err := runServer(context.Background(), cfg)
-	require.ErrorContains(t, err, "failed to parse proxy target URL")
-
-}
-
 func TestPlaygroundProxy(t *testing.T) {
 	var wg sync.WaitGroup
 
@@ -1489,7 +1476,10 @@ func TestPlaygroundProxy(t *testing.T) {
 	defer mockPlayServer.Close()
 
 	cfg.Playground.Enabled = true
-	cfg.Playground.DestinationURL = mockPlayServer.URL
+	mockServerURL, err := url.Parse(mockPlayServer.URL)
+	require.NoError(t, err)
+	cfg.Playground.DestinationHost = mockServerURL.Host
+	cfg.Playground.DestinationScheme = mockServerURL.Scheme
 
 	wg.Add(1)
 	go func() {
@@ -1554,14 +1544,20 @@ func TestPlaygroundProxy(t *testing.T) {
 }
 
 func TestHTTPHeaders(t *testing.T) {
+	var wg sync.WaitGroup
+
 	t.Cleanup(func() {
+		wg.Wait()
 		goleak.VerifyNone(t)
 	})
+
 	cfg := testutils.MustDefaultConfigWithRandomPorts()
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		if err := runServer(ctx, cfg); err != nil {
 			log.Fatal(err)
 		}
