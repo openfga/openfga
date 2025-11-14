@@ -14,7 +14,7 @@ option go_package = "github.com/openfga/openfga/pkg/storage/grpc/proto/storage/v
 // - Store operations: CreateStore, DeleteStore, GetStore, ListStores
 // - Assertion operations: WriteAssertions, ReadAssertions
 // - Changelog operations: ReadChanges
-// - Service operations: IsReady, MaxTuplesPerWrite, MaxTypesPerAuthorizationModel
+// - Service operations: IsReady
 service StorageService {
   // Read streams tuples matching the provided filter.
   // Returns an iterator over all matching tuples with no guaranteed order.
@@ -76,12 +76,6 @@ service StorageService {
 
   // IsReady checks if the storage backend is ready to accept requests.
   rpc IsReady(IsReadyRequest) returns (IsReadyResponse);
-
-  // MaxTuplesPerWrite returns the maximum number of tuple operations per Write call.
-  rpc MaxTuplesPerWrite(MaxTuplesPerWriteRequest) returns (MaxTuplesPerWriteResponse);
-
-  // MaxTypesPerAuthorizationModel returns the maximum number of types per authorization model.
-  rpc MaxTypesPerAuthorizationModel(MaxTypesPerAuthorizationModelRequest) returns (MaxTypesPerAuthorizationModelResponse);
 }
 
 message ReadRequest {
@@ -237,18 +231,6 @@ message IsReadyRequest {}
 message IsReadyResponse {
   string message = 1;
   bool is_ready = 2;
-}
-
-message MaxTuplesPerWriteRequest {}
-
-message MaxTuplesPerWriteResponse {
-  int32 max = 1;
-}
-
-message MaxTypesPerAuthorizationModelRequest {}
-
-message MaxTypesPerAuthorizationModelResponse {
-  int32 max = 1;
 }
 
 // ReadFilter specifies filter criteria for reading tuples.
