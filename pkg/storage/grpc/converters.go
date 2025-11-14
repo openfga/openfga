@@ -3,6 +3,7 @@ package grpc
 import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
+	"github.com/openfga/openfga/pkg/storage"
 	storagev1 "github.com/openfga/openfga/pkg/storage/grpc/proto/storage/v1"
 )
 
@@ -63,6 +64,35 @@ func fromStorageTupleKey(key *storagev1.TupleKey) *openfgav1.TupleKey {
 		Object:    key.GetObject(),
 		Condition: fromStorageRelationshipCondition(key.GetCondition()),
 	}
+}
+
+func toStorageTupleKeys(keys []*openfgav1.TupleKey) []*storagev1.TupleKey {
+	if keys == nil {
+		return nil
+	}
+	result := make([]*storagev1.TupleKey, len(keys))
+	for i, k := range keys {
+		result[i] = toStorageTupleKey(k)
+	}
+	return result
+}
+
+// toStorageTupleKeysFromDeletes converts TupleKeyWithoutCondition to TupleKey.
+// Note: The condition field will be nil, as expected for delete operations.
+func toStorageTupleKeysFromDeletes(keys []*openfgav1.TupleKeyWithoutCondition) []*storagev1.TupleKey {
+	if keys == nil {
+		return nil
+	}
+	result := make([]*storagev1.TupleKey, len(keys))
+	for i, k := range keys {
+		result[i] = &storagev1.TupleKey{
+			User:     k.GetUser(),
+			Relation: k.GetRelation(),
+			Object:   k.GetObject(),
+			// condition is intentionally nil for deletes
+		}
+	}
+	return result
 }
 
 // RelationshipCondition conversions
@@ -178,5 +208,31 @@ func toStorageRelationReferences(refs []*openfgav1.RelationReference) []*storage
 	for i, ref := range refs {
 		result[i] = toStorageRelationReference(ref)
 	}
+	return result
+}
+
+// TupleWriteOptions conversions
+
+func fromStorageTupleWriteOptions(opts *storagev1.TupleWriteOptions) []storage.TupleWriteOption {
+	if opts == nil {
+		return nil
+	}
+
+	result := []storage.TupleWriteOption{}
+
+	switch opts.GetOnMissingDelete() {
+	case storagev1.OnMissingDelete_ON_MISSING_DELETE_IGNORE:
+		result = append(result, storage.WithOnMissingDelete(storage.OnMissingDeleteIgnore))
+	case storagev1.OnMissingDelete_ON_MISSING_DELETE_ERROR:
+		result = append(result, storage.WithOnMissingDelete(storage.OnMissingDeleteError))
+	}
+
+	switch opts.GetOnDuplicateInsert() {
+	case storagev1.OnDuplicateInsert_ON_DUPLICATE_INSERT_IGNORE:
+		result = append(result, storage.WithOnDuplicateInsert(storage.OnDuplicateInsertIgnore))
+	case storagev1.OnDuplicateInsert_ON_DUPLICATE_INSERT_ERROR:
+		result = append(result, storage.WithOnDuplicateInsert(storage.OnDuplicateInsertError))
+	}
+
 	return result
 }
