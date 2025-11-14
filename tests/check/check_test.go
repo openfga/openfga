@@ -334,7 +334,7 @@ func testRunAll(t *testing.T, engine string) {
 		goleak.VerifyNone(t)
 	})
 	cfg := config.MustDefaultConfig()
-	cfg.Experimentals = append(cfg.Experimentals, config.ExperimentalCheckOptimizations)
+	cfg.Experimentals = append(cfg.Experimentals, config.ExperimentalWeightedGraphCheck)
 	cfg.Log.Level = "error"
 	cfg.Datastore.Engine = engine
 	// extend the timeout for the tests, coverage makes them slower
