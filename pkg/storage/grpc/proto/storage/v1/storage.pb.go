@@ -399,50 +399,6 @@ func (x *ReadUserTupleRequest) GetConsistency() *ConsistencyOptions {
 	return nil
 }
 
-type ReadUserTupleResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Tuple         *Tuple                 `protobuf:"bytes,1,opt,name=tuple,proto3" json:"tuple,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *ReadUserTupleResponse) Reset() {
-	*x = ReadUserTupleResponse{}
-	mi := &file_storage_v1_storage_proto_msgTypes[5]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *ReadUserTupleResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*ReadUserTupleResponse) ProtoMessage() {}
-
-func (x *ReadUserTupleResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_v1_storage_proto_msgTypes[5]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use ReadUserTupleResponse.ProtoReflect.Descriptor instead.
-func (*ReadUserTupleResponse) Descriptor() ([]byte, []int) {
-	return file_storage_v1_storage_proto_rawDescGZIP(), []int{5}
-}
-
-func (x *ReadUserTupleResponse) GetTuple() *Tuple {
-	if x != nil {
-		return x.Tuple
-	}
-	return nil
-}
-
 type ReadUsersetTuplesRequest struct {
 	state         protoimpl.MessageState   `protogen:"open.v1"`
 	Store         string                   `protobuf:"bytes,1,opt,name=store,proto3" json:"store,omitempty"`
@@ -454,7 +410,7 @@ type ReadUsersetTuplesRequest struct {
 
 func (x *ReadUsersetTuplesRequest) Reset() {
 	*x = ReadUsersetTuplesRequest{}
-	mi := &file_storage_v1_storage_proto_msgTypes[6]
+	mi := &file_storage_v1_storage_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -466,7 +422,7 @@ func (x *ReadUsersetTuplesRequest) String() string {
 func (*ReadUsersetTuplesRequest) ProtoMessage() {}
 
 func (x *ReadUsersetTuplesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_v1_storage_proto_msgTypes[6]
+	mi := &file_storage_v1_storage_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -479,7 +435,7 @@ func (x *ReadUsersetTuplesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReadUsersetTuplesRequest.ProtoReflect.Descriptor instead.
 func (*ReadUsersetTuplesRequest) Descriptor() ([]byte, []int) {
-	return file_storage_v1_storage_proto_rawDescGZIP(), []int{6}
+	return file_storage_v1_storage_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *ReadUsersetTuplesRequest) GetStore() string {
@@ -503,50 +459,6 @@ func (x *ReadUsersetTuplesRequest) GetConsistency() *ConsistencyOptions {
 	return nil
 }
 
-type ReadUsersetTuplesResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Tuple         *Tuple                 `protobuf:"bytes,1,opt,name=tuple,proto3" json:"tuple,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *ReadUsersetTuplesResponse) Reset() {
-	*x = ReadUsersetTuplesResponse{}
-	mi := &file_storage_v1_storage_proto_msgTypes[7]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *ReadUsersetTuplesResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*ReadUsersetTuplesResponse) ProtoMessage() {}
-
-func (x *ReadUsersetTuplesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_v1_storage_proto_msgTypes[7]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use ReadUsersetTuplesResponse.ProtoReflect.Descriptor instead.
-func (*ReadUsersetTuplesResponse) Descriptor() ([]byte, []int) {
-	return file_storage_v1_storage_proto_rawDescGZIP(), []int{7}
-}
-
-func (x *ReadUsersetTuplesResponse) GetTuple() *Tuple {
-	if x != nil {
-		return x.Tuple
-	}
-	return nil
-}
-
 type ReadStartingWithUserRequest struct {
 	state                      protoimpl.MessageState      `protogen:"open.v1"`
 	Store                      string                      `protobuf:"bytes,1,opt,name=store,proto3" json:"store,omitempty"`
@@ -559,7 +471,7 @@ type ReadStartingWithUserRequest struct {
 
 func (x *ReadStartingWithUserRequest) Reset() {
 	*x = ReadStartingWithUserRequest{}
-	mi := &file_storage_v1_storage_proto_msgTypes[8]
+	mi := &file_storage_v1_storage_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -571,7 +483,7 @@ func (x *ReadStartingWithUserRequest) String() string {
 func (*ReadStartingWithUserRequest) ProtoMessage() {}
 
 func (x *ReadStartingWithUserRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_v1_storage_proto_msgTypes[8]
+	mi := &file_storage_v1_storage_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -584,7 +496,7 @@ func (x *ReadStartingWithUserRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReadStartingWithUserRequest.ProtoReflect.Descriptor instead.
 func (*ReadStartingWithUserRequest) Descriptor() ([]byte, []int) {
-	return file_storage_v1_storage_proto_rawDescGZIP(), []int{8}
+	return file_storage_v1_storage_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *ReadStartingWithUserRequest) GetStore() string {
@@ -615,63 +527,21 @@ func (x *ReadStartingWithUserRequest) GetWithResultsSortedAscending() bool {
 	return false
 }
 
-type ReadStartingWithUserResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Tuple         *Tuple                 `protobuf:"bytes,1,opt,name=tuple,proto3" json:"tuple,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *ReadStartingWithUserResponse) Reset() {
-	*x = ReadStartingWithUserResponse{}
-	mi := &file_storage_v1_storage_proto_msgTypes[9]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *ReadStartingWithUserResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*ReadStartingWithUserResponse) ProtoMessage() {}
-
-func (x *ReadStartingWithUserResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_v1_storage_proto_msgTypes[9]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use ReadStartingWithUserResponse.ProtoReflect.Descriptor instead.
-func (*ReadStartingWithUserResponse) Descriptor() ([]byte, []int) {
-	return file_storage_v1_storage_proto_rawDescGZIP(), []int{9}
-}
-
-func (x *ReadStartingWithUserResponse) GetTuple() *Tuple {
-	if x != nil {
-		return x.Tuple
-	}
-	return nil
-}
-
 type WriteRequest struct {
-	state         protoimpl.MessageState      `protogen:"open.v1"`
-	Store         string                      `protobuf:"bytes,1,opt,name=store,proto3" json:"store,omitempty"`
-	Deletes       []*TupleKeyWithoutCondition `protobuf:"bytes,2,rep,name=deletes,proto3" json:"deletes,omitempty"`
-	Writes        []*TupleKey                 `protobuf:"bytes,3,rep,name=writes,proto3" json:"writes,omitempty"`
-	Options       *TupleWriteOptions          `protobuf:"bytes,4,opt,name=options,proto3" json:"options,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Store string                 `protobuf:"bytes,1,opt,name=store,proto3" json:"store,omitempty"`
+	// deletes contains tuples to delete. The condition field is ignored for deletes;
+	// deletion matches on user, relation, and object only.
+	Deletes       []*TupleKey        `protobuf:"bytes,2,rep,name=deletes,proto3" json:"deletes,omitempty"`
+	Writes        []*TupleKey        `protobuf:"bytes,3,rep,name=writes,proto3" json:"writes,omitempty"`
+	Options       *TupleWriteOptions `protobuf:"bytes,4,opt,name=options,proto3" json:"options,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *WriteRequest) Reset() {
 	*x = WriteRequest{}
-	mi := &file_storage_v1_storage_proto_msgTypes[10]
+	mi := &file_storage_v1_storage_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -683,7 +553,7 @@ func (x *WriteRequest) String() string {
 func (*WriteRequest) ProtoMessage() {}
 
 func (x *WriteRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_v1_storage_proto_msgTypes[10]
+	mi := &file_storage_v1_storage_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -696,7 +566,7 @@ func (x *WriteRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WriteRequest.ProtoReflect.Descriptor instead.
 func (*WriteRequest) Descriptor() ([]byte, []int) {
-	return file_storage_v1_storage_proto_rawDescGZIP(), []int{10}
+	return file_storage_v1_storage_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *WriteRequest) GetStore() string {
@@ -706,7 +576,7 @@ func (x *WriteRequest) GetStore() string {
 	return ""
 }
 
-func (x *WriteRequest) GetDeletes() []*TupleKeyWithoutCondition {
+func (x *WriteRequest) GetDeletes() []*TupleKey {
 	if x != nil {
 		return x.Deletes
 	}
@@ -735,7 +605,7 @@ type WriteResponse struct {
 
 func (x *WriteResponse) Reset() {
 	*x = WriteResponse{}
-	mi := &file_storage_v1_storage_proto_msgTypes[11]
+	mi := &file_storage_v1_storage_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -747,7 +617,7 @@ func (x *WriteResponse) String() string {
 func (*WriteResponse) ProtoMessage() {}
 
 func (x *WriteResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_v1_storage_proto_msgTypes[11]
+	mi := &file_storage_v1_storage_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -760,7 +630,7 @@ func (x *WriteResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WriteResponse.ProtoReflect.Descriptor instead.
 func (*WriteResponse) Descriptor() ([]byte, []int) {
-	return file_storage_v1_storage_proto_rawDescGZIP(), []int{11}
+	return file_storage_v1_storage_proto_rawDescGZIP(), []int{8}
 }
 
 type ReadAuthorizationModelRequest struct {
@@ -773,7 +643,7 @@ type ReadAuthorizationModelRequest struct {
 
 func (x *ReadAuthorizationModelRequest) Reset() {
 	*x = ReadAuthorizationModelRequest{}
-	mi := &file_storage_v1_storage_proto_msgTypes[12]
+	mi := &file_storage_v1_storage_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -785,7 +655,7 @@ func (x *ReadAuthorizationModelRequest) String() string {
 func (*ReadAuthorizationModelRequest) ProtoMessage() {}
 
 func (x *ReadAuthorizationModelRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_v1_storage_proto_msgTypes[12]
+	mi := &file_storage_v1_storage_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -798,7 +668,7 @@ func (x *ReadAuthorizationModelRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReadAuthorizationModelRequest.ProtoReflect.Descriptor instead.
 func (*ReadAuthorizationModelRequest) Descriptor() ([]byte, []int) {
-	return file_storage_v1_storage_proto_rawDescGZIP(), []int{12}
+	return file_storage_v1_storage_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *ReadAuthorizationModelRequest) GetStore() string {
@@ -824,7 +694,7 @@ type ReadAuthorizationModelResponse struct {
 
 func (x *ReadAuthorizationModelResponse) Reset() {
 	*x = ReadAuthorizationModelResponse{}
-	mi := &file_storage_v1_storage_proto_msgTypes[13]
+	mi := &file_storage_v1_storage_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -836,7 +706,7 @@ func (x *ReadAuthorizationModelResponse) String() string {
 func (*ReadAuthorizationModelResponse) ProtoMessage() {}
 
 func (x *ReadAuthorizationModelResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_v1_storage_proto_msgTypes[13]
+	mi := &file_storage_v1_storage_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -849,7 +719,7 @@ func (x *ReadAuthorizationModelResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReadAuthorizationModelResponse.ProtoReflect.Descriptor instead.
 func (*ReadAuthorizationModelResponse) Descriptor() ([]byte, []int) {
-	return file_storage_v1_storage_proto_rawDescGZIP(), []int{13}
+	return file_storage_v1_storage_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *ReadAuthorizationModelResponse) GetModel() *AuthorizationModel {
@@ -869,7 +739,7 @@ type ReadAuthorizationModelsRequest struct {
 
 func (x *ReadAuthorizationModelsRequest) Reset() {
 	*x = ReadAuthorizationModelsRequest{}
-	mi := &file_storage_v1_storage_proto_msgTypes[14]
+	mi := &file_storage_v1_storage_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -881,7 +751,7 @@ func (x *ReadAuthorizationModelsRequest) String() string {
 func (*ReadAuthorizationModelsRequest) ProtoMessage() {}
 
 func (x *ReadAuthorizationModelsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_v1_storage_proto_msgTypes[14]
+	mi := &file_storage_v1_storage_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -894,7 +764,7 @@ func (x *ReadAuthorizationModelsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReadAuthorizationModelsRequest.ProtoReflect.Descriptor instead.
 func (*ReadAuthorizationModelsRequest) Descriptor() ([]byte, []int) {
-	return file_storage_v1_storage_proto_rawDescGZIP(), []int{14}
+	return file_storage_v1_storage_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *ReadAuthorizationModelsRequest) GetStore() string {
@@ -921,7 +791,7 @@ type ReadAuthorizationModelsResponse struct {
 
 func (x *ReadAuthorizationModelsResponse) Reset() {
 	*x = ReadAuthorizationModelsResponse{}
-	mi := &file_storage_v1_storage_proto_msgTypes[15]
+	mi := &file_storage_v1_storage_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -933,7 +803,7 @@ func (x *ReadAuthorizationModelsResponse) String() string {
 func (*ReadAuthorizationModelsResponse) ProtoMessage() {}
 
 func (x *ReadAuthorizationModelsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_v1_storage_proto_msgTypes[15]
+	mi := &file_storage_v1_storage_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -946,7 +816,7 @@ func (x *ReadAuthorizationModelsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReadAuthorizationModelsResponse.ProtoReflect.Descriptor instead.
 func (*ReadAuthorizationModelsResponse) Descriptor() ([]byte, []int) {
-	return file_storage_v1_storage_proto_rawDescGZIP(), []int{15}
+	return file_storage_v1_storage_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *ReadAuthorizationModelsResponse) GetModels() []*AuthorizationModel {
@@ -972,7 +842,7 @@ type FindLatestAuthorizationModelRequest struct {
 
 func (x *FindLatestAuthorizationModelRequest) Reset() {
 	*x = FindLatestAuthorizationModelRequest{}
-	mi := &file_storage_v1_storage_proto_msgTypes[16]
+	mi := &file_storage_v1_storage_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -984,7 +854,7 @@ func (x *FindLatestAuthorizationModelRequest) String() string {
 func (*FindLatestAuthorizationModelRequest) ProtoMessage() {}
 
 func (x *FindLatestAuthorizationModelRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_v1_storage_proto_msgTypes[16]
+	mi := &file_storage_v1_storage_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -997,7 +867,7 @@ func (x *FindLatestAuthorizationModelRequest) ProtoReflect() protoreflect.Messag
 
 // Deprecated: Use FindLatestAuthorizationModelRequest.ProtoReflect.Descriptor instead.
 func (*FindLatestAuthorizationModelRequest) Descriptor() ([]byte, []int) {
-	return file_storage_v1_storage_proto_rawDescGZIP(), []int{16}
+	return file_storage_v1_storage_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *FindLatestAuthorizationModelRequest) GetStore() string {
@@ -1016,7 +886,7 @@ type FindLatestAuthorizationModelResponse struct {
 
 func (x *FindLatestAuthorizationModelResponse) Reset() {
 	*x = FindLatestAuthorizationModelResponse{}
-	mi := &file_storage_v1_storage_proto_msgTypes[17]
+	mi := &file_storage_v1_storage_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1028,7 +898,7 @@ func (x *FindLatestAuthorizationModelResponse) String() string {
 func (*FindLatestAuthorizationModelResponse) ProtoMessage() {}
 
 func (x *FindLatestAuthorizationModelResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_v1_storage_proto_msgTypes[17]
+	mi := &file_storage_v1_storage_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1041,7 +911,7 @@ func (x *FindLatestAuthorizationModelResponse) ProtoReflect() protoreflect.Messa
 
 // Deprecated: Use FindLatestAuthorizationModelResponse.ProtoReflect.Descriptor instead.
 func (*FindLatestAuthorizationModelResponse) Descriptor() ([]byte, []int) {
-	return file_storage_v1_storage_proto_rawDescGZIP(), []int{17}
+	return file_storage_v1_storage_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *FindLatestAuthorizationModelResponse) GetModel() *AuthorizationModel {
@@ -1061,7 +931,7 @@ type WriteAuthorizationModelRequest struct {
 
 func (x *WriteAuthorizationModelRequest) Reset() {
 	*x = WriteAuthorizationModelRequest{}
-	mi := &file_storage_v1_storage_proto_msgTypes[18]
+	mi := &file_storage_v1_storage_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1073,7 +943,7 @@ func (x *WriteAuthorizationModelRequest) String() string {
 func (*WriteAuthorizationModelRequest) ProtoMessage() {}
 
 func (x *WriteAuthorizationModelRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_v1_storage_proto_msgTypes[18]
+	mi := &file_storage_v1_storage_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1086,7 +956,7 @@ func (x *WriteAuthorizationModelRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WriteAuthorizationModelRequest.ProtoReflect.Descriptor instead.
 func (*WriteAuthorizationModelRequest) Descriptor() ([]byte, []int) {
-	return file_storage_v1_storage_proto_rawDescGZIP(), []int{18}
+	return file_storage_v1_storage_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *WriteAuthorizationModelRequest) GetStore() string {
@@ -1111,7 +981,7 @@ type WriteAuthorizationModelResponse struct {
 
 func (x *WriteAuthorizationModelResponse) Reset() {
 	*x = WriteAuthorizationModelResponse{}
-	mi := &file_storage_v1_storage_proto_msgTypes[19]
+	mi := &file_storage_v1_storage_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1123,7 +993,7 @@ func (x *WriteAuthorizationModelResponse) String() string {
 func (*WriteAuthorizationModelResponse) ProtoMessage() {}
 
 func (x *WriteAuthorizationModelResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_v1_storage_proto_msgTypes[19]
+	mi := &file_storage_v1_storage_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1136,7 +1006,7 @@ func (x *WriteAuthorizationModelResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WriteAuthorizationModelResponse.ProtoReflect.Descriptor instead.
 func (*WriteAuthorizationModelResponse) Descriptor() ([]byte, []int) {
-	return file_storage_v1_storage_proto_rawDescGZIP(), []int{19}
+	return file_storage_v1_storage_proto_rawDescGZIP(), []int{16}
 }
 
 type CreateStoreRequest struct {
@@ -1148,7 +1018,7 @@ type CreateStoreRequest struct {
 
 func (x *CreateStoreRequest) Reset() {
 	*x = CreateStoreRequest{}
-	mi := &file_storage_v1_storage_proto_msgTypes[20]
+	mi := &file_storage_v1_storage_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1160,7 +1030,7 @@ func (x *CreateStoreRequest) String() string {
 func (*CreateStoreRequest) ProtoMessage() {}
 
 func (x *CreateStoreRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_v1_storage_proto_msgTypes[20]
+	mi := &file_storage_v1_storage_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1173,7 +1043,7 @@ func (x *CreateStoreRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateStoreRequest.ProtoReflect.Descriptor instead.
 func (*CreateStoreRequest) Descriptor() ([]byte, []int) {
-	return file_storage_v1_storage_proto_rawDescGZIP(), []int{20}
+	return file_storage_v1_storage_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *CreateStoreRequest) GetStore() *Store {
@@ -1192,7 +1062,7 @@ type CreateStoreResponse struct {
 
 func (x *CreateStoreResponse) Reset() {
 	*x = CreateStoreResponse{}
-	mi := &file_storage_v1_storage_proto_msgTypes[21]
+	mi := &file_storage_v1_storage_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1204,7 +1074,7 @@ func (x *CreateStoreResponse) String() string {
 func (*CreateStoreResponse) ProtoMessage() {}
 
 func (x *CreateStoreResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_v1_storage_proto_msgTypes[21]
+	mi := &file_storage_v1_storage_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1217,7 +1087,7 @@ func (x *CreateStoreResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateStoreResponse.ProtoReflect.Descriptor instead.
 func (*CreateStoreResponse) Descriptor() ([]byte, []int) {
-	return file_storage_v1_storage_proto_rawDescGZIP(), []int{21}
+	return file_storage_v1_storage_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *CreateStoreResponse) GetStore() *Store {
@@ -1236,7 +1106,7 @@ type DeleteStoreRequest struct {
 
 func (x *DeleteStoreRequest) Reset() {
 	*x = DeleteStoreRequest{}
-	mi := &file_storage_v1_storage_proto_msgTypes[22]
+	mi := &file_storage_v1_storage_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1248,7 +1118,7 @@ func (x *DeleteStoreRequest) String() string {
 func (*DeleteStoreRequest) ProtoMessage() {}
 
 func (x *DeleteStoreRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_v1_storage_proto_msgTypes[22]
+	mi := &file_storage_v1_storage_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1261,7 +1131,7 @@ func (x *DeleteStoreRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteStoreRequest.ProtoReflect.Descriptor instead.
 func (*DeleteStoreRequest) Descriptor() ([]byte, []int) {
-	return file_storage_v1_storage_proto_rawDescGZIP(), []int{22}
+	return file_storage_v1_storage_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *DeleteStoreRequest) GetId() string {
@@ -1279,7 +1149,7 @@ type DeleteStoreResponse struct {
 
 func (x *DeleteStoreResponse) Reset() {
 	*x = DeleteStoreResponse{}
-	mi := &file_storage_v1_storage_proto_msgTypes[23]
+	mi := &file_storage_v1_storage_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1291,7 +1161,7 @@ func (x *DeleteStoreResponse) String() string {
 func (*DeleteStoreResponse) ProtoMessage() {}
 
 func (x *DeleteStoreResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_v1_storage_proto_msgTypes[23]
+	mi := &file_storage_v1_storage_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1304,7 +1174,7 @@ func (x *DeleteStoreResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteStoreResponse.ProtoReflect.Descriptor instead.
 func (*DeleteStoreResponse) Descriptor() ([]byte, []int) {
-	return file_storage_v1_storage_proto_rawDescGZIP(), []int{23}
+	return file_storage_v1_storage_proto_rawDescGZIP(), []int{20}
 }
 
 type GetStoreRequest struct {
@@ -1316,7 +1186,7 @@ type GetStoreRequest struct {
 
 func (x *GetStoreRequest) Reset() {
 	*x = GetStoreRequest{}
-	mi := &file_storage_v1_storage_proto_msgTypes[24]
+	mi := &file_storage_v1_storage_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1328,7 +1198,7 @@ func (x *GetStoreRequest) String() string {
 func (*GetStoreRequest) ProtoMessage() {}
 
 func (x *GetStoreRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_v1_storage_proto_msgTypes[24]
+	mi := &file_storage_v1_storage_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1341,7 +1211,7 @@ func (x *GetStoreRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetStoreRequest.ProtoReflect.Descriptor instead.
 func (*GetStoreRequest) Descriptor() ([]byte, []int) {
-	return file_storage_v1_storage_proto_rawDescGZIP(), []int{24}
+	return file_storage_v1_storage_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *GetStoreRequest) GetId() string {
@@ -1360,7 +1230,7 @@ type GetStoreResponse struct {
 
 func (x *GetStoreResponse) Reset() {
 	*x = GetStoreResponse{}
-	mi := &file_storage_v1_storage_proto_msgTypes[25]
+	mi := &file_storage_v1_storage_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1372,7 +1242,7 @@ func (x *GetStoreResponse) String() string {
 func (*GetStoreResponse) ProtoMessage() {}
 
 func (x *GetStoreResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_v1_storage_proto_msgTypes[25]
+	mi := &file_storage_v1_storage_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1385,7 +1255,7 @@ func (x *GetStoreResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetStoreResponse.ProtoReflect.Descriptor instead.
 func (*GetStoreResponse) Descriptor() ([]byte, []int) {
-	return file_storage_v1_storage_proto_rawDescGZIP(), []int{25}
+	return file_storage_v1_storage_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *GetStoreResponse) GetStore() *Store {
@@ -1406,7 +1276,7 @@ type ListStoresRequest struct {
 
 func (x *ListStoresRequest) Reset() {
 	*x = ListStoresRequest{}
-	mi := &file_storage_v1_storage_proto_msgTypes[26]
+	mi := &file_storage_v1_storage_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1418,7 +1288,7 @@ func (x *ListStoresRequest) String() string {
 func (*ListStoresRequest) ProtoMessage() {}
 
 func (x *ListStoresRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_v1_storage_proto_msgTypes[26]
+	mi := &file_storage_v1_storage_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1431,7 +1301,7 @@ func (x *ListStoresRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListStoresRequest.ProtoReflect.Descriptor instead.
 func (*ListStoresRequest) Descriptor() ([]byte, []int) {
-	return file_storage_v1_storage_proto_rawDescGZIP(), []int{26}
+	return file_storage_v1_storage_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *ListStoresRequest) GetIds() []string {
@@ -1465,7 +1335,7 @@ type ListStoresResponse struct {
 
 func (x *ListStoresResponse) Reset() {
 	*x = ListStoresResponse{}
-	mi := &file_storage_v1_storage_proto_msgTypes[27]
+	mi := &file_storage_v1_storage_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1477,7 +1347,7 @@ func (x *ListStoresResponse) String() string {
 func (*ListStoresResponse) ProtoMessage() {}
 
 func (x *ListStoresResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_v1_storage_proto_msgTypes[27]
+	mi := &file_storage_v1_storage_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1490,7 +1360,7 @@ func (x *ListStoresResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListStoresResponse.ProtoReflect.Descriptor instead.
 func (*ListStoresResponse) Descriptor() ([]byte, []int) {
-	return file_storage_v1_storage_proto_rawDescGZIP(), []int{27}
+	return file_storage_v1_storage_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *ListStoresResponse) GetStores() []*Store {
@@ -1518,7 +1388,7 @@ type WriteAssertionsRequest struct {
 
 func (x *WriteAssertionsRequest) Reset() {
 	*x = WriteAssertionsRequest{}
-	mi := &file_storage_v1_storage_proto_msgTypes[28]
+	mi := &file_storage_v1_storage_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1530,7 +1400,7 @@ func (x *WriteAssertionsRequest) String() string {
 func (*WriteAssertionsRequest) ProtoMessage() {}
 
 func (x *WriteAssertionsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_v1_storage_proto_msgTypes[28]
+	mi := &file_storage_v1_storage_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1543,7 +1413,7 @@ func (x *WriteAssertionsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WriteAssertionsRequest.ProtoReflect.Descriptor instead.
 func (*WriteAssertionsRequest) Descriptor() ([]byte, []int) {
-	return file_storage_v1_storage_proto_rawDescGZIP(), []int{28}
+	return file_storage_v1_storage_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *WriteAssertionsRequest) GetStore() string {
@@ -1575,7 +1445,7 @@ type WriteAssertionsResponse struct {
 
 func (x *WriteAssertionsResponse) Reset() {
 	*x = WriteAssertionsResponse{}
-	mi := &file_storage_v1_storage_proto_msgTypes[29]
+	mi := &file_storage_v1_storage_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1587,7 +1457,7 @@ func (x *WriteAssertionsResponse) String() string {
 func (*WriteAssertionsResponse) ProtoMessage() {}
 
 func (x *WriteAssertionsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_v1_storage_proto_msgTypes[29]
+	mi := &file_storage_v1_storage_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1600,7 +1470,7 @@ func (x *WriteAssertionsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WriteAssertionsResponse.ProtoReflect.Descriptor instead.
 func (*WriteAssertionsResponse) Descriptor() ([]byte, []int) {
-	return file_storage_v1_storage_proto_rawDescGZIP(), []int{29}
+	return file_storage_v1_storage_proto_rawDescGZIP(), []int{26}
 }
 
 type ReadAssertionsRequest struct {
@@ -1613,7 +1483,7 @@ type ReadAssertionsRequest struct {
 
 func (x *ReadAssertionsRequest) Reset() {
 	*x = ReadAssertionsRequest{}
-	mi := &file_storage_v1_storage_proto_msgTypes[30]
+	mi := &file_storage_v1_storage_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1625,7 +1495,7 @@ func (x *ReadAssertionsRequest) String() string {
 func (*ReadAssertionsRequest) ProtoMessage() {}
 
 func (x *ReadAssertionsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_v1_storage_proto_msgTypes[30]
+	mi := &file_storage_v1_storage_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1638,7 +1508,7 @@ func (x *ReadAssertionsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReadAssertionsRequest.ProtoReflect.Descriptor instead.
 func (*ReadAssertionsRequest) Descriptor() ([]byte, []int) {
-	return file_storage_v1_storage_proto_rawDescGZIP(), []int{30}
+	return file_storage_v1_storage_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *ReadAssertionsRequest) GetStore() string {
@@ -1664,7 +1534,7 @@ type ReadAssertionsResponse struct {
 
 func (x *ReadAssertionsResponse) Reset() {
 	*x = ReadAssertionsResponse{}
-	mi := &file_storage_v1_storage_proto_msgTypes[31]
+	mi := &file_storage_v1_storage_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1676,7 +1546,7 @@ func (x *ReadAssertionsResponse) String() string {
 func (*ReadAssertionsResponse) ProtoMessage() {}
 
 func (x *ReadAssertionsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_v1_storage_proto_msgTypes[31]
+	mi := &file_storage_v1_storage_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1689,7 +1559,7 @@ func (x *ReadAssertionsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReadAssertionsResponse.ProtoReflect.Descriptor instead.
 func (*ReadAssertionsResponse) Descriptor() ([]byte, []int) {
-	return file_storage_v1_storage_proto_rawDescGZIP(), []int{31}
+	return file_storage_v1_storage_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *ReadAssertionsResponse) GetAssertions() []*Assertion {
@@ -1711,7 +1581,7 @@ type ReadChangesRequest struct {
 
 func (x *ReadChangesRequest) Reset() {
 	*x = ReadChangesRequest{}
-	mi := &file_storage_v1_storage_proto_msgTypes[32]
+	mi := &file_storage_v1_storage_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1723,7 +1593,7 @@ func (x *ReadChangesRequest) String() string {
 func (*ReadChangesRequest) ProtoMessage() {}
 
 func (x *ReadChangesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_v1_storage_proto_msgTypes[32]
+	mi := &file_storage_v1_storage_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1736,7 +1606,7 @@ func (x *ReadChangesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReadChangesRequest.ProtoReflect.Descriptor instead.
 func (*ReadChangesRequest) Descriptor() ([]byte, []int) {
-	return file_storage_v1_storage_proto_rawDescGZIP(), []int{32}
+	return file_storage_v1_storage_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *ReadChangesRequest) GetStore() string {
@@ -1777,7 +1647,7 @@ type ReadChangesResponse struct {
 
 func (x *ReadChangesResponse) Reset() {
 	*x = ReadChangesResponse{}
-	mi := &file_storage_v1_storage_proto_msgTypes[33]
+	mi := &file_storage_v1_storage_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1789,7 +1659,7 @@ func (x *ReadChangesResponse) String() string {
 func (*ReadChangesResponse) ProtoMessage() {}
 
 func (x *ReadChangesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_v1_storage_proto_msgTypes[33]
+	mi := &file_storage_v1_storage_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1802,7 +1672,7 @@ func (x *ReadChangesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReadChangesResponse.ProtoReflect.Descriptor instead.
 func (*ReadChangesResponse) Descriptor() ([]byte, []int) {
-	return file_storage_v1_storage_proto_rawDescGZIP(), []int{33}
+	return file_storage_v1_storage_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *ReadChangesResponse) GetChanges() []*TupleChange {
@@ -1827,7 +1697,7 @@ type IsReadyRequest struct {
 
 func (x *IsReadyRequest) Reset() {
 	*x = IsReadyRequest{}
-	mi := &file_storage_v1_storage_proto_msgTypes[34]
+	mi := &file_storage_v1_storage_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1839,7 +1709,7 @@ func (x *IsReadyRequest) String() string {
 func (*IsReadyRequest) ProtoMessage() {}
 
 func (x *IsReadyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_v1_storage_proto_msgTypes[34]
+	mi := &file_storage_v1_storage_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1852,7 +1722,7 @@ func (x *IsReadyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use IsReadyRequest.ProtoReflect.Descriptor instead.
 func (*IsReadyRequest) Descriptor() ([]byte, []int) {
-	return file_storage_v1_storage_proto_rawDescGZIP(), []int{34}
+	return file_storage_v1_storage_proto_rawDescGZIP(), []int{31}
 }
 
 type IsReadyResponse struct {
@@ -1865,7 +1735,7 @@ type IsReadyResponse struct {
 
 func (x *IsReadyResponse) Reset() {
 	*x = IsReadyResponse{}
-	mi := &file_storage_v1_storage_proto_msgTypes[35]
+	mi := &file_storage_v1_storage_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1877,7 +1747,7 @@ func (x *IsReadyResponse) String() string {
 func (*IsReadyResponse) ProtoMessage() {}
 
 func (x *IsReadyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_v1_storage_proto_msgTypes[35]
+	mi := &file_storage_v1_storage_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1890,7 +1760,7 @@ func (x *IsReadyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use IsReadyResponse.ProtoReflect.Descriptor instead.
 func (*IsReadyResponse) Descriptor() ([]byte, []int) {
-	return file_storage_v1_storage_proto_rawDescGZIP(), []int{35}
+	return file_storage_v1_storage_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *IsReadyResponse) GetMessage() string {
@@ -1915,7 +1785,7 @@ type MaxTuplesPerWriteRequest struct {
 
 func (x *MaxTuplesPerWriteRequest) Reset() {
 	*x = MaxTuplesPerWriteRequest{}
-	mi := &file_storage_v1_storage_proto_msgTypes[36]
+	mi := &file_storage_v1_storage_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1927,7 +1797,7 @@ func (x *MaxTuplesPerWriteRequest) String() string {
 func (*MaxTuplesPerWriteRequest) ProtoMessage() {}
 
 func (x *MaxTuplesPerWriteRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_v1_storage_proto_msgTypes[36]
+	mi := &file_storage_v1_storage_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1940,7 +1810,7 @@ func (x *MaxTuplesPerWriteRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MaxTuplesPerWriteRequest.ProtoReflect.Descriptor instead.
 func (*MaxTuplesPerWriteRequest) Descriptor() ([]byte, []int) {
-	return file_storage_v1_storage_proto_rawDescGZIP(), []int{36}
+	return file_storage_v1_storage_proto_rawDescGZIP(), []int{33}
 }
 
 type MaxTuplesPerWriteResponse struct {
@@ -1952,7 +1822,7 @@ type MaxTuplesPerWriteResponse struct {
 
 func (x *MaxTuplesPerWriteResponse) Reset() {
 	*x = MaxTuplesPerWriteResponse{}
-	mi := &file_storage_v1_storage_proto_msgTypes[37]
+	mi := &file_storage_v1_storage_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1964,7 +1834,7 @@ func (x *MaxTuplesPerWriteResponse) String() string {
 func (*MaxTuplesPerWriteResponse) ProtoMessage() {}
 
 func (x *MaxTuplesPerWriteResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_v1_storage_proto_msgTypes[37]
+	mi := &file_storage_v1_storage_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1977,7 +1847,7 @@ func (x *MaxTuplesPerWriteResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MaxTuplesPerWriteResponse.ProtoReflect.Descriptor instead.
 func (*MaxTuplesPerWriteResponse) Descriptor() ([]byte, []int) {
-	return file_storage_v1_storage_proto_rawDescGZIP(), []int{37}
+	return file_storage_v1_storage_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *MaxTuplesPerWriteResponse) GetMax() int32 {
@@ -1995,7 +1865,7 @@ type MaxTypesPerAuthorizationModelRequest struct {
 
 func (x *MaxTypesPerAuthorizationModelRequest) Reset() {
 	*x = MaxTypesPerAuthorizationModelRequest{}
-	mi := &file_storage_v1_storage_proto_msgTypes[38]
+	mi := &file_storage_v1_storage_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2007,7 +1877,7 @@ func (x *MaxTypesPerAuthorizationModelRequest) String() string {
 func (*MaxTypesPerAuthorizationModelRequest) ProtoMessage() {}
 
 func (x *MaxTypesPerAuthorizationModelRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_v1_storage_proto_msgTypes[38]
+	mi := &file_storage_v1_storage_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2020,7 +1890,7 @@ func (x *MaxTypesPerAuthorizationModelRequest) ProtoReflect() protoreflect.Messa
 
 // Deprecated: Use MaxTypesPerAuthorizationModelRequest.ProtoReflect.Descriptor instead.
 func (*MaxTypesPerAuthorizationModelRequest) Descriptor() ([]byte, []int) {
-	return file_storage_v1_storage_proto_rawDescGZIP(), []int{38}
+	return file_storage_v1_storage_proto_rawDescGZIP(), []int{35}
 }
 
 type MaxTypesPerAuthorizationModelResponse struct {
@@ -2032,7 +1902,7 @@ type MaxTypesPerAuthorizationModelResponse struct {
 
 func (x *MaxTypesPerAuthorizationModelResponse) Reset() {
 	*x = MaxTypesPerAuthorizationModelResponse{}
-	mi := &file_storage_v1_storage_proto_msgTypes[39]
+	mi := &file_storage_v1_storage_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2044,7 +1914,7 @@ func (x *MaxTypesPerAuthorizationModelResponse) String() string {
 func (*MaxTypesPerAuthorizationModelResponse) ProtoMessage() {}
 
 func (x *MaxTypesPerAuthorizationModelResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_v1_storage_proto_msgTypes[39]
+	mi := &file_storage_v1_storage_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2057,7 +1927,7 @@ func (x *MaxTypesPerAuthorizationModelResponse) ProtoReflect() protoreflect.Mess
 
 // Deprecated: Use MaxTypesPerAuthorizationModelResponse.ProtoReflect.Descriptor instead.
 func (*MaxTypesPerAuthorizationModelResponse) Descriptor() ([]byte, []int) {
-	return file_storage_v1_storage_proto_rawDescGZIP(), []int{39}
+	return file_storage_v1_storage_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *MaxTypesPerAuthorizationModelResponse) GetMax() int32 {
@@ -2086,7 +1956,7 @@ type ReadFilter struct {
 
 func (x *ReadFilter) Reset() {
 	*x = ReadFilter{}
-	mi := &file_storage_v1_storage_proto_msgTypes[40]
+	mi := &file_storage_v1_storage_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2098,7 +1968,7 @@ func (x *ReadFilter) String() string {
 func (*ReadFilter) ProtoMessage() {}
 
 func (x *ReadFilter) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_v1_storage_proto_msgTypes[40]
+	mi := &file_storage_v1_storage_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2111,7 +1981,7 @@ func (x *ReadFilter) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReadFilter.ProtoReflect.Descriptor instead.
 func (*ReadFilter) Descriptor() ([]byte, []int) {
-	return file_storage_v1_storage_proto_rawDescGZIP(), []int{40}
+	return file_storage_v1_storage_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *ReadFilter) GetObject() string {
@@ -2160,7 +2030,7 @@ type ReadUsersetTuplesFilter struct {
 
 func (x *ReadUsersetTuplesFilter) Reset() {
 	*x = ReadUsersetTuplesFilter{}
-	mi := &file_storage_v1_storage_proto_msgTypes[41]
+	mi := &file_storage_v1_storage_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2172,7 +2042,7 @@ func (x *ReadUsersetTuplesFilter) String() string {
 func (*ReadUsersetTuplesFilter) ProtoMessage() {}
 
 func (x *ReadUsersetTuplesFilter) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_v1_storage_proto_msgTypes[41]
+	mi := &file_storage_v1_storage_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2185,7 +2055,7 @@ func (x *ReadUsersetTuplesFilter) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReadUsersetTuplesFilter.ProtoReflect.Descriptor instead.
 func (*ReadUsersetTuplesFilter) Descriptor() ([]byte, []int) {
-	return file_storage_v1_storage_proto_rawDescGZIP(), []int{41}
+	return file_storage_v1_storage_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *ReadUsersetTuplesFilter) GetObject() string {
@@ -2237,7 +2107,7 @@ type ReadStartingWithUserFilter struct {
 
 func (x *ReadStartingWithUserFilter) Reset() {
 	*x = ReadStartingWithUserFilter{}
-	mi := &file_storage_v1_storage_proto_msgTypes[42]
+	mi := &file_storage_v1_storage_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2249,7 +2119,7 @@ func (x *ReadStartingWithUserFilter) String() string {
 func (*ReadStartingWithUserFilter) ProtoMessage() {}
 
 func (x *ReadStartingWithUserFilter) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_v1_storage_proto_msgTypes[42]
+	mi := &file_storage_v1_storage_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2262,7 +2132,7 @@ func (x *ReadStartingWithUserFilter) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReadStartingWithUserFilter.ProtoReflect.Descriptor instead.
 func (*ReadStartingWithUserFilter) Descriptor() ([]byte, []int) {
-	return file_storage_v1_storage_proto_rawDescGZIP(), []int{42}
+	return file_storage_v1_storage_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *ReadStartingWithUserFilter) GetObjectType() string {
@@ -2315,7 +2185,7 @@ type ReadChangesFilter struct {
 
 func (x *ReadChangesFilter) Reset() {
 	*x = ReadChangesFilter{}
-	mi := &file_storage_v1_storage_proto_msgTypes[43]
+	mi := &file_storage_v1_storage_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2327,7 +2197,7 @@ func (x *ReadChangesFilter) String() string {
 func (*ReadChangesFilter) ProtoMessage() {}
 
 func (x *ReadChangesFilter) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_v1_storage_proto_msgTypes[43]
+	mi := &file_storage_v1_storage_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2340,7 +2210,7 @@ func (x *ReadChangesFilter) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReadChangesFilter.ProtoReflect.Descriptor instead.
 func (*ReadChangesFilter) Descriptor() ([]byte, []int) {
-	return file_storage_v1_storage_proto_rawDescGZIP(), []int{43}
+	return file_storage_v1_storage_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *ReadChangesFilter) GetObjectType() string {
@@ -2372,7 +2242,7 @@ type PaginationOptions struct {
 
 func (x *PaginationOptions) Reset() {
 	*x = PaginationOptions{}
-	mi := &file_storage_v1_storage_proto_msgTypes[44]
+	mi := &file_storage_v1_storage_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2384,7 +2254,7 @@ func (x *PaginationOptions) String() string {
 func (*PaginationOptions) ProtoMessage() {}
 
 func (x *PaginationOptions) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_v1_storage_proto_msgTypes[44]
+	mi := &file_storage_v1_storage_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2397,7 +2267,7 @@ func (x *PaginationOptions) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PaginationOptions.ProtoReflect.Descriptor instead.
 func (*PaginationOptions) Descriptor() ([]byte, []int) {
-	return file_storage_v1_storage_proto_rawDescGZIP(), []int{44}
+	return file_storage_v1_storage_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *PaginationOptions) GetPageSize() int32 {
@@ -2425,7 +2295,7 @@ type ConsistencyOptions struct {
 
 func (x *ConsistencyOptions) Reset() {
 	*x = ConsistencyOptions{}
-	mi := &file_storage_v1_storage_proto_msgTypes[45]
+	mi := &file_storage_v1_storage_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2437,7 +2307,7 @@ func (x *ConsistencyOptions) String() string {
 func (*ConsistencyOptions) ProtoMessage() {}
 
 func (x *ConsistencyOptions) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_v1_storage_proto_msgTypes[45]
+	mi := &file_storage_v1_storage_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2450,7 +2320,7 @@ func (x *ConsistencyOptions) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConsistencyOptions.ProtoReflect.Descriptor instead.
 func (*ConsistencyOptions) Descriptor() ([]byte, []int) {
-	return file_storage_v1_storage_proto_rawDescGZIP(), []int{45}
+	return file_storage_v1_storage_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *ConsistencyOptions) GetPreference() ConsistencyPreference {
@@ -2473,7 +2343,7 @@ type TupleWriteOptions struct {
 
 func (x *TupleWriteOptions) Reset() {
 	*x = TupleWriteOptions{}
-	mi := &file_storage_v1_storage_proto_msgTypes[46]
+	mi := &file_storage_v1_storage_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2485,7 +2355,7 @@ func (x *TupleWriteOptions) String() string {
 func (*TupleWriteOptions) ProtoMessage() {}
 
 func (x *TupleWriteOptions) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_v1_storage_proto_msgTypes[46]
+	mi := &file_storage_v1_storage_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2498,7 +2368,7 @@ func (x *TupleWriteOptions) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TupleWriteOptions.ProtoReflect.Descriptor instead.
 func (*TupleWriteOptions) Descriptor() ([]byte, []int) {
-	return file_storage_v1_storage_proto_rawDescGZIP(), []int{46}
+	return file_storage_v1_storage_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *TupleWriteOptions) GetOnMissingDelete() OnMissingDelete {
@@ -2540,25 +2410,19 @@ const file_storage_v1_storage_proto_rawDesc = "" +
 	"\x14ReadUserTupleRequest\x12\x14\n" +
 	"\x05store\x18\x01 \x01(\tR\x05store\x127\n" +
 	"\ttuple_key\x18\x02 \x01(\v2\x1a.storage.v1.types.TupleKeyR\btupleKey\x12@\n" +
-	"\vconsistency\x18\x03 \x01(\v2\x1e.storage.v1.ConsistencyOptionsR\vconsistency\"F\n" +
-	"\x15ReadUserTupleResponse\x12-\n" +
-	"\x05tuple\x18\x01 \x01(\v2\x17.storage.v1.types.TupleR\x05tuple\"\xaf\x01\n" +
+	"\vconsistency\x18\x03 \x01(\v2\x1e.storage.v1.ConsistencyOptionsR\vconsistency\"\xaf\x01\n" +
 	"\x18ReadUsersetTuplesRequest\x12\x14\n" +
 	"\x05store\x18\x01 \x01(\tR\x05store\x12;\n" +
 	"\x06filter\x18\x02 \x01(\v2#.storage.v1.ReadUsersetTuplesFilterR\x06filter\x12@\n" +
-	"\vconsistency\x18\x03 \x01(\v2\x1e.storage.v1.ConsistencyOptionsR\vconsistency\"J\n" +
-	"\x19ReadUsersetTuplesResponse\x12-\n" +
-	"\x05tuple\x18\x01 \x01(\v2\x17.storage.v1.types.TupleR\x05tuple\"\xf8\x01\n" +
+	"\vconsistency\x18\x03 \x01(\v2\x1e.storage.v1.ConsistencyOptionsR\vconsistency\"\xf8\x01\n" +
 	"\x1bReadStartingWithUserRequest\x12\x14\n" +
 	"\x05store\x18\x01 \x01(\tR\x05store\x12>\n" +
 	"\x06filter\x18\x02 \x01(\v2&.storage.v1.ReadStartingWithUserFilterR\x06filter\x12@\n" +
 	"\vconsistency\x18\x03 \x01(\v2\x1e.storage.v1.ConsistencyOptionsR\vconsistency\x12A\n" +
-	"\x1dwith_results_sorted_ascending\x18\x04 \x01(\bR\x1awithResultsSortedAscending\"M\n" +
-	"\x1cReadStartingWithUserResponse\x12-\n" +
-	"\x05tuple\x18\x01 \x01(\v2\x17.storage.v1.types.TupleR\x05tuple\"\xd7\x01\n" +
+	"\x1dwith_results_sorted_ascending\x18\x04 \x01(\bR\x1awithResultsSortedAscending\"\xc7\x01\n" +
 	"\fWriteRequest\x12\x14\n" +
-	"\x05store\x18\x01 \x01(\tR\x05store\x12D\n" +
-	"\adeletes\x18\x02 \x03(\v2*.storage.v1.types.TupleKeyWithoutConditionR\adeletes\x122\n" +
+	"\x05store\x18\x01 \x01(\tR\x05store\x124\n" +
+	"\adeletes\x18\x02 \x03(\v2\x1a.storage.v1.types.TupleKeyR\adeletes\x122\n" +
 	"\x06writes\x18\x03 \x03(\v2\x1a.storage.v1.types.TupleKeyR\x06writes\x127\n" +
 	"\aoptions\x18\x04 \x01(\v2\x1d.storage.v1.TupleWriteOptionsR\aoptions\"\x0f\n" +
 	"\rWriteResponse\"E\n" +
@@ -2682,13 +2546,13 @@ const file_storage_v1_storage_proto_rawDesc = "" +
 	"\x18ON_MISSING_DELETE_IGNORE\x10\x01*R\n" +
 	"\x11OnDuplicateInsert\x12\x1d\n" +
 	"\x19ON_DUPLICATE_INSERT_ERROR\x10\x00\x12\x1e\n" +
-	"\x1aON_DUPLICATE_INSERT_IGNORE\x10\x012\xbc\x0e\n" +
+	"\x1aON_DUPLICATE_INSERT_IGNORE\x10\x012\x96\x0e\n" +
 	"\x0eStorageService\x12;\n" +
 	"\x04Read\x12\x17.storage.v1.ReadRequest\x1a\x18.storage.v1.ReadResponse0\x01\x12E\n" +
-	"\bReadPage\x12\x1b.storage.v1.ReadPageRequest\x1a\x1c.storage.v1.ReadPageResponse\x12T\n" +
-	"\rReadUserTuple\x12 .storage.v1.ReadUserTupleRequest\x1a!.storage.v1.ReadUserTupleResponse\x12b\n" +
-	"\x11ReadUsersetTuples\x12$.storage.v1.ReadUsersetTuplesRequest\x1a%.storage.v1.ReadUsersetTuplesResponse0\x01\x12k\n" +
-	"\x14ReadStartingWithUser\x12'.storage.v1.ReadStartingWithUserRequest\x1a(.storage.v1.ReadStartingWithUserResponse0\x01\x12<\n" +
+	"\bReadPage\x12\x1b.storage.v1.ReadPageRequest\x1a\x1c.storage.v1.ReadPageResponse\x12K\n" +
+	"\rReadUserTuple\x12 .storage.v1.ReadUserTupleRequest\x1a\x18.storage.v1.ReadResponse\x12U\n" +
+	"\x11ReadUsersetTuples\x12$.storage.v1.ReadUsersetTuplesRequest\x1a\x18.storage.v1.ReadResponse0\x01\x12[\n" +
+	"\x14ReadStartingWithUser\x12'.storage.v1.ReadStartingWithUserRequest\x1a\x18.storage.v1.ReadResponse0\x01\x12<\n" +
 	"\x05Write\x12\x18.storage.v1.WriteRequest\x1a\x19.storage.v1.WriteResponse\x12o\n" +
 	"\x16ReadAuthorizationModel\x12).storage.v1.ReadAuthorizationModelRequest\x1a*.storage.v1.ReadAuthorizationModelResponse\x12r\n" +
 	"\x17ReadAuthorizationModels\x12*.storage.v1.ReadAuthorizationModelsRequest\x1a+.storage.v1.ReadAuthorizationModelsResponse\x12\x81\x01\n" +
@@ -2719,7 +2583,7 @@ func file_storage_v1_storage_proto_rawDescGZIP() []byte {
 }
 
 var file_storage_v1_storage_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_storage_v1_storage_proto_msgTypes = make([]protoimpl.MessageInfo, 47)
+var file_storage_v1_storage_proto_msgTypes = make([]protoimpl.MessageInfo, 44)
 var file_storage_v1_storage_proto_goTypes = []any{
 	(OnMissingDelete)(0),                          // 0: storage.v1.OnMissingDelete
 	(OnDuplicateInsert)(0),                        // 1: storage.v1.OnDuplicateInsert
@@ -2728,144 +2592,137 @@ var file_storage_v1_storage_proto_goTypes = []any{
 	(*ReadPageRequest)(nil),                       // 4: storage.v1.ReadPageRequest
 	(*ReadPageResponse)(nil),                      // 5: storage.v1.ReadPageResponse
 	(*ReadUserTupleRequest)(nil),                  // 6: storage.v1.ReadUserTupleRequest
-	(*ReadUserTupleResponse)(nil),                 // 7: storage.v1.ReadUserTupleResponse
-	(*ReadUsersetTuplesRequest)(nil),              // 8: storage.v1.ReadUsersetTuplesRequest
-	(*ReadUsersetTuplesResponse)(nil),             // 9: storage.v1.ReadUsersetTuplesResponse
-	(*ReadStartingWithUserRequest)(nil),           // 10: storage.v1.ReadStartingWithUserRequest
-	(*ReadStartingWithUserResponse)(nil),          // 11: storage.v1.ReadStartingWithUserResponse
-	(*WriteRequest)(nil),                          // 12: storage.v1.WriteRequest
-	(*WriteResponse)(nil),                         // 13: storage.v1.WriteResponse
-	(*ReadAuthorizationModelRequest)(nil),         // 14: storage.v1.ReadAuthorizationModelRequest
-	(*ReadAuthorizationModelResponse)(nil),        // 15: storage.v1.ReadAuthorizationModelResponse
-	(*ReadAuthorizationModelsRequest)(nil),        // 16: storage.v1.ReadAuthorizationModelsRequest
-	(*ReadAuthorizationModelsResponse)(nil),       // 17: storage.v1.ReadAuthorizationModelsResponse
-	(*FindLatestAuthorizationModelRequest)(nil),   // 18: storage.v1.FindLatestAuthorizationModelRequest
-	(*FindLatestAuthorizationModelResponse)(nil),  // 19: storage.v1.FindLatestAuthorizationModelResponse
-	(*WriteAuthorizationModelRequest)(nil),        // 20: storage.v1.WriteAuthorizationModelRequest
-	(*WriteAuthorizationModelResponse)(nil),       // 21: storage.v1.WriteAuthorizationModelResponse
-	(*CreateStoreRequest)(nil),                    // 22: storage.v1.CreateStoreRequest
-	(*CreateStoreResponse)(nil),                   // 23: storage.v1.CreateStoreResponse
-	(*DeleteStoreRequest)(nil),                    // 24: storage.v1.DeleteStoreRequest
-	(*DeleteStoreResponse)(nil),                   // 25: storage.v1.DeleteStoreResponse
-	(*GetStoreRequest)(nil),                       // 26: storage.v1.GetStoreRequest
-	(*GetStoreResponse)(nil),                      // 27: storage.v1.GetStoreResponse
-	(*ListStoresRequest)(nil),                     // 28: storage.v1.ListStoresRequest
-	(*ListStoresResponse)(nil),                    // 29: storage.v1.ListStoresResponse
-	(*WriteAssertionsRequest)(nil),                // 30: storage.v1.WriteAssertionsRequest
-	(*WriteAssertionsResponse)(nil),               // 31: storage.v1.WriteAssertionsResponse
-	(*ReadAssertionsRequest)(nil),                 // 32: storage.v1.ReadAssertionsRequest
-	(*ReadAssertionsResponse)(nil),                // 33: storage.v1.ReadAssertionsResponse
-	(*ReadChangesRequest)(nil),                    // 34: storage.v1.ReadChangesRequest
-	(*ReadChangesResponse)(nil),                   // 35: storage.v1.ReadChangesResponse
-	(*IsReadyRequest)(nil),                        // 36: storage.v1.IsReadyRequest
-	(*IsReadyResponse)(nil),                       // 37: storage.v1.IsReadyResponse
-	(*MaxTuplesPerWriteRequest)(nil),              // 38: storage.v1.MaxTuplesPerWriteRequest
-	(*MaxTuplesPerWriteResponse)(nil),             // 39: storage.v1.MaxTuplesPerWriteResponse
-	(*MaxTypesPerAuthorizationModelRequest)(nil),  // 40: storage.v1.MaxTypesPerAuthorizationModelRequest
-	(*MaxTypesPerAuthorizationModelResponse)(nil), // 41: storage.v1.MaxTypesPerAuthorizationModelResponse
-	(*ReadFilter)(nil),                            // 42: storage.v1.ReadFilter
-	(*ReadUsersetTuplesFilter)(nil),               // 43: storage.v1.ReadUsersetTuplesFilter
-	(*ReadStartingWithUserFilter)(nil),            // 44: storage.v1.ReadStartingWithUserFilter
-	(*ReadChangesFilter)(nil),                     // 45: storage.v1.ReadChangesFilter
-	(*PaginationOptions)(nil),                     // 46: storage.v1.PaginationOptions
-	(*ConsistencyOptions)(nil),                    // 47: storage.v1.ConsistencyOptions
-	(*TupleWriteOptions)(nil),                     // 48: storage.v1.TupleWriteOptions
-	(*Tuple)(nil),                                 // 49: storage.v1.types.Tuple
-	(*TupleKey)(nil),                              // 50: storage.v1.types.TupleKey
-	(*TupleKeyWithoutCondition)(nil),              // 51: storage.v1.types.TupleKeyWithoutCondition
-	(*AuthorizationModel)(nil),                    // 52: storage.v1.types.AuthorizationModel
-	(*Store)(nil),                                 // 53: storage.v1.types.Store
-	(*Assertion)(nil),                             // 54: storage.v1.types.Assertion
-	(*TupleChange)(nil),                           // 55: storage.v1.types.TupleChange
-	(*RelationReference)(nil),                     // 56: storage.v1.types.RelationReference
-	(*ObjectRelation)(nil),                        // 57: storage.v1.types.ObjectRelation
-	(ConsistencyPreference)(0),                    // 58: storage.v1.types.ConsistencyPreference
+	(*ReadUsersetTuplesRequest)(nil),              // 7: storage.v1.ReadUsersetTuplesRequest
+	(*ReadStartingWithUserRequest)(nil),           // 8: storage.v1.ReadStartingWithUserRequest
+	(*WriteRequest)(nil),                          // 9: storage.v1.WriteRequest
+	(*WriteResponse)(nil),                         // 10: storage.v1.WriteResponse
+	(*ReadAuthorizationModelRequest)(nil),         // 11: storage.v1.ReadAuthorizationModelRequest
+	(*ReadAuthorizationModelResponse)(nil),        // 12: storage.v1.ReadAuthorizationModelResponse
+	(*ReadAuthorizationModelsRequest)(nil),        // 13: storage.v1.ReadAuthorizationModelsRequest
+	(*ReadAuthorizationModelsResponse)(nil),       // 14: storage.v1.ReadAuthorizationModelsResponse
+	(*FindLatestAuthorizationModelRequest)(nil),   // 15: storage.v1.FindLatestAuthorizationModelRequest
+	(*FindLatestAuthorizationModelResponse)(nil),  // 16: storage.v1.FindLatestAuthorizationModelResponse
+	(*WriteAuthorizationModelRequest)(nil),        // 17: storage.v1.WriteAuthorizationModelRequest
+	(*WriteAuthorizationModelResponse)(nil),       // 18: storage.v1.WriteAuthorizationModelResponse
+	(*CreateStoreRequest)(nil),                    // 19: storage.v1.CreateStoreRequest
+	(*CreateStoreResponse)(nil),                   // 20: storage.v1.CreateStoreResponse
+	(*DeleteStoreRequest)(nil),                    // 21: storage.v1.DeleteStoreRequest
+	(*DeleteStoreResponse)(nil),                   // 22: storage.v1.DeleteStoreResponse
+	(*GetStoreRequest)(nil),                       // 23: storage.v1.GetStoreRequest
+	(*GetStoreResponse)(nil),                      // 24: storage.v1.GetStoreResponse
+	(*ListStoresRequest)(nil),                     // 25: storage.v1.ListStoresRequest
+	(*ListStoresResponse)(nil),                    // 26: storage.v1.ListStoresResponse
+	(*WriteAssertionsRequest)(nil),                // 27: storage.v1.WriteAssertionsRequest
+	(*WriteAssertionsResponse)(nil),               // 28: storage.v1.WriteAssertionsResponse
+	(*ReadAssertionsRequest)(nil),                 // 29: storage.v1.ReadAssertionsRequest
+	(*ReadAssertionsResponse)(nil),                // 30: storage.v1.ReadAssertionsResponse
+	(*ReadChangesRequest)(nil),                    // 31: storage.v1.ReadChangesRequest
+	(*ReadChangesResponse)(nil),                   // 32: storage.v1.ReadChangesResponse
+	(*IsReadyRequest)(nil),                        // 33: storage.v1.IsReadyRequest
+	(*IsReadyResponse)(nil),                       // 34: storage.v1.IsReadyResponse
+	(*MaxTuplesPerWriteRequest)(nil),              // 35: storage.v1.MaxTuplesPerWriteRequest
+	(*MaxTuplesPerWriteResponse)(nil),             // 36: storage.v1.MaxTuplesPerWriteResponse
+	(*MaxTypesPerAuthorizationModelRequest)(nil),  // 37: storage.v1.MaxTypesPerAuthorizationModelRequest
+	(*MaxTypesPerAuthorizationModelResponse)(nil), // 38: storage.v1.MaxTypesPerAuthorizationModelResponse
+	(*ReadFilter)(nil),                            // 39: storage.v1.ReadFilter
+	(*ReadUsersetTuplesFilter)(nil),               // 40: storage.v1.ReadUsersetTuplesFilter
+	(*ReadStartingWithUserFilter)(nil),            // 41: storage.v1.ReadStartingWithUserFilter
+	(*ReadChangesFilter)(nil),                     // 42: storage.v1.ReadChangesFilter
+	(*PaginationOptions)(nil),                     // 43: storage.v1.PaginationOptions
+	(*ConsistencyOptions)(nil),                    // 44: storage.v1.ConsistencyOptions
+	(*TupleWriteOptions)(nil),                     // 45: storage.v1.TupleWriteOptions
+	(*Tuple)(nil),                                 // 46: storage.v1.types.Tuple
+	(*TupleKey)(nil),                              // 47: storage.v1.types.TupleKey
+	(*AuthorizationModel)(nil),                    // 48: storage.v1.types.AuthorizationModel
+	(*Store)(nil),                                 // 49: storage.v1.types.Store
+	(*Assertion)(nil),                             // 50: storage.v1.types.Assertion
+	(*TupleChange)(nil),                           // 51: storage.v1.types.TupleChange
+	(*RelationReference)(nil),                     // 52: storage.v1.types.RelationReference
+	(*ObjectRelation)(nil),                        // 53: storage.v1.types.ObjectRelation
+	(ConsistencyPreference)(0),                    // 54: storage.v1.types.ConsistencyPreference
 }
 var file_storage_v1_storage_proto_depIdxs = []int32{
-	42, // 0: storage.v1.ReadRequest.filter:type_name -> storage.v1.ReadFilter
-	47, // 1: storage.v1.ReadRequest.consistency:type_name -> storage.v1.ConsistencyOptions
-	49, // 2: storage.v1.ReadResponse.tuple:type_name -> storage.v1.types.Tuple
-	42, // 3: storage.v1.ReadPageRequest.filter:type_name -> storage.v1.ReadFilter
-	46, // 4: storage.v1.ReadPageRequest.pagination:type_name -> storage.v1.PaginationOptions
-	47, // 5: storage.v1.ReadPageRequest.consistency:type_name -> storage.v1.ConsistencyOptions
-	49, // 6: storage.v1.ReadPageResponse.tuples:type_name -> storage.v1.types.Tuple
-	50, // 7: storage.v1.ReadUserTupleRequest.tuple_key:type_name -> storage.v1.types.TupleKey
-	47, // 8: storage.v1.ReadUserTupleRequest.consistency:type_name -> storage.v1.ConsistencyOptions
-	49, // 9: storage.v1.ReadUserTupleResponse.tuple:type_name -> storage.v1.types.Tuple
-	43, // 10: storage.v1.ReadUsersetTuplesRequest.filter:type_name -> storage.v1.ReadUsersetTuplesFilter
-	47, // 11: storage.v1.ReadUsersetTuplesRequest.consistency:type_name -> storage.v1.ConsistencyOptions
-	49, // 12: storage.v1.ReadUsersetTuplesResponse.tuple:type_name -> storage.v1.types.Tuple
-	44, // 13: storage.v1.ReadStartingWithUserRequest.filter:type_name -> storage.v1.ReadStartingWithUserFilter
-	47, // 14: storage.v1.ReadStartingWithUserRequest.consistency:type_name -> storage.v1.ConsistencyOptions
-	49, // 15: storage.v1.ReadStartingWithUserResponse.tuple:type_name -> storage.v1.types.Tuple
-	51, // 16: storage.v1.WriteRequest.deletes:type_name -> storage.v1.types.TupleKeyWithoutCondition
-	50, // 17: storage.v1.WriteRequest.writes:type_name -> storage.v1.types.TupleKey
-	48, // 18: storage.v1.WriteRequest.options:type_name -> storage.v1.TupleWriteOptions
-	52, // 19: storage.v1.ReadAuthorizationModelResponse.model:type_name -> storage.v1.types.AuthorizationModel
-	46, // 20: storage.v1.ReadAuthorizationModelsRequest.pagination:type_name -> storage.v1.PaginationOptions
-	52, // 21: storage.v1.ReadAuthorizationModelsResponse.models:type_name -> storage.v1.types.AuthorizationModel
-	52, // 22: storage.v1.FindLatestAuthorizationModelResponse.model:type_name -> storage.v1.types.AuthorizationModel
-	52, // 23: storage.v1.WriteAuthorizationModelRequest.model:type_name -> storage.v1.types.AuthorizationModel
-	53, // 24: storage.v1.CreateStoreRequest.store:type_name -> storage.v1.types.Store
-	53, // 25: storage.v1.CreateStoreResponse.store:type_name -> storage.v1.types.Store
-	53, // 26: storage.v1.GetStoreResponse.store:type_name -> storage.v1.types.Store
-	46, // 27: storage.v1.ListStoresRequest.pagination:type_name -> storage.v1.PaginationOptions
-	53, // 28: storage.v1.ListStoresResponse.stores:type_name -> storage.v1.types.Store
-	54, // 29: storage.v1.WriteAssertionsRequest.assertions:type_name -> storage.v1.types.Assertion
-	54, // 30: storage.v1.ReadAssertionsResponse.assertions:type_name -> storage.v1.types.Assertion
-	45, // 31: storage.v1.ReadChangesRequest.filter:type_name -> storage.v1.ReadChangesFilter
-	46, // 32: storage.v1.ReadChangesRequest.pagination:type_name -> storage.v1.PaginationOptions
-	55, // 33: storage.v1.ReadChangesResponse.changes:type_name -> storage.v1.types.TupleChange
-	56, // 34: storage.v1.ReadUsersetTuplesFilter.allowed_user_type_restrictions:type_name -> storage.v1.types.RelationReference
-	57, // 35: storage.v1.ReadStartingWithUserFilter.user_filter:type_name -> storage.v1.types.ObjectRelation
-	58, // 36: storage.v1.ConsistencyOptions.preference:type_name -> storage.v1.types.ConsistencyPreference
-	0,  // 37: storage.v1.TupleWriteOptions.on_missing_delete:type_name -> storage.v1.OnMissingDelete
-	1,  // 38: storage.v1.TupleWriteOptions.on_duplicate_insert:type_name -> storage.v1.OnDuplicateInsert
-	2,  // 39: storage.v1.StorageService.Read:input_type -> storage.v1.ReadRequest
-	4,  // 40: storage.v1.StorageService.ReadPage:input_type -> storage.v1.ReadPageRequest
-	6,  // 41: storage.v1.StorageService.ReadUserTuple:input_type -> storage.v1.ReadUserTupleRequest
-	8,  // 42: storage.v1.StorageService.ReadUsersetTuples:input_type -> storage.v1.ReadUsersetTuplesRequest
-	10, // 43: storage.v1.StorageService.ReadStartingWithUser:input_type -> storage.v1.ReadStartingWithUserRequest
-	12, // 44: storage.v1.StorageService.Write:input_type -> storage.v1.WriteRequest
-	14, // 45: storage.v1.StorageService.ReadAuthorizationModel:input_type -> storage.v1.ReadAuthorizationModelRequest
-	16, // 46: storage.v1.StorageService.ReadAuthorizationModels:input_type -> storage.v1.ReadAuthorizationModelsRequest
-	18, // 47: storage.v1.StorageService.FindLatestAuthorizationModel:input_type -> storage.v1.FindLatestAuthorizationModelRequest
-	20, // 48: storage.v1.StorageService.WriteAuthorizationModel:input_type -> storage.v1.WriteAuthorizationModelRequest
-	22, // 49: storage.v1.StorageService.CreateStore:input_type -> storage.v1.CreateStoreRequest
-	24, // 50: storage.v1.StorageService.DeleteStore:input_type -> storage.v1.DeleteStoreRequest
-	26, // 51: storage.v1.StorageService.GetStore:input_type -> storage.v1.GetStoreRequest
-	28, // 52: storage.v1.StorageService.ListStores:input_type -> storage.v1.ListStoresRequest
-	30, // 53: storage.v1.StorageService.WriteAssertions:input_type -> storage.v1.WriteAssertionsRequest
-	32, // 54: storage.v1.StorageService.ReadAssertions:input_type -> storage.v1.ReadAssertionsRequest
-	34, // 55: storage.v1.StorageService.ReadChanges:input_type -> storage.v1.ReadChangesRequest
-	36, // 56: storage.v1.StorageService.IsReady:input_type -> storage.v1.IsReadyRequest
-	38, // 57: storage.v1.StorageService.MaxTuplesPerWrite:input_type -> storage.v1.MaxTuplesPerWriteRequest
-	40, // 58: storage.v1.StorageService.MaxTypesPerAuthorizationModel:input_type -> storage.v1.MaxTypesPerAuthorizationModelRequest
-	3,  // 59: storage.v1.StorageService.Read:output_type -> storage.v1.ReadResponse
-	5,  // 60: storage.v1.StorageService.ReadPage:output_type -> storage.v1.ReadPageResponse
-	7,  // 61: storage.v1.StorageService.ReadUserTuple:output_type -> storage.v1.ReadUserTupleResponse
-	9,  // 62: storage.v1.StorageService.ReadUsersetTuples:output_type -> storage.v1.ReadUsersetTuplesResponse
-	11, // 63: storage.v1.StorageService.ReadStartingWithUser:output_type -> storage.v1.ReadStartingWithUserResponse
-	13, // 64: storage.v1.StorageService.Write:output_type -> storage.v1.WriteResponse
-	15, // 65: storage.v1.StorageService.ReadAuthorizationModel:output_type -> storage.v1.ReadAuthorizationModelResponse
-	17, // 66: storage.v1.StorageService.ReadAuthorizationModels:output_type -> storage.v1.ReadAuthorizationModelsResponse
-	19, // 67: storage.v1.StorageService.FindLatestAuthorizationModel:output_type -> storage.v1.FindLatestAuthorizationModelResponse
-	21, // 68: storage.v1.StorageService.WriteAuthorizationModel:output_type -> storage.v1.WriteAuthorizationModelResponse
-	23, // 69: storage.v1.StorageService.CreateStore:output_type -> storage.v1.CreateStoreResponse
-	25, // 70: storage.v1.StorageService.DeleteStore:output_type -> storage.v1.DeleteStoreResponse
-	27, // 71: storage.v1.StorageService.GetStore:output_type -> storage.v1.GetStoreResponse
-	29, // 72: storage.v1.StorageService.ListStores:output_type -> storage.v1.ListStoresResponse
-	31, // 73: storage.v1.StorageService.WriteAssertions:output_type -> storage.v1.WriteAssertionsResponse
-	33, // 74: storage.v1.StorageService.ReadAssertions:output_type -> storage.v1.ReadAssertionsResponse
-	35, // 75: storage.v1.StorageService.ReadChanges:output_type -> storage.v1.ReadChangesResponse
-	37, // 76: storage.v1.StorageService.IsReady:output_type -> storage.v1.IsReadyResponse
-	39, // 77: storage.v1.StorageService.MaxTuplesPerWrite:output_type -> storage.v1.MaxTuplesPerWriteResponse
-	41, // 78: storage.v1.StorageService.MaxTypesPerAuthorizationModel:output_type -> storage.v1.MaxTypesPerAuthorizationModelResponse
-	59, // [59:79] is the sub-list for method output_type
-	39, // [39:59] is the sub-list for method input_type
-	39, // [39:39] is the sub-list for extension type_name
-	39, // [39:39] is the sub-list for extension extendee
-	0,  // [0:39] is the sub-list for field type_name
+	39, // 0: storage.v1.ReadRequest.filter:type_name -> storage.v1.ReadFilter
+	44, // 1: storage.v1.ReadRequest.consistency:type_name -> storage.v1.ConsistencyOptions
+	46, // 2: storage.v1.ReadResponse.tuple:type_name -> storage.v1.types.Tuple
+	39, // 3: storage.v1.ReadPageRequest.filter:type_name -> storage.v1.ReadFilter
+	43, // 4: storage.v1.ReadPageRequest.pagination:type_name -> storage.v1.PaginationOptions
+	44, // 5: storage.v1.ReadPageRequest.consistency:type_name -> storage.v1.ConsistencyOptions
+	46, // 6: storage.v1.ReadPageResponse.tuples:type_name -> storage.v1.types.Tuple
+	47, // 7: storage.v1.ReadUserTupleRequest.tuple_key:type_name -> storage.v1.types.TupleKey
+	44, // 8: storage.v1.ReadUserTupleRequest.consistency:type_name -> storage.v1.ConsistencyOptions
+	40, // 9: storage.v1.ReadUsersetTuplesRequest.filter:type_name -> storage.v1.ReadUsersetTuplesFilter
+	44, // 10: storage.v1.ReadUsersetTuplesRequest.consistency:type_name -> storage.v1.ConsistencyOptions
+	41, // 11: storage.v1.ReadStartingWithUserRequest.filter:type_name -> storage.v1.ReadStartingWithUserFilter
+	44, // 12: storage.v1.ReadStartingWithUserRequest.consistency:type_name -> storage.v1.ConsistencyOptions
+	47, // 13: storage.v1.WriteRequest.deletes:type_name -> storage.v1.types.TupleKey
+	47, // 14: storage.v1.WriteRequest.writes:type_name -> storage.v1.types.TupleKey
+	45, // 15: storage.v1.WriteRequest.options:type_name -> storage.v1.TupleWriteOptions
+	48, // 16: storage.v1.ReadAuthorizationModelResponse.model:type_name -> storage.v1.types.AuthorizationModel
+	43, // 17: storage.v1.ReadAuthorizationModelsRequest.pagination:type_name -> storage.v1.PaginationOptions
+	48, // 18: storage.v1.ReadAuthorizationModelsResponse.models:type_name -> storage.v1.types.AuthorizationModel
+	48, // 19: storage.v1.FindLatestAuthorizationModelResponse.model:type_name -> storage.v1.types.AuthorizationModel
+	48, // 20: storage.v1.WriteAuthorizationModelRequest.model:type_name -> storage.v1.types.AuthorizationModel
+	49, // 21: storage.v1.CreateStoreRequest.store:type_name -> storage.v1.types.Store
+	49, // 22: storage.v1.CreateStoreResponse.store:type_name -> storage.v1.types.Store
+	49, // 23: storage.v1.GetStoreResponse.store:type_name -> storage.v1.types.Store
+	43, // 24: storage.v1.ListStoresRequest.pagination:type_name -> storage.v1.PaginationOptions
+	49, // 25: storage.v1.ListStoresResponse.stores:type_name -> storage.v1.types.Store
+	50, // 26: storage.v1.WriteAssertionsRequest.assertions:type_name -> storage.v1.types.Assertion
+	50, // 27: storage.v1.ReadAssertionsResponse.assertions:type_name -> storage.v1.types.Assertion
+	42, // 28: storage.v1.ReadChangesRequest.filter:type_name -> storage.v1.ReadChangesFilter
+	43, // 29: storage.v1.ReadChangesRequest.pagination:type_name -> storage.v1.PaginationOptions
+	51, // 30: storage.v1.ReadChangesResponse.changes:type_name -> storage.v1.types.TupleChange
+	52, // 31: storage.v1.ReadUsersetTuplesFilter.allowed_user_type_restrictions:type_name -> storage.v1.types.RelationReference
+	53, // 32: storage.v1.ReadStartingWithUserFilter.user_filter:type_name -> storage.v1.types.ObjectRelation
+	54, // 33: storage.v1.ConsistencyOptions.preference:type_name -> storage.v1.types.ConsistencyPreference
+	0,  // 34: storage.v1.TupleWriteOptions.on_missing_delete:type_name -> storage.v1.OnMissingDelete
+	1,  // 35: storage.v1.TupleWriteOptions.on_duplicate_insert:type_name -> storage.v1.OnDuplicateInsert
+	2,  // 36: storage.v1.StorageService.Read:input_type -> storage.v1.ReadRequest
+	4,  // 37: storage.v1.StorageService.ReadPage:input_type -> storage.v1.ReadPageRequest
+	6,  // 38: storage.v1.StorageService.ReadUserTuple:input_type -> storage.v1.ReadUserTupleRequest
+	7,  // 39: storage.v1.StorageService.ReadUsersetTuples:input_type -> storage.v1.ReadUsersetTuplesRequest
+	8,  // 40: storage.v1.StorageService.ReadStartingWithUser:input_type -> storage.v1.ReadStartingWithUserRequest
+	9,  // 41: storage.v1.StorageService.Write:input_type -> storage.v1.WriteRequest
+	11, // 42: storage.v1.StorageService.ReadAuthorizationModel:input_type -> storage.v1.ReadAuthorizationModelRequest
+	13, // 43: storage.v1.StorageService.ReadAuthorizationModels:input_type -> storage.v1.ReadAuthorizationModelsRequest
+	15, // 44: storage.v1.StorageService.FindLatestAuthorizationModel:input_type -> storage.v1.FindLatestAuthorizationModelRequest
+	17, // 45: storage.v1.StorageService.WriteAuthorizationModel:input_type -> storage.v1.WriteAuthorizationModelRequest
+	19, // 46: storage.v1.StorageService.CreateStore:input_type -> storage.v1.CreateStoreRequest
+	21, // 47: storage.v1.StorageService.DeleteStore:input_type -> storage.v1.DeleteStoreRequest
+	23, // 48: storage.v1.StorageService.GetStore:input_type -> storage.v1.GetStoreRequest
+	25, // 49: storage.v1.StorageService.ListStores:input_type -> storage.v1.ListStoresRequest
+	27, // 50: storage.v1.StorageService.WriteAssertions:input_type -> storage.v1.WriteAssertionsRequest
+	29, // 51: storage.v1.StorageService.ReadAssertions:input_type -> storage.v1.ReadAssertionsRequest
+	31, // 52: storage.v1.StorageService.ReadChanges:input_type -> storage.v1.ReadChangesRequest
+	33, // 53: storage.v1.StorageService.IsReady:input_type -> storage.v1.IsReadyRequest
+	35, // 54: storage.v1.StorageService.MaxTuplesPerWrite:input_type -> storage.v1.MaxTuplesPerWriteRequest
+	37, // 55: storage.v1.StorageService.MaxTypesPerAuthorizationModel:input_type -> storage.v1.MaxTypesPerAuthorizationModelRequest
+	3,  // 56: storage.v1.StorageService.Read:output_type -> storage.v1.ReadResponse
+	5,  // 57: storage.v1.StorageService.ReadPage:output_type -> storage.v1.ReadPageResponse
+	3,  // 58: storage.v1.StorageService.ReadUserTuple:output_type -> storage.v1.ReadResponse
+	3,  // 59: storage.v1.StorageService.ReadUsersetTuples:output_type -> storage.v1.ReadResponse
+	3,  // 60: storage.v1.StorageService.ReadStartingWithUser:output_type -> storage.v1.ReadResponse
+	10, // 61: storage.v1.StorageService.Write:output_type -> storage.v1.WriteResponse
+	12, // 62: storage.v1.StorageService.ReadAuthorizationModel:output_type -> storage.v1.ReadAuthorizationModelResponse
+	14, // 63: storage.v1.StorageService.ReadAuthorizationModels:output_type -> storage.v1.ReadAuthorizationModelsResponse
+	16, // 64: storage.v1.StorageService.FindLatestAuthorizationModel:output_type -> storage.v1.FindLatestAuthorizationModelResponse
+	18, // 65: storage.v1.StorageService.WriteAuthorizationModel:output_type -> storage.v1.WriteAuthorizationModelResponse
+	20, // 66: storage.v1.StorageService.CreateStore:output_type -> storage.v1.CreateStoreResponse
+	22, // 67: storage.v1.StorageService.DeleteStore:output_type -> storage.v1.DeleteStoreResponse
+	24, // 68: storage.v1.StorageService.GetStore:output_type -> storage.v1.GetStoreResponse
+	26, // 69: storage.v1.StorageService.ListStores:output_type -> storage.v1.ListStoresResponse
+	28, // 70: storage.v1.StorageService.WriteAssertions:output_type -> storage.v1.WriteAssertionsResponse
+	30, // 71: storage.v1.StorageService.ReadAssertions:output_type -> storage.v1.ReadAssertionsResponse
+	32, // 72: storage.v1.StorageService.ReadChanges:output_type -> storage.v1.ReadChangesResponse
+	34, // 73: storage.v1.StorageService.IsReady:output_type -> storage.v1.IsReadyResponse
+	36, // 74: storage.v1.StorageService.MaxTuplesPerWrite:output_type -> storage.v1.MaxTuplesPerWriteResponse
+	38, // 75: storage.v1.StorageService.MaxTypesPerAuthorizationModel:output_type -> storage.v1.MaxTypesPerAuthorizationModelResponse
+	56, // [56:76] is the sub-list for method output_type
+	36, // [36:56] is the sub-list for method input_type
+	36, // [36:36] is the sub-list for extension type_name
+	36, // [36:36] is the sub-list for extension extendee
+	0,  // [0:36] is the sub-list for field type_name
 }
 
 func init() { file_storage_v1_storage_proto_init() }
@@ -2880,7 +2737,7 @@ func file_storage_v1_storage_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_storage_v1_storage_proto_rawDesc), len(file_storage_v1_storage_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   47,
+			NumMessages:   44,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

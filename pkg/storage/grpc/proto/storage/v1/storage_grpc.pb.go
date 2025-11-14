@@ -63,13 +63,13 @@ type StorageServiceClient interface {
 	ReadPage(ctx context.Context, in *ReadPageRequest, opts ...grpc.CallOption) (*ReadPageResponse, error)
 	// ReadUserTuple returns exactly one tuple matching the provided key.
 	// Returns NOT_FOUND error if no matching tuple exists.
-	ReadUserTuple(ctx context.Context, in *ReadUserTupleRequest, opts ...grpc.CallOption) (*ReadUserTupleResponse, error)
+	ReadUserTuple(ctx context.Context, in *ReadUserTupleRequest, opts ...grpc.CallOption) (*ReadResponse, error)
 	// ReadUsersetTuples streams userset tuples for a specified object and relation.
 	// Can be filtered by allowed user type restrictions.
-	ReadUsersetTuples(ctx context.Context, in *ReadUsersetTuplesRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ReadUsersetTuplesResponse], error)
+	ReadUsersetTuples(ctx context.Context, in *ReadUsersetTuplesRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ReadResponse], error)
 	// ReadStartingWithUser performs a reverse read starting from user(s)/userset(s).
 	// Useful for finding all objects a user has access to.
-	ReadStartingWithUser(ctx context.Context, in *ReadStartingWithUserRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ReadStartingWithUserResponse], error)
+	ReadStartingWithUser(ctx context.Context, in *ReadStartingWithUserRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ReadResponse], error)
 	// Write performs tuple write and delete operations atomically.
 	// All deletes are performed before writes.
 	Write(ctx context.Context, in *WriteRequest, opts ...grpc.CallOption) (*WriteResponse, error)
@@ -141,9 +141,9 @@ func (c *storageServiceClient) ReadPage(ctx context.Context, in *ReadPageRequest
 	return out, nil
 }
 
-func (c *storageServiceClient) ReadUserTuple(ctx context.Context, in *ReadUserTupleRequest, opts ...grpc.CallOption) (*ReadUserTupleResponse, error) {
+func (c *storageServiceClient) ReadUserTuple(ctx context.Context, in *ReadUserTupleRequest, opts ...grpc.CallOption) (*ReadResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(ReadUserTupleResponse)
+	out := new(ReadResponse)
 	err := c.cc.Invoke(ctx, StorageService_ReadUserTuple_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -151,13 +151,13 @@ func (c *storageServiceClient) ReadUserTuple(ctx context.Context, in *ReadUserTu
 	return out, nil
 }
 
-func (c *storageServiceClient) ReadUsersetTuples(ctx context.Context, in *ReadUsersetTuplesRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ReadUsersetTuplesResponse], error) {
+func (c *storageServiceClient) ReadUsersetTuples(ctx context.Context, in *ReadUsersetTuplesRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ReadResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	stream, err := c.cc.NewStream(ctx, &StorageService_ServiceDesc.Streams[1], StorageService_ReadUsersetTuples_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
-	x := &grpc.GenericClientStream[ReadUsersetTuplesRequest, ReadUsersetTuplesResponse]{ClientStream: stream}
+	x := &grpc.GenericClientStream[ReadUsersetTuplesRequest, ReadResponse]{ClientStream: stream}
 	if err := x.ClientStream.SendMsg(in); err != nil {
 		return nil, err
 	}
@@ -168,15 +168,15 @@ func (c *storageServiceClient) ReadUsersetTuples(ctx context.Context, in *ReadUs
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type StorageService_ReadUsersetTuplesClient = grpc.ServerStreamingClient[ReadUsersetTuplesResponse]
+type StorageService_ReadUsersetTuplesClient = grpc.ServerStreamingClient[ReadResponse]
 
-func (c *storageServiceClient) ReadStartingWithUser(ctx context.Context, in *ReadStartingWithUserRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ReadStartingWithUserResponse], error) {
+func (c *storageServiceClient) ReadStartingWithUser(ctx context.Context, in *ReadStartingWithUserRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ReadResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	stream, err := c.cc.NewStream(ctx, &StorageService_ServiceDesc.Streams[2], StorageService_ReadStartingWithUser_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
-	x := &grpc.GenericClientStream[ReadStartingWithUserRequest, ReadStartingWithUserResponse]{ClientStream: stream}
+	x := &grpc.GenericClientStream[ReadStartingWithUserRequest, ReadResponse]{ClientStream: stream}
 	if err := x.ClientStream.SendMsg(in); err != nil {
 		return nil, err
 	}
@@ -187,7 +187,7 @@ func (c *storageServiceClient) ReadStartingWithUser(ctx context.Context, in *Rea
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type StorageService_ReadStartingWithUserClient = grpc.ServerStreamingClient[ReadStartingWithUserResponse]
+type StorageService_ReadStartingWithUserClient = grpc.ServerStreamingClient[ReadResponse]
 
 func (c *storageServiceClient) Write(ctx context.Context, in *WriteRequest, opts ...grpc.CallOption) (*WriteResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
@@ -361,13 +361,13 @@ type StorageServiceServer interface {
 	ReadPage(context.Context, *ReadPageRequest) (*ReadPageResponse, error)
 	// ReadUserTuple returns exactly one tuple matching the provided key.
 	// Returns NOT_FOUND error if no matching tuple exists.
-	ReadUserTuple(context.Context, *ReadUserTupleRequest) (*ReadUserTupleResponse, error)
+	ReadUserTuple(context.Context, *ReadUserTupleRequest) (*ReadResponse, error)
 	// ReadUsersetTuples streams userset tuples for a specified object and relation.
 	// Can be filtered by allowed user type restrictions.
-	ReadUsersetTuples(*ReadUsersetTuplesRequest, grpc.ServerStreamingServer[ReadUsersetTuplesResponse]) error
+	ReadUsersetTuples(*ReadUsersetTuplesRequest, grpc.ServerStreamingServer[ReadResponse]) error
 	// ReadStartingWithUser performs a reverse read starting from user(s)/userset(s).
 	// Useful for finding all objects a user has access to.
-	ReadStartingWithUser(*ReadStartingWithUserRequest, grpc.ServerStreamingServer[ReadStartingWithUserResponse]) error
+	ReadStartingWithUser(*ReadStartingWithUserRequest, grpc.ServerStreamingServer[ReadResponse]) error
 	// Write performs tuple write and delete operations atomically.
 	// All deletes are performed before writes.
 	Write(context.Context, *WriteRequest) (*WriteResponse, error)
@@ -416,13 +416,13 @@ func (UnimplementedStorageServiceServer) Read(*ReadRequest, grpc.ServerStreaming
 func (UnimplementedStorageServiceServer) ReadPage(context.Context, *ReadPageRequest) (*ReadPageResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ReadPage not implemented")
 }
-func (UnimplementedStorageServiceServer) ReadUserTuple(context.Context, *ReadUserTupleRequest) (*ReadUserTupleResponse, error) {
+func (UnimplementedStorageServiceServer) ReadUserTuple(context.Context, *ReadUserTupleRequest) (*ReadResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ReadUserTuple not implemented")
 }
-func (UnimplementedStorageServiceServer) ReadUsersetTuples(*ReadUsersetTuplesRequest, grpc.ServerStreamingServer[ReadUsersetTuplesResponse]) error {
+func (UnimplementedStorageServiceServer) ReadUsersetTuples(*ReadUsersetTuplesRequest, grpc.ServerStreamingServer[ReadResponse]) error {
 	return status.Errorf(codes.Unimplemented, "method ReadUsersetTuples not implemented")
 }
-func (UnimplementedStorageServiceServer) ReadStartingWithUser(*ReadStartingWithUserRequest, grpc.ServerStreamingServer[ReadStartingWithUserResponse]) error {
+func (UnimplementedStorageServiceServer) ReadStartingWithUser(*ReadStartingWithUserRequest, grpc.ServerStreamingServer[ReadResponse]) error {
 	return status.Errorf(codes.Unimplemented, "method ReadStartingWithUser not implemented")
 }
 func (UnimplementedStorageServiceServer) Write(context.Context, *WriteRequest) (*WriteResponse, error) {
@@ -543,22 +543,22 @@ func _StorageService_ReadUsersetTuples_Handler(srv interface{}, stream grpc.Serv
 	if err := stream.RecvMsg(m); err != nil {
 		return err
 	}
-	return srv.(StorageServiceServer).ReadUsersetTuples(m, &grpc.GenericServerStream[ReadUsersetTuplesRequest, ReadUsersetTuplesResponse]{ServerStream: stream})
+	return srv.(StorageServiceServer).ReadUsersetTuples(m, &grpc.GenericServerStream[ReadUsersetTuplesRequest, ReadResponse]{ServerStream: stream})
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type StorageService_ReadUsersetTuplesServer = grpc.ServerStreamingServer[ReadUsersetTuplesResponse]
+type StorageService_ReadUsersetTuplesServer = grpc.ServerStreamingServer[ReadResponse]
 
 func _StorageService_ReadStartingWithUser_Handler(srv interface{}, stream grpc.ServerStream) error {
 	m := new(ReadStartingWithUserRequest)
 	if err := stream.RecvMsg(m); err != nil {
 		return err
 	}
-	return srv.(StorageServiceServer).ReadStartingWithUser(m, &grpc.GenericServerStream[ReadStartingWithUserRequest, ReadStartingWithUserResponse]{ServerStream: stream})
+	return srv.(StorageServiceServer).ReadStartingWithUser(m, &grpc.GenericServerStream[ReadStartingWithUserRequest, ReadResponse]{ServerStream: stream})
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type StorageService_ReadStartingWithUserServer = grpc.ServerStreamingServer[ReadStartingWithUserResponse]
+type StorageService_ReadStartingWithUserServer = grpc.ServerStreamingServer[ReadResponse]
 
 func _StorageService_Write_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(WriteRequest)

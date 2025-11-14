@@ -26,15 +26,15 @@ service StorageService {
 
   // ReadUserTuple returns exactly one tuple matching the provided key.
   // Returns NOT_FOUND error if no matching tuple exists.
-  rpc ReadUserTuple(ReadUserTupleRequest) returns (ReadUserTupleResponse);
+  rpc ReadUserTuple(ReadUserTupleRequest) returns (ReadResponse);
 
   // ReadUsersetTuples streams userset tuples for a specified object and relation.
   // Can be filtered by allowed user type restrictions.
-  rpc ReadUsersetTuples(ReadUsersetTuplesRequest) returns (stream ReadUsersetTuplesResponse);
+  rpc ReadUsersetTuples(ReadUsersetTuplesRequest) returns (stream ReadResponse);
 
   // ReadStartingWithUser performs a reverse read starting from user(s)/userset(s).
   // Useful for finding all objects a user has access to.
-  rpc ReadStartingWithUser(ReadStartingWithUserRequest) returns (stream ReadStartingWithUserResponse);
+  rpc ReadStartingWithUser(ReadStartingWithUserRequest) returns (stream ReadResponse);
 
   // Write performs tuple write and delete operations atomically.
   // All deletes are performed before writes.
@@ -112,18 +112,10 @@ message ReadUserTupleRequest {
   ConsistencyOptions consistency = 3;
 }
 
-message ReadUserTupleResponse {
-  storage.v1.types.Tuple tuple = 1;
-}
-
 message ReadUsersetTuplesRequest {
   string store = 1;
   ReadUsersetTuplesFilter filter = 2;
   ConsistencyOptions consistency = 3;
-}
-
-message ReadUsersetTuplesResponse {
-  storage.v1.types.Tuple tuple = 1;
 }
 
 message ReadStartingWithUserRequest {
@@ -133,13 +125,11 @@ message ReadStartingWithUserRequest {
   bool with_results_sorted_ascending = 4;
 }
 
-message ReadStartingWithUserResponse {
-  storage.v1.types.Tuple tuple = 1;
-}
-
 message WriteRequest {
   string store = 1;
-  repeated storage.v1.types.TupleKeyWithoutCondition deletes = 2;
+  // deletes contains tuples to delete. The condition field is ignored for deletes;
+  // deletion matches on user, relation, and object only.
+  repeated storage.v1.types.TupleKey deletes = 2;
   repeated storage.v1.types.TupleKey writes = 3;
   TupleWriteOptions options = 4;
 }

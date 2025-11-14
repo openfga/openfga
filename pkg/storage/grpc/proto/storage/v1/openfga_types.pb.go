@@ -258,6 +258,9 @@ func (x *RelationshipCondition) GetContext() *structpb.Struct {
 
 // TupleKey represents a relationship tuple that defines an access relationship.
 // Format: <user> has <relation> on <object> [if <condition>]
+//
+// Note: For delete operations, the condition field is ignored. Deletes match on
+// user, relation, and object only, regardless of any condition value provided.
 type TupleKey struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// user is the user or userset that has the relation (e.g., "user:alice" or "group:engineers#member").
@@ -267,6 +270,7 @@ type TupleKey struct {
 	// object is the resource being accessed (e.g., "document:readme").
 	Object string `protobuf:"bytes,3,opt,name=object,proto3" json:"object,omitempty"`
 	// condition is an optional condition that must be satisfied for the relationship to be valid.
+	// This field is ignored for delete operations.
 	Condition     *RelationshipCondition `protobuf:"bytes,4,opt,name=condition,proto3" json:"condition,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -330,68 +334,6 @@ func (x *TupleKey) GetCondition() *RelationshipCondition {
 	return nil
 }
 
-// TupleKeyWithoutCondition is a tuple key without the condition field.
-// Used for delete operations where the condition is ignored.
-type TupleKeyWithoutCondition struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	User          string                 `protobuf:"bytes,1,opt,name=user,proto3" json:"user,omitempty"`
-	Relation      string                 `protobuf:"bytes,2,opt,name=relation,proto3" json:"relation,omitempty"`
-	Object        string                 `protobuf:"bytes,3,opt,name=object,proto3" json:"object,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *TupleKeyWithoutCondition) Reset() {
-	*x = TupleKeyWithoutCondition{}
-	mi := &file_storage_v1_openfga_types_proto_msgTypes[2]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *TupleKeyWithoutCondition) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*TupleKeyWithoutCondition) ProtoMessage() {}
-
-func (x *TupleKeyWithoutCondition) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_v1_openfga_types_proto_msgTypes[2]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use TupleKeyWithoutCondition.ProtoReflect.Descriptor instead.
-func (*TupleKeyWithoutCondition) Descriptor() ([]byte, []int) {
-	return file_storage_v1_openfga_types_proto_rawDescGZIP(), []int{2}
-}
-
-func (x *TupleKeyWithoutCondition) GetUser() string {
-	if x != nil {
-		return x.User
-	}
-	return ""
-}
-
-func (x *TupleKeyWithoutCondition) GetRelation() string {
-	if x != nil {
-		return x.Relation
-	}
-	return ""
-}
-
-func (x *TupleKeyWithoutCondition) GetObject() string {
-	if x != nil {
-		return x.Object
-	}
-	return ""
-}
-
 // Tuple represents a stored relationship tuple with metadata.
 type Tuple struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -405,7 +347,7 @@ type Tuple struct {
 
 func (x *Tuple) Reset() {
 	*x = Tuple{}
-	mi := &file_storage_v1_openfga_types_proto_msgTypes[3]
+	mi := &file_storage_v1_openfga_types_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -417,7 +359,7 @@ func (x *Tuple) String() string {
 func (*Tuple) ProtoMessage() {}
 
 func (x *Tuple) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_v1_openfga_types_proto_msgTypes[3]
+	mi := &file_storage_v1_openfga_types_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -430,7 +372,7 @@ func (x *Tuple) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Tuple.ProtoReflect.Descriptor instead.
 func (*Tuple) Descriptor() ([]byte, []int) {
-	return file_storage_v1_openfga_types_proto_rawDescGZIP(), []int{3}
+	return file_storage_v1_openfga_types_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *Tuple) GetKey() *TupleKey {
@@ -468,7 +410,7 @@ type Store struct {
 
 func (x *Store) Reset() {
 	*x = Store{}
-	mi := &file_storage_v1_openfga_types_proto_msgTypes[4]
+	mi := &file_storage_v1_openfga_types_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -480,7 +422,7 @@ func (x *Store) String() string {
 func (*Store) ProtoMessage() {}
 
 func (x *Store) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_v1_openfga_types_proto_msgTypes[4]
+	mi := &file_storage_v1_openfga_types_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -493,7 +435,7 @@ func (x *Store) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Store.ProtoReflect.Descriptor instead.
 func (*Store) Descriptor() ([]byte, []int) {
-	return file_storage_v1_openfga_types_proto_rawDescGZIP(), []int{4}
+	return file_storage_v1_openfga_types_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *Store) GetId() string {
@@ -547,7 +489,7 @@ type Condition struct {
 
 func (x *Condition) Reset() {
 	*x = Condition{}
-	mi := &file_storage_v1_openfga_types_proto_msgTypes[5]
+	mi := &file_storage_v1_openfga_types_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -559,7 +501,7 @@ func (x *Condition) String() string {
 func (*Condition) ProtoMessage() {}
 
 func (x *Condition) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_v1_openfga_types_proto_msgTypes[5]
+	mi := &file_storage_v1_openfga_types_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -572,7 +514,7 @@ func (x *Condition) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Condition.ProtoReflect.Descriptor instead.
 func (*Condition) Descriptor() ([]byte, []int) {
-	return file_storage_v1_openfga_types_proto_rawDescGZIP(), []int{5}
+	return file_storage_v1_openfga_types_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *Condition) GetName() string {
@@ -610,7 +552,7 @@ type ConditionParamTypeRef struct {
 
 func (x *ConditionParamTypeRef) Reset() {
 	*x = ConditionParamTypeRef{}
-	mi := &file_storage_v1_openfga_types_proto_msgTypes[6]
+	mi := &file_storage_v1_openfga_types_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -622,7 +564,7 @@ func (x *ConditionParamTypeRef) String() string {
 func (*ConditionParamTypeRef) ProtoMessage() {}
 
 func (x *ConditionParamTypeRef) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_v1_openfga_types_proto_msgTypes[6]
+	mi := &file_storage_v1_openfga_types_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -635,7 +577,7 @@ func (x *ConditionParamTypeRef) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConditionParamTypeRef.ProtoReflect.Descriptor instead.
 func (*ConditionParamTypeRef) Descriptor() ([]byte, []int) {
-	return file_storage_v1_openfga_types_proto_rawDescGZIP(), []int{6}
+	return file_storage_v1_openfga_types_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *ConditionParamTypeRef) GetTypeName() ConditionParamTypeRef_TypeName {
@@ -662,7 +604,7 @@ type Wildcard struct {
 
 func (x *Wildcard) Reset() {
 	*x = Wildcard{}
-	mi := &file_storage_v1_openfga_types_proto_msgTypes[7]
+	mi := &file_storage_v1_openfga_types_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -674,7 +616,7 @@ func (x *Wildcard) String() string {
 func (*Wildcard) ProtoMessage() {}
 
 func (x *Wildcard) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_v1_openfga_types_proto_msgTypes[7]
+	mi := &file_storage_v1_openfga_types_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -687,7 +629,7 @@ func (x *Wildcard) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Wildcard.ProtoReflect.Descriptor instead.
 func (*Wildcard) Descriptor() ([]byte, []int) {
-	return file_storage_v1_openfga_types_proto_rawDescGZIP(), []int{7}
+	return file_storage_v1_openfga_types_proto_rawDescGZIP(), []int{6}
 }
 
 // RelationReference specifies an allowed user type for a relation.
@@ -711,7 +653,7 @@ type RelationReference struct {
 
 func (x *RelationReference) Reset() {
 	*x = RelationReference{}
-	mi := &file_storage_v1_openfga_types_proto_msgTypes[8]
+	mi := &file_storage_v1_openfga_types_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -723,7 +665,7 @@ func (x *RelationReference) String() string {
 func (*RelationReference) ProtoMessage() {}
 
 func (x *RelationReference) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_v1_openfga_types_proto_msgTypes[8]
+	mi := &file_storage_v1_openfga_types_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -736,7 +678,7 @@ func (x *RelationReference) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RelationReference.ProtoReflect.Descriptor instead.
 func (*RelationReference) Descriptor() ([]byte, []int) {
-	return file_storage_v1_openfga_types_proto_rawDescGZIP(), []int{8}
+	return file_storage_v1_openfga_types_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *RelationReference) GetType() string {
@@ -810,7 +752,7 @@ type ObjectRelation struct {
 
 func (x *ObjectRelation) Reset() {
 	*x = ObjectRelation{}
-	mi := &file_storage_v1_openfga_types_proto_msgTypes[9]
+	mi := &file_storage_v1_openfga_types_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -822,7 +764,7 @@ func (x *ObjectRelation) String() string {
 func (*ObjectRelation) ProtoMessage() {}
 
 func (x *ObjectRelation) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_v1_openfga_types_proto_msgTypes[9]
+	mi := &file_storage_v1_openfga_types_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -835,7 +777,7 @@ func (x *ObjectRelation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ObjectRelation.ProtoReflect.Descriptor instead.
 func (*ObjectRelation) Descriptor() ([]byte, []int) {
-	return file_storage_v1_openfga_types_proto_rawDescGZIP(), []int{9}
+	return file_storage_v1_openfga_types_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *ObjectRelation) GetObject() string {
@@ -863,7 +805,7 @@ type SourceInfo struct {
 
 func (x *SourceInfo) Reset() {
 	*x = SourceInfo{}
-	mi := &file_storage_v1_openfga_types_proto_msgTypes[10]
+	mi := &file_storage_v1_openfga_types_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -875,7 +817,7 @@ func (x *SourceInfo) String() string {
 func (*SourceInfo) ProtoMessage() {}
 
 func (x *SourceInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_v1_openfga_types_proto_msgTypes[10]
+	mi := &file_storage_v1_openfga_types_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -888,7 +830,7 @@ func (x *SourceInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SourceInfo.ProtoReflect.Descriptor instead.
 func (*SourceInfo) Descriptor() ([]byte, []int) {
-	return file_storage_v1_openfga_types_proto_rawDescGZIP(), []int{10}
+	return file_storage_v1_openfga_types_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *SourceInfo) GetFile() string {
@@ -913,7 +855,7 @@ type RelationMetadata struct {
 
 func (x *RelationMetadata) Reset() {
 	*x = RelationMetadata{}
-	mi := &file_storage_v1_openfga_types_proto_msgTypes[11]
+	mi := &file_storage_v1_openfga_types_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -925,7 +867,7 @@ func (x *RelationMetadata) String() string {
 func (*RelationMetadata) ProtoMessage() {}
 
 func (x *RelationMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_v1_openfga_types_proto_msgTypes[11]
+	mi := &file_storage_v1_openfga_types_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -938,7 +880,7 @@ func (x *RelationMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RelationMetadata.ProtoReflect.Descriptor instead.
 func (*RelationMetadata) Descriptor() ([]byte, []int) {
-	return file_storage_v1_openfga_types_proto_rawDescGZIP(), []int{11}
+	return file_storage_v1_openfga_types_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *RelationMetadata) GetDirectlyRelatedUserTypes() []*RelationReference {
@@ -977,7 +919,7 @@ type Metadata struct {
 
 func (x *Metadata) Reset() {
 	*x = Metadata{}
-	mi := &file_storage_v1_openfga_types_proto_msgTypes[12]
+	mi := &file_storage_v1_openfga_types_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -989,7 +931,7 @@ func (x *Metadata) String() string {
 func (*Metadata) ProtoMessage() {}
 
 func (x *Metadata) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_v1_openfga_types_proto_msgTypes[12]
+	mi := &file_storage_v1_openfga_types_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1002,7 +944,7 @@ func (x *Metadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Metadata.ProtoReflect.Descriptor instead.
 func (*Metadata) Descriptor() ([]byte, []int) {
-	return file_storage_v1_openfga_types_proto_rawDescGZIP(), []int{12}
+	return file_storage_v1_openfga_types_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *Metadata) GetRelations() map[string]*RelationMetadata {
@@ -1036,7 +978,7 @@ type DirectUserset struct {
 
 func (x *DirectUserset) Reset() {
 	*x = DirectUserset{}
-	mi := &file_storage_v1_openfga_types_proto_msgTypes[13]
+	mi := &file_storage_v1_openfga_types_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1048,7 +990,7 @@ func (x *DirectUserset) String() string {
 func (*DirectUserset) ProtoMessage() {}
 
 func (x *DirectUserset) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_v1_openfga_types_proto_msgTypes[13]
+	mi := &file_storage_v1_openfga_types_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1061,7 +1003,7 @@ func (x *DirectUserset) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DirectUserset.ProtoReflect.Descriptor instead.
 func (*DirectUserset) Descriptor() ([]byte, []int) {
-	return file_storage_v1_openfga_types_proto_rawDescGZIP(), []int{13}
+	return file_storage_v1_openfga_types_proto_rawDescGZIP(), []int{12}
 }
 
 // Usersets represents a collection of usersets (for union/intersection operations).
@@ -1075,7 +1017,7 @@ type Usersets struct {
 
 func (x *Usersets) Reset() {
 	*x = Usersets{}
-	mi := &file_storage_v1_openfga_types_proto_msgTypes[14]
+	mi := &file_storage_v1_openfga_types_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1087,7 +1029,7 @@ func (x *Usersets) String() string {
 func (*Usersets) ProtoMessage() {}
 
 func (x *Usersets) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_v1_openfga_types_proto_msgTypes[14]
+	mi := &file_storage_v1_openfga_types_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1100,7 +1042,7 @@ func (x *Usersets) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Usersets.ProtoReflect.Descriptor instead.
 func (*Usersets) Descriptor() ([]byte, []int) {
-	return file_storage_v1_openfga_types_proto_rawDescGZIP(), []int{14}
+	return file_storage_v1_openfga_types_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *Usersets) GetChild() []*Userset {
@@ -1124,7 +1066,7 @@ type Difference struct {
 
 func (x *Difference) Reset() {
 	*x = Difference{}
-	mi := &file_storage_v1_openfga_types_proto_msgTypes[15]
+	mi := &file_storage_v1_openfga_types_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1136,7 +1078,7 @@ func (x *Difference) String() string {
 func (*Difference) ProtoMessage() {}
 
 func (x *Difference) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_v1_openfga_types_proto_msgTypes[15]
+	mi := &file_storage_v1_openfga_types_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1149,7 +1091,7 @@ func (x *Difference) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Difference.ProtoReflect.Descriptor instead.
 func (*Difference) Descriptor() ([]byte, []int) {
-	return file_storage_v1_openfga_types_proto_rawDescGZIP(), []int{15}
+	return file_storage_v1_openfga_types_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *Difference) GetBase() *Userset {
@@ -1181,7 +1123,7 @@ type TupleToUserset struct {
 
 func (x *TupleToUserset) Reset() {
 	*x = TupleToUserset{}
-	mi := &file_storage_v1_openfga_types_proto_msgTypes[16]
+	mi := &file_storage_v1_openfga_types_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1193,7 +1135,7 @@ func (x *TupleToUserset) String() string {
 func (*TupleToUserset) ProtoMessage() {}
 
 func (x *TupleToUserset) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_v1_openfga_types_proto_msgTypes[16]
+	mi := &file_storage_v1_openfga_types_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1206,7 +1148,7 @@ func (x *TupleToUserset) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TupleToUserset.ProtoReflect.Descriptor instead.
 func (*TupleToUserset) Descriptor() ([]byte, []int) {
-	return file_storage_v1_openfga_types_proto_rawDescGZIP(), []int{16}
+	return file_storage_v1_openfga_types_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *TupleToUserset) GetTupleset() *ObjectRelation {
@@ -1242,7 +1184,7 @@ type Userset struct {
 
 func (x *Userset) Reset() {
 	*x = Userset{}
-	mi := &file_storage_v1_openfga_types_proto_msgTypes[17]
+	mi := &file_storage_v1_openfga_types_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1254,7 +1196,7 @@ func (x *Userset) String() string {
 func (*Userset) ProtoMessage() {}
 
 func (x *Userset) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_v1_openfga_types_proto_msgTypes[17]
+	mi := &file_storage_v1_openfga_types_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1267,7 +1209,7 @@ func (x *Userset) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Userset.ProtoReflect.Descriptor instead.
 func (*Userset) Descriptor() ([]byte, []int) {
-	return file_storage_v1_openfga_types_proto_rawDescGZIP(), []int{17}
+	return file_storage_v1_openfga_types_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *Userset) GetUserset() isUserset_Userset {
@@ -1393,7 +1335,7 @@ type TypeDefinition struct {
 
 func (x *TypeDefinition) Reset() {
 	*x = TypeDefinition{}
-	mi := &file_storage_v1_openfga_types_proto_msgTypes[18]
+	mi := &file_storage_v1_openfga_types_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1405,7 +1347,7 @@ func (x *TypeDefinition) String() string {
 func (*TypeDefinition) ProtoMessage() {}
 
 func (x *TypeDefinition) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_v1_openfga_types_proto_msgTypes[18]
+	mi := &file_storage_v1_openfga_types_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1418,7 +1360,7 @@ func (x *TypeDefinition) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TypeDefinition.ProtoReflect.Descriptor instead.
 func (*TypeDefinition) Descriptor() ([]byte, []int) {
-	return file_storage_v1_openfga_types_proto_rawDescGZIP(), []int{18}
+	return file_storage_v1_openfga_types_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *TypeDefinition) GetType() string {
@@ -1460,7 +1402,7 @@ type AuthorizationModel struct {
 
 func (x *AuthorizationModel) Reset() {
 	*x = AuthorizationModel{}
-	mi := &file_storage_v1_openfga_types_proto_msgTypes[19]
+	mi := &file_storage_v1_openfga_types_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1472,7 +1414,7 @@ func (x *AuthorizationModel) String() string {
 func (*AuthorizationModel) ProtoMessage() {}
 
 func (x *AuthorizationModel) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_v1_openfga_types_proto_msgTypes[19]
+	mi := &file_storage_v1_openfga_types_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1485,7 +1427,7 @@ func (x *AuthorizationModel) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AuthorizationModel.ProtoReflect.Descriptor instead.
 func (*AuthorizationModel) Descriptor() ([]byte, []int) {
-	return file_storage_v1_openfga_types_proto_rawDescGZIP(), []int{19}
+	return file_storage_v1_openfga_types_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *AuthorizationModel) GetId() string {
@@ -1529,7 +1471,7 @@ type AssertionTupleKey struct {
 
 func (x *AssertionTupleKey) Reset() {
 	*x = AssertionTupleKey{}
-	mi := &file_storage_v1_openfga_types_proto_msgTypes[20]
+	mi := &file_storage_v1_openfga_types_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1541,7 +1483,7 @@ func (x *AssertionTupleKey) String() string {
 func (*AssertionTupleKey) ProtoMessage() {}
 
 func (x *AssertionTupleKey) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_v1_openfga_types_proto_msgTypes[20]
+	mi := &file_storage_v1_openfga_types_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1554,7 +1496,7 @@ func (x *AssertionTupleKey) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AssertionTupleKey.ProtoReflect.Descriptor instead.
 func (*AssertionTupleKey) Descriptor() ([]byte, []int) {
-	return file_storage_v1_openfga_types_proto_rawDescGZIP(), []int{20}
+	return file_storage_v1_openfga_types_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *AssertionTupleKey) GetObject() string {
@@ -1592,7 +1534,7 @@ type Assertion struct {
 
 func (x *Assertion) Reset() {
 	*x = Assertion{}
-	mi := &file_storage_v1_openfga_types_proto_msgTypes[21]
+	mi := &file_storage_v1_openfga_types_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1604,7 +1546,7 @@ func (x *Assertion) String() string {
 func (*Assertion) ProtoMessage() {}
 
 func (x *Assertion) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_v1_openfga_types_proto_msgTypes[21]
+	mi := &file_storage_v1_openfga_types_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1617,7 +1559,7 @@ func (x *Assertion) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Assertion.ProtoReflect.Descriptor instead.
 func (*Assertion) Descriptor() ([]byte, []int) {
-	return file_storage_v1_openfga_types_proto_rawDescGZIP(), []int{21}
+	return file_storage_v1_openfga_types_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *Assertion) GetTupleKey() *AssertionTupleKey {
@@ -1650,7 +1592,7 @@ type TupleChange struct {
 
 func (x *TupleChange) Reset() {
 	*x = TupleChange{}
-	mi := &file_storage_v1_openfga_types_proto_msgTypes[22]
+	mi := &file_storage_v1_openfga_types_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1662,7 +1604,7 @@ func (x *TupleChange) String() string {
 func (*TupleChange) ProtoMessage() {}
 
 func (x *TupleChange) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_v1_openfga_types_proto_msgTypes[22]
+	mi := &file_storage_v1_openfga_types_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1675,7 +1617,7 @@ func (x *TupleChange) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TupleChange.ProtoReflect.Descriptor instead.
 func (*TupleChange) Descriptor() ([]byte, []int) {
-	return file_storage_v1_openfga_types_proto_rawDescGZIP(), []int{22}
+	return file_storage_v1_openfga_types_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *TupleChange) GetTupleKey() *TupleKey {
@@ -1711,11 +1653,7 @@ const file_storage_v1_openfga_types_proto_rawDesc = "" +
 	"\x04user\x18\x01 \x01(\tR\x04user\x12\x1a\n" +
 	"\brelation\x18\x02 \x01(\tR\brelation\x12\x16\n" +
 	"\x06object\x18\x03 \x01(\tR\x06object\x12E\n" +
-	"\tcondition\x18\x04 \x01(\v2'.storage.v1.types.RelationshipConditionR\tcondition\"b\n" +
-	"\x18TupleKeyWithoutCondition\x12\x12\n" +
-	"\x04user\x18\x01 \x01(\tR\x04user\x12\x1a\n" +
-	"\brelation\x18\x02 \x01(\tR\brelation\x12\x16\n" +
-	"\x06object\x18\x03 \x01(\tR\x06object\"o\n" +
+	"\tcondition\x18\x04 \x01(\v2'.storage.v1.types.RelationshipConditionR\tcondition\"o\n" +
 	"\x05Tuple\x12,\n" +
 	"\x03key\x18\x01 \x01(\v2\x1a.storage.v1.types.TupleKeyR\x03key\x128\n" +
 	"\ttimestamp\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\"\xdc\x01\n" +
@@ -1852,80 +1790,79 @@ func file_storage_v1_openfga_types_proto_rawDescGZIP() []byte {
 }
 
 var file_storage_v1_openfga_types_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
-var file_storage_v1_openfga_types_proto_msgTypes = make([]protoimpl.MessageInfo, 27)
+var file_storage_v1_openfga_types_proto_msgTypes = make([]protoimpl.MessageInfo, 26)
 var file_storage_v1_openfga_types_proto_goTypes = []any{
 	(ConditionParamTypeRef_TypeName)(0), // 0: storage.v1.types.ConditionParamTypeRef_TypeName
 	(TupleOperation)(0),                 // 1: storage.v1.types.TupleOperation
 	(ConsistencyPreference)(0),          // 2: storage.v1.types.ConsistencyPreference
 	(*RelationshipCondition)(nil),       // 3: storage.v1.types.RelationshipCondition
 	(*TupleKey)(nil),                    // 4: storage.v1.types.TupleKey
-	(*TupleKeyWithoutCondition)(nil),    // 5: storage.v1.types.TupleKeyWithoutCondition
-	(*Tuple)(nil),                       // 6: storage.v1.types.Tuple
-	(*Store)(nil),                       // 7: storage.v1.types.Store
-	(*Condition)(nil),                   // 8: storage.v1.types.Condition
-	(*ConditionParamTypeRef)(nil),       // 9: storage.v1.types.ConditionParamTypeRef
-	(*Wildcard)(nil),                    // 10: storage.v1.types.Wildcard
-	(*RelationReference)(nil),           // 11: storage.v1.types.RelationReference
-	(*ObjectRelation)(nil),              // 12: storage.v1.types.ObjectRelation
-	(*SourceInfo)(nil),                  // 13: storage.v1.types.SourceInfo
-	(*RelationMetadata)(nil),            // 14: storage.v1.types.RelationMetadata
-	(*Metadata)(nil),                    // 15: storage.v1.types.Metadata
-	(*DirectUserset)(nil),               // 16: storage.v1.types.DirectUserset
-	(*Usersets)(nil),                    // 17: storage.v1.types.Usersets
-	(*Difference)(nil),                  // 18: storage.v1.types.Difference
-	(*TupleToUserset)(nil),              // 19: storage.v1.types.TupleToUserset
-	(*Userset)(nil),                     // 20: storage.v1.types.Userset
-	(*TypeDefinition)(nil),              // 21: storage.v1.types.TypeDefinition
-	(*AuthorizationModel)(nil),          // 22: storage.v1.types.AuthorizationModel
-	(*AssertionTupleKey)(nil),           // 23: storage.v1.types.AssertionTupleKey
-	(*Assertion)(nil),                   // 24: storage.v1.types.Assertion
-	(*TupleChange)(nil),                 // 25: storage.v1.types.TupleChange
-	nil,                                 // 26: storage.v1.types.Condition.ParametersEntry
-	nil,                                 // 27: storage.v1.types.Metadata.RelationsEntry
-	nil,                                 // 28: storage.v1.types.TypeDefinition.RelationsEntry
-	nil,                                 // 29: storage.v1.types.AuthorizationModel.ConditionsEntry
-	(*structpb.Struct)(nil),             // 30: google.protobuf.Struct
-	(*timestamppb.Timestamp)(nil),       // 31: google.protobuf.Timestamp
+	(*Tuple)(nil),                       // 5: storage.v1.types.Tuple
+	(*Store)(nil),                       // 6: storage.v1.types.Store
+	(*Condition)(nil),                   // 7: storage.v1.types.Condition
+	(*ConditionParamTypeRef)(nil),       // 8: storage.v1.types.ConditionParamTypeRef
+	(*Wildcard)(nil),                    // 9: storage.v1.types.Wildcard
+	(*RelationReference)(nil),           // 10: storage.v1.types.RelationReference
+	(*ObjectRelation)(nil),              // 11: storage.v1.types.ObjectRelation
+	(*SourceInfo)(nil),                  // 12: storage.v1.types.SourceInfo
+	(*RelationMetadata)(nil),            // 13: storage.v1.types.RelationMetadata
+	(*Metadata)(nil),                    // 14: storage.v1.types.Metadata
+	(*DirectUserset)(nil),               // 15: storage.v1.types.DirectUserset
+	(*Usersets)(nil),                    // 16: storage.v1.types.Usersets
+	(*Difference)(nil),                  // 17: storage.v1.types.Difference
+	(*TupleToUserset)(nil),              // 18: storage.v1.types.TupleToUserset
+	(*Userset)(nil),                     // 19: storage.v1.types.Userset
+	(*TypeDefinition)(nil),              // 20: storage.v1.types.TypeDefinition
+	(*AuthorizationModel)(nil),          // 21: storage.v1.types.AuthorizationModel
+	(*AssertionTupleKey)(nil),           // 22: storage.v1.types.AssertionTupleKey
+	(*Assertion)(nil),                   // 23: storage.v1.types.Assertion
+	(*TupleChange)(nil),                 // 24: storage.v1.types.TupleChange
+	nil,                                 // 25: storage.v1.types.Condition.ParametersEntry
+	nil,                                 // 26: storage.v1.types.Metadata.RelationsEntry
+	nil,                                 // 27: storage.v1.types.TypeDefinition.RelationsEntry
+	nil,                                 // 28: storage.v1.types.AuthorizationModel.ConditionsEntry
+	(*structpb.Struct)(nil),             // 29: google.protobuf.Struct
+	(*timestamppb.Timestamp)(nil),       // 30: google.protobuf.Timestamp
 }
 var file_storage_v1_openfga_types_proto_depIdxs = []int32{
-	30, // 0: storage.v1.types.RelationshipCondition.context:type_name -> google.protobuf.Struct
+	29, // 0: storage.v1.types.RelationshipCondition.context:type_name -> google.protobuf.Struct
 	3,  // 1: storage.v1.types.TupleKey.condition:type_name -> storage.v1.types.RelationshipCondition
 	4,  // 2: storage.v1.types.Tuple.key:type_name -> storage.v1.types.TupleKey
-	31, // 3: storage.v1.types.Tuple.timestamp:type_name -> google.protobuf.Timestamp
-	31, // 4: storage.v1.types.Store.created_at:type_name -> google.protobuf.Timestamp
-	31, // 5: storage.v1.types.Store.updated_at:type_name -> google.protobuf.Timestamp
-	31, // 6: storage.v1.types.Store.deleted_at:type_name -> google.protobuf.Timestamp
-	26, // 7: storage.v1.types.Condition.parameters:type_name -> storage.v1.types.Condition.ParametersEntry
+	30, // 3: storage.v1.types.Tuple.timestamp:type_name -> google.protobuf.Timestamp
+	30, // 4: storage.v1.types.Store.created_at:type_name -> google.protobuf.Timestamp
+	30, // 5: storage.v1.types.Store.updated_at:type_name -> google.protobuf.Timestamp
+	30, // 6: storage.v1.types.Store.deleted_at:type_name -> google.protobuf.Timestamp
+	25, // 7: storage.v1.types.Condition.parameters:type_name -> storage.v1.types.Condition.ParametersEntry
 	0,  // 8: storage.v1.types.ConditionParamTypeRef.type_name:type_name -> storage.v1.types.ConditionParamTypeRef_TypeName
-	9,  // 9: storage.v1.types.ConditionParamTypeRef.generic_types:type_name -> storage.v1.types.ConditionParamTypeRef
-	10, // 10: storage.v1.types.RelationReference.wildcard:type_name -> storage.v1.types.Wildcard
-	11, // 11: storage.v1.types.RelationMetadata.directly_related_user_types:type_name -> storage.v1.types.RelationReference
-	13, // 12: storage.v1.types.RelationMetadata.source_info:type_name -> storage.v1.types.SourceInfo
-	27, // 13: storage.v1.types.Metadata.relations:type_name -> storage.v1.types.Metadata.RelationsEntry
-	13, // 14: storage.v1.types.Metadata.source_info:type_name -> storage.v1.types.SourceInfo
-	20, // 15: storage.v1.types.Usersets.child:type_name -> storage.v1.types.Userset
-	20, // 16: storage.v1.types.Difference.base:type_name -> storage.v1.types.Userset
-	20, // 17: storage.v1.types.Difference.subtract:type_name -> storage.v1.types.Userset
-	12, // 18: storage.v1.types.TupleToUserset.tupleset:type_name -> storage.v1.types.ObjectRelation
-	12, // 19: storage.v1.types.TupleToUserset.computed_userset:type_name -> storage.v1.types.ObjectRelation
-	16, // 20: storage.v1.types.Userset.this:type_name -> storage.v1.types.DirectUserset
-	12, // 21: storage.v1.types.Userset.computed_userset:type_name -> storage.v1.types.ObjectRelation
-	19, // 22: storage.v1.types.Userset.tuple_to_userset:type_name -> storage.v1.types.TupleToUserset
-	17, // 23: storage.v1.types.Userset.union:type_name -> storage.v1.types.Usersets
-	17, // 24: storage.v1.types.Userset.intersection:type_name -> storage.v1.types.Usersets
-	18, // 25: storage.v1.types.Userset.difference:type_name -> storage.v1.types.Difference
-	28, // 26: storage.v1.types.TypeDefinition.relations:type_name -> storage.v1.types.TypeDefinition.RelationsEntry
-	15, // 27: storage.v1.types.TypeDefinition.metadata:type_name -> storage.v1.types.Metadata
-	21, // 28: storage.v1.types.AuthorizationModel.type_definitions:type_name -> storage.v1.types.TypeDefinition
-	29, // 29: storage.v1.types.AuthorizationModel.conditions:type_name -> storage.v1.types.AuthorizationModel.ConditionsEntry
-	23, // 30: storage.v1.types.Assertion.tuple_key:type_name -> storage.v1.types.AssertionTupleKey
+	8,  // 9: storage.v1.types.ConditionParamTypeRef.generic_types:type_name -> storage.v1.types.ConditionParamTypeRef
+	9,  // 10: storage.v1.types.RelationReference.wildcard:type_name -> storage.v1.types.Wildcard
+	10, // 11: storage.v1.types.RelationMetadata.directly_related_user_types:type_name -> storage.v1.types.RelationReference
+	12, // 12: storage.v1.types.RelationMetadata.source_info:type_name -> storage.v1.types.SourceInfo
+	26, // 13: storage.v1.types.Metadata.relations:type_name -> storage.v1.types.Metadata.RelationsEntry
+	12, // 14: storage.v1.types.Metadata.source_info:type_name -> storage.v1.types.SourceInfo
+	19, // 15: storage.v1.types.Usersets.child:type_name -> storage.v1.types.Userset
+	19, // 16: storage.v1.types.Difference.base:type_name -> storage.v1.types.Userset
+	19, // 17: storage.v1.types.Difference.subtract:type_name -> storage.v1.types.Userset
+	11, // 18: storage.v1.types.TupleToUserset.tupleset:type_name -> storage.v1.types.ObjectRelation
+	11, // 19: storage.v1.types.TupleToUserset.computed_userset:type_name -> storage.v1.types.ObjectRelation
+	15, // 20: storage.v1.types.Userset.this:type_name -> storage.v1.types.DirectUserset
+	11, // 21: storage.v1.types.Userset.computed_userset:type_name -> storage.v1.types.ObjectRelation
+	18, // 22: storage.v1.types.Userset.tuple_to_userset:type_name -> storage.v1.types.TupleToUserset
+	16, // 23: storage.v1.types.Userset.union:type_name -> storage.v1.types.Usersets
+	16, // 24: storage.v1.types.Userset.intersection:type_name -> storage.v1.types.Usersets
+	17, // 25: storage.v1.types.Userset.difference:type_name -> storage.v1.types.Difference
+	27, // 26: storage.v1.types.TypeDefinition.relations:type_name -> storage.v1.types.TypeDefinition.RelationsEntry
+	14, // 27: storage.v1.types.TypeDefinition.metadata:type_name -> storage.v1.types.Metadata
+	20, // 28: storage.v1.types.AuthorizationModel.type_definitions:type_name -> storage.v1.types.TypeDefinition
+	28, // 29: storage.v1.types.AuthorizationModel.conditions:type_name -> storage.v1.types.AuthorizationModel.ConditionsEntry
+	22, // 30: storage.v1.types.Assertion.tuple_key:type_name -> storage.v1.types.AssertionTupleKey
 	4,  // 31: storage.v1.types.TupleChange.tuple_key:type_name -> storage.v1.types.TupleKey
 	1,  // 32: storage.v1.types.TupleChange.operation:type_name -> storage.v1.types.TupleOperation
-	31, // 33: storage.v1.types.TupleChange.timestamp:type_name -> google.protobuf.Timestamp
-	9,  // 34: storage.v1.types.Condition.ParametersEntry.value:type_name -> storage.v1.types.ConditionParamTypeRef
-	14, // 35: storage.v1.types.Metadata.RelationsEntry.value:type_name -> storage.v1.types.RelationMetadata
-	20, // 36: storage.v1.types.TypeDefinition.RelationsEntry.value:type_name -> storage.v1.types.Userset
-	8,  // 37: storage.v1.types.AuthorizationModel.ConditionsEntry.value:type_name -> storage.v1.types.Condition
+	30, // 33: storage.v1.types.TupleChange.timestamp:type_name -> google.protobuf.Timestamp
+	8,  // 34: storage.v1.types.Condition.ParametersEntry.value:type_name -> storage.v1.types.ConditionParamTypeRef
+	13, // 35: storage.v1.types.Metadata.RelationsEntry.value:type_name -> storage.v1.types.RelationMetadata
+	19, // 36: storage.v1.types.TypeDefinition.RelationsEntry.value:type_name -> storage.v1.types.Userset
+	7,  // 37: storage.v1.types.AuthorizationModel.ConditionsEntry.value:type_name -> storage.v1.types.Condition
 	38, // [38:38] is the sub-list for method output_type
 	38, // [38:38] is the sub-list for method input_type
 	38, // [38:38] is the sub-list for extension type_name
@@ -1938,11 +1875,11 @@ func file_storage_v1_openfga_types_proto_init() {
 	if File_storage_v1_openfga_types_proto != nil {
 		return
 	}
-	file_storage_v1_openfga_types_proto_msgTypes[8].OneofWrappers = []any{
+	file_storage_v1_openfga_types_proto_msgTypes[7].OneofWrappers = []any{
 		(*RelationReference_Relation)(nil),
 		(*RelationReference_Wildcard)(nil),
 	}
-	file_storage_v1_openfga_types_proto_msgTypes[17].OneofWrappers = []any{
+	file_storage_v1_openfga_types_proto_msgTypes[16].OneofWrappers = []any{
 		(*Userset_This)(nil),
 		(*Userset_ComputedUserset)(nil),
 		(*Userset_TupleToUserset)(nil),
@@ -1956,7 +1893,7 @@ func file_storage_v1_openfga_types_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_storage_v1_openfga_types_proto_rawDesc), len(file_storage_v1_openfga_types_proto_rawDesc)),
 			NumEnums:      3,
-			NumMessages:   27,
+			NumMessages:   26,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

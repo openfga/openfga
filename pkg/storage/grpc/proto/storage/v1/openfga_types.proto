@@ -21,6 +21,9 @@ message RelationshipCondition {
 
 // TupleKey represents a relationship tuple that defines an access relationship.
 // Format: <user> has <relation> on <object> [if <condition>]
+//
+// Note: For delete operations, the condition field is ignored. Deletes match on
+// user, relation, and object only, regardless of any condition value provided.
 message TupleKey {
   // user is the user or userset that has the relation (e.g., "user:alice" or "group:engineers#member").
   string user = 1;
@@ -29,15 +32,8 @@ message TupleKey {
   // object is the resource being accessed (e.g., "document:readme").
   string object = 3;
   // condition is an optional condition that must be satisfied for the relationship to be valid.
+  // This field is ignored for delete operations.
   RelationshipCondition condition = 4;
-}
-
-// TupleKeyWithoutCondition is a tuple key without the condition field.
-// Used for delete operations where the condition is ignored.
-message TupleKeyWithoutCondition {
-  string user = 1;
-  string relation = 2;
-  string object = 3;
 }
 
 // Tuple represents a stored relationship tuple with metadata.
