@@ -778,6 +778,17 @@ func (m *mockErrorDatastore) ReadChanges(ctx context.Context, store string, filt
 	return nil, "", storage.ErrNotFound
 }
 
+func (m *mockErrorDatastore) WriteAssertions(ctx context.Context, store, modelID string, assertions []*openfgav1.Assertion) error {
+	return m.errorToReturn
+}
+
+func (m *mockErrorDatastore) ReadAssertions(ctx context.Context, store, modelID string) ([]*openfgav1.Assertion, error) {
+	if m.errorToReturn != nil {
+		return nil, m.errorToReturn
+	}
+	return []*openfgav1.Assertion{}, nil
+}
+
 type mockEmptyIterator struct{}
 
 func (m *mockEmptyIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
@@ -1410,6 +1421,99 @@ func TestClientReadChanges(t *testing.T) {
 	})
 }
 
+func TestClientWriteAssertions(t *testing.T) {
+	client, datastore, cleanup := setupTestClientServer(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	storeID := "test-store"
+	modelID := "test-model"
+
+	assertions := []*openfgav1.Assertion{
+		{
+			TupleKey: &openfgav1.AssertionTupleKey{
+				Object:   "document:1",
+				Relation: "viewer",
+				User:     "user:anne",
+			},
+			Expectation: true,
+		},
+		{
+			TupleKey: &openfgav1.AssertionTupleKey{
+				Object:   "document:1",
+				Relation: "editor",
+				User:     "user:bob",
+			},
+			Expectation: false,
+		},
+	}
+
+	err := client.WriteAssertions(ctx, storeID, modelID, assertions)
+	require.NoError(t, err)
+
+	// Verify they were written
+	readAssertions, err := datastore.ReadAssertions(ctx, storeID, modelID)
+	require.NoError(t, err)
+	require.Len(t, readAssertions, 2)
+}
+
+func TestClientReadAssertions(t *testing.T) {
+	client, datastore, cleanup := setupTestClientServer(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	storeID := "test-store"
+	modelID := "test-model"
+
+	t.Run("empty_assertions", func(t *testing.T) {
+		assertions, err := client.ReadAssertions(ctx, storeID, modelID)
+		require.NoError(t, err)
+		require.NotNil(t, assertions)
+		require.Empty(t, assertions)
+	})
+
+	// Write assertions directly in the datastore
+	assertions := []*openfgav1.Assertion{
+		{
+			TupleKey: &openfgav1.AssertionTupleKey{
+				Object:   "document:1",
+				Relation: "viewer",
+				User:     "user:anne",
+			},
+			Expectation: true,
+		},
+		{
+			TupleKey: &openfgav1.AssertionTupleKey{
+				Object:   "document:2",
+				Relation: "editor",
+				User:     "user:bob",
+			},
+			Expectation: false,
+		},
+	}
+
+	err := datastore.WriteAssertions(ctx, storeID, modelID, assertions)
+	require.NoError(t, err)
+
+	t.Run("read_existing_assertions", func(t *testing.T) {
+		readAssertions, err := client.ReadAssertions(ctx, storeID, modelID)
+		require.NoError(t, err)
+		require.Len(t, readAssertions, 2)
+
+		// Verify first assertion
+		require.Equal(t, "document:1", readAssertions[0].GetTupleKey().GetObject())
+		require.Equal(t, "viewer", readAssertions[0].GetTupleKey().GetRelation())
+		require.Equal(t, "user:anne", readAssertions[0].GetTupleKey().GetUser())
+		require.True(t, readAssertions[0].GetExpectation())
+
+		// Verify second assertion
+		require.Equal(t, "document:2", readAssertions[1].GetTupleKey().GetObject())
+		require.Equal(t, "editor", readAssertions[1].GetTupleKey().GetRelation())
+		require.Equal(t, "user:bob", readAssertions[1].GetTupleKey().GetUser())
+		require.False(t, readAssertions[1].GetExpectation())
+	})
+}
+
 func TestClientErrorHandling(t *testing.T) {
 	ctx := context.Background()
 
@@ -1534,6 +1638,18 @@ func TestClientErrorHandling(t *testing.T) {
 				_, _, err := client.ReadChanges(ctx, "test-store", storage.ReadChangesFilter{}, storage.ReadChangesOptions{
 					Pagination: storage.PaginationOptions{PageSize: 10},
 				})
+				require.Error(t, err)
+				require.ErrorIs(t, err, tt.storeError)
+			})
+
+			t.Run("WriteAssertions", func(t *testing.T) {
+				err := client.WriteAssertions(ctx, "test-store", "test-model", []*openfgav1.Assertion{})
+				require.Error(t, err)
+				require.ErrorIs(t, err, tt.storeError)
+			})
+
+			t.Run("ReadAssertions", func(t *testing.T) {
+				_, err := client.ReadAssertions(ctx, "test-store", "test-model")
 				require.Error(t, err)
 				require.ErrorIs(t, err, tt.storeError)
 			})

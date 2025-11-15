@@ -332,6 +332,26 @@ func (s *Server) ListStores(ctx context.Context, req *storagev1.ListStoresReques
 	}, nil
 }
 
+func (s *Server) WriteAssertions(ctx context.Context, req *storagev1.WriteAssertionsRequest) (*storagev1.WriteAssertionsResponse, error) {
+	err := s.datastore.WriteAssertions(ctx, req.GetStore(), req.GetModelId(), fromStorageAssertions(req.GetAssertions()))
+	if err != nil {
+		return nil, toGRPCError(err)
+	}
+
+	return &storagev1.WriteAssertionsResponse{}, nil
+}
+
+func (s *Server) ReadAssertions(ctx context.Context, req *storagev1.ReadAssertionsRequest) (*storagev1.ReadAssertionsResponse, error) {
+	assertions, err := s.datastore.ReadAssertions(ctx, req.GetStore(), req.GetModelId())
+	if err != nil {
+		return nil, toGRPCError(err)
+	}
+
+	return &storagev1.ReadAssertionsResponse{
+		Assertions: toStorageAssertions(assertions),
+	}, nil
+}
+
 func (s *Server) ReadChanges(ctx context.Context, req *storagev1.ReadChangesRequest) (*storagev1.ReadChangesResponse, error) {
 	filter := storage.ReadChangesFilter{
 		ObjectType:    req.GetFilter().GetObjectType(),

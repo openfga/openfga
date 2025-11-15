@@ -1267,3 +1267,109 @@ func TestServerReadChanges(t *testing.T) {
 		require.True(t, foundDelete, "Should find delete operation")
 	})
 }
+
+func TestServerWriteAssertions(t *testing.T) {
+	ds := memory.New()
+	server := NewServer(ds)
+	ctx := context.Background()
+	storeID := "test-store"
+	modelID := "test-model"
+
+	assertions := []*openfgav1.Assertion{
+		{
+			TupleKey: &openfgav1.AssertionTupleKey{
+				Object:   "document:1",
+				Relation: "viewer",
+				User:     "user:anne",
+			},
+			Expectation: true,
+		},
+		{
+			TupleKey: &openfgav1.AssertionTupleKey{
+				Object:   "document:1",
+				Relation: "editor",
+				User:     "user:bob",
+			},
+			Expectation: false,
+		},
+	}
+
+	req := &storagev1.WriteAssertionsRequest{
+		Store:      storeID,
+		ModelId:    modelID,
+		Assertions: toStorageAssertions(assertions),
+	}
+
+	resp, err := server.WriteAssertions(ctx, req)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+
+	// Verify they were written
+	readAssertions, err := ds.ReadAssertions(ctx, storeID, modelID)
+	require.NoError(t, err)
+	require.Len(t, readAssertions, 2)
+}
+
+func TestServerReadAssertions(t *testing.T) {
+	ds := memory.New()
+	server := NewServer(ds)
+	ctx := context.Background()
+	storeID := "test-store"
+	modelID := "test-model"
+
+	t.Run("empty_assertions", func(t *testing.T) {
+		req := &storagev1.ReadAssertionsRequest{
+			Store:   storeID,
+			ModelId: modelID,
+		}
+		resp, err := server.ReadAssertions(ctx, req)
+		require.NoError(t, err)
+		require.NotNil(t, resp.GetAssertions())
+		require.Empty(t, resp.GetAssertions())
+	})
+
+	// Write assertions directly in the datastore
+	assertions := []*openfgav1.Assertion{
+		{
+			TupleKey: &openfgav1.AssertionTupleKey{
+				Object:   "document:1",
+				Relation: "viewer",
+				User:     "user:anne",
+			},
+			Expectation: true,
+		},
+		{
+			TupleKey: &openfgav1.AssertionTupleKey{
+				Object:   "document:2",
+				Relation: "editor",
+				User:     "user:bob",
+			},
+			Expectation: false,
+		},
+	}
+
+	err := ds.WriteAssertions(ctx, storeID, modelID, assertions)
+	require.NoError(t, err)
+
+	t.Run("read_existing_assertions", func(t *testing.T) {
+		req := &storagev1.ReadAssertionsRequest{
+			Store:   storeID,
+			ModelId: modelID,
+		}
+		resp, err := server.ReadAssertions(ctx, req)
+		require.NoError(t, err)
+		require.Len(t, resp.GetAssertions(), 2)
+
+		// Verify first assertion
+		require.Equal(t, "document:1", resp.GetAssertions()[0].GetTupleKey().GetObject())
+		require.Equal(t, "viewer", resp.GetAssertions()[0].GetTupleKey().GetRelation())
+		require.Equal(t, "user:anne", resp.GetAssertions()[0].GetTupleKey().GetUser())
+		require.True(t, resp.GetAssertions()[0].GetExpectation())
+
+		// Verify second assertion
+		require.Equal(t, "document:2", resp.GetAssertions()[1].GetTupleKey().GetObject())
+		require.Equal(t, "editor", resp.GetAssertions()[1].GetTupleKey().GetRelation())
+		require.Equal(t, "user:bob", resp.GetAssertions()[1].GetTupleKey().GetUser())
+		require.False(t, resp.GetAssertions()[1].GetExpectation())
+	})
+}
