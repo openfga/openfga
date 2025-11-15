@@ -147,14 +147,20 @@ func (s *Server) ReadUsersetTuples(req *storagev1.ReadUsersetTuplesRequest, stre
 }
 
 func (s *Server) ReadStartingWithUser(req *storagev1.ReadStartingWithUserRequest, stream storagev1.StorageService_ReadStartingWithUserServer) error {
-	userFilter := make([]*openfgav1.ObjectRelation, len(req.GetFilter().GetUserFilter()))
-	for i, obj := range req.GetFilter().GetUserFilter() {
-		userFilter[i] = fromStorageObjectRelation(obj)
+	var userFilter []*openfgav1.ObjectRelation = nil
+	if req.GetFilter() != nil && req.GetFilter().GetUserFilter() != nil {
+		userFilter = make([]*openfgav1.ObjectRelation, len(req.GetFilter().GetUserFilter()))
+		for i, obj := range req.GetFilter().GetUserFilter() {
+			userFilter[i] = fromStorageObjectRelation(obj)
+		}
 	}
 
-	objectIDs := storage.NewSortedSet()
-	for _, id := range req.GetFilter().GetObjectIds() {
-		objectIDs.Add(id)
+	var objectIDs storage.SortedSet = nil
+	if req.GetFilter() != nil && req.GetFilter().GetObjectIds() != nil {
+		objectIDs = storage.NewSortedSet()
+		for _, id := range req.GetFilter().GetObjectIds() {
+			objectIDs.Add(id)
+		}
 	}
 
 	filter := storage.ReadStartingWithUserFilter{

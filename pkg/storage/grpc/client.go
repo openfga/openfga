@@ -209,13 +209,18 @@ func (c *Client) ReadUsersetTuples(ctx context.Context, store string, filter sto
 }
 
 func (c *Client) ReadStartingWithUser(ctx context.Context, store string, filter storage.ReadStartingWithUserFilter, options storage.ReadStartingWithUserOptions) (storage.TupleIterator, error) {
+	var objectIDs []string = nil
+	if filter.ObjectIDs != nil {
+		objectIDs = filter.ObjectIDs.Values()
+	}
+
 	req := &storagev1.ReadStartingWithUserRequest{
 		Store: store,
 		Filter: &storagev1.ReadStartingWithUserFilter{
 			ObjectType: filter.ObjectType,
 			Relation:   filter.Relation,
 			UserFilter: toStorageObjectRelations(filter.UserFilter),
-			ObjectIds:  filter.ObjectIDs.Values(),
+			ObjectIds:  objectIDs,
 			Conditions: filter.Conditions,
 		},
 		Consistency: &storagev1.ConsistencyOptions{

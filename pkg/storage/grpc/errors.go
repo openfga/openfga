@@ -86,24 +86,29 @@ func fromGRPCError(err error) error {
 	// Try to extract error details first
 	for _, detail := range st.Details() {
 		if errInfo, ok := detail.(*errdetails.ErrorInfo); ok {
-			// Map error reason back to storage error
+			// Map error reason back to storage error, preserving the original error message
 			switch errInfo.GetReason() {
 			case storagev1.StorageErrorReason_NOT_FOUND.String():
+				// For ErrNotFound, return the base error directly
 				return storage.ErrNotFound
 			case storagev1.StorageErrorReason_COLLISION.String():
+				// For ErrCollision, return the base error directly
 				return storage.ErrCollision
 			case storagev1.StorageErrorReason_INVALID_CONTINUATION_TOKEN.String():
-				return storage.ErrInvalidContinuationToken
+				// For these errors, preserve the original message by wrapping
+				return fmt.Errorf("%s", st.Message())
 			case storagev1.StorageErrorReason_INVALID_START_TIME.String():
-				return storage.ErrInvalidStartTime
+				return fmt.Errorf("%s", st.Message())
 			case storagev1.StorageErrorReason_INVALID_WRITE_INPUT.String():
-				return storage.ErrInvalidWriteInput
+				// Preserve the detailed error message that includes tuple details
+				return fmt.Errorf("%s", st.Message())
 			case storagev1.StorageErrorReason_WRITE_CONFLICT_ON_INSERT.String():
-				return storage.ErrWriteConflictOnInsert
+				return fmt.Errorf("%s", st.Message())
 			case storagev1.StorageErrorReason_WRITE_CONFLICT_ON_DELETE.String():
-				return storage.ErrWriteConflictOnDelete
+				return fmt.Errorf("%s", st.Message())
 			case storagev1.StorageErrorReason_TRANSACTIONAL_WRITE_FAILED.String():
-				return storage.ErrTransactionalWriteFailed
+				// Wrap the base error to preserve the error chain for errors.Is checks
+				return fmt.Errorf("%s: %w", st.Message(), storage.ErrTransactionalWriteFailed)
 			case storagev1.StorageErrorReason_TRANSACTION_THROTTLED.String():
 				return storage.ErrTransactionThrottled
 			}
