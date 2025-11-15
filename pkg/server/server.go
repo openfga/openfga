@@ -178,6 +178,7 @@ type Server struct {
 	maxConcurrentReadsForCheck       uint32
 	maxConcurrentReadsForListUsers   uint32
 	maxAuthorizationModelCacheSize   int
+	maxTypesystemCacheSize           int
 	maxAuthorizationModelSizeInBytes int
 	experimentals                    []string
 	AccessControl                    serverconfig.AccessControlConfig
@@ -267,6 +268,13 @@ func WithContext(ctx context.Context) OpenFGAServiceV1Option {
 func WithAuthorizationModelCacheSize(maxAuthorizationModelCacheSize int) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.maxAuthorizationModelCacheSize = maxAuthorizationModelCacheSize
+	}
+}
+
+// WithTypesystemCacheSize sets the maximum number of type system models that will be cached in memory.
+func WithTypesystemCacheSize(maxTypesystemCacheSize int) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.maxTypesystemCacheSize = maxTypesystemCacheSize
 	}
 }
 
@@ -779,6 +787,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		maxConcurrentReadsForListUsers:   serverconfig.DefaultMaxConcurrentReadsForListUsers,
 		maxAuthorizationModelSizeInBytes: serverconfig.DefaultMaxAuthorizationModelSizeInBytes,
 		maxAuthorizationModelCacheSize:   serverconfig.DefaultMaxAuthorizationModelCacheSize,
+		maxTypesystemCacheSize:           serverconfig.DefaultMaxTypesystemCacheSize,
 		experimentals:                    make([]string, 0, 10),
 		AccessControl:                    serverconfig.AccessControlConfig{Enabled: false, StoreID: "", ModelID: ""},
 
@@ -884,7 +893,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		s.listUsersDispatchThrottler = throttler.NewConstantRateThrottler(s.listUsersDispatchThrottlingFrequency, "list_users_dispatch_throttle")
 	}
 
-	s.typesystemResolver, s.typesystemResolverStop, err = typesystem.MemoizedTypesystemResolverFunc(s.datastore)
+	s.typesystemResolver, s.typesystemResolverStop, err = typesystem.MemoizedTypesystemResolverFunc(s.datastore, s.maxTypesystemCacheSize)
 	if err != nil {
 		return nil, err
 	}
