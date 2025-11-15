@@ -16,6 +16,7 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 	storagev1 "github.com/openfga/openfga/pkg/storage/grpc/proto/storage/v1"
 	"github.com/openfga/openfga/pkg/storage/memory"
+	"github.com/openfga/openfga/pkg/storage/test"
 )
 
 const bufSize = 1024 * 1024
@@ -60,6 +61,14 @@ func setupTestClientServer(t *testing.T) (*Client, storage.OpenFGADatastore, fun
 	}
 
 	return client, datastore, cleanup
+}
+
+// TestGRPCDatastore runs the complete test suite against the gRPC datastore client.
+// This ensures the gRPC datastore passes the same tests as all SQL datastores.
+func TestGRPCDatastore(t *testing.T) {
+	client, _, cleanup := setupTestClientServer(t)
+	defer cleanup()
+	test.RunAllTests(t, client)
 }
 
 func TestClientIsReady(t *testing.T) {
