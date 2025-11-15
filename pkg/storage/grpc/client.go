@@ -400,11 +400,40 @@ func (c *Client) ListStores(ctx context.Context, options storage.ListStoresOptio
 }
 
 func (c *Client) WriteAssertions(ctx context.Context, store, modelID string, assertions []*openfgav1.Assertion) error {
+	req := &storagev1.WriteAssertionsRequest{
+		Store:      store,
+		ModelId:    modelID,
+		Assertions: toStorageAssertions(assertions),
+	}
+
+	_, err := c.client.WriteAssertions(ctx, req)
+	if err != nil {
+		return fromGRPCError(err)
+	}
+
 	return nil
 }
 
 func (c *Client) ReadAssertions(ctx context.Context, store, modelID string) ([]*openfgav1.Assertion, error) {
-	return nil, nil
+	req := &storagev1.ReadAssertionsRequest{
+		Store:   store,
+		ModelId: modelID,
+	}
+
+	resp, err := c.client.ReadAssertions(ctx, req)
+	if err != nil {
+		return nil, fromGRPCError(err)
+	}
+
+	assertions := fromStorageAssertions(resp.GetAssertions())
+
+	// Guard against improper server implementations that return nil assertions.
+	// Per the contract: "If no assertions were ever written, it must return an empty list."
+	if assertions == nil {
+		assertions = []*openfgav1.Assertion{}
+	}
+
+	return assertions, nil
 }
 
 func (c *Client) ReadChanges(ctx context.Context, store string, filter storage.ReadChangesFilter, options storage.ReadChangesOptions) ([]*openfgav1.TupleChange, string, error) {
