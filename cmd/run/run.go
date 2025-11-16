@@ -868,6 +868,8 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		}
 
 		fileServer := http.FileServer(http.FS(assets.EmbedPlayground))
+		visualizerFileServer := http.FileServer(http.FS(assets.EmbedRelationshipVisualizer))
+		modelEditorFileServer := http.FileServer(http.FS(assets.EmbedModelEditor))
 
 		policy := backoff.NewExponentialBackOff()
 		policy.MaxElapsedTime = 3 * time.Second
@@ -890,13 +892,35 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		}
 
 		mux := http.NewServeMux()
-		mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mux.HandleFunc("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Relationship Visualizer routes
+			if strings.HasPrefix(r.URL.Path, "/visualizer") {
+				if r.URL.Path == "/visualizer" {
+					http.Redirect(w, r, "/visualizer/index.html", http.StatusFound)
+					return
+				}
+				// Serve visualizer files directly
+				r.URL.Path = r.URL.Path[len("/visualizer"):]
+				visualizerFileServer.ServeHTTP(w, r)
+				return
+			}
+			// Model Editor routes
+			if strings.HasPrefix(r.URL.Path, "/model-editor") {
+				if r.URL.Path == "/model-editor" {
+					http.Redirect(w, r, "/model-editor/index.html", http.StatusFound)
+					return
+				}
+				// Serve model editor files directly
+				r.URL.Path = r.URL.Path[len("/model-editor"):]
+				modelEditorFileServer.ServeHTTP(w, r)
+				return
+			}
 			if strings.HasPrefix(r.URL.Path, "/playground") {
 				if r.URL.Path == "/playground" || r.URL.Path == "/playground/index.html" {
 					err = tmpl.Execute(w, struct {
 						HTTPServerURL      string
 						PlaygroundAPIToken string
-					}{
+					}{ 
 						HTTPServerURL:      conn.RemoteAddr().String(),
 						PlaygroundAPIToken: playgroundAPIToken,
 					})

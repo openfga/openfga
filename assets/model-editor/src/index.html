@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenFGA Model Editor</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+        #header {
+            padding: 15px;
+            background-color: #2c3e50;
+            color: white;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        #main-content {
+            flex: 1;
+            display: flex;
+            overflow: hidden;
+        }
+        #sidebar {
+            width: 250px;
+            background-color: #34495e;
+            color: white;
+            padding: 15px;
+            overflow-y: auto;
+        }
+        #canvas-area {
+            flex: 1;
+            background-color: #ecf0f1;
+            position: relative;
+            overflow: hidden;
+        }
+        #properties-panel {
+            width: 300px;
+            background-color: white;
+            border-left: 1px solid #ddd;
+            padding: 15px;
+            overflow-y: auto;
+        }
+        .sidebar-section {
+            margin-bottom: 20px;
+        }
+        .sidebar-section h3 {
+            margin-top: 0;
+            font-size: 16px;
+            color: #bdc3c7;
+        }
+        .toolbox-item {
+            padding: 10px;
+            background-color: #2c3e50;
+            margin-bottom: 5px;
+            cursor: pointer;
+            border-radius: 4px;
+            transition: background-color 0.3s;
+        }
+        .toolbox-item:hover {
+            background-color: #3498db;
+        }
+        .canvas-node {
+            position: absolute;
+            background-color: white;
+            border: 2px solid #3498db;
+            border-radius: 8px;
+            padding: 15px;
+            cursor: move;
+            min-width: 150px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .canvas-node .node-type {
+            font-weight: bold;
+            color: #3498db;
+            margin-bottom: 5px;
+        }
+        .canvas-node .node-name {
+            font-size: 14px;
+            color: #333;
+        }
+        .canvas-node.selected {
+            border-color: #e74c3c;
+            box-shadow: 0 0 0 2px rgba(231, 76, 60, 0.3);
+        }
+        .canvas-link {
+            stroke: #999;
+            stroke-width: 2px;
+            fill: none;
+            marker-end: url(#arrow);
+        }
+        .property-group {
+            margin-bottom: 15px;
+        }
+        .property-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            font-size: 14px;
+        }
+        .property-group input, .property-group textarea, .property-group select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .btn {
+            padding: 10px 20px;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        .btn:hover {
+            background-color: #2980b9;
+        }
+        .btn.danger {
+            background-color: #e74c3c;
+        }
+        .btn.danger:hover {
+            background-color: #c0392b;
+        }
+        .btn.success {
+            background-color: #2ecc71;
+        }
+        .btn.success:hover {
+            background-color: #27ae60;
+        }
+        .relation-item {
+            background-color: #f8f9fa;
+            padding: 10px;
+            margin-bottom: 5px;
+            border-radius: 4px;
+        }
+        .relation-item .relation-name {
+            font-weight: bold;
+        }
+        .relation-item .relation-type {
+            font-size: 12px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div id="header">
+        <h1>OpenFGA Model Editor</h1>
+        <div>
+            <button id="save-btn" class="btn success">Save Model</button>
+            <button id="validate-btn" class="btn">Validate</button>
+            <button id="clear-btn" class="btn danger">Clear</button>
+            <button id="export-btn" class="btn">Export JSON</button>
+        </div>
+    </div>
+    <div id="main-content">
+        <div id="sidebar">
+            <div class="sidebar-section">
+                <h3>Toolbox</h3>
+                <div class="toolbox-item" data-type="object">Object Type</div>
+                <div class="toolbox-item" data-type="relation">Relation</div>
+                <div class="toolbox-item" data-type="user">User Type</div>
+            </div>
+            <div class="sidebar-section">
+                <h3>Templates</h3>
+                <div class="toolbox-item" data-template="basic">Basic Model</div>
+                <div class="toolbox-item" data-template="document">Document System</div>
+                <div class="toolbox-item" data-template="rbac">RBAC Model</div>
+            </div>
+        </div>
+        <div id="canvas-area">
+            <svg id="canvas-svg"></svg>
+        </div>
+        <div id="properties-panel">
+            <h3>Properties</h3>
+            <div id="properties-content">
+                <p>Select an element to edit properties</p>
+            </div>
+        </div>
+    </div>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
