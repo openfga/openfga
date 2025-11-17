@@ -258,15 +258,63 @@ func (c *Client) MaxTuplesPerWrite() int {
 }
 
 func (c *Client) ReadAuthorizationModel(ctx context.Context, store string, id string) (*openfgav1.AuthorizationModel, error) {
-	return nil, nil
+	req := &storagev1.ReadAuthorizationModelRequest{
+		Store: store,
+		Id:    id,
+	}
+
+	resp, err := c.client.ReadAuthorizationModel(ctx, req)
+	if err != nil {
+		return nil, fromGRPCError(err)
+	}
+
+	model := fromStorageAuthorizationModel(resp.GetModel())
+
+	// Guard against improper server implementations that return nil model or model with zero types.
+	// Per the storage interface contract: "If it's not found, or if the model has zero types, it must return ErrNotFound."
+	if model == nil || len(model.GetTypeDefinitions()) == 0 {
+		return nil, storage.ErrNotFound
+	}
+
+	return model, nil
 }
 
 func (c *Client) ReadAuthorizationModels(ctx context.Context, store string, options storage.ReadAuthorizationModelsOptions) ([]*openfgav1.AuthorizationModel, string, error) {
-	return nil, "", nil
+	req := &storagev1.ReadAuthorizationModelsRequest{
+		Store: store,
+		Pagination: &storagev1.PaginationOptions{
+			PageSize: int32(options.Pagination.PageSize),
+			From:     options.Pagination.From,
+		},
+	}
+
+	resp, err := c.client.ReadAuthorizationModels(ctx, req)
+	if err != nil {
+		return nil, "", fromGRPCError(err)
+	}
+
+	return fromStorageAuthorizationModels(resp.GetModels()), resp.GetContinuationToken(), nil
 }
 
 func (c *Client) FindLatestAuthorizationModel(ctx context.Context, store string) (*openfgav1.AuthorizationModel, error) {
-	return nil, nil
+	req := &storagev1.FindLatestAuthorizationModelRequest{
+		Store: store,
+	}
+
+	resp, err := c.client.FindLatestAuthorizationModel(ctx, req)
+	if err != nil {
+		return nil, fromGRPCError(err)
+	}
+
+	model := fromStorageAuthorizationModel(resp.GetModel())
+
+	// Guard against improper server implementations that return nil model or model with zero types.
+	// Per the storage interface contract: "If none were ever written, it must return ErrNotFound."
+	if model == nil || len(model.GetTypeDefinitions()) == 0 {
+		return nil, storage.ErrNotFound
+	}
+
+	return model, nil
 }
 
 func (c *Client) MaxTypesPerAuthorizationModel() int {
@@ -274,6 +322,16 @@ func (c *Client) MaxTypesPerAuthorizationModel() int {
 }
 
 func (c *Client) WriteAuthorizationModel(ctx context.Context, store string, model *openfgav1.AuthorizationModel) error {
+	req := &storagev1.WriteAuthorizationModelRequest{
+		Store: store,
+		Model: toStorageAuthorizationModel(model),
+	}
+
+	_, err := c.client.WriteAuthorizationModel(ctx, req)
+	if err != nil {
+		return fromGRPCError(err)
+	}
+
 	return nil
 }
 

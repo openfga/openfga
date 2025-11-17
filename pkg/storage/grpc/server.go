@@ -218,7 +218,56 @@ func (s *Server) Write(ctx context.Context, req *storagev1.WriteRequest) (*stora
 	return &storagev1.WriteResponse{}, nil
 }
 
-// IsReady implements StorageService.IsReady.
+func (s *Server) ReadAuthorizationModel(ctx context.Context, req *storagev1.ReadAuthorizationModelRequest) (*storagev1.ReadAuthorizationModelResponse, error) {
+	model, err := s.datastore.ReadAuthorizationModel(ctx, req.GetStore(), req.GetId())
+	if err != nil {
+		return nil, toGRPCError(err)
+	}
+
+	return &storagev1.ReadAuthorizationModelResponse{
+		Model: toStorageAuthorizationModel(model),
+	}, nil
+}
+
+func (s *Server) ReadAuthorizationModels(ctx context.Context, req *storagev1.ReadAuthorizationModelsRequest) (*storagev1.ReadAuthorizationModelsResponse, error) {
+	options := storage.ReadAuthorizationModelsOptions{
+		Pagination: storage.PaginationOptions{
+			PageSize: int(req.GetPagination().GetPageSize()),
+			From:     req.GetPagination().GetFrom(),
+		},
+	}
+
+	models, continuationToken, err := s.datastore.ReadAuthorizationModels(ctx, req.GetStore(), options)
+	if err != nil {
+		return nil, toGRPCError(err)
+	}
+
+	return &storagev1.ReadAuthorizationModelsResponse{
+		Models:            toStorageAuthorizationModels(models),
+		ContinuationToken: continuationToken,
+	}, nil
+}
+
+func (s *Server) FindLatestAuthorizationModel(ctx context.Context, req *storagev1.FindLatestAuthorizationModelRequest) (*storagev1.FindLatestAuthorizationModelResponse, error) {
+	model, err := s.datastore.FindLatestAuthorizationModel(ctx, req.GetStore())
+	if err != nil {
+		return nil, toGRPCError(err)
+	}
+
+	return &storagev1.FindLatestAuthorizationModelResponse{
+		Model: toStorageAuthorizationModel(model),
+	}, nil
+}
+
+func (s *Server) WriteAuthorizationModel(ctx context.Context, req *storagev1.WriteAuthorizationModelRequest) (*storagev1.WriteAuthorizationModelResponse, error) {
+	err := s.datastore.WriteAuthorizationModel(ctx, req.GetStore(), fromStorageAuthorizationModel(req.GetModel()))
+	if err != nil {
+		return nil, toGRPCError(err)
+	}
+
+	return &storagev1.WriteAuthorizationModelResponse{}, nil
+}
+
 func (s *Server) IsReady(ctx context.Context, req *storagev1.IsReadyRequest) (*storagev1.IsReadyResponse, error) {
 	readinessStatus, err := s.datastore.IsReady(ctx)
 	if err != nil {

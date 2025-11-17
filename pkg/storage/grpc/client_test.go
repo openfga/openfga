@@ -712,6 +712,31 @@ func (m *mockErrorDatastore) Write(ctx context.Context, store string, deletes st
 	return m.errorToReturn
 }
 
+func (m *mockErrorDatastore) ReadAuthorizationModel(ctx context.Context, store string, id string) (*openfgav1.AuthorizationModel, error) {
+	if m.errorToReturn != nil {
+		return nil, m.errorToReturn
+	}
+	return nil, storage.ErrNotFound
+}
+
+func (m *mockErrorDatastore) ReadAuthorizationModels(ctx context.Context, store string, options storage.ReadAuthorizationModelsOptions) ([]*openfgav1.AuthorizationModel, string, error) {
+	if m.errorToReturn != nil {
+		return nil, "", m.errorToReturn
+	}
+	return nil, "", nil
+}
+
+func (m *mockErrorDatastore) FindLatestAuthorizationModel(ctx context.Context, store string) (*openfgav1.AuthorizationModel, error) {
+	if m.errorToReturn != nil {
+		return nil, m.errorToReturn
+	}
+	return nil, storage.ErrNotFound
+}
+
+func (m *mockErrorDatastore) WriteAuthorizationModel(ctx context.Context, store string, model *openfgav1.AuthorizationModel) error {
+	return m.errorToReturn
+}
+
 type mockEmptyIterator struct{}
 
 func (m *mockEmptyIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
@@ -764,6 +789,260 @@ func setupTestClientServerWithErrorDatastore(t *testing.T, errorToReturn error) 
 	}
 
 	return client, cleanup
+}
+
+func TestClientReadAuthorizationModel(t *testing.T) {
+	client, datastore, cleanup := setupTestClientServer(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	storeID := "test-store"
+
+	t.Run("not_found", func(t *testing.T) {
+		_, err := client.ReadAuthorizationModel(ctx, storeID, "non-existent-id")
+		require.Error(t, err)
+		require.Equal(t, storage.ErrNotFound, err)
+	})
+
+	// Write a model to the datastore
+	model := &openfgav1.AuthorizationModel{
+		Id:            "01HXQZ9F8G7YRTXMN50BQP6XQZ",
+		SchemaVersion: "1.1",
+		TypeDefinitions: []*openfgav1.TypeDefinition{
+			{
+				Type: "user",
+			},
+			{
+				Type: "document",
+				Relations: map[string]*openfgav1.Userset{
+					"viewer": {
+						Userset: &openfgav1.Userset_This{},
+					},
+				},
+				Metadata: &openfgav1.Metadata{
+					Relations: map[string]*openfgav1.RelationMetadata{
+						"viewer": {
+							DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+								{Type: "user"},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	err := datastore.WriteAuthorizationModel(ctx, storeID, model)
+	require.NoError(t, err)
+
+	t.Run("read_existing", func(t *testing.T) {
+		readModel, err := client.ReadAuthorizationModel(ctx, storeID, model.GetId())
+		require.NoError(t, err)
+		require.NotNil(t, readModel)
+		require.Equal(t, model.GetId(), readModel.GetId())
+		require.Equal(t, model.GetSchemaVersion(), readModel.GetSchemaVersion())
+		require.Len(t, readModel.GetTypeDefinitions(), 2)
+	})
+}
+
+func TestClientReadAuthorizationModels(t *testing.T) {
+	client, datastore, cleanup := setupTestClientServer(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	storeID := "test-store"
+
+	t.Run("empty_store", func(t *testing.T) {
+		models, token, err := client.ReadAuthorizationModels(ctx, storeID, storage.ReadAuthorizationModelsOptions{
+			Pagination: storage.PaginationOptions{PageSize: 10},
+		})
+		require.NoError(t, err)
+		require.Empty(t, models)
+		require.Empty(t, token)
+	})
+
+	// Write multiple models
+	model1 := &openfgav1.AuthorizationModel{
+		Id:            "01HXQZ9F8G7YRTXMN50BQP6XQZ",
+		SchemaVersion: "1.1",
+		TypeDefinitions: []*openfgav1.TypeDefinition{
+			{Type: "user"},
+		},
+	}
+	model2 := &openfgav1.AuthorizationModel{
+		Id:            "01HXQZ9F8G7YRTXMN50BQP6XRA",
+		SchemaVersion: "1.1",
+		TypeDefinitions: []*openfgav1.TypeDefinition{
+			{Type: "user"},
+			{Type: "document"},
+		},
+	}
+
+	err := datastore.WriteAuthorizationModel(ctx, storeID, model1)
+	require.NoError(t, err)
+	err = datastore.WriteAuthorizationModel(ctx, storeID, model2)
+	require.NoError(t, err)
+
+	t.Run("read_all", func(t *testing.T) {
+		models, token, err := client.ReadAuthorizationModels(ctx, storeID, storage.ReadAuthorizationModelsOptions{
+			Pagination: storage.PaginationOptions{PageSize: 10},
+		})
+		require.NoError(t, err)
+		require.Len(t, models, 2)
+		require.Empty(t, token)
+		// Models should be returned newest first
+		require.Equal(t, model2.GetId(), models[0].GetId())
+		require.Equal(t, model1.GetId(), models[1].GetId())
+	})
+
+	t.Run("pagination", func(t *testing.T) {
+		// First page
+		models, token, err := client.ReadAuthorizationModels(ctx, storeID, storage.ReadAuthorizationModelsOptions{
+			Pagination: storage.PaginationOptions{PageSize: 1},
+		})
+		require.NoError(t, err)
+		require.Len(t, models, 1)
+		require.NotEmpty(t, token)
+
+		// Second page
+		models2, token2, err := client.ReadAuthorizationModels(ctx, storeID, storage.ReadAuthorizationModelsOptions{
+			Pagination: storage.PaginationOptions{PageSize: 1, From: token},
+		})
+		require.NoError(t, err)
+		require.Len(t, models2, 1)
+		require.Empty(t, token2)
+	})
+}
+
+func TestClientFindLatestAuthorizationModel(t *testing.T) {
+	client, datastore, cleanup := setupTestClientServer(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	storeID := "test-store"
+
+	t.Run("not_found", func(t *testing.T) {
+		_, err := client.FindLatestAuthorizationModel(ctx, storeID)
+		require.Error(t, err)
+		require.Equal(t, storage.ErrNotFound, err)
+	})
+
+	// Write models - the second one should be the latest
+	model1 := &openfgav1.AuthorizationModel{
+		Id:            "01HXQZ9F8G7YRTXMN50BQP6XQZ",
+		SchemaVersion: "1.1",
+		TypeDefinitions: []*openfgav1.TypeDefinition{
+			{Type: "user"},
+		},
+	}
+	model2 := &openfgav1.AuthorizationModel{
+		Id:            "01HXQZ9F8G7YRTXMN50BQP6XRA",
+		SchemaVersion: "1.1",
+		TypeDefinitions: []*openfgav1.TypeDefinition{
+			{Type: "user"},
+			{Type: "document"},
+		},
+	}
+
+	err := datastore.WriteAuthorizationModel(ctx, storeID, model1)
+	require.NoError(t, err)
+	err = datastore.WriteAuthorizationModel(ctx, storeID, model2)
+	require.NoError(t, err)
+
+	t.Run("find_latest", func(t *testing.T) {
+		latest, err := client.FindLatestAuthorizationModel(ctx, storeID)
+		require.NoError(t, err)
+		require.NotNil(t, latest)
+		require.Equal(t, model2.GetId(), latest.GetId())
+		require.Len(t, latest.GetTypeDefinitions(), 2)
+	})
+}
+
+func TestClientWriteAuthorizationModel(t *testing.T) {
+	client, datastore, cleanup := setupTestClientServer(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	storeID := "test-store"
+
+	model := &openfgav1.AuthorizationModel{
+		Id:            "01HXQZ9F8G7YRTXMN50BQP6XQZ",
+		SchemaVersion: "1.1",
+		TypeDefinitions: []*openfgav1.TypeDefinition{
+			{
+				Type: "user",
+			},
+			{
+				Type: "document",
+				Relations: map[string]*openfgav1.Userset{
+					"viewer": {
+						Userset: &openfgav1.Userset_This{},
+					},
+					"editor": {
+						Userset: &openfgav1.Userset_This{},
+					},
+				},
+				Metadata: &openfgav1.Metadata{
+					Relations: map[string]*openfgav1.RelationMetadata{
+						"viewer": {
+							DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+								{Type: "user"},
+							},
+						},
+						"editor": {
+							DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+								{Type: "user"},
+							},
+						},
+					},
+				},
+			},
+		},
+		Conditions: map[string]*openfgav1.Condition{
+			"is_valid": {
+				Name:       "is_valid",
+				Expression: "param.x < 100",
+				Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+					"x": {
+						TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_INT,
+					},
+				},
+			},
+		},
+	}
+
+	err := client.WriteAuthorizationModel(ctx, storeID, model)
+	require.NoError(t, err)
+
+	// Verify it was written
+	readModel, err := datastore.ReadAuthorizationModel(ctx, storeID, model.GetId())
+	require.NoError(t, err)
+	require.NotNil(t, readModel)
+	require.Equal(t, model.GetId(), readModel.GetId())
+	require.Equal(t, model.GetSchemaVersion(), readModel.GetSchemaVersion())
+	require.Len(t, readModel.GetTypeDefinitions(), 2)
+	require.Len(t, readModel.GetConditions(), 1)
+
+	// Verify document type details
+	var docType *openfgav1.TypeDefinition
+	for _, td := range readModel.GetTypeDefinitions() {
+		if td.GetType() == "document" {
+			docType = td
+			break
+		}
+	}
+	require.NotNil(t, docType)
+	require.Len(t, docType.GetRelations(), 2)
+	require.Contains(t, docType.GetRelations(), "viewer")
+	require.Contains(t, docType.GetRelations(), "editor")
+
+	// Verify condition details
+	require.Contains(t, readModel.GetConditions(), "is_valid")
+	condition := readModel.GetConditions()["is_valid"]
+	require.Equal(t, "is_valid", condition.GetName())
+	require.Equal(t, "param.x < 100", condition.GetExpression())
+	require.Len(t, condition.GetParameters(), 1)
+	require.Contains(t, condition.GetParameters(), "x")
 }
 
 func TestClientErrorHandling(t *testing.T) {
@@ -820,6 +1099,39 @@ func TestClientErrorHandling(t *testing.T) {
 				err := client.Write(ctx, "test-store", nil, []*openfgav1.TupleKey{
 					{Object: "doc:1", Relation: "viewer", User: "user:anne"},
 				})
+				require.Error(t, err)
+				require.ErrorIs(t, err, tt.storeError)
+			})
+
+			t.Run("ReadAuthorizationModel", func(t *testing.T) {
+				_, err := client.ReadAuthorizationModel(ctx, "test-store", "model-id")
+				require.Error(t, err)
+				require.ErrorIs(t, err, tt.storeError)
+			})
+
+			t.Run("ReadAuthorizationModels", func(t *testing.T) {
+				_, _, err := client.ReadAuthorizationModels(ctx, "test-store", storage.ReadAuthorizationModelsOptions{
+					Pagination: storage.PaginationOptions{PageSize: 10},
+				})
+				require.Error(t, err)
+				require.ErrorIs(t, err, tt.storeError)
+			})
+
+			t.Run("FindLatestAuthorizationModel", func(t *testing.T) {
+				_, err := client.FindLatestAuthorizationModel(ctx, "test-store")
+				require.Error(t, err)
+				require.ErrorIs(t, err, tt.storeError)
+			})
+
+			t.Run("WriteAuthorizationModel", func(t *testing.T) {
+				model := &openfgav1.AuthorizationModel{
+					Id:            "test-model",
+					SchemaVersion: "1.1",
+					TypeDefinitions: []*openfgav1.TypeDefinition{
+						{Type: "user"},
+					},
+				}
+				err := client.WriteAuthorizationModel(ctx, "test-store", model)
 				require.Error(t, err)
 				require.ErrorIs(t, err, tt.storeError)
 			})
