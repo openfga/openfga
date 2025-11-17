@@ -922,8 +922,7 @@ type Pipeline struct {
 }
 
 func (p *Pipeline) Build(ctx context.Context, source Source, target Target) iter.Seq[Item] {
-	ctxParent, span := pipelineTracer.Start(ctx, "Pipeline.Build")
-	defer span.End()
+	ctxParent, span := pipelineTracer.Start(ctx, "pipeline")
 
 	ctxNoCancel := context.WithoutCancel(ctxParent)
 	ctxCancel, cancel := context.WithCancel(ctxNoCancel)
@@ -991,6 +990,7 @@ func (p *Pipeline) Build(ctx context.Context, source Source, target Target) iter
 	}()
 
 	return func(yield func(Item) bool) {
+		defer span.End()
 		defer wg.Wait()
 		defer cancel()
 
@@ -1095,9 +1095,17 @@ func (p *path) resolve(source *Node, target Target, trk tracker, status *StatusP
 func (p *path) worker(node *Node, trk tracker, status *StatusPool) *worker {
 	var w worker
 
-	ctx, cancel := context.WithCancel(p.ctx)
+	nodeName := "nil"
+	if node != nil {
+		nodeName = node.GetUniqueLabel()
+	}
+
+	ctx, span := pipelineTracer.Start(p.ctx, "worker", trace.WithAttributes(attribute.String("name", nodeName)))
+
+	ctx, cancel := context.WithCancel(ctx)
 
 	w.finite = sync.OnceFunc(func() {
+		defer span.End()
 		cancel()
 		for _, lst := range w.listeners {
 			lst.close()
