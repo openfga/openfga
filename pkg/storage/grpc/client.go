@@ -336,19 +336,67 @@ func (c *Client) WriteAuthorizationModel(ctx context.Context, store string, mode
 }
 
 func (c *Client) CreateStore(ctx context.Context, store *openfgav1.Store) (*openfgav1.Store, error) {
-	return nil, nil
+	req := &storagev1.CreateStoreRequest{
+		Store: toStorageStore(store),
+	}
+
+	resp, err := c.client.CreateStore(ctx, req)
+	if err != nil {
+		return nil, fromGRPCError(err)
+	}
+
+	return fromStorageStore(resp.GetStore()), nil
 }
 
 func (c *Client) DeleteStore(ctx context.Context, id string) error {
+	req := &storagev1.DeleteStoreRequest{
+		Id: id,
+	}
+
+	_, err := c.client.DeleteStore(ctx, req)
+	if err != nil {
+		return fromGRPCError(err)
+	}
+
 	return nil
 }
 
 func (c *Client) GetStore(ctx context.Context, id string) (*openfgav1.Store, error) {
-	return nil, nil
+	req := &storagev1.GetStoreRequest{
+		Id: id,
+	}
+
+	resp, err := c.client.GetStore(ctx, req)
+	if err != nil {
+		return nil, fromGRPCError(err)
+	}
+
+	store := fromStorageStore(resp.GetStore())
+
+	// Guard against improper server implementations that return nil store or a deleted store
+	if store == nil || store.GetDeletedAt() != nil {
+		return nil, storage.ErrNotFound
+	}
+
+	return store, nil
 }
 
 func (c *Client) ListStores(ctx context.Context, options storage.ListStoresOptions) ([]*openfgav1.Store, string, error) {
-	return nil, "", nil
+	req := &storagev1.ListStoresRequest{
+		Ids:  options.IDs,
+		Name: options.Name,
+		Pagination: &storagev1.PaginationOptions{
+			PageSize: int32(options.Pagination.PageSize),
+			From:     options.Pagination.From,
+		},
+	}
+
+	resp, err := c.client.ListStores(ctx, req)
+	if err != nil {
+		return nil, "", fromGRPCError(err)
+	}
+
+	return fromStorageStores(resp.GetStores()), resp.GetContinuationToken(), nil
 }
 
 func (c *Client) WriteAssertions(ctx context.Context, store, modelID string, assertions []*openfgav1.Assertion) error {

@@ -268,6 +268,63 @@ func (s *Server) WriteAuthorizationModel(ctx context.Context, req *storagev1.Wri
 	return &storagev1.WriteAuthorizationModelResponse{}, nil
 }
 
+func (s *Server) CreateStore(ctx context.Context, req *storagev1.CreateStoreRequest) (*storagev1.CreateStoreResponse, error) {
+	store, err := s.datastore.CreateStore(ctx, fromStorageStore(req.GetStore()))
+	if err != nil {
+		return nil, toGRPCError(err)
+	}
+
+	return &storagev1.CreateStoreResponse{
+		Store: toStorageStore(store),
+	}, nil
+}
+
+func (s *Server) DeleteStore(ctx context.Context, req *storagev1.DeleteStoreRequest) (*storagev1.DeleteStoreResponse, error) {
+	err := s.datastore.DeleteStore(ctx, req.GetId())
+	if err != nil {
+		return nil, toGRPCError(err)
+	}
+
+	return &storagev1.DeleteStoreResponse{}, nil
+}
+
+func (s *Server) GetStore(ctx context.Context, req *storagev1.GetStoreRequest) (*storagev1.GetStoreResponse, error) {
+	store, err := s.datastore.GetStore(ctx, req.GetId())
+	if err != nil {
+		return nil, toGRPCError(err)
+	}
+
+	return &storagev1.GetStoreResponse{
+		Store: toStorageStore(store),
+	}, nil
+}
+
+func (s *Server) ListStores(ctx context.Context, req *storagev1.ListStoresRequest) (*storagev1.ListStoresResponse, error) {
+	options := storage.ListStoresOptions{
+		IDs:  req.GetIds(),
+		Name: req.GetName(),
+		Pagination: storage.PaginationOptions{
+			PageSize: int(req.GetPagination().GetPageSize()),
+			From:     req.GetPagination().GetFrom(),
+		},
+	}
+
+	stores, continuationToken, err := s.datastore.ListStores(ctx, options)
+	if err != nil {
+		return nil, toGRPCError(err)
+	}
+
+	storageStores := make([]*storagev1.Store, len(stores))
+	for i, s := range stores {
+		storageStores[i] = toStorageStore(s)
+	}
+
+	return &storagev1.ListStoresResponse{
+		Stores:            storageStores,
+		ContinuationToken: continuationToken,
+	}, nil
+}
+
 func (s *Server) IsReady(ctx context.Context, req *storagev1.IsReadyRequest) (*storagev1.IsReadyResponse, error) {
 	readinessStatus, err := s.datastore.IsReady(ctx)
 	if err != nil {
