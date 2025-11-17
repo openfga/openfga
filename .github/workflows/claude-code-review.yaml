@@ -11,7 +11,7 @@ permissions:
 jobs:
   claude-review:
     permissions:
-      contents: read
+      contents: write
       issues: write
       pull-requests: write
       id-token: write
