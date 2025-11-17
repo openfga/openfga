@@ -476,9 +476,6 @@ func (s *ServerContext) datastoreConfig(config *serverconfig.Config) (storage.Op
 			return nil, nil, fmt.Errorf("initialize sqlite datastore: %w", err)
 		}
 	case "grpc":
-		// override for "grpc" datastore
-		tokenSerializer = encoder.NewStringContinuationTokenSerializer()
-
 		grpcConfig := grpcstorage.ClientConfig{
 			Addr:                          config.Datastore.GRPC.Addr,
 			TLSCertPath:                   config.Datastore.GRPC.TLSCertPath,
