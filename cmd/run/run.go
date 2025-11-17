@@ -68,6 +68,7 @@ import (
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/server/health"
 	"github.com/openfga/openfga/pkg/storage"
+	grpcstorage "github.com/openfga/openfga/pkg/storage/grpc"
 	"github.com/openfga/openfga/pkg/storage/memory"
 	"github.com/openfga/openfga/pkg/storage/mysql"
 	"github.com/openfga/openfga/pkg/storage/postgres"
@@ -174,6 +175,19 @@ func NewRunCommand() *cobra.Command {
 	flags.Duration("datastore-conn-max-lifetime", defaultConfig.Datastore.ConnMaxLifetime, "the maximum amount of time a connection to the datastore may be reused")
 
 	flags.Bool("datastore-metrics-enabled", defaultConfig.Datastore.Metrics.Enabled, "enable/disable sql metrics")
+
+	// gRPC datastore flags
+	flags.String("datastore-grpc-addr", defaultConfig.Datastore.GRPC.Addr, "the address of the gRPC storage server (for 'grpc' engine)")
+
+	flags.String("datastore-grpc-tls-cert", "", "the (absolute) file path of the certificate to use for the TLS connection to the gRPC storage server (enables TLS if provided with --datastore-grpc-tls-key)")
+
+	flags.String("datastore-grpc-tls-key", "", "the (absolute) file path of the key to use for the TLS connection to the gRPC storage server (enables TLS if provided with --datastore-grpc-tls-cert)")
+
+	flags.Duration("datastore-grpc-keepalive-time", defaultConfig.Datastore.GRPC.KeepaliveTime, "duration after which a keepalive ping is sent on the gRPC connection if no activity (0 disables keepalive)")
+
+	flags.Duration("datastore-grpc-keepalive-timeout", defaultConfig.Datastore.GRPC.KeepaliveTimeout, "duration to wait for keepalive ping response")
+
+	flags.Bool("datastore-grpc-keepalive-permit-without-stream", defaultConfig.Datastore.GRPC.KeepalivePermitWithoutStream, "allow keepalive pings even when no streams are active")
 
 	flags.Bool("playground-enabled", defaultConfig.Playground.Enabled, "enable/disable the OpenFGA Playground")
 
@@ -460,6 +474,22 @@ func (s *ServerContext) datastoreConfig(config *serverconfig.Config) (storage.Op
 		datastore, err = sqlite.New(config.Datastore.URI, dsCfg)
 		if err != nil {
 			return nil, nil, fmt.Errorf("initialize sqlite datastore: %w", err)
+		}
+	case "grpc":
+		grpcConfig := grpcstorage.ClientConfig{
+			Addr:                          config.Datastore.GRPC.Addr,
+			TLSCertPath:                   config.Datastore.GRPC.TLSCertPath,
+			TLSKeyPath:                    config.Datastore.GRPC.TLSKeyPath,
+			MaxTuplesPerWrite:             config.MaxTuplesPerWrite,
+			MaxTypesPerAuthorizationModel: config.MaxTypesPerAuthorizationModel,
+			KeepaliveTime:                 config.Datastore.GRPC.KeepaliveTime,
+			KeepaliveTimeout:              config.Datastore.GRPC.KeepaliveTimeout,
+			KeepalivePermitWithoutStream:  config.Datastore.GRPC.KeepalivePermitWithoutStream,
+		}
+
+		datastore, err = grpcstorage.NewClient(grpcConfig)
+		if err != nil {
+			return nil, nil, fmt.Errorf("initialize grpc datastore: %w", err)
 		}
 	default:
 		return nil, nil, fmt.Errorf("storage engine '%s' is unsupported", config.Datastore.Engine)

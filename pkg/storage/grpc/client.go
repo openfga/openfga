@@ -32,8 +32,13 @@ type ClientConfig struct {
 	// Addr is the address of the gRPC storage server (e.g., "localhost:50051").
 	Addr string
 
-	// TLSConfig is the TLS configuration. If nil, insecure credentials are used.
-	TLSConfig *tls.Config
+	// TLSCertPath is the path to the TLS certificate file.
+	// If provided, TLSKeyPath must also be provided to enable TLS.
+	TLSCertPath string
+
+	// TLSKeyPath is the path to the TLS key file.
+	// If provided, TLSCertPath must also be provided to enable TLS.
+	TLSKeyPath string
 
 	// KeepaliveTime is the duration after which a keepalive ping is sent if no activity.
 	// Zero value means keepalive is disabled.
@@ -67,8 +72,26 @@ func NewClient(config ClientConfig) (*Client, error) {
 		}))
 	}
 
-	if config.TLSConfig != nil {
-		grpcOpts = append(grpcOpts, grpc.WithTransportCredentials(credentials.NewTLS(config.TLSConfig)))
+	// Configure TLS if cert or key path is provided
+	hasCert := config.TLSCertPath != ""
+	hasKey := config.TLSKeyPath != ""
+
+	if hasCert || hasKey {
+		// If either cert or key is provided, both must be provided
+		if !hasCert || !hasKey {
+			return nil, fmt.Errorf("both TLS certificate and key paths must be provided together (cert: %q, key: %q)", config.TLSCertPath, config.TLSKeyPath)
+		}
+
+		cert, err := tls.LoadX509KeyPair(config.TLSCertPath, config.TLSKeyPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load TLS certificate: %w", err)
+		}
+
+		tlsConfig := &tls.Config{
+			Certificates: []tls.Certificate{cert},
+		}
+
+		grpcOpts = append(grpcOpts, grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)))
 	} else {
 		grpcOpts = append(grpcOpts, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	}

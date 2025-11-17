@@ -111,7 +111,7 @@ type DatastoreMetricsConfig struct {
 
 // DatastoreConfig defines OpenFGA server configurations for datastore specific settings.
 type DatastoreConfig struct {
-	// Engine is the datastore engine to use (e.g. 'memory', 'postgres', 'mysql', 'sqlite')
+	// Engine is the datastore engine to use (e.g. 'memory', 'postgres', 'mysql', 'sqlite', 'grpc')
 	Engine            string
 	URI               string `json:"-"` // private field, won't be logged
 	SecondaryURI      string `json:"-"` // private field, won't be logged
@@ -146,6 +146,35 @@ type DatastoreConfig struct {
 
 	// Metrics is configuration for the Datastore metrics.
 	Metrics DatastoreMetricsConfig
+
+	// GRPC configuration for when using 'grpc' engine
+	GRPC GRPCDatastoreConfig
+}
+
+// GRPCDatastoreConfig defines configurations for the gRPC datastore client.
+type GRPCDatastoreConfig struct {
+	// Addr is the address of the gRPC storage server (e.g., "localhost:50051").
+	Addr string
+
+	// TLSCertPath is the path to the TLS certificate file.
+	// If provided, TLSKeyPath must also be provided to enable TLS.
+	TLSCertPath string
+
+	// TLSKeyPath is the path to the TLS key file.
+	// If provided, TLSCertPath must also be provided to enable TLS.
+	TLSKeyPath string
+
+	// KeepaliveTime is the duration after which a keepalive ping is sent if no activity.
+	// Zero value means keepalive is disabled.
+	KeepaliveTime time.Duration
+
+	// KeepaliveTimeout is the duration to wait for a keepalive ping response.
+	// Only used when KeepaliveTime > 0.
+	KeepaliveTimeout time.Duration
+
+	// KeepalivePermitWithoutStream allows sending keepalive pings even when no streams are active.
+	// Only used when KeepaliveTime > 0.
+	KeepalivePermitWithoutStream bool
 }
 
 // GRPCConfig defines OpenFGA server configurations for grpc server specific settings.
