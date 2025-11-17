@@ -2,10 +2,7 @@ package grpc
 
 import (
 	"context"
-	"fmt"
-
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
+	"time"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
@@ -41,7 +38,7 @@ func (s *Server) Read(req *storagev1.ReadRequest, stream storagev1.StorageServic
 
 	iter, err := s.datastore.Read(stream.Context(), req.GetStore(), filter, options)
 	if err != nil {
-		return status.Error(codes.Internal, fmt.Sprintf("read failed: %v", err))
+		return toGRPCError(err)
 	}
 	defer iter.Stop()
 
@@ -51,7 +48,7 @@ func (s *Server) Read(req *storagev1.ReadRequest, stream storagev1.StorageServic
 			if err == storage.ErrIteratorDone {
 				return nil
 			}
-			return status.Error(codes.Internal, fmt.Sprintf("iterator error: %v", err))
+			return toGRPCError(err)
 		}
 
 		if err := stream.Send(&storagev1.ReadResponse{Tuple: toStorageTuple(tuple)}); err != nil {
@@ -80,7 +77,7 @@ func (s *Server) ReadPage(ctx context.Context, req *storagev1.ReadPageRequest) (
 
 	tuples, token, err := s.datastore.ReadPage(ctx, req.GetStore(), filter, options)
 	if err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("read page failed: %v", err))
+		return nil, toGRPCError(err)
 	}
 
 	storageTuples := make([]*storagev1.Tuple, len(tuples))
@@ -103,10 +100,7 @@ func (s *Server) ReadUserTuple(ctx context.Context, req *storagev1.ReadUserTuple
 
 	tuple, err := s.datastore.ReadUserTuple(ctx, req.GetStore(), fromStorageTupleKey(req.GetTupleKey()), options)
 	if err != nil {
-		if err == storage.ErrNotFound {
-			return nil, status.Error(codes.NotFound, "tuple not found")
-		}
-		return nil, status.Error(codes.Internal, fmt.Sprintf("read user tuple failed: %v", err))
+		return nil, toGRPCError(err)
 	}
 
 	return &storagev1.ReadResponse{Tuple: toStorageTuple(tuple)}, nil
@@ -133,7 +127,7 @@ func (s *Server) ReadUsersetTuples(req *storagev1.ReadUsersetTuplesRequest, stre
 
 	iter, err := s.datastore.ReadUsersetTuples(stream.Context(), req.GetStore(), filter, options)
 	if err != nil {
-		return status.Error(codes.Internal, fmt.Sprintf("read userset tuples failed: %v", err))
+		return toGRPCError(err)
 	}
 	defer iter.Stop()
 
@@ -143,7 +137,7 @@ func (s *Server) ReadUsersetTuples(req *storagev1.ReadUsersetTuplesRequest, stre
 			if err == storage.ErrIteratorDone {
 				return nil
 			}
-			return status.Error(codes.Internal, fmt.Sprintf("iterator error: %v", err))
+			return toGRPCError(err)
 		}
 
 		if err := stream.Send(&storagev1.ReadResponse{Tuple: toStorageTuple(tuple)}); err != nil {
@@ -153,14 +147,20 @@ func (s *Server) ReadUsersetTuples(req *storagev1.ReadUsersetTuplesRequest, stre
 }
 
 func (s *Server) ReadStartingWithUser(req *storagev1.ReadStartingWithUserRequest, stream storagev1.StorageService_ReadStartingWithUserServer) error {
-	userFilter := make([]*openfgav1.ObjectRelation, len(req.GetFilter().GetUserFilter()))
-	for i, obj := range req.GetFilter().GetUserFilter() {
-		userFilter[i] = fromStorageObjectRelation(obj)
+	var userFilter []*openfgav1.ObjectRelation = nil
+	if req.GetFilter() != nil && req.GetFilter().GetUserFilter() != nil {
+		userFilter = make([]*openfgav1.ObjectRelation, len(req.GetFilter().GetUserFilter()))
+		for i, obj := range req.GetFilter().GetUserFilter() {
+			userFilter[i] = fromStorageObjectRelation(obj)
+		}
 	}
 
-	objectIDs := storage.NewSortedSet()
-	for _, id := range req.GetFilter().GetObjectIds() {
-		objectIDs.Add(id)
+	var objectIDs storage.SortedSet = nil
+	if req.GetFilter() != nil && req.GetFilter().GetObjectIds() != nil {
+		objectIDs = storage.NewSortedSet()
+		for _, id := range req.GetFilter().GetObjectIds() {
+			objectIDs.Add(id)
+		}
 	}
 
 	filter := storage.ReadStartingWithUserFilter{
@@ -180,7 +180,7 @@ func (s *Server) ReadStartingWithUser(req *storagev1.ReadStartingWithUserRequest
 
 	iter, err := s.datastore.ReadStartingWithUser(stream.Context(), req.GetStore(), filter, options)
 	if err != nil {
-		return status.Error(codes.Internal, fmt.Sprintf("read starting with user failed: %v", err))
+		return toGRPCError(err)
 	}
 	defer iter.Stop()
 
@@ -190,7 +190,7 @@ func (s *Server) ReadStartingWithUser(req *storagev1.ReadStartingWithUserRequest
 			if err == storage.ErrIteratorDone {
 				return nil
 			}
-			return status.Error(codes.Internal, fmt.Sprintf("iterator error: %v", err))
+			return toGRPCError(err)
 		}
 
 		if err := stream.Send(&storagev1.ReadResponse{Tuple: toStorageTuple(tuple)}); err != nil {
@@ -199,10 +199,188 @@ func (s *Server) ReadStartingWithUser(req *storagev1.ReadStartingWithUserRequest
 	}
 }
 
+func (s *Server) Write(ctx context.Context, req *storagev1.WriteRequest) (*storagev1.WriteResponse, error) {
+	// Note: condition field is intentionally ignored for deletes
+	deletes := make([]*openfgav1.TupleKeyWithoutCondition, len(req.GetDeletes()))
+	for i, d := range req.GetDeletes() {
+		deletes[i] = &openfgav1.TupleKeyWithoutCondition{
+			User:     d.GetUser(),
+			Relation: d.GetRelation(),
+			Object:   d.GetObject(),
+		}
+	}
+
+	writes := make([]*openfgav1.TupleKey, len(req.GetWrites()))
+	for i, w := range req.GetWrites() {
+		writes[i] = fromStorageTupleKey(w)
+	}
+
+	opts := fromStorageTupleWriteOptions(req.GetOptions())
+
+	err := s.datastore.Write(ctx, req.GetStore(), deletes, writes, opts...)
+	if err != nil {
+		return nil, toGRPCError(err)
+	}
+
+	return &storagev1.WriteResponse{}, nil
+}
+
+func (s *Server) ReadAuthorizationModel(ctx context.Context, req *storagev1.ReadAuthorizationModelRequest) (*storagev1.ReadAuthorizationModelResponse, error) {
+	model, err := s.datastore.ReadAuthorizationModel(ctx, req.GetStore(), req.GetId())
+	if err != nil {
+		return nil, toGRPCError(err)
+	}
+
+	return &storagev1.ReadAuthorizationModelResponse{
+		Model: toStorageAuthorizationModel(model),
+	}, nil
+}
+
+func (s *Server) ReadAuthorizationModels(ctx context.Context, req *storagev1.ReadAuthorizationModelsRequest) (*storagev1.ReadAuthorizationModelsResponse, error) {
+	options := storage.ReadAuthorizationModelsOptions{
+		Pagination: storage.PaginationOptions{
+			PageSize: int(req.GetPagination().GetPageSize()),
+			From:     req.GetPagination().GetFrom(),
+		},
+	}
+
+	models, continuationToken, err := s.datastore.ReadAuthorizationModels(ctx, req.GetStore(), options)
+	if err != nil {
+		return nil, toGRPCError(err)
+	}
+
+	return &storagev1.ReadAuthorizationModelsResponse{
+		Models:            toStorageAuthorizationModels(models),
+		ContinuationToken: continuationToken,
+	}, nil
+}
+
+func (s *Server) FindLatestAuthorizationModel(ctx context.Context, req *storagev1.FindLatestAuthorizationModelRequest) (*storagev1.FindLatestAuthorizationModelResponse, error) {
+	model, err := s.datastore.FindLatestAuthorizationModel(ctx, req.GetStore())
+	if err != nil {
+		return nil, toGRPCError(err)
+	}
+
+	return &storagev1.FindLatestAuthorizationModelResponse{
+		Model: toStorageAuthorizationModel(model),
+	}, nil
+}
+
+func (s *Server) WriteAuthorizationModel(ctx context.Context, req *storagev1.WriteAuthorizationModelRequest) (*storagev1.WriteAuthorizationModelResponse, error) {
+	err := s.datastore.WriteAuthorizationModel(ctx, req.GetStore(), fromStorageAuthorizationModel(req.GetModel()))
+	if err != nil {
+		return nil, toGRPCError(err)
+	}
+
+	return &storagev1.WriteAuthorizationModelResponse{}, nil
+}
+
+func (s *Server) CreateStore(ctx context.Context, req *storagev1.CreateStoreRequest) (*storagev1.CreateStoreResponse, error) {
+	store, err := s.datastore.CreateStore(ctx, fromStorageStore(req.GetStore()))
+	if err != nil {
+		return nil, toGRPCError(err)
+	}
+
+	return &storagev1.CreateStoreResponse{
+		Store: toStorageStore(store),
+	}, nil
+}
+
+func (s *Server) DeleteStore(ctx context.Context, req *storagev1.DeleteStoreRequest) (*storagev1.DeleteStoreResponse, error) {
+	err := s.datastore.DeleteStore(ctx, req.GetId())
+	if err != nil {
+		return nil, toGRPCError(err)
+	}
+
+	return &storagev1.DeleteStoreResponse{}, nil
+}
+
+func (s *Server) GetStore(ctx context.Context, req *storagev1.GetStoreRequest) (*storagev1.GetStoreResponse, error) {
+	store, err := s.datastore.GetStore(ctx, req.GetId())
+	if err != nil {
+		return nil, toGRPCError(err)
+	}
+
+	return &storagev1.GetStoreResponse{
+		Store: toStorageStore(store),
+	}, nil
+}
+
+func (s *Server) ListStores(ctx context.Context, req *storagev1.ListStoresRequest) (*storagev1.ListStoresResponse, error) {
+	options := storage.ListStoresOptions{
+		IDs:  req.GetIds(),
+		Name: req.GetName(),
+		Pagination: storage.PaginationOptions{
+			PageSize: int(req.GetPagination().GetPageSize()),
+			From:     req.GetPagination().GetFrom(),
+		},
+	}
+
+	stores, continuationToken, err := s.datastore.ListStores(ctx, options)
+	if err != nil {
+		return nil, toGRPCError(err)
+	}
+
+	storageStores := make([]*storagev1.Store, len(stores))
+	for i, s := range stores {
+		storageStores[i] = toStorageStore(s)
+	}
+
+	return &storagev1.ListStoresResponse{
+		Stores:            storageStores,
+		ContinuationToken: continuationToken,
+	}, nil
+}
+
+func (s *Server) WriteAssertions(ctx context.Context, req *storagev1.WriteAssertionsRequest) (*storagev1.WriteAssertionsResponse, error) {
+	err := s.datastore.WriteAssertions(ctx, req.GetStore(), req.GetModelId(), fromStorageAssertions(req.GetAssertions()))
+	if err != nil {
+		return nil, toGRPCError(err)
+	}
+
+	return &storagev1.WriteAssertionsResponse{}, nil
+}
+
+func (s *Server) ReadAssertions(ctx context.Context, req *storagev1.ReadAssertionsRequest) (*storagev1.ReadAssertionsResponse, error) {
+	assertions, err := s.datastore.ReadAssertions(ctx, req.GetStore(), req.GetModelId())
+	if err != nil {
+		return nil, toGRPCError(err)
+	}
+
+	return &storagev1.ReadAssertionsResponse{
+		Assertions: toStorageAssertions(assertions),
+	}, nil
+}
+
+func (s *Server) ReadChanges(ctx context.Context, req *storagev1.ReadChangesRequest) (*storagev1.ReadChangesResponse, error) {
+	filter := storage.ReadChangesFilter{
+		ObjectType:    req.GetFilter().GetObjectType(),
+		HorizonOffset: time.Duration(req.GetFilter().GetHorizonOffsetMs()) * time.Millisecond,
+	}
+
+	options := storage.ReadChangesOptions{
+		Pagination: storage.PaginationOptions{
+			PageSize: int(req.GetPagination().GetPageSize()),
+			From:     req.GetPagination().GetFrom(),
+		},
+		SortDesc: req.GetSortDesc(),
+	}
+
+	changes, continuationToken, err := s.datastore.ReadChanges(ctx, req.GetStore(), filter, options)
+	if err != nil {
+		return nil, toGRPCError(err)
+	}
+
+	return &storagev1.ReadChangesResponse{
+		Changes:           toStorageTupleChanges(changes),
+		ContinuationToken: continuationToken,
+	}, nil
+}
+
 func (s *Server) IsReady(ctx context.Context, req *storagev1.IsReadyRequest) (*storagev1.IsReadyResponse, error) {
 	readinessStatus, err := s.datastore.IsReady(ctx)
 	if err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("is ready failed: %v", err))
+		return nil, toGRPCError(err)
 	}
 
 	return &storagev1.IsReadyResponse{
