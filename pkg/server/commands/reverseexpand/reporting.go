@@ -58,7 +58,6 @@ func (r *Reporter) Report(status bool) {
 type StatusPool struct {
 	mu   sync.RWMutex
 	pool []bool
-	top  int
 }
 
 // Register is a function that creates a new entry in the StatusPool for a source and returns
