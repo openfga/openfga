@@ -33,63 +33,63 @@ func newEchoTracker(parent tracker) tracker {
 	}
 }
 
+// Reporter is a struct that holds a reference for a registered reference in a StatusPool.
+// A Reporter is returned from a call to StatusPool.Register and should be used by only a
+// single goroutine. Using a Reporter concurrently from multiple goroutines will cause
+// data races.
+type Reporter struct {
+	ndx    int
+	parent *StatusPool
+}
+
+// Report is a function that sets the status of a Reporter on its parent StatusPool.
+func (r *Reporter) Report(status bool) {
+	r.parent.mu.RLock()
+	defer r.parent.mu.RUnlock()
+
+	r.parent.pool[r.ndx] = status
+}
+
 // StatusPool is a struct that aggregates status values, as booleans, from multiple sources
-// into a single boolean status value. Each source must register itself using the `Register`
-// method and supply the returned value in each call to `Set` when updating the source's status
-// value. The default state of a StatusPool is `false` for all sources. All StatusPool methods
-// are thread safe.
+// into a single boolean status value. Each source must register itself using the Register
+// method update the source's status via the Reporter provided during registration.
+// The default state of a StatusPool is `false` for all sources.
 type StatusPool struct {
-	mu   sync.Mutex
-	pool []uint64
-	top  int
+	mu   sync.RWMutex
+	pool []bool
 }
 
 // Register is a function that creates a new entry in the StatusPool for a source and returns
-// an identifier that is unique within the context of the StatusPool instance. The returned
-// integer identifier values are predictable incrementing values beginning at 0. The `Register`
-// method is thread safe.
-func (sp *StatusPool) Register() int {
+// a Reporter that is unique within the context of the StatusPool instance. The returned Reporter
+// instance must be used to update the status for this entry.
+//
+// The Register method is thread safe.
+func (sp *StatusPool) Register() Reporter {
 	sp.mu.Lock()
 	defer sp.mu.Unlock()
 
-	capacity := len(sp.pool)
+	sp.pool = append(sp.pool, false)
+	ndx := len(sp.pool) - 1
 
-	if sp.top/64 >= capacity {
-		sp.pool = append(sp.pool, 0)
+	return Reporter{
+		ndx:    ndx,
+		parent: sp,
 	}
-	id := sp.top
-	sp.top++
-	return id
 }
 
-// Set is a function that accepts a registered identifier and a boolean status. The caller must
-// provide an integer identifier returned from an initial call to the `Register` function associated
-// with the desired source. The `Set` function is thread safe.
-func (sp *StatusPool) Set(id int, status bool) {
-	sp.mu.Lock()
-	defer sp.mu.Unlock()
-
-	ndx := id / 64
-	pos := uint64(1 << (id % 64))
-
-	if status {
-		sp.pool[ndx] |= pos
-		return
-	}
-	sp.pool[ndx] &^= pos
-}
-
-// Status is a function that returns the cummulative status of all sources registered within the pool.
-// If any registered source's status is set to `true`, the return value of the `Status` function will
-// be `true`. The default value is `false`. The `Status` function is thread safe.
+// Status is a function that returns the cumulative status of all sources registered within the pool.
+// If any registered source's status is set to `true`, the return value of the Status function will
+// be `true`. The default value is `false`.
+//
+// The Status method is thread safe.
 func (sp *StatusPool) Status() bool {
 	sp.mu.Lock()
 	defer sp.mu.Unlock()
 
-	var status uint64
-
 	for _, s := range sp.pool {
-		status |= s
+		if s {
+			return true
+		}
 	}
-	return status != 0
+	return false
 }
