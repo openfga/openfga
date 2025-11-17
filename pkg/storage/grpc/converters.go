@@ -834,3 +834,77 @@ func fromStorageTupleChanges(changes []*storagev1.TupleChange) []*openfgav1.Tupl
 	}
 	return result
 }
+
+// Assertion conversions
+
+func toStorageAssertion(assertion *openfgav1.Assertion) *storagev1.Assertion {
+	if assertion == nil {
+		return nil
+	}
+
+	return &storagev1.Assertion{
+		TupleKey:    toStorageAssertionTupleKey(assertion.GetTupleKey()),
+		Expectation: assertion.GetExpectation(),
+	}
+}
+
+func fromStorageAssertion(assertion *storagev1.Assertion) *openfgav1.Assertion {
+	if assertion == nil {
+		return nil
+	}
+
+	return &openfgav1.Assertion{
+		TupleKey:    fromStorageAssertionTupleKey(assertion.GetTupleKey()),
+		Expectation: assertion.GetExpectation(),
+	}
+}
+
+func toStorageAssertions(assertions []*openfgav1.Assertion) []*storagev1.Assertion {
+	if assertions == nil {
+		return nil
+	}
+
+	result := make([]*storagev1.Assertion, len(assertions))
+	for i, a := range assertions {
+		result[i] = toStorageAssertion(a)
+	}
+	return result
+}
+
+func fromStorageAssertions(assertions []*storagev1.Assertion) []*openfgav1.Assertion {
+	if assertions == nil {
+		return nil
+	}
+
+	result := make([]*openfgav1.Assertion, len(assertions))
+	for i, a := range assertions {
+		result[i] = fromStorageAssertion(a)
+	}
+	return result
+}
+
+// AssertionTupleKey conversions
+
+func toStorageAssertionTupleKey(key *openfgav1.AssertionTupleKey) *storagev1.AssertionTupleKey {
+	if key == nil {
+		return nil
+	}
+
+	return &storagev1.AssertionTupleKey{
+		Object:   key.GetObject(),
+		Relation: key.GetRelation(),
+		User:     key.GetUser(),
+	}
+}
+
+func fromStorageAssertionTupleKey(key *storagev1.AssertionTupleKey) *openfgav1.AssertionTupleKey {
+	if key == nil {
+		return nil
+	}
+
+	return &openfgav1.AssertionTupleKey{
+		Object:   key.GetObject(),
+		Relation: key.GetRelation(),
+		User:     key.GetUser(),
+	}
+}
