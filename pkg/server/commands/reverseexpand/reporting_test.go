@@ -23,10 +23,10 @@ func BenchmarkStatusPool(b *testing.B) {
 
 		for i := range concurrency {
 			wg.Add(1)
-			go func(on bool) {
+			go func() {
 				defer wg.Done()
 				reporters[i].Report(false)
-			}(on)
+			}()
 		}
 		wg.Wait()
 		value := sp.Status()
