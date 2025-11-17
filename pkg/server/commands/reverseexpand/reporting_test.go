@@ -8,7 +8,7 @@ import (
 )
 
 func BenchmarkStatusPool(b *testing.B) {
-	var concurrency int = 1000
+	var concurrency = 1000
 
 	var sp StatusPool
 
@@ -33,6 +33,6 @@ func BenchmarkStatusPool(b *testing.B) {
 		}
 		wg.Wait()
 		value := sp.Status()
-		require.True(b, !value)
+		require.False(b, value)
 	}
 }
