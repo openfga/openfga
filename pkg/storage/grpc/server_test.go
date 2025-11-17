@@ -1075,3 +1075,195 @@ func TestServerDeleteStore(t *testing.T) {
 	require.Error(t, err)
 	require.Equal(t, storage.ErrNotFound, err)
 }
+
+func TestServerReadChanges(t *testing.T) {
+	t.Run("no_changes_returns_not_found", func(t *testing.T) {
+		ds := memory.New()
+		server := NewServer(ds)
+		ctx := context.Background()
+		storeID := "empty-store"
+
+		req := &storagev1.ReadChangesRequest{
+			Store:  storeID,
+			Filter: &storagev1.ReadChangesFilter{},
+			Pagination: &storagev1.PaginationOptions{
+				PageSize: 10,
+			},
+		}
+		_, err := server.ReadChanges(ctx, req)
+		require.Error(t, err)
+	})
+
+	t.Run("read_all_changes", func(t *testing.T) {
+		ds := memory.New()
+		server := NewServer(ds)
+		ctx := context.Background()
+		storeID := "test-store-all"
+
+		// Write some tuples to generate changes
+		err := ds.Write(ctx, storeID, nil, []*openfgav1.TupleKey{
+			{Object: "document:1", Relation: "viewer", User: "user:anne"},
+			{Object: "document:2", Relation: "viewer", User: "user:bob"},
+			{Object: "folder:1", Relation: "viewer", User: "user:charlie"},
+		})
+		require.NoError(t, err)
+
+		req := &storagev1.ReadChangesRequest{
+			Store:  storeID,
+			Filter: &storagev1.ReadChangesFilter{},
+			Pagination: &storagev1.PaginationOptions{
+				PageSize: 10,
+			},
+		}
+		resp, err := server.ReadChanges(ctx, req)
+		require.NoError(t, err)
+		require.Len(t, resp.GetChanges(), 3)
+		require.NotEmpty(t, resp.GetContinuationToken())
+	})
+
+	t.Run("filter_by_object_type", func(t *testing.T) {
+		ds := memory.New()
+		server := NewServer(ds)
+		ctx := context.Background()
+		storeID := "test-store-filter"
+
+		// Write tuples with different object types
+		err := ds.Write(ctx, storeID, nil, []*openfgav1.TupleKey{
+			{Object: "document:1", Relation: "viewer", User: "user:anne"},
+			{Object: "document:2", Relation: "viewer", User: "user:bob"},
+			{Object: "folder:1", Relation: "viewer", User: "user:charlie"},
+		})
+		require.NoError(t, err)
+
+		req := &storagev1.ReadChangesRequest{
+			Store: storeID,
+			Filter: &storagev1.ReadChangesFilter{
+				ObjectType: "document",
+			},
+			Pagination: &storagev1.PaginationOptions{
+				PageSize: 10,
+			},
+		}
+		resp, err := server.ReadChanges(ctx, req)
+		require.NoError(t, err)
+		require.Len(t, resp.GetChanges(), 2)
+		require.NotEmpty(t, resp.GetContinuationToken())
+		for _, change := range resp.GetChanges() {
+			require.Contains(t, change.GetTupleKey().GetObject(), "document:")
+		}
+	})
+
+	t.Run("pagination", func(t *testing.T) {
+		ds := memory.New()
+		server := NewServer(ds)
+		ctx := context.Background()
+		storeID := "test-store-pagination"
+
+		// Write tuples to generate changes
+		err := ds.Write(ctx, storeID, nil, []*openfgav1.TupleKey{
+			{Object: "document:1", Relation: "viewer", User: "user:anne"},
+			{Object: "document:2", Relation: "viewer", User: "user:bob"},
+			{Object: "document:3", Relation: "viewer", User: "user:charlie"},
+		})
+		require.NoError(t, err)
+
+		// First page
+		req := &storagev1.ReadChangesRequest{
+			Store:  storeID,
+			Filter: &storagev1.ReadChangesFilter{},
+			Pagination: &storagev1.PaginationOptions{
+				PageSize: 2,
+			},
+		}
+		resp, err := server.ReadChanges(ctx, req)
+		require.NoError(t, err)
+		require.Len(t, resp.GetChanges(), 2)
+		require.NotEmpty(t, resp.GetContinuationToken())
+
+		// Second page
+		req2 := &storagev1.ReadChangesRequest{
+			Store:  storeID,
+			Filter: &storagev1.ReadChangesFilter{},
+			Pagination: &storagev1.PaginationOptions{
+				PageSize: 2,
+				From:     resp.GetContinuationToken(),
+			},
+		}
+		resp2, err := server.ReadChanges(ctx, req2)
+		require.NoError(t, err)
+		require.Len(t, resp2.GetChanges(), 1)
+		require.NotEmpty(t, resp2.GetContinuationToken())
+	})
+
+	t.Run("sort_descending", func(t *testing.T) {
+		ds := memory.New()
+		server := NewServer(ds)
+		ctx := context.Background()
+		storeID := "test-store-desc"
+
+		// Write tuples to generate changes
+		err := ds.Write(ctx, storeID, nil, []*openfgav1.TupleKey{
+			{Object: "document:1", Relation: "viewer", User: "user:anne"},
+			{Object: "document:2", Relation: "viewer", User: "user:bob"},
+			{Object: "document:3", Relation: "viewer", User: "user:charlie"},
+		})
+		require.NoError(t, err)
+
+		req := &storagev1.ReadChangesRequest{
+			Store:    storeID,
+			Filter:   &storagev1.ReadChangesFilter{},
+			SortDesc: true,
+			Pagination: &storagev1.PaginationOptions{
+				PageSize: 10,
+			},
+		}
+		resp, err := server.ReadChanges(ctx, req)
+		require.NoError(t, err)
+		require.Len(t, resp.GetChanges(), 3)
+		require.NotEmpty(t, resp.GetContinuationToken())
+	})
+
+	t.Run("includes_deletes", func(t *testing.T) {
+		ds := memory.New()
+		server := NewServer(ds)
+		ctx := context.Background()
+		storeID := "test-store-deletes"
+
+		// Write tuples
+		err := ds.Write(ctx, storeID, nil, []*openfgav1.TupleKey{
+			{Object: "document:1", Relation: "viewer", User: "user:anne"},
+			{Object: "document:2", Relation: "viewer", User: "user:bob"},
+			{Object: "folder:1", Relation: "viewer", User: "user:charlie"},
+		})
+		require.NoError(t, err)
+
+		// Delete a tuple to test delete operations
+		err = ds.Write(ctx, storeID, []*openfgav1.TupleKeyWithoutCondition{
+			{Object: "document:1", Relation: "viewer", User: "user:anne"},
+		}, nil)
+		require.NoError(t, err)
+
+		req := &storagev1.ReadChangesRequest{
+			Store:  storeID,
+			Filter: &storagev1.ReadChangesFilter{},
+			Pagination: &storagev1.PaginationOptions{
+				PageSize: 10,
+			},
+		}
+		resp, err := server.ReadChanges(ctx, req)
+		require.NoError(t, err)
+		require.Len(t, resp.GetChanges(), 4) // 3 writes + 1 delete
+		require.NotEmpty(t, resp.GetContinuationToken())
+
+		// Find the delete operation
+		var foundDelete bool
+		for _, change := range resp.GetChanges() {
+			if change.GetOperation() == storagev1.TupleOperation_TUPLE_OPERATION_DELETE {
+				foundDelete = true
+				require.Equal(t, "document:1", change.GetTupleKey().GetObject())
+				break
+			}
+		}
+		require.True(t, foundDelete, "Should find delete operation")
+	})
+}

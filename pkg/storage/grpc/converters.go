@@ -784,3 +784,53 @@ func fromStorageStores(stores []*storagev1.Store) []*openfgav1.Store {
 	}
 	return result
 }
+
+// TupleChange conversions
+
+func toStorageTupleChange(change *openfgav1.TupleChange) *storagev1.TupleChange {
+	if change == nil {
+		return nil
+	}
+
+	return &storagev1.TupleChange{
+		TupleKey:  toStorageTupleKey(change.GetTupleKey()),
+		Operation: storagev1.TupleOperation(change.GetOperation()),
+		Timestamp: change.GetTimestamp(),
+	}
+}
+
+func fromStorageTupleChange(change *storagev1.TupleChange) *openfgav1.TupleChange {
+	if change == nil {
+		return nil
+	}
+
+	return &openfgav1.TupleChange{
+		TupleKey:  fromStorageTupleKey(change.GetTupleKey()),
+		Operation: openfgav1.TupleOperation(change.GetOperation()),
+		Timestamp: change.GetTimestamp(),
+	}
+}
+
+func toStorageTupleChanges(changes []*openfgav1.TupleChange) []*storagev1.TupleChange {
+	if changes == nil {
+		return nil
+	}
+
+	result := make([]*storagev1.TupleChange, len(changes))
+	for i, c := range changes {
+		result[i] = toStorageTupleChange(c)
+	}
+	return result
+}
+
+func fromStorageTupleChanges(changes []*storagev1.TupleChange) []*openfgav1.TupleChange {
+	if changes == nil {
+		return nil
+	}
+
+	result := make([]*openfgav1.TupleChange, len(changes))
+	for i, c := range changes {
+		result[i] = fromStorageTupleChange(c)
+	}
+	return result
+}

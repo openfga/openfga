@@ -2,6 +2,7 @@ package grpc
 
 import (
 	"context"
+	"time"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
@@ -321,6 +322,31 @@ func (s *Server) ListStores(ctx context.Context, req *storagev1.ListStoresReques
 
 	return &storagev1.ListStoresResponse{
 		Stores:            storageStores,
+		ContinuationToken: continuationToken,
+	}, nil
+}
+
+func (s *Server) ReadChanges(ctx context.Context, req *storagev1.ReadChangesRequest) (*storagev1.ReadChangesResponse, error) {
+	filter := storage.ReadChangesFilter{
+		ObjectType:    req.GetFilter().GetObjectType(),
+		HorizonOffset: time.Duration(req.GetFilter().GetHorizonOffsetMs()) * time.Millisecond,
+	}
+
+	options := storage.ReadChangesOptions{
+		Pagination: storage.PaginationOptions{
+			PageSize: int(req.GetPagination().GetPageSize()),
+			From:     req.GetPagination().GetFrom(),
+		},
+		SortDesc: req.GetSortDesc(),
+	}
+
+	changes, continuationToken, err := s.datastore.ReadChanges(ctx, req.GetStore(), filter, options)
+	if err != nil {
+		return nil, toGRPCError(err)
+	}
+
+	return &storagev1.ReadChangesResponse{
+		Changes:           toStorageTupleChanges(changes),
 		ContinuationToken: continuationToken,
 	}, nil
 }

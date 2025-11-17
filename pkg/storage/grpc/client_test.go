@@ -762,6 +762,13 @@ func (m *mockErrorDatastore) DeleteStore(ctx context.Context, id string) error {
 	return m.errorToReturn
 }
 
+func (m *mockErrorDatastore) ReadChanges(ctx context.Context, store string, filter storage.ReadChangesFilter, options storage.ReadChangesOptions) ([]*openfgav1.TupleChange, string, error) {
+	if m.errorToReturn != nil {
+		return nil, "", m.errorToReturn
+	}
+	return nil, "", storage.ErrNotFound
+}
+
 type mockEmptyIterator struct{}
 
 func (m *mockEmptyIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
@@ -1225,6 +1232,175 @@ func TestClientDeleteStore(t *testing.T) {
 	require.Equal(t, storage.ErrNotFound, err)
 }
 
+func TestClientReadChanges(t *testing.T) {
+	t.Run("no_changes_returns_not_found", func(t *testing.T) {
+		client, datastore, cleanup := setupTestClientServer(t)
+		defer cleanup()
+
+		ctx := context.Background()
+		storeID := "empty-store"
+
+		_, _, err := client.ReadChanges(ctx, storeID, storage.ReadChangesFilter{}, storage.ReadChangesOptions{
+			Pagination: storage.PaginationOptions{PageSize: 10},
+		})
+		require.Error(t, err)
+		require.Equal(t, storage.ErrNotFound, err)
+
+		// Verify datastore is empty
+		_, _, err = datastore.ReadChanges(ctx, storeID, storage.ReadChangesFilter{}, storage.ReadChangesOptions{
+			Pagination: storage.PaginationOptions{PageSize: 10},
+		})
+		require.Equal(t, storage.ErrNotFound, err)
+	})
+
+	t.Run("read_all_changes", func(t *testing.T) {
+		client, datastore, cleanup := setupTestClientServer(t)
+		defer cleanup()
+
+		ctx := context.Background()
+		storeID := "test-store-all"
+
+		// Write some tuples to generate changes
+		err := datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{
+			{Object: "document:1", Relation: "viewer", User: "user:anne"},
+			{Object: "document:2", Relation: "viewer", User: "user:bob"},
+			{Object: "folder:1", Relation: "viewer", User: "user:charlie"},
+		})
+		require.NoError(t, err)
+
+		changes, token, err := client.ReadChanges(ctx, storeID, storage.ReadChangesFilter{}, storage.ReadChangesOptions{
+			Pagination: storage.PaginationOptions{PageSize: 10},
+		})
+		require.NoError(t, err)
+		require.Len(t, changes, 3)
+		require.NotEmpty(t, token) // Always returns a continuation token
+	})
+
+	t.Run("filter_by_object_type", func(t *testing.T) {
+		client, datastore, cleanup := setupTestClientServer(t)
+		defer cleanup()
+
+		ctx := context.Background()
+		storeID := "test-store-filter"
+
+		// Write tuples with different object types
+		err := datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{
+			{Object: "document:1", Relation: "viewer", User: "user:anne"},
+			{Object: "document:2", Relation: "viewer", User: "user:bob"},
+			{Object: "folder:1", Relation: "viewer", User: "user:charlie"},
+		})
+		require.NoError(t, err)
+
+		changes, token, err := client.ReadChanges(ctx, storeID, storage.ReadChangesFilter{
+			ObjectType: "document",
+		}, storage.ReadChangesOptions{
+			Pagination: storage.PaginationOptions{PageSize: 10},
+		})
+		require.NoError(t, err)
+		require.Len(t, changes, 2)
+		require.NotEmpty(t, token)
+		for _, change := range changes {
+			require.Contains(t, change.GetTupleKey().GetObject(), "document:")
+		}
+	})
+
+	t.Run("pagination", func(t *testing.T) {
+		client, datastore, cleanup := setupTestClientServer(t)
+		defer cleanup()
+
+		ctx := context.Background()
+		storeID := "test-store-pagination"
+
+		// Write tuples to generate changes
+		err := datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{
+			{Object: "document:1", Relation: "viewer", User: "user:anne"},
+			{Object: "document:2", Relation: "viewer", User: "user:bob"},
+			{Object: "document:3", Relation: "viewer", User: "user:charlie"},
+		})
+		require.NoError(t, err)
+
+		// First page
+		changes, token, err := client.ReadChanges(ctx, storeID, storage.ReadChangesFilter{}, storage.ReadChangesOptions{
+			Pagination: storage.PaginationOptions{PageSize: 2},
+		})
+		require.NoError(t, err)
+		require.Len(t, changes, 2)
+		require.NotEmpty(t, token)
+
+		// Second page
+		changes2, token2, err := client.ReadChanges(ctx, storeID, storage.ReadChangesFilter{}, storage.ReadChangesOptions{
+			Pagination: storage.PaginationOptions{PageSize: 2, From: token},
+		})
+		require.NoError(t, err)
+		require.Len(t, changes2, 1)
+		require.NotEmpty(t, token2)
+	})
+
+	t.Run("sort_descending", func(t *testing.T) {
+		client, datastore, cleanup := setupTestClientServer(t)
+		defer cleanup()
+
+		ctx := context.Background()
+		storeID := "test-store-desc"
+
+		// Write tuples to generate changes
+		err := datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{
+			{Object: "document:1", Relation: "viewer", User: "user:anne"},
+			{Object: "document:2", Relation: "viewer", User: "user:bob"},
+			{Object: "document:3", Relation: "viewer", User: "user:charlie"},
+		})
+		require.NoError(t, err)
+
+		changes, token, err := client.ReadChanges(ctx, storeID, storage.ReadChangesFilter{}, storage.ReadChangesOptions{
+			Pagination: storage.PaginationOptions{PageSize: 10},
+			SortDesc:   true,
+		})
+		require.NoError(t, err)
+		require.Len(t, changes, 3)
+		require.NotEmpty(t, token)
+	})
+
+	t.Run("includes_deletes", func(t *testing.T) {
+		client, datastore, cleanup := setupTestClientServer(t)
+		defer cleanup()
+
+		ctx := context.Background()
+		storeID := "test-store-deletes"
+
+		// Write tuples
+		err := datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{
+			{Object: "document:1", Relation: "viewer", User: "user:anne"},
+			{Object: "document:2", Relation: "viewer", User: "user:bob"},
+			{Object: "folder:1", Relation: "viewer", User: "user:charlie"},
+		})
+		require.NoError(t, err)
+
+		// Delete a tuple to test delete operations
+		err = datastore.Write(ctx, storeID, []*openfgav1.TupleKeyWithoutCondition{
+			{Object: "document:1", Relation: "viewer", User: "user:anne"},
+		}, nil)
+		require.NoError(t, err)
+
+		changes, token, err := client.ReadChanges(ctx, storeID, storage.ReadChangesFilter{}, storage.ReadChangesOptions{
+			Pagination: storage.PaginationOptions{PageSize: 10},
+		})
+		require.NoError(t, err)
+		require.Len(t, changes, 4) // 3 writes + 1 delete
+		require.NotEmpty(t, token)
+
+		// Find the delete operation
+		var foundDelete bool
+		for _, change := range changes {
+			if change.GetOperation() == openfgav1.TupleOperation_TUPLE_OPERATION_DELETE {
+				foundDelete = true
+				require.Equal(t, "document:1", change.GetTupleKey().GetObject())
+				break
+			}
+		}
+		require.True(t, foundDelete, "Should find delete operation")
+	})
+}
+
 func TestClientErrorHandling(t *testing.T) {
 	ctx := context.Background()
 
@@ -1341,6 +1517,14 @@ func TestClientErrorHandling(t *testing.T) {
 
 			t.Run("DeleteStore", func(t *testing.T) {
 				err := client.DeleteStore(ctx, "test-store")
+				require.Error(t, err)
+				require.ErrorIs(t, err, tt.storeError)
+			})
+
+			t.Run("ReadChanges", func(t *testing.T) {
+				_, _, err := client.ReadChanges(ctx, "test-store", storage.ReadChangesFilter{}, storage.ReadChangesOptions{
+					Pagination: storage.PaginationOptions{PageSize: 10},
+				})
 				require.Error(t, err)
 				require.ErrorIs(t, err, tt.storeError)
 			})
