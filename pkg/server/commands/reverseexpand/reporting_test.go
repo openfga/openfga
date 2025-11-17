@@ -8,7 +8,7 @@ import (
 )
 
 func BenchmarkStatusPool(b *testing.B) {
-	var concurrency = 1000
+	const concurrency = 1000
 
 	var sp StatusPool
 
@@ -18,17 +18,14 @@ func BenchmarkStatusPool(b *testing.B) {
 		reporters[i] = sp.Register()
 	}
 
-	var on bool
-
 	for b.Loop() {
 		var wg sync.WaitGroup
 
 		for i := range concurrency {
-			on = false
 			wg.Add(1)
 			go func(on bool) {
 				defer wg.Done()
-				reporters[i].Report(on)
+				reporters[i].Report(false)
 			}(on)
 		}
 		wg.Wait()
