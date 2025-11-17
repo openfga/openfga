@@ -33,14 +33,26 @@ func newEchoTracker(parent tracker) tracker {
 	}
 }
 
+type Reporter struct {
+	ndx    int
+	parent *StatusPool
+}
+
+func (r *Reporter) Report(status bool) {
+	r.parent.mu.RLock()
+	defer r.parent.mu.RUnlock()
+
+	r.parent.pool[r.ndx] = status
+}
+
 // StatusPool is a struct that aggregates status values, as booleans, from multiple sources
 // into a single boolean status value. Each source must register itself using the `Register`
 // method and supply the returned value in each call to `Set` when updating the source's status
 // value. The default state of a StatusPool is `false` for all sources. All StatusPool methods
 // are thread safe.
 type StatusPool struct {
-	mu   sync.Mutex
-	pool []uint64
+	mu   sync.RWMutex
+	pool []bool
 	top  int
 }
 
@@ -48,35 +60,27 @@ type StatusPool struct {
 // an identifier that is unique within the context of the StatusPool instance. The returned
 // integer identifier values are predictable incrementing values beginning at 0. The `Register`
 // method is thread safe.
-func (sp *StatusPool) Register() int {
+func (sp *StatusPool) Register() Reporter {
 	sp.mu.Lock()
 	defer sp.mu.Unlock()
 
-	capacity := len(sp.pool)
+	sp.pool = append(sp.pool, false)
+	ndx := len(sp.pool) - 1
 
-	if sp.top/64 >= capacity {
-		sp.pool = append(sp.pool, 0)
+	return Reporter{
+		ndx:    ndx,
+		parent: sp,
 	}
-	id := sp.top
-	sp.top++
-	return id
 }
 
 // Set is a function that accepts a registered identifier and a boolean status. The caller must
 // provide an integer identifier returned from an initial call to the `Register` function associated
 // with the desired source. The `Set` function is thread safe.
 func (sp *StatusPool) Set(id int, status bool) {
-	sp.mu.Lock()
-	defer sp.mu.Unlock()
+	sp.mu.RLock()
+	defer sp.mu.RUnlock()
 
-	ndx := id / 64
-	pos := uint64(1 << (id % 64))
-
-	if status {
-		sp.pool[ndx] |= pos
-		return
-	}
-	sp.pool[ndx] &^= pos
+	sp.pool[id] = status
 }
 
 // Status is a function that returns the cummulative status of all sources registered within the pool.
@@ -86,10 +90,10 @@ func (sp *StatusPool) Status() bool {
 	sp.mu.Lock()
 	defer sp.mu.Unlock()
 
-	var status uint64
-
 	for _, s := range sp.pool {
-		status |= s
+		if s {
+			return true
+		}
 	}
-	return status != 0
+	return false
 }
