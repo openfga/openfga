@@ -192,6 +192,33 @@ func (s *Server) ReadStartingWithUser(req *storagev1.ReadStartingWithUserRequest
 	}
 }
 
+func (s *Server) Write(ctx context.Context, req *storagev1.WriteRequest) (*storagev1.WriteResponse, error) {
+	// Note: condition field is intentionally ignored for deletes
+	deletes := make([]*openfgav1.TupleKeyWithoutCondition, len(req.GetDeletes()))
+	for i, d := range req.GetDeletes() {
+		deletes[i] = &openfgav1.TupleKeyWithoutCondition{
+			User:     d.GetUser(),
+			Relation: d.GetRelation(),
+			Object:   d.GetObject(),
+		}
+	}
+
+	writes := make([]*openfgav1.TupleKey, len(req.GetWrites()))
+	for i, w := range req.GetWrites() {
+		writes[i] = fromStorageTupleKey(w)
+	}
+
+	opts := fromStorageTupleWriteOptions(req.GetOptions())
+
+	err := s.datastore.Write(ctx, req.GetStore(), deletes, writes, opts...)
+	if err != nil {
+		return nil, toGRPCError(err)
+	}
+
+	return &storagev1.WriteResponse{}, nil
+}
+
+// IsReady implements StorageService.IsReady.
 func (s *Server) IsReady(ctx context.Context, req *storagev1.IsReadyRequest) (*storagev1.IsReadyResponse, error) {
 	readinessStatus, err := s.datastore.IsReady(ctx)
 	if err != nil {

@@ -9,6 +9,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"
+	"google.golang.org/protobuf/types/known/structpb"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
@@ -19,15 +20,15 @@ import (
 
 const bufSize = 1024 * 1024
 
-// setupTestClientServer sets up a test gRPC server and client using an in-memory backend.
+// setupTestClientServer sets up a test gRPC server and client using an in-memory datastore.
 func setupTestClientServer(t *testing.T) (*Client, storage.OpenFGADatastore, func()) {
-	// Create in-memory backend
-	backend := memory.New()
+	// Create in-memory datastore
+	datastore := memory.New()
 
 	// Set up gRPC server with bufconn
 	lis := bufconn.Listen(bufSize)
 	grpcServer := grpc.NewServer()
-	storageServer := NewServer(backend)
+	storageServer := NewServer(datastore)
 	storagev1.RegisterStorageServiceServer(grpcServer, storageServer)
 
 	go func() {
@@ -58,7 +59,7 @@ func setupTestClientServer(t *testing.T) (*Client, storage.OpenFGADatastore, fun
 		grpcServer.Stop()
 	}
 
-	return client, backend, cleanup
+	return client, datastore, cleanup
 }
 
 func TestClientIsReady(t *testing.T) {
@@ -188,14 +189,14 @@ func TestClientMaxTypesPerAuthorizationModel(t *testing.T) {
 }
 
 func TestClientReadWithData(t *testing.T) {
-	client, backend, cleanup := setupTestClientServer(t)
+	client, datastore, cleanup := setupTestClientServer(t)
 	defer cleanup()
 
 	ctx := context.Background()
 	storeID := "test-store"
 
-	// Write some test data using the backend directly
-	err := backend.Write(ctx, storeID, nil, []*openfgav1.TupleKey{
+	// Write some test data using the datastore directly
+	err := datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{
 		{Object: "doc:1", Relation: "viewer", User: "user:anne"},
 		{Object: "doc:2", Relation: "viewer", User: "user:bob"},
 		{Object: "doc:1", Relation: "editor", User: "user:charlie"},
@@ -245,14 +246,14 @@ func TestClientReadWithData(t *testing.T) {
 }
 
 func TestClientReadPageWithData(t *testing.T) {
-	client, backend, cleanup := setupTestClientServer(t)
+	client, datastore, cleanup := setupTestClientServer(t)
 	defer cleanup()
 
 	ctx := context.Background()
 	storeID := "test-store"
 
 	// Write test data
-	err := backend.Write(ctx, storeID, nil, []*openfgav1.TupleKey{
+	err := datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{
 		{Object: "doc:1", Relation: "viewer", User: "user:anne"},
 		{Object: "doc:2", Relation: "viewer", User: "user:bob"},
 		{Object: "doc:3", Relation: "viewer", User: "user:charlie"},
@@ -282,7 +283,7 @@ func TestClientReadPageWithData(t *testing.T) {
 }
 
 func TestClientReadUserTupleWithData(t *testing.T) {
-	client, backend, cleanup := setupTestClientServer(t)
+	client, datastore, cleanup := setupTestClientServer(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -294,7 +295,7 @@ func TestClientReadUserTupleWithData(t *testing.T) {
 		Relation: "viewer",
 		User:     "user:anne",
 	}
-	err := backend.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tupleKey})
+	err := datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tupleKey})
 	require.NoError(t, err)
 
 	// Read the tuple back
@@ -307,14 +308,14 @@ func TestClientReadUserTupleWithData(t *testing.T) {
 }
 
 func TestClientReadUsersetTuplesWithData(t *testing.T) {
-	client, backend, cleanup := setupTestClientServer(t)
+	client, datastore, cleanup := setupTestClientServer(t)
 	defer cleanup()
 
 	ctx := context.Background()
 	storeID := "test-store"
 
 	// Write test data with userset tuples
-	err := backend.Write(ctx, storeID, nil, []*openfgav1.TupleKey{
+	err := datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{
 		{Object: "doc:1", Relation: "viewer", User: "group:eng#member"},
 		{Object: "doc:1", Relation: "viewer", User: "user:anne"},
 		{Object: "doc:2", Relation: "viewer", User: "group:sales#member"},
@@ -346,14 +347,14 @@ func TestClientReadUsersetTuplesWithData(t *testing.T) {
 }
 
 func TestClientReadStartingWithUserWithData(t *testing.T) {
-	client, backend, cleanup := setupTestClientServer(t)
+	client, datastore, cleanup := setupTestClientServer(t)
 	defer cleanup()
 
 	ctx := context.Background()
 	storeID := "test-store"
 
 	// Write test data
-	err := backend.Write(ctx, storeID, nil, []*openfgav1.TupleKey{
+	err := datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{
 		{Object: "document:1", Relation: "viewer", User: "user:anne"},
 		{Object: "document:2", Relation: "viewer", User: "user:anne"},
 		{Object: "document:3", Relation: "viewer", User: "user:bob"},
@@ -389,6 +390,274 @@ func TestClientReadStartingWithUserWithData(t *testing.T) {
 	for _, tuple := range tuples {
 		require.Equal(t, "user:anne", tuple.GetKey().GetUser())
 	}
+}
+
+func TestClientWrite(t *testing.T) {
+	client, datastore, cleanup := setupTestClientServer(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	storeID := "test-store"
+
+	t.Run("write_tuples", func(t *testing.T) {
+		err := client.Write(ctx, storeID, nil, []*openfgav1.TupleKey{
+			{Object: "doc:1", Relation: "viewer", User: "user:anne"},
+			{Object: "doc:2", Relation: "editor", User: "user:bob"},
+		})
+		require.NoError(t, err)
+
+		// Verify correct tuples were written
+		tuples, _, err := datastore.ReadPage(ctx, storeID, storage.ReadFilter{}, storage.ReadPageOptions{
+			Pagination: storage.PaginationOptions{PageSize: 10},
+		})
+		require.NoError(t, err)
+		require.Len(t, tuples, 2)
+
+		// Verify first tuple
+		tuple1, err := datastore.ReadUserTuple(ctx, storeID, &openfgav1.TupleKey{
+			Object: "doc:1", Relation: "viewer", User: "user:anne",
+		}, storage.ReadUserTupleOptions{})
+		require.NoError(t, err)
+		require.Equal(t, "doc:1", tuple1.GetKey().GetObject())
+		require.Equal(t, "viewer", tuple1.GetKey().GetRelation())
+		require.Equal(t, "user:anne", tuple1.GetKey().GetUser())
+
+		// Verify second tuple
+		tuple2, err := datastore.ReadUserTuple(ctx, storeID, &openfgav1.TupleKey{
+			Object: "doc:2", Relation: "editor", User: "user:bob",
+		}, storage.ReadUserTupleOptions{})
+		require.NoError(t, err)
+		require.Equal(t, "doc:2", tuple2.GetKey().GetObject())
+		require.Equal(t, "editor", tuple2.GetKey().GetRelation())
+		require.Equal(t, "user:bob", tuple2.GetKey().GetUser())
+	})
+
+	t.Run("delete_tuples", func(t *testing.T) {
+		// Write a tuple first
+		err := client.Write(ctx, storeID, nil, []*openfgav1.TupleKey{
+			{Object: "doc:3", Relation: "viewer", User: "user:charlie"},
+		})
+		require.NoError(t, err)
+
+		// Delete it
+		err = client.Write(ctx, storeID, []*openfgav1.TupleKeyWithoutCondition{
+			{Object: "doc:3", Relation: "viewer", User: "user:charlie"},
+		}, nil)
+		require.NoError(t, err)
+
+		// Verify it was deleted
+		_, err = datastore.ReadUserTuple(ctx, storeID, &openfgav1.TupleKey{
+			Object: "doc:3", Relation: "viewer", User: "user:charlie",
+		}, storage.ReadUserTupleOptions{})
+		require.Error(t, err)
+		require.Equal(t, storage.ErrNotFound, err)
+	})
+
+	t.Run("write_and_delete_together", func(t *testing.T) {
+		// Write and delete in the same operation
+		err := client.Write(ctx, storeID,
+			[]*openfgav1.TupleKeyWithoutCondition{
+				{Object: "doc:1", Relation: "viewer", User: "user:anne"},
+			},
+			[]*openfgav1.TupleKey{
+				{Object: "doc:1", Relation: "editor", User: "user:anne"},
+			},
+		)
+		require.NoError(t, err)
+
+		// Verify the viewer relation was deleted
+		_, err = datastore.ReadUserTuple(ctx, storeID, &openfgav1.TupleKey{
+			Object: "doc:1", Relation: "viewer", User: "user:anne",
+		}, storage.ReadUserTupleOptions{})
+		require.Error(t, err)
+
+		// Verify the editor relation was written
+		tuple, err := datastore.ReadUserTuple(ctx, storeID, &openfgav1.TupleKey{
+			Object: "doc:1", Relation: "editor", User: "user:anne",
+		}, storage.ReadUserTupleOptions{})
+		require.NoError(t, err)
+		require.NotNil(t, tuple)
+	})
+
+	t.Run("write_with_duplicate_insert_ignore", func(t *testing.T) {
+		// Write a tuple
+		err := client.Write(ctx, storeID, nil, []*openfgav1.TupleKey{
+			{Object: "doc:4", Relation: "viewer", User: "user:dave"},
+		})
+		require.NoError(t, err)
+
+		// Try to write it again with ignore duplicate option
+		err = client.Write(ctx, storeID, nil, []*openfgav1.TupleKey{
+			{Object: "doc:4", Relation: "viewer", User: "user:dave"},
+		}, storage.WithOnDuplicateInsert(storage.OnDuplicateInsertIgnore))
+		require.NoError(t, err)
+	})
+
+	t.Run("write_with_duplicate_insert_error", func(t *testing.T) {
+		// Write a tuple
+		err := client.Write(ctx, storeID, nil, []*openfgav1.TupleKey{
+			{Object: "doc:duplicate", Relation: "viewer", User: "user:test"},
+		})
+		require.NoError(t, err)
+
+		// Try to write it again with explicit error option - should fail
+		err = client.Write(ctx, storeID, nil, []*openfgav1.TupleKey{
+			{Object: "doc:duplicate", Relation: "viewer", User: "user:test"},
+		}, storage.WithOnDuplicateInsert(storage.OnDuplicateInsertError))
+		require.Error(t, err)
+		require.ErrorIs(t, err, storage.ErrInvalidWriteInput)
+	})
+
+	t.Run("write_with_duplicate_insert_error_default", func(t *testing.T) {
+		// Write a tuple
+		err := client.Write(ctx, storeID, nil, []*openfgav1.TupleKey{
+			{Object: "doc:duplicate-default", Relation: "viewer", User: "user:test"},
+		})
+		require.NoError(t, err)
+
+		// Try to write it again without options - should fail (default is ERROR)
+		err = client.Write(ctx, storeID, nil, []*openfgav1.TupleKey{
+			{Object: "doc:duplicate-default", Relation: "viewer", User: "user:test"},
+		})
+		require.Error(t, err)
+		require.ErrorIs(t, err, storage.ErrInvalidWriteInput)
+	})
+
+	t.Run("write_with_missing_delete_ignore", func(t *testing.T) {
+		// Try to delete a tuple that doesn't exist with ignore option
+		err := client.Write(ctx, storeID, []*openfgav1.TupleKeyWithoutCondition{
+			{Object: "doc:nonexistent", Relation: "viewer", User: "user:nobody"},
+		}, nil, storage.WithOnMissingDelete(storage.OnMissingDeleteIgnore))
+		require.NoError(t, err)
+	})
+
+	t.Run("write_with_missing_delete_error", func(t *testing.T) {
+		// Try to delete a tuple that doesn't exist with explicit error option - should fail
+		err := client.Write(ctx, storeID, []*openfgav1.TupleKeyWithoutCondition{
+			{Object: "doc:nonexistent-error", Relation: "viewer", User: "user:nobody"},
+		}, nil, storage.WithOnMissingDelete(storage.OnMissingDeleteError))
+		require.Error(t, err)
+		require.ErrorIs(t, err, storage.ErrInvalidWriteInput)
+	})
+
+	t.Run("write_with_missing_delete_error_default", func(t *testing.T) {
+		// Try to delete a tuple that doesn't exist without options - should fail (default is ERROR)
+		err := client.Write(ctx, storeID, []*openfgav1.TupleKeyWithoutCondition{
+			{Object: "doc:nonexistent-default", Relation: "viewer", User: "user:nobody"},
+		}, nil)
+		require.Error(t, err)
+		require.ErrorIs(t, err, storage.ErrInvalidWriteInput)
+	})
+
+	t.Run("write_tuples_with_conditions", func(t *testing.T) {
+		err := client.Write(ctx, storeID, nil, []*openfgav1.TupleKey{
+			{
+				Object:   "doc:5",
+				Relation: "viewer",
+				User:     "user:conditional",
+				Condition: &openfgav1.RelationshipCondition{
+					Name: "is_valid",
+				},
+			},
+		})
+		require.NoError(t, err)
+
+		// Verify tuple with condition was written
+		tuple, err := datastore.ReadUserTuple(ctx, storeID, &openfgav1.TupleKey{
+			Object:   "doc:5",
+			Relation: "viewer",
+			User:     "user:conditional",
+		}, storage.ReadUserTupleOptions{})
+		require.NoError(t, err)
+		require.NotNil(t, tuple.GetKey().GetCondition())
+		require.Equal(t, "is_valid", tuple.GetKey().GetCondition().GetName())
+	})
+
+	t.Run("delete_multiple_tuples", func(t *testing.T) {
+		// Write multiple tuples
+		err := client.Write(ctx, storeID, nil, []*openfgav1.TupleKey{
+			{Object: "doc:6", Relation: "viewer", User: "user:alice"},
+			{Object: "doc:7", Relation: "viewer", User: "user:alice"},
+			{Object: "doc:8", Relation: "viewer", User: "user:alice"},
+		})
+		require.NoError(t, err)
+
+		// Delete all of them
+		err = client.Write(ctx, storeID, []*openfgav1.TupleKeyWithoutCondition{
+			{Object: "doc:6", Relation: "viewer", User: "user:alice"},
+			{Object: "doc:7", Relation: "viewer", User: "user:alice"},
+			{Object: "doc:8", Relation: "viewer", User: "user:alice"},
+		}, nil)
+		require.NoError(t, err)
+
+		// Verify all were deleted
+		tuples, _, err := datastore.ReadPage(ctx, storeID, storage.ReadFilter{
+			User: "user:alice",
+		}, storage.ReadPageOptions{
+			Pagination: storage.PaginationOptions{PageSize: 10},
+		})
+		require.NoError(t, err)
+		require.Empty(t, tuples)
+	})
+
+	t.Run("write_empty_arrays", func(t *testing.T) {
+		// Should handle empty writes and deletes gracefully
+		err := client.Write(ctx, storeID, nil, nil)
+		require.NoError(t, err)
+	})
+}
+
+func TestClientWriteWithConditions(t *testing.T) {
+	client, datastore, cleanup := setupTestClientServer(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	storeID := "test-store-conditions"
+
+	// Write tuple with complex condition
+	tupleWithCondition := &openfgav1.TupleKey{
+		Object:   "document:sensitive",
+		Relation: "viewer",
+		User:     "user:contractor",
+		Condition: &openfgav1.RelationshipCondition{
+			Name: "valid_ip_range",
+			Context: &structpb.Struct{
+				Fields: map[string]*structpb.Value{
+					"allowed_ips": structpb.NewListValue(&structpb.ListValue{
+						Values: []*structpb.Value{
+							structpb.NewStringValue("10.0.0.0/8"),
+							structpb.NewStringValue("192.168.0.0/16"),
+						},
+					}),
+				},
+			},
+		},
+	}
+
+	err := client.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tupleWithCondition})
+	require.NoError(t, err)
+
+	// Read it back and verify condition was preserved
+	tuple, err := datastore.ReadUserTuple(ctx, storeID, &openfgav1.TupleKey{
+		Object:   "document:sensitive",
+		Relation: "viewer",
+		User:     "user:contractor",
+	}, storage.ReadUserTupleOptions{})
+	require.NoError(t, err)
+	require.NotNil(t, tuple)
+	require.NotNil(t, tuple.GetKey().GetCondition())
+	require.Equal(t, "valid_ip_range", tuple.GetKey().GetCondition().GetName())
+	require.NotNil(t, tuple.GetKey().GetCondition().GetContext())
+
+	// Verify condition context fields and values
+	fields := tuple.GetKey().GetCondition().GetContext().GetFields()
+	require.Contains(t, fields, "allowed_ips")
+
+	allowedIps := fields["allowed_ips"].GetListValue()
+	require.NotNil(t, allowedIps)
+	require.Len(t, allowedIps.GetValues(), 2)
+	require.Equal(t, "10.0.0.0/8", allowedIps.GetValues()[0].GetStringValue())
+	require.Equal(t, "192.168.0.0/16", allowedIps.GetValues()[1].GetStringValue())
 }
 
 // mockErrorDatastore is a datastore that returns specific errors for testing error conversion.
@@ -437,6 +706,10 @@ func (m *mockErrorDatastore) ReadStartingWithUser(ctx context.Context, store str
 		return nil, m.errorToReturn
 	}
 	return &mockEmptyIterator{}, nil
+}
+
+func (m *mockErrorDatastore) Write(ctx context.Context, store string, deletes storage.Deletes, writes storage.Writes, opts ...storage.TupleWriteOption) error {
+	return m.errorToReturn
 }
 
 type mockEmptyIterator struct{}
@@ -533,13 +806,20 @@ func TestClientErrorHandling(t *testing.T) {
 				require.ErrorIs(t, err, tt.storeError)
 			})
 
-			// Test ReadUserTuple
 			t.Run("ReadUserTuple", func(t *testing.T) {
 				_, err := client.ReadUserTuple(ctx, "test-store", &openfgav1.TupleKey{
 					Object:   "doc:1",
 					Relation: "viewer",
 					User:     "user:anne",
 				}, storage.ReadUserTupleOptions{})
+				require.Error(t, err)
+				require.ErrorIs(t, err, tt.storeError)
+			})
+
+			t.Run("Write", func(t *testing.T) {
+				err := client.Write(ctx, "test-store", nil, []*openfgav1.TupleKey{
+					{Object: "doc:1", Relation: "viewer", User: "user:anne"},
+				})
 				require.Error(t, err)
 				require.ErrorIs(t, err, tt.storeError)
 			})

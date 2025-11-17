@@ -233,6 +233,23 @@ func (c *Client) ReadStartingWithUser(ctx context.Context, store string, filter 
 }
 
 func (c *Client) Write(ctx context.Context, store string, d storage.Deletes, w storage.Writes, opts ...storage.TupleWriteOption) error {
+	writeOpts := storage.NewTupleWriteOptions(opts...)
+
+	req := &storagev1.WriteRequest{
+		Store:   store,
+		Deletes: toStorageTupleKeysFromDeletes(d),
+		Writes:  toStorageTupleKeys(w),
+		Options: &storagev1.TupleWriteOptions{
+			OnMissingDelete:   storagev1.OnMissingDelete(writeOpts.OnMissingDelete),
+			OnDuplicateInsert: storagev1.OnDuplicateInsert(writeOpts.OnDuplicateInsert),
+		},
+	}
+
+	_, err := c.client.Write(ctx, req)
+	if err != nil {
+		return fromGRPCError(err)
+	}
+
 	return nil
 }
 

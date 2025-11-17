@@ -11,6 +11,7 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
+	"github.com/openfga/openfga/pkg/storage"
 	storagev1 "github.com/openfga/openfga/pkg/storage/grpc/proto/storage/v1"
 	"github.com/openfga/openfga/pkg/storage/memory"
 )
@@ -293,5 +294,316 @@ func TestServerReadEmptyStore(t *testing.T) {
 		err := server.Read(req, stream)
 		require.NoError(t, err)
 		require.Empty(t, stream.results)
+	})
+}
+
+func TestServerWrite(t *testing.T) {
+	ds := memory.New()
+	server := NewServer(ds)
+	ctx := context.Background()
+	storeID := "test-store"
+
+	t.Run("write_tuples", func(t *testing.T) {
+		req := &storagev1.WriteRequest{
+			Store: storeID,
+			Writes: []*storagev1.TupleKey{
+				{Object: "doc:1", Relation: "viewer", User: "user:anne"},
+				{Object: "doc:2", Relation: "editor", User: "user:bob"},
+			},
+		}
+
+		resp, err := server.Write(ctx, req)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+
+		// Verify correct tuples were written
+		tuples, _, err := ds.ReadPage(ctx, storeID, storage.ReadFilter{}, storage.ReadPageOptions{
+			Pagination: storage.PaginationOptions{PageSize: 10},
+		})
+		require.NoError(t, err)
+		require.Len(t, tuples, 2)
+
+		// Verify first tuple
+		tuple1, err := ds.ReadUserTuple(ctx, storeID, &openfgav1.TupleKey{
+			Object: "doc:1", Relation: "viewer", User: "user:anne",
+		}, storage.ReadUserTupleOptions{})
+		require.NoError(t, err)
+		require.Equal(t, "doc:1", tuple1.GetKey().GetObject())
+		require.Equal(t, "viewer", tuple1.GetKey().GetRelation())
+		require.Equal(t, "user:anne", tuple1.GetKey().GetUser())
+
+		// Verify second tuple
+		tuple2, err := ds.ReadUserTuple(ctx, storeID, &openfgav1.TupleKey{
+			Object: "doc:2", Relation: "editor", User: "user:bob",
+		}, storage.ReadUserTupleOptions{})
+		require.NoError(t, err)
+		require.Equal(t, "doc:2", tuple2.GetKey().GetObject())
+		require.Equal(t, "editor", tuple2.GetKey().GetRelation())
+		require.Equal(t, "user:bob", tuple2.GetKey().GetUser())
+	})
+
+	t.Run("delete_tuples", func(t *testing.T) {
+		// Write a tuple first
+		writeReq := &storagev1.WriteRequest{
+			Store: storeID,
+			Writes: []*storagev1.TupleKey{
+				{Object: "doc:3", Relation: "viewer", User: "user:charlie"},
+			},
+		}
+		_, err := server.Write(ctx, writeReq)
+		require.NoError(t, err)
+
+		// Delete it
+		deleteReq := &storagev1.WriteRequest{
+			Store: storeID,
+			Deletes: []*storagev1.TupleKey{
+				{Object: "doc:3", Relation: "viewer", User: "user:charlie"},
+			},
+		}
+		resp, err := server.Write(ctx, deleteReq)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+
+		// Verify it was deleted
+		_, err = ds.ReadUserTuple(ctx, storeID, &openfgav1.TupleKey{
+			Object: "doc:3", Relation: "viewer", User: "user:charlie",
+		}, storage.ReadUserTupleOptions{})
+		require.Error(t, err)
+		require.Equal(t, storage.ErrNotFound, err)
+	})
+
+	t.Run("write_and_delete_together", func(t *testing.T) {
+		// First write the viewer tuple
+		writeReq := &storagev1.WriteRequest{
+			Store: storeID,
+			Writes: []*storagev1.TupleKey{
+				{Object: "doc:4", Relation: "viewer", User: "user:dave"},
+			},
+		}
+		_, err := server.Write(ctx, writeReq)
+		require.NoError(t, err)
+
+		// Write and delete in the same operation
+		req := &storagev1.WriteRequest{
+			Store: storeID,
+			Deletes: []*storagev1.TupleKey{
+				{Object: "doc:4", Relation: "viewer", User: "user:dave"},
+			},
+			Writes: []*storagev1.TupleKey{
+				{Object: "doc:4", Relation: "editor", User: "user:dave"},
+			},
+		}
+		resp, err := server.Write(ctx, req)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+
+		// Verify the viewer relation was deleted
+		_, err = ds.ReadUserTuple(ctx, storeID, &openfgav1.TupleKey{
+			Object: "doc:4", Relation: "viewer", User: "user:dave",
+		}, storage.ReadUserTupleOptions{})
+		require.Error(t, err)
+
+		// Verify the editor relation was written
+		tuple, err := ds.ReadUserTuple(ctx, storeID, &openfgav1.TupleKey{
+			Object: "doc:4", Relation: "editor", User: "user:dave",
+		}, storage.ReadUserTupleOptions{})
+		require.NoError(t, err)
+		require.NotNil(t, tuple)
+	})
+
+	t.Run("write_with_duplicate_insert_ignore", func(t *testing.T) {
+		// Write a tuple
+		writeReq := &storagev1.WriteRequest{
+			Store: storeID,
+			Writes: []*storagev1.TupleKey{
+				{Object: "doc:5", Relation: "viewer", User: "user:eve"},
+			},
+		}
+		_, err := server.Write(ctx, writeReq)
+		require.NoError(t, err)
+
+		// Try to write it again with ignore duplicate option
+		writeReqWithOpts := &storagev1.WriteRequest{
+			Store: storeID,
+			Writes: []*storagev1.TupleKey{
+				{Object: "doc:5", Relation: "viewer", User: "user:eve"},
+			},
+			Options: &storagev1.TupleWriteOptions{
+				OnDuplicateInsert: storagev1.OnDuplicateInsert_ON_DUPLICATE_INSERT_IGNORE,
+			},
+		}
+		resp, err := server.Write(ctx, writeReqWithOpts)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+	})
+
+	t.Run("write_with_duplicate_insert_error", func(t *testing.T) {
+		// Write a tuple
+		writeReq := &storagev1.WriteRequest{
+			Store: storeID,
+			Writes: []*storagev1.TupleKey{
+				{Object: "doc:duplicate-server", Relation: "viewer", User: "user:test"},
+			},
+		}
+		_, err := server.Write(ctx, writeReq)
+		require.NoError(t, err)
+
+		// Try to write it again with explicit error option - should fail
+		writeReqWithOpts := &storagev1.WriteRequest{
+			Store: storeID,
+			Writes: []*storagev1.TupleKey{
+				{Object: "doc:duplicate-server", Relation: "viewer", User: "user:test"},
+			},
+			Options: &storagev1.TupleWriteOptions{
+				OnDuplicateInsert: storagev1.OnDuplicateInsert_ON_DUPLICATE_INSERT_ERROR,
+			},
+		}
+		_, err = server.Write(ctx, writeReqWithOpts)
+		require.Error(t, err)
+		// The error should be converted to gRPC error with InvalidArgument code
+		require.Contains(t, err.Error(), "cannot write a tuple which already exists")
+	})
+
+	t.Run("write_with_duplicate_insert_error_default", func(t *testing.T) {
+		// Write a tuple
+		writeReq := &storagev1.WriteRequest{
+			Store: storeID,
+			Writes: []*storagev1.TupleKey{
+				{Object: "doc:duplicate-default-server", Relation: "viewer", User: "user:test"},
+			},
+		}
+		_, err := server.Write(ctx, writeReq)
+		require.NoError(t, err)
+
+		// Try to write it again without options - should fail (default is ERROR)
+		writeReqNoOpts := &storagev1.WriteRequest{
+			Store: storeID,
+			Writes: []*storagev1.TupleKey{
+				{Object: "doc:duplicate-default-server", Relation: "viewer", User: "user:test"},
+			},
+		}
+		_, err = server.Write(ctx, writeReqNoOpts)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "cannot write a tuple which already exists")
+	})
+
+	t.Run("write_with_missing_delete_ignore", func(t *testing.T) {
+		// Try to delete a tuple that doesn't exist with ignore option
+		req := &storagev1.WriteRequest{
+			Store: storeID,
+			Deletes: []*storagev1.TupleKey{
+				{Object: "doc:nonexistent", Relation: "viewer", User: "user:nobody"},
+			},
+			Options: &storagev1.TupleWriteOptions{
+				OnMissingDelete: storagev1.OnMissingDelete_ON_MISSING_DELETE_IGNORE,
+			},
+		}
+		resp, err := server.Write(ctx, req)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+	})
+
+	t.Run("write_with_missing_delete_error", func(t *testing.T) {
+		// Try to delete a tuple that doesn't exist with explicit error option - should fail
+		req := &storagev1.WriteRequest{
+			Store: storeID,
+			Deletes: []*storagev1.TupleKey{
+				{Object: "doc:nonexistent-error-server", Relation: "viewer", User: "user:nobody"},
+			},
+			Options: &storagev1.TupleWriteOptions{
+				OnMissingDelete: storagev1.OnMissingDelete_ON_MISSING_DELETE_ERROR,
+			},
+		}
+		_, err := server.Write(ctx, req)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "cannot delete a tuple which does not exist")
+	})
+
+	t.Run("write_with_missing_delete_error_default", func(t *testing.T) {
+		// Try to delete a tuple that doesn't exist without options - should fail (default is ERROR)
+		req := &storagev1.WriteRequest{
+			Store: storeID,
+			Deletes: []*storagev1.TupleKey{
+				{Object: "doc:nonexistent-default-server", Relation: "viewer", User: "user:nobody"},
+			},
+		}
+		_, err := server.Write(ctx, req)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "cannot delete a tuple which does not exist")
+	})
+
+	t.Run("write_tuples_with_conditions", func(t *testing.T) {
+		req := &storagev1.WriteRequest{
+			Store: storeID,
+			Writes: []*storagev1.TupleKey{
+				{
+					Object:   "doc:6",
+					Relation: "viewer",
+					User:     "user:conditional",
+					Condition: &storagev1.RelationshipCondition{
+						Name: "is_valid",
+					},
+				},
+			},
+		}
+		resp, err := server.Write(ctx, req)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+
+		// Verify tuple with condition was written
+		tuple, err := ds.ReadUserTuple(ctx, storeID, &openfgav1.TupleKey{
+			Object:   "doc:6",
+			Relation: "viewer",
+			User:     "user:conditional",
+		}, storage.ReadUserTupleOptions{})
+		require.NoError(t, err)
+		require.NotNil(t, tuple.GetKey().GetCondition())
+		require.Equal(t, "is_valid", tuple.GetKey().GetCondition().GetName())
+	})
+
+	t.Run("delete_multiple_tuples", func(t *testing.T) {
+		// Write multiple tuples
+		writeReq := &storagev1.WriteRequest{
+			Store: storeID,
+			Writes: []*storagev1.TupleKey{
+				{Object: "doc:7", Relation: "viewer", User: "user:multi"},
+				{Object: "doc:8", Relation: "viewer", User: "user:multi"},
+				{Object: "doc:9", Relation: "viewer", User: "user:multi"},
+			},
+		}
+		_, err := server.Write(ctx, writeReq)
+		require.NoError(t, err)
+
+		// Delete all of them
+		deleteReq := &storagev1.WriteRequest{
+			Store: storeID,
+			Deletes: []*storagev1.TupleKey{
+				{Object: "doc:7", Relation: "viewer", User: "user:multi"},
+				{Object: "doc:8", Relation: "viewer", User: "user:multi"},
+				{Object: "doc:9", Relation: "viewer", User: "user:multi"},
+			},
+		}
+		resp, err := server.Write(ctx, deleteReq)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+
+		// Verify all were deleted
+		tuples, _, err := ds.ReadPage(ctx, storeID, storage.ReadFilter{
+			User: "user:multi",
+		}, storage.ReadPageOptions{
+			Pagination: storage.PaginationOptions{PageSize: 10},
+		})
+		require.NoError(t, err)
+		require.Empty(t, tuples)
+	})
+
+	t.Run("write_empty_arrays", func(t *testing.T) {
+		// Should handle empty writes and deletes gracefully
+		req := &storagev1.WriteRequest{
+			Store: storeID,
+		}
+		resp, err := server.Write(ctx, req)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
 	})
 }
