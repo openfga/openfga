@@ -2229,8 +2229,8 @@ func TestBaseResolver_Process(t *testing.T) {
 			defer goleak.VerifyNone(t)
 
 			status := new(StatusPool)
-			id := status.Register()
-			status.Set(id, true)
+			reporter := status.Register()
+			reporter.Report(true)
 
 			ctx := context.Background()
 
@@ -2248,7 +2248,7 @@ func TestBaseResolver_Process(t *testing.T) {
 			}
 
 			resolver := &baseResolver{
-				id:          id,
+				reporter:    reporter,
 				ctx:         ctx,
 				interpreter: mockInterpreter,
 				status:      status,
