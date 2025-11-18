@@ -37,7 +37,7 @@ func TestInMemoryCacheController_DetermineInvalidationTime(t *testing.T) {
 	cache := mocks.NewMockInMemoryCache[any](ctrl)
 	ds := mocks.NewMockOpenFGADatastore(ctrl)
 
-	cacheController := NewCacheController(ds, cache, 10*time.Second, 10*time.Second)
+	cacheController := NewCacheController(ds, cache, 10*time.Second, 10*time.Second, 10*time.Second)
 	storeID := "id"
 	expectedReadChangesOpts := storage.ReadChangesOptions{
 		SortDesc: true,

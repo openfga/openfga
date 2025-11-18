@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Try to keep listed changes to a concise bulleted list of simple explanations of changes. Aim for the amount of information needed so that readers can understand where they would look in the codebase to investigate the changes' implementation, or where they would look in the documentation to understand how to make use of the change in practice - better yet, link directly to the docs and provide detailed information there. Only elaborate if doing so is required to avoid breaking changes or experimental features from ruining someone's day.
 
 ## [Unreleased]
+### Fixed
+- Fixed an issue with the `InMemoryCacheController` (the default cache controller when enabled) where cached Check responses were not invalidated after a write to the store. Previously, invalidation only occurred if multiple Checks were triggered in rapid succession after a write. [#2811](https://github.com/openfga/openfga/pull/2811)
 
 ## [1.11.0] - 2025-11-05
 ### Added
@@ -200,7 +202,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Fixed
 - Replace hardcoded Prometheus datasource UID (`PBFA97CFB590B2093`) with `${DS_PROMETHEUS}` in `telemetry/grafana/dashboards/openfga.json`. This allows the Grafana dashboard to correctly reference the dynamic Prometheus datasource, resolving issues with improper binding. [#2287](https://github.com/openfga/openfga/issues/2287)
 - Handle case where iterator is stopped more than once for `current_iterator_cache_count`. [#2409](https://github.com/openfga/openfga/pull/2409)
-- Fix deadlock when number of SQL datastore connections is less than Resolve Max Breadth. [#2425](https://github.com/openfga/openfga/pull/2425)
+****- Fix deadlock when number of SQL datastore connections is less than Resolve Max Breadth. [#2425](https://github.com/openfga/openfga/pull/2425)
 - Improved `panic()` handling from `go` routines: [#2379](https://github.com/openfga/openfga/pull/2379), [#2385](https://github.com/openfga/openfga/pull/2385), [#2405](https://github.com/openfga/openfga/pull/2405)
 
 ## [1.8.11] - 2025-04-29
