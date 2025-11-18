@@ -2137,3 +2137,431 @@ func TestPipeline(t *testing.T) {
 		}
 	})
 }
+
+func TestPipeline_BuildPrunedWorkers(t *testing.T) {
+	t.Run("should return empty sequence when source cannot reach target", func(t *testing.T) {
+		defer goleak.VerifyNone(t)
+
+		ds := memory.New()
+		t.Cleanup(ds.Close)
+
+		strModel := `
+			model
+			  schema 1.1
+
+			type user
+			type not_user
+
+			type document
+			  relations
+			  	define viewer: [user]
+				define member: [not_user] but not viewer
+		`
+		tuples := []string{
+			"document:1#member@not_user:1",
+			"document:2#viewer@user:1",
+		}
+
+		storeID, model := storagetest.BootstrapFGAStore(t, ds, strModel, tuples)
+
+		typesys, err := typesystem.NewAndValidate(
+			context.Background(),
+			model,
+		)
+
+		if err != nil {
+			panic(err)
+		}
+
+		g := typesys.GetWeightedGraph()
+
+		backend := &Backend{
+			Datastore:  ds,
+			StoreID:    storeID,
+			TypeSystem: typesys,
+			Context:    nil,
+			Graph:      g,
+		}
+
+		pipeline := NewPipeline(backend)
+		target, ok := pipeline.Target("user", "1")
+		if !ok {
+			panic("no such target")
+		}
+
+		source, ok := pipeline.Source("document", "member")
+		if !ok {
+			panic("no such source")
+		}
+
+		seq := pipeline.Build(context.Background(), source, target)
+
+		for range seq {
+			t.Log("iteration received when seq should be empty")
+			t.Fail()
+		}
+	})
+
+	t.Run("should prune workers for SpecificTypeAndRelation", func(t *testing.T) {
+		defer goleak.VerifyNone(t)
+
+		ds := memory.New()
+		t.Cleanup(ds.Close)
+
+		strModel := `
+			model
+			  schema 1.1
+
+			type user
+			type not_user
+
+			type document
+			  relations
+				define member: [user, not_user]
+		`
+
+		storeID, model := storagetest.BootstrapFGAStore(t, ds, strModel, []string{})
+
+		typesys, err := typesystem.NewAndValidate(
+			context.Background(),
+			model,
+		)
+
+		if err != nil {
+			panic(err)
+		}
+
+		g := typesys.GetWeightedGraph()
+
+		backend := &Backend{
+			Datastore:  ds,
+			StoreID:    storeID,
+			TypeSystem: typesys,
+			Context:    nil,
+			Graph:      g,
+		}
+
+		pipeline := NewPipeline(backend)
+		target, ok := pipeline.Target("user", "1")
+		if !ok {
+			panic("no such target")
+		}
+
+		source, ok := pipeline.Source("document", "member")
+		if !ok {
+			panic("no such source")
+		}
+
+		pth := path{
+			ctx:     context.Background(),
+			pipe:    pipeline,
+			workers: make(map[*Node]*worker),
+		}
+
+		pth.resolve((*Node)(source), target, nil, nil)
+
+		_, ok = pth.workers[target.node]
+		require.True(t, ok)
+
+		_, ok = pth.workers[(*Node)(source)]
+		require.True(t, ok)
+
+		prunedTarget, ok := pipeline.Target("not_user", "1")
+		if !ok {
+			panic("no such source")
+		}
+
+		_, ok = pth.workers[prunedTarget.node]
+		require.False(t, ok)
+	})
+
+	t.Run("should prune intersection when cannot reach target", func(t *testing.T) {
+		defer goleak.VerifyNone(t)
+
+		ds := memory.New()
+		t.Cleanup(ds.Close)
+
+		strModel := `
+			model
+			  schema 1.1
+
+			type user
+			type not_user
+
+			type document
+			  relations
+			  	define viewer: [not_user]
+				define member: [user] or admin
+				define admin: [not_user] and viewer
+		`
+
+		storeID, model := storagetest.BootstrapFGAStore(t, ds, strModel, []string{})
+
+		typesys, err := typesystem.NewAndValidate(
+			context.Background(),
+			model,
+		)
+
+		if err != nil {
+			panic(err)
+		}
+
+		g := typesys.GetWeightedGraph()
+
+		backend := &Backend{
+			Datastore:  ds,
+			StoreID:    storeID,
+			TypeSystem: typesys,
+			Context:    nil,
+			Graph:      g,
+		}
+
+		pipeline := NewPipeline(backend)
+		target, ok := pipeline.Target("user", "1")
+		if !ok {
+			panic("no such target")
+		}
+
+		source, ok := pipeline.Source("document", "member")
+		if !ok {
+			panic("no such source")
+		}
+
+		pth := path{
+			ctx:     context.Background(),
+			pipe:    pipeline,
+			workers: make(map[*Node]*worker),
+		}
+
+		pth.resolve((*Node)(source), target, nil, nil)
+
+		_, ok = pth.workers[target.node]
+		require.True(t, ok)
+
+		_, ok = pth.workers[(*Node)(source)]
+		require.True(t, ok)
+
+		edges, ok := g.GetEdgesFromNodeId((*Node)(source).GetUniqueLabel())
+		require.True(t, ok)
+		require.Len(t, edges, 1)
+
+		// union
+		_, ok = pth.workers[edges[0].GetTo()]
+		require.True(t, ok)
+
+		prunedTarget, ok := pipeline.Target("not_user", "1")
+		if !ok {
+			panic("no such source")
+		}
+
+		_, ok = pth.workers[prunedTarget.node]
+		require.False(t, ok)
+	})
+
+	t.Run("should prune exclusion when cannot reach target", func(t *testing.T) {
+		defer goleak.VerifyNone(t)
+
+		ds := memory.New()
+		t.Cleanup(ds.Close)
+
+		strModel := `
+			model
+			  schema 1.1
+
+			type user
+			type not_user
+
+			type document
+			  relations
+			  	define viewer: [user]
+				define member: [user] or admin
+				define admin: [not_user] but not viewer
+		`
+
+		storeID, model := storagetest.BootstrapFGAStore(t, ds, strModel, []string{})
+
+		typesys, err := typesystem.NewAndValidate(
+			context.Background(),
+			model,
+		)
+
+		if err != nil {
+			panic(err)
+		}
+
+		g := typesys.GetWeightedGraph()
+
+		backend := &Backend{
+			Datastore:  ds,
+			StoreID:    storeID,
+			TypeSystem: typesys,
+			Context:    nil,
+			Graph:      g,
+		}
+
+		pipeline := NewPipeline(backend)
+		target, ok := pipeline.Target("user", "1")
+		if !ok {
+			panic("no such target")
+		}
+
+		source, ok := pipeline.Source("document", "member")
+		if !ok {
+			panic("no such source")
+		}
+
+		pth := path{
+			ctx:     context.Background(),
+			pipe:    pipeline,
+			workers: make(map[*Node]*worker),
+		}
+
+		pth.resolve((*Node)(source), target, nil, nil)
+
+		_, ok = pth.workers[target.node]
+		require.True(t, ok)
+
+		_, ok = pth.workers[(*Node)(source)]
+		require.True(t, ok)
+
+		edges, ok := g.GetEdgesFromNodeId((*Node)(source).GetUniqueLabel())
+		require.True(t, ok)
+		require.Len(t, edges, 1)
+
+		// union
+		_, ok = pth.workers[edges[0].GetTo()]
+		require.True(t, ok)
+
+		prunedTarget, ok := pipeline.Target("not_user", "1")
+		if !ok {
+			panic("no such source")
+		}
+
+		_, ok = pth.workers[prunedTarget.node]
+		require.False(t, ok)
+	})
+
+	t.Run("should prune complex model", func(t *testing.T) {
+		defer goleak.VerifyNone(t)
+
+		ds := memory.New()
+		t.Cleanup(ds.Close)
+
+		strModel := `
+			model
+			  schema 1.1
+
+			type user
+			type not_user
+
+			type document
+			  relations
+			  	define not_member: [not_user]
+				define pruned_intersection: not_member and pruned_exclusion
+			  	define viewer: [user, document#viewer]
+				define member: [user] or viewer or pruned_exclusion or admin or pruned_intersection
+				define pruned_exclusion: [not_user] but not viewer
+				define admin: [user] but not not_member
+		`
+
+		storeID, model := storagetest.BootstrapFGAStore(t, ds, strModel, []string{})
+
+		typesys, err := typesystem.NewAndValidate(
+			context.Background(),
+			model,
+		)
+
+		if err != nil {
+			panic(err)
+		}
+
+		g := typesys.GetWeightedGraph()
+
+		backend := &Backend{
+			Datastore:  ds,
+			StoreID:    storeID,
+			TypeSystem: typesys,
+			Context:    nil,
+			Graph:      g,
+		}
+
+		pipeline := NewPipeline(backend)
+		target, ok := pipeline.Target("user", "1")
+		if !ok {
+			panic("no such target")
+		}
+
+		source, ok := pipeline.Source("document", "member")
+		if !ok {
+			panic("no such source")
+		}
+
+		pth := path{
+			ctx:     context.Background(),
+			pipe:    pipeline,
+			workers: make(map[*Node]*worker),
+		}
+
+		pth.resolve((*Node)(source), target, nil, nil)
+
+		_, ok = pth.workers[target.node]
+		require.True(t, ok)
+
+		_, ok = pth.workers[(*Node)(source)]
+		require.True(t, ok)
+
+		edges, ok := g.GetEdgesFromNodeId((*Node)(source).GetUniqueLabel())
+		require.True(t, ok)
+		require.Len(t, edges, 1)
+
+		// union
+		_, ok = pth.workers[edges[0].GetTo()]
+		require.True(t, ok)
+
+		documentViewer, ok := pipeline.Source("document", "viewer")
+		if !ok {
+			panic("no such source")
+		}
+		_, ok = pth.workers[(*Node)(documentViewer)]
+		require.True(t, ok)
+
+		documentAdmin, ok := pipeline.Source("document", "admin")
+		if !ok {
+			panic("no such source")
+		}
+		_, ok = pth.workers[(*Node)(documentAdmin)]
+		require.True(t, ok)
+
+		documentAdminEdges, ok := g.GetEdgesFromNodeId((*Node)(documentAdmin).GetUniqueLabel())
+		require.True(t, ok)
+		require.Len(t, documentAdminEdges, 1)
+
+		// exclusion
+		_, ok = pth.workers[documentAdminEdges[0].GetTo()]
+		require.True(t, ok)
+
+		prunedTarget, ok := pipeline.Target("not_user", "1")
+		if !ok {
+			panic("no such source")
+		}
+
+		_, ok = pth.workers[prunedTarget.node]
+		require.False(t, ok)
+
+		prunedIntersection, ok := pipeline.Source("document", "pruned_intersection")
+		if !ok {
+			panic("no such source")
+		}
+
+		_, ok = pth.workers[(*Node)(prunedIntersection)]
+		require.False(t, ok)
+
+		prunedExclusion, ok := pipeline.Source("document", "pruned_exclusion")
+		if !ok {
+			panic("no such source")
+		}
+
+		_, ok = pth.workers[(*Node)(prunedExclusion)]
+		require.False(t, ok)
+	})
+}
