@@ -15,64 +15,21 @@ import (
 
 	"github.com/openfga/openfga/pkg/storage"
 	storagev1 "github.com/openfga/openfga/pkg/storage/grpc/proto/storage/v1"
-	"github.com/openfga/openfga/pkg/storage/memory"
 	"github.com/openfga/openfga/pkg/storage/test"
 )
 
 const bufSize = 1024 * 1024
 
-// setupTestClientServer sets up a test gRPC server and client using an in-memory datastore.
-func setupTestClientServer(t *testing.T) (*Client, storage.OpenFGADatastore, func()) {
-	// Create in-memory datastore
-	datastore := memory.New()
-
-	// Set up gRPC server with bufconn
-	lis := bufconn.Listen(bufSize)
-	grpcServer := grpc.NewServer()
-	storageServer := NewServer(datastore)
-	storagev1.RegisterStorageServiceServer(grpcServer, storageServer)
-
-	go func() {
-		if err := grpcServer.Serve(lis); err != nil {
-			t.Logf("Server exited with error: %v", err)
-		}
-	}()
-
-	// Create client
-	bufDialer := func(context.Context, string) (net.Conn, error) {
-		return lis.Dial()
-	}
-
-	conn, err := grpc.NewClient("passthrough://bufnet",
-		grpc.WithContextDialer(bufDialer),
-		grpc.WithTransportCredentials(insecure.NewCredentials()))
-	require.NoError(t, err)
-
-	client := &Client{
-		conn:                   conn,
-		client:                 storagev1.NewStorageServiceClient(conn),
-		maxTuplesPerWriteField: storage.DefaultMaxTuplesPerWrite,
-		maxTypesPerModelField:  storage.DefaultMaxTypesPerAuthorizationModel,
-	}
-
-	cleanup := func() {
-		client.Close()
-		grpcServer.Stop()
-	}
-
-	return client, datastore, cleanup
-}
-
 // TestGRPCDatastore runs the complete test suite against the gRPC datastore client.
 // This ensures the gRPC datastore passes the same tests as all SQL datastores.
 func TestGRPCDatastore(t *testing.T) {
-	client, _, cleanup := setupTestClientServer(t)
+	client, _, cleanup := SetupTestClientServer(t)
 	defer cleanup()
 	test.RunAllTests(t, client)
 }
 
 func TestClientIsReady(t *testing.T) {
-	client, _, cleanup := setupTestClientServer(t)
+	client, _, cleanup := SetupTestClientServer(t)
 	defer cleanup()
 
 	status, err := client.IsReady(context.Background())
@@ -81,7 +38,7 @@ func TestClientIsReady(t *testing.T) {
 }
 
 func TestClientReadPage(t *testing.T) {
-	client, _, cleanup := setupTestClientServer(t)
+	client, _, cleanup := SetupTestClientServer(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -98,7 +55,7 @@ func TestClientReadPage(t *testing.T) {
 }
 
 func TestClientReadUserTupleNotFound(t *testing.T) {
-	client, _, cleanup := setupTestClientServer(t)
+	client, _, cleanup := SetupTestClientServer(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -116,7 +73,7 @@ func TestClientReadUserTupleNotFound(t *testing.T) {
 }
 
 func TestClientRead(t *testing.T) {
-	client, _, cleanup := setupTestClientServer(t)
+	client, _, cleanup := SetupTestClientServer(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -135,7 +92,7 @@ func TestClientRead(t *testing.T) {
 }
 
 func TestClientReadUsersetTuples(t *testing.T) {
-	client, _, cleanup := setupTestClientServer(t)
+	client, _, cleanup := SetupTestClientServer(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -158,7 +115,7 @@ func TestClientReadUsersetTuples(t *testing.T) {
 }
 
 func TestClientReadStartingWithUser(t *testing.T) {
-	client, _, cleanup := setupTestClientServer(t)
+	client, _, cleanup := SetupTestClientServer(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -182,7 +139,7 @@ func TestClientReadStartingWithUser(t *testing.T) {
 }
 
 func TestClientMaxTuplesPerWrite(t *testing.T) {
-	client, _, cleanup := setupTestClientServer(t)
+	client, _, cleanup := SetupTestClientServer(t)
 	defer cleanup()
 
 	maxTuples := client.MaxTuplesPerWrite()
@@ -190,7 +147,7 @@ func TestClientMaxTuplesPerWrite(t *testing.T) {
 }
 
 func TestClientMaxTypesPerAuthorizationModel(t *testing.T) {
-	client, _, cleanup := setupTestClientServer(t)
+	client, _, cleanup := SetupTestClientServer(t)
 	defer cleanup()
 
 	maxTypes := client.MaxTypesPerAuthorizationModel()
@@ -198,7 +155,7 @@ func TestClientMaxTypesPerAuthorizationModel(t *testing.T) {
 }
 
 func TestClientReadWithData(t *testing.T) {
-	client, datastore, cleanup := setupTestClientServer(t)
+	client, datastore, cleanup := SetupTestClientServer(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -255,7 +212,7 @@ func TestClientReadWithData(t *testing.T) {
 }
 
 func TestClientReadPageWithData(t *testing.T) {
-	client, datastore, cleanup := setupTestClientServer(t)
+	client, datastore, cleanup := SetupTestClientServer(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -292,7 +249,7 @@ func TestClientReadPageWithData(t *testing.T) {
 }
 
 func TestClientReadUserTupleWithData(t *testing.T) {
-	client, datastore, cleanup := setupTestClientServer(t)
+	client, datastore, cleanup := SetupTestClientServer(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -317,7 +274,7 @@ func TestClientReadUserTupleWithData(t *testing.T) {
 }
 
 func TestClientReadUsersetTuplesWithData(t *testing.T) {
-	client, datastore, cleanup := setupTestClientServer(t)
+	client, datastore, cleanup := SetupTestClientServer(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -356,7 +313,7 @@ func TestClientReadUsersetTuplesWithData(t *testing.T) {
 }
 
 func TestClientReadStartingWithUserWithData(t *testing.T) {
-	client, datastore, cleanup := setupTestClientServer(t)
+	client, datastore, cleanup := SetupTestClientServer(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -402,7 +359,7 @@ func TestClientReadStartingWithUserWithData(t *testing.T) {
 }
 
 func TestClientWrite(t *testing.T) {
-	client, datastore, cleanup := setupTestClientServer(t)
+	client, datastore, cleanup := SetupTestClientServer(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -617,7 +574,7 @@ func TestClientWrite(t *testing.T) {
 }
 
 func TestClientWriteWithConditions(t *testing.T) {
-	client, datastore, cleanup := setupTestClientServer(t)
+	client, datastore, cleanup := SetupTestClientServer(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -844,7 +801,7 @@ func setupTestClientServerWithErrorDatastore(t *testing.T, errorToReturn error) 
 }
 
 func TestClientReadAuthorizationModel(t *testing.T) {
-	client, datastore, cleanup := setupTestClientServer(t)
+	client, datastore, cleanup := SetupTestClientServer(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -898,7 +855,7 @@ func TestClientReadAuthorizationModel(t *testing.T) {
 }
 
 func TestClientReadAuthorizationModels(t *testing.T) {
-	client, datastore, cleanup := setupTestClientServer(t)
+	client, datastore, cleanup := SetupTestClientServer(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -967,7 +924,7 @@ func TestClientReadAuthorizationModels(t *testing.T) {
 }
 
 func TestClientFindLatestAuthorizationModel(t *testing.T) {
-	client, datastore, cleanup := setupTestClientServer(t)
+	client, datastore, cleanup := SetupTestClientServer(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -1011,7 +968,7 @@ func TestClientFindLatestAuthorizationModel(t *testing.T) {
 }
 
 func TestClientWriteAuthorizationModel(t *testing.T) {
-	client, datastore, cleanup := setupTestClientServer(t)
+	client, datastore, cleanup := SetupTestClientServer(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -1098,7 +1055,7 @@ func TestClientWriteAuthorizationModel(t *testing.T) {
 }
 
 func TestClientCreateStore(t *testing.T) {
-	client, datastore, cleanup := setupTestClientServer(t)
+	client, datastore, cleanup := SetupTestClientServer(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -1124,7 +1081,7 @@ func TestClientCreateStore(t *testing.T) {
 }
 
 func TestClientGetStore(t *testing.T) {
-	client, datastore, cleanup := setupTestClientServer(t)
+	client, datastore, cleanup := SetupTestClientServer(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -1153,7 +1110,7 @@ func TestClientGetStore(t *testing.T) {
 }
 
 func TestClientListStores(t *testing.T) {
-	client, datastore, cleanup := setupTestClientServer(t)
+	client, datastore, cleanup := SetupTestClientServer(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -1229,7 +1186,7 @@ func TestClientListStores(t *testing.T) {
 }
 
 func TestClientDeleteStore(t *testing.T) {
-	client, datastore, cleanup := setupTestClientServer(t)
+	client, datastore, cleanup := SetupTestClientServer(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -1254,7 +1211,7 @@ func TestClientDeleteStore(t *testing.T) {
 
 func TestClientReadChanges(t *testing.T) {
 	t.Run("no_changes_returns_not_found", func(t *testing.T) {
-		client, datastore, cleanup := setupTestClientServer(t)
+		client, datastore, cleanup := SetupTestClientServer(t)
 		defer cleanup()
 
 		ctx := context.Background()
@@ -1274,7 +1231,7 @@ func TestClientReadChanges(t *testing.T) {
 	})
 
 	t.Run("read_all_changes", func(t *testing.T) {
-		client, datastore, cleanup := setupTestClientServer(t)
+		client, datastore, cleanup := SetupTestClientServer(t)
 		defer cleanup()
 
 		ctx := context.Background()
@@ -1297,7 +1254,7 @@ func TestClientReadChanges(t *testing.T) {
 	})
 
 	t.Run("filter_by_object_type", func(t *testing.T) {
-		client, datastore, cleanup := setupTestClientServer(t)
+		client, datastore, cleanup := SetupTestClientServer(t)
 		defer cleanup()
 
 		ctx := context.Background()
@@ -1325,7 +1282,7 @@ func TestClientReadChanges(t *testing.T) {
 	})
 
 	t.Run("pagination", func(t *testing.T) {
-		client, datastore, cleanup := setupTestClientServer(t)
+		client, datastore, cleanup := SetupTestClientServer(t)
 		defer cleanup()
 
 		ctx := context.Background()
@@ -1357,7 +1314,7 @@ func TestClientReadChanges(t *testing.T) {
 	})
 
 	t.Run("sort_descending", func(t *testing.T) {
-		client, datastore, cleanup := setupTestClientServer(t)
+		client, datastore, cleanup := SetupTestClientServer(t)
 		defer cleanup()
 
 		ctx := context.Background()
@@ -1381,7 +1338,7 @@ func TestClientReadChanges(t *testing.T) {
 	})
 
 	t.Run("includes_deletes", func(t *testing.T) {
-		client, datastore, cleanup := setupTestClientServer(t)
+		client, datastore, cleanup := SetupTestClientServer(t)
 		defer cleanup()
 
 		ctx := context.Background()
@@ -1422,7 +1379,7 @@ func TestClientReadChanges(t *testing.T) {
 }
 
 func TestClientWriteAssertions(t *testing.T) {
-	client, datastore, cleanup := setupTestClientServer(t)
+	client, datastore, cleanup := SetupTestClientServer(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -1458,7 +1415,7 @@ func TestClientWriteAssertions(t *testing.T) {
 }
 
 func TestClientReadAssertions(t *testing.T) {
-	client, datastore, cleanup := setupTestClientServer(t)
+	client, datastore, cleanup := SetupTestClientServer(t)
 	defer cleanup()
 
 	ctx := context.Background()
