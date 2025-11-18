@@ -342,9 +342,9 @@ func (b *Backend) query(ctx context.Context, input queryInput) iter.Seq[Item] {
 // there exist no more in-flight messages for the parent worker. When recursive edges exist, the parent worker for
 // this resolver type requires its internal watchdog process to initiate a shutdown.
 type baseResolver struct {
-	// id is an identifier provided when registering with the baseResolver's StatusPool. The registration happens
+	// reporter is a Reporter provided when registering with the baseResolver's StatusPool. The registration happens
 	// once, when the baseResolver is created, so this value will remain constant for the lifetime of the instance.
-	id int
+	reporter Reporter
 
 	ctx context.Context
 
@@ -559,8 +559,8 @@ func (r *baseResolver) resolve(senders []*sender, listeners []*listener) {
 	wgStandard.Wait()
 
 	// Once the standard senders have all finished processing, we set the resolver's status to `false`
-	// indicating that the parent is ready for cleanup once all messages have finished processing.
-	r.status.Set(r.id, false)
+	// indicating that the worker is ready for cleanup once all messages have finished processing.
+	r.reporter.Report(false)
 
 	// Recursive senders will process infinitely until the parent worker's watchdog goroutine kills
 	// them.
@@ -570,7 +570,7 @@ func (r *baseResolver) resolve(senders []*sender, listeners []*listener) {
 type edgeHandler func(context.Context, *Edge, []Item) iter.Seq[Item]
 
 type exclusionResolver struct {
-	id          int
+	reporter    Reporter
 	ctx         context.Context
 	interpreter interpreter
 	status      *StatusPool
@@ -580,7 +580,7 @@ type exclusionResolver struct {
 func (r *exclusionResolver) resolve(senders []*sender, listeners []*listener) {
 	defer func() {
 		r.trk.Add(-1)
-		r.status.Set(r.id, false)
+		r.reporter.Report(false)
 	}()
 
 	r.trk.Add(1)
@@ -737,7 +737,7 @@ type interpreter interface {
 }
 
 type intersectionResolver struct {
-	id          int
+	reporter    Reporter
 	ctx         context.Context
 	interpreter interpreter
 	status      *StatusPool
@@ -747,7 +747,7 @@ type intersectionResolver struct {
 func (r *intersectionResolver) resolve(senders []*sender, listeners []*listener) {
 	defer func() {
 		r.trk.Add(-1)
-		r.status.Set(r.id, false)
+		r.reporter.Report(false)
 	}()
 
 	r.trk.Add(1)
@@ -1131,8 +1131,8 @@ func (p *path) worker(node *Node, trk tracker, status *StatusPool) *worker {
 
 	var r resolver
 
-	id := status.Register()
-	status.Set(id, true)
+	reporter := status.Register()
+	reporter.Report(true)
 
 	switch node.GetNodeType() {
 	case nodeTypeSpecificTypeAndRelation:
@@ -1147,7 +1147,7 @@ func (p *path) worker(node *Node, trk tracker, status *StatusPool) *worker {
 		}
 
 		r = &baseResolver{
-			id:          id,
+			reporter:    reporter,
 			ctx:         ctx,
 			interpreter: omni,
 			status:      status,
@@ -1164,7 +1164,7 @@ func (p *path) worker(node *Node, trk tracker, status *StatusPool) *worker {
 		}
 
 		r = &baseResolver{
-			id:          id,
+			reporter:    reporter,
 			ctx:         ctx,
 			interpreter: omni,
 			status:      status,
@@ -1181,7 +1181,7 @@ func (p *path) worker(node *Node, trk tracker, status *StatusPool) *worker {
 		}
 
 		r = &baseResolver{
-			id:          id,
+			reporter:    reporter,
 			ctx:         ctx,
 			interpreter: omni,
 			status:      status,
@@ -1200,7 +1200,7 @@ func (p *path) worker(node *Node, trk tracker, status *StatusPool) *worker {
 			}
 
 			r = &intersectionResolver{
-				id:          id,
+				reporter:    reporter,
 				ctx:         ctx,
 				interpreter: omni,
 				status:      status,
@@ -1218,7 +1218,7 @@ func (p *path) worker(node *Node, trk tracker, status *StatusPool) *worker {
 			}
 
 			r = &baseResolver{
-				id:          id,
+				reporter:    reporter,
 				ctx:         ctx,
 				interpreter: omni,
 				status:      status,
@@ -1235,7 +1235,7 @@ func (p *path) worker(node *Node, trk tracker, status *StatusPool) *worker {
 			}
 
 			r = &exclusionResolver{
-				id:          id,
+				reporter:    reporter,
 				ctx:         ctx,
 				interpreter: omni,
 				status:      status,
@@ -1256,7 +1256,7 @@ func (p *path) worker(node *Node, trk tracker, status *StatusPool) *worker {
 		}
 
 		r = &baseResolver{
-			id:          id,
+			reporter:    reporter,
 			ctx:         ctx,
 			interpreter: omni,
 			status:      status,
@@ -1273,7 +1273,7 @@ func (p *path) worker(node *Node, trk tracker, status *StatusPool) *worker {
 		}
 
 		r = &baseResolver{
-			id:          id,
+			reporter:    reporter,
 			ctx:         ctx,
 			interpreter: omni,
 			status:      status,
