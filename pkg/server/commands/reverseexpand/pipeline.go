@@ -955,6 +955,7 @@ func (p *Pipeline) Build(ctx context.Context, source Source, target Target) iter
 
 	sourceWorker, ok := pth.workers[(*Node)(source)]
 	if !ok {
+		cancel()
 		// if the sourceWorker cannot be found, it means that the source
 		// does not have a path to the target, therefore there are no items
 		return emptySequence
