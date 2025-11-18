@@ -379,6 +379,7 @@ var cases = []testcase{
 		user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "anne"}},
 		expected:   []string{"document:a", "document:public"},
 	},
+	// TODO: handle wild card case
 	// {
 	// 	name: "wild_card",
 	// 	model: `model

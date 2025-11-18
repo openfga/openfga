@@ -1141,8 +1141,6 @@ EdgeLoop:
 				switch source.GetLabel() {
 				case weightedGraph.ExclusionOperator:
 					if ndx == 0 {
-						// p.workers[source] = nil
-
 						break EdgeLoop
 					}
 
