@@ -48,9 +48,11 @@ func TestInMemoryCacheController_DetermineInvalidationTime(t *testing.T) {
 
 	t.Run("cache_hit_after_ttl", func(t *testing.T) {
 		changelogTimestamp := time.Now().UTC().Add(-20 * time.Second)
+		changelogCacheLastModified := time.Now().Add(-time.Minute)
 		gomock.InOrder(
 			cache.EXPECT().Get(storage.GetChangelogCacheKey(storeID)).MinTimes(2).Return(&storage.ChangelogCacheEntry{
-				LastModified: time.Now().Add(-time.Minute),
+				LastModified: changelogCacheLastModified,
+				LastChecked:  time.Now().Add(-1 * time.Hour),
 			}),
 			ds.EXPECT().ReadChanges(gomock.Any(), storeID, gomock.Any(), expectedReadChangesOpts).MinTimes(1).Return([]*openfgav1.TupleChange{
 				{
@@ -62,15 +64,20 @@ func TestInMemoryCacheController_DetermineInvalidationTime(t *testing.T) {
 						User:     "test",
 					}},
 			}, "", nil),
+			// Expect invalidation to have been triggered
 			cache.EXPECT().Set(storage.GetChangelogCacheKey(storeID), gomock.Any(), gomock.Any()),
 		)
 		invalidationTime := cacheController.DetermineInvalidationTime(ctx, storeID)
-		require.Zero(t, invalidationTime)
+		// Should return the last known changelog modified time from cache
+		require.Equal(t, changelogCacheLastModified, invalidationTime)
 		cacheController.(*InMemoryCacheController).wg.Wait()
 	})
 	t.Run("cache_hit_before_ttl", func(t *testing.T) {
 		cache.EXPECT().Get(storage.GetChangelogCacheKey(storeID)).
-			Return(&storage.ChangelogCacheEntry{LastModified: time.Now()})
+			Return(&storage.ChangelogCacheEntry{
+				LastModified: time.Now(),
+				LastChecked:  time.Now(),
+			})
 
 		invalidationTime := cacheController.DetermineInvalidationTime(ctx, storeID)
 		require.NotZero(t, invalidationTime)
@@ -184,8 +191,8 @@ func TestInMemoryCacheController_findChangesAndInvalidateIfNecessary(t *testing.
 								User:     "test",
 							}},
 					}, "", nil),
-					cache.EXPECT().Set(storage.GetInvalidIteratorCacheKey("3"), gomock.Any(), gomock.Any()),
 					cache.EXPECT().Set(storage.GetChangelogCacheKey("3"), gomock.Any(), gomock.Any()),
+					cache.EXPECT().Set(storage.GetInvalidIteratorCacheKey("3"), gomock.Any(), gomock.Any()),
 				)
 			},
 		},
@@ -235,9 +242,9 @@ func TestInMemoryCacheController_findChangesAndInvalidateIfNecessary(t *testing.
 							},
 						},
 					}, "", nil),
+					cache.EXPECT().Set(storage.GetChangelogCacheKey("5"), gomock.Any(), gomock.Any()),
 					cache.EXPECT().Set(storage.GetInvalidIteratorByObjectRelationCacheKey("5", "test:5", "viewer"), gomock.Any(), gomock.Any()),
 					cache.EXPECT().Set(storage.GetInvalidIteratorByUserObjectTypeCacheKeys("5", []string{"test"}, "test")[0], gomock.Any(), gomock.Any()),
-					cache.EXPECT().Set(storage.GetChangelogCacheKey("5"), gomock.Any(), gomock.Any()),
 				)
 			},
 		},
@@ -285,9 +292,9 @@ func TestInMemoryCacheController_findChangesAndInvalidateIfNecessary(t *testing.
 							},
 						},
 					}, "", nil),
+					cache.EXPECT().Set(storage.GetChangelogCacheKey("6"), gomock.Any(), gomock.Any()),
 					cache.EXPECT().Set(storage.GetInvalidIteratorByObjectRelationCacheKey("6", "test:5", "viewer"), gomock.Any(), gomock.Any()),
 					cache.EXPECT().Set(storage.GetInvalidIteratorByUserObjectTypeCacheKeys("6", []string{"test"}, "test")[0], gomock.Any(), gomock.Any()),
-					cache.EXPECT().Set(storage.GetChangelogCacheKey("6"), gomock.Any(), gomock.Any()),
 				)
 			},
 		},
@@ -299,8 +306,8 @@ func TestInMemoryCacheController_findChangesAndInvalidateIfNecessary(t *testing.
 					cache.EXPECT().Get(storage.GetChangelogCacheKey("7")).Return(&storage.ChangelogCacheEntry{LastModified: time.Now().Add(-20 * time.Second)}),
 					datastore.EXPECT().ReadChanges(gomock.Any(), "7", gomock.Any(), expectedReadChangesOpts).Return(
 						generateChanges("test", "relation", "user", 50), "", nil),
-					cache.EXPECT().Set(storage.GetInvalidIteratorCacheKey("7"), gomock.Any(), gomock.Any()),
 					cache.EXPECT().Set(storage.GetChangelogCacheKey("7"), gomock.Any(), gomock.Any()),
+					cache.EXPECT().Set(storage.GetInvalidIteratorCacheKey("7"), gomock.Any(), gomock.Any()),
 				)
 			},
 		},
@@ -320,8 +327,8 @@ func TestInMemoryCacheController_findChangesAndInvalidateIfNecessary(t *testing.
 								User:     "test",
 							}},
 					}, "", nil),
-					cache.EXPECT().Set(storage.GetInvalidIteratorCacheKey("8"), gomock.Any(), gomock.Any()),
 					cache.EXPECT().Set(storage.GetChangelogCacheKey("8"), gomock.Any(), gomock.Any()),
+					cache.EXPECT().Set(storage.GetInvalidIteratorCacheKey("8"), gomock.Any(), gomock.Any()),
 				)
 			},
 		},
@@ -343,8 +350,8 @@ func TestInMemoryCacheController_findChangesAndInvalidateIfNecessary(t *testing.
 					}, "", nil),
 					// there should be no difference with initial_check_for_invalidation case except to
 					// verify the double negative case.
-					cache.EXPECT().Set(storage.GetInvalidIteratorCacheKey("9"), gomock.Any(), gomock.Any()),
 					cache.EXPECT().Set(storage.GetChangelogCacheKey("9"), gomock.Any(), gomock.Any()),
+					cache.EXPECT().Set(storage.GetInvalidIteratorCacheKey("9"), gomock.Any(), gomock.Any()),
 				)
 			},
 		},
@@ -364,8 +371,8 @@ func TestInMemoryCacheController_findChangesAndInvalidateIfNecessary(t *testing.
 								User:     "test",
 							}},
 					}, "", nil),
-					cache.EXPECT().Set(storage.GetInvalidIteratorCacheKey("10"), gomock.Any(), gomock.Any()),
 					cache.EXPECT().Set(storage.GetChangelogCacheKey("10"), gomock.Any(), gomock.Any()),
+					cache.EXPECT().Set(storage.GetInvalidIteratorCacheKey("10"), gomock.Any(), gomock.Any()),
 				)
 			},
 		},
