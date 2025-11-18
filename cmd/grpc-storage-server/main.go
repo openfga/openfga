@@ -42,12 +42,12 @@ func main() {
 
 	grpcAddr := fmt.Sprintf("%s:%d", *host, *port)
 	if err := run(ctx, grpcAddr, *datastoreURI, log); err != nil {
-		log.Fatal(fmt.Sprintf("server error: %v", err))
+		log.Error(fmt.Sprintf("server error: %v", err))
 	}
 }
 
 func run(ctx context.Context, grpcAddr, datastoreURI string, log logger.Logger) error {
-	log.Info(fmt.Sprintf("initializing postgres datastore: %s", datastoreURI))
+	log.Info("initializing postgres datastore: " + datastoreURI)
 
 	// Use sensible defaults for testing
 	datastoreOptions := []sqlcommon.DatastoreOption{
@@ -90,7 +90,7 @@ func run(ctx context.Context, grpcAddr, datastoreURI string, log logger.Logger) 
 		return fmt.Errorf("failed to listen on %s: %w", grpcAddr, err)
 	}
 
-	log.Info(fmt.Sprintf("starting gRPC storage server on %s", grpcAddr))
+	log.Info("starting gRPC storage server on " + grpcAddr)
 
 	// Start server in a goroutine
 	errChan := make(chan error, 1)

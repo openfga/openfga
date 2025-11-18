@@ -46,59 +46,7 @@ To run in the background:
 docker compose up -d
 ```
 
-To stop:
-```bash
-docker compose down
-```
-
 To stop and remove volumes (clean slate):
 ```bash
 docker compose down -v
 ```
-
-## Manual Setup
-
-If you prefer to run without Docker Compose:
-
-## Example: Testing the gRPC Datastore
-
-### 1. Start PostgreSQL
-
-```bash
-docker run -d \
-  --name openfga-postgres \
-  -e POSTGRES_USER=postgres \
-  -e POSTGRES_PASSWORD=password \
-  -e POSTGRES_DB=openfga \
-  -p 5432:5432 \
-  postgres:14
-```
-
-### 2. Run Migrations
-
-```bash
-openfga migrate \
-  --datastore-engine postgres \
-  --datastore-uri "postgres://postgres:password@localhost:5432/openfga?sslmode=disable"
-```
-
-### 3. Start the gRPC Storage Server
-
-```bash
-./grpc-storage-server \
-  --port 50051 \
-  --datastore-uri "postgres://postgres:password@localhost:5432/openfga?sslmode=disable"
-```
-
-### 4. Start OpenFGA with gRPC Client
-
-In another terminal:
-
-```bash
-openfga run \
-  --datastore-engine grpc \
-  --datastore-grpc-addr localhost:50051
-```
-
-Now OpenFGA will use the gRPC datastore client to connect to your gRPC storage server, which uses PostgreSQL as the backend.
-
