@@ -554,7 +554,7 @@ func (c *LocalChecker) checkDirectUserTuple(ctx context.Context, req *ResolveChe
 				Preference: req.GetConsistency(),
 			},
 		}
-		t, err := ds.ReadUserTuple(ctx, storeID, reqTupleKey, opts)
+		t, err := ds.ReadUserTuple(ctx, storeID, storage.ReadUserTupleFilter{Object: reqTupleKey.GetObject(), Relation: reqTupleKey.GetRelation(), User: reqTupleKey.GetUser()}, opts)
 		if err != nil {
 			if errors.Is(err, storage.ErrNotFound) {
 				return response, nil

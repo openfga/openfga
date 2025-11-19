@@ -46,7 +46,7 @@ func TestBoundedWrapper(t *testing.T) {
 		ctx := context.Background()
 
 		wg.Go(func() error {
-			_, err := limitedTupleReader.ReadUserTuple(context.Background(), store, tuple.NewTupleKey("obj:1", "viewer", "group:1#member"), storage.ReadUserTupleOptions{})
+			_, err := limitedTupleReader.ReadUserTuple(context.Background(), store, storage.ReadUserTupleFilter{Object: "obj:1", Relation: "viewer", User: "group:1#member"}, storage.ReadUserTupleOptions{})
 			return err
 		})
 
@@ -110,7 +110,7 @@ func TestBoundedWrapper(t *testing.T) {
 		var wg errgroup.Group
 
 		wg.Go(func() error {
-			_, err := limitedTupleReader.ReadUserTuple(ctx, store, tuple.NewTupleKey("obj:1", "viewer", "group:1#member"), storage.ReadUserTupleOptions{})
+			_, err := limitedTupleReader.ReadUserTuple(ctx, store, storage.ReadUserTupleFilter{Object: "obj:1", Relation: "viewer", User: "group:1#member"}, storage.ReadUserTupleOptions{})
 			return err
 		})
 
@@ -181,7 +181,7 @@ func TestBoundedConcurrencyWrapper_Exits_Early_If_Context_Error(t *testing.T) {
 		},
 		`read_user_tuple`: {
 			requestFunc: func(ctx context.Context) (any, error) {
-				return dut.ReadUserTuple(ctx, ulid.Make().String(), &openfgav1.TupleKey{}, storage.ReadUserTupleOptions{})
+				return dut.ReadUserTuple(ctx, ulid.Make().String(), storage.ReadUserTupleFilter{}, storage.ReadUserTupleOptions{})
 			},
 		},
 		`read_userset_tuples`: {
