@@ -2308,7 +2308,8 @@ func TestBaseResolver_Process(t *testing.T) {
 			resolver.inBuffers[0] = make(map[string]struct{})
 			resolver.errBuffers[0] = make(map[string]struct{})
 
-			items := append(test.inputItems, test.errorItems...)
+			items := test.inputItems
+			items = append(items, test.errorItems...)
 
 			// Create message with done function
 			var doneCalled bool
