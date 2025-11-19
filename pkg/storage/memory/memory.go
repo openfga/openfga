@@ -482,7 +482,7 @@ func find(records []*storage.TupleRecord, tupleKey *openfgav1.TupleKey) *storage
 }
 
 // ReadUserTuple see [storage.RelationshipTupleReader].ReadUserTuple.
-func (s *MemoryBackend) ReadUserTuple(ctx context.Context, store string, key *openfgav1.TupleKey, _ storage.ReadUserTupleOptions) (*openfgav1.Tuple, error) {
+func (s *MemoryBackend) ReadUserTuple(ctx context.Context, store string, filter storage.ReadUserTupleFilter, _ storage.ReadUserTupleOptions) (*openfgav1.Tuple, error) {
 	_, span := tracer.Start(ctx, "memory.ReadUserTuple")
 	defer span.End()
 
@@ -490,7 +490,10 @@ func (s *MemoryBackend) ReadUserTuple(ctx context.Context, store string, key *op
 	defer s.mutexTuples.RUnlock()
 
 	for _, t := range s.tuples[store] {
-		if match(t, key) {
+		if match(t, tupleUtils.NewTupleKey(filter.Object, filter.Relation, filter.User)) {
+			if len(filter.Conditions) > 0 && !slices.Contains(filter.Conditions, t.ConditionName) {
+				continue
+			}
 			return t.AsTuple(), nil
 		}
 	}
