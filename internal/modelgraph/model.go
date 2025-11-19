@@ -61,18 +61,13 @@ func (m *AuthorizationModelGraph) GetDirectEdgeFromNodeForUserType(objectRelatio
 		return nil, ErrGraphError
 	}
 
-	var edge *authzGraph.WeightedAuthorizationModelEdge
 	for _, e := range edges {
 		if e.GetTo().GetLabel() == userType {
-			edge = e
-			break
+			return e, nil
 		}
 	}
-	if edges == nil {
-		return nil, ErrGraphError
-	}
 
-	return edge, nil
+	return nil, ErrGraphError
 }
 
 func (m *AuthorizationModelGraph) FlattenNode(node *authzGraph.WeightedAuthorizationModelNode, userType string, recursivePath bool) ([]*authzGraph.WeightedAuthorizationModelEdge, error) {
