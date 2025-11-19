@@ -541,13 +541,13 @@ func (s *Datastore) write(
 }
 
 // ReadUserTuple see [storage.RelationshipTupleReader].ReadUserTuple.
-func (s *Datastore) ReadUserTuple(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options storage.ReadUserTupleOptions) (*openfgav1.Tuple, error) {
+func (s *Datastore) ReadUserTuple(ctx context.Context, store string, filter storage.ReadUserTupleFilter, options storage.ReadUserTupleOptions) (*openfgav1.Tuple, error) {
 	ctx, span := startTrace(ctx, "ReadUserTuple")
 	defer span.End()
 
 	readStbl := sq.StatementBuilder.PlaceholderFormat(sq.Dollar)
-	objectType, objectID := tupleUtils.SplitObject(tupleKey.GetObject())
-	userType := tupleUtils.GetUserTypeFromUser(tupleKey.GetUser())
+	objectType, objectID := tupleUtils.SplitObject(filter.Object)
+	userType := tupleUtils.GetUserTypeFromUser(filter.User)
 
 	var conditionName sql.NullString
 	var conditionContext []byte
@@ -564,10 +564,14 @@ func (s *Datastore) ReadUserTuple(ctx context.Context, store string, tupleKey *o
 			"store":       store,
 			"object_type": objectType,
 			"object_id":   objectID,
-			"relation":    tupleKey.GetRelation(),
-			"_user":       tupleKey.GetUser(),
+			"relation":    filter.Relation,
+			"_user":       filter.User,
 			"user_type":   userType,
 		})
+
+	if len(filter.Conditions) > 0 {
+		stbl = stbl.Where(sq.Eq{"COALESCE(condition_name, '')": filter.Conditions})
+	}
 	stmt, args, err := stbl.ToSql()
 	if err != nil {
 		return nil, HandleSQLError(err)
