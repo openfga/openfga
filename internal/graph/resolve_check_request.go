@@ -13,6 +13,7 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/tuple"
 )
 
 type ResolveCheckRequest struct {
@@ -30,6 +31,9 @@ type ResolveCheckRequest struct {
 	// AuthorizationModelID, StoreID, Context, and ContextualTuples.
 	// the invariantCacheKey is computed once per request, and passed to sub-problems via copy in .clone()
 	invariantCacheKey string
+
+	objectType string
+	userType   string
 }
 
 type ResolveCheckRequestMetadata struct {
@@ -76,6 +80,12 @@ func NewResolveCheckRequest(
 		return nil, errors.New("missing store_id")
 	}
 
+	userType := tuple.GetType(params.TupleKey.GetUser())
+	if tuple.IsObjectRelation(params.TupleKey.GetUser()) {
+		objectRelation := tuple.GetRelation(params.TupleKey.GetUser())
+		userType = tuple.ToObjectRelationString(userType, objectRelation)
+	}
+
 	r := &ResolveCheckRequest{
 		StoreID:              params.StoreID,
 		AuthorizationModelID: params.AuthorizationModelID,
@@ -87,6 +97,9 @@ func NewResolveCheckRequest(
 		Consistency:          params.Consistency,
 		// avoid having to read from cache consistently by propagating it
 		LastCacheInvalidationTime: params.LastCacheInvalidationTime,
+
+		objectType: tuple.GetType(params.TupleKey.GetObject()),
+		userType:   userType,
 	}
 
 	keyBuilder := &strings.Builder{}
@@ -132,6 +145,8 @@ func (r *ResolveCheckRequest) clone() *ResolveCheckRequest {
 		Consistency:               r.GetConsistency(),
 		LastCacheInvalidationTime: r.GetLastCacheInvalidationTime(),
 		invariantCacheKey:         r.GetInvariantCacheKey(),
+		objectType:                r.objectType,
+		userType:                  r.userType,
 	}
 }
 
@@ -203,4 +218,17 @@ func (r *ResolveCheckRequest) GetInvariantCacheKey() string {
 		return ""
 	}
 	return r.invariantCacheKey
+}
+
+func (r *ResolveCheckRequest) GetObjectType() string {
+	if r == nil {
+		return ""
+	}
+	return r.objectType
+}
+func (r *ResolveCheckRequest) GetUserType() string {
+	if r == nil {
+		return ""
+	}
+	return r.userType
 }

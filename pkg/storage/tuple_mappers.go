@@ -69,13 +69,17 @@ func (n UsersetMapper) Head(ctx context.Context) (string, error) {
 	return n.doMap(tupleRes)
 }
 
-func (n UsersetMapper) doMap(t *openfgav1.TupleKey) (string, error) {
+func MapUserset(t *openfgav1.TupleKey) (string, error) {
 	usersetName, relation := tuple.SplitObjectRelation(t.GetUser())
 	if relation == "" && !tuple.IsWildcard(usersetName) {
 		// This should never happen because ReadUsersetTuples only returns usersets as users.
 		return "", fmt.Errorf("unexpected userset %s with no relation", t.GetUser())
 	}
 	return usersetName, nil
+}
+
+func (n UsersetMapper) doMap(t *openfgav1.TupleKey) (string, error) {
+	return MapUserset(t)
 }
 
 type TTUMapper struct {
@@ -107,8 +111,12 @@ func (n TTUMapper) Head(ctx context.Context) (string, error) {
 	return n.doMap(tupleRes)
 }
 
-func (n TTUMapper) doMap(t *openfgav1.TupleKey) (string, error) {
+func MapTTU(t *openfgav1.TupleKey) (string, error) {
 	return t.GetUser(), nil
+}
+
+func (n TTUMapper) doMap(t *openfgav1.TupleKey) (string, error) {
+	return MapTTU(t)
 }
 
 type ObjectIDMapper struct {

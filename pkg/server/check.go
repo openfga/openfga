@@ -7,9 +7,11 @@ import (
 	"time"
 
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
+	"github.com/openfga/openfga/internal/modelgraph"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -64,6 +66,10 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 	}
 
 	storeID := req.GetStoreId()
+
+	if s.featureFlagClient.Boolean(serverconfig.ExperimentalWeightedGraphCheck, storeID) {
+		return s.v2Check(ctx, req)
+	}
 
 	typesys, err := s.resolveTypesystem(ctx, storeID, req.GetAuthorizationModelId())
 	if err != nil {
@@ -174,6 +180,61 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		Allowed: resp.Allowed,
 	}
 
+	if s.featureFlagClient.Boolean(serverconfig.ExperimentalShadowWeightedGraphCheck, storeID) {
+		go s.shadowV2Check(ctx, req, res, endTime)
+	}
+
+	return res, nil
+}
+
+func (s *Server) shadowV2Check(ctx context.Context, req *openfgav1.CheckRequest, mainRes *openfgav1.CheckResponse, mainTook int64) {
+	start := time.Now()
+	res, err := s.v2Check(context.Background(), req)
+	if err != nil {
+		if errors.Is(err, modelgraph.ErrInvalidModel) {
+			s.logger.InfoWithContext(ctx, "invalid model graph check request")
+			return
+		}
+		s.logger.ErrorWithContext(ctx, "shadow v2 check failed", zap.Error(err))
+	}
+	s.logger.InfoWithContext(ctx, "shadow check",
+		zap.Bool("match", mainRes.GetAllowed() == res.GetAllowed()),
+		zap.Int64("main_took", mainTook),
+		zap.Duration("shadow_took", time.Since(start)),
+		zap.Bool("main", mainRes.GetAllowed()),
+		zap.Bool("shadow", res.GetAllowed()),
+	)
+	return
+}
+
+func (s *Server) v2Check(ctx context.Context, req *openfgav1.CheckRequest) (*openfgav1.CheckResponse, error) {
+	cacheInvalidationTime := time.Time{}
+
+	if req.GetConsistency() != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
+		cacheInvalidationTime = s.sharedDatastoreResources.CacheController.DetermineInvalidationTime(ctx, req.GetStoreId())
+	}
+
+	mg, err := s.authzModelGraphResolver.Resolve(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
+	if err != nil {
+		return nil, err
+	}
+
+	q := commands.NewCheckQuery(
+		commands.WithCheckQueryV2Logger(s.logger),
+		commands.WithCheckQueryV2Datastore(s.datastore),
+		commands.WithCheckQueryV2Model(mg),
+		commands.WithCheckQueryV2Cache(s.sharedDatastoreResources.CheckCache),
+		commands.WithCheckQueryV2CacheTTL(s.cacheSettings.CheckQueryCacheTTL),
+		commands.WithCheckQueryV2Planner(s.planner),
+		commands.WithCheckQueryV2LastCacheInvalidationTime(cacheInvalidationTime),
+		commands.WithCheckQueryV2ConcurrencyLimit(int(s.resolveNodeBreadthLimit)),
+		commands.WithCheckQueryV2UpstreamTimeout(s.requestTimeout),
+	)
+
+	res, err := q.Execute(ctx, req)
+	if err != nil {
+		return nil, commands.CheckCommandErrorToServerError(err)
+	}
 	return res, nil
 }
 
