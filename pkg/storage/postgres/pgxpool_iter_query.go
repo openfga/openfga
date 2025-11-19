@@ -19,9 +19,9 @@ type PgxExec interface {
 	Exec(ctx context.Context, sql string, arguments ...any) (commandTag pgconn.CommandTag, err error)
 }
 
-// SBAllowToSQL interface supports all squirrel builder that provides
-// ToSQL statement.
-type SBAllowToSQL interface {
+// SQLBuilder represents any SQL statement builder that can generate
+// SQL strings with parameterized arguments.
+type SQLBuilder interface {
 	ToSql() (string, []interface{}, error)
 }
 
@@ -35,7 +35,7 @@ type PgxTxnIterQuery struct {
 var _ sqlcommon.SQLIteratorRowGetter = (*PgxTxnIterQuery)(nil)
 
 // NewPgxTxnGetRows creates a PgxPoolIterQuery which allows the GetRows functionality via the specified PgxQuery txn.
-func NewPgxTxnGetRows(txn PgxQuery, sb SBAllowToSQL) (*PgxTxnIterQuery, error) {
+func NewPgxTxnGetRows(txn PgxQuery, sb SQLBuilder) (*PgxTxnIterQuery, error) {
 	stmt, args, err := sb.ToSql()
 	if err != nil {
 		return nil, err
