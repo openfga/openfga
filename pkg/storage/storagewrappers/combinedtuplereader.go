@@ -89,19 +89,19 @@ func (c *CombinedTupleReader) ReadPage(ctx context.Context, store string, filter
 func (c *CombinedTupleReader) ReadUserTuple(
 	ctx context.Context,
 	store string,
-	tk *openfgav1.TupleKey,
+	filter storage.ReadUserTupleFilter,
 	options storage.ReadUserTupleOptions,
 ) (*openfgav1.Tuple, error) {
-	targetUsers := []string{tk.GetUser()}
-	filteredContextualTuples := filterTuples(c.contextualTuplesOrderedByObjectID, tk.GetObject(), tk.GetRelation(), targetUsers)
+	targetUsers := []string{filter.User}
+	filteredContextualTuples := filterTuples(c.contextualTuplesOrderedByObjectID, filter.Object, filter.Relation, targetUsers)
 
 	for _, t := range filteredContextualTuples {
-		if t.GetKey().GetUser() == tk.GetUser() {
+		if t.GetKey().GetUser() == filter.User {
 			return t, nil
 		}
 	}
 
-	return c.RelationshipTupleReader.ReadUserTuple(ctx, store, tk, options)
+	return c.RelationshipTupleReader.ReadUserTuple(ctx, store, filter, options)
 }
 
 func tupleMatchesAllowedUserTypeRestrictions(t *openfgav1.Tuple,

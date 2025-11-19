@@ -1,5 +1,3 @@
-//go:generate mockgen -source storage.go -destination ../../internal/mocks/mock_storage.go -package mocks OpenFGADatastore
-
 package storage
 
 import (
@@ -172,7 +170,7 @@ type RelationshipTupleReader interface {
 	ReadUserTuple(
 		ctx context.Context,
 		store string,
-		tupleKey *openfgav1.TupleKey,
+		filter ReadUserTupleFilter,
 		options ReadUserTupleOptions,
 	) (*openfgav1.Tuple, error)
 
@@ -304,8 +302,8 @@ type ReadStartingWithUserFilter struct {
 	Conditions []string
 }
 
-// ReadStartingWithUserFilter specifies the filter options that will be used
-// to constrain the [RelationshipTupleReader.ReadStartingWithUser] query.
+// ReadFilter specifies the filter options that will be used
+// to constrain the [RelationshipTupleReader.ReadFilter] query.
 type ReadFilter struct {
 	// Mandatory.
 	Object string
@@ -317,6 +315,10 @@ type ReadFilter struct {
 	// Optional. It can be nil. If present, it will be used to filter the results. Conditions can hold the empty value
 	Conditions []string
 }
+
+// ReadUserTupleFilter specifies the filter options that will be used
+// to constrain the [RelationshipTupleReader.ReadUserTupleFilter] query.
+type ReadUserTupleFilter = ReadFilter
 
 // ReadUsersetTuplesFilter specifies the filter options that
 // will be used to constrain the ReadUsersetTuples query.

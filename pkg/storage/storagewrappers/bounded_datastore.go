@@ -111,7 +111,7 @@ func (b *BoundedTupleReader) GetMetadata() Metadata {
 func (b *BoundedTupleReader) ReadUserTuple(
 	ctx context.Context,
 	store string,
-	tupleKey *openfgav1.TupleKey,
+	filter storage.ReadUserTupleFilter,
 	options storage.ReadUserTupleOptions,
 ) (*openfgav1.Tuple, error) {
 	err := b.bound(ctx, storagewrappersutil.OperationReadUserTuple)
@@ -120,7 +120,7 @@ func (b *BoundedTupleReader) ReadUserTuple(
 	}
 
 	defer b.done()
-	t, err := b.RelationshipTupleReader.ReadUserTuple(ctx, store, tupleKey, options)
+	t, err := b.RelationshipTupleReader.ReadUserTuple(ctx, store, filter, options)
 	if t == nil || err != nil {
 		return t, err
 	}

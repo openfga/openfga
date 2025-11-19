@@ -578,7 +578,7 @@ func Test_combinedTupleReader_ReadUserTuple(t *testing.T) {
 	type args struct {
 		ctx     context.Context
 		store   string
-		tk      *openfgav1.TupleKey
+		filter  storage.ReadUserTupleFilter
 		options storage.ReadUserTupleOptions
 	}
 	tests := []struct {
@@ -606,7 +606,7 @@ func Test_combinedTupleReader_ReadUserTuple(t *testing.T) {
 			args: args{
 				ctx:   context.Background(),
 				store: "1",
-				tk: &openfgav1.TupleKey{
+				filter: storage.ReadUserTupleFilter{
 					User:     "user:11",
 					Relation: "member",
 					Object:   "group:1",
@@ -633,7 +633,7 @@ func Test_combinedTupleReader_ReadUserTuple(t *testing.T) {
 			args: args{
 				ctx:   context.Background(),
 				store: "1",
-				tk: &openfgav1.TupleKey{
+				filter: storage.ReadUserTupleFilter{
 					User:     "user:13",
 					Relation: "member",
 					Object:   "group:1",
@@ -650,7 +650,7 @@ func Test_combinedTupleReader_ReadUserTuple(t *testing.T) {
 			}
 			c := NewCombinedTupleReader(tt.fields.RelationshipTupleReader, tt.fields.contextualTuples)
 
-			got, err := c.ReadUserTuple(tt.args.ctx, tt.args.store, tt.args.tk, tt.args.options)
+			got, err := c.ReadUserTuple(tt.args.ctx, tt.args.store, tt.args.filter, tt.args.options)
 			require.NoError(t, err)
 			if diff := cmp.Diff(got, tt.want, protocmp.Transform()); diff != "" {
 				t.Fatalf("mismatch (-want +got):\n%s", diff)
