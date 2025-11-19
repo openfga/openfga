@@ -2,6 +2,7 @@ package reverseexpand
 
 import (
 	"context"
+	"errors"
 	"iter"
 	"sync"
 	"testing"
@@ -2189,6 +2190,7 @@ func TestBaseResolver_Process(t *testing.T) {
 		name           string
 		edge           *Edge
 		inputItems     []Item
+		errorItems     []Item
 		expectedUnseen []Item
 		expectedOutput []Item
 	}{
@@ -2232,6 +2234,25 @@ func TestBaseResolver_Process(t *testing.T) {
 			expectedUnseen: []Item{
 				{Value: "item1"},
 				{Value: "item1"},
+			},
+			expectedOutput: []Item{
+				{Value: "duplicate"},
+				{Value: "unique"},
+			},
+		},
+		{
+			name: "item_error",
+			edge: documentViewerEdges[1],
+			inputItems: []Item{
+				{Value: "item1"},
+			},
+			errorItems: []Item{
+				{Err: errors.New("item error")},
+				{Err: errors.New("item error")},
+			},
+			expectedUnseen: []Item{
+				{Value: "item1"},
+				{Err: errors.New("item error")},
 			},
 			expectedOutput: []Item{
 				{Value: "duplicate"},
@@ -2287,10 +2308,12 @@ func TestBaseResolver_Process(t *testing.T) {
 			resolver.inBuffers[0] = make(map[string]struct{})
 			resolver.errBuffers[0] = make(map[string]struct{})
 
+			items := append(test.inputItems, test.errorItems...)
+
 			// Create message with done function
 			var doneCalled bool
 			msg := message[group]{
-				Value: group{Items: test.inputItems},
+				Value: group{Items: items},
 				finite: func() {
 					doneCalled = true
 				},
@@ -2315,6 +2338,13 @@ func TestBaseResolver_Process(t *testing.T) {
 			// Verify results
 			require.True(t, result)
 			require.True(t, doneCalled)
+
+			// If error items were provided, they should be reported
+			if len(test.errorItems) > 0 {
+				for _, errItem := range test.errorItems {
+					require.Contains(t, resolver.errBuffers[0], errItem.Err.Error())
+				}
+			}
 
 			// If no unseen items expected, interpret should not be called
 			if len(test.expectedUnseen) == 0 {
