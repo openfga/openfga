@@ -2222,6 +2222,22 @@ func TestBaseResolver_Process(t *testing.T) {
 				{Value: "unique"},
 			},
 		},
+		{
+			name: "no_tuple_cycle_or_recursive_edge_no_deduplication",
+			edge: documentViewerEdges[0],
+			inputItems: []Item{
+				{Value: "item1"},
+				{Value: "item1"}, // duplicate
+			},
+			expectedUnseen: []Item{
+				{Value: "item1"},
+				{Value: "item1"},
+			},
+			expectedOutput: []Item{
+				{Value: "duplicate"},
+				{Value: "unique"},
+			},
+		},
 	}
 
 	for _, test := range tests {
