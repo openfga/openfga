@@ -397,9 +397,10 @@ func (r *baseResolver) process(ndx int, snd *sender, listeners []*listener) loop
 		edgeTo := "nil"
 		edgeFrom := "nil"
 
-		if snd.edge() != nil {
-			edgeTo = snd.edge().GetTo().GetUniqueLabel()
-			edgeFrom = snd.edge().GetFrom().GetUniqueLabel()
+		edge := snd.edge()
+		if edge != nil {
+			edgeTo = edge.GetTo().GetUniqueLabel()
+			edgeFrom = edge.GetFrom().GetUniqueLabel()
 		}
 
 		attrs = append(
@@ -413,7 +414,7 @@ func (r *baseResolver) process(ndx int, snd *sender, listeners []*listener) loop
 
 		// If the edge is recursive or part of a tuple cycle,
 		// deduplicate items received in this group based on the buffer for this sender.
-		if snd.edge() != nil && (len(snd.edge().GetRecursiveRelation()) > 0 || snd.edge().IsPartOfTupleCycle()) {
+		if edge != nil && (len(edge.GetRecursiveRelation()) > 0 || edge.IsPartOfTupleCycle()) {
 			for _, item := range msg.Value.Items {
 				if item.Err != nil {
 					r.mutexes[ndx].Lock()
@@ -446,7 +447,7 @@ func (r *baseResolver) process(ndx int, snd *sender, listeners []*listener) loop
 			return true
 		}
 
-		results = r.interpreter.interpret(ctx, snd.edge(), unseen)
+		results = r.interpreter.interpret(ctx, edge, unseen)
 
 		// Deduplicate the output and potentially send in chunks.
 		for item := range results {
