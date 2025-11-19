@@ -324,7 +324,7 @@ func writeTuples(w io.StringWriter, tuples ...*openfgav1.TupleKey) (err error) {
 	// copy tuples slice to avoid mutating the original slice during sorting.
 	copy(sortedTuples, tuples)
 
-	// sort tulpes for a deterministic write
+	// sort tuples for a deterministic write
 	sort.Sort(sortedTuples)
 
 	// prefix to avoid overlap with previous strings written
