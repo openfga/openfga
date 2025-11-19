@@ -2755,60 +2755,61 @@ tests:
               relation: viewer
             expectation:
               - user:cheetah
-  - name: exclusion_between_userset_and_type
-    stages:
-      - model: |
-          model
-            schema 1.1
-          type user
-          type group
-            relations
-              define member: [user, group#member] but not blocked
-              define blocked: [user, group#member]
-        tuples:
-          - object: group:1
-            relation: blocked
-            user: group:1#member
-          - object: group:1
-            relation: member
-            user: user:will
-        checkAssertions:
-          - tuple:
-              object: group:1
-              relation: member
-              user: user:will
-            expectation: false
-          - tuple:
-              object: group:1
-              relation: blocked
-              user: group:1#member
-            expectation: true
-        listObjectsAssertions:
-          - request:
-              user: user:will
-              type: group
-              relation: member
-            expectation:
-          - request:
-              user: group:1#member
-              type: group
-              relation: blocked
-            expectation:
-             - group:1
-        listUsersAssertions:
-          - request:
-              filters:
-                - user
-              object: group:1
-              relation: member
-            expectation:
-          - request:
-              filters:
-                - group#member
-              object: group:1
-              relation: blocked
-            expectation:
-              - group:1#member
+# this test is not valid, we don't allow exclusion in recursions or tuple cycles paths
+#  - name: exclusion_between_userset_and_type
+#    stages:
+#      - model: |
+#          model
+#            schema 1.1
+#          type user
+#          type group
+#            relations
+#              define member: [user, group#member] but not blocked
+#              define blocked: [user, group#member]
+#        tuples:
+#          - object: group:1
+#            relation: blocked
+#            user: group:1#member
+#          - object: group:1
+#            relation: member
+#            user: user:will
+#        checkAssertions:
+#          - tuple:
+#              object: group:1
+#              relation: member
+#              user: user:will
+#            expectation: false
+#          - tuple:
+#              object: group:1
+#              relation: blocked
+#              user: group:1#member
+#            expectation: true
+#        listObjectsAssertions:
+#          - request:
+#              user: user:will
+#              type: group
+#              relation: member
+#            expectation:
+#          - request:
+#              user: group:1#member
+#              type: group
+#              relation: blocked
+#            expectation:
+#             - group:1
+#        listUsersAssertions:
+#          - request:
+#              filters:
+#                - user
+#              object: group:1
+#              relation: member
+#            expectation:
+#          - request:
+#              filters:
+#                - group#member
+#              object: group:1
+#              relation: blocked
+#            expectation:
+#              - group:1#member
   - name: userset_as_user
     stages:
       - model: |
