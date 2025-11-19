@@ -100,7 +100,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 			s.listObjectsDatastoreThrottleThreshold,
 			s.listObjectsDatastoreThrottleDuration,
 		),
-		commands.WithListObjectsPipelineEnabled(s.featureFlagClient.Boolean(serverconfig.ExperimentalListObjectsOptimizations, storeID)),
+		commands.WithListObjectsPipelineEnabled(s.featureFlagClient.Boolean(serverconfig.ExperimentalPipelineListObjects, storeID)),
 		commands.WithFeatureFlagClient(s.featureFlagClient),
 	)
 	if err != nil {
@@ -250,7 +250,7 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 		commands.WithResolveNodeLimit(s.resolveNodeLimit),
 		commands.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
 		commands.WithMaxConcurrentReads(s.maxConcurrentReadsForListObjects),
-		commands.WithListObjectsPipelineEnabled(s.featureFlagClient.Boolean(serverconfig.ExperimentalListObjectsOptimizations, storeID)),
+		commands.WithListObjectsPipelineEnabled(s.featureFlagClient.Boolean(serverconfig.ExperimentalPipelineListObjects, storeID)),
 		commands.WithFeatureFlagClient(s.featureFlagClient),
 	)
 	if err != nil {
