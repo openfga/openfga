@@ -2,11 +2,14 @@ package concurrency
 
 import (
 	"context"
+	"errors"
 
 	"github.com/sourcegraph/conc/pool"
 )
 
 type Pool = pool.ContextPool
+
+var ErrShortCircuit = errors.New("short circuit")
 
 // NewPool returns a new pool where each task respects context cancellation.
 // Wait() will only return the first error seen.
