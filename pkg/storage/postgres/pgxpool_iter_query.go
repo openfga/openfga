@@ -3,7 +3,6 @@ package postgres
 import (
 	"context"
 
-	sq "github.com/Masterminds/squirrel"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
@@ -20,6 +19,12 @@ type PgxExec interface {
 	Exec(ctx context.Context, sql string, arguments ...any) (commandTag pgconn.CommandTag, err error)
 }
 
+// SBAllowToSQL interface supports all squirrel builder that provides
+// ToSQL statement.
+type SBAllowToSQL interface {
+	ToSql() (string, []interface{}, error)
+}
+
 // PgxTxnIterQuery is a helper to run queries using pgxpool when used in sqlcommon iterator.
 type PgxTxnIterQuery struct {
 	txn   PgxQuery
@@ -30,7 +35,7 @@ type PgxTxnIterQuery struct {
 var _ sqlcommon.SQLIteratorRowGetter = (*PgxTxnIterQuery)(nil)
 
 // NewPgxTxnGetRows creates a PgxPoolIterQuery which allows the GetRows functionality via the specified PgxQuery txn.
-func NewPgxTxnGetRows(txn PgxQuery, sb sq.SelectBuilder) (*PgxTxnIterQuery, error) {
+func NewPgxTxnGetRows(txn PgxQuery, sb SBAllowToSQL) (*PgxTxnIterQuery, error) {
 	stmt, args, err := sb.ToSql()
 	if err != nil {
 		return nil, err
