@@ -7,8 +7,8 @@ import (
 	"time"
 
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
-	"github.com/openfga/openfga/internal/modelgraph"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/sourcegraph/conc/panics"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
@@ -18,6 +18,7 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/graph"
+	"github.com/openfga/openfga/internal/modelgraph"
 	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/internal/utils/apimethod"
 	"github.com/openfga/openfga/pkg/middleware/validator"
@@ -189,7 +190,16 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 
 func (s *Server) shadowV2Check(ctx context.Context, req *openfgav1.CheckRequest, mainRes *openfgav1.CheckResponse, mainTook int64) {
 	start := time.Now()
-	res, err := s.v2Check(context.Background(), req)
+	ctx, cancel := context.WithTimeout(context.Background(), s.shadowCheckResolverTimeout)
+	defer cancel()
+	var res *openfgav1.CheckResponse
+	var err error
+	recoveredErr := panics.Try(func() {
+		res, err = s.v2Check(ctx, req)
+	})
+	if recoveredErr != nil {
+		err = recoveredErr.AsError()
+	}
 	if err != nil {
 		if errors.Is(err, modelgraph.ErrInvalidModel) {
 			s.logger.InfoWithContext(ctx, "invalid model graph check request")
@@ -204,7 +214,6 @@ func (s *Server) shadowV2Check(ctx context.Context, req *openfgav1.CheckRequest,
 		zap.Bool("main", mainRes.GetAllowed()),
 		zap.Bool("shadow", res.GetAllowed()),
 	)
-	return
 }
 
 func (s *Server) v2Check(ctx context.Context, req *openfgav1.CheckRequest) (*openfgav1.CheckResponse, error) {
