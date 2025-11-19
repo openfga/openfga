@@ -684,19 +684,19 @@ func (s *Datastore) write(
 }
 
 // ReadUserTuple see [storage.RelationshipTupleReader].ReadUserTuple.
-func (s *Datastore) ReadUserTuple(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, _ storage.ReadUserTupleOptions) (*openfgav1.Tuple, error) {
+func (s *Datastore) ReadUserTuple(ctx context.Context, store string, filter storage.ReadUserTupleFilter, _ storage.ReadUserTupleOptions) (*openfgav1.Tuple, error) {
 	ctx, span := startTrace(ctx, "ReadUserTuple")
 	defer span.End()
 
-	objectType, objectID := tupleUtils.SplitObject(tupleKey.GetObject())
-	userType := tupleUtils.GetUserTypeFromUser(tupleKey.GetUser())
-	userObjectType, userObjectID, userRelation := tupleUtils.ToUserParts(tupleKey.GetUser())
+	objectType, objectID := tupleUtils.SplitObject(filter.Object)
+	userType := tupleUtils.GetUserTypeFromUser(filter.User)
+	userObjectType, userObjectID, userRelation := tupleUtils.ToUserParts(filter.User)
 
 	var conditionName sql.NullString
 	var conditionContext []byte
 	var record storage.TupleRecord
 
-	err := s.stbl.
+	sb := s.stbl.
 		Select(
 			"object_type", "object_id", "relation",
 			"user_object_type", "user_object_id", "user_relation",
@@ -707,13 +707,18 @@ func (s *Datastore) ReadUserTuple(ctx context.Context, store string, tupleKey *o
 			"store":            store,
 			"object_type":      objectType,
 			"object_id":        objectID,
-			"relation":         tupleKey.GetRelation(),
+			"relation":         filter.Relation,
 			"user_object_type": userObjectType,
 			"user_object_id":   userObjectID,
 			"user_relation":    userRelation,
 			"user_type":        userType,
-		}).
-		QueryRowContext(ctx).
+		})
+
+	if len(filter.Conditions) > 0 {
+		sb = sb.Where(sq.Eq{"COALESCE(condition_name, '')": filter.Conditions})
+	}
+
+	err := sb.QueryRowContext(ctx).
 		Scan(
 			&record.ObjectType,
 			&record.ObjectID,
