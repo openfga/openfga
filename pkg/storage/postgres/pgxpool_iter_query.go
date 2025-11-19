@@ -34,7 +34,7 @@ type PgxTxnIterQuery struct {
 
 var _ sqlcommon.SQLIteratorRowGetter = (*PgxTxnIterQuery)(nil)
 
-// NewPgxTxnGetRows creates a PgxPoolIterQuery which allows the GetRows functionality via the specified PgxQuery txn.
+// NewPgxTxnGetRows creates a PgxTxnIterQuery which allows the GetRows functionality via the specified PgxQuery txn.
 func NewPgxTxnGetRows(txn PgxQuery, sb SQLBuilder) (*PgxTxnIterQuery, error) {
 	stmt, args, err := sb.ToSql()
 	if err != nil {
