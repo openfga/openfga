@@ -3,6 +3,7 @@ package check
 import (
 	"context"
 	"errors"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -32,6 +33,7 @@ var tracer = otel.Tracer("internal/check")
 
 var ErrValidation = errors.New("object relation does not exist")
 var ErrPanicRequest = errors.New("invalid check request") // == panic in ResolveCheck so should be handled accordingly (should be seen as a 500 to client)
+var ErrConditionMissing = errors.New("condition is missing")
 
 type Config struct {
 	Model                     *modelgraph.AuthorizationModelGraph
@@ -102,9 +104,27 @@ func (r *Resolver) ResolveCheck(ctx context.Context, req *Request) (*Response, e
 	}
 
 	// TODO: Do we really want to have this behavior?
+	// TODO: tests for when we decide what to do.
 	for _, t := range req.GetContextualTuples() {
-		if _, ok := r.model.GetNodeByID(tuple.ToObjectRelationString(tuple.GetType(t.GetObject()), t.GetRelation())); !ok {
-			return nil, &tuple.InvalidTupleError{TupleKey: t, Cause: ErrValidation}
+		objectType := tuple.GetType(t.GetObject())
+		relation := t.GetRelation()
+		objRel := tuple.ToObjectRelationString(objectType, relation)
+		if _, ok := r.model.GetNodeByID(objRel); !ok {
+			return nil, &tuple.InvalidConditionalTupleError{TupleKey: t, Cause: ErrValidation}
+		}
+		edge, err := r.model.GetDirectEdgeFromNodeForUserType(objRel, tuple.GetType(t.GetUser()))
+		if err != nil {
+			return nil, &tuple.InvalidConditionalTupleError{TupleKey: t, Cause: ErrValidation}
+		}
+		condName := authzGraph.NoCond
+		if t.GetCondition() != nil {
+			condName = t.GetCondition().GetName()
+		}
+		if !slices.Contains(edge.GetConditions(), condName) {
+			return nil, &tuple.InvalidConditionalTupleError{
+				TupleKey: t,
+				Cause:    ErrConditionMissing,
+			}
 		}
 	}
 
