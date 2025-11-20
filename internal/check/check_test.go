@@ -62,9 +62,9 @@ func TestResolveUnionEdges(t *testing.T) {
 		})
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
-			TupleKey:             tuple.NewTupleKey("group:1", "member", "user:maria"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("group:1", "member", "user:maria"),
 		})
 		require.NoError(t, err)
 
@@ -115,9 +115,9 @@ func TestResolveUnionEdges(t *testing.T) {
 		})
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
-			TupleKey:             tuple.NewTupleKey("group:1", "member", "user:maria"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("group:1", "member", "user:maria"),
 		})
 		require.NoError(t, err)
 
@@ -168,9 +168,9 @@ func TestResolveUnionEdges(t *testing.T) {
 		})
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
-			TupleKey:             tuple.NewTupleKey("group:1", "member", "user:maria"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("group:1", "member", "user:maria"),
 		})
 		require.NoError(t, err)
 
@@ -236,9 +236,9 @@ func TestResolveUnionEdges(t *testing.T) {
 		})
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
-			TupleKey:             tuple.NewTupleKey("group:1", "member", "user:maria"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("group:1", "member", "user:maria"),
 		})
 		require.NoError(t, err)
 
@@ -287,9 +287,9 @@ func TestResolveUnionEdges(t *testing.T) {
 		})
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
-			TupleKey:             tuple.NewTupleKey("group:1", "member", "user:maria"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("group:1", "member", "user:maria"),
 		})
 		require.NoError(t, err)
 
@@ -344,9 +344,9 @@ func TestResolveUnionEdges(t *testing.T) {
 		})
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
-			TupleKey:             tuple.NewTupleKey("group:1", "member", "user:maria"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("group:1", "member", "user:maria"),
 		})
 		require.NoError(t, err)
 
@@ -375,6 +375,8 @@ func TestResolveUnionEdges(t *testing.T) {
             model
               schema 1.1
             type user
+              relations
+                define self: [user]
         `)
 
 		mg, err := modelgraph.New(model)
@@ -390,9 +392,9 @@ func TestResolveUnionEdges(t *testing.T) {
 		})
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
-			TupleKey:             tuple.NewTupleKey("user:1", "self", "user:maria"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("user:1", "self", "user:maria"),
 		})
 		require.NoError(t, err)
 
@@ -435,9 +437,9 @@ func TestResolveIntersection(t *testing.T) {
 		})
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
-			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:maria"),
 		})
 		require.NoError(t, err)
 
@@ -500,9 +502,9 @@ func TestResolveIntersection(t *testing.T) {
 		})
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
-			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:maria"),
 		})
 		require.NoError(t, err)
 
@@ -563,9 +565,9 @@ func TestResolveIntersection(t *testing.T) {
 		})
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
-			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:maria"),
 		})
 		require.NoError(t, err)
 
@@ -621,9 +623,9 @@ func TestResolveIntersection(t *testing.T) {
 		})
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
-			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:maria"),
 		})
 		require.NoError(t, err)
 
@@ -680,9 +682,9 @@ func TestResolveExclusion(t *testing.T) {
 		})
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
-			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:maria"),
 		})
 		require.NoError(t, err)
 
@@ -740,9 +742,9 @@ func TestResolveExclusion(t *testing.T) {
 		})
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
-			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:maria"),
 		})
 		require.NoError(t, err)
 
@@ -795,9 +797,9 @@ func TestResolveExclusion(t *testing.T) {
 		})
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
-			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:maria"),
 		})
 		require.NoError(t, err)
 
@@ -855,9 +857,9 @@ func TestResolveExclusion(t *testing.T) {
 		})
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
-			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:maria"),
 		})
 		require.NoError(t, err)
 
@@ -917,9 +919,9 @@ func TestResolveExclusion(t *testing.T) {
 		})
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
-			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:maria"),
 		})
 		require.NoError(t, err)
 
@@ -979,9 +981,9 @@ func TestResolveExclusion(t *testing.T) {
 		})
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
-			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:maria"),
 		})
 		require.NoError(t, err)
 
@@ -1044,9 +1046,9 @@ func TestResolveExclusion(t *testing.T) {
 		})
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
-			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:maria"),
 		})
 		require.NoError(t, err)
 
@@ -1112,9 +1114,9 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 		})
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
-			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "document:2#owner"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "document:2#owner"),
 		})
 		require.NoError(t, err)
 
@@ -1172,9 +1174,9 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 		})
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
-			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "document:2#owner"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "document:2#owner"),
 		})
 		require.NoError(t, err)
 
@@ -1233,9 +1235,9 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 		})
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
-			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "document:2#owner"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "document:2#owner"),
 		})
 		require.NoError(t, err)
 
@@ -1293,9 +1295,9 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 		})
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
-			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "document:2#owner"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "document:2#owner"),
 		})
 		require.NoError(t, err)
 
@@ -1359,9 +1361,9 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 		})
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
-			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "document:2#owner"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "document:2#owner"),
 		})
 		require.NoError(t, err)
 
@@ -1420,9 +1422,9 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 		})
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
-			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "document:2#owner"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "document:2#owner"),
 		})
 		require.NoError(t, err)
 
@@ -1479,9 +1481,9 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 		})
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
-			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "document:2#owner"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "document:2#owner"),
 		})
 		require.NoError(t, err)
 
@@ -1522,9 +1524,9 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 		})
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
-			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "document:2#owner"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "document:2#owner"),
 		})
 		require.NoError(t, err)
 
@@ -1597,9 +1599,9 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 		})
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
-			TupleKey:             tuple.NewTupleKey("document:1", "member", "document:2#owner"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "member", "document:2#owner"),
 		})
 		require.NoError(t, err)
 
@@ -1678,9 +1680,9 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 		})
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
-			TupleKey:             tuple.NewTupleKey("document:1", "member", "document:2#owner"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "member", "document:2#owner"),
 		})
 		require.NoError(t, err)
 
@@ -1752,9 +1754,9 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 		})
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
-			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "document:2#owner"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "document:2#owner"),
 		})
 		require.NoError(t, err)
 
@@ -1816,9 +1818,9 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 		})
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
-			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "document:2#owner"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "document:2#owner"),
 		})
 		require.NoError(t, err)
 
@@ -1890,9 +1892,9 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 		})
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
-			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "document:2#owner"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "document:2#owner"),
 		})
 		require.NoError(t, err)
 
@@ -2115,9 +2117,9 @@ func TestSpecificType(t *testing.T) {
 		})
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
-			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:maria"),
 		})
 		require.NoError(t, err)
 
@@ -2168,9 +2170,9 @@ func TestSpecificType(t *testing.T) {
 		})
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
-			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:maria"),
 		})
 		require.NoError(t, err)
 
@@ -2218,9 +2220,9 @@ func TestSpecificType(t *testing.T) {
 		})
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
-			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:maria"),
 		})
 		require.NoError(t, err)
 
@@ -2280,10 +2282,10 @@ func TestSpecificType(t *testing.T) {
 		})
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
-			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
-			Consistency:          openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
+			StoreID:     storeID,
+			Model:       mg,
+			TupleKey:    tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+			Consistency: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
 		})
 		require.NoError(t, err)
 
@@ -2333,9 +2335,9 @@ func TestSpecificType(t *testing.T) {
 		})
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
-			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:maria"),
 		})
 		require.NoError(t, err)
 
@@ -2395,9 +2397,9 @@ func TestSpecificType(t *testing.T) {
 		})
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
-			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:maria"),
 			Context: testutils.MustNewStruct(t, map[string]interface{}{
 				"current_time": time.Now().Format(time.RFC3339),
 			}),
@@ -2460,9 +2462,9 @@ func TestSpecificType(t *testing.T) {
 		})
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
-			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:maria"),
 			Context: testutils.MustNewStruct(t, map[string]interface{}{
 				"current_time": time.Now().Format(time.RFC3339),
 			}),
@@ -2523,9 +2525,9 @@ func TestSpecificType(t *testing.T) {
 		})
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
-			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:maria"),
 			Context: testutils.MustNewStruct(t, map[string]interface{}{
 				"current_time": time.Now().Format(time.RFC3339),
 			}),
@@ -2574,10 +2576,10 @@ func TestSpecificType(t *testing.T) {
 		}
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: model.GetId(),
-			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:anne"),
-			ContextualTuples:     contextualTuples,
+			StoreID:          storeID,
+			Model:            mg,
+			TupleKey:         tuple.NewTupleKey("document:1", "viewer", "user:anne"),
+			ContextualTuples: contextualTuples,
 		})
 		require.NoError(t, err)
 
@@ -2628,10 +2630,10 @@ func TestSpecificType(t *testing.T) {
 		}
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: model.GetId(),
-			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:anne"),
-			ContextualTuples:     contextualTuples,
+			StoreID:          storeID,
+			Model:            mg,
+			TupleKey:         tuple.NewTupleKey("document:1", "viewer", "user:anne"),
+			ContextualTuples: contextualTuples,
 			Context: &structpb.Struct{
 				Fields: map[string]*structpb.Value{
 					"current_time": structpb.NewStringValue(time.Now().Format(time.RFC3339)),
@@ -2694,9 +2696,9 @@ func TestSpecificTypeWildcard(t *testing.T) {
 		})
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
-			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:maria"),
 		})
 		require.NoError(t, err)
 
@@ -2748,9 +2750,9 @@ func TestSpecificTypeWildcard(t *testing.T) {
 		})
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
-			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:maria"),
 		})
 		require.NoError(t, err)
 
@@ -2798,9 +2800,9 @@ func TestSpecificTypeWildcard(t *testing.T) {
 		})
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
-			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:maria"),
 		})
 		require.NoError(t, err)
 
@@ -2856,10 +2858,10 @@ func TestSpecificTypeWildcard(t *testing.T) {
 		})
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
-			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
-			Consistency:          openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
+			StoreID:     storeID,
+			Model:       mg,
+			TupleKey:    tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+			Consistency: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
 		})
 		require.NoError(t, err)
 
@@ -2909,9 +2911,9 @@ func TestSpecificTypeWildcard(t *testing.T) {
 		})
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
-			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:maria"),
 		})
 		require.NoError(t, err)
 
@@ -2977,9 +2979,9 @@ func TestSpecificTypeWildcard(t *testing.T) {
 		})
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
-			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:maria"),
 			Context: testutils.MustNewStruct(t, map[string]interface{}{
 				"current_time": time.Now().Format(time.RFC3339),
 			}),
@@ -3053,9 +3055,9 @@ func TestSpecificTypeWildcard(t *testing.T) {
 		})
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
-			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:maria"),
 			Context: testutils.MustNewStruct(t, map[string]interface{}{
 				"current_time": time.Now().Format(time.RFC3339),
 			}),
@@ -3110,9 +3112,9 @@ func TestSpecificTypeWildcard(t *testing.T) {
 		})
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
-			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:maria"),
 		})
 		require.NoError(t, err)
 
@@ -3156,10 +3158,10 @@ func TestSpecificTypeWildcard(t *testing.T) {
 		}
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: model.GetId(),
-			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:anne"),
-			ContextualTuples:     contextualTuples,
+			StoreID:          storeID,
+			Model:            mg,
+			TupleKey:         tuple.NewTupleKey("document:1", "viewer", "user:anne"),
+			ContextualTuples: contextualTuples,
 		})
 		require.NoError(t, err)
 
@@ -3226,9 +3228,9 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 		})
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
-			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:maria"),
 		})
 		require.NoError(t, err)
 
@@ -3294,9 +3296,9 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 		})
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
-			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:maria"),
 		})
 		require.NoError(t, err)
 
@@ -3359,9 +3361,9 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 		})
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
-			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:maria"),
 		})
 		require.NoError(t, err)
 
@@ -3419,9 +3421,9 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 		})
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
-			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:maria"),
 		})
 		require.NoError(t, err)
 
@@ -3479,9 +3481,9 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 		})
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
-			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:maria"),
 		})
 		require.NoError(t, err)
 
@@ -3541,10 +3543,10 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 		})
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
-			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
-			Consistency:          openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
+			StoreID:     storeID,
+			Model:       mg,
+			TupleKey:    tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+			Consistency: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
 		})
 		require.NoError(t, err)
 
@@ -3625,9 +3627,9 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 		})
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
-			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:maria"),
 			Context: testutils.MustNewStruct(t, map[string]interface{}{
 				"current_time": time.Now().Format(time.RFC3339),
 			}),
@@ -3709,9 +3711,9 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 		})
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
-			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:maria"),
 			Context: testutils.MustNewStruct(t, map[string]interface{}{
 				"current_time": time.Now().Format(time.RFC3339),
 			}),
@@ -3796,10 +3798,10 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 		}
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: model.GetId(),
-			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:anne"),
-			ContextualTuples:     contextualTuples,
+			StoreID:          storeID,
+			Model:            mg,
+			TupleKey:         tuple.NewTupleKey("document:1", "viewer", "user:anne"),
+			ContextualTuples: contextualTuples,
 		})
 		require.NoError(t, err)
 
@@ -3867,9 +3869,9 @@ func TestTTU(t *testing.T) {
 		})
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
-			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:maria"),
 		})
 		require.NoError(t, err)
 
@@ -3938,9 +3940,9 @@ func TestTTU(t *testing.T) {
 		})
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
-			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:maria"),
 		})
 		require.NoError(t, err)
 
@@ -4001,9 +4003,9 @@ func TestTTU(t *testing.T) {
 		})
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
-			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:maria"),
 		})
 		require.NoError(t, err)
 
@@ -4058,9 +4060,9 @@ func TestTTU(t *testing.T) {
 		})
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
-			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:maria"),
 		})
 		require.NoError(t, err)
 
@@ -4115,9 +4117,9 @@ func TestTTU(t *testing.T) {
 		})
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
-			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:maria"),
 		})
 		require.NoError(t, err)
 
@@ -4178,10 +4180,10 @@ func TestTTU(t *testing.T) {
 		})
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
-			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
-			Consistency:          openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
+			StoreID:     storeID,
+			Model:       mg,
+			TupleKey:    tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+			Consistency: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
 		})
 		require.NoError(t, err)
 
@@ -4258,9 +4260,9 @@ func TestTTU(t *testing.T) {
 		})
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
-			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:maria"),
 			Context: testutils.MustNewStruct(t, map[string]interface{}{
 				"current_time": time.Now().Format(time.RFC3339),
 			}),
@@ -4340,9 +4342,9 @@ func TestTTU(t *testing.T) {
 		})
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
-			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:maria"),
 			Context: testutils.MustNewStruct(t, map[string]interface{}{
 				"current_time": time.Now().Format(time.RFC3339),
 			}),
@@ -4420,10 +4422,10 @@ func TestTTU(t *testing.T) {
 		}
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: model.GetId(),
-			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:anne"),
-			ContextualTuples:     contextualTuples,
+			StoreID:          storeID,
+			Model:            mg,
+			TupleKey:         tuple.NewTupleKey("document:1", "viewer", "user:anne"),
+			ContextualTuples: contextualTuples,
 		})
 		require.NoError(t, err)
 
@@ -4501,9 +4503,9 @@ func TestResolveRecursiveCheck(t *testing.T) {
 		})
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
-			TupleKey:             tuple.NewTupleKey("document:4", "viewer", "user:maria"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:4", "viewer", "user:maria"),
 		})
 		require.NoError(t, err)
 
@@ -4608,9 +4610,9 @@ func TestResolveRecursiveCheck(t *testing.T) {
 		})
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
-			TupleKey:             tuple.NewTupleKey("document:4", "viewer", "user:u1"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:4", "viewer", "user:u1"),
 		})
 		require.NoError(t, err)
 
@@ -4709,10 +4711,10 @@ func TestResolveRecursiveCheck(t *testing.T) {
 		})
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
-			TupleKey:             tuple.NewTupleKey("document:4", "viewer", "user:u1"),
-			ContextualTuples:     contextualTuples,
+			StoreID:          storeID,
+			Model:            mg,
+			TupleKey:         tuple.NewTupleKey("document:4", "viewer", "user:u1"),
+			ContextualTuples: contextualTuples,
 		})
 		require.NoError(t, err)
 
@@ -4782,9 +4784,9 @@ func TestResolveRecursiveCheck(t *testing.T) {
 		})
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
-			TupleKey:             tuple.NewTupleKey("document:4", "viewer", "user:maria"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:4", "viewer", "user:maria"),
 		})
 		require.NoError(t, err)
 
@@ -4887,9 +4889,9 @@ func TestResolveRecursiveCheck(t *testing.T) {
 		})
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
-			TupleKey:             tuple.NewTupleKey("document:4", "viewer", "user:u1"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:4", "viewer", "user:u1"),
 		})
 		require.NoError(t, err)
 
@@ -4987,10 +4989,10 @@ func TestResolveRecursiveCheck(t *testing.T) {
 		})
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
-			TupleKey:             tuple.NewTupleKey("document:4", "viewer", "user:u1"),
-			ContextualTuples:     contextualTuples,
+			StoreID:          storeID,
+			Model:            mg,
+			TupleKey:         tuple.NewTupleKey("document:4", "viewer", "user:u1"),
+			ContextualTuples: contextualTuples,
 		})
 		require.NoError(t, err)
 
@@ -5104,9 +5106,9 @@ func TestResolveCheck(t *testing.T) {
 		})
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
-			TupleKey:             tuple.NewTupleKey("document:d1", "viewer", "user:u1"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:d1", "viewer", "user:u1"),
 		})
 		require.NoError(t, err)
 

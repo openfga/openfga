@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/cespare/xxhash/v2"
+	"github.com/openfga/openfga/internal/modelgraph"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -40,12 +41,63 @@ type Request struct {
 }
 
 type RequestParams = struct {
-	StoreID              string
-	AuthorizationModelID string
-	TupleKey             *openfgav1.TupleKey
-	ContextualTuples     []*openfgav1.TupleKey
-	Context              *structpb.Struct
-	Consistency          openfgav1.ConsistencyPreference
+	StoreID          string
+	Model            *modelgraph.AuthorizationModelGraph
+	TupleKey         *openfgav1.TupleKey
+	ContextualTuples []*openfgav1.TupleKey
+	Context          *structpb.Struct
+	Consistency      openfgav1.ConsistencyPreference
+}
+
+func validateRequestTupleInModel(m *modelgraph.AuthorizationModelGraph, t *openfgav1.TupleKey) error {
+	objectType := tuple.GetType(t.GetObject())
+	_, ok := m.GetNodeByID(tuple.ToObjectRelationString(objectType, t.GetRelation()))
+	if !ok {
+		return ErrValidation
+	}
+	userType := tuple.GetType(t.GetUser())
+	if tuple.IsObjectRelation(t.GetUser()) {
+		objectRelation := tuple.GetRelation(t.GetUser())
+		userType = tuple.ToObjectRelationString(userType, objectRelation)
+	}
+	if _, ok := m.GetNodeByID(userType); !ok {
+		return ErrInvalidUser
+	}
+
+	return nil
+}
+
+func validateCtxTupleInModel(m *modelgraph.AuthorizationModelGraph, t *openfgav1.TupleKey) error {
+	objectType := tuple.GetType(t.GetObject())
+	node, ok := m.GetNodeByID(tuple.ToObjectRelationString(objectType, t.GetRelation()))
+	if !ok {
+		return &tuple.InvalidTupleError{Cause: ErrValidation, TupleKey: t}
+	}
+
+	userType := tuple.GetType(t.GetUser())
+	if tuple.IsObjectRelation(t.GetUser()) {
+		objectRelation := tuple.GetRelation(t.GetUser())
+		userType = tuple.ToObjectRelationString(userType, objectRelation)
+	}
+	if _, ok := m.GetNodeByID(userType); !ok {
+		return &tuple.InvalidTupleError{Cause: ErrInvalidUser, TupleKey: t}
+	}
+
+	if tuple.IsTypedWildcard(t.GetUser()) {
+		if _, ok := m.GetNodeByID(t.GetUser()); !ok {
+			return &tuple.InvalidTupleError{Cause: ErrValidation, TupleKey: t}
+		}
+	} else {
+		if _, ok := m.GetNodeByID(tuple.GetType(t.GetUser())); !ok {
+			return &tuple.InvalidTupleError{Cause: ErrValidation, TupleKey: t}
+		}
+	}
+
+	if _, ok := m.GetEdgesFromNode(node); !ok {
+		return &tuple.InvalidTupleError{Cause: ErrValidation, TupleKey: t}
+	}
+
+	return nil
 }
 
 func NewRequest(p RequestParams) (*Request, error) {
@@ -53,12 +105,27 @@ func NewRequest(p RequestParams) (*Request, error) {
 		return nil, ErrMissingStoreID
 	}
 
-	if p.AuthorizationModelID == "" {
+	if p.Model == nil {
+		return nil, ErrMissingAuthZModelID
+	}
+
+	modelID := p.Model.GetModelID()
+	if modelID == "" {
 		return nil, ErrMissingAuthZModelID
 	}
 
 	if !tuple.IsValidUser(p.TupleKey.GetUser()) {
 		return nil, ErrInvalidUser
+	}
+
+	if err := validateRequestTupleInModel(p.Model, p.TupleKey); err != nil {
+		return nil, err
+	}
+
+	for _, t := range p.ContextualTuples {
+		if err := validateCtxTupleInModel(p.Model, t); err != nil {
+			return nil, err
+		}
 	}
 
 	userType := tuple.GetType(p.TupleKey.GetUser())
@@ -69,7 +136,7 @@ func NewRequest(p RequestParams) (*Request, error) {
 
 	r := &Request{
 		StoreID:              p.StoreID,
-		AuthorizationModelID: p.AuthorizationModelID,
+		AuthorizationModelID: modelID,
 		TupleKey:             p.TupleKey,
 		ContextualTuples:     p.ContextualTuples,
 		Context:              p.Context,
@@ -83,7 +150,7 @@ func NewRequest(p RequestParams) (*Request, error) {
 	// TODO: we really should refactor this method to not depend on storage package and improve the implementation overall
 	err := storage.WriteInvariantCheckCacheKey(keyBuilder, &storage.CheckCacheKeyParams{
 		StoreID:              p.StoreID,
-		AuthorizationModelID: p.AuthorizationModelID,
+		AuthorizationModelID: modelID,
 		ContextualTuples:     p.ContextualTuples,
 		Context:              p.Context,
 	})

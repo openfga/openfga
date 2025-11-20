@@ -98,20 +98,8 @@ func (r *Resolver) ResolveCheck(ctx context.Context, req *Request) (*Response, e
 
 	node, ok := r.model.GetNodeByID(tuple.ToObjectRelationString(req.GetObjectType(), req.GetTupleKey().GetRelation()))
 	if !ok {
-		// If the node is not found, we can immediately return false.
-		return nil, ErrValidation
-	}
-
-	// TODO: Do we really want to have this behavior?
-	// TODO: tests for when we decide what to do.
-	for _, t := range req.GetContextualTuples() {
-		objectType := tuple.GetType(t.GetObject())
-		relation := t.GetRelation()
-		_, ok := r.model.GetNodeByID(tuple.ToObjectRelationString(objectType, relation))
-		if !ok {
-			return nil, ErrValidation
-		}
-		// TODO: validate conditions
+		// this should never happen as the request is already validated before
+		return nil, ErrPanicRequest
 	}
 
 	// GetUserType returns the user type if the request in not an object relation otherwise the usertyperelation

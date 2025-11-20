@@ -97,7 +97,7 @@ func TestWeight2Userset(t *testing.T) {
 		strategy := NewWeight2(mg, mockDatastore)
 		req, err := NewRequest(RequestParams{
 			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
+			Model: mg,
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:1"),
 		})
 		require.NoError(t, err)
@@ -180,7 +180,7 @@ func TestWeight2Userset(t *testing.T) {
 		strategy := NewWeight2(mg, mockDatastore)
 		req, err := NewRequest(RequestParams{
 			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
+			Model: mg,
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:1"),
 		})
 		require.NoError(t, err)
@@ -264,7 +264,7 @@ func TestWeight2Userset(t *testing.T) {
 		strategy := NewWeight2(mg, mockDatastore)
 		req, err := NewRequest(RequestParams{
 			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
+			Model: mg,
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:1"),
 		})
 		require.NoError(t, err)
@@ -348,7 +348,7 @@ func TestWeight2Userset(t *testing.T) {
 		strategy := NewWeight2(mg, mockDatastore)
 		req, err := NewRequest(RequestParams{
 			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
+			Model: mg,
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:1"),
 		})
 		require.NoError(t, err)
@@ -459,7 +459,7 @@ func TestWeight2Userset(t *testing.T) {
 		strategy := NewWeight2(mg, mockDatastore)
 		req, err := NewRequest(RequestParams{
 			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
+			Model: mg,
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:1"),
 		})
 		require.NoError(t, err)
@@ -550,7 +550,7 @@ func TestWeight2TTU(t *testing.T) {
 		strategy := NewWeight2(mg, mockDatastore)
 		req, err := NewRequest(RequestParams{
 			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
+			Model: mg,
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:1"),
 		})
 		require.NoError(t, err)
@@ -635,7 +635,7 @@ func TestWeight2TTU(t *testing.T) {
 		strategy := NewWeight2(mg, mockDatastore)
 		req, err := NewRequest(RequestParams{
 			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
+			Model: mg,
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:1"),
 		})
 		require.NoError(t, err)
@@ -720,7 +720,7 @@ func TestWeight2TTU(t *testing.T) {
 		strategy := NewWeight2(mg, mockDatastore)
 		req, err := NewRequest(RequestParams{
 			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
+			Model: mg,
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:1"),
 		})
 		require.NoError(t, err)
@@ -805,7 +805,7 @@ func TestWeight2TTU(t *testing.T) {
 		strategy := NewWeight2(mg, mockDatastore)
 		req, err := NewRequest(RequestParams{
 			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
+			Model: mg,
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:1"),
 		})
 		require.NoError(t, err)
@@ -917,7 +917,7 @@ func TestWeight2TTU(t *testing.T) {
 		strategy := NewWeight2(mg, mockDatastore)
 		req, err := NewRequest(RequestParams{
 			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
+			Model: mg,
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:1"),
 		})
 		require.NoError(t, err)
