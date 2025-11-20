@@ -76,7 +76,7 @@ func runMatrixWithEngine(t *testing.T, engine string) {
 func TestCheckMemory(t *testing.T) {
 	testRunAll(t, "memory", config.ExperimentalCheckOptimizations)
 	// need to deprecate some tests first before re-enabling
-	// testRunAll(t, "memory", config.ExperimentalWeightedGraphCheck)
+	//testRunAll(t, "memory", config.ExperimentalWeightedGraphCheck)
 }
 
 func TestCheckPostgres(t *testing.T) {

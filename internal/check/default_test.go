@@ -211,9 +211,9 @@ func TestDefaultUserset(t *testing.T) {
 			strategy := NewDefault(mg, mockResolver, 2)
 
 			req, err := NewRequest(RequestParams{
-				StoreID:              storeID,
-				AuthorizationModelID: mg.GetModelID(),
-				TupleKey:             tuple.NewTupleKey("group:1", "member", "user:maria"),
+				StoreID:  storeID,
+				Model:    mg,
+				TupleKey: tuple.NewTupleKey("group:1", "member", "user:maria"),
 			})
 			require.NoError(t, err)
 
@@ -420,9 +420,9 @@ func TestDefaultTTU(t *testing.T) {
 			strategy := NewDefault(mg, mockResolver, 2)
 
 			req, err := NewRequest(RequestParams{
-				StoreID:              storeID,
-				AuthorizationModelID: mg.GetModelID(),
-				TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+				StoreID:  storeID,
+				Model:    mg,
+				TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:maria"),
 			})
 			require.NoError(t, err)
 
