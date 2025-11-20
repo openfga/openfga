@@ -69,6 +69,41 @@ var cases = []testcase{
 		expected:   []string{"doc:1"},
 	},
 	{
+		name: "wildcard_intersection",
+		model: `
+		model
+		  schema 1.1
+
+		type user
+
+		type role
+		  relations
+		    define user: [user]
+		    define template: [template]
+		    define access: user and access from template
+
+		type template
+		  relations
+		    define access: [user:*]
+		`,
+		tuples: []string{
+			"role:1#user@user:1",
+			"role:1#template@template:1",
+			"role:2#user@user:1",
+			"role:2#template@template:1",
+			"role:3#user@user:1",
+			"role:3#template@template:2",
+			"role:4#user@user:1",
+			"role:4#template@template:3",
+			"template:1#access@user:*",
+			"template:2#access@user:*",
+		},
+		objectType: "role",
+		relation:   "access",
+		user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "1"}},
+		expected:   []string{"role:1", "role:2", "role:3"},
+	},
+	{
 		name: "recursive_userset_intersection",
 		model: `
 		model
