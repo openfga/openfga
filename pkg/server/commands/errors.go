@@ -10,10 +10,7 @@ import (
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
-var errInvalidTupleDeprecate *InvalidTupleError
-var errInvalidRelationError *InvalidRelationError
 var errInvalidTuple *tuple.InvalidTupleError
-var errThrottled *ThrottledError
 
 type InvalidTupleError struct {
 	Cause error
@@ -54,11 +51,13 @@ func (e *ThrottledError) Error() string {
 // CheckCommandErrorToServerError converts internal errors thrown during the
 // check_command into consumer-facing errors to be sent over the wire.
 func CheckCommandErrorToServerError(err error) error {
-	if errors.As(err, &errInvalidRelationError) {
+	var invalidRelation *InvalidRelationError
+	if errors.As(err, &invalidRelation) {
 		return serverErrors.ValidationError(err)
 	}
 
-	if errors.As(err, &errInvalidTupleDeprecate) {
+	var invalidTupleDeprecate *InvalidTupleError
+	if errors.As(err, &invalidTupleDeprecate) {
 		tupleError := tuple.InvalidTupleError{Cause: err}
 		return serverErrors.HandleTupleValidateError(&tupleError)
 	}
@@ -75,7 +74,8 @@ func CheckCommandErrorToServerError(err error) error {
 		return serverErrors.ValidationError(err)
 	}
 
-	if errors.As(err, &errThrottled) {
+	var throttled *ThrottledError
+	if errors.As(err, &throttled) {
 		return serverErrors.ErrThrottledTimeout
 	}
 
