@@ -18,8 +18,6 @@ import (
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
-var errConditionEvaluation *condition.EvaluationError
-
 type strategyKind int64
 
 const (
@@ -237,7 +235,8 @@ func handleStreamError(ctx context.Context, err error, batch *[]string, out chan
 	}
 
 	concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Err: err}, out)
-	if errors.As(err, &errConditionEvaluation) {
+	var condErr *condition.EvaluationError
+	if errors.As(err, &condErr) {
 		return false
 	}
 	*batch = nil

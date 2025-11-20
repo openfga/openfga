@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 
 	"github.com/openfga/openfga/pkg/storage"
 )
@@ -20,6 +21,8 @@ func Concat[T any](iter1, iter2 storage.Iterator[T]) storage.Iterator[T] {
 }
 
 type concatIterator[T any] struct {
+	mu      sync.Mutex
+	once    sync.Once
 	current storage.Iterator[T]
 	next    storage.Iterator[T]
 	done    bool
@@ -28,6 +31,8 @@ type concatIterator[T any] struct {
 func (c *concatIterator[T]) Next(ctx context.Context) (T, error) {
 	var zero T
 
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if c.done {
 		return zero, storage.ErrIteratorDone
 	}
@@ -47,7 +52,6 @@ func (c *concatIterator[T]) Next(ctx context.Context) (T, error) {
 		c.current.Stop() // ensure we stop the current iterator before dropping reference
 		c.current = c.next
 		c.next = nil
-
 		// Try to get item from the new current iterator
 		return c.current.Next(ctx)
 	}
@@ -62,12 +66,17 @@ func (c *concatIterator[T]) Next(ctx context.Context) (T, error) {
 }
 
 func (c *concatIterator[T]) Stop() {
-	if c.current != nil {
-		c.current.Stop()
-	}
-	if c.next != nil {
-		c.next.Stop()
-	}
+	c.once.Do(func() {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		c.done = true
+		if c.current != nil {
+			c.current.Stop()
+		}
+		if c.next != nil {
+			c.next.Stop()
+		}
+	})
 }
 
 func (c *concatIterator[T]) Head(_ context.Context) (T, error) {
