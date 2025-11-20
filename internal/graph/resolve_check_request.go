@@ -145,8 +145,8 @@ func (r *ResolveCheckRequest) clone() *ResolveCheckRequest {
 		Consistency:               r.GetConsistency(),
 		LastCacheInvalidationTime: r.GetLastCacheInvalidationTime(),
 		invariantCacheKey:         r.GetInvariantCacheKey(),
-		objectType:                r.objectType,
-		userType:                  r.userType,
+		objectType:                r.GetObjectType(),
+		userType:                  r.GetUserType(),
 	}
 }
 

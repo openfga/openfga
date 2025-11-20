@@ -3,7 +3,6 @@ package check
 import (
 	"context"
 	"errors"
-	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -108,24 +107,11 @@ func (r *Resolver) ResolveCheck(ctx context.Context, req *Request) (*Response, e
 	for _, t := range req.GetContextualTuples() {
 		objectType := tuple.GetType(t.GetObject())
 		relation := t.GetRelation()
-		objRel := tuple.ToObjectRelationString(objectType, relation)
-		if _, ok := r.model.GetNodeByID(objRel); !ok {
-			return nil, &tuple.InvalidConditionalTupleError{TupleKey: t, Cause: ErrValidation}
+		_, ok := r.model.GetNodeByID(tuple.ToObjectRelationString(objectType, relation))
+		if !ok {
+			return nil, ErrValidation
 		}
-		edge, err := r.model.GetDirectEdgeFromNodeForUserType(objRel, tuple.GetType(t.GetUser()))
-		if err != nil {
-			return nil, &tuple.InvalidConditionalTupleError{TupleKey: t, Cause: ErrValidation}
-		}
-		condName := authzGraph.NoCond
-		if t.GetCondition() != nil {
-			condName = t.GetCondition().GetName()
-		}
-		if !slices.Contains(edge.GetConditions(), condName) {
-			return nil, &tuple.InvalidConditionalTupleError{
-				TupleKey: t,
-				Cause:    ErrConditionMissing,
-			}
-		}
+		// TODO: validate conditions
 	}
 
 	// GetUserType returns the user type if the request in not an object relation otherwise the usertyperelation

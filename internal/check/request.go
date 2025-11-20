@@ -325,7 +325,7 @@ func (r *Request) cloneWithTupleKey(tk *openfgav1.TupleKey) *Request {
 	_, _ = hasher.WriteString(cacheKeyString)
 
 	cacheKey := CacheKeyPrefix + strconv.FormatUint(hasher.Sum64(), 10)
-	r.cacheKey = cacheKey
+	req.cacheKey = cacheKey
 
 	return req
 }
