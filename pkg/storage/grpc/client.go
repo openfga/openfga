@@ -187,10 +187,15 @@ func (c *Client) ReadPage(ctx context.Context, store string, filter storage.Read
 	return fromStorageTuples(resp.GetTuples()), resp.GetContinuationToken(), nil
 }
 
-func (c *Client) ReadUserTuple(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options storage.ReadUserTupleOptions) (*openfgav1.Tuple, error) {
+func (c *Client) ReadUserTuple(ctx context.Context, store string, filter storage.ReadUserTupleFilter, options storage.ReadUserTupleOptions) (*openfgav1.Tuple, error) {
 	req := &storagev1.ReadUserTupleRequest{
-		Store:    store,
-		TupleKey: toStorageTupleKey(tupleKey),
+		Store: store,
+		Filter: &storagev1.ReadFilter{
+			Object:     filter.Object,
+			Relation:   filter.Relation,
+			User:       filter.User,
+			Conditions: filter.Conditions,
+		},
 		Consistency: &storagev1.ConsistencyOptions{
 			Preference: storagev1.ConsistencyPreference(options.Consistency.Preference),
 		},

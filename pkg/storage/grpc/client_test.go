@@ -103,13 +103,13 @@ func TestClientReadUserTupleNotFound(t *testing.T) {
 
 	ctx := context.Background()
 
-	tupleKey := &openfgav1.TupleKey{
+	filter := storage.ReadUserTupleFilter{
 		Object:   "doc:1",
 		Relation: "viewer",
 		User:     "user:anne",
 	}
 
-	tuple, err := client.ReadUserTuple(ctx, "test-store", tupleKey, storage.ReadUserTupleOptions{})
+	tuple, err := client.ReadUserTuple(ctx, "test-store", filter, storage.ReadUserTupleOptions{})
 	require.Error(t, err)
 	require.Equal(t, storage.ErrNotFound, err)
 	require.Nil(t, tuple)
@@ -308,7 +308,12 @@ func TestClientReadUserTupleWithData(t *testing.T) {
 	require.NoError(t, err)
 
 	// Read the tuple back
-	tuple, err := client.ReadUserTuple(ctx, storeID, tupleKey, storage.ReadUserTupleOptions{})
+	filter := storage.ReadUserTupleFilter{
+		Object:   tupleKey.GetObject(),
+		Relation: tupleKey.GetRelation(),
+		User:     tupleKey.GetUser(),
+	}
+	tuple, err := client.ReadUserTuple(ctx, storeID, filter, storage.ReadUserTupleOptions{})
 	require.NoError(t, err)
 	require.NotNil(t, tuple)
 	require.Equal(t, tupleKey.GetObject(), tuple.GetKey().GetObject())
@@ -423,7 +428,7 @@ func TestClientWrite(t *testing.T) {
 		require.Len(t, tuples, 2)
 
 		// Verify first tuple
-		tuple1, err := datastore.ReadUserTuple(ctx, storeID, &openfgav1.TupleKey{
+		tuple1, err := datastore.ReadUserTuple(ctx, storeID, storage.ReadUserTupleFilter{
 			Object: "doc:1", Relation: "viewer", User: "user:anne",
 		}, storage.ReadUserTupleOptions{})
 		require.NoError(t, err)
@@ -432,7 +437,7 @@ func TestClientWrite(t *testing.T) {
 		require.Equal(t, "user:anne", tuple1.GetKey().GetUser())
 
 		// Verify second tuple
-		tuple2, err := datastore.ReadUserTuple(ctx, storeID, &openfgav1.TupleKey{
+		tuple2, err := datastore.ReadUserTuple(ctx, storeID, storage.ReadUserTupleFilter{
 			Object: "doc:2", Relation: "editor", User: "user:bob",
 		}, storage.ReadUserTupleOptions{})
 		require.NoError(t, err)
@@ -455,7 +460,7 @@ func TestClientWrite(t *testing.T) {
 		require.NoError(t, err)
 
 		// Verify it was deleted
-		_, err = datastore.ReadUserTuple(ctx, storeID, &openfgav1.TupleKey{
+		_, err = datastore.ReadUserTuple(ctx, storeID, storage.ReadUserTupleFilter{
 			Object: "doc:3", Relation: "viewer", User: "user:charlie",
 		}, storage.ReadUserTupleOptions{})
 		require.Error(t, err)
@@ -475,13 +480,13 @@ func TestClientWrite(t *testing.T) {
 		require.NoError(t, err)
 
 		// Verify the viewer relation was deleted
-		_, err = datastore.ReadUserTuple(ctx, storeID, &openfgav1.TupleKey{
+		_, err = datastore.ReadUserTuple(ctx, storeID, storage.ReadUserTupleFilter{
 			Object: "doc:1", Relation: "viewer", User: "user:anne",
 		}, storage.ReadUserTupleOptions{})
 		require.Error(t, err)
 
 		// Verify the editor relation was written
-		tuple, err := datastore.ReadUserTuple(ctx, storeID, &openfgav1.TupleKey{
+		tuple, err := datastore.ReadUserTuple(ctx, storeID, storage.ReadUserTupleFilter{
 			Object: "doc:1", Relation: "editor", User: "user:anne",
 		}, storage.ReadUserTupleOptions{})
 		require.NoError(t, err)
@@ -572,7 +577,7 @@ func TestClientWrite(t *testing.T) {
 		require.NoError(t, err)
 
 		// Verify tuple with condition was written
-		tuple, err := datastore.ReadUserTuple(ctx, storeID, &openfgav1.TupleKey{
+		tuple, err := datastore.ReadUserTuple(ctx, storeID, storage.ReadUserTupleFilter{
 			Object:   "doc:5",
 			Relation: "viewer",
 			User:     "user:conditional",
@@ -647,7 +652,7 @@ func TestClientWriteWithConditions(t *testing.T) {
 	require.NoError(t, err)
 
 	// Read it back and verify condition was preserved
-	tuple, err := datastore.ReadUserTuple(ctx, storeID, &openfgav1.TupleKey{
+	tuple, err := datastore.ReadUserTuple(ctx, storeID, storage.ReadUserTupleFilter{
 		Object:   "document:sensitive",
 		Relation: "viewer",
 		User:     "user:contractor",
@@ -696,7 +701,7 @@ func (m *mockErrorDatastore) ReadPage(ctx context.Context, store string, filter 
 	return nil, "", nil
 }
 
-func (m *mockErrorDatastore) ReadUserTuple(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options storage.ReadUserTupleOptions) (*openfgav1.Tuple, error) {
+func (m *mockErrorDatastore) ReadUserTuple(ctx context.Context, store string, filter storage.ReadUserTupleFilter, options storage.ReadUserTupleOptions) (*openfgav1.Tuple, error) {
 	if m.errorToReturn != nil {
 		return nil, m.errorToReturn
 	}
@@ -1555,7 +1560,7 @@ func TestClientErrorHandling(t *testing.T) {
 			})
 
 			t.Run("ReadUserTuple", func(t *testing.T) {
-				_, err := client.ReadUserTuple(ctx, "test-store", &openfgav1.TupleKey{
+				_, err := client.ReadUserTuple(ctx, "test-store", storage.ReadUserTupleFilter{
 					Object:   "doc:1",
 					Relation: "viewer",
 					User:     "user:anne",

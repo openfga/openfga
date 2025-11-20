@@ -37,7 +37,7 @@ func TestServerReadUserTupleNotFound(t *testing.T) {
 
 	req := &storagev1.ReadUserTupleRequest{
 		Store: "nonexistent-store",
-		TupleKey: &storagev1.TupleKey{
+		Filter: &storagev1.ReadFilter{
 			Object:   "doc:1",
 			Relation: "viewer",
 			User:     "user:anne",
@@ -182,8 +182,12 @@ func TestServerReadUserTupleWithData(t *testing.T) {
 
 	// Read the tuple back
 	req := &storagev1.ReadUserTupleRequest{
-		Store:       storeID,
-		TupleKey:    toStorageTupleKey(tupleKey),
+		Store: storeID,
+		Filter: &storagev1.ReadFilter{
+			Object:   tupleKey.GetObject(),
+			Relation: tupleKey.GetRelation(),
+			User:     tupleKey.GetUser(),
+		},
 		Consistency: &storagev1.ConsistencyOptions{},
 	}
 
@@ -324,7 +328,7 @@ func TestServerWrite(t *testing.T) {
 		require.Len(t, tuples, 2)
 
 		// Verify first tuple
-		tuple1, err := ds.ReadUserTuple(ctx, storeID, &openfgav1.TupleKey{
+		tuple1, err := ds.ReadUserTuple(ctx, storeID, storage.ReadUserTupleFilter{
 			Object: "doc:1", Relation: "viewer", User: "user:anne",
 		}, storage.ReadUserTupleOptions{})
 		require.NoError(t, err)
@@ -333,7 +337,7 @@ func TestServerWrite(t *testing.T) {
 		require.Equal(t, "user:anne", tuple1.GetKey().GetUser())
 
 		// Verify second tuple
-		tuple2, err := ds.ReadUserTuple(ctx, storeID, &openfgav1.TupleKey{
+		tuple2, err := ds.ReadUserTuple(ctx, storeID, storage.ReadUserTupleFilter{
 			Object: "doc:2", Relation: "editor", User: "user:bob",
 		}, storage.ReadUserTupleOptions{})
 		require.NoError(t, err)
@@ -365,7 +369,7 @@ func TestServerWrite(t *testing.T) {
 		require.NotNil(t, resp)
 
 		// Verify it was deleted
-		_, err = ds.ReadUserTuple(ctx, storeID, &openfgav1.TupleKey{
+		_, err = ds.ReadUserTuple(ctx, storeID, storage.ReadUserTupleFilter{
 			Object: "doc:3", Relation: "viewer", User: "user:charlie",
 		}, storage.ReadUserTupleOptions{})
 		require.Error(t, err)
@@ -398,13 +402,13 @@ func TestServerWrite(t *testing.T) {
 		require.NotNil(t, resp)
 
 		// Verify the viewer relation was deleted
-		_, err = ds.ReadUserTuple(ctx, storeID, &openfgav1.TupleKey{
+		_, err = ds.ReadUserTuple(ctx, storeID, storage.ReadUserTupleFilter{
 			Object: "doc:4", Relation: "viewer", User: "user:dave",
 		}, storage.ReadUserTupleOptions{})
 		require.Error(t, err)
 
 		// Verify the editor relation was written
-		tuple, err := ds.ReadUserTuple(ctx, storeID, &openfgav1.TupleKey{
+		tuple, err := ds.ReadUserTuple(ctx, storeID, storage.ReadUserTupleFilter{
 			Object: "doc:4", Relation: "editor", User: "user:dave",
 		}, storage.ReadUserTupleOptions{})
 		require.NoError(t, err)
@@ -551,7 +555,7 @@ func TestServerWrite(t *testing.T) {
 		require.NotNil(t, resp)
 
 		// Verify tuple with condition was written
-		tuple, err := ds.ReadUserTuple(ctx, storeID, &openfgav1.TupleKey{
+		tuple, err := ds.ReadUserTuple(ctx, storeID, storage.ReadUserTupleFilter{
 			Object:   "doc:6",
 			Relation: "viewer",
 			User:     "user:conditional",
