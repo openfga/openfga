@@ -11,6 +11,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -591,6 +592,10 @@ func (q *ListObjectsQuery) Execute(
 
 		for obj := range seq {
 			if timeoutCtx.Err() != nil {
+				q.logger.ErrorWithContext(ctx,
+					"context cancelled during ListObjects pipeline execution",
+					zap.Duration("timeout", q.listObjectsDeadline),
+				)
 				break
 			}
 
