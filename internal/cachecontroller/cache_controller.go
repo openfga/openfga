@@ -59,8 +59,8 @@ type CacheController interface {
 	// DetermineInvalidationTime returns the timestamp of the last write for the
 	// specified store if it was in cache, else it returns the Zero time and
 	// triggers InvalidateIfNeeded(). The last write time can be used to determine
-	// whether a cached entry is stil valid - if it was cached before the last write
-	// to the store, it can't be trusted anymore.
+	// whether a cached entry is still valid - if it was cached before the last
+	// write to the store, it can't be trusted anymore.
 	DetermineInvalidationTime(context.Context, string) time.Time
 
 	// InvalidateIfNeeded checks to see if an invalidation is currently in progress for a store,
@@ -142,8 +142,8 @@ func NewCacheController(
 // DetermineInvalidationTime returns the timestamp of the last write for the
 // specified store if it was in cache, else it returns the Zero time and
 // triggers InvalidateIfNeeded(). The last write time can be used to determine
-// whether a cached entry is stil valid - if it was cached before the last write
-// to the store, it can't be trusted anymore.
+// whether a cached entry is still valid - if it was cached before the last
+// write to the store, it can't be trusted anymore.
 func (c *InMemoryCacheController) DetermineInvalidationTime(
 	ctx context.Context,
 	storeID string,
@@ -168,7 +168,10 @@ func (c *InMemoryCacheController) DetermineInvalidationTime(
 	if entry == nil {
 		c.InvalidateIfNeeded(ctx, storeID) // async
 
-		// Return zero time to allow caller to use cache while invalidation is in progress.
+		// Return zero time to allow caller to use cache while invalidation is
+		// in progress (async). This may result in stale cache hits until
+		// invalidation completes and updates the ChangelogCacheEntry, but this
+		// is an acceptable trade-off for performance.
 		return time.Time{}
 	}
 
@@ -182,7 +185,8 @@ func (c *InMemoryCacheController) DetermineInvalidationTime(
 		c.InvalidateIfNeeded(ctx, storeID) // async
 	}
 
-	// Return time of last known change to store.
+	// Return time of last known change to store. This is refreshed at most every
+	// minInvalidationInterval, so recent writes may not be reflected immediately.
 	return entry.LastModified
 }
 
