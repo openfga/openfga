@@ -8,6 +8,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 ### Added
+- Added experimental list objects pipeline algorithm with `pipeline_list_objects` flag. [#2815](https://github.com/openfga/openfga/pull/2815)
 - Differentiate between dispatch throttled operations and datastore throttled operations. [#2821](https://github.com/openfga/openfga/pull/2821)
 
 ## [1.11.0] - 2025-11-05
