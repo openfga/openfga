@@ -8,7 +8,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 ### Fixed
-- Invalidation of public wildcard tuple without condition for model with relation directly assignable with public wildcard tuple with conditions. [CVE-2025-64751](https://github.com/openfga/openfga/security/advisories/GHSA-2c64-vmv2-hgfc)
+- Fixed bug where public wildcard tuples without condition were being considered for a wildcard relation which was only defined with a condition. [CVE-2025-64751](https://github.com/openfga/openfga/security/advisories/GHSA-2c64-vmv2-hgfc)
 
 ## [1.11.0] - 2025-11-05
 ### Added
