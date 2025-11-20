@@ -737,7 +737,6 @@ func (c *ReverseExpandQuery) throttle(ctx context.Context, currentNumDispatch ui
 		attribute.Int("dispatch_count", int(currentNumDispatch)),
 		attribute.Bool("is_throttled", shouldThrottle))
 
-	// this is a different throttling
 	if shouldThrottle {
 		metadata.DispatchThrottled.Store(true)
 		c.dispatchThrottlerConfig.Throttler.Throttle(ctx)
