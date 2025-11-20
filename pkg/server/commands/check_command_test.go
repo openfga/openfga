@@ -228,7 +228,6 @@ type doc
 				req.GetRequestMetadata().Depth++
 				req.GetRequestMetadata().DispatchCounter.Add(1)
 				req.GetRequestMetadata().DispatchThrottled.Store(true)
-				req.GetRequestMetadata().DatastoreThrottled.Store(true)
 				ds, _ := storage.RelationshipTupleReaderFromContext(ctx)
 				_, _ = ds.Read(ctx, req.StoreID, storage.ReadFilter{}, storage.ReadOptions{})
 				return nil, context.DeadlineExceeded
@@ -245,7 +244,6 @@ type doc
 		require.Equal(t, uint32(1), checkRequestMetadata.Depth)
 		require.Equal(t, uint32(1), checkRequestMetadata.DispatchCounter.Load())
 		require.True(t, checkRequestMetadata.DispatchThrottled.Load())
-		require.True(t, checkRequestMetadata.DatastoreThrottled.Load())
 	})
 }
 
