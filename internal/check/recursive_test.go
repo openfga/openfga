@@ -183,7 +183,7 @@ func TestRecursiveTTU(t *testing.T) {
 			ctx := context.Background()
 			req, err := NewRequest(RequestParams{
 				StoreID:              storeID,
-				AuthorizationModelID: mg.GetModelID(),
+				Model: mg,
 				TupleKey:             tuple.NewTupleKey("group:1", "member", "user:maria"),
 			})
 			require.NoError(t, err)
@@ -435,7 +435,7 @@ type group
 				ctx := context.Background()
 				req, err := NewRequest(RequestParams{
 					StoreID:              storeID,
-					AuthorizationModelID: mg.GetModelID(),
+					Model: mg,
 					TupleKey:             tuple.NewTupleKey("group:1", "member", "user:maria"),
 				})
 				require.NoError(t, err)
@@ -614,7 +614,7 @@ func TestRecursiveUserset(t *testing.T) {
 
 			req, err := NewRequest(RequestParams{
 				StoreID:              storeID,
-				AuthorizationModelID: mg.GetModelID(),
+				Model: mg,
 				TupleKey:             tuple.NewTupleKey("group:1", "member", "user:maria"),
 			})
 			require.NoError(t, err)
@@ -842,7 +842,7 @@ func TestRecursiveUserset(t *testing.T) {
 
 				req, err := NewRequest(RequestParams{
 					StoreID:              storeID,
-					AuthorizationModelID: mg.GetModelID(),
+					Model: mg,
 					TupleKey:             tuple.NewTupleKey("group:1", "member", "user:maria"),
 				})
 				require.NoError(t, err)
@@ -1067,7 +1067,7 @@ func TestRecursiveMatch(t *testing.T) {
 
 			req, err := NewRequest(RequestParams{
 				StoreID:              storeID,
-				AuthorizationModelID: mg.GetModelID(),
+				Model: mg,
 				TupleKey:             tuple.NewTupleKey("group:3", "member", "user:maria"),
 			})
 			require.NoError(t, err)
@@ -1118,7 +1118,7 @@ func TestRecursiveMatch(t *testing.T) {
 
 		req, err := NewRequest(RequestParams{
 			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
+			Model: mg,
 			TupleKey:             tuple.NewTupleKey("group:1", "member", "user:maria"),
 		})
 		require.NoError(t, err)
@@ -1289,7 +1289,7 @@ func TestRecursiveTTUWithTupleCycles(t *testing.T) {
 
 		req, err := NewRequest(RequestParams{
 			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
+			Model: mg,
 			TupleKey:             tuple.NewTupleKey("group:1", "member", "user:1"),
 		})
 		require.NoError(t, err)
@@ -1455,7 +1455,7 @@ func TestRecursiveUsersetWithTupleCycles(t *testing.T) {
 
 		req, err := NewRequest(RequestParams{
 			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
+			Model: mg,
 			TupleKey:             tuple.NewTupleKey("group:1", "member", "user:1"),
 		})
 		require.NoError(t, err)
@@ -1572,7 +1572,7 @@ func TestRecursiveTTUWithContextualTuples(t *testing.T) {
 			ctx := context.Background()
 			req, err := NewRequest(RequestParams{
 				StoreID:              storeID,
-				AuthorizationModelID: mg.GetModelID(),
+				Model: mg,
 				TupleKey:             tuple.NewTupleKey("group:1", "member", "user:maria"),
 				ContextualTuples:     tt.contextualTuples,
 			})
@@ -1701,7 +1701,7 @@ func TestRecursiveUsersetWithContextualTuples(t *testing.T) {
 
 			req, err := NewRequest(RequestParams{
 				StoreID:              storeID,
-				AuthorizationModelID: mg.GetModelID(),
+				Model: mg,
 				TupleKey:             tuple.NewTupleKey("group:1", "member", "user:maria"),
 				ContextualTuples:     tt.contextualTuples,
 			})
