@@ -35,7 +35,7 @@ jobs:
             exit 1
           fi
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@v5.0.1
       - name: Create new tag
         id: create_tag
         run: |
