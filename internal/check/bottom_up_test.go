@@ -615,7 +615,7 @@ func TestBottomUpResolveUnion(t *testing.T) {
 		producers := make([]storage.Iterator[string], 0)
 		iter1 := mocks.NewMockIterator[string](ctrl)
 		iter1.EXPECT().Next(gomock.Any()).MaxTimes(1).Return("", errors.New("boom"))
-		iter1.EXPECT().Stop().Times(1)
+		iter1.EXPECT().Stop().MaxTimes(1)
 		producer1 := make(chan *iterator.Msg, 1)
 		producer1 <- &iterator.Msg{Iter: iter1}
 		close(producer1)
@@ -871,7 +871,7 @@ func TestBottomUpResolveUnion(t *testing.T) {
 		iter1.EXPECT().Head(gomock.Any()).MaxTimes(1).Return("obj:0", nil)
 		iter1.EXPECT().Next(gomock.Any()).MaxTimes(1).Return("", errors.New("boom"))
 
-		iter1.EXPECT().Stop().Times(1)
+		iter1.EXPECT().Stop().MaxTimes(1)
 		producer1 := make(chan *iterator.Msg, 1)
 		producer1 <- &iterator.Msg{Iter: iter1}
 		close(producer1)
@@ -908,7 +908,7 @@ func TestBottomUpResolveIntersection(t *testing.T) {
 		res := make(chan *iterator.Msg)
 		producers := make([]storage.Iterator[string], 0)
 		iter1 := mocks.NewMockIterator[string](ctrl)
-		iter1.EXPECT().Stop().Times(1)
+		iter1.EXPECT().Stop().MaxTimes(1)
 		producer := make(chan *iterator.Msg, 1)
 		producer <- &iterator.Msg{Iter: iter1}
 		close(producer)
@@ -935,13 +935,13 @@ func TestBottomUpResolveIntersection(t *testing.T) {
 		producers := make([]storage.Iterator[string], 0)
 		iter1 := mocks.NewMockIterator[string](ctrl)
 		iter1.EXPECT().Next(gomock.Any()).MaxTimes(1).Return("", errors.New("boom"))
-		iter1.EXPECT().Stop().Times(1)
+		iter1.EXPECT().Stop().MaxTimes(1)
 		producer1 := make(chan *iterator.Msg, 1)
 		producer1 <- &iterator.Msg{Iter: iter1}
 		close(producer1)
 		producers = append(producers, iterator.FromChannel(producer1))
 		iter2 := mocks.NewMockIterator[string](ctrl)
-		iter2.EXPECT().Stop().Times(1)
+		iter2.EXPECT().Stop().MaxTimes(1)
 		producer2 := make(chan *iterator.Msg, 1)
 		producer2 <- &iterator.Msg{Iter: iter2}
 		close(producer2)
@@ -1192,7 +1192,7 @@ func TestBottomUpResolveIntersection(t *testing.T) {
 		iter1.EXPECT().Next(gomock.Any()).MaxTimes(1).Return("obj:0", nil)
 		iter1.EXPECT().Next(gomock.Any()).MaxTimes(1).Return("", errors.New("boom"))
 
-		iter1.EXPECT().Stop().Times(1)
+		iter1.EXPECT().Stop().MaxTimes(1)
 		producer1 := make(chan *iterator.Msg, 1)
 		producer1 <- &iterator.Msg{Iter: iter1}
 		close(producer1)
@@ -1227,7 +1227,7 @@ func TestBottomUpResolveIntersection(t *testing.T) {
 		iter1.EXPECT().Next(gomock.Any()).MaxTimes(1).Return("obj:1", nil)
 		iter1.EXPECT().Next(gomock.Any()).MaxTimes(1).Return("", errors.New("boom"))
 
-		iter1.EXPECT().Stop().Times(1)
+		iter1.EXPECT().Stop().MaxTimes(1)
 		producer1 := make(chan *iterator.Msg, 1)
 		producer1 <- &iterator.Msg{Iter: iter1}
 		close(producer1)
@@ -1264,7 +1264,7 @@ func TestBottomUpResolveIntersection(t *testing.T) {
 		// the next get Next() is bad
 		iter1.EXPECT().Next(gomock.Any()).MaxTimes(1).Return("", fmt.Errorf("bad_next"))
 
-		iter1.EXPECT().Stop().Times(1)
+		iter1.EXPECT().Stop().MaxTimes(1)
 		producer1 := make(chan *iterator.Msg, 1)
 		producer1 <- &iterator.Msg{Iter: iter1}
 		close(producer1)
@@ -1336,13 +1336,13 @@ func TestBottomUpResolveDifference(t *testing.T) {
 		producers := make([]storage.Iterator[string], 0)
 		iter1 := mocks.NewMockIterator[string](ctrl)
 		iter1.EXPECT().Next(gomock.Any()).MaxTimes(1).Return("", errors.New("boom"))
-		iter1.EXPECT().Stop().Times(1)
+		iter1.EXPECT().Stop().MaxTimes(1)
 		producer1 := make(chan *iterator.Msg, 1)
 		producer1 <- &iterator.Msg{Iter: iter1}
 		close(producer1)
 		producers = append(producers, iterator.FromChannel(producer1))
 		iter2 := mocks.NewMockIterator[string](ctrl)
-		iter2.EXPECT().Stop().Times(1)
+		iter2.EXPECT().Stop().MaxTimes(1)
 		producer2 := make(chan *iterator.Msg, 1)
 		producer2 <- &iterator.Msg{Iter: iter2}
 		close(producer2)
@@ -1601,7 +1601,7 @@ func TestBottomUpResolveDifference(t *testing.T) {
 		iter1 := mocks.NewMockIterator[string](ctrl)
 		iter1.EXPECT().Next(gomock.Any()).MaxTimes(1).Return("obj:1", nil)
 		iter1.EXPECT().Next(gomock.Any()).MaxTimes(1).Return("", errors.New("boom"))
-		iter1.EXPECT().Stop().Times(1)
+		iter1.EXPECT().Stop().MaxTimes(1)
 		producer1 := make(chan *iterator.Msg, 1)
 		producer1 <- &iterator.Msg{Iter: iter1}
 		close(producer1)
@@ -1634,7 +1634,7 @@ func TestBottomUpResolveDifference(t *testing.T) {
 		iter1 := mocks.NewMockIterator[string](ctrl)
 		iter1.EXPECT().Next(gomock.Any()).MaxTimes(1).Return("obj:1", nil)
 		iter1.EXPECT().Next(gomock.Any()).MaxTimes(1).Return("", errors.New("boom"))
-		iter1.EXPECT().Stop().Times(1)
+		iter1.EXPECT().Stop().MaxTimes(1)
 		producer1 := make(chan *iterator.Msg, 1)
 		producer1 <- &iterator.Msg{Iter: iter1}
 		close(producer1)
@@ -1670,7 +1670,7 @@ func TestBottomUpResolveDifference(t *testing.T) {
 		iter1 := mocks.NewMockIterator[string](ctrl)
 		iter1.EXPECT().Next(gomock.Any()).MaxTimes(2).Return("obj:1", nil)
 		iter1.EXPECT().Next(gomock.Any()).MaxTimes(1).Return("", errors.New("boom"))
-		iter1.EXPECT().Stop().Times(1)
+		iter1.EXPECT().Stop().MaxTimes(1)
 		producer2 := make(chan *iterator.Msg, 1)
 		producer2 <- &iterator.Msg{Iter: iter1}
 		close(producer2)
