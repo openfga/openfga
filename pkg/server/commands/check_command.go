@@ -165,11 +165,13 @@ func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*
 	dsMeta := datastoreWithTupleCache.GetMetadata()
 	resp.ResolutionMetadata.DatastoreQueryCount = dsMeta.DatastoreQueryCount
 	resp.ResolutionMetadata.DatastoreItemCount = dsMeta.DatastoreItemCount
-	// Until dispatch throttling is deprecated, merge the results of both
-	resolveCheckRequest.GetRequestMetadata().WasThrottled.CompareAndSwap(false, dsMeta.WasThrottled)
 
+	resolveCheckRequest.GetRequestMetadata().DatastoreThrottled.Store(dsMeta.WasThrottled)
+
+	// There are currently two possible throttling mechanisms, we need to know if either was triggered here.
+	wasThrottled := dsMeta.WasThrottled || resolveCheckRequest.GetRequestMetadata().DispatchThrottled.Load()
 	if err != nil {
-		if errors.Is(err, context.DeadlineExceeded) && resolveCheckRequest.GetRequestMetadata().WasThrottled.Load() {
+		if errors.Is(err, context.DeadlineExceeded) && wasThrottled {
 			return resp, resolveCheckRequest.GetRequestMetadata(), &ThrottledError{Cause: err}
 		}
 
