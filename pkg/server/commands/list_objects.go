@@ -437,6 +437,9 @@ func (q *ListObjectsQuery) evaluate(
 					resolutionMetadata.DatastoreQueryCount.Add(resp.GetResolutionMetadata().DatastoreQueryCount)
 					resolutionMetadata.DatastoreItemCount.Add(resp.GetResolutionMetadata().DatastoreItemCount)
 					resolutionMetadata.DispatchCounter.Add(checkRequestMetadata.DispatchCounter.Load())
+					if !resolutionMetadata.DispatchThrottled.Load() && checkRequestMetadata.DispatchThrottled.Load() {
+						resolutionMetadata.DispatchThrottled.Store(true)
+					}
 					if !resolutionMetadata.DatastoreThrottled.Load() && checkRequestMetadata.DatastoreThrottled.Load() {
 						resolutionMetadata.DatastoreThrottled.Store(true)
 					}
