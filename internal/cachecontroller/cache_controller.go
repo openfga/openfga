@@ -101,13 +101,14 @@ type InMemoryCacheController struct {
 	ds    storage.OpenFGADatastore
 	cache storage.InMemoryCache[any]
 
-	// ttl is the minimum time interval to trigger cache invalidation for
-	// a given store.
-	ttl                   time.Duration
-	queryCacheTTL         time.Duration
-	iteratorCacheTTL      time.Duration
-	inflightInvalidations sync.Map
-	logger                logger.Logger
+	// minInvalidationInterval is the minimum time interval for
+	// DetermineInvalidationTime to trigger cache invalidation for a given store.
+	// This is the cache controller "TTL".
+	minInvalidationInterval time.Duration
+	queryCacheTTL           time.Duration
+	iteratorCacheTTL        time.Duration
+	inflightInvalidations   sync.Map
+	logger                  logger.Logger
 
 	// for testing purposes
 	wg sync.WaitGroup
@@ -122,13 +123,13 @@ func NewCacheController(
 	opts ...InMemoryCacheControllerOpt,
 ) CacheController {
 	c := &InMemoryCacheController{
-		ds:                    ds,
-		cache:                 cache,
-		ttl:                   ttl,
-		queryCacheTTL:         queryCacheTTL,
-		iteratorCacheTTL:      iteratorCacheTTL,
-		inflightInvalidations: sync.Map{},
-		logger:                logger.NewNoopLogger(),
+		ds:                      ds,
+		cache:                   cache,
+		minInvalidationInterval: ttl,
+		queryCacheTTL:           queryCacheTTL,
+		iteratorCacheTTL:        iteratorCacheTTL,
+		inflightInvalidations:   sync.Map{},
+		logger:                  logger.NewNoopLogger(),
 	}
 
 	for _, opt := range opts {
@@ -175,8 +176,9 @@ func (c *InMemoryCacheController) DetermineInvalidationTime(
 	cacheHitCounter.Inc()
 	span.SetAttributes(attribute.Bool("cached", true))
 
-	// Ensure invalidation is triggered at most every c.ttl duration per store.
-	if time.Since(entry.LastChecked) > c.ttl {
+	// Ensure invalidation is triggered at most every c.minInvalidationInterval
+	// duration per store.
+	if time.Since(entry.LastChecked) > c.minInvalidationInterval {
 		c.InvalidateIfNeeded(ctx, storeID) // async
 	}
 

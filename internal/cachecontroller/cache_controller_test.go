@@ -551,12 +551,12 @@ func TestInMemoryCacheController_findChangesAndInvalidateIfNecessary(t *testing.
 			test.setMocks(mockCache, mockDatastore)
 
 			cacheController := &InMemoryCacheController{
-				ds:                    mockDatastore,
-				cache:                 mockCache,
-				ttl:                   10 * time.Second,
-				iteratorCacheTTL:      30 * time.Second,
-				inflightInvalidations: sync.Map{},
-				logger:                logger.NewNoopLogger(),
+				ds:                      mockDatastore,
+				cache:                   mockCache,
+				minInvalidationInterval: 10 * time.Second,
+				iteratorCacheTTL:        30 * time.Second,
+				inflightInvalidations:   sync.Map{},
+				logger:                  logger.NewNoopLogger(),
 			}
 			cacheController.findChangesAndInvalidateIfNecessary(context.Background(), test.storeID)
 			cacheController.wg.Wait()
