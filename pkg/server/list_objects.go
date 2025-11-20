@@ -164,6 +164,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 	).Observe(float64(time.Since(start).Milliseconds()))
 
 	wasRequestThrottled := result.ResolutionMetadata.WasThrottled.Load()
+	grpc_ctxtags.Extract(ctx).Set("request.throttled", wasRequestThrottled)
 	if wasRequestThrottled {
 		throttledRequestCounter.WithLabelValues(s.serviceName, methodName).Inc()
 	}
