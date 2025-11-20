@@ -203,11 +203,11 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 
 func (s *Server) shadowV2Check(ctx context.Context, req *openfgav1.CheckRequest, mainRes *openfgav1.CheckResponse, mainTook int64) {
 	start := time.Now()
-	ctx, cancel := context.WithTimeout(context.Background(), s.shadowCheckResolverTimeout)
-	defer cancel()
 	var res *openfgav1.CheckResponse
 	var err error
 	recoveredErr := panics.Try(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), s.shadowCheckResolverTimeout)
+		defer cancel()
 		res, err = s.v2Check(ctx, req)
 	})
 	if recoveredErr != nil {

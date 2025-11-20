@@ -2,7 +2,6 @@ package commands
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -97,21 +96,18 @@ func NewCheckQuery(opts ...CheckQueryV2Option) *CheckQueryV2 {
 
 func (q *CheckQueryV2) Execute(ctx context.Context, req *openfgav1.CheckRequest) (*openfgav1.CheckResponse, error) {
 	r, err := check.NewRequest(check.RequestParams{
-		StoreID:              req.GetStoreId(),
-		AuthorizationModelID: q.model.GetModelID(),
-		TupleKey:             tuple.ConvertCheckRequestTupleKeyToTupleKey(req.GetTupleKey()),
-		ContextualTuples:     req.GetContextualTuples().GetTupleKeys(),
-		Context:              req.GetContext(),
-		Consistency:          req.GetConsistency(),
+		StoreID:          req.GetStoreId(),
+		Model:            q.model,
+		TupleKey:         tuple.ConvertCheckRequestTupleKeyToTupleKey(req.GetTupleKey()),
+		ContextualTuples: req.GetContextualTuples().GetTupleKeys(),
+		Context:          req.GetContext(),
+		Consistency:      req.GetConsistency(),
 	})
 
 	if err != nil {
-		if errors.Is(err, check.ErrInvalidUser) {
-			// TODO: Why is it invalid relation error and not invalid tuple error?
-			return nil, &InvalidRelationError{Cause: err}
-		}
 		return nil, err
 	}
+
 	resolver := check.New(check.Config{
 		Model:                     q.model,
 		Datastore:                 q.datastore,
@@ -126,10 +122,6 @@ func (q *CheckQueryV2) Execute(ctx context.Context, req *openfgav1.CheckRequest)
 
 	res, err := resolver.ResolveCheck(ctx, r)
 	if err != nil {
-		// handle panic/500
-		if errors.Is(err, check.ErrValidation) {
-			return nil, &InvalidRelationError{Cause: err}
-		}
 		return nil, err
 	}
 

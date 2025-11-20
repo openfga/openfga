@@ -67,7 +67,7 @@ func TestBottomUpSpecificType(t *testing.T) {
 		require.True(t, ok)
 		req, err := NewRequest(RequestParams{
 			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
+			Model: mg,
 			TupleKey:             tuple.NewTupleKey("document:1", "admin", "user:1"),
 		})
 		require.NoError(t, err)
@@ -122,8 +122,8 @@ func TestBottomUpSpecificType(t *testing.T) {
 
 		req, err := NewRequest(RequestParams{
 			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
-			TupleKey:             tuple.NewTupleKey("document:1", "admin", "user:1"),
+			Model: mg,
+			TupleKey:             tuple.NewTupleKey("document:1", "member", "user:1"),
 		})
 		require.NoError(t, err)
 
@@ -179,8 +179,8 @@ func TestBottomUpSpecificType(t *testing.T) {
 
 		req, err := NewRequest(RequestParams{
 			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
-			TupleKey:             tuple.NewTupleKey("document:1", "admin", "user:1"),
+			Model: mg,
+			TupleKey:             tuple.NewTupleKey("document:1", "member", "user:1"),
 		})
 		require.NoError(t, err)
 
@@ -238,7 +238,7 @@ func TestBottomUpSpecificType(t *testing.T) {
 
 		req, err := NewRequest(RequestParams{
 			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
+			Model: mg,
 			TupleKey:             tuple.NewTupleKey("document:1", "admin", "user:1"),
 		})
 		require.NoError(t, err)
@@ -291,7 +291,7 @@ func TestBottomUpSpecificType(t *testing.T) {
 
 		req, err := NewRequest(RequestParams{
 			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
+			Model: mg,
 			TupleKey:             tuple.NewTupleKey("document:1", "admin", "user:1"),
 		})
 		require.NoError(t, err)
@@ -345,7 +345,7 @@ func TestBottomUpSpecificTypeWildcard(t *testing.T) {
 		require.True(t, ok)
 		req, err := NewRequest(RequestParams{
 			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
+			Model: mg,
 			TupleKey:             tuple.NewTupleKey("document:1", "admin", "user:1"),
 		})
 		require.NoError(t, err)
@@ -399,7 +399,7 @@ func TestBottomUpSpecificTypeWildcard(t *testing.T) {
 		require.True(t, ok)
 		req, err := NewRequest(RequestParams{
 			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
+			Model: mg,
 			TupleKey:             tuple.NewTupleKey("document:1", "member", "user:1"),
 		})
 		require.NoError(t, err)
@@ -455,7 +455,7 @@ func TestBottomUpSpecificTypeWildcard(t *testing.T) {
 		require.True(t, ok)
 		req, err := NewRequest(RequestParams{
 			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
+			Model: mg,
 			TupleKey:             tuple.NewTupleKey("document:1", "member", "user:1"),
 		})
 		require.NoError(t, err)
@@ -514,7 +514,7 @@ func TestBottomUpSpecificTypeWildcard(t *testing.T) {
 
 		req, err := NewRequest(RequestParams{
 			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
+			Model: mg,
 			TupleKey:             tuple.NewTupleKey("document:1", "admin", "user:1"),
 		})
 		require.NoError(t, err)
@@ -566,7 +566,7 @@ func TestBottomUpSpecificTypeWildcard(t *testing.T) {
 		require.True(t, ok)
 		req, err := NewRequest(RequestParams{
 			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
+			Model: mg,
 			TupleKey:             tuple.NewTupleKey("document:1", "admin", "user:1"),
 		})
 		require.NoError(t, err)
@@ -1759,7 +1759,7 @@ func TestBottomUpResolveRewrite(t *testing.T) {
 		// Create a request for testing
 		req, err := NewRequest(RequestParams{
 			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
+			Model: mg,
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:1"),
 		})
 		require.NoError(t, err)
@@ -1875,7 +1875,7 @@ func TestBottomUpResolveRewrite(t *testing.T) {
 		// Create a request for testing
 		req, _ := NewRequest(RequestParams{
 			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
+			Model: mg,
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:1"),
 		})
 
@@ -1987,7 +1987,7 @@ func TestBottomUpResolveRewrite(t *testing.T) {
 		// Create a request for testing
 		req, _ := NewRequest(RequestParams{
 			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
+			Model: mg,
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:1"),
 		})
 
@@ -2106,7 +2106,7 @@ func TestBottomUpResolveRewrite(t *testing.T) {
 		// Create a request for testing
 		req, _ := NewRequest(RequestParams{
 			StoreID:              storeID,
-			AuthorizationModelID: mg.GetModelID(),
+			Model: mg,
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:1"),
 		})
 
