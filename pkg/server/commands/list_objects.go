@@ -488,6 +488,10 @@ func (q *ListObjectsQuery) Execute(
 		timeoutCtx, cancel = context.WithTimeout(ctx, q.listObjectsDeadline)
 		defer cancel()
 	}
+	q.logger.InfoWithContext(timeoutCtx,
+		"context timeout for ListObjects",
+		zap.Duration("timeout", q.listObjectsDeadline),
+	)
 
 	targetObjectType := req.GetType()
 	targetRelation := req.GetRelation()
@@ -592,9 +596,9 @@ func (q *ListObjectsQuery) Execute(
 
 		for obj := range seq {
 			if timeoutCtx.Err() != nil {
-				q.logger.ErrorWithContext(ctx,
+				q.logger.ErrorWithContext(timeoutCtx,
 					"context cancelled during ListObjects pipeline execution",
-					zap.Duration("timeout", q.listObjectsDeadline),
+					zap.Any("error", timeoutCtx.Err()),
 				)
 				break
 			}

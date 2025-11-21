@@ -192,6 +192,10 @@ func (q *shadowedListObjectsQuery) executeShadowModeAndCompareResults(parentCtx 
 
 	shadowCtx, shadowCancel := context.WithTimeout(parentCtx, q.shadowTimeout)
 	defer shadowCancel()
+	q.logger.InfoWithContext(shadowCtx,
+		"context timeout for Shadowed ListObjects",
+		zap.Duration("timeout", q.shadowTimeout),
+	)
 
 	startTime := time.Now()
 	shadowRes, errShadow := q.shadow.Execute(shadowCtx, req)
