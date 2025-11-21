@@ -50,7 +50,7 @@ func (c *recursiveTTUObjectProvider) Begin(ctx context.Context, req *ResolveChec
 		return nil, err
 	}
 
-	leftChans, err := produceLeftChannels(ctx, req, possibleParents, checkutil.BuildTTUV2RelationFunc(c.computedRelation))
+	leftChans, err := produceLeftChannels(ctx, c.ts, req, possibleParents, checkutil.BuildTTUV2RelationFunc(c.computedRelation))
 	if err != nil {
 		return nil, err
 	}
@@ -82,7 +82,7 @@ func (c *recursiveUsersetObjectProvider) Begin(ctx context.Context, req *Resolve
 	objectType := tuple.GetType(req.GetTupleKey().GetObject())
 	reference := []*openfgav1.RelationReference{{Type: objectType, RelationOrWildcard: &openfgav1.RelationReference_Relation{Relation: req.GetTupleKey().GetRelation()}}}
 
-	leftChans, err := produceLeftChannels(ctx, req, reference, checkutil.BuildUsersetV2RelationFunc())
+	leftChans, err := produceLeftChannels(ctx, c.ts, req, reference, checkutil.BuildUsersetV2RelationFunc())
 	if err != nil {
 		return nil, err
 	}

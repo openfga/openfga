@@ -53,7 +53,7 @@ func (c *LocalChecker) weight2Userset(_ context.Context, req *ResolveCheckReques
 		cancellableCtx, cancel := context.WithCancel(ctx)
 		defer cancel()
 
-		leftChans, err := produceLeftChannels(cancellableCtx, req, usersets, checkutil.BuildUsersetV2RelationFunc())
+		leftChans, err := produceLeftChannels(cancellableCtx, c.typesystem, req, usersets, checkutil.BuildUsersetV2RelationFunc())
 		if err != nil {
 			return nil, err
 		}
@@ -70,12 +70,11 @@ func (c *LocalChecker) weight2Userset(_ context.Context, req *ResolveCheckReques
 
 func (c *LocalChecker) weight2TTU(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset, iter storage.TupleKeyIterator) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
-		typesys, _ := typesystem.TypesystemFromContext(ctx) // again on local checker
 		objectType := tuple.GetType(req.GetTupleKey().GetObject())
 		tuplesetRelation := rewrite.GetTupleToUserset().GetTupleset().GetRelation()
 		computedRelation := rewrite.GetTupleToUserset().GetComputedUserset().GetRelation()
 
-		possibleParents, err := typesys.GetDirectlyRelatedUserTypes(objectType, tuplesetRelation)
+		possibleParents, err := c.typesystem.GetDirectlyRelatedUserTypes(objectType, tuplesetRelation)
 		if err != nil {
 			return nil, err
 		}
@@ -83,7 +82,7 @@ func (c *LocalChecker) weight2TTU(ctx context.Context, req *ResolveCheckRequest,
 		cancellableCtx, cancel := context.WithCancel(ctx)
 		defer cancel()
 
-		leftChans, err := produceLeftChannels(cancellableCtx, req, possibleParents, checkutil.BuildTTUV2RelationFunc(computedRelation))
+		leftChans, err := produceLeftChannels(cancellableCtx, c.typesystem, req, possibleParents, checkutil.BuildTTUV2RelationFunc(computedRelation))
 		if err != nil {
 			return nil, err
 		}
@@ -202,11 +201,12 @@ ConsumerLoop:
 
 func produceLeftChannels(
 	ctx context.Context,
+	typesys *typesystem.TypeSystem,
 	req *ResolveCheckRequest,
 	relationReferences []*openfgav1.RelationReference,
 	relationFunc checkutil.V2RelationFunc,
 ) ([]<-chan *iterator.Msg, error) {
-	typesys, _ := typesystem.TypesystemFromContext(ctx) // pass in
+	//typesys, _ := typesystem.TypesystemFromContext(ctx) // pass in
 	leftChans := make([]<-chan *iterator.Msg, 0, len(relationReferences))
 	for _, parentType := range relationReferences {
 		relation := relationFunc(parentType)
@@ -221,7 +221,7 @@ func produceLeftChannels(
 			Relation: relation,
 			User:     r.GetTupleKey().GetUser(),
 		}
-		leftChan, err := fastPathRewrite(ctx, r, rel.GetRewrite())
+		leftChan, err := fastPathRewrite(ctx, typesys, r, rel.GetRewrite())
 		if err != nil {
 			// if the resolver already started it needs to be drained
 			if len(leftChans) > 0 {
@@ -243,8 +243,7 @@ func fastPathNoop(_ context.Context, _ *ResolveCheckRequest) (chan *iterator.Msg
 // fastPathDirect assumes that req.Object + req.Relation is a directly assignable relation, e.g. define viewer: [user, user:*].
 // It returns a channel with one element, and then closes the channel.
 // The element is an iterator over all objects that are directly related to the user or the wildcard (if applicable).
-func fastPathDirect(ctx context.Context, req *ResolveCheckRequest) (chan *iterator.Msg, error) {
-	typesys, _ := typesystem.TypesystemFromContext(ctx)      // need to pass in
+func fastPathDirect(ctx context.Context, typesys *typesystem.TypeSystem, req *ResolveCheckRequest) (chan *iterator.Msg, error) {
 	ds, _ := storage.RelationshipTupleReaderFromContext(ctx) // need to pass in
 	tk := req.GetTupleKey()
 	objRel := tuple.ToObjectRelationString(tuple.GetType(tk.GetObject()), tk.GetRelation())
@@ -261,8 +260,7 @@ func fastPathDirect(ctx context.Context, req *ResolveCheckRequest) (chan *iterat
 	return iterChan, nil
 }
 
-func fastPathComputed(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset) (chan *iterator.Msg, error) {
-	typesys, _ := typesystem.TypesystemFromContext(ctx) // pass in
+func fastPathComputed(ctx context.Context, typesys *typesystem.TypeSystem, req *ResolveCheckRequest, rewrite *openfgav1.Userset) (chan *iterator.Msg, error) {
 	computedRelation := rewrite.GetComputedUserset().GetRelation()
 
 	childRequest := req.clone()
@@ -274,7 +272,7 @@ func fastPathComputed(ctx context.Context, req *ResolveCheckRequest, rewrite *op
 		return nil, err
 	}
 
-	return fastPathRewrite(ctx, childRequest, rel.GetRewrite())
+	return fastPathRewrite(ctx, typesys, childRequest, rel.GetRewrite())
 }
 
 // add the nextItemInSliceStreams to specified batch. If batch is full, try to send batch to outChan and clear slice.
@@ -582,7 +580,7 @@ func fastPathDifference(ctx context.Context, streams *iterator.Streams, outChan 
 func fastPathOperationSetup(ctx context.Context, req *ResolveCheckRequest, resolver fastPathSetHandler, children ...*openfgav1.Userset) (chan *iterator.Msg, error) {
 	iterStreams := make([]*iterator.Stream, 0, len(children))
 	for idx, child := range children {
-		producerChan, err := fastPathRewrite(ctx, req, child)
+		producerChan, err := fastPathRewrite(ctx, nil, req, child)
 		if err != nil {
 			return nil, err
 		}
@@ -606,14 +604,15 @@ func fastPathOperationSetup(ctx context.Context, req *ResolveCheckRequest, resol
 // The channel is closed at the end.
 func fastPathRewrite(
 	ctx context.Context,
+	typesys *typesystem.TypeSystem,
 	req *ResolveCheckRequest,
 	rewrite *openfgav1.Userset,
 ) (chan *iterator.Msg, error) {
 	switch rw := rewrite.GetUserset().(type) {
 	case *openfgav1.Userset_This:
-		return fastPathDirect(ctx, req)
+		return fastPathDirect(ctx, typesys, req)
 	case *openfgav1.Userset_ComputedUserset:
-		return fastPathComputed(ctx, req, rewrite)
+		return fastPathComputed(ctx, typesys, req, rewrite)
 	case *openfgav1.Userset_Union:
 		return fastPathOperationSetup(ctx, req, fastPathUnion, rw.Union.GetChild()...)
 	case *openfgav1.Userset_Intersection:

@@ -395,7 +395,7 @@ var _ CheckResolver = (*LocalChecker)(nil)
 func (c *LocalChecker) ResolveCheck(
 	ctx context.Context,
 	req *ResolveCheckRequest,
-// datastore?
+	// datastore?
 ) (*ResolveCheckResponse, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
@@ -648,7 +648,7 @@ func (c *LocalChecker) checkDirectUsersetTuples(typesys *typesystem.TypeSystem, 
 
 		// if user in request is userset, we do not have additional strategies to apply
 		if isUserset {
-			iter, err := checkutil.IteratorReadUsersetTuples(ctx, req, directlyRelatedUsersetTypes)
+			iter, err := checkutil.IteratorReadUsersetTuples(ctx, c.typesystem, req, directlyRelatedUsersetTypes)
 			if err != nil {
 				return nil, err
 			}
@@ -674,7 +674,7 @@ func (c *LocalChecker) checkDirectUsersetTuples(typesys *typesystem.TypeSystem, 
 
 		// if the type#relation is resolvable recursively, then it can only be resolved recursively
 		if typesys.UsersetUseRecursiveResolver(objectType, relation, userType) {
-			iter, err := checkutil.IteratorReadUsersetTuples(ctx, req, directlyRelatedUsersetTypes)
+			iter, err := checkutil.IteratorReadUsersetTuples(ctx, c.typesystem, req, directlyRelatedUsersetTypes)
 			if err != nil {
 				return nil, err
 			}
@@ -705,7 +705,7 @@ func (c *LocalChecker) checkDirectUsersetTuples(typesys *typesystem.TypeSystem, 
 				continue
 			}
 			usersets := []*openfgav1.RelationReference{userset}
-			iter, err := checkutil.IteratorReadUsersetTuples(ctx, req, usersets)
+			iter, err := checkutil.IteratorReadUsersetTuples(ctx, c.typesystem, req, usersets)
 			if err != nil {
 				return nil, err
 			}
@@ -728,7 +728,7 @@ func (c *LocalChecker) checkDirectUsersetTuples(typesys *typesystem.TypeSystem, 
 		// for all usersets could not be resolved through weight2 resolver, resolve them all through the default resolver.
 		// they all resolved as a group rather than individually.
 		if len(remainingUsersetTypes) > 0 {
-			iter, err := checkutil.IteratorReadUsersetTuples(ctx, req, remainingUsersetTypes)
+			iter, err := checkutil.IteratorReadUsersetTuples(ctx, c.typesystem, req, remainingUsersetTypes)
 			if err != nil {
 				return nil, err
 			}

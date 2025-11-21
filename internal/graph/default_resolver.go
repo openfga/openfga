@@ -81,7 +81,6 @@ func (c *LocalChecker) defaultUserset(_ context.Context, req *ResolveCheckReques
 func (c *LocalChecker) produceUsersetDispatches(ctx context.Context, req *ResolveCheckRequest, dispatches chan dispatchMsg, iter storage.TupleKeyIterator) {
 	defer close(dispatches)
 	reqTupleKey := req.GetTupleKey()
-	typesys, _ := typesystem.TypesystemFromContext(ctx) // local checker
 	for {
 		t, err := iter.Next(ctx)
 		if err != nil {
@@ -97,7 +96,7 @@ func (c *LocalChecker) produceUsersetDispatches(ctx context.Context, req *Resolv
 
 		// if the user value is a typed wildcard and the type of the wildcard
 		// matches the target user objectType, then we're done searching
-		if tuple.IsTypedWildcard(usersetObject) && typesystem.IsSchemaVersionSupported(typesys.GetSchemaVersion()) {
+		if tuple.IsTypedWildcard(usersetObject) && typesystem.IsSchemaVersionSupported(c.typesystem.GetSchemaVersion()) {
 			wildcardType := tuple.GetType(usersetObject)
 
 			if tuple.GetType(reqTupleKey.GetUser()) == wildcardType {
@@ -143,7 +142,6 @@ func (c *LocalChecker) defaultTTU(_ context.Context, req *ResolveCheckRequest, r
 func (c *LocalChecker) produceTTUDispatches(ctx context.Context, computedRelation string, req *ResolveCheckRequest, dispatches chan dispatchMsg, iter storage.TupleKeyIterator) {
 	defer close(dispatches)
 	reqTupleKey := req.GetTupleKey()
-	typesys, _ := typesystem.TypesystemFromContext(ctx) // local checker
 
 	for {
 		t, err := iter.Next(ctx)
@@ -156,7 +154,7 @@ func (c *LocalChecker) produceTTUDispatches(ctx context.Context, computedRelatio
 		}
 
 		userObj, _ := tuple.SplitObjectRelation(t.GetUser())
-		if _, err := typesys.GetRelation(tuple.GetType(userObj), computedRelation); err != nil {
+		if _, err := c.typesystem.GetRelation(tuple.GetType(userObj), computedRelation); err != nil {
 			if errors.Is(err, typesystem.ErrRelationUndefined) {
 				continue // skip computed relations on tupleset relationships if they are undefined
 			}

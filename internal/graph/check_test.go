@@ -2014,7 +2014,7 @@ func TestCheckDirectUserTuple(t *testing.T) {
 			require.NoError(t, err)
 
 			checker := NewLocalChecker()
-			function := checker.checkDirectUserTuple(ctx, &ResolveCheckRequest{
+			function := checker.checkDirectUserTuple(&ResolveCheckRequest{
 				StoreID:              storeID,
 				AuthorizationModelID: ulid.Make().String(),
 				TupleKey:             tt.reqTupleKey,

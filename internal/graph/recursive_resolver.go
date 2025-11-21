@@ -50,10 +50,9 @@ type recursiveMapping struct {
 
 func (c *LocalChecker) recursiveUserset(_ context.Context, req *ResolveCheckRequest, _ []*openfgav1.RelationReference, rightIter storage.TupleKeyIterator) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
-		typesys, _ := typesystem.TypesystemFromContext(ctx) // local checker
 
-		directlyRelatedUsersetTypes, _ := typesys.DirectlyRelatedUsersets(tuple.GetType(req.GetTupleKey().GetObject()), req.GetTupleKey().GetRelation())
-		objectProvider := newRecursiveUsersetObjectProvider(typesys)
+		directlyRelatedUsersetTypes, _ := c.typesystem.DirectlyRelatedUsersets(tuple.GetType(req.GetTupleKey().GetObject()), req.GetTupleKey().GetRelation())
+		objectProvider := newRecursiveUsersetObjectProvider(c.typesystem)
 
 		return c.recursiveFastPath(ctx, req, rightIter, &recursiveMapping{
 			kind:                        storage.UsersetKind,
@@ -66,11 +65,9 @@ func (c *LocalChecker) recursiveUserset(_ context.Context, req *ResolveCheckRequ
 // rightIter gives the iterator for the recursive TTU.
 func (c *LocalChecker) recursiveTTU(_ context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset, rightIter storage.TupleKeyIterator) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
-		typesys, _ := typesystem.TypesystemFromContext(ctx) // local checker
-
 		ttu := rewrite.GetTupleToUserset()
 
-		objectProvider := newRecursiveTTUObjectProvider(typesys, ttu)
+		objectProvider := newRecursiveTTUObjectProvider(c.typesystem, ttu)
 
 		return c.recursiveFastPath(ctx, req, rightIter, &recursiveMapping{
 			kind:             storage.TTUKind,
@@ -161,10 +158,9 @@ func (c *LocalChecker) recursiveFastPath(ctx context.Context, req *ResolveCheckR
 	return c.recursiveMatchUserUserset(ctx, newReq, mapping, usersetFromObject, usersetFromUser)
 }
 
-func buildRecursiveMapper(ctx context.Context, req *ResolveCheckRequest, mapping *recursiveMapping) (storage.TupleMapper, error) {
+func buildRecursiveMapper(ctx context.Context, typesys *typesystem.TypeSystem, req *ResolveCheckRequest, mapping *recursiveMapping) (storage.TupleMapper, error) {
 	var iter storage.TupleIterator
 	var err error
-	typesys, _ := typesystem.TypesystemFromContext(ctx)      // pass in
 	ds, _ := storage.RelationshipTupleReaderFromContext(ctx) // pass in
 	consistencyOpts := storage.ConsistencyOptions{
 		Preference: req.GetConsistency(),
@@ -299,7 +295,7 @@ func (c *LocalChecker) breadthFirstRecursiveMatch(ctx context.Context, req *Reso
 		}
 		newReq := req.clone()
 		newReq.TupleKey = tuple.NewTupleKey(userset, relation, user)
-		mapper, err := buildRecursiveMapper(ctx, newReq, mapping)
+		mapper, err := buildRecursiveMapper(ctx, c.typesystem, newReq, mapping)
 
 		if err != nil {
 			concurrency.TrySendThroughChannel(ctx, checkOutcome{err: err}, checkOutcomeChan)
