@@ -7,11 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Try to keep listed changes to a concise bulleted list of simple explanations of changes. Aim for the amount of information needed so that readers can understand where they would look in the codebase to investigate the changes' implementation, or where they would look in the documentation to understand how to make use of the change in practice - better yet, link directly to the docs and provide detailed information there. Only elaborate if doing so is required to avoid breaking changes or experimental features from ruining someone's day.
 
 ## [Unreleased]
+### Fixed
+- Fixed an issue with the `InMemoryCacheController` (the default cache controller when enabled) where cached Check responses were not invalidated after a write to the store. Previously, invalidation only occurred if multiple Checks were triggered in rapid succession after a write. [#2811](https://github.com/openfga/openfga/pull/2811)
+
+## [1.11.1] - 2025-11-20
 ### Added
 - Added experimental list objects pipeline algorithm with `pipeline_list_objects` flag. [#2815](https://github.com/openfga/openfga/pull/2815)
 
 ### Fixed
-- Fixed an issue with the `InMemoryCacheController` (the default cache controller when enabled) where cached Check responses were not invalidated after a write to the store. Previously, invalidation only occurred if multiple Checks were triggered in rapid succession after a write. [#2811](https://github.com/openfga/openfga/pull/2811)
+- Fixed bug where public wildcard tuples without condition were being considered for a wildcard relation which was only defined with a condition. [CVE-2025-64751](https://github.com/openfga/openfga/security/advisories/GHSA-2c64-vmv2-hgfc)
 
 ## [1.11.0] - 2025-11-05
 ### Added
@@ -1476,7 +1480,8 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
 - Memory storage adapter implementation
 - Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.11.0...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.11.1...HEAD
+[1.11.1]: https://github.com/openfga/openfga/compare/v1.11.0...v1.11.1
 [1.11.0]: https://github.com/openfga/openfga/compare/v1.10.5...v1.11.0
 [1.10.5]: https://github.com/openfga/openfga/compare/v1.10.4...v1.10.5
 [1.10.4]: https://github.com/openfga/openfga/compare/v1.10.3...v1.10.4
