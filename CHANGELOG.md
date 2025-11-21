@@ -8,6 +8,13 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+## [1.11.1] - 2025-11-20
+### Added
+- Added experimental list objects pipeline algorithm with `pipeline_list_objects` flag. [#2815](https://github.com/openfga/openfga/pull/2815)
+
+### Fixed
+- Fixed bug where public wildcard tuples without condition were being considered for a wildcard relation which was only defined with a condition. [CVE-2025-64751](https://github.com/openfga/openfga/security/advisories/GHSA-2c64-vmv2-hgfc)
+
 ## [1.11.0] - 2025-11-05
 ### Added
 - **Breaking**: Update PostgreSQL to use [pgxpool](https://pkg.go.dev/github.com/jackc/pgx/v5/pgxpool) instead of `database/sql` to allow for finer PostgreSQL connection control. [#2734](https://github.com/openfga/openfga/pull/2734), [#2789](https://github.com/openfga/openfga/pull/2789).
@@ -1471,7 +1478,8 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
 - Memory storage adapter implementation
 - Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.11.0...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.11.1...HEAD
+[1.11.1]: https://github.com/openfga/openfga/compare/v1.11.0...v1.11.1
 [1.11.0]: https://github.com/openfga/openfga/compare/v1.10.5...v1.11.0
 [1.10.5]: https://github.com/openfga/openfga/compare/v1.10.4...v1.10.5
 [1.10.4]: https://github.com/openfga/openfga/compare/v1.10.3...v1.10.4

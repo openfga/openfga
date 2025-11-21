@@ -102,6 +102,7 @@ const (
 	ExperimentalShadowCheck         = "shadow_check"
 	ExperimentalShadowListObjects   = "shadow_list_objects"
 	ExperimentalDatastoreThrottling = "datastore_throttling"
+	ExperimentalPipelineListObjects = "pipeline_list_objects"
 )
 
 type DatastoreMetricsConfig struct {
