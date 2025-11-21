@@ -492,6 +492,11 @@ func (q *ListObjectsQuery) Execute(
 		"context timeout for ListObjects",
 		zap.Duration("timeout", q.listObjectsDeadline),
 	)
+	deadline, hasDeadline := timeoutCtx.Deadline()
+	if hasDeadline {
+		remaining := time.Until(deadline)
+		q.logger.WarnWithContext(timeoutCtx, "time remaining until deadline (execute)", zap.Duration("remaining", remaining))
+	}
 
 	targetObjectType := req.GetType()
 	targetRelation := req.GetRelation()
@@ -591,6 +596,11 @@ func (q *ListObjectsQuery) Execute(
 		}
 
 		seq := pipeline.Build(ctx, source, target)
+		deadline, hasDeadline := ctx.Deadline()
+		if hasDeadline {
+			remaining := time.Until(deadline)
+			q.logger.WarnWithContext(ctx, "time remaining until deadline (execute after Build)", zap.Duration("remaining", remaining))
+		}
 
 		var res ListObjectsResponse
 

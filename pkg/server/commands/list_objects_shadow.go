@@ -196,6 +196,11 @@ func (q *shadowedListObjectsQuery) executeShadowModeAndCompareResults(parentCtx 
 		"context timeout for Shadowed ListObjects",
 		zap.Duration("timeout", q.shadowTimeout),
 	)
+	deadline, hasDeadline := shadowCtx.Deadline()
+	if hasDeadline {
+		remaining := time.Until(deadline)
+		q.logger.WarnWithContext(shadowCtx, "time remaining until deadline (shadow)", zap.Duration("remaining", remaining))
+	}
 
 	startTime := time.Now()
 	shadowRes, errShadow := q.shadow.Execute(shadowCtx, req)
