@@ -595,6 +595,7 @@ func (q *ListObjectsQuery) Execute(
 		var res ListObjectsResponse
 
 		for obj := range seq {
+			time.Sleep(3000 * time.Millisecond)
 			if timeoutCtx.Err() != nil {
 				q.logger.ErrorWithContext(timeoutCtx,
 					"context cancelled during ListObjects pipeline execution",
