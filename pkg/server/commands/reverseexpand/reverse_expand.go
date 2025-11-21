@@ -224,8 +224,8 @@ type ResolutionMetadata struct {
 	// The number of times we are expanding from each node to find set of objects
 	DispatchCounter *atomic.Uint32
 
-	// WasThrottled indicates whether the request was throttled
-	WasThrottled *atomic.Bool
+	// DispatchThrottled indicates whether the request was throttled by dispatch count
+	DispatchThrottled *atomic.Bool
 
 	// WasWeightedGraphUsed indicates whether the weighted graph was used as the algorithm for the ReverseExpand request.
 	WasWeightedGraphUsed *atomic.Bool
@@ -237,7 +237,7 @@ type ResolutionMetadata struct {
 func NewResolutionMetadata() *ResolutionMetadata {
 	return &ResolutionMetadata{
 		DispatchCounter:      new(atomic.Uint32),
-		WasThrottled:         new(atomic.Bool),
+		DispatchThrottled:    new(atomic.Bool),
 		WasWeightedGraphUsed: new(atomic.Bool),
 		CheckCounter:         new(atomic.Uint32),
 	}
@@ -738,7 +738,7 @@ func (c *ReverseExpandQuery) throttle(ctx context.Context, currentNumDispatch ui
 		attribute.Bool("is_throttled", shouldThrottle))
 
 	if shouldThrottle {
-		metadata.WasThrottled.Store(true)
+		metadata.DispatchThrottled.Store(true)
 		c.dispatchThrottlerConfig.Throttler.Throttle(ctx)
 	}
 }

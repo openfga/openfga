@@ -104,7 +104,7 @@ func (r *DispatchThrottlingCheckResolver) ResolveCheck(ctx context.Context,
 		attribute.Bool("is_throttled", shouldThrottle))
 
 	if shouldThrottle {
-		req.GetRequestMetadata().WasThrottled.Store(true)
+		req.GetRequestMetadata().DispatchThrottled.Store(true)
 		r.throttler.Throttle(ctx)
 	}
 	return r.delegate.ResolveCheck(ctx, req)

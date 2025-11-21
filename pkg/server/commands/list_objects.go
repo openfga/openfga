@@ -100,8 +100,11 @@ type ListObjectsResolutionMetadata struct {
 	// The total number of dispatches aggregated from reverse_expand and check resolutions (if any) to complete the ListObjects request
 	DispatchCounter atomic.Uint32
 
-	// WasThrottled indicates whether the request was throttled
-	WasThrottled atomic.Bool
+	// DispatchThrottled indicates whether this request was throttled by dispatch count.
+	DispatchThrottled atomic.Bool
+
+	// DatastoreThrottled indicates whether the request was throttled by the Datastore.
+	DatastoreThrottled atomic.Bool
 
 	// WasWeightedGraphUsed indicates whether the weighted graph was used as the algorithm for the ListObjects request.
 	WasWeightedGraphUsed atomic.Bool
@@ -371,8 +374,8 @@ func (q *ListObjectsQuery) evaluate(
 				return err
 			}
 			resolutionMetadata.DispatchCounter.Add(reverseExpandResolutionMetadata.DispatchCounter.Load())
-			if !resolutionMetadata.WasThrottled.Load() && reverseExpandResolutionMetadata.WasThrottled.Load() {
-				resolutionMetadata.WasThrottled.Store(true)
+			if !resolutionMetadata.DispatchThrottled.Load() && reverseExpandResolutionMetadata.DispatchThrottled.Load() {
+				resolutionMetadata.DispatchThrottled.Store(true)
 			}
 			resolutionMetadata.CheckCounter.Add(reverseExpandResolutionMetadata.CheckCounter.Load())
 			resolutionMetadata.WasWeightedGraphUsed.Store(reverseExpandResolutionMetadata.WasWeightedGraphUsed.Load())
@@ -434,8 +437,8 @@ func (q *ListObjectsQuery) evaluate(
 					resolutionMetadata.DatastoreQueryCount.Add(resp.GetResolutionMetadata().DatastoreQueryCount)
 					resolutionMetadata.DatastoreItemCount.Add(resp.GetResolutionMetadata().DatastoreItemCount)
 					resolutionMetadata.DispatchCounter.Add(checkRequestMetadata.DispatchCounter.Load())
-					if !resolutionMetadata.WasThrottled.Load() && checkRequestMetadata.WasThrottled.Load() {
-						resolutionMetadata.WasThrottled.Store(true)
+					if !resolutionMetadata.DispatchThrottled.Load() && checkRequestMetadata.DispatchThrottled.Load() {
+						resolutionMetadata.DispatchThrottled.Store(true)
 					}
 					if resp.Allowed {
 						trySendObject(ctx, res.Object, &objectsFound, maxResults, resultsChan)
@@ -456,7 +459,7 @@ func (q *ListObjectsQuery) evaluate(
 		dsMeta := ds.GetMetadata()
 		resolutionMetadata.DatastoreQueryCount.Add(dsMeta.DatastoreQueryCount)
 		resolutionMetadata.DatastoreItemCount.Add(dsMeta.DatastoreItemCount)
-		resolutionMetadata.WasThrottled.CompareAndSwap(false, dsMeta.WasThrottled)
+		resolutionMetadata.DatastoreThrottled.Store(dsMeta.WasThrottled)
 	}
 
 	go handler()

@@ -11,6 +11,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ## [1.11.1] - 2025-11-20
 ### Added
 - Added experimental list objects pipeline algorithm with `pipeline_list_objects` flag. [#2815](https://github.com/openfga/openfga/pull/2815)
+- Differentiate between dispatch throttled operations and datastore throttled operations. [#2821](https://github.com/openfga/openfga/pull/2821)
 
 ### Fixed
 - Fixed bug where public wildcard tuples without condition were being considered for a wildcard relation which was only defined with a condition. [CVE-2025-64751](https://github.com/openfga/openfga/security/advisories/GHSA-2c64-vmv2-hgfc)

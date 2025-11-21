@@ -212,7 +212,7 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 			})
 
 			if metadata != nil {
-				if metadata.WasThrottled.Load() {
+				if metadata.DispatchThrottled.Load() || metadata.DatastoreThrottled.Load() {
 					totalThrottleCount.Add(1)
 				}
 				totalDispatchCount.Add(metadata.DispatchCounter.Load())
