@@ -35,7 +35,7 @@ var (
 	cacheHitCounter = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: build.ProjectName,
 		Name:      "cachecontroller_cache_hit_count",
-		Help:      "The total number of cache hits from cachecontroller requests.",
+		Help:      "The total number of cache hits from cachecontroller requests within the TTL.",
 	})
 
 	cacheInvalidationCounter = promauto.NewCounter(prometheus.CounterOpts{
@@ -175,14 +175,14 @@ func (c *InMemoryCacheController) DetermineInvalidationTime(
 		return time.Time{}
 	}
 
-	// Cache hit
-	cacheHitCounter.Inc()
-	span.SetAttributes(attribute.Bool("cached", true))
-
 	// Ensure invalidation is triggered at most every c.minInvalidationInterval
 	// duration per store.
 	if time.Since(entry.LastChecked) > c.minInvalidationInterval {
 		c.InvalidateIfNeeded(ctx, storeID) // async
+	} else {
+		// Cache hit within TTL
+		cacheHitCounter.Inc()
+		span.SetAttributes(attribute.Bool("cached_within_ttl", true))
 	}
 
 	// Return time of last known change to store. This is refreshed at most every
