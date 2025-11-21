@@ -98,7 +98,15 @@ func (s *Server) ReadUserTuple(ctx context.Context, req *storagev1.ReadUserTuple
 		},
 	}
 
-	tuple, err := s.datastore.ReadUserTuple(ctx, req.GetStore(), fromStorageTupleKey(req.GetTupleKey()), options)
+	reqFilter := req.GetFilter()
+	filter := storage.ReadUserTupleFilter{
+		Object:     reqFilter.GetObject(),
+		Relation:   reqFilter.GetRelation(),
+		User:       reqFilter.GetUser(),
+		Conditions: reqFilter.GetConditions(),
+	}
+
+	tuple, err := s.datastore.ReadUserTuple(ctx, req.GetStore(), filter, options)
 	if err != nil {
 		return nil, toGRPCError(err)
 	}

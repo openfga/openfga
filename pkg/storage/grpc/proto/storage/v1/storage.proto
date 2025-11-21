@@ -102,7 +102,7 @@ message ReadPageResponse {
 
 message ReadUserTupleRequest {
   string store = 1;
-  storage.v1.types.TupleKey tuple_key = 2;
+  ReadFilter filter = 2;
   ConsistencyOptions consistency = 3;
 }
 

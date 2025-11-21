@@ -448,7 +448,7 @@ func (x *ReadPageResponse) GetContinuationToken() string {
 type ReadUserTupleRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Store         string                 `protobuf:"bytes,1,opt,name=store,proto3" json:"store,omitempty"`
-	TupleKey      *TupleKey              `protobuf:"bytes,2,opt,name=tuple_key,json=tupleKey,proto3" json:"tuple_key,omitempty"`
+	Filter        *ReadFilter            `protobuf:"bytes,2,opt,name=filter,proto3" json:"filter,omitempty"`
 	Consistency   *ConsistencyOptions    `protobuf:"bytes,3,opt,name=consistency,proto3" json:"consistency,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -491,9 +491,9 @@ func (x *ReadUserTupleRequest) GetStore() string {
 	return ""
 }
 
-func (x *ReadUserTupleRequest) GetTupleKey() *TupleKey {
+func (x *ReadUserTupleRequest) GetFilter() *ReadFilter {
 	if x != nil {
-		return x.TupleKey
+		return x.Filter
 	}
 	return nil
 }
@@ -2352,10 +2352,10 @@ const file_storage_v1_storage_proto_rawDesc = "" +
 	"\vconsistency\x18\x04 \x01(\v2\x1e.storage.v1.ConsistencyOptionsR\vconsistency\"r\n" +
 	"\x10ReadPageResponse\x12/\n" +
 	"\x06tuples\x18\x01 \x03(\v2\x17.storage.v1.types.TupleR\x06tuples\x12-\n" +
-	"\x12continuation_token\x18\x02 \x01(\tR\x11continuationToken\"\xa7\x01\n" +
+	"\x12continuation_token\x18\x02 \x01(\tR\x11continuationToken\"\x9e\x01\n" +
 	"\x14ReadUserTupleRequest\x12\x14\n" +
-	"\x05store\x18\x01 \x01(\tR\x05store\x127\n" +
-	"\ttuple_key\x18\x02 \x01(\v2\x1a.storage.v1.types.TupleKeyR\btupleKey\x12@\n" +
+	"\x05store\x18\x01 \x01(\tR\x05store\x12.\n" +
+	"\x06filter\x18\x02 \x01(\v2\x16.storage.v1.ReadFilterR\x06filter\x12@\n" +
 	"\vconsistency\x18\x03 \x01(\v2\x1e.storage.v1.ConsistencyOptionsR\vconsistency\"\xaf\x01\n" +
 	"\x18ReadUsersetTuplesRequest\x12\x14\n" +
 	"\x05store\x18\x01 \x01(\tR\x05store\x12;\n" +
@@ -2595,7 +2595,7 @@ var file_storage_v1_storage_proto_depIdxs = []int32{
 	40, // 4: storage.v1.ReadPageRequest.pagination:type_name -> storage.v1.PaginationOptions
 	41, // 5: storage.v1.ReadPageRequest.consistency:type_name -> storage.v1.ConsistencyOptions
 	43, // 6: storage.v1.ReadPageResponse.tuples:type_name -> storage.v1.types.Tuple
-	44, // 7: storage.v1.ReadUserTupleRequest.tuple_key:type_name -> storage.v1.types.TupleKey
+	36, // 7: storage.v1.ReadUserTupleRequest.filter:type_name -> storage.v1.ReadFilter
 	41, // 8: storage.v1.ReadUserTupleRequest.consistency:type_name -> storage.v1.ConsistencyOptions
 	37, // 9: storage.v1.ReadUsersetTuplesRequest.filter:type_name -> storage.v1.ReadUsersetTuplesFilter
 	41, // 10: storage.v1.ReadUsersetTuplesRequest.consistency:type_name -> storage.v1.ConsistencyOptions
