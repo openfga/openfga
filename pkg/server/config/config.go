@@ -575,6 +575,12 @@ func (cfg *Config) VerifyBinarySettings() error {
 		fmt.Println("WARNING: flag `check-query-cache-limit` is deprecated. Please set --check-cache-limit instead.")
 	}
 
+	if cfg.Datastore.Engine == "grpc" && (cfg.Datastore.GRPC.TLSCertPath != "" || cfg.Datastore.GRPC.TLSKeyPath != "") {
+		if cfg.Datastore.GRPC.TLSCertPath == "" || cfg.Datastore.GRPC.TLSKeyPath == "" {
+			return errors.New("'datastore.grpc.tls.cert' and 'datastore.grpc.tls.key' configs must be set")
+		}
+	}
+
 	return nil
 }
 
