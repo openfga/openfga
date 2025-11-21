@@ -440,9 +440,6 @@ func (q *ListObjectsQuery) evaluate(
 					if !resolutionMetadata.DispatchThrottled.Load() && checkRequestMetadata.DispatchThrottled.Load() {
 						resolutionMetadata.DispatchThrottled.Store(true)
 					}
-					if !resolutionMetadata.DatastoreThrottled.Load() && checkRequestMetadata.DatastoreThrottled.Load() {
-						resolutionMetadata.DatastoreThrottled.Store(true)
-					}
 					if resp.Allowed {
 						trySendObject(ctx, res.Object, &objectsFound, maxResults, resultsChan)
 					}
