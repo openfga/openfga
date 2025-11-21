@@ -37,6 +37,7 @@ import (
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/server/test"
 	"github.com/openfga/openfga/pkg/storage"
+	grpcstorage "github.com/openfga/openfga/pkg/storage/grpc"
 	"github.com/openfga/openfga/pkg/storage/memory"
 	"github.com/openfga/openfga/pkg/storage/mysql"
 	"github.com/openfga/openfga/pkg/storage/postgres"
@@ -424,6 +425,17 @@ func TestServerWithSQLiteDatastore(t *testing.T) {
 	_, ds, _ := util.MustBootstrapDatastore(t, "sqlite")
 
 	test.RunAllTests(t, ds)
+}
+
+func TestServerWithGRPCDatastore(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	grpcClient, _, cleanup := grpcstorage.SetupTestClientServer(t)
+	t.Cleanup(cleanup)
+
+	test.RunAllTests(t, grpcClient)
 }
 
 func TestAvoidDeadlockAcrossCheckRequests(t *testing.T) {

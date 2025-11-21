@@ -131,6 +131,24 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 		util.MustBindPFlag("datastore.metrics.enabled", flags.Lookup("datastore-metrics-enabled"))
 		util.MustBindEnv("datastore.metrics.enabled", "OPENFGA_DATASTORE_METRICS_ENABLED")
 
+		util.MustBindPFlag("datastore.grpc.addr", flags.Lookup("datastore-grpc-addr"))
+		util.MustBindEnv("datastore.grpc.addr", "OPENFGA_DATASTORE_GRPC_ADDR")
+
+		util.MustBindPFlag("datastore.grpc.tlsCertPath", flags.Lookup("datastore-grpc-tls-cert"))
+		util.MustBindEnv("datastore.grpc.tlsCertPath", "OPENFGA_DATASTORE_GRPC_TLS_CERT")
+
+		util.MustBindPFlag("datastore.grpc.tlsKeyPath", flags.Lookup("datastore-grpc-tls-key"))
+		util.MustBindEnv("datastore.grpc.tlsKeyPath", "OPENFGA_DATASTORE_GRPC_TLS_KEY")
+
+		util.MustBindPFlag("datastore.grpc.keepaliveTime", flags.Lookup("datastore-grpc-keepalive-time"))
+		util.MustBindEnv("datastore.grpc.keepaliveTime", "OPENFGA_DATASTORE_GRPC_KEEPALIVE_TIME")
+
+		util.MustBindPFlag("datastore.grpc.keepaliveTimeout", flags.Lookup("datastore-grpc-keepalive-timeout"))
+		util.MustBindEnv("datastore.grpc.keepaliveTimeout", "OPENFGA_DATASTORE_GRPC_KEEPALIVE_TIMEOUT")
+
+		util.MustBindPFlag("datastore.grpc.keepalivePermitWithoutStream", flags.Lookup("datastore-grpc-keepalive-permit-without-stream"))
+		util.MustBindEnv("datastore.grpc.keepalivePermitWithoutStream", "OPENFGA_DATASTORE_GRPC_KEEPALIVE_PERMIT_WITHOUT_STREAM")
+
 		util.MustBindPFlag("playground.enabled", flags.Lookup("playground-enabled"))
 		util.MustBindEnv("playground.enabled", "OPENFGA_PLAYGROUND_ENABLED")
 
