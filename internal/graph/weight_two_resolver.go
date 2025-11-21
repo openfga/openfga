@@ -206,7 +206,7 @@ func produceLeftChannels(
 	relationReferences []*openfgav1.RelationReference,
 	relationFunc checkutil.V2RelationFunc,
 ) ([]<-chan *iterator.Msg, error) {
-	//typesys, _ := typesystem.TypesystemFromContext(ctx) // pass in
+	// typesys, _ := typesystem.TypesystemFromContext(ctx) // pass in
 	leftChans := make([]<-chan *iterator.Msg, 0, len(relationReferences))
 	for _, parentType := range relationReferences {
 		relation := relationFunc(parentType)
@@ -577,10 +577,10 @@ func fastPathDifference(ctx context.Context, streams *iterator.Streams, outChan 
 // fastPathOperationSetup returns a channel with a number of elements that is >= the number of children.
 // Each element is an iterator.
 // The caller must wait until the channel is closed.
-func fastPathOperationSetup(ctx context.Context, req *ResolveCheckRequest, resolver fastPathSetHandler, children ...*openfgav1.Userset) (chan *iterator.Msg, error) {
+func fastPathOperationSetup(ctx context.Context, ts *typesystem.TypeSystem, req *ResolveCheckRequest, resolver fastPathSetHandler, children ...*openfgav1.Userset) (chan *iterator.Msg, error) {
 	iterStreams := make([]*iterator.Stream, 0, len(children))
 	for idx, child := range children {
-		producerChan, err := fastPathRewrite(ctx, nil, req, child)
+		producerChan, err := fastPathRewrite(ctx, ts, req, child) // here
 		if err != nil {
 			return nil, err
 		}
@@ -614,11 +614,11 @@ func fastPathRewrite(
 	case *openfgav1.Userset_ComputedUserset:
 		return fastPathComputed(ctx, typesys, req, rewrite)
 	case *openfgav1.Userset_Union:
-		return fastPathOperationSetup(ctx, req, fastPathUnion, rw.Union.GetChild()...)
+		return fastPathOperationSetup(ctx, typesys, req, fastPathUnion, rw.Union.GetChild()...)
 	case *openfgav1.Userset_Intersection:
-		return fastPathOperationSetup(ctx, req, fastPathIntersection, rw.Intersection.GetChild()...)
+		return fastPathOperationSetup(ctx, typesys, req, fastPathIntersection, rw.Intersection.GetChild()...)
 	case *openfgav1.Userset_Difference:
-		return fastPathOperationSetup(ctx, req, fastPathDifference, rw.Difference.GetBase(), rw.Difference.GetSubtract())
+		return fastPathOperationSetup(ctx, typesys, req, fastPathDifference, rw.Difference.GetBase(), rw.Difference.GetSubtract())
 	case *openfgav1.Userset_TupleToUserset:
 		return fastPathNoop(ctx, req)
 	default:

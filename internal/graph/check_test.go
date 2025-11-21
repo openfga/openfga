@@ -80,18 +80,9 @@ func (m *mockPanicIterator[T]) Head(ctx context.Context) (T, error) {
 }
 
 func TestCheck_CorrectContext(t *testing.T) {
-	checker := NewLocalChecker()
+	ts := typesystem.MustNoopTypesystem()
+	checker := NewLocalChecker(WithTypesystem(ts))
 	t.Cleanup(checker.Close)
-
-	t.Run("typesystem_missing_returns_error", func(t *testing.T) {
-		_, err := checker.ResolveCheck(context.Background(), &ResolveCheckRequest{
-			StoreID:              ulid.Make().String(),
-			AuthorizationModelID: ulid.Make().String(),
-			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
-			RequestMetadata:      NewCheckRequestMetadata(),
-		})
-		require.ErrorContains(t, err, "typesystem missing in context")
-	})
 
 	t.Run("datastore_missing_returns_error", func(t *testing.T) {
 		model := testutils.MustTransformDSLToProtoWithID(`
@@ -821,10 +812,6 @@ func TestIntersectionCheckFuncReducer(t *testing.T) {
 }
 
 func TestNonStratifiableCheckQueries(t *testing.T) {
-	checker, checkResolverCloser, err := NewOrderedCheckResolvers(WithLocalCheckerOpts(WithMaxResolutionDepth(10))).Build()
-	require.NoError(t, err)
-	t.Cleanup(checkResolverCloser)
-
 	t.Run("example_1", func(t *testing.T) {
 		ds := memory.New()
 
@@ -850,6 +837,14 @@ func TestNonStratifiableCheckQueries(t *testing.T) {
 
 		ts, err := typesystem.New(model)
 		require.NoError(t, err)
+
+		checker, checkResolverCloser, err := NewOrderedCheckResolvers(
+			WithLocalCheckerOpts(
+				WithMaxResolutionDepth(10),
+				WithTypesystem(ts),
+			)).Build()
+		require.NoError(t, err)
+		t.Cleanup(checkResolverCloser)
 
 		ctx := setRequestContext(context.Background(), ts, ds, nil)
 
@@ -891,6 +886,13 @@ func TestNonStratifiableCheckQueries(t *testing.T) {
 		require.NoError(t, err)
 
 		ctx := setRequestContext(context.Background(), ts, ds, nil)
+		checker, checkResolverCloser, err := NewOrderedCheckResolvers(
+			WithLocalCheckerOpts(
+				WithMaxResolutionDepth(10),
+				WithTypesystem(ts),
+			)).Build()
+		require.NoError(t, err)
+		t.Cleanup(checkResolverCloser)
 
 		resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
 			StoreID:         storeID,
@@ -903,10 +905,6 @@ func TestNonStratifiableCheckQueries(t *testing.T) {
 }
 
 func TestResolveCheckDeterministic(t *testing.T) {
-	checker, checkResolverCloser, err := NewOrderedCheckResolvers(WithLocalCheckerOpts(WithMaxResolutionDepth(2))).Build()
-	require.NoError(t, err)
-	t.Cleanup(checkResolverCloser)
-
 	t.Run("exclusion_resolves_deterministically_1", func(t *testing.T) {
 		t.Parallel()
 
@@ -940,6 +938,13 @@ func TestResolveCheckDeterministic(t *testing.T) {
 		require.NoError(t, err)
 
 		ctx := setRequestContext(context.Background(), ts, ds, nil)
+		checker, checkResolverCloser, err := NewOrderedCheckResolvers(
+			WithLocalCheckerOpts(
+				WithMaxResolutionDepth(2),
+				WithTypesystem(ts),
+			)).Build()
+		require.NoError(t, err)
+		t.Cleanup(checkResolverCloser)
 
 		for i := 0; i < 2000; i++ {
 			// subtract branch resolves to {allowed: true} even though the base branch
@@ -985,6 +990,13 @@ func TestResolveCheckDeterministic(t *testing.T) {
 		ts, err := typesystem.New(model)
 		require.NoError(t, err)
 
+		checker, checkResolverCloser, err := NewOrderedCheckResolvers(
+			WithLocalCheckerOpts(
+				WithMaxResolutionDepth(2),
+				WithTypesystem(ts),
+			)).Build()
+		require.NoError(t, err)
+		t.Cleanup(checkResolverCloser)
 		ctx := setRequestContext(context.Background(), ts, ds, nil)
 
 		for i := 0; i < 2000; i++ {
@@ -1019,15 +1031,6 @@ func TestCheckWithOneConcurrentGoroutineCausesNoDeadlock(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	checker, checkResolverCloser, err := NewOrderedCheckResolvers(
-		WithLocalCheckerOpts(
-			WithResolveNodeBreadthLimit(concurrencyLimit),
-			WithMaxResolutionDepth(25),
-		),
-	).Build()
-	require.NoError(t, err)
-	t.Cleanup(checkResolverCloser)
-
 	model := testutils.MustTransformDSLToProtoWithID(`
 		model
 			schema 1.1
@@ -1044,6 +1047,16 @@ func TestCheckWithOneConcurrentGoroutineCausesNoDeadlock(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx := setRequestContext(context.Background(), ts, ds, nil)
+
+	checker, checkResolverCloser, err := NewOrderedCheckResolvers(
+		WithLocalCheckerOpts(
+			WithResolveNodeBreadthLimit(concurrencyLimit),
+			WithMaxResolutionDepth(25),
+			WithTypesystem(ts),
+		),
+	).Build()
+	require.NoError(t, err)
+	t.Cleanup(checkResolverCloser)
 
 	resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
 		StoreID:         storeID,
@@ -1100,15 +1113,15 @@ func TestCheckConditions(t *testing.T) {
 	err = ds.Write(context.Background(), storeID, nil, tuples)
 	require.NoError(t, err)
 
-	checker, checkResolverCloser, err := NewOrderedCheckResolvers().Build()
-	require.NoError(t, err)
-	t.Cleanup(checkResolverCloser)
-
 	typesys, err := typesystem.NewAndValidate(
 		context.Background(),
 		model,
 	)
 	require.NoError(t, err)
+
+	checker, checkResolverCloser, err := NewOrderedCheckResolvers(WithLocalCheckerOpts(WithTypesystem(typesys))).Build()
+	require.NoError(t, err)
+	t.Cleanup(checkResolverCloser)
 
 	ctx := setRequestContext(context.Background(), typesys, ds, nil)
 
@@ -1179,13 +1192,13 @@ func TestCheckDispatchCount(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		checker := NewLocalChecker(WithMaxResolutionDepth(5))
-
 		typesys, err := typesystem.NewAndValidate(
 			context.Background(),
 			model,
 		)
 		require.NoError(t, err)
+
+		checker := NewLocalChecker(WithMaxResolutionDepth(5), WithTypesystem(typesys))
 
 		ctx := setRequestContext(context.Background(), typesys, ds, nil)
 
@@ -1246,13 +1259,12 @@ func TestCheckDispatchCount(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		checker := NewLocalChecker(WithMaxResolutionDepth(5))
-
 		typesys, err := typesystem.NewAndValidate(
 			context.Background(),
 			model,
 		)
 		require.NoError(t, err)
+		checker := NewLocalChecker(WithMaxResolutionDepth(5), WithTypesystem(typesys))
 
 		ctx := setRequestContext(context.Background(), typesys, ds, nil)
 		checkRequestMetadata := NewCheckRequestMetadata()
@@ -1302,13 +1314,13 @@ func TestCheckDispatchCount(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		checker := NewLocalChecker(WithMaxResolutionDepth(5))
-
 		typesys, err := typesystem.NewAndValidate(
 			context.Background(),
 			model,
 		)
 		require.NoError(t, err)
+
+		checker := NewLocalChecker(WithMaxResolutionDepth(5), WithTypesystem(typesys))
 
 		ctx := setRequestContext(context.Background(), typesys, ds, nil)
 		checkRequestMetadata := NewCheckRequestMetadata()
@@ -1656,17 +1668,8 @@ func TestResolveCheckCallsPathExists(t *testing.T) {
 	ds := memory.New()
 	t.Cleanup(ds.Close)
 
-	checker := NewLocalChecker()
-	t.Cleanup(checker.Close)
-
 	ctrl := gomock.NewController(t)
 	t.Cleanup(ctrl.Finish)
-
-	mockDelegate := NewMockCheckResolver(ctrl)
-	checker.SetDelegate(mockDelegate)
-
-	// assert that we never call dispatch
-	mockDelegate.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Times(0)
 
 	storeID := ulid.Make().String()
 	model := testutils.MustTransformDSLToProtoWithID(`
@@ -1683,6 +1686,14 @@ func TestResolveCheckCallsPathExists(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx := setRequestContext(context.Background(), ts, ds, nil)
+
+	checker := NewLocalChecker(WithTypesystem(ts))
+	t.Cleanup(checker.Close)
+	mockDelegate := NewMockCheckResolver(ctrl)
+	checker.SetDelegate(mockDelegate)
+
+	// assert that we never call dispatch
+	mockDelegate.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Times(0)
 
 	resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
 		StoreID:              storeID,
@@ -1702,20 +1713,21 @@ func TestResolveCheckCallsCycleDetection(t *testing.T) {
 	ds := memory.New()
 	t.Cleanup(ds.Close)
 
-	checker := NewLocalChecker()
-	t.Cleanup(checker.Close)
-
 	ctrl := gomock.NewController(t)
 	t.Cleanup(ctrl.Finish)
 
-	mockDelegate := NewMockCheckResolver(ctrl)
-	checker.SetDelegate(mockDelegate)
-
-	// assert that we never call dispatch
-	mockDelegate.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Times(0)
-
 	t.Run("returns_true_if_path_visited", func(t *testing.T) {
 		cyclicalTuple := tuple.NewTupleKey("document:1", "viewer", "user:maria")
+
+		ts := typesystem.MustNoopTypesystem()
+		checker := NewLocalChecker(WithTypesystem(ts))
+		t.Cleanup(checker.Close)
+
+		mockDelegate := NewMockCheckResolver(ctrl)
+		checker.SetDelegate(mockDelegate)
+
+		// assert that we never call dispatch
+		mockDelegate.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Times(0)
 
 		resp, err := checker.ResolveCheck(context.Background(), &ResolveCheckRequest{
 			StoreID:         ulid.Make().String(),
@@ -1746,6 +1758,8 @@ func TestResolveCheckCallsCycleDetection(t *testing.T) {
 
 		ts, err := typesystem.New(model)
 		require.NoError(t, err)
+		checker := NewLocalChecker(WithTypesystem(ts))
+		t.Cleanup(checker.Close)
 
 		ctx := setRequestContext(context.Background(), ts, ds, nil)
 
@@ -1765,8 +1779,11 @@ func TestResolveCheckCallsCycleDetection(t *testing.T) {
 func TestDispatch(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
-	checker := NewLocalChecker()
+
+	ts := typesystem.MustNoopTypesystem()
+	checker := NewLocalChecker(WithTypesystem(ts))
 	defer checker.Close()
+
 	mockResolver := NewMockCheckResolver(ctrl)
 	checker.SetDelegate(mockResolver)
 
@@ -1875,7 +1892,11 @@ func TestCheckTTU(t *testing.T) {
 		defer mockController.Finish()
 		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
 
-		checker := NewLocalChecker(WithOptimizations(true), WithMaxResolutionDepth(24))
+		checker := NewLocalChecker(
+			WithOptimizations(true),
+			WithMaxResolutionDepth(24),
+			WithTypesystem(typesys),
+		)
 		t.Cleanup(checker.Close)
 
 		storeID := ulid.Make().String()
@@ -2013,7 +2034,7 @@ func TestCheckDirectUserTuple(t *testing.T) {
 			contextStruct, err := structpb.NewStruct(tt.context)
 			require.NoError(t, err)
 
-			checker := NewLocalChecker()
+			checker := NewLocalChecker(WithTypesystem(ts))
 			function := checker.checkDirectUserTuple(&ResolveCheckRequest{
 				StoreID:              storeID,
 				AuthorizationModelID: ulid.Make().String(),
@@ -2115,9 +2136,8 @@ func TestShouldCheckDirectTuple(t *testing.T) {
 
 			ts, err := typesystem.New(tt.model)
 			require.NoError(t, err)
-			ctx := typesystem.ContextWithTypesystem(context.Background(), ts)
 
-			result := shouldCheckDirectTuple(ctx, tt.reqTupleKey)
+			result := shouldCheckDirectTuple(ts, tt.reqTupleKey)
 			require.Equal(t, tt.expected, result)
 		})
 	}
@@ -2258,9 +2278,8 @@ func TestShouldCheckPubliclyAssigned(t *testing.T) {
 
 			ts, err := typesystem.New(tt.model)
 			require.NoError(t, err)
-			ctx := typesystem.ContextWithTypesystem(context.Background(), ts)
 
-			result := shouldCheckPublicAssignable(ctx, tt.reqTupleKey)
+			result := shouldCheckPublicAssignable(ts, tt.reqTupleKey)
 			require.Equal(t, tt.expected, result)
 		})
 	}
@@ -2384,7 +2403,7 @@ func TestCheckPublicAssignable(t *testing.T) {
 			ts, err := typesystem.New(tt.model)
 			require.NoError(t, err)
 			ctx := setRequestContext(context.Background(), ts, ds, nil)
-			checker := NewLocalChecker()
+			checker := NewLocalChecker(WithTypesystem(ts))
 
 			contextStruct, err := structpb.NewStruct(tt.context)
 			require.NoError(t, err)
@@ -2564,7 +2583,7 @@ func TestStreamedLookupUsersetFromIterator(t *testing.T) {
 				defer cancelFunc()
 			}
 
-			mapper, err := buildRecursiveMapper(ctx, req, &recursiveMapping{
+			mapper, err := buildRecursiveMapper(ctx, ts, req, &recursiveMapping{
 				kind:                        storage.UsersetKind,
 				allowedUserTypeRestrictions: restrictions,
 			})

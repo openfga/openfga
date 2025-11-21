@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"errors"
-	"github.com/openfga/openfga/pkg/typesystem"
 	"strconv"
 	"time"
 
@@ -24,6 +23,7 @@ import (
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/telemetry"
+	"github.com/openfga/openfga/pkg/typesystem"
 )
 
 func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openfgav1.CheckResponse, error) {

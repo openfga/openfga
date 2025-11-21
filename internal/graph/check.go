@@ -124,6 +124,10 @@ func NewLocalChecker(opts ...LocalCheckerOption) *LocalChecker {
 		opt(checker)
 	}
 
+	if checker.typesystem == nil {
+		panic("checker typesystem cannot be nil")
+	}
+
 	return checker
 }
 

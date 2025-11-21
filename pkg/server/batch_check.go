@@ -52,7 +52,7 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 		return nil, err
 	}
 
-	builder := s.getCheckResolverBuilder(req.GetStoreId())
+	builder := s.getCheckResolverBuilder(req.GetStoreId(), typesys)
 	checkResolver, checkResolverCloser, err := builder.Build()
 	if err != nil {
 		return nil, err

@@ -50,7 +50,6 @@ type recursiveMapping struct {
 
 func (c *LocalChecker) recursiveUserset(_ context.Context, req *ResolveCheckRequest, _ []*openfgav1.RelationReference, rightIter storage.TupleKeyIterator) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
-
 		directlyRelatedUsersetTypes, _ := c.typesystem.DirectlyRelatedUsersets(tuple.GetType(req.GetTupleKey().GetObject()), req.GetTupleKey().GetRelation())
 		objectProvider := newRecursiveUsersetObjectProvider(c.typesystem)
 

@@ -181,7 +181,7 @@ func TestRecursiveTTU(t *testing.T) {
 			}
 			ctx := context.Background()
 			ctx = setRequestContext(ctx, ts, mockDatastore, nil)
-			checker := NewLocalChecker()
+			checker := NewLocalChecker(WithTypesystem(ts))
 
 			tupleKeys := make([]*openfgav1.TupleKey, 0, len(tt.readTuples[0]))
 			for _, t := range tt.readTuples[0] {
@@ -423,7 +423,7 @@ type group
 					RequestMetadata:      NewCheckRequestMetadata(),
 				}
 
-				checker := NewLocalChecker()
+				checker := NewLocalChecker(WithTypesystem(ts))
 				tupleKeys := make([]*openfgav1.TupleKey, 0, len(tt.readTuples[0]))
 				for _, t := range tt.readTuples[0] {
 					k := t.GetKey()
@@ -485,7 +485,7 @@ type group
 			RequestMetadata:      NewCheckRequestMetadata(),
 		}
 
-		checker := NewLocalChecker()
+		checker := NewLocalChecker(WithTypesystem(ts))
 		tupleKeys := []*openfgav1.TupleKey{{Object: "group:0", Relation: "parent", User: "group:1"}}
 
 		result, err := checker.recursiveTTU(ctx, req, typesystem.TupleToUserset("parent", "member"), storage.NewStaticTupleKeyIterator(tupleKeys))(ctx)
@@ -647,7 +647,7 @@ func TestRecursiveUserset(t *testing.T) {
 				RequestMetadata:      NewCheckRequestMetadata(),
 			}
 
-			checker := NewLocalChecker()
+			checker := NewLocalChecker(WithTypesystem(ts))
 			tupleKeys := make([]*openfgav1.TupleKey, 0, len(tt.readUsersetTuples[0]))
 			for _, t := range tt.readUsersetTuples[0] {
 				k := t.GetKey()
@@ -886,7 +886,7 @@ func TestRecursiveUserset(t *testing.T) {
 					RequestMetadata:      NewCheckRequestMetadata(),
 				}
 
-				checker := NewLocalChecker()
+				checker := NewLocalChecker(WithTypesystem(ts))
 				tupleKeys := make([]*openfgav1.TupleKey, 0, len(tt.readUsersetTuples[0]))
 				for _, t := range tt.readUsersetTuples[0] {
 					k := t.GetKey()
@@ -948,7 +948,7 @@ func TestRecursiveUserset(t *testing.T) {
 			RequestMetadata:      NewCheckRequestMetadata(),
 		}
 
-		checker := NewLocalChecker()
+		checker := NewLocalChecker(WithTypesystem(ts))
 		tupleKeys := []*openfgav1.TupleKey{{Object: "group:1", Relation: "member", User: "group:0#member"}}
 
 		result, err := checker.recursiveUserset(ctx, req, nil, storage.NewStaticTupleKeyIterator(tupleKeys))(ctx)
@@ -1058,7 +1058,7 @@ func TestBreadthFirstRecursiveMatch(t *testing.T) {
 			ctx := context.Background()
 			ctx = setRequestContext(ctx, ts, mockDatastore, nil)
 
-			checker := NewLocalChecker()
+			checker := NewLocalChecker(WithTypesystem(ts))
 			mapping := &recursiveMapping{
 				kind:             storage.TTUKind,
 				tuplesetRelation: "parent",
@@ -1125,7 +1125,7 @@ func TestBreadthFirstRecursiveMatch(t *testing.T) {
 
 		ctx = setRequestContext(ctx, ts, mockDatastore, nil)
 
-		checker := NewLocalChecker()
+		checker := NewLocalChecker(WithTypesystem(ts))
 		mapping := &recursiveMapping{
 			kind:             storage.TTUKind,
 			tuplesetRelation: "parent",
@@ -1173,7 +1173,7 @@ func TestBuildRecursiveMapper(t *testing.T) {
 				typesystem.DirectRelationReference("group", "member"),
 			},
 		}
-		res, err := buildRecursiveMapper(ctx, &ResolveCheckRequest{
+		res, err := buildRecursiveMapper(ctx, ts, &ResolveCheckRequest{
 			StoreID:     storeID,
 			TupleKey:    tuple.NewTupleKey("document:1", "viewer", "user:maria"),
 			Context:     testutils.MustNewStruct(t, map[string]interface{}{"x": "2"}),
@@ -1195,7 +1195,7 @@ func TestBuildRecursiveMapper(t *testing.T) {
 			tuplesetRelation: "parent",
 			kind:             storage.TTUKind,
 		}
-		res, err := buildRecursiveMapper(ctx, &ResolveCheckRequest{
+		res, err := buildRecursiveMapper(ctx, ts, &ResolveCheckRequest{
 			StoreID:     storeID,
 			TupleKey:    tuple.NewTupleKey("document:1", "viewer", "user:maria"),
 			Context:     testutils.MustNewStruct(t, map[string]interface{}{"x": "2"}),

@@ -1720,7 +1720,7 @@ func TestDelegateCheckResolver(t *testing.T) {
 
 		require.False(t, s.cacheSettings.CheckQueryCacheEnabled)
 
-		checkResolver, closer, _ := s.getCheckResolverBuilder("store_id_123").Build()
+		checkResolver, closer, _ := s.getCheckResolverBuilder("store_id_123", nil).Build()
 		defer closer()
 		require.NotNil(t, checkResolver)
 
@@ -1747,7 +1747,7 @@ func TestDelegateCheckResolver(t *testing.T) {
 		require.True(t, s.checkDispatchThrottlingEnabled)
 		require.EqualValues(t, dispatchThreshold, s.checkDispatchThrottlingDefaultThreshold)
 		require.EqualValues(t, 0, s.checkDispatchThrottlingMaxThreshold)
-		checkResolver, closer, _ := s.getCheckResolverBuilder("store_id_123").Build()
+		checkResolver, closer, _ := s.getCheckResolverBuilder("store_id_123", nil).Build()
 		defer closer()
 		require.NotNil(t, checkResolver)
 
@@ -1778,7 +1778,7 @@ func TestDelegateCheckResolver(t *testing.T) {
 		require.True(t, s.checkDispatchThrottlingEnabled)
 		require.EqualValues(t, dispatchThreshold, s.checkDispatchThrottlingDefaultThreshold)
 		require.EqualValues(t, 0, s.checkDispatchThrottlingMaxThreshold)
-		checkResolver, closer, _ := s.getCheckResolverBuilder("store_id_123").Build()
+		checkResolver, closer, _ := s.getCheckResolverBuilder("store_id_123", nil).Build()
 		defer closer()
 		require.NotNil(t, checkResolver)
 
@@ -1811,7 +1811,7 @@ func TestDelegateCheckResolver(t *testing.T) {
 		require.True(t, s.checkDispatchThrottlingEnabled)
 		require.EqualValues(t, dispatchThreshold, s.checkDispatchThrottlingDefaultThreshold)
 		require.EqualValues(t, maxDispatchThreshold, s.checkDispatchThrottlingMaxThreshold)
-		checkResolver, closer, _ := s.getCheckResolverBuilder("store_id_123").Build()
+		checkResolver, closer, _ := s.getCheckResolverBuilder("store_id_123", nil).Build()
 		defer closer()
 		require.NotNil(t, checkResolver)
 		dispatchThrottlingResolver, ok := checkResolver.(*graph.DispatchThrottlingCheckResolver)
@@ -1836,7 +1836,7 @@ func TestDelegateCheckResolver(t *testing.T) {
 		require.False(t, s.checkDispatchThrottlingEnabled)
 
 		require.True(t, s.cacheSettings.CheckQueryCacheEnabled)
-		checkResolver, closer, _ := s.getCheckResolverBuilder("store_id_123").Build()
+		checkResolver, closer, _ := s.getCheckResolverBuilder("store_id_123", nil).Build()
 		defer closer()
 		require.NotNil(t, checkResolver)
 
@@ -1866,7 +1866,7 @@ func TestDelegateCheckResolver(t *testing.T) {
 		require.EqualValues(t, 50, s.checkDispatchThrottlingDefaultThreshold)
 		require.EqualValues(t, 100, s.checkDispatchThrottlingMaxThreshold)
 
-		checkResolver, closer, _ := s.getCheckResolverBuilder("store_id_123").Build()
+		checkResolver, closer, _ := s.getCheckResolverBuilder("store_id_123", nil).Build()
 		defer closer()
 		require.NotNil(t, checkResolver)
 

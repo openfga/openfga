@@ -106,7 +106,7 @@ func TestDefaultUserset(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			iter := storage.NewConditionsFilteredTupleKeyIterator(storage.NewStaticTupleKeyIterator(tt.tuples), filter)
-			checker := NewLocalChecker()
+			checker := NewLocalChecker(WithTypesystem(ts))
 			defer checker.Close()
 
 			req := &ResolveCheckRequest{
@@ -219,7 +219,7 @@ func TestDefaultTTU(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 			iter := storage.NewConditionsFilteredTupleKeyIterator(storage.NewStaticTupleKeyIterator(tt.tuples), filter)
-			checker := NewLocalChecker()
+			checker := NewLocalChecker(WithTypesystem(ts))
 			defer checker.Close()
 			mockResolver := NewMockCheckResolver(ctrl)
 			checker.SetDelegate(mockResolver)
@@ -360,7 +360,7 @@ func TestProduceUsersetDispatches(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 			iter := storage.NewConditionsFilteredTupleKeyIterator(storage.NewStaticTupleKeyIterator(tt.tuples), filter)
-			checker := NewLocalChecker()
+			checker := NewLocalChecker(WithTypesystem(ts))
 			defer checker.Close()
 			mockResolver := NewMockCheckResolver(ctrl)
 			checker.SetDelegate(mockResolver)
@@ -524,7 +524,7 @@ func TestProduceTTUDispatches(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 			iter := storage.NewConditionsFilteredTupleKeyIterator(storage.NewStaticTupleKeyIterator(tt.tuples), filter)
-			checker := NewLocalChecker()
+			checker := NewLocalChecker(WithTypesystem(ts))
 			defer checker.Close()
 			mockResolver := NewMockCheckResolver(ctrl)
 			checker.SetDelegate(mockResolver)
@@ -668,6 +668,8 @@ func TestProcessDispatch(t *testing.T) {
 		},
 	}
 
+	ts := typesystem.MustNoopTypesystem()
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
@@ -681,7 +683,7 @@ func TestProcessDispatch(t *testing.T) {
 				cancel()
 			}
 
-			checker := NewLocalChecker()
+			checker := NewLocalChecker(WithTypesystem(ts))
 			defer checker.Close()
 			mockResolver := NewMockCheckResolver(ctrl)
 			checker.SetDelegate(mockResolver)
@@ -711,8 +713,9 @@ func TestProcessDispatch(t *testing.T) {
 
 		ctx := context.Background()
 
-		checker := NewLocalChecker()
+		checker := NewLocalChecker(WithTypesystem(ts))
 		defer checker.Close()
+
 		mockResolver := NewMockCheckResolver(ctrl)
 		checker.SetDelegate(mockResolver)
 
@@ -882,6 +885,8 @@ func TestConsumeDispatch(t *testing.T) {
 			expectedError: nil,
 		},
 	}
+
+	ts := typesystem.MustNoopTypesystem()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
@@ -895,7 +900,7 @@ func TestConsumeDispatch(t *testing.T) {
 				cancel()
 			}
 
-			checker := NewLocalChecker()
+			checker := NewLocalChecker(WithTypesystem(ts))
 			defer checker.Close()
 			mockResolver := NewMockCheckResolver(ctrl)
 			checker.SetDelegate(mockResolver)
@@ -917,7 +922,8 @@ func TestConsumeDispatch(t *testing.T) {
 
 	t.Run("should_error_if_panic_occurs", func(t *testing.T) {
 		ctx := context.Background()
-		checker := NewLocalChecker()
+		ts := typesystem.MustNoopTypesystem()
+		checker := NewLocalChecker(WithTypesystem(ts))
 		defer checker.Close()
 
 		dispatchChan := make(chan dispatchMsg, 1)

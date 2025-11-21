@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	parser "github.com/openfga/language/pkg/go/transformer"
 	"maps"
 	"reflect"
 	"slices"
@@ -1661,4 +1662,21 @@ func WalkUsersetRewrite(rewrite *openfgav1.Userset, handler WalkUsersetRewriteHa
 	}
 
 	return nil, nil
+}
+
+// MustNoopTypesystem is used strictly for test cases where the model itself does not matter,
+// like error handling scenarios.
+func MustNoopTypesystem() *TypeSystem {
+	model := parser.MustTransformDSLToProto(`
+		model
+			schema 1.1
+		type user
+	`)
+
+	ts, err := New(model)
+	if err != nil {
+		panic(err)
+	}
+
+	return ts
 }

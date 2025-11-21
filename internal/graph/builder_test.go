@@ -1,6 +1,7 @@
 package graph
 
 import (
+	"github.com/openfga/openfga/pkg/typesystem"
 	"reflect"
 	"testing"
 
@@ -8,6 +9,8 @@ import (
 )
 
 func TestNewOrderedCheckResolverBuilder(t *testing.T) {
+	ts := typesystem.MustNoopTypesystem()
+
 	type Test struct {
 		name                                   string
 		CachedCheckResolverEnabled             bool
@@ -52,6 +55,8 @@ func TestNewOrderedCheckResolverBuilder(t *testing.T) {
 				WithCachedCheckResolverOpts(test.CachedCheckResolverEnabled),
 				WithDispatchThrottlingCheckResolverOpts(test.DispatchThrottlingCheckResolverEnabled),
 				WithShadowResolverEnabled(test.ShadowResolverEnabled),
+				WithLocalCheckerOpts(WithTypesystem(ts)),
+				WithLocalShadowCheckerOpts(WithTypesystem(ts)),
 			}...)
 			checkResolver, checkResolverCloser, err := builder.Build()
 			require.NoError(t, err)
@@ -69,6 +74,8 @@ func TestNewOrderedCheckResolverBuilder(t *testing.T) {
 }
 
 func TestLocalCheckResolver(t *testing.T) {
+	ts := typesystem.MustNoopTypesystem()
+
 	t.Run("nil_ptr", func(t *testing.T) {
 		_, found := LocalCheckResolver(nil)
 		require.False(t, found)
@@ -84,14 +91,14 @@ func TestLocalCheckResolver(t *testing.T) {
 		cachedCheckResolver, err := NewCachedCheckResolver()
 		require.NoError(t, err)
 		defer cachedCheckResolver.Close()
-		localResolver := NewLocalChecker()
+		localResolver := NewLocalChecker(WithTypesystem(ts))
 		cachedCheckResolver.SetDelegate(localResolver)
 		dut, found := LocalCheckResolver(cachedCheckResolver)
 		require.True(t, found)
 		require.Equal(t, localResolver, dut)
 	})
 	t.Run("local_resolver", func(t *testing.T) {
-		localResolver := NewLocalChecker()
+		localResolver := NewLocalChecker(WithTypesystem(ts))
 		defer localResolver.Close()
 		dut, found := LocalCheckResolver(localResolver)
 		require.True(t, found)
@@ -101,8 +108,8 @@ func TestLocalCheckResolver(t *testing.T) {
 		cachedCheckResolver, err := NewCachedCheckResolver()
 		require.NoError(t, err)
 		defer cachedCheckResolver.Close()
-		mainResolver := NewLocalChecker()
-		shadowResolver := NewLocalChecker()
+		mainResolver := NewLocalChecker(WithTypesystem(ts))
+		shadowResolver := NewLocalChecker(WithTypesystem(ts))
 		shadow := NewShadowChecker(mainResolver, shadowResolver)
 		cachedCheckResolver.SetDelegate(shadow)
 		dut, found := LocalCheckResolver(cachedCheckResolver)

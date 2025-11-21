@@ -41,7 +41,7 @@ func setRequestContext(ctx context.Context, ts *typesystem.TypeSystem, ds storag
 		},
 	)
 	ctx = storage.ContextWithRelationshipTupleReader(ctx, rsw)
-	ctx = typesystem.ContextWithTypesystem(ctx, ts)
+	ctx = typesystem.ContextWithTypesystem(ctx, ts) // TODO remove
 	return ctx
 }
 
@@ -83,7 +83,7 @@ func TestFastPathDirect(t *testing.T) {
 
 		ctx := setRequestContext(context.Background(), ts, mockDatastore, nil)
 
-		c, err := fastPathDirect(ctx, &ResolveCheckRequest{
+		c, err := fastPathDirect(ctx, ts, &ResolveCheckRequest{
 			StoreID:              storeID,
 			AuthorizationModelID: ts.GetAuthorizationModelID(),
 			TupleKey:             tuple.NewTupleKey("document:1", "admin", "user:1"),
@@ -130,7 +130,7 @@ func TestFastPathDirect(t *testing.T) {
 
 		ctx := setRequestContext(context.Background(), ts, mockDatastore, nil)
 
-		_, err = fastPathDirect(ctx, &ResolveCheckRequest{
+		_, err = fastPathDirect(ctx, ts, &ResolveCheckRequest{
 			StoreID:              storeID,
 			AuthorizationModelID: ts.GetAuthorizationModelID(),
 			TupleKey:             tuple.NewTupleKey("document:1", "admin", "user:1"),
@@ -161,7 +161,7 @@ func TestFastPathComputed(t *testing.T) {
 
 		ctx = setRequestContext(ctx, ts, nil, nil)
 
-		_, err = fastPathComputed(ctx, &ResolveCheckRequest{
+		_, err = fastPathComputed(ctx, ts, &ResolveCheckRequest{
 			StoreID:  ulid.Make().String(),
 			TupleKey: tuple.NewTupleKey("document:1", "admin", "user:1"),
 		}, &openfgav1.Userset{Userset: &openfgav1.Userset_ComputedUserset{ComputedUserset: &openfgav1.ObjectRelation{Relation: "fake"}}})
@@ -1296,7 +1296,7 @@ func TestFastPathOperationSetup(t *testing.T) {
 			panic(errMessage)
 		}
 
-		outChan, err := fastPathOperationSetup(ctx, &ResolveCheckRequest{}, resolver)
+		outChan, err := fastPathOperationSetup(ctx, nil, &ResolveCheckRequest{}, resolver)
 
 		require.NoError(t, err)
 
@@ -1346,7 +1346,6 @@ func TestCheckUsersetFastPathV2(t *testing.T) {
 			WithResultsSortedAscending: true,
 		},
 		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil), nil)
-		checker := NewLocalChecker()
 		ctx := context.Background()
 
 		model := testutils.MustTransformDSLToProtoWithID(`
@@ -1366,6 +1365,7 @@ func TestCheckUsersetFastPathV2(t *testing.T) {
 		ts, err := typesystem.New(model)
 		require.NoError(t, err)
 
+		checker := NewLocalChecker(WithTypesystem(ts))
 		ctx = typesystem.ContextWithTypesystem(ctx, ts)
 		ctx = storage.ContextWithRelationshipTupleReader(ctx, mockDatastore)
 		iter := storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
@@ -1421,7 +1421,6 @@ func TestCheckUsersetFastPathV2(t *testing.T) {
 			WithResultsSortedAscending: true,
 		},
 		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil), nil)
-		checker := NewLocalChecker()
 		ctx := context.Background()
 		model := testutils.MustTransformDSLToProtoWithID(`
 			model
@@ -1440,6 +1439,7 @@ func TestCheckUsersetFastPathV2(t *testing.T) {
 		ts, err := typesystem.New(model)
 		require.NoError(t, err)
 
+		checker := NewLocalChecker(WithTypesystem(ts))
 		ctx = typesystem.ContextWithTypesystem(ctx, ts)
 		ctx = storage.ContextWithRelationshipTupleReader(ctx, mockDatastore)
 		iter := storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
@@ -1495,7 +1495,6 @@ func TestCheckUsersetFastPathV2(t *testing.T) {
 		).MaxTimes(1).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{
 			{Key: tuple.NewTupleKey("group:1", "public", "user:*")},
 		}), nil)
-		checker := NewLocalChecker()
 		ctx := context.Background()
 
 		model := testutils.MustTransformDSLToProtoWithID(`
@@ -1515,6 +1514,7 @@ func TestCheckUsersetFastPathV2(t *testing.T) {
 		ts, err := typesystem.New(model)
 		require.NoError(t, err)
 
+		checker := NewLocalChecker(WithTypesystem(ts))
 		ctx = typesystem.ContextWithTypesystem(ctx, ts)
 		ctx = storage.ContextWithRelationshipTupleReader(ctx, mockDatastore)
 		iter := storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
@@ -1570,7 +1570,6 @@ func TestCheckUsersetFastPathV2(t *testing.T) {
 		).MaxTimes(1).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{
 			{Key: tuple.NewTupleKey("group:1", "public", "user:*")},
 		}), nil)
-		checker := NewLocalChecker()
 		ctx := context.Background()
 
 		model := testutils.MustTransformDSLToProtoWithID(`
@@ -1590,6 +1589,7 @@ func TestCheckUsersetFastPathV2(t *testing.T) {
 		ts, err := typesystem.New(model)
 		require.NoError(t, err)
 
+		checker := NewLocalChecker(WithTypesystem(ts))
 		ctx = typesystem.ContextWithTypesystem(ctx, ts)
 		ctx = storage.ContextWithRelationshipTupleReader(ctx, mockDatastore)
 		iter := storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
@@ -1679,7 +1679,7 @@ func TestCheckUsersetFastPathV2(t *testing.T) {
 
 		ctx := setRequestContext(context.Background(), ts, mockDatastore, contextualTuples)
 
-		checker := NewLocalChecker()
+		checker := NewLocalChecker(WithTypesystem(ts))
 		checkResult, err := checker.weight2Userset(ctx, &ResolveCheckRequest{
 			StoreID:              storeID,
 			AuthorizationModelID: ts.GetAuthorizationModelID(),
@@ -1732,7 +1732,6 @@ func TestCheckTTUFastPathV2(t *testing.T) {
 			WithResultsSortedAscending: true,
 		},
 		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil), nil)
-		checker := NewLocalChecker()
 		ctx := context.Background()
 
 		model := testutils.MustTransformDSLToProtoWithID(`
@@ -1753,6 +1752,7 @@ func TestCheckTTUFastPathV2(t *testing.T) {
 		ts, err := typesystem.New(model)
 		require.NoError(t, err)
 
+		checker := NewLocalChecker(WithTypesystem(ts))
 		ctx = typesystem.ContextWithTypesystem(ctx, ts)
 		ctx = storage.ContextWithRelationshipTupleReader(ctx, mockDatastore)
 		iter := storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
@@ -1807,7 +1807,6 @@ func TestCheckTTUFastPathV2(t *testing.T) {
 			{Key: tuple.NewTupleKey("group:1", "public", "user:*")},
 		}), nil)
 
-		checker := NewLocalChecker()
 		ctx := context.Background()
 
 		model := testutils.MustTransformDSLToProtoWithID(`
@@ -1828,6 +1827,7 @@ func TestCheckTTUFastPathV2(t *testing.T) {
 		ts, err := typesystem.New(model)
 		require.NoError(t, err)
 
+		checker := NewLocalChecker(WithTypesystem(ts))
 		ctx = typesystem.ContextWithTypesystem(ctx, ts)
 		ctx = storage.ContextWithRelationshipTupleReader(ctx, mockDatastore)
 		iter := storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
@@ -1881,7 +1881,6 @@ func TestCheckTTUFastPathV2(t *testing.T) {
 			WithResultsSortedAscending: true,
 		},
 		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil), nil)
-		checker := NewLocalChecker()
 		ctx := context.Background()
 
 		model := testutils.MustTransformDSLToProtoWithID(`
@@ -1902,6 +1901,7 @@ func TestCheckTTUFastPathV2(t *testing.T) {
 		ts, err := typesystem.New(model)
 		require.NoError(t, err)
 
+		checker := NewLocalChecker(WithTypesystem(ts))
 		ctx = typesystem.ContextWithTypesystem(ctx, ts)
 		ctx = storage.ContextWithRelationshipTupleReader(ctx, mockDatastore)
 		iter := storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
@@ -1956,7 +1956,6 @@ func TestCheckTTUFastPathV2(t *testing.T) {
 			{Key: tuple.NewTupleKey("group:1", "public", "user:*")},
 		}), nil)
 
-		checker := NewLocalChecker()
 		ctx := context.Background()
 
 		model := testutils.MustTransformDSLToProtoWithID(`
@@ -1977,6 +1976,7 @@ func TestCheckTTUFastPathV2(t *testing.T) {
 		ts, err := typesystem.New(model)
 		require.NoError(t, err)
 
+		checker := NewLocalChecker(WithTypesystem(ts))
 		ctx = typesystem.ContextWithTypesystem(ctx, ts)
 		ctx = storage.ContextWithRelationshipTupleReader(ctx, mockDatastore)
 		iter := storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
@@ -2062,7 +2062,7 @@ func TestCheckTTUFastPathV2(t *testing.T) {
 
 		ctx := setRequestContext(context.Background(), ts, mockDatastore, contextualTuples)
 
-		checker := NewLocalChecker()
+		checker := NewLocalChecker(WithTypesystem(ts))
 
 		checkResult, err := checker.weight2TTU(ctx, &ResolveCheckRequest{
 			StoreID:              storeID,
