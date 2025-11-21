@@ -1,6 +1,7 @@
 package grpc
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
@@ -11,6 +12,21 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 	storagev1 "github.com/openfga/openfga/pkg/storage/grpc/proto/storage/v1"
 )
+
+// wrappedError wraps a base error but returns a custom message.
+// This allows errors.Is() to work while preserving the original error message.
+type wrappedError struct {
+	msg string
+	err error
+}
+
+func (e *wrappedError) Error() string {
+	return e.msg
+}
+
+func (e *wrappedError) Unwrap() error {
+	return e.err
+}
 
 // toGRPCError converts a storage error to a gRPC status error with error details.
 // This is used on the server side to convert storage errors to gRPC errors.
@@ -24,6 +40,12 @@ func toGRPCError(err error) error {
 
 	// Check for known storage errors and map them to appropriate gRPC status codes
 	switch {
+	case errors.Is(err, context.DeadlineExceeded):
+		// context errors are not storage errors, so we return them as-is
+		return status.Error(codes.DeadlineExceeded, err.Error())
+	case errors.Is(err, context.Canceled):
+		// context errors are not storage errors, so we return them as-is
+		return status.Error(codes.Canceled, err.Error())
 	case errors.Is(err, storage.ErrNotFound):
 		code = codes.NotFound
 		reason = storagev1.StorageErrorReason_NOT_FOUND
@@ -86,29 +108,23 @@ func fromGRPCError(err error) error {
 	// Try to extract error details first
 	for _, detail := range st.Details() {
 		if errInfo, ok := detail.(*errdetails.ErrorInfo); ok {
-			// Map error reason back to storage error, preserving the original error message
 			switch errInfo.GetReason() {
 			case storagev1.StorageErrorReason_NOT_FOUND.String():
-				// For ErrNotFound, return the base error directly
 				return storage.ErrNotFound
 			case storagev1.StorageErrorReason_COLLISION.String():
-				// For ErrCollision, return the base error directly
 				return storage.ErrCollision
 			case storagev1.StorageErrorReason_INVALID_CONTINUATION_TOKEN.String():
-				// For these errors, preserve the original message by wrapping
-				return fmt.Errorf("%s", st.Message())
+				return &wrappedError{msg: st.Message(), err: storage.ErrInvalidContinuationToken}
 			case storagev1.StorageErrorReason_INVALID_START_TIME.String():
-				return fmt.Errorf("%s", st.Message())
+				return &wrappedError{msg: st.Message(), err: storage.ErrInvalidStartTime}
 			case storagev1.StorageErrorReason_INVALID_WRITE_INPUT.String():
-				// Preserve the detailed error message that includes tuple details
-				return fmt.Errorf("%s", st.Message())
+				return &wrappedError{msg: st.Message(), err: storage.ErrInvalidWriteInput}
 			case storagev1.StorageErrorReason_WRITE_CONFLICT_ON_INSERT.String():
-				return fmt.Errorf("%s", st.Message())
+				return &wrappedError{msg: st.Message(), err: storage.ErrWriteConflictOnInsert}
 			case storagev1.StorageErrorReason_WRITE_CONFLICT_ON_DELETE.String():
-				return fmt.Errorf("%s", st.Message())
+				return &wrappedError{msg: st.Message(), err: storage.ErrWriteConflictOnDelete}
 			case storagev1.StorageErrorReason_TRANSACTIONAL_WRITE_FAILED.String():
-				// Wrap the base error to preserve the error chain for errors.Is checks
-				return fmt.Errorf("%s: %w", st.Message(), storage.ErrTransactionalWriteFailed)
+				return &wrappedError{msg: st.Message(), err: storage.ErrTransactionalWriteFailed}
 			case storagev1.StorageErrorReason_TRANSACTION_THROTTLED.String():
 				return storage.ErrTransactionThrottled
 			}
@@ -128,6 +144,10 @@ func fromGRPCError(err error) error {
 		return storage.ErrTransactionalWriteFailed
 	case codes.ResourceExhausted:
 		return storage.ErrTransactionThrottled
+	case codes.DeadlineExceeded:
+		return context.DeadlineExceeded
+	case codes.Canceled:
+		return context.Canceled
 	default:
 		return fmt.Errorf("grpc error (code=%s): %s", st.Code(), st.Message())
 	}
