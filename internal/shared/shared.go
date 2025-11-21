@@ -80,7 +80,7 @@ func NewSharedDatastoreResources(
 	}
 
 	if settings.ShouldCreateCacheController() {
-		s.CacheController = cachecontroller.NewCacheController(ds, s.CheckCache, settings.CacheControllerTTL, settings.CheckIteratorCacheTTL, cachecontroller.WithLogger(s.Logger))
+		s.CacheController = cachecontroller.NewCacheController(ds, s.CheckCache, settings.CacheControllerTTL, settings.CheckQueryCacheTTL, settings.CheckIteratorCacheTTL, cachecontroller.WithLogger(s.Logger))
 	}
 
 	// The default behavior is to use the same cache instance for both the
@@ -101,7 +101,7 @@ func NewSharedDatastoreResources(
 	}
 
 	if settings.ShouldCreateShadowCacheController() {
-		s.ShadowCacheController = cachecontroller.NewCacheController(ds, s.ShadowCheckCache, settings.CacheControllerTTL, settings.CheckIteratorCacheTTL, cachecontroller.WithLogger(s.Logger))
+		s.ShadowCacheController = cachecontroller.NewCacheController(ds, s.ShadowCheckCache, settings.CacheControllerTTL, settings.CheckQueryCacheTTL, settings.CheckIteratorCacheTTL, cachecontroller.WithLogger(s.Logger))
 	}
 
 	for _, opt := range opts {
