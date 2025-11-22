@@ -156,16 +156,19 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 		util.MustBindEnv("trace.enabled", "OPENFGA_TRACE_ENABLED")
 
 		util.MustBindPFlag("trace.otlp.endpoint", flags.Lookup("trace-otlp-endpoint"))
-		util.MustBindEnv("trace.otlp.endpoint", "OPENFGA_TRACE_OTLP_ENDPOINT")
+		util.MustBindEnv("trace.otlp.endpoint", "OPENFGA_TRACE_OTLP_ENDPOINT", "OTEL_EXPORTER_OTLP_ENDPOINT")
 
 		util.MustBindPFlag("trace.otlp.tls.enabled", flags.Lookup("trace-otlp-tls-enabled"))
 		util.MustBindEnv("trace.otlp.tls.enabled", "OPENFGA_TRACE_OTLP_TLS_ENABLED")
 
 		util.MustBindPFlag("trace.sampleRatio", flags.Lookup("trace-sample-ratio"))
-		util.MustBindEnv("trace.sampleRatio", "OPENFGA_TRACE_SAMPLE_RATIO")
+		util.MustBindEnv("trace.sampleRatio", "OPENFGA_TRACE_SAMPLE_RATIO", "OTEL_TRACES_SAMPLER_ARG")
 
 		util.MustBindPFlag("trace.serviceName", flags.Lookup("trace-service-name"))
-		util.MustBindEnv("trace.serviceName", "OPENFGA_TRACE_SERVICE_NAME")
+		util.MustBindEnv("trace.serviceName", "OPENFGA_TRACE_SERVICE_NAME", "OTEL_SERVICE_NAME")
+
+		util.MustBindPFlag("trace.resourceAttributes", flags.Lookup("trace-resource-attributes"))
+		util.MustBindEnv("trace.resourceAttributes", "OTEL_RESOURCE_ATTRIBUTES")
 
 		util.MustBindPFlag("metrics.enabled", flags.Lookup("metrics-enabled"))
 		util.MustBindEnv("metrics.enabled", "OPENFGA_METRICS_ENABLED")
