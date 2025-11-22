@@ -194,7 +194,7 @@
                     "description": "The host:port address to serve the pprof profiler server on.",
                     "type": "string",
                     "default": ":3001",
-                    "x-env-variable": "OPENFGA_PROFILER_ADDR"
+                    "x-env-variable": "OPENFGA_PROFILER_ADDRESS"
                 }
             }
         },
@@ -461,7 +461,7 @@
                             "description": "The grpc endpoint of the trace collector",
                             "type": "string",
                             "default": "0.0.0.0:4317",
-                            "x-env-variable": "OPENFGA_TRACE_OTLP_ENDPOINT"
+                            "x-env-variable": ["OPENFGA_TRACE_OTLP_ENDPOINT", "OPENFGA_TRACE_OTLP_ENDPOINT"]
                         },
                         "tls": {
                             "type": "object",
@@ -480,13 +480,19 @@
                     "description": "The fraction of traces to sample. 1 means all, 0 means none.",
                     "type": "number",
                     "default": "0.2",
-                    "x-env-variable": "OPENFGA_TRACE_SAMPLE_RATIO"
+                    "x-env-variable": ["OPENFGA_TRACE_SAMPLE_RATIO", "OTEL_TRACES_SAMPLER_ARG"]
                 },
                 "serviceName": {
                     "description": "The service name included in sampled traces.",
                     "type": "string",
                     "default": "openfga",
-                    "x-env-variable": "OPENFGA_TRACE_SERVICE_NAME"
+                    "x-env-variable": ["OPENFGA_TRACE_SERVICE_NAME", "OTEL_SERVICE_NAME"]
+                },
+                "resourceAttributes": {
+                    "description": "Key-value pairs to be used as resource attributes",
+                    "type": "string",
+                    "default": "",
+                    "x-env-variable": "OTEL_RESOURCE_ATTRIBUTES"
                 }
             }
         },
