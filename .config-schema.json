@@ -461,7 +461,7 @@
                             "description": "The grpc endpoint of the trace collector",
                             "type": "string",
                             "default": "0.0.0.0:4317",
-                            "x-env-variable": ["OPENFGA_TRACE_OTLP_ENDPOINT", "OPENFGA_TRACE_OTLP_ENDPOINT"]
+                            "x-env-variable": ["OPENFGA_TRACE_OTLP_ENDPOINT", "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", "OTEL_EXPORTER_OTLP_ENDPOINT"]
                         },
                         "tls": {
                             "type": "object",
