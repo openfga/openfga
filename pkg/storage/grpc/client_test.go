@@ -805,6 +805,19 @@ func setupTestClientServerWithErrorDatastore(t *testing.T, errorToReturn error) 
 	return client, cleanup
 }
 
+func TestNewClient_TLS_Error(t *testing.T) {
+	config := ClientConfig{
+		Addr:        "localhost:8080",
+		TLSCertPath: "/path/to/cert",
+		// Missing TLSKeyPath
+	}
+
+	client, err := NewClient(config)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "both TLS certificate and key paths must be provided together")
+	require.Nil(t, client)
+}
+
 func TestClientReadAuthorizationModel(t *testing.T) {
 	client, datastore, cleanup := SetupTestClientServer(t)
 	defer cleanup()
