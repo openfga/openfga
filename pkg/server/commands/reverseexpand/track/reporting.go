@@ -1,18 +1,18 @@
-package reverseexpand
+package track
 
 import (
 	"sync"
 	"sync/atomic"
 )
 
-type tracker interface {
+type Tracker interface {
 	Add(int64) int64
 	Load() int64
 }
 
 type echoTracker struct {
 	local  atomic.Int64
-	parent tracker
+	parent Tracker
 }
 
 func (t *echoTracker) Add(i int64) int64 {
@@ -27,7 +27,7 @@ func (t *echoTracker) Load() int64 {
 	return t.local.Load()
 }
 
-func newEchoTracker(parent tracker) tracker {
+func NewEchoTracker(parent Tracker) Tracker {
 	return &echoTracker{
 		parent: parent,
 	}

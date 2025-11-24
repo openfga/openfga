@@ -5,6 +5,7 @@ import (
 	"errors"
 	"iter"
 	"maps"
+	"math"
 	"runtime"
 	"strings"
 	"sync"
@@ -21,6 +22,9 @@ import (
 	"github.com/openfga/openfga/internal/checkutil"
 	"github.com/openfga/openfga/internal/seq"
 	"github.com/openfga/openfga/internal/validation"
+	"github.com/openfga/openfga/pkg/server/commands/reverseexpand/containers"
+	"github.com/openfga/openfga/pkg/server/commands/reverseexpand/pipe"
+	"github.com/openfga/openfga/pkg/server/commands/reverseexpand/track"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
@@ -52,52 +56,32 @@ var (
 	nodeTypeSpecificTypeWildcard    = weightedGraph.SpecificTypeWildcard
 )
 
-func handleIdentity(_ context.Context, _ *Edge, items []Item) iter.Seq[Item] {
-	return seq.Sequence(items...)
-}
-
-func handleLeafNode(node *Node) edgeHandler {
-	return func(_ context.Context, _ *Edge, items []Item) iter.Seq[Item] {
-		objectParts := strings.Split(node.GetLabel(), "#")
-		if len(objectParts) < 1 {
-			return seq.Sequence(Item{Err: errors.New("empty label in node")})
-		}
-
-		objectType := objectParts[0]
-
-		results := seq.Transform(seq.Sequence(items...), func(item Item) Item {
-			var value string
-
-			switch node.GetNodeType() {
-			case nodeTypeSpecificTypeWildcard:
-				value = ""
-			case nodeTypeSpecificType, nodeTypeSpecificTypeAndRelation:
-				value = ":" + item.Value
-			default:
-				return Item{Err: errors.New("unsupported leaf node type")}
-			}
-			item.Value = objectType + value
-			return item
-		})
-		return results
-	}
-}
-
-func handleUnsupported(_ context.Context, _ *Edge, _ []Item) iter.Seq[Item] {
-	return seq.Sequence(Item{Err: errors.New("unsupported state")})
+func handleIdentity(_ context.Context, _ *Edge, items []string) iter.Seq[Item] {
+	return seq.Transform(seq.Sequence(items...), strToItem)
 }
 
 func NewPipeline(backend *Backend, options ...PipelineOption) *Pipeline {
 	p := &Pipeline{
-		backend:   backend,
-		chunkSize: 100,
-		numProcs:  3,
+		backend:    backend,
+		bufferSize: 100,
+		chunkSize:  100,
+		numProcs:   3,
 	}
 
 	for _, option := range options {
 		option(p)
 	}
 	return p
+}
+
+func WithBufferSize(size int) PipelineOption {
+	if size < 1 {
+		size = 1
+	}
+
+	return func(p *Pipeline) {
+		p.bufferSize = size
+	}
 }
 
 func WithChunkSize(size int) PipelineOption {
@@ -120,6 +104,17 @@ func WithNumProcs(num int) PipelineOption {
 	}
 }
 
+type message[T any] struct {
+	Value  T
+	finite func()
+}
+
+func (m *message[T]) Done() {
+	if m.finite != nil {
+		m.finite()
+	}
+}
+
 // Backend is a struct that serves as a container for all backend elements
 // necessary for creating and running a `Pipeline`.
 type Backend struct {
@@ -133,7 +128,7 @@ type Backend struct {
 
 // handleDirectEdge is a function that interprets input on a direct edge and provides output from
 // a query to the backend datastore.
-func (b *Backend) handleDirectEdge(ctx context.Context, edge *Edge, items []Item) iter.Seq[Item] {
+func (b *Backend) handleDirectEdge(ctx context.Context, edge *Edge, items []string) iter.Seq[Item] {
 	parts := strings.Split(edge.GetRelationDefinition(), "#")
 	nodeType := parts[0]
 	nodeRelation := parts[1]
@@ -148,16 +143,9 @@ func (b *Backend) handleDirectEdge(ctx context.Context, edge *Edge, items []Item
 
 	var userFilter []*openfgav1.ObjectRelation
 
-	var errs []Item
-
 	for _, item := range items {
-		if item.Err != nil {
-			errs = append(errs, item)
-			continue
-		}
-
 		userFilter = append(userFilter, &openfgav1.ObjectRelation{
-			Object:   item.Value,
+			Object:   item,
 			Relation: userRelation,
 		})
 	}
@@ -176,15 +164,12 @@ func (b *Backend) handleDirectEdge(ctx context.Context, edge *Edge, items []Item
 		results = emptySequence
 	}
 
-	if len(errs) > 0 {
-		results = seq.Flatten(seq.Sequence(errs...), results)
-	}
 	return results
 }
 
 // handleTTUEdge is a function that interprets input on a TTU edge and provides output from
 // a query to the backend datastore.
-func (b *Backend) handleTTUEdge(ctx context.Context, edge *Edge, items []Item) iter.Seq[Item] {
+func (b *Backend) handleTTUEdge(ctx context.Context, edge *Edge, items []string) iter.Seq[Item] {
 	parts := strings.Split(edge.GetTuplesetRelation(), "#")
 	if len(parts) < 2 {
 		return seq.Sequence(Item{Err: errors.New("invalid tupleset relation")})
@@ -223,16 +208,9 @@ func (b *Backend) handleTTUEdge(ctx context.Context, edge *Edge, items []Item) i
 
 	var userFilter []*openfgav1.ObjectRelation
 
-	var errs []Item
-
 	for _, item := range items {
-		if item.Err != nil {
-			errs = append(errs, item)
-			continue
-		}
-
 		userFilter = append(userFilter, &openfgav1.ObjectRelation{
-			Object:   item.Value,
+			Object:   item,
 			Relation: "",
 		})
 	}
@@ -251,9 +229,6 @@ func (b *Backend) handleTTUEdge(ctx context.Context, edge *Edge, items []Item) i
 		results = emptySequence
 	}
 
-	if len(errs) > 0 {
-		results = seq.Flatten(seq.Sequence(errs...), results)
-	}
 	return results
 }
 
@@ -344,220 +319,129 @@ func (b *Backend) query(ctx context.Context, input queryInput) iter.Seq[Item] {
 type baseResolver struct {
 	// reporter is a Reporter provided when registering with the baseResolver's StatusPool. The registration happens
 	// once, when the baseResolver is created, so this value will remain constant for the lifetime of the instance.
-	reporter Reporter
-
-	ctx context.Context
+	reporter track.Reporter
 
 	// interpreter is an `interpreter` that transforms a sender's input into output which it broadcasts to all
 	// of the parent worker's listeners.
 	interpreter interpreter
-
-	// mutexes each protect map access for a buffer within inBuffers at the same index.
-	mutexes []sync.Mutex
-
-	// inBuffers contains a slice of maps, used as hash sets, for deduplicating each individual sender's
-	// input feed. Each buffer's index corresponds to its associated sender's index. Each sender needs
-	// a separate deduplication buffer because it is valid for the same object to be receieved on multiple
-	// edges producing to the same node. This is specifically true in the case of recursive edges, where
-	// a single resolver may have multiple recursive edges that must receive the same objects.
-	inBuffers []map[string]struct{}
-
-	errBuffers []map[string]struct{}
-
-	// outMu protects map access to outBuffer.
-	outMu sync.Mutex
-
-	// outBuffer contains a map, used as a hash set, for deduplicating each resolver's output. A single
-	// resolver should only output an object once.
-	outBuffer map[string]struct{}
-
-	// status is a *StatusPool instance that tracks the status of the baseResolver instance. This *StatusPool value
-	// may or may not be shared with other resolver instances and workers. When the current resolver is part of a
-	// recursive chain, then this *StatusPool value is shared with each of the participating resolvers. The status
-	// of a baseResolver is assumed to be `true` from the point of initialization, until all "standard" senders have completed.
-	// A baseResolver's status can be `false` while "recursive" senders are still actively processing messages. In that
-	// case, the parent worker is kept alive by the overall status of the *StatusPool instance, and the count of messages
-	// in-flight.
-	status *StatusPool
 }
 
-func (r *baseResolver) process(ndx int, snd *sender, listeners []*listener) loopFunc {
-	return func(msg message[group]) bool {
-		// Loop while the sender has a potential to yield a message.
+func (r *baseResolver) process(ctx context.Context, snd *sender, lst pipe.Tx[[]Item], outputBuffer *sync.Map) int64 {
+	var sentCount int64
+	var inputBuffer sync.Map
+
+	edge := snd.Edge
+	isCyclical := edge != nil && (len(edge.GetRecursiveRelation()) > 0 || edge.IsPartOfTupleCycle())
+
+	edgeTo := "nil"
+	edgeFrom := "nil"
+
+	if edge != nil {
+		edgeTo = edge.GetTo().GetUniqueLabel()
+		edgeFrom = edge.GetFrom().GetUniqueLabel()
+	}
+
+	attrs := []attribute.KeyValue{
+		attribute.String("edge.to", edgeTo),
+		attribute.String("edge.from", edgeFrom),
+	}
+
+	var msg message[[]Item]
+
+	for snd.Recv(&msg) {
 		var results iter.Seq[Item]
-		var outGroup group
-		var items, unseen []Item
+		var items []Item
+		var unseen []string
 
-		attrs := []attribute.KeyValue{
-			attribute.String("resolver", "base"),
-			attribute.Int("item.count", len(msg.Value.Items)),
-			attribute.Int("sender.index", ndx),
+		messageAttrs := []attribute.KeyValue{
+			attribute.Int("items.count", len(msg.Value)),
 		}
 
-		edgeTo := "nil"
-		edgeFrom := "nil"
+		messageAttrs = append(messageAttrs, attrs...)
 
-		edge := snd.edge()
-		if edge != nil {
-			edgeTo = edge.GetTo().GetUniqueLabel()
-			edgeFrom = edge.GetFrom().GetUniqueLabel()
-		}
+		ctx, span := pipelineTracer.Start(ctx, "message.received", trace.WithAttributes(messageAttrs...))
 
-		attrs = append(
-			attrs,
-			attribute.String("edge.to", edgeTo),
-			attribute.String("edge.from", edgeFrom),
-		)
-
-		ctx, span := pipelineTracer.Start(r.ctx, "message.received", trace.WithAttributes(attrs...))
-		defer span.End()
-
-		// If the edge is recursive or part of a tuple cycle,
-		// deduplicate items received in this group based on the buffer for this sender.
-		if edge != nil && (len(edge.GetRecursiveRelation()) > 0 || edge.IsPartOfTupleCycle()) {
-			for _, item := range msg.Value.Items {
-				if item.Err != nil {
-					r.mutexes[ndx].Lock()
-					if _, ok := r.errBuffers[ndx][item.Err.Error()]; ok {
-						r.mutexes[ndx].Unlock()
-						continue
-					}
-					r.errBuffers[ndx][item.Err.Error()] = struct{}{}
-					r.mutexes[ndx].Unlock()
-					unseen = append(unseen, item)
-					continue
-				}
-
-				r.mutexes[ndx].Lock()
-				if _, ok := r.inBuffers[ndx][item.Value]; ok {
-					r.mutexes[ndx].Unlock()
-					continue
-				}
-				r.inBuffers[ndx][item.Value] = struct{}{}
-				r.mutexes[ndx].Unlock()
-				unseen = append(unseen, item)
+		for _, item := range msg.Value {
+			if item.Err != nil {
+				items = append(items, item)
+				continue
 			}
-		} else {
-			unseen = msg.Value.Items
+
+			if isCyclical {
+				if _, loaded := inputBuffer.LoadOrStore(item.Value, struct{}{}); !loaded {
+					unseen = append(unseen, item.Value)
+				}
+				continue
+			}
+			unseen = append(unseen, item.Value)
 		}
 
 		// If there are no unseen items, skip processing.
 		if len(unseen) == 0 {
-			msg.done()
-			return true
+			goto AfterInterpret
 		}
 
-		results = r.interpreter.interpret(ctx, edge, unseen)
+		results = r.interpreter.Interpret(ctx, edge, unseen)
 
 		// Deduplicate the output and potentially send in chunks.
 		for item := range results {
-			if r.ctx.Err() != nil {
-				break
-			}
-
 			if item.Err != nil {
-				goto AfterDedup
-			}
-
-			r.outMu.Lock()
-			if _, ok := r.outBuffer[item.Value]; ok {
-				r.outMu.Unlock()
-				continue
-			}
-			r.outBuffer[item.Value] = struct{}{}
-			r.outMu.Unlock()
-
-		AfterDedup:
-			items = append(items, item)
-
-			if len(items) < snd.chunks() || snd.chunks() == 0 {
+				items = append(items, item)
 				continue
 			}
 
-			g := group{
-				Items: items,
-			}
-
-			items = nil
-
-			for _, lst := range listeners {
-				lst.send(g)
+			if _, loaded := outputBuffer.LoadOrStore(item.Value, struct{}{}); !loaded {
+				items = append(items, item)
 			}
 		}
 
-		if len(items) == 0 {
-			msg.done()
-			return true
-		}
-
-		outGroup.Items = items
-
-		for _, lst := range listeners {
-			lst.send(outGroup)
-		}
-
-		msg.done()
-		return true
+	AfterInterpret:
+		lst.Send(items)
+		sentCount += int64(len(items))
+		msg.Done()
+		span.End()
 	}
+	return sentCount
 }
 
-func (r *baseResolver) resolve(senders []*sender, listeners []*listener) {
-	r.mutexes = make([]sync.Mutex, len(senders))
-	r.inBuffers = make([]map[string]struct{}, len(senders))
-	r.errBuffers = make([]map[string]struct{}, len(senders))
-	r.outBuffer = make(map[string]struct{})
+func (r *baseResolver) Resolve(ctx context.Context, senders []*sender, lst pipe.Tx[[]Item]) {
+	ctx, span := pipelineTracer.Start(ctx, "baseResolver.Resolve")
+	defer span.End()
 
-	for ndx := range len(senders) {
-		r.inBuffers[ndx] = make(map[string]struct{})
-		r.errBuffers[ndx] = make(map[string]struct{})
-	}
+	var outputBuffer sync.Map
+	defer outputBuffer.Clear()
+
+	var sentCount atomic.Int64
 
 	// Any senders with a non-recursive edge will be processed in the "standard" queue.
-	var standard []func()
+	var wgStandard sync.WaitGroup
 
 	// Any senders with a recursive edge will be processed in the "recursive" queue.
-	var recursive []func()
+	var wgRecursive sync.WaitGroup
 
-	for ndx := range len(senders) {
-		snd := senders[ndx]
-
+	for _, snd := range senders {
 		// Any sender with an edge that has a value for its recursive relation will be treated
 		// as recursive, so long as it is not part of a tuple cycle. When the edge is part of
 		// a tuple cycle, treating it as recursive would cause the parent worker to be closed
 		// too early.
-		isRecursive := snd.edge() != nil && len(snd.edge().GetRecursiveRelation()) > 0 && !snd.edge().IsPartOfTupleCycle()
+		isRecursive := snd.Edge != nil && len(snd.Edge.GetRecursiveRelation()) > 0 && !snd.Edge.IsPartOfTupleCycle()
 
-		for range snd.procs() {
-			proc := func() {
-				snd.loop(r.process(ndx, snd, listeners))
-			}
-
+		for range snd.NumProcs {
 			if isRecursive {
-				recursive = append(recursive, proc)
+				wgRecursive.Add(1)
+				go func() {
+					defer wgRecursive.Done()
+					sentCount.Add(r.process(ctx, snd, lst, &outputBuffer))
+				}()
 				continue
 			}
-			standard = append(standard, proc)
+
+			wgStandard.Add(1)
+			go func() {
+				defer wgStandard.Done()
+				sentCount.Add(r.process(ctx, snd, lst, &outputBuffer))
+			}()
 		}
-	}
-
-	var wgStandard sync.WaitGroup
-
-	for _, proc := range standard {
-		wgStandard.Add(1)
-		go func() {
-			defer wgStandard.Done()
-			proc()
-		}()
-	}
-
-	var wgRecursive sync.WaitGroup
-
-	for _, proc := range recursive {
-		wgRecursive.Add(1)
-		go func() {
-			defer wgRecursive.Done()
-			proc()
-		}()
 	}
 
 	// All standard senders are guaranteed to end at some point, with the exception of the presence
@@ -571,162 +455,136 @@ func (r *baseResolver) resolve(senders []*sender, listeners []*listener) {
 	// Recursive senders will process infinitely until the parent worker's watchdog goroutine kills
 	// them.
 	wgRecursive.Wait()
+
+	span.SetAttributes(attribute.Int64("items.count", sentCount.Load()))
 }
 
-type edgeHandler func(context.Context, *Edge, []Item) iter.Seq[Item]
+type edgeHandler func(context.Context, *Edge, []string) iter.Seq[Item]
 
 type exclusionResolver struct {
-	reporter    Reporter
-	ctx         context.Context
+	reporter    track.Reporter
 	interpreter interpreter
-	status      *StatusPool
-	trk         tracker
 }
 
-func (r *exclusionResolver) resolve(senders []*sender, listeners []*listener) {
-	defer func() {
-		r.trk.Add(-1)
-		r.reporter.Report(false)
-	}()
+func (r *exclusionResolver) process(ctx context.Context, snd *sender, items *containers.Bag[Item], cleanup *containers.Bag[func()]) {
+	edge := snd.Edge
 
-	r.trk.Add(1)
+	edgeTo := "nil"
+	edgeFrom := "nil"
+
+	if edge != nil {
+		edgeTo = edge.GetTo().GetUniqueLabel()
+		edgeFrom = edge.GetFrom().GetUniqueLabel()
+	}
+
+	attrs := []attribute.KeyValue{
+		attribute.String("edge.to", edgeTo),
+		attribute.String("edge.from", edgeFrom),
+	}
+
+	var msg message[[]Item]
+
+	for snd.Recv(&msg) {
+		var results iter.Seq[Item]
+		var unseen []string
+
+		messageAttrs := []attribute.KeyValue{
+			attribute.Int("items.count", len(msg.Value)),
+		}
+
+		messageAttrs = append(messageAttrs, attrs...)
+
+		ctx, span := pipelineTracer.Start(ctx, "message.received", trace.WithAttributes(messageAttrs...))
+
+		for _, item := range msg.Value {
+			if item.Err != nil {
+				items.Add(item)
+				continue
+			}
+			unseen = append(unseen, item.Value)
+		}
+
+		// If there are no unseen items, skip processing.
+		if len(unseen) == 0 {
+			goto AfterInterpret
+		}
+
+		results = r.interpreter.Interpret(ctx, edge, unseen)
+
+		for item := range results {
+			items.Add(item)
+		}
+
+	AfterInterpret:
+		cleanup.Add(msg.Done)
+		span.End()
+	}
+}
+
+func (r *exclusionResolver) Resolve(ctx context.Context, senders []*sender, lst pipe.Tx[[]Item]) {
+	ctx, span := pipelineTracer.Start(ctx, "exclusionResolver.Resolve")
+	defer span.End()
+
+	defer r.reporter.Report(false)
 
 	if len(senders) != 2 {
 		panic("exclusion resolver requires two senders")
 	}
 	var wg sync.WaitGroup
 
-	included := make(map[string]struct{})
-	excluded := make(map[string]struct{})
+	var included containers.Bag[Item]
+	var excluded containers.Bag[Item]
 
-	var includedErrs []Item
-	var excludedErrs []Item
+	var cleanup containers.Bag[func()]
 
-	var procIncluded loopFunc
-	var procExcluded loopFunc
-
-	procIncluded = func(msg message[group]) bool {
-		attrs := []attribute.KeyValue{
-			attribute.String("resolver", "exclusion"),
-			attribute.Int("item.count", len(msg.Value.Items)),
-			attribute.Int("sender.index", 0),
-		}
-
-		edgeTo := "nil"
-		edgeFrom := "nil"
-
-		if senders[0].edge() != nil {
-			edgeTo = senders[0].edge().GetTo().GetUniqueLabel()
-			edgeFrom = senders[0].edge().GetFrom().GetUniqueLabel()
-		}
-
-		attrs = append(
-			attrs,
-			attribute.String("edge.to", edgeTo),
-			attribute.String("edge.from", edgeFrom),
-		)
-
-		ctx, span := pipelineTracer.Start(r.ctx, "message.received", trace.WithAttributes(attrs...))
-		defer span.End()
-
-		results := r.interpreter.interpret(ctx, senders[0].edge(), msg.Value.Items)
-
-		for item := range results {
-			if r.ctx.Err() != nil {
-				break
-			}
-
-			if item.Err != nil {
-				includedErrs = append(includedErrs, item)
-				continue
-			}
-			included[item.Value] = struct{}{}
-		}
-		msg.done()
-		return true
+	for range senders[0].NumProcs {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			r.process(ctx, senders[0], &included, &cleanup)
+		}()
 	}
 
-	procExcluded = func(msg message[group]) bool {
-		attrs := []attribute.KeyValue{
-			attribute.String("resolver", "exclusion"),
-			attribute.Int("item.count", len(msg.Value.Items)),
-			attribute.Int("sender.index", 1),
-		}
-
-		edgeTo := "nil"
-		edgeFrom := "nil"
-
-		if senders[1].edge() != nil {
-			edgeTo = senders[1].edge().GetTo().GetUniqueLabel()
-			edgeFrom = senders[1].edge().GetFrom().GetUniqueLabel()
-		}
-
-		attrs = append(
-			attrs,
-			attribute.String("edge.to", edgeTo),
-			attribute.String("edge.from", edgeFrom),
-		)
-
-		ctx, span := pipelineTracer.Start(r.ctx, "message.received", trace.WithAttributes(attrs...))
-		defer span.End()
-
-		results := r.interpreter.interpret(ctx, senders[1].edge(), msg.Value.Items)
-
-		for item := range results {
-			if item.Err != nil {
-				excludedErrs = append(excludedErrs, item)
-				continue
-			}
-			excluded[item.Value] = struct{}{}
-		}
-		msg.done()
-		return true
+	for range senders[1].NumProcs {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			r.process(ctx, senders[1], &excluded, &cleanup)
+		}()
 	}
-
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		senders[0].loop(procIncluded)
-	}()
-
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		senders[1].loop(procExcluded)
-	}()
 
 	wg.Wait()
 
-	var allErrs []Item
-
-	allErrs = append(allErrs, includedErrs...)
-	allErrs = append(allErrs, excludedErrs...)
-
-	filteredSeq := seq.Filter(maps.Keys(included), func(v string) bool {
-		_, ok := excluded[v]
-		return !ok
-	})
-
-	flattenedSeq := seq.Flatten(seq.Sequence(allErrs...), seq.Transform(filteredSeq, strToItem))
-
 	var items []Item
 
-	for item := range flattenedSeq {
-		items = append(items, item)
+	exclusions := make(map[string]struct{})
+
+	for item := range excluded.Seq() {
+		if item.Err != nil {
+			items = append(items, item)
+			continue
+		}
+		exclusions[item.Value] = struct{}{}
 	}
 
-	outGroup := group{
-		Items: items,
+	for item := range included.Seq() {
+		if item.Err != nil {
+			items = append(items, item)
+			continue
+		}
+
+		if _, ok := exclusions[item.Value]; !ok {
+			items = append(items, item)
+		}
 	}
 
-	for _, lst := range listeners {
-		lst.send(outGroup)
-	}
-}
+	lst.Send(items)
 
-// group is a struct that acts as a container for a set of `Item` values.
-type group struct {
-	Items []Item
+	span.SetAttributes(attribute.Int("items.count", len(items)))
+
+	for fn := range cleanup.Seq() {
+		fn()
+	}
 }
 
 // Item is a struct that contains an object `string` as its `Value` or an
@@ -739,145 +597,197 @@ type Item struct {
 
 // interpreter is an interface that exposes a method for interpreting input for an edge into output.
 type interpreter interface {
-	interpret(ctx context.Context, edge *Edge, items []Item) iter.Seq[Item]
+	Interpret(ctx context.Context, edge *Edge, items []string) iter.Seq[Item]
 }
 
 type intersectionResolver struct {
-	reporter    Reporter
-	ctx         context.Context
+	reporter    track.Reporter
 	interpreter interpreter
-	status      *StatusPool
-	trk         tracker
 }
 
-func (r *intersectionResolver) resolve(senders []*sender, listeners []*listener) {
-	defer func() {
-		r.trk.Add(-1)
-		r.reporter.Report(false)
-	}()
+func (r *intersectionResolver) process(ctx context.Context, snd *sender, items *containers.Bag[Item], cleanup *containers.Bag[func()]) {
+	edge := snd.Edge
 
-	r.trk.Add(1)
+	edgeTo := "nil"
+	edgeFrom := "nil"
+
+	if edge != nil {
+		edgeTo = edge.GetTo().GetUniqueLabel()
+		edgeFrom = edge.GetFrom().GetUniqueLabel()
+	}
+
+	attrs := []attribute.KeyValue{
+		attribute.String("edge.to", edgeTo),
+		attribute.String("edge.from", edgeFrom),
+	}
+
+	var msg message[[]Item]
+
+	for snd.Recv(&msg) {
+		var results iter.Seq[Item]
+		var unseen []string
+
+		messageAttrs := []attribute.KeyValue{
+			attribute.Int("items.count", len(msg.Value)),
+		}
+
+		messageAttrs = append(messageAttrs, attrs...)
+
+		ctx, span := pipelineTracer.Start(ctx, "message.received", trace.WithAttributes(messageAttrs...))
+
+		for _, item := range msg.Value {
+			if item.Err != nil {
+				items.Add(item)
+				continue
+			}
+			unseen = append(unseen, item.Value)
+		}
+
+		// If there are no unseen items, skip processing.
+		if len(unseen) == 0 {
+			goto AfterInterpret
+		}
+
+		results = r.interpreter.Interpret(ctx, edge, unseen)
+
+		for item := range results {
+			items.Add(item)
+		}
+
+	AfterInterpret:
+		cleanup.Add(msg.Done)
+		span.End()
+	}
+}
+
+func (r *intersectionResolver) Resolve(ctx context.Context, senders []*sender, lst pipe.Tx[[]Item]) {
+	ctx, span := pipelineTracer.Start(ctx, "intersectionResolver.Resolve")
+	defer span.End()
+
+	defer r.reporter.Report(false)
 
 	var wg sync.WaitGroup
 
-	objects := make(map[string]struct{})
-	output := make([]map[string]struct{}, len(senders))
+	bags := make([]containers.Bag[Item], len(senders))
 
-	for i := range senders {
-		output[i] = make(map[string]struct{})
-	}
-
-	errs := make([][]Item, len(senders))
+	var cleanup containers.Bag[func()]
 
 	for i, snd := range senders {
-		wg.Add(1)
-		go func(i int, snd *sender) {
-			defer wg.Done()
-
-			snd.loop(func(msg message[group]) bool {
-				attrs := []attribute.KeyValue{
-					attribute.String("resolver", "intersection"),
-					attribute.Int("item.count", len(msg.Value.Items)),
-					attribute.Int("sender.index", i),
-				}
-
-				edgeTo := "nil"
-				edgeFrom := "nil"
-
-				if snd.edge() != nil {
-					edgeTo = snd.edge().GetTo().GetUniqueLabel()
-					edgeFrom = snd.edge().GetFrom().GetUniqueLabel()
-				}
-
-				attrs = append(
-					attrs,
-					attribute.String("edge.to", edgeTo),
-					attribute.String("edge.from", edgeFrom),
-				)
-
-				ctx, span := pipelineTracer.Start(r.ctx, "message.received", trace.WithAttributes(attrs...))
-				defer span.End()
-
-				// If there are no items, skip processing
-				if len(msg.Value.Items) == 0 {
-					msg.done()
-					return true
-				}
-
-				results := r.interpreter.interpret(ctx, snd.edge(), msg.Value.Items)
-
-				for item := range results {
-					if r.ctx.Err() != nil {
-						break
-					}
-
-					if item.Err != nil {
-						errs[i] = append(errs[i], item)
-					}
-					output[i][item.Value] = struct{}{}
-				}
-				msg.done()
-				return true
-			})
-		}(i, snd)
+		for range snd.NumProcs {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				r.process(ctx, snd, &bags[i], &cleanup)
+			}()
+		}
 	}
 	wg.Wait()
 
-OutputLoop:
-	for obj := range output[0] {
-		for i := 1; i < len(output); i++ {
-			if _, ok := output[i][obj]; !ok {
-				continue OutputLoop
-			}
-		}
-		objects[obj] = struct{}{}
-	}
-
-	var allErrs []Item
-
-	for _, errList := range errs {
-		allErrs = append(allErrs, errList...)
-	}
-
-	seq := seq.Flatten(seq.Sequence(allErrs...), seq.Transform(maps.Keys(objects), strToItem))
-
 	var items []Item
 
-	for item := range seq {
+	output := make(map[string]struct{})
+
+	for item := range bags[0].Seq() {
+		if item.Err != nil {
+			items = append(items, item)
+			continue
+		}
+		output[item.Value] = struct{}{}
+	}
+
+	for i := 1; i < len(bags); i++ {
+		found := make(map[string]struct{}, len(output))
+		for item := range bags[i].Seq() {
+			if item.Err != nil {
+				items = append(items, item)
+				continue
+			}
+
+			if _, ok := output[item.Value]; ok {
+				found[item.Value] = struct{}{}
+			}
+		}
+		output = found
+	}
+
+	itemSeq := seq.Transform(maps.Keys(output), strToItem)
+
+	for item := range itemSeq {
 		items = append(items, item)
 	}
 
-	outGroup := group{
-		Items: items,
-	}
+	lst.Send(items)
 
-	for _, lst := range listeners {
-		lst.send(outGroup)
+	span.SetAttributes(attribute.Int("items.count", len(items)))
+
+	for fn := range cleanup.Seq() {
+		fn()
 	}
 }
 
 // listener is a struct that contains fields relevant to the listening
 // end of a pipeline connection.
 type listener struct {
-	cons consumer[group]
-
-	// node is the weighted graph node that is listening.
-	node *Node
+	Tracker   track.Tracker
+	ChunkSize int
+	cons      []pipe.Tx[message[[]Item]]
 }
 
-func (lst *listener) send(g group) {
-	lst.cons.send(g)
+func (l *listener) inc(n int64) {
+	if l.Tracker != nil {
+		l.Tracker.Add(n)
+	}
 }
 
-func (lst *listener) cancel() {
-	lst.cons.cancel()
+func (l *listener) pack(items []Item) message[[]Item] {
+	l.inc(1)
+	return message[[]Item]{
+		Value: items,
+		finite: sync.OnceFunc(func() {
+			l.inc(-1)
+		}),
+	}
 }
 
-func (lst *listener) close() {
-	lst.cons.close()
+func (l *listener) Add(cons ...pipe.Tx[message[[]Item]]) {
+	l.cons = append(l.cons, cons...)
 }
 
-type loopFunc func(message[group]) bool
+func (l *listener) send(items []Item) bool {
+	var sent bool
+
+	output := make([]Item, len(items))
+	copy(output, items)
+
+	for _, con := range l.cons {
+		msg := l.pack(output)
+		if !con.Send(msg) {
+			msg.Done()
+		} else {
+			sent = true
+		}
+	}
+	return sent
+}
+
+func (l *listener) Send(items []Item) bool {
+	var sent bool
+
+	for len(items) > 0 {
+		ext := int(math.Min(float64(l.ChunkSize), float64(len(items))))
+		if l.send(items[:ext]) {
+			sent = true
+		}
+		items = items[ext:]
+	}
+	return sent
+}
+
+func (l *listener) Close() {
+	for _, con := range l.cons {
+		con.Close()
+	}
+}
 
 type omniInterpreter struct {
 	hndNil           edgeHandler
@@ -889,7 +799,7 @@ type omniInterpreter struct {
 	hndTTULogical    edgeHandler
 }
 
-func (o *omniInterpreter) interpret(ctx context.Context, edge *Edge, items []Item) iter.Seq[Item] {
+func (o *omniInterpreter) Interpret(ctx context.Context, edge *Edge, items []string) iter.Seq[Item] {
 	var results iter.Seq[Item]
 
 	if edge == nil {
@@ -916,25 +826,61 @@ func (o *omniInterpreter) interpret(ctx context.Context, edge *Edge, items []Ite
 	return results
 }
 
+// Pipeline is a struct that is used to construct logical pipelines that traverse all connections
+// within a graph from a given source type and relation to a given target type and identifier.
+//
+// A pipeline consists of a variable number of workers that process data concurrently. Within
+// a pipeline, dataflows from the worker that receives the initial input down to any workers
+// that have a subscription to its output. Data continues to flow into downstream workers
+// through their subscriptions to upstream workers until it arrives at the consumer of the
+// pipeline.
 type Pipeline struct {
-	backend   *Backend
+	// provides operations that require interacting with dependencies
+	// such as a database or a graph.
+	backend *Backend
+
+	// bufferSize is a value that indicates the maximum size of the
+	// message buffer that exists between each worker and its subscribers.
+	// When a buffer becomes full, send operations on that subscription
+	// will block until messages are removed from the buffer or the
+	// subscription is closed.
+	//
+	// The default value is 100. This value can be changed by constructing
+	// a pipeline using NewPipeline and providing the option WithBufferSize.
+	bufferSize int
+
+	// chunkSize is a value that indicates the maximum size of tuples
+	// accummulated from a datastore query before sending the tuples
+	// as a message to the next node in the pipeline.
+	//
+	// As an example, if the chunkSize is set to 100, then a new message
+	// is sent for every 100 tuples returned from a datastore query.
+	//
+	// The default value is 100. This value can be changed by constructing
+	// a pipeline using NewPipeline and providing the option WithChunkSize.
 	chunkSize int
-	numProcs  int
+
+	// numProcs is a value that indicates the maximum number of goroutines
+	// that will be allocated to processing each subscription for a pipeline
+	// worker.
+	//
+	// The default value is 3. This value can be changed by constructing
+	// a pipeline using NewPipeline and providing the option WithNumProcs.
+	numProcs int
 }
 
+// Build is a function that constructs the actual pipeline which is returned as an iter.Seq[Item].
+// The pipeline will not begin generating values until the returned sequence is iterated over. This
+// is to prevent unnecessary work and resource accummulation in the event that the sequence is never
+// iterated.
 func (p *Pipeline) Build(ctx context.Context, source Source, target Target) iter.Seq[Item] {
-	ctxParent, span := pipelineTracer.Start(ctx, "pipeline")
+	ctx, span := pipelineTracer.Start(ctx, "pipeline.build")
+	defer span.End()
 
-	ctxNoCancel := context.WithoutCancel(ctxParent)
-	ctxCancel, cancel := context.WithCancel(ctxNoCancel)
+	ctx, cancel := context.WithCancel(ctx)
 
 	pth := path{
-		// Removing the cancel on this context ensures that
-		// workers created during `path::resolve` will not
-		// end when the parent context cancels. This is important
-		// because it ensures that the watchdog goroutine is
-		// responsible for shutting down workers.
-		ctx:     ctxNoCancel,
+		ctx:     ctx,
 		pipe:    p,
 		workers: make(map[*Node]*worker),
 	}
@@ -945,64 +891,71 @@ func (p *Pipeline) Build(ctx context.Context, source Source, target Target) iter
 		panic("no such source worker")
 	}
 
-	var wg sync.WaitGroup
-
-	results := sourceWorker.subscribe(nil)
-
-	for _, w := range pth.workers {
-		w.start()
-	}
-
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-
-		for {
-			var inactiveCount int
-
-			for _, w := range pth.workers {
-				if !w.active() {
-					w.close()
-					inactiveCount++
-				}
-			}
-
-			if inactiveCount == len(pth.workers) {
-				break
-			}
-
-			messageCount := pth.trk.Load()
-
-			if messageCount < 1 || ctxCancel.Err() != nil {
-				// cancel all running workers
-				for _, w := range pth.workers {
-					w.cancel()
-				}
-
-				// wait for all workers to finish
-				for _, w := range pth.workers {
-					w.wait()
-				}
-				break
-			}
-
-			runtime.Gosched()
-		}
-	}()
+	results := sourceWorker.Subscribe(p.bufferSize)
 
 	return func(yield func(Item) bool) {
+		var wg sync.WaitGroup
+		ctx, span := pipelineTracer.Start(ctx, "pipeline.iterate")
 		defer span.End()
 		defer wg.Wait()
 		defer cancel()
 
-		for msg := range results.seq(ctxParent) {
-			for _, item := range msg.Value.Items {
+		// Watchdog goroutine is started here to ensure that no
+		// goroutines are created before the caller has begun to
+		// iterate over the pipeline's sequence.
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+
+			for {
+				var inactiveCount int
+
+				for _, w := range pth.workers {
+					if !w.Active() {
+						w.Close()
+						inactiveCount++
+					}
+				}
+
+				if inactiveCount == len(pth.workers) {
+					cancel()
+				}
+
+				messageCount := pth.tracker.Load()
+
+				if messageCount < 1 {
+					cancel()
+				}
+
+				if ctx.Err() != nil {
+					// wait for all workers to finish
+					for _, w := range pth.workers {
+						w.Wait()
+					}
+					break
+				}
+
+				runtime.Gosched()
+			}
+		}()
+
+		// Workers are started here so that the pipeline does
+		// not begin producing objects until the caller has begun
+		// to iterate over the sequence. This prevents unnecessary
+		// processing in the event that the caller decides not to
+		// iterate over the sequence.
+		for _, w := range pth.workers {
+			w.Start(ctx)
+		}
+
+		for msg := range results.Seq() {
+			for _, item := range msg.Value {
 				if !yield(item) {
-					msg.done()
+					msg.Done()
 					return
 				}
 			}
-			msg.done()
+			msg.Done()
 		}
 	}
 }
@@ -1031,23 +984,38 @@ type path struct {
 	ctx     context.Context
 	pipe    *Pipeline
 	workers map[*Node]*worker
-	trk     atomic.Int64
+	tracker atomic.Int64
 }
 
-func (p *path) resolve(source *Node, target Target, trk tracker, status *StatusPool) {
+func (p *path) pack(items []Item) message[[]Item] {
+	p.tracker.Add(1)
+	return message[[]Item]{
+		Value: items,
+		finite: sync.OnceFunc(func() {
+			p.tracker.Add(-1)
+		}),
+	}
+}
+
+func (p *path) resolve(source *Node, target Target, tracker track.Tracker, status *track.StatusPool) {
 	if _, ok := p.workers[source]; ok {
 		return
 	}
 
-	if trk == nil {
-		trk = newEchoTracker(&p.trk)
+	if tracker == nil {
+		tracker = track.NewEchoTracker(&p.tracker)
 	}
 
 	if status == nil {
-		status = new(StatusPool)
+		status = new(track.StatusPool)
 	}
 
-	w := p.worker(source, trk, status)
+	lst := listener{
+		Tracker:   tracker,
+		ChunkSize: p.pipe.chunkSize,
+	}
+
+	w := p.worker(source, &lst, tracker, status)
 
 	p.workers[source] = w
 
@@ -1055,9 +1023,9 @@ func (p *path) resolve(source *Node, target Target, trk tracker, status *StatusP
 	case nodeTypeSpecificType, nodeTypeSpecificTypeAndRelation:
 		if source == target.node {
 			// source node is the target node.
-			var grp group
-			grp.Items = []Item{{Value: target.id}}
-			w.listen(nil, newStaticProducer(&p.trk, grp), p.pipe.chunkSize, 1) // only one value to consume, so only one processor necessary.
+			items := []Item{{Value: target.Object()}}
+			m := p.pack(items)
+			w.Listen(nil, pipe.StaticRx(m), 1) // only one value to consume, so only one processor necessary.
 		}
 	case nodeTypeSpecificTypeWildcard:
 		label := source.GetLabel()
@@ -1065,9 +1033,9 @@ func (p *path) resolve(source *Node, target Target, trk tracker, status *StatusP
 
 		if source == target.node || typePart == target.node.GetLabel() {
 			// source node is the target node or has the same type as the target.
-			var grp group
-			grp.Items = []Item{{Value: "*"}}
-			w.listen(nil, newStaticProducer(&p.trk, grp), p.pipe.chunkSize, 1) // only one value to consume, so only one processor necessary.
+			items := []Item{{Value: typePart + ":*"}}
+			m := p.pack(items)
+			w.Listen(nil, pipe.StaticRx(m), 1) // only one value to consume, so only one processor necessary.
 		}
 	}
 
@@ -1077,194 +1045,72 @@ func (p *path) resolve(source *Node, target Target, trk tracker, status *StatusP
 	}
 
 	for _, edge := range edges {
-		var track tracker
-		var stat *StatusPool
+		var tracker track.Tracker
+		var stat *track.StatusPool
 
 		isRecursive := len(edge.GetRecursiveRelation()) > 0
 
 		if isRecursive {
-			track = w.trk
+			tracker = w.tracker
 			stat = status
 		}
-
-		p.resolve(edge.GetTo(), target, track, stat)
-
-		w.listen(edge, p.workers[edge.GetTo()].subscribe(source), p.pipe.chunkSize, p.pipe.numProcs)
+		p.resolve(edge.GetTo(), target, tracker, stat)
+		w.Listen(edge, p.workers[edge.GetTo()].Subscribe(p.pipe.bufferSize), p.pipe.numProcs)
 	}
 }
 
-func (p *path) worker(node *Node, trk tracker, status *StatusPool) *worker {
+func (p *path) worker(node *Node, lst *listener, tracker track.Tracker, status *track.StatusPool) *worker {
 	var w worker
-
-	nodeName := "nil"
-	if node != nil {
-		nodeName = node.GetUniqueLabel()
-	}
-
-	ctx, span := pipelineTracer.Start(p.ctx, "worker", trace.WithAttributes(attribute.String("name", nodeName)))
-
-	ctx, cancel := context.WithCancel(ctx)
-
-	w.finite = sync.OnceFunc(func() {
-		defer span.End()
-		cancel()
-		for _, lst := range w.listeners {
-			lst.close()
-		}
-	})
 
 	w.node = node
 	w.status = status
-	w.trk = trk
+	w.tracker = tracker
+	w.listener = lst
 
 	var r resolver
 
 	reporter := status.Register()
 	reporter.Report(true)
 
+	omni := &omniInterpreter{
+		hndNil:           handleIdentity,
+		hndDirect:        p.pipe.backend.handleDirectEdge,
+		hndTTU:           p.pipe.backend.handleTTUEdge,
+		hndComputed:      handleIdentity,
+		hndRewrite:       handleIdentity,
+		hndDirectLogical: handleIdentity,
+		hndTTULogical:    handleIdentity,
+	}
+
 	switch node.GetNodeType() {
-	case nodeTypeSpecificTypeAndRelation:
-		omni := &omniInterpreter{
-			hndNil:           handleLeafNode(node),
-			hndDirect:        p.pipe.backend.handleDirectEdge,
-			hndTTU:           p.pipe.backend.handleTTUEdge,
-			hndComputed:      handleIdentity,
-			hndRewrite:       handleIdentity,
-			hndDirectLogical: handleUnsupported,
-			hndTTULogical:    handleUnsupported,
-		}
-
+	case nodeTypeSpecificType,
+		nodeTypeSpecificTypeAndRelation,
+		nodeTypeSpecificTypeWildcard,
+		nodeTypeLogicalDirectGrouping,
+		nodeTypeLogicalTTUGrouping:
 		r = &baseResolver{
 			reporter:    reporter,
-			ctx:         ctx,
 			interpreter: omni,
-			status:      status,
-		}
-	case nodeTypeSpecificType:
-		omni := &omniInterpreter{
-			hndNil:           handleLeafNode(node),
-			hndDirect:        handleUnsupported,
-			hndTTU:           handleUnsupported,
-			hndComputed:      handleUnsupported,
-			hndRewrite:       handleUnsupported,
-			hndDirectLogical: handleUnsupported,
-			hndTTULogical:    handleUnsupported,
-		}
-
-		r = &baseResolver{
-			reporter:    reporter,
-			ctx:         ctx,
-			interpreter: omni,
-			status:      status,
-		}
-	case nodeTypeSpecificTypeWildcard:
-		omni := &omniInterpreter{
-			hndNil:           handleLeafNode(node),
-			hndDirect:        handleUnsupported,
-			hndTTU:           handleUnsupported,
-			hndComputed:      handleUnsupported,
-			hndRewrite:       handleUnsupported,
-			hndDirectLogical: handleUnsupported,
-			hndTTULogical:    handleUnsupported,
-		}
-
-		r = &baseResolver{
-			reporter:    reporter,
-			ctx:         ctx,
-			interpreter: omni,
-			status:      status,
 		}
 	case nodeTypeOperator:
 		switch node.GetLabel() {
 		case weightedGraph.IntersectionOperator:
-			omni := &omniInterpreter{
-				hndNil:           handleUnsupported,
-				hndDirect:        p.pipe.backend.handleDirectEdge,
-				hndTTU:           p.pipe.backend.handleTTUEdge,
-				hndComputed:      handleIdentity,
-				hndRewrite:       handleIdentity,
-				hndDirectLogical: handleIdentity,
-				hndTTULogical:    handleIdentity,
-			}
-
 			r = &intersectionResolver{
 				reporter:    reporter,
-				ctx:         ctx,
 				interpreter: omni,
-				status:      status,
-				trk:         trk,
 			}
 		case weightedGraph.UnionOperator:
-			omni := &omniInterpreter{
-				hndNil:           handleUnsupported,
-				hndDirect:        p.pipe.backend.handleDirectEdge,
-				hndTTU:           p.pipe.backend.handleTTUEdge,
-				hndComputed:      handleIdentity,
-				hndRewrite:       handleIdentity,
-				hndDirectLogical: handleIdentity,
-				hndTTULogical:    handleIdentity,
-			}
-
 			r = &baseResolver{
 				reporter:    reporter,
-				ctx:         ctx,
 				interpreter: omni,
-				status:      status,
 			}
 		case weightedGraph.ExclusionOperator:
-			omni := &omniInterpreter{
-				hndNil:           handleUnsupported,
-				hndDirect:        p.pipe.backend.handleDirectEdge,
-				hndTTU:           p.pipe.backend.handleTTUEdge,
-				hndComputed:      handleIdentity,
-				hndRewrite:       handleIdentity,
-				hndDirectLogical: handleIdentity,
-				hndTTULogical:    handleIdentity,
-			}
-
 			r = &exclusionResolver{
 				reporter:    reporter,
-				ctx:         ctx,
 				interpreter: omni,
-				status:      status,
-				trk:         trk,
 			}
 		default:
 			panic("unsupported operator node for reverse expand worker")
-		}
-	case nodeTypeLogicalDirectGrouping:
-		omni := &omniInterpreter{
-			hndNil:           handleUnsupported,
-			hndDirect:        p.pipe.backend.handleDirectEdge,
-			hndTTU:           handleUnsupported,
-			hndComputed:      handleUnsupported,
-			hndRewrite:       handleUnsupported,
-			hndDirectLogical: handleUnsupported,
-			hndTTULogical:    handleUnsupported,
-		}
-
-		r = &baseResolver{
-			reporter:    reporter,
-			ctx:         ctx,
-			interpreter: omni,
-			status:      status,
-		}
-	case nodeTypeLogicalTTUGrouping:
-		omni := &omniInterpreter{
-			hndNil:           handleUnsupported,
-			hndDirect:        handleUnsupported,
-			hndTTU:           p.pipe.backend.handleTTUEdge,
-			hndComputed:      handleUnsupported,
-			hndRewrite:       handleUnsupported,
-			hndDirectLogical: handleUnsupported,
-			hndTTULogical:    handleUnsupported,
-		}
-
-		r = &baseResolver{
-			reporter:    reporter,
-			ctx:         ctx,
-			interpreter: omni,
-			status:      status,
 		}
 	default:
 		panic("unsupported node type for reverse expand worker")
@@ -1291,10 +1137,11 @@ type queryInput struct {
 // senders and broadcasting the result of processing the consumed
 // messages to the worker's listeners.
 type resolver interface {
+
 	// resolve is a function that consumes messages from the
 	// provided senders, and broadcasts the results of processing
 	// the consumed messages to the provided listeners.
-	resolve(senders []*sender, listeners []*listener)
+	Resolve(context.Context, []*sender, pipe.Tx[[]Item])
 }
 
 type Source *Node
@@ -1302,41 +1149,26 @@ type Source *Node
 // sender is a struct that contains fields relevant to the producing
 // end of a pipeline connection.
 type sender struct {
-	// edge is the weighted graph edge that is producing.
-	e *Edge
-
-	prod producer[group]
-
-	// chunkSize is the target number of items to include in each
-	// outbound message. A value less than 1 indicates an unlimited
-	// number of items per message.
-	chunkSize int
-
-	numProcs int
+	Edge     *Edge
+	producer pipe.Rx[message[[]Item]]
+	tracker  track.Tracker
+	NumProcs int
 }
 
-func (s *sender) chunks() int {
-	return s.chunkSize
-}
-
-func (s *sender) edge() *Edge {
-	return s.e
-}
-
-func (s *sender) loop(fn loopFunc) {
-	// A background context is used here because the sender's underlying pipe
-	// relies on a cancelation from its consuming end for a shutdown signal.
-	// This sequence does not need an additional cancelation signal for that
-	// reason.
-	for msg := range s.prod.seq(context.Background()) {
-		if !fn(msg) {
-			break
-		}
+func (s *sender) Recv(msg *message[[]Item]) bool {
+	var m message[[]Item]
+	if !s.producer.Recv(&m) {
+		return false
 	}
-}
-
-func (s *sender) procs() int {
-	return s.numProcs
+	s.tracker.Add(1)
+	m.Done()
+	*msg = message[[]Item]{
+		Value: m.Value,
+		finite: func() {
+			s.tracker.Add(-1)
+		},
+	}
+	return true
 }
 
 // strtoItem is a function that accepts a string input and returns an Item
@@ -1350,62 +1182,89 @@ type Target struct {
 	id   string
 }
 
-type worker struct {
-	node      *Node
-	senders   []*sender
-	listeners []*listener
-	resolver  resolver
-	trk       tracker
-	status    *StatusPool
-	finite    func()
-	wg        sync.WaitGroup
-}
-
-func (w *worker) active() bool {
-	return w.status.Status() || w.trk.Load() != 0
-}
-
-func (w *worker) cancel() {
-	for _, lst := range w.listeners {
-		lst.cancel()
+func (t *Target) Object() string {
+	objectParts := strings.Split(t.node.GetLabel(), "#")
+	var objectType string
+	if len(objectParts) > 0 {
+		objectType = objectParts[0]
 	}
+	var value string
+
+	switch t.node.GetNodeType() {
+	case nodeTypeSpecificTypeWildcard:
+		// the ':*' is part of the type
+	case nodeTypeSpecificType, nodeTypeSpecificTypeAndRelation:
+		value = ":" + t.id
+	}
+	return objectType + value
 }
 
-func (w *worker) close() {
+type worker struct {
+	node     *Node
+	senders  []*sender
+	listener *listener
+	resolver resolver
+	tracker  track.Tracker
+	status   *track.StatusPool
+	finite   func()
+	init     sync.Once
+	wg       sync.WaitGroup
+}
+
+func (w *worker) Active() bool {
+	return w.status.Status() || w.tracker.Load() != 0
+}
+
+func (w *worker) Close() {
 	w.finite()
 }
 
-func (w *worker) listen(edge *Edge, p producer[group], chunkSize int, numProcs int) {
+func (w *worker) Listen(edge *Edge, p pipe.Rx[message[[]Item]], numProcs int) {
 	w.senders = append(w.senders, &sender{
-		e:         edge,
-		prod:      p,
-		chunkSize: chunkSize,
-		numProcs:  numProcs,
+		Edge:     edge,
+		producer: p,
+		tracker:  w.tracker,
+		NumProcs: numProcs,
 	})
 }
 
-func (w *worker) start() {
-	w.wg.Add(1)
+func (w *worker) initialize(ctx context.Context) {
+	ctx, span := pipelineTracer.Start(ctx, "worker")
+	ctx, cancel := context.WithCancel(ctx)
 
+	w.finite = sync.OnceFunc(func() {
+		defer span.End()
+		cancel()
+	})
+
+	w.wg.Add(1)
 	go func() {
 		defer w.wg.Done()
-		defer w.close()
+		defer w.Close()
+		w.resolver.Resolve(ctx, w.senders, w.listener)
+	}()
 
-		w.resolver.resolve(w.senders, w.listeners)
+	w.wg.Add(1)
+	go func() {
+		defer w.wg.Done()
+		<-ctx.Done()
+		w.listener.Close()
 	}()
 }
 
-func (w *worker) subscribe(node *Node) producer[group] {
-	p := newPipe(w.trk)
-
-	w.listeners = append(w.listeners, &listener{
-		cons: p,
-		node: node,
+func (w *worker) Start(ctx context.Context) {
+	w.init.Do(func() {
+		w.initialize(ctx)
 	})
-
-	return p
 }
 
-func (w *worker) wait() {
+func (w *worker) Subscribe(bufferSize int) pipe.Rx[message[[]Item]] {
+	var p pipe.Pipe[message[[]Item]]
+	p.Grow(bufferSize)
+	w.listener.Add(&p)
+	return &p
+}
+
+func (w *worker) Wait() {
 	w.wg.Wait()
 }
