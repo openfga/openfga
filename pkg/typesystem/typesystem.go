@@ -1664,19 +1664,15 @@ func WalkUsersetRewrite(rewrite *openfgav1.Userset, handler WalkUsersetRewriteHa
 	return nil, nil
 }
 
-// MustNoopTypesystem is used strictly for test cases where the model itself does not matter,
-// like error handling scenarios.
-func MustNoopTypesystem() *TypeSystem {
+func NoopTypesystem() *TypeSystem {
 	model := parser.MustTransformDSLToProto(`
 		model
 			schema 1.1
 		type user
 	`)
 
-	ts, err := New(model)
-	if err != nil {
-		panic(err)
-	}
+	// Error can be safely ignored
+	ts, _ := New(model)
 
 	return ts
 }

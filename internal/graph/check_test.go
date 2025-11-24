@@ -80,8 +80,7 @@ func (m *mockPanicIterator[T]) Head(ctx context.Context) (T, error) {
 }
 
 func TestCheck_CorrectContext(t *testing.T) {
-	ts := typesystem.MustNoopTypesystem()
-	checker := NewLocalChecker(WithTypesystem(ts))
+	checker := NewLocalChecker()
 	t.Cleanup(checker.Close)
 
 	t.Run("datastore_missing_returns_error", func(t *testing.T) {
@@ -1719,8 +1718,7 @@ func TestResolveCheckCallsCycleDetection(t *testing.T) {
 	t.Run("returns_true_if_path_visited", func(t *testing.T) {
 		cyclicalTuple := tuple.NewTupleKey("document:1", "viewer", "user:maria")
 
-		ts := typesystem.MustNoopTypesystem()
-		checker := NewLocalChecker(WithTypesystem(ts))
+		checker := NewLocalChecker()
 		t.Cleanup(checker.Close)
 
 		mockDelegate := NewMockCheckResolver(ctrl)
@@ -1780,8 +1778,7 @@ func TestDispatch(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	ts := typesystem.MustNoopTypesystem()
-	checker := NewLocalChecker(WithTypesystem(ts))
+	checker := NewLocalChecker()
 	defer checker.Close()
 
 	mockResolver := NewMockCheckResolver(ctrl)

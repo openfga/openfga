@@ -116,6 +116,7 @@ func NewLocalChecker(opts ...LocalCheckerOption) *LocalChecker {
 		upstreamTimeout:    serverconfig.DefaultRequestTimeout,
 		logger:             logger.NewNoopLogger(),
 		planner:            planner.NewNoopPlanner(),
+		typesystem:         typesystem.NoopTypesystem(),
 	}
 	// by default, a LocalChecker delegates/dispatches subproblems to itself (e.g. local dispatch) unless otherwise configured.
 	checker.delegate = checker

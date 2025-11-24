@@ -37,13 +37,7 @@ const fakeStoreID = "store_id_123"
 
 func TestNewListObjectsQuery(t *testing.T) {
 	t.Run("nil_datastore", func(t *testing.T) {
-		checkResolver, checkResolverCloser, err := graph.NewOrderedCheckResolvers(
-			graph.WithLocalCheckerOpts(
-				graph.WithTypesystem(
-					typesystem.MustNoopTypesystem(),
-				),
-			),
-		).Build()
+		checkResolver, checkResolverCloser, err := graph.NewOrderedCheckResolvers().Build()
 		require.NoError(t, err)
 		t.Cleanup(checkResolverCloser)
 		q, err := NewListObjectsQuery(nil, checkResolver, fakeStoreID)
@@ -60,8 +54,7 @@ func TestNewListObjectsQuery(t *testing.T) {
 
 func TestNewListObjectsQueryReturnsShadowedQueryWhenEnabled(t *testing.T) {
 	testLogger := logger.NewNoopLogger()
-	q, err := NewListObjectsQueryWithShadowConfig(memory.New(),
-		graph.NewLocalChecker(graph.WithTypesystem(typesystem.MustNoopTypesystem())),
+	q, err := NewListObjectsQueryWithShadowConfig(memory.New(), graph.NewLocalChecker(),
 		NewShadowListObjectsQueryConfig(
 			WithShadowListObjectsQueryEnabled(true),
 			WithShadowListObjectsQueryTimeout(13*time.Second),
@@ -78,8 +71,7 @@ func TestNewListObjectsQueryReturnsShadowedQueryWhenEnabled(t *testing.T) {
 }
 
 func TestNewListObjectsQueryReturnsStandardQueryWhenShadowDisabled(t *testing.T) {
-	q, err := NewListObjectsQueryWithShadowConfig(memory.New(),
-		graph.NewLocalChecker(graph.WithTypesystem(typesystem.MustNoopTypesystem())),
+	q, err := NewListObjectsQueryWithShadowConfig(memory.New(), graph.NewLocalChecker(),
 		NewShadowListObjectsQueryConfig(WithShadowListObjectsQueryEnabled(false)),
 		fakeStoreID,
 	)

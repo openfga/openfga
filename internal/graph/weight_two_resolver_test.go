@@ -41,7 +41,6 @@ func setRequestContext(ctx context.Context, ts *typesystem.TypeSystem, ds storag
 		},
 	)
 	ctx = storage.ContextWithRelationshipTupleReader(ctx, rsw)
-	ctx = typesystem.ContextWithTypesystem(ctx, ts) // TODO remove
 	return ctx
 }
 
