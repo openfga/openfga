@@ -3,6 +3,8 @@ ignore:
   - "pkg/storage/test"
   - "pkg/server/test"
   - "tests"
+  # the following file is only used for local testing of the grpc storage server
+  - "cmd/grpc-storage-server/main.go"
   # the following folder contains helper test code
   - "pkg/testfixtures/storage"
 coverage:
