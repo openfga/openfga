@@ -8,6 +8,6 @@
 //
 // The buf configuration is in buf.yaml and buf.gen.yaml.
 
-//go:generate sh -c "cd $PWD && buf generate"
+//go:generate buf generate
 
 package grpc

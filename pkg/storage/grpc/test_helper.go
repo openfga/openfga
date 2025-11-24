@@ -54,6 +54,7 @@ func SetupTestClientServer(t testing.TB) (*Client, storage.OpenFGADatastore, fun
 
 	cleanup := func() {
 		client.Close()
+		datastore.Close()
 		grpcServer.Stop()
 	}
 

@@ -43,6 +43,7 @@ func main() {
 	grpcAddr := fmt.Sprintf("%s:%d", *host, *port)
 	if err := run(ctx, grpcAddr, *datastoreURI, log); err != nil {
 		log.Error(fmt.Sprintf("server error: %v", err))
+		os.Exit(1)
 	}
 }
 
@@ -61,6 +62,7 @@ func run(ctx context.Context, grpcAddr, datastoreURI string, log logger.Logger) 
 	if err != nil {
 		return fmt.Errorf("failed to initialize postgres datastore: %w", err)
 	}
+	defer datastore.Close()
 
 	log.Info("datastore initialized successfully")
 

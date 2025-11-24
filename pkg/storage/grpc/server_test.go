@@ -465,7 +465,9 @@ func TestServerWrite(t *testing.T) {
 		_, err = server.Write(ctx, writeReqWithOpts)
 		require.Error(t, err)
 		// The error should be converted to gRPC error with InvalidArgument code
-		require.Contains(t, err.Error(), "cannot write a tuple which already exists")
+		st, ok := status.FromError(err)
+		require.True(t, ok)
+		require.Equal(t, codes.InvalidArgument, st.Code())
 	})
 
 	t.Run("write_with_duplicate_insert_error_default", func(t *testing.T) {
@@ -488,7 +490,9 @@ func TestServerWrite(t *testing.T) {
 		}
 		_, err = server.Write(ctx, writeReqNoOpts)
 		require.Error(t, err)
-		require.Contains(t, err.Error(), "cannot write a tuple which already exists")
+		st, ok := status.FromError(err)
+		require.True(t, ok)
+		require.Equal(t, codes.InvalidArgument, st.Code())
 	})
 
 	t.Run("write_with_missing_delete_ignore", func(t *testing.T) {
@@ -520,7 +524,9 @@ func TestServerWrite(t *testing.T) {
 		}
 		_, err := server.Write(ctx, req)
 		require.Error(t, err)
-		require.Contains(t, err.Error(), "cannot delete a tuple which does not exist")
+		st, ok := status.FromError(err)
+		require.True(t, ok)
+		require.Equal(t, codes.InvalidArgument, st.Code())
 	})
 
 	t.Run("write_with_missing_delete_error_default", func(t *testing.T) {
@@ -533,7 +539,9 @@ func TestServerWrite(t *testing.T) {
 		}
 		_, err := server.Write(ctx, req)
 		require.Error(t, err)
-		require.Contains(t, err.Error(), "cannot delete a tuple which does not exist")
+		st, ok := status.FromError(err)
+		require.True(t, ok)
+		require.Equal(t, codes.InvalidArgument, st.Code())
 	})
 
 	t.Run("write_tuples_with_conditions", func(t *testing.T) {
