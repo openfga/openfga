@@ -179,7 +179,6 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 }
 
 func (s *Server) getCheckResolverBuilder(storeID string, typesys *typesystem.TypeSystem) *graph.CheckResolverOrderedBuilder {
-	// I think this will need the typesystem as well as the wrapped datastore
 	checkCacheOptions, checkDispatchThrottlingOptions := s.getCheckResolverOptions()
 	return graph.NewOrderedCheckResolvers([]graph.CheckResolverOrderedBuilderOpt{
 		graph.WithLocalCheckerOpts([]graph.LocalCheckerOption{

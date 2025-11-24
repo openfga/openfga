@@ -143,10 +143,7 @@ func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*
 		},
 	)
 
-	// These two things
-	// ctx = typesystem.ContextWithTypesystem(ctx, c.typesys)
 	ctx = storage.ContextWithRelationshipTupleReader(ctx, datastoreWithTupleCache)
-	//
 	startTime := time.Now()
 	resp, err := c.checkResolver.ResolveCheck(ctx, resolveCheckRequest)
 	endTime := time.Since(startTime)

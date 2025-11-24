@@ -125,10 +125,6 @@ func NewLocalChecker(opts ...LocalCheckerOption) *LocalChecker {
 		opt(checker)
 	}
 
-	if checker.typesystem == nil {
-		panic("checker typesystem cannot be nil")
-	}
-
 	return checker
 }
 
@@ -400,7 +396,6 @@ var _ CheckResolver = (*LocalChecker)(nil)
 func (c *LocalChecker) ResolveCheck(
 	ctx context.Context,
 	req *ResolveCheckRequest,
-	// datastore?
 ) (*ResolveCheckResponse, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
@@ -438,7 +433,6 @@ func (c *LocalChecker) ResolveCheck(
 		}, nil
 	}
 
-	// TODO: here
 	_, ok := storage.RelationshipTupleReaderFromContext(ctx)
 	if !ok {
 		return nil, fmt.Errorf("%w: relationship tuple reader datastore missing in context", openfgaErrors.ErrUnknown)

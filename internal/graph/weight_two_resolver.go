@@ -206,7 +206,6 @@ func produceLeftChannels(
 	relationReferences []*openfgav1.RelationReference,
 	relationFunc checkutil.V2RelationFunc,
 ) ([]<-chan *iterator.Msg, error) {
-	// typesys, _ := typesystem.TypesystemFromContext(ctx) // pass in
 	leftChans := make([]<-chan *iterator.Msg, 0, len(relationReferences))
 	for _, parentType := range relationReferences {
 		relation := relationFunc(parentType)
@@ -244,7 +243,7 @@ func fastPathNoop(_ context.Context, _ *ResolveCheckRequest) (chan *iterator.Msg
 // It returns a channel with one element, and then closes the channel.
 // The element is an iterator over all objects that are directly related to the user or the wildcard (if applicable).
 func fastPathDirect(ctx context.Context, typesys *typesystem.TypeSystem, req *ResolveCheckRequest) (chan *iterator.Msg, error) {
-	ds, _ := storage.RelationshipTupleReaderFromContext(ctx) // need to pass in
+	ds, _ := storage.RelationshipTupleReaderFromContext(ctx)
 	tk := req.GetTupleKey()
 	objRel := tuple.ToObjectRelationString(tuple.GetType(tk.GetObject()), tk.GetRelation())
 	i, err := checkutil.IteratorReadStartingFromUser(ctx, typesys, ds, req, objRel, nil, true)

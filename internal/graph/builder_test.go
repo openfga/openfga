@@ -52,8 +52,6 @@ func TestNewOrderedCheckResolverBuilder(t *testing.T) {
 				WithCachedCheckResolverOpts(test.CachedCheckResolverEnabled),
 				WithDispatchThrottlingCheckResolverOpts(test.DispatchThrottlingCheckResolverEnabled),
 				WithShadowResolverEnabled(test.ShadowResolverEnabled),
-				WithLocalCheckerOpts(),
-				WithLocalShadowCheckerOpts(),
 			}...)
 			checkResolver, checkResolverCloser, err := builder.Build()
 			require.NoError(t, err)
