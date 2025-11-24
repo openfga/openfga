@@ -81,11 +81,7 @@ func (r *reporter) PostCall(err error, rpcDuration time.Duration) {
 		return
 	}
 
-	if r.serviceName == healthCheckService {
-		r.logger.Debug(grpcReqCompleteKey, r.fields...)
-	} else {
-		r.logger.Info(grpcReqCompleteKey, r.fields...)
-	}
+	r.logger.Info(grpcReqCompleteKey, r.fields...)
 }
 
 // PostMsgSend is invoked once after a unary response or multiple times in
