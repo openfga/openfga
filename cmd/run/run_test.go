@@ -48,6 +48,7 @@ import (
 	"github.com/openfga/openfga/pkg/server"
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
+	grpcstorage "github.com/openfga/openfga/pkg/storage/grpc"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
 	"github.com/openfga/openfga/pkg/storage/sqlite"
 	storagefixtures "github.com/openfga/openfga/pkg/testfixtures/storage"
@@ -1564,7 +1565,7 @@ func TestServerContext_datastoreConfig(t *testing.T) {
 	tests := []struct {
 		name           string
 		config         *serverconfig.Config
-		wantDSType     interface{}
+		wantDSType     any
 		wantSerializer encoder.ContinuationTokenSerializer
 		wantErr        error
 	}{
@@ -1629,6 +1630,35 @@ func TestServerContext_datastoreConfig(t *testing.T) {
 			wantDSType:     nil,
 			wantSerializer: nil,
 			wantErr:        errors.New("storage engine 'unsupported' is unsupported"),
+		},
+		{
+			name: "grpc",
+			config: &serverconfig.Config{
+				Datastore: serverconfig.DatastoreConfig{
+					Engine: "grpc",
+					GRPC: serverconfig.GRPCDatastoreConfig{
+						Addr: "localhost:8080",
+					},
+				},
+			},
+			wantDSType:     &grpcstorage.Client{},
+			wantSerializer: &sqlcommon.SQLContinuationTokenSerializer{},
+			wantErr:        nil,
+		},
+		{
+			name: "grpc_tls_config_incomplete",
+			config: &serverconfig.Config{
+				Datastore: serverconfig.DatastoreConfig{
+					Engine: "grpc",
+					GRPC: serverconfig.GRPCDatastoreConfig{
+						Addr:        "localhost:8080",
+						TLSCertPath: "/path/to/cert",
+					},
+				},
+			},
+			wantDSType:     nil,
+			wantSerializer: nil,
+			wantErr:        errors.New("both TLS certificate and key paths must be provided together"),
 		},
 	}
 	for _, tt := range tests {
