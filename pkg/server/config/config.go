@@ -154,7 +154,10 @@ type DatastoreConfig struct {
 
 // GRPCDatastoreConfig defines configurations for the gRPC datastore client.
 type GRPCDatastoreConfig struct {
-	// Addr is the address of the gRPC storage server (e.g., "localhost:50051").
+	// Addr is the address of the gRPC storage server.
+	// For TCP connections, use "host:port" format (e.g., "localhost:50051").
+	// For Unix domain sockets, use "unix:///path/to/socket" format (e.g., "unix:///var/run/openfga.sock").
+	// Unix domain sockets provide lower latency and reduced overhead for same-machine deployments.
 	Addr string
 
 	// TLSCertPath is the path to the TLS certificate file.
