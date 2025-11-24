@@ -822,6 +822,12 @@ func BenchmarkOpenFGAServer(b *testing.B) {
 		b.Cleanup(ds.Close)
 		test.RunAllBenchmarks(b, ds)
 	})
+
+	b.Run("BenchmarkGRPCDatastore", func(b *testing.B) {
+		ds, cleanup := grpcstorage.SetupTestClientServerOverNetwork(b)
+		b.Cleanup(cleanup)
+		test.RunAllBenchmarks(b, ds)
+	})
 }
 
 func TestCheckDoesNotThrowBecauseDirectTupleWasFound(t *testing.T) {
