@@ -183,6 +183,8 @@ func NewRunCommand() *cobra.Command {
 
 	flags.String("datastore-grpc-tls-key", "", "the (absolute) file path of the key to use for the TLS connection to the gRPC storage server (enables TLS if provided with --datastore-grpc-tls-cert)")
 
+	cmd.MarkFlagsRequiredTogether("datastore-grpc-tls-cert", "datastore-grpc-tls-key")
+
 	flags.Duration("datastore-grpc-keepalive-time", defaultConfig.Datastore.GRPC.KeepaliveTime, "duration after which a keepalive ping is sent on the gRPC connection if no activity (0 disables keepalive)")
 
 	flags.Duration("datastore-grpc-keepalive-timeout", defaultConfig.Datastore.GRPC.KeepaliveTimeout, "duration to wait for keepalive ping response")
