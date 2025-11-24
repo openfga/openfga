@@ -1,11 +1,12 @@
 package graph
 
 import (
-	"github.com/openfga/openfga/pkg/typesystem"
 	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/openfga/openfga/pkg/typesystem"
 )
 
 func TestNewOrderedCheckResolverBuilder(t *testing.T) {

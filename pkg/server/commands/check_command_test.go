@@ -147,11 +147,7 @@ type doc
 		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).
 			Times(1).
 			DoAndReturn(func(ctx context.Context, req *graph.ResolveCheckRequest) (*graph.ResolveCheckResponse, error) {
-				tsFromContext, ok := typesystem.TypesystemFromContext(ctx)
-				require.True(t, ok)
-				require.Equal(t, ts, tsFromContext)
-
-				_, ok = storage.RelationshipTupleReaderFromContext(ctx)
+				_, ok := storage.RelationshipTupleReaderFromContext(ctx)
 				require.True(t, ok)
 				return &graph.ResolveCheckResponse{}, nil
 			})

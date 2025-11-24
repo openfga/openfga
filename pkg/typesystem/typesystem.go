@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	parser "github.com/openfga/language/pkg/go/transformer"
 	"maps"
 	"reflect"
 	"slices"
@@ -17,6 +16,7 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/language/pkg/go/graph"
+	parser "github.com/openfga/language/pkg/go/transformer"
 
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/utils"

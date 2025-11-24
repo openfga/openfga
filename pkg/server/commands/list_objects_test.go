@@ -37,7 +37,13 @@ const fakeStoreID = "store_id_123"
 
 func TestNewListObjectsQuery(t *testing.T) {
 	t.Run("nil_datastore", func(t *testing.T) {
-		checkResolver, checkResolverCloser, err := graph.NewOrderedCheckResolvers().Build()
+		checkResolver, checkResolverCloser, err := graph.NewOrderedCheckResolvers(
+			graph.WithLocalCheckerOpts(
+				graph.WithTypesystem(
+					typesystem.MustNoopTypesystem(),
+				),
+			),
+		).Build()
 		require.NoError(t, err)
 		t.Cleanup(checkResolverCloser)
 		q, err := NewListObjectsQuery(nil, checkResolver, fakeStoreID)
@@ -50,24 +56,12 @@ func TestNewListObjectsQuery(t *testing.T) {
 		require.Nil(t, q)
 		require.Error(t, err)
 	})
-
-	t.Run("empty_typesystem_in_context", func(t *testing.T) {
-		checkResolver := graph.NewLocalChecker()
-		q, err := NewListObjectsQuery(memory.New(), checkResolver, fakeStoreID)
-		require.NoError(t, err)
-
-		_, err = q.Execute(context.Background(), &openfgav1.ListObjectsRequest{})
-		require.ErrorContains(t, err, "typesystem missing in context")
-
-		var srv openfgav1.OpenFGAService_StreamedListObjectsServer
-		_, err = q.ExecuteStreamed(context.Background(), &openfgav1.StreamedListObjectsRequest{}, srv)
-		require.ErrorContains(t, err, "typesystem missing in context")
-	})
 }
 
 func TestNewListObjectsQueryReturnsShadowedQueryWhenEnabled(t *testing.T) {
 	testLogger := logger.NewNoopLogger()
-	q, err := NewListObjectsQueryWithShadowConfig(memory.New(), graph.NewLocalChecker(),
+	q, err := NewListObjectsQueryWithShadowConfig(memory.New(),
+		graph.NewLocalChecker(graph.WithTypesystem(typesystem.MustNoopTypesystem())),
 		NewShadowListObjectsQueryConfig(
 			WithShadowListObjectsQueryEnabled(true),
 			WithShadowListObjectsQueryTimeout(13*time.Second),
@@ -84,7 +78,8 @@ func TestNewListObjectsQueryReturnsShadowedQueryWhenEnabled(t *testing.T) {
 }
 
 func TestNewListObjectsQueryReturnsStandardQueryWhenShadowDisabled(t *testing.T) {
-	q, err := NewListObjectsQueryWithShadowConfig(memory.New(), graph.NewLocalChecker(),
+	q, err := NewListObjectsQueryWithShadowConfig(memory.New(),
+		graph.NewLocalChecker(graph.WithTypesystem(typesystem.MustNoopTypesystem())),
 		NewShadowListObjectsQueryConfig(WithShadowListObjectsQueryEnabled(false)),
 		fakeStoreID,
 	)
@@ -285,6 +280,7 @@ func TestListObjectsDispatchCount(t *testing.T) {
 			ctx := typesystem.ContextWithTypesystem(ctx, ts)
 
 			checker, checkResolverCloser, err := graph.NewOrderedCheckResolvers(
+				graph.WithLocalCheckerOpts(graph.WithTypesystem(ts)),
 				graph.WithDispatchThrottlingCheckResolverOpts(true, []graph.DispatchThrottlingCheckResolverOpt{
 					graph.WithDispatchThrottlingCheckResolverConfig(graph.DispatchThrottlingCheckResolverConfig{
 						DefaultThreshold: 0,
