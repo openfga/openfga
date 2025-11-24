@@ -89,6 +89,7 @@ func NewClient(config ClientConfig) (*Client, error) {
 
 		tlsConfig := &tls.Config{
 			Certificates: []tls.Certificate{cert},
+			MinVersion:   tls.VersionTLS13,
 		}
 
 		grpcOpts = append(grpcOpts, grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)))
