@@ -66,9 +66,9 @@ func TestBottomUpSpecificType(t *testing.T) {
 		edges, ok := mg.GetEdgesFromNodeId("document#member")
 		require.True(t, ok)
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			Model: mg,
-			TupleKey:             tuple.NewTupleKey("document:1", "admin", "user:1"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "admin", "user:1"),
 		})
 		require.NoError(t, err)
 		c, err := strategy.specificType(ctx, req, edges[0])
@@ -121,9 +121,9 @@ func TestBottomUpSpecificType(t *testing.T) {
 		require.True(t, ok)
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			Model: mg,
-			TupleKey:             tuple.NewTupleKey("document:1", "member", "user:1"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "member", "user:1"),
 		})
 		require.NoError(t, err)
 
@@ -178,9 +178,9 @@ func TestBottomUpSpecificType(t *testing.T) {
 		require.True(t, ok)
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			Model: mg,
-			TupleKey:             tuple.NewTupleKey("document:1", "member", "user:1"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "member", "user:1"),
 		})
 		require.NoError(t, err)
 
@@ -237,9 +237,9 @@ func TestBottomUpSpecificType(t *testing.T) {
 		require.True(t, ok)
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			Model: mg,
-			TupleKey:             tuple.NewTupleKey("document:1", "admin", "user:1"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "admin", "user:1"),
 		})
 		require.NoError(t, err)
 
@@ -290,9 +290,9 @@ func TestBottomUpSpecificType(t *testing.T) {
 		require.True(t, ok)
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			Model: mg,
-			TupleKey:             tuple.NewTupleKey("document:1", "admin", "user:1"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "admin", "user:1"),
 		})
 		require.NoError(t, err)
 
@@ -344,9 +344,9 @@ func TestBottomUpSpecificTypeWildcard(t *testing.T) {
 		edges, ok := mg.GetEdgesFromNodeId("document#member")
 		require.True(t, ok)
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			Model: mg,
-			TupleKey:             tuple.NewTupleKey("document:1", "admin", "user:1"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "admin", "user:1"),
 		})
 		require.NoError(t, err)
 		c, err := strategy.specificTypeWildcard(ctx, req, edges[0])
@@ -398,9 +398,9 @@ func TestBottomUpSpecificTypeWildcard(t *testing.T) {
 		edges, ok = mg.GetEdgesFromNodeId(edges[0].GetTo().GetUniqueLabel())
 		require.True(t, ok)
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			Model: mg,
-			TupleKey:             tuple.NewTupleKey("document:1", "member", "user:1"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "member", "user:1"),
 		})
 		require.NoError(t, err)
 		c, err := strategy.specificTypeWildcard(ctx, req, edges[0])
@@ -454,9 +454,9 @@ func TestBottomUpSpecificTypeWildcard(t *testing.T) {
 		edges, ok = mg.GetEdgesFromNodeId(edges[0].GetTo().GetUniqueLabel())
 		require.True(t, ok)
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			Model: mg,
-			TupleKey:             tuple.NewTupleKey("document:1", "member", "user:1"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "member", "user:1"),
 		})
 		require.NoError(t, err)
 		c, err := strategy.specificTypeWildcard(ctx, req, edges[0])
@@ -513,9 +513,9 @@ func TestBottomUpSpecificTypeWildcard(t *testing.T) {
 		require.True(t, ok)
 
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			Model: mg,
-			TupleKey:             tuple.NewTupleKey("document:1", "admin", "user:1"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "admin", "user:1"),
 		})
 		require.NoError(t, err)
 		c, err := strategy.specificTypeWildcard(ctx, req, edges[0])
@@ -565,9 +565,9 @@ func TestBottomUpSpecificTypeWildcard(t *testing.T) {
 		edges, ok := mg.GetEdgesFromNodeId("document#member")
 		require.True(t, ok)
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			Model: mg,
-			TupleKey:             tuple.NewTupleKey("document:1", "admin", "user:1"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "admin", "user:1"),
 		})
 		require.NoError(t, err)
 		_, err = strategy.specificTypeWildcard(ctx, req, edges[0])
@@ -1758,9 +1758,9 @@ func TestBottomUpResolveRewrite(t *testing.T) {
 		require.True(t, ok)
 		// Create a request for testing
 		req, err := NewRequest(RequestParams{
-			StoreID:              storeID,
-			Model: mg,
-			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:1"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:1"),
 		})
 		require.NoError(t, err)
 
@@ -1874,9 +1874,9 @@ func TestBottomUpResolveRewrite(t *testing.T) {
 
 		// Create a request for testing
 		req, _ := NewRequest(RequestParams{
-			StoreID:              storeID,
-			Model: mg,
-			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:1"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:1"),
 		})
 
 		// Test the resolveRewrite function with the intersection model
@@ -1986,9 +1986,9 @@ func TestBottomUpResolveRewrite(t *testing.T) {
 
 		// Create a request for testing
 		req, _ := NewRequest(RequestParams{
-			StoreID:              storeID,
-			Model: mg,
-			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:1"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:1"),
 		})
 
 		// Test the resolveRewrite function with the exclusion model
@@ -2105,9 +2105,9 @@ func TestBottomUpResolveRewrite(t *testing.T) {
 
 		// Create a request for testing
 		req, _ := NewRequest(RequestParams{
-			StoreID:              storeID,
-			Model: mg,
-			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:1"),
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:1"),
 		})
 
 		// Test the resolveRewrite function with the combined model
