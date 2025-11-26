@@ -494,8 +494,8 @@ func TestObjectRelationConversion(t *testing.T) {
 
 		converted := toStorageObjectRelation(input)
 		require.NotNil(t, converted)
-		require.Equal(t, "", converted.GetObject())
-		require.Equal(t, "", converted.GetRelation())
+		require.Empty(t, converted.GetObject())
+		require.Empty(t, converted.GetRelation())
 
 		reverted := fromStorageObjectRelation(converted)
 		require.True(t, proto.Equal(input, reverted))
@@ -1007,9 +1007,9 @@ func TestAssertionTupleKeyConversion(t *testing.T) {
 
 		converted := toStorageAssertionTupleKey(input)
 		require.NotNil(t, converted)
-		require.Equal(t, "", converted.GetObject())
-		require.Equal(t, "", converted.GetRelation())
-		require.Equal(t, "", converted.GetUser())
+		require.Empty(t, converted.GetObject())
+		require.Empty(t, converted.GetRelation())
+		require.Empty(t, converted.GetUser())
 
 		reverted := fromStorageAssertionTupleKey(converted)
 		require.True(t, proto.Equal(input, reverted))
@@ -1163,7 +1163,7 @@ func TestSourceInfoConversion(t *testing.T) {
 
 		converted := toStorageSourceInfo(input)
 		require.NotNil(t, converted)
-		require.Equal(t, "", converted.GetFile())
+		require.Empty(t, converted.GetFile())
 
 		reverted := fromStorageSourceInfo(converted)
 		require.True(t, proto.Equal(input, reverted))

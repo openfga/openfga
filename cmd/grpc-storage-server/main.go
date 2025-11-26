@@ -38,26 +38,30 @@ func main() {
 
 	log := logger.MustNewLogger("text", *logLevel, "ISO8601")
 
+	if err := startServer(*socketPath, *host, *port, *datastoreURI, log); err != nil {
+		log.Error(fmt.Sprintf("server error: %v", err))
+		os.Exit(1)
+	}
+}
+
+func startServer(socketPath, host string, port int, datastoreURI string, log logger.Logger) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, os.Kill, syscall.SIGTERM)
 	defer stop()
 
 	var listenConfig ListenConfig
-	if *socketPath != "" {
+	if socketPath != "" {
 		listenConfig = ListenConfig{
 			Network: "unix",
-			Address: *socketPath,
+			Address: socketPath,
 		}
 	} else {
 		listenConfig = ListenConfig{
 			Network: "tcp",
-			Address: fmt.Sprintf("%s:%d", *host, *port),
+			Address: fmt.Sprintf("%s:%d", host, port),
 		}
 	}
 
-	if err := run(ctx, listenConfig, *datastoreURI, log); err != nil {
-		log.Error(fmt.Sprintf("server error: %v", err))
-		os.Exit(1)
-	}
+	return run(ctx, listenConfig, datastoreURI, log)
 }
 
 // ListenConfig specifies how the server should listen for connections.
