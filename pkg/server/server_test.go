@@ -823,8 +823,14 @@ func BenchmarkOpenFGAServer(b *testing.B) {
 		test.RunAllBenchmarks(b, ds)
 	})
 
-	b.Run("BenchmarkGRPCDatastore", func(b *testing.B) {
-		ds, cleanup := grpcstorage.SetupTestClientServerOverNetwork(b)
+	b.Run("BenchmarkGRPCDatastoreOverTCP", func(b *testing.B) {
+		ds, cleanup := grpcstorage.SetupTestClientServerOverTCP(b)
+		b.Cleanup(cleanup)
+		test.RunAllBenchmarks(b, ds)
+	})
+
+	b.Run("BenchmarkGRPCDatastoreOverUnixSocket", func(b *testing.B) {
+		ds, cleanup := grpcstorage.SetupTestClientServerOverUnixSocket(b)
 		b.Cleanup(cleanup)
 		test.RunAllBenchmarks(b, ds)
 	})

@@ -29,7 +29,9 @@ var _ storage.OpenFGADatastore = (*Client)(nil)
 
 // ClientConfig configures the gRPC storage client.
 type ClientConfig struct {
-	// Addr is the address of the gRPC storage server (e.g., "localhost:50051").
+	// Addr is the address of the gRPC storage server.
+	// For TCP connections, use "host:port" format (e.g., "localhost:50051").
+	// For Unix domain sockets, use "unix:///path/to/socket" format (e.g., "unix:///var/run/openfga.sock").
 	Addr string
 
 	// TLSCertPath is the path to the TLS certificate file.

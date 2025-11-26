@@ -177,7 +177,7 @@ func NewRunCommand() *cobra.Command {
 	flags.Bool("datastore-metrics-enabled", defaultConfig.Datastore.Metrics.Enabled, "enable/disable sql metrics")
 
 	// gRPC datastore flags
-	flags.String("datastore-grpc-addr", defaultConfig.Datastore.GRPC.Addr, "the address of the gRPC storage server (for 'grpc' engine)")
+	flags.String("datastore-grpc-addr", defaultConfig.Datastore.GRPC.Addr, "the address of the gRPC storage server (for 'grpc' engine). Use 'host:port' for TCP or 'unix:///path/to/socket' for Unix domain sockets")
 
 	flags.String("datastore-grpc-tls-cert", "", "the (absolute) file path of the certificate to use for the TLS connection to the gRPC storage server (enables TLS if provided with --datastore-grpc-tls-key)")
 
