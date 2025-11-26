@@ -1,9 +1,13 @@
 package commands
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"strings"
 	"sync/atomic"
@@ -26,6 +30,7 @@ import (
 	"github.com/openfga/openfga/internal/throttler/threshold"
 	"github.com/openfga/openfga/internal/utils/apimethod"
 	"github.com/openfga/openfga/internal/validation"
+	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/featureflags"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/server/commands/reverseexpand"
@@ -57,6 +62,7 @@ type ListObjectsQuery struct {
 	datastore               storage.RelationshipTupleReader
 	ff                      featureflags.Client
 	logger                  logger.Logger
+	encoder                 encoder.Encoder
 	listObjectsDeadline     time.Duration
 	listObjectsMaxResults   uint32
 	resolveNodeLimit        uint32
@@ -113,8 +119,39 @@ type ListObjectsResolutionMetadata struct {
 	CheckCounter atomic.Uint32
 }
 
+// listObjectsToken represents the continuation token structure for ListObjects pagination.
+// It stores the object IDs that have already been returned to avoid duplicates on resume.
+type listObjectsToken struct {
+	Objects []string `json:"o"` // Short key to minimize token size
+}
+
+// compressToken compresses the token JSON using gzip to reduce token size.
+// Object IDs are highly compressible (e.g., "folder:1", "folder:2"... compress well).
+func compressToken(data []byte) ([]byte, error) {
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	if _, err := gz.Write(data); err != nil {
+		return nil, err
+	}
+	if err := gz.Close(); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// decompressToken decompresses a gzip-compressed token.
+func decompressToken(data []byte) ([]byte, error) {
+	reader, err := gzip.NewReader(bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+	defer reader.Close()
+	return io.ReadAll(reader)
+}
+
 type ListObjectsResponse struct {
 	Objects            []string
+	ContinuationToken  string // Non-empty if more results may be available
 	ResolutionMetadata ListObjectsResolutionMetadata
 }
 
@@ -203,6 +240,13 @@ func WithListObjectsPipelineEnabled(value bool) ListObjectsQueryOption {
 	}
 }
 
+// WithListObjectsEncoder sets the encoder used for continuation token encoding/decoding.
+func WithListObjectsEncoder(e encoder.Encoder) ListObjectsQueryOption {
+	return func(d *ListObjectsQuery) {
+		d.encoder = e
+	}
+}
+
 func NewListObjectsQuery(
 	ds storage.RelationshipTupleReader,
 	checkResolver graph.CheckResolver,
@@ -220,6 +264,7 @@ func NewListObjectsQuery(
 	query := &ListObjectsQuery{
 		datastore:               ds,
 		logger:                  logger.NewNoopLogger(),
+		encoder:                 encoder.NewBase64Encoder(),
 		listObjectsDeadline:     serverconfig.DefaultListObjectsDeadline,
 		listObjectsMaxResults:   serverconfig.DefaultListObjectsMaxResults,
 		resolveNodeLimit:        serverconfig.DefaultResolveNodeLimit,
@@ -536,6 +581,31 @@ func (q *ListObjectsQuery) Execute(
 		}
 	}
 
+	// Decode continuation token if provided (for pagination support)
+	// TODO: Get continuation token from request once proto is updated
+	// For now, this prepares the server-side logic
+	var previouslyReturned map[string]struct{}
+	continuationToken := "" // Will be populated from req once proto is updated
+	if continuationToken != "" {
+		decodedToken, err := q.encoder.Decode(continuationToken)
+		if err != nil {
+			return nil, serverErrors.ErrInvalidContinuationToken
+		}
+		// Decompress the token (tokens are gzip compressed to reduce size)
+		decompressed, err := decompressToken(decodedToken)
+		if err != nil {
+			return nil, serverErrors.ErrInvalidContinuationToken
+		}
+		var token listObjectsToken
+		if err := json.Unmarshal(decompressed, &token); err != nil {
+			return nil, serverErrors.ErrInvalidContinuationToken
+		}
+		previouslyReturned = make(map[string]struct{}, len(token.Objects))
+		for _, obj := range token.Objects {
+			previouslyReturned[obj] = struct{}{}
+		}
+	}
+
 	wgraph := typesys.GetWeightedGraph()
 
 	if wgraph != nil && q.pipelineEnabled {
@@ -601,6 +671,13 @@ func (q *ListObjectsQuery) Execute(
 				return nil, serverErrors.HandleError("", obj.Err)
 			}
 
+			// Skip objects already returned in previous requests (pagination)
+			if previouslyReturned != nil {
+				if _, seen := previouslyReturned[obj.Value]; seen {
+					continue
+				}
+			}
+
 			res.Objects = append(res.Objects, obj.Value)
 
 			// Check if we've reached the max results limit
@@ -612,6 +689,32 @@ func (q *ListObjectsQuery) Execute(
 		dsMeta := ds.GetMetadata()
 		res.ResolutionMetadata.DatastoreQueryCount.Add(dsMeta.DatastoreQueryCount)
 		res.ResolutionMetadata.DatastoreItemCount.Add(dsMeta.DatastoreItemCount)
+
+		// Generate continuation token if results may be incomplete
+		// This happens when: deadline exceeded OR max results limit reached
+		deadlineExceeded := timeoutCtx.Err() == context.DeadlineExceeded
+		hitMaxResults := maxResults > 0 && uint32(len(res.Objects)) >= maxResults
+		if (deadlineExceeded || hitMaxResults) && len(res.Objects) > 0 {
+			// Combine previously returned objects with newly returned objects
+			// This ensures no duplicates across paginated requests
+			allObjects := res.Objects
+			for obj := range previouslyReturned {
+				allObjects = append(allObjects, obj)
+			}
+			token := listObjectsToken{Objects: allObjects}
+			tokenBytes, err := json.Marshal(token)
+			if err == nil {
+				// Compress token to reduce size (object IDs are highly compressible)
+				compressed, err := compressToken(tokenBytes)
+				if err == nil {
+					encoded, err := q.encoder.Encode(compressed)
+					if err == nil {
+						res.ContinuationToken = encoded
+					}
+				}
+			}
+		}
+
 		return &res, nil
 	}
 
@@ -646,11 +749,43 @@ func (q *ListObjectsQuery) Execute(
 			return nil, serverErrors.HandleError("", result.Err)
 		}
 
+		// Skip objects already returned in previous requests (pagination)
+		if previouslyReturned != nil {
+			if _, seen := previouslyReturned[result.ObjectID]; seen {
+				continue
+			}
+		}
+
 		listObjectsResponse.Objects = append(listObjectsResponse.Objects, result.ObjectID)
 	}
 
 	if len(listObjectsResponse.Objects) < int(maxResults) && errs != nil {
 		return nil, errs
+	}
+
+	// Generate continuation token if results may be incomplete
+	// This happens when: deadline exceeded OR max results limit reached
+	deadlineExceeded := timeoutCtx.Err() == context.DeadlineExceeded
+	hitMaxResults := maxResults > 0 && uint32(len(listObjectsResponse.Objects)) >= maxResults
+	if (deadlineExceeded || hitMaxResults) && len(listObjectsResponse.Objects) > 0 {
+		// Combine previously returned objects with newly returned objects
+		// This ensures no duplicates across paginated requests
+		allObjects := listObjectsResponse.Objects
+		for obj := range previouslyReturned {
+			allObjects = append(allObjects, obj)
+		}
+		token := listObjectsToken{Objects: allObjects}
+		tokenBytes, err := json.Marshal(token)
+		if err == nil {
+			// Compress token to reduce size (object IDs are highly compressible)
+			compressed, err := compressToken(tokenBytes)
+			if err == nil {
+				encoded, err := q.encoder.Encode(compressed)
+				if err == nil {
+					listObjectsResponse.ContinuationToken = encoded
+				}
+			}
+		}
 	}
 
 	return &listObjectsResponse, nil
