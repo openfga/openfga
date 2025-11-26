@@ -268,6 +268,9 @@ pg_basebackup -h %s -p %s -U postgres -D $PGDATA -Fp -Xs -P -R
 echo "hot_standby = on" >> $PGDATA/postgresql.conf
 touch $PGDATA/standby.signal
 
+# Fix permissions - ensure postgres user owns the data directory
+chown -R postgres:postgres /var/lib/postgresql
+
 echo "Starting PostgreSQL replica..."
 exec docker-entrypoint.sh postgres -c hot_standby=on -c wal_level=replica
 `, masterHost, masterPort, masterHost, masterPort)},
@@ -342,7 +345,7 @@ func (p *postgresTestContainer) getMasterContainerID(dockerClient *client.Client
 func (p *postgresTestContainer) configureMasterForReplication(t testing.TB, dockerClient *client.Client, masterContainerID string) error {
 	// Configuration for streaming replication - only pg_hba.conf and reload.
 	commands := [][]string{
-		{"sh", "-c", "echo 'host replication postgres all trust' >> /var/lib/postgresql/data/pg_hba.conf"},
+		{"sh", "-c", "echo 'host replication postgres all trust' >> $PGDATA/pg_hba.conf"},
 		{"psql", "-U", "postgres", "-d", "defaultdb", "-c", "SELECT pg_reload_conf()"},
 	}
 
