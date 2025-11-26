@@ -20,6 +20,7 @@ import (
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/internal/utils/apimethod"
 	"github.com/openfga/openfga/pkg/authclaims"
+	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	"github.com/openfga/openfga/pkg/storage/memory"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -230,14 +231,15 @@ func TestListObjects(t *testing.T) {
 	})
 
 	t.Run("list_objects_with_authz", func(t *testing.T) {
-		openfga := MustNewServerWithOpts(
+		// First, create stores and data without authorization
+		setupOpenfga := MustNewServerWithOpts(
 			WithDatastore(ds),
 		)
-		t.Cleanup(openfga.Close)
+		t.Cleanup(setupOpenfga.Close)
 
 		clientID := "validclientid"
-		settings := newSetupAuthzModelAndTuples(t, openfga, clientID)
-		_, err := openfga.Write(context.Background(), &openfgav1.WriteRequest{
+		settings := newSetupAuthzModelAndTuples(t, setupOpenfga, clientID)
+		_, err := setupOpenfga.Write(context.Background(), &openfgav1.WriteRequest{
 			StoreId:              settings.testData.id,
 			AuthorizationModelId: settings.testData.modelID,
 			Writes: &openfgav1.WriteRequestWrites{
@@ -247,7 +249,15 @@ func TestListObjects(t *testing.T) {
 			},
 		})
 		require.NoError(t, err)
+		setupOpenfga.Close()
 
+		// Now create server with access control enabled
+		openfga := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithExperimentals(serverconfig.ExperimentalAccessControlParams),
+			WithAccessControlParams(true, settings.rootData.id, settings.rootData.modelID, "oidc"),
+		)
+		t.Cleanup(openfga.Close)
 		openfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: settings.rootData.id, ModelID: settings.rootData.modelID}, openfga, openfga.logger)
 
 		t.Run("error_when_CheckAuthz_errors", func(t *testing.T) {
@@ -308,13 +318,15 @@ func TestStreamedListObjects(t *testing.T) {
 	})
 
 	t.Run("streamed_list_objects_with_authz", func(t *testing.T) {
-		openfga := MustNewServerWithOpts(
+		// First, create stores and data without authorization
+		setupOpenfga := MustNewServerWithOpts(
 			WithDatastore(ds),
 		)
-		t.Cleanup(openfga.Close)
+		t.Cleanup(setupOpenfga.Close)
+
 		clientID := "validclientid"
-		settings := newSetupAuthzModelAndTuples(t, openfga, clientID)
-		_, err := openfga.Write(context.Background(), &openfgav1.WriteRequest{
+		settings := newSetupAuthzModelAndTuples(t, setupOpenfga, clientID)
+		_, err := setupOpenfga.Write(context.Background(), &openfgav1.WriteRequest{
 			StoreId:              settings.testData.id,
 			AuthorizationModelId: settings.testData.modelID,
 			Writes: &openfgav1.WriteRequestWrites{
@@ -324,7 +336,15 @@ func TestStreamedListObjects(t *testing.T) {
 			},
 		})
 		require.NoError(t, err)
+		setupOpenfga.Close()
 
+		// Now create server with access control enabled
+		openfga := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithExperimentals(serverconfig.ExperimentalAccessControlParams),
+			WithAccessControlParams(true, settings.rootData.id, settings.rootData.modelID, "oidc"),
+		)
+		t.Cleanup(openfga.Close)
 		openfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: settings.rootData.id, ModelID: settings.rootData.modelID}, openfga, openfga.logger)
 
 		t.Run("error_when_CheckAuthz_errors", func(t *testing.T) {
@@ -386,14 +406,15 @@ func TestRead(t *testing.T) {
 	})
 
 	t.Run("read_with_authz", func(t *testing.T) {
-		openfga := MustNewServerWithOpts(
+		// First, create stores and data without authorization
+		setupOpenfga := MustNewServerWithOpts(
 			WithDatastore(ds),
 		)
-		t.Cleanup(openfga.Close)
+		t.Cleanup(setupOpenfga.Close)
 
 		clientID := "validclientid"
-		settings := newSetupAuthzModelAndTuples(t, openfga, clientID)
-		_, err := openfga.Write(context.Background(), &openfgav1.WriteRequest{
+		settings := newSetupAuthzModelAndTuples(t, setupOpenfga, clientID)
+		_, err := setupOpenfga.Write(context.Background(), &openfgav1.WriteRequest{
 			StoreId:              settings.testData.id,
 			AuthorizationModelId: settings.testData.modelID,
 			Writes: &openfgav1.WriteRequestWrites{
@@ -403,7 +424,15 @@ func TestRead(t *testing.T) {
 			},
 		})
 		require.NoError(t, err)
+		setupOpenfga.Close()
 
+		// Now create server with access control enabled
+		openfga := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithExperimentals(serverconfig.ExperimentalAccessControlParams),
+			WithAccessControlParams(true, settings.rootData.id, settings.rootData.modelID, "oidc"),
+		)
+		t.Cleanup(openfga.Close)
 		openfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: settings.rootData.id, ModelID: settings.rootData.modelID}, openfga, openfga.logger)
 
 		t.Run("error_when_CheckAuthz_errors", func(t *testing.T) {
@@ -469,14 +498,23 @@ func TestWrite(t *testing.T) {
 	})
 
 	t.Run("write_with_authz", func(t *testing.T) {
-		openfga := MustNewServerWithOpts(
+		// First, create stores without authorization
+		setupOpenfga := MustNewServerWithOpts(
 			WithDatastore(ds),
 		)
-		t.Cleanup(openfga.Close)
+		t.Cleanup(setupOpenfga.Close)
 
 		clientID := "validclientid"
-		settings := newSetupAuthzModelAndTuples(t, openfga, clientID)
+		settings := newSetupAuthzModelAndTuples(t, setupOpenfga, clientID)
+		setupOpenfga.Close()
 
+		// Now create server with access control enabled
+		openfga := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithExperimentals(serverconfig.ExperimentalAccessControlParams),
+			WithAccessControlParams(true, settings.rootData.id, settings.rootData.modelID, "oidc"),
+		)
+		t.Cleanup(openfga.Close)
 		openfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: settings.rootData.id, ModelID: settings.rootData.modelID}, openfga, openfga.logger)
 
 		t.Run("error_when_CheckAuthz_errors", func(t *testing.T) {
@@ -663,14 +701,23 @@ func TestCheckCreateStoreAuthz(t *testing.T) {
 	})
 
 	t.Run("checkCreateStoreAuthz_with_authz", func(t *testing.T) {
-		openfga := MustNewServerWithOpts(
+		// First, create stores without authorization
+		setupOpenfga := MustNewServerWithOpts(
 			WithDatastore(ds),
 		)
-		t.Cleanup(openfga.Close)
+		t.Cleanup(setupOpenfga.Close)
 
 		clientID := "validclientid"
-		settings := newSetupAuthzModelAndTuples(t, openfga, clientID)
+		settings := newSetupAuthzModelAndTuples(t, setupOpenfga, clientID)
+		setupOpenfga.Close()
 
+		// Now create server with access control enabled
+		openfga := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithExperimentals(serverconfig.ExperimentalAccessControlParams),
+			WithAccessControlParams(true, settings.rootData.id, settings.rootData.modelID, "oidc"),
+		)
+		t.Cleanup(openfga.Close)
 		openfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: settings.rootData.id, ModelID: settings.rootData.modelID}, openfga, openfga.logger)
 
 		t.Run("with_SkipAuthzCheckFromContext_set", func(t *testing.T) {
@@ -678,6 +725,21 @@ func TestCheckCreateStoreAuthz(t *testing.T) {
 
 			err := openfga.checkCreateStoreAuthz(ctx)
 			require.NoError(t, err)
+		})
+
+		t.Run("error_when_access_control_not_enabled", func(t *testing.T) {
+			testOpenfga := MustNewServerWithOpts(
+				WithDatastore(ds),
+			)
+			t.Cleanup(testOpenfga.Close)
+
+			testSettings := newSetupAuthzModelAndTuples(t, testOpenfga, clientID)
+			testOpenfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: testSettings.rootData.id, ModelID: testSettings.rootData.modelID}, testOpenfga, testOpenfga.logger)
+
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
+			err := testOpenfga.checkCreateStoreAuthz(ctx)
+
+			require.ErrorIs(t, err, authz.ErrUnauthorizedResponse)
 		})
 
 		t.Run("error_with_no_client_id_found", func(t *testing.T) {
@@ -730,14 +792,23 @@ func TestCheckAuthz(t *testing.T) {
 	})
 
 	t.Run("authz_enabled", func(t *testing.T) {
-		openfga := MustNewServerWithOpts(
+		// First, create stores without authorization
+		setupOpenfga := MustNewServerWithOpts(
 			WithDatastore(ds),
 		)
-		t.Cleanup(openfga.Close)
+		t.Cleanup(setupOpenfga.Close)
 
 		clientID := "validclientid"
-		settings := newSetupAuthzModelAndTuples(t, openfga, clientID)
+		settings := newSetupAuthzModelAndTuples(t, setupOpenfga, clientID)
+		setupOpenfga.Close()
 
+		// Now create server with access control enabled
+		openfga := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithExperimentals(serverconfig.ExperimentalAccessControlParams),
+			WithAccessControlParams(true, settings.rootData.id, settings.rootData.modelID, "oidc"),
+		)
+		t.Cleanup(openfga.Close)
 		openfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: settings.rootData.id, ModelID: settings.rootData.modelID}, openfga, openfga.logger)
 
 		t.Run("with_SkipAuthzCheckFromContext_set", func(t *testing.T) {
@@ -745,6 +816,22 @@ func TestCheckAuthz(t *testing.T) {
 
 			err := openfga.checkAuthz(ctx, settings.testData.id, apimethod.Check)
 			require.NoError(t, err)
+		})
+
+		t.Run("error_when_access_control_not_enabled", func(t *testing.T) {
+			// Set up a server with an authorizer but access control feature flag disabled
+			testOpenfga := MustNewServerWithOpts(
+				WithDatastore(ds),
+			)
+			t.Cleanup(testOpenfga.Close)
+
+			testSettings := newSetupAuthzModelAndTuples(t, testOpenfga, clientID)
+			testOpenfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: testSettings.rootData.id, ModelID: testSettings.rootData.modelID}, testOpenfga, testOpenfga.logger)
+
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
+			err := testOpenfga.checkAuthz(ctx, testSettings.testData.id, apimethod.Check)
+
+			require.ErrorIs(t, err, authz.ErrUnauthorizedResponse)
 		})
 
 		t.Run("error_with_no_client_id_found", func(t *testing.T) {
@@ -802,13 +889,23 @@ func TestGetAccessibleStores(t *testing.T) {
 	})
 
 	t.Run("authz_enabled", func(t *testing.T) {
-		openfga := MustNewServerWithOpts(
+		// First, create stores without authorization
+		setupOpenfga := MustNewServerWithOpts(
 			WithDatastore(ds),
 		)
-		t.Cleanup(openfga.Close)
+		t.Cleanup(setupOpenfga.Close)
 
 		clientID := "validclientid"
-		settings := newSetupAuthzModelAndTuples(t, openfga, clientID)
+		settings := newSetupAuthzModelAndTuples(t, setupOpenfga, clientID)
+		setupOpenfga.Close()
+
+		// Now create server with access control enabled
+		openfga := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithExperimentals(serverconfig.ExperimentalAccessControlParams),
+			WithAccessControlParams(true, settings.rootData.id, settings.rootData.modelID, "oidc"),
+		)
+		t.Cleanup(openfga.Close)
 
 		mockController := gomock.NewController(t)
 		defer mockController.Finish()
@@ -821,6 +918,22 @@ func TestGetAccessibleStores(t *testing.T) {
 
 			_, err := openfga.getAccessibleStores(ctx)
 			require.NoError(t, err)
+		})
+
+		t.Run("error_when_access_control_not_enabled", func(t *testing.T) {
+			// Set up a server with an authorizer but access control feature flag disabled
+			testOpenfga := MustNewServerWithOpts(
+				WithDatastore(ds),
+			)
+			t.Cleanup(testOpenfga.Close)
+
+			testSettings := newSetupAuthzModelAndTuples(t, testOpenfga, clientID)
+			testOpenfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: testSettings.rootData.id, ModelID: testSettings.rootData.modelID}, testOpenfga, testOpenfga.logger)
+
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
+			_, err := testOpenfga.getAccessibleStores(ctx)
+
+			require.ErrorIs(t, err, authz.ErrUnauthorizedResponse)
 		})
 
 		t.Run("error_with_no_client_id_found", func(t *testing.T) {
@@ -909,14 +1022,23 @@ func TestCheckWriteAuthz(t *testing.T) {
 	})
 
 	t.Run("checkWriteAuthz_with_authz", func(t *testing.T) {
-		openfga := MustNewServerWithOpts(
+		// First, create stores without authorization
+		setupOpenfga := MustNewServerWithOpts(
 			WithDatastore(ds),
 		)
-		t.Cleanup(openfga.Close)
+		t.Cleanup(setupOpenfga.Close)
 
 		clientID := "validclientid"
-		settings := newSetupAuthzModelAndTuples(t, openfga, clientID)
+		settings := newSetupAuthzModelAndTuples(t, setupOpenfga, clientID)
+		setupOpenfga.Close()
 
+		// Now create server with access control enabled
+		openfga := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithExperimentals(serverconfig.ExperimentalAccessControlParams),
+			WithAccessControlParams(true, settings.rootData.id, settings.rootData.modelID, "oidc"),
+		)
+		t.Cleanup(openfga.Close)
 		openfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: settings.rootData.id, ModelID: settings.rootData.modelID}, openfga, openfga.logger)
 
 		t.Run("with_SkipAuthzCheckFromContext_set", func(t *testing.T) {
@@ -924,6 +1046,29 @@ func TestCheckWriteAuthz(t *testing.T) {
 
 			err := openfga.checkWriteAuthz(ctx, &openfgav1.WriteRequest{}, typesys)
 			require.NoError(t, err)
+		})
+
+		t.Run("error_when_access_control_not_enabled", func(t *testing.T) {
+			// Set up a server with an authorizer but access control feature flag disabled
+			testOpenfga := MustNewServerWithOpts(
+				WithDatastore(ds),
+			)
+			t.Cleanup(testOpenfga.Close)
+
+			testSettings := newSetupAuthzModelAndTuples(t, testOpenfga, clientID)
+			testOpenfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: testSettings.rootData.id, ModelID: testSettings.rootData.modelID}, testOpenfga, testOpenfga.logger)
+
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
+			err := testOpenfga.checkWriteAuthz(ctx, &openfgav1.WriteRequest{
+				StoreId: testSettings.testData.id,
+				Deletes: &openfgav1.WriteRequestDeletes{
+					TupleKeys: []*openfgav1.TupleKeyWithoutCondition{
+						{Object: "module1:2", Relation: "member", User: "user:jon"},
+					},
+				},
+			}, typesys)
+
+			require.ErrorIs(t, err, authz.ErrUnauthorizedResponse)
 		})
 
 		t.Run("error_when_GetModulesForWriteRequest_errors", func(t *testing.T) {
@@ -1001,14 +1146,23 @@ func TestCheck(t *testing.T) {
 	})
 
 	t.Run("authz_enabled", func(t *testing.T) {
-		openfga := MustNewServerWithOpts(
+		// First, create stores without authorization
+		setupOpenfga := MustNewServerWithOpts(
 			WithDatastore(ds),
 		)
-		t.Cleanup(openfga.Close)
+		t.Cleanup(setupOpenfga.Close)
 
 		clientID := "validclientid"
-		settings := newSetupAuthzModelAndTuples(t, openfga, clientID)
+		settings := newSetupAuthzModelAndTuples(t, setupOpenfga, clientID)
+		setupOpenfga.Close()
 
+		// Now create server with access control enabled
+		openfga := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithExperimentals(serverconfig.ExperimentalAccessControlParams),
+			WithAccessControlParams(true, settings.rootData.id, settings.rootData.modelID, "oidc"),
+		)
+		t.Cleanup(openfga.Close)
 		openfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: settings.rootData.id, ModelID: settings.rootData.modelID}, openfga, openfga.logger)
 
 		t.Run("error_when_CheckAuthz_errors", func(t *testing.T) {
@@ -1125,14 +1279,23 @@ func TestExpand(t *testing.T) {
 	})
 
 	t.Run("expand_with_authz", func(t *testing.T) {
-		openfga := MustNewServerWithOpts(
+		// First, create stores without authorization
+		setupOpenfga := MustNewServerWithOpts(
 			WithDatastore(ds),
 		)
-		t.Cleanup(openfga.Close)
+		t.Cleanup(setupOpenfga.Close)
 
 		clientID := "validclientid"
-		settings := newSetupAuthzModelAndTuples(t, openfga, clientID)
+		settings := newSetupAuthzModelAndTuples(t, setupOpenfga, clientID)
+		setupOpenfga.Close()
 
+		// Now create server with access control enabled
+		openfga := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithExperimentals(serverconfig.ExperimentalAccessControlParams),
+			WithAccessControlParams(true, settings.rootData.id, settings.rootData.modelID, "oidc"),
+		)
+		t.Cleanup(openfga.Close)
 		openfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: settings.rootData.id, ModelID: settings.rootData.modelID}, openfga, openfga.logger)
 
 		t.Run("error_when_CheckAuthz_errors", func(t *testing.T) {
@@ -1212,15 +1375,46 @@ func TestReadAuthorizationModel(t *testing.T) {
 	})
 
 	t.Run("readAuthorizationModel_with_authz", func(t *testing.T) {
-		openfga := MustNewServerWithOpts(
+		// First, create stores without authorization
+		setupOpenfga := MustNewServerWithOpts(
 			WithDatastore(ds),
 		)
-		t.Cleanup(openfga.Close)
+		t.Cleanup(setupOpenfga.Close)
 
 		clientID := "validclientid"
-		settings := newSetupAuthzModelAndTuples(t, openfga, clientID)
+		settings := newSetupAuthzModelAndTuples(t, setupOpenfga, clientID)
+		setupOpenfga.Close()
 
+		// Now create server with access control enabled
+		openfga := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithExperimentals(serverconfig.ExperimentalAccessControlParams),
+			WithAccessControlParams(true, settings.rootData.id, settings.rootData.modelID, "oidc"),
+		)
+		t.Cleanup(openfga.Close)
 		openfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: settings.rootData.id, ModelID: settings.rootData.modelID}, openfga, openfga.logger)
+
+		t.Run("error_when_access_control_not_enabled", func(t *testing.T) {
+			// Set up a server with an authorizer but access control feature flag disabled
+			testOpenfga := MustNewServerWithOpts(
+				WithDatastore(ds),
+			)
+			t.Cleanup(testOpenfga.Close)
+
+			testSettings := newSetupAuthzModelAndTuples(t, testOpenfga, clientID)
+			testOpenfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: testSettings.rootData.id, ModelID: testSettings.rootData.modelID}, testOpenfga, testOpenfga.logger)
+
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
+			_, err := testOpenfga.ReadAuthorizationModel(
+				ctx,
+				&openfgav1.ReadAuthorizationModelRequest{
+					StoreId: testSettings.testData.id,
+					Id:      testSettings.testData.modelID,
+				},
+			)
+
+			require.ErrorIs(t, err, authz.ErrUnauthorizedResponse)
+		})
 
 		t.Run("error_when_CheckAuthz_errors", func(t *testing.T) {
 			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
@@ -1282,15 +1476,45 @@ func TestReadAuthorizationModels(t *testing.T) {
 	})
 
 	t.Run("readAuthorizationModels_with_authz", func(t *testing.T) {
-		openfga := MustNewServerWithOpts(
+		// First, create stores without authorization
+		setupOpenfga := MustNewServerWithOpts(
 			WithDatastore(ds),
 		)
-		t.Cleanup(openfga.Close)
+		t.Cleanup(setupOpenfga.Close)
 
 		clientID := "validclientid"
-		settings := newSetupAuthzModelAndTuples(t, openfga, clientID)
+		settings := newSetupAuthzModelAndTuples(t, setupOpenfga, clientID)
+		setupOpenfga.Close()
 
+		// Now create server with access control enabled
+		openfga := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithExperimentals(serverconfig.ExperimentalAccessControlParams),
+			WithAccessControlParams(true, settings.rootData.id, settings.rootData.modelID, "oidc"),
+		)
+		t.Cleanup(openfga.Close)
 		openfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: settings.rootData.id, ModelID: settings.rootData.modelID}, openfga, openfga.logger)
+
+		t.Run("error_when_access_control_not_enabled", func(t *testing.T) {
+			// Set up a server with an authorizer but access control feature flag disabled
+			testOpenfga := MustNewServerWithOpts(
+				WithDatastore(ds),
+			)
+			t.Cleanup(testOpenfga.Close)
+
+			testSettings := newSetupAuthzModelAndTuples(t, testOpenfga, clientID)
+			testOpenfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: testSettings.rootData.id, ModelID: testSettings.rootData.modelID}, testOpenfga, testOpenfga.logger)
+
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
+			_, err := testOpenfga.ReadAuthorizationModels(
+				ctx,
+				&openfgav1.ReadAuthorizationModelsRequest{
+					StoreId: testSettings.testData.id,
+				},
+			)
+
+			require.ErrorIs(t, err, authz.ErrUnauthorizedResponse)
+		})
 
 		t.Run("error_when_CheckAuthz_errors", func(t *testing.T) {
 			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
@@ -1365,15 +1589,50 @@ func TestWriteAssertions(t *testing.T) {
 	})
 
 	t.Run("writeAssertions_with_authz", func(t *testing.T) {
-		openfga := MustNewServerWithOpts(
+		// First, create stores without authorization
+		setupOpenfga := MustNewServerWithOpts(
 			WithDatastore(ds),
 		)
-		t.Cleanup(openfga.Close)
+		t.Cleanup(setupOpenfga.Close)
 
 		clientID := "validclientid"
-		settings := newSetupAuthzModelAndTuples(t, openfga, clientID)
+		settings := newSetupAuthzModelAndTuples(t, setupOpenfga, clientID)
+		setupOpenfga.Close()
 
+		// Now create server with access control enabled
+		openfga := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithExperimentals(serverconfig.ExperimentalAccessControlParams),
+			WithAccessControlParams(true, settings.rootData.id, settings.rootData.modelID, "oidc"),
+		)
+		t.Cleanup(openfga.Close)
 		openfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: settings.rootData.id, ModelID: settings.rootData.modelID}, openfga, openfga.logger)
+
+		t.Run("error_when_access_control_not_enabled", func(t *testing.T) {
+			// Set up a server with an authorizer but access control feature flag disabled
+			testOpenfga := MustNewServerWithOpts(
+				WithDatastore(ds),
+			)
+			t.Cleanup(testOpenfga.Close)
+
+			testSettings := newSetupAuthzModelAndTuples(t, testOpenfga, clientID)
+			testOpenfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: testSettings.rootData.id, ModelID: testSettings.rootData.modelID}, testOpenfga, testOpenfga.logger)
+
+			assertions := []*openfgav1.Assertion{
+				{
+					TupleKey:    tuple.NewAssertionTupleKey("module1:1", "member", "user:ben"),
+					Expectation: false,
+				},
+			}
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
+			_, err := testOpenfga.WriteAssertions(ctx, &openfgav1.WriteAssertionsRequest{
+				StoreId:              testSettings.testData.id,
+				AuthorizationModelId: testSettings.testData.modelID,
+				Assertions:           assertions,
+			})
+
+			require.ErrorIs(t, err, authz.ErrUnauthorizedResponse)
+		})
 
 		t.Run("error_when_CheckAuthz_errors", func(t *testing.T) {
 			assertions := []*openfgav1.Assertion{
@@ -1456,15 +1715,43 @@ func TestReadAssertions(t *testing.T) {
 	})
 
 	t.Run("readAssertions_with_authz", func(t *testing.T) {
-		openfga := MustNewServerWithOpts(
+		// First, create stores without authorization
+		setupOpenfga := MustNewServerWithOpts(
 			WithDatastore(ds),
 		)
-		t.Cleanup(openfga.Close)
+		t.Cleanup(setupOpenfga.Close)
 
 		clientID := "validclientid"
-		settings := newSetupAuthzModelAndTuples(t, openfga, clientID)
+		settings := newSetupAuthzModelAndTuples(t, setupOpenfga, clientID)
+		setupOpenfga.Close()
 
+		// Now create server with access control enabled
+		openfga := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithExperimentals(serverconfig.ExperimentalAccessControlParams),
+			WithAccessControlParams(true, settings.rootData.id, settings.rootData.modelID, "oidc"),
+		)
+		t.Cleanup(openfga.Close)
 		openfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: settings.rootData.id, ModelID: settings.rootData.modelID}, openfga, openfga.logger)
+
+		t.Run("error_when_access_control_not_enabled", func(t *testing.T) {
+			// Set up a server with an authorizer but access control feature flag disabled
+			testOpenfga := MustNewServerWithOpts(
+				WithDatastore(ds),
+			)
+			t.Cleanup(testOpenfga.Close)
+
+			testSettings := newSetupAuthzModelAndTuples(t, testOpenfga, clientID)
+			testOpenfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: testSettings.rootData.id, ModelID: testSettings.rootData.modelID}, testOpenfga, testOpenfga.logger)
+
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
+			_, err := testOpenfga.ReadAssertions(ctx, &openfgav1.ReadAssertionsRequest{
+				StoreId:              testSettings.testData.id,
+				AuthorizationModelId: testSettings.testData.modelID,
+			})
+
+			require.ErrorIs(t, err, authz.ErrUnauthorizedResponse)
+		})
 
 		t.Run("error_when_CheckAuthz_errors", func(t *testing.T) {
 			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
@@ -1528,15 +1815,44 @@ func TestReadChanges(t *testing.T) {
 	})
 
 	t.Run("readChanges_with_authz", func(t *testing.T) {
-		openfga := MustNewServerWithOpts(
+		// First, create stores without authorization
+		setupOpenfga := MustNewServerWithOpts(
 			WithDatastore(ds),
 		)
-		t.Cleanup(openfga.Close)
+		t.Cleanup(setupOpenfga.Close)
 
 		clientID := "validclientid"
-		settings := newSetupAuthzModelAndTuples(t, openfga, clientID)
+		settings := newSetupAuthzModelAndTuples(t, setupOpenfga, clientID)
+		setupOpenfga.Close()
 
+		// Now create server with access control enabled
+		openfga := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithExperimentals(serverconfig.ExperimentalAccessControlParams),
+			WithAccessControlParams(true, settings.rootData.id, settings.rootData.modelID, "oidc"),
+		)
+		t.Cleanup(openfga.Close)
 		openfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: settings.rootData.id, ModelID: settings.rootData.modelID}, openfga, openfga.logger)
+
+		t.Run("error_when_access_control_not_enabled", func(t *testing.T) {
+			// Set up a server with an authorizer but access control feature flag disabled
+			testOpenfga := MustNewServerWithOpts(
+				WithDatastore(ds),
+			)
+			t.Cleanup(testOpenfga.Close)
+
+			testSettings := newSetupAuthzModelAndTuples(t, testOpenfga, clientID)
+			testOpenfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: testSettings.rootData.id, ModelID: testSettings.rootData.modelID}, testOpenfga, testOpenfga.logger)
+
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
+			_, err := testOpenfga.ReadChanges(ctx, &openfgav1.ReadChangesRequest{
+				StoreId:  testSettings.testData.id,
+				Type:     "user",
+				PageSize: wrapperspb.Int32(50),
+			})
+
+			require.ErrorIs(t, err, authz.ErrUnauthorizedResponse)
+		})
 
 		t.Run("error_when_CheckAuthz_errors", func(t *testing.T) {
 			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
@@ -1596,15 +1912,43 @@ func TestCreateStore(t *testing.T) {
 	})
 
 	t.Run("createStore_with_authz", func(t *testing.T) {
-		openfga := MustNewServerWithOpts(
+		// First, create stores without authorization
+		setupOpenfga := MustNewServerWithOpts(
 			WithDatastore(ds),
 		)
-		t.Cleanup(openfga.Close)
+		t.Cleanup(setupOpenfga.Close)
 
 		clientID := "validclientid"
-		settings := newSetupAuthzModelAndTuples(t, openfga, clientID)
+		settings := newSetupAuthzModelAndTuples(t, setupOpenfga, clientID)
+		setupOpenfga.Close()
 
+		// Now create server with access control enabled
+		openfga := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithExperimentals(serverconfig.ExperimentalAccessControlParams),
+			WithAccessControlParams(true, settings.rootData.id, settings.rootData.modelID, "oidc"),
+		)
+		t.Cleanup(openfga.Close)
 		openfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: settings.rootData.id, ModelID: settings.rootData.modelID}, openfga, openfga.logger)
+
+		t.Run("error_when_access_control_not_enabled", func(t *testing.T) {
+			// Set up a server with an authorizer but access control feature flag disabled
+			testOpenfga := MustNewServerWithOpts(
+				WithDatastore(ds),
+			)
+			t.Cleanup(testOpenfga.Close)
+
+			testSettings := newSetupAuthzModelAndTuples(t, testOpenfga, clientID)
+			testOpenfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: testSettings.rootData.id, ModelID: testSettings.rootData.modelID}, testOpenfga, testOpenfga.logger)
+
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
+			name := "new store"
+			_, err := testOpenfga.CreateStore(ctx, &openfgav1.CreateStoreRequest{
+				Name: name,
+			})
+
+			require.ErrorIs(t, err, authz.ErrUnauthorizedResponse)
+		})
 
 		t.Run("error_when_CheckAuthz_errors", func(t *testing.T) {
 			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
@@ -1655,15 +1999,42 @@ func TestDeleteStore(t *testing.T) {
 	})
 
 	t.Run("deleteStore_with_authz", func(t *testing.T) {
-		openfga := MustNewServerWithOpts(
+		// First, create stores without authorization
+		setupOpenfga := MustNewServerWithOpts(
 			WithDatastore(ds),
 		)
-		t.Cleanup(openfga.Close)
+		t.Cleanup(setupOpenfga.Close)
 
 		clientID := "validclientid"
-		settings := newSetupAuthzModelAndTuples(t, openfga, clientID)
+		settings := newSetupAuthzModelAndTuples(t, setupOpenfga, clientID)
+		setupOpenfga.Close()
 
+		// Now create server with access control enabled
+		openfga := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithExperimentals(serverconfig.ExperimentalAccessControlParams),
+			WithAccessControlParams(true, settings.rootData.id, settings.rootData.modelID, "oidc"),
+		)
+		t.Cleanup(openfga.Close)
 		openfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: settings.rootData.id, ModelID: settings.rootData.modelID}, openfga, openfga.logger)
+
+		t.Run("error_when_access_control_not_enabled", func(t *testing.T) {
+			// Set up a server with an authorizer but access control feature flag disabled
+			testOpenfga := MustNewServerWithOpts(
+				WithDatastore(ds),
+			)
+			t.Cleanup(testOpenfga.Close)
+
+			testSettings := newSetupAuthzModelAndTuples(t, testOpenfga, clientID)
+			testOpenfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: testSettings.rootData.id, ModelID: testSettings.rootData.modelID}, testOpenfga, testOpenfga.logger)
+
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
+			_, err := testOpenfga.DeleteStore(ctx, &openfgav1.DeleteStoreRequest{
+				StoreId: testSettings.testData.id,
+			})
+
+			require.ErrorIs(t, err, authz.ErrUnauthorizedResponse)
+		})
 
 		t.Run("error_when_CheckAuthz_errors", func(t *testing.T) {
 			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
@@ -1712,15 +2083,42 @@ func TestGetStore(t *testing.T) {
 	})
 
 	t.Run("getStore_with_authz", func(t *testing.T) {
-		openfga := MustNewServerWithOpts(
+		// First, create stores without authorization
+		setupOpenfga := MustNewServerWithOpts(
 			WithDatastore(ds),
 		)
-		t.Cleanup(openfga.Close)
+		t.Cleanup(setupOpenfga.Close)
 
 		clientID := "validclientid"
-		settings := newSetupAuthzModelAndTuples(t, openfga, clientID)
+		settings := newSetupAuthzModelAndTuples(t, setupOpenfga, clientID)
+		setupOpenfga.Close()
 
+		// Now create server with access control enabled
+		openfga := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithExperimentals(serverconfig.ExperimentalAccessControlParams),
+			WithAccessControlParams(true, settings.rootData.id, settings.rootData.modelID, "oidc"),
+		)
+		t.Cleanup(openfga.Close)
 		openfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: settings.rootData.id, ModelID: settings.rootData.modelID}, openfga, openfga.logger)
+
+		t.Run("error_when_access_control_not_enabled", func(t *testing.T) {
+			// Set up a server with an authorizer but access control feature flag disabled
+			testOpenfga := MustNewServerWithOpts(
+				WithDatastore(ds),
+			)
+			t.Cleanup(testOpenfga.Close)
+
+			testSettings := newSetupAuthzModelAndTuples(t, testOpenfga, clientID)
+			testOpenfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: testSettings.rootData.id, ModelID: testSettings.rootData.modelID}, testOpenfga, testOpenfga.logger)
+
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
+			_, err := testOpenfga.GetStore(ctx, &openfgav1.GetStoreRequest{
+				StoreId: testSettings.testData.id,
+			})
+
+			require.ErrorIs(t, err, authz.ErrUnauthorizedResponse)
+		})
 
 		t.Run("error_when_CheckAuthz_errors", func(t *testing.T) {
 			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
@@ -1770,15 +2168,43 @@ func TestListStores(t *testing.T) {
 	})
 
 	t.Run("listStores_with_authz", func(t *testing.T) {
-		openfga := MustNewServerWithOpts(
+		// First, create stores without authorization
+		setupOpenfga := MustNewServerWithOpts(
 			WithDatastore(ds),
 		)
-		t.Cleanup(openfga.Close)
+		t.Cleanup(setupOpenfga.Close)
 
 		clientID := "validclientid"
-		settings := newSetupAuthzModelAndTuples(t, openfga, clientID)
+		settings := newSetupAuthzModelAndTuples(t, setupOpenfga, clientID)
+		setupOpenfga.Close()
 
+		// Now create server with access control enabled
+		openfga := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithExperimentals(serverconfig.ExperimentalAccessControlParams),
+			WithAccessControlParams(true, settings.rootData.id, settings.rootData.modelID, "oidc"),
+		)
+		t.Cleanup(openfga.Close)
 		openfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: settings.rootData.id, ModelID: settings.rootData.modelID}, openfga, openfga.logger)
+
+		t.Run("error_when_access_control_not_enabled", func(t *testing.T) {
+			// Set up a server with an authorizer but access control feature flag disabled
+			testOpenfga := MustNewServerWithOpts(
+				WithDatastore(ds),
+			)
+			t.Cleanup(testOpenfga.Close)
+
+			testSettings := newSetupAuthzModelAndTuples(t, testOpenfga, clientID)
+			testOpenfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: testSettings.rootData.id, ModelID: testSettings.rootData.modelID}, testOpenfga, testOpenfga.logger)
+
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
+			_, err := testOpenfga.ListStores(ctx, &openfgav1.ListStoresRequest{
+				PageSize:          wrapperspb.Int32(1),
+				ContinuationToken: "",
+			})
+
+			require.ErrorIs(t, err, authz.ErrUnauthorizedResponse)
+		})
 
 		t.Run("error_when_getAccessibleStores_errors", func(t *testing.T) {
 			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
@@ -1845,15 +2271,51 @@ func TestListUsers(t *testing.T) {
 	})
 
 	t.Run("listUsers_with_authz", func(t *testing.T) {
-		openfga := MustNewServerWithOpts(
+		// First, create stores without authorization
+		setupOpenfga := MustNewServerWithOpts(
 			WithDatastore(ds),
 		)
-		t.Cleanup(openfga.Close)
+		t.Cleanup(setupOpenfga.Close)
 
 		clientID := "validclientid"
-		settings := newSetupAuthzModelAndTuples(t, openfga, clientID)
+		settings := newSetupAuthzModelAndTuples(t, setupOpenfga, clientID)
+		setupOpenfga.Close()
 
+		// Now create server with access control enabled
+		openfga := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithExperimentals(serverconfig.ExperimentalAccessControlParams),
+			WithAccessControlParams(true, settings.rootData.id, settings.rootData.modelID, "oidc"),
+		)
+		t.Cleanup(openfga.Close)
 		openfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: settings.rootData.id, ModelID: settings.rootData.modelID}, openfga, openfga.logger)
+
+		t.Run("error_when_access_control_not_enabled", func(t *testing.T) {
+			// Set up a server with an authorizer but access control feature flag disabled
+			testOpenfga := MustNewServerWithOpts(
+				WithDatastore(ds),
+			)
+			t.Cleanup(testOpenfga.Close)
+
+			testSettings := newSetupAuthzModelAndTuples(t, testOpenfga, clientID)
+			testOpenfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: testSettings.rootData.id, ModelID: testSettings.rootData.modelID}, testOpenfga, testOpenfga.logger)
+
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
+			_, err := testOpenfga.ListUsers(ctx, &openfgav1.ListUsersRequest{
+				StoreId:              testSettings.testData.id,
+				AuthorizationModelId: testSettings.testData.modelID,
+				Object: &openfgav1.Object{
+					Type: "module1",
+					Id:   "1",
+				},
+				Relation: "member",
+				UserFilters: []*openfgav1.UserTypeFilter{
+					{Type: "user"},
+				},
+			})
+
+			require.ErrorIs(t, err, authz.ErrUnauthorizedResponse)
+		})
 
 		t.Run("error_when_check_errors", func(t *testing.T) {
 			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})

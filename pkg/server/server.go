@@ -987,13 +987,32 @@ func (s *Server) validateAccessControlEnabled() error {
 	return nil
 }
 
+// shouldRunAuthz determines whether authorization checks should be run for the request.
+// It returns false if authorization checks should be skipped (e.g. due to being authorized upstream).
+// It returns authz.ErrUnauthorizedResponse error if authorization checks should be - but cannot be - run due to misconfiguration.
+func (s *Server) shouldRunAuthz(ctx context.Context) (bool, error) {
+	if authclaims.SkipAuthzCheckFromContext(ctx) {
+		return false, nil
+	}
+
+	if !s.IsAccessControlEnabled() {
+		s.logger.Error("authorization failed - access control is not enabled")
+		return false, authz.ErrUnauthorizedResponse
+	}
+	return true, nil
+}
+
 // checkAuthz checks the authorization for calling an API method.
 func (s *Server) checkAuthz(ctx context.Context, storeID string, apiMethod apimethod.APIMethod, modules ...string) error {
-	if authclaims.SkipAuthzCheckFromContext(ctx) {
+	runAuthz, err := s.shouldRunAuthz(ctx)
+	if err != nil {
+		return err
+	}
+	if !runAuthz {
 		return nil
 	}
 
-	err := s.authorizer.Authorize(ctx, storeID, apiMethod, modules...)
+	err = s.authorizer.Authorize(ctx, storeID, apiMethod, modules...)
 	if err != nil {
 		s.logger.Info("authorization failed", zap.Error(err))
 		return authz.ErrUnauthorizedResponse
@@ -1004,11 +1023,15 @@ func (s *Server) checkAuthz(ctx context.Context, storeID string, apiMethod apime
 
 // checkCreateStoreAuthz checks the authorization for creating a store.
 func (s *Server) checkCreateStoreAuthz(ctx context.Context) error {
-	if authclaims.SkipAuthzCheckFromContext(ctx) {
+	runAuthz, err := s.shouldRunAuthz(ctx)
+	if err != nil {
+		return err
+	}
+	if !runAuthz {
 		return nil
 	}
 
-	err := s.authorizer.AuthorizeCreateStore(ctx)
+	err = s.authorizer.AuthorizeCreateStore(ctx)
 	if err != nil {
 		s.logger.Info("authorization failed", zap.Error(err))
 		return authz.ErrUnauthorizedResponse
@@ -1020,11 +1043,15 @@ func (s *Server) checkCreateStoreAuthz(ctx context.Context) error {
 // getAccessibleStores checks whether the caller has permission to list stores and if so,
 // returns the list of stores that the user has access to.
 func (s *Server) getAccessibleStores(ctx context.Context) ([]string, error) {
-	if authclaims.SkipAuthzCheckFromContext(ctx) {
+	runAuthz, err := s.shouldRunAuthz(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if !runAuthz {
 		return nil, nil
 	}
 
-	err := s.authorizer.AuthorizeListStores(ctx)
+	err = s.authorizer.AuthorizeListStores(ctx)
 	if err != nil {
 		s.logger.Info("authorization failed", zap.Error(err))
 		return nil, authz.ErrUnauthorizedResponse
@@ -1066,7 +1093,11 @@ func (s *Server) getCheckResolverOptions() ([]graph.CachedCheckResolverOpt, []gr
 
 // checkWriteAuthz checks the authorization for modules if they exist, otherwise the store on write requests.
 func (s *Server) checkWriteAuthz(ctx context.Context, req *openfgav1.WriteRequest, typesys *typesystem.TypeSystem) error {
-	if authclaims.SkipAuthzCheckFromContext(ctx) {
+	runAuthz, err := s.shouldRunAuthz(ctx)
+	if err != nil {
+		return err
+	}
+	if !runAuthz {
 		return nil
 	}
 
