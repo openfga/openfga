@@ -268,6 +268,7 @@ pg_basebackup -h %s -p %s -U postgres -D $PGDATA -Fp -Xs -P -R
 echo "hot_standby = on" >> $PGDATA/postgresql.conf
 touch $PGDATA/standby.signal
 
+
 # Fix permissions - ensure postgres user owns the data directory
 chown -R postgres:postgres /var/lib/postgresql
 
