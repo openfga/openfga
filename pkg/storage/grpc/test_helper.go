@@ -60,3 +60,39 @@ func SetupTestClientServer(t testing.TB) (*Client, storage.OpenFGADatastore, fun
 
 	return client, datastore, cleanup
 }
+
+// SetupTestClientServerOverNetwork sets up a test gRPC server and client using a real TCP network listener.
+// This mimics real network overhead better than bufconn and is useful for benchmarks.
+func SetupTestClientServerOverNetwork(t testing.TB) (*Client, func()) {
+	// Create in-memory datastore
+	datastore := memory.New()
+
+	// Set up gRPC server with real network listener
+	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+
+	grpcServer := grpc.NewServer()
+	storageServer := NewServer(datastore)
+	storagev1.RegisterStorageServiceServer(grpcServer, storageServer)
+
+	go func() {
+		if err := grpcServer.Serve(lis); err != nil {
+			t.Logf("Server exited with error: %v", err)
+		}
+	}()
+
+	// Create client
+	config := ClientConfig{
+		Addr: lis.Addr().String(),
+	}
+	client, err := NewClient(config)
+	require.NoError(t, err)
+
+	cleanup := func() {
+		client.Close()
+		datastore.Close()
+		grpcServer.Stop()
+	}
+
+	return client, cleanup
+}
