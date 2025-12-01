@@ -320,7 +320,7 @@ func TestListObjectsDispatchCount(t *testing.T) {
 			require.NoError(t, err)
 
 			require.Equal(t, test.expectedDispatchCount, resp.ResolutionMetadata.DispatchCounter.Load())
-			require.Equal(t, test.expectedThrottlingValue > 0, resp.ResolutionMetadata.WasThrottled.Load())
+			require.Equal(t, test.expectedThrottlingValue > 0, resp.ResolutionMetadata.DispatchThrottled.Load())
 		})
 	}
 }

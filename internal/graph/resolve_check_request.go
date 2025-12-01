@@ -44,8 +44,11 @@ type ResolveCheckRequestMetadata struct {
 	// After the root problem has been solved, this value can be read.
 	DispatchCounter *atomic.Uint32
 
-	// WasThrottled indicates whether the request was throttled
-	WasThrottled *atomic.Bool
+	// DispatchThrottled indicates whether the request was throttled by the dispatch throttling check resolver
+	DispatchThrottled *atomic.Bool
+
+	// DatastoreThrottled indicates whether this request was throttled at the datastore level.
+	DatastoreThrottled *atomic.Bool
 }
 
 type ResolveCheckRequestParams struct {
@@ -60,8 +63,9 @@ type ResolveCheckRequestParams struct {
 
 func NewCheckRequestMetadata() *ResolveCheckRequestMetadata {
 	return &ResolveCheckRequestMetadata{
-		DispatchCounter: new(atomic.Uint32),
-		WasThrottled:    new(atomic.Bool),
+		DispatchCounter:    new(atomic.Uint32),
+		DispatchThrottled:  new(atomic.Bool),
+		DatastoreThrottled: new(atomic.Bool),
 	}
 }
 
@@ -110,9 +114,10 @@ func (r *ResolveCheckRequest) clone() *ResolveCheckRequest {
 	origRequestMetadata := r.GetRequestMetadata()
 	if origRequestMetadata != nil {
 		requestMetadata = &ResolveCheckRequestMetadata{
-			DispatchCounter: origRequestMetadata.DispatchCounter,
-			Depth:           origRequestMetadata.Depth,
-			WasThrottled:    origRequestMetadata.WasThrottled,
+			DispatchCounter:    origRequestMetadata.DispatchCounter,
+			Depth:              origRequestMetadata.Depth,
+			DispatchThrottled:  origRequestMetadata.DispatchThrottled,
+			DatastoreThrottled: origRequestMetadata.DatastoreThrottled,
 		}
 	}
 
