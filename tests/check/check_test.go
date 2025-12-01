@@ -183,16 +183,17 @@ func TestServerLogs(t *testing.T) {
 				TupleKey:             tuple.NewCheckRequestTupleKey("document:1", "viewer", "user:anne"),
 			},
 			expectedContext: map[string]interface{}{
-				"grpc_service":           "openfga.v1.OpenFGAService",
-				"grpc_method":            "Check",
-				"grpc_type":              "unary",
-				"grpc_code":              int32(0),
-				"raw_request":            fmt.Sprintf(`{"store_id":"%s","tuple_key":{"object":"document:1","relation":"viewer","user":"user:anne"},"contextual_tuples":null,"authorization_model_id":"%s","trace":false,"context":null, "consistency":"UNSPECIFIED"}`, storeID, authorizationModelID),
-				"raw_response":           `{"allowed":true,"resolution":""}`,
-				"authorization_model_id": authorizationModelID,
-				"store_id":               storeID,
-				"user_agent":             "test-user-agent" + " grpc-go/" + grpc.Version,
-				"request.throttled":      false,
+				"grpc_service":                "openfga.v1.OpenFGAService",
+				"grpc_method":                 "Check",
+				"grpc_type":                   "unary",
+				"grpc_code":                   int32(0),
+				"raw_request":                 fmt.Sprintf(`{"store_id":"%s","tuple_key":{"object":"document:1","relation":"viewer","user":"user:anne"},"contextual_tuples":null,"authorization_model_id":"%s","trace":false,"context":null, "consistency":"UNSPECIFIED"}`, storeID, authorizationModelID),
+				"raw_response":                `{"allowed":true,"resolution":""}`,
+				"authorization_model_id":      authorizationModelID,
+				"store_id":                    storeID,
+				"user_agent":                  "test-user-agent" + " grpc-go/" + grpc.Version,
+				"request.dispatch_throttled":  false,
+				"request.datastore_throttled": false,
 			},
 		},
 		{
@@ -207,16 +208,17 @@ func TestServerLogs(t *testing.T) {
   "authorization_model_id": "` + authorizationModelID + `"
 }`),
 			expectedContext: map[string]interface{}{
-				"grpc_service":           "openfga.v1.OpenFGAService",
-				"grpc_method":            "Check",
-				"grpc_type":              "unary",
-				"grpc_code":              int32(0),
-				"raw_request":            fmt.Sprintf(`{"store_id":"%s","tuple_key":{"object":"document:1","relation":"viewer","user":"user:anne"},"contextual_tuples":null,"authorization_model_id":"%s","trace":false,"context":null, "consistency":"UNSPECIFIED"}`, storeID, authorizationModelID),
-				"raw_response":           `{"allowed":true,"resolution":""}`,
-				"authorization_model_id": authorizationModelID,
-				"store_id":               storeID,
-				"user_agent":             "test-user-agent",
-				"request.throttled":      false,
+				"grpc_service":                "openfga.v1.OpenFGAService",
+				"grpc_method":                 "Check",
+				"grpc_type":                   "unary",
+				"grpc_code":                   int32(0),
+				"raw_request":                 fmt.Sprintf(`{"store_id":"%s","tuple_key":{"object":"document:1","relation":"viewer","user":"user:anne"},"contextual_tuples":null,"authorization_model_id":"%s","trace":false,"context":null, "consistency":"UNSPECIFIED"}`, storeID, authorizationModelID),
+				"raw_response":                `{"allowed":true,"resolution":""}`,
+				"authorization_model_id":      authorizationModelID,
+				"store_id":                    storeID,
+				"user_agent":                  "test-user-agent",
+				"request.dispatch_throttled":  false,
+				"request.datastore_throttled": false,
 			},
 		},
 		{
@@ -272,16 +274,17 @@ func TestServerLogs(t *testing.T) {
 }`),
 			expectedError: false,
 			expectedContext: map[string]interface{}{
-				"grpc_service":           "openfga.v1.OpenFGAService",
-				"grpc_method":            "StreamedListObjects",
-				"grpc_type":              "server_stream",
-				"grpc_code":              int32(0),
-				"raw_request":            fmt.Sprintf(`{"authorization_model_id":"%s","context":null,"contextual_tuples":null,"relation":"viewer","store_id":"%s","type":"document","user":"user:anne","consistency":"UNSPECIFIED"}`, authorizationModelID, storeID),
-				"raw_response":           `{"object":"document:1"}`,
-				"store_id":               storeID,
-				"authorization_model_id": authorizationModelID,
-				"user_agent":             "test-user-agent",
-				"request.throttled":      nil,
+				"grpc_service":                "openfga.v1.OpenFGAService",
+				"grpc_method":                 "StreamedListObjects",
+				"grpc_type":                   "server_stream",
+				"grpc_code":                   int32(0),
+				"raw_request":                 fmt.Sprintf(`{"authorization_model_id":"%s","context":null,"contextual_tuples":null,"relation":"viewer","store_id":"%s","type":"document","user":"user:anne","consistency":"UNSPECIFIED"}`, authorizationModelID, storeID),
+				"raw_response":                `{"object":"document:1"}`,
+				"store_id":                    storeID,
+				"authorization_model_id":      authorizationModelID,
+				"user_agent":                  "test-user-agent",
+				"request.dispatch_throttled":  false,
+				"request.datastore_throttled": false,
 			},
 		},
 	}
@@ -333,7 +336,8 @@ func TestServerLogs(t *testing.T) {
 			if !test.expectedError {
 				require.NotEmpty(t, fields["datastore_query_count"])
 				require.GreaterOrEqual(t, fields["dispatch_count"], float64(0))
-				require.Equal(t, test.expectedContext["request.throttled"], fields["request.throttled"])
+				require.Equal(t, test.expectedContext["request.dispatch_throttled"], fields["request.dispatch_throttled"])
+				require.Equal(t, test.expectedContext["request.datastore_throttled"], fields["request.datastore_throttled"])
 				require.GreaterOrEqual(t, len(fields), 15)
 			} else {
 				require.Len(t, fields, 13)
