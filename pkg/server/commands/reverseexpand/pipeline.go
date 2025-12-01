@@ -954,6 +954,7 @@ func (p *Pipeline) Build(ctx context.Context, source Source, target Target) iter
 
 	sourceWorker, ok := pth.workers[(*Node)(source)]
 	if !ok {
+		span.End()
 		cancel()
 		// if the sourceWorker cannot be found, it means that the source
 		// does not have a path to the target, therefore there are no items
@@ -1141,14 +1142,14 @@ EdgeLoop:
 				switch source.GetLabel() {
 				case weightedGraph.ExclusionOperator:
 					if ndx == 0 {
-						p.workers[source] = nil
+						delete(p.workers, source)
 
 						break EdgeLoop
 					}
 
 					w.listen(nil, newStaticProducer(&p.trk), p.pipe.chunkSize, 1)
 				case weightedGraph.IntersectionOperator:
-					p.workers[source] = nil
+					delete(p.workers, source)
 
 					break EdgeLoop
 				}
