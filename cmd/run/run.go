@@ -93,7 +93,7 @@ func NewRunCommand() *cobra.Command {
 	defaultConfig := serverconfig.DefaultConfig()
 	flags := cmd.Flags()
 
-	flags.StringSlice("experimentals", defaultConfig.Experimentals, "a list of experimental features to enable. Allowed values: `enable-consistency-params`, `enable-check-optimizations`, `enable-list-objects-optimizations`, `enable-access-control`")
+	flags.StringSlice("experimentals", defaultConfig.Experimentals, fmt.Sprintf("a list of experimental features to enable. Allowed values: %s, %s, %s, %s", serverconfig.ExperimentalCheckOptimizations, serverconfig.ExperimentalCheckOptimizations, serverconfig.ExperimentalAccessControlParams, serverconfig.ExperimentalPipelineListObjects))
 
 	flags.Bool("access-control-enabled", defaultConfig.AccessControl.Enabled, "enable/disable the access control feature")
 
@@ -261,9 +261,9 @@ func NewRunCommand() *cobra.Command {
 
 	flags.Duration("check-query-cache-ttl", defaultConfig.CheckQueryCache.TTL, "if check-query-cache-enabled, this is the TTL of each value")
 
-	flags.Bool("cache-controller-enabled", defaultConfig.CacheController.Enabled, "enabling dynamic invalidation of check query cache and check iterator cache based on whether there are recent tuple writes. If enabled, cache will be invalidated when either 1) there are tuples written to the store OR 2) the check query cache or check iterator cache TTL has expired.")
+	flags.Bool("cache-controller-enabled", defaultConfig.CacheController.Enabled, "enable invalidation of check query cache and iterator cache based on recent tuple writes. Invalidation is triggered by Check and List Objects requests, which periodically check the datastore's changelog table for writes and invalidate cache entries earlier than recent writes. Invalidations from Check requests are rate-limited by cache-controller-ttl, whereas List Objects requests invalidate every time if list objects iterator cache is enabled.")
 
-	flags.Duration("cache-controller-ttl", defaultConfig.CacheController.TTL, "if cache controller is enabled, control how frequent read changes are invoked internally to query for recent tuple writes to the store.")
+	flags.Duration("cache-controller-ttl", defaultConfig.CacheController.TTL, "if cache controller is enabled, this is the minimum time interval for Check requests to trigger cache invalidation. List Objects requests may trigger invalidation even sooner if list objects iterator cache is enabled.")
 
 	// Unfortunately UintSlice/IntSlice does not work well when used as environment variable, we need to stick with string slice and convert back to integer
 	flags.StringSlice("request-duration-datastore-query-count-buckets", defaultConfig.RequestDurationDatastoreQueryCountBuckets, "datastore query count buckets used in labelling request_duration_ms.")

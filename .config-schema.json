@@ -135,7 +135,7 @@
             "type": "array",
             "items": {
                 "type": "string",
-                "enum": ["enable-check-optimizations", "enable-list-objects-optimizations", "enable-access-control"]
+                "enum": ["enable-check-optimizations", "enable-list-objects-optimizations", "enable-access-control", "pipeline_list_objects"]
             },
             "default": [],
             "x-env-variable": "OPENFGA_EXPERIMENTALS"
@@ -576,13 +576,13 @@
             "type": "object",
             "properties": {
                 "enabled": {
-                    "description": "enabling dynamic invalidation of check query cache and check iterator cache based on whether there are recent tuple writes. If enabled, cache will be invalidated when either 1) there are tuples written to the store OR 2) the check query cache or check iterator cache TTL has expired.",
+                    "description": "enable invalidation of check query cache and iterator cache based on recent tuple writes. Invalidation is triggered by Check and List Objects requests, which periodically check the datastore's changelog table for writes and invalidate cache entries earlier than recent writes. Invalidations from Check requests are rate-limited by cache-controller-ttl, whereas List Objects requests invalidate every time if list objects iterator cache is enabled.",
                     "type": "boolean",
                     "default": false,
                     "x-env-variable": "OPENFGA_CACHE_CONTROLLER_ENABLED"
                 },
                 "ttl": {
-                    "description": "if cache controller is enabled, control how frequent read changes are invoked internally to query for recent tuple writes to the store.",
+                    "description": "if cache controller is enabled, this is the minimum time interval for Check requests to trigger cache invalidation. List Objects requests may trigger invalidation even sooner if list objects iterator cache is enabled.",
                     "type": "string",
                     "format": "duration",
                     "default": "10s",

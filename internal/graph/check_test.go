@@ -2003,7 +2003,7 @@ func TestCheckDirectUserTuple(t *testing.T) {
 			storeID := ulid.Make().String()
 			ds := mocks.NewMockRelationshipTupleReader(ctrl)
 
-			ds.EXPECT().ReadUserTuple(gomock.Any(), storeID, tt.reqTupleKey, gomock.Any()).Times(1).Return(tt.readUserTuple, tt.readUserTupleError)
+			ds.EXPECT().ReadUserTuple(gomock.Any(), storeID, storage.ReadUserTupleFilter{Object: tt.reqTupleKey.GetObject(), Relation: tt.reqTupleKey.GetRelation(), User: tt.reqTupleKey.GetUser()}, gomock.Any()).Times(1).Return(tt.readUserTuple, tt.readUserTupleError)
 
 			ts, err := typesystem.New(tt.model)
 			require.NoError(t, err)

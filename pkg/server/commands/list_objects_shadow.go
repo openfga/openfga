@@ -8,6 +8,8 @@ import (
 	"sync"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -178,7 +180,14 @@ func (q *shadowedListObjectsQuery) ExecuteStreamed(ctx context.Context, req *ope
 // If the shadow function takes longer than shadowTimeout, it will be cancelled, and its result will be ignored, but the shadowTimeout event will be logged.
 // This function is designed to be run in a separate goroutine to avoid blocking the main execution flow.
 func (q *shadowedListObjectsQuery) executeShadowModeAndCompareResults(parentCtx context.Context, req *openfgav1.ListObjectsRequest, mainResult *ListObjectsResponse, latency time.Duration) {
-	parentCtx, span := tracer.Start(parentCtx, "shadow")
+	linkedSpan := trace.SpanContextFromContext(parentCtx)
+	link := trace.Link{
+		SpanContext: linkedSpan,
+	}
+	_, span := tracer.Start(context.Background(), "shadow", trace.WithLinks(link), trace.WithAttributes(
+		attribute.String("main.trace.id", linkedSpan.TraceID().String()),
+	))
+	parentCtx = trace.ContextWithSpan(parentCtx, span)
 	defer span.End()
 
 	shadowCtx, shadowCancel := context.WithTimeout(parentCtx, q.shadowTimeout)
@@ -234,6 +243,7 @@ func (q *shadowedListObjectsQuery) executeShadowModeAndCompareResults(parentCtx 
 
 	// compare sorted string arrays - sufficient for equality check
 	if !maps.Equal(mapResultMain, mapResultShadow) {
+		span.SetAttributes(attribute.Bool("matches", false))
 		delta := calculateDelta(mapResultMain, mapResultShadow)
 		totalDelta := len(delta)
 		// Limit the delta to maxDeltaItems
@@ -253,6 +263,7 @@ func (q *shadowedListObjectsQuery) executeShadowModeAndCompareResults(parentCtx 
 			loShadowLogFields(req, fields...)...,
 		)
 	} else {
+		span.SetAttributes(attribute.Bool("matches", true))
 		fields = append(
 			fields,
 			zap.Bool("is_match", true),

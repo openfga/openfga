@@ -95,12 +95,14 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 	endTime := time.Since(startTime).Milliseconds()
 
 	var (
-		wasRequestThrottled bool
-		rawDispatchCount    uint32
+		dispatchThrottled  bool
+		datastoreThrottled bool
+		rawDispatchCount   uint32
 	)
 
 	if checkRequestMetadata != nil {
-		wasRequestThrottled = checkRequestMetadata.WasThrottled.Load()
+		dispatchThrottled = checkRequestMetadata.DispatchThrottled.Load()
+		datastoreThrottled = checkRequestMetadata.DatastoreThrottled.Load()
 		rawDispatchCount = checkRequestMetadata.DispatchCounter.Load()
 		dispatchCount := float64(rawDispatchCount)
 
@@ -147,10 +149,11 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 			).Observe(float64(endTime))
 		}
 
-		if wasRequestThrottled {
+		if dispatchThrottled || datastoreThrottled {
 			throttledRequestCounter.WithLabelValues(s.serviceName, methodName).Inc()
 		}
-		grpc_ctxtags.Extract(ctx).Set("request.throttled", wasRequestThrottled)
+		grpc_ctxtags.Extract(ctx).Set("request.dispatch_throttled", dispatchThrottled)
+		grpc_ctxtags.Extract(ctx).Set("request.datastore_throttled", datastoreThrottled)
 	}
 
 	if err != nil {

@@ -52,7 +52,7 @@ type LocalChecker struct {
 	delegate             CheckResolver
 	concurrencyLimit     int
 	upstreamTimeout      time.Duration
-	planner              *planner.Planner
+	planner              planner.Manager
 	logger               logger.Logger
 	optimizationsEnabled bool
 	maxResolutionDepth   uint32
@@ -73,7 +73,7 @@ func WithOptimizations(enabled bool) LocalCheckerOption {
 	}
 }
 
-func WithPlanner(p *planner.Planner) LocalCheckerOption {
+func WithPlanner(p planner.Manager) LocalCheckerOption {
 	return func(d *LocalChecker) {
 		d.planner = p
 	}
@@ -554,7 +554,7 @@ func (c *LocalChecker) checkDirectUserTuple(ctx context.Context, req *ResolveChe
 				Preference: req.GetConsistency(),
 			},
 		}
-		t, err := ds.ReadUserTuple(ctx, storeID, reqTupleKey, opts)
+		t, err := ds.ReadUserTuple(ctx, storeID, storage.ReadUserTupleFilter{Object: reqTupleKey.GetObject(), Relation: reqTupleKey.GetRelation(), User: reqTupleKey.GetUser()}, opts)
 		if err != nil {
 			if errors.Is(err, storage.ErrNotFound) {
 				return response, nil
@@ -617,7 +617,7 @@ func shouldCheckPublicAssignable(ctx context.Context, reqTupleKey *openfgav1.Tup
 	return isPubliclyAssignable
 }
 
-func (c *LocalChecker) profiledCheckHandler(keyPlan *planner.KeyPlan, strategy *planner.KeyPlanStrategy, resolver CheckHandlerFunc) CheckHandlerFunc {
+func (c *LocalChecker) profiledCheckHandler(keyPlan planner.Selector, strategy *planner.PlanConfig, resolver CheckHandlerFunc) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
 		start := time.Now()
 		res, err := resolver(ctx)
@@ -660,7 +660,7 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 			return c.defaultUserset(ctx, req, directlyRelatedUsersetTypes, iter)(ctx)
 		}
 
-		possibleStrategies := map[string]*planner.KeyPlanStrategy{
+		possibleStrategies := map[string]*planner.PlanConfig{
 			defaultResolver: defaultPlan,
 		}
 
@@ -685,13 +685,13 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 
 			b.WriteString("infinite")
 			key := b.String()
-			keyPlan := c.planner.GetKeyPlan(key)
+			keyPlan := c.planner.GetPlanSelector(key)
 			possibleStrategies[defaultResolver] = defaultRecursivePlan
 			possibleStrategies[recursiveResolver] = recursivePlan
-			plan := keyPlan.SelectStrategy(possibleStrategies)
+			plan := keyPlan.Select(possibleStrategies)
 
 			resolver := c.defaultUserset
-			if plan.Type == recursiveResolver {
+			if plan.Name == recursiveResolver {
 				resolver = c.recursiveUserset
 			}
 			return c.profiledCheckHandler(keyPlan, plan, resolver(ctx, req, directlyRelatedUsersetTypes, iter))(ctx)
@@ -719,11 +719,11 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 			k.WriteString("userset|")
 			k.WriteString(userset.String())
 			key := k.String()
-			keyPlan := c.planner.GetKeyPlan(key)
-			strategy := keyPlan.SelectStrategy(possibleStrategies)
+			keyPlan := c.planner.GetPlanSelector(key)
+			strategy := keyPlan.Select(possibleStrategies)
 
 			resolver := c.defaultUserset
-			if strategy.Type == weightTwoResolver {
+			if strategy.Name == weightTwoResolver {
 				resolver = c.weight2Userset
 			}
 			resolvers = append(resolvers, c.profiledCheckHandler(keyPlan, strategy, resolver(ctx, req, usersets, iter)))
@@ -862,7 +862,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 		defer filteredIter.Stop()
 
 		resolver := c.defaultTTU
-		possibleStrategies := map[string]*planner.KeyPlanStrategy{
+		possibleStrategies := map[string]*planner.PlanConfig{
 			defaultResolver: defaultPlan,
 		}
 		isUserset := tuple.IsObjectRelation(tk.GetUser())
@@ -897,10 +897,10 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 		b.WriteString("|")
 		b.WriteString(computedRelation)
 		planKey := b.String()
-		keyPlan := c.planner.GetKeyPlan(planKey)
-		strategy := keyPlan.SelectStrategy(possibleStrategies)
+		keyPlan := c.planner.GetPlanSelector(planKey)
+		strategy := keyPlan.Select(possibleStrategies)
 
-		switch strategy.Type {
+		switch strategy.Name {
 		case defaultResolver:
 			resolver = c.defaultTTU
 		case weightTwoResolver:

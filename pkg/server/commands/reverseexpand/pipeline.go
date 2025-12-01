@@ -342,9 +342,9 @@ func (b *Backend) query(ctx context.Context, input queryInput) iter.Seq[Item] {
 // there exist no more in-flight messages for the parent worker. When recursive edges exist, the parent worker for
 // this resolver type requires its internal watchdog process to initiate a shutdown.
 type baseResolver struct {
-	// id is an identifier provided when registering with the baseResolver's StatusPool. The registration happens
+	// reporter is a Reporter provided when registering with the baseResolver's StatusPool. The registration happens
 	// once, when the baseResolver is created, so this value will remain constant for the lifetime of the instance.
-	id int
+	reporter Reporter
 
 	ctx context.Context
 
@@ -397,9 +397,10 @@ func (r *baseResolver) process(ndx int, snd *sender, listeners []*listener) loop
 		edgeTo := "nil"
 		edgeFrom := "nil"
 
-		if snd.edge() != nil {
-			edgeTo = snd.edge().GetTo().GetUniqueLabel()
-			edgeFrom = snd.edge().GetFrom().GetUniqueLabel()
+		edge := snd.edge()
+		if edge != nil {
+			edgeTo = edge.GetTo().GetUniqueLabel()
+			edgeFrom = edge.GetFrom().GetUniqueLabel()
 		}
 
 		attrs = append(
@@ -411,37 +412,42 @@ func (r *baseResolver) process(ndx int, snd *sender, listeners []*listener) loop
 		ctx, span := pipelineTracer.Start(r.ctx, "message.received", trace.WithAttributes(attrs...))
 		defer span.End()
 
-		// Deduplicate items within this group based on the buffer for this sender
-		for _, item := range msg.Value.Items {
-			if item.Err != nil {
+		// If the edge is recursive or part of a tuple cycle,
+		// deduplicate items received in this group based on the buffer for this sender.
+		if edge != nil && (len(edge.GetRecursiveRelation()) > 0 || edge.IsPartOfTupleCycle()) {
+			for _, item := range msg.Value.Items {
+				if item.Err != nil {
+					r.mutexes[ndx].Lock()
+					if _, ok := r.errBuffers[ndx][item.Err.Error()]; ok {
+						r.mutexes[ndx].Unlock()
+						continue
+					}
+					r.errBuffers[ndx][item.Err.Error()] = struct{}{}
+					r.mutexes[ndx].Unlock()
+					unseen = append(unseen, item)
+					continue
+				}
+
 				r.mutexes[ndx].Lock()
-				if _, ok := r.errBuffers[ndx][item.Err.Error()]; ok {
+				if _, ok := r.inBuffers[ndx][item.Value]; ok {
 					r.mutexes[ndx].Unlock()
 					continue
 				}
-				r.errBuffers[ndx][item.Err.Error()] = struct{}{}
+				r.inBuffers[ndx][item.Value] = struct{}{}
 				r.mutexes[ndx].Unlock()
 				unseen = append(unseen, item)
-				continue
 			}
-
-			r.mutexes[ndx].Lock()
-			if _, ok := r.inBuffers[ndx][item.Value]; ok {
-				r.mutexes[ndx].Unlock()
-				continue
-			}
-			r.inBuffers[ndx][item.Value] = struct{}{}
-			r.mutexes[ndx].Unlock()
-			unseen = append(unseen, item)
+		} else {
+			unseen = msg.Value.Items
 		}
 
-		// If there are no unseen items, skip processing
+		// If there are no unseen items, skip processing.
 		if len(unseen) == 0 {
 			msg.done()
 			return true
 		}
 
-		results = r.interpreter.interpret(ctx, snd.edge(), unseen)
+		results = r.interpreter.interpret(ctx, edge, unseen)
 
 		// Deduplicate the output and potentially send in chunks.
 		for item := range results {
@@ -559,8 +565,8 @@ func (r *baseResolver) resolve(senders []*sender, listeners []*listener) {
 	wgStandard.Wait()
 
 	// Once the standard senders have all finished processing, we set the resolver's status to `false`
-	// indicating that the parent is ready for cleanup once all messages have finished processing.
-	r.status.Set(r.id, false)
+	// indicating that the worker is ready for cleanup once all messages have finished processing.
+	r.reporter.Report(false)
 
 	// Recursive senders will process infinitely until the parent worker's watchdog goroutine kills
 	// them.
@@ -570,7 +576,7 @@ func (r *baseResolver) resolve(senders []*sender, listeners []*listener) {
 type edgeHandler func(context.Context, *Edge, []Item) iter.Seq[Item]
 
 type exclusionResolver struct {
-	id          int
+	reporter    Reporter
 	ctx         context.Context
 	interpreter interpreter
 	status      *StatusPool
@@ -580,7 +586,7 @@ type exclusionResolver struct {
 func (r *exclusionResolver) resolve(senders []*sender, listeners []*listener) {
 	defer func() {
 		r.trk.Add(-1)
-		r.status.Set(r.id, false)
+		r.reporter.Report(false)
 	}()
 
 	r.trk.Add(1)
@@ -737,7 +743,7 @@ type interpreter interface {
 }
 
 type intersectionResolver struct {
-	id          int
+	reporter    Reporter
 	ctx         context.Context
 	interpreter interpreter
 	status      *StatusPool
@@ -747,7 +753,7 @@ type intersectionResolver struct {
 func (r *intersectionResolver) resolve(senders []*sender, listeners []*listener) {
 	defer func() {
 		r.trk.Add(-1)
-		r.status.Set(r.id, false)
+		r.reporter.Report(false)
 	}()
 
 	r.trk.Add(1)
@@ -755,11 +761,9 @@ func (r *intersectionResolver) resolve(senders []*sender, listeners []*listener)
 	var wg sync.WaitGroup
 
 	objects := make(map[string]struct{})
-	buffers := make([]map[string]struct{}, len(senders))
 	output := make([]map[string]struct{}, len(senders))
 
 	for i := range senders {
-		buffers[i] = make(map[string]struct{})
 		output[i] = make(map[string]struct{})
 	}
 
@@ -794,29 +798,13 @@ func (r *intersectionResolver) resolve(senders []*sender, listeners []*listener)
 				ctx, span := pipelineTracer.Start(r.ctx, "message.received", trace.WithAttributes(attrs...))
 				defer span.End()
 
-				var unseen []Item
-
-				// Deduplicate items within this group based on the buffer for this sender
-				for _, item := range msg.Value.Items {
-					if item.Err != nil {
-						unseen = append(unseen, item)
-						continue
-					}
-
-					if _, ok := buffers[i][item.Value]; ok {
-						continue
-					}
-					unseen = append(unseen, item)
-					buffers[i][item.Value] = struct{}{}
-				}
-
-				// If there are no unseen items, skip processing
-				if len(unseen) == 0 {
+				// If there are no items, skip processing
+				if len(msg.Value.Items) == 0 {
 					msg.done()
 					return true
 				}
 
-				results := r.interpreter.interpret(ctx, snd.edge(), unseen)
+				results := r.interpreter.interpret(ctx, snd.edge(), msg.Value.Items)
 
 				for item := range results {
 					if r.ctx.Err() != nil {
@@ -935,14 +923,18 @@ type Pipeline struct {
 }
 
 func (p *Pipeline) Build(ctx context.Context, source Source, target Target) iter.Seq[Item] {
-	ctx, span := pipelineTracer.Start(ctx, "Pipeline.Build")
-	defer span.End()
+	ctxParent, span := pipelineTracer.Start(ctx, "pipeline")
 
-	ctx = context.WithoutCancel(ctx)
-	ctx, cancel := context.WithCancel(ctx)
+	ctxNoCancel := context.WithoutCancel(ctxParent)
+	ctxCancel, cancel := context.WithCancel(ctxNoCancel)
 
 	pth := path{
-		ctx:     ctx,
+		// Removing the cancel on this context ensures that
+		// workers created during `path::resolve` will not
+		// end when the parent context cancels. This is important
+		// because it ensures that the watchdog goroutine is
+		// responsible for shutting down workers.
+		ctx:     ctxNoCancel,
 		pipe:    p,
 		workers: make(map[*Node]*worker),
 	}
@@ -981,7 +973,7 @@ func (p *Pipeline) Build(ctx context.Context, source Source, target Target) iter
 
 			messageCount := pth.trk.Load()
 
-			if messageCount < 1 || ctx.Err() != nil {
+			if messageCount < 1 || ctxCancel.Err() != nil {
 				// cancel all running workers
 				for _, w := range pth.workers {
 					w.cancel()
@@ -999,10 +991,11 @@ func (p *Pipeline) Build(ctx context.Context, source Source, target Target) iter
 	}()
 
 	return func(yield func(Item) bool) {
+		defer span.End()
 		defer wg.Wait()
 		defer cancel()
 
-		for msg := range results.seq() {
+		for msg := range results.seq(ctxParent) {
 			for _, item := range msg.Value.Items {
 				if !yield(item) {
 					msg.done()
@@ -1103,7 +1096,18 @@ func (p *path) resolve(source *Node, target Target, trk tracker, status *StatusP
 func (p *path) worker(node *Node, trk tracker, status *StatusPool) *worker {
 	var w worker
 
+	nodeName := "nil"
+	if node != nil {
+		nodeName = node.GetUniqueLabel()
+	}
+
+	ctx, span := pipelineTracer.Start(p.ctx, "worker", trace.WithAttributes(attribute.String("name", nodeName)))
+
+	ctx, cancel := context.WithCancel(ctx)
+
 	w.finite = sync.OnceFunc(func() {
+		defer span.End()
+		cancel()
 		for _, lst := range w.listeners {
 			lst.close()
 		}
@@ -1115,8 +1119,8 @@ func (p *path) worker(node *Node, trk tracker, status *StatusPool) *worker {
 
 	var r resolver
 
-	id := status.Register()
-	status.Set(id, true)
+	reporter := status.Register()
+	reporter.Report(true)
 
 	switch node.GetNodeType() {
 	case nodeTypeSpecificTypeAndRelation:
@@ -1131,8 +1135,8 @@ func (p *path) worker(node *Node, trk tracker, status *StatusPool) *worker {
 		}
 
 		r = &baseResolver{
-			id:          id,
-			ctx:         p.ctx,
+			reporter:    reporter,
+			ctx:         ctx,
 			interpreter: omni,
 			status:      status,
 		}
@@ -1148,8 +1152,8 @@ func (p *path) worker(node *Node, trk tracker, status *StatusPool) *worker {
 		}
 
 		r = &baseResolver{
-			id:          id,
-			ctx:         p.ctx,
+			reporter:    reporter,
+			ctx:         ctx,
 			interpreter: omni,
 			status:      status,
 		}
@@ -1165,8 +1169,8 @@ func (p *path) worker(node *Node, trk tracker, status *StatusPool) *worker {
 		}
 
 		r = &baseResolver{
-			id:          id,
-			ctx:         p.ctx,
+			reporter:    reporter,
+			ctx:         ctx,
 			interpreter: omni,
 			status:      status,
 		}
@@ -1184,8 +1188,8 @@ func (p *path) worker(node *Node, trk tracker, status *StatusPool) *worker {
 			}
 
 			r = &intersectionResolver{
-				id:          id,
-				ctx:         p.ctx,
+				reporter:    reporter,
+				ctx:         ctx,
 				interpreter: omni,
 				status:      status,
 				trk:         trk,
@@ -1202,8 +1206,8 @@ func (p *path) worker(node *Node, trk tracker, status *StatusPool) *worker {
 			}
 
 			r = &baseResolver{
-				id:          id,
-				ctx:         p.ctx,
+				reporter:    reporter,
+				ctx:         ctx,
 				interpreter: omni,
 				status:      status,
 			}
@@ -1219,8 +1223,8 @@ func (p *path) worker(node *Node, trk tracker, status *StatusPool) *worker {
 			}
 
 			r = &exclusionResolver{
-				id:          id,
-				ctx:         p.ctx,
+				reporter:    reporter,
+				ctx:         ctx,
 				interpreter: omni,
 				status:      status,
 				trk:         trk,
@@ -1240,8 +1244,8 @@ func (p *path) worker(node *Node, trk tracker, status *StatusPool) *worker {
 		}
 
 		r = &baseResolver{
-			id:          id,
-			ctx:         p.ctx,
+			reporter:    reporter,
+			ctx:         ctx,
 			interpreter: omni,
 			status:      status,
 		}
@@ -1257,8 +1261,8 @@ func (p *path) worker(node *Node, trk tracker, status *StatusPool) *worker {
 		}
 
 		r = &baseResolver{
-			id:          id,
-			ctx:         p.ctx,
+			reporter:    reporter,
+			ctx:         ctx,
 			interpreter: omni,
 			status:      status,
 		}
@@ -1320,7 +1324,11 @@ func (s *sender) edge() *Edge {
 }
 
 func (s *sender) loop(fn loopFunc) {
-	for msg := range s.prod.seq() {
+	// A background context is used here because the sender's underlying pipe
+	// relies on a cancelation from its consuming end for a shutdown signal.
+	// This sequence does not need an additional cancelation signal for that
+	// reason.
+	for msg := range s.prod.seq(context.Background()) {
 		if !fn(msg) {
 			break
 		}
