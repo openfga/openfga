@@ -165,10 +165,8 @@ func (s *bottomUp) specificType(ctx context.Context, req *Request, edge *authzGr
 		iter = iterator.Merge(iter, storage.NewStaticTupleKeyIterator(ctxTuples), func(a, b *openfgav1.TupleKey) int {
 			if a.GetObject() < b.GetObject() {
 				return -1
-			} else if a.GetObject() >= b.GetObject() {
-				return 1
 			}
-			return 0
+			return 1
 		})
 	}
 	iterFilters := make([]iterator.FilterFunc[*openfgav1.TupleKey], 0, 1)
@@ -209,10 +207,8 @@ func (s *bottomUp) specificTypeWildcard(ctx context.Context, req *Request, edge 
 		iter = iterator.Merge(iter, storage.NewStaticTupleKeyIterator(ctxTuples), func(a, b *openfgav1.TupleKey) int {
 			if a.GetObject() < b.GetObject() {
 				return -1
-			} else if a.GetObject() >= b.GetObject() {
-				return 1
 			}
-			return 0
+			return 1
 		})
 	}
 	iterFilters := make([]iterator.FilterFunc[*openfgav1.TupleKey], 0, 1)

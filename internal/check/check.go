@@ -210,15 +210,15 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, edges []
 
 // reduce as a logical union operation (exit the moment we have a single true).
 func (r *Resolver) ResolveUnion(ctx context.Context, req *Request, node *authzGraph.WeightedAuthorizationModelNode, visited *sync.Map) (*Response, error) {
-	emptyCyle := visited == nil
-	if emptyCyle && node.GetNodeType() == authzGraph.SpecificTypeAndRelation && (node.GetRecursiveRelation() == node.GetUniqueLabel() || node.IsPartOfTupleCycle()) {
+	emptyCycle := visited == nil
+	if emptyCycle && node.GetNodeType() == authzGraph.SpecificTypeAndRelation && (node.GetRecursiveRelation() == node.GetUniqueLabel() || node.IsPartOfTupleCycle()) {
 		// initialize visited map for first time,
 		visited = &sync.Map{}
 		// add the first object#relation that is being evaluated
 		visited.Store(tuple.ToObjectRelationString(req.GetTupleKey().GetObject(), req.GetTupleKey().GetRelation()), struct{}{})
 	}
 
-	edge, withOptimization := r.model.CanApplyRecursion(node, req.GetUserType(), emptyCyle)
+	edge, withOptimization := r.model.CanApplyRecursion(node, req.GetUserType(), emptyCycle)
 	if edge != nil {
 		return r.ResolveRecursive(ctx, req, edge, visited, withOptimization)
 	}
