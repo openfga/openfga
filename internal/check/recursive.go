@@ -317,8 +317,9 @@ func (s *Recursive) buildTupleMapperForID(ctx context.Context, req *Request, edg
 	}
 	iterFilters := make([]iterator.FilterFunc[*openfgav1.TupleKey], 0, 2)
 	iterFilters = append(iterFilters, BuildUniqueTupleKeyFilter(visited, uniqueKeyFunc))
-	if len(edge.GetConditions()) > 1 || edge.GetConditions()[0] != authzGraph.NoCond {
-		iterFilters = append(iterFilters, BuildConditionTupleKeyFilter(ctx, s.model, edge.GetConditions(), req.GetContext()))
+	conditions := edge.GetConditions()
+	if len(conditions) > 0 && (len(conditions) > 1 || conditions[0] != authzGraph.NoCond) {
+		iterFilters = append(iterFilters, BuildConditionTupleKeyFilter(ctx, s.model, conditions, req.GetContext()))
 	}
 	i := iterator.NewFilteredIterator(iter, iterFilters...)
 	return storage.WrapIterator(kind, i), nil
