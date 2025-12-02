@@ -332,6 +332,7 @@ func (q *ListObjectsQuery) evaluate(
 			&storagewrappers.Operation{
 				Method:            apimethod.ListObjects,
 				Concurrency:       q.maxConcurrentReads,
+				ThrottlingEnabled: q.datastoreThrottlingEnabled,
 				ThrottleThreshold: q.datastoreThrottleThreshold,
 				ThrottleDuration:  q.datastoreThrottleDuration,
 			},
