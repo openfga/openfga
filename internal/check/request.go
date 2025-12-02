@@ -92,8 +92,8 @@ func validateCtxTupleInModel(m *modelgraph.AuthorizationModelGraph, t *openfgav1
 	}
 
 	conditionName := ""
-	if t.Condition != nil {
-		conditionName = t.Condition.Name
+	if t.GetCondition() != nil {
+		conditionName = t.GetCondition().GetName()
 	}
 	if !slices.Contains(directEdge.GetConditions(), conditionName) {
 		return &tuple.InvalidTupleError{Cause: ErrValidation, TupleKey: t}

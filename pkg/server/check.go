@@ -219,6 +219,7 @@ func (s *Server) shadowV2Check(ctx context.Context, req *openfgav1.CheckRequest,
 			return
 		}
 		s.logger.ErrorWithContext(ctx, "shadow v2 check failed", zap.Error(err))
+		return
 	}
 	s.logger.InfoWithContext(ctx, "shadow check",
 		zap.Bool("match", mainRes.GetAllowed() == res.GetAllowed()),
