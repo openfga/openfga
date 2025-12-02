@@ -38,7 +38,7 @@ func (r *AuthorizationModelGraphResolver) Resolve(ctx context.Context, storeID, 
 		attribute.String("store_id", storeID),
 		attribute.String("model_id", modelID),
 	))
-	span.End()
+	defer span.End()
 
 	var err error
 

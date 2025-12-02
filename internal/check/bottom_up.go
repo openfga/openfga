@@ -514,6 +514,9 @@ func resolveDifference(ctx context.Context, iters []storage.Iterator[string], ou
 drainBase:
 	// drain the base
 	for {
+		if ctx.Err() != nil {
+			return
+		}
 		batch = addValueToBatch(compareValues[BaseIndex], batch, ctx, out)
 		value, err := iters[BaseIndex].Next(ctx)
 		if err != nil {
