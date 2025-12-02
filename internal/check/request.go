@@ -2,6 +2,7 @@ package check
 
 import (
 	"errors"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -70,6 +71,7 @@ func validateRequestTupleInModel(m *modelgraph.AuthorizationModelGraph, t *openf
 func validateCtxTupleInModel(m *modelgraph.AuthorizationModelGraph, t *openfgav1.TupleKey) error {
 	objectType := tuple.GetType(t.GetObject())
 	node, ok := m.GetNodeByID(tuple.ToObjectRelationString(objectType, t.GetRelation()))
+	// if the object#relation node does not exist the relation is not defined in the model
 	if !ok {
 		return &tuple.InvalidTupleError{Cause: ErrValidation, TupleKey: t}
 	}
@@ -78,22 +80,22 @@ func validateCtxTupleInModel(m *modelgraph.AuthorizationModelGraph, t *openfgav1
 	if tuple.IsObjectRelation(t.GetUser()) {
 		objectRelation := tuple.GetRelation(t.GetUser())
 		userType = tuple.ToObjectRelationString(userType, objectRelation)
-	}
-	if _, ok := m.GetNodeByID(userType); !ok {
-		return &tuple.InvalidTupleError{Cause: ErrInvalidUser, TupleKey: t}
-	}
-
-	if tuple.IsTypedWildcard(t.GetUser()) {
-		if _, ok := m.GetNodeByID(t.GetUser()); !ok {
-			return &tuple.InvalidTupleError{Cause: ErrValidation, TupleKey: t}
-		}
-	} else {
-		if _, ok := m.GetNodeByID(tuple.GetType(t.GetUser())); !ok {
-			return &tuple.InvalidTupleError{Cause: ErrValidation, TupleKey: t}
-		}
+	} else if tuple.IsTypedWildcard(t.GetUser()) {
+		userType = t.GetUser()
 	}
 
-	if _, ok := m.GetEdgesFromNode(node); !ok {
+	directEdge, ok := m.GetDirectEdgeForUserType(node, userType)
+	// if there is not directEdge that belongs to the relation node that connects to the userType then the tuple is invalid,
+	// usertype could be the object, it could be the wildcard definition of the object or it could be the userset (object#relation)
+	if !ok {
+		return &tuple.InvalidTupleError{Cause: ErrValidation, TupleKey: t}
+	}
+
+	conditionName := ""
+	if t.Condition != nil {
+		conditionName = t.Condition.Name
+	}
+	if !slices.Contains(directEdge.GetConditions(), conditionName) {
 		return &tuple.InvalidTupleError{Cause: ErrValidation, TupleKey: t}
 	}
 

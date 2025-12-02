@@ -27,6 +27,11 @@ func createTestModel(t *testing.T) *modelgraph.AuthorizationModelGraph {
    relations
     define viewer: [user, group#member]
     define editor: [user, group#member]
+	define owner: [user, user with xcond]
+	define commenter: [user, user:* with xcond]
+	condition xcond (x:int) {
+					x > 0
+				}
  `)
 
 	graph, err := modelgraph.New(model)
@@ -533,4 +538,61 @@ func TestContextualTuplesValidation(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, req)
 	})
+
+	t.Run("returns_error_when_wildcard_contextual_tuple_without_condition", func(t *testing.T) {
+		_, err := NewRequest(RequestParams{
+			StoreID:  ulid.Make().String(),
+			Model:    createTestModel(t),
+			TupleKey: tuple.NewTupleKey("document:1", "commenter", "user:alice"),
+			ContextualTuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:2", "commenter", "user:*"),
+			},
+		})
+		require.Error(t, err)
+		var tupleErr *tuple.InvalidTupleError
+		require.ErrorAs(t, err, &tupleErr)
+	})
+
+	t.Run("returns_error_when_contextual_tuple_with_invalid_condition", func(t *testing.T) {
+		_, err := NewRequest(RequestParams{
+			StoreID:  ulid.Make().String(),
+			Model:    createTestModel(t),
+			TupleKey: tuple.NewTupleKey("document:1", "commenter", "user:alice"),
+			ContextualTuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKeyWithCondition("document:2", "commenter", "user:alice", "xcond", nil),
+			},
+		})
+		require.Error(t, err)
+		var tupleErr *tuple.InvalidTupleError
+		require.ErrorAs(t, err, &tupleErr)
+	})
+
+	t.Run("accepts_valid_contextual_tuples_with_conditions", func(t *testing.T) {
+		req, err := NewRequest(RequestParams{
+			StoreID:  ulid.Make().String(),
+			Model:    createTestModel(t),
+			TupleKey: tuple.NewTupleKey("document:1", "commenter", "user:alice"),
+			ContextualTuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKeyWithCondition("document:2", "commenter", "user:*", "xcond", nil),
+				tuple.NewTupleKey("document:3", "commenter", "user:bab"),
+			},
+		})
+		require.NoError(t, err)
+		require.NotNil(t, req)
+	})
+
+	t.Run("accepts_valid_contextual_tuples_with_conditions_for_same_type", func(t *testing.T) {
+		req, err := NewRequest(RequestParams{
+			StoreID:  ulid.Make().String(),
+			Model:    createTestModel(t),
+			TupleKey: tuple.NewTupleKey("document:1", "owner", "user:alice"),
+			ContextualTuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKeyWithCondition("document:2", "owner", "user:alice", "xcond", nil),
+				tuple.NewTupleKey("document:3", "owner", "user:bab"),
+			},
+		})
+		require.NoError(t, err)
+		require.NotNil(t, req)
+	})
+
 }
