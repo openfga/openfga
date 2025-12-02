@@ -81,6 +81,8 @@ func (s *Weight2) execute(ctx context.Context, leftChan chan *iterator.Msg, righ
 	rightChan := iterator.ToChannel[string](ctx, rightIter, IteratorMinBatchThreshold)
 
 	var lastErr error
+	lastLeftVal := ""
+	lastRightVal := ""
 
 	// Process both channels concurrently
 	for leftChan != nil || rightChan != nil {
@@ -123,8 +125,15 @@ func (s *Weight2) execute(ctx context.Context, leftChan chan *iterator.Msg, righ
 						return &Response{Allowed: true}, nil
 					}
 
-					// Otherwise, store for future comparison
-					leftSeen[t] = struct{}{}
+					// we can take this solution to reduce storage because the data is delivered ordered in each channel
+					// if this is the first value always store it
+					// if there is not right value yet, then we should always store it
+					// if the value is greater than the last right value, then we should store it
+					// otherwise do not store it, it will never match.
+					if lastLeftVal == "" || lastRightVal == "" || t > lastRightVal {
+						lastLeftVal = t
+						leftSeen[t] = struct{}{}
+					}
 				}
 			}
 
@@ -149,8 +158,15 @@ func (s *Weight2) execute(ctx context.Context, leftChan chan *iterator.Msg, righ
 				return &Response{Allowed: true}, nil
 			}
 
-			// Otherwise, store for future comparison
-			rightSeen[rightMsg.Value] = struct{}{}
+			// we can take this solution to reduce storage because the data is delivered ordered in each channel
+			// if this is the first value always store it
+			// if there is not left value yet, then we should always store it
+			// if the value is greater than the last left value, then we should store it
+			// otherwise do not store it, it will never match.
+			if lastLeftVal == "" || lastRightVal == "" || rightMsg.Value > lastLeftVal {
+				lastRightVal = rightMsg.Value
+				rightSeen[rightMsg.Value] = struct{}{}
+			}
 		}
 	}
 
