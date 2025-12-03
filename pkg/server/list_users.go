@@ -66,6 +66,7 @@ func (s *Server) ListUsers(
 	if err != nil {
 		return nil, err
 	}
+	req.AuthorizationModelId = typesys.GetAuthorizationModelID() // the resolved model id
 
 	err = listusers.ValidateListUsersRequest(ctx, req, typesys)
 	if err != nil {
