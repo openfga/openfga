@@ -820,7 +820,7 @@ func TestWriteInvariantCheckCacheKey(t *testing.T) {
 		"writer_error": {
 			writer: &ErrorStringWriter{TriggerAt: 0},
 			params: &CheckCacheKeyParams{},
-			output: "",
+			error:  true,
 		},
 	}
 

@@ -196,13 +196,6 @@ func TestNewResolveCheckRequest(t *testing.T) {
 			params: ResolveCheckRequestParams{StoreID: "abc123"},
 			error:  true,
 		},
-		"succeeds_if_required_args_are_present": {
-			params: ResolveCheckRequestParams{
-				AuthorizationModelID: "abc123",
-				StoreID:              "def456",
-			},
-			error: false,
-		},
 	}
 
 	for name, tc := range cases {

@@ -409,10 +409,6 @@ func WriteCheckCacheKey(w io.StringWriter, params *CheckCacheKeyParams) error {
 }
 
 func WriteInvariantCheckCacheKey(w io.StringWriter, params *CheckCacheKeyParams) error {
-	if len(params.ContextualTuples) == 0 && params.Context == nil {
-		// nothing to write
-		return nil
-	}
 	_, err := w.WriteString(params.AuthorizationModelID)
 	if err != nil {
 		return err
