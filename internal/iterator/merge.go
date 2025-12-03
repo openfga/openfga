@@ -7,7 +7,7 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 )
 
-var ErrHeadNotSupported = errors.New("head() not supported on merged iterator")
+var ErrHeadNotSupportedMergedIterator = errors.New("head() not supported on merged iterator")
 
 type MergedIterator[T any] struct {
 	iter1       storage.Iterator[T]
@@ -145,5 +145,5 @@ func (m *MergedIterator[T]) Stop() {
 
 func (m *MergedIterator[T]) Head(ctx context.Context) (T, error) {
 	var zero T
-	return zero, ErrHeadNotSupported
+	return zero, ErrHeadNotSupportedMergedIterator
 }

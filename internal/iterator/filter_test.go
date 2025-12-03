@@ -159,7 +159,7 @@ func TestFilter_Conditions(t *testing.T) {
 	})
 }
 
-func TestTestFilter_Uniqueness(t *testing.T) {
+func TestFilter_Uniqueness(t *testing.T) {
 	seenTuples := &sync.Map{}
 	//nolint:unparam
 	uniqueFilter := func(_ OperationType, tupleKey *openfgav1.TupleKey) (bool, error) {
@@ -279,73 +279,5 @@ func TestFilter_MultipleFilters(t *testing.T) {
 
 		expected := []*openfgav1.TupleKey{tuples[0], tuples[3]}
 		require.Equal(t, expected, actual)
-	})
-}
-
-func TestFilter_Head(t *testing.T) {
-	conditionFilter := func(_ OperationType, tupleKey *openfgav1.TupleKey) (bool, error) {
-		return tupleKey.GetCondition().GetName() == "condition1", nil
-	}
-
-	t.Run("head_with_valid_tuples", func(t *testing.T) {
-		tuples := []*openfgav1.TupleKey{
-			tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "user:jon", "condition2", nil),
-			tuple.NewTupleKeyWithCondition("document:doc2", "editor", "user:elbuo", "condition1", nil),
-			tuple.NewTupleKeyWithCondition("document:doc3", "viewer", "user:maria", "condition1", nil),
-		}
-		iter := NewFilteredIterator(
-			storage.NewStaticTupleKeyIterator(tuples),
-			conditionFilter,
-		)
-		defer iter.Stop()
-
-		// Head should return the first valid tuple
-		tk, err := iter.Head(context.Background())
-		require.NoError(t, err)
-		require.Equal(t, tuples[1], tk)
-
-		// Consecutive Head calls should return the same tuple
-		tk, err = iter.Head(context.Background())
-		require.NoError(t, err)
-		require.Equal(t, tuples[1], tk)
-
-		// Next should return the same tuple as Head
-		tk, err = iter.Next(context.Background())
-		require.NoError(t, err)
-		require.Equal(t, tuples[1], tk)
-
-		// Head should now return the next valid tuple
-		tk, err = iter.Head(context.Background())
-		require.NoError(t, err)
-		require.Equal(t, tuples[2], tk)
-	})
-
-	t.Run("head_with_empty_iterator", func(t *testing.T) {
-		var tuples []*openfgav1.TupleKey
-		iter := NewFilteredIterator(
-			storage.NewStaticTupleKeyIterator(tuples),
-			conditionFilter,
-		)
-		defer iter.Stop()
-
-		tk, err := iter.Head(context.Background())
-		require.ErrorIs(t, err, storage.ErrIteratorDone)
-		require.Nil(t, tk)
-	})
-
-	t.Run("head_with_all_invalid", func(t *testing.T) {
-		tuples := []*openfgav1.TupleKey{
-			tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "user:jon", "condition2", nil),
-			tuple.NewTupleKeyWithCondition("document:doc2", "editor", "user:elbuo", "condition2", nil),
-		}
-		iter := NewFilteredIterator(
-			storage.NewStaticTupleKeyIterator(tuples),
-			conditionFilter,
-		)
-		defer iter.Stop()
-
-		tk, err := iter.Head(context.Background())
-		require.ErrorIs(t, err, storage.ErrIteratorDone)
-		require.Nil(t, tk)
 	})
 }

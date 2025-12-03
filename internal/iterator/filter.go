@@ -8,6 +8,8 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 )
 
+var ErrHeadNotSupportedFilterIterator = errors.New("head() not supported on filter iterator")
+
 // OperationType represents the iterator method being called.
 type OperationType string
 
@@ -84,40 +86,9 @@ func (f *filter[T]) Next(ctx context.Context) (T, error) {
 
 // Head returns the next tuple that passes all filter functions without advancing.
 // If none of the tuples are valid AND there are errors, returns the last error.
-func (f *filter[T]) Head(ctx context.Context) (T, error) {
-	var null T
-	for {
-		tuple, err := f.iter.Head(ctx)
-		if err != nil {
-			if errors.Is(err, storage.ErrIteratorDone) {
-				if f.onceValid || f.lastErr == nil {
-					return null, storage.ErrIteratorDone
-				}
-				return null, f.lastErr
-			}
-			return null, err
-		}
-
-		valid, err := f.applyFilters(OperationHead, tuple)
-		if err != nil || !valid {
-			if err != nil {
-				f.lastErr = err
-			}
-			// Note that we don't care about the item returned by Next() as this is already via Head(). We call Next() solely
-			// for the purpose of getting rid of the first item.
-			_, err = f.iter.Next(ctx)
-			if err != nil {
-				// This should never happen except if the underlying ds has error. This is because f.iter.Head() had already
-				// checked whether we are at the end of list. For example, in a list of [1] (all invalid),
-				// Head() will return 1. If it is invalid, Next() will return 1 and move the pointer to end of list.
-				// Thus, Head() will return ErrIteratorDone next time being called.
-				return null, err
-			}
-			continue
-		}
-		f.onceValid = true
-		return tuple, nil
-	}
+func (f *filter[T]) Head(_ context.Context) (T, error) {
+	var zero T
+	return zero, ErrHeadNotSupportedFilterIterator
 }
 
 func NewFilteredIterator[T any](iter storage.Iterator[T], filters ...FilterFunc[T]) storage.Iterator[T] {
