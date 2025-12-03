@@ -9,6 +9,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ## [Unreleased]
 ### Fixed
 - Fixed an issue with the `InMemoryCacheController` (the default cache controller when enabled) where cached Check responses were not invalidated after a write to the store. Previously, invalidation only occurred if multiple Checks were triggered in rapid succession after a write. [#2811](https://github.com/openfga/openfga/pull/2811)
+- Update toolchain go version to 1.25.5 to address [CVE-2025-61729](https://pkg.go.dev/vuln/GO-2025-4155) in the go std lib.
 
 ## [1.11.1] - 2025-11-20
 ### Added

@@ -51,6 +51,7 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 	if err != nil {
 		return nil, err
 	}
+	req.AuthorizationModelId = typesys.GetAuthorizationModelID() // the resolved model id
 
 	builder := s.getCheckResolverBuilder(req.GetStoreId())
 	checkResolver, checkResolverCloser, err := builder.Build()
@@ -75,7 +76,7 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 	)
 
 	result, metadata, err := cmd.Execute(ctx, &commands.BatchCheckCommandParams{
-		AuthorizationModelID: typesys.GetAuthorizationModelID(),
+		AuthorizationModelID: req.GetAuthorizationModelId(),
 		Checks:               req.GetChecks(),
 		Consistency:          req.GetConsistency(),
 		StoreID:              storeID,

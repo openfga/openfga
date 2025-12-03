@@ -27,12 +27,12 @@ jobs:
         shell: bash
 
       - name: Checkout
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v3.5.2
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
         with:
           fetch-depth: 0
 
       - name: Set up Go
-        uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v6.0.0
+        uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # v6.1.0
         with:
           go-version-file: './go.mod'
           cache-dependency-path: './go.sum'
@@ -55,7 +55,7 @@ jobs:
         with:
           cosign-release: "v2.6.1"
 
-      - uses: anchore/sbom-action/download-syft@8e94d75ddd33f69f691467e42275782e4bfefe84 # v0.20.9
+      - uses: anchore/sbom-action/download-syft@fbfd9c6c189226748411491745178e0c2017392d # v0.20.10
 
       - name: Run GoReleaser
         id: goreleaser
@@ -109,7 +109,7 @@ jobs:
     continue-on-error: true # allow the workflow to continue even if Snyk finds vulnerabilities
     steps:
       - name: Checkout code
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v3.5.2
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
 
       - name: Run Snyk to check Docker image for vulnerabilities
         continue-on-error: true
@@ -133,7 +133,7 @@ jobs:
           mv snyk.categorized.sarif snyk.sarif
 
       - name: Upload result to GitHub Code Scanning
-        uses: github/codeql-action/upload-sarif@014f16e7ab1402f30e7c3329d33797e7948572db # pin@v2
+        uses: github/codeql-action/upload-sarif@fe4161a26a8629af62121b670040955b330f9af2 # pin@v2
         with:
           sarif_file: snyk.sarif
 

@@ -76,6 +76,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 	if err != nil {
 		return nil, err
 	}
+	req.AuthorizationModelId = typesys.GetAuthorizationModelID() // the resolved model id
 
 	checkQuery := commands.NewCheckCommand(
 		s.datastore,
