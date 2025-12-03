@@ -19,6 +19,8 @@ import (
 
 var tracer = otel.Tracer("internal/modelgraph")
 
+const CacheKeyPrefix = "wg|"
+
 type AuthorizationModelGraphResolver struct {
 	datastore storage.AuthorizationModelReadBackend // these methods are already cached at a lower level
 	cache     storage.InMemoryCache[any]
@@ -42,10 +44,17 @@ func (r *AuthorizationModelGraphResolver) Resolve(ctx context.Context, storeID, 
 
 	var err error
 
+	var key string
+
 	if modelID != "" {
 		// this validation should happen at the api level
 		if _, err := ulid.Parse(modelID); err != nil {
 			return nil, ErrModelNotFound
+		}
+		key = CacheKeyPrefix + storeID + modelID
+		if wg := r.cache.Get(key); wg != nil {
+
+			return wg.(*AuthorizationModelGraph), nil
 		}
 	}
 
@@ -62,14 +71,13 @@ func (r *AuthorizationModelGraphResolver) Resolve(ctx context.Context, storeID, 
 			return nil, fmt.Errorf("failed to FindLatestAuthorizationModel: %w", err)
 		}
 		model = m
+		key = CacheKeyPrefix + storeID + modelID
+		if wg := r.cache.Get(key); wg != nil {
+			return wg.(*AuthorizationModelGraph), nil
+		}
 	}
 
-	key := "wg|" + storeID + modelID
-	wg := r.cache.Get(key)
-	if wg != nil {
-		return wg.(*AuthorizationModelGraph), nil
-	}
-
+	// id was provided yet wasn't cached, so we need to read it
 	if model == nil {
 		model, err = r.datastore.ReadAuthorizationModel(ctx, storeID, modelID)
 		if err != nil {
