@@ -594,5 +594,4 @@ func TestContextualTuplesValidation(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, req)
 	})
-
 }
