@@ -32,7 +32,6 @@ var tracer = otel.Tracer("internal/check")
 
 var ErrValidation = errors.New("object relation does not exist")
 var ErrPanicRequest = errors.New("invalid check request") // == panic in ResolveCheck so should be handled accordingly (should be seen as a 500 to client)
-var ErrConditionMissing = errors.New("condition is missing")
 
 type Config struct {
 	Model                     *modelgraph.AuthorizationModelGraph

@@ -165,10 +165,9 @@ func NewRequest(p RequestParams) (*Request, error) {
 	r.invariantCacheKey = strconv.FormatUint(hasher.Sum64(), 10)
 
 	tup := tuple.From(r.GetTupleKey())
-	cacheKeyString := tup.String() + r.GetInvariantCacheKey()
-
 	hasher = xxhash.New()
-	_, _ = hasher.WriteString(cacheKeyString)
+	_, _ = hasher.WriteString(r.GetInvariantCacheKey())
+	_, _ = hasher.WriteString(tup.String())
 
 	cacheKey := CacheKeyPrefix + strconv.FormatUint(hasher.Sum64(), 10)
 	r.cacheKey = cacheKey
@@ -388,10 +387,9 @@ func (r *Request) cloneWithTupleKey(tk *openfgav1.TupleKey) *Request {
 	req.userType = userType
 
 	tup := tuple.From(tk)
-	cacheKeyString := tup.String() + req.GetInvariantCacheKey()
-
 	hasher := xxhash.New()
-	_, _ = hasher.WriteString(cacheKeyString)
+	_, _ = hasher.WriteString(req.GetInvariantCacheKey())
+	_, _ = hasher.WriteString(tup.String())
 
 	cacheKey := CacheKeyPrefix + strconv.FormatUint(hasher.Sum64(), 10)
 	req.cacheKey = cacheKey
