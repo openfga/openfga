@@ -14,7 +14,7 @@ jobs:
       - uses: dangoslen/changelog-enforcer@204e7d3ef26579f4cd0fd759c57032656fdf23c7 # v3.6.1
         with:
           skipLabels: 'Skip-Changelog,dependencies,tests'
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v3.5.2
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v3.5.2
       - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # pin@v4
       - run: npx keep-a-changelog@2.5.3
       - run: |
