@@ -131,7 +131,7 @@ dev-run: $(GO_BIN)/CompileDaemon $(GO_BIN)/openfga ## Run the OpenFGA server wit
 			;; \
 		"postgres") \
 			echo "==> Running OpenFGA with Postgres data storage"; \
-			docker run -d --name postgres -p 5432:5432 -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=password postgres:17  > /dev/null 2>&1 || docker start postgres; \
+			docker run -d --name postgres -p 5432:5432 -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=password postgres:18  > /dev/null 2>&1 || docker start postgres; \
 			sleep 2; \
 			openfga migrate --datastore-engine postgres --datastore-uri 'postgres://postgres:password@localhost:5432/postgres'; \
 			CompileDaemon -graceful-kill -build='make install' -command="openfga run --datastore-engine postgres --datastore-uri postgres://postgres:password@localhost:5432/postgres"; \
