@@ -11,7 +11,7 @@ on:
 
 permissions:
   contents: read
-  
+
 jobs:
   create-tag:
     if: >
