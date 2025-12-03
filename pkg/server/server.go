@@ -181,9 +181,10 @@ type Server struct {
 	maxAuthorizationModelSizeInBytes int
 	experimentals                    []string
 	AccessControl                    serverconfig.AccessControlConfig
-	AuthnMethod                      string
-	serviceName                      string
-	featureFlagClient                featureflags.Client
+
+	AuthnMethod       string
+	serviceName       string
+	featureFlagClient featureflags.Client
 
 	// NOTE don't use this directly, use function resolveTypesystem. See https://github.com/openfga/openfga/issues/1527
 	typesystemResolver     typesystem.TypesystemResolverFunc
