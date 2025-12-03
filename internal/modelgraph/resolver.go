@@ -53,7 +53,6 @@ func (r *AuthorizationModelGraphResolver) Resolve(ctx context.Context, storeID, 
 		}
 		key = CacheKeyPrefix + storeID + modelID
 		if wg := r.cache.Get(key); wg != nil {
-
 			return wg.(*AuthorizationModelGraph), nil
 		}
 	}
