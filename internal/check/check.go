@@ -31,6 +31,7 @@ const CacheKeyPrefix = "c."
 var tracer = otel.Tracer("internal/check")
 
 var ErrValidation = errors.New("object relation does not exist")
+var ErrUsersetInvalidRequest = errors.New("userset request cannot be resolved when exclusion operation is involved")
 var ErrPanicRequest = errors.New("invalid check request") // == panic in ResolveCheck so should be handled accordingly (should be seen as a 500 to client)
 
 type Config struct {
@@ -451,7 +452,13 @@ func (r *Resolver) ResolveExclusion(ctx context.Context, req *Request, node *aut
 
 	var subtract chan ResponseMsg
 	// excluded edge
-	if _, ok := r.model.GetEdgeWeight(edges[1], req.GetUserType()); ok {
+	_, ok = r.model.GetEdgeWeight(edges[1], req.GetUserType())
+	if tuple.IsObjectRelation(req.GetTupleKey().GetUser()) && !ok {
+		// If the user is an object relation and there is no way to the userset in the exclusion part we cannot have an answer,
+		return nil, ErrUsersetInvalidRequest
+	}
+
+	if ok {
 		scheduledHandlers++
 		subtract = make(chan ResponseMsg, 1)
 		wg.Add(1)
