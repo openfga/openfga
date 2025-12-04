@@ -40,7 +40,7 @@ func (p *Pipe[T]) Grow(n int) {
 	copy(replacement, p.data)
 	p.data = replacement
 
-	p.initialize()
+	p.init.Do(p.initialize)
 
 	p.full.Broadcast()
 }
