@@ -194,7 +194,7 @@
                     "description": "The host:port address to serve the pprof profiler server on.",
                     "type": "string",
                     "default": ":3001",
-                    "x-env-variable": "OPENFGA_PROFILER_ADDRESS"
+                    "x-env-variable": "OPENFGA_PROFILER_ADDR"
                 }
             }
         },
