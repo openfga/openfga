@@ -37,8 +37,13 @@ func (p *Pipe[T]) Grow(n int) {
 	defer p.mu.Unlock()
 
 	replacement := make([]T, len(p.data)+n)
-	copy(replacement, p.data)
+
+	for i := 0; i < p.count; i++ {
+		replacement[i] = p.data[(p.tail+i)%len(p.data)]
+	}
 	p.data = replacement
+	p.tail = 0
+	p.head = p.count
 
 	p.init.Do(p.initialize)
 

@@ -157,45 +157,74 @@ func BenchmarkMessaging(b *testing.B) {
 
 func TestMessaging(t *testing.T) {
 	t.Run("grow", func(t *testing.T) {
-		var p Pipe[item]
-		p.Grow(3)
+		const shortBufferSize = 3
 
-		for range 3 {
-			var v item
-			ok := p.Send(v)
+		var tail int
+		var head int
+
+		var p Pipe[int]
+		p.Grow(shortBufferSize)
+
+		for range shortBufferSize {
+			ok := p.Send(head)
 			require.True(t, ok)
+			head++
 		}
 
-		p.Grow(3)
-
-		for range 3 {
-			var v item
-			ok := p.Send(v)
-			require.True(t, ok)
-		}
-
-		for range 6 {
-			var v item
+		for range shortBufferSize - 1 {
+			var v int
 			ok := p.Recv(&v)
 			require.True(t, ok)
+			require.Equal(t, tail, v)
+			tail++
 		}
 
-		var v item
-		ok := p.Send(v)
+		for range shortBufferSize - 1 {
+			ok := p.Send(head)
+			require.True(t, ok)
+			head++
+		}
+
+		p.Grow(shortBufferSize)
+
+		for range shortBufferSize {
+			var v int
+			ok := p.Recv(&v)
+			require.True(t, ok)
+			require.Equal(t, tail, v)
+			tail++
+		}
+
+		for range shortBufferSize * 2 {
+			ok := p.Send(head)
+			require.True(t, ok)
+			head++
+		}
+
+		for range shortBufferSize * 2 {
+			var v int
+			ok := p.Recv(&v)
+			require.True(t, ok)
+			require.Equal(t, tail, v)
+			tail++
+		}
+
+		ok := p.Send(head)
 		require.True(t, ok)
+		head++
 
 		p.Close()
 
-		var v2 item
+		var v2 int
 		ok = p.Recv(&v2)
 		require.True(t, ok)
+		require.Equal(t, tail, v2)
 
-		var v3 item
+		var v3 int
 		ok = p.Recv(&v3)
 		require.False(t, ok)
 
-		var v4 item
-		ok = p.Send(v4)
+		ok = p.Send(head)
 		require.False(t, ok)
 	})
 
