@@ -1436,7 +1436,7 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 		require.True(t, res.GetAllowed())
 	})
 
-	t.Run("returns_true_when_exclusion_base_has_permission", func(t *testing.T) {
+	t.Run("returns_error_when_exclusion_base_has_permission", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
@@ -1490,9 +1490,9 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 		mockResolver := NewMockCheckResolver(ctrl)
 		resolver.strategies[DefaultStrategyName] = NewDefault(mg, mockResolver, 10)
 
-		res, err := resolver.ResolveCheck(context.Background(), req)
-		require.NoError(t, err)
-		require.True(t, res.GetAllowed())
+		_, err = resolver.ResolveCheck(context.Background(), req)
+		require.Error(t, err)
+		require.Equal(t, ErrUsersetInvalidRequest, err)
 	})
 
 	t.Run("returns_false_when_no_path_leads_to_permission", func(t *testing.T) {
