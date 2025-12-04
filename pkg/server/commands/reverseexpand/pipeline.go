@@ -1168,9 +1168,9 @@ func (s *sender) Recv(msg *message[[]Item]) bool {
 	m.Done()
 	*msg = message[[]Item]{
 		Value: m.Value,
-		finite: func() {
+		finite: sync.OnceFunc(func() {
 			s.tracker.Add(-1)
-		},
+		}),
 	}
 	return true
 }
