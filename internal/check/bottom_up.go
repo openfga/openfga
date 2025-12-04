@@ -528,7 +528,7 @@ drainBase:
 	}
 }
 
-// TODO: move to iterator package once old one is deprecated
+// TODO: move to iterator package once old one is deprecated.
 func skipTo(ctx context.Context, iter storage.Iterator[string], target string) (string, error) {
 	for {
 		t, err := iter.Next(ctx)
