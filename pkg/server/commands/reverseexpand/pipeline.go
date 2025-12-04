@@ -898,7 +898,7 @@ func (p *Pipeline) Build(ctx context.Context, source Source, target Target) iter
 		ctx, span := pipelineTracer.Start(ctx, "pipeline.iterate")
 		defer span.End()
 
-		ticker := time.NewTicker(10 * time.Microsecond)
+		ticker := time.NewTicker(1 * time.Millisecond)
 		defer ticker.Stop()
 
 		defer wg.Wait()
