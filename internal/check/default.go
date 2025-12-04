@@ -98,7 +98,7 @@ func (s *DefaultStrategy) execute(ctx context.Context, req *Request, edge *authz
 	defer cancel()
 
 	requestsChan := make(chan requestMsg)
-	responsesChan := make(chan ResponseMsg, 100) // needs to be buffered to prevent out of order closed events
+	responsesChan := make(chan ResponseMsg, s.concurrencyLimit)
 
 	go func() {
 		handler(ctx, req, edge, iter, requestsChan)
