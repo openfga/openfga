@@ -37,7 +37,7 @@ clean: ## Clean project files
 
 deps: ## Download dependencies
 	${call print, "Downloading dependencies"}
-	@go mod vendor && go mod tidy
+	@go mod tidy && go mod vendor
 
 $(GO_BIN)/golangci-lint:
 	${call print, "Installing golangci-lint within ${GO_BIN}"}
