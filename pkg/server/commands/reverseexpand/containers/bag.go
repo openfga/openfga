@@ -21,6 +21,10 @@ type Bag[T any] struct {
 
 // Add adds the provided values to the Bag.
 func (b *Bag[T]) Add(v ...T) {
+	if len(v) == 0 {
+		return
+	}
+
 	var newHead *node[T]
 	var tail *node[T]
 
