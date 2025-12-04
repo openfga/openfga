@@ -288,6 +288,7 @@ func resolveUnion(ctx context.Context, iters []storage.Iterator[string], out cha
 			if handleStreamError(ctx, err, &batch, out) {
 				return
 			}
+			continue
 		}
 		compareValues = append(compareValues, value)
 		reverseLookupIndexes = append(reverseLookupIndexes, idx)
@@ -527,6 +528,7 @@ drainBase:
 	}
 }
 
+// TODO: move to iterator package once old one is deprecated
 func skipTo(ctx context.Context, iter storage.Iterator[string], target string) (string, error) {
 	for {
 		t, err := iter.Next(ctx)
