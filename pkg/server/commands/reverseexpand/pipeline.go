@@ -350,8 +350,9 @@ func (r *baseResolver) process(ctx context.Context, snd *sender, lst pipe.Tx[[]I
 
 	for snd.Recv(&msg) {
 		var results iter.Seq[Item]
-		var items []Item
-		var unseen []string
+
+		items := make([]Item, 0, len(msg.Value))
+		unseen := make([]string, 0, len(msg.Value))
 
 		messageAttrs := make([]attribute.KeyValue, 1, 1+len(attrs))
 		messageAttrs[0] = attribute.Int("items.count", len(msg.Value))
