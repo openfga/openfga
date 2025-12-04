@@ -141,13 +141,13 @@ func (b *Backend) handleDirectEdge(ctx context.Context, edge *Edge, items []stri
 		userRelation = userParts[1]
 	}
 
-	var userFilter []*openfgav1.ObjectRelation
+	userFilter := make([]*openfgav1.ObjectRelation, len(items))
 
-	for _, item := range items {
-		userFilter = append(userFilter, &openfgav1.ObjectRelation{
+	for i, item := range items {
+		userFilter[i] = &openfgav1.ObjectRelation{
 			Object:   item,
 			Relation: userRelation,
-		})
+		}
 	}
 
 	var results iter.Seq[Item]
