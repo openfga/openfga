@@ -31,7 +31,7 @@ type Request struct {
 
 	cacheKey string
 	// Invariant parts of a check request are those that don't change in sub-problems
-	// AuthorizationModelID, StoreID, Context, and ContextualTuples.
+	// AuthorizationModelID, Context, and ContextualTuples.
 	// the invariantCacheKey is computed once per request, and passed to sub-problems via copy in .clone()
 	invariantCacheKey string
 

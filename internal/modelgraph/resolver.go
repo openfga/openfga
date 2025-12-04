@@ -51,10 +51,6 @@ func (r *AuthorizationModelGraphResolver) Resolve(ctx context.Context, storeID, 
 		if _, err := ulid.Parse(modelID); err != nil {
 			return nil, ErrModelNotFound
 		}
-		key = CacheKeyPrefix + storeID + modelID
-		if wg := r.cache.Get(key); wg != nil {
-			return wg.(*AuthorizationModelGraph), nil
-		}
 	}
 
 	var model *openfgav1.AuthorizationModel
@@ -70,10 +66,12 @@ func (r *AuthorizationModelGraphResolver) Resolve(ctx context.Context, storeID, 
 			return nil, fmt.Errorf("failed to FindLatestAuthorizationModel: %w", err)
 		}
 		model = m
-		key = CacheKeyPrefix + storeID + modelID
-		if wg := r.cache.Get(key); wg != nil {
-			return wg.(*AuthorizationModelGraph), nil
-		}
+		modelID = model.GetId()
+	}
+
+	key = CacheKeyPrefix + storeID + modelID
+	if wg := r.cache.Get(key); wg != nil {
+		return wg.(*AuthorizationModelGraph), nil
 	}
 
 	// id was provided yet wasn't cached, so we need to read it

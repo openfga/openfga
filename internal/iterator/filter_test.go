@@ -237,21 +237,19 @@ func TestFilter_Uniqueness(t *testing.T) {
 }
 
 func TestFilter_MultipleFilters(t *testing.T) {
-	conditionFilter := func(_ OperationType, tupleKey *openfgav1.TupleKey) (bool, error) {
-		return tupleKey.GetCondition().GetName() == "condition1", nil
-	}
-
-	seenTuples := &sync.Map{}
-	//nolint:unparam
-	uniqueFilter := func(_ OperationType, tupleKey *openfgav1.TupleKey) (bool, error) {
-		key := tuple.TupleKeyToString(tupleKey)
-		if _, exists := seenTuples.LoadOrStore(key, struct{}{}); exists {
-			return false, nil
-		}
-		return true, nil
-	}
-
 	t.Run("both_filters_applied", func(t *testing.T) {
+		conditionFilter := func(_ OperationType, tupleKey *openfgav1.TupleKey) (bool, error) {
+			return tupleKey.GetCondition().GetName() == "condition1", nil
+		}
+		seenTuples := &sync.Map{}
+		//nolint:unparam
+		uniqueFilter := func(_ OperationType, tupleKey *openfgav1.TupleKey) (bool, error) {
+			key := tuple.TupleKeyToString(tupleKey)
+			if _, exists := seenTuples.LoadOrStore(key, struct{}{}); exists {
+				return false, nil
+			}
+			return true, nil
+		}
 		tuples := []*openfgav1.TupleKey{
 			tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "user:jon", "condition1", nil),
 			tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "user:jon", "condition1", nil),   // duplicate

@@ -19,6 +19,7 @@ func evaluateCondition(ctx context.Context, model *modelgraph.AuthorizationModel
 		return false, nil
 	}
 
+	// consider converting slice to map for faster lookup once we see a large adoption in conditions
 	return eval.EvaluateTupleCondition(ctx, t, model.GetConditions()[t.GetCondition().GetName()], reqCtx)
 }
 
