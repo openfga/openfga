@@ -897,15 +897,16 @@ func (p *Pipeline) Build(ctx context.Context, source Source, target Target) iter
 		var wg sync.WaitGroup
 		ctx, span := pipelineTracer.Start(ctx, "pipeline.iterate")
 		defer span.End()
+
+		ticker := time.NewTicker(10 * time.Microsecond)
+		defer ticker.Stop()
+
 		defer wg.Wait()
 		defer cancel()
 
 		if ctx.Err() != nil {
 			return
 		}
-
-		ticker := time.NewTicker(10 * time.Microsecond)
-		defer ticker.Stop()
 
 		ch := ticker.C
 
