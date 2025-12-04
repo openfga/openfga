@@ -6,10 +6,10 @@ import (
 	"iter"
 	"maps"
 	"math"
-	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -904,6 +904,11 @@ func (p *Pipeline) Build(ctx context.Context, source Source, target Target) iter
 			return
 		}
 
+		ticker := time.NewTicker(10 * time.Microsecond)
+		defer ticker.Stop()
+
+		ch := ticker.C
+
 		// Workers are started here so that the pipeline does
 		// not begin producing objects until the caller has begun
 		// to iterate over the sequence. This prevents unnecessary
@@ -920,35 +925,37 @@ func (p *Pipeline) Build(ctx context.Context, source Source, target Target) iter
 		go func() {
 			defer wg.Done()
 
+		WatchdogLoop:
 			for {
-				var inactiveCount int
+				select {
+				case <-ch:
+					var inactiveCount int
 
-				for _, w := range pth.workers {
-					if !w.Active() {
-						w.Close()
-						inactiveCount++
+					for _, w := range pth.workers {
+						if !w.Active() {
+							w.Close()
+							inactiveCount++
+						}
 					}
-				}
 
-				if inactiveCount == len(pth.workers) {
-					cancel()
-				}
+					if inactiveCount == len(pth.workers) {
+						cancel()
+						ch = nil
+					}
 
-				messageCount := pth.tracker.Load()
+					messageCount := pth.tracker.Load()
 
-				if messageCount < 1 {
-					cancel()
-				}
-
-				if ctx.Err() != nil {
+					if messageCount < 1 {
+						cancel()
+						ch = nil
+					}
+				case <-ctx.Done():
 					// wait for all workers to finish
 					for _, w := range pth.workers {
 						w.Wait()
 					}
-					break
+					break WatchdogLoop
 				}
-
-				runtime.Gosched()
 			}
 		}()
 
