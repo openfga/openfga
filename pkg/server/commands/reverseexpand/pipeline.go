@@ -771,6 +771,14 @@ func (l *listener) send(items []Item) bool {
 }
 
 func (l *listener) Send(items []Item) bool {
+	if len(items) == 0 {
+		return false
+	}
+
+	if l.ChunkSize <= 0 {
+		return l.send(items)
+	}
+
 	var sent bool
 
 	for len(items) > 0 {
