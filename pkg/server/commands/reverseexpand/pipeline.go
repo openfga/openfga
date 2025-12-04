@@ -756,11 +756,8 @@ func (l *listener) Add(cons ...pipe.Tx[message[[]Item]]) {
 func (l *listener) send(items []Item) bool {
 	var sent bool
 
-	output := make([]Item, len(items))
-	copy(output, items)
-
 	for _, con := range l.cons {
-		msg := l.pack(output)
+		msg := l.pack(items)
 		if !con.Send(msg) {
 			msg.Done()
 		} else {
