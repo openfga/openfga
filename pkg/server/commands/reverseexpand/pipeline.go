@@ -900,6 +900,19 @@ func (p *Pipeline) Build(ctx context.Context, source Source, target Target) iter
 		defer wg.Wait()
 		defer cancel()
 
+		if ctx.Err() != nil {
+			return
+		}
+
+		// Workers are started here so that the pipeline does
+		// not begin producing objects until the caller has begun
+		// to iterate over the sequence. This prevents unnecessary
+		// processing in the event that the caller decides not to
+		// iterate over the sequence.
+		for _, w := range pth.workers {
+			w.Start(ctx)
+		}
+
 		// Watchdog goroutine is started here to ensure that no
 		// goroutines are created before the caller has begun to
 		// iterate over the pipeline's sequence.
@@ -938,15 +951,6 @@ func (p *Pipeline) Build(ctx context.Context, source Source, target Target) iter
 				runtime.Gosched()
 			}
 		}()
-
-		// Workers are started here so that the pipeline does
-		// not begin producing objects until the caller has begun
-		// to iterate over the sequence. This prevents unnecessary
-		// processing in the event that the caller decides not to
-		// iterate over the sequence.
-		for _, w := range pth.workers {
-			w.Start(ctx)
-		}
 
 		for msg := range results.Seq() {
 			for _, item := range msg.Value {
