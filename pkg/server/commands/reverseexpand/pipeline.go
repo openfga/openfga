@@ -353,10 +353,8 @@ func (r *baseResolver) process(ctx context.Context, snd *sender, lst pipe.Tx[[]I
 		var items []Item
 		var unseen []string
 
-		messageAttrs := []attribute.KeyValue{
-			attribute.Int("items.count", len(msg.Value)),
-		}
-
+		messageAttrs := make([]attribute.KeyValue, 1, 1+len(attrs))
+		messageAttrs[0] = attribute.Int("items.count", len(msg.Value))
 		messageAttrs = append(messageAttrs, attrs...)
 
 		ctx, span := pipelineTracer.Start(ctx, "message.received", trace.WithAttributes(messageAttrs...))
@@ -488,10 +486,8 @@ func (r *exclusionResolver) process(ctx context.Context, snd *sender, items *con
 		var results iter.Seq[Item]
 		var unseen []string
 
-		messageAttrs := []attribute.KeyValue{
-			attribute.Int("items.count", len(msg.Value)),
-		}
-
+		messageAttrs := make([]attribute.KeyValue, 1, 1+len(attrs))
+		messageAttrs[0] = attribute.Int("items.count", len(msg.Value))
 		messageAttrs = append(messageAttrs, attrs...)
 
 		ctx, span := pipelineTracer.Start(ctx, "message.received", trace.WithAttributes(messageAttrs...))
@@ -627,10 +623,8 @@ func (r *intersectionResolver) process(ctx context.Context, snd *sender, items *
 		var results iter.Seq[Item]
 		var unseen []string
 
-		messageAttrs := []attribute.KeyValue{
-			attribute.Int("items.count", len(msg.Value)),
-		}
-
+		messageAttrs := make([]attribute.KeyValue, 1, 1+len(attrs))
+		messageAttrs[0] = attribute.Int("items.count", len(msg.Value))
 		messageAttrs = append(messageAttrs, attrs...)
 
 		ctx, span := pipelineTracer.Start(ctx, "message.received", trace.WithAttributes(messageAttrs...))
