@@ -109,7 +109,7 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 		throttledRequestCounter.WithLabelValues(s.serviceName, methodName).Add(float64(metadata.ThrottleCount))
 	}
 	grpc_ctxtags.Extract(ctx).Set("request.dispatch_throttled", dispatchThrottled)
-	grpc_ctxtags.Extract(ctx).Set("request.datastore_throttled", metadata.ThrottleCount)
+	grpc_ctxtags.Extract(ctx).Set("request.datastore_throttled", metadata.DatastoreThrottled)
 
 	queryCount := float64(metadata.DatastoreQueryCount)
 	span.SetAttributes(attribute.Float64(datastoreQueryCountHistogramName, queryCount))
