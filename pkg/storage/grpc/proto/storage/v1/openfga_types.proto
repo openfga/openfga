@@ -1,0 +1,278 @@
+syntax = "proto3";
+
+package storage.v1.types;
+
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/openfga/openfga/pkg/storage/grpc/proto/storage/v1;storagev1";
+
+// Core tuple types
+
+// RelationshipCondition represents a condition that can be applied to a relationship tuple.
+// Conditions allow for dynamic evaluation of relationships based on contextual data.
+message RelationshipCondition {
+  // name is the identifier of the condition defined in the authorization model.
+  string name = 1;
+  // context holds the contextual data used to evaluate the condition.
+  // This is a flexible structure that can contain any JSON-compatible data.
+  google.protobuf.Struct context = 2;
+}
+
+// TupleKey represents a relationship tuple that defines an access relationship.
+// Format: <user> has <relation> on <object> [if <condition>]
+//
+// Note: For delete operations, the condition field is ignored. Deletes match on
+// user, relation, and object only, regardless of any condition value provided.
+message TupleKey {
+  // user is the user or userset that has the relation (e.g., "user:alice" or "group:engineers#member").
+  string user = 1;
+  // relation is the type of access (e.g., "viewer", "editor", "owner").
+  string relation = 2;
+  // object is the resource being accessed (e.g., "document:readme").
+  string object = 3;
+  // condition is an optional condition that must be satisfied for the relationship to be valid.
+  // This field is ignored for delete operations.
+  RelationshipCondition condition = 4;
+}
+
+// Tuple represents a stored relationship tuple with metadata.
+message Tuple {
+  // key is the relationship tuple.
+  TupleKey key = 1;
+  // timestamp is when the tuple was written to storage.
+  google.protobuf.Timestamp timestamp = 2;
+}
+
+// Store types
+
+// Store represents an OpenFGA store, which is an isolated authorization namespace.
+// Each store contains its own authorization models, tuples, and assertions.
+message Store {
+  // id is the unique identifier for the store (typically a ULID).
+  string id = 1;
+  // name is a human-readable name for the store.
+  string name = 2;
+  // created_at is when the store was created.
+  google.protobuf.Timestamp created_at = 3;
+  // updated_at is when the store was last modified.
+  google.protobuf.Timestamp updated_at = 4;
+  // deleted_at is when the store was marked as deleted (soft delete).
+  // If set, the store is considered deleted and should not be returned in most queries.
+  google.protobuf.Timestamp deleted_at = 5;
+}
+
+// Authorization model types
+
+// Condition defines a named condition expression that can be evaluated at authorization check time.
+// Conditions use CEL (Common Expression Language) for dynamic authorization logic.
+message Condition {
+  // name is the unique identifier for this condition within the model.
+  string name = 1;
+  // expression is the CEL expression that evaluates the condition.
+  string expression = 2;
+  // parameters define the typed parameters that can be used in the expression.
+  map<string, ConditionParamTypeRef> parameters = 3;
+}
+
+// ConditionParamTypeRef_TypeName represents the type of a condition parameter.
+enum ConditionParamTypeRef_TypeName {
+  TYPE_NAME_UNSPECIFIED = 0;
+  TYPE_NAME_ANY = 1;
+  TYPE_NAME_BOOL = 2;
+  TYPE_NAME_STRING = 3;
+  TYPE_NAME_INT = 4;
+  TYPE_NAME_UINT = 5;
+  TYPE_NAME_DOUBLE = 6;
+  TYPE_NAME_DURATION = 7;
+  TYPE_NAME_TIMESTAMP = 8;
+  TYPE_NAME_MAP = 9;
+  TYPE_NAME_LIST = 10;
+  TYPE_NAME_IPADDRESS = 11;
+}
+
+// ConditionParamTypeRef defines the type information for a condition parameter.
+// Supports generic types (e.g., List<String>, Map<String, Int>).
+message ConditionParamTypeRef {
+  // type_name is the base type of the parameter.
+  ConditionParamTypeRef_TypeName type_name = 1;
+  // generic_types contains type parameters for generic types (e.g., the element type for List).
+  repeated ConditionParamTypeRef generic_types = 2;
+}
+
+// Wildcard represents a wildcard type (e.g., "user:*").
+// An empty message is used to distinguish from a null/missing value.
+message Wildcard {}
+
+// RelationReference specifies an allowed user type for a relation.
+// Examples: "user", "group#member", "user:*"
+message RelationReference {
+  // type is the object type (e.g., "user", "group").
+  string type = 1;
+  // relation_or_wildcard specifies either a specific relation or a wildcard.
+  oneof relation_or_wildcard {
+    // relation specifies a relation on the type (e.g., "member" in "group#member").
+    string relation = 2;
+    // wildcard indicates all users of the type (e.g., "user:*").
+    Wildcard wildcard = 3;
+  }
+  // condition is an optional condition name that must be satisfied.
+  string condition = 4;
+}
+
+// ObjectRelation represents a reference to a specific object and relation.
+// Used in computed usersets and tuple-to-userset definitions.
+message ObjectRelation {
+  // object is typically empty (refers to the object in context) or specifies a relation for navigation.
+  string object = 1;
+  // relation is the relation name.
+  string relation = 2;
+}
+
+// SourceInfo contains information about the source of a definition.
+message SourceInfo {
+  // file is the source file name where this definition originated.
+  string file = 1;
+}
+
+// RelationMetadata contains metadata about a relation definition.
+message RelationMetadata {
+  // directly_related_user_types specifies which user types can be directly assigned this relation.
+  repeated RelationReference directly_related_user_types = 1;
+  // module is the module name where this relation is defined (for modular models).
+  string module = 2;
+  // source_info contains source location information.
+  SourceInfo source_info = 3;
+}
+
+// Metadata contains metadata for a type definition.
+message Metadata {
+  // relations maps relation names to their metadata.
+  map<string, RelationMetadata> relations = 1;
+  // module is the module name where this type is defined (for modular models).
+  string module = 2;
+  // source_info contains source location information.
+  SourceInfo source_info = 3;
+}
+
+// DirectUserset indicates users directly assigned to a relation.
+// Example: "viewer" relation allows directly assigned viewers.
+message DirectUserset {}
+
+// Usersets represents a collection of usersets (for union/intersection operations).
+message Usersets {
+  // child contains the usersets to combine.
+  repeated Userset child = 1;
+}
+
+// Difference represents a set difference operation (base - subtract).
+// Example: "editor but_not owner" = users who are editors but not owners.
+message Difference {
+  // base is the userset to subtract from.
+  Userset base = 1;
+  // subtract is the userset to remove from base.
+  Userset subtract = 2;
+}
+
+// TupleToUserset implements tuple-to-userset rewriting (indirect permissions).
+// Example: "document viewer = folder parent viewer" means document viewers
+// are the viewers of the parent folder.
+message TupleToUserset {
+  // tupleset specifies which tuples to follow (e.g., "parent" relation).
+  ObjectRelation tupleset = 1;
+  // computed_userset specifies which relation to check on the related object (e.g., "viewer").
+  ObjectRelation computed_userset = 2;
+}
+
+// Userset defines how to compute the set of users for a relation.
+// This is the core of the OpenFGA authorization model's rewrite rules.
+message Userset {
+  oneof userset {
+    // this indicates directly assigned users.
+    DirectUserset this = 1;
+    // computed_userset references another relation on the same object.
+    ObjectRelation computed_userset = 2;
+    // tuple_to_userset implements indirect permissions via related objects.
+    TupleToUserset tuple_to_userset = 3;
+    // union combines multiple usersets (logical OR).
+    Usersets union = 4;
+    // intersection requires all usersets (logical AND).
+    Usersets intersection = 5;
+    // difference subtracts one userset from another.
+    Difference difference = 6;
+  }
+}
+
+// TypeDefinition defines an object type and its relations in the authorization model.
+// Example: "document" type with "viewer", "editor", "owner" relations.
+message TypeDefinition {
+  // type is the name of the object type (e.g., "document", "folder").
+  string type = 1;
+  // relations maps relation names to their userset definitions.
+  map<string, Userset> relations = 2;
+  // metadata contains additional information about the type definition.
+  Metadata metadata = 3;
+}
+
+// AuthorizationModel is a complete authorization model for a store.
+// It defines all object types, their relations, and conditions.
+message AuthorizationModel {
+  // id is the unique identifier for this model version (typically a ULID).
+  string id = 1;
+  // schema_version is the OpenFGA schema version (e.g., "1.1", "1.2").
+  string schema_version = 2;
+  // type_definitions contains all object type definitions in the model.
+  repeated TypeDefinition type_definitions = 3;
+  // conditions maps condition names to their definitions.
+  map<string, Condition> conditions = 4;
+}
+
+// Assertion types
+
+// AssertionTupleKey represents a tuple in an assertion (test case for authorization models).
+// Note: Field order differs from TupleKey for historical reasons.
+message AssertionTupleKey {
+  string object = 1;
+  string relation = 2;
+  string user = 3;
+}
+
+// Assertion represents a test case for an authorization model.
+// It asserts whether a specific access check should pass or fail.
+message Assertion {
+  // tuple_key identifies the relationship to check.
+  AssertionTupleKey tuple_key = 1;
+  // expectation is true if access should be granted, false if denied.
+  bool expectation = 2;
+}
+
+// Changelog types
+
+// TupleChange represents a change to a relationship tuple (write or delete).
+// Used for change tracking and streaming updates.
+message TupleChange {
+  // tuple_key identifies the tuple that changed.
+  TupleKey tuple_key = 1;
+  // operation indicates whether the tuple was written or deleted.
+  TupleOperation operation = 2;
+  // timestamp is when the change occurred.
+  google.protobuf.Timestamp timestamp = 3;
+}
+
+// Enums
+
+// TupleOperation indicates the type of change to a tuple.
+enum TupleOperation {
+  TUPLE_OPERATION_WRITE = 0;   // Tuple was written/created
+  TUPLE_OPERATION_DELETE = 1;  // Tuple was deleted
+}
+
+// ConsistencyPreference allows clients to trade off between latency and consistency.
+enum ConsistencyPreference {
+  CONSISTENCY_PREFERENCE_UNSPECIFIED = 0;
+  // MINIMIZE_LATENCY prioritizes speed, may return slightly stale data.
+  CONSISTENCY_PREFERENCE_MINIMIZE_LATENCY = 100;
+  // HIGHER_CONSISTENCY prioritizes data freshness, may have higher latency.
+  CONSISTENCY_PREFERENCE_HIGHER_CONSISTENCY = 200;
+}
+
