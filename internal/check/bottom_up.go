@@ -72,6 +72,7 @@ func (s *bottomUp) setOperationSetup(ctx context.Context, req *Request, resolver
 		})
 
 		if recoveredError != nil {
+			fmt.Println(recoveredError.AsError())
 			concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Err: fmt.Errorf("%w: %s", ErrPanicRequest, recoveredError.AsError())}, out)
 		}
 	}()
@@ -263,14 +264,29 @@ func cleanOperation(ctx context.Context, batch []string, iters []storage.Iterato
 	}
 }
 
+func cleanOperationWithError(ctx context.Context, batch []string, iters []storage.Iterator[string], err error, out chan<- *iterator.Msg) {
+	// Flush any remaining items
+	if len(batch) > 0 {
+		concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Iter: storage.NewStaticIterator[string](batch)}, out)
+	}
+	if err != nil {
+		handleStreamError(ctx, err, &batch, out)
+	}
+
+	close(out)
+	for _, it := range iters {
+		it.Stop()
+	}
+}
+
 // resolveUnion implements a merge-style algorithm for the union of sorted iterators
 // handleStreamError sends an error through the output channel, sets batch to nil,
 // and returns true if the function should terminate.
 func resolveUnion(ctx context.Context, iters []storage.Iterator[string], out chan<- *iterator.Msg) {
 	batch := make([]string, 0, IteratorMinBatchThreshold)
-
+	lastError := error(nil)
 	defer func() {
-		cleanOperation(ctx, batch, iters, out)
+		cleanOperationWithError(ctx, batch, iters, lastError, out)
 	}()
 	var minValue string
 	var minIndexValue int
@@ -285,13 +301,13 @@ func resolveUnion(ctx context.Context, iters []storage.Iterator[string], out cha
 	for idx, iter := range iters {
 		value, err := iter.Next(ctx)
 		if err != nil {
-			if handleStreamError(ctx, err, &batch, out) {
-				return
-			}
-			continue
+			// we need to store the empty value so we can keep the correlation between the index in the iterator
+			// and the index in the compare values
+			lastError = err
+		} else {
+			reverseLookupIndexes = append(reverseLookupIndexes, idx)
 		}
 		compareValues = append(compareValues, value)
-		reverseLookupIndexes = append(reverseLookupIndexes, idx)
 	}
 
 	/*
@@ -311,7 +327,6 @@ func resolveUnion(ctx context.Context, iters []storage.Iterator[string], out cha
 		newIndexes := make([]int, 0, len(reverseLookupIndexes))
 		for _, idxValue := range reverseLookupIndexes {
 			value := compareValues[idxValue]
-
 			if !initialized || value < minValue {
 				minValue = value
 				minIndexValue = idxValue
@@ -319,9 +334,7 @@ func resolveUnion(ctx context.Context, iters []storage.Iterator[string], out cha
 			} else if value == minValue {
 				v1, err := iters[idxValue].Next(ctx)
 				if err != nil {
-					if handleStreamError(ctx, err, &batch, out) {
-						return
-					}
+					lastError = err
 					continue
 				} else {
 					compareValues[idxValue] = v1
@@ -334,9 +347,7 @@ func resolveUnion(ctx context.Context, iters []storage.Iterator[string], out cha
 		// Advance the stream with the minimum value
 		value, err := iters[minIndexValue].Next(ctx)
 		if err != nil {
-			if handleStreamError(ctx, err, &batch, out) {
-				return
-			}
+			lastError = err
 			// Remove the value index from activeIndexes
 			newActiveIndexes := make([]int, 0, len(newIndexes))
 			for _, idxValue := range newIndexes {
