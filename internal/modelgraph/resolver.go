@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/oklog/ulid/v2"
@@ -20,6 +21,7 @@ import (
 var tracer = otel.Tracer("internal/modelgraph")
 
 const CacheKeyPrefix = "wg|"
+const DELIMITER = "|"
 
 type AuthorizationModelGraphResolver struct {
 	datastore storage.AuthorizationModelReadBackend // these methods are already cached at a lower level
@@ -68,8 +70,13 @@ func (r *AuthorizationModelGraphResolver) Resolve(ctx context.Context, storeID, 
 		model = m
 		modelID = model.GetId()
 	}
+	var keyBuilder strings.Builder
+	keyBuilder.WriteString(CacheKeyPrefix)
+	keyBuilder.WriteString(storeID)
+	keyBuilder.WriteString(DELIMITER)
+	keyBuilder.WriteString(modelID)
 
-	key = CacheKeyPrefix + storeID + modelID
+	key = keyBuilder.String()
 	if wg := r.cache.Get(key); wg != nil {
 		return wg.(*AuthorizationModelGraph), nil
 	}

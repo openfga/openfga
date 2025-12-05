@@ -68,9 +68,9 @@ func TestResolve(t *testing.T) {
      define viewer: [user]
   `)
 
-		mockCache.EXPECT().Get("wg|" + storeID).Return(nil)
+		mockCache.EXPECT().Get("wg|" + storeID + "|" + model.GetId()).Return(nil)
 		mockDatastore.EXPECT().FindLatestAuthorizationModel(gomock.Any(), storeID).Return(model, nil)
-		mockCache.EXPECT().Set("wg|"+storeID, gomock.Any(), 10*time.Minute)
+		mockCache.EXPECT().Set("wg|"+storeID+"|"+model.GetId(), gomock.Any(), 10*time.Minute)
 
 		graph, err := resolver.Resolve(context.Background(), storeID, "")
 		require.NoError(t, err)
@@ -130,7 +130,7 @@ func TestResolve(t *testing.T) {
 		cachedGraph, err := New(model)
 		require.NoError(t, err)
 
-		mockCache.EXPECT().Get("wg|" + storeID + modelID).Return(cachedGraph)
+		mockCache.EXPECT().Get("wg|" + storeID + "|" + modelID).Return(cachedGraph)
 
 		graph, err := resolver.Resolve(context.Background(), storeID, modelID)
 		require.NoError(t, err)
@@ -155,9 +155,9 @@ func TestResolve(t *testing.T) {
      define viewer: [user]
   `)
 
-		mockCache.EXPECT().Get("wg|" + storeID + modelID).Return(nil)
+		mockCache.EXPECT().Get("wg|" + storeID + "|" + modelID).Return(nil)
 		mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, modelID).Return(model, nil)
-		mockCache.EXPECT().Set("wg|"+storeID+modelID, gomock.Any(), 10*time.Minute)
+		mockCache.EXPECT().Set("wg|"+storeID+"|"+modelID, gomock.Any(), 10*time.Minute)
 
 		graph, err := resolver.Resolve(context.Background(), storeID, modelID)
 		require.NoError(t, err)
@@ -173,7 +173,7 @@ func TestResolve(t *testing.T) {
 		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 		resolver := NewResolver(mockDatastore, mockCache, 10*time.Minute)
 
-		mockCache.EXPECT().Get("wg|" + storeID + modelID).Return(nil)
+		mockCache.EXPECT().Get("wg|" + storeID + "|" + modelID).Return(nil)
 		mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, modelID).Return(nil, storage.ErrNotFound)
 
 		graph, err := resolver.Resolve(context.Background(), storeID, modelID)
@@ -190,7 +190,7 @@ func TestResolve(t *testing.T) {
 		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 		resolver := NewResolver(mockDatastore, mockCache, 10*time.Minute)
 
-		mockCache.EXPECT().Get("wg|" + storeID + modelID).Return(nil)
+		mockCache.EXPECT().Get("wg|" + storeID + "|" + modelID).Return(nil)
 		mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, modelID).Return(nil, errors.New("database error"))
 
 		graph, err := resolver.Resolve(context.Background(), storeID, modelID)
@@ -226,7 +226,7 @@ func TestResolve(t *testing.T) {
 			},
 		}
 
-		mockCache.EXPECT().Get("wg|" + storeID + modelID).Return(nil)
+		mockCache.EXPECT().Get("wg|" + storeID + "|" + modelID).Return(nil)
 		mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, modelID).Return(invalidModel, nil)
 
 		graph, err := resolver.Resolve(context.Background(), storeID, modelID)
