@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"math"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -18,6 +17,7 @@ import (
 	parser "github.com/openfga/language/pkg/go/transformer"
 
 	"github.com/openfga/openfga/assets"
+	"github.com/openfga/openfga/internal/modelgraph"
 	checktest "github.com/openfga/openfga/internal/test/check"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -38,6 +38,7 @@ type checkTests struct {
 
 type testParams struct {
 	schemaVersion string
+	contextual    bool
 	client        tests.ClientInterface
 }
 
@@ -54,7 +55,7 @@ func RunAllTests(t *testing.T, client tests.ClientInterface) {
 	t.Run("RunAllTests", func(t *testing.T) {
 		t.Run("Check", func(t *testing.T) {
 			t.Parallel()
-			runTests(t, testParams{typesystem.SchemaVersion1_1, client})
+			runTests(t, testParams{schemaVersion: typesystem.SchemaVersion1_1, client: client})
 		})
 	})
 }
@@ -121,6 +122,11 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 				}
 				// arrange: write model
 				model := testutils.MustTransformDSLToProtoWithID(stage.Model)
+
+				_, err := modelgraph.New(model)
+				if err != nil {
+					t.Skipf("modelgraph.New failed: %v", err)
+				}
 
 				writeModelResponse, err := client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 					StoreId:         storeID,
@@ -195,10 +201,10 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 	})
 }
 
-func RunMatrixTests(t *testing.T, engine string, experimentalsEnabled bool, client tests.ClientInterface) {
-	t.Run("test_matrix_"+engine+"_experimental_"+strconv.FormatBool(experimentalsEnabled), func(t *testing.T) {
+func RunMatrixTests(t *testing.T, engine string, name string, client tests.ClientInterface) {
+	t.Run("test_matrix_"+engine+"_experimental_"+name, func(t *testing.T) {
 		t.Parallel()
-		runTestMatrix(t, testParams{typesystem.SchemaVersion1_1, client})
+		runTestMatrix(t, testParams{schemaVersion: typesystem.SchemaVersion1_1, client: client})
 	})
 }
 
@@ -1232,20 +1238,22 @@ condition xcond(x: string) {
 				require.NoError(t, err)
 				modelID := writeModelResponse.GetAuthorizationModelId()
 
-				tuples := testutils.Shuffle(stage.Tuples)
-				tuplesLength := len(tuples)
-				if tuplesLength > 0 {
-					for i := 0; i < tuplesLength; i += writeMaxChunkSize {
-						end := int(math.Min(float64(i+writeMaxChunkSize), float64(tuplesLength)))
-						writeChunk := (tuples)[i:end]
-						_, err = client.Write(ctx, &openfgav1.WriteRequest{
-							StoreId:              storeID,
-							AuthorizationModelId: modelID,
-							Writes: &openfgav1.WriteRequestWrites{
-								TupleKeys: writeChunk,
-							},
-						})
-						require.NoError(t, err)
+				if !params.contextual {
+					tuples := testutils.Shuffle(stage.Tuples)
+					tuplesLength := len(tuples)
+					if tuplesLength > 0 {
+						for i := 0; i < tuplesLength; i += writeMaxChunkSize {
+							end := int(math.Min(float64(i+writeMaxChunkSize), float64(tuplesLength)))
+							writeChunk := (tuples)[i:end]
+							_, err = client.Write(ctx, &openfgav1.WriteRequest{
+								StoreId:              storeID,
+								AuthorizationModelId: modelID,
+								Writes: &openfgav1.WriteRequestWrites{
+									TupleKeys: writeChunk,
+								},
+							})
+							require.NoError(t, err)
+						}
 					}
 				}
 
@@ -1253,6 +1261,9 @@ condition xcond(x: string) {
 					t.Skipf("no check assertions defined")
 				}
 				for _, assertion := range stage.CheckAssertions {
+					if params.contextual {
+						assertion.ContextualTuples = stage.Tuples
+					}
 					t.Run("assertion_check_"+assertion.Name, func(t *testing.T) {
 						assertCheck(ctx, t, assertion, stage, client, storeID, modelID)
 					})
@@ -1284,8 +1295,7 @@ func assertCheck(ctx context.Context, t *testing.T, assertion *checktest.Asserti
 		AuthorizationModelId: modelID,
 		TupleKey:             tupleKey,
 		ContextualTuples: &openfgav1.ContextualTupleKeys{
-			// TODO
-			TupleKeys: []*openfgav1.TupleKey{},
+			TupleKeys: assertion.ContextualTuples,
 		},
 		Context: assertion.Context,
 		Trace:   true,
@@ -1311,8 +1321,7 @@ func assertListObjects(ctx context.Context, t *testing.T, assertion *checktest.A
 		User:                 assertion.Tuple.GetUser(),
 		Relation:             assertion.Tuple.GetRelation(),
 		ContextualTuples: &openfgav1.ContextualTupleKeys{
-			// TODO
-			TupleKeys: []*openfgav1.TupleKey{},
+			TupleKeys: assertion.ContextualTuples,
 		},
 		Context: assertion.Context,
 	})
@@ -1356,7 +1365,7 @@ func assertListUsers(ctx context.Context, t *testing.T, assertion *checktest.Ass
 		Object:               &openfgav1.Object{Type: objectType, Id: objectID},
 		Relation:             relation,
 		UserFilters:          []*openfgav1.UserTypeFilter{{Type: userObjectType, Relation: userRelation}},
-		ContextualTuples:     []*openfgav1.TupleKey{}, // TODO
+		ContextualTuples:     assertion.ContextualTuples,
 		Context:              assertion.Context,
 	})
 
