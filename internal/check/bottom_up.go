@@ -303,7 +303,9 @@ func resolveUnion(ctx context.Context, iters []storage.Iterator[string], out cha
 		if err != nil {
 			// we need to store the empty value so we can keep the correlation between the index in the iterator
 			// and the index in the compare values
-			lastError = err
+			if !storage.IterIsDoneOrCancelled(err) {
+				lastError = err
+			}
 		} else {
 			reverseLookupIndexes = append(reverseLookupIndexes, idx)
 		}
@@ -334,7 +336,9 @@ func resolveUnion(ctx context.Context, iters []storage.Iterator[string], out cha
 			} else if value == minValue {
 				v1, err := iters[idxValue].Next(ctx)
 				if err != nil {
-					lastError = err
+					if !storage.IterIsDoneOrCancelled(err) {
+						lastError = err
+					}
 					continue
 				} else {
 					compareValues[idxValue] = v1
@@ -347,7 +351,9 @@ func resolveUnion(ctx context.Context, iters []storage.Iterator[string], out cha
 		// Advance the stream with the minimum value
 		value, err := iters[minIndexValue].Next(ctx)
 		if err != nil {
-			lastError = err
+			if !storage.IterIsDoneOrCancelled(err) {
+				lastError = err
+			}
 			// Remove the value index from activeIndexes
 			newActiveIndexes := make([]int, 0, len(newIndexes))
 			for _, idxValue := range newIndexes {

@@ -622,6 +622,7 @@ func TestBottomUpResolveUnion(t *testing.T) {
 		producers = append(producers, iterator.FromChannel(producer1))
 
 		iter2 := mocks.NewMockIterator[string](ctrl)
+		iter2.EXPECT().Next(gomock.Any()).MaxTimes(1).Return("", storage.ErrIteratorDone)
 		iter2.EXPECT().Stop().MaxTimes(1) // drain happens in background
 		producer2 := make(chan *iterator.Msg, 1)
 		producer2 <- &iterator.Msg{Iter: iter2}
@@ -832,7 +833,7 @@ func TestBottomUpResolveUnion(t *testing.T) {
 		}
 		require.Equal(t, expectedObjects, ids)
 	})
-	t.Run("should_return_error_get_active_stream_error", func(t *testing.T) {
+	t.Run("should_return_values_and_errors", func(t *testing.T) {
 		ctx := context.Background()
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
@@ -855,6 +856,9 @@ func TestBottomUpResolveUnion(t *testing.T) {
 			return nil
 		})
 		msg, ok := <-res
+		require.True(t, ok)
+		require.NoError(t, msg.Err)
+		msg, ok = <-res
 		require.True(t, ok)
 		require.Error(t, msg.Err)
 		err := pool.Wait()
@@ -889,9 +893,10 @@ func TestBottomUpResolveUnion(t *testing.T) {
 		})
 		msg, ok := <-res
 		require.True(t, ok)
+		require.NoError(t, msg.Err)
+		msg, ok = <-res
+		require.True(t, ok)
 		require.Error(t, msg.Err)
-		_, ok = <-res
-		require.False(t, ok)
 		err := pool.Wait()
 		require.NoError(t, err)
 	})
