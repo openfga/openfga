@@ -93,7 +93,7 @@ func NewRunCommand() *cobra.Command {
 	defaultConfig := serverconfig.DefaultConfig()
 	flags := cmd.Flags()
 
-	flags.StringSlice("experimentals", defaultConfig.Experimentals, fmt.Sprintf("a list of experimental features to enable. Allowed values: %s, %s, %s, %s", serverconfig.ExperimentalCheckOptimizations, serverconfig.ExperimentalCheckOptimizations, serverconfig.ExperimentalAccessControlParams, serverconfig.ExperimentalPipelineListObjects))
+	flags.StringSlice("experimentals", defaultConfig.Experimentals, fmt.Sprintf("a list of experimental features to enable. Allowed values: %s, %s, %s, %s, %s", serverconfig.ExperimentalCheckOptimizations, serverconfig.ExperimentalListObjectsOptimizations, serverconfig.ExperimentalAccessControlParams, serverconfig.ExperimentalPipelineListObjects, serverconfig.ExperimentalReverseExpandCheck))
 
 	flags.Bool("access-control-enabled", defaultConfig.AccessControl.Enabled, "enable/disable the access control feature")
 
