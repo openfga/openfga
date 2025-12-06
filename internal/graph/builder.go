@@ -10,6 +10,8 @@ type CheckResolverOrderedBuilder struct {
 	cachedCheckResolverOptions             []CachedCheckResolverOpt
 	dispatchThrottlingCheckResolverEnabled bool
 	dispatchThrottlingCheckResolverOptions []DispatchThrottlingCheckResolverOpt
+	reverseExpandCheckResolverEnabled      bool
+	reverseExpandCheckResolverOptions      []ReverseExpandCheckResolverOpt
 }
 
 type CheckResolverOrderedBuilderOpt func(checkResolver *CheckResolverOrderedBuilder)
@@ -55,6 +57,14 @@ func WithDispatchThrottlingCheckResolverOpts(enabled bool, opts ...DispatchThrot
 	}
 }
 
+// WithReverseExpandCheckResolverOpts sets the opts to be used to build ReverseExpandCheckResolver.
+func WithReverseExpandCheckResolverOpts(enabled bool, opts ...ReverseExpandCheckResolverOpt) CheckResolverOrderedBuilderOpt {
+	return func(r *CheckResolverOrderedBuilder) {
+		r.reverseExpandCheckResolverEnabled = enabled
+		r.reverseExpandCheckResolverOptions = opts
+	}
+}
+
 func NewOrderedCheckResolvers(opts ...CheckResolverOrderedBuilderOpt) *CheckResolverOrderedBuilder {
 	checkResolverBuilder := &CheckResolverOrderedBuilder{}
 	for _, opt := range opts {
@@ -84,6 +94,14 @@ func (c *CheckResolverOrderedBuilder) Build() (CheckResolver, CheckResolverClose
 
 	if c.dispatchThrottlingCheckResolverEnabled {
 		c.resolvers = append(c.resolvers, NewDispatchThrottlingCheckResolver(c.dispatchThrottlingCheckResolverOptions...))
+	}
+
+	if c.reverseExpandCheckResolverEnabled {
+		reverseExpandCheckResolver, err := NewReverseExpandCheckResolver(true, c.reverseExpandCheckResolverOptions...)
+		if err != nil {
+			return nil, nil, err
+		}
+		c.resolvers = append(c.resolvers, reverseExpandCheckResolver)
 	}
 
 	if c.shadowResolverEnabled {

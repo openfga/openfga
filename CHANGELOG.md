@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Try to keep listed changes to a concise bulleted list of simple explanations of changes. Aim for the amount of information needed so that readers can understand where they would look in the codebase to investigate the changes' implementation, or where they would look in the documentation to understand how to make use of the change in practice - better yet, link directly to the docs and provide detailed information there. Only elaborate if doing so is required to avoid breaking changes or experimental features from ruining someone's day.
 
 ## [Unreleased]
+### Added
+- Added experimental reverse expansion optimization for check queries with `reverse_expand_check` flag. This optimization uses reverse expansion (user→objects) instead of forward expansion (object→users) when beneficial, particularly for many-to-one relationship patterns (many folders connecting to one instance). The resolver automatically detects when reverse expansion would be more efficient and falls back to normal check queries otherwise. [#2818](https://github.com/openfga/openfga/issues/2818)
 
 ## [1.11.2] - 2025-12-04
 ### Fixed
