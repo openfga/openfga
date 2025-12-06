@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"fmt"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"google.golang.org/protobuf/types/known/structpb"
@@ -35,7 +36,7 @@ func (a *reverseExpandAdapter) Execute(
 	// Convert graph types to reverseexpand types
 	userRef := convertUserRefToReverseExpand(req.User)
 	if userRef == nil {
-		return nil
+		return fmt.Errorf("failed to convert user reference: %v", req.User)
 	}
 
 	var contextStruct *structpb.Struct

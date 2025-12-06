@@ -97,7 +97,7 @@ func (c *CheckResolverOrderedBuilder) Build() (CheckResolver, CheckResolverClose
 	}
 
 	if c.reverseExpandCheckResolverEnabled {
-		reverseExpandCheckResolver, err := NewReverseExpandCheckResolver(true, c.reverseExpandCheckResolverOptions...)
+		reverseExpandCheckResolver, err := NewReverseExpandCheckResolver(c.reverseExpandCheckResolverEnabled, c.reverseExpandCheckResolverOptions...)
 		if err != nil {
 			return nil, nil, err
 		}

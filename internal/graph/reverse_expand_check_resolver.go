@@ -2,6 +2,7 @@ package graph
 
 import (
 	"context"
+	"sync/atomic"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -42,10 +43,15 @@ type ReverseExpandUserRef interface {
 	String() string
 }
 
+const (
+	RequiresFurtherEvalStatus = 0
+	NoFurtherEvalStatus       = 1
+)
+
 // ReverseExpandResult represents a result from reverse expansion.
 type ReverseExpandResult struct {
 	Object       string
-	ResultStatus int // 0 = RequiresFurtherEvalStatus, 1 = NoFurtherEvalStatus
+	ResultStatus int // Use RequiresFurtherEvalStatus or NoFurtherEvalStatus
 }
 
 // ReverseExpandResolutionMetadata contains metadata about reverse expansion execution.
@@ -189,7 +195,7 @@ func (r *ReverseExpandCheckResolver) ResolveCheck(
 	// Check if reverse expansion would be beneficial
 	if !r.shouldUseReverseExpansion(ctx, req, typesys) {
 		span.SetAttributes(attribute.Bool("reverse_expand_skipped", true))
-		r.logger.Info("Reverse expansion SKIPPED - heuristic determined not beneficial",
+		r.logger.Debug("Reverse expansion SKIPPED - heuristic determined not beneficial",
 			zap.String("object", tupleKey.GetObject()),
 			zap.String("relation", tupleKey.GetRelation()),
 			zap.String("user", tupleKey.GetUser()))
@@ -197,7 +203,7 @@ func (r *ReverseExpandCheckResolver) ResolveCheck(
 	}
 
 	span.SetAttributes(attribute.Bool("reverse_expand_attempted", true))
-	r.logger.Info("Reverse expansion attempted",
+	r.logger.Debug("Reverse expansion attempted",
 		zap.String("object", tupleKey.GetObject()),
 		zap.String("relation", tupleKey.GetRelation()),
 		zap.String("user", tupleKey.GetUser()))
@@ -287,8 +293,10 @@ func (r *ReverseExpandCheckResolver) ResolveCheck(
 				// Note: We don't track exact query counts here since this is an optimization path.
 				// The metadata will be minimal as we're short-circuiting the normal check flow.
 				return &ResolveCheckResponse{
-					Allowed:            true,
-					ResolutionMetadata: ResolveCheckResponseMetadata{},
+					Allowed: true,
+					ResolutionMetadata: ResolveCheckResponseMetadata{
+						DatastoreQueryCount: metadata.GetDatastoreQueryCount(),
+					},
 				}, nil
 			}
 		}
@@ -419,14 +427,14 @@ func (r *ReverseExpandCheckResolver) convertUserToUserRef(user string) ReverseEx
 
 // reverseExpandMetadata implements ReverseExpandResolutionMetadata
 type reverseExpandMetadata struct {
-	dispatchCounter     uint32
-	datastoreQueryCount uint32
-	datastoreItemCount  uint64
+	dispatchCounter     atomic.Uint32
+	datastoreQueryCount atomic.Uint32
+	datastoreItemCount  atomic.Uint64
 }
 
-func (m *reverseExpandMetadata) GetDispatchCounter() uint32      { return m.dispatchCounter }
-func (m *reverseExpandMetadata) GetDatastoreQueryCount() uint32  { return m.datastoreQueryCount }
-func (m *reverseExpandMetadata) GetDatastoreItemCount() uint64   { return m.datastoreItemCount }
-func (m *reverseExpandMetadata) SetDispatchCounter(v uint32)     { m.dispatchCounter = v }
-func (m *reverseExpandMetadata) SetDatastoreQueryCount(v uint32) { m.datastoreQueryCount = v }
-func (m *reverseExpandMetadata) SetDatastoreItemCount(v uint64)  { m.datastoreItemCount = v }
+func (m *reverseExpandMetadata) GetDispatchCounter() uint32      { return m.dispatchCounter.Load() }
+func (m *reverseExpandMetadata) GetDatastoreQueryCount() uint32  { return m.datastoreQueryCount.Load() }
+func (m *reverseExpandMetadata) GetDatastoreItemCount() uint64   { return m.datastoreItemCount.Load() }
+func (m *reverseExpandMetadata) SetDispatchCounter(v uint32)     { m.dispatchCounter.Store(v) }
+func (m *reverseExpandMetadata) SetDatastoreQueryCount(v uint32) { m.datastoreQueryCount.Store(v) }
+func (m *reverseExpandMetadata) SetDatastoreItemCount(v uint64)  { m.datastoreItemCount.Store(v) }
