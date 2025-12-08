@@ -64,6 +64,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 	if err != nil {
 		return nil, err
 	}
+	req.AuthorizationModelId = typesys.GetAuthorizationModelID() // the resolved model id
 
 	builder := s.getListObjectsCheckResolverBuilder(storeID)
 	checkResolver, checkResolverCloser, err := builder.Build()
@@ -112,7 +113,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		&openfgav1.ListObjectsRequest{
 			StoreId:              storeID,
 			ContextualTuples:     req.GetContextualTuples(),
-			AuthorizationModelId: typesys.GetAuthorizationModelID(), // the resolved model id
+			AuthorizationModelId: req.GetAuthorizationModelId(),
 			Type:                 targetObjectType,
 			Relation:             req.GetRelation(),
 			User:                 req.GetUser(),
@@ -225,6 +226,7 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 	if err != nil {
 		return err
 	}
+	req.AuthorizationModelId = typesys.GetAuthorizationModelID() // the resolved model id
 
 	builder := s.getListObjectsCheckResolverBuilder(storeID)
 	checkResolver, checkResolverCloser, err := builder.Build()
@@ -261,8 +263,6 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 	if err != nil {
 		return serverErrors.NewInternalError("", err)
 	}
-
-	req.AuthorizationModelId = typesys.GetAuthorizationModelID() // the resolved model id
 
 	resolutionMetadata, err := q.ExecuteStreamed(
 		typesystem.ContextWithTypesystem(ctx, typesys),
