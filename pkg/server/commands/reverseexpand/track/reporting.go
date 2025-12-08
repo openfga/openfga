@@ -2,34 +2,57 @@ package track
 
 import (
 	"sync"
-	"sync/atomic"
 )
 
-type Tracker interface {
-	Add(int64) int64
-	Load() int64
+type Tracker struct {
+	mu     sync.Mutex
+	wait   *sync.Cond
+	init   sync.Once
+	value  int64
+	parent *Tracker
 }
 
-type echoTracker struct {
-	local  atomic.Int64
-	parent Tracker
+func (t *Tracker) Fork() *Tracker {
+	return &Tracker{
+		parent: t,
+	}
 }
 
-func (t *echoTracker) Add(i int64) int64 {
-	value := t.local.Add(i)
+func (t *Tracker) initialize() {
+	t.wait = sync.NewCond(&t.mu)
+}
+
+func (t *Tracker) Add(i int64) int64 {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	t.init.Do(t.initialize)
+
+	t.value += i
+	t.wait.Broadcast()
+
 	if t.parent != nil {
 		t.parent.Add(i)
 	}
-	return value
+
+	return t.value
 }
 
-func (t *echoTracker) Load() int64 {
-	return t.local.Load()
+func (t *Tracker) Load() int64 {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	return t.value
 }
 
-func NewEchoTracker(parent Tracker) Tracker {
-	return &echoTracker{
-		parent: parent,
+func (t *Tracker) Wait(fn func(int64) bool) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	t.init.Do(t.initialize)
+
+	for !fn(t.value) {
+		t.wait.Wait()
 	}
 }
 
@@ -44,10 +67,11 @@ type Reporter struct {
 
 // Report is a function that sets the status of a Reporter on its parent StatusPool.
 func (r *Reporter) Report(status bool) {
-	r.parent.mu.RLock()
-	defer r.parent.mu.RUnlock()
+	r.parent.set(r.ndx, status)
+}
 
-	r.parent.pool[r.ndx] = status
+func (r *Reporter) Wait(fn func(status bool) bool) {
+	r.parent.Wait(fn)
 }
 
 // StatusPool is a struct that aggregates status values, as booleans, from multiple sources
@@ -55,8 +79,14 @@ func (r *Reporter) Report(status bool) {
 // method update the source's status via the Reporter provided during registration.
 // The default state of a StatusPool is `false` for all sources.
 type StatusPool struct {
-	mu   sync.RWMutex
+	mu   sync.Mutex
+	wait *sync.Cond
+	init sync.Once
 	pool []bool
+}
+
+func (sp *StatusPool) initialize() {
+	sp.wait = sync.NewCond(&sp.mu)
 }
 
 // Register is a function that creates a new entry in the StatusPool for a source and returns
@@ -64,17 +94,36 @@ type StatusPool struct {
 // instance must be used to update the status for this entry.
 //
 // The Register method is thread safe.
-func (sp *StatusPool) Register() Reporter {
+func (sp *StatusPool) Register() *Reporter {
 	sp.mu.Lock()
 	defer sp.mu.Unlock()
 
 	sp.pool = append(sp.pool, false)
 	ndx := len(sp.pool) - 1
 
-	return Reporter{
+	return &Reporter{
 		ndx:    ndx,
 		parent: sp,
 	}
+}
+
+func (sp *StatusPool) set(ndx int, value bool) {
+	sp.mu.Lock()
+	defer sp.mu.Unlock()
+
+	sp.init.Do(sp.initialize)
+
+	sp.pool[ndx] = value
+	sp.wait.Broadcast()
+}
+
+func (sp *StatusPool) get() bool {
+	for _, s := range sp.pool {
+		if s {
+			return true
+		}
+	}
+	return false
 }
 
 // Status is a function that returns the cumulative status of all sources registered within the pool.
@@ -86,10 +135,16 @@ func (sp *StatusPool) Status() bool {
 	sp.mu.Lock()
 	defer sp.mu.Unlock()
 
-	for _, s := range sp.pool {
-		if s {
-			return true
-		}
+	return sp.get()
+}
+
+func (sp *StatusPool) Wait(fn func(status bool) bool) {
+	sp.mu.Lock()
+	defer sp.mu.Unlock()
+
+	sp.init.Do(sp.initialize)
+
+	for !fn(sp.get()) {
+		sp.wait.Wait()
 	}
-	return false
 }

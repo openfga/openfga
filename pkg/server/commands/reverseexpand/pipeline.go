@@ -5,11 +5,9 @@ import (
 	"errors"
 	"iter"
 	"maps"
-	"math"
 	"strings"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -104,12 +102,12 @@ func WithNumProcs(num int) PipelineOption {
 	}
 }
 
-type message[T any] struct {
-	Value  T
+type Message struct {
+	Value  []Item
 	finite func()
 }
 
-func (m *message[T]) Done() {
+func (m *Message) Done() {
 	if m.finite != nil {
 		m.finite()
 	}
@@ -311,26 +309,72 @@ func (b *Backend) query(ctx context.Context, input queryInput) iter.Seq[Item] {
 	}
 }
 
+var messagePool = sync.Pool{
+	New: func() interface{} {
+		return new(Message)
+	},
+}
+
+func pack(items []Item, onReceipt func()) *Message {
+	msg := messagePool.Get().(*Message)
+	msg.Value = items
+	msg.finite = sync.OnceFunc(func() {
+		onReceipt()
+		msg.Value = nil
+		messagePool.Put(msg)
+	})
+	return msg
+}
+
+func chunk(items iter.Seq[Item], chunkSize int) iter.Seq[[]Item] {
+	return func(yield func([]Item) bool) {
+		var head int
+
+		buffer := make([]Item, chunkSize)
+
+		for item := range items {
+			buffer[head] = item
+			head++
+
+			if head >= chunkSize {
+				if !yield(buffer) {
+					return
+				}
+				buffer = make([]Item, chunkSize)
+				head = 0
+			}
+		}
+
+		if head > 0 {
+			yield(buffer[:head])
+		}
+	}
+}
+
 // baseResolver is a struct that implements the `resolver` interface and acts as the standard resolver for most
 // workers. A baseResolver handles both recursive and non-recursive edges concurrently. The baseResolver's "ready"
 // status will remain `true` until all of its senders that produce input from external sources have finished, and
 // there exist no more in-flight messages for the parent worker. When recursive edges exist, the parent worker for
 // this resolver type requires its internal watchdog process to initiate a shutdown.
 type baseResolver struct {
-	// reporter is a Reporter provided when registering with the baseResolver's StatusPool. The registration happens
-	// once, when the baseResolver is created, so this value will remain constant for the lifetime of the instance.
-	reporter track.Reporter
-
 	// interpreter is an `interpreter` that transforms a sender's input into output which it broadcasts to all
 	// of the parent worker's listeners.
 	interpreter interpreter
+
+	tracker *track.Tracker
+
+	reporter *track.Reporter
+
+	chunkSize int
+
+	numProcs int
 }
 
-func (r *baseResolver) process(ctx context.Context, snd *sender, lst pipe.Tx[[]Item], outputBuffer *sync.Map) int64 {
+func (r *baseResolver) process(ctx context.Context, snd Sender[*Edge, *Message], listeners []Listener[*Edge, *Message], outputBuffer *sync.Map) int64 {
 	var sentCount int64
 	var inputBuffer sync.Map
 
-	edge := snd.Edge
+	edge := snd.Key()
 	isCyclical := edge != nil && (len(edge.GetRecursiveRelation()) > 0 || edge.IsPartOfTupleCycle())
 
 	edgeTo := "nil"
@@ -346,7 +390,7 @@ func (r *baseResolver) process(ctx context.Context, snd *sender, lst pipe.Tx[[]I
 		attribute.String("edge.from", edgeFrom),
 	}
 
-	var msg message[[]Item]
+	var msg *Message
 
 	for snd.Recv(&msg) {
 		var results iter.Seq[Item]
@@ -375,35 +419,40 @@ func (r *baseResolver) process(ctx context.Context, snd *sender, lst pipe.Tx[[]I
 			unseen = append(unseen, item.Value)
 		}
 
-		// If there are no unseen items, skip processing.
-		if len(unseen) == 0 {
-			goto AfterInterpret
+		results = emptySequence
+
+		if len(unseen) != 0 {
+			results = r.interpreter.Interpret(ctx, edge, unseen)
 		}
 
-		results = r.interpreter.Interpret(ctx, edge, unseen)
+		results = seq.Flatten(seq.Sequence(items...), results)
 
-		// Deduplicate the output and potentially send in chunks.
-		for item := range results {
+		results = seq.Filter(results, func(item Item) bool {
 			if item.Err != nil {
-				items = append(items, item)
-				continue
+				return true
 			}
+			_, loaded := outputBuffer.LoadOrStore(item.Value, struct{}{})
+			return !loaded
+		})
 
-			if _, loaded := outputBuffer.LoadOrStore(item.Value, struct{}{}); !loaded {
-				items = append(items, item)
+		for items := range chunk(results, r.chunkSize) {
+			for _, lst := range listeners {
+				r.tracker.Add(1)
+				msg := pack(items, func() { r.tracker.Add(-1) })
+				if !lst.Send(msg) {
+					msg.Done()
+				}
 			}
+			sentCount += int64(len(items))
 		}
 
-	AfterInterpret:
-		lst.Send(items)
-		sentCount += int64(len(items))
 		msg.Done()
 		span.End()
 	}
 	return sentCount
 }
 
-func (r *baseResolver) Resolve(ctx context.Context, senders []*sender, lst pipe.Tx[[]Item]) {
+func (r *baseResolver) Resolve(ctx context.Context, senders []Sender[*Edge, *Message], listeners []Listener[*Edge, *Message]) {
 	ctx, span := pipelineTracer.Start(ctx, "baseResolver.Resolve")
 	defer span.End()
 
@@ -419,18 +468,20 @@ func (r *baseResolver) Resolve(ctx context.Context, senders []*sender, lst pipe.
 	var wgRecursive sync.WaitGroup
 
 	for _, snd := range senders {
-		// Any sender with an edge that has a value for its recursive relation will be treated
-		// as recursive, so long as it is not part of a tuple cycle. When the edge is part of
-		// a tuple cycle, treating it as recursive would cause the parent worker to be closed
-		// too early.
-		isRecursive := snd.Edge != nil && len(snd.Edge.GetRecursiveRelation()) > 0 && !snd.Edge.IsPartOfTupleCycle()
+		edge := snd.Key()
 
-		for range snd.NumProcs {
-			if isRecursive {
+		var isCyclical bool
+
+		if edge != nil {
+			isCyclical = len(edge.GetRecursiveRelation()) > 0 || edge.IsPartOfTupleCycle()
+		}
+
+		for range r.numProcs {
+			if isCyclical {
 				wgRecursive.Add(1)
 				go func() {
 					defer wgRecursive.Done()
-					sentCount.Add(r.process(ctx, snd, lst, &outputBuffer))
+					sentCount.Add(r.process(ctx, snd, listeners, &outputBuffer))
 				}()
 				continue
 			}
@@ -438,7 +489,7 @@ func (r *baseResolver) Resolve(ctx context.Context, senders []*sender, lst pipe.
 			wgStandard.Add(1)
 			go func() {
 				defer wgStandard.Done()
-				sentCount.Add(r.process(ctx, snd, lst, &outputBuffer))
+				sentCount.Add(r.process(ctx, snd, listeners, &outputBuffer))
 			}()
 		}
 	}
@@ -447,9 +498,21 @@ func (r *baseResolver) Resolve(ctx context.Context, senders []*sender, lst pipe.
 	// of a tuple cycle.
 	wgStandard.Wait()
 
-	// Once the standard senders have all finished processing, we set the resolver's status to `false`
-	// indicating that the worker is ready for cleanup once all messages have finished processing.
 	r.reporter.Report(false)
+
+	r.reporter.Wait(func(s bool) bool {
+		return !s
+	})
+
+	// Once the standard senders have all finished processing, wait until all messages have finished
+	// processing.
+	r.tracker.Wait(func(i int64) bool {
+		return i < 1
+	})
+
+	for _, lst := range listeners {
+		lst.Close()
+	}
 
 	// Recursive senders will process infinitely until the parent worker's watchdog goroutine kills
 	// them.
@@ -461,12 +524,15 @@ func (r *baseResolver) Resolve(ctx context.Context, senders []*sender, lst pipe.
 type edgeHandler func(context.Context, *Edge, []string) iter.Seq[Item]
 
 type exclusionResolver struct {
-	reporter    track.Reporter
 	interpreter interpreter
+	tracker     *track.Tracker
+	reporter    *track.Reporter
+	chunkSize   int
+	numProcs    int
 }
 
-func (r *exclusionResolver) process(ctx context.Context, snd *sender, items *containers.Bag[Item], cleanup *containers.Bag[func()]) {
-	edge := snd.Edge
+func (r *exclusionResolver) process(ctx context.Context, snd Sender[*Edge, *Message], items *containers.Bag[Item], cleanup *containers.Bag[func()]) {
+	edge := snd.Key()
 
 	edgeTo := "nil"
 	edgeFrom := "nil"
@@ -481,9 +547,14 @@ func (r *exclusionResolver) process(ctx context.Context, snd *sender, items *con
 		attribute.String("edge.from", edgeFrom),
 	}
 
-	var msg message[[]Item]
+	var msg *Message
 
 	for snd.Recv(&msg) {
+		r.tracker.Add(1)
+		tx := pack(msg.Value, func() { r.tracker.Add(-1) })
+		msg.Done()
+		msg = tx
+
 		var results iter.Seq[Item]
 		var unseen []string
 
@@ -518,7 +589,7 @@ func (r *exclusionResolver) process(ctx context.Context, snd *sender, items *con
 	}
 }
 
-func (r *exclusionResolver) Resolve(ctx context.Context, senders []*sender, lst pipe.Tx[[]Item]) {
+func (r *exclusionResolver) Resolve(ctx context.Context, senders []Sender[*Edge, *Message], listeners []Listener[*Edge, *Message]) {
 	ctx, span := pipelineTracer.Start(ctx, "exclusionResolver.Resolve")
 	defer span.End()
 
@@ -534,7 +605,7 @@ func (r *exclusionResolver) Resolve(ctx context.Context, senders []*sender, lst 
 
 	var cleanup containers.Bag[func()]
 
-	for range senders[0].NumProcs {
+	for range r.numProcs {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -542,7 +613,7 @@ func (r *exclusionResolver) Resolve(ctx context.Context, senders []*sender, lst 
 		}()
 	}
 
-	for range senders[1].NumProcs {
+	for range r.numProcs {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -552,35 +623,50 @@ func (r *exclusionResolver) Resolve(ctx context.Context, senders []*sender, lst 
 
 	wg.Wait()
 
-	var items []Item
+	var errs []Item
 
 	exclusions := make(map[string]struct{})
 
 	for item := range excluded.Seq() {
 		if item.Err != nil {
-			items = append(items, item)
+			errs = append(errs, item)
 			continue
 		}
 		exclusions[item.Value] = struct{}{}
 	}
 
-	for item := range included.Seq() {
+	results := seq.Filter(included.Seq(), func(item Item) bool {
 		if item.Err != nil {
-			items = append(items, item)
-			continue
+			return true
 		}
 
-		if _, ok := exclusions[item.Value]; !ok {
-			items = append(items, item)
+		_, ok := exclusions[item.Value]
+		return !ok
+	})
+
+	results = seq.Flatten(seq.Sequence(errs...), results)
+
+	var sentCount int
+
+	for items := range chunk(results, r.chunkSize) {
+		for _, lst := range listeners {
+			r.tracker.Add(1)
+			msg := pack(items, func() { r.tracker.Add(-1) })
+			if !lst.Send(msg) {
+				msg.Done()
+			}
+			sentCount += len(items)
 		}
 	}
 
-	lst.Send(items)
-
-	span.SetAttributes(attribute.Int("items.count", len(items)))
+	span.SetAttributes(attribute.Int("items.count", sentCount))
 
 	for fn := range cleanup.Seq() {
 		fn()
+	}
+
+	for _, lst := range listeners {
+		lst.Close()
 	}
 }
 
@@ -598,12 +684,15 @@ type interpreter interface {
 }
 
 type intersectionResolver struct {
-	reporter    track.Reporter
 	interpreter interpreter
+	tracker     *track.Tracker
+	reporter    *track.Reporter
+	chunkSize   int
+	numProcs    int
 }
 
-func (r *intersectionResolver) process(ctx context.Context, snd *sender, items *containers.Bag[Item], cleanup *containers.Bag[func()]) {
-	edge := snd.Edge
+func (r *intersectionResolver) process(ctx context.Context, snd Sender[*Edge, *Message], items *containers.Bag[Item], cleanup *containers.Bag[func()]) {
+	edge := snd.Key()
 
 	edgeTo := "nil"
 	edgeFrom := "nil"
@@ -618,9 +707,14 @@ func (r *intersectionResolver) process(ctx context.Context, snd *sender, items *
 		attribute.String("edge.from", edgeFrom),
 	}
 
-	var msg message[[]Item]
+	var msg *Message
 
 	for snd.Recv(&msg) {
+		r.tracker.Add(1)
+		tx := pack(msg.Value, func() { r.tracker.Add(-1) })
+		msg.Done()
+		msg = tx
+
 		var results iter.Seq[Item]
 		var unseen []string
 
@@ -655,7 +749,7 @@ func (r *intersectionResolver) process(ctx context.Context, snd *sender, items *
 	}
 }
 
-func (r *intersectionResolver) Resolve(ctx context.Context, senders []*sender, lst pipe.Tx[[]Item]) {
+func (r *intersectionResolver) Resolve(ctx context.Context, senders []Sender[*Edge, *Message], listeners []Listener[*Edge, *Message]) {
 	ctx, span := pipelineTracer.Start(ctx, "intersectionResolver.Resolve")
 	defer span.End()
 
@@ -668,7 +762,7 @@ func (r *intersectionResolver) Resolve(ctx context.Context, senders []*sender, l
 	var cleanup containers.Bag[func()]
 
 	for i, snd := range senders {
-		for range snd.NumProcs {
+		for range r.numProcs {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
@@ -678,13 +772,13 @@ func (r *intersectionResolver) Resolve(ctx context.Context, senders []*sender, l
 	}
 	wg.Wait()
 
-	var items []Item
+	var errs []Item
 
 	output := make(map[string]struct{})
 
 	for item := range bags[0].Seq() {
 		if item.Err != nil {
-			items = append(items, item)
+			errs = append(errs, item)
 			continue
 		}
 		output[item.Value] = struct{}{}
@@ -694,7 +788,7 @@ func (r *intersectionResolver) Resolve(ctx context.Context, senders []*sender, l
 		found := make(map[string]struct{}, len(output))
 		for item := range bags[i].Seq() {
 			if item.Err != nil {
-				items = append(items, item)
+				errs = append(errs, item)
 				continue
 			}
 
@@ -707,85 +801,29 @@ func (r *intersectionResolver) Resolve(ctx context.Context, senders []*sender, l
 
 	itemSeq := seq.Transform(maps.Keys(output), strToItem)
 
-	for item := range itemSeq {
-		items = append(items, item)
+	itemSeq = seq.Flatten(seq.Sequence(errs...), itemSeq)
+
+	var sentCount int
+
+	for items := range chunk(itemSeq, r.chunkSize) {
+		r.tracker.Add(1)
+		msg := pack(items, func() { r.tracker.Add(-1) })
+		for _, lst := range listeners {
+			if !lst.Send(msg) {
+				msg.Done()
+			}
+			sentCount += len(items)
+		}
 	}
 
-	lst.Send(items)
-
-	span.SetAttributes(attribute.Int("items.count", len(items)))
+	span.SetAttributes(attribute.Int("items.count", sentCount))
 
 	for fn := range cleanup.Seq() {
 		fn()
 	}
-}
 
-// listener is a struct that contains fields relevant to the listening
-// end of a pipeline connection.
-type listener struct {
-	Tracker   track.Tracker
-	ChunkSize int
-	cons      []pipe.Tx[message[[]Item]]
-}
-
-func (l *listener) inc(n int64) {
-	if l.Tracker != nil {
-		l.Tracker.Add(n)
-	}
-}
-
-func (l *listener) pack(items []Item) message[[]Item] {
-	l.inc(1)
-	return message[[]Item]{
-		Value: items,
-		finite: sync.OnceFunc(func() {
-			l.inc(-1)
-		}),
-	}
-}
-
-func (l *listener) Add(cons ...pipe.Tx[message[[]Item]]) {
-	l.cons = append(l.cons, cons...)
-}
-
-func (l *listener) send(items []Item) bool {
-	var sent bool
-
-	for _, con := range l.cons {
-		msg := l.pack(items)
-		if !con.Send(msg) {
-			msg.Done()
-		} else {
-			sent = true
-		}
-	}
-	return sent
-}
-
-func (l *listener) Send(items []Item) bool {
-	if len(items) == 0 {
-		return false
-	}
-
-	if l.ChunkSize <= 0 {
-		return l.send(items)
-	}
-
-	var sent bool
-
-	for len(items) > 0 {
-		ext := int(math.Min(float64(l.ChunkSize), float64(len(items))))
-		if l.send(items[:ext]) {
-			sent = true
-		}
-		items = items[ext:]
-	}
-	return sent
-}
-
-func (l *listener) Close() {
-	for _, con := range l.cons {
-		con.Close()
+	for _, lst := range listeners {
+		lst.Close()
 	}
 }
 
@@ -869,37 +907,38 @@ type Pipeline struct {
 	numProcs int
 }
 
+type pipelineWorker = Worker[*Edge, *Message, *Message]
+type workerPool = map[*Node]*pipelineWorker
+
 // Build is a function that constructs the actual pipeline which is returned as an iter.Seq[Item].
 // The pipeline will not begin generating values until the returned sequence is iterated over. This
 // is to prevent unnecessary work and resource accummulation in the event that the sequence is never
 // iterated.
-func (p *Pipeline) Build(ctx context.Context, source Source, target Target) iter.Seq[Item] {
+func (pipeline *Pipeline) Build(ctx context.Context, source Source, target Target) iter.Seq[Item] {
 	ctx, span := pipelineTracer.Start(ctx, "pipeline.build")
 	defer span.End()
 
 	ctx, cancel := context.WithCancel(ctx)
 
-	pth := path{
-		ctx:     ctx,
-		pipe:    p,
-		workers: make(map[*Node]*worker),
-	}
-	pth.resolve((*Node)(source), target, nil, nil)
+	workers := make(workerPool)
 
-	sourceWorker, ok := pth.workers[(*Node)(source)]
+	p := path{
+		source: (*Node)(source),
+		target: target,
+	}
+	pipeline.resolve(p, workers)
+
+	sourceWorker, ok := workers[(*Node)(source)]
 	if !ok {
 		panic("no such source worker")
 	}
 
-	results := sourceWorker.Subscribe(p.bufferSize)
+	results := sourceWorker.Subscribe(nil)
 
 	return func(yield func(Item) bool) {
 		var wg sync.WaitGroup
 		ctx, span := pipelineTracer.Start(ctx, "pipeline.iterate")
 		defer span.End()
-
-		ticker := time.NewTicker(1 * time.Millisecond)
-		defer ticker.Stop()
 
 		defer wg.Wait()
 		defer cancel()
@@ -908,63 +947,32 @@ func (p *Pipeline) Build(ctx context.Context, source Source, target Target) iter
 			return
 		}
 
-		ch := ticker.C
-
 		// Workers are started here so that the pipeline does
 		// not begin producing objects until the caller has begun
 		// to iterate over the sequence. This prevents unnecessary
 		// processing in the event that the caller decides not to
 		// iterate over the sequence.
-		for _, w := range pth.workers {
+		for _, w := range workers {
 			w.Start(ctx)
 		}
 
-		// Watchdog goroutine is started here to ensure that no
-		// goroutines are created before the caller has begun to
-		// iterate over the pipeline's sequence.
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-
-		WatchdogLoop:
-			for {
-				select {
-				case <-ch:
-					var inactiveCount int
-
-					for _, w := range pth.workers {
-						if !w.Active() {
-							w.Close()
-							inactiveCount++
-						}
-					}
-
-					if inactiveCount == len(pth.workers) {
-						cancel()
-						ch = nil
-					}
-
-					messageCount := pth.tracker.Load()
-
-					if messageCount < 1 {
-						cancel()
-						ch = nil
-					}
-				case <-ctx.Done():
-					// wait for all workers to finish
-					for _, w := range pth.workers {
-						w.Wait()
-					}
-					break WatchdogLoop
-				}
+			<-ctx.Done()
+			// wait for all workers to finish
+			for _, w := range workers {
+				w.Wait()
 			}
 		}()
 
 		for msg := range results.Seq() {
-			for _, item := range msg.Value {
-				if !yield(item) {
-					msg.Done()
-					return
+			if ctx.Err() == nil {
+				for _, item := range msg.Value {
+					if !yield(item) {
+						cancel()
+						break
+					}
 				}
 			}
 			msg.Done()
@@ -972,17 +980,17 @@ func (p *Pipeline) Build(ctx context.Context, source Source, target Target) iter
 	}
 }
 
-func (p *Pipeline) Source(name, relation string) (Source, bool) {
-	sourceNode, ok := p.backend.Graph.GetNodeByID(name + "#" + relation)
+func (pipeline *Pipeline) Source(name, relation string) (Source, bool) {
+	sourceNode, ok := pipeline.backend.Graph.GetNodeByID(name + "#" + relation)
 	return (Source)(sourceNode), ok
 }
 
-func (p *Pipeline) Target(name, identifier string) (Target, bool) {
+func (pipeline *Pipeline) Target(name, identifier string) (Target, bool) {
 	if identifier == "*" {
 		name += ":*"
 		identifier = ""
 	}
-	targetNode, ok := p.backend.Graph.GetNodeByID(name)
+	targetNode, ok := pipeline.backend.Graph.GetNodeByID(name)
 
 	return Target{
 		node: targetNode,
@@ -993,133 +1001,79 @@ func (p *Pipeline) Target(name, identifier string) (Target, bool) {
 type PipelineOption func(*Pipeline)
 
 type path struct {
-	ctx     context.Context
-	pipe    *Pipeline
-	workers map[*Node]*worker
-	tracker atomic.Int64
+	source     *Node
+	target     Target
+	tracker    *track.Tracker
+	statusPool *track.StatusPool
 }
 
-func (p *path) pack(items []Item) message[[]Item] {
-	p.tracker.Add(1)
-	return message[[]Item]{
-		Value: items,
-		finite: sync.OnceFunc(func() {
-			p.tracker.Add(-1)
-		}),
-	}
-}
-
-func (p *path) resolve(source *Node, target Target, tracker track.Tracker, status *track.StatusPool) {
-	if _, ok := p.workers[source]; ok {
-		return
+func (pipeline *Pipeline) resolve(p path, workers workerPool) *pipelineWorker {
+	if w, ok := workers[p.source]; ok {
+		return w
 	}
 
-	if tracker == nil {
-		tracker = track.NewEchoTracker(&p.tracker)
+	if p.tracker == nil {
+		p.tracker = new(track.Tracker)
 	}
 
-	if status == nil {
-		status = new(track.StatusPool)
+	if p.statusPool == nil {
+		p.statusPool = new(track.StatusPool)
 	}
 
-	lst := listener{
-		Tracker:   tracker,
-		ChunkSize: p.pipe.chunkSize,
-	}
+	var w pipelineWorker
+	w.bufferSize = pipeline.bufferSize
 
-	w := p.worker(source, &lst, tracker, status)
-
-	p.workers[source] = w
-
-	switch source.GetNodeType() {
-	case nodeTypeSpecificType, nodeTypeSpecificTypeAndRelation:
-		if source == target.node {
-			// source node is the target node.
-			items := []Item{{Value: target.Object()}}
-			m := p.pack(items)
-			w.Listen(nil, pipe.StaticRx(m), 1) // only one value to consume, so only one processor necessary.
-		}
-	case nodeTypeSpecificTypeWildcard:
-		label := source.GetLabel()
-		typePart := strings.Split(label, ":")[0]
-
-		if source == target.node || typePart == target.node.GetLabel() {
-			// source node is the target node or has the same type as the target.
-			items := []Item{{Value: typePart + ":*"}}
-			m := p.pack(items)
-			w.Listen(nil, pipe.StaticRx(m), 1) // only one value to consume, so only one processor necessary.
-		}
-	}
-
-	edges, ok := p.pipe.backend.Graph.GetEdgesFromNode(source)
-	if !ok {
-		return
-	}
-
-	for _, edge := range edges {
-		var tracker track.Tracker
-		var stat *track.StatusPool
-
-		isRecursive := len(edge.GetRecursiveRelation()) > 0
-
-		if isRecursive {
-			tracker = w.tracker
-			stat = status
-		}
-		p.resolve(edge.GetTo(), target, tracker, stat)
-		w.Listen(edge, p.workers[edge.GetTo()].Subscribe(p.pipe.bufferSize), p.pipe.numProcs)
-	}
-}
-
-func (p *path) worker(node *Node, lst *listener, tracker track.Tracker, status *track.StatusPool) *worker {
-	var w worker
-
-	w.node = node
-	w.status = status
-	w.tracker = tracker
-	w.listener = lst
-
-	var r resolver
-
-	reporter := status.Register()
+	reporter := p.statusPool.Register()
 	reporter.Report(true)
 
 	omni := &omniInterpreter{
 		hndNil:           handleIdentity,
-		hndDirect:        p.pipe.backend.handleDirectEdge,
-		hndTTU:           p.pipe.backend.handleTTUEdge,
+		hndDirect:        pipeline.backend.handleDirectEdge,
+		hndTTU:           pipeline.backend.handleTTUEdge,
 		hndComputed:      handleIdentity,
 		hndRewrite:       handleIdentity,
 		hndDirectLogical: handleIdentity,
 		hndTTULogical:    handleIdentity,
 	}
 
-	switch node.GetNodeType() {
+	switch p.source.GetNodeType() {
 	case nodeTypeSpecificType,
 		nodeTypeSpecificTypeAndRelation,
 		nodeTypeSpecificTypeWildcard,
 		nodeTypeLogicalDirectGrouping,
 		nodeTypeLogicalTTUGrouping:
-		r = &baseResolver{
-			reporter:    reporter,
+		w.Resolver = &baseResolver{
 			interpreter: omni,
+			tracker:     p.tracker,
+			reporter:    reporter,
+			chunkSize:   pipeline.chunkSize,
+			numProcs:    pipeline.numProcs,
 		}
 	case nodeTypeOperator:
-		switch node.GetLabel() {
+		switch p.source.GetLabel() {
 		case weightedGraph.IntersectionOperator:
-			r = &intersectionResolver{
-				reporter:    reporter,
+			w.Resolver = &intersectionResolver{
 				interpreter: omni,
+				tracker:     p.tracker,
+				reporter:    reporter,
+				chunkSize:   pipeline.chunkSize,
+				numProcs:    pipeline.numProcs,
 			}
 		case weightedGraph.UnionOperator:
-			r = &baseResolver{
-				reporter:    reporter,
+			w.Resolver = &baseResolver{
 				interpreter: omni,
+				tracker:     p.tracker,
+				reporter:    reporter,
+				chunkSize:   pipeline.chunkSize,
+				numProcs:    pipeline.numProcs,
 			}
 		case weightedGraph.ExclusionOperator:
-			r = &exclusionResolver{
-				reporter:    reporter,
+			w.Resolver = &exclusionResolver{
 				interpreter: omni,
+				tracker:     p.tracker,
+				reporter:    reporter,
+				chunkSize:   pipeline.chunkSize,
+				numProcs:    pipeline.numProcs,
 			}
 		default:
 			panic("unsupported operator node for reverse expand worker")
@@ -1128,13 +1082,55 @@ func (p *path) worker(node *Node, lst *listener, tracker track.Tracker, status *
 		panic("unsupported node type for reverse expand worker")
 	}
 
-	w.resolver = r
+	workers[p.source] = &w
 
-	pw := &w
+	switch p.source.GetNodeType() {
+	case nodeTypeSpecificType, nodeTypeSpecificTypeAndRelation:
+		if p.source == p.target.node {
+			items := []Item{{Value: p.target.Object()}}
+			p.tracker.Add(1)
+			m := pack(items, func() { p.tracker.Add(-1) })
+			w.Listen(&sender[*Edge, *Message]{
+				nil,
+				pipe.StaticRx(m),
+			})
+		}
+	case nodeTypeSpecificTypeWildcard:
+		label := p.source.GetLabel()
+		typePart := strings.Split(label, ":")[0]
 
-	p.workers[node] = pw
+		if p.source == p.target.node || typePart == p.target.node.GetLabel() {
+			// source node is the target node or has the same type as the target.
+			items := []Item{{Value: typePart + ":*"}}
+			p.tracker.Add(1)
+			m := pack(items, func() { p.tracker.Add(-1) })
+			w.Listen(&sender[*Edge, *Message]{
+				nil,
+				pipe.StaticRx(m),
+			})
+		}
+	}
 
-	return pw
+	edges, ok := pipeline.backend.Graph.GetEdgesFromNode(p.source)
+	if !ok {
+		return &w
+	}
+
+	for _, edge := range edges {
+		nextPath := p
+
+		if len(edge.GetRecursiveRelation()) == 0 && !edge.IsPartOfTupleCycle() {
+			nextPath.tracker = nil
+			nextPath.statusPool = nil
+		}
+
+		nextPath.source = edge.GetTo()
+
+		to := pipeline.resolve(nextPath, workers)
+		w.Listen(to.Subscribe(edge))
+	}
+
+	return &w
 }
 
 type queryInput struct {
@@ -1148,39 +1144,46 @@ type queryInput struct {
 // A resolver is responsible for consuming messages from a worker's
 // senders and broadcasting the result of processing the consumed
 // messages to the worker's listeners.
-type resolver interface {
+type Resolver[K any, T any, U any] interface {
 
 	// resolve is a function that consumes messages from the
 	// provided senders, and broadcasts the results of processing
 	// the consumed messages to the provided listeners.
-	Resolve(context.Context, []*sender, pipe.Tx[[]Item])
+	Resolve(context.Context, []Sender[K, T], []Listener[K, U])
 }
 
 type Source *Node
 
-// sender is a struct that contains fields relevant to the producing
-// end of a pipeline connection.
-type sender struct {
-	Edge     *Edge
-	producer pipe.Rx[message[[]Item]]
-	tracker  track.Tracker
-	NumProcs int
+type Sender[K any, T any] interface {
+	Key() K
+	pipe.Rx[T]
 }
 
-func (s *sender) Recv(msg *message[[]Item]) bool {
-	var m message[[]Item]
-	if !s.producer.Recv(&m) {
-		return false
-	}
-	s.tracker.Add(1)
-	m.Done()
-	*msg = message[[]Item]{
-		Value: m.Value,
-		finite: sync.OnceFunc(func() {
-			s.tracker.Add(-1)
-		}),
-	}
-	return true
+// sender is a struct that contains fields relevant to the producing
+// end of a pipeline connection.
+type sender[K any, T any] struct {
+	key K
+	pipe.Rx[T]
+}
+
+func (s *sender[K, T]) Key() K {
+	return s.key
+}
+
+type Listener[K any, T any] interface {
+	Key() K
+	pipe.TxCloser[T]
+}
+
+// listener is a struct that contains fields relevant to the listening
+// end of a pipeline connection.
+type listener[K any, T any] struct {
+	key K
+	pipe.TxCloser[T]
+}
+
+func (l *listener[K, T]) Key() K {
+	return l.key
 }
 
 // strtoItem is a function that accepts a string input and returns an Item
@@ -1211,72 +1214,75 @@ func (t *Target) Object() string {
 	return objectType + value
 }
 
-type worker struct {
-	node     *Node
-	senders  []*sender
-	listener *listener
-	resolver resolver
-	tracker  track.Tracker
-	status   *track.StatusPool
-	finite   func()
-	init     sync.Once
-	wg       sync.WaitGroup
+type Worker[K any, T any, U any] struct {
+	senders    []Sender[K, T]
+	listeners  []Listener[K, U]
+	Resolver   Resolver[K, T, U]
+	finite     func()
+	init       sync.Once
+	wg         sync.WaitGroup
+	bufferSize int
 }
 
-func (w *worker) Active() bool {
-	return w.status.Status() || w.tracker.Load() != 0
+func (w *Worker[K, T, U]) Close() {
+	if w.finite != nil {
+		w.finite()
+	}
 }
 
-func (w *worker) Close() {
-	w.finite()
+func (w *Worker[K, T, U]) Listen(s Sender[K, T]) {
+	w.senders = append(w.senders, s)
 }
 
-func (w *worker) Listen(edge *Edge, p pipe.Rx[message[[]Item]], numProcs int) {
-	w.senders = append(w.senders, &sender{
-		Edge:     edge,
-		producer: p,
-		tracker:  w.tracker,
-		NumProcs: numProcs,
-	})
-}
-
-func (w *worker) initialize(ctx context.Context) {
+func (w *Worker[K, T, U]) initialize(ctx context.Context) {
 	ctx, span := pipelineTracer.Start(ctx, "worker")
 	ctx, cancel := context.WithCancel(ctx)
 
 	w.finite = sync.OnceFunc(func() {
 		defer span.End()
 		cancel()
+
+		for _, lst := range w.listeners {
+			lst.Close()
+		}
 	})
 
 	w.wg.Add(1)
 	go func() {
 		defer w.wg.Done()
 		defer w.Close()
-		w.resolver.Resolve(ctx, w.senders, w.listener)
+		w.Resolver.Resolve(ctx, w.senders, w.listeners)
 	}()
 
 	w.wg.Add(1)
 	go func() {
 		defer w.wg.Done()
+		defer w.Close()
 		<-ctx.Done()
-		w.listener.Close()
 	}()
 }
 
-func (w *worker) Start(ctx context.Context) {
+func (w *Worker[K, T, U]) Start(ctx context.Context) {
 	w.init.Do(func() {
 		w.initialize(ctx)
 	})
 }
 
-func (w *worker) Subscribe(bufferSize int) pipe.Rx[message[[]Item]] {
-	var p pipe.Pipe[message[[]Item]]
-	p.Grow(bufferSize)
-	w.listener.Add(&p)
-	return &p
+func (w *Worker[K, T, U]) Subscribe(key K) Sender[K, U] {
+	var p pipe.Pipe[U]
+	p.Grow(w.bufferSize)
+
+	w.listeners = append(w.listeners, &listener[K, U]{
+		key,
+		&p,
+	})
+
+	return &sender[K, U]{
+		key,
+		&p,
+	}
 }
 
-func (w *worker) Wait() {
+func (w *Worker[K, T, U]) Wait() {
 	w.wg.Wait()
 }

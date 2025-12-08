@@ -1,6 +1,7 @@
 package pipe
 
 import (
+	"io"
 	"iter"
 	"sync"
 )
@@ -12,7 +13,11 @@ type Rx[T any] interface {
 
 type Tx[T any] interface {
 	Send(T) bool
-	Close()
+}
+
+type TxCloser[T any] interface {
+	Tx[T]
+	io.Closer
 }
 
 const defaultPipeSize int = 1
@@ -131,7 +136,7 @@ func (p *Pipe[T]) Recv(t *T) bool {
 	return true
 }
 
-func (p *Pipe[T]) Close() {
+func (p *Pipe[T]) Close() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -141,6 +146,8 @@ func (p *Pipe[T]) Close() {
 
 	p.empty.Broadcast()
 	p.full.Broadcast()
+
+	return nil
 }
 
 type staticRx[T any] struct {

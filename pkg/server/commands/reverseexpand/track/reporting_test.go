@@ -12,7 +12,7 @@ func BenchmarkStatusPool(b *testing.B) {
 
 	var sp StatusPool
 
-	reporters := make([]Reporter, concurrency)
+	reporters := make([]*Reporter, concurrency)
 
 	for i := range concurrency {
 		reporters[i] = sp.Register()
