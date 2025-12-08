@@ -112,11 +112,19 @@ func (s *bottomUp) resolveRewrite(ctx context.Context, req *Request, node *authz
 			if !ok {
 				return nil, ErrPanicRequest
 			}
+			// the request cannot have a wildcard if intersection is involved
+			if req.IsTypedWildcard() {
+				return nil, ErrWildcardInvalidRequest
+			}
 			return s.setOperationSetup(ctx, req, resolveIntersection, edges)
 		case authzGraph.ExclusionOperator:
 			edges, ok := s.model.GetEdgesFromNode(node)
 			if !ok {
 				return nil, ErrPanicRequest
+			}
+			// the request cannot have a wildcard if exclusion is involved
+			if req.IsTypedWildcard() {
+				return nil, ErrWildcardInvalidRequest
 			}
 			return s.setOperationSetup(ctx, req, resolveDifference, edges)
 		default:
@@ -130,7 +138,8 @@ func (s *bottomUp) resolveRewrite(ctx context.Context, req *Request, node *authz
 func (s *bottomUp) setFlattenOperation(ctx context.Context, req *Request, node *authzGraph.WeightedAuthorizationModelNode) (chan *iterator.Msg, error) {
 	var err error
 	var edges []*authzGraph.WeightedAuthorizationModelEdge
-	edges, err = s.model.FlattenNode(node, req.GetUserType(), s.strategy == recursive)
+	wildcardRequest := tuple.IsTypedWildcard(req.GetTupleKey().User)
+	edges, err = s.model.FlattenNode(node, req.GetUserType(), wildcardRequest, s.strategy == recursive)
 	if err != nil {
 		return nil, err
 	}

@@ -37,6 +37,7 @@ type Request struct {
 
 	objectType          string
 	userType            string
+	userWildcard        bool
 	ctxTuplesByUserID   map[string][]*openfgav1.TupleKey
 	ctxTuplesByObjectID map[string][]*openfgav1.TupleKey
 }
@@ -144,8 +145,9 @@ func NewRequest(p RequestParams) (*Request, error) {
 		Context:              p.Context,
 		Consistency:          p.Consistency,
 
-		objectType: tuple.GetType(p.TupleKey.GetObject()),
-		userType:   userType,
+		objectType:   tuple.GetType(p.TupleKey.GetObject()),
+		userType:     userType,
+		userWildcard: tuple.IsTypedWildcard(p.TupleKey.GetUser()),
 	}
 
 	keyBuilder := &strings.Builder{}
@@ -179,6 +181,10 @@ func NewRequest(p RequestParams) (*Request, error) {
 
 func (r *Request) GetCacheKey() string {
 	return r.cacheKey
+}
+
+func (r *Request) IsTypedWildcard() bool {
+	return r.userWildcard
 }
 
 func (r *Request) buildContextualTupleMaps() {
@@ -393,6 +399,7 @@ func (r *Request) cloneWithTupleKey(tk *openfgav1.TupleKey) *Request {
 
 	cacheKey := CacheKeyPrefix + strconv.FormatUint(hasher.Sum64(), 10)
 	req.cacheKey = cacheKey
+	req.userWildcard = tuple.IsWildcard(tk.GetUser())
 
 	return req
 }
