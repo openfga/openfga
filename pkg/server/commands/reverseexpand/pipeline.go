@@ -83,8 +83,8 @@ func WithBufferSize(size int) PipelineOption {
 }
 
 func WithChunkSize(size int) PipelineOption {
-	if size < 0 {
-		size = 0
+	if size < 1 {
+		size = 1
 	}
 
 	return func(p *Pipeline) {
