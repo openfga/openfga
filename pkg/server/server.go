@@ -451,6 +451,14 @@ func WithCacheControllerTTL(ttl time.Duration) OpenFGAServiceV1Option {
 	}
 }
 
+// WithMaxDatastoreStaleness sets the maximum time window after a write during which
+// the datastore may return stale data. Set to 0 for strongly consistent datastores.
+func WithMaxDatastoreStaleness(staleness time.Duration) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.cacheSettings.MaxDatastoreStaleness = staleness
+	}
+}
+
 // WithCheckQueryCacheTTL sets the TTL of cached checks and list objects partial results
 // Needs WithCheckQueryCacheEnabled set to true.
 func WithCheckQueryCacheTTL(ttl time.Duration) OpenFGAServiceV1Option {

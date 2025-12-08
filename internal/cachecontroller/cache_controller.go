@@ -93,23 +93,39 @@ func WithLogger(logger logger.Logger) InMemoryCacheControllerOpt {
 	}
 }
 
+// WithMaxDatastoreStaleness causes all cache entries to be invalidated for
+// staleness duration after a write to the store, in case stale data was cached
+// (e.g., if a read/write-through cache is in front of the datastore).
+func WithMaxDatastoreStaleness(staleness time.Duration) InMemoryCacheControllerOpt {
+	return func(inm *InMemoryCacheController) {
+		inm.maxDatastoreStaleness = staleness
+	}
+}
+
 // InMemoryCacheController will invalidate cache iterator (InMemoryCache) and sub problem cache (CachedCheckResolver) entries
 // that are more recent than the last write for the specified store.
 // Note that the invalidation is done asynchronously, triggered by Check requests,
 // or List Objects requests when list objects iterator cache is enabled.
 // It will be eventually consistent.
 type InMemoryCacheController struct {
-	ds    storage.OpenFGADatastore
-	cache storage.InMemoryCache[any]
+	ds                    storage.OpenFGADatastore
+	cache                 storage.InMemoryCache[any]
+	inflightInvalidations sync.Map
+	logger                logger.Logger
 
 	// minInvalidationInterval is the minimum time interval for
 	// DetermineInvalidationTime to trigger cache invalidation for a given store.
 	// This is the cache controller "TTL".
 	minInvalidationInterval time.Duration
-	queryCacheTTL           time.Duration
-	iteratorCacheTTL        time.Duration
-	inflightInvalidations   sync.Map
-	logger                  logger.Logger
+	// queryCacheTTL is the TTL for cached sub-problem responses.
+	queryCacheTTL time.Duration
+	// iteratorCacheTTL is the TTL for cached iterator responses.
+	iteratorCacheTTL time.Duration
+	// maxDatastoreStaleness is the maximum time window after a write during which
+	// the datastore may return stale data (e.g., because of a read/write-through
+	// cache sitting in front of it). All cache entries will be invalidated
+	// until this much time has passed since a write to the datastore.
+	maxDatastoreStaleness time.Duration
 
 	// for testing purposes
 	wg sync.WaitGroup
@@ -188,7 +204,9 @@ func (c *InMemoryCacheController) DetermineInvalidationTime(
 
 	// Return time of last known change to store. This is refreshed at most every
 	// minInvalidationInterval, so recent writes may not be reflected immediately.
-	return entry.LastModified
+	// Add any maxDatastoreStaleness as cached entries can't be trusted if they're
+	// within that duration after a write.
+	return entry.LastModified.Add(c.maxDatastoreStaleness)
 }
 
 // findChangesDescending is a wrapper on ReadChanges. If there are 0 changes to be returned, ReadChanges will actually return an error.
@@ -290,13 +308,16 @@ func (c *InMemoryCacheController) findChangesAndInvalidateIfNecessary(parentCtx 
 		LastChecked:  time.Now(),
 	}
 
-	// The changelog cache entry is only used to compare against a cached Check
-	// response. Therefore, we only need this entry for up to the TTL of the
-	// cached Check response (queryCacheTTL).
-	c.cache.Set(cacheKey, entry, c.queryCacheTTL)
+	// The changelog cache entry is used to compare against store changes in the
+	// c.iteratorCacheTTL window or cached Check responses in the c.queryCacheTTL
+	// window. Therefore, we need this entry for up to the greater of the two.
+	c.cache.Set(changelogCacheKey, entry, max(c.queryCacheTTL, c.iteratorCacheTTL))
 	invalidationType := "none"
 
-	if !lastChangeTimeActual.After(lastChangeTimeCached) {
+	// If there are no new changes, skip invalidation. However, if we're inside
+	// the maxDatastoreStaleness window, we may have cached stale data, so we
+	// need to proceed to invalidate them.
+	if !lastChangeTimeActual.After(lastChangeTimeCached) && time.Since(lastChangeTimeCached) > c.maxDatastoreStaleness {
 		// no new changes, no need to perform invalidations
 		span.SetAttributes(attribute.String("invalidationType", invalidationType))
 		c.logger.Debug("InMemoryCacheController findChangesAndInvalidateIfNecessary no invalidation as last actual change is not after last cached change",

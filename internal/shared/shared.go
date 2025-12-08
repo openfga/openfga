@@ -87,7 +87,9 @@ func NewSharedDatastoreResources(
 	if settings.ShouldCreateCacheController() {
 		// Only create a cache controller if it wasn't already set via opts.
 		if _, isNoop := s.CacheController.(*cachecontroller.NoopCacheController); isNoop {
-			s.CacheController = cachecontroller.NewCacheController(ds, s.CheckCache, settings.CacheControllerTTL, settings.CheckQueryCacheTTL, settings.CheckIteratorCacheTTL, cachecontroller.WithLogger(s.Logger))
+			s.CacheController = cachecontroller.NewCacheController(ds, s.CheckCache,
+				settings.CacheControllerTTL, settings.CheckQueryCacheTTL, settings.CheckIteratorCacheTTL,
+				cachecontroller.WithLogger(s.Logger), cachecontroller.WithMaxDatastoreStaleness(settings.MaxDatastoreStaleness))
 		}
 	}
 
@@ -115,7 +117,9 @@ func NewSharedDatastoreResources(
 
 	// Only create a shadow cache controller if it wasn't already set via opts.
 	if settings.ShouldCreateShadowCacheController() && s.ShadowCacheController == s.CacheController {
-		s.ShadowCacheController = cachecontroller.NewCacheController(ds, s.ShadowCheckCache, settings.CacheControllerTTL, settings.CheckQueryCacheTTL, settings.CheckIteratorCacheTTL, cachecontroller.WithLogger(s.Logger))
+		s.ShadowCacheController = cachecontroller.NewCacheController(ds, s.ShadowCheckCache,
+			settings.CacheControllerTTL, settings.CheckQueryCacheTTL, settings.CheckIteratorCacheTTL,
+			cachecontroller.WithLogger(s.Logger), cachecontroller.WithMaxDatastoreStaleness(settings.MaxDatastoreStaleness))
 	}
 
 	return s, nil

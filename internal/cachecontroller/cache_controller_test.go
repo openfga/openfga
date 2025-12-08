@@ -282,6 +282,138 @@ func generateChanges(object, relation, user string, count int) []*openfgav1.Tupl
 	return changes
 }
 
+func TestMaxDatastoreStaleness(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	ctx := context.Background()
+	cache := mocks.NewMockInMemoryCache[any](ctrl)
+	ds := mocks.NewMockOpenFGADatastore(ctrl)
+	storeID := "test-store"
+
+	expectedReadChangesOpts := storage.ReadChangesOptions{
+		SortDesc: true,
+		Pagination: storage.PaginationOptions{
+			PageSize: storage.DefaultPageSize,
+			From:     "",
+		}}
+
+	t.Run("DetermineInvalidationTime_adds_staleness_to_lastModified", func(t *testing.T) {
+		maxStaleness := 15 * time.Second
+		cacheController := NewCacheController(ds, cache, 10*time.Second, 10*time.Second, 10*time.Second,
+			WithMaxDatastoreStaleness(maxStaleness))
+
+		lastModified := time.Now().Add(-1 * time.Minute)
+		cache.EXPECT().Get(storage.GetChangelogCacheKey(storeID)).Return(&storage.ChangelogCacheEntry{
+			LastModified: lastModified,
+			LastChecked:  time.Now(),
+		})
+
+		invalidationTime := cacheController.DetermineInvalidationTime(ctx, storeID)
+
+		// Should return lastModified + maxDatastoreStaleness
+		expected := lastModified.Add(maxStaleness)
+		require.Equal(t, expected, invalidationTime)
+	})
+
+	t.Run("zero_staleness_skips_invalidation_when_no_new_writes", func(t *testing.T) {
+		// With maxDatastoreStaleness = 0 (default for strongly consistent datastores)
+		cacheController := NewCacheController(ds, cache, 10*time.Second, 10*time.Second, 30*time.Second)
+
+		lastChangeTime := time.Now().Add(-20 * time.Second)
+
+		gomock.InOrder(
+			cache.EXPECT().Get(storage.GetChangelogCacheKey(storeID)).Return(&storage.ChangelogCacheEntry{
+				LastModified: lastChangeTime,
+				LastChecked:  time.Now().Add(-1 * time.Hour),
+			}),
+			ds.EXPECT().ReadChanges(gomock.Any(), storeID, gomock.Any(), expectedReadChangesOpts).Return([]*openfgav1.TupleChange{
+				{
+					Operation: openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
+					Timestamp: timestamppb.New(lastChangeTime), // Same as cached - no new changes
+					TupleKey: &openfgav1.TupleKey{
+						Object:   "test",
+						Relation: "viewer",
+						User:     "test",
+					}},
+			}, "", nil),
+			// Should set changelog cache entry but NOT invalidate iterator cache
+			cache.EXPECT().Set(storage.GetChangelogCacheKey(storeID), gomock.Any(), gomock.Any()),
+			// NO cache.EXPECT().Set for InvalidIteratorCacheKey - invalidation is skipped
+		)
+
+		cacheController.(*InMemoryCacheController).findChangesAndInvalidateIfNecessary(ctx, storeID)
+		cacheController.(*InMemoryCacheController).wg.Wait()
+	})
+
+	t.Run("nonzero_staleness_within_window_proceeds_with_invalidation", func(t *testing.T) {
+		// With maxDatastoreStaleness = 15s, and last change was 10s ago (within window)
+		maxStaleness := 15 * time.Second
+		cacheController := NewCacheController(ds, cache, 10*time.Second, 10*time.Second, 30*time.Second,
+			WithMaxDatastoreStaleness(maxStaleness))
+
+		lastChangeTime := time.Now().Add(-10 * time.Second) // 10s ago, within 15s window
+
+		gomock.InOrder(
+			cache.EXPECT().Get(storage.GetChangelogCacheKey(storeID)).Return(&storage.ChangelogCacheEntry{
+				LastModified: lastChangeTime,
+				LastChecked:  time.Now().Add(-1 * time.Hour),
+			}),
+			ds.EXPECT().ReadChanges(gomock.Any(), storeID, gomock.Any(), expectedReadChangesOpts).Return([]*openfgav1.TupleChange{
+				{
+					Operation: openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
+					Timestamp: timestamppb.New(lastChangeTime), // Same as cached - no new changes
+					TupleKey: &openfgav1.TupleKey{
+						Object:   "test",
+						Relation: "viewer",
+						User:     "test",
+					}},
+			}, "", nil),
+			cache.EXPECT().Set(storage.GetChangelogCacheKey(storeID), gomock.Any(), gomock.Any()),
+			// Should proceed with full invalidation because we're within the staleness window
+			cache.EXPECT().Set(storage.GetInvalidIteratorCacheKey(storeID), gomock.Any(), gomock.Any()),
+		)
+
+		cacheController.(*InMemoryCacheController).findChangesAndInvalidateIfNecessary(ctx, storeID)
+		cacheController.(*InMemoryCacheController).wg.Wait()
+	})
+
+	t.Run("nonzero_staleness_outside_window_skips_invalidation", func(t *testing.T) {
+		// With maxDatastoreStaleness = 15s, and last change was 20s ago (outside window)
+		maxStaleness := 15 * time.Second
+		cacheController := NewCacheController(ds, cache, 10*time.Second, 10*time.Second, 30*time.Second,
+			WithMaxDatastoreStaleness(maxStaleness))
+
+		lastChangeTime := time.Now().Add(-20 * time.Second) // 20s ago, outside 15s window
+
+		gomock.InOrder(
+			cache.EXPECT().Get(storage.GetChangelogCacheKey(storeID)).Return(&storage.ChangelogCacheEntry{
+				LastModified: lastChangeTime,
+				LastChecked:  time.Now().Add(-1 * time.Hour),
+			}),
+			ds.EXPECT().ReadChanges(gomock.Any(), storeID, gomock.Any(), expectedReadChangesOpts).Return([]*openfgav1.TupleChange{
+				{
+					Operation: openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
+					Timestamp: timestamppb.New(lastChangeTime), // Same as cached - no new changes
+					TupleKey: &openfgav1.TupleKey{
+						Object:   "test",
+						Relation: "viewer",
+						User:     "test",
+					}},
+			}, "", nil),
+			cache.EXPECT().Set(storage.GetChangelogCacheKey(storeID), gomock.Any(), gomock.Any()),
+			// Should skip invalidation because we're outside the staleness window
+			// NO cache.EXPECT().Set for InvalidIteratorCacheKey
+		)
+
+		cacheController.(*InMemoryCacheController).findChangesAndInvalidateIfNecessary(ctx, storeID)
+		cacheController.(*InMemoryCacheController).wg.Wait()
+	})
+}
+
 func TestInMemoryCacheController_findChangesAndInvalidateIfNecessary(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
