@@ -8,8 +8,8 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 ### Fixed
-- Fixed cache controller bug for custom datastore implementations with eventual consistency (e.g., with a read/write-through cache) where stale data could be cached until expiration without invalidation. For eventually-consistent datastores, configure the staleness window by providing `server.WithMaxDatastoreStaleness()` when using `NewServerWithOpts`. Default configuration works correctly for strongly consistent datastores. [#TODO](https://github.com/openfga/openfga/pull/TODO)
-- Fixed bug where cache controller always used a no-op logger. [#TODO](https://github.com/openfga/openfga/pull/TODO)
+- Fixed cache controller bug for custom datastore implementations with eventual consistency (e.g., with a read/write-through cache) where stale data could be cached until expiration without invalidation. For eventually-consistent datastores, configure the staleness window by providing `server.WithMaxDatastoreStaleness()` when using `NewServerWithOpts`. Default configuration works correctly for strongly consistent datastores. [#2843](https://github.com/openfga/openfga/pull/2843)
+- Fixed bug where cache controller always used a no-op logger. [#2843](https://github.com/openfga/openfga/pull/2843)
 
 ## [1.11.2] - 2025-12-04
 ### Fixed
