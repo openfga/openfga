@@ -3,6 +3,7 @@ package check
 import (
 	"context"
 	"errors"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -32,7 +33,8 @@ var tracer = otel.Tracer("internal/check")
 
 var ErrValidation = errors.New("object relation does not exist")
 var ErrUsersetInvalidRequest = errors.New("userset request cannot be resolved when exclusion operation is involved")
-var ErrPanicRequest = errors.New("invalid check request") // == panic in ResolveCheck so should be handled accordingly (should be seen as a 500 to client)
+var ErrPanicRequest = errors.New("invalid check request")
+var ErrWildcardInvalidRequest = errors.New("wildcard request cannot be resolved when intersection or exclusion is involved")
 
 type Config struct {
 	Model                     *modelgraph.AuthorizationModelGraph
@@ -106,6 +108,11 @@ func (r *Resolver) ResolveCheck(ctx context.Context, req *Request) (*Response, e
 	_, ok = r.model.GetNodeWeight(node, req.GetUserType())
 	if !ok {
 		// If the user type is not reachable from the object type and relation, we can immediately return false.
+		return &Response{Allowed: false}, nil
+	}
+
+	// Check if the user is a wildcard and if the node does not have a path to the user type wildcard then return false
+	if tuple.IsTypedWildcard(req.GetTupleKey().User) && !slices.Contains(node.GetWildcards(), req.GetUserType()) {
 		return &Response{Allowed: false}, nil
 	}
 
@@ -224,7 +231,7 @@ func (r *Resolver) ResolveUnion(ctx context.Context, req *Request, node *authzGr
 	}
 
 	// flatten the node to get all terminal edges to avoid unnecessary goroutines
-	terminalEdges, err := r.model.FlattenNode(node, req.GetUserType(), false)
+	terminalEdges, err := r.model.FlattenNode(node, req.GetUserType(), req.userWildcard, false)
 	if err != nil {
 		return nil, ErrPanicRequest
 	}
@@ -325,7 +332,8 @@ func (r *Resolver) resolveRecursiveTTU(ctx context.Context, req *Request, edge *
 }
 
 func (r *Resolver) ResolveRecursive(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge, visited *sync.Map, canApplyOptimization bool) (*Response, error) {
-	nonRecursiveEdges, err := r.model.FlattenNode(edge.GetTo(), req.GetUserType(), true)
+	wildcardRequest := tuple.IsTypedWildcard(req.GetTupleKey().User)
+	nonRecursiveEdges, err := r.model.FlattenNode(edge.GetTo(), req.GetUserType(), wildcardRequest, true)
 	if err != nil {
 		return nil, ErrPanicRequest
 	}
@@ -567,9 +575,17 @@ func (r *Resolver) ResolveRewrite(ctx context.Context, req *Request, node *authz
 			return r.ResolveUnion(ctx, req, node, visited)
 		case authzGraph.IntersectionOperator:
 			// intersection is never part of a graph cycle
+			// the request cannot have a wildcard if intersection is involved
+			if req.userWildcard {
+				return nil, ErrWildcardInvalidRequest
+			}
 			return r.ResolveIntersection(ctx, req, node)
 		case authzGraph.ExclusionOperator:
 			// exclusion is never part of a graph cycle
+			// the request cannot have a wildcard if exclusion is involved
+			if req.userWildcard {
+				return nil, ErrWildcardInvalidRequest
+			}
 			return r.ResolveExclusion(ctx, req, node)
 		default:
 			return nil, ErrPanicRequest

@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
@@ -136,5 +137,444 @@ func TestGetDirectEdgeFromNodeForUserType(t *testing.T) {
 		edge, err := graph.GetDirectEdgeFromNodeForUserType("document#viewer", "user")
 		require.NoError(t, err)
 		require.NotNil(t, edge)
+	})
+}
+
+func TestFlattenNodeWithWildcard(t *testing.T) {
+	t.Run("wildcard_flattening", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		model := testutils.MustTransformDSLToProtoWithID(`
+            model
+              schema 1.1
+            type user
+            type group
+              relations
+                define member: [user:*] or admin
+                define admin: [user:*]
+        `)
+
+		graph, err := New(model)
+		require.NoError(t, err)
+		require.NotNil(t, graph)
+
+		node, ok := graph.GetNodeByID("group#member")
+		require.True(t, ok)
+
+		edges, err := graph.FlattenNode(node, "user", true, false)
+		require.NoError(t, err)
+		require.Len(t, edges, 2)
+	})
+
+	t.Run("wildcard_partial_edges", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		model := testutils.MustTransformDSLToProtoWithID(`
+            model
+              schema 1.1
+            type user
+            type group
+              relations
+                define member: [user] or admin
+                define admin: [user:*]
+        `)
+
+		graph, err := New(model)
+		require.NoError(t, err)
+		require.NotNil(t, graph)
+
+		node, ok := graph.GetNodeByID("group#member")
+		require.True(t, ok)
+
+		edges, err := graph.FlattenNode(node, "user", true, false)
+		require.NoError(t, err)
+		require.Len(t, edges, 1)
+	})
+
+	t.Run("wildcard_no_edges", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		model := testutils.MustTransformDSLToProtoWithID(`
+            model
+              schema 1.1
+            type user
+            type group
+              relations
+                define member: [user] or admin
+                define admin: [user]
+        `)
+
+		graph, err := New(model)
+		require.NoError(t, err)
+		require.NotNil(t, graph)
+
+		node, ok := graph.GetNodeByID("group#member")
+		require.True(t, ok)
+
+		edges, err := graph.FlattenNode(node, "user", true, false)
+		require.NoError(t, err)
+		require.Len(t, edges, 0)
+	})
+
+	t.Run("wildcard_with_non_wildcard_exclusion", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		model := testutils.MustTransformDSLToProtoWithID(`
+            model
+              schema 1.1
+            type user
+            type group
+              relations
+                define member: [user:*] or (admin but not viewer)
+                define admin: [user]
+				define viewer: [user]
+        `)
+
+		graph, err := New(model)
+		require.NoError(t, err)
+		require.NotNil(t, graph)
+
+		node, ok := graph.GetNodeByID("group#member")
+		require.True(t, ok)
+
+		edges, err := graph.FlattenNode(node, "user", true, false)
+		require.NoError(t, err)
+		require.Len(t, edges, 1)
+	})
+
+	t.Run("wildcard_with_non_wildcard_intersection", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		model := testutils.MustTransformDSLToProtoWithID(`
+            model
+              schema 1.1
+            type user
+            type group
+              relations
+                define member: [user:*] or (admin and viewer)
+                define admin: [user]
+				define viewer: [user]
+        `)
+
+		graph, err := New(model)
+		require.NoError(t, err)
+		require.NotNil(t, graph)
+
+		node, ok := graph.GetNodeByID("group#member")
+		require.True(t, ok)
+
+		edges, err := graph.FlattenNode(node, "user", true, false)
+		require.NoError(t, err)
+		require.Len(t, edges, 1)
+	})
+
+	t.Run("wildcard_with_wildcard_exclusion", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		model := testutils.MustTransformDSLToProtoWithID(`
+            model
+              schema 1.1
+            type user
+            type group
+              relations
+                define member: [user:*] or (admin but not viewer)
+                define admin: [user:*]
+				define viewer: [user:*]
+        `)
+
+		graph, err := New(model)
+		require.NoError(t, err)
+		require.NotNil(t, graph)
+
+		node, ok := graph.GetNodeByID("group#member")
+		require.True(t, ok)
+
+		edges, err := graph.FlattenNode(node, "user", true, false)
+		require.NoError(t, err)
+		require.Len(t, edges, 2)
+	})
+
+	t.Run("wildcard_with_wildcard_intersection", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		model := testutils.MustTransformDSLToProtoWithID(`
+            model
+              schema 1.1
+            type user
+            type group
+              relations
+                define member: [user:*] or (admin and viewer)
+                define admin: [user:*]
+				define viewer: [user:*]
+        `)
+
+		graph, err := New(model)
+		require.NoError(t, err)
+		require.NotNil(t, graph)
+
+		node, ok := graph.GetNodeByID("group#member")
+		require.True(t, ok)
+
+		edges, err := graph.FlattenNode(node, "user", true, false)
+		require.NoError(t, err)
+		require.Len(t, edges, 2)
+	})
+
+	t.Run("wildcard_with_wildcard_userset", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		model := testutils.MustTransformDSLToProtoWithID(`
+            model
+              schema 1.1
+            type user
+            type group
+              relations
+                define member: [user:*, group#viewer] or admin
+                define admin: [user:*]
+				define viewer: [user:*]
+        `)
+
+		graph, err := New(model)
+		require.NoError(t, err)
+		require.NotNil(t, graph)
+
+		node, ok := graph.GetNodeByID("group#member")
+		require.True(t, ok)
+
+		edges, err := graph.FlattenNode(node, "user", true, false)
+		require.NoError(t, err)
+		require.Len(t, edges, 3)
+	})
+
+	t.Run("wildcard_with_no_wildcard_userset", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		model := testutils.MustTransformDSLToProtoWithID(`
+            model
+              schema 1.1
+            type user
+            type group
+              relations
+                define member: [user:*, group#viewer]
+				define viewer: [user]
+        `)
+
+		graph, err := New(model)
+		require.NoError(t, err)
+		require.NotNil(t, graph)
+
+		node, ok := graph.GetNodeByID("group#member")
+		require.True(t, ok)
+
+		edges, err := graph.FlattenNode(node, "user", true, false)
+		require.NoError(t, err)
+		require.Len(t, edges, 1)
+	})
+
+	t.Run("wildcard_with_wildcard_ttu", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		model := testutils.MustTransformDSLToProtoWithID(`
+            model
+              schema 1.1
+            type user
+            type group
+              relations
+                define member: [user:*] or viewer from parent
+                define parent: [group]
+				define viewer: [user:*]
+        `)
+
+		graph, err := New(model)
+		require.NoError(t, err)
+		require.NotNil(t, graph)
+
+		node, ok := graph.GetNodeByID("group#member")
+		require.True(t, ok)
+
+		edges, err := graph.FlattenNode(node, "user", true, false)
+		require.NoError(t, err)
+		require.Len(t, edges, 2)
+	})
+
+	t.Run("wildcard_with_no_wildcard_ttu", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		model := testutils.MustTransformDSLToProtoWithID(`
+           model
+              schema 1.1
+            type user
+            type group
+              relations
+                define member: [user:*] or viewer from parent
+                define parent: [group]
+				define viewer: [user]
+        `)
+
+		graph, err := New(model)
+		require.NoError(t, err)
+		require.NotNil(t, graph)
+
+		node, ok := graph.GetNodeByID("group#member")
+		require.True(t, ok)
+
+		edges, err := graph.FlattenNode(node, "user", true, false)
+		require.NoError(t, err)
+		require.Len(t, edges, 1)
+	})
+
+	//
+	t.Run("wildcard_with_wildcard_userset_recursive", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		model := testutils.MustTransformDSLToProtoWithID(`
+            model
+              schema 1.1
+            type user
+            type group
+              relations
+                define member: [user:*, group#member] or admin
+                define admin: [user:*]
+        `)
+
+		graph, err := New(model)
+		require.NoError(t, err)
+		require.NotNil(t, graph)
+
+		node, ok := graph.GetNodeByID("group#member")
+		require.True(t, ok)
+
+		edges, err := graph.FlattenNode(node, "user", true, true)
+		require.NoError(t, err)
+		require.Len(t, edges, 2)
+	})
+
+	t.Run("wildcard_with_no_wildcard_userset_recursive", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		model := testutils.MustTransformDSLToProtoWithID(`
+            model
+              schema 1.1
+            type user
+            type group
+              relations
+                define member: [user, group#member] or admin
+				define admin: [user]
+        `)
+
+		graph, err := New(model)
+		require.NoError(t, err)
+		require.NotNil(t, graph)
+
+		node, ok := graph.GetNodeByID("group#member")
+		require.True(t, ok)
+
+		edges, err := graph.FlattenNode(node, "user", true, true)
+		require.NoError(t, err)
+		require.Len(t, edges, 0)
+	})
+
+	t.Run("wildcard_with_partial_wildcard_userset_recursive", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		model := testutils.MustTransformDSLToProtoWithID(`
+            model
+              schema 1.1
+            type user
+            type group
+              relations
+                define member: [user:*, group#member, group#viewer] or admin
+				define admin: [user]
+				define viewer: [user]
+        `)
+
+		graph, err := New(model)
+		require.NoError(t, err)
+		require.NotNil(t, graph)
+
+		node, ok := graph.GetNodeByID("group#member")
+		require.True(t, ok)
+
+		edges, err := graph.FlattenNode(node, "user", true, true)
+		require.NoError(t, err)
+		require.Len(t, edges, 1)
+	})
+
+	t.Run("wildcard_with_wildcard_ttu_recursive", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		model := testutils.MustTransformDSLToProtoWithID(`
+            model
+              schema 1.1
+            type user
+            type group
+              relations
+                define member: [user:*] or member from parent or admin
+                define parent: [group]
+				define admin: [user:*]
+        `)
+
+		graph, err := New(model)
+		require.NoError(t, err)
+		require.NotNil(t, graph)
+
+		node, ok := graph.GetNodeByID("group#member")
+		require.True(t, ok)
+
+		edges, err := graph.FlattenNode(node, "user", true, true)
+		require.NoError(t, err)
+		require.Len(t, edges, 2)
+	})
+
+	t.Run("wildcard_with_no_wildcard_ttu_recursive", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		model := testutils.MustTransformDSLToProtoWithID(`
+           model
+              schema 1.1
+            type user
+            type group
+              relations
+                define member: [user] or member from parent or admin
+                define parent: [group]
+				define admin: [user]
+        `)
+
+		graph, err := New(model)
+		require.NoError(t, err)
+		require.NotNil(t, graph)
+
+		node, ok := graph.GetNodeByID("group#member")
+		require.True(t, ok)
+
+		edges, err := graph.FlattenNode(node, "user", true, true)
+		require.NoError(t, err)
+		require.Len(t, edges, 0)
+	})
+
+	t.Run("wildcard_with_partial_wildcard_ttu_recursive", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		model := testutils.MustTransformDSLToProtoWithID(`
+           model
+              schema 1.1
+            type user
+            type group
+              relations
+                define member: [user:*] or member from parent or admin
+                define parent: [group]
+				define admin: [user]
+        `)
+
+		graph, err := New(model)
+		require.NoError(t, err)
+		require.NotNil(t, graph)
+
+		node, ok := graph.GetNodeByID("group#member")
+		require.True(t, ok)
+
+		edges, err := graph.FlattenNode(node, "user", true, true)
+		require.NoError(t, err)
+		require.Len(t, edges, 1)
 	})
 }
