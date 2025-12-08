@@ -138,8 +138,7 @@ func (s *bottomUp) resolveRewrite(ctx context.Context, req *Request, node *authz
 func (s *bottomUp) setFlattenOperation(ctx context.Context, req *Request, node *authzGraph.WeightedAuthorizationModelNode) (chan *iterator.Msg, error) {
 	var err error
 	var edges []*authzGraph.WeightedAuthorizationModelEdge
-	wildcardRequest := tuple.IsTypedWildcard(req.GetTupleKey().User)
-	edges, err = s.model.FlattenNode(node, req.GetUserType(), wildcardRequest, s.strategy == recursive)
+	edges, err = s.model.FlattenNode(node, req.GetUserType(), req.IsTypedWildcard(), s.strategy == recursive)
 	if err != nil {
 		return nil, err
 	}

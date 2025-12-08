@@ -112,7 +112,7 @@ func (r *Resolver) ResolveCheck(ctx context.Context, req *Request) (*Response, e
 	}
 
 	// Check if the user is a wildcard and if the node does not have a path to the user type wildcard then return false
-	if tuple.IsTypedWildcard(req.GetTupleKey().User) && !slices.Contains(node.GetWildcards(), req.GetUserType()) {
+	if req.IsTypedWildcard() && !slices.Contains(node.GetWildcards(), req.GetUserType()) {
 		return &Response{Allowed: false}, nil
 	}
 
@@ -231,7 +231,7 @@ func (r *Resolver) ResolveUnion(ctx context.Context, req *Request, node *authzGr
 	}
 
 	// flatten the node to get all terminal edges to avoid unnecessary goroutines
-	terminalEdges, err := r.model.FlattenNode(node, req.GetUserType(), req.userWildcard, false)
+	terminalEdges, err := r.model.FlattenNode(node, req.GetUserType(), req.IsTypedWildcard(), false)
 	if err != nil {
 		return nil, ErrPanicRequest
 	}
@@ -332,8 +332,7 @@ func (r *Resolver) resolveRecursiveTTU(ctx context.Context, req *Request, edge *
 }
 
 func (r *Resolver) ResolveRecursive(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge, visited *sync.Map, canApplyOptimization bool) (*Response, error) {
-	wildcardRequest := tuple.IsTypedWildcard(req.GetTupleKey().User)
-	nonRecursiveEdges, err := r.model.FlattenNode(edge.GetTo(), req.GetUserType(), wildcardRequest, true)
+	nonRecursiveEdges, err := r.model.FlattenNode(edge.GetTo(), req.GetUserType(), req.IsTypedWildcard(), true)
 	if err != nil {
 		return nil, ErrPanicRequest
 	}
@@ -576,14 +575,14 @@ func (r *Resolver) ResolveRewrite(ctx context.Context, req *Request, node *authz
 		case authzGraph.IntersectionOperator:
 			// intersection is never part of a graph cycle
 			// the request cannot have a wildcard if intersection is involved
-			if req.userWildcard {
+			if req.IsTypedWildcard() {
 				return nil, ErrWildcardInvalidRequest
 			}
 			return r.ResolveIntersection(ctx, req, node)
 		case authzGraph.ExclusionOperator:
 			// exclusion is never part of a graph cycle
 			// the request cannot have a wildcard if exclusion is involved
-			if req.userWildcard {
+			if req.IsTypedWildcard() {
 				return nil, ErrWildcardInvalidRequest
 			}
 			return r.ResolveExclusion(ctx, req, node)
