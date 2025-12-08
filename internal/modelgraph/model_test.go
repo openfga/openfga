@@ -213,7 +213,7 @@ func TestFlattenNodeWithWildcard(t *testing.T) {
 
 		edges, err := graph.FlattenNode(node, "user", true, false)
 		require.NoError(t, err)
-		require.Len(t, edges, 0)
+		require.Empty(t, edges)
 	})
 
 	t.Run("wildcard_with_non_wildcard_exclusion", func(t *testing.T) {
@@ -471,7 +471,7 @@ func TestFlattenNodeWithWildcard(t *testing.T) {
 
 		edges, err := graph.FlattenNode(node, "user", true, true)
 		require.NoError(t, err)
-		require.Len(t, edges, 0)
+		require.Empty(t, edges)
 	})
 
 	t.Run("wildcard_with_partial_wildcard_userset_recursive", func(t *testing.T) {
@@ -549,7 +549,7 @@ func TestFlattenNodeWithWildcard(t *testing.T) {
 
 		edges, err := graph.FlattenNode(node, "user", true, true)
 		require.NoError(t, err)
-		require.Len(t, edges, 0)
+		require.Empty(t, edges)
 	})
 
 	t.Run("wildcard_with_partial_wildcard_ttu_recursive", func(t *testing.T) {
