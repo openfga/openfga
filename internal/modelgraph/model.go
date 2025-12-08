@@ -2,6 +2,7 @@ package modelgraph
 
 import (
 	"errors"
+	"slices"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	authzGraph "github.com/openfga/language/pkg/go/graph"
@@ -70,7 +71,7 @@ func (m *AuthorizationModelGraph) GetDirectEdgeFromNodeForUserType(objectRelatio
 	return nil, ErrGraphError
 }
 
-func (m *AuthorizationModelGraph) FlattenNode(node *authzGraph.WeightedAuthorizationModelNode, userType string, recursivePath bool) ([]*authzGraph.WeightedAuthorizationModelEdge, error) {
+func (m *AuthorizationModelGraph) FlattenNode(node *authzGraph.WeightedAuthorizationModelNode, userType string, hasWildcardRequest bool, recursivePath bool) ([]*authzGraph.WeightedAuthorizationModelEdge, error) {
 	edges, ok := m.GetEdgesFromNode(node)
 	if !ok {
 		return nil, ErrGraphError
@@ -79,7 +80,8 @@ func (m *AuthorizationModelGraph) FlattenNode(node *authzGraph.WeightedAuthoriza
 	result := make([]*authzGraph.WeightedAuthorizationModelEdge, 0, len(edges))
 	for _, edge := range edges {
 		_, ok := m.GetEdgeWeight(edge, userType)
-		if !ok {
+		// in the case the request is a wildcard, we need to check if the edge has a wildcard for the user type
+		if !ok || (hasWildcardRequest && !slices.Contains(edge.GetWildcards(), userType)) {
 			continue // no relation to terminal type / pruning edge traversal
 		}
 
@@ -100,7 +102,7 @@ func (m *AuthorizationModelGraph) FlattenNode(node *authzGraph.WeightedAuthoriza
 		}
 
 		if canFlatten {
-			res, err := m.FlattenNode(edge.GetTo(), userType, recursivePath)
+			res, err := m.FlattenNode(edge.GetTo(), userType, hasWildcardRequest, recursivePath)
 			if err != nil {
 				return nil, err
 			}

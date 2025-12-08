@@ -142,6 +142,15 @@ func TestNewRequest(t *testing.T) {
 		require.NoError(t, err)
 		require.NotEmpty(t, req.GetInvariantCacheKey())
 	})
+	t.Run("extracts_iswildcard", func(t *testing.T) {
+		req, err := NewRequest(RequestParams{
+			StoreID:  ulid.Make().String(),
+			Model:    createTestModel(t),
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:*"),
+		})
+		require.NoError(t, err)
+		require.True(t, req.IsTypedWildcard())
+	})
 }
 
 func TestCloneWithTupleKey(t *testing.T) {
@@ -163,6 +172,27 @@ func TestCloneWithTupleKey(t *testing.T) {
 		require.Equal(t, originalReq.GetContext(), clonedReq.GetContext())
 		require.Equal(t, originalReq.GetConsistency(), clonedReq.GetConsistency())
 		require.Equal(t, originalReq.GetInvariantCacheKey(), clonedReq.GetInvariantCacheKey())
+	})
+
+	t.Run("clones_request_with_new_tuple_key_wildcard", func(t *testing.T) {
+		originalReq, err := NewRequest(RequestParams{
+			StoreID:  ulid.Make().String(),
+			Model:    createTestModel(t),
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:alice"),
+		})
+		require.NoError(t, err)
+
+		newTupleKey := tuple.NewTupleKey("document:2", "editor", "user:*")
+		clonedReq := originalReq.cloneWithTupleKey(newTupleKey)
+
+		require.Equal(t, originalReq.GetStoreID(), clonedReq.GetStoreID())
+		require.Equal(t, originalReq.GetAuthorizationModelID(), clonedReq.GetAuthorizationModelID())
+		require.Equal(t, newTupleKey, clonedReq.GetTupleKey())
+		require.Equal(t, originalReq.GetContextualTuples(), clonedReq.GetContextualTuples())
+		require.Equal(t, originalReq.GetContext(), clonedReq.GetContext())
+		require.Equal(t, originalReq.GetConsistency(), clonedReq.GetConsistency())
+		require.Equal(t, originalReq.GetInvariantCacheKey(), clonedReq.GetInvariantCacheKey())
+		require.True(t, clonedReq.IsTypedWildcard())
 	})
 
 	t.Run("updates_object_type_based_on_new_tuple_key", func(t *testing.T) {
