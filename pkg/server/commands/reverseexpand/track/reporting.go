@@ -38,6 +38,14 @@ func (t *Tracker) Add(i int64) int64 {
 	return t.value
 }
 
+func (t *Tracker) Inc() {
+	t.Add(1)
+}
+
+func (t *Tracker) Dec() {
+	t.Add(-1)
+}
+
 func (t *Tracker) Load() int64 {
 	t.mu.Lock()
 	defer t.mu.Unlock()

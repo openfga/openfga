@@ -102,15 +102,37 @@ func WithNumProcs(num int) PipelineOption {
 	}
 }
 
+var messagePool = sync.Pool{
+	New: func() interface{} {
+		return new(Message)
+	},
+}
+
+func NewMessage(items []Item, onReceipt func()) *Message {
+	msg := messagePool.Get().(*Message)
+	msg.Value = items
+	msg.finite = onReceipt
+	msg.once = sync.Once{}
+	return msg
+}
+
 type Message struct {
 	Value  []Item
 	finite func()
+	once   sync.Once
 }
 
-func (m *Message) Done() {
+func (m *Message) finalize() {
 	if m.finite != nil {
 		m.finite()
 	}
+}
+
+func (m *Message) Done() {
+	m.once.Do(m.finalize)
+	m.Value = nil
+	m.finite = nil
+	messagePool.Put(m)
 }
 
 // Backend is a struct that serves as a container for all backend elements
@@ -309,23 +331,6 @@ func (b *Backend) query(ctx context.Context, input queryInput) iter.Seq[Item] {
 	}
 }
 
-var messagePool = sync.Pool{
-	New: func() interface{} {
-		return new(Message)
-	},
-}
-
-func pack(items []Item, onReceipt func()) *Message {
-	msg := messagePool.Get().(*Message)
-	msg.Value = items
-	msg.finite = sync.OnceFunc(func() {
-		onReceipt()
-		msg.Value = nil
-		messagePool.Put(msg)
-	})
-	return msg
-}
-
 func chunk(items iter.Seq[Item], chunkSize int) iter.Seq[[]Item] {
 	return func(yield func([]Item) bool) {
 		var head int
@@ -438,7 +443,7 @@ func (r *baseResolver) process(ctx context.Context, snd Sender[*Edge, *Message],
 		for items := range chunk(results, r.chunkSize) {
 			for _, lst := range listeners {
 				r.tracker.Add(1)
-				msg := pack(items, func() { r.tracker.Add(-1) })
+				msg := NewMessage(items, r.tracker.Dec)
 				if !lst.Send(msg) {
 					msg.Done()
 				}
@@ -551,7 +556,7 @@ func (r *exclusionResolver) process(ctx context.Context, snd Sender[*Edge, *Mess
 
 	for snd.Recv(&msg) {
 		r.tracker.Add(1)
-		tx := pack(msg.Value, func() { r.tracker.Add(-1) })
+		tx := NewMessage(msg.Value, r.tracker.Dec)
 		msg.Done()
 		msg = tx
 
@@ -651,7 +656,7 @@ func (r *exclusionResolver) Resolve(ctx context.Context, senders []Sender[*Edge,
 	for items := range chunk(results, r.chunkSize) {
 		for _, lst := range listeners {
 			r.tracker.Add(1)
-			msg := pack(items, func() { r.tracker.Add(-1) })
+			msg := NewMessage(items, r.tracker.Dec)
 			if !lst.Send(msg) {
 				msg.Done()
 			}
@@ -711,7 +716,7 @@ func (r *intersectionResolver) process(ctx context.Context, snd Sender[*Edge, *M
 
 	for snd.Recv(&msg) {
 		r.tracker.Add(1)
-		tx := pack(msg.Value, func() { r.tracker.Add(-1) })
+		tx := NewMessage(msg.Value, r.tracker.Dec)
 		msg.Done()
 		msg = tx
 
@@ -807,7 +812,7 @@ func (r *intersectionResolver) Resolve(ctx context.Context, senders []Sender[*Ed
 
 	for items := range chunk(itemSeq, r.chunkSize) {
 		r.tracker.Add(1)
-		msg := pack(items, func() { r.tracker.Add(-1) })
+		msg := NewMessage(items, r.tracker.Dec)
 		for _, lst := range listeners {
 			if !lst.Send(msg) {
 				msg.Done()
@@ -1089,7 +1094,7 @@ func (pipeline *Pipeline) resolve(p path, workers workerPool) *pipelineWorker {
 		if p.source == p.target.node {
 			items := []Item{{Value: p.target.Object()}}
 			p.tracker.Add(1)
-			m := pack(items, func() { p.tracker.Add(-1) })
+			m := NewMessage(items, p.tracker.Dec)
 			w.Listen(&sender[*Edge, *Message]{
 				nil,
 				pipe.StaticRx(m),
@@ -1103,7 +1108,7 @@ func (pipeline *Pipeline) resolve(p path, workers workerPool) *pipelineWorker {
 			// source node is the target node or has the same type as the target.
 			items := []Item{{Value: typePart + ":*"}}
 			p.tracker.Add(1)
-			m := pack(items, func() { p.tracker.Add(-1) })
+			m := NewMessage(items, p.tracker.Dec)
 			w.Listen(&sender[*Edge, *Message]{
 				nil,
 				pipe.StaticRx(m),
