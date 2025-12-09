@@ -46,8 +46,6 @@ func (r *AuthorizationModelGraphResolver) Resolve(ctx context.Context, storeID, 
 
 	var err error
 
-	var key string
-
 	if modelID != "" {
 		// this validation should happen at the api level
 		if _, err := ulid.Parse(modelID); err != nil {
@@ -72,11 +70,9 @@ func (r *AuthorizationModelGraphResolver) Resolve(ctx context.Context, storeID, 
 	}
 	var keyBuilder strings.Builder
 	keyBuilder.WriteString(CacheKeyPrefix)
-	keyBuilder.WriteString(storeID)
-	keyBuilder.WriteString(DELIMITER)
 	keyBuilder.WriteString(modelID)
+	key := keyBuilder.String()
 
-	key = keyBuilder.String()
 	if wg := r.cache.Get(key); wg != nil {
 		return wg.(*AuthorizationModelGraph), nil
 	}
