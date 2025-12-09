@@ -356,6 +356,34 @@ func chunk(items iter.Seq[Item], chunkSize int) iter.Seq[[]Item] {
 	}
 }
 
+type mmap[K comparable, V any] struct {
+	mu sync.Mutex
+	m  map[K]V
+}
+
+func (m *mmap[K, V]) LoadOrStore(key K, value V) (V, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.m == nil {
+		m.m = make(map[K]V)
+	}
+
+	v, ok := m.m[key]
+	if !ok {
+		m.m[key] = value
+		return value, ok
+	}
+	return v, ok
+}
+
+func (m *mmap[K, V]) Clear() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.m = nil
+}
+
 // baseResolver is a struct that implements the `resolver` interface and acts as the standard resolver for most
 // workers. A baseResolver handles both recursive and non-recursive edges concurrently. The baseResolver's "ready"
 // status will remain `true` until all of its senders that produce input from external sources have finished, and
@@ -375,7 +403,7 @@ type baseResolver struct {
 	numProcs int
 }
 
-func (r *baseResolver) process(ctx context.Context, snd Sender[*Edge, *Message], listeners []Listener[*Edge, *Message], outputBuffer *sync.Map) int64 {
+func (r *baseResolver) process(ctx context.Context, snd Sender[*Edge, *Message], listeners []Listener[*Edge, *Message], outputBuffer *mmap[string, struct{}]) int64 {
 	var sentCount int64
 	var inputBuffer sync.Map
 
@@ -461,7 +489,7 @@ func (r *baseResolver) Resolve(ctx context.Context, senders []Sender[*Edge, *Mes
 	ctx, span := pipelineTracer.Start(ctx, "baseResolver.Resolve")
 	defer span.End()
 
-	var outputBuffer sync.Map
+	var outputBuffer mmap[string, struct{}]
 	defer outputBuffer.Clear()
 
 	var sentCount atomic.Int64
