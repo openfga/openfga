@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/sourcegraph/conc/panics"
 
@@ -47,6 +48,29 @@ func newBottomUpRecursive(model *modelgraph.AuthorizationModelGraph, ds storage.
 		datastore: ds,
 		strategy:  recursive,
 	}
+}
+
+// setOperationSetup returns a channel with a number of elements that is >= the number of children.
+// Each element is an iterator.
+// The caller must wait until the channel is closed.
+func (s *bottomUp) setWildcardIntersectionSetup(ctx context.Context, req *Request, edges []*authzGraph.WeightedAuthorizationModelEdge) (chan *iterator.Msg, error) {
+	shortcircuitIntersection := false
+
+	// if there is one edge that does not contain the wildcard, we can short-circuit
+	for _, edge := range edges {
+		if !slices.Contains(edge.GetWildcards(), req.GetUserType()) {
+			shortcircuitIntersection = true
+			break
+		}
+	}
+
+	if !shortcircuitIntersection {
+		return s.setOperationSetup(ctx, req, resolveIntersection, edges)
+	}
+
+	iterChan := make(chan *iterator.Msg, 0)
+	close(iterChan)
+	return iterChan, nil
 }
 
 // setOperationSetup returns a channel with a number of elements that is >= the number of children.
@@ -114,7 +138,7 @@ func (s *bottomUp) resolveRewrite(ctx context.Context, req *Request, node *authz
 			}
 			// the request cannot have a wildcard if intersection is involved
 			if req.IsTypedWildcard() {
-				return nil, ErrWildcardInvalidRequest
+				return s.setWildcardIntersectionSetup(ctx, req, edges)
 			}
 			return s.setOperationSetup(ctx, req, resolveIntersection, edges)
 		case authzGraph.ExclusionOperator:

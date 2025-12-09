@@ -85,7 +85,7 @@ func (s *Recursive) execute(ctx context.Context, req *Request, edge *authzGraph.
 	defer rightIter.Stop() // the caller calls stop when creating the iterator, this is just being defensive
 	rightChan := iterator.ToChannel[string](ctx, rightIter, s.concurrencyLimit)
 
-	// right hand side bootstrap
+	// left hand side bootstrap
 	idsFromUser := make(map[string]struct{})
 	defer iterator.Drain(leftChan)
 

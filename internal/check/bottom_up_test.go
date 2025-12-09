@@ -2141,3 +2141,346 @@ func TestBottomUpResolveRewrite(t *testing.T) {
 		require.False(t, ok)
 	})
 }
+
+func TestBottomUpResolveRewriteForWildcardRequests(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	// Test cases for resolveRewrite with union models
+	t.Run("resolveRewrite_with_union_model", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		storeID := ulid.Make().String()
+		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+
+		readStartingWithUserViewer := []*openfgav1.Tuple{
+			{
+				Key: tuple.NewTupleKey("document:3", "viewer", "user:*"),
+			},
+		}
+
+		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
+			ObjectType: "document",
+			Relation:   "viewer",
+			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:*"}},
+			Conditions: []string{""},
+		}, storage.ReadStartingWithUserOptions{
+			Consistency: storage.ConsistencyOptions{
+				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
+			}},
+		).MaxTimes(1).Return(storage.NewStaticTupleIterator(readStartingWithUserViewer), nil)
+
+		// Create a model with a union operator
+		model := testutils.MustTransformDSLToProtoWithID(`
+			model
+				schema 1.1
+			type user
+			type document
+				relations
+					define viewer: [user:*] or editor
+					define editor: [user]
+		`)
+
+		mg, err := modelgraph.New(model)
+		require.NoError(t, err)
+		strategy := newBottomUp(mg, mockDatastore)
+
+		ctx := context.Background()
+		// Get the node for the union operator in document#viewer
+		node, ok := mg.GetNodeByID("document#viewer")
+		require.True(t, ok)
+		// Create a request for testing
+		req, err := NewRequest(RequestParams{
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:*"),
+		})
+		require.NoError(t, err)
+
+		// Test the resolveRewrite function with the union model
+		resChan, err := strategy.resolveRewrite(ctx, req, node)
+		require.NoError(t, err)
+		require.NotNil(t, resChan)
+
+		// Verify channel is closed correctly
+		msg, ok := <-resChan
+		require.True(t, ok)
+		require.NoError(t, msg.Err)
+		require.NotNil(t, msg.Iter)
+		v, _ := msg.Iter.Next(ctx)
+		require.Equal(t, "document:3", v)
+		_, e := msg.Iter.Next(ctx)
+		require.Error(t, e)
+		msg.Iter.Stop()
+
+		_, ok = <-resChan
+		require.False(t, ok)
+	})
+
+	// Test cases for resolveRewrite with union model without wildcard
+	t.Run("resolveRewrite_with_union_model_without_wildcard", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		storeID := ulid.Make().String()
+		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+
+		// Create a model with a union operator
+		model := testutils.MustTransformDSLToProtoWithID(`
+			model
+				schema 1.1
+			type user
+			type document
+				relations
+					define viewer: [user] or editor
+					define editor: [user]
+		`)
+
+		mg, err := modelgraph.New(model)
+		require.NoError(t, err)
+		strategy := newBottomUp(mg, mockDatastore)
+
+		ctx := context.Background()
+		// Get the node for the union operator in document#viewer
+		node, ok := mg.GetNodeByID("document#viewer")
+		require.True(t, ok)
+		// Create a request for testing
+		req, err := NewRequest(RequestParams{
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:*"),
+		})
+		require.NoError(t, err)
+
+		// Test the resolveRewrite function with the union model
+		resChan, err := strategy.resolveRewrite(ctx, req, node)
+		require.NoError(t, err)
+		require.NotNil(t, resChan)
+
+		// Verify channel is closed correctly
+		_, ok = <-resChan
+		require.False(t, ok)
+	})
+
+	// Test cases for resolveRewrite with intersection models
+	t.Run("resolveRewrite_with_intersection_model", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		storeID := ulid.Make().String()
+		readStartingWithUserViewer := []*openfgav1.Tuple{
+			{
+				Key: tuple.NewTupleKey("document:0", "viewer", "user:*"),
+			},
+			{
+				Key: tuple.NewTupleKey("document:1", "viewer", "user:*"),
+			},
+			{
+				Key: tuple.NewTupleKey("document:3", "viewer", "user:*"),
+			},
+			{
+				Key: tuple.NewTupleKey("document:5", "viewer", "user:*"),
+			},
+		}
+		readStartingWithUserEditor := []*openfgav1.Tuple{
+			{
+				Key: tuple.NewTupleKey("document:2", "editor", "user:*"),
+			},
+			{
+				Key: tuple.NewTupleKey("document:5", "editor", "user:*"),
+			},
+			{
+				Key: tuple.NewTupleKey("document:6", "editor", "user:*"),
+			},
+		}
+
+		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+			MaxTimes(3). // Allow any number of calls
+			DoAndReturn(func(ctx context.Context, sID string, filter storage.ReadStartingWithUserFilter, opts storage.ReadStartingWithUserOptions) (storage.TupleIterator, error) {
+				// Manually check the relation and return the right data
+				switch filter.Relation {
+				case "viewer":
+					return storage.NewStaticTupleIterator(readStartingWithUserViewer), nil
+				case "editor":
+					return storage.NewStaticTupleIterator(readStartingWithUserEditor), nil
+				default:
+					return nil, fmt.Errorf("unexpected relation %s", filter.Relation)
+				}
+			})
+
+		// Create a model with an intersection operator
+		model := testutils.MustTransformDSLToProtoWithID(`
+			model
+				schema 1.1
+			type user
+			type document
+				relations
+					define viewer: [user:*] and editor
+					define editor: [user:*]
+		`)
+
+		mg, err := modelgraph.New(model)
+		require.NoError(t, err)
+		strategy := newBottomUp(mg, mockDatastore)
+
+		ctx := context.Background()
+		// Get the node for the intersection operator in document#viewer
+		node, ok := mg.GetNodeByID("document#viewer")
+		require.True(t, ok)
+
+		// Create a request for testing
+		req, _ := NewRequest(RequestParams{
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:*"),
+		})
+
+		// Test the resolveRewrite function with the intersection model
+		resChan, err := strategy.resolveRewrite(ctx, req, node)
+		require.NoError(t, err)
+		require.NotNil(t, resChan)
+
+		// Verify channel is closed correctly
+		msg, ok := <-resChan
+		require.True(t, ok)
+		require.NoError(t, msg.Err)
+		require.NotNil(t, msg.Iter)
+		v, _ := msg.Iter.Next(ctx)
+		require.Equal(t, "document:5", v)
+		_, e := msg.Iter.Next(ctx)
+		require.Error(t, e)
+
+		msg.Iter.Stop()
+
+		_, ok = <-resChan
+		require.False(t, ok)
+	})
+
+	// Test cases for resolveRewrite with intersection models
+	t.Run("resolveRewrite_with_intersection_model_without_wildcard", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		storeID := ulid.Make().String()
+
+		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		// Create a model with an intersection operator
+		model := testutils.MustTransformDSLToProtoWithID(`
+			model
+				schema 1.1
+			type user
+			type document
+				relations
+					define viewer: [user:*] and editor
+					define editor: [user]
+		`)
+
+		mg, err := modelgraph.New(model)
+		require.NoError(t, err)
+		strategy := newBottomUp(mg, mockDatastore)
+
+		ctx := context.Background()
+		// Get the node for the intersection operator in document#viewer
+		node, ok := mg.GetNodeByID("document#viewer")
+		require.True(t, ok)
+
+		// Create a request for testing
+		req, _ := NewRequest(RequestParams{
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:*"),
+		})
+
+		// Test the resolveRewrite function with the intersection model
+		resChan, err := strategy.resolveRewrite(ctx, req, node)
+		require.NoError(t, err)
+		require.NotNil(t, resChan)
+
+		// Verify channel is closed correctly
+		_, ok = <-resChan
+		require.False(t, ok)
+	})
+
+	// Test cases for resolveRewrite with exclusion models
+	t.Run("resolveRewrite_with_exclusion_model", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		storeID := ulid.Make().String()
+		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+
+		// Create a model with an exclusion operator
+		model := testutils.MustTransformDSLToProtoWithID(`
+			model
+				schema 1.1
+			type user
+			type document
+				relations
+					define viewer: [user:*] but not editor
+					define editor: [user:*]
+		`)
+
+		mg, err := modelgraph.New(model)
+		require.NoError(t, err)
+		strategy := newBottomUp(mg, mockDatastore)
+
+		ctx := context.Background()
+		// Get the node for the exclusion operator in document#viewer
+		node, ok := mg.GetNodeByID("document#viewer")
+		require.True(t, ok)
+
+		// Create a request for testing
+		req, _ := NewRequest(RequestParams{
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:*"),
+		})
+
+		// Test the resolveRewrite function with the exclusion model
+		_, err = strategy.resolveRewrite(ctx, req, node)
+		require.ErrorIs(t, err, ErrWildcardInvalidRequest)
+	})
+
+	// Test cases for resolveRewrite with exclusion models
+	t.Run("resolveRewrite_with_exclusion_model_without_wildcard", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		storeID := ulid.Make().String()
+
+		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		// Create a model with an exclusion operator
+		model := testutils.MustTransformDSLToProtoWithID(`
+			model
+				schema 1.1
+			type user
+			type document
+				relations
+					define viewer: [user] but not editor
+					define editor: [user:*]
+		`)
+
+		mg, err := modelgraph.New(model)
+		require.NoError(t, err)
+		strategy := newBottomUp(mg, mockDatastore)
+
+		ctx := context.Background()
+		// Get the node for the exclusion operator in document#viewer
+		node, ok := mg.GetNodeByID("document#viewer")
+		require.True(t, ok)
+
+		// Create a request for testing
+		req, _ := NewRequest(RequestParams{
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:*"),
+		})
+
+		// Test the resolveRewrite function with the exclusion model
+		_, err = strategy.resolveRewrite(ctx, req, node)
+		require.ErrorIs(t, err, ErrWildcardInvalidRequest)
+	})
+}
