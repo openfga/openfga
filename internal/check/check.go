@@ -396,8 +396,16 @@ func (r *Resolver) ResolveIntersection(ctx context.Context, req *Request, node *
 		close(out)
 	}()
 
-	scheduledHandlers := 0
+	// in the case wildcard is requested if not all edges have wildcard path for the user type then return FALSE
+	if req.IsTypedWildcard() {
+		for _, edge := range edges {
+			if !slices.Contains(edge.GetWildcards(), req.GetUserType()) {
+				return &Response{Allowed: false}, nil
+			}
+		}
+	}
 
+	scheduledHandlers := 0
 	for _, edge := range edges {
 		_, ok := r.model.GetEdgeWeight(edge, req.GetUserType())
 		if !ok {
@@ -574,10 +582,6 @@ func (r *Resolver) ResolveRewrite(ctx context.Context, req *Request, node *authz
 			return r.ResolveUnion(ctx, req, node, visited)
 		case authzGraph.IntersectionOperator:
 			// intersection is never part of a graph cycle
-			// the request cannot have a wildcard if intersection is involved
-			if req.IsTypedWildcard() {
-				return nil, ErrWildcardInvalidRequest
-			}
 			return r.ResolveIntersection(ctx, req, node)
 		case authzGraph.ExclusionOperator:
 			// exclusion is never part of a graph cycle
