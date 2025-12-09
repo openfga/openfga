@@ -941,16 +941,17 @@ func (pipeline *Pipeline) Build(ctx context.Context, source Source, target Targe
 	results := sourceWorker.Subscribe(nil)
 
 	return func(yield func(Item) bool) {
-		var wg sync.WaitGroup
 		ctx, span := pipelineTracer.Start(ctx, "pipeline.iterate")
 		defer span.End()
-
-		defer wg.Wait()
-		defer cancel()
 
 		if ctx.Err() != nil {
 			return
 		}
+
+		var wg sync.WaitGroup
+
+		defer wg.Wait()
+		defer cancel()
 
 		// Workers are started here so that the pipeline does
 		// not begin producing objects until the caller has begun
