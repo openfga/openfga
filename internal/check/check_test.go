@@ -1358,8 +1358,6 @@ func TestResolveExclusion(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		expectedErr := errors.New("database error")
-
 		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 
 		edges, ok := mg.GetEdgesFromNodeId("document#viewer")
@@ -1367,7 +1365,7 @@ func TestResolveExclusion(t *testing.T) {
 
 		res, err := resolver.ResolveRewrite(context.Background(), req, edges[0].GetTo(), nil)
 		require.Error(t, err)
-		require.ErrorIs(t, err, expectedErr)
+		require.ErrorContains(t, err, "wildcard request cannot be resolved when intersection or exclusion is involved")
 		require.Nil(t, res)
 	})
 }
