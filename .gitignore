@@ -10,3 +10,5 @@ coverage*.out
 *.swp
 
 mise.toml
+
+.devcontainer/
