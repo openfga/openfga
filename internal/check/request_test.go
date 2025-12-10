@@ -130,7 +130,7 @@ func TestNewRequest(t *testing.T) {
 		})
 		require.NoError(t, err)
 		require.NotEmpty(t, req.GetCacheKey())
-		require.Contains(t, req.GetCacheKey(), CacheKeyPrefix)
+		require.Contains(t, req.GetCacheKey(), cacheKeyPrefix)
 	})
 
 	t.Run("generates_invariant_cache_key", func(t *testing.T) {
