@@ -68,7 +68,7 @@ func (s *bottomUp) setWildcardIntersectionSetup(ctx context.Context, req *Reques
 		return s.setOperationSetup(ctx, req, resolveIntersection, edges)
 	}
 
-	iterChan := make(chan *iterator.Msg, 0)
+	iterChan := make(chan *iterator.Msg)
 	close(iterChan)
 	return iterChan, nil
 }
