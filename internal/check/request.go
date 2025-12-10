@@ -171,7 +171,7 @@ func NewRequest(p RequestParams) (*Request, error) {
 	_, _ = hasher.WriteString(r.GetInvariantCacheKey())
 	_, _ = hasher.WriteString(tup.String())
 
-	cacheKey := CacheKeyPrefix + strconv.FormatUint(hasher.Sum64(), 10)
+	cacheKey := cacheKeyPrefix + strconv.FormatUint(hasher.Sum64(), 10)
 	r.cacheKey = cacheKey
 
 	r.buildContextualTupleMaps()
@@ -397,7 +397,7 @@ func (r *Request) cloneWithTupleKey(tk *openfgav1.TupleKey) *Request {
 	_, _ = hasher.WriteString(req.GetInvariantCacheKey())
 	_, _ = hasher.WriteString(tup.String())
 
-	cacheKey := CacheKeyPrefix + strconv.FormatUint(hasher.Sum64(), 10)
+	cacheKey := cacheKeyPrefix + strconv.FormatUint(hasher.Sum64(), 10)
 	req.cacheKey = cacheKey
 	req.userWildcard = tuple.IsWildcard(tk.GetUser())
 
