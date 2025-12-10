@@ -403,12 +403,10 @@ type baseResolver struct {
 	numProcs int
 }
 
-func (r *baseResolver) process(ctx context.Context, snd Sender[*Edge, *Message], listeners []Listener[*Edge, *Message], outputBuffer *mmap[string, struct{}]) int64 {
+func (r *baseResolver) process(ctx context.Context, snd Sender[*Edge, *Message], listeners []Listener[*Edge, *Message], inputBuffer *mmap[string, struct{}], outputBuffer *mmap[string, struct{}]) int64 {
 	var sentCount int64
-	var inputBuffer mmap[string, struct{}]
 
 	edge := snd.Key()
-	isCyclical := edge != nil && (len(edge.GetRecursiveRelation()) > 0 || edge.IsPartOfTupleCycle())
 
 	edgeTo := "nil"
 	edgeFrom := "nil"
@@ -443,7 +441,7 @@ func (r *baseResolver) process(ctx context.Context, snd Sender[*Edge, *Message],
 				continue
 			}
 
-			if isCyclical {
+			if inputBuffer != nil {
 				if _, loaded := inputBuffer.LoadOrStore(item.Value, struct{}{}); !loaded {
 					unseen = append(unseen, item.Value)
 				}
@@ -509,20 +507,25 @@ func (r *baseResolver) Resolve(ctx context.Context, senders []Sender[*Edge, *Mes
 			isCyclical = len(edge.GetRecursiveRelation()) > 0 || edge.IsPartOfTupleCycle()
 		}
 
-		for range r.numProcs {
-			if isCyclical {
+		if isCyclical {
+			var inputBuffer mmap[string, struct{}]
+
+			for range r.numProcs {
 				wgRecursive.Add(1)
 				go func() {
 					defer wgRecursive.Done()
-					sentCount.Add(r.process(ctx, snd, listeners, &outputBuffer))
+					sentCount.Add(r.process(ctx, snd, listeners, &inputBuffer, &outputBuffer))
 				}()
 				continue
 			}
+			continue
+		}
 
+		for range r.numProcs {
 			wgStandard.Add(1)
 			go func() {
 				defer wgStandard.Done()
-				sentCount.Add(r.process(ctx, snd, listeners, &outputBuffer))
+				sentCount.Add(r.process(ctx, snd, listeners, nil, &outputBuffer))
 			}()
 		}
 	}
