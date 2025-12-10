@@ -114,7 +114,7 @@ func (b *bufferPool) Get() []Item {
 }
 
 func (b *bufferPool) Put(buffer []Item) {
-	b.pool.Put(buffer)
+	b.pool.Put(buffer) //nolint:staticcheck,SA6002
 }
 
 func (b *bufferPool) create() interface{} {
