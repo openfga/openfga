@@ -429,7 +429,6 @@ func TestResolveUnionEdges(t *testing.T) {
 			DoAndReturn(func(_ context.Context, _ string, filter storage.ReadUsersetTuplesFilter, _ storage.ReadUsersetTuplesOptions) (storage.TupleIterator, error) {
 				if filter.Relation == "member" {
 					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("group:1", "member", "user:*")}}), nil
-
 				}
 				return nil, storage.ErrNotFound
 			}).MaxTimes(1)
@@ -4743,6 +4742,7 @@ func TestTTU(t *testing.T) {
 	})
 }
 
+//nolint:gocyclo
 func TestResolveRecursiveCheck(t *testing.T) {
 	t.Run("returns_false_ttu_no_assignation", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
@@ -5430,7 +5430,6 @@ func TestResolveRecursiveCheck(t *testing.T) {
 
 		mockDatastore.EXPECT().ReadUsersetTuples(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
 			AnyTimes().DoAndReturn(func(ctx context.Context, sID string, filter storage.ReadUsersetTuplesFilter, opts storage.ReadUsersetTuplesOptions) (storage.TupleIterator, error) {
-
 			switch filter.Object {
 			case "document:1":
 				if len(filter.AllowedUserTypeRestrictions) > 0 {
@@ -5595,7 +5594,6 @@ func TestResolveRecursiveCheck(t *testing.T) {
 
 		mockDatastore.EXPECT().ReadUsersetTuples(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
 			AnyTimes().DoAndReturn(func(ctx context.Context, sID string, filter storage.ReadUsersetTuplesFilter, opts storage.ReadUsersetTuplesOptions) (storage.TupleIterator, error) {
-
 			switch filter.Object {
 			case "document:1":
 				if len(filter.AllowedUserTypeRestrictions) > 0 {
