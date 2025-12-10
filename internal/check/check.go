@@ -26,8 +26,8 @@ import (
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
-const DELIMITER = "|"
-const CacheKeyPrefix = "c."
+const cacheKeyDelimiter = "|"
+const cacheKeyPrefix = "c."
 
 var tracer = otel.Tracer("internal/check")
 
@@ -139,13 +139,13 @@ func (r *Resolver) isCached(consistency openfgav1.ConsistencyPreference, key str
 
 func buildEdgeCacheKey(modelID string, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge) string {
 	keyBuilder := &strings.Builder{}
-	keyBuilder.WriteString(CacheKeyPrefix)
+	keyBuilder.WriteString(cacheKeyPrefix)
 	keyBuilder.WriteString(modelID)
-	keyBuilder.WriteString(DELIMITER)
+	keyBuilder.WriteString(cacheKeyDelimiter)
 	keyBuilder.WriteString(req.GetTupleKey().GetObject())
-	keyBuilder.WriteString(DELIMITER)
+	keyBuilder.WriteString(cacheKeyDelimiter)
 	keyBuilder.WriteString(req.GetTupleKey().GetUser())
-	keyBuilder.WriteString(DELIMITER)
+	keyBuilder.WriteString(cacheKeyDelimiter)
 	keyBuilder.WriteString(edge.GetRelationDefinition())
 	keyBuilder.WriteString(req.GetInvariantCacheKey())
 	return keyBuilder.String()
