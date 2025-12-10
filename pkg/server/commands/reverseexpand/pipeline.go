@@ -405,7 +405,7 @@ type baseResolver struct {
 
 func (r *baseResolver) process(ctx context.Context, snd Sender[*Edge, *Message], listeners []Listener[*Edge, *Message], outputBuffer *mmap[string, struct{}]) int64 {
 	var sentCount int64
-	var inputBuffer sync.Map
+	var inputBuffer mmap[string, struct{}]
 
 	edge := snd.Key()
 	isCyclical := edge != nil && (len(edge.GetRecursiveRelation()) > 0 || edge.IsPartOfTupleCycle())
