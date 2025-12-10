@@ -13,8 +13,8 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
+	storagev1 "github.com/openfga/api/proto/storage/v1beta1"
 	"github.com/openfga/openfga/pkg/storage"
-	storagev1 "github.com/openfga/openfga/pkg/storage/grpc/proto/storage/v1"
 )
 
 type mockReadStream struct {
@@ -33,7 +33,7 @@ func (m *mockReadStream) Recv() (*storagev1.ReadResponse, error) {
 	}
 	tuple := m.tuples[m.index]
 	m.index++
-	return &storagev1.ReadResponse{Tuple: toStorageTuple(tuple)}, nil
+	return &storagev1.ReadResponse{Tuple: tuple}, nil
 }
 
 func (m *mockReadStream) CloseSend() error {

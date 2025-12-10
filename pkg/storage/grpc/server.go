@@ -6,8 +6,8 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
+	storagev1 "github.com/openfga/api/proto/storage/v1beta1"
 	"github.com/openfga/openfga/pkg/storage"
-	storagev1 "github.com/openfga/openfga/pkg/storage/grpc/proto/storage/v1"
 )
 
 // Server wraps a storage.OpenFGADatastore and exposes it via gRPC.
@@ -51,7 +51,7 @@ func (s *Server) Read(req *storagev1.ReadRequest, stream storagev1.StorageServic
 			return toGRPCError(err)
 		}
 
-		if err := stream.Send(&storagev1.ReadResponse{Tuple: toStorageTuple(tuple)}); err != nil {
+		if err := stream.Send(&storagev1.ReadResponse{Tuple: tuple}); err != nil {
 			return err
 		}
 	}
@@ -80,13 +80,8 @@ func (s *Server) ReadPage(ctx context.Context, req *storagev1.ReadPageRequest) (
 		return nil, toGRPCError(err)
 	}
 
-	storageTuples := make([]*storagev1.Tuple, len(tuples))
-	for i, t := range tuples {
-		storageTuples[i] = toStorageTuple(t)
-	}
-
 	return &storagev1.ReadPageResponse{
-		Tuples:            storageTuples,
+		Tuples:            tuples,
 		ContinuationToken: token,
 	}, nil
 }
@@ -111,19 +106,15 @@ func (s *Server) ReadUserTuple(ctx context.Context, req *storagev1.ReadUserTuple
 		return nil, toGRPCError(err)
 	}
 
-	return &storagev1.ReadResponse{Tuple: toStorageTuple(tuple)}, nil
+	return &storagev1.ReadResponse{Tuple: tuple}, nil
 }
 
 func (s *Server) ReadUsersetTuples(req *storagev1.ReadUsersetTuplesRequest, stream storagev1.StorageService_ReadUsersetTuplesServer) error {
-	allowedRefs := make([]*openfgav1.RelationReference, len(req.GetFilter().GetAllowedUserTypeRestrictions()))
-	for i, ref := range req.GetFilter().GetAllowedUserTypeRestrictions() {
-		allowedRefs[i] = fromStorageRelationReference(ref)
-	}
 
 	filter := storage.ReadUsersetTuplesFilter{
 		Object:                      req.GetFilter().GetObject(),
 		Relation:                    req.GetFilter().GetRelation(),
-		AllowedUserTypeRestrictions: allowedRefs,
+		AllowedUserTypeRestrictions: req.GetFilter().GetAllowedUserTypeRestrictions(),
 		Conditions:                  req.GetFilter().GetConditions(),
 	}
 
@@ -148,7 +139,7 @@ func (s *Server) ReadUsersetTuples(req *storagev1.ReadUsersetTuplesRequest, stre
 			return toGRPCError(err)
 		}
 
-		if err := stream.Send(&storagev1.ReadResponse{Tuple: toStorageTuple(tuple)}); err != nil {
+		if err := stream.Send(&storagev1.ReadResponse{Tuple: tuple}); err != nil {
 			return err
 		}
 	}
@@ -157,10 +148,7 @@ func (s *Server) ReadUsersetTuples(req *storagev1.ReadUsersetTuplesRequest, stre
 func (s *Server) ReadStartingWithUser(req *storagev1.ReadStartingWithUserRequest, stream storagev1.StorageService_ReadStartingWithUserServer) error {
 	var userFilter []*openfgav1.ObjectRelation = nil
 	if req.GetFilter() != nil && req.GetFilter().GetUserFilter() != nil {
-		userFilter = make([]*openfgav1.ObjectRelation, len(req.GetFilter().GetUserFilter()))
-		for i, obj := range req.GetFilter().GetUserFilter() {
-			userFilter[i] = fromStorageObjectRelation(obj)
-		}
+		userFilter = req.GetFilter().GetUserFilter()
 	}
 
 	var objectIDs storage.SortedSet = nil
@@ -201,7 +189,7 @@ func (s *Server) ReadStartingWithUser(req *storagev1.ReadStartingWithUserRequest
 			return toGRPCError(err)
 		}
 
-		if err := stream.Send(&storagev1.ReadResponse{Tuple: toStorageTuple(tuple)}); err != nil {
+		if err := stream.Send(&storagev1.ReadResponse{Tuple: tuple}); err != nil {
 			return err
 		}
 	}
@@ -218,12 +206,28 @@ func (s *Server) Write(ctx context.Context, req *storagev1.WriteRequest) (*stora
 		}
 	}
 
-	writes := make([]*openfgav1.TupleKey, len(req.GetWrites()))
-	for i, w := range req.GetWrites() {
-		writes[i] = fromStorageTupleKey(w)
-	}
+	writes := req.GetWrites()
 
-	opts := fromStorageTupleWriteOptions(req.GetOptions())
+	var opts []storage.TupleWriteOption
+	if reqOpts := req.GetOptions(); reqOpts != nil {
+		switch reqOpts.GetOnMissingDelete() {
+		case storagev1.OnMissingDelete_ON_MISSING_DELETE_IGNORE:
+			opts = append(opts, storage.WithOnMissingDelete(storage.OnMissingDeleteIgnore))
+		case storagev1.OnMissingDelete_ON_MISSING_DELETE_ERROR:
+			opts = append(opts, storage.WithOnMissingDelete(storage.OnMissingDeleteError))
+		default:
+			opts = append(opts, storage.WithOnMissingDelete(storage.OnMissingDeleteError))
+		}
+
+		switch reqOpts.GetOnDuplicateInsert() {
+		case storagev1.OnDuplicateInsert_ON_DUPLICATE_INSERT_IGNORE:
+			opts = append(opts, storage.WithOnDuplicateInsert(storage.OnDuplicateInsertIgnore))
+		case storagev1.OnDuplicateInsert_ON_DUPLICATE_INSERT_ERROR:
+			opts = append(opts, storage.WithOnDuplicateInsert(storage.OnDuplicateInsertError))
+		default:
+			opts = append(opts, storage.WithOnDuplicateInsert(storage.OnDuplicateInsertError))
+		}
+	}
 
 	err := s.datastore.Write(ctx, req.GetStore(), deletes, writes, opts...)
 	if err != nil {
@@ -240,7 +244,7 @@ func (s *Server) ReadAuthorizationModel(ctx context.Context, req *storagev1.Read
 	}
 
 	return &storagev1.ReadAuthorizationModelResponse{
-		Model: toStorageAuthorizationModel(model),
+		Model: model,
 	}, nil
 }
 
@@ -258,7 +262,7 @@ func (s *Server) ReadAuthorizationModels(ctx context.Context, req *storagev1.Rea
 	}
 
 	return &storagev1.ReadAuthorizationModelsResponse{
-		Models:            toStorageAuthorizationModels(models),
+		Models:            models,
 		ContinuationToken: continuationToken,
 	}, nil
 }
@@ -270,12 +274,12 @@ func (s *Server) FindLatestAuthorizationModel(ctx context.Context, req *storagev
 	}
 
 	return &storagev1.FindLatestAuthorizationModelResponse{
-		Model: toStorageAuthorizationModel(model),
+		Model: model,
 	}, nil
 }
 
 func (s *Server) WriteAuthorizationModel(ctx context.Context, req *storagev1.WriteAuthorizationModelRequest) (*storagev1.WriteAuthorizationModelResponse, error) {
-	err := s.datastore.WriteAuthorizationModel(ctx, req.GetStore(), fromStorageAuthorizationModel(req.GetModel()))
+	err := s.datastore.WriteAuthorizationModel(ctx, req.GetStore(), req.GetModel())
 	if err != nil {
 		return nil, toGRPCError(err)
 	}
@@ -284,13 +288,13 @@ func (s *Server) WriteAuthorizationModel(ctx context.Context, req *storagev1.Wri
 }
 
 func (s *Server) CreateStore(ctx context.Context, req *storagev1.CreateStoreRequest) (*storagev1.CreateStoreResponse, error) {
-	store, err := s.datastore.CreateStore(ctx, fromStorageStore(req.GetStore()))
+	store, err := s.datastore.CreateStore(ctx, req.GetStore())
 	if err != nil {
 		return nil, toGRPCError(err)
 	}
 
 	return &storagev1.CreateStoreResponse{
-		Store: toStorageStore(store),
+		Store: store,
 	}, nil
 }
 
@@ -310,7 +314,7 @@ func (s *Server) GetStore(ctx context.Context, req *storagev1.GetStoreRequest) (
 	}
 
 	return &storagev1.GetStoreResponse{
-		Store: toStorageStore(store),
+		Store: store,
 	}, nil
 }
 
@@ -329,19 +333,14 @@ func (s *Server) ListStores(ctx context.Context, req *storagev1.ListStoresReques
 		return nil, toGRPCError(err)
 	}
 
-	storageStores := make([]*storagev1.Store, len(stores))
-	for i, s := range stores {
-		storageStores[i] = toStorageStore(s)
-	}
-
 	return &storagev1.ListStoresResponse{
-		Stores:            storageStores,
+		Stores:            stores,
 		ContinuationToken: continuationToken,
 	}, nil
 }
 
 func (s *Server) WriteAssertions(ctx context.Context, req *storagev1.WriteAssertionsRequest) (*storagev1.WriteAssertionsResponse, error) {
-	err := s.datastore.WriteAssertions(ctx, req.GetStore(), req.GetModelId(), fromStorageAssertions(req.GetAssertions()))
+	err := s.datastore.WriteAssertions(ctx, req.GetStore(), req.GetModelId(), req.GetAssertions())
 	if err != nil {
 		return nil, toGRPCError(err)
 	}
@@ -356,7 +355,7 @@ func (s *Server) ReadAssertions(ctx context.Context, req *storagev1.ReadAssertio
 	}
 
 	return &storagev1.ReadAssertionsResponse{
-		Assertions: toStorageAssertions(assertions),
+		Assertions: assertions,
 	}, nil
 }
 
@@ -380,7 +379,7 @@ func (s *Server) ReadChanges(ctx context.Context, req *storagev1.ReadChangesRequ
 	}
 
 	return &storagev1.ReadChangesResponse{
-		Changes:           toStorageTupleChanges(changes),
+		Changes:           changes,
 		ContinuationToken: continuationToken,
 	}, nil
 }

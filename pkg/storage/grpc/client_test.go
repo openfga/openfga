@@ -13,8 +13,8 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
+	storagev1 "github.com/openfga/api/proto/storage/v1beta1"
 	"github.com/openfga/openfga/pkg/storage"
-	storagev1 "github.com/openfga/openfga/pkg/storage/grpc/proto/storage/v1"
 	"github.com/openfga/openfga/pkg/storage/test"
 )
 

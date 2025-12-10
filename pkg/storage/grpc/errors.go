@@ -9,8 +9,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	storagev1 "github.com/openfga/api/proto/storage/v1beta1"
 	"github.com/openfga/openfga/pkg/storage"
-	storagev1 "github.com/openfga/openfga/pkg/storage/grpc/proto/storage/v1"
 )
 
 // wrappedError wraps a base error but returns a custom message.

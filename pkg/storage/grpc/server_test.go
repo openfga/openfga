@@ -11,8 +11,8 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
+	storagev1 "github.com/openfga/api/proto/storage/v1beta1"
 	"github.com/openfga/openfga/pkg/storage"
-	storagev1 "github.com/openfga/openfga/pkg/storage/grpc/proto/storage/v1"
 	"github.com/openfga/openfga/pkg/storage/memory"
 )
 
@@ -251,7 +251,7 @@ func TestServerReadStartingWithUserWithData(t *testing.T) {
 		Filter: &storagev1.ReadStartingWithUserFilter{
 			ObjectType: "document",
 			Relation:   "viewer",
-			UserFilter: []*storagev1.ObjectRelation{{Object: "user:anne"}},
+			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:anne"}},
 			ObjectIds:  []string{"1", "2"},
 		},
 		Consistency: &storagev1.ConsistencyOptions{},
@@ -310,7 +310,7 @@ func TestServerWrite(t *testing.T) {
 	t.Run("write_tuples", func(t *testing.T) {
 		req := &storagev1.WriteRequest{
 			Store: storeID,
-			Writes: []*storagev1.TupleKey{
+			Writes: []*openfgav1.TupleKey{
 				{Object: "doc:1", Relation: "viewer", User: "user:anne"},
 				{Object: "doc:2", Relation: "editor", User: "user:bob"},
 			},
@@ -350,7 +350,7 @@ func TestServerWrite(t *testing.T) {
 		// Write a tuple first
 		writeReq := &storagev1.WriteRequest{
 			Store: storeID,
-			Writes: []*storagev1.TupleKey{
+			Writes: []*openfgav1.TupleKey{
 				{Object: "doc:3", Relation: "viewer", User: "user:charlie"},
 			},
 		}
@@ -360,7 +360,7 @@ func TestServerWrite(t *testing.T) {
 		// Delete it
 		deleteReq := &storagev1.WriteRequest{
 			Store: storeID,
-			Deletes: []*storagev1.TupleKey{
+			Deletes: []*openfgav1.TupleKey{
 				{Object: "doc:3", Relation: "viewer", User: "user:charlie"},
 			},
 		}
@@ -380,7 +380,7 @@ func TestServerWrite(t *testing.T) {
 		// First write the viewer tuple
 		writeReq := &storagev1.WriteRequest{
 			Store: storeID,
-			Writes: []*storagev1.TupleKey{
+			Writes: []*openfgav1.TupleKey{
 				{Object: "doc:4", Relation: "viewer", User: "user:dave"},
 			},
 		}
@@ -390,10 +390,10 @@ func TestServerWrite(t *testing.T) {
 		// Write and delete in the same operation
 		req := &storagev1.WriteRequest{
 			Store: storeID,
-			Deletes: []*storagev1.TupleKey{
+			Deletes: []*openfgav1.TupleKey{
 				{Object: "doc:4", Relation: "viewer", User: "user:dave"},
 			},
-			Writes: []*storagev1.TupleKey{
+			Writes: []*openfgav1.TupleKey{
 				{Object: "doc:4", Relation: "editor", User: "user:dave"},
 			},
 		}
@@ -419,7 +419,7 @@ func TestServerWrite(t *testing.T) {
 		// Write a tuple
 		writeReq := &storagev1.WriteRequest{
 			Store: storeID,
-			Writes: []*storagev1.TupleKey{
+			Writes: []*openfgav1.TupleKey{
 				{Object: "doc:5", Relation: "viewer", User: "user:eve"},
 			},
 		}
@@ -429,7 +429,7 @@ func TestServerWrite(t *testing.T) {
 		// Try to write it again with ignore duplicate option
 		writeReqWithOpts := &storagev1.WriteRequest{
 			Store: storeID,
-			Writes: []*storagev1.TupleKey{
+			Writes: []*openfgav1.TupleKey{
 				{Object: "doc:5", Relation: "viewer", User: "user:eve"},
 			},
 			Options: &storagev1.TupleWriteOptions{
@@ -445,7 +445,7 @@ func TestServerWrite(t *testing.T) {
 		// Write a tuple
 		writeReq := &storagev1.WriteRequest{
 			Store: storeID,
-			Writes: []*storagev1.TupleKey{
+			Writes: []*openfgav1.TupleKey{
 				{Object: "doc:duplicate-server", Relation: "viewer", User: "user:test"},
 			},
 		}
@@ -455,7 +455,7 @@ func TestServerWrite(t *testing.T) {
 		// Try to write it again with explicit error option - should fail
 		writeReqWithOpts := &storagev1.WriteRequest{
 			Store: storeID,
-			Writes: []*storagev1.TupleKey{
+			Writes: []*openfgav1.TupleKey{
 				{Object: "doc:duplicate-server", Relation: "viewer", User: "user:test"},
 			},
 			Options: &storagev1.TupleWriteOptions{
@@ -474,7 +474,7 @@ func TestServerWrite(t *testing.T) {
 		// Write a tuple
 		writeReq := &storagev1.WriteRequest{
 			Store: storeID,
-			Writes: []*storagev1.TupleKey{
+			Writes: []*openfgav1.TupleKey{
 				{Object: "doc:duplicate-default-server", Relation: "viewer", User: "user:test"},
 			},
 		}
@@ -484,7 +484,7 @@ func TestServerWrite(t *testing.T) {
 		// Try to write it again without options - should fail (default is ERROR)
 		writeReqNoOpts := &storagev1.WriteRequest{
 			Store: storeID,
-			Writes: []*storagev1.TupleKey{
+			Writes: []*openfgav1.TupleKey{
 				{Object: "doc:duplicate-default-server", Relation: "viewer", User: "user:test"},
 			},
 		}
@@ -499,7 +499,7 @@ func TestServerWrite(t *testing.T) {
 		// Try to delete a tuple that doesn't exist with ignore option
 		req := &storagev1.WriteRequest{
 			Store: storeID,
-			Deletes: []*storagev1.TupleKey{
+			Deletes: []*openfgav1.TupleKey{
 				{Object: "doc:nonexistent", Relation: "viewer", User: "user:nobody"},
 			},
 			Options: &storagev1.TupleWriteOptions{
@@ -515,7 +515,7 @@ func TestServerWrite(t *testing.T) {
 		// Try to delete a tuple that doesn't exist with explicit error option - should fail
 		req := &storagev1.WriteRequest{
 			Store: storeID,
-			Deletes: []*storagev1.TupleKey{
+			Deletes: []*openfgav1.TupleKey{
 				{Object: "doc:nonexistent-error-server", Relation: "viewer", User: "user:nobody"},
 			},
 			Options: &storagev1.TupleWriteOptions{
@@ -533,7 +533,7 @@ func TestServerWrite(t *testing.T) {
 		// Try to delete a tuple that doesn't exist without options - should fail (default is ERROR)
 		req := &storagev1.WriteRequest{
 			Store: storeID,
-			Deletes: []*storagev1.TupleKey{
+			Deletes: []*openfgav1.TupleKey{
 				{Object: "doc:nonexistent-default-server", Relation: "viewer", User: "user:nobody"},
 			},
 		}
@@ -547,12 +547,12 @@ func TestServerWrite(t *testing.T) {
 	t.Run("write_tuples_with_conditions", func(t *testing.T) {
 		req := &storagev1.WriteRequest{
 			Store: storeID,
-			Writes: []*storagev1.TupleKey{
+			Writes: []*openfgav1.TupleKey{
 				{
 					Object:   "doc:6",
 					Relation: "viewer",
 					User:     "user:conditional",
-					Condition: &storagev1.RelationshipCondition{
+					Condition: &openfgav1.RelationshipCondition{
 						Name: "is_valid",
 					},
 				},
@@ -577,7 +577,7 @@ func TestServerWrite(t *testing.T) {
 		// Write multiple tuples
 		writeReq := &storagev1.WriteRequest{
 			Store: storeID,
-			Writes: []*storagev1.TupleKey{
+			Writes: []*openfgav1.TupleKey{
 				{Object: "doc:7", Relation: "viewer", User: "user:multi"},
 				{Object: "doc:8", Relation: "viewer", User: "user:multi"},
 				{Object: "doc:9", Relation: "viewer", User: "user:multi"},
@@ -589,7 +589,7 @@ func TestServerWrite(t *testing.T) {
 		// Delete all of them
 		deleteReq := &storagev1.WriteRequest{
 			Store: storeID,
-			Deletes: []*storagev1.TupleKey{
+			Deletes: []*openfgav1.TupleKey{
 				{Object: "doc:7", Relation: "viewer", User: "user:multi"},
 				{Object: "doc:8", Relation: "viewer", User: "user:multi"},
 				{Object: "doc:9", Relation: "viewer", User: "user:multi"},
@@ -867,7 +867,7 @@ func TestServerWriteAuthorizationModel(t *testing.T) {
 
 	req := &storagev1.WriteAuthorizationModelRequest{
 		Store: storeID,
-		Model: toStorageAuthorizationModel(model),
+		Model: model,
 	}
 
 	resp, err := server.WriteAuthorizationModel(ctx, req)
@@ -916,7 +916,7 @@ func TestServerCreateStore(t *testing.T) {
 	}
 
 	req := &storagev1.CreateStoreRequest{
-		Store: toStorageStore(store),
+		Store: store,
 	}
 
 	resp, err := server.CreateStore(ctx, req)
@@ -1270,7 +1270,7 @@ func TestServerReadChanges(t *testing.T) {
 		// Find the delete operation
 		var foundDelete bool
 		for _, change := range resp.GetChanges() {
-			if change.GetOperation() == storagev1.TupleOperation_TUPLE_OPERATION_DELETE {
+			if change.GetOperation() == openfgav1.TupleOperation_TUPLE_OPERATION_DELETE {
 				foundDelete = true
 				require.Equal(t, "document:1", change.GetTupleKey().GetObject())
 				break
@@ -1309,7 +1309,7 @@ func TestServerWriteAssertions(t *testing.T) {
 	req := &storagev1.WriteAssertionsRequest{
 		Store:      storeID,
 		ModelId:    modelID,
-		Assertions: toStorageAssertions(assertions),
+		Assertions: assertions,
 	}
 
 	resp, err := server.WriteAssertions(ctx, req)

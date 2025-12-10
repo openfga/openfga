@@ -13,8 +13,8 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
+	storagev1 "github.com/openfga/api/proto/storage/v1beta1"
 	"github.com/openfga/openfga/pkg/storage"
-	storagev1 "github.com/openfga/openfga/pkg/storage/grpc/proto/storage/v1"
 )
 
 // Client implements storage.OpenFGADatastore by making gRPC calls to a remote storage service.
@@ -152,7 +152,7 @@ func (c *Client) Read(ctx context.Context, store string, filter storage.ReadFilt
 			Conditions: filter.Conditions,
 		},
 		Consistency: &storagev1.ConsistencyOptions{
-			Preference: storagev1.ConsistencyPreference(options.Consistency.Preference),
+			Preference: openfgav1.ConsistencyPreference(options.Consistency.Preference),
 		},
 	}
 
@@ -178,7 +178,7 @@ func (c *Client) ReadPage(ctx context.Context, store string, filter storage.Read
 			From:     options.Pagination.From,
 		},
 		Consistency: &storagev1.ConsistencyOptions{
-			Preference: storagev1.ConsistencyPreference(options.Consistency.Preference),
+			Preference: openfgav1.ConsistencyPreference(options.Consistency.Preference),
 		},
 	}
 
@@ -187,7 +187,7 @@ func (c *Client) ReadPage(ctx context.Context, store string, filter storage.Read
 		return nil, "", fromGRPCError(err)
 	}
 
-	return fromStorageTuples(resp.GetTuples()), resp.GetContinuationToken(), nil
+	return resp.GetTuples(), resp.GetContinuationToken(), nil
 }
 
 func (c *Client) ReadUserTuple(ctx context.Context, store string, filter storage.ReadUserTupleFilter, options storage.ReadUserTupleOptions) (*openfgav1.Tuple, error) {
@@ -200,7 +200,7 @@ func (c *Client) ReadUserTuple(ctx context.Context, store string, filter storage
 			Conditions: filter.Conditions,
 		},
 		Consistency: &storagev1.ConsistencyOptions{
-			Preference: storagev1.ConsistencyPreference(options.Consistency.Preference),
+			Preference: openfgav1.ConsistencyPreference(options.Consistency.Preference),
 		},
 	}
 
@@ -214,7 +214,7 @@ func (c *Client) ReadUserTuple(ctx context.Context, store string, filter storage
 		return nil, storage.ErrNotFound
 	}
 
-	return fromStorageTuple(resp.GetTuple()), nil
+	return resp.GetTuple(), nil
 }
 
 func (c *Client) ReadUsersetTuples(ctx context.Context, store string, filter storage.ReadUsersetTuplesFilter, options storage.ReadUsersetTuplesOptions) (storage.TupleIterator, error) {
@@ -223,11 +223,11 @@ func (c *Client) ReadUsersetTuples(ctx context.Context, store string, filter sto
 		Filter: &storagev1.ReadUsersetTuplesFilter{
 			Object:                      filter.Object,
 			Relation:                    filter.Relation,
-			AllowedUserTypeRestrictions: toStorageRelationReferences(filter.AllowedUserTypeRestrictions),
+			AllowedUserTypeRestrictions: filter.AllowedUserTypeRestrictions,
 			Conditions:                  filter.Conditions,
 		},
 		Consistency: &storagev1.ConsistencyOptions{
-			Preference: storagev1.ConsistencyPreference(options.Consistency.Preference),
+			Preference: openfgav1.ConsistencyPreference(options.Consistency.Preference),
 		},
 	}
 
@@ -250,12 +250,12 @@ func (c *Client) ReadStartingWithUser(ctx context.Context, store string, filter 
 		Filter: &storagev1.ReadStartingWithUserFilter{
 			ObjectType: filter.ObjectType,
 			Relation:   filter.Relation,
-			UserFilter: toStorageObjectRelations(filter.UserFilter),
+			UserFilter: filter.UserFilter,
 			ObjectIds:  objectIDs,
 			Conditions: filter.Conditions,
 		},
 		Consistency: &storagev1.ConsistencyOptions{
-			Preference: storagev1.ConsistencyPreference(options.Consistency.Preference),
+			Preference: openfgav1.ConsistencyPreference(options.Consistency.Preference),
 		},
 		WithResultsSortedAscending: options.WithResultsSortedAscending,
 	}
@@ -271,10 +271,19 @@ func (c *Client) ReadStartingWithUser(ctx context.Context, store string, filter 
 func (c *Client) Write(ctx context.Context, store string, d storage.Deletes, w storage.Writes, opts ...storage.TupleWriteOption) error {
 	writeOpts := storage.NewTupleWriteOptions(opts...)
 
+	deletes := make([]*openfgav1.TupleKey, len(d))
+	for i, tk := range d {
+		deletes[i] = &openfgav1.TupleKey{
+			User:     tk.GetUser(),
+			Relation: tk.GetRelation(),
+			Object:   tk.GetObject(),
+		}
+	}
+
 	req := &storagev1.WriteRequest{
 		Store:   store,
-		Deletes: toStorageTupleKeysFromDeletes(d),
-		Writes:  toStorageTupleKeys(w),
+		Deletes: deletes,
+		Writes:  w,
 		Options: &storagev1.TupleWriteOptions{
 			OnMissingDelete:   storagev1.OnMissingDelete(writeOpts.OnMissingDelete),
 			OnDuplicateInsert: storagev1.OnDuplicateInsert(writeOpts.OnDuplicateInsert),
@@ -304,7 +313,7 @@ func (c *Client) ReadAuthorizationModel(ctx context.Context, store string, id st
 		return nil, fromGRPCError(err)
 	}
 
-	model := fromStorageAuthorizationModel(resp.GetModel())
+	model := resp.GetModel()
 
 	// Guard against improper server implementations that return nil model or model with zero types.
 	// Per the storage interface contract: "If it's not found, or if the model has zero types, it must return ErrNotFound."
@@ -329,7 +338,7 @@ func (c *Client) ReadAuthorizationModels(ctx context.Context, store string, opti
 		return nil, "", fromGRPCError(err)
 	}
 
-	return fromStorageAuthorizationModels(resp.GetModels()), resp.GetContinuationToken(), nil
+	return resp.GetModels(), resp.GetContinuationToken(), nil
 }
 
 func (c *Client) FindLatestAuthorizationModel(ctx context.Context, store string) (*openfgav1.AuthorizationModel, error) {
@@ -342,7 +351,7 @@ func (c *Client) FindLatestAuthorizationModel(ctx context.Context, store string)
 		return nil, fromGRPCError(err)
 	}
 
-	model := fromStorageAuthorizationModel(resp.GetModel())
+	model := resp.GetModel()
 
 	// Guard against improper server implementations that return nil model or model with zero types.
 	// Per the storage interface contract: "If none were ever written, it must return ErrNotFound."
@@ -360,7 +369,7 @@ func (c *Client) MaxTypesPerAuthorizationModel() int {
 func (c *Client) WriteAuthorizationModel(ctx context.Context, store string, model *openfgav1.AuthorizationModel) error {
 	req := &storagev1.WriteAuthorizationModelRequest{
 		Store: store,
-		Model: toStorageAuthorizationModel(model),
+		Model: model,
 	}
 
 	_, err := c.client.WriteAuthorizationModel(ctx, req)
@@ -373,7 +382,7 @@ func (c *Client) WriteAuthorizationModel(ctx context.Context, store string, mode
 
 func (c *Client) CreateStore(ctx context.Context, store *openfgav1.Store) (*openfgav1.Store, error) {
 	req := &storagev1.CreateStoreRequest{
-		Store: toStorageStore(store),
+		Store: store,
 	}
 
 	resp, err := c.client.CreateStore(ctx, req)
@@ -381,7 +390,7 @@ func (c *Client) CreateStore(ctx context.Context, store *openfgav1.Store) (*open
 		return nil, fromGRPCError(err)
 	}
 
-	return fromStorageStore(resp.GetStore()), nil
+	return resp.GetStore(), nil
 }
 
 func (c *Client) DeleteStore(ctx context.Context, id string) error {
@@ -407,7 +416,7 @@ func (c *Client) GetStore(ctx context.Context, id string) (*openfgav1.Store, err
 		return nil, fromGRPCError(err)
 	}
 
-	store := fromStorageStore(resp.GetStore())
+	store := resp.GetStore()
 
 	// Guard against improper server implementations that return nil store or a deleted store
 	if store == nil || store.GetDeletedAt() != nil {
@@ -432,14 +441,14 @@ func (c *Client) ListStores(ctx context.Context, options storage.ListStoresOptio
 		return nil, "", fromGRPCError(err)
 	}
 
-	return fromStorageStores(resp.GetStores()), resp.GetContinuationToken(), nil
+	return resp.GetStores(), resp.GetContinuationToken(), nil
 }
 
 func (c *Client) WriteAssertions(ctx context.Context, store, modelID string, assertions []*openfgav1.Assertion) error {
 	req := &storagev1.WriteAssertionsRequest{
 		Store:      store,
 		ModelId:    modelID,
-		Assertions: toStorageAssertions(assertions),
+		Assertions: assertions,
 	}
 
 	_, err := c.client.WriteAssertions(ctx, req)
@@ -461,7 +470,7 @@ func (c *Client) ReadAssertions(ctx context.Context, store, modelID string) ([]*
 		return nil, fromGRPCError(err)
 	}
 
-	assertions := fromStorageAssertions(resp.GetAssertions())
+	assertions := resp.GetAssertions()
 
 	// Guard against improper server implementations that return nil assertions.
 	// Per the contract: "If no assertions were ever written, it must return an empty list."
@@ -491,7 +500,7 @@ func (c *Client) ReadChanges(ctx context.Context, store string, filter storage.R
 		return nil, "", fromGRPCError(err)
 	}
 
-	changes := fromStorageTupleChanges(resp.GetChanges())
+	changes := resp.GetChanges()
 
 	// Guard against improper server implementations.
 	// Per the contract: "if no changes are found, it should return storage.ErrNotFound and an empty continuation token."

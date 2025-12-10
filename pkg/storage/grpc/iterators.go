@@ -8,8 +8,8 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
+	storagev1 "github.com/openfga/api/proto/storage/v1beta1"
 	"github.com/openfga/openfga/pkg/storage"
-	storagev1 "github.com/openfga/openfga/pkg/storage/grpc/proto/storage/v1"
 )
 
 // streamTupleIterator adapts a gRPC stream to a TupleIterator.
@@ -56,7 +56,7 @@ func (s *streamTupleIterator) Next(ctx context.Context) (*openfgav1.Tuple, error
 			}
 			return nil, fromGRPCError(err)
 		}
-		s.current = fromStorageTuple(resp.GetTuple())
+		s.current = resp.GetTuple()
 	}
 
 	// Return cached item and clear it (consume)
@@ -106,8 +106,6 @@ func (s *streamTupleIterator) Head(ctx context.Context) (*openfgav1.Tuple, error
 		return nil, fromGRPCError(err)
 	}
 
-	tuple := fromStorageTuple(resp.GetTuple())
-	s.current = tuple
-
-	return tuple, nil
+	s.current = resp.GetTuple()
+	return s.current, nil
 }
