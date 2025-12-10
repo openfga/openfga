@@ -616,29 +616,28 @@ func (r *exclusionResolver) process(ctx context.Context, snd Sender[*Edge, *Mess
 
 	for snd.Recv(&msg) {
 		r.tracker.Add(1)
-		tx := Message{
-			Value:       msg.Value,
-			ReceiptFunc: r.tracker.Dec,
-		}
+		values := r.bufferPool.Get()
+		copy(values, msg.Value)
+		size := len(msg.Value)
 		msg.Done()
-		msg = &tx
 
 		var results iter.Seq[Item]
-		var unseen []string
+		unseen := make([]string, 0, size)
 
 		messageAttrs := make([]attribute.KeyValue, 1, 1+len(attrs))
-		messageAttrs[0] = attribute.Int("items.count", len(msg.Value))
+		messageAttrs[0] = attribute.Int("items.count", size)
 		messageAttrs = append(messageAttrs, attrs...)
 
 		ctx, span := pipelineTracer.Start(ctx, "message.received", trace.WithAttributes(messageAttrs...))
 
-		for _, item := range msg.Value {
+		for _, item := range values[:size] {
 			if item.Err != nil {
 				items.Add(item)
 				continue
 			}
 			unseen = append(unseen, item.Value)
 		}
+		r.bufferPool.Put(values)
 
 		// If there are no unseen items, skip processing.
 		if len(unseen) == 0 {
@@ -652,7 +651,7 @@ func (r *exclusionResolver) process(ctx context.Context, snd Sender[*Edge, *Mess
 		}
 
 	AfterInterpret:
-		cleanup.Add(msg.Done)
+		cleanup.Add(r.tracker.Dec)
 		span.End()
 	}
 }
@@ -789,29 +788,28 @@ func (r *intersectionResolver) process(ctx context.Context, snd Sender[*Edge, *M
 
 	for snd.Recv(&msg) {
 		r.tracker.Add(1)
-		tx := Message{
-			Value:       msg.Value,
-			ReceiptFunc: r.tracker.Dec,
-		}
+		values := r.bufferPool.Get()
+		copy(values, msg.Value)
+		size := len(msg.Value)
 		msg.Done()
-		msg = &tx
 
 		var results iter.Seq[Item]
-		var unseen []string
+		unseen := make([]string, 0, size)
 
 		messageAttrs := make([]attribute.KeyValue, 1, 1+len(attrs))
-		messageAttrs[0] = attribute.Int("items.count", len(msg.Value))
+		messageAttrs[0] = attribute.Int("items.count", size)
 		messageAttrs = append(messageAttrs, attrs...)
 
 		ctx, span := pipelineTracer.Start(ctx, "message.received", trace.WithAttributes(messageAttrs...))
 
-		for _, item := range msg.Value {
+		for _, item := range values[:size] {
 			if item.Err != nil {
 				items.Add(item)
 				continue
 			}
 			unseen = append(unseen, item.Value)
 		}
+		r.bufferPool.Put(values)
 
 		// If there are no unseen items, skip processing.
 		if len(unseen) == 0 {
@@ -825,7 +823,7 @@ func (r *intersectionResolver) process(ctx context.Context, snd Sender[*Edge, *M
 		}
 
 	AfterInterpret:
-		cleanup.Add(msg.Done)
+		cleanup.Add(r.tracker.Dec)
 		span.End()
 	}
 }
