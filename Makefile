@@ -6,7 +6,7 @@
 BINARY_NAME = openfga
 BUILD_DIR ?= $(CURDIR)/dist
 GO_BIN ?= $(shell go env GOPATH)/bin
-GO_PACKAGES := $(shell go list ./... | grep -vE "vendor|pkg/storage/grpc/proto")
+GO_PACKAGES := $(shell go list ./... | grep -vE "vendor")
 
 DATASTORE ?= "in-memory"
 
@@ -47,26 +47,14 @@ $(GO_BIN)/mockgen:
 	${call print, "Installing mockgen within ${GO_BIN}"}
 	@go install -v go.uber.org/mock/mockgen@latest
 
-$(GO_BIN)/buf:
-	${call print, "Installing buf within ${GO_BIN}"}
-	@go install -v github.com/bufbuild/buf/cmd/buf@latest
-
-$(GO_BIN)/protoc-gen-go:
-	${call print, "Installing protoc-gen-go within ${GO_BIN}"}
-	@go install -v google.golang.org/protobuf/cmd/protoc-gen-go@latest
-
-$(GO_BIN)/protoc-gen-go-grpc:
-	${call print, "Installing protoc-gen-go-grpc within ${GO_BIN}"}
-	@go install -v google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
-
 $(GO_BIN)/CompileDaemon:
 	${call print, "Installing CompileDaemon within ${GO_BIN}"}
 	@go install -v github.com/githubnemo/CompileDaemon@latest
 
 $(GO_BIN)/openfga: install
 
-generate-mocks: $(GO_BIN)/mockgen $(GO_BIN)/buf $(GO_BIN)/protoc-gen-go $(GO_BIN)/protoc-gen-go-grpc ## Generate mock stubs and protobuf code
-	${call print, "Generating mock stubs and protobuf code"}
+generate-mocks: $(GO_BIN)/mockgen ## Generate mock stubs
+	${call print, "Generating mock stubs"}
 	@go generate ./...
 
 #-----------------------------------------------------------------------------------------------------------------------
