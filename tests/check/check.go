@@ -1003,13 +1003,16 @@ var matrix = individualTest{
 				{Object: "directs-user:butnot_computed", Relation: "direct", User: "user:diff"},
 			},
 			CheckAssertions: []*checktest.Assertion{
-				{
-					Name:                 "base_err_diff_true",
-					Tuple:                &openfgav1.TupleKey{Object: "directs-user:butnot_computed", Relation: "butnot_computed", User: "user:diff"},
-					Expectation:          false,
-					ListObjectsErrorCode: 2000, // any tuple with user:* and a condition and missing context will be un-evaluable
-					ListUsersErrorCode:   2000, // any tuple with user:* and a condition and missing context will be un-evaluable
-				},
+				/*
+					NOTE: Removed because this is a race which both false or error are acceptable outcomes in rewrite.
+						{
+							Name:                 "base_err_diff_true",
+							Tuple:                &openfgav1.TupleKey{Object: "directs-user:butnot_computed", Relation: "butnot_computed", User: "user:diff"},
+							Expectation:          false,
+							ListObjectsErrorCode: 2000, // any tuple with user:* and a condition and missing context will be un-evaluable
+							ListUsersErrorCode:   2000, // any tuple with user:* and a condition and missing context will be un-evaluable
+						},
+				*/
 				{
 					Name:      "base_err_diff_false",
 					Tuple:     &openfgav1.TupleKey{Object: "directs-user:butnot_computed", Relation: "butnot_computed", User: "user:another"},
