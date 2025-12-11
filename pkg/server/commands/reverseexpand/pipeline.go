@@ -342,36 +342,41 @@ func (b *Backend) query(ctx context.Context, input queryInput) iter.Seq[Item] {
 	}
 }
 
-type chunk struct {
-	Values []Item
-	Size   int
+type SeqReader[T any] struct {
+	next func() (T, bool)
+	stop func()
 }
 
-func chunker(items iter.Seq[Item], buffer []Item) iter.Seq[chunk] {
-	return func(yield func(chunk) bool) {
-		var head int
+func (r *SeqReader[T]) Read(buf []T) int {
+	var head int
 
-		for item := range items {
-			buffer[head] = item
-			head++
-
-			if head >= len(buffer) {
-				if !yield(chunk{
-					Values: buffer,
-					Size:   head,
-				}) {
-					return
-				}
-				head = 0
-			}
+	for {
+		if head >= len(buf) {
+			break
 		}
 
-		if head > 0 {
-			yield(chunk{
-				Values: buffer,
-				Size:   head,
-			})
+		value, ok := r.next()
+		if !ok {
+			r.stop()
+			break
 		}
+
+		buf[head] = value
+		head++
+	}
+	return head
+}
+
+func (r *SeqReader[T]) Close() error {
+	r.stop()
+	return nil
+}
+
+func NewSeqReader[T any](seq iter.Seq[T]) *SeqReader[T] {
+	next, stop := iter.Pull(seq)
+	return &SeqReader[T]{
+		next: next,
+		stop: stop,
 	}
 }
 
@@ -486,24 +491,36 @@ func (r *baseResolver) process(ctx context.Context, snd Sender[*Edge, *Message],
 		})
 
 		buffer := r.bufferPool.Get()
-		for i := range chunker(results, buffer) {
-			for _, lst := range listeners {
+		reader := NewSeqReader(results)
+
+		for {
+			count := reader.Read(buffer)
+
+			if count == 0 {
+				break
+			}
+
+			for i := range len(listeners) {
 				values := r.bufferPool.Get()
-				copy(values, i.Values)
-				r.tracker.Add(1)
-				msg := Message{
-					Value: values[:i.Size],
+				copy(values, buffer[:count])
+
+				r.tracker.Inc()
+				m := Message{
+					Value: values[:count],
 					ReceiptFunc: func() {
 						r.tracker.Dec()
 						r.bufferPool.Put(values)
 					},
 				}
-				if !lst.Send(&msg) {
-					msg.Done()
+
+				if !listeners[i].Send(&m) {
+					m.Done()
 				}
 			}
-			sentCount += int64(i.Size)
+			sentCount += int64(count)
+
 		}
+		reader.Close()
 		r.bufferPool.Put(buffer)
 
 		msg.Done()
@@ -716,24 +733,36 @@ func (r *exclusionResolver) Resolve(ctx context.Context, senders []Sender[*Edge,
 	var sentCount int
 
 	buffer := r.bufferPool.Get()
-	for i := range chunker(results, buffer) {
-		for _, lst := range listeners {
+	reader := NewSeqReader(results)
+
+	for {
+		count := reader.Read(buffer)
+
+		if count == 0 {
+			break
+		}
+
+		for i := range len(listeners) {
 			values := r.bufferPool.Get()
-			copy(values, i.Values)
-			r.tracker.Add(1)
-			msg := Message{
-				Value: values[:i.Size],
+			copy(values, buffer[:count])
+
+			r.tracker.Inc()
+			m := Message{
+				Value: values[:count],
 				ReceiptFunc: func() {
 					r.tracker.Dec()
 					r.bufferPool.Put(values)
 				},
 			}
-			if !lst.Send(&msg) {
-				msg.Done()
+
+			if !listeners[i].Send(&m) {
+				m.Done()
 			}
-			sentCount += i.Size
 		}
+		sentCount += count
+
 	}
+	reader.Close()
 	r.bufferPool.Put(buffer)
 
 	span.SetAttributes(attribute.Int("items.count", sentCount))
@@ -878,31 +907,43 @@ func (r *intersectionResolver) Resolve(ctx context.Context, senders []Sender[*Ed
 		output = found
 	}
 
-	itemSeq := seq.Transform(maps.Keys(output), strToItem)
+	results := seq.Transform(maps.Keys(output), strToItem)
 
-	itemSeq = seq.Flatten(seq.Sequence(errs...), itemSeq)
+	results = seq.Flatten(seq.Sequence(errs...), results)
 
 	var sentCount int
 
 	buffer := r.bufferPool.Get()
-	for i := range chunker(itemSeq, buffer) {
-		for _, lst := range listeners {
+	reader := NewSeqReader(results)
+
+	for {
+		count := reader.Read(buffer)
+
+		if count == 0 {
+			break
+		}
+
+		for i := range len(listeners) {
 			values := r.bufferPool.Get()
-			copy(values, i.Values)
-			r.tracker.Add(1)
-			msg := Message{
-				Value: values[:i.Size],
+			copy(values, buffer[:count])
+
+			r.tracker.Inc()
+			m := Message{
+				Value: values[:count],
 				ReceiptFunc: func() {
 					r.tracker.Dec()
 					r.bufferPool.Put(values)
 				},
 			}
-			if !lst.Send(&msg) {
-				msg.Done()
+
+			if !listeners[i].Send(&m) {
+				m.Done()
 			}
-			sentCount += i.Size
 		}
+		sentCount += count
+
 	}
+	reader.Close()
 	r.bufferPool.Put(buffer)
 
 	span.SetAttributes(attribute.Int("items.count", sentCount))
