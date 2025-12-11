@@ -350,10 +350,7 @@ type SeqReader[T any] struct {
 func (r *SeqReader[T]) Read(buf []T) int {
 	var head int
 
-	for {
-		if head >= len(buf) {
-			break
-		}
+	for head < len(buf) {
 
 		value, ok := r.next()
 		if !ok {
@@ -512,7 +509,6 @@ func (r *baseResolver) process(ctx context.Context, snd Sender[*Edge, *Message],
 				}
 			}
 			sentCount += int64(count)
-
 		}
 		reader.Close()
 		r.bufferPool.Put(buffer)
@@ -747,7 +743,6 @@ func (r *exclusionResolver) Resolve(ctx context.Context, senders []Sender[*Edge,
 			}
 		}
 		sentCount += count
-
 	}
 	reader.Close()
 	r.bufferPool.Put(buffer)
@@ -922,7 +917,6 @@ func (r *intersectionResolver) Resolve(ctx context.Context, senders []Sender[*Ed
 			}
 		}
 		sentCount += count
-
 	}
 	reader.Close()
 	r.bufferPool.Put(buffer)
