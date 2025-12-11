@@ -351,7 +351,6 @@ func (r *SeqReader[T]) Read(buf []T) int {
 	var head int
 
 	for head < len(buf) {
-
 		value, ok := r.next()
 		if !ok {
 			r.stop()
