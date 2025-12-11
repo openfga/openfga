@@ -342,11 +342,25 @@ func (b *Backend) query(ctx context.Context, input queryInput) iter.Seq[Item] {
 	}
 }
 
+// SeqReader is a struct that provides functionality for reading from an iter.Seq value.
+//
+// SeqReader is provided as a way to read chunks of values from an iter.Seq without needing
+// to allocate a new slice for each chunk.
 type SeqReader[T any] struct {
+	// next is the function returned by iter.Pull that provides the next available
+	// element from the iter.Seq.
 	next func() (T, bool)
+
+	// stop is the function returned by iter.Pull that signals that the iter.Seq will
+	// no longer be iterated.
 	stop func()
 }
 
+// Read is a function that fills the given buffer with elements from the internal iter.Seq value.
+// A count of total items read into the buffer is returned. The count returned will be less than
+// the size of the buffer when fewer items remain in the internal iter.Seq value. When the count
+// returned is less than the length of the buffer, the sequence is complete and subsequent calls
+// to Read will return a count of 0.
 func (r *SeqReader[T]) Read(buf []T) int {
 	var head int
 
@@ -363,11 +377,14 @@ func (r *SeqReader[T]) Read(buf []T) int {
 	return head
 }
 
+// Close is a function that indicates that the caller will not continue to read from the iter.Seq.
+// A call to Read after calling Close is considered a programming error.
 func (r *SeqReader[T]) Close() error {
 	r.stop()
 	return nil
 }
 
+// NewSeqReader is a function that constructs a new SeqReader that wraps the given iter.Seq value.
 func NewSeqReader[T any](seq iter.Seq[T]) *SeqReader[T] {
 	next, stop := iter.Pull(seq)
 	return &SeqReader[T]{
@@ -376,11 +393,21 @@ func NewSeqReader[T any](seq iter.Seq[T]) *SeqReader[T] {
 	}
 }
 
+// mmap is a struct that protects a standard library map with a mutex. All functions of mmap are
+// thead-safe map operations.
+//
+// mmap exists as an alternative to sync.Map as a datastructure that does not necessarily require
+// an allocation for each of its elements. sync.Map always requires an allocation for each element
+// inserted into it.
 type mmap[K comparable, V any] struct {
 	mu sync.Mutex
 	m  map[K]V
 }
 
+// LoadOrStore is a function that atomically checks for the existence of a givne key within the map
+// and adds the given value if the key was not found. The existing value is returned in the case
+// that the key was found in the map, or the new value is returned in the case that the key was not
+// found within the map. The returned boolean is true when the given key was found within the map.
 func (m *mmap[K, V]) LoadOrStore(key K, value V) (V, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -397,6 +424,7 @@ func (m *mmap[K, V]) LoadOrStore(key K, value V) (V, bool) {
 	return v, ok
 }
 
+// Clear is a function that removes all elements from the map.
 func (m *mmap[K, V]) Clear() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
