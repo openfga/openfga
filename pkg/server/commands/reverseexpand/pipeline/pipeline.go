@@ -342,25 +342,33 @@ func (b *Backend) query(ctx context.Context, input queryInput) iter.Seq[Item] {
 	}
 }
 
-// baseResolver is a struct that implements the `resolver` interface and acts as the standard resolver for most
-// workers. A baseResolver handles both recursive and non-recursive edges concurrently. The baseResolver's "ready"
-// status will remain `true` until all of its senders that produce input from external sources have finished, and
-// there exist no more in-flight messages for the parent worker. When recursive edges exist, the parent worker for
-// this resolver type requires its internal watchdog process to initiate a shutdown.
+// baseResolver is a struct that implements the Resolver interface and acts as the standard resolver for most
+// workers. A baseResolver handles both recursive and non-recursive edges concurrently.
 type baseResolver struct {
 	// interpreter is an `interpreter` that transforms a sender's input into output which it broadcasts to all
 	// of the parent worker's listeners.
 	interpreter interpreter
 
+	// tracker may be owned or shared with other resolvers. It is used to report messages from this resovler
+	// that are still in-flight.
 	tracker *track.Tracker
 
+	// reporter may be owned or shared with other resolvers. It is used to report on the status of the resolver.
 	reporter *track.Reporter
 
+	// bufferPool is intended to be shared with other resovlers. It is used to manage a pool of Item slices
+	// so that additional allocations can be avoided.
 	bufferPool *bufferPool
 
+	// numProcs indicates the number of goroutines to spawn for processing each sender.
 	numProcs int
 }
 
+// process is a function that reads output from a single sender, processes the output through an interpreter, and
+// then sends the interpreter's output to each listener. The sender's output is deduplicated across all process functions
+// for the same edge when the sender is for a cyclical edge because values of a cycle may be reentrant. Output from the
+// interpreter is always deduplicated across all process functions because input from two different senders may produce
+// the same output value(s).
 func (r *baseResolver) process(ctx context.Context, snd Sender[*Edge, *Message], listeners []Listener[*Edge, *Message], inputBuffer *containers.AtomicMap[string, struct{}], outputBuffer *containers.AtomicMap[string, struct{}]) int64 {
 	var sentCount int64
 
@@ -382,7 +390,7 @@ func (r *baseResolver) process(ctx context.Context, snd Sender[*Edge, *Message],
 	var msg *Message
 
 	for snd.Recv(&msg) {
-		items := make([]Item, 0, len(msg.Value))
+		errs := make([]Item, 0, len(msg.Value))
 		unseen := make([]string, 0, len(msg.Value))
 
 		messageAttrs := make([]attribute.KeyValue, 1, 1+len(attrs))
@@ -393,11 +401,13 @@ func (r *baseResolver) process(ctx context.Context, snd Sender[*Edge, *Message],
 
 		for _, item := range msg.Value {
 			if item.Err != nil {
-				items = append(items, item)
+				errs = append(errs, item)
 				continue
 			}
 
 			if inputBuffer != nil {
+				// Deduplicate the sender's output using the buffer shared by all processors
+				// of this sender.
 				if _, loaded := inputBuffer.LoadOrStore(item.Value, struct{}{}); !loaded {
 					unseen = append(unseen, item.Value)
 				}
@@ -408,16 +418,22 @@ func (r *baseResolver) process(ctx context.Context, snd Sender[*Edge, *Message],
 
 		results := r.interpreter.Interpret(ctx, edge, unseen)
 
-		results = seq.Flatten(seq.Sequence(items...), results)
+		// Combine the initial errors with the interpreted output.
+		results = seq.Flatten(seq.Sequence(errs...), results)
 
 		results = seq.Filter(results, func(item Item) bool {
 			if item.Err != nil {
 				return true
 			}
+
+			// Deduplicate the interpreted values using the buffer shared by all processors
+			// of all senders.
 			_, loaded := outputBuffer.LoadOrStore(item.Value, struct{}{})
 			return !loaded
 		})
 
+		// Grab a buffer from the pool for reading. The buffer's size
+		// is set by the bufferPool.
 		buffer := r.bufferPool.Get()
 		reader := seq.NewSeqReader(results)
 
@@ -425,41 +441,59 @@ func (r *baseResolver) process(ctx context.Context, snd Sender[*Edge, *Message],
 			count := reader.Read(buffer)
 
 			if count == 0 {
+				// No more values to read from the iter.Seq.
 				break
 			}
 
 			for i := range len(listeners) {
+				// Grab a buffer that will be specific to this message.
 				values := r.bufferPool.Get()
+				// This copy is done so that the content of the message buffer is
+				// not altered when the read buffer has new values written to it.
 				copy(values, buffer[:count])
 
+				// Increment the resolver's tracker to account for the new message.
 				r.tracker.Inc()
 				m := Message{
+					// Only slice the values in the read buffer up to what was actually read.
 					Value: values[:count],
 					ReceiptFunc: func() {
+						// Decrement the resolver's tracker because the message is no longer
+						// in-flight.
 						r.tracker.Dec()
+						// Relase the message specific buffer back into the buffer pool.
 						r.bufferPool.Put(values)
 					},
 				}
 
 				if !listeners[i].Send(&m) {
+					// If the message was not sent, we need to release the message resources.
 					m.Done()
 				}
 			}
 			sentCount += int64(count)
 		}
 		reader.Close()
+
+		// Release the read buffer back to the buffer pool.
 		r.bufferPool.Put(buffer)
 
+		// Release the received message's resources.
 		msg.Done()
 		span.End()
 	}
 	return sentCount
 }
 
+// Resolve is a function that orchestrates the processing of all sender output, broadcasting the result of that processing
+// to all listeners. The Resolve function will block until all of its non-cyclical senders have been exhausted and the status
+// of the instance's reporter is equal to `true` and the count of its tracker reaches `0`.
 func (r *baseResolver) Resolve(ctx context.Context, senders []Sender[*Edge, *Message], listeners []Listener[*Edge, *Message]) {
 	ctx, span := pipelineTracer.Start(ctx, "baseResolver.Resolve")
 	defer span.End()
 
+	// This output buffer is shared across all processors of all senders, and is used
+	// for output deduplication.
 	var outputBuffer containers.AtomicMap[string, struct{}]
 	defer outputBuffer.Clear()
 
@@ -481,6 +515,11 @@ func (r *baseResolver) Resolve(ctx context.Context, senders []Sender[*Edge, *Mes
 		}
 
 		if isCyclical {
+			// The sender's edge is either recursive or part of a tuple cycle.
+
+			// Only if the sender is for a cyclical edge do we want to deduplicate the
+			// sender's output. This buffer is shared between all processors of this
+			// sender.
 			var inputBuffer containers.AtomicMap[string, struct{}]
 
 			for range r.numProcs {
@@ -493,6 +532,7 @@ func (r *baseResolver) Resolve(ctx context.Context, senders []Sender[*Edge, *Mes
 			continue
 		}
 
+		// The sender's edge is not recursive or part of a tuple cycle.
 		for range r.numProcs {
 			wgStandard.Add(1)
 			go func() {
@@ -502,28 +542,31 @@ func (r *baseResolver) Resolve(ctx context.Context, senders []Sender[*Edge, *Mes
 		}
 	}
 
-	// All standard senders are guaranteed to end at some point, with the exception of the presence
-	// of a tuple cycle.
+	// All standard senders are guaranteed to end at some point.
 	wgStandard.Wait()
 
+	// Now that all standard senders have been exhaused, this resolver is ready
+	// to end once all other resolvers that are part of the same cycle are ready.
 	r.reporter.Report(false)
 
+	// Wait for all related resolvers' status to be set to `false`.
 	r.reporter.Wait(func(s bool) bool {
 		return !s
 	})
 
-	// Once the standard senders have all finished processing, wait until all messages have finished
-	// processing.
+	// Wait until all messages from related resolvers have finished processing.
 	r.tracker.Wait(func(i int64) bool {
 		return i < 1
 	})
 
+	// Close all listeners to release any processors that are stuck on a full
+	// listener buffer. Without this, an early termination could cause a deadlock
+	// when the listener's internal buffer remains full.
 	for _, lst := range listeners {
 		lst.Close()
 	}
 
-	// Recursive senders will process infinitely until the parent worker's watchdog goroutine kills
-	// them.
+	// Ensure that all recursive processors have ended.
 	wgRecursive.Wait()
 
 	span.SetAttributes(attribute.Int64("items.count", sentCount.Load()))
@@ -531,6 +574,7 @@ func (r *baseResolver) Resolve(ctx context.Context, senders []Sender[*Edge, *Mes
 
 type edgeHandler func(context.Context, *Edge, []string) iter.Seq[Item]
 
+// exclusionResolver is a struct that resolves senders to an exclusion operation.
 type exclusionResolver struct {
 	interpreter interpreter
 	tracker     *track.Tracker
@@ -539,6 +583,11 @@ type exclusionResolver struct {
 	numProcs    int
 }
 
+// process is a function that processes the output of a single sender through an interpreter. All output from
+// the interpreter is collected in the items Bag and a cleanup Bag is used to collect all resource cleaning functions
+// for later use by the Resolve function. As soon as a message is received from the sender, its values are swapped
+// to a buffer that is local to the current iteration, and the message resources are released immediately.
+// Messages are not sent to the listeners at this point.
 func (r *exclusionResolver) process(ctx context.Context, snd Sender[*Edge, *Message], items *containers.Bag[Item], cleanup *containers.Bag[func()]) {
 	edge := snd.Key()
 
@@ -558,13 +607,17 @@ func (r *exclusionResolver) process(ctx context.Context, snd Sender[*Edge, *Mess
 	var msg *Message
 
 	for snd.Recv(&msg) {
-		r.tracker.Add(1)
+		// Increment the tracker to account for an in-flight message.
+		r.tracker.Inc()
 		values := r.bufferPool.Get()
+		// Copy values from message to local buffer so that the message
+		// can release its buffer back to the pool.
 		copy(values, msg.Value)
 		size := len(msg.Value)
+
+		// Release message resources.
 		msg.Done()
 
-		var results iter.Seq[Item]
 		unseen := make([]string, 0, size)
 
 		messageAttrs := make([]attribute.KeyValue, 1, 1+len(attrs))
@@ -573,6 +626,8 @@ func (r *exclusionResolver) process(ctx context.Context, snd Sender[*Edge, *Mess
 
 		ctx, span := pipelineTracer.Start(ctx, "message.received", trace.WithAttributes(messageAttrs...))
 
+		// Only take the number of values that existed in the original
+		// message. Reading beyond that will corrupt pipeline state.
 		for _, item := range values[:size] {
 			if item.Err != nil {
 				items.Add(item)
@@ -580,14 +635,20 @@ func (r *exclusionResolver) process(ctx context.Context, snd Sender[*Edge, *Mess
 			}
 			unseen = append(unseen, item.Value)
 		}
+		// When returning the buffer to the pool, its length must remain
+		// unaltered, lest the chunk size no longer be respected.
 		r.bufferPool.Put(values)
 
-		results = r.interpreter.Interpret(ctx, edge, unseen)
+		results := r.interpreter.Interpret(ctx, edge, unseen)
 
 		for item := range results {
 			items.Add(item)
 		}
 
+		// Save the tracker decrementation for later execution in the Resolve
+		// function. This is critical to ensure that resolvers sharing this
+		// instance's tracker observe the appropriate count for the entirely
+		// of processing.
 		cleanup.Add(r.tracker.Dec)
 		span.End()
 	}
