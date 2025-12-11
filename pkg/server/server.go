@@ -107,10 +107,16 @@ var (
 
 	listObjectsCheckCountName = "check_count"
 
-	throttledRequestCounter = promauto.NewCounterVec(prometheus.CounterOpts{
+	dispatchThrottledRequestCounter = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: build.ProjectName,
-		Name:      "throttled_requests_count",
-		Help:      "The total number of requests that have been throttled.",
+		Name:      "dispatch_throttled_requests_count",
+		Help:      "The total number of requests that have been dispatch throttled.",
+	}, []string{"grpc_service", "grpc_method"})
+
+	datastoreThrottledRequestCounter = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: build.ProjectName,
+		Name:      "datastore_throttled_requests_count",
+		Help:      "The total number of requests that have been datastore throttled.",
 	}, []string{"grpc_service", "grpc_method"})
 
 	checkResultCounterName = "check_result_count"

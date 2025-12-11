@@ -415,10 +415,10 @@ func TestBatchCheckCommand(t *testing.T) {
 
 		require.NoError(t, err)
 		require.Len(t, result, 3)
-		// Two checks had DispatchThrottled = true, so ThrottleCount should be 2
-		require.Equal(t, uint32(2), meta.ThrottleCount)
-		// DatastoreThrottled should be false since no actual datastore throttling occurred
-		require.False(t, meta.DatastoreThrottled)
+		// Two checks had DispatchThrottled = true, so DispatchThrottleCount should be 2
+		require.Equal(t, uint32(2), meta.DispatchThrottleCount)
+		// DatastoreThrottleCount should be 0 since no actual datastore throttling occurred
+		require.Equal(t, uint32(0), meta.DatastoreThrottleCount)
 	})
 }
 

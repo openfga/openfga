@@ -102,14 +102,17 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 		methodName,
 	).Observe(dispatchCount)
 
-	var dispatchThrottled bool
-
-	if metadata.ThrottleCount > 0 {
-		dispatchThrottled = true
-		throttledRequestCounter.WithLabelValues(s.serviceName, methodName).Add(float64(metadata.ThrottleCount))
+	wasDispatchThrottled := metadata.DispatchThrottleCount > 0
+	if wasDispatchThrottled {
+		dispatchThrottledRequestCounter.WithLabelValues(s.serviceName, methodName).Add(float64(metadata.DispatchThrottleCount))
 	}
-	grpc_ctxtags.Extract(ctx).Set("request.dispatch_throttled", dispatchThrottled)
-	grpc_ctxtags.Extract(ctx).Set("request.datastore_throttled", metadata.DatastoreThrottled)
+	grpc_ctxtags.Extract(ctx).Set("request.dispatch_throttled", wasDispatchThrottled)
+
+	wasDatastoreThrottled := metadata.DatastoreThrottleCount > 0
+	if wasDatastoreThrottled {
+		datastoreThrottledRequestCounter.WithLabelValues(s.serviceName, methodName).Add(float64(metadata.DatastoreThrottleCount))
+	}
+	grpc_ctxtags.Extract(ctx).Set("request.datastore_throttled", wasDatastoreThrottled)
 
 	queryCount := float64(metadata.DatastoreQueryCount)
 	span.SetAttributes(attribute.Float64(datastoreQueryCountHistogramName, queryCount))

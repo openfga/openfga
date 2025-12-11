@@ -140,9 +140,14 @@ func (s *Server) ListUsers(
 		req.GetConsistency().String(),
 	).Observe(float64(time.Since(start).Milliseconds()))
 
-	wasRequestThrottled := resp.GetMetadata().WasThrottled.Load()
-	if wasRequestThrottled {
-		throttledRequestCounter.WithLabelValues(s.serviceName, methodName).Inc()
+	wasDispatchThrottled := resp.GetMetadata().WasDispatchThrottled.Load()
+	if wasDispatchThrottled {
+		dispatchThrottledRequestCounter.WithLabelValues(s.serviceName, methodName).Inc()
+	}
+
+	wasDatastoreThrottled := resp.GetMetadata().WasDatastoreThrottled.Load()
+	if wasDatastoreThrottled {
+		datastoreThrottledRequestCounter.WithLabelValues(s.serviceName, methodName).Inc()
 	}
 
 	return &openfgav1.ListUsersResponse{
