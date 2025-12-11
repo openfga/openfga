@@ -448,8 +448,6 @@ func (r *baseResolver) process(ctx context.Context, snd Sender[*Edge, *Message],
 	var msg *Message
 
 	for snd.Recv(&msg) {
-		var results iter.Seq[Item]
-
 		items := make([]Item, 0, len(msg.Value))
 		unseen := make([]string, 0, len(msg.Value))
 
@@ -474,11 +472,7 @@ func (r *baseResolver) process(ctx context.Context, snd Sender[*Edge, *Message],
 			unseen = append(unseen, item.Value)
 		}
 
-		results = emptySequence
-
-		if len(unseen) != 0 {
-			results = r.interpreter.Interpret(ctx, edge, unseen)
-		}
+		results := r.interpreter.Interpret(ctx, edge, unseen)
 
 		results = seq.Flatten(seq.Sequence(items...), results)
 
@@ -562,7 +556,6 @@ func (r *baseResolver) Resolve(ctx context.Context, senders []Sender[*Edge, *Mes
 					defer wgRecursive.Done()
 					sentCount.Add(r.process(ctx, snd, listeners, &inputBuffer, &outputBuffer))
 				}()
-				continue
 			}
 			continue
 		}
@@ -656,18 +649,12 @@ func (r *exclusionResolver) process(ctx context.Context, snd Sender[*Edge, *Mess
 		}
 		r.bufferPool.Put(values)
 
-		// If there are no unseen items, skip processing.
-		if len(unseen) == 0 {
-			goto AfterInterpret
-		}
-
 		results = r.interpreter.Interpret(ctx, edge, unseen)
 
 		for item := range results {
 			items.Add(item)
 		}
 
-	AfterInterpret:
 		cleanup.Add(r.tracker.Dec)
 		span.End()
 	}
@@ -840,18 +827,12 @@ func (r *intersectionResolver) process(ctx context.Context, snd Sender[*Edge, *M
 		}
 		r.bufferPool.Put(values)
 
-		// If there are no unseen items, skip processing.
-		if len(unseen) == 0 {
-			goto AfterInterpret
-		}
-
 		results = r.interpreter.Interpret(ctx, edge, unseen)
 
 		for item := range results {
 			items.Add(item)
 		}
 
-	AfterInterpret:
 		cleanup.Add(r.tracker.Dec)
 		span.End()
 	}
@@ -968,6 +949,10 @@ type omniInterpreter struct {
 }
 
 func (o *omniInterpreter) Interpret(ctx context.Context, edge *Edge, items []string) iter.Seq[Item] {
+	if len(items) == 0 {
+		return emptySequence
+	}
+
 	var results iter.Seq[Item]
 
 	if edge == nil {
