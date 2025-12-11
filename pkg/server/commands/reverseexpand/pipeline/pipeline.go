@@ -1,4 +1,4 @@
-package reverseexpand
+package pipeline
 
 import (
 	"context"
@@ -22,7 +22,7 @@ import (
 	"github.com/openfga/openfga/internal/pipe"
 	"github.com/openfga/openfga/internal/seq"
 	"github.com/openfga/openfga/internal/validation"
-	"github.com/openfga/openfga/pkg/server/commands/reverseexpand/track"
+	"github.com/openfga/openfga/pkg/server/commands/reverseexpand/pipeline/track"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
@@ -58,7 +58,7 @@ func handleIdentity(_ context.Context, _ *Edge, items []string) iter.Seq[Item] {
 	return seq.Transform(seq.Sequence(items...), strToItem)
 }
 
-func NewPipeline(backend *Backend, options ...PipelineOption) *Pipeline {
+func New(backend *Backend, options ...Option) *Pipeline {
 	p := &Pipeline{
 		backend:    backend,
 		bufferSize: 100,
@@ -74,7 +74,7 @@ func NewPipeline(backend *Backend, options ...PipelineOption) *Pipeline {
 	return p
 }
 
-func WithBufferSize(size int) PipelineOption {
+func WithBufferSize(size int) Option {
 	if size < 1 {
 		size = 1
 	}
@@ -84,7 +84,7 @@ func WithBufferSize(size int) PipelineOption {
 	}
 }
 
-func WithChunkSize(size int) PipelineOption {
+func WithChunkSize(size int) Option {
 	if size < 1 {
 		size = 1
 	}
@@ -94,7 +94,7 @@ func WithChunkSize(size int) PipelineOption {
 	}
 }
 
-func WithNumProcs(num int) PipelineOption {
+func WithNumProcs(num int) Option {
 	if num < 1 {
 		num = 1
 	}
@@ -962,7 +962,7 @@ type workerPool = map[*Node]*pipelineWorker
 // The pipeline will not begin generating values until the returned sequence is iterated over. This
 // is to prevent unnecessary work and resource accummulation in the event that the sequence is never
 // iterated.
-func (pipeline *Pipeline) Build(ctx context.Context, source Source, target Target) iter.Seq[Item] {
+func (pl *Pipeline) Build(ctx context.Context, source Source, target Target) iter.Seq[Item] {
 	ctx, span := pipelineTracer.Start(ctx, "pipeline.build")
 	defer span.End()
 
@@ -974,7 +974,7 @@ func (pipeline *Pipeline) Build(ctx context.Context, source Source, target Targe
 		source: (*Node)(source),
 		target: target,
 	}
-	pipeline.resolve(p, workers)
+	pl.resolve(p, workers)
 
 	sourceWorker, ok := workers[(*Node)(source)]
 	if !ok {
@@ -1029,17 +1029,17 @@ func (pipeline *Pipeline) Build(ctx context.Context, source Source, target Targe
 	}
 }
 
-func (pipeline *Pipeline) Source(name, relation string) (Source, bool) {
-	sourceNode, ok := pipeline.backend.Graph.GetNodeByID(name + "#" + relation)
+func (pl *Pipeline) Source(name, relation string) (Source, bool) {
+	sourceNode, ok := pl.backend.Graph.GetNodeByID(name + "#" + relation)
 	return (Source)(sourceNode), ok
 }
 
-func (pipeline *Pipeline) Target(name, identifier string) (Target, bool) {
+func (pl *Pipeline) Target(name, identifier string) (Target, bool) {
 	if identifier == "*" {
 		name += ":*"
 		identifier = ""
 	}
-	targetNode, ok := pipeline.backend.Graph.GetNodeByID(name)
+	targetNode, ok := pl.backend.Graph.GetNodeByID(name)
 
 	return Target{
 		node: targetNode,
@@ -1047,7 +1047,7 @@ func (pipeline *Pipeline) Target(name, identifier string) (Target, bool) {
 	}, ok
 }
 
-type PipelineOption func(*Pipeline)
+type Option func(*Pipeline)
 
 type path struct {
 	source     *Node
@@ -1056,7 +1056,7 @@ type path struct {
 	statusPool *track.StatusPool
 }
 
-func (pipeline *Pipeline) resolve(p path, workers workerPool) *pipelineWorker {
+func (pl *Pipeline) resolve(p path, workers workerPool) *pipelineWorker {
 	if w, ok := workers[p.source]; ok {
 		return w
 	}
@@ -1070,15 +1070,15 @@ func (pipeline *Pipeline) resolve(p path, workers workerPool) *pipelineWorker {
 	}
 
 	var w pipelineWorker
-	w.bufferSize = pipeline.bufferSize
+	w.bufferSize = pl.bufferSize
 
 	reporter := p.statusPool.Register()
 	reporter.Report(true)
 
 	omni := &omniInterpreter{
 		hndNil:           handleIdentity,
-		hndDirect:        pipeline.backend.handleDirectEdge,
-		hndTTU:           pipeline.backend.handleTTUEdge,
+		hndDirect:        pl.backend.handleDirectEdge,
+		hndTTU:           pl.backend.handleTTUEdge,
 		hndComputed:      handleIdentity,
 		hndRewrite:       handleIdentity,
 		hndDirectLogical: handleIdentity,
@@ -1095,8 +1095,8 @@ func (pipeline *Pipeline) resolve(p path, workers workerPool) *pipelineWorker {
 			interpreter: omni,
 			tracker:     p.tracker,
 			reporter:    reporter,
-			bufferPool:  pipeline.bufferPool,
-			numProcs:    pipeline.numProcs,
+			bufferPool:  pl.bufferPool,
+			numProcs:    pl.numProcs,
 		}
 	case nodeTypeOperator:
 		switch p.source.GetLabel() {
@@ -1105,24 +1105,24 @@ func (pipeline *Pipeline) resolve(p path, workers workerPool) *pipelineWorker {
 				interpreter: omni,
 				tracker:     p.tracker,
 				reporter:    reporter,
-				bufferPool:  pipeline.bufferPool,
-				numProcs:    pipeline.numProcs,
+				bufferPool:  pl.bufferPool,
+				numProcs:    pl.numProcs,
 			}
 		case weightedGraph.UnionOperator:
 			w.Resolver = &baseResolver{
 				interpreter: omni,
 				tracker:     p.tracker,
 				reporter:    reporter,
-				bufferPool:  pipeline.bufferPool,
-				numProcs:    pipeline.numProcs,
+				bufferPool:  pl.bufferPool,
+				numProcs:    pl.numProcs,
 			}
 		case weightedGraph.ExclusionOperator:
 			w.Resolver = &exclusionResolver{
 				interpreter: omni,
 				tracker:     p.tracker,
 				reporter:    reporter,
-				bufferPool:  pipeline.bufferPool,
-				numProcs:    pipeline.numProcs,
+				bufferPool:  pl.bufferPool,
+				numProcs:    pl.numProcs,
 			}
 		default:
 			panic("unsupported operator node for reverse expand worker")
@@ -1166,7 +1166,7 @@ func (pipeline *Pipeline) resolve(p path, workers workerPool) *pipelineWorker {
 		}
 	}
 
-	edges, ok := pipeline.backend.Graph.GetEdgesFromNode(p.source)
+	edges, ok := pl.backend.Graph.GetEdgesFromNode(p.source)
 	if !ok {
 		return &w
 	}
@@ -1181,7 +1181,7 @@ func (pipeline *Pipeline) resolve(p path, workers workerPool) *pipelineWorker {
 
 		nextPath.source = edge.GetTo()
 
-		to := pipeline.resolve(nextPath, workers)
+		to := pl.resolve(nextPath, workers)
 		w.Listen(to.Subscribe(edge))
 	}
 
