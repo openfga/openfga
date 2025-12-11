@@ -277,10 +277,7 @@ func insertSortedTuple(slice []*openfgav1.TupleKey, t *openfgav1.TupleKey, sortK
 		}
 	}
 
-	// Grow slice and insert at position
-	slice = append(slice, nil)
-	copy(slice[i+1:], slice[i:])
-	slice[i] = t
+	slice = slices.Insert(slice, i, t)
 
 	return slice
 }
