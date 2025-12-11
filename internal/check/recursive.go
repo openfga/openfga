@@ -263,7 +263,10 @@ func (s *Recursive) buildTupleMapperForID(ctx context.Context, req *Request, edg
 	}
 	var tIter storage.TupleIterator
 	var ctxIter storage.TupleKeyIterator
+	var kind storage.TupleMapperKind
+	var uniqueKeyFunc func(key *openfgav1.TupleKey) string
 	var err error
+
 	if recursiveType == RecursiveTypeTTU {
 		subjectType, _ := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
 		_, relation := tuple.SplitObjectRelation(edge.GetFrom().GetUniqueLabel())
@@ -276,6 +279,12 @@ func (s *Recursive) buildTupleMapperForID(ctx context.Context, req *Request, edg
 
 		if ctxTuples, ok := req.GetContextualTuplesByObjectID(id, relation, subjectType); ok {
 			ctxIter = storage.NewStaticTupleKeyIterator(ctxTuples)
+		}
+
+		kind = storage.TTUKind
+		uniqueKeyFunc = func(key *openfgav1.TupleKey) string {
+			t, _ := storage.MapTTU(key)
+			return t
 		}
 	} else {
 		userObjectType, userRelation := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
@@ -291,25 +300,15 @@ func (s *Recursive) buildTupleMapperForID(ctx context.Context, req *Request, edg
 		if ctxTuples, ok := req.GetContextualTuplesByObjectID(id, userRelation, edge.GetTo().GetUniqueLabel()); ok {
 			ctxIter = storage.NewStaticTupleKeyIterator(ctxTuples)
 		}
-	}
-	if err != nil {
-		return nil, err
-	}
 
-	var kind storage.TupleMapperKind
-	var uniqueKeyFunc func(key *openfgav1.TupleKey) string
-	if recursiveType == RecursiveTypeTTU {
-		kind = storage.TTUKind
-		uniqueKeyFunc = func(key *openfgav1.TupleKey) string {
-			t, _ := storage.MapTTU(key)
-			return t
-		}
-	} else {
 		kind = storage.UsersetKind
 		uniqueKeyFunc = func(key *openfgav1.TupleKey) string {
 			t, _ := storage.MapUserset(key)
 			return t
 		}
+	}
+	if err != nil {
+		return nil, err
 	}
 	iter := storage.NewTupleKeyIteratorFromTupleIterator(tIter)
 	if ctxIter != nil {
