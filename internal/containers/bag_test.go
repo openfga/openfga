@@ -23,7 +23,7 @@ func TestBag(t *testing.T) {
 		cmp--
 		count++
 	}
-	require.Equal(t, count, 1000)
+	require.Equal(t, 1000, count)
 }
 
 func BenchmarkBag(b *testing.B) {
