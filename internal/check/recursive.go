@@ -107,7 +107,7 @@ func (s *Recursive) execute(ctx context.Context, req *Request, edge *authzGraph.
 			}
 			if msg.Err != nil {
 				err = msg.Err
-				// if no ids from the left side were returned then return false with error, there not value to compare the right side
+				// if no ids from the left side were returned then return false with error, there are no values to compare against the right side
 				if len(idsFromUser) == 0 {
 					return &Response{Allowed: false}, err
 				}

@@ -50,9 +50,6 @@ func newBottomUpRecursive(model *modelgraph.AuthorizationModelGraph, ds storage.
 	}
 }
 
-// setOperationSetup returns a channel with a number of elements that is >= the number of children.
-// Each element is an iterator.
-// The caller must wait until the channel is closed.
 func (s *bottomUp) setWildcardIntersectionSetup(ctx context.Context, req *Request, edges []*authzGraph.WeightedAuthorizationModelEdge) (chan *iterator.Msg, error) {
 	shortcircuitIntersection := false
 
