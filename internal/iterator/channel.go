@@ -9,10 +9,10 @@ import (
 )
 
 func Drain(ch <-chan *Msg) *sync.WaitGroup {
-	if ch == nil {
-		return nil
-	}
 	wg := &sync.WaitGroup{}
+	if ch == nil {
+		return wg
+	}
 	wg.Add(1)
 	go func() {
 		for msg := range ch {
