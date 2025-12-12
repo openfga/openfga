@@ -22,7 +22,9 @@ import (
 	"github.com/openfga/openfga/pkg/server/commands"
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
+	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/telemetry"
+	"github.com/openfga/openfga/pkg/typesystem"
 )
 
 func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openfgav1.CheckResponse, error) {
@@ -206,5 +208,15 @@ func (s *Server) getCheckResolverBuilder(storeID string) *graph.CheckResolverOrd
 		}...),
 		graph.WithCachedCheckResolverOpts(s.cacheSettings.ShouldCacheCheckQueries(), checkCacheOptions...),
 		graph.WithDispatchThrottlingCheckResolverOpts(s.checkDispatchThrottlingEnabled, checkDispatchThrottlingOptions...),
+		graph.WithReverseExpandCheckResolverOpts(
+			s.featureFlagClient.Boolean(serverconfig.ExperimentalReverseExpandCheck, storeID),
+			graph.WithReverseExpandCheckResolverLogger(s.logger),
+			graph.WithReverseExpandCheckResolverResolveNodeLimit(s.resolveNodeLimit),
+			graph.WithReverseExpandCheckResolverResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
+			graph.WithReverseExpandCheckResolverTimeout(s.requestTimeout),
+			graph.WithReverseExpandCheckResolverExecutorFactory(func(ds storage.RelationshipTupleReader, ts *typesystem.TypeSystem) graph.ReverseExpandQueryExecutor {
+				return newReverseExpandAdapter(ds, ts, s.resolveNodeLimit, s.resolveNodeBreadthLimit, s.logger)
+			}),
+		),
 	}...)
 }
