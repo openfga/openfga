@@ -111,6 +111,7 @@ func (p *Pipe[T]) Send(item T) bool {
 
 func (p *Pipe[T]) Recv(t *T) bool {
 	p.mu.Lock()
+	defer p.mu.Unlock()
 
 	p.init.Do(p.initialize)
 
@@ -120,7 +121,6 @@ func (p *Pipe[T]) Recv(t *T) bool {
 	}
 
 	if p.count == 0 && p.done {
-		p.mu.Unlock()
 		return false
 	}
 
@@ -130,8 +130,6 @@ func (p *Pipe[T]) Recv(t *T) bool {
 
 	// Signal that the buffer is no longer full.
 	p.full.Signal()
-
-	p.mu.Unlock()
 
 	return true
 }
