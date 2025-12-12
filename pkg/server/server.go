@@ -46,6 +46,9 @@ const (
 	authorizationModelIDKey    = "authorization_model_id"
 
 	allowedLabel = "allowed"
+
+	throttleTypeDatastore = "datastore"
+	throttleTypeDispatch  = "dispatch"
 )
 
 var tracer = otel.Tracer("openfga/pkg/server")
@@ -107,17 +110,11 @@ var (
 
 	listObjectsCheckCountName = "check_count"
 
-	dispatchThrottledRequestCounter = promauto.NewCounterVec(prometheus.CounterOpts{
+	throttledRequestCounter = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: build.ProjectName,
-		Name:      "dispatch_throttled_requests_count",
-		Help:      "The total number of requests that have been dispatch throttled.",
-	}, []string{"grpc_service", "grpc_method"})
-
-	datastoreThrottledRequestCounter = promauto.NewCounterVec(prometheus.CounterOpts{
-		Namespace: build.ProjectName,
-		Name:      "datastore_throttled_requests_count",
-		Help:      "The total number of requests that have been datastore throttled.",
-	}, []string{"grpc_service", "grpc_method"})
+		Name:      "throttled_requests_count",
+		Help:      "The total number of requests that have been throttled.",
+	}, []string{"grpc_service", "grpc_method", "throttling_type"})
 
 	checkResultCounterName = "check_result_count"
 	checkResultCounter     = promauto.NewCounterVec(prometheus.CounterOpts{

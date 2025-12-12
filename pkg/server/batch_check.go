@@ -104,13 +104,13 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 
 	wasDispatchThrottled := metadata.DispatchThrottleCount > 0
 	if wasDispatchThrottled {
-		dispatchThrottledRequestCounter.WithLabelValues(s.serviceName, methodName).Add(float64(metadata.DispatchThrottleCount))
+		throttledRequestCounter.WithLabelValues(s.serviceName, methodName, throttleTypeDispatch).Add(float64(metadata.DispatchThrottleCount))
 	}
 	grpc_ctxtags.Extract(ctx).Set("request.dispatch_throttled", wasDispatchThrottled)
 
 	wasDatastoreThrottled := metadata.DatastoreThrottleCount > 0
 	if wasDatastoreThrottled {
-		datastoreThrottledRequestCounter.WithLabelValues(s.serviceName, methodName).Add(float64(metadata.DatastoreThrottleCount))
+		throttledRequestCounter.WithLabelValues(s.serviceName, methodName, throttleTypeDatastore).Add(float64(metadata.DatastoreThrottleCount))
 	}
 	grpc_ctxtags.Extract(ctx).Set("request.datastore_throttled", wasDatastoreThrottled)
 

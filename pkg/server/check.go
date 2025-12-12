@@ -151,12 +151,12 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		}
 
 		if dispatchThrottled {
-			dispatchThrottledRequestCounter.WithLabelValues(s.serviceName, methodName).Inc()
+			throttledRequestCounter.WithLabelValues(s.serviceName, methodName, throttleTypeDispatch).Inc()
 		}
 		grpc_ctxtags.Extract(ctx).Set("request.dispatch_throttled", dispatchThrottled)
 
 		if datastoreThrottled {
-			datastoreThrottledRequestCounter.WithLabelValues(s.serviceName, methodName).Inc()
+			throttledRequestCounter.WithLabelValues(s.serviceName, methodName, throttleTypeDatastore).Inc()
 		}
 		grpc_ctxtags.Extract(ctx).Set("request.datastore_throttled", datastoreThrottled)
 	}
@@ -166,10 +166,10 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		finalErr := commands.CheckCommandErrorToServerError(err)
 		if errors.Is(finalErr, serverErrors.ErrThrottledTimeout) {
 			if dispatchThrottled {
-				dispatchThrottledRequestCounter.WithLabelValues(s.serviceName, methodName).Inc()
+				throttledRequestCounter.WithLabelValues(s.serviceName, methodName, throttleTypeDispatch).Inc()
 			}
 			if datastoreThrottled {
-				datastoreThrottledRequestCounter.WithLabelValues(s.serviceName, methodName).Inc()
+				throttledRequestCounter.WithLabelValues(s.serviceName, methodName, throttleTypeDatastore).Inc()
 			}
 		}
 		// should we define all metrics in one place that is accessible from everywhere (including LocalChecker!)

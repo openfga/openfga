@@ -142,12 +142,12 @@ func (s *Server) ListUsers(
 
 	wasDispatchThrottled := resp.GetMetadata().WasDispatchThrottled.Load()
 	if wasDispatchThrottled {
-		dispatchThrottledRequestCounter.WithLabelValues(s.serviceName, methodName).Inc()
+		throttledRequestCounter.WithLabelValues(s.serviceName, methodName, throttleTypeDispatch).Inc()
 	}
 
 	wasDatastoreThrottled := resp.GetMetadata().WasDatastoreThrottled.Load()
 	if wasDatastoreThrottled {
-		datastoreThrottledRequestCounter.WithLabelValues(s.serviceName, methodName).Inc()
+		throttledRequestCounter.WithLabelValues(s.serviceName, methodName, throttleTypeDatastore).Inc()
 	}
 
 	return &openfgav1.ListUsersResponse{
