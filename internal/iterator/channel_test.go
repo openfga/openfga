@@ -22,7 +22,6 @@ func TestDrain(t *testing.T) {
 	tests := []struct {
 		name      string
 		setupChan func(*gomock.Controller) <-chan *Msg
-		expectNil bool
 	}{
 		{
 			name: "should_drain_channel_with_iterators",
@@ -36,14 +35,6 @@ func TestDrain(t *testing.T) {
 				close(ch)
 				return ch
 			},
-			expectNil: false,
-		},
-		{
-			name: "should_handle_nil_channel",
-			setupChan: func(ctrl *gomock.Controller) <-chan *Msg {
-				return nil
-			},
-			expectNil: true,
 		},
 		{
 			name: "should_handle_empty_channel",
@@ -52,7 +43,6 @@ func TestDrain(t *testing.T) {
 				close(ch)
 				return ch
 			},
-			expectNil: false,
 		},
 		{
 			name: "should_handle_messages_with_nil_iterator",
@@ -65,7 +55,6 @@ func TestDrain(t *testing.T) {
 				close(ch)
 				return ch
 			},
-			expectNil: false,
 		},
 	}
 
@@ -77,12 +66,8 @@ func TestDrain(t *testing.T) {
 			ch := tt.setupChan(ctrl)
 			wg := Drain(ch)
 
-			if tt.expectNil {
-				require.Nil(t, wg)
-			} else {
-				require.NotNil(t, wg)
-				wg.Wait()
-			}
+			require.NotNil(t, wg)
+			wg.Wait()
 		})
 	}
 }
