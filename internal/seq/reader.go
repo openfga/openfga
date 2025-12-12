@@ -18,9 +18,8 @@ type SeqReader[T any] struct {
 
 // Read is a function that fills the given buffer with elements from the internal iter.Seq value.
 // A count of total items read into the buffer is returned. The count returned will be less than
-// the size of the buffer when fewer items remain in the internal iter.Seq value. When the count
-// returned is less than the length of the buffer, the sequence is complete and subsequent calls
-// to Read will return a count of 0.
+// the size of the buffer when fewer items remain in the internal iter.Seq value. In this case,
+// the sequence is complete and subsequent calls to Read will return a count of 0.
 func (r *SeqReader[T]) Read(buf []T) int {
 	var head int
 
