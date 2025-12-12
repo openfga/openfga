@@ -87,10 +87,6 @@ func New(cfg Config) *Resolver {
 	return r
 }
 
-func (r *Resolver) SetStrategies(strategies map[string]Strategy) {
-	r.strategies = strategies
-}
-
 func (r *Resolver) ResolveCheck(ctx context.Context, req *Request) (*Response, error) {
 	ctx, span := tracer.Start(ctx, "ResolveCheck", trace.WithAttributes(
 		attribute.String("store_id", req.GetStoreID()),
@@ -167,6 +163,9 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, edges []
 		close(out)
 	}()
 
+	relation := req.GetTupleKey().GetRelation()
+	objectType := tuple.GetType(req.GetTupleKey().GetObject())
+	objectRelation := tuple.ToObjectRelationString(objectType, relation)
 	ids := make([]string, 0, len(edges))
 	for _, edge := range edges {
 		id := buildEdgeCacheKey(r.model.GetModelID(), req, edge)
@@ -177,6 +176,12 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, edges []
 		}
 		pool.Go(func() error {
 			res, err := r.ResolveEdge(ctx, req, edge, visited)
+			// we only need to cache the response for the edge if the edge does not belong to the request relation
+			// otherwise the subproblem should be sufficient
+			if err != nil && edge.GetRelationDefinition() != objectRelation {
+				entry := &ResponseCacheEntry{Res: res, LastModified: time.Now()}
+				r.cache.Set(id, entry, r.cacheTTL)
+			}
 			concurrency.TrySendThroughChannel(ctx, ResponseMsg{ID: id, Res: res, Err: err}, out)
 			return nil
 		})
@@ -196,7 +201,6 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, edges []
 			if msg.Res.GetAllowed() {
 				// Short-circuit: In a union, if any branch returns true, we can immediately return.
 				entry := &ResponseCacheEntry{Res: msg.Res, LastModified: time.Now()}
-				r.cache.Set(msg.ID, entry, r.cacheTTL)
 				r.cache.Set(req.GetCacheKey(), entry, r.cacheTTL)
 				return msg.Res, nil
 			}
@@ -208,9 +212,6 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, edges []
 	}
 	res := &Response{Allowed: false}
 	entry := &ResponseCacheEntry{Res: res, LastModified: time.Now()}
-	for _, id := range ids {
-		r.cache.Set(id, entry, r.cacheTTL)
-	}
 	r.cache.Set(req.GetCacheKey(), entry, r.cacheTTL)
 	return res, nil
 }
@@ -388,6 +389,7 @@ func (r *Resolver) ResolveIntersection(ctx context.Context, req *Request, node *
 	ctx, cancel := context.WithCancel(ctx)
 	out := make(chan ResponseMsg, len(edges))
 
+	// errors will always be sent to the out channel
 	var pool errgroup.Group
 	pool.SetLimit(r.concurrencyLimit)
 	defer func() {
