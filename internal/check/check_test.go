@@ -279,6 +279,8 @@ func TestResolveUnionEdges(t *testing.T) {
 		mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
 			Return(nil, expectedErr).MinTimes(1).MaxTimes(2)
 
+		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
@@ -705,6 +707,7 @@ func TestResolveIntersection(t *testing.T) {
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
 		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
+		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
