@@ -184,7 +184,6 @@ func NewListUsersQuery(ds storage.RelationshipTupleReader, contextualTuples []*o
 	l.datastore = storagewrappers.NewRequestStorageWrapper(ds, contextualTuples, &storagewrappers.Operation{
 		Method:      apimethod.ListUsers,
 		Concurrency: l.maxConcurrentReads,
-		// TODO SAAD: throttling??
 	})
 
 	return l
