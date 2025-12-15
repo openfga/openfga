@@ -230,7 +230,6 @@ func (s *Recursive) recursiveMatchResolver(ctx context.Context, req *Request, ed
 		concurrency.TrySendThroughChannel(ctx, ResponseMsg{Err: err}, out)
 		return
 	}
-
 	defer iter.Stop()
 	for {
 		t, err := iter.Next(ctx)
@@ -242,15 +241,16 @@ func (s *Recursive) recursiveMatchResolver(ctx context.Context, req *Request, ed
 			return
 		}
 		if _, exists := idsFromUser[t]; exists {
-			concurrency.TrySendThroughChannel(ctx, ResponseMsg{Res: &Response{
-				Allowed: true,
-			}}, out)
+			concurrency.TrySendThroughChannel(ctx, ResponseMsg{Res: &Response{Allowed: true}}, out)
 			return // cancel will be propagated to the remaining goroutines
 		}
-		pool.Go(func() error {
+		fn := func() error {
 			s.recursiveMatchResolver(ctx, req, edge, recursiveType, pool, idsFromUser, visitedIds, t, out)
 			return nil
-		})
+		}
+		if !pool.TryGo(fn) {
+			_ = fn()
+		}
 	}
 }
 
