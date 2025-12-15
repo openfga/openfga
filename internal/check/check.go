@@ -23,6 +23,7 @@ import (
 	"github.com/openfga/openfga/internal/planner"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
@@ -90,7 +91,8 @@ func New(cfg Config) *Resolver {
 func (r *Resolver) ResolveCheck(ctx context.Context, req *Request) (*Response, error) {
 	ctx, span := tracer.Start(ctx, "ResolveCheck", trace.WithAttributes(
 		attribute.String("store_id", req.GetStoreID()),
-		attribute.String("tuple_key", tuple.TupleKeyWithConditionToString(req.GetTupleKey())),
+		attribute.String("tuple_key", req.GetTupleString()),
+		attribute.Bool("allowed", false),
 	))
 	defer span.End()
 
@@ -112,7 +114,16 @@ func (r *Resolver) ResolveCheck(ctx context.Context, req *Request) (*Response, e
 		return &Response{Allowed: false}, nil
 	}
 
-	return r.ResolveUnion(ctx, req, node, nil)
+	res, err := r.ResolveUnion(ctx, req, node, nil)
+	if err != nil {
+		telemetry.TraceError(span, err)
+		return nil, err
+	}
+	if res.GetAllowed() {
+		span.SetAttributes(attribute.Bool("allowed", true))
+	}
+
+	return res, nil
 }
 
 func (r *Resolver) isCached(consistency openfgav1.ConsistencyPreference, key string) (*Response, bool) {
@@ -234,14 +245,14 @@ func (r *Resolver) ResolveUnion(ctx context.Context, req *Request, node *authzGr
 	// flatten the node to get all terminal edges to avoid unnecessary goroutines
 	terminalEdges, err := r.model.FlattenNode(node, req.GetUserType(), req.IsTypedWildcard(), false)
 	if err != nil {
-		return nil, ErrPanicRequest
+		return nil, errors.Join(ErrPanicRequest, err)
 	}
 
 	return r.ResolveUnionEdges(ctx, req, terminalEdges, visited)
 }
 
-func (r *Resolver) executeStrategy(selector planner.Selector, strategy *planner.PlanConfig,
-	fn func() (*Response, error)) (*Response, error) {
+func (r *Resolver) executeStrategy(ctx context.Context, selector planner.Selector, strategy *planner.PlanConfig, fn func() (*Response, error)) (*Response, error) {
+	span := trace.SpanFromContext(ctx)
 	start := time.Now()
 	res, err := fn()
 	if err != nil {
@@ -249,14 +260,27 @@ func (r *Resolver) executeStrategy(selector planner.Selector, strategy *planner.
 		if errors.Is(err, context.DeadlineExceeded) {
 			selector.UpdateStats(strategy, r.upstreamTimeout)
 		}
+		telemetry.TraceError(span, err)
 		return nil, err
 	}
 	selector.UpdateStats(strategy, time.Since(start))
+	if res.GetAllowed() {
+		span.SetAttributes(attribute.Bool("allowed", true))
+	}
 	return res, nil
 }
 
 func (r *Resolver) resolveRecursiveUserset(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge, visited *sync.Map, canApplyOptimization bool) (*Response, error) {
 	userObjectType, userRelation := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
+
+	ctx, span := tracer.Start(ctx, "resolveRecursiveUserset",
+		trace.WithAttributes(
+			attribute.String("tuple_key", req.GetTupleString()),
+			attribute.String("strategy", "default"),
+			attribute.Bool("allowed", false),
+		),
+	)
+	defer span.End()
 
 	tIter, err := r.datastore.ReadUsersetTuples(ctx, req.GetStoreID(), storage.ReadUsersetTuplesFilter{
 		Object:   req.GetTupleKey().GetObject(),
@@ -274,7 +298,15 @@ func (r *Resolver) resolveRecursiveUserset(ctx context.Context, req *Request, ed
 
 	iter := r.buildIterator(ctx, req, tIter, edge.GetConditions(), userRelation, edge.GetTo().GetUniqueLabel(), visited)
 	if !canApplyOptimization {
-		return r.strategies[DefaultStrategyName].Userset(ctx, req, edge, iter, visited)
+		res, err := r.strategies[DefaultStrategyName].Userset(ctx, req, edge, iter, visited)
+		if err != nil {
+			telemetry.TraceError(span, err)
+			return nil, err
+		}
+		if res.GetAllowed() {
+			span.SetAttributes(attribute.Bool("allowed", true))
+		}
+		return res, nil
 	}
 	possibleStrategies := map[string]*planner.PlanConfig{
 		DefaultStrategyName:   DefaultRecursivePlan,
@@ -283,19 +315,30 @@ func (r *Resolver) resolveRecursiveUserset(ctx context.Context, req *Request, ed
 
 	keyPlan := r.planner.GetPlanSelector(createRecursiveUsersetPlanKey(req, edge.GetTo().GetUniqueLabel()))
 	strategy := keyPlan.Select(possibleStrategies)
-
-	return r.executeStrategy(keyPlan, strategy, func() (*Response, error) {
+	span.SetAttributes(attribute.Bool("allowed", true))
+	return r.executeStrategy(ctx, keyPlan, strategy, func() (*Response, error) {
 		return r.strategies[strategy.Name].Userset(ctx, req, edge, iter, visited)
 	})
 }
 
 func (r *Resolver) resolveRecursiveTTU(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge, visited *sync.Map, canApplyOptimization bool) (*Response, error) {
 	_, tuplesetRelation := tuple.SplitObjectRelation(edge.GetTuplesetRelation())
-	subjectType, _ := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
+	subjectType, computedRelation := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
+
+	ctx, span := tracer.Start(ctx, "resolveRecursiveTTU",
+		trace.WithAttributes(
+			attribute.String("tuple_key", req.GetTupleString()),
+			attribute.String("tupleset_relation", tuple.ToObjectRelationString(req.GetObjectType(), tuplesetRelation)),
+			attribute.String("computed_relation", computedRelation),
+			attribute.String("strategy", "default"),
+			attribute.Bool("allowed", false),
+		),
+	)
+	defer span.End()
 
 	conditionEdge, err := r.model.GetDirectEdgeFromNodeForUserType(edge.GetTuplesetRelation(), subjectType)
 	if err != nil {
-		return nil, ErrPanicRequest
+		return nil, errors.Join(ErrPanicRequest, err)
 	}
 
 	tIter, err := r.datastore.Read(
@@ -310,6 +353,7 @@ func (r *Resolver) resolveRecursiveTTU(ctx context.Context, req *Request, edge *
 		storage.ReadOptions{Consistency: storage.ConsistencyOptions{Preference: req.GetConsistency()}},
 	)
 	if err != nil {
+		telemetry.TraceError(span, err)
 		return nil, err
 	}
 
@@ -317,7 +361,15 @@ func (r *Resolver) resolveRecursiveTTU(ctx context.Context, req *Request, edge *
 	iter := r.buildIterator(ctx, req, tIter, conditionEdge.GetConditions(), tuplesetRelation, subjectType, visited)
 
 	if !canApplyOptimization {
-		return r.strategies[DefaultStrategyName].TTU(ctx, req, edge, iter, visited)
+		res, err := r.strategies[DefaultStrategyName].TTU(ctx, req, edge, iter, visited)
+		if err != nil {
+			telemetry.TraceError(span, err)
+			return nil, err
+		}
+		if res.GetAllowed() {
+			span.SetAttributes(attribute.Bool("allowed", true))
+		}
+		return res, nil
 	}
 	possibleStrategies := map[string]*planner.PlanConfig{
 		DefaultStrategyName:   DefaultRecursivePlan,
@@ -326,8 +378,8 @@ func (r *Resolver) resolveRecursiveTTU(ctx context.Context, req *Request, edge *
 
 	keyPlan := r.planner.GetPlanSelector(createRecursiveTTUPlanKey(req, edge.GetRecursiveRelation()))
 	strategy := keyPlan.Select(possibleStrategies)
-
-	return r.executeStrategy(keyPlan, strategy, func() (*Response, error) {
+	span.SetAttributes(attribute.String("strategy", strategy.Name))
+	return r.executeStrategy(ctx, keyPlan, strategy, func() (*Response, error) {
 		return r.strategies[strategy.Name].TTU(ctx, req, edge, iter, visited)
 	})
 }
@@ -335,7 +387,7 @@ func (r *Resolver) resolveRecursiveTTU(ctx context.Context, req *Request, edge *
 func (r *Resolver) ResolveRecursive(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge, visited *sync.Map, canApplyOptimization bool) (*Response, error) {
 	nonRecursiveEdges, err := r.model.FlattenNode(edge.GetTo(), req.GetUserType(), req.IsTypedWildcard(), true)
 	if err != nil {
-		return nil, ErrPanicRequest
+		return nil, errors.Join(ErrPanicRequest, err)
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -603,7 +655,7 @@ func (r *Resolver) ResolveRewrite(ctx context.Context, req *Request, node *authz
 func (r *Resolver) specificType(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge) (*Response, error) {
 	ctx, span := tracer.Start(ctx, "specificType",
 		trace.WithAttributes(
-			attribute.String("tuple_key", tuple.TupleKeyWithConditionToString(req.GetTupleKey())),
+			attribute.String("tuple_key", req.GetTupleString()),
 			attribute.Bool("allowed", false),
 		),
 	)
@@ -631,6 +683,7 @@ func (r *Resolver) specificType(ctx context.Context, req *Request, edge *authzGr
 			if errors.Is(err, storage.ErrNotFound) {
 				return &Response{Allowed: false}, nil
 			}
+			telemetry.TraceError(span, err)
 			return nil, err
 		}
 		t = ut.GetKey()
@@ -638,6 +691,7 @@ func (r *Resolver) specificType(ctx context.Context, req *Request, edge *authzGr
 
 	allowed, err := evaluateCondition(ctx, r.model, edge.GetConditions(), t, req.GetContext())
 	if err != nil {
+		telemetry.TraceError(span, err)
 		return nil, err
 	}
 	if allowed {
@@ -649,7 +703,7 @@ func (r *Resolver) specificType(ctx context.Context, req *Request, edge *authzGr
 func (r *Resolver) specificTypeWildcard(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge) (*Response, error) {
 	ctx, span := tracer.Start(ctx, "specificTypeWildcard",
 		trace.WithAttributes(
-			attribute.String("tuple_key", tuple.TupleKeyWithConditionToString(req.GetTupleKey())),
+			attribute.String("tuple_key", req.GetTupleString()),
 			attribute.Bool("allowed", false),
 		),
 	)
@@ -680,6 +734,7 @@ func (r *Resolver) specificTypeWildcard(ctx context.Context, req *Request, edge 
 			},
 		})
 		if err != nil {
+			telemetry.TraceError(span, err)
 			return nil, err
 		}
 
@@ -692,11 +747,13 @@ func (r *Resolver) specificTypeWildcard(ctx context.Context, req *Request, edge 
 		if errors.Is(err, storage.ErrIteratorDone) {
 			return &Response{Allowed: false}, nil
 		}
+		telemetry.TraceError(span, err)
 		return nil, err
 	}
 
 	allowed, err := evaluateCondition(ctx, r.model, edge.GetConditions(), t, req.GetContext())
 	if err != nil {
+		telemetry.TraceError(span, err)
 		return nil, err
 	}
 	if allowed {
@@ -708,7 +765,8 @@ func (r *Resolver) specificTypeWildcard(ctx context.Context, req *Request, edge 
 func (r *Resolver) specificTypeAndRelation(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge, visited *sync.Map) (*Response, error) {
 	ctx, span := tracer.Start(ctx, "specificTypeAndRelation",
 		trace.WithAttributes(
-			attribute.String("tuple_key", tuple.TupleKeyWithConditionToString(req.GetTupleKey())),
+			attribute.String("tuple_key", req.GetTupleString()),
+			attribute.String("strategy", "default"),
 			attribute.Bool("allowed", false),
 		),
 	)
@@ -742,6 +800,7 @@ func (r *Resolver) specificTypeAndRelation(ctx context.Context, req *Request, ed
 		},
 	})
 	if err != nil {
+		telemetry.TraceError(span, err)
 		return nil, err
 	}
 	defer tIter.Stop()
@@ -749,7 +808,15 @@ func (r *Resolver) specificTypeAndRelation(ctx context.Context, req *Request, ed
 	iter := r.buildIterator(ctx, req, tIter, edge.GetConditions(), relation, edge.GetTo().GetUniqueLabel(), visited)
 	// when the request usertype is a userset, then only available strategy at the moment is default strategy
 	if tuple.IsObjectRelation(req.GetTupleKey().GetUser()) {
-		return r.strategies[DefaultStrategyName].Userset(ctx, req, edge, iter, visited)
+		res, err := r.strategies[DefaultStrategyName].Userset(ctx, req, edge, iter, visited)
+		if err != nil {
+			telemetry.TraceError(span, err)
+			return nil, err
+		}
+		if res.GetAllowed() {
+			span.SetAttributes(attribute.Bool("allowed", true))
+		}
+		return res, nil
 	}
 
 	possibleStrategies := map[string]*planner.PlanConfig{
@@ -763,7 +830,8 @@ func (r *Resolver) specificTypeAndRelation(ctx context.Context, req *Request, ed
 	usersetKey := createUsersetPlanKey(req, edge.GetTo().GetUniqueLabel())
 	keyPlan := r.planner.GetPlanSelector(usersetKey)
 	strategy := keyPlan.Select(possibleStrategies)
-	return r.executeStrategy(keyPlan, strategy, func() (*Response, error) {
+	span.SetAttributes(attribute.String("strategy", strategy.Name))
+	return r.executeStrategy(ctx, keyPlan, strategy, func() (*Response, error) {
 		return r.strategies[strategy.Name].Userset(ctx, req, edge, iter, visited)
 	})
 }
@@ -774,7 +842,7 @@ func (r *Resolver) ttu(ctx context.Context, req *Request, edge *authzGraph.Weigh
 
 	ctx, span := tracer.Start(ctx, "ttu",
 		trace.WithAttributes(
-			attribute.String("tuple_key", tuple.TupleKeyWithConditionToString(req.GetTupleKey())),
+			attribute.String("tuple_key", req.GetTupleString()),
 			attribute.String("tupleset_relation", tuple.ToObjectRelationString(req.GetObjectType(), tuplesetRelation)),
 			attribute.String("computed_relation", computedRelation),
 			attribute.Bool("allowed", false),
@@ -786,7 +854,7 @@ func (r *Resolver) ttu(ctx context.Context, req *Request, edge *authzGraph.Weigh
 	// the graph is already deduplicated by the conditions and combined in one unique edge for the same tupleset
 	tuplesetEdge, err := r.model.GetDirectEdgeFromNodeForUserType(edge.GetTuplesetRelation(), subjectType)
 	if err != nil {
-		return nil, ErrPanicRequest
+		return nil, errors.Join(ErrPanicRequest, err)
 	}
 
 	tIter, err := r.datastore.Read(
@@ -809,7 +877,15 @@ func (r *Resolver) ttu(ctx context.Context, req *Request, edge *authzGraph.Weigh
 	iter := r.buildIterator(ctx, req, tIter, tuplesetEdge.GetConditions(), tuplesetRelation, subjectType, visited)
 
 	if tuple.IsObjectRelation(req.GetTupleKey().GetUser()) {
-		return r.strategies[DefaultStrategyName].TTU(ctx, req, edge, iter, visited)
+		res, err := r.strategies[DefaultStrategyName].TTU(ctx, req, edge, iter, visited)
+		if err != nil {
+			telemetry.TraceError(span, err)
+			return nil, err
+		}
+		if res.GetAllowed() {
+			span.SetAttributes(attribute.Bool("allowed", true))
+		}
+		return res, nil
 	}
 
 	possibleStrategies := map[string]*planner.PlanConfig{
@@ -823,7 +899,8 @@ func (r *Resolver) ttu(ctx context.Context, req *Request, edge *authzGraph.Weigh
 	planKey := createTTUPlanKey(req, tuplesetRelation, computedRelation)
 	keyPlan := r.planner.GetPlanSelector(planKey)
 	strategy := keyPlan.Select(possibleStrategies)
-	return r.executeStrategy(keyPlan, strategy, func() (*Response, error) {
+	span.SetAttributes(attribute.String("strategy", strategy.Name))
+	return r.executeStrategy(ctx, keyPlan, strategy, func() (*Response, error) {
 		return r.strategies[strategy.Name].TTU(ctx, req, edge, iter, visited)
 	})
 }

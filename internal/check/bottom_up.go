@@ -189,7 +189,6 @@ func (s *bottomUp) specificType(ctx context.Context, req *Request, edge *authzGr
 		return nil, err
 	}
 
-
 	iter := s.buildIterator(ctx, req, edge, tIter, req.GetTupleKey().GetUser())
 	iterChan := make(chan *iterator.Msg, 1)
 	if !concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Iter: iter}, iterChan) {
@@ -228,10 +227,10 @@ func (s *bottomUp) specificTypeWildcard(ctx context.Context, req *Request, edge 
 	return iterChan, nil
 }
 
-func (s *bottomUp) buildIterator(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge, i storage.TupleIterator, userId string) storage.TupleMapper {
+func (s *bottomUp) buildIterator(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge, i storage.TupleIterator, userID string) storage.TupleMapper {
 	iter := storage.NewTupleKeyIteratorFromTupleIterator(i)
 	objectType, relation := tuple.SplitObjectRelation(edge.GetRelationDefinition())
-	if ctxTuples, ok := req.GetContextualTuplesByUserID(userId, relation, objectType); ok {
+	if ctxTuples, ok := req.GetContextualTuplesByUserID(userID, relation, objectType); ok {
 		iter = iterator.Merge(iter, storage.NewStaticTupleKeyIterator(ctxTuples), func(a, b *openfgav1.TupleKey) int {
 			if a.GetObject() < b.GetObject() {
 				return -1

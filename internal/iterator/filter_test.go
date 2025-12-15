@@ -16,7 +16,7 @@ import (
 )
 
 func TestFilter_Conditions(t *testing.T) {
-	conditionFilter := func(_ OperationType, tupleKey *openfgav1.TupleKey) (bool, error) {
+	conditionFilter := func(tupleKey *openfgav1.TupleKey) (bool, error) {
 		switch tupleKey.GetCondition().GetName() {
 		case "condition1":
 			return true, nil
@@ -162,7 +162,7 @@ func TestFilter_Conditions(t *testing.T) {
 func TestFilter_Uniqueness(t *testing.T) {
 	seenTuples := &sync.Map{}
 	//nolint:unparam
-	uniqueFilter := func(_ OperationType, tupleKey *openfgav1.TupleKey) (bool, error) {
+	uniqueFilter := func(tupleKey *openfgav1.TupleKey) (bool, error) {
 		key := tuple.TupleKeyToString(tupleKey)
 		if _, exists := seenTuples.LoadOrStore(key, struct{}{}); exists {
 			return false, nil
@@ -201,7 +201,7 @@ func TestFilter_Uniqueness(t *testing.T) {
 
 	t.Run("all_unique", func(t *testing.T) {
 		seenTuples := &sync.Map{}
-		uniqueFilter := func(_ OperationType, tupleKey *openfgav1.TupleKey) (bool, error) {
+		uniqueFilter := func(tupleKey *openfgav1.TupleKey) (bool, error) {
 			key := tuple.TupleKeyToString(tupleKey)
 			if _, exists := seenTuples.LoadOrStore(key, struct{}{}); exists {
 				return false, nil
@@ -238,12 +238,11 @@ func TestFilter_Uniqueness(t *testing.T) {
 
 func TestFilter_MultipleFilters(t *testing.T) {
 	t.Run("both_filters_applied", func(t *testing.T) {
-		conditionFilter := func(_ OperationType, tupleKey *openfgav1.TupleKey) (bool, error) {
+		conditionFilter := func(tupleKey *openfgav1.TupleKey) (bool, error) {
 			return tupleKey.GetCondition().GetName() == "condition1", nil
 		}
 		seenTuples := &sync.Map{}
-		//nolint:unparam
-		uniqueFilter := func(_ OperationType, tupleKey *openfgav1.TupleKey) (bool, error) {
+		uniqueFilter := func(tupleKey *openfgav1.TupleKey) (bool, error) {
 			key := tuple.TupleKeyToString(tupleKey)
 			if _, exists := seenTuples.LoadOrStore(key, struct{}{}); exists {
 				return false, nil

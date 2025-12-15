@@ -38,6 +38,7 @@ type Request struct {
 	objectType          string
 	userType            string
 	userWildcard        bool
+	tupleString         string
 	ctxTuplesByUserID   map[string][]*openfgav1.TupleKey
 	ctxTuplesByObjectID map[string][]*openfgav1.TupleKey
 }
@@ -145,6 +146,7 @@ func NewRequest(p RequestParams) (*Request, error) {
 		Context:              p.Context,
 		Consistency:          p.Consistency,
 
+		tupleString:  tuple.TupleKeyWithConditionToString(p.TupleKey),
 		objectType:   tuple.GetType(p.TupleKey.GetObject()),
 		userType:     userType,
 		userWildcard: tuple.IsTypedWildcard(p.TupleKey.GetUser()),
@@ -367,6 +369,13 @@ func (r *Request) GetUserType() string {
 	return r.userType
 }
 
+func (r *Request) GetTupleString() string {
+	if r == nil {
+		return ""
+	}
+	return r.tupleString
+}
+
 func (r *Request) cloneWithTupleKey(tk *openfgav1.TupleKey) *Request {
 	req := &Request{
 		StoreID:              r.GetStoreID(),
@@ -381,6 +390,7 @@ func (r *Request) cloneWithTupleKey(tk *openfgav1.TupleKey) *Request {
 	req.ctxTuplesByObjectID = r.ctxTuplesByObjectID
 	req.ctxTuplesByUserID = r.ctxTuplesByUserID
 	req.objectType = tuple.GetType(tk.GetObject())
+	req.tupleString = tuple.TupleKeyWithConditionToString(tk)
 
 	userType := tuple.GetType(tk.GetUser())
 	if tuple.IsObjectRelation(tk.GetUser()) {
