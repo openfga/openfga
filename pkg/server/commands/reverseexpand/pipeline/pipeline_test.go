@@ -32,12 +32,20 @@ func TestPipelineShutdown(t *testing.T) {
 
 	type org
 	  relations
-	    define member: [user] or member from parent
+	  	define reader: [user]
+	  	define writer: [user]
+	  	define blocked: [user]
+	  	define moderator: (reader and writer) but not blocked
+	    define member: moderator or member from parent
 	    define parent: [team]
 
 	type team
 	  relations
-	    define member: [user] or member from parent
+	  	define reader: [user]
+	  	define writer: [user]
+	  	define blocked: [user]
+	  	define moderator: (reader and writer) but not blocked
+	    define member: moderator or member from parent
 	    define parent: [org]
 
 	type document
@@ -66,9 +74,18 @@ func TestPipelineShutdown(t *testing.T) {
 		tuples = append(tuples, fmt.Sprintf("%s#parent@%s", child, parent))
 		documents = append(documents, fmt.Sprintf("document:%d", i))
 		tuples = append(tuples, fmt.Sprintf("document:%d#viewer@%s#member", i, child))
+
+		for j := range 20 {
+			tuples = append(
+				tuples,
+				fmt.Sprintf("%s#reader@user:%d", child, j),
+				fmt.Sprintf("%s#writer@user:%d", child, j),
+				fmt.Sprintf("%s#blocked@user:%d", child, j),
+			)
+		}
 	}
 
-	tuples = append(tuples, fmt.Sprintf("%s#member@%s", parent, user))
+	tuples = append(tuples, fmt.Sprintf("%s#reader@%s", parent, user), fmt.Sprintf("%s#writer@%s", parent, user))
 
 	slices.Reverse(documents)
 
@@ -107,6 +124,23 @@ func TestPipelineShutdown(t *testing.T) {
 	if !ok {
 		panic("no such source")
 	}
+
+	t.Run("Correctness", func(t *testing.T) {
+		defer goleak.VerifyNone(t)
+
+		seq := pl.Build(context.Background(), source, target)
+
+		expected := make([]string, nestLevel)
+		for i := range nestLevel {
+			expected[i] = "document:" + strconv.Itoa(i)
+		}
+
+		actual := make([]string, 0, nestLevel)
+		for s := range seq {
+			actual = append(actual, s.Value)
+		}
+		require.ElementsMatch(t, expected, actual)
+	})
 
 	t.Run("NoAbandon", func(t *testing.T) {
 		defer goleak.VerifyNone(t)
