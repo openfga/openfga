@@ -157,10 +157,14 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 			).Observe(float64(endTime))
 		}
 
-		if dispatchThrottled || datastoreThrottled {
-			throttledRequestCounter.WithLabelValues(s.serviceName, methodName).Inc()
+		if dispatchThrottled {
+			throttledRequestCounter.WithLabelValues(s.serviceName, methodName, throttleTypeDispatch).Inc()
 		}
 		grpc_ctxtags.Extract(ctx).Set("request.dispatch_throttled", dispatchThrottled)
+
+		if datastoreThrottled {
+			throttledRequestCounter.WithLabelValues(s.serviceName, methodName, throttleTypeDatastore).Inc()
+		}
 		grpc_ctxtags.Extract(ctx).Set("request.datastore_throttled", datastoreThrottled)
 	}
 
@@ -168,7 +172,12 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		telemetry.TraceError(span, err)
 		finalErr := commands.CheckCommandErrorToServerError(err)
 		if errors.Is(finalErr, serverErrors.ErrThrottledTimeout) {
-			throttledRequestCounter.WithLabelValues(s.serviceName, methodName).Inc()
+			if dispatchThrottled {
+				throttledRequestCounter.WithLabelValues(s.serviceName, methodName, throttleTypeDispatch).Inc()
+			}
+			if datastoreThrottled {
+				throttledRequestCounter.WithLabelValues(s.serviceName, methodName, throttleTypeDatastore).Inc()
+			}
 		}
 		// should we define all metrics in one place that is accessible from everywhere (including LocalChecker!)
 		// and add a wrapper helper that automatically injects the service name tag?

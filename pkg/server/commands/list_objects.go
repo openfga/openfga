@@ -29,6 +29,7 @@ import (
 	"github.com/openfga/openfga/pkg/featureflags"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/server/commands/reverseexpand"
+	"github.com/openfga/openfga/pkg/server/commands/reverseexpand/pipeline"
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
@@ -557,7 +558,7 @@ func (q *ListObjectsQuery) Execute(
 			},
 		)
 
-		backend := &reverseexpand.Backend{
+		backend := &pipeline.Backend{
 			Datastore:  ds,
 			StoreID:    req.GetStoreId(),
 			TypeSystem: typesys,
@@ -566,12 +567,12 @@ func (q *ListObjectsQuery) Execute(
 			Preference: req.GetConsistency(),
 		}
 
-		pipeline := reverseexpand.NewPipeline(backend)
+		pl := pipeline.New(backend)
 
-		var source reverseexpand.Source
-		var target reverseexpand.Target
+		var source pipeline.Source
+		var target pipeline.Target
 
-		if source, ok = pipeline.Source(targetObjectType, targetRelation); !ok {
+		if source, ok = pl.Source(targetObjectType, targetRelation); !ok {
 			return nil, serverErrors.ValidationError(fmt.Errorf("object: %s relation: %s not in graph", targetObjectType, targetRelation))
 		}
 
@@ -585,11 +586,11 @@ func (q *ListObjectsQuery) Execute(
 			objectType += "#" + userParts[1]
 		}
 
-		if target, ok = pipeline.Target(objectType, objectID); !ok {
+		if target, ok = pl.Target(objectType, objectID); !ok {
 			return nil, serverErrors.ValidationError(fmt.Errorf("user: %s relation: %s not in graph", objectType, objectID))
 		}
 
-		seq := pipeline.Build(ctx, source, target)
+		seq := pl.Build(ctx, source, target)
 
 		var res ListObjectsResponse
 
@@ -727,7 +728,7 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 			},
 		)
 
-		backend := &reverseexpand.Backend{
+		backend := &pipeline.Backend{
 			Datastore:  ds,
 			StoreID:    req.GetStoreId(),
 			TypeSystem: typesys,
@@ -736,12 +737,12 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 			Preference: req.GetConsistency(),
 		}
 
-		pipeline := reverseexpand.NewPipeline(backend)
+		pl := pipeline.New(backend)
 
-		var source reverseexpand.Source
-		var target reverseexpand.Target
+		var source pipeline.Source
+		var target pipeline.Target
 
-		if source, ok = pipeline.Source(targetObjectType, targetRelation); !ok {
+		if source, ok = pl.Source(targetObjectType, targetRelation); !ok {
 			return nil, serverErrors.ValidationError(fmt.Errorf("object: %s relation: %s not in graph", targetObjectType, targetRelation))
 		}
 
@@ -755,11 +756,11 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 			objectType += "#" + userParts[1]
 		}
 
-		if target, ok = pipeline.Target(objectType, objectID); !ok {
+		if target, ok = pl.Target(objectType, objectID); !ok {
 			return nil, serverErrors.ValidationError(fmt.Errorf("user: %s relation: %s not in graph", objectType, objectID))
 		}
 
-		seq := pipeline.Build(ctx, source, target)
+		seq := pl.Build(ctx, source, target)
 
 		var listObjectsCount uint32 = 0
 
