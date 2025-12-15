@@ -4237,7 +4237,7 @@ func TestListUsersDatastoreThrottler(t *testing.T) {
 
 		require.NoError(t, err)
 		require.NotNil(t, resp)
-		require.False(t, resp.GetMetadata().WasThrottled.Load(), "Should not be throttled when throttling is disabled")
+		require.False(t, resp.GetMetadata().WasDatastoreThrottled.Load(), "Should not be throttled when throttling is disabled")
 	})
 
 	t.Run("throttling_enabled_with_high_threshold_does_not_throttle", func(t *testing.T) {
@@ -4257,7 +4257,7 @@ func TestListUsersDatastoreThrottler(t *testing.T) {
 
 		require.NoError(t, err)
 		require.NotNil(t, resp)
-		require.False(t, resp.GetMetadata().WasThrottled.Load(), "Should not be throttled when threshold is high")
+		require.False(t, resp.GetMetadata().WasDatastoreThrottled.Load(), "Should not be throttled when threshold is high")
 	})
 
 	t.Run("throttling_enabled_with_low_threshold_triggers_throttle", func(t *testing.T) {
@@ -4306,7 +4306,7 @@ func TestListUsersDatastoreThrottler(t *testing.T) {
 
 		require.NoError(t, err)
 		require.NotNil(t, resp)
-		require.True(t, resp.GetMetadata().WasThrottled.Load(), "Should be throttled when threshold is exceeded")
+		require.True(t, resp.GetMetadata().WasDatastoreThrottled.Load(), "Should be throttled when threshold is exceeded")
 	})
 
 	t.Run("throttling_disabled_explicitly_does_not_throttle", func(t *testing.T) {
@@ -4326,7 +4326,7 @@ func TestListUsersDatastoreThrottler(t *testing.T) {
 
 		require.NoError(t, err)
 		require.NotNil(t, resp)
-		require.False(t, resp.GetMetadata().WasThrottled.Load(), "Should not be throttled when throttling is explicitly disabled")
+		require.False(t, resp.GetMetadata().WasDatastoreThrottled.Load(), "Should not be throttled when throttling is explicitly disabled")
 	})
 
 	t.Run("throttling_with_zero_threshold_does_not_throttle", func(t *testing.T) {
@@ -4346,6 +4346,6 @@ func TestListUsersDatastoreThrottler(t *testing.T) {
 
 		require.NoError(t, err)
 		require.NotNil(t, resp)
-		require.False(t, resp.GetMetadata().WasThrottled.Load(), "Should not be throttled when threshold is zero")
+		require.False(t, resp.GetMetadata().WasDatastoreThrottled.Load(), "Should not be throttled when threshold is zero")
 	})
 }
