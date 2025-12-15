@@ -24,20 +24,14 @@ func evaluateCondition(ctx context.Context, model *modelgraph.AuthorizationModel
 }
 
 func BuildConditionTupleKeyFilter(ctx context.Context, model *modelgraph.AuthorizationModelGraph, conditions []string, reqCtx *structpb.Struct) iterator.FilterFunc[*openfgav1.TupleKey] {
-	return func(_ iterator.OperationType, t *openfgav1.TupleKey) (bool, error) {
+	return func(t *openfgav1.TupleKey) (bool, error) {
 		return evaluateCondition(ctx, model, conditions, t, reqCtx)
 	}
 }
 
 func BuildUniqueTupleKeyFilter(visited *sync.Map, keyFunc func(key *openfgav1.TupleKey) string) iterator.FilterFunc[*openfgav1.TupleKey] {
-	return func(op iterator.OperationType, tk *openfgav1.TupleKey) (bool, error) {
-		key := keyFunc(tk)
-		var seen bool
-		if op == iterator.OperationHead {
-			_, seen = visited.Load(key)
-		} else {
-			_, seen = visited.LoadOrStore(key, struct{}{})
-		}
+	return func(tk *openfgav1.TupleKey) (bool, error) {
+		_, seen := visited.LoadOrStore(keyFunc(tk), struct{}{})
 		return !seen, nil
 	}
 }

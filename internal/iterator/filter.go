@@ -10,18 +10,10 @@ import (
 
 var ErrHeadNotSupportedFilterIterator = errors.New("head() not supported on filter iterator")
 
-// OperationType represents the iterator method being called.
-type OperationType string
-
-const (
-	OperationNext OperationType = "next"
-	OperationHead OperationType = "head"
-)
-
 // FilterFunc is a function that determines whether an item should be included in the iterator results.
 // It returns true if the item passes the filter, false otherwise.
 // If an error occurs during filtering, it should be returned.
-type FilterFunc[T any] func(OperationType, T) (bool, error)
+type FilterFunc[T any] func(T) (bool, error)
 type filter[T any] struct {
 	iter      storage.Iterator[T]
 	filters   []FilterFunc[T]
@@ -37,9 +29,9 @@ func (f *filter[T]) Stop() {
 	})
 }
 
-func (f *filter[T]) applyFilters(method OperationType, entry T) (bool, error) {
+func (f *filter[T]) applyFilters(entry T) (bool, error) {
 	for _, filter := range f.filters {
-		passes, err := filter(method, entry)
+		passes, err := filter(entry)
 		if err != nil {
 			return false, err
 		}
@@ -70,7 +62,7 @@ func (f *filter[T]) Next(ctx context.Context) (T, error) {
 			return null, err
 		}
 
-		valid, err := f.applyFilters(OperationNext, entry)
+		valid, err := f.applyFilters(entry)
 		if err != nil {
 			f.lastErr = err
 			continue
