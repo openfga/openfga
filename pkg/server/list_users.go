@@ -66,6 +66,7 @@ func (s *Server) ListUsers(
 	if err != nil {
 		return nil, err
 	}
+	req.AuthorizationModelId = typesys.GetAuthorizationModelID() // the resolved model id
 
 	err = listusers.ValidateListUsersRequest(ctx, req, typesys)
 	if err != nil {
@@ -139,9 +140,14 @@ func (s *Server) ListUsers(
 		req.GetConsistency().String(),
 	).Observe(float64(time.Since(start).Milliseconds()))
 
-	wasRequestThrottled := resp.GetMetadata().WasThrottled.Load()
-	if wasRequestThrottled {
-		throttledRequestCounter.WithLabelValues(s.serviceName, methodName).Inc()
+	wasDispatchThrottled := resp.GetMetadata().WasDispatchThrottled.Load()
+	if wasDispatchThrottled {
+		throttledRequestCounter.WithLabelValues(s.serviceName, methodName, throttleTypeDispatch).Inc()
+	}
+
+	wasDatastoreThrottled := resp.GetMetadata().WasDatastoreThrottled.Load()
+	if wasDatastoreThrottled {
+		throttledRequestCounter.WithLabelValues(s.serviceName, methodName, throttleTypeDatastore).Inc()
 	}
 
 	return &openfgav1.ListUsersResponse{
