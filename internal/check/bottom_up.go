@@ -93,7 +93,6 @@ func (s *bottomUp) setOperationSetup(ctx context.Context, req *Request, resolver
 		})
 
 		if recoveredError != nil {
-			fmt.Println(recoveredError.AsError())
 			concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Err: fmt.Errorf("%w: %s", ErrPanicRequest, recoveredError.AsError())}, out)
 		}
 	}()
@@ -190,22 +189,10 @@ func (s *bottomUp) specificType(ctx context.Context, req *Request, edge *authzGr
 		return nil, err
 	}
 
-	iter := storage.NewTupleKeyIteratorFromTupleIterator(tIter)
-	if ctxTuples, ok := req.GetContextualTuplesByUserID(req.GetTupleKey().GetUser(), relation, objectType); ok {
-		iter = iterator.Merge(iter, storage.NewStaticTupleKeyIterator(ctxTuples), func(a, b *openfgav1.TupleKey) int {
-			if a.GetObject() < b.GetObject() {
-				return -1
-			}
-			return 1
-		})
-	}
-	iterFilters := make([]iterator.FilterFunc[*openfgav1.TupleKey], 0, 1)
-	if len(edge.GetConditions()) > 1 || edge.GetConditions()[0] != authzGraph.NoCond {
-		iterFilters = append(iterFilters, BuildConditionTupleKeyFilter(ctx, s.model, edge.GetConditions(), req.GetContext()))
-	}
-	i := iterator.NewFilteredIterator(iter, iterFilters...)
+
+	iter := s.buildIterator(ctx, req, edge, tIter, req.GetTupleKey().GetUser())
 	iterChan := make(chan *iterator.Msg, 1)
-	if !concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Iter: storage.WrapIterator(storage.ObjectIDKind, i)}, iterChan) {
+	if !concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Iter: iter}, iterChan) {
 		iter.Stop() // will not be received to be cleaned up
 	}
 	close(iterChan)
@@ -232,8 +219,19 @@ func (s *bottomUp) specificTypeWildcard(ctx context.Context, req *Request, edge 
 		return nil, err
 	}
 
-	iter := storage.NewTupleKeyIteratorFromTupleIterator(tIter)
-	if ctxTuples, ok := req.GetContextualTuplesByUserID(tuple.TypedPublicWildcard(req.GetUserType()), relation, objectType); ok {
+	iter := s.buildIterator(ctx, req, edge, tIter, tuple.TypedPublicWildcard(req.GetUserType()))
+	iterChan := make(chan *iterator.Msg, 1)
+	if !concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Iter: iter}, iterChan) {
+		iter.Stop() // will not be received to be cleaned up
+	}
+	close(iterChan)
+	return iterChan, nil
+}
+
+func (s *bottomUp) buildIterator(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge, i storage.TupleIterator, userId string) storage.TupleMapper {
+	iter := storage.NewTupleKeyIteratorFromTupleIterator(i)
+	objectType, relation := tuple.SplitObjectRelation(edge.GetRelationDefinition())
+	if ctxTuples, ok := req.GetContextualTuplesByUserID(userId, relation, objectType); ok {
 		iter = iterator.Merge(iter, storage.NewStaticTupleKeyIterator(ctxTuples), func(a, b *openfgav1.TupleKey) int {
 			if a.GetObject() < b.GetObject() {
 				return -1
@@ -241,18 +239,11 @@ func (s *bottomUp) specificTypeWildcard(ctx context.Context, req *Request, edge 
 			return 1
 		})
 	}
-	iterFilters := make([]iterator.FilterFunc[*openfgav1.TupleKey], 0, 1)
+	var iterFilters []iterator.FilterFunc[*openfgav1.TupleKey]
 	if len(edge.GetConditions()) > 1 || edge.GetConditions()[0] != authzGraph.NoCond {
-		iterFilters = append(iterFilters, BuildConditionTupleKeyFilter(ctx, s.model, edge.GetConditions(), req.GetContext()))
+		iterFilters = []iterator.FilterFunc[*openfgav1.TupleKey]{BuildConditionTupleKeyFilter(ctx, s.model, edge.GetConditions(), req.GetContext())}
 	}
-	i := iterator.NewFilteredIterator(iter, iterFilters...)
-
-	iterChan := make(chan *iterator.Msg, 1)
-	if !concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Iter: storage.WrapIterator(storage.ObjectIDKind, i)}, iterChan) {
-		iter.Stop() // will not be received to be cleaned up
-	}
-	close(iterChan)
-	return iterChan, nil
+	return storage.WrapIterator(storage.ObjectIDKind, iterator.NewFilteredIterator(iter, iterFilters...))
 }
 
 func handleStreamError(ctx context.Context, err error, batch *[]string, out chan<- *iterator.Msg) bool {
