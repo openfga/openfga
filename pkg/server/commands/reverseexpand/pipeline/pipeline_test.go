@@ -125,29 +125,12 @@ func TestPipelineShutdown(t *testing.T) {
 		panic("no such source")
 	}
 
-	t.Run("Correctness", func(t *testing.T) {
-		defer goleak.VerifyNone(t)
-
-		seq := pl.Build(context.Background(), source, target)
-
-		expected := make([]string, nestLevel)
-		for i := range nestLevel {
-			expected[i] = "document:" + strconv.Itoa(i)
-		}
-
-		actual := make([]string, 0, nestLevel)
-		for s := range seq {
-			actual = append(actual, s.Value)
-		}
-		require.ElementsMatch(t, expected, actual)
-	})
-
 	t.Run("NoAbandon", func(t *testing.T) {
 		defer goleak.VerifyNone(t)
 
 		seq := pl.Build(context.Background(), source, target)
 
-		var items []string
+		items := make([]string, 0, len(documents))
 		for item := range seq {
 			items = append(items, item.Value)
 		}
@@ -171,6 +154,21 @@ func TestPipelineShutdown(t *testing.T) {
 			break
 		}
 		require.NotEmpty(t, value)
+	})
+
+	t.Run("AbandonMidProcessing", func(t *testing.T) {
+		defer goleak.VerifyNone(t)
+
+		seq := pl.Build(context.Background(), source, target)
+
+		var count int
+		limit := nestLevel / 2
+		for range seq {
+			count++
+			if count >= limit {
+				break
+			}
+		}
 	})
 
 	t.Run("CancelWithoutPull", func(t *testing.T) {
@@ -207,6 +205,24 @@ func TestPipelineShutdown(t *testing.T) {
 		}
 		cancel()
 		require.NotEmpty(t, value)
+	})
+
+	t.Run("CancelMidProcessing", func(t *testing.T) {
+		defer goleak.VerifyNone(t)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		seq := pl.Build(ctx, source, target)
+
+		var count int
+		limit := nestLevel / 2
+		for range seq {
+			count++
+			if count >= limit {
+				cancel()
+			}
+		}
 	})
 
 	t.Run("TimeoutAfterPull", func(t *testing.T) {
