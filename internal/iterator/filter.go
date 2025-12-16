@@ -24,9 +24,7 @@ type filter[T any] struct {
 }
 
 func (f *filter[T]) Stop() {
-	f.once.Do(func() {
-		f.iter.Stop()
-	})
+	f.once.Do(f.iter.Stop)
 }
 
 func (f *filter[T]) applyFilters(entry T) (bool, error) {
