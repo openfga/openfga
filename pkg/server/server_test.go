@@ -1695,30 +1695,6 @@ func TestDelegateCheckResolver(t *testing.T) {
 		_, ok = localChecker.GetDelegate().(*graph.CachedCheckResolver)
 		require.True(t, ok)
 	})
-
-	t.Run("both_dispatch_throttling_and_cache_check_resolver_enabled", func(t *testing.T) {
-		ds := memory.New()
-		t.Cleanup(ds.Close)
-		s := MustNewServerWithOpts(
-			WithDatastore(ds),
-			WithCheckQueryCacheEnabled(true),
-		)
-		t.Cleanup(s.Close)
-
-		checkResolver, closer, _ := s.getCheckResolverBuilder("store_id_123").Build()
-		defer closer()
-		require.NotNil(t, checkResolver)
-
-		cachedCheckResolver, ok := checkResolver.(*graph.CachedCheckResolver)
-		require.True(t, ok)
-		require.True(t, s.cacheSettings.CheckQueryCacheEnabled)
-
-		localChecker, ok := cachedCheckResolver.GetDelegate().(*graph.LocalChecker)
-		require.True(t, ok)
-
-		_, ok = localChecker.GetDelegate().(*graph.CachedCheckResolver)
-		require.True(t, ok)
-	})
 }
 
 func TestWithFeatureFlagClient(t *testing.T) {
