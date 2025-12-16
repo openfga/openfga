@@ -46,8 +46,10 @@ type listUsersQuery struct {
 	maxConcurrentReads         uint32
 	deadline                   time.Duration
 	dispatchThrottlerConfig    threshold.Config
-	wasThrottled               *atomic.Bool
+	wasDispatchThrottled       *atomic.Bool
+	wasDatastoreThrottled      *atomic.Bool
 	expandDirectDispatch       expandDirectDispatchHandler
+	datastoreThrottlingEnabled bool
 	datastoreThrottleThreshold int
 	datastoreThrottleDuration  time.Duration
 }
@@ -129,8 +131,9 @@ func WithListUsersMaxConcurrentReads(limit uint32) ListUsersQueryOption {
 	}
 }
 
-func WithListUsersDatastoreThrottler(threshold int, duration time.Duration) ListUsersQueryOption {
+func WithListUsersDatastoreThrottler(enabled bool, threshold int, duration time.Duration) ListUsersQueryOption {
 	return func(d *listUsersQuery) {
+		d.datastoreThrottlingEnabled = enabled
 		d.datastoreThrottleThreshold = threshold
 		d.datastoreThrottleDuration = duration
 	}
@@ -151,7 +154,7 @@ func (l *listUsersQuery) throttle(ctx context.Context, currentNumDispatch uint32
 		attribute.Bool("is_throttled", shouldThrottle))
 
 	if shouldThrottle {
-		l.wasThrottled.Store(true)
+		l.wasDispatchThrottled.Store(true)
 		l.dispatchThrottlerConfig.Throttler.Throttle(ctx)
 	}
 }
@@ -171,7 +174,8 @@ func NewListUsersQuery(ds storage.RelationshipTupleReader, contextualTuples []*o
 		deadline:                serverconfig.DefaultListUsersDeadline,
 		maxResults:              serverconfig.DefaultListUsersMaxResults,
 		maxConcurrentReads:      serverconfig.DefaultMaxConcurrentReadsForListUsers,
-		wasThrottled:            new(atomic.Bool),
+		wasDispatchThrottled:    new(atomic.Bool),
+		wasDatastoreThrottled:   new(atomic.Bool),
 		expandDirectDispatch:    expandDirectDispatch,
 	}
 
@@ -180,8 +184,11 @@ func NewListUsersQuery(ds storage.RelationshipTupleReader, contextualTuples []*o
 	}
 
 	l.datastore = storagewrappers.NewRequestStorageWrapper(ds, contextualTuples, &storagewrappers.Operation{
-		Method:      apimethod.ListUsers,
-		Concurrency: l.maxConcurrentReads,
+		Method:            apimethod.ListUsers,
+		Concurrency:       l.maxConcurrentReads,
+		ThrottlingEnabled: l.datastoreThrottlingEnabled,
+		ThrottleThreshold: l.datastoreThrottleThreshold,
+		ThrottleDuration:  l.datastoreThrottleDuration,
 	})
 
 	return l
@@ -222,8 +229,9 @@ func (l *listUsersQuery) ListUsers(
 			return &listUsersResponse{
 				Users: []*openfgav1.User{},
 				Metadata: listUsersResponseMetadata{
-					DispatchCounter: new(atomic.Uint32),
-					WasThrottled:    new(atomic.Bool),
+					DispatchCounter:       new(atomic.Uint32),
+					WasDispatchThrottled:  new(atomic.Bool),
+					WasDatastoreThrottled: new(atomic.Bool),
 				},
 			}, nil
 		}
@@ -299,14 +307,15 @@ func (l *listUsersQuery) ListUsers(
 	span.SetAttributes(attribute.Int("result_count", len(foundUsers)))
 
 	dsMeta := l.datastore.GetMetadata()
-	l.wasThrottled.CompareAndSwap(false, dsMeta.WasThrottled)
+	l.wasDatastoreThrottled.Store(dsMeta.WasThrottled)
 	return &listUsersResponse{
 		Users: foundUsers,
 		Metadata: listUsersResponseMetadata{
-			DatastoreQueryCount: dsMeta.DatastoreQueryCount,
-			DatastoreItemCount:  dsMeta.DatastoreItemCount,
-			DispatchCounter:     &dispatchCount,
-			WasThrottled:        l.wasThrottled,
+			DatastoreQueryCount:   dsMeta.DatastoreQueryCount,
+			DatastoreItemCount:    dsMeta.DatastoreItemCount,
+			DispatchCounter:       &dispatchCount,
+			WasDispatchThrottled:  l.wasDispatchThrottled,
+			WasDatastoreThrottled: l.wasDatastoreThrottled,
 		},
 	}, nil
 }

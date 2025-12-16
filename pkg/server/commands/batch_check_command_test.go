@@ -350,6 +350,76 @@ func TestBatchCheckCommand(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, result, 1)
 	})
+
+	t.Run("tracks_dispatch_throttled_in_metadata", func(t *testing.T) {
+		mockCheckResolver := graph.NewMockCheckResolver(mockController)
+		cmd := NewBatchCheckCommand(ds, mockCheckResolver, ts)
+
+		checks := []*openfgav1.BatchCheckItem{
+			{
+				TupleKey: &openfgav1.CheckRequestTupleKey{
+					Object:   "doc:doc1",
+					Relation: "viewer",
+					User:     "user:alice",
+				},
+				CorrelationId: "check1",
+			},
+			{
+				TupleKey: &openfgav1.CheckRequestTupleKey{
+					Object:   "doc:doc2",
+					Relation: "viewer",
+					User:     "user:bob",
+				},
+				CorrelationId: "check2",
+			},
+			{
+				TupleKey: &openfgav1.CheckRequestTupleKey{
+					Object:   "doc:doc3",
+					Relation: "viewer",
+					User:     "user:charlie",
+				},
+				CorrelationId: "check3",
+			},
+		}
+
+		// First check has DispatchThrottled = true
+		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).
+			Times(1).
+			DoAndReturn(func(_ any, req *graph.ResolveCheckRequest) (*graph.ResolveCheckResponse, error) {
+				req.GetRequestMetadata().DispatchThrottled.Store(true)
+				return &graph.ResolveCheckResponse{}, nil
+			})
+
+		// Second check has DispatchThrottled = true
+		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).
+			Times(1).
+			DoAndReturn(func(_ any, req *graph.ResolveCheckRequest) (*graph.ResolveCheckResponse, error) {
+				req.GetRequestMetadata().DispatchThrottled.Store(true)
+				return &graph.ResolveCheckResponse{}, nil
+			})
+
+		// Third check has DispatchThrottled = false
+		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).
+			Times(1).
+			DoAndReturn(func(_ any, _ any) (*graph.ResolveCheckResponse, error) {
+				return &graph.ResolveCheckResponse{}, nil
+			})
+
+		params := &BatchCheckCommandParams{
+			AuthorizationModelID: ts.GetAuthorizationModelID(),
+			Checks:               checks,
+			StoreID:              ulid.Make().String(),
+		}
+
+		result, meta, err := cmd.Execute(context.Background(), params)
+
+		require.NoError(t, err)
+		require.Len(t, result, 3)
+		// Two checks had DispatchThrottled = true, so DispatchThrottleCount should be 2
+		require.Equal(t, uint32(2), meta.DispatchThrottleCount)
+		// DatastoreThrottleCount should be 0 since no actual datastore throttling occurred
+		require.Equal(t, uint32(0), meta.DatastoreThrottleCount)
+	})
 }
 
 func BenchmarkBatchCheckCommand(b *testing.B) {
