@@ -49,6 +49,7 @@ type listUsersQuery struct {
 	wasDispatchThrottled       *atomic.Bool
 	wasDatastoreThrottled      *atomic.Bool
 	expandDirectDispatch       expandDirectDispatchHandler
+	datastoreThrottlingEnabled bool
 	datastoreThrottleThreshold int
 	datastoreThrottleDuration  time.Duration
 }
@@ -130,8 +131,9 @@ func WithListUsersMaxConcurrentReads(limit uint32) ListUsersQueryOption {
 	}
 }
 
-func WithListUsersDatastoreThrottler(threshold int, duration time.Duration) ListUsersQueryOption {
+func WithListUsersDatastoreThrottler(enabled bool, threshold int, duration time.Duration) ListUsersQueryOption {
 	return func(d *listUsersQuery) {
+		d.datastoreThrottlingEnabled = enabled
 		d.datastoreThrottleThreshold = threshold
 		d.datastoreThrottleDuration = duration
 	}
@@ -182,8 +184,11 @@ func NewListUsersQuery(ds storage.RelationshipTupleReader, contextualTuples []*o
 	}
 
 	l.datastore = storagewrappers.NewRequestStorageWrapper(ds, contextualTuples, &storagewrappers.Operation{
-		Method:      apimethod.ListUsers,
-		Concurrency: l.maxConcurrentReads,
+		Method:            apimethod.ListUsers,
+		Concurrency:       l.maxConcurrentReads,
+		ThrottlingEnabled: l.datastoreThrottlingEnabled,
+		ThrottleThreshold: l.datastoreThrottleThreshold,
+		ThrottleDuration:  l.datastoreThrottleDuration,
 	})
 
 	return l
