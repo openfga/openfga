@@ -9,6 +9,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ## [Unreleased]
 ### Changed
 - Datastore throttling separated from dispatch throttling in BatchCheck, ListUsers metadata. Also, `throttling_type` label added to `throttledRequestCounter` metric to differentiate between dispatch/datastore throttling. [#2839](https://github.com/openfga/openfga/pull/2839)
+- Removed dispatch throttling mechanism in favor of new datastore throttling. [#2852](https://github.com/openfga/openfga/pull/2852)
 
 ### Fixed
 - ListUsers will now properly get datastore throttled if enabled. [#2846](https://github.com/openfga/openfga/pull/2846)
