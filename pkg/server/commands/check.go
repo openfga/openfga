@@ -5,6 +5,7 @@ import (
 	"time"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/openfga/openfga/pkg/featureflags"
 
 	"github.com/openfga/openfga/internal/check"
 	"github.com/openfga/openfga/internal/modelgraph"
@@ -24,6 +25,7 @@ type CheckQueryV2 struct {
 	planner                   planner.Manager
 	concurrencyLimit          int
 	upstreamTimeout           time.Duration
+	ff                        featureflags.Client
 }
 
 type CheckQueryV2Option func(*CheckQueryV2)
@@ -82,6 +84,12 @@ func WithCheckQueryV2UpstreamTimeout(timeout time.Duration) CheckQueryV2Option {
 	}
 }
 
+func WithCheckQueryV2FFClient(ff featureflags.Client) CheckQueryV2Option {
+	return func(cmd *CheckQueryV2) {
+		cmd.ff = ff
+	}
+}
+
 func NewCheckQuery(opts ...CheckQueryV2Option) *CheckQueryV2 {
 	q := &CheckQueryV2{
 		logger: logger.NewNoopLogger(),
@@ -118,6 +126,7 @@ func (q *CheckQueryV2) Execute(ctx context.Context, req *openfgav1.CheckRequest)
 		ConcurrencyLimit:          q.concurrencyLimit,
 		UpstreamTimeout:           q.upstreamTimeout,
 		Logger:                    q.logger,
+		FF:                        q.ff,
 	})
 
 	res, err := resolver.ResolveCheck(ctx, r)

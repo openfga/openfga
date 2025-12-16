@@ -272,6 +272,7 @@ func (s *Server) getCheckResolverBuilder(storeID string) *graph.CheckResolverOrd
 			graph.WithPlanner(s.planner),
 			graph.WithUpstreamTimeout(s.requestTimeout),
 			graph.WithLocalCheckerLogger(s.logger),
+			graph.WithFFClient(s.featureFlagClient),
 		}...),
 		graph.WithLocalShadowCheckerOpts([]graph.LocalCheckerOption{
 			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
