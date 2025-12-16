@@ -9,6 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/openfga/openfga/pkg/featureflags"
+	"github.com/openfga/openfga/pkg/server/config"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -48,6 +50,7 @@ type Config struct {
 	UpstreamTimeout           time.Duration
 	Logger                    logger.Logger
 	Strategies                map[string]Strategy
+	FF                        featureflags.Client
 }
 type Resolver struct {
 	model                     *modelgraph.AuthorizationModelGraph
@@ -59,6 +62,7 @@ type Resolver struct {
 	concurrencyLimit          int
 	upstreamTimeout           time.Duration
 	logger                    logger.Logger
+	ff                        featureflags.Client
 
 	strategies map[string]Strategy
 }
@@ -75,6 +79,7 @@ func New(cfg Config) *Resolver {
 		upstreamTimeout:           cfg.UpstreamTimeout,
 		logger:                    cfg.Logger,
 		strategies:                cfg.Strategies,
+		ff:                        cfg.FF,
 	}
 
 	if r.strategies == nil {
@@ -297,7 +302,7 @@ func (r *Resolver) resolveRecursiveUserset(ctx context.Context, req *Request, ed
 	defer tIter.Stop()
 
 	iter := r.buildIterator(ctx, req, tIter, edge.GetConditions(), userRelation, edge.GetTo().GetUniqueLabel(), visited)
-	if !canApplyOptimization {
+	if !canApplyOptimization || !r.ff.Boolean(config.ExperimentalCheckOptimizations, req.GetStoreID()) {
 		res, err := r.strategies[DefaultStrategyName].Userset(ctx, req, edge, iter, visited)
 		if err != nil {
 			telemetry.TraceError(span, err)
@@ -309,7 +314,7 @@ func (r *Resolver) resolveRecursiveUserset(ctx context.Context, req *Request, ed
 		return res, nil
 	}
 	possibleStrategies := map[string]*planner.PlanConfig{
-		DefaultStrategyName:   DefaultRecursivePlan,
+		//DefaultStrategyName:   DefaultRecursivePlan,
 		RecursiveStrategyName: RecursivePlan,
 	}
 
@@ -360,7 +365,7 @@ func (r *Resolver) resolveRecursiveTTU(ctx context.Context, req *Request, edge *
 	defer tIter.Stop()
 	iter := r.buildIterator(ctx, req, tIter, conditionEdge.GetConditions(), tuplesetRelation, subjectType, visited)
 
-	if !canApplyOptimization {
+	if !canApplyOptimization || !r.ff.Boolean(config.ExperimentalCheckOptimizations, req.GetStoreID()) {
 		res, err := r.strategies[DefaultStrategyName].TTU(ctx, req, edge, iter, visited)
 		if err != nil {
 			telemetry.TraceError(span, err)
@@ -371,8 +376,9 @@ func (r *Resolver) resolveRecursiveTTU(ctx context.Context, req *Request, edge *
 		}
 		return res, nil
 	}
+
 	possibleStrategies := map[string]*planner.PlanConfig{
-		DefaultStrategyName:   DefaultRecursivePlan,
+		//DefaultStrategyName:   DefaultRecursivePlan,
 		RecursiveStrategyName: RecursivePlan,
 	}
 
@@ -807,7 +813,7 @@ func (r *Resolver) specificTypeAndRelation(ctx context.Context, req *Request, ed
 
 	iter := r.buildIterator(ctx, req, tIter, edge.GetConditions(), relation, edge.GetTo().GetUniqueLabel(), visited)
 	// when the request usertype is a userset, then only available strategy at the moment is default strategy
-	if tuple.IsObjectRelation(req.GetTupleKey().GetUser()) {
+	if tuple.IsObjectRelation(req.GetTupleKey().GetUser()) || !r.ff.Boolean(config.ExperimentalCheckOptimizations, req.GetStoreID()) {
 		res, err := r.strategies[DefaultStrategyName].Userset(ctx, req, edge, iter, visited)
 		if err != nil {
 			telemetry.TraceError(span, err)
@@ -824,7 +830,7 @@ func (r *Resolver) specificTypeAndRelation(ctx context.Context, req *Request, ed
 	}
 
 	if w, _ := edge.GetWeight(req.GetUserType()); w == 2 {
-		possibleStrategies[WeightTwoStrategyName] = weight2Plan
+		possibleStrategies[DefaultStrategyName] = weight2Plan
 	}
 
 	usersetKey := createUsersetPlanKey(req, edge.GetTo().GetUniqueLabel())
@@ -876,7 +882,7 @@ func (r *Resolver) ttu(ctx context.Context, req *Request, edge *authzGraph.Weigh
 
 	iter := r.buildIterator(ctx, req, tIter, tuplesetEdge.GetConditions(), tuplesetRelation, subjectType, visited)
 
-	if tuple.IsObjectRelation(req.GetTupleKey().GetUser()) {
+	if tuple.IsObjectRelation(req.GetTupleKey().GetUser()) || !r.ff.Boolean(config.ExperimentalCheckOptimizations, req.GetStoreID()) {
 		res, err := r.strategies[DefaultStrategyName].TTU(ctx, req, edge, iter, visited)
 		if err != nil {
 			telemetry.TraceError(span, err)
@@ -893,7 +899,7 @@ func (r *Resolver) ttu(ctx context.Context, req *Request, edge *authzGraph.Weigh
 	}
 
 	if w, _ := edge.GetWeight(req.GetUserType()); w == 2 {
-		possibleStrategies[WeightTwoStrategyName] = weight2Plan
+		possibleStrategies[DefaultStrategyName] = weight2Plan
 	}
 
 	planKey := createTTUPlanKey(req, tuplesetRelation, computedRelation)

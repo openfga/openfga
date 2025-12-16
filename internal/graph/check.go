@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/emirpasic/gods/sets/hashset"
+	"github.com/openfga/openfga/pkg/featureflags"
 	"github.com/sourcegraph/conc/panics"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -56,6 +57,7 @@ type LocalChecker struct {
 	logger               logger.Logger
 	optimizationsEnabled bool
 	maxResolutionDepth   uint32
+	ff                   featureflags.Client
 }
 
 type LocalCheckerOption func(d *LocalChecker)
@@ -97,6 +99,12 @@ func WithUpstreamTimeout(timeout time.Duration) LocalCheckerOption {
 	}
 }
 
+func WithFFClient(c featureflags.Client) LocalCheckerOption {
+	return func(d *LocalChecker) {
+		d.ff = c
+	}
+}
+
 // NewLocalChecker constructs a LocalChecker that can be used to evaluate a Check
 // request locally.
 //
@@ -109,6 +117,7 @@ func NewLocalChecker(opts ...LocalCheckerOption) *LocalChecker {
 		upstreamTimeout:    serverconfig.DefaultRequestTimeout,
 		logger:             logger.NewNoopLogger(),
 		planner:            planner.NewNoopPlanner(),
+		ff:                 featureflags.NewNoopFeatureFlagClient(),
 	}
 	// by default, a LocalChecker delegates/dispatches subproblems to itself (e.g. local dispatch) unless otherwise configured.
 	checker.delegate = checker
@@ -650,7 +659,7 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 		isUserset := tuple.IsObjectRelation(reqTupleKey.GetUser())
 
 		// if user in request is userset, we do not have additional strategies to apply
-		if isUserset {
+		if isUserset || !c.ff.Boolean(serverconfig.ExperimentalCheckOptimizations, req.GetStoreID()) {
 			iter, err := checkutil.IteratorReadUsersetTuples(ctx, req, directlyRelatedUsersetTypes)
 			if err != nil {
 				return nil, err
@@ -686,14 +695,16 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 			b.WriteString("infinite")
 			key := b.String()
 			keyPlan := c.planner.GetPlanSelector(key)
-			possibleStrategies[defaultResolver] = defaultRecursivePlan
-			possibleStrategies[recursiveResolver] = recursivePlan
+			possibleStrategies[defaultResolver] = recursivePlan
+			//possibleStrategies[recursiveResolver] = recursivePlan
 			plan := keyPlan.Select(possibleStrategies)
 
 			resolver := c.defaultUserset
-			if plan.Name == recursiveResolver {
-				resolver = c.recursiveUserset
-			}
+			/*
+				if plan.Name == recursiveResolver {
+					resolver = c.recursiveUserset
+				}
+			*/
 			return c.profiledCheckHandler(keyPlan, plan, resolver(ctx, req, directlyRelatedUsersetTypes, iter))(ctx)
 		}
 
@@ -723,9 +734,12 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 			strategy := keyPlan.Select(possibleStrategies)
 
 			resolver := c.defaultUserset
-			if strategy.Name == weightTwoResolver {
-				resolver = c.weight2Userset
-			}
+			/*
+				if strategy.Name == weightTwoResolver {
+					resolver = c.weight2Userset
+				}
+
+			*/
 			resolvers = append(resolvers, c.profiledCheckHandler(keyPlan, strategy, resolver(ctx, req, usersets, iter)))
 		}
 		// for all usersets could not be resolved through weight2 resolver, resolve them all through the default resolver.
@@ -867,13 +881,13 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 		}
 		isUserset := tuple.IsObjectRelation(tk.GetUser())
 
-		if !isUserset {
+		if !isUserset || !c.ff.Boolean(serverconfig.ExperimentalCheckOptimizations, req.GetStoreID()) {
 			if typesys.TTUUseWeight2Resolver(objectType, relation, userType, rewrite.GetTupleToUserset()) {
-				possibleStrategies[weightTwoResolver] = weight2Plan
+				//possibleStrategies[defaultResolver] = weight2Plan
 				resolver = c.weight2TTU
 			} else if typesys.TTUUseRecursiveResolver(objectType, relation, userType, rewrite.GetTupleToUserset()) {
-				possibleStrategies[defaultResolver] = defaultRecursivePlan
-				possibleStrategies[recursiveResolver] = recursivePlan
+				//possibleStrategies[defaultResolver] = defaultRecursivePlan
+				//possibleStrategies[recursiveResolver] = recursivePlan
 				resolver = c.recursiveTTU
 			}
 		}

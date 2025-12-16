@@ -6,6 +6,7 @@ import (
 	"math"
 	"time"
 
+	"github.com/openfga/openfga/pkg/featureflags"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -39,6 +40,7 @@ type CheckQuery struct {
 	datastoreThrottlingEnabled bool
 	datastoreThrottleThreshold int
 	datastoreThrottleDuration  time.Duration
+	ff                         featureflags.Client
 }
 
 type CheckCommandParams struct {
@@ -77,6 +79,7 @@ func WithCheckDatastoreThrottler(enabled bool, threshold int, duration time.Dura
 		c.datastoreThrottleThreshold = threshold
 	}
 }
+
 
 // TODO accept CheckCommandParams so we can build the datastore object right away.
 func NewCheckCommand(datastore storage.RelationshipTupleReader, checkResolver graph.CheckResolver, typesys *typesystem.TypeSystem, opts ...CheckQueryOption) *CheckQuery {
