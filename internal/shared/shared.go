@@ -58,11 +58,13 @@ func NewSharedDatastoreResources(
 	settings serverconfig.CacheSettings,
 	opts ...SharedDatastoreResourcesOpt,
 ) (*SharedDatastoreResources, error) {
+	defaultCacheController := cachecontroller.NewNoopCacheController()
+
 	s := &SharedDatastoreResources{
 		WaitGroup:         &sync.WaitGroup{},
 		SingleflightGroup: sharedSf,
 		ServerCtx:         sharedCtx,
-		CacheController:   cachecontroller.NewNoopCacheController(),
+		CacheController:   defaultCacheController,
 		Logger:            logger.NewNoopLogger(),
 		SharedIteratorStorage: sharediterator.NewSharedIteratorDatastoreStorage(
 			sharediterator.WithSharedIteratorDatastoreStorageLimit(
@@ -84,11 +86,9 @@ func NewSharedDatastoreResources(
 		}
 	}
 
-	if settings.ShouldCreateCacheController() {
-		// Only create a cache controller if it wasn't already set via opts.
-		if _, isNoop := s.CacheController.(*cachecontroller.NoopCacheController); isNoop {
-			s.CacheController = cachecontroller.NewCacheController(ds, s.CheckCache, settings.CacheControllerTTL, settings.CheckQueryCacheTTL, settings.CheckIteratorCacheTTL, cachecontroller.WithLogger(s.Logger))
-		}
+	// Only create a cache controller if it wasn't already set via opts.
+	if settings.ShouldCreateCacheController() && s.CacheController == defaultCacheController {
+		s.CacheController = cachecontroller.NewCacheController(ds, s.CheckCache, settings.CacheControllerTTL, settings.CheckQueryCacheTTL, settings.CheckIteratorCacheTTL, cachecontroller.WithLogger(s.Logger))
 	}
 
 	// The default behavior is to use the same cache instance for both the
