@@ -15,8 +15,6 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/mocks"
-	"github.com/openfga/openfga/internal/throttler/threshold"
-	"github.com/openfga/openfga/pkg/dispatch"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/memory"
 	storagetest "github.com/openfga/openfga/pkg/storage/test"
@@ -462,132 +460,6 @@ func TestReverseExpandIgnoresInvalidTuples(t *testing.T) {
 	}
 }
 
-func TestReverseExpandThrottle(t *testing.T) {
-	t.Cleanup(func() {
-		goleak.VerifyNone(t)
-	})
-
-	model := testutils.MustTransformDSLToProtoWithID(`
-		model
-			schema 1.1
-
-		type user
-
-		type document
-			relations
-				define viewer: [user]`)
-	mockController := gomock.NewController(t)
-	defer mockController.Finish()
-	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
-
-	ctx := context.Background()
-	typesys, err := typesystem.NewAndValidate(ctx, model)
-	require.NoError(t, err)
-
-	t.Run("dispatch_below_threshold_doesnt_call_throttle", func(t *testing.T) {
-		mockThrottler := mocks.NewMockThrottler(mockController)
-		reverseExpandQuery := NewReverseExpandQuery(
-			mockDatastore,
-			typesys,
-			WithDispatchThrottlerConfig(threshold.Config{
-				Throttler:    mockThrottler,
-				Threshold:    200,
-				MaxThreshold: 200,
-			}),
-		)
-		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(0)
-		dispatchCountValue := uint32(190)
-		metadata := NewResolutionMetadata()
-		metadata.DispatchCounter.Store(dispatchCountValue)
-
-		reverseExpandQuery.throttle(ctx, dispatchCountValue, metadata)
-		require.False(t, metadata.DispatchThrottled.Load())
-	})
-
-	t.Run("above_threshold_should_call_throttle", func(t *testing.T) {
-		mockThrottler := mocks.NewMockThrottler(mockController)
-		reverseExpandQuery := NewReverseExpandQuery(
-			mockDatastore,
-			typesys,
-			WithDispatchThrottlerConfig(threshold.Config{
-				Throttler:    mockThrottler,
-				Threshold:    200,
-				MaxThreshold: 200,
-			}),
-		)
-		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(1)
-		dispatchCountValue := uint32(201)
-		metadata := NewResolutionMetadata()
-		metadata.DispatchCounter.Store(dispatchCountValue)
-
-		reverseExpandQuery.throttle(ctx, dispatchCountValue, metadata)
-		require.True(t, metadata.DispatchThrottled.Load())
-	})
-
-	t.Run("zero_max_should_interpret_as_default", func(t *testing.T) {
-		mockThrottler := mocks.NewMockThrottler(mockController)
-		reverseExpandQuery := NewReverseExpandQuery(
-			mockDatastore,
-			typesys,
-			WithDispatchThrottlerConfig(threshold.Config{
-				Throttler:    mockThrottler,
-				Threshold:    200,
-				MaxThreshold: 0,
-			}),
-		)
-		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(0)
-		dispatchCountValue := uint32(190)
-		metadata := NewResolutionMetadata()
-		metadata.DispatchCounter.Store(dispatchCountValue)
-
-		reverseExpandQuery.throttle(ctx, dispatchCountValue, metadata)
-		require.False(t, metadata.DispatchThrottled.Load())
-	})
-
-	t.Run("dispatch_should_use_request_threshold_if_available", func(t *testing.T) {
-		mockThrottler := mocks.NewMockThrottler(mockController)
-		reverseExpandQuery := NewReverseExpandQuery(
-			mockDatastore,
-			typesys,
-			WithDispatchThrottlerConfig(threshold.Config{
-				Throttler:    mockThrottler,
-				Threshold:    0,
-				MaxThreshold: 210,
-			}),
-		)
-		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(1)
-		dispatchCountValue := uint32(201)
-		ctx := context.Background()
-		ctx = dispatch.ContextWithThrottlingThreshold(ctx, 200)
-		metadata := NewResolutionMetadata()
-		metadata.DispatchCounter.Store(dispatchCountValue)
-
-		reverseExpandQuery.throttle(ctx, dispatchCountValue, metadata)
-		require.True(t, metadata.DispatchThrottled.Load())
-	})
-
-	t.Run("should_respect_max_threshold", func(t *testing.T) {
-		mockThrottler := mocks.NewMockThrottler(mockController)
-		reverseExpandQuery := NewReverseExpandQuery(
-			mockDatastore,
-			typesys,
-			WithDispatchThrottlerConfig(threshold.Config{
-				Throttler:    mockThrottler,
-				Threshold:    200,
-				MaxThreshold: 300,
-			}),
-		)
-		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(1)
-		dispatchCountValue := uint32(301)
-		ctx := context.Background()
-		ctx = dispatch.ContextWithThrottlingThreshold(ctx, 1000)
-		metadata := NewResolutionMetadata()
-
-		reverseExpandQuery.throttle(ctx, dispatchCountValue, metadata)
-		require.True(t, metadata.DispatchThrottled.Load())
-	})
-}
-
 func TestReverseExpandDispatchCount(t *testing.T) {
 	ds := memory.New()
 	t.Cleanup(ds.Close)
@@ -703,12 +575,6 @@ func TestReverseExpandDispatchCount(t *testing.T) {
 				q := NewReverseExpandQuery(
 					ds,
 					typesys,
-					WithDispatchThrottlerConfig(threshold.Config{
-						Throttler:    mockThrottler,
-						Enabled:      test.throttlingEnabled,
-						Threshold:    3,
-						MaxThreshold: 0,
-					}),
 				)
 
 				err = q.Execute(ctx, &ReverseExpandRequest{
@@ -738,7 +604,6 @@ func TestReverseExpandDispatchCount(t *testing.T) {
 				}
 			}
 			require.Equal(t, test.expectedDispatchCount, resolutionMetadata.DispatchCounter.Load())
-			require.Equal(t, test.expectedWasThrottled, resolutionMetadata.DispatchThrottled.Load())
 		})
 	}
 }

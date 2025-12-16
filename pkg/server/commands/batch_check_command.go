@@ -49,7 +49,6 @@ type BatchCheckOutcome struct {
 }
 
 type BatchCheckMetadata struct {
-	DispatchThrottleCount  uint32
 	DispatchCount          uint32
 	DatastoreQueryCount    uint32
 	DatastoreItemCount     uint64
@@ -168,7 +167,6 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 	var resultMap = new(sync.Map)
 	var totalQueryCount atomic.Uint32
 	var totalDispatchCount atomic.Uint32
-	var dispatchThrottleCount atomic.Uint32
 	var totalItemCount atomic.Uint64
 	var datastoreThrottleCount atomic.Uint32
 
@@ -214,9 +212,6 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 			})
 
 			if metadata != nil {
-				if metadata.DispatchThrottled.Load() {
-					dispatchThrottleCount.Add(1)
-				}
 				totalDispatchCount.Add(metadata.DispatchCounter.Load())
 
 				if metadata.DatastoreThrottled.Load() {
@@ -247,7 +242,6 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 	}
 
 	return results, &BatchCheckMetadata{
-		DispatchThrottleCount:  dispatchThrottleCount.Load(),
 		DatastoreQueryCount:    totalQueryCount.Load(),
 		DatastoreItemCount:     totalItemCount.Load(),
 		DatastoreThrottleCount: datastoreThrottleCount.Load(),

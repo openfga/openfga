@@ -433,9 +433,6 @@ func TestListUsers_Deadline(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
 			WithListUsersDeadline(deadline),
-			WithListUsersDispatchThrottlingEnabled(true),
-			WithListUsersDispatchThrottlingThreshold(1),          // Applies throttling after first dispatch
-			WithListUsersDispatchThrottlingFrequency(2*deadline), // Forces time-out when throttling occurs
 		)
 		t.Cleanup(s.Close)
 

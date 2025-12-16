@@ -9,11 +9,10 @@ import (
 
 func TestNewOrderedCheckResolverBuilder(t *testing.T) {
 	type Test struct {
-		name                                   string
-		CachedCheckResolverEnabled             bool
-		DispatchThrottlingCheckResolverEnabled bool
-		ShadowResolverEnabled                  bool
-		expectedResolverOrder                  []CheckResolver
+		name                       string
+		CachedCheckResolverEnabled bool
+		ShadowResolverEnabled      bool
+		expectedResolverOrder      []CheckResolver
 	}
 
 	tests := []Test{
@@ -27,22 +26,15 @@ func TestNewOrderedCheckResolverBuilder(t *testing.T) {
 			expectedResolverOrder:      []CheckResolver{&CachedCheckResolver{}, &LocalChecker{}},
 		},
 		{
-			name:                                   "when_dispatch_throttling_alone_is_enabled",
-			DispatchThrottlingCheckResolverEnabled: true,
-			expectedResolverOrder:                  []CheckResolver{&DispatchThrottlingCheckResolver{}, &LocalChecker{}},
+			name:                       "when_all_are_enabled",
+			CachedCheckResolverEnabled: true,
+			expectedResolverOrder:      []CheckResolver{&CachedCheckResolver{}, &LocalChecker{}},
 		},
 		{
-			name:                                   "when_all_are_enabled",
-			CachedCheckResolverEnabled:             true,
-			DispatchThrottlingCheckResolverEnabled: true,
-			expectedResolverOrder:                  []CheckResolver{&CachedCheckResolver{}, &DispatchThrottlingCheckResolver{}, &LocalChecker{}},
-		},
-		{
-			name:                                   "when_all_are_enabled_with_shadow",
-			CachedCheckResolverEnabled:             true,
-			DispatchThrottlingCheckResolverEnabled: true,
-			ShadowResolverEnabled:                  true,
-			expectedResolverOrder:                  []CheckResolver{&CachedCheckResolver{}, &DispatchThrottlingCheckResolver{}, &ShadowResolver{main: &LocalChecker{}, shadow: &LocalChecker{}}},
+			name:                       "when_all_are_enabled_with_shadow",
+			CachedCheckResolverEnabled: true,
+			ShadowResolverEnabled:      true,
+			expectedResolverOrder:      []CheckResolver{&CachedCheckResolver{}, &ShadowResolver{main: &LocalChecker{}, shadow: &LocalChecker{}}},
 		},
 	}
 
@@ -50,7 +42,6 @@ func TestNewOrderedCheckResolverBuilder(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			builder := NewOrderedCheckResolvers([]CheckResolverOrderedBuilderOpt{
 				WithCachedCheckResolverOpts(test.CachedCheckResolverEnabled),
-				WithDispatchThrottlingCheckResolverOpts(test.DispatchThrottlingCheckResolverEnabled),
 				WithShadowResolverEnabled(test.ShadowResolverEnabled),
 			}...)
 			checkResolver, checkResolverCloser, err := builder.Build()

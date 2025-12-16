@@ -175,20 +175,6 @@ func TestServerPanicIfValidationsFail(t *testing.T) {
 		})
 	})
 
-	t.Run("invalid_dispatch_throttle_threshold", func(t *testing.T) {
-		require.PanicsWithError(t, "failed to construct the OpenFGA server: check default dispatch throttling threshold must be equal or smaller than max dispatch threshold for Check", func() {
-			mockController := gomock.NewController(t)
-			defer mockController.Finish()
-			mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
-			_ = MustNewServerWithOpts(
-				WithDatastore(mockDatastore),
-				WithDispatchThrottlingCheckResolverEnabled(true),
-				WithDispatchThrottlingCheckResolverThreshold(100),
-				WithDispatchThrottlingCheckResolverMaxThreshold(80),
-			)
-		})
-	})
-
 	t.Run("invalid_access_control_setup", func(t *testing.T) {
 		require.PanicsWithError(t, "failed to construct the OpenFGA server: access control parameters are not enabled. They can be enabled for experimental use by passing the `--experimentals enable-access-control` configuration option when running OpenFGA server. Additionally, the `--access-control-store-id` and `--access-control-model-id` parameters must not be empty", func() {
 			mockController := gomock.NewController(t)
@@ -309,47 +295,6 @@ func TestServerPanicIfEmptyRequestDurationDispatchCountBuckets(t *testing.T) {
 	})
 }
 
-func TestServerPanicIfDefaultDispatchThresholdGreaterThanMaxDispatchThreshold(t *testing.T) {
-	require.PanicsWithError(t, "failed to construct the OpenFGA server: check default dispatch throttling threshold must be equal or smaller than max dispatch threshold for Check", func() {
-		mockController := gomock.NewController(t)
-		defer mockController.Finish()
-		mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
-		_ = MustNewServerWithOpts(
-			WithDatastore(mockDatastore),
-			WithDispatchThrottlingCheckResolverEnabled(true),
-			WithDispatchThrottlingCheckResolverThreshold(100),
-			WithDispatchThrottlingCheckResolverMaxThreshold(80),
-		)
-	})
-}
-
-func TestServerPanicIfDefaultListObjectsThresholdGreaterThanMaxDispatchThreshold(t *testing.T) {
-	require.PanicsWithError(t, "failed to construct the OpenFGA server: ListObjects default dispatch throttling threshold must be equal or smaller than max dispatch threshold for ListObjects", func() {
-		mockController := gomock.NewController(t)
-		defer mockController.Finish()
-		mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
-		_ = MustNewServerWithOpts(
-			WithDatastore(mockDatastore),
-			WithListObjectsDispatchThrottlingEnabled(true),
-			WithListObjectsDispatchThrottlingThreshold(100),
-			WithListObjectsDispatchThrottlingMaxThreshold(80),
-		)
-	})
-}
-
-func TestServerPanicIfDefaultListUsersThresholdGreaterThanMaxDispatchThreshold(t *testing.T) {
-	require.PanicsWithError(t, "failed to construct the OpenFGA server: ListUsers default dispatch throttling threshold must be equal or smaller than max dispatch threshold for ListUsers", func() {
-		mockController := gomock.NewController(t)
-		defer mockController.Finish()
-		mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
-		_ = MustNewServerWithOpts(
-			WithDatastore(mockDatastore),
-			WithListUsersDispatchThrottlingEnabled(true),
-			WithListUsersDispatchThrottlingThreshold(100),
-			WithListUsersDispatchThrottlingMaxThreshold(80),
-		)
-	})
-}
 func TestServerWithPostgresDatastore(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
@@ -1705,9 +1650,6 @@ func TestDelegateCheckResolver(t *testing.T) {
 	})
 	t.Run("default_check_resolver_alone", func(t *testing.T) {
 		cfg := serverconfig.DefaultConfig()
-		require.False(t, cfg.CheckDispatchThrottling.Enabled)
-		require.False(t, cfg.ListObjectsDispatchThrottling.Enabled)
-		require.False(t, cfg.ListUsersDispatchThrottling.Enabled)
 		require.False(t, cfg.CheckQueryCache.Enabled)
 
 		ds := memory.New()
@@ -1716,7 +1658,6 @@ func TestDelegateCheckResolver(t *testing.T) {
 			WithDatastore(ds),
 		)
 		t.Cleanup(s.Close)
-		require.False(t, s.checkDispatchThrottlingEnabled)
 
 		require.False(t, s.cacheSettings.CheckQueryCacheEnabled)
 
@@ -1731,99 +1672,6 @@ func TestDelegateCheckResolver(t *testing.T) {
 		require.True(t, ok)
 	})
 
-	t.Run("dispatch_throttling_check_resolver_enabled", func(t *testing.T) {
-		ds := memory.New()
-		t.Cleanup(ds.Close)
-		const dispatchThreshold = 50
-		s := MustNewServerWithOpts(
-			WithDatastore(ds),
-			WithDispatchThrottlingCheckResolverEnabled(true),
-			WithDispatchThrottlingCheckResolverThreshold(dispatchThreshold),
-		)
-		t.Cleanup(s.Close)
-
-		require.False(t, s.cacheSettings.CheckQueryCacheEnabled)
-
-		require.True(t, s.checkDispatchThrottlingEnabled)
-		require.EqualValues(t, dispatchThreshold, s.checkDispatchThrottlingDefaultThreshold)
-		require.EqualValues(t, 0, s.checkDispatchThrottlingMaxThreshold)
-		checkResolver, closer, _ := s.getCheckResolverBuilder("store_id_123").Build()
-		defer closer()
-		require.NotNil(t, checkResolver)
-
-		dispatchThrottlingResolver, ok := checkResolver.(*graph.DispatchThrottlingCheckResolver)
-		require.True(t, ok)
-
-		localChecker, ok := dispatchThrottlingResolver.GetDelegate().(*graph.LocalChecker)
-		require.True(t, ok)
-
-		_, ok = localChecker.GetDelegate().(*graph.DispatchThrottlingCheckResolver)
-		require.True(t, ok)
-	})
-
-	t.Run("dispatch_throttling_check_resolver_enabled_zero_max_threshold", func(t *testing.T) {
-		ds := memory.New()
-		t.Cleanup(ds.Close)
-		const dispatchThreshold = 50
-		s := MustNewServerWithOpts(
-			WithDatastore(ds),
-			WithDispatchThrottlingCheckResolverEnabled(true),
-			WithDispatchThrottlingCheckResolverThreshold(dispatchThreshold),
-			WithDispatchThrottlingCheckResolverMaxThreshold(0),
-		)
-		t.Cleanup(s.Close)
-
-		require.False(t, s.cacheSettings.CheckQueryCacheEnabled)
-
-		require.True(t, s.checkDispatchThrottlingEnabled)
-		require.EqualValues(t, dispatchThreshold, s.checkDispatchThrottlingDefaultThreshold)
-		require.EqualValues(t, 0, s.checkDispatchThrottlingMaxThreshold)
-		checkResolver, closer, _ := s.getCheckResolverBuilder("store_id_123").Build()
-		defer closer()
-		require.NotNil(t, checkResolver)
-
-		dispatchThrottlingResolver, ok := checkResolver.(*graph.DispatchThrottlingCheckResolver)
-		require.True(t, ok)
-
-		localChecker, ok := dispatchThrottlingResolver.GetDelegate().(*graph.LocalChecker)
-		require.True(t, ok)
-
-		_, ok = localChecker.GetDelegate().(*graph.DispatchThrottlingCheckResolver)
-		require.True(t, ok)
-	})
-
-	t.Run("dispatch_throttling_check_resolver_enabled_non_zero_max_threshold", func(t *testing.T) {
-		ds := memory.New()
-		t.Cleanup(ds.Close)
-		const dispatchThreshold = 50
-		const maxDispatchThreshold = 60
-
-		s := MustNewServerWithOpts(
-			WithDatastore(ds),
-			WithDispatchThrottlingCheckResolverEnabled(true),
-			WithDispatchThrottlingCheckResolverThreshold(dispatchThreshold),
-			WithDispatchThrottlingCheckResolverMaxThreshold(maxDispatchThreshold),
-		)
-		t.Cleanup(s.Close)
-
-		require.False(t, s.cacheSettings.CheckQueryCacheEnabled)
-
-		require.True(t, s.checkDispatchThrottlingEnabled)
-		require.EqualValues(t, dispatchThreshold, s.checkDispatchThrottlingDefaultThreshold)
-		require.EqualValues(t, maxDispatchThreshold, s.checkDispatchThrottlingMaxThreshold)
-		checkResolver, closer, _ := s.getCheckResolverBuilder("store_id_123").Build()
-		defer closer()
-		require.NotNil(t, checkResolver)
-		dispatchThrottlingResolver, ok := checkResolver.(*graph.DispatchThrottlingCheckResolver)
-		require.True(t, ok)
-
-		localChecker, ok := dispatchThrottlingResolver.GetDelegate().(*graph.LocalChecker)
-		require.True(t, ok)
-
-		_, ok = localChecker.GetDelegate().(*graph.DispatchThrottlingCheckResolver)
-		require.True(t, ok)
-	})
-
 	t.Run("cache_check_resolver_enabled", func(t *testing.T) {
 		ds := memory.New()
 		t.Cleanup(ds.Close)
@@ -1832,8 +1680,6 @@ func TestDelegateCheckResolver(t *testing.T) {
 			WithCheckQueryCacheEnabled(true),
 		)
 		t.Cleanup(s.Close)
-
-		require.False(t, s.checkDispatchThrottlingEnabled)
 
 		require.True(t, s.cacheSettings.CheckQueryCacheEnabled)
 		checkResolver, closer, _ := s.getCheckResolverBuilder("store_id_123").Build()
@@ -1856,15 +1702,8 @@ func TestDelegateCheckResolver(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
 			WithCheckQueryCacheEnabled(true),
-			WithDispatchThrottlingCheckResolverEnabled(true),
-			WithDispatchThrottlingCheckResolverThreshold(50),
-			WithDispatchThrottlingCheckResolverMaxThreshold(100),
 		)
 		t.Cleanup(s.Close)
-
-		require.True(t, s.checkDispatchThrottlingEnabled)
-		require.EqualValues(t, 50, s.checkDispatchThrottlingDefaultThreshold)
-		require.EqualValues(t, 100, s.checkDispatchThrottlingMaxThreshold)
 
 		checkResolver, closer, _ := s.getCheckResolverBuilder("store_id_123").Build()
 		defer closer()
@@ -1874,10 +1713,7 @@ func TestDelegateCheckResolver(t *testing.T) {
 		require.True(t, ok)
 		require.True(t, s.cacheSettings.CheckQueryCacheEnabled)
 
-		dispatchThrottlingResolver, ok := cachedCheckResolver.GetDelegate().(*graph.DispatchThrottlingCheckResolver)
-		require.True(t, ok)
-
-		localChecker, ok := dispatchThrottlingResolver.GetDelegate().(*graph.LocalChecker)
+		localChecker, ok := cachedCheckResolver.GetDelegate().(*graph.LocalChecker)
 		require.True(t, ok)
 
 		_, ok = localChecker.GetDelegate().(*graph.CachedCheckResolver)
@@ -1989,20 +1825,8 @@ func TestServer_ThrottleUntilDeadline(t *testing.T) {
 
 	s := MustNewServerWithOpts(
 		WithDatastore(ds),
-
-		WithDispatchThrottlingCheckResolverEnabled(true),
-		WithDispatchThrottlingCheckResolverFrequency(3*deadline), // Forces time-out when throttling occurs
-		WithDispatchThrottlingCheckResolverThreshold(1),          // Applies throttling after first dispatch
-
 		WithListObjectsDeadline(deadline),
-		WithListObjectsDispatchThrottlingEnabled(true),
-		WithListObjectsDispatchThrottlingThreshold(1),          // Applies throttling after first dispatch
-		WithListObjectsDispatchThrottlingFrequency(3*deadline), // Forces time-out when throttling occurs
-
 		WithListUsersDeadline(deadline),
-		WithListUsersDispatchThrottlingEnabled(true),
-		WithListUsersDispatchThrottlingThreshold(1),          // Applies throttling after first dispatch
-		WithListUsersDispatchThrottlingFrequency(2*deadline), // Forces time-out when throttling occurs
 	)
 	t.Cleanup(s.Close)
 

@@ -25,7 +25,6 @@ import (
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/planner"
 	"github.com/openfga/openfga/internal/shared"
-	"github.com/openfga/openfga/internal/throttler"
 	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/internal/utils/apimethod"
 	"github.com/openfga/openfga/pkg/authclaims"
@@ -48,7 +47,6 @@ const (
 	allowedLabel = "allowed"
 
 	throttleTypeDatastore = "datastore"
-	throttleTypeDispatch  = "dispatch"
 )
 
 var tracer = otel.Tracer("openfga/pkg/server")
@@ -205,26 +203,9 @@ type Server struct {
 	requestDurationByQueryHistogramBuckets         []uint
 	requestDurationByDispatchCountHistogramBuckets []uint
 
-	checkDispatchThrottlingEnabled          bool
-	checkDispatchThrottlingFrequency        time.Duration
-	checkDispatchThrottlingDefaultThreshold uint32
-	checkDispatchThrottlingMaxThreshold     uint32
+	checkDatastoreThrottleThreshold int
+	checkDatastoreThrottleDuration  time.Duration
 
-	listObjectsDispatchThrottlingEnabled      bool
-	listObjectsDispatchThrottlingFrequency    time.Duration
-	listObjectsDispatchDefaultThreshold       uint32
-	listObjectsDispatchThrottlingMaxThreshold uint32
-
-	listUsersDispatchThrottlingEnabled      bool
-	listUsersDispatchThrottlingFrequency    time.Duration
-	listUsersDispatchDefaultThreshold       uint32
-	listUsersDispatchThrottlingMaxThreshold uint32
-
-	listObjectsDispatchThrottler throttler.Throttler
-	listUsersDispatchThrottler   throttler.Throttler
-
-	checkDatastoreThrottleThreshold       int
-	checkDatastoreThrottleDuration        time.Duration
 	listObjectsDatastoreThrottleThreshold int
 	listObjectsDatastoreThrottleDuration  time.Duration
 	listUsersDatastoreThrottleThreshold   int
@@ -530,44 +511,6 @@ func WithMaxAuthorizationModelSizeInBytes(size int) OpenFGAServiceV1Option {
 	}
 }
 
-// WithDispatchThrottlingCheckResolverEnabled sets whether dispatch throttling is enabled for Check requests.
-// Enabling this feature will prioritize dispatched requests requiring less than the configured dispatch
-// threshold over requests whose dispatch count exceeds the configured threshold.
-func WithDispatchThrottlingCheckResolverEnabled(enabled bool) OpenFGAServiceV1Option {
-	return func(s *Server) {
-		s.checkDispatchThrottlingEnabled = enabled
-	}
-}
-
-// WithDispatchThrottlingCheckResolverFrequency defines how frequent dispatch throttling
-// will be evaluated for Check requests.
-// Frequency controls how frequently throttled dispatch requests are evaluated to determine whether
-// it can be processed.
-// This value should not be too small (i.e., in the ns ranges) as i) there are limitation in timer resolution
-// and ii) very small value will result in a higher frequency of processing dispatches,
-// which diminishes the value of the throttling.
-func WithDispatchThrottlingCheckResolverFrequency(frequency time.Duration) OpenFGAServiceV1Option {
-	return func(s *Server) {
-		s.checkDispatchThrottlingFrequency = frequency
-	}
-}
-
-// WithDispatchThrottlingCheckResolverThreshold define the number of dispatches to be throttled.
-// In addition, it will update checkDispatchThrottlingMaxThreshold if required.
-func WithDispatchThrottlingCheckResolverThreshold(defaultThreshold uint32) OpenFGAServiceV1Option {
-	return func(s *Server) {
-		s.checkDispatchThrottlingDefaultThreshold = defaultThreshold
-	}
-}
-
-// WithDispatchThrottlingCheckResolverMaxThreshold define the maximum threshold values allowed
-// It will ensure checkDispatchThrottlingMaxThreshold will never be smaller than threshold.
-func WithDispatchThrottlingCheckResolverMaxThreshold(maxThreshold uint32) OpenFGAServiceV1Option {
-	return func(s *Server) {
-		s.checkDispatchThrottlingMaxThreshold = maxThreshold
-	}
-}
-
 // WithContextPropagationToDatastore determines whether the request context is propagated to the datastore.
 // When enabled, the datastore receives cancellation signals when an API request is cancelled.
 // When disabled, datastore operations continue even if the original request context is cancelled.
@@ -605,82 +548,6 @@ func MustNewServerWithOpts(opts ...OpenFGAServiceV1Option) *Server {
 func (s *Server) IsAccessControlEnabled() bool {
 	isEnabled := s.featureFlagClient.Boolean(serverconfig.ExperimentalAccessControlParams, "")
 	return isEnabled && s.AccessControl.Enabled
-}
-
-// WithListObjectsDispatchThrottlingEnabled sets whether dispatch throttling is enabled for List Objects requests.
-// Enabling this feature will prioritize dispatched requests requiring less than the configured dispatch
-// threshold over requests whose dispatch count exceeds the configured threshold.
-func WithListObjectsDispatchThrottlingEnabled(enabled bool) OpenFGAServiceV1Option {
-	return func(s *Server) {
-		s.listObjectsDispatchThrottlingEnabled = enabled
-	}
-}
-
-// WithListObjectsDispatchThrottlingFrequency defines how frequent dispatch throttling
-// will be evaluated for List Objects requests.
-// Frequency controls how frequently throttled dispatch requests are evaluated to determine whether
-// it can be processed.
-// This value should not be too small (i.e., in the ns ranges) as i) there are limitation in timer resolution
-// and ii) very small value will result in a higher frequency of processing dispatches,
-// which diminishes the value of the throttling.
-func WithListObjectsDispatchThrottlingFrequency(frequency time.Duration) OpenFGAServiceV1Option {
-	return func(s *Server) {
-		s.listObjectsDispatchThrottlingFrequency = frequency
-	}
-}
-
-// WithListObjectsDispatchThrottlingThreshold define the number of dispatches to be throttled
-// for List Objects requests.
-func WithListObjectsDispatchThrottlingThreshold(threshold uint32) OpenFGAServiceV1Option {
-	return func(s *Server) {
-		s.listObjectsDispatchDefaultThreshold = threshold
-	}
-}
-
-// WithListObjectsDispatchThrottlingMaxThreshold define the maximum threshold values allowed
-// It will ensure listObjectsDispatchThrottlingMaxThreshold will never be smaller than threshold.
-func WithListObjectsDispatchThrottlingMaxThreshold(maxThreshold uint32) OpenFGAServiceV1Option {
-	return func(s *Server) {
-		s.listObjectsDispatchThrottlingMaxThreshold = maxThreshold
-	}
-}
-
-// WithListUsersDispatchThrottlingEnabled sets whether dispatch throttling is enabled for ListUsers requests.
-// Enabling this feature will prioritize dispatched requests requiring less than the configured dispatch
-// threshold over requests whose dispatch count exceeds the configured threshold.
-func WithListUsersDispatchThrottlingEnabled(enabled bool) OpenFGAServiceV1Option {
-	return func(s *Server) {
-		s.listUsersDispatchThrottlingEnabled = enabled
-	}
-}
-
-// WithListUsersDispatchThrottlingFrequency defines how frequent dispatch throttling
-// will be evaluated for ListUsers requests.
-// Frequency controls how frequently throttled dispatch requests are evaluated to determine whether
-// it can be processed.
-// This value should not be too small (i.e., in the ns ranges) as i) there are limitation in timer resolution
-// and ii) very small value will result in a higher frequency of processing dispatches,
-// which diminishes the value of the throttling.
-func WithListUsersDispatchThrottlingFrequency(frequency time.Duration) OpenFGAServiceV1Option {
-	return func(s *Server) {
-		s.listUsersDispatchThrottlingFrequency = frequency
-	}
-}
-
-// WithListUsersDispatchThrottlingThreshold define the number of dispatches to be throttled
-// for ListUsers requests.
-func WithListUsersDispatchThrottlingThreshold(threshold uint32) OpenFGAServiceV1Option {
-	return func(s *Server) {
-		s.listUsersDispatchDefaultThreshold = threshold
-	}
-}
-
-// WithListUsersDispatchThrottlingMaxThreshold define the maximum threshold values allowed
-// It will ensure listUsersDispatchThrottlingMaxThreshold will never be smaller than threshold.
-func WithListUsersDispatchThrottlingMaxThreshold(maxThreshold uint32) OpenFGAServiceV1Option {
-	return func(s *Server) {
-		s.listUsersDispatchThrottlingMaxThreshold = maxThreshold
-	}
 }
 
 // WithMaxConcurrentChecksPerBatchCheck defines the maximum number of checks
@@ -796,20 +663,6 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		requestDurationByDispatchCountHistogramBuckets: []uint{50, 200},
 		serviceName: openfgav1.OpenFGAService_ServiceDesc.ServiceName,
 
-		checkDispatchThrottlingEnabled:          serverconfig.DefaultCheckDispatchThrottlingEnabled,
-		checkDispatchThrottlingFrequency:        serverconfig.DefaultCheckDispatchThrottlingFrequency,
-		checkDispatchThrottlingDefaultThreshold: serverconfig.DefaultCheckDispatchThrottlingDefaultThreshold,
-
-		listObjectsDispatchThrottlingEnabled:      serverconfig.DefaultListObjectsDispatchThrottlingEnabled,
-		listObjectsDispatchThrottlingFrequency:    serverconfig.DefaultListObjectsDispatchThrottlingFrequency,
-		listObjectsDispatchDefaultThreshold:       serverconfig.DefaultListObjectsDispatchThrottlingDefaultThreshold,
-		listObjectsDispatchThrottlingMaxThreshold: serverconfig.DefaultListObjectsDispatchThrottlingMaxThreshold,
-
-		listUsersDispatchThrottlingEnabled:      serverconfig.DefaultListUsersDispatchThrottlingEnabled,
-		listUsersDispatchThrottlingFrequency:    serverconfig.DefaultListUsersDispatchThrottlingFrequency,
-		listUsersDispatchDefaultThreshold:       serverconfig.DefaultListUsersDispatchThrottlingDefaultThreshold,
-		listUsersDispatchThrottlingMaxThreshold: serverconfig.DefaultListUsersDispatchThrottlingMaxThreshold,
-
 		tokenSerializer:   encoder.NewStringContinuationTokenSerializer(),
 		singleflightGroup: &singleflight.Group{},
 		authorizer:        authz.NewAuthorizerNoop(),
@@ -840,17 +693,6 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 	if len(s.requestDurationByDispatchCountHistogramBuckets) == 0 {
 		return nil, fmt.Errorf("request duration by dispatch count buckets must not be empty")
 	}
-	if s.checkDispatchThrottlingEnabled && s.checkDispatchThrottlingMaxThreshold != 0 && s.checkDispatchThrottlingDefaultThreshold > s.checkDispatchThrottlingMaxThreshold {
-		return nil, fmt.Errorf("check default dispatch throttling threshold must be equal or smaller than max dispatch threshold for Check")
-	}
-
-	if s.listObjectsDispatchThrottlingMaxThreshold != 0 && s.listObjectsDispatchDefaultThreshold > s.listObjectsDispatchThrottlingMaxThreshold {
-		return nil, fmt.Errorf("ListObjects default dispatch throttling threshold must be equal or smaller than max dispatch threshold for ListObjects")
-	}
-
-	if s.listUsersDispatchThrottlingMaxThreshold != 0 && s.listUsersDispatchDefaultThreshold > s.listUsersDispatchThrottlingMaxThreshold {
-		return nil, fmt.Errorf("ListUsers default dispatch throttling threshold must be equal or smaller than max dispatch threshold for ListUsers")
-	}
 
 	if s.featureFlagClient == nil {
 		s.featureFlagClient = featureflags.NewDefaultClient(s.experimentals)
@@ -879,14 +721,6 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		return nil, err
 	}
 
-	if s.listObjectsDispatchThrottlingEnabled {
-		s.listObjectsDispatchThrottler = throttler.NewConstantRateThrottler(s.listObjectsDispatchThrottlingFrequency, "list_objects_dispatch_throttle")
-	}
-
-	if s.listUsersDispatchThrottlingEnabled {
-		s.listUsersDispatchThrottler = throttler.NewConstantRateThrottler(s.listUsersDispatchThrottlingFrequency, "list_users_dispatch_throttle")
-	}
-
 	s.typesystemResolver, s.typesystemResolverStop, err = typesystem.MemoizedTypesystemResolverFunc(s.datastore)
 	if err != nil {
 		return nil, err
@@ -905,13 +739,6 @@ func (s *Server) Close() {
 		s.planner.Stop()
 	}
 	s.typesystemResolverStop()
-
-	if s.listObjectsDispatchThrottler != nil {
-		s.listObjectsDispatchThrottler.Close()
-	}
-	if s.listUsersDispatchThrottler != nil {
-		s.listUsersDispatchThrottler.Close()
-	}
 
 	s.sharedDatastoreResources.Close()
 	s.datastore.Close()
@@ -1042,7 +869,7 @@ func (s *Server) getAccessibleStores(ctx context.Context) ([]string, error) {
 	return stores, nil
 }
 
-func (s *Server) getCheckResolverOptions() ([]graph.CachedCheckResolverOpt, []graph.DispatchThrottlingCheckResolverOpt) {
+func (s *Server) getCheckResolverOptions() []graph.CachedCheckResolverOpt {
 	var checkCacheOptions []graph.CachedCheckResolverOpt
 	if s.cacheSettings.ShouldCacheCheckQueries() {
 		checkCacheOptions = append(checkCacheOptions,
@@ -1052,19 +879,7 @@ func (s *Server) getCheckResolverOptions() ([]graph.CachedCheckResolverOpt, []gr
 		)
 	}
 
-	var checkDispatchThrottlingOptions []graph.DispatchThrottlingCheckResolverOpt
-	if s.checkDispatchThrottlingEnabled {
-		checkDispatchThrottlingOptions = []graph.DispatchThrottlingCheckResolverOpt{
-			graph.WithDispatchThrottlingCheckResolverConfig(graph.DispatchThrottlingCheckResolverConfig{
-				DefaultThreshold: s.checkDispatchThrottlingDefaultThreshold,
-				MaxThreshold:     s.checkDispatchThrottlingMaxThreshold,
-			}),
-			// only create the throttler if the feature is enabled, so that we can clean it afterward
-			graph.WithConstantRateThrottler(s.checkDispatchThrottlingFrequency,
-				"check_dispatch_throttle"),
-		}
-	}
-	return checkCacheOptions, checkDispatchThrottlingOptions
+	return checkCacheOptions
 }
 
 // checkWriteAuthz checks the authorization for modules if they exist, otherwise the store on write requests.

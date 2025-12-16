@@ -61,24 +61,9 @@ const (
 	DefaultMaxConditionEvaluationCost = 100
 	DefaultInterruptCheckFrequency    = 100
 
-	DefaultCheckDispatchThrottlingEnabled          = false
-	DefaultCheckDispatchThrottlingFrequency        = 10 * time.Microsecond
-	DefaultCheckDispatchThrottlingDefaultThreshold = 100
-	DefaultCheckDispatchThrottlingMaxThreshold     = 0 // 0 means use the default threshold as max
-
 	// Batch Check.
 	DefaultMaxChecksPerBatchCheck           = 50
 	DefaultMaxConcurrentChecksPerBatchCheck = 50
-
-	DefaultListObjectsDispatchThrottlingEnabled          = false
-	DefaultListObjectsDispatchThrottlingFrequency        = 10 * time.Microsecond
-	DefaultListObjectsDispatchThrottlingDefaultThreshold = 100
-	DefaultListObjectsDispatchThrottlingMaxThreshold     = 0 // 0 means use the default threshold as max
-
-	DefaultListUsersDispatchThrottlingEnabled          = false
-	DefaultListUsersDispatchThrottlingFrequency        = 10 * time.Microsecond
-	DefaultListUsersDispatchThrottlingDefaultThreshold = 100
-	DefaultListUsersDispatchThrottlingMaxThreshold     = 0 // 0 means use the default threshold as max
 
 	DefaultRequestTimeout     = 3 * time.Second
 	additionalUpstreamTimeout = 3 * time.Second
@@ -280,14 +265,6 @@ type CacheControllerConfig struct {
 	TTL     time.Duration
 }
 
-// DispatchThrottlingConfig defines configurations for dispatch throttling.
-type DispatchThrottlingConfig struct {
-	Enabled      bool
-	Frequency    time.Duration
-	Threshold    uint32
-	MaxThreshold uint32
-}
-
 // DatastoreThrottleConfig defines configurations for database throttling.
 // A threshold <= 0 means DatastoreThrottling is not enabled.
 type DatastoreThrottleConfig struct {
@@ -391,28 +368,25 @@ type Config struct {
 	// thereby receiving API cancellation signals
 	ContextPropagationToDatastore bool
 
-	Datastore                     DatastoreConfig
-	GRPC                          GRPCConfig
-	HTTP                          HTTPConfig
-	Authn                         AuthnConfig
-	Log                           LogConfig
-	Trace                         TraceConfig
-	Playground                    PlaygroundConfig
-	Profiler                      ProfilerConfig
-	Metrics                       MetricConfig
-	CheckCache                    CheckCacheConfig
-	CheckIteratorCache            IteratorCacheConfig
-	CheckQueryCache               CheckQueryCache
-	CacheController               CacheControllerConfig
-	CheckDispatchThrottling       DispatchThrottlingConfig
-	ListObjectsDispatchThrottling DispatchThrottlingConfig
-	ListUsersDispatchThrottling   DispatchThrottlingConfig
-	CheckDatastoreThrottle        DatastoreThrottleConfig
-	ListObjectsDatastoreThrottle  DatastoreThrottleConfig
-	ListUsersDatastoreThrottle    DatastoreThrottleConfig
-	ListObjectsIteratorCache      IteratorCacheConfig
-	SharedIterator                SharedIteratorConfig
-	Planner                       PlannerConfig
+	Datastore                    DatastoreConfig
+	GRPC                         GRPCConfig
+	HTTP                         HTTPConfig
+	Authn                        AuthnConfig
+	Log                          LogConfig
+	Trace                        TraceConfig
+	Playground                   PlaygroundConfig
+	Profiler                     ProfilerConfig
+	Metrics                      MetricConfig
+	CheckCache                   CheckCacheConfig
+	CheckIteratorCache           IteratorCacheConfig
+	CheckQueryCache              CheckQueryCache
+	CacheController              CacheControllerConfig
+	CheckDatastoreThrottle       DatastoreThrottleConfig
+	ListObjectsDatastoreThrottle DatastoreThrottleConfig
+	ListUsersDatastoreThrottle   DatastoreThrottleConfig
+	ListObjectsIteratorCache     IteratorCacheConfig
+	SharedIterator               SharedIteratorConfig
+	Planner                      PlannerConfig
 
 	RequestDurationDatastoreQueryCountBuckets []string
 	RequestDurationDispatchCountBuckets       []string
@@ -454,12 +428,7 @@ func (cfg *Config) VerifyServerSettings() error {
 		}
 	}
 
-	err := cfg.VerifyDispatchThrottlingConfig()
-	if err != nil {
-		return err
-	}
-
-	err = cfg.VerifyDatastoreThrottlesConfig()
+	err := cfg.VerifyDatastoreThrottlesConfig()
 	if err != nil {
 		return err
 	}
@@ -561,46 +530,6 @@ func DefaultContextTimeout(config *Config) time.Duration {
 		return config.HTTP.UpstreamTimeout
 	}
 	return 0
-}
-
-// VerifyDispatchThrottlingConfig ensures DispatchThrottlingConfigs are valid.
-func (cfg *Config) VerifyDispatchThrottlingConfig() error {
-	if cfg.CheckDispatchThrottling.Enabled {
-		if cfg.CheckDispatchThrottling.Frequency <= 0 {
-			return errors.New("'checkDispatchThrottling.frequency' must be non-negative time duration")
-		}
-		if cfg.CheckDispatchThrottling.Threshold <= 0 {
-			return errors.New("'checkDispatchThrottling.threshold' must be non-negative integer")
-		}
-		if cfg.CheckDispatchThrottling.MaxThreshold != 0 && cfg.CheckDispatchThrottling.Threshold > cfg.CheckDispatchThrottling.MaxThreshold {
-			return errors.New("'checkDispatchThrottling.threshold' must be less than or equal to 'checkDispatchThrottling.maxThreshold' respectively")
-		}
-	}
-
-	if cfg.ListObjectsDispatchThrottling.Enabled {
-		if cfg.ListObjectsDispatchThrottling.Frequency <= 0 {
-			return errors.New("'listObjectsDispatchThrottling.frequency' must be non-negative time duration")
-		}
-		if cfg.ListObjectsDispatchThrottling.Threshold <= 0 {
-			return errors.New("'listObjectsDispatchThrottling.threshold' must be non-negative integer")
-		}
-		if cfg.ListObjectsDispatchThrottling.MaxThreshold != 0 && cfg.ListObjectsDispatchThrottling.Threshold > cfg.ListObjectsDispatchThrottling.MaxThreshold {
-			return errors.New("'listObjectsDispatchThrottling.threshold' must be less than or equal to 'listObjectsDispatchThrottling.maxThreshold'")
-		}
-	}
-
-	if cfg.ListUsersDispatchThrottling.Enabled {
-		if cfg.ListUsersDispatchThrottling.Frequency <= 0 {
-			return errors.New("'listUsersDispatchThrottling.frequency' must be non-negative time duration")
-		}
-		if cfg.ListUsersDispatchThrottling.Threshold <= 0 {
-			return errors.New("'listUsersDispatchThrottling.threshold' must be non-negative integer")
-		}
-		if cfg.ListUsersDispatchThrottling.MaxThreshold != 0 && cfg.ListUsersDispatchThrottling.Threshold > cfg.ListUsersDispatchThrottling.MaxThreshold {
-			return errors.New("'listUsersDispatchThrottling.threshold' must be less than or equal to 'listUsersDispatchThrottling.maxThreshold'")
-		}
-	}
-	return nil
 }
 
 // VerifyDatastoreThrottlesConfig ensures VerifyDatastoreThrottlesConfig is called so that the right values are verified.
@@ -779,24 +708,6 @@ func DefaultConfig() *Config {
 		CacheController: CacheControllerConfig{
 			Enabled: DefaultCacheControllerConfigEnabled,
 			TTL:     DefaultCacheControllerConfigTTL,
-		},
-		CheckDispatchThrottling: DispatchThrottlingConfig{
-			Enabled:      DefaultCheckDispatchThrottlingEnabled,
-			Frequency:    DefaultCheckDispatchThrottlingFrequency,
-			Threshold:    DefaultCheckDispatchThrottlingDefaultThreshold,
-			MaxThreshold: DefaultCheckDispatchThrottlingMaxThreshold,
-		},
-		ListObjectsDispatchThrottling: DispatchThrottlingConfig{
-			Enabled:      DefaultListObjectsDispatchThrottlingEnabled,
-			Frequency:    DefaultListObjectsDispatchThrottlingFrequency,
-			Threshold:    DefaultListObjectsDispatchThrottlingDefaultThreshold,
-			MaxThreshold: DefaultListObjectsDispatchThrottlingMaxThreshold,
-		},
-		ListUsersDispatchThrottling: DispatchThrottlingConfig{
-			Enabled:      DefaultListUsersDispatchThrottlingEnabled,
-			Frequency:    DefaultListUsersDispatchThrottlingFrequency,
-			Threshold:    DefaultListUsersDispatchThrottlingDefaultThreshold,
-			MaxThreshold: DefaultListUsersDispatchThrottlingMaxThreshold,
 		},
 		ListObjectsIteratorCache: IteratorCacheConfig{
 			Enabled:    DefaultListObjectsIteratorCacheEnabled,

@@ -1,15 +1,13 @@
 package graph
 
 type CheckResolverOrderedBuilder struct {
-	resolvers                              []CheckResolver
-	localCheckerOptions                    []LocalCheckerOption
-	shadowLocalCheckerOptions              []LocalCheckerOption
-	shadowResolverEnabled                  bool
-	shadowResolverOptions                  []ShadowResolverOpt
-	cachedCheckResolverEnabled             bool
-	cachedCheckResolverOptions             []CachedCheckResolverOpt
-	dispatchThrottlingCheckResolverEnabled bool
-	dispatchThrottlingCheckResolverOptions []DispatchThrottlingCheckResolverOpt
+	resolvers                  []CheckResolver
+	localCheckerOptions        []LocalCheckerOption
+	shadowLocalCheckerOptions  []LocalCheckerOption
+	shadowResolverEnabled      bool
+	shadowResolverOptions      []ShadowResolverOpt
+	cachedCheckResolverEnabled bool
+	cachedCheckResolverOptions []CachedCheckResolverOpt
 }
 
 type CheckResolverOrderedBuilderOpt func(checkResolver *CheckResolverOrderedBuilder)
@@ -47,14 +45,6 @@ func WithCachedCheckResolverOpts(enabled bool, opts ...CachedCheckResolverOpt) C
 	}
 }
 
-// WithDispatchThrottlingCheckResolverOpts sets the opts to be used to build DispatchThrottlingCheckResolver.
-func WithDispatchThrottlingCheckResolverOpts(enabled bool, opts ...DispatchThrottlingCheckResolverOpt) CheckResolverOrderedBuilderOpt {
-	return func(r *CheckResolverOrderedBuilder) {
-		r.dispatchThrottlingCheckResolverEnabled = enabled
-		r.dispatchThrottlingCheckResolverOptions = opts
-	}
-}
-
 func NewOrderedCheckResolvers(opts ...CheckResolverOrderedBuilderOpt) *CheckResolverOrderedBuilder {
 	checkResolverBuilder := &CheckResolverOrderedBuilder{}
 	for _, opt := range opts {
@@ -80,10 +70,6 @@ func (c *CheckResolverOrderedBuilder) Build() (CheckResolver, CheckResolverClose
 		}
 
 		c.resolvers = append(c.resolvers, cachedCheckResolver)
-	}
-
-	if c.dispatchThrottlingCheckResolverEnabled {
-		c.resolvers = append(c.resolvers, NewDispatchThrottlingCheckResolver(c.dispatchThrottlingCheckResolverOptions...))
 	}
 
 	if c.shadowResolverEnabled {

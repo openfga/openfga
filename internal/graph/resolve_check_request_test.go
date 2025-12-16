@@ -46,7 +46,6 @@ func TestCloneResolveCheckRequest(t *testing.T) {
 		require.Equal(t, contextStruct, orig.GetContext())
 		require.Equal(t, uint32(0), orig.GetRequestMetadata().Depth)
 		require.Equal(t, uint32(2), orig.GetRequestMetadata().DispatchCounter.Load())
-		require.False(t, orig.GetRequestMetadata().DispatchThrottled.Load())
 		require.False(t, orig.GetRequestMetadata().DatastoreThrottled.Load())
 		require.Equal(t, map[string]struct{}{
 			"abc": {},
@@ -59,7 +58,6 @@ func TestCloneResolveCheckRequest(t *testing.T) {
 			"abc": {},
 			"xyz": {},
 		}
-		orig.GetRequestMetadata().DispatchThrottled.Store(true)
 
 		// Assert the new values of the orig
 		require.Equal(t, "12", orig.GetStoreID())
@@ -74,7 +72,6 @@ func TestCloneResolveCheckRequest(t *testing.T) {
 		require.Equal(t, contextStruct, orig.GetContext())
 		require.Equal(t, uint32(0), orig.GetRequestMetadata().Depth)
 		require.Equal(t, uint32(7), orig.GetRequestMetadata().DispatchCounter.Load())
-		require.True(t, orig.GetRequestMetadata().DispatchThrottled.Load())
 		require.Equal(t, map[string]struct{}{
 			"abc": {},
 			"xyz": {},
@@ -92,7 +89,6 @@ func TestCloneResolveCheckRequest(t *testing.T) {
 		require.Equal(t, contextStruct, cloned.GetContext())
 		require.Equal(t, uint32(0), cloned.GetRequestMetadata().Depth)
 		require.Equal(t, uint32(7), cloned.GetRequestMetadata().DispatchCounter.Load()) // note that it is intended to have the request metadata share the same dispatch counter
-		require.True(t, cloned.GetRequestMetadata().DispatchThrottled.Load())           // it is intended to share the same was throttled state
 		require.Equal(t, map[string]struct{}{
 			"abc": {},
 		}, cloned.VisitedPaths)
@@ -161,7 +157,6 @@ func TestCloneResolveCheckRequest(t *testing.T) {
 			require.Equal(t, "document:def", cloned.GetContextualTuples()[0].GetObject())
 			require.Equal(t, contextStruct, cloned.GetContext())
 			require.Equal(t, uint32(0), cloned.GetRequestMetadata().Depth)
-			require.False(t, cloned.GetRequestMetadata().DispatchThrottled.Load())
 			require.False(t, cloned.GetRequestMetadata().DatastoreThrottled.Load())
 			require.Equal(t, map[string]struct{}{
 				"abc": {},
