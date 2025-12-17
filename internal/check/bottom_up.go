@@ -246,23 +246,30 @@ func (s *bottomUp) buildIterator(ctx context.Context, req *Request, edge *authzG
 	return storage.WrapIterator(storage.ObjectIDKind, iterator.NewFilteredIterator(iter, iterFilters...))
 }
 
+// batchBuffer wraps the slice to avoid SA6002 (argument should be pointer-like).
+type batchBuffer struct {
+	items []string
+}
+
 var batchPool = sync.Pool{
 	New: func() any {
-		return make([]string, 0, IteratorMinBatchThreshold)
+		return &batchBuffer{
+			items: make([]string, 0, IteratorMinBatchThreshold),
+		}
 	},
 }
 
 type batcher struct {
-	ctx   context.Context
-	out   chan<- *iterator.Msg
-	items []string
+	ctx context.Context
+	out chan<- *iterator.Msg
+	buf *batchBuffer
 }
 
 func newBatcher(ctx context.Context, out chan<- *iterator.Msg) *batcher {
 	return &batcher{
-		ctx:   ctx,
-		out:   out,
-		items: batchPool.Get().([]string),
+		ctx: ctx,
+		out: out,
+		buf: batchPool.Get().(*batchBuffer),
 	}
 }
 
@@ -270,17 +277,21 @@ func (b *batcher) add(val string) {
 	if val == "" {
 		return
 	}
-	b.items = append(b.items, val)
-	if len(b.items) >= IteratorMinBatchThreshold {
+	b.buf.items = append(b.buf.items, val)
+	if len(b.buf.items) >= IteratorMinBatchThreshold {
 		b.flush()
 	}
 }
 
 func (b *batcher) flush() {
-	if len(b.items) > 0 {
-		concurrency.TrySendThroughChannel(b.ctx, &iterator.Msg{Iter: storage.NewStaticIterator[string](b.items)}, b.out)
-		// Get a new slice from the pool for the next batch
-		b.items = batchPool.Get().([]string)
+	if b.buf == nil {
+		return
+	}
+	if len(b.buf.items) > 0 {
+		concurrency.TrySendThroughChannel(b.ctx, &iterator.Msg{Iter: storage.NewStaticIterator[string](b.buf.items)}, b.out)
+		// Get a new buffer from the pool for the next batch.
+		// We cannot reuse the current one because ownership of the slice has been passed to the iterator.
+		b.buf = batchPool.Get().(*batchBuffer)
 	}
 }
 
@@ -297,10 +308,10 @@ func (b *batcher) handleError(err error) bool {
 	}
 
 	// Discard the batch and return the buffer to the pool
-	if b.items != nil {
-		b.items = b.items[:0]
-		batchPool.Put(b.items)
-		b.items = nil
+	if b.buf != nil {
+		b.buf.items = b.buf.items[:0]
+		batchPool.Put(b.buf)
+		b.buf = nil
 	}
 	return true
 }
@@ -309,11 +320,11 @@ func (b *batcher) close(iters []storage.Iterator[string], err error) {
 	b.flush()
 	if err != nil {
 		b.handleError(err)
-	} else if b.items != nil {
+	} else if b.buf != nil {
 		// Return the unused buffer to the pool
-		b.items = b.items[:0]
-		batchPool.Put(b.items)
-		b.items = nil
+		b.buf.items = b.buf.items[:0]
+		batchPool.Put(b.buf)
+		b.buf = nil
 	}
 	close(b.out)
 	for _, it := range iters {
