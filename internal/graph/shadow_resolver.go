@@ -2,8 +2,6 @@ package graph
 
 import (
 	"context"
-	"math"
-	"math/rand"
 	"sync"
 	"time"
 
@@ -28,12 +26,6 @@ func ShadowResolverWithTimeout(timeout time.Duration) ShadowResolverOpt {
 	}
 }
 
-func ShadowResolverWithSamplePercentage(p int) ShadowResolverOpt {
-	return func(shadowResolver *ShadowResolver) {
-		shadowResolver.samplePercentage = int(math.Abs(float64(p)))
-	}
-}
-
 func ShadowResolverWithLogger(logger logger.Logger) ShadowResolverOpt {
 	return func(shadowResolver *ShadowResolver) {
 		shadowResolver.logger = logger
@@ -41,12 +33,11 @@ func ShadowResolverWithLogger(logger logger.Logger) ShadowResolverOpt {
 }
 
 type ShadowResolver struct {
-	name             string
-	main             CheckResolver
-	shadow           CheckResolver
-	shadowTimeout    time.Duration
-	samplePercentage int
-	logger           logger.Logger
+	name          string
+	main          CheckResolver
+	shadow        CheckResolver
+	shadowTimeout time.Duration
+	logger        logger.Logger
 	// only used for testing signals
 	wg *sync.WaitGroup
 }
@@ -62,68 +53,61 @@ func (s ShadowResolver) ResolveCheck(ctx context.Context, req *ResolveCheckReque
 		return nil, err
 	}
 
-	if rand.Intn(Hundred) < s.samplePercentage {
-		// only successful requests will be evaluated
-		resClone := res.clone()
-		reqClone := req.clone()
-		reqClone.VisitedPaths = nil // reset completely for evaluation
-		s.wg.Add(1)
-		go func() {
-			defer s.wg.Done()
+	resClone := res.clone()
+	reqClone := req.clone()
+	reqClone.VisitedPaths = nil // reset completely for evaluation
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
 
-			defer func() {
-				if r := recover(); r != nil {
-					s.logger.ErrorWithContext(ctx, "panic recovered",
-						zap.String("resolver", s.name),
-						zap.Any("error", err),
-						zap.String("request", reqClone.GetTupleKey().String()),
-						zap.String("store_id", reqClone.GetStoreID()),
-						zap.String("model_id", reqClone.GetAuthorizationModelID()),
-						zap.String("function", "ShadowResolver.ResolveCheck"),
-					)
-				}
-			}()
-
-			ctx, cancel := context.WithTimeout(ctxClone, s.shadowTimeout)
-			defer cancel()
-			shadowStart := time.Now()
-			shadowRes, err := s.shadow.ResolveCheck(ctx, reqClone)
-			shadowDuration := time.Since(shadowStart)
-			if err != nil {
-				s.logger.WarnWithContext(ctx, "shadow check errored",
+		defer func() {
+			if r := recover(); r != nil {
+				s.logger.ErrorWithContext(ctx, "panic recovered",
 					zap.String("resolver", s.name),
-					zap.Error(err),
+					zap.Any("error", err),
 					zap.String("request", reqClone.GetTupleKey().String()),
 					zap.String("store_id", reqClone.GetStoreID()),
 					zap.String("model_id", reqClone.GetAuthorizationModelID()),
-				)
-				return
-			}
-			if shadowRes.GetAllowed() != resClone.GetAllowed() {
-				s.logger.InfoWithContext(ctx, "shadow check difference",
-					zap.String("resolver", s.name),
-					zap.String("request", reqClone.GetTupleKey().String()),
-					zap.String("store_id", reqClone.GetStoreID()),
-					zap.String("model_id", reqClone.GetAuthorizationModelID()),
-					zap.Bool("main", resClone.GetAllowed()),
-					zap.Bool("main_cycle", resClone.GetCycleDetected()),
-					zap.Int64("main_latency_us", mainDuration.Microseconds()),
-					zap.Uint32("main_query_count", resClone.GetResolutionMetadata().DatastoreQueryCount),
-					zap.Bool("shadow", shadowRes.GetAllowed()),
-					zap.Bool("shadow_cycle", shadowRes.GetCycleDetected()),
-					zap.Int64("shadow_latency_us", shadowDuration.Microseconds()),
-					zap.Uint32("shadow_query_count", shadowRes.GetResolutionMetadata().DatastoreQueryCount),
-				)
-			} else {
-				s.logger.InfoWithContext(ctx, "shadow check match",
-					zap.Int64("main_latency_us", mainDuration.Microseconds()),
-					zap.Uint32("main_query_count", resClone.GetResolutionMetadata().DatastoreQueryCount),
-					zap.Int64("shadow_latency_us", shadowDuration.Microseconds()),
-					zap.Uint32("shadow_query_count", shadowRes.GetResolutionMetadata().DatastoreQueryCount),
+					zap.String("function", "ShadowResolver.ResolveCheck"),
 				)
 			}
 		}()
-	}
+
+		ctx, cancel := context.WithTimeout(ctxClone, s.shadowTimeout)
+		defer cancel()
+		shadowStart := time.Now()
+		shadowRes, err := s.shadow.ResolveCheck(ctx, reqClone)
+		shadowDuration := time.Since(shadowStart)
+		if err != nil {
+			s.logger.WarnWithContext(ctx, "shadow check errored",
+				zap.String("resolver", s.name),
+				zap.Error(err),
+				zap.String("request", reqClone.GetTupleKey().String()),
+				zap.String("store_id", reqClone.GetStoreID()),
+				zap.String("model_id", reqClone.GetAuthorizationModelID()),
+			)
+			return
+		}
+		if shadowRes.GetAllowed() != resClone.GetAllowed() {
+			s.logger.InfoWithContext(ctx, "shadow check difference",
+				zap.String("resolver", s.name),
+				zap.String("request", reqClone.GetTupleKey().String()),
+				zap.String("store_id", reqClone.GetStoreID()),
+				zap.String("model_id", reqClone.GetAuthorizationModelID()),
+				zap.Bool("main", resClone.GetAllowed()),
+				zap.Bool("main_cycle", resClone.GetCycleDetected()),
+				zap.Int64("main_latency", mainDuration.Milliseconds()),
+				zap.Bool("shadow", shadowRes.GetAllowed()),
+				zap.Bool("shadow_cycle", shadowRes.GetCycleDetected()),
+				zap.Int64("shadow_latency", shadowDuration.Milliseconds()),
+			)
+		} else {
+			s.logger.InfoWithContext(ctx, "shadow check match",
+				zap.Int64("main_latency", mainDuration.Milliseconds()),
+				zap.Int64("shadow_latency", shadowDuration.Milliseconds()),
+			)
+		}
+	}()
 
 	return res, nil
 }

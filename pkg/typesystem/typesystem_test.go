@@ -6139,90 +6139,7 @@ func TestGetEdgesFromWeightedGraph(t *testing.T) {
 }
 
 func TestGetEdgesForListObjects(t *testing.T) {
-	t.Run("exclusion_prunes_last_edge_and_marks_check_correctly", func(t *testing.T) {
-		model := `
-		model
-		schema 1.1
-		type user
-		type other
-		type group
-			relations
-				define banned: [other]
-				define allowed: [user, other] but not banned
-		`
-
-		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
-		require.NoError(t, err)
-
-		edges, needsCheck, err := typeSystem.GetEdgesForListObjects("group#allowed", "other")
-		require.NoError(t, err)
-
-		// If this assertion fails then we broke something in the weighted graph itself
-		// This is just the best way to get to the exclusion node
-		require.Len(t, edges, 1)
-
-		// Haven't hit the exclusion yet
-		require.False(t, needsCheck)
-
-		exclusionLabel := edges[0].GetTo().GetUniqueLabel()
-		edges, needsCheck, err = typeSystem.GetEdgesForListObjects(exclusionLabel, "other")
-		require.NoError(t, err)
-
-		// We've hit the exclusion and it applies to 'type other', so this should be true
-		require.True(t, needsCheck)
-
-		// There are 3 edges, but one of them is the 'but not' and one is to 'user' which isn't relevant
-		// since we're searching for 'other'
-		require.Len(t, edges, 1)
-		require.Equal(t, graph.DirectEdge, edges[0].GetEdgeType())
-
-		// Now get edges for type user, the exclusion does not apply to user so this should not need check
-		edges, needsCheck, err = typeSystem.GetEdgesForListObjects(exclusionLabel, "user")
-		require.NoError(t, err)
-		require.Len(t, edges, 1)
-		require.False(t, needsCheck)
-	})
-
-	t.Run("intersection_returns_lowest_weight_edge", func(t *testing.T) {
-		model := `
-		model
-		schema 1.1
-		type user
-		type group
-			relations
-				define parent: [group]
-				define admin: [user] or admin from parent
-				define allowed: [user] and admin
-		`
-
-		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
-		require.NoError(t, err)
-
-		edges, needsCheck, err := typeSystem.GetEdgesForListObjects("group#allowed", "user")
-		require.NoError(t, err)
-
-		// If this assertion fails then we broke something in the weighted graph itself
-		// This is just the best way to get to the exclusion node
-		require.Len(t, edges, 1)
-		require.False(t, needsCheck)
-
-		intersectionLabel := edges[0].GetTo().GetUniqueLabel()
-		edges, needsCheck, err = typeSystem.GetEdgesForListObjects(intersectionLabel, "user")
-		require.NoError(t, err)
-
-		// 2 edges exist, but we should only receive the lower-weight edge
-		require.Len(t, edges, 1)
-		require.True(t, needsCheck)
-
-		edge := edges[0]
-		require.Equal(t, graph.DirectEdge, edge.GetEdgeType())
-
-		weight, _ := edge.GetWeight("user")
-		require.Equal(t, 1, weight)
-	})
-
-	t.Run("union_returns_all_edges_with_path_to_source_type", func(t *testing.T) {
-		model := `
+	model := `
 		model
 		schema 1.1
 		type user
@@ -6237,196 +6154,27 @@ func TestGetEdgesForListObjects(t *testing.T) {
 				define or_relation: a or b or c or d
 		`
 
-		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
-		require.NoError(t, err)
+	typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
+	require.NoError(t, err)
 
-		edges, needsCheck, err := typeSystem.GetEdgesForListObjects("group#or_relation", "user")
-		require.NoError(t, err)
+	edges, err := typeSystem.GetConnectedEdges("group#or_relation", "user")
+	require.NoError(t, err)
 
-		// If this assertion fails then we broke something in the weighted graph itself
-		// This is just the best way to get to the union node
-		require.Len(t, edges, 1)
-		require.False(t, needsCheck)
+	// If this assertion fails then we broke something in the weighted graph itself
+	// This is just the best way to get to the union node
+	require.Len(t, edges, 1)
 
-		unionLabel := edges[0].GetTo().GetUniqueLabel()
+	unionLabel := edges[0].GetTo().GetUniqueLabel()
 
-		// Two of these edges lead to user
-		edges, needsCheck, err = typeSystem.GetEdgesForListObjects(unionLabel, "user")
-		require.NoError(t, err)
-		require.Len(t, edges, 2)
-		require.False(t, needsCheck)
+	// Two of these edges lead to user
+	edges, err = typeSystem.GetConnectedEdges(unionLabel, "user")
+	require.NoError(t, err)
+	require.Len(t, edges, 2)
 
-		// One of these edges leads to employee
-		edges, needsCheck, err = typeSystem.GetEdgesForListObjects(unionLabel, "employee")
-		require.NoError(t, err)
-		require.Len(t, edges, 1)
-		require.False(t, needsCheck)
-	})
-
-	t.Run("prunes_union_from_right_side_of_exclusion", func(t *testing.T) {
-		model := `
-		model
-		schema 1.1
-		type user
-		type other
-		type group
-			relations
-				define a: [user]
-				define b: [other]
-				define exclusion: [user, other] but not (a or b)
-		`
-
-		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
-		require.NoError(t, err)
-
-		edges, needsCheck, err := typeSystem.GetEdgesForListObjects("group#exclusion", "user")
-		require.NoError(t, err)
-
-		// If this assertion fails then we broke something in the weighted graph itself
-		// This is just the best way to get to the union node
-		require.Len(t, edges, 1)
-		require.False(t, needsCheck)
-
-		exclusionLabel := edges[0].GetTo().GetUniqueLabel()
-
-		// One of these edges lead to user
-		edges, needsCheck, err = typeSystem.GetEdgesForListObjects(exclusionLabel, "user")
-		require.NoError(t, err)
-		require.Len(t, edges, 1)
-		require.True(t, needsCheck)
-
-		// One of these edges leads to employee
-		edges, needsCheck, err = typeSystem.GetEdgesForListObjects(exclusionLabel, "other")
-		require.NoError(t, err)
-		require.Len(t, edges, 1)
-		require.True(t, needsCheck)
-	})
-}
-
-func TestCheapestEdgeTo(t *testing.T) {
-	t.Run("returns_lowest_weight_edge_for_type", func(t *testing.T) {
-		model := `
-		model
-		schema 1.1
-		type user
-		type org
-			relations
-				define member: [user]
-		type group
-			relations
-				define parent: [org]
-				define member: [user]
-				define org_member: member from parent
-		type team
-			relations
-				define parent: [group]
-				define ttu_weight3: [group#member] or org_member from parent
-				define userset: [user, group#member]
-		`
-
-		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
-		require.NoError(t, err)
-
-		wg := typeSystem.authzWeightedGraph
-		allEdges := wg.GetEdges()
-
-		// This node has two edges, one with weight 1 and one with weight 2
-		result := cheapestEdgeTo(allEdges["team#userset"], "user")
-		weight, _ := result.GetWeight("user")
-		require.Equal(t, 1, weight)
-
-		ttuNode, ok := wg.GetNodeByID("team#ttu_weight3")
-		require.True(t, ok)
-
-		edges, ok := wg.GetEdgesFromNode(ttuNode)
-		require.True(t, ok)
-		require.Len(t, edges, 1) // this should be only the OR
-
-		unionNode := edges[0].GetTo()
-		edges, ok = wg.GetEdgesFromNode(unionNode)
-		require.True(t, ok)
-		require.Len(t, edges, 2)
-
-		// There is a weight 2 and a weight 3 from here
-		result = cheapestEdgeTo(edges, "user")
-		weight, _ = result.GetWeight("user")
-		require.Equal(t, 2, weight)
-	})
-
-	t.Run("does_not_depend_on_order", func(t *testing.T) {
-		model := `
-		model
-		schema 1.1
-		type user
-		type org
-			relations
-				define member: [user]
-		type group
-			relations
-				define parent: [org]
-				define member: [user]
-				define org_member: member from parent
-		type team
-			relations
-				define parent: [group]
-				define ttu_weight2: [group#member] or member from parent
-				define ttu_weight3: [group#member] or org_member from parent
-				define ttus_weight_3_first: ttu_weight3 or ttu_weight2
-				define userset: [user, group#member]
-		`
-
-		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
-		require.NoError(t, err)
-
-		wg := typeSystem.authzWeightedGraph
-		srcNode, ok := wg.GetNodeByID("team#ttus_weight_3_first")
-		require.True(t, ok)
-
-		edges, ok := wg.GetEdgesFromNode(srcNode)
-		require.True(t, ok)
-		require.Len(t, edges, 1) // should be only 1 edge to a Union node
-
-		unionNode := edges[0].GetTo()
-		edges, ok = wg.GetEdgesFromNode(unionNode)
-		require.True(t, ok)
-		require.Len(t, edges, 2)
-
-		firstEdgeWeight, _ := edges[0].GetWeight("user")
-		require.Equal(t, 3, firstEdgeWeight)
-
-		secondEdgeWeight, _ := edges[1].GetWeight("user")
-		require.Equal(t, 2, secondEdgeWeight)
-
-		result := cheapestEdgeTo(edges, "user")
-		resultWeight, _ := result.GetWeight("user")
-		require.Equal(t, 2, resultWeight)
-	})
-
-	t.Run("returns_nil_if_type_cant_be_reached", func(t *testing.T) {
-		model := `
-		model
-		schema 1.1
-		type user
-		type other
-		type group
-			relations
-				define member: [user]
-		type team
-			relations
-				define parent: [group]
-				define ttu: [group#member] or member from parent
-				define userset: [user, group#member]
-		`
-
-		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
-		require.NoError(t, err)
-
-		allEdges := typeSystem.authzWeightedGraph.GetEdges()
-
-		// This node has two edges but neither goes to "other"
-		result := cheapestEdgeTo(allEdges["team#userset"], "other")
-		require.Nil(t, result)
-	})
+	// One of these edges leads to employee
+	edges, err = typeSystem.GetConnectedEdges(unionLabel, "employee")
+	require.NoError(t, err)
+	require.Len(t, edges, 1)
 }
 
 func BenchmarkNewAndValidate(b *testing.B) {

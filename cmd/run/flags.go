@@ -110,8 +110,14 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 		util.MustBindPFlag("datastore.maxCacheSize", flags.Lookup("datastore-max-cache-size"))
 		util.MustBindEnv("datastore.maxCacheSize", "OPENFGA_DATASTORE_MAX_CACHE_SIZE", "OPENFGA_DATASTORE_MAXCACHESIZE")
 
+		util.MustBindPFlag("datastore.minOpenConns", flags.Lookup("datastore-min-open-conns"))
+		util.MustBindEnv("datastore.minOpenConns", "OPENFGA_DATASTORE_MIN_OPEN_CONNS")
+
 		util.MustBindPFlag("datastore.maxOpenConns", flags.Lookup("datastore-max-open-conns"))
 		util.MustBindEnv("datastore.maxOpenConns", "OPENFGA_DATASTORE_MAX_OPEN_CONNS", "OPENFGA_DATASTORE_MAXOPENCONNS")
+
+		util.MustBindPFlag("datastore.minIdleConns", flags.Lookup("datastore-min-idle-conns"))
+		util.MustBindEnv("datastore.minIdleConns", "OPENFGA_DATASTORE_MIN_IDLE_CONNS")
 
 		util.MustBindPFlag("datastore.maxIdleConns", flags.Lookup("datastore-max-idle-conns"))
 		util.MustBindEnv("datastore.maxIdleConns", "OPENFGA_DATASTORE_MAX_IDLE_CONNS", "OPENFGA_DATASTORE_MAXIDLECONNS")
@@ -306,27 +312,17 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 		util.MustBindPFlag("listUsersDispatchThrottling.maxThreshold", flags.Lookup("listUsers-dispatch-throttling-max-threshold"))
 		util.MustBindEnv("listUsersDispatchThrottling.maxThreshold", "OPENFGA_LIST_USERS_DISPATCH_THROTTLING_MAX_THRESHOLD")
 
-		// consider deprecating the dispatch throttler completely after rolling out all the datastore throttlers
-		util.MustBindPFlag("checkDatastoreThrottle.enabled", flags.Lookup("check-datastore-throttle-enabled"))
-		util.MustBindEnv("checkDatastoreThrottle.enabled", "OPENFGA_CHECK_DATASTORE_THROTTLE_ENABLED")
-
 		util.MustBindPFlag("checkDatastoreThrottle.threshold", flags.Lookup("check-datastore-throttle-threshold"))
 		util.MustBindEnv("checkDatastoreThrottle.threshold", "OPENFGA_CHECK_DATASTORE_THROTTLE_THRESHOLD")
 
 		util.MustBindPFlag("checkDatastoreThrottle.duration", flags.Lookup("check-datastore-throttle-duration"))
 		util.MustBindEnv("checkDatastoreThrottle.duration", "OPENFGA_CHECK_DATASTORE_THROTTLE_DURATION")
 
-		util.MustBindPFlag("listObjectsDatastoreThrottle.enabled", flags.Lookup("listObjects-datastore-throttle-enabled"))
-		util.MustBindEnv("listObjectsDatastoreThrottle.enabled", "OPENFGA_LIST_OBJECTS_DATASTORE_THROTTLE_ENABLED")
-
 		util.MustBindPFlag("listObjectsDatastoreThrottle.threshold", flags.Lookup("listObjects-datastore-throttle-threshold"))
 		util.MustBindEnv("listObjectsDatastoreThrottle.threshold", "OPENFGA_LIST_OBJECTS_DATASTORE_THROTTLE_THRESHOLD")
 
 		util.MustBindPFlag("listObjectsDatastoreThrottle.duration", flags.Lookup("listObjects-datastore-throttle-duration"))
 		util.MustBindEnv("listObjectsDatastoreThrottle.duration", "OPENFGA_LIST_OBJECTS_DATASTORE_THROTTLE_DURATION")
-
-		util.MustBindPFlag("listUsersDatastoreThrottle.enabled", flags.Lookup("listUsers-datastore-throttle-enabled"))
-		util.MustBindEnv("listUsersDatastoreThrottle.enabled", "OPENFGA_LIST_USERS_DATASTORE_THROTTLE_ENABLED")
 
 		util.MustBindPFlag("listUsersDatastoreThrottle.threshold", flags.Lookup("listUsers-datastore-throttle-threshold"))
 		util.MustBindEnv("listUsersDatastoreThrottle.threshold", "OPENFGA_LIST_USERS_DATASTORE_THROTTLE_THRESHOLD")
@@ -336,5 +332,11 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 
 		util.MustBindPFlag("requestTimeout", flags.Lookup("request-timeout"))
 		util.MustBindEnv("requestTimeout", "OPENFGA_REQUEST_TIMEOUT")
+
+		// these are irrelevant unless the check-experimental flag is enabled at the current time
+		util.MustBindPFlag("planner.evictionThreshold", flags.Lookup("planner-eviction-threshold"))
+		util.MustBindEnv("planner.evictionThreshold", "OPENFGA_PLANNER_EVICTION_THRESHOLD")
+		util.MustBindPFlag("planner.cleanupInterval", flags.Lookup("planner-cleanup-interval"))
+		util.MustBindEnv("planner.cleanupInterval", "OPENFGA_PLANNER_CLEANUP_INTERVAL")
 	}
 }

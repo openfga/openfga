@@ -26,12 +26,28 @@ type StorageInstrumentation interface {
 
 type Metadata struct {
 	DatastoreQueryCount uint32
+	DatastoreItemCount  uint64
 	WasThrottled        bool
+}
+
+type countingTupleIterator struct {
+	storage.TupleIterator
+	counter *atomic.Uint64
+}
+
+func (itr *countingTupleIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
+	i, err := itr.TupleIterator.Next(ctx)
+	if err != nil {
+		return i, err
+	}
+	itr.counter.Add(1)
+	return i, nil
 }
 
 var (
 	_ storage.RelationshipTupleReader = (*BoundedTupleReader)(nil)
 	_ StorageInstrumentation          = (*BoundedTupleReader)(nil)
+	_ storage.TupleIterator           = (*countingTupleIterator)(nil)
 
 	concurrentReadDelayMsHistogram = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace:                       build.ProjectName,
@@ -58,11 +74,13 @@ type BoundedTupleReader struct {
 	storage.RelationshipTupleReader
 	limiter    chan struct{} // bound concurrency
 	countReads atomic.Uint32
+	countItems atomic.Uint64
 	method     string
 
-	threshold    int
-	throttleTime time.Duration
-	throttled    atomic.Bool
+	throttlingEnabled bool
+	threshold         int
+	throttleTime      time.Duration
+	throttled         atomic.Bool
 }
 
 // NewBoundedTupleReader returns a wrapper over a datastore that makes sure that there are, at most,
@@ -74,15 +92,17 @@ func NewBoundedTupleReader(wrapped storage.RelationshipTupleReader, op *Operatio
 		limiter:                 make(chan struct{}, op.Concurrency),
 		countReads:              atomic.Uint32{},
 
-		method:       string(op.Method),
-		threshold:    op.ThrottleThreshold,
-		throttleTime: op.ThrottleDuration,
+		method:            string(op.Method),
+		throttlingEnabled: op.ThrottlingEnabled,
+		threshold:         op.ThrottleThreshold,
+		throttleTime:      op.ThrottleDuration,
 	}
 }
 
 func (b *BoundedTupleReader) GetMetadata() Metadata {
 	return Metadata{
 		DatastoreQueryCount: b.countReads.Load(),
+		DatastoreItemCount:  b.countItems.Load(),
 		WasThrottled:        b.throttled.Load(),
 	}
 }
@@ -91,7 +111,7 @@ func (b *BoundedTupleReader) GetMetadata() Metadata {
 func (b *BoundedTupleReader) ReadUserTuple(
 	ctx context.Context,
 	store string,
-	tupleKey *openfgav1.TupleKey,
+	filter storage.ReadUserTupleFilter,
 	options storage.ReadUserTupleOptions,
 ) (*openfgav1.Tuple, error) {
 	err := b.bound(ctx, storagewrappersutil.OperationReadUserTuple)
@@ -100,18 +120,27 @@ func (b *BoundedTupleReader) ReadUserTuple(
 	}
 
 	defer b.done()
-	return b.RelationshipTupleReader.ReadUserTuple(ctx, store, tupleKey, options)
+	t, err := b.RelationshipTupleReader.ReadUserTuple(ctx, store, filter, options)
+	if t == nil || err != nil {
+		return t, err
+	}
+	b.countItems.Add(1)
+	return t, nil
 }
 
 // Read the set of tuples associated with `store` and `TupleKey`, which may be nil or partially filled.
-func (b *BoundedTupleReader) Read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options storage.ReadOptions) (storage.TupleIterator, error) {
+func (b *BoundedTupleReader) Read(ctx context.Context, store string, filter storage.ReadFilter, options storage.ReadOptions) (storage.TupleIterator, error) {
 	err := b.bound(ctx, storagewrappersutil.OperationRead)
 	if err != nil {
 		return nil, err
 	}
 
 	defer b.done()
-	return b.RelationshipTupleReader.Read(ctx, store, tupleKey, options)
+	itr, err := b.RelationshipTupleReader.Read(ctx, store, filter, options)
+	if itr == nil || err != nil {
+		return itr, err
+	}
+	return &countingTupleIterator{itr, &b.countItems}, nil
 }
 
 // ReadUsersetTuples returns all userset tuples for a specified object and relation.
@@ -127,7 +156,11 @@ func (b *BoundedTupleReader) ReadUsersetTuples(
 	}
 
 	defer b.done()
-	return b.RelationshipTupleReader.ReadUsersetTuples(ctx, store, filter, options)
+	itr, err := b.RelationshipTupleReader.ReadUsersetTuples(ctx, store, filter, options)
+	if itr == nil || err != nil {
+		return itr, err
+	}
+	return &countingTupleIterator{itr, &b.countItems}, nil
 }
 
 // ReadStartingWithUser performs a reverse read of relationship tuples starting at one or
@@ -145,7 +178,11 @@ func (b *BoundedTupleReader) ReadStartingWithUser(
 
 	defer b.done()
 
-	return b.RelationshipTupleReader.ReadStartingWithUser(ctx, store, filter, options)
+	itr, err := b.RelationshipTupleReader.ReadStartingWithUser(ctx, store, filter, options)
+	if itr == nil || err != nil {
+		return itr, err
+	}
+	return &countingTupleIterator{itr, &b.countItems}, nil
 }
 
 func (b *BoundedTupleReader) instrument(ctx context.Context, op string, d time.Duration, vec *prometheus.HistogramVec) {
@@ -169,7 +206,7 @@ func (b *BoundedTupleReader) bound(ctx context.Context, op string) error {
 
 	reads := b.increaseReads()
 
-	if b.threshold > 0 && reads > b.threshold {
+	if b.throttlingEnabled && b.threshold > 0 && reads > b.threshold {
 		b.throttled.Store(true)
 		select {
 		case <-ctx.Done():

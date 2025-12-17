@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync"
+	"strings"
+	"time"
 
 	"github.com/emirpasic/gods/sets/hashset"
-	"github.com/sourcegraph/conc"
 	"github.com/sourcegraph/conc/panics"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -18,6 +18,7 @@ import (
 	"github.com/openfga/openfga/internal/checkutil"
 	"github.com/openfga/openfga/internal/concurrency"
 	openfgaErrors "github.com/openfga/openfga/internal/errors"
+	"github.com/openfga/openfga/internal/planner"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/logger"
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
@@ -50,7 +51,8 @@ type checkOutcome struct {
 type LocalChecker struct {
 	delegate             CheckResolver
 	concurrencyLimit     int
-	usersetBatchSize     int
+	upstreamTimeout      time.Duration
+	planner              planner.Manager
 	logger               logger.Logger
 	optimizationsEnabled bool
 	maxResolutionDepth   uint32
@@ -71,10 +73,9 @@ func WithOptimizations(enabled bool) LocalCheckerOption {
 	}
 }
 
-// WithUsersetBatchSize see server.WithUsersetBatchSize.
-func WithUsersetBatchSize(usersetBatchSize uint32) LocalCheckerOption {
+func WithPlanner(p planner.Manager) LocalCheckerOption {
 	return func(d *LocalChecker) {
-		d.usersetBatchSize = int(usersetBatchSize)
+		d.planner = p
 	}
 }
 
@@ -90,6 +91,12 @@ func WithMaxResolutionDepth(depth uint32) LocalCheckerOption {
 	}
 }
 
+func WithUpstreamTimeout(timeout time.Duration) LocalCheckerOption {
+	return func(d *LocalChecker) {
+		d.upstreamTimeout = timeout
+	}
+}
+
 // NewLocalChecker constructs a LocalChecker that can be used to evaluate a Check
 // request locally.
 //
@@ -98,11 +105,12 @@ func WithMaxResolutionDepth(depth uint32) LocalCheckerOption {
 func NewLocalChecker(opts ...LocalCheckerOption) *LocalChecker {
 	checker := &LocalChecker{
 		concurrencyLimit:   serverconfig.DefaultResolveNodeBreadthLimit,
-		usersetBatchSize:   serverconfig.DefaultUsersetBatchSize,
 		maxResolutionDepth: serverconfig.DefaultResolveNodeLimit,
+		upstreamTimeout:    serverconfig.DefaultRequestTimeout,
 		logger:             logger.NewNoopLogger(),
+		planner:            planner.NewNoopPlanner(),
 	}
-	// by default, a LocalChecker delegates/dispatchs subproblems to itself (e.g. local dispatch) unless otherwise configured.
+	// by default, a LocalChecker delegates/dispatches subproblems to itself (e.g. local dispatch) unless otherwise configured.
 	checker.delegate = checker
 
 	for _, opt := range opts {
@@ -131,313 +139,226 @@ type CheckHandlerFunc func(ctx context.Context) (*ResolveCheckResponse, error)
 // in flight at any given time.
 type CheckFuncReducer func(ctx context.Context, concurrencyLimit int, handlers ...CheckHandlerFunc) (*ResolveCheckResponse, error)
 
-// resolver concurrently resolves one or more CheckHandlerFunc and yields the results on the provided resultChan.
-// Callers of the 'resolver' function should be sure to invoke the callback returned from this function to ensure
-// every concurrent check is evaluated. The concurrencyLimit can be set to provide a maximum number of concurrent
-// evaluations in flight at any point.
-func resolver(ctx context.Context, concurrencyLimit int, resultChan chan<- checkOutcome, handlers ...CheckHandlerFunc) func() error {
-	limiter := make(chan struct{}, concurrencyLimit)
+// runHandler safely executes a CheckHandlerFunc, recovers from any panics,
+// and returns the result as a checkOutcome.
+func runHandler(ctx context.Context, handler CheckHandlerFunc) checkOutcome {
+	var res *ResolveCheckResponse
+	var err error
 
-	var wg conc.WaitGroup
-
-	checker := func(fn CheckHandlerFunc) {
-		defer func() {
-			<-limiter
-		}()
-
-		resolved := make(chan checkOutcome, 1)
-
-		if ctx.Err() != nil {
-			resultChan <- checkOutcome{nil, ctx.Err()}
-			return
-		}
-
-		wg.Go(func() {
-			defer close(resolved)
-
-			resp, err := fn(ctx)
-			resolved <- checkOutcome{resp, err}
-		})
-
-		select {
-		case <-ctx.Done():
-			return
-		case res := <-resolved:
-			resultChan <- res
-		}
-	}
-
-	wg.Go(func() {
-	outer:
-		for _, handler := range handlers {
-			fn := handler // capture loop var
-
-			select {
-			case limiter <- struct{}{}:
-				wg.Go(func() {
-					checker(fn)
-				})
-			case <-ctx.Done():
-				break outer
-			}
-		}
+	recoveredErr := panics.Try(func() {
+		res, err = handler(ctx)
 	})
-
-	return func() error {
-		recoveredError := wg.WaitAndRecover()
-		close(limiter)
-
-		if recoveredError != nil {
-			return fmt.Errorf("%w: %s", ErrPanic, recoveredError.AsError())
-		}
-
-		return nil
+	if recoveredErr != nil {
+		err = fmt.Errorf("%w: %s", ErrPanic, recoveredErr.AsError())
 	}
+
+	return checkOutcome{res, err}
 }
 
 // union implements a CheckFuncReducer that requires any of the provided CheckHandlerFunc to resolve
 // to an allowed outcome. The first allowed outcome causes premature termination of the reducer.
 func union(ctx context.Context, concurrencyLimit int, handlers ...CheckHandlerFunc) (resp *ResolveCheckResponse, err error) {
-	ctx, cancel := context.WithCancel(ctx)
-	resultChan := make(chan checkOutcome, len(handlers))
+	cancellableCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
 
-	drain := resolver(ctx, concurrencyLimit, resultChan, handlers...)
+	pool := concurrency.NewPool(cancellableCtx, concurrencyLimit)
+	out := make(chan checkOutcome, len(handlers))
 
-	defer func() {
-		cancel()
-		drainErr := drain()
-		if drainErr != nil {
-			err = drainErr
-			resp = nil
-		}
-		close(resultChan)
+	for _, handler := range handlers {
+		h := handler
+		pool.Go(func(ctx context.Context) error {
+			concurrency.TrySendThroughChannel(cancellableCtx, runHandler(ctx, h), out)
+			return nil
+		})
+	}
+
+	go func() {
+		_ = pool.Wait()
+		close(out)
 	}()
 
-	var elErr error
-	var cycleDetected bool
+	var finalErr error
+	finalResult := &ResolveCheckResponse{Allowed: false}
+
 	for i := 0; i < len(handlers); i++ {
 		select {
-		case result := <-resultChan:
-			if result.err != nil {
-				elErr = result.err
-				continue
-			}
-
-			if result.resp.GetCycleDetected() {
-				cycleDetected = true
-			}
-
-			if result.resp.GetAllowed() {
-				resp = result.resp
-				return
-			}
 		case <-ctx.Done():
-			err = ctx.Err()
-			return
+			return nil, ctx.Err()
+
+		case outcome, ok := <-out:
+			if !ok {
+				break
+			}
+
+			if outcome.err != nil {
+				finalErr = outcome.err
+				continue // Continue to see if we find an 'Allowed: true'
+			}
+
+			if outcome.resp.GetResolutionMetadata().CycleDetected {
+				finalResult.ResolutionMetadata.CycleDetected = true
+			}
+
+			if outcome.resp.Allowed {
+				// Short-circuit success. defer cancel() will clean up workers.
+				return outcome.resp, nil
+			}
 		}
 	}
 
-	if elErr != nil {
-		err = elErr
-		return
+	if finalErr != nil {
+		return nil, finalErr
 	}
 
-	resp = &ResolveCheckResponse{
-		Allowed: false,
-		ResolutionMetadata: ResolveCheckResponseMetadata{
-			CycleDetected: cycleDetected,
-		},
-	}
-
-	return
+	return finalResult, nil
 }
 
 // intersection implements a CheckFuncReducer that requires all of the provided CheckHandlerFunc to resolve
-// to an allowed outcome. The first falsey or erroneous outcome causes premature termination of the reducer.
+// to an allowed outcome. The first falsey causes premature termination of the reducer. Errors are swallowed if there is a false outcome.
 func intersection(ctx context.Context, concurrencyLimit int, handlers ...CheckHandlerFunc) (resp *ResolveCheckResponse, err error) {
-	if len(handlers) == 0 {
-		return &ResolveCheckResponse{
-			Allowed: false,
-		}, nil
+	if len(handlers) < 2 {
+		return nil, fmt.Errorf("%w, expected at least two rewrite operands for intersection operator, but got '%d'", openfgaErrors.ErrUnknown, len(handlers))
 	}
 
-	span := trace.SpanFromContext(ctx)
+	cancellableCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
 
-	ctx, cancel := context.WithCancel(ctx)
-	resultChan := make(chan checkOutcome, len(handlers))
+	pool := concurrency.NewPool(cancellableCtx, concurrencyLimit)
+	out := make(chan checkOutcome, len(handlers))
 
-	drain := resolver(ctx, concurrencyLimit, resultChan, handlers...)
+	for _, handler := range handlers {
+		h := handler // Capture loop variable for the goroutine
+		pool.Go(func(ctx context.Context) error {
+			concurrency.TrySendThroughChannel(cancellableCtx, runHandler(ctx, h), out)
+			return nil
+		})
+	}
 
-	defer func() {
-		cancel()
-		drainErr := drain()
-		if drainErr != nil {
-			err = drainErr
-		}
-		close(resultChan)
+	go func() {
+		_ = pool.Wait()
+		close(out)
 	}()
 
-	var elErr error
-	for i := 0; i < len(handlers); i++ {
-		select {
-		case result := <-resultChan:
-			if result.err != nil {
-				telemetry.TraceError(span, result.err)
-				elErr = errors.Join(elErr, result.err)
-				continue
-			}
-
-			if result.resp.GetCycleDetected() || !result.resp.GetAllowed() {
-				resp = result.resp
-				return
-			}
-		case <-ctx.Done():
-			err = ctx.Err()
-			return
-		}
-	}
-
-	// all operands are either truthy or we've seen at least one error
-	if elErr != nil {
-		err = elErr
-		return
-	}
-
-	resp = &ResolveCheckResponse{
+	var finalErr error
+	finalResult := &ResolveCheckResponse{
 		Allowed: true,
 	}
 
-	return
+	for i := 0; i < len(handlers); i++ {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+
+		case outcome, ok := <-out:
+			if !ok {
+				break
+			}
+
+			if outcome.err != nil {
+				// Store the first error we see, but don't exit yet.
+				// A definitive 'false' result from another handler can override this.
+				if finalErr == nil {
+					finalErr = outcome.err
+				}
+				continue
+			}
+
+			if outcome.resp.GetResolutionMetadata().CycleDetected || !outcome.resp.Allowed {
+				// Short-circuit failure. defer cancel() will clean up workers.
+				finalResult.Allowed = false
+				finalResult.ResolutionMetadata.CycleDetected = outcome.resp.GetResolutionMetadata().CycleDetected
+				return finalResult, nil
+			}
+		}
+	}
+
+	// If we've processed all handlers without a definitive 'false',
+	// then any error we encountered along the way is the final result.
+	if finalErr != nil {
+		return nil, finalErr
+	}
+
+	// If the loop completes without any "false" outcomes or errors, the result is "true".
+	return finalResult, nil
 }
 
 // exclusion implements a CheckFuncReducer that requires a 'base' CheckHandlerFunc to resolve to an allowed
-// outcome and a 'sub' CheckHandlerFunc to resolve to a falsey outcome. The base and sub computations are
-// handled concurrently relative to one another.
-func exclusion(ctx context.Context, concurrencyLimit int, handlers ...CheckHandlerFunc) (*ResolveCheckResponse, error) {
+// outcome and a 'sub' CheckHandlerFunc to resolve to a falsey outcome.
+func exclusion(ctx context.Context, _ int, handlers ...CheckHandlerFunc) (*ResolveCheckResponse, error) {
 	if len(handlers) != 2 {
 		return nil, fmt.Errorf("%w, expected two rewrite operands for exclusion operator, but got '%d'", openfgaErrors.ErrUnknown, len(handlers))
 	}
 
-	span := trace.SpanFromContext(ctx)
-
-	limiter := make(chan struct{}, concurrencyLimit)
-
 	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	baseChan := make(chan checkOutcome, 1)
 	subChan := make(chan checkOutcome, 1)
 
-	var wg sync.WaitGroup
-
-	defer func() {
-		cancel()
-		wg.Wait()
+	go func() {
+		concurrency.TrySendThroughChannel(ctx, runHandler(ctx, handlers[0]), baseChan)
 		close(baseChan)
+	}()
+	go func() {
+		concurrency.TrySendThroughChannel(ctx, runHandler(ctx, handlers[1]), subChan)
 		close(subChan)
 	}()
 
-	baseHandler := handlers[0]
-	subHandler := handlers[1]
+	var baseErr, subErr error
 
-	limiter <- struct{}{}
-	wg.Add(1)
-	go func() {
-		recoveredError := panics.Try(func() {
-			defer func() {
-				wg.Done()
-				<-limiter
-			}()
-
-			resp, err := baseHandler(ctx)
-			baseChan <- checkOutcome{resp, err}
-		})
-
-		if recoveredError != nil {
-			baseChan <- checkOutcome{nil, fmt.Errorf("%w: %s", ErrPanic, recoveredError.AsError())}
-		}
-	}()
-
-	limiter <- struct{}{}
-	wg.Add(1)
-	go func() {
-		recoveredError := panics.Try(func() {
-			defer func() {
-				wg.Done()
-				<-limiter
-			}()
-
-			resp, err := subHandler(ctx)
-			subChan <- checkOutcome{resp, err}
-		})
-		if recoveredError != nil {
-			subChan <- checkOutcome{nil, fmt.Errorf("%w: %s", ErrPanic, recoveredError.AsError())}
-		}
-	}()
-
-	response := &ResolveCheckResponse{
-		Allowed: false,
-	}
-
-	var baseErr error
-	var subErr error
-
-	for i := 0; i < len(handlers); i++ {
+	// Loop until we have received one result from each of the two channels.
+	resultsReceived := 0
+	for resultsReceived < 2 {
 		select {
-		case baseResult := <-baseChan:
-			if baseResult.err != nil {
-				telemetry.TraceError(span, baseResult.err)
-				baseErr = baseResult.err
-				continue
-			}
-
-			if baseResult.resp.GetCycleDetected() {
-				return &ResolveCheckResponse{
-					Allowed: false,
-					ResolutionMetadata: ResolveCheckResponseMetadata{
-						CycleDetected: true,
-					},
-				}, nil
-			}
-
-			if !baseResult.resp.GetAllowed() {
-				return response, nil
-			}
-
-		case subResult := <-subChan:
-			if subResult.err != nil {
-				telemetry.TraceError(span, subResult.err)
-				subErr = subResult.err
-				continue
-			}
-
-			if subResult.resp.GetCycleDetected() {
-				return &ResolveCheckResponse{
-					Allowed: false,
-					ResolutionMetadata: ResolveCheckResponseMetadata{
-						CycleDetected: true,
-					},
-				}, nil
-			}
-
-			if subResult.resp.GetAllowed() {
-				return response, nil
-			}
 		case <-ctx.Done():
 			return nil, ctx.Err()
+
+		case res, ok := <-baseChan:
+			if !ok {
+				baseChan = nil // Stop selecting this case.
+				continue
+			}
+			resultsReceived++
+
+			if res.err != nil {
+				baseErr = res.err
+				continue
+			}
+
+			// Short-circuit: If base is false, the whole expression is false.
+			if res.resp.GetCycleDetected() || !res.resp.GetAllowed() {
+				return &ResolveCheckResponse{Allowed: false, ResolutionMetadata: ResolveCheckResponseMetadata{CycleDetected: res.resp.GetCycleDetected()}}, nil
+			}
+
+		case res, ok := <-subChan:
+			if !ok {
+				subChan = nil // Stop selecting this case.
+				continue
+			}
+			resultsReceived++
+
+			if res.err != nil {
+				subErr = res.err
+				continue
+			}
+
+			// Short-circuit: If subtract is true, the whole expression is false.
+			if res.resp.GetCycleDetected() || res.resp.GetAllowed() {
+				return &ResolveCheckResponse{Allowed: false, ResolutionMetadata: ResolveCheckResponseMetadata{CycleDetected: res.resp.GetCycleDetected()}}, nil
+			}
 		}
 	}
 
-	// base is either (true) or error, sub is either (false) or error:
-	// true, false - true
-	// true, error - error
-	// error, false - error
-	// error, error - error
-	if baseErr != nil || subErr != nil {
-		return nil, errors.Join(baseErr, subErr)
+	// At this point, we are guaranteed to have both results (or to have already short-circuited).
+	if baseErr != nil {
+		return nil, baseErr
+	}
+	if subErr != nil {
+		return nil, subErr
 	}
 
-	return &ResolveCheckResponse{
-		Allowed: true,
-	}, nil
+	// The only way to get here is if base was (Allowed: true) and subtract was (Allowed: false).
+	return &ResolveCheckResponse{Allowed: true}, nil
 }
 
 // Close is a noop.
@@ -633,7 +554,7 @@ func (c *LocalChecker) checkDirectUserTuple(ctx context.Context, req *ResolveChe
 				Preference: req.GetConsistency(),
 			},
 		}
-		t, err := ds.ReadUserTuple(ctx, storeID, reqTupleKey, opts)
+		t, err := ds.ReadUserTuple(ctx, storeID, storage.ReadUserTupleFilter{Object: reqTupleKey.GetObject(), Relation: reqTupleKey.GetRelation(), User: reqTupleKey.GetUser()}, opts)
 		if err != nil {
 			if errors.Is(err, storage.ErrNotFound) {
 				return response, nil
@@ -696,6 +617,22 @@ func shouldCheckPublicAssignable(ctx context.Context, reqTupleKey *openfgav1.Tup
 	return isPubliclyAssignable
 }
 
+func (c *LocalChecker) profiledCheckHandler(keyPlan planner.Selector, strategy *planner.PlanConfig, resolver CheckHandlerFunc) CheckHandlerFunc {
+	return func(ctx context.Context) (*ResolveCheckResponse, error) {
+		start := time.Now()
+		res, err := resolver(ctx)
+		if err != nil {
+			// penalize plans that timeout from the upstream context
+			if errors.Is(err, context.DeadlineExceeded) {
+				keyPlan.UpdateStats(strategy, c.upstreamTimeout)
+			}
+			return nil, err
+		}
+		keyPlan.UpdateStats(strategy, time.Since(start))
+		return res, nil
+	}
+}
+
 func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *ResolveCheckRequest) CheckHandlerFunc {
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
 	reqTupleKey := req.GetTupleKey()
@@ -710,17 +647,33 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 		userType := tuple.GetType(reqTupleKey.GetUser())
 
 		directlyRelatedUsersetTypes, _ := typesys.DirectlyRelatedUsersets(objectType, relation)
+		isUserset := tuple.IsObjectRelation(reqTupleKey.GetUser())
 
 		// if user in request is userset, we do not have additional strategies to apply
-		if tuple.IsObjectRelation(reqTupleKey.GetUser()) {
+		if isUserset {
 			iter, err := checkutil.IteratorReadUsersetTuples(ctx, req, directlyRelatedUsersetTypes)
 			if err != nil {
 				return nil, err
 			}
 			defer iter.Stop()
 
-			return c.defaultUserset(ctx, req, iter)(ctx)
+			return c.defaultUserset(ctx, req, directlyRelatedUsersetTypes, iter)(ctx)
 		}
+
+		possibleStrategies := map[string]*planner.PlanConfig{
+			defaultResolver: defaultPlan,
+		}
+
+		var b strings.Builder
+		b.WriteString("userset|")
+		b.WriteString(req.GetAuthorizationModelID())
+		b.WriteString("|")
+		b.WriteString(objectType)
+		b.WriteString("|")
+		b.WriteString(relation)
+		b.WriteString("|")
+		b.WriteString(userType)
+		b.WriteString("|")
 
 		// if the type#relation is resolvable recursively, then it can only be resolved recursively
 		if typesys.UsersetUseRecursiveResolver(objectType, relation, userType) {
@@ -730,48 +683,60 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 			}
 			defer iter.Stop()
 
-			return c.recursiveUserset(ctx, req, iter)(ctx)
+			b.WriteString("infinite")
+			key := b.String()
+			keyPlan := c.planner.GetPlanSelector(key)
+			possibleStrategies[defaultResolver] = defaultRecursivePlan
+			possibleStrategies[recursiveResolver] = recursivePlan
+			plan := keyPlan.Select(possibleStrategies)
+
+			resolver := c.defaultUserset
+			if plan.Name == recursiveResolver {
+				resolver = c.recursiveUserset
+			}
+			return c.profiledCheckHandler(keyPlan, plan, resolver(ctx, req, directlyRelatedUsersetTypes, iter))(ctx)
 		}
 
 		var resolvers []CheckHandlerFunc
 
-		if c.optimizationsEnabled {
-			var remainingUsersetTypes []*openfgav1.RelationReference
-			for _, userset := range directlyRelatedUsersetTypes {
-				if typesys.UsersetUseWeight2Resolver(objectType, relation, userType, userset) {
-					usersets := []*openfgav1.RelationReference{userset}
-					iter, err := checkutil.IteratorReadUsersetTuples(ctx, req, usersets)
-					if err != nil {
-						return nil, err
-					}
-					// NOTE: we collect defers given that the iterator won't be consumed until `union` resolves at the end.
-					defer iter.Stop()
-					resolvers = append(resolvers, c.weight2Userset(ctx, req, iter, usersets))
-					continue
-				}
+		var remainingUsersetTypes []*openfgav1.RelationReference
+		keyPlanPrefix := b.String()
+		possibleStrategies[weightTwoResolver] = weight2Plan
+		for _, userset := range directlyRelatedUsersetTypes {
+			if !typesys.UsersetUseWeight2Resolver(objectType, relation, userType, userset) {
 				remainingUsersetTypes = append(remainingUsersetTypes, userset)
+				continue
 			}
-			// for all usersets could not be resolved through weight2 resolver, resolve them all through the default resolver.
-			// they all resolved as a group rather than individually.
-			if len(remainingUsersetTypes) > 0 {
-				iter, err := checkutil.IteratorReadUsersetTuples(ctx, req, remainingUsersetTypes)
-				if err != nil {
-					return nil, err
-				}
-				defer iter.Stop()
-				resolvers = append(resolvers, c.defaultUserset(ctx, req, iter))
+			usersets := []*openfgav1.RelationReference{userset}
+			iter, err := checkutil.IteratorReadUsersetTuples(ctx, req, usersets)
+			if err != nil {
+				return nil, err
 			}
-		} else {
-			iter, err := checkutil.IteratorReadUsersetTuples(ctx, req, directlyRelatedUsersetTypes)
+			// NOTE: we collect defers given that the iterator won't be consumed until `union` resolves at the end.
+			defer iter.Stop()
+			var k strings.Builder
+			k.WriteString(keyPlanPrefix)
+			k.WriteString("userset|")
+			k.WriteString(userset.String())
+			key := k.String()
+			keyPlan := c.planner.GetPlanSelector(key)
+			strategy := keyPlan.Select(possibleStrategies)
+
+			resolver := c.defaultUserset
+			if strategy.Name == weightTwoResolver {
+				resolver = c.weight2Userset
+			}
+			resolvers = append(resolvers, c.profiledCheckHandler(keyPlan, strategy, resolver(ctx, req, usersets, iter)))
+		}
+		// for all usersets could not be resolved through weight2 resolver, resolve them all through the default resolver.
+		// they all resolved as a group rather than individually.
+		if len(remainingUsersetTypes) > 0 {
+			iter, err := checkutil.IteratorReadUsersetTuples(ctx, req, remainingUsersetTypes)
 			if err != nil {
 				return nil, err
 			}
 			defer iter.Stop()
-			if typesys.UsersetUseWeight2Resolvers(objectType, relation, userType, directlyRelatedUsersetTypes) {
-				resolvers = append(resolvers, c.weight2Userset(ctx, req, iter, directlyRelatedUsersetTypes))
-			} else {
-				resolvers = append(resolvers, c.defaultUserset(ctx, req, iter))
-			}
+			resolvers = append(resolvers, c.defaultUserset(ctx, req, remainingUsersetTypes, iter))
 		}
 
 		return union(ctx, c.concurrencyLimit, resolvers...)
@@ -844,12 +809,8 @@ func (c *LocalChecker) checkComputedUserset(_ context.Context, req *ResolveCheck
 // of them evaluates the computed userset of the TTU rewrite rule for them.
 func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
-		ctx, span := tracer.Start(ctx, "checkTTU", trace.WithAttributes(attribute.String("resolver", "slow")))
+		ctx, span := tracer.Start(ctx, "checkTTU")
 		defer span.End()
-
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
-		}
 
 		typesys, _ := typesystem.TypesystemFromContext(parentctx) // note: use of 'parentctx' not 'ctx' - this is important
 
@@ -883,7 +844,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 		iter, err := ds.Read(
 			ctx,
 			storeID,
-			tuple.NewTupleKey(object, tuplesetRelation, ""),
+			storage.ReadFilter{Object: object, Relation: tuplesetRelation, User: ""},
 			opts,
 		)
 		if err != nil {
@@ -901,23 +862,54 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 		defer filteredIter.Stop()
 
 		resolver := c.defaultTTU
-
-		// TODO: optimize the case where user is an userset.
-		// If the user is a userset, we will not be able to use the shortcut because the algo
-		// will look up the objects associated with user.
+		possibleStrategies := map[string]*planner.PlanConfig{
+			defaultResolver: defaultPlan,
+		}
 		isUserset := tuple.IsObjectRelation(tk.GetUser())
 
 		if !isUserset {
 			if typesys.TTUUseWeight2Resolver(objectType, relation, userType, rewrite.GetTupleToUserset()) {
+				possibleStrategies[weightTwoResolver] = weight2Plan
 				resolver = c.weight2TTU
-				span.SetAttributes(attribute.String("resolver", "weight2"))
 			} else if typesys.TTUUseRecursiveResolver(objectType, relation, userType, rewrite.GetTupleToUserset()) {
+				possibleStrategies[defaultResolver] = defaultRecursivePlan
+				possibleStrategies[recursiveResolver] = recursivePlan
 				resolver = c.recursiveTTU
-				span.SetAttributes(attribute.String("resolver", "recursive"))
 			}
 		}
 
-		return resolver(ctx, req, rewrite, filteredIter)
+		if len(possibleStrategies) == 1 {
+			// short circuit, no additional resolvers are available
+			return resolver(ctx, req, rewrite, filteredIter)(ctx)
+		}
+
+		var b strings.Builder
+		b.WriteString("ttu|")
+		b.WriteString(req.GetAuthorizationModelID())
+		b.WriteString("|")
+		b.WriteString(objectType)
+		b.WriteString("|")
+		b.WriteString(relation)
+		b.WriteString("|")
+		b.WriteString(userType)
+		b.WriteString("|")
+		b.WriteString(tuplesetRelation)
+		b.WriteString("|")
+		b.WriteString(computedRelation)
+		planKey := b.String()
+		keyPlan := c.planner.GetPlanSelector(planKey)
+		strategy := keyPlan.Select(possibleStrategies)
+
+		switch strategy.Name {
+		case defaultResolver:
+			resolver = c.defaultTTU
+		case weightTwoResolver:
+			resolver = c.weight2TTU
+		case recursiveResolver:
+			resolver = c.recursiveTTU
+		}
+
+		return c.profiledCheckHandler(keyPlan, strategy, resolver(ctx, req, rewrite, filteredIter))(ctx)
 	}
 }
 

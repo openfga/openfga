@@ -141,7 +141,6 @@ func listObjectsAssertion(ctx context.Context, t *testing.T, client tests.Client
 				require.True(t, ok, detailedInfo)
 				require.Equal(t, assertion.ErrorCode, int(e.Code()), detailedInfo)
 			}
-
 			// assert 2: on streaming list objects endpoint
 			var streamedObjectIDs []string
 
@@ -184,7 +183,6 @@ func listObjectsAssertion(ctx context.Context, t *testing.T, client tests.Client
 				require.True(t, ok, detailedInfo)
 				require.Equal(t, assertion.ErrorCode, int(e.Code()), detailedInfo)
 			}
-
 			if assertion.ErrorCode == 0 {
 				// assert 3: each object in the response of ListObjects should return check -> true
 				for _, object := range resp.GetObjects() {

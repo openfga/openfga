@@ -1,5 +1,3 @@
-//go:generate mockgen -source storage.go -destination ../../internal/mocks/mock_storage.go -package mocks OpenFGADatastore
-
 package storage
 
 import (
@@ -159,20 +157,20 @@ type RelationshipTupleReader interface {
 	//
 	// The caller must be careful to close the [TupleIterator], either by consuming the entire iterator or by closing it.
 	// There is NO guarantee on the order of the tuples returned on the iterator.
-	Read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options ReadOptions) (TupleIterator, error)
+	Read(ctx context.Context, store string, filter ReadFilter, options ReadOptions) (TupleIterator, error)
 
 	// ReadPage functions similarly to Read but includes support for pagination. It takes
 	// mandatory ReadPageOptions options. PageSize will always be greater than zero.
 	// It returns a slice of tuples along with a continuation token. This token can be used for retrieving subsequent pages of data.
 	// There is NO guarantee on the order of the tuples in one page.
-	ReadPage(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options ReadPageOptions) ([]*openfgav1.Tuple, string, error)
+	ReadPage(ctx context.Context, store string, filter ReadFilter, options ReadPageOptions) ([]*openfgav1.Tuple, string, error)
 
 	// ReadUserTuple tries to return one tuple that matches the provided key exactly.
 	// If none is found, it must return [ErrNotFound].
 	ReadUserTuple(
 		ctx context.Context,
 		store string,
-		tupleKey *openfgav1.TupleKey,
+		filter ReadUserTupleFilter,
 		options ReadUserTupleOptions,
 	) (*openfgav1.Tuple, error)
 
@@ -213,6 +211,63 @@ type RelationshipTupleReader interface {
 	) (TupleIterator, error)
 }
 
+// OnMissingDelete defines the behavior of delete operation when the tuple to be deleted does not exist.
+type OnMissingDelete int32
+
+// OnDuplicateInsert defines the behavior of insert operation when the tuple to be inserted already exists.
+type OnDuplicateInsert int32
+
+const (
+	// OnMissingDeleteError indicates that if a delete operation is attempted on a tuple that does
+	// not exist, an error should be returned.
+	OnMissingDeleteError OnMissingDelete = 0
+
+	// OnMissingDeleteIgnore indicates that if a delete operation is attempted on a tuple that does
+	// not exist, it should be ignored as no-op and no error should be returned.
+	OnMissingDeleteIgnore OnMissingDelete = 1
+
+	// OnDuplicateInsertError indicates that if an insert operation is attempted on a tuple that already exists,
+	// an error should be returned.
+	OnDuplicateInsertError OnDuplicateInsert = 0
+
+	// OnDuplicateInsertIgnore indicates that if an insert operation is attempted on a tuple that already exists,
+	// it should be ignored as a no-op and no error should be returned.
+	OnDuplicateInsertIgnore OnDuplicateInsert = 1
+)
+
+// TupleWriteOptions defines the options that can be used when writing tuples.
+// It allows customization of the behavior when a delete operation is attempted on a tuple that does not
+// exist, or when an insert operation is attempted on a tuple that already exists.
+type TupleWriteOptions struct {
+	OnMissingDelete   OnMissingDelete
+	OnDuplicateInsert OnDuplicateInsert
+}
+
+type TupleWriteOption func(*TupleWriteOptions)
+
+func WithOnMissingDelete(onMissingDelete OnMissingDelete) TupleWriteOption {
+	return func(opts *TupleWriteOptions) {
+		opts.OnMissingDelete = onMissingDelete
+	}
+}
+
+func WithOnDuplicateInsert(onDuplicateInsert OnDuplicateInsert) TupleWriteOption {
+	return func(opts *TupleWriteOptions) {
+		opts.OnDuplicateInsert = onDuplicateInsert
+	}
+}
+
+func NewTupleWriteOptions(opts ...TupleWriteOption) TupleWriteOptions {
+	res := TupleWriteOptions{
+		OnMissingDelete:   OnMissingDeleteError,
+		OnDuplicateInsert: OnDuplicateInsertError,
+	}
+	for _, opt := range opts {
+		opt(&res)
+	}
+	return res
+}
+
 // RelationshipTupleWriter is an interface that defines the set of methods
 // required for writing relationship tuples in a data store.
 type RelationshipTupleWriter interface {
@@ -221,7 +276,8 @@ type RelationshipTupleWriter interface {
 	// It must also write to the changelog.
 	// If two concurrent requests attempt to write the same tuple at the same time, it must return ErrTransactionalWriteFailed. TODO write test
 	// If the tuple to be written already existed or the tuple to be deleted didn't exist, it must return InvalidWriteInputError. TODO write test
-	Write(ctx context.Context, store string, d Deletes, w Writes) error
+	// opts are optional and can be used to customize the behavior of the write operation.
+	Write(ctx context.Context, store string, d Deletes, w Writes, opts ...TupleWriteOption) error
 
 	// MaxTuplesPerWrite returns the maximum number of items (writes and deletes combined)
 	// allowed in a single write transaction.
@@ -241,7 +297,28 @@ type ReadStartingWithUserFilter struct {
 	// Optional. It can be nil. If present, it will be sorted in ascending order.
 	// The datastore should return the intersection between this filter and what is in the database.
 	ObjectIDs SortedSet
+
+	// Optional. It can be nil. If present, it will be used to filter the results. Conditions can hold the empty value
+	Conditions []string
 }
+
+// ReadFilter specifies the filter options that will be used
+// to constrain the [RelationshipTupleReader.ReadFilter] query.
+type ReadFilter struct {
+	// Mandatory.
+	Object string
+	// Mandatory.
+	Relation string
+	// Mandatory.
+	User string
+
+	// Optional. It can be nil. If present, it will be used to filter the results. Conditions can hold the empty value
+	Conditions []string
+}
+
+// ReadUserTupleFilter specifies the filter options that will be used
+// to constrain the [RelationshipTupleReader.ReadUserTupleFilter] query.
+type ReadUserTupleFilter = ReadFilter
 
 // ReadUsersetTuplesFilter specifies the filter options that
 // will be used to constrain the ReadUsersetTuples query.
@@ -249,6 +326,7 @@ type ReadUsersetTuplesFilter struct {
 	Object                      string                         // Required.
 	Relation                    string                         // Required.
 	AllowedUserTypeRestrictions []*openfgav1.RelationReference // Optional.
+	Conditions                  []string                       // Optional. It can be nil. If present, it will be used to filter the results. Conditions can hold the empty value.
 }
 
 // AuthorizationModelReadBackend provides a read interface for managing type definitions.

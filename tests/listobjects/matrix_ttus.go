@@ -214,6 +214,60 @@ var ttus = []matrixTest{
 		},
 	},
 	{
+		Name: "ttus_multiple_parent_exclusion_intersection",
+		Tuples: []*openfgav1.TupleKey{
+
+			// direct assignation to alg_inline
+			{Object: "ttus:ttu1", Relation: "alg_inline", User: "user:bob"},
+			{Object: "ttus:ttu3", Relation: "alg_inline", User: "user:bob"},
+			{Object: "ttus:ttu2", Relation: "alg_inline", User: "user:*"},
+			{Object: "ttus:ttu3", Relation: "alg_inline", User: "user:*"},
+			{Object: "ttus:ttu4", Relation: "alg_inline", User: "user:*"},
+
+			// user_rel4 is an or of user_rel1 direct assignation
+
+			{Object: "ttus:ttu2", Relation: "user_rel1", User: "user:bob"},
+			{Object: "ttus:ttu3", Relation: "user_rel1", User: "user:bob"},
+			{Object: "ttus:ttu2", Relation: "user_rel1", User: "user:*"},
+			{Object: "ttus:ttu1", Relation: "user_rel1", User: "user:*"},
+
+			// sets the ttu parents
+			{Object: "ttus:ttu1", Relation: "direct_parent", User: "directs:d1"},
+			{Object: "ttus:ttu2", Relation: "direct_parent", User: "directs:d2"},
+			{Object: "ttus:ttu3", Relation: "direct_parent", User: "directs:d3"},
+			{Object: "ttus:ttu4", Relation: "direct_parent", User: "directs:d4"},
+
+			// set assignation for bob
+			{Object: "directs:d1", Relation: "direct", User: "user:bob"},
+			{Object: "directs:d2", Relation: "direct", User: "user:bob"},
+			{Object: "directs:d3", Relation: "direct", User: "user:bob"},
+			{Object: "directs:d4", Relation: "direct", User: "user:bob"},
+
+			// sets the ttu parents
+			{Object: "ttus:ttu3", Relation: "mult_parent_types", User: "directs:d3"},
+			{Object: "ttus:ttu4", Relation: "mult_parent_types", User: "directs:d4"},
+			{Object: "ttus:ttu1", Relation: "mult_parent_types", User: "directs-employee:mdd1"},
+			{Object: "ttus:ttu2", Relation: "mult_parent_types", User: "directs-employee:mdd2"},
+
+			{Object: "directs:d4", Relation: "other_rel", User: "user:bob"},
+			{Object: "directs:d3", Relation: "other_rel", User: "user:*"},
+		},
+		ListObjectAssertions: []*listobjectstest.Assertion{
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:bob",
+					Type:     "ttus",
+					Relation: "alg_inline",
+				},
+				Expectation: []string{
+					"ttus:ttu1",
+					"ttus:ttu2",
+				},
+				Context: validConditionContext,
+			},
+		},
+	},
+	{
 		Name: "ttus_recursive_alg_combined_oneline",
 		Tuples: []*openfgav1.TupleKey{
 			// This satisfies rel2 AND rel3 iff condition passes
@@ -286,6 +340,7 @@ var ttus = []matrixTest{
 					Type:     "ttus",
 					Relation: "ttu_recursive_alg_combined_oneline",
 				},
+				Context: validConditionContext,
 				// ttus:oneline_rel1_4 should not appear here
 				Expectation: []string{
 					"ttus:oneline_rel1_1",
@@ -299,6 +354,7 @@ var ttus = []matrixTest{
 					Type:     "ttus",
 					Relation: "ttu_recursive_alg_combined_oneline",
 				},
+				Context:     validConditionContext,
 				Expectation: []string{"ttus:oneline_direct"},
 			},
 		},

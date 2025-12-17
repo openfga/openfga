@@ -131,11 +131,11 @@
             "x-env-variable": "OPENFGA_CONTEXT_PROPAGATION_TO_DATASTORE"
         },
         "experimentals": {
-            "description": "a list of experimental features to enable",
+            "description": "a comma-separated list of experimental features to enable",
             "type": "array",
             "items": {
                 "type": "string",
-                "enum": ["enable-check-optimizations", "enable-list-objects-optimizations", "enable-access-control"]
+                "enum": ["enable-check-optimizations", "enable-list-objects-optimizations", "enable-access-control", "pipeline_list_objects", "datastore_throttling"]
             },
             "default": [],
             "x-env-variable": "OPENFGA_EXPERIMENTALS"
@@ -258,11 +258,23 @@
                     "default": "30",
                     "x-env-variable": "OPENFGA_DATASTORE_MAX_OPEN_CONNS"
                 },
+                "minOpenConns": {
+                    "description": "The minimum number of open connections to the datastore. This is only available for PostgreSQL.",
+                    "type": "integer",
+                    "default": "0",
+                    "x-env-variable": "OPENFGA_DATASTORE_MIN_OPEN_CONNS"
+                },
                 "maxIdleConns": {
                     "description": "the maximum number of connections to the datastore in the idle connection pool.",
                     "type": "integer",
                     "default": "10",
                     "x-env-variable": "OPENFGA_DATASTORE_MAX_IDLE_CONNS"
+                },
+                "minIdleConns": {
+                    "description": "the minimum number of connections to the datastore in the idle connection pool. This is only available for PostgreSQL.",
+                    "type": "integer",
+                    "default": "0",
+                    "x-env-variable": "OPENFGA_DATASTORE_MIN_IDLE_CONNS"
                 },
                 "connMaxIdleTime": {
                     "description": "the maximum amount of time a connection to the datastore may be idle",
@@ -564,13 +576,13 @@
             "type": "object",
             "properties": {
                 "enabled": {
-                    "description": "enabling dynamic invalidation of check query cache and check iterator cache based on whether there are recent tuple writes. If enabled, cache will be invalidated when either 1) there are tuples written to the store OR 2) the check query cache or check iterator cache TTL has expired.",
+                    "description": "enable invalidation of check query cache and iterator cache based on recent tuple writes. Invalidation is triggered by Check and List Objects requests, which periodically check the datastore's changelog table for writes and invalidate cache entries earlier than recent writes. Invalidations from Check requests are rate-limited by cache-controller-ttl, whereas List Objects requests invalidate every time if list objects iterator cache is enabled.",
                     "type": "boolean",
                     "default": false,
                     "x-env-variable": "OPENFGA_CACHE_CONTROLLER_ENABLED"
                 },
                 "ttl": {
-                    "description": "if cache controller is enabled, control how frequent read changes are invoked internally to query for recent tuple writes to the store.",
+                    "description": "if cache controller is enabled, this is the minimum time interval for Check requests to trigger cache invalidation. List Objects requests may trigger invalidation even sooner if list objects iterator cache is enabled.",
                     "type": "string",
                     "format": "duration",
                     "default": "10s",
@@ -692,6 +704,60 @@
                 }
             }
         },
+        "checkDatastoreThrottle": {
+            "type": "object",
+            "properties": {
+                "threshold": {
+                    "description": "define the number of datastore requests allowed before being throttled. A value of 0 means throttling is disabled.",
+                    "type": "integer",
+                    "default": 0,
+                    "x-env-variable": "OPENFGA_CHECK_DATASTORE_THROTTLE_THRESHOLD"
+                },
+                "duration": {
+                    "description": "defines the time for which the datastore request will be suspended for being throttled.",
+                    "type": "string",
+                    "format": "duration",
+                    "default": "0s",
+                    "x-env-variable": "OPENFGA_CHECK_DATASTORE_THROTTLE_DURATION"
+                }
+            }
+        },
+        "listObjectsDatastoreThrottle": {
+            "type": "object",
+            "properties": {
+                "threshold": {
+                    "description": "define the number of datastore requests allowed before being throttled. A value of 0 means throttling is disabled.",
+                    "type": "integer",
+                    "default": 0,
+                    "x-env-variable": "OPENFGA_LIST_OBJECTS_DATASTORE_THROTTLE_THRESHOLD"
+                },
+                "duration": {
+                    "description": "defines the time for which the datastore request will be suspended for being throttled.",
+                    "type": "string",
+                    "format": "duration",
+                    "default": "0s",
+                    "x-env-variable": "OPENFGA_LIST_OBJECTS_DATASTORE_THROTTLE_DURATION"
+                }
+            }
+        },
+        "listUsersDatastoreThrottle": {
+            "type": "object",
+            "properties": {
+                "threshold": {
+                    "description": "define the number of datastore requests allowed before being throttled. A value of 0 means throttling is disabled.",
+                    "type": "integer",
+                    "default": 0,
+                    "x-env-variable": "OPENFGA_LIST_USERS_DATASTORE_THROTTLE_THRESHOLD"
+                },
+                "duration": {
+                    "description": "defines the time for which the datastore request will be suspended for being throttled.",
+                    "type": "string",
+                    "format": "duration",
+                    "default": "0s",
+                    "x-env-variable": "OPENFGA_LIST_USERS_DATASTORE_THROTTLE_DURATION"
+                }
+            }
+        },
         "sharedIterator": {
             "type": "object",
             "properties": {
@@ -704,7 +770,7 @@
                 "limit": {
                     "description": "if shared-iterator-enabled is enabled, this is the limit of the number of iterators that can be shared.",
                     "type": "integer",
-                    "default": "1000000",
+                    "default": 1000000,
                     "x-env-variable": "OPENFGA_SHARED_ITERATOR_LIMIT"
                 }
             }
@@ -715,6 +781,31 @@
             "format": "duration",
             "default": "3s",
             "x-env-variable": "OPENFGA_REQUEST_TIMEOUT"
+        },
+        "planner": {
+            "type": "object",
+            "properties": {
+                "initialGuess": {
+                    "description": "The initial guess for the planners estimation.",
+                    "type": "string",
+                    "format": "duration",
+                    "default": "10ms",
+                    "x-env-variable": "OPENFGA_PLANNER_INITIAL_GUESS"
+                },
+                "evictionThreshold": {
+                    "description": "How long a planner key can be unused before being evicted.",
+                    "format": "duration",
+                    "default": "0",
+                    "x-env-variable": "OPENFGA_PLANNER_EVICTION_THRESHOLD"
+                },
+                "cleanupInterval": {
+                    "description": "How often the planner checks for stale keys.",
+                    "type": "string",
+                    "format": "duration",
+                    "default": "0",
+                    "x-env-variable": "OPENFGA_PLANNER_CLEANUP_INTERVAL"
+                }
+            }
         }
     },
     "definitions": {

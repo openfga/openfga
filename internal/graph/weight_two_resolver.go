@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/emirpasic/gods/sets/hashset"
 	"github.com/sourcegraph/conc/panics"
@@ -13,6 +14,7 @@ import (
 	"github.com/openfga/openfga/internal/checkutil"
 	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/iterator"
+	"github.com/openfga/openfga/internal/planner"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -21,12 +23,32 @@ import (
 const IteratorMinBatchThreshold = 100
 const BaseIndex = 0
 const DifferenceIndex = 1
+const weightTwoResolver = "weight2"
+
+// This strategy is configured to show that it has proven fast and consistent.
+var weight2Plan = &planner.PlanConfig{
+	Name:         weightTwoResolver,
+	InitialGuess: 20 * time.Millisecond,
+	// High Lambda: Represents strong confidence in the initial guess. It's like
+	// starting with the belief of having already seen 10 good runs.
+	Lambda: 10.0,
+	// High Alpha, Low Beta: Creates a very NARROW belief about variance.
+	// This tells the planner: "I am very confident that the performance is
+	// consistently close to 10ms". A single slow run will be a huge surprise
+	// and will dramatically shift this belief.
+
+	// High expected precision: 𝐸[𝜏]= 𝛼/𝛽 = 20/2 = 10
+	// Low expected variance: E[σ2]= β/(α−1) =2/9 = 0.105, narrow jitter
+	// A slow sample will look like an outlier and move the posterior noticeably but overall this prior exploits.
+	Alpha: 20,
+	Beta:  2,
+}
 
 var ErrShortCircuit = errors.New("short circuit")
 
 type fastPathSetHandler func(context.Context, *iterator.Streams, chan<- *iterator.Msg)
 
-func (c *LocalChecker) weight2Userset(_ context.Context, req *ResolveCheckRequest, iter storage.TupleKeyIterator, usersets []*openfgav1.RelationReference) CheckHandlerFunc {
+func (c *LocalChecker) weight2Userset(_ context.Context, req *ResolveCheckRequest, usersets []*openfgav1.RelationReference, iter storage.TupleKeyIterator) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
 		cancellableCtx, cancel := context.WithCancel(ctx)
 		defer cancel()
@@ -46,32 +68,34 @@ func (c *LocalChecker) weight2Userset(_ context.Context, req *ResolveCheckReques
 	}
 }
 
-func (c *LocalChecker) weight2TTU(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset, iter storage.TupleKeyIterator) (*ResolveCheckResponse, error) {
-	typesys, _ := typesystem.TypesystemFromContext(ctx)
-	objectType := tuple.GetType(req.GetTupleKey().GetObject())
-	tuplesetRelation := rewrite.GetTupleToUserset().GetTupleset().GetRelation()
-	computedRelation := rewrite.GetTupleToUserset().GetComputedUserset().GetRelation()
+func (c *LocalChecker) weight2TTU(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset, iter storage.TupleKeyIterator) CheckHandlerFunc {
+	return func(ctx context.Context) (*ResolveCheckResponse, error) {
+		typesys, _ := typesystem.TypesystemFromContext(ctx)
+		objectType := tuple.GetType(req.GetTupleKey().GetObject())
+		tuplesetRelation := rewrite.GetTupleToUserset().GetTupleset().GetRelation()
+		computedRelation := rewrite.GetTupleToUserset().GetComputedUserset().GetRelation()
 
-	possibleParents, err := typesys.GetDirectlyRelatedUserTypes(objectType, tuplesetRelation)
-	if err != nil {
-		return nil, err
+		possibleParents, err := typesys.GetDirectlyRelatedUserTypes(objectType, tuplesetRelation)
+		if err != nil {
+			return nil, err
+		}
+
+		cancellableCtx, cancel := context.WithCancel(ctx)
+		defer cancel()
+
+		leftChans, err := produceLeftChannels(cancellableCtx, req, possibleParents, checkutil.BuildTTUV2RelationFunc(computedRelation))
+		if err != nil {
+			return nil, err
+		}
+
+		if len(leftChans) == 0 {
+			return &ResolveCheckResponse{
+				Allowed: false,
+			}, nil
+		}
+
+		return c.weight2(ctx, leftChans, storage.WrapIterator(storage.TTUKind, iter))
 	}
-
-	cancellableCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	leftChans, err := produceLeftChannels(cancellableCtx, req, possibleParents, checkutil.BuildTTUV2RelationFunc(computedRelation))
-	if err != nil {
-		return nil, err
-	}
-
-	if len(leftChans) == 0 {
-		return &ResolveCheckResponse{
-			Allowed: false,
-		}, nil
-	}
-
-	return c.weight2(ctx, leftChans, storage.WrapIterator(storage.TTUKind, iter))
 }
 
 // weight2 attempts to find the intersection across 2 producers (channels) of ObjectIDs.
