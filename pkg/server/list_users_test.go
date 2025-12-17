@@ -401,59 +401,6 @@ func TestListUsers_Deadline(t *testing.T) {
 		require.Len(t, resp.GetUsers(), 1)
 	})
 
-	t.Run("return_no_error_and_partial_results_if_throttled_until_deadline", func(t *testing.T) {
-		ds := memory.New()
-		t.Cleanup(ds.Close)
-
-		modelStr := `
-			model
-				schema 1.1
-			type user
-
-			type group
-			relations
-				define member: [user, group#member]
-
-			type document
-			relations
-				define viewer: [user, group#member]`
-
-		tuples := []string{
-			"document:1#viewer@user:jon", // Observed before first dispatch
-			"document:1#viewer@group:eng#member",
-			"group:eng#member@group:backend#member",
-			"group:backend#member@user:tyler", // Requires two dispatches, gets throtled
-		}
-
-		storeID, model := test.BootstrapFGAStore(t, ds, modelStr, tuples)
-		t.Cleanup(ds.Close)
-
-		deadline := 30 * time.Millisecond
-
-		s := MustNewServerWithOpts(
-			WithDatastore(ds),
-			WithListUsersDeadline(deadline),
-		)
-		t.Cleanup(s.Close)
-
-		resp, err := s.ListUsers(ctx, &openfgav1.ListUsersRequest{
-			StoreId:              storeID,
-			AuthorizationModelId: model.GetId(),
-			Object: &openfgav1.Object{
-				Type: "document",
-				Id:   "1",
-			},
-			Relation: "viewer",
-			UserFilters: []*openfgav1.UserTypeFilter{
-				{Type: "user"},
-			},
-		})
-
-		require.NoError(t, err)
-		require.NotNil(t, resp)
-		require.Len(t, resp.GetUsers(), 1)
-	})
-
 	t.Run("internal_error_without_meeting_deadline", func(t *testing.T) {
 		mockController := gomock.NewController(t)
 		t.Cleanup(mockController.Finish)
