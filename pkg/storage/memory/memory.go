@@ -50,8 +50,13 @@ func match(t *storage.TupleRecord, target *openfgav1.TupleKey) bool {
 	if target.GetRelation() != "" && t.Relation != target.GetRelation() {
 		return false
 	}
-	if target.GetUser() != "" && t.User != target.GetUser() {
-		return false
+	if target.GetUser() != "" {
+		userType, userID, _ := tupleUtils.ToUserParts(target.GetUser())
+		if userID != "" && t.User != target.GetUser() {
+			return false
+		} else if userID == "" && !strings.HasPrefix(t.User, userType+":") {
+			return false
+		}
 	}
 	return true
 }
@@ -192,19 +197,19 @@ func WithMaxTypesPerAuthorizationModel(n int) StorageOption {
 func (s *MemoryBackend) Close() {}
 
 // Read see [storage.RelationshipTupleReader].Read.
-func (s *MemoryBackend) Read(ctx context.Context, store string, key *openfgav1.TupleKey, _ storage.ReadOptions) (storage.TupleIterator, error) {
+func (s *MemoryBackend) Read(ctx context.Context, store string, filter storage.ReadFilter, _ storage.ReadOptions) (storage.TupleIterator, error) {
 	ctx, span := tracer.Start(ctx, "memory.Read")
 	defer span.End()
 
-	return s.read(ctx, store, key, nil)
+	return s.read(ctx, store, filter, nil)
 }
 
 // ReadPage see [storage.RelationshipTupleReader].ReadPage.
-func (s *MemoryBackend) ReadPage(ctx context.Context, store string, key *openfgav1.TupleKey, options storage.ReadPageOptions) ([]*openfgav1.Tuple, string, error) {
+func (s *MemoryBackend) ReadPage(ctx context.Context, store string, filter storage.ReadFilter, options storage.ReadPageOptions) ([]*openfgav1.Tuple, string, error) {
 	ctx, span := tracer.Start(ctx, "memory.ReadPage")
 	defer span.End()
 
-	it, err := s.read(ctx, store, key, &options)
+	it, err := s.read(ctx, store, filter, &options)
 	if err != nil {
 		return nil, "", err
 	}
@@ -282,7 +287,7 @@ func (s *MemoryBackend) ReadChanges(ctx context.Context, store string, filter st
 
 // read returns an iterator of a store's tuples with a given tuple as filter.
 // A nil paginationOptions input means the returned iterator will iterate through all values.
-func (s *MemoryBackend) read(ctx context.Context, store string, tk *openfgav1.TupleKey, options *storage.ReadPageOptions) (*staticIterator, error) {
+func (s *MemoryBackend) read(ctx context.Context, store string, filter storage.ReadFilter, options *storage.ReadPageOptions) (*staticIterator, error) {
 	_, span := tracer.Start(ctx, "memory.read")
 	defer span.End()
 
@@ -290,12 +295,16 @@ func (s *MemoryBackend) read(ctx context.Context, store string, tk *openfgav1.Tu
 	defer s.mutexTuples.RUnlock()
 
 	var matches []*storage.TupleRecord
-	if tk.GetObject() == "" && tk.GetRelation() == "" && tk.GetUser() == "" {
+	if filter.Object == "" && filter.Relation == "" && filter.User == "" {
 		matches = make([]*storage.TupleRecord, len(s.tuples[store]))
 		copy(matches, s.tuples[store])
 	} else {
 		for _, t := range s.tuples[store] {
-			if match(t, tk) {
+			if match(t, &openfgav1.TupleKey{
+				Object:   filter.Object,
+				Relation: filter.Relation,
+				User:     filter.User,
+			}) && (len(filter.Conditions) == 0 || slices.Contains(filter.Conditions, t.ConditionName)) {
 				matches = append(matches, t)
 			}
 		}
@@ -332,7 +341,7 @@ type tupleChangeRec struct {
 }
 
 // Write see [storage.RelationshipTupleWriter].Write.
-func (s *MemoryBackend) Write(ctx context.Context, store string, deletes storage.Deletes, writes storage.Writes) error {
+func (s *MemoryBackend) Write(ctx context.Context, store string, deletes storage.Deletes, writes storage.Writes, opts ...storage.TupleWriteOption) error {
 	_, span := tracer.Start(ctx, "memory.Write")
 	defer span.End()
 
@@ -341,7 +350,8 @@ func (s *MemoryBackend) Write(ctx context.Context, store string, deletes storage
 
 	now := timestamppb.Now()
 
-	if err := validateTuples(s.tuples[store], deletes, writes); err != nil {
+	duplicateDeletes, _, err := sanitizeTuplesWriteDelete(s.tuples[store], deletes, writes, storage.NewTupleWriteOptions(opts...))
+	if err != nil {
 		return err
 	}
 
@@ -351,8 +361,12 @@ Delete:
 	for _, tr := range s.tuples[store] {
 		t := tr.AsTuple()
 		tk := t.GetKey()
-		for _, k := range deletes {
+		for i, k := range deletes {
 			if match(tr, tupleUtils.TupleKeyWithoutConditionToTupleKey(k)) {
+				if slices.Contains(duplicateDeletes, i) {
+					// noop for duplicate delete
+					continue
+				}
 				s.changes[store] = append(
 					s.changes[store],
 					&tupleChangeRec{
@@ -374,6 +388,8 @@ Write:
 	for _, t := range writes {
 		for _, et := range records {
 			if match(et, t) {
+				// notice we don't need to assert for duplicateWrites because the fact that we match,
+				// and it satisfies sanitizeTuplesWriteDelete means that it is a valid duplicate write.
 				continue Write
 			}
 		}
@@ -420,36 +436,53 @@ Write:
 	return nil
 }
 
-func validateTuples(
+func sanitizeTuplesWriteDelete(
 	records []*storage.TupleRecord,
 	deletes []*openfgav1.TupleKeyWithoutCondition,
 	writes []*openfgav1.TupleKey,
-) error {
-	for _, tk := range deletes {
-		if !find(records, tupleUtils.TupleKeyWithoutConditionToTupleKey(tk)) {
-			return storage.InvalidWriteInputError(tk, openfgav1.TupleOperation_TUPLE_OPERATION_DELETE)
+	opts storage.TupleWriteOptions,
+) ([]int, []int, error) {
+	var duplicateDeletes []int
+	var duplicateWrites []int
+	for i, tk := range deletes {
+		if find(records, tupleUtils.TupleKeyWithoutConditionToTupleKey(tk)) == nil {
+			if opts.OnMissingDelete == storage.OnMissingDeleteIgnore {
+				duplicateDeletes = append(duplicateDeletes, i)
+				continue
+			}
+			return nil, nil, storage.InvalidWriteInputError(tk, openfgav1.TupleOperation_TUPLE_OPERATION_DELETE)
 		}
 	}
-	for _, tk := range writes {
-		if find(records, tk) {
-			return storage.InvalidWriteInputError(tk, openfgav1.TupleOperation_TUPLE_OPERATION_WRITE)
+	for i, tk := range writes {
+		record := find(records, tk)
+		if record != nil {
+			if opts.OnDuplicateInsert == storage.OnDuplicateInsertIgnore {
+				// need to validate against condition and context
+				if record.ConditionName == tk.GetCondition().GetName() && record.ConditionContext.String() == tk.GetCondition().GetContext().String() {
+					duplicateWrites = append(duplicateWrites, i)
+					continue
+				}
+				return nil, nil, storage.TupleConditionConflictError(tk)
+			}
+			return nil, nil, storage.InvalidWriteInputError(tk, openfgav1.TupleOperation_TUPLE_OPERATION_WRITE)
+		}
+	}
+	return duplicateDeletes, duplicateWrites, nil
+}
+
+// find returns tuple if *storage.TupleRecord [*storage.TupleRecord] returns true.
+// Return nil otherwise.
+func find(records []*storage.TupleRecord, tupleKey *openfgav1.TupleKey) *storage.TupleRecord {
+	for _, tr := range records {
+		if match(tr, tupleKey) {
+			return tr
 		}
 	}
 	return nil
 }
 
-// find returns true if there is any [*storage.TupleRecord] for which match returns true.
-func find(records []*storage.TupleRecord, tupleKey *openfgav1.TupleKey) bool {
-	for _, tr := range records {
-		if match(tr, tupleKey) {
-			return true
-		}
-	}
-	return false
-}
-
 // ReadUserTuple see [storage.RelationshipTupleReader].ReadUserTuple.
-func (s *MemoryBackend) ReadUserTuple(ctx context.Context, store string, key *openfgav1.TupleKey, _ storage.ReadUserTupleOptions) (*openfgav1.Tuple, error) {
+func (s *MemoryBackend) ReadUserTuple(ctx context.Context, store string, filter storage.ReadUserTupleFilter, _ storage.ReadUserTupleOptions) (*openfgav1.Tuple, error) {
 	_, span := tracer.Start(ctx, "memory.ReadUserTuple")
 	defer span.End()
 
@@ -457,7 +490,10 @@ func (s *MemoryBackend) ReadUserTuple(ctx context.Context, store string, key *op
 	defer s.mutexTuples.RUnlock()
 
 	for _, t := range s.tuples[store] {
-		if match(t, key) {
+		if match(t, tupleUtils.NewTupleKey(filter.Object, filter.Relation, filter.User)) {
+			if len(filter.Conditions) > 0 && !slices.Contains(filter.Conditions, t.ConditionName) {
+				continue
+			}
 			return t.AsTuple(), nil
 		}
 	}
@@ -499,6 +535,10 @@ func (s *MemoryBackend) ReadUsersetTuples(
 					continue
 				}
 			}
+
+			if len(filter.Conditions) > 0 && !slices.Contains(filter.Conditions, t.ConditionName) {
+				continue
+			}
 		}
 	}
 
@@ -529,6 +569,10 @@ func (s *MemoryBackend) ReadStartingWithUser(
 		}
 
 		if filter.ObjectIDs != nil && !filter.ObjectIDs.Exists(t.ObjectID) {
+			continue
+		}
+
+		if len(filter.Conditions) > 0 && !slices.Contains(filter.Conditions, t.ConditionName) {
 			continue
 		}
 

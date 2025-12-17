@@ -2,12 +2,11 @@ package typesystem
 
 import (
 	"fmt"
-	"slices"
+	"math"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/language/pkg/go/graph"
 
-	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
@@ -23,14 +22,13 @@ func hasPathTo(nodeOrEdge weightedGraphItem, destinationType string) bool {
 }
 
 type IntersectionEdges struct {
-	LowestEdge *graph.WeightedAuthorizationModelEdge   // nil if direct is lowest, otherwise lowest edge
-	Siblings   []*graph.WeightedAuthorizationModelEdge // all non lowest and excluding direct edges siblings
-	// We need to separate out the direct edges from the other edges so that in the case of direct edges are not the lowest weight,
-	// the check against these direct edges do not require checking against these individual directly assigned edges.
-	// Instead, these directly assigned edges should be treated as a group such that if one of these edges satisfy,
-	// the intersection satisfy.
-	DirectEdges               []*graph.WeightedAuthorizationModelEdge
-	DirectEdgesAreLeastWeight bool // whether direct edges are the lowest weight edges
+	LowestEdge   *graph.WeightedAuthorizationModelEdge   // lowest edge to apply list objects
+	SiblingEdges []*graph.WeightedAuthorizationModelEdge // the rest of the edges to apply intersection
+}
+
+type ExclusionEdges struct {
+	BaseEdge     *graph.WeightedAuthorizationModelEdge // base edge to apply list objects
+	ExcludedEdge *graph.WeightedAuthorizationModelEdge // excluded edge to apply exclusion
 }
 
 // GetEdgesForIntersection returns the lowest weighted edge and
@@ -44,76 +42,28 @@ func GetEdgesForIntersection(edges []*graph.WeightedAuthorizationModelEdge, sour
 		return IntersectionEdges{}, fmt.Errorf("invalid edges for source type %s", sourceType)
 	}
 
-	directEdges := make([]*graph.WeightedAuthorizationModelEdge, 0, len(edges))
+	// Find the group with the lowest maximum weight
+	lowestWeight := math.MaxInt32
 	var lowestEdge *graph.WeightedAuthorizationModelEdge
-	directEdgesAreLowest := false
-	lowestWeight := 0
+	siblingEdges := make([]*graph.WeightedAuthorizationModelEdge, 0, len(edges))
 
-	// Process all edges first to separate direct from non-direct
-	nonDirectEdges := make([]*graph.WeightedAuthorizationModelEdge, 0, len(edges))
-
-	// It is assumed that direct edge always appear first.
 	for _, edge := range edges {
-		weight, ok := edge.GetWeight(sourceType)
-		if !ok {
-			// can ignore this edge as there is no path
-			continue
-		}
-		if edge.GetEdgeType() != graph.DirectEdge {
-			// the nonDirectEdges will be handled as next step
-			nonDirectEdges = append(nonDirectEdges, edge)
-			continue
-		}
-		// We want to establish the largest weight for all the direct edges as they need to be
-		// treated as a group. This weight will serve as the baseline for other siblings to compare against.
-		directEdges = append(directEdges, edge)
-		if weight > lowestWeight {
-			directEdgesAreLowest = true
-			lowestWeight = weight
-		}
-	}
-
-	if lowestWeight == 0 {
-		if edges[0].GetEdgeType() == graph.DirectEdge {
-			// this means that all the direct edges are not connected.
-			// In reality, should not happen because the caller should have trimmed
-			// the parent node already.
-			return IntersectionEdges{}, nil
-		}
-	}
-	for edgeNum, edge := range nonDirectEdges {
-		if weight, _ := edge.GetWeight(sourceType); weight < lowestWeight || (edgeNum == 0 && len(directEdges) == 0) {
-			// in the case of the first edge, we need to initialize as the least weight
-			// for other edges to compare against it.
-			// For non-first edges, only replace if it has the lowest weight.
-			lowestEdge = edge
-			lowestWeight = weight
-			directEdgesAreLowest = false
-		}
-	}
-
-	siblings := make([]*graph.WeightedAuthorizationModelEdge, 0, len(edges)-len(directEdges))
-
-	// Now, assign all the non directly assigned edges that are not the lowest
-	// weight to the sibling edges. Even if the directly assigned edges are not the lowest
-	// weight, we want to treat these directly assigned edges separately. The reason is that
-	// if one of these directly assigned edge satisfy, the list objects candidate may still
-	// be valid.
-	for _, edge := range edges {
-		if edge.GetEdgeType() != graph.DirectEdge && edge != lowestEdge {
-			if !hasPathTo(edge, sourceType) {
-				// In reality, should never happen because the edge should have been trimmed
-				return IntersectionEdges{}, nil
+		weight, _ := edge.GetWeight(sourceType)
+		// get the max weight of the grouping
+		if weight < lowestWeight {
+			if lowestEdge != nil {
+				siblingEdges = append(siblingEdges, lowestEdge)
 			}
-			siblings = append(siblings, edge)
+			lowestWeight = weight
+			lowestEdge = edge
+		} else {
+			siblingEdges = append(siblingEdges, edge)
 		}
 	}
 
 	return IntersectionEdges{
-		LowestEdge:                lowestEdge,
-		Siblings:                  siblings,
-		DirectEdges:               directEdges,
-		DirectEdgesAreLeastWeight: directEdgesAreLowest,
+		LowestEdge:   lowestEdge,
+		SiblingEdges: siblingEdges,
 	}, nil
 }
 
@@ -122,47 +72,52 @@ func GetEdgesForIntersection(edges []*graph.WeightedAuthorizationModelEdge, sour
 func GetEdgesForExclusion(
 	edges []*graph.WeightedAuthorizationModelEdge,
 	sourceType string,
-) ([]*graph.WeightedAuthorizationModelEdge, *graph.WeightedAuthorizationModelEdge, error) {
-	if len(edges) < 2 {
-		return nil, nil, fmt.Errorf("invalid exclusion edges for source type %s", sourceType)
+) (ExclusionEdges, error) {
+	if len(edges) != 2 {
+		return ExclusionEdges{}, fmt.Errorf("invalid number of edges in an exclusion operation: expected 2, got %d", len(edges))
 	}
 
-	butNotEdge := edges[len(edges)-1] // this is the edge to 'b'
-	// Filter to only return edges which have a path to the sourceType
-	relevantEdges := slices.Collect(utils.Filter(edges[:len(edges)-1], func(edge *graph.WeightedAuthorizationModelEdge) bool {
-		return hasPathTo(edge, sourceType)
-	}))
-	if !hasPathTo(butNotEdge, sourceType) {
-		// if the but not path is not connected, there is no butNotEdge because
-		// all list objects candidates are true.
-		return relevantEdges, nil, nil
+	if !hasPathTo(edges[0], sourceType) {
+		return ExclusionEdges{}, fmt.Errorf("the base edge does not have a path to the source type %s", sourceType)
 	}
-	return relevantEdges, butNotEdge, nil
+
+	baseEdge := edges[0]
+	excludedEdge := edges[1]
+	if !hasPathTo(excludedEdge, sourceType) {
+		excludedEdge = nil
+	}
+
+	return ExclusionEdges{
+		BaseEdge:     baseEdge,
+		ExcludedEdge: excludedEdge,
+	}, nil
 }
 
 // ConstructUserset returns the openfgav1.Userset to run CheckRewrite against list objects candidate when
 // model has intersection / exclusion.
-func (t *TypeSystem) ConstructUserset(currentEdge *graph.WeightedAuthorizationModelEdge) (*openfgav1.Userset, error) {
+func (t *TypeSystem) ConstructUserset(currentEdge *graph.WeightedAuthorizationModelEdge, sourceUserType string) (*openfgav1.Userset, error) {
 	currentNode := currentEdge.GetTo()
 	edgeType := currentEdge.GetEdgeType()
 	uniqueLabel := currentNode.GetUniqueLabel()
 
 	switch currentNode.GetNodeType() {
-	case graph.SpecificType, graph.SpecificTypeWildcard:
+	case graph.SpecificType, graph.SpecificTypeWildcard, graph.LogicalDirectGrouping:
 		return This(), nil
+	case graph.LogicalTTUGrouping:
+		edges, err := t.GetEdgesFromNode(currentNode, sourceUserType)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get edges from node %s: %w", currentNode.GetUniqueLabel(), err)
+		}
+		if len(edges) == 0 {
+			return nil, fmt.Errorf("no edges found for node %s", currentNode.GetUniqueLabel())
+		}
+		// we just need to get the ttu information out of the first edge of the ttu logical group as the all belong to the same ttu definition
+		return t.ConstructUserset(edges[0], sourceUserType)
 	case graph.SpecificTypeAndRelation:
 		switch edgeType {
 		case graph.DirectEdge:
 			// userset use case
-			object, relation := tuple.SplitObjectRelation(uniqueLabel)
-			return &openfgav1.Userset{
-				Userset: &openfgav1.Userset_ComputedUserset{
-					ComputedUserset: &openfgav1.ObjectRelation{
-						Object:   object,
-						Relation: relation,
-					},
-				},
-			}, nil
+			return This(), nil
 		case graph.RewriteEdge, graph.ComputedEdge:
 			_, relation := tuple.SplitObjectRelation(uniqueLabel)
 			return &openfgav1.Userset{
@@ -179,7 +134,7 @@ func (t *TypeSystem) ConstructUserset(currentEdge *graph.WeightedAuthorizationMo
 				Userset: &openfgav1.Userset_TupleToUserset{
 					TupleToUserset: &openfgav1.TupleToUserset{
 						Tupleset: &openfgav1.ObjectRelation{
-							Relation: parent,
+							Relation: parent, // parent
 						},
 						ComputedUserset: &openfgav1.ObjectRelation{
 							Relation: relation,
@@ -193,44 +148,13 @@ func (t *TypeSystem) ConstructUserset(currentEdge *graph.WeightedAuthorizationMo
 		}
 
 	case graph.OperatorNode:
-		edges, ok := t.authzWeightedGraph.GetEdgesFromNode(currentNode)
-		if !ok {
-			// This should never happen.
-			return nil, fmt.Errorf("no outgoing edges from node: %s", currentNode.GetUniqueLabel())
-		}
-		var usersets []*openfgav1.Userset
-		for _, edge := range edges {
-			currentUserset, err := t.ConstructUserset(edge)
-			if err != nil {
-				return nil, fmt.Errorf("failed to construct userset for edge %s: %w", edge.GetTo().GetUniqueLabel(), err)
-			}
-			usersets = append(usersets, currentUserset)
-		}
 		switch currentNode.GetLabel() {
 		case graph.ExclusionOperator:
-			if len(usersets) != 2 {
-				// This should never happen.
-				return nil, fmt.Errorf("node %s: exclusion operator requires exactly two usersets, got %d",
-					currentNode.GetUniqueLabel(), len(usersets))
-			}
-			return &openfgav1.Userset{
-				Userset: &openfgav1.Userset_Difference{
-					Difference: &openfgav1.Difference{
-						Base:     usersets[0],
-						Subtract: usersets[1],
-					}}}, nil
+			return t.ConstructExclusionUserset(currentNode, sourceUserType)
 		case graph.IntersectionOperator:
-			return &openfgav1.Userset{
-				Userset: &openfgav1.Userset_Intersection{
-					Intersection: &openfgav1.Usersets{
-						Child: usersets,
-					}}}, nil
+			return t.ConstructIntersectionUserset(currentNode, sourceUserType)
 		case graph.UnionOperator:
-			return &openfgav1.Userset{
-				Userset: &openfgav1.Userset_Union{
-					Union: &openfgav1.Usersets{
-						Child: usersets,
-					}}}, nil
+			return t.ConstructUnionUserset(currentNode, sourceUserType)
 		default:
 			// This should never happen.
 			return nil, fmt.Errorf("unknown operator node label %s for node %s", currentNode.GetLabel(), currentNode.GetUniqueLabel())
@@ -239,4 +163,92 @@ func (t *TypeSystem) ConstructUserset(currentEdge *graph.WeightedAuthorizationMo
 		// This should never happen.
 		return nil, fmt.Errorf("unknown node type %v for node %s", currentNode.GetNodeType(), currentNode.GetUniqueLabel())
 	}
+}
+
+func (t *TypeSystem) ConstructExclusionUserset(node *graph.WeightedAuthorizationModelNode, sourceUserType string) (*openfgav1.Userset, error) {
+	edges, ok := t.authzWeightedGraph.GetEdgesFromNode(node)
+	if !ok || node.GetLabel() != graph.ExclusionOperator {
+		// This should never happen.
+		return nil, fmt.Errorf("incorrect exclusion node: %s", node.GetUniqueLabel())
+	}
+
+	exclusionEdges, err := GetEdgesForExclusion(edges, sourceUserType)
+	if err != nil {
+		return nil, fmt.Errorf("error getting the edges for operation: exclusion: %s", err.Error())
+	}
+
+	baseUserset, err := t.ConstructUserset(exclusionEdges.BaseEdge, sourceUserType)
+	if err != nil {
+		return nil, fmt.Errorf("failed to construct userset for edge %s: %w", exclusionEdges.BaseEdge.GetTo().GetUniqueLabel(), err)
+	}
+
+	if exclusionEdges.ExcludedEdge == nil {
+		return baseUserset, nil
+	}
+
+	excludedUserset, err := t.ConstructUserset(exclusionEdges.ExcludedEdge, sourceUserType)
+	if err != nil {
+		return nil, fmt.Errorf("failed to construct userset for edge %s: %w", exclusionEdges.ExcludedEdge.GetTo().GetUniqueLabel(), err)
+	}
+
+	return &openfgav1.Userset{
+		Userset: &openfgav1.Userset_Difference{
+			Difference: &openfgav1.Difference{
+				Base:     baseUserset,
+				Subtract: excludedUserset,
+			}}}, nil
+}
+
+func (t *TypeSystem) ConstructIntersectionUserset(node *graph.WeightedAuthorizationModelNode, sourceUserType string) (*openfgav1.Userset, error) {
+	edges, ok := t.authzWeightedGraph.GetEdgesFromNode(node)
+	if !ok || node.GetLabel() != graph.IntersectionOperator {
+		// This should never happen.
+		return nil, fmt.Errorf("incorrect intersection node: %s", node.GetUniqueLabel())
+	}
+	var usersets []*openfgav1.Userset
+
+	if len(edges) < 2 {
+		return nil, fmt.Errorf("no valid edges found for intersection")
+	}
+
+	for _, edge := range edges {
+		userset, err := t.ConstructUserset(edge, sourceUserType)
+		if err != nil {
+			return nil, fmt.Errorf("failed to construct userset for edge %s: %w", edge.GetTo().GetUniqueLabel(), err)
+		}
+		usersets = append(usersets, userset)
+	}
+
+	return &openfgav1.Userset{
+		Userset: &openfgav1.Userset_Intersection{
+			Intersection: &openfgav1.Usersets{
+				Child: usersets,
+			}}}, nil
+}
+
+func (t *TypeSystem) ConstructUnionUserset(node *graph.WeightedAuthorizationModelNode, sourceUserType string) (*openfgav1.Userset, error) {
+	edges, ok := t.authzWeightedGraph.GetEdgesFromNode(node)
+	if !ok || node.GetLabel() != graph.UnionOperator {
+		// This should never happen.
+		return nil, fmt.Errorf("incorrect union node: %s", node.GetUniqueLabel())
+	}
+	var usersets []*openfgav1.Userset
+
+	if len(edges) < 2 {
+		return nil, fmt.Errorf("no valid edges found for union")
+	}
+
+	for _, edge := range edges {
+		userset, err := t.ConstructUserset(edge, sourceUserType)
+		if err != nil {
+			return nil, fmt.Errorf("failed to construct userset for edge %s: %w", edge.GetTo().GetUniqueLabel(), err)
+		}
+		usersets = append(usersets, userset)
+	}
+
+	return &openfgav1.Userset{
+		Userset: &openfgav1.Userset_Union{
+			Union: &openfgav1.Usersets{
+				Child: usersets,
+			}}}, nil
 }

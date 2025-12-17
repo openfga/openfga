@@ -37,7 +37,7 @@ func TestInMemoryCacheController_DetermineInvalidationTime(t *testing.T) {
 	cache := mocks.NewMockInMemoryCache[any](ctrl)
 	ds := mocks.NewMockOpenFGADatastore(ctrl)
 
-	cacheController := NewCacheController(ds, cache, 10*time.Second, 10*time.Second)
+	cacheController := NewCacheController(ds, cache, 10*time.Second, 10*time.Second, 10*time.Second)
 	storeID := "id"
 	expectedReadChangesOpts := storage.ReadChangesOptions{
 		SortDesc: true,
@@ -48,9 +48,11 @@ func TestInMemoryCacheController_DetermineInvalidationTime(t *testing.T) {
 
 	t.Run("cache_hit_after_ttl", func(t *testing.T) {
 		changelogTimestamp := time.Now().UTC().Add(-20 * time.Second)
+		changelogCacheLastModified := time.Now().Add(-time.Minute)
 		gomock.InOrder(
 			cache.EXPECT().Get(storage.GetChangelogCacheKey(storeID)).MinTimes(2).Return(&storage.ChangelogCacheEntry{
-				LastModified: time.Now().Add(-time.Minute),
+				LastModified: changelogCacheLastModified,
+				LastChecked:  time.Now().Add(-1 * time.Hour),
 			}),
 			ds.EXPECT().ReadChanges(gomock.Any(), storeID, gomock.Any(), expectedReadChangesOpts).MinTimes(1).Return([]*openfgav1.TupleChange{
 				{
@@ -62,15 +64,20 @@ func TestInMemoryCacheController_DetermineInvalidationTime(t *testing.T) {
 						User:     "test",
 					}},
 			}, "", nil),
+			// Expect invalidation to have been triggered
 			cache.EXPECT().Set(storage.GetChangelogCacheKey(storeID), gomock.Any(), gomock.Any()),
 		)
 		invalidationTime := cacheController.DetermineInvalidationTime(ctx, storeID)
-		require.Zero(t, invalidationTime)
+		// Should return the last known changelog modified time from cache
+		require.Equal(t, changelogCacheLastModified, invalidationTime)
 		cacheController.(*InMemoryCacheController).wg.Wait()
 	})
 	t.Run("cache_hit_before_ttl", func(t *testing.T) {
 		cache.EXPECT().Get(storage.GetChangelogCacheKey(storeID)).
-			Return(&storage.ChangelogCacheEntry{LastModified: time.Now()})
+			Return(&storage.ChangelogCacheEntry{
+				LastModified: time.Now(),
+				LastChecked:  time.Now(),
+			})
 
 		invalidationTime := cacheController.DetermineInvalidationTime(ctx, storeID)
 		require.NotZero(t, invalidationTime)
@@ -96,6 +103,166 @@ func TestInMemoryCacheController_DetermineInvalidationTime(t *testing.T) {
 		invalidationTime := cacheController.DetermineInvalidationTime(ctx, storeID)
 		require.Zero(t, invalidationTime)
 		cacheController.(*InMemoryCacheController).wg.Wait()
+	})
+	t.Run("two_calls_second_within_ttl", func(t *testing.T) {
+		// First call: cache hit with LastChecked > TTL triggers invalidation
+		changelogTimestamp := time.Now().UTC().Add(-20 * time.Second)
+		firstCallTime := time.Now()
+
+		gomock.InOrder(
+			// First call to DetermineInvalidationTime
+			cache.EXPECT().Get(storage.GetChangelogCacheKey(storeID)).Return(
+				&storage.ChangelogCacheEntry{
+					LastModified: firstCallTime.Add(-time.Minute),
+					LastChecked:  firstCallTime.Add(-15 * time.Second), // Within TTL but will trigger on first call
+				},
+			),
+
+			// Async invalidation reads and updates cache
+			cache.EXPECT().Get(storage.GetChangelogCacheKey(storeID)).Return(
+				&storage.ChangelogCacheEntry{
+					LastModified: firstCallTime.Add(-time.Minute),
+					LastChecked:  firstCallTime.Add(-15 * time.Second),
+				},
+			),
+
+			ds.EXPECT().ReadChanges(gomock.Any(), storeID, gomock.Any(), expectedReadChangesOpts).Return(
+				[]*openfgav1.TupleChange{
+					{
+						Operation: openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
+						Timestamp: timestamppb.New(changelogTimestamp),
+						TupleKey: &openfgav1.TupleKey{
+							Object:   "test",
+							Relation: "viewer",
+							User:     "test",
+						},
+					},
+				}, "", nil,
+			),
+
+			cache.EXPECT().Set(storage.GetChangelogCacheKey(storeID), gomock.Any(), gomock.Any()).Do(
+				func(_ string, entry *storage.ChangelogCacheEntry, _ time.Duration) {
+					// Update LastChecked to now
+					entry.LastChecked = time.Now()
+				},
+			),
+
+			// Second call to DetermineInvalidationTime (within TTL)
+			cache.EXPECT().Get(storage.GetChangelogCacheKey(storeID)).Return(
+				&storage.ChangelogCacheEntry{
+					LastModified: changelogTimestamp,
+					LastChecked:  time.Now(), // Just updated, within TTL
+				},
+			),
+
+			// NO ds.ReadChanges expected - invalidation should NOT be triggered
+		)
+
+		// First call
+		invalidationTime1 := cacheController.DetermineInvalidationTime(ctx, storeID)
+		require.NotZero(t, invalidationTime1)
+
+		// Wait for async invalidation to complete
+		cacheController.(*InMemoryCacheController).wg.Wait()
+
+		// Second call (within TTL) - should not trigger another invalidation
+		invalidationTime2 := cacheController.DetermineInvalidationTime(ctx, storeID)
+		require.NotZero(t, invalidationTime2)
+		require.Equal(t, changelogTimestamp, invalidationTime2)
+
+		// Wait to ensure no unexpected async operations
+		cacheController.(*InMemoryCacheController).wg.Wait()
+	})
+
+	t.Run("two_calls_second_outside_ttl", func(t *testing.T) {
+		// Use a shorter TTL for this test to avoid long waits
+		shortTTL := 100 * time.Millisecond
+		cacheControllerShortTTL := NewCacheController(ds, cache, shortTTL, 10*time.Second, 10*time.Second)
+
+		changelogTimestamp1 := time.Now().UTC().Add(-20 * time.Second)
+		changelogTimestamp2 := time.Now().UTC().Add(-10 * time.Second)
+
+		gomock.InOrder(
+			// First call to DetermineInvalidationTime
+			cache.EXPECT().Get(storage.GetChangelogCacheKey(storeID)).Return(
+				&storage.ChangelogCacheEntry{
+					LastModified: changelogTimestamp1,
+					LastChecked:  time.Now().Add(-200 * time.Millisecond), // Outside TTL
+				},
+			),
+
+			// First async invalidation
+			cache.EXPECT().Get(storage.GetChangelogCacheKey(storeID)).Return(
+				&storage.ChangelogCacheEntry{
+					LastModified: changelogTimestamp1,
+					LastChecked:  time.Now().Add(-200 * time.Millisecond),
+				},
+			),
+
+			ds.EXPECT().ReadChanges(gomock.Any(), storeID, gomock.Any(), expectedReadChangesOpts).Return(
+				[]*openfgav1.TupleChange{
+					{
+						Operation: openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
+						Timestamp: timestamppb.New(changelogTimestamp1),
+						TupleKey: &openfgav1.TupleKey{
+							Object:   "test",
+							Relation: "viewer",
+							User:     "test",
+						},
+					},
+				}, "", nil,
+			),
+
+			cache.EXPECT().Set(storage.GetChangelogCacheKey(storeID), gomock.Any(), gomock.Any()),
+
+			// Second call to DetermineInvalidationTime (after TTL has passed)
+			cache.EXPECT().Get(storage.GetChangelogCacheKey(storeID)).Return(
+				&storage.ChangelogCacheEntry{
+					LastModified: changelogTimestamp1,
+					LastChecked:  time.Now().Add(-150 * time.Millisecond), // Outside TTL again
+				},
+			),
+
+			// Second async invalidation should be triggered
+			cache.EXPECT().Get(storage.GetChangelogCacheKey(storeID)).Return(
+				&storage.ChangelogCacheEntry{
+					LastModified: changelogTimestamp1,
+					LastChecked:  time.Now().Add(-150 * time.Millisecond),
+				},
+			),
+
+			ds.EXPECT().ReadChanges(gomock.Any(), storeID, gomock.Any(), expectedReadChangesOpts).Return(
+				[]*openfgav1.TupleChange{
+					{
+						Operation: openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
+						Timestamp: timestamppb.New(changelogTimestamp2), // Newer change
+						TupleKey: &openfgav1.TupleKey{
+							Object:   "test2",
+							Relation: "editor",
+							User:     "test2",
+						},
+					},
+				}, "", nil),
+
+			cache.EXPECT().Set(storage.GetChangelogCacheKey(storeID), gomock.Any(), gomock.Any()),
+		)
+
+		// First call
+		invalidationTime1 := cacheControllerShortTTL.DetermineInvalidationTime(ctx, storeID)
+		require.NotZero(t, invalidationTime1)
+
+		// Wait for first async invalidation to complete
+		cacheControllerShortTTL.(*InMemoryCacheController).wg.Wait()
+
+		// Sleep to ensure TTL has passed
+		time.Sleep(shortTTL + 10*time.Millisecond)
+
+		// Second call (outside TTL) - should trigger another invalidation
+		invalidationTime2 := cacheControllerShortTTL.DetermineInvalidationTime(ctx, storeID)
+		require.NotZero(t, invalidationTime2)
+
+		// Wait for second async invalidation to complete
+		cacheControllerShortTTL.(*InMemoryCacheController).wg.Wait()
 	})
 }
 
@@ -184,8 +351,8 @@ func TestInMemoryCacheController_findChangesAndInvalidateIfNecessary(t *testing.
 								User:     "test",
 							}},
 					}, "", nil),
-					cache.EXPECT().Set(storage.GetInvalidIteratorCacheKey("3"), gomock.Any(), gomock.Any()),
 					cache.EXPECT().Set(storage.GetChangelogCacheKey("3"), gomock.Any(), gomock.Any()),
+					cache.EXPECT().Set(storage.GetInvalidIteratorCacheKey("3"), gomock.Any(), gomock.Any()),
 				)
 			},
 		},
@@ -235,9 +402,9 @@ func TestInMemoryCacheController_findChangesAndInvalidateIfNecessary(t *testing.
 							},
 						},
 					}, "", nil),
+					cache.EXPECT().Set(storage.GetChangelogCacheKey("5"), gomock.Any(), gomock.Any()),
 					cache.EXPECT().Set(storage.GetInvalidIteratorByObjectRelationCacheKey("5", "test:5", "viewer"), gomock.Any(), gomock.Any()),
 					cache.EXPECT().Set(storage.GetInvalidIteratorByUserObjectTypeCacheKeys("5", []string{"test"}, "test")[0], gomock.Any(), gomock.Any()),
-					cache.EXPECT().Set(storage.GetChangelogCacheKey("5"), gomock.Any(), gomock.Any()),
 				)
 			},
 		},
@@ -285,9 +452,9 @@ func TestInMemoryCacheController_findChangesAndInvalidateIfNecessary(t *testing.
 							},
 						},
 					}, "", nil),
+					cache.EXPECT().Set(storage.GetChangelogCacheKey("6"), gomock.Any(), gomock.Any()),
 					cache.EXPECT().Set(storage.GetInvalidIteratorByObjectRelationCacheKey("6", "test:5", "viewer"), gomock.Any(), gomock.Any()),
 					cache.EXPECT().Set(storage.GetInvalidIteratorByUserObjectTypeCacheKeys("6", []string{"test"}, "test")[0], gomock.Any(), gomock.Any()),
-					cache.EXPECT().Set(storage.GetChangelogCacheKey("6"), gomock.Any(), gomock.Any()),
 				)
 			},
 		},
@@ -299,8 +466,8 @@ func TestInMemoryCacheController_findChangesAndInvalidateIfNecessary(t *testing.
 					cache.EXPECT().Get(storage.GetChangelogCacheKey("7")).Return(&storage.ChangelogCacheEntry{LastModified: time.Now().Add(-20 * time.Second)}),
 					datastore.EXPECT().ReadChanges(gomock.Any(), "7", gomock.Any(), expectedReadChangesOpts).Return(
 						generateChanges("test", "relation", "user", 50), "", nil),
-					cache.EXPECT().Set(storage.GetInvalidIteratorCacheKey("7"), gomock.Any(), gomock.Any()),
 					cache.EXPECT().Set(storage.GetChangelogCacheKey("7"), gomock.Any(), gomock.Any()),
+					cache.EXPECT().Set(storage.GetInvalidIteratorCacheKey("7"), gomock.Any(), gomock.Any()),
 				)
 			},
 		},
@@ -320,8 +487,8 @@ func TestInMemoryCacheController_findChangesAndInvalidateIfNecessary(t *testing.
 								User:     "test",
 							}},
 					}, "", nil),
-					cache.EXPECT().Set(storage.GetInvalidIteratorCacheKey("8"), gomock.Any(), gomock.Any()),
 					cache.EXPECT().Set(storage.GetChangelogCacheKey("8"), gomock.Any(), gomock.Any()),
+					cache.EXPECT().Set(storage.GetInvalidIteratorCacheKey("8"), gomock.Any(), gomock.Any()),
 				)
 			},
 		},
@@ -343,8 +510,8 @@ func TestInMemoryCacheController_findChangesAndInvalidateIfNecessary(t *testing.
 					}, "", nil),
 					// there should be no difference with initial_check_for_invalidation case except to
 					// verify the double negative case.
-					cache.EXPECT().Set(storage.GetInvalidIteratorCacheKey("9"), gomock.Any(), gomock.Any()),
 					cache.EXPECT().Set(storage.GetChangelogCacheKey("9"), gomock.Any(), gomock.Any()),
+					cache.EXPECT().Set(storage.GetInvalidIteratorCacheKey("9"), gomock.Any(), gomock.Any()),
 				)
 			},
 		},
@@ -364,8 +531,8 @@ func TestInMemoryCacheController_findChangesAndInvalidateIfNecessary(t *testing.
 								User:     "test",
 							}},
 					}, "", nil),
-					cache.EXPECT().Set(storage.GetInvalidIteratorCacheKey("10"), gomock.Any(), gomock.Any()),
 					cache.EXPECT().Set(storage.GetChangelogCacheKey("10"), gomock.Any(), gomock.Any()),
+					cache.EXPECT().Set(storage.GetInvalidIteratorCacheKey("10"), gomock.Any(), gomock.Any()),
 				)
 			},
 		},
@@ -384,12 +551,12 @@ func TestInMemoryCacheController_findChangesAndInvalidateIfNecessary(t *testing.
 			test.setMocks(mockCache, mockDatastore)
 
 			cacheController := &InMemoryCacheController{
-				ds:                    mockDatastore,
-				cache:                 mockCache,
-				ttl:                   10 * time.Second,
-				iteratorCacheTTL:      30 * time.Second,
-				inflightInvalidations: sync.Map{},
-				logger:                logger.NewNoopLogger(),
+				ds:                      mockDatastore,
+				cache:                   mockCache,
+				minInvalidationInterval: 10 * time.Second,
+				iteratorCacheTTL:        30 * time.Second,
+				inflightInvalidations:   sync.Map{},
+				logger:                  logger.NewNoopLogger(),
 			}
 			cacheController.findChangesAndInvalidateIfNecessary(context.Background(), test.storeID)
 			cacheController.wg.Wait()

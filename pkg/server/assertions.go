@@ -47,11 +47,12 @@ func (s *Server) WriteAssertions(ctx context.Context, req *openfgav1.WriteAssert
 	if err != nil {
 		return nil, err
 	}
+	req.AuthorizationModelId = typesys.GetAuthorizationModelID() // the resolved model id
 
 	c := commands.NewWriteAssertionsCommand(s.datastore, commands.WithWriteAssertCmdLogger(s.logger))
 	res, err := c.Execute(ctx, &openfgav1.WriteAssertionsRequest{
 		StoreId:              storeID,
-		AuthorizationModelId: typesys.GetAuthorizationModelID(), // the resolved model id
+		AuthorizationModelId: req.GetAuthorizationModelId(),
 		Assertions:           req.GetAssertions(),
 	})
 	if err != nil {
@@ -89,7 +90,8 @@ func (s *Server) ReadAssertions(ctx context.Context, req *openfgav1.ReadAssertio
 	if err != nil {
 		return nil, err
 	}
+	req.AuthorizationModelId = typesys.GetAuthorizationModelID() // the resolved model id
 
 	q := commands.NewReadAssertionsQuery(s.datastore, commands.WithReadAssertionsQueryLogger(s.logger))
-	return q.Execute(ctx, req.GetStoreId(), typesys.GetAuthorizationModelID())
+	return q.Execute(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
 }

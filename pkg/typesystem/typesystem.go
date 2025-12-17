@@ -184,6 +184,10 @@ type TypeSystem struct {
 	authzWeightedGraph      *graph.WeightedAuthorizationModelGraph
 }
 
+func (t *TypeSystem) GetWeightedGraph() *graph.WeightedAuthorizationModelGraph {
+	return t.authzWeightedGraph
+}
+
 // New creates a *TypeSystem from an *openfgav1.AuthorizationModel.
 // It assumes that the input model is valid. If you need to run validations, use NewAndValidate.
 func New(model *openfgav1.AuthorizationModel) (*TypeSystem, error) {
@@ -391,161 +395,6 @@ func (t *TypeSystem) DirectlyRelatedUsersets(objectType, relation string) ([]*op
 	return usersetRelationReferences, nil
 }
 
-func (t *TypeSystem) resolvesTypeRelationToDirectlyAssignable(objectType, relationName string) ([]string, bool, error) {
-	relation, err := t.GetRelation(objectType, relationName)
-	if err != nil {
-		return nil, false, err
-	}
-	rewrite := relation.GetRewrite().GetUserset()
-
-	switch rw := rewrite.(type) {
-	case *openfgav1.Userset_ComputedUserset:
-		return t.resolvesTypeRelationToDirectlyAssignable(objectType, rw.ComputedUserset.GetRelation())
-	case *openfgav1.Userset_This:
-		break
-	default:
-		// NOTE: Currently, only computed usersets or directly related types are supported (and not usersets)
-		return nil, false, nil
-	}
-
-	directlyRelatedTypes := relation.GetTypeInfo().GetDirectlyRelatedUserTypes()
-
-	assignableTypes := make([]string, 0, len(directlyRelatedTypes))
-	// need to check whether these are simple types as well
-	for _, ref := range directlyRelatedTypes {
-		if ref.GetRelationOrWildcard() != nil {
-			if _, ok := ref.GetRelationOrWildcard().(*openfgav1.RelationReference_Relation); ok {
-				// For now, we don't allow if these types are another userset
-				// because local check with these relations cannot be evaluated via simple datastore query.
-				return nil, false, nil
-			}
-		}
-		assignableTypes = append(assignableTypes, ref.GetType())
-	}
-	return assignableTypes, true, nil
-}
-
-// UsersetCanFastPath returns whether object's userset's rewrite can support the fast path optimization.
-func (t *TypeSystem) UsersetCanFastPath(relationReferences []*openfgav1.RelationReference) bool {
-	for _, rr := range relationReferences {
-		if _, directlyAssignable, err := t.resolvesTypeRelationToDirectlyAssignable(rr.GetType(), rr.GetRelation()); err != nil || !directlyAssignable {
-			return false
-		}
-	}
-	return true
-}
-
-type expectedEdgeAndNodeType struct {
-	expectedNodeForObjectRel *graph.AuthorizationModelNode
-	expectedEdgeType         graph.EdgeType
-}
-
-// verifyNodeEdgesOptimizable returns whether the specified node has
-//   - only one edge to node with type#relation and that node is expectedNodeForObjectRel
-//   - all other edges are linked to node of terminal type. These nodes cannot be algebraic operation (i.e., union/intersection/exclusion) and one
-//     of these nodes must be of mustHaveTerminalType.
-//
-// - Note that user:* is considered as terminal node.
-func (t *TypeSystem) verifyNodeEdgesOptimizable(originalNode *graph.AuthorizationModelNode, expectedEdgeAndNode expectedEdgeAndNodeType, mustHaveTerminalType string) bool {
-	hasEdgeBackToExpectedNode := false
-	hasCorrectTerminalType := false
-
-	// TODO: Optimize by memorizing the list of neighbourNodes
-	neighbourNodes := t.authorizationModelGraph.To(originalNode.ID())
-	for neighbourNodes.Next() {
-		curNode := neighbourNodes.Node()
-		curNeighbourAuthorizationModelNode, ok := curNode.(*graph.AuthorizationModelNode)
-		if !ok {
-			// Note: this should not happen, but adding the guard nonetheless
-			return false
-		}
-		switch curNeighbourAuthorizationModelNode.NodeType() {
-		case graph.SpecificType:
-			curNeighbourAuthorizationModelNodeLabel := curNeighbourAuthorizationModelNode.Label()
-			if curNeighbourAuthorizationModelNodeLabel == mustHaveTerminalType {
-				hasCorrectTerminalType = true
-			}
-		case graph.SpecificTypeWildcard:
-			curNeighbourAuthorizationModelNodeLabel := curNeighbourAuthorizationModelNode.Label()
-			curNeighbourAuthorizationModelNodeType, _ := tuple.SplitObject(curNeighbourAuthorizationModelNodeLabel)
-			if curNeighbourAuthorizationModelNodeType == mustHaveTerminalType {
-				hasCorrectTerminalType = true
-			}
-		case graph.OperatorNode:
-			return false
-		case graph.SpecificTypeAndRelation:
-			if expectedEdgeAndNode.expectedNodeForObjectRel == curNeighbourAuthorizationModelNode {
-				lines := t.authorizationModelGraph.Lines(curNeighbourAuthorizationModelNode.ID(), originalNode.ID())
-				for lines.Next() {
-					edge, ok := lines.Line().(*graph.AuthorizationModelEdge)
-					if !ok {
-						// we expect all lines are graph.AuthorizationModelEdge.  Safe thing to do is not optimized.
-						return false
-					}
-					if edge.EdgeType() != expectedEdgeAndNode.expectedEdgeType {
-						return false
-					}
-				}
-				hasEdgeBackToExpectedNode = true
-			} else {
-				return false
-			}
-		}
-	}
-
-	return hasEdgeBackToExpectedNode && hasCorrectTerminalType
-}
-
-// RecursiveUsersetCanFastPath returns whether the specified object type and relation allows
-// for optimization.  This means the node must have
-// - one edge back to itself
-// - other edges lead directly to node with terminal types (not union/intersection/exclusion). One of the node must be the userType.
-func (t *TypeSystem) RecursiveUsersetCanFastPath(objectTypeRelation string, userType string) bool {
-	curAuthorizationModelNode, err := t.authorizationModelGraph.GetNodeByLabel(objectTypeRelation)
-	if err != nil {
-		// this means the node cannot be found. The safe thing to do is to use the slow path.
-		return false
-	}
-	return t.verifyNodeEdgesOptimizable(curAuthorizationModelNode,
-		expectedEdgeAndNodeType{expectedNodeForObjectRel: curAuthorizationModelNode, expectedEdgeType: graph.DirectEdge},
-		userType)
-}
-
-// recursiveTTUNodeCanFastpath is a helper function to determine whether the node (object#relation) has
-// - there is only one incoming edge to curAuthorizationModelNode and it is the union node
-// - the union node has
-//   - one edge linking back to the original curAuthorizationNode
-//   - other edges must be to terminal types with one edge having the userType
-func (t *TypeSystem) recursiveTTUNodeCanFastpath(curAuthorizationModelNode *graph.AuthorizationModelNode, userType string) bool {
-	neighborNodesIter := t.authorizationModelGraph.To(curAuthorizationModelNode.ID())
-	if neighborNodesIter.Len() != 1 {
-		return false
-	}
-
-	neighborNodesIter.Next()
-
-	unionNode, ok := neighborNodesIter.Node().(*graph.AuthorizationModelNode)
-	if !ok || unionNode.Label() != graph.UnionOperator {
-		return false
-	}
-
-	return t.verifyNodeEdgesOptimizable(unionNode,
-		expectedEdgeAndNodeType{expectedNodeForObjectRel: curAuthorizationModelNode, expectedEdgeType: graph.TTUEdge},
-		userType)
-}
-
-// RecursiveTTUCanFastPath returns whether the specified object type and relation allows
-// for optimization.
-func (t *TypeSystem) RecursiveTTUCanFastPath(objectTypeRelation string, userType string) bool {
-	curAuthorizationModelNode, err := t.authorizationModelGraph.GetNodeByLabel(objectTypeRelation)
-	if err != nil {
-		// this means the node cannot be found. The safe thing to do is to use the slow path.
-		return false
-	}
-	// this means the node cannot be found. The safe thing to do is to use the slow path.
-	return t.recursiveTTUNodeCanFastpath(curAuthorizationModelNode, userType)
-}
-
 func RelationEquals(a *openfgav1.RelationReference, b *openfgav1.RelationReference) bool {
 	if a.GetType() != b.GetType() {
 		return false
@@ -579,74 +428,57 @@ func (t *TypeSystem) IsDirectlyRelated(target *openfgav1.RelationReference, sour
 	return false, nil
 }
 
-func (t *TypeSystem) UsersetCanFastPathWeight2(objectType, relation, userType string, allowedUsersets []*openfgav1.RelationReference) bool {
+func (t *TypeSystem) UsersetUseWeight2Resolver(objectType, relation, userType string, userset *openfgav1.RelationReference) bool {
 	if t.authzWeightedGraph == nil {
 		return false
 	}
-	objRel := tuple.ToObjectRelationString(objectType, relation)
-	node, ok := t.authzWeightedGraph.GetNodeByID(objRel)
+
+	node, ok := t.authzWeightedGraph.GetNodeByID(tuple.ToObjectRelationString(objectType, relation))
 	if !ok {
 		return false
 	}
 
-	// verifying weight here is not enough given the object#relation might be weight 2, but we do not explicitly know
-	// the userset given we aren't in the weighted graph as we traverse, thus having to fully inspect to match the context
-	// of what is being resolved.
-	_, ok = node.GetWeight(userType)
+	if node.IsPartOfTupleCycle() || len(node.GetRecursiveRelation()) > 0 {
+		// if there is a tuple cycle, we have to go through default resolver (or recursive one)
+		return false
+	}
+
+	usersetNodeID := tuple.ToObjectRelationString(userset.GetType(), userset.GetRelation())
+	usersetNode, ok := t.authzWeightedGraph.GetNodeByID(usersetNodeID)
 	if !ok {
 		return false
 	}
 
-	edges, ok := t.authzWeightedGraph.GetEdgesFromNode(node)
+	// the node itself has to be weight 1 (not 2, because its the userset node that we are verifying at this point). the edge pointing to it would be weight 2.
+	weight, ok := usersetNode.GetWeight(userType)
 	if !ok {
 		return false
 	}
 
-	usersetEdges := make([]*graph.WeightedAuthorizationModelEdge, 0)
-
-	allowed := hashset.New()
-
-	for _, u := range allowedUsersets {
-		allowed.Add(tuple.ToObjectRelationString(u.GetType(), u.GetRelation()))
-	}
-
-	totalAllowed := allowed.Size()
-
-	// find all userset edges with valid weight
-	// but exit immediately if there is any above weight
-	for len(usersetEdges) != totalAllowed && len(edges) != 0 {
-		innerEdges := make([]*graph.WeightedAuthorizationModelEdge, 0)
-		for _, edge := range edges {
-			// edge is a set operator thus we have to inspect each node of the operator
-			if edge.GetEdgeType() == graph.RewriteEdge {
-				operationalEdges, ok := t.authzWeightedGraph.GetEdgesFromNode(edge.GetTo())
-				if !ok {
-					return false
-				}
-				innerEdges = append(innerEdges, operationalEdges...)
-			}
-
-			// each edge must belong to one of the directly assignable userset types AND each one of them
-			// must not have a weight higher than the threshold/level. if true, collect as _all entries_ need to be accounted for
-			if edge.GetEdgeType() == graph.DirectEdge && allowed.Contains(edge.GetTo().GetUniqueLabel()) {
-				w, ok := edge.GetWeight(userType)
-				if ok {
-					if w > 2 {
-						return false
-					}
-					usersetEdges = append(usersetEdges, edge)
-				}
-			}
-		}
-		if len(innerEdges) == 0 {
-			break
-		}
-		edges = innerEdges
-	}
-	return len(usersetEdges) == totalAllowed
+	return weight == 1
 }
 
-func (t *TypeSystem) TTUCanFastPathWeight2(objectType, relation, userType string, ttu *openfgav1.TupleToUserset) bool {
+// UsersetUseWeight2Resolvers
+// TODO: Deprecate once userset refactor is complete.
+func (t *TypeSystem) UsersetUseWeight2Resolvers(objectType, relation, userType string, usersets []*openfgav1.RelationReference) bool {
+	allowedType := hashset.New()
+
+	for _, u := range usersets {
+		if allowedType.Contains(u.GetType()) {
+			// If there are more than 1 directly related userset types of the same type, we cannot do userset optimization because
+			// we cannot rely on the fact that the object ID matches. Instead, we need to take into consideration
+			// on the relation as well.
+			return false
+		}
+		if !t.UsersetUseWeight2Resolver(objectType, relation, userType, u) {
+			return false
+		}
+		allowedType.Add(u.GetType())
+	}
+	return true
+}
+
+func (t *TypeSystem) TTUUseWeight2Resolver(objectType, relation, userType string, ttu *openfgav1.TupleToUserset) bool {
 	if t.authzWeightedGraph == nil {
 		return false
 	}
@@ -709,39 +541,16 @@ func (t *TypeSystem) TTUCanFastPathWeight2(objectType, relation, userType string
 	return len(ttuEdges) != 0
 }
 
-// TTUCanFastPath returns whether object's tupleRelation's rewrite can support the fast path optimization.
-func (t *TypeSystem) TTUCanFastPath(objectType, tuplesetRelation, computedRelation string) bool {
-	tuplesetRelationTypes, directlyAssignable, err := t.resolvesTypeRelationToDirectlyAssignable(objectType, tuplesetRelation)
-	if err != nil || !directlyAssignable {
-		return false
-	}
-	for _, tuplesetRelationType := range tuplesetRelationTypes {
-		_, childDirectlyAssignable, err := t.resolvesTypeRelationToDirectlyAssignable(tuplesetRelationType, computedRelation)
-		if err != nil {
-			// in the case of errors due to relation undefined, we can ignore the error because it is possible
-			// that some parents do not have the relation defined.
-			if errors.Is(err, ErrRelationUndefined) {
-				continue
-			}
-
-			// otherwise, we do not know what the error is.  It is better to return error at this point.
-			return false
-		}
-		if !childDirectlyAssignable {
-			return false
-		}
-	}
-	return true
-}
-
-// RecursiveTTUCanFastPathV2 returns true fast path can be applied to user/relation.
+// TTUUseRecursiveResolver returns true fast path can be applied to user/relation.
 // For it to return true, all of these conditions:
 // 1. Node[objectType#relation].weights[userType] = infinite
-// 2. Node[objectType#relation] has only 1 edge, and it's to an OR node
-// 3. The OR node has one or more TTU edge with weight infinite for the terminal type and the computed relation for the TTU is the same
-// 4. Any other edge coming out of the OR node that has a weight for terminal type, it should be weight 1
+// 2. Node[objectType#relation].RecursiveRelation = objectType#relation
+// 3. Node[objectType#relation].IsPartOfTupleCycle == false
+// 4. Node[objectType#relation] has only 1 edge, and it's to an OR node
+// 5. The OR node has one or more TTU edge with weight infinite for the terminal type and the computed relation for the TTU is the same
+// 6. Any other edge coming out of the OR node that has a weight for terminal type, it should be weight 1
 // must be all true.
-func (t *TypeSystem) RecursiveTTUCanFastPathV2(objectType, relation, userType string, ttu *openfgav1.TupleToUserset) bool {
+func (t *TypeSystem) TTUUseRecursiveResolver(objectType, relation, userType string, ttu *openfgav1.TupleToUserset) bool {
 	if t.authzWeightedGraph == nil {
 		return false
 	}
@@ -756,15 +565,17 @@ func (t *TypeSystem) RecursiveTTUCanFastPathV2(objectType, relation, userType st
 		return false
 	}
 
+	// if we are not in the presence of a recursive relation or it is part of a tuple cycle, return false
+	if objRelNode.GetRecursiveRelation() != objRelNode.GetUniqueLabel() || objRelNode.IsPartOfTupleCycle() {
+		return false
+	}
+
 	edges, ok := t.authzWeightedGraph.GetEdgesFromNode(objRelNode)
 	if !ok {
 		return false
 	}
 
-	tuplesetRelation := tuple.ToObjectRelationString(objectType, ttu.GetTupleset().GetRelation())
-	computedRelationSuffix := "#" + ttu.GetComputedUserset().GetRelation()
 	recursiveTTUFound := false
-
 	for len(edges) != 0 {
 		innerEdges := make([]*graph.WeightedAuthorizationModelEdge, 0)
 
@@ -774,31 +585,29 @@ func (t *TypeSystem) RecursiveTTUCanFastPathV2(objectType, relation, userType st
 				// if the edge does not have a weight for the terminal type, we can skip it
 				continue
 			}
-			if w == graph.Infinite {
-				// edge is a set operator thus we have to inspect each node of the operator
-				if edge.GetEdgeType() == graph.RewriteEdge {
-					// if the operator node has weight infinite we need to get all the edges to evaluate the preconditions
-					operationalEdges, okOpEdge := t.authzWeightedGraph.GetEdgesFromNode(edge.GetTo())
-					if !okOpEdge {
+			// if the edge is part of the recursive path
+			if edge.GetRecursiveRelation() == objRel {
+				// if the edge is a TTUEdge and points to the original node, and we haven't found any other recursive edge
+				if edge.GetEdgeType() == graph.TTUEdge && edge.GetTo() == objRelNode && !recursiveTTUFound {
+					recursiveTTUFound = true
+					continue
+				}
+
+				// Because we are not in the presence of a tuple cycle, the only rewrite edges that could exist
+				// in a recursive path by definition in the weighted graph is the operational edges or logical TTU edges
+				if edge.GetEdgeType() == graph.RewriteEdge || edge.GetEdgeType() == graph.TTULogicalEdge {
+					newEdges, okEdge := t.authzWeightedGraph.GetEdgesFromNode(edge.GetTo())
+					if !okEdge {
 						return false
 					}
 					// these edges will need to be evaluated in subsequent iterations
-					innerEdges = append(innerEdges, operationalEdges...)
-					continue
-				} else if edge.GetEdgeType() == graph.TTUEdge && !recursiveTTUFound && edge.GetTuplesetRelation() == tuplesetRelation && strings.HasSuffix(edge.GetTo().GetUniqueLabel(), computedRelationSuffix) && edge.GetTo() == objRelNode {
-					// find and validate the TTUEdge which is infinite (the one being processed at the current time)
-					// The recursive TTU edge needs to have:
-					// 1. weight infinite for the terminal type
-					// 2. the computed relation for the TTU is the same relation
-					// 3. there can only be one recursive TTU edge
-					recursiveTTUFound = true
+					innerEdges = append(innerEdges, newEdges...)
 					continue
 				}
 			}
 
-			// catch all, everything has to be weight 1 regardless of direct, computed, rewrite.
-			// thus if an infinite didn't get handled it will exit through here
 			if w > 1 {
+				// for any other edge that is not part of the recursive path, it must be weight 1 or if there is any other edge for the same ttu that is the recursive ttu
 				return false
 			}
 		}
@@ -811,7 +620,7 @@ func (t *TypeSystem) RecursiveTTUCanFastPathV2(objectType, relation, userType st
 	return recursiveTTUFound
 }
 
-// RecursiveUsersetCanFastPathV2 returns true if all these conditions apply:
+// UsersetUseRecursiveResolver returns true if all these conditions apply:
 // 1. Node[objectType#relation].weights[userType] = infinite
 // 2. Any other direct type, userset or computed relation used in the relation needs to be weight = 1 for the usertype
 // Example:
@@ -822,9 +631,9 @@ func (t *TypeSystem) RecursiveTTUCanFastPathV2(objectType, relation, userType st
 // rel5 = [user]
 // rel7 = [user]
 // rel8 = [employee]
-// calling RecursiveUsersetCanFastPathV2(doc, rel1, user) should return TRUE
-// calling RecursiveUsersetCanFastPathV2(doc, rel1, employee) should return FALSE because there is a doc#rel8 that has weight = 2 for employee.
-func (t *TypeSystem) RecursiveUsersetCanFastPathV2(objectType, relation, userType string) bool {
+// calling UsersetUseRecursiveResolver(doc, rel1, user) should return TRUE
+// calling UsersetUseRecursiveResolver(doc, rel1, employee) should return FALSE because there is a doc#rel8 that has weight = 2 for employee.
+func (t *TypeSystem) UsersetUseRecursiveResolver(objectType, relation, userType string) bool {
 	if t.authzWeightedGraph == nil {
 		return false
 	}
@@ -836,6 +645,11 @@ func (t *TypeSystem) RecursiveUsersetCanFastPathV2(objectType, relation, userTyp
 
 	w, ok := objRelNode.GetWeight(userType)
 	if !ok || w != graph.Infinite {
+		return false
+	}
+
+	// if we are not in the presence of a recursive relation or it is part of a tuple cycle, return false
+	if objRelNode.GetRecursiveRelation() != objRelNode.GetUniqueLabel() || objRelNode.IsPartOfTupleCycle() {
 		return false
 	}
 
@@ -855,24 +669,24 @@ func (t *TypeSystem) RecursiveUsersetCanFastPathV2(objectType, relation, userTyp
 				// if the edge does not have a weight for the terminal type, we can skip it
 				continue
 			}
-			if w == graph.Infinite {
-				// edge is a set operator thus we have to inspect each node of the operator
-				if edge.GetEdgeType() == graph.RewriteEdge {
-					// if the operator node has weight infinite we need to get all the edges to evaluate the preconditions
-					operationalEdges, okOpEdge := t.authzWeightedGraph.GetEdgesFromNode(edge.GetTo())
-					if !okOpEdge {
-						return false
-					}
-					innerEdges = append(innerEdges, operationalEdges...)
-					continue
-				} else if edge.GetEdgeType() == graph.DirectEdge && !recursiveUsersetFound && edge.GetTo().GetUniqueLabel() == objRelNode.GetUniqueLabel() && edge.GetTo() == objRelNode {
-					// if the edge is a direct edge, and it is the same userset that we are evaluating
-					// and there is a weight to the usertype and that weight is infinite and the to Node of the edge is the same as the relation node
-					// mark as the recursive userset was found
+
+			if edge.GetRecursiveRelation() == objRel {
+				if edge.GetEdgeType() == graph.DirectEdge && edge.GetTo() == objRelNode && !recursiveUsersetFound {
 					recursiveUsersetFound = true
 					continue
 				}
+
+				if edge.GetEdgeType() == graph.RewriteEdge || edge.GetEdgeType() == graph.DirectLogicalEdge {
+					newEdges, okEdge := t.authzWeightedGraph.GetEdgesFromNode(edge.GetTo())
+					if !okEdge {
+						return false
+					}
+					// these edges will need to be evaluated in subsequent iterations
+					innerEdges = append(innerEdges, newEdges...)
+					continue
+				}
 			}
+
 			// catch all, everything has to be weight 1 regardless of direct, computed, rewrite.
 			// thus if an infinite didn't get handled it will exit through here
 			if w > 1 {
@@ -1732,82 +1546,31 @@ func (t *TypeSystem) GetEdgesFromNode(
 	return edges, nil
 }
 
-// GetEdgesForListObjects returns all edges which have a path to the source type. It's responsible for handling
-// Operator nodes, which are nodes representing Intersection (AND) or Exclusion (BUT NOT) relations. Union (OR) nodes
-// are also Operators, but we must traverse all of their edges and can't prune in advance, so this function will
-// return all relevant edges from an OR.
-// In the future we may prioritize lower weight edges in ORs, but this function is not currently doing so.
-//
-// For AND relations, we choose only the lowest weight outgoing edge, and then mark that result as "needs check".
-// E.g. If we have `rel1: a AND b AND c`, this function will return the edge with the lowest weight. If they are identical weights,
-// it will return the first edge encountered.
-//
-// For BUT NOT relations, GetEdgesForListObjects first checks if the BUT NOT applies to the source type, and if it
-// does it will mark this result as "requires check".
-// E.g. If we have `rel1: a OR b BUT NOT c` and we are searching for a "user", if 'c' does not lead to type user,
-// we do not mark as "requires check".
-// After determining whether this result will require check, GetEdgesForListObjects will prune off the last edge of the
-// Exclusion, as the right-most edge is always the BUT NOT portion, and that edge has already been accounted for.
-//
-// GetEdgesForListObjects returns a list of edges, boolean indicating whether Check is needed, and an error.
-func (t *TypeSystem) GetEdgesForListObjects(
-	targetTypeRelation string,
-	sourceType string,
-) ([]*graph.WeightedAuthorizationModelEdge, bool, error) {
-	if t.authzWeightedGraph == nil {
-		return nil, false, fmt.Errorf("weighted graph is nil")
+// GetInternalEdges returns a slice with all the edges linked to a grouping logical node, otherwise the slice contains the original edge.
+func (t *TypeSystem) GetInternalEdges(edge *graph.WeightedAuthorizationModelEdge, sourceType string) ([]*graph.WeightedAuthorizationModelEdge, error) {
+	var edges []*graph.WeightedAuthorizationModelEdge
+	if edge.GetEdgeType() == graph.DirectLogicalEdge || edge.GetEdgeType() == graph.TTULogicalEdge {
+		logicalEdges, err := t.GetConnectedEdges(edge.GetTo().GetUniqueLabel(), sourceType)
+		if err != nil {
+			return nil, err
+		}
+		edges = append(edges, logicalEdges...)
+	} else {
+		edges = append(edges, edge)
 	}
+	return edges, nil
+}
 
-	wg := t.authzWeightedGraph
-
-	currentNode, ok := wg.GetNodeByID(targetTypeRelation)
+// GetConnectedEdges returns all edges which have a path to the source type.
+func (t *TypeSystem) GetConnectedEdges(targetTypeRelation string, sourceType string) ([]*graph.WeightedAuthorizationModelEdge, error) {
+	currentNode, ok := t.GetNode(targetTypeRelation)
 	if !ok {
-		return nil, false, fmt.Errorf("could not find node with label: %s", targetTypeRelation)
+		return nil, fmt.Errorf("could not find node with label: %s", targetTypeRelation)
 	}
 
 	edges, err := t.GetEdgesFromNode(currentNode, sourceType)
 	if err != nil {
-		return nil, false, err
-	}
-	if len(edges) == 0 {
-		return nil, false, fmt.Errorf("no outgoing edges from node: %s", currentNode.GetUniqueLabel())
-	}
-
-	// needsCheck is intended to be a temporary necessity for use by list_objects/reverse_expand. There is upcoming work
-	// to remove Check from that workflow entirely, but until that's complete we need this information.
-	var needsCheck bool
-
-	if currentNode.GetNodeType() == graph.OperatorNode {
-		switch currentNode.GetLabel() {
-		case graph.ExclusionOperator: // e.g. rel1: [user, other] BUT NOT b
-			butNotEdge := edges[len(edges)-1] // this is the edge to 'b'
-
-			// if the 'b' in BUT NOT b can reach the source type we're seeking
-			// we need to run check at the end
-			if hasPathTo(butNotEdge, sourceType) {
-				needsCheck = true
-			}
-
-			// prune off the "BUT NOT b" portion of these edges and keep going
-			// the right-most edge is ALWAYS the "BUT NOT", so trim the last element
-			edges = edges[:len(edges)-1]
-		case graph.IntersectionOperator:
-			// For now, all intersections will require check
-			needsCheck = true
-
-			// Find all direct edges which can reach the sourceType
-			directEdges := slices.Collect(utils.Filter(edges, func(edge *graph.WeightedAuthorizationModelEdge) bool {
-				return edge.GetEdgeType() == graph.DirectEdge && hasPathTo(edge, sourceType)
-			}))
-
-			// If there are any direct edges which reach destination, we have to take them all
-			if len(directEdges) > 0 {
-				edges = directEdges
-			} else {
-				// Otherwise take the lowest weight edge
-				edges = []*graph.WeightedAuthorizationModelEdge{cheapestEdgeTo(edges, sourceType)}
-			}
-		}
+		return nil, err
 	}
 
 	// Filter to only return edges which have a path to the sourceType
@@ -1815,7 +1578,7 @@ func (t *TypeSystem) GetEdgesForListObjects(
 		return hasPathTo(edge, sourceType)
 	}))
 
-	return relevantEdges, needsCheck, nil
+	return relevantEdges, nil
 }
 
 func (t *TypeSystem) GetNode(uniqueID string) (*graph.WeightedAuthorizationModelNode, bool) {
@@ -1824,33 +1587,6 @@ func (t *TypeSystem) GetNode(uniqueID string) (*graph.WeightedAuthorizationModel
 	}
 
 	return t.authzWeightedGraph.GetNodeByID(uniqueID)
-}
-
-func cheapestEdgeTo(edges []*graph.WeightedAuthorizationModelEdge, dst string) *graph.WeightedAuthorizationModelEdge {
-	return utils.Reduce(edges, nil, func(lowest *graph.WeightedAuthorizationModelEdge, current *graph.WeightedAuthorizationModelEdge) *graph.WeightedAuthorizationModelEdge {
-		if lowest == nil {
-			_, ok := current.GetWeight(dst)
-			if ok {
-				return current
-			}
-			return nil
-		}
-
-		a, ok := lowest.GetWeight(dst)
-		if !ok {
-			return current
-		}
-
-		b, ok := current.GetWeight(dst)
-		if !ok {
-			return lowest
-		}
-
-		if b < a {
-			return current
-		}
-		return lowest
-	})
 }
 
 func flattenUserset(relationDef *openfgav1.Userset) []*openfgav1.TupleToUserset {

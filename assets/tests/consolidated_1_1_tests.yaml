@@ -10436,3 +10436,83 @@ tests:
               relation: can_access
               object: deployment:1
             expectation: false
+  - name: weight_2_more_than_one_userset_assignable
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type scope
+            relations
+              define public: [user:*]
+              define verified: [user]
+          type resource
+            relations
+              define access: [scope#public, scope#verified]
+        tuples:
+          - user: scope:A#verified
+            relation: access
+            object: resource:1
+          - user: user:*
+            relation: public
+            object: scope:A
+        checkAssertions:
+          - tuple:
+              user: user:bob
+              relation: access
+              object: resource:1
+            expectation: false
+  - name: weight_infinite_more_than_one_userset_assignable
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type scope
+            relations
+              define public: [user:*, scope#public]
+              define verified: [user, scope#verified]
+          type resource
+            relations
+              define access: [scope#public, scope#verified]
+        tuples:
+          - user: scope:A#verified
+            relation: access
+            object: resource:1
+          - user: user:*
+            relation: public
+            object: scope:A
+        checkAssertions:
+          - tuple:
+              user: user:bob
+              relation: access
+              object: resource:1
+            expectation: false
+  - name: weight_2_two_userset_assignable_diff_types
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type scopeA
+            relations
+              define public: [user:*]
+          type scopeB
+            relations
+              define verified: [user]
+          type resource
+            relations
+              define access: [scopeA#public, scopeB#verified]
+        tuples:
+          - user: scopeB:A#verified
+            relation: access
+            object: resource:1
+          - user: user:*
+            relation: public
+            object: scopeA:A
+        checkAssertions:
+          - tuple:
+              user: user:bob
+              relation: access
+              object: resource:1
+            expectation: false
