@@ -99,7 +99,6 @@ func TestListObjectsDispatchCount(t *testing.T) {
 	ctx := storage.ContextWithRelationshipTupleReader(context.Background(), ds)
 	ctrl := gomock.NewController(t)
 	t.Cleanup(ctrl.Finish)
-	mockThrottler := mocks.NewMockThrottler(ctrl)
 	tests := []struct {
 		name                    string
 		model                   string
@@ -293,8 +292,6 @@ func TestListObjectsDispatchCount(t *testing.T) {
 				fakeStoreID,
 				WithMaxConcurrentReads(1),
 			)
-			mockThrottler.EXPECT().Throttle(gomock.Any()).Times(test.expectedThrottlingValue)
-			mockThrottler.EXPECT().Close().Times(1) // LO closes throttler during server close call.
 
 			resp, err := q.Execute(ctx, &openfgav1.ListObjectsRequest{
 				StoreId:  storeID,

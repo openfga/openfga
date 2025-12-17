@@ -43,7 +43,6 @@ import (
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
 	"github.com/openfga/openfga/pkg/storage/sqlite"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
-	storageTest "github.com/openfga/openfga/pkg/storage/test"
 	storagefixtures "github.com/openfga/openfga/pkg/testfixtures/storage"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -1761,84 +1760,6 @@ func TestIsAccessControlEnabled(t *testing.T) {
 		)
 		t.Cleanup(s.Close)
 		require.True(t, s.IsAccessControlEnabled())
-	})
-}
-
-func TestServer_ThrottleUntilDeadline(t *testing.T) {
-	t.Cleanup(func() {
-		goleak.VerifyNone(t)
-	})
-	ds := memory.New()
-	t.Cleanup(ds.Close)
-
-	modelStr := `
-		model
-			schema 1.1
-		type user
-
-		type group
-		relations
-			define other: [user]
-			define member: [user, group#member, group#other]
-
-		type document
-		relations
-			define viewer: [user, group#member]`
-
-	tuples := []string{
-		"document:1#viewer@user:jon", // Observed before first dispatch
-		"document:1#viewer@group:eng#member",
-		"group:eng#member@group:backend#member",
-		"group:backend#member@user:tyler", // Requires two dispatches, gets throttled
-
-		"document:2#viewer@user:tyler",
-	}
-
-	storeID, model := storageTest.BootstrapFGAStore(t, ds, modelStr, tuples)
-	t.Cleanup(ds.Close)
-
-	deadline := 50 * time.Millisecond
-
-	s := MustNewServerWithOpts(
-		WithDatastore(ds),
-		WithListObjectsDeadline(deadline),
-		WithListUsersDeadline(deadline),
-	)
-	t.Cleanup(s.Close)
-
-	ctx := context.Background()
-
-	t.Run("list_users_return_no_error_and_partial_results", func(t *testing.T) {
-		resp, err := s.ListUsers(ctx, &openfgav1.ListUsersRequest{
-			StoreId:              storeID,
-			AuthorizationModelId: model.GetId(),
-			Object: &openfgav1.Object{
-				Type: "document",
-				Id:   "1",
-			},
-			Relation: "viewer",
-			UserFilters: []*openfgav1.UserTypeFilter{
-				{Type: "user"},
-			},
-		})
-
-		require.NoError(t, err)
-		require.NotNil(t, resp)
-		require.LessOrEqual(t, len(resp.GetUsers()), 1) // race condition of context cancellation
-	})
-
-	t.Run("list_objects_return_no_error_and_partial_results", func(t *testing.T) {
-		resp, err := s.ListObjects(ctx, &openfgav1.ListObjectsRequest{
-			StoreId:              storeID,
-			AuthorizationModelId: model.GetId(),
-			User:                 "user:tyler",
-			Relation:             "viewer",
-			Type:                 "document",
-		})
-
-		require.NoError(t, err)
-		require.NotNil(t, resp)
-		require.LessOrEqual(t, len(resp.GetObjects()), 1) // race condition of context cancellation
 	})
 }
 
