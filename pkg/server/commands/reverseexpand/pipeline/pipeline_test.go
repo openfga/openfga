@@ -284,6 +284,59 @@ func evaluate(t *testing.T, tc testcase, seq iter.Seq[Item]) {
 
 var cases = []testcase{
 	{
+		name: "policy",
+		model: `
+		model
+		schema 1.1
+
+		type user
+
+		type group
+			relations
+				define member: [user, group#member]
+
+		type role
+			relations
+				define member: [user, group#member]
+
+		type policy
+			relations
+				define denied: [role]
+				define allowed: [role]
+				define can_perform: member from allowed but not member from denied
+
+		type resource
+			relations
+				define read_policy: [policy]
+				define write_policy: [policy]
+				define reader: can_perform from read_policy
+				define writer: can_perform from write_policy
+		`,
+		tuples: []string{
+			"group:admin#member@user:bob",
+			"group:employee#member@group:admin#member",
+			"group:employee#member@user:bob",
+			"group:employee#member@user:betty",
+			"group:terminated#member@user:betty",
+			"role:admin#member@group:admin#member",
+			"role:read_only#member@group:employee#member",
+			"role:blocked#member@group:terminated#member",
+			"policy:document_writer#allowed@role:admin",
+			"policy:document_writer#denied@role:blocked",
+			"policy:document_reader#allowed@role:admin",
+			"policy:document_reader#allowed@role:read_only",
+			"policy:document_reader#denied@role:blocked",
+			"resource:document_1#write_policy@policy:document_writer",
+			"resource:document_1#read_policy@policy:document_reader",
+			"resource:document_2#write_policy@policy:document_writer",
+			"resource:document_2#read_policy@policy:document_reader",
+		},
+		objectType: "resource",
+		relation:   "writer",
+		user:       "user:bob",
+		expected:   []string{"resource:document_1", "resource:document_2"},
+	},
+	{
 		name: "recursive_ttu_intersection",
 		model: `
 		model
