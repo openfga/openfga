@@ -126,6 +126,6 @@ func (q *CheckQueryV2) Execute(ctx context.Context, req *openfgav1.CheckRequest)
 	}
 
 	return &openfgav1.CheckResponse{
-		Allowed: res.Allowed,
+		Allowed: res.GetAllowed(),
 	}, nil
 }
