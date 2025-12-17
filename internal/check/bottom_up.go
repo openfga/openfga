@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"sync"
 
 	"github.com/sourcegraph/conc/panics"
 
@@ -245,54 +246,76 @@ func (s *bottomUp) buildIterator(ctx context.Context, req *Request, edge *authzG
 	return storage.WrapIterator(storage.ObjectIDKind, iterator.NewFilteredIterator(iter, iterFilters...))
 }
 
-func handleStreamError(ctx context.Context, err error, batch *[]string, out chan<- *iterator.Msg) bool {
+var batchPool = sync.Pool{
+	New: func() any {
+		return make([]string, 0, IteratorMinBatchThreshold)
+	},
+}
+
+type batcher struct {
+	ctx   context.Context
+	out   chan<- *iterator.Msg
+	items []string
+}
+
+func newBatcher(ctx context.Context, out chan<- *iterator.Msg) *batcher {
+	return &batcher{
+		ctx:   ctx,
+		out:   out,
+		items: batchPool.Get().([]string),
+	}
+}
+
+func (b *batcher) add(val string) {
+	if val == "" {
+		return
+	}
+	b.items = append(b.items, val)
+	if len(b.items) >= IteratorMinBatchThreshold {
+		b.flush()
+	}
+}
+
+func (b *batcher) flush() {
+	if len(b.items) > 0 {
+		concurrency.TrySendThroughChannel(b.ctx, &iterator.Msg{Iter: storage.NewStaticIterator[string](b.items)}, b.out)
+		// Get a new slice from the pool for the next batch
+		b.items = batchPool.Get().([]string)
+	}
+}
+
+// handleError handles the error and discards the current batch if necessary.
+func (b *batcher) handleError(err error) bool {
 	if storage.IterIsDoneOrCancelled(err) {
 		return false
 	}
 
-	concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Err: err}, out)
+	concurrency.TrySendThroughChannel(b.ctx, &iterator.Msg{Err: err}, b.out)
 	var condErr *condition.EvaluationError
 	if errors.As(err, &condErr) {
 		return false
 	}
-	*batch = nil
+
+	// Discard the batch and return the buffer to the pool
+	if b.items != nil {
+		b.items = b.items[:0]
+		batchPool.Put(b.items)
+		b.items = nil
+	}
 	return true
 }
 
-func addValueToBatch(value string, batch []string, ctx context.Context, out chan<- *iterator.Msg) []string {
-	if value == "" {
-		return batch
-	}
-	batch = append(batch, value)
-	// Flush batch if needed
-	if len(batch) >= IteratorMinBatchThreshold {
-		concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Iter: storage.NewStaticIterator[string](batch)}, out)
-		batch = make([]string, 0, IteratorMinBatchThreshold)
-	}
-	return batch
-}
-
-func cleanOperation(ctx context.Context, batch []string, iters []storage.Iterator[string], out chan<- *iterator.Msg) {
-	// Flush any remaining items
-	if len(batch) > 0 {
-		concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Iter: storage.NewStaticIterator[string](batch)}, out)
-	}
-	close(out)
-	for _, it := range iters {
-		it.Stop()
-	}
-}
-
-func cleanOperationWithError(ctx context.Context, batch []string, iters []storage.Iterator[string], err error, out chan<- *iterator.Msg) {
-	// Flush any remaining items
-	if len(batch) > 0 {
-		concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Iter: storage.NewStaticIterator[string](batch)}, out)
-	}
+func (b *batcher) close(iters []storage.Iterator[string], err error) {
+	b.flush()
 	if err != nil {
-		handleStreamError(ctx, err, &batch, out)
+		b.handleError(err)
+	} else if b.items != nil {
+		// Return the unused buffer to the pool
+		b.items = b.items[:0]
+		batchPool.Put(b.items)
+		b.items = nil
 	}
-
-	close(out)
+	close(b.out)
 	for _, it := range iters {
 		it.Stop()
 	}
@@ -302,10 +325,10 @@ func cleanOperationWithError(ctx context.Context, batch []string, iters []storag
 // handleStreamError sends an error through the output channel, sets batch to nil,
 // and returns true if the function should terminate.
 func resolveUnion(ctx context.Context, iters []storage.Iterator[string], out chan<- *iterator.Msg) {
-	batch := make([]string, 0, IteratorMinBatchThreshold)
+	batch := newBatcher(ctx, out)
 	lastError := error(nil)
 	defer func() {
-		cleanOperationWithError(ctx, batch, iters, lastError, out)
+		batch.close(iters, lastError)
 	}()
 	var minValue string
 	var minIndexValue int
@@ -366,7 +389,7 @@ func resolveUnion(ctx context.Context, iters []storage.Iterator[string], out cha
 			newIndexes = append(newIndexes, idxValue)
 		}
 
-		batch = addValueToBatch(minValue, batch, ctx, out)
+		batch.add(minValue)
 		// Advance the stream with the minimum value
 		value, err := iters[minIndexValue].Next(ctx)
 		if err != nil {
@@ -389,10 +412,10 @@ func resolveUnion(ctx context.Context, iters []storage.Iterator[string], out cha
 }
 
 func resolveIntersection(ctx context.Context, iters []storage.Iterator[string], out chan<- *iterator.Msg) {
-	batch := make([]string, 0, IteratorMinBatchThreshold)
+	batch := newBatcher(ctx, out)
 
 	defer func() {
-		cleanOperation(ctx, batch, iters, out)
+		batch.close(iters, nil)
 	}()
 
 	// collect iterators from all channels, once none are nil
@@ -409,7 +432,7 @@ func resolveIntersection(ctx context.Context, iters []storage.Iterator[string], 
 	for _, iter := range iters {
 		value, err := iter.Next(ctx)
 		if err != nil {
-			handleStreamError(ctx, err, &batch, out)
+			batch.handleError(err)
 			// if one iterator is empty or error, interception is impossible
 			return
 		}
@@ -444,12 +467,12 @@ func resolveIntersection(ctx context.Context, iters []storage.Iterator[string], 
 		// all children have the same value
 		if allSameValue {
 			// All streams have the same value - it's in the intersection
-			batch = addValueToBatch(maxValue, batch, ctx, out)
+			batch.add(maxValue)
 			// Advance all streams
 			for idx, iter := range iters {
 				value, err := iter.Next(ctx)
 				if err != nil {
-					handleStreamError(ctx, err, &batch, out)
+					batch.handleError(err)
 					// if one iterator is done or error, interception cannot continue
 					return
 				}
@@ -461,7 +484,7 @@ func resolveIntersection(ctx context.Context, iters []storage.Iterator[string], 
 				if compareValues[idx] < maxValue {
 					value, err := skipTo(ctx, iter, maxValue)
 					if err != nil {
-						handleStreamError(ctx, err, &batch, out)
+						batch.handleError(err)
 						// if one iterator is done or error, interception cannot continue
 						return
 					}
@@ -473,10 +496,10 @@ func resolveIntersection(ctx context.Context, iters []storage.Iterator[string], 
 }
 
 func resolveDifference(ctx context.Context, iters []storage.Iterator[string], out chan<- *iterator.Msg) {
-	batch := make([]string, 0)
+	batch := newBatcher(ctx, out)
 
 	defer func() {
-		cleanOperation(ctx, batch, iters, out)
+		batch.close(iters, nil)
 	}()
 
 	if ctx.Err() != nil {
@@ -488,7 +511,7 @@ func resolveDifference(ctx context.Context, iters []storage.Iterator[string], ou
 		value, err := iter.Next(ctx)
 		compareValues = append(compareValues, value)
 		if err != nil {
-			if handleStreamError(ctx, err, &batch, out) {
+			if batch.handleError(err) {
 				return
 			}
 			if idx == BaseIndex {
@@ -514,7 +537,7 @@ func resolveDifference(ctx context.Context, iters []storage.Iterator[string], ou
 			for idx, it := range iters {
 				value, err := it.Next(ctx)
 				if err != nil {
-					if handleStreamError(ctx, err, &batch, out) {
+					if batch.handleError(err) {
 						return
 					}
 					if idx == DifferenceIndex {
@@ -526,12 +549,12 @@ func resolveDifference(ctx context.Context, iters []storage.Iterator[string], ou
 			}
 		} else if compareValues[DifferenceIndex] > compareValues[BaseIndex] {
 			// add the base value to the batch
-			batch = addValueToBatch(compareValues[BaseIndex], batch, ctx, out)
+			batch.add(compareValues[BaseIndex])
 			// move the iterator and update the comparable value of base
 			value, err := iters[BaseIndex].Next(ctx)
 			if err != nil {
 				// if base has an error, the difference operation cannot continue
-				handleStreamError(ctx, err, &batch, out)
+				batch.handleError(err)
 				return
 			}
 			compareValues[BaseIndex] = value
@@ -539,7 +562,7 @@ func resolveDifference(ctx context.Context, iters []storage.Iterator[string], ou
 			// diff < base, then move the diff to catch up with base
 			value, err := skipTo(ctx, iters[DifferenceIndex], compareValues[BaseIndex])
 			if err != nil {
-				if handleStreamError(ctx, err, &batch, out) {
+				if batch.handleError(err) {
 					return
 				}
 				goto drainBase
@@ -554,10 +577,10 @@ drainBase:
 		if ctx.Err() != nil {
 			return
 		}
-		batch = addValueToBatch(compareValues[BaseIndex], batch, ctx, out)
+		batch.add(compareValues[BaseIndex])
 		value, err := iters[BaseIndex].Next(ctx)
 		if err != nil {
-			handleStreamError(ctx, err, &batch, out)
+			batch.handleError(err)
 			return
 		}
 		compareValues[BaseIndex] = value
