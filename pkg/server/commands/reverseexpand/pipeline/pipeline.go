@@ -17,6 +17,7 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	weightedGraph "github.com/openfga/language/pkg/go/graph"
 
+	"github.com/openfga/openfga/internal/bits"
 	"github.com/openfga/openfga/internal/checkutil"
 	"github.com/openfga/openfga/internal/containers"
 	"github.com/openfga/openfga/internal/pipe"
@@ -60,10 +61,6 @@ const (
 	defaultNumProcs   int = 3
 )
 
-func powerOfTwo(n int) bool {
-	return n > 0 && (n&(n-1)) == 0
-}
-
 func handleIdentity(_ context.Context, _ *Edge, items []string) iter.Seq[Item] {
 	return seq.Transform(seq.Sequence(items...), strToItem)
 }
@@ -89,7 +86,7 @@ func New(backend *Backend, options ...Option) *Pipeline {
 // The default value of the buffer size is 128. If an invalid value is provided as size
 // then the default value will be applied.
 func WithBufferSize(size int) Option {
-	if !powerOfTwo(size) {
+	if !bits.PowerOfTwo(size) {
 		size = defaultBufferSize
 	}
 

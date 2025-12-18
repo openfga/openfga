@@ -4,6 +4,8 @@ import (
 	"io"
 	"iter"
 	"sync"
+
+	"github.com/openfga/openfga/internal/bits"
 )
 
 type Rx[T any] interface {
@@ -20,10 +22,6 @@ type TxCloser[T any] interface {
 	io.Closer
 }
 
-func powerOfTwo(n int) bool {
-	return n > 0 && (n&(n-1)) == 0
-}
-
 type Pipe[T any] struct {
 	data      []T
 	head      uint
@@ -35,7 +33,7 @@ type Pipe[T any] struct {
 }
 
 func New[T any](n int) *Pipe[T] {
-	if !powerOfTwo(n) {
+	if !bits.PowerOfTwo(n) {
 		panic("value provided to pipe.New must be a power of two")
 	}
 	var p Pipe[T]
