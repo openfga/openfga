@@ -43,10 +43,6 @@ func New[T any](n int) *Pipe[T] {
 	return &p
 }
 
-func (p *Pipe[T]) size() uint {
-	return p.mask(p.head - p.tail)
-}
-
 func (p *Pipe[T]) empty() bool {
 	return p.head == p.tail
 }
