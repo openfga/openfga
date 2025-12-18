@@ -44,7 +44,7 @@ func New[T any](n int) *Pipe[T] {
 }
 
 func (p *Pipe[T]) size() uint {
-	return p.head - p.tail
+	return p.mask(p.head - p.tail)
 }
 
 func (p *Pipe[T]) empty() bool {
@@ -52,11 +52,11 @@ func (p *Pipe[T]) empty() bool {
 }
 
 func (p *Pipe[T]) full() bool {
-	return p.size() == uint(len(p.data))
+	return (p.head - p.tail) == uint(len(p.data))
 }
 
 func (p *Pipe[T]) mask(value uint) uint {
-	return value & uint(len(p.data)-1)
+	return value & (uint(len(p.data)) - 1)
 }
 
 func (p *Pipe[T]) Seq() iter.Seq[T] {
