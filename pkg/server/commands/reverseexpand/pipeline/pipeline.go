@@ -54,6 +54,16 @@ var (
 	nodeTypeSpecificTypeWildcard    = weightedGraph.SpecificTypeWildcard
 )
 
+const (
+	defaultBufferSize int = 128
+	defaultChunkSize  int = 100
+	defaultNumProcs   int = 3
+)
+
+func powerOfTwo(n int) bool {
+	return n > 0 && (n&(n-1)) == 0
+}
+
 func handleIdentity(_ context.Context, _ *Edge, items []string) iter.Seq[Item] {
 	return seq.Transform(seq.Sequence(items...), strToItem)
 }
@@ -61,9 +71,9 @@ func handleIdentity(_ context.Context, _ *Edge, items []string) iter.Seq[Item] {
 func New(backend *Backend, options ...Option) *Pipeline {
 	p := &Pipeline{
 		backend:    backend,
-		bufferSize: 100,
-		chunkSize:  100,
-		numProcs:   3,
+		bufferSize: defaultBufferSize,
+		chunkSize:  defaultChunkSize,
+		numProcs:   defaultNumProcs,
 	}
 
 	for _, option := range options {
@@ -74,9 +84,13 @@ func New(backend *Backend, options ...Option) *Pipeline {
 	return p
 }
 
+// WithBufferSize is a function that sets the value for a pipeline's workers' internal
+// pipe buffer size. The value must be a power of two. (e.g. 1, 2, 4, 8, 16, 32...)
+// The default value of the buffer size is 128. If an invalid value is provided as size
+// then the default value will be applied.
 func WithBufferSize(size int) Option {
-	if size < 1 {
-		size = 1
+	if !powerOfTwo(size) {
+		size = defaultBufferSize
 	}
 
 	return func(p *Pipeline) {
@@ -86,7 +100,7 @@ func WithBufferSize(size int) Option {
 
 func WithChunkSize(size int) Option {
 	if size < 1 {
-		size = 1
+		size = defaultChunkSize
 	}
 
 	return func(p *Pipeline) {
@@ -96,7 +110,7 @@ func WithChunkSize(size int) Option {
 
 func WithNumProcs(num int) Option {
 	if num < 1 {
-		num = 1
+		num = defaultNumProcs
 	}
 
 	return func(p *Pipeline) {
@@ -984,13 +998,13 @@ type Pipeline struct {
 	// such as a database or a graph.
 	backend *Backend
 
-	// bufferSize is a value that indicates the maximum size of the
-	// message buffer that exists between each worker and its subscribers.
-	// When a buffer becomes full, send operations on that subscription
-	// will block until messages are removed from the buffer or the
-	// subscription is closed.
+	// bufferSize is a value that indicates the size of the message buffer
+	// that exists between each worker and its subscribers. When a buffer
+	// becomes full, send operations on that subscription will block until
+	// messages are removed from the buffer or the subscription is closed.
 	//
-	// The default value is 100. This value can be changed by constructing
+	// This value must be a valid power of two. (e.g. 1, 2, 4, 8, 16, 32...)
+	// The default value is 128. This value can be changed by constructing
 	// a pipeline using NewPipeline and providing the option WithBufferSize.
 	bufferSize int
 
@@ -1331,12 +1345,15 @@ func (t *Target) Object() string {
 }
 
 type Worker[K any, T any, U any] struct {
-	senders    []Sender[K, T]
-	listeners  []Listener[K, U]
-	Resolver   Resolver[K, T, U]
-	finite     func()
-	init       sync.Once
-	wg         sync.WaitGroup
+	senders   []Sender[K, T]
+	listeners []Listener[K, U]
+	Resolver  Resolver[K, T, U]
+	finite    func()
+	init      sync.Once
+	wg        sync.WaitGroup
+
+	// bufferSize is the value that will be set for the worker's internal pipe buffer.
+	// The value must be a power of two; any other value will cause a panic.
 	bufferSize int
 }
 
@@ -1385,17 +1402,16 @@ func (w *Worker[K, T, U]) Start(ctx context.Context) {
 }
 
 func (w *Worker[K, T, U]) Subscribe(key K) Sender[K, U] {
-	var p pipe.Pipe[U]
-	p.Grow(w.bufferSize)
+	p := pipe.New[U](w.bufferSize)
 
 	w.listeners = append(w.listeners, &listener[K, U]{
 		key,
-		&p,
+		p,
 	})
 
 	return &sender[K, U]{
 		key,
-		&p,
+		p,
 	}
 }
 
