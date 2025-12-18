@@ -36,7 +36,7 @@ type Pipe[T any] struct {
 
 func New[T any](n int) *Pipe[T] {
 	if !powerOfTwo(n) {
-		panic("value provided to Pipe.Grow must be a power of 2")
+		panic("value provided to pipe.New must be a power of two")
 	}
 	var p Pipe[T]
 	p.data = make([]T, n)
