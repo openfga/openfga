@@ -96,8 +96,8 @@ func (p *Pipe[T]) Send(item T) bool {
 		return false
 	}
 
-	p.head++
 	p.data[p.mask(p.head)] = item
+	p.head++
 
 	// Signal that the buffer is no longer empty.
 	p.condEmpty.Signal()
@@ -117,8 +117,8 @@ func (p *Pipe[T]) Recv(t *T) bool {
 		return false
 	}
 
-	p.tail++
 	*t = p.data[p.mask(p.tail)]
+	p.tail++
 
 	// Signal that the buffer is no longer full.
 	p.condFull.Signal()
