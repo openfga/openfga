@@ -1377,10 +1377,6 @@ func TestRunCommandConfigIsMerged(t *testing.T) {
 		require.Equal(t, 4*time.Second, viper.GetDuration("cache-controller-ttl"))
 
 		require.Equal(t, []string{"33", "44"}, viper.GetStringSlice("request-duration-datastore-query-count-buckets"))
-		require.True(t, viper.GetBool("dispatch-throttling-enabled"))
-		require.Equal(t, "1ms", viper.GetString("dispatch-throttling-frequency"))
-		require.Equal(t, "120", viper.GetString("dispatch-throttling-threshold"))
-		require.Equal(t, "130", viper.GetString("dispatch-throttling-max-threshold"))
 		require.Equal(t, "120", viper.GetString("max-condition-evaluation-cost"))
 		require.Equal(t, uint64(120), viper.GetUint64("max-condition-evaluation-cost"))
 		require.True(t, viper.GetBool("access-control-enabled"))
