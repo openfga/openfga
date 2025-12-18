@@ -97,4 +97,55 @@ func TestSharedDatastoreResources(t *testing.T) {
 		require.True(t, ok)
 		require.NotEqual(t, s.CacheController, s.ShadowCacheController)
 	})
+
+	t.Run("with_custom_logger", func(t *testing.T) {
+		settings := config.CacheSettings{
+			CheckCacheLimit:           1,
+			CheckIteratorCacheEnabled: true,
+			CacheControllerEnabled:    true,
+		}
+
+		mockLogger := mockstorage.NewMockLogger(mockController)
+
+		s, err := NewSharedDatastoreResources(sharedCtx, sharedSf, mockDatastore, settings,
+			WithLogger(mockLogger))
+		require.NoError(t, err)
+		t.Cleanup(s.Close)
+
+		require.Equal(t, mockLogger, s.Logger)
+	})
+
+	t.Run("with_custom_cache_controller", func(t *testing.T) {
+		settings := config.CacheSettings{
+			CheckCacheLimit:           1,
+			CheckIteratorCacheEnabled: true,
+			CacheControllerEnabled:    true, // Enables cache controller creation, but should not overwrite custom one
+		}
+
+		customController := mockstorage.NewMockCacheController(mockController)
+
+		s, err := NewSharedDatastoreResources(sharedCtx, sharedSf, mockDatastore, settings,
+			WithCacheController(customController))
+		require.NoError(t, err)
+		t.Cleanup(s.Close)
+
+		require.Equal(t, customController, s.CacheController)
+	})
+
+	t.Run("with_custom_shadow_cache_controller", func(t *testing.T) {
+		settings := config.CacheSettings{
+			CheckCacheLimit:           1,
+			CheckIteratorCacheEnabled: true,
+			CacheControllerEnabled:    true, // Enables shadow controller creation, but should not overwrite custom one
+		}
+
+		customShadowController := mockstorage.NewMockCacheController(mockController)
+
+		s, err := NewSharedDatastoreResources(sharedCtx, sharedSf, mockDatastore, settings,
+			WithShadowCacheController(customShadowController))
+		require.NoError(t, err)
+		t.Cleanup(s.Close)
+
+		require.Equal(t, customShadowController, s.ShadowCacheController)
+	})
 }
