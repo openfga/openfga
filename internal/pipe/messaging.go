@@ -20,8 +20,6 @@ type TxCloser[T any] interface {
 	io.Closer
 }
 
-const defaultPipeSize int = 1
-
 func powerOfTwo(n int) bool {
 	return n > 0 && (n&(n-1)) == 0
 }
