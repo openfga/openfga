@@ -4,6 +4,8 @@ import (
 	"io"
 	"iter"
 	"sync"
+
+	"github.com/openfga/openfga/internal/bitutil"
 )
 
 type Rx[T any] interface {
@@ -20,39 +22,40 @@ type TxCloser[T any] interface {
 	io.Closer
 }
 
-const defaultPipeSize int = 1
-
 type Pipe[T any] struct {
-	data  []T
-	head  int
-	tail  int
-	count int
-	done  bool
-	mu    sync.Mutex
-	full  *sync.Cond
-	empty *sync.Cond
-	init  sync.Once
+	data      []T
+	head      uint
+	tail      uint
+	done      bool
+	mu        sync.Mutex
+	condFull  *sync.Cond
+	condEmpty *sync.Cond
 }
 
-func (p *Pipe[T]) Grow(n int) {
-	if n < 0 {
-		panic("negative value provided to Pipe.Grow")
+// New is a function that instantiates a new Pipe with a size of n.
+// The value of n must be a valid power of two. Any other value will
+// result in a panic.
+func New[T any](n int) *Pipe[T] {
+	if !bitutil.PowerOfTwo(n) {
+		panic("value provided to pipe.New must be a power of two")
 	}
-	p.mu.Lock()
-	defer p.mu.Unlock()
+	var p Pipe[T]
+	p.data = make([]T, n)
+	p.condFull = sync.NewCond(&p.mu)
+	p.condEmpty = sync.NewCond(&p.mu)
+	return &p
+}
 
-	replacement := make([]T, len(p.data)+n)
+func (p *Pipe[T]) empty() bool {
+	return p.head == p.tail
+}
 
-	for i := 0; i < p.count; i++ {
-		replacement[i] = p.data[(p.tail+i)%len(p.data)]
-	}
-	p.data = replacement
-	p.tail = 0
-	p.head = p.count
+func (p *Pipe[T]) full() bool {
+	return (p.head - p.tail) == uint(len(p.data))
+}
 
-	p.init.Do(p.initialize)
-
-	p.full.Broadcast()
+func (p *Pipe[T]) mask(value uint) uint {
+	return value & (uint(len(p.data)) - 1)
 }
 
 func (p *Pipe[T]) Seq() iter.Seq[T] {
@@ -73,39 +76,28 @@ func (p *Pipe[T]) Seq() iter.Seq[T] {
 	}
 }
 
-func (p *Pipe[T]) initialize() {
-	if len(p.data) == 0 {
-		p.data = make([]T, defaultPipeSize)
-	}
-	p.full = sync.NewCond(&p.mu)
-	p.empty = sync.NewCond(&p.mu)
-}
-
 func (p *Pipe[T]) Send(item T) bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-
-	p.init.Do(p.initialize)
 
 	if p.done {
 		return false
 	}
 
 	// Wait if the buffer is full.
-	for p.count == len(p.data) && !p.done {
-		p.full.Wait()
+	for p.full() && !p.done {
+		p.condFull.Wait()
 	}
 
 	if p.done {
 		return false
 	}
 
-	p.data[p.head] = item
-	p.head = (p.head + 1) % len(p.data)
-	p.count++
+	p.data[p.mask(p.head)] = item
+	p.head++
 
 	// Signal that the buffer is no longer empty.
-	p.empty.Signal()
+	p.condEmpty.Signal()
 	return true
 }
 
@@ -113,24 +105,20 @@ func (p *Pipe[T]) Recv(t *T) bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	p.init.Do(p.initialize)
-
 	// Wait while the buffer is empty and the pipe is not yet done.
-	for p.count == 0 && !p.done {
-		p.empty.Wait()
+	for p.empty() && !p.done {
+		p.condEmpty.Wait()
 	}
 
-	if p.count == 0 && p.done {
+	if p.empty() && p.done {
 		return false
 	}
 
-	*t = p.data[p.tail]
-	p.tail = (p.tail + 1) % len(p.data)
-	p.count--
+	*t = p.data[p.mask(p.tail)]
+	p.tail++
 
 	// Signal that the buffer is no longer full.
-	p.full.Signal()
-
+	p.condFull.Signal()
 	return true
 }
 
@@ -138,13 +126,10 @@ func (p *Pipe[T]) Close() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	p.init.Do(p.initialize)
-
 	p.done = true
 
-	p.empty.Broadcast()
-	p.full.Broadcast()
-
+	p.condEmpty.Broadcast()
+	p.condFull.Broadcast()
 	return nil
 }
 
@@ -164,7 +149,6 @@ func (p *staticRx[T]) Recv(t *T) bool {
 
 	*t = p.items[p.pos]
 	p.pos++
-
 	return true
 }
 
