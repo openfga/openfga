@@ -98,7 +98,7 @@ func TestPipelineShutdown(t *testing.T) {
 	)
 
 	if err != nil {
-		panic(err)
+		t.Fail()
 	}
 
 	g := typesys.GetWeightedGraph()
@@ -115,12 +115,12 @@ func TestPipelineShutdown(t *testing.T) {
 
 	target, ok := pl.Target("user", "bob")
 	if !ok {
-		panic("no such target")
+		t.Fail()
 	}
 
 	source, ok := pl.Source("document", "viewer")
 	if !ok {
-		panic("no such source")
+		t.Fail()
 	}
 
 	t.Run("NoAbandon", func(t *testing.T) {
@@ -2228,7 +2228,7 @@ func BenchmarkPipeline(b *testing.B) {
 			)
 
 			if err != nil {
-				panic(err)
+				b.Fail()
 			}
 
 			g := typesys.GetWeightedGraph()
@@ -2259,12 +2259,12 @@ func BenchmarkPipeline(b *testing.B) {
 
 				target, ok := pl.Target(userType, userParts[1])
 				if !ok {
-					panic("no such target")
+					b.Fail()
 				}
 
 				source, ok := pl.Source(tc.objectType, tc.relation)
 				if !ok {
-					panic("no such source")
+					b.Fail()
 				}
 
 				seq := pl.Build(context.Background(), source, target)
@@ -2292,7 +2292,7 @@ func TestPipeline(t *testing.T) {
 			)
 
 			if err != nil {
-				panic(err)
+				t.Fail()
 			}
 
 			g := typesys.GetWeightedGraph()
@@ -2322,12 +2322,12 @@ func TestPipeline(t *testing.T) {
 
 			target, ok := pl.Target(userType, userParts[1])
 			if !ok {
-				panic("no such target")
+				t.Fail()
 			}
 
 			source, ok := pl.Source(tc.objectType, tc.relation)
 			if !ok {
-				panic("no such source")
+				t.Fail()
 			}
 
 			seq := pl.Build(context.Background(), source, target)
@@ -2378,7 +2378,7 @@ func TestPipeline(t *testing.T) {
 		)
 
 		if err != nil {
-			panic(err)
+			t.Fail()
 		}
 
 		g := typesys.GetWeightedGraph()
@@ -2395,12 +2395,12 @@ func TestPipeline(t *testing.T) {
 
 		target, ok := pl.Target("user", "1")
 		if !ok {
-			panic("no such target")
+			t.Fail()
 		}
 
 		source, ok := pl.Source("document", "viewer")
 		if !ok {
-			panic("no such source")
+			t.Fail()
 		}
 
 		ctx, cancel := context.WithCancel(context.Background())
@@ -2429,7 +2429,7 @@ func TestPipeline(t *testing.T) {
 		)
 
 		if err != nil {
-			panic(err)
+			t.Fail()
 		}
 
 		g := typesys.GetWeightedGraph()
@@ -2446,12 +2446,12 @@ func TestPipeline(t *testing.T) {
 
 		target, ok := pl.Target("user", "1")
 		if !ok {
-			panic("no such target")
+			t.Fail()
 		}
 
 		source, ok := pl.Source("document", "viewer")
 		if !ok {
-			panic("no such source")
+			t.Fail()
 		}
 
 		seq := pl.Build(context.Background(), source, target)

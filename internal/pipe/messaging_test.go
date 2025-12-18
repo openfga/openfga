@@ -8,9 +8,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const pipeBufferSize int = 128
-
-const messageCount uint64 = 1000
+const (
+	pipeBufferSize int    = 128
+	messageCount   uint64 = 1000
+)
 
 type item struct{}
 
@@ -152,6 +153,96 @@ func BenchmarkMessaging(b *testing.B) {
 }
 
 func TestMessaging(t *testing.T) {
+	t.Run("buffer_cycles", func(t *testing.T) {
+		tests := []struct {
+			name   string
+			size   int
+			parts  int
+			cycles int
+		}{
+			{
+				name:   "small",
+				size:   1 << 2,
+				parts:  1,
+				cycles: 10,
+			},
+			{
+				name:   "medium",
+				size:   1 << 10,
+				parts:  13,
+				cycles: 10,
+			},
+			{
+				name:   "large",
+				size:   1 << 20,
+				parts:  333,
+				cycles: 10,
+			},
+		}
+
+		for _, tc := range tests {
+			t.Run(tc.name, func(t *testing.T) {
+				expected := make([]int, tc.size)
+				for i := range tc.size {
+					expected[i] = i + 1
+				}
+
+				p := New[int](tc.size)
+
+				for range tc.cycles {
+					var val int
+					var count int
+
+					actual := make([]int, 0, 10)
+
+					for i := range tc.size {
+						p.Send(i + 1)
+						count++
+
+						if count == tc.parts {
+							for range tc.parts {
+								ok := p.Recv(&val)
+								if !ok {
+									t.Fail()
+								}
+								count--
+								actual = append(actual, val)
+							}
+						}
+					}
+
+					for range count {
+						ok := p.Recv(&val)
+						if !ok {
+							t.Fail()
+						}
+						actual = append(actual, val)
+					}
+
+					require.Equal(t, expected, actual)
+				}
+
+				expected = make([]int, 0, tc.size)
+				for i := tc.size; i > 0; i-- {
+					p.Send(i)
+					expected = append(expected, i)
+				}
+
+				p.Close()
+
+				var val int
+
+				var actual []int
+
+				for ok := p.Recv(&val); ok; ok = p.Recv(&val) {
+					actual = append(actual, val)
+				}
+
+				require.Equal(t, expected, actual)
+			})
+		}
+	})
+
 	t.Run("single_producer_single_consumer", func(t *testing.T) {
 		p := New[item](pipeBufferSize)
 
