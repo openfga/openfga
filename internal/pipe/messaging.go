@@ -5,7 +5,7 @@ import (
 	"iter"
 	"sync"
 
-	"github.com/openfga/openfga/internal/bits"
+	"github.com/openfga/openfga/internal/bitutil"
 )
 
 type Rx[T any] interface {
@@ -32,8 +32,11 @@ type Pipe[T any] struct {
 	condEmpty *sync.Cond
 }
 
+// New is a function that instantiates a new Pipe with a size of n.
+// The value of n must be a valid power of two. Any other value will
+// result in a panic.
 func New[T any](n int) *Pipe[T] {
-	if !bits.PowerOfTwo(n) {
+	if !bitutil.PowerOfTwo(n) {
 		panic("value provided to pipe.New must be a power of two")
 	}
 	var p Pipe[T]
