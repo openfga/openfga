@@ -17,7 +17,7 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	weightedGraph "github.com/openfga/language/pkg/go/graph"
 
-	"github.com/openfga/openfga/internal/bits"
+	"github.com/openfga/openfga/internal/bitutil"
 	"github.com/openfga/openfga/internal/checkutil"
 	"github.com/openfga/openfga/internal/containers"
 	"github.com/openfga/openfga/internal/pipe"
@@ -86,7 +86,7 @@ func New(backend *Backend, options ...Option) *Pipeline {
 // The default value of the buffer size is 128. If an invalid value is provided as size
 // then the default value will be applied.
 func WithBufferSize(size int) Option {
-	if !bits.PowerOfTwo(size) {
+	if !bitutil.PowerOfTwo(size) {
 		size = defaultBufferSize
 	}
 
