@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -291,7 +292,7 @@ func TestSQLiteDatastore_ReadWithUserParts(t *testing.T) {
 			for {
 				tuple, err := iter.Next(ctx)
 				if err != nil {
-					if err == storage.ErrIteratorDone {
+					if errors.Is(err, storage.ErrIteratorDone) {
 						break
 					}
 					require.NoError(t, err)
@@ -388,7 +389,7 @@ func TestSQLiteDatastore_ReadWithPartialUserFiltering(t *testing.T) {
 			for {
 				tuple, err := iter.Next(ctx)
 				if err != nil {
-					if err == storage.ErrIteratorDone {
+					if errors.Is(err, storage.ErrIteratorDone) {
 						break
 					}
 					require.NoError(t, err)
@@ -434,7 +435,7 @@ func TestSQLiteDatastore_ReadWithEmptyUserParts(t *testing.T) {
 	for {
 		tuple, err := iter.Next(ctx)
 		if err != nil {
-			if err == storage.ErrIteratorDone {
+			if errors.Is(err, storage.ErrIteratorDone) {
 				break
 			}
 			require.NoError(t, err)
@@ -577,7 +578,7 @@ func TestSQLiteDatastore_ReadCombinedFilters(t *testing.T) {
 			for {
 				tuple, err := iter.Next(ctx)
 				if err != nil {
-					if err == storage.ErrIteratorDone {
+					if errors.Is(err, storage.ErrIteratorDone) {
 						break
 					}
 					require.NoError(t, err)

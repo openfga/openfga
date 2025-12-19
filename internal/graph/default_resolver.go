@@ -259,7 +259,7 @@ func (c *LocalChecker) processDispatches(ctx context.Context, limit int, dispatc
 						if recoveredError != nil {
 							concurrency.TrySendThroughChannel(
 								ctx,
-								checkOutcome{err: fmt.Errorf("%w: %s", ErrPanic, recoveredError.AsError())},
+								checkOutcome{err: fmt.Errorf("%w: %w", ErrPanic, recoveredError.AsError())},
 								outcomes,
 							)
 						}

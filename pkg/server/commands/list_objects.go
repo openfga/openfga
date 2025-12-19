@@ -525,7 +525,7 @@ func (q *ListObjectsQuery) Execute(
 	}
 
 	if err := validation.ValidateUser(typesys, req.GetUser()); err != nil {
-		return nil, serverErrors.ValidationError(fmt.Errorf("invalid 'user' value: %s", err))
+		return nil, serverErrors.ValidationError(fmt.Errorf("invalid 'user' value: %w", err))
 	}
 
 	if req.GetConsistency() != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
@@ -705,7 +705,7 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 	}
 
 	if err := validation.ValidateUser(typesys, req.GetUser()); err != nil {
-		return nil, serverErrors.ValidationError(fmt.Errorf("invalid 'user' value: %s", err))
+		return nil, serverErrors.ValidationError(fmt.Errorf("invalid 'user' value: %w", err))
 	}
 
 	wgraph := typesys.GetWeightedGraph()
