@@ -2240,9 +2240,7 @@ func BenchmarkPipeline(b *testing.B) {
 
 				relationParts := strings.Split(tc.user, "#")
 				userParts := strings.Split(relationParts[0], ":")
-				if len(userParts) < 2 {
-					panic("invalid user value in test " + tc.name)
-				}
+				require.GreaterOrEqual(t, userParts, 2)
 
 				userType := userParts[0]
 				if len(relationParts) > 1 {
@@ -2250,14 +2248,10 @@ func BenchmarkPipeline(b *testing.B) {
 				}
 
 				target, ok := pl.Target(userType, userParts[1])
-				if !ok {
-					b.Fail()
-				}
+				require.True(b, ok)
 
 				source, ok := pl.Source(tc.objectType, tc.relation)
-				if !ok {
-					b.Fail()
-				}
+				require.True(b, ok)
 
 				seq := pl.Build(context.Background(), source, target)
 
@@ -2301,9 +2295,7 @@ func TestPipeline(t *testing.T) {
 
 			relationParts := strings.Split(tc.user, "#")
 			userParts := strings.Split(relationParts[0], ":")
-			if len(userParts) < 2 {
-				panic("invalid user value in test " + tc.name)
-			}
+			require.GreaterOrEqual(t, userParts, 2)
 
 			userType := userParts[0]
 			if len(relationParts) > 1 {
