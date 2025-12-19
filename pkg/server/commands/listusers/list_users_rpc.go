@@ -980,7 +980,7 @@ func (l *listUsersQuery) buildResultsChannel() chan foundUser {
 }
 
 func panicError(recovered *panics.Recovered) error {
-	return fmt.Errorf("%w: %s", ErrPanic, recovered.AsError())
+	return fmt.Errorf("%w: %w", ErrPanic, recovered.AsError())
 }
 
 func panicExpanseResponse(recovered *panics.Recovered) expandResponse {

@@ -329,7 +329,7 @@ func ReadConfig() (*serverconfig.Config, error) {
 	viper.SetTypeByDefaultValue(true)
 	err := viper.ReadInConfig()
 	if err != nil {
-		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+		if !errors.As(err, &viper.ConfigFileNotFoundError{}) {
 			return nil, fmt.Errorf("failed to load server config: %w", err)
 		}
 	}
@@ -919,7 +919,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 
 		go func() {
 			err = playground.ListenAndServe()
-			if err != http.ErrServerClosed {
+			if !errors.Is(err, http.ErrServerClosed) {
 				s.Logger.Fatal("failed to start the openfga playground server", zap.Error(err))
 			}
 			s.Logger.Info("playground shut down.")

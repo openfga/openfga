@@ -149,7 +149,7 @@ func runHandler(ctx context.Context, handler CheckHandlerFunc) checkOutcome {
 		res, err = handler(ctx)
 	})
 	if recoveredErr != nil {
-		err = fmt.Errorf("%w: %s", ErrPanic, recoveredErr.AsError())
+		err = fmt.Errorf("%w: %w", ErrPanic, recoveredErr.AsError())
 	}
 
 	return checkOutcome{res, err}

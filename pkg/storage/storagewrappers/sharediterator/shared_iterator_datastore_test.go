@@ -377,7 +377,7 @@ func helperValidateMultipleClients(ctx context.Context, t *testing.T, internalSt
 					if errors.Is(err, storage.ErrIteratorDone) {
 						break
 					}
-					return fmt.Errorf("no error was expected %v", err)
+					return fmt.Errorf("no error was expected %w", err)
 				}
 
 				actual = append(actual, tup)
@@ -578,7 +578,7 @@ func TestSharedIteratorDatastore_Read(t *testing.T) {
 						if errors.Is(err, storage.ErrIteratorDone) {
 							break
 						}
-						return fmt.Errorf("no error was expected %v", err)
+						return fmt.Errorf("no error was expected %w", err)
 					}
 
 					actual = append(actual, tup)
@@ -854,7 +854,7 @@ func TestSharedIteratorDatastore_ReadUsersetTuples(t *testing.T) {
 						if errors.Is(err, storage.ErrIteratorDone) {
 							break
 						}
-						return fmt.Errorf("no error was expected %v", err)
+						return fmt.Errorf("no error was expected %w", err)
 					}
 
 					actual = append(actual, tup)
@@ -1160,7 +1160,7 @@ func TestSharedIteratorDatastore_ReadStartingWithUser(t *testing.T) {
 						if errors.Is(err, storage.ErrIteratorDone) {
 							break
 						}
-						return fmt.Errorf("no error was expected %v", err)
+						return fmt.Errorf("no error was expected %w", err)
 					}
 
 					actual = append(actual, tup)

@@ -596,7 +596,7 @@ func fastPathOperationSetup(ctx context.Context, req *ResolveCheckRequest, resol
 		})
 
 		if recoveredError != nil {
-			concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Err: fmt.Errorf("%w: %s", ErrPanic, recoveredError.AsError())}, outChan)
+			concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Err: fmt.Errorf("%w: %w", ErrPanic, recoveredError.AsError())}, outChan)
 		}
 	}()
 	return outChan, nil
