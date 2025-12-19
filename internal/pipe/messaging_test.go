@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const pipeBufferSize int = 100
+const pipeBufferSize int = 128
 
 const messageCount uint64 = 1000
 
@@ -34,8 +34,7 @@ func consume(p *Pipe[item], count *atomic.Uint64) {
 func BenchmarkMessaging(b *testing.B) {
 	b.Run("single_producer_single_consumer", func(b *testing.B) {
 		for b.Loop() {
-			var p Pipe[item]
-			p.Grow(pipeBufferSize)
+			p := New[item](pipeBufferSize)
 
 			var count atomic.Uint64
 			var wg sync.WaitGroup
@@ -43,14 +42,14 @@ func BenchmarkMessaging(b *testing.B) {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				feed(&p)
+				feed(p)
 				p.Close()
 			}()
 
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				consume(&p, &count)
+				consume(p, &count)
 			}()
 
 			wg.Wait()
@@ -61,8 +60,7 @@ func BenchmarkMessaging(b *testing.B) {
 
 	b.Run("multiple_producer_single_consumer", func(b *testing.B) {
 		for b.Loop() {
-			var p Pipe[item]
-			p.Grow(pipeBufferSize)
+			p := New[item](pipeBufferSize)
 
 			var count atomic.Uint64
 			var swg sync.WaitGroup
@@ -72,14 +70,14 @@ func BenchmarkMessaging(b *testing.B) {
 				swg.Add(1)
 				go func() {
 					defer swg.Done()
-					feed(&p)
+					feed(p)
 				}()
 			}
 
 			cwg.Add(1)
 			go func() {
 				defer cwg.Done()
-				consume(&p, &count)
+				consume(p, &count)
 			}()
 
 			swg.Wait()
@@ -92,8 +90,7 @@ func BenchmarkMessaging(b *testing.B) {
 
 	b.Run("single_producer_multiple_consumer", func(b *testing.B) {
 		for b.Loop() {
-			var p Pipe[item]
-			p.Grow(pipeBufferSize)
+			p := New[item](pipeBufferSize)
 
 			var count atomic.Uint64
 			var swg sync.WaitGroup
@@ -102,14 +99,14 @@ func BenchmarkMessaging(b *testing.B) {
 			swg.Add(1)
 			go func() {
 				defer swg.Done()
-				feed(&p)
+				feed(p)
 			}()
 
 			for range 4 {
 				cwg.Add(1)
 				go func() {
 					defer cwg.Done()
-					consume(&p, &count)
+					consume(p, &count)
 				}()
 			}
 
@@ -123,8 +120,7 @@ func BenchmarkMessaging(b *testing.B) {
 
 	b.Run("multiple_producer_multiple_consumer", func(b *testing.B) {
 		for b.Loop() {
-			var p Pipe[item]
-			p.Grow(pipeBufferSize)
+			p := New[item](pipeBufferSize)
 
 			var count atomic.Uint64
 			var swg sync.WaitGroup
@@ -134,7 +130,7 @@ func BenchmarkMessaging(b *testing.B) {
 				swg.Add(1)
 				go func() {
 					defer swg.Done()
-					feed(&p)
+					feed(p)
 				}()
 			}
 
@@ -142,7 +138,7 @@ func BenchmarkMessaging(b *testing.B) {
 				cwg.Add(1)
 				go func() {
 					defer cwg.Done()
-					consume(&p, &count)
+					consume(p, &count)
 				}()
 			}
 
@@ -156,81 +152,8 @@ func BenchmarkMessaging(b *testing.B) {
 }
 
 func TestMessaging(t *testing.T) {
-	t.Run("grow", func(t *testing.T) {
-		const shortBufferSize = 3
-
-		var tail int
-		var head int
-
-		var p Pipe[int]
-		p.Grow(shortBufferSize)
-
-		for range shortBufferSize {
-			ok := p.Send(head)
-			require.True(t, ok)
-			head++
-		}
-
-		for range shortBufferSize - 1 {
-			var v int
-			ok := p.Recv(&v)
-			require.True(t, ok)
-			require.Equal(t, tail, v)
-			tail++
-		}
-
-		for range shortBufferSize - 1 {
-			ok := p.Send(head)
-			require.True(t, ok)
-			head++
-		}
-
-		p.Grow(shortBufferSize)
-
-		for range shortBufferSize {
-			var v int
-			ok := p.Recv(&v)
-			require.True(t, ok)
-			require.Equal(t, tail, v)
-			tail++
-		}
-
-		for range shortBufferSize * 2 {
-			ok := p.Send(head)
-			require.True(t, ok)
-			head++
-		}
-
-		for range shortBufferSize * 2 {
-			var v int
-			ok := p.Recv(&v)
-			require.True(t, ok)
-			require.Equal(t, tail, v)
-			tail++
-		}
-
-		ok := p.Send(head)
-		require.True(t, ok)
-		head++
-
-		p.Close()
-
-		var v2 int
-		ok = p.Recv(&v2)
-		require.True(t, ok)
-		require.Equal(t, tail, v2)
-
-		var v3 int
-		ok = p.Recv(&v3)
-		require.False(t, ok)
-
-		ok = p.Send(head)
-		require.False(t, ok)
-	})
-
 	t.Run("single_producer_single_consumer", func(t *testing.T) {
-		var p Pipe[item]
-		p.Grow(pipeBufferSize)
+		p := New[item](pipeBufferSize)
 
 		var count atomic.Uint64
 		var wg sync.WaitGroup
@@ -238,14 +161,14 @@ func TestMessaging(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			feed(&p)
+			feed(p)
 			p.Close()
 		}()
 
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			consume(&p, &count)
+			consume(p, &count)
 		}()
 
 		wg.Wait()
@@ -254,8 +177,7 @@ func TestMessaging(t *testing.T) {
 	})
 
 	t.Run("multiple_producer_single_consumer", func(t *testing.T) {
-		var p Pipe[item]
-		p.Grow(pipeBufferSize)
+		p := New[item](pipeBufferSize)
 
 		var count atomic.Uint64
 		var swg sync.WaitGroup
@@ -265,14 +187,14 @@ func TestMessaging(t *testing.T) {
 			swg.Add(1)
 			go func() {
 				defer swg.Done()
-				feed(&p)
+				feed(p)
 			}()
 		}
 
 		cwg.Add(1)
 		go func() {
 			defer cwg.Done()
-			consume(&p, &count)
+			consume(p, &count)
 		}()
 
 		swg.Wait()
@@ -283,8 +205,7 @@ func TestMessaging(t *testing.T) {
 	})
 
 	t.Run("single_producer_multiple_consumer", func(t *testing.T) {
-		var p Pipe[item]
-		p.Grow(pipeBufferSize)
+		p := New[item](pipeBufferSize)
 
 		var count atomic.Uint64
 		var swg sync.WaitGroup
@@ -293,14 +214,14 @@ func TestMessaging(t *testing.T) {
 		swg.Add(1)
 		go func() {
 			defer swg.Done()
-			feed(&p)
+			feed(p)
 		}()
 
 		for range 4 {
 			cwg.Add(1)
 			go func() {
 				defer cwg.Done()
-				consume(&p, &count)
+				consume(p, &count)
 			}()
 		}
 
@@ -312,8 +233,7 @@ func TestMessaging(t *testing.T) {
 	})
 
 	t.Run("multiple_producer_multiple_consumer", func(t *testing.T) {
-		var p Pipe[item]
-		p.Grow(pipeBufferSize)
+		p := New[item](pipeBufferSize)
 
 		var count atomic.Uint64
 		var swg sync.WaitGroup
@@ -323,7 +243,7 @@ func TestMessaging(t *testing.T) {
 			swg.Add(1)
 			go func() {
 				defer swg.Done()
-				feed(&p)
+				feed(p)
 			}()
 		}
 
@@ -331,7 +251,7 @@ func TestMessaging(t *testing.T) {
 			cwg.Add(1)
 			go func() {
 				defer cwg.Done()
-				consume(&p, &count)
+				consume(p, &count)
 			}()
 		}
 

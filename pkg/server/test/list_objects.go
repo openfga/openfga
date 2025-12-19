@@ -538,20 +538,13 @@ func runListObjectsTests(t *testing.T, ds storage.OpenFGADatastore, passedInOpts
 				var streamedObjectIDs []string
 				go func() {
 					for {
-						select {
-						case objectID, open := <-server.channel:
-							if !open {
-								done <- struct{}{}
-								return
-							}
-
-							streamedObjectIDs = append(streamedObjectIDs, objectID)
-
-						// for tests whose deadline is sooner than the latency of the storage layer
-						case <-time.After(test.readTuplesDelay + 1*time.Second):
-							done <- struct{}{}
+						objectID, open := <-server.channel
+						if !open {
+							close(done)
 							return
 						}
+
+						streamedObjectIDs = append(streamedObjectIDs, objectID)
 					}
 				}()
 

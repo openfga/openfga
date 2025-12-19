@@ -21,7 +21,7 @@ import (
 )
 
 func TestPipelineShutdown(t *testing.T) {
-	const bufferSize int = 3
+	const bufferSize int = 4
 	const chunkSize int = 1
 
 	const dsl string = `

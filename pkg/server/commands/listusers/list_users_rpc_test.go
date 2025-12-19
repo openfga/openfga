@@ -4132,3 +4132,220 @@ func NewListUsersQueryPanicExpandDirect(ds storage.RelationshipTupleReader, cont
 
 	return l
 }
+
+func TestWithListUsersDatastoreThrottler(t *testing.T) {
+	t.Run("option_sets_all_fields_correctly", func(t *testing.T) {
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+
+		enabled := true
+		threshold := 100
+		duration := 50 * time.Millisecond
+
+		query := NewListUsersQuery(
+			mockDatastore,
+			emptyContextualTuples,
+			WithListUsersDatastoreThrottler(enabled, threshold, duration),
+		)
+
+		require.Equal(t, enabled, query.datastoreThrottlingEnabled)
+		require.Equal(t, threshold, query.datastoreThrottleThreshold)
+		require.Equal(t, duration, query.datastoreThrottleDuration)
+	})
+
+	t.Run("option_can_disable_throttling", func(t *testing.T) {
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+
+		query := NewListUsersQuery(
+			mockDatastore,
+			emptyContextualTuples,
+			WithListUsersDatastoreThrottler(false, 100, 50*time.Millisecond),
+		)
+
+		require.False(t, query.datastoreThrottlingEnabled)
+	})
+
+	t.Run("multiple_options_can_be_combined", func(t *testing.T) {
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+
+		query := NewListUsersQuery(
+			mockDatastore,
+			emptyContextualTuples,
+			WithListUsersDatastoreThrottler(true, 100, 50*time.Millisecond),
+			WithListUsersMaxResults(10),
+			WithListUsersDeadline(5*time.Second),
+		)
+
+		require.True(t, query.datastoreThrottlingEnabled)
+		require.Equal(t, 100, query.datastoreThrottleThreshold)
+		require.Equal(t, 50*time.Millisecond, query.datastoreThrottleDuration)
+		require.Equal(t, uint32(10), query.maxResults)
+		require.Equal(t, 5*time.Second, query.deadline)
+	})
+}
+
+func TestListUsersDatastoreThrottler(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	ds := memory.New()
+	t.Cleanup(ds.Close)
+
+	storeID := ulid.Make().String()
+	modelStr := `
+		model
+			schema 1.1
+		type user
+		type document
+			relations
+				define viewer: [user]`
+
+	model := testutils.MustTransformDSLToProtoWithID(modelStr)
+	ctx := context.Background()
+
+	err := ds.WriteAuthorizationModel(ctx, storeID, model)
+	require.NoError(t, err)
+
+	// Write multiple tuples to trigger throttling
+	tuples := []*openfgav1.TupleKey{}
+	for i := 1; i <= 10; i++ {
+		tuples = append(tuples, tuple.NewTupleKey("document:1", "viewer", fmt.Sprintf("user:%d", i)))
+	}
+	err = ds.Write(ctx, storeID, nil, tuples)
+	require.NoError(t, err)
+
+	typesys, err := typesystem.NewAndValidate(ctx, model)
+	require.NoError(t, err)
+	ctx = typesystem.ContextWithTypesystem(ctx, typesys)
+
+	t.Run("throttling_disabled_by_default", func(t *testing.T) {
+		// Create query without throttling option
+		query := NewListUsersQuery(ds, emptyContextualTuples)
+
+		resp, err := query.ListUsers(ctx, &openfgav1.ListUsersRequest{
+			StoreId:     storeID,
+			Object:      &openfgav1.Object{Type: "document", Id: "1"},
+			Relation:    "viewer",
+			UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+		})
+
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.False(t, resp.GetMetadata().WasDatastoreThrottled.Load(), "Should not be throttled when throttling is disabled")
+	})
+
+	t.Run("throttling_enabled_with_high_threshold_does_not_throttle", func(t *testing.T) {
+		// Enable throttling with threshold higher than expected reads
+		query := NewListUsersQuery(
+			ds,
+			emptyContextualTuples,
+			WithListUsersDatastoreThrottler(true, 1000, 10*time.Millisecond),
+		)
+
+		resp, err := query.ListUsers(ctx, &openfgav1.ListUsersRequest{
+			StoreId:     storeID,
+			Object:      &openfgav1.Object{Type: "document", Id: "1"},
+			Relation:    "viewer",
+			UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+		})
+
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.False(t, resp.GetMetadata().WasDatastoreThrottled.Load(), "Should not be throttled when threshold is high")
+	})
+
+	t.Run("throttling_enabled_with_low_threshold_triggers_throttle", func(t *testing.T) {
+		// Create a model with union that causes multiple reads
+		multiReadModelStr := `
+			model
+				schema 1.1
+			type user
+			type document
+				relations
+					define viewer: [user]
+					define editor: [user]
+					define can_access: viewer or editor`
+
+		multiReadModel := testutils.MustTransformDSLToProtoWithID(multiReadModelStr)
+		multiReadStoreID := ulid.Make().String()
+
+		err := ds.WriteAuthorizationModel(ctx, multiReadStoreID, multiReadModel)
+		require.NoError(t, err)
+
+		// Write tuples
+		multiReadTuples := []*openfgav1.TupleKey{
+			tuple.NewTupleKey("document:1", "viewer", "user:1"),
+			tuple.NewTupleKey("document:1", "editor", "user:2"),
+		}
+		err = ds.Write(ctx, multiReadStoreID, nil, multiReadTuples)
+		require.NoError(t, err)
+
+		multiReadTypesys, err := typesystem.NewAndValidate(ctx, multiReadModel)
+		require.NoError(t, err)
+		multiReadCtx := typesystem.ContextWithTypesystem(ctx, multiReadTypesys)
+
+		// Enable throttling with very low threshold (will throttle after 1 read)
+		query := NewListUsersQuery(
+			ds,
+			emptyContextualTuples,
+			WithListUsersDatastoreThrottler(true, 1, 10*time.Millisecond),
+		)
+
+		resp, err := query.ListUsers(multiReadCtx, &openfgav1.ListUsersRequest{
+			StoreId:     multiReadStoreID,
+			Object:      &openfgav1.Object{Type: "document", Id: "1"},
+			Relation:    "can_access",
+			UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+		})
+
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.True(t, resp.GetMetadata().WasDatastoreThrottled.Load(), "Should be throttled when threshold is exceeded")
+	})
+
+	t.Run("throttling_disabled_explicitly_does_not_throttle", func(t *testing.T) {
+		// Explicitly disable throttling even with low threshold
+		query := NewListUsersQuery(
+			ds,
+			emptyContextualTuples,
+			WithListUsersDatastoreThrottler(false, 1, 10*time.Millisecond),
+		)
+
+		resp, err := query.ListUsers(ctx, &openfgav1.ListUsersRequest{
+			StoreId:     storeID,
+			Object:      &openfgav1.Object{Type: "document", Id: "1"},
+			Relation:    "viewer",
+			UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+		})
+
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.False(t, resp.GetMetadata().WasDatastoreThrottled.Load(), "Should not be throttled when throttling is explicitly disabled")
+	})
+
+	t.Run("throttling_with_zero_threshold_does_not_throttle", func(t *testing.T) {
+		// Enable throttling but with zero threshold (should be treated as disabled)
+		query := NewListUsersQuery(
+			ds,
+			emptyContextualTuples,
+			WithListUsersDatastoreThrottler(true, 0, 10*time.Millisecond),
+		)
+
+		resp, err := query.ListUsers(ctx, &openfgav1.ListUsersRequest{
+			StoreId:     storeID,
+			Object:      &openfgav1.Object{Type: "document", Id: "1"},
+			Relation:    "viewer",
+			UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+		})
+
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.False(t, resp.GetMetadata().WasDatastoreThrottled.Load(), "Should not be throttled when threshold is zero")
+	})
+}
