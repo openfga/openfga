@@ -2240,7 +2240,7 @@ func BenchmarkPipeline(b *testing.B) {
 
 				relationParts := strings.Split(tc.user, "#")
 				userParts := strings.Split(relationParts[0], ":")
-				require.GreaterOrEqual(b, userParts, 2)
+				require.GreaterOrEqual(b, len(userParts), 2)
 
 				userType := userParts[0]
 				if len(relationParts) > 1 {
@@ -2295,7 +2295,7 @@ func TestPipeline(t *testing.T) {
 
 			relationParts := strings.Split(tc.user, "#")
 			userParts := strings.Split(relationParts[0], ":")
-			require.GreaterOrEqual(t, userParts, 2)
+			require.GreaterOrEqual(t, len(userParts), 2)
 
 			userType := userParts[0]
 			if len(relationParts) > 1 {
