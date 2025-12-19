@@ -6,15 +6,13 @@ import (
 	"iter"
 	"slices"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-
-	"github.com/openfga/openfga/pkg/server/commands/reverseexpand"
 	"github.com/openfga/openfga/pkg/storage/memory"
 	storagetest "github.com/openfga/openfga/pkg/storage/test"
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -32,12 +30,20 @@ func TestPipelineShutdown(t *testing.T) {
 
 	type org
 	  relations
-	    define member: [user] or member from parent
+	  	define reader: [user]
+	  	define writer: [user]
+	  	define blocked: [user]
+	  	define moderator: (reader and writer) but not blocked
+	    define member: moderator or member from parent
 	    define parent: [team]
 
 	type team
 	  relations
-	    define member: [user] or member from parent
+	  	define reader: [user]
+	  	define writer: [user]
+	  	define blocked: [user]
+	  	define moderator: (reader and writer) but not blocked
+	    define member: moderator or member from parent
 	    define parent: [org]
 
 	type document
@@ -66,9 +72,18 @@ func TestPipelineShutdown(t *testing.T) {
 		tuples = append(tuples, fmt.Sprintf("%s#parent@%s", child, parent))
 		documents = append(documents, fmt.Sprintf("document:%d", i))
 		tuples = append(tuples, fmt.Sprintf("document:%d#viewer@%s#member", i, child))
+
+		for j := range 20 {
+			tuples = append(
+				tuples,
+				fmt.Sprintf("%s#reader@user:%d", child, j),
+				fmt.Sprintf("%s#writer@user:%d", child, j),
+				fmt.Sprintf("%s#blocked@user:%d", child, j),
+			)
+		}
 	}
 
-	tuples = append(tuples, fmt.Sprintf("%s#member@%s", parent, user))
+	tuples = append(tuples, fmt.Sprintf("%s#reader@%s", parent, user), fmt.Sprintf("%s#writer@%s", parent, user))
 
 	slices.Reverse(documents)
 
@@ -82,9 +97,7 @@ func TestPipelineShutdown(t *testing.T) {
 		model,
 	)
 
-	if err != nil {
-		panic(err)
-	}
+	require.NoError(t, err)
 
 	g := typesys.GetWeightedGraph()
 
@@ -99,21 +112,17 @@ func TestPipelineShutdown(t *testing.T) {
 	pl := New(backend, WithBufferSize(bufferSize), WithChunkSize(chunkSize))
 
 	target, ok := pl.Target("user", "bob")
-	if !ok {
-		panic("no such target")
-	}
+	require.True(t, ok)
 
 	source, ok := pl.Source("document", "viewer")
-	if !ok {
-		panic("no such source")
-	}
+	require.True(t, ok)
 
 	t.Run("NoAbandon", func(t *testing.T) {
 		defer goleak.VerifyNone(t)
 
 		seq := pl.Build(context.Background(), source, target)
 
-		var items []string
+		items := make([]string, 0, len(documents))
 		for item := range seq {
 			items = append(items, item.Value)
 		}
@@ -139,6 +148,21 @@ func TestPipelineShutdown(t *testing.T) {
 		require.NotEmpty(t, value)
 	})
 
+	t.Run("AbandonMidProcessing", func(t *testing.T) {
+		defer goleak.VerifyNone(t)
+
+		seq := pl.Build(context.Background(), source, target)
+
+		var count int
+		limit := nestLevel / 2
+		for range seq {
+			count++
+			if count >= limit {
+				break
+			}
+		}
+	})
+
 	t.Run("CancelWithoutPull", func(t *testing.T) {
 		defer goleak.VerifyNone(t)
 
@@ -156,7 +180,7 @@ func TestPipelineShutdown(t *testing.T) {
 
 		cancel()
 		for range seq {
-			t.Fail()
+			t.Fatalf("received unexpected value")
 		}
 	})
 
@@ -175,6 +199,24 @@ func TestPipelineShutdown(t *testing.T) {
 		require.NotEmpty(t, value)
 	})
 
+	t.Run("CancelMidProcessing", func(t *testing.T) {
+		defer goleak.VerifyNone(t)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		seq := pl.Build(ctx, source, target)
+
+		var count int
+		limit := nestLevel / 2
+		for range seq {
+			count++
+			if count >= limit {
+				cancel()
+			}
+		}
+	})
+
 	t.Run("TimeoutAfterPull", func(t *testing.T) {
 		defer goleak.VerifyNone(t)
 
@@ -187,7 +229,7 @@ func TestPipelineShutdown(t *testing.T) {
 
 		for range seq {
 			if count > bufferSize {
-				t.Fail()
+				t.Fatalf("received unexpected value")
 			}
 
 			if count == 0 {
@@ -210,7 +252,7 @@ func TestPipelineShutdown(t *testing.T) {
 		time.Sleep(2 * time.Millisecond)
 
 		for range seq {
-			t.Fail()
+			t.Fatalf("received unexpected value")
 		}
 	})
 }
@@ -221,7 +263,7 @@ type testcase struct {
 	tuples     []string
 	objectType string
 	relation   string
-	user       *reverseexpand.UserRefObject
+	user       string
 	expected   []string
 }
 
@@ -235,6 +277,59 @@ func evaluate(t *testing.T, tc testcase, seq iter.Seq[Item]) {
 }
 
 var cases = []testcase{
+	{
+		name: "policy",
+		model: `
+		model
+		schema 1.1
+
+		type user
+
+		type group
+			relations
+				define member: [user, group#member]
+
+		type role
+			relations
+				define member: [user, group#member]
+
+		type policy
+			relations
+				define denied: [role]
+				define allowed: [role]
+				define can_perform: member from allowed but not member from denied
+
+		type resource
+			relations
+				define read_policy: [policy]
+				define write_policy: [policy]
+				define reader: can_perform from read_policy
+				define writer: can_perform from write_policy
+		`,
+		tuples: []string{
+			"group:admin#member@user:bob",
+			"group:employee#member@group:admin#member",
+			"group:employee#member@user:bob",
+			"group:employee#member@user:betty",
+			"group:terminated#member@user:betty",
+			"role:admin#member@group:admin#member",
+			"role:read_only#member@group:employee#member",
+			"role:blocked#member@group:terminated#member",
+			"policy:document_writer#allowed@role:admin",
+			"policy:document_writer#denied@role:blocked",
+			"policy:document_reader#allowed@role:admin",
+			"policy:document_reader#allowed@role:read_only",
+			"policy:document_reader#denied@role:blocked",
+			"resource:document_1#write_policy@policy:document_writer",
+			"resource:document_1#read_policy@policy:document_reader",
+			"resource:document_2#write_policy@policy:document_writer",
+			"resource:document_2#read_policy@policy:document_reader",
+		},
+		objectType: "resource",
+		relation:   "writer",
+		user:       "user:bob",
+		expected:   []string{"resource:document_1", "resource:document_2"},
+	},
 	{
 		name: "recursive_ttu_intersection",
 		model: `
@@ -262,7 +357,7 @@ var cases = []testcase{
 		},
 		objectType: "doc",
 		relation:   "viewer",
-		user:       &reverseexpand.UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "1"}},
+		user:       "user:1",
 		expected:   []string{"doc:1"},
 	},
 	{
@@ -291,7 +386,7 @@ var cases = []testcase{
 		},
 		objectType: "doc",
 		relation:   "viewer",
-		user:       &reverseexpand.UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "1"}},
+		user:       "user:1",
 		expected:   []string{"doc:1"},
 	},
 	{
@@ -322,7 +417,7 @@ var cases = []testcase{
 		},
 		objectType: "doc",
 		relation:   "viewer",
-		user:       &reverseexpand.UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+		user:       "user:bob",
 		expected:   []string{"doc:1"},
 	},
 	{
@@ -344,7 +439,7 @@ var cases = []testcase{
 		},
 		objectType: "org",
 		relation:   "ttu_recursive",
-		user:       &reverseexpand.UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "justin"}},
+		user:       "user:justin",
 		expected:   []string{"org:a", "org:b", "org:c", "org:d"},
 	},
 	{
@@ -368,7 +463,7 @@ var cases = []testcase{
 		},
 		objectType: "document",
 		relation:   "viewer",
-		user:       &reverseexpand.UserRefObject{Object: &openfgav1.Object{Type: "group#member", Id: "x"}},
+		user:       "group:x#member",
 		expected:   []string{"document:1"},
 	},
 	{
@@ -441,7 +536,7 @@ var cases = []testcase{
 		},
 		objectType: "resource",
 		relation:   "can_view",
-		user:       &reverseexpand.UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "maria"}},
+		user:       "user:maria",
 		expected:   []string{"resource:1"},
 	},
 	{
@@ -478,7 +573,7 @@ var cases = []testcase{
 		},
 		objectType: "wrapper",
 		relation:   "assigned",
-		user:       &reverseexpand.UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+		user:       "user:bob",
 		expected:   []string{"wrapper:2"},
 	},
 	{
@@ -507,7 +602,7 @@ var cases = []testcase{
 		},
 		objectType: "folder",
 		relation:   "viewer",
-		user:       &reverseexpand.UserRefObject{Object: &openfgav1.Object{Type: "group#member", Id: "fga"}},
+		user:       "group:fga#member",
 		expected:   []string{"folder:1"},
 	},
 	{
@@ -536,7 +631,7 @@ var cases = []testcase{
 		},
 		objectType: "folder",
 		relation:   "viewer",
-		user:       &reverseexpand.UserRefObject{Object: &openfgav1.Object{Type: "user2", Id: "foo"}},
+		user:       "user2:foo",
 		expected:   []string{},
 	},
 	{
@@ -576,7 +671,7 @@ var cases = []testcase{
 		},
 		objectType: "document",
 		relation:   "viewer",
-		user:       &reverseexpand.UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "anne"}},
+		user:       "user:anne",
 		expected:   []string{"document:a", "document:public"},
 	},
 	{
@@ -611,7 +706,7 @@ var cases = []testcase{
 		},
 		objectType: "document",
 		relation:   "viewer",
-		user:       &reverseexpand.UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "*"}},
+		user:       "user:*",
 		expected:   []string{"document:public"},
 	},
 	{
@@ -641,7 +736,7 @@ var cases = []testcase{
 		},
 		objectType: "document",
 		relation:   "viewer",
-		user:       &reverseexpand.UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "justin"}},
+		user:       "user:justin",
 		expected:   []string{"document:1", "document:2"},
 	},
 	{
@@ -677,7 +772,7 @@ var cases = []testcase{
 		},
 		objectType: "document",
 		relation:   "viewer",
-		user:       &reverseexpand.UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "justin"}},
+		user:       "user:justin",
 		expected:   []string{"document:1", "document:2", "document:3"},
 	},
 	{
@@ -705,7 +800,7 @@ var cases = []testcase{
 		},
 		objectType: "document",
 		relation:   "viewer",
-		user:       &reverseexpand.UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+		user:       "user:bob",
 		expected:   []string{"document:1", "document:2"},
 	},
 	{
@@ -735,7 +830,7 @@ var cases = []testcase{
 		},
 		objectType: "document",
 		relation:   "viewer",
-		user:       &reverseexpand.UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+		user:       "user:bob",
 		expected:   []string{"document:1"},
 	},
 	{
@@ -774,7 +869,7 @@ var cases = []testcase{
 		},
 		objectType: "document",
 		relation:   "viewer",
-		user:       &reverseexpand.UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+		user:       "user:bob",
 		expected:   []string{"document:1", "document:2", "document:3"},
 	},
 	{
@@ -811,7 +906,7 @@ var cases = []testcase{
 		},
 		objectType: "document",
 		relation:   "viewer",
-		user:       &reverseexpand.UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+		user:       "user:bob",
 		expected:   []string{"document:1", "document:2"},
 	},
 	{
@@ -844,7 +939,7 @@ var cases = []testcase{
 		},
 		objectType: "document",
 		relation:   "viewer",
-		user:       &reverseexpand.UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+		user:       "user:bob",
 		expected:   []string{"document:1", "document:2", "document:3"},
 	},
 	{
@@ -882,7 +977,7 @@ var cases = []testcase{
 		},
 		objectType: "document",
 		relation:   "viewer",
-		user:       &reverseexpand.UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+		user:       "user:bob",
 		expected:   []string{"document:1", "document:2", "document:3"},
 	},
 	{
@@ -918,7 +1013,7 @@ var cases = []testcase{
 		},
 		objectType: "document",
 		relation:   "viewer",
-		user:       &reverseexpand.UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "justin"}},
+		user:       "user:justin",
 		expected:   []string{"document:1", "document:3"},
 	},
 	{
@@ -947,7 +1042,7 @@ var cases = []testcase{
 		},
 		objectType: "document",
 		relation:   "viewer",
-		user:       &reverseexpand.UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "justin"}},
+		user:       "user:justin",
 		expected:   []string{"document:1", "document:2", "document:3", "document:4"},
 	},
 	{
@@ -1019,7 +1114,7 @@ var cases = []testcase{
 		},
 		objectType: "document",
 		relation:   "viewer",
-		user:       &reverseexpand.UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "justin"}},
+		user:       "user:justin",
 		expected:   []string{"document:1", "document:3", "document:5", "document:8", "document:a", "document:b", "document:c", "document:d", "document:e", "document:f", "document:g", "document:h", "document:i", "document:j"},
 	},
 	{
@@ -1064,7 +1159,7 @@ var cases = []testcase{
 		},
 		objectType: "document",
 		relation:   "viewer",
-		user:       &reverseexpand.UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "justin"}},
+		user:       "user:justin",
 		expected:   []string{"document:0", "document:1", "document:3", "document:5", "document:8"},
 	},
 	{
@@ -1111,7 +1206,7 @@ var cases = []testcase{
 		},
 		objectType: "document",
 		relation:   "viewer",
-		user:       &reverseexpand.UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "justin"}},
+		user:       "user:justin",
 		expected:   []string{"document:1", "document:2", "document:3", "document:4", "document:5", "document:6", "document:22"},
 	},
 	{
@@ -1150,7 +1245,7 @@ var cases = []testcase{
 		},
 		objectType: "document",
 		relation:   "viewer",
-		user:       &reverseexpand.UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "justin"}},
+		user:       "user:justin",
 		expected:   []string{"document:1", "document:2"},
 	},
 	{
@@ -1172,7 +1267,7 @@ var cases = []testcase{
 		},
 		objectType: "team",
 		relation:   "member",
-		user:       &reverseexpand.UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "justin"}},
+		user:       "user:justin",
 		expected:   []string{"team:fga", "team:cncf", "team:lnf"},
 	},
 	{
@@ -1193,7 +1288,7 @@ var cases = []testcase{
 		},
 		objectType: "org",
 		relation:   "member",
-		user:       &reverseexpand.UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+		user:       "user:bob",
 		expected:   []string{"org:b"},
 	},
 	{
@@ -1212,7 +1307,7 @@ var cases = []testcase{
 		},
 		objectType: "org",
 		relation:   "member",
-		user:       &reverseexpand.UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+		user:       "user:bob",
 		expected:   []string{},
 	},
 	{
@@ -1234,7 +1329,7 @@ var cases = []testcase{
 		},
 		objectType: "org",
 		relation:   "member",
-		user:       &reverseexpand.UserRefObject{Object: &openfgav1.Object{Type: "user2", Id: "bob"}},
+		user:       "user2:bob",
 		expected:   []string{},
 	},
 	{
@@ -1256,7 +1351,7 @@ var cases = []testcase{
 		},
 		objectType: "org",
 		relation:   "member",
-		user:       &reverseexpand.UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+		user:       "user:bob",
 		expected:   []string{"org:a", "org:b"},
 	},
 	{
@@ -1278,7 +1373,7 @@ var cases = []testcase{
 		},
 		objectType: "org",
 		relation:   "viewer",
-		user:       &reverseexpand.UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+		user:       "user:bob",
 		expected:   []string{"org:b"},
 	},
 	{
@@ -1304,7 +1399,7 @@ var cases = []testcase{
 		},
 		objectType: "org",
 		relation:   "member",
-		user:       &reverseexpand.UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+		user:       "user:bob",
 		expected:   []string{"org:b", "org:c"},
 	},
 	{
@@ -1328,7 +1423,7 @@ var cases = []testcase{
 		},
 		objectType: "org",
 		relation:   "member",
-		user:       &reverseexpand.UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+		user:       "user:bob",
 		expected:   []string{"org:b"},
 	},
 	{
@@ -1355,7 +1450,7 @@ var cases = []testcase{
 		},
 		objectType: "team",
 		relation:   "member",
-		user:       &reverseexpand.UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+		user:       "user:bob",
 		expected:   []string{"team:2"},
 	},
 	{
@@ -1379,7 +1474,7 @@ var cases = []testcase{
 		},
 		objectType: "org",
 		relation:   "member",
-		user:       &reverseexpand.UserRefObject{Object: &openfgav1.Object{Type: "user2", Id: "bob"}},
+		user:       "user2:bob",
 		expected:   []string{"org:d"},
 	},
 	{
@@ -1407,7 +1502,7 @@ var cases = []testcase{
 		},
 		objectType: "org",
 		relation:   "member",
-		user:       &reverseexpand.UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+		user:       "user:bob",
 		expected:   []string{"org:a", "org:c", "org:d"},
 	},
 	{
@@ -1444,7 +1539,7 @@ var cases = []testcase{
 		},
 		objectType: "org",
 		relation:   "can_access",
-		user:       &reverseexpand.UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+		user:       "user:bob",
 		expected:   []string{"org:a", "org:c", "org:d"},
 	},
 	{
@@ -1482,7 +1577,7 @@ var cases = []testcase{
 		},
 		objectType: "org",
 		relation:   "member",
-		user:       &reverseexpand.UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+		user:       "user:bob",
 		expected:   []string{"org:a", "org:c", "org:d"},
 	},
 	{
@@ -1519,7 +1614,7 @@ var cases = []testcase{
 		},
 		objectType: "org",
 		relation:   "member",
-		user:       &reverseexpand.UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+		user:       "user:bob",
 		expected:   []string{"org:a", "org:c"},
 	},
 	{
@@ -1554,7 +1649,7 @@ var cases = []testcase{
 		},
 		objectType: "org",
 		relation:   "member",
-		user:       &reverseexpand.UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+		user:       "user:bob",
 		expected:   []string{"org:a", "org:b", "org:c"},
 	},
 	{
@@ -1589,7 +1684,7 @@ var cases = []testcase{
 		},
 		objectType: "org",
 		relation:   "member",
-		user:       &reverseexpand.UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+		user:       "user:bob",
 		expected:   []string{"org:b"},
 	},
 	{
@@ -1627,7 +1722,7 @@ var cases = []testcase{
 		},
 		objectType: "org",
 		relation:   "member",
-		user:       &reverseexpand.UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+		user:       "user:bob",
 		expected:   []string{"org:a", "org:c"},
 	},
 	{
@@ -1661,7 +1756,7 @@ var cases = []testcase{
 		},
 		objectType: "org",
 		relation:   "member",
-		user:       &reverseexpand.UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+		user:       "user:bob",
 		expected:   []string{"org:a", "org:c"},
 	},
 	{
@@ -1699,7 +1794,7 @@ var cases = []testcase{
 		},
 		objectType: "org",
 		relation:   "member",
-		user:       &reverseexpand.UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+		user:       "user:bob",
 		expected:   []string{"org:a"},
 	},
 	{
@@ -1737,7 +1832,7 @@ var cases = []testcase{
 		},
 		objectType: "org",
 		relation:   "member",
-		user:       &reverseexpand.UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+		user:       "user:bob",
 		expected:   []string{"org:a", "org:b"},
 	},
 	{
@@ -1766,7 +1861,7 @@ var cases = []testcase{
 		},
 		objectType: "document",
 		relation:   "viewer",
-		user:       &reverseexpand.UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "a"}},
+		user:       "user:a",
 		expected:   []string{"document:1"},
 	},
 	{
@@ -1801,7 +1896,7 @@ var cases = []testcase{
 		},
 		objectType: "document",
 		relation:   "viewer",
-		user:       &reverseexpand.UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "a"}},
+		user:       "user:a",
 		expected:   []string{"document:1", "document:3"},
 	},
 	{
@@ -1832,7 +1927,7 @@ var cases = []testcase{
 		},
 		objectType: "document",
 		relation:   "viewer",
-		user:       &reverseexpand.UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "a"}},
+		user:       "user:a",
 		expected:   []string{"document:2", "document:3"},
 	},
 	{
@@ -1871,7 +1966,7 @@ var cases = []testcase{
 		},
 		objectType: "document",
 		relation:   "viewer",
-		user:       &reverseexpand.UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "a"}},
+		user:       "user:a",
 		expected:   []string{"document:2", "document:4"},
 	},
 	{
@@ -1906,7 +2001,7 @@ var cases = []testcase{
 		},
 		objectType: "document",
 		relation:   "viewer",
-		user:       &reverseexpand.UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "a"}},
+		user:       "user:a",
 		expected:   []string{"document:a"},
 	},
 	{
@@ -1939,7 +2034,7 @@ var cases = []testcase{
 		},
 		objectType: "document",
 		relation:   "viewer",
-		user:       &reverseexpand.UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "a"}},
+		user:       "user:a",
 		expected:   []string{"document:a"},
 	},
 	{
@@ -1963,7 +2058,7 @@ var cases = []testcase{
 		},
 		objectType: "thing",
 		relation:   "can_view",
-		user:       &reverseexpand.UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "1"}},
+		user:       "user:1",
 		expected: []string{
 			"thing:4",
 		},
@@ -2012,7 +2107,7 @@ var cases = []testcase{
 		},
 		objectType: "thing",
 		relation:   "can_view",
-		user:       &reverseexpand.UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "1"}},
+		user:       "user:1",
 		expected: []string{
 			"thing:1",
 			"thing:2",
@@ -2100,7 +2195,7 @@ var cases = []testcase{
 		},
 		objectType: "thing",
 		relation:   "can_view",
-		user:       &reverseexpand.UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "1"}},
+		user:       "user:1",
 		expected: []string{
 			"thing:1",
 			"thing:2",
@@ -2126,9 +2221,7 @@ func BenchmarkPipeline(b *testing.B) {
 				model,
 			)
 
-			if err != nil {
-				panic(err)
-			}
+			require.NoError(b, err)
 
 			g := typesys.GetWeightedGraph()
 
@@ -2145,15 +2238,20 @@ func BenchmarkPipeline(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				pl := New(backend)
 
-				target, ok := pl.Target(tc.user.GetObjectType(), tc.user.Object.GetId())
-				if !ok {
-					panic("no such target")
+				relationParts := strings.Split(tc.user, "#")
+				userParts := strings.Split(relationParts[0], ":")
+				require.GreaterOrEqual(b, len(userParts), 2)
+
+				userType := userParts[0]
+				if len(relationParts) > 1 {
+					userType += "#" + relationParts[1]
 				}
 
+				target, ok := pl.Target(userType, userParts[1])
+				require.True(b, ok)
+
 				source, ok := pl.Source(tc.objectType, tc.relation)
-				if !ok {
-					panic("no such source")
-				}
+				require.True(b, ok)
 
 				seq := pl.Build(context.Background(), source, target)
 
@@ -2179,9 +2277,7 @@ func TestPipeline(t *testing.T) {
 				model,
 			)
 
-			if err != nil {
-				panic(err)
-			}
+			require.NoError(t, err)
 
 			g := typesys.GetWeightedGraph()
 
@@ -2197,15 +2293,20 @@ func TestPipeline(t *testing.T) {
 
 			pl := New(backend)
 
-			target, ok := pl.Target(tc.user.GetObjectType(), tc.user.Object.GetId())
-			if !ok {
-				panic("no such target")
+			relationParts := strings.Split(tc.user, "#")
+			userParts := strings.Split(relationParts[0], ":")
+			require.GreaterOrEqual(t, len(userParts), 2)
+
+			userType := userParts[0]
+			if len(relationParts) > 1 {
+				userType += "#" + relationParts[1]
 			}
 
+			target, ok := pl.Target(userType, userParts[1])
+			require.True(t, ok)
+
 			source, ok := pl.Source(tc.objectType, tc.relation)
-			if !ok {
-				panic("no such source")
-			}
+			require.True(t, ok)
 
 			seq := pl.Build(context.Background(), source, target)
 
@@ -2254,9 +2355,7 @@ func TestPipeline(t *testing.T) {
 			model,
 		)
 
-		if err != nil {
-			panic(err)
-		}
+		require.NoError(t, err)
 
 		g := typesys.GetWeightedGraph()
 
@@ -2271,14 +2370,10 @@ func TestPipeline(t *testing.T) {
 		pl := New(backend)
 
 		target, ok := pl.Target("user", "1")
-		if !ok {
-			panic("no such target")
-		}
+		require.True(t, ok)
 
 		source, ok := pl.Source("document", "viewer")
-		if !ok {
-			panic("no such source")
-		}
+		require.True(t, ok)
 
 		ctx, cancel := context.WithCancel(context.Background())
 
@@ -2287,8 +2382,7 @@ func TestPipeline(t *testing.T) {
 		cancel()
 
 		for range seq {
-			t.Log("iteration did not stop after context cancelation")
-			t.Fail()
+			t.Fatalf("iteration did not stop after context cancelation")
 		}
 	})
 
@@ -2305,9 +2399,7 @@ func TestPipeline(t *testing.T) {
 			model,
 		)
 
-		if err != nil {
-			panic(err)
-		}
+		require.NoError(t, err)
 
 		g := typesys.GetWeightedGraph()
 
@@ -2322,14 +2414,10 @@ func TestPipeline(t *testing.T) {
 		pl := New(backend)
 
 		target, ok := pl.Target("user", "1")
-		if !ok {
-			panic("no such target")
-		}
+		require.True(t, ok)
 
 		source, ok := pl.Source("document", "viewer")
-		if !ok {
-			panic("no such source")
-		}
+		require.True(t, ok)
 
 		seq := pl.Build(context.Background(), source, target)
 
