@@ -104,7 +104,7 @@ type Pipe[T any] struct {
 	// mu is a mutex that protects all of a Pipe's internal fields.
 	mu sync.Mutex
 
-	// done indicates the status of the Pipe. When done is `false`
+	// done indicates the status of the Pipe. When done is `true`
 	// subsequent calls to Send and Recv must return `false`.
 	done bool
 }
@@ -223,7 +223,7 @@ func (p *Pipe[T]) Send(item T) bool {
 	return true
 }
 
-// Recv is a function that recevies values from a Pipe. Recv returns `true` when the
+// Recv is a function that receives values from a Pipe. Recv returns `true` when the
 // value of t was successfully overwritten. Recv returns `false` when the Pipe has been
 // closed. Once Recv has returned a `false` value, all subsequent calls to Recv on the
 // same Pipe will return `false`.
@@ -253,7 +253,7 @@ func (p *Pipe[T]) Recv(t *T) bool {
 
 // Close is a function that stops the Pipe from sending or receiving values. Once Close
 // has been called on a Pipe, all subsequent calls to Send and Recv on that Pipe will
-// immediately reutrn false. All callers in a waiting state will awaken and return `false`.
+// immediately return false. All callers in a waiting state will awaken and return `false`.
 func (p *Pipe[T]) Close() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
