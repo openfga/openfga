@@ -576,6 +576,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 
 		prometheusMetrics := grpc_prometheus.NewServerMetrics(metricsOpts...)
 		prometheus.MustRegister(prometheusMetrics)
+		defer prometheus.Unregister(prometheusMetrics)
 
 		serverOpts = append(serverOpts,
 			grpc.ChainUnaryInterceptor(prometheusMetrics.UnaryServerInterceptor()),
