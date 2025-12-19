@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"github.com/prometheus/client_golang/prometheus"
 	"html/template"
 	"net"
 	"net/http"
@@ -20,11 +21,11 @@ import (
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/go-logr/logr"
+	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus"
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	grpcauth "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/auth"
 	grpc_recovery "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/recovery"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
-	grpc_prometheus "github.com/jon-whit/go-grpc-prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/cors"
 	"github.com/spf13/cobra"
@@ -568,13 +569,17 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	)
 
 	if config.Metrics.Enabled {
-		serverOpts = append(serverOpts,
-			grpc.ChainUnaryInterceptor(grpc_prometheus.UnaryServerInterceptor),
-			grpc.ChainStreamInterceptor(grpc_prometheus.StreamServerInterceptor))
-
+		var metricsOpts []grpc_prometheus.ServerMetricsOption
 		if config.Metrics.EnableRPCHistograms {
-			grpc_prometheus.EnableHandlingTimeHistogram()
+			metricsOpts = append(metricsOpts, grpc_prometheus.WithServerHandlingTimeHistogram())
 		}
+
+		prometheusMetrics := grpc_prometheus.NewServerMetrics(metricsOpts...)
+		prometheus.MustRegister(prometheusMetrics)
+
+		serverOpts = append(serverOpts,
+			grpc.ChainUnaryInterceptor(prometheusMetrics.UnaryServerInterceptor()),
+			grpc.ChainStreamInterceptor(prometheusMetrics.StreamServerInterceptor()))
 	}
 
 	if config.Trace.Enabled {
