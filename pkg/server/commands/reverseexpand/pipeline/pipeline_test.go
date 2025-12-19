@@ -97,9 +97,7 @@ func TestPipelineShutdown(t *testing.T) {
 		model,
 	)
 
-	if err != nil {
-		t.Fail()
-	}
+	require.NoError(t, err)
 
 	g := typesys.GetWeightedGraph()
 
@@ -114,14 +112,10 @@ func TestPipelineShutdown(t *testing.T) {
 	pl := New(backend, WithBufferSize(bufferSize), WithChunkSize(chunkSize))
 
 	target, ok := pl.Target("user", "bob")
-	if !ok {
-		t.Fail()
-	}
+	require.True(t, ok)
 
 	source, ok := pl.Source("document", "viewer")
-	if !ok {
-		t.Fail()
-	}
+	require.True(t, ok)
 
 	t.Run("NoAbandon", func(t *testing.T) {
 		defer goleak.VerifyNone(t)
@@ -186,7 +180,7 @@ func TestPipelineShutdown(t *testing.T) {
 
 		cancel()
 		for range seq {
-			t.Fail()
+			t.Fatalf("received unexpected value")
 		}
 	})
 
@@ -235,7 +229,7 @@ func TestPipelineShutdown(t *testing.T) {
 
 		for range seq {
 			if count > bufferSize {
-				t.Fail()
+				t.Fatalf("received unexpected value")
 			}
 
 			if count == 0 {
@@ -258,7 +252,7 @@ func TestPipelineShutdown(t *testing.T) {
 		time.Sleep(2 * time.Millisecond)
 
 		for range seq {
-			t.Fail()
+			t.Fatalf("received unexpected value")
 		}
 	})
 }
@@ -2227,9 +2221,7 @@ func BenchmarkPipeline(b *testing.B) {
 				model,
 			)
 
-			if err != nil {
-				b.Fail()
-			}
+			require.NoError(b, err)
 
 			g := typesys.GetWeightedGraph()
 
@@ -2291,9 +2283,7 @@ func TestPipeline(t *testing.T) {
 				model,
 			)
 
-			if err != nil {
-				t.Fail()
-			}
+			require.NoError(t, err)
 
 			g := typesys.GetWeightedGraph()
 
@@ -2321,14 +2311,10 @@ func TestPipeline(t *testing.T) {
 			}
 
 			target, ok := pl.Target(userType, userParts[1])
-			if !ok {
-				t.Fail()
-			}
+			require.True(t, ok)
 
 			source, ok := pl.Source(tc.objectType, tc.relation)
-			if !ok {
-				t.Fail()
-			}
+			require.True(t, ok)
 
 			seq := pl.Build(context.Background(), source, target)
 
@@ -2377,9 +2363,7 @@ func TestPipeline(t *testing.T) {
 			model,
 		)
 
-		if err != nil {
-			t.Fail()
-		}
+		require.NoError(t, err)
 
 		g := typesys.GetWeightedGraph()
 
@@ -2394,14 +2378,10 @@ func TestPipeline(t *testing.T) {
 		pl := New(backend)
 
 		target, ok := pl.Target("user", "1")
-		if !ok {
-			t.Fail()
-		}
+		require.True(t, ok)
 
 		source, ok := pl.Source("document", "viewer")
-		if !ok {
-			t.Fail()
-		}
+		require.True(t, ok)
 
 		ctx, cancel := context.WithCancel(context.Background())
 
@@ -2410,8 +2390,7 @@ func TestPipeline(t *testing.T) {
 		cancel()
 
 		for range seq {
-			t.Log("iteration did not stop after context cancelation")
-			t.Fail()
+			t.Fatalf("iteration did not stop after context cancelation")
 		}
 	})
 
@@ -2428,9 +2407,7 @@ func TestPipeline(t *testing.T) {
 			model,
 		)
 
-		if err != nil {
-			t.Fail()
-		}
+		require.NoError(t, err)
 
 		g := typesys.GetWeightedGraph()
 
@@ -2445,14 +2422,10 @@ func TestPipeline(t *testing.T) {
 		pl := New(backend)
 
 		target, ok := pl.Target("user", "1")
-		if !ok {
-			t.Fail()
-		}
+		require.True(t, ok)
 
 		source, ok := pl.Source("document", "viewer")
-		if !ok {
-			t.Fail()
-		}
+		require.True(t, ok)
 
 		seq := pl.Build(context.Background(), source, target)
 
