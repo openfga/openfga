@@ -202,9 +202,8 @@ func TestMessaging(t *testing.T) {
 						if count == tc.parts {
 							for range tc.parts {
 								ok := p.Recv(&val)
-								if !ok {
-									t.Fail()
-								}
+								require.True(t, ok)
+
 								count--
 								actual = append(actual, val)
 							}
@@ -213,9 +212,8 @@ func TestMessaging(t *testing.T) {
 
 					for range count {
 						ok := p.Recv(&val)
-						if !ok {
-							t.Fail()
-						}
+						require.True(t, ok)
+
 						actual = append(actual, val)
 					}
 
