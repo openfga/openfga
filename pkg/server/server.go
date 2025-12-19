@@ -896,7 +896,8 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 	}
 
 	// TODO: make the cache duration configurable (maybe)
-	s.authzModelGraphResolver = modelgraph.NewResolver(s.datastore, s.sharedDatastoreResources.CheckCache, 24*7*time.Hour)
+	cache, _ := storage.NewInMemoryLRUCache[any]()
+	s.authzModelGraphResolver = modelgraph.NewResolver(s.datastore, cache, 24*7*time.Hour)
 
 	if s.IsAccessControlEnabled() {
 		s.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: s.AccessControl.StoreID, ModelID: s.AccessControl.ModelID}, s, s.logger)
