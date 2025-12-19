@@ -11,7 +11,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Datastore throttling separated from dispatch throttling in BatchCheck, ListUsers metadata. Also, `throttling_type` label added to `throttledRequestCounter` metric to differentiate between dispatch/datastore throttling. [#2839](https://github.com/openfga/openfga/pull/2839)
 
 ### Removed
-- Removed custom grpc_prometheus fork, replace with go-grpc-middleware's provider. [#2855](https://github.com/openfga/openfga/pull/2855)
+- Removed custom grpc_prometheus fork, replace with go-grpc-middleware's provider. Removes the custom `grpc_code` label on this metric. [#2855](https://github.com/openfga/openfga/pull/2855)
 
 ### Fixed
 - ListUsers will now properly get datastore throttled if enabled. [#2846](https://github.com/openfga/openfga/pull/2846)
