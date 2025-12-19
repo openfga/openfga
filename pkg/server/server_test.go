@@ -32,6 +32,7 @@ import (
 	"github.com/openfga/openfga/internal/cachecontroller"
 	"github.com/openfga/openfga/internal/graph"
 	mockstorage "github.com/openfga/openfga/internal/mocks"
+	"github.com/openfga/openfga/pkg/featureflags"
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/server/test"
@@ -65,6 +66,9 @@ func ExampleNewServerWithOpts() {
 	openfga, err := NewServerWithOpts(WithDatastore(datastore),
 		WithCheckQueryCacheEnabled(true),
 		// more options available
+		WithFeatureFlagClient(featureflags.NewHardcodedBooleanClient(true)),
+		WithShadowListObjectsQueryTimeout(17*time.Millisecond),
+		WithShadowListObjectsQueryMaxDeltaItems(20),
 	)
 	if err != nil {
 		panic(err)
@@ -192,7 +196,7 @@ func TestServerPanicIfValidationsFail(t *testing.T) {
 			mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
 			_ = MustNewServerWithOpts(
 				WithDatastore(mockDatastore),
-				WithExperimentals(ExperimentalAccessControlParams),
+				WithExperimentals(serverconfig.ExperimentalAccessControlParams),
 				WithAccessControlParams(true, "", "", ""),
 			)
 		})
@@ -205,7 +209,7 @@ func TestServerPanicIfValidationsFail(t *testing.T) {
 			mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
 			_ = MustNewServerWithOpts(
 				WithDatastore(mockDatastore),
-				WithExperimentals(ExperimentalAccessControlParams),
+				WithExperimentals(serverconfig.ExperimentalAccessControlParams),
 				WithAccessControlParams(true, ulid.Make().String(), ulid.Make().String(), ""),
 			)
 		})
@@ -218,7 +222,7 @@ func TestServerPanicIfValidationsFail(t *testing.T) {
 			mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
 			_ = MustNewServerWithOpts(
 				WithDatastore(mockDatastore),
-				WithExperimentals(ExperimentalAccessControlParams),
+				WithExperimentals(serverconfig.ExperimentalAccessControlParams),
 				WithAccessControlParams(true, "not-a-valid-ulid", ulid.Make().String(), "oidc"),
 			)
 		})
@@ -231,7 +235,7 @@ func TestServerPanicIfValidationsFail(t *testing.T) {
 			mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
 			_ = MustNewServerWithOpts(
 				WithDatastore(mockDatastore),
-				WithExperimentals(ExperimentalAccessControlParams),
+				WithExperimentals(serverconfig.ExperimentalAccessControlParams),
 				WithAccessControlParams(true, ulid.Make().String(), "not-a-valid-ulid", "oidc"),
 			)
 		})
@@ -239,7 +243,7 @@ func TestServerPanicIfValidationsFail(t *testing.T) {
 
 	t.Run("invalid_dialect", func(t *testing.T) {
 		require.PanicsWithValue(t, `failed to set database dialect: "invalid-dialect": unknown dialect`, func() {
-			sqlcommon.NewDBInfo(nil, sq.StatementBuilder, nil, "invalid-dialect")
+			sqlcommon.NewDBInfo(sq.StatementBuilder, nil, "invalid-dialect")
 		})
 	})
 }
@@ -346,7 +350,6 @@ func TestServerPanicIfDefaultListUsersThresholdGreaterThanMaxDispatchThreshold(t
 		)
 	})
 }
-
 func TestServerWithPostgresDatastore(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
@@ -754,84 +757,6 @@ func TestThreeProngThroughVariousLayers(t *testing.T) {
 	}
 }
 
-func TestCheckDispatchThrottledTimeout(t *testing.T) {
-	t.Cleanup(func() {
-		goleak.VerifyNone(t)
-	})
-
-	const dispatchFrequency = 5 * time.Millisecond
-	const dispatchThreshold = 5
-
-	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
-	s := MustNewServerWithOpts(
-		WithDatastore(ds),
-		WithDispatchThrottlingCheckResolverFrequency(dispatchFrequency),
-		WithDispatchThrottlingCheckResolverEnabled(true),
-		WithDispatchThrottlingCheckResolverThreshold(dispatchThreshold),
-	)
-	t.Cleanup(s.Close)
-
-	createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{
-		Name: "openfga-test",
-	})
-	require.NoError(t, err)
-
-	storeID := createStoreResp.GetId()
-
-	model := testutils.MustTransformDSLToProtoWithID(`
-		model
-			schema 1.1
-
-		type user
-
-		type group
-			relations
-				define other: [user]
-				define member: [user, group#member] or other
-		`)
-
-	writeAuthModelResp, err := s.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
-		StoreId:         storeID,
-		SchemaVersion:   model.GetSchemaVersion(),
-		TypeDefinitions: model.GetTypeDefinitions(),
-	})
-	require.NoError(t, err)
-
-	modelID := writeAuthModelResp.GetAuthorizationModelId()
-
-	_, err = s.Write(context.Background(), &openfgav1.WriteRequest{
-		StoreId: storeID,
-		Writes: &openfgav1.WriteRequestWrites{
-			TupleKeys: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("group:x", "member", "group:1#member"),
-				tuple.NewTupleKey("group:x", "member", "group:2#member"),
-				tuple.NewTupleKey("group:x", "member", "group:3#member"),
-				tuple.NewTupleKey("group:x", "member", "group:4#member"),
-				tuple.NewTupleKey("group:x", "member", "group:5#member"),
-				tuple.NewTupleKey("group:x", "member", "group:6#member"),
-				tuple.NewTupleKey("group:x", "member", "group:7#member"),
-				tuple.NewTupleKey("group:x", "member", "group:8#member"),
-				tuple.NewTupleKey("group:x", "member", "group:9#member"),
-				tuple.NewTupleKey("group:x", "member", "group:10#member"),
-			},
-		},
-	})
-	require.NoError(t, err)
-
-	// we know that the above query will take 10 dispatches
-	// Since the threshold level is 5 and each dispatch will be throttled by 5ms
-	// The request will take at least 25 ms and will be timeout since timeout is 20ms.
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
-	defer cancel()
-
-	_, err = s.Check(ctx, &openfgav1.CheckRequest{
-		StoreId:              storeID,
-		AuthorizationModelId: modelID,
-		TupleKey:             tuple.NewCheckRequestTupleKey("group:x", "member", "user:anne"),
-	})
-	require.ErrorIs(t, err, serverErrors.ErrThrottledTimeout)
-}
-
 func BenchmarkOpenFGAServer(b *testing.B) {
 	b.Cleanup(func() {
 		goleak.VerifyNone(b,
@@ -848,7 +773,9 @@ func BenchmarkOpenFGAServer(b *testing.B) {
 		uri := testDatastore.GetConnectionURI(true)
 		ds, err := postgres.New(uri, sqlcommon.NewConfig(
 			sqlcommon.WithMaxOpenConns(10),
+			sqlcommon.WithMinOpenConns(10),
 			sqlcommon.WithMaxIdleConns(10),
+			sqlcommon.WithMinIdleConns(10),
 		))
 		require.NoError(b, err)
 		b.Cleanup(ds.Close)
@@ -1793,9 +1720,11 @@ func TestDelegateCheckResolver(t *testing.T) {
 
 		require.False(t, s.cacheSettings.CheckQueryCacheEnabled)
 
-		require.NotNil(t, s.checkResolver)
+		checkResolver, closer, _ := s.getCheckResolverBuilder("store_id_123").Build()
+		defer closer()
+		require.NotNil(t, checkResolver)
 
-		localCheckResolver, ok := s.checkResolver.GetDelegate().(*graph.LocalChecker)
+		localCheckResolver, ok := checkResolver.GetDelegate().(*graph.LocalChecker)
 		require.True(t, ok)
 
 		_, ok = localCheckResolver.GetDelegate().(*graph.LocalChecker)
@@ -1818,9 +1747,11 @@ func TestDelegateCheckResolver(t *testing.T) {
 		require.True(t, s.checkDispatchThrottlingEnabled)
 		require.EqualValues(t, dispatchThreshold, s.checkDispatchThrottlingDefaultThreshold)
 		require.EqualValues(t, 0, s.checkDispatchThrottlingMaxThreshold)
-		require.NotNil(t, s.checkResolver)
+		checkResolver, closer, _ := s.getCheckResolverBuilder("store_id_123").Build()
+		defer closer()
+		require.NotNil(t, checkResolver)
 
-		dispatchThrottlingResolver, ok := s.checkResolver.(*graph.DispatchThrottlingCheckResolver)
+		dispatchThrottlingResolver, ok := checkResolver.(*graph.DispatchThrottlingCheckResolver)
 		require.True(t, ok)
 
 		localChecker, ok := dispatchThrottlingResolver.GetDelegate().(*graph.LocalChecker)
@@ -1847,9 +1778,11 @@ func TestDelegateCheckResolver(t *testing.T) {
 		require.True(t, s.checkDispatchThrottlingEnabled)
 		require.EqualValues(t, dispatchThreshold, s.checkDispatchThrottlingDefaultThreshold)
 		require.EqualValues(t, 0, s.checkDispatchThrottlingMaxThreshold)
-		require.NotNil(t, s.checkResolver)
+		checkResolver, closer, _ := s.getCheckResolverBuilder("store_id_123").Build()
+		defer closer()
+		require.NotNil(t, checkResolver)
 
-		dispatchThrottlingResolver, ok := s.checkResolver.(*graph.DispatchThrottlingCheckResolver)
+		dispatchThrottlingResolver, ok := checkResolver.(*graph.DispatchThrottlingCheckResolver)
 		require.True(t, ok)
 
 		localChecker, ok := dispatchThrottlingResolver.GetDelegate().(*graph.LocalChecker)
@@ -1878,8 +1811,10 @@ func TestDelegateCheckResolver(t *testing.T) {
 		require.True(t, s.checkDispatchThrottlingEnabled)
 		require.EqualValues(t, dispatchThreshold, s.checkDispatchThrottlingDefaultThreshold)
 		require.EqualValues(t, maxDispatchThreshold, s.checkDispatchThrottlingMaxThreshold)
-		require.NotNil(t, s.checkResolver)
-		dispatchThrottlingResolver, ok := s.checkResolver.(*graph.DispatchThrottlingCheckResolver)
+		checkResolver, closer, _ := s.getCheckResolverBuilder("store_id_123").Build()
+		defer closer()
+		require.NotNil(t, checkResolver)
+		dispatchThrottlingResolver, ok := checkResolver.(*graph.DispatchThrottlingCheckResolver)
 		require.True(t, ok)
 
 		localChecker, ok := dispatchThrottlingResolver.GetDelegate().(*graph.LocalChecker)
@@ -1901,9 +1836,11 @@ func TestDelegateCheckResolver(t *testing.T) {
 		require.False(t, s.checkDispatchThrottlingEnabled)
 
 		require.True(t, s.cacheSettings.CheckQueryCacheEnabled)
-		require.NotNil(t, s.checkResolver)
+		checkResolver, closer, _ := s.getCheckResolverBuilder("store_id_123").Build()
+		defer closer()
+		require.NotNil(t, checkResolver)
 
-		cachedCheckResolver, ok := s.checkResolver.(*graph.CachedCheckResolver)
+		cachedCheckResolver, ok := checkResolver.(*graph.CachedCheckResolver)
 		require.True(t, ok)
 
 		localChecker, ok := cachedCheckResolver.GetDelegate().(*graph.LocalChecker)
@@ -1928,9 +1865,12 @@ func TestDelegateCheckResolver(t *testing.T) {
 		require.True(t, s.checkDispatchThrottlingEnabled)
 		require.EqualValues(t, 50, s.checkDispatchThrottlingDefaultThreshold)
 		require.EqualValues(t, 100, s.checkDispatchThrottlingMaxThreshold)
-		require.NotNil(t, s.checkResolver)
 
-		cachedCheckResolver, ok := s.checkResolver.(*graph.CachedCheckResolver)
+		checkResolver, closer, _ := s.getCheckResolverBuilder("store_id_123").Build()
+		defer closer()
+		require.NotNil(t, checkResolver)
+
+		cachedCheckResolver, ok := checkResolver.(*graph.CachedCheckResolver)
 		require.True(t, ok)
 		require.True(t, s.cacheSettings.CheckQueryCacheEnabled)
 
@@ -1945,45 +1885,32 @@ func TestDelegateCheckResolver(t *testing.T) {
 	})
 }
 
-func TestIsExperimentallyEnabled(t *testing.T) {
+func TestWithFeatureFlagClient(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
 	ds := memory.New() // Datastore required for server instantiation
-	someExperimentalFlag := ExperimentalFeatureFlag("some-experimental-feature-to-enable")
 	t.Cleanup(ds.Close)
 
-	t.Run("returns_false_if_experimentals_is_empty", func(t *testing.T) {
-		s := MustNewServerWithOpts(WithDatastore(ds))
-		t.Cleanup(s.Close)
-		require.False(t, s.IsExperimentallyEnabled(someExperimentalFlag))
-	})
-
-	t.Run("returns_true_if_experimentals_has_matching_element", func(t *testing.T) {
+	t.Run("it_initializes_a_noop_client_if_no_client_passed", func(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
-			WithExperimentals(someExperimentalFlag),
+			WithFeatureFlagClient(nil),
 		)
 		t.Cleanup(s.Close)
-		require.True(t, s.IsExperimentallyEnabled(someExperimentalFlag))
+		// NoopClient() always false
+		require.False(t, s.featureFlagClient.Boolean("should-be-false", "store_id_123"))
 	})
 
-	t.Run("returns_true_if_experimentals_has_matching_element_and_other_matching_element", func(t *testing.T) {
-		s := MustNewServerWithOpts(
-			WithDatastore(ds),
-			WithExperimentals(someExperimentalFlag, ExperimentalFeatureFlag("some-other-feature")),
-		)
-		t.Cleanup(s.Close)
-		require.True(t, s.IsExperimentallyEnabled(someExperimentalFlag))
-	})
-
-	t.Run("returns_false_if_experimentals_has_no_matching_element", func(t *testing.T) {
-		s := MustNewServerWithOpts(
-			WithDatastore(ds),
-			WithExperimentals(ExperimentalFeatureFlag("some-other-feature")),
-		)
-		t.Cleanup(s.Close)
-		require.False(t, s.IsExperimentallyEnabled(someExperimentalFlag))
+	t.Run("if_a_client_is_provided", func(t *testing.T) {
+		t.Run("it_uses_it", func(t *testing.T) {
+			s := MustNewServerWithOpts(
+				WithDatastore(ds),
+				WithFeatureFlagClient(featureflags.NewHardcodedBooleanClient(true)),
+			)
+			t.Cleanup(s.Close)
+			require.True(t, s.featureFlagClient.Boolean("should-be-true", "store_id_123"))
+		})
 	})
 }
 
@@ -1997,7 +1924,7 @@ func TestIsAccessControlEnabled(t *testing.T) {
 	t.Run("returns_false_if_experimentals_does_not_have_access_control", func(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
-			WithExperimentals(ExperimentalFeatureFlag("some-other-feature")),
+			WithExperimentals("some-other-feature"),
 			WithAccessControlParams(true, "some-model-id", "some-store-id", ""),
 		)
 		t.Cleanup(s.Close)
@@ -2007,7 +1934,7 @@ func TestIsAccessControlEnabled(t *testing.T) {
 	t.Run("returns_false_if_access_control_is_disabled", func(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
-			WithExperimentals(ExperimentalAccessControlParams),
+			WithExperimentals(serverconfig.ExperimentalAccessControlParams),
 			WithAccessControlParams(false, "some-model-id", "some-store-id", ""),
 		)
 		t.Cleanup(s.Close)
@@ -2017,7 +1944,7 @@ func TestIsAccessControlEnabled(t *testing.T) {
 	t.Run("returns_true_if_access_control_is_enabled", func(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
-			WithExperimentals(ExperimentalAccessControlParams),
+			WithExperimentals(serverconfig.ExperimentalAccessControlParams),
 			WithAccessControlParams(true, ulid.Make().String(), ulid.Make().String(), "oidc"),
 		)
 		t.Cleanup(s.Close)

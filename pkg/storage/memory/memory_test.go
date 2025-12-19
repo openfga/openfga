@@ -307,6 +307,16 @@ func TestTupleRecordMatchTupleKey(t *testing.T) {
 			},
 			match: true,
 		},
+		`match_user_type`: {
+			target: tuple.NewTupleKey("document:x", "viewer", "user:"),
+			source: &storage.TupleRecord{
+				ObjectType: "document",
+				ObjectID:   "x",
+				Relation:   "viewer",
+				User:       "user:1",
+			},
+			match: true,
+		},
 	}
 	for name, test := range testCases {
 		t.Run(name, func(t *testing.T) {
@@ -344,7 +354,8 @@ func TestFindTupleKey(t *testing.T) {
 	}
 	for name, test := range testCases {
 		t.Run(name, func(t *testing.T) {
-			require.Equal(t, test.found, find(test.records, test.tupleKey))
+			found := find(test.records, test.tupleKey) != nil
+			require.Equal(t, test.found, found)
 		})
 	}
 }

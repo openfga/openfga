@@ -22,103 +22,6 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
-func TestRecursiveObjectProvider(t *testing.T) {
-	t.Cleanup(func() {
-		goleak.VerifyNone(t)
-	})
-
-	storeID := ulid.Make().String()
-
-	ctrl := gomock.NewController(t)
-	t.Cleanup(ctrl.Finish)
-
-	mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-
-	t.Run("on_supported_model", func(t *testing.T) {
-		model := testutils.MustTransformDSLToProtoWithID(`
-				model
-					schema 1.1
-				type user
-				type document
-					relations
-						define admin: [user] or admin from parent
-						define parent: [document]
-			`)
-
-		ts, err := typesystem.New(model)
-		require.NoError(t, err)
-
-		req, err := NewResolveCheckRequest(ResolveCheckRequestParams{
-			StoreID:              storeID,
-			AuthorizationModelID: ulid.Make().String(),
-			TupleKey: &openfgav1.TupleKey{
-				Object:   "document:abc",
-				Relation: "admin",
-				User:     "user:XYZ",
-			},
-		})
-		require.NoError(t, err)
-
-		t.Run("when_empty_iterator", func(t *testing.T) {
-			mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
-				Times(1).Return(storage.NewStaticTupleIterator(nil), nil)
-
-			c := newRecursiveObjectProvider(ts, mockDatastore)
-			t.Cleanup(c.End)
-
-			ctx := setRequestContext(context.Background(), ts, mockDatastore, nil)
-			channel, err := c.Begin(ctx, req)
-			require.NoError(t, err)
-
-			actualMessages := make([]usersetMessage, 0)
-			for msg := range channel {
-				actualMessages = append(actualMessages, msg)
-			}
-
-			require.Empty(t, actualMessages)
-		})
-
-		t.Run("when_iterator_returns_one_result", func(t *testing.T) {
-			mockDatastore.EXPECT().
-				ReadStartingWithUser(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
-				Times(1).
-				Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{
-					{Key: tuple.NewTupleKey("document:1", "admin", "user:XYZ")},
-				}), nil)
-
-			c := newRecursiveObjectProvider(ts, mockDatastore)
-			t.Cleanup(c.End)
-
-			ctx := setRequestContext(context.Background(), ts, mockDatastore, nil)
-			channel, err := c.Begin(ctx, req)
-			require.NoError(t, err)
-
-			actualMessages := make([]usersetMessage, 0)
-			for msg := range channel {
-				actualMessages = append(actualMessages, msg)
-			}
-
-			require.Len(t, actualMessages, 1)
-			require.Equal(t, "document:1", actualMessages[0].userset)
-		})
-
-		t.Run("when_iterator_errors", func(t *testing.T) {
-			mockDatastore.EXPECT().
-				ReadStartingWithUser(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
-				Times(1).
-				Return(nil, fmt.Errorf("error"))
-
-			c := newRecursiveObjectProvider(ts, mockDatastore)
-			t.Cleanup(c.End)
-
-			ctx := setRequestContext(context.Background(), ts, mockDatastore, nil)
-			channel, err := c.Begin(ctx, req)
-			require.Nil(t, channel)
-			require.Error(t, err)
-		})
-	})
-}
-
 func TestRecursiveTTUObjectProvider(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
@@ -466,10 +369,6 @@ func TestIteratorToUserset(t *testing.T) {
 		}
 	})
 	t.Run("returns_results", func(t *testing.T) {
-		t.Cleanup(func() {
-			// this is the expected goroutine
-			goleak.VerifyNone(t, goleak.IgnoreTopFunction("github.com/openfga/openfga/internal/iterator.Drain.func1"))
-		})
 		chans := make([]<-chan *iterator.Msg, 0, 3)
 		iterChan1 := make(chan *iterator.Msg, 2)
 		iterChan1 <- &iterator.Msg{Iter: mocks.NewErrorIterator[string]([]string{"1"})}
@@ -487,6 +386,13 @@ func TestIteratorToUserset(t *testing.T) {
 		chans = append(chans, iterChan3)
 
 		outChan := make(chan usersetMessage, len(chans))
+		t.Cleanup(func() {
+			// this is the expected goroutine
+			for _, ch := range chans {
+				<-ch
+			}
+			goleak.VerifyNone(t)
+		})
 		ctx := context.Background()
 		go iteratorsToUserset(ctx, chans, outChan)
 		count := 0
@@ -506,18 +412,20 @@ func TestIteratorToUserset(t *testing.T) {
 		require.Equal(t, 7, count)
 	})
 	t.Run("cancellation", func(t *testing.T) {
-		t.Cleanup(func() {
-			// this is the expected goroutine
-			goleak.VerifyNone(t, goleak.IgnoreTopFunction("github.com/openfga/openfga/internal/iterator.Drain.func1"))
-		})
 		chans := make([]<-chan *iterator.Msg, 0, 5)
 		for i := 1; i <= 5; i++ {
 			iterChan := make(chan *iterator.Msg, 1)
 			iterChan <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{strconv.Itoa(i)})}
-			// close(iterChan) -> by not closing, ctx.Done() is the exit clause
+			close(iterChan)
 			chans = append(chans, iterChan)
 		}
 		outChan := make(chan usersetMessage, len(chans))
+		t.Cleanup(func() {
+			for _, ch := range chans {
+				<-ch
+			}
+			goleak.VerifyNone(t)
+		})
 		ctx := context.Background()
 		ctx, cancel := context.WithCancel(ctx)
 		cancel()
@@ -534,10 +442,6 @@ func TestIteratorToUserset(t *testing.T) {
 		require.LessOrEqual(t, count, 5)
 	})
 	t.Run("handles_errors", func(t *testing.T) {
-		t.Cleanup(func() {
-			// this is the expected goroutine due to "iterator error"
-			goleak.VerifyNone(t, goleak.IgnoreTopFunction("github.com/openfga/openfga/internal/iterator.Drain.func1"))
-		})
 		iterError := errors.New("iterator error")
 		chans := make([]<-chan *iterator.Msg, 0, 2)
 		iterChan1 := make(chan *iterator.Msg, 1)
@@ -550,6 +454,13 @@ func TestIteratorToUserset(t *testing.T) {
 		chans = append(chans, iterChan2)
 
 		outChan := make(chan usersetMessage, len(chans))
+		t.Cleanup(func() {
+			// this is the expected goroutine
+			for _, ch := range chans {
+				<-ch
+			}
+			goleak.VerifyNone(t)
+		})
 		ctx := context.Background()
 		go iteratorsToUserset(ctx, chans, outChan)
 
@@ -561,6 +472,7 @@ func TestIteratorToUserset(t *testing.T) {
 				}
 			}
 		}
-		require.Equal(t, 2, count)
+		require.GreaterOrEqual(t, count, 1)
+		require.LessOrEqual(t, count, 2)
 	})
 }

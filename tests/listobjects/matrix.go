@@ -88,7 +88,9 @@ type usersets-user
     define user_rel3: [user, user:* with xcond]
     define userset_computed: userset
     define userset_alg_combined_computed: userset_alg_combined
-    
+	define userset_intersect_mixed: [user, user:*, directs#alg_combined_oneline] and (user_rel1 or (user_rel2 and user_rel3))
+	define userset_exclude_mixed: [user, user:*, directs#alg_combined_oneline] but not userset_intersect_mixed
+
     define userset_recursive: [user, usersets-user#userset_recursive]
     define userset_recursive_public: [user:*, usersets-user#userset_recursive_public]
     define userset_recursive_combined_w3: [user, user:*, employee, usersets-user#userset_recursive_combined_w3, usersets-user#userset]
@@ -114,6 +116,7 @@ type ttus
     define ttu_other_rel: other_rel from mult_parent_types
     define ttu_alg_combined: alg_combined from mult_parent_types
     define ttu_alg_combined_oneline: alg_combined_oneline from mult_parent_types
+    define duplicate_ttu: direct from direct_parent or direct from mult_parent_types
     define ttu_computed: ttu_direct
     define ttu_alg_combined_computed: ttu_alg_combined
     define user_rel1: [user, user:*]
@@ -126,6 +129,7 @@ type ttus
     define alg_combined_computed: alg_combined
     define user_rel4: user_rel1 or user_rel5
     define user_rel5: user_rel2 and user_rel3
+    define alg_inline: [user, user:*] and user_rel4 and (direct from direct_parent but not other_rel from mult_parent_types)
     
     define ttu_parent: [ttus]
     define ttu_recursive: [user] or ttu_recursive from ttu_parent
@@ -149,7 +153,11 @@ type complexity3
     define or_ttu_userset: ttu_userset or ttu_userset_other_rel
     define and_ttu_userset: or_ttu_userset and ttu_userset_inner_alg_combined
     define alg_combined_ttu_userset: and_ttu_userset but not ttu_userset_public
-    
+	define ttu_userset_intersect_mixed: userset_intersect_mixed from userset_parent
+    define ttu_userset_exclude_mixed: userset_exclude_mixed from userset_parent
+	define userset_userset_intersect_mixed: [usersets-user#userset_intersect_mixed]
+	define userset_userset_exclude_mixed: [usersets-user#userset_exclude_mixed]
+
     define userset_ttu: [ttus#ttu_direct, ttus#ttu_direct with xcond]
     define userset_ttu_public: [user:*, ttus#ttu_direct]
     define userset_ttu_other_rel: [ttus#ttu_other_rel]

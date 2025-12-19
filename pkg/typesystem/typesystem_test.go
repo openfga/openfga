@@ -11,6 +11,7 @@ import (
 	"github.com/openfga/language/pkg/go/graph"
 	parser "github.com/openfga/language/pkg/go/transformer"
 
+	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 )
@@ -380,81 +381,82 @@ func TestRelationEquals(t *testing.T) {
 }
 
 func TestHasEntrypoints(t *testing.T) {
-	tests := map[string]struct {
-		model         string
-		inputType     string
-		inputRelation string
-		expectError   string
-		expectDetails *relationDetails
-	}{
-		`undefined_input_type`: {
-			model: `
+	t.Run("valid_rw", func(t *testing.T) {
+		tests := map[string]struct {
+			model         string
+			inputType     string
+			inputRelation string
+			expectError   string
+			expectDetails *relationDetails
+		}{
+			`undefined_input_type`: {
+				model: `
 				model
 					schema 1.1
 				type document
 					relations
 						define viewer: [folder]`,
-			inputType:     "unknown",
-			inputRelation: "viewer",
-			expectError:   "undefined type definition for 'unknown#viewer'",
-		},
-		`undefined_input_relation`: {
-			model: `
+				inputType:     "unknown",
+				inputRelation: "viewer",
+				expectError:   "undefined type definition for 'unknown#viewer'",
+			},
+			`undefined_input_relation`: {
+				model: `
 				model
 					schema 1.1
 				type document
 					relations
 						define viewer: [folder]`,
-			inputType:     "document",
-			inputRelation: "unknown",
-			expectError:   "undefined type definition for 'document#unknown'",
-		},
-		`undefined_type_in_assignable_type`: {
-			model: `
+				inputType:     "document",
+				inputRelation: "unknown",
+				expectError:   "undefined type definition for 'document#unknown'",
+			},
+			`undefined_type_in_assignable_type`: {
+				model: `
 				model
 					schema 1.1
 				type document
 					relations
 						define viewer: [unknown#editor]`,
-			inputType:     "document",
-			inputRelation: "viewer",
-			expectError:   "undefined type definition for 'unknown#editor'",
-		},
-		`undefined_relation_in_assignable_type`: {
-			model: `
+				inputType:     "document",
+				inputRelation: "viewer",
+				expectError:   "undefined type definition for 'unknown#editor'",
+			},
+			`undefined_relation_in_assignable_type`: {
+				model: `
 				model
 					schema 1.1
 				type document
 					relations
 						define viewer: [document#unknown]`,
-			inputType:     "document",
-			inputRelation: "viewer",
-			expectError:   "undefined type definition for 'document#unknown'",
-		},
-		`undefined_computed_userset`: {
-			model: `
+				inputType:     "document",
+				inputRelation: "viewer",
+				expectError:   "undefined type definition for 'document#unknown'",
+			},
+			`undefined_computed_userset`: {
+				model: `
 				model
 					schema 1.1
 				type document
 					relations
 						define viewer: unknown`,
-			inputType:     "document",
-			inputRelation: "viewer",
-			expectError:   "undefined type definition for 'document#unknown'",
-		},
-		`undefined_tupleset`: {
-			model: `
+				inputType:     "document",
+				inputRelation: "viewer",
+				expectError:   "undefined type definition for 'document#unknown'",
+			},
+			`undefined_tupleset`: {
+				model: `
 				model
 					schema 1.1
 				type document
 					relations
 						define viewer: viewer from unknown`,
-			inputType:     "document",
-			inputRelation: "viewer",
-			expectError:   "undefined type definition for 'document#unknown'",
-		},
-		`undefined_computed_relation_on_tupleset_target`: {
-			model: `
+				inputType:     "document",
+				inputRelation: "viewer",
+				expectError:   "undefined type definition for 'document#unknown'",
+			},
+			`undefined_computed_relation_on_tupleset_target`: {
+				model: `
 				model
 					schema 1.1
 				type user
@@ -465,34 +467,34 @@ func TestHasEntrypoints(t *testing.T) {
 					relations
 						define parent: [folder]
 						define viewer: viewer from parent`,
-			inputType:     "document",
-			inputRelation: "viewer",
-			expectDetails: &relationDetails{false, false}, // TODO this should be an error
-		},
-		`this_has_entrypoints_to_same_type`: {
-			model: `
+				inputType:     "document",
+				inputRelation: "viewer",
+				expectDetails: &relationDetails{false, false}, // TODO this should be an error
+			},
+			`this_has_entrypoints_to_same_type`: {
+				model: `
 				model
 					schema 1.1
 				type document
 					relations
 						define viewer: [document]`,
-			inputType:     "document",
-			inputRelation: "viewer",
-			expectDetails: &relationDetails{true, false},
-		},
-		`this_has_entrypoints_through_user_wildcard`: {
-			model: `
+				inputType:     "document",
+				inputRelation: "viewer",
+				expectDetails: &relationDetails{true, false},
+			},
+			`this_has_entrypoints_through_user_wildcard`: {
+				model: `
 				model
 					schema 1.1
 				type document
 					relations
 						define viewer: [document:*]`,
-			inputType:     "document",
-			inputRelation: "viewer",
-			expectDetails: &relationDetails{true, false},
-		},
-		`this_has_entrypoints_through_userset`: {
-			model: `
+				inputType:     "document",
+				inputRelation: "viewer",
+				expectDetails: &relationDetails{true, false},
+			},
+			`this_has_entrypoints_through_userset`: {
+				model: `
 				model
 					schema 1.1
 				type user
@@ -502,24 +504,24 @@ func TestHasEntrypoints(t *testing.T) {
 				type folder
 					relations
 						define parent: [org#member]`,
-			inputType:     "folder",
-			inputRelation: "parent",
-			expectDetails: &relationDetails{true, false},
-		},
-		`this_with_two_assignable_types_has_entrypoints_through_first`: {
-			model: `
+				inputType:     "folder",
+				inputRelation: "parent",
+				expectDetails: &relationDetails{true, false},
+			},
+			`this_with_two_assignable_types_has_entrypoints_through_first`: {
+				model: `
 				model
 					schema 1.1
 				type user
 				type folder
 					relations
 						define parent: [user, folder#parent]`,
-			inputType:     "folder",
-			inputRelation: "parent",
-			expectDetails: &relationDetails{true, false},
-		},
-		`this_with_two_assignable_types_has_entrypoints_through_second`: {
-			model: `
+				inputType:     "folder",
+				inputRelation: "parent",
+				expectDetails: &relationDetails{true, false},
+			},
+			`this_with_two_assignable_types_has_entrypoints_through_second`: {
+				model: `
 				model
 					schema 1.1
 				type user
@@ -527,35 +529,35 @@ func TestHasEntrypoints(t *testing.T) {
 					relations
 						define editor: [user]
 						define parent: [folder#parent, folder#editor]`,
-			inputType:     "folder",
-			inputRelation: "parent",
-			expectDetails: &relationDetails{true, false},
-		},
-		// TODO fix
-		// `this_has_no_entrypoints_because_type_unknown_is_not_defined`: {
-		//	model: `
-		//	model
-		//		schema 1.1
-		//	type folder
-		//		relations
-		//			define parent: [unknown]`,
-		//	inputType:     "folder",
-		//	inputRelation: "parent",
-		//	expectError:   "undefined type 'unknown'",
-		// },
-		`this_has_no_entrypoints_through_userset`: {
-			model: `
+				inputType:     "folder",
+				inputRelation: "parent",
+				expectDetails: &relationDetails{true, false},
+			},
+			// TODO fix
+			// `this_has_no_entrypoints_because_type_unknown_is_not_defined`: {
+			//	model: `
+			//	model
+			//		schema 1.1
+			//	type folder
+			//		relations
+			//			define parent: [unknown]`,
+			//	inputType:     "folder",
+			//	inputRelation: "parent",
+			//	expectError:   "undefined type 'unknown'",
+			// },
+			`this_has_no_entrypoints_through_userset`: {
+				model: `
 				model
 					schema 1.1
 				type folder
 					relations
 						define parent: [folder#parent]`,
-			inputType:     "folder",
-			inputRelation: "parent",
-			expectDetails: &relationDetails{false, false},
-		},
-		`this_has_no_entrypoints_through_recursive_userset`: {
-			model: `
+				inputType:     "folder",
+				inputRelation: "parent",
+				expectDetails: &relationDetails{false, false},
+			},
+			`this_has_no_entrypoints_through_recursive_userset`: {
+				model: `
 				model
 					schema 1.1
 				type group
@@ -565,12 +567,12 @@ func TestHasEntrypoints(t *testing.T) {
 				type folder
 					relations
 						define parent: [group#member]`,
-			inputType:     "folder",
-			inputRelation: "parent",
-			expectDetails: &relationDetails{false, false},
-		},
-		`computed_relation_has_entrypoint_through_user`: {
-			model: `
+				inputType:     "folder",
+				inputRelation: "parent",
+				expectDetails: &relationDetails{false, false},
+			},
+			`computed_relation_has_entrypoint_through_user`: {
+				model: `
 				model
 					schema 1.1
 				type user
@@ -578,12 +580,12 @@ func TestHasEntrypoints(t *testing.T) {
 					relations
 						define editor: [user]
 						define viewer: editor`,
-			inputType:     "document",
-			inputRelation: "viewer",
-			expectDetails: &relationDetails{true, false},
-		},
-		`computed_relation_has_no_entrypoint_through_usersets`: {
-			model: `
+				inputType:     "document",
+				inputRelation: "viewer",
+				expectDetails: &relationDetails{true, false},
+			},
+			`computed_relation_has_no_entrypoint_through_usersets`: {
+				model: `
 				model
 					schema 1.1
 				type user
@@ -591,12 +593,12 @@ func TestHasEntrypoints(t *testing.T) {
 					relations
 						define editor: [document#viewer]
 						define viewer: [document#editor]`,
-			inputType:     "document",
-			inputRelation: "viewer",
-			expectDetails: &relationDetails{false, false},
-		},
-		`computed_relation_has_entrypoint_through_userset`: {
-			model: `
+				inputType:     "document",
+				inputRelation: "viewer",
+				expectDetails: &relationDetails{false, false},
+			},
+			`computed_relation_has_entrypoint_through_userset`: {
+				model: `
 				model
 					schema 1.1
 				type user
@@ -607,24 +609,24 @@ func TestHasEntrypoints(t *testing.T) {
 					relations
 					define a2: [org#member]
 					define a1: a2`,
-			inputType:     "folder",
-			inputRelation: "a1",
-			expectDetails: &relationDetails{true, false},
-		},
-		`computed_relation_has_no_entrypoints_because_no_direct_relationships`: {
-			model: `
+				inputType:     "folder",
+				inputRelation: "a1",
+				expectDetails: &relationDetails{true, false},
+			},
+			`computed_relation_has_no_entrypoints_because_no_direct_relationships`: {
+				model: `
 				model
 					schema 1.1
 				type folder
 					relations
 						define a2: a1
 						define a1: a2`,
-			inputType:     "folder",
-			inputRelation: "a1",
-			expectDetails: &relationDetails{false, true},
-		},
-		`computed_relation_has_no_entrypoints_through_ttu`: {
-			model: `
+				inputType:     "folder",
+				inputRelation: "a1",
+				expectDetails: &relationDetails{false, true},
+			},
+			`computed_relation_has_no_entrypoints_through_ttu`: {
+				model: `
 				model
 					schema 1.1
 				type user
@@ -639,12 +641,12 @@ func TestHasEntrypoints(t *testing.T) {
 						define parent: [folder]
 						define editor: viewer
 						define viewer: viewer from parent`,
-			inputType:     "folder",
-			inputRelation: "viewer",
-			expectDetails: &relationDetails{false, false}, // TODO it DOES have a cycle
-		},
-		`union_has_entrypoint_through_user`: {
-			model: `
+				inputType:     "folder",
+				inputRelation: "viewer",
+				expectDetails: &relationDetails{false, false}, // TODO it DOES have a cycle
+			},
+			`union_has_entrypoint_through_user`: {
+				model: `
 				model
 					schema 1.1
 				type user
@@ -653,12 +655,12 @@ func TestHasEntrypoints(t *testing.T) {
 					relations
 						define editor: [user]
 						define viewer: [document#viewer] or editor`,
-			inputType:     "document",
-			inputRelation: "viewer",
-			expectDetails: &relationDetails{true, false},
-		},
-		`union_has_no_entrypoint`: {
-			model: `
+				inputType:     "document",
+				inputRelation: "viewer",
+				expectDetails: &relationDetails{true, false},
+			},
+			`union_has_no_entrypoint`: {
+				model: `
 				model
 					schema 1.1
 				type user
@@ -667,12 +669,12 @@ func TestHasEntrypoints(t *testing.T) {
 					relations
 						define editor: [document#viewer]
 						define viewer: [document#viewer] or editor`,
-			inputType:     "document",
-			inputRelation: "viewer",
-			expectDetails: &relationDetails{false, false},
-		},
-		`ttu_has_entrypoint_through_user`: {
-			model: `
+				inputType:     "document",
+				inputRelation: "viewer",
+				expectDetails: &relationDetails{false, false},
+			},
+			`ttu_has_entrypoint_through_user`: {
+				model: `
 				model
 					schema 1.1
 				type user
@@ -683,12 +685,12 @@ func TestHasEntrypoints(t *testing.T) {
 					relations
 						define parent: [org]
 						define viewer: viewer from parent`,
-			inputType:     "folder",
-			inputRelation: "viewer",
-			expectDetails: &relationDetails{true, false},
-		},
-		`ttu_has_entrypoint_through_userset`: {
-			model: `
+				inputType:     "folder",
+				inputRelation: "viewer",
+				expectDetails: &relationDetails{true, false},
+			},
+			`ttu_has_entrypoint_through_userset`: {
+				model: `
 				model
 					schema 1.1
 				type user
@@ -700,24 +702,24 @@ func TestHasEntrypoints(t *testing.T) {
 					relations
 						define parent: [org#member]
 						define viewer: viewer from parent`,
-			inputType:     "folder",
-			inputRelation: "viewer",
-			expectDetails: &relationDetails{true, false},
-		},
-		`ttu_has_no_entrypoint`: {
-			model: `
+				inputType:     "folder",
+				inputRelation: "viewer",
+				expectDetails: &relationDetails{true, false},
+			},
+			`ttu_has_no_entrypoint`: {
+				model: `
 				model
 					schema 1.1
 				type folder
 					relations
 						define parent: [folder]
 						define viewer: viewer from parent`,
-			inputType:     "folder",
-			inputRelation: "viewer",
-			expectDetails: &relationDetails{false, false},
-		},
-		`intersection_has_entrypoint_and_no_cycle`: {
-			model: `
+				inputType:     "folder",
+				inputRelation: "viewer",
+				expectDetails: &relationDetails{false, false},
+			},
+			`intersection_has_entrypoint_and_no_cycle`: {
+				model: `
 				model
 					schema 1.1
 				type user
@@ -727,12 +729,12 @@ func TestHasEntrypoints(t *testing.T) {
 						define action1: admin and editor
 						define admin: [user]
 						define editor: [user]`,
-			inputType:     "document",
-			inputRelation: "action1",
-			expectDetails: &relationDetails{true, false},
-		},
-		`intersection_has_no_entrypoint_and_no_cycle`: {
-			model: `
+				inputType:     "document",
+				inputRelation: "action1",
+				expectDetails: &relationDetails{true, false},
+			},
+			`intersection_has_no_entrypoint_and_no_cycle`: {
+				model: `
 				model
 					schema 1.1
 				type user
@@ -741,12 +743,12 @@ func TestHasEntrypoints(t *testing.T) {
 					relations
 						define action1: [document#action1] and editor
 						define editor: [user]`,
-			inputType:     "document",
-			inputRelation: "action1",
-			expectDetails: &relationDetails{false, false},
-		},
-		`intersection_has_no_entrypoint_and_has_cycle_2`: {
-			model: `
+				inputType:     "document",
+				inputRelation: "action1",
+				expectDetails: &relationDetails{false, false},
+			},
+			`intersection_has_no_entrypoint_and_has_cycle_2`: {
+				model: `
 				model
 					schema 1.1
 				type user
@@ -757,12 +759,12 @@ func TestHasEntrypoints(t *testing.T) {
 						define action1: admin and action2 and action3
 						define action2: admin and action1 and action3
 						define action3: admin and action1 and action2`,
-			inputType:     "document",
-			inputRelation: "action1",
-			expectDetails: &relationDetails{false, true},
-		},
-		`difference_has_entrypoints_and_no_cycle`: {
-			model: `
+				inputType:     "document",
+				inputRelation: "action1",
+				expectDetails: &relationDetails{false, true},
+			},
+			`difference_has_entrypoints_and_no_cycle`: {
+				model: `
 				model
 					schema 1.1
 				type user
@@ -772,12 +774,12 @@ func TestHasEntrypoints(t *testing.T) {
 						define action1: admin but not editor
 						define admin: [user]
 						define editor: [user]`,
-			inputType:     "document",
-			inputRelation: "action1",
-			expectDetails: &relationDetails{true, false},
-		},
-		`difference_has_entrypoints_and_no_cycle_2`: {
-			model: `
+				inputType:     "document",
+				inputRelation: "action1",
+				expectDetails: &relationDetails{true, false},
+			},
+			`difference_has_entrypoints_and_no_cycle_2`: {
+				model: `
 				model
 					schema 1.1
 				type user
@@ -789,12 +791,12 @@ func TestHasEntrypoints(t *testing.T) {
 						define viewer: [document#viewer] or editor
 						define can_view: viewer but not restricted
 						define can_view_actual: can_view`,
-			inputType:     "document",
-			inputRelation: "can_view_actual",
-			expectDetails: &relationDetails{true, false},
-		},
-		`difference_has_no_entrypoint_and_no_cycle`: {
-			model: `
+				inputType:     "document",
+				inputRelation: "can_view_actual",
+				expectDetails: &relationDetails{true, false},
+			},
+			`difference_has_no_entrypoint_and_no_cycle`: {
+				model: `
 				model
 					schema 1.1
 				type user
@@ -803,12 +805,12 @@ func TestHasEntrypoints(t *testing.T) {
 					relations
 						define action1: [document#action1] but not editor
 						define editor: [user]`,
-			inputType:     "document",
-			inputRelation: "action1",
-			expectDetails: &relationDetails{false, false},
-		},
-		`difference_has_no_entrypoint_and_has_cycle`: {
-			model: `
+				inputType:     "document",
+				inputRelation: "action1",
+				expectDetails: &relationDetails{false, false},
+			},
+			`difference_has_no_entrypoint_and_has_cycle`: {
+				model: `
 				model
 					schema 1.1
 				type user
@@ -819,12 +821,12 @@ func TestHasEntrypoints(t *testing.T) {
 						define action1: admin but not action2
 						define action2: admin but not action3
 						define action3: admin but not action1`,
-			inputType:     "document",
-			inputRelation: "action1",
-			expectDetails: &relationDetails{false, true},
-		},
-		`issue_1385`: {
-			model: `
+				inputType:     "document",
+				inputRelation: "action1",
+				expectDetails: &relationDetails{false, true},
+			},
+			`issue_1385`: {
+				model: `
 				model
 					schema 1.1
 
@@ -840,12 +842,12 @@ func TestHasEntrypoints(t *testing.T) {
 						define has_access_to_logging : contextual_member from has_logging_product but not block_logging from has_logging_product
 						define can_enable_logging : has_access_to_logging
 			`,
-			inputType:     "entity",
-			inputRelation: "can_enable_logging",
-			expectDetails: &relationDetails{true, false},
-		},
-		`issue_1260_parallel_edges_mean_entrypoints`: {
-			model: `
+				inputType:     "entity",
+				inputRelation: "can_enable_logging",
+				expectDetails: &relationDetails{true, false},
+			},
+			`issue_1260_parallel_edges_mean_entrypoints`: {
+				model: `
 				model
 					schema 1.1
 
@@ -863,12 +865,12 @@ func TestHasEntrypoints(t *testing.T) {
 						define end: [state]
 						define can_apply: [user] and can_view from start and can_view from end
 			`,
-			inputType:     "state",
-			inputRelation: "can_transition_with",
-			expectDetails: &relationDetails{true, false},
-		},
-		`ttu_has_entrypoint_through_second_tupleset`: {
-			model: `
+				inputType:     "state",
+				inputRelation: "can_transition_with",
+				expectDetails: &relationDetails{true, false},
+			},
+			`ttu_has_entrypoint_through_second_tupleset`: {
+				model: `
 				model
 					schema 1.1
 				type user
@@ -879,12 +881,12 @@ func TestHasEntrypoints(t *testing.T) {
 					relations
 						define parent: [folder, group]
 						define viewer: viewer from parent`,
-			inputType:     "folder",
-			inputRelation: "viewer",
-			expectDetails: &relationDetails{true, false},
-		},
-		`revisited_direct_has_entrypoints`: {
-			model: `
+				inputType:     "folder",
+				inputRelation: "viewer",
+				expectDetails: &relationDetails{true, false},
+			},
+			`revisited_direct_has_entrypoints`: {
+				model: `
 				model
 					schema 1.1
 
@@ -897,31 +899,60 @@ func TestHasEntrypoints(t *testing.T) {
 						define c: a
 						define d: b and c
 			`,
-			inputType:     "document",
-			inputRelation: "d",
-			expectDetails: &relationDetails{true, false},
-		},
-	}
+				inputType:     "document",
+				inputRelation: "d",
+				expectDetails: &relationDetails{true, false},
+			},
+		}
 
-	for name, test := range tests {
-		t.Run(name, func(t *testing.T) {
-			model := testutils.MustTransformDSLToProtoWithID(test.model)
-			ts, err := New(model)
-			require.NoError(t, err)
-			inputRelation, _ := ts.GetRelation(test.inputType, test.inputRelation)
-
-			rewrite := inputRelation.GetRewrite()
-			hasEntrypoints, hasCycle, err := hasEntrypoints(ts.GetAllRelations(), test.inputType, test.inputRelation, rewrite, map[string]map[string]bool{})
-
-			if test.expectError != "" {
-				require.ErrorContains(t, err, test.expectError)
-			} else {
+		for name, test := range tests {
+			t.Run(name, func(t *testing.T) {
+				model := testutils.MustTransformDSLToProtoWithID(test.model)
+				ts, err := New(model)
 				require.NoError(t, err)
-				require.Equal(t, test.expectDetails.hasEntrypoints, hasEntrypoints, "unexpected value for hasEntrypoints")
-				require.Equal(t, test.expectDetails.hasLoop, hasCycle, "unexpected value for hasLoop")
-			}
+				inputRelation, _ := ts.GetRelation(test.inputType, test.inputRelation)
+
+				rewrite := inputRelation.GetRewrite()
+				hasEntrypoints, hasCycle, err := hasEntrypoints(ts.GetAllRelations(), test.inputType, test.inputRelation, rewrite, map[string]map[string]bool{})
+
+				if test.expectError != "" {
+					require.ErrorContains(t, err, test.expectError)
+				} else {
+					require.NoError(t, err)
+					require.Equal(t, test.expectDetails.hasEntrypoints, hasEntrypoints, "unexpected value for hasEntrypoints")
+					require.Equal(t, test.expectDetails.hasLoop, hasCycle, "unexpected value for hasLoop")
+				}
+			})
+		}
+	})
+	t.Run("invalid_rw", func(t *testing.T) {
+		modelString := `
+				model
+					schema 1.1
+
+				type user
+
+				type document
+					relations
+						define a: [user]
+						define b: a
+						define c: a
+						define d: b and c
+			`
+		model := testutils.MustTransformDSLToProtoWithID(modelString)
+		ts, err := New(model)
+		require.NoError(t, err)
+		var internalError serverErrors.InternalError
+
+		t.Run("nil_rewrite", func(t *testing.T) {
+			_, _, err = hasEntrypoints(ts.GetAllRelations(), "document", "d", nil, map[string]map[string]bool{})
+			require.ErrorAs(t, err, &internalError)
 		})
-	}
+		t.Run("bad_rewrite", func(t *testing.T) {
+			_, _, err = hasEntrypoints(ts.GetAllRelations(), "document", "d", &openfgav1.Userset{}, map[string]map[string]bool{})
+			require.ErrorAs(t, err, &internalError)
+		})
+	})
 }
 
 func TestResolveComputedRelation(t *testing.T) {
@@ -3433,406 +3464,7 @@ func TestDirectlyRelatedUsersets(t *testing.T) {
 	}
 }
 
-func TestUsersetCanFastPath(t *testing.T) {
-	tests := []struct {
-		name                     string
-		model                    string
-		relationReferences       []*openfgav1.RelationReference
-		expectDirectlyAssignable bool
-	}{
-		{
-			name: "simple_userset",
-			model: `
-				model
-					schema 1.1
-				type user
-				type group
-					relations
-						define member: [user]
-				type folder
-					relations
-						define allowed: [group#member]`,
-			relationReferences: []*openfgav1.RelationReference{
-				DirectRelationReference("group", "member"),
-			},
-			expectDirectlyAssignable: true,
-		},
-		{
-			name: "multiple_userset_types",
-			model: `
-				model
-					schema 1.1
-				type user
-				type group
-					relations
-						define member: [user]
-				type folder
-					relations
-                        define member: [user]
-						define allowed: [group#member, folder#member]`,
-			relationReferences: []*openfgav1.RelationReference{
-				DirectRelationReference("group", "member"),
-				DirectRelationReference("folder", "member"),
-			},
-			expectDirectlyAssignable: true,
-		},
-		{
-			name: "userset_reference_itself",
-			model: `
-				model
-					schema 1.1
-				type user
-				type group
-					relations
-						define member: [user,group#member]`,
-			relationReferences: []*openfgav1.RelationReference{
-				DirectRelationReference("group", "member"),
-			},
-			expectDirectlyAssignable: false, // for now, we cannot shortcut this logic due to recursion
-		},
-		{
-			name: "complex_userset_member_is_public",
-			model: `
-						model
-							schema 1.1
-						type user
-						type group
-							relations
-								define member: [user, user:*]
-						type folder
-							relations
-								define allowed: [group#member]`,
-			relationReferences: []*openfgav1.RelationReference{
-				DirectRelationReference("group", "member"),
-			},
-			expectDirectlyAssignable: true,
-		},
-		{
-			name: "complex_userset_exclusion",
-			model: `
-						model
-							schema 1.1
-						type user
-						type group
-							relations
-								define exclude: [user]
-								define member: [user]
-								define complexMember: [user] but not exclude
-						type folder
-							relations
-								define allowed: [group#complexMember]`,
-			relationReferences: []*openfgav1.RelationReference{
-				DirectRelationReference("group", "complexMember"),
-			},
-			expectDirectlyAssignable: false,
-		},
-		{
-			name: "complex_userset_union",
-			model: `
-						model
-							schema 1.1
-						type user
-						type group
-							relations
-								define owner: [user]
-								define member: [user]
-								define complexMember: [user] or owner
-						type folder
-							relations
-								define allowed: [group#complexMember]`,
-			relationReferences: []*openfgav1.RelationReference{
-				DirectRelationReference("group", "complexMember"),
-			},
-			expectDirectlyAssignable: false,
-		},
-		{
-			name: "complex_userset_intersection",
-			model: `
-						model
-							schema 1.1
-						type user
-						type group
-							relations
-								define allowed: [user]
-								define member: [user]
-								define complexMember: [user] and allowed
-						type folder
-							relations
-								define allowed: [group#complexMember]`,
-			relationReferences: []*openfgav1.RelationReference{
-				DirectRelationReference("group", "complexMember"),
-			},
-			expectDirectlyAssignable: false,
-		},
-		{
-			name: "multiple_assignment",
-			model: `
-						model
-							schema 1.1
-						type user1
-						type user2
-						type group
-							relations
-								define member: [user1, user2]
-						type folder
-							relations
-								define allowed: [group#member]`,
-			relationReferences: []*openfgav1.RelationReference{
-				DirectRelationReference("group", "member"),
-			},
-			expectDirectlyAssignable: true,
-		},
-		{
-			name: "multiple_relation_references",
-			model: `
-						model
-							schema 1.1
-						type user
-						type group
-							relations
-								define member: [user]
-								define owner: [user]
-						type folder
-							relations
-								define allowed: [group#member, group#owner]`,
-			relationReferences: []*openfgav1.RelationReference{
-				DirectRelationReference("group", "member"),
-				DirectRelationReference("group", "owner"),
-			},
-			expectDirectlyAssignable: true,
-		},
-		{
-			name: "multiple_relation_references_some_complex",
-			model: `
-						model
-							schema 1.1
-						type user
-						type group
-							relations
-								define member: [user]
-								define owner: [user]
-								define disallowed: [user]
-								define disallowed_member: member but not disallowed`,
-			relationReferences: []*openfgav1.RelationReference{
-				DirectRelationReference("group", "member"),
-				DirectRelationReference("group", "disallowed_member"),
-				DirectRelationReference("group", "owner"),
-			},
-			expectDirectlyAssignable: false,
-		},
-		{
-			name: "computed_userset",
-			model: `
-						model
-							schema 1.1
-						type user
-						type group
-							relations
-								define member: [user]
-								define viewable_member: member
-						type folder
-							relations
-								define allowed: [group#viewable_member]`,
-			relationReferences: []*openfgav1.RelationReference{
-				DirectRelationReference("group", "viewable_member"),
-			},
-			expectDirectlyAssignable: true,
-		},
-		{
-			name: "nested_computed_userset",
-			model: `
-						model
-							schema 1.1
-						type user
-						type group
-							relations
-								define owner: [user]
-								define member: owner
-								define viewable_member: member
-						type folder
-							relations
-								define allowed: [group#viewable_member]`,
-			relationReferences: []*openfgav1.RelationReference{
-				DirectRelationReference("group", "viewable_member"),
-			},
-			expectDirectlyAssignable: true,
-		},
-		{
-			name: "parent_public_assignable",
-			model: `
-						model
-							schema 1.1
-						type user
-						type group
-							relations
-								define member: [user]
-
-						type folder
-							relations
-								define allowed: [user, user:*]`,
-			relationReferences: []*openfgav1.RelationReference{
-				WildcardRelationReference("user"),
-			},
-			expectDirectlyAssignable: false, // these will be handled by the normal resolution path
-		},
-		{
-			name: "conditional_relation_parent",
-			model: `
-						model
-							schema 1.1
-						type user
-						type group
-							relations
-								define member: [user]
-						type folder
-							relations
-								define allowed: [group#member with x_less_than]
-		                condition x_less_than(x: int) {
-		                    x < 100
-		                }`,
-			relationReferences: []*openfgav1.RelationReference{
-				ConditionedRelationReference(DirectRelationReference("group", "member"), "x_less_than"),
-			},
-			expectDirectlyAssignable: true,
-		},
-		{
-			name: "conditional_relation_in_child",
-			model: `
-						model
-							schema 1.1
-						type user
-						type group
-							relations
-								define member: [user with x_less_than]
-						type folder
-							relations
-								define allowed: [group#member]
-		                condition x_less_than(x: int) {
-		                    x < 100
-		                }`,
-			relationReferences: []*openfgav1.RelationReference{
-				ConditionedRelationReference(DirectRelationReference("group", "member"), "x_less_than"),
-			},
-			expectDirectlyAssignable: true,
-		},
-		{
-			name: "not_valid_relation",
-			model: `
-						model
-							schema 1.1
-						type user
-						type group
-							relations
-								define member: [user]
-						type folder
-							relations
-								define allowed: [group#member]
-		               `,
-			relationReferences: []*openfgav1.RelationReference{
-				DirectRelationReference("group", "bad_relation"),
-			},
-			expectDirectlyAssignable: false,
-		},
-		{
-			name: "user_type_not_found",
-			model: `
-				model
-					schema 1.1
-				type user
-				type group
-					relations
-						define member: [user]
-				type folder
-					relations
-						define allowed: [group#member]`,
-			relationReferences: []*openfgav1.RelationReference{
-				DirectRelationReference("group", "member"),
-			},
-			expectDirectlyAssignable: true, // it doesn't matter as the fastpath code will "discard" it
-		},
-		{
-			name: "userset_ttu_mixture",
-			model: `
-				model
-				  schema 1.1
-				type user
-				type role
-				  relations
-					define assignee: [user]
-				type permission
-				  relations
-					define assignee: assignee from role
-					define role: [role]
-				type job
-				  relations
-					define can_read: [permission#assignee]`,
-			relationReferences: []*openfgav1.RelationReference{
-				DirectRelationReference("permission", "assignee"),
-			},
-			expectDirectlyAssignable: false,
-		},
-		{
-			name: "nested_userset",
-			model: `
-				model
-				  schema 1.1
-				type user
-                type employee
-				type group
-				  relations
-                    define testers: [employee]
-					define assignee: [user, group#testers]
-			    type folder
-				  relations
-				    define allowed: [group#assignee]`,
-			relationReferences: []*openfgav1.RelationReference{
-				DirectRelationReference("group", "assignee"),
-			},
-			expectDirectlyAssignable: false,
-		},
-		{
-			name: "multiple_parents_conditional_recursive_computed_with_conditionals",
-			model: `
-				model
-				  schema 1.1
-                type user
-				type group
-				  relations
-					define member: [user, user with x_bigger_than]
-					define user_in_context: [user]
-					define reader: member
-					define assignee: reader
-				type tier
-				  relations
-				   define assignee: [group#assignee, group#user_in_context, group#user_in_context with x_bigger_than]
-
-				condition x_bigger_than(x: int) {
-					x > 100
-                }
-				condition user_in_context(x: int) {
-					x > 100
-                }`,
-			relationReferences: []*openfgav1.RelationReference{
-				DirectRelationReference("group", "assignee"),
-				DirectRelationReference("group", "user_in_context"),
-				ConditionedRelationReference(DirectRelationReference("group", "user_in_context"), "x_bigger_than"),
-			},
-			expectDirectlyAssignable: true,
-		},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			model := testutils.MustTransformDSLToProtoWithID(test.model)
-			typeSystem, err := NewAndValidate(context.Background(), model)
-			require.NoError(t, err)
-			result := typeSystem.UsersetCanFastPath(test.relationReferences)
-			require.NoError(t, err)
-			require.Equal(t, test.expectDirectlyAssignable, result)
-		})
-	}
-}
-
-func TestUsersetCanFastPathWeight2(t *testing.T) {
+func TestUsersetUseWeight2Resolver(t *testing.T) {
 	tests := []struct {
 		name       string
 		model      string
@@ -4177,13 +3809,9 @@ func TestUsersetCanFastPathWeight2(t *testing.T) {
 				type resource_group
   					relations
     					define writer: [user_group#member]
-				type account
-  					relations
-    					define member: [driver] or owner
-    					define owner: [driver]
 				type wallet
   					relations
-    					define can_write: [resource#can_write, account#owner]`,
+    					define can_write: [resource#can_write]`,
 			objectType: "wallet",
 			relation:   "can_write",
 			userType:   "driver",
@@ -4197,538 +3825,386 @@ func TestUsersetCanFastPathWeight2(t *testing.T) {
 			require.NoError(t, err)
 			directlyRelated, err := typeSystem.GetDirectlyRelatedUserTypes(test.objectType, test.relation)
 			require.NoError(t, err)
-			result := typeSystem.UsersetCanFastPathWeight2(test.objectType, test.relation, test.userType, directlyRelated)
-			require.NoError(t, err)
+			var result bool
+			for _, userset := range directlyRelated {
+				res := typeSystem.UsersetUseWeight2Resolver(test.objectType, test.relation, test.userType, userset)
+				if res == true {
+					result = res
+				}
+			}
+
 			require.Equal(t, test.expected, result)
 		})
 	}
 }
 
-func TestTTUCanFastPath(t *testing.T) {
+func TestUsersetUseWeight2Resolvers(t *testing.T) {
 	tests := []struct {
-		name              string
-		model             string
-		objectType        string
-		tuplesetRelation  string
-		computedRelation  string
-		expectCanFastPath bool
+		name       string
+		model      string
+		objectType string
+		relation   string
+		userType   string
+		expected   bool
 	}{
 		{
-			name: "simple_ttu_references",
-			model: `
-						model
-							schema 1.1
-						type user
-						type group
-							relations
-								define member: [user]
-						type folder
-							relations
-								define parent: [group]
-								define viewer: member from parent
-					`,
-			objectType:        "folder",
-			tuplesetRelation:  "parent",
-			computedRelation:  "member",
-			expectCanFastPath: true,
-		},
-		{
-			name: "complex_tupleset_relation_union",
-			model: `
-						model
-							schema 1.1
-						type user
-						type group
-							relations
-								define owner: [user]
-								define member: [user] or owner
-						type folder
-							relations
-								define parent: [group]
-								define viewer: member from parent
-					`,
-			objectType:        "folder",
-			tuplesetRelation:  "parent",
-			computedRelation:  "member",
-			expectCanFastPath: false,
-		},
-		{
-			name: "complex_tupleset_relation_intersection",
-			model: `
-						model
-							schema 1.1
-						type user
-						type group
-							relations
-								define owner: [user]
-								define member: [user] and owner
-						type folder
-							relations
-								define parent: [group]
-								define viewer: member from parent`,
-			objectType:        "folder",
-			tuplesetRelation:  "parent",
-			computedRelation:  "member",
-			expectCanFastPath: false,
-		},
-		{
-			name: "computed_relation",
-			model: `
-						model
-							schema 1.1
-						type user
-							
-						type folder
-							relations
-								define can_view: editor
-								define editor: [user]
-
-						type document
-							relations
-								define parent: [folder]
-								define viewer: can_view from parent`,
-
-			objectType:        "document",
-			tuplesetRelation:  "parent",
-			computedRelation:  "can_view",
-			expectCanFastPath: true,
-		},
-		{
-			name: "nested_computed_relation",
-			model: `
-						model
-							schema 1.1
-						type user
-						type folder
-							relations
-								define owner: [user]
-								define can_view: editor
-								define editor: owner
-
-						type document
-							relations
-								define parent: [folder]
-								define viewer: can_view from parent`,
-
-			objectType:        "document",
-			tuplesetRelation:  "parent",
-			computedRelation:  "can_view",
-			expectCanFastPath: true,
-		},
-		{
-			name: "tupleset_relation_public",
-			model: `
-						model
-							schema 1.1
-						type user
-
-						type group
-							relations
-								define member: [user, user:*]
-						type folder
-							relations
-								define parent: [group]
-								define viewer: member from parent
-					`,
-			objectType:        "folder",
-			tuplesetRelation:  "parent",
-			computedRelation:  "member",
-			expectCanFastPath: true,
-		},
-		{
-			name: "tupleset_relation_userset",
-			model: `
-						model
-							schema 1.1
-						type user
-						type group
-							relations
-								define member: [user, group#member]
-						type folder
-							relations
-								define parent: [group]
-								define viewer: member from parent
-					`,
-			objectType:        "folder",
-			tuplesetRelation:  "parent",
-			computedRelation:  "member",
-			expectCanFastPath: false,
-		},
-		{
-			name: "tupleset_relation_condition",
-			model: `
-						model
-							schema 1.1
-						type user
-						type group
-							relations
-								define member: [user]
-						type folder
-							relations
-								define parent: [group with x_less_than]
-								define viewer: member from parent
-		                condition x_less_than(x: int) {
-		                    x < 100
-		                }
-					`,
-			objectType:        "folder",
-			tuplesetRelation:  "parent",
-			computedRelation:  "member",
-			expectCanFastPath: true,
-		},
-		{
-			name: "ttu_child_multiple_directly_assignable_types",
-			model: `
-						model
-							schema 1.1
-						type user1
-						type user2
-						type group
-							relations
-								define member: [user1, user2]
-						type folder
-							relations
-								define parent: [group]
-								define viewer: member from parent
-					`,
-			objectType:        "folder",
-			tuplesetRelation:  "parent",
-			computedRelation:  "member",
-			expectCanFastPath: true,
-		},
-		{
-			name: "multiple_ttu_references",
-			model: `
-						model
-							schema 1.1
-						type user
-						type group1
-							relations
-								define member: [user]
-						type group2
-							relations
-								define member: [user]
-						type folder
-							relations
-								define parent: [group1, group2]
-								define viewer: member from parent
-					`,
-			objectType:        "folder",
-			tuplesetRelation:  "parent",
-			computedRelation:  "member",
-			expectCanFastPath: true,
-		},
-		{
-			name: "multiple_ttu_references_to_multiple_types",
-			model: `
-				model
-					schema 1.1
-				type user1
-				type user2
-				type group1
-					relations
-						define member: [user1, user2]
-				type group2
-					relations
-						define member: [user1, user2]
-				type folder
-					relations
-						define owner: [group1, group2]
-						define viewer: member from owner`,
-			objectType:        "folder",
-			tuplesetRelation:  "owner",
-			computedRelation:  "member",
-			expectCanFastPath: true,
-		},
-		{
-
-			name: "multiple_ttu_references_only_one_has_tupleset_relation",
-			model: `
-				model
-					schema 1.1
-				type user1
-				type user2
-				type group1
-					relations
-						define member: [user1, user2]
-				type group2
-				type folder
-					relations
-						define owner: [group1, group2]
-						define viewer: member from owner`,
-			objectType:        "folder",
-			tuplesetRelation:  "owner",
-			computedRelation:  "member",
-			expectCanFastPath: true,
-		},
-		{
-			name: "multiple_ttu_references_different_terminal_types",
-			model: `
-				model
-					schema 1.1
-				type user
-				type folder
-					relations
-					define owner: [user]
-					define viewer: [user, user:*] or owner
-				type document
-					relations
-					define can_read: viewer from parent
-					define parent: [document, folder]
-					define viewer: [user, user:*]`,
-			objectType:        "document",
-			tuplesetRelation:  "parent",
-			computedRelation:  "viewer",
-			expectCanFastPath: false,
-		},
-		{
-			name: "only_some_parent_have_relations",
-			model: `
-						model
-							schema 1.1
-						type user
-						type group_without_member
-							relations
-								define owner: [user]
-						type group_with_member
-							relations
-								define member: [user]
-						type folder
-							relations
-								define parent: [group_without_member, group_with_member]
-								define viewer: member from parent
-					`,
-			// notice that group_without_member does not have member.  However, we should
-			// still allow because group_with_member has member
-			objectType:        "folder",
-			tuplesetRelation:  "parent",
-			computedRelation:  "member",
-			expectCanFastPath: true,
-		},
-		{
-			name: "ttu_child_not_directly_assignable_union",
-			model: `
-						model
-							schema 1.1
-						type user
-						type group
-							relations
-								define allowed: [user]
-								define member: [user] and allowed
-						type folder
-							relations
-								define parent: [group]
-								define viewer: member from parent
-					`,
-			objectType:        "folder",
-			tuplesetRelation:  "parent",
-			computedRelation:  "member",
-			expectCanFastPath: false,
-		},
-		{
-			name: "ttu_child_has_condition",
-			model: `
-						model
-							schema 1.1
-						type user
-						type group
-							relations
-								define member: [user with x_less_than]
-						type folder
-							relations
-								define parent: [group]
-								define viewer: member from parent
-		                condition x_less_than(x: int) {
-		                    x < 100
-		                }
-					`,
-			objectType:        "folder",
-			tuplesetRelation:  "parent",
-			computedRelation:  "member",
-			expectCanFastPath: true,
-		},
-		{
-			name: "ttu_relation_with_and_without_condition",
+			name: "simple_userset",
 			model: `
 				model
 					schema 1.1
 				type user
 				type group
 					relations
-						define member: [user, user with x_less_than]
+						define member: [user]
 				type folder
 					relations
-						define parent: [group]
-						define viewer: member from parent
-				condition x_less_than(x: int) {
-					x < 100
-				}
-			`,
-			objectType:        "folder",
-			tuplesetRelation:  "parent",
-			computedRelation:  "member",
-			expectCanFastPath: true,
+						define allowed: [group#member]`,
+			objectType: "folder",
+			relation:   "allowed",
+			userType:   "user",
+			expected:   true,
 		},
 		{
-			name: "ttu_relation_with_multiple_conditions",
+			name: "multiple_userset_types",
 			model: `
 				model
 					schema 1.1
 				type user
 				type group
 					relations
-						define member: [user with x_less_than, user with x_greater_than]
+						define member: [user]
 				type folder
 					relations
-						define parent: [group]
-						define viewer: member from parent
+						define member: [user]
+						define allowed: [group#member, folder#member]`,
+			objectType: "folder",
+			relation:   "allowed",
+			userType:   "user",
+			expected:   true,
+		},
+		{
+			name: "userset_reference_itself",
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user,group#member]`,
+			objectType: "group",
+			relation:   "member",
+			userType:   "user",
+			expected:   false,
+		},
+		{
+			name: "complex_userset_member_is_public",
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user, user:*]
+				type folder
+					relations
+						define allowed: [group#member]`,
+			objectType: "folder",
+			relation:   "allowed",
+			userType:   "user",
+			expected:   true,
+		},
+		{
+			name: "complex_userset_exclusion",
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define exclude: [user]
+						define member: [user]
+						define complexMember: [user] but not exclude
+				type folder
+					relations
+						define allowed: [group#complexMember]`,
+			objectType: "folder",
+			relation:   "allowed",
+			userType:   "user",
+			expected:   true,
+		},
+		{
+			name: "complex_userset_union",
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define owner: [user]
+						define member: [user]
+						define complexMember: [user] or owner
+				type folder
+					relations
+						define allowed: [group#complexMember]`,
+			objectType: "folder",
+			relation:   "allowed",
+			userType:   "user",
+			expected:   true,
+		},
+		{
+			name: "complex_userset_intersection",
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define allowed: [user]
+						define member: [user]
+						define complexMember: [user] and allowed
+				type folder
+					relations
+						define allowed: [group#complexMember]`,
+			objectType: "folder",
+			relation:   "allowed",
+			userType:   "user",
+			expected:   true,
+		},
+		{
+			name: "multiple_assignment",
+			model: `
+				model
+					schema 1.1
+				type user1
+				type user2
+				type group
+					relations
+						define member: [user1, user2]
+				type folder
+					relations
+						define allowed: [group#member]`,
+			objectType: "folder",
+			relation:   "allowed",
+			userType:   "user1",
+			expected:   true,
+		},
+		{
+			name: "multiple_relation_references",
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user]
+						define owner: [user]
+				type folder
+					relations
+						define allowed: [group#member, group#owner]`,
+			objectType: "folder",
+			relation:   "allowed",
+			userType:   "user",
+			expected:   false,
+		},
+		{
+			name: "computed_userset",
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user]
+						define viewable_member: member
+				type folder
+					relations
+						define allowed: [group#viewable_member]`,
+			objectType: "folder",
+			relation:   "allowed",
+			userType:   "user",
+			expected:   true,
+		},
+		{
+			name: "nested_computed_userset",
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define owner: [user]
+						define member: owner
+						define viewable_member: member
+				type folder
+					relations
+						define allowed: [group#viewable_member]`,
+			objectType: "folder",
+			relation:   "allowed",
+			userType:   "user",
+			expected:   true,
+		},
+		{
+			name: "parent_public_assignable",
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user]
+				type folder
+					relations
+						define allowed: [user, user:*]`,
+			objectType: "folder",
+			relation:   "allowed",
+			userType:   "user",
+			expected:   false,
+		},
+		{
+			name: "conditional_relation_parent",
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user]
+				type folder
+					relations
+						define allowed: [group#member with x_less_than]
 				condition x_less_than(x: int) {
 					x < 100
-				}
+				}`,
+			objectType: "folder",
+			relation:   "allowed",
+			userType:   "user",
+			expected:   true,
+		},
+		{
+			name: "conditional_relation_in_child",
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user with x_less_than]
+				type folder
+					relations
+						define allowed: [group#member]
+				condition x_less_than(x: int) {
+					x < 100
+				}`,
+			objectType: "folder",
+			relation:   "allowed",
+			userType:   "user",
+			expected:   true,
+		},
+		{
+			name: "userset_ttu_mixture",
+			model: `
+				model
+				  schema 1.1
+				type user
+				type role
+				  	relations
+						define assignee: [user]
+				type permission
+					relations
+						define assignee: assignee from role
+						define role: [role]
+				type job
+					relations
+						define can_read: [permission#assignee]`,
+			objectType: "job",
+			relation:   "can_read",
+			userType:   "user",
+			expected:   false,
+		},
+		{
+			name: "nested_userset",
+			model: `
+				model
+					schema 1.1
+				type user
+				type employee
+				type group
+					relations
+						define testers: [employee]
+						define assignee: [user, group#testers]
+			    type folder
+				  	relations
+						define allowed: [group#assignee]`,
+			objectType: "folder",
+			relation:   "allowed",
+			userType:   "employee",
+			expected:   false,
+		},
+		{
+			name: "multiple_parents_conditional_recursive_computed_with_conditionals",
+			model: `
+				model
+				  	schema 1.1
+				type user
+				type group
+				  	relations
+						define member: [user, user with x_bigger_than]
+						define user_in_context: [user]
+						define reader: member
+						define assignee: reader
+				type tier
+					relations
+						define assignee: [group#assignee, group#user_in_context, group#user_in_context with x_bigger_than]
 
-				condition x_greater_than(x: int) {
+				condition x_bigger_than(x: int) {
 					x > 100
-				}
-			`,
-			objectType:        "folder",
-			tuplesetRelation:  "parent",
-			computedRelation:  "member",
-			expectCanFastPath: true,
+                }
+				condition user_in_context(x: int) {
+					x > 100
+                }`,
+			objectType: "tier",
+			relation:   "assignee",
+			userType:   "user",
+			expected:   false,
 		},
 		{
-			name: "ttu_child_userset",
+			name: "not_terminal_type",
 			model: `
-						model
-							schema 1.1
-						type user
-						type group
-							relations
-								define parent: [group]
-								define member: [user, group#admin]
-								define admin: [user]
-						type folder
-							relations
-								define parent: [group]
-								define viewer: member from parent
-					`,
-			objectType:        "folder",
-			tuplesetRelation:  "parent",
-			computedRelation:  "member",
-			expectCanFastPath: false,
-		},
-		{
-			name: "ttu_child_recurisve_userset",
-			model: `
-						model
-							schema 1.1
-						type user
-						type group
-							relations
-								define parent: [group]
-								define member: [user, group#member]
-						type folder
-							relations
-								define parent: [group]
-								define viewer: member from parent
-		                condition x_less_than(x: int) {
-		                    x < 100
-		                }
-					`,
-			objectType:        "folder",
-			tuplesetRelation:  "parent",
-			computedRelation:  "member",
-			expectCanFastPath: false,
-		},
-		{
-			name: "bad_object_type",
-			model: `
-						model
-							schema 1.1
-						type user
-						type group
-							relations
-								define member: [user]
-						type folder
-							relations
-								define parent: [group]
-								define viewer: member from parent
-					`,
-			objectType:        "undefined_type",
-			tuplesetRelation:  "parent",
-			computedRelation:  "member",
-			expectCanFastPath: false,
-		},
-		{
-			name: "bad_tupleset_relation",
-			model: `
-						model
-							schema 1.1
-						type user
-						type group
-							relations
-								define member: [user]
-						type folder
-							relations
-								define parent: [group]
-								define viewer: member from parent
-					`,
-			objectType:        "group",
-			tuplesetRelation:  "parent",
-			computedRelation:  "member",
-			expectCanFastPath: false,
-		},
-		{
-			name: "bad_computed_relation",
-			model: `
-						model
-							schema 1.1
-						type user
-						type group
-							relations
-								define member: [user]
-						type folder
-							relations
-								define parent: [group]
-								define viewer: member from parent
-					`,
-			objectType:        "group",
-			tuplesetRelation:  "parent",
-			computedRelation:  "member",
-			expectCanFastPath: false,
-		},
-		{
-			name: "multiple_parent_types_with_conditions_multiple_child_types_with_conditions_or_wildcard",
-			model: `
-						model
-							schema 1.1
-						type user
-						type employee
-						type company
-						  relations
-							define member: [user, employee, user:*]
-						type group
-						  relations
-							define member: [user, user with x_greater_than]
-						type license
-						  relations
-							define holder_member: member from owner
-							define owner: [company, group, group with x_condition]
-						condition x_greater_than(x: int) {x > 1}
-						condition x_condition(x: int) {x > 1}
-					`,
-			objectType:        "license",
-			tuplesetRelation:  "owner",
-			computedRelation:  "member",
-			expectCanFastPath: true,
+				model
+  					schema 1.1	
+				type operator
+				type driver
+				type user_group
+  					relations
+    					define member: [operator]
+				type resource
+  					relations
+    					define can_write: [resource_group#writer, user_group#member]
+				type resource_group
+  					relations
+    					define writer: [user_group#member]
+				type account
+  					relations
+    					define member: [driver] or owner
+    					define owner: [driver]
+				type wallet
+  					relations
+    					define can_write: [resource#can_write, account#owner]`,
+			objectType: "wallet",
+			relation:   "can_write",
+			userType:   "driver",
+			expected:   false, // resource#can_write is greater than weight 2
 		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			model := testutils.MustTransformDSLToProtoWithID(test.model)
-			typesys, err := NewAndValidate(context.Background(), model)
+			typeSystem, err := NewAndValidate(context.Background(), model)
 			require.NoError(t, err)
-			actual := typesys.TTUCanFastPath(test.objectType, test.tuplesetRelation, test.computedRelation)
-			require.Equal(t, test.expectCanFastPath, actual)
+			directlyRelated, err := typeSystem.GetDirectlyRelatedUserTypes(test.objectType, test.relation)
+			require.NoError(t, err)
+			result := typeSystem.UsersetUseWeight2Resolvers(test.objectType, test.relation, test.userType, directlyRelated)
+			require.Equal(t, test.expected, result)
 		})
 	}
 }
@@ -5359,7 +4835,7 @@ func TestTTUCanFastPathWeight2(t *testing.T) {
 			model := testutils.MustTransformDSLToProtoWithID(test.model)
 			typesys, err := NewAndValidate(context.Background(), model)
 			require.NoError(t, err)
-			actual := typesys.TTUCanFastPathWeight2(test.objectType, test.relation, "user",
+			actual := typesys.TTUUseWeight2Resolver(test.objectType, test.relation, "user",
 				&openfgav1.TupleToUserset{
 					Tupleset: &openfgav1.ObjectRelation{
 						Relation: test.tuplesetRelation,
@@ -5373,16 +4849,481 @@ func TestTTUCanFastPathWeight2(t *testing.T) {
 	}
 }
 
+func TestRecursiveUsersetCanFastPathV2(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name               string
+		model              string
+		objectTypeRelation string
+		userType           string
+		expected           bool
+	}{
+		{
+			name: "object_type_relation_not_found",
+			model: `
+model
+	schema 1.1
+type user
+type group
+	relations
+		define member: [user, group#member]
+`,
+			objectTypeRelation: "group#undefined",
+			userType:           "user",
+			expected:           false,
+		},
+		{
+			name: "simple_recursive",
+			model: `
+model
+	schema 1.1
+type user
+type group
+	relations
+		define member: [user, group#member]
+`,
+			objectTypeRelation: "group#member",
+			userType:           "user",
+			expected:           true,
+		},
+		{
+			name: "simple_recursive_other_types",
+			model: `
+model
+	schema 1.1
+type person
+type user
+type group
+	relations
+		define member: [person, user, group#member]
+`,
+			objectTypeRelation: "group#member",
+			userType:           "user",
+			expected:           true,
+		},
+		{
+			name: "simple_recursive_condition",
+			model: `
+model
+	schema 1.1
+type user
+type group
+	relations
+		define member: [user with cond, group#member]
+condition cond(x: int) {
+	x < 100
+}
+`,
+			objectTypeRelation: "group#member",
+			userType:           "user",
+			expected:           true,
+		},
+		{
+			name: "simple_recursive_wildcard",
+			model: `
+model
+	schema 1.1
+type user
+type group
+	relations
+		define member: [user:*, group#member]
+`,
+			objectTypeRelation: "group#member",
+			userType:           "user",
+			expected:           true,
+		},
+		{
+			name: "simple_recursive_wildcard_condition",
+			model: `
+model
+	schema 1.1
+type user
+type group
+	relations
+		define member: [user:* with cond, group#member]
+condition cond(x: int) {
+	x < 100
+}
+`,
+			objectTypeRelation: "group#member",
+			userType:           "user",
+			expected:           true,
+		},
+		{
+			name: "simple_recursive_multi_direct_assignment_wildcard",
+			model: `
+model
+	schema 1.1
+type user
+type group
+	relations
+		define member: [user, user:*, group#member]
+`,
+			objectTypeRelation: "group#member",
+			userType:           "user",
+			expected:           true,
+		},
+		{
+			name: "simple_recursive_multi_direct_assignment_wildcard_cond",
+			model: `
+model
+	schema 1.1
+type user
+type group
+	relations
+		define member: [user:*, user with cond, group#member]
+condition cond(x: int) {
+	x < 100
+}
+`,
+			objectTypeRelation: "group#member",
+			userType:           "user",
+			expected:           true,
+		},
+		{
+			name: "simple_recursive_multi_direct_assignment_user_wildcard_cond",
+			model: `
+model
+	schema 1.1
+type user
+type group
+	relations
+		define member: [user, user:*, user with cond, user:* with cond, group#member]
+condition cond(x: int) {
+	x < 100
+}
+`,
+			objectTypeRelation: "group#member",
+			userType:           "user",
+			expected:           true,
+		},
+		{
+			name: "complex_recursive_due_to_type_not_found",
+			model: `
+model
+	schema 1.1
+type person
+type user
+type group
+	relations
+		define member: [person, group#member]
+`,
+			objectTypeRelation: "group#member",
+			userType:           "user",
+			expected:           false,
+		},
+		{
+			name: "complex_due_to_union",
+			model: `
+model
+	schema 1.1
+type user
+type group
+	relations
+		define member: [user, group#member] or owner
+		define owner: [user]
+`,
+			objectTypeRelation: "group#member",
+			userType:           "user",
+			expected:           true,
+		},
+		{
+			name: "complex_due_to_intersection",
+			model: `
+model
+	schema 1.1
+type user
+type group
+	relations
+		define member: [user, group#member] and allowed
+		define allowed: [user]
+`,
+			objectTypeRelation: "group#member",
+			userType:           "user",
+			expected:           false,
+		},
+		{
+			name: "complex_due_to_exclusion",
+			model: `
+model
+	schema 1.1
+type user
+type group
+	relations
+		define member: [user, group#member] but not blocked
+		define blocked: [user]
+`,
+			objectTypeRelation: "group#member",
+			userType:           "user",
+			expected:           false,
+		},
+		{
+			name: "complex_due_to_other_directly_assigned_userset",
+			model: `
+model
+	schema 1.1
+type user
+type group
+	relations
+		define member: [user, group#member, group#owner]
+		define owner: [user]
+`,
+			objectTypeRelation: "group#member",
+			userType:           "user",
+			expected:           false,
+		},
+		{
+			name: "complex_due_to_other_directly_assigned_userset_other_type",
+			model: `
+model
+	schema 1.1
+type user
+type team
+	relations
+		define member: [user]
+type group
+	relations
+		define member: [user, group#member, team#member]
+`,
+			objectTypeRelation: "group#member",
+			userType:           "user",
+			expected:           false,
+		},
+		{
+			name: "complex_due_to_union_nested_intersection",
+			model: `
+model
+	schema 1.1
+type user
+type group
+	relations
+		define member: [user, group#member] or owner
+		define owner: user and admin
+		define user: [user]
+		define admin: [user]
+`,
+			objectTypeRelation: "group#member",
+			userType:           "user",
+			expected:           true,
+		},
+		{
+			name: "complex_due_to_union_nested_difference",
+			model: `
+model
+	schema 1.1
+type user
+type group
+	relations
+		define member: [user, group#member] or owner or admin
+		define owner: user but not admin
+		define user: [user]
+		define admin: [user]
+`,
+			objectTypeRelation: "group#member",
+			userType:           "user",
+			expected:           true,
+		},
+		{
+			name: "complex_due_to_union_nested_intersection_with_weight_2",
+			model: `
+model
+	schema 1.1
+type user
+type team
+	relations
+		define member: [user]
+type group
+	relations
+		define member: [user, group#member] or owner
+		define owner: user and admin
+		define user: [team#member]
+		define admin: [user]
+`,
+			objectTypeRelation: "group#member",
+			userType:           "user",
+			expected:           false,
+		},
+		{
+			name: "complex_due_to_union_nested_intersection_with_weight_inf",
+			model: `
+model
+	schema 1.1
+type user
+type group
+	relations
+		define member: [user, group#member] or owner
+		define owner: user and inner_member
+		define user: [user]
+		define inner_member: [user, group#inner_member]
+`,
+			objectTypeRelation: "group#member",
+			userType:           "user",
+			expected:           false,
+		},
+		{
+			name: "complex_due_to_union_nested_intersection_with_weight_cycle",
+			model: `
+model
+	schema 1.1
+	type user
+	type group
+		relations
+			define member: [user, group#member] or owner
+			define owner: user or inner_member
+			define user: [user]
+			define inner_member: [user, group#member]
+`,
+			objectTypeRelation: "group#member",
+			userType:           "user",
+			expected:           false,
+		},
+		{
+			name: "complex_due_to_union_nested_intersection",
+			model: `
+model
+	schema 1.1
+type user
+type group
+	relations
+		define member: [user, group#member] or owner
+		define owner: user and admin
+		define user: [user]
+		define admin: [user]
+`,
+			objectTypeRelation: "group#member",
+			userType:           "user",
+			expected:           true,
+		},
+		{
+			name: "complex_due_to_union_nested_difference",
+			model: `
+model
+	schema 1.1
+type user
+type group
+	relations
+		define member: [user, group#member] or owner
+		define owner: user but not admin
+		define user: [user]
+		define admin: [user]
+`,
+			objectTypeRelation: "group#member",
+			userType:           "user",
+			expected:           true,
+		},
+		{
+			name: "complex_due_to_union_nested_intersection_with_weight_2",
+			model: `
+model
+	schema 1.1
+type user
+type team
+	relations
+		define member: [user]
+type group
+	relations
+		define member: [user, group#member] or owner
+		define owner: user and admin
+		define user: [team#member]
+		define admin: [user]
+`,
+			objectTypeRelation: "group#member",
+			userType:           "user",
+			expected:           false,
+		},
+		{
+			name: "complex_due_to_union_nested_intersection_with_weight_inf",
+			model: `
+model
+	schema 1.1
+type user
+type group
+	relations
+		define member: [user, group#member] or owner
+		define owner: user and inner_member
+		define user: [user]
+		define inner_member: [user, group#inner_member]
+`,
+			objectTypeRelation: "group#member",
+			userType:           "user",
+			expected:           false,
+		},
+		{
+			name: "complex_due_to_union_nested_intersection_with_weight_cycle",
+			model: `
+model
+	schema 1.1
+	type user
+	type group
+		relations
+			define member: [user, group#member] or owner
+			define owner: user or inner_member
+			define user: [user]
+			define inner_member: [user, group#member]
+`,
+			objectTypeRelation: "group#member",
+			userType:           "user",
+			expected:           false,
+		},
+		{
+			name: "complex_due_to_union_nested_intersection",
+			model: `
+model
+	schema 1.1
+type user
+type group
+	relations
+		define member: [user, group#member] or owner
+		define owner: user and admin
+		define user: [user]
+		define admin: [user]
+`,
+			objectTypeRelation: "group#member",
+			userType:           "user",
+			expected:           true,
+		},
+		{
+			name: "complex_due_to_union_nested_difference",
+			model: `
+model
+	schema 1.1
+type user
+type group
+	relations
+		define member: [user, group#member] or owner
+		define owner: user but not admin
+		define user: [user]
+		define admin: [user]
+`,
+			objectTypeRelation: "group#member",
+			userType:           "user",
+			expected:           true,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			model := testutils.MustTransformDSLToProtoWithID(test.model)
+			typesys, err := NewAndValidate(context.Background(), model)
+			require.NoError(t, err)
+			objectType, relation := tuple.SplitObjectRelation(test.objectTypeRelation)
+			resultV2 := typesys.UsersetUseRecursiveResolver(objectType, relation, test.userType)
+			require.Equal(t, test.expected, resultV2)
+		})
+	}
+}
+
 func TestRecursiveTTUCanFastPathV2(t *testing.T) {
 	tests := []struct {
-		name              string
-		model             string
-		objectType        string
-		relation          string
-		userType          string
-		tuplesetRelation  string
-		computedRelation  string
-		expectCanFastPath bool
+		name             string
+		model            string
+		objectType       string
+		relation         string
+		userType         string
+		tuplesetRelation string
+		computedRelation string
+		expected         bool
 	}{
 		{name: "recursive_ttu_or_computed_weight_one_1",
 			model: `
@@ -5397,12 +5338,12 @@ func TestRecursiveTTUCanFastPathV2(t *testing.T) {
     						define rel3: rel4 but not rel5
     						define rel4: [user]
     						define rel5: [user]`,
-			objectType:        "document",
-			relation:          "rel1",
-			userType:          "user",
-			tuplesetRelation:  "parent",
-			computedRelation:  "rel1",
-			expectCanFastPath: true,
+			objectType:       "document",
+			relation:         "rel1",
+			userType:         "user",
+			tuplesetRelation: "parent",
+			computedRelation: "rel1",
+			expected:         true,
 		},
 		{name: "recursive_ttu_or_computed_weight_one_2",
 			model: `
@@ -5417,12 +5358,12 @@ func TestRecursiveTTUCanFastPathV2(t *testing.T) {
     						define rel3: rel4 but not rel5
     						define rel4: [user]
     						define rel5: [user]`,
-			objectType:        "document",
-			relation:          "rel1",
-			userType:          "user",
-			tuplesetRelation:  "parent",
-			computedRelation:  "rel1",
-			expectCanFastPath: true,
+			objectType:       "document",
+			relation:         "rel1",
+			userType:         "user",
+			tuplesetRelation: "parent",
+			computedRelation: "rel1",
+			expected:         true,
 		},
 		{name: "recursive_ttu_or_computed_weight_one_3",
 			model: `
@@ -5438,12 +5379,12 @@ func TestRecursiveTTUCanFastPathV2(t *testing.T) {
     					define rel4: [user]
     					define rel5: [user]
     					define rel6: [user]`,
-			objectType:        "document",
-			relation:          "rel1",
-			userType:          "user",
-			tuplesetRelation:  "parent",
-			computedRelation:  "rel1",
-			expectCanFastPath: true,
+			objectType:       "document",
+			relation:         "rel1",
+			userType:         "user",
+			tuplesetRelation: "parent",
+			computedRelation: "rel1",
+			expected:         true,
 		},
 		{name: "recursive_ttu_or_computed_weight_one_infinity",
 			model: `
@@ -5459,12 +5400,12 @@ func TestRecursiveTTUCanFastPathV2(t *testing.T) {
     						define rel3: rel4 but not rel5
     						define rel4: [user]
     						define rel5: [user]`,
-			objectType:        "document",
-			relation:          "noapplyrel",
-			userType:          "user",
-			tuplesetRelation:  "parent",
-			computedRelation:  "rel1",
-			expectCanFastPath: false,
+			objectType:       "document",
+			relation:         "noapplyrel",
+			userType:         "user",
+			tuplesetRelation: "parent",
+			computedRelation: "rel1",
+			expected:         false,
 		},
 		{name: "recursive_ttu_or_terminal_type",
 			model: `
@@ -5475,12 +5416,12 @@ func TestRecursiveTTUCanFastPathV2(t *testing.T) {
             		relations
               			define parent: [folder]
              			 define viewer: [user] or viewer from parent`,
-			objectType:        "folder",
-			relation:          "viewer",
-			userType:          "user",
-			tuplesetRelation:  "parent",
-			computedRelation:  "viewer",
-			expectCanFastPath: true,
+			objectType:       "folder",
+			relation:         "viewer",
+			userType:         "user",
+			tuplesetRelation: "parent",
+			computedRelation: "viewer",
+			expected:         true,
 		},
 		{name: "recursive_ttu_or_wildcard",
 			model: `
@@ -5491,12 +5432,12 @@ func TestRecursiveTTUCanFastPathV2(t *testing.T) {
             		relations
               			define parent: [folder]
               			define viewer: [user, user:*] or viewer from parent`,
-			objectType:        "folder",
-			relation:          "viewer",
-			userType:          "user",
-			tuplesetRelation:  "parent",
-			computedRelation:  "viewer",
-			expectCanFastPath: true,
+			objectType:       "folder",
+			relation:         "viewer",
+			userType:         "user",
+			tuplesetRelation: "parent",
+			computedRelation: "viewer",
+			expected:         true,
 		},
 		{name: "complex_ttu_multiple_parent_types",
 			model: `
@@ -5512,12 +5453,12 @@ func TestRecursiveTTUCanFastPathV2(t *testing.T) {
 					relations
 						define parent: [group, team]
 						define member: [user] or member from parent`,
-			objectType:        "group",
-			relation:          "member",
-			userType:          "user",
-			tuplesetRelation:  "parent",
-			computedRelation:  "member",
-			expectCanFastPath: false,
+			objectType:       "group",
+			relation:         "member",
+			userType:         "user",
+			tuplesetRelation: "parent",
+			computedRelation: "member",
+			expected:         false,
 		},
 		{name: "complex_ttu_directly_other_assigned_userset_1",
 			model: `
@@ -5529,12 +5470,12 @@ func TestRecursiveTTUCanFastPathV2(t *testing.T) {
 						define parent: [group]
 						define otherRelation: [user]
 						define member: [user, group#otherRelation] or member from parent`,
-			objectType:        "group",
-			relation:          "member",
-			userType:          "user",
-			tuplesetRelation:  "parent",
-			computedRelation:  "member",
-			expectCanFastPath: false,
+			objectType:       "group",
+			relation:         "member",
+			userType:         "user",
+			tuplesetRelation: "parent",
+			computedRelation: "member",
+			expected:         false,
 		},
 		{name: "complex_ttu_directly_other_assigned_userset_2",
 			model: `
@@ -5545,12 +5486,12 @@ func TestRecursiveTTUCanFastPathV2(t *testing.T) {
 					relations
 						define parent: [group]
 						define member: [user, group#member] or member from parent`,
-			objectType:        "group",
-			relation:          "member",
-			userType:          "user",
-			tuplesetRelation:  "parent",
-			computedRelation:  "member",
-			expectCanFastPath: false,
+			objectType:       "group",
+			relation:         "member",
+			userType:         "user",
+			tuplesetRelation: "parent",
+			computedRelation: "member",
+			expected:         false,
 		},
 		{name: "complex_non_recursive_userset_from_directly_assignable",
 			model: `
@@ -5562,12 +5503,12 @@ func TestRecursiveTTUCanFastPathV2(t *testing.T) {
 						define parent: [group]
 						define owner: [user]
 						define member: [user] or owner from parent`,
-			objectType:        "group",
-			relation:          "member",
-			userType:          "user",
-			tuplesetRelation:  "parent",
-			computedRelation:  "owner",
-			expectCanFastPath: false,
+			objectType:       "group",
+			relation:         "member",
+			userType:         "user",
+			tuplesetRelation: "parent",
+			computedRelation: "owner",
+			expected:         false,
 		},
 		{name: "complex_non_recursive_userset_from_computed",
 			model: `
@@ -5580,12 +5521,12 @@ func TestRecursiveTTUCanFastPathV2(t *testing.T) {
 						define owner: [user]
 						define other_owner: owner
 						define member: [user] or other_owner from parent`,
-			objectType:        "group",
-			relation:          "member",
-			userType:          "user",
-			tuplesetRelation:  "parent",
-			computedRelation:  "other_owner",
-			expectCanFastPath: false,
+			objectType:       "group",
+			relation:         "member",
+			userType:         "user",
+			tuplesetRelation: "parent",
+			computedRelation: "other_owner",
+			expected:         false,
 		},
 		{name: "nested_wildcard",
 			model: `
@@ -5600,12 +5541,12 @@ func TestRecursiveTTUCanFastPathV2(t *testing.T) {
     					define rel3: rel4 but not rel5
     					define rel4: [user:*]
     					define rel5: [user]`,
-			objectType:        "document",
-			relation:          "rel1",
-			userType:          "user",
-			tuplesetRelation:  "parent",
-			computedRelation:  "rel1",
-			expectCanFastPath: true,
+			objectType:       "document",
+			relation:         "rel1",
+			userType:         "user",
+			tuplesetRelation: "parent",
+			computedRelation: "rel1",
+			expected:         true,
 		},
 		{name: "two_ttus",
 			model: `
@@ -5620,12 +5561,12 @@ func TestRecursiveTTUCanFastPathV2(t *testing.T) {
     					define rel3: rel4 but not rel5
     					define rel4: [user]
     					define rel5: [user]`,
-			objectType:        "document",
-			relation:          "rel1",
-			userType:          "user",
-			tuplesetRelation:  "parent",
-			computedRelation:  "rel1",
-			expectCanFastPath: false,
+			objectType:       "document",
+			relation:         "rel1",
+			userType:         "user",
+			tuplesetRelation: "parent",
+			computedRelation: "rel1",
+			expected:         false,
 		},
 		{name: "ttu_or_intersection_1",
 			model: `
@@ -5638,12 +5579,12 @@ func TestRecursiveTTUCanFastPathV2(t *testing.T) {
     					define parent: [document]
     					define rel2: [user]
     					define rel3: [user]`,
-			objectType:        "document",
-			relation:          "rel1",
-			userType:          "user",
-			tuplesetRelation:  "parent",
-			computedRelation:  "rel1",
-			expectCanFastPath: true,
+			objectType:       "document",
+			relation:         "rel1",
+			userType:         "user",
+			tuplesetRelation: "parent",
+			computedRelation: "rel1",
+			expected:         true,
 		},
 		{name: "ttu_or_intersection_2",
 			model: `
@@ -5658,12 +5599,12 @@ func TestRecursiveTTUCanFastPathV2(t *testing.T) {
     					define rel3: [user]
     					define rel4: [user]
     					define rel5: [user]`,
-			objectType:        "document",
-			relation:          "rel1",
-			userType:          "user",
-			tuplesetRelation:  "parent",
-			computedRelation:  "rel1",
-			expectCanFastPath: true,
+			objectType:       "document",
+			relation:         "rel1",
+			userType:         "user",
+			tuplesetRelation: "parent",
+			computedRelation: "rel1",
+			expected:         true,
 		},
 		{name: "ttu_or_intersection_that_is_weight_2",
 			model: `
@@ -5676,12 +5617,12 @@ func TestRecursiveTTUCanFastPathV2(t *testing.T) {
     						define parent: [document]
     						define rel2: rel3 from parent
     						define rel3: [user]`,
-			objectType:        "document",
-			relation:          "rel1",
-			userType:          "user",
-			tuplesetRelation:  "parent",
-			computedRelation:  "rel1",
-			expectCanFastPath: false,
+			objectType:       "document",
+			relation:         "rel1",
+			userType:         "user",
+			tuplesetRelation: "parent",
+			computedRelation: "rel1",
+			expected:         false,
 		},
 		{name: "multiple_parents_in_ttu",
 			model: `
@@ -5699,12 +5640,12 @@ func TestRecursiveTTUCanFastPathV2(t *testing.T) {
     					define rel3: rel4 but not rel5
     					define rel4: [user]
     					define rel5: [user]`,
-			objectType:        "document",
-			relation:          "rel1",
-			userType:          "user",
-			tuplesetRelation:  "parent",
-			computedRelation:  "rel1",
-			expectCanFastPath: false,
+			objectType:       "document",
+			relation:         "rel1",
+			userType:         "user",
+			tuplesetRelation: "parent",
+			computedRelation: "rel1",
+			expected:         false,
 		},
 		{name: "not_terminal_type",
 			model: `
@@ -5723,12 +5664,12 @@ func TestRecursiveTTUCanFastPathV2(t *testing.T) {
     					define rel3: rel4 but not rel5
     					define rel4: [user]
     					define rel5: [user]`,
-			objectType:        "document",
-			relation:          "rel1",
-			userType:          "employee",
-			tuplesetRelation:  "parent",
-			computedRelation:  "rel1",
-			expectCanFastPath: false,
+			objectType:       "document",
+			relation:         "rel1",
+			userType:         "employee",
+			tuplesetRelation: "parent",
+			computedRelation: "rel1",
+			expected:         false,
 		},
 		{name: "parent_with_condition",
 			model: `
@@ -5742,12 +5683,12 @@ func TestRecursiveTTUCanFastPathV2(t *testing.T) {
 condition cond(x: int) {
 	x < 100
 }`,
-			objectType:        "document",
-			relation:          "rel1",
-			userType:          "user",
-			tuplesetRelation:  "parent",
-			computedRelation:  "rel1",
-			expectCanFastPath: true,
+			objectType:       "document",
+			relation:         "rel1",
+			userType:         "user",
+			tuplesetRelation: "parent",
+			computedRelation: "rel1",
+			expected:         true,
 		},
 		{name: "parent_with_condition_and_without_conditions",
 			model: `
@@ -5761,12 +5702,12 @@ condition cond(x: int) {
 condition cond(x: int) {
 	x < 100
 }`,
-			objectType:        "document",
-			relation:          "rel1",
-			userType:          "user",
-			tuplesetRelation:  "parent",
-			computedRelation:  "rel1",
-			expectCanFastPath: true,
+			objectType:       "document",
+			relation:         "rel1",
+			userType:         "user",
+			tuplesetRelation: "parent",
+			computedRelation: "rel1",
+			expected:         true,
 		},
 		{name: "ttu_in_inner_operations",
 			model: `
@@ -5778,12 +5719,12 @@ condition cond(x: int) {
 						define rel1: ([user] or rel2 or rel1 from parent) or rel2
 						define rel2: [user]
 						define parent: [document]`,
-			objectType:        "document",
-			relation:          "rel1",
-			userType:          "user",
-			tuplesetRelation:  "parent",
-			computedRelation:  "rel1",
-			expectCanFastPath: true,
+			objectType:       "document",
+			relation:         "rel1",
+			userType:         "user",
+			tuplesetRelation: "parent",
+			computedRelation: "rel1",
+			expected:         true,
 		},
 		{name: "cannot_recurse_on_itself_through_computed",
 			model: `
@@ -5796,12 +5737,12 @@ condition cond(x: int) {
 						define rel2: [user] or rel3
 						define rel3: [user] or rel1 from parent # same tupleset/computed
 						define parent: [document]`,
-			objectType:        "document",
-			relation:          "rel1",
-			userType:          "user",
-			tuplesetRelation:  "parent",
-			computedRelation:  "rel1",
-			expectCanFastPath: false,
+			objectType:       "document",
+			relation:         "rel1",
+			userType:         "user",
+			tuplesetRelation: "parent",
+			computedRelation: "rel1",
+			expected:         false,
 		},
 		{name: "with_non_recursive_ttu_of_valid_user_type",
 			model: `
@@ -5820,12 +5761,12 @@ type company
 	relations
 		define viewer: [employee]
 `,
-			objectType:        "group",
-			relation:          "member",
-			userType:          "user",
-			tuplesetRelation:  "parent",
-			computedRelation:  "member",
-			expectCanFastPath: true,
+			objectType:       "group",
+			relation:         "member",
+			userType:         "user",
+			tuplesetRelation: "parent",
+			computedRelation: "member",
+			expected:         true,
 		},
 		{name: "with_non_recursive_ttu_of_invalid_user_type",
 			model: `
@@ -5844,12 +5785,12 @@ type company
 	relations
 		define viewer: [employee]
 `,
-			objectType:        "group",
-			relation:          "member",
-			userType:          "employee",
-			tuplesetRelation:  "parent",
-			computedRelation:  "member",
-			expectCanFastPath: false,
+			objectType:       "group",
+			relation:         "member",
+			userType:         "employee",
+			tuplesetRelation: "parent",
+			computedRelation: "member",
+			expected:         false,
 		},
 	}
 	for _, test := range tests {
@@ -5857,7 +5798,7 @@ type company
 			model := testutils.MustTransformDSLToProtoWithID(test.model)
 			typesys, err := NewAndValidate(context.Background(), model)
 			require.NoError(t, err)
-			res := typesys.RecursiveTTUCanFastPathV2(test.objectType, test.relation, test.userType, &openfgav1.TupleToUserset{
+			res := typesys.TTUUseRecursiveResolver(test.objectType, test.relation, test.userType, &openfgav1.TupleToUserset{
 				Tupleset: &openfgav1.ObjectRelation{
 					Relation: test.tuplesetRelation,
 				},
@@ -5865,7 +5806,7 @@ type company
 					Relation: test.computedRelation,
 				},
 			})
-			require.Equal(t, test.expectCanFastPath, res)
+			require.Equal(t, test.expected, res)
 		})
 	}
 }
@@ -6048,883 +5989,6 @@ func TestHasTypeInfo(t *testing.T) {
 	}
 }
 
-func TestRecursiveUsersetCanFastPath(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name               string
-		model              string
-		objectTypeRelation string
-		userType           string
-		expected           bool
-		expectedV2         bool
-	}{
-		{
-			name: "object_type_relation_not_found",
-			model: `
-model
-	schema 1.1
-type user
-type group
-	relations
-		define member: [user, group#member]
-`,
-			objectTypeRelation: "group#undefined",
-			userType:           "user",
-			expected:           false,
-			expectedV2:         false,
-		},
-		{
-			name: "simple_recursive",
-			model: `
-model
-	schema 1.1
-type user
-type group
-	relations
-		define member: [user, group#member]
-`,
-			objectTypeRelation: "group#member",
-			userType:           "user",
-			expected:           true,
-			expectedV2:         true,
-		},
-		{
-			name: "simple_recursive_other_types",
-			model: `
-model
-	schema 1.1
-type person
-type user
-type group
-	relations
-		define member: [person, user, group#member]
-`,
-			objectTypeRelation: "group#member",
-			userType:           "user",
-			expected:           true,
-			expectedV2:         true,
-		},
-		{
-			name: "simple_recursive_condition",
-			model: `
-model
-	schema 1.1
-type user
-type group
-	relations
-		define member: [user with cond, group#member]
-condition cond(x: int) {
-	x < 100
-}
-`,
-			objectTypeRelation: "group#member",
-			userType:           "user",
-			expected:           true,
-			expectedV2:         true,
-		},
-		{
-			name: "simple_recursive_wildcard",
-			model: `
-model
-	schema 1.1
-type user
-type group
-	relations
-		define member: [user:*, group#member]
-`,
-			objectTypeRelation: "group#member",
-			userType:           "user",
-			expected:           true,
-			expectedV2:         true,
-		},
-		{
-			name: "simple_recursive_wildcard_condition",
-			model: `
-model
-	schema 1.1
-type user
-type group
-	relations
-		define member: [user:* with cond, group#member]
-condition cond(x: int) {
-	x < 100
-}
-`,
-			objectTypeRelation: "group#member",
-			userType:           "user",
-			expected:           true,
-			expectedV2:         true,
-		},
-		{
-			name: "simple_recursive_multi_direct_assignment_wildcard",
-			model: `
-model
-	schema 1.1
-type user
-type group
-	relations
-		define member: [user, user:*, group#member]
-`,
-			objectTypeRelation: "group#member",
-			userType:           "user",
-			expected:           true,
-			expectedV2:         true,
-		},
-		{
-			name: "simple_recursive_multi_direct_assignment_wildcard_cond",
-			model: `
-model
-	schema 1.1
-type user
-type group
-	relations
-		define member: [user:*, user with cond, group#member]
-condition cond(x: int) {
-	x < 100
-}
-`,
-			objectTypeRelation: "group#member",
-			userType:           "user",
-			expected:           true,
-			expectedV2:         true,
-		},
-		{
-			name: "simple_recursive_multi_direct_assignment_user_wildcard_cond",
-			model: `
-model
-	schema 1.1
-type user
-type group
-	relations
-		define member: [user, user:*, user with cond, user:* with cond, group#member]
-condition cond(x: int) {
-	x < 100
-}
-`,
-			objectTypeRelation: "group#member",
-			userType:           "user",
-			expected:           true,
-			expectedV2:         true,
-		},
-		{
-			name: "complex_recursive_due_to_type_not_found",
-			model: `
-model
-	schema 1.1
-type person
-type user
-type group
-	relations
-		define member: [person, group#member]
-`,
-			objectTypeRelation: "group#member",
-			userType:           "user",
-			expected:           false,
-			expectedV2:         false,
-		},
-		{
-			name: "complex_due_to_union",
-			model: `
-model
-	schema 1.1
-type user
-type group
-	relations
-		define member: [user, group#member] or owner
-		define owner: [user]
-`,
-			objectTypeRelation: "group#member",
-			userType:           "user",
-			expected:           false,
-			expectedV2:         true,
-		},
-		{
-			name: "complex_due_to_intersection",
-			model: `
-model
-	schema 1.1
-type user
-type group
-	relations
-		define member: [user, group#member] and allowed
-		define allowed: [user]
-`,
-			objectTypeRelation: "group#member",
-			userType:           "user",
-			expected:           false,
-			expectedV2:         false,
-		},
-		{
-			name: "complex_due_to_exclusion",
-			model: `
-model
-	schema 1.1
-type user
-type group
-	relations
-		define member: [user, group#member] but not blocked
-		define blocked: [user]
-`,
-			objectTypeRelation: "group#member",
-			userType:           "user",
-			expected:           false,
-			expectedV2:         false,
-		},
-		{
-			name: "complex_due_to_other_directly_assigned_userset",
-			model: `
-model
-	schema 1.1
-type user
-type group
-	relations
-		define member: [user, group#member, group#owner]
-		define owner: [user]
-`,
-			objectTypeRelation: "group#member",
-			userType:           "user",
-			expected:           false,
-			expectedV2:         false,
-		},
-		{
-			name: "complex_due_to_other_directly_assigned_userset_other_type",
-			model: `
-model
-	schema 1.1
-type user
-type team
-	relations
-		define member: [user]
-type group
-	relations
-		define member: [user, group#member, team#member]
-`,
-			objectTypeRelation: "group#member",
-			userType:           "user",
-			expected:           false,
-			expectedV2:         false,
-		},
-		{
-			name: "complex_due_to_union_nested_intersection",
-			model: `
-model
-	schema 1.1
-type user
-type group
-	relations
-		define member: [user, group#member] or owner
-		define owner: user and admin
-		define user: [user]
-		define admin: [user]
-`,
-			objectTypeRelation: "group#member",
-			userType:           "user",
-			expected:           false,
-			expectedV2:         true,
-		},
-		{
-			name: "complex_due_to_union_nested_difference",
-			model: `
-model
-	schema 1.1
-type user
-type group
-	relations
-		define member: [user, group#member] or owner or admin
-		define owner: user but not admin
-		define user: [user]
-		define admin: [user]
-`,
-			objectTypeRelation: "group#member",
-			userType:           "user",
-			expected:           false,
-			expectedV2:         true,
-		},
-		{
-			name: "complex_due_to_union_nested_intersection_with_weight_2",
-			model: `
-model
-	schema 1.1
-type user
-type team
-	relations
-		define member: [user]
-type group
-	relations
-		define member: [user, group#member] or owner
-		define owner: user and admin
-		define user: [team#member]
-		define admin: [user]
-`,
-			objectTypeRelation: "group#member",
-			userType:           "user",
-			expected:           false,
-			expectedV2:         false,
-		},
-		{
-			name: "complex_due_to_union_nested_intersection_with_weight_inf",
-			model: `
-model
-	schema 1.1
-type user
-type group
-	relations
-		define member: [user, group#member] or owner
-		define owner: user and inner_member
-		define user: [user]
-		define inner_member: [user, group#inner_member]
-`,
-			objectTypeRelation: "group#member",
-			userType:           "user",
-			expected:           false,
-			expectedV2:         false,
-		},
-		{
-			name: "complex_due_to_union_nested_intersection_with_weight_cycle",
-			model: `
-model
-	schema 1.1
-	type user
-	type group
-		relations
-			define member: [user, group#member] or owner
-			define owner: user or inner_member
-			define user: [user]
-			define inner_member: [user, group#member]
-`,
-			objectTypeRelation: "group#member",
-			userType:           "user",
-			expected:           false,
-			expectedV2:         false,
-		},
-		{
-			name: "complex_due_to_union_nested_intersection",
-			model: `
-model
-	schema 1.1
-type user
-type group
-	relations
-		define member: [user, group#member] or owner
-		define owner: user and admin
-		define user: [user]
-		define admin: [user]
-`,
-			objectTypeRelation: "group#member",
-			userType:           "user",
-			expected:           false,
-			expectedV2:         true,
-		},
-		{
-			name: "complex_due_to_union_nested_difference",
-			model: `
-model
-	schema 1.1
-type user
-type group
-	relations
-		define member: [user, group#member] or owner
-		define owner: user but not admin
-		define user: [user]
-		define admin: [user]
-`,
-			objectTypeRelation: "group#member",
-			userType:           "user",
-			expected:           false,
-			expectedV2:         true,
-		},
-		{
-			name: "complex_due_to_union_nested_intersection_with_weight_2",
-			model: `
-model
-	schema 1.1
-type user
-type team
-	relations
-		define member: [user]
-type group
-	relations
-		define member: [user, group#member] or owner
-		define owner: user and admin
-		define user: [team#member]
-		define admin: [user]
-`,
-			objectTypeRelation: "group#member",
-			userType:           "user",
-			expected:           false,
-			expectedV2:         false,
-		},
-		{
-			name: "complex_due_to_union_nested_intersection_with_weight_inf",
-			model: `
-model
-	schema 1.1
-type user
-type group
-	relations
-		define member: [user, group#member] or owner
-		define owner: user and inner_member
-		define user: [user]
-		define inner_member: [user, group#inner_member]
-`,
-			objectTypeRelation: "group#member",
-			userType:           "user",
-			expected:           false,
-			expectedV2:         false,
-		},
-		{
-			name: "complex_due_to_union_nested_intersection_with_weight_cycle",
-			model: `
-model
-	schema 1.1
-	type user
-	type group
-		relations
-			define member: [user, group#member] or owner
-			define owner: user or inner_member
-			define user: [user]
-			define inner_member: [user, group#member]
-`,
-			objectTypeRelation: "group#member",
-			userType:           "user",
-			expected:           false,
-			expectedV2:         false,
-		},
-		{
-			name: "complex_due_to_union_nested_intersection",
-			model: `
-model
-	schema 1.1
-type user
-type group
-	relations
-		define member: [user, group#member] or owner
-		define owner: user and admin
-		define user: [user]
-		define admin: [user]
-`,
-			objectTypeRelation: "group#member",
-			userType:           "user",
-			expected:           false,
-			expectedV2:         true,
-		},
-		{
-			name: "complex_due_to_union_nested_difference",
-			model: `
-model
-	schema 1.1
-type user
-type group
-	relations
-		define member: [user, group#member] or owner
-		define owner: user but not admin
-		define user: [user]
-		define admin: [user]
-`,
-			objectTypeRelation: "group#member",
-			userType:           "user",
-			expected:           false,
-			expectedV2:         true,
-		},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
-			model := testutils.MustTransformDSLToProtoWithID(test.model)
-			typesys, err := NewAndValidate(context.Background(), model)
-			require.NoError(t, err)
-			result := typesys.RecursiveUsersetCanFastPath(test.objectTypeRelation, test.userType)
-			require.Equal(t, test.expected, result)
-			objectType, relation := tuple.SplitObjectRelation(test.objectTypeRelation)
-			resultV2 := typesys.RecursiveUsersetCanFastPathV2(objectType, relation, test.userType)
-			require.Equal(t, test.expectedV2, resultV2)
-		})
-	}
-}
-
-func TestRecursiveTTUCanFastPath(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name               string
-		model              string
-		objectType         string
-		relation           string
-		userType           string
-		tuplesetRelation   string
-		computedRelation   string
-		objectTypeRelation string
-		expected           bool
-	}{
-		{
-			name: "simple_ttu",
-			model: `
-				model
-					schema 1.1
-				type user
-				type group
-					relations
-						define parent: [group]
-						define member: [user] or member from parent`,
-			objectTypeRelation: "group#member",
-			userType:           "user",
-			objectType:         "group",
-			relation:           "member",
-			tuplesetRelation:   "parent",
-			computedRelation:   "member",
-			expected:           true,
-		},
-		{
-			name: "simple_ttu_multiple_types",
-			model: `
-				model
-					schema 1.1
-				type user
-				type employee
-				type group
-					relations
-					define parent: [group]
-					define member: [user, employee] or member from parent`,
-			objectTypeRelation: "group#member",
-			userType:           "user",
-			objectType:         "group",
-			relation:           "member",
-			tuplesetRelation:   "parent",
-			computedRelation:   "member",
-			expected:           true,
-		},
-		{
-			name: "simple_ttu_multiple_types_wildcard",
-			model: `
-				model
-					schema 1.1
-				type user
-				type employee
-				type group
-					relations
-						define parent: [group]
-						define member: [user:*, employee] or member from parent`,
-			objectTypeRelation: "group#member",
-			userType:           "user",
-			objectType:         "group",
-			relation:           "member",
-			tuplesetRelation:   "parent",
-			computedRelation:   "member",
-			expected:           true,
-		},
-		{
-			name: "simple_ttu_multiple_types_cond",
-			model: `
-model
-	schema 1.1
-type user
-type employee
-type group
-	relations
-		define parent: [group]
-		define member: [user with cond, employee] or member from parent
-condition cond(x: int) {
-	x < 100
-}
-`,
-			objectTypeRelation: "group#member",
-			userType:           "user",
-			objectType:         "group",
-			relation:           "member",
-			tuplesetRelation:   "parent",
-			computedRelation:   "member",
-			expected:           true,
-		},
-		{
-			name: "simple_ttu_multiple_types_cond",
-			model: `
-model
-	schema 1.1
-type user
-type employee
-type group
-	relations
-		define parent: [group]
-		define member: [user with cond, employee] or member from parent
-condition cond(x: int) {
-	x < 100
-}
-`,
-			objectTypeRelation: "group#member",
-			userType:           "user",
-			objectType:         "group",
-			relation:           "member",
-			tuplesetRelation:   "parent",
-			computedRelation:   "member",
-			expected:           true,
-		},
-		{
-			name: "simple_ttu_parent_cond",
-			model: `
-model
-	schema 1.1
-type user
-type employee
-type group
-	relations
-		define parent: [group with cond]
-		define member: [user, employee] or member from parent
-condition cond(x: int) {
-	x < 100
-}
-`,
-			objectTypeRelation: "group#member",
-			userType:           "user",
-			objectType:         "group",
-			relation:           "member",
-			tuplesetRelation:   "parent",
-			computedRelation:   "member",
-			expected:           true,
-		},
-		{
-			name: "simple_ttu_parent_multi_with_and_without_cond",
-			model: `
-model
-	schema 1.1
-type user
-type employee
-type group
-	relations
-		define parent: [group, group with cond]
-		define member: [user, employee] or member from parent
-condition cond(x: int) {
-	x < 100
-}
-`,
-			objectTypeRelation: "group#member",
-			userType:           "user",
-			objectType:         "group",
-			relation:           "member",
-			tuplesetRelation:   "parent",
-			computedRelation:   "member",
-			expected:           true,
-		},
-		{
-			name: "simple_ttu_multiple_types_wildcard_cond",
-			model: `
-model
-	schema 1.1
-type user
-type employee
-type group
-	relations
-		define parent: [group]
-		define member: [user, user:*, user with cond, employee] or member from parent
-condition cond(x: int) {
-	x < 100
-}
-`,
-			objectTypeRelation: "group#member",
-			userType:           "user",
-			objectType:         "group",
-			relation:           "member",
-			tuplesetRelation:   "parent",
-			computedRelation:   "member",
-			expected:           true,
-		},
-		{
-			name: "simple_ttu_multiple_user_types",
-			model: `
-model
-	schema 1.1
-type user
-type employee
-type group
-	relations
-		define parent: [group]
-		define member: [user, user:*, user with cond, employee] or member from parent
-condition cond(x: int) {
-	x < 100
-}
-`,
-			objectTypeRelation: "group#member",
-			userType:           "user",
-			objectType:         "group",
-			relation:           "member",
-			tuplesetRelation:   "parent",
-			computedRelation:   "member",
-			expected:           true,
-		},
-		{
-			name: "complex_ttu_multiple_types_type_not_found",
-			model: `
-model
-	schema 1.1
-type other
-type user
-type employee
-type group
-	relations
-		define parent: [group]
-		define member: [user, employee] or member from parent
-`,
-			objectTypeRelation: "group#member",
-			userType:           "other",
-			objectType:         "group",
-			relation:           "member",
-			tuplesetRelation:   "parent",
-			computedRelation:   "member",
-			expected:           false,
-		},
-		{
-			name: "complex_ttu_multiple_parent_types",
-			model: `
-model
-	schema 1.1
-type user
-type employee
-type team
-	relations
-		define parent: [team]
-		define member: [user]
-type group
-	relations
-		define parent: [group, team]
-		define member: [user] or member from parent
-`,
-			objectTypeRelation: "group#member",
-			userType:           "user",
-			objectType:         "group",
-			relation:           "member",
-			tuplesetRelation:   "parent",
-			computedRelation:   "member",
-			expected:           false,
-		},
-		{
-			name: "complex_ttu_other_relation_union",
-			model: `
-model
-	schema 1.1
-type user
-type group
-	relations
-		define parent: [group]
-		define otherRelation: [user]
-		define member: [user] or member from parent or otherRelation
-`,
-			objectTypeRelation: "group#member",
-			userType:           "user",
-			objectType:         "group",
-			relation:           "member",
-			tuplesetRelation:   "parent",
-			computedRelation:   "member",
-			expected:           false,
-		},
-		{
-			name: "complex_ttu_directly_other_assigned_userset",
-			model: `
-model
-	schema 1.1
-type user
-type group
-	relations
-		define parent: [group]
-		define otherRelation: [user]
-		define member: [user, group#otherRelation] or member from parent
-`,
-			objectTypeRelation: "group#member",
-			userType:           "user",
-			objectType:         "group",
-			relation:           "member",
-			tuplesetRelation:   "parent",
-			computedRelation:   "member",
-			expected:           false,
-		},
-		{
-			name: "complex_ttu_directly_other_assigned_userset_2",
-			model: `
-model
-	schema 1.1
-type user
-type group
-	relations
-		define parent: [group]
-		define member: [user, group#member] or member from parent
-`,
-			objectTypeRelation: "group#member",
-			userType:           "user",
-			objectType:         "group",
-			relation:           "member",
-			tuplesetRelation:   "parent",
-			computedRelation:   "member",
-			expected:           false,
-		},
-		{
-			name: "complex_non_recursive_userset_from_directly_assignable",
-			model: `
-model
-	schema 1.1
-type user
-type group
-	relations
-		define parent: [group]
-		define owner: [user]
-		define member: [user] or owner from parent
-`,
-			objectTypeRelation: "group#member",
-			userType:           "user",
-			objectType:         "group",
-			relation:           "member",
-			tuplesetRelation:   "parent",
-			computedRelation:   "member",
-			expected:           false,
-		},
-		{
-			name: "complex_non_recursive_userset_from_computed",
-			model: `
-model
-	schema 1.1
-type user
-type group
-	relations
-		define parent: [group]
-		define owner: [user]
-		define other_owner: owner
-		define member: [user] or other_owner from parent
-`,
-			objectTypeRelation: "group#member",
-			userType:           "user",
-			objectType:         "group",
-			relation:           "member",
-			tuplesetRelation:   "parent",
-			computedRelation:   "member",
-			expected:           false,
-		},
-		// note that we cannot define something like
-		// define parent: [group]
-		// define member: [user] and member from parent
-		// as they are not valid model
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
-			model := testutils.MustTransformDSLToProtoWithID(test.model)
-			typesys, err := NewAndValidate(context.Background(), model)
-			require.NoError(t, err)
-			result := typesys.RecursiveTTUCanFastPath(test.objectTypeRelation, test.userType)
-			require.Equal(t, test.expected, result)
-			if test.expected {
-				// every time RecursiveTTUCanFastPath returns true, RecursiveTTUCanFastPathV2 must also
-				v2 := typesys.RecursiveTTUCanFastPathV2(test.objectType, test.relation, test.userType, &openfgav1.TupleToUserset{
-					Tupleset: &openfgav1.ObjectRelation{
-						Relation: test.tuplesetRelation,
-					},
-					ComputedUserset: &openfgav1.ObjectRelation{
-						Relation: test.computedRelation,
-					},
-				})
-				require.True(t, v2)
-			}
-		})
-	}
-}
-
 func TestPathExists(t *testing.T) {
 	type pathTest struct {
 		user        string
@@ -7061,91 +6125,21 @@ func TestPathExists(t *testing.T) {
 	}
 }
 
+func TestGetEdgesFromWeightedGraph(t *testing.T) {
+	t.Run("returns_error_when_weighted_graph_is_nil", func(t *testing.T) {
+		typeSystem := &TypeSystem{
+			authzWeightedGraph: nil,
+		}
+
+		edges, err := typeSystem.GetEdgesFromNode(nil, "user")
+		require.Error(t, err)
+		require.ErrorContains(t, err, "weighted graph is nil")
+		require.Nil(t, edges)
+	})
+}
+
 func TestGetEdgesForListObjects(t *testing.T) {
-	t.Run("exclusion_prunes_last_edge_and_marks_check_correctly", func(t *testing.T) {
-		model := `
-		model
-		schema 1.1
-		type user
-		type other
-		type group
-			relations
-				define banned: [other]
-				define allowed: [user, other] but not banned
-		`
-
-		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
-		require.NoError(t, err)
-
-		edges, needsCheck, err := typeSystem.GetEdgesForListObjects("group#allowed", "other")
-		require.NoError(t, err)
-
-		// If this assertion fails then we broke something in the weighted graph itself
-		// This is just the best way to get to the exclusion node
-		require.Len(t, edges, 1)
-
-		// Haven't hit the exclusion yet
-		require.False(t, needsCheck)
-
-		exclusionLabel := edges[0].GetTo().GetUniqueLabel()
-		edges, needsCheck, err = typeSystem.GetEdgesForListObjects(exclusionLabel, "other")
-		require.NoError(t, err)
-
-		// We've hit the exclusion and it applies to 'type other', so this should be true
-		require.True(t, needsCheck)
-
-		// There are 3 edges, but one of them is the 'but not' and one is to 'user' which isn't relevant
-		// since we're searching for 'other'
-		require.Len(t, edges, 1)
-		require.Equal(t, graph.DirectEdge, edges[0].GetEdgeType())
-
-		// Now get edges for type user, the exclusion does not apply to user so this should not need check
-		edges, needsCheck, err = typeSystem.GetEdgesForListObjects(exclusionLabel, "user")
-		require.NoError(t, err)
-		require.Len(t, edges, 1)
-		require.False(t, needsCheck)
-	})
-
-	t.Run("intersection_returns_lowest_weight_edge", func(t *testing.T) {
-		model := `
-		model
-		schema 1.1
-		type user
-		type group
-			relations
-				define parent: [group]
-				define admin: [user] or admin from parent
-				define allowed: [user] and admin
-		`
-
-		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
-		require.NoError(t, err)
-
-		edges, needsCheck, err := typeSystem.GetEdgesForListObjects("group#allowed", "user")
-		require.NoError(t, err)
-
-		// If this assertion fails then we broke something in the weighted graph itself
-		// This is just the best way to get to the exclusion node
-		require.Len(t, edges, 1)
-		require.False(t, needsCheck)
-
-		intersectionLabel := edges[0].GetTo().GetUniqueLabel()
-		edges, needsCheck, err = typeSystem.GetEdgesForListObjects(intersectionLabel, "user")
-		require.NoError(t, err)
-
-		// 2 edges exist, but we should only receive the lower-weight edge
-		require.Len(t, edges, 1)
-		require.True(t, needsCheck)
-
-		edge := edges[0]
-		require.Equal(t, graph.DirectEdge, edge.GetEdgeType())
-
-		weight, _ := edge.GetWeight("user")
-		require.Equal(t, 1, weight)
-	})
-
-	t.Run("union_returns_all_edges_with_path_to_source_type", func(t *testing.T) {
-		model := `
+	model := `
 		model
 		schema 1.1
 		type user
@@ -7160,196 +6154,27 @@ func TestGetEdgesForListObjects(t *testing.T) {
 				define or_relation: a or b or c or d
 		`
 
-		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
-		require.NoError(t, err)
+	typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
+	require.NoError(t, err)
 
-		edges, needsCheck, err := typeSystem.GetEdgesForListObjects("group#or_relation", "user")
-		require.NoError(t, err)
+	edges, err := typeSystem.GetConnectedEdges("group#or_relation", "user")
+	require.NoError(t, err)
 
-		// If this assertion fails then we broke something in the weighted graph itself
-		// This is just the best way to get to the union node
-		require.Len(t, edges, 1)
-		require.False(t, needsCheck)
+	// If this assertion fails then we broke something in the weighted graph itself
+	// This is just the best way to get to the union node
+	require.Len(t, edges, 1)
 
-		unionLabel := edges[0].GetTo().GetUniqueLabel()
+	unionLabel := edges[0].GetTo().GetUniqueLabel()
 
-		// Two of these edges lead to user
-		edges, needsCheck, err = typeSystem.GetEdgesForListObjects(unionLabel, "user")
-		require.NoError(t, err)
-		require.Len(t, edges, 2)
-		require.False(t, needsCheck)
+	// Two of these edges lead to user
+	edges, err = typeSystem.GetConnectedEdges(unionLabel, "user")
+	require.NoError(t, err)
+	require.Len(t, edges, 2)
 
-		// One of these edges leads to employee
-		edges, needsCheck, err = typeSystem.GetEdgesForListObjects(unionLabel, "employee")
-		require.NoError(t, err)
-		require.Len(t, edges, 1)
-		require.False(t, needsCheck)
-	})
-
-	t.Run("prunes_union_from_right_side_of_exclusion", func(t *testing.T) {
-		model := `
-		model
-		schema 1.1
-		type user
-		type other
-		type group
-			relations
-				define a: [user]
-				define b: [other]
-				define exclusion: [user, other] but not (a or b)
-		`
-
-		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
-		require.NoError(t, err)
-
-		edges, needsCheck, err := typeSystem.GetEdgesForListObjects("group#exclusion", "user")
-		require.NoError(t, err)
-
-		// If this assertion fails then we broke something in the weighted graph itself
-		// This is just the best way to get to the union node
-		require.Len(t, edges, 1)
-		require.False(t, needsCheck)
-
-		exclusionLabel := edges[0].GetTo().GetUniqueLabel()
-
-		// One of these edges lead to user
-		edges, needsCheck, err = typeSystem.GetEdgesForListObjects(exclusionLabel, "user")
-		require.NoError(t, err)
-		require.Len(t, edges, 1)
-		require.True(t, needsCheck)
-
-		// One of these edges leads to employee
-		edges, needsCheck, err = typeSystem.GetEdgesForListObjects(exclusionLabel, "other")
-		require.NoError(t, err)
-		require.Len(t, edges, 1)
-		require.True(t, needsCheck)
-	})
-}
-
-func TestCheapestEdgeTo(t *testing.T) {
-	t.Run("returns_lowest_weight_edge_for_type", func(t *testing.T) {
-		model := `
-		model
-		schema 1.1
-		type user
-		type org
-			relations
-				define member: [user]
-		type group
-			relations
-				define parent: [org]
-				define member: [user]
-				define org_member: member from parent
-		type team
-			relations
-				define parent: [group]
-				define ttu_weight3: [group#member] or org_member from parent
-				define userset: [user, group#member]
-		`
-
-		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
-		require.NoError(t, err)
-
-		wg := typeSystem.authzWeightedGraph
-		allEdges := wg.GetEdges()
-
-		// This node has two edges, one with weight 1 and one with weight 2
-		result := cheapestEdgeTo(allEdges["team#userset"], "user")
-		weight, _ := result.GetWeight("user")
-		require.Equal(t, 1, weight)
-
-		ttuNode, ok := wg.GetNodeByID("team#ttu_weight3")
-		require.True(t, ok)
-
-		edges, ok := wg.GetEdgesFromNode(ttuNode)
-		require.True(t, ok)
-		require.Len(t, edges, 1) // this should be only the OR
-
-		unionNode := edges[0].GetTo()
-		edges, ok = wg.GetEdgesFromNode(unionNode)
-		require.True(t, ok)
-		require.Len(t, edges, 2)
-
-		// There is a weight 2 and a weight 3 from here
-		result = cheapestEdgeTo(edges, "user")
-		weight, _ = result.GetWeight("user")
-		require.Equal(t, 2, weight)
-	})
-
-	t.Run("does_not_depend_on_order", func(t *testing.T) {
-		model := `
-		model
-		schema 1.1
-		type user
-		type org
-			relations
-				define member: [user]
-		type group
-			relations
-				define parent: [org]
-				define member: [user]
-				define org_member: member from parent
-		type team
-			relations
-				define parent: [group]
-				define ttu_weight2: [group#member] or member from parent
-				define ttu_weight3: [group#member] or org_member from parent
-				define ttus_weight_3_first: ttu_weight3 or ttu_weight2
-				define userset: [user, group#member]
-		`
-
-		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
-		require.NoError(t, err)
-
-		wg := typeSystem.authzWeightedGraph
-		srcNode, ok := wg.GetNodeByID("team#ttus_weight_3_first")
-		require.True(t, ok)
-
-		edges, ok := wg.GetEdgesFromNode(srcNode)
-		require.True(t, ok)
-		require.Len(t, edges, 1) // should be only 1 edge to a Union node
-
-		unionNode := edges[0].GetTo()
-		edges, ok = wg.GetEdgesFromNode(unionNode)
-		require.True(t, ok)
-		require.Len(t, edges, 2)
-
-		firstEdgeWeight, _ := edges[0].GetWeight("user")
-		require.Equal(t, 3, firstEdgeWeight)
-
-		secondEdgeWeight, _ := edges[1].GetWeight("user")
-		require.Equal(t, 2, secondEdgeWeight)
-
-		result := cheapestEdgeTo(edges, "user")
-		resultWeight, _ := result.GetWeight("user")
-		require.Equal(t, 2, resultWeight)
-	})
-
-	t.Run("returns_nil_if_type_cant_be_reached", func(t *testing.T) {
-		model := `
-		model
-		schema 1.1
-		type user
-		type other
-		type group
-			relations
-				define member: [user]
-		type team
-			relations
-				define parent: [group]
-				define ttu: [group#member] or member from parent
-				define userset: [user, group#member]
-		`
-
-		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
-		require.NoError(t, err)
-
-		allEdges := typeSystem.authzWeightedGraph.GetEdges()
-
-		// This node has two edges but neither goes to "other"
-		result := cheapestEdgeTo(allEdges["team#userset"], "other")
-		require.Nil(t, result)
-	})
+	// One of these edges leads to employee
+	edges, err = typeSystem.GetConnectedEdges(unionLabel, "employee")
+	require.NoError(t, err)
+	require.Len(t, edges, 1)
 }
 
 func BenchmarkNewAndValidate(b *testing.B) {

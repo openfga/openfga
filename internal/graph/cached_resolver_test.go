@@ -199,13 +199,11 @@ func TestResolveCheckFromCache(t *testing.T) {
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
-				ContextualTuples: &openfgav1.ContextualTupleKeys{
-					TupleKeys: []*openfgav1.TupleKey{
-						{
-							Object:   "document:xxx",
-							Relation: "reader",
-							User:     "user:XYZ",
-						},
+				ContextualTuples: []*openfgav1.TupleKey{
+					{
+						Object:   "document:xxx",
+						Relation: "reader",
+						User:     "user:XYZ",
 					},
 				},
 			},
@@ -236,18 +234,16 @@ func TestResolveCheckFromCache(t *testing.T) {
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
-				ContextualTuples: &openfgav1.ContextualTupleKeys{
-					TupleKeys: []*openfgav1.TupleKey{
-						{
-							Object:   "document:aaa",
-							Relation: "reader",
-							User:     "user:XYZ",
-						},
-						{
-							Object:   "document:xxx",
-							Relation: "reader",
-							User:     "user:XYZ",
-						},
+				ContextualTuples: []*openfgav1.TupleKey{
+					{
+						Object:   "document:aaa",
+						Relation: "reader",
+						User:     "user:XYZ",
+					},
+					{
+						Object:   "document:xxx",
+						Relation: "reader",
+						User:     "user:XYZ",
 					},
 				},
 			},
@@ -255,18 +251,16 @@ func TestResolveCheckFromCache(t *testing.T) {
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
-				ContextualTuples: &openfgav1.ContextualTupleKeys{
-					TupleKeys: []*openfgav1.TupleKey{
-						{
-							Object:   "document:aaa",
-							Relation: "reader",
-							User:     "user:XYZ",
-						},
-						{
-							Object:   "document:xxx",
-							Relation: "reader",
-							User:     "user:XYZ",
-						},
+				ContextualTuples: []*openfgav1.TupleKey{
+					{
+						Object:   "document:aaa",
+						Relation: "reader",
+						User:     "user:XYZ",
+					},
+					{
+						Object:   "document:xxx",
+						Relation: "reader",
+						User:     "user:XYZ",
 					},
 				},
 			},
@@ -283,18 +277,16 @@ func TestResolveCheckFromCache(t *testing.T) {
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
-				ContextualTuples: &openfgav1.ContextualTupleKeys{
-					TupleKeys: []*openfgav1.TupleKey{
-						{
-							Object:   "document:xxx",
-							Relation: "reader",
-							User:     "user:XYZ",
-						},
-						{
-							Object:   "document:aaa",
-							Relation: "reader",
-							User:     "user:XYZ",
-						},
+				ContextualTuples: []*openfgav1.TupleKey{
+					{
+						Object:   "document:xxx",
+						Relation: "reader",
+						User:     "user:XYZ",
+					},
+					{
+						Object:   "document:aaa",
+						Relation: "reader",
+						User:     "user:XYZ",
 					},
 				},
 			},
@@ -302,18 +294,16 @@ func TestResolveCheckFromCache(t *testing.T) {
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
-				ContextualTuples: &openfgav1.ContextualTupleKeys{
-					TupleKeys: []*openfgav1.TupleKey{
-						{
-							Object:   "document:aaa",
-							Relation: "reader",
-							User:     "user:XYZ",
-						},
-						{
-							Object:   "document:xxx",
-							Relation: "reader",
-							User:     "user:XYZ",
-						},
+				ContextualTuples: []*openfgav1.TupleKey{
+					{
+						Object:   "document:aaa",
+						Relation: "reader",
+						User:     "user:XYZ",
+					},
+					{
+						Object:   "document:xxx",
+						Relation: "reader",
+						User:     "user:XYZ",
 					},
 				},
 			},
@@ -330,13 +320,11 @@ func TestResolveCheckFromCache(t *testing.T) {
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:pre"),
-				ContextualTuples: &openfgav1.ContextualTupleKeys{
-					TupleKeys: []*openfgav1.TupleKey{
-						{
-							Object:   "fix:1",
-							Relation: "reader",
-							User:     "user:XYZ",
-						},
+				ContextualTuples: []*openfgav1.TupleKey{
+					{
+						Object:   "fix:1",
+						Relation: "reader",
+						User:     "user:XYZ",
 					},
 				},
 			},
@@ -344,13 +332,11 @@ func TestResolveCheckFromCache(t *testing.T) {
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:prefi"),
-				ContextualTuples: &openfgav1.ContextualTupleKeys{
-					TupleKeys: []*openfgav1.TupleKey{
-						{
-							Object:   "x:1",
-							Relation: "reader",
-							User:     "user:XYZ",
-						},
+				ContextualTuples: []*openfgav1.TupleKey{
+					{
+						Object:   "x:1",
+						Relation: "reader",
+						User:     "user:XYZ",
 					},
 				},
 			},
@@ -367,18 +353,16 @@ func TestResolveCheckFromCache(t *testing.T) {
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
-				ContextualTuples: &openfgav1.ContextualTupleKeys{
-					TupleKeys: []*openfgav1.TupleKey{
-						{
-							Object:   "document:aaa",
-							Relation: "reader",
-							User:     "user:XYZ",
-						},
-						{
-							Object:   "document:xxx",
-							Relation: "reader",
-							User:     "user:XYZ",
-						},
+				ContextualTuples: []*openfgav1.TupleKey{
+					{
+						Object:   "document:aaa",
+						Relation: "reader",
+						User:     "user:XYZ",
+					},
+					{
+						Object:   "document:xxx",
+						Relation: "reader",
+						User:     "user:XYZ",
 					},
 				},
 			},
@@ -386,23 +370,21 @@ func TestResolveCheckFromCache(t *testing.T) {
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
-				ContextualTuples: &openfgav1.ContextualTupleKeys{
-					TupleKeys: []*openfgav1.TupleKey{
-						{
-							Object:   "document:aaa",
-							Relation: "reader",
-							User:     "user:XYZ",
-						},
-						{
-							Object:   "document:xxx",
-							Relation: "reader",
-							User:     "user:XYZ",
-						},
-						{
-							Object:   "document:yyy",
-							Relation: "reader",
-							User:     "user:XYZ",
-						},
+				ContextualTuples: []*openfgav1.TupleKey{
+					{
+						Object:   "document:aaa",
+						Relation: "reader",
+						User:     "user:XYZ",
+					},
+					{
+						Object:   "document:xxx",
+						Relation: "reader",
+						User:     "user:XYZ",
+					},
+					{
+						Object:   "document:yyy",
+						Relation: "reader",
+						User:     "user:XYZ",
 					},
 				},
 			},
@@ -419,18 +401,16 @@ func TestResolveCheckFromCache(t *testing.T) {
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
-				ContextualTuples: &openfgav1.ContextualTupleKeys{
-					TupleKeys: []*openfgav1.TupleKey{
-						{
-							Object:   "document:aaa",
-							Relation: "reader",
-							User:     "user:XYZ",
-						},
-						{
-							Object:   "document:xxx",
-							Relation: "reader",
-							User:     "user:XYZ",
-						},
+				ContextualTuples: []*openfgav1.TupleKey{
+					{
+						Object:   "document:aaa",
+						Relation: "reader",
+						User:     "user:XYZ",
+					},
+					{
+						Object:   "document:xxx",
+						Relation: "reader",
+						User:     "user:XYZ",
 					},
 				},
 			},
@@ -438,7 +418,6 @@ func TestResolveCheckFromCache(t *testing.T) {
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
-				ContextualTuples:     &openfgav1.ContextualTupleKeys{},
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)

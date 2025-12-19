@@ -54,6 +54,10 @@ linters:
     staticcheck:
       checks:
         - all
+    revive:
+      rules:
+        - name: var-naming
+          disabled: true
   exclusions:
     generated: lax
     rules:

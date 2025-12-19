@@ -211,7 +211,7 @@ func (c *CachedDatastore) ReadUsersetTuples(
 func (c *CachedDatastore) Read(
 	ctx context.Context,
 	store string,
-	tupleKey *openfgav1.TupleKey,
+	filter storage.ReadFilter,
 	options storage.ReadOptions,
 ) (storage.TupleIterator, error) {
 	ctx, span := tracer.Start(
@@ -222,11 +222,17 @@ func (c *CachedDatastore) Read(
 	defer span.End()
 
 	iter := func(ctx context.Context) (storage.TupleIterator, error) {
-		return c.RelationshipTupleReader.Read(ctx, store, tupleKey, options)
+		return c.RelationshipTupleReader.Read(ctx, store, filter, options)
+	}
+
+	tupleKey := &openfgav1.TupleKey{
+		Object:   filter.Object,
+		Relation: filter.Relation,
+		User:     filter.User,
 	}
 
 	// this instance of Read is only called from TTU resolution path which always includes Object/Relation
-	if tupleKey.GetRelation() == "" || !tuple.IsValidObject(tupleKey.GetObject()) {
+	if filter.Relation == "" || !tuple.IsValidObject(filter.Object) {
 		return iter(ctx)
 	}
 
@@ -243,65 +249,50 @@ func (c *CachedDatastore) Read(
 		tupleKey.GetRelation())
 }
 
+func isInvalidAt(cache storage.InMemoryCache[any], ts time.Time, invalidStore string, invalidEntityKeys []string) bool {
+	if res := cache.Get(invalidStore); res != nil {
+		invalidEntry, ok := res.(*storage.InvalidEntityCacheEntry)
+		// if the invalid entity is not valid, do not discard
+		if ok && ts.Before(invalidEntry.LastModified) {
+			return true
+		}
+	}
+
+	for _, invalidEntityKey := range invalidEntityKeys {
+		if res := cache.Get(invalidEntityKey); res != nil {
+			invalidEntry, ok := res.(*storage.InvalidEntityCacheEntry)
+			// if the invalid entity is not valid, do not discard
+			if ok && ts.Before(invalidEntry.LastModified) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // findInCache tries to find a key in the cache.
 // It returns true if and only if:
 // the key is present, and
 // the cache key satisfies TS(key) >= TS(store), and
 // all of the invalidEntityKeys satisfy TS(key) >= TS(invalid).
-func findInCache(cache storage.InMemoryCache[any], store, key string, invalidEntityKeys []string, logger logger.Logger) (*storage.TupleIteratorCacheEntry, bool) {
+func findInCache(cache storage.InMemoryCache[any], key, storeKey string, invalidEntityKeys []string) (*storage.TupleIteratorCacheEntry, bool) {
 	var tupleEntry *storage.TupleIteratorCacheEntry
 	var ok bool
 
-	// The iterator cache has a TTL and will eventually consistent.
-	if res := cache.Get(key); res != nil {
-		tupleEntry, ok = res.(*storage.TupleIteratorCacheEntry)
-		if !ok {
-			return nil, false
-		}
-	} else {
-		logger.Debug("CachedDatastore findInCache not found ", zap.String("store_id", store), zap.String("key", key))
+	res := cache.Get(key)
+	if res == nil {
+		return nil, false
+	}
+	tupleEntry, ok = res.(*storage.TupleIteratorCacheEntry)
+	if !ok {
 		return nil, false
 	}
 
-	invalidCacheKey := storage.GetInvalidIteratorCacheKey(store)
-	if res := cache.Get(invalidCacheKey); res != nil {
-		invalidEntry, ok := res.(*storage.InvalidEntityCacheEntry)
-		if !ok || tupleEntry.LastModified.Before(invalidEntry.LastModified) {
-			invalidEntryLastModifiedTime := time.Time{}
-			if ok {
-				invalidEntryLastModifiedTime = invalidEntry.LastModified
-			}
-
-			logger.Debug("CachedDatastore found in cache but has expired for invalidCacheKey",
-				zap.String("store_id", store),
-				zap.String("key", key),
-				zap.Time("invalidEntry.LastModified", invalidEntryLastModifiedTime),
-				zap.Time("tupleEntry.LastModified", tupleEntry.LastModified))
-
-			return nil, false
-		}
+	invalid := isInvalidAt(cache, tupleEntry.LastModified, storeKey, invalidEntityKeys)
+	if invalid {
+		cache.Delete(key)
+		return nil, false
 	}
-	for _, invalidEntityKey := range invalidEntityKeys {
-		if res := cache.Get(invalidEntityKey); res != nil {
-			invalidEntry, ok := res.(*storage.InvalidEntityCacheEntry)
-			if !ok || tupleEntry.LastModified.Before(invalidEntry.LastModified) {
-				invalidEntryLastModifiedTime := time.Time{}
-				if ok {
-					invalidEntryLastModifiedTime = invalidEntry.LastModified
-				}
-
-				logger.Debug("CachedDatastore findInCache but has expired for invalidEntry",
-					zap.String("store_id", store),
-					zap.String("key", key),
-					zap.String("invalidEntityKey", invalidEntityKey),
-					zap.Time("invalidEntry.LastModified", invalidEntryLastModifiedTime),
-					zap.Time("tupleEntry.LastModified", tupleEntry.LastModified))
-
-				return nil, false
-			}
-		}
-	}
-	logger.Debug("CachedDatastore findInCache ", zap.String("store_id", store), zap.String("key", key))
 
 	return tupleEntry, true
 }
@@ -363,7 +354,8 @@ func (c *CachedDatastore) newCachedIterator(
 	span.SetAttributes(attribute.String("cache_key", cacheKey))
 	tuplesCacheTotalCounter.WithLabelValues(operation, c.method).Inc()
 
-	if cacheEntry, ok := findInCache(c.cache, store, cacheKey, invalidEntityKeys, c.logger); ok {
+	invalidStoreKey := storage.GetInvalidIteratorCacheKey(store)
+	if cacheEntry, ok := findInCache(c.cache, cacheKey, invalidStoreKey, invalidEntityKeys); ok {
 		tuplesCacheHitCounter.WithLabelValues(operation, c.method).Inc()
 		span.SetAttributes(attribute.Bool("cached", true))
 
@@ -394,10 +386,12 @@ func (c *CachedDatastore) newCachedIterator(
 		// set an initial fraction capacity to balance constant reallocation and memory usage
 		tuples:            make([]*openfgav1.Tuple, 0, c.maxResultSize/2),
 		cacheKey:          cacheKey,
+		invalidStoreKey:   invalidStoreKey,
 		invalidEntityKeys: invalidEntityKeys,
 		cache:             c.cache,
 		maxResultSize:     c.maxResultSize,
 		ttl:               c.ttl,
+		initializedAt:     time.Now(),
 		sf:                c.sf,
 		objectType:        objectType,
 		objectID:          objectID,
@@ -415,9 +409,11 @@ type cachedIterator struct {
 	operation         string
 	method            string
 	cacheKey          string
+	invalidStoreKey   string
 	invalidEntityKeys []string
 	cache             storage.InMemoryCache[any]
 	ttl               time.Duration
+	initializedAt     time.Time
 
 	objectID   string
 	objectType string
@@ -513,9 +509,16 @@ func (c *cachedIterator) Stop() {
 		defer c.wg.Done()
 		defer c.iter.Stop()
 
-		// if cache is already set, we don't need to drain the iterator
-		_, ok := findInCache(c.cache, c.store, c.cacheKey, c.invalidEntityKeys, c.logger)
+		// if cache is already set by another instance, we don't need to drain the iterator
+		_, ok := findInCache(c.cache, c.cacheKey, c.invalidStoreKey, c.invalidEntityKeys)
 		if ok {
+			c.iter.Stop()
+			c.tuples = nil
+			return
+		}
+
+		// if there was an invalidation _after_ the initialization, it shouldn't be stored
+		if isInvalidAt(c.cache, c.initializedAt, c.invalidStoreKey, c.invalidEntityKeys) {
 			c.iter.Stop()
 			c.tuples = nil
 			return
