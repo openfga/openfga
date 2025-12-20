@@ -24,12 +24,12 @@ type TxCloser[T any] interface {
 
 type Pipe[T any] struct {
 	data      []T
-	head      uint
-	tail      uint
-	done      bool
-	mu        sync.Mutex
 	condFull  *sync.Cond
 	condEmpty *sync.Cond
+	head      uint
+	tail      uint
+	mu        sync.Mutex
+	done      bool
 }
 
 // New is a function that instantiates a new Pipe with a size of n.
