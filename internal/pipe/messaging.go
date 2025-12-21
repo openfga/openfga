@@ -9,7 +9,7 @@ import (
 	"github.com/openfga/openfga/internal/bitutil"
 )
 
-var ErrInvalidSize = errors.New("Pipe size must be a power of two")
+var ErrInvalidSize = errors.New("pipe size must be a power of two")
 
 type Rx[T any] interface {
 	Recv(*T) bool
