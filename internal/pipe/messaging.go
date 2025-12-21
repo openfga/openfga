@@ -37,7 +37,7 @@ type Pipe[T any] struct {
 
 // New is a function that instantiates a new Pipe with a size of n.
 // The value of n must be a valid power of two. Any other value will
-// result in a panic.
+// result in an error.
 func New[T any](n int) (*Pipe[T], error) {
 	if !bitutil.PowerOfTwo(n) {
 		return nil, ErrInvalidSize
