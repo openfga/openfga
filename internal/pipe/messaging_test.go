@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	pipeBufferSize int    = 128
+	pipeBufferSize int    = 1 << 7
 	messageCount   uint64 = 1000
 )
 
@@ -35,7 +35,8 @@ func consume(p *Pipe[item], count *atomic.Uint64) {
 func BenchmarkMessaging(b *testing.B) {
 	b.Run("single_producer_single_consumer", func(b *testing.B) {
 		for b.Loop() {
-			p := New[item](pipeBufferSize)
+			p, err := New[item](pipeBufferSize)
+			require.NoError(b, err)
 
 			var count atomic.Uint64
 			var wg sync.WaitGroup
@@ -61,7 +62,8 @@ func BenchmarkMessaging(b *testing.B) {
 
 	b.Run("multiple_producer_single_consumer", func(b *testing.B) {
 		for b.Loop() {
-			p := New[item](pipeBufferSize)
+			p, err := New[item](pipeBufferSize)
+			require.NoError(b, err)
 
 			var count atomic.Uint64
 			var swg sync.WaitGroup
@@ -91,7 +93,8 @@ func BenchmarkMessaging(b *testing.B) {
 
 	b.Run("single_producer_multiple_consumer", func(b *testing.B) {
 		for b.Loop() {
-			p := New[item](pipeBufferSize)
+			p, err := New[item](pipeBufferSize)
+			require.NoError(b, err)
 
 			var count atomic.Uint64
 			var swg sync.WaitGroup
@@ -121,7 +124,8 @@ func BenchmarkMessaging(b *testing.B) {
 
 	b.Run("multiple_producer_multiple_consumer", func(b *testing.B) {
 		for b.Loop() {
-			p := New[item](pipeBufferSize)
+			p, err := New[item](pipeBufferSize)
+			require.NoError(b, err)
 
 			var count atomic.Uint64
 			var swg sync.WaitGroup
@@ -187,7 +191,8 @@ func TestMessaging(t *testing.T) {
 					expected[i] = i + 1
 				}
 
-				p := New[int](tc.size)
+				p, err := New[int](tc.size)
+				require.NoError(t, err)
 
 				for range tc.cycles {
 					var val int
@@ -242,7 +247,8 @@ func TestMessaging(t *testing.T) {
 	})
 
 	t.Run("single_producer_single_consumer", func(t *testing.T) {
-		p := New[item](pipeBufferSize)
+		p, err := New[item](pipeBufferSize)
+		require.NoError(t, err)
 
 		var count atomic.Uint64
 		var wg sync.WaitGroup
@@ -266,7 +272,8 @@ func TestMessaging(t *testing.T) {
 	})
 
 	t.Run("multiple_producer_single_consumer", func(t *testing.T) {
-		p := New[item](pipeBufferSize)
+		p, err := New[item](pipeBufferSize)
+		require.NoError(t, err)
 
 		var count atomic.Uint64
 		var swg sync.WaitGroup
@@ -294,7 +301,8 @@ func TestMessaging(t *testing.T) {
 	})
 
 	t.Run("single_producer_multiple_consumer", func(t *testing.T) {
-		p := New[item](pipeBufferSize)
+		p, err := New[item](pipeBufferSize)
+		require.NoError(t, err)
 
 		var count atomic.Uint64
 		var swg sync.WaitGroup
@@ -322,7 +330,8 @@ func TestMessaging(t *testing.T) {
 	})
 
 	t.Run("multiple_producer_multiple_consumer", func(t *testing.T) {
-		p := New[item](pipeBufferSize)
+		p, err := New[item](pipeBufferSize)
+		require.NoError(t, err)
 
 		var count atomic.Uint64
 		var swg sync.WaitGroup
