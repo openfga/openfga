@@ -109,7 +109,8 @@ func TestPipelineShutdown(t *testing.T) {
 		Graph:      g,
 	}
 
-	pl := New(backend, WithBufferSize(bufferSize), WithChunkSize(chunkSize))
+	pl, err := New(backend, WithBufferSize(bufferSize), WithChunkSize(chunkSize))
+	require.NoError(t, err)
 
 	target, ok := pl.Target("user", "bob")
 	require.True(t, ok)
@@ -2236,7 +2237,8 @@ func BenchmarkPipeline(b *testing.B) {
 			b.ResetTimer()
 
 			for i := 0; i < b.N; i++ {
-				pl := New(backend)
+				pl, err := New(backend)
+				require.NoError(b, err)
 
 				relationParts := strings.Split(tc.user, "#")
 				userParts := strings.Split(relationParts[0], ":")
@@ -2291,7 +2293,8 @@ func TestPipeline(t *testing.T) {
 				Graph:      g,
 			}
 
-			pl := New(backend)
+			pl, err := New(backend)
+			require.NoError(t, err)
 
 			relationParts := strings.Split(tc.user, "#")
 			userParts := strings.Split(relationParts[0], ":")
@@ -2367,7 +2370,8 @@ func TestPipeline(t *testing.T) {
 			Graph:      g,
 		}
 
-		pl := New(backend)
+		pl, err := New(backend)
+		require.NoError(t, err)
 
 		target, ok := pl.Target("user", "1")
 		require.True(t, ok)
@@ -2411,7 +2415,8 @@ func TestPipeline(t *testing.T) {
 			Graph:      g,
 		}
 
-		pl := New(backend)
+		pl, err := New(backend)
+		require.NoError(t, err)
 
 		target, ok := pl.Target("user", "1")
 		require.True(t, ok)

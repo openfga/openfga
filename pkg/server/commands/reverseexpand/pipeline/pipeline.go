@@ -56,16 +56,61 @@ var (
 )
 
 const (
-	defaultBufferSize int = 128
+	defaultBufferSize int = 1 << 7
 	defaultChunkSize  int = 100
 	defaultNumProcs   int = 3
+)
+
+var (
+	ErrInvalidBufferSize = errors.New("buffer size must be a power of two")
+	ErrInvalidChunkSize  = errors.New("chunk size must be greater than zero")
+	ErrInvalidNumProcs   = errors.New("process number must be greater than zero")
 )
 
 func handleIdentity(_ context.Context, _ *Edge, items []string) iter.Seq[Item] {
 	return seq.Transform(seq.Sequence(items...), strToItem)
 }
 
-func New(backend *Backend, options ...Option) *Pipeline {
+type Option func(*Pipeline) error
+
+// WithBufferSize is a function that sets the value for a pipeline's workers' internal
+// pipe buffer size. The value must be a power of two. (e.g. 1, 2, 4, 8, 16, 32...)
+// The default value of the buffer size is 128. If an invalid value is provided as size
+// then the default value will be applied.
+func WithBufferSize(size int) Option {
+	return func(p *Pipeline) error {
+		if !bitutil.PowerOfTwo(size) {
+			return ErrInvalidBufferSize
+		}
+
+		p.bufferSize = size
+		return nil
+	}
+}
+
+func WithChunkSize(size int) Option {
+	return func(p *Pipeline) error {
+		if size < 1 {
+			return ErrInvalidChunkSize
+		}
+
+		p.chunkSize = size
+		return nil
+	}
+}
+
+func WithNumProcs(num int) Option {
+	return func(p *Pipeline) error {
+		if num < 1 {
+			return ErrInvalidNumProcs
+		}
+
+		p.numProcs = num
+		return nil
+	}
+}
+
+func New(backend *Backend, options ...Option) (*Pipeline, error) {
 	p := &Pipeline{
 		backend:    backend,
 		bufferSize: defaultBufferSize,
@@ -74,45 +119,13 @@ func New(backend *Backend, options ...Option) *Pipeline {
 	}
 
 	for _, option := range options {
-		option(p)
+		if err := option(p); err != nil {
+			return nil, err
+		}
 	}
 
 	p.bufferPool = newBufferPool(p.chunkSize)
-	return p
-}
-
-// WithBufferSize is a function that sets the value for a pipeline's workers' internal
-// pipe buffer size. The value must be a power of two. (e.g. 1, 2, 4, 8, 16, 32...)
-// The default value of the buffer size is 128. If an invalid value is provided as size
-// then the default value will be applied.
-func WithBufferSize(size int) Option {
-	if !bitutil.PowerOfTwo(size) {
-		size = defaultBufferSize
-	}
-
-	return func(p *Pipeline) {
-		p.bufferSize = size
-	}
-}
-
-func WithChunkSize(size int) Option {
-	if size < 1 {
-		size = defaultChunkSize
-	}
-
-	return func(p *Pipeline) {
-		p.chunkSize = size
-	}
-}
-
-func WithNumProcs(num int) Option {
-	if num < 1 {
-		num = defaultNumProcs
-	}
-
-	return func(p *Pipeline) {
-		p.numProcs = num
-	}
+	return p, nil
 }
 
 type bufferPool struct {
@@ -1119,8 +1132,6 @@ func (pl *Pipeline) Target(name, identifier string) (Target, bool) {
 	}, ok
 }
 
-type Option func(*Pipeline)
-
 type path struct {
 	source     *Node
 	target     Target
@@ -1399,7 +1410,7 @@ func (w *Worker[K, T, U]) Start(ctx context.Context) {
 }
 
 func (w *Worker[K, T, U]) Subscribe(key K) Sender[K, U] {
-	p := pipe.New[U](w.bufferSize)
+	p := pipe.Must[U](w.bufferSize)
 
 	w.listeners = append(w.listeners, &listener[K, U]{
 		key,
