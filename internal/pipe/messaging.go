@@ -1,12 +1,15 @@
 package pipe
 
 import (
+	"errors"
 	"io"
 	"iter"
 	"sync"
 
 	"github.com/openfga/openfga/internal/bitutil"
 )
+
+var ErrInvalidSize = errors.New("pipe size must be a power of two")
 
 type Rx[T any] interface {
 	Recv(*T) bool
@@ -34,16 +37,26 @@ type Pipe[T any] struct {
 
 // New is a function that instantiates a new Pipe with a size of n.
 // The value of n must be a valid power of two. Any other value will
-// result in a panic.
-func New[T any](n int) *Pipe[T] {
+// result in an error.
+func New[T any](n int) (*Pipe[T], error) {
 	if !bitutil.PowerOfTwo(n) {
-		panic("value provided to pipe.New must be a power of two")
+		return nil, ErrInvalidSize
 	}
 	var p Pipe[T]
 	p.data = make([]T, n)
 	p.condFull = sync.NewCond(&p.mu)
 	p.condEmpty = sync.NewCond(&p.mu)
-	return &p
+	return &p, nil
+}
+
+// Must is a function that returns a new instance of a Pipe, or panics
+// if an error is encountered.
+func Must[T any](n int) *Pipe[T] {
+	p, err := New[T](n)
+	if err != nil {
+		panic(err)
+	}
+	return p
 }
 
 func (p *Pipe[T]) empty() bool {
