@@ -567,7 +567,10 @@ func (q *ListObjectsQuery) Execute(
 			Preference: req.GetConsistency(),
 		}
 
-		pl := pipeline.New(backend)
+		pl, err := pipeline.New(backend)
+		if err != nil {
+			return nil, serverErrors.ValidationError(err)
+		}
 
 		var source pipeline.Source
 		var target pipeline.Target
@@ -737,7 +740,10 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 			Preference: req.GetConsistency(),
 		}
 
-		pl := pipeline.New(backend)
+		pl, err := pipeline.New(backend)
+		if err != nil {
+			return nil, serverErrors.ValidationError(err)
+		}
 
 		var source pipeline.Source
 		var target pipeline.Target
