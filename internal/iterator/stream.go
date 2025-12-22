@@ -9,11 +9,6 @@ import (
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
-type Msg struct {
-	Iter storage.Iterator[string]
-	Err  error
-}
-
 // Stream aggregates multiple iterators that are sent to a source channel into one iterator.
 type Stream struct {
 	idx            int
@@ -68,12 +63,9 @@ func (s *Stream) Next(ctx context.Context) (string, error) {
 func (s *Stream) Stop() {
 	if s.buffer != nil {
 		s.buffer.Stop()
+		s.buffer = nil
 	}
-	for msg := range s.source {
-		if msg.Iter != nil {
-			msg.Iter.Stop()
-		}
-	}
+	Drain(s.source)
 }
 
 // SkipToTargetObject moves the buffer until the buffer's head object is >= target object.
@@ -83,26 +75,35 @@ func (s *Stream) SkipToTargetObject(ctx context.Context, target string) error {
 		return fmt.Errorf("invalid target object: %s", target)
 	}
 
-	t, err := s.Head(ctx)
-	if err != nil {
-		if storage.IterIsDoneOrCancelled(err) {
-			return nil
-		}
-		return err
+	// If we have no buffer, we're already done
+	if s.buffer == nil {
+		return nil
 	}
-	tmpKey := t
-	for tmpKey < target {
-		_, _ = s.Next(ctx)
-		t, err = s.Head(ctx)
+
+	// Optimized loop to skip ahead
+	for {
+		t, err := s.Head(ctx)
 		if err != nil {
 			if storage.IterIsDoneOrCancelled(err) {
-				break
+				return nil
 			}
 			return err
 		}
-		tmpKey = t
+
+		// If current head >= target, we're done
+		if t >= target {
+			return nil
+		}
+
+		// Otherwise advance the iterator
+		_, err = s.Next(ctx)
+		if err != nil {
+			if storage.IterIsDoneOrCancelled(err) {
+				return nil
+			}
+			return err
+		}
 	}
-	return nil
 }
 
 // Drain all item in the stream's buffer and return these items.
