@@ -1,170 +1,136 @@
 # Caching in OpenFGA
 
-OpenFGA provides a sophisticated multi-layered caching system designed to improve performance by reducing database queries and computation overhead. This document explains how caching works in OpenFGA and how to configure it for optimal performance in your deployment.
-
 ## Overview
 
 OpenFGA implements several complementary types of caching:
 
-1. **Check Query Cache**: Caches results of subproblems within Check API requests to avoid recomputing them
-2. **Check Iterator Cache**: Caches database query results (iterators) to reduce database load during Check operations
-3. **ListObjects Iterator Cache**: Caches database iterators specifically for ListObjects API calls
-4. **Cache Controller**: Manages cache invalidation based on data changes to maintain consistency. It works in background, and it's not involved in the query resolution. After each TTL period, it checks the changelog, and invalidates the cache if tuples were written.
+1. [**Check Query Cache**](#check-query-cache): Caches results of sub-problems within Check API requests to avoid recomputing them.
+2. [**Check Iterator Cache**](#check-iterator-cache): Caches database query results (iterators) to reduce database load during Check operations.
+3. [**List Objects Iterator Cache**](#list-objects-iterator-cache): Same as Check Iterator Cache, but used for List Objects requests.
+4. [**Cache Controller**](#cache-controller): Periodically invalidates cache entries in the background based on recent writes to the store.
+
+Note: For any request, if the `HIGHER_CONSISTENCY` consistency preference is specified, caching is bypassed entirely.
+
+## Cache Implementation
+
+OpenFGA uses the [Theine](https://github.com/Yiling-J/theine-go) library for in-memory caching:
+
+- **Eviction Policy**: Least Recently Used (LRU) with W-TinyLFU admission policy
+- **Thread Safety**: Fully concurrent with minimal locking
+- **Memory Efficiency**: Optimized memory layout and garbage collection friendly
+- **Performance**: High-performance cache operations with sub-microsecond latencies
+
+Note: Since the cache is in-memory, different replicas of the service do not share their caches. Therefore, its effectiveness depends on the probability of repeated/similar requests hitting the same replica, which may depend on the model, tuple distribution, number of replicas, and the load balancing algorithm used.
 
 ## Understanding Cache Types
 
 ### Check Query Cache
 
-The Check Query Cache stores the complete results of Check API requests, allowing identical authorization checks to return immediately without any computation.
+- **What it caches**: Authorization decisions (allow/deny) for the overall Check request as well as for any intermediate ("sub-problem") Checks.
+- **Benefits**: Eliminates computation for repeated identical Checks or different Checks that share common relationship evaluations.
 
-- **What it caches**: Complete Check responses including the final allow/deny decision
-- **Cache key**: Generated from store ID, authorization model ID, tuple key, contextual tuples, and other request parameters
-- **Benefits**: Eliminates computation for repeated identical checks
-- **Use case**: High-frequency identical authorization checks
+#### Example
+
+Consider the [Entitlements sample store](https://github.com/openfga/sample-stores/tree/79fa8c1710f12d3f0befaba77f15463bb5a97860/stores/entitlements) and OpenFGA running with check query cache enabled. Given the query "does user `user:charles` have relationship `can_access` with `feature:draft_prs`?", the following cache entries (simplified) are set:
+
+1. (Final result) Key: does user `user:charles` have relationship `can_access` with object `feature:draft_prs`? Value: `true`.
+2. (Sub-problem) Key: does user `user:charles` have relationship `subscriber_member` with object `plan:enterprise`? Value: `true`.
 
 ### Check Iterator Cache
 
 The Check Iterator Cache stores database query results (tuple iterators) used during Check operations, reducing the number of database queries required.
 
-- **What it caches**: Raw tuple query results from the database
-- **Cache key**: Based on store ID, object type, relation, and user patterns
-- **Benefits**: Reduces database load, especially for complex relationship traversals
-- **Use case**: Complex authorization models with deep hierarchies
+- **What it caches**: Raw tuple query results from the database.
+- **Benefits**: Reduces database load by caching some of its results in-memory.
 
-### ListObjects Iterator Cache
+#### Example
 
-Similar to Check Iterator Cache but specifically optimized for ListObjects operations, which can be particularly database-intensive.
+Consider the [Entitlements sample store](https://github.com/openfga/sample-stores/tree/79fa8c1710f12d3f0befaba77f15463bb5a97860/stores/entitlements) and OpenFGA running with check iterator cache enabled. Given the query "does user `user:charles` have relationship `can_access` with `feature:draft_prs`?", the following cache entries (simplified) are set:
 
-- **What it caches**: Database iterator results for ListObjects queries
-- **Cache key**: Based on store ID, user, relation, object type, and contextual tuples
-- **Benefits**: Dramatically improves ListObjects performance
-- **Use case**: Frequent ListObjects calls with similar parameters
+1. Key: What users have relationship `associated_plan` with object `feature:draft_prs`? Value: `[plan:enterprise, plan:team]`.
+2. Key: What users have relationship `subscriber` with object `plan:enterprise`? Value: `[organization:cups]`.
+3. Key: What are the tuples where user `user:charles` has relationship `member` with objects of type `organization`? Value: `[organization:cups#member@user:charles]`.
 
-### Cache Controller
+### List Objects Iterator Cache
 
-The Cache Controller manages cache invalidation by monitoring data changes and proactively invalidating stale cache entries.
+Same as the Check Iterator Cache, but used in List Objects.
 
-- **How it works**: Monitors changelog for tuple writes/deletes and invalidates affected cache entries
-- **Invalidation strategy**: Asynchronous, eventually consistent
-- **Benefits**: Maintains cache accuracy while preserving performance
-- **Use case**: Environments with frequent data changes
+Note: If this is enabled along with the [cache controller](#cache-controller), the cache controller will trigger invalidation on every List Objects request.
 
-## Configuration Options
+## Cache Controller
 
-### Global Check Cache Settings
+- **What it does**: Invalidates stale cache entries based on recent writes to the store.
+- **Benefits**: Allows using longer TTLs for cache entries to increase hit rate.
 
-| Environment Variable | CLI Flag | Default | Description |
-|---------------------|----------|---------|-------------|
-| `OPENFGA_CHECK_CACHE_LIMIT` | `--check-cache-limit` | `10000` | Maximum number of items in the check cache |
+The cache controller periodically checks the store's changelog and compares recent tuple writes/deletes to the time cache entries were set. When the cache controller sees new writes to the store, all previous Check query cache entries are invalidated, while only relevant Check iterator cache entries are invalidated based on what tuples the writes affected.
 
-### Check Query Cache
+Invalidation runs asynchronously (eventually consistent) and is triggered on:
 
-| Environment Variable | CLI Flag | Default | Description |
-|---------------------|----------|---------|-------------|
-| `OPENFGA_CHECK_QUERY_CACHE_ENABLED` | `--check-query-cache-enabled` | `false` | Enable caching of Check query results |
-| `OPENFGA_CHECK_QUERY_CACHE_TTL` | `--check-query-cache-ttl` | `10s` | Time-to-live for cached Check results |
+- Any Check requests, but not more than once every cache controller TTL.
+- Every List Objects request if List Objects iterator cache is enabled, irrespective of cache controller TTL; however, only one invalidation can be running at a time.
 
-### Check Iterator Cache
+With the cache controller enabled, its TTL sets the staleness window for cache. Check and List Objects cache TTLs will now only affect hit rate and memory usage, not freshness. Choose:
 
-| Environment Variable | CLI Flag | Default | Description |
-|---------------------|----------|---------|-------------|
-| `OPENFGA_CHECK_ITERATOR_CACHE_ENABLED` | `--check-iterator-cache-enabled` | `false` | Enable caching of database iterators for Check operations |
-| `OPENFGA_CHECK_ITERATOR_CACHE_MAX_RESULTS` | `--check-iterator-cache-max-results` | `10000` | Maximum number of results to cache per iterator |
-| `OPENFGA_CHECK_ITERATOR_CACHE_TTL` | `--check-iterator-cache-ttl` | `10s` | Time-to-live for cached iterators |
-
-### ListObjects Iterator Cache
-
-| Environment Variable | CLI Flag | Default | Description |
-|---------------------|----------|---------|-------------|
-| `OPENFGA_LIST_OBJECTS_ITERATOR_CACHE_ENABLED` | `--list-objects-iterator-cache-enabled` | `false` | Enable caching of database iterators for ListObjects operations |
-| `OPENFGA_LIST_OBJECTS_ITERATOR_CACHE_MAX_RESULTS` | `--list-objects-iterator-cache-max-results` | `10000` | Maximum number of results to cache per iterator |
-| `OPENFGA_LIST_OBJECTS_ITERATOR_CACHE_TTL` | `--list-objects-iterator-cache-ttl` | `10s` | Time-to-live for cached ListObjects iterators |
-
-### Cache Controller
-
-| Environment Variable | CLI Flag | Default | Description |
-|---------------------|----------|---------|-------------|
-| `OPENFGA_CACHE_CONTROLLER_ENABLED` | `--cache-controller-enabled` | `false` | Enable automatic cache invalidation based on data changes |
-| `OPENFGA_CACHE_CONTROLLER_TTL` | `--cache-controller-ttl` | `10s` | TTL for changelog cache entries used for invalidation detection |
-
-#### Cache Controller
-
-With the Cache Controller enabled, the controller TTL sets the maximum staleness window. Check/ListObjects cache TTLs primarily affect hit rate and memory usage, not freshness. Choose:
-
-- Controller TTL ≤ your maximum acceptable staleness (e.g., 10–60s).
+- Controller TTL ≤ your acceptable staleness (e.g., 10s).
 - Cache TTLs as long as your memory budget and workload allow.
 
-## Recommended Configuration
+Note: "invalidation" is done by setting new cache entries which are checked before using a regular cache entry. Thus, the number of cache removals (eviction/expiration/deletion) in the metrics may be inflated.
 
-```bash
+### Example
 
-# This configures the actual cache TTLs. If tuples are written, the other caches will be invalidated.
-export OPENFGA_CACHE_CONTROLLER_ENABLED=true
-export OPENFGA_CACHE_CONTROLLER_TTL=10s
+Consider a single replica OpenFGA server with a cache controller TTL of 10s and check query, check iterator, list objects iterator cache TTLs of 300s:
 
-# Enable Check query caching
-export OPENFGA_CHECK_QUERY_CACHE_ENABLED=true
-export OPENFGA_CHECK_CACHE_LIMIT=25000
-export OPENFGA_CHECK_QUERY_CACHE_TTL=3600s
+Time | Event | Result | Notes | Invalidation
+-----|-------|--------|-------|-------------
+t=0s | Check 1 | Returns `allowed: true` | Computes result from database and caches locally | Triggered. Invalidation will not be triggered again by Check until the cache controller TTL has passed (t=10s).
+t=0s + ε | Invalidation from Check 1 complete | Nothing to invalidate | Sees cache entries were set at t=0s which is after the latest write at t<0s, so nothing to invalidate |
+t=1s | Write: Tuple deleted | Store updated | Previous Check is now invalid |
+t=5s | Check 2 | Returns `allowed: true` (stale) | Uses local cache | Not triggered as the cache controller TTL hasn't passed since the last invalidation from Check.
+t=10s | Check 3 | " | " | Triggered. Invalidation will not be triggered again by Check until the cache controller TTL has passed (t=20s).
+t=10s + ε | Invalidation from Check 3 complete | Invalidates cache | Sees cache entries were set at t=0s which is before the latest write at t=1s, so invalidates cache |
+t=11s | Check 4 | Returns `allowed: false` | Finds local cache entries but they are invalid, so computes result from database and sets new local cache entries | Not triggered as the cache controller TTL hasn't passed since the last invalidation from Check.
+t=20s | Check 5 | Returns `allowed: false` | Uses local cache | Triggered. Invalidation will not be triggered again by Check until the cache controller TTL has passed (t=30s).
+t=20s + ε | Invalidation from Check 5 complete | Nothing to invalidate | Sees cache entries were set at t=11s which is after the latest write at t=1s, so nothing to invalidate |
+t=310s | Check 6 | Returns `allowed: false` | Uses local cache | Triggered. Invalidation will not be triggered again by Check until the cache controller TTL has passed (t=320s).
+t=310s + ε | Invalidation from Check 6 complete | Nothing to invalidate | Sees cache entries were set at t=11s which is after the latest write at t=1s, so nothing to invalidate |
+t=311s | Check 7 | Returns `allowed: false` | Local cache has finally expired, so computes result from database and caches locally | Not triggered as the cache controller TTL hasn't passed since the last invalidation from Check.
+t=312s | Write: Tuple added | Store updated | Previous Check is now invalid |
+t=313s | List Objects 1 | Returns stale results | Uses iterator cache entries from previous Check | Triggered.
+t=313s + ε | Invalidation from List Objects 1 complete | Invalidates cache | Sees cache entries were set at t=310s which is before the latest write at t=312s, so invalidates cache |
+t=314s | Check 8 | Returns `allowed: true` | Finds local cache entries but they are invalid, so computes result from database and sets new local cache entries | Not triggered as the cache controller TTL hasn't passed since the last invalidation from Check.
 
-# Enable ListObjects query caching
-export OPENFGA_LIST_OBJECTS_ITERATOR_CACHE_ENABLED=true
-export OPENFGA_LIST_OBJECTS_ITERATOR_CACHE_MAX_RESULTS=25000
-export OPENFGA_LIST_OBJECTS_ITERATOR_CACHE_TTL=3600s
-```
+Notice:
+- Stale data was only returned for up to the cache controller TTL after a write.
+- When there was no write (between Check 4-6), the local cache was able to be used for a longer time.
+- List Objects 1 triggered invalidation even though the cache controller TTL hasn't passed yet.
 
-## Cache Invalidation and Consistency
+### Caveats
 
-### Automatic Cache Invalidation
+#### First Check Staleness
 
-When the Cache Controller is enabled, OpenFGA automatically invalidates cache entries based on data changes:
+Because invalidation is triggered asynchronously by Check and List Objects requests, there is an accepted race condition where the first Check after a write (and subsequent Checks until the async job finishes) could return stale data if its Check response was cached before the write, even if it has been more than the cache controller TTL since the write.
 
-1. **Change Detection**: Monitors the changelog table for tuple writes/deletes
-2. **Selective Invalidation**: Only invalidates cache entries affected by changes
-3. **Asynchronous Processing**: Invalidation happens in the background to minimize latency
-4. **Eventually Consistent**: Cache becomes consistent within the TTL window
+For example, if we look at the previous example, if Check 3 had occurred at t=100s, it would have still returned a stale result since it triggers invalidation asynchronously but returns immediately. The following Check however would see the results of the invalidation and compute a fresh result.
 
-### Invalidation Patterns
+Note that *any* Check request (if the cache controller TTL has passed since the last invalidation) or List Objects request (if list objects iterator cache is enabled) will trigger invalidation for the entire store, so this issue only occurs with very infrequent requests.
 
-The Cache Controller uses these invalidation patterns:
+#### Incompatibility with Distributed Cache / Eventually Consistent Database
 
-```go
-// Example of cache key patterns that get invalidated
-"object:document:123:relation:viewer" // Specific object-relation cache
-"user:alice:*" // All cache entries for user alice
-"*" // Global invalidation for store (on major changes)
-```
+The cache controller invalidates based on whether cached entries were set before the latest write to the store; it assumes that any reads to the database that occur after a write returns non-stale data. If the database is eventually consistent or has a read/write-through distributed cache in front of it, stale data can get cached after a write and the cache controller will not invalidate it since it was cached after the latest write, therefore it will linger for the entire cache TTL.
 
-## Monitoring and Observability
+For example, consider a cache controller TTL of 10s, a read/write-through distributed cache in front of the database with a 10s TTL, and check query/iterator cache TTLs of 300s:
 
-### Cache Metrics
+Time | Event | Result | State | Invalidation
+-----|-------|--------|-------|-------------
+t=0s | Replica 1: Check | Returns `allowed: true` | Goes to database through distributed cache. Distributed cache stores data until t=10s and replica 1 caches results locally. | Triggered, but nothing to invalidate.
+t=1s | Write: Tuple deleted | Store updated | Previous Check is now invalid |
+t=2s | Replica 2: Check | Returns `allowed: true` (stale) | Gets stale data from distributed cache so computes a stale result and caches it locally. | Triggered, but nothing to invalidate as the latest write was at t=1s and our cache entries were set later, at t=2s.
+t=12s | Replica 2: Check | " | Stale data in distributed cache has expired, but we cached stale data locally at t=2s and it wasn't invalidated nor has it expired so we use that to compute a stale result. | "
+t=300s | Replica 2: Check | " | " | "
 
-OpenFGA provides comprehensive metrics for cache monitoring:
-
-#### Query Cache Metrics
-
-- `openfga_check_cache_total_count`: Total number of cache lookups
-- `openfga_check_cache_hit_count`: Number of successful cache hits
-- `openfga_check_cache_invalid_hit_count`: Cache hits that were invalidated
-
-#### Iterator Cache Metrics
-
-- `openfga_tuples_cache_total_count`: Total iterator cache operations
-- `openfga_tuples_cache_hit_count`: Iterator cache hits
-- `openfga_tuples_cache_discard_count`: Discarded cache entries
-- `openfga_tuples_cache_size`: Size distribution of cached iterators
-
-#### General Cache Metrics
-
-- `openfga_cache_item_count`: Number of items in cache by entity type
-- `openfga_cache_item_removed_count`: Cache evictions by reason and entity type
-
-#### Cache Controller Metrics
-
-- `openfga_cachecontroller_cache_total_count`: Total cache controller operations
-- `openfga_cachecontroller_cache_hit_count`: Cache controller cache hits
-- `openfga_cachecontroller_cache_invalidation_count`: Number of invalidations performed
-- `openfga_cachecontroller_invalidation_duration_ms`: Time spent on invalidation operations
+Note:
+- OpenFGA currently supports In-Memory, SQLite, PostgreSQL, and MySQL databases (all strongly consistent) without a distributed cache, so this is not an issue with a standard setup.
+- This issue is mitigated by frequent writes to the store that does cause stale data to be invalidated.
 
 ## Best Practices
 
@@ -199,8 +165,8 @@ OpenFGA provides comprehensive metrics for cache monitoring:
 
 **Cache Inconsistency**
 - **Symptoms**: Stale data returned, authorization errors
-- **Causes**: Cache Controller disabled, long TTL, invalidation issues
-- **Solutions**: Enable Cache Controller, reduce TTL, restart server
+- **Causes**: Cache Controller disabled with long cache TTLs, code bugs
+- **Solutions**: Enable Cache Controller, reduce TTL, restart server, reach out to OpenFGA team
 
 **High Cache Eviction Rates**
 - **Symptoms**: Frequent cache misses despite high traffic
@@ -211,40 +177,5 @@ OpenFGA provides comprehensive metrics for cache monitoring:
 
 1. **Check Configuration**: Verify environment variables and CLI flags
 2. **Monitor Metrics**: Review cache hit rates and eviction counts
-3. **Test Cache Behavior**: Use identical requests to verify caching
+3. **Test Cache Behavior**: Use identical requests with different timings to verify caching
 4. **Review Memory Usage**: Ensure adequate memory allocation
-
-## Cache Architecture Details
-
-### Cache Implementation
-
-OpenFGA uses the [Theine](https://github.com/Yiling-J/theine-go) library for in-memory caching:
-
-- **Eviction Policy**: Least Recently Used (LRU) with W-TinyLFU admission policy
-- **Thread Safety**: Fully concurrent with minimal locking
-- **Memory Efficiency**: Optimized memory layout and garbage collection friendly
-- **Performance**: High-performance cache operations with sub-microsecond latencies
-
-### Cache Key Generation
-
-Cache keys are generated using a combination of:
-
-```go
-// Example cache key structure
-"store:{storeID}:model:{modelID}:object:{object}:relation:{relation}:user:{user}:contextual:{hash}"
-```
-
-- **Deterministic**: Identical requests generate identical keys
-- **Collision-resistant**: Uses xxHash for contextual tuple hashing
-- **Hierarchical**: Supports pattern-based invalidation
-
-### Integration with OpenFGA Components
-
-The caching system integrates deeply with OpenFGA's architecture, with the Cache Controller playing a central role in maintaining data consistency:
-
-- **Resolver Layer**: Check operations use CachedCheckResolver for query caching
-- **Storage Layer**: Database operations use CachedDatastore wrappers for iterator caching  
-- **Controller Layer**: CacheController manages proactive invalidation based on data changes
-- **Metrics Layer**: Comprehensive observability throughout all cache interactions
-
-This multi-layered approach ensures optimal performance while maintaining data consistency through intelligent invalidation.

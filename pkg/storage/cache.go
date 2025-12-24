@@ -32,7 +32,7 @@ var (
 	cacheItemRemovedCount = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: build.ProjectName,
 		Name:      "cache_item_removed_count",
-		Help:      "The total number of items removed from the cache",
+		Help:      "The total number of items removed (evicted/expired/deleted) from the cache",
 	}, []string{"entity", "reason"})
 )
 
