@@ -15,7 +15,6 @@ import (
 
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/graph"
-	"github.com/openfga/openfga/internal/throttler/threshold"
 	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/internal/utils/apimethod"
 	"github.com/openfga/openfga/pkg/middleware/validator"
@@ -86,12 +85,6 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		commands.WithLogger(s.logger),
 		commands.WithListObjectsDeadline(s.listObjectsDeadline),
 		commands.WithListObjectsMaxResults(s.listObjectsMaxResults),
-		commands.WithDispatchThrottlerConfig(threshold.Config{
-			Throttler:    s.listObjectsDispatchThrottler,
-			Enabled:      s.listObjectsDispatchThrottlingEnabled,
-			Threshold:    s.listObjectsDispatchDefaultThreshold,
-			MaxThreshold: s.listObjectsDispatchThrottlingMaxThreshold,
-		}),
 		commands.WithResolveNodeLimit(s.resolveNodeLimit),
 		commands.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
 		commands.WithMaxConcurrentReads(s.maxConcurrentReadsForListObjects),
@@ -164,15 +157,9 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		req.GetConsistency().String(),
 	).Observe(float64(time.Since(start).Milliseconds()))
 
-	wasDispatchThrottled := result.ResolutionMetadata.DispatchThrottled.Load()
-	grpc_ctxtags.Extract(ctx).Set("request.dispatch_throttled", wasDispatchThrottled)
-
 	wasDatastoreThrottled := result.ResolutionMetadata.DatastoreThrottled.Load()
 	grpc_ctxtags.Extract(ctx).Set("request.datastore_throttled", wasDatastoreThrottled)
 
-	if wasDispatchThrottled {
-		throttledRequestCounter.WithLabelValues(s.serviceName, methodName, throttleTypeDispatch).Inc()
-	}
 	if wasDatastoreThrottled {
 		throttledRequestCounter.WithLabelValues(s.serviceName, methodName, throttleTypeDatastore).Inc()
 	}
@@ -250,12 +237,6 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 		storeID,
 		commands.WithLogger(s.logger),
 		commands.WithListObjectsDeadline(s.listObjectsDeadline),
-		commands.WithDispatchThrottlerConfig(threshold.Config{
-			Throttler:    s.listObjectsDispatchThrottler,
-			Enabled:      s.listObjectsDispatchThrottlingEnabled,
-			Threshold:    s.listObjectsDispatchDefaultThreshold,
-			MaxThreshold: s.listObjectsDispatchThrottlingMaxThreshold,
-		}),
 		commands.WithListObjectsMaxResults(s.listObjectsMaxResults),
 		commands.WithResolveNodeLimit(s.resolveNodeLimit),
 		commands.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
@@ -311,15 +292,9 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 		req.GetConsistency().String(),
 	).Observe(float64(time.Since(start).Milliseconds()))
 
-	wasDispatchThrottled := resolutionMetadata.DispatchThrottled.Load()
-	grpc_ctxtags.Extract(ctx).Set("request.dispatch_throttled", wasDispatchThrottled)
-
 	wasDatastoreThrottled := resolutionMetadata.DatastoreThrottled.Load()
 	grpc_ctxtags.Extract(ctx).Set("request.datastore_throttled", wasDatastoreThrottled)
 
-	if wasDispatchThrottled {
-		throttledRequestCounter.WithLabelValues(s.serviceName, methodName, throttleTypeDispatch).Inc()
-	}
 	if wasDatastoreThrottled {
 		throttledRequestCounter.WithLabelValues(s.serviceName, methodName, throttleTypeDatastore).Inc()
 	}
@@ -328,7 +303,7 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 }
 
 func (s *Server) getListObjectsCheckResolverBuilder(storeID string) *graph.CheckResolverOrderedBuilder {
-	checkCacheOptions, checkDispatchThrottlingOptions := s.getCheckResolverOptions()
+	checkCacheOptions := s.getCheckResolverOptions()
 
 	return graph.NewOrderedCheckResolvers([]graph.CheckResolverOrderedBuilderOpt{
 		graph.WithLocalCheckerOpts([]graph.LocalCheckerOption{
@@ -337,6 +312,5 @@ func (s *Server) getListObjectsCheckResolverBuilder(storeID string) *graph.Check
 			graph.WithMaxResolutionDepth(s.resolveNodeLimit),
 		}...),
 		graph.WithCachedCheckResolverOpts(s.cacheSettings.ShouldCacheCheckQueries(), checkCacheOptions...),
-		graph.WithDispatchThrottlingCheckResolverOpts(s.checkDispatchThrottlingEnabled, checkDispatchThrottlingOptions...),
 	}...)
 }

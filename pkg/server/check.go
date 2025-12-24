@@ -96,13 +96,11 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 	endTime := time.Since(startTime).Milliseconds()
 
 	var (
-		dispatchThrottled  bool
 		datastoreThrottled bool
 		rawDispatchCount   uint32
 	)
 
 	if checkRequestMetadata != nil {
-		dispatchThrottled = checkRequestMetadata.DispatchThrottled.Load()
 		datastoreThrottled = checkRequestMetadata.DatastoreThrottled.Load()
 		rawDispatchCount = checkRequestMetadata.DispatchCounter.Load()
 		dispatchCount := float64(rawDispatchCount)
@@ -150,11 +148,6 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 			).Observe(float64(endTime))
 		}
 
-		if dispatchThrottled {
-			throttledRequestCounter.WithLabelValues(s.serviceName, methodName, throttleTypeDispatch).Inc()
-		}
-		grpc_ctxtags.Extract(ctx).Set("request.dispatch_throttled", dispatchThrottled)
-
 		if datastoreThrottled {
 			throttledRequestCounter.WithLabelValues(s.serviceName, methodName, throttleTypeDatastore).Inc()
 		}
@@ -165,9 +158,6 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		telemetry.TraceError(span, err)
 		finalErr := commands.CheckCommandErrorToServerError(err)
 		if errors.Is(finalErr, serverErrors.ErrThrottledTimeout) {
-			if dispatchThrottled {
-				throttledRequestCounter.WithLabelValues(s.serviceName, methodName, throttleTypeDispatch).Inc()
-			}
 			if datastoreThrottled {
 				throttledRequestCounter.WithLabelValues(s.serviceName, methodName, throttleTypeDatastore).Inc()
 			}
@@ -191,7 +181,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 }
 
 func (s *Server) getCheckResolverBuilder(storeID string) *graph.CheckResolverOrderedBuilder {
-	checkCacheOptions, checkDispatchThrottlingOptions := s.getCheckResolverOptions()
+	checkCacheOptions := s.getCheckResolverOptions()
 
 	return graph.NewOrderedCheckResolvers([]graph.CheckResolverOrderedBuilderOpt{
 		graph.WithLocalCheckerOpts([]graph.LocalCheckerOption{
@@ -214,6 +204,5 @@ func (s *Server) getCheckResolverBuilder(storeID string) *graph.CheckResolverOrd
 			graph.ShadowResolverWithTimeout(s.shadowCheckResolverTimeout),
 		}...),
 		graph.WithCachedCheckResolverOpts(s.cacheSettings.ShouldCacheCheckQueries(), checkCacheOptions...),
-		graph.WithDispatchThrottlingCheckResolverOpts(s.checkDispatchThrottlingEnabled, checkDispatchThrottlingOptions...),
 	}...)
 }

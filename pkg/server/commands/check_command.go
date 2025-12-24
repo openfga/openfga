@@ -170,9 +170,7 @@ func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*
 	resolveCheckRequest.GetRequestMetadata().DatastoreThrottled.Store(dsMeta.WasThrottled)
 
 	if err != nil {
-		// There are currently two possible throttling mechanisms, we need to know if either was triggered here.
-		wasThrottled := dsMeta.WasThrottled || resolveCheckRequest.GetRequestMetadata().DispatchThrottled.Load()
-		if errors.Is(err, context.DeadlineExceeded) && wasThrottled {
+		if errors.Is(err, context.DeadlineExceeded) && dsMeta.WasThrottled {
 			return resp, resolveCheckRequest.GetRequestMetadata(), &ThrottledError{Cause: err}
 		}
 

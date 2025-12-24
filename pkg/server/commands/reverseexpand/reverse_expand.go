@@ -21,8 +21,6 @@ import (
 	"github.com/openfga/openfga/internal/condition/eval"
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/stack"
-	"github.com/openfga/openfga/internal/throttler"
-	"github.com/openfga/openfga/internal/throttler/threshold"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/logger"
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
@@ -130,8 +128,6 @@ type ReverseExpandQuery struct {
 	resolveNodeLimit        uint32
 	resolveNodeBreadthLimit uint32
 
-	dispatchThrottlerConfig threshold.Config
-
 	// visitedUsersetsMap map prevents visiting the same userset through the same edge twice
 	visitedUsersetsMap *sync.Map
 	// candidateObjectsMap map prevents returning the same object twice
@@ -151,12 +147,6 @@ type ReverseExpandQueryOption func(d *ReverseExpandQuery)
 func WithResolveNodeLimit(limit uint32) ReverseExpandQueryOption {
 	return func(d *ReverseExpandQuery) {
 		d.resolveNodeLimit = limit
-	}
-}
-
-func WithDispatchThrottlerConfig(config threshold.Config) ReverseExpandQueryOption {
-	return func(d *ReverseExpandQuery) {
-		d.dispatchThrottlerConfig = config
 	}
 }
 
@@ -189,16 +179,10 @@ func NewReverseExpandQuery(ds storage.RelationshipTupleReader, ts *typesystem.Ty
 		typesystem:              ts,
 		resolveNodeLimit:        serverconfig.DefaultResolveNodeLimit,
 		resolveNodeBreadthLimit: serverconfig.DefaultResolveNodeBreadthLimit,
-		dispatchThrottlerConfig: threshold.Config{
-			Throttler:    throttler.NewNoopThrottler(),
-			Enabled:      serverconfig.DefaultListObjectsDispatchThrottlingEnabled,
-			Threshold:    serverconfig.DefaultListObjectsDispatchThrottlingDefaultThreshold,
-			MaxThreshold: serverconfig.DefaultListObjectsDispatchThrottlingMaxThreshold,
-		},
-		candidateObjectsMap: new(sync.Map),
-		visitedUsersetsMap:  new(sync.Map),
-		queryDedupeMap:      new(sync.Map),
-		localCheckResolver:  graph.NewLocalChecker(),
+		candidateObjectsMap:     new(sync.Map),
+		visitedUsersetsMap:      new(sync.Map),
+		queryDedupeMap:          new(sync.Map),
+		localCheckResolver:      graph.NewLocalChecker(),
 	}
 
 	for _, opt := range opts {
@@ -224,9 +208,6 @@ type ResolutionMetadata struct {
 	// The number of times we are expanding from each node to find set of objects
 	DispatchCounter *atomic.Uint32
 
-	// DispatchThrottled indicates whether the request was throttled by dispatch count
-	DispatchThrottled *atomic.Bool
-
 	// WasWeightedGraphUsed indicates whether the weighted graph was used as the algorithm for the ReverseExpand request.
 	WasWeightedGraphUsed *atomic.Bool
 
@@ -237,7 +218,6 @@ type ResolutionMetadata struct {
 func NewResolutionMetadata() *ResolutionMetadata {
 	return &ResolutionMetadata{
 		DispatchCounter:      new(atomic.Uint32),
-		DispatchThrottled:    new(atomic.Bool),
 		WasWeightedGraphUsed: new(atomic.Bool),
 		CheckCounter:         new(atomic.Uint32),
 	}
@@ -296,10 +276,7 @@ func (c *ReverseExpandQuery) dispatch(
 	intersectionOrExclusionInPreviousEdges bool,
 	resolutionMetadata *ResolutionMetadata,
 ) error {
-	newcount := resolutionMetadata.DispatchCounter.Add(1)
-	if c.dispatchThrottlerConfig.Enabled {
-		c.throttle(ctx, newcount, resolutionMetadata)
-	}
+	resolutionMetadata.DispatchCounter.Add(1)
 	return c.execute(ctx, req, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
 }
 
@@ -720,25 +697,5 @@ func (c *ReverseExpandQuery) trySendCandidate(
 		if ok {
 			span.SetAttributes(attribute.Bool("sent", true))
 		}
-	}
-}
-
-func (c *ReverseExpandQuery) throttle(ctx context.Context, currentNumDispatch uint32, metadata *ResolutionMetadata) {
-	span := trace.SpanFromContext(ctx)
-
-	shouldThrottle := threshold.ShouldThrottle(
-		ctx,
-		currentNumDispatch,
-		c.dispatchThrottlerConfig.Threshold,
-		c.dispatchThrottlerConfig.MaxThreshold,
-	)
-
-	span.SetAttributes(
-		attribute.Int("dispatch_count", int(currentNumDispatch)),
-		attribute.Bool("is_throttled", shouldThrottle))
-
-	if shouldThrottle {
-		metadata.DispatchThrottled.Store(true)
-		c.dispatchThrottlerConfig.Throttler.Throttle(ctx)
 	}
 }

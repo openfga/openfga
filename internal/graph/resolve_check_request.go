@@ -44,9 +44,6 @@ type ResolveCheckRequestMetadata struct {
 	// After the root problem has been solved, this value can be read.
 	DispatchCounter *atomic.Uint32
 
-	// DispatchThrottled indicates whether the request was throttled by the dispatch throttling check resolver
-	DispatchThrottled *atomic.Bool
-
 	// DatastoreThrottled indicates whether this request was throttled at the datastore level.
 	DatastoreThrottled *atomic.Bool
 }
@@ -64,7 +61,6 @@ type ResolveCheckRequestParams struct {
 func NewCheckRequestMetadata() *ResolveCheckRequestMetadata {
 	return &ResolveCheckRequestMetadata{
 		DispatchCounter:    new(atomic.Uint32),
-		DispatchThrottled:  new(atomic.Bool),
 		DatastoreThrottled: new(atomic.Bool),
 	}
 }
@@ -116,7 +112,6 @@ func (r *ResolveCheckRequest) clone() *ResolveCheckRequest {
 		requestMetadata = &ResolveCheckRequestMetadata{
 			DispatchCounter:    origRequestMetadata.DispatchCounter,
 			Depth:              origRequestMetadata.Depth,
-			DispatchThrottled:  origRequestMetadata.DispatchThrottled,
 			DatastoreThrottled: origRequestMetadata.DatastoreThrottled,
 		}
 	}

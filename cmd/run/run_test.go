@@ -1248,54 +1248,6 @@ func TestDefaultConfig(t *testing.T) {
 	require.True(t, val.Exists())
 	require.False(t, val.Bool())
 
-	val = res.Get("properties.checkDispatchThrottling.properties.enabled.default")
-	require.True(t, val.Exists())
-	require.Equal(t, val.Bool(), cfg.CheckDispatchThrottling.Enabled)
-
-	val = res.Get("properties.checkDispatchThrottling.properties.frequency.default")
-	require.True(t, val.Exists())
-	require.Equal(t, val.String(), cfg.CheckDispatchThrottling.Frequency.String())
-
-	val = res.Get("properties.checkDispatchThrottling.properties.threshold.default")
-	require.True(t, val.Exists())
-	require.EqualValues(t, val.Int(), cfg.CheckDispatchThrottling.Threshold)
-
-	val = res.Get("properties.checkDispatchThrottling.properties.maxThreshold.default")
-	require.True(t, val.Exists())
-	require.EqualValues(t, val.Int(), cfg.CheckDispatchThrottling.MaxThreshold)
-
-	val = res.Get("properties.listObjectsDispatchThrottling.properties.enabled.default")
-	require.True(t, val.Exists())
-	require.Equal(t, val.Bool(), cfg.ListObjectsDispatchThrottling.Enabled)
-
-	val = res.Get("properties.listObjectsDispatchThrottling.properties.frequency.default")
-	require.True(t, val.Exists())
-	require.Equal(t, val.String(), cfg.ListObjectsDispatchThrottling.Frequency.String())
-
-	val = res.Get("properties.listObjectsDispatchThrottling.properties.threshold.default")
-	require.True(t, val.Exists())
-	require.EqualValues(t, val.Int(), cfg.ListObjectsDispatchThrottling.Threshold)
-
-	val = res.Get("properties.listObjectsDispatchThrottling.properties.maxThreshold.default")
-	require.True(t, val.Exists())
-	require.EqualValues(t, val.Int(), cfg.ListObjectsDispatchThrottling.MaxThreshold)
-
-	val = res.Get("properties.listUsersDispatchThrottling.properties.enabled.default")
-	require.True(t, val.Exists())
-	require.Equal(t, val.Bool(), cfg.ListUsersDispatchThrottling.Enabled)
-
-	val = res.Get("properties.listUsersDispatchThrottling.properties.frequency.default")
-	require.True(t, val.Exists())
-	require.Equal(t, val.String(), cfg.ListUsersDispatchThrottling.Frequency.String())
-
-	val = res.Get("properties.listUsersDispatchThrottling.properties.threshold.default")
-	require.True(t, val.Exists())
-	require.EqualValues(t, val.Int(), cfg.ListUsersDispatchThrottling.Threshold)
-
-	val = res.Get("properties.listUsersDispatchThrottling.properties.maxThreshold.default")
-	require.True(t, val.Exists())
-	require.EqualValues(t, val.Int(), cfg.ListUsersDispatchThrottling.MaxThreshold)
-
 	val = res.Get("properties.checkDatastoreThrottle.properties.threshold.default")
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), cfg.CheckDatastoreThrottle.Threshold)
@@ -1405,10 +1357,6 @@ func TestRunCommandConfigIsMerged(t *testing.T) {
 	t.Setenv("OPENFGA_CACHE_CONTROLLER_ENABLED", "true")
 	t.Setenv("OPENFGA_CACHE_CONTROLLER_TTL", "4s")
 	t.Setenv("OPENFGA_REQUEST_DURATION_DATASTORE_QUERY_COUNT_BUCKETS", "33 44")
-	t.Setenv("OPENFGA_DISPATCH_THROTTLING_ENABLED", "true")
-	t.Setenv("OPENFGA_DISPATCH_THROTTLING_FREQUENCY", "1ms")
-	t.Setenv("OPENFGA_DISPATCH_THROTTLING_THRESHOLD", "120")
-	t.Setenv("OPENFGA_DISPATCH_THROTTLING_MAX_THRESHOLD", "130")
 	t.Setenv("OPENFGA_MAX_CONDITION_EVALUATION_COST", "120")
 	t.Setenv("OPENFGA_ACCESS_CONTROL_ENABLED", "true")
 	t.Setenv("OPENFGA_ACCESS_CONTROL_STORE_ID", "12345")
@@ -1429,10 +1377,6 @@ func TestRunCommandConfigIsMerged(t *testing.T) {
 		require.Equal(t, 4*time.Second, viper.GetDuration("cache-controller-ttl"))
 
 		require.Equal(t, []string{"33", "44"}, viper.GetStringSlice("request-duration-datastore-query-count-buckets"))
-		require.True(t, viper.GetBool("dispatch-throttling-enabled"))
-		require.Equal(t, "1ms", viper.GetString("dispatch-throttling-frequency"))
-		require.Equal(t, "120", viper.GetString("dispatch-throttling-threshold"))
-		require.Equal(t, "130", viper.GetString("dispatch-throttling-max-threshold"))
 		require.Equal(t, "120", viper.GetString("max-condition-evaluation-cost"))
 		require.Equal(t, uint64(120), viper.GetUint64("max-condition-evaluation-cost"))
 		require.True(t, viper.GetBool("access-control-enabled"))

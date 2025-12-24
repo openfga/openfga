@@ -16,7 +16,6 @@ import (
 
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/graph"
-	"github.com/openfga/openfga/internal/throttler/threshold"
 	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/internal/utils/apimethod"
 	"github.com/openfga/openfga/pkg/middleware/validator"
@@ -85,12 +84,6 @@ func (s *Server) ListUsers(
 		listusers.WithListUsersMaxResults(s.listUsersMaxResults),
 		listusers.WithListUsersDeadline(s.listUsersDeadline),
 		listusers.WithListUsersMaxConcurrentReads(s.maxConcurrentReadsForListUsers),
-		listusers.WithDispatchThrottlerConfig(threshold.Config{
-			Throttler:    s.listUsersDispatchThrottler,
-			Enabled:      s.listUsersDispatchThrottlingEnabled,
-			Threshold:    s.listUsersDispatchDefaultThreshold,
-			MaxThreshold: s.listUsersDispatchThrottlingMaxThreshold,
-		}),
 		listusers.WithListUsersDatastoreThrottler(
 			s.featureFlagClient.Boolean(serverconfig.ExperimentalDatastoreThrottling, storeID),
 			s.listUsersDatastoreThrottleThreshold,
@@ -145,11 +138,6 @@ func (s *Server) ListUsers(
 		utils.Bucketize(uint(dispatchCount), s.requestDurationByDispatchCountHistogramBuckets),
 		req.GetConsistency().String(),
 	).Observe(float64(time.Since(start).Milliseconds()))
-
-	wasDispatchThrottled := resp.GetMetadata().WasDispatchThrottled.Load()
-	if wasDispatchThrottled {
-		throttledRequestCounter.WithLabelValues(s.serviceName, methodName, throttleTypeDispatch).Inc()
-	}
 
 	wasDatastoreThrottled := resp.GetMetadata().WasDatastoreThrottled.Load()
 	if wasDatastoreThrottled {

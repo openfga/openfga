@@ -20,7 +20,6 @@ import (
 	"github.com/openfga/openfga/internal/condition/eval"
 	openfgaErrors "github.com/openfga/openfga/internal/errors"
 	"github.com/openfga/openfga/internal/graph"
-	"github.com/openfga/openfga/internal/throttler/threshold"
 	"github.com/openfga/openfga/internal/utils/apimethod"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/logger"
@@ -45,8 +44,6 @@ type listUsersQuery struct {
 	maxResults                 uint32
 	maxConcurrentReads         uint32
 	deadline                   time.Duration
-	dispatchThrottlerConfig    threshold.Config
-	wasDispatchThrottled       *atomic.Bool
 	wasDatastoreThrottled      *atomic.Bool
 	expandDirectDispatch       expandDirectDispatchHandler
 	datastoreThrottlingEnabled bool
@@ -139,32 +136,6 @@ func WithListUsersDatastoreThrottler(enabled bool, threshold int, duration time.
 	}
 }
 
-func (l *listUsersQuery) throttle(ctx context.Context, currentNumDispatch uint32) {
-	span := trace.SpanFromContext(ctx)
-
-	shouldThrottle := threshold.ShouldThrottle(
-		ctx,
-		currentNumDispatch,
-		l.dispatchThrottlerConfig.Threshold,
-		l.dispatchThrottlerConfig.MaxThreshold,
-	)
-
-	span.SetAttributes(
-		attribute.Int("dispatch_count", int(currentNumDispatch)),
-		attribute.Bool("is_throttled", shouldThrottle))
-
-	if shouldThrottle {
-		l.wasDispatchThrottled.Store(true)
-		l.dispatchThrottlerConfig.Throttler.Throttle(ctx)
-	}
-}
-
-func WithDispatchThrottlerConfig(config threshold.Config) ListUsersQueryOption {
-	return func(d *listUsersQuery) {
-		d.dispatchThrottlerConfig = config
-	}
-}
-
 // TODO accept ListUsersRequest instead of contextualTuples.
 func NewListUsersQuery(ds storage.RelationshipTupleReader, contextualTuples []*openfgav1.TupleKey, opts ...ListUsersQueryOption) *listUsersQuery {
 	l := &listUsersQuery{
@@ -174,7 +145,6 @@ func NewListUsersQuery(ds storage.RelationshipTupleReader, contextualTuples []*o
 		deadline:                serverconfig.DefaultListUsersDeadline,
 		maxResults:              serverconfig.DefaultListUsersMaxResults,
 		maxConcurrentReads:      serverconfig.DefaultMaxConcurrentReadsForListUsers,
-		wasDispatchThrottled:    new(atomic.Bool),
 		wasDatastoreThrottled:   new(atomic.Bool),
 		expandDirectDispatch:    expandDirectDispatch,
 	}
@@ -230,7 +200,6 @@ func (l *listUsersQuery) ListUsers(
 				Users: []*openfgav1.User{},
 				Metadata: listUsersResponseMetadata{
 					DispatchCounter:       new(atomic.Uint32),
-					WasDispatchThrottled:  new(atomic.Bool),
 					WasDatastoreThrottled: new(atomic.Bool),
 				},
 			}, nil
@@ -314,7 +283,6 @@ func (l *listUsersQuery) ListUsers(
 			DatastoreQueryCount:   dsMeta.DatastoreQueryCount,
 			DatastoreItemCount:    dsMeta.DatastoreItemCount,
 			DispatchCounter:       &dispatchCount,
-			WasDispatchThrottled:  l.wasDispatchThrottled,
 			WasDatastoreThrottled: l.wasDatastoreThrottled,
 		},
 	}, nil
@@ -341,11 +309,7 @@ func (l *listUsersQuery) dispatch(
 	req *internalListUsersRequest,
 	foundUsersChan chan<- foundUser,
 ) expandResponse {
-	newcount := req.dispatchCount.Add(1)
-	if l.dispatchThrottlerConfig.Enabled {
-		l.throttle(ctx, newcount)
-	}
-
+	req.dispatchCount.Add(1)
 	return l.expand(ctx, req, foundUsersChan)
 }
 

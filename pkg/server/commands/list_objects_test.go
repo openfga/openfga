@@ -22,7 +22,6 @@ import (
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/internal/shared"
-	"github.com/openfga/openfga/internal/throttler/threshold"
 	"github.com/openfga/openfga/pkg/featureflags"
 	"github.com/openfga/openfga/pkg/logger"
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
@@ -100,7 +99,6 @@ func TestListObjectsDispatchCount(t *testing.T) {
 	ctx := storage.ContextWithRelationshipTupleReader(context.Background(), ds)
 	ctrl := gomock.NewController(t)
 	t.Cleanup(ctrl.Finish)
-	mockThrottler := mocks.NewMockThrottler(ctrl)
 	tests := []struct {
 		name                    string
 		model                   string
@@ -284,14 +282,7 @@ func TestListObjectsDispatchCount(t *testing.T) {
 			require.NoError(t, err)
 			ctx := typesystem.ContextWithTypesystem(ctx, ts)
 
-			checker, checkResolverCloser, err := graph.NewOrderedCheckResolvers(
-				graph.WithDispatchThrottlingCheckResolverOpts(true, []graph.DispatchThrottlingCheckResolverOpt{
-					graph.WithDispatchThrottlingCheckResolverConfig(graph.DispatchThrottlingCheckResolverConfig{
-						DefaultThreshold: 0,
-						MaxThreshold:     0,
-					}),
-					graph.WithThrottler(mockThrottler),
-				}...)).Build()
+			checker, checkResolverCloser, err := graph.NewOrderedCheckResolvers().Build()
 			require.NoError(t, err)
 			t.Cleanup(checkResolverCloser)
 
@@ -299,16 +290,8 @@ func TestListObjectsDispatchCount(t *testing.T) {
 				ds,
 				checker,
 				fakeStoreID,
-				WithDispatchThrottlerConfig(threshold.Config{
-					Throttler:    mockThrottler,
-					Enabled:      true,
-					Threshold:    3,
-					MaxThreshold: 0,
-				}),
 				WithMaxConcurrentReads(1),
 			)
-			mockThrottler.EXPECT().Throttle(gomock.Any()).Times(test.expectedThrottlingValue)
-			mockThrottler.EXPECT().Close().Times(1) // LO closes throttler during server close call.
 
 			resp, err := q.Execute(ctx, &openfgav1.ListObjectsRequest{
 				StoreId:  storeID,
@@ -320,7 +303,6 @@ func TestListObjectsDispatchCount(t *testing.T) {
 			require.NoError(t, err)
 
 			require.Equal(t, test.expectedDispatchCount, resp.ResolutionMetadata.DispatchCounter.Load())
-			require.Equal(t, test.expectedThrottlingValue > 0, resp.ResolutionMetadata.DispatchThrottled.Load())
 		})
 	}
 }

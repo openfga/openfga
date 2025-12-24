@@ -22,8 +22,6 @@ import (
 	openfgaErrors "github.com/openfga/openfga/internal/errors"
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/shared"
-	"github.com/openfga/openfga/internal/throttler"
-	"github.com/openfga/openfga/internal/throttler/threshold"
 	"github.com/openfga/openfga/internal/utils/apimethod"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/featureflags"
@@ -64,8 +62,6 @@ type ListObjectsQuery struct {
 	resolveNodeBreadthLimit uint32
 	maxConcurrentReads      uint32
 
-	dispatchThrottlerConfig threshold.Config
-
 	datastoreThrottlingEnabled bool
 	datastoreThrottleThreshold int
 	datastoreThrottleDuration  time.Duration
@@ -101,9 +97,6 @@ type ListObjectsResolutionMetadata struct {
 	// The total number of dispatches aggregated from reverse_expand and check resolutions (if any) to complete the ListObjects request
 	DispatchCounter atomic.Uint32
 
-	// DispatchThrottled indicates whether this request was throttled by dispatch count.
-	DispatchThrottled atomic.Bool
-
 	// DatastoreThrottled indicates whether the request was throttled by the Datastore.
 	DatastoreThrottled atomic.Bool
 
@@ -124,12 +117,6 @@ type ListObjectsQueryOption func(d *ListObjectsQuery)
 func WithListObjectsDeadline(deadline time.Duration) ListObjectsQueryOption {
 	return func(d *ListObjectsQuery) {
 		d.listObjectsDeadline = deadline
-	}
-}
-
-func WithDispatchThrottlerConfig(config threshold.Config) ListObjectsQueryOption {
-	return func(d *ListObjectsQuery) {
-		d.dispatchThrottlerConfig = config
 	}
 }
 
@@ -226,14 +213,8 @@ func NewListObjectsQuery(
 		resolveNodeLimit:        serverconfig.DefaultResolveNodeLimit,
 		resolveNodeBreadthLimit: serverconfig.DefaultResolveNodeBreadthLimit,
 		maxConcurrentReads:      serverconfig.DefaultMaxConcurrentReadsForListObjects,
-		dispatchThrottlerConfig: threshold.Config{
-			Throttler:    throttler.NewNoopThrottler(),
-			Enabled:      serverconfig.DefaultListObjectsDispatchThrottlingEnabled,
-			Threshold:    serverconfig.DefaultListObjectsDispatchThrottlingDefaultThreshold,
-			MaxThreshold: serverconfig.DefaultListObjectsDispatchThrottlingMaxThreshold,
-		},
-		checkResolver: checkResolver,
-		cacheSettings: serverconfig.NewDefaultCacheSettings(),
+		checkResolver:           checkResolver,
+		cacheSettings:           serverconfig.NewDefaultCacheSettings(),
 		sharedDatastoreResources: &shared.SharedDatastoreResources{
 			CacheController: cachecontroller.NewNoopCacheController(),
 		},
@@ -348,7 +329,6 @@ func (q *ListObjectsQuery) evaluate(
 			ds,
 			typesys,
 			reverseexpand.WithResolveNodeLimit(q.resolveNodeLimit),
-			reverseexpand.WithDispatchThrottlerConfig(q.dispatchThrottlerConfig),
 			reverseexpand.WithResolveNodeBreadthLimit(q.resolveNodeBreadthLimit),
 			reverseexpand.WithLogger(q.logger),
 			reverseexpand.WithCheckResolver(q.checkResolver),
@@ -376,9 +356,6 @@ func (q *ListObjectsQuery) evaluate(
 				return err
 			}
 			resolutionMetadata.DispatchCounter.Add(reverseExpandResolutionMetadata.DispatchCounter.Load())
-			if !resolutionMetadata.DispatchThrottled.Load() && reverseExpandResolutionMetadata.DispatchThrottled.Load() {
-				resolutionMetadata.DispatchThrottled.Store(true)
-			}
 			resolutionMetadata.CheckCounter.Add(reverseExpandResolutionMetadata.CheckCounter.Load())
 			resolutionMetadata.WasWeightedGraphUsed.Store(reverseExpandResolutionMetadata.WasWeightedGraphUsed.Load())
 			return nil
@@ -439,9 +416,6 @@ func (q *ListObjectsQuery) evaluate(
 					resolutionMetadata.DatastoreQueryCount.Add(resp.GetResolutionMetadata().DatastoreQueryCount)
 					resolutionMetadata.DatastoreItemCount.Add(resp.GetResolutionMetadata().DatastoreItemCount)
 					resolutionMetadata.DispatchCounter.Add(checkRequestMetadata.DispatchCounter.Load())
-					if !resolutionMetadata.DispatchThrottled.Load() && checkRequestMetadata.DispatchThrottled.Load() {
-						resolutionMetadata.DispatchThrottled.Store(true)
-					}
 					if resp.Allowed {
 						trySendObject(ctx, res.Object, &objectsFound, maxResults, resultsChan)
 					}

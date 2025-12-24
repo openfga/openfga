@@ -276,42 +276,6 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 		util.MustBindPFlag("contextPropagationToDatastore", flags.Lookup("context-propagation-to-datastore"))
 		util.MustBindEnv("contextPropagationToDatastore", "OPENFGA_CONTEXT_PROPAGATION_TO_DATASTORE")
 
-		util.MustBindPFlag("checkDispatchThrottling.enabled", flags.Lookup("check-dispatch-throttling-enabled"))
-		util.MustBindEnv("checkDispatchThrottling.enabled", "OPENFGA_CHECK_DISPATCH_THROTTLING_ENABLED")
-
-		util.MustBindPFlag("checkDispatchThrottling.frequency", flags.Lookup("check-dispatch-throttling-frequency"))
-		util.MustBindEnv("checkDispatchThrottling.frequency", "OPENFGA_CHECK_DISPATCH_THROTTLING_FREQUENCY")
-
-		util.MustBindPFlag("checkDispatchThrottling.threshold", flags.Lookup("check-dispatch-throttling-threshold"))
-		util.MustBindEnv("checkDispatchThrottling.threshold", "OPENFGA_CHECK_DISPATCH_THROTTLING_THRESHOLD")
-
-		util.MustBindPFlag("checkDispatchThrottling.maxThreshold", flags.Lookup("check-dispatch-throttling-max-threshold"))
-		util.MustBindEnv("checkDispatchThrottling.maxThreshold", "OPENFGA_CHECK_DISPATCH_THROTTLING_MAX_THRESHOLD")
-
-		util.MustBindPFlag("listObjectsDispatchThrottling.enabled", flags.Lookup("listObjects-dispatch-throttling-enabled"))
-		util.MustBindEnv("listObjectsDispatchThrottling.enabled", "OPENFGA_LIST_OBJECTS_DISPATCH_THROTTLING_ENABLED")
-
-		util.MustBindPFlag("listObjectsDispatchThrottling.frequency", flags.Lookup("listObjects-dispatch-throttling-frequency"))
-		util.MustBindEnv("listObjectsDispatchThrottling.frequency", "OPENFGA_LIST_OBJECTS_DISPATCH_THROTTLING_FREQUENCY")
-
-		util.MustBindPFlag("listObjectsDispatchThrottling.threshold", flags.Lookup("listObjects-dispatch-throttling-threshold"))
-		util.MustBindEnv("listObjectsDispatchThrottling.threshold", "OPENFGA_LIST_OBJECTS_DISPATCH_THROTTLING_THRESHOLD")
-
-		util.MustBindPFlag("listObjectsDispatchThrottling.maxThreshold", flags.Lookup("listObjects-dispatch-throttling-max-threshold"))
-		util.MustBindEnv("listObjectsDispatchThrottling.maxThreshold", "OPENFGA_LIST_OBJECTS_DISPATCH_THROTTLING_MAX_THRESHOLD")
-
-		util.MustBindPFlag("listUsersDispatchThrottling.enabled", flags.Lookup("listUsers-dispatch-throttling-enabled"))
-		util.MustBindEnv("listUsersDispatchThrottling.enabled", "OPENFGA_LIST_USERS_DISPATCH_THROTTLING_ENABLED")
-
-		util.MustBindPFlag("listUsersDispatchThrottling.frequency", flags.Lookup("listUsers-dispatch-throttling-frequency"))
-		util.MustBindEnv("listUsersDispatchThrottling.frequency", "OPENFGA_LIST_USERS_DISPATCH_THROTTLING_FREQUENCY")
-
-		util.MustBindPFlag("listUsersDispatchThrottling.threshold", flags.Lookup("listUsers-dispatch-throttling-threshold"))
-		util.MustBindEnv("listUsersDispatchThrottling.threshold", "OPENFGA_LIST_USERS_DISPATCH_THROTTLING_THRESHOLD")
-
-		util.MustBindPFlag("listUsersDispatchThrottling.maxThreshold", flags.Lookup("listUsers-dispatch-throttling-max-threshold"))
-		util.MustBindEnv("listUsersDispatchThrottling.maxThreshold", "OPENFGA_LIST_USERS_DISPATCH_THROTTLING_MAX_THRESHOLD")
-
 		util.MustBindPFlag("checkDatastoreThrottle.threshold", flags.Lookup("check-datastore-throttle-threshold"))
 		util.MustBindEnv("checkDatastoreThrottle.threshold", "OPENFGA_CHECK_DATASTORE_THROTTLE_THRESHOLD")
 

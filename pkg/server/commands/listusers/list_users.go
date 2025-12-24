@@ -110,9 +110,6 @@ type listUsersResponseMetadata struct {
 	// Atomic is used to be consistent with the Check and ListObjects.
 	DispatchCounter *atomic.Uint32
 
-	// WasDispatchThrottled indicates whether the request was dispatch throttled.
-	WasDispatchThrottled *atomic.Bool
-
 	// WasDatastoreThrottled indicates whether the request was datastore throttled.
 	WasDatastoreThrottled *atomic.Bool
 }

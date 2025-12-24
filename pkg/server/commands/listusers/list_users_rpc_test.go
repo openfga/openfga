@@ -17,9 +17,7 @@ import (
 
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/mocks"
-	"github.com/openfga/openfga/internal/throttler/threshold"
 	"github.com/openfga/openfga/internal/utils/apimethod"
-	"github.com/openfga/openfga/pkg/dispatch"
 	"github.com/openfga/openfga/pkg/logger"
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	"github.com/openfga/openfga/pkg/storage"
@@ -3849,109 +3847,6 @@ func TestListUsers_ExpandExclusionHandler(t *testing.T) {
 	})
 }
 
-func TestListUsersThrottle(t *testing.T) {
-	t.Cleanup(func() {
-		goleak.VerifyNone(t)
-	})
-
-	mockController := gomock.NewController(t)
-	defer mockController.Finish()
-	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
-
-	ctx := context.Background()
-
-	t.Run("dispatch_below_threshold_doesnt_call_throttle", func(t *testing.T) {
-		mockThrottler := mocks.NewMockThrottler(mockController)
-		q := NewListUsersQuery(
-			mockDatastore,
-			emptyContextualTuples,
-			WithDispatchThrottlerConfig(threshold.Config{
-				Throttler:    mockThrottler,
-				Threshold:    200,
-				MaxThreshold: 200,
-			}),
-		)
-		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(0)
-
-		q.throttle(ctx, uint32(190))
-		require.False(t, q.wasDispatchThrottled.Load())
-	})
-
-	t.Run("above_threshold_should_call_throttle", func(t *testing.T) {
-		mockThrottler := mocks.NewMockThrottler(mockController)
-		q := NewListUsersQuery(
-			mockDatastore,
-			emptyContextualTuples,
-			WithDispatchThrottlerConfig(threshold.Config{
-				Throttler:    mockThrottler,
-				Threshold:    200,
-				MaxThreshold: 200,
-			}),
-		)
-		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(1)
-
-		q.throttle(ctx, uint32(201))
-		require.True(t, q.wasDispatchThrottled.Load())
-	})
-
-	t.Run("zero_max_should_interpret_as_default", func(t *testing.T) {
-		mockThrottler := mocks.NewMockThrottler(mockController)
-		q := NewListUsersQuery(
-			mockDatastore,
-			emptyContextualTuples,
-			WithDispatchThrottlerConfig(threshold.Config{
-				Throttler:    mockThrottler,
-				Threshold:    200,
-				MaxThreshold: 0,
-			}),
-		)
-		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(0)
-
-		q.throttle(ctx, uint32(190))
-		require.False(t, q.wasDispatchThrottled.Load())
-	})
-
-	t.Run("dispatch_should_use_request_threshold_if_available", func(t *testing.T) {
-		mockThrottler := mocks.NewMockThrottler(mockController)
-		q := NewListUsersQuery(
-			mockDatastore,
-			emptyContextualTuples,
-			WithDispatchThrottlerConfig(threshold.Config{
-				Throttler:    mockThrottler,
-				Threshold:    0,
-				MaxThreshold: 210,
-			}),
-		)
-		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(1)
-		dispatchCountValue := uint32(201)
-		ctx := context.Background()
-		ctx = dispatch.ContextWithThrottlingThreshold(ctx, 200)
-
-		q.throttle(ctx, dispatchCountValue)
-		require.True(t, q.wasDispatchThrottled.Load())
-	})
-
-	t.Run("should_respect_max_threshold", func(t *testing.T) {
-		mockThrottler := mocks.NewMockThrottler(mockController)
-		q := NewListUsersQuery(
-			mockDatastore,
-			emptyContextualTuples,
-			WithDispatchThrottlerConfig(threshold.Config{
-				Throttler:    mockThrottler,
-				Threshold:    200,
-				MaxThreshold: 300,
-			}),
-		)
-		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(1)
-		dispatchCountValue := uint32(301)
-		ctx := context.Background()
-		ctx = dispatch.ContextWithThrottlingThreshold(ctx, 1000)
-
-		q.throttle(ctx, dispatchCountValue)
-		require.True(t, q.wasDispatchThrottled.Load())
-	})
-}
-
 func TestListUsers_CorrectContext(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
@@ -4114,7 +4009,6 @@ func NewListUsersQueryPanicExpandDirect(ds storage.RelationshipTupleReader, cont
 		deadline:                serverconfig.DefaultListUsersDeadline,
 		maxResults:              serverconfig.DefaultListUsersMaxResults,
 		maxConcurrentReads:      serverconfig.DefaultMaxConcurrentReadsForListUsers,
-		wasDispatchThrottled:    new(atomic.Bool),
 		wasDatastoreThrottled:   new(atomic.Bool),
 		expandDirectDispatch: func(ctx context.Context, listUsersQuery *listUsersQuery, req *internalListUsersRequest, userObjectType, userObjectID, userRelation string, resp expandResponse, foundUsersChan chan<- foundUser, hasCycle *atomic.Bool) expandResponse {
 			panic(ErrPanic)
