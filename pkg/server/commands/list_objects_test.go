@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"sort"
 	"strconv"
@@ -23,6 +24,7 @@ import (
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/internal/shared"
 	"github.com/openfga/openfga/internal/throttler/threshold"
+	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/featureflags"
 	"github.com/openfga/openfga/pkg/logger"
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
@@ -1126,4 +1128,135 @@ func createRecursiveRelations(b *testing.B, ctx context.Context, datastore stora
 		err := datastore.Write(ctx, storeID, nil, tuples)
 		require.NoError(b, err)
 	}
+}
+
+// Tests for pagination support
+
+func TestListObjectsTokenEncodeDecode(t *testing.T) {
+	t.Run("token_roundtrip_with_compression", func(t *testing.T) {
+		// Create a query with default encoder
+		checkResolver := graph.NewLocalChecker()
+		q, err := NewListObjectsQuery(memory.New(), checkResolver, fakeStoreID)
+		require.NoError(t, err)
+		require.NotNil(t, q)
+
+		// Verify encoder is set
+		require.NotNil(t, q.encoder)
+
+		// Test encoding a token with compression
+		token := listObjectsToken{Objects: []string{"folder:1", "folder:2", "folder:3"}}
+		tokenBytes, err := json.Marshal(token)
+		require.NoError(t, err)
+
+		// Compress the token
+		compressed, err := compressToken(tokenBytes)
+		require.NoError(t, err)
+
+		// Base64 encode
+		encoded, err := q.encoder.Encode(compressed)
+		require.NoError(t, err)
+		require.NotEmpty(t, encoded)
+
+		// Decode and decompress
+		decoded, err := q.encoder.Decode(encoded)
+		require.NoError(t, err)
+
+		decompressed, err := decompressToken(decoded)
+		require.NoError(t, err)
+
+		var decodedToken listObjectsToken
+		err = json.Unmarshal(decompressed, &decodedToken)
+		require.NoError(t, err)
+
+		require.Equal(t, token.Objects, decodedToken.Objects)
+	})
+
+	t.Run("compression_reduces_size", func(t *testing.T) {
+		// Create a token with many similar object IDs (highly compressible)
+		var objects []string
+		for i := 0; i < 100; i++ {
+			objects = append(objects, "document:"+strconv.Itoa(i))
+		}
+		token := listObjectsToken{Objects: objects}
+		tokenBytes, err := json.Marshal(token)
+		require.NoError(t, err)
+
+		compressed, err := compressToken(tokenBytes)
+		require.NoError(t, err)
+
+		// Compressed should be significantly smaller
+		compressionRatio := float64(len(compressed)) / float64(len(tokenBytes))
+		t.Logf("Original size: %d bytes, Compressed: %d bytes, Ratio: %.2f",
+			len(tokenBytes), len(compressed), compressionRatio)
+
+		// Expect at least 50% compression for repetitive object IDs
+		require.Less(t, compressionRatio, 0.7, "Expected better compression ratio")
+	})
+
+	t.Run("empty_token", func(t *testing.T) {
+		checkResolver := graph.NewLocalChecker()
+		q, err := NewListObjectsQuery(memory.New(), checkResolver, fakeStoreID)
+		require.NoError(t, err)
+
+		token := listObjectsToken{Objects: []string{}}
+		tokenBytes, err := json.Marshal(token)
+		require.NoError(t, err)
+
+		compressed, err := compressToken(tokenBytes)
+		require.NoError(t, err)
+
+		encoded, err := q.encoder.Encode(compressed)
+		require.NoError(t, err)
+		require.NotEmpty(t, encoded)
+
+		decoded, err := q.encoder.Decode(encoded)
+		require.NoError(t, err)
+
+		decompressed, err := decompressToken(decoded)
+		require.NoError(t, err)
+
+		var decodedToken listObjectsToken
+		err = json.Unmarshal(decompressed, &decodedToken)
+		require.NoError(t, err)
+		require.Empty(t, decodedToken.Objects)
+	})
+}
+
+func TestWithListObjectsEncoder(t *testing.T) {
+	t.Run("custom_encoder_option", func(t *testing.T) {
+		checkResolver := graph.NewLocalChecker()
+		customEncoder := encoder.NewBase64Encoder()
+
+		q, err := NewListObjectsQuery(
+			memory.New(),
+			checkResolver,
+			fakeStoreID,
+			WithListObjectsEncoder(customEncoder),
+		)
+		require.NoError(t, err)
+		require.NotNil(t, q)
+		require.Equal(t, customEncoder, q.encoder)
+	})
+}
+
+func TestListObjectsResponseHasContinuationToken(t *testing.T) {
+	t.Run("response_includes_continuation_token_field", func(t *testing.T) {
+		// Verify the ListObjectsResponse struct has the ContinuationToken field
+		response := ListObjectsResponse{
+			Objects:           []string{"folder:1", "folder:2"},
+			ContinuationToken: "test_token",
+		}
+
+		require.Equal(t, "test_token", response.ContinuationToken)
+		require.Len(t, response.Objects, 2)
+	})
+
+	t.Run("empty_continuation_token_when_complete", func(t *testing.T) {
+		response := ListObjectsResponse{
+			Objects:           []string{"folder:1"},
+			ContinuationToken: "", // Empty means all results returned
+		}
+
+		require.Empty(t, response.ContinuationToken)
+	})
 }
