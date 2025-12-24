@@ -279,8 +279,9 @@ func TestListUsersLogs(t *testing.T) {
 			require.NotEmpty(t, fields["query_duration_ms"])
 			if !test.expectedError {
 				require.GreaterOrEqual(t, fields["datastore_query_count"], float64(1))
+				require.GreaterOrEqual(t, fields["datastore_item_count"], float64(1))
 				require.GreaterOrEqual(t, fields["dispatch_count"], float64(1))
-				require.Len(t, fields, 15)
+				require.Len(t, fields, 16)
 			} else {
 				require.Len(t, fields, 13)
 			}

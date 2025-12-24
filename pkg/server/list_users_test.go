@@ -538,7 +538,7 @@ func TestListUsers_Deadline(t *testing.T) {
 
 		mockDatastore.EXPECT().
 			Read(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
-			DoAndReturn(func(ctx context.Context, storeID string, tupleKey *openfgav1.TupleKey, _ storage.ReadOptions) (storage.TupleIterator, error) {
+			DoAndReturn(func(ctx context.Context, storeID string, filter storage.ReadFilter, _ storage.ReadOptions) (storage.TupleIterator, error) {
 				time.Sleep(10 * time.Millisecond)
 				return nil, context.Canceled
 			}).
@@ -578,4 +578,61 @@ func TestUserFiltersToString(t *testing.T) {
 		Type:     "group",
 		Relation: "member",
 	}}))
+}
+
+func TestListUsers_WithListUsersDatabaseThrottle(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	ctx := context.Background()
+
+	t.Run("WithListUsersDatabaseThrottle_option_sets_configuration", func(t *testing.T) {
+		ds := memory.New()
+		t.Cleanup(ds.Close)
+
+		modelStr := `
+			model
+				schema 1.1
+			type user
+			type document
+				relations
+					define viewer: [user]`
+
+		storeID, model := test.BootstrapFGAStore(t, ds, modelStr, []string{
+			"document:1#viewer@user:jon",
+		})
+
+		threshold := 100
+		duration := 50 * time.Millisecond
+
+		// Create server with datastore throttling options
+		s := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithListUsersDatabaseThrottle(threshold, duration),
+		)
+		t.Cleanup(s.Close)
+
+		// Verify the options were set correctly
+		require.Equal(t, threshold, s.listUsersDatastoreThrottleThreshold)
+		require.Equal(t, duration, s.listUsersDatastoreThrottleDuration)
+
+		// Verify the endpoint still works correctly
+		resp, err := s.ListUsers(ctx, &openfgav1.ListUsersRequest{
+			StoreId:              storeID,
+			AuthorizationModelId: model.GetId(),
+			Object: &openfgav1.Object{
+				Type: "document",
+				Id:   "1",
+			},
+			Relation: "viewer",
+			UserFilters: []*openfgav1.UserTypeFilter{
+				{Type: "user"},
+			},
+		})
+
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.Len(t, resp.GetUsers(), 1)
+	})
 }

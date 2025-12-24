@@ -31,6 +31,7 @@ type BatchCheckQuery struct {
 	maxChecksAllowed           uint32
 	maxConcurrentChecks        uint32
 	typesys                    *typesystem.TypeSystem
+	datastoreThrottlingEnabled bool
 	datastoreThrottleThreshold int
 	datastoreThrottleDuration  time.Duration
 }
@@ -48,10 +49,12 @@ type BatchCheckOutcome struct {
 }
 
 type BatchCheckMetadata struct {
-	ThrottleCount       uint32
-	DispatchCount       uint32
-	DatastoreQueryCount uint32
-	DuplicateCheckCount int
+	DispatchThrottleCount  uint32
+	DispatchCount          uint32
+	DatastoreQueryCount    uint32
+	DatastoreItemCount     uint64
+	DatastoreThrottleCount uint32
+	DuplicateCheckCount    int
 }
 
 type BatchCheckValidationError struct {
@@ -97,8 +100,9 @@ func WithBatchCheckMaxChecksPerBatch(maxChecks uint32) BatchCheckQueryOption {
 	}
 }
 
-func WithBatchCheckDatastoreThrottler(threshold int, duration time.Duration) BatchCheckQueryOption {
+func WithBatchCheckDatastoreThrottler(enabled bool, threshold int, duration time.Duration) BatchCheckQueryOption {
 	return func(bq *BatchCheckQuery) {
+		bq.datastoreThrottlingEnabled = enabled
 		bq.datastoreThrottleThreshold = threshold
 		bq.datastoreThrottleDuration = duration
 	}
@@ -164,7 +168,9 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 	var resultMap = new(sync.Map)
 	var totalQueryCount atomic.Uint32
 	var totalDispatchCount atomic.Uint32
-	var totalThrottleCount atomic.Uint32
+	var dispatchThrottleCount atomic.Uint32
+	var totalItemCount atomic.Uint64
+	var datastoreThrottleCount atomic.Uint32
 
 	pool := concurrency.NewPool(ctx, int(bq.maxConcurrentChecks))
 	for key, item := range cacheKeyMap {
@@ -185,7 +191,11 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 				bq.typesys,
 				WithCheckCommandLogger(bq.logger),
 				WithCheckCommandCache(bq.sharedCheckResources, bq.cacheSettings),
-				WithCheckDatastoreThrottler(bq.datastoreThrottleThreshold, bq.datastoreThrottleDuration),
+				WithCheckDatastoreThrottler(
+					bq.datastoreThrottlingEnabled,
+					bq.datastoreThrottleThreshold,
+					bq.datastoreThrottleDuration,
+				),
 			)
 
 			checkParams := &CheckCommandParams{
@@ -204,13 +214,18 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 			})
 
 			if metadata != nil {
-				if metadata.WasThrottled.Load() {
-					totalThrottleCount.Add(1)
+				if metadata.DispatchThrottled.Load() {
+					dispatchThrottleCount.Add(1)
 				}
 				totalDispatchCount.Add(metadata.DispatchCounter.Load())
+
+				if metadata.DatastoreThrottled.Load() {
+					datastoreThrottleCount.Add(1)
+				}
 			}
 
 			totalQueryCount.Add(response.GetResolutionMetadata().DatastoreQueryCount)
+			totalItemCount.Add(response.GetResolutionMetadata().DatastoreItemCount)
 
 			return nil
 		})
@@ -232,10 +247,12 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 	}
 
 	return results, &BatchCheckMetadata{
-		ThrottleCount:       totalThrottleCount.Load(),
-		DatastoreQueryCount: totalQueryCount.Load(),
-		DispatchCount:       totalDispatchCount.Load(),
-		DuplicateCheckCount: len(params.Checks) - len(cacheKeyMap),
+		DispatchThrottleCount:  dispatchThrottleCount.Load(),
+		DatastoreQueryCount:    totalQueryCount.Load(),
+		DatastoreItemCount:     totalItemCount.Load(),
+		DatastoreThrottleCount: datastoreThrottleCount.Load(),
+		DispatchCount:          totalDispatchCount.Load(),
+		DuplicateCheckCount:    len(params.Checks) - len(cacheKeyMap),
 	}, nil
 }
 

@@ -150,10 +150,8 @@ func reportable(l logger.Logger) interceptors.CommonReportableFunc {
 			fields = append(fields, zap.String(userAgentKey, userAgent))
 		}
 
-		zapLogger := l.(*logger.ZapLogger)
-
 		return &reporter{
-			ctx:            ctxzap.ToContext(ctx, zapLogger.Logger),
+			ctx:            ctx,
 			logger:         l,
 			fields:         fields,
 			protomarshaler: protojson.MarshalOptions{EmitUnpopulated: true},

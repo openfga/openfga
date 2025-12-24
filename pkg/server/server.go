@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
 	"sort"
 	"time"
 
@@ -24,12 +23,14 @@ import (
 	"github.com/openfga/openfga/internal/authz"
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/internal/graph"
+	"github.com/openfga/openfga/internal/planner"
 	"github.com/openfga/openfga/internal/shared"
 	"github.com/openfga/openfga/internal/throttler"
 	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/internal/utils/apimethod"
 	"github.com/openfga/openfga/pkg/authclaims"
 	"github.com/openfga/openfga/pkg/encoder"
+	"github.com/openfga/openfga/pkg/featureflags"
 	"github.com/openfga/openfga/pkg/gateway"
 	"github.com/openfga/openfga/pkg/logger"
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
@@ -40,16 +41,14 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
-type ExperimentalFeatureFlag string
-
 const (
 	AuthorizationModelIDHeader = "Openfga-Authorization-Model-Id"
 	authorizationModelIDKey    = "authorization_model_id"
 
-	ExperimentalCheckOptimizations       ExperimentalFeatureFlag = "enable-check-optimizations"
-	ExperimentalListObjectsOptimizations ExperimentalFeatureFlag = "enable-list-objects-optimizations"
-	ExperimentalAccessControlParams      ExperimentalFeatureFlag = "enable-access-control"
-	allowedLabel                                                 = "allowed"
+	allowedLabel = "allowed"
+
+	throttleTypeDatastore = "datastore"
+	throttleTypeDispatch  = "dispatch"
 )
 
 var tracer = otel.Tracer("openfga/pkg/server")
@@ -73,6 +72,18 @@ var (
 		Namespace:                       build.ProjectName,
 		Name:                            datastoreQueryCountHistogramName,
 		Help:                            "The number of database queries required to resolve a query (e.g. Check, ListObjects or ListUsers).",
+		Buckets:                         []float64{1, 5, 20, 50, 100, 150, 225, 400, 500, 750, 1000},
+		NativeHistogramBucketFactor:     1.1,
+		NativeHistogramMaxBucketNumber:  100,
+		NativeHistogramMinResetDuration: time.Hour,
+	}, []string{"grpc_service", "grpc_method"})
+
+	datastoreItemCountHistogramName = "datastore_item_count"
+
+	datastoreItemCountHistogram = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Namespace:                       build.ProjectName,
+		Name:                            datastoreItemCountHistogramName,
+		Help:                            "The number of items returned from the database required to resolve a query (e.g. Check, ListObjects or ListUsers).",
 		Buckets:                         []float64{1, 5, 20, 50, 100, 150, 225, 400, 500, 750, 1000},
 		NativeHistogramBucketFactor:     1.1,
 		NativeHistogramMaxBucketNumber:  100,
@@ -103,7 +114,7 @@ var (
 		Namespace: build.ProjectName,
 		Name:      "throttled_requests_count",
 		Help:      "The total number of requests that have been throttled.",
-	}, []string{"grpc_service", "grpc_method"})
+	}, []string{"grpc_service", "grpc_method", "throttling_type"})
 
 	checkResultCounterName = "check_result_count"
 	checkResultCounter     = promauto.NewCounterVec(prometheus.CounterOpts{
@@ -133,7 +144,7 @@ var (
 		NativeHistogramBucketFactor:     1.1,
 		NativeHistogramMaxBucketNumber:  100,
 		NativeHistogramMinResetDuration: time.Hour,
-	}, []string{"require_authorize_check"})
+	}, []string{"require_authorize_check", "on_duplicate_write", "on_missing_delete"})
 
 	checkDurationHistogramName = "check_duration_ms"
 	checkDurationHistogram     = promauto.NewHistogramVec(prometheus.HistogramOpts{
@@ -159,7 +170,6 @@ type Server struct {
 	transport                        gateway.Transport
 	resolveNodeLimit                 uint32
 	resolveNodeBreadthLimit          uint32
-	usersetBatchSize                 uint32
 	changelogHorizonOffset           int
 	listObjectsDeadline              time.Duration
 	listObjectsMaxResults            uint32
@@ -172,10 +182,11 @@ type Server struct {
 	maxConcurrentReadsForListUsers   uint32
 	maxAuthorizationModelCacheSize   int
 	maxAuthorizationModelSizeInBytes int
-	experimentals                    []ExperimentalFeatureFlag
+	experimentals                    []string
 	AccessControl                    serverconfig.AccessControlConfig
 	AuthnMethod                      string
 	serviceName                      string
+	featureFlagClient                featureflags.Client
 
 	// NOTE don't use this directly, use function resolveTypesystem. See https://github.com/openfga/openfga/issues/1527
 	typesystemResolver     typesystem.TypesystemResolverFunc
@@ -186,24 +197,10 @@ type Server struct {
 	// sharedDatastoreResources are created by the server
 	sharedDatastoreResources *shared.SharedDatastoreResources
 
-	checkResolver       graph.CheckResolver
-	checkResolverCloser func()
+	shadowCheckResolverTimeout time.Duration
 
-	listObjectsCheckResolver       graph.CheckResolver
-	listObjectsCheckResolverCloser func()
-
-	shadowCheckResolverEnabled          bool
-	shadowCheckResolverSamplePercentage int
-	shadowCheckResolverTimeout          time.Duration
-
-	shadowListObjectsCheckResolverEnabled          bool
-	shadowListObjectsCheckResolverSamplePercentage int
-	shadowListObjectsCheckResolverTimeout          time.Duration
-
-	shadowListObjectsQueryEnabled          bool
-	shadowListObjectsQuerySamplePercentage int
-	shadowListObjectsQueryTimeout          time.Duration
-	shadowListObjectsQueryMaxDeltaItems    int
+	shadowListObjectsQueryTimeout       time.Duration
+	shadowListObjectsQueryMaxDeltaItems int
 
 	requestDurationByQueryHistogramBuckets         []uint
 	requestDurationByDispatchCountHistogramBuckets []uint
@@ -240,6 +237,10 @@ type Server struct {
 
 	// singleflightGroup can be shared across caches, deduplicators, etc.
 	singleflightGroup *singleflight.Group
+
+	planner *planner.Planner
+
+	requestTimeout time.Duration
 }
 
 type OpenFGAServiceV1Option func(s *Server)
@@ -310,30 +311,6 @@ func WithResolveNodeLimit(limit uint32) OpenFGAServiceV1Option {
 func WithResolveNodeBreadthLimit(limit uint32) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.resolveNodeBreadthLimit = limit
-	}
-}
-
-// WithUsersetBatchSize in Check requests, configures how many usersets are collected
-// before we start processing them.
-//
-// For example in this model:
-// type user
-// type folder
-//
-//	relations
-//	   define viewer: [user]
-//
-// type doc
-//
-//	relations
-//	   define viewer: viewer from parent
-//	   define parent: [folder]
-//
-// If the Check(user:maria, viewer,doc:1) and this setting is 100,
-// we will find 100 parent folders of doc:1 and immediately start processing them.
-func WithUsersetBatchSize(usersetBatchSize uint32) OpenFGAServiceV1Option {
-	return func(s *Server) {
-		s.usersetBatchSize = usersetBatchSize
 	}
 }
 
@@ -418,9 +395,20 @@ func WithMaxConcurrentReadsForListUsers(maxConcurrentReadsForListUsers uint32) O
 	}
 }
 
-func WithExperimentals(experimentals ...ExperimentalFeatureFlag) OpenFGAServiceV1Option {
+func WithExperimentals(experimentals ...string) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.experimentals = experimentals
+	}
+}
+
+func WithFeatureFlagClient(client featureflags.Client) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		if client != nil {
+			s.featureFlagClient = client
+			return
+		}
+
+		s.featureFlagClient = featureflags.NewNoopFeatureFlagClient()
 	}
 }
 
@@ -591,6 +579,18 @@ func WithContextPropagationToDatastore(enable bool) OpenFGAServiceV1Option {
 	}
 }
 
+func WithPlanner(planner *planner.Planner) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.planner = planner
+	}
+}
+
+func WithRequestTimeout(timeout time.Duration) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.requestTimeout = timeout
+	}
+}
+
 // MustNewServerWithOpts see NewServerWithOpts.
 func MustNewServerWithOpts(opts ...OpenFGAServiceV1Option) *Server {
 	s, err := NewServerWithOpts(opts...)
@@ -601,13 +601,10 @@ func MustNewServerWithOpts(opts ...OpenFGAServiceV1Option) *Server {
 	return s
 }
 
-func (s *Server) IsExperimentallyEnabled(flag ExperimentalFeatureFlag) bool {
-	return slices.Contains(s.experimentals, flag)
-}
-
 // IsAccessControlEnabled returns true if the access control feature is enabled.
 func (s *Server) IsAccessControlEnabled() bool {
-	return s.IsExperimentallyEnabled(ExperimentalAccessControlParams) && s.AccessControl.Enabled
+	isEnabled := s.featureFlagClient.Boolean(serverconfig.ExperimentalAccessControlParams, "")
+	return isEnabled && s.AccessControl.Enabled
 }
 
 // WithListObjectsDispatchThrottlingEnabled sets whether dispatch throttling is enabled for List Objects requests.
@@ -723,14 +720,6 @@ func WithListUsersDatabaseThrottle(threshold int, duration time.Duration) OpenFG
 	}
 }
 
-// WithShadowCheckResolverEnabled turns of shadow check resolver to allow result comparison.
-// Note that ShadowCheckResolver is a temporary feature and may be removed in future release.
-func WithShadowCheckResolverEnabled(enabled bool) OpenFGAServiceV1Option {
-	return func(s *Server) {
-		s.shadowCheckResolverEnabled = enabled
-	}
-}
-
 // WithShadowCheckResolverTimeout is the amount of time to wait for the shadow Check evaluation response.
 func WithShadowCheckResolverTimeout(threshold time.Duration) OpenFGAServiceV1Option {
 	return func(s *Server) {
@@ -738,53 +727,10 @@ func WithShadowCheckResolverTimeout(threshold time.Duration) OpenFGAServiceV1Opt
 	}
 }
 
-// WithShadowCheckResolverSamplePercentage is the percentage of requests to sample.
-func WithShadowCheckResolverSamplePercentage(rate int) OpenFGAServiceV1Option {
-	return func(s *Server) {
-		s.shadowCheckResolverSamplePercentage = rate
-	}
-}
-
-// WithShadowListObjectsCheckResolverEnabled turns on shadow check resolver to allow result comparison.
-// Note that ShadowListObjectsCheckResolver is a temporary feature and may be removed in future release.
-func WithShadowListObjectsCheckResolverEnabled(enabled bool) OpenFGAServiceV1Option {
-	return func(s *Server) {
-		s.shadowListObjectsCheckResolverEnabled = enabled
-	}
-}
-
-// WithShadowListObjectsCheckResolverTimeout is the amount of time to wait for the shadow Check evaluation response.
-func WithShadowListObjectsCheckResolverTimeout(threshold time.Duration) OpenFGAServiceV1Option {
-	return func(s *Server) {
-		s.shadowListObjectsCheckResolverTimeout = threshold
-	}
-}
-
-// WithShadowListObjectsCheckResolverSamplePercentage is the percentage of requests to sample.
-func WithShadowListObjectsCheckResolverSamplePercentage(rate int) OpenFGAServiceV1Option {
-	return func(s *Server) {
-		s.shadowListObjectsCheckResolverSamplePercentage = rate
-	}
-}
-
-// WithShadowListObjectsQueryEnabled turns on shadow list objects query to allow result comparison.
-func WithShadowListObjectsQueryEnabled(enabled bool) OpenFGAServiceV1Option {
-	return func(s *Server) {
-		s.shadowListObjectsQueryEnabled = enabled
-	}
-}
-
 // WithShadowListObjectsQueryTimeout is the amount of time to wait for the shadow ListObjects evaluation response.
 func WithShadowListObjectsQueryTimeout(threshold time.Duration) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.shadowListObjectsQueryTimeout = threshold
-	}
-}
-
-// WithShadowListObjectsQuerySamplePercentage is the percentage of requests to sample for shadow ListObjects query.
-func WithShadowListObjectsQuerySamplePercentage(rate int) OpenFGAServiceV1Option {
-	return func(s *Server) {
-		s.shadowListObjectsQuerySamplePercentage = rate
 	}
 }
 
@@ -836,25 +782,15 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		maxConcurrentReadsForListUsers:   serverconfig.DefaultMaxConcurrentReadsForListUsers,
 		maxAuthorizationModelSizeInBytes: serverconfig.DefaultMaxAuthorizationModelSizeInBytes,
 		maxAuthorizationModelCacheSize:   serverconfig.DefaultMaxAuthorizationModelCacheSize,
-		experimentals:                    make([]ExperimentalFeatureFlag, 0, 10),
+		experimentals:                    make([]string, 0, 10),
 		AccessControl:                    serverconfig.AccessControlConfig{Enabled: false, StoreID: "", ModelID: ""},
 
-		cacheSettings:            serverconfig.NewDefaultCacheSettings(),
-		checkResolver:            nil,
-		listObjectsCheckResolver: nil,
+		cacheSettings: serverconfig.NewDefaultCacheSettings(),
 
-		shadowCheckResolverEnabled:          serverconfig.DefaultShadowCheckResolverEnabled,
-		shadowCheckResolverSamplePercentage: serverconfig.DefaultShadowCheckSamplePercentage,
-		shadowCheckResolverTimeout:          serverconfig.DefaultShadowCheckResolverTimeout,
+		shadowCheckResolverTimeout: serverconfig.DefaultShadowCheckResolverTimeout,
 
-		shadowListObjectsCheckResolverEnabled:          serverconfig.DefaultShadowListObjectsCheckResolverEnabled,
-		shadowListObjectsCheckResolverSamplePercentage: serverconfig.DefaultShadowListObjectsCheckSamplePercentage,
-		shadowListObjectsCheckResolverTimeout:          serverconfig.DefaultShadowListObjectsCheckResolverTimeout,
-
-		shadowListObjectsQueryEnabled:          serverconfig.DefaultShadowListObjectsQueryEnabled,
-		shadowListObjectsQuerySamplePercentage: serverconfig.DefaultShadowListObjectsQuerySamplePercentage,
-		shadowListObjectsQueryTimeout:          serverconfig.DefaultShadowListObjectsQueryTimeout,
-		shadowListObjectsQueryMaxDeltaItems:    serverconfig.DefaultShadowListObjectsQueryMaxDeltaItems,
+		shadowListObjectsQueryTimeout:       serverconfig.DefaultShadowListObjectsQueryTimeout,
+		shadowListObjectsQueryMaxDeltaItems: serverconfig.DefaultShadowListObjectsQueryMaxDeltaItems,
 
 		requestDurationByQueryHistogramBuckets:         []uint{50, 200},
 		requestDurationByDispatchCountHistogramBuckets: []uint{50, 200},
@@ -877,6 +813,11 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		tokenSerializer:   encoder.NewStringContinuationTokenSerializer(),
 		singleflightGroup: &singleflight.Group{},
 		authorizer:        authz.NewAuthorizerNoop(),
+		planner: planner.New(&planner.Config{
+			EvictionThreshold: serverconfig.DefaultPlannerEvictionThreshold,
+			CleanupInterval:   serverconfig.DefaultPlannerCleanupInterval,
+		}),
+		requestTimeout: serverconfig.DefaultRequestTimeout,
 	}
 
 	for _, opt := range opts {
@@ -911,29 +852,16 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		return nil, fmt.Errorf("ListUsers default dispatch throttling threshold must be equal or smaller than max dispatch threshold for ListUsers")
 	}
 
+	if s.featureFlagClient == nil {
+		s.featureFlagClient = featureflags.NewDefaultClient(s.experimentals)
+	}
+
 	err := s.validateAccessControlEnabled()
 	if err != nil {
 		return nil, err
 	}
 
-	if err = s.validateShadowListObjectsQueryEnabled(); err != nil {
-		return nil, err
-	}
-
 	// below this point, don't throw errors or we may leak resources in tests
-
-	checkDispatchThrottlingOptions := []graph.DispatchThrottlingCheckResolverOpt{}
-	if s.checkDispatchThrottlingEnabled {
-		checkDispatchThrottlingOptions = []graph.DispatchThrottlingCheckResolverOpt{
-			graph.WithDispatchThrottlingCheckResolverConfig(graph.DispatchThrottlingCheckResolverConfig{
-				DefaultThreshold: s.checkDispatchThrottlingDefaultThreshold,
-				MaxThreshold:     s.checkDispatchThrottlingMaxThreshold,
-			}),
-			// only create the throttler if the feature is enabled, so that we can clean it afterward
-			graph.WithConstantRateThrottler(s.checkDispatchThrottlingFrequency,
-				"check_dispatch_throttle"),
-		}
-	}
 
 	if !s.contextPropagationToDatastore {
 		// Creates a new [storagewrappers.ContextTracerWrapper] that will execute datastore queries using
@@ -946,69 +874,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		return nil, err
 	}
 
-	if s.shadowListObjectsQueryEnabled {
-		s.cacheSettings.ShadowCheckCacheEnabled = true
-	}
-
 	s.sharedDatastoreResources, err = shared.NewSharedDatastoreResources(s.ctx, s.singleflightGroup, s.datastore, s.cacheSettings, []shared.SharedDatastoreResourcesOpt{shared.WithLogger(s.logger)}...)
-	if err != nil {
-		return nil, err
-	}
-
-	var checkCacheOptions []graph.CachedCheckResolverOpt
-	if s.cacheSettings.ShouldCacheCheckQueries() {
-		checkCacheOptions = append(checkCacheOptions,
-			graph.WithExistingCache(s.sharedDatastoreResources.CheckCache),
-			graph.WithLogger(s.logger),
-			graph.WithCacheTTL(s.cacheSettings.CheckQueryCacheTTL),
-		)
-	}
-
-	s.checkResolver, s.checkResolverCloser, err = graph.NewOrderedCheckResolvers([]graph.CheckResolverOrderedBuilderOpt{
-		graph.WithLocalCheckerOpts([]graph.LocalCheckerOption{
-			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
-			graph.WithOptimizations(s.IsExperimentallyEnabled(ExperimentalCheckOptimizations)),
-			graph.WithMaxResolutionDepth(s.resolveNodeLimit),
-		}...),
-		graph.WithLocalShadowCheckerOpts([]graph.LocalCheckerOption{
-			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
-			graph.WithOptimizations(true),
-			graph.WithMaxResolutionDepth(s.resolveNodeLimit),
-		}...),
-		graph.WithShadowResolverEnabled(s.shadowCheckResolverEnabled),
-		graph.WithShadowResolverOpts([]graph.ShadowResolverOpt{
-			graph.ShadowResolverWithLogger(s.logger),
-			graph.ShadowResolverWithSamplePercentage(s.shadowCheckResolverSamplePercentage),
-			graph.ShadowResolverWithTimeout(s.shadowCheckResolverTimeout),
-		}...),
-		graph.WithCachedCheckResolverOpts(s.cacheSettings.ShouldCacheCheckQueries(), checkCacheOptions...),
-		graph.WithDispatchThrottlingCheckResolverOpts(s.checkDispatchThrottlingEnabled, checkDispatchThrottlingOptions...),
-	}...).Build()
-	if err != nil {
-		return nil, err
-	}
-
-	s.listObjectsCheckResolver, s.listObjectsCheckResolverCloser, err = graph.NewOrderedCheckResolvers([]graph.CheckResolverOrderedBuilderOpt{
-		graph.WithLocalCheckerOpts([]graph.LocalCheckerOption{
-			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
-			graph.WithOptimizations(s.IsExperimentallyEnabled(ExperimentalCheckOptimizations)),
-			graph.WithMaxResolutionDepth(s.resolveNodeLimit),
-		}...),
-		graph.WithLocalShadowCheckerOpts([]graph.LocalCheckerOption{
-			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
-			graph.WithOptimizations(true),
-			graph.WithMaxResolutionDepth(s.resolveNodeLimit),
-		}...),
-		graph.WithShadowResolverEnabled(s.shadowListObjectsCheckResolverEnabled),
-		graph.WithShadowResolverOpts([]graph.ShadowResolverOpt{
-			graph.ShadowResolverWithName("list-objects"),
-			graph.ShadowResolverWithLogger(s.logger),
-			graph.ShadowResolverWithSamplePercentage(s.shadowListObjectsCheckResolverSamplePercentage),
-			graph.ShadowResolverWithTimeout(s.shadowListObjectsCheckResolverTimeout),
-		}...),
-		graph.WithCachedCheckResolverOpts(s.cacheSettings.ShouldCacheCheckQueries(), checkCacheOptions...),
-		graph.WithDispatchThrottlingCheckResolverOpts(s.checkDispatchThrottlingEnabled, checkDispatchThrottlingOptions...),
-	}...).Build()
 	if err != nil {
 		return nil, err
 	}
@@ -1035,8 +901,9 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 
 // Close releases the server resources.
 func (s *Server) Close() {
-	s.checkResolverCloser()
-	s.listObjectsCheckResolverCloser()
+	if s.planner != nil {
+		s.planner.Stop()
+	}
 	s.typesystemResolverStop()
 
 	if s.listObjectsDispatchThrottler != nil {
@@ -1123,19 +990,6 @@ func (s *Server) validateAccessControlEnabled() error {
 	return nil
 }
 
-// validateAccessControlEnabled validates the access control parameters.
-func (s *Server) validateShadowListObjectsQueryEnabled() error {
-	if s.shadowListObjectsQueryEnabled {
-		if s.shadowListObjectsQuerySamplePercentage < 0 || s.shadowListObjectsQuerySamplePercentage > 100 {
-			return fmt.Errorf("shadow list objects check resolver sample percentage must be between 0 and 100, got %d", s.shadowListObjectsQuerySamplePercentage)
-		}
-		if s.shadowListObjectsQueryTimeout <= 0 {
-			return fmt.Errorf("shadow list objects check resolver timeout must be greater than 0, got %s", s.shadowListObjectsQueryTimeout)
-		}
-	}
-	return nil
-}
-
 // checkAuthz checks the authorization for calling an API method.
 func (s *Server) checkAuthz(ctx context.Context, storeID string, apiMethod apimethod.APIMethod, modules ...string) error {
 	if authclaims.SkipAuthzCheckFromContext(ctx) {
@@ -1186,6 +1040,31 @@ func (s *Server) getAccessibleStores(ctx context.Context) ([]string, error) {
 	}
 
 	return stores, nil
+}
+
+func (s *Server) getCheckResolverOptions() ([]graph.CachedCheckResolverOpt, []graph.DispatchThrottlingCheckResolverOpt) {
+	var checkCacheOptions []graph.CachedCheckResolverOpt
+	if s.cacheSettings.ShouldCacheCheckQueries() {
+		checkCacheOptions = append(checkCacheOptions,
+			graph.WithExistingCache(s.sharedDatastoreResources.CheckCache),
+			graph.WithLogger(s.logger),
+			graph.WithCacheTTL(s.cacheSettings.CheckQueryCacheTTL),
+		)
+	}
+
+	var checkDispatchThrottlingOptions []graph.DispatchThrottlingCheckResolverOpt
+	if s.checkDispatchThrottlingEnabled {
+		checkDispatchThrottlingOptions = []graph.DispatchThrottlingCheckResolverOpt{
+			graph.WithDispatchThrottlingCheckResolverConfig(graph.DispatchThrottlingCheckResolverConfig{
+				DefaultThreshold: s.checkDispatchThrottlingDefaultThreshold,
+				MaxThreshold:     s.checkDispatchThrottlingMaxThreshold,
+			}),
+			// only create the throttler if the feature is enabled, so that we can clean it afterward
+			graph.WithConstantRateThrottler(s.checkDispatchThrottlingFrequency,
+				"check_dispatch_throttle"),
+		}
+	}
+	return checkCacheOptions, checkDispatchThrottlingOptions
 }
 
 // checkWriteAuthz checks the authorization for modules if they exist, otherwise the store on write requests.
