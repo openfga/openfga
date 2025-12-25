@@ -192,7 +192,7 @@ func NewRunCommand() *cobra.Command {
 
 	flags.Bool("trace-enabled", defaultConfig.Trace.Enabled, "enable tracing")
 
-	flags.String("trace-otlp-endpoint", defaultConfig.Trace.OTLP.Endpoint, "the endpoint of the trace collector")
+	flags.String("trace-otlp-endpoint", defaultConfig.Trace.OTLP.Endpoint, "the endpoint of the trace collector. 'none' for disabling the exporter")
 
 	flags.Bool("trace-otlp-tls-enabled", defaultConfig.Trace.OTLP.TLS.Enabled, "use TLS connection for trace collector")
 
