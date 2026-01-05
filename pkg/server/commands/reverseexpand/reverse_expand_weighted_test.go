@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
@@ -464,6 +463,77 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 			user:                       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
 			expectedOptimizedObjects:   []string{"org:a", "org:c"},
 			expectedUnoptimizedObjects: []string{"org:a", "org:b", "org:c"},
+		},
+		{
+			name: "intersection_direct_assign_not_lowest",
+			model: `model
+				  schema 1.1
+
+				type user
+				type user_group
+				  relations
+					define x: [user]
+				type team
+				  relations
+					define manager: [user, user_group#x] and assigned
+					define assigned: [user]
+				type org
+				  relations
+					define teams: [team]
+					define member: manager from teams
+		`,
+			tuples: []string{
+				"team:a#assigned@user:bob",
+				"team:a#manager@user:bob",
+				"org:a#teams@team:a",
+				"team:b#assigned@user:bob",
+				"user_group:b#x@user:bob",
+				"team:b#manager@user_group:b#x",
+				"org:b#teams@team:b",
+				"team:c#manager@user:bob",
+				"org:c#teams@team:c",
+				"team:d#assigned@user:bob",
+				"org:d#teams@team:d",
+			},
+			objectType:                 "org",
+			relation:                   "member",
+			user:                       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+			expectedOptimizedObjects:   []string{"org:a", "org:b"},
+			expectedUnoptimizedObjects: []string{"org:a", "org:b", "org:c"},
+		},
+		{
+			name: "intersection_ttu_different_name",
+			model: `model
+				  schema 1.1
+
+				type user
+				type user_group
+				  relations
+					define x: [user]
+				type team
+				  relations
+					define manager: assigned and x from mygroup
+					define assigned: [user]
+					define mygroup: [user_group]
+				type org
+				  relations
+					define teams: [team]
+					define member: manager from teams
+		`,
+			tuples: []string{
+				"team:a#assigned@user:bob",
+				"team:a#mygroup@user_group:a",
+				"user_group:a#x@user:bob",
+				"org:a#teams@team:a",
+				"team:b#assigned@user:bob",
+				"team:b#mygroup@user_group:b",
+				"org:b#teams@team:b",
+			},
+			objectType:                 "org",
+			relation:                   "member",
+			user:                       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+			expectedOptimizedObjects:   []string{"org:a"},
+			expectedUnoptimizedObjects: []string{"org:a", "org:b"},
 		},
 		{
 			name: "simple_intersection_multiple_direct_assignments_not_linked_1",
@@ -1209,6 +1279,71 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 			user:                       &UserRefObject{Object: &openfgav1.Object{Type: "user2", Id: "bob"}},
 			expectedOptimizedObjects:   []string{"org:d"},
 			expectedUnoptimizedObjects: []string{"org:d"},
+		},
+		{
+			name: "exclusion_direct_assign_not_lowest",
+			model: `model
+				  schema 1.1
+
+				type user
+				type user_group
+				  relations
+					define x: [user]
+				type team
+				  relations
+					define manager: [user, user_group#x] but not banned
+					define banned: [user]
+				type org
+				  relations
+					define teams: [team]
+					define member: manager from teams
+		`,
+			tuples: []string{
+				"team:a#banned@user:bob",
+				"team:a#manager@user:bob",
+				"org:a#teams@team:a",
+				"team:b#manager@user:bob",
+				"org:b#teams@team:b",
+			},
+			objectType:                 "org",
+			relation:                   "member",
+			user:                       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+			expectedOptimizedObjects:   []string{"org:b"},
+			expectedUnoptimizedObjects: []string{"org:a", "org:b"},
+		},
+		{
+			name: "exclusion_ttu",
+			model: `model
+				  schema 1.1
+
+				type user
+				type user_group
+				  relations
+					define x: [user]
+				type team
+				  relations
+					define manager: assigned but not x from mygroup
+					define assigned: [user]
+					define mygroup: [user_group]
+				type org
+				  relations
+					define teams: [team]
+					define member: manager from teams
+		`,
+			tuples: []string{
+				"team:a#assigned@user:bob",
+				"team:a#mygroup@user_group:a",
+				"user_group:a#x@user:bob",
+				"org:a#teams@team:a",
+				"team:b#assigned@user:bob",
+				"user_group:b#x@user:bob",
+				"org:b#teams@team:b",
+			},
+			objectType:                 "org",
+			relation:                   "member",
+			user:                       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+			expectedOptimizedObjects:   []string{"org:b"},
+			expectedUnoptimizedObjects: []string{"org:a", "org:b"},
 		},
 		{
 			name: "simple_exclusion_with_double_negative",
@@ -1978,6 +2113,7 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 		// intersection with ttu recursive
 		// intersection with userset recursive
 	}
+
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			defer goleak.VerifyNone(t)
@@ -2256,7 +2392,7 @@ func TestLoopOverEdges(t *testing.T) {
 		}, edges, false, NewResolutionMetadata(), make(chan *ReverseExpandResult), "")
 
 		require.Error(t, newErr)
-		require.ErrorContains(t, newErr, "invalid exclusion edges for source type")
+		require.ErrorContains(t, newErr, "invalid number of edges in an exclusion operation: expected 2, got 0")
 	})
 	t.Run("returns_error_when_exclusionHandler_errors", func(t *testing.T) {
 		model := `
@@ -2384,92 +2520,6 @@ func TestIntersectionHandler(t *testing.T) {
 		require.NoError(t, err)
 	})
 
-	t.Run("return_nil_when_there_are_no_connections_for_the_path", func(t *testing.T) {
-		model := `
-			model
-				schema 1.1
-			type user
-			type user2
-			type subteam
-				relations
-					define member: [user]
-			type adhoc
-				relations
-					define member: [user]
-			type team
-				relations
-					define member: [subteam#member]
-			type group
-				relations
-					define team: [team]
-					define subteam: [subteam]
-					define adhoc_member: [adhoc#member]
-					define member: [user2] and member from team and adhoc_member and member from subteam
-		`
-		tuples := []string{}
-		objectType := "group"
-		relation := "member"
-		user := &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "a"}}
-
-		ds := memory.New()
-		t.Cleanup(ds.Close)
-		storeID, authModel := storagetest.BootstrapFGAStore(t, ds, model, tuples)
-		typesys, err := typesystem.New(
-			authModel,
-		)
-		require.NoError(t, err)
-		ctx := storage.ContextWithRelationshipTupleReader(context.Background(), ds)
-		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
-
-		resultChan := make(chan *ReverseExpandResult)
-		errChan := make(chan error, 1)
-		q := NewReverseExpandQuery(
-			ds,
-			typesys,
-
-			// turn on weighted graph functionality
-			WithListObjectOptimizationsEnabled(true),
-		)
-
-		node, ok := typesys.GetNode("group#member")
-		require.True(t, ok)
-
-		edges, err := typesys.GetEdgesFromNode(node, "user")
-		require.NoError(t, err)
-
-		pool := concurrency.NewPool(ctx, 2)
-
-		go func() {
-			newErr := q.intersectionHandler(pool, &ReverseExpandRequest{
-				StoreID:       storeID,
-				ObjectType:    objectType,
-				Relation:      relation,
-				User:          user,
-				relationStack: nil,
-			}, resultChan, edges[0].GetTo(), "", NewResolutionMetadata())
-
-			if newErr != nil {
-				errChan <- newErr
-			}
-
-			poolErr := pool.Wait()
-
-			if poolErr != nil {
-				errChan <- poolErr
-			}
-		}()
-
-		select {
-		case res := <-resultChan:
-			require.Fail(t, "expected no result, but got one", "received: %+v", res)
-		case <-time.After(300 * time.Millisecond):
-			require.Fail(t, "should not succeed, not a valid intersection for terminal type")
-			// Success: no result received within timeout
-		case err := <-errChan:
-			require.ErrorContains(t, err, "invalid edges for source type")
-		}
-	})
-
 	t.Run("return_error_when_check_errors", func(t *testing.T) {
 		model := `
 			model
@@ -2515,6 +2565,7 @@ func TestIntersectionHandler(t *testing.T) {
 			// turn on weighted graph functionality
 			WithListObjectOptimizationsEnabled(true),
 		)
+
 		q.localCheckResolver = mockCheckResolver
 
 		node, ok := typesys.GetNode("document#admin")

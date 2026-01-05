@@ -65,13 +65,13 @@ func filterTuples(tuples []*openfgav1.TupleKey, targetObject, targetRelation str
 func (c *CombinedTupleReader) Read(
 	ctx context.Context,
 	storeID string,
-	tk *openfgav1.TupleKey,
+	filter storage.ReadFilter,
 	options storage.ReadOptions,
 ) (storage.TupleIterator, error) {
-	filteredTuples := filterTuples(c.contextualTuplesOrderedByObjectID, tk.GetObject(), tk.GetRelation(), []string{})
+	filteredTuples := filterTuples(c.contextualTuplesOrderedByObjectID, filter.Object, filter.Relation, []string{})
 	iter1 := storage.NewStaticTupleIterator(filteredTuples)
 
-	iter2, err := c.RelationshipTupleReader.Read(ctx, storeID, tk, options)
+	iter2, err := c.RelationshipTupleReader.Read(ctx, storeID, filter, options)
 	if err != nil {
 		return nil, err
 	}
@@ -80,28 +80,28 @@ func (c *CombinedTupleReader) Read(
 }
 
 // ReadPage see [storage.RelationshipTupleReader.ReadPage].
-func (c *CombinedTupleReader) ReadPage(ctx context.Context, store string, tk *openfgav1.TupleKey, options storage.ReadPageOptions) ([]*openfgav1.Tuple, string, error) {
+func (c *CombinedTupleReader) ReadPage(ctx context.Context, store string, filter storage.ReadFilter, options storage.ReadPageOptions) ([]*openfgav1.Tuple, string, error) {
 	// No reading from contextual tuples.
-	return c.RelationshipTupleReader.ReadPage(ctx, store, tk, options)
+	return c.RelationshipTupleReader.ReadPage(ctx, store, filter, options)
 }
 
 // ReadUserTuple see [storage.RelationshipTupleReader.ReadUserTuple].
 func (c *CombinedTupleReader) ReadUserTuple(
 	ctx context.Context,
 	store string,
-	tk *openfgav1.TupleKey,
+	filter storage.ReadUserTupleFilter,
 	options storage.ReadUserTupleOptions,
 ) (*openfgav1.Tuple, error) {
-	targetUsers := []string{tk.GetUser()}
-	filteredContextualTuples := filterTuples(c.contextualTuplesOrderedByObjectID, tk.GetObject(), tk.GetRelation(), targetUsers)
+	targetUsers := []string{filter.User}
+	filteredContextualTuples := filterTuples(c.contextualTuplesOrderedByObjectID, filter.Object, filter.Relation, targetUsers)
 
 	for _, t := range filteredContextualTuples {
-		if t.GetKey().GetUser() == tk.GetUser() {
+		if t.GetKey().GetUser() == filter.User {
 			return t, nil
 		}
 	}
 
-	return c.RelationshipTupleReader.ReadUserTuple(ctx, store, tk, options)
+	return c.RelationshipTupleReader.ReadUserTuple(ctx, store, filter, options)
 }
 
 func tupleMatchesAllowedUserTypeRestrictions(t *openfgav1.Tuple,

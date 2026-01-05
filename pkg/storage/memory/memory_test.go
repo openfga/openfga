@@ -307,6 +307,16 @@ func TestTupleRecordMatchTupleKey(t *testing.T) {
 			},
 			match: true,
 		},
+		`match_user_type`: {
+			target: tuple.NewTupleKey("document:x", "viewer", "user:"),
+			source: &storage.TupleRecord{
+				ObjectType: "document",
+				ObjectID:   "x",
+				Relation:   "viewer",
+				User:       "user:1",
+			},
+			match: true,
+		},
 	}
 	for name, test := range testCases {
 		t.Run(name, func(t *testing.T) {

@@ -7,6 +7,78 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Try to keep listed changes to a concise bulleted list of simple explanations of changes. Aim for the amount of information needed so that readers can understand where they would look in the codebase to investigate the changes' implementation, or where they would look in the documentation to understand how to make use of the change in practice - better yet, link directly to the docs and provide detailed information there. Only elaborate if doing so is required to avoid breaking changes or experimental features from ruining someone's day.
 
 ## [Unreleased]
+### Changed
+- Datastore throttling separated from dispatch throttling in BatchCheck, ListUsers metadata. Also, `throttling_type` label added to `throttledRequestCounter` metric to differentiate between dispatch/datastore throttling. [#2839](https://github.com/openfga/openfga/pull/2839)
+
+### Removed
+- Removed custom grpc_prometheus fork, replace with go-grpc-middleware's provider. Removes the custom `grpc_code` label on this metric. [#2855](https://github.com/openfga/openfga/pull/2855)
+
+### Fixed
+- ListUsers will now properly get datastore throttled if enabled. [#2846](https://github.com/openfga/openfga/pull/2846)
+- Cache controller now uses the logger provided to the server instead of always using a no-op logger. [#2847](https://github.com/openfga/openfga/pull/2847)
+
+## [1.11.2] - 2025-12-04
+### Fixed
+- Fixed an issue with the `InMemoryCacheController` (the default cache controller when enabled) where cached Check responses were not invalidated after a write to the store. Previously, invalidation only occurred if multiple Checks were triggered in rapid succession after a write. [#2811](https://github.com/openfga/openfga/pull/2811)
+- Update toolchain go version to 1.25.5 to address [CVE-2025-61729](https://pkg.go.dev/vuln/GO-2025-4155) in the go std lib.
+
+## [1.11.1] - 2025-11-20
+### Added
+- Added experimental list objects pipeline algorithm with `pipeline_list_objects` flag. [#2815](https://github.com/openfga/openfga/pull/2815)
+- Differentiate between dispatch throttled operations and datastore throttled operations. [#2821](https://github.com/openfga/openfga/pull/2821)
+
+### Fixed
+- Fixed bug where public wildcard tuples without condition were being considered for a wildcard relation which was only defined with a condition. [CVE-2025-64751](https://github.com/openfga/openfga/security/advisories/GHSA-2c64-vmv2-hgfc)
+
+## [1.11.0] - 2025-11-05
+### Added
+- **Breaking**: Update PostgreSQL to use [pgxpool](https://pkg.go.dev/github.com/jackc/pgx/v5/pgxpool) instead of `database/sql` to allow for finer PostgreSQL connection control. [#2734](https://github.com/openfga/openfga/pull/2734), [#2789](https://github.com/openfga/openfga/pull/2789).
+
+## [1.10.5] - 2025-11-05
+### Added
+- Added `datastore_throttling` feature flag to enable/disable new throttling mechanism. [#2780](https://github.com/openfga/openfga/pull/2780), [#2781](https://github.com/openfga/openfga/pull/2781)
+
+### Removed
+- Reverted pgxpool change erroneously included in 1.10.4. [Original PR](https://github.com/openfga/openfga/pull/2734), [Revert PR](https://github.com/openfga/openfga/pull/2786)
+
+## [1.10.4] - 2025-11-04
+### Added
+- Added a default featureflags.Client to the server and ability to pass custom clients to the server via `server.WithFeatureFlagClient`. [#2708](https://github.com/openfga/openfga/pull/2708)
+- Enable planner for selecting check resolution strategies based on runtime statistics. [#2751](https://github.com/openfga/openfga/pull/2751)
+- Added a new metric `datastore_item_count` that represents the total number of tuples consumed during request resolution. [#2771](https://github.com/openfga/openfga/pull/2771)
+- Breaking: Update PostgreSQL to use [pgxpool](https://pkg.go.dev/github.com/jackc/pgx/v5/pgxpool) instead of `database/sql` to allow for finer PostgreSQL connection control. [#2734](https://github.com/openfga/openfga/pull/2734).
+
+### Changed
+- Breaking: Update PostgreSQL to use [pgxpool](https://pkg.go.dev/github.com/jackc/pgx/v5/pgxpool) instead of `database/sql` to allow for finer PostgreSQL connection control. [#2734](https://github.com/openfga/openfga/pull/2734).
+  - PostgreSQL will have the following configuration changes.
+    - Idle connections are now controlled by `OPENFGA_DATASTORE_MIN_IDLE_CONNS` (default 0) instead of `OPENFGA_DATASTORE_MAX_IDLE_CONNS`.
+    - Added configuration on minimum connections via `OPENFGA_DATASTORE_MIN_OPEN_CONNS` (default to 0).
+  - Metrics for PostreSQL will change from the [default Prometheus DB Stats Collector](https://github.com/prometheus/client_golang/tree/main/prometheus/collectors) to [PGX Pool Prometheus Collector](https://github.com/IBM/pgxpoolprometheus). See [PGX Pool Prometheus Collector](https://github.com/IBM/pgxpoolprometheus?tab=readme-ov-file#metrics-collected) for the list of available metrics.
+
+### Fixed
+- Use correct names for cache counter metrics. [#2750](https://github.com/openfga/openfga/pull/2750)
+- Update go toolchain version to 1.25.3 - related: [CVE-2025-58187](https://www.cve.org/CVERecord?id=CVE-2025-58187)
+
+## [1.10.3] - 2025-10-14
+### Changed
+- Remove zap type conversion on request logger [#2717](https://github.com/openfga/openfga/pull/2717)
+- Build checkResolvers for each request instead of once at server start. [#2742](https://github.com/openfga/openfga/pull/2742)
+
+### Fixed
+- Align datastore throttle configuration names with struct property names. [#2668](https://github.com/openfga/openfga/pull/2668)
+- Increase the buffer size for LO requests to be 10% of the max results returned or 10. [#2735](https://github.com/openfga/openfga/pull/2735)
+
+## [1.10.2] - 2025-09-29
+### Changed
+- Bumped the version of `openfga/language/pkg` to a version of the weighted graph that includes recursive relation detection. [#2716](https://github.com/openfga/openfga/pull/2716)
+- Log the reason on server failure start [#2703](https://github.com/openfga/openfga/pull/2703)
+
+### Fixed
+- Fixed a bug where experimental ReverseExpand constructed the underlying check relation incorrectly for intersection and exclusion in ListObjects. [#2721](https://github.com/openfga/openfga/pull/2721)
+
+## [1.10.1] - 2025-09-22
+### Fixed
+- Revert spf13/viper back to v.1.20.1 to avoid bumping sourcegraph/conc to an unreleased version as it causes performance degradation. [#2706](https://github.com/openfga/openfga/pull/2706)
 
 ## [1.10.0] - 2025-09-11
 ### Added
@@ -1421,7 +1493,15 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
 - Memory storage adapter implementation
 - Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.10.0...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.11.2...HEAD
+[1.11.2]: https://github.com/openfga/openfga/compare/v1.11.1...v1.11.2
+[1.11.1]: https://github.com/openfga/openfga/compare/v1.11.0...v1.11.1
+[1.11.0]: https://github.com/openfga/openfga/compare/v1.10.5...v1.11.0
+[1.10.5]: https://github.com/openfga/openfga/compare/v1.10.4...v1.10.5
+[1.10.4]: https://github.com/openfga/openfga/compare/v1.10.3...v1.10.4
+[1.10.3]: https://github.com/openfga/openfga/compare/v1.10.2...v1.10.3
+[1.10.2]: https://github.com/openfga/openfga/compare/v1.10.1...v1.10.2
+[1.10.1]: https://github.com/openfga/openfga/compare/v1.10.0...v1.10.1
 [1.10.0]: https://github.com/openfga/openfga/compare/v1.9.5...v1.10.0
 [1.9.5]: https://github.com/openfga/openfga/compare/v1.9.4...v1.9.5
 [1.9.4]: https://github.com/openfga/openfga/compare/v1.9.3...v1.9.4

@@ -9,6 +9,9 @@ on:
     paths:
       - 'CHANGELOG.md'
 
+permissions:
+  contents: read
+
 jobs:
   create-tag:
     if: >
@@ -32,7 +35,7 @@ jobs:
             exit 1
           fi
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
       - name: Create new tag
         id: create_tag
         run: |
@@ -57,12 +60,13 @@ jobs:
           fi
           echo "Creating a new tag $tag_name..."
           SHA=${{ github.event.pull_request.merge_commit_sha }}
-          response=$(curl -s -X POST -H "Authorization: token ${{ secrets.GORELEASER_GITHUB_TOKEN }}" \
+          response=$(curl -s -o response.json -w "%{http_code}" -X POST -H "Authorization: token ${{ secrets.GORELEASER_GITHUB_TOKEN }}" \
             -d "{\"ref\":\"refs/tags/$tag_name\", \"sha\":\"$SHA\"}" \
             https://api.github.com/repos/${{ github.repository }}/git/refs)
-          http_status=$(echo "$response" | jq -r .status)
-          if [ "$http_status" -ne 201 ]; then
+          if [ "$response" -ne 201 ]; then
             echo "Failed to create tag"
-            echo "$response"
+            cat response.json
             exit 1
+          else
+            cat response.json
           fi
