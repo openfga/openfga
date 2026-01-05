@@ -283,7 +283,7 @@ Content-Type: application/json
     ],
     "on_duplicate": "ignore"
   }
-}  
+}
 ### Removing relationships
 POST {{fga_api_url}}/stores/{{fga_store_id}}/write
 Authorization: Bearer {{fga_api_token}}
