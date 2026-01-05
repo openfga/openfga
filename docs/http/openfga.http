@@ -267,7 +267,7 @@ Content-Type: application/json
 }
 
 
-### Adding relationships
+### Adding relationships (ignore duplicates)
 POST {{fga_api_url}}/stores/{{fga_store_id}}/write
 Authorization: Bearer {{fga_api_token}}
 Content-Type: application/json
