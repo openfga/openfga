@@ -538,11 +538,11 @@ func resolveDifference(ctx context.Context, iters []storage.Iterator[string], ou
 						lastError = err
 						return
 					}
-					// in case the iterator done is the difference iterator then drain the base
+					// in case the iterator Done is the difference iterator then drain the base
 					if idx == DifferenceIndex {
 						goto drainBase
 					}
-					// otherwise if the
+					// otherwise if the iterator Done is the base iterator then we need to stop
 					return
 				}
 				compareValues[idx] = value
