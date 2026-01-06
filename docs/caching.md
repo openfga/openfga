@@ -9,18 +9,10 @@ OpenFGA implements several complementary types of caching:
 3. [**List Objects Iterator Cache**](#list-objects-iterator-cache): Same as Check Iterator Cache, but used for List Objects requests.
 4. [**Cache Controller**](#cache-controller): Periodically invalidates cache entries in the background based on recent writes to the store.
 
-Note: For any request, if the `HIGHER_CONSISTENCY` consistency preference is specified, caching is bypassed entirely.
+**NOTE:**
 
-## Cache Implementation
-
-OpenFGA uses the [Theine](https://github.com/Yiling-J/theine-go) library for in-memory caching:
-
-- **Eviction Policy**: Least Recently Used (LRU) with W-TinyLFU admission policy
-- **Thread Safety**: Fully concurrent with minimal locking
-- **Memory Efficiency**: Optimized memory layout and garbage collection friendly
-- **Performance**: High-performance cache operations with sub-microsecond latencies
-
-Note: Since the cache is in-memory, different replicas of the service do not share their caches. Therefore, its effectiveness depends on the probability of repeated/similar requests hitting the same replica, which may depend on the model, tuple distribution, number of replicas, and the load balancing algorithm used.
+- For any request, if the `HIGHER_CONSISTENCY` consistency preference is specified, caching is bypassed entirely.
+- The cache is in-memory, so different replicas of the service do not share their caches. Therefore, its effectiveness depends on the probability of repeated/similar requests hitting the same replica, which may depend on the model, tuple distribution, number of replicas, and the load balancing algorithm used.
 
 ## Understanding Cache Types
 
@@ -42,6 +34,8 @@ The Check Iterator Cache stores database query results (tuple iterators) used du
 
 - **What it caches**: Raw tuple query results from the database.
 - **Benefits**: Reduces database load by caching some of its results in-memory.
+
+The maximum number of tuples stored for each iterator cache entry can be [configured](https://openfga.dev/docs/getting-started/setup-openfga/configuration).
 
 #### Example
 
@@ -110,29 +104,15 @@ Notice:
 
 Because invalidation is triggered asynchronously by Check and List Objects requests, there is an accepted race condition where the first Check after a write (and subsequent Checks until the async job finishes) could return stale data if its Check response was cached before the write, even if it has been more than the cache controller TTL since the write.
 
-For example, if we look at the previous example, if Check 3 had occurred at t=100s, it would have still returned a stale result since it triggers invalidation asynchronously but returns immediately. The following Check however would see the results of the invalidation and compute a fresh result.
+For example, if we look at the previous example, if Check 3 had occurred at t=100s, it would have still returned a stale result since it triggers invalidation asynchronously but returns immediately. The next Check, however, would see the results of the invalidation and compute a fresh result.
 
 Note that *any* Check request (if the cache controller TTL has passed since the last invalidation) or List Objects request (if list objects iterator cache is enabled) will trigger invalidation for the entire store, so this issue only occurs with very infrequent requests.
 
-#### Incompatibility with Distributed Cache / Eventually Consistent Database
-
-The cache controller invalidates based on whether cached entries were set before the latest write to the store; it assumes that any reads to the database that occur after a write returns non-stale data. If the database is eventually consistent or has a read/write-through distributed cache in front of it, stale data can get cached after a write and the cache controller will not invalidate it since it was cached after the latest write, therefore it will linger for the entire cache TTL.
-
-For example, consider a cache controller TTL of 10s, a read/write-through distributed cache in front of the database with a 10s TTL, and check query/iterator cache TTLs of 300s:
-
-Time | Event | Result | State | Invalidation
------|-------|--------|-------|-------------
-t=0s | Replica 1: Check | Returns `allowed: true` | Goes to database through distributed cache. Distributed cache stores data until t=10s and replica 1 caches results locally. | Triggered, but nothing to invalidate.
-t=1s | Write: Tuple deleted | Store updated | Previous Check is now invalid |
-t=2s | Replica 2: Check | Returns `allowed: true` (stale) | Gets stale data from distributed cache so computes a stale result and caches it locally. | Triggered, but nothing to invalidate as the latest write was at t=1s and our cache entries were set later, at t=2s.
-t=12s | Replica 2: Check | " | Stale data in distributed cache has expired, but we cached stale data locally at t=2s and it wasn't invalidated nor has it expired so we use that to compute a stale result. | "
-t=300s | Replica 2: Check | " | " | "
-
-Note:
-- OpenFGA currently supports In-Memory, SQLite, PostgreSQL, and MySQL databases (all strongly consistent) without a distributed cache, so this is not an issue with a standard setup.
-- This issue is mitigated by frequent writes to the store that does cause stale data to be invalidated.
-
 ## Best Practices
+
+### Enablement
+
+The different caches must explicitly enabled - see [OpenFGA Configuration Options](https://openfga.dev/docs/getting-started/setup-openfga/configuration) for more info.
 
 ### Production Deployment
 
@@ -179,3 +159,12 @@ Note:
 2. **Monitor Metrics**: Review cache hit rates and eviction counts
 3. **Test Cache Behavior**: Use identical requests with different timings to verify caching
 4. **Review Memory Usage**: Ensure adequate memory allocation
+
+## Cache Implementation
+
+OpenFGA uses the [Theine](https://github.com/Yiling-J/theine-go) library for in-memory caching:
+
+- **Eviction Policy**: Least Recently Used (LRU) with W-TinyLFU admission policy
+- **Thread Safety**: Fully concurrent with minimal locking
+- **Memory Efficiency**: Optimized memory layout and garbage collection friendly
+- **Performance**: High-performance cache operations with sub-microsecond latencies
