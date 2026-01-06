@@ -2,10 +2,8 @@ package check
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"slices"
-	"sync"
 
 	"github.com/sourcegraph/conc/panics"
 
@@ -13,7 +11,6 @@ import (
 	authzGraph "github.com/openfga/language/pkg/go/graph"
 
 	"github.com/openfga/openfga/internal/concurrency"
-	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/iterator"
 	"github.com/openfga/openfga/internal/modelgraph"
 	"github.com/openfga/openfga/pkg/storage"
@@ -246,12 +243,6 @@ func (s *bottomUp) buildIterator(ctx context.Context, req *Request, edge *authzG
 	return storage.WrapIterator(storage.ObjectIDKind, iterator.NewFilteredIterator(iter, iterFilters...))
 }
 
-var batchPool = sync.Pool{
-	New: func() any {
-		return make([]string, 0, IteratorMinBatchThreshold)
-	},
-}
-
 type batcher struct {
 	ctx   context.Context
 	out   chan<- *iterator.Msg
@@ -262,7 +253,7 @@ func newBatcher(ctx context.Context, out chan<- *iterator.Msg) *batcher {
 	return &batcher{
 		ctx:   ctx,
 		out:   out,
-		items: batchPool.Get().([]string),
+		items: make([]string, 0, IteratorMinBatchThreshold),
 	}
 }
 
@@ -272,51 +263,33 @@ func (b *batcher) add(val string) {
 	}
 	b.items = append(b.items, val)
 	if len(b.items) >= IteratorMinBatchThreshold {
-		b.flush()
+		b.flush(false)
 	}
 }
 
-func (b *batcher) flush() {
+func (b *batcher) flush(stopped bool) {
 	if len(b.items) > 0 {
 		concurrency.TrySendThroughChannel(b.ctx, &iterator.Msg{Iter: storage.NewStaticIterator[string](b.items)}, b.out)
 		// Get a new buffer from the pool for the next batch.
 		// We cannot reuse the current one because ownership of the slice has been passed to the iterator.
-		b.items = batchPool.Get().([]string)
+		if stopped {
+			b.items = nil
+		} else {
+			b.items = make([]string, 0, IteratorMinBatchThreshold)
+		}
 	}
 }
 
-// handleError handles the error and discards the current batch if necessary.
+// handleError provides if the error needs to be handled or not.
 func (b *batcher) handleError(err error) bool {
-	if storage.IterIsDoneOrCancelled(err) {
-		return false
-	}
-
-	concurrency.TrySendThroughChannel(b.ctx, &iterator.Msg{Err: err}, b.out)
-	var condErr *condition.EvaluationError
-	if errors.As(err, &condErr) {
-		return false
-	}
-
-	// Discard the batch and return the buffer to the pool
-	if b.items != nil {
-		b.items = b.items[:0]
-		//nolint:staticcheck
-		batchPool.Put(b.items)
-		b.items = nil
-	}
-	return true
+	return !storage.IterIsDoneOrCancelled(err)
 }
 
 func (b *batcher) close(iters []storage.Iterator[string], err error) {
-	b.flush()
-	if err != nil {
-		b.handleError(err)
-	} else if b.items != nil {
-		// Return the unused buffer to the pool
-		b.items = b.items[:0]
-		//nolint:staticcheck
-		batchPool.Put(b.items)
-		b.items = nil
+	// flush the items and nill the items, before sending the error in the channel, no more items after an error
+	b.flush(true)
+	if err != nil && !storage.IterIsDoneOrCancelled(err) {
+		concurrency.TrySendThroughChannel(b.ctx, &iterator.Msg{Err: err}, b.out)
 	}
 	close(b.out)
 	for _, it := range iters {
@@ -331,8 +304,12 @@ func resolveUnion(ctx context.Context, iters []storage.Iterator[string], out cha
 	batch := newBatcher(ctx, out)
 	lastError := error(nil)
 	defer func() {
+		// the closure is required to use the latest value of lastError at the time of executing close
+		// lastError will be the last error that was not iteratorDone or Canceled
+		// the error will only be send in the close after all the items were flushed
 		batch.close(iters, lastError)
 	}()
+
 	var minValue string
 	var minIndexValue int
 	var initialized bool
@@ -348,7 +325,7 @@ func resolveUnion(ctx context.Context, iters []storage.Iterator[string], out cha
 		if err != nil {
 			// we need to store the empty value so we can keep the correlation between the index in the iterator
 			// and the index in the compare values
-			if !storage.IterIsDoneOrCancelled(err) {
+			if batch.handleError(err) {
 				lastError = err
 			}
 		} else {
@@ -381,7 +358,7 @@ func resolveUnion(ctx context.Context, iters []storage.Iterator[string], out cha
 			} else if value == minValue {
 				v1, err := iters[idxValue].Next(ctx)
 				if err != nil {
-					if !storage.IterIsDoneOrCancelled(err) {
+					if batch.handleError(err) {
 						lastError = err
 					}
 					continue
@@ -396,7 +373,7 @@ func resolveUnion(ctx context.Context, iters []storage.Iterator[string], out cha
 		// Advance the stream with the minimum value
 		value, err := iters[minIndexValue].Next(ctx)
 		if err != nil {
-			if !storage.IterIsDoneOrCancelled(err) {
+			if batch.handleError(err) {
 				lastError = err
 			}
 			// Remove the value index from activeIndexes
@@ -416,9 +393,12 @@ func resolveUnion(ctx context.Context, iters []storage.Iterator[string], out cha
 
 func resolveIntersection(ctx context.Context, iters []storage.Iterator[string], out chan<- *iterator.Msg) {
 	batch := newBatcher(ctx, out)
-
+	lastError := error(nil)
 	defer func() {
-		batch.close(iters, nil)
+		// the closure is required to use the latest value of lastError at the time of executing close
+		// lastError will be the last error that was not iteratorDone or Canceled
+		// the error will only be send in the close after all the items were flushed
+		batch.close(iters, lastError)
 	}()
 
 	// collect iterators from all channels, once none are nil
@@ -435,8 +415,10 @@ func resolveIntersection(ctx context.Context, iters []storage.Iterator[string], 
 	for _, iter := range iters {
 		value, err := iter.Next(ctx)
 		if err != nil {
-			batch.handleError(err)
 			// if one iterator is empty or error, interception is impossible
+			if batch.handleError(err) {
+				lastError = err
+			}
 			return
 		}
 		compareValues = append(compareValues, value)
@@ -475,7 +457,9 @@ func resolveIntersection(ctx context.Context, iters []storage.Iterator[string], 
 			for idx, iter := range iters {
 				value, err := iter.Next(ctx)
 				if err != nil {
-					batch.handleError(err)
+					if batch.handleError(err) {
+						lastError = err
+					}
 					// if one iterator is done or error, interception cannot continue
 					return
 				}
@@ -487,7 +471,9 @@ func resolveIntersection(ctx context.Context, iters []storage.Iterator[string], 
 				if compareValues[idx] < maxValue {
 					value, err := skipTo(ctx, iter, maxValue)
 					if err != nil {
-						batch.handleError(err)
+						if batch.handleError(err) {
+							lastError = err
+						}
 						// if one iterator is done or error, interception cannot continue
 						return
 					}
@@ -501,8 +487,12 @@ func resolveIntersection(ctx context.Context, iters []storage.Iterator[string], 
 func resolveDifference(ctx context.Context, iters []storage.Iterator[string], out chan<- *iterator.Msg) {
 	batch := newBatcher(ctx, out)
 
+	lastError := error(nil)
 	defer func() {
-		batch.close(iters, nil)
+		// the closure is required to use the latest value of lastError at the time of executing close
+		// lastError will be the last error that was not iteratorDone or Canceled
+		// the error will only be send in the close after all the items were flushed
+		batch.close(iters, lastError)
 	}()
 
 	if ctx.Err() != nil {
@@ -514,12 +504,15 @@ func resolveDifference(ctx context.Context, iters []storage.Iterator[string], ou
 		value, err := iter.Next(ctx)
 		compareValues = append(compareValues, value)
 		if err != nil {
+			// if one iterator has error, we need to stop the execution
 			if batch.handleError(err) {
+				lastError = err
 				return
 			}
 			if idx == BaseIndex {
 				return // if base value is done or has any error, difference cannot continue
 			}
+			// otherwise if the error is in the difference index, drain the base
 			goto drainBase
 		}
 	}
@@ -540,12 +533,16 @@ func resolveDifference(ctx context.Context, iters []storage.Iterator[string], ou
 			for idx, it := range iters {
 				value, err := it.Next(ctx)
 				if err != nil {
+					// if one iterator has error, we need to stop the execution
 					if batch.handleError(err) {
+						lastError = err
 						return
 					}
+					// in case the iterator done is the difference iterator then drain the base
 					if idx == DifferenceIndex {
 						goto drainBase
 					}
+					// otherwise if the
 					return
 				}
 				compareValues[idx] = value
@@ -556,8 +553,10 @@ func resolveDifference(ctx context.Context, iters []storage.Iterator[string], ou
 			// move the iterator and update the comparable value of base
 			value, err := iters[BaseIndex].Next(ctx)
 			if err != nil {
-				// if base has an error, the difference operation cannot continue
-				batch.handleError(err)
+				// if base has an error or the base iterator is done, the difference operation cannot continue
+				if batch.handleError(err) {
+					lastError = err
+				}
 				return
 			}
 			compareValues[BaseIndex] = value
@@ -565,9 +564,12 @@ func resolveDifference(ctx context.Context, iters []storage.Iterator[string], ou
 			// diff < base, then move the diff to catch up with base
 			value, err := skipTo(ctx, iters[DifferenceIndex], compareValues[BaseIndex])
 			if err != nil {
+				// if difference iterator has an error, the difference operation cannot continue
 				if batch.handleError(err) {
+					lastError = err
 					return
 				}
+				// if the difference iterator is done, we need to drain the base
 				goto drainBase
 			}
 			compareValues[DifferenceIndex] = value
@@ -583,7 +585,10 @@ drainBase:
 		batch.add(compareValues[BaseIndex])
 		value, err := iters[BaseIndex].Next(ctx)
 		if err != nil {
-			batch.handleError(err)
+			// if there is an error capture the error
+			if batch.handleError(err) {
+				lastError = err
+			}
 			return
 		}
 		compareValues[BaseIndex] = value
