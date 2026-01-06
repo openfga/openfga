@@ -164,7 +164,7 @@ func (s *DefaultStrategy) processRequests(ctx context.Context, requests chan req
 					res, err = s.resolver.ResolveUnion(ctx, msg.req, node, visited)
 				})
 				if recoveredErr != nil {
-					err = fmt.Errorf("%w: %s", ErrPanicRequest, recoveredErr.AsError())
+					err = fmt.Errorf("%w: %w", ErrPanicRequest, recoveredErr.AsError())
 				}
 				concurrency.TrySendThroughChannel(ctx, ResponseMsg{Err: err, Res: res}, out)
 				return nil
