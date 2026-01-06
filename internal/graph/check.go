@@ -699,7 +699,7 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 			//possibleStrategies[recursiveResolver] = recursivePlan
 			plan := keyPlan.Select(possibleStrategies)
 
-			resolver := c.defaultUserset
+			resolver := c.recursiveUserset
 			/*
 				if plan.Name == recursiveResolver {
 					resolver = c.recursiveUserset
@@ -712,7 +712,7 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 
 		var remainingUsersetTypes []*openfgav1.RelationReference
 		keyPlanPrefix := b.String()
-		possibleStrategies[weightTwoResolver] = weight2Plan
+		//possibleStrategies[weightTwoResolver] = weight2Plan
 		for _, userset := range directlyRelatedUsersetTypes {
 			if !typesys.UsersetUseWeight2Resolver(objectType, relation, userType, userset) {
 				remainingUsersetTypes = append(remainingUsersetTypes, userset)
@@ -733,7 +733,7 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 			keyPlan := c.planner.GetPlanSelector(key)
 			strategy := keyPlan.Select(possibleStrategies)
 
-			resolver := c.defaultUserset
+			resolver := c.weight2Userset
 			/*
 				if strategy.Name == weightTwoResolver {
 					resolver = c.weight2Userset
@@ -881,7 +881,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 		}
 		isUserset := tuple.IsObjectRelation(tk.GetUser())
 
-		if !isUserset || !c.ff.Boolean(serverconfig.ExperimentalCheckOptimizations, req.GetStoreID()) {
+		if !isUserset || c.ff.Boolean(serverconfig.ExperimentalCheckOptimizations, req.GetStoreID()) {
 			if typesys.TTUUseWeight2Resolver(objectType, relation, userType, rewrite.GetTupleToUserset()) {
 				//possibleStrategies[defaultResolver] = weight2Plan
 				resolver = c.weight2TTU

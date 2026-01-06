@@ -244,6 +244,7 @@ func (r *Resolver) ResolveUnion(ctx context.Context, req *Request, node *authzGr
 
 	edge, withOptimization := r.model.CanApplyRecursion(node, req.GetUserType(), emptyCycle)
 	if edge != nil {
+		withOptimization = withOptimization && r.ff.Boolean(config.ExperimentalCheckOptimizations, req.GetStoreID())
 		return r.ResolveRecursive(ctx, req, edge, visited, withOptimization)
 	}
 
@@ -302,7 +303,7 @@ func (r *Resolver) resolveRecursiveUserset(ctx context.Context, req *Request, ed
 	defer tIter.Stop()
 
 	iter := r.buildIterator(ctx, req, tIter, edge.GetConditions(), userRelation, edge.GetTo().GetUniqueLabel(), visited)
-	if !canApplyOptimization || !r.ff.Boolean(config.ExperimentalCheckOptimizations, req.GetStoreID()) {
+	if !canApplyOptimization {
 		res, err := r.strategies[DefaultStrategyName].Userset(ctx, req, edge, iter, visited)
 		if err != nil {
 			telemetry.TraceError(span, err)
@@ -365,7 +366,7 @@ func (r *Resolver) resolveRecursiveTTU(ctx context.Context, req *Request, edge *
 	defer tIter.Stop()
 	iter := r.buildIterator(ctx, req, tIter, conditionEdge.GetConditions(), tuplesetRelation, subjectType, visited)
 
-	if !canApplyOptimization || !r.ff.Boolean(config.ExperimentalCheckOptimizations, req.GetStoreID()) {
+	if !canApplyOptimization {
 		res, err := r.strategies[DefaultStrategyName].TTU(ctx, req, edge, iter, visited)
 		if err != nil {
 			telemetry.TraceError(span, err)
@@ -830,7 +831,8 @@ func (r *Resolver) specificTypeAndRelation(ctx context.Context, req *Request, ed
 	}
 
 	if w, _ := edge.GetWeight(req.GetUserType()); w == 2 {
-		possibleStrategies[DefaultStrategyName] = weight2Plan
+		delete(possibleStrategies, DefaultStrategyName)
+		possibleStrategies[WeightTwoStrategyName] = weight2Plan
 	}
 
 	usersetKey := createUsersetPlanKey(req, edge.GetTo().GetUniqueLabel())
@@ -899,7 +901,8 @@ func (r *Resolver) ttu(ctx context.Context, req *Request, edge *authzGraph.Weigh
 	}
 
 	if w, _ := edge.GetWeight(req.GetUserType()); w == 2 {
-		possibleStrategies[DefaultStrategyName] = weight2Plan
+		delete(possibleStrategies, DefaultStrategyName)
+		possibleStrategies[WeightTwoStrategyName] = weight2Plan
 	}
 
 	planKey := createTTUPlanKey(req, tuplesetRelation, computedRelation)
