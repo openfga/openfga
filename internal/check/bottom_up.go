@@ -94,7 +94,7 @@ func (s *bottomUp) setOperationSetup(ctx context.Context, req *Request, resolver
 		})
 
 		if recoveredError != nil {
-			concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Err: fmt.Errorf("%w: %s", ErrPanicRequest, recoveredError.AsError())}, out)
+			concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Err: fmt.Errorf("%w: %w", ErrPanicRequest, recoveredError.AsError())}, out)
 		}
 	}()
 	return out, nil

@@ -94,7 +94,7 @@ func (r *AuthorizationModelGraphResolver) Resolve(ctx context.Context, storeID, 
 	if err != nil {
 		telemetry.TraceError(span, err)
 		// likely need custom error about validation
-		return nil, fmt.Errorf("%w: %v", ErrInvalidModel, err)
+		return nil, fmt.Errorf("%w: %w", ErrInvalidModel, err)
 	}
 
 	r.cache.Set(key, mg, r.ttl)
