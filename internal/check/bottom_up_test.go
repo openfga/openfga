@@ -1215,6 +1215,9 @@ func TestBottomUpResolveIntersection(t *testing.T) {
 		})
 		msg, ok := <-res
 		require.True(t, ok)
+		require.Nil(t, msg.Err)
+		msg, ok = <-res
+		require.True(t, ok)
 		require.Error(t, msg.Err)
 		_, ok = <-res
 		require.False(t, ok)
@@ -1654,6 +1657,9 @@ func TestBottomUpResolveDifference(t *testing.T) {
 			return nil
 		})
 		msg, ok := <-res
+		require.True(t, ok)
+		require.Nil(t, msg.Err)
+		msg, ok = <-res
 		require.True(t, ok)
 		require.Error(t, msg.Err)
 		_, ok = <-res
