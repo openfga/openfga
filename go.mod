@@ -22,11 +22,11 @@ require (
 	github.com/google/go-cmp v0.7.0
 	github.com/google/uuid v1.6.0
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0
+	github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus v1.1.0
 	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.3.3
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.27.3
 	github.com/hashicorp/go-retryablehttp v0.7.8
 	github.com/jackc/pgx/v5 v5.7.6
-	github.com/jon-whit/go-grpc-prometheus v1.4.0
 	github.com/natefinch/wrap v0.2.0
 	github.com/oklog/ulid/v2 v2.1.1
 	github.com/openfga/api/proto v0.0.0-20250909172242-b4b2a12f5c67

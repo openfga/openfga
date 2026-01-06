@@ -8,9 +8,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const pipeBufferSize int = 128
-
-const messageCount uint64 = 1000
+const (
+	pipeBufferSize int    = 1 << 7
+	messageCount   uint64 = 1000
+)
 
 type item struct{}
 
@@ -34,7 +35,8 @@ func consume(p *Pipe[item], count *atomic.Uint64) {
 func BenchmarkMessaging(b *testing.B) {
 	b.Run("single_producer_single_consumer", func(b *testing.B) {
 		for b.Loop() {
-			p := New[item](pipeBufferSize)
+			p, err := New[item](pipeBufferSize)
+			require.NoError(b, err)
 
 			var count atomic.Uint64
 			var wg sync.WaitGroup
@@ -60,7 +62,8 @@ func BenchmarkMessaging(b *testing.B) {
 
 	b.Run("multiple_producer_single_consumer", func(b *testing.B) {
 		for b.Loop() {
-			p := New[item](pipeBufferSize)
+			p, err := New[item](pipeBufferSize)
+			require.NoError(b, err)
 
 			var count atomic.Uint64
 			var swg sync.WaitGroup
@@ -90,7 +93,8 @@ func BenchmarkMessaging(b *testing.B) {
 
 	b.Run("single_producer_multiple_consumer", func(b *testing.B) {
 		for b.Loop() {
-			p := New[item](pipeBufferSize)
+			p, err := New[item](pipeBufferSize)
+			require.NoError(b, err)
 
 			var count atomic.Uint64
 			var swg sync.WaitGroup
@@ -120,7 +124,8 @@ func BenchmarkMessaging(b *testing.B) {
 
 	b.Run("multiple_producer_multiple_consumer", func(b *testing.B) {
 		for b.Loop() {
-			p := New[item](pipeBufferSize)
+			p, err := New[item](pipeBufferSize)
+			require.NoError(b, err)
 
 			var count atomic.Uint64
 			var swg sync.WaitGroup
@@ -152,8 +157,98 @@ func BenchmarkMessaging(b *testing.B) {
 }
 
 func TestMessaging(t *testing.T) {
+	t.Run("buffer_cycles", func(t *testing.T) {
+		tests := []struct {
+			name   string
+			size   int
+			parts  int
+			cycles int
+		}{
+			{
+				name:   "small",
+				size:   1 << 2,
+				parts:  1,
+				cycles: 10,
+			},
+			{
+				name:   "medium",
+				size:   1 << 10,
+				parts:  13,
+				cycles: 10,
+			},
+			{
+				name:   "large",
+				size:   1 << 20,
+				parts:  333,
+				cycles: 10,
+			},
+		}
+
+		for _, tc := range tests {
+			t.Run(tc.name, func(t *testing.T) {
+				expected := make([]int, tc.size)
+				for i := range tc.size {
+					expected[i] = i + 1
+				}
+
+				p, err := New[int](tc.size)
+				require.NoError(t, err)
+
+				for range tc.cycles {
+					var val int
+					var count int
+
+					actual := make([]int, 0, 10)
+
+					for i := range tc.size {
+						p.Send(i + 1)
+						count++
+
+						if count == tc.parts {
+							for range tc.parts {
+								ok := p.Recv(&val)
+								require.True(t, ok)
+
+								count--
+								actual = append(actual, val)
+							}
+						}
+					}
+
+					for range count {
+						ok := p.Recv(&val)
+						require.True(t, ok)
+
+						actual = append(actual, val)
+					}
+
+					require.Equal(t, expected, actual)
+				}
+
+				expected = make([]int, 0, tc.size)
+				for i := tc.size; i > 0; i-- {
+					p.Send(i)
+					expected = append(expected, i)
+				}
+
+				p.Close()
+
+				var val int
+
+				var actual []int
+
+				for ok := p.Recv(&val); ok; ok = p.Recv(&val) {
+					actual = append(actual, val)
+				}
+
+				require.Equal(t, expected, actual)
+			})
+		}
+	})
+
 	t.Run("single_producer_single_consumer", func(t *testing.T) {
-		p := New[item](pipeBufferSize)
+		p, err := New[item](pipeBufferSize)
+		require.NoError(t, err)
 
 		var count atomic.Uint64
 		var wg sync.WaitGroup
@@ -177,7 +272,8 @@ func TestMessaging(t *testing.T) {
 	})
 
 	t.Run("multiple_producer_single_consumer", func(t *testing.T) {
-		p := New[item](pipeBufferSize)
+		p, err := New[item](pipeBufferSize)
+		require.NoError(t, err)
 
 		var count atomic.Uint64
 		var swg sync.WaitGroup
@@ -205,7 +301,8 @@ func TestMessaging(t *testing.T) {
 	})
 
 	t.Run("single_producer_multiple_consumer", func(t *testing.T) {
-		p := New[item](pipeBufferSize)
+		p, err := New[item](pipeBufferSize)
+		require.NoError(t, err)
 
 		var count atomic.Uint64
 		var swg sync.WaitGroup
@@ -233,7 +330,8 @@ func TestMessaging(t *testing.T) {
 	})
 
 	t.Run("multiple_producer_multiple_consumer", func(t *testing.T) {
-		p := New[item](pipeBufferSize)
+		p, err := New[item](pipeBufferSize)
+		require.NoError(t, err)
 
 		var count atomic.Uint64
 		var swg sync.WaitGroup

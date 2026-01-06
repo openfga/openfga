@@ -525,7 +525,7 @@ func (q *ListObjectsQuery) Execute(
 	}
 
 	if err := validation.ValidateUser(typesys, req.GetUser()); err != nil {
-		return nil, serverErrors.ValidationError(fmt.Errorf("invalid 'user' value: %s", err))
+		return nil, serverErrors.ValidationError(fmt.Errorf("invalid 'user' value: %w", err))
 	}
 
 	if req.GetConsistency() != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
@@ -567,7 +567,10 @@ func (q *ListObjectsQuery) Execute(
 			Preference: req.GetConsistency(),
 		}
 
-		pl := pipeline.New(backend)
+		pl, err := pipeline.New(backend)
+		if err != nil {
+			return nil, serverErrors.ValidationError(err)
+		}
 
 		var source pipeline.Source
 		var target pipeline.Target
@@ -705,7 +708,7 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 	}
 
 	if err := validation.ValidateUser(typesys, req.GetUser()); err != nil {
-		return nil, serverErrors.ValidationError(fmt.Errorf("invalid 'user' value: %s", err))
+		return nil, serverErrors.ValidationError(fmt.Errorf("invalid 'user' value: %w", err))
 	}
 
 	wgraph := typesys.GetWeightedGraph()
@@ -737,7 +740,10 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 			Preference: req.GetConsistency(),
 		}
 
-		pl := pipeline.New(backend)
+		pl, err := pipeline.New(backend)
+		if err != nil {
+			return nil, serverErrors.ValidationError(err)
+		}
 
 		var source pipeline.Source
 		var target pipeline.Target

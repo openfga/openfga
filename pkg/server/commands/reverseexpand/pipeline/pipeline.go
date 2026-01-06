@@ -56,16 +56,61 @@ var (
 )
 
 const (
-	defaultBufferSize int = 128
+	defaultBufferSize int = 1 << 7
 	defaultChunkSize  int = 100
 	defaultNumProcs   int = 3
+)
+
+var (
+	ErrInvalidBufferSize = errors.New("buffer size must be a power of two")
+	ErrInvalidChunkSize  = errors.New("chunk size must be greater than zero")
+	ErrInvalidNumProcs   = errors.New("process number must be greater than zero")
 )
 
 func handleIdentity(_ context.Context, _ *Edge, items []string) iter.Seq[Item] {
 	return seq.Transform(seq.Sequence(items...), strToItem)
 }
 
-func New(backend *Backend, options ...Option) *Pipeline {
+type Option func(*Pipeline) error
+
+// WithBufferSize is a function that sets the value for a pipeline's workers' internal
+// pipe buffer size. The value must be a power of two. (e.g. 1, 2, 4, 8, 16, 32...)
+// The default value of the buffer size is 128. If an invalid value is provided as size
+// then the default value will be applied.
+func WithBufferSize(size int) Option {
+	return func(p *Pipeline) error {
+		if !bitutil.PowerOfTwo(size) {
+			return ErrInvalidBufferSize
+		}
+
+		p.bufferSize = size
+		return nil
+	}
+}
+
+func WithChunkSize(size int) Option {
+	return func(p *Pipeline) error {
+		if size < 1 {
+			return ErrInvalidChunkSize
+		}
+
+		p.chunkSize = size
+		return nil
+	}
+}
+
+func WithNumProcs(num int) Option {
+	return func(p *Pipeline) error {
+		if num < 1 {
+			return ErrInvalidNumProcs
+		}
+
+		p.numProcs = num
+		return nil
+	}
+}
+
+func New(backend *Backend, options ...Option) (*Pipeline, error) {
 	p := &Pipeline{
 		backend:    backend,
 		bufferSize: defaultBufferSize,
@@ -74,45 +119,13 @@ func New(backend *Backend, options ...Option) *Pipeline {
 	}
 
 	for _, option := range options {
-		option(p)
+		if err := option(p); err != nil {
+			return nil, err
+		}
 	}
 
 	p.bufferPool = newBufferPool(p.chunkSize)
-	return p
-}
-
-// WithBufferSize is a function that sets the value for a pipeline's workers' internal
-// pipe buffer size. The value must be a power of two. (e.g. 1, 2, 4, 8, 16, 32...)
-// The default value of the buffer size is 128. If an invalid value is provided as size
-// then the default value will be applied.
-func WithBufferSize(size int) Option {
-	if !bitutil.PowerOfTwo(size) {
-		size = defaultBufferSize
-	}
-
-	return func(p *Pipeline) {
-		p.bufferSize = size
-	}
-}
-
-func WithChunkSize(size int) Option {
-	if size < 1 {
-		size = defaultChunkSize
-	}
-
-	return func(p *Pipeline) {
-		p.chunkSize = size
-	}
-}
-
-func WithNumProcs(num int) Option {
-	if num < 1 {
-		num = defaultNumProcs
-	}
-
-	return func(p *Pipeline) {
-		p.numProcs = num
-	}
+	return p, nil
 }
 
 type bufferPool struct {
@@ -120,16 +133,17 @@ type bufferPool struct {
 	pool sync.Pool
 }
 
-func (b *bufferPool) Get() []Item {
-	return b.pool.Get().([]Item)
+func (b *bufferPool) Get() *[]Item {
+	return b.pool.Get().(*[]Item)
 }
 
-func (b *bufferPool) Put(buffer []Item) {
-	b.pool.Put(buffer) //nolint:staticcheck,SA6002
+func (b *bufferPool) Put(buffer *[]Item) {
+	b.pool.Put(buffer)
 }
 
 func (b *bufferPool) create() interface{} {
-	return make([]Item, b.size)
+	tmp := make([]Item, b.size)
+	return &tmp
 }
 
 func newBufferPool(size int) *bufferPool {
@@ -330,7 +344,7 @@ func (b *Backend) query(ctx context.Context, input queryInput) iter.Seq[Item] {
 			var item Item
 
 			if err != nil {
-				if err == storage.ErrIteratorDone {
+				if errors.Is(err, storage.ErrIteratorDone) {
 					break
 				}
 
@@ -449,7 +463,7 @@ func (r *baseResolver) process(ctx context.Context, snd Sender[*Edge, *Message],
 		reader := seq.NewSeqReader(results)
 
 		for {
-			count := reader.Read(buffer)
+			count := reader.Read(*buffer)
 
 			if count == 0 {
 				// No more values to read from the iter.Seq.
@@ -461,13 +475,13 @@ func (r *baseResolver) process(ctx context.Context, snd Sender[*Edge, *Message],
 				values := r.bufferPool.Get()
 				// This copy is done so that the content of the message buffer is
 				// not altered when the read buffer has new values written to it.
-				copy(values, buffer[:count])
+				copy(*values, (*buffer)[:count])
 
 				// Increment the resolver's tracker to account for the new message.
 				r.tracker.Inc()
 				m := Message{
 					// Only slice the values in the read buffer up to what was actually read.
-					Value: values[:count],
+					Value: (*values)[:count],
 					ReceiptFunc: func() {
 						// Decrement the resolver's tracker because the message is no longer
 						// in-flight.
@@ -623,7 +637,7 @@ func (r *exclusionResolver) process(ctx context.Context, snd Sender[*Edge, *Mess
 		values := r.bufferPool.Get()
 		// Copy values from message to local buffer so that the message
 		// can release its buffer back to the pool.
-		copy(values, msg.Value)
+		copy(*values, msg.Value)
 		size := len(msg.Value)
 
 		// Release message resources.
@@ -639,7 +653,7 @@ func (r *exclusionResolver) process(ctx context.Context, snd Sender[*Edge, *Mess
 
 		// Only take the number of values that existed in the original
 		// message. Reading beyond that will corrupt pipeline state.
-		for _, item := range values[:size] {
+		for _, item := range (*values)[:size] {
 			if item.Err != nil {
 				items.Add(item)
 				continue
@@ -728,7 +742,7 @@ func (r *exclusionResolver) Resolve(ctx context.Context, senders []Sender[*Edge,
 	reader := seq.NewSeqReader(results)
 
 	for {
-		count := reader.Read(buffer)
+		count := reader.Read(*buffer)
 
 		if count == 0 {
 			break
@@ -736,11 +750,11 @@ func (r *exclusionResolver) Resolve(ctx context.Context, senders []Sender[*Edge,
 
 		for i := range len(listeners) {
 			values := r.bufferPool.Get()
-			copy(values, buffer[:count])
+			copy(*values, (*buffer)[:count])
 
 			r.tracker.Inc()
 			m := Message{
-				Value: values[:count],
+				Value: (*values)[:count],
 				ReceiptFunc: func() {
 					r.tracker.Dec()
 					r.bufferPool.Put(values)
@@ -809,7 +823,7 @@ func (r *intersectionResolver) process(ctx context.Context, snd Sender[*Edge, *M
 	for snd.Recv(&msg) {
 		r.tracker.Add(1)
 		values := r.bufferPool.Get()
-		copy(values, msg.Value)
+		copy(*values, msg.Value)
 		size := len(msg.Value)
 		msg.Done()
 
@@ -822,7 +836,7 @@ func (r *intersectionResolver) process(ctx context.Context, snd Sender[*Edge, *M
 
 		ctx, span := pipelineTracer.Start(ctx, "message.received", trace.WithAttributes(messageAttrs...))
 
-		for _, item := range values[:size] {
+		for _, item := range (*values)[:size] {
 			if item.Err != nil {
 				items.Add(item)
 				continue
@@ -902,7 +916,7 @@ func (r *intersectionResolver) Resolve(ctx context.Context, senders []Sender[*Ed
 	reader := seq.NewSeqReader(results)
 
 	for {
-		count := reader.Read(buffer)
+		count := reader.Read(*buffer)
 
 		if count == 0 {
 			break
@@ -910,11 +924,11 @@ func (r *intersectionResolver) Resolve(ctx context.Context, senders []Sender[*Ed
 
 		for i := range len(listeners) {
 			values := r.bufferPool.Get()
-			copy(values, buffer[:count])
+			copy(*values, (*buffer)[:count])
 
 			r.tracker.Inc()
 			m := Message{
-				Value: values[:count],
+				Value: (*values)[:count],
 				ReceiptFunc: func() {
 					r.tracker.Dec()
 					r.bufferPool.Put(values)
@@ -1118,8 +1132,6 @@ func (pl *Pipeline) Target(name, identifier string) (Target, bool) {
 		id:   identifier,
 	}, ok
 }
-
-type Option func(*Pipeline)
 
 type path struct {
 	source     *Node
@@ -1399,7 +1411,7 @@ func (w *Worker[K, T, U]) Start(ctx context.Context) {
 }
 
 func (w *Worker[K, T, U]) Subscribe(key K) Sender[K, U] {
-	p := pipe.New[U](w.bufferSize)
+	p := pipe.Must[U](w.bufferSize)
 
 	w.listeners = append(w.listeners, &listener[K, U]{
 		key,
