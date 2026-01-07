@@ -218,10 +218,11 @@ type LogConfig struct {
 }
 
 type TraceConfig struct {
-	Enabled     bool
-	OTLP        OTLPTraceConfig `mapstructure:"otlp"`
-	SampleRatio float64
-	ServiceName string
+	Enabled            bool
+	OTLP               OTLPTraceConfig `mapstructure:"otlp"`
+	SampleRatio        float64
+	ServiceName        string
+	ResourceAttributes string
 }
 
 type OTLPTraceConfig struct {
@@ -748,8 +749,9 @@ func DefaultConfig() *Config {
 					Enabled: false,
 				},
 			},
-			SampleRatio: 0.2,
-			ServiceName: "openfga",
+			SampleRatio:        0.2,
+			ServiceName:        "openfga",
+			ResourceAttributes: "",
 		},
 		Playground: PlaygroundConfig{
 			Enabled: true,
