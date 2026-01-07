@@ -175,6 +175,9 @@ type Server struct {
 	listObjectsMaxResults            uint32
 	listUsersDeadline                time.Duration
 	listUsersMaxResults              uint32
+	listObjectsChunkSize             int
+	listObjectsBufferSize            int
+	listObjectsNumProcs              int
 	maxChecksPerBatchCheck           uint32
 	maxConcurrentChecksPerBatch      uint32
 	maxConcurrentReadsForListObjects uint32
@@ -765,6 +768,43 @@ func WithSharedIteratorLimit(limit uint32) OpenFGAServiceV1Option {
 func WithSharedIteratorTTL(ttl time.Duration) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.cacheSettings.SharedIteratorTTL = ttl
+	}
+}
+
+// When the ListObjects "pipeline" algorithm is enabled, this option sets the maximium
+// number of objects to send in a message between pipeline workers. This ultimately
+// equates to the number of objects that will be used in each data store query filter.
+//
+// For example: If a query for groups that a user is a member of returns 1,000 objects, and
+// the chunk size is set to 100, 10 messages will be sent to the next worker, each having
+// 100 objects encapsulated within. If the receiving worker needs to find all documents that
+// each group is a viewer of, then the worker will extract the 100 objects from the message,
+// and pass them all as a filter to a single query for the document objects.
+func WithListObjectsChunkSize(value int) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.listObjectsChunkSize = value
+	}
+}
+
+// When the ListObjects "pipeline" algorithm is enabled, this option sets the maximum
+// number of messages that can be buffered between workers as they await processing.
+//
+// The larger the buffer size, the more memory may be allocated by the query. A large
+// buffer size combined with a large chunk size can result in a significant amount of
+// memory allocation in a worst case scenario.
+func WithListObjectsBufferSize(value int) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.listObjectsBufferSize = value
+	}
+}
+
+// When the ListObjects "pipeline" algorithm is enabled, this option sets the number
+// of goroutines that will be created for each worker subscription. In order to pass
+// data through the pipeline, workers subscribe to the output of other workers. Each
+// subscription receives its own goroutines to concurrently process incoming messages.
+func WithListObjectsNumProcs(value int) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.listObjectsBufferSize = value
 	}
 }
 
