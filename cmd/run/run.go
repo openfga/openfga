@@ -496,7 +496,7 @@ func (s *ServerContext) authenticatorConfig(config *serverconfig.Config) (authn.
 	return authenticator, nil
 }
 
-func (s *ServerContext) buildServerOpts(ctx context.Context, config *serverconfig.Config, authenticator authn.Authenticator) ([]grpc.ServerOption, error) {
+func (s *ServerContext) buildServerOpts(ctx context.Context, config *serverconfig.Config, authenticator authn.Authenticator) ([]grpc.ServerOption, *grpc_prometheus.ServerMetrics, error) {
 	serverOpts := []grpc.ServerOption{
 		grpc.MaxRecvMsgSize(serverconfig.DefaultMaxRPCMessageSizeInBytes),
 		grpc.ChainUnaryInterceptor(
@@ -545,15 +545,15 @@ func (s *ServerContext) buildServerOpts(ctx context.Context, config *serverconfi
 		),
 	)
 
+	var prometheusMetrics *grpc_prometheus.ServerMetrics
 	if config.Metrics.Enabled {
 		var metricsOpts []grpc_prometheus.ServerMetricsOption
 		if config.Metrics.EnableRPCHistograms {
 			metricsOpts = append(metricsOpts, grpc_prometheus.WithServerHandlingTimeHistogram())
 		}
 
-		prometheusMetrics := grpc_prometheus.NewServerMetrics(metricsOpts...)
+		prometheusMetrics = grpc_prometheus.NewServerMetrics(metricsOpts...)
 		prometheus.MustRegister(prometheusMetrics)
-		defer prometheus.Unregister(prometheusMetrics)
 
 		serverOpts = append(serverOpts,
 			grpc.ChainUnaryInterceptor(prometheusMetrics.UnaryServerInterceptor()),
@@ -581,11 +581,11 @@ func (s *ServerContext) buildServerOpts(ctx context.Context, config *serverconfi
 
 	if config.GRPC.TLS.Enabled {
 		if config.GRPC.TLS.CertPath == "" || config.GRPC.TLS.KeyPath == "" {
-			return nil, errors.New("'grpc.tls.cert' and 'grpc.tls.key' configs must be set")
+			return nil, prometheusMetrics, errors.New("'grpc.tls.cert' and 'grpc.tls.key' configs must be set")
 		}
 		grpcGetCertificate, err := watchAndLoadCertificateWithCertWatcher(ctx, config.GRPC.TLS.CertPath, config.GRPC.TLS.KeyPath, s.Logger)
 		if err != nil {
-			return nil, err
+			return nil, prometheusMetrics, err
 		}
 		creds := credentials.NewTLS(&tls.Config{
 			GetCertificate: grpcGetCertificate,
@@ -597,7 +597,7 @@ func (s *ServerContext) buildServerOpts(ctx context.Context, config *serverconfi
 	} else {
 		s.Logger.Warn("gRPC TLS is disabled, serving connections using insecure plaintext")
 	}
-	return serverOpts, nil
+	return serverOpts, prometheusMetrics, nil
 }
 
 func (s *ServerContext) dialGrpc(config *serverconfig.Config) (*grpc.ClientConn, context.CancelFunc) {
@@ -804,7 +804,10 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		return err
 	}
 
-	serverOpts, err := s.buildServerOpts(ctx, config, authenticator)
+	serverOpts, prometheusMetrics, err := s.buildServerOpts(ctx, config, authenticator)
+	if prometheusMetrics != nil {
+		defer prometheus.Unregister(prometheusMetrics)
+	}
 	if err != nil {
 		return err
 	}
