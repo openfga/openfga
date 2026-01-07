@@ -26,6 +26,12 @@ type ResolveCheckRequest struct {
 	Consistency               openfgav1.ConsistencyPreference
 	LastCacheInvalidationTime time.Time
 
+	// SelectedStrategy is the strategy selected by the planner for this request chain.
+	// When set, child requests dispatched within that strategy should continue using
+	// the same strategy instead of calling the planner again. This prevents re-planning
+	// during recursive dispatch calls (e.g., when default strategy calls checkTTU multiple times).
+	SelectedStrategy string
+
 	// Invariant parts of a check request are those that don't change in sub-problems
 	// AuthorizationModelID, StoreID, Context, and ContextualTuples.
 	// the invariantCacheKey is computed once per request, and passed to sub-problems via copy in .clone()
@@ -126,7 +132,7 @@ func (r *ResolveCheckRequest) clone() *ResolveCheckRequest {
 		tupleKey = proto.Clone(origTupleKey).(*openfgav1.TupleKey)
 	}
 
-	return &ResolveCheckRequest{
+	cloned := &ResolveCheckRequest{
 		StoreID:                   r.GetStoreID(),
 		AuthorizationModelID:      r.GetAuthorizationModelID(),
 		TupleKey:                  tupleKey,
@@ -137,7 +143,9 @@ func (r *ResolveCheckRequest) clone() *ResolveCheckRequest {
 		Consistency:               r.GetConsistency(),
 		LastCacheInvalidationTime: r.GetLastCacheInvalidationTime(),
 		invariantCacheKey:         r.GetInvariantCacheKey(),
+		SelectedStrategy:          r.GetSelectedStrategy(),
 	}
+	return cloned
 }
 
 func (r *ResolveCheckRequest) GetStoreID() string {
@@ -208,4 +216,11 @@ func (r *ResolveCheckRequest) GetInvariantCacheKey() string {
 		return ""
 	}
 	return r.invariantCacheKey
+}
+
+func (r *ResolveCheckRequest) GetSelectedStrategy() string {
+	if r == nil {
+		return ""
+	}
+	return r.SelectedStrategy
 }
