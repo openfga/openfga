@@ -63,9 +63,15 @@ func MustNewTracerProvider(opts ...TracerOption) *sdktrace.TracerProvider {
 		opt(tracer)
 	}
 
-	res, err := resource.Merge(
+	baseRes, err := resource.Merge(
 		resource.Default(),
 		resource.NewSchemaless(tracer.attributes...))
+	if err != nil {
+		panic(err)
+	}
+
+	res, err := resource.Merge(baseRes, resource.Environment())
+
 	if err != nil {
 		panic(err)
 	}

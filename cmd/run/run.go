@@ -202,6 +202,8 @@ func NewRunCommand() *cobra.Command {
 
 	flags.String("trace-service-name", defaultConfig.Trace.ServiceName, "the service name included in sampled traces.")
 
+	flags.String("trace-resource-attributes", defaultConfig.Trace.ResourceAttributes, "key-value pairs to be used as resource attributes")
+
 	flags.Bool("metrics-enabled", defaultConfig.Metrics.Enabled, "enable/disable prometheus metrics on the '/metrics' endpoint")
 
 	flags.String("metrics-addr", defaultConfig.Metrics.Addr, "the host:port address to serve the prometheus metrics server on")
