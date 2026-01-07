@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -177,8 +178,11 @@ func (q *shadowedListObjectsQuery) ExecuteStreamed(ctx context.Context, req *ope
 // It compares the results of the main and shadow functions, logging any differences.
 // If the shadow function takes longer than shadowTimeout, it will be cancelled, and its result will be ignored, but the shadowTimeout event will be logged.
 // This function is designed to be run in a separate goroutine to avoid blocking the main execution flow.
-func (q *shadowedListObjectsQuery) executeShadowModeAndCompareResults(parentCtx context.Context, req *openfgav1.ListObjectsRequest, mainResult *ListObjectsResponse, latency time.Duration) {
-	shadowCtx, shadowCancel := context.WithTimeout(parentCtx, q.shadowTimeout)
+func (q *shadowedListObjectsQuery) executeShadowModeAndCompareResults(ctx context.Context, req *openfgav1.ListObjectsRequest, mainResult *ListObjectsResponse, latency time.Duration) {
+	ctx, span := tracer.Start(ctx, "shadow")
+	defer span.End()
+
+	shadowCtx, shadowCancel := context.WithTimeout(ctx, q.shadowTimeout)
 	defer shadowCancel()
 
 	startTime := time.Now()
@@ -186,14 +190,16 @@ func (q *shadowedListObjectsQuery) executeShadowModeAndCompareResults(parentCtx 
 	shadowLatency := time.Since(startTime)
 
 	var mainQueryCount uint32
+	var mainItemCount uint64
 	var mainResultObjects []string
 	if mainResult != nil {
 		mainQueryCount = mainResult.ResolutionMetadata.DatastoreQueryCount.Load()
+		mainItemCount = mainResult.ResolutionMetadata.DatastoreItemCount.Load()
 		mainResultObjects = mainResult.Objects
 	}
 
 	if errShadow != nil {
-		q.logger.WarnWithContext(parentCtx, "shadowed list objects error",
+		q.logger.WarnWithContext(ctx, "shadowed list objects error",
 			loShadowLogFields(req,
 				zap.Duration("main_latency", latency),
 				zap.Duration("shadow_latency", shadowLatency),
@@ -206,46 +212,57 @@ func (q *shadowedListObjectsQuery) executeShadowModeAndCompareResults(parentCtx 
 
 	var resultShadowed []string
 	var shadowQueryCount uint32
+	var shadowItemCount uint64
 	if shadowRes != nil {
 		resultShadowed = shadowRes.Objects
 		shadowQueryCount = shadowRes.ResolutionMetadata.DatastoreQueryCount.Load()
+		shadowItemCount = shadowRes.ResolutionMetadata.DatastoreItemCount.Load()
 	}
 
 	mapResultMain := keyMapFromSlice(mainResultObjects)
 	mapResultShadow := keyMapFromSlice(resultShadowed)
 
+	fields := []zap.Field{
+		zap.Duration("main_latency", latency),
+		zap.Duration("shadow_latency", shadowLatency),
+		zap.Int("main_result_count", len(mainResultObjects)),
+		zap.Int("shadow_result_count", len(resultShadowed)),
+		zap.Uint32("main_datastore_query_count", mainQueryCount),
+		zap.Uint32("shadow_datastore_query_count", shadowQueryCount),
+		zap.Uint64("main_datastore_item_count", mainItemCount),
+		zap.Uint64("shadow_datastore_item_count", shadowItemCount),
+	}
+
 	// compare sorted string arrays - sufficient for equality check
 	if !maps.Equal(mapResultMain, mapResultShadow) {
+		span.SetAttributes(attribute.Bool("matches", false))
 		delta := calculateDelta(mapResultMain, mapResultShadow)
 		totalDelta := len(delta)
 		// Limit the delta to maxDeltaItems
 		if totalDelta > q.maxDeltaItems {
 			delta = delta[:q.maxDeltaItems]
 		}
+
+		fields = append(
+			fields,
+			zap.Bool("is_match", false),
+			zap.Int("total_delta", totalDelta),
+			zap.Any("delta", delta),
+		)
+
 		// log the differences if the shadow query failed or if the results are not equal
-		q.logger.WarnWithContext(parentCtx, "shadowed list objects result difference",
-			loShadowLogFields(req,
-				zap.Bool("is_match", false),
-				zap.Duration("main_latency", latency),
-				zap.Duration("shadow_latency", shadowLatency),
-				zap.Int("main_result_count", len(mainResultObjects)),
-				zap.Int("shadow_result_count", len(resultShadowed)),
-				zap.Int("total_delta", totalDelta),
-				zap.Any("delta", delta),
-				zap.Uint32("main_datastore_query_count", mainQueryCount),
-				zap.Uint32("shadow_datastore_query_count", shadowQueryCount),
-			)...,
+		q.logger.WarnWithContext(ctx, "shadowed list objects result difference",
+			loShadowLogFields(req, fields...)...,
 		)
 	} else {
-		q.logger.InfoWithContext(parentCtx, "shadowed list objects result matches",
-			loShadowLogFields(req,
-				zap.Bool("is_match", true),
-				zap.Duration("main_latency", latency),
-				zap.Duration("shadow_latency", shadowLatency),
-				zap.Int("main_result_count", len(mainResultObjects)),
-				zap.Uint32("main_datastore_query_count", mainQueryCount),
-				zap.Uint32("shadow_datastore_query_count", shadowQueryCount),
-			)...,
+		span.SetAttributes(attribute.Bool("matches", true))
+		fields = append(
+			fields,
+			zap.Bool("is_match", true),
+		)
+
+		q.logger.InfoWithContext(ctx, "shadowed list objects result matches",
+			loShadowLogFields(req, fields...)...,
 		)
 	}
 }

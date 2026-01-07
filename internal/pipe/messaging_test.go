@@ -1,4 +1,4 @@
-package reverseexpand
+package pipe
 
 import (
 	"sync"
@@ -8,29 +8,35 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func feed(p *pipe) {
-	for range MessageCount {
-		p.send(group{})
+const (
+	pipeBufferSize int    = 1 << 7
+	messageCount   uint64 = 1000
+)
+
+type item struct{}
+
+func feed(p *Pipe[item]) {
+	for range messageCount {
+		p.Send(item{})
 	}
 }
 
-func consume(p *pipe, count *atomic.Uint64) {
+func consume(p *Pipe[item], count *atomic.Uint64) {
 	for {
-		msg, ok := p.recv()
+		var msg item
+		ok := p.Recv(&msg)
 		if !ok {
 			break
 		}
-		msg.done()
 		count.Add(1)
 	}
 }
 
-const MessageCount uint64 = 1000
-
 func BenchmarkMessaging(b *testing.B) {
 	b.Run("single_producer_single_consumer", func(b *testing.B) {
 		for b.Loop() {
-			p := newPipe(new(atomic.Int64))
+			p, err := New[item](pipeBufferSize)
+			require.NoError(b, err)
 
 			var count atomic.Uint64
 			var wg sync.WaitGroup
@@ -39,7 +45,7 @@ func BenchmarkMessaging(b *testing.B) {
 			go func() {
 				defer wg.Done()
 				feed(p)
-				p.close()
+				p.Close()
 			}()
 
 			wg.Add(1)
@@ -50,13 +56,14 @@ func BenchmarkMessaging(b *testing.B) {
 
 			wg.Wait()
 
-			require.Equal(b, MessageCount, count.Load())
+			require.Equal(b, messageCount, count.Load())
 		}
 	})
 
 	b.Run("multiple_producer_single_consumer", func(b *testing.B) {
 		for b.Loop() {
-			p := newPipe(new(atomic.Int64))
+			p, err := New[item](pipeBufferSize)
+			require.NoError(b, err)
 
 			var count atomic.Uint64
 			var swg sync.WaitGroup
@@ -77,16 +84,17 @@ func BenchmarkMessaging(b *testing.B) {
 			}()
 
 			swg.Wait()
-			p.close()
+			p.Close()
 			cwg.Wait()
 
-			require.Equal(b, MessageCount*4, count.Load())
+			require.Equal(b, messageCount*4, count.Load())
 		}
 	})
 
 	b.Run("single_producer_multiple_consumer", func(b *testing.B) {
 		for b.Loop() {
-			p := newPipe(new(atomic.Int64))
+			p, err := New[item](pipeBufferSize)
+			require.NoError(b, err)
 
 			var count atomic.Uint64
 			var swg sync.WaitGroup
@@ -107,16 +115,17 @@ func BenchmarkMessaging(b *testing.B) {
 			}
 
 			swg.Wait()
-			p.close()
+			p.Close()
 			cwg.Wait()
 
-			require.Equal(b, MessageCount, count.Load())
+			require.Equal(b, messageCount, count.Load())
 		}
 	})
 
 	b.Run("multiple_producer_multiple_consumer", func(b *testing.B) {
 		for b.Loop() {
-			p := newPipe(new(atomic.Int64))
+			p, err := New[item](pipeBufferSize)
+			require.NoError(b, err)
 
 			var count atomic.Uint64
 			var swg sync.WaitGroup
@@ -139,17 +148,107 @@ func BenchmarkMessaging(b *testing.B) {
 			}
 
 			swg.Wait()
-			p.close()
+			p.Close()
 			cwg.Wait()
 
-			require.Equal(b, MessageCount*4, count.Load())
+			require.Equal(b, messageCount*4, count.Load())
 		}
 	})
 }
 
 func TestMessaging(t *testing.T) {
+	t.Run("buffer_cycles", func(t *testing.T) {
+		tests := []struct {
+			name   string
+			size   int
+			parts  int
+			cycles int
+		}{
+			{
+				name:   "small",
+				size:   1 << 2,
+				parts:  1,
+				cycles: 10,
+			},
+			{
+				name:   "medium",
+				size:   1 << 10,
+				parts:  13,
+				cycles: 10,
+			},
+			{
+				name:   "large",
+				size:   1 << 20,
+				parts:  333,
+				cycles: 10,
+			},
+		}
+
+		for _, tc := range tests {
+			t.Run(tc.name, func(t *testing.T) {
+				expected := make([]int, tc.size)
+				for i := range tc.size {
+					expected[i] = i + 1
+				}
+
+				p, err := New[int](tc.size)
+				require.NoError(t, err)
+
+				for range tc.cycles {
+					var val int
+					var count int
+
+					actual := make([]int, 0, 10)
+
+					for i := range tc.size {
+						p.Send(i + 1)
+						count++
+
+						if count == tc.parts {
+							for range tc.parts {
+								ok := p.Recv(&val)
+								require.True(t, ok)
+
+								count--
+								actual = append(actual, val)
+							}
+						}
+					}
+
+					for range count {
+						ok := p.Recv(&val)
+						require.True(t, ok)
+
+						actual = append(actual, val)
+					}
+
+					require.Equal(t, expected, actual)
+				}
+
+				expected = make([]int, 0, tc.size)
+				for i := tc.size; i > 0; i-- {
+					p.Send(i)
+					expected = append(expected, i)
+				}
+
+				p.Close()
+
+				var val int
+
+				var actual []int
+
+				for ok := p.Recv(&val); ok; ok = p.Recv(&val) {
+					actual = append(actual, val)
+				}
+
+				require.Equal(t, expected, actual)
+			})
+		}
+	})
+
 	t.Run("single_producer_single_consumer", func(t *testing.T) {
-		p := newPipe(new(atomic.Int64))
+		p, err := New[item](pipeBufferSize)
+		require.NoError(t, err)
 
 		var count atomic.Uint64
 		var wg sync.WaitGroup
@@ -158,7 +257,7 @@ func TestMessaging(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			feed(p)
-			p.close()
+			p.Close()
 		}()
 
 		wg.Add(1)
@@ -169,11 +268,12 @@ func TestMessaging(t *testing.T) {
 
 		wg.Wait()
 
-		require.Equal(t, MessageCount, count.Load())
+		require.Equal(t, messageCount, count.Load())
 	})
 
 	t.Run("multiple_producer_single_consumer", func(t *testing.T) {
-		p := newPipe(new(atomic.Int64))
+		p, err := New[item](pipeBufferSize)
+		require.NoError(t, err)
 
 		var count atomic.Uint64
 		var swg sync.WaitGroup
@@ -194,14 +294,15 @@ func TestMessaging(t *testing.T) {
 		}()
 
 		swg.Wait()
-		p.close()
+		p.Close()
 		cwg.Wait()
 
-		require.Equal(t, MessageCount*4, count.Load())
+		require.Equal(t, messageCount*4, count.Load())
 	})
 
 	t.Run("single_producer_multiple_consumer", func(t *testing.T) {
-		p := newPipe(new(atomic.Int64))
+		p, err := New[item](pipeBufferSize)
+		require.NoError(t, err)
 
 		var count atomic.Uint64
 		var swg sync.WaitGroup
@@ -222,14 +323,15 @@ func TestMessaging(t *testing.T) {
 		}
 
 		swg.Wait()
-		p.close()
+		p.Close()
 		cwg.Wait()
 
-		require.Equal(t, MessageCount, count.Load())
+		require.Equal(t, messageCount, count.Load())
 	})
 
 	t.Run("multiple_producer_multiple_consumer", func(t *testing.T) {
-		p := newPipe(new(atomic.Int64))
+		p, err := New[item](pipeBufferSize)
+		require.NoError(t, err)
 
 		var count atomic.Uint64
 		var swg sync.WaitGroup
@@ -252,9 +354,9 @@ func TestMessaging(t *testing.T) {
 		}
 
 		swg.Wait()
-		p.close()
+		p.Close()
 		cwg.Wait()
 
-		require.Equal(t, MessageCount*4, count.Load())
+		require.Equal(t, messageCount*4, count.Load())
 	})
 }

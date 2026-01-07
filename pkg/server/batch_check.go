@@ -17,6 +17,7 @@ import (
 	"github.com/openfga/openfga/internal/utils/apimethod"
 	"github.com/openfga/openfga/pkg/middleware/validator"
 	"github.com/openfga/openfga/pkg/server/commands"
+	"github.com/openfga/openfga/pkg/server/config"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/telemetry"
 )
@@ -50,6 +51,7 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 	if err != nil {
 		return nil, err
 	}
+	req.AuthorizationModelId = typesys.GetAuthorizationModelID() // the resolved model id
 
 	builder := s.getCheckResolverBuilder(req.GetStoreId())
 	checkResolver, checkResolverCloser, err := builder.Build()
@@ -66,11 +68,15 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 		commands.WithBatchCheckCommandLogger(s.logger),
 		commands.WithBatchCheckMaxChecksPerBatch(s.maxChecksPerBatchCheck),
 		commands.WithBatchCheckMaxConcurrentChecks(s.maxConcurrentChecksPerBatch),
-		commands.WithBatchCheckDatastoreThrottler(s.checkDatastoreThrottleThreshold, s.checkDatastoreThrottleDuration),
+		commands.WithBatchCheckDatastoreThrottler(
+			s.featureFlagClient.Boolean(config.ExperimentalDatastoreThrottling, storeID),
+			s.checkDatastoreThrottleThreshold,
+			s.checkDatastoreThrottleDuration,
+		),
 	)
 
 	result, metadata, err := cmd.Execute(ctx, &commands.BatchCheckCommandParams{
-		AuthorizationModelID: typesys.GetAuthorizationModelID(),
+		AuthorizationModelID: req.GetAuthorizationModelId(),
 		Checks:               req.GetChecks(),
 		Consistency:          req.GetConsistency(),
 		StoreID:              storeID,
@@ -96,13 +102,17 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 		methodName,
 	).Observe(dispatchCount)
 
-	var throttled bool
-
-	if metadata.ThrottleCount > 0 {
-		throttled = true
-		throttledRequestCounter.WithLabelValues(s.serviceName, methodName).Add(float64(metadata.ThrottleCount))
+	wasDispatchThrottled := metadata.DispatchThrottleCount > 0
+	if wasDispatchThrottled {
+		throttledRequestCounter.WithLabelValues(s.serviceName, methodName, throttleTypeDispatch).Add(float64(metadata.DispatchThrottleCount))
 	}
-	grpc_ctxtags.Extract(ctx).Set("request.throttled", throttled)
+	grpc_ctxtags.Extract(ctx).Set("request.dispatch_throttled", wasDispatchThrottled)
+
+	wasDatastoreThrottled := metadata.DatastoreThrottleCount > 0
+	if wasDatastoreThrottled {
+		throttledRequestCounter.WithLabelValues(s.serviceName, methodName, throttleTypeDatastore).Add(float64(metadata.DatastoreThrottleCount))
+	}
+	grpc_ctxtags.Extract(ctx).Set("request.datastore_throttled", wasDatastoreThrottled)
 
 	queryCount := float64(metadata.DatastoreQueryCount)
 	span.SetAttributes(attribute.Float64(datastoreQueryCountHistogramName, queryCount))
@@ -110,6 +120,13 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 		s.serviceName,
 		methodName,
 	).Observe(queryCount)
+
+	datastoreItemCount := float64(metadata.DatastoreItemCount)
+	span.SetAttributes(attribute.Float64(datastoreItemCountHistogramName, datastoreItemCount))
+	datastoreItemCountHistogram.WithLabelValues(
+		s.serviceName,
+		methodName,
+	).Observe(datastoreItemCount)
 
 	duplicateChecks := "duplicate_checks"
 	span.SetAttributes(attribute.Int(duplicateChecks, metadata.DuplicateCheckCount))
@@ -122,6 +139,7 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 	}
 
 	grpc_ctxtags.Extract(ctx).Set(datastoreQueryCountHistogramName, metadata.DatastoreQueryCount)
+	grpc_ctxtags.Extract(ctx).Set(datastoreItemCountHistogramName, metadata.DatastoreItemCount)
 
 	return &openfgav1.BatchCheckResponse{Result: batchResult}, nil
 }

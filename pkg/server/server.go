@@ -46,6 +46,9 @@ const (
 	authorizationModelIDKey    = "authorization_model_id"
 
 	allowedLabel = "allowed"
+
+	throttleTypeDatastore = "datastore"
+	throttleTypeDispatch  = "dispatch"
 )
 
 var tracer = otel.Tracer("openfga/pkg/server")
@@ -69,6 +72,18 @@ var (
 		Namespace:                       build.ProjectName,
 		Name:                            datastoreQueryCountHistogramName,
 		Help:                            "The number of database queries required to resolve a query (e.g. Check, ListObjects or ListUsers).",
+		Buckets:                         []float64{1, 5, 20, 50, 100, 150, 225, 400, 500, 750, 1000},
+		NativeHistogramBucketFactor:     1.1,
+		NativeHistogramMaxBucketNumber:  100,
+		NativeHistogramMinResetDuration: time.Hour,
+	}, []string{"grpc_service", "grpc_method"})
+
+	datastoreItemCountHistogramName = "datastore_item_count"
+
+	datastoreItemCountHistogram = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Namespace:                       build.ProjectName,
+		Name:                            datastoreItemCountHistogramName,
+		Help:                            "The number of items returned from the database required to resolve a query (e.g. Check, ListObjects or ListUsers).",
 		Buckets:                         []float64{1, 5, 20, 50, 100, 150, 225, 400, 500, 750, 1000},
 		NativeHistogramBucketFactor:     1.1,
 		NativeHistogramMaxBucketNumber:  100,
@@ -99,7 +114,7 @@ var (
 		Namespace: build.ProjectName,
 		Name:      "throttled_requests_count",
 		Help:      "The total number of requests that have been throttled.",
-	}, []string{"grpc_service", "grpc_method"})
+	}, []string{"grpc_service", "grpc_method", "throttling_type"})
 
 	checkResultCounterName = "check_result_count"
 	checkResultCounter     = promauto.NewCounterVec(prometheus.CounterOpts{
@@ -896,7 +911,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 // Close releases the server resources.
 func (s *Server) Close() {
 	if s.planner != nil {
-		s.planner.StopCleanup()
+		s.planner.Stop()
 	}
 	s.typesystemResolverStop()
 

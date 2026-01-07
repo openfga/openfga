@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -291,7 +292,7 @@ func TestSQLiteDatastore_ReadWithUserParts(t *testing.T) {
 			for {
 				tuple, err := iter.Next(ctx)
 				if err != nil {
-					if err == storage.ErrIteratorDone {
+					if errors.Is(err, storage.ErrIteratorDone) {
 						break
 					}
 					require.NoError(t, err)
@@ -388,7 +389,7 @@ func TestSQLiteDatastore_ReadWithPartialUserFiltering(t *testing.T) {
 			for {
 				tuple, err := iter.Next(ctx)
 				if err != nil {
-					if err == storage.ErrIteratorDone {
+					if errors.Is(err, storage.ErrIteratorDone) {
 						break
 					}
 					require.NoError(t, err)
@@ -434,7 +435,7 @@ func TestSQLiteDatastore_ReadWithEmptyUserParts(t *testing.T) {
 	for {
 		tuple, err := iter.Next(ctx)
 		if err != nil {
-			if err == storage.ErrIteratorDone {
+			if errors.Is(err, storage.ErrIteratorDone) {
 				break
 			}
 			require.NoError(t, err)
@@ -577,7 +578,7 @@ func TestSQLiteDatastore_ReadCombinedFilters(t *testing.T) {
 			for {
 				tuple, err := iter.Next(ctx)
 				if err != nil {
-					if err == storage.ErrIteratorDone {
+					if errors.Is(err, storage.ErrIteratorDone) {
 						break
 					}
 					require.NoError(t, err)
@@ -659,6 +660,98 @@ func TestReadFilterWithConditions(t *testing.T) {
 	require.Equal(t, tk, curTuple.GetKey())
 	_, err = iter.Next(ctx)
 	require.Error(t, err)
+}
+
+func TestReadUserTupleFilterWithConditions(t *testing.T) {
+	ctx := context.Background()
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "sqlite")
+
+	uri := testDatastore.GetConnectionURI(true)
+	cfg := sqlcommon.NewConfig()
+	ds, err := New(uri, cfg)
+	require.NoError(t, err)
+	defer ds.Close()
+
+	stmt := `
+  INSERT INTO tuple (
+   store, object_type, object_id, relation, 
+   user_object_type, user_object_id, user_relation, user_type,
+   condition_name, condition_context, ulid, inserted_at
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('subsec'));
+ `
+
+	// Insert tuple with condition
+	_, err = ds.db.Exec(
+		stmt, "store", "folder", "2021-budget", "owner",
+		"user", "anne", "", "user",
+		"cond1", nil, ulid.Make().String(),
+	)
+	require.NoError(t, err)
+
+	// Insert tuple without condition
+	_, err = ds.db.Exec(
+		stmt, "store", "folder", "2022-budget", "owner",
+		"user", "anne", "", "user",
+		nil, nil, ulid.Make().String(),
+	)
+	require.NoError(t, err)
+
+	// ReadUserTuple: if the tuple has condition and the filter has the same condition, the tuple should be returned
+	tk := tupleUtils.NewTupleKeyWithCondition("folder:2021-budget", "owner", "user:anne", "cond1", nil)
+	filter := storage.ReadUserTupleFilter{
+		Object:     "folder:2021-budget",
+		Relation:   "owner",
+		User:       "user:anne",
+		Conditions: []string{"cond1"},
+	}
+	tuple, err := ds.ReadUserTuple(ctx, "store", filter, storage.ReadUserTupleOptions{})
+	require.NoError(t, err)
+	require.Equal(t, tk, tuple.GetKey())
+
+	// ReadUserTuple: if filter has no condition, the tuple with condition should not be returned
+	filter = storage.ReadUserTupleFilter{
+		Object:     "folder:2021-budget",
+		Relation:   "owner",
+		User:       "user:anne",
+		Conditions: []string{""},
+	}
+	_, err = ds.ReadUserTuple(ctx, "store", filter, storage.ReadUserTupleOptions{})
+	require.Error(t, err)
+	require.ErrorIs(t, err, storage.ErrNotFound)
+
+	// ReadUserTuple: if filter has a condition but the tuple stored does not have any condition, the tuple should not be returned
+	filter = storage.ReadUserTupleFilter{
+		Object:     "folder:2022-budget",
+		Relation:   "owner",
+		User:       "user:anne",
+		Conditions: []string{"cond1"},
+	}
+	_, err = ds.ReadUserTuple(ctx, "store", filter, storage.ReadUserTupleOptions{})
+	require.Error(t, err)
+	require.ErrorIs(t, err, storage.ErrNotFound)
+
+	// ReadUserTuple: if filter does not have condition and the tuple stored does not have any condition, the tuple should be returned
+	tk = tupleUtils.NewTupleKeyWithCondition("folder:2022-budget", "owner", "user:anne", "", nil)
+	filter = storage.ReadUserTupleFilter{
+		Object:     "folder:2022-budget",
+		Relation:   "owner",
+		User:       "user:anne",
+		Conditions: []string{""},
+	}
+	tuple, err = ds.ReadUserTuple(ctx, "store", filter, storage.ReadUserTupleOptions{})
+	require.NoError(t, err)
+	require.Equal(t, tk, tuple.GetKey())
+
+	// ReadUserTuple: without condition specification in the filter, backward compatibility should be maintained
+	tk = tupleUtils.NewTupleKeyWithCondition("folder:2021-budget", "owner", "user:anne", "cond1", nil)
+	filter = storage.ReadUserTupleFilter{
+		Object:   "folder:2021-budget",
+		Relation: "owner",
+		User:     "user:anne",
+	}
+	tuple, err = ds.ReadUserTuple(ctx, "store", filter, storage.ReadUserTupleOptions{})
+	require.NoError(t, err)
+	require.Equal(t, tk, tuple.GetKey())
 }
 
 func TestReadStartingWithUserFilterWithConditions(t *testing.T) {

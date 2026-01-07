@@ -26,8 +26,8 @@ const DifferenceIndex = 1
 const weightTwoResolver = "weight2"
 
 // This strategy is configured to show that it has proven fast and consistent.
-var weight2Plan = &planner.KeyPlanStrategy{
-	Type:         weightTwoResolver,
+var weight2Plan = &planner.PlanConfig{
+	Name:         weightTwoResolver,
 	InitialGuess: 20 * time.Millisecond,
 	// High Lambda: Represents strong confidence in the initial guess. It's like
 	// starting with the belief of having already seen 10 good runs.
@@ -596,7 +596,7 @@ func fastPathOperationSetup(ctx context.Context, req *ResolveCheckRequest, resol
 		})
 
 		if recoveredError != nil {
-			concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Err: fmt.Errorf("%w: %s", ErrPanic, recoveredError.AsError())}, outChan)
+			concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Err: fmt.Errorf("%w: %w", ErrPanic, recoveredError.AsError())}, outChan)
 		}
 	}()
 	return outChan, nil

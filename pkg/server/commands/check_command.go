@@ -36,6 +36,7 @@ type CheckQuery struct {
 	cacheSettings              config.CacheSettings
 	maxConcurrentReads         uint32
 	shouldCacheIterators       bool
+	datastoreThrottlingEnabled bool
 	datastoreThrottleThreshold int
 	datastoreThrottleDuration  time.Duration
 }
@@ -69,10 +70,11 @@ func WithCheckCommandCache(sharedCheckResources *shared.SharedDatastoreResources
 	}
 }
 
-func WithCheckDatastoreThrottler(threshold int, duration time.Duration) CheckQueryOption {
+func WithCheckDatastoreThrottler(enabled bool, threshold int, duration time.Duration) CheckQueryOption {
 	return func(c *CheckQuery) {
-		c.datastoreThrottleThreshold = threshold
+		c.datastoreThrottlingEnabled = enabled
 		c.datastoreThrottleDuration = duration
+		c.datastoreThrottleThreshold = threshold
 	}
 }
 
@@ -131,6 +133,7 @@ func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*
 		&storagewrappers.Operation{
 			Method:            apimethod.Check,
 			Concurrency:       c.maxConcurrentReads,
+			ThrottlingEnabled: c.datastoreThrottlingEnabled,
 			ThrottleThreshold: c.datastoreThrottleThreshold,
 			ThrottleDuration:  c.datastoreThrottleDuration,
 		},
@@ -162,11 +165,14 @@ func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*
 	resp.ResolutionMetadata.Duration = endTime
 	dsMeta := datastoreWithTupleCache.GetMetadata()
 	resp.ResolutionMetadata.DatastoreQueryCount = dsMeta.DatastoreQueryCount
-	// Until dispatch throttling is deprecated, merge the results of both
-	resolveCheckRequest.GetRequestMetadata().WasThrottled.CompareAndSwap(false, dsMeta.WasThrottled)
+	resp.ResolutionMetadata.DatastoreItemCount = dsMeta.DatastoreItemCount
+
+	resolveCheckRequest.GetRequestMetadata().DatastoreThrottled.Store(dsMeta.WasThrottled)
 
 	if err != nil {
-		if errors.Is(err, context.DeadlineExceeded) && resolveCheckRequest.GetRequestMetadata().WasThrottled.Load() {
+		// There are currently two possible throttling mechanisms, we need to know if either was triggered here.
+		wasThrottled := dsMeta.WasThrottled || resolveCheckRequest.GetRequestMetadata().DispatchThrottled.Load()
+		if errors.Is(err, context.DeadlineExceeded) && wasThrottled {
 			return resp, resolveCheckRequest.GetRequestMetadata(), &ThrottledError{Cause: err}
 		}
 

@@ -69,6 +69,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 	if err != nil {
 		return nil, err
 	}
+	req.AuthorizationModelId = typesys.GetAuthorizationModelID() // the resolved model id
 
 	checkQuery := commands.NewCheckCommand(
 		s.datastore,
@@ -77,7 +78,11 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		commands.WithCheckCommandLogger(s.logger),
 		commands.WithCheckCommandMaxConcurrentReads(s.maxConcurrentReadsForCheck),
 		commands.WithCheckCommandCache(s.sharedDatastoreResources, s.cacheSettings),
-		commands.WithCheckDatastoreThrottler(s.checkDatastoreThrottleThreshold, s.checkDatastoreThrottleDuration),
+		commands.WithCheckDatastoreThrottler(
+			s.featureFlagClient.Boolean(serverconfig.ExperimentalDatastoreThrottling, storeID),
+			s.checkDatastoreThrottleThreshold,
+			s.checkDatastoreThrottleDuration,
+		),
 	)
 
 	resp, checkRequestMetadata, err := checkQuery.Execute(ctx, &commands.CheckCommandParams{
@@ -91,12 +96,14 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 	endTime := time.Since(startTime).Milliseconds()
 
 	var (
-		wasRequestThrottled bool
-		rawDispatchCount    uint32
+		dispatchThrottled  bool
+		datastoreThrottled bool
+		rawDispatchCount   uint32
 	)
 
 	if checkRequestMetadata != nil {
-		wasRequestThrottled = checkRequestMetadata.WasThrottled.Load()
+		dispatchThrottled = checkRequestMetadata.DispatchThrottled.Load()
+		datastoreThrottled = checkRequestMetadata.DatastoreThrottled.Load()
 		rawDispatchCount = checkRequestMetadata.DispatchCounter.Load()
 		dispatchCount := float64(rawDispatchCount)
 
@@ -118,6 +125,15 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 			methodName,
 		).Observe(queryCount)
 
+		datastoreItemCount := float64(resp.GetResolutionMetadata().DatastoreItemCount)
+
+		grpc_ctxtags.Extract(ctx).Set(datastoreItemCountHistogramName, datastoreItemCount)
+		span.SetAttributes(attribute.Float64(datastoreItemCountHistogramName, datastoreItemCount))
+		datastoreItemCountHistogram.WithLabelValues(
+			s.serviceName,
+			methodName,
+		).Observe(datastoreItemCount)
+
 		requestDurationHistogram.WithLabelValues(
 			s.serviceName,
 			methodName,
@@ -134,17 +150,27 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 			).Observe(float64(endTime))
 		}
 
-		if wasRequestThrottled {
-			throttledRequestCounter.WithLabelValues(s.serviceName, methodName).Inc()
+		if dispatchThrottled {
+			throttledRequestCounter.WithLabelValues(s.serviceName, methodName, throttleTypeDispatch).Inc()
 		}
-		grpc_ctxtags.Extract(ctx).Set("request.throttled", wasRequestThrottled)
+		grpc_ctxtags.Extract(ctx).Set("request.dispatch_throttled", dispatchThrottled)
+
+		if datastoreThrottled {
+			throttledRequestCounter.WithLabelValues(s.serviceName, methodName, throttleTypeDatastore).Inc()
+		}
+		grpc_ctxtags.Extract(ctx).Set("request.datastore_throttled", datastoreThrottled)
 	}
 
 	if err != nil {
 		telemetry.TraceError(span, err)
 		finalErr := commands.CheckCommandErrorToServerError(err)
 		if errors.Is(finalErr, serverErrors.ErrThrottledTimeout) {
-			throttledRequestCounter.WithLabelValues(s.serviceName, methodName).Inc()
+			if dispatchThrottled {
+				throttledRequestCounter.WithLabelValues(s.serviceName, methodName, throttleTypeDispatch).Inc()
+			}
+			if datastoreThrottled {
+				throttledRequestCounter.WithLabelValues(s.serviceName, methodName, throttleTypeDatastore).Inc()
+			}
 		}
 		// should we define all metrics in one place that is accessible from everywhere (including LocalChecker!)
 		// and add a wrapper helper that automatically injects the service name tag?
