@@ -3,6 +3,7 @@ package pipeline
 import (
 	"context"
 	"errors"
+	"fmt"
 	"iter"
 	"maps"
 	"strings"
@@ -68,8 +69,163 @@ var (
 	ErrInvalidNumProcs   = errors.New("process number must be greater than zero")
 )
 
-func handleIdentity(_ context.Context, _ *Edge, items []string) iter.Seq[Item] {
+type EdgeHandler interface {
+	CanHandle(edge *Edge) bool
+	Handle(ctx context.Context, edge *Edge, items []string) iter.Seq[Item]
+}
+
+type EdgeHandlerRegistry struct {
+	handlers []EdgeHandler
+}
+
+func (r *EdgeHandlerRegistry) Register(handler EdgeHandler) {
+	r.handlers = append(r.handlers, handler)
+}
+
+func (r *EdgeHandlerRegistry) Handle(ctx context.Context, edge *Edge, items []string) iter.Seq[Item] {
+	for _, handler := range r.handlers {
+		if handler.CanHandle(edge) {
+			return handler.Handle(ctx, edge, items)
+		}
+	}
+	return seq.Sequence(Item{Err: fmt.Errorf("no handler for edge type: %v", edge.GetEdgeType())})
+}
+
+type DirectEdgeHandler struct {
+	queryEngine *QueryEngine
+}
+
+func (h *DirectEdgeHandler) CanHandle(edge *Edge) bool {
+	return edge != nil && edge.GetEdgeType() == edgeTypeDirect
+}
+
+func (h *DirectEdgeHandler) Handle(ctx context.Context, edge *Edge, items []string) iter.Seq[Item] {
+	nodeType, nodeRelation, _ := strings.Cut(edge.GetRelationDefinition(), "#")
+
+	_, userRelation, _ := strings.Cut(edge.GetTo().GetLabel(), "#")
+
+	userFilter := make([]*openfgav1.ObjectRelation, len(items))
+
+	for i, item := range items {
+		userFilter[i] = &openfgav1.ObjectRelation{
+			Object:   item,
+			Relation: userRelation,
+		}
+	}
+
+	var results iter.Seq[Item]
+
+	if len(userFilter) > 0 {
+		input := QueryInput{
+			objectType:     nodeType,
+			objectRelation: nodeRelation,
+			userFilter:     userFilter,
+			conditions:     edge.GetConditions(),
+		}
+		results = h.queryEngine.Execute(ctx, input)
+	} else {
+		results = emptySequence
+	}
+
+	return results
+}
+
+type TTUEdgeHandler struct {
+	queryEngine *QueryEngine
+	graph       *Graph
+}
+
+func (h *TTUEdgeHandler) CanHandle(edge *Edge) bool {
+	return edge != nil && edge.GetEdgeType() == edgeTypeTTU
+}
+
+func (h *TTUEdgeHandler) Handle(ctx context.Context, edge *Edge, items []string) iter.Seq[Item] {
+	tuplesetType, tuplesetRelation, ok := strings.Cut(edge.GetTuplesetRelation(), "#")
+	if !ok {
+		return seq.Sequence(Item{Err: errors.New("invalid tupleset relation")})
+	}
+
+	tuplesetNode, ok := h.graph.GetNodeByID(edge.GetTuplesetRelation())
+	if !ok {
+		return seq.Sequence(Item{Err: errors.New("tupleset node not in graph")})
+	}
+
+	edges, ok := h.graph.GetEdgesFromNode(tuplesetNode)
+	if !ok {
+		return seq.Sequence(Item{Err: errors.New("no edges found for tupleset node")})
+	}
+
+	targetType, _, _ := strings.Cut(edge.GetTo().GetLabel(), "#")
+
+	var targetEdge *Edge
+
+	for _, e := range edges {
+		if e.GetTo().GetLabel() == targetType {
+			targetEdge = e
+			break
+		}
+	}
+
+	if targetEdge == nil {
+		return seq.Sequence(Item{Err: errors.New("ttu target type is not an edge of tupleset")})
+	}
+
+	userFilter := make([]*openfgav1.ObjectRelation, len(items))
+
+	for i, item := range items {
+		userFilter[i] = &openfgav1.ObjectRelation{
+			Object:   item,
+			Relation: "",
+		}
+	}
+
+	var results iter.Seq[Item]
+
+	if len(userFilter) > 0 {
+		input := QueryInput{
+			objectType:     tuplesetType,
+			objectRelation: tuplesetRelation,
+			userFilter:     userFilter,
+			conditions:     targetEdge.GetConditions(),
+		}
+		results = h.queryEngine.Execute(ctx, input)
+	} else {
+		results = emptySequence
+	}
+
+	return results
+}
+
+type IdentityEdgeHandler struct{}
+
+func (h *IdentityEdgeHandler) CanHandle(edge *Edge) bool {
+	if edge == nil {
+		return true
+	}
+	switch edge.GetEdgeType() {
+	case edgeTypeComputed,
+		edgeTypeRewrite,
+		edgeTypeDirectLogical,
+		edgeTypeTTULogical:
+		return true
+	default:
+		return false
+	}
+}
+
+func (h *IdentityEdgeHandler) Handle(_ context.Context, _ *Edge, items []string) iter.Seq[Item] {
 	return seq.Transform(seq.Sequence(items...), strToItem)
+}
+
+type RegistryInterpreter struct {
+	registry *EdgeHandlerRegistry
+}
+
+func (r *RegistryInterpreter) Interpret(ctx context.Context, edge *Edge, items []string) iter.Seq[Item] {
+	if len(items) == 0 {
+		return emptySequence
+	}
+	return r.registry.Handle(ctx, edge, items)
 }
 
 type Option func(*Pipeline) error
@@ -201,118 +357,130 @@ type Backend struct {
 	Preference openfgav1.ConsistencyPreference
 }
 
-// handleDirectEdge is a function that interprets input on a direct edge and provides output from
-// a query to the backend datastore.
-func (b *Backend) handleDirectEdge(ctx context.Context, edge *Edge, items []string) iter.Seq[Item] {
-	parts := strings.Split(edge.GetRelationDefinition(), "#")
-	nodeType := parts[0]
-	nodeRelation := parts[1]
-
-	userParts := strings.Split(edge.GetTo().GetLabel(), "#")
-
-	var userRelation string
-
-	if len(userParts) > 1 {
-		userRelation = userParts[1]
-	}
-
-	userFilter := make([]*openfgav1.ObjectRelation, len(items))
-
-	for i, item := range items {
-		userFilter[i] = &openfgav1.ObjectRelation{
-			Object:   item,
-			Relation: userRelation,
-		}
-	}
-
-	var results iter.Seq[Item]
-
-	if len(userFilter) > 0 {
-		input := queryInput{
-			objectType:     nodeType,
-			objectRelation: nodeRelation,
-			userFilter:     userFilter,
-			conditions:     edge.GetConditions(),
-		}
-		results = b.query(ctx, input)
-	} else {
-		results = emptySequence
-	}
-
-	return results
+type errorIterator struct {
+	err error
 }
 
-// handleTTUEdge is a function that interprets input on a TTU edge and provides output from
-// a query to the backend datastore.
-func (b *Backend) handleTTUEdge(ctx context.Context, edge *Edge, items []string) iter.Seq[Item] {
-	parts := strings.Split(edge.GetTuplesetRelation(), "#")
-	if len(parts) < 2 {
-		return seq.Sequence(Item{Err: errors.New("invalid tupleset relation")})
-	}
-	tuplesetType := parts[0]
-	tuplesetRelation := parts[1]
-
-	tuplesetNode, ok := b.Graph.GetNodeByID(edge.GetTuplesetRelation())
-	if !ok {
-		return seq.Sequence(Item{Err: errors.New("tupleset node not in graph")})
-	}
-
-	edges, ok := b.Graph.GetEdgesFromNode(tuplesetNode)
-	if !ok {
-		return seq.Sequence(Item{Err: errors.New("no edges found for tupleset node")})
-	}
-
-	targetParts := strings.Split(edge.GetTo().GetLabel(), "#")
-	if len(targetParts) < 1 {
-		return seq.Sequence(Item{Err: errors.New("empty edge label")})
-	}
-	targetType := targetParts[0]
-
-	var targetEdge *Edge
-
-	for _, e := range edges {
-		if e.GetTo().GetLabel() == targetType {
-			targetEdge = e
-			break
-		}
-	}
-
-	if targetEdge == nil {
-		return seq.Sequence(Item{Err: errors.New("ttu target type is not an edge of tupleset")})
-	}
-
-	var userFilter []*openfgav1.ObjectRelation
-
-	for _, item := range items {
-		userFilter = append(userFilter, &openfgav1.ObjectRelation{
-			Object:   item,
-			Relation: "",
-		})
-	}
-
-	var results iter.Seq[Item]
-
-	if len(userFilter) > 0 {
-		input := queryInput{
-			objectType:     tuplesetType,
-			objectRelation: tuplesetRelation,
-			userFilter:     userFilter,
-			conditions:     targetEdge.GetConditions(),
-		}
-		results = b.query(ctx, input)
-	} else {
-		results = emptySequence
-	}
-
-	return results
+func (e *errorIterator) Head(ctx context.Context) (*openfgav1.Tuple, error) {
+	return nil, e.err
 }
 
-func (b *Backend) query(ctx context.Context, input queryInput) iter.Seq[Item] {
-	ctx, cancel := context.WithCancel(ctx)
+func (e *errorIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
+	return nil, e.err
+}
 
-	it, err := b.Datastore.ReadStartingWithUser(
+func (e *errorIterator) Stop() {}
+
+type Validator[T any] func(value T) bool
+
+type FalibleValidator[T any] func(value T) (bool, error)
+
+func MakeValidatorFalible[T any](v Validator[T]) FalibleValidator[T] {
+	return func(value T) (bool, error) {
+		return v(value), nil
+	}
+}
+
+type validatingIterator[T any] struct {
+	base      storage.Iterator[T]
+	validator FalibleValidator[T]
+	lastError error
+	onceValid bool
+}
+
+func (v *validatingIterator[T]) Head(ctx context.Context) (T, error) {
+	for {
+		t, err := v.base.Head(ctx)
+		if err != nil {
+			if errors.Is(err, storage.ErrIteratorDone) {
+				if v.onceValid || v.lastError == nil {
+					return t, storage.ErrIteratorDone
+				}
+				lastError := v.lastError
+				v.lastError = nil
+				return t, lastError
+			}
+			return t, err
+		}
+
+		ok, err := v.validator(t)
+		if err != nil || !ok {
+			if err != nil {
+				v.lastError = err
+			}
+
+			_, err := v.Next(ctx)
+			if err != nil {
+				return t, err
+			}
+			continue
+		}
+		v.onceValid = true
+		return t, nil
+	}
+}
+
+func (v *validatingIterator[T]) Next(ctx context.Context) (T, error) {
+	for {
+		t, err := v.base.Next(ctx)
+		if err != nil {
+			if errors.Is(err, storage.ErrIteratorDone) {
+				if v.onceValid || v.lastError == nil {
+					return t, storage.ErrIteratorDone
+				}
+				lastError := v.lastError
+				v.lastError = nil
+				return t, lastError
+			}
+			return t, err
+		}
+
+		ok, err := v.validator(t)
+		if err != nil {
+			v.lastError = err
+			continue
+		}
+
+		if !ok {
+			continue
+		}
+		v.onceValid = true
+		return t, nil
+	}
+}
+
+func (v *validatingIterator[T]) Stop() {
+	v.base.Stop()
+}
+
+func NewValidatingIterator[T any](base storage.Iterator[T], validator FalibleValidator[T]) storage.Iterator[T] {
+	return &validatingIterator[T]{base: base, validator: validator}
+}
+
+type QueryInput struct {
+	objectType     string
+	objectRelation string
+	userFilter     []*openfgav1.ObjectRelation
+	conditions     []string
+}
+
+type QueryEngine struct {
+	datastore   storage.RelationshipTupleReader
+	storeID     string
+	consistency openfgav1.ConsistencyPreference
+	validator   FalibleValidator[*openfgav1.TupleKey]
+}
+
+func (qp *QueryEngine) Execute(ctx context.Context, input QueryInput) iter.Seq[Item] {
+	iterator := qp.createIterator(ctx, input)
+	filtered := qp.applyValidator(iterator)
+	return qp.toSequence(ctx, filtered)
+}
+
+func (qp *QueryEngine) createIterator(ctx context.Context, input QueryInput) storage.TupleIterator {
+	it, err := qp.datastore.ReadStartingWithUser(
 		ctx,
-		b.StoreID,
+		qp.storeID,
 		storage.ReadStartingWithUserFilter{
 			ObjectType: input.objectType,
 			Relation:   input.objectRelation,
@@ -321,37 +489,37 @@ func (b *Backend) query(ctx context.Context, input queryInput) iter.Seq[Item] {
 		},
 		storage.ReadStartingWithUserOptions{
 			Consistency: storage.ConsistencyOptions{
-				Preference: b.Preference,
+				Preference: qp.consistency,
 			},
 		},
 	)
 
 	if err != nil {
-		cancel()
-		return seq.Sequence(Item{Err: err})
+		return &errorIterator{err: err}
 	}
+	return it
+}
 
-	// If more than one element exists, at least one element is guaranteed to be a condition.
-	// OR
-	// If only one element exists, and it is not `NoCond`, then it is guaranteed to be a condition.
-	hasConditions := len(input.conditions) > 1 || (len(input.conditions) > 0 && input.conditions[0] != weightedGraph.NoCond)
-
-	var itr storage.TupleKeyIterator
-
-	if hasConditions {
-		itr = storage.NewConditionsFilteredTupleKeyIterator(
-			storage.NewFilteredTupleKeyIterator(
-				storage.NewTupleKeyIteratorFromTupleIterator(it),
-				validation.FilterInvalidTuples(b.TypeSystem),
-			),
-			checkutil.BuildTupleKeyConditionFilter(ctx, b.Context, b.TypeSystem),
-		)
-	} else {
-		itr = storage.NewFilteredTupleKeyIterator(
-			storage.NewTupleKeyIteratorFromTupleIterator(it),
-			validation.FilterInvalidTuples(b.TypeSystem),
-		)
+func combineValidators[T any](validators []FalibleValidator[T]) FalibleValidator[T] {
+	return func(value T) (bool, error) {
+		for _, v := range validators {
+			ok, err := v(value)
+			if err != nil || !ok {
+				return ok, err
+			}
+		}
+		return true, nil
 	}
+}
+
+func (qp *QueryEngine) applyValidator(it storage.TupleIterator) storage.TupleKeyIterator {
+	base := storage.NewTupleKeyIteratorFromTupleIterator(it)
+	base = NewValidatingIterator(base, qp.validator)
+	return base
+}
+
+func (qp *QueryEngine) toSequence(ctx context.Context, itr storage.TupleKeyIterator) iter.Seq[Item] {
+	ctx, cancel := context.WithCancel(ctx)
 
 	return func(yield func(Item) bool) {
 		defer cancel()
@@ -363,9 +531,10 @@ func (b *Backend) query(ctx context.Context, input queryInput) iter.Seq[Item] {
 			var item Item
 
 			if err != nil {
-				if storage.IterIsDoneOrCancelled(err) {
+				if errors.Is(err, storage.ErrIteratorDone) {
 					break
 				}
+
 				item.Err = err
 
 				yield(item)
@@ -385,34 +554,102 @@ func (b *Backend) query(ctx context.Context, input queryInput) iter.Seq[Item] {
 	}
 }
 
-// baseResolver is a struct that implements the Resolver interface and acts as the standard resolver for most
-// workers. A baseResolver handles both recursive and non-recursive edges concurrently.
-type baseResolver struct {
-	// interpreter is an `interpreter` that transforms a sender's input into output which it broadcasts to all
-	// of the parent worker's listeners.
+type resolverCore struct {
+	// interpreter is an `interpreter` that transforms a sender's input into output which it
+	// broadcasts to all of the parent worker's listeners.
 	interpreter interpreter
 
-	// tracker may be owned or shared with other resolvers. It is used to report messages from this resovler
-	// that are still in-flight.
+	// tracker may be owned or shared with other resolvers. It is used to report messages from
+	// this resovler that are still in-flight.
 	tracker *track.Tracker
 
-	// reporter may be owned or shared with other resolvers. It is used to report on the status of the resolver.
+	// reporter may be owned or shared with other resolvers. It is used to report on the status of
+	// the resolver.
 	reporter *track.Reporter
 
-	// bufferPool is intended to be shared with other resovlers. It is used to manage a pool of Item slices
-	// so that additional allocations can be avoided.
+	// bufferPool is intended to be shared with other resovlers. It is used to manage a pool of
+	// Item slices so that additional allocations can be avoided.
 	bufferPool *bufferPool
 
 	// numProcs indicates the number of goroutines to spawn for processing each sender.
 	numProcs int
 }
 
-// process is a function that reads output from a single sender, processes the output through an interpreter, and
-// then sends the interpreter's output to each listener. The sender's output is deduplicated across all process functions
-// for the same edge when the sender is for a cyclical edge because values of a cycle may be reentrant. Output from the
-// interpreter is always deduplicated across all process functions because input from two different senders may produce
+func (r *resolverCore) broadcast(
+	results iter.Seq[Item],
+	listeners []Listener[*Edge, *Message],
+) int {
+	var sentCount int
+
+	// Grab a buffer from the pool for reading. The buffer's size
+	// is set by the bufferPool.
+	buffer := r.bufferPool.Get()
+	reader := seq.NewSeqReader(results)
+
+	for {
+		count := reader.Read(*buffer)
+
+		if count == 0 {
+			// No more values to read from the iter.Seq.
+			break
+		}
+
+		for i := range len(listeners) {
+			// Grab a buffer that will be specific to this message.
+			values := r.bufferPool.Get()
+			// This copy is done so that the content of the message buffer is
+			// not altered when the read buffer has new values written to it.
+			copy(*values, (*buffer)[:count])
+
+			// Increment the resolver's tracker to account for the new message.
+			r.tracker.Inc()
+			m := Message{
+				// Only slice the values in the read buffer up to what was actually read.
+				Value: (*values)[:count],
+				ReceiptFunc: func() {
+					// Decrement the resolver's tracker because the message is no longer
+					// in-flight.
+					r.tracker.Dec()
+					// Relase the message specific buffer back into the buffer pool.
+					r.bufferPool.Put(values)
+				},
+			}
+
+			if !listeners[i].Send(&m) {
+				// If the message was not sent, we need to release the message resources.
+				m.Done()
+			}
+		}
+		sentCount += count
+	}
+	reader.Close()
+
+	// Release the read buffer back to the buffer pool.
+	r.bufferPool.Put(buffer)
+
+	return sentCount
+}
+
+// baseResolver is a struct that implements the Resolver interface and acts as the standard
+// resolver for most workers. A baseResolver handles both recursive and non-recursive edges
+// concurrently.
+type baseResolver struct {
+	resolverCore
+}
+
+// process is a function that reads output from a single sender, processes the output through an
+// interpreter, and then sends the interpreter's output to each listener. The sender's output is
+// deduplicated across all process functions for the same edge when the sender is for a cyclical
+// edge because values of a cycle may be reentrant. Output from the interpreter is always
+// deduplicated across all process functions because input from two different senders may produce
 // the same output value(s).
-func (r *baseResolver) process(ctx context.Context, snd Sender[*Edge, *Message], listeners []Listener[*Edge, *Message], inputBuffer *containers.AtomicMap[string, struct{}], outputBuffer *containers.AtomicMap[string, struct{}]) int64 {
+func (r *baseResolver) process(
+	ctx context.Context,
+	snd Sender[*Edge, *Message],
+	listeners []Listener[*Edge, *Message],
+	inputBuffer *containers.AtomicMap[string, struct{}],
+	outputBuffer *containers.AtomicMap[string, struct{}],
+) int64 {
 	var sentCount int64
 
 	edge := snd.Key()
@@ -480,51 +717,7 @@ func (r *baseResolver) process(ctx context.Context, snd Sender[*Edge, *Message],
 			return !loaded
 		})
 
-		// Grab a buffer from the pool for reading. The buffer's size
-		// is set by the bufferPool.
-		buffer := r.bufferPool.Get()
-		reader := seq.NewSeqReader(results)
-
-		for {
-			count := reader.Read(*buffer)
-
-			if count == 0 {
-				// No more values to read from the iter.Seq.
-				break
-			}
-
-			for i := range len(listeners) {
-				// Grab a buffer that will be specific to this message.
-				values := r.bufferPool.Get()
-				// This copy is done so that the content of the message buffer is
-				// not altered when the read buffer has new values written to it.
-				copy(*values, (*buffer)[:count])
-
-				// Increment the resolver's tracker to account for the new message.
-				r.tracker.Inc()
-				m := Message{
-					// Only slice the values in the read buffer up to what was actually read.
-					Value: (*values)[:count],
-					ReceiptFunc: func() {
-						// Decrement the resolver's tracker because the message is no longer
-						// in-flight.
-						r.tracker.Dec()
-						// Relase the message specific buffer back into the buffer pool.
-						r.bufferPool.Put(values)
-					},
-				}
-
-				if !listeners[i].Send(&m) {
-					// If the message was not sent, we need to release the message resources.
-					m.Done()
-				}
-			}
-			sentCount += int64(count)
-		}
-		reader.Close()
-
-		// Release the read buffer back to the buffer pool.
-		r.bufferPool.Put(buffer)
+		sentCount += int64(r.broadcast(results, listeners))
 
 		// Release the received message's resources.
 		msg.Done()
@@ -533,10 +726,15 @@ func (r *baseResolver) process(ctx context.Context, snd Sender[*Edge, *Message],
 	return sentCount
 }
 
-// Resolve is a function that orchestrates the processing of all sender output, broadcasting the result of that processing
-// to all listeners. The Resolve function will block until all of its non-cyclical senders have been exhausted and the status
-// of the instance's reporter is equal to `true` and the count of its tracker reaches `0`.
-func (r *baseResolver) Resolve(ctx context.Context, senders []Sender[*Edge, *Message], listeners []Listener[*Edge, *Message]) {
+// Resolve is a function that orchestrates the processing of all sender output, broadcasting the
+// result of that processing to all listeners. The Resolve function will block until all of its
+// non-cyclical senders have been exhausted and the status of the instance's reporter is equal to
+// `true` and the count of its tracker reaches `0`.
+func (r *baseResolver) Resolve(
+	ctx context.Context,
+	senders []Sender[*Edge, *Message],
+	listeners []Listener[*Edge, *Message],
+) {
 	ctx, span := pipelineTracer.Start(ctx, "baseResolver.Resolve")
 	defer span.End()
 
@@ -620,8 +818,6 @@ func (r *baseResolver) Resolve(ctx context.Context, senders []Sender[*Edge, *Mes
 	span.SetAttributes(attribute.Int64("items.count", sentCount.Load()))
 }
 
-type edgeHandler func(context.Context, *Edge, []string) iter.Seq[Item]
-
 // txBag is a type that implements the interface pipe.Tx[T]
 // for the type containers.Bag[T].
 type txBag[T any] containers.Bag[T]
@@ -635,19 +831,21 @@ func (tx *txBag[T]) Send(t T) bool {
 
 // exclusionResolver is a struct that resolves senders to an exclusion operation.
 type exclusionResolver struct {
-	interpreter interpreter
-	tracker     *track.Tracker
-	reporter    *track.Reporter
-	bufferPool  *bufferPool
-	numProcs    int
+	resolverCore
 }
 
-// process is a function that processes the output of a single sender through an interpreter. All output from
-// the interpreter is collected in the items Bag and a cleanup Bag is used to collect all resource cleaning functions
-// for later use by the Resolve function. As soon as a message is received from the sender, its values are swapped
-// to a buffer that is local to the current iteration, and the message resources are released immediately.
-// Messages are not sent to the listeners at this point.
-func (r *exclusionResolver) process(ctx context.Context, snd Sender[*Edge, *Message], items pipe.Tx[Item], cleanup *containers.Bag[func()]) {
+// process is a function that processes the output of a single sender through an interpreter. All
+// output from the interpreter is collected in the items Bag and a cleanup Bag is used to collect
+// all resource cleaning functions for later use by the Resolve function. As soon as a message is
+// received from the sender, its values are swapped to a buffer that is local to the current
+// iteration, and the message resources are released immediately. Messages are not sent to the
+// listeners at this point.
+func (r *exclusionResolver) process(
+	ctx context.Context,
+	snd Sender[*Edge, *Message],
+	items pipe.Tx[Item],
+	cleanup *containers.Bag[func()],
+) {
 	edge := snd.Key()
 
 	edgeTo := "nil"
@@ -717,7 +915,11 @@ func (r *exclusionResolver) process(ctx context.Context, snd Sender[*Edge, *Mess
 	}
 }
 
-func (r *exclusionResolver) Resolve(ctx context.Context, senders []Sender[*Edge, *Message], listeners []Listener[*Edge, *Message]) {
+func (r *exclusionResolver) Resolve(
+	ctx context.Context,
+	senders []Sender[*Edge, *Message],
+	listeners []Listener[*Edge, *Message],
+) {
 	ctx, span := pipelineTracer.Start(ctx, "exclusionResolver.Resolve")
 	defer span.End()
 
@@ -734,7 +936,10 @@ func (r *exclusionResolver) Resolve(ctx context.Context, senders []Sender[*Edge,
 	var wgExclude sync.WaitGroup
 
 	pipeInclude := pipe.Must[Item](1 << 7) // create a pipe with an initial capacity of 128
-	pipeInclude.SetExtensionConfig(0, -1)  // allow pipe to grow to an unbounded capacity with no wait
+
+	// allow pipe to grow to an unbounded capacity with no wait.
+	// growth is limited by the volume of tuples assigned to the relation.
+	pipeInclude.SetExtensionConfig(0, -1)
 
 	var counter atomic.Int32
 	counter.Store(int32(r.numProcs))
@@ -782,39 +987,7 @@ func (r *exclusionResolver) Resolve(ctx context.Context, senders []Sender[*Edge,
 
 	results = seq.Flatten(seq.Sequence(errs...), results)
 
-	var sentCount int
-
-	buffer := r.bufferPool.Get()
-	reader := seq.NewSeqReader(results)
-
-	for {
-		count := reader.Read(*buffer)
-
-		if count == 0 {
-			break
-		}
-
-		for i := range len(listeners) {
-			values := r.bufferPool.Get()
-			copy(*values, (*buffer)[:count])
-
-			r.tracker.Inc()
-			m := Message{
-				Value: (*values)[:count],
-				ReceiptFunc: func() {
-					r.tracker.Dec()
-					r.bufferPool.Put(values)
-				},
-			}
-
-			if !listeners[i].Send(&m) {
-				m.Done()
-			}
-		}
-		sentCount += count
-	}
-	reader.Close()
-	r.bufferPool.Put(buffer)
+	sentCount := r.broadcast(results, listeners)
 
 	span.SetAttributes(attribute.Int("items.count", sentCount))
 
@@ -841,14 +1014,15 @@ type interpreter interface {
 }
 
 type intersectionResolver struct {
-	interpreter interpreter
-	tracker     *track.Tracker
-	reporter    *track.Reporter
-	bufferPool  *bufferPool
-	numProcs    int
+	resolverCore
 }
 
-func (r *intersectionResolver) process(ctx context.Context, snd Sender[*Edge, *Message], items *containers.Bag[Item], cleanup *containers.Bag[func()]) {
+func (r *intersectionResolver) process(
+	ctx context.Context,
+	snd Sender[*Edge, *Message],
+	items *containers.Bag[Item],
+	cleanup *containers.Bag[func()],
+) {
 	edge := snd.Key()
 
 	edgeTo := "nil"
@@ -884,7 +1058,11 @@ func (r *intersectionResolver) process(ctx context.Context, snd Sender[*Edge, *M
 		messageAttrs[0] = attribute.Int("items.count", size)
 		messageAttrs = append(messageAttrs, attrs...)
 
-		ctx, span := pipelineTracer.Start(ctx, "message.received", trace.WithAttributes(messageAttrs...))
+		ctx, span := pipelineTracer.Start(
+			ctx,
+			"message.received",
+			trace.WithAttributes(messageAttrs...),
+		)
 
 		for _, item := range (*values)[:size] {
 			if item.Err != nil {
@@ -906,7 +1084,11 @@ func (r *intersectionResolver) process(ctx context.Context, snd Sender[*Edge, *M
 	}
 }
 
-func (r *intersectionResolver) Resolve(ctx context.Context, senders []Sender[*Edge, *Message], listeners []Listener[*Edge, *Message]) {
+func (r *intersectionResolver) Resolve(
+	ctx context.Context,
+	senders []Sender[*Edge, *Message],
+	listeners []Listener[*Edge, *Message],
+) {
 	ctx, span := pipelineTracer.Start(ctx, "intersectionResolver.Resolve")
 	defer span.End()
 
@@ -960,39 +1142,7 @@ func (r *intersectionResolver) Resolve(ctx context.Context, senders []Sender[*Ed
 
 	results = seq.Flatten(seq.Sequence(errs...), results)
 
-	var sentCount int
-
-	buffer := r.bufferPool.Get()
-	reader := seq.NewSeqReader(results)
-
-	for {
-		count := reader.Read(*buffer)
-
-		if count == 0 {
-			break
-		}
-
-		for i := range len(listeners) {
-			values := r.bufferPool.Get()
-			copy(*values, (*buffer)[:count])
-
-			r.tracker.Inc()
-			m := Message{
-				Value: (*values)[:count],
-				ReceiptFunc: func() {
-					r.tracker.Dec()
-					r.bufferPool.Put(values)
-				},
-			}
-
-			if !listeners[i].Send(&m) {
-				m.Done()
-			}
-		}
-		sentCount += count
-	}
-	reader.Close()
-	r.bufferPool.Put(buffer)
+	sentCount := r.broadcast(results, listeners)
 
 	span.SetAttributes(attribute.Int("items.count", sentCount))
 
@@ -1003,47 +1153,6 @@ func (r *intersectionResolver) Resolve(ctx context.Context, senders []Sender[*Ed
 	for _, lst := range listeners {
 		lst.Close()
 	}
-}
-
-type omniInterpreter struct {
-	hndNil           edgeHandler
-	hndDirect        edgeHandler
-	hndTTU           edgeHandler
-	hndComputed      edgeHandler
-	hndRewrite       edgeHandler
-	hndDirectLogical edgeHandler
-	hndTTULogical    edgeHandler
-}
-
-func (o *omniInterpreter) Interpret(ctx context.Context, edge *Edge, items []string) iter.Seq[Item] {
-	if len(items) == 0 {
-		return emptySequence
-	}
-
-	var results iter.Seq[Item]
-
-	if edge == nil {
-		results = o.hndNil(ctx, edge, items)
-		return results
-	}
-
-	switch edge.GetEdgeType() {
-	case edgeTypeDirect:
-		results = o.hndDirect(ctx, edge, items)
-	case edgeTypeTTU:
-		results = o.hndTTU(ctx, edge, items)
-	case edgeTypeComputed:
-		results = o.hndComputed(ctx, edge, items)
-	case edgeTypeRewrite:
-		results = o.hndRewrite(ctx, edge, items)
-	case edgeTypeDirectLogical:
-		results = o.hndDirectLogical(ctx, edge, items)
-	case edgeTypeTTULogical:
-		results = o.hndTTULogical(ctx, edge, items)
-	default:
-		return seq.Sequence(Item{Err: errors.New("unexpected edge type")})
-	}
-	return results
 }
 
 // Pipeline is a struct that is used to construct logical pipelines that traverse all connections
@@ -1110,11 +1219,52 @@ func (pl *Pipeline) Build(ctx context.Context, source Source, target Target) ite
 
 	ctx, cancel := context.WithCancel(ctx)
 
+	validator := combineValidators(
+		[]FalibleValidator[*openfgav1.TupleKey]{
+			FalibleValidator[*openfgav1.TupleKey](checkutil.BuildTupleKeyConditionFilter(
+				ctx,
+				pl.backend.Context,
+				pl.backend.TypeSystem,
+			)),
+			MakeValidatorFalible(
+				Validator[*openfgav1.TupleKey](validation.FilterInvalidTuples(
+					pl.backend.TypeSystem,
+				)),
+			),
+		},
+	)
+
+	queryEngine := QueryEngine{
+		pl.backend.Datastore,
+		pl.backend.StoreID,
+		pl.backend.Preference,
+		validator,
+	}
+
+	directEdgeHandler := DirectEdgeHandler{&queryEngine}
+
+	ttuEdgeHandler := TTUEdgeHandler{
+		queryEngine: &queryEngine,
+		graph:       pl.backend.Graph,
+	}
+
+	var identityEdgeHandler IdentityEdgeHandler
+
+	var registry EdgeHandlerRegistry
+	registry.Register(&directEdgeHandler)
+	registry.Register(&ttuEdgeHandler)
+	registry.Register(&identityEdgeHandler)
+
+	registryInterpreter := RegistryInterpreter{
+		registry: &registry,
+	}
+
 	workers := make(workerPool)
 
 	p := path{
-		source: (*Node)(source),
-		target: target,
+		source:      (*Node)(source),
+		target:      target,
+		interpreter: &registryInterpreter,
 	}
 	pl.resolve(p, workers)
 
@@ -1206,10 +1356,11 @@ func (pl *Pipeline) Target(name, identifier string) (Target, bool) {
 }
 
 type path struct {
-	source     *Node
-	target     Target
-	tracker    *track.Tracker
-	statusPool *track.StatusPool
+	source      *Node
+	target      Target
+	interpreter interpreter
+	tracker     *track.Tracker
+	statusPool  *track.StatusPool
 }
 
 func (pl *Pipeline) resolve(p path, workers workerPool) *pipelineWorker {
@@ -1233,14 +1384,12 @@ func (pl *Pipeline) resolve(p path, workers workerPool) *pipelineWorker {
 	reporter := p.statusPool.Register()
 	reporter.Report(true)
 
-	omni := &omniInterpreter{
-		hndNil:           handleIdentity,
-		hndDirect:        pl.backend.handleDirectEdge,
-		hndTTU:           pl.backend.handleTTUEdge,
-		hndComputed:      handleIdentity,
-		hndRewrite:       handleIdentity,
-		hndDirectLogical: handleIdentity,
-		hndTTULogical:    handleIdentity,
+	core := resolverCore{
+		interpreter: p.interpreter,
+		tracker:     p.tracker,
+		reporter:    reporter,
+		bufferPool:  pl.bufferPool,
+		numProcs:    pl.numProcs,
 	}
 
 	switch p.source.GetNodeType() {
@@ -1249,39 +1398,15 @@ func (pl *Pipeline) resolve(p path, workers workerPool) *pipelineWorker {
 		nodeTypeSpecificTypeWildcard,
 		nodeTypeLogicalDirectGrouping,
 		nodeTypeLogicalTTUGrouping:
-		w.Resolver = &baseResolver{
-			interpreter: omni,
-			tracker:     p.tracker,
-			reporter:    reporter,
-			bufferPool:  pl.bufferPool,
-			numProcs:    pl.numProcs,
-		}
+		w.Resolver = &baseResolver{core}
 	case nodeTypeOperator:
 		switch p.source.GetLabel() {
 		case weightedGraph.IntersectionOperator:
-			w.Resolver = &intersectionResolver{
-				interpreter: omni,
-				tracker:     p.tracker,
-				reporter:    reporter,
-				bufferPool:  pl.bufferPool,
-				numProcs:    pl.numProcs,
-			}
+			w.Resolver = &intersectionResolver{core}
 		case weightedGraph.UnionOperator:
-			w.Resolver = &baseResolver{
-				interpreter: omni,
-				tracker:     p.tracker,
-				reporter:    reporter,
-				bufferPool:  pl.bufferPool,
-				numProcs:    pl.numProcs,
-			}
+			w.Resolver = &baseResolver{core}
 		case weightedGraph.ExclusionOperator:
-			w.Resolver = &exclusionResolver{
-				interpreter: omni,
-				tracker:     p.tracker,
-				reporter:    reporter,
-				bufferPool:  pl.bufferPool,
-				numProcs:    pl.numProcs,
-			}
+			w.Resolver = &exclusionResolver{core}
 		default:
 			panic("unsupported operator node for reverse expand worker")
 		}
@@ -1346,14 +1471,7 @@ func (pl *Pipeline) resolve(p path, workers workerPool) *pipelineWorker {
 	return &w
 }
 
-type queryInput struct {
-	objectType     string
-	objectRelation string
-	userFilter     []*openfgav1.ObjectRelation
-	conditions     []string
-}
-
-// resolver is an interface that is consumed by a worker struct.
+// Resolver is an interface that is consumed by a worker struct.
 // A resolver is responsible for consuming messages from a worker's
 // senders and broadcasting the result of processing the consumed
 // messages to the worker's listeners.
