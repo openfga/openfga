@@ -17,7 +17,7 @@ import (
 // instance.
 type SharedDatastoreResourcesOpt func(*SharedDatastoreResources)
 
-// WithLogger sets the logger for CachedDatastore.
+// WithLogger sets the logger for SharedDatastoreResources.
 func WithLogger(logger logger.Logger) SharedDatastoreResourcesOpt {
 	return func(scr *SharedDatastoreResources) {
 		scr.Logger = logger
@@ -58,15 +58,22 @@ func NewSharedDatastoreResources(
 	settings serverconfig.CacheSettings,
 	opts ...SharedDatastoreResourcesOpt,
 ) (*SharedDatastoreResources, error) {
+	defaultCacheController := cachecontroller.NewNoopCacheController()
+
 	s := &SharedDatastoreResources{
 		WaitGroup:         &sync.WaitGroup{},
 		SingleflightGroup: sharedSf,
 		ServerCtx:         sharedCtx,
-		CacheController:   cachecontroller.NewNoopCacheController(),
+		CacheController:   defaultCacheController,
 		Logger:            logger.NewNoopLogger(),
 		SharedIteratorStorage: sharediterator.NewSharedIteratorDatastoreStorage(
 			sharediterator.WithSharedIteratorDatastoreStorageLimit(
 				int(settings.SharedIteratorLimit))),
+	}
+
+	// Apply opts now to get SharedDatastoresResources customizations for subsequent logic.
+	for _, opt := range opts {
+		opt(s)
 	}
 
 	if settings.ShouldCreateNewCache() {
@@ -79,7 +86,8 @@ func NewSharedDatastoreResources(
 		}
 	}
 
-	if settings.ShouldCreateCacheController() {
+	// Only create a cache controller if it wasn't already set via opts.
+	if settings.ShouldCreateCacheController() && s.CacheController == defaultCacheController {
 		s.CacheController = cachecontroller.NewCacheController(ds, s.CheckCache, settings.CacheControllerTTL, settings.CheckQueryCacheTTL, settings.CheckIteratorCacheTTL, cachecontroller.WithLogger(s.Logger))
 	}
 
@@ -87,8 +95,13 @@ func NewSharedDatastoreResources(
 	// check cache and the shadow cache. However, if the user opts in to use a
 	// separate cache instance for the shadow cache, we need to create new
 	// instances.
-	s.ShadowCheckCache = s.CheckCache
-	s.ShadowCacheController = s.CacheController
+	// Set shadow defaults only if opts didn't already customize them.
+	if s.ShadowCheckCache == nil {
+		s.ShadowCheckCache = s.CheckCache
+	}
+	if s.ShadowCacheController == nil {
+		s.ShadowCacheController = s.CacheController
+	}
 
 	if settings.ShouldCreateShadowNewCache() {
 		var err error
@@ -100,12 +113,9 @@ func NewSharedDatastoreResources(
 		}
 	}
 
-	if settings.ShouldCreateShadowCacheController() {
+	// Only create a shadow cache controller if it wasn't already set via opts.
+	if settings.ShouldCreateShadowCacheController() && s.ShadowCacheController == s.CacheController {
 		s.ShadowCacheController = cachecontroller.NewCacheController(ds, s.ShadowCheckCache, settings.CacheControllerTTL, settings.CheckQueryCacheTTL, settings.CheckIteratorCacheTTL, cachecontroller.WithLogger(s.Logger))
-	}
-
-	for _, opt := range opts {
-		opt(s)
 	}
 
 	return s, nil

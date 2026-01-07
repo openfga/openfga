@@ -7,8 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Try to keep listed changes to a concise bulleted list of simple explanations of changes. Aim for the amount of information needed so that readers can understand where they would look in the codebase to investigate the changes' implementation, or where they would look in the documentation to understand how to make use of the change in practice - better yet, link directly to the docs and provide detailed information there. Only elaborate if doing so is required to avoid breaking changes or experimental features from ruining someone's day.
 
 ## [Unreleased]
+### Changed
+- Datastore throttling separated from dispatch throttling in BatchCheck, ListUsers metadata. Also, `throttling_type` label added to `throttledRequestCounter` metric to differentiate between dispatch/datastore throttling. [#2839](https://github.com/openfga/openfga/pull/2839)
+
+### Removed
+- Removed custom grpc_prometheus fork, replace with go-grpc-middleware's provider. Removes the custom `grpc_code` label on this metric. [#2855](https://github.com/openfga/openfga/pull/2855)
+
+### Fixed
+- ListUsers will now properly get datastore throttled if enabled. [#2846](https://github.com/openfga/openfga/pull/2846)
+- Cache controller now uses the logger provided to the server instead of always using a no-op logger. [#2847](https://github.com/openfga/openfga/pull/2847)
+
+## [1.11.2] - 2025-12-04
 ### Fixed
 - Fixed an issue with the `InMemoryCacheController` (the default cache controller when enabled) where cached Check responses were not invalidated after a write to the store. Previously, invalidation only occurred if multiple Checks were triggered in rapid succession after a write. [#2811](https://github.com/openfga/openfga/pull/2811)
+- Update toolchain go version to 1.25.5 to address [CVE-2025-61729](https://pkg.go.dev/vuln/GO-2025-4155) in the go std lib.
 
 ## [1.11.1] - 2025-11-20
 ### Added
@@ -1481,7 +1493,8 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
 - Memory storage adapter implementation
 - Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.11.1...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.11.2...HEAD
+[1.11.2]: https://github.com/openfga/openfga/compare/v1.11.1...v1.11.2
 [1.11.1]: https://github.com/openfga/openfga/compare/v1.11.0...v1.11.1
 [1.11.0]: https://github.com/openfga/openfga/compare/v1.10.5...v1.11.0
 [1.10.5]: https://github.com/openfga/openfga/compare/v1.10.4...v1.10.5

@@ -131,11 +131,11 @@
             "x-env-variable": "OPENFGA_CONTEXT_PROPAGATION_TO_DATASTORE"
         },
         "experimentals": {
-            "description": "a list of experimental features to enable",
+            "description": "a comma-separated list of experimental features to enable",
             "type": "array",
             "items": {
                 "type": "string",
-                "enum": ["enable-check-optimizations", "enable-list-objects-optimizations", "enable-access-control", "pipeline_list_objects"]
+                "enum": ["enable-check-optimizations", "enable-list-objects-optimizations", "enable-access-control", "pipeline_list_objects", "datastore_throttling"]
             },
             "default": [],
             "x-env-variable": "OPENFGA_EXPERIMENTALS"

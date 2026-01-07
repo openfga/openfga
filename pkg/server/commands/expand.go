@@ -174,7 +174,7 @@ func (q *ExpandQuery) resolveThis(ctx context.Context, store string, tk *openfga
 	for {
 		tk, err := filteredIter.Next(ctx)
 		if err != nil {
-			if err == storage.ErrIteratorDone {
+			if errors.Is(err, storage.ErrIteratorDone) {
 				break
 			}
 			return nil, serverErrors.HandleError("", err)
@@ -300,7 +300,7 @@ func (q *ExpandQuery) resolveTupleToUserset(
 	for {
 		tk, err := filteredIter.Next(ctx)
 		if err != nil {
-			if err == storage.ErrIteratorDone {
+			if errors.Is(err, storage.ErrIteratorDone) {
 				break
 			}
 			return nil, serverErrors.HandleError("", err)

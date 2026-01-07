@@ -49,6 +49,7 @@ func (s *Server) Expand(ctx context.Context, req *openfgav1.ExpandRequest) (*ope
 	if err != nil {
 		return nil, err
 	}
+	req.AuthorizationModelId = typesys.GetAuthorizationModelID() // the resolved model id
 
 	q := commands.NewExpandQuery(s.datastore, commands.WithExpandQueryLogger(s.logger))
 	return q.Execute(
