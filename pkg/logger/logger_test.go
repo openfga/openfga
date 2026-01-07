@@ -111,16 +111,24 @@ func TestWithContext(t *testing.T) {
 func TestWithFields(t *testing.T) {
 	observerLogger, logs := observer.New(zap.DebugLevel)
 	logger := ZapLogger{zap.New(observerLogger)}
-	logger.With(
+
+	const testMessage = "ABC"
+
+	newLogger := logger.With(
 		zap.String("TestOption", "Message"),
 	)
-	testMessage := "ABC"
-	logger.Info(testMessage)
-	actualMessage := logs.All()[0]
-	require.Equal(t, testMessage, actualMessage.Message)
 
+	newLogger.Info(testMessage)
+
+	// Check that child message carries the context fields
 	expectedZapFields := map[string]interface{}{
 		"TestOption": "Message",
 	}
-	require.Equal(t, expectedZapFields, actualMessage.ContextMap())
+	childMessage := logs.All()[0]
+	require.Equal(t, expectedZapFields, childMessage.ContextMap())
+
+	// Check that parent message does not carry the context fields
+	logger.Info(testMessage)
+	parentMessage := logs.All()[1]
+	require.Empty(t, parentMessage.ContextMap())
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strconv"
 	"time"
 
 	"github.com/grpc-ecosystem/go-grpc-middleware/logging/zap/ctxzap"
@@ -32,9 +33,11 @@ const (
 	internalErrorKey   = "internal_error"
 	grpcReqCompleteKey = "grpc_req_complete"
 	userAgentKey       = "user_agent"
+	queryDurationKey   = "query_duration_ms"
 
 	gatewayUserAgentHeader string = "grpcgateway-user-agent"
 	userAgentHeader        string = "user-agent"
+	healthCheckService     string = "grpc.health.v1.Health"
 )
 
 // NewLoggingInterceptor creates a new logging interceptor for gRPC unary server requests.
@@ -52,10 +55,14 @@ type reporter struct {
 	logger         logger.Logger
 	fields         []zap.Field
 	protomarshaler protojson.MarshalOptions
+	serviceName    string
 }
 
 // PostCall is invoked after all PostMsgSend operations.
-func (r *reporter) PostCall(err error, _ time.Duration) {
+func (r *reporter) PostCall(err error, rpcDuration time.Duration) {
+	rpcDurationMs := strconv.FormatInt(rpcDuration.Milliseconds(), 10)
+
+	r.fields = append(r.fields, zap.String(queryDurationKey, rpcDurationMs))
 	r.fields = append(r.fields, ctxzap.TagsToFields(r.ctx)...)
 
 	code := serverErrors.ConvertToEncodedErrorCode(status.Convert(err))
@@ -64,7 +71,7 @@ func (r *reporter) PostCall(err error, _ time.Duration) {
 	if err != nil {
 		var internalError serverErrors.InternalError
 		if errors.As(err, &internalError) {
-			r.fields = append(r.fields, zap.String(internalErrorKey, internalError.Internal().Error()))
+			r.fields = append(r.fields, zap.String(internalErrorKey, internalError.Unwrap().Error()))
 			r.logger.Error(err.Error(), r.fields...)
 		} else {
 			r.fields = append(r.fields, zap.Error(err))
@@ -74,7 +81,11 @@ func (r *reporter) PostCall(err error, _ time.Duration) {
 		return
 	}
 
-	r.logger.Info(grpcReqCompleteKey, r.fields...)
+	if r.serviceName == healthCheckService {
+		r.logger.Debug(grpcReqCompleteKey, r.fields...)
+	} else {
+		r.logger.Info(grpcReqCompleteKey, r.fields...)
+	}
 }
 
 // PostMsgSend is invoked once after a unary response or multiple times in
@@ -139,13 +150,12 @@ func reportable(l logger.Logger) interceptors.CommonReportableFunc {
 			fields = append(fields, zap.String(userAgentKey, userAgent))
 		}
 
-		zapLogger := l.(*logger.ZapLogger)
-
 		return &reporter{
-			ctx:            ctxzap.ToContext(ctx, zapLogger.Logger),
+			ctx:            ctx,
 			logger:         l,
 			fields:         fields,
 			protomarshaler: protojson.MarshalOptions{EmitUnpopulated: true},
+			serviceName:    c.Service,
 		}, ctx
 	}
 }

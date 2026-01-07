@@ -6,17 +6,17 @@ import (
 	"testing"
 
 	"github.com/oklog/ulid/v2"
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 	"google.golang.org/protobuf/types/known/wrapperspb"
+
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/mocks"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/memory"
 	storagetest "github.com/openfga/openfga/pkg/storage/test"
-	"github.com/openfga/openfga/pkg/tuple"
 )
 
 func TestReadCommand(t *testing.T) {
@@ -81,14 +81,18 @@ func TestReadCommand(t *testing.T) {
 		mockController := gomock.NewController(t)
 		defer mockController.Finish()
 
-		tupleKey := tuple.NewTupleKey("document:1", "reader", "user:maria")
+		filter := storage.ReadFilter{Object: "document:1", Relation: "reader", User: "user:maria"}
 		storeID := ulid.Make().String()
 
 		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
-		mockDatastore.EXPECT().ReadPage(gomock.Any(), storeID, tupleKey, storage.PaginationOptions{
-			PageSize: storage.DefaultPageSize,
-			From:     "",
-		}).Times(1)
+		opts := storage.ReadPageOptions{
+			Pagination: storage.PaginationOptions{
+				PageSize: storage.DefaultPageSize,
+				From:     "",
+			},
+			Consistency: storage.ConsistencyOptions{Preference: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY},
+		}
+		mockDatastore.EXPECT().ReadPage(gomock.Any(), storeID, filter, opts).Times(1)
 
 		cmd := NewReadQuery(mockDatastore)
 		_, err := cmd.Execute(context.Background(), &openfgav1.ReadRequest{
@@ -96,6 +100,7 @@ func TestReadCommand(t *testing.T) {
 			TupleKey:          &openfgav1.ReadRequestTupleKey{Object: "document:1", Relation: "reader", User: "user:maria"},
 			PageSize:          nil,
 			ContinuationToken: "",
+			Consistency:       openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
 		})
 		require.NoError(t, err)
 	})
@@ -104,21 +109,28 @@ func TestReadCommand(t *testing.T) {
 		mockController := gomock.NewController(t)
 		defer mockController.Finish()
 
-		tupleKey := tuple.NewTupleKey("document:1", "reader", "user:maria")
+		filter := storage.ReadFilter{Object: "document:1", Relation: "reader", User: "user:maria"}
 		storeID := ulid.Make().String()
 		pageSize := int32(45)
 
 		mockEncoder := mocks.NewMockEncoder(mockController)
-		mockEncoder.EXPECT().Decode(gomock.Any()).Return([]byte{}, nil).Times(1)
-		mockEncoder.EXPECT().Encode(gomock.Any()).Return("encodedtoken", nil).Times(1)
+		mockEncoder.EXPECT().Decode(gomock.Any()).Return([]byte("decodedtoken"), nil).Times(1)
+
+		tokenSerializer := mocks.NewMockContinuationTokenSerializer(mockController)
+		tokenSerializer.EXPECT().Deserialize("decodedtoken").Return("deserializedtoken", "", nil).Times(1)
 
 		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
-		mockDatastore.EXPECT().ReadPage(gomock.Any(), storeID, tupleKey, storage.PaginationOptions{
-			PageSize: int(pageSize),
-			From:     "",
-		}).Times(1)
-
-		cmd := NewReadQuery(mockDatastore, WithReadQueryEncoder(mockEncoder))
+		opts := storage.ReadPageOptions{
+			Pagination: storage.PaginationOptions{
+				PageSize: int(pageSize),
+				From:     "deserializedtoken",
+			},
+		}
+		mockDatastore.EXPECT().ReadPage(gomock.Any(), storeID, filter, opts).Times(1)
+		cmd := NewReadQuery(mockDatastore,
+			WithReadQueryEncoder(mockEncoder),
+			WithReadQueryTokenSerializer(tokenSerializer),
+		)
 		resp, err := cmd.Execute(context.Background(), &openfgav1.ReadRequest{
 			StoreId:           storeID,
 			TupleKey:          &openfgav1.ReadRequestTupleKey{Object: "document:1", Relation: "reader", User: "user:maria"},
@@ -128,7 +140,7 @@ func TestReadCommand(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, resp)
 		require.Empty(t, resp.GetTuples())
-		require.Equal(t, "encodedtoken", resp.GetContinuationToken())
+		require.Empty(t, resp.GetContinuationToken())
 	})
 
 	t.Run("throws_error_if_continuation_token_is_invalid", func(t *testing.T) {
@@ -149,7 +161,7 @@ func TestReadCommand(t *testing.T) {
 			ContinuationToken: "token",
 		})
 		require.Nil(t, resp)
-		require.ErrorIs(t, err, serverErrors.InvalidContinuationToken)
+		require.ErrorIs(t, err, serverErrors.ErrInvalidContinuationToken)
 	})
 
 	t.Run("accepts_types_that_are_not_defined_in_current_model", func(t *testing.T) {

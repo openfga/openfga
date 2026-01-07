@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/oklog/ulid/v2"
+
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/pkg/logger"
@@ -43,6 +44,7 @@ func (s *CreateStoreCommand) Execute(ctx context.Context, req *openfgav1.CreateS
 	store, err := s.storesBackend.CreateStore(ctx, &openfgav1.Store{
 		Id:   ulid.Make().String(),
 		Name: req.GetName(),
+		// TODO why not pass CreatedAt and UpdatedAt as derived from the ulid?
 	})
 	if err != nil {
 		return nil, serverErrors.HandleError("", err)

@@ -1,6 +1,6 @@
 # Contributing to OpenFGA
 
-Please see our main guide here: https://github.com/openfga/.github/blob/update-contribution-guidelines/CONTRIBUTING.md
+Please see our [main guide](https://github.com/openfga/.github/blob/main/CONTRIBUTING.md).
 
 # Testing Guidelines
 
@@ -14,18 +14,7 @@ The purpose of this guide is to inform contributors where to write new tests.
 
 ## 2. API layer
 
-1. All APIs use an underlying `command` object. These commands must have
-    1. Unit tests. For example, Write API is backed by Write Command, which has unit tests in `pkg/server/commands/write_test.go`. These should target mocked dependencies to cover the majority of the business logic. If you are changing business logic, add a test in the appropriate commands test file.
-    2. **Exported** integration tests in `pkg/server/test/server.go`. These take in an unmocked `datastore` dependency. The goal of these is to test that the command and the underlying datastore work well. This is so that anyone who writes their own implementation of the datastore can run these tests by doing
-
-   ```go
-    import openfgatest "github.com/openfga/openfga/pkg/server/test"
-    
-    openfgatest.RunAllTests(t, datastore)
-    ```
-
-   > NOTE TO MAINTAINERS: ideally, these integration tests shouldn't exist. They are the result of not having enough coverage at the storage interface layer.
-
+1. All APIs use an underlying reusable `command` object. These commands must have unit tests. For example, Write API is backed by Write Command, which has unit tests in `pkg/server/commands/write_test.go`. These should target mocked dependencies to cover the majority of the business logic. If you are changing business logic, add a test in the appropriate commands test file.
 2. Functional tests in `tests/functional_test.go`. These are tests for validating the API inputs and functional API behavior. The inputs are defined in the proto files (https://github.com/openfga/api).
 3. Some APIs' behavior can be fine-tuned with server flags. If this is the case, the tests for the correct wiring of the flags live in `pkg/server/server_test.go`.
 4. Some APIs set specific response headers. If this is the case, update the test `TestHTTPHeaders` in `cmd/run/run_test.go`.

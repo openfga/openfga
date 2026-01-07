@@ -2,7 +2,11 @@
 
 package graph
 
-import "context"
+import (
+	"context"
+
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+)
 
 type CheckResolverCloser func()
 
@@ -28,4 +32,16 @@ type CheckResolver interface {
 
 	// Close releases resources. It must be called after the CheckResolver is done processing all requests.
 	Close()
+
+	// SetDelegate sets the next resolver in the chain. It can be the same resolver,
+	// but a call to Delegate.ResolveCheck must not create infinite recursion.
+	SetDelegate(delegate CheckResolver)
+
+	GetDelegate() CheckResolver
+}
+
+type CheckRewriteResolver interface {
+	CheckResolver
+
+	CheckRewrite(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset) CheckHandlerFunc
 }

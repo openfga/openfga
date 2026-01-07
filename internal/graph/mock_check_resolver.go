@@ -13,6 +13,7 @@ import (
 	context "context"
 	reflect "reflect"
 
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -20,6 +21,7 @@ import (
 type MockCheckResolver struct {
 	ctrl     *gomock.Controller
 	recorder *MockCheckResolverMockRecorder
+	isgomock struct{}
 }
 
 // MockCheckResolverMockRecorder is the mock recorder for MockCheckResolver.
@@ -51,6 +53,20 @@ func (mr *MockCheckResolverMockRecorder) Close() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Close", reflect.TypeOf((*MockCheckResolver)(nil).Close))
 }
 
+// GetDelegate mocks base method.
+func (m *MockCheckResolver) GetDelegate() CheckResolver {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetDelegate")
+	ret0, _ := ret[0].(CheckResolver)
+	return ret0
+}
+
+// GetDelegate indicates an expected call of GetDelegate.
+func (mr *MockCheckResolverMockRecorder) GetDelegate() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDelegate", reflect.TypeOf((*MockCheckResolver)(nil).GetDelegate))
+}
+
 // ResolveCheck mocks base method.
 func (m *MockCheckResolver) ResolveCheck(ctx context.Context, req *ResolveCheckRequest) (*ResolveCheckResponse, error) {
 	m.ctrl.T.Helper()
@@ -64,4 +80,107 @@ func (m *MockCheckResolver) ResolveCheck(ctx context.Context, req *ResolveCheckR
 func (mr *MockCheckResolverMockRecorder) ResolveCheck(ctx, req any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResolveCheck", reflect.TypeOf((*MockCheckResolver)(nil).ResolveCheck), ctx, req)
+}
+
+// SetDelegate mocks base method.
+func (m *MockCheckResolver) SetDelegate(delegate CheckResolver) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "SetDelegate", delegate)
+}
+
+// SetDelegate indicates an expected call of SetDelegate.
+func (mr *MockCheckResolverMockRecorder) SetDelegate(delegate any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetDelegate", reflect.TypeOf((*MockCheckResolver)(nil).SetDelegate), delegate)
+}
+
+// MockCheckRewriteResolver is a mock of CheckRewriteResolver interface.
+type MockCheckRewriteResolver struct {
+	ctrl     *gomock.Controller
+	recorder *MockCheckRewriteResolverMockRecorder
+	isgomock struct{}
+}
+
+// MockCheckRewriteResolverMockRecorder is the mock recorder for MockCheckRewriteResolver.
+type MockCheckRewriteResolverMockRecorder struct {
+	mock *MockCheckRewriteResolver
+}
+
+// NewMockCheckRewriteResolver creates a new mock instance.
+func NewMockCheckRewriteResolver(ctrl *gomock.Controller) *MockCheckRewriteResolver {
+	mock := &MockCheckRewriteResolver{ctrl: ctrl}
+	mock.recorder = &MockCheckRewriteResolverMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockCheckRewriteResolver) EXPECT() *MockCheckRewriteResolverMockRecorder {
+	return m.recorder
+}
+
+// CheckRewrite mocks base method.
+func (m *MockCheckRewriteResolver) CheckRewrite(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset) CheckHandlerFunc {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CheckRewrite", ctx, req, rewrite)
+	ret0, _ := ret[0].(CheckHandlerFunc)
+	return ret0
+}
+
+// CheckRewrite indicates an expected call of CheckRewrite.
+func (mr *MockCheckRewriteResolverMockRecorder) CheckRewrite(ctx, req, rewrite any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckRewrite", reflect.TypeOf((*MockCheckRewriteResolver)(nil).CheckRewrite), ctx, req, rewrite)
+}
+
+// Close mocks base method.
+func (m *MockCheckRewriteResolver) Close() {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "Close")
+}
+
+// Close indicates an expected call of Close.
+func (mr *MockCheckRewriteResolverMockRecorder) Close() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Close", reflect.TypeOf((*MockCheckRewriteResolver)(nil).Close))
+}
+
+// GetDelegate mocks base method.
+func (m *MockCheckRewriteResolver) GetDelegate() CheckResolver {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetDelegate")
+	ret0, _ := ret[0].(CheckResolver)
+	return ret0
+}
+
+// GetDelegate indicates an expected call of GetDelegate.
+func (mr *MockCheckRewriteResolverMockRecorder) GetDelegate() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDelegate", reflect.TypeOf((*MockCheckRewriteResolver)(nil).GetDelegate))
+}
+
+// ResolveCheck mocks base method.
+func (m *MockCheckRewriteResolver) ResolveCheck(ctx context.Context, req *ResolveCheckRequest) (*ResolveCheckResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ResolveCheck", ctx, req)
+	ret0, _ := ret[0].(*ResolveCheckResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ResolveCheck indicates an expected call of ResolveCheck.
+func (mr *MockCheckRewriteResolverMockRecorder) ResolveCheck(ctx, req any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResolveCheck", reflect.TypeOf((*MockCheckRewriteResolver)(nil).ResolveCheck), ctx, req)
+}
+
+// SetDelegate mocks base method.
+func (m *MockCheckRewriteResolver) SetDelegate(delegate CheckResolver) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "SetDelegate", delegate)
+}
+
+// SetDelegate indicates an expected call of SetDelegate.
+func (mr *MockCheckRewriteResolverMockRecorder) SetDelegate(delegate any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetDelegate", reflect.TypeOf((*MockCheckRewriteResolver)(nil).SetDelegate), delegate)
 }

@@ -10,17 +10,18 @@ import (
 	"testing"
 	"time"
 
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest/observer"
 	"google.golang.org/grpc"
 
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	parser "github.com/openfga/language/pkg/go/transformer"
+
 	"github.com/openfga/openfga/cmd/run"
-	"github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/pkg/server/config"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -39,14 +40,27 @@ func TestListUsersMySQL(t *testing.T) {
 	testRunAll(t, "mysql")
 }
 
+func TestListUsersSQLite(t *testing.T) {
+	testRunAll(t, "sqlite")
+}
+
 func testRunAll(t *testing.T, engine string) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		// [Goroutine 60101 in state select, with github.com/go-sql-driver/mysql.(*mysqlConn).startWatcher.func1 on top of the stack:
+		// github.com/go-sql-driver/mysql.(*mysqlConn).startWatcher.func1()
+		// 	/home/runner/go/pkg/mod/github.com/go-sql-driver/mysql@v1.8.1/connection.go:628 +0x105
+		// created by github.com/go-sql-driver/mysql.(*mysqlConn).startWatcher in goroutine 60029
+		// 	/home/runner/go/pkg/mod/github.com/go-sql-driver/mysql@v1.8.1/connection.go:625 +0x1dd
+		// ]
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("github.com/go-sql-driver/mysql.(*mysqlConn).startWatcher.func1"))
 	})
 	cfg := config.MustDefaultConfig()
+	cfg.Experimentals = append(cfg.Experimentals, "enable-check-optimizations", "enable-list-objects-optimizations")
 	cfg.Log.Level = "error"
 	cfg.Datastore.Engine = engine
-	cfg.ListUsersDeadline = 6 * time.Second
+	cfg.ListUsersDeadline = 0 // no deadline
+	// extend the timeout for the tests, coverage makes them slower
+	cfg.RequestTimeout = 10 * time.Second
 
 	tests.StartServer(t, cfg)
 
@@ -154,7 +168,7 @@ func TestListUsersLogs(t *testing.T) {
 				"grpc_method":            "ListUsers",
 				"grpc_type":              "unary",
 				"grpc_code":              int32(0),
-				"raw_request":            fmt.Sprintf(`{"store_id":"%s","relation":"viewer","object":{"type":"document","id":"1"},"user_filters":[{"type":"user","relation":""}], "contextual_tuples":[],"authorization_model_id":"%s","context":null}`, storeID, authorizationModelID),
+				"raw_request":            fmt.Sprintf(`{"store_id":"%s","relation":"viewer","object":{"type":"document","id":"1"},"user_filters":[{"type":"user","relation":""}], "contextual_tuples":[],"authorization_model_id":"%s","context":null,"consistency":"UNSPECIFIED"}`, storeID, authorizationModelID),
 				"raw_response":           `{"users":[{"object":{"type":"user","id":"anne"}}]}`,
 				"authorization_model_id": authorizationModelID,
 				"store_id":               storeID,
@@ -174,7 +188,7 @@ func TestListUsersLogs(t *testing.T) {
 				"grpc_method":            "ListUsers",
 				"grpc_type":              "unary",
 				"grpc_code":              int32(0),
-				"raw_request":            fmt.Sprintf(`{"store_id":"%s","relation":"viewer","object":{"type":"document","id":"1"},"user_filters":[{"type":"user","relation":""}], "contextual_tuples":[],"authorization_model_id":"%s","context":null}`, storeID, authorizationModelID),
+				"raw_request":            fmt.Sprintf(`{"store_id":"%s","relation":"viewer","object":{"type":"document","id":"1"},"user_filters":[{"type":"user","relation":""}], "contextual_tuples":[],"authorization_model_id":"%s","context":null,"consistency":"UNSPECIFIED"}`, storeID, authorizationModelID),
 				"raw_response":           `{"users":[{"object":{"type":"user","id":"anne"}}]}`,
 				"authorization_model_id": authorizationModelID,
 				"store_id":               storeID,
@@ -196,7 +210,7 @@ func TestListUsersLogs(t *testing.T) {
 				"grpc_method":  "ListUsers",
 				"grpc_type":    "unary",
 				"grpc_code":    int32(2000),
-				"raw_request":  fmt.Sprintf(`{"store_id":"%s","relation":"viewer","object":null,"user_filters":[{"type":"user","relation":""}], "contextual_tuples":[],"authorization_model_id":"%s","context":null}`, storeID, authorizationModelID),
+				"raw_request":  fmt.Sprintf(`{"store_id":"%s","relation":"viewer","object":null,"user_filters":[{"type":"user","relation":""}], "contextual_tuples":[],"authorization_model_id":"%s","context":null,"consistency":"UNSPECIFIED"}`, storeID, authorizationModelID),
 				"raw_response": `{"code":"validation_error", "message":"invalid ListUsersRequest.Object: value is required"}`,
 				"store_id":     storeID,
 				"user_agent":   "test-user-agent" + " grpc-go/" + grpc.Version,
@@ -215,7 +229,7 @@ func TestListUsersLogs(t *testing.T) {
 				"grpc_method":  "ListUsers",
 				"grpc_type":    "unary",
 				"grpc_code":    int32(2000),
-				"raw_request":  fmt.Sprintf(`{"store_id":"%s","relation":"viewer","object":null,"user_filters":[{"type":"user","relation":""}], "contextual_tuples":[],"authorization_model_id":"%s","context":null}`, storeID, authorizationModelID),
+				"raw_request":  fmt.Sprintf(`{"store_id":"%s","relation":"viewer","object":null,"user_filters":[{"type":"user","relation":""}], "contextual_tuples":[],"authorization_model_id":"%s","context":null,"consistency":"UNSPECIFIED"}`, storeID, authorizationModelID),
 				"raw_response": `{"code":"validation_error", "message":"invalid ListUsersRequest.Object: value is required"}`,
 				"store_id":     storeID,
 				"user_agent":   "test-user-agent",
@@ -262,12 +276,14 @@ func TestListUsersLogs(t *testing.T) {
 			require.NotEmpty(t, fields["peer.address"])
 			require.NotEmpty(t, fields["request_id"])
 			require.NotEmpty(t, fields["trace_id"])
+			require.NotEmpty(t, fields["query_duration_ms"])
 			if !test.expectedError {
 				require.GreaterOrEqual(t, fields["datastore_query_count"], float64(1))
+				require.GreaterOrEqual(t, fields["datastore_item_count"], float64(1))
 				require.GreaterOrEqual(t, fields["dispatch_count"], float64(1))
-				require.Len(t, fields, 14)
+				require.Len(t, fields, 16)
 			} else {
-				require.Len(t, fields, 12)
+				require.Len(t, fields, 13)
 			}
 		})
 	}

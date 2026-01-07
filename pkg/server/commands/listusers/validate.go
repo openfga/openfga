@@ -6,9 +6,8 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
-	serverErrors "github.com/openfga/openfga/pkg/server/errors"
-
 	"github.com/openfga/openfga/internal/validation"
+	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
@@ -28,7 +27,7 @@ func ValidateListUsersRequest(ctx context.Context, req *openfgav1.ListUsersReque
 
 func validateContextualTuples(request *openfgav1.ListUsersRequest, typeSystem *typesystem.TypeSystem) error {
 	for _, contextualTuple := range request.GetContextualTuples() {
-		if err := validation.ValidateTuple(typeSystem, contextualTuple); err != nil {
+		if err := validation.ValidateTupleForWrite(typeSystem, contextualTuple); err != nil {
 			return serverErrors.HandleTupleValidateError(err)
 		}
 	}

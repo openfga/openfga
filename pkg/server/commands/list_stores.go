@@ -44,20 +44,23 @@ func NewListStoresQuery(storesBackend storage.StoresBackend, opts ...ListStoresQ
 	return q
 }
 
-func (q *ListStoresQuery) Execute(ctx context.Context, req *openfgav1.ListStoresRequest) (*openfgav1.ListStoresResponse, error) {
+func (q *ListStoresQuery) Execute(ctx context.Context, req *openfgav1.ListStoresRequest, storeIDs []string) (*openfgav1.ListStoresResponse, error) {
 	decodedContToken, err := q.encoder.Decode(req.GetContinuationToken())
 	if err != nil {
-		return nil, serverErrors.InvalidContinuationToken
+		return nil, serverErrors.ErrInvalidContinuationToken
 	}
 
-	paginationOptions := storage.NewPaginationOptions(req.GetPageSize().GetValue(), string(decodedContToken))
-
-	stores, continuationToken, err := q.storesBackend.ListStores(ctx, paginationOptions)
+	opts := storage.ListStoresOptions{
+		IDs:        storeIDs,
+		Name:       req.GetName(),
+		Pagination: storage.NewPaginationOptions(req.GetPageSize().GetValue(), string(decodedContToken)),
+	}
+	stores, continuationToken, err := q.storesBackend.ListStores(ctx, opts)
 	if err != nil {
 		return nil, serverErrors.HandleError("", err)
 	}
 
-	encodedToken, err := q.encoder.Encode(continuationToken)
+	encodedToken, err := q.encoder.Encode([]byte(continuationToken))
 	if err != nil {
 		return nil, serverErrors.HandleError("", err)
 	}

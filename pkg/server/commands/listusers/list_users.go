@@ -4,8 +4,9 @@ import (
 	"maps"
 	"sync/atomic"
 
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"google.golang.org/protobuf/types/known/structpb"
+
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 )
 
 type listUsersRequest interface {
@@ -16,6 +17,7 @@ type listUsersRequest interface {
 	GetUserFilters() []*openfgav1.UserTypeFilter
 	GetContextualTuples() []*openfgav1.TupleKey
 	GetContext() *structpb.Struct
+	GetConsistency() openfgav1.ConsistencyPreference
 }
 
 type internalListUsersRequest struct {
@@ -30,8 +32,6 @@ type internalListUsersRequest struct {
 	// counter hits the limit, we throw ErrResolutionDepthExceeded. This protects against a potentially deep
 	// or endless cycle of recursion.
 	depth uint32
-
-	datastoreQueryCount *atomic.Uint32
 
 	dispatchCount *atomic.Uint32
 }
@@ -82,13 +82,6 @@ func (r *internalListUsersRequest) GetContextualTuples() []*openfgav1.TupleKey {
 	return r.ContextualTuples
 }
 
-func (r *internalListUsersRequest) GetDatastoreQueryCount() uint32 {
-	if r == nil {
-		return uint32(0)
-	}
-	return r.datastoreQueryCount.Load()
-}
-
 func (r *internalListUsersRequest) GetDispatchCount() uint32 {
 	if r == nil {
 		return uint32(0)
@@ -111,9 +104,17 @@ type listUsersResponse struct {
 type listUsersResponseMetadata struct {
 	DatastoreQueryCount uint32
 
+	DatastoreItemCount uint64
+
 	// The number of times we are recursively expanding to find users.
 	// Atomic is used to be consistent with the Check and ListObjects.
 	DispatchCounter *atomic.Uint32
+
+	// WasDispatchThrottled indicates whether the request was dispatch throttled.
+	WasDispatchThrottled *atomic.Bool
+
+	// WasDatastoreThrottled indicates whether the request was datastore throttled.
+	WasDatastoreThrottled *atomic.Bool
 }
 
 func (r *listUsersResponse) GetUsers() []*openfgav1.User {
@@ -130,10 +131,7 @@ func (r *listUsersResponse) GetMetadata() listUsersResponseMetadata {
 	return r.Metadata
 }
 
-func fromListUsersRequest(o listUsersRequest, datastoreQueryCount *atomic.Uint32, dispatchCount *atomic.Uint32) *internalListUsersRequest {
-	if datastoreQueryCount == nil {
-		datastoreQueryCount = new(atomic.Uint32)
-	}
+func fromListUsersRequest(o listUsersRequest, dispatchCount *atomic.Uint32) *internalListUsersRequest {
 	if dispatchCount == nil {
 		dispatchCount = new(atomic.Uint32)
 	}
@@ -146,17 +144,17 @@ func fromListUsersRequest(o listUsersRequest, datastoreQueryCount *atomic.Uint32
 			UserFilters:          o.GetUserFilters(),
 			ContextualTuples:     o.GetContextualTuples(),
 			Context:              o.GetContext(),
+			Consistency:          o.GetConsistency(),
 		},
-		visitedUsersetsMap:  make(map[string]struct{}),
-		depth:               0,
-		datastoreQueryCount: datastoreQueryCount,
-		dispatchCount:       dispatchCount,
+		visitedUsersetsMap: make(map[string]struct{}),
+		depth:              0,
+		dispatchCount:      dispatchCount,
 	}
 }
 
 // clone creates a copy of the request. Note that some fields are not deep-cloned.
 func (r *internalListUsersRequest) clone() *internalListUsersRequest {
-	v := fromListUsersRequest(r, r.datastoreQueryCount, r.dispatchCount)
+	v := fromListUsersRequest(r, r.dispatchCount)
 	v.visitedUsersetsMap = maps.Clone(r.visitedUsersetsMap)
 	v.depth = r.depth
 	return v

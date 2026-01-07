@@ -1,18 +1,8 @@
 name: 🐛 Report a bug
-description: Have you found a bug or issue? Create a bug report for OpenFGA
+description: If you are reporting that Check, ListObjects or ListUsers API are returning unexpected responses, please report a security vulnerability instead
 labels: [ "bug" ]
 
 body:
-  - type: markdown
-    attributes:
-      value: |
-        Thanks for taking the time to fill out this bug report!
-
-  - type: markdown
-    attributes:
-      value: |
-        **Please do not report security vulnerabilities here**. Use https://github.com/openfga/openfga/security/advisories/new or send us an email at security@openfga.dev instead.
-
   - type: checkboxes
     id: checklist
     attributes:
@@ -35,67 +25,9 @@ body:
     id: description
     attributes:
       label: Description
-      description: Provide a clear and concise description of the issue.
+      description: Describe how to reproduce your issue, what you are seeing and what you expected to see. If you are reporting that Check, ListObjects or ListUsers API are returning unexpected responses, please report a security vulnerability instead
     validations:
       required: true
-
-  - type: textarea
-    id: expectation
-    attributes:
-      label: Expectation
-      description: Tell us about the behavior you expected to see.
-    validations:
-      required: true
-
-  - type: textarea
-    id: reproduction
-    attributes:
-      label: Reproduction
-      description: Detail the steps taken to reproduce this error and, ideally, share a repo of a minimal reproducible example. State whether this issue can be reproduced consistently or if it is intermittent.
-      placeholder: |
-        1. Given...
-        2. When...
-        3. Then...
-    validations:
-      required: true
-
-  - type: textarea
-    id: store-data
-    attributes:
-      label: Store data
-      description: If applicable, provide information about your authorization model, tuples, and the Check or ListObjects calls you're making.
-      value: |
-        ```yaml
-        model_file: |
-          model
-            schema 1.1
-          type user
-          type organization
-            relations
-              define member: [user]
-        tuples:
-          - user: user:anne
-            relation: member
-            object: organization:openfga
-          - user: user:bob
-            relation: member
-            object: organization:openfga
-        tests: # remove this if not a bug in Check or ListObjects API
-          - name: test-1
-            check:
-              - user: user:anne
-                object: organization:openfga
-                assertions:
-                  member: true
-            list_objects:
-              - user: user:anne
-                type: organization
-                assertions:
-                  member:
-                    - organization:openfga
-        ```
-    validations:
-      required: false
 
   - type: input
     id: environment-openfga-version
@@ -124,6 +56,7 @@ body:
         - In-Memory
         - MySQL
         - Postgres
+        - SQLite
     validations:
       required: true
 

@@ -1,0 +1,368 @@
+@fga_api_url = http://localhost:8080
+@fga_store_id = 
+@fga_model_id = 
+
+########################
+# STORES
+########################
+
+### List All Stores
+GET {{fga_api_url}}/stores
+Content-Type: application/json
+
+
+### Create Store
+# @name store
+POST {{fga_api_url}}/stores
+Content-Type: application/json
+
+{
+    "name": "openfga-demo"
+}
+
+### Save API token as a request variable
+@fga_store_id = {{store.response.body.id}}
+
+### Get A Store
+GET {{fga_api_url}}/stores/{{fga_store_id}}
+Content-Type: application/json
+
+
+### Delete Store
+DELETE {{fga_api_url}}/stores/{{fga_store_id}}
+Content-Type: application/json
+
+
+########################
+# AUTHORIZATION MODELS
+########################
+
+### Get All Authorization Models
+GET {{fga_api_url}}/stores/{{fga_store_id}}/authorization-models
+Content-Type: application/json
+
+### Get Authorization Model
+GET {{fga_api_url}}/stores/{{fga_store_id}}/authorization-models/{{fga_model_id}}
+Content-Type: application/json
+
+### Create New Authorization Model
+# @name model
+POST {{fga_api_url}}/stores/{{fga_store_id}}/authorization-models
+Content-Type: application/json
+
+{
+  "schema_version":"1.1",
+  "type_definitions": [
+    {
+      "type":"user"
+    },
+    {
+      "metadata": {
+        "relations": {
+          "owner": {
+            "directly_related_user_types": [
+              {
+                "type":"user"
+              }
+            ]
+          },
+          "parent": {
+            "directly_related_user_types": [
+              {
+                "type":"folder"
+              }
+            ]
+          }
+        }
+      },
+      "relations": {
+        "owner": {
+          "this": {}
+        },
+        "parent": {
+          "this": {}
+        }
+      },
+      "type":"folder"
+    },
+    {
+      "metadata": {
+        "relations": {
+          "can_view": {
+            "directly_related_user_types": [
+              {
+                "type":"user"
+              }
+            ]
+          },
+          "owner": {
+            "directly_related_user_types": [
+              {
+                "type":"user"
+              }
+            ]
+          },
+          "parent": {
+            "directly_related_user_types": [
+              {
+                "type":"folder"
+              }
+            ]
+          }
+        }
+      },
+      "relations": {
+        "can_view": {
+          "union": {
+            "child": [
+              {
+                "this": {}
+              },
+              {
+                "computedUserset": {
+                  "relation":"owner"
+                }
+              }
+            ]
+          }
+        },
+        "owner": {
+          "this": {}
+        },
+        "parent": {
+          "this": {}
+        }
+      },
+      "type":"document"
+    }
+  ]
+}
+
+### Save API token as a request variable
+@fga_model_id = {{model.response.body.authorization_model_id}}
+
+
+########################
+# /CHANGES
+########################
+
+### Return a list of all tuples changes
+# @name changes
+GET {{fga_api_url}}/stores/{{fga_store_id}}/changes?page_size=50
+Content-Type: application/json
+
+### Save the /changes continuation_token
+@fga_changes_continuation_token = {{changes.response.body.continuation_token}}
+
+### Return a list of all tuples changes after the continuation_token
+GET {{fga_api_url}}/stores/{{fga_store_id}}/changes
+  ?continuation_token={{fga_changes_continuation_token}}
+Content-Type: application/json
+
+
+########################
+# /READ
+########################
+
+### Query if a tuple exists
+POST {{fga_api_url}}/stores/{{fga_store_id}}/read
+Content-Type: application/json
+
+{
+  "tuple_key": {
+    "user": "user:anne",
+    "relation": "owner",
+    "object": "document:test"
+  }
+}
+
+### Query for all objects in a type definition
+POST {{fga_api_url}}/stores/{{fga_store_id}}/read
+Content-Type: application/json
+
+{
+  "tuple_key": {
+    "user": "user:anne",
+    "relation": "owner",
+    "object": "document:"
+  }
+}
+
+### Query for all stored relationship tuples that have a particular relation and object
+POST {{fga_api_url}}/stores/{{fga_store_id}}/read
+Content-Type: application/json
+
+{
+  "tuple_key": {
+    "relation": "owner",
+    "object": "document:test"
+  }
+}
+
+### Query for all users with all relationships for a particular document
+POST {{fga_api_url}}/stores/{{fga_store_id}}/read
+Content-Type: application/json
+
+{
+  "tuple_key": {
+    "object": "document:test"
+  }
+}
+
+########################
+# /WRITE
+########################
+
+### Adding relationships
+POST {{fga_api_url}}/stores/{{fga_store_id}}/write
+Content-Type: application/json
+
+{
+  "writes": {
+    "tuple_keys": [
+      {
+        "user": "user:anne",
+        "relation": "owner",
+        "object": "document:test"
+      }
+    ]
+  }
+}
+
+### Removing relationships
+POST {{fga_api_url}}/stores/{{fga_store_id}}/write
+Content-Type: application/json
+
+{
+  "deletes": {
+    "tuple_keys": [
+      {
+        "user": "user:anne",
+        "relation": "owner",
+        "object": "document:duplicate"
+      }
+    ]
+  }
+}
+
+########################
+# /CHECK
+########################
+
+### Check
+POST {{fga_api_url}}/stores/{{fga_store_id}}/check
+Content-Type: application/json
+
+{
+  "tuple_key": {
+    "user": "user:anne",
+    "relation": "owner",
+    "object": "document:test"
+  }
+}
+
+### Batch Check
+POST {{fga_api_url}}/stores/{{fga_store_id}}/batch-check
+Content-Type: application/json
+
+{
+  "checks": [
+    {
+      "tuple_key": {
+        "user": "user:anne",
+        "relation": "owner",
+        "object": "document:test"
+      },
+      "correlation_id": "1"
+    },
+    {
+      "tuple_key": {
+        "user": "user:bob",
+        "relation": "owner",
+        "object": "document:test"
+      },
+      "correlation_id": "2"
+    }
+  ]
+}
+
+### Check with contextual tuples
+POST {{fga_api_url}}/stores/{{fga_store_id}}/check
+Content-Type: application/json
+
+{
+  "tuple_key": {
+    "user": "user:bob",
+    "relation": "can_view",
+    "object": "document:test"
+  },
+  "contextual_tuples": {
+    "tuple_keys": [
+      {
+        "user": "user:bob",
+        "relation": "can_view",
+        "object": "document:test"
+      }
+    ]
+  }
+}
+
+### Check with higher consistency (default value = MINIMIZE_LATENCY)
+POST {{fga_api_url}}/stores/{{fga_store_id}}/check
+Content-Type: application/json
+
+{
+  "tuple_key": {
+    "user": "user:anne",
+    "relation": "owner",
+    "object": "document:test"
+  },
+  "consistency": "HIGHER_CONSISTENCY"
+}
+
+########################
+# /EXPAND
+########################
+
+POST {{fga_api_url}}/stores/{{fga_store_id}}/expand
+Content-Type: application/json
+
+{
+  "tuple_key": {
+    "user": "user:anne",
+    "relation": "owner",
+    "object": "document:test"
+  }
+}
+
+
+########################
+# /LIST-OBJECTS
+########################
+POST {{fga_api_url}}/stores/{{fga_store_id}}/list-objects
+Content-Type: application/json
+
+{
+  "type": "document",
+  "relation": "can_view",
+  "user": "user:anne"
+}
+
+########################
+# /LIST-USERS
+########################
+POST {{fga_api_url}}/stores/{{fga_store_id}}/list-users
+Content-Type: application/json
+
+{
+  "object": {
+    "type": "document",
+    "id": "test"
+  },
+  "relation": "can_view",
+  "user_filters": [
+    {
+      "type": "user"
+    }
+  ]
+}

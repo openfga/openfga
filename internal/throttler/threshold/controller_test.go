@@ -4,10 +4,10 @@ import (
 	"context"
 	"testing"
 
-	"github.com/openfga/openfga/pkg/dispatch"
-
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
+
+	"github.com/openfga/openfga/pkg/dispatch"
 )
 
 func TestShouldThrottle(t *testing.T) {

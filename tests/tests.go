@@ -4,13 +4,15 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"google.golang.org/grpc"
 
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+
 	"github.com/openfga/openfga/cmd/run"
-	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/pkg/logger"
+	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	"github.com/openfga/openfga/pkg/testfixtures/storage"
 	"github.com/openfga/openfga/pkg/testutils"
 )
@@ -22,6 +24,15 @@ type TestClientBootstrapper interface {
 	CreateStore(ctx context.Context, in *openfgav1.CreateStoreRequest, opts ...grpc.CallOption) (*openfgav1.CreateStoreResponse, error)
 	WriteAuthorizationModel(ctx context.Context, in *openfgav1.WriteAuthorizationModelRequest, opts ...grpc.CallOption) (*openfgav1.WriteAuthorizationModelResponse, error)
 	Write(ctx context.Context, in *openfgav1.WriteRequest, opts ...grpc.CallOption) (*openfgav1.WriteResponse, error)
+}
+
+// ClientInterface defines client interface for running tests.
+type ClientInterface interface {
+	TestClientBootstrapper
+	Check(ctx context.Context, in *openfgav1.CheckRequest, opts ...grpc.CallOption) (*openfgav1.CheckResponse, error)
+	ListUsers(ctx context.Context, in *openfgav1.ListUsersRequest, opts ...grpc.CallOption) (*openfgav1.ListUsersResponse, error)
+	ListObjects(ctx context.Context, in *openfgav1.ListObjectsRequest, opts ...grpc.CallOption) (*openfgav1.ListObjectsResponse, error)
+	StreamedListObjects(ctx context.Context, in *openfgav1.StreamedListObjectsRequest, opts ...grpc.CallOption) (openfgav1.OpenFGAService_StreamedListObjectsClient, error)
 }
 
 // StartServer calls StartServerWithContext. See the docs for that.
@@ -40,9 +51,9 @@ func StartServerWithContext(t testing.TB, cfg *serverconfig.Config, serverCtx *r
 	ctx, cancel := context.WithCancel(context.Background())
 
 	httpPort, httpPortReleaser := testutils.TCPRandomPort()
-	cfg.HTTP.Addr = fmt.Sprintf("0.0.0.0:%d", httpPort)
+	cfg.HTTP.Addr = fmt.Sprintf("localhost:%d", httpPort)
 	grpcPort, grpcPortReleaser := testutils.TCPRandomPort()
-	cfg.GRPC.Addr = fmt.Sprintf("0.0.0.0:%d", grpcPort)
+	cfg.GRPC.Addr = fmt.Sprintf("localhost:%d", grpcPort)
 
 	// these two functions release the ports so that the server can start listening on them
 	httpPortReleaser()
@@ -60,4 +71,28 @@ func StartServerWithContext(t testing.TB, cfg *serverconfig.Config, serverCtx *r
 	})
 
 	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil)
+}
+
+// BuildClientInterface sets up test client interface to be used for matrix test.
+func BuildClientInterface(t *testing.T, engine string, experimentals []string) ClientInterface {
+	cfg := serverconfig.MustDefaultConfig()
+	if len(experimentals) > 0 {
+		cfg.Experimentals = append(cfg.Experimentals, experimentals...)
+	}
+	cfg.Log.Level = "error"
+	cfg.Datastore.Engine = engine
+	cfg.ListUsersDeadline = 0   // no deadline
+	cfg.ListObjectsDeadline = 0 // no deadline
+	// extend the timeout for the tests, coverage makes them slower
+	cfg.RequestTimeout = 10 * time.Second
+	cfg.SharedIterator.Enabled = true
+
+	cfg.CheckIteratorCache.Enabled = true
+	cfg.ListObjectsIteratorCache.Enabled = true
+	cfg.ContextPropagationToDatastore = true
+
+	StartServer(t, cfg)
+
+	conn := testutils.CreateGrpcConnection(t, cfg.GRPC.Addr)
+	return openfgav1.NewOpenFGAServiceClient(conn)
 }

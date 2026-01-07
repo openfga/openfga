@@ -47,17 +47,18 @@ func NewReadAuthorizationModelsQuery(backend storage.AuthorizationModelReadBacke
 func (q *ReadAuthorizationModelsQuery) Execute(ctx context.Context, req *openfgav1.ReadAuthorizationModelsRequest) (*openfgav1.ReadAuthorizationModelsResponse, error) {
 	decodedContToken, err := q.encoder.Decode(req.GetContinuationToken())
 	if err != nil {
-		return nil, serverErrors.InvalidContinuationToken
+		return nil, serverErrors.ErrInvalidContinuationToken
 	}
 
-	paginationOptions := storage.NewPaginationOptions(req.GetPageSize().GetValue(), string(decodedContToken))
-
-	models, contToken, err := q.backend.ReadAuthorizationModels(ctx, req.GetStoreId(), paginationOptions)
+	opts := storage.ReadAuthorizationModelsOptions{
+		Pagination: storage.NewPaginationOptions(req.GetPageSize().GetValue(), string(decodedContToken)),
+	}
+	models, contToken, err := q.backend.ReadAuthorizationModels(ctx, req.GetStoreId(), opts)
 	if err != nil {
 		return nil, serverErrors.HandleError("", err)
 	}
 
-	encodedContToken, err := q.encoder.Encode(contToken)
+	encodedContToken, err := q.encoder.Encode([]byte(contToken))
 	if err != nil {
 		return nil, serverErrors.HandleError("", err)
 	}

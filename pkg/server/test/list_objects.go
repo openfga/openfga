@@ -2,17 +2,15 @@ package test
 
 import (
 	"context"
-	"fmt"
-	"strconv"
 	"testing"
 	"time"
 
 	"github.com/oklog/ulid/v2"
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/structpb"
+
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/mocks"
@@ -51,6 +49,14 @@ type listObjectsTestCase struct {
 }
 
 func TestListObjects(t *testing.T, ds storage.OpenFGADatastore) {
+	runListObjectsTests(t, ds)
+}
+
+func TestListObjectsWithPipeline(t *testing.T, ds storage.OpenFGADatastore) {
+	runListObjectsTests(t, ds, commands.WithListObjectsPipelineEnabled(true))
+}
+
+func runListObjectsTests(t *testing.T, ds storage.OpenFGADatastore, passedInOpts ...commands.ListObjectsQueryOption) {
 	testCases := []listObjectsTestCase{
 		{
 			name: "max_results_equal_0_with_simple_model",
@@ -468,7 +474,6 @@ func TestListObjects(t *testing.T, ds storage.OpenFGADatastore) {
 	}
 
 	for _, test := range testCases {
-		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			ctx := context.Background()
@@ -480,7 +485,8 @@ func TestListObjects(t *testing.T, ds storage.OpenFGADatastore) {
 			err := ds.WriteAuthorizationModel(ctx, storeID, model)
 			require.NoError(t, err)
 
-			// arrange: write tuples
+			// arrange: write tuples in random order
+			test.tuples = testutils.Shuffle(test.tuples)
 			err = ds.Write(context.Background(), storeID, nil, test.tuples)
 			require.NoError(t, err)
 
@@ -491,33 +497,35 @@ func TestListObjects(t *testing.T, ds storage.OpenFGADatastore) {
 				datastore = mocks.NewMockSlowDataStorage(ds, test.readTuplesDelay)
 			}
 
-			ctx = typesystem.ContextWithTypesystem(ctx, typesystem.New(model))
+			ts, err := typesystem.New(model)
+			require.NoError(t, err)
+
+			ctx = typesystem.ContextWithTypesystem(ctx, ts)
 
 			opts := []commands.ListObjectsQueryOption{
 				commands.WithListObjectsMaxResults(test.maxResults),
 				commands.WithListObjectsDeadline(10 * time.Second),
+				commands.WithMaxConcurrentReads(30),
 			}
+			opts = append(opts, passedInOpts...)
 
 			if test.listObjectsDeadline != 0 {
 				opts = append(opts, commands.WithListObjectsDeadline(test.listObjectsDeadline))
 			}
 
-			checkResolver, closer := graph.NewLayeredCheckResolver(
-				[]graph.LocalCheckerOption{
-					graph.WithResolveNodeBreadthLimit(100),
-					graph.WithMaxConcurrentReads(30),
-				},
-				test.useCheckCache,
-				false,
-				[]graph.CachedCheckResolverOpt{
-					graph.WithMaxCacheSize(100),
-					graph.WithCacheTTL(10 * time.Second),
-				},
-				[]graph.DispatchThrottlingCheckResolverOpt{},
-			)
+			var localCheckOpts []graph.LocalCheckerOption
+			cacheOpts := []graph.CachedCheckResolverOpt{
+				graph.WithCacheTTL(10 * time.Second),
+			}
+			checkBuilderOpts := []graph.CheckResolverOrderedBuilderOpt{
+				graph.WithCachedCheckResolverOpts(test.useCheckCache, cacheOpts...),
+				graph.WithLocalCheckerOpts(localCheckOpts...),
+			}
+			checkResolver, closer, err := graph.NewOrderedCheckResolvers(checkBuilderOpts...).Build()
+			require.NoError(t, err)
 			t.Cleanup(closer)
 
-			listObjectsQuery, err := commands.NewListObjectsQuery(datastore, checkResolver, opts...)
+			listObjectsQuery, err := commands.NewListObjectsQuery(datastore, checkResolver, "fake_store_id", opts...)
 			require.NoError(t, err)
 
 			// assertions
@@ -530,20 +538,13 @@ func TestListObjects(t *testing.T, ds storage.OpenFGADatastore) {
 				var streamedObjectIDs []string
 				go func() {
 					for {
-						select {
-						case objectID, open := <-server.channel:
-							if !open {
-								done <- struct{}{}
-								return
-							}
-
-							streamedObjectIDs = append(streamedObjectIDs, objectID)
-
-						// for tests whose deadline is sooner than the latency of the storage layer
-						case <-time.After(test.readTuplesDelay + 1*time.Second):
-							done <- struct{}{}
+						objectID, open := <-server.channel
+						if !open {
+							close(done)
 							return
 						}
+
+						streamedObjectIDs = append(streamedObjectIDs, objectID)
 					}
 				}()
 
@@ -584,107 +585,4 @@ func TestListObjects(t *testing.T, ds storage.OpenFGADatastore) {
 			})
 		})
 	}
-}
-
-// Used to avoid compiler optimizations (see https://dave.cheney.net/2013/06/30/how-to-write-benchmarks-in-go)
-var listObjectsResponse *commands.ListObjectsResponse //nolint
-
-// setupListObjectsBenchmark writes the model and lots of tuples.
-func setupListObjectsBenchmark(b *testing.B, ds storage.OpenFGADatastore, storeID string) (*openfgav1.AuthorizationModel, string, int) {
-	b.Helper()
-	modelID := ulid.Make().String()
-	model := &openfgav1.AuthorizationModel{
-		Id:            modelID,
-		SchemaVersion: typesystem.SchemaVersion1_1,
-		// this model exercises all possible execution paths: "direct" edge and "computed userset" edge and "TTU" edge
-		TypeDefinitions: parser.MustTransformDSLToProto(`
-			model
-				schema 1.1
-			type user
-			type folder
-				relations
-					define viewer: [user]
-			type document
-				relations
-					define viewer: [user]
-					define parent: [folder]
-					define can_view: viewer or viewer from parent`).GetTypeDefinitions(),
-	}
-	err := ds.WriteAuthorizationModel(context.Background(), storeID, model)
-	require.NoError(b, err)
-
-	numberObjectsAccesible := 0
-	for i := 0; i < 100; i++ {
-		var tuples []*openfgav1.TupleKey
-
-		for j := 0; j < ds.MaxTuplesPerWrite(); j++ {
-			obj := fmt.Sprintf("document:%s", strconv.Itoa(numberObjectsAccesible))
-
-			tuples = append(tuples, tuple.NewTupleKey(obj, "viewer", "user:maria"))
-
-			numberObjectsAccesible++
-		}
-
-		err := ds.Write(context.Background(), storeID, nil, tuples)
-		require.NoError(b, err)
-	}
-
-	return model, modelID, numberObjectsAccesible
-}
-
-func BenchmarkListObjects(b *testing.B, ds storage.OpenFGADatastore) {
-	ctx := context.Background()
-	store := ulid.Make().String()
-
-	model, modelID, numberObjectsAccessible := setupListObjectsBenchmark(b, ds, store)
-	ctx = typesystem.ContextWithTypesystem(ctx, typesystem.New(model))
-
-	req := &openfgav1.ListObjectsRequest{
-		StoreId:              store,
-		AuthorizationModelId: modelID,
-		Type:                 "document",
-		Relation:             "can_view",
-		User:                 "user:maria",
-	}
-
-	var r *commands.ListObjectsResponse
-
-	var oneResultIterations, allResultsIterations int
-
-	b.Run("oneResult", func(b *testing.B) {
-		listObjectsQuery, err := commands.NewListObjectsQuery(
-			ds,
-			graph.NewLocalCheckerWithCycleDetection(),
-			commands.WithListObjectsMaxResults(1),
-		)
-		require.NoError(b, err)
-
-		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
-			r, _ := listObjectsQuery.Execute(ctx, req)
-			require.Len(b, r.Objects, 1)
-		}
-
-		listObjectsResponse = r
-		oneResultIterations = b.N
-	})
-	b.Run("allResults", func(b *testing.B) {
-		listObjectsQuery, err := commands.NewListObjectsQuery(
-			ds,
-			graph.NewLocalCheckerWithCycleDetection(),
-			commands.WithListObjectsMaxResults(0),
-		)
-		require.NoError(b, err)
-
-		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
-			r, _ := listObjectsQuery.Execute(ctx, req)
-			require.Len(b, r.Objects, numberObjectsAccessible)
-		}
-
-		listObjectsResponse = r
-		allResultsIterations = b.N
-	})
-
-	require.Greater(b, oneResultIterations, allResultsIterations)
 }

@@ -2,13 +2,14 @@ package graph
 
 import (
 	"context"
+	"time"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/internal/throttler"
 	"github.com/openfga/openfga/internal/throttler/threshold"
+	"github.com/openfga/openfga/pkg/server/config"
 )
 
 // DispatchThrottlingCheckResolverConfig encapsulates configuration for dispatch throttling check resolver.
@@ -46,6 +47,13 @@ func WithDispatchThrottlingCheckResolverConfig(config DispatchThrottlingCheckRes
 func WithThrottler(throttler throttler.Throttler) DispatchThrottlingCheckResolverOpt {
 	return func(r *DispatchThrottlingCheckResolver) {
 		r.throttler = throttler
+	}
+}
+
+// WithConstantRateThrottler sets the constant rate throttler to be used for DispatchThrottlingCheckResolver.
+func WithConstantRateThrottler(frequency time.Duration, metricLabel string) DispatchThrottlingCheckResolverOpt {
+	return func(r *DispatchThrottlingCheckResolver) {
+		r.throttler = throttler.NewConstantRateThrottler(frequency, metricLabel)
 	}
 }
 
@@ -96,7 +104,7 @@ func (r *DispatchThrottlingCheckResolver) ResolveCheck(ctx context.Context,
 		attribute.Bool("is_throttled", shouldThrottle))
 
 	if shouldThrottle {
-		req.GetRequestMetadata().WasThrottled.Store(true)
+		req.GetRequestMetadata().DispatchThrottled.Store(true)
 		r.throttler.Throttle(ctx)
 	}
 	return r.delegate.ResolveCheck(ctx, req)

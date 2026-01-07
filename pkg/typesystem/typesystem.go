@@ -6,13 +6,22 @@ import (
 	"fmt"
 	"maps"
 	"reflect"
+	"slices"
 	"sort"
+	"strings"
+	"sync"
 
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/emirpasic/gods/sets/hashset"
 	"go.opentelemetry.io/otel"
 
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/openfga/language/pkg/go/graph"
+
 	"github.com/openfga/openfga/internal/condition"
-	"github.com/openfga/openfga/internal/server/config"
+	"github.com/openfga/openfga/internal/utils"
+	"github.com/openfga/openfga/pkg/server/config"
+	serverErrors "github.com/openfga/openfga/pkg/server/errors"
+	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
@@ -44,7 +53,7 @@ func IsSchemaVersionSupported(version string) bool {
 	}
 }
 
-// ContextWithTypesystem attaches the provided TypeSystem to the parent context.
+// ContextWithTypesystem creates a copy of the parent context with the provided TypeSystem.
 func ContextWithTypesystem(parent context.Context, typesys *TypeSystem) context.Context {
 	return context.WithValue(parent, typesystemCtxKey, typesys)
 }
@@ -154,6 +163,8 @@ func ConditionedRelationReference(rel *openfgav1.RelationReference, condition st
 	return rel
 }
 
+var _ storage.CacheItem = (*TypeSystem)(nil)
+
 // TypeSystem is a wrapper over an [openfgav1.AuthorizationModel].
 type TypeSystem struct {
 	// [objectType] => typeDefinition.
@@ -165,13 +176,21 @@ type TypeSystem struct {
 	// [objectType] => [relationName] => TTU relation.
 	ttuRelations map[string]map[string][]*openfgav1.TupleToUserset
 
-	modelID       string
-	schemaVersion string
+	computedRelations sync.Map
+
+	modelID                 string
+	schemaVersion           string
+	authorizationModelGraph *graph.AuthorizationModelGraph
+	authzWeightedGraph      *graph.WeightedAuthorizationModelGraph
+}
+
+func (t *TypeSystem) GetWeightedGraph() *graph.WeightedAuthorizationModelGraph {
+	return t.authzWeightedGraph
 }
 
 // New creates a *TypeSystem from an *openfgav1.AuthorizationModel.
 // It assumes that the input model is valid. If you need to run validations, use NewAndValidate.
-func New(model *openfgav1.AuthorizationModel) *TypeSystem {
+func New(model *openfgav1.AuthorizationModel) (*TypeSystem, error) {
 	tds := make(map[string]*openfgav1.TypeDefinition, len(model.GetTypeDefinitions()))
 	relations := make(map[string]map[string]*openfgav1.Relation, len(model.GetTypeDefinitions()))
 	ttuRelations := make(map[string]map[string][]*openfgav1.TupleToUserset, len(model.GetTypeDefinitions()))
@@ -195,8 +214,7 @@ func New(model *openfgav1.AuthorizationModel) *TypeSystem {
 			}
 
 			tdRelations[relation] = r
-			ttus := make([]*openfgav1.TupleToUserset, 0)
-			ttuRelations[typeName][relation] = tupleToUsersetsDefinitions(rewrite, &ttus)
+			ttuRelations[typeName][relation] = flattenUserset(rewrite)
 		}
 		relations[typeName] = tdRelations
 	}
@@ -208,15 +226,37 @@ func New(model *openfgav1.AuthorizationModel) *TypeSystem {
 			WithMaxEvaluationCost(config.MaxConditionEvaluationCost()).
 			WithInterruptCheckFrequency(config.DefaultInterruptCheckFrequency)
 	}
+	authorizationModelGraph, err := graph.NewAuthorizationModelGraph(model)
+	if err != nil {
+		return nil, err
+	}
+
+	if authorizationModelGraph.GetDrawingDirection() != graph.DrawingDirectionListObjects {
+		// by default, this should not happen.  However, this is here in case the default order is changed.
+		authorizationModelGraph, err = authorizationModelGraph.Reversed()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	wgb := graph.NewWeightedAuthorizationModelGraphBuilder()
+	// TODO: this will require a deprecation not ignore the error and remove nil checks
+	weightedGraph, _ := wgb.Build(model)
 
 	return &TypeSystem{
-		modelID:         model.GetId(),
-		schemaVersion:   model.GetSchemaVersion(),
-		typeDefinitions: tds,
-		relations:       relations,
-		conditions:      uncompiledConditions,
-		ttuRelations:    ttuRelations,
-	}
+		modelID:                 model.GetId(),
+		schemaVersion:           model.GetSchemaVersion(),
+		typeDefinitions:         tds,
+		relations:               relations,
+		conditions:              uncompiledConditions,
+		ttuRelations:            ttuRelations,
+		authorizationModelGraph: authorizationModelGraph,
+		authzWeightedGraph:      weightedGraph,
+	}, nil
+}
+
+func (t *TypeSystem) CacheEntityType() string {
+	return "typesystem"
 }
 
 // GetAuthorizationModelID returns the ID for the authorization
@@ -249,6 +289,29 @@ func (t *TypeSystem) GetTypeDefinition(objectType string) (*openfgav1.TypeDefini
 	return nil, false
 }
 
+// ResolveComputedRelation traverses the typesystem until finding the final resolution of a computed relationship.
+// Subsequent calls to this method are resolved from a cache.
+func (t *TypeSystem) ResolveComputedRelation(objectType, relation string) (string, error) {
+	memoizeKey := fmt.Sprintf("%s-%s", objectType, relation)
+	if val, ok := t.computedRelations.Load(memoizeKey); ok {
+		return val.(string), nil
+	}
+	rel, err := t.GetRelation(objectType, relation)
+	if err != nil {
+		return "", err
+	}
+	rewrite := rel.GetRewrite()
+	switch rewrite.GetUserset().(type) {
+	case *openfgav1.Userset_ComputedUserset:
+		return t.ResolveComputedRelation(objectType, rewrite.GetComputedUserset().GetRelation())
+	case *openfgav1.Userset_This:
+		t.computedRelations.Store(memoizeKey, relation)
+		return relation, nil
+	default:
+		return "", fmt.Errorf("unsupported rewrite %s", rewrite.String())
+	}
+}
+
 // GetRelations returns all relations in the TypeSystem for a given type.
 func (t *TypeSystem) GetRelations(objectType string) (map[string]*openfgav1.Relation, error) {
 	_, ok := t.GetTypeDefinition(objectType)
@@ -264,6 +327,7 @@ func (t *TypeSystem) GetRelations(objectType string) (map[string]*openfgav1.Rela
 
 // GetRelation retrieves a specific Relation from the TypeSystem
 // based on the provided objectType and relation strings.
+// It can return ErrObjectTypeUndefined and ErrRelationUndefined.
 func (t *TypeSystem) GetRelation(objectType, relation string) (*openfgav1.Relation, error) {
 	relations, err := t.GetRelations(objectType)
 	if err != nil {
@@ -324,11 +388,29 @@ func (t *TypeSystem) DirectlyRelatedUsersets(objectType, relation string) ([]*op
 	}
 
 	for _, ref := range refs {
-		if ref.GetRelation() != "" || ref.GetWildcard() != nil {
+		if ref.GetRelation() != "" {
 			usersetRelationReferences = append(usersetRelationReferences, ref)
 		}
 	}
 	return usersetRelationReferences, nil
+}
+
+func RelationEquals(a *openfgav1.RelationReference, b *openfgav1.RelationReference) bool {
+	if a.GetType() != b.GetType() {
+		return false
+	}
+
+	// Type with no relation or wildcard (e.g. 'user').
+	if a.GetRelationOrWildcard() == nil && b.GetRelationOrWildcard() == nil {
+		return true
+	}
+
+	// Typed wildcard (e.g. 'user:*').
+	if a.GetWildcard() != nil && b.GetWildcard() != nil {
+		return true
+	}
+
+	return a.GetRelation() != "" && b.GetRelation() != "" && a.GetRelation() == b.GetRelation()
 }
 
 // IsDirectlyRelated determines whether the type of the target DirectRelationReference contains the source DirectRelationReference.
@@ -339,25 +421,322 @@ func (t *TypeSystem) IsDirectlyRelated(target *openfgav1.RelationReference, sour
 	}
 
 	for _, typeRestriction := range relation.GetTypeInfo().GetDirectlyRelatedUserTypes() {
-		if source.GetType() == typeRestriction.GetType() {
-			// Type with no relation or wildcard (e.g. 'user').
-			if typeRestriction.GetRelationOrWildcard() == nil && source.GetRelationOrWildcard() == nil {
-				return true, nil
-			}
-
-			// Typed wildcard (e.g. 'user:*').
-			if typeRestriction.GetWildcard() != nil && source.GetWildcard() != nil {
-				return true, nil
-			}
-
-			if typeRestriction.GetRelation() != "" && source.GetRelation() != "" &&
-				typeRestriction.GetRelation() == source.GetRelation() {
-				return true, nil
-			}
+		if RelationEquals(source, typeRestriction) {
+			return true, nil
 		}
 	}
-
 	return false, nil
+}
+
+func (t *TypeSystem) UsersetUseWeight2Resolver(objectType, relation, userType string, userset *openfgav1.RelationReference) bool {
+	if t.authzWeightedGraph == nil {
+		return false
+	}
+
+	node, ok := t.authzWeightedGraph.GetNodeByID(tuple.ToObjectRelationString(objectType, relation))
+	if !ok {
+		return false
+	}
+
+	if node.IsPartOfTupleCycle() || len(node.GetRecursiveRelation()) > 0 {
+		// if there is a tuple cycle, we have to go through default resolver (or recursive one)
+		return false
+	}
+
+	usersetNodeID := tuple.ToObjectRelationString(userset.GetType(), userset.GetRelation())
+	usersetNode, ok := t.authzWeightedGraph.GetNodeByID(usersetNodeID)
+	if !ok {
+		return false
+	}
+
+	// the node itself has to be weight 1 (not 2, because its the userset node that we are verifying at this point). the edge pointing to it would be weight 2.
+	weight, ok := usersetNode.GetWeight(userType)
+	if !ok {
+		return false
+	}
+
+	return weight == 1
+}
+
+// UsersetUseWeight2Resolvers
+// TODO: Deprecate once userset refactor is complete.
+func (t *TypeSystem) UsersetUseWeight2Resolvers(objectType, relation, userType string, usersets []*openfgav1.RelationReference) bool {
+	allowedType := hashset.New()
+
+	for _, u := range usersets {
+		if allowedType.Contains(u.GetType()) {
+			// If there are more than 1 directly related userset types of the same type, we cannot do userset optimization because
+			// we cannot rely on the fact that the object ID matches. Instead, we need to take into consideration
+			// on the relation as well.
+			return false
+		}
+		if !t.UsersetUseWeight2Resolver(objectType, relation, userType, u) {
+			return false
+		}
+		allowedType.Add(u.GetType())
+	}
+	return true
+}
+
+func (t *TypeSystem) TTUUseWeight2Resolver(objectType, relation, userType string, ttu *openfgav1.TupleToUserset) bool {
+	if t.authzWeightedGraph == nil {
+		return false
+	}
+	objRel := tuple.ToObjectRelationString(objectType, relation)
+	tuplesetRelationKey := tuple.ToObjectRelationString(objectType, ttu.GetTupleset().GetRelation())
+	computedRelation := ttu.GetComputedUserset().GetRelation()
+	node, ok := t.authzWeightedGraph.GetNodeByID(objRel)
+	if !ok {
+		return false
+	}
+
+	// verifying weight here is not enough given the relation from parent might be weight 2, but we do not explicitly know
+	// the ttu given we aren't in the weighted graph as we traverse and that ttu could possibly not have a weight for the terminal type,
+	// thus having to fully inspect to match the context of what is being resolved.
+	_, ok = node.GetWeight(userType)
+	if !ok {
+		return false
+	}
+
+	edges, ok := t.authzWeightedGraph.GetEdgesFromNode(node)
+	if !ok {
+		return false
+	}
+
+	ttuEdges := make([]*graph.WeightedAuthorizationModelEdge, 0)
+
+	// find all TTU edges with valid weight
+	// but exit immediately if there is any above weight 2
+	for len(ttuEdges) == 0 {
+		innerEdges := make([]*graph.WeightedAuthorizationModelEdge, 0)
+		for _, edge := range edges {
+			// edge is a set operator thus we have to inspect each node of the operator
+			if edge.GetEdgeType() == graph.RewriteEdge {
+				operationalEdges, ok := t.authzWeightedGraph.GetEdgesFromNode(edge.GetTo())
+				if !ok {
+					return false
+				}
+				innerEdges = append(innerEdges, operationalEdges...)
+			}
+
+			// a TuplesetRelation may have multiple parents and these need to be visited to ensure their weight does not
+			// exceed weight 2
+			if edge.GetEdgeType() == graph.TTUEdge &&
+				edge.GetTuplesetRelation() == tuplesetRelationKey &&
+				strings.HasSuffix(edge.GetTo().GetUniqueLabel(), "#"+computedRelation) {
+				w, ok := edge.GetWeight(userType)
+				if ok {
+					if w > 2 {
+						return false
+					}
+					ttuEdges = append(ttuEdges, edge)
+				}
+			}
+		}
+		if len(innerEdges) == 0 {
+			break
+		}
+		edges = innerEdges
+	}
+	return len(ttuEdges) != 0
+}
+
+// TTUUseRecursiveResolver returns true fast path can be applied to user/relation.
+// For it to return true, all of these conditions:
+// 1. Node[objectType#relation].weights[userType] = infinite
+// 2. Node[objectType#relation].RecursiveRelation = objectType#relation
+// 3. Node[objectType#relation].IsPartOfTupleCycle == false
+// 4. Node[objectType#relation] has only 1 edge, and it's to an OR node
+// 5. The OR node has one or more TTU edge with weight infinite for the terminal type and the computed relation for the TTU is the same
+// 6. Any other edge coming out of the OR node that has a weight for terminal type, it should be weight 1
+// must be all true.
+func (t *TypeSystem) TTUUseRecursiveResolver(objectType, relation, userType string, ttu *openfgav1.TupleToUserset) bool {
+	if t.authzWeightedGraph == nil {
+		return false
+	}
+	objRel := tuple.ToObjectRelationString(objectType, relation)
+	objRelNode, ok := t.authzWeightedGraph.GetNodeByID(objRel)
+	if !ok {
+		return false
+	}
+
+	w, ok := objRelNode.GetWeight(userType)
+	if !ok || w != graph.Infinite {
+		return false
+	}
+
+	// if we are not in the presence of a recursive relation or it is part of a tuple cycle, return false
+	if objRelNode.GetRecursiveRelation() != objRelNode.GetUniqueLabel() || objRelNode.IsPartOfTupleCycle() {
+		return false
+	}
+
+	edges, ok := t.authzWeightedGraph.GetEdgesFromNode(objRelNode)
+	if !ok {
+		return false
+	}
+
+	recursiveTTUFound := false
+	for len(edges) != 0 {
+		innerEdges := make([]*graph.WeightedAuthorizationModelEdge, 0)
+
+		for _, edge := range edges {
+			w, ok := edge.GetWeight(userType)
+			if !ok {
+				// if the edge does not have a weight for the terminal type, we can skip it
+				continue
+			}
+			// if the edge is part of the recursive path
+			if edge.GetRecursiveRelation() == objRel {
+				// if the edge is a TTUEdge and points to the original node, and we haven't found any other recursive edge
+				if edge.GetEdgeType() == graph.TTUEdge && edge.GetTo() == objRelNode && !recursiveTTUFound {
+					recursiveTTUFound = true
+					continue
+				}
+
+				// Because we are not in the presence of a tuple cycle, the only rewrite edges that could exist
+				// in a recursive path by definition in the weighted graph is the operational edges or logical TTU edges
+				if edge.GetEdgeType() == graph.RewriteEdge || edge.GetEdgeType() == graph.TTULogicalEdge {
+					newEdges, okEdge := t.authzWeightedGraph.GetEdgesFromNode(edge.GetTo())
+					if !okEdge {
+						return false
+					}
+					// these edges will need to be evaluated in subsequent iterations
+					innerEdges = append(innerEdges, newEdges...)
+					continue
+				}
+			}
+
+			if w > 1 {
+				// for any other edge that is not part of the recursive path, it must be weight 1 or if there is any other edge for the same ttu that is the recursive ttu
+				return false
+			}
+		}
+		if len(innerEdges) == 0 {
+			break
+		}
+		edges = innerEdges
+	}
+
+	return recursiveTTUFound
+}
+
+// UsersetUseRecursiveResolver returns true if all these conditions apply:
+// 1. Node[objectType#relation].weights[userType] = infinite
+// 2. Any other direct type, userset or computed relation used in the relation needs to be weight = 1 for the usertype
+// Example:
+// type doc
+// rel1 = [doc#rel1, user, user with cond, employee, doc#rel8] or ( (rel2 but not rel7) or rel8)
+// rel2 = rel4 but not rel5
+// rel4 = [user]
+// rel5 = [user]
+// rel7 = [user]
+// rel8 = [employee]
+// calling UsersetUseRecursiveResolver(doc, rel1, user) should return TRUE
+// calling UsersetUseRecursiveResolver(doc, rel1, employee) should return FALSE because there is a doc#rel8 that has weight = 2 for employee.
+func (t *TypeSystem) UsersetUseRecursiveResolver(objectType, relation, userType string) bool {
+	if t.authzWeightedGraph == nil {
+		return false
+	}
+	objRel := tuple.ToObjectRelationString(objectType, relation)
+	objRelNode, ok := t.authzWeightedGraph.GetNodeByID(objRel)
+	if !ok {
+		return false
+	}
+
+	w, ok := objRelNode.GetWeight(userType)
+	if !ok || w != graph.Infinite {
+		return false
+	}
+
+	// if we are not in the presence of a recursive relation or it is part of a tuple cycle, return false
+	if objRelNode.GetRecursiveRelation() != objRelNode.GetUniqueLabel() || objRelNode.IsPartOfTupleCycle() {
+		return false
+	}
+
+	edges, ok := t.authzWeightedGraph.GetEdgesFromNode(objRelNode)
+	if !ok {
+		return false
+	}
+
+	recursiveUsersetFound := false
+
+	for len(edges) != 0 {
+		innerEdges := make([]*graph.WeightedAuthorizationModelEdge, 0)
+
+		for _, edge := range edges {
+			w, ok := edge.GetWeight(userType)
+			if !ok {
+				// if the edge does not have a weight for the terminal type, we can skip it
+				continue
+			}
+
+			if edge.GetRecursiveRelation() == objRel {
+				if edge.GetEdgeType() == graph.DirectEdge && edge.GetTo() == objRelNode && !recursiveUsersetFound {
+					recursiveUsersetFound = true
+					continue
+				}
+
+				if edge.GetEdgeType() == graph.RewriteEdge || edge.GetEdgeType() == graph.DirectLogicalEdge {
+					newEdges, okEdge := t.authzWeightedGraph.GetEdgesFromNode(edge.GetTo())
+					if !okEdge {
+						return false
+					}
+					// these edges will need to be evaluated in subsequent iterations
+					innerEdges = append(innerEdges, newEdges...)
+					continue
+				}
+			}
+
+			// catch all, everything has to be weight 1 regardless of direct, computed, rewrite.
+			// thus if an infinite didn't get handled it will exit through here
+			if w > 1 {
+				return false
+			}
+		}
+		if len(innerEdges) == 0 {
+			break
+		}
+		edges = innerEdges
+	}
+	return recursiveUsersetFound // return if the recursive userset was found
+}
+
+// PathExists returns true if:
+// - the `user` type is a subject e.g. `user`, and there is a path from `user` to `objectType#relation`, or there is a path from `user:*` to `objectType#relation`
+// or
+// - the `user` type is a userset e.g. `group#member`, and there is a path from `group#member` to `objectType#relation`.
+func (t *TypeSystem) PathExists(user, relation, objectType string) (bool, error) {
+	userType, _, userRelation := tuple.ToUserParts(user)
+	isUserset := userRelation != ""
+	userTypeRelation := userType
+	if isUserset {
+		userTypeRelation = tuple.ToObjectRelationString(userType, userRelation)
+	}
+
+	// first check
+	fromLabel := userTypeRelation
+	toLabel := tuple.ToObjectRelationString(objectType, relation)
+	normalPathExists, err := t.authorizationModelGraph.PathExists(fromLabel, toLabel)
+	if err != nil {
+		return false, err
+	}
+	if normalPathExists {
+		return true, nil
+	}
+	// skip second check in case it's a userset, since a userset cannot have public wildcard
+	if isUserset {
+		return false, nil
+	}
+
+	// second check
+	fromLabel = tuple.TypedPublicWildcard(userType)
+	wildcardPathExists, err := t.authorizationModelGraph.PathExists(fromLabel, toLabel)
+	if err != nil {
+		// The only possible error is graph.ErrQueryingGraph, which means the wildcard node cannot
+		// be found. Given this, we are safe to conclude there is no path.
+		return false, nil
+	}
+	return wildcardPathExists, nil
 }
 
 // IsPubliclyAssignable checks if the provided objectType is part
@@ -372,21 +751,31 @@ func (t *TypeSystem) IsDirectlyRelated(target *openfgav1.RelationReference, sour
 //	    define viewer: [user:*]
 //
 // In the example above, the 'user' objectType is publicly assignable to the 'document#viewer' relation.
+// If the input target is not a defined relation, it returns false and RelationUndefinedError.
 func (t *TypeSystem) IsPubliclyAssignable(target *openfgav1.RelationReference, objectType string) (bool, error) {
-	relation, err := t.GetRelation(target.GetType(), target.GetRelation())
+	ref, err := t.PubliclyAssignableReferences(target, objectType)
 	if err != nil {
 		return false, err
+	}
+	return ref != nil, nil
+}
+
+// PubliclyAssignableReferences returns the publicly assignable references with the specified objectType.
+func (t *TypeSystem) PubliclyAssignableReferences(target *openfgav1.RelationReference, objectType string) (*openfgav1.RelationReference, error) {
+	relation, err := t.GetRelation(target.GetType(), target.GetRelation())
+	if err != nil {
+		return nil, err
 	}
 
 	for _, typeRestriction := range relation.GetTypeInfo().GetDirectlyRelatedUserTypes() {
 		if typeRestriction.GetType() == objectType {
 			if typeRestriction.GetWildcard() != nil {
-				return true, nil
+				return typeRestriction, nil
 			}
 		}
 	}
 
-	return false, nil
+	return nil, nil
 }
 
 // HasTypeInfo determines if a given objectType-relation pair has associated type information.
@@ -707,7 +1096,13 @@ func hasEntrypoints(
 		return true, false, nil
 	}
 
-	panic("unexpected userset rewrite encountered")
+	// This should never happen because rewrite.GetUserset().(type) returns an unknown type (or it itself is nil).
+	rwString := "rewrite_nil"
+	if rewrite != nil {
+		rwString = rewrite.String()
+	}
+
+	return false, false, serverErrors.HandleError("error validating model", fmt.Errorf("hasEntrypoints unknown rewrite %s for '%s#%s'", rwString, typeName, relationName))
 }
 
 // NewAndValidate is like New but also validates the model according to the following rules:
@@ -728,7 +1123,10 @@ func NewAndValidate(ctx context.Context, model *openfgav1.AuthorizationModel) (*
 	_, span := tracer.Start(ctx, "typesystem.NewAndValidate")
 	defer span.End()
 
-	t := New(model)
+	t, err := New(model)
+	if err != nil {
+		return nil, err
+	}
 	schemaVersion := t.GetSchemaVersion()
 
 	if !IsSchemaVersionSupported(schemaVersion) {
@@ -911,15 +1309,14 @@ func (t *TypeSystem) isUsersetRewriteValid(objectType, relation string, rewrite 
 				}
 			}
 			return fmt.Errorf("%w: %s does not appear as a relation in any of the directly related user types %s", ErrRelationUndefined, computedUserset, userTypes)
-		} else {
-			// For 1.0 models, relation `computedUserset` has to be defined _somewhere_ in the model.
-			for typeName := range t.relations {
-				if _, err := t.GetRelation(typeName, computedUserset); err == nil {
-					return nil
-				}
-			}
-			return &RelationUndefinedError{ObjectType: "", Relation: computedUserset, Err: ErrRelationUndefined}
 		}
+		// For 1.0 models, relation `computedUserset` has to be defined _somewhere_ in the model.
+		for typeName := range t.relations {
+			if _, err := t.GetRelation(typeName, computedUserset); err == nil {
+				return nil
+			}
+		}
+		return &RelationUndefinedError{ObjectType: "", Relation: computedUserset, Err: ErrRelationUndefined}
 	case *openfgav1.Userset_Union:
 		for _, child := range r.Union.GetChild() {
 			err := t.isUsersetRewriteValid(objectType, relation, child)
@@ -1124,25 +1521,101 @@ func (t *TypeSystem) IsTuplesetRelation(objectType, relation string) (bool, erro
 	return false, nil
 }
 
-func tupleToUsersetsDefinitions(relationDef *openfgav1.Userset, resp *[]*openfgav1.TupleToUserset) []*openfgav1.TupleToUserset {
-	if relationDef.GetTupleToUserset() != nil {
-		*resp = append(*resp, relationDef.GetTupleToUserset())
+// GetEdgesFromNode first checks if the node can reach the source type,
+// then returns all the from edges for the node.
+func (t *TypeSystem) GetEdgesFromNode(
+	node *graph.WeightedAuthorizationModelNode,
+	sourceType string,
+) ([]*graph.WeightedAuthorizationModelEdge, error) {
+	if t.authzWeightedGraph == nil {
+		return nil, fmt.Errorf("weighted graph is nil")
 	}
-	if relationDef.GetUnion() != nil {
-		for _, child := range relationDef.GetUnion().GetChild() {
-			tupleToUsersetsDefinitions(child, resp)
+
+	wg := t.authzWeightedGraph
+
+	// This means we cannot reach the source type requested, so there are no relevant edges.
+	if !hasPathTo(node, sourceType) {
+		return nil, nil
+	}
+
+	edges, ok := wg.GetEdgesFromNode(node)
+	if !ok {
+		// Note: this should not happen, but adding the guard nonetheless
+		return nil, fmt.Errorf("no outgoing edges from node: %s", node.GetUniqueLabel())
+	}
+	return edges, nil
+}
+
+// GetInternalEdges returns a slice with all the edges linked to a grouping logical node, otherwise the slice contains the original edge.
+func (t *TypeSystem) GetInternalEdges(edge *graph.WeightedAuthorizationModelEdge, sourceType string) ([]*graph.WeightedAuthorizationModelEdge, error) {
+	var edges []*graph.WeightedAuthorizationModelEdge
+	if edge.GetEdgeType() == graph.DirectLogicalEdge || edge.GetEdgeType() == graph.TTULogicalEdge {
+		logicalEdges, err := t.GetConnectedEdges(edge.GetTo().GetUniqueLabel(), sourceType)
+		if err != nil {
+			return nil, err
+		}
+		edges = append(edges, logicalEdges...)
+	} else {
+		edges = append(edges, edge)
+	}
+	return edges, nil
+}
+
+// GetConnectedEdges returns all edges which have a path to the source type.
+func (t *TypeSystem) GetConnectedEdges(targetTypeRelation string, sourceType string) ([]*graph.WeightedAuthorizationModelEdge, error) {
+	currentNode, ok := t.GetNode(targetTypeRelation)
+	if !ok {
+		return nil, fmt.Errorf("could not find node with label: %s", targetTypeRelation)
+	}
+
+	edges, err := t.GetEdgesFromNode(currentNode, sourceType)
+	if err != nil {
+		return nil, err
+	}
+
+	// Filter to only return edges which have a path to the sourceType
+	relevantEdges := slices.Collect(utils.Filter(edges, func(edge *graph.WeightedAuthorizationModelEdge) bool {
+		return hasPathTo(edge, sourceType)
+	}))
+
+	return relevantEdges, nil
+}
+
+func (t *TypeSystem) GetNode(uniqueID string) (*graph.WeightedAuthorizationModelNode, bool) {
+	if t.authzWeightedGraph == nil {
+		return nil, false
+	}
+
+	return t.authzWeightedGraph.GetNodeByID(uniqueID)
+}
+
+func flattenUserset(relationDef *openfgav1.Userset) []*openfgav1.TupleToUserset {
+	output := make([]*openfgav1.TupleToUserset, 0)
+	userset := relationDef.GetUserset()
+	switch x := userset.(type) {
+	case *openfgav1.Userset_TupleToUserset:
+		if x.TupleToUserset != nil {
+			output = append(output, x.TupleToUserset)
+		}
+	case *openfgav1.Userset_Union:
+		if x.Union != nil {
+			for _, child := range x.Union.GetChild() {
+				output = append(output, flattenUserset(child)...)
+			}
+		}
+	case *openfgav1.Userset_Intersection:
+		if x.Intersection != nil {
+			for _, child := range x.Intersection.GetChild() {
+				output = append(output, flattenUserset(child)...)
+			}
+		}
+	case *openfgav1.Userset_Difference:
+		if x.Difference != nil {
+			output = append(output, flattenUserset(x.Difference.GetBase())...)
+			output = append(output, flattenUserset(x.Difference.GetSubtract())...)
 		}
 	}
-	if relationDef.GetIntersection() != nil {
-		for _, child := range relationDef.GetIntersection().GetChild() {
-			tupleToUsersetsDefinitions(child, resp)
-		}
-	}
-	if relationDef.GetDifference() != nil {
-		tupleToUsersetsDefinitions(relationDef.GetDifference().GetBase(), resp)
-		tupleToUsersetsDefinitions(relationDef.GetDifference().GetSubtract(), resp)
-	}
-	return *resp
+	return output
 }
 
 // WalkUsersetRewriteHandler is a userset rewrite handler that is applied to a node in a userset rewrite

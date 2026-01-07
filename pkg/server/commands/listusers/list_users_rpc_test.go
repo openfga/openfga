@@ -8,17 +8,21 @@ import (
 	"time"
 
 	"github.com/oklog/ulid/v2"
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
 
-	"github.com/openfga/openfga/pkg/storage"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	parser "github.com/openfga/language/pkg/go/transformer"
 
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/mocks"
-
+	"github.com/openfga/openfga/internal/throttler/threshold"
+	"github.com/openfga/openfga/internal/utils/apimethod"
+	"github.com/openfga/openfga/pkg/dispatch"
+	"github.com/openfga/openfga/pkg/logger"
+	serverconfig "github.com/openfga/openfga/pkg/server/config"
+	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/memory"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	storagetest "github.com/openfga/openfga/pkg/storage/test"
@@ -27,16 +31,20 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
+type NewListUsersQueryHandler func(ds storage.RelationshipTupleReader, contextualTuples []*openfgav1.TupleKey, opts ...ListUsersQueryOption) *listUsersQuery
 type ListUsersTests []struct {
-	name             string
-	req              *openfgav1.ListUsersRequest
-	model            string
-	tuples           []*openfgav1.TupleKey
-	expectedUsers    []string
-	expectedErrorMsg string
+	name              string
+	req               *openfgav1.ListUsersRequest
+	model             string
+	tuples            []*openfgav1.TupleKey
+	expectedUsers     []string
+	expectedErrorMsg  string
+	newListUsersQuery NewListUsersQueryHandler
 }
 
 const maximumRecursiveDepth = 25
+
+var emptyContextualTuples []*openfgav1.TupleKey
 
 func TestListUsersDirectRelationship(t *testing.T) {
 	t.Cleanup(func() {
@@ -1058,7 +1066,7 @@ func TestListUsersConditions(t *testing.T) {
 				tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:will", "isEqualToFive", nil),
 				tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:maria", "isEqualToTen", nil),
 			},
-			expectedErrorMsg: "failed to evaluate relationship condition: 'isEqualToTen' - context is missing parameters '[param2]'",
+			expectedErrorMsg: "failed to evaluate relationship condition: 'isEqualToTen' - tuple 'document:1#viewer@user:maria' is missing context parameters '[param2]",
 		},
 		{
 			name: "multiple_conditions_all_params_provided",
@@ -2545,9 +2553,9 @@ func TestListUsersCycleDetection(t *testing.T) {
 	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
 
 	// Times(0) ensures that we exit quickly
-	mockDatastore.EXPECT().Read(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+	mockDatastore.EXPECT().Read(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
 
-	l := NewListUsersQuery(mockDatastore, WithResolveNodeLimit(maximumRecursiveDepth))
+	l := NewListUsersQuery(mockDatastore, emptyContextualTuples, WithResolveNodeLimit(maximumRecursiveDepth))
 	channelDone := make(chan struct{})
 	channelWithResults := make(chan foundUser)
 	channelWithError := make(chan error, 1)
@@ -2559,7 +2567,8 @@ func TestListUsersCycleDetection(t *testing.T) {
 			relations
 				define viewer: [user]
 		`)
-	typesys := typesystem.New(model)
+	typesys, err := typesystem.New(model)
+	require.NoError(t, err)
 	ctx := typesystem.ContextWithTypesystem(context.Background(), typesys)
 
 	t.Run("enters_loop_detection", func(t *testing.T) {
@@ -2902,7 +2911,7 @@ func TestListUsersStorageErrors(t *testing.T) {
 			})
 			mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
 			mockDatastore.EXPECT().
-				Read(gomock.Any(), gomock.Any(), gomock.Any()).
+				Read(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 				Return(nil, fmt.Errorf("storage err")).
 				MinTimes(1).
 				MaxTimes(2) // Because DB errors will immediately halt the execution of the API function, it's possible that only one read is made
@@ -2919,9 +2928,10 @@ func TestListUsersStorageErrors(t *testing.T) {
 						define union: a or b
 						define exclusion: a but not b
 						define intersection: a and b`)
-			typesys := typesystem.New(model)
+			typesys, err := typesystem.New(model)
+			require.NoError(t, err)
 
-			l := NewListUsersQuery(mockDatastore)
+			l := NewListUsersQuery(mockDatastore, emptyContextualTuples)
 
 			ctx := typesystem.ContextWithTypesystem(context.Background(), typesys)
 			resp, err := l.ListUsers(ctx, test.req)
@@ -2951,7 +2961,12 @@ func (testCases ListUsersTests) runListUsersTestCases(t *testing.T) {
 				require.NoError(t, err)
 			}
 
-			l := NewListUsersQuery(ds, WithResolveNodeLimit(maximumRecursiveDepth))
+			contructor := test.newListUsersQuery
+			if contructor == nil {
+				contructor = NewListUsersQuery
+			}
+
+			l := contructor(ds, test.req.GetContextualTuples(), WithResolveNodeLimit(maximumRecursiveDepth))
 
 			ctx := typesystem.ContextWithTypesystem(context.Background(), typesys)
 
@@ -2998,17 +3013,17 @@ func TestListUsersReadFails_NoLeaks(t *testing.T) {
 
 	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
 	gomock.InOrder(
-		mockDatastore.EXPECT().Read(gomock.Any(), store, &openfgav1.TupleKey{
+		mockDatastore.EXPECT().Read(gomock.Any(), store, storage.ReadFilter{
 			Relation: "viewer",
 			Object:   "document:1",
-		}).DoAndReturn(func(_ context.Context, _ string, _ *openfgav1.TupleKey) (storage.TupleIterator, error) {
+		}, gomock.Any()).DoAndReturn(func(_ context.Context, _ string, _ storage.ReadFilter, _ storage.ReadOptions) (storage.TupleIterator, error) {
 			return mocks.NewErrorTupleIterator([]*openfgav1.Tuple{
 				{Key: tuple.NewTupleKey("document:1", "viewer", "group:fga#member")},
 				{Key: tuple.NewTupleKey("document:1", "viewer", "group:eng#member")},
 			}), nil
 		}),
-		mockDatastore.EXPECT().Read(gomock.Any(), store, gomock.Any()).
-			DoAndReturn(func(_ context.Context, _ string, _ *openfgav1.TupleKey) (storage.TupleIterator, error) {
+		mockDatastore.EXPECT().Read(gomock.Any(), store, gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ string, _ storage.ReadFilter, _ storage.ReadOptions) (storage.TupleIterator, error) {
 				return storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil
 			}),
 	)
@@ -3016,7 +3031,7 @@ func TestListUsersReadFails_NoLeaks(t *testing.T) {
 	typesys, err := typesystem.NewAndValidate(context.Background(), model)
 	require.NoError(t, err)
 	ctx := typesystem.ContextWithTypesystem(context.Background(), typesys)
-	resp, err := NewListUsersQuery(mockDatastore).ListUsers(ctx, &openfgav1.ListUsersRequest{
+	resp, err := NewListUsersQuery(mockDatastore, emptyContextualTuples).ListUsers(ctx, &openfgav1.ListUsersRequest{
 		StoreId:     store,
 		Object:      &openfgav1.Object{Type: "document", Id: "1"},
 		Relation:    "viewer",
@@ -3050,19 +3065,19 @@ func TestListUsersReadFails_NoLeaks_TTU(t *testing.T) {
 
 	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
 	gomock.InOrder(
-		mockDatastore.EXPECT().Read(gomock.Any(), store, &openfgav1.TupleKey{
+		mockDatastore.EXPECT().Read(gomock.Any(), store, storage.ReadFilter{
 			Object:   "document:1",
 			Relation: "parent",
-		}).DoAndReturn(func(_ context.Context, _ string, _ *openfgav1.TupleKey) (storage.TupleIterator, error) {
+		}, gomock.Any()).DoAndReturn(func(_ context.Context, _ string, _ storage.ReadFilter, _ storage.ReadOptions) (storage.TupleIterator, error) {
 			return mocks.NewErrorTupleIterator([]*openfgav1.Tuple{
 				{Key: tuple.NewTupleKey("document:1", "parent", "folder:1")},
 				{Key: tuple.NewTupleKey("document:1", "parent", "folder:2")},
 			}), nil
 		}),
-		mockDatastore.EXPECT().Read(gomock.Any(), store, &openfgav1.TupleKey{
+		mockDatastore.EXPECT().Read(gomock.Any(), store, storage.ReadFilter{
 			Object:   "folder:1",
 			Relation: "viewer",
-		}).DoAndReturn(func(_ context.Context, _ string, _ *openfgav1.TupleKey) (storage.TupleIterator, error) {
+		}, gomock.Any()).DoAndReturn(func(_ context.Context, _ string, _ storage.ReadFilter, _ storage.ReadOptions) (storage.TupleIterator, error) {
 			return storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil
 		}),
 	)
@@ -3070,7 +3085,7 @@ func TestListUsersReadFails_NoLeaks_TTU(t *testing.T) {
 	typesys, err := typesystem.NewAndValidate(context.Background(), model)
 	require.NoError(t, err)
 	ctx := typesystem.ContextWithTypesystem(context.Background(), typesys)
-	resp, err := NewListUsersQuery(mockDatastore).ListUsers(ctx, &openfgav1.ListUsersRequest{
+	resp, err := NewListUsersQuery(mockDatastore, emptyContextualTuples).ListUsers(ctx, &openfgav1.ListUsersRequest{
 		StoreId:     store,
 		Object:      &openfgav1.Object{Type: "document", Id: "1"},
 		Relation:    "viewer",
@@ -3135,9 +3150,11 @@ func TestListUsersDatastoreQueryCountAndDispatchCount(t *testing.T) {
 				define parent: [org]
 		`)
 
+	ts, err := typesystem.New(model)
+	require.NoError(t, err)
 	ctx := typesystem.ContextWithTypesystem(
 		context.Background(),
-		typesystem.New(model),
+		ts,
 	)
 
 	tests := []struct {
@@ -3338,29 +3355,21 @@ func TestListUsersDatastoreQueryCountAndDispatchCount(t *testing.T) {
 	}
 
 	// run the test many times to exercise all the possible DBReads
-
-	for _, test := range tests {
-		test := test
-		t.Run(test.name, func(t *testing.T) {
-			ctx := storage.ContextWithRelationshipTupleReader(
-				ctx,
-				storagewrappers.NewCombinedTupleReader(
-					ds,
-					test.contextualTuples,
-				),
-			)
-
-			l := NewListUsersQuery(ds)
-			resp, err := l.ListUsers(ctx, &openfgav1.ListUsersRequest{
-				Relation:         test.relation,
-				Object:           test.object,
-				UserFilters:      test.userFilters,
-				ContextualTuples: test.contextualTuples,
+	for i := 1; i < 100; i++ {
+		for _, test := range tests {
+			t.Run(fmt.Sprintf("%s_iteration_%v", test.name, i), func(t *testing.T) {
+				l := NewListUsersQuery(ds, emptyContextualTuples)
+				resp, err := l.ListUsers(ctx, &openfgav1.ListUsersRequest{
+					Relation:         test.relation,
+					Object:           test.object,
+					UserFilters:      test.userFilters,
+					ContextualTuples: test.contextualTuples,
+				})
+				require.NoError(t, err)
+				require.Equal(t, test.dbReads, resp.GetMetadata().DatastoreQueryCount)
+				require.Equal(t, test.dispatches, resp.GetMetadata().DispatchCounter.Load())
 			})
-			require.NoError(t, err)
-			require.Equal(t, test.dbReads, resp.GetMetadata().DatastoreQueryCount)
-			require.Equal(t, test.dispatches, resp.GetMetadata().DispatchCounter.Load())
-		})
+		}
 	}
 }
 
@@ -3482,6 +3491,7 @@ func TestListUsersConfig_MaxResults(t *testing.T) {
 			// assertions
 			test.inputRequest.StoreId = storeID
 			res, err := NewListUsersQuery(ds,
+				test.inputRequest.GetContextualTuples(),
 				WithListUsersMaxResults(test.inputConfigMaxResults),
 				WithListUsersDeadline(10*time.Second),
 			).ListUsers(ctx, test.inputRequest)
@@ -3515,6 +3525,29 @@ func TestListUsersConfig_Deadline(t *testing.T) {
 		expectMinResults    uint32
 		expectError         string
 	}{
+		`infinite_deadline_does_not_block_return_of_errors`: {
+			inputModel: `
+				model
+					schema 1.1
+				type user
+				type repo
+					relations
+						define admin: [user with condX]
+				condition condX(x: int) {
+					x > 0
+				}`,
+			inputTuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKeyWithCondition("repo:target", "admin", "user:1", "condX", nil),
+			},
+			inputRequest: &openfgav1.ListUsersRequest{
+				Object:      &openfgav1.Object{Type: "repo", Id: "target"},
+				Relation:    "admin",
+				UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			},
+			inputConfigDeadline: 0 * time.Millisecond, // infinite
+			inputReadDelay:      50 * time.Millisecond,
+			expectError:         "failed to evaluate relationship condition: 'condX' - tuple 'repo:target#admin@user:1' is missing context parameters '[x]",
+		},
 		`deadline_very_small_returns_nothing`: {
 			inputModel: `
 				model
@@ -3586,6 +3619,7 @@ func TestListUsersConfig_Deadline(t *testing.T) {
 				test.inputRequest.StoreId = storeID
 				res, err := NewListUsersQuery(
 					mocks.NewMockSlowDataStorage(ds, test.inputReadDelay),
+					emptyContextualTuples,
 					WithListUsersDeadline(test.inputConfigDeadline),
 				).ListUsers(ctx, test.inputRequest)
 
@@ -3697,6 +3731,7 @@ func TestListUsersConfig_MaxConcurrency(t *testing.T) {
 				start := time.Now()
 				res, err := NewListUsersQuery(
 					mocks.NewMockSlowDataStorage(ds, test.inputReadDelay),
+					test.inputRequest.GetContextualTuples(),
 					WithListUsersMaxConcurrentReads(test.inputConfigMaxConcurrentReads),
 				).ListUsers(ctx, test.inputRequest)
 
@@ -3735,12 +3770,13 @@ func TestListUsers_ExpandExclusionHandler(t *testing.T) {
 			"document:1#restricted@user:jon",
 		})
 
-		l := NewListUsersQuery(ds, WithResolveNodeLimit(maximumRecursiveDepth))
+		l := NewListUsersQuery(ds, emptyContextualTuples, WithResolveNodeLimit(maximumRecursiveDepth))
 		channelDone := make(chan struct{})
 		channelWithResults := make(chan foundUser)
 		channelWithError := make(chan error, 1)
 
-		typesys := typesystem.New(model)
+		typesys, err := typesystem.New(model)
+		require.NoError(t, err)
 		ctx := typesystem.ContextWithTypesystem(context.Background(), typesys)
 
 		relation, err := typesys.GetRelation("document", "viewer")
@@ -3762,8 +3798,7 @@ func TestListUsers_ExpandExclusionHandler(t *testing.T) {
 						Type: "user",
 					}},
 				},
-				visitedUsersetsMap:  map[string]struct{}{},
-				datastoreQueryCount: new(atomic.Uint32),
+				visitedUsersetsMap: map[string]struct{}{},
 			}, rewrite, channelWithResults)
 			if resp.err != nil {
 				channelWithError <- resp.err
@@ -3811,5 +3846,506 @@ func TestListUsers_ExpandExclusionHandler(t *testing.T) {
 				relationshipStatus: NoRelationship,
 			},
 		}, actualResults)
+	})
+}
+
+func TestListUsersThrottle(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+
+	ctx := context.Background()
+
+	t.Run("dispatch_below_threshold_doesnt_call_throttle", func(t *testing.T) {
+		mockThrottler := mocks.NewMockThrottler(mockController)
+		q := NewListUsersQuery(
+			mockDatastore,
+			emptyContextualTuples,
+			WithDispatchThrottlerConfig(threshold.Config{
+				Throttler:    mockThrottler,
+				Threshold:    200,
+				MaxThreshold: 200,
+			}),
+		)
+		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(0)
+
+		q.throttle(ctx, uint32(190))
+		require.False(t, q.wasDispatchThrottled.Load())
+	})
+
+	t.Run("above_threshold_should_call_throttle", func(t *testing.T) {
+		mockThrottler := mocks.NewMockThrottler(mockController)
+		q := NewListUsersQuery(
+			mockDatastore,
+			emptyContextualTuples,
+			WithDispatchThrottlerConfig(threshold.Config{
+				Throttler:    mockThrottler,
+				Threshold:    200,
+				MaxThreshold: 200,
+			}),
+		)
+		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(1)
+
+		q.throttle(ctx, uint32(201))
+		require.True(t, q.wasDispatchThrottled.Load())
+	})
+
+	t.Run("zero_max_should_interpret_as_default", func(t *testing.T) {
+		mockThrottler := mocks.NewMockThrottler(mockController)
+		q := NewListUsersQuery(
+			mockDatastore,
+			emptyContextualTuples,
+			WithDispatchThrottlerConfig(threshold.Config{
+				Throttler:    mockThrottler,
+				Threshold:    200,
+				MaxThreshold: 0,
+			}),
+		)
+		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(0)
+
+		q.throttle(ctx, uint32(190))
+		require.False(t, q.wasDispatchThrottled.Load())
+	})
+
+	t.Run("dispatch_should_use_request_threshold_if_available", func(t *testing.T) {
+		mockThrottler := mocks.NewMockThrottler(mockController)
+		q := NewListUsersQuery(
+			mockDatastore,
+			emptyContextualTuples,
+			WithDispatchThrottlerConfig(threshold.Config{
+				Throttler:    mockThrottler,
+				Threshold:    0,
+				MaxThreshold: 210,
+			}),
+		)
+		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(1)
+		dispatchCountValue := uint32(201)
+		ctx := context.Background()
+		ctx = dispatch.ContextWithThrottlingThreshold(ctx, 200)
+
+		q.throttle(ctx, dispatchCountValue)
+		require.True(t, q.wasDispatchThrottled.Load())
+	})
+
+	t.Run("should_respect_max_threshold", func(t *testing.T) {
+		mockThrottler := mocks.NewMockThrottler(mockController)
+		q := NewListUsersQuery(
+			mockDatastore,
+			emptyContextualTuples,
+			WithDispatchThrottlerConfig(threshold.Config{
+				Throttler:    mockThrottler,
+				Threshold:    200,
+				MaxThreshold: 300,
+			}),
+		)
+		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(1)
+		dispatchCountValue := uint32(301)
+		ctx := context.Background()
+		ctx = dispatch.ContextWithThrottlingThreshold(ctx, 1000)
+
+		q.throttle(ctx, dispatchCountValue)
+		require.True(t, q.wasDispatchThrottled.Load())
+	})
+}
+
+func TestListUsers_CorrectContext(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	ds := memory.New()
+	t.Cleanup(ds.Close)
+
+	t.Run("typesystem_missing_returns_error", func(t *testing.T) {
+		l := NewListUsersQuery(ds, emptyContextualTuples)
+		_, err := l.ListUsers(context.Background(), &openfgav1.ListUsersRequest{})
+
+		require.ErrorContains(t, err, "typesystem missing in context")
+	})
+}
+
+func TestListUsersRespectsConsistency(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	modelStr := `
+		model
+			schema 1.1
+		type user
+		type document
+			relations
+				define viewer: [user]`
+
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+
+	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+
+	ctx := context.Background()
+
+	// arrange: write model
+	model := testutils.MustTransformDSLToProtoWithID(modelStr)
+
+	typesys, err := typesystem.NewAndValidate(ctx, model)
+	require.NoError(t, err)
+
+	query := NewListUsersQuery(mockDatastore, emptyContextualTuples)
+	ctx = typesystem.ContextWithTypesystem(ctx, typesys)
+
+	t.Run("uses_passed_consistency_preference", func(t *testing.T) {
+		higherConsistency := storage.ReadOptions{
+			Consistency: storage.ConsistencyOptions{
+				Preference: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
+			},
+		}
+		mockDatastore.EXPECT().Read(gomock.Any(), gomock.Any(), gomock.Any(), higherConsistency).Times(1)
+
+		_, err = query.ListUsers(ctx, &openfgav1.ListUsersRequest{
+			Consistency: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
+			UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			Object:      &openfgav1.Object{Type: "document", Id: "1"},
+			Relation:    "viewer",
+			StoreId:     ulid.Make().String(),
+		})
+		require.NoError(t, err)
+	})
+
+	t.Run("unspecified_consistency_if_user_didnt_specify", func(t *testing.T) {
+		unspecified := storage.ReadOptions{
+			Consistency: storage.ConsistencyOptions{
+				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
+			},
+		}
+		mockDatastore.EXPECT().Read(gomock.Any(), gomock.Any(), gomock.Any(), unspecified).Times(1)
+
+		_, err = query.ListUsers(ctx, &openfgav1.ListUsersRequest{
+			UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			Object:      &openfgav1.Object{Type: "document", Id: "1"},
+			Relation:    "viewer",
+			StoreId:     ulid.Make().String(),
+		})
+		require.NoError(t, err)
+	})
+}
+
+func TestListUsersExclusionPanicExpandDirect(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	tests := ListUsersTests{
+		{
+			name: "exclusion_with_chained_negation_panic_expand_direct",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "2"},
+				Relation: "viewer",
+				UserFilters: []*openfgav1.UserTypeFilter{
+					{
+						Type: "user",
+					},
+				},
+			},
+			model: `
+				model
+					schema 1.1
+
+				type user
+
+				type document
+					relations
+						define unblocked: [user]
+						define blocked: [user, document#viewer] but not unblocked
+						define viewer: [user, document#blocked] but not blocked
+			`,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "document:2#blocked"),
+				tuple.NewTupleKey("document:2", "blocked", "document:1#viewer"),
+				tuple.NewTupleKey("document:2", "viewer", "user:jon"),
+				tuple.NewTupleKey("document:2", "unblocked", "user:jon"),
+			},
+			expectedUsers:     []string{},
+			expectedErrorMsg:  ErrPanic.Error(),
+			newListUsersQuery: NewListUsersQueryPanicExpandDirect,
+		},
+		{
+			name: "non_stratifiable_exclusion_containing_cycle_1_panic_expand_direct",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "viewer",
+				UserFilters: []*openfgav1.UserTypeFilter{
+					{
+						Type:     "document",
+						Relation: "blocked",
+					},
+				},
+			},
+			model: `
+				model
+					schema 1.1
+
+				type user
+
+				type document
+					relations
+						define blocked: [user, document#viewer]
+						define viewer: [user, document#blocked] but not blocked
+			`,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "document:2#blocked"),
+				tuple.NewTupleKey("document:2", "blocked", "document:1#viewer"),
+			},
+			expectedUsers:     []string{},
+			expectedErrorMsg:  ErrPanic.Error(),
+			newListUsersQuery: NewListUsersQueryPanicExpandDirect,
+		},
+	}
+	tests.runListUsersTestCases(t)
+}
+
+func NewListUsersQueryPanicExpandDirect(ds storage.RelationshipTupleReader, contextualTuples []*openfgav1.TupleKey, opts ...ListUsersQueryOption) *listUsersQuery {
+	l := &listUsersQuery{
+		logger:                  logger.NewNoopLogger(),
+		resolveNodeBreadthLimit: serverconfig.DefaultResolveNodeBreadthLimit,
+		resolveNodeLimit:        serverconfig.DefaultResolveNodeLimit,
+		deadline:                serverconfig.DefaultListUsersDeadline,
+		maxResults:              serverconfig.DefaultListUsersMaxResults,
+		maxConcurrentReads:      serverconfig.DefaultMaxConcurrentReadsForListUsers,
+		wasDispatchThrottled:    new(atomic.Bool),
+		wasDatastoreThrottled:   new(atomic.Bool),
+		expandDirectDispatch: func(ctx context.Context, listUsersQuery *listUsersQuery, req *internalListUsersRequest, userObjectType, userObjectID, userRelation string, resp expandResponse, foundUsersChan chan<- foundUser, hasCycle *atomic.Bool) expandResponse {
+			panic(ErrPanic)
+		},
+	}
+
+	for _, opt := range opts {
+		opt(l)
+	}
+
+	l.datastore = storagewrappers.NewRequestStorageWrapper(ds, contextualTuples, &storagewrappers.Operation{
+		Method:      apimethod.ListUsers,
+		Concurrency: l.maxConcurrentReads,
+	})
+
+	return l
+}
+
+func TestWithListUsersDatastoreThrottler(t *testing.T) {
+	t.Run("option_sets_all_fields_correctly", func(t *testing.T) {
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+
+		enabled := true
+		threshold := 100
+		duration := 50 * time.Millisecond
+
+		query := NewListUsersQuery(
+			mockDatastore,
+			emptyContextualTuples,
+			WithListUsersDatastoreThrottler(enabled, threshold, duration),
+		)
+
+		require.Equal(t, enabled, query.datastoreThrottlingEnabled)
+		require.Equal(t, threshold, query.datastoreThrottleThreshold)
+		require.Equal(t, duration, query.datastoreThrottleDuration)
+	})
+
+	t.Run("option_can_disable_throttling", func(t *testing.T) {
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+
+		query := NewListUsersQuery(
+			mockDatastore,
+			emptyContextualTuples,
+			WithListUsersDatastoreThrottler(false, 100, 50*time.Millisecond),
+		)
+
+		require.False(t, query.datastoreThrottlingEnabled)
+	})
+
+	t.Run("multiple_options_can_be_combined", func(t *testing.T) {
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+
+		query := NewListUsersQuery(
+			mockDatastore,
+			emptyContextualTuples,
+			WithListUsersDatastoreThrottler(true, 100, 50*time.Millisecond),
+			WithListUsersMaxResults(10),
+			WithListUsersDeadline(5*time.Second),
+		)
+
+		require.True(t, query.datastoreThrottlingEnabled)
+		require.Equal(t, 100, query.datastoreThrottleThreshold)
+		require.Equal(t, 50*time.Millisecond, query.datastoreThrottleDuration)
+		require.Equal(t, uint32(10), query.maxResults)
+		require.Equal(t, 5*time.Second, query.deadline)
+	})
+}
+
+func TestListUsersDatastoreThrottler(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	ds := memory.New()
+	t.Cleanup(ds.Close)
+
+	storeID := ulid.Make().String()
+	modelStr := `
+		model
+			schema 1.1
+		type user
+		type document
+			relations
+				define viewer: [user]`
+
+	model := testutils.MustTransformDSLToProtoWithID(modelStr)
+	ctx := context.Background()
+
+	err := ds.WriteAuthorizationModel(ctx, storeID, model)
+	require.NoError(t, err)
+
+	// Write multiple tuples to trigger throttling
+	tuples := []*openfgav1.TupleKey{}
+	for i := 1; i <= 10; i++ {
+		tuples = append(tuples, tuple.NewTupleKey("document:1", "viewer", fmt.Sprintf("user:%d", i)))
+	}
+	err = ds.Write(ctx, storeID, nil, tuples)
+	require.NoError(t, err)
+
+	typesys, err := typesystem.NewAndValidate(ctx, model)
+	require.NoError(t, err)
+	ctx = typesystem.ContextWithTypesystem(ctx, typesys)
+
+	t.Run("throttling_disabled_by_default", func(t *testing.T) {
+		// Create query without throttling option
+		query := NewListUsersQuery(ds, emptyContextualTuples)
+
+		resp, err := query.ListUsers(ctx, &openfgav1.ListUsersRequest{
+			StoreId:     storeID,
+			Object:      &openfgav1.Object{Type: "document", Id: "1"},
+			Relation:    "viewer",
+			UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+		})
+
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.False(t, resp.GetMetadata().WasDatastoreThrottled.Load(), "Should not be throttled when throttling is disabled")
+	})
+
+	t.Run("throttling_enabled_with_high_threshold_does_not_throttle", func(t *testing.T) {
+		// Enable throttling with threshold higher than expected reads
+		query := NewListUsersQuery(
+			ds,
+			emptyContextualTuples,
+			WithListUsersDatastoreThrottler(true, 1000, 10*time.Millisecond),
+		)
+
+		resp, err := query.ListUsers(ctx, &openfgav1.ListUsersRequest{
+			StoreId:     storeID,
+			Object:      &openfgav1.Object{Type: "document", Id: "1"},
+			Relation:    "viewer",
+			UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+		})
+
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.False(t, resp.GetMetadata().WasDatastoreThrottled.Load(), "Should not be throttled when threshold is high")
+	})
+
+	t.Run("throttling_enabled_with_low_threshold_triggers_throttle", func(t *testing.T) {
+		// Create a model with union that causes multiple reads
+		multiReadModelStr := `
+			model
+				schema 1.1
+			type user
+			type document
+				relations
+					define viewer: [user]
+					define editor: [user]
+					define can_access: viewer or editor`
+
+		multiReadModel := testutils.MustTransformDSLToProtoWithID(multiReadModelStr)
+		multiReadStoreID := ulid.Make().String()
+
+		err := ds.WriteAuthorizationModel(ctx, multiReadStoreID, multiReadModel)
+		require.NoError(t, err)
+
+		// Write tuples
+		multiReadTuples := []*openfgav1.TupleKey{
+			tuple.NewTupleKey("document:1", "viewer", "user:1"),
+			tuple.NewTupleKey("document:1", "editor", "user:2"),
+		}
+		err = ds.Write(ctx, multiReadStoreID, nil, multiReadTuples)
+		require.NoError(t, err)
+
+		multiReadTypesys, err := typesystem.NewAndValidate(ctx, multiReadModel)
+		require.NoError(t, err)
+		multiReadCtx := typesystem.ContextWithTypesystem(ctx, multiReadTypesys)
+
+		// Enable throttling with very low threshold (will throttle after 1 read)
+		query := NewListUsersQuery(
+			ds,
+			emptyContextualTuples,
+			WithListUsersDatastoreThrottler(true, 1, 10*time.Millisecond),
+		)
+
+		resp, err := query.ListUsers(multiReadCtx, &openfgav1.ListUsersRequest{
+			StoreId:     multiReadStoreID,
+			Object:      &openfgav1.Object{Type: "document", Id: "1"},
+			Relation:    "can_access",
+			UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+		})
+
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.True(t, resp.GetMetadata().WasDatastoreThrottled.Load(), "Should be throttled when threshold is exceeded")
+	})
+
+	t.Run("throttling_disabled_explicitly_does_not_throttle", func(t *testing.T) {
+		// Explicitly disable throttling even with low threshold
+		query := NewListUsersQuery(
+			ds,
+			emptyContextualTuples,
+			WithListUsersDatastoreThrottler(false, 1, 10*time.Millisecond),
+		)
+
+		resp, err := query.ListUsers(ctx, &openfgav1.ListUsersRequest{
+			StoreId:     storeID,
+			Object:      &openfgav1.Object{Type: "document", Id: "1"},
+			Relation:    "viewer",
+			UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+		})
+
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.False(t, resp.GetMetadata().WasDatastoreThrottled.Load(), "Should not be throttled when throttling is explicitly disabled")
+	})
+
+	t.Run("throttling_with_zero_threshold_does_not_throttle", func(t *testing.T) {
+		// Enable throttling but with zero threshold (should be treated as disabled)
+		query := NewListUsersQuery(
+			ds,
+			emptyContextualTuples,
+			WithListUsersDatastoreThrottler(true, 0, 10*time.Millisecond),
+		)
+
+		resp, err := query.ListUsers(ctx, &openfgav1.ListUsersRequest{
+			StoreId:     storeID,
+			Object:      &openfgav1.Object{Type: "document", Id: "1"},
+			Relation:    "viewer",
+			UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+		})
+
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.False(t, resp.GetMetadata().WasDatastoreThrottled.Load(), "Should not be throttled when threshold is zero")
 	})
 }

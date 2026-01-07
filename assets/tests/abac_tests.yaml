@@ -193,6 +193,225 @@ tests:
               "ts": "2023-10-11T09:00:00.000Z"
             expectation:
               - group:eng#member
+  - name: userset_child_with_condition
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+
+          type group
+            relations
+              define member: [user with ts_less_than]
+
+          type document
+            relations
+              define viewer: [group#member]
+
+          condition ts_less_than(ts: timestamp) {
+            ts < timestamp("2023-10-11T10:00:00.000Z")
+          }
+        tuples:
+          - user: group:eng#member
+            relation: viewer
+            object: document:1
+          - user: user:jon
+            relation: member
+            object: group:eng
+            condition:
+              name: ts_less_than
+        checkAssertions:
+          - tuple:
+              user: user:jon
+              relation: viewer
+              object: document:1
+            errorCode: 2000
+          - tuple:
+              user: user:jon
+              relation: viewer
+              object: document:1
+            context:
+              "ts": "2023-10-11T09:00:00.000Z"
+            expectation: true
+          - tuple:
+              user: user:jon
+              relation: viewer
+              object: document:1
+            context:
+              "ts": "2023-10-11T10:00:00.000Z"
+            expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:jon
+              type: document
+              relation: viewer
+            errorCode: 2000
+          - request:
+              user: user:jon
+              type: document
+              relation: viewer
+            context:
+              "ts": "2023-10-11T09:00:00.000Z"
+            expectation:
+              - document:1
+          - request:
+              user: user:jon
+              type: document
+              relation: viewer
+            context:
+              "ts": "2023-10-11T10:00:00.000Z"
+            expectation:
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              relation: viewer
+              object: document:1
+            errorCode: 2000
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            context:
+              "ts": "2023-10-11T10:00:00.000Z"
+            expectation:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            context:
+              "ts": "2023-10-11T09:00:00.000Z"
+            expectation:
+              - user:jon
+          - request:
+              filters:
+                - group#member
+              object: document:1
+              relation: viewer
+            context:
+              "ts": "2023-10-11T10:00:00.000Z"
+            expectation:
+              - group:eng#member
+          - request:
+              filters:
+                - group#member
+              object: document:1
+              relation: viewer
+            context:
+              "ts": "2023-10-11T09:00:00.000Z"
+            expectation:
+              - group:eng#member
+  - name: userset_parent_with_condition
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+
+          type group
+            relations
+              define member: [user]
+
+          type document
+            relations
+              define viewer: [group#member with ts_less_than]
+
+          condition ts_less_than(ts: timestamp) {
+            ts < timestamp("2023-10-11T10:00:00.000Z")
+          }
+        tuples:
+          - user: group:eng#member
+            relation: viewer
+            object: document:1
+            condition:
+              name: ts_less_than
+          - user: user:jon
+            relation: member
+            object: group:eng
+        checkAssertions:
+          - tuple:
+              user: user:jon
+              relation: viewer
+              object: document:1
+            errorCode: 2000
+          - tuple:
+              user: user:jon
+              relation: viewer
+              object: document:1
+            context:
+              "ts": "2023-10-11T09:00:00.000Z"
+            expectation: true
+          - tuple:
+              user: user:jon
+              relation: viewer
+              object: document:1
+            context:
+              "ts": "2023-10-11T10:00:00.000Z"
+            expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:jon
+              type: document
+              relation: viewer
+            errorCode: 2000
+          - request:
+              user: user:jon
+              type: document
+              relation: viewer
+            context:
+              "ts": "2023-10-11T09:00:00.000Z"
+            expectation:
+              - document:1
+          - request:
+              user: user:jon
+              type: document
+              relation: viewer
+            context:
+              "ts": "2023-10-11T10:00:00.000Z"
+            expectation:
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              relation: viewer
+              object: document:1
+            errorCode: 2000
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            context:
+              "ts": "2023-10-11T10:00:00.000Z"
+            expectation:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            context:
+              "ts": "2023-10-11T09:00:00.000Z"
+            expectation:
+              - user:jon
+          - request:
+              filters:
+                - group#member
+              object: document:1
+              relation: viewer
+            context:
+              "ts": "2023-10-11T10:00:00.000Z"
+            expectation:
+          - request:
+              filters:
+                - group#member
+              object: document:1
+              relation: viewer
+            context:
+              "ts": "2023-10-11T09:00:00.000Z"
+            expectation:
+              - group:eng#member
   - name: nested_indirect_relation_with_condition
     stages:
       - model: |
@@ -600,6 +819,686 @@ tests:
             context:
               "x": 101
               "y": 5
+            expectation:
+  - name: simple_userset_with_condition
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type folder
+            relations
+              define viewer: [user]
+          type document
+            relations
+              define viewer: [folder#viewer with xcond]
+          condition xcond(x: int) {
+            x == 10
+          }
+        tuples:
+          - user: user:jon
+            relation: viewer
+            object: folder:a
+          - user: folder:a#viewer
+            relation: viewer
+            object: document:1
+            condition:
+              name: xcond
+        checkAssertions:
+          - tuple:
+              user: user:jon
+              relation: viewer
+              object: document:1
+            errorCode: 2000
+          - tuple:
+              user: user:jon
+              relation: viewer
+              object: document:1
+            context:
+              "x": 10
+            expectation: true
+          - tuple:
+              user: user:jon
+              relation: viewer
+              object: document:1
+            context:
+              "x": 20
+            expectation: false
+          - tuple:
+              user: folder:a#viewer
+              relation: viewer
+              object: document:1
+            context:
+              "x": 10
+            expectation: true
+          - tuple:
+              user: folder:a#viewer
+              relation: viewer
+              object: document:1
+            context:
+              "x": 20
+            expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:jon
+              type: document
+              relation: viewer
+            errorCode: 2000
+          - request:
+              user: user:jon
+              type: document
+              relation: viewer
+            context:
+              "x": 10
+            expectation:
+              - document:1
+          - request:
+              user: user:jon
+              type: document
+              relation: viewer
+            context:
+              "x": 20
+            expectation:
+          - request:
+              user: folder:a#viewer
+              type: document
+              relation: viewer
+            context:
+              "x": 10
+            expectation:
+              - document:1
+          - request:
+              user: folder:a#viewer
+              type: document
+              relation: viewer
+            context:
+              "x": 20
+            expectation:
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            errorCode: 2000
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            context:
+              "x": 10
+            expectation:
+              - user:jon
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            context:
+              "x": 20
+            expectation:
+          - request:
+              filters:
+                - folder#viewer
+              object: document:1
+              relation: viewer
+            context:
+              "x": 10
+            expectation:
+              - folder:a#viewer
+          - request:
+              filters:
+                - folder#viewer
+              object: document:1
+              relation: viewer
+            context:
+              "x": 20
+            expectation:
+  - name: simple_userset_with_condition_in_child
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type folder
+            relations
+              define viewer: [user with xcond]
+          type document
+            relations
+              define viewer: [folder#viewer]
+          condition xcond(x: int) {
+            x == 10
+          }
+        tuples:
+          - user: folder:a#viewer
+            relation: viewer
+            object: document:1
+          - user: user:jon
+            relation: viewer
+            object: folder:a
+            condition:
+              name: xcond
+        checkAssertions:
+          - tuple:
+              user: user:jon
+              relation: viewer
+              object: document:1
+            errorCode: 2000
+          - tuple:
+              user: user:jon
+              relation: viewer
+              object: document:1
+            context:
+              "x": 10
+            expectation: true
+          - tuple:
+              user: user:jon
+              relation: viewer
+              object: document:1
+            context:
+              "x": 20
+            expectation: false
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            errorCode: 2000
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            context:
+              "x": 10
+            expectation:
+              - user:jon
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            context:
+              "x": 20
+            expectation:
+  - name: simple_userset_with_and_without_condition_in_child
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type folder
+            relations
+              define viewer: [user with xcond, user]
+          type document
+            relations
+              define viewer: [folder#viewer]
+          condition xcond(x: int) {
+            x == 10
+          }
+        tuples:
+          - user: folder:a#viewer
+            relation: viewer
+            object: document:1
+          - user: user:jon
+            relation: viewer
+            object: folder:a
+            condition:
+              name: xcond
+          - user: folder:withoutcond#viewer
+            relation: viewer
+            object: document:2
+          - user: user:bob
+            relation: viewer
+            object: folder:withoutcond
+        checkAssertions:
+          - tuple:
+              user: user:jon
+              relation: viewer
+              object: document:1
+            errorCode: 2000
+          - tuple:
+              user: user:jon
+              relation: viewer
+              object: document:1
+            context:
+              "x": 10
+            expectation: true
+          - tuple:
+              user: user:jon
+              relation: viewer
+              object: document:2
+            context:
+              "x": 10
+            expectation: false
+          - tuple:
+              user: user:jon
+              relation: viewer
+              object: document:1
+            context:
+              "x": 20
+            expectation: false
+          - tuple:
+              user: user:bob
+              relation: viewer
+              object: document:2
+            expectation: true
+          - tuple:
+              user: user:bob
+              relation: viewer
+              object: document:1
+            expectation: false
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            errorCode: 2000
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            context:
+              "x": 10
+            expectation:
+              - user:jon
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            context:
+              "x": 20
+            expectation:
+  - name: simple_ttu_with_condition
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type folder
+            relations
+              define viewer: [user]
+          type document
+            relations
+              define parent: [folder with xcond]
+              define viewer: viewer from parent
+          condition xcond(x: int) {
+            x == 10
+          }
+        tuples:
+          - user: folder:a
+            relation: parent
+            object: document:1
+            condition:
+              name: xcond
+          - user: user:jon
+            relation: viewer
+            object: folder:a
+        checkAssertions:
+          - tuple:
+              user: user:jon
+              relation: viewer
+              object: document:1
+            errorCode: 2000
+          - tuple:
+              user: user:jon
+              relation: viewer
+              object: document:1
+            context:
+              "x": 10
+            expectation: true
+          - tuple:
+              user: user:jon
+              relation: viewer
+              object: document:1
+            context:
+              "x": 20
+            expectation: false
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            errorCode: 2000
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            context:
+              "x": 10
+            expectation:
+              - user:jon
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            context:
+              "x": 20
+            expectation:
+  - name: simple_ttu_with_and_without_condition
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type folder
+            relations
+              define viewer: [user, user with xcond]
+          type document
+            relations
+              define parent: [folder]
+              define viewer: viewer from parent
+          condition xcond(x: int) {
+            x == 10
+          }
+        tuples:
+          - user: folder:a
+            relation: parent
+            object: document:1
+          - user: user:without-condition
+            relation: viewer
+            object: folder:a
+          - user: user:with-condition
+            relation: viewer
+            object: folder:a
+            condition:
+              name: xcond
+        checkAssertions:
+          - tuple:
+              user: user:with-condition
+              relation: viewer
+              object: document:1
+            errorCode: 2000
+          - tuple:
+              user: user:with-condition
+              relation: viewer
+              object: document:1
+            context:
+              "x": 10
+            expectation: true
+          - tuple:
+              user: user:with-condition
+              relation: viewer
+              object: document:1
+            context:
+              "x": 99
+            expectation: false
+          - tuple:
+              user: user:without-condition
+              relation: viewer
+              object: document:1
+            expectation: true
+        listObjectsAssertions:
+          - request:
+              user: user:without-condition
+              type: document
+              relation: viewer
+            expectation:
+              - document:1
+          - request:
+              user: user:with-condition
+              type: document
+              relation: viewer
+            errorCode: 2000
+          - request:
+              user: user:with-condition
+              type: document
+              relation: viewer
+            context:
+              "x": 10
+            expectation:
+              - document:1
+          - request:
+              user: user:with-condition
+              type: document
+              relation: viewer
+            context:
+              "x": 99
+            expectation:
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            errorCode: 2000
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            context:
+              "x": 10
+            expectation:
+              - user:with-condition
+              - user:without-condition
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            context:
+              "x": 20
+            expectation:
+             - user:without-condition
+  - name: simple_ttu_with_multiple_conditions
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type folder
+            relations
+              define viewer: [user with xcond, user with ycond]
+          type document
+            relations
+              define parent: [folder]
+              define viewer: viewer from parent
+          
+          condition xcond(x: int) {
+            x == 10
+          }
+
+          condition ycond(y: int) {
+            y == 10
+          }
+        tuples:
+          - user: folder:a
+            relation: parent
+            object: document:1
+          - user: user:with-xcond
+            relation: viewer
+            object: folder:a
+            condition:
+              name: xcond
+          - user: user:with-ycond
+            relation: viewer
+            object: folder:a
+            condition:
+              name: ycond
+        checkAssertions:
+          - tuple:
+              user: user:with-xcond
+              relation: viewer
+              object: document:1
+            errorCode: 2000
+          - tuple:
+              user: user:with-ycond
+              relation: viewer
+              object: document:1
+            errorCode: 2000
+          - tuple:
+              user: user:with-xcond
+              relation: viewer
+              object: document:1
+            context:
+              "x": 10
+            expectation: true
+          - tuple:
+              user: user:with-xcond
+              relation: viewer
+              object: document:1
+            context:
+              "x": 99
+            expectation: false
+          - tuple:
+              user: user:with-ycond
+              relation: viewer
+              object: document:1
+            context:
+              "y": 10
+            expectation: true
+          - tuple:
+              user: user:with-ycond
+              relation: viewer
+              object: document:1
+            context:
+              "y": 99
+            expectation: false
+          - tuple:
+              user: user:with-xcond
+              relation: viewer
+              object: document:1
+            context:
+              "y": 10
+            errorCode: 2000
+          - tuple:
+              user: user:with-ycond
+              relation: viewer
+              object: document:1
+            context:
+              "x": 10
+            errorCode: 2000
+        listObjectsAssertions:
+          - request:
+              user: user:with-xcond
+              type: document
+              relation: viewer
+            errorCode: 2000
+          - request:
+              user: user:with-xcond
+              type: document
+              relation: viewer
+            context:
+              "x": 10
+            expectation:
+              - document:1
+          - request:
+              user: user:with-ycond
+              type: document
+              relation: viewer
+            errorCode: 2000
+          - request:
+              user: user:with-ycond
+              type: document
+              relation: viewer
+            context:
+              "y": 10
+            expectation:
+              - document:1
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            errorCode: 2000
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            context:
+              "x": 10
+              "y": 10
+            expectation:
+              - user:with-xcond
+              - user:with-ycond
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            context:
+              "x": 20
+              "y": 20
+            expectation:
+  - name: simple_ttu_with_condition_in_child
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type folder
+            relations
+              define viewer: [user with xcond]
+          type document
+            relations
+              define parent: [folder]
+              define viewer: viewer from parent
+          condition xcond(x: int) {
+            x == 10
+          }
+        tuples:
+          - user: folder:a
+            relation: parent
+            object: document:1
+          - user: user:jon
+            relation: viewer
+            object: folder:a
+            condition:
+              name: xcond
+        checkAssertions:
+          - tuple:
+              user: user:jon
+              relation: viewer
+              object: document:1
+            errorCode: 2000
+          - tuple:
+              user: user:jon
+              relation: viewer
+              object: document:1
+            context:
+              "x": 10
+            expectation: true
+          - tuple:
+              user: user:jon
+              relation: viewer
+              object: document:1
+            context:
+              "x": 20
+            expectation: false
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            errorCode: 2000
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            context:
+              "x": 10
+            expectation:
+              - user:jon
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            context:
+              "x": 20
             expectation:
   - name: relation_through_ttu_with_condition
     stages:
@@ -1226,3 +2125,837 @@ tests:
               "x": 1.797693134862315708145274237317
             expectation:
               - user:jon
+  - name: ttu_mix_with_userset_member_condition
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type group
+            relations
+              define member: [user with ts_less_than, user:*]
+          type folder
+            relations
+              define viewer: [user,group#member]
+          type document
+            relations
+              define parent: [folder]
+              define viewer: viewer from parent
+          condition ts_less_than(ts: timestamp) {
+            ts < timestamp("2023-10-11T10:00:00.000Z")
+          }
+        tuples:
+          - user: user:anne
+            relation: member
+            object: group:1
+            condition:
+              name: ts_less_than
+          - user: user:anne
+            relation: member
+            object: group:2
+            condition:
+              name: ts_less_than
+          - user: user:bob
+            relation: member
+            object: group:2
+            condition:
+              name: ts_less_than
+          - user: user:charlie
+            relation: member
+            object: group:1
+            condition:
+              name: ts_less_than
+          - user: group:1#member
+            relation: viewer
+            object: folder:a
+          - user: group:2#member
+            relation: viewer
+            object: folder:a
+          - user: user:daemon
+            relation: viewer
+            object: folder:a
+          - user: folder:a
+            relation: parent
+            object: document:a
+          - user: user:elle
+            relation: member
+            object: group:3
+            condition:
+              name: ts_less_than
+          - user: user:*
+            relation: member
+            object: group:public
+          - user: group:public#member
+            relation: viewer
+            object: folder:public
+          - user: folder:public
+            relation: parent
+            object: document:public
+        checkAssertions:
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: document:a
+            context:
+              "ts": "2023-10-11T09:00:00.000Z"
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: document:a
+            context:
+              "ts": "2023-10-11T11:00:00.000Z"
+            expectation: false
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: folder:b
+            context:
+              "ts": "2023-10-11T09:00:00.000Z"
+            expectation: false
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: document:public
+            expectation: true
+          - tuple:
+              user: user:bob
+              relation: viewer
+              object: document:a
+            context:
+              "ts": "2023-10-11T09:00:00.000Z"
+            expectation: true
+          - tuple:
+              user: user:bob
+              relation: viewer
+              object: document:a
+            context:
+              "ts": "2023-10-11T11:00:00.000Z"
+            expectation: false
+          - tuple:
+              user: user:bob
+              relation: viewer
+              object: document:public
+            expectation: true
+          - tuple:
+              user: user:charlie
+              relation: viewer
+              object: document:a
+            context:
+              "ts": "2023-10-11T09:00:00.000Z"
+            expectation: true
+          - tuple:
+              user: user:charlie
+              relation: viewer
+              object: document:public
+            expectation: true
+          - tuple:
+              user: user:daemon
+              relation: viewer
+              object: document:a
+            expectation: true
+          - tuple:
+              user: user:daemon
+              relation: viewer
+              object: document:public
+            expectation: true
+          - tuple:
+              user: user:elle
+              relation: viewer
+              object: document:a
+            context:
+              "ts": "2023-10-11T09:00:00.000Z"
+            expectation: false
+          - tuple:
+              user: user:elle
+              relation: viewer
+              object: document:public
+            context:
+              "ts": "2023-10-11T09:00:00.000Z"
+            expectation: true
+        listObjectsAssertions:
+          - request:
+              user: user:anne
+              type: document
+              relation: viewer
+            context:
+              "ts": "2023-10-11T09:00:00.000Z"
+            expectation:
+              - document:a
+              - document:public
+          - request:
+              user: user:anne
+              type: document
+              relation: viewer
+            context:
+              "ts": "2023-10-11T11:00:00.000Z"
+            expectation:
+              - document:public
+          - request:
+              user: user:bob
+              type: document
+              relation: viewer
+            context:
+              "ts": "2023-10-11T09:00:00.000Z"
+            expectation:
+              - document:a
+              - document:public
+          - request:
+              user: user:bob
+              type: document
+              relation: viewer
+            context:
+              "ts": "2023-10-11T11:00:00.000Z"
+            expectation:
+              - document:public
+          - request:
+              user: user:charlie
+              type: document
+              relation: viewer
+            context:
+              "ts": "2023-10-11T09:00:00.000Z"
+            expectation:
+              - document:a
+              - document:public
+          - request:
+              user: user:daemon
+              type: document
+              relation: viewer
+            expectation:
+              - document:a
+              - document:public
+          - request:
+              user: user:elle
+              type: document
+              relation: viewer
+            context:
+              "ts": "2023-10-11T09:00:00.000Z"
+            expectation:
+              - document:public
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:a
+              relation: viewer
+            context:
+              "ts": "2023-10-11T09:00:00.000Z"
+            expectation:
+              - user:anne
+              - user:bob
+              - user:charlie
+              - user:daemon
+          - request:
+              filters:
+                - user
+              object: folder:a
+              relation: viewer
+            context:
+              "ts": "2023-10-11T09:00:00.000Z"
+            expectation:
+              - user:anne
+              - user:bob
+              - user:charlie
+              - user:daemon
+          - request:
+              filters:
+                - user
+              object: document:public
+              relation: viewer
+            expectation:
+              - user:*
+  - name: ttu_mix_with_userset_member_condition_mixed_parents
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type group1
+            relations
+              define member: [user with ts_less_than, user:*]
+          type group2
+            relations
+              define member: [user, user:*]
+          type folder
+            relations
+              define viewer: [user, group1#member, group2#member]
+          type document
+            relations
+              define parent: [folder]
+              define viewer: viewer from parent
+          condition ts_less_than(ts: timestamp) {
+            ts < timestamp("2023-10-11T10:00:00.000Z")
+          }
+        tuples:
+          - user: user:anne
+            relation: member
+            object: group1:1
+            condition:
+              name: ts_less_than
+          - user: user:anne
+            relation: member
+            object: group2:1
+          - user: user:bob
+            relation: member
+            object: group1:1
+            condition:
+              name: ts_less_than
+          - user: user:charlie
+            relation: member
+            object: group2:1
+          - user: group1:1#member
+            relation: viewer
+            object: folder:a
+          - user: group2:1#member
+            relation: viewer
+            object: folder:a
+          - user: user:daemon
+            relation: viewer
+            object: folder:a
+          - user: folder:a
+            relation: parent
+            object: document:a
+          - user: user:elle
+            relation: member
+            object: group2:3
+          - user: user:*
+            relation: member
+            object: group2:public
+          - user: group2:public#member
+            relation: viewer
+            object: folder:public
+          - user: folder:public
+            relation: parent
+            object: document:public
+        checkAssertions:
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: document:a
+            context:
+              "ts": "2023-10-11T09:00:00.000Z"
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: document:a
+            context:
+              "ts": "2023-10-11T11:00.000Z"
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: document:public
+            expectation: true
+          - tuple:
+              user: user:bob
+              relation: viewer
+              object: document:a
+            context:
+              "ts": "2023-10-11T09:00:00.000Z"
+            expectation: true
+          - tuple:
+              user: user:bob
+              relation: viewer
+              object: document:a
+            context:
+              "ts": "2023-10-11T11:00:00.000Z"
+            expectation: false
+          - tuple:
+              user: user:bob
+              relation: viewer
+              object: document:public
+            expectation: true
+          - tuple:
+              user: user:charlie
+              relation: viewer
+              object: document:a
+            expectation: true
+          - tuple:
+              user: user:charlie
+              relation: viewer
+              object: document:a
+            context:
+              "ts": "2023-10-11T09:00:00.000Z"
+            expectation: true
+          - tuple:
+              user: user:charlie
+              relation: viewer
+              object: document:a
+            context:
+              "ts": "2023-10-11T11:00:00.000Z"
+            expectation: true
+          - tuple:
+              user: user:charlie
+              relation: viewer
+              object: document:public
+            expectation: true
+          - tuple:
+              user: user:daemon
+              relation: viewer
+              object: document:a
+            expectation: true
+          - tuple:
+              user: user:daemon
+              relation: viewer
+              object: document:public
+            expectation: true
+          - tuple:
+              user: user:elle
+              relation: viewer
+              object: document:a
+            expectation: false
+          - tuple:
+              user: user:elle
+              relation: viewer
+              object: document:public
+            expectation: true
+        listObjectsAssertions:
+          - request:
+              user: user:anne
+              type: document
+              relation: viewer
+            context:
+              "ts": "2023-10-11T09:00:00.000Z"
+            expectation:
+              - document:a
+              - document:public
+          - request:
+              user: user:anne
+              type: document
+              relation: viewer
+            context:
+              "ts": "2023-10-11T11:00:00.000Z"
+            expectation:
+              - document:a
+              - document:public
+          - request:
+              user: user:bob
+              type: document
+              relation: viewer
+            context:
+              "ts": "2023-10-11T09:00:00.000Z"
+            expectation:
+              - document:a
+              - document:public
+          - request:
+              user: user:bob
+              type: document
+              relation: viewer
+            context:
+              "ts": "2023-10-11T11:00:00.000Z"
+            expectation:
+              - document:public
+          - request:
+              user: user:charlie
+              type: document
+              relation: viewer
+            context:
+              "ts": "2023-10-11T09:00:00.000Z"
+            expectation:
+              - document:a
+              - document:public
+          - request:
+              user: user:charlie
+              type: document
+              relation: viewer
+            context:
+              "ts": "2023-10-11T11:00:00.000Z"
+            expectation:
+              - document:a
+              - document:public
+          - request:
+              user: user:charlie
+              type: document
+              relation: viewer
+            expectation:
+              - document:a
+              - document:public
+          - request:
+              user: user:daemon
+              type: document
+              relation: viewer
+            expectation:
+              - document:a
+              - document:public
+          - request:
+              user: user:elle
+              type: document
+              relation: viewer
+            expectation:
+              - document:public
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:a
+              relation: viewer
+            context:
+              "ts": "2023-10-11T09:00:00.000Z"
+            expectation:
+              - user:anne
+              - user:bob
+              - user:charlie
+              - user:daemon
+          - request:
+              filters:
+                - user
+              object: document:a
+              relation: viewer
+            context:
+              "ts": "2023-10-11T11:00:00.000Z"
+            expectation:
+              - user:anne
+              - user:charlie
+              - user:daemon
+          - request:
+              filters:
+                - user
+              object: document:public
+              relation: viewer
+            expectation:
+              - user:*
+  - name: ttu_mixed_parents_public_wildcard
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type group1
+            relations
+              define member: [user with ts_less_than, user:* with ts_less_than]
+          type group2
+            relations
+              define member: [user]
+          type folder
+            relations
+              define viewer: [user, group1#member, group2#member]
+          type document
+            relations
+              define parent: [folder]
+              define viewer: viewer from parent
+          condition ts_less_than(ts: timestamp) {
+            ts < timestamp("2023-10-11T10:00:00.000Z")
+          }
+        tuples:
+          - user: user:anne
+            relation: member
+            object: group1:1
+            condition:
+              name: ts_less_than
+          - user: user:anne
+            relation: member
+            object: group2:1
+          - user: user:bob
+            relation: member
+            object: group1:1
+            condition:
+              name: ts_less_than
+          - user: user:charlie
+            relation: member
+            object: group2:1
+          - user: group1:1#member
+            relation: viewer
+            object: folder:a
+          - user: group2:1#member
+            relation: viewer
+            object: folder:a
+          - user: user:daemon
+            relation: viewer
+            object: folder:a
+          - user: folder:a
+            relation: parent
+            object: document:a
+          - user: user:elle
+            relation: member
+            object: group2:3
+          - user: user:*
+            relation: member
+            object: group1:public
+            condition:
+              name: ts_less_than
+          - user: group1:public#member
+            relation: viewer
+            object: folder:public
+          - user: folder:public
+            relation: parent
+            object: document:public
+        checkAssertions:
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: document:a
+            context:
+              "ts": "2023-10-11T09:00:00.000Z"
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: document:a
+            context:
+              "ts": "2023-10-11T11:00:00.000Z"
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: document:public
+            context:
+              "ts": "2023-10-11T09:00:00.000Z"
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: document:public
+            context:
+              "ts": "2023-10-11T11:00:00.000Z"
+            expectation: false
+          - tuple:
+              user: user:bob
+              relation: viewer
+              object: document:a
+            context:
+              "ts": "2023-10-11T09:00:00.000Z"
+            expectation: true
+          - tuple:
+              user: user:bob
+              relation: viewer
+              object: document:a
+            context:
+              "ts": "2023-10-11T11:00:00.000Z"
+            expectation: false
+          - tuple:
+              user: user:bob
+              relation: viewer
+              object: document:public
+            context:
+              "ts": "2023-10-11T09:00:00.000Z"
+            expectation: true
+          - tuple:
+              user: user:bob
+              relation: viewer
+              object: document:public
+            context:
+              "ts": "2023-10-11T11:00:00.000Z"
+            expectation: false
+          - tuple:
+              user: user:charlie
+              relation: viewer
+              object: document:a
+            expectation: true
+          - tuple:
+              user: user:charlie
+              relation: viewer
+              object: document:a
+            context:
+              "ts": "2023-10-11T09:00:00.000Z"
+            expectation: true
+          - tuple:
+              user: user:charlie
+              relation: viewer
+              object: document:a
+            context:
+              "ts": "2023-10-11T11:00:00.000Z"
+            expectation: true
+          - tuple:
+              user: user:charlie
+              relation: viewer
+              object: document:public
+            context:
+              "ts": "2023-10-11T09:00:00.000Z"
+            expectation: true
+          - tuple:
+              user: user:charlie
+              relation: viewer
+              object: document:public
+            context:
+              "ts": "2023-10-11T11:00:00.000Z"
+            expectation: false
+          - tuple:
+              user: user:daemon
+              relation: viewer
+              object: document:a
+            expectation: true
+          - tuple:
+              user: user:daemon
+              relation: viewer
+              object: document:public
+            context:
+              "ts": "2023-10-11T09:00:00.000Z"
+            expectation: true
+          - tuple:
+              user: user:elle
+              relation: viewer
+              object: document:a
+            context:
+              "ts": "2023-10-11T09:00:00.000Z"
+            expectation: false
+          - tuple:
+              user: user:elle
+              relation: viewer
+              object: document:public
+            context:
+              "ts": "2023-10-11T09:00:00.000Z"
+            expectation: true
+        listObjectsAssertions:
+          - request:
+              user: user:anne
+              type: document
+              relation: viewer
+            context:
+              "ts": "2023-10-11T09:00:00.000Z"
+            expectation:
+              - document:a
+              - document:public
+          - request:
+              user: user:anne
+              type: document
+              relation: viewer
+            context:
+              "ts": "2023-10-11T11:00:00.000Z"
+            expectation:
+              - document:a
+          - request:
+              user: user:bob
+              type: document
+              relation: viewer
+            context:
+              "ts": "2023-10-11T09:00:00.000Z"
+            expectation:
+              - document:a
+              - document:public
+          - request:
+              user: user:bob
+              type: document
+              relation: viewer
+            context:
+              "ts": "2023-10-11T11:00:00.000Z"
+            expectation:
+          - request:
+              user: user:charlie
+              type: document
+              relation: viewer
+            context:
+              "ts": "2023-10-11T09:00:00.000Z"
+            expectation:
+              - document:a
+              - document:public
+          - request:
+              user: user:charlie
+              type: document
+              relation: viewer
+            context:
+              "ts": "2023-10-11T11:00:00.000Z"
+            expectation:
+              - document:a
+          - request:
+              user: user:daemon
+              type: document
+              relation: viewer
+            context:
+              "ts": "2023-10-11T09:00:00.000Z"
+            expectation:
+              - document:a
+              - document:public
+          - request:
+              user: user:elle
+              type: document
+              relation: viewer
+            context:
+              "ts": "2023-10-11T09:00:00.000Z"
+            expectation:
+              - document:public
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:a
+              relation: viewer
+            context:
+              "ts": "2023-10-11T09:00:00.000Z"
+            expectation:
+              - user:anne
+              - user:bob
+              - user:charlie
+              - user:daemon
+          - request:
+              filters:
+                - user
+              object: document:a
+              relation: viewer
+            context:
+              "ts": "2023-10-11T11:00:00.000Z"
+            expectation:
+              - user:anne
+              - user:charlie
+              - user:daemon
+          - request:
+              filters:
+                - user
+              object: document:public
+              relation: viewer
+            context:
+              "ts": "2023-10-11T09:00:00.000Z"
+            expectation:
+              - user:*
+  - name: wildcard_with_condition
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type group1
+            relations
+              define member: [user, user:*]
+              define other: [user with ts_less_than]
+          condition ts_less_than(ts: timestamp) {
+            ts < timestamp("2023-10-11T10:00:00.000Z")
+          }
+        tuples:
+          - user: user:*
+            relation: member
+            object: group1:1
+        checkAssertions:
+          - tuple:
+              user: user:anne
+              relation: member
+              object: group1:1
+            expectation: true
+      - model: |
+          model
+            schema 1.1
+          type user
+          type group1
+            relations
+              define member: [user, user:* with ts_less_than]
+              define other: [user with ts_less_than]
+          condition ts_less_than(ts: timestamp) {
+            ts < timestamp("2023-10-11T10:00:00.000Z")
+          }
+        tuples:
+          - user: user:*
+            relation: member
+            object: group1:2
+            condition:
+              name: ts_less_than
+        checkAssertions:
+          - tuple:
+              user: user:anne
+              relation: member
+              object: group1:1
+            context:
+              "ts": "2023-10-11T09:00:00.000Z"
+            expectation: false
+          - tuple:
+              user: user:anne
+              relation: member
+              object: group1:2
+            context:
+              "ts": "2023-10-11T09:00:00.000Z"
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: member
+              object: group1:2
+            context:
+              "ts": "2023-10-11T11:00:00.000Z"
+            expectation: false

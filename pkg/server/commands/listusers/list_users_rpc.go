@@ -8,39 +8,50 @@ import (
 	"sync/atomic"
 	"time"
 
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"github.com/sourcegraph/conc/pool"
+	"github.com/sourcegraph/conc/panics"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
-	serverconfig "github.com/openfga/openfga/internal/server/config"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
-	"github.com/openfga/openfga/pkg/telemetry"
-
-	"github.com/openfga/openfga/pkg/logger"
-
-	"github.com/openfga/openfga/pkg/storage/storagewrappers"
-
+	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/condition/eval"
+	openfgaErrors "github.com/openfga/openfga/internal/errors"
 	"github.com/openfga/openfga/internal/graph"
+	"github.com/openfga/openfga/internal/throttler/threshold"
+	"github.com/openfga/openfga/internal/utils/apimethod"
 	"github.com/openfga/openfga/internal/validation"
+	"github.com/openfga/openfga/pkg/logger"
+	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/storage/storagewrappers"
+	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
-var tracer = otel.Tracer("openfga/pkg/server/commands/list_users")
+var (
+	tracer   = otel.Tracer("openfga/pkg/server/commands/list_users")
+	ErrPanic = errors.New("panic captured")
+)
 
 type listUsersQuery struct {
-	logger                  logger.Logger
-	ds                      storage.RelationshipTupleReader
-	typesystemResolver      typesystem.TypesystemResolverFunc
-	resolveNodeBreadthLimit uint32
-	resolveNodeLimit        uint32
-	maxResults              uint32
-	maxConcurrentReads      uint32
-	deadline                time.Duration
+	logger                     logger.Logger
+	datastore                  *storagewrappers.RequestStorageWrapper
+	resolveNodeBreadthLimit    uint32
+	resolveNodeLimit           uint32
+	maxResults                 uint32
+	maxConcurrentReads         uint32
+	deadline                   time.Duration
+	dispatchThrottlerConfig    threshold.Config
+	wasDispatchThrottled       *atomic.Bool
+	wasDatastoreThrottled      *atomic.Bool
+	expandDirectDispatch       expandDirectDispatchHandler
+	datastoreThrottlingEnabled bool
+	datastoreThrottleThreshold int
+	datastoreThrottleDuration  time.Duration
 }
 
 type expandResponse struct {
@@ -53,6 +64,8 @@ type expandResponse struct {
 // A user/subject either does or does not have a relationship, which represents that
 // they either explicitly do have a relationship or explicitly do not.
 type userRelationshipStatus int
+
+type expandDirectDispatchHandler func(ctx context.Context, listUsersQuery *listUsersQuery, req *internalListUsersRequest, userObjectType string, userObjectID string, userRelation string, resp expandResponse, foundUsersChan chan<- foundUser, hasCycle *atomic.Bool) expandResponse
 
 const (
 	HasRelationship userRelationshipStatus = iota
@@ -84,9 +97,9 @@ func WithListUsersQueryLogger(l logger.Logger) ListUsersQueryOption {
 }
 
 // WithListUsersMaxResults see server.WithListUsersMaxResults.
-func WithListUsersMaxResults(max uint32) ListUsersQueryOption {
+func WithListUsersMaxResults(maxResults uint32) ListUsersQueryOption {
 	return func(d *listUsersQuery) {
-		d.maxResults = max
+		d.maxResults = maxResults
 	}
 }
 
@@ -118,29 +131,65 @@ func WithListUsersMaxConcurrentReads(limit uint32) ListUsersQueryOption {
 	}
 }
 
-// NewListUsersQuery is not meant to be shared.
-func NewListUsersQuery(ds storage.RelationshipTupleReader, opts ...ListUsersQueryOption) *listUsersQuery {
-	l := &listUsersQuery{
-		logger: logger.NewNoopLogger(),
-		ds:     ds,
-		typesystemResolver: func(ctx context.Context, storeID, modelID string) (*typesystem.TypeSystem, error) {
-			typesys, exists := typesystem.TypesystemFromContext(ctx)
-			if !exists {
-				return nil, fmt.Errorf("typesystem not provided in context")
-			}
+func WithListUsersDatastoreThrottler(enabled bool, threshold int, duration time.Duration) ListUsersQueryOption {
+	return func(d *listUsersQuery) {
+		d.datastoreThrottlingEnabled = enabled
+		d.datastoreThrottleThreshold = threshold
+		d.datastoreThrottleDuration = duration
+	}
+}
 
-			return typesys, nil
-		},
+func (l *listUsersQuery) throttle(ctx context.Context, currentNumDispatch uint32) {
+	span := trace.SpanFromContext(ctx)
+
+	shouldThrottle := threshold.ShouldThrottle(
+		ctx,
+		currentNumDispatch,
+		l.dispatchThrottlerConfig.Threshold,
+		l.dispatchThrottlerConfig.MaxThreshold,
+	)
+
+	span.SetAttributes(
+		attribute.Int("dispatch_count", int(currentNumDispatch)),
+		attribute.Bool("is_throttled", shouldThrottle))
+
+	if shouldThrottle {
+		l.wasDispatchThrottled.Store(true)
+		l.dispatchThrottlerConfig.Throttler.Throttle(ctx)
+	}
+}
+
+func WithDispatchThrottlerConfig(config threshold.Config) ListUsersQueryOption {
+	return func(d *listUsersQuery) {
+		d.dispatchThrottlerConfig = config
+	}
+}
+
+// TODO accept ListUsersRequest instead of contextualTuples.
+func NewListUsersQuery(ds storage.RelationshipTupleReader, contextualTuples []*openfgav1.TupleKey, opts ...ListUsersQueryOption) *listUsersQuery {
+	l := &listUsersQuery{
+		logger:                  logger.NewNoopLogger(),
 		resolveNodeBreadthLimit: serverconfig.DefaultResolveNodeBreadthLimit,
 		resolveNodeLimit:        serverconfig.DefaultResolveNodeLimit,
 		deadline:                serverconfig.DefaultListUsersDeadline,
 		maxResults:              serverconfig.DefaultListUsersMaxResults,
 		maxConcurrentReads:      serverconfig.DefaultMaxConcurrentReadsForListUsers,
+		wasDispatchThrottled:    new(atomic.Bool),
+		wasDatastoreThrottled:   new(atomic.Bool),
+		expandDirectDispatch:    expandDirectDispatch,
 	}
 
 	for _, opt := range opts {
 		opt(l)
 	}
+
+	l.datastore = storagewrappers.NewRequestStorageWrapper(ds, contextualTuples, &storagewrappers.Operation{
+		Method:            apimethod.ListUsers,
+		Concurrency:       l.maxConcurrentReads,
+		ThrottlingEnabled: l.datastoreThrottlingEnabled,
+		ThrottleThreshold: l.datastoreThrottleThreshold,
+		ThrottleDuration:  l.datastoreThrottleDuration,
+	})
 
 	return l
 }
@@ -150,7 +199,9 @@ func (l *listUsersQuery) ListUsers(
 	ctx context.Context,
 	req *openfgav1.ListUsersRequest,
 ) (*listUsersResponse, error) {
-	ctx, span := tracer.Start(ctx, "ListUsers")
+	ctx, span := tracer.Start(ctx, "ListUsers", trace.WithAttributes(
+		attribute.String("store_id", req.GetStoreId()),
+	))
 	defer span.End()
 
 	cancellableCtx, cancelCtx := context.WithCancel(ctx)
@@ -160,19 +211,15 @@ func (l *listUsersQuery) ListUsers(
 	}
 	defer cancelCtx()
 
-	l.ds = storagewrappers.NewCombinedTupleReader(
-		storagewrappers.NewBoundedConcurrencyTupleReader(l.ds, l.maxConcurrentReads),
-		req.GetContextualTuples(),
-	)
 	typesys, ok := typesystem.TypesystemFromContext(cancellableCtx)
 	if !ok {
-		return nil, fmt.Errorf("typesystem missing in context")
+		return nil, fmt.Errorf("%w: typesystem missing in context", openfgaErrors.ErrUnknown)
 	}
 
 	userFilter := req.GetUserFilters()[0]
-	isReflexiveUserset := userFilter.GetType() == req.GetObject().GetType() && userFilter.GetRelation() == req.GetRelation()
+	userset := tuple.ToObjectRelationString(tuple.ObjectKey(req.GetObject()), req.GetRelation())
 
-	if !isReflexiveUserset {
+	if !tuple.UsersetMatchTypeAndRelation(userset, userFilter.GetRelation(), userFilter.GetType()) {
 		hasPossibleEdges, err := doesHavePossibleEdges(typesys, req)
 		if err != nil {
 			return nil, err
@@ -182,14 +229,14 @@ func (l *listUsersQuery) ListUsers(
 			return &listUsersResponse{
 				Users: []*openfgav1.User{},
 				Metadata: listUsersResponseMetadata{
-					DatastoreQueryCount: 0,
-					DispatchCounter:     new(atomic.Uint32),
+					DispatchCounter:       new(atomic.Uint32),
+					WasDispatchThrottled:  new(atomic.Bool),
+					WasDatastoreThrottled: new(atomic.Bool),
 				},
 			}, nil
 		}
 	}
 
-	datastoreQueryCount := atomic.Uint32{}
 	dispatchCount := atomic.Uint32{}
 
 	foundUsersCh := l.buildResultsChannel()
@@ -214,25 +261,35 @@ func (l *listUsersQuery) ListUsers(
 	}()
 
 	go func() {
-		internalRequest := fromListUsersRequest(req, &datastoreQueryCount, &dispatchCount)
+		internalRequest := fromListUsersRequest(req, &dispatchCount)
 		resp := l.expand(cancellableCtx, internalRequest, foundUsersCh)
-		// first send error and then close results channel, to ensure that error takes precedence
 		if resp.err != nil {
 			expandErrCh <- resp.err
 		}
 		close(foundUsersCh)
 	}()
 
+	deadlineExceeded := false
+
 	select {
-	// Note: if all cases can proceed, one will be selected at random
-	case err := <-expandErrCh:
-		telemetry.TraceError(span, err)
-		return nil, err
 	case <-doneWithFoundUsersCh:
 		break
 	case <-cancellableCtx.Done():
+		deadlineExceeded = true
 		// to avoid a race on the 'foundUsersUnique' map below, wait for the range over the channel to close
 		<-doneWithFoundUsersCh
+		break
+	}
+
+	select {
+	case err := <-expandErrCh:
+		if deadlineExceeded || errors.Is(err, context.DeadlineExceeded) {
+			// We skip the error because we want to send at least partial results to the user (but we should probably set response headers)
+			break
+		}
+		telemetry.TraceError(span, err)
+		return nil, err
+	default:
 		break
 	}
 
@@ -249,11 +306,16 @@ func (l *listUsersQuery) ListUsers(
 
 	span.SetAttributes(attribute.Int("result_count", len(foundUsers)))
 
+	dsMeta := l.datastore.GetMetadata()
+	l.wasDatastoreThrottled.Store(dsMeta.WasThrottled)
 	return &listUsersResponse{
 		Users: foundUsers,
 		Metadata: listUsersResponseMetadata{
-			DatastoreQueryCount: datastoreQueryCount.Load(),
-			DispatchCounter:     &dispatchCount,
+			DatastoreQueryCount:   dsMeta.DatastoreQueryCount,
+			DatastoreItemCount:    dsMeta.DatastoreItemCount,
+			DispatchCounter:       &dispatchCount,
+			WasDispatchThrottled:  l.wasDispatchThrottled,
+			WasDatastoreThrottled: l.wasDatastoreThrottled,
 		},
 	}, nil
 }
@@ -279,7 +341,11 @@ func (l *listUsersQuery) dispatch(
 	req *internalListUsersRequest,
 	foundUsersChan chan<- foundUser,
 ) expandResponse {
-	req.dispatchCount.Add(1)
+	newcount := req.dispatchCount.Add(1)
+	if l.dispatchThrottlerConfig.Enabled {
+		l.throttle(ctx, newcount)
+	}
+
 	return l.expand(ctx, req, foundUsersChan)
 }
 
@@ -311,7 +377,7 @@ func (l *listUsersQuery) expand(
 
 	for _, userFilter := range req.GetUserFilters() {
 		if reqObjectType == userFilter.GetType() && reqRelation == userFilter.GetRelation() {
-			trySendResult(ctx, foundUser{
+			concurrency.TrySendThroughChannel(ctx, foundUser{
 				user: &openfgav1.User{
 					User: &openfgav1.User_Userset{
 						Userset: &openfgav1.UsersetUser{
@@ -325,18 +391,17 @@ func (l *listUsersQuery) expand(
 		}
 	}
 
-	typesys, err := l.typesystemResolver(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
-	if err != nil {
-		return expandResponse{
-			err: err,
-		}
-	}
+	typesys, _ := typesystem.TypesystemFromContext(ctx)
 
 	targetObjectType := req.GetObject().GetType()
 	targetRelation := req.GetRelation()
 
 	relation, err := typesys.GetRelation(targetObjectType, targetRelation)
 	if err != nil {
+		var relationUndefinedError *typesystem.RelationUndefinedError
+		if errors.As(err, &relationUndefinedError) {
+			return expandResponse{}
+		}
 		return expandResponse{
 			err: err,
 		}
@@ -392,17 +457,17 @@ func (l *listUsersQuery) expandDirect(
 ) expandResponse {
 	ctx, span := tracer.Start(ctx, "expandDirect")
 	defer span.End()
-	typesys, err := l.typesystemResolver(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
-	if err != nil {
-		return expandResponse{
-			err: err,
-		}
-	}
+	typesys, _ := typesystem.TypesystemFromContext(ctx)
 
-	iter, err := l.ds.Read(ctx, req.GetStoreId(), &openfgav1.TupleKey{
+	opts := storage.ReadOptions{
+		Consistency: storage.ConsistencyOptions{
+			Preference: req.GetConsistency(),
+		},
+	}
+	iter, err := l.datastore.Read(ctx, req.GetStoreId(), storage.ReadFilter{
 		Object:   tuple.ObjectKey(req.GetObject()),
 		Relation: req.GetRelation(),
-	})
+	}, opts)
 	if err != nil {
 		telemetry.TraceError(span, err)
 		return expandResponse{
@@ -410,7 +475,6 @@ func (l *listUsersQuery) expandDirect(
 		}
 	}
 	defer iter.Stop()
-	req.datastoreQueryCount.Add(1)
 
 	filteredIter := storage.NewFilteredTupleKeyIterator(
 		storage.NewTupleKeyIteratorFromTupleIterator(iter),
@@ -418,9 +482,7 @@ func (l *listUsersQuery) expandDirect(
 	)
 	defer filteredIter.Stop()
 
-	pool := pool.New().WithContext(ctx)
-	pool.WithCancelOnError()
-	pool.WithMaxGoroutines(int(l.resolveNodeBreadthLimit))
+	pool := concurrency.NewPool(ctx, int(l.resolveNodeBreadthLimit))
 
 	var errs error
 	var hasCycle atomic.Bool
@@ -435,22 +497,17 @@ LoopOnIterator:
 			break LoopOnIterator
 		}
 
-		condEvalResult, err := eval.EvaluateTupleCondition(ctx, tupleKey, typesys, req.GetContext())
+		cond, _ := typesys.GetCondition(tupleKey.GetCondition().GetName())
+		condMet, err := eval.EvaluateTupleCondition(ctx, tupleKey, cond, req.Context)
 		if err != nil {
 			errs = errors.Join(errs, err)
-			break LoopOnIterator
-		}
-
-		if len(condEvalResult.MissingParameters) > 0 {
-			err := condition.NewEvaluationError(
-				tupleKey.GetCondition().GetName(),
-				fmt.Errorf("context is missing parameters '%v'", condEvalResult.MissingParameters),
-			)
+			if !errors.Is(err, condition.ErrEvaluationFailed) {
+				break LoopOnIterator
+			}
 			telemetry.TraceError(span, err)
-			errs = errors.Join(errs, err)
 		}
 
-		if !condEvalResult.ConditionMet {
+		if !condMet {
 			continue
 		}
 
@@ -463,7 +520,7 @@ LoopOnIterator:
 				if f.GetType() == userObjectType {
 					user := tuple.StringToUserProto(tuple.BuildObject(userObjectType, userObjectID))
 
-					trySendResult(ctx, foundUser{
+					concurrency.TrySendThroughChannel(ctx, foundUser{
 						user: user,
 					}, foundUsersChan)
 				}
@@ -472,12 +529,12 @@ LoopOnIterator:
 		}
 
 		pool.Go(func(ctx context.Context) error {
-			rewrittenReq := req.clone()
-			rewrittenReq.Object = &openfgav1.Object{Type: userObjectType, Id: userObjectID}
-			rewrittenReq.Relation = userRelation
-			resp := l.dispatch(ctx, rewrittenReq, foundUsersChan)
-			if resp.hasCycle {
-				hasCycle.Store(true)
+			var resp expandResponse
+			recoveredError := panics.Try(func() {
+				resp = l.expandDirectDispatch(ctx, l, req, userObjectType, userObjectID, userRelation, resp, foundUsersChan, &hasCycle)
+			})
+			if recoveredError != nil {
+				resp = panicExpanseResponse(recoveredError)
 			}
 			return resp.err
 		})
@@ -493,6 +550,17 @@ LoopOnIterator:
 	}
 }
 
+func expandDirectDispatch(ctx context.Context, l *listUsersQuery, req *internalListUsersRequest, userObjectType string, userObjectID string, userRelation string, resp expandResponse, foundUsersChan chan<- foundUser, hasCycle *atomic.Bool) expandResponse {
+	rewrittenReq := req.clone()
+	rewrittenReq.Object = &openfgav1.Object{Type: userObjectType, Id: userObjectID}
+	rewrittenReq.Relation = userRelation
+	resp = l.dispatch(ctx, rewrittenReq, foundUsersChan)
+	if resp.hasCycle {
+		hasCycle.Store(true)
+	}
+	return resp
+}
+
 func (l *listUsersQuery) expandIntersection(
 	ctx context.Context,
 	req *internalListUsersRequest,
@@ -501,15 +569,11 @@ func (l *listUsersQuery) expandIntersection(
 ) expandResponse {
 	ctx, span := tracer.Start(ctx, "expandIntersection")
 	defer span.End()
-	pool := pool.New().WithContext(ctx)
-	pool.WithCancelOnError()
-	pool.WithMaxGoroutines(int(l.resolveNodeBreadthLimit))
+	pool := concurrency.NewPool(ctx, int(l.resolveNodeBreadthLimit))
 
 	childOperands := rewrite.Intersection.GetChild()
 	intersectionFoundUsersChans := make([]chan foundUser, len(childOperands))
 	for i, rewrite := range childOperands {
-		i := i
-		rewrite := rewrite
 		intersectionFoundUsersChans[i] = make(chan foundUser, 1)
 		pool.Go(func(ctx context.Context) error {
 			resp := l.expandRewrite(ctx, req, rewrite, intersectionFoundUsersChans[i])
@@ -590,7 +654,7 @@ func (l *listUsersQuery) expandIntersection(
 				user:          tuple.StringToUserProto(key),
 				excludedUsers: excludedUsers,
 			}
-			trySendResult(ctx, fu, foundUsersChan)
+			concurrency.TrySendThroughChannel(ctx, fu, foundUsersChan)
 		}
 	}
 
@@ -607,15 +671,11 @@ func (l *listUsersQuery) expandUnion(
 ) expandResponse {
 	ctx, span := tracer.Start(ctx, "expandUnion")
 	defer span.End()
-	pool := pool.New().WithContext(ctx)
-	pool.WithCancelOnError()
-	pool.WithMaxGoroutines(int(l.resolveNodeBreadthLimit))
+	pool := concurrency.NewPool(ctx, int(l.resolveNodeBreadthLimit))
 
 	childOperands := rewrite.Union.GetChild()
 	unionFoundUsersChans := make([]chan foundUser, len(childOperands))
 	for i, rewrite := range childOperands {
-		i := i
-		rewrite := rewrite
 		unionFoundUsersChans[i] = make(chan foundUser, 1)
 		pool.Go(func(ctx context.Context) error {
 			resp := l.expandRewrite(ctx, req, rewrite, unionFoundUsersChans[i])
@@ -676,7 +736,7 @@ func (l *listUsersQuery) expandUnion(
 			user:          tuple.StringToUserProto(key),
 			excludedUsers: excludedUsers,
 		}
-		trySendResult(ctx, fu, foundUsersChan)
+		concurrency.TrySendThroughChannel(ctx, fu, foundUsersChan)
 	}
 
 	return expandResponse{
@@ -747,7 +807,7 @@ func (l *listUsersQuery) expandExclusion(
 		switch {
 		case baseWildcardExists:
 			if !userIsSubtracted && !wildcardSubtracted {
-				trySendResult(ctx, foundUser{
+				concurrency.TrySendThroughChannel(ctx, foundUser{
 					user: tuple.StringToUserProto(userKey),
 				}, foundUsersChan)
 			}
@@ -755,7 +815,7 @@ func (l *listUsersQuery) expandExclusion(
 			for subtractedUserKey, subtractedFu := range subtractFoundUsersMap {
 				if tuple.IsTypedWildcard(subtractedUserKey) {
 					if !userIsSubtracted {
-						trySendResult(ctx, foundUser{
+						concurrency.TrySendThroughChannel(ctx, foundUser{
 							user:               tuple.StringToUserProto(userKey),
 							relationshipStatus: NoRelationship,
 						}, foundUsersChan)
@@ -764,7 +824,7 @@ func (l *listUsersQuery) expandExclusion(
 				}
 
 				if subtractedFu.relationshipStatus == NoRelationship {
-					trySendResult(ctx, foundUser{
+					concurrency.TrySendThroughChannel(ctx, foundUser{
 						user:               tuple.StringToUserProto(subtractedUserKey),
 						relationshipStatus: HasRelationship,
 					}, foundUsersChan)
@@ -773,7 +833,7 @@ func (l *listUsersQuery) expandExclusion(
 				// a found user under the subtracted branch causes the subtracted user to have a negated relationship with respect
 				// to the base relation and is excluded since a wildcard is contained under the base branch.
 				if subtractedFu.relationshipStatus == HasRelationship {
-					trySendResult(ctx, foundUser{
+					concurrency.TrySendThroughChannel(ctx, foundUser{
 						user:               tuple.StringToUserProto(subtractedUserKey),
 						relationshipStatus: NoRelationship,
 						excludedUsers: []*openfgav1.User{
@@ -784,21 +844,21 @@ func (l *listUsersQuery) expandExclusion(
 			}
 		case subtractWildcardExists, userIsSubtracted:
 			if subtractedUser.relationshipStatus == HasRelationship {
-				trySendResult(ctx, foundUser{
+				concurrency.TrySendThroughChannel(ctx, foundUser{
 					user:               tuple.StringToUserProto(userKey),
 					relationshipStatus: NoRelationship,
 				}, foundUsersChan)
 			}
 
 			if subtractedUser.relationshipStatus == NoRelationship {
-				trySendResult(ctx, foundUser{
+				concurrency.TrySendThroughChannel(ctx, foundUser{
 					user:               tuple.StringToUserProto(userKey),
 					relationshipStatus: HasRelationship,
 				}, foundUsersChan)
 			}
 
 		default:
-			trySendResult(ctx, foundUser{
+			concurrency.TrySendThroughChannel(ctx, foundUser{
 				user:               tuple.StringToUserProto(userKey),
 				relationshipStatus: fu.relationshipStatus,
 			}, foundUsersChan)
@@ -825,17 +885,17 @@ func (l *listUsersQuery) expandTTU(
 	tuplesetRelation := rewrite.TupleToUserset.GetTupleset().GetRelation()
 	computedRelation := rewrite.TupleToUserset.GetComputedUserset().GetRelation()
 
-	typesys, err := l.typesystemResolver(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
-	if err != nil {
-		return expandResponse{
-			err: err,
-		}
-	}
+	typesys, _ := typesystem.TypesystemFromContext(ctx)
 
-	iter, err := l.ds.Read(ctx, req.GetStoreId(), &openfgav1.TupleKey{
+	opts := storage.ReadOptions{
+		Consistency: storage.ConsistencyOptions{
+			Preference: req.GetConsistency(),
+		},
+	}
+	iter, err := l.datastore.Read(ctx, req.GetStoreId(), storage.ReadFilter{
 		Object:   tuple.ObjectKey(req.GetObject()),
 		Relation: tuplesetRelation,
-	})
+	}, opts)
 	if err != nil {
 		telemetry.TraceError(span, err)
 		return expandResponse{
@@ -843,7 +903,6 @@ func (l *listUsersQuery) expandTTU(
 		}
 	}
 	defer iter.Stop()
-	req.datastoreQueryCount.Add(1)
 
 	filteredIter := storage.NewFilteredTupleKeyIterator(
 		storage.NewTupleKeyIteratorFromTupleIterator(iter),
@@ -851,9 +910,7 @@ func (l *listUsersQuery) expandTTU(
 	)
 	defer filteredIter.Stop()
 
-	pool := pool.New().WithContext(ctx)
-	pool.WithCancelOnError()
-	pool.WithMaxGoroutines(int(l.resolveNodeBreadthLimit))
+	pool := concurrency.NewPool(ctx, int(l.resolveNodeBreadthLimit))
 
 	var errs error
 
@@ -868,22 +925,17 @@ LoopOnIterator:
 			break LoopOnIterator
 		}
 
-		condEvalResult, err := eval.EvaluateTupleCondition(ctx, tupleKey, typesys, req.GetContext())
+		cond, _ := typesys.GetCondition(tupleKey.GetCondition().GetName())
+		condMet, err := eval.EvaluateTupleCondition(ctx, tupleKey, cond, req.Context)
 		if err != nil {
 			errs = errors.Join(errs, err)
-			break LoopOnIterator
-		}
-
-		if len(condEvalResult.MissingParameters) > 0 {
-			err := condition.NewEvaluationError(
-				tupleKey.GetCondition().GetName(),
-				fmt.Errorf("context is missing parameters '%v'", condEvalResult.MissingParameters),
-			)
+			if !errors.Is(err, condition.ErrEvaluationFailed) {
+				break LoopOnIterator
+			}
 			telemetry.TraceError(span, err)
-			errs = errors.Join(errs, err)
 		}
 
-		if !condEvalResult.ConditionMet {
+		if !condMet {
 			continue
 		}
 
@@ -927,11 +979,13 @@ func (l *listUsersQuery) buildResultsChannel() chan foundUser {
 	return foundUsersCh
 }
 
-func trySendResult(ctx context.Context, user foundUser, foundUsersCh chan<- foundUser) {
-	select {
-	case <-ctx.Done():
-		return
-	case foundUsersCh <- user:
-		return
+func panicError(recovered *panics.Recovered) error {
+	return fmt.Errorf("%w: %w", ErrPanic, recovered.AsError())
+}
+
+func panicExpanseResponse(recovered *panics.Recovered) expandResponse {
+	return expandResponse{
+		hasCycle: false,
+		err:      panicError(recovered),
 	}
 }

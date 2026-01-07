@@ -9,24 +9,29 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 )
 
-// errorTupleIterator is a mock iterator that returns error when calling next on the second Next call.
-type errorTupleIterator struct {
-	items          []*openfgav1.Tuple
+var (
+	ErrSimulatedError = fmt.Errorf("simulated errors")
+)
+
+// errorIterator is a mock iterator that returns error when calling next on the second Next call.
+type errorIterator[T any] struct {
+	items          []T
 	originalLength int
 }
 
-func (s *errorTupleIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
+func (s *errorIterator[T]) Next(ctx context.Context) (T, error) {
+	var zero T
 	if ctx.Err() != nil {
-		return nil, ctx.Err()
+		return zero, ctx.Err()
 	}
 
 	// we want to simulate returning error after the first read
 	if len(s.items) != s.originalLength {
-		return nil, fmt.Errorf("simulated errors")
+		return zero, ErrSimulatedError
 	}
 
 	if len(s.items) == 0 {
-		return nil, nil
+		return zero, nil
 	}
 
 	next, rest := s.items[0], s.items[1:]
@@ -35,16 +40,43 @@ func (s *errorTupleIterator) Next(ctx context.Context) (*openfgav1.Tuple, error)
 	return next, nil
 }
 
-func (s *errorTupleIterator) Stop() {}
+func (s *errorIterator[T]) Head(ctx context.Context) (T, error) {
+	var zero T
+	if ctx.Err() != nil {
+		return zero, ctx.Err()
+	}
 
-var _ storage.TupleIterator = (*errorTupleIterator)(nil)
+	// we want to simulate returning error after the first read
+	if len(s.items) != s.originalLength {
+		return zero, ErrSimulatedError
+	}
+
+	if len(s.items) == 0 {
+		return zero, nil
+	}
+
+	return s.items[0], nil
+}
+
+func (s *errorIterator[T]) Stop() {}
+
+var _ storage.TupleIterator = (*errorIterator[*openfgav1.Tuple])(nil)
 
 // NewErrorTupleIterator mocks case where Next will return error after the first Next()
 // This TupleIterator is designed to be used in tests.
 func NewErrorTupleIterator(tuples []*openfgav1.Tuple) storage.TupleIterator {
-	iter := &errorTupleIterator{
+	iter := &errorIterator[*openfgav1.Tuple]{
 		items:          tuples,
 		originalLength: len(tuples),
+	}
+
+	return iter
+}
+
+func NewErrorIterator[T any](items []T) *errorIterator[T] {
+	iter := &errorIterator[T]{
+		items:          items,
+		originalLength: len(items),
 	}
 
 	return iter

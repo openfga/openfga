@@ -7,12 +7,15 @@ import (
 	"time"
 
 	"github.com/oklog/ulid/v2"
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/stretchr/testify/require"
 
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+
 	"github.com/openfga/openfga/internal/graph"
+	"github.com/openfga/openfga/internal/utils/apimethod"
 	"github.com/openfga/openfga/pkg/server/commands/reverseexpand"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	storagetest "github.com/openfga/openfga/pkg/storage/test"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -1309,7 +1312,14 @@ func TestReverseExpand(t *testing.T, ds storage.OpenFGADatastore) {
 				opts = append(opts, reverseexpand.WithResolveNodeLimit(test.resolveNodeLimit))
 			}
 
-			reverseExpandQuery := reverseexpand.NewReverseExpandQuery(ds, typesystem.New(model), opts...)
+			ts, err := typesystem.New(model)
+			require.NoError(t, err)
+
+			ds := storagewrappers.NewRequestStorageWrapper(ds, test.request.ContextualTuples, &storagewrappers.Operation{
+				Method:      apimethod.ListObjects,
+				Concurrency: 30,
+			})
+			reverseExpandQuery := reverseexpand.NewReverseExpandQuery(ds, ts, opts...)
 
 			resultChan := make(chan *reverseexpand.ReverseExpandResult, 100)
 
@@ -1341,7 +1351,6 @@ func TestReverseExpand(t *testing.T, ds storage.OpenFGADatastore) {
 						t.Log("channel closed")
 						if test.expectedError == nil {
 							require.ElementsMatch(t, test.expectedResult, results)
-							require.Equal(t, test.expectedDSQueryCount, *resolutionMetadata.DatastoreQueryCount)
 						} else {
 							require.FailNow(t, "expected an error, got none")
 						}

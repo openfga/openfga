@@ -6,13 +6,13 @@ import (
 	"crypto/rsa"
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
 	"log"
 	"math/big"
 	"net/http"
 	"strings"
+	"time"
 
-	"github.com/golang-jwt/jwt/v4"
+	"github.com/golang-jwt/jwt/v5"
 	"go.uber.org/zap"
 )
 
@@ -59,14 +59,14 @@ func (server *mockOidcServer) NewAliasMockServer(aliasURL string) *mockOidcServe
 }
 
 func createHTTPServer(issuerURL string, publicKey *rsa.PublicKey) *http.Server {
-	port := strings.Split(issuerURL, ":")[2]
+	addr := strings.Split(issuerURL, "http://")[1]
 
 	mockHandler := http.NewServeMux()
 
 	mockHandler.HandleFunc("/.well-known/openid-configuration", func(w http.ResponseWriter, r *http.Request) {
 		err := json.NewEncoder(w).Encode(map[string]string{
 			"issuer":   issuerURL,
-			"jwks_uri": fmt.Sprintf("%s/jwks.json", issuerURL),
+			"jwks_uri": issuerURL + "/jwks.json",
 		})
 		if err != nil {
 			log.Fatalf("failed to json encode the openid configurations: %v", err)
@@ -89,7 +89,7 @@ func createHTTPServer(issuerURL string, publicKey *rsa.PublicKey) *http.Server {
 		}
 	})
 
-	return &http.Server{Addr: ":" + port, Handler: mockHandler}
+	return &http.Server{Addr: addr, Handler: mockHandler}
 }
 
 func (server *mockOidcServer) start() {
@@ -109,9 +109,11 @@ func (server *mockOidcServer) Stop() {
 
 func (server *mockOidcServer) GetToken(audience, subject string) (string, error) {
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.RegisteredClaims{
-		Issuer:   server.issuerURL,
-		Audience: []string{audience},
-		Subject:  subject,
+		Issuer:    server.issuerURL,
+		Audience:  []string{audience},
+		Subject:   subject,
+		IssuedAt:  jwt.NewNumericDate(time.Now()),
+		ExpiresAt: jwt.NewNumericDate(time.Now().Add(10 * time.Second)),
 	})
 	token.Header["kid"] = kidHeader
 	return token.SignedString(server.privateKey)

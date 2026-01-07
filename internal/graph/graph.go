@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"sync/atomic"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
@@ -40,47 +39,6 @@ func ContextWithResolutionDepth(parent context.Context, depth uint32) context.Co
 func ResolutionDepthFromContext(ctx context.Context) (uint32, bool) {
 	depth, ok := ctx.Value(resolutionDepthCtxKey).(uint32)
 	return depth, ok
-}
-
-type ResolveCheckRequestMetadata struct {
-	// Thinking of a Check as a tree of evaluations,
-	// Depth is the current level in the tree in the current path that we are exploring.
-	// When we jump one level, we decrement 1. If it hits 0, we throw ErrResolutionDepthExceeded.
-	Depth uint32
-
-	// Number of calls to ReadUserTuple + ReadUsersetTuples + Read accumulated so far, before this request is solved.
-	DatastoreQueryCount uint32
-
-	// DispatchCounter is the address to a shared counter that keeps track of how many calls to ResolveCheck we had to do
-	// to solve the root/parent problem.
-	// The contents of this counter will be written by concurrent goroutines.
-	// After the root problem has been solved, this value can be read.
-	DispatchCounter *atomic.Uint32
-
-	// WasThrottled indicates whether the request was throttled
-	WasThrottled *atomic.Bool
-}
-
-func NewCheckRequestMetadata(maxDepth uint32) *ResolveCheckRequestMetadata {
-	return &ResolveCheckRequestMetadata{
-		Depth:               maxDepth,
-		DatastoreQueryCount: 0,
-		DispatchCounter:     new(atomic.Uint32),
-		WasThrottled:        new(atomic.Bool),
-	}
-}
-
-type ResolveCheckResponseMetadata struct {
-	// Number of calls to ReadUserTuple + ReadUsersetTuples + Read accumulated after this request is solved.
-	// Thinking of a Check as a tree of evaluations,
-	// If the solution is "allowed=true", one path was found. This is the value in the leaf node of that path, plus the sum of the paths that were
-	// evaluated and potentially discarded
-	// If the solution is "allowed=false", no paths were found. This is the sum of all the reads in all the paths that had to be evaluated
-	DatastoreQueryCount uint32
-
-	// Indicates if the ResolveCheck subproblem that was evaluated involved
-	// a cycle in the evaluation.
-	CycleDetected bool
 }
 
 type RelationshipEdgeType int
@@ -414,62 +372,5 @@ func (g *RelationshipGraph) getRelationshipEdgesWithTargetRewrite(
 		return edges, nil
 	default:
 		panic("unexpected userset rewrite encountered")
-	}
-}
-
-// NewLayeredCheckResolver constructs a CheckResolver that is composed of various CheckResolver layers.
-// Specifically, it constructs a CheckResolver with the following composition:
-//
-//	CycleDetectionCheckResolver  <-----|
-//		CachedCheckResolver              |
-//			DispatchThrottlingCheckResolver |
-//				LocalChecker                   |
-//					CycleDetectionCheckResolver -|
-//
-// The returned CheckResolverCloser should be used to close all resolvers involved in the
-// composition after you are done with the CheckResolver.
-func NewLayeredCheckResolver(
-	localResolverOpts []LocalCheckerOption,
-	cacheEnabled bool,
-	throttlingEnabled bool,
-	cachedResolverOpts []CachedCheckResolverOpt,
-	dispatchThrottlingCheckResolverOpts []DispatchThrottlingCheckResolverOpt,
-) (CheckResolver, CheckResolverCloser) {
-	cycleDetectionCheckResolver := NewCycleDetectionCheckResolver()
-	var cachedCheckResolver *CachedCheckResolver
-	var dispatchThrottlingCheckResolver *DispatchThrottlingCheckResolver
-	localCheckResolver := NewLocalChecker(localResolverOpts...)
-
-	cycleDetectionCheckResolver.SetDelegate(localCheckResolver)
-	localCheckResolver.SetDelegate(cycleDetectionCheckResolver)
-
-	if cacheEnabled {
-		cachedCheckResolver = NewCachedCheckResolver(cachedResolverOpts...)
-		cachedCheckResolver.SetDelegate(localCheckResolver)
-		cycleDetectionCheckResolver.SetDelegate(cachedCheckResolver)
-	}
-
-	if throttlingEnabled {
-		dispatchThrottlingCheckResolver = NewDispatchThrottlingCheckResolver(dispatchThrottlingCheckResolverOpts...)
-		dispatchThrottlingCheckResolver.SetDelegate(localCheckResolver)
-		if cacheEnabled {
-			cachedCheckResolver.SetDelegate(dispatchThrottlingCheckResolver)
-		} else {
-			cycleDetectionCheckResolver.SetDelegate(dispatchThrottlingCheckResolver)
-		}
-	}
-
-	return cycleDetectionCheckResolver, func() {
-		localCheckResolver.Close()
-
-		if cachedCheckResolver != nil {
-			cachedCheckResolver.Close()
-		}
-
-		if dispatchThrottlingCheckResolver != nil {
-			dispatchThrottlingCheckResolver.Close()
-		}
-
-		cycleDetectionCheckResolver.Close()
 	}
 }

@@ -5,12 +5,15 @@ import (
 	"errors"
 	"fmt"
 
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/openfga/openfga/internal/server/config"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/pkg/server/config"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
@@ -52,19 +55,59 @@ func NewWriteCommand(datastore storage.OpenFGADatastore, opts ...WriteCommandOpt
 	return cmd
 }
 
+func parseOptionOnDuplicate(wr *openfgav1.WriteRequestWrites) (storage.OnDuplicateInsert, error) {
+	switch wr.GetOnDuplicate() {
+	case "", "error":
+		return storage.OnDuplicateInsertError, nil
+	case "ignore":
+		return storage.OnDuplicateInsertIgnore, nil
+	default:
+		return storage.OnDuplicateInsertError, serverErrors.ValidationError(fmt.Errorf("invalid on_duplicate option: %s", wr.GetOnDuplicate()))
+	}
+}
+
+func parseOptionOnMissing(wr *openfgav1.WriteRequestDeletes) (storage.OnMissingDelete, error) {
+	switch wr.GetOnMissing() {
+	case "", "error":
+		return storage.OnMissingDeleteError, nil
+	case "ignore":
+		return storage.OnMissingDeleteIgnore, nil
+	default:
+		return storage.OnMissingDeleteError, serverErrors.ValidationError(fmt.Errorf("invalid on_missing option: %s", wr.GetOnMissing()))
+	}
+}
+
 // Execute deletes and writes the specified tuples. Deletes are applied first, then writes.
 func (c *WriteCommand) Execute(ctx context.Context, req *openfgav1.WriteRequest) (*openfgav1.WriteResponse, error) {
 	if err := c.validateWriteRequest(ctx, req); err != nil {
 		return nil, err
 	}
 
-	err := c.datastore.Write(
+	onDuplicateInsert, err := parseOptionOnDuplicate(req.GetWrites())
+	if err != nil {
+		return nil, err
+	}
+
+	onEmptyDelete, err := parseOptionOnMissing(req.GetDeletes())
+	if err != nil {
+		return nil, err
+	}
+
+	err = c.datastore.Write(
 		ctx,
 		req.GetStoreId(),
 		req.GetDeletes().GetTupleKeys(),
 		req.GetWrites().GetTupleKeys(),
+		storage.WithOnMissingDelete(onEmptyDelete),
+		storage.WithOnDuplicateInsert(onDuplicateInsert),
 	)
 	if err != nil {
+		if errors.Is(err, storage.ErrTransactionalWriteFailed) {
+			return nil, status.Error(codes.Aborted, err.Error())
+		}
+		if errors.Is(err, storage.ErrInvalidWriteInput) {
+			return nil, serverErrors.WriteFailedDueToInvalidInput(err)
+		}
 		return nil, serverErrors.HandleError("", err)
 	}
 
@@ -81,7 +124,7 @@ func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgav1.
 	writes := req.GetWrites().GetTupleKeys()
 
 	if len(deletes) == 0 && len(writes) == 0 {
-		return serverErrors.InvalidWriteInput
+		return serverErrors.ErrInvalidWriteInput
 	}
 
 	if len(writes) > 0 {
@@ -90,17 +133,20 @@ func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgav1.
 			if errors.Is(err, storage.ErrNotFound) {
 				return serverErrors.AuthorizationModelNotFound(modelID)
 			}
-			return err
+			return serverErrors.HandleError("", err)
 		}
 
 		if !typesystem.IsSchemaVersionSupported(authModel.GetSchemaVersion()) {
 			return serverErrors.ValidationError(typesystem.ErrInvalidSchemaVersion)
 		}
 
-		typesys := typesystem.New(authModel)
+		typesys, err := typesystem.New(authModel)
+		if err != nil {
+			return err
+		}
 
 		for _, tk := range writes {
-			err := validation.ValidateTuple(typesys, tk)
+			err := validation.ValidateTupleForWrite(typesys, tk)
 			if err != nil {
 				return serverErrors.ValidationError(err)
 			}
@@ -121,6 +167,7 @@ func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgav1.
 	}
 
 	for _, tk := range deletes {
+		// TODO validate relation format and object format
 		if ok := tupleUtils.IsValidUser(tk.GetUser()); !ok {
 			return serverErrors.ValidationError(
 				&tupleUtils.InvalidTupleError{

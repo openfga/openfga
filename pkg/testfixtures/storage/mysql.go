@@ -2,20 +2,22 @@ package storage
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"log"
-	"net"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
+	"github.com/containerd/errdefs"
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/image"
+	"github.com/docker/docker/client"
+	"github.com/docker/go-connections/nat"
 	"github.com/go-sql-driver/mysql"
+	"github.com/oklog/ulid/v2"
 	"github.com/pressly/goose/v3"
 	"github.com/stretchr/testify/require"
-	"github.com/testcontainers/testcontainers-go"
-	testcontainersmysql "github.com/testcontainers/testcontainers-go/modules/mysql"
 
 	"github.com/openfga/openfga/assets"
 )
@@ -45,32 +47,92 @@ func (m *mySQLTestContainer) GetDatabaseSchemaVersion() int64 {
 // bootstrapped implementation of the DatastoreTestContainer interface wired up for the
 // MySQL datastore engine.
 func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) DatastoreTestContainer {
-	ctx := context.Background()
-
-	mysqlContainer, err := testcontainersmysql.RunContainer(ctx,
-		testcontainers.WithImage(mySQLImage),
-		testcontainers.WithHostConfigModifier(func(hostConfig *container.HostConfig) {
-			hostConfig.Tmpfs = map[string]string{"/var/lib/mysql": ""}
-		}),
-		testcontainersmysql.WithDatabase("defaultdb"),
-		testcontainersmysql.WithUsername("root"),
-		testcontainersmysql.WithPassword("secret"),
+	dockerClient, err := client.NewClientWithOpts(
+		client.FromEnv,
+		client.WithAPIVersionNegotiation(),
 	)
 	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, mysqlContainer.Terminate(ctx)) })
+	t.Cleanup(func() {
+		dockerClient.Close()
+	})
 
-	mysqlHost, err := mysqlContainer.Host(ctx)
+	allImages, err := dockerClient.ImageList(context.Background(), image.ListOptions{
+		All: true,
+	})
 	require.NoError(t, err)
-	mysqlPort, err := mysqlContainer.MappedPort(ctx, "3306/tcp")
+
+	foundMysqlImage := false
+
+AllImages:
+	for _, image := range allImages {
+		for _, tag := range image.RepoTags {
+			if strings.Contains(tag, mySQLImage) {
+				foundMysqlImage = true
+				break AllImages
+			}
+		}
+	}
+
+	if !foundMysqlImage {
+		t.Logf("Pulling image %s", mySQLImage)
+		reader, err := dockerClient.ImagePull(context.Background(), mySQLImage, image.PullOptions{})
+		require.NoError(t, err)
+
+		_, err = io.Copy(io.Discard, reader) // consume the image pull output to make sure it's done
+		require.NoError(t, err)
+	}
+
+	containerCfg := container.Config{
+		Env: []string{
+			"MYSQL_DATABASE=defaultdb",
+			"MYSQL_ROOT_PASSWORD=secret",
+		},
+		ExposedPorts: nat.PortSet{
+			nat.Port("3306/tcp"): {},
+		},
+		Image: mySQLImage,
+	}
+
+	hostCfg := container.HostConfig{
+		AutoRemove:      true,
+		PublishAllPorts: true,
+		Tmpfs:           map[string]string{"/var/lib/mysql": ""},
+	}
+
+	name := "mysql-" + ulid.Make().String()
+
+	cont, err := dockerClient.ContainerCreate(context.Background(), &containerCfg, &hostCfg, nil, nil, name)
+	require.NoError(t, err, "failed to create mysql docker container")
+
+	t.Cleanup(func() {
+		t.Logf("stopping container %s", name)
+		timeoutSec := 5
+
+		err := dockerClient.ContainerStop(context.Background(), cont.ID, container.StopOptions{Timeout: &timeoutSec})
+		if err != nil && !errdefs.IsNotFound(err) {
+			t.Logf("failed to stop mysql container: %v", err)
+		}
+		t.Logf("stopped container %s", name)
+	})
+
+	err = dockerClient.ContainerStart(context.Background(), cont.ID, container.StartOptions{})
+	require.NoError(t, err, "failed to start mysql container")
+
+	containerJSON, err := dockerClient.ContainerInspect(context.Background(), cont.ID)
 	require.NoError(t, err)
+
+	p, ok := containerJSON.NetworkSettings.Ports["3306/tcp"]
+	if !ok || len(p) == 0 {
+		require.Fail(t, "failed to get host port mapping from mysql container")
+	}
 
 	mySQLTestContainer := &mySQLTestContainer{
-		addr:     net.JoinHostPort(mysqlHost, mysqlPort.Port()),
+		addr:     "localhost:" + p[0].HostPort,
 		username: "root",
 		password: "secret",
 	}
 
-	uri := fmt.Sprintf("%s:%s@tcp(%s)/defaultdb?parseTime=true", mySQLTestContainer.username, mySQLTestContainer.password, mySQLTestContainer.addr)
+	uri := mySQLTestContainer.username + ":" + mySQLTestContainer.password + "@tcp(" + mySQLTestContainer.addr + ")/defaultdb?parseTime=true"
 
 	err = mysql.SetLogger(log.New(io.Discard, "", 0))
 	require.NoError(t, err)
@@ -79,7 +141,9 @@ func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) DatastoreTestCo
 
 	db, err := goose.OpenDBWithDriver("mysql", uri)
 	require.NoError(t, err)
-	defer db.Close()
+	t.Cleanup(func() {
+		_ = db.Close()
+	})
 
 	backoffPolicy := backoff.NewExponentialBackOff()
 	backoffPolicy.MaxElapsedTime = 2 * time.Minute
@@ -106,15 +170,10 @@ func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) DatastoreTestCo
 func (m *mySQLTestContainer) GetConnectionURI(includeCredentials bool) string {
 	creds := ""
 	if includeCredentials {
-		creds = fmt.Sprintf("%s:%s@", m.username, m.password)
+		creds = m.username + ":" + m.password + "@"
 	}
 
-	return fmt.Sprintf(
-		"%stcp(%s)/%s?parseTime=true",
-		creds,
-		m.addr,
-		"defaultdb",
-	)
+	return creds + "tcp(" + m.addr + ")/defaultdb?parseTime=true"
 }
 
 func (m *mySQLTestContainer) GetUsername() string {
@@ -123,4 +182,12 @@ func (m *mySQLTestContainer) GetUsername() string {
 
 func (m *mySQLTestContainer) GetPassword() string {
 	return m.password
+}
+
+func (m *mySQLTestContainer) CreateSecondary(t testing.TB) error {
+	return nil
+}
+
+func (m *mySQLTestContainer) GetSecondaryConnectionURI(includeCredentials bool) string {
+	return ""
 }

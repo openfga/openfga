@@ -41,7 +41,7 @@ deps: ## Download dependencies
 
 $(GO_BIN)/golangci-lint:
 	${call print, "Installing golangci-lint within ${GO_BIN}"}
-	@go install -v github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+	@go install -v github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
 
 $(GO_BIN)/mockgen:
 	${call print, "Installing mockgen within ${GO_BIN}"}
@@ -106,14 +106,14 @@ test-docker: ## Run tests requiring Docker
 
 test-bench: generate-mocks ## Run benchmark tests. See https://pkg.go.dev/cmd/go#hdr-Testing_flags
 	${call print, "Running benchmark tests"}
-	@go test ./... -bench . -benchtime 5s -timeout 0 -run=XXX -cpu 1 -benchmem
+	@go test ./... -bench . -benchtime 1s -timeout 0 -run=XXX -cpu 1 -benchmem
 
 #-----------------------------------------------------------------------------------------------------------------------
 # Development
 #-----------------------------------------------------------------------------------------------------------------------
 .PHONY: dev-run
 
-dev-run: $(GO_BIN)/CompileDaemon $(GO_BIN)/openfga ## Run the OpenFGA server with hot reloading. Data storage type can be overridden using DATASTORE="mysql", available options are `in-memory`, `mysql`, ´postgres`, default is "in-memory". Usage `DATASTORE="mysql" make dev-run`
+dev-run: $(GO_BIN)/CompileDaemon $(GO_BIN)/openfga ## Run the OpenFGA server with hot reloading. Data storage type can be overridden using DATASTORE="mysql", available options are `in-memory`, `mysql`, ´postgres`, `sqlite`, default is "in-memory". Usage `DATASTORE="mysql" make dev-run`
 	${call print, "Starting OpenFGA server"}
 	@case "${DATASTORE}" in \
 		"in-memory") \
@@ -131,10 +131,16 @@ dev-run: $(GO_BIN)/CompileDaemon $(GO_BIN)/openfga ## Run the OpenFGA server wit
 			;; \
 		"postgres") \
 			echo "==> Running OpenFGA with Postgres data storage"; \
-			docker run -d --name postgres -p 5432:5432 -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=password postgres:14  > /dev/null 2>&1 || docker start postgres; \
+			docker run -d --name postgres -p 5432:5432 -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=password postgres:17  > /dev/null 2>&1 || docker start postgres; \
 			sleep 2; \
 			openfga migrate --datastore-engine postgres --datastore-uri 'postgres://postgres:password@localhost:5432/postgres'; \
 			CompileDaemon -graceful-kill -build='make install' -command="openfga run --datastore-engine postgres --datastore-uri postgres://postgres:password@localhost:5432/postgres"; \
+			break; \
+			;; \
+		"sqlite") \
+			echo "==> Running OpenFGA with SQLite data storage"; \
+			openfga migrate --datastore-engine sqlite --datastore-uri '/tmp/openfga.sqlite'; \
+			CompileDaemon -graceful-kill -build='make install' -command="openfga run --datastore-engine sqlite --datastore-uri /tmp/openfga.sqlite"; \
 			break; \
 			;; \
 		*) \

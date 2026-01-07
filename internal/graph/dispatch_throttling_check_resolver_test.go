@@ -4,12 +4,12 @@ import (
 	"context"
 	"testing"
 
-	"github.com/openfga/openfga/internal/mocks"
-	"github.com/openfga/openfga/pkg/dispatch"
-
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
+
+	"github.com/openfga/openfga/internal/mocks"
+	"github.com/openfga/openfga/pkg/dispatch"
 )
 
 func TestDispatchThrottlingCheckResolver(t *testing.T) {
@@ -41,7 +41,7 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Times(1)
 		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(0)
 
-		req := &ResolveCheckRequest{RequestMetadata: NewCheckRequestMetadata(10)}
+		req := &ResolveCheckRequest{RequestMetadata: NewCheckRequestMetadata()}
 		req.GetRequestMetadata().DispatchCounter.Store(190)
 
 		ctx := context.Background()
@@ -49,7 +49,7 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 		_, err := dut.ResolveCheck(ctx, req)
 		require.NoError(t, err)
 
-		require.False(t, req.GetRequestMetadata().WasThrottled.Load())
+		require.False(t, req.GetRequestMetadata().DispatchThrottled.Load())
 	})
 
 	t.Run("above_threshold_should_call_throttle", func(t *testing.T) {
@@ -77,7 +77,7 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Times(1)
 		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(1)
 
-		req := &ResolveCheckRequest{RequestMetadata: NewCheckRequestMetadata(10)}
+		req := &ResolveCheckRequest{RequestMetadata: NewCheckRequestMetadata()}
 		req.GetRequestMetadata().DispatchCounter.Store(201)
 
 		ctx := context.Background()
@@ -85,7 +85,7 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 		_, err := dut.ResolveCheck(ctx, req)
 		require.NoError(t, err)
 
-		require.True(t, req.GetRequestMetadata().WasThrottled.Load())
+		require.True(t, req.GetRequestMetadata().DispatchThrottled.Load())
 	})
 
 	t.Run("zero_max_should_interpret_as_default", func(t *testing.T) {
@@ -113,7 +113,7 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Times(1)
 		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(0)
 
-		req := &ResolveCheckRequest{RequestMetadata: NewCheckRequestMetadata(10)}
+		req := &ResolveCheckRequest{RequestMetadata: NewCheckRequestMetadata()}
 		req.GetRequestMetadata().DispatchCounter.Store(190)
 
 		ctx := context.Background()
@@ -121,7 +121,7 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 		_, err := dut.ResolveCheck(ctx, req)
 		require.NoError(t, err)
 
-		require.False(t, req.GetRequestMetadata().WasThrottled.Load())
+		require.False(t, req.GetRequestMetadata().DispatchThrottled.Load())
 	})
 
 	t.Run("dispatch_should_use_request_threshold_if_available", func(t *testing.T) {
@@ -149,7 +149,7 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Times(1)
 		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(1)
 
-		req := &ResolveCheckRequest{RequestMetadata: NewCheckRequestMetadata(10)}
+		req := &ResolveCheckRequest{RequestMetadata: NewCheckRequestMetadata()}
 		req.GetRequestMetadata().DispatchCounter.Store(201)
 
 		ctx := context.Background()
@@ -158,7 +158,7 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 		_, err := dut.ResolveCheck(ctx, req)
 		require.NoError(t, err)
 
-		require.True(t, req.GetRequestMetadata().WasThrottled.Load())
+		require.True(t, req.GetRequestMetadata().DispatchThrottled.Load())
 	})
 
 	t.Run("should_respect_max_threshold", func(t *testing.T) {
@@ -189,12 +189,12 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 		ctx := context.Background()
 		ctx = dispatch.ContextWithThrottlingThreshold(ctx, 1000)
 
-		req := &ResolveCheckRequest{RequestMetadata: NewCheckRequestMetadata(10)}
+		req := &ResolveCheckRequest{RequestMetadata: NewCheckRequestMetadata()}
 		req.GetRequestMetadata().DispatchCounter.Store(301)
 
 		_, err := dut.ResolveCheck(ctx, req)
 		require.NoError(t, err)
 
-		require.True(t, req.GetRequestMetadata().WasThrottled.Load())
+		require.True(t, req.GetRequestMetadata().DispatchThrottled.Load())
 	})
 }

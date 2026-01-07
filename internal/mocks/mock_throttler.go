@@ -20,6 +20,7 @@ import (
 type MockThrottler struct {
 	ctrl     *gomock.Controller
 	recorder *MockThrottlerMockRecorder
+	isgomock struct{}
 }
 
 // MockThrottlerMockRecorder is the mock recorder for MockThrottler.

@@ -6,11 +6,12 @@ import (
 	"testing"
 
 	"github.com/oklog/ulid/v2"
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
+
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	parser "github.com/openfga/language/pkg/go/transformer"
 
 	"github.com/openfga/openfga/cmd"
 	"github.com/openfga/openfga/cmd/util"
@@ -18,7 +19,7 @@ import (
 )
 
 func TestValidationResult(t *testing.T) {
-	engines := []string{"postgres", "mysql"}
+	engines := []string{"postgres", "mysql", "sqlite"}
 
 	totalStores := 200
 	totalModelsForOneStore := 200
@@ -101,8 +102,8 @@ func TestValidateModelsCommandNoConfigDefaultValues(t *testing.T) {
 	util.PrepareTempConfigDir(t)
 	validateCommand := NewValidateCommand()
 	validateCommand.RunE = func(cmd *cobra.Command, _ []string) error {
-		require.Equal(t, "", viper.GetString(datastoreEngineFlag))
-		require.Equal(t, "", viper.GetString(datastoreURIFlag))
+		require.Empty(t, viper.GetString(datastoreEngineFlag))
+		require.Empty(t, viper.GetString(datastoreURIFlag))
 		return nil
 	}
 

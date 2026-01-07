@@ -5,9 +5,10 @@ import (
 	"regexp"
 	"strings"
 
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 )
 
 const (
@@ -227,7 +228,7 @@ func ConvertToEncodedErrorCode(statusError *status.Status) int32 {
 	case codes.Unauthenticated:
 		return int32(openfgav1.AuthErrorCode_unauthenticated)
 	case codes.Canceled:
-		return int32(openfgav1.InternalErrorCode_cancelled)
+		return int32(openfgav1.ErrorCode_cancelled)
 	case codes.Unknown:
 		// we will return InternalError as our implementation of
 		// InternalError does not have a status code - which will result

@@ -6,6 +6,7 @@ import "embed"
 const (
 	MySQLMigrationDir    = "migrations/mysql"
 	PostgresMigrationDir = "migrations/postgres"
+	SqliteMigrationDir   = "migrations/sqlite"
 )
 
 // EmbedMigrations within the openfga binary.

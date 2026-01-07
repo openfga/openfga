@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/google/cel-go/cel"
+
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 )
 

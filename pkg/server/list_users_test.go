@@ -2,17 +2,19 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
 	"github.com/oklog/ulid/v2"
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	language "github.com/openfga/language/pkg/go/transformer"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	parser "github.com/openfga/language/pkg/go/transformer"
 
 	mockstorage "github.com/openfga/openfga/internal/mocks"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
@@ -295,7 +297,7 @@ func TestListUsers_ErrorCases(t *testing.T) {
 		writeModelResp, err := s.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 			StoreId:       store,
 			SchemaVersion: typesystem.SchemaVersion1_1,
-			TypeDefinitions: language.MustTransformDSLToProto(`
+			TypeDefinitions: parser.MustTransformDSLToProto(`
 				model
 					schema 1.1
 				type user
@@ -336,7 +338,7 @@ func TestListUsers_ErrorCases(t *testing.T) {
 			})
 
 			require.Nil(t, res)
-			require.ErrorIs(t, err, serverErrors.AuthorizationModelResolutionTooComplex)
+			require.ErrorIs(t, err, serverErrors.ErrAuthorizationModelResolutionTooComplex)
 		})
 	})
 }
@@ -399,6 +401,62 @@ func TestListUsers_Deadline(t *testing.T) {
 		require.Len(t, resp.GetUsers(), 1)
 	})
 
+	t.Run("return_no_error_and_partial_results_if_throttled_until_deadline", func(t *testing.T) {
+		ds := memory.New()
+		t.Cleanup(ds.Close)
+
+		modelStr := `
+			model
+				schema 1.1
+			type user
+
+			type group
+			relations
+				define member: [user, group#member]
+
+			type document
+			relations
+				define viewer: [user, group#member]`
+
+		tuples := []string{
+			"document:1#viewer@user:jon", // Observed before first dispatch
+			"document:1#viewer@group:eng#member",
+			"group:eng#member@group:backend#member",
+			"group:backend#member@user:tyler", // Requires two dispatches, gets throtled
+		}
+
+		storeID, model := test.BootstrapFGAStore(t, ds, modelStr, tuples)
+		t.Cleanup(ds.Close)
+
+		deadline := 30 * time.Millisecond
+
+		s := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithListUsersDeadline(deadline),
+			WithListUsersDispatchThrottlingEnabled(true),
+			WithListUsersDispatchThrottlingThreshold(1),          // Applies throttling after first dispatch
+			WithListUsersDispatchThrottlingFrequency(2*deadline), // Forces time-out when throttling occurs
+		)
+		t.Cleanup(s.Close)
+
+		resp, err := s.ListUsers(ctx, &openfgav1.ListUsersRequest{
+			StoreId:              storeID,
+			AuthorizationModelId: model.GetId(),
+			Object: &openfgav1.Object{
+				Type: "document",
+				Id:   "1",
+			},
+			Relation: "viewer",
+			UserFilters: []*openfgav1.UserTypeFilter{
+				{Type: "user"},
+			},
+		})
+
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.Len(t, resp.GetUsers(), 1)
+	})
+
 	t.Run("internal_error_without_meeting_deadline", func(t *testing.T) {
 		mockController := gomock.NewController(t)
 		t.Cleanup(mockController.Finish)
@@ -425,8 +483,8 @@ func TestListUsers_Deadline(t *testing.T) {
 		mockDatastore.EXPECT().Close().Times(1)
 
 		mockDatastore.EXPECT().
-			Read(gomock.Any(), storeID, gomock.Any()).
-			Return(nil, context.DeadlineExceeded).
+			Read(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+			Return(nil, fmt.Errorf("internal error from storage")).
 			Times(1)
 
 		s := MustNewServerWithOpts(
@@ -479,8 +537,8 @@ func TestListUsers_Deadline(t *testing.T) {
 			Times(1)
 
 		mockDatastore.EXPECT().
-			Read(gomock.Any(), storeID, gomock.Any()).
-			DoAndReturn(func(ctx context.Context, storeID string, tupleKey *openfgav1.TupleKey) (storage.TupleIterator, error) {
+			Read(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+			DoAndReturn(func(ctx context.Context, storeID string, filter storage.ReadFilter, _ storage.ReadOptions) (storage.TupleIterator, error) {
 				time.Sleep(10 * time.Millisecond)
 				return nil, context.Canceled
 			}).
@@ -520,4 +578,61 @@ func TestUserFiltersToString(t *testing.T) {
 		Type:     "group",
 		Relation: "member",
 	}}))
+}
+
+func TestListUsers_WithListUsersDatabaseThrottle(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	ctx := context.Background()
+
+	t.Run("WithListUsersDatabaseThrottle_option_sets_configuration", func(t *testing.T) {
+		ds := memory.New()
+		t.Cleanup(ds.Close)
+
+		modelStr := `
+			model
+				schema 1.1
+			type user
+			type document
+				relations
+					define viewer: [user]`
+
+		storeID, model := test.BootstrapFGAStore(t, ds, modelStr, []string{
+			"document:1#viewer@user:jon",
+		})
+
+		threshold := 100
+		duration := 50 * time.Millisecond
+
+		// Create server with datastore throttling options
+		s := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithListUsersDatabaseThrottle(threshold, duration),
+		)
+		t.Cleanup(s.Close)
+
+		// Verify the options were set correctly
+		require.Equal(t, threshold, s.listUsersDatastoreThrottleThreshold)
+		require.Equal(t, duration, s.listUsersDatastoreThrottleDuration)
+
+		// Verify the endpoint still works correctly
+		resp, err := s.ListUsers(ctx, &openfgav1.ListUsersRequest{
+			StoreId:              storeID,
+			AuthorizationModelId: model.GetId(),
+			Object: &openfgav1.Object{
+				Type: "document",
+				Id:   "1",
+			},
+			Relation: "viewer",
+			UserFilters: []*openfgav1.UserTypeFilter{
+				{Type: "user"},
+			},
+		})
+
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.Len(t, resp.GetUsers(), 1)
+	})
 }

@@ -9,6 +9,7 @@ import (
 	"github.com/google/cel-go/common/types"
 	"github.com/google/cel-go/common/types/ref"
 	"github.com/google/cel-go/common/types/traits"
+
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 )
 
@@ -24,7 +25,7 @@ func IPAddressEnvOption() cel.EnvOption {
 	return cel.Lib(ipaddrLib)
 }
 
-func (ip *IPAddress) CompileOptions() []cel.EnvOption {
+func (ip IPAddress) CompileOptions() []cel.EnvOption {
 	options := []cel.EnvOption{}
 	for name, overloads := range ipaddrLibraryDecls {
 		options = append(options, cel.Function(name, overloads...))
@@ -32,7 +33,7 @@ func (ip *IPAddress) CompileOptions() []cel.EnvOption {
 	return options
 }
 
-func (ip *IPAddress) ProgramOptions() []cel.ProgramOption {
+func (ip IPAddress) ProgramOptions() []cel.ProgramOption {
 	return []cel.ProgramOption{}
 }
 
@@ -157,7 +158,7 @@ func stringToIPAddress(arg ref.Val) ref.Val {
 
 	ipaddr, err := ParseIPAddress(ipStr)
 	if err != nil {
-		return types.NewErr(err.Error())
+		return types.NewErr("%s", err.Error())
 	}
 
 	return ipaddr

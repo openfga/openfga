@@ -1,14 +1,20 @@
 package checktest
 
 import (
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"google.golang.org/protobuf/types/known/structpb"
+
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 )
 
 type Assertion struct {
-	Tuple            *openfgav1.TupleKey
+	Name             string
 	ContextualTuples []*openfgav1.TupleKey `json:"contextualTuples"`
 	Context          *structpb.Struct
-	Expectation      bool
-	ErrorCode        int `json:"errorCode"` // If ErrorCode is non-zero then we expect that the check call failed.
+	// For Check API
+	Tuple       *openfgav1.TupleKey
+	Expectation bool
+	ErrorCode   int `json:"errorCode"`
+	// For other APIs
+	ListObjectsErrorCode int
+	ListUsersErrorCode   int
 }

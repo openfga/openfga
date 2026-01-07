@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/grpc-ecosystem/go-grpc-middleware/logging/zap/ctxzap"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
@@ -18,6 +19,7 @@ type Logger interface {
 	Error(string, ...zap.Field)
 	Panic(string, ...zap.Field)
 	Fatal(string, ...zap.Field)
+	With(...zap.Field) Logger
 
 	// These are the equivalent logger function but with context provided
 	DebugWithContext(context.Context, string, ...zap.Field)
@@ -43,8 +45,11 @@ type ZapLogger struct {
 
 var _ Logger = (*ZapLogger)(nil)
 
-func (l *ZapLogger) With(fields ...zap.Field) {
-	l.Logger = l.Logger.With(fields...)
+// With creates a child logger and adds structured context to it. Fields added
+// to the child don't affect the parent, and vice versa. Any fields that
+// require evaluation (such as Objects) are evaluated upon invocation of With.
+func (l *ZapLogger) With(fields ...zap.Field) Logger {
+	return &ZapLogger{l.Logger.With(fields...)}
 }
 
 func (l *ZapLogger) Debug(msg string, fields ...zap.Field) {
@@ -84,6 +89,7 @@ func (l *ZapLogger) WarnWithContext(ctx context.Context, msg string, fields ...z
 }
 
 func (l *ZapLogger) ErrorWithContext(ctx context.Context, msg string, fields ...zap.Field) {
+	fields = append(fields, ctxzap.TagsToFields(ctx)...)
 	l.Logger.Error(msg, fields...)
 }
 
@@ -100,6 +106,7 @@ type OptionsLogger struct {
 	format          string
 	level           string
 	timestampFormat string
+	outputPaths     []string
 }
 
 type OptionLogger func(ol *OptionsLogger)
@@ -122,11 +129,30 @@ func WithTimestampFormat(timestampFormat string) OptionLogger {
 	}
 }
 
+// WithOutputPaths sets a list of URLs or file paths to write logging output to.
+//
+// URLs with the "file" scheme must use absolute paths on the local filesystem.
+// No user, password, port, fragments, or query parameters are allowed, and the
+// hostname must be empty or "localhost".
+//
+// Since it's common to write logs to the local filesystem, URLs without a scheme
+// (e.g., "/var/log/foo.log") are treated as local file paths. Without a scheme,
+// the special paths "stdout" and "stderr" are interpreted as os.Stdout and os.Stderr.
+// When specified without a scheme, relative file paths also work.
+//
+// Defaults to "stdout".
+func WithOutputPaths(paths ...string) OptionLogger {
+	return func(ol *OptionsLogger) {
+		ol.outputPaths = paths
+	}
+}
+
 func NewLogger(options ...OptionLogger) (*ZapLogger, error) {
 	logOptions := &OptionsLogger{
 		level:           "info",
 		format:          "text",
 		timestampFormat: "ISO8601",
+		outputPaths:     []string{"stdout"},
 	}
 
 	for _, opt := range options {
@@ -144,6 +170,7 @@ func NewLogger(options ...OptionLogger) (*ZapLogger, error) {
 
 	cfg := zap.NewProductionConfig()
 	cfg.Level = level
+	cfg.OutputPaths = logOptions.outputPaths
 	cfg.EncoderConfig.TimeKey = "timestamp"
 	cfg.EncoderConfig.CallerKey = "" // remove the "caller" field
 	cfg.DisableStacktrace = true

@@ -2,15 +2,17 @@ package memory
 
 import (
 	"context"
+	"strconv"
 	"testing"
 	"time"
 
 	"github.com/oklog/ulid/v2"
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
+
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/test"
@@ -22,98 +24,231 @@ func TestMemdbStorage(t *testing.T) {
 	test.RunAllTests(t, ds)
 }
 
-func TestStaticTupleIteratorNoRace(t *testing.T) {
-	now := timestamppb.Now()
-
-	iter := &staticIterator{
-		records: []*storage.TupleRecord{
+func TestStaticTupleIterator(t *testing.T) {
+	t.Run("empty_iterator", func(t *testing.T) {
+		tests := []struct {
+			name  string
+			mixed bool
+		}{
 			{
-				Store:      "store",
-				ObjectType: "document",
-				ObjectID:   "1",
-				Relation:   "viewer",
-				User:       "user:jon",
-				Ulid:       ulid.MustNew(ulid.Timestamp(now.AsTime()), ulid.DefaultEntropy()).String(),
-				InsertedAt: now.AsTime(),
+				name:  "next_only",
+				mixed: false,
 			},
 			{
+				name:  "mixed",
+				mixed: true,
+			},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				iter := &staticIterator{
+					records: []*storage.TupleRecord{},
+				}
+				defer iter.Stop()
+				if tt.mixed {
+					_, err := iter.Head(context.Background())
+					require.ErrorIs(t, err, storage.ErrIteratorDone)
+				}
+				_, err := iter.Next(context.Background())
+				require.ErrorIs(t, err, storage.ErrIteratorDone)
+				if tt.mixed {
+					_, err := iter.Head(context.Background())
+					require.ErrorIs(t, err, storage.ErrIteratorDone)
+				}
+			})
+		}
+	})
+}
+
+func TestStaticTupleIteratorNoRace(t *testing.T) {
+	t.Run("next_only", func(t *testing.T) {
+		now := timestamppb.Now()
+
+		iter := &staticIterator{
+			records: []*storage.TupleRecord{
+				{
+					Store:      "store",
+					ObjectType: "document",
+					ObjectID:   "1",
+					Relation:   "viewer",
+					User:       "user:jon",
+					Ulid:       ulid.MustNew(ulid.Timestamp(now.AsTime()), ulid.DefaultEntropy()).String(),
+					InsertedAt: now.AsTime(),
+				},
+				{
+					Store:            "store",
+					ObjectType:       "document",
+					ObjectID:         "1",
+					Relation:         "viewer",
+					User:             "user:jon",
+					ConditionName:    "condition",
+					ConditionContext: &structpb.Struct{},
+					Ulid:             ulid.MustNew(ulid.Timestamp(now.AsTime()), ulid.DefaultEntropy()).String(),
+					InsertedAt:       now.AsTime(),
+				},
+			},
+		}
+		defer iter.Stop()
+
+		var wg errgroup.Group
+
+		wg.Go(func() error {
+			_, err := iter.Next(context.Background())
+			return err
+		})
+
+		wg.Go(func() error {
+			_, err := iter.Next(context.Background())
+			return err
+		})
+
+		err := wg.Wait()
+		require.NoError(t, err)
+	})
+	t.Run("mixing_head_next", func(t *testing.T) {
+		now := timestamppb.Now()
+		const numIterator = 50
+
+		tupleRecords := make([]*storage.TupleRecord, numIterator)
+		for i := 0; i < numIterator; i++ {
+			tupleRecords[i] = &storage.TupleRecord{
 				Store:            "store",
 				ObjectType:       "document",
-				ObjectID:         "1",
+				ObjectID:         strconv.Itoa(i),
 				Relation:         "viewer",
 				User:             "user:jon",
 				ConditionName:    "condition",
 				ConditionContext: &structpb.Struct{},
 				Ulid:             ulid.MustNew(ulid.Timestamp(now.AsTime()), ulid.DefaultEntropy()).String(),
 				InsertedAt:       now.AsTime(),
-			},
-		},
-	}
-	defer iter.Stop()
+			}
+		}
+		iter := &staticIterator{
+			records: tupleRecords,
+		}
+		defer iter.Stop()
 
-	var wg errgroup.Group
+		var wg errgroup.Group
 
-	wg.Go(func() error {
-		_, err := iter.Next(context.Background())
-		return err
+		for i := 0; i < numIterator; i++ {
+			wg.Go(func() error {
+				_, err := iter.Head(context.Background())
+				return err
+			})
+		}
+		// important that when we call next, we will have 1 less
+		// element because we don't want to be done.
+		for i := 0; i < numIterator-1; i++ {
+			wg.Go(func() error {
+				_, err := iter.Next(context.Background())
+				return err
+			})
+		}
+		err := wg.Wait()
+		require.NoError(t, err)
 	})
-
-	wg.Go(func() error {
-		_, err := iter.Next(context.Background())
-		return err
-	})
-
-	err := wg.Wait()
-	require.NoError(t, err)
 }
 
 func TestStaticTupleIteratorContextCanceled(t *testing.T) {
-	iter := &staticIterator{
-		records: []*storage.TupleRecord{
-			{
-				ObjectType: "document",
-				ObjectID:   "1",
-				Relation:   "viewer",
-				User:       "user:jon",
-			},
+	tests := []struct {
+		_name string
+		next  bool
+	}{
+		{
+			_name: "next",
+			next:  true,
+		},
+		{
+			_name: "head",
+			next:  false,
 		},
 	}
-	defer iter.Stop()
+	for _, tt := range tests {
+		t.Run(tt._name, func(t *testing.T) {
+			iter := &staticIterator{
+				records: []*storage.TupleRecord{
+					{
+						ObjectType: "document",
+						ObjectID:   "1",
+						Relation:   "viewer",
+						User:       "user:jon",
+					},
+				},
+			}
+			defer iter.Stop()
 
-	ctx, cancel := context.WithCancel(context.Background())
+			ctx, cancel := context.WithCancel(context.Background())
 
-	_, err := iter.Next(ctx)
-	require.NoError(t, err)
+			var err error
+			if tt.next {
+				_, err = iter.Next(ctx)
+			} else {
+				_, err = iter.Head(ctx)
+			}
+			require.NoError(t, err)
 
-	cancel()
+			cancel()
 
-	_, err = iter.Next(ctx)
-	require.ErrorIs(t, err, context.Canceled)
+			if tt.next {
+				_, err = iter.Next(ctx)
+			} else {
+				_, err = iter.Head(ctx)
+			}
+			require.ErrorIs(t, err, context.Canceled)
+		})
+	}
 }
 
 func TestStaticTupleIteratorContextDeadlineExceeded(t *testing.T) {
-	iter := &staticIterator{
-		records: []*storage.TupleRecord{
-			{
-				ObjectType: "document",
-				ObjectID:   "1",
-				Relation:   "viewer",
-				User:       "user:jon",
-			},
+	tests := []struct {
+		_name string
+		next  bool
+	}{
+		{
+			_name: "next",
+			next:  true,
+		},
+		{
+			_name: "head",
+			next:  false,
 		},
 	}
-	defer iter.Stop()
+	for _, tt := range tests {
+		t.Run(tt._name, func(t *testing.T) {
+			iter := &staticIterator{
+				records: []*storage.TupleRecord{
+					{
+						ObjectType: "document",
+						ObjectID:   "1",
+						Relation:   "viewer",
+						User:       "user:jon",
+					},
+				},
+			}
+			defer iter.Stop()
 
-	deadlineCtx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
-	defer cancel()
+			deadlineCtx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+			defer cancel()
 
-	_, err := iter.Next(deadlineCtx)
-	require.NoError(t, err)
+			var err error
 
-	time.Sleep(2 * time.Second)
+			if tt.next {
+				_, err = iter.Next(deadlineCtx)
+			} else {
+				_, err = iter.Head(deadlineCtx)
+			}
+			require.NoError(t, err)
 
-	_, err = iter.Next(deadlineCtx)
-	require.ErrorIs(t, err, context.DeadlineExceeded)
+			time.Sleep(2 * time.Second)
+
+			if tt.next {
+				_, err = iter.Next(deadlineCtx)
+			} else {
+				_, err = iter.Head(deadlineCtx)
+			}
+			require.ErrorIs(t, err, context.DeadlineExceeded)
+		})
+	}
 }
 
 func TestTupleRecordMatchTupleKey(t *testing.T) {
@@ -172,6 +307,16 @@ func TestTupleRecordMatchTupleKey(t *testing.T) {
 			},
 			match: true,
 		},
+		`match_user_type`: {
+			target: tuple.NewTupleKey("document:x", "viewer", "user:"),
+			source: &storage.TupleRecord{
+				ObjectType: "document",
+				ObjectID:   "x",
+				Relation:   "viewer",
+				User:       "user:1",
+			},
+			match: true,
+		},
 	}
 	for name, test := range testCases {
 		t.Run(name, func(t *testing.T) {
@@ -209,7 +354,8 @@ func TestFindTupleKey(t *testing.T) {
 	}
 	for name, test := range testCases {
 		t.Run(name, func(t *testing.T) {
-			require.Equal(t, test.found, find(test.records, test.tupleKey))
+			found := find(test.records, test.tupleKey) != nil
+			require.Equal(t, test.found, found)
 		})
 	}
 }

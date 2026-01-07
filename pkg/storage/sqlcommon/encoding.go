@@ -1,11 +1,12 @@
 package sqlcommon
 
 import (
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"google.golang.org/protobuf/proto"
+
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 )
 
-func marshalRelationshipCondition(
+func MarshalRelationshipCondition(
 	rel *openfgav1.RelationshipCondition,
 ) (name string, context []byte, err error) {
 	if rel != nil {

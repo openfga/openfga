@@ -1,6 +1,7 @@
 package condition
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/natefinch/wrap"
@@ -34,7 +35,8 @@ func NewEvaluationError(condition string, cause error) error {
 }
 
 func (e *EvaluationError) Error() string {
-	if _, ok := e.Cause.(*ParameterTypeError); ok {
+	var pTypeErr *ParameterTypeError
+	if errors.As(e.Cause, &pTypeErr) {
 		return e.Unwrap().Error()
 	}
 

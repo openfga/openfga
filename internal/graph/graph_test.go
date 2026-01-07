@@ -7,8 +7,9 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/stretchr/testify/require"
+
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -265,7 +266,8 @@ func TestPrunedRelationshipEdges(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			model := testutils.MustTransformDSLToProtoWithID(test.model)
-			typesys := typesystem.New(model)
+			typesys, err := typesystem.New(model)
+			require.NoError(t, err)
 
 			g := New(typesys)
 
@@ -1576,12 +1578,14 @@ func TestRelationshipEdges(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			var typesys *typesystem.TypeSystem
+			var err error
 			if test.model == "" {
-				typesys = typesystem.New(test.authModel)
+				typesys, err = typesystem.New(test.authModel)
 			} else {
 				model := testutils.MustTransformDSLToProtoWithID(test.model)
-				typesys = typesystem.New(model)
+				typesys, err = typesystem.New(model)
 			}
+			require.NoError(t, err)
 
 			g := New(typesys)
 

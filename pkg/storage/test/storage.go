@@ -6,15 +6,15 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/oklog/ulid/v2"
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/protoadapt"
 	"google.golang.org/protobuf/testing/protocmp"
 
-	"github.com/openfga/openfga/pkg/tuple"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"
+	"github.com/openfga/openfga/pkg/tuple"
 )
 
 var (
@@ -32,6 +32,7 @@ func RunAllTests(t *testing.T, ds storage.OpenFGADatastore) {
 		require.NoError(t, err)
 		require.True(t, status.IsReady)
 	})
+
 	// Tuples.
 	t.Run("TestTupleWriteAndRead", func(t *testing.T) { TupleWritingAndReadingTest(t, ds) })
 	t.Run("TestReadChanges", func(t *testing.T) { ReadChangesTest(t, ds) })
@@ -66,7 +67,7 @@ func BootstrapFGAStore(
 	require.NoError(t, err)
 
 	tuples := tuple.MustParseTupleStrings(tupleStrs...)
-
+	tuples = testutils.Shuffle(tuples)
 	batchSize := ds.MaxTuplesPerWrite()
 	for batch := 0; batch < len(tuples); batch += batchSize {
 		batchEnd := min(batch+batchSize, len(tuples))

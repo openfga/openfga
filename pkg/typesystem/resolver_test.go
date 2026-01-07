@@ -2,116 +2,260 @@ package typesystem
 
 import (
 	"context"
-	"fmt"
 	"testing"
 
 	"github.com/oklog/ulid/v2"
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
-	"golang.org/x/sync/errgroup"
+
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	mockstorage "github.com/openfga/openfga/internal/mocks"
+	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/testutils"
 )
 
 func TestMemoizedTypesystemResolverFunc(t *testing.T) {
-	mockController := gomock.NewController(t)
-	defer mockController.Finish()
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
 
-	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+	t.Run("invalid_model_id_returns_model_not_found", func(t *testing.T) {
+		store := ulid.Make().String()
+		invalidModelID := "invalid"
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
 
-	storeID := ulid.Make().String()
-	modelID1 := ulid.Make().String()
-	modelID2 := ulid.Make().String()
+		mockDatastore := mockstorage.NewMockAuthorizationModelReadBackend(mockController)
+		resolver, resolverStop, err := MemoizedTypesystemResolverFunc(mockDatastore)
+		require.NoError(t, err)
+		defer resolverStop()
 
-	typedefs := parser.MustTransformDSLToProto(`
-		model
-			schema 1.1
-		type user
-		type document
-			relations
-				define viewer: [user]`).GetTypeDefinitions()
+		_, err = resolver(context.Background(), store, invalidModelID)
+		require.ErrorIs(t, err, ErrModelNotFound)
+	})
 
-	gomock.InOrder(
-		mockDatastore.EXPECT().
-			ReadAuthorizationModel(gomock.Any(), storeID, modelID1).
-			Return(&openfgav1.AuthorizationModel{
-				Id:              modelID1,
-				SchemaVersion:   SchemaVersion1_1,
-				TypeDefinitions: typedefs,
-			}, nil),
+	t.Run("empty_model_id_and_no_latest_returns_model_not_found", func(t *testing.T) {
+		store := ulid.Make().String()
 
-		mockDatastore.EXPECT().
-			FindLatestAuthorizationModel(gomock.Any(), storeID).
-			Return(&openfgav1.AuthorizationModel{
-				Id:              modelID2,
-				SchemaVersion:   SchemaVersion1_1,
-				TypeDefinitions: typedefs,
-			}, nil),
-	)
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
 
-	resolver, resolverStop := MemoizedTypesystemResolverFunc(
-		mockDatastore,
-	)
-	defer resolverStop()
+		mockDatastore := mockstorage.NewMockAuthorizationModelReadBackend(mockController)
+		mockDatastore.EXPECT().FindLatestAuthorizationModel(gomock.Any(), store).
+			Return(nil, storage.ErrNotFound).
+			Times(1)
 
-	typesys, err := resolver(context.Background(), storeID, modelID1)
-	require.NoError(t, err)
-	require.NotNil(t, typesys)
+		resolver, resolverStop, err := MemoizedTypesystemResolverFunc(mockDatastore)
+		require.NoError(t, err)
+		defer resolverStop()
 
-	relation, err := typesys.GetRelation("document", "viewer")
-	require.NoError(t, err)
-	require.NotNil(t, relation)
+		_, err = resolver(context.Background(), store, "")
+		require.ErrorIs(t, err, ErrModelNotFound)
+	})
 
-	typesys, err = resolver(context.Background(), storeID, "")
-	require.NoError(t, err)
-	require.NotNil(t, typesys)
-	require.Equal(t, modelID2, typesys.GetAuthorizationModelID())
+	t.Run("empty_model_id_returns_latest", func(t *testing.T) {
+		store := ulid.Make().String()
+		model := testutils.MustTransformDSLToProtoWithID(`
+			model
+				schema 1.1
 
-	relation, err = typesys.GetRelation("document", "viewer")
-	require.NoError(t, err)
-	require.NotNil(t, relation)
-}
+			type user`)
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
 
-func TestSingleFlightMemoizedTypesystemResolverFunc(t *testing.T) {
-	const numGoroutines = 2
+		mockDatastore := mockstorage.NewMockAuthorizationModelReadBackend(mockController)
 
-	mockController := gomock.NewController(t)
-	defer mockController.Finish()
+		mockDatastore.EXPECT().FindLatestAuthorizationModel(gomock.Any(), store).
+			Return(model, nil).
+			Times(1)
 
-	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+		resolver, resolverStop, err := MemoizedTypesystemResolverFunc(mockDatastore)
+		require.NoError(t, err)
+		defer resolverStop()
 
-	storeID := ulid.Make().String()
-	modelID := ulid.Make().String()
+		typesys, err := resolver(context.Background(), store, "")
+		require.NoError(t, err)
+		require.Equal(t, model.GetId(), typesys.GetAuthorizationModelID())
+	})
 
-	mockDatastore.EXPECT().
-		FindLatestAuthorizationModel(gomock.Any(), storeID).
-		Return(&openfgav1.AuthorizationModel{
-			Id:            modelID,
-			SchemaVersion: SchemaVersion1_1,
-		}, nil).MinTimes(1).MaxTimes(numGoroutines)
+	t.Run("model_not_found", func(t *testing.T) {
+		store := ulid.Make().String()
+		modelID := ulid.Make().String()
 
-	resolver, resolverStop := MemoizedTypesystemResolverFunc(
-		mockDatastore,
-	)
-	defer resolverStop()
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
 
-	var wg errgroup.Group
+		mockDatastore := mockstorage.NewMockAuthorizationModelReadBackend(mockController)
+		mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), store, modelID).
+			Return(nil, storage.ErrNotFound).
+			Times(1)
 
-	for i := 0; i < numGoroutines; i++ {
-		wg.Go(func() error {
-			typesys, err := resolver(context.Background(), storeID, "")
-			if err != nil {
-				return err
-			}
-			if typesys.GetAuthorizationModelID() != modelID {
-				return fmt.Errorf("expected model %s, actual %s", modelID, typesys.GetAuthorizationModelID())
-			}
-			return nil
-		})
-	}
+		resolver, resolverStop, err := MemoizedTypesystemResolverFunc(mockDatastore)
+		require.NoError(t, err)
+		defer resolverStop()
 
-	err := wg.Wait()
-	require.NoError(t, err)
+		_, err = resolver(context.Background(), store, modelID)
+		require.ErrorIs(t, err, ErrModelNotFound)
+	})
+
+	t.Run("returns_specific_model_id", func(t *testing.T) {
+		store := ulid.Make().String()
+		modelID := ulid.Make().String()
+
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+
+		mockDatastore := mockstorage.NewMockAuthorizationModelReadBackend(mockController)
+		mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), store, modelID).
+			Return(
+				&openfgav1.AuthorizationModel{
+					Id:            modelID,
+					SchemaVersion: SchemaVersion1_1,
+				},
+				nil,
+			).
+			Times(1)
+
+		resolver, resolverStop, err := MemoizedTypesystemResolverFunc(mockDatastore)
+		require.NoError(t, err)
+		defer resolverStop()
+		typesys, err := resolver(context.Background(), store, modelID)
+		require.NoError(t, err)
+		require.Equal(t, modelID, typesys.GetAuthorizationModelID())
+	})
+
+	// This test is for the scenario where an invalid model was somehow written to the store.
+	// We want to make sure it's validated again (maybe with more rules) when we read it.
+	t.Run("validation_of_model_fails", func(t *testing.T) {
+		store := ulid.Make().String()
+		model := testutils.MustTransformDSLToProtoWithID(`
+			model
+				schema 1.1
+
+			type user
+			type group
+				relations
+					define member: [user_invalid]`)
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+
+		mockDatastore := mockstorage.NewMockAuthorizationModelReadBackend(mockController)
+
+		mockDatastore.EXPECT().FindLatestAuthorizationModel(gomock.Any(), store).
+			Return(model, nil).
+			Times(1)
+
+		resolver, resolverStop, err := MemoizedTypesystemResolverFunc(mockDatastore)
+		require.NoError(t, err)
+		defer resolverStop()
+
+		_, err = resolver(context.Background(), store, "")
+		require.ErrorContains(t, err, "invalid authorization model encountered: the relation type 'user_invalid' on 'member' in object type 'group' is not valid")
+	})
+
+	t.Run("two_calls_same_model_id_returns_second_from_cache", func(t *testing.T) {
+		store := ulid.Make().String()
+		modelID := ulid.Make().String()
+
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+
+		mockDatastore := mockstorage.NewMockAuthorizationModelReadBackend(mockController)
+		mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), store, modelID).
+			Return(
+				&openfgav1.AuthorizationModel{
+					Id:            modelID,
+					SchemaVersion: SchemaVersion1_1,
+				},
+				nil,
+			).
+			Times(1)
+
+		resolver, resolverStop, err := MemoizedTypesystemResolverFunc(mockDatastore)
+		require.NoError(t, err)
+		defer resolverStop()
+
+		// first call
+		typesys, err := resolver(context.Background(), store, modelID)
+		require.NoError(t, err)
+		require.Equal(t, modelID, typesys.GetAuthorizationModelID())
+
+		// second call from cache asserted by the Times(1) above
+		typesys, err = resolver(context.Background(), store, modelID)
+		require.NoError(t, err)
+		require.Equal(t, modelID, typesys.GetAuthorizationModelID())
+	})
+
+	t.Run("two_calls_without_model_id_returns_second_from_cache", func(t *testing.T) {
+		store := ulid.Make().String()
+		model := testutils.MustTransformDSLToProtoWithID(`
+			model
+				schema 1.1
+
+			type user`)
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+
+		mockDatastore := mockstorage.NewMockAuthorizationModelReadBackend(mockController)
+
+		mockDatastore.EXPECT().FindLatestAuthorizationModel(gomock.Any(), store).
+			Return(model, nil).
+			Times(2)
+
+		resolver, resolverStop, err := MemoizedTypesystemResolverFunc(mockDatastore)
+		require.NoError(t, err)
+		defer resolverStop()
+
+		// first call
+		typesys, err := resolver(context.Background(), store, "")
+		require.NoError(t, err)
+		require.Equal(t, model.GetId(), typesys.GetAuthorizationModelID())
+
+		// second call from cache, so we skip model validation
+		typesys, err = resolver(context.Background(), store, "")
+		require.NoError(t, err)
+		require.Equal(t, model.GetId(), typesys.GetAuthorizationModelID())
+	})
+
+	t.Run("returns_different_latest_models_for_same_store", func(t *testing.T) {
+		store := ulid.Make().String()
+		modelOne := testutils.MustTransformDSLToProtoWithID(`
+			model
+				schema 1.1
+
+			type user`)
+		modelTwo := testutils.MustTransformDSLToProtoWithID(`
+			model
+				schema 1.1
+
+			type user2`)
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+
+		mockDatastore := mockstorage.NewMockAuthorizationModelReadBackend(mockController)
+
+		resolver, resolverStop, err := MemoizedTypesystemResolverFunc(mockDatastore)
+		require.NoError(t, err)
+		defer resolverStop()
+
+		// first read returns modelOne
+		mockDatastore.EXPECT().FindLatestAuthorizationModel(gomock.Any(), store).
+			Return(modelOne, nil).
+			Times(1)
+		typesys, err := resolver(context.Background(), store, "")
+		require.NoError(t, err)
+		require.Equal(t, modelOne.GetId(), typesys.GetAuthorizationModelID())
+
+		// simulate a write of a new model
+		mockDatastore.EXPECT().FindLatestAuthorizationModel(gomock.Any(), store).
+			Return(modelTwo, nil).
+			Times(1)
+
+		// second read returns modelTwo
+		typesys, err = resolver(context.Background(), store, "")
+		require.NoError(t, err)
+		require.Equal(t, modelTwo.GetId(), typesys.GetAuthorizationModelID())
+	})
 }
