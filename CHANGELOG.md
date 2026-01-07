@@ -10,6 +10,9 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Changed
 - Datastore throttling separated from dispatch throttling in BatchCheck, ListUsers metadata. Also, `throttling_type` label added to `throttledRequestCounter` metric to differentiate between dispatch/datastore throttling. [#2839](https://github.com/openfga/openfga/pull/2839)
 
+### Added
+- Add configuration option to limit max type system cache size. [2744](https://github.com/openfga/openfga/pull/2744)
+
 ### Removed
 - Removed custom grpc_prometheus fork, replace with go-grpc-middleware's provider. Removes the custom `grpc_code` label on this metric. [#2855](https://github.com/openfga/openfga/pull/2855)
 
@@ -43,7 +46,6 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [1.10.4] - 2025-11-04
 ### Added
-- Add configuration option to limit max type system cache size. [2744](https://github.com/openfga/openfga/pull/2744)
 - Added a default featureflags.Client to the server and ability to pass custom clients to the server via `server.WithFeatureFlagClient`. [#2708](https://github.com/openfga/openfga/pull/2708)
 - Enable planner for selecting check resolution strategies based on runtime statistics. [#2751](https://github.com/openfga/openfga/pull/2751)
 - Added a new metric `datastore_item_count` that represents the total number of tuples consumed during request resolution. [#2771](https://github.com/openfga/openfga/pull/2771)
