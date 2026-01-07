@@ -804,7 +804,7 @@ func WithListObjectsBufferSize(value int) OpenFGAServiceV1Option {
 // subscription receives its own goroutines to concurrently process incoming messages.
 func WithListObjectsNumProcs(value int) OpenFGAServiceV1Option {
 	return func(s *Server) {
-		s.listObjectsBufferSize = value
+		s.listObjectsNumProcs = value
 	}
 }
 
