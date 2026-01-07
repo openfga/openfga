@@ -162,6 +162,8 @@ func NewRunCommand() *cobra.Command {
 
 	flags.Int("datastore-max-cache-size", defaultConfig.Datastore.MaxCacheSize, "the maximum number of authorization models that will be cached in memory")
 
+	flags.Int("datastore-max-typesystem-cache-size", defaultConfig.Datastore.MaxTypesystemCacheSize, "the maximum number of type system models that will be cached in memory")
+
 	flags.Int("datastore-min-open-conns", defaultConfig.Datastore.MinOpenConns, "the minimum number of open connections to the datastore")
 
 	flags.Int("datastore-max-open-conns", defaultConfig.Datastore.MaxOpenConns, "the maximum number of open connections to the datastore")
@@ -517,7 +519,6 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	}
 
 	authenticator, err := s.authenticatorConfig(config)
-
 	if err != nil {
 		return err
 	}
@@ -668,6 +669,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		server.WithDatastore(datastore),
 		server.WithContinuationTokenSerializer(continuationTokenSerializer),
 		server.WithAuthorizationModelCacheSize(config.Datastore.MaxCacheSize),
+		server.WithTypesystemCacheSize(config.Datastore.MaxTypesystemCacheSize),
 		server.WithLogger(s.Logger),
 		server.WithTransport(gateway.NewRPCTransport(s.Logger)),
 		server.WithResolveNodeLimit(config.ResolveNodeLimit),
@@ -818,8 +820,10 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 				AllowedOrigins:   config.HTTP.CORSAllowedOrigins,
 				AllowCredentials: true,
 				AllowedHeaders:   config.HTTP.CORSAllowedHeaders,
-				AllowedMethods: []string{http.MethodGet, http.MethodPost,
-					http.MethodHead, http.MethodPatch, http.MethodDelete, http.MethodPut},
+				AllowedMethods: []string{
+					http.MethodGet, http.MethodPost,
+					http.MethodHead, http.MethodPatch, http.MethodDelete, http.MethodPut,
+				},
 			}).Handler(handler), s.Logger),
 		}
 
