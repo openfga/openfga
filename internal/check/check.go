@@ -826,13 +826,16 @@ func (r *Resolver) specificTypeAndRelation(ctx context.Context, req *Request, ed
 		return res, nil
 	}
 
-	possibleStrategies := map[string]*planner.PlanConfig{
-		DefaultStrategyName: DefaultPlan,
-	}
+	var possibleStrategies map[string]*planner.PlanConfig
 
 	if w, _ := edge.GetWeight(req.GetUserType()); w == 2 {
-		delete(possibleStrategies, DefaultStrategyName)
-		possibleStrategies[WeightTwoStrategyName] = weight2Plan
+		possibleStrategies = map[string]*planner.PlanConfig{
+			WeightTwoStrategyName: weight2Plan,
+		}
+	} else {
+		possibleStrategies = map[string]*planner.PlanConfig{
+			DefaultStrategyName: DefaultPlan,
+		}
 	}
 
 	usersetKey := createUsersetPlanKey(req, edge.GetTo().GetUniqueLabel())
@@ -896,13 +899,16 @@ func (r *Resolver) ttu(ctx context.Context, req *Request, edge *authzGraph.Weigh
 		return res, nil
 	}
 
-	possibleStrategies := map[string]*planner.PlanConfig{
-		DefaultStrategyName: DefaultPlan,
-	}
+	var possibleStrategies map[string]*planner.PlanConfig
 
 	if w, _ := edge.GetWeight(req.GetUserType()); w == 2 {
-		delete(possibleStrategies, DefaultStrategyName)
-		possibleStrategies[WeightTwoStrategyName] = weight2Plan
+		possibleStrategies = map[string]*planner.PlanConfig{
+			WeightTwoStrategyName: weight2Plan,
+		}
+	} else {
+		possibleStrategies = map[string]*planner.PlanConfig{
+			DefaultStrategyName: DefaultPlan,
+		}
 	}
 
 	planKey := createTTUPlanKey(req, tuplesetRelation, computedRelation)
