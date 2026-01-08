@@ -1046,7 +1046,7 @@ func hasEntrypoints(
 		// At least one type must have an entrypoint.
 		loop := false
 		if len(rw.Union.GetChild()) < 2 {
-			return false, false, fmt.Errorf("invalid type definition for '%s#%s' as union has less than 2 children", typeName, relationName)
+			return false, false, fmt.Errorf("%w: '%s#%s' as union has less than 2 children", ErrInvalidRelation, typeName, relationName)
 		}
 		for _, child := range rw.Union.GetChild() {
 			hasEntrypoints, childLoop, err := hasEntrypoints(typedefs, typeName, relationName, child, visitedRelations)
@@ -1063,7 +1063,7 @@ func hasEntrypoints(
 		return false, loop, nil
 	case *openfgav1.Userset_Intersection:
 		if len(rw.Intersection.GetChild()) < 2 {
-			return false, false, fmt.Errorf("invalid type definition for '%s#%s' as intersection has less than 2 children", typeName, relationName)
+			return false, false, fmt.Errorf("%w: '%s#%s' as intersection has less than 2 children", ErrInvalidRelation, typeName, relationName)
 		}
 		for _, child := range rw.Intersection.GetChild() {
 			// All the children must have an entrypoint.

@@ -955,8 +955,7 @@ func TestHasEntrypoints(t *testing.T) {
 	})
 	t.Run("invalid_relation_with_insufficient_children", func(t *testing.T) {
 		tests := map[string]struct {
-			model       *openfgav1.AuthorizationModel
-			expectError string
+			model *openfgav1.AuthorizationModel
 		}{
 			"intersection": {
 				model: &openfgav1.AuthorizationModel{
@@ -984,7 +983,6 @@ func TestHasEntrypoints(t *testing.T) {
 						},
 					},
 				},
-				expectError: "invalid type definition for 'document#viewer' as intersection has less than 2 children",
 			},
 			"single_child_intersection": {
 				model: &openfgav1.AuthorizationModel{
@@ -1016,7 +1014,6 @@ func TestHasEntrypoints(t *testing.T) {
 						},
 					},
 				},
-				expectError: "invalid type definition for 'document#viewer' as intersection has less than 2 children",
 			},
 			"union": {
 				model: &openfgav1.AuthorizationModel{
@@ -1044,7 +1041,6 @@ func TestHasEntrypoints(t *testing.T) {
 						},
 					},
 				},
-				expectError: "invalid type definition for 'document#viewer' as union has less than 2 children",
 			},
 			"union_1_child": {
 				model: &openfgav1.AuthorizationModel{
@@ -1076,7 +1072,6 @@ func TestHasEntrypoints(t *testing.T) {
 						},
 					},
 				},
-				expectError: "invalid type definition for 'document#viewer' as union has less than 2 children",
 			},
 		}
 
@@ -1089,7 +1084,7 @@ func TestHasEntrypoints(t *testing.T) {
 				rewrite := inputRelation.GetRewrite()
 
 				_, _, err = hasEntrypoints(ts.GetAllRelations(), "document", "viewer", rewrite, map[string]map[string]bool{})
-				require.EqualError(t, err, test.expectError)
+				require.ErrorIs(t, err, ErrInvalidRelation)
 			})
 		}
 	})
