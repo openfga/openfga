@@ -47,25 +47,11 @@ This model can also be represented as a graph:
 
 ![model](list_objects_pipeline_model_with_types)
 
-Workers are responsible for connecting the graph path from the source to the target through sender edges and listener edges where senders process messages and send the messages to their listeners. For example in the above model, the `org#three` worker node would have the sender edges `[]edge{{ from: "org#five", to: "user" }}` and the listener edges `[]edge{{ from: "intersection", to: "org#five" }, { from: "union", to: "org#five" }}` in pseudocode. Workers also set up their resolver functions for processing messages, remain open while their senders may still be getting or processing messages, and close themselves and their listeners when they are done processing messages.
+Workers connect the graph path from source to target using sender and listener edges. Each worker processes messages from its senders and forwards results to its listeners. For example in the above model, the `org#three` worker node would have the sender edges `[]edge{{ from: "org#five", to: "user" }}` and the listener edges `[]edge{{ from: "intersection", to: "org#five" }, { from: "union", to: "org#five" }}` in pseudocode. Workers also set up their resolver functions for processing messages, remain open while their senders may still be getting or processing messages, and close themselves and their listeners when they are done processing messages.
 
 The `pl.Build()` method sets up an initial message that is sent to all of the nodes with the same user type as the target, eg `user` receives the message `user:01ARZ3NDEKTSV4RRFFQ69G5FAV`. When the `w.Start()` method is called on each of the workers, any of the workers with listeners going to `user` receive the message `user:01ARZ3NDEKTSV4RRFFQ69G5FAV` and start making queries to the database to determine whether the edge they're going to has objects that relate to the user, eg `org#five`. If `org#five` does have objects for the user type, those objects are sent to their listeners in batches up to the size defined for the pipeline `chunkSize` and processed in a single database query. Finally, when messages are returned that connect to the source worker, in this case `object#zero`, or if errors are encountered anywhere along the way, they are returned in the resulting `iter.Seq[Item]`.
 
 The last step in the `pl.Build()` method is to `w.Wait()` on all of the workers to finish processing their goroutines, at which time the workers cancel their contexts and close all of their listeners. Closing the listeners uses a `Broadcast()` mechanism to set the `p.done = true`, wakes up any processing senders blocked on `Send()` and any processing receivers blocked on `Recv()` and end their goroutines gracefully.
-
-In terms of performance tuning, there are three settings that affect the performance of the pipeline:
-1. The `numProcs` limits the number of messages that are processed concurrently and sent to worker's senders to get database entries for the objects that relate to the messages. 
-    - Larger means more goroutines competing for messages from the same sender
-    - Smaller means fewer goroutines, less contention
-2. The `bufferSize` limits the number of messages that a sender can send to its listeners once the sender has received the objects from the database.
-    - Implemented as a circular ring buffer for efficient message passing between workers
-    - Must be a power of 2 to enable efficient bitwise masking for index wrapping
-    - Larger means more messages can queue which results in less blocking but more memory usage
-    - Smaller means more backpressure, ie more blocking and less memory usage
-3. The `chunkSize` limits the number of objects that are packed into each message to be sent to the listeners and subsequently processed in batches by the database.
-    - The optimal value can vary depending on the query overhead of your database
-    - Larger means fewer messages with more items per message, in other words less overhead but larger memory usage per message
-    - Smaller means more messages with fewer items per message, in other words more overhead but less memory usage per message
 
 A few parts of the algorithm have special considerations to note when the model includes `intersection` operators, `exclusion` operators, `TTU`, and `cyclic edges`.
 
@@ -112,7 +98,7 @@ type team
     define parent: [org]
 ```
 
-In pseudocode TTUEdge would be `edge{ from: "union", to: "org#three", tuplesetRelation: "team#parent" }`. So if the object `"org:b"` was found in to exist for the `org` object with the `three` relation, the next database query would require a look up for any objects in `team` with the relation `parent` and the user type `"org:b"`. In otherwords, in our example for ListObjects to return `"object:TTU"` all of the following tuples would need to exist:
+In pseudocode TTUEdge would be `edge{ from: "union", to: "org#three", tuplesetRelation: "team#parent" }`. So if the object `"org:b"` was found in to exist for the `org` object with the `three` relation, the next database query would require a look up for any objects in `team` with the relation `parent` and the user type `"org:b"`. In otherwords, if we had an object `"object:TTU"` connected via TTU, all of the following tuples would need to exist:
 
 ```
 <!-- These tuples satisfy the "org#three" relation -->
@@ -126,7 +112,7 @@ In pseudocode TTUEdge would be `edge{ from: "union", to: "org#three", tuplesetRe
 
 ## Cyclic Edges
 
-There are a few concerns for special handling in the case of cyclic edges. The following model includes a tuple cycle:
+Cyclic edges present a unique challenge where messages can loop indefinitely through the cycle. Without special handling, workers wouldn't know when to stop processing. Consider the following model with a tuple cycle:
 ```
 model
     schema 1.1
@@ -141,9 +127,28 @@ model
 
 ![model](list_objects_tuple_cycle.png)
 
+The pipeline algorithm addresses the concerns of cyclic edges in a few ways:
 1. Input deduplication
-   - When an edge is found to have a cycle, an `inputBuffer` is shared for all messages received by those senders so that duplicate messages are not processed again.
+   - When an edge is part of a cycle, an `inputBuffer` is shared across all goroutines processing that sender to prevent reprocessing the same items as they loop through the cycle.
 3. Shared `tracker` and `statusPool`
-    - Cyclic edges share the same `tracker` and `statusPool`, whereas non-cyclical edges create new instances. This is to allow for coordinating shutdown so that cycle edge blocks and waits for all messages in the cycle to finish processing.
+    - Cyclic edges share the same `tracker` and `statusPool` instances, whereas non-cyclical edges create new instances. This enables coordinating shutdown: 
+    - `tracker`: Counts in-flight messages across the entire cycle
+    - `statusPool`: Each worker reports `false` when it finishes non-cyclical work
 4. Separate processing queue and termination logic
-    - A cyclical edge uses a separate processing queue to allow it to coordinate shutdown logic. When the cyclical edge is handling termination, it waits for all of the `statusPool.pool` entries to be `false` so that all of the non-cyclical messages are done being processed, and for the `tracker` to reach 0 so that all in-flight messages are done being processed as well.
+    - A cyclical edge uses a separate processing queue to allow it to coordinate shutdown logic. When the cyclical edge is handling termination, it waits for all of the `statusPool.pool` entries to be `false` so that all of the non-cyclical messages are done being processed, and for the `tracker` to reach 0 so that all in-flight messages are also done being processed.
+
+## Performance Tuning
+
+The pipeline's performance can be tuned using three configuration settings:
+1. The `numProcs` limits the number of messages that are processed concurrently and sent to worker's senders to get database entries for the objects that relate to the messages. 
+    - Larger means more goroutines competing for messages from the same sender
+    - Smaller means fewer goroutines, less contention
+2. The `bufferSize` limits the number of messages that a sender can send to its listeners once the sender has received the objects from the database.
+    - Implemented as a circular ring buffer for efficient message passing between workers
+    - Must be a power of 2 to enable efficient bitwise masking for index wrapping
+    - Larger means more messages can queue which results in less blocking but more memory usage
+    - Smaller means more backpressure, ie more blocking and less memory usage
+3. The `chunkSize` limits the number of objects that are packed into each message to be sent to the listeners and subsequently processed in batches by the database.
+    - The optimal value can vary depending on the query overhead of your database
+    - Larger means fewer messages with more items per message, in other words less overhead but larger memory usage per message
+    - Smaller means more messages with fewer items per message, in other words more overhead but less memory usage per message
