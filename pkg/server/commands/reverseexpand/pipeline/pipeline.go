@@ -415,6 +415,11 @@ func (r *baseResolver) process(ctx context.Context, snd Sender[*Edge, *Message],
 	var msg *Message
 
 	for snd.Recv(&msg) {
+		if ctx.Err() != nil {
+			msg.Done()
+			continue
+		}
+
 		errs := make([]Item, 0, len(msg.Value))
 		unseen := make([]string, 0, len(msg.Value))
 
@@ -632,6 +637,10 @@ func (r *exclusionResolver) process(ctx context.Context, snd Sender[*Edge, *Mess
 	var msg *Message
 
 	for snd.Recv(&msg) {
+		if ctx.Err() != nil {
+			msg.Done()
+			continue
+		}
 		// Increment the tracker to account for an in-flight message.
 		r.tracker.Inc()
 		values := r.bufferPool.Get()
@@ -821,6 +830,10 @@ func (r *intersectionResolver) process(ctx context.Context, snd Sender[*Edge, *M
 	var msg *Message
 
 	for snd.Recv(&msg) {
+		if ctx.Err() != nil {
+			msg.Done()
+			continue
+		}
 		r.tracker.Add(1)
 		values := r.bufferPool.Get()
 		copy(*values, msg.Value)
@@ -1381,9 +1394,7 @@ func (w *Worker[K, T, U]) initialize(ctx context.Context) {
 	ctx, cancel := context.WithCancel(ctx)
 
 	w.finite = sync.OnceFunc(func() {
-		defer span.End()
 		cancel()
-
 		for _, lst := range w.listeners {
 			lst.Close()
 		}
@@ -1391,6 +1402,7 @@ func (w *Worker[K, T, U]) initialize(ctx context.Context) {
 
 	w.wg.Add(1)
 	go func() {
+		defer span.End()
 		defer w.wg.Done()
 		defer w.Close()
 		w.Resolver.Resolve(ctx, w.senders, w.listeners)
