@@ -264,7 +264,7 @@ func TestPipelineShutdown(t *testing.T) {
 		time.Sleep(2 * time.Millisecond)
 
 		for range seq {
-			t.Fatal("recevied value after context deadline exceeded")
+			t.Fatal("received value after context deadline exceeded")
 		}
 	})
 }

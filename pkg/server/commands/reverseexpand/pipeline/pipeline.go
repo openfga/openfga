@@ -1136,7 +1136,7 @@ func (pl *Pipeline) Build(ctx context.Context, source Source, target Target) ite
 
 		if !abandoned && ctx.Err() != nil {
 			// Context was canceled so there is no guarantee that all
-			// objects have been returned. An error must be signlaled
+			// objects have been returned. An error must be signaled
 			// here to indicate the possibility of a partial result.
 			yield(Item{Err: ctx.Err()})
 		}
