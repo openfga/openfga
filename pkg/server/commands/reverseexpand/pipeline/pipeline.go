@@ -344,10 +344,9 @@ func (b *Backend) query(ctx context.Context, input queryInput) iter.Seq[Item] {
 			var item Item
 
 			if err != nil {
-				if errors.Is(err, storage.ErrIteratorDone) {
+				if storage.IterIsDoneOrCancelled(err) {
 					break
 				}
-
 				item.Err = err
 
 				yield(item)
