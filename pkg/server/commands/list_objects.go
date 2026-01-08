@@ -628,7 +628,7 @@ func (q *ListObjectsQuery) Execute(
 			return nil, serverErrors.ValidationError(fmt.Errorf("user: %s relation: %s not in graph", objectType, objectID))
 		}
 
-		seq := pl.Build(ctx, source, target)
+		seq := pl.Build(timeoutCtx, source, target)
 
 		var res ListObjectsResponse
 
@@ -815,7 +815,7 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 			return nil, serverErrors.ValidationError(fmt.Errorf("user: %s relation: %s not in graph", objectType, objectID))
 		}
 
-		seq := pl.Build(ctx, source, target)
+		seq := pl.Build(timeoutCtx, source, target)
 
 		var listObjectsCount uint32 = 0
 
