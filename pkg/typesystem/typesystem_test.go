@@ -953,7 +953,7 @@ func TestHasEntrypoints(t *testing.T) {
 			require.ErrorAs(t, err, &internalError)
 		})
 	})
-	t.Run("invalid_relation_with_2_children", func(t *testing.T) {
+	t.Run("invalid_relation_with_insufficient_children", func(t *testing.T) {
 		tests := map[string]struct {
 			model       *openfgav1.AuthorizationModel
 			expectError string
@@ -986,6 +986,38 @@ func TestHasEntrypoints(t *testing.T) {
 				},
 				expectError: "invalid type definition for 'document#viewer' as intersection has less than 2 children",
 			},
+			"single_child_intersection": {
+				model: &openfgav1.AuthorizationModel{
+					SchemaVersion: SchemaVersion1_1,
+					TypeDefinitions: []*openfgav1.TypeDefinition{
+						{
+							Type: "user",
+						},
+						{
+							Type: "document",
+							Relations: map[string]*openfgav1.Userset{
+								"viewer": {
+									Userset: &openfgav1.Userset_Intersection{
+										Intersection: &openfgav1.Usersets{
+											Child: []*openfgav1.Userset{
+												{
+													Userset: &openfgav1.Userset_This{},
+												},
+											},
+										},
+									},
+								},
+							},
+							Metadata: &openfgav1.Metadata{
+								Relations: map[string]*openfgav1.RelationMetadata{
+									"viewer": {},
+								},
+							},
+						},
+					},
+				},
+				expectError: "invalid type definition for 'document#viewer' as intersection has less than 2 children",
+			},
 			"union": {
 				model: &openfgav1.AuthorizationModel{
 					SchemaVersion: SchemaVersion1_1,
@@ -1000,6 +1032,38 @@ func TestHasEntrypoints(t *testing.T) {
 									Userset: &openfgav1.Userset_Union{
 										Union: &openfgav1.Usersets{
 											Child: []*openfgav1.Userset{},
+										},
+									},
+								},
+							},
+							Metadata: &openfgav1.Metadata{
+								Relations: map[string]*openfgav1.RelationMetadata{
+									"viewer": {},
+								},
+							},
+						},
+					},
+				},
+				expectError: "invalid type definition for 'document#viewer' as union has less than 2 children",
+			},
+			"union_1_child": {
+				model: &openfgav1.AuthorizationModel{
+					SchemaVersion: SchemaVersion1_1,
+					TypeDefinitions: []*openfgav1.TypeDefinition{
+						{
+							Type: "user",
+						},
+						{
+							Type: "document",
+							Relations: map[string]*openfgav1.Userset{
+								"viewer": {
+									Userset: &openfgav1.Userset_Union{
+										Union: &openfgav1.Usersets{
+											Child: []*openfgav1.Userset{
+												{
+													Userset: &openfgav1.Userset_This{},
+												},
+											},
 										},
 									},
 								},
