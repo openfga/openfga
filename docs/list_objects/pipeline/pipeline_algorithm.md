@@ -62,7 +62,7 @@ type object
 This model can also be represented as a graph:
 
 <p align="center">
-    <img src="list_objects_pipeline_model_with_types.png">
+    <img src="list_objects_pipeline_model_with_types.png" height="1000">
 </p>
 
 Workers connect the graph path from source to target using sender and listener edges. Each worker processes messages from its senders and forwards results to its listeners. For example in the above model, the `org#three` worker node would have the sender edges `[]edge{{ from: "org#five", to: "user" }}` and the listener edges `[]edge{{ from: "intersection", to: "org#five" }, { from: "union", to: "org#five" }}` in pseudocode. Workers also set up their resolver functions for processing messages, remain open while their senders may still be getting or processing messages, and close themselves and their listeners when they are done processing messages.
