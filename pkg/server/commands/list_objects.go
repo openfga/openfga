@@ -78,6 +78,9 @@ type ListObjectsQuery struct {
 	useShadowCache       bool // Indicates that the shadow cache should be used instead of the main cache
 
 	pipelineEnabled bool // Indicates whether to run with the pipeline optimized code
+	chunkSize       int
+	bufferSize      int
+	numProcs        int
 }
 
 type ListObjectsResolver interface {
@@ -201,6 +204,24 @@ func WithListObjectsUseShadowCache(useShadowCache bool) ListObjectsQueryOption {
 func WithListObjectsPipelineEnabled(value bool) ListObjectsQueryOption {
 	return func(d *ListObjectsQuery) {
 		d.pipelineEnabled = value
+	}
+}
+
+func WithListObjectsChunkSize(value int) ListObjectsQueryOption {
+	return func(d *ListObjectsQuery) {
+		d.chunkSize = value
+	}
+}
+
+func WithListObjectsBufferSize(value int) ListObjectsQueryOption {
+	return func(d *ListObjectsQuery) {
+		d.bufferSize = value
+	}
+}
+
+func WithListObjectsNumProcs(value int) ListObjectsQueryOption {
+	return func(d *ListObjectsQuery) {
+		d.numProcs = value
 	}
 }
 
@@ -567,7 +588,21 @@ func (q *ListObjectsQuery) Execute(
 			Preference: req.GetConsistency(),
 		}
 
-		pl, err := pipeline.New(backend)
+		var options []pipeline.Option
+
+		if q.chunkSize > 0 {
+			options = append(options, pipeline.WithChunkSize(q.chunkSize))
+		}
+
+		if q.bufferSize > 0 {
+			options = append(options, pipeline.WithBufferSize(q.bufferSize))
+		}
+
+		if q.numProcs > 0 {
+			options = append(options, pipeline.WithNumProcs(q.numProcs))
+		}
+
+		pl, err := pipeline.New(backend, options...)
 		if err != nil {
 			return nil, serverErrors.ValidationError(err)
 		}
@@ -740,7 +775,21 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 			Preference: req.GetConsistency(),
 		}
 
-		pl, err := pipeline.New(backend)
+		var options []pipeline.Option
+
+		if q.chunkSize > 0 {
+			options = append(options, pipeline.WithChunkSize(q.chunkSize))
+		}
+
+		if q.bufferSize > 0 {
+			options = append(options, pipeline.WithBufferSize(q.bufferSize))
+		}
+
+		if q.numProcs > 0 {
+			options = append(options, pipeline.WithNumProcs(q.numProcs))
+		}
+
+		pl, err := pipeline.New(backend, options...)
 		if err != nil {
 			return nil, serverErrors.ValidationError(err)
 		}
