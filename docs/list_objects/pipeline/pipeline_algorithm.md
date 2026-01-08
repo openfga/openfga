@@ -1,6 +1,6 @@
 # Pipeline Traversal
 
-The Pipeline instance is initialized by invoking `New()` with a `Backend` and options to set `defaultBufferSize`, `defaultChunkSize`, and `defaultNumProcs`.
+The Pipeline instance is initialized by invoking `New()` with a `Backend` and options to set `chunkSize`, `bufferSize`, and `numProcs`.
 
 Eg:
 ```
@@ -13,7 +13,7 @@ backend := &pipeline.Backend{
     Preference: req.GetConsistency(),
 }
 
-pl := pipeline.New(backend)
+pl := pipeline.New(backend, WithBufferSize(bufferSize), WithChunkSize(chunkSize), WithNumProcs(numProcs))
 ```
 
 Once initialized, a ListObjects request can be processed by invoking `pl.Build()` with the object type and relation as the `source`, and the user and ID as the `target`. The `Build()` method builds the pipeline workers by traversing the weighted graph in a DFS, starting at the source object type and relation, creating a worker for each node until a node has no more edges, at which point it backtracks and continues from the previous unexplored edge. Nodes are stored as pointers in the workers, so nodes that were previously traversed are not traversed again.
