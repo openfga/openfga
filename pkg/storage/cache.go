@@ -66,6 +66,22 @@ type InMemoryCache[T any] interface {
 	Stop()
 }
 
+type NoopCache struct{}
+
+func (n *NoopCache) Get(_ string) any {
+	return nil
+}
+
+func (n *NoopCache) Set(_ string, _ any, _ time.Duration) {}
+
+func (n *NoopCache) Delete(_ string) {}
+
+func (n *NoopCache) Stop() {}
+
+func NewNoopCache() *NoopCache {
+	return &NoopCache{}
+}
+
 // Specific implementation
 
 type InMemoryLRUCache[T any] struct {
