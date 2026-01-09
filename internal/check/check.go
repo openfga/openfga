@@ -82,6 +82,10 @@ func New(cfg Config) *Resolver {
 		ff:                        cfg.FF,
 	}
 
+	if r.cache == nil {
+		r.cache = storage.NewNoopCache()
+	}
+
 	if r.strategies == nil {
 		r.strategies = map[string]Strategy{
 			DefaultStrategyName:   NewDefault(cfg.Model, r, cfg.ConcurrencyLimit),
