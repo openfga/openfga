@@ -344,10 +344,9 @@ func (b *Backend) query(ctx context.Context, input queryInput) iter.Seq[Item] {
 			var item Item
 
 			if err != nil {
-				if errors.Is(err, storage.ErrIteratorDone) {
+				if storage.IterIsDoneOrCancelled(err) {
 					break
 				}
-
 				item.Err = err
 
 				yield(item)
@@ -415,6 +414,11 @@ func (r *baseResolver) process(ctx context.Context, snd Sender[*Edge, *Message],
 	var msg *Message
 
 	for snd.Recv(&msg) {
+		if ctx.Err() != nil {
+			msg.Done()
+			continue
+		}
+
 		errs := make([]Item, 0, len(msg.Value))
 		unseen := make([]string, 0, len(msg.Value))
 
@@ -632,6 +636,10 @@ func (r *exclusionResolver) process(ctx context.Context, snd Sender[*Edge, *Mess
 	var msg *Message
 
 	for snd.Recv(&msg) {
+		if ctx.Err() != nil {
+			msg.Done()
+			continue
+		}
 		// Increment the tracker to account for an in-flight message.
 		r.tracker.Inc()
 		values := r.bufferPool.Get()
@@ -821,6 +829,10 @@ func (r *intersectionResolver) process(ctx context.Context, snd Sender[*Edge, *M
 	var msg *Message
 
 	for snd.Recv(&msg) {
+		if ctx.Err() != nil {
+			msg.Done()
+			continue
+		}
 		r.tracker.Add(1)
 		values := r.bufferPool.Get()
 		copy(*values, msg.Value)
@@ -1074,6 +1086,9 @@ func (pl *Pipeline) Build(ctx context.Context, source Source, target Target) ite
 		defer span.End()
 
 		if ctx.Err() != nil {
+			// Exit early if the context was already canceled.
+			// No goroutines have been created up to this point
+			// so no cleanup is necessary.
 			return
 		}
 
@@ -1095,22 +1110,35 @@ func (pl *Pipeline) Build(ctx context.Context, source Source, target Target) ite
 		go func() {
 			defer wg.Done()
 			<-ctx.Done()
-			// wait for all workers to finish
+			// Wait for all workers to finish.
 			for _, w := range workers {
 				w.Wait()
 			}
 		}()
 
+		var abandoned bool
+
 		for msg := range results.Seq() {
 			if ctx.Err() == nil {
 				for _, item := range msg.Value {
 					if !yield(item) {
+						// The caller has ended sequence iteration early.
+						// Cancel the context so that the pipeline begins
+						// its shutdown process.
+						abandoned = true
 						cancel()
 						break
 					}
 				}
 			}
 			msg.Done()
+		}
+
+		if !abandoned && ctx.Err() != nil {
+			// Context was canceled so there is no guarantee that all
+			// objects have been returned. An error must be signaled
+			// here to indicate the possibility of a partial result.
+			yield(Item{Err: ctx.Err()})
 		}
 	}
 }
@@ -1381,9 +1409,7 @@ func (w *Worker[K, T, U]) initialize(ctx context.Context) {
 	ctx, cancel := context.WithCancel(ctx)
 
 	w.finite = sync.OnceFunc(func() {
-		defer span.End()
 		cancel()
-
 		for _, lst := range w.listeners {
 			lst.Close()
 		}
@@ -1391,6 +1417,7 @@ func (w *Worker[K, T, U]) initialize(ctx context.Context) {
 
 	w.wg.Add(1)
 	go func() {
+		defer span.End()
 		defer w.wg.Done()
 		defer w.Close()
 		w.Resolver.Resolve(ctx, w.senders, w.listeners)
