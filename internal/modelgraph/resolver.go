@@ -30,11 +30,17 @@ type AuthorizationModelGraphResolver struct {
 }
 
 func NewResolver(datastore storage.AuthorizationModelReadBackend, cache storage.InMemoryCache[any], ttl time.Duration) *AuthorizationModelGraphResolver {
-	return &AuthorizationModelGraphResolver{
+	r := &AuthorizationModelGraphResolver{
 		datastore: datastore,
 		cache:     cache,
 		ttl:       ttl,
 	}
+
+	if r.cache == nil {
+		r.cache = storage.NewNoopCache()
+	}
+
+	return r
 }
 
 func (r *AuthorizationModelGraphResolver) Resolve(ctx context.Context, storeID, modelID string) (*AuthorizationModelGraph, error) {
