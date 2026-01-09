@@ -15,7 +15,7 @@ const (
 	// pipe will wait before extending the pipe's internal buffer.
 	//
 	// A negative value disables the pipe extension functionality.
-	DefaultExtendAfter time.Duration = -1
+	DefaultExtendAfter time.Duration = 0
 
 	// This value is used as the default value that indicates the maximum
 	// number of times that a pipe's internal buffer may be extended.
