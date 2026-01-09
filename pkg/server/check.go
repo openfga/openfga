@@ -252,6 +252,7 @@ func (s *Server) v2Check(ctx context.Context, req *openfgav1.CheckRequest) (*ope
 		commands.WithCheckQueryV2LastCacheInvalidationTime(cacheInvalidationTime),
 		commands.WithCheckQueryV2ConcurrencyLimit(int(s.resolveNodeBreadthLimit)),
 		commands.WithCheckQueryV2UpstreamTimeout(s.requestTimeout),
+		commands.WithCheckQueryV2FFClient(s.featureFlagClient),
 	)
 
 	res, err := q.Execute(ctx, req)
