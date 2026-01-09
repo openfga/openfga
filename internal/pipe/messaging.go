@@ -13,11 +13,15 @@ import (
 const (
 	// This value is used as the default duration that a send on a
 	// pipe will wait before extending the pipe's internal buffer.
-	defaultExtendAfter time.Duration = 100 * time.Millisecond
+	//
+	// A negative value disables the pipe extension functionality.
+	defaultExtendAfter time.Duration = -1
 
 	// This value is used as the default value that indicates the maximum
 	// number of times that a pipe's internal buffer may be extended.
-	defaultMaxExtensions int = 5
+	//
+	// A value of 0 will prevent extensions.
+	defaultMaxExtensions int = 0
 )
 
 var ErrInvalidSize = errors.New("pipe size must be a power of two")
