@@ -20,6 +20,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -1000,6 +1001,43 @@ func TestHTTPServerEnabled(t *testing.T) {
 	}()
 
 	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil)
+}
+
+func TestPlaygroundEnabled(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	cfg := testutils.MustDefaultConfigWithRandomPorts()
+	cfg.Playground.Enabled = true
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := runServer(ctx, cfg); err != nil {
+			log.Fatal(err)
+		}
+	}()
+	t.Cleanup(func() {
+		wg.Wait()
+	})
+
+	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil)
+
+	c := retryablehttp.NewClient()
+	t.Cleanup(c.HTTPClient.CloseIdleConnections)
+
+	playgroundPort := fmt.Sprintf(":%d", cfg.Playground.Port)
+	resp, err := c.Get(fmt.Sprintf("http://localhost%s/playground", playgroundPort))
+	require.NoError(t, err, "http playground endpoint not healthy")
+	t.Cleanup(func() {
+		err := resp.Body.Close()
+		require.NoError(t, err)
+	})
+	require.Equal(t, http.StatusOK, resp.StatusCode, "unexpected status code received from server")
 }
 
 func TestDefaultConfig(t *testing.T) {

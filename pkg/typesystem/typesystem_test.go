@@ -953,6 +953,141 @@ func TestHasEntrypoints(t *testing.T) {
 			require.ErrorAs(t, err, &internalError)
 		})
 	})
+	t.Run("invalid_relation_with_insufficient_children", func(t *testing.T) {
+		tests := map[string]struct {
+			model *openfgav1.AuthorizationModel
+		}{
+			"intersection": {
+				model: &openfgav1.AuthorizationModel{
+					SchemaVersion: SchemaVersion1_1,
+					TypeDefinitions: []*openfgav1.TypeDefinition{
+						{
+							Type: "user",
+						},
+						{
+							Type: "document",
+							Relations: map[string]*openfgav1.Userset{
+								"viewer": {
+									Userset: &openfgav1.Userset_Intersection{
+										Intersection: &openfgav1.Usersets{
+											Child: []*openfgav1.Userset{},
+										},
+									},
+								},
+							},
+							Metadata: &openfgav1.Metadata{
+								Relations: map[string]*openfgav1.RelationMetadata{
+									"viewer": {},
+								},
+							},
+						},
+					},
+				},
+			},
+			"single_child_intersection": {
+				model: &openfgav1.AuthorizationModel{
+					SchemaVersion: SchemaVersion1_1,
+					TypeDefinitions: []*openfgav1.TypeDefinition{
+						{
+							Type: "user",
+						},
+						{
+							Type: "document",
+							Relations: map[string]*openfgav1.Userset{
+								"viewer": {
+									Userset: &openfgav1.Userset_Intersection{
+										Intersection: &openfgav1.Usersets{
+											Child: []*openfgav1.Userset{
+												{
+													Userset: &openfgav1.Userset_This{},
+												},
+											},
+										},
+									},
+								},
+							},
+							Metadata: &openfgav1.Metadata{
+								Relations: map[string]*openfgav1.RelationMetadata{
+									"viewer": {},
+								},
+							},
+						},
+					},
+				},
+			},
+			"union": {
+				model: &openfgav1.AuthorizationModel{
+					SchemaVersion: SchemaVersion1_1,
+					TypeDefinitions: []*openfgav1.TypeDefinition{
+						{
+							Type: "user",
+						},
+						{
+							Type: "document",
+							Relations: map[string]*openfgav1.Userset{
+								"viewer": {
+									Userset: &openfgav1.Userset_Union{
+										Union: &openfgav1.Usersets{
+											Child: []*openfgav1.Userset{},
+										},
+									},
+								},
+							},
+							Metadata: &openfgav1.Metadata{
+								Relations: map[string]*openfgav1.RelationMetadata{
+									"viewer": {},
+								},
+							},
+						},
+					},
+				},
+			},
+			"union_1_child": {
+				model: &openfgav1.AuthorizationModel{
+					SchemaVersion: SchemaVersion1_1,
+					TypeDefinitions: []*openfgav1.TypeDefinition{
+						{
+							Type: "user",
+						},
+						{
+							Type: "document",
+							Relations: map[string]*openfgav1.Userset{
+								"viewer": {
+									Userset: &openfgav1.Userset_Union{
+										Union: &openfgav1.Usersets{
+											Child: []*openfgav1.Userset{
+												{
+													Userset: &openfgav1.Userset_This{},
+												},
+											},
+										},
+									},
+								},
+							},
+							Metadata: &openfgav1.Metadata{
+								Relations: map[string]*openfgav1.RelationMetadata{
+									"viewer": {},
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		for name, test := range tests {
+			t.Run(name, func(t *testing.T) {
+				ts, err := New(test.model)
+				require.NoError(t, err)
+
+				inputRelation, _ := ts.GetRelation("document", "viewer")
+				rewrite := inputRelation.GetRewrite()
+
+				_, _, err = hasEntrypoints(ts.GetAllRelations(), "document", "viewer", rewrite, map[string]map[string]bool{})
+				require.ErrorIs(t, err, ErrInvalidRelation)
+			})
+		}
+	})
 }
 
 func TestResolveComputedRelation(t *testing.T) {
