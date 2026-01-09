@@ -11,11 +11,11 @@ import (
 )
 
 const (
-	// defaultExtendAfter is used as the default duration that a send on a
+	// This value is used as the default duration that a send on a
 	// pipe will wait before extending the pipe's internal buffer.
 	defaultExtendAfter time.Duration = 100 * time.Millisecond
 
-	// defaultMaxExtensions is used as the default value that indicates the maximum
+	// This value is used as the default value that indicates the maximum
 	// number of times that a pipe's internal buffer may be extended.
 	defaultMaxExtensions int = 5
 )
