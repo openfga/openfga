@@ -277,6 +277,15 @@ func (p *Pipe[T]) mask(value uint) uint {
 	return value & (uint(len(p.data)) - 1)
 }
 
+// Size is a function used to retrieve the current number of items waiting in the
+// pipe's internal buffer to be received.
+func (p *Pipe[T]) Size() int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	return int(p.head - p.tail)
+}
+
 // Seq is a function that returns an iter.Seq instance that allows the caller to
 // iterate over the values received from the Pipe. When a caller terminates iteration
 // of a returned iter.Seq, all other iter.Seq values returned from the same Pipe
