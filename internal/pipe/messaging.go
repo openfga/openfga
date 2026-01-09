@@ -15,13 +15,13 @@ const (
 	// pipe will wait before extending the pipe's internal buffer.
 	//
 	// A negative value disables the pipe extension functionality.
-	defaultExtendAfter time.Duration = -1
+	DefaultExtendAfter time.Duration = -1
 
 	// This value is used as the default value that indicates the maximum
 	// number of times that a pipe's internal buffer may be extended.
 	//
 	// A value of 0 will prevent extensions.
-	defaultMaxExtensions int = 0
+	DefaultMaxExtensions int = 0
 )
 
 var ErrInvalidSize = errors.New("pipe size must be a power of two")
@@ -155,8 +155,8 @@ func New[T any](n int) (*Pipe[T], error) {
 	p.data = make([]T, n)
 	p.condFull = sync.NewCond(&p.mu)
 	p.condEmpty = sync.NewCond(&p.mu)
-	p.extendAfter = defaultExtendAfter
-	p.maxExtensions = defaultMaxExtensions
+	p.extendAfter = DefaultExtendAfter
+	p.maxExtensions = DefaultMaxExtensions
 	return &p, nil
 }
 
@@ -284,6 +284,15 @@ func (p *Pipe[T]) Size() int {
 	defer p.mu.Unlock()
 
 	return int(p.head - p.tail)
+}
+
+// Capacity is a function used to retrieve the current number of items that the
+// pipe's internal buffer can hold.
+func (p *Pipe[T]) Capacity() int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	return len(p.data)
 }
 
 // Seq is a function that returns an iter.Seq instance that allows the caller to
