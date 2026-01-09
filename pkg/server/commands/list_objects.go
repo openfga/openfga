@@ -628,7 +628,7 @@ func (q *ListObjectsQuery) Execute(
 			return nil, serverErrors.ValidationError(fmt.Errorf("user: %s relation: %s not in graph", objectType, objectID))
 		}
 
-		seq := pl.Build(ctx, source, target)
+		seq := pl.Build(timeoutCtx, source, target)
 
 		var res ListObjectsResponse
 
@@ -637,7 +637,9 @@ func (q *ListObjectsQuery) Execute(
 				break
 			}
 
-			if obj.Err != nil {
+			// If the error is from a context cancelation, the current
+			// behavior for ListObjects is to not report it.
+			if obj.Err != nil && !errors.Is(obj.Err, context.Canceled) && !errors.Is(obj.Err, context.DeadlineExceeded) {
 				return nil, serverErrors.HandleError("", obj.Err)
 			}
 
@@ -815,7 +817,7 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 			return nil, serverErrors.ValidationError(fmt.Errorf("user: %s relation: %s not in graph", objectType, objectID))
 		}
 
-		seq := pl.Build(ctx, source, target)
+		seq := pl.Build(timeoutCtx, source, target)
 
 		var listObjectsCount uint32 = 0
 
@@ -824,7 +826,9 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 				break
 			}
 
-			if obj.Err != nil {
+			// If the error is from a context cancelation, the current
+			// behavior for ListObjects is to not report it.
+			if obj.Err != nil && !errors.Is(obj.Err, context.Canceled) && !errors.Is(obj.Err, context.DeadlineExceeded) {
 				if errors.Is(obj.Err, condition.ErrEvaluationFailed) {
 					return nil, serverErrors.ValidationError(obj.Err)
 				}
