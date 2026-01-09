@@ -7,7 +7,6 @@ import (
 	"time"
 
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
-	"github.com/openfga/openfga/pkg/storage"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sourcegraph/conc/panics"
 	"go.opentelemetry.io/otel/attribute"
@@ -243,16 +242,11 @@ func (s *Server) v2Check(ctx context.Context, req *openfgav1.CheckRequest) (*ope
 		return nil, err
 	}
 
-	cache, err := storage.NewInMemoryLRUCache[any]()
-	if err != nil {
-		return nil, err
-	}
-
 	q := commands.NewCheckQuery(
 		commands.WithCheckQueryV2Logger(s.logger),
 		commands.WithCheckQueryV2Datastore(s.datastore),
 		commands.WithCheckQueryV2Model(mg),
-		commands.WithCheckQueryV2Cache(cache),
+		commands.WithCheckQueryV2Cache(s.sharedDatastoreResources.CheckCache),
 		commands.WithCheckQueryV2CacheTTL(s.cacheSettings.CheckQueryCacheTTL),
 		commands.WithCheckQueryV2Planner(s.planner),
 		commands.WithCheckQueryV2LastCacheInvalidationTime(cacheInvalidationTime),
