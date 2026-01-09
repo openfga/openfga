@@ -344,10 +344,9 @@ func (b *Backend) query(ctx context.Context, input queryInput) iter.Seq[Item] {
 			var item Item
 
 			if err != nil {
-				if errors.Is(err, storage.ErrIteratorDone) {
+				if storage.IterIsDoneOrCancelled(err) {
 					break
 				}
-
 				item.Err = err
 
 				yield(item)
@@ -1087,6 +1086,9 @@ func (pl *Pipeline) Build(ctx context.Context, source Source, target Target) ite
 		defer span.End()
 
 		if ctx.Err() != nil {
+			// Exit early if the context was already canceled.
+			// No goroutines have been created up to this point
+			// so no cleanup is necessary.
 			return
 		}
 
@@ -1108,22 +1110,35 @@ func (pl *Pipeline) Build(ctx context.Context, source Source, target Target) ite
 		go func() {
 			defer wg.Done()
 			<-ctx.Done()
-			// wait for all workers to finish
+			// Wait for all workers to finish.
 			for _, w := range workers {
 				w.Wait()
 			}
 		}()
 
+		var abandoned bool
+
 		for msg := range results.Seq() {
 			if ctx.Err() == nil {
 				for _, item := range msg.Value {
 					if !yield(item) {
+						// The caller has ended sequence iteration early.
+						// Cancel the context so that the pipeline begins
+						// its shutdown process.
+						abandoned = true
 						cancel()
 						break
 					}
 				}
 			}
 			msg.Done()
+		}
+
+		if !abandoned && ctx.Err() != nil {
+			// Context was canceled so there is no guarantee that all
+			// objects have been returned. An error must be signaled
+			// here to indicate the possibility of a partial result.
+			yield(Item{Err: ctx.Err()})
 		}
 	}
 }
