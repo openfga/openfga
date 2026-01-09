@@ -5,8 +5,19 @@ import (
 	"io"
 	"iter"
 	"sync"
+	"time"
 
 	"github.com/openfga/openfga/internal/bitutil"
+)
+
+const (
+	// defaultExtendAfter is used as the default duration that a send on a
+	// pipe will wait before extending the pipe's internal buffer.
+	defaultExtendAfter time.Duration = 100 * time.Millisecond
+
+	// defaultMaxExtensions is used as the default value that indicates the maximum
+	// number of times that a pipe's internal buffer may be extended.
+	defaultMaxExtensions int = 5
 )
 
 var ErrInvalidSize = errors.New("pipe size must be a power of two")
@@ -68,6 +79,11 @@ type TxCloser[T any] interface {
 // Once a Pipe's capacity has been reached, subsequent calls to Send
 // on the Pipe will block until Recv or Close is called on the Pipe.
 //
+// When a Pipe's extension configuration is set, its internal buffer
+// will be extended when a call to Send blocks for longer than the
+// configured threshold. A Pipe's buffer is doubled by each extension
+// and may be extended up to the configured maximum number of times.
+//
 // When a Pipe is empty -- no values are currently buffered --
 // subsequent calls to Recv on the Pipe will block until Send or Close
 // is called on the Pipe.
@@ -110,6 +126,18 @@ type Pipe[T any] struct {
 	// done indicates the status of the Pipe. When done is `true`
 	// subsequent calls to Send and Recv must return `false`.
 	done bool
+
+	// extendAfter is the duration that a pipe will wait on a send
+	// to a full buffer before extending the buffer.
+	extendAfter time.Duration
+
+	// extendCount keeps track of the number of times that the pipe's
+	// internal buffer has been extended.
+	extendCount int
+
+	// maxExtensions indicates the maximum number of times that a pipe's
+	// internal buffer may be extended.
+	maxExtensions int
 }
 
 // New is a function that instantiates a new Pipe with a size of n.
@@ -123,6 +151,8 @@ func New[T any](n int) (*Pipe[T], error) {
 	p.data = make([]T, n)
 	p.condFull = sync.NewCond(&p.mu)
 	p.condEmpty = sync.NewCond(&p.mu)
+	p.extendAfter = defaultExtendAfter
+	p.maxExtensions = defaultMaxExtensions
 	return &p, nil
 }
 
@@ -134,6 +164,69 @@ func Must[T any](n int) *Pipe[T] {
 		panic(err)
 	}
 	return p
+}
+
+// SetExtensionConfig is a function that sets the configuration for a
+// pipe's internal buffer.
+//
+// When sending a value to a pipe takes longer than the extendAfter
+// duration, the pipe's internal buffer will be extended automatically.
+// The buffer will be extended up to the maxExtensions value.
+//
+// The buffer's size doubles after each extension.
+func (p *Pipe[T]) SetExtensionConfig(extendAfter time.Duration, maxExtensions int) {
+	p.extendAfter = extendAfter
+	p.maxExtensions = maxExtensions
+}
+
+// extend is a function that conditionally grows the size of the pipe's
+// internal buffer. This capability exists to make the pipe a bit more
+// elastic in terms of its memory use.
+func (p *Pipe[T]) extend(expected int) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	// Check if another goroutine already extended the buffer
+	if len(p.data) != expected {
+		return
+	}
+
+	// If the pipe is closed, no need to extend
+	if p.done {
+		return
+	}
+
+	// Ensure that the extension limit hasn't been reached
+	if p.maxExtensions >= 0 && p.extendCount >= p.maxExtensions {
+		return
+	}
+
+	oldCapacity := uint(len(p.data))
+
+	// Set new capacity to the next power of two
+	newCapacity := oldCapacity << 1
+
+	// Distance between the head and tail is always the size of the buffer
+	currentSize := p.head - p.tail
+
+	newData := make([]T, newCapacity)
+
+	// Reorganize the buffer data so that the first element starts at index 0
+	for i := range currentSize {
+		oldIndex := p.mask(p.tail + i)
+		newData[i] = p.data[oldIndex]
+	}
+
+	p.data = newData
+
+	// Reset the buffer positions since we just reoganized the data
+	p.tail = 0
+	p.head = currentSize
+
+	p.extendCount++
+
+	// Wake all senders that were blocked on full buffer
+	p.condFull.Broadcast()
 }
 
 // empty is a function that returns `true` when the Pipe's internal
@@ -219,9 +312,23 @@ func (p *Pipe[T]) Send(item T) bool {
 		return false
 	}
 
+	var timer *time.Timer
+	if p.full() && !p.done && p.extendAfter > 0 {
+		if p.maxExtensions < 0 || p.extendCount < p.maxExtensions {
+			currentSize := len(p.data)
+			timer = time.AfterFunc(p.extendAfter, func() {
+				p.extend(currentSize)
+			})
+		}
+	}
+
 	// Wait if the buffer is full and the pipe is not yet done.
 	for p.full() && !p.done {
 		p.condFull.Wait()
+	}
+
+	if timer != nil {
+		timer.Stop()
 	}
 
 	if p.done {
