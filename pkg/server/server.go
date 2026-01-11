@@ -178,6 +178,8 @@ type Server struct {
 	listObjectsChunkSize             int
 	listObjectsBufferSize            int
 	listObjectsNumProcs              int
+	listObjectsPipeExtendAfter       time.Duration
+	listObjectsPipeMaxExtensions     int
 	maxChecksPerBatchCheck           uint32
 	maxConcurrentChecksPerBatch      uint32
 	maxConcurrentReadsForListObjects uint32
@@ -771,7 +773,7 @@ func WithSharedIteratorTTL(ttl time.Duration) OpenFGAServiceV1Option {
 	}
 }
 
-// When the ListObjects "pipeline" algorithm is enabled, this option sets the maximium
+// When the ListObjects "pipeline" algorithm is enabled, this option sets the maximum
 // number of objects to send in a message between pipeline workers. This ultimately
 // equates to the number of objects that will be used in each data store query filter.
 //
@@ -805,6 +807,17 @@ func WithListObjectsBufferSize(value int) OpenFGAServiceV1Option {
 func WithListObjectsNumProcs(value int) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.listObjectsNumProcs = value
+	}
+}
+
+// When the ListObjects "pipeline" algorithm is enabled, this option enables extension
+// functionality within a pipeline, which dynamically extends the buffers between pipeline
+// workers, as needed. When a call to send on a buffer blocks for longer than the extendAfter
+// duration, the buffer size is doubled up to maxExtensions number of times.
+func WithListObjectsPipeExtension(extendAfter time.Duration, maxExtensions int) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.listObjectsPipeExtendAfter = extendAfter
+		s.listObjectsPipeMaxExtensions = maxExtensions
 	}
 }
 

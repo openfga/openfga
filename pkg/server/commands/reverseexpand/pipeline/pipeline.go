@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -110,12 +111,30 @@ func WithNumProcs(num int) Option {
 	}
 }
 
+// WithPipeExtension enables functionality to dynamically extend the size of pipes
+// between workers as needed up to a defined number of times. Each extension doubles
+// the size of a pipe's internal buffer. A pipe is only extended if a call to send on
+// the pipe blocks for longer than the extendAfter duration.
+//
+// This functionality is disabled by default. To enable, set extendAfter to a duration
+// greater than 0 and set maxExtensions to a value greater than 0, or to -1 to
+// make the number of extensions unbounded.
+func WithPipeExtension(extendAfter time.Duration, maxExtensions int) Option {
+	return func(p *Pipeline) error {
+		p.pipeExtendAfter = extendAfter
+		p.pipeMaxExtensions = maxExtensions
+		return nil
+	}
+}
+
 func New(backend *Backend, options ...Option) (*Pipeline, error) {
 	p := &Pipeline{
-		backend:    backend,
-		bufferSize: defaultBufferSize,
-		chunkSize:  defaultChunkSize,
-		numProcs:   defaultNumProcs,
+		backend:           backend,
+		bufferSize:        defaultBufferSize,
+		chunkSize:         defaultChunkSize,
+		numProcs:          defaultNumProcs,
+		pipeExtendAfter:   pipe.DefaultExtendAfter,
+		pipeMaxExtensions: pipe.DefaultMaxExtensions,
 	}
 
 	for _, option := range options {
@@ -141,7 +160,7 @@ func (b *bufferPool) Put(buffer *[]Item) {
 	b.pool.Put(buffer)
 }
 
-func (b *bufferPool) create() interface{} {
+func (b *bufferPool) create() any {
 	tmp := make([]Item, b.size)
 	return &tmp
 }
@@ -1051,6 +1070,12 @@ type Pipeline struct {
 	// The default value is 3. This value can be changed by constructing
 	// a pipeline using NewPipeline and providing the option WithNumProcs.
 	numProcs int
+
+	// pipeExtendAfter is the duration before extending full pipe buffers
+	pipeExtendAfter time.Duration
+
+	// pipeMaxExtensions is the max number of times pipe buffers can extend
+	pipeMaxExtensions int
 }
 
 type pipelineWorker = Worker[*Edge, *Message, *Message]
@@ -1183,6 +1208,8 @@ func (pl *Pipeline) resolve(p path, workers workerPool) *pipelineWorker {
 
 	var w pipelineWorker
 	w.bufferSize = pl.bufferSize
+	w.pipeExtendAfter = pl.pipeExtendAfter
+	w.pipeMaxExtensions = pl.pipeMaxExtensions
 
 	reporter := p.statusPool.Register()
 	reporter.Report(true)
@@ -1392,6 +1419,9 @@ type Worker[K any, T any, U any] struct {
 	// bufferSize is the value that will be set for the worker's internal pipe buffer.
 	// The value must be a power of two; any other value will cause a panic.
 	bufferSize int
+
+	pipeExtendAfter   time.Duration
+	pipeMaxExtensions int
 }
 
 func (w *Worker[K, T, U]) Close() {
@@ -1439,6 +1469,11 @@ func (w *Worker[K, T, U]) Start(ctx context.Context) {
 
 func (w *Worker[K, T, U]) Subscribe(key K) Sender[K, U] {
 	p := pipe.Must[U](w.bufferSize)
+
+	// Configure extension behavior if set on pipeline
+	if w.pipeExtendAfter > 0 {
+		p.SetExtensionConfig(w.pipeExtendAfter, w.pipeMaxExtensions)
+	}
 
 	w.listeners = append(w.listeners, &listener[K, U]{
 		key,
