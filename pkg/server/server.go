@@ -773,7 +773,7 @@ func WithSharedIteratorTTL(ttl time.Duration) OpenFGAServiceV1Option {
 	}
 }
 
-// When the ListObjects "pipeline" algorithm is enabled, this option sets the maximium
+// When the ListObjects "pipeline" algorithm is enabled, this option sets the maximum
 // number of objects to send in a message between pipeline workers. This ultimately
 // equates to the number of objects that will be used in each data store query filter.
 //
