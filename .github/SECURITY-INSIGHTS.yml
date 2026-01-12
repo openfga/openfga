@@ -3,8 +3,8 @@
 
 header:
   schema-version: 2.0.0
-  last-updated: '2025-09-18'
-  last-reviewed: '2025-09-18'
+  last-updated: '2026-01-12'
+  last-reviewed: '2026-01-12'
   url: https://github.com/openfga/openfga
   project-si-source: https://raw.githubusercontent.com/openfga/.github/main/SECURITY-INSIGHTS.yml
   comment: High-performance and flexible authorization engine built for developers and inspired by Google Zanzibar.
@@ -62,10 +62,6 @@ repository:
     affiliation: Okta
     email: yissell.garma@okta.com
     social: https://github.com/yissellokta
-  - name: Zilvinas Vilutis
-    affiliation: Okta
-    email: zilvinas.vilutis@okta.com
-    social: https://github.com/cikasfm
 
   license:
     url: https://raw.githubusercontent.com/openfga/openfga/main/LICENSE
