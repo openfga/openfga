@@ -62,6 +62,10 @@ repository:
     affiliation: Okta
     email: yissell.garma@okta.com
     social: https://github.com/yissellokta
+  - name: Saad Hussain
+    affiliation: Okta
+    email: saad.hussain@okta.com
+    social: https://github.com/saad-h1
 
   license:
     url: https://raw.githubusercontent.com/openfga/openfga/main/LICENSE
