@@ -77,10 +77,12 @@ type ListObjectsQuery struct {
 	optimizationsEnabled bool // Indicates if experimental optimizations are enabled for ListObjectsResolver
 	useShadowCache       bool // Indicates that the shadow cache should be used instead of the main cache
 
-	pipelineEnabled bool // Indicates whether to run with the pipeline optimized code
-	chunkSize       int
-	bufferSize      int
-	numProcs        int
+	pipelineEnabled   bool // Indicates whether to run with the pipeline optimized code
+	chunkSize         int
+	bufferSize        int
+	numProcs          int
+	pipeExtendAfter   time.Duration
+	pipeMaxExtensions int
 }
 
 type ListObjectsResolver interface {
@@ -222,6 +224,13 @@ func WithListObjectsBufferSize(value int) ListObjectsQueryOption {
 func WithListObjectsNumProcs(value int) ListObjectsQueryOption {
 	return func(d *ListObjectsQuery) {
 		d.numProcs = value
+	}
+}
+
+func WithListObjectsPipeExtension(extendAfter time.Duration, maxExtensions int) ListObjectsQueryOption {
+	return func(d *ListObjectsQuery) {
+		d.pipeExtendAfter = extendAfter
+		d.pipeMaxExtensions = maxExtensions
 	}
 }
 
@@ -602,6 +611,10 @@ func (q *ListObjectsQuery) Execute(
 			options = append(options, pipeline.WithNumProcs(q.numProcs))
 		}
 
+		if q.pipeExtendAfter > 0 {
+			options = append(options, pipeline.WithPipeExtension(q.pipeExtendAfter, q.pipeMaxExtensions))
+		}
+
 		pl, err := pipeline.New(backend, options...)
 		if err != nil {
 			return nil, serverErrors.ValidationError(err)
@@ -789,6 +802,10 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 
 		if q.numProcs > 0 {
 			options = append(options, pipeline.WithNumProcs(q.numProcs))
+		}
+
+		if q.pipeExtendAfter > 0 {
+			options = append(options, pipeline.WithPipeExtension(q.pipeExtendAfter, q.pipeMaxExtensions))
 		}
 
 		pl, err := pipeline.New(backend, options...)
