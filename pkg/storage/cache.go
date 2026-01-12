@@ -173,7 +173,8 @@ var (
 )
 
 type ChangelogCacheEntry struct {
-	LastModified time.Time
+	LastModified time.Time // Last time the store was modified
+	LastChecked  time.Time // Last time the changelog was checked
 }
 
 func (c *ChangelogCacheEntry) CacheEntityType() string {

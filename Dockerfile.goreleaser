@@ -1,4 +1,4 @@
-FROM cgr.dev/chainguard/static@sha256:6a4b683f4708f1f167ba218e31fcac0b7515d94c33c3acf223c36d5c6acd3783
+FROM cgr.dev/chainguard/static@sha256:d44809cee093b550944c1f666ff13301f92484bfdd2e53ecaac82b5b6f89647d
 COPY assets /assets
 COPY openfga /
 
@@ -7,5 +7,5 @@ COPY openfga /
 #
 # Dependabot is also not capable of updating inline image copies at this time, so
 # this needs to be updated manually until one of these issues is resolved.
-COPY --from=ghcr.io/grpc-ecosystem/grpc-health-probe:v0.4.39@sha256:bec245175713ded08cf7e9620f5c189bbd4bdbf2203eac5cfb01f82960c87d62 /ko-app/grpc-health-probe /usr/local/bin/grpc_health_probe
+COPY --from=ghcr.io/grpc-ecosystem/grpc-health-probe:v0.4.43@sha256:3416f143b902dfdeecb49fc51a12628ae9a4c14fe01166fe75669ad61fee7642 /ko-app/grpc-health-probe /usr/local/bin/grpc_health_probe
 ENTRYPOINT ["/openfga"]

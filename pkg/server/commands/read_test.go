@@ -17,7 +17,6 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/memory"
 	storagetest "github.com/openfga/openfga/pkg/storage/test"
-	"github.com/openfga/openfga/pkg/tuple"
 )
 
 func TestReadCommand(t *testing.T) {
@@ -82,7 +81,7 @@ func TestReadCommand(t *testing.T) {
 		mockController := gomock.NewController(t)
 		defer mockController.Finish()
 
-		tupleKey := tuple.NewTupleKey("document:1", "reader", "user:maria")
+		filter := storage.ReadFilter{Object: "document:1", Relation: "reader", User: "user:maria"}
 		storeID := ulid.Make().String()
 
 		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
@@ -93,7 +92,7 @@ func TestReadCommand(t *testing.T) {
 			},
 			Consistency: storage.ConsistencyOptions{Preference: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY},
 		}
-		mockDatastore.EXPECT().ReadPage(gomock.Any(), storeID, tupleKey, opts).Times(1)
+		mockDatastore.EXPECT().ReadPage(gomock.Any(), storeID, filter, opts).Times(1)
 
 		cmd := NewReadQuery(mockDatastore)
 		_, err := cmd.Execute(context.Background(), &openfgav1.ReadRequest{
@@ -110,7 +109,7 @@ func TestReadCommand(t *testing.T) {
 		mockController := gomock.NewController(t)
 		defer mockController.Finish()
 
-		tupleKey := tuple.NewTupleKey("document:1", "reader", "user:maria")
+		filter := storage.ReadFilter{Object: "document:1", Relation: "reader", User: "user:maria"}
 		storeID := ulid.Make().String()
 		pageSize := int32(45)
 
@@ -127,7 +126,7 @@ func TestReadCommand(t *testing.T) {
 				From:     "deserializedtoken",
 			},
 		}
-		mockDatastore.EXPECT().ReadPage(gomock.Any(), storeID, tupleKey, opts).Times(1)
+		mockDatastore.EXPECT().ReadPage(gomock.Any(), storeID, filter, opts).Times(1)
 		cmd := NewReadQuery(mockDatastore,
 			WithReadQueryEncoder(mockEncoder),
 			WithReadQueryTokenSerializer(tokenSerializer),

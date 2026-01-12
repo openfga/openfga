@@ -76,7 +76,7 @@ func runValidate(_ *cobra.Command, _ []string) error {
 	}
 
 	if err != nil {
-		return fmt.Errorf("failed to open a connection to the datastore: %v", err)
+		return fmt.Errorf("failed to open a connection to the datastore: %w", err)
 	}
 
 	validationResults, err := ValidateAllAuthorizationModels(ctx, db)
