@@ -31,11 +31,13 @@ type TypesystemResolverFunc func(ctx context.Context, storeID, modelID string) (
 //
 // If not given a model ID: fetches the latest model ID from the datastore, then sees if the model ID is in the cache.
 // If it is, returns it. Else, validates it and returns it.
-func MemoizedTypesystemResolverFunc(datastore storage.AuthorizationModelReadBackend) (TypesystemResolverFunc, func(), error) {
+func MemoizedTypesystemResolverFunc(datastore storage.AuthorizationModelReadBackend, maxSize int) (TypesystemResolverFunc, func(), error) {
 	lookupGroup := singleflight.Group{}
 
 	// cache holds models that have already been validated.
-	cache, err := storage.NewInMemoryLRUCache[*TypeSystem]()
+	cache, err := storage.NewInMemoryLRUCache[*TypeSystem](
+		storage.WithMaxCacheSize[*TypeSystem](int64(maxSize)),
+	)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -98,7 +100,7 @@ func MemoizedTypesystemResolverFunc(datastore storage.AuthorizationModelReadBack
 
 		typesys, err := NewAndValidate(ctx, model)
 		if err != nil {
-			return nil, fmt.Errorf("%w: %v", ErrInvalidModel, err)
+			return nil, fmt.Errorf("%w: %w", ErrInvalidModel, err)
 		}
 
 		cache.Set(key, typesys, typesystemCacheTTL)

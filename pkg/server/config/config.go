@@ -18,6 +18,7 @@ const (
 	DefaultMaxTypesPerAuthorizationModel    = 100
 	DefaultMaxAuthorizationModelSizeInBytes = 256 * 1_024
 	DefaultMaxAuthorizationModelCacheSize   = 100000
+	DefaultMaxTypesystemCacheSize           = 100000
 	DefaultChangelogHorizonOffset           = 0
 	DefaultResolveNodeLimit                 = 25
 	DefaultResolveNodeBreadthLimit          = 10
@@ -124,6 +125,9 @@ type DatastoreConfig struct {
 	// MaxCacheSize is the maximum number of authorization models that will be cached in memory.
 	MaxCacheSize int
 
+	// MaxTypesystemCacheSize is the maximum number of type system models that will be cached in memory
+	MaxTypesystemCacheSize int
+
 	// MaxOpenConns is the maximum number of open connections to the database.
 	MaxOpenConns int
 
@@ -210,7 +214,6 @@ type TLSConfig struct {
 
 // AuthnConfig defines OpenFGA server configurations for authentication specific settings.
 type AuthnConfig struct {
-
 	// Method is the authentication method that should be enforced (e.g. 'none', 'preshared',
 	// 'oidc')
 	Method                   string
@@ -247,10 +250,11 @@ type LogConfig struct {
 }
 
 type TraceConfig struct {
-	Enabled     bool
-	OTLP        OTLPTraceConfig `mapstructure:"otlp"`
-	SampleRatio float64
-	ServiceName string
+	Enabled            bool
+	OTLP               OTLPTraceConfig `mapstructure:"otlp"`
+	SampleRatio        float64
+	ServiceName        string
+	ResourceAttributes string
 }
 
 type OTLPTraceConfig struct {
@@ -745,12 +749,13 @@ func DefaultConfig() *Config {
 		RequestDurationDatastoreQueryCountBuckets: []string{"50", "200"},
 		RequestDurationDispatchCountBuckets:       []string{"50", "200"},
 		Datastore: DatastoreConfig{
-			Engine:       "memory",
-			MaxCacheSize: DefaultMaxAuthorizationModelCacheSize,
-			MinIdleConns: 0,
-			MaxIdleConns: 10,
-			MinOpenConns: 0,
-			MaxOpenConns: 30,
+			Engine:                 "memory",
+			MaxCacheSize:           DefaultMaxAuthorizationModelCacheSize,
+			MaxTypesystemCacheSize: DefaultMaxTypesystemCacheSize,
+			MinIdleConns:           0,
+			MaxIdleConns:           10,
+			MinOpenConns:           0,
+			MaxOpenConns:           30,
 		},
 		GRPC: GRPCConfig{
 			Addr: "0.0.0.0:8081",
@@ -782,8 +787,9 @@ func DefaultConfig() *Config {
 					Enabled: false,
 				},
 			},
-			SampleRatio: 0.2,
-			ServiceName: "openfga",
+			SampleRatio:        0.2,
+			ServiceName:        "openfga",
+			ResourceAttributes: "",
 		},
 		Playground: PlaygroundConfig{
 			Enabled: true,

@@ -139,7 +139,7 @@ func HandleError(public string, err error) error {
 
 // HandleTupleValidateError provide common routines for handling tuples validation error.
 func HandleTupleValidateError(err error) error {
-	switch t := err.(type) {
+	switch t := err.(type) { //nolint:errorlint
 	case *tuple.InvalidTupleError:
 		return status.Error(
 			codes.Code(openfgav1.ErrorCode_invalid_tuple),

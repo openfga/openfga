@@ -29,6 +29,7 @@ import (
 	"github.com/openfga/openfga/pkg/featureflags"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/server/commands/reverseexpand"
+	"github.com/openfga/openfga/pkg/server/commands/reverseexpand/pipeline"
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
@@ -76,7 +77,12 @@ type ListObjectsQuery struct {
 	optimizationsEnabled bool // Indicates if experimental optimizations are enabled for ListObjectsResolver
 	useShadowCache       bool // Indicates that the shadow cache should be used instead of the main cache
 
-	pipelineEnabled bool // Indicates whether to run with the pipeline optimized code
+	pipelineEnabled   bool // Indicates whether to run with the pipeline optimized code
+	chunkSize         int
+	bufferSize        int
+	numProcs          int
+	pipeExtendAfter   time.Duration
+	pipeMaxExtensions int
 }
 
 type ListObjectsResolver interface {
@@ -200,6 +206,31 @@ func WithListObjectsUseShadowCache(useShadowCache bool) ListObjectsQueryOption {
 func WithListObjectsPipelineEnabled(value bool) ListObjectsQueryOption {
 	return func(d *ListObjectsQuery) {
 		d.pipelineEnabled = value
+	}
+}
+
+func WithListObjectsChunkSize(value int) ListObjectsQueryOption {
+	return func(d *ListObjectsQuery) {
+		d.chunkSize = value
+	}
+}
+
+func WithListObjectsBufferSize(value int) ListObjectsQueryOption {
+	return func(d *ListObjectsQuery) {
+		d.bufferSize = value
+	}
+}
+
+func WithListObjectsNumProcs(value int) ListObjectsQueryOption {
+	return func(d *ListObjectsQuery) {
+		d.numProcs = value
+	}
+}
+
+func WithListObjectsPipeExtension(extendAfter time.Duration, maxExtensions int) ListObjectsQueryOption {
+	return func(d *ListObjectsQuery) {
+		d.pipeExtendAfter = extendAfter
+		d.pipeMaxExtensions = maxExtensions
 	}
 }
 
@@ -524,7 +555,7 @@ func (q *ListObjectsQuery) Execute(
 	}
 
 	if err := validation.ValidateUser(typesys, req.GetUser()); err != nil {
-		return nil, serverErrors.ValidationError(fmt.Errorf("invalid 'user' value: %s", err))
+		return nil, serverErrors.ValidationError(fmt.Errorf("invalid 'user' value: %w", err))
 	}
 
 	if req.GetConsistency() != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
@@ -557,7 +588,7 @@ func (q *ListObjectsQuery) Execute(
 			},
 		)
 
-		backend := &reverseexpand.Backend{
+		backend := &pipeline.Backend{
 			Datastore:  ds,
 			StoreID:    req.GetStoreId(),
 			TypeSystem: typesys,
@@ -566,12 +597,33 @@ func (q *ListObjectsQuery) Execute(
 			Preference: req.GetConsistency(),
 		}
 
-		pipeline := reverseexpand.NewPipeline(backend)
+		var options []pipeline.Option
 
-		var source reverseexpand.Source
-		var target reverseexpand.Target
+		if q.chunkSize > 0 {
+			options = append(options, pipeline.WithChunkSize(q.chunkSize))
+		}
 
-		if source, ok = pipeline.Source(targetObjectType, targetRelation); !ok {
+		if q.bufferSize > 0 {
+			options = append(options, pipeline.WithBufferSize(q.bufferSize))
+		}
+
+		if q.numProcs > 0 {
+			options = append(options, pipeline.WithNumProcs(q.numProcs))
+		}
+
+		if q.pipeExtendAfter > 0 {
+			options = append(options, pipeline.WithPipeExtension(q.pipeExtendAfter, q.pipeMaxExtensions))
+		}
+
+		pl, err := pipeline.New(backend, options...)
+		if err != nil {
+			return nil, serverErrors.ValidationError(err)
+		}
+
+		var source pipeline.Source
+		var target pipeline.Target
+
+		if source, ok = pl.Source(targetObjectType, targetRelation); !ok {
 			return nil, serverErrors.ValidationError(fmt.Errorf("object: %s relation: %s not in graph", targetObjectType, targetRelation))
 		}
 
@@ -585,11 +637,11 @@ func (q *ListObjectsQuery) Execute(
 			objectType += "#" + userParts[1]
 		}
 
-		if target, ok = pipeline.Target(objectType, objectID); !ok {
+		if target, ok = pl.Target(objectType, objectID); !ok {
 			return nil, serverErrors.ValidationError(fmt.Errorf("user: %s relation: %s not in graph", objectType, objectID))
 		}
 
-		seq := pipeline.Build(ctx, source, target)
+		seq := pl.Build(timeoutCtx, source, target)
 
 		var res ListObjectsResponse
 
@@ -598,7 +650,9 @@ func (q *ListObjectsQuery) Execute(
 				break
 			}
 
-			if obj.Err != nil {
+			// If the error is from a context cancelation, the current
+			// behavior for ListObjects is to not report it.
+			if obj.Err != nil && !errors.Is(obj.Err, context.Canceled) && !errors.Is(obj.Err, context.DeadlineExceeded) {
 				return nil, serverErrors.HandleError("", obj.Err)
 			}
 
@@ -704,7 +758,7 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 	}
 
 	if err := validation.ValidateUser(typesys, req.GetUser()); err != nil {
-		return nil, serverErrors.ValidationError(fmt.Errorf("invalid 'user' value: %s", err))
+		return nil, serverErrors.ValidationError(fmt.Errorf("invalid 'user' value: %w", err))
 	}
 
 	wgraph := typesys.GetWeightedGraph()
@@ -727,7 +781,7 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 			},
 		)
 
-		backend := &reverseexpand.Backend{
+		backend := &pipeline.Backend{
 			Datastore:  ds,
 			StoreID:    req.GetStoreId(),
 			TypeSystem: typesys,
@@ -736,12 +790,33 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 			Preference: req.GetConsistency(),
 		}
 
-		pipeline := reverseexpand.NewPipeline(backend)
+		var options []pipeline.Option
 
-		var source reverseexpand.Source
-		var target reverseexpand.Target
+		if q.chunkSize > 0 {
+			options = append(options, pipeline.WithChunkSize(q.chunkSize))
+		}
 
-		if source, ok = pipeline.Source(targetObjectType, targetRelation); !ok {
+		if q.bufferSize > 0 {
+			options = append(options, pipeline.WithBufferSize(q.bufferSize))
+		}
+
+		if q.numProcs > 0 {
+			options = append(options, pipeline.WithNumProcs(q.numProcs))
+		}
+
+		if q.pipeExtendAfter > 0 {
+			options = append(options, pipeline.WithPipeExtension(q.pipeExtendAfter, q.pipeMaxExtensions))
+		}
+
+		pl, err := pipeline.New(backend, options...)
+		if err != nil {
+			return nil, serverErrors.ValidationError(err)
+		}
+
+		var source pipeline.Source
+		var target pipeline.Target
+
+		if source, ok = pl.Source(targetObjectType, targetRelation); !ok {
 			return nil, serverErrors.ValidationError(fmt.Errorf("object: %s relation: %s not in graph", targetObjectType, targetRelation))
 		}
 
@@ -755,11 +830,11 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 			objectType += "#" + userParts[1]
 		}
 
-		if target, ok = pipeline.Target(objectType, objectID); !ok {
+		if target, ok = pl.Target(objectType, objectID); !ok {
 			return nil, serverErrors.ValidationError(fmt.Errorf("user: %s relation: %s not in graph", objectType, objectID))
 		}
 
-		seq := pipeline.Build(ctx, source, target)
+		seq := pl.Build(timeoutCtx, source, target)
 
 		var listObjectsCount uint32 = 0
 
@@ -768,7 +843,9 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 				break
 			}
 
-			if obj.Err != nil {
+			// If the error is from a context cancelation, the current
+			// behavior for ListObjects is to not report it.
+			if obj.Err != nil && !errors.Is(obj.Err, context.Canceled) && !errors.Is(obj.Err, context.DeadlineExceeded) {
 				if errors.Is(obj.Err, condition.ErrEvaluationFailed) {
 					return nil, serverErrors.ValidationError(obj.Err)
 				}
