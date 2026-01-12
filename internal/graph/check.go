@@ -881,7 +881,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 		}
 		isUserset := tuple.IsObjectRelation(tk.GetUser())
 
-		if !isUserset || c.ff.Boolean(serverconfig.ExperimentalCheckOptimizations, req.GetStoreID()) {
+		if !isUserset && c.ff.Boolean(serverconfig.ExperimentalCheckOptimizations, req.GetStoreID()) {
 			if typesys.TTUUseWeight2Resolver(objectType, relation, userType, rewrite.GetTupleToUserset()) {
 				//possibleStrategies[defaultResolver] = weight2Plan
 				resolver = c.weight2TTU
