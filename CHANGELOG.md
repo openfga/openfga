@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Try to keep listed changes to a concise bulleted list of simple explanations of changes. Aim for the amount of information needed so that readers can understand where they would look in the codebase to investigate the changes' implementation, or where they would look in the documentation to understand how to make use of the change in practice - better yet, link directly to the docs and provide detailed information there. Only elaborate if doing so is required to avoid breaking changes or experimental features from ruining someone's day.
 
 ## [Unreleased]
+### Added
+- Add configuration option to limit max type system cache size. [2744](https://github.com/openfga/openfga/pull/2744)
+- Add OTEL_* env var support to existing otel env vars. [#2825](https://github.com/openfga/openfga/pull/2825)
+
 ### Changed
 - Datastore throttling separated from dispatch throttling in BatchCheck, ListUsers metadata. Also, `throttling_type` label added to `throttledRequestCounter` metric to differentiate between dispatch/datastore throttling. [#2839](https://github.com/openfga/openfga/pull/2839)
 
@@ -16,6 +20,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Fixed
 - ListUsers will now properly get datastore throttled if enabled. [#2846](https://github.com/openfga/openfga/pull/2846)
 - Cache controller now uses the logger provided to the server instead of always using a no-op logger. [#2847](https://github.com/openfga/openfga/pull/2847)
+- Typesystem invalidate model with empty intersection and union. [#2865](https://github.com/openfga/openfga/pull/2865)
 
 ## [1.11.2] - 2025-12-04
 ### Fixed
@@ -33,6 +38,10 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ## [1.11.0] - 2025-11-05
 ### Added
 - **Breaking**: Update PostgreSQL to use [pgxpool](https://pkg.go.dev/github.com/jackc/pgx/v5/pgxpool) instead of `database/sql` to allow for finer PostgreSQL connection control. [#2734](https://github.com/openfga/openfga/pull/2734), [#2789](https://github.com/openfga/openfga/pull/2789).
+  - PostgreSQL will have the following configuration changes.
+    - Idle connections are now controlled by `OPENFGA_DATASTORE_MIN_IDLE_CONNS` (default 0) instead of `OPENFGA_DATASTORE_MAX_IDLE_CONNS`.
+    - Added configuration on minimum connections via `OPENFGA_DATASTORE_MIN_OPEN_CONNS` (default to 0).
+  - Metrics for PostgreSQL will change from the [default Prometheus DB Stats Collector](https://github.com/prometheus/client_golang/tree/main/prometheus/collectors) to [PGX Pool Prometheus Collector](https://github.com/IBM/pgxpoolprometheus). See [PGX Pool Prometheus Collector](https://github.com/IBM/pgxpoolprometheus?tab=readme-ov-file#metrics-collected) for the list of available metrics.
 
 ## [1.10.5] - 2025-11-05
 ### Added
@@ -53,7 +62,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
   - PostgreSQL will have the following configuration changes.
     - Idle connections are now controlled by `OPENFGA_DATASTORE_MIN_IDLE_CONNS` (default 0) instead of `OPENFGA_DATASTORE_MAX_IDLE_CONNS`.
     - Added configuration on minimum connections via `OPENFGA_DATASTORE_MIN_OPEN_CONNS` (default to 0).
-  - Metrics for PostreSQL will change from the [default Prometheus DB Stats Collector](https://github.com/prometheus/client_golang/tree/main/prometheus/collectors) to [PGX Pool Prometheus Collector](https://github.com/IBM/pgxpoolprometheus). See [PGX Pool Prometheus Collector](https://github.com/IBM/pgxpoolprometheus?tab=readme-ov-file#metrics-collected) for the list of available metrics.
+  - Metrics for PostgreSQL will change from the [default Prometheus DB Stats Collector](https://github.com/prometheus/client_golang/tree/main/prometheus/collectors) to [PGX Pool Prometheus Collector](https://github.com/IBM/pgxpoolprometheus). See [PGX Pool Prometheus Collector](https://github.com/IBM/pgxpoolprometheus?tab=readme-ov-file#metrics-collected) for the list of available metrics.
 
 ### Fixed
 - Use correct names for cache counter metrics. [#2750](https://github.com/openfga/openfga/pull/2750)

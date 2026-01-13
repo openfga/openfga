@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -110,12 +111,30 @@ func WithNumProcs(num int) Option {
 	}
 }
 
+// WithPipeExtension enables functionality to dynamically extend the size of pipes
+// between workers as needed up to a defined number of times. Each extension doubles
+// the size of a pipe's internal buffer. A pipe is only extended if a call to send on
+// the pipe blocks for longer than the extendAfter duration.
+//
+// This functionality is disabled by default. To enable, set extendAfter to a duration
+// greater than 0 and set maxExtensions to a value greater than 0, or to -1 to
+// make the number of extensions unbounded.
+func WithPipeExtension(extendAfter time.Duration, maxExtensions int) Option {
+	return func(p *Pipeline) error {
+		p.pipeExtendAfter = extendAfter
+		p.pipeMaxExtensions = maxExtensions
+		return nil
+	}
+}
+
 func New(backend *Backend, options ...Option) (*Pipeline, error) {
 	p := &Pipeline{
-		backend:    backend,
-		bufferSize: defaultBufferSize,
-		chunkSize:  defaultChunkSize,
-		numProcs:   defaultNumProcs,
+		backend:           backend,
+		bufferSize:        defaultBufferSize,
+		chunkSize:         defaultChunkSize,
+		numProcs:          defaultNumProcs,
+		pipeExtendAfter:   pipe.DefaultExtendAfter,
+		pipeMaxExtensions: pipe.DefaultMaxExtensions,
 	}
 
 	for _, option := range options {
@@ -141,7 +160,7 @@ func (b *bufferPool) Put(buffer *[]Item) {
 	b.pool.Put(buffer)
 }
 
-func (b *bufferPool) create() interface{} {
+func (b *bufferPool) create() any {
 	tmp := make([]Item, b.size)
 	return &tmp
 }
@@ -344,10 +363,9 @@ func (b *Backend) query(ctx context.Context, input queryInput) iter.Seq[Item] {
 			var item Item
 
 			if err != nil {
-				if errors.Is(err, storage.ErrIteratorDone) {
+				if storage.IterIsDoneOrCancelled(err) {
 					break
 				}
-
 				item.Err = err
 
 				yield(item)
@@ -415,6 +433,11 @@ func (r *baseResolver) process(ctx context.Context, snd Sender[*Edge, *Message],
 	var msg *Message
 
 	for snd.Recv(&msg) {
+		if ctx.Err() != nil {
+			msg.Done()
+			continue
+		}
+
 		errs := make([]Item, 0, len(msg.Value))
 		unseen := make([]string, 0, len(msg.Value))
 
@@ -632,6 +655,10 @@ func (r *exclusionResolver) process(ctx context.Context, snd Sender[*Edge, *Mess
 	var msg *Message
 
 	for snd.Recv(&msg) {
+		if ctx.Err() != nil {
+			msg.Done()
+			continue
+		}
 		// Increment the tracker to account for an in-flight message.
 		r.tracker.Inc()
 		values := r.bufferPool.Get()
@@ -821,6 +848,10 @@ func (r *intersectionResolver) process(ctx context.Context, snd Sender[*Edge, *M
 	var msg *Message
 
 	for snd.Recv(&msg) {
+		if ctx.Err() != nil {
+			msg.Done()
+			continue
+		}
 		r.tracker.Add(1)
 		values := r.bufferPool.Get()
 		copy(*values, msg.Value)
@@ -1039,6 +1070,12 @@ type Pipeline struct {
 	// The default value is 3. This value can be changed by constructing
 	// a pipeline using NewPipeline and providing the option WithNumProcs.
 	numProcs int
+
+	// pipeExtendAfter is the duration before extending full pipe buffers
+	pipeExtendAfter time.Duration
+
+	// pipeMaxExtensions is the max number of times pipe buffers can extend
+	pipeMaxExtensions int
 }
 
 type pipelineWorker = Worker[*Edge, *Message, *Message]
@@ -1074,6 +1111,9 @@ func (pl *Pipeline) Build(ctx context.Context, source Source, target Target) ite
 		defer span.End()
 
 		if ctx.Err() != nil {
+			// Exit early if the context was already canceled.
+			// No goroutines have been created up to this point
+			// so no cleanup is necessary.
 			return
 		}
 
@@ -1095,22 +1135,35 @@ func (pl *Pipeline) Build(ctx context.Context, source Source, target Target) ite
 		go func() {
 			defer wg.Done()
 			<-ctx.Done()
-			// wait for all workers to finish
+			// Wait for all workers to finish.
 			for _, w := range workers {
 				w.Wait()
 			}
 		}()
 
+		var abandoned bool
+
 		for msg := range results.Seq() {
 			if ctx.Err() == nil {
 				for _, item := range msg.Value {
 					if !yield(item) {
+						// The caller has ended sequence iteration early.
+						// Cancel the context so that the pipeline begins
+						// its shutdown process.
+						abandoned = true
 						cancel()
 						break
 					}
 				}
 			}
 			msg.Done()
+		}
+
+		if !abandoned && ctx.Err() != nil {
+			// Context was canceled so there is no guarantee that all
+			// objects have been returned. An error must be signaled
+			// here to indicate the possibility of a partial result.
+			yield(Item{Err: ctx.Err()})
 		}
 	}
 }
@@ -1155,6 +1208,8 @@ func (pl *Pipeline) resolve(p path, workers workerPool) *pipelineWorker {
 
 	var w pipelineWorker
 	w.bufferSize = pl.bufferSize
+	w.pipeExtendAfter = pl.pipeExtendAfter
+	w.pipeMaxExtensions = pl.pipeMaxExtensions
 
 	reporter := p.statusPool.Register()
 	reporter.Report(true)
@@ -1364,6 +1419,9 @@ type Worker[K any, T any, U any] struct {
 	// bufferSize is the value that will be set for the worker's internal pipe buffer.
 	// The value must be a power of two; any other value will cause a panic.
 	bufferSize int
+
+	pipeExtendAfter   time.Duration
+	pipeMaxExtensions int
 }
 
 func (w *Worker[K, T, U]) Close() {
@@ -1381,9 +1439,7 @@ func (w *Worker[K, T, U]) initialize(ctx context.Context) {
 	ctx, cancel := context.WithCancel(ctx)
 
 	w.finite = sync.OnceFunc(func() {
-		defer span.End()
 		cancel()
-
 		for _, lst := range w.listeners {
 			lst.Close()
 		}
@@ -1391,6 +1447,7 @@ func (w *Worker[K, T, U]) initialize(ctx context.Context) {
 
 	w.wg.Add(1)
 	go func() {
+		defer span.End()
 		defer w.wg.Done()
 		defer w.Close()
 		w.Resolver.Resolve(ctx, w.senders, w.listeners)
@@ -1412,6 +1469,11 @@ func (w *Worker[K, T, U]) Start(ctx context.Context) {
 
 func (w *Worker[K, T, U]) Subscribe(key K) Sender[K, U] {
 	p := pipe.Must[U](w.bufferSize)
+
+	// Configure extension behavior if set on pipeline
+	if w.pipeExtendAfter > 0 {
+		p.SetExtensionConfig(w.pipeExtendAfter, w.pipeMaxExtensions)
+	}
 
 	w.listeners = append(w.listeners, &listener[K, U]{
 		key,

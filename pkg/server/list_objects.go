@@ -102,6 +102,10 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 			s.listObjectsDatastoreThrottleDuration,
 		),
 		commands.WithListObjectsPipelineEnabled(s.featureFlagClient.Boolean(serverconfig.ExperimentalPipelineListObjects, storeID)),
+		commands.WithListObjectsChunkSize(s.listObjectsChunkSize),
+		commands.WithListObjectsBufferSize(s.listObjectsBufferSize),
+		commands.WithListObjectsNumProcs(s.listObjectsNumProcs),
+		commands.WithListObjectsPipeExtension(s.listObjectsPipeExtendAfter, s.listObjectsPipeMaxExtensions),
 		commands.WithFeatureFlagClient(s.featureFlagClient),
 	)
 	if err != nil {

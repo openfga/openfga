@@ -77,7 +77,12 @@ type ListObjectsQuery struct {
 	optimizationsEnabled bool // Indicates if experimental optimizations are enabled for ListObjectsResolver
 	useShadowCache       bool // Indicates that the shadow cache should be used instead of the main cache
 
-	pipelineEnabled bool // Indicates whether to run with the pipeline optimized code
+	pipelineEnabled   bool // Indicates whether to run with the pipeline optimized code
+	chunkSize         int
+	bufferSize        int
+	numProcs          int
+	pipeExtendAfter   time.Duration
+	pipeMaxExtensions int
 }
 
 type ListObjectsResolver interface {
@@ -201,6 +206,31 @@ func WithListObjectsUseShadowCache(useShadowCache bool) ListObjectsQueryOption {
 func WithListObjectsPipelineEnabled(value bool) ListObjectsQueryOption {
 	return func(d *ListObjectsQuery) {
 		d.pipelineEnabled = value
+	}
+}
+
+func WithListObjectsChunkSize(value int) ListObjectsQueryOption {
+	return func(d *ListObjectsQuery) {
+		d.chunkSize = value
+	}
+}
+
+func WithListObjectsBufferSize(value int) ListObjectsQueryOption {
+	return func(d *ListObjectsQuery) {
+		d.bufferSize = value
+	}
+}
+
+func WithListObjectsNumProcs(value int) ListObjectsQueryOption {
+	return func(d *ListObjectsQuery) {
+		d.numProcs = value
+	}
+}
+
+func WithListObjectsPipeExtension(extendAfter time.Duration, maxExtensions int) ListObjectsQueryOption {
+	return func(d *ListObjectsQuery) {
+		d.pipeExtendAfter = extendAfter
+		d.pipeMaxExtensions = maxExtensions
 	}
 }
 
@@ -567,7 +597,25 @@ func (q *ListObjectsQuery) Execute(
 			Preference: req.GetConsistency(),
 		}
 
-		pl, err := pipeline.New(backend)
+		var options []pipeline.Option
+
+		if q.chunkSize > 0 {
+			options = append(options, pipeline.WithChunkSize(q.chunkSize))
+		}
+
+		if q.bufferSize > 0 {
+			options = append(options, pipeline.WithBufferSize(q.bufferSize))
+		}
+
+		if q.numProcs > 0 {
+			options = append(options, pipeline.WithNumProcs(q.numProcs))
+		}
+
+		if q.pipeExtendAfter > 0 {
+			options = append(options, pipeline.WithPipeExtension(q.pipeExtendAfter, q.pipeMaxExtensions))
+		}
+
+		pl, err := pipeline.New(backend, options...)
 		if err != nil {
 			return nil, serverErrors.ValidationError(err)
 		}
@@ -593,7 +641,7 @@ func (q *ListObjectsQuery) Execute(
 			return nil, serverErrors.ValidationError(fmt.Errorf("user: %s relation: %s not in graph", objectType, objectID))
 		}
 
-		seq := pl.Build(ctx, source, target)
+		seq := pl.Build(timeoutCtx, source, target)
 
 		var res ListObjectsResponse
 
@@ -602,7 +650,9 @@ func (q *ListObjectsQuery) Execute(
 				break
 			}
 
-			if obj.Err != nil {
+			// If the error is from a context cancelation, the current
+			// behavior for ListObjects is to not report it.
+			if obj.Err != nil && !errors.Is(obj.Err, context.Canceled) && !errors.Is(obj.Err, context.DeadlineExceeded) {
 				return nil, serverErrors.HandleError("", obj.Err)
 			}
 
@@ -740,7 +790,25 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 			Preference: req.GetConsistency(),
 		}
 
-		pl, err := pipeline.New(backend)
+		var options []pipeline.Option
+
+		if q.chunkSize > 0 {
+			options = append(options, pipeline.WithChunkSize(q.chunkSize))
+		}
+
+		if q.bufferSize > 0 {
+			options = append(options, pipeline.WithBufferSize(q.bufferSize))
+		}
+
+		if q.numProcs > 0 {
+			options = append(options, pipeline.WithNumProcs(q.numProcs))
+		}
+
+		if q.pipeExtendAfter > 0 {
+			options = append(options, pipeline.WithPipeExtension(q.pipeExtendAfter, q.pipeMaxExtensions))
+		}
+
+		pl, err := pipeline.New(backend, options...)
 		if err != nil {
 			return nil, serverErrors.ValidationError(err)
 		}
@@ -766,7 +834,7 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 			return nil, serverErrors.ValidationError(fmt.Errorf("user: %s relation: %s not in graph", objectType, objectID))
 		}
 
-		seq := pl.Build(ctx, source, target)
+		seq := pl.Build(timeoutCtx, source, target)
 
 		var listObjectsCount uint32 = 0
 
@@ -775,7 +843,9 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 				break
 			}
 
-			if obj.Err != nil {
+			// If the error is from a context cancelation, the current
+			// behavior for ListObjects is to not report it.
+			if obj.Err != nil && !errors.Is(obj.Err, context.Canceled) && !errors.Is(obj.Err, context.DeadlineExceeded) {
 				if errors.Is(obj.Err, condition.ErrEvaluationFailed) {
 					return nil, serverErrors.ValidationError(obj.Err)
 				}

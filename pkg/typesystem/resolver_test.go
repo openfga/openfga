@@ -16,6 +16,8 @@ import (
 	"github.com/openfga/openfga/pkg/testutils"
 )
 
+const testCacheSize = 1000
+
 func TestMemoizedTypesystemResolverFunc(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
@@ -28,7 +30,7 @@ func TestMemoizedTypesystemResolverFunc(t *testing.T) {
 		defer mockController.Finish()
 
 		mockDatastore := mockstorage.NewMockAuthorizationModelReadBackend(mockController)
-		resolver, resolverStop, err := MemoizedTypesystemResolverFunc(mockDatastore)
+		resolver, resolverStop, err := MemoizedTypesystemResolverFunc(mockDatastore, testCacheSize)
 		require.NoError(t, err)
 		defer resolverStop()
 
@@ -47,7 +49,7 @@ func TestMemoizedTypesystemResolverFunc(t *testing.T) {
 			Return(nil, storage.ErrNotFound).
 			Times(1)
 
-		resolver, resolverStop, err := MemoizedTypesystemResolverFunc(mockDatastore)
+		resolver, resolverStop, err := MemoizedTypesystemResolverFunc(mockDatastore, testCacheSize)
 		require.NoError(t, err)
 		defer resolverStop()
 
@@ -71,7 +73,7 @@ func TestMemoizedTypesystemResolverFunc(t *testing.T) {
 			Return(model, nil).
 			Times(1)
 
-		resolver, resolverStop, err := MemoizedTypesystemResolverFunc(mockDatastore)
+		resolver, resolverStop, err := MemoizedTypesystemResolverFunc(mockDatastore, testCacheSize)
 		require.NoError(t, err)
 		defer resolverStop()
 
@@ -92,7 +94,7 @@ func TestMemoizedTypesystemResolverFunc(t *testing.T) {
 			Return(nil, storage.ErrNotFound).
 			Times(1)
 
-		resolver, resolverStop, err := MemoizedTypesystemResolverFunc(mockDatastore)
+		resolver, resolverStop, err := MemoizedTypesystemResolverFunc(mockDatastore, testCacheSize)
 		require.NoError(t, err)
 		defer resolverStop()
 
@@ -118,7 +120,7 @@ func TestMemoizedTypesystemResolverFunc(t *testing.T) {
 			).
 			Times(1)
 
-		resolver, resolverStop, err := MemoizedTypesystemResolverFunc(mockDatastore)
+		resolver, resolverStop, err := MemoizedTypesystemResolverFunc(mockDatastore, testCacheSize)
 		require.NoError(t, err)
 		defer resolverStop()
 		typesys, err := resolver(context.Background(), store, modelID)
@@ -147,7 +149,7 @@ func TestMemoizedTypesystemResolverFunc(t *testing.T) {
 			Return(model, nil).
 			Times(1)
 
-		resolver, resolverStop, err := MemoizedTypesystemResolverFunc(mockDatastore)
+		resolver, resolverStop, err := MemoizedTypesystemResolverFunc(mockDatastore, testCacheSize)
 		require.NoError(t, err)
 		defer resolverStop()
 
@@ -173,7 +175,7 @@ func TestMemoizedTypesystemResolverFunc(t *testing.T) {
 			).
 			Times(1)
 
-		resolver, resolverStop, err := MemoizedTypesystemResolverFunc(mockDatastore)
+		resolver, resolverStop, err := MemoizedTypesystemResolverFunc(mockDatastore, testCacheSize)
 		require.NoError(t, err)
 		defer resolverStop()
 
@@ -204,7 +206,7 @@ func TestMemoizedTypesystemResolverFunc(t *testing.T) {
 			Return(model, nil).
 			Times(2)
 
-		resolver, resolverStop, err := MemoizedTypesystemResolverFunc(mockDatastore)
+		resolver, resolverStop, err := MemoizedTypesystemResolverFunc(mockDatastore, testCacheSize)
 		require.NoError(t, err)
 		defer resolverStop()
 
@@ -236,7 +238,7 @@ func TestMemoizedTypesystemResolverFunc(t *testing.T) {
 
 		mockDatastore := mockstorage.NewMockAuthorizationModelReadBackend(mockController)
 
-		resolver, resolverStop, err := MemoizedTypesystemResolverFunc(mockDatastore)
+		resolver, resolverStop, err := MemoizedTypesystemResolverFunc(mockDatastore, testCacheSize)
 		require.NoError(t, err)
 		defer resolverStop()
 
