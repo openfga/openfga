@@ -2,7 +2,6 @@ package commands
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -40,9 +39,6 @@ func NewResourceSearchQuery(opts ...ResourceSearchQueryOption) *ResourceSearchQu
 	}
 	return q
 }
-
-// errLimitReached is a sentinel error to stop streaming when limit is reached.
-var errLimitReached = errors.New("limit reached")
 
 // Execute runs the resource search and returns matching resources with pagination.
 func (q *ResourceSearchQuery) Execute(
@@ -88,18 +84,16 @@ func (q *ResourceSearchQuery) Execute(
 		Context:              mergedContext,
 	}
 
-	// Create a collector that stops after collecting enough objects
-	// We need offset + limit + 1 objects to determine if there are more results
-	maxNeeded := offset + int(limit) + 1
+	// Create a collector that consumes the full stream
+	// We must consume all results before sorting to ensure stable pagination
 	collector := &objectCollector{
-		ctx:      ctx,
-		objects:  make([]string, 0, maxNeeded),
-		maxCount: maxNeeded,
+		ctx:     ctx,
+		objects: make([]string, 0),
 	}
 
-	// Execute StreamedListObjects - will stop early when limit is reached
+	// Execute StreamedListObjects - consume full stream
 	err = q.streamedListObjectsFunc(streamedReq, collector)
-	if err != nil && !errors.Is(err, errLimitReached) {
+	if err != nil {
 		return nil, fmt.Errorf("StreamedListObjects failed: %w", err)
 	}
 
@@ -135,14 +129,13 @@ func (q *ResourceSearchQuery) Execute(
 
 	pagedResources := allResources[start:end]
 
-	// Generate next token - there are more results if we collected more than offset + limit
+	// Generate next token - there are more results if total exceeds current page end
 	var nextToken string
-	hasMore := len(collector.objects) > offset+int(limit)
+	hasMore := end < total
 	if hasMore {
 		nextToken = encodePaginationToken(&PaginationToken{Offset: end})
 	}
 
-	// Note: Total is not available when using streaming with early termination
 	return &authzenv1.ResourceSearchResponse{
 		Resources: pagedResources,
 		Page: &authzenv1.PageResponse{
@@ -154,9 +147,8 @@ func (q *ResourceSearchQuery) Execute(
 
 // objectCollector implements OpenFGAService_StreamedListObjectsServer to collect streamed objects.
 type objectCollector struct {
-	ctx      context.Context
-	objects  []string
-	maxCount int
+	ctx     context.Context
+	objects []string
 	grpc.ServerStream
 }
 
@@ -166,10 +158,6 @@ func (c *objectCollector) Context() context.Context {
 
 func (c *objectCollector) Send(resp *openfgav1.StreamedListObjectsResponse) error {
 	c.objects = append(c.objects, resp.GetObject())
-	// Stop streaming once we have enough objects
-	if len(c.objects) >= c.maxCount {
-		return errLimitReached
-	}
 	return nil
 }
 

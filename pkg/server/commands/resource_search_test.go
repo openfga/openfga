@@ -591,4 +591,137 @@ func TestResourceSearchQuery(t *testing.T) {
 		require.Empty(t, resp.GetPage().GetNextToken())
 		require.Equal(t, uint32(0), resp.GetPage().GetCount())
 	})
+
+	t.Run("pagination_stability_with_unstable_stream", func(t *testing.T) {
+		// Test that pagination is stable even when StreamedListObjects
+		// returns results in different orders on each call.
+		// This verifies the fix for consuming full stream before sorting.
+
+		// Create a stable set of objects that will be returned in varying order
+		baseObjects := []string{
+			"document:doc0", "document:doc1", "document:doc2", "document:doc3",
+			"document:doc4", "document:doc5", "document:doc6", "document:doc7",
+			"document:doc8", "document:doc9",
+		}
+
+		callCount := 0
+		mockFn := func(req *openfgav1.StreamedListObjectsRequest, srv openfgav1.OpenFGAService_StreamedListObjectsServer) error {
+			// Return objects in different order each call to simulate unstable stream
+			objects := make([]string, len(baseObjects))
+			copy(objects, baseObjects)
+
+			// Reverse order on odd calls, keep normal on even calls
+			if callCount%2 == 1 {
+				for i := 0; i < len(objects)/2; i++ {
+					objects[i], objects[len(objects)-1-i] = objects[len(objects)-1-i], objects[i]
+				}
+			}
+			callCount++
+
+			for _, obj := range objects {
+				if err := srv.Send(&openfgav1.StreamedListObjectsResponse{Object: obj}); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+
+		query := NewResourceSearchQuery(WithStreamedListObjectsFunc(mockFn))
+
+		limit := uint32(3)
+		req := &authzenv1.ResourceSearchRequest{
+			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
+			Action:   &authzenv1.Action{Name: "read"},
+			Resource: &authzenv1.Resource{Type: "document"},
+			StoreId:  "01HVMMBCMGZNT3SED4CT2KA89Q",
+			Page:     &authzenv1.PageRequest{Limit: &limit},
+		}
+
+		// Collect all pages
+		var allPagedResources []*authzenv1.Resource
+		seenIDs := make(map[string]int) // track which page each ID appeared on
+		pageNum := 0
+
+		for {
+			resp, err := query.Execute(context.Background(), req)
+			require.NoError(t, err)
+
+			for _, r := range resp.GetResources() {
+				allPagedResources = append(allPagedResources, r)
+				if prevPage, exists := seenIDs[r.GetId()]; exists {
+					t.Fatalf("Duplicate resource %s found on page %d (previously on page %d)", r.GetId(), pageNum, prevPage)
+				}
+				seenIDs[r.GetId()] = pageNum
+			}
+
+			if resp.GetPage().GetNextToken() == "" {
+				break
+			}
+			req.Page.Token = &resp.Page.NextToken
+			pageNum++
+		}
+
+		// Verify we got all 10 objects exactly once
+		require.Len(t, allPagedResources, 10, "Should have collected all 10 objects across all pages")
+		require.Len(t, seenIDs, 10, "Should have seen all 10 unique objects")
+
+		// Verify all expected objects are present
+		for i := 0; i < 10; i++ {
+			expectedID := fmt.Sprintf("doc%d", i)
+			_, found := seenIDs[expectedID]
+			require.True(t, found, "Expected to find %s in results", expectedID)
+		}
+	})
+
+	t.Run("pagination_no_duplicates_across_pages", func(t *testing.T) {
+		// Test that verifies no duplicates and no missing entries across pages
+		objects := make([]string, 25)
+		for i := 0; i < 25; i++ {
+			objects[i] = fmt.Sprintf("document:doc%02d", i)
+		}
+
+		mockFn := mockStreamedListObjectsFunc(objects, nil)
+		query := NewResourceSearchQuery(WithStreamedListObjectsFunc(mockFn))
+
+		limit := uint32(7)
+		req := &authzenv1.ResourceSearchRequest{
+			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
+			Action:   &authzenv1.Action{Name: "read"},
+			Resource: &authzenv1.Resource{Type: "document"},
+			StoreId:  "01HVMMBCMGZNT3SED4CT2KA89Q",
+			Page:     &authzenv1.PageRequest{Limit: &limit},
+		}
+
+		// Collect all resources across all pages
+		allResources := make(map[string]bool)
+		pageCount := 0
+
+		for {
+			resp, err := query.Execute(context.Background(), req)
+			require.NoError(t, err)
+			pageCount++
+
+			// Verify each resource appears exactly once
+			for _, r := range resp.GetResources() {
+				id := r.GetId()
+				require.False(t, allResources[id], "Duplicate resource %s found", id)
+				allResources[id] = true
+			}
+
+			if resp.GetPage().GetNextToken() == "" {
+				break
+			}
+			req.Page.Token = &resp.Page.NextToken
+		}
+
+		// Should have 4 pages: 7 + 7 + 7 + 4 = 25
+		require.Equal(t, 4, pageCount, "Should have exactly 4 pages")
+		require.Len(t, allResources, 25, "Should have collected all 25 unique resources")
+
+		// Verify all expected resources are present
+		for i := 0; i < 25; i++ {
+			expectedID := fmt.Sprintf("doc%02d", i)
+			require.True(t, allResources[expectedID], "Missing resource %s", expectedID)
+		}
+	})
 }
