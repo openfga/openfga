@@ -334,23 +334,22 @@ func (p *Pipe[T]) Send(item T) bool {
 		return false
 	}
 
-	var timer *time.Timer
-	if p.full() && !p.done && p.extendAfter > 0 {
-		if p.maxExtensions < 0 || p.extendCount < p.maxExtensions {
+	// Wait if the buffer is full and the pipe is not yet done.
+	for p.full() && !p.done {
+		var timer *time.Timer
+
+		if p.extendAfter > 0 && (p.maxExtensions < 0 || p.extendCount < p.maxExtensions) {
 			currentSize := len(p.data)
 			timer = time.AfterFunc(p.extendAfter, func() {
 				p.extend(currentSize)
 			})
 		}
-	}
 
-	// Wait if the buffer is full and the pipe is not yet done.
-	for p.full() && !p.done {
 		p.condFull.Wait()
-	}
 
-	if timer != nil {
-		timer.Stop()
+		if timer != nil {
+			timer.Stop()
+		}
 	}
 
 	if p.done {
