@@ -12,6 +12,8 @@ import (
 	"github.com/openfga/openfga/internal/shared"
 	"github.com/openfga/openfga/internal/utils/apimethod"
 	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/pkg/server/config"
+	"github.com/openfga/openfga/pkg/storage/storagewrappers/sharediterator"
 	"github.com/openfga/openfga/pkg/tuple"
 )
 

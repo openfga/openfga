@@ -107,7 +107,21 @@ func TransformResponse(bcr *openfgav1.BatchCheckResponse) (*authzenv1.Evaluation
 	}
 
 	for i := range evaluationsResponse.GetEvaluationResponses() {
-		result := bcr.GetResult()[strconv.Itoa(i)]
+		key := strconv.Itoa(i)
+		result, ok := bcr.GetResult()[key]
+		if !ok || result == nil {
+			// Missing result in map - return error response
+			evaluationsResponse.EvaluationResponses[i] = &authzenv1.EvaluationResponse{
+				Decision: false,
+				Context: &authzenv1.EvaluationResponseContext{
+					Error: &authzenv1.ResponseContextError{
+						Status:  500,
+						Message: fmt.Sprintf("missing result for evaluation %d", i),
+					},
+				},
+			}
+			continue
+		}
 
 		if errResult, ok := result.GetCheckResult().(*openfgav1.BatchCheckSingleResult_Error); ok {
 			// If there's an error, we return it as part of a single

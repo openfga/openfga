@@ -16,6 +16,17 @@ func (cmd *EvaluateRequestCommand) GetCheckRequest() *openfgav1.CheckRequest {
 }
 
 func NewEvaluateRequestCommand(req *authzenv1.EvaluationRequest) (*EvaluateRequestCommand, error) {
+	// Validate required fields
+	if req.GetSubject() == nil {
+		return nil, fmt.Errorf("missing subject")
+	}
+	if req.GetResource() == nil {
+		return nil, fmt.Errorf("missing resource")
+	}
+	if req.GetAction() == nil {
+		return nil, fmt.Errorf("missing action")
+	}
+
 	mergedContext, err := MergePropertiesToContext(
 		req.GetContext(),
 		req.GetSubject(),
