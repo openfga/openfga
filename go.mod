@@ -29,7 +29,7 @@ require (
 	github.com/jackc/pgx/v5 v5.8.0
 	github.com/natefinch/wrap v0.2.0
 	github.com/oklog/ulid/v2 v2.1.1
-	github.com/openfga/api/proto v0.0.0-20250909172242-b4b2a12f5c67
+	github.com/openfga/api/proto v0.0.0-20260113130232-93293b627514
 	github.com/openfga/language/pkg/go v0.2.0-beta.2.0.20251027165255-0f8f255e5f6c
 	github.com/pressly/goose/v3 v3.26.0
 	github.com/prometheus/client_golang v1.23.2
@@ -59,8 +59,6 @@ require (
 	sigs.k8s.io/controller-runtime v0.22.4
 	sigs.k8s.io/yaml v1.6.0
 )
-
-replace github.com/openfga/api/proto => /Users/andres.aguiar/gh/api/proto
 
 require (
 	cel.dev/expr v0.24.0 // indirect
