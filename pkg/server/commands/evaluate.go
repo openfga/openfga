@@ -16,22 +16,33 @@ func (cmd *EvaluateRequestCommand) GetCheckRequest() *openfgav1.CheckRequest {
 }
 
 func NewEvaluateRequestCommand(req *authzenv1.EvaluationRequest) (*EvaluateRequestCommand, error) {
-	// Validate required fields
-	if req.GetSubject() == nil {
-		return nil, fmt.Errorf("missing subject")
+	var user, relation, object string
+	subject := req.GetSubject()
+	if subject != nil {
+		user = fmt.Sprintf("%s:%s", subject.GetType(), subject.GetId())
+	} else {
+		user = ":"
 	}
-	if req.GetResource() == nil {
-		return nil, fmt.Errorf("missing resource")
+
+	resource := req.GetResource()
+	if resource != nil {
+		object = fmt.Sprintf("%s:%s", resource.GetType(), resource.GetId())
+	} else {
+		object = ":"
 	}
-	if req.GetAction() == nil {
-		return nil, fmt.Errorf("missing action")
+
+	action := req.GetAction()
+	if action != nil {
+		relation = action.GetName()
+	} else {
+		relation = ""
 	}
 
 	mergedContext, err := MergePropertiesToContext(
 		req.GetContext(),
-		req.GetSubject(),
-		req.GetResource(),
-		req.GetAction(),
+		subject,
+		resource,
+		action,
 	)
 	if err != nil {
 		return nil, err
@@ -42,9 +53,9 @@ func NewEvaluateRequestCommand(req *authzenv1.EvaluationRequest) (*EvaluateReque
 			StoreId:              req.GetStoreId(),
 			AuthorizationModelId: req.GetAuthorizationModelId(),
 			TupleKey: &openfgav1.CheckRequestTupleKey{
-				User:     fmt.Sprintf("%s:%s", req.GetSubject().GetType(), req.GetSubject().GetId()),
-				Relation: req.GetAction().GetName(),
-				Object:   fmt.Sprintf("%s:%s", req.GetResource().GetType(), req.GetResource().GetId()),
+				User:     user,
+				Relation: relation,
+				Object:   object,
 			},
 			Context: mergedContext,
 		},
