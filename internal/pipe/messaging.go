@@ -227,7 +227,7 @@ func (p *Pipe[T]) extend(n uint) {
 // Grow is a function that increases the pipe's total capacity, if necessary,
 // to guarantee space up to n items. After Grow(n), at least n items can be
 // sent to the pipe without another allocation. If n is not a power of two,
-// Grow will return an ErrinvalidSize error.
+// Grow will return an ErrInvalidSize error.
 func (p *Pipe[T]) Grow(n int) error {
 	if !bitutil.PowerOfTwo(n) {
 		return ErrInvalidSize
