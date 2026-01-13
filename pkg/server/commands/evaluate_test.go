@@ -4,8 +4,9 @@ import (
 	"testing"
 
 	"github.com/oklog/ulid/v2"
-	authzenv1 "github.com/openfga/api/proto/authzen/v1"
 	"github.com/stretchr/testify/require"
+
+	authzenv1 "github.com/openfga/api/proto/authzen/v1"
 
 	"github.com/openfga/openfga/pkg/testutils"
 )
@@ -134,8 +135,8 @@ func TestEvaluateRequestCommand(t *testing.T) {
 		require.NoError(t, err)
 
 		ctx := cmd.GetCheckRequest().GetContext().AsMap()
-		require.Equal(t, "engineering", ctx["subject.department"])
-		require.Equal(t, "developer", ctx["subject.role"])
+		require.Equal(t, "engineering", ctx["subject_department"])
+		require.Equal(t, "developer", ctx["subject_role"])
 	})
 
 	t.Run("properties_to_context_merge_resource_only", func(t *testing.T) {
@@ -154,8 +155,8 @@ func TestEvaluateRequestCommand(t *testing.T) {
 		require.NoError(t, err)
 
 		ctx := cmd.GetCheckRequest().GetContext().AsMap()
-		require.Equal(t, "confidential", ctx["resource.classification"])
-		require.Equal(t, "bob", ctx["resource.owner"])
+		require.Equal(t, "confidential", ctx["resource_classification"])
+		require.Equal(t, "bob", ctx["resource_owner"])
 	})
 
 	t.Run("properties_to_context_merge_action_only", func(t *testing.T) {
@@ -173,8 +174,8 @@ func TestEvaluateRequestCommand(t *testing.T) {
 		require.NoError(t, err)
 
 		ctx := cmd.GetCheckRequest().GetContext().AsMap()
-		require.Equal(t, "audit", ctx["action.reason"])
-		require.Equal(t, false, ctx["action.emergency"])
+		require.Equal(t, "audit", ctx["action_reason"])
+		require.Equal(t, false, ctx["action_emergency"])
 	})
 
 	t.Run("properties_to_context_merge_all_sources", func(t *testing.T) {
@@ -200,9 +201,9 @@ func TestEvaluateRequestCommand(t *testing.T) {
 		require.NoError(t, err)
 
 		ctx := cmd.GetCheckRequest().GetContext().AsMap()
-		require.Equal(t, "engineering", ctx["subject.department"])
-		require.Equal(t, "confidential", ctx["resource.classification"])
-		require.Equal(t, "audit", ctx["action.reason"])
+		require.Equal(t, "engineering", ctx["subject_department"])
+		require.Equal(t, "confidential", ctx["resource_classification"])
+		require.Equal(t, "audit", ctx["action_reason"])
 	})
 
 	t.Run("context_takes_precedence_over_properties", func(t *testing.T) {
@@ -214,7 +215,7 @@ func TestEvaluateRequestCommand(t *testing.T) {
 			},
 			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
 			Action:   &authzenv1.Action{Name: "read"},
-			Context:  testutils.MustNewStruct(t, map[string]interface{}{"subject.department": "override"}),
+			Context:  testutils.MustNewStruct(t, map[string]interface{}{"subject_department": "override"}),
 			StoreId:  ulid.Make().String(),
 		}
 
@@ -222,7 +223,7 @@ func TestEvaluateRequestCommand(t *testing.T) {
 		require.NoError(t, err)
 
 		ctx := cmd.GetCheckRequest().GetContext().AsMap()
-		require.Equal(t, "override", ctx["subject.department"])
+		require.Equal(t, "override", ctx["subject_department"])
 	})
 
 	t.Run("context_takes_precedence_over_multiple_properties", func(t *testing.T) {
@@ -238,7 +239,7 @@ func TestEvaluateRequestCommand(t *testing.T) {
 				Properties: testutils.MustNewStruct(t, map[string]interface{}{"classification": "public"}),
 			},
 			Action:  &authzenv1.Action{Name: "read"},
-			Context: testutils.MustNewStruct(t, map[string]interface{}{"subject.department": "legal", "resource.classification": "top-secret"}),
+			Context: testutils.MustNewStruct(t, map[string]interface{}{"subject_department": "legal", "resource_classification": "top-secret"}),
 			StoreId: ulid.Make().String(),
 		}
 
@@ -246,9 +247,9 @@ func TestEvaluateRequestCommand(t *testing.T) {
 		require.NoError(t, err)
 
 		ctx := cmd.GetCheckRequest().GetContext().AsMap()
-		require.Equal(t, "legal", ctx["subject.department"])
-		require.Equal(t, float64(1), ctx["subject.level"])
-		require.Equal(t, "top-secret", ctx["resource.classification"])
+		require.Equal(t, "legal", ctx["subject_department"])
+		require.InEpsilon(t, float64(1), ctx["subject_level"], 0.0001)
+		require.Equal(t, "top-secret", ctx["resource_classification"])
 	})
 
 	t.Run("context_and_properties_merge_without_conflict", func(t *testing.T) {
@@ -268,7 +269,7 @@ func TestEvaluateRequestCommand(t *testing.T) {
 		require.NoError(t, err)
 
 		ctx := cmd.GetCheckRequest().GetContext().AsMap()
-		require.Equal(t, "engineering", ctx["subject.department"])
+		require.Equal(t, "engineering", ctx["subject_department"])
 		require.Equal(t, "custom_value", ctx["custom_field"])
 	})
 
@@ -471,7 +472,7 @@ func TestEvaluateRequestCommand(t *testing.T) {
 
 		cmd, err := NewEvaluateRequestCommand(req)
 		require.NoError(t, err)
-		require.Equal(t, "", cmd.GetCheckRequest().GetTupleKey().GetRelation())
+		require.Empty(t, cmd.GetCheckRequest().GetTupleKey().GetRelation())
 	})
 
 	t.Run("properties_with_various_value_types", func(t *testing.T) {
@@ -497,13 +498,13 @@ func TestEvaluateRequestCommand(t *testing.T) {
 		require.NoError(t, err)
 
 		ctx := cmd.GetCheckRequest().GetContext().AsMap()
-		require.Equal(t, "hello", ctx["subject.string_val"])
-		require.Equal(t, float64(42), ctx["subject.int_val"])
-		require.Equal(t, true, ctx["subject.bool_val"])
-		require.Nil(t, ctx["subject.null_val"])
-		require.Equal(t, []interface{}{"a", "b", "c"}, ctx["subject.array_val"])
+		require.Equal(t, "hello", ctx["subject_string_val"])
+		require.InEpsilon(t, float64(42), ctx["subject_int_val"], 0.0001)
+		require.Equal(t, true, ctx["subject_bool_val"])
+		require.Nil(t, ctx["subject_null_val"])
+		require.Equal(t, []interface{}{"a", "b", "c"}, ctx["subject_array_val"])
 
-		nestedVal, ok := ctx["subject.nested_val"].(map[string]interface{})
+		nestedVal, ok := ctx["subject_nested_val"].(map[string]interface{})
 		require.True(t, ok)
 		require.Equal(t, "value", nestedVal["key"])
 	})
@@ -518,7 +519,7 @@ func TestEvaluateRequestCommand(t *testing.T) {
 
 		cmd, err := NewEvaluateRequestCommand(req)
 		require.NoError(t, err)
-		require.Equal(t, "", cmd.GetCheckRequest().GetStoreId())
+		require.Empty(t, cmd.GetCheckRequest().GetStoreId())
 	})
 
 	t.Run("nil_subject", func(t *testing.T) {
@@ -557,7 +558,7 @@ func TestEvaluateRequestCommand(t *testing.T) {
 
 		cmd, err := NewEvaluateRequestCommand(req)
 		require.NoError(t, err)
-		require.Equal(t, "", cmd.GetCheckRequest().GetTupleKey().GetRelation())
+		require.Empty(t, cmd.GetCheckRequest().GetTupleKey().GetRelation())
 	})
 
 	t.Run("table_driven_basic_transformation", func(t *testing.T) {

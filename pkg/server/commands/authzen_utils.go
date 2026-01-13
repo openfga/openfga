@@ -13,7 +13,9 @@ type SubjectPropertiesProvider interface {
 }
 
 // MergePropertiesToContext merges subject, resource, and action properties into
-// the context struct. Properties are namespaced with their source prefix.
+// the context struct. Properties are namespaced with their source prefix using
+// underscore as separator (e.g., "subject_department") because OpenFGA does not
+// allow condition parameters with "." in their names.
 // Precedence (lowest to highest): subject.properties, resource.properties,
 // action.properties, request context (request context wins on conflicts).
 func MergePropertiesToContext(
@@ -24,24 +26,24 @@ func MergePropertiesToContext(
 ) (*structpb.Struct, error) {
 	merged := make(map[string]interface{})
 
-	// Add subject properties with "subject." prefix
+	// Add subject properties with "subject_" prefix
 	if subject != nil && subject.GetProperties() != nil {
 		for k, v := range subject.GetProperties().AsMap() {
-			merged["subject."+k] = v
+			merged["subject_"+k] = v
 		}
 	}
 
-	// Add resource properties with "resource." prefix
+	// Add resource properties with "resource_" prefix
 	if resource != nil && resource.GetProperties() != nil {
 		for k, v := range resource.GetProperties().AsMap() {
-			merged["resource."+k] = v
+			merged["resource_"+k] = v
 		}
 	}
 
-	// Add action properties with "action." prefix
+	// Add action properties with "action_" prefix
 	if action != nil && action.GetProperties() != nil {
 		for k, v := range action.GetProperties().AsMap() {
-			merged["action."+k] = v
+			merged["action_"+k] = v
 		}
 	}
 

@@ -30,16 +30,17 @@ This document describes the AuthZEN PDP capabilities implemented by OpenFGA. The
 |-------|-------|
 | **Capability Name** | `:properties-to-context` |
 | **Capability URN** | `urn:ietf:params:authzen:capability:properties-to-context` |
-| **Capability Description** | PDP merges `properties` from Subject, Resource, and Action into the evaluation context with namespaced keys (e.g., `subject.department`, `resource.classification`). |
+| **Capability Description** | PDP merges `properties` from Subject, Resource, and Action into the evaluation context with namespaced keys using underscore as separator (e.g., `subject_department`, `resource_classification`). |
 | **Change Controller** | OpenID Foundation AuthZEN Working Group |
 | **Specification Document(s)** | Authorization API 1.0, Section "Subject Properties" |
 
 **OpenFGA Implementation:**
-- ✅ Subject properties merged with `subject.` prefix (e.g., `subject.department`)
-- ✅ Resource properties merged with `resource.` prefix (e.g., `resource.classification`)
-- ✅ Action properties merged with `action.` prefix (e.g., `action.method`)
+- ✅ Subject properties merged with `subject_` prefix (e.g., `subject_department`)
+- ✅ Resource properties merged with `resource_` prefix (e.g., `resource_classification`)
+- ✅ Action properties merged with `action_` prefix (e.g., `action_method`)
 - ✅ Explicit `context` values take precedence over properties
 - ✅ Properties available for use in OpenFGA conditions
+- ⚠️ Uses underscore (`_`) separator instead of dot (`.`) because OpenFGA does not allow condition parameters with `.` in their names
 
 ### :evaluations-semantic
 
@@ -124,7 +125,7 @@ This document describes the AuthZEN PDP capabilities implemented by OpenFGA. The
 | Capability | Supported | Notes |
 |------------|-----------|-------|
 | `:search-pagination` | ✅ Yes | `limit`, `token`, `next_token`, `count` supported; `total` not supported |
-| `:properties-to-context` | ✅ Yes | Properties merged with `subject.`, `resource.`, `action.` prefixes |
+| `:properties-to-context` | ✅ Yes | Properties merged with `subject_`, `resource_`, `action_` prefixes (uses `_` separator) |
 | `:evaluations-semantic` | ✅ Yes | All three semantics: `execute_all`, `deny_on_first_deny`, `permit_on_first_permit` |
 | `:transitive-search` | ✅ Yes | Full transitive relationship traversal via ListUsers and StreamedListObjects |
 | `:abac-context` | ✅ Yes | Context passed to OpenFGA conditions for ABAC evaluation |

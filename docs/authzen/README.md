@@ -24,17 +24,19 @@ This section documents key design decisions made when mapping AuthZEN concepts t
 
 AuthZEN allows `properties` objects on `subject`, `resource`, and `action`. OpenFGA does not have a direct equivalent—it only has a single `context` object for ABAC conditions.
 
-**Decision:** Properties are automatically merged into the OpenFGA `context` with namespaced keys:
+**Decision:** Properties are automatically merged into the OpenFGA `context` with namespaced keys using underscore (`_`) as the separator:
 
 | AuthZEN Property | OpenFGA Context Key |
 |------------------|---------------------|
-| `subject.properties.department` | `subject.department` |
-| `resource.properties.classification` | `resource.classification` |
-| `action.properties.severity` | `action.severity` |
+| `subject.properties.department` | `subject_department` |
+| `resource.properties.classification` | `resource_classification` |
+| `action.properties.severity` | `action_severity` |
+
+**Note:** Underscore is used as the separator because OpenFGA does not allow condition parameters with `.` in their names.
 
 **Precedence:** If there's a key conflict between properties and the request-level `context`, the request-level `context` takes precedence. For example, if both `context.subject.department` and `subject.properties.department` are specified, the value from `context` is used.
 
-**Tradeoff:** This approach requires authorization models to be aware of the namespacing convention. Models must reference properties as `context["subject.department"]` rather than `context["department"]`.
+**Tradeoff:** This approach requires authorization models to be aware of the namespacing convention. Models must reference properties as `context["subject_department"]` rather than `context["department"]`.
 
 ### Search API Pagination
 
@@ -370,13 +372,13 @@ POST /stores/<store_id>/access/v1/evaluations
 
 ### Properties to Context Mapping
 
-AuthZEN `properties` on `subject`, `resource`, and `action` are automatically merged into the OpenFGA `context` with namespaced keys:
+AuthZEN `properties` on `subject`, `resource`, and `action` are automatically merged into the OpenFGA `context` with namespaced keys using underscore as the separator:
 
 | AuthZEN Property | OpenFGA Context Key |
 |------------------|---------------------|
-| `subject.properties.department` | `subject.department` |
-| `resource.properties.classification` | `resource.classification` |
-| `action.properties.severity` | `action.severity` |
+| `subject.properties.department` | `subject_department` |
+| `resource.properties.classification` | `resource_classification` |
+| `action.properties.severity` | `action_severity` |
 
 **Precedence:** Request-level `context` takes precedence over properties if there are key conflicts.
 
@@ -400,8 +402,8 @@ AuthZEN `properties` on `subject`, `resource`, and `action` are automatically me
 This results in a context passed to OpenFGA Check:
 ```json
 {
-  "subject.department": "engineering",
-  "resource.classification": "confidential",
+  "subject_department": "engineering",
+  "resource_classification": "confidential",
   "current_time": "2024-01-15T10:00:00Z"
 }
 ```
