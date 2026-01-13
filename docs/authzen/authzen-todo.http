@@ -1,11 +1,10 @@
 #### @fga_api_url =
-@fga_api_url =  https://authzen-interop.openfga.dev
-@fga_api_key = <key>
-@fga_store_id = 01JG9JGS4W0950VN17G8NNAH3C
+@fga_api_url =  http://localhost:8080
+@fga_store_id = 01KEVFH4WDFMFD2TA6CD05GM3S
 
 # Simple Evaluation Request
 
-POST https://authzen-interop.openfga.dev/stores/{{fga_store_id}}/access/v1/evaluation
+POST {{fga_api_url}}/stores/{{fga_store_id}}/access/v1/evaluation
 Content-Type: application/json
 Authorization: bearer {{fga_api_key}}
 
@@ -60,6 +59,123 @@ Authorization: bearer {{fga_api_key}}
   ]
 }
 
+
+### Subject Search - Find users who can read a specific todo
+POST {{fga_api_url}}/stores/{{fga_store_id}}/access/v1/search/subject
+Content-Type: application/json
+Authorization: bearer {{fga_api_key}}
+
+{
+  "subject": {
+    "type": "user"
+  },
+  "resource": {
+    "type": "todo",
+    "id": "7240d0db-8ff0-41ec-98b2-34a096273b93"
+  },
+  "action": {
+    "name": "owner"
+  },
+  "page": {
+    "limit": 10
+  }
+}
+
+### Subject Search - Find users who can delete a specific todo item
+POST {{fga_api_url}}/stores/{{fga_store_id}}/access/v1/search/subject
+Content-Type: application/json
+Authorization: bearer {{fga_api_key}}
+
+{
+  "subject": {
+    "type": "user"
+  },
+  "resource": {
+    "type": "todo",
+    "id": "todo-1"
+  },
+  "action": {
+    "name": "can_delete_todo"
+  }
+}
+
+### Resource Search - Find all todos a user can read
+POST {{fga_api_url}}/stores/{{fga_store_id}}/access/v1/search/resource
+Content-Type: application/json
+Authorization: bearer {{fga_api_key}}
+
+{
+  "subject": {
+    "type": "user",
+    "id": "CiRmZDA2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs"
+  },
+  "action": {
+    "name": "can_read_todos"
+  },
+  "resource": {
+    "type": "todo"
+  },
+  "page": {
+    "limit": 20
+  }
+}
+
+### Resource Search - Find all todos a user can update
+POST {{fga_api_url}}/stores/{{fga_store_id}}/access/v1/search/resource
+Content-Type: application/json
+Authorization: bearer {{fga_api_key}}
+
+{
+  "subject": {
+    "type": "user",
+    "id": "CiRmZDA2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs"
+  },
+  "action": {
+    "name": "can_update_todo"
+  },
+  "resource": {
+    "type": "todo"
+  },
+  "page": {
+    "limit": 3
+  }
+}
+
+### Action Search - Find all actions a user can perform on a todo
+POST {{fga_api_url}}/stores/{{fga_store_id}}/access/v1/search/action
+Content-Type: application/json
+Authorization: bearer {{fga_api_key}}
+
+{
+  "subject": {
+    "type": "user",
+    "id": "CiRmZDA2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs"
+  },
+  "resource": {
+    "type": "todo",
+    "id": "1"
+  }
+}
+
+### Action Search - Find all actions on a specific todo item
+POST {{fga_api_url}}/stores/{{fga_store_id}}/access/v1/search/action
+Content-Type: application/json
+Authorization: bearer {{fga_api_key}}
+
+{
+  "subject": {
+    "type": "user",
+    "id": "CiRmZDA2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs"
+  },
+  "resource": {
+    "type": "todo",
+    "id": "todo-1"
+  }
+}
+
+### PDP Metadata Discovery
+GET {{fga_api_url}}/.well-known/authzen-configuration
+Content-Type: application/json
 
 
 ### Stores

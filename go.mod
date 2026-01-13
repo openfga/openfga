@@ -59,6 +59,7 @@ require (
 	sigs.k8s.io/controller-runtime v0.22.4
 	sigs.k8s.io/yaml v1.6.0
 )
+
 replace github.com/openfga/api/proto => /Users/andres.aguiar/gh/api/proto
 
 require (

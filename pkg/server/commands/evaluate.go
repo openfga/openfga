@@ -15,7 +15,17 @@ func (cmd *EvaluateRequestCommand) GetCheckRequest() *openfgav1.CheckRequest {
 	return &cmd.checkParams
 }
 
-func NewEvaluateRequestCommand(req *authzenv1.EvaluationRequest) *EvaluateRequestCommand {
+func NewEvaluateRequestCommand(req *authzenv1.EvaluationRequest) (*EvaluateRequestCommand, error) {
+	mergedContext, err := MergePropertiesToContext(
+		req.GetContext(),
+		req.GetSubject(),
+		req.GetResource(),
+		req.GetAction(),
+	)
+	if err != nil {
+		return nil, err
+	}
+
 	cmd := &EvaluateRequestCommand{
 		checkParams: openfgav1.CheckRequest{
 			StoreId:              req.GetStoreId(),
@@ -25,8 +35,8 @@ func NewEvaluateRequestCommand(req *authzenv1.EvaluationRequest) *EvaluateReques
 				Relation: req.GetAction().GetName(),
 				Object:   fmt.Sprintf("%s:%s", req.GetResource().GetType(), req.GetResource().GetId()),
 			},
-			Context: req.GetContext(),
+			Context: mergedContext,
 		},
 	}
-	return cmd
+	return cmd, nil
 }

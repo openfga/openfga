@@ -104,6 +104,8 @@ const (
 	ExperimentalShadowListObjects   = "shadow_list_objects"
 	ExperimentalDatastoreThrottling = "datastore_throttling"
 	ExperimentalPipelineListObjects = "pipeline_list_objects"
+	// ExperimentalEnableAuthZen enables the AuthZEN API endpoints for interoperability compliance.
+	ExperimentalEnableAuthZen = "enable_authzen"
 )
 
 type DatastoreMetricsConfig struct {
