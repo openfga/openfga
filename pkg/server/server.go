@@ -1152,4 +1152,3 @@ func (s *Server) emitCheckDurationMetric(checkMetadata graph.ResolveCheckRespons
 		caller,
 	).Observe(float64(checkMetadata.Duration.Milliseconds()))
 }
-
