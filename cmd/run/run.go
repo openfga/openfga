@@ -936,7 +936,6 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	grpcServer := grpc.NewServer(serverOpts...)
 	openfgav1.RegisterOpenFGAServiceServer(grpcServer, svr)
 	authzenv1.RegisterAuthZenServiceServer(grpcServer, svr)
-
 	healthServer := &health.Checker{TargetService: svr, TargetServiceName: openfgav1.OpenFGAService_ServiceDesc.ServiceName}
 	healthv1pb.RegisterHealthServer(grpcServer, healthServer)
 	reflection.Register(grpcServer)
