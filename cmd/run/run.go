@@ -620,10 +620,18 @@ func (s *ServerContext) dialGrpc(config *serverconfig.Config) (*grpc.ClientConn,
 		dialOpts = append(dialOpts, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	}
 
+	grpcAddr := config.GRPC.Addr
+	host, port, err := net.SplitHostPort(grpcAddr)
+	if err == nil {
+		if host == "0.0.0.0" {
+			grpcAddr = net.JoinHostPort("127.0.0.1", port)
+		}
+	}
+
 	timeoutCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 
 	// nolint:staticcheck // ignoring gRPC deprecations
-	conn, err := grpc.DialContext(timeoutCtx, config.GRPC.Addr, dialOpts...)
+	conn, err := grpc.DialContext(timeoutCtx, grpcAddr, dialOpts...)
 	if err != nil {
 		s.Logger.Fatal("failed to connect to gRPC server", zap.Error(err))
 	}
