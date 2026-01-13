@@ -392,7 +392,7 @@ func TestMessaging(t *testing.T) {
 
 		for i := range maxItems {
 			if i == next {
-				next = next << 1
+				next <<= 1
 				err := p.Grow(next)
 				require.NoError(t, err)
 			}

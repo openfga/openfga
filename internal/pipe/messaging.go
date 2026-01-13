@@ -188,7 +188,7 @@ func (p *Pipe[T]) SetExtensionConfig(extendAfter time.Duration, maxExtensions in
 // elastic in terms of its memory use. If the pipe is closed, or its
 // capacity is greater than n, this function will return immediately.
 //
-// n is expected to be a power of two.
+// N is expected to be a power of two.
 func (p *Pipe[T]) extend(n uint) {
 	// If the pipe is closed, no need to extend
 	if p.done {
