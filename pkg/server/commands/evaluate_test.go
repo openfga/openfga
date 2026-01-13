@@ -91,7 +91,7 @@ func TestEvaluateRequestCommand(t *testing.T) {
 		require.Equal(t, "2024-01-01T10:00:00Z", resultCtx["time"])
 		require.Equal(t, "192.168.1.1", resultCtx["ip_address"])
 		require.Equal(t, true, resultCtx["is_admin"])
-		require.Equal(t, float64(5), resultCtx["level"])
+		require.InEpsilon(t, float64(5), resultCtx["level"], 0.0001)
 	})
 
 	t.Run("context_with_nested_struct", func(t *testing.T) {

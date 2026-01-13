@@ -26,13 +26,13 @@ type testContext struct {
 
 // setupTestContext creates a new test server and returns a testContext.
 // The server is automatically configured with AuthZEN experimental flag enabled.
-func setupTestContext(t *testing.T, engine string) *testContext {
+func setupTestContext(t *testing.T) *testContext {
 	t.Helper()
 
 	cfg := serverconfig.MustDefaultConfig()
 	cfg.Experimentals = []string{serverconfig.ExperimentalEnableAuthZen}
 	cfg.Log.Level = "error"
-	cfg.Datastore.Engine = engine
+	cfg.Datastore.Engine = "memory"
 
 	tests.StartServer(t, cfg)
 
@@ -48,8 +48,8 @@ func setupTestContext(t *testing.T, engine string) *testContext {
 	return tc
 }
 
-// createStore creates a new store and returns its ID.
-func (tc *testContext) createStore(name string) string {
+// createStore creates a new store.
+func (tc *testContext) createStore(name string) {
 	tc.t.Helper()
 
 	resp, err := tc.openfgaClient.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{
@@ -57,11 +57,10 @@ func (tc *testContext) createStore(name string) string {
 	})
 	require.NoError(tc.t, err)
 	tc.storeID = resp.GetId()
-	return tc.storeID
 }
 
-// writeModel writes an authorization model and returns its ID.
-func (tc *testContext) writeModel(model string) string {
+// writeModel writes an authorization model.
+func (tc *testContext) writeModel(model string) {
 	tc.t.Helper()
 
 	modelProto := testutils.MustTransformDSLToProtoWithID(model)
@@ -74,7 +73,6 @@ func (tc *testContext) writeModel(model string) string {
 	})
 	require.NoError(tc.t, err)
 	tc.modelID = resp.GetAuthorizationModelId()
-	return tc.modelID
 }
 
 // writeTuples writes relationship tuples to the store.

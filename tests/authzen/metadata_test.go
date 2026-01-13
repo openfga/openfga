@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	authzenv1 "github.com/openfga/api/proto/authzen/v1"
+
 	"github.com/openfga/openfga/internal/build"
 )
 
@@ -14,49 +15,49 @@ import (
 // This endpoint returns PDP information, endpoint URLs, and capabilities.
 func TestGetConfiguration(t *testing.T) {
 	t.Run("returns_pdp_info", func(t *testing.T) {
-		tc := setupTestContext(t, "memory")
+		tc := setupTestContext(t)
 
 		resp, err := tc.authzenClient.GetConfiguration(context.Background(), &authzenv1.GetConfigurationRequest{})
 		require.NoError(t, err)
 
-		require.NotNil(t, resp.PolicyDecisionPoint)
-		require.Equal(t, "OpenFGA", resp.PolicyDecisionPoint.Name)
-		require.Equal(t, build.Version, resp.PolicyDecisionPoint.Version)
-		require.NotEmpty(t, resp.PolicyDecisionPoint.Description)
+		require.NotNil(t, resp.GetPolicyDecisionPoint())
+		require.Equal(t, "OpenFGA", resp.GetPolicyDecisionPoint().GetName())
+		require.Equal(t, build.Version, resp.GetPolicyDecisionPoint().GetVersion())
+		require.NotEmpty(t, resp.GetPolicyDecisionPoint().GetDescription())
 	})
 
 	t.Run("returns_endpoints", func(t *testing.T) {
-		tc := setupTestContext(t, "memory")
+		tc := setupTestContext(t)
 
 		resp, err := tc.authzenClient.GetConfiguration(context.Background(), &authzenv1.GetConfigurationRequest{})
 		require.NoError(t, err)
 
-		require.NotNil(t, resp.AccessEndpoints)
-		require.Contains(t, resp.AccessEndpoints.Evaluation, "/access/v1/evaluation")
-		require.Contains(t, resp.AccessEndpoints.Evaluations, "/access/v1/evaluations")
-		require.Contains(t, resp.AccessEndpoints.SubjectSearch, "/access/v1/search/subject")
-		require.Contains(t, resp.AccessEndpoints.ResourceSearch, "/access/v1/search/resource")
-		require.Contains(t, resp.AccessEndpoints.ActionSearch, "/access/v1/search/action")
+		require.NotNil(t, resp.GetAccessEndpoints())
+		require.Contains(t, resp.GetAccessEndpoints().GetEvaluation(), "/access/v1/evaluation")
+		require.Contains(t, resp.GetAccessEndpoints().GetEvaluations(), "/access/v1/evaluations")
+		require.Contains(t, resp.GetAccessEndpoints().GetSubjectSearch(), "/access/v1/search/subject")
+		require.Contains(t, resp.GetAccessEndpoints().GetResourceSearch(), "/access/v1/search/resource")
+		require.Contains(t, resp.GetAccessEndpoints().GetActionSearch(), "/access/v1/search/action")
 	})
 
 	t.Run("returns_capabilities", func(t *testing.T) {
-		tc := setupTestContext(t, "memory")
+		tc := setupTestContext(t)
 
 		resp, err := tc.authzenClient.GetConfiguration(context.Background(), &authzenv1.GetConfigurationRequest{})
 		require.NoError(t, err)
 
-		require.NotEmpty(t, resp.Capabilities)
-		require.Contains(t, resp.Capabilities, "evaluation")
-		require.Contains(t, resp.Capabilities, "evaluations")
-		require.Contains(t, resp.Capabilities, "subject_search")
-		require.Contains(t, resp.Capabilities, "resource_search")
-		require.Contains(t, resp.Capabilities, "action_search")
+		require.NotEmpty(t, resp.GetCapabilities())
+		require.Contains(t, resp.GetCapabilities(), "evaluation")
+		require.Contains(t, resp.GetCapabilities(), "evaluations")
+		require.Contains(t, resp.GetCapabilities(), "subject_search")
+		require.Contains(t, resp.GetCapabilities(), "resource_search")
+		require.Contains(t, resp.GetCapabilities(), "action_search")
 	})
 
 	t.Run("does_not_require_experimental_flag", func(t *testing.T) {
 		// GetConfiguration should work even without the experimental flag
 		// This is a discovery endpoint
-		tc := setupTestContext(t, "memory")
+		tc := setupTestContext(t)
 
 		resp, err := tc.authzenClient.GetConfiguration(context.Background(), &authzenv1.GetConfigurationRequest{})
 		require.NoError(t, err)

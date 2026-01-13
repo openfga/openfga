@@ -12,7 +12,7 @@ import (
 
 func TestEvaluations(t *testing.T) {
 	t.Run("batch_evaluations", func(t *testing.T) {
-		tc := setupTestContext(t, "memory")
+		tc := setupTestContext(t)
 		tc.createStore("test-store")
 		tc.writeModel(`
 			model
@@ -38,13 +38,13 @@ func TestEvaluations(t *testing.T) {
 			},
 		})
 		require.NoError(t, err)
-		require.Len(t, resp.EvaluationResponses, 2)
-		require.True(t, resp.EvaluationResponses[0].Decision)  // reader - allowed
-		require.False(t, resp.EvaluationResponses[1].Decision) // writer - denied
+		require.Len(t, resp.GetEvaluationResponses(), 2)
+		require.True(t, resp.GetEvaluationResponses()[0].GetDecision())  // reader - allowed
+		require.False(t, resp.GetEvaluationResponses()[1].GetDecision()) // writer - denied
 	})
 
 	t.Run("default_value_inheritance", func(t *testing.T) {
-		tc := setupTestContext(t, "memory")
+		tc := setupTestContext(t)
 		tc.createStore("test-store")
 		tc.writeModel(`
 			model
@@ -71,14 +71,14 @@ func TestEvaluations(t *testing.T) {
 			},
 		})
 		require.NoError(t, err)
-		require.Len(t, resp.EvaluationResponses, 3)
-		require.True(t, resp.EvaluationResponses[0].Decision)
-		require.True(t, resp.EvaluationResponses[1].Decision)
-		require.False(t, resp.EvaluationResponses[2].Decision)
+		require.Len(t, resp.GetEvaluationResponses(), 3)
+		require.True(t, resp.GetEvaluationResponses()[0].GetDecision())
+		require.True(t, resp.GetEvaluationResponses()[1].GetDecision())
+		require.False(t, resp.GetEvaluationResponses()[2].GetDecision())
 	})
 
 	t.Run("semantic_execute_all_default", func(t *testing.T) {
-		tc := setupTestContext(t, "memory")
+		tc := setupTestContext(t)
 		tc.createStore("test-store")
 		tc.writeModel(`
 			model
@@ -106,14 +106,14 @@ func TestEvaluations(t *testing.T) {
 			},
 		})
 		require.NoError(t, err)
-		require.Len(t, resp.EvaluationResponses, 3) // All evaluations processed
-		require.True(t, resp.EvaluationResponses[0].Decision)
-		require.False(t, resp.EvaluationResponses[1].Decision)
-		require.True(t, resp.EvaluationResponses[2].Decision)
+		require.Len(t, resp.GetEvaluationResponses(), 3) // All evaluations processed
+		require.True(t, resp.GetEvaluationResponses()[0].GetDecision())
+		require.False(t, resp.GetEvaluationResponses()[1].GetDecision())
+		require.True(t, resp.GetEvaluationResponses()[2].GetDecision())
 	})
 
 	t.Run("semantic_execute_all_explicit", func(t *testing.T) {
-		tc := setupTestContext(t, "memory")
+		tc := setupTestContext(t)
 		tc.createStore("test-store")
 		tc.writeModel(`
 			model
@@ -144,14 +144,14 @@ func TestEvaluations(t *testing.T) {
 			},
 		})
 		require.NoError(t, err)
-		require.Len(t, resp.EvaluationResponses, 3) // All evaluations processed
-		require.True(t, resp.EvaluationResponses[0].Decision)
-		require.False(t, resp.EvaluationResponses[1].Decision)
-		require.True(t, resp.EvaluationResponses[2].Decision)
+		require.Len(t, resp.GetEvaluationResponses(), 3) // All evaluations processed
+		require.True(t, resp.GetEvaluationResponses()[0].GetDecision())
+		require.False(t, resp.GetEvaluationResponses()[1].GetDecision())
+		require.True(t, resp.GetEvaluationResponses()[2].GetDecision())
 	})
 
 	t.Run("semantic_deny_on_first_deny", func(t *testing.T) {
-		tc := setupTestContext(t, "memory")
+		tc := setupTestContext(t)
 		tc.createStore("test-store")
 		tc.writeModel(`
 			model
@@ -181,13 +181,13 @@ func TestEvaluations(t *testing.T) {
 			},
 		})
 		require.NoError(t, err)
-		require.Len(t, resp.EvaluationResponses, 2) // Should only have 2 responses
-		require.True(t, resp.EvaluationResponses[0].Decision)
-		require.False(t, resp.EvaluationResponses[1].Decision)
+		require.Len(t, resp.GetEvaluationResponses(), 2) // Should only have 2 responses
+		require.True(t, resp.GetEvaluationResponses()[0].GetDecision())
+		require.False(t, resp.GetEvaluationResponses()[1].GetDecision())
 	})
 
 	t.Run("semantic_deny_on_first_deny_first_item_denied", func(t *testing.T) {
-		tc := setupTestContext(t, "memory")
+		tc := setupTestContext(t)
 		tc.createStore("test-store")
 		tc.writeModel(`
 			model
@@ -216,12 +216,12 @@ func TestEvaluations(t *testing.T) {
 			},
 		})
 		require.NoError(t, err)
-		require.Len(t, resp.EvaluationResponses, 1) // Should only have 1 response
-		require.False(t, resp.EvaluationResponses[0].Decision)
+		require.Len(t, resp.GetEvaluationResponses(), 1) // Should only have 1 response
+		require.False(t, resp.GetEvaluationResponses()[0].GetDecision())
 	})
 
 	t.Run("semantic_deny_on_first_deny_all_permitted", func(t *testing.T) {
-		tc := setupTestContext(t, "memory")
+		tc := setupTestContext(t)
 		tc.createStore("test-store")
 		tc.writeModel(`
 			model
@@ -251,14 +251,14 @@ func TestEvaluations(t *testing.T) {
 			},
 		})
 		require.NoError(t, err)
-		require.Len(t, resp.EvaluationResponses, 3) // All should be evaluated
-		require.True(t, resp.EvaluationResponses[0].Decision)
-		require.True(t, resp.EvaluationResponses[1].Decision)
-		require.True(t, resp.EvaluationResponses[2].Decision)
+		require.Len(t, resp.GetEvaluationResponses(), 3) // All should be evaluated
+		require.True(t, resp.GetEvaluationResponses()[0].GetDecision())
+		require.True(t, resp.GetEvaluationResponses()[1].GetDecision())
+		require.True(t, resp.GetEvaluationResponses()[2].GetDecision())
 	})
 
 	t.Run("semantic_permit_on_first_permit", func(t *testing.T) {
-		tc := setupTestContext(t, "memory")
+		tc := setupTestContext(t)
 		tc.createStore("test-store")
 		tc.writeModel(`
 			model
@@ -288,13 +288,13 @@ func TestEvaluations(t *testing.T) {
 			},
 		})
 		require.NoError(t, err)
-		require.Len(t, resp.EvaluationResponses, 2) // Should only have 2 responses
-		require.False(t, resp.EvaluationResponses[0].Decision)
-		require.True(t, resp.EvaluationResponses[1].Decision)
+		require.Len(t, resp.GetEvaluationResponses(), 2) // Should only have 2 responses
+		require.False(t, resp.GetEvaluationResponses()[0].GetDecision())
+		require.True(t, resp.GetEvaluationResponses()[1].GetDecision())
 	})
 
 	t.Run("semantic_permit_on_first_permit_first_item_permitted", func(t *testing.T) {
-		tc := setupTestContext(t, "memory")
+		tc := setupTestContext(t)
 		tc.createStore("test-store")
 		tc.writeModel(`
 			model
@@ -323,12 +323,12 @@ func TestEvaluations(t *testing.T) {
 			},
 		})
 		require.NoError(t, err)
-		require.Len(t, resp.EvaluationResponses, 1) // Should only have 1 response
-		require.True(t, resp.EvaluationResponses[0].Decision)
+		require.Len(t, resp.GetEvaluationResponses(), 1) // Should only have 1 response
+		require.True(t, resp.GetEvaluationResponses()[0].GetDecision())
 	})
 
 	t.Run("semantic_permit_on_first_permit_all_denied", func(t *testing.T) {
-		tc := setupTestContext(t, "memory")
+		tc := setupTestContext(t)
 		tc.createStore("test-store")
 		tc.writeModel(`
 			model
@@ -354,14 +354,14 @@ func TestEvaluations(t *testing.T) {
 			},
 		})
 		require.NoError(t, err)
-		require.Len(t, resp.EvaluationResponses, 3) // All should be evaluated
-		require.False(t, resp.EvaluationResponses[0].Decision)
-		require.False(t, resp.EvaluationResponses[1].Decision)
-		require.False(t, resp.EvaluationResponses[2].Decision)
+		require.Len(t, resp.GetEvaluationResponses(), 3) // All should be evaluated
+		require.False(t, resp.GetEvaluationResponses()[0].GetDecision())
+		require.False(t, resp.GetEvaluationResponses()[1].GetDecision())
+		require.False(t, resp.GetEvaluationResponses()[2].GetDecision())
 	})
 
 	t.Run("response_ordering", func(t *testing.T) {
-		tc := setupTestContext(t, "memory")
+		tc := setupTestContext(t)
 		tc.createStore("test-store")
 		tc.writeModel(`
 			model
@@ -389,16 +389,16 @@ func TestEvaluations(t *testing.T) {
 			},
 		})
 		require.NoError(t, err)
-		require.Len(t, resp.EvaluationResponses, 5)
-		require.False(t, resp.EvaluationResponses[0].Decision)
-		require.True(t, resp.EvaluationResponses[1].Decision)
-		require.False(t, resp.EvaluationResponses[2].Decision)
-		require.True(t, resp.EvaluationResponses[3].Decision)
-		require.False(t, resp.EvaluationResponses[4].Decision)
+		require.Len(t, resp.GetEvaluationResponses(), 5)
+		require.False(t, resp.GetEvaluationResponses()[0].GetDecision())
+		require.True(t, resp.GetEvaluationResponses()[1].GetDecision())
+		require.False(t, resp.GetEvaluationResponses()[2].GetDecision())
+		require.True(t, resp.GetEvaluationResponses()[3].GetDecision())
+		require.False(t, resp.GetEvaluationResponses()[4].GetDecision())
 	})
 
 	t.Run("mixed_inheritance_per_item", func(t *testing.T) {
-		tc := setupTestContext(t, "memory")
+		tc := setupTestContext(t)
 		tc.createStore("test-store")
 		tc.writeModel(`
 			model
@@ -435,14 +435,14 @@ func TestEvaluations(t *testing.T) {
 			},
 		})
 		require.NoError(t, err)
-		require.Len(t, resp.EvaluationResponses, 3)
-		require.True(t, resp.EvaluationResponses[0].Decision)  // alice is reader
-		require.False(t, resp.EvaluationResponses[1].Decision) // alice is not writer
-		require.True(t, resp.EvaluationResponses[2].Decision)  // bob is writer
+		require.Len(t, resp.GetEvaluationResponses(), 3)
+		require.True(t, resp.GetEvaluationResponses()[0].GetDecision())  // alice is reader
+		require.False(t, resp.GetEvaluationResponses()[1].GetDecision()) // alice is not writer
+		require.True(t, resp.GetEvaluationResponses()[2].GetDecision())  // bob is writer
 	})
 
 	t.Run("empty_evaluations_list", func(t *testing.T) {
-		tc := setupTestContext(t, "memory")
+		tc := setupTestContext(t)
 		tc.createStore("test-store")
 		tc.writeModel(`
 			model
@@ -465,7 +465,7 @@ func TestEvaluations(t *testing.T) {
 	})
 
 	t.Run("single_evaluation", func(t *testing.T) {
-		tc := setupTestContext(t, "memory")
+		tc := setupTestContext(t)
 		tc.createStore("test-store")
 		tc.writeModel(`
 			model
@@ -488,12 +488,12 @@ func TestEvaluations(t *testing.T) {
 			},
 		})
 		require.NoError(t, err)
-		require.Len(t, resp.EvaluationResponses, 1)
-		require.True(t, resp.EvaluationResponses[0].Decision)
+		require.Len(t, resp.GetEvaluationResponses(), 1)
+		require.True(t, resp.GetEvaluationResponses()[0].GetDecision())
 	})
 
 	t.Run("multiple_subjects_different_resources", func(t *testing.T) {
-		tc := setupTestContext(t, "memory")
+		tc := setupTestContext(t)
 		tc.createStore("test-store")
 		tc.writeModel(`
 			model
@@ -531,10 +531,10 @@ func TestEvaluations(t *testing.T) {
 			},
 		})
 		require.NoError(t, err)
-		require.Len(t, resp.EvaluationResponses, 4)
-		require.True(t, resp.EvaluationResponses[0].Decision)  // alice can read doc1
-		require.False(t, resp.EvaluationResponses[1].Decision) // alice cannot read doc2
-		require.False(t, resp.EvaluationResponses[2].Decision) // bob cannot read doc1
-		require.True(t, resp.EvaluationResponses[3].Decision)  // bob can read doc2
+		require.Len(t, resp.GetEvaluationResponses(), 4)
+		require.True(t, resp.GetEvaluationResponses()[0].GetDecision())  // alice can read doc1
+		require.False(t, resp.GetEvaluationResponses()[1].GetDecision()) // alice cannot read doc2
+		require.False(t, resp.GetEvaluationResponses()[2].GetDecision()) // bob cannot read doc1
+		require.True(t, resp.GetEvaluationResponses()[3].GetDecision())  // bob can read doc2
 	})
 }

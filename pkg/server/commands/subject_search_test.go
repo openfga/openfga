@@ -35,11 +35,11 @@ func TestSubjectSearchQuery(t *testing.T) {
 
 		resp, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.Len(t, resp.Subjects, 2)
-		require.Equal(t, "alice", resp.Subjects[0].Id)
-		require.Equal(t, "user", resp.Subjects[0].Type)
-		require.Equal(t, "bob", resp.Subjects[1].Id)
-		require.Equal(t, "user", resp.Subjects[1].Type)
+		require.Len(t, resp.GetSubjects(), 2)
+		require.Equal(t, "alice", resp.GetSubjects()[0].GetId())
+		require.Equal(t, "user", resp.GetSubjects()[0].GetType())
+		require.Equal(t, "bob", resp.GetSubjects()[1].GetId())
+		require.Equal(t, "user", resp.GetSubjects()[1].GetType())
 	})
 
 	t.Run("pagination_initial_request", func(t *testing.T) {
@@ -67,14 +67,14 @@ func TestSubjectSearchQuery(t *testing.T) {
 
 		resp, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.Len(t, resp.Subjects, 3)
-		require.NotEmpty(t, resp.Page.NextToken)
-		require.Equal(t, uint32(3), resp.Page.Count)
-		require.Equal(t, uint32(10), *resp.Page.Total)
+		require.Len(t, resp.GetSubjects(), 3)
+		require.NotEmpty(t, resp.GetPage().GetNextToken())
+		require.Equal(t, uint32(3), resp.GetPage().GetCount())
+		require.Equal(t, uint32(10), resp.GetPage().GetTotal())
 		// Verify first page subjects
-		require.Equal(t, "user0", resp.Subjects[0].Id)
-		require.Equal(t, "user1", resp.Subjects[1].Id)
-		require.Equal(t, "user2", resp.Subjects[2].Id)
+		require.Equal(t, "user0", resp.GetSubjects()[0].GetId())
+		require.Equal(t, "user1", resp.GetSubjects()[1].GetId())
+		require.Equal(t, "user2", resp.GetSubjects()[2].GetId())
 	})
 
 	t.Run("pagination_continuation", func(t *testing.T) {
@@ -102,16 +102,16 @@ func TestSubjectSearchQuery(t *testing.T) {
 
 		resp, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.NotEmpty(t, resp.Page.NextToken)
+		require.NotEmpty(t, resp.GetPage().GetNextToken())
 
 		// Continue with token
 		req.Page.Token = &resp.Page.NextToken
 		resp2, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.Len(t, resp2.Subjects, 3)
-		require.Equal(t, "user3", resp2.Subjects[0].Id)
-		require.Equal(t, "user4", resp2.Subjects[1].Id)
-		require.Equal(t, "user5", resp2.Subjects[2].Id)
+		require.Len(t, resp2.GetSubjects(), 3)
+		require.Equal(t, "user3", resp2.GetSubjects()[0].GetId())
+		require.Equal(t, "user4", resp2.GetSubjects()[1].GetId())
+		require.Equal(t, "user5", resp2.GetSubjects()[2].GetId())
 	})
 
 	t.Run("pagination_last_page", func(t *testing.T) {
@@ -139,17 +139,17 @@ func TestSubjectSearchQuery(t *testing.T) {
 
 		resp, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.Len(t, resp.Subjects, 3)
-		require.NotEmpty(t, resp.Page.NextToken)
+		require.Len(t, resp.GetSubjects(), 3)
+		require.NotEmpty(t, resp.GetPage().GetNextToken())
 
 		// Second request - get remaining 2
 		req.Page.Token = &resp.Page.NextToken
 		resp2, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.Len(t, resp2.Subjects, 2)
-		require.Empty(t, resp2.Page.NextToken) // No more pages
-		require.Equal(t, "user3", resp2.Subjects[0].Id)
-		require.Equal(t, "user4", resp2.Subjects[1].Id)
+		require.Len(t, resp2.GetSubjects(), 2)
+		require.Empty(t, resp2.GetPage().GetNextToken()) // No more pages
+		require.Equal(t, "user3", resp2.GetSubjects()[0].GetId())
+		require.Equal(t, "user4", resp2.GetSubjects()[1].GetId())
 	})
 
 	t.Run("pagination_invalid_token", func(t *testing.T) {
@@ -231,10 +231,10 @@ func TestSubjectSearchQuery(t *testing.T) {
 
 		resp, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.Empty(t, resp.Subjects)
-		require.Empty(t, resp.Page.NextToken)
-		require.Equal(t, uint32(0), resp.Page.Count)
-		require.Equal(t, uint32(0), *resp.Page.Total)
+		require.Empty(t, resp.GetSubjects())
+		require.Empty(t, resp.GetPage().GetNextToken())
+		require.Equal(t, uint32(0), resp.GetPage().GetCount())
+		require.Equal(t, uint32(0), resp.GetPage().GetTotal())
 	})
 
 	t.Run("properties_to_context_resource", func(t *testing.T) {
@@ -259,8 +259,8 @@ func TestSubjectSearchQuery(t *testing.T) {
 
 		_, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.NotNil(t, capturedReq.Context)
-		require.Equal(t, "secret", capturedReq.Context.AsMap()["resource.level"])
+		require.NotNil(t, capturedReq.GetContext())
+		require.Equal(t, "secret", capturedReq.GetContext().AsMap()["resource_level"])
 	})
 
 	t.Run("properties_to_context_subject", func(t *testing.T) {
@@ -284,8 +284,8 @@ func TestSubjectSearchQuery(t *testing.T) {
 
 		_, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.NotNil(t, capturedReq.Context)
-		require.Equal(t, "engineering", capturedReq.Context.AsMap()["subject.department"])
+		require.NotNil(t, capturedReq.GetContext())
+		require.Equal(t, "engineering", capturedReq.GetContext().AsMap()["subject_department"])
 	})
 
 	t.Run("properties_to_context_combined", func(t *testing.T) {
@@ -313,10 +313,10 @@ func TestSubjectSearchQuery(t *testing.T) {
 
 		_, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.NotNil(t, capturedReq.Context)
-		ctxMap := capturedReq.Context.AsMap()
-		require.Equal(t, "admin", ctxMap["subject.role"])
-		require.Equal(t, "top-secret", ctxMap["resource.classification"])
+		require.NotNil(t, capturedReq.GetContext())
+		ctxMap := capturedReq.GetContext().AsMap()
+		require.Equal(t, "admin", ctxMap["subject_role"])
+		require.Equal(t, "top-secret", ctxMap["resource_classification"])
 	})
 
 	t.Run("subject_type_filtering", func(t *testing.T) {
@@ -341,13 +341,13 @@ func TestSubjectSearchQuery(t *testing.T) {
 
 		resp, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.Len(t, resp.Subjects, 1)
-		require.Equal(t, "employee", resp.Subjects[0].Type)
-		require.Equal(t, "alice", resp.Subjects[0].Id)
+		require.Len(t, resp.GetSubjects(), 1)
+		require.Equal(t, "employee", resp.GetSubjects()[0].GetType())
+		require.Equal(t, "alice", resp.GetSubjects()[0].GetId())
 
 		// Verify user filter was applied
-		require.Len(t, capturedReq.UserFilters, 1)
-		require.Equal(t, "employee", capturedReq.UserFilters[0].Type)
+		require.Len(t, capturedReq.GetUserFilters(), 1)
+		require.Equal(t, "employee", capturedReq.GetUserFilters()[0].GetType())
 	})
 
 	t.Run("wildcard_subject_handling", func(t *testing.T) {
@@ -371,13 +371,13 @@ func TestSubjectSearchQuery(t *testing.T) {
 
 		resp, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.Len(t, resp.Subjects, 2)
+		require.Len(t, resp.GetSubjects(), 2)
 
 		// Verify both subjects are present (order may vary due to sorting)
 		subjectIDs := make(map[string]bool)
-		for _, s := range resp.Subjects {
-			require.Equal(t, "user", s.Type)
-			subjectIDs[s.Id] = true
+		for _, s := range resp.GetSubjects() {
+			require.Equal(t, "user", s.GetType())
+			subjectIDs[s.GetId()] = true
 		}
 		require.True(t, subjectIDs["alice"])
 		require.True(t, subjectIDs["*"]) // Wildcard user
@@ -408,8 +408,8 @@ func TestSubjectSearchQuery(t *testing.T) {
 
 		resp, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.Equal(t, DefaultSearchLimit, len(resp.Subjects))
-		require.NotEmpty(t, resp.Page.NextToken)
+		require.Len(t, resp.GetSubjects(), DefaultSearchLimit)
+		require.NotEmpty(t, resp.GetPage().GetNextToken())
 	})
 
 	t.Run("limit_max_enforcement", func(t *testing.T) {
@@ -438,8 +438,8 @@ func TestSubjectSearchQuery(t *testing.T) {
 
 		resp, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.Equal(t, MaxSearchLimit, len(resp.Subjects))
-		require.NotEmpty(t, resp.Page.NextToken)
+		require.Len(t, resp.GetSubjects(), MaxSearchLimit)
+		require.NotEmpty(t, resp.GetPage().GetNextToken())
 	})
 
 	t.Run("limit_zero_uses_default", func(t *testing.T) {
@@ -466,7 +466,7 @@ func TestSubjectSearchQuery(t *testing.T) {
 
 		resp, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.Equal(t, DefaultSearchLimit, len(resp.Subjects))
+		require.Len(t, resp.GetSubjects(), DefaultSearchLimit)
 	})
 
 	t.Run("request_passes_store_and_model_id", func(t *testing.T) {
@@ -488,8 +488,8 @@ func TestSubjectSearchQuery(t *testing.T) {
 
 		_, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.Equal(t, "01HVMMBCMGZNT3SED4CT2KA89Q", capturedReq.StoreId)
-		require.Equal(t, "01HVMMBD123456789ABCDEFGH", capturedReq.AuthorizationModelId)
+		require.Equal(t, "01HVMMBCMGZNT3SED4CT2KA89Q", capturedReq.GetStoreId())
+		require.Equal(t, "01HVMMBD123456789ABCDEFGH", capturedReq.GetAuthorizationModelId())
 	})
 
 	t.Run("request_passes_object_and_relation", func(t *testing.T) {
@@ -510,9 +510,9 @@ func TestSubjectSearchQuery(t *testing.T) {
 
 		_, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.Equal(t, "folder", capturedReq.Object.Type)
-		require.Equal(t, "folder123", capturedReq.Object.Id)
-		require.Equal(t, "write", capturedReq.Relation)
+		require.Equal(t, "folder", capturedReq.GetObject().GetType())
+		require.Equal(t, "folder123", capturedReq.GetObject().GetId())
+		require.Equal(t, "write", capturedReq.GetRelation())
 	})
 
 	t.Run("listusers_error_propagation", func(t *testing.T) {
@@ -561,8 +561,8 @@ func TestSubjectSearchQuery(t *testing.T) {
 
 		resp, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.Empty(t, resp.Subjects)
-		require.Empty(t, resp.Page.NextToken)
+		require.Empty(t, resp.GetSubjects())
+		require.Empty(t, resp.GetPage().GetNextToken())
 	})
 
 	// These tests verify that subject type is required (changed behavior)

@@ -36,7 +36,7 @@ func TestActionSearchQuery(t *testing.T) {
 
 		// Mock check function - allow read and owner, deny write
 		mockCheck := func(ctx context.Context, req *openfgav1.CheckRequest) (*openfgav1.CheckResponse, error) {
-			allowed := req.TupleKey.Relation == "reader" || req.TupleKey.Relation == "owner"
+			allowed := req.GetTupleKey().GetRelation() == "reader" || req.GetTupleKey().GetRelation() == "owner"
 			return &openfgav1.CheckResponse{Allowed: allowed}, nil
 		}
 
@@ -53,12 +53,12 @@ func TestActionSearchQuery(t *testing.T) {
 
 		resp, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.Len(t, resp.Actions, 2) // reader and owner
+		require.Len(t, resp.GetActions(), 2) // reader and owner
 
 		// Actions should be sorted alphabetically
-		actionNames := make([]string, len(resp.Actions))
-		for i, a := range resp.Actions {
-			actionNames[i] = a.Name
+		actionNames := make([]string, len(resp.GetActions()))
+		for i, a := range resp.GetActions() {
+			actionNames[i] = a.GetName()
 		}
 		require.Contains(t, actionNames, "reader")
 		require.Contains(t, actionNames, "owner")
@@ -99,9 +99,9 @@ func TestActionSearchQuery(t *testing.T) {
 
 		resp, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.Empty(t, resp.Actions)
-		require.Equal(t, uint32(0), resp.Page.Count)
-		require.Equal(t, uint32(0), *resp.Page.Total)
+		require.Empty(t, resp.GetActions())
+		require.Equal(t, uint32(0), resp.GetPage().GetCount())
+		require.Equal(t, uint32(0), resp.GetPage().GetTotal())
 	})
 
 	t.Run("pagination_initial_request", func(t *testing.T) {
@@ -144,13 +144,13 @@ func TestActionSearchQuery(t *testing.T) {
 
 		resp, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.Len(t, resp.Actions, 2)
-		require.NotEmpty(t, resp.Page.NextToken)
-		require.Equal(t, uint32(2), resp.Page.Count)
-		require.Equal(t, uint32(5), *resp.Page.Total)
+		require.Len(t, resp.GetActions(), 2)
+		require.NotEmpty(t, resp.GetPage().GetNextToken())
+		require.Equal(t, uint32(2), resp.GetPage().GetCount())
+		require.Equal(t, uint32(5), resp.GetPage().GetTotal())
 		// Verify first page actions are sorted (action1, action2)
-		require.Equal(t, "action1", resp.Actions[0].Name)
-		require.Equal(t, "action2", resp.Actions[1].Name)
+		require.Equal(t, "action1", resp.GetActions()[0].GetName())
+		require.Equal(t, "action2", resp.GetActions()[1].GetName())
 	})
 
 	t.Run("pagination_continuation", func(t *testing.T) {
@@ -192,15 +192,15 @@ func TestActionSearchQuery(t *testing.T) {
 
 		resp, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.NotEmpty(t, resp.Page.NextToken)
+		require.NotEmpty(t, resp.GetPage().GetNextToken())
 
 		// Continue with token
 		req.Page.Token = &resp.Page.NextToken
 		resp2, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.Len(t, resp2.Actions, 2)
-		require.Equal(t, "action3", resp2.Actions[0].Name)
-		require.Equal(t, "action4", resp2.Actions[1].Name)
+		require.Len(t, resp2.GetActions(), 2)
+		require.Equal(t, "action3", resp2.GetActions()[0].GetName())
+		require.Equal(t, "action4", resp2.GetActions()[1].GetName())
 	})
 
 	t.Run("pagination_last_page", func(t *testing.T) {
@@ -242,23 +242,23 @@ func TestActionSearchQuery(t *testing.T) {
 
 		resp, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.Len(t, resp.Actions, 2)
-		require.NotEmpty(t, resp.Page.NextToken)
+		require.Len(t, resp.GetActions(), 2)
+		require.NotEmpty(t, resp.GetPage().GetNextToken())
 
 		// Second request - get 2 more
 		req.Page.Token = &resp.Page.NextToken
 		resp2, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.Len(t, resp2.Actions, 2)
-		require.NotEmpty(t, resp2.Page.NextToken)
+		require.Len(t, resp2.GetActions(), 2)
+		require.NotEmpty(t, resp2.GetPage().GetNextToken())
 
 		// Third request - get remaining 1
 		req.Page.Token = &resp2.Page.NextToken
 		resp3, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.Len(t, resp3.Actions, 1)
-		require.Empty(t, resp3.Page.NextToken) // No more pages
-		require.Equal(t, "action5", resp3.Actions[0].Name)
+		require.Len(t, resp3.GetActions(), 1)
+		require.Empty(t, resp3.GetPage().GetNextToken()) // No more pages
+		require.Equal(t, "action5", resp3.GetActions()[0].GetName())
 	})
 
 	t.Run("pagination_invalid_token", func(t *testing.T) {
@@ -374,8 +374,8 @@ func TestActionSearchQuery(t *testing.T) {
 
 		_, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.NotNil(t, capturedReq.Context)
-		require.Equal(t, "admin", capturedReq.Context.AsMap()["subject.role"])
+		require.NotNil(t, capturedReq.GetContext())
+		require.Equal(t, "admin", capturedReq.GetContext().AsMap()["subject_role"])
 	})
 
 	t.Run("properties_to_context_resource", func(t *testing.T) {
@@ -416,8 +416,8 @@ func TestActionSearchQuery(t *testing.T) {
 
 		_, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.NotNil(t, capturedReq.Context)
-		require.Equal(t, "secret", capturedReq.Context.AsMap()["resource.classification"])
+		require.NotNil(t, capturedReq.GetContext())
+		require.Equal(t, "secret", capturedReq.GetContext().AsMap()["resource_classification"])
 	})
 
 	t.Run("properties_to_context_combined", func(t *testing.T) {
@@ -462,10 +462,10 @@ func TestActionSearchQuery(t *testing.T) {
 
 		_, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.NotNil(t, capturedReq.Context)
-		contextMap := capturedReq.Context.AsMap()
-		require.Equal(t, "engineering", contextMap["subject.department"])
-		require.Equal(t, "engineering", contextMap["resource.owner_dept"])
+		require.NotNil(t, capturedReq.GetContext())
+		contextMap := capturedReq.GetContext().AsMap()
+		require.Equal(t, "engineering", contextMap["subject_department"])
+		require.Equal(t, "engineering", contextMap["resource_owner_dept"])
 	})
 
 	t.Run("typesystem_resolver_error", func(t *testing.T) {
@@ -547,7 +547,7 @@ func TestActionSearchQuery(t *testing.T) {
 
 		// Error on "writer" relation, allow others
 		mockCheck := func(ctx context.Context, req *openfgav1.CheckRequest) (*openfgav1.CheckResponse, error) {
-			if req.TupleKey.Relation == "writer" {
+			if req.GetTupleKey().GetRelation() == "writer" {
 				return nil, errors.New("check failed")
 			}
 			return &openfgav1.CheckResponse{Allowed: true}, nil
@@ -567,11 +567,11 @@ func TestActionSearchQuery(t *testing.T) {
 		resp, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
 		// Should still get 2 results (reader and owner), skipping writer which errored
-		require.Len(t, resp.Actions, 2)
+		require.Len(t, resp.GetActions(), 2)
 
-		actionNames := make([]string, len(resp.Actions))
-		for i, a := range resp.Actions {
-			actionNames[i] = a.Name
+		actionNames := make([]string, len(resp.GetActions()))
+		for i, a := range resp.GetActions() {
+			actionNames[i] = a.GetName()
 		}
 		require.Contains(t, actionNames, "reader")
 		require.Contains(t, actionNames, "owner")
@@ -613,12 +613,12 @@ func TestActionSearchQuery(t *testing.T) {
 
 		resp, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.Len(t, resp.Actions, 4)
+		require.Len(t, resp.GetActions(), 4)
 		// Verify alphabetical order
-		require.Equal(t, "alpha", resp.Actions[0].Name)
-		require.Equal(t, "bravo", resp.Actions[1].Name)
-		require.Equal(t, "mike", resp.Actions[2].Name)
-		require.Equal(t, "zulu", resp.Actions[3].Name)
+		require.Equal(t, "alpha", resp.GetActions()[0].GetName())
+		require.Equal(t, "bravo", resp.GetActions()[1].GetName())
+		require.Equal(t, "mike", resp.GetActions()[2].GetName())
+		require.Equal(t, "zulu", resp.GetActions()[3].GetName())
 	})
 
 	t.Run("authorization_model_id_forwarded", func(t *testing.T) {
@@ -661,8 +661,8 @@ func TestActionSearchQuery(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, "01HVMMBCMGZNT3SED4CT2KA89Q", capturedStoreID)
 		require.Equal(t, "01HVMMBCMGZNT3SED4CT2KA90X", capturedModelID)
-		require.Equal(t, "01HVMMBCMGZNT3SED4CT2KA89Q", capturedCheckReq.StoreId)
-		require.Equal(t, "01HVMMBCMGZNT3SED4CT2KA90X", capturedCheckReq.AuthorizationModelId)
+		require.Equal(t, "01HVMMBCMGZNT3SED4CT2KA89Q", capturedCheckReq.GetStoreId())
+		require.Equal(t, "01HVMMBCMGZNT3SED4CT2KA90X", capturedCheckReq.GetAuthorizationModelId())
 	})
 
 	t.Run("check_request_parameters", func(t *testing.T) {
@@ -701,9 +701,9 @@ func TestActionSearchQuery(t *testing.T) {
 		require.NoError(t, err)
 
 		// Verify check request parameters
-		require.Equal(t, "user:alice", capturedReq.TupleKey.User)
-		require.Equal(t, "document:doc1", capturedReq.TupleKey.Object)
-		require.Equal(t, "reader", capturedReq.TupleKey.Relation)
+		require.Equal(t, "user:alice", capturedReq.GetTupleKey().GetUser())
+		require.Equal(t, "document:doc1", capturedReq.GetTupleKey().GetObject())
+		require.Equal(t, "reader", capturedReq.GetTupleKey().GetRelation())
 	})
 
 	t.Run("large_number_of_relations", func(t *testing.T) {
@@ -729,7 +729,7 @@ func TestActionSearchQuery(t *testing.T) {
 		// Allow half the relations
 		mockCheck := func(ctx context.Context, req *openfgav1.CheckRequest) (*openfgav1.CheckResponse, error) {
 			// Allow even-numbered relations
-			relation := req.TupleKey.Relation
+			relation := req.GetTupleKey().GetRelation()
 			var num int
 			fmt.Sscanf(relation, "relation%02d", &num)
 			return &openfgav1.CheckResponse{Allowed: num%2 == 0}, nil
@@ -748,6 +748,6 @@ func TestActionSearchQuery(t *testing.T) {
 
 		resp, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.Len(t, resp.Actions, 10) // Half of 20 relations
+		require.Len(t, resp.GetActions(), 10) // Half of 20 relations
 	})
 }

@@ -7,10 +7,11 @@ import (
 	"sort"
 	"strings"
 
-	authzenv1 "github.com/openfga/api/proto/authzen/v1"
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
+
+	authzenv1 "github.com/openfga/api/proto/authzen/v1"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 )
 
 // StreamedListObjectsFunc is a function type for StreamedListObjects.
@@ -60,12 +61,10 @@ func (q *ResourceSearchQuery) Execute(
 	}
 
 	// Get resource type (required for ListObjects)
-	resourceType := ""
-	if req.GetResource() != nil && req.GetResource().GetType() != "" {
-		resourceType = req.GetResource().GetType()
-	} else {
+	if req.GetResource() == nil || req.GetResource().GetType() == "" {
 		return nil, fmt.Errorf("resource type is required for resource search")
 	}
+	resourceType := req.GetResource().GetType()
 
 	// Get pagination parameters
 	limit := getLimit(req.GetPage())
@@ -116,10 +115,10 @@ func (q *ResourceSearchQuery) Execute(
 	// Sort resources for consistent pagination across calls (only when pagination is requested)
 	if req.GetPage() != nil {
 		sort.Slice(allResources, func(i, j int) bool {
-			if allResources[i].Type != allResources[j].Type {
-				return allResources[i].Type < allResources[j].Type
+			if allResources[i].GetType() != allResources[j].GetType() {
+				return allResources[i].GetType() < allResources[j].GetType()
 			}
-			return allResources[i].Id < allResources[j].Id
+			return allResources[i].GetId() < allResources[j].GetId()
 		})
 	}
 

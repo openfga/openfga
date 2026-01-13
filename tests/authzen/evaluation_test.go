@@ -14,7 +14,7 @@ import (
 
 func TestEvaluation(t *testing.T) {
 	t.Run("basic_permit", func(t *testing.T) {
-		tc := setupTestContext(t, "memory")
+		tc := setupTestContext(t)
 		tc.createStore("test-store")
 		tc.writeModel(`
 			model
@@ -34,7 +34,7 @@ func TestEvaluation(t *testing.T) {
 	})
 
 	t.Run("basic_deny", func(t *testing.T) {
-		tc := setupTestContext(t, "memory")
+		tc := setupTestContext(t)
 		tc.createStore("test-store")
 		tc.writeModel(`
 			model
@@ -52,7 +52,7 @@ func TestEvaluation(t *testing.T) {
 	})
 
 	t.Run("with_abac_condition", func(t *testing.T) {
-		tc := setupTestContext(t, "memory")
+		tc := setupTestContext(t)
 		tc.createStore("test-store")
 		tc.writeModel(`
 			model
@@ -96,7 +96,7 @@ func TestEvaluation(t *testing.T) {
 	})
 
 	t.Run("properties_in_conditions", func(t *testing.T) {
-		tc := setupTestContext(t, "memory")
+		tc := setupTestContext(t)
 		tc.createStore("test-store")
 		tc.writeModel(`
 			model
@@ -160,7 +160,7 @@ func TestEvaluation(t *testing.T) {
 	})
 
 	t.Run("interop_with_check", func(t *testing.T) {
-		tc := setupTestContext(t, "memory")
+		tc := setupTestContext(t)
 		tc.createStore("test-store")
 		tc.writeModel(`
 			model
@@ -224,7 +224,7 @@ func TestEvaluation(t *testing.T) {
 	})
 
 	t.Run("hierarchical_permissions", func(t *testing.T) {
-		tc := setupTestContext(t, "memory")
+		tc := setupTestContext(t)
 		tc.createStore("test-store")
 		tc.writeModel(`
 			model
@@ -257,7 +257,7 @@ func TestEvaluation(t *testing.T) {
 	})
 
 	t.Run("with_groups", func(t *testing.T) {
-		tc := setupTestContext(t, "memory")
+		tc := setupTestContext(t)
 		tc.createStore("test-store")
 		tc.writeModel(`
 			model
@@ -287,7 +287,7 @@ func TestEvaluation(t *testing.T) {
 	})
 
 	t.Run("exclusion_pattern", func(t *testing.T) {
-		tc := setupTestContext(t, "memory")
+		tc := setupTestContext(t)
 		tc.createStore("test-store")
 		tc.writeModel(`
 			model
@@ -316,7 +316,7 @@ func TestEvaluation(t *testing.T) {
 	})
 
 	t.Run("intersection_pattern", func(t *testing.T) {
-		tc := setupTestContext(t, "memory")
+		tc := setupTestContext(t)
 		tc.createStore("test-store")
 		tc.writeModel(`
 			model
@@ -347,7 +347,7 @@ func TestEvaluation(t *testing.T) {
 	})
 
 	t.Run("complex_condition_with_multiple_params", func(t *testing.T) {
-		tc := setupTestContext(t, "memory")
+		tc := setupTestContext(t)
 		tc.createStore("test-store")
 		tc.writeModel(`
 			model
@@ -419,7 +419,7 @@ func TestEvaluation(t *testing.T) {
 		// This test verifies that AuthZEN properties are automatically merged
 		// into the OpenFGA context using underscore as separator (e.g., subject_department)
 		// because OpenFGA does not allow condition parameters with "." in names.
-		tc := setupTestContext(t, "memory")
+		tc := setupTestContext(t)
 		tc.createStore("test-store")
 		tc.writeModel(`
 			model
@@ -477,7 +477,7 @@ func TestEvaluation(t *testing.T) {
 
 	t.Run("properties_context_precedence", func(t *testing.T) {
 		// This test verifies that explicit context values take precedence over properties
-		tc := setupTestContext(t, "memory")
+		tc := setupTestContext(t)
 		tc.createStore("test-store")
 		tc.writeModel(`
 			model
@@ -527,7 +527,7 @@ func TestEvaluation(t *testing.T) {
 
 	t.Run("action_properties_merge", func(t *testing.T) {
 		// This test verifies that action properties are also merged with action_ prefix
-		tc := setupTestContext(t, "memory")
+		tc := setupTestContext(t)
 		tc.createStore("test-store")
 		tc.writeModel(`
 			model

@@ -18,8 +18,6 @@ import (
 	"syscall"
 	"time"
 
-	authzenv1 "github.com/openfga/api/proto/authzen/v1"
-
 	"github.com/cenkalti/backoff/v4"
 	"github.com/go-logr/logr"
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus"
@@ -47,6 +45,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/certwatcher"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
+	authzenv1 "github.com/openfga/api/proto/authzen/v1"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/assets"

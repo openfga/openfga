@@ -4,9 +4,10 @@ import (
 	"testing"
 
 	"github.com/oklog/ulid/v2"
+	"github.com/stretchr/testify/require"
+
 	authzenv1 "github.com/openfga/api/proto/authzen/v1"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"github.com/stretchr/testify/require"
 
 	"github.com/openfga/openfga/pkg/testutils"
 )
@@ -38,17 +39,17 @@ func TestBatchEvaluateRequestCommand(t *testing.T) {
 		reqCommand, err := NewBatchEvaluateRequestCommand(input)
 		require.NoError(t, err)
 		require.Equal(t, input.GetStoreId(), reqCommand.GetBatchCheckRequests().GetStoreId())
-		require.Len(t, reqCommand.GetBatchCheckRequests().Checks, 2)
+		require.Len(t, reqCommand.GetBatchCheckRequests().GetChecks(), 2)
 
-		require.Equal(t, "user:CiRmZDA2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs", reqCommand.GetBatchCheckRequests().Checks[0].GetTupleKey().GetUser())
-		require.Equal(t, "can_read_user", reqCommand.GetBatchCheckRequests().Checks[0].GetTupleKey().GetRelation())
-		require.Equal(t, "user:rick@the-citadel.com", reqCommand.GetBatchCheckRequests().Checks[0].GetTupleKey().GetObject())
-		require.Equal(t, "0", reqCommand.GetBatchCheckRequests().Checks[0].GetCorrelationId())
+		require.Equal(t, "user:CiRmZDA2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs", reqCommand.GetBatchCheckRequests().GetChecks()[0].GetTupleKey().GetUser())
+		require.Equal(t, "can_read_user", reqCommand.GetBatchCheckRequests().GetChecks()[0].GetTupleKey().GetRelation())
+		require.Equal(t, "user:rick@the-citadel.com", reqCommand.GetBatchCheckRequests().GetChecks()[0].GetTupleKey().GetObject())
+		require.Equal(t, "0", reqCommand.GetBatchCheckRequests().GetChecks()[0].GetCorrelationId())
 
-		require.Equal(t, "user1:1CiRmZDA2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs", reqCommand.GetBatchCheckRequests().Checks[1].GetTupleKey().GetUser())
-		require.Equal(t, "can_read_user1", reqCommand.GetBatchCheckRequests().Checks[1].GetTupleKey().GetRelation())
-		require.Equal(t, "user:rick@the-citadel.com", reqCommand.GetBatchCheckRequests().Checks[1].GetTupleKey().GetObject())
-		require.Equal(t, "1", reqCommand.GetBatchCheckRequests().Checks[1].GetCorrelationId())
+		require.Equal(t, "user1:1CiRmZDA2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs", reqCommand.GetBatchCheckRequests().GetChecks()[1].GetTupleKey().GetUser())
+		require.Equal(t, "can_read_user1", reqCommand.GetBatchCheckRequests().GetChecks()[1].GetTupleKey().GetRelation())
+		require.Equal(t, "user:rick@the-citadel.com", reqCommand.GetBatchCheckRequests().GetChecks()[1].GetTupleKey().GetObject())
+		require.Equal(t, "1", reqCommand.GetBatchCheckRequests().GetChecks()[1].GetCorrelationId())
 	})
 
 	t.Run("default_value_inheritance", func(t *testing.T) {
@@ -68,9 +69,9 @@ func TestBatchEvaluateRequestCommand(t *testing.T) {
 		require.NoError(t, err)
 
 		batchReq := cmd.GetBatchCheckRequests()
-		require.Len(t, batchReq.Checks, 2)
+		require.Len(t, batchReq.GetChecks(), 2)
 
-		for _, check := range batchReq.Checks {
+		for _, check := range batchReq.GetChecks() {
 			require.Equal(t, "user:alice", check.GetTupleKey().GetUser())
 			require.Equal(t, "read", check.GetTupleKey().GetRelation())
 			require.Equal(t, "document:doc1", check.GetTupleKey().GetObject())
@@ -95,13 +96,13 @@ func TestBatchEvaluateRequestCommand(t *testing.T) {
 		require.NoError(t, err)
 
 		batchReq := cmd.GetBatchCheckRequests()
-		require.Len(t, batchReq.Checks, 1)
+		require.Len(t, batchReq.GetChecks(), 1)
 
 		// Subject is overridden
-		require.Equal(t, "user:bob", batchReq.Checks[0].GetTupleKey().GetUser())
+		require.Equal(t, "user:bob", batchReq.GetChecks()[0].GetTupleKey().GetUser())
 		// Resource and action inherit from defaults
-		require.Equal(t, "read", batchReq.Checks[0].GetTupleKey().GetRelation())
-		require.Equal(t, "document:doc1", batchReq.Checks[0].GetTupleKey().GetObject())
+		require.Equal(t, "read", batchReq.GetChecks()[0].GetTupleKey().GetRelation())
+		require.Equal(t, "document:doc1", batchReq.GetChecks()[0].GetTupleKey().GetObject())
 	})
 
 	t.Run("per_evaluation_resource_override", func(t *testing.T) {
@@ -122,13 +123,13 @@ func TestBatchEvaluateRequestCommand(t *testing.T) {
 		require.NoError(t, err)
 
 		batchReq := cmd.GetBatchCheckRequests()
-		require.Len(t, batchReq.Checks, 1)
+		require.Len(t, batchReq.GetChecks(), 1)
 
 		// Resource is overridden
-		require.Equal(t, "folder:folder1", batchReq.Checks[0].GetTupleKey().GetObject())
+		require.Equal(t, "folder:folder1", batchReq.GetChecks()[0].GetTupleKey().GetObject())
 		// Subject and action inherit from defaults
-		require.Equal(t, "user:alice", batchReq.Checks[0].GetTupleKey().GetUser())
-		require.Equal(t, "read", batchReq.Checks[0].GetTupleKey().GetRelation())
+		require.Equal(t, "user:alice", batchReq.GetChecks()[0].GetTupleKey().GetUser())
+		require.Equal(t, "read", batchReq.GetChecks()[0].GetTupleKey().GetRelation())
 	})
 
 	t.Run("per_evaluation_action_override", func(t *testing.T) {
@@ -149,13 +150,13 @@ func TestBatchEvaluateRequestCommand(t *testing.T) {
 		require.NoError(t, err)
 
 		batchReq := cmd.GetBatchCheckRequests()
-		require.Len(t, batchReq.Checks, 1)
+		require.Len(t, batchReq.GetChecks(), 1)
 
 		// Action is overridden
-		require.Equal(t, "write", batchReq.Checks[0].GetTupleKey().GetRelation())
+		require.Equal(t, "write", batchReq.GetChecks()[0].GetTupleKey().GetRelation())
 		// Subject and resource inherit from defaults
-		require.Equal(t, "user:alice", batchReq.Checks[0].GetTupleKey().GetUser())
-		require.Equal(t, "document:doc1", batchReq.Checks[0].GetTupleKey().GetObject())
+		require.Equal(t, "user:alice", batchReq.GetChecks()[0].GetTupleKey().GetUser())
+		require.Equal(t, "document:doc1", batchReq.GetChecks()[0].GetTupleKey().GetObject())
 	})
 
 	t.Run("multiple_per_evaluation_overrides", func(t *testing.T) {
@@ -187,27 +188,27 @@ func TestBatchEvaluateRequestCommand(t *testing.T) {
 		require.NoError(t, err)
 
 		batchReq := cmd.GetBatchCheckRequests()
-		require.Len(t, batchReq.Checks, 4)
+		require.Len(t, batchReq.GetChecks(), 4)
 
 		// Check 0: subject overridden
-		require.Equal(t, "user:bob", batchReq.Checks[0].GetTupleKey().GetUser())
-		require.Equal(t, "read", batchReq.Checks[0].GetTupleKey().GetRelation())
-		require.Equal(t, "document:doc1", batchReq.Checks[0].GetTupleKey().GetObject())
+		require.Equal(t, "user:bob", batchReq.GetChecks()[0].GetTupleKey().GetUser())
+		require.Equal(t, "read", batchReq.GetChecks()[0].GetTupleKey().GetRelation())
+		require.Equal(t, "document:doc1", batchReq.GetChecks()[0].GetTupleKey().GetObject())
 
 		// Check 1: resource overridden
-		require.Equal(t, "user:alice", batchReq.Checks[1].GetTupleKey().GetUser())
-		require.Equal(t, "read", batchReq.Checks[1].GetTupleKey().GetRelation())
-		require.Equal(t, "folder:folder1", batchReq.Checks[1].GetTupleKey().GetObject())
+		require.Equal(t, "user:alice", batchReq.GetChecks()[1].GetTupleKey().GetUser())
+		require.Equal(t, "read", batchReq.GetChecks()[1].GetTupleKey().GetRelation())
+		require.Equal(t, "folder:folder1", batchReq.GetChecks()[1].GetTupleKey().GetObject())
 
 		// Check 2: action overridden
-		require.Equal(t, "user:alice", batchReq.Checks[2].GetTupleKey().GetUser())
-		require.Equal(t, "write", batchReq.Checks[2].GetTupleKey().GetRelation())
-		require.Equal(t, "document:doc1", batchReq.Checks[2].GetTupleKey().GetObject())
+		require.Equal(t, "user:alice", batchReq.GetChecks()[2].GetTupleKey().GetUser())
+		require.Equal(t, "write", batchReq.GetChecks()[2].GetTupleKey().GetRelation())
+		require.Equal(t, "document:doc1", batchReq.GetChecks()[2].GetTupleKey().GetObject())
 
 		// Check 3: all overridden
-		require.Equal(t, "admin:charlie", batchReq.Checks[3].GetTupleKey().GetUser())
-		require.Equal(t, "delete", batchReq.Checks[3].GetTupleKey().GetRelation())
-		require.Equal(t, "project:proj1", batchReq.Checks[3].GetTupleKey().GetObject())
+		require.Equal(t, "admin:charlie", batchReq.GetChecks()[3].GetTupleKey().GetUser())
+		require.Equal(t, "delete", batchReq.GetChecks()[3].GetTupleKey().GetRelation())
+		require.Equal(t, "project:proj1", batchReq.GetChecks()[3].GetTupleKey().GetObject())
 	})
 
 	t.Run("properties_merge_with_subject_defaults", func(t *testing.T) {
@@ -229,10 +230,10 @@ func TestBatchEvaluateRequestCommand(t *testing.T) {
 		require.NoError(t, err)
 
 		batchReq := cmd.GetBatchCheckRequests()
-		require.Len(t, batchReq.Checks, 1)
+		require.Len(t, batchReq.GetChecks(), 1)
 
-		ctx := batchReq.Checks[0].GetContext().AsMap()
-		require.Equal(t, "engineering", ctx["subject.department"])
+		ctx := batchReq.GetChecks()[0].GetContext().AsMap()
+		require.Equal(t, "engineering", ctx["subject_department"])
 	})
 
 	t.Run("properties_merge_with_resource_defaults", func(t *testing.T) {
@@ -254,10 +255,10 @@ func TestBatchEvaluateRequestCommand(t *testing.T) {
 		require.NoError(t, err)
 
 		batchReq := cmd.GetBatchCheckRequests()
-		require.Len(t, batchReq.Checks, 1)
+		require.Len(t, batchReq.GetChecks(), 1)
 
-		ctx := batchReq.Checks[0].GetContext().AsMap()
-		require.Equal(t, "secret", ctx["resource.classification"])
+		ctx := batchReq.GetChecks()[0].GetContext().AsMap()
+		require.Equal(t, "secret", ctx["resource_classification"])
 	})
 
 	t.Run("properties_merge_with_action_defaults", func(t *testing.T) {
@@ -278,10 +279,10 @@ func TestBatchEvaluateRequestCommand(t *testing.T) {
 		require.NoError(t, err)
 
 		batchReq := cmd.GetBatchCheckRequests()
-		require.Len(t, batchReq.Checks, 1)
+		require.Len(t, batchReq.GetChecks(), 1)
 
-		ctx := batchReq.Checks[0].GetContext().AsMap()
-		require.Equal(t, true, ctx["action.requires_mfa"])
+		ctx := batchReq.GetChecks()[0].GetContext().AsMap()
+		require.Equal(t, true, ctx["action_requires_mfa"])
 	})
 
 	t.Run("properties_merge_all_sources", func(t *testing.T) {
@@ -310,12 +311,12 @@ func TestBatchEvaluateRequestCommand(t *testing.T) {
 		require.NoError(t, err)
 
 		batchReq := cmd.GetBatchCheckRequests()
-		require.Len(t, batchReq.Checks, 1)
+		require.Len(t, batchReq.GetChecks(), 1)
 
-		ctx := batchReq.Checks[0].GetContext().AsMap()
-		require.Equal(t, "admin", ctx["subject.role"])
-		require.Equal(t, "bob", ctx["resource.owner"])
-		require.Equal(t, true, ctx["action.audit"])
+		ctx := batchReq.GetChecks()[0].GetContext().AsMap()
+		require.Equal(t, "admin", ctx["subject_role"])
+		require.Equal(t, "bob", ctx["resource_owner"])
+		require.Equal(t, true, ctx["action_audit"])
 	})
 
 	t.Run("per_evaluation_properties_override_defaults", func(t *testing.T) {
@@ -343,11 +344,11 @@ func TestBatchEvaluateRequestCommand(t *testing.T) {
 		require.NoError(t, err)
 
 		batchReq := cmd.GetBatchCheckRequests()
-		require.Len(t, batchReq.Checks, 1)
+		require.Len(t, batchReq.GetChecks(), 1)
 
-		ctx := batchReq.Checks[0].GetContext().AsMap()
+		ctx := batchReq.GetChecks()[0].GetContext().AsMap()
 		// Per-evaluation subject properties should be used
-		require.Equal(t, "admin", ctx["subject.role"])
+		require.Equal(t, "admin", ctx["subject_role"])
 	})
 
 	t.Run("context_override_at_evaluation_level", func(t *testing.T) {
@@ -369,14 +370,14 @@ func TestBatchEvaluateRequestCommand(t *testing.T) {
 		require.NoError(t, err)
 
 		batchReq := cmd.GetBatchCheckRequests()
-		require.Len(t, batchReq.Checks, 2)
+		require.Len(t, batchReq.GetChecks(), 2)
 
 		// First check inherits default context
-		ctx0 := batchReq.Checks[0].GetContext().AsMap()
+		ctx0 := batchReq.GetChecks()[0].GetContext().AsMap()
 		require.Equal(t, "10.0.0.1", ctx0["ip_address"])
 
 		// Second check has overridden context
-		ctx1 := batchReq.Checks[1].GetContext().AsMap()
+		ctx1 := batchReq.GetChecks()[1].GetContext().AsMap()
 		require.Equal(t, "192.168.1.1", ctx1["ip_address"])
 	})
 
@@ -400,10 +401,10 @@ func TestBatchEvaluateRequestCommand(t *testing.T) {
 		require.NoError(t, err)
 
 		batchReq := cmd.GetBatchCheckRequests()
-		require.Len(t, batchReq.Checks, 5)
+		require.Len(t, batchReq.GetChecks(), 5)
 
 		// Verify correlation IDs are sequential strings
-		for i, check := range batchReq.Checks {
+		for i, check := range batchReq.GetChecks() {
 			require.Equal(t, check.GetCorrelationId(), string(rune('0'+i)))
 		}
 	})
@@ -421,7 +422,7 @@ func TestBatchEvaluateRequestCommand(t *testing.T) {
 		require.NoError(t, err)
 
 		batchReq := cmd.GetBatchCheckRequests()
-		require.Len(t, batchReq.Checks, 0)
+		require.Empty(t, batchReq.GetChecks())
 	})
 
 	t.Run("nil_top_level_defaults", func(t *testing.T) {
@@ -440,11 +441,11 @@ func TestBatchEvaluateRequestCommand(t *testing.T) {
 		require.NoError(t, err)
 
 		batchReq := cmd.GetBatchCheckRequests()
-		require.Len(t, batchReq.Checks, 1)
+		require.Len(t, batchReq.GetChecks(), 1)
 
-		require.Equal(t, "user:alice", batchReq.Checks[0].GetTupleKey().GetUser())
-		require.Equal(t, "read", batchReq.Checks[0].GetTupleKey().GetRelation())
-		require.Equal(t, "document:doc1", batchReq.Checks[0].GetTupleKey().GetObject())
+		require.Equal(t, "user:alice", batchReq.GetChecks()[0].GetTupleKey().GetUser())
+		require.Equal(t, "read", batchReq.GetChecks()[0].GetTupleKey().GetRelation())
+		require.Equal(t, "document:doc1", batchReq.GetChecks()[0].GetTupleKey().GetObject())
 	})
 
 	t.Run("mixed_nil_and_set_defaults", func(t *testing.T) {
@@ -465,11 +466,11 @@ func TestBatchEvaluateRequestCommand(t *testing.T) {
 		require.NoError(t, err)
 
 		batchReq := cmd.GetBatchCheckRequests()
-		require.Len(t, batchReq.Checks, 1)
+		require.Len(t, batchReq.GetChecks(), 1)
 
-		require.Equal(t, "user:default-user", batchReq.Checks[0].GetTupleKey().GetUser())
-		require.Equal(t, "view", batchReq.Checks[0].GetTupleKey().GetRelation())
-		require.Equal(t, "doc:d1", batchReq.Checks[0].GetTupleKey().GetObject())
+		require.Equal(t, "user:default-user", batchReq.GetChecks()[0].GetTupleKey().GetUser())
+		require.Equal(t, "view", batchReq.GetChecks()[0].GetTupleKey().GetRelation())
+		require.Equal(t, "doc:d1", batchReq.GetChecks()[0].GetTupleKey().GetObject())
 	})
 }
 
@@ -484,9 +485,9 @@ func TestTransformResponse(t *testing.T) {
 
 		resp, err := TransformResponse(batchResp)
 		require.NoError(t, err)
-		require.Len(t, resp.EvaluationResponses, 2)
-		require.True(t, resp.EvaluationResponses[0].Decision)
-		require.False(t, resp.EvaluationResponses[1].Decision)
+		require.Len(t, resp.GetEvaluationResponses(), 2)
+		require.True(t, resp.GetEvaluationResponses()[0].GetDecision())
+		require.False(t, resp.GetEvaluationResponses()[1].GetDecision())
 	})
 
 	t.Run("response_ordering_matches_request_ordering", func(t *testing.T) {
@@ -502,13 +503,13 @@ func TestTransformResponse(t *testing.T) {
 
 		resp, err := TransformResponse(batchResp)
 		require.NoError(t, err)
-		require.Len(t, resp.EvaluationResponses, 4)
+		require.Len(t, resp.GetEvaluationResponses(), 4)
 
 		// Results should be ordered by correlation ID (index)
-		require.False(t, resp.EvaluationResponses[0].Decision) // "0" -> false
-		require.False(t, resp.EvaluationResponses[1].Decision) // "1" -> false
-		require.True(t, resp.EvaluationResponses[2].Decision)  // "2" -> true
-		require.True(t, resp.EvaluationResponses[3].Decision)  // "3" -> true
+		require.False(t, resp.GetEvaluationResponses()[0].GetDecision()) // "0" -> false
+		require.False(t, resp.GetEvaluationResponses()[1].GetDecision()) // "1" -> false
+		require.True(t, resp.GetEvaluationResponses()[2].GetDecision())  // "2" -> true
+		require.True(t, resp.GetEvaluationResponses()[3].GetDecision())  // "3" -> true
 	})
 
 	t.Run("handles_error_results", func(t *testing.T) {
@@ -526,21 +527,21 @@ func TestTransformResponse(t *testing.T) {
 
 		resp, err := TransformResponse(batchResp)
 		require.NoError(t, err)
-		require.Len(t, resp.EvaluationResponses, 3)
+		require.Len(t, resp.GetEvaluationResponses(), 3)
 
 		// First result is allowed
-		require.True(t, resp.EvaluationResponses[0].Decision)
-		require.Nil(t, resp.EvaluationResponses[0].Context)
+		require.True(t, resp.GetEvaluationResponses()[0].GetDecision())
+		require.Nil(t, resp.GetEvaluationResponses()[0].GetContext())
 
 		// Second result is an error
-		require.False(t, resp.EvaluationResponses[1].Decision)
-		require.NotNil(t, resp.EvaluationResponses[1].Context)
-		require.NotNil(t, resp.EvaluationResponses[1].Context.Error)
-		require.Equal(t, uint32(404), resp.EvaluationResponses[1].Context.Error.Status)
-		require.Equal(t, "tuple not found", resp.EvaluationResponses[1].Context.Error.Message)
+		require.False(t, resp.GetEvaluationResponses()[1].GetDecision())
+		require.NotNil(t, resp.GetEvaluationResponses()[1].GetContext())
+		require.NotNil(t, resp.GetEvaluationResponses()[1].GetContext().GetError())
+		require.Equal(t, uint32(404), resp.GetEvaluationResponses()[1].GetContext().GetError().GetStatus())
+		require.Equal(t, "tuple not found", resp.GetEvaluationResponses()[1].GetContext().GetError().GetMessage())
 
 		// Third result is not allowed
-		require.False(t, resp.EvaluationResponses[2].Decision)
+		require.False(t, resp.GetEvaluationResponses()[2].GetDecision())
 	})
 
 	t.Run("empty_results", func(t *testing.T) {
@@ -550,7 +551,7 @@ func TestTransformResponse(t *testing.T) {
 
 		resp, err := TransformResponse(batchResp)
 		require.NoError(t, err)
-		require.Len(t, resp.EvaluationResponses, 0)
+		require.Empty(t, resp.GetEvaluationResponses())
 	})
 
 	t.Run("single_result", func(t *testing.T) {
@@ -562,8 +563,8 @@ func TestTransformResponse(t *testing.T) {
 
 		resp, err := TransformResponse(batchResp)
 		require.NoError(t, err)
-		require.Len(t, resp.EvaluationResponses, 1)
-		require.True(t, resp.EvaluationResponses[0].Decision)
+		require.Len(t, resp.GetEvaluationResponses(), 1)
+		require.True(t, resp.GetEvaluationResponses()[0].GetDecision())
 	})
 
 	t.Run("all_allowed", func(t *testing.T) {
@@ -577,10 +578,10 @@ func TestTransformResponse(t *testing.T) {
 
 		resp, err := TransformResponse(batchResp)
 		require.NoError(t, err)
-		require.Len(t, resp.EvaluationResponses, 3)
+		require.Len(t, resp.GetEvaluationResponses(), 3)
 
-		for _, evalResp := range resp.EvaluationResponses {
-			require.True(t, evalResp.Decision)
+		for _, evalResp := range resp.GetEvaluationResponses() {
+			require.True(t, evalResp.GetDecision())
 		}
 	})
 
@@ -595,10 +596,10 @@ func TestTransformResponse(t *testing.T) {
 
 		resp, err := TransformResponse(batchResp)
 		require.NoError(t, err)
-		require.Len(t, resp.EvaluationResponses, 3)
+		require.Len(t, resp.GetEvaluationResponses(), 3)
 
-		for _, evalResp := range resp.EvaluationResponses {
-			require.False(t, evalResp.Decision)
+		for _, evalResp := range resp.GetEvaluationResponses() {
+			require.False(t, evalResp.GetDecision())
 		}
 	})
 
@@ -616,14 +617,14 @@ func TestTransformResponse(t *testing.T) {
 
 		resp, err := TransformResponse(batchResp)
 		require.NoError(t, err)
-		require.Len(t, resp.EvaluationResponses, 2)
+		require.Len(t, resp.GetEvaluationResponses(), 2)
 
-		for i, evalResp := range resp.EvaluationResponses {
-			require.False(t, evalResp.Decision)
-			require.NotNil(t, evalResp.Context)
-			require.NotNil(t, evalResp.Context.Error)
-			require.Equal(t, uint32(404), evalResp.Context.Error.Status)
-			require.Contains(t, evalResp.Context.Error.Message, "error")
+		for i, evalResp := range resp.GetEvaluationResponses() {
+			require.False(t, evalResp.GetDecision())
+			require.NotNil(t, evalResp.GetContext())
+			require.NotNil(t, evalResp.GetContext().GetError())
+			require.Equal(t, uint32(404), evalResp.GetContext().GetError().GetStatus())
+			require.Contains(t, evalResp.GetContext().GetError().GetMessage(), "error")
 			_ = i
 		}
 	})
@@ -722,10 +723,10 @@ func TestBatchEvaluateTableDriven(t *testing.T) {
 			require.NoError(t, err)
 
 			batchReq := cmd.GetBatchCheckRequests()
-			require.Len(t, batchReq.Checks, tt.expectedChecks)
+			require.Len(t, batchReq.GetChecks(), tt.expectedChecks)
 
 			if tt.validateResults != nil {
-				tt.validateResults(t, batchReq.Checks)
+				tt.validateResults(t, batchReq.GetChecks())
 			}
 		})
 	}
@@ -772,16 +773,16 @@ func TestTransformResponseTableDriven(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			resp, err := TransformResponse(tt.batchResponse)
 			require.NoError(t, err)
-			require.Len(t, resp.EvaluationResponses, tt.expectedResponses)
+			require.Len(t, resp.GetEvaluationResponses(), tt.expectedResponses)
 
 			for i, expected := range tt.expectedDecisions {
-				require.Equal(t, expected, resp.EvaluationResponses[i].Decision)
+				require.Equal(t, expected, resp.GetEvaluationResponses()[i].GetDecision())
 			}
 
 			for i, hasError := range tt.expectedErrors {
 				if hasError {
-					require.NotNil(t, resp.EvaluationResponses[i].Context)
-					require.NotNil(t, resp.EvaluationResponses[i].Context.Error)
+					require.NotNil(t, resp.GetEvaluationResponses()[i].GetContext())
+					require.NotNil(t, resp.GetEvaluationResponses()[i].GetContext().GetError())
 				}
 			}
 		})

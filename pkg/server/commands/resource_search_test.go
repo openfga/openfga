@@ -56,12 +56,12 @@ func TestResourceSearchQuery(t *testing.T) {
 
 		resp, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.Len(t, resp.Resources, 3)
+		require.Len(t, resp.GetResources(), 3)
 		// Verify resources exist (order-independent)
 		resourceIDs := make(map[string]bool)
-		for _, r := range resp.Resources {
-			resourceIDs[r.Id] = true
-			require.Equal(t, "document", r.Type)
+		for _, r := range resp.GetResources() {
+			resourceIDs[r.GetId()] = true
+			require.Equal(t, "document", r.GetType())
 		}
 		require.True(t, resourceIDs["doc1"])
 		require.True(t, resourceIDs["doc2"])
@@ -88,9 +88,9 @@ func TestResourceSearchQuery(t *testing.T) {
 
 		resp, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.Len(t, resp.Resources, 3)
-		require.NotEmpty(t, resp.Page.NextToken)
-		require.Equal(t, uint32(3), resp.Page.Count)
+		require.Len(t, resp.GetResources(), 3)
+		require.NotEmpty(t, resp.GetPage().GetNextToken())
+		require.Equal(t, uint32(3), resp.GetPage().GetCount())
 		// Note: Total is not available with early termination streaming
 	})
 
@@ -115,17 +115,17 @@ func TestResourceSearchQuery(t *testing.T) {
 
 		resp, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.NotEmpty(t, resp.Page.NextToken)
+		require.NotEmpty(t, resp.GetPage().GetNextToken())
 
 		// Continue with token
 		req.Page.Token = &resp.Page.NextToken
 		resp2, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.Len(t, resp2.Resources, 3)
+		require.Len(t, resp2.GetResources(), 3)
 		// Verify resources exist (order-independent) - should be different from first page
 		resourceIDs := make(map[string]bool)
-		for _, r := range resp2.Resources {
-			resourceIDs[r.Id] = true
+		for _, r := range resp2.GetResources() {
+			resourceIDs[r.GetId()] = true
 		}
 		// Just verify we got 3 different resources
 		require.Len(t, resourceIDs, 3)
@@ -152,15 +152,15 @@ func TestResourceSearchQuery(t *testing.T) {
 
 		resp, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.Len(t, resp.Resources, 3)
-		require.NotEmpty(t, resp.Page.NextToken)
+		require.Len(t, resp.GetResources(), 3)
+		require.NotEmpty(t, resp.GetPage().GetNextToken())
 
 		// Second request - get remaining 2
 		req.Page.Token = &resp.Page.NextToken
 		resp2, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.Len(t, resp2.Resources, 2)
-		require.Empty(t, resp2.Page.NextToken) // No more pages
+		require.Len(t, resp2.GetResources(), 2)
+		require.Empty(t, resp2.GetPage().GetNextToken()) // No more pages
 	})
 
 	t.Run("pagination_invalid_token", func(t *testing.T) {
@@ -245,9 +245,9 @@ func TestResourceSearchQuery(t *testing.T) {
 
 		resp, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.Empty(t, resp.Resources)
-		require.Empty(t, resp.Page.NextToken)
-		require.Equal(t, uint32(0), resp.Page.Count)
+		require.Empty(t, resp.GetResources())
+		require.Empty(t, resp.GetPage().GetNextToken())
+		require.Equal(t, uint32(0), resp.GetPage().GetCount())
 		// Note: Total is not available with early termination streaming
 	})
 
@@ -269,8 +269,8 @@ func TestResourceSearchQuery(t *testing.T) {
 
 		_, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.NotNil(t, capturedReq.Context)
-		require.Equal(t, "engineering", capturedReq.Context.AsMap()["subject.department"])
+		require.NotNil(t, capturedReq.GetContext())
+		require.Equal(t, "engineering", capturedReq.GetContext().AsMap()["subject_department"])
 	})
 
 	t.Run("properties_to_context_resource", func(t *testing.T) {
@@ -290,8 +290,8 @@ func TestResourceSearchQuery(t *testing.T) {
 
 		_, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.NotNil(t, capturedReq.Context)
-		require.Equal(t, "secret", capturedReq.Context.AsMap()["resource.classification"])
+		require.NotNil(t, capturedReq.GetContext())
+		require.Equal(t, "secret", capturedReq.GetContext().AsMap()["resource_classification"])
 	})
 
 	t.Run("properties_to_context_combined", func(t *testing.T) {
@@ -315,10 +315,10 @@ func TestResourceSearchQuery(t *testing.T) {
 
 		_, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.NotNil(t, capturedReq.Context)
-		ctxMap := capturedReq.Context.AsMap()
-		require.Equal(t, "admin", ctxMap["subject.role"])
-		require.Equal(t, "top-secret", ctxMap["resource.level"])
+		require.NotNil(t, capturedReq.GetContext())
+		ctxMap := capturedReq.GetContext().AsMap()
+		require.Equal(t, "admin", ctxMap["subject_role"])
+		require.Equal(t, "top-secret", ctxMap["resource_level"])
 	})
 
 	t.Run("limit_default", func(t *testing.T) {
@@ -341,8 +341,8 @@ func TestResourceSearchQuery(t *testing.T) {
 
 		resp, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.Equal(t, DefaultSearchLimit, len(resp.Resources))
-		require.NotEmpty(t, resp.Page.NextToken)
+		require.Len(t, resp.GetResources(), DefaultSearchLimit)
+		require.NotEmpty(t, resp.GetPage().GetNextToken())
 	})
 
 	t.Run("limit_max_enforcement", func(t *testing.T) {
@@ -367,8 +367,8 @@ func TestResourceSearchQuery(t *testing.T) {
 
 		resp, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.Equal(t, MaxSearchLimit, len(resp.Resources))
-		require.NotEmpty(t, resp.Page.NextToken)
+		require.Len(t, resp.GetResources(), MaxSearchLimit)
+		require.NotEmpty(t, resp.GetPage().GetNextToken())
 	})
 
 	t.Run("limit_zero_uses_default", func(t *testing.T) {
@@ -391,7 +391,7 @@ func TestResourceSearchQuery(t *testing.T) {
 
 		resp, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.Equal(t, DefaultSearchLimit, len(resp.Resources))
+		require.Len(t, resp.GetResources(), DefaultSearchLimit)
 	})
 
 	t.Run("request_passes_store_and_model_id", func(t *testing.T) {
@@ -409,8 +409,8 @@ func TestResourceSearchQuery(t *testing.T) {
 
 		_, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.Equal(t, "01HVMMBCMGZNT3SED4CT2KA89Q", capturedReq.StoreId)
-		require.Equal(t, "01HVMMBD123456789ABCDEFGH", capturedReq.AuthorizationModelId)
+		require.Equal(t, "01HVMMBCMGZNT3SED4CT2KA89Q", capturedReq.GetStoreId())
+		require.Equal(t, "01HVMMBD123456789ABCDEFGH", capturedReq.GetAuthorizationModelId())
 	})
 
 	t.Run("request_passes_user_and_relation", func(t *testing.T) {
@@ -427,9 +427,9 @@ func TestResourceSearchQuery(t *testing.T) {
 
 		_, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.Equal(t, "employee:bob", capturedReq.User)
-		require.Equal(t, "write", capturedReq.Relation)
-		require.Equal(t, "folder", capturedReq.Type)
+		require.Equal(t, "employee:bob", capturedReq.GetUser())
+		require.Equal(t, "write", capturedReq.GetRelation())
+		require.Equal(t, "folder", capturedReq.GetType())
 	})
 
 	t.Run("streamedlistobjects_error_propagation", func(t *testing.T) {
@@ -470,8 +470,8 @@ func TestResourceSearchQuery(t *testing.T) {
 
 		resp, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.Empty(t, resp.Resources)
-		require.Empty(t, resp.Page.NextToken)
+		require.Empty(t, resp.GetResources())
+		require.Empty(t, resp.GetPage().GetNextToken())
 	})
 
 	t.Run("object_id_parsing_valid", func(t *testing.T) {
@@ -493,12 +493,12 @@ func TestResourceSearchQuery(t *testing.T) {
 
 		resp, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.Len(t, resp.Resources, 5)
+		require.Len(t, resp.GetResources(), 5)
 
 		// Verify all resources are present (order is sorted by type:id)
 		resourceMap := make(map[string]string)
-		for _, r := range resp.Resources {
-			resourceMap[r.Type+":"+r.Id] = r.Type
+		for _, r := range resp.GetResources() {
+			resourceMap[r.GetType()+":"+r.GetId()] = r.GetType()
 		}
 		require.Contains(t, resourceMap, "document:simple-id")
 		require.Contains(t, resourceMap, "folder:id-with-dash")
@@ -520,9 +520,9 @@ func TestResourceSearchQuery(t *testing.T) {
 
 		resp, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.Len(t, resp.Resources, 1)
-		require.Equal(t, "document", resp.Resources[0].Type)
-		require.Equal(t, "id:with:colons", resp.Resources[0].Id)
+		require.Len(t, resp.GetResources(), 1)
+		require.Equal(t, "document", resp.GetResources()[0].GetType())
+		require.Equal(t, "id:with:colons", resp.GetResources()[0].GetId())
 	})
 
 	t.Run("malformed_object_id_skipped", func(t *testing.T) {
@@ -542,12 +542,12 @@ func TestResourceSearchQuery(t *testing.T) {
 
 		resp, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.Len(t, resp.Resources, 2)
+		require.Len(t, resp.GetResources(), 2)
 
 		// Verify both valid IDs are present (order is sorted)
 		resourceIDs := make(map[string]bool)
-		for _, r := range resp.Resources {
-			resourceIDs[r.Id] = true
+		for _, r := range resp.GetResources() {
+			resourceIDs[r.GetId()] = true
 		}
 		require.True(t, resourceIDs["valid-id"])
 		require.True(t, resourceIDs["another-valid"])
@@ -566,11 +566,11 @@ func TestResourceSearchQuery(t *testing.T) {
 
 		resp, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.Len(t, resp.Resources, 2)
-		require.Equal(t, "folder", resp.Resources[0].Type)
-		require.Equal(t, "folder1", resp.Resources[0].Id)
-		require.Equal(t, "folder", resp.Resources[1].Type)
-		require.Equal(t, "folder2", resp.Resources[1].Id)
+		require.Len(t, resp.GetResources(), 2)
+		require.Equal(t, "folder", resp.GetResources()[0].GetType())
+		require.Equal(t, "folder1", resp.GetResources()[0].GetId())
+		require.Equal(t, "folder", resp.GetResources()[1].GetType())
+		require.Equal(t, "folder2", resp.GetResources()[1].GetId())
 	})
 
 	t.Run("nil_objects_response", func(t *testing.T) {
@@ -587,8 +587,8 @@ func TestResourceSearchQuery(t *testing.T) {
 
 		resp, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.Empty(t, resp.Resources)
-		require.Empty(t, resp.Page.NextToken)
-		require.Equal(t, uint32(0), resp.Page.Count)
+		require.Empty(t, resp.GetResources())
+		require.Empty(t, resp.GetPage().GetNextToken())
+		require.Equal(t, uint32(0), resp.GetPage().GetCount())
 	})
 }

@@ -70,7 +70,7 @@ func TestAuthZENTodoInterop(t *testing.T) {
 	// - Beth Smith (evil_genius) - can manage todos and update any todo
 
 	t.Run("todo_app_role_assignments", func(t *testing.T) {
-		tc := setupTestContext(t, "memory")
+		tc := setupTestContext(t)
 		tc.createStore("authzen-todo-interop")
 		tc.writeModel(authzenTodoModel)
 
@@ -119,13 +119,13 @@ func TestAuthZENTodoInterop(t *testing.T) {
 			t.Run(tt.name, func(t *testing.T) {
 				resp, err := tc.evaluate(tt.subject, tt.resource, tt.action)
 				require.NoError(t, err)
-				require.Equal(t, tt.expected, resp.Decision, "expected %s to have %s=%v on %s", tt.subject, tt.action, tt.expected, tt.resource)
+				require.Equal(t, tt.expected, resp.GetDecision(), "expected %s to have %s=%v on %s", tt.subject, tt.action, tt.expected, tt.resource)
 			})
 		}
 	})
 
 	t.Run("todo_item_ownership", func(t *testing.T) {
-		tc := setupTestContext(t, "memory")
+		tc := setupTestContext(t)
 		tc.createStore("authzen-todo-ownership")
 		tc.writeModel(authzenTodoModel)
 
@@ -182,13 +182,13 @@ func TestAuthZENTodoInterop(t *testing.T) {
 			t.Run(tt.name, func(t *testing.T) {
 				resp, err := tc.evaluate(tt.subject, tt.resource, tt.action)
 				require.NoError(t, err)
-				require.Equal(t, tt.expected, resp.Decision, "expected %s to have %s=%v on %s", tt.subject, tt.action, tt.expected, tt.resource)
+				require.Equal(t, tt.expected, resp.GetDecision(), "expected %s to have %s=%v on %s", tt.subject, tt.action, tt.expected, tt.resource)
 			})
 		}
 	})
 
 	t.Run("todo_user_can_read_user", func(t *testing.T) {
-		tc := setupTestContext(t, "memory")
+		tc := setupTestContext(t)
 		tc.createStore("authzen-todo-can-read-user")
 		tc.writeModel(authzenTodoModel)
 
@@ -215,13 +215,13 @@ func TestAuthZENTodoInterop(t *testing.T) {
 			t.Run(tt.name, func(t *testing.T) {
 				resp, err := tc.evaluate(tt.subject, tt.resource, tt.action)
 				require.NoError(t, err)
-				require.Equal(t, tt.expected, resp.Decision)
+				require.Equal(t, tt.expected, resp.GetDecision())
 			})
 		}
 	})
 
 	t.Run("todo_evaluations_batch", func(t *testing.T) {
-		tc := setupTestContext(t, "memory")
+		tc := setupTestContext(t)
 		tc.createStore("authzen-todo-batch")
 		tc.writeModel(authzenTodoModel)
 
@@ -262,16 +262,16 @@ func TestAuthZENTodoInterop(t *testing.T) {
 			},
 		})
 		require.NoError(t, err)
-		require.Len(t, resp.EvaluationResponses, 4)
+		require.Len(t, resp.GetEvaluationResponses(), 4)
 
 		// Rick can create todos (admin)
-		require.True(t, resp.EvaluationResponses[0].Decision, "Rick should be able to create todos")
+		require.True(t, resp.GetEvaluationResponses()[0].GetDecision(), "Rick should be able to create todos")
 		// Morty can delete his own todo
-		require.True(t, resp.EvaluationResponses[1].Decision, "Morty should be able to delete his own todo")
+		require.True(t, resp.GetEvaluationResponses()[1].GetDecision(), "Morty should be able to delete his own todo")
 		// Summer can read todos
-		require.True(t, resp.EvaluationResponses[2].Decision, "Summer should be able to read todos")
+		require.True(t, resp.GetEvaluationResponses()[2].GetDecision(), "Summer should be able to read todos")
 		// Summer cannot create todos
-		require.False(t, resp.EvaluationResponses[3].Decision, "Summer should not be able to create todos")
+		require.False(t, resp.GetEvaluationResponses()[3].GetDecision(), "Summer should not be able to create todos")
 	})
 }
 
@@ -284,7 +284,7 @@ func TestAuthZENGatewayInterop(t *testing.T) {
 	// - Roles: admin, developer, viewer
 
 	t.Run("gateway_public_get_routes", func(t *testing.T) {
-		tc := setupTestContext(t, "memory")
+		tc := setupTestContext(t)
 		tc.createStore("authzen-gateway-interop")
 		tc.writeModel(authzenGatewayModel)
 
@@ -318,13 +318,13 @@ func TestAuthZENGatewayInterop(t *testing.T) {
 			t.Run(tt.name, func(t *testing.T) {
 				resp, err := tc.evaluate(tt.subject, tt.resource, tt.action)
 				require.NoError(t, err)
-				require.Equal(t, tt.expected, resp.Decision)
+				require.Equal(t, tt.expected, resp.GetDecision())
 			})
 		}
 	})
 
 	t.Run("gateway_role_based_access", func(t *testing.T) {
-		tc := setupTestContext(t, "memory")
+		tc := setupTestContext(t)
 		tc.createStore("authzen-gateway-roles")
 		tc.writeModel(authzenGatewayModel)
 
@@ -397,13 +397,13 @@ func TestAuthZENGatewayInterop(t *testing.T) {
 			t.Run(tt.name, func(t *testing.T) {
 				resp, err := tc.evaluate(tt.subject, tt.resource, tt.action)
 				require.NoError(t, err)
-				require.Equal(t, tt.expected, resp.Decision, "expected %s to have %s=%v on %s", tt.subject, tt.action, tt.expected, tt.resource)
+				require.Equal(t, tt.expected, resp.GetDecision(), "expected %s to have %s=%v on %s", tt.subject, tt.action, tt.expected, tt.resource)
 			})
 		}
 	})
 
 	t.Run("gateway_mixed_public_and_role_access", func(t *testing.T) {
-		tc := setupTestContext(t, "memory")
+		tc := setupTestContext(t)
 		tc.createStore("authzen-gateway-mixed")
 		tc.writeModel(authzenGatewayModel)
 
@@ -444,13 +444,13 @@ func TestAuthZENGatewayInterop(t *testing.T) {
 			t.Run(tt.name, func(t *testing.T) {
 				resp, err := tc.evaluate(tt.subject, tt.resource, tt.action)
 				require.NoError(t, err)
-				require.Equal(t, tt.expected, resp.Decision)
+				require.Equal(t, tt.expected, resp.GetDecision())
 			})
 		}
 	})
 
 	t.Run("gateway_evaluations_batch", func(t *testing.T) {
-		tc := setupTestContext(t, "memory")
+		tc := setupTestContext(t)
 		tc.createStore("authzen-gateway-batch")
 		tc.writeModel(authzenGatewayModel)
 
@@ -489,20 +489,20 @@ func TestAuthZENGatewayInterop(t *testing.T) {
 			},
 		})
 		require.NoError(t, err)
-		require.Len(t, resp.EvaluationResponses, 4)
+		require.Len(t, resp.GetEvaluationResponses(), 4)
 
 		// Alice can GET public (wildcard)
-		require.True(t, resp.EvaluationResponses[0].Decision, "Alice should be able to GET public route")
+		require.True(t, resp.GetEvaluationResponses()[0].GetDecision(), "Alice should be able to GET public route")
 		// Alice can POST admin (admin role)
-		require.True(t, resp.EvaluationResponses[1].Decision, "Alice should be able to POST to admin route")
+		require.True(t, resp.GetEvaluationResponses()[1].GetDecision(), "Alice should be able to POST to admin route")
 		// Bob can GET public (wildcard)
-		require.True(t, resp.EvaluationResponses[2].Decision, "Bob should be able to GET public route")
+		require.True(t, resp.GetEvaluationResponses()[2].GetDecision(), "Bob should be able to GET public route")
 		// Bob cannot DELETE admin (no role)
-		require.False(t, resp.EvaluationResponses[3].Decision, "Bob should not be able to DELETE admin route")
+		require.False(t, resp.GetEvaluationResponses()[3].GetDecision(), "Bob should not be able to DELETE admin route")
 	})
 
 	t.Run("gateway_subject_search", func(t *testing.T) {
-		tc := setupTestContext(t, "memory")
+		tc := setupTestContext(t)
 		tc.createStore("authzen-gateway-search")
 		tc.writeModel(authzenGatewayModel)
 
@@ -524,19 +524,19 @@ func TestAuthZENGatewayInterop(t *testing.T) {
 			Subject:  &authzenv1.SubjectFilter{Type: "identity"},
 		})
 		require.NoError(t, err)
-		require.Len(t, resp.Subjects, 2)
+		require.Len(t, resp.GetSubjects(), 2)
 
 		// Verify only admins can delete
 		subjectIDs := make(map[string]bool)
-		for _, s := range resp.Subjects {
-			subjectIDs[s.Id] = true
+		for _, s := range resp.GetSubjects() {
+			subjectIDs[s.GetId()] = true
 		}
 		require.True(t, subjectIDs["admin1"])
 		require.True(t, subjectIDs["admin2"])
 	})
 
 	t.Run("gateway_resource_search", func(t *testing.T) {
-		tc := setupTestContext(t, "memory")
+		tc := setupTestContext(t)
 		tc.createStore("authzen-gateway-resource-search")
 		tc.writeModel(authzenGatewayModel)
 
@@ -557,12 +557,12 @@ func TestAuthZENGatewayInterop(t *testing.T) {
 			Resource: &authzenv1.Resource{Type: "route"},
 		})
 		require.NoError(t, err)
-		require.Len(t, resp.Resources, 3)
+		require.Len(t, resp.GetResources(), 3)
 
 		// Verify all routes are returned
 		resourceIDs := make(map[string]bool)
-		for _, r := range resp.Resources {
-			resourceIDs[r.Id] = true
+		for _, r := range resp.GetResources() {
+			resourceIDs[r.GetId()] = true
 		}
 		require.True(t, resourceIDs["/api/users"])
 		require.True(t, resourceIDs["/api/products"])
@@ -577,14 +577,14 @@ func TestAuthZENInteropCrossScenarios(t *testing.T) {
 		// Create two separate stores - one for Todo, one for Gateway
 		// Verify that permissions in one store don't affect the other
 
-		tcTodo := setupTestContext(t, "memory")
+		tcTodo := setupTestContext(t)
 		tcTodo.createStore("todo-store")
 		tcTodo.writeModel(authzenTodoModel)
 		tcTodo.writeTuples([]*openfgav1.TupleKey{
 			{User: "user:alice", Relation: "admin", Object: "todo:1"},
 		})
 
-		tcGateway := setupTestContext(t, "memory")
+		tcGateway := setupTestContext(t)
 		tcGateway.createStore("gateway-store")
 		tcGateway.writeModel(authzenGatewayModel)
 		tcGateway.writeTuples([]*openfgav1.TupleKey{
@@ -595,11 +595,11 @@ func TestAuthZENInteropCrossScenarios(t *testing.T) {
 		// Verify Alice is admin in Todo store
 		respTodo, err := tcTodo.evaluate("user:alice", "todo:1", "can_create_todo")
 		require.NoError(t, err)
-		require.True(t, respTodo.Decision)
+		require.True(t, respTodo.GetDecision())
 
 		// Verify Bob has access in Gateway store
 		respGateway, err := tcGateway.evaluate("identity:bob", "route:/api/test", "DELETE")
 		require.NoError(t, err)
-		require.True(t, respGateway.Decision)
+		require.True(t, respGateway.GetDecision())
 	})
 }

@@ -14,7 +14,7 @@ import (
 
 func TestSubjectSearch(t *testing.T) {
 	t.Run("basic_subject_search", func(t *testing.T) {
-		tc := setupTestContext(t, "memory")
+		tc := setupTestContext(t)
 		tc.createStore("test-store")
 		tc.writeModel(`
 			model
@@ -37,12 +37,12 @@ func TestSubjectSearch(t *testing.T) {
 			Subject:  &authzenv1.SubjectFilter{Type: "user"},
 		})
 		require.NoError(t, err)
-		require.Len(t, resp.Subjects, 3)
+		require.Len(t, resp.GetSubjects(), 3)
 
 		// Verify all expected subjects are returned
-		subjectIDs := make([]string, len(resp.Subjects))
-		for i, s := range resp.Subjects {
-			subjectIDs[i] = s.Id
+		subjectIDs := make([]string, len(resp.GetSubjects()))
+		for i, s := range resp.GetSubjects() {
+			subjectIDs[i] = s.GetId()
 		}
 		sort.Strings(subjectIDs)
 		require.Contains(t, subjectIDs, "alice")
@@ -51,7 +51,7 @@ func TestSubjectSearch(t *testing.T) {
 	})
 
 	t.Run("empty_result", func(t *testing.T) {
-		tc := setupTestContext(t, "memory")
+		tc := setupTestContext(t)
 		tc.createStore("test-store")
 		tc.writeModel(`
 			model
@@ -70,11 +70,11 @@ func TestSubjectSearch(t *testing.T) {
 			Subject:  &authzenv1.SubjectFilter{Type: "user"},
 		})
 		require.NoError(t, err)
-		require.Len(t, resp.Subjects, 0)
+		require.Empty(t, resp.GetSubjects())
 	})
 
 	t.Run("pagination_flow", func(t *testing.T) {
-		tc := setupTestContext(t, "memory")
+		tc := setupTestContext(t)
 		tc.createStore("test-store")
 		tc.writeModel(`
 			model
@@ -106,18 +106,18 @@ func TestSubjectSearch(t *testing.T) {
 			Page:     &authzenv1.PageRequest{Limit: &limit},
 		})
 		require.NoError(t, err)
-		require.Len(t, resp.Subjects, 3)
-		require.NotNil(t, resp.Page)
-		require.NotEmpty(t, resp.Page.NextToken)
+		require.Len(t, resp.GetSubjects(), 3)
+		require.NotNil(t, resp.GetPage())
+		require.NotEmpty(t, resp.GetPage().GetNextToken())
 
 		// Collect all subjects across pages
 		allSubjects := make(map[string]bool)
-		for _, s := range resp.Subjects {
-			allSubjects[s.Id] = true
+		for _, s := range resp.GetSubjects() {
+			allSubjects[s.GetId()] = true
 		}
 
 		// Continue with token to get more results
-		token := resp.Page.NextToken
+		token := resp.GetPage().GetNextToken()
 		resp2, err := tc.authzenClient.SubjectSearch(context.Background(), &authzenv1.SubjectSearchRequest{
 			StoreId:  tc.storeID,
 			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
@@ -126,10 +126,10 @@ func TestSubjectSearch(t *testing.T) {
 			Page:     &authzenv1.PageRequest{Limit: &limit, Token: &token},
 		})
 		require.NoError(t, err)
-		require.Len(t, resp2.Subjects, 3)
+		require.Len(t, resp2.GetSubjects(), 3)
 
-		for _, s := range resp2.Subjects {
-			allSubjects[s.Id] = true
+		for _, s := range resp2.GetSubjects() {
+			allSubjects[s.GetId()] = true
 		}
 
 		// Ensure no duplicates between pages
@@ -137,7 +137,7 @@ func TestSubjectSearch(t *testing.T) {
 	})
 
 	t.Run("with_subject_type_filter", func(t *testing.T) {
-		tc := setupTestContext(t, "memory")
+		tc := setupTestContext(t)
 		tc.createStore("test-store")
 		tc.writeModel(`
 			model
@@ -162,17 +162,17 @@ func TestSubjectSearch(t *testing.T) {
 			Subject:  &authzenv1.SubjectFilter{Type: "user"},
 		})
 		require.NoError(t, err)
-		require.Len(t, resp.Subjects, 2)
+		require.Len(t, resp.GetSubjects(), 2)
 
-		for _, s := range resp.Subjects {
-			require.Equal(t, "user", s.Type)
+		for _, s := range resp.GetSubjects() {
+			require.Equal(t, "user", s.GetType())
 		}
 	})
 }
 
 func TestResourceSearch(t *testing.T) {
 	t.Run("basic_resource_search", func(t *testing.T) {
-		tc := setupTestContext(t, "memory")
+		tc := setupTestContext(t)
 		tc.createStore("test-store")
 		tc.writeModel(`
 			model
@@ -195,19 +195,19 @@ func TestResourceSearch(t *testing.T) {
 			Resource: &authzenv1.Resource{Type: "document"},
 		})
 		require.NoError(t, err)
-		require.Len(t, resp.Resources, 3)
+		require.Len(t, resp.GetResources(), 3)
 
 		// Verify all expected resources are returned
-		resourceIDs := make([]string, len(resp.Resources))
-		for i, r := range resp.Resources {
-			resourceIDs[i] = r.Id
+		resourceIDs := make([]string, len(resp.GetResources()))
+		for i, r := range resp.GetResources() {
+			resourceIDs[i] = r.GetId()
 		}
 		sort.Strings(resourceIDs)
 		require.Equal(t, []string{"doc1", "doc2", "doc3"}, resourceIDs)
 	})
 
 	t.Run("empty_result", func(t *testing.T) {
-		tc := setupTestContext(t, "memory")
+		tc := setupTestContext(t)
 		tc.createStore("test-store")
 		tc.writeModel(`
 			model
@@ -226,11 +226,11 @@ func TestResourceSearch(t *testing.T) {
 			Resource: &authzenv1.Resource{Type: "document"},
 		})
 		require.NoError(t, err)
-		require.Len(t, resp.Resources, 0)
+		require.Empty(t, resp.GetResources())
 	})
 
 	t.Run("transitive_relationships_via_group", func(t *testing.T) {
-		tc := setupTestContext(t, "memory")
+		tc := setupTestContext(t)
 		tc.createStore("test-store")
 		tc.writeModel(`
 			model
@@ -256,18 +256,18 @@ func TestResourceSearch(t *testing.T) {
 			Resource: &authzenv1.Resource{Type: "document"},
 		})
 		require.NoError(t, err)
-		require.Len(t, resp.Resources, 2)
+		require.Len(t, resp.GetResources(), 2)
 
-		resourceIDs := make([]string, len(resp.Resources))
-		for i, r := range resp.Resources {
-			resourceIDs[i] = r.Id
+		resourceIDs := make([]string, len(resp.GetResources()))
+		for i, r := range resp.GetResources() {
+			resourceIDs[i] = r.GetId()
 		}
 		sort.Strings(resourceIDs)
 		require.Equal(t, []string{"doc1", "doc2"}, resourceIDs)
 	})
 
 	t.Run("transitive_relationships_via_parent", func(t *testing.T) {
-		tc := setupTestContext(t, "memory")
+		tc := setupTestContext(t)
 		tc.createStore("test-store")
 		tc.writeModel(`
 			model
@@ -294,11 +294,11 @@ func TestResourceSearch(t *testing.T) {
 			Resource: &authzenv1.Resource{Type: "document"},
 		})
 		require.NoError(t, err)
-		require.Len(t, resp.Resources, 2)
+		require.Len(t, resp.GetResources(), 2)
 	})
 
 	t.Run("pagination_flow", func(t *testing.T) {
-		tc := setupTestContext(t, "memory")
+		tc := setupTestContext(t)
 		tc.createStore("test-store")
 		tc.writeModel(`
 			model
@@ -330,18 +330,18 @@ func TestResourceSearch(t *testing.T) {
 			Page:     &authzenv1.PageRequest{Limit: &limit},
 		})
 		require.NoError(t, err)
-		require.Len(t, resp.Resources, 3)
-		require.NotNil(t, resp.Page)
-		require.NotEmpty(t, resp.Page.NextToken)
+		require.Len(t, resp.GetResources(), 3)
+		require.NotNil(t, resp.GetPage())
+		require.NotEmpty(t, resp.GetPage().GetNextToken())
 
 		// Collect all resources across pages
 		allResources := make(map[string]bool)
-		for _, r := range resp.Resources {
-			allResources[r.Id] = true
+		for _, r := range resp.GetResources() {
+			allResources[r.GetId()] = true
 		}
 
 		// Continue with token to get more results
-		token := resp.Page.NextToken
+		token := resp.GetPage().GetNextToken()
 		resp2, err := tc.authzenClient.ResourceSearch(context.Background(), &authzenv1.ResourceSearchRequest{
 			StoreId:  tc.storeID,
 			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
@@ -350,10 +350,10 @@ func TestResourceSearch(t *testing.T) {
 			Page:     &authzenv1.PageRequest{Limit: &limit, Token: &token},
 		})
 		require.NoError(t, err)
-		require.Len(t, resp2.Resources, 3)
+		require.Len(t, resp2.GetResources(), 3)
 
-		for _, r := range resp2.Resources {
-			allResources[r.Id] = true
+		for _, r := range resp2.GetResources() {
+			allResources[r.GetId()] = true
 		}
 
 		// Ensure no duplicates between pages
@@ -361,7 +361,7 @@ func TestResourceSearch(t *testing.T) {
 	})
 
 	t.Run("multiple_resource_types", func(t *testing.T) {
-		tc := setupTestContext(t, "memory")
+		tc := setupTestContext(t)
 		tc.createStore("test-store")
 		tc.writeModel(`
 			model
@@ -387,15 +387,15 @@ func TestResourceSearch(t *testing.T) {
 			Resource: &authzenv1.Resource{Type: "document"},
 		})
 		require.NoError(t, err)
-		require.Len(t, resp.Resources, 1)
-		require.Equal(t, "document", resp.Resources[0].Type)
-		require.Equal(t, "doc1", resp.Resources[0].Id)
+		require.Len(t, resp.GetResources(), 1)
+		require.Equal(t, "document", resp.GetResources()[0].GetType())
+		require.Equal(t, "doc1", resp.GetResources()[0].GetId())
 	})
 }
 
 func TestActionSearch(t *testing.T) {
 	t.Run("basic_action_search", func(t *testing.T) {
-		tc := setupTestContext(t, "memory")
+		tc := setupTestContext(t)
 		tc.createStore("test-store")
 		tc.writeModel(`
 			model
@@ -419,18 +419,18 @@ func TestActionSearch(t *testing.T) {
 			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
 		})
 		require.NoError(t, err)
-		require.Len(t, resp.Actions, 2) // reader and writer
+		require.Len(t, resp.GetActions(), 2) // reader and writer
 
-		actionNames := make([]string, len(resp.Actions))
-		for i, a := range resp.Actions {
-			actionNames[i] = a.Name
+		actionNames := make([]string, len(resp.GetActions()))
+		for i, a := range resp.GetActions() {
+			actionNames[i] = a.GetName()
 		}
 		sort.Strings(actionNames)
 		require.Equal(t, []string{"reader", "writer"}, actionNames)
 	})
 
 	t.Run("no_permissions", func(t *testing.T) {
-		tc := setupTestContext(t, "memory")
+		tc := setupTestContext(t)
 		tc.createStore("test-store")
 		tc.writeModel(`
 			model
@@ -449,11 +449,11 @@ func TestActionSearch(t *testing.T) {
 			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
 		})
 		require.NoError(t, err)
-		require.Len(t, resp.Actions, 0)
+		require.Empty(t, resp.GetActions())
 	})
 
 	t.Run("all_permissions", func(t *testing.T) {
-		tc := setupTestContext(t, "memory")
+		tc := setupTestContext(t)
 		tc.createStore("test-store")
 		tc.writeModel(`
 			model
@@ -477,18 +477,18 @@ func TestActionSearch(t *testing.T) {
 			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
 		})
 		require.NoError(t, err)
-		require.Len(t, resp.Actions, 3)
+		require.Len(t, resp.GetActions(), 3)
 
-		actionNames := make([]string, len(resp.Actions))
-		for i, a := range resp.Actions {
-			actionNames[i] = a.Name
+		actionNames := make([]string, len(resp.GetActions()))
+		for i, a := range resp.GetActions() {
+			actionNames[i] = a.GetName()
 		}
 		sort.Strings(actionNames)
 		require.Equal(t, []string{"owner", "reader", "writer"}, actionNames)
 	})
 
 	t.Run("transitive_permission", func(t *testing.T) {
-		tc := setupTestContext(t, "memory")
+		tc := setupTestContext(t)
 		tc.createStore("test-store")
 		tc.writeModel(`
 			model
@@ -511,18 +511,18 @@ func TestActionSearch(t *testing.T) {
 			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
 		})
 		require.NoError(t, err)
-		require.Len(t, resp.Actions, 3)
+		require.Len(t, resp.GetActions(), 3)
 
-		actionNames := make([]string, len(resp.Actions))
-		for i, a := range resp.Actions {
-			actionNames[i] = a.Name
+		actionNames := make([]string, len(resp.GetActions()))
+		for i, a := range resp.GetActions() {
+			actionNames[i] = a.GetName()
 		}
 		sort.Strings(actionNames)
 		require.Equal(t, []string{"owner", "reader", "writer"}, actionNames)
 	})
 
 	t.Run("with_group_membership", func(t *testing.T) {
-		tc := setupTestContext(t, "memory")
+		tc := setupTestContext(t)
 		tc.createStore("test-store")
 		tc.writeModel(`
 			model
@@ -548,12 +548,12 @@ func TestActionSearch(t *testing.T) {
 			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
 		})
 		require.NoError(t, err)
-		require.Len(t, resp.Actions, 1)
-		require.Equal(t, "reader", resp.Actions[0].Name)
+		require.Len(t, resp.GetActions(), 1)
+		require.Equal(t, "reader", resp.GetActions()[0].GetName())
 	})
 
 	t.Run("exclusion_pattern", func(t *testing.T) {
-		tc := setupTestContext(t, "memory")
+		tc := setupTestContext(t)
 		tc.createStore("test-store")
 		tc.writeModel(`
 			model
@@ -578,11 +578,11 @@ func TestActionSearch(t *testing.T) {
 			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
 		})
 		require.NoError(t, err)
-		require.Len(t, resp.Actions, 2)
+		require.Len(t, resp.GetActions(), 2)
 
 		actionNames := make(map[string]bool)
-		for _, a := range resp.Actions {
-			actionNames[a.Name] = true
+		for _, a := range resp.GetActions() {
+			actionNames[a.GetName()] = true
 		}
 		require.True(t, actionNames["blocked"])
 		require.True(t, actionNames["writer"])
@@ -592,7 +592,7 @@ func TestActionSearch(t *testing.T) {
 
 func TestTransitiveRelationships(t *testing.T) {
 	t.Run("nested_group_membership", func(t *testing.T) {
-		tc := setupTestContext(t, "memory")
+		tc := setupTestContext(t)
 		tc.createStore("test-store")
 		tc.writeModel(`
 			model
@@ -622,12 +622,12 @@ func TestTransitiveRelationships(t *testing.T) {
 			Resource: &authzenv1.Resource{Type: "document"},
 		})
 		require.NoError(t, err)
-		require.Len(t, resp.Resources, 1)
-		require.Equal(t, "doc1", resp.Resources[0].Id)
+		require.Len(t, resp.GetResources(), 1)
+		require.Equal(t, "doc1", resp.GetResources()[0].GetId())
 	})
 
 	t.Run("folder_hierarchy", func(t *testing.T) {
-		tc := setupTestContext(t, "memory")
+		tc := setupTestContext(t)
 		tc.createStore("test-store")
 		tc.writeModel(`
 			model
@@ -659,12 +659,12 @@ func TestTransitiveRelationships(t *testing.T) {
 			Resource: &authzenv1.Resource{Type: "document"},
 		})
 		require.NoError(t, err)
-		require.Len(t, resp.Resources, 1)
-		require.Equal(t, "doc1", resp.Resources[0].Id)
+		require.Len(t, resp.GetResources(), 1)
+		require.Equal(t, "doc1", resp.GetResources()[0].GetId())
 	})
 
 	t.Run("org_hierarchy", func(t *testing.T) {
-		tc := setupTestContext(t, "memory")
+		tc := setupTestContext(t)
 		tc.createStore("test-store")
 		tc.writeModel(`
 			model
@@ -698,7 +698,7 @@ func TestTransitiveRelationships(t *testing.T) {
 			Resource: &authzenv1.Resource{Type: "project"},
 		})
 		require.NoError(t, err)
-		require.Len(t, resp.Resources, 1)
-		require.Equal(t, "project1", resp.Resources[0].Id)
+		require.Len(t, resp.GetResources(), 1)
+		require.Equal(t, "project1", resp.GetResources()[0].GetId())
 	})
 }

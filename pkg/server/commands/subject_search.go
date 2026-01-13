@@ -99,10 +99,10 @@ func (q *SubjectSearchQuery) Execute(
 	// Sort subjects for consistent pagination across calls (only when pagination is requested)
 	if req.GetPage() != nil {
 		sort.Slice(allSubjects, func(i, j int) bool {
-			if allSubjects[i].Type != allSubjects[j].Type {
-				return allSubjects[i].Type < allSubjects[j].Type
+			if allSubjects[i].GetType() != allSubjects[j].GetType() {
+				return allSubjects[i].GetType() < allSubjects[j].GetType()
 			}
-			return allSubjects[i].Id < allSubjects[j].Id
+			return allSubjects[i].GetId() < allSubjects[j].GetId()
 		})
 	}
 

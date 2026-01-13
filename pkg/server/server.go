@@ -8,8 +8,6 @@ import (
 	"sort"
 	"time"
 
-	authzenv1 "github.com/openfga/api/proto/authzen/v1"
-
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	"github.com/oklog/ulid/v2"
 	"github.com/prometheus/client_golang/prometheus"
@@ -22,6 +20,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	authzenv1 "github.com/openfga/api/proto/authzen/v1"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/authz"
@@ -1163,7 +1162,7 @@ func (s *Server) emitCheckDurationMetric(checkMetadata graph.ResolveCheckRespons
 	).Observe(float64(checkMetadata.Duration.Milliseconds()))
 }
 
-func (s Server) Evaluation(ctx context.Context, req *authzenv1.EvaluationRequest) (*authzenv1.EvaluationResponse, error) {
+func (s *Server) Evaluation(ctx context.Context, req *authzenv1.EvaluationRequest) (*authzenv1.EvaluationResponse, error) {
 	// Gate behind experimental flag
 	if !s.featureFlagClient.Boolean(serverconfig.ExperimentalEnableAuthZen, req.GetStoreId()) {
 		return nil, status.Error(codes.Unimplemented, "AuthZEN endpoints are experimental. Enable with --experimentals=enable_authzen")
@@ -1198,7 +1197,7 @@ func (s Server) Evaluation(ctx context.Context, req *authzenv1.EvaluationRequest
 	}, nil
 }
 
-func (s Server) Evaluations(ctx context.Context, req *authzenv1.EvaluationsRequest) (*authzenv1.EvaluationsResponse, error) {
+func (s *Server) Evaluations(ctx context.Context, req *authzenv1.EvaluationsRequest) (*authzenv1.EvaluationsResponse, error) {
 	// Gate behind experimental flag
 	if !s.featureFlagClient.Boolean(serverconfig.ExperimentalEnableAuthZen, req.GetStoreId()) {
 		return nil, status.Error(codes.Unimplemented, "AuthZEN endpoints are experimental. Enable with --experimentals=enable_authzen")
@@ -1249,7 +1248,9 @@ func (s Server) Evaluations(ctx context.Context, req *authzenv1.EvaluationsReque
 }
 
 // evaluateWithShortCircuit handles DENY_ON_FIRST_DENY and PERMIT_ON_FIRST_PERMIT semantics.
-func (s Server) evaluateWithShortCircuit(
+//
+//nolint:unparam // error is always nil but kept for interface consistency
+func (s *Server) evaluateWithShortCircuit(
 	ctx context.Context,
 	req *authzenv1.EvaluationsRequest,
 	semantic authzenv1.EvaluationsSemantic,
@@ -1325,7 +1326,7 @@ func (s Server) evaluateWithShortCircuit(
 }
 
 // SubjectSearch returns subjects that have access to the specified resource.
-func (s Server) SubjectSearch(ctx context.Context, req *authzenv1.SubjectSearchRequest) (*authzenv1.SubjectSearchResponse, error) {
+func (s *Server) SubjectSearch(ctx context.Context, req *authzenv1.SubjectSearchRequest) (*authzenv1.SubjectSearchResponse, error) {
 	// Gate behind experimental flag
 	if !s.featureFlagClient.Boolean(serverconfig.ExperimentalEnableAuthZen, req.GetStoreId()) {
 		return nil, status.Error(codes.Unimplemented, "AuthZEN endpoints are experimental. Enable with --experimentals=enable_authzen")
@@ -1353,7 +1354,7 @@ func (s Server) SubjectSearch(ctx context.Context, req *authzenv1.SubjectSearchR
 }
 
 // ResourceSearch returns resources that a subject has access to.
-func (s Server) ResourceSearch(ctx context.Context, req *authzenv1.ResourceSearchRequest) (*authzenv1.ResourceSearchResponse, error) {
+func (s *Server) ResourceSearch(ctx context.Context, req *authzenv1.ResourceSearchRequest) (*authzenv1.ResourceSearchResponse, error) {
 	// Gate behind experimental flag
 	if !s.featureFlagClient.Boolean(serverconfig.ExperimentalEnableAuthZen, req.GetStoreId()) {
 		return nil, status.Error(codes.Unimplemented, "AuthZEN endpoints are experimental. Enable with --experimentals=enable_authzen")
@@ -1381,7 +1382,7 @@ func (s Server) ResourceSearch(ctx context.Context, req *authzenv1.ResourceSearc
 }
 
 // ActionSearch returns actions a subject can perform on a resource.
-func (s Server) ActionSearch(ctx context.Context, req *authzenv1.ActionSearchRequest) (*authzenv1.ActionSearchResponse, error) {
+func (s *Server) ActionSearch(ctx context.Context, req *authzenv1.ActionSearchRequest) (*authzenv1.ActionSearchResponse, error) {
 	// Gate behind experimental flag
 	if !s.featureFlagClient.Boolean(serverconfig.ExperimentalEnableAuthZen, req.GetStoreId()) {
 		return nil, status.Error(codes.Unimplemented, "AuthZEN endpoints are experimental. Enable with --experimentals=enable_authzen")

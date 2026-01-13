@@ -2,10 +2,12 @@ package commands
 
 import (
 	"fmt"
+	"strconv"
+
+	"google.golang.org/protobuf/types/known/structpb"
 
 	authzenv1 "github.com/openfga/api/proto/authzen/v1"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"google.golang.org/protobuf/types/known/structpb"
 )
 
 type BatchEvaluateRequestCommand struct {
@@ -33,7 +35,7 @@ func NewBatchEvaluateRequestCommand(req *authzenv1.EvaluationsRequest) (*BatchEv
 	for counter, evaluation := range req.GetEvaluations() {
 		batchCheckItem := &openfgav1.BatchCheckItem{
 			TupleKey:      &openfgav1.CheckRequestTupleKey{},
-			CorrelationId: fmt.Sprintf("%d", counter),
+			CorrelationId: strconv.Itoa(counter),
 		}
 
 		// Resolve effective subject (evaluation overrides top-level)
@@ -101,13 +103,13 @@ func NewBatchEvaluateRequestCommand(req *authzenv1.EvaluationsRequest) (*BatchEv
 
 func TransformResponse(bcr *openfgav1.BatchCheckResponse) (*authzenv1.EvaluationsResponse, error) {
 	evaluationsResponse := &authzenv1.EvaluationsResponse{
-		EvaluationResponses: make([]*authzenv1.EvaluationResponse, len(bcr.Result)),
+		EvaluationResponses: make([]*authzenv1.EvaluationResponse, len(bcr.GetResult())),
 	}
 
-	for i := range evaluationsResponse.EvaluationResponses {
-		result := bcr.Result[fmt.Sprintf("%d", i)]
+	for i := range evaluationsResponse.GetEvaluationResponses() {
+		result := bcr.GetResult()[strconv.Itoa(i)]
 
-		if errResult, ok := result.CheckResult.(*openfgav1.BatchCheckSingleResult_Error); ok {
+		if errResult, ok := result.GetCheckResult().(*openfgav1.BatchCheckSingleResult_Error); ok {
 			// If there's an error, we return it as part of a single
 			// evaluation response, the rest of the items of the batch
 			// should not include the error
@@ -116,7 +118,7 @@ func TransformResponse(bcr *openfgav1.BatchCheckResponse) (*authzenv1.Evaluation
 				Context: &authzenv1.EvaluationResponseContext{
 					Error: &authzenv1.ResponseContextError{
 						Status:  404,
-						Message: errResult.Error.Message,
+						Message: errResult.Error.GetMessage(),
 					},
 				},
 			}
