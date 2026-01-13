@@ -40,7 +40,6 @@ This document describes the AuthZEN PDP capabilities implemented by OpenFGA. The
 - ✅ Action properties merged with `action_` prefix (e.g., `action_method`)
 - ✅ Explicit `context` values take precedence over properties
 - ✅ Properties available for use in OpenFGA conditions
-- ⚠️ Uses underscore (`_`) separator instead of dot (`.`) because OpenFGA does not allow condition parameters with `.` in their names
 
 ### :evaluations-semantic
 

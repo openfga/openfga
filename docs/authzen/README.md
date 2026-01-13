@@ -8,7 +8,7 @@ OpenFGA includes an experimental implementation of the [Authorization API 1.0](h
 
 ## Implementation Decisions and Tradeoffs
 
-This section documents key design decisions made when mapping AuthZEN concepts to OpenFGA's architecture. Understanding these tradeoffs is essential for users familiar with both systems.
+This section documents key design decisions made when mapping AuthZEN concepts to OpenFGA's architecture.
 
 ### Concept Mapping
 

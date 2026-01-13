@@ -1442,7 +1442,7 @@ func (s *Server) ActionSearch(ctx context.Context, req *authzenv1.ActionSearchRe
 		}
 
 		return &openfgav1.CheckResponse{
-			Allowed: resp.Allowed,
+			Allowed: resp.GetAllowed(),
 		}, nil
 	}
 

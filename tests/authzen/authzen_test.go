@@ -2,6 +2,7 @@ package authzen_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -108,20 +109,18 @@ func (tc *testContext) evaluate(subject, resource, action string) (*authzenv1.Ev
 
 // parseType extracts the type from "type:id" format.
 func parseType(s string) string {
-	for i, c := range s {
-		if c == ':' {
-			return s[:i]
-		}
+	idx := strings.Index(s, ":")
+	if idx == -1 {
+		return s
 	}
-	return s
+	return s[:idx]
 }
 
 // parseID extracts the id from "type:id" format.
 func parseID(s string) string {
-	for i, c := range s {
-		if c == ':' {
-			return s[i+1:]
-		}
+	idx := strings.Index(s, ":")
+	if idx == -1 {
+		return s
 	}
-	return s
+	return s[idx+1:]
 }
