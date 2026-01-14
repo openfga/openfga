@@ -20,7 +20,7 @@ const (
 	// This value is used as the default value that indicates the maximum
 	// number of times that a pipe's internal buffer may be extended.
 	//
-	// A negative value will all unlimited extensions.
+	// A negative value will allow unlimited extensions.
 	DefaultMaxExtensions int = -1
 )
 
