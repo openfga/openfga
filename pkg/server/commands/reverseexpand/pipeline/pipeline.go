@@ -622,6 +622,14 @@ func (r *baseResolver) Resolve(ctx context.Context, senders []Sender[*Edge, *Mes
 
 type edgeHandler func(context.Context, *Edge, []string) iter.Seq[Item]
 
+type txBag[T any] containers.Bag[T]
+
+func (tx *txBag[T]) Send(t T) bool {
+	bag := (*containers.Bag[T])(tx)
+	bag.Add(t)
+	return true
+}
+
 // exclusionResolver is a struct that resolves senders to an exclusion operation.
 type exclusionResolver struct {
 	interpreter interpreter
@@ -636,7 +644,7 @@ type exclusionResolver struct {
 // for later use by the Resolve function. As soon as a message is received from the sender, its values are swapped
 // to a buffer that is local to the current iteration, and the message resources are released immediately.
 // Messages are not sent to the listeners at this point.
-func (r *exclusionResolver) process(ctx context.Context, snd Sender[*Edge, *Message], items *containers.Bag[Item], cleanup *containers.Bag[func()]) {
+func (r *exclusionResolver) process(ctx context.Context, snd Sender[*Edge, *Message], items pipe.Tx[Item], cleanup *containers.Bag[func()]) {
 	edge := snd.Key()
 
 	edgeTo := "nil"
@@ -682,7 +690,7 @@ func (r *exclusionResolver) process(ctx context.Context, snd Sender[*Edge, *Mess
 		// message. Reading beyond that will corrupt pipeline state.
 		for _, item := range (*values)[:size] {
 			if item.Err != nil {
-				items.Add(item)
+				items.Send(item)
 				continue
 			}
 			unseen = append(unseen, item.Value)
@@ -694,7 +702,7 @@ func (r *exclusionResolver) process(ctx context.Context, snd Sender[*Edge, *Mess
 		results := r.interpreter.Interpret(ctx, edge, unseen)
 
 		for item := range results {
-			items.Add(item)
+			items.Send(item)
 		}
 
 		// Save the tracker decrementation for later execution in the Resolve
@@ -715,30 +723,38 @@ func (r *exclusionResolver) Resolve(ctx context.Context, senders []Sender[*Edge,
 	if len(senders) != 2 {
 		panic("exclusion resolver requires two senders")
 	}
-	var wg sync.WaitGroup
 
-	var included containers.Bag[Item]
 	var excluded containers.Bag[Item]
 
 	var cleanup containers.Bag[func()]
 
+	var wgExclude sync.WaitGroup
+
+	pipeInclude := pipe.Must[Item](1 << 7)                  // create a pipe with an initial capacity of 128
+	pipeInclude.SetExtensionConfig(10*time.Microsecond, -1) // allow pipe to grow to an unbounded capacity
+
+	var counter atomic.Int32
+	counter.Store(int32(r.numProcs))
 	for range r.numProcs {
-		wg.Add(1)
 		go func() {
-			defer wg.Done()
-			r.process(ctx, senders[0], &included, &cleanup)
+			defer func() {
+				if counter.Add(-1) < 1 {
+					_ = pipeInclude.Close()
+				}
+			}()
+			r.process(ctx, senders[0], pipeInclude, &cleanup)
 		}()
 	}
 
 	for range r.numProcs {
-		wg.Add(1)
+		wgExclude.Add(1)
 		go func() {
-			defer wg.Done()
-			r.process(ctx, senders[1], &excluded, &cleanup)
+			defer wgExclude.Done()
+			r.process(ctx, senders[1], (*txBag[Item])(&excluded), &cleanup)
 		}()
 	}
 
-	wg.Wait()
+	wgExclude.Wait()
 
 	var errs []Item
 
@@ -752,7 +768,7 @@ func (r *exclusionResolver) Resolve(ctx context.Context, senders []Sender[*Edge,
 		exclusions[item.Value] = struct{}{}
 	}
 
-	results := seq.Filter(included.Seq(), func(item Item) bool {
+	results := seq.Filter(pipeInclude.Seq(), func(item Item) bool {
 		if item.Err != nil {
 			return true
 		}
