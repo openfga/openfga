@@ -115,7 +115,9 @@ This document describes the AuthZEN PDP capabilities implemented by OpenFGA. The
 | **Change Controller** | OpenID Foundation AuthZEN Working Group |
 | **Specification Document(s)** | Authorization API 1.0, Section "Signature Parameter" |
 
-**OpenFGA Status:** ❌ Not implemented. The `/.well-known/authzen-configuration` endpoint returns unsigned JSON metadata.
+**OpenFGA Status:** ❌ Not implemented. The `/.well-known/authzen-configuration/{store_id}` endpoint returns unsigned JSON metadata.
+
+**Note:** Following the AuthZEN spec's multi-tenant pattern (example: `https://pdp.example.com/.well-known/authzen-configuration/tenant1`), OpenFGA's discovery endpoint is scoped per store: `/.well-known/authzen-configuration/{store_id}`. This returns absolute endpoint URLs specific to that store, meeting the spec requirement for directly-usable URLs.
 
 ---
 

@@ -100,11 +100,13 @@ AuthZEN's `evaluations` endpoint supports semantic options to control batch exec
 
 **Rationale:** This provides cleaner API responses and follows the principle of not including empty optional fields. Proto definitions use `optional` markers to enable this behavior.
 
-### Store ID in URL Path
+### Store ID in URL Path and Discovery Endpoint
 
-**Decision:** All AuthZEN endpoints (except `/.well-known/authzen-configuration`) include `store_id` in the URL path: `/stores/{store_id}/access/v1/...`
+**Decision:** All AuthZEN endpoints include `store_id` in the URL path:
+- Discovery endpoint: `/.well-known/authzen-configuration/{store_id}`
+- Access endpoints: `/stores/{store_id}/access/v1/...`
 
-**Rationale:** OpenFGA is multi-tenant with multiple stores. The store ID is required to identify which authorization data to query. This differs from single-PDP AuthZEN deployments but aligns with OpenFGA's architecture.
+**Rationale:** OpenFGA is multi-tenant with multiple stores. Following the AuthZEN spec's multi-tenant pattern (example: `https://pdp.example.com/.well-known/authzen-configuration/tenant1`), the discovery endpoint is scoped per store. This returns absolute endpoint URLs specific to that store, meeting the AuthZEN spec requirement for directly-usable URLs without templating.
 
 ### Error Mapping
 
@@ -231,7 +233,7 @@ OPENFGA_EXPERIMENTALS=enable_authzen openfga run
 | Subject Search | `POST /stores/{store_id}/access/v1/search/subject` | Find subjects with access to a resource |
 | Resource Search | `POST /stores/{store_id}/access/v1/search/resource` | Find resources a subject can access |
 | Action Search | `POST /stores/{store_id}/access/v1/search/action` | Find actions a subject can perform |
-| PDP Metadata | `GET /.well-known/authzen-configuration` | PDP discovery and capabilities |
+| PDP Metadata | `GET /.well-known/authzen-configuration/{store_id}` | Store-scoped PDP discovery and capabilities |
 
 ---
 
@@ -507,10 +509,12 @@ The response includes:
 
 ## PDP Metadata Discovery
 
-The `/.well-known/authzen-configuration` endpoint provides PDP discovery per [AuthZEN spec section 13](https://github.com/openid/authzen/blob/main/api/authorization-api-1_1_02.md#13-pdp-discovery):
+The `/.well-known/authzen-configuration/{store_id}` endpoint provides store-scoped PDP discovery per [AuthZEN spec section 13](https://github.com/openid/authzen/blob/main/api/authorization-api-1_1_02.md#13-pdp-discovery).
+
+Following the AuthZEN spec's multi-tenant pattern (example: `https://pdp.example.com/.well-known/authzen-configuration/tenant1`), OpenFGA provides a per-store discovery endpoint that returns absolute endpoint URLs specific to that store.
 
 ```json
-GET /.well-known/authzen-configuration
+GET /.well-known/authzen-configuration/01ARZ3NDEKTSV4RRFFQ69G5FAV
 ```
 
 Response:
@@ -522,11 +526,11 @@ Response:
     "description": "OpenFGA is a high-performance authorization/permission engine"
   },
   "access_endpoints": {
-    "evaluation": "/stores/{store_id}/access/v1/evaluation",
-    "evaluations": "/stores/{store_id}/access/v1/evaluations",
-    "subject_search": "/stores/{store_id}/access/v1/search/subject",
-    "resource_search": "/stores/{store_id}/access/v1/search/resource",
-    "action_search": "/stores/{store_id}/access/v1/search/action"
+    "evaluation": "/stores/01ARZ3NDEKTSV4RRFFQ69G5FAV/access/v1/evaluation",
+    "evaluations": "/stores/01ARZ3NDEKTSV4RRFFQ69G5FAV/access/v1/evaluations",
+    "subject_search": "/stores/01ARZ3NDEKTSV4RRFFQ69G5FAV/access/v1/search/subject",
+    "resource_search": "/stores/01ARZ3NDEKTSV4RRFFQ69G5FAV/access/v1/search/resource",
+    "action_search": "/stores/01ARZ3NDEKTSV4RRFFQ69G5FAV/access/v1/search/action"
   },
   "capabilities": [
     "evaluation",
@@ -537,6 +541,8 @@ Response:
   ]
 }
 ```
+
+**Note:** The endpoint URLs are absolute paths specific to the requested store, meeting the AuthZEN spec requirement for directly-usable URLs without templating.
 
 ---
 

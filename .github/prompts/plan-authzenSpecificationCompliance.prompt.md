@@ -13,7 +13,7 @@ This plan makes OpenFGA's AuthZEN implementation fully spec-compliant by adding 
 
 2. **Add Search API proto definitions** in `openfga/api` at `authzen/v1/authzen_service.proto`: Define `SubjectSearch`, `ResourceSearch`, and `ActionSearch` RPC methods with request/response messages including pagination (`page` object with `token`, `limit`, `next_token`, `count`, `total`), mapping to `/stores/{store_id}/access/v1/search/subject`, `/search/resource`, and `/search/action` HTTP endpoints. **Note:** `SubjectSearchRequest` uses `SubjectFilter` (not `Subject`) where `id` is optional but `type` is required, allowing clients to filter by subject type without specifying an id. **Note:** All `properties` fields in `Subject`, `SubjectFilter`, `Resource`, and `Action` messages are marked as `optional` so that nil values are omitted from JSON responses (avoiding `"properties": null`).
 
-3. **Add PDP Metadata proto definition** in `openfga/api`: Define `GetConfiguration` RPC at `GET /.well-known/authzen-configuration` returning `policy_decision_point`, endpoint URLs, and `capabilities` array per spec section 13.
+3. **Add PDP Metadata proto definition** in `openfga/api`: Define `GetConfiguration` RPC at `GET /.well-known/authzen-configuration/{store_id}` returning `policy_decision_point`, absolute store-specific endpoint URLs, and `capabilities` array per spec section 13. Following the AuthZEN spec's multi-tenant pattern (example: `https://pdp.example.com/.well-known/authzen-configuration/tenant1`), the discovery endpoint is scoped per store and returns absolute endpoint URLs specific to that store, meeting the spec requirement for directly-usable URLs without templating.
 
 4. **Add `evaluations_semantic` option** to `EvaluationsRequest` proto in `openfga/api`: Add `options.evaluations_semantic` enum field with values `EXECUTE_ALL` (default), `DENY_ON_FIRST_DENY`, `PERMIT_ON_FIRST_PERMIT`.
 
@@ -23,7 +23,7 @@ This plan makes OpenFGA's AuthZEN implementation fully spec-compliant by adding 
 
 7. **Implement Action Search handler** in `pkg/server/commands/`: Create `action_search.go` that uses `typesystem.GetRelations(resourceType)` to get all relations from the latest model, then performs a Check call for each relation to filter to only permitted actions, with in-memory pagination. **Note:** The server's `ActionSearch` method must resolve the typesystem once and create its own check function that uses the already-resolved typesystem directly. This prevents the `Openfga-Authorization-Model-Id` response header from being duplicated (once per Check call) by avoiding re-resolution of the typesystem in each Check.
 
-8. **Implement PDP Metadata handler** in `pkg/server/`: Create `authzen_configuration.go` returning configuration with `policy_decision_point`, all supported endpoint URLs, and capabilities.
+8. **Implement PDP Metadata handler** in `pkg/server/`: Create `authzen_configuration.go` that extracts `store_id` from the request and returns configuration with `policy_decision_point`, absolute store-specific endpoint URLs (using `fmt.Sprintf` to inject the store ID), and capabilities. This meets the AuthZEN spec requirement for directly-usable URLs without templating.
 
 9. **Implement `evaluations_semantic` options** in `pkg/server/commands/batch_evaluate.go`: Add short-circuit logic for `DENY_ON_FIRST_DENY` (stop on first `decision: false`, include `context.reason`) and `PERMIT_ON_FIRST_PERMIT` (stop on first `decision: true`).
 

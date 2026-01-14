@@ -173,15 +173,18 @@ service AuthZenService {
     };
   }
 
-  // GetConfiguration returns PDP metadata and capabilities
+  // GetConfiguration returns PDP metadata and capabilities per AuthZEN spec section 13
   rpc GetConfiguration(GetConfigurationRequest) returns (GetConfigurationResponse) {
     option (google.api.http) = {
-      get: "/.well-known/authzen-configuration"
+      get: "/.well-known/authzen-configuration/{store_id}"
     };
     option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
       summary: "Get AuthZEN PDP configuration and capabilities"
       tags: ["AuthZen"]
       operation_id: "GetConfiguration"
+      description:
+        "Following the AuthZEN spec's multi-tenant pattern, OpenFGA provides a per-store discovery endpoint at "
+        "`/.well-known/authzen-configuration/{store_id}`. This returns absolute endpoint URLs specific to that store."
     };
   }
 }
@@ -270,8 +273,14 @@ message ActionSearchResponse {
 
 **Important:** All `properties` fields in `Subject`, `SubjectFilter`, `Resource`, and `Action` messages MUST be marked as `optional` so that nil values are omitted from JSON responses (avoiding `"properties": null`). This is a protojson behavior where `optional` message fields are omitted when nil.
 
+**Note on Multi-tenancy:** Following the AuthZEN spec's multi-tenant pattern (example: `https://pdp.example.com/.well-known/authzen-configuration/tenant1`), the discovery endpoint is scoped per store. The `GetConfigurationRequest` includes `store_id` and the response returns absolute endpoint URLs specific to that store.
+
 ```protobuf
-message GetConfigurationRequest {}
+message GetConfigurationRequest {
+  // The store ID for which to retrieve configuration.
+  // Following the AuthZEN spec's multi-tenant pattern, each store has its own discovery endpoint.
+  string store_id = 1;
+}
 
 message GetConfigurationResponse {
   PolicyDecisionPoint policy_decision_point = 1 [json_name = "policy_decision_point"];
@@ -1024,17 +1033,20 @@ package server
 
 import (
     "context"
-    
+    "fmt"
+
     authzenv1 "github.com/openfga/api/proto/authzen/v1"
     "github.com/openfga/openfga/internal/build"
 )
 
 func (s Server) GetConfiguration(ctx context.Context, req *authzenv1.GetConfigurationRequest) (*authzenv1.GetConfigurationResponse, error) {
     // Note: This endpoint is NOT gated by experimental flag as it's needed for discovery
-    
+
     ctx, span := tracer.Start(ctx, "authzen.GetConfiguration")
     defer span.End()
-    
+
+    storeID := req.GetStoreId()
+
     return &authzenv1.GetConfigurationResponse{
         PolicyDecisionPoint: &authzenv1.PolicyDecisionPoint{
             Name:        "OpenFGA",
@@ -1042,22 +1054,24 @@ func (s Server) GetConfiguration(ctx context.Context, req *authzenv1.GetConfigur
             Description: "OpenFGA is a high-performance authorization system implementing the AuthZEN specification",
         },
         AccessEndpoints: &authzenv1.Endpoints{
-            Evaluation:     "/stores/{store_id}/access/v1/evaluation",
-            Evaluations:    "/stores/{store_id}/access/v1/evaluations",
-            SubjectSearch:  "/stores/{store_id}/access/v1/search/subject",
-            ResourceSearch: "/stores/{store_id}/access/v1/search/resource",
-            ActionSearch:   "/stores/{store_id}/access/v1/search/action",
+            Evaluation:     fmt.Sprintf("/stores/%s/access/v1/evaluation", storeID),
+            Evaluations:    fmt.Sprintf("/stores/%s/access/v1/evaluations", storeID),
+            SubjectSearch:  fmt.Sprintf("/stores/%s/access/v1/search/subject", storeID),
+            ResourceSearch: fmt.Sprintf("/stores/%s/access/v1/search/resource", storeID),
+            ActionSearch:   fmt.Sprintf("/stores/%s/access/v1/search/action", storeID),
         },
         Capabilities: []string{
             "evaluation",
             "evaluations",
             "subject_search",
-            "resource_search", 
+            "resource_search",
             "action_search",
         },
     }, nil
 }
 ```
+
+**Note:** Following the AuthZEN spec's multi-tenant pattern, this endpoint is scoped per store and returns absolute endpoint URLs specific to that store, meeting the spec requirement for directly-usable URLs without templating.
 
 ---
 
