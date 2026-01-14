@@ -730,8 +730,8 @@ func (r *exclusionResolver) Resolve(ctx context.Context, senders []Sender[*Edge,
 
 	var wgExclude sync.WaitGroup
 
-	pipeInclude := pipe.Must[Item](1 << 7)                  // create a pipe with an initial capacity of 128
-	pipeInclude.SetExtensionConfig(10*time.Microsecond, -1) // allow pipe to grow to an unbounded capacity
+	pipeInclude := pipe.Must[Item](1 << 7) // create a pipe with an initial capacity of 128
+	pipeInclude.SetExtensionConfig(0, -1)  // allow pipe to grow to an unbounded capacity with no wait
 
 	var counter atomic.Int32
 	counter.Store(int32(r.numProcs))
