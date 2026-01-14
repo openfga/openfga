@@ -1952,6 +1952,34 @@ func TestIsAccessControlEnabled(t *testing.T) {
 	})
 }
 
+func TestIsAuthZenEnabled(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	ds := memory.New() // Datastore required for server instantiation
+	t.Cleanup(ds.Close)
+
+	storeID := ulid.Make().String()
+
+	t.Run("returns_false_if_experimentals_does_not_have_authzen", func(t *testing.T) {
+		s := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithExperimentals("some-other-feature"),
+		)
+		t.Cleanup(s.Close)
+		require.False(t, s.IsAuthZenEnabled(storeID))
+	})
+
+	t.Run("returns_true_if_experimentals_has_authzen", func(t *testing.T) {
+		s := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithExperimentals(serverconfig.ExperimentalEnableAuthZen),
+		)
+		t.Cleanup(s.Close)
+		require.True(t, s.IsAuthZenEnabled(storeID))
+	})
+}
+
 func TestServer_ThrottleUntilDeadline(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
