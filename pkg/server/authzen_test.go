@@ -443,6 +443,96 @@ func TestEvaluations(t *testing.T) {
 			require.NotNil(t, evalResp.GetContext().GetError())
 		}
 	})
+
+	t.Run("success_batch_with_valid_model", func(t *testing.T) {
+		s := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithExperimentals(serverconfig.ExperimentalEnableAuthZen),
+		)
+		t.Cleanup(s.Close)
+
+		// Create store
+		createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
+		require.NoError(t, err)
+		storeID := createStoreResp.GetId()
+
+		// Write a minimal model
+		writeModelResp, err := s.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
+			StoreId:       storeID,
+			SchemaVersion: "1.1",
+			TypeDefinitions: []*openfgav1.TypeDefinition{
+				{
+					Type: "user",
+				},
+				{
+					Type: "document",
+					Relations: map[string]*openfgav1.Userset{
+						"reader": {
+							Userset: &openfgav1.Userset_This{},
+						},
+					},
+					Metadata: &openfgav1.Metadata{
+						Relations: map[string]*openfgav1.RelationMetadata{
+							"reader": {
+								DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+									{Type: "user"},
+								},
+							},
+						},
+					},
+				},
+			},
+		})
+		require.NoError(t, err)
+
+		// Write tuples
+		_, err = s.Write(context.Background(), &openfgav1.WriteRequest{
+			StoreId: storeID,
+			Writes: &openfgav1.WriteRequestWrites{
+				TupleKeys: []*openfgav1.TupleKey{
+					{
+						Object:   "document:doc1",
+						Relation: "reader",
+						User:     "user:alice",
+					},
+				},
+			},
+		})
+		require.NoError(t, err)
+
+		// Test Evaluations with EXECUTE_ALL (default) - this uses batch path
+		req := &authzenv1.EvaluationsRequest{
+			StoreId: storeID,
+			Evaluations: []*authzenv1.EvaluationsItemRequest{
+				{
+					Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
+					Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
+					Action:   &authzenv1.Action{Name: "reader"},
+				},
+				{
+					Subject:  &authzenv1.Subject{Type: "user", Id: "bob"},
+					Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
+					Action:   &authzenv1.Action{Name: "reader"},
+				},
+			},
+			// No options - uses default EXECUTE_ALL which goes through batch path
+		}
+
+		_ = writeModelResp // Model is automatically used as latest
+
+		resp, err := s.Evaluations(context.Background(), req)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+
+		// Should have 2 evaluation responses
+		require.Len(t, resp.GetEvaluationResponses(), 2)
+
+		// First should be true (alice has permission)
+		require.True(t, resp.GetEvaluationResponses()[0].GetDecision())
+
+		// Second should be false (bob doesn't have permission)
+		require.False(t, resp.GetEvaluationResponses()[1].GetDecision())
+	})
 }
 
 func TestSubjectSearch(t *testing.T) {
@@ -500,6 +590,85 @@ func TestSubjectSearch(t *testing.T) {
 		require.True(t, ok)
 		require.Equal(t, codes.InvalidArgument, st.Code())
 	})
+
+	t.Run("success_with_valid_model", func(t *testing.T) {
+		s := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithExperimentals(serverconfig.ExperimentalEnableAuthZen),
+		)
+		t.Cleanup(s.Close)
+
+		// Create store
+		createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
+		require.NoError(t, err)
+		storeID := createStoreResp.GetId()
+
+		// Write a minimal model
+		writeModelResp, err := s.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
+			StoreId:       storeID,
+			SchemaVersion: "1.1",
+			TypeDefinitions: []*openfgav1.TypeDefinition{
+				{
+					Type: "user",
+				},
+				{
+					Type: "document",
+					Relations: map[string]*openfgav1.Userset{
+						"reader": {
+							Userset: &openfgav1.Userset_This{},
+						},
+					},
+					Metadata: &openfgav1.Metadata{
+						Relations: map[string]*openfgav1.RelationMetadata{
+							"reader": {
+								DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+									{Type: "user"},
+								},
+							},
+						},
+					},
+				},
+			},
+		})
+		require.NoError(t, err)
+
+		// Write tuples
+		_, err = s.Write(context.Background(), &openfgav1.WriteRequest{
+			StoreId: storeID,
+			Writes: &openfgav1.WriteRequestWrites{
+				TupleKeys: []*openfgav1.TupleKey{
+					{
+						Object:   "document:doc1",
+						Relation: "reader",
+						User:     "user:alice",
+					},
+					{
+						Object:   "document:doc1",
+						Relation: "reader",
+						User:     "user:bob",
+					},
+				},
+			},
+		})
+		require.NoError(t, err)
+
+		// Test SubjectSearch - find users who can read doc1
+		req := &authzenv1.SubjectSearchRequest{
+			StoreId:              storeID,
+			AuthorizationModelId: writeModelResp.GetAuthorizationModelId(),
+			Resource:             &authzenv1.Resource{Type: "document", Id: "doc1"},
+			Action:               &authzenv1.Action{Name: "reader"},
+			Subject:              &authzenv1.SubjectFilter{Type: "user"},
+		}
+
+		resp, err := s.SubjectSearch(context.Background(), req)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+
+		// Should find alice and bob
+		subjects := resp.GetSubjects()
+		require.GreaterOrEqual(t, len(subjects), 2)
+	})
 }
 
 func TestResourceSearch(t *testing.T) {
@@ -556,6 +725,85 @@ func TestResourceSearch(t *testing.T) {
 		st, ok := status.FromError(err)
 		require.True(t, ok)
 		require.Equal(t, codes.InvalidArgument, st.Code())
+	})
+
+	t.Run("success_with_valid_model", func(t *testing.T) {
+		s := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithExperimentals(serverconfig.ExperimentalEnableAuthZen),
+		)
+		t.Cleanup(s.Close)
+
+		// Create store
+		createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
+		require.NoError(t, err)
+		storeID := createStoreResp.GetId()
+
+		// Write a minimal model
+		writeModelResp, err := s.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
+			StoreId:       storeID,
+			SchemaVersion: "1.1",
+			TypeDefinitions: []*openfgav1.TypeDefinition{
+				{
+					Type: "user",
+				},
+				{
+					Type: "document",
+					Relations: map[string]*openfgav1.Userset{
+						"reader": {
+							Userset: &openfgav1.Userset_This{},
+						},
+					},
+					Metadata: &openfgav1.Metadata{
+						Relations: map[string]*openfgav1.RelationMetadata{
+							"reader": {
+								DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+									{Type: "user"},
+								},
+							},
+						},
+					},
+				},
+			},
+		})
+		require.NoError(t, err)
+
+		// Write tuples
+		_, err = s.Write(context.Background(), &openfgav1.WriteRequest{
+			StoreId: storeID,
+			Writes: &openfgav1.WriteRequestWrites{
+				TupleKeys: []*openfgav1.TupleKey{
+					{
+						Object:   "document:doc1",
+						Relation: "reader",
+						User:     "user:alice",
+					},
+					{
+						Object:   "document:doc2",
+						Relation: "reader",
+						User:     "user:alice",
+					},
+				},
+			},
+		})
+		require.NoError(t, err)
+
+		// Test ResourceSearch - find documents alice can read
+		req := &authzenv1.ResourceSearchRequest{
+			StoreId:              storeID,
+			AuthorizationModelId: writeModelResp.GetAuthorizationModelId(),
+			Subject:              &authzenv1.Subject{Type: "user", Id: "alice"},
+			Action:               &authzenv1.Action{Name: "reader"},
+			Resource:             &authzenv1.Resource{Type: "document"},
+		}
+
+		resp, err := s.ResourceSearch(context.Background(), req)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+
+		// Should find doc1 and doc2
+		resources := resp.GetResources()
+		require.GreaterOrEqual(t, len(resources), 2)
 	})
 }
 
@@ -636,5 +884,98 @@ func TestActionSearch(t *testing.T) {
 		st, ok := status.FromError(err)
 		require.True(t, ok)
 		require.Equal(t, codes.Code(openfgav1.ErrorCode_latest_authorization_model_not_found), st.Code())
+	})
+
+	t.Run("success_with_valid_model", func(t *testing.T) {
+		s := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithExperimentals(serverconfig.ExperimentalEnableAuthZen),
+		)
+		t.Cleanup(s.Close)
+
+		// Create store
+		createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
+		require.NoError(t, err)
+		storeID := createStoreResp.GetId()
+
+		// Write a minimal model
+		writeModelResp, err := s.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
+			StoreId:       storeID,
+			SchemaVersion: "1.1",
+			TypeDefinitions: []*openfgav1.TypeDefinition{
+				{
+					Type: "user",
+				},
+				{
+					Type: "document",
+					Relations: map[string]*openfgav1.Userset{
+						"reader": {
+							Userset: &openfgav1.Userset_This{},
+						},
+						"writer": {
+							Userset: &openfgav1.Userset_This{},
+						},
+					},
+					Metadata: &openfgav1.Metadata{
+						Relations: map[string]*openfgav1.RelationMetadata{
+							"reader": {
+								DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+									{Type: "user"},
+								},
+							},
+							"writer": {
+								DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+									{Type: "user"},
+								},
+							},
+						},
+					},
+				},
+			},
+		})
+		require.NoError(t, err)
+
+		// Write a tuple to grant permission
+		_, err = s.Write(context.Background(), &openfgav1.WriteRequest{
+			StoreId: storeID,
+			Writes: &openfgav1.WriteRequestWrites{
+				TupleKeys: []*openfgav1.TupleKey{
+					{
+						Object:   "document:doc1",
+						Relation: "reader",
+						User:     "user:alice",
+					},
+				},
+			},
+		})
+		require.NoError(t, err)
+
+		// Now test ActionSearch - this should exercise the success path
+		req := &authzenv1.ActionSearchRequest{
+			StoreId:              storeID,
+			AuthorizationModelId: writeModelResp.GetAuthorizationModelId(),
+			Subject:              &authzenv1.Subject{Type: "user", Id: "alice"},
+			Resource:             &authzenv1.Resource{Type: "document", Id: "doc1"},
+		}
+
+		resp, err := s.ActionSearch(context.Background(), req)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+
+		// Should return actions that alice can perform on doc1
+		require.NotNil(t, resp.GetActions())
+		// Alice has 'reader' permission, so should be in the results
+		actions := resp.GetActions()
+		require.GreaterOrEqual(t, len(actions), 1)
+
+		// Verify at least one action is present
+		foundReader := false
+		for _, action := range actions {
+			if action.GetName() == "reader" {
+				foundReader = true
+				break
+			}
+		}
+		require.True(t, foundReader, "Expected to find 'reader' action in results")
 	})
 }
