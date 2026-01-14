@@ -25,13 +25,12 @@ type testContext struct {
 	authzenClient authzenv1.AuthZenServiceClient
 }
 
-// setupTestContext creates a new test server and returns a testContext.
-// The server is automatically configured with AuthZEN experimental flag enabled.
-func setupTestContext(t *testing.T) *testContext {
+// setupTestContextWithExperimentals creates a new test server with specified experimental flags.
+func setupTestContextWithExperimentals(t *testing.T, experimentals []string) *testContext {
 	t.Helper()
 
 	cfg := serverconfig.MustDefaultConfig()
-	cfg.Experimentals = []string{serverconfig.ExperimentalEnableAuthZen}
+	cfg.Experimentals = experimentals
 	cfg.Log.Level = "error"
 	cfg.Datastore.Engine = "memory"
 
@@ -47,6 +46,13 @@ func setupTestContext(t *testing.T) *testContext {
 	}
 
 	return tc
+}
+
+// setupTestContext creates a new test server and returns a testContext.
+// The server is automatically configured with AuthZEN experimental flag enabled.
+func setupTestContext(t *testing.T) *testContext {
+	t.Helper()
+	return setupTestContextWithExperimentals(t, []string{serverconfig.ExperimentalEnableAuthZen})
 }
 
 // createStore creates a new store.

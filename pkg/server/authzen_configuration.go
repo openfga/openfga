@@ -4,20 +4,28 @@ import (
 	"context"
 	"fmt"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	authzenv1 "github.com/openfga/api/proto/authzen/v1"
 
 	"github.com/openfga/openfga/internal/build"
+	serverconfig "github.com/openfga/openfga/pkg/server/config"
 )
 
 // GetConfiguration returns PDP metadata and capabilities per AuthZEN spec section 13.
-// This endpoint is NOT gated behind the experimental flag as it's needed for discovery.
 // Following the AuthZEN spec's multi-tenant pattern, this endpoint is scoped to a specific
 // store and returns absolute endpoint URLs for that store.
 func (s *Server) GetConfiguration(ctx context.Context, req *authzenv1.GetConfigurationRequest) (*authzenv1.GetConfigurationResponse, error) {
+	storeID := req.GetStoreId()
+
+	// Gate behind experimental flag
+	if !s.featureFlagClient.Boolean(serverconfig.ExperimentalEnableAuthZen, storeID) {
+		return nil, status.Error(codes.Unimplemented, "AuthZEN endpoints are experimental. Enable with --experimentals=enable_authzen")
+	}
+
 	_, span := tracer.Start(ctx, "authzen.GetConfiguration")
 	defer span.End()
-
-	storeID := req.GetStoreId()
 
 	return &authzenv1.GetConfigurationResponse{
 		PolicyDecisionPoint: &authzenv1.PolicyDecisionPoint{

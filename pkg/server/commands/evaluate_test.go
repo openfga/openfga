@@ -531,8 +531,9 @@ func TestEvaluateRequestCommand(t *testing.T) {
 		}
 
 		cmd, err := NewEvaluateRequestCommand(req)
-		require.NoError(t, err)
-		require.Equal(t, ":", cmd.GetCheckRequest().GetTupleKey().GetUser())
+		require.Error(t, err)
+		require.Nil(t, cmd)
+		require.Contains(t, err.Error(), "missing subject")
 	})
 
 	t.Run("nil_resource", func(t *testing.T) {
@@ -544,8 +545,9 @@ func TestEvaluateRequestCommand(t *testing.T) {
 		}
 
 		cmd, err := NewEvaluateRequestCommand(req)
-		require.NoError(t, err)
-		require.Equal(t, ":", cmd.GetCheckRequest().GetTupleKey().GetObject())
+		require.Error(t, err)
+		require.Nil(t, cmd)
+		require.Contains(t, err.Error(), "missing resource")
 	})
 
 	t.Run("nil_action", func(t *testing.T) {
@@ -557,8 +559,9 @@ func TestEvaluateRequestCommand(t *testing.T) {
 		}
 
 		cmd, err := NewEvaluateRequestCommand(req)
-		require.NoError(t, err)
-		require.Empty(t, cmd.GetCheckRequest().GetTupleKey().GetRelation())
+		require.Error(t, err)
+		require.Nil(t, cmd)
+		require.Contains(t, err.Error(), "missing action")
 	})
 
 	t.Run("table_driven_basic_transformation", func(t *testing.T) {

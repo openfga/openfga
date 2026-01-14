@@ -16,27 +16,24 @@ func (cmd *EvaluateRequestCommand) GetCheckRequest() *openfgav1.CheckRequest {
 }
 
 func NewEvaluateRequestCommand(req *authzenv1.EvaluationRequest) (*EvaluateRequestCommand, error) {
-	var user, relation, object string
 	subject := req.GetSubject()
-	if subject != nil {
-		user = fmt.Sprintf("%s:%s", subject.GetType(), subject.GetId())
-	} else {
-		user = ":"
+	if subject == nil {
+		return nil, fmt.Errorf("missing subject")
 	}
 
 	resource := req.GetResource()
-	if resource != nil {
-		object = fmt.Sprintf("%s:%s", resource.GetType(), resource.GetId())
-	} else {
-		object = ":"
+	if resource == nil {
+		return nil, fmt.Errorf("missing resource")
 	}
 
 	action := req.GetAction()
-	if action != nil {
-		relation = action.GetName()
-	} else {
-		relation = ""
+	if action == nil {
+		return nil, fmt.Errorf("missing action")
 	}
+
+	user := fmt.Sprintf("%s:%s", subject.GetType(), subject.GetId())
+	object := fmt.Sprintf("%s:%s", resource.GetType(), resource.GetId())
+	relation := action.GetName()
 
 	mergedContext, err := MergePropertiesToContext(
 		req.GetContext(),

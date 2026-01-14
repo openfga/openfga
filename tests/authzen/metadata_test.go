@@ -17,7 +17,7 @@ func TestGetConfiguration(t *testing.T) {
 	t.Run("returns_pdp_info", func(t *testing.T) {
 		tc := setupTestContext(t)
 
-		resp, err := tc.authzenClient.GetConfiguration(context.Background(), &authzenv1.GetConfigurationRequest{})
+		resp, err := tc.authzenClient.GetConfiguration(context.Background(), &authzenv1.GetConfigurationRequest{StoreId: "test-store"})
 		require.NoError(t, err)
 
 		require.NotNil(t, resp.GetPolicyDecisionPoint())
@@ -29,7 +29,7 @@ func TestGetConfiguration(t *testing.T) {
 	t.Run("returns_endpoints", func(t *testing.T) {
 		tc := setupTestContext(t)
 
-		resp, err := tc.authzenClient.GetConfiguration(context.Background(), &authzenv1.GetConfigurationRequest{})
+		resp, err := tc.authzenClient.GetConfiguration(context.Background(), &authzenv1.GetConfigurationRequest{StoreId: "test-store"})
 		require.NoError(t, err)
 
 		require.NotNil(t, resp.GetAccessEndpoints())
@@ -43,7 +43,7 @@ func TestGetConfiguration(t *testing.T) {
 	t.Run("returns_capabilities", func(t *testing.T) {
 		tc := setupTestContext(t)
 
-		resp, err := tc.authzenClient.GetConfiguration(context.Background(), &authzenv1.GetConfigurationRequest{})
+		resp, err := tc.authzenClient.GetConfiguration(context.Background(), &authzenv1.GetConfigurationRequest{StoreId: "test-store"})
 		require.NoError(t, err)
 
 		require.NotEmpty(t, resp.GetCapabilities())
@@ -54,13 +54,12 @@ func TestGetConfiguration(t *testing.T) {
 		require.Contains(t, resp.GetCapabilities(), "action_search")
 	})
 
-	t.Run("does_not_require_experimental_flag", func(t *testing.T) {
-		// GetConfiguration should work even without the experimental flag
-		// This is a discovery endpoint
-		tc := setupTestContext(t)
+	t.Run("requires_experimental_flag", func(t *testing.T) {
+		// GetConfiguration requires the experimental flag like all AuthZEN endpoints
+		tc := setupTestContextWithExperimentals(t, []string{})
 
-		resp, err := tc.authzenClient.GetConfiguration(context.Background(), &authzenv1.GetConfigurationRequest{})
-		require.NoError(t, err)
-		require.NotNil(t, resp)
+		_, err := tc.authzenClient.GetConfiguration(context.Background(), &authzenv1.GetConfigurationRequest{StoreId: "test-store"})
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "AuthZEN endpoints are experimental")
 	})
 }
