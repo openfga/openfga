@@ -923,4 +923,3 @@ func TestTransformResponseTableDriven(t *testing.T) {
 		require.Len(t, cmd.GetBatchCheckRequests().GetChecks(), 1)
 	})
 }
-
