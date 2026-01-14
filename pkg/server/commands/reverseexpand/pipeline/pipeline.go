@@ -622,8 +622,11 @@ func (r *baseResolver) Resolve(ctx context.Context, senders []Sender[*Edge, *Mes
 
 type edgeHandler func(context.Context, *Edge, []string) iter.Seq[Item]
 
+// txBag is a type that implements the interface pipe.Tx[T]
+// for the type containers.Bag[T].
 type txBag[T any] containers.Bag[T]
 
+// Send implements the pipe.Tx[T] interface.
 func (tx *txBag[T]) Send(t T) bool {
 	bag := (*containers.Bag[T])(tx)
 	bag.Add(t)

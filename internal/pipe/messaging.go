@@ -180,6 +180,7 @@ func Must[T any](n int) *Pipe[T] {
 // The buffer's size doubles after each extension.
 //
 // A negative extendAfter value will disable dynamic extension.
+// A 0 value may be provided for extendAfter to indicate immediate extension.
 //
 // A negative maxExtensions value will allow unlimited extensions.
 func (p *Pipe[T]) SetExtensionConfig(extendAfter time.Duration, maxExtensions int) {
