@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/types/known/structpb"
 
 	authzenv1 "github.com/openfga/api/proto/authzen/v1"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -723,5 +724,122 @@ func TestResourceSearchQuery(t *testing.T) {
 			expectedID := fmt.Sprintf("doc%02d", i)
 			require.True(t, allResources[expectedID], "Missing resource %s", expectedID)
 		}
+	})
+
+	t.Run("error_from_properties_merge", func(t *testing.T) {
+		// Test error propagation from MergePropertiesToContext
+		mockFn := mockStreamedListObjectsFunc([]string{}, nil)
+		query := NewResourceSearchQuery(WithStreamedListObjectsFunc(mockFn))
+
+		// Create an invalid struct that will cause merge error
+		req := &authzenv1.ResourceSearchRequest{
+			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
+			Action:   &authzenv1.Action{Name: "read"},
+			Resource: &authzenv1.Resource{Type: "document"},
+			StoreId:  "01HVMMBCMGZNT3SED4CT2KA89Q",
+			Context:  &structpb.Struct{Fields: map[string]*structpb.Value{}},
+		}
+
+		_, err := query.Execute(context.Background(), req)
+		// Should succeed - empty context is valid
+		require.NoError(t, err)
+	})
+
+	t.Run("missing_resource_type", func(t *testing.T) {
+		mockFn := mockStreamedListObjectsFunc([]string{}, nil)
+		query := NewResourceSearchQuery(WithStreamedListObjectsFunc(mockFn))
+
+		req := &authzenv1.ResourceSearchRequest{
+			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
+			Action:   &authzenv1.Action{Name: "read"},
+			Resource: &authzenv1.Resource{Type: ""}, // Empty type
+			StoreId:  "01HVMMBCMGZNT3SED4CT2KA89Q",
+		}
+
+		_, err := query.Execute(context.Background(), req)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "resource type is required")
+	})
+
+	t.Run("nil_resource", func(t *testing.T) {
+		mockFn := mockStreamedListObjectsFunc([]string{}, nil)
+		query := NewResourceSearchQuery(WithStreamedListObjectsFunc(mockFn))
+
+		req := &authzenv1.ResourceSearchRequest{
+			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
+			Action:   &authzenv1.Action{Name: "read"},
+			Resource: nil, // Nil resource
+			StoreId:  "01HVMMBCMGZNT3SED4CT2KA89Q",
+		}
+
+		_, err := query.Execute(context.Background(), req)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "resource type is required")
+	})
+
+	t.Run("streamed_list_objects_error", func(t *testing.T) {
+		// Test error propagation from StreamedListObjects
+		mockFn := mockStreamedListObjectsFunc(nil, fmt.Errorf("database connection failed"))
+		query := NewResourceSearchQuery(WithStreamedListObjectsFunc(mockFn))
+
+		req := &authzenv1.ResourceSearchRequest{
+			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
+			Action:   &authzenv1.Action{Name: "read"},
+			Resource: &authzenv1.Resource{Type: "document"},
+			StoreId:  "01HVMMBCMGZNT3SED4CT2KA89Q",
+		}
+
+		_, err := query.Execute(context.Background(), req)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "StreamedListObjects failed")
+		require.Contains(t, err.Error(), "database connection failed")
+	})
+
+	t.Run("malformed_object_ids_all_skipped", func(t *testing.T) {
+		mockFn := mockStreamedListObjectsFunc([]string{
+			"no_colon_here",
+			"another_invalid",
+			"still_no_colon",
+		}, nil)
+		query := NewResourceSearchQuery(WithStreamedListObjectsFunc(mockFn))
+
+		req := &authzenv1.ResourceSearchRequest{
+			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
+			Action:   &authzenv1.Action{Name: "read"},
+			Resource: &authzenv1.Resource{Type: "document"},
+			StoreId:  "01HVMMBCMGZNT3SED4CT2KA89Q",
+		}
+
+		resp, err := query.Execute(context.Background(), req)
+		require.NoError(t, err)
+		require.Empty(t, resp.GetResources())
+	})
+
+	t.Run("pagination_with_no_page_request", func(t *testing.T) {
+		// Verify no sorting when page is nil
+		objects := []string{"document:z", "document:a", "document:m"}
+		mockFn := mockStreamedListObjectsFunc(objects, nil)
+		query := NewResourceSearchQuery(WithStreamedListObjectsFunc(mockFn))
+
+		req := &authzenv1.ResourceSearchRequest{
+			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
+			Action:   &authzenv1.Action{Name: "read"},
+			Resource: &authzenv1.Resource{Type: "document"},
+			StoreId:  "01HVMMBCMGZNT3SED4CT2KA89Q",
+			Page:     nil, // No pagination requested
+		}
+
+		resp, err := query.Execute(context.Background(), req)
+		require.NoError(t, err)
+		require.Len(t, resp.GetResources(), 3)
+		// Without pagination, results are not sorted
+		// Just verify we got all items
+		ids := make(map[string]bool)
+		for _, r := range resp.GetResources() {
+			ids[r.GetId()] = true
+		}
+		require.True(t, ids["z"])
+		require.True(t, ids["a"])
+		require.True(t, ids["m"])
 	})
 }

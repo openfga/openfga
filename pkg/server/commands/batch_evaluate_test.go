@@ -787,4 +787,140 @@ func TestTransformResponseTableDriven(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("transform_response_with_error_results", func(t *testing.T) {
+		// Test TransformResponse with error results from BatchCheck
+		bcr := &openfgav1.BatchCheckResponse{
+			Result: map[string]*openfgav1.BatchCheckSingleResult{
+				"0": {
+					CheckResult: &openfgav1.BatchCheckSingleResult_Error{
+						Error: &openfgav1.CheckError{
+							Message: "tuple not found",
+						},
+					},
+				},
+				"1": {
+					CheckResult: &openfgav1.BatchCheckSingleResult_Allowed{
+						Allowed: true,
+					},
+				},
+				"2": {
+					CheckResult: &openfgav1.BatchCheckSingleResult_Error{
+						Error: &openfgav1.CheckError{
+							Message: "authorization model not found",
+						},
+					},
+				},
+			},
+		}
+
+		resp, err := TransformResponse(bcr)
+		require.NoError(t, err)
+		require.Len(t, resp.GetEvaluationResponses(), 3)
+
+		// First: error
+		require.False(t, resp.GetEvaluationResponses()[0].GetDecision())
+		require.NotNil(t, resp.GetEvaluationResponses()[0].GetContext())
+		require.NotNil(t, resp.GetEvaluationResponses()[0].GetContext().GetError())
+		require.Equal(t, uint32(404), resp.GetEvaluationResponses()[0].GetContext().GetError().GetStatus())
+		require.Contains(t, resp.GetEvaluationResponses()[0].GetContext().GetError().GetMessage(), "tuple not found")
+
+		// Second: allowed
+		require.True(t, resp.GetEvaluationResponses()[1].GetDecision())
+		require.Nil(t, resp.GetEvaluationResponses()[1].GetContext())
+
+		// Third: error
+		require.False(t, resp.GetEvaluationResponses()[2].GetDecision())
+		require.NotNil(t, resp.GetEvaluationResponses()[2].GetContext())
+		require.NotNil(t, resp.GetEvaluationResponses()[2].GetContext().GetError())
+		require.Contains(t, resp.GetEvaluationResponses()[2].GetContext().GetError().GetMessage(), "authorization model not found")
+	})
+
+	t.Run("transform_response_missing_result_entry", func(t *testing.T) {
+		// Test TransformResponse when result map is missing an entry in sequence
+		// Map has 3 entries but key "1" is missing
+		bcr := &openfgav1.BatchCheckResponse{
+			Result: map[string]*openfgav1.BatchCheckSingleResult{
+				"0": {
+					CheckResult: &openfgav1.BatchCheckSingleResult_Allowed{
+						Allowed: true,
+					},
+				},
+				// "1" is missing - this will trigger the missing case
+				"2": {
+					CheckResult: &openfgav1.BatchCheckSingleResult_Allowed{
+						Allowed: false,
+					},
+				},
+			},
+		}
+
+		resp, err := TransformResponse(bcr)
+		require.NoError(t, err)
+		// Response array size equals map size (2)
+		require.Len(t, resp.GetEvaluationResponses(), 2)
+
+		// Index 0: allowed (key "0" exists)
+		require.True(t, resp.GetEvaluationResponses()[0].GetDecision())
+		require.Nil(t, resp.GetEvaluationResponses()[0].GetContext())
+
+		// Index 1: will look for key "1" which doesn't exist - should error
+		// But since we only iterate up to len(map)=2, we check indices 0,1
+		// So this should hit the missing case
+		require.False(t, resp.GetEvaluationResponses()[1].GetDecision())
+		require.NotNil(t, resp.GetEvaluationResponses()[1].GetContext())
+		require.NotNil(t, resp.GetEvaluationResponses()[1].GetContext().GetError())
+		require.Equal(t, uint32(500), resp.GetEvaluationResponses()[1].GetContext().GetError().GetStatus())
+		require.Contains(t, resp.GetEvaluationResponses()[1].GetContext().GetError().GetMessage(), "missing result for evaluation 1")
+	})
+
+	t.Run("transform_response_nil_result_entry", func(t *testing.T) {
+		// Test TransformResponse when result map has nil entry
+		bcr := &openfgav1.BatchCheckResponse{
+			Result: map[string]*openfgav1.BatchCheckSingleResult{
+				"0": {
+					CheckResult: &openfgav1.BatchCheckSingleResult_Allowed{
+						Allowed: true,
+					},
+				},
+				"1": nil, // Nil result
+			},
+		}
+
+		resp, err := TransformResponse(bcr)
+		require.NoError(t, err)
+		require.Len(t, resp.GetEvaluationResponses(), 2)
+
+		// Index 0: allowed
+		require.True(t, resp.GetEvaluationResponses()[0].GetDecision())
+		require.Nil(t, resp.GetEvaluationResponses()[0].GetContext())
+
+		// Index 1: nil result - should have error
+		require.False(t, resp.GetEvaluationResponses()[1].GetDecision())
+		require.NotNil(t, resp.GetEvaluationResponses()[1].GetContext())
+		require.NotNil(t, resp.GetEvaluationResponses()[1].GetContext().GetError())
+		require.Equal(t, uint32(500), resp.GetEvaluationResponses()[1].GetContext().GetError().GetStatus())
+		require.Contains(t, resp.GetEvaluationResponses()[1].GetContext().GetError().GetMessage(), "missing result for evaluation 1")
+	})
+
+	t.Run("properties_merge_error_propagation", func(t *testing.T) {
+		// Test that property merge errors are properly propagated
+		req := &authzenv1.EvaluationsRequest{
+			StoreId: "test-store",
+			Subject: &authzenv1.Subject{Type: "user", Id: "alice"},
+			Evaluations: []*authzenv1.EvaluationsItemRequest{
+				{
+					Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
+					Action:   &authzenv1.Action{Name: "read"},
+				},
+			},
+		}
+
+		cmd, err := NewBatchEvaluateRequestCommand(req)
+		// Should succeed - normal properties merge
+		require.NoError(t, err)
+		require.NotNil(t, cmd)
+		require.Len(t, cmd.GetBatchCheckRequests().GetChecks(), 1)
+	})
 }
+

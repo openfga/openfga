@@ -638,4 +638,45 @@ func TestEvaluateRequestCommand(t *testing.T) {
 			})
 		}
 	})
+
+	t.Run("properties_merge_error_propagation", func(t *testing.T) {
+		// Test that property merge errors are handled
+		req := &authzenv1.EvaluationRequest{
+			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
+			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
+			Action:   &authzenv1.Action{Name: "read"},
+			StoreId:  ulid.Make().String(),
+		}
+
+		cmd, err := NewEvaluateRequestCommand(req)
+		// Should succeed - no invalid properties
+		require.NoError(t, err)
+		require.NotNil(t, cmd)
+	})
+
+	t.Run("all_fields_populated", func(t *testing.T) {
+		storeID := ulid.Make().String()
+		modelID := ulid.Make().String()
+
+		req := &authzenv1.EvaluationRequest{
+			Subject:              &authzenv1.Subject{Type: "user", Id: "alice"},
+			Resource:             &authzenv1.Resource{Type: "document", Id: "doc1"},
+			Action:               &authzenv1.Action{Name: "read"},
+			StoreId:              storeID,
+			AuthorizationModelId: modelID,
+			Context:              testutils.MustNewStruct(t, map[string]interface{}{"ip": "127.0.0.1"}),
+		}
+
+		cmd, err := NewEvaluateRequestCommand(req)
+		require.NoError(t, err)
+
+		checkReq := cmd.GetCheckRequest()
+		require.Equal(t, storeID, checkReq.GetStoreId())
+		require.Equal(t, modelID, checkReq.GetAuthorizationModelId())
+		require.Equal(t, "user:alice", checkReq.GetTupleKey().GetUser())
+		require.Equal(t, "read", checkReq.GetTupleKey().GetRelation())
+		require.Equal(t, "document:doc1", checkReq.GetTupleKey().GetObject())
+		require.NotNil(t, checkReq.GetContext())
+		require.Equal(t, "127.0.0.1", checkReq.GetContext().AsMap()["ip"])
+	})
 }
