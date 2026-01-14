@@ -3,7 +3,7 @@
 The Pipeline instance is initialized by invoking `New()` with a `Backend` and options to set `chunkSize`, `bufferSize`, `numProcs`, `pipeExtendAfter` and `pipeMaxExtensions`.
 
 Eg:
-```
+```go
 backend := &pipeline.Backend{
     Datastore:  ds,
     StoreID:    req.GetStoreId(),
@@ -17,7 +17,7 @@ pl := pipeline.New(backend, WithBufferSize(bufferSize), WithChunkSize(chunkSize)
 ```
 
 Once initialized, a ListObjects request can be processed by invoking `pl.Build()` with the object type and relation as the `source`, and the user and ID as the `target`. 
-```
+```go
 target, ok := pl.Target("user", "01ARZ3NDEKTSV4RRFFQ69G5FAV")
 source, ok := pl.Source("object", "zero")
 
@@ -26,7 +26,7 @@ seq := pl.Build(context.Background(), source, target)
 var results []string
 for item := range seq {
     if item.Err != nil {
-        fmt.Errorf("pipeline error: %w", err)
+        fmt.Errorf("pipeline error: %w", item.Err)
     }
     results = append(results, item.Value)
 }
@@ -35,34 +35,37 @@ for item := range seq {
 The `Build()` method builds the pipeline workers by traversing the weighted graph in a DFS, starting at the source object type and relation, creating a worker for each node until a node has no more edges, at which point it backtracks and continues from the previous unexplored edge. Nodes are stored as pointers in the workers, so nodes that were previously traversed are not traversed again.
 
 Eg, for the following model, with the source `object#zero` and the target `user:01ARZ3NDEKTSV4RRFFQ69G5FAV`, workers would be added in numerical order. Note that there are missing numbers for when a union/intersection/exclusion node would be added, as well as when the user node is added. Additionally, in the case of a TTU edge, the parent node is not added as a worker.
-```
+```yaml
 model
-    schema 1.1
+  schema 1.1
 
 type user
 
 type org
-    relations
+  relations
     define five: [user]
     define seven: [user]
     define three: five and seven
     define one: three or five
 
 type team
-    relations
+  relations
     define ten: [user]
     define eight: ten or three from parent
     define parent: [org]
 
 type object
-    relations
+  relations
     define zero: [org#one, team#eight]
 ```
 
 This model can also be represented as a graph:
 
 <p align="center">
-    <img src="list_objects_pipeline_model_with_types.png" height="1000">
+    <img 
+        alt="Weighted graph representation of the example authorization model" src="list_objects_pipeline_model_with_types.png" 
+        height="1000"
+    >
 </p>
 
 Workers connect the graph path from source to target using sender and listener edges. Each worker processes messages from its senders and forwards results to its listeners. For example in the above model, the `org#five` worker node would have the sender edges `[]edge{{ from: "org#five", to: "user" }}` and the listener edges `[]edge{{ from: "intersection", to: "org#five" }, { from: "union", to: "org#five" }}` in pseudocode. Workers also set up node and edge type specific message handling, remain open while their senders may still be fetching or processing messages, and close themselves and their listeners once processing is complete.
@@ -77,9 +80,9 @@ A few parts of the algorithm have special considerations to note when the model 
 
 During intersection and exclusion evaluation, execution is blocked until all messages are processed since their operation cannot be logically performed until the relations on either side are processed. This blocking behavior can create a performance bottleneck, especially when a branch of the intersection/exclusion takes significantly longer to evaluate than the other, as the faster branch must wait for the slower one to complete. For example, in the following relation from earlier
 
-```
+```yaml
 type org
-    relations
+  relations
     define five: [user]
     define seven: [user]
     define three: five and seven
@@ -87,16 +90,16 @@ type org
 
 In order to determine whether there are objects in the `org#three` relation that may result in returning objects for the ListObjects call higher up the graph for the root `object#zero` relation, both the `org#five` and `org#seven` relation must have objects for the `user:01ARZ3NDEKTSV4RRFFQ69G5FAV` user. In the pipeline, intersection handling blocks until all `org#five` and `org#seven` objects are received as messages, then compares the found objects to ensure that they exist for both relations, and removes duplicates. As an example, for the `org#three` relation to have the `"org:a"` object, the following tuples would have to exist:
 
-```
+```json
 { user: "user:01ARZ3NDEKTSV4RRFFQ69G5FAV", relation: "five", object: "org:a" }
 { user: "user:01ARZ3NDEKTSV4RRFFQ69G5FAV", relation: "seven", object: "org:a" }
 ```
 
 For exclusion, we can convert the above relation
 
-```
+```yaml
 type org
-    relations
+  relations
     define five: [user]
     define seven: [user]
     define three: five but not seven
@@ -110,15 +113,15 @@ Finally for both operators, the objects that meet the operator conditions are se
 
 In Tuple To Userset (TTU) relations, the object relation must be converted to the tupleset relation based on the edge. Eg, in the relations defined earlier
 
-```
+```yaml
 type team
-    define eight: ten or three from parent
-    define parent: [org]
+  define eight: ten or three from parent
+  define parent: [org]
 ```
 
 In pseudocode, the `TTUEdge` would be `edge{ from: "union", to: "org#three", tuplesetRelation: "team#parent" }`. So if the object `"org:b"` was found to exist for the `org#three` relation, the next database query would require a look up for any objects in the `team#parent` relation with the user type `"org:b"`. In otherwords, if we had an object `"object:TTU"` connected via TTU, all of the following tuples would need to exist:
 
-```
+```json
 <!-- These tuples satisfy the "org#three" relation -->
 { user: "user:01ARZ3NDEKTSV4RRFFQ69G5FAV", relation: "five", object: "org:b"}
 { user: "user:01ARZ3NDEKTSV4RRFFQ69G5FAV", relation: "five", object: "org:b"}
@@ -133,19 +136,22 @@ In pseudocode, the `TTUEdge` would be `edge{ from: "union", to: "org#three", tup
 ## Cyclic Edge
 
 Cyclic edges present a unique challenge where messages can loop indefinitely through the cycle. Without special handling, workers wouldn't know when to stop processing. Consider the following model with a tuple cycle:
-```
+```yaml
 model
-    schema 1.1
+  schema 1.1
 
-	type user
+type user
 
-	type object
-		relations
-		define cycle: [object#zero]
-		define zero: [user, object#cycle]
+type object
+  relations
+    define cycle: [object#zero]
+    define zero: [user, object#cycle]
 ```
 <p align="center">
-    <img src="list_objects_tuple_cycle.png" height="400">
+    <img 
+        alt="Weighted graph representation of the example tuple cycle model" src="list_objects_tuple_cycle.png" 
+        height="400"
+    >
 </p>
 
 The pipeline algorithm addresses the concerns of cyclic edges in a few ways:
