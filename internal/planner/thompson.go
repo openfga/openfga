@@ -34,15 +34,18 @@ func (ts *ThompsonStats) Sample(r *rand.Rand) float64 {
 
 	// Fast normal sampling
 	variance := 1.0 / (params.lambda * tau)
-	if variance <= 0 {
-		return params.mu
+	// Safety check for mathematical anomalies
+	if variance <= 0 || math.IsNaN(variance) {
+		return math.Exp(params.mu) // Return the geometric mean
 	}
 
 	// Use standard normal * sqrt(variance) + mean for better performance
 	stdNormal := r.NormFloat64()
-	mean := params.mu + stdNormal*math.Sqrt(variance)
+	logSample := params.mu + stdNormal*math.Sqrt(variance)
 
-	return mean
+	// Convert back to Linear Time (Milliseconds)
+	// exp(x) is guaranteed to be positive for all real x.
+	return math.Exp(logSample)
 }
 
 // fastGammaSample implements the highly efficient Marsaglia and Tsang acceptance-rejection
@@ -81,14 +84,26 @@ func (ts *ThompsonStats) fastGammaSample(r *rand.Rand, alpha, beta float64) floa
 // using the new data point (the observed execution duration). It is the responsibility of the caller
 // to enforce synchronization if multiple goroutines may call Update concurrently.
 func (ts *ThompsonStats) Update(duration time.Duration) {
-	x := float64(duration.Nanoseconds()) / 1e6 // Convert to milliseconds with higher precision
+	// 1 Convert to milliseconds with higher precision
+	rawMS := float64(duration.Nanoseconds()) / 1e6
+
+	// 2. Handle Edge Cases (0ms or negative duration)
+	// math.Log(0) is undefined (-Inf). We must enforce a small positive floor.
+	if rawMS <= 0.001 {
+		rawMS = 0.001
+	}
+
+	// 3. Transform to Log-Space
+	// This allows the Normal distribution to model the "orders of magnitude" rather than linear time.
+	x := math.Log(rawMS)
 
 	for {
-		// 1. Atomically load the current parameters
+		// Atomically load the current parameters
 		oldPtr := atomic.LoadPointer(&ts.params)
 		currentParams := (*samplingParams)(oldPtr)
 
-		// 2. Calculate the new parameters based on the old ones
+		// Calculate the new parameters based on the old ones
+		// Standard Normal-Gamma update equations (now operating on log values)
 		newLambda := currentParams.lambda + 1
 		newMu := (currentParams.lambda*currentParams.mu + x) / newLambda
 		newAlpha := currentParams.alpha + 0.5
@@ -102,7 +117,7 @@ func (ts *ThompsonStats) Update(duration time.Duration) {
 			beta:   newBeta,
 		}
 
-		// 3. Try to atomically swap the old pointer with the new one.
+		// Try to atomically swap the old pointer with the new one.
 		// If another goroutine changed the pointer in the meantime, this will fail,
 		// and we will loop again to retry the whole operation.
 		if atomic.CompareAndSwapPointer(&ts.params, oldPtr, unsafe.Pointer(newParams)) {
@@ -116,11 +131,20 @@ func (ts *ThompsonStats) Update(duration time.Duration) {
 func NewThompsonStats(initialGuess time.Duration, lambda, alpha, beta float64) *ThompsonStats {
 	initialMs := float64(initialGuess.Nanoseconds()) / 1e6
 
+	// Safety check: Log(0) is -Infinity. Clamp to a tiny value if needed.
+	if initialMs <= 0 {
+		initialMs = 0.001
+	}
+
+	// 2. Convert to Log-Space
+	// If we expect 20ms, we store ln(20) ≈ 2.99
+	initialLogMu := math.Log(initialMs)
+
 	ts := &ThompsonStats{}
 
 	// Create the initial immutable parameter snapshot.
 	params := &samplingParams{
-		mu:     initialMs,
+		mu:     initialLogMu,
 		lambda: lambda,
 		alpha:  alpha,
 		beta:   beta,
