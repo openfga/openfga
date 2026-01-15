@@ -24,6 +24,76 @@ func TestEvaluation(t *testing.T) {
 
 	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
 
+	t.Run("success_with_valid_model", func(t *testing.T) {
+		s := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithExperimentals(serverconfig.ExperimentalEnableAuthZen),
+		)
+		t.Cleanup(s.Close)
+
+		// Create store
+		createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
+		require.NoError(t, err)
+		storeID := createStoreResp.GetId()
+
+		// Write a minimal model
+		_, err = s.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
+			StoreId:       storeID,
+			SchemaVersion: "1.1",
+			TypeDefinitions: []*openfgav1.TypeDefinition{
+				{
+					Type: "user",
+				},
+				{
+					Type: "document",
+					Relations: map[string]*openfgav1.Userset{
+						"reader": {
+							Userset: &openfgav1.Userset_This{},
+						},
+					},
+					Metadata: &openfgav1.Metadata{
+						Relations: map[string]*openfgav1.RelationMetadata{
+							"reader": {
+								DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+									{Type: "user"},
+								},
+							},
+						},
+					},
+				},
+			},
+		})
+		require.NoError(t, err)
+
+		// Write tuple to grant permission
+		_, err = s.Write(context.Background(), &openfgav1.WriteRequest{
+			StoreId: storeID,
+			Writes: &openfgav1.WriteRequestWrites{
+				TupleKeys: []*openfgav1.TupleKey{
+					{
+						Object:   "document:doc1",
+						Relation: "reader",
+						User:     "user:alice",
+					},
+				},
+			},
+		})
+		require.NoError(t, err)
+
+		// Test Evaluation success path - this covers lines 54-56
+		req := &authzenv1.EvaluationRequest{
+			StoreId:  storeID,
+			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
+			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
+			Action:   &authzenv1.Action{Name: "reader"},
+		}
+
+		resp, err := s.Evaluation(context.Background(), req)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.True(t, resp.GetDecision())
+	})
+
 	t.Run("feature_flag_disabled", func(t *testing.T) {
 		// Server without AuthZEN experimental enabled
 		s := MustNewServerWithOpts(
@@ -532,6 +602,190 @@ func TestEvaluations(t *testing.T) {
 
 		// Second should be false (bob doesn't have permission)
 		require.False(t, resp.GetEvaluationResponses()[1].GetDecision())
+	})
+
+	t.Run("short_circuit_deny_on_first_deny_with_valid_model_breaks", func(t *testing.T) {
+		s := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithExperimentals(serverconfig.ExperimentalEnableAuthZen),
+		)
+		t.Cleanup(s.Close)
+
+		// Create store
+		createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
+		require.NoError(t, err)
+		storeID := createStoreResp.GetId()
+
+		// Write a minimal model
+		_, err = s.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
+			StoreId:       storeID,
+			SchemaVersion: "1.1",
+			TypeDefinitions: []*openfgav1.TypeDefinition{
+				{
+					Type: "user",
+				},
+				{
+					Type: "document",
+					Relations: map[string]*openfgav1.Userset{
+						"reader": {
+							Userset: &openfgav1.Userset_This{},
+						},
+					},
+					Metadata: &openfgav1.Metadata{
+						Relations: map[string]*openfgav1.RelationMetadata{
+							"reader": {
+								DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+									{Type: "user"},
+								},
+							},
+						},
+					},
+				},
+			},
+		})
+		require.NoError(t, err)
+
+		// Write tuple for alice only (bob has no permission)
+		_, err = s.Write(context.Background(), &openfgav1.WriteRequest{
+			StoreId: storeID,
+			Writes: &openfgav1.WriteRequestWrites{
+				TupleKeys: []*openfgav1.TupleKey{
+					{
+						Object:   "document:doc1",
+						Relation: "reader",
+						User:     "user:alice",
+					},
+				},
+			},
+		})
+		require.NoError(t, err)
+
+		// Test DENY_ON_FIRST_DENY: first evaluation is bob (no permission = deny)
+		// This should trigger the break on line 172-174 in authzen.go
+		req := &authzenv1.EvaluationsRequest{
+			StoreId: storeID,
+			Evaluations: []*authzenv1.EvaluationsItemRequest{
+				{
+					// Bob has no permission - will return deny
+					Subject:  &authzenv1.Subject{Type: "user", Id: "bob"},
+					Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
+					Action:   &authzenv1.Action{Name: "reader"},
+				},
+				{
+					// Alice has permission - but should never be evaluated due to break
+					Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
+					Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
+					Action:   &authzenv1.Action{Name: "reader"},
+				},
+			},
+			Options: &authzenv1.EvaluationsOptions{
+				EvaluationsSemantic: authzenv1.EvaluationsSemantic_EVALUATIONS_SEMANTIC_DENY_ON_FIRST_DENY,
+			},
+		}
+
+		resp, err := s.Evaluations(context.Background(), req)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+
+		// Should have only 1 response due to short-circuit break
+		require.Len(t, resp.GetEvaluationResponses(), 1)
+
+		// First (and only) should be false (bob denied)
+		require.False(t, resp.GetEvaluationResponses()[0].GetDecision())
+		// Should NOT have an error context since it's a valid deny, not an error
+		require.Nil(t, resp.GetEvaluationResponses()[0].GetContext().GetError())
+	})
+
+	t.Run("short_circuit_permit_on_first_permit_with_valid_model_breaks", func(t *testing.T) {
+		s := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithExperimentals(serverconfig.ExperimentalEnableAuthZen),
+		)
+		t.Cleanup(s.Close)
+
+		// Create store
+		createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
+		require.NoError(t, err)
+		storeID := createStoreResp.GetId()
+
+		// Write a minimal model
+		_, err = s.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
+			StoreId:       storeID,
+			SchemaVersion: "1.1",
+			TypeDefinitions: []*openfgav1.TypeDefinition{
+				{
+					Type: "user",
+				},
+				{
+					Type: "document",
+					Relations: map[string]*openfgav1.Userset{
+						"reader": {
+							Userset: &openfgav1.Userset_This{},
+						},
+					},
+					Metadata: &openfgav1.Metadata{
+						Relations: map[string]*openfgav1.RelationMetadata{
+							"reader": {
+								DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+									{Type: "user"},
+								},
+							},
+						},
+					},
+				},
+			},
+		})
+		require.NoError(t, err)
+
+		// Write tuple for alice
+		_, err = s.Write(context.Background(), &openfgav1.WriteRequest{
+			StoreId: storeID,
+			Writes: &openfgav1.WriteRequestWrites{
+				TupleKeys: []*openfgav1.TupleKey{
+					{
+						Object:   "document:doc1",
+						Relation: "reader",
+						User:     "user:alice",
+					},
+				},
+			},
+		})
+		require.NoError(t, err)
+
+		// Test PERMIT_ON_FIRST_PERMIT: first evaluation is alice (has permission = permit)
+		// This should trigger the break on line 176-178 in authzen.go
+		req := &authzenv1.EvaluationsRequest{
+			StoreId: storeID,
+			Evaluations: []*authzenv1.EvaluationsItemRequest{
+				{
+					// Alice has permission - will return permit
+					Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
+					Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
+					Action:   &authzenv1.Action{Name: "reader"},
+				},
+				{
+					// Bob has no permission - but should never be evaluated due to break
+					Subject:  &authzenv1.Subject{Type: "user", Id: "bob"},
+					Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
+					Action:   &authzenv1.Action{Name: "reader"},
+				},
+			},
+			Options: &authzenv1.EvaluationsOptions{
+				EvaluationsSemantic: authzenv1.EvaluationsSemantic_EVALUATIONS_SEMANTIC_PERMIT_ON_FIRST_PERMIT,
+			},
+		}
+
+		resp, err := s.Evaluations(context.Background(), req)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+
+		// Should have only 1 response due to short-circuit break
+		require.Len(t, resp.GetEvaluationResponses(), 1)
+
+		// First (and only) should be true (alice permitted)
+		require.True(t, resp.GetEvaluationResponses()[0].GetDecision())
+		// Should NOT have an error context since it's a valid permit, not an error
+		require.Nil(t, resp.GetEvaluationResponses()[0].GetContext().GetError())
 	})
 }
 
