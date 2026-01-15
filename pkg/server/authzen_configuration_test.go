@@ -12,6 +12,7 @@ import (
 
 	"github.com/openfga/openfga/cmd/util"
 	"github.com/openfga/openfga/internal/build"
+	serverconfig "github.com/openfga/openfga/pkg/server/config"
 )
 
 func TestGetConfiguration(t *testing.T) {
@@ -21,8 +22,28 @@ func TestGetConfiguration(t *testing.T) {
 
 	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
 
+	t.Run("feature_flag_disabled", func(t *testing.T) {
+		// Server without AuthZEN experimental enabled
+		s := MustNewServerWithOpts(
+			WithDatastore(ds),
+		)
+		t.Cleanup(s.Close)
+
+		createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
+		require.NoError(t, err)
+		storeID := createStoreResp.GetId()
+
+		resp, err := s.GetConfiguration(context.Background(), &authzenv1.GetConfigurationRequest{StoreId: storeID})
+		require.Error(t, err)
+		require.Nil(t, resp)
+		require.Contains(t, err.Error(), "experimental")
+	})
+
 	t.Run("returns_pdp_metadata", func(t *testing.T) {
-		s := MustNewServerWithOpts(WithDatastore(ds))
+		s := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithExperimentals(serverconfig.ExperimentalEnableAuthZen),
+		)
 		t.Cleanup(s.Close)
 
 		createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
@@ -43,7 +64,10 @@ func TestGetConfiguration(t *testing.T) {
 	})
 
 	t.Run("returns_store_specific_absolute_endpoints", func(t *testing.T) {
-		s := MustNewServerWithOpts(WithDatastore(ds))
+		s := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithExperimentals(serverconfig.ExperimentalEnableAuthZen),
+		)
 		t.Cleanup(s.Close)
 
 		createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
@@ -63,7 +87,10 @@ func TestGetConfiguration(t *testing.T) {
 	})
 
 	t.Run("returns_capabilities", func(t *testing.T) {
-		s := MustNewServerWithOpts(WithDatastore(ds))
+		s := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithExperimentals(serverconfig.ExperimentalEnableAuthZen),
+		)
 		t.Cleanup(s.Close)
 
 		createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
@@ -83,7 +110,10 @@ func TestGetConfiguration(t *testing.T) {
 	})
 
 	t.Run("authzen_spec_compliance", func(t *testing.T) {
-		s := MustNewServerWithOpts(WithDatastore(ds))
+		s := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithExperimentals(serverconfig.ExperimentalEnableAuthZen),
+		)
 		t.Cleanup(s.Close)
 
 		createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
