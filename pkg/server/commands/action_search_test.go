@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -15,9 +16,30 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
+// mockBatchCheckFunc creates a mock BatchCheck function that applies the given logic to each check.
+func mockBatchCheckFunc(checkLogic func(tupleKey *openfgav1.CheckRequestTupleKey) (bool, error)) func(ctx context.Context, req *openfgav1.BatchCheckRequest) (*openfgav1.BatchCheckResponse, error) {
+	return func(ctx context.Context, req *openfgav1.BatchCheckRequest) (*openfgav1.BatchCheckResponse, error) {
+		results := make(map[string]*openfgav1.BatchCheckSingleResult)
+		for _, check := range req.GetChecks() {
+			allowed, err := checkLogic(check.GetTupleKey())
+			if err != nil {
+				results[check.GetCorrelationId()] = &openfgav1.BatchCheckSingleResult{
+					CheckResult: &openfgav1.BatchCheckSingleResult_Error{
+						Error: &openfgav1.CheckError{Message: err.Error()},
+					},
+				}
+			} else {
+				results[check.GetCorrelationId()] = &openfgav1.BatchCheckSingleResult{
+					CheckResult: &openfgav1.BatchCheckSingleResult_Allowed{Allowed: allowed},
+				}
+			}
+		}
+		return &openfgav1.BatchCheckResponse{Result: results}, nil
+	}
+}
+
 func TestActionSearchQuery(t *testing.T) {
 	t.Run("basic_action_search", func(t *testing.T) {
-		// Mock typesystem resolver that returns a type with 3 relations
 		mockTypesystemResolver := func(ctx context.Context, storeID, modelID string) (*typesystem.TypeSystem, error) {
 			model := testutils.MustTransformDSLToProtoWithID(`
 				model
@@ -34,15 +56,14 @@ func TestActionSearchQuery(t *testing.T) {
 			return ts, nil
 		}
 
-		// Mock check function - allow read and owner, deny write
-		mockCheck := func(ctx context.Context, req *openfgav1.CheckRequest) (*openfgav1.CheckResponse, error) {
-			allowed := req.GetTupleKey().GetRelation() == "reader" || req.GetTupleKey().GetRelation() == "owner"
-			return &openfgav1.CheckResponse{Allowed: allowed}, nil
-		}
+		mockBatchCheck := mockBatchCheckFunc(func(tupleKey *openfgav1.CheckRequestTupleKey) (bool, error) {
+			relation := tupleKey.GetRelation()
+			return relation == "reader" || relation == "owner", nil
+		})
 
 		query := NewActionSearchQuery(
 			WithTypesystemResolver(mockTypesystemResolver),
-			WithCheckFunc(mockCheck),
+			WithBatchCheckFunc(mockBatchCheck),
 		)
 
 		req := &authzenv1.ActionSearchRequest{
@@ -53,9 +74,8 @@ func TestActionSearchQuery(t *testing.T) {
 
 		resp, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.Len(t, resp.GetActions(), 2) // reader and owner
+		require.Len(t, resp.GetActions(), 2)
 
-		// Actions should be sorted alphabetically
 		actionNames := make([]string, len(resp.GetActions()))
 		for i, a := range resp.GetActions() {
 			actionNames[i] = a.GetName()
@@ -81,14 +101,13 @@ func TestActionSearchQuery(t *testing.T) {
 			return ts, nil
 		}
 
-		// Deny all checks
-		mockCheck := func(ctx context.Context, req *openfgav1.CheckRequest) (*openfgav1.CheckResponse, error) {
-			return &openfgav1.CheckResponse{Allowed: false}, nil
-		}
+		mockBatchCheck := mockBatchCheckFunc(func(tupleKey *openfgav1.CheckRequestTupleKey) (bool, error) {
+			return false, nil
+		})
 
 		query := NewActionSearchQuery(
 			WithTypesystemResolver(mockTypesystemResolver),
-			WithCheckFunc(mockCheck),
+			WithBatchCheckFunc(mockBatchCheck),
 		)
 
 		req := &authzenv1.ActionSearchRequest{
@@ -105,7 +124,6 @@ func TestActionSearchQuery(t *testing.T) {
 	})
 
 	t.Run("pagination_initial_request", func(t *testing.T) {
-		// Create a type with many relations
 		mockTypesystemResolver := func(ctx context.Context, storeID, modelID string) (*typesystem.TypeSystem, error) {
 			model := testutils.MustTransformDSLToProtoWithID(`
 				model
@@ -124,14 +142,13 @@ func TestActionSearchQuery(t *testing.T) {
 			return ts, nil
 		}
 
-		// Allow all checks
-		mockCheck := func(ctx context.Context, req *openfgav1.CheckRequest) (*openfgav1.CheckResponse, error) {
-			return &openfgav1.CheckResponse{Allowed: true}, nil
-		}
+		mockBatchCheck := mockBatchCheckFunc(func(tupleKey *openfgav1.CheckRequestTupleKey) (bool, error) {
+			return true, nil
+		})
 
 		query := NewActionSearchQuery(
 			WithTypesystemResolver(mockTypesystemResolver),
-			WithCheckFunc(mockCheck),
+			WithBatchCheckFunc(mockBatchCheck),
 		)
 
 		limit := uint32(2)
@@ -148,7 +165,6 @@ func TestActionSearchQuery(t *testing.T) {
 		require.NotEmpty(t, resp.GetPage().GetNextToken())
 		require.Equal(t, uint32(2), resp.GetPage().GetCount())
 		require.Equal(t, uint32(5), resp.GetPage().GetTotal())
-		// Verify first page actions are sorted (action1, action2)
 		require.Equal(t, "action1", resp.GetActions()[0].GetName())
 		require.Equal(t, "action2", resp.GetActions()[1].GetName())
 	})
@@ -172,17 +188,16 @@ func TestActionSearchQuery(t *testing.T) {
 			return ts, nil
 		}
 
-		mockCheck := func(ctx context.Context, req *openfgav1.CheckRequest) (*openfgav1.CheckResponse, error) {
-			return &openfgav1.CheckResponse{Allowed: true}, nil
-		}
+		mockBatchCheck := mockBatchCheckFunc(func(tupleKey *openfgav1.CheckRequestTupleKey) (bool, error) {
+			return true, nil
+		})
 
 		query := NewActionSearchQuery(
 			WithTypesystemResolver(mockTypesystemResolver),
-			WithCheckFunc(mockCheck),
+			WithBatchCheckFunc(mockBatchCheck),
 		)
 
 		limit := uint32(2)
-		// First request
 		req := &authzenv1.ActionSearchRequest{
 			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
 			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
@@ -194,7 +209,6 @@ func TestActionSearchQuery(t *testing.T) {
 		require.NoError(t, err)
 		require.NotEmpty(t, resp.GetPage().GetNextToken())
 
-		// Continue with token
 		req.Page.Token = &resp.Page.NextToken
 		resp2, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
@@ -222,17 +236,16 @@ func TestActionSearchQuery(t *testing.T) {
 			return ts, nil
 		}
 
-		mockCheck := func(ctx context.Context, req *openfgav1.CheckRequest) (*openfgav1.CheckResponse, error) {
-			return &openfgav1.CheckResponse{Allowed: true}, nil
-		}
+		mockBatchCheck := mockBatchCheckFunc(func(tupleKey *openfgav1.CheckRequestTupleKey) (bool, error) {
+			return true, nil
+		})
 
 		query := NewActionSearchQuery(
 			WithTypesystemResolver(mockTypesystemResolver),
-			WithCheckFunc(mockCheck),
+			WithBatchCheckFunc(mockBatchCheck),
 		)
 
 		limit := uint32(2)
-		// First request - get 2 of 5
 		req := &authzenv1.ActionSearchRequest{
 			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
 			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
@@ -245,19 +258,17 @@ func TestActionSearchQuery(t *testing.T) {
 		require.Len(t, resp.GetActions(), 2)
 		require.NotEmpty(t, resp.GetPage().GetNextToken())
 
-		// Second request - get 2 more
 		req.Page.Token = &resp.Page.NextToken
 		resp2, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
 		require.Len(t, resp2.GetActions(), 2)
 		require.NotEmpty(t, resp2.GetPage().GetNextToken())
 
-		// Third request - get remaining 1
 		req.Page.Token = &resp2.Page.NextToken
 		resp3, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
 		require.Len(t, resp3.GetActions(), 1)
-		require.Empty(t, resp3.GetPage().GetNextToken()) // No more pages
+		require.Empty(t, resp3.GetPage().GetNextToken())
 		require.Equal(t, "action5", resp3.GetActions()[0].GetName())
 	})
 
@@ -276,13 +287,13 @@ func TestActionSearchQuery(t *testing.T) {
 			return ts, nil
 		}
 
-		mockCheck := func(ctx context.Context, req *openfgav1.CheckRequest) (*openfgav1.CheckResponse, error) {
-			return &openfgav1.CheckResponse{Allowed: true}, nil
-		}
+		mockBatchCheck := mockBatchCheckFunc(func(tupleKey *openfgav1.CheckRequestTupleKey) (bool, error) {
+			return true, nil
+		})
 
 		query := NewActionSearchQuery(
 			WithTypesystemResolver(mockTypesystemResolver),
-			WithCheckFunc(mockCheck),
+			WithBatchCheckFunc(mockBatchCheck),
 		)
 
 		invalidToken := "not-valid-base64-!@#"
@@ -313,16 +324,15 @@ func TestActionSearchQuery(t *testing.T) {
 			return ts, nil
 		}
 
-		mockCheck := func(ctx context.Context, req *openfgav1.CheckRequest) (*openfgav1.CheckResponse, error) {
-			return &openfgav1.CheckResponse{Allowed: true}, nil
-		}
+		mockBatchCheck := mockBatchCheckFunc(func(tupleKey *openfgav1.CheckRequestTupleKey) (bool, error) {
+			return true, nil
+		})
 
 		query := NewActionSearchQuery(
 			WithTypesystemResolver(mockTypesystemResolver),
-			WithCheckFunc(mockCheck),
+			WithBatchCheckFunc(mockBatchCheck),
 		)
 
-		// Valid base64 but invalid JSON
 		invalidToken := "bm90LXZhbGlkLWpzb24=" // "not-valid-json" in base64
 		req := &authzenv1.ActionSearchRequest{
 			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
@@ -351,22 +361,28 @@ func TestActionSearchQuery(t *testing.T) {
 			return ts, nil
 		}
 
-		var capturedReq *openfgav1.CheckRequest
-		mockCheck := func(ctx context.Context, req *openfgav1.CheckRequest) (*openfgav1.CheckResponse, error) {
+		var capturedReq *openfgav1.BatchCheckRequest
+		mockBatchCheck := func(ctx context.Context, req *openfgav1.BatchCheckRequest) (*openfgav1.BatchCheckResponse, error) {
 			capturedReq = req
-			return &openfgav1.CheckResponse{Allowed: true}, nil
+			results := make(map[string]*openfgav1.BatchCheckSingleResult)
+			for _, check := range req.GetChecks() {
+				results[check.GetCorrelationId()] = &openfgav1.BatchCheckSingleResult{
+					CheckResult: &openfgav1.BatchCheckSingleResult_Allowed{Allowed: true},
+				}
+			}
+			return &openfgav1.BatchCheckResponse{Result: results}, nil
 		}
 
 		query := NewActionSearchQuery(
 			WithTypesystemResolver(mockTypesystemResolver),
-			WithCheckFunc(mockCheck),
+			WithBatchCheckFunc(mockBatchCheck),
 		)
 
 		req := &authzenv1.ActionSearchRequest{
 			Subject: &authzenv1.Subject{
 				Type:       "user",
 				Id:         "alice",
-				Properties: testutils.MustNewStruct(t, map[string]interface{}{"role": "admin"}),
+				Properties: testutils.MustNewStruct(t, map[string]any{"role": "admin"}),
 			},
 			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
 			StoreId:  "01HVMMBCMGZNT3SED4CT2KA89Q",
@@ -374,8 +390,10 @@ func TestActionSearchQuery(t *testing.T) {
 
 		_, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.NotNil(t, capturedReq.GetContext())
-		require.Equal(t, "admin", capturedReq.GetContext().AsMap()["subject_role"])
+		require.NotNil(t, capturedReq)
+		require.Len(t, capturedReq.GetChecks(), 1)
+		require.NotNil(t, capturedReq.GetChecks()[0].GetContext())
+		require.Equal(t, "admin", capturedReq.GetChecks()[0].GetContext().AsMap()["subject_role"])
 	})
 
 	t.Run("properties_to_context_resource", func(t *testing.T) {
@@ -393,15 +411,21 @@ func TestActionSearchQuery(t *testing.T) {
 			return ts, nil
 		}
 
-		var capturedReq *openfgav1.CheckRequest
-		mockCheck := func(ctx context.Context, req *openfgav1.CheckRequest) (*openfgav1.CheckResponse, error) {
+		var capturedReq *openfgav1.BatchCheckRequest
+		mockBatchCheck := func(ctx context.Context, req *openfgav1.BatchCheckRequest) (*openfgav1.BatchCheckResponse, error) {
 			capturedReq = req
-			return &openfgav1.CheckResponse{Allowed: true}, nil
+			results := make(map[string]*openfgav1.BatchCheckSingleResult)
+			for _, check := range req.GetChecks() {
+				results[check.GetCorrelationId()] = &openfgav1.BatchCheckSingleResult{
+					CheckResult: &openfgav1.BatchCheckSingleResult_Allowed{Allowed: true},
+				}
+			}
+			return &openfgav1.BatchCheckResponse{Result: results}, nil
 		}
 
 		query := NewActionSearchQuery(
 			WithTypesystemResolver(mockTypesystemResolver),
-			WithCheckFunc(mockCheck),
+			WithBatchCheckFunc(mockBatchCheck),
 		)
 
 		req := &authzenv1.ActionSearchRequest{
@@ -409,15 +433,17 @@ func TestActionSearchQuery(t *testing.T) {
 			Resource: &authzenv1.Resource{
 				Type:       "document",
 				Id:         "doc1",
-				Properties: testutils.MustNewStruct(t, map[string]interface{}{"classification": "secret"}),
+				Properties: testutils.MustNewStruct(t, map[string]any{"classification": "secret"}),
 			},
 			StoreId: "01HVMMBCMGZNT3SED4CT2KA89Q",
 		}
 
 		_, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.NotNil(t, capturedReq.GetContext())
-		require.Equal(t, "secret", capturedReq.GetContext().AsMap()["resource_classification"])
+		require.NotNil(t, capturedReq)
+		require.Len(t, capturedReq.GetChecks(), 1)
+		require.NotNil(t, capturedReq.GetChecks()[0].GetContext())
+		require.Equal(t, "secret", capturedReq.GetChecks()[0].GetContext().AsMap()["resource_classification"])
 	})
 
 	t.Run("properties_to_context_combined", func(t *testing.T) {
@@ -435,35 +461,43 @@ func TestActionSearchQuery(t *testing.T) {
 			return ts, nil
 		}
 
-		var capturedReq *openfgav1.CheckRequest
-		mockCheck := func(ctx context.Context, req *openfgav1.CheckRequest) (*openfgav1.CheckResponse, error) {
+		var capturedReq *openfgav1.BatchCheckRequest
+		mockBatchCheck := func(ctx context.Context, req *openfgav1.BatchCheckRequest) (*openfgav1.BatchCheckResponse, error) {
 			capturedReq = req
-			return &openfgav1.CheckResponse{Allowed: true}, nil
+			results := make(map[string]*openfgav1.BatchCheckSingleResult)
+			for _, check := range req.GetChecks() {
+				results[check.GetCorrelationId()] = &openfgav1.BatchCheckSingleResult{
+					CheckResult: &openfgav1.BatchCheckSingleResult_Allowed{Allowed: true},
+				}
+			}
+			return &openfgav1.BatchCheckResponse{Result: results}, nil
 		}
 
 		query := NewActionSearchQuery(
 			WithTypesystemResolver(mockTypesystemResolver),
-			WithCheckFunc(mockCheck),
+			WithBatchCheckFunc(mockBatchCheck),
 		)
 
 		req := &authzenv1.ActionSearchRequest{
 			Subject: &authzenv1.Subject{
 				Type:       "user",
 				Id:         "alice",
-				Properties: testutils.MustNewStruct(t, map[string]interface{}{"department": "engineering"}),
+				Properties: testutils.MustNewStruct(t, map[string]any{"department": "engineering"}),
 			},
 			Resource: &authzenv1.Resource{
 				Type:       "document",
 				Id:         "doc1",
-				Properties: testutils.MustNewStruct(t, map[string]interface{}{"owner_dept": "engineering"}),
+				Properties: testutils.MustNewStruct(t, map[string]any{"owner_dept": "engineering"}),
 			},
 			StoreId: "01HVMMBCMGZNT3SED4CT2KA89Q",
 		}
 
 		_, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.NotNil(t, capturedReq.GetContext())
-		contextMap := capturedReq.GetContext().AsMap()
+		require.NotNil(t, capturedReq)
+		require.Len(t, capturedReq.GetChecks(), 1)
+		require.NotNil(t, capturedReq.GetChecks()[0].GetContext())
+		contextMap := capturedReq.GetChecks()[0].GetContext().AsMap()
 		require.Equal(t, "engineering", contextMap["subject_department"])
 		require.Equal(t, "engineering", contextMap["resource_owner_dept"])
 	})
@@ -473,13 +507,13 @@ func TestActionSearchQuery(t *testing.T) {
 			return nil, errors.New("failed to resolve typesystem")
 		}
 
-		mockCheck := func(ctx context.Context, req *openfgav1.CheckRequest) (*openfgav1.CheckResponse, error) {
-			return &openfgav1.CheckResponse{Allowed: true}, nil
-		}
+		mockBatchCheck := mockBatchCheckFunc(func(tupleKey *openfgav1.CheckRequestTupleKey) (bool, error) {
+			return true, nil
+		})
 
 		query := NewActionSearchQuery(
 			WithTypesystemResolver(mockTypesystemResolver),
-			WithCheckFunc(mockCheck),
+			WithBatchCheckFunc(mockBatchCheck),
 		)
 
 		req := &authzenv1.ActionSearchRequest{
@@ -508,13 +542,13 @@ func TestActionSearchQuery(t *testing.T) {
 			return ts, nil
 		}
 
-		mockCheck := func(ctx context.Context, req *openfgav1.CheckRequest) (*openfgav1.CheckResponse, error) {
-			return &openfgav1.CheckResponse{Allowed: true}, nil
-		}
+		mockBatchCheck := mockBatchCheckFunc(func(tupleKey *openfgav1.CheckRequestTupleKey) (bool, error) {
+			return true, nil
+		})
 
 		query := NewActionSearchQuery(
 			WithTypesystemResolver(mockTypesystemResolver),
-			WithCheckFunc(mockCheck),
+			WithBatchCheckFunc(mockBatchCheck),
 		)
 
 		req := &authzenv1.ActionSearchRequest{
@@ -545,17 +579,16 @@ func TestActionSearchQuery(t *testing.T) {
 			return ts, nil
 		}
 
-		// Error on "writer" relation, allow others
-		mockCheck := func(ctx context.Context, req *openfgav1.CheckRequest) (*openfgav1.CheckResponse, error) {
-			if req.GetTupleKey().GetRelation() == "writer" {
-				return nil, errors.New("check failed")
+		mockBatchCheck := mockBatchCheckFunc(func(tupleKey *openfgav1.CheckRequestTupleKey) (bool, error) {
+			if tupleKey.GetRelation() == "writer" {
+				return false, errors.New("check failed")
 			}
-			return &openfgav1.CheckResponse{Allowed: true}, nil
-		}
+			return true, nil
+		})
 
 		query := NewActionSearchQuery(
 			WithTypesystemResolver(mockTypesystemResolver),
-			WithCheckFunc(mockCheck),
+			WithBatchCheckFunc(mockBatchCheck),
 		)
 
 		req := &authzenv1.ActionSearchRequest{
@@ -566,7 +599,6 @@ func TestActionSearchQuery(t *testing.T) {
 
 		resp, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		// Should still get 2 results (reader and owner), skipping writer which errored
 		require.Len(t, resp.GetActions(), 2)
 
 		actionNames := make([]string, len(resp.GetActions()))
@@ -596,13 +628,13 @@ func TestActionSearchQuery(t *testing.T) {
 			return ts, nil
 		}
 
-		mockCheck := func(ctx context.Context, req *openfgav1.CheckRequest) (*openfgav1.CheckResponse, error) {
-			return &openfgav1.CheckResponse{Allowed: true}, nil
-		}
+		mockBatchCheck := mockBatchCheckFunc(func(tupleKey *openfgav1.CheckRequestTupleKey) (bool, error) {
+			return true, nil
+		})
 
 		query := NewActionSearchQuery(
 			WithTypesystemResolver(mockTypesystemResolver),
-			WithCheckFunc(mockCheck),
+			WithBatchCheckFunc(mockBatchCheck),
 		)
 
 		req := &authzenv1.ActionSearchRequest{
@@ -614,7 +646,6 @@ func TestActionSearchQuery(t *testing.T) {
 		resp, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
 		require.Len(t, resp.GetActions(), 4)
-		// Verify alphabetical order
 		require.Equal(t, "alpha", resp.GetActions()[0].GetName())
 		require.Equal(t, "bravo", resp.GetActions()[1].GetName())
 		require.Equal(t, "mike", resp.GetActions()[2].GetName())
@@ -639,15 +670,21 @@ func TestActionSearchQuery(t *testing.T) {
 			return ts, nil
 		}
 
-		var capturedCheckReq *openfgav1.CheckRequest
-		mockCheck := func(ctx context.Context, req *openfgav1.CheckRequest) (*openfgav1.CheckResponse, error) {
-			capturedCheckReq = req
-			return &openfgav1.CheckResponse{Allowed: true}, nil
+		var capturedBatchReq *openfgav1.BatchCheckRequest
+		mockBatchCheck := func(ctx context.Context, req *openfgav1.BatchCheckRequest) (*openfgav1.BatchCheckResponse, error) {
+			capturedBatchReq = req
+			results := make(map[string]*openfgav1.BatchCheckSingleResult)
+			for _, check := range req.GetChecks() {
+				results[check.GetCorrelationId()] = &openfgav1.BatchCheckSingleResult{
+					CheckResult: &openfgav1.BatchCheckSingleResult_Allowed{Allowed: true},
+				}
+			}
+			return &openfgav1.BatchCheckResponse{Result: results}, nil
 		}
 
 		query := NewActionSearchQuery(
 			WithTypesystemResolver(mockTypesystemResolver),
-			WithCheckFunc(mockCheck),
+			WithBatchCheckFunc(mockBatchCheck),
 		)
 
 		req := &authzenv1.ActionSearchRequest{
@@ -661,8 +698,8 @@ func TestActionSearchQuery(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, "01HVMMBCMGZNT3SED4CT2KA89Q", capturedStoreID)
 		require.Equal(t, "01HVMMBCMGZNT3SED4CT2KA90X", capturedModelID)
-		require.Equal(t, "01HVMMBCMGZNT3SED4CT2KA89Q", capturedCheckReq.GetStoreId())
-		require.Equal(t, "01HVMMBCMGZNT3SED4CT2KA90X", capturedCheckReq.GetAuthorizationModelId())
+		require.Equal(t, "01HVMMBCMGZNT3SED4CT2KA89Q", capturedBatchReq.GetStoreId())
+		require.Equal(t, "01HVMMBCMGZNT3SED4CT2KA90X", capturedBatchReq.GetAuthorizationModelId())
 	})
 
 	t.Run("check_request_parameters", func(t *testing.T) {
@@ -680,15 +717,21 @@ func TestActionSearchQuery(t *testing.T) {
 			return ts, nil
 		}
 
-		var capturedReq *openfgav1.CheckRequest
-		mockCheck := func(ctx context.Context, req *openfgav1.CheckRequest) (*openfgav1.CheckResponse, error) {
+		var capturedReq *openfgav1.BatchCheckRequest
+		mockBatchCheck := func(ctx context.Context, req *openfgav1.BatchCheckRequest) (*openfgav1.BatchCheckResponse, error) {
 			capturedReq = req
-			return &openfgav1.CheckResponse{Allowed: true}, nil
+			results := make(map[string]*openfgav1.BatchCheckSingleResult)
+			for _, check := range req.GetChecks() {
+				results[check.GetCorrelationId()] = &openfgav1.BatchCheckSingleResult{
+					CheckResult: &openfgav1.BatchCheckSingleResult_Allowed{Allowed: true},
+				}
+			}
+			return &openfgav1.BatchCheckResponse{Result: results}, nil
 		}
 
 		query := NewActionSearchQuery(
 			WithTypesystemResolver(mockTypesystemResolver),
-			WithCheckFunc(mockCheck),
+			WithBatchCheckFunc(mockBatchCheck),
 		)
 
 		req := &authzenv1.ActionSearchRequest{
@@ -700,44 +743,43 @@ func TestActionSearchQuery(t *testing.T) {
 		_, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
 
-		// Verify check request parameters
-		require.Equal(t, "user:alice", capturedReq.GetTupleKey().GetUser())
-		require.Equal(t, "document:doc1", capturedReq.GetTupleKey().GetObject())
-		require.Equal(t, "reader", capturedReq.GetTupleKey().GetRelation())
+		require.Len(t, capturedReq.GetChecks(), 1)
+		check := capturedReq.GetChecks()[0]
+		require.Equal(t, "user:alice", check.GetTupleKey().GetUser())
+		require.Equal(t, "document:doc1", check.GetTupleKey().GetObject())
+		require.Equal(t, "reader", check.GetTupleKey().GetRelation())
 	})
 
 	t.Run("large_number_of_relations", func(t *testing.T) {
-		// Generate DSL with many relations
-		dsl := `
+		var dslBuilder strings.Builder
+		dslBuilder.WriteString(`
 			model
 				schema 1.1
 			type user
 			type document
 				relations
-`
-		for i := 0; i < 20; i++ {
-			dsl += fmt.Sprintf("\t\t\t\t\tdefine relation%02d: [user]\n", i)
+`)
+		for i := range 20 {
+			fmt.Fprintf(&dslBuilder, "\t\t\t\t\tdefine relation%02d: [user]\n", i)
 		}
 
 		mockTypesystemResolver := func(ctx context.Context, storeID, modelID string) (*typesystem.TypeSystem, error) {
-			model := testutils.MustTransformDSLToProtoWithID(dsl)
+			model := testutils.MustTransformDSLToProtoWithID(dslBuilder.String())
 			ts, err := typesystem.New(model)
 			require.NoError(t, err)
 			return ts, nil
 		}
 
-		// Allow half the relations
-		mockCheck := func(ctx context.Context, req *openfgav1.CheckRequest) (*openfgav1.CheckResponse, error) {
-			// Allow even-numbered relations
-			relation := req.GetTupleKey().GetRelation()
+		mockBatchCheck := mockBatchCheckFunc(func(tupleKey *openfgav1.CheckRequestTupleKey) (bool, error) {
+			relation := tupleKey.GetRelation()
 			var num int
 			fmt.Sscanf(relation, "relation%02d", &num)
-			return &openfgav1.CheckResponse{Allowed: num%2 == 0}, nil
-		}
+			return num%2 == 0, nil
+		})
 
 		query := NewActionSearchQuery(
 			WithTypesystemResolver(mockTypesystemResolver),
-			WithCheckFunc(mockCheck),
+			WithBatchCheckFunc(mockBatchCheck),
 		)
 
 		req := &authzenv1.ActionSearchRequest{
@@ -748,6 +790,41 @@ func TestActionSearchQuery(t *testing.T) {
 
 		resp, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.Len(t, resp.GetActions(), 10) // Half of 20 relations
+		require.Len(t, resp.GetActions(), 10)
+	})
+
+	t.Run("batch_check_error_propagates", func(t *testing.T) {
+		mockTypesystemResolver := func(ctx context.Context, storeID, modelID string) (*typesystem.TypeSystem, error) {
+			model := testutils.MustTransformDSLToProtoWithID(`
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define reader: [user]
+			`)
+			ts, err := typesystem.New(model)
+			require.NoError(t, err)
+			return ts, nil
+		}
+
+		mockBatchCheck := func(ctx context.Context, req *openfgav1.BatchCheckRequest) (*openfgav1.BatchCheckResponse, error) {
+			return nil, errors.New("batch check failed")
+		}
+
+		query := NewActionSearchQuery(
+			WithTypesystemResolver(mockTypesystemResolver),
+			WithBatchCheckFunc(mockBatchCheck),
+		)
+
+		req := &authzenv1.ActionSearchRequest{
+			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
+			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
+			StoreId:  "01HVMMBCMGZNT3SED4CT2KA89Q",
+		}
+
+		_, err := query.Execute(context.Background(), req)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "batch check failed")
 	})
 }

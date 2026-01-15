@@ -7,7 +7,6 @@ import (
 	"google.golang.org/grpc/status"
 
 	authzenv1 "github.com/openfga/api/proto/authzen/v1"
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/pkg/middleware/validator"
 	"github.com/openfga/openfga/pkg/server/commands"
@@ -270,41 +269,6 @@ func (s *Server) ActionSearch(ctx context.Context, req *authzenv1.ActionSearchRe
 	// Get the resolved model ID
 	resolvedModelID := typesys.GetAuthorizationModelID()
 
-	// Build the check resolver for this request
-	builder := s.getCheckResolverBuilder(req.GetStoreId())
-	checkResolver, checkResolverCloser, err := builder.Build()
-	if err != nil {
-		return nil, err
-	}
-	defer checkResolverCloser()
-
-	// Create a check function that uses the resolved typesystem directly
-	// to avoid re-resolving and setting duplicate headers
-	checkFunc := func(ctx context.Context, checkReq *openfgav1.CheckRequest) (*openfgav1.CheckResponse, error) {
-		checkQuery := commands.NewCheckCommand(
-			s.datastore,
-			checkResolver,
-			typesys,
-			commands.WithCheckCommandLogger(s.logger),
-			commands.WithCheckCommandMaxConcurrentReads(s.maxConcurrentReadsForCheck),
-			commands.WithCheckCommandCache(s.sharedDatastoreResources, s.cacheSettings),
-		)
-
-		resp, _, err := checkQuery.Execute(ctx, &commands.CheckCommandParams{
-			StoreID:     checkReq.GetStoreId(),
-			TupleKey:    checkReq.GetTupleKey(),
-			Context:     checkReq.GetContext(),
-			Consistency: openfgav1.ConsistencyPreference_UNSPECIFIED,
-		})
-		if err != nil {
-			return nil, err
-		}
-
-		return &openfgav1.CheckResponse{
-			Allowed: resp.GetAllowed(),
-		}, nil
-	}
-
 	// Use a typesystem resolver that returns the already-resolved typesystem
 	// to avoid re-resolving it in the action search query
 	cachedTypesystemResolver := func(ctx context.Context, storeID, modelID string) (*typesystem.TypeSystem, error) {
@@ -316,7 +280,7 @@ func (s *Server) ActionSearch(ctx context.Context, req *authzenv1.ActionSearchRe
 
 	query := commands.NewActionSearchQuery(
 		commands.WithTypesystemResolver(cachedTypesystemResolver),
-		commands.WithCheckFunc(checkFunc),
+		commands.WithBatchCheckFunc(s.BatchCheck),
 	)
 
 	return query.Execute(ctx, req)
