@@ -4,13 +4,15 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
 
-const pipeBufferSize int = 100
-
-const messageCount uint64 = 1000
+const (
+	pipeBufferSize int    = 1 << 7
+	messageCount   uint64 = 1000
+)
 
 type item struct{}
 
@@ -34,8 +36,8 @@ func consume(p *Pipe[item], count *atomic.Uint64) {
 func BenchmarkMessaging(b *testing.B) {
 	b.Run("single_producer_single_consumer", func(b *testing.B) {
 		for b.Loop() {
-			var p Pipe[item]
-			p.Grow(pipeBufferSize)
+			p, err := New[item](pipeBufferSize)
+			require.NoError(b, err)
 
 			var count atomic.Uint64
 			var wg sync.WaitGroup
@@ -43,14 +45,14 @@ func BenchmarkMessaging(b *testing.B) {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				feed(&p)
+				feed(p)
 				p.Close()
 			}()
 
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				consume(&p, &count)
+				consume(p, &count)
 			}()
 
 			wg.Wait()
@@ -61,8 +63,8 @@ func BenchmarkMessaging(b *testing.B) {
 
 	b.Run("multiple_producer_single_consumer", func(b *testing.B) {
 		for b.Loop() {
-			var p Pipe[item]
-			p.Grow(pipeBufferSize)
+			p, err := New[item](pipeBufferSize)
+			require.NoError(b, err)
 
 			var count atomic.Uint64
 			var swg sync.WaitGroup
@@ -72,14 +74,14 @@ func BenchmarkMessaging(b *testing.B) {
 				swg.Add(1)
 				go func() {
 					defer swg.Done()
-					feed(&p)
+					feed(p)
 				}()
 			}
 
 			cwg.Add(1)
 			go func() {
 				defer cwg.Done()
-				consume(&p, &count)
+				consume(p, &count)
 			}()
 
 			swg.Wait()
@@ -92,8 +94,8 @@ func BenchmarkMessaging(b *testing.B) {
 
 	b.Run("single_producer_multiple_consumer", func(b *testing.B) {
 		for b.Loop() {
-			var p Pipe[item]
-			p.Grow(pipeBufferSize)
+			p, err := New[item](pipeBufferSize)
+			require.NoError(b, err)
 
 			var count atomic.Uint64
 			var swg sync.WaitGroup
@@ -102,14 +104,14 @@ func BenchmarkMessaging(b *testing.B) {
 			swg.Add(1)
 			go func() {
 				defer swg.Done()
-				feed(&p)
+				feed(p)
 			}()
 
 			for range 4 {
 				cwg.Add(1)
 				go func() {
 					defer cwg.Done()
-					consume(&p, &count)
+					consume(p, &count)
 				}()
 			}
 
@@ -123,8 +125,8 @@ func BenchmarkMessaging(b *testing.B) {
 
 	b.Run("multiple_producer_multiple_consumer", func(b *testing.B) {
 		for b.Loop() {
-			var p Pipe[item]
-			p.Grow(pipeBufferSize)
+			p, err := New[item](pipeBufferSize)
+			require.NoError(b, err)
 
 			var count atomic.Uint64
 			var swg sync.WaitGroup
@@ -134,7 +136,7 @@ func BenchmarkMessaging(b *testing.B) {
 				swg.Add(1)
 				go func() {
 					defer swg.Done()
-					feed(&p)
+					feed(p)
 				}()
 			}
 
@@ -142,7 +144,7 @@ func BenchmarkMessaging(b *testing.B) {
 				cwg.Add(1)
 				go func() {
 					defer cwg.Done()
-					consume(&p, &count)
+					consume(p, &count)
 				}()
 			}
 
@@ -156,81 +158,98 @@ func BenchmarkMessaging(b *testing.B) {
 }
 
 func TestMessaging(t *testing.T) {
-	t.Run("grow", func(t *testing.T) {
-		const shortBufferSize = 3
-
-		var tail int
-		var head int
-
-		var p Pipe[int]
-		p.Grow(shortBufferSize)
-
-		for range shortBufferSize {
-			ok := p.Send(head)
-			require.True(t, ok)
-			head++
+	t.Run("buffer_cycles", func(t *testing.T) {
+		tests := []struct {
+			name   string
+			size   int
+			parts  int
+			cycles int
+		}{
+			{
+				name:   "small",
+				size:   1 << 2,
+				parts:  1,
+				cycles: 10,
+			},
+			{
+				name:   "medium",
+				size:   1 << 10,
+				parts:  13,
+				cycles: 10,
+			},
+			{
+				name:   "large",
+				size:   1 << 20,
+				parts:  333,
+				cycles: 10,
+			},
 		}
 
-		for range shortBufferSize - 1 {
-			var v int
-			ok := p.Recv(&v)
-			require.True(t, ok)
-			require.Equal(t, tail, v)
-			tail++
+		for _, tc := range tests {
+			t.Run(tc.name, func(t *testing.T) {
+				expected := make([]int, tc.size)
+				for i := range tc.size {
+					expected[i] = i + 1
+				}
+
+				p, err := New[int](tc.size)
+				require.NoError(t, err)
+
+				for range tc.cycles {
+					var val int
+					var count int
+
+					actual := make([]int, 0, 10)
+
+					for i := range tc.size {
+						p.Send(i + 1)
+						count++
+
+						if count == tc.parts {
+							for range tc.parts {
+								ok := p.Recv(&val)
+								require.True(t, ok)
+
+								count--
+								actual = append(actual, val)
+							}
+						}
+					}
+
+					for range count {
+						ok := p.Recv(&val)
+						require.True(t, ok)
+
+						actual = append(actual, val)
+					}
+
+					require.Equal(t, expected, actual)
+				}
+
+				expected = make([]int, 0, tc.size)
+				for i := tc.size; i > 0; i-- {
+					p.Send(i)
+					expected = append(expected, i)
+				}
+
+				p.Close()
+
+				var val int
+
+				var actual []int
+
+				for ok := p.Recv(&val); ok; ok = p.Recv(&val) {
+					actual = append(actual, val)
+				}
+
+				require.Equal(t, expected, actual)
+			})
 		}
-
-		for range shortBufferSize - 1 {
-			ok := p.Send(head)
-			require.True(t, ok)
-			head++
-		}
-
-		p.Grow(shortBufferSize)
-
-		for range shortBufferSize {
-			var v int
-			ok := p.Recv(&v)
-			require.True(t, ok)
-			require.Equal(t, tail, v)
-			tail++
-		}
-
-		for range shortBufferSize * 2 {
-			ok := p.Send(head)
-			require.True(t, ok)
-			head++
-		}
-
-		for range shortBufferSize * 2 {
-			var v int
-			ok := p.Recv(&v)
-			require.True(t, ok)
-			require.Equal(t, tail, v)
-			tail++
-		}
-
-		ok := p.Send(head)
-		require.True(t, ok)
-		head++
-
-		p.Close()
-
-		var v2 int
-		ok = p.Recv(&v2)
-		require.True(t, ok)
-		require.Equal(t, tail, v2)
-
-		var v3 int
-		ok = p.Recv(&v3)
-		require.False(t, ok)
-
-		ok = p.Send(head)
-		require.False(t, ok)
 	})
 
 	t.Run("single_producer_single_consumer", func(t *testing.T) {
-		var p Pipe[item]
-		p.Grow(pipeBufferSize)
+		p, err := New[item](pipeBufferSize)
+		require.NoError(t, err)
 
 		var count atomic.Uint64
 		var wg sync.WaitGroup
@@ -238,14 +257,14 @@ func TestMessaging(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			feed(&p)
+			feed(p)
 			p.Close()
 		}()
 
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			consume(&p, &count)
+			consume(p, &count)
 		}()
 
 		wg.Wait()
@@ -254,8 +273,8 @@ func TestMessaging(t *testing.T) {
 	})
 
 	t.Run("multiple_producer_single_consumer", func(t *testing.T) {
-		var p Pipe[item]
-		p.Grow(pipeBufferSize)
+		p, err := New[item](pipeBufferSize)
+		require.NoError(t, err)
 
 		var count atomic.Uint64
 		var swg sync.WaitGroup
@@ -265,14 +284,14 @@ func TestMessaging(t *testing.T) {
 			swg.Add(1)
 			go func() {
 				defer swg.Done()
-				feed(&p)
+				feed(p)
 			}()
 		}
 
 		cwg.Add(1)
 		go func() {
 			defer cwg.Done()
-			consume(&p, &count)
+			consume(p, &count)
 		}()
 
 		swg.Wait()
@@ -283,8 +302,8 @@ func TestMessaging(t *testing.T) {
 	})
 
 	t.Run("single_producer_multiple_consumer", func(t *testing.T) {
-		var p Pipe[item]
-		p.Grow(pipeBufferSize)
+		p, err := New[item](pipeBufferSize)
+		require.NoError(t, err)
 
 		var count atomic.Uint64
 		var swg sync.WaitGroup
@@ -293,14 +312,14 @@ func TestMessaging(t *testing.T) {
 		swg.Add(1)
 		go func() {
 			defer swg.Done()
-			feed(&p)
+			feed(p)
 		}()
 
 		for range 4 {
 			cwg.Add(1)
 			go func() {
 				defer cwg.Done()
-				consume(&p, &count)
+				consume(p, &count)
 			}()
 		}
 
@@ -312,8 +331,8 @@ func TestMessaging(t *testing.T) {
 	})
 
 	t.Run("multiple_producer_multiple_consumer", func(t *testing.T) {
-		var p Pipe[item]
-		p.Grow(pipeBufferSize)
+		p, err := New[item](pipeBufferSize)
+		require.NoError(t, err)
 
 		var count atomic.Uint64
 		var swg sync.WaitGroup
@@ -323,7 +342,7 @@ func TestMessaging(t *testing.T) {
 			swg.Add(1)
 			go func() {
 				defer swg.Done()
-				feed(&p)
+				feed(p)
 			}()
 		}
 
@@ -331,7 +350,7 @@ func TestMessaging(t *testing.T) {
 			cwg.Add(1)
 			go func() {
 				defer cwg.Done()
-				consume(&p, &count)
+				consume(p, &count)
 			}()
 		}
 
@@ -340,5 +359,62 @@ func TestMessaging(t *testing.T) {
 		cwg.Wait()
 
 		require.Equal(t, messageCount*4, count.Load())
+	})
+
+	t.Run("dynamic_buffer_extension", func(t *testing.T) {
+		const initialBufferSize int = 1
+		const extendAfter time.Duration = time.Microsecond
+		const maxExtensions int = 3
+		const maxItems int = 1 << maxExtensions
+
+		p, err := New[item](initialBufferSize)
+		require.NoError(t, err)
+		defer p.Close()
+
+		p.SetExtensionConfig(extendAfter, maxExtensions)
+
+		for i := maxItems; i > 0; i-- {
+			p.Send(item{})
+		}
+		require.Equal(t, maxItems, p.Size())
+	})
+
+	t.Run("manual_buffer_extension", func(t *testing.T) {
+		const initialBufferSize int = 1
+		const maxExtensions int = 3
+		const maxItems int = 1 << maxExtensions
+
+		p, err := New[item](initialBufferSize)
+		require.NoError(t, err)
+		defer p.Close()
+
+		next := initialBufferSize
+
+		for i := range maxItems {
+			if i == next {
+				next <<= 1
+				err := p.Grow(next)
+				require.NoError(t, err)
+			}
+			p.Send(item{})
+		}
+		require.Equal(t, maxItems, p.Size())
+	})
+
+	t.Run("unbounded_buffer_extension", func(t *testing.T) {
+		const initialBufferSize int = 1
+		const extendAfter time.Duration = 0
+		const maxExtensions int = 10
+		const maxItems int = 1 << maxExtensions
+		p, err := New[item](initialBufferSize)
+		require.NoError(t, err)
+		defer p.Close()
+
+		p.SetExtensionConfig(extendAfter, -1) // unlimited extensions
+
+		for i := maxItems; i > 0; i-- {
+			p.Send(item{})
+		}
+		require.Equal(t, maxItems, p.Size())
 	})
 }

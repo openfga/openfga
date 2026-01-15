@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -17,6 +18,7 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	weightedGraph "github.com/openfga/language/pkg/go/graph"
 
+	"github.com/openfga/openfga/internal/bitutil"
 	"github.com/openfga/openfga/internal/checkutil"
 	"github.com/openfga/openfga/internal/containers"
 	"github.com/openfga/openfga/internal/pipe"
@@ -54,54 +56,95 @@ var (
 	nodeTypeSpecificTypeWildcard    = weightedGraph.SpecificTypeWildcard
 )
 
+const (
+	defaultBufferSize int = 1 << 7
+	defaultChunkSize  int = 100
+	defaultNumProcs   int = 3
+)
+
+var (
+	ErrInvalidBufferSize = errors.New("buffer size must be a power of two")
+	ErrInvalidChunkSize  = errors.New("chunk size must be greater than zero")
+	ErrInvalidNumProcs   = errors.New("process number must be greater than zero")
+)
+
 func handleIdentity(_ context.Context, _ *Edge, items []string) iter.Seq[Item] {
 	return seq.Transform(seq.Sequence(items...), strToItem)
 }
 
-func New(backend *Backend, options ...Option) *Pipeline {
-	p := &Pipeline{
-		backend:    backend,
-		bufferSize: 100,
-		chunkSize:  100,
-		numProcs:   3,
-	}
+type Option func(*Pipeline) error
 
-	for _, option := range options {
-		option(p)
-	}
-
-	p.bufferPool = newBufferPool(p.chunkSize)
-	return p
-}
-
+// WithBufferSize is a function that sets the value for a pipeline's workers' internal
+// pipe buffer size. The value must be a power of two. (e.g. 1, 2, 4, 8, 16, 32...)
+// The default value of the buffer size is 128. If an invalid value is provided as size
+// then the default value will be applied.
 func WithBufferSize(size int) Option {
-	if size < 1 {
-		size = 1
-	}
+	return func(p *Pipeline) error {
+		if !bitutil.PowerOfTwo(size) {
+			return ErrInvalidBufferSize
+		}
 
-	return func(p *Pipeline) {
 		p.bufferSize = size
+		return nil
 	}
 }
 
 func WithChunkSize(size int) Option {
-	if size < 1 {
-		size = 1
-	}
+	return func(p *Pipeline) error {
+		if size < 1 {
+			return ErrInvalidChunkSize
+		}
 
-	return func(p *Pipeline) {
 		p.chunkSize = size
+		return nil
 	}
 }
 
 func WithNumProcs(num int) Option {
-	if num < 1 {
-		num = 1
+	return func(p *Pipeline) error {
+		if num < 1 {
+			return ErrInvalidNumProcs
+		}
+
+		p.numProcs = num
+		return nil
+	}
+}
+
+// WithPipeExtension enables functionality to dynamically extend the size of pipes
+// between workers as needed up to a defined number of times. Each extension doubles
+// the size of a pipe's internal buffer. A pipe is only extended if a call to send on
+// the pipe blocks for longer than the extendAfter duration.
+//
+// This functionality is disabled by default. To enable, set extendAfter to a duration
+// greater than 0 and set maxExtensions to a value greater than 0, or to -1 to
+// make the number of extensions unbounded.
+func WithPipeExtension(extendAfter time.Duration, maxExtensions int) Option {
+	return func(p *Pipeline) error {
+		p.pipeExtendAfter = extendAfter
+		p.pipeMaxExtensions = maxExtensions
+		return nil
+	}
+}
+
+func New(backend *Backend, options ...Option) (*Pipeline, error) {
+	p := &Pipeline{
+		backend:           backend,
+		bufferSize:        defaultBufferSize,
+		chunkSize:         defaultChunkSize,
+		numProcs:          defaultNumProcs,
+		pipeExtendAfter:   pipe.DefaultExtendAfter,
+		pipeMaxExtensions: pipe.DefaultMaxExtensions,
 	}
 
-	return func(p *Pipeline) {
-		p.numProcs = num
+	for _, option := range options {
+		if err := option(p); err != nil {
+			return nil, err
+		}
 	}
+
+	p.bufferPool = newBufferPool(p.chunkSize)
+	return p, nil
 }
 
 type bufferPool struct {
@@ -109,16 +152,17 @@ type bufferPool struct {
 	pool sync.Pool
 }
 
-func (b *bufferPool) Get() []Item {
-	return b.pool.Get().([]Item)
+func (b *bufferPool) Get() *[]Item {
+	return b.pool.Get().(*[]Item)
 }
 
-func (b *bufferPool) Put(buffer []Item) {
-	b.pool.Put(buffer) //nolint:staticcheck,SA6002
+func (b *bufferPool) Put(buffer *[]Item) {
+	b.pool.Put(buffer)
 }
 
-func (b *bufferPool) create() interface{} {
-	return make([]Item, b.size)
+func (b *bufferPool) create() any {
+	tmp := make([]Item, b.size)
+	return &tmp
 }
 
 func newBufferPool(size int) *bufferPool {
@@ -319,10 +363,9 @@ func (b *Backend) query(ctx context.Context, input queryInput) iter.Seq[Item] {
 			var item Item
 
 			if err != nil {
-				if err == storage.ErrIteratorDone {
+				if storage.IterIsDoneOrCancelled(err) {
 					break
 				}
-
 				item.Err = err
 
 				yield(item)
@@ -390,6 +433,11 @@ func (r *baseResolver) process(ctx context.Context, snd Sender[*Edge, *Message],
 	var msg *Message
 
 	for snd.Recv(&msg) {
+		if ctx.Err() != nil {
+			msg.Done()
+			continue
+		}
+
 		errs := make([]Item, 0, len(msg.Value))
 		unseen := make([]string, 0, len(msg.Value))
 
@@ -438,7 +486,7 @@ func (r *baseResolver) process(ctx context.Context, snd Sender[*Edge, *Message],
 		reader := seq.NewSeqReader(results)
 
 		for {
-			count := reader.Read(buffer)
+			count := reader.Read(*buffer)
 
 			if count == 0 {
 				// No more values to read from the iter.Seq.
@@ -450,13 +498,13 @@ func (r *baseResolver) process(ctx context.Context, snd Sender[*Edge, *Message],
 				values := r.bufferPool.Get()
 				// This copy is done so that the content of the message buffer is
 				// not altered when the read buffer has new values written to it.
-				copy(values, buffer[:count])
+				copy(*values, (*buffer)[:count])
 
 				// Increment the resolver's tracker to account for the new message.
 				r.tracker.Inc()
 				m := Message{
 					// Only slice the values in the read buffer up to what was actually read.
-					Value: values[:count],
+					Value: (*values)[:count],
 					ReceiptFunc: func() {
 						// Decrement the resolver's tracker because the message is no longer
 						// in-flight.
@@ -574,6 +622,17 @@ func (r *baseResolver) Resolve(ctx context.Context, senders []Sender[*Edge, *Mes
 
 type edgeHandler func(context.Context, *Edge, []string) iter.Seq[Item]
 
+// txBag is a type that implements the interface pipe.Tx[T]
+// for the type containers.Bag[T].
+type txBag[T any] containers.Bag[T]
+
+// Send implements the pipe.Tx[T] interface.
+func (tx *txBag[T]) Send(t T) bool {
+	bag := (*containers.Bag[T])(tx)
+	bag.Add(t)
+	return true
+}
+
 // exclusionResolver is a struct that resolves senders to an exclusion operation.
 type exclusionResolver struct {
 	interpreter interpreter
@@ -588,7 +647,7 @@ type exclusionResolver struct {
 // for later use by the Resolve function. As soon as a message is received from the sender, its values are swapped
 // to a buffer that is local to the current iteration, and the message resources are released immediately.
 // Messages are not sent to the listeners at this point.
-func (r *exclusionResolver) process(ctx context.Context, snd Sender[*Edge, *Message], items *containers.Bag[Item], cleanup *containers.Bag[func()]) {
+func (r *exclusionResolver) process(ctx context.Context, snd Sender[*Edge, *Message], items pipe.Tx[Item], cleanup *containers.Bag[func()]) {
 	edge := snd.Key()
 
 	edgeTo := "nil"
@@ -607,12 +666,16 @@ func (r *exclusionResolver) process(ctx context.Context, snd Sender[*Edge, *Mess
 	var msg *Message
 
 	for snd.Recv(&msg) {
+		if ctx.Err() != nil {
+			msg.Done()
+			continue
+		}
 		// Increment the tracker to account for an in-flight message.
 		r.tracker.Inc()
 		values := r.bufferPool.Get()
 		// Copy values from message to local buffer so that the message
 		// can release its buffer back to the pool.
-		copy(values, msg.Value)
+		copy(*values, msg.Value)
 		size := len(msg.Value)
 
 		// Release message resources.
@@ -628,9 +691,9 @@ func (r *exclusionResolver) process(ctx context.Context, snd Sender[*Edge, *Mess
 
 		// Only take the number of values that existed in the original
 		// message. Reading beyond that will corrupt pipeline state.
-		for _, item := range values[:size] {
+		for _, item := range (*values)[:size] {
 			if item.Err != nil {
-				items.Add(item)
+				items.Send(item)
 				continue
 			}
 			unseen = append(unseen, item.Value)
@@ -642,7 +705,7 @@ func (r *exclusionResolver) process(ctx context.Context, snd Sender[*Edge, *Mess
 		results := r.interpreter.Interpret(ctx, edge, unseen)
 
 		for item := range results {
-			items.Add(item)
+			items.Send(item)
 		}
 
 		// Save the tracker decrementation for later execution in the Resolve
@@ -663,30 +726,38 @@ func (r *exclusionResolver) Resolve(ctx context.Context, senders []Sender[*Edge,
 	if len(senders) != 2 {
 		panic("exclusion resolver requires two senders")
 	}
-	var wg sync.WaitGroup
 
-	var included containers.Bag[Item]
 	var excluded containers.Bag[Item]
 
 	var cleanup containers.Bag[func()]
 
+	var wgExclude sync.WaitGroup
+
+	pipeInclude := pipe.Must[Item](1 << 7) // create a pipe with an initial capacity of 128
+	pipeInclude.SetExtensionConfig(0, -1)  // allow pipe to grow to an unbounded capacity with no wait
+
+	var counter atomic.Int32
+	counter.Store(int32(r.numProcs))
 	for range r.numProcs {
-		wg.Add(1)
 		go func() {
-			defer wg.Done()
-			r.process(ctx, senders[0], &included, &cleanup)
+			defer func() {
+				if counter.Add(-1) < 1 {
+					_ = pipeInclude.Close()
+				}
+			}()
+			r.process(ctx, senders[0], pipeInclude, &cleanup)
 		}()
 	}
 
 	for range r.numProcs {
-		wg.Add(1)
+		wgExclude.Add(1)
 		go func() {
-			defer wg.Done()
-			r.process(ctx, senders[1], &excluded, &cleanup)
+			defer wgExclude.Done()
+			r.process(ctx, senders[1], (*txBag[Item])(&excluded), &cleanup)
 		}()
 	}
 
-	wg.Wait()
+	wgExclude.Wait()
 
 	var errs []Item
 
@@ -700,7 +771,7 @@ func (r *exclusionResolver) Resolve(ctx context.Context, senders []Sender[*Edge,
 		exclusions[item.Value] = struct{}{}
 	}
 
-	results := seq.Filter(included.Seq(), func(item Item) bool {
+	results := seq.Filter(pipeInclude.Seq(), func(item Item) bool {
 		if item.Err != nil {
 			return true
 		}
@@ -717,7 +788,7 @@ func (r *exclusionResolver) Resolve(ctx context.Context, senders []Sender[*Edge,
 	reader := seq.NewSeqReader(results)
 
 	for {
-		count := reader.Read(buffer)
+		count := reader.Read(*buffer)
 
 		if count == 0 {
 			break
@@ -725,11 +796,11 @@ func (r *exclusionResolver) Resolve(ctx context.Context, senders []Sender[*Edge,
 
 		for i := range len(listeners) {
 			values := r.bufferPool.Get()
-			copy(values, buffer[:count])
+			copy(*values, (*buffer)[:count])
 
 			r.tracker.Inc()
 			m := Message{
-				Value: values[:count],
+				Value: (*values)[:count],
 				ReceiptFunc: func() {
 					r.tracker.Dec()
 					r.bufferPool.Put(values)
@@ -796,9 +867,13 @@ func (r *intersectionResolver) process(ctx context.Context, snd Sender[*Edge, *M
 	var msg *Message
 
 	for snd.Recv(&msg) {
+		if ctx.Err() != nil {
+			msg.Done()
+			continue
+		}
 		r.tracker.Add(1)
 		values := r.bufferPool.Get()
-		copy(values, msg.Value)
+		copy(*values, msg.Value)
 		size := len(msg.Value)
 		msg.Done()
 
@@ -811,7 +886,7 @@ func (r *intersectionResolver) process(ctx context.Context, snd Sender[*Edge, *M
 
 		ctx, span := pipelineTracer.Start(ctx, "message.received", trace.WithAttributes(messageAttrs...))
 
-		for _, item := range values[:size] {
+		for _, item := range (*values)[:size] {
 			if item.Err != nil {
 				items.Add(item)
 				continue
@@ -891,7 +966,7 @@ func (r *intersectionResolver) Resolve(ctx context.Context, senders []Sender[*Ed
 	reader := seq.NewSeqReader(results)
 
 	for {
-		count := reader.Read(buffer)
+		count := reader.Read(*buffer)
 
 		if count == 0 {
 			break
@@ -899,11 +974,11 @@ func (r *intersectionResolver) Resolve(ctx context.Context, senders []Sender[*Ed
 
 		for i := range len(listeners) {
 			values := r.bufferPool.Get()
-			copy(values, buffer[:count])
+			copy(*values, (*buffer)[:count])
 
 			r.tracker.Inc()
 			m := Message{
-				Value: values[:count],
+				Value: (*values)[:count],
 				ReceiptFunc: func() {
 					r.tracker.Dec()
 					r.bufferPool.Put(values)
@@ -984,13 +1059,13 @@ type Pipeline struct {
 	// such as a database or a graph.
 	backend *Backend
 
-	// bufferSize is a value that indicates the maximum size of the
-	// message buffer that exists between each worker and its subscribers.
-	// When a buffer becomes full, send operations on that subscription
-	// will block until messages are removed from the buffer or the
-	// subscription is closed.
+	// bufferSize is a value that indicates the size of the message buffer
+	// that exists between each worker and its subscribers. When a buffer
+	// becomes full, send operations on that subscription will block until
+	// messages are removed from the buffer or the subscription is closed.
 	//
-	// The default value is 100. This value can be changed by constructing
+	// This value must be a valid power of two. (e.g. 1, 2, 4, 8, 16, 32...)
+	// The default value is 128. This value can be changed by constructing
 	// a pipeline using NewPipeline and providing the option WithBufferSize.
 	bufferSize int
 
@@ -1014,6 +1089,12 @@ type Pipeline struct {
 	// The default value is 3. This value can be changed by constructing
 	// a pipeline using NewPipeline and providing the option WithNumProcs.
 	numProcs int
+
+	// pipeExtendAfter is the duration before extending full pipe buffers
+	pipeExtendAfter time.Duration
+
+	// pipeMaxExtensions is the max number of times pipe buffers can extend
+	pipeMaxExtensions int
 }
 
 type pipelineWorker = Worker[*Edge, *Message, *Message]
@@ -1049,6 +1130,9 @@ func (pl *Pipeline) Build(ctx context.Context, source Source, target Target) ite
 		defer span.End()
 
 		if ctx.Err() != nil {
+			// Exit early if the context was already canceled.
+			// No goroutines have been created up to this point
+			// so no cleanup is necessary.
 			return
 		}
 
@@ -1070,22 +1154,35 @@ func (pl *Pipeline) Build(ctx context.Context, source Source, target Target) ite
 		go func() {
 			defer wg.Done()
 			<-ctx.Done()
-			// wait for all workers to finish
+			// Wait for all workers to finish.
 			for _, w := range workers {
 				w.Wait()
 			}
 		}()
 
+		var abandoned bool
+
 		for msg := range results.Seq() {
 			if ctx.Err() == nil {
 				for _, item := range msg.Value {
 					if !yield(item) {
+						// The caller has ended sequence iteration early.
+						// Cancel the context so that the pipeline begins
+						// its shutdown process.
+						abandoned = true
 						cancel()
 						break
 					}
 				}
 			}
 			msg.Done()
+		}
+
+		if !abandoned && ctx.Err() != nil {
+			// Context was canceled so there is no guarantee that all
+			// objects have been returned. An error must be signaled
+			// here to indicate the possibility of a partial result.
+			yield(Item{Err: ctx.Err()})
 		}
 	}
 }
@@ -1107,8 +1204,6 @@ func (pl *Pipeline) Target(name, identifier string) (Target, bool) {
 		id:   identifier,
 	}, ok
 }
-
-type Option func(*Pipeline)
 
 type path struct {
 	source     *Node
@@ -1132,6 +1227,8 @@ func (pl *Pipeline) resolve(p path, workers workerPool) *pipelineWorker {
 
 	var w pipelineWorker
 	w.bufferSize = pl.bufferSize
+	w.pipeExtendAfter = pl.pipeExtendAfter
+	w.pipeMaxExtensions = pl.pipeMaxExtensions
 
 	reporter := p.statusPool.Register()
 	reporter.Report(true)
@@ -1331,13 +1428,19 @@ func (t *Target) Object() string {
 }
 
 type Worker[K any, T any, U any] struct {
-	senders    []Sender[K, T]
-	listeners  []Listener[K, U]
-	Resolver   Resolver[K, T, U]
-	finite     func()
-	init       sync.Once
-	wg         sync.WaitGroup
+	senders   []Sender[K, T]
+	listeners []Listener[K, U]
+	Resolver  Resolver[K, T, U]
+	finite    func()
+	init      sync.Once
+	wg        sync.WaitGroup
+
+	// bufferSize is the value that will be set for the worker's internal pipe buffer.
+	// The value must be a power of two; any other value will cause a panic.
 	bufferSize int
+
+	pipeExtendAfter   time.Duration
+	pipeMaxExtensions int
 }
 
 func (w *Worker[K, T, U]) Close() {
@@ -1355,9 +1458,7 @@ func (w *Worker[K, T, U]) initialize(ctx context.Context) {
 	ctx, cancel := context.WithCancel(ctx)
 
 	w.finite = sync.OnceFunc(func() {
-		defer span.End()
 		cancel()
-
 		for _, lst := range w.listeners {
 			lst.Close()
 		}
@@ -1365,6 +1466,7 @@ func (w *Worker[K, T, U]) initialize(ctx context.Context) {
 
 	w.wg.Add(1)
 	go func() {
+		defer span.End()
 		defer w.wg.Done()
 		defer w.Close()
 		w.Resolver.Resolve(ctx, w.senders, w.listeners)
@@ -1385,17 +1487,21 @@ func (w *Worker[K, T, U]) Start(ctx context.Context) {
 }
 
 func (w *Worker[K, T, U]) Subscribe(key K) Sender[K, U] {
-	var p pipe.Pipe[U]
-	p.Grow(w.bufferSize)
+	p := pipe.Must[U](w.bufferSize)
+
+	// Configure extension behavior if set on pipeline
+	if w.pipeExtendAfter > 0 {
+		p.SetExtensionConfig(w.pipeExtendAfter, w.pipeMaxExtensions)
+	}
 
 	w.listeners = append(w.listeners, &listener[K, U]{
 		key,
-		&p,
+		p,
 	})
 
 	return &sender[K, U]{
 		key,
-		&p,
+		p,
 	}
 }
 
