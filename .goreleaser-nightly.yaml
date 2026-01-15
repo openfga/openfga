@@ -21,6 +21,7 @@ builds:
       - "-X github.com/openfga/openfga/internal/build.Commit={{.Commit}}"
       - "-X github.com/openfga/openfga/internal/build.Date={{.CommitDate}}"
       - "-X github.com/openfga/openfga/internal/build.ProjectName={{.ProjectName}}"
+    mod_timestamp: "{{.CommitTimestamp}}"
 
 # Do not make github release
 release:
