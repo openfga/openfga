@@ -88,7 +88,7 @@ func TestMergePropertiesToContext(t *testing.T) {
 
 		resultMap := result.AsMap()
 		require.Equal(t, true, resultMap["action_requires_approval"])
-		require.Equal(t, float64(1000), resultMap["action_max_size"])
+		require.InDelta(t, float64(1000), resultMap["action_max_size"], 0.001)
 	})
 
 	t.Run("request_context_takes_precedence", func(t *testing.T) {

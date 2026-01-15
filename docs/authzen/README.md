@@ -633,12 +633,3 @@ yarn test http://localhost:8080/stores/01JG9JGS4W0950VN17G8NNAH3C
 ```
 dist/openfga run --http-addr 0.0.0.0:4000        
 ```
-
-## TODO
-
-Next steps:
-
-- Add a lot of unit tests for [evaluate](/pkg/server/commands/evaluate_test.go) and [evaluates](/pkg/server/commands/batch_evaluate_test.go). 
-  - Verify if we return the right error codes.
-- Consider mapping additional attributes that can be specified in AuthZEN calls to either `context` values or contextual tuples.
-- Add experimental flag
