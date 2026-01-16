@@ -36,9 +36,7 @@ var defaultRecursivePlan = &planner.PlanConfig{
 	InitialGuess: 500 * time.Millisecond, // Higher initial guess for recursive checks
 	// Low Lambda: Represents zero confidence. It's a pure guess.
 	Lambda: 1,
-	// With α = 0.5 ≤ 1, it means maximum uncertainty about variance; with λ = 1, we also have weak confidence in the mean.
-	// These values will encourage strong exploration of other strategies. Having these values for the default strategy helps to enforce the usage of the "faster" strategies,
-	// helping out with the cold start when we don't have enough data.
+
 	Alpha: 3,
 	Beta:  2,
 }
