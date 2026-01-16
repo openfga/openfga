@@ -1,0 +1,502 @@
+# AuthZEN Search Interop Scenario - HTTP Examples
+#
+# This file contains example API calls for the AuthZEN Search interop scenario.
+# Use with VS Code REST Client extension.
+#
+# Users:
+#   - alice: manager, Sales (owns: 101, 107, 113, 119)
+#   - bob: employee, Legal (owns: 102, 108, 114, 120)
+#   - carol: contractor, Legal (owns: 103, 109, 115)
+#   - dan: manager, Finance (owns: 104, 110, 116)
+#   - erin: employee, Finance (owns: 105, 111, 117)
+#   - felix: contractor, Accounting (owns: 106, 112, 118)
+#
+# Records: 20 Shakespeare plays (IDs 101-120) across departments
+#
+# Reference: https://authzen-interop.net/docs/scenarios/search/
+
+@fga_api_url = http://localhost:8080
+@fga_store_id = YOUR_STORE_ID_HERE
+
+# =============================================================================
+# EVALUATION EXAMPLES
+# =============================================================================
+
+### Evaluation: Can alice view record 101? (Expected: true - she's the owner)
+POST {{fga_api_url}}/stores/{{fga_store_id}}/access/v1/evaluation
+Content-Type: application/json
+
+{
+  "subject": {
+    "type": "user",
+    "id": "alice"
+  },
+  "action": {
+    "name": "view"
+  },
+  "resource": {
+    "type": "record",
+    "id": "101"
+  }
+}
+
+### Evaluation: Can bob edit record 101? (Expected: false - alice owns it)
+POST {{fga_api_url}}/stores/{{fga_store_id}}/access/v1/evaluation
+Content-Type: application/json
+
+{
+  "subject": {
+    "type": "user",
+    "id": "bob"
+  },
+  "action": {
+    "name": "edit"
+  },
+  "resource": {
+    "type": "record",
+    "id": "101"
+  }
+}
+
+### Evaluation: Can dan view record 107? (Expected: true - dan is a manager)
+POST {{fga_api_url}}/stores/{{fga_store_id}}/access/v1/evaluation
+Content-Type: application/json
+
+{
+  "subject": {
+    "type": "user",
+    "id": "dan"
+  },
+  "action": {
+    "name": "view"
+  },
+  "resource": {
+    "type": "record",
+    "id": "107"
+  }
+}
+
+### Evaluation: Can alice edit record 110? (Expected: true - Sales manager)
+POST {{fga_api_url}}/stores/{{fga_store_id}}/access/v1/evaluation
+Content-Type: application/json
+
+{
+  "subject": {
+    "type": "user",
+    "id": "alice"
+  },
+  "action": {
+    "name": "edit"
+  },
+  "resource": {
+    "type": "record",
+    "id": "110"
+  }
+}
+
+# =============================================================================
+# SUBJECT SEARCH EXAMPLES
+# "Who can [action] [resource]?"
+# =============================================================================
+
+### Subject Search: Who can view record 101?
+# Expected: alice (manager+owner), bob (Legal member), carol (Legal member), dan (manager)
+POST {{fga_api_url}}/stores/{{fga_store_id}}/access/v1/search/subject
+Content-Type: application/json
+
+{
+  "subject": {
+    "type": "user"
+  },
+  "resource": {
+    "type": "record",
+    "id": "101"
+  },
+  "action": {
+    "name": "view"
+  }
+}
+
+### Subject Search: Who can edit record 101?
+# Expected: alice (owner only)
+POST {{fga_api_url}}/stores/{{fga_store_id}}/access/v1/search/subject
+Content-Type: application/json
+
+{
+  "subject": {
+    "type": "user"
+  },
+  "resource": {
+    "type": "record",
+    "id": "101"
+  },
+  "action": {
+    "name": "edit"
+  }
+}
+
+### Subject Search: Who can delete record 101?
+# Expected: alice (owner only)
+POST {{fga_api_url}}/stores/{{fga_store_id}}/access/v1/search/subject
+Content-Type: application/json
+
+{
+  "subject": {
+    "type": "user"
+  },
+  "resource": {
+    "type": "record",
+    "id": "101"
+  },
+  "action": {
+    "name": "delete"
+  }
+}
+
+### Subject Search: Who can view record 107 (Sales department)?
+# Expected: alice (manager+owner), dan (manager)
+POST {{fga_api_url}}/stores/{{fga_store_id}}/access/v1/search/subject
+Content-Type: application/json
+
+{
+  "subject": {
+    "type": "user"
+  },
+  "resource": {
+    "type": "record",
+    "id": "107"
+  },
+  "action": {
+    "name": "view"
+  }
+}
+
+### Subject Search: Who can view record 115 (Finance department)?
+# Expected: alice (manager), dan (manager+Finance member), erin (Finance member), carol (owner)
+POST {{fga_api_url}}/stores/{{fga_store_id}}/access/v1/search/subject
+Content-Type: application/json
+
+{
+  "subject": {
+    "type": "user"
+  },
+  "resource": {
+    "type": "record",
+    "id": "115"
+  },
+  "action": {
+    "name": "view"
+  }
+}
+
+# =============================================================================
+# RESOURCE SEARCH EXAMPLES
+# "Which records can [subject] [action]?"
+# =============================================================================
+
+### Resource Search: Which records can alice view?
+# Expected: All 20 records (alice is a manager)
+POST {{fga_api_url}}/stores/{{fga_store_id}}/access/v1/search/resource
+Content-Type: application/json
+
+{
+  "subject": {
+    "type": "user",
+    "id": "alice"
+  },
+  "action": {
+    "name": "view"
+  },
+  "resource": {
+    "type": "record"
+  }
+}
+
+### Resource Search: Which records can alice edit?
+# Expected: 101, 107, 110, 113, 119 (owned + Sales department)
+POST {{fga_api_url}}/stores/{{fga_store_id}}/access/v1/search/resource
+Content-Type: application/json
+
+{
+  "subject": {
+    "type": "user",
+    "id": "alice"
+  },
+  "action": {
+    "name": "edit"
+  },
+  "resource": {
+    "type": "record"
+  }
+}
+
+### Resource Search: Which records can alice delete?
+# Expected: 101, 107, 113, 119 (owned records only)
+POST {{fga_api_url}}/stores/{{fga_store_id}}/access/v1/search/resource
+Content-Type: application/json
+
+{
+  "subject": {
+    "type": "user",
+    "id": "alice"
+  },
+  "action": {
+    "name": "delete"
+  },
+  "resource": {
+    "type": "record"
+  }
+}
+
+### Resource Search: Which records can bob view?
+# Expected: Legal records (101-103, 105, 108, 112, 116-117, 119) + owned (114, 120)
+POST {{fga_api_url}}/stores/{{fga_store_id}}/access/v1/search/resource
+Content-Type: application/json
+
+{
+  "subject": {
+    "type": "user",
+    "id": "bob"
+  },
+  "action": {
+    "name": "view"
+  },
+  "resource": {
+    "type": "record"
+  }
+}
+
+### Resource Search: Which records can bob edit?
+# Expected: 102, 108, 114, 120 (owned records only)
+POST {{fga_api_url}}/stores/{{fga_store_id}}/access/v1/search/resource
+Content-Type: application/json
+
+{
+  "subject": {
+    "type": "user",
+    "id": "bob"
+  },
+  "action": {
+    "name": "edit"
+  },
+  "resource": {
+    "type": "record"
+  }
+}
+
+### Resource Search: Which records can felix view?
+# Expected: Accounting records (104, 106, 109, 111, 114, 118, 120) + owned (112)
+POST {{fga_api_url}}/stores/{{fga_store_id}}/access/v1/search/resource
+Content-Type: application/json
+
+{
+  "subject": {
+    "type": "user",
+    "id": "felix"
+  },
+  "action": {
+    "name": "view"
+  },
+  "resource": {
+    "type": "record"
+  }
+}
+
+### Resource Search: Which records can dan view?
+# Expected: All 20 records (dan is a manager)
+POST {{fga_api_url}}/stores/{{fga_store_id}}/access/v1/search/resource
+Content-Type: application/json
+
+{
+  "subject": {
+    "type": "user",
+    "id": "dan"
+  },
+  "action": {
+    "name": "view"
+  },
+  "resource": {
+    "type": "record"
+  }
+}
+
+### Resource Search: Which records can dan edit?
+# Expected: 104, 110, 115, 116 (owned + Finance department)
+POST {{fga_api_url}}/stores/{{fga_store_id}}/access/v1/search/resource
+Content-Type: application/json
+
+{
+  "subject": {
+    "type": "user",
+    "id": "dan"
+  },
+  "action": {
+    "name": "edit"
+  },
+  "resource": {
+    "type": "record"
+  }
+}
+
+# =============================================================================
+# ACTION SEARCH EXAMPLES
+# "What actions can [subject] perform on [resource]?"
+# =============================================================================
+
+### Action Search: What can alice do with record 101?
+# Expected: view, edit, delete (alice owns this record)
+POST {{fga_api_url}}/stores/{{fga_store_id}}/access/v1/search/action
+Content-Type: application/json
+
+{
+  "subject": {
+    "type": "user",
+    "id": "alice"
+  },
+  "resource": {
+    "type": "record",
+    "id": "101"
+  }
+}
+
+### Action Search: What can alice do with record 102?
+# Expected: view only (alice is a manager but doesn't own it)
+POST {{fga_api_url}}/stores/{{fga_store_id}}/access/v1/search/action
+Content-Type: application/json
+
+{
+  "subject": {
+    "type": "user",
+    "id": "alice"
+  },
+  "resource": {
+    "type": "record",
+    "id": "102"
+  }
+}
+
+### Action Search: What can alice do with record 110?
+# Expected: view, edit (alice is Sales manager, dan owns it)
+POST {{fga_api_url}}/stores/{{fga_store_id}}/access/v1/search/action
+Content-Type: application/json
+
+{
+  "subject": {
+    "type": "user",
+    "id": "alice"
+  },
+  "resource": {
+    "type": "record",
+    "id": "110"
+  }
+}
+
+### Action Search: What can bob do with record 101?
+# Expected: view only (bob is Legal department member)
+POST {{fga_api_url}}/stores/{{fga_store_id}}/access/v1/search/action
+Content-Type: application/json
+
+{
+  "subject": {
+    "type": "user",
+    "id": "bob"
+  },
+  "resource": {
+    "type": "record",
+    "id": "101"
+  }
+}
+
+### Action Search: What can bob do with record 102?
+# Expected: view, edit, delete (bob owns this record)
+POST {{fga_api_url}}/stores/{{fga_store_id}}/access/v1/search/action
+Content-Type: application/json
+
+{
+  "subject": {
+    "type": "user",
+    "id": "bob"
+  },
+  "resource": {
+    "type": "record",
+    "id": "102"
+  }
+}
+
+### Action Search: What can felix do with record 107?
+# Expected: empty (felix is Accounting, record is Sales)
+POST {{fga_api_url}}/stores/{{fga_store_id}}/access/v1/search/action
+Content-Type: application/json
+
+{
+  "subject": {
+    "type": "user",
+    "id": "felix"
+  },
+  "resource": {
+    "type": "record",
+    "id": "107"
+  }
+}
+
+### Action Search: What can dan do with record 115?
+# Expected: view, edit (dan is Finance manager, carol owns it)
+POST {{fga_api_url}}/stores/{{fga_store_id}}/access/v1/search/action
+Content-Type: application/json
+
+{
+  "subject": {
+    "type": "user",
+    "id": "dan"
+  },
+  "resource": {
+    "type": "record",
+    "id": "115"
+  }
+}
+
+# =============================================================================
+# BATCH EVALUATIONS EXAMPLE
+# =============================================================================
+
+### Batch Evaluations: Check multiple permissions at once
+POST {{fga_api_url}}/stores/{{fga_store_id}}/access/v1/evaluations
+Content-Type: application/json
+
+{
+  "evaluations": [
+    {
+      "subject": { "type": "user", "id": "alice" },
+      "action": { "name": "view" },
+      "resource": { "type": "record", "id": "101" }
+    },
+    {
+      "subject": { "type": "user", "id": "alice" },
+      "action": { "name": "edit" },
+      "resource": { "type": "record", "id": "101" }
+    },
+    {
+      "subject": { "type": "user", "id": "alice" },
+      "action": { "name": "delete" },
+      "resource": { "type": "record", "id": "101" }
+    },
+    {
+      "subject": { "type": "user", "id": "bob" },
+      "action": { "name": "view" },
+      "resource": { "type": "record", "id": "101" }
+    },
+    {
+      "subject": { "type": "user", "id": "bob" },
+      "action": { "name": "edit" },
+      "resource": { "type": "record", "id": "101" }
+    }
+  ]
+}
+
+# =============================================================================
+# PDP METADATA DISCOVERY
+# =============================================================================
+
+### PDP Metadata Discovery (with store_id)
+GET {{fga_api_url}}/.well-known/authzen-configuration/{{fga_store_id}}
+Content-Type: application/json

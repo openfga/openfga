@@ -1,0 +1,619 @@
+# OpenFGA Test File for AuthZEN Search Interop Scenario
+#
+# This file tests the authorization model for the Search interop scenario.
+# It includes tests for view, edit, and delete permissions across all users and records.
+#
+# Reference: https://authzen-interop.net/docs/scenarios/search/
+# Reference: https://github.com/openid/authzen/tree/main/interop/authzen-search-demo
+
+name: AuthZEN Search Interop
+model_file: authzen-search.fga
+tuple_file: authzen-search-tuples.yaml
+
+tests:
+  # =============================================================================
+  # Alice Tests (Manager, Sales Department)
+  # - Owns records: 101, 107, 113, 119
+  # - Can view ALL records (manager)
+  # - Can edit: owned records + Sales department records (107, 110, 113)
+  # - Can delete: only owned records
+  # =============================================================================
+  - name: Alice (manager, Sales) - view permissions
+    check:
+      # Alice can view all 20 records (she's a manager)
+      - user: user:alice
+        object: record:101
+        assertions:
+          view: true
+      - user: user:alice
+        object: record:102
+        assertions:
+          view: true
+      - user: user:alice
+        object: record:103
+        assertions:
+          view: true
+      - user: user:alice
+        object: record:104
+        assertions:
+          view: true
+      - user: user:alice
+        object: record:105
+        assertions:
+          view: true
+      - user: user:alice
+        object: record:106
+        assertions:
+          view: true
+      - user: user:alice
+        object: record:107
+        assertions:
+          view: true
+      - user: user:alice
+        object: record:108
+        assertions:
+          view: true
+      - user: user:alice
+        object: record:109
+        assertions:
+          view: true
+      - user: user:alice
+        object: record:110
+        assertions:
+          view: true
+      - user: user:alice
+        object: record:115
+        assertions:
+          view: true
+      - user: user:alice
+        object: record:120
+        assertions:
+          view: true
+
+  - name: Alice (manager, Sales) - edit permissions
+    check:
+      # Alice can edit records she owns
+      - user: user:alice
+        object: record:101
+        assertions:
+          edit: true
+      - user: user:alice
+        object: record:107
+        assertions:
+          edit: true
+      - user: user:alice
+        object: record:113
+        assertions:
+          edit: true
+      - user: user:alice
+        object: record:119
+        assertions:
+          edit: true
+      # Alice can edit Sales department records (she's Sales manager)
+      - user: user:alice
+        object: record:110
+        assertions:
+          edit: true
+      # Alice cannot edit records in other departments she doesn't own
+      - user: user:alice
+        object: record:102
+        assertions:
+          edit: false
+      - user: user:alice
+        object: record:104
+        assertions:
+          edit: false
+      - user: user:alice
+        object: record:115
+        assertions:
+          edit: false
+
+  - name: Alice (manager, Sales) - delete permissions
+    check:
+      # Alice can only delete records she owns
+      - user: user:alice
+        object: record:101
+        assertions:
+          delete: true
+      - user: user:alice
+        object: record:107
+        assertions:
+          delete: true
+      - user: user:alice
+        object: record:113
+        assertions:
+          delete: true
+      - user: user:alice
+        object: record:119
+        assertions:
+          delete: true
+      # Alice cannot delete records she doesn't own
+      - user: user:alice
+        object: record:102
+        assertions:
+          delete: false
+      - user: user:alice
+        object: record:110
+        assertions:
+          delete: false
+      - user: user:alice
+        object: record:115
+        assertions:
+          delete: false
+
+  # =============================================================================
+  # Bob Tests (Employee, Legal Department)
+  # - Owns records: 102, 108, 114, 120
+  # - Can view: owned records + Legal department records
+  # - Can edit: only owned records
+  # - Can delete: only owned records
+  # =============================================================================
+  - name: Bob (employee, Legal) - view permissions
+    check:
+      # Bob can view Legal department records
+      - user: user:bob
+        object: record:101
+        assertions:
+          view: true
+      - user: user:bob
+        object: record:102
+        assertions:
+          view: true
+      - user: user:bob
+        object: record:103
+        assertions:
+          view: true
+      - user: user:bob
+        object: record:105
+        assertions:
+          view: true
+      - user: user:bob
+        object: record:108
+        assertions:
+          view: true
+      - user: user:bob
+        object: record:112
+        assertions:
+          view: true
+      - user: user:bob
+        object: record:116
+        assertions:
+          view: true
+      - user: user:bob
+        object: record:117
+        assertions:
+          view: true
+      - user: user:bob
+        object: record:119
+        assertions:
+          view: true
+      # Bob can view records he owns (even in other departments)
+      - user: user:bob
+        object: record:114
+        assertions:
+          view: true
+      - user: user:bob
+        object: record:120
+        assertions:
+          view: true
+      # Bob cannot view records in other departments he doesn't own
+      - user: user:bob
+        object: record:104
+        assertions:
+          view: false
+      - user: user:bob
+        object: record:107
+        assertions:
+          view: false
+      - user: user:bob
+        object: record:115
+        assertions:
+          view: false
+
+  - name: Bob (employee, Legal) - edit permissions
+    check:
+      # Bob can only edit records he owns
+      - user: user:bob
+        object: record:102
+        assertions:
+          edit: true
+      - user: user:bob
+        object: record:108
+        assertions:
+          edit: true
+      - user: user:bob
+        object: record:114
+        assertions:
+          edit: true
+      - user: user:bob
+        object: record:120
+        assertions:
+          edit: true
+      # Bob cannot edit records he doesn't own
+      - user: user:bob
+        object: record:101
+        assertions:
+          edit: false
+      - user: user:bob
+        object: record:103
+        assertions:
+          edit: false
+
+  - name: Bob (employee, Legal) - delete permissions
+    check:
+      # Bob can only delete records he owns
+      - user: user:bob
+        object: record:102
+        assertions:
+          delete: true
+      - user: user:bob
+        object: record:108
+        assertions:
+          delete: true
+      - user: user:bob
+        object: record:114
+        assertions:
+          delete: true
+      - user: user:bob
+        object: record:120
+        assertions:
+          delete: true
+      # Bob cannot delete records he doesn't own
+      - user: user:bob
+        object: record:101
+        assertions:
+          delete: false
+
+  # =============================================================================
+  # Carol Tests (Contractor, Legal Department)
+  # - Owns records: 103, 109, 115
+  # - Can view: owned records + Legal department records
+  # - Can edit: only owned records
+  # - Can delete: only owned records
+  # =============================================================================
+  - name: Carol (contractor, Legal) - view permissions
+    check:
+      # Carol can view Legal department records
+      - user: user:carol
+        object: record:101
+        assertions:
+          view: true
+      - user: user:carol
+        object: record:102
+        assertions:
+          view: true
+      - user: user:carol
+        object: record:103
+        assertions:
+          view: true
+      # Carol can view records she owns (even in other departments)
+      - user: user:carol
+        object: record:109
+        assertions:
+          view: true
+      - user: user:carol
+        object: record:115
+        assertions:
+          view: true
+      # Carol cannot view records in other departments she doesn't own
+      - user: user:carol
+        object: record:104
+        assertions:
+          view: false
+      - user: user:carol
+        object: record:107
+        assertions:
+          view: false
+
+  - name: Carol (contractor, Legal) - edit and delete permissions
+    check:
+      # Carol can only edit/delete records she owns
+      - user: user:carol
+        object: record:103
+        assertions:
+          edit: true
+          delete: true
+      - user: user:carol
+        object: record:109
+        assertions:
+          edit: true
+          delete: true
+      - user: user:carol
+        object: record:115
+        assertions:
+          edit: true
+          delete: true
+      # Carol cannot edit/delete records she doesn't own
+      - user: user:carol
+        object: record:101
+        assertions:
+          edit: false
+          delete: false
+
+  # =============================================================================
+  # Dan Tests (Manager, Finance Department)
+  # - Owns records: 104, 110, 116
+  # - Can view ALL records (manager)
+  # - Can edit: owned records + Finance department records
+  # - Can delete: only owned records
+  # =============================================================================
+  - name: Dan (manager, Finance) - view permissions
+    check:
+      # Dan can view all records (he's a manager)
+      - user: user:dan
+        object: record:101
+        assertions:
+          view: true
+      - user: user:dan
+        object: record:107
+        assertions:
+          view: true
+      - user: user:dan
+        object: record:115
+        assertions:
+          view: true
+      - user: user:dan
+        object: record:120
+        assertions:
+          view: true
+
+  - name: Dan (manager, Finance) - edit permissions
+    check:
+      # Dan can edit records he owns
+      - user: user:dan
+        object: record:104
+        assertions:
+          edit: true
+      - user: user:dan
+        object: record:110
+        assertions:
+          edit: true
+      - user: user:dan
+        object: record:116
+        assertions:
+          edit: true
+      # Dan can edit Finance department records (he's Finance manager)
+      - user: user:dan
+        object: record:115
+        assertions:
+          edit: true
+      # Dan cannot edit records in other departments he doesn't own
+      - user: user:dan
+        object: record:101
+        assertions:
+          edit: false
+      - user: user:dan
+        object: record:107
+        assertions:
+          edit: false
+
+  - name: Dan (manager, Finance) - delete permissions
+    check:
+      # Dan can only delete records he owns
+      - user: user:dan
+        object: record:104
+        assertions:
+          delete: true
+      - user: user:dan
+        object: record:110
+        assertions:
+          delete: true
+      - user: user:dan
+        object: record:116
+        assertions:
+          delete: true
+      # Dan cannot delete records he doesn't own
+      - user: user:dan
+        object: record:115
+        assertions:
+          delete: false
+      - user: user:dan
+        object: record:101
+        assertions:
+          delete: false
+
+  # =============================================================================
+  # Erin Tests (Employee, Finance Department)
+  # - Owns records: 105, 111, 117
+  # - Can view: owned records + Finance department records
+  # - Can edit: only owned records
+  # - Can delete: only owned records
+  # =============================================================================
+  - name: Erin (employee, Finance) - view permissions
+    check:
+      # Erin can view Finance department records
+      - user: user:erin
+        object: record:115
+        assertions:
+          view: true
+      # Erin can view records she owns
+      - user: user:erin
+        object: record:105
+        assertions:
+          view: true
+      - user: user:erin
+        object: record:111
+        assertions:
+          view: true
+      - user: user:erin
+        object: record:117
+        assertions:
+          view: true
+      # Erin cannot view records in other departments she doesn't own
+      - user: user:erin
+        object: record:101
+        assertions:
+          view: false
+      - user: user:erin
+        object: record:104
+        assertions:
+          view: false
+      - user: user:erin
+        object: record:107
+        assertions:
+          view: false
+
+  - name: Erin (employee, Finance) - edit and delete permissions
+    check:
+      # Erin can only edit/delete records she owns
+      - user: user:erin
+        object: record:105
+        assertions:
+          edit: true
+          delete: true
+      - user: user:erin
+        object: record:111
+        assertions:
+          edit: true
+          delete: true
+      - user: user:erin
+        object: record:117
+        assertions:
+          edit: true
+          delete: true
+      # Erin cannot edit/delete records she doesn't own
+      - user: user:erin
+        object: record:115
+        assertions:
+          edit: false
+          delete: false
+
+  # =============================================================================
+  # Felix Tests (Contractor, Accounting Department)
+  # - Owns records: 106, 112, 118
+  # - Can view: owned records + Accounting department records
+  # - Can edit: only owned records
+  # - Can delete: only owned records
+  # =============================================================================
+  - name: Felix (contractor, Accounting) - view permissions
+    check:
+      # Felix can view Accounting department records
+      - user: user:felix
+        object: record:104
+        assertions:
+          view: true
+      - user: user:felix
+        object: record:106
+        assertions:
+          view: true
+      - user: user:felix
+        object: record:109
+        assertions:
+          view: true
+      - user: user:felix
+        object: record:111
+        assertions:
+          view: true
+      - user: user:felix
+        object: record:114
+        assertions:
+          view: true
+      - user: user:felix
+        object: record:118
+        assertions:
+          view: true
+      - user: user:felix
+        object: record:120
+        assertions:
+          view: true
+      # Felix can view records he owns
+      - user: user:felix
+        object: record:112
+        assertions:
+          view: true
+      # Felix cannot view records in other departments he doesn't own
+      - user: user:felix
+        object: record:101
+        assertions:
+          view: false
+      - user: user:felix
+        object: record:107
+        assertions:
+          view: false
+      - user: user:felix
+        object: record:115
+        assertions:
+          view: false
+
+  - name: Felix (contractor, Accounting) - edit and delete permissions
+    check:
+      # Felix can only edit/delete records he owns
+      - user: user:felix
+        object: record:106
+        assertions:
+          edit: true
+          delete: true
+      - user: user:felix
+        object: record:112
+        assertions:
+          edit: true
+          delete: true
+      - user: user:felix
+        object: record:118
+        assertions:
+          edit: true
+          delete: true
+      # Felix cannot edit/delete records he doesn't own
+      - user: user:felix
+        object: record:104
+        assertions:
+          edit: false
+          delete: false
+
+  # =============================================================================
+  # Cross-user tests for specific records (from AuthZEN test suite)
+  # =============================================================================
+  - name: Record 101 (Legal, owner alice) - subject search expected results
+    description: |
+      Who can view/edit/delete record 101?
+      Expected view: alice (manager), bob (Legal), carol (Legal), dan (manager)
+      Expected edit: alice (owner)
+      Expected delete: alice (owner)
+    check:
+      # View - alice (manager), bob (Legal member), carol (Legal member), dan (manager)
+      - user: user:alice
+        object: record:101
+        assertions:
+          view: true
+      - user: user:bob
+        object: record:101
+        assertions:
+          view: true
+      - user: user:carol
+        object: record:101
+        assertions:
+          view: true
+      - user: user:dan
+        object: record:101
+        assertions:
+          view: true
+      - user: user:erin
+        object: record:101
+        assertions:
+          view: false
+      - user: user:felix
+        object: record:101
+        assertions:
+          view: false
+      # Edit - only alice (owner)
+      - user: user:alice
+        object: record:101
+        assertions:
+          edit: true
+      - user: user:bob
+        object: record:101
+        assertions:
+          edit: false
+      - user: user:dan
+        object: record:101
+        assertions:
+          edit: false
+      # Delete - only alice (owner)
+      - user: user:alice
+        object: record:101
+        assertions:
+          delete: true
+      - user: user:bob
+        object: record:101
+        assertions:
+          delete: false
