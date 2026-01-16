@@ -76,13 +76,13 @@ func (s *Server) Evaluations(ctx context.Context, req *authzenv1.EvaluationsRequ
 	})
 
 	// Check for short-circuit semantics
-	semantic := authzenv1.EvaluationsSemantic_EVALUATIONS_SEMANTIC_EXECUTE_ALL_UNSPECIFIED
+	semantic := authzenv1.EvaluationsSemantic_execute_all
 	if req.GetOptions() != nil {
 		semantic = req.GetOptions().GetEvaluationsSemantic()
 	}
 
-	if semantic == authzenv1.EvaluationsSemantic_EVALUATIONS_SEMANTIC_DENY_ON_FIRST_DENY ||
-		semantic == authzenv1.EvaluationsSemantic_EVALUATIONS_SEMANTIC_PERMIT_ON_FIRST_PERMIT {
+	if semantic == authzenv1.EvaluationsSemantic_deny_on_first_deny ||
+		semantic == authzenv1.EvaluationsSemantic_permit_on_first_permit {
 		return s.evaluateWithShortCircuit(ctx, req, semantic)
 	}
 
@@ -105,7 +105,7 @@ func (s *Server) Evaluations(ctx context.Context, req *authzenv1.EvaluationsRequ
 	return evaluationsResponse, nil
 }
 
-// evaluateWithShortCircuit handles DENY_ON_FIRST_DENY and PERMIT_ON_FIRST_PERMIT semantics.
+// evaluateWithShortCircuit handles deny_on_first_deny and permit_on_first_permit semantics.
 //
 //nolint:unparam // error is always nil but kept for interface consistency
 func (s *Server) evaluateWithShortCircuit(
@@ -168,11 +168,11 @@ func (s *Server) evaluateWithShortCircuit(
 		responses = append(responses, evalResp)
 
 		// Short-circuit logic
-		if semantic == authzenv1.EvaluationsSemantic_EVALUATIONS_SEMANTIC_DENY_ON_FIRST_DENY && !evalResp.GetDecision() {
+		if semantic == authzenv1.EvaluationsSemantic_deny_on_first_deny && !evalResp.GetDecision() {
 			// Stop on first deny
 			break
 		}
-		if semantic == authzenv1.EvaluationsSemantic_EVALUATIONS_SEMANTIC_PERMIT_ON_FIRST_PERMIT && evalResp.GetDecision() {
+		if semantic == authzenv1.EvaluationsSemantic_permit_on_first_permit && evalResp.GetDecision() {
 			// Stop on first permit
 			break
 		}

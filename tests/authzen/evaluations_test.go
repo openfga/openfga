@@ -94,7 +94,7 @@ func TestEvaluations(t *testing.T) {
 			{User: "user:alice", Relation: "reader", Object: "document:doc3"},
 		})
 
-		// Default behavior (EXECUTE_ALL) - all evaluations should be processed
+		// Default behavior (execute_all) - all evaluations should be processed
 		resp, err := tc.authzenClient.Evaluations(context.Background(), &authzenv1.EvaluationsRequest{
 			StoreId: tc.storeID,
 			Subject: &authzenv1.Subject{Type: "user", Id: "alice"},
@@ -129,13 +129,13 @@ func TestEvaluations(t *testing.T) {
 			{User: "user:alice", Relation: "reader", Object: "document:doc3"},
 		})
 
-		// Explicit EXECUTE_ALL - all evaluations should be processed
+		// Explicit execute_all - all evaluations should be processed
 		resp, err := tc.authzenClient.Evaluations(context.Background(), &authzenv1.EvaluationsRequest{
 			StoreId: tc.storeID,
 			Subject: &authzenv1.Subject{Type: "user", Id: "alice"},
 			Action:  &authzenv1.Action{Name: "reader"},
 			Options: &authzenv1.EvaluationsOptions{
-				EvaluationsSemantic: authzenv1.EvaluationsSemantic_EVALUATIONS_SEMANTIC_EXECUTE_ALL_UNSPECIFIED,
+				EvaluationsSemantic: authzenv1.EvaluationsSemantic_execute_all,
 			},
 			Evaluations: []*authzenv1.EvaluationsItemRequest{
 				{Resource: &authzenv1.Resource{Type: "document", Id: "doc1"}}, // Allowed
@@ -172,7 +172,7 @@ func TestEvaluations(t *testing.T) {
 			Subject: &authzenv1.Subject{Type: "user", Id: "alice"},
 			Action:  &authzenv1.Action{Name: "reader"},
 			Options: &authzenv1.EvaluationsOptions{
-				EvaluationsSemantic: authzenv1.EvaluationsSemantic_EVALUATIONS_SEMANTIC_DENY_ON_FIRST_DENY,
+				EvaluationsSemantic: authzenv1.EvaluationsSemantic_deny_on_first_deny,
 			},
 			Evaluations: []*authzenv1.EvaluationsItemRequest{
 				{Resource: &authzenv1.Resource{Type: "document", Id: "doc1"}}, // Allowed
@@ -207,7 +207,7 @@ func TestEvaluations(t *testing.T) {
 			Subject: &authzenv1.Subject{Type: "user", Id: "alice"},
 			Action:  &authzenv1.Action{Name: "reader"},
 			Options: &authzenv1.EvaluationsOptions{
-				EvaluationsSemantic: authzenv1.EvaluationsSemantic_EVALUATIONS_SEMANTIC_DENY_ON_FIRST_DENY,
+				EvaluationsSemantic: authzenv1.EvaluationsSemantic_deny_on_first_deny,
 			},
 			Evaluations: []*authzenv1.EvaluationsItemRequest{
 				{Resource: &authzenv1.Resource{Type: "document", Id: "doc1"}}, // Denied - should stop here
@@ -242,7 +242,7 @@ func TestEvaluations(t *testing.T) {
 			Subject: &authzenv1.Subject{Type: "user", Id: "alice"},
 			Action:  &authzenv1.Action{Name: "reader"},
 			Options: &authzenv1.EvaluationsOptions{
-				EvaluationsSemantic: authzenv1.EvaluationsSemantic_EVALUATIONS_SEMANTIC_DENY_ON_FIRST_DENY,
+				EvaluationsSemantic: authzenv1.EvaluationsSemantic_deny_on_first_deny,
 			},
 			Evaluations: []*authzenv1.EvaluationsItemRequest{
 				{Resource: &authzenv1.Resource{Type: "document", Id: "doc1"}},
@@ -279,7 +279,7 @@ func TestEvaluations(t *testing.T) {
 			Subject: &authzenv1.Subject{Type: "user", Id: "alice"},
 			Action:  &authzenv1.Action{Name: "reader"},
 			Options: &authzenv1.EvaluationsOptions{
-				EvaluationsSemantic: authzenv1.EvaluationsSemantic_EVALUATIONS_SEMANTIC_PERMIT_ON_FIRST_PERMIT,
+				EvaluationsSemantic: authzenv1.EvaluationsSemantic_permit_on_first_permit,
 			},
 			Evaluations: []*authzenv1.EvaluationsItemRequest{
 				{Resource: &authzenv1.Resource{Type: "document", Id: "doc1"}}, // Denied
@@ -314,7 +314,7 @@ func TestEvaluations(t *testing.T) {
 			Subject: &authzenv1.Subject{Type: "user", Id: "alice"},
 			Action:  &authzenv1.Action{Name: "reader"},
 			Options: &authzenv1.EvaluationsOptions{
-				EvaluationsSemantic: authzenv1.EvaluationsSemantic_EVALUATIONS_SEMANTIC_PERMIT_ON_FIRST_PERMIT,
+				EvaluationsSemantic: authzenv1.EvaluationsSemantic_permit_on_first_permit,
 			},
 			Evaluations: []*authzenv1.EvaluationsItemRequest{
 				{Resource: &authzenv1.Resource{Type: "document", Id: "doc1"}}, // Allowed - should stop here
@@ -345,7 +345,7 @@ func TestEvaluations(t *testing.T) {
 			Subject: &authzenv1.Subject{Type: "user", Id: "alice"},
 			Action:  &authzenv1.Action{Name: "reader"},
 			Options: &authzenv1.EvaluationsOptions{
-				EvaluationsSemantic: authzenv1.EvaluationsSemantic_EVALUATIONS_SEMANTIC_PERMIT_ON_FIRST_PERMIT,
+				EvaluationsSemantic: authzenv1.EvaluationsSemantic_permit_on_first_permit,
 			},
 			Evaluations: []*authzenv1.EvaluationsItemRequest{
 				{Resource: &authzenv1.Resource{Type: "document", Id: "doc1"}},

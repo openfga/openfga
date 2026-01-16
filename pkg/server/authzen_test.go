@@ -302,7 +302,7 @@ func TestEvaluations(t *testing.T) {
 				},
 			},
 			Options: &authzenv1.EvaluationsOptions{
-				EvaluationsSemantic: authzenv1.EvaluationsSemantic_EVALUATIONS_SEMANTIC_DENY_ON_FIRST_DENY,
+				EvaluationsSemantic: authzenv1.EvaluationsSemantic_deny_on_first_deny,
 			},
 		}
 
@@ -342,7 +342,7 @@ func TestEvaluations(t *testing.T) {
 				},
 			},
 			Options: &authzenv1.EvaluationsOptions{
-				EvaluationsSemantic: authzenv1.EvaluationsSemantic_EVALUATIONS_SEMANTIC_PERMIT_ON_FIRST_PERMIT,
+				EvaluationsSemantic: authzenv1.EvaluationsSemantic_permit_on_first_permit,
 			},
 		}
 
@@ -370,7 +370,7 @@ func TestEvaluations(t *testing.T) {
 		createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
 		require.NoError(t, err)
 
-		// Test with nil options (default EXECUTE_ALL)
+		// Test with nil options (default execute_all)
 		req := &authzenv1.EvaluationsRequest{
 			StoreId: createStoreResp.GetId(),
 			Evaluations: []*authzenv1.EvaluationsItemRequest{
@@ -413,7 +413,7 @@ func TestEvaluations(t *testing.T) {
 				},
 			},
 			Options: &authzenv1.EvaluationsOptions{
-				EvaluationsSemantic: authzenv1.EvaluationsSemantic_EVALUATIONS_SEMANTIC_EXECUTE_ALL_UNSPECIFIED,
+				EvaluationsSemantic: authzenv1.EvaluationsSemantic_execute_all,
 			},
 		}
 
@@ -452,7 +452,7 @@ func TestEvaluations(t *testing.T) {
 				},
 			},
 			Options: &authzenv1.EvaluationsOptions{
-				EvaluationsSemantic: authzenv1.EvaluationsSemantic_EVALUATIONS_SEMANTIC_DENY_ON_FIRST_DENY,
+				EvaluationsSemantic: authzenv1.EvaluationsSemantic_deny_on_first_deny,
 			},
 		}
 
@@ -495,7 +495,7 @@ func TestEvaluations(t *testing.T) {
 				},
 			},
 			Options: &authzenv1.EvaluationsOptions{
-				EvaluationsSemantic: authzenv1.EvaluationsSemantic_EVALUATIONS_SEMANTIC_DENY_ON_FIRST_DENY,
+				EvaluationsSemantic: authzenv1.EvaluationsSemantic_deny_on_first_deny,
 			},
 		}
 
@@ -570,7 +570,7 @@ func TestEvaluations(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		// Test Evaluations with EXECUTE_ALL (default) - this uses batch path
+		// Test Evaluations with execute_all (default) - this uses batch path
 		req := &authzenv1.EvaluationsRequest{
 			StoreId: storeID,
 			Evaluations: []*authzenv1.EvaluationsItemRequest{
@@ -585,7 +585,7 @@ func TestEvaluations(t *testing.T) {
 					Action:   &authzenv1.Action{Name: "reader"},
 				},
 			},
-			// No options - uses default EXECUTE_ALL which goes through batch path
+			// No options - uses default execute_all which goes through batch path
 		}
 
 		_ = writeModelResp // Model is automatically used as latest
@@ -660,7 +660,7 @@ func TestEvaluations(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		// Test DENY_ON_FIRST_DENY: first evaluation is bob (no permission = deny)
+		// Test deny_on_first_deny: first evaluation is bob (no permission = deny)
 		// This should trigger the break on line 172-174 in authzen.go
 		req := &authzenv1.EvaluationsRequest{
 			StoreId: storeID,
@@ -679,7 +679,7 @@ func TestEvaluations(t *testing.T) {
 				},
 			},
 			Options: &authzenv1.EvaluationsOptions{
-				EvaluationsSemantic: authzenv1.EvaluationsSemantic_EVALUATIONS_SEMANTIC_DENY_ON_FIRST_DENY,
+				EvaluationsSemantic: authzenv1.EvaluationsSemantic_deny_on_first_deny,
 			},
 		}
 
@@ -752,7 +752,7 @@ func TestEvaluations(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		// Test PERMIT_ON_FIRST_PERMIT: first evaluation is alice (has permission = permit)
+		// Test permit_on_first_permit: first evaluation is alice (has permission = permit)
 		// This should trigger the break on line 176-178 in authzen.go
 		req := &authzenv1.EvaluationsRequest{
 			StoreId: storeID,
@@ -771,7 +771,7 @@ func TestEvaluations(t *testing.T) {
 				},
 			},
 			Options: &authzenv1.EvaluationsOptions{
-				EvaluationsSemantic: authzenv1.EvaluationsSemantic_EVALUATIONS_SEMANTIC_PERMIT_ON_FIRST_PERMIT,
+				EvaluationsSemantic: authzenv1.EvaluationsSemantic_permit_on_first_permit,
 			},
 		}
 

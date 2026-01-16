@@ -88,9 +88,9 @@ AuthZEN's `evaluations` endpoint supports semantic options to control batch exec
 
 | Semantic | Behavior | OpenFGA Implementation |
 |----------|----------|----------------------|
-| `EXECUTE_ALL` (default) | Execute all evaluations | Uses `BatchCheck` for all items |
-| `DENY_ON_FIRST_DENY` | Stop on first denied | Short-circuits after first `decision: false` |
-| `PERMIT_ON_FIRST_PERMIT` | Stop on first permitted | Short-circuits after first `decision: true` |
+| `execute_all` (default) | Execute all evaluations | Uses `BatchCheck` for all items |
+| `deny_on_first_deny` | Stop on first denied | Short-circuits after first `decision: false` |
+| `permit_on_first_permit` | Stop on first permitted | Short-circuits after first `decision: true` |
 
 **Tradeoff:** Short-circuit semantics cannot leverage `BatchCheck` parallelism since order matters. Each evaluation is processed sequentially until the condition is met.
 
@@ -182,9 +182,9 @@ When a request includes `properties` on subject, resource, or action, the AuthZE
 
 The AuthZEN specification notes that evaluations in a batch "may be executed sequentially or in parallel, left to the discretion of each implementation."
 
-**Current status:** 
-- `EXECUTE_ALL` uses OpenFGA's `BatchCheck` which executes in parallel
-- `DENY_ON_FIRST_DENY` and `PERMIT_ON_FIRST_PERMIT` execute sequentially (required for short-circuit semantics)
+**Current status:**
+- `execute_all` uses OpenFGA's `BatchCheck` which executes in parallel
+- `deny_on_first_deny` and `permit_on_first_permit` execute sequentially (required for short-circuit semantics)
 
 No mechanism exists for a PEP to hint at desired parallelism behavior.
 
@@ -354,16 +354,16 @@ The `evaluations` endpoint supports semantic options to control execution behavi
 
 | Semantic | Description |
 |----------|-------------|
-| `EXECUTE_ALL` | (Default) Execute all evaluations and return all results |
-| `DENY_ON_FIRST_DENY` | Stop processing on the first denied evaluation |
-| `PERMIT_ON_FIRST_PERMIT` | Stop processing on the first permitted evaluation |
+| `execute_all` | (Default) Execute all evaluations and return all results |
+| `deny_on_first_deny` | Stop processing on the first denied evaluation |
+| `permit_on_first_permit` | Stop processing on the first permitted evaluation |
 
 ```json
 POST /stores/<store_id>/access/v1/evaluations
 {
   "subject": { "type": "user", "id": "alice" },
   "options": {
-    "evaluations_semantic": "DENY_ON_FIRST_DENY"
+    "evaluations_semantic": "deny_on_first_deny"
   },
   "evaluations": [
     { "action": { "name": "read" }, "resource": { "type": "document", "id": "doc1" } },

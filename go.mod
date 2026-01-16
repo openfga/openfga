@@ -18,7 +18,6 @@ require (
 	github.com/go-logr/logr v1.4.3
 	github.com/go-sql-driver/mysql v1.9.3
 	github.com/golang-jwt/jwt/v5 v5.3.0
-	github.com/golang/mock v1.1.1
 	github.com/google/cel-go v0.26.1
 	github.com/google/go-cmp v0.7.0
 	github.com/google/uuid v1.6.0
@@ -30,7 +29,7 @@ require (
 	github.com/jackc/pgx/v5 v5.8.0
 	github.com/natefinch/wrap v0.2.0
 	github.com/oklog/ulid/v2 v2.1.1
-	github.com/openfga/api/proto v0.0.0-20260114011533-87f66fe1fda3
+	github.com/openfga/api/proto v0.0.0-20260115224723-e5aafe26c347
 	github.com/openfga/language/pkg/go v0.2.0-beta.2.0.20251027165255-0f8f255e5f6c
 	github.com/pressly/goose/v3 v3.26.0
 	github.com/prometheus/client_golang v1.23.2
