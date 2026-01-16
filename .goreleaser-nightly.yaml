@@ -19,8 +19,11 @@ builds:
       - "-s -w"
       - "-X github.com/openfga/openfga/internal/build.Version=nightly"
       - "-X github.com/openfga/openfga/internal/build.Commit={{.Commit}}"
-      - "-X github.com/openfga/openfga/internal/build.Date={{.Date}}"
+      - "-X github.com/openfga/openfga/internal/build.Date={{.CommitDate}}"
       - "-X github.com/openfga/openfga/internal/build.ProjectName={{.ProjectName}}"
+    mod_timestamp: "{{.CommitTimestamp}}"
+    flags:
+      - -trimpath
 
 # Do not make github release
 release:
