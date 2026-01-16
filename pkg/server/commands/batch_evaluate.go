@@ -8,6 +8,8 @@ import (
 
 	authzenv1 "github.com/openfga/api/proto/authzen/v1"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+
+	servererrors "github.com/openfga/openfga/pkg/server/errors"
 )
 
 type BatchEvaluateRequestCommand struct {
@@ -128,11 +130,24 @@ func TransformResponse(bcr *openfgav1.BatchCheckResponse) (*authzenv1.Evaluation
 			// If there's an error, we return it as part of a single
 			// evaluation response, the rest of the items of the batch
 			// should not include the error
+			httpStatus := uint32(500)
+			if errResult.Error != nil {
+				// Extract error code based on type (InputError or InternalError)
+				switch code := errResult.Error.GetCode().(type) {
+				case *openfgav1.CheckError_InputError:
+					// Input errors use OpenFGA ErrorCode (e.g., validation_error = 2000)
+					encodedErr := servererrors.NewEncodedError(int32(code.InputError), errResult.Error.GetMessage())
+					httpStatus = uint32(encodedErr.HTTPStatus())
+				case *openfgav1.CheckError_InternalError:
+					// Internal errors (e.g., deadline_exceeded) map to 500
+					httpStatus = 500
+				}
+			}
 			evaluationsResponse.EvaluationResponses[i] = &authzenv1.EvaluationResponse{
 				Decision: false,
 				Context: &authzenv1.EvaluationResponseContext{
 					Error: &authzenv1.ResponseContextError{
-						Status:  404,
+						Status:  httpStatus,
 						Message: errResult.Error.GetMessage(),
 					},
 				},

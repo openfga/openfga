@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
@@ -13,6 +14,7 @@ import (
 	"github.com/openfga/openfga/pkg/middleware/validator"
 	"github.com/openfga/openfga/pkg/server/commands"
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
+	servererrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
@@ -176,11 +178,25 @@ func (s *Server) evaluateWithShortCircuit(
 		// Use the Evaluation method
 		evalResp, err := s.Evaluation(ctx, singleReq)
 		if err != nil {
+			// Extract gRPC status code and map to HTTP status
+			httpStatus := uint32(500)
+			if st, ok := status.FromError(err); ok {
+				grpcCode := st.Code()
+				// Check if it's a standard gRPC code (0-16) or OpenFGA custom code (>= 1000)
+				if grpcCode < 17 {
+					// Standard gRPC code - use grpc-gateway's mapping
+					httpStatus = uint32(runtime.HTTPStatusFromCode(grpcCode))
+				} else {
+					// OpenFGA custom error code - use encoded error mapping
+					encodedErr := servererrors.NewEncodedError(int32(grpcCode), st.Message())
+					httpStatus = uint32(encodedErr.HTTPStatus())
+				}
+			}
 			responses = append(responses, &authzenv1.EvaluationResponse{
 				Decision: false,
 				Context: &authzenv1.EvaluationResponseContext{
 					Error: &authzenv1.ResponseContextError{
-						Status:  500,
+						Status:  httpStatus,
 						Message: err.Error(),
 					},
 				},

@@ -518,7 +518,8 @@ func TestTransformResponse(t *testing.T) {
 				"0": {CheckResult: &openfgav1.BatchCheckSingleResult_Allowed{Allowed: true}},
 				"1": {CheckResult: &openfgav1.BatchCheckSingleResult_Error{
 					Error: &openfgav1.CheckError{
-						Message: "tuple not found",
+						Code:    &openfgav1.CheckError_InputError{InputError: openfgav1.ErrorCode_validation_error},
+						Message: "type not found",
 					},
 				}},
 				"2": {CheckResult: &openfgav1.BatchCheckSingleResult_Allowed{Allowed: false}},
@@ -533,12 +534,12 @@ func TestTransformResponse(t *testing.T) {
 		require.True(t, resp.GetEvaluationResponses()[0].GetDecision())
 		require.Nil(t, resp.GetEvaluationResponses()[0].GetContext())
 
-		// Second result is an error
+		// Second result is an error - validation_error maps to HTTP 400
 		require.False(t, resp.GetEvaluationResponses()[1].GetDecision())
 		require.NotNil(t, resp.GetEvaluationResponses()[1].GetContext())
 		require.NotNil(t, resp.GetEvaluationResponses()[1].GetContext().GetError())
-		require.Equal(t, uint32(404), resp.GetEvaluationResponses()[1].GetContext().GetError().GetStatus())
-		require.Equal(t, "tuple not found", resp.GetEvaluationResponses()[1].GetContext().GetError().GetMessage())
+		require.Equal(t, uint32(400), resp.GetEvaluationResponses()[1].GetContext().GetError().GetStatus())
+		require.Equal(t, "type not found", resp.GetEvaluationResponses()[1].GetContext().GetError().GetMessage())
 
 		// Third result is not allowed
 		require.False(t, resp.GetEvaluationResponses()[2].GetDecision())
@@ -607,10 +608,16 @@ func TestTransformResponse(t *testing.T) {
 		batchResp := &openfgav1.BatchCheckResponse{
 			Result: map[string]*openfgav1.BatchCheckSingleResult{
 				"0": {CheckResult: &openfgav1.BatchCheckSingleResult_Error{
-					Error: &openfgav1.CheckError{Message: "error 1"},
+					Error: &openfgav1.CheckError{
+						Code:    &openfgav1.CheckError_InputError{InputError: openfgav1.ErrorCode_validation_error},
+						Message: "error 1",
+					},
 				}},
 				"1": {CheckResult: &openfgav1.BatchCheckSingleResult_Error{
-					Error: &openfgav1.CheckError{Message: "error 2"},
+					Error: &openfgav1.CheckError{
+						Code:    &openfgav1.CheckError_InputError{InputError: openfgav1.ErrorCode_validation_error},
+						Message: "error 2",
+					},
 				}},
 			},
 		}
@@ -623,7 +630,8 @@ func TestTransformResponse(t *testing.T) {
 			require.False(t, evalResp.GetDecision())
 			require.NotNil(t, evalResp.GetContext())
 			require.NotNil(t, evalResp.GetContext().GetError())
-			require.Equal(t, uint32(404), evalResp.GetContext().GetError().GetStatus())
+			// validation_error maps to HTTP 400
+			require.Equal(t, uint32(400), evalResp.GetContext().GetError().GetStatus())
 			require.Contains(t, evalResp.GetContext().GetError().GetMessage(), "error")
 			_ = i
 		}
@@ -795,7 +803,8 @@ func TestTransformResponseTableDriven(t *testing.T) {
 				"0": {
 					CheckResult: &openfgav1.BatchCheckSingleResult_Error{
 						Error: &openfgav1.CheckError{
-							Message: "tuple not found",
+							Code:    &openfgav1.CheckError_InputError{InputError: openfgav1.ErrorCode_validation_error},
+							Message: "type not found",
 						},
 					},
 				},
@@ -807,6 +816,7 @@ func TestTransformResponseTableDriven(t *testing.T) {
 				"2": {
 					CheckResult: &openfgav1.BatchCheckSingleResult_Error{
 						Error: &openfgav1.CheckError{
+							Code:    &openfgav1.CheckError_InputError{InputError: openfgav1.ErrorCode_latest_authorization_model_not_found},
 							Message: "authorization model not found",
 						},
 					},
@@ -818,21 +828,22 @@ func TestTransformResponseTableDriven(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, resp.GetEvaluationResponses(), 3)
 
-		// First: error
+		// First: error - validation_error maps to HTTP 400
 		require.False(t, resp.GetEvaluationResponses()[0].GetDecision())
 		require.NotNil(t, resp.GetEvaluationResponses()[0].GetContext())
 		require.NotNil(t, resp.GetEvaluationResponses()[0].GetContext().GetError())
-		require.Equal(t, uint32(404), resp.GetEvaluationResponses()[0].GetContext().GetError().GetStatus())
-		require.Contains(t, resp.GetEvaluationResponses()[0].GetContext().GetError().GetMessage(), "tuple not found")
+		require.Equal(t, uint32(400), resp.GetEvaluationResponses()[0].GetContext().GetError().GetStatus())
+		require.Contains(t, resp.GetEvaluationResponses()[0].GetContext().GetError().GetMessage(), "type not found")
 
 		// Second: allowed
 		require.True(t, resp.GetEvaluationResponses()[1].GetDecision())
 		require.Nil(t, resp.GetEvaluationResponses()[1].GetContext())
 
-		// Third: error
+		// Third: error - latest_authorization_model_not_found is a validation error, maps to HTTP 400
 		require.False(t, resp.GetEvaluationResponses()[2].GetDecision())
 		require.NotNil(t, resp.GetEvaluationResponses()[2].GetContext())
 		require.NotNil(t, resp.GetEvaluationResponses()[2].GetContext().GetError())
+		require.Equal(t, uint32(400), resp.GetEvaluationResponses()[2].GetContext().GetError().GetStatus())
 		require.Contains(t, resp.GetEvaluationResponses()[2].GetContext().GetError().GetMessage(), "authorization model not found")
 	})
 

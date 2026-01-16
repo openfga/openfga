@@ -224,6 +224,65 @@ func TestEvaluation(t *testing.T) {
 		require.True(t, ok)
 		require.Equal(t, codes.InvalidArgument, st.Code())
 	})
+
+	t.Run("returns_validation_error_for_invalid_type", func(t *testing.T) {
+		s := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithExperimentals(serverconfig.ExperimentalEnableAuthZen),
+		)
+		t.Cleanup(s.Close)
+
+		createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
+		require.NoError(t, err)
+		storeID := createStoreResp.GetId()
+
+		// Write a model with only user and document types
+		_, err = s.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
+			StoreId:       storeID,
+			SchemaVersion: "1.1",
+			TypeDefinitions: []*openfgav1.TypeDefinition{
+				{
+					Type: "user",
+				},
+				{
+					Type: "document",
+					Relations: map[string]*openfgav1.Userset{
+						"reader": {
+							Userset: &openfgav1.Userset_This{},
+						},
+					},
+					Metadata: &openfgav1.Metadata{
+						Relations: map[string]*openfgav1.RelationMetadata{
+							"reader": {
+								DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+									{Type: "user"},
+								},
+							},
+						},
+					},
+				},
+			},
+		})
+		require.NoError(t, err)
+
+		// Request with a type that doesn't exist in the model
+		req := &authzenv1.EvaluationRequest{
+			StoreId:  storeID,
+			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
+			Resource: &authzenv1.Resource{Type: "unknown_type", Id: "resource1"},
+			Action:   &authzenv1.Action{Name: "reader"},
+		}
+
+		resp, err := s.Evaluation(context.Background(), req)
+		require.Error(t, err)
+		require.Nil(t, resp)
+
+		st, ok := status.FromError(err)
+		require.True(t, ok)
+		// validation_error (Code 2000) for type not found
+		require.Equal(t, codes.Code(openfgav1.ErrorCode_validation_error), st.Code())
+		require.Contains(t, st.Message(), "unknown_type")
+	})
 }
 
 func TestEvaluations(t *testing.T) {
@@ -320,7 +379,8 @@ func TestEvaluations(t *testing.T) {
 		require.False(t, evalResp.GetDecision())
 		require.NotNil(t, evalResp.GetContext())
 		require.NotNil(t, evalResp.GetContext().GetError())
-		require.Equal(t, uint32(500), evalResp.GetContext().GetError().GetStatus())
+		// Error is due to missing type definition, which maps to HTTP 400
+		require.Equal(t, uint32(400), evalResp.GetContext().GetError().GetStatus())
 		require.Contains(t, evalResp.GetContext().GetError().GetMessage(), "authorization model")
 	})
 
@@ -359,7 +419,8 @@ func TestEvaluations(t *testing.T) {
 		require.False(t, evalResp.GetDecision())
 		require.NotNil(t, evalResp.GetContext())
 		require.NotNil(t, evalResp.GetContext().GetError())
-		require.Equal(t, uint32(500), evalResp.GetContext().GetError().GetStatus())
+		// Error is due to missing type definition, which maps to HTTP 400
+		require.Equal(t, uint32(400), evalResp.GetContext().GetError().GetStatus())
 	})
 
 	t.Run("batch_evaluation_with_default_semantic", func(t *testing.T) {
@@ -514,6 +575,75 @@ func TestEvaluations(t *testing.T) {
 			require.NotNil(t, evalResp.GetContext())
 			require.NotNil(t, evalResp.GetContext().GetError())
 		}
+	})
+
+	t.Run("short_circuit_returns_400_for_invalid_type", func(t *testing.T) {
+		s := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithExperimentals(serverconfig.ExperimentalEnableAuthZen),
+		)
+		t.Cleanup(s.Close)
+
+		// Create store
+		createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
+		require.NoError(t, err)
+		storeID := createStoreResp.GetId()
+
+		// Write a model with only user and document types
+		_, err = s.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
+			StoreId:       storeID,
+			SchemaVersion: "1.1",
+			TypeDefinitions: []*openfgav1.TypeDefinition{
+				{
+					Type: "user",
+				},
+				{
+					Type: "document",
+					Relations: map[string]*openfgav1.Userset{
+						"reader": {
+							Userset: &openfgav1.Userset_This{},
+						},
+					},
+					Metadata: &openfgav1.Metadata{
+						Relations: map[string]*openfgav1.RelationMetadata{
+							"reader": {
+								DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+									{Type: "user"},
+								},
+							},
+						},
+					},
+				},
+			},
+		})
+		require.NoError(t, err)
+
+		// Request with a type that doesn't exist in the model
+		req := &authzenv1.EvaluationsRequest{
+			StoreId: storeID,
+			Evaluations: []*authzenv1.EvaluationsItemRequest{
+				{
+					Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
+					Resource: &authzenv1.Resource{Type: "unknown_type", Id: "resource1"}, // Type not in model
+					Action:   &authzenv1.Action{Name: "reader"},
+				},
+			},
+			Options: &authzenv1.EvaluationsOptions{
+				EvaluationsSemantic: authzenv1.EvaluationsSemantic_deny_on_first_deny,
+			},
+		}
+
+		resp, err := s.Evaluations(context.Background(), req)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.Len(t, resp.GetEvaluationResponses(), 1)
+
+		evalResp := resp.GetEvaluationResponses()[0]
+		require.False(t, evalResp.GetDecision())
+		require.NotNil(t, evalResp.GetContext())
+		require.NotNil(t, evalResp.GetContext().GetError())
+		// InvalidArgument maps to HTTP 400
+		require.Equal(t, uint32(400), evalResp.GetContext().GetError().GetStatus())
 	})
 
 	t.Run("success_batch_with_valid_model", func(t *testing.T) {
