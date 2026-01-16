@@ -113,7 +113,7 @@ test-docker: ## Run tests requiring Docker
 	@if [ -z "$${CI}" ]; then \
 		docker build -t="openfga/openfga:dockertest" .; \
 	fi
-	@go test -tags=integration -v -count=1 -timeout=5m -tags=docker ./cmd/openfga/...
+	@go test -v -count=1 -timeout=5m -tags="docker,integration" ./cmd/openfga/...
 
 test-bench: generate-mocks ## Run benchmark tests. See https://pkg.go.dev/cmd/go#hdr-Testing_flags
 	${call print, "Running benchmark tests"}
