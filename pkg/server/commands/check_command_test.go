@@ -12,6 +12,7 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
+	"github.com/openfga/openfga/internal/check"
 	"github.com/openfga/openfga/internal/condition"
 	ofga_errors "github.com/openfga/openfga/internal/errors"
 	"github.com/openfga/openfga/internal/graph"
@@ -252,23 +253,23 @@ func TestCheckCommandErrorToServerError(t *testing.T) {
 		inputError    error
 		expectedError error
 	}{
-		`1`: {
+		`ErrResolutionDepthExceeded`: {
 			inputError:    graph.ErrResolutionDepthExceeded,
 			expectedError: serverErrors.ErrAuthorizationModelResolutionTooComplex,
 		},
-		`2`: {
+		`ErrEvaluationFailed`: {
 			inputError:    condition.ErrEvaluationFailed,
 			expectedError: serverErrors.ValidationError(condition.ErrEvaluationFailed),
 		},
-		`3`: {
+		`ThrottledError`: {
 			inputError:    &ThrottledError{},
 			expectedError: serverErrors.ErrThrottledTimeout,
 		},
-		`4`: {
+		`context.DeadlineExceeded`: {
 			inputError:    context.DeadlineExceeded,
 			expectedError: serverErrors.ErrRequestDeadlineExceeded,
 		},
-		`5`: {
+		`InvalidTupleError_deprecated`: {
 			inputError: &InvalidTupleError{Cause: errors.New("oh no")},
 			expectedError: serverErrors.HandleTupleValidateError(
 				&tuple.InvalidTupleError{
@@ -276,13 +277,25 @@ func TestCheckCommandErrorToServerError(t *testing.T) {
 				},
 			),
 		},
-		`6`: {
+		`InvalidRelationError`: {
 			inputError:    &InvalidRelationError{Cause: errors.New("oh no")},
 			expectedError: serverErrors.ValidationError(&InvalidRelationError{Cause: errors.New("oh no")}),
 		},
-		`7`: {
+		`ErrUnknown_falls_through`: {
 			inputError:    ofga_errors.ErrUnknown,
 			expectedError: ofga_errors.ErrUnknown,
+		},
+		`check.ErrValidation`: {
+			inputError:    check.ErrValidation,
+			expectedError: serverErrors.ValidationError(check.ErrValidation),
+		},
+		`check.ErrInvalidUser`: {
+			inputError:    check.ErrInvalidUser,
+			expectedError: serverErrors.ValidationError(check.ErrInvalidUser),
+		},
+		`tuple.InvalidTupleError`: {
+			inputError:    &tuple.InvalidTupleError{Cause: errors.New("bad tuple")},
+			expectedError: serverErrors.HandleTupleValidateError(&tuple.InvalidTupleError{Cause: errors.New("bad tuple")}),
 		},
 	}
 

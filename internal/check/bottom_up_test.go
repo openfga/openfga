@@ -2490,3 +2490,153 @@ func TestBottomUpResolveRewriteForWildcardRequests(t *testing.T) {
 		require.ErrorIs(t, err, ErrWildcardInvalidRequest)
 	})
 }
+
+func TestBottomUpBuildIteratorWithContextualTuples(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	t.Run("should_merge_contextual_tuples_with_db_results", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		storeID := ulid.Make().String()
+
+		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
+			ObjectType: "document",
+			Relation:   "viewer",
+			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:1"}},
+			Conditions: []string{""},
+		}, storage.ReadStartingWithUserOptions{
+			Consistency: storage.ConsistencyOptions{
+				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
+			}},
+		).MaxTimes(1).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{
+			{Key: tuple.NewTupleKey("document:1", "viewer", "user:1")},
+			{Key: tuple.NewTupleKey("document:3", "viewer", "user:1")},
+		}), nil)
+
+		model := testutils.MustTransformDSLToProtoWithID(`
+			model
+				schema 1.1
+			type user
+			type document
+				relations
+					define viewer: [user]
+		`)
+
+		mg, err := modelgraph.New(model)
+		require.NoError(t, err)
+		strategy := newBottomUp(mg, mockDatastore)
+
+		ctx := context.Background()
+		edges, ok := mg.GetEdgesFromNodeId("document#viewer")
+		require.True(t, ok)
+
+		// Create request with contextual tuples that will be merged
+		req, err := NewRequest(RequestParams{
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:1"),
+			ContextualTuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:2", "viewer", "user:1"),
+				tuple.NewTupleKey("document:4", "viewer", "user:1"),
+			},
+		})
+		require.NoError(t, err)
+
+		c, err := strategy.specificType(ctx, req, edges[0])
+		require.NoError(t, err)
+
+		msg, ok := <-c
+		require.True(t, ok)
+		require.NoError(t, msg.Err)
+		require.NotNil(t, msg.Iter)
+
+		// Collect all results - should include both DB and contextual tuples merged
+		var results []string
+		for {
+			result, err := msg.Iter.Next(ctx)
+			if err != nil {
+				if storage.IterIsDoneOrCancelled(err) {
+					break
+				}
+				require.NoError(t, err)
+			}
+			results = append(results, result)
+		}
+		msg.Iter.Stop()
+
+		// Results should be merged and sorted
+		require.Equal(t, []string{"document:1", "document:2", "document:3", "document:4"}, results)
+
+		_, ok = <-c
+		require.False(t, ok)
+	})
+}
+
+func TestBottomUpSetOperationSetupEdgeFiltering(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	t.Run("should_skip_edges_without_weight_for_user_type", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		storeID := ulid.Make().String()
+
+		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		// Only expect one call because the edge for employee type should be skipped
+		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
+			ObjectType: "document",
+			Relation:   "viewer",
+			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:1"}},
+			Conditions: []string{""},
+		}, storage.ReadStartingWithUserOptions{
+			Consistency: storage.ConsistencyOptions{
+				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
+			}},
+		).MaxTimes(1).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{
+			{Key: tuple.NewTupleKey("document:1", "viewer", "user:1")},
+		}), nil)
+
+		// Model where viewer has both user and employee types
+		model := testutils.MustTransformDSLToProtoWithID(`
+			model
+				schema 1.1
+			type user
+			type employee
+			type document
+				relations
+					define viewer: [user, employee]
+		`)
+
+		mg, err := modelgraph.New(model)
+		require.NoError(t, err)
+		strategy := newBottomUp(mg, mockDatastore)
+
+		ctx := context.Background()
+		node, ok := mg.GetNodeByID("document#viewer")
+		require.True(t, ok)
+
+		// Request with user:1 - should skip edges for employee type
+		req, err := NewRequest(RequestParams{
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:1"),
+		})
+		require.NoError(t, err)
+
+		c, err := strategy.resolveRewrite(ctx, req, node)
+		require.NoError(t, err)
+
+		// Drain results
+		for msg := range c {
+			if msg.Err == nil && msg.Iter != nil {
+				msg.Iter.Stop()
+			}
+		}
+	})
+}
