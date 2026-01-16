@@ -571,4 +571,417 @@ func TestEvaluation(t *testing.T) {
 		require.NoError(t, err)
 		require.False(t, resp.GetDecision(), "Expected deny when action.method doesn't match")
 	})
+
+	// Tests for complex property types (arrays, nested objects) per AuthZEN spec
+	// The AuthZEN spec states properties can contain "complex values, such as arrays and objects"
+
+	t.Run("complex_properties_array_of_strings", func(t *testing.T) {
+		// This test verifies that array properties are properly mapped to list<string> condition parameters
+		tc := setupTestContext(t)
+		tc.createStore("test-store")
+		tc.writeModel(`
+			model
+				schema 1.1
+			type user
+			type document
+				relations
+					define reader: [user with check_roles]
+
+			condition check_roles(subject_roles: list<string>) {
+				"admin" in subject_roles || "editor" in subject_roles
+			}
+		`)
+		tc.writeTuples([]*openfgav1.TupleKey{
+			{User: "user:alice", Relation: "reader", Object: "document:doc1", Condition: &openfgav1.RelationshipCondition{Name: "check_roles"}},
+		})
+
+		// Test with roles array containing "admin" - should permit
+		resp, err := tc.authzenClient.Evaluation(context.Background(), &authzenv1.EvaluationRequest{
+			StoreId: tc.storeID,
+			Subject: &authzenv1.Subject{
+				Type:       "user",
+				Id:         "alice",
+				Properties: testutils.MustNewStruct(t, map[string]interface{}{"roles": []interface{}{"admin", "viewer"}}),
+			},
+			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
+			Action:   &authzenv1.Action{Name: "reader"},
+		})
+		require.NoError(t, err)
+		require.True(t, resp.GetDecision(), "Expected permit when subject has admin role in array")
+
+		// Test with roles array containing "editor" - should permit
+		resp, err = tc.authzenClient.Evaluation(context.Background(), &authzenv1.EvaluationRequest{
+			StoreId: tc.storeID,
+			Subject: &authzenv1.Subject{
+				Type:       "user",
+				Id:         "alice",
+				Properties: testutils.MustNewStruct(t, map[string]interface{}{"roles": []interface{}{"editor"}}),
+			},
+			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
+			Action:   &authzenv1.Action{Name: "reader"},
+		})
+		require.NoError(t, err)
+		require.True(t, resp.GetDecision(), "Expected permit when subject has editor role in array")
+
+		// Test with roles array without required roles - should deny
+		resp, err = tc.authzenClient.Evaluation(context.Background(), &authzenv1.EvaluationRequest{
+			StoreId: tc.storeID,
+			Subject: &authzenv1.Subject{
+				Type:       "user",
+				Id:         "alice",
+				Properties: testutils.MustNewStruct(t, map[string]interface{}{"roles": []interface{}{"viewer", "guest"}}),
+			},
+			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
+			Action:   &authzenv1.Action{Name: "reader"},
+		})
+		require.NoError(t, err)
+		require.False(t, resp.GetDecision(), "Expected deny when subject lacks required roles")
+	})
+
+	t.Run("complex_properties_map_string", func(t *testing.T) {
+		// This test verifies that map properties with string values work correctly
+		// OpenFGA map<T> has string keys and values of type T
+		tc := setupTestContext(t)
+		tc.createStore("test-store")
+		tc.writeModel(`
+			model
+				schema 1.1
+			type user
+			type document
+				relations
+					define reader: [user with check_metadata]
+
+			condition check_metadata(subject_metadata: map<string>) {
+				subject_metadata["role"] == "admin"
+			}
+		`)
+		tc.writeTuples([]*openfgav1.TupleKey{
+			{User: "user:alice", Relation: "reader", Object: "document:doc1", Condition: &openfgav1.RelationshipCondition{Name: "check_metadata"}},
+		})
+
+		// Test with metadata map containing admin role - should permit
+		resp, err := tc.authzenClient.Evaluation(context.Background(), &authzenv1.EvaluationRequest{
+			StoreId: tc.storeID,
+			Subject: &authzenv1.Subject{
+				Type: "user",
+				Id:   "alice",
+				Properties: testutils.MustNewStruct(t, map[string]interface{}{
+					"metadata": map[string]interface{}{
+						"role":       "admin",
+						"department": "engineering",
+					},
+				}),
+			},
+			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
+			Action:   &authzenv1.Action{Name: "reader"},
+		})
+		require.NoError(t, err)
+		require.True(t, resp.GetDecision(), "Expected permit when metadata role is admin")
+
+		// Test with different role - should deny
+		resp, err = tc.authzenClient.Evaluation(context.Background(), &authzenv1.EvaluationRequest{
+			StoreId: tc.storeID,
+			Subject: &authzenv1.Subject{
+				Type: "user",
+				Id:   "alice",
+				Properties: testutils.MustNewStruct(t, map[string]interface{}{
+					"metadata": map[string]interface{}{
+						"role":       "viewer",
+						"department": "sales",
+					},
+				}),
+			},
+			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
+			Action:   &authzenv1.Action{Name: "reader"},
+		})
+		require.NoError(t, err)
+		require.False(t, resp.GetDecision(), "Expected deny when metadata role is not admin")
+	})
+
+	t.Run("complex_properties_map_int", func(t *testing.T) {
+		// This test verifies that map properties with int values work correctly
+		tc := setupTestContext(t)
+		tc.createStore("test-store")
+		tc.writeModel(`
+			model
+				schema 1.1
+			type user
+			type document
+				relations
+					define reader: [user with check_limits]
+
+			condition check_limits(resource_limits: map<int>) {
+				resource_limits["max_views"] > 0 && resource_limits["max_views"] <= 100
+			}
+		`)
+		tc.writeTuples([]*openfgav1.TupleKey{
+			{User: "user:alice", Relation: "reader", Object: "document:doc1", Condition: &openfgav1.RelationshipCondition{Name: "check_limits"}},
+		})
+
+		// Test with valid limits - should permit
+		resp, err := tc.authzenClient.Evaluation(context.Background(), &authzenv1.EvaluationRequest{
+			StoreId: tc.storeID,
+			Subject: &authzenv1.Subject{Type: "user", Id: "alice"},
+			Resource: &authzenv1.Resource{
+				Type: "document",
+				Id:   "doc1",
+				Properties: testutils.MustNewStruct(t, map[string]interface{}{
+					"limits": map[string]interface{}{
+						"max_views":     float64(50),
+						"max_downloads": float64(10),
+					},
+				}),
+			},
+			Action: &authzenv1.Action{Name: "reader"},
+		})
+		require.NoError(t, err)
+		require.True(t, resp.GetDecision(), "Expected permit when max_views is within range")
+
+		// Test with limit exceeding threshold - should deny
+		resp, err = tc.authzenClient.Evaluation(context.Background(), &authzenv1.EvaluationRequest{
+			StoreId: tc.storeID,
+			Subject: &authzenv1.Subject{Type: "user", Id: "alice"},
+			Resource: &authzenv1.Resource{
+				Type: "document",
+				Id:   "doc1",
+				Properties: testutils.MustNewStruct(t, map[string]interface{}{
+					"limits": map[string]interface{}{
+						"max_views":     float64(200),
+						"max_downloads": float64(10),
+					},
+				}),
+			},
+			Action: &authzenv1.Action{Name: "reader"},
+		})
+		require.NoError(t, err)
+		require.False(t, resp.GetDecision(), "Expected deny when max_views exceeds threshold")
+	})
+
+	t.Run("complex_properties_array_size_check", func(t *testing.T) {
+		// This test verifies that array size checks work with list properties
+		tc := setupTestContext(t)
+		tc.createStore("test-store")
+		tc.writeModel(`
+			model
+				schema 1.1
+			type user
+			type document
+				relations
+					define reader: [user with check_permissions_count]
+
+			condition check_permissions_count(subject_permissions: list<string>) {
+				size(subject_permissions) >= 2
+			}
+		`)
+		tc.writeTuples([]*openfgav1.TupleKey{
+			{User: "user:alice", Relation: "reader", Object: "document:doc1", Condition: &openfgav1.RelationshipCondition{Name: "check_permissions_count"}},
+		})
+
+		// Test with enough permissions - should permit
+		resp, err := tc.authzenClient.Evaluation(context.Background(), &authzenv1.EvaluationRequest{
+			StoreId: tc.storeID,
+			Subject: &authzenv1.Subject{
+				Type:       "user",
+				Id:         "alice",
+				Properties: testutils.MustNewStruct(t, map[string]interface{}{"permissions": []interface{}{"read", "write", "delete"}}),
+			},
+			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
+			Action:   &authzenv1.Action{Name: "reader"},
+		})
+		require.NoError(t, err)
+		require.True(t, resp.GetDecision(), "Expected permit when subject has >= 2 permissions")
+
+		// Test with insufficient permissions - should deny
+		resp, err = tc.authzenClient.Evaluation(context.Background(), &authzenv1.EvaluationRequest{
+			StoreId: tc.storeID,
+			Subject: &authzenv1.Subject{
+				Type:       "user",
+				Id:         "alice",
+				Properties: testutils.MustNewStruct(t, map[string]interface{}{"permissions": []interface{}{"read"}}),
+			},
+			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
+			Action:   &authzenv1.Action{Name: "reader"},
+		})
+		require.NoError(t, err)
+		require.False(t, resp.GetDecision(), "Expected deny when subject has < 2 permissions")
+	})
+
+	t.Run("complex_properties_resource_array", func(t *testing.T) {
+		// This test verifies that resource array properties work correctly
+		tc := setupTestContext(t)
+		tc.createStore("test-store")
+		tc.writeModel(`
+			model
+				schema 1.1
+			type user
+			type server
+				relations
+					define can_connect: [user with check_port]
+
+			condition check_port(resource_allowed_ports: list<int>, action_port: int) {
+				action_port in resource_allowed_ports
+			}
+		`)
+		tc.writeTuples([]*openfgav1.TupleKey{
+			{User: "user:alice", Relation: "can_connect", Object: "server:prod-1", Condition: &openfgav1.RelationshipCondition{Name: "check_port"}},
+		})
+
+		// Test connecting to allowed port - should permit
+		resp, err := tc.authzenClient.Evaluation(context.Background(), &authzenv1.EvaluationRequest{
+			StoreId: tc.storeID,
+			Subject: &authzenv1.Subject{Type: "user", Id: "alice"},
+			Resource: &authzenv1.Resource{
+				Type:       "server",
+				Id:         "prod-1",
+				Properties: testutils.MustNewStruct(t, map[string]interface{}{"allowed_ports": []interface{}{float64(80), float64(443), float64(8080)}}),
+			},
+			Action: &authzenv1.Action{
+				Name:       "can_connect",
+				Properties: testutils.MustNewStruct(t, map[string]interface{}{"port": float64(443)}),
+			},
+		})
+		require.NoError(t, err)
+		require.True(t, resp.GetDecision(), "Expected permit when connecting to allowed port")
+
+		// Test connecting to disallowed port - should deny
+		resp, err = tc.authzenClient.Evaluation(context.Background(), &authzenv1.EvaluationRequest{
+			StoreId: tc.storeID,
+			Subject: &authzenv1.Subject{Type: "user", Id: "alice"},
+			Resource: &authzenv1.Resource{
+				Type:       "server",
+				Id:         "prod-1",
+				Properties: testutils.MustNewStruct(t, map[string]interface{}{"allowed_ports": []interface{}{float64(80), float64(443), float64(8080)}}),
+			},
+			Action: &authzenv1.Action{
+				Name:       "can_connect",
+				Properties: testutils.MustNewStruct(t, map[string]interface{}{"port": float64(22)}),
+			},
+		})
+		require.NoError(t, err)
+		require.False(t, resp.GetDecision(), "Expected deny when connecting to disallowed port")
+	})
+
+	t.Run("complex_properties_combined_types", func(t *testing.T) {
+		// This test verifies that multiple complex property types work together
+		tc := setupTestContext(t)
+		tc.createStore("test-store")
+		tc.writeModel(`
+			model
+				schema 1.1
+			type user
+			type folder
+				relations
+					define can_upload: [user with upload_policy]
+
+			condition upload_policy(subject_tags: list<string>, resource_allowed_users: list<string>, action_max_size: int) {
+				"verified" in subject_tags && size(resource_allowed_users) > 0 && action_max_size > 0
+			}
+		`)
+		tc.writeTuples([]*openfgav1.TupleKey{
+			{User: "user:alice", Relation: "can_upload", Object: "folder:shared", Condition: &openfgav1.RelationshipCondition{Name: "upload_policy"}},
+		})
+
+		// Test with all conditions met - should permit
+		resp, err := tc.authzenClient.Evaluation(context.Background(), &authzenv1.EvaluationRequest{
+			StoreId: tc.storeID,
+			Subject: &authzenv1.Subject{
+				Type: "user",
+				Id:   "alice",
+				Properties: testutils.MustNewStruct(t, map[string]interface{}{
+					"tags": []interface{}{"vip", "verified"},
+				}),
+			},
+			Resource: &authzenv1.Resource{
+				Type: "folder",
+				Id:   "shared",
+				Properties: testutils.MustNewStruct(t, map[string]interface{}{
+					"allowed_users": []interface{}{"alice", "bob", "charlie"},
+				}),
+			},
+			Action: &authzenv1.Action{
+				Name: "can_upload",
+				Properties: testutils.MustNewStruct(t, map[string]interface{}{
+					"max_size": float64(10485760),
+				}),
+			},
+		})
+		require.NoError(t, err)
+		require.True(t, resp.GetDecision(), "Expected permit when all conditions are met")
+
+		// Test without "verified" tag - should deny
+		resp, err = tc.authzenClient.Evaluation(context.Background(), &authzenv1.EvaluationRequest{
+			StoreId: tc.storeID,
+			Subject: &authzenv1.Subject{
+				Type: "user",
+				Id:   "alice",
+				Properties: testutils.MustNewStruct(t, map[string]interface{}{
+					"tags": []interface{}{"vip", "guest"},
+				}),
+			},
+			Resource: &authzenv1.Resource{
+				Type: "folder",
+				Id:   "shared",
+				Properties: testutils.MustNewStruct(t, map[string]interface{}{
+					"allowed_users": []interface{}{"alice", "bob"},
+				}),
+			},
+			Action: &authzenv1.Action{
+				Name: "can_upload",
+				Properties: testutils.MustNewStruct(t, map[string]interface{}{
+					"max_size": float64(10485760),
+				}),
+			},
+		})
+		require.NoError(t, err)
+		require.False(t, resp.GetDecision(), "Expected deny when subject lacks 'verified' tag")
+	})
+
+	t.Run("complex_properties_empty_array", func(t *testing.T) {
+		// This test verifies that empty arrays are handled correctly
+		tc := setupTestContext(t)
+		tc.createStore("test-store")
+		tc.writeModel(`
+			model
+				schema 1.1
+			type user
+			type document
+				relations
+					define reader: [user with check_empty_roles]
+
+			condition check_empty_roles(subject_roles: list<string>) {
+				size(subject_roles) == 0
+			}
+		`)
+		tc.writeTuples([]*openfgav1.TupleKey{
+			{User: "user:alice", Relation: "reader", Object: "document:doc1", Condition: &openfgav1.RelationshipCondition{Name: "check_empty_roles"}},
+		})
+
+		// Test with empty roles array - should permit
+		resp, err := tc.authzenClient.Evaluation(context.Background(), &authzenv1.EvaluationRequest{
+			StoreId: tc.storeID,
+			Subject: &authzenv1.Subject{
+				Type:       "user",
+				Id:         "alice",
+				Properties: testutils.MustNewStruct(t, map[string]interface{}{"roles": []interface{}{}}),
+			},
+			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
+			Action:   &authzenv1.Action{Name: "reader"},
+		})
+		require.NoError(t, err)
+		require.True(t, resp.GetDecision(), "Expected permit when roles array is empty")
+
+		// Test with non-empty roles array - should deny
+		resp, err = tc.authzenClient.Evaluation(context.Background(), &authzenv1.EvaluationRequest{
+			StoreId: tc.storeID,
+			Subject: &authzenv1.Subject{
+				Type:       "user",
+				Id:         "alice",
+				Properties: testutils.MustNewStruct(t, map[string]interface{}{"roles": []interface{}{"admin"}}),
+			},
+			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
+			Action:   &authzenv1.Action{Name: "reader"},
+		})
+		require.NoError(t, err)
+		require.False(t, resp.GetDecision(), "Expected deny when roles array is not empty")
+	})
 }
