@@ -1,10 +1,19 @@
-# OpenFGA AuthZEN Implementation and Interop scenarios
+# OpenFGA AuthZEN Implementation and Interop Scenarios
 
 ## AuthZEN Implementation
 
 OpenFGA includes an experimental implementation of the [Authorization API 1.0](https://github.com/openid/authzen/blob/main/api/authorization-api-1_0.md).
 
----
+AuthZen includes a [set of interop scenarios](https://authzen-interop.net/docs/category/scenarios) to validate the implementation of different Policy Decision Points such as OpenFGA. The implementations of these scenarios are in the [AuthZen Interop Examples for OpenFGA repository](https://github.com/openfga/authzen-interop). You can use these to easily test the OpenFGA AuthZen implementation.
+
+## OpenFGA and AuthZen
+
+AuthZen is designed to support a variety of PDPs that follow different paradigms like ABAC, RBAC, and ReBAC.
+
+Some features designed for ABAC scenarios don't have a perfect match in OpenFGA, and the OpenFGA implementation makes some assumptions to handle them.
+
+In most cases, we expect adopters of AuthZen to use it as a way to easily integrate products that natively support the AuthZen protocol, like Identity Providers and Gateways, with a specific AuthZen-compatible PDP. This is more practical than trying to build applications that are fully decoupled from the PDP, where you could swap one PDP for another without changing the application. It's unlikely you'll achieve that level of decoupling with Zanzibar-style products like OpenFGA, as you still need to use native APIs to write tuples to the OpenFGA database.
+
 
 ## Implementation Decisions and Tradeoffs
 
@@ -211,12 +220,9 @@ OPENFGA_EXPERIMENTALS=enable_authzen openfga run
 
 ### Specifying Authorization Model ID
 
-By default, AuthZEN endpoints use the latest authorization model for the store. To use a specific model version, you can specify the authorization model ID using:
+By default, AuthZEN endpoints use the latest authorization model for the store. To use a specific model version, specify the authorization model ID using the HTTP header `Openfga-Authorization-Model-Id`.
 
-1. **HTTP Header** (recommended): `Openfga-Authorization-Model-Id`
-2. **Request Field**: `authorization_model_id` in the request body
-
-**Example using header:**
+**Example:**
 ```bash
 curl -X POST http://localhost:8080/stores/{store_id}/access/v1/evaluation \
   -H "Content-Type: application/json" \
@@ -228,15 +234,12 @@ curl -X POST http://localhost:8080/stores/{store_id}/access/v1/evaluation \
   }'
 ```
 
-**Precedence:** If both the header and request field are specified, the header takes precedence.
-
-**Supported Endpoints:** The header is supported on:
+**Supported Endpoints:** The header is supported on all AuthZEN endpoints:
 - `POST /stores/{store_id}/access/v1/evaluation`
+- `POST /stores/{store_id}/access/v1/evaluations`
 - `POST /stores/{store_id}/access/v1/search/subject`
 - `POST /stores/{store_id}/access/v1/search/resource`
 - `POST /stores/{store_id}/access/v1/search/action`
-
-Note: The `evaluations` (batch) endpoint does not support the `authorization_model_id` parameter—it always uses the latest model.
 
 ### Supported Endpoints
 
@@ -547,92 +550,3 @@ Response:
 
 **Note:** The endpoint URLs are absolute paths specific to the requested store, meeting the AuthZEN spec requirement for directly-usable URLs without templating.
 
----
-
-## AuthZEN Interop Scenarios
-
-The [AuthZEN working group](https://openid.net/wg/authzen/) has defined two interoperability scenarios:
-
-- [Todo App Interop Scenario](https://authzen-interop.net/docs/scenarios/todo-1.1/)
-- [API Gateway Interop Scenario](https://authzen-interop.net/docs/category/api-gateway-10-draft-02)
-
-These scenarios require their own OpenFGA store, with their model and tuples:
-
-- [OpenFGA Todo App Interop Model](./authzen-todo.fga.yaml)
-- [OpenFGA Gateway Interop Model](./authzen-gateway.fga.yaml)
-
-The model files have inline documentation explaining the rationale for the design.
-
-To run tests using the [FGA CLI](https://github.com/openfga/cli), use:
-
-```bash
-fga model test --test authzen-todo.fga.yaml
-fga model test --test authzen-gateway.fga.yaml
-```
-
-There can also use [`authzen-todo.http`](./authzen-todo.http) and [`authzen-gateway.http`](./authzen-gateway.http) using [REST Client](https://marketplace.visualstudio.com/items?itemName=humao.rest-client). 
-
-
-You can also try it live on the [AuthZen interop website](https://todo.authzen-interop.net/). Use the user credentials specified [here](https://github.com/openid/authzen/blob/main/interop/authzen-todo-application/README.md#identities).
-
-## Running the AuthZEN Todo Interop test suite
-
-- Clone https://github.com/openid/authzen
-- Go to the `interop/authzen-todo-backend` folder and follow the instructions in the readme to build the project.
-- Set the shared key as an environment variable. You can find it on the OpenFGA vault under the "OpenFGA AuthZeN shared key" name.
-
-```
-export AUTHZEN_PDP_API_KEY="<shared-key>"
-```
-
-- Run the tests:
-```
-yarn test https://authzen-interop.openfga.dev/stores/01JG9JGS4W0950VN17G8NNAH3C 
-```
-
-## Running the AuthZEN API Gateway Interop test suite
-
-- Clone https://github.com/openid/authzen
-- Go to the `interop/authzen-api-gateway` folder and follow the instructions in the readme to build the project.
-- Set the shared key as an environment variable. You can find it on the OpenFGA vault under the "OpenFGA AuthZeN shared key" name.
-
-```
-export AUTHZEN_PDP_API_KEY="<shared-key>"
-```
-
-- Run the tests:
-```
-yarn test https://authzen-interop.openfga.dev/stores/01JG9JGS4W0950VN17G8NNAH3C 
-```
-## Running the AuthZEN Todo Application
-
-- Set the shared key as an environment variable. You can find it on the OpenFGA vault under the "OpenFGA AuthZeN shared key" name.
-
-```
-export AUTHZEN_PDP_API_KEY='{"OpenFGA": "Bearer <shared-key>"}'
-```
-
-- Change the `gateways.--Pass Through--` entry in [pdps.json](https://github.com/openid/authzen/blob/main/interop/authzen-todo-backend/src/pdps.json) to point to "http://localhost:8080".
-
-- Change the `VITE_API_ORIGIN` in the [.env]`https://github.com/openid/authzen/blob/main/interop/authzen-todo-application/.env` file to `http://localhost:8080`
-
-- Follow the instructions in this [readme](https://github.com/openid/authzen/tree/main/interop/authzen-todo-backend) to build and run the back-end app.
-
-- Follow the instructions in this [readme](https://github.com/openid/authzen/blob/main/interop/authzen-todo-application/README.md) to run the front-end app.
-
-## Pointing to a local OpenFGA instance
-
-To run the test suites or the interop application pointing to a local OpenFGA instance, you need to:
-
-- Change the `AUTHZEN_PDP_API_KEY` values to match the ones used by OpenFGA locally.
-- Change the [pdps.json](https://github.com/openid/authzen/blob/main/interop/authzen-todo-backend/src/pdps.json) OpenFGA entries and point to the local OpenFGA instance.
-- You can run the test suites by pointing to the local OpenFGA instance too:
-
-```
-yarn test http://localhost:8080/stores/01JG9JGS4W0950VN17G8NNAH3C 
-```
-- If you want the Todo App pointing to a local OpenFGA instance, you'll need to change the port that OpenFGA uses, as it conflicts with the one used by the interop backend app:
-
-```
-dist/openfga run --http-addr 0.0.0.0:4000        
-```
