@@ -45,7 +45,11 @@ func (ts *ThompsonStats) Sample(r *rand.Rand) float64 {
 
 	// Convert back to Linear Time (Milliseconds)
 	// exp(x) is guaranteed to be positive for all real x.
-	return math.Exp(logSample)
+	val := math.Exp(logSample)
+	if val < 1.0 {
+		return 1.0 // Enforce a minimum of 1ms to avoid pathological cases
+	}
+	return val
 }
 
 // fastGammaSample implements the highly efficient Marsaglia and Tsang acceptance-rejection

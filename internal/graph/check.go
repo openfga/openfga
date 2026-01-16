@@ -872,7 +872,6 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 				possibleStrategies[weightTwoResolver] = weight2Plan
 				resolver = c.weight2TTU
 			} else if typesys.TTUUseRecursiveResolver(objectType, relation, userType, rewrite.GetTupleToUserset()) {
-				c.logger.Warn("Using recursive resolver for TTU")
 				possibleStrategies[defaultResolver] = defaultRecursivePlan
 				possibleStrategies[recursiveResolver] = recursivePlan
 				resolver = c.recursiveTTU
