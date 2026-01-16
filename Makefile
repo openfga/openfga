@@ -99,7 +99,7 @@ test: generate-mocks ## Run all tests. To run a specific test, pass the FILTER v
 	@cat coverageunit.tmp.out | grep -v "mock" > coverageunit.out
 	@rm coverageunit.tmp.out
 
-test-fast: generate-mocks ## To include integration tests, pass the TAGS var with build tag "integration". Usage `make test TAGS="integration"`
+test-fast: generate-mocks ## To include integration tests, pass the TAGS var with build tag "integration". Usage `make test-fast TAGS="integration"`
 	${call print, "Running fast tests"}
 	@go test -run "$(FILTER)" \
 			-skip "$(SKIP)" \
