@@ -621,14 +621,23 @@ func (c *LocalChecker) profiledCheckHandler(keyPlan planner.Selector, strategy *
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
 		start := time.Now()
 		res, err := resolver(ctx)
+		duration := time.Since(start)
 		if err != nil {
 			// penalize plans that timeout from the upstream context
 			if errors.Is(err, context.DeadlineExceeded) {
-				keyPlan.UpdateStats(strategy, c.upstreamTimeout)
+				if duration.Milliseconds() > 2000 {
+					c.logger.Warn(fmt.Sprintf("%s has deadline exceeded and will be updated at %dms", strategy.Name, duration.Milliseconds()))
+					keyPlan.UpdateStats(strategy, duration)
+				} else {
+					c.logger.Warn(fmt.Sprintf("%s will skip update", strategy.Name))
+				}
 			}
 			return nil, err
 		}
-		keyPlan.UpdateStats(strategy, time.Since(start))
+		if duration.Milliseconds() > 2000 {
+			c.logger.Warn(fmt.Sprintf("%s has %dms", strategy.Name, duration.Milliseconds()))
+		}
+		keyPlan.UpdateStats(strategy, duration)
 		return res, nil
 	}
 }
