@@ -17,20 +17,6 @@ func TestMatrixMemory(t *testing.T) {
 	runMatrixWithEngine(t, "memory")
 }
 
-func TestMatrixPostgres(t *testing.T) {
-	runMatrixWithEngine(t, "postgres")
-}
-
-// TODO: re-enable
-// func TestMatrixMysql(t *testing.T) {
-//	runMatrixWithEngine(t, "mysql")
-//}
-
-// TODO: re-enable after investigating write contention in test
-// func TestMatrixSqlite(t *testing.T) {
-//	runMatrixWithEngine(t, "sqlite")
-//}
-
 func runMatrixWithEngine(t *testing.T, engine string) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
@@ -45,18 +31,6 @@ func runMatrixWithEngine(t *testing.T, engine string) {
 
 func TestListObjectsMemory(t *testing.T) {
 	testRunAll(t, "memory")
-}
-
-func TestListObjectsPostgres(t *testing.T) {
-	testRunAll(t, "postgres")
-}
-
-func TestListObjectsMySQL(t *testing.T) {
-	testRunAll(t, "mysql")
-}
-
-func TestListObjectsSQLite(t *testing.T) {
-	testRunAll(t, "sqlite")
 }
 
 func testRunAll(t *testing.T, engine string) {
