@@ -872,6 +872,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 				possibleStrategies[weightTwoResolver] = weight2Plan
 				resolver = c.weight2TTU
 			} else if typesys.TTUUseRecursiveResolver(objectType, relation, userType, rewrite.GetTupleToUserset()) {
+				c.logger.Warn("Using recursive resolver for TTU")
 				possibleStrategies[defaultResolver] = defaultRecursivePlan
 				possibleStrategies[recursiveResolver] = recursivePlan
 				resolver = c.recursiveTTU
@@ -879,6 +880,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 		}
 
 		if len(possibleStrategies) == 1 {
+			c.logger.Warn("Using default resolver for TTU")
 			// short circuit, no additional resolvers are available
 			return resolver(ctx, req, rewrite, filteredIter)(ctx)
 		}
@@ -902,10 +904,12 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 
 		switch strategy.Name {
 		case defaultResolver:
+			c.logger.Warn("Selected default resolver for TTU")
 			resolver = c.defaultTTU
 		case weightTwoResolver:
 			resolver = c.weight2TTU
 		case recursiveResolver:
+			c.logger.Warn("Selected recursive resolver for TTU")
 			resolver = c.recursiveTTU
 		}
 
