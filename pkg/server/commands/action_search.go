@@ -44,7 +44,9 @@ func NewActionSearchQuery(opts ...ActionSearchQueryOption) *ActionSearchQuery {
 	return q
 }
 
-// Execute runs the action search and returns permitted actions with pagination.
+// Execute runs the action search and returns permitted actions.
+// Note: Pagination is not currently supported per AuthZEN spec (optional feature).
+// The page request parameter is ignored and all results are returned.
 func (q *ActionSearchQuery) Execute(
 	ctx context.Context,
 	req *authzenv1.ActionSearchRequest,
@@ -108,7 +110,7 @@ func (q *ActionSearchQuery) Execute(
 	}
 
 	// Process batch check results
-	var permittedActions []*authzenv1.Action
+	var actions []*authzenv1.Action
 	for correlationID, result := range batchResp.GetResult() {
 		// Skip if there was an error for this check
 		if result.GetError() != nil {
@@ -121,56 +123,20 @@ func (q *ActionSearchQuery) Execute(
 				continue
 			}
 			if idx >= 0 && idx < len(relationNames) {
-				permittedActions = append(permittedActions, &authzenv1.Action{
+				actions = append(actions, &authzenv1.Action{
 					Name: relationNames[idx],
 				})
 			}
 		}
 	}
 
-	// Sort permitted actions alphabetically for consistent ordering
-	sort.Slice(permittedActions, func(i, j int) bool {
-		return permittedActions[i].GetName() < permittedActions[j].GetName()
+	// Sort actions alphabetically for consistent ordering
+	sort.Slice(actions, func(i, j int) bool {
+		return actions[i].GetName() < actions[j].GetName()
 	})
 
-	// Apply pagination
-	limit := getLimit(req.GetPage())
-	offset := 0
-
-	if req.GetPage() != nil && req.GetPage().GetToken() != "" {
-		token, err := decodePaginationToken(req.GetPage().GetToken())
-		if err != nil {
-			return nil, fmt.Errorf("invalid pagination token: %w", err)
-		}
-		offset = token.Offset
-	}
-
-	// Slice results
-	total := len(permittedActions)
-	start := offset
-	end := offset + int(limit)
-	if start > total {
-		start = total
-	}
-	if end > total {
-		end = total
-	}
-
-	pagedActions := permittedActions[start:end]
-
-	// Generate next token
-	var nextToken string
-	if end < total {
-		nextToken = encodePaginationToken(&PaginationToken{Offset: end})
-	}
-
-	totalUint32 := uint32(total)
+	// Return all results without pagination (pagination not supported)
 	return &authzenv1.ActionSearchResponse{
-		Actions: pagedActions,
-		Page: &authzenv1.PageResponse{
-			NextToken: nextToken,
-			Count:     uint32(len(pagedActions)),
-			Total:     &totalUint32,
-		},
+		Actions: actions,
 	}, nil
 }

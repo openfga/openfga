@@ -2,24 +2,11 @@ package commands
 
 import (
 	"context"
-	"encoding/base64"
-	"encoding/json"
 	"fmt"
-	"sort"
 
 	authzenv1 "github.com/openfga/api/proto/authzen/v1"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 )
-
-const (
-	DefaultSearchLimit = 50
-	MaxSearchLimit     = 1000
-)
-
-// PaginationToken stores pagination state for search operations.
-type PaginationToken struct {
-	Offset int `json:"offset"`
-}
 
 // SubjectSearchQuery handles AuthZEN subject search requests.
 type SubjectSearchQuery struct {
@@ -45,7 +32,9 @@ func NewSubjectSearchQuery(opts ...SubjectSearchQueryOption) *SubjectSearchQuery
 	return q
 }
 
-// Execute runs the subject search and returns matching subjects with pagination.
+// Execute runs the subject search and returns matching subjects.
+// Note: Pagination is not currently supported per AuthZEN spec (optional feature).
+// The page request parameter is ignored and all results are returned.
 func (q *SubjectSearchQuery) Execute(
 	ctx context.Context,
 	req *authzenv1.SubjectSearchRequest,
@@ -81,70 +70,24 @@ func (q *SubjectSearchQuery) Execute(
 		},
 	}
 
-	// Execute ListUsers (returns all results - no native pagination)
+	// Execute ListUsers (returns all results)
 	resp, err := q.listUsersFunc(ctx, listUsersReq)
 	if err != nil {
 		return nil, fmt.Errorf("ListUsers failed: %w", err)
 	}
 
 	// Convert to AuthZEN subjects
-	var allSubjects []*authzenv1.Subject
+	var subjects []*authzenv1.Subject
 	for _, user := range resp.GetUsers() {
 		subject := userToSubject(user)
 		if subject != nil {
-			allSubjects = append(allSubjects, subject)
+			subjects = append(subjects, subject)
 		}
 	}
 
-	// Sort subjects for consistent pagination across calls (only when pagination is requested)
-	if req.GetPage() != nil {
-		sort.Slice(allSubjects, func(i, j int) bool {
-			if allSubjects[i].GetType() != allSubjects[j].GetType() {
-				return allSubjects[i].GetType() < allSubjects[j].GetType()
-			}
-			return allSubjects[i].GetId() < allSubjects[j].GetId()
-		})
-	}
-
-	// Apply pagination
-	limit := getLimit(req.GetPage())
-	offset := 0
-
-	if req.GetPage() != nil && req.GetPage().GetToken() != "" {
-		token, err := decodePaginationToken(req.GetPage().GetToken())
-		if err != nil {
-			return nil, fmt.Errorf("invalid pagination token: %w", err)
-		}
-		offset = token.Offset
-	}
-
-	// Slice results
-	total := len(allSubjects)
-	start := offset
-	end := offset + int(limit)
-	if start > total {
-		start = total
-	}
-	if end > total {
-		end = total
-	}
-
-	pagedSubjects := allSubjects[start:end]
-
-	// Generate next token
-	var nextToken string
-	if end < total {
-		nextToken = encodePaginationToken(&PaginationToken{Offset: end})
-	}
-
-	totalUint32 := uint32(total)
+	// Return all results without pagination (pagination not supported)
 	return &authzenv1.SubjectSearchResponse{
-		Subjects: pagedSubjects,
-		Page: &authzenv1.PageResponse{
-			NextToken: nextToken,
-			Count:     uint32(len(pagedSubjects)),
-			Total:     &totalUint32,
-		},
+		Subjects: subjects,
 	}, nil
 }
 
@@ -164,31 +107,4 @@ func userToSubject(user *openfgav1.User) *authzenv1.Subject {
 		}
 	}
 	return nil
-}
-
-func getLimit(page *authzenv1.PageRequest) uint32 {
-	if page == nil || page.GetLimit() == 0 {
-		return DefaultSearchLimit
-	}
-	if page.GetLimit() > MaxSearchLimit {
-		return MaxSearchLimit
-	}
-	return page.GetLimit()
-}
-
-func encodePaginationToken(token *PaginationToken) string {
-	data, _ := json.Marshal(token)
-	return base64.StdEncoding.EncodeToString(data)
-}
-
-func decodePaginationToken(s string) (*PaginationToken, error) {
-	data, err := base64.StdEncoding.DecodeString(s)
-	if err != nil {
-		return nil, err
-	}
-	var token PaginationToken
-	if err := json.Unmarshal(data, &token); err != nil {
-		return nil, err
-	}
-	return &token, nil
 }

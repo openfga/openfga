@@ -73,7 +73,7 @@ func TestSubjectSearch(t *testing.T) {
 		require.Empty(t, resp.GetSubjects())
 	})
 
-	t.Run("pagination_flow", func(t *testing.T) {
+	t.Run("returns_all_results_ignores_page_parameter", func(t *testing.T) {
 		tc := setupTestContext(t)
 		tc.createStore("test-store")
 		tc.writeModel(`
@@ -96,7 +96,7 @@ func TestSubjectSearch(t *testing.T) {
 		}
 		tc.writeTuples(tuples)
 
-		// First page with limit of 3
+		// Request with page limit - should be ignored, all results returned
 		limit := uint32(3)
 		resp, err := tc.authzenClient.SubjectSearch(context.Background(), &authzenv1.SubjectSearchRequest{
 			StoreId:  tc.storeID,
@@ -106,34 +106,19 @@ func TestSubjectSearch(t *testing.T) {
 			Page:     &authzenv1.PageRequest{Limit: &limit},
 		})
 		require.NoError(t, err)
-		require.Len(t, resp.GetSubjects(), 3)
-		require.NotNil(t, resp.GetPage())
-		require.NotEmpty(t, resp.GetPage().GetNextToken())
+		// All 10 users should be returned despite limit of 3 (pagination not supported)
+		require.Len(t, resp.GetSubjects(), 10)
+		// No Page response when pagination is not supported
+		require.Nil(t, resp.GetPage())
 
-		// Collect all subjects across pages
-		allSubjects := make(map[string]bool)
+		// Verify all expected subjects are returned
+		subjectIDs := make(map[string]bool)
 		for _, s := range resp.GetSubjects() {
-			allSubjects[s.GetId()] = true
+			subjectIDs[s.GetId()] = true
 		}
-
-		// Continue with token to get more results
-		token := resp.GetPage().GetNextToken()
-		resp2, err := tc.authzenClient.SubjectSearch(context.Background(), &authzenv1.SubjectSearchRequest{
-			StoreId:  tc.storeID,
-			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
-			Action:   &authzenv1.Action{Name: "reader"},
-			Subject:  &authzenv1.SubjectFilter{Type: "user"},
-			Page:     &authzenv1.PageRequest{Limit: &limit, Token: &token},
-		})
-		require.NoError(t, err)
-		require.Len(t, resp2.GetSubjects(), 3)
-
-		for _, s := range resp2.GetSubjects() {
-			allSubjects[s.GetId()] = true
+		for i := 0; i < 10; i++ {
+			require.True(t, subjectIDs[fmt.Sprintf("user%02d", i)])
 		}
-
-		// Ensure no duplicates between pages
-		require.Len(t, allSubjects, 6)
 	})
 
 	t.Run("with_subject_type_filter", func(t *testing.T) {
@@ -297,7 +282,7 @@ func TestResourceSearch(t *testing.T) {
 		require.Len(t, resp.GetResources(), 2)
 	})
 
-	t.Run("pagination_flow", func(t *testing.T) {
+	t.Run("returns_all_results_ignores_page_parameter", func(t *testing.T) {
 		tc := setupTestContext(t)
 		tc.createStore("test-store")
 		tc.writeModel(`
@@ -320,7 +305,7 @@ func TestResourceSearch(t *testing.T) {
 		}
 		tc.writeTuples(tuples)
 
-		// First page with limit of 3
+		// Request with page limit - should be ignored, all results returned
 		limit := uint32(3)
 		resp, err := tc.authzenClient.ResourceSearch(context.Background(), &authzenv1.ResourceSearchRequest{
 			StoreId:  tc.storeID,
@@ -330,34 +315,19 @@ func TestResourceSearch(t *testing.T) {
 			Page:     &authzenv1.PageRequest{Limit: &limit},
 		})
 		require.NoError(t, err)
-		require.Len(t, resp.GetResources(), 3)
-		require.NotNil(t, resp.GetPage())
-		require.NotEmpty(t, resp.GetPage().GetNextToken())
+		// All 10 documents should be returned despite limit of 3 (pagination not supported)
+		require.Len(t, resp.GetResources(), 10)
+		// No Page response when pagination is not supported
+		require.Nil(t, resp.GetPage())
 
-		// Collect all resources across pages
-		allResources := make(map[string]bool)
+		// Verify all expected resources are returned
+		resourceIDs := make(map[string]bool)
 		for _, r := range resp.GetResources() {
-			allResources[r.GetId()] = true
+			resourceIDs[r.GetId()] = true
 		}
-
-		// Continue with token to get more results
-		token := resp.GetPage().GetNextToken()
-		resp2, err := tc.authzenClient.ResourceSearch(context.Background(), &authzenv1.ResourceSearchRequest{
-			StoreId:  tc.storeID,
-			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
-			Action:   &authzenv1.Action{Name: "reader"},
-			Resource: &authzenv1.Resource{Type: "document"},
-			Page:     &authzenv1.PageRequest{Limit: &limit, Token: &token},
-		})
-		require.NoError(t, err)
-		require.Len(t, resp2.GetResources(), 3)
-
-		for _, r := range resp2.GetResources() {
-			allResources[r.GetId()] = true
+		for i := 0; i < 10; i++ {
+			require.True(t, resourceIDs[fmt.Sprintf("doc%02d", i)])
 		}
-
-		// Ensure no duplicates between pages
-		require.Len(t, allResources, 6)
 	})
 
 	t.Run("multiple_resource_types", func(t *testing.T) {

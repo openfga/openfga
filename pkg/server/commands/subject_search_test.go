@@ -40,10 +40,12 @@ func TestSubjectSearchQuery(t *testing.T) {
 		require.Equal(t, "user", resp.GetSubjects()[0].GetType())
 		require.Equal(t, "bob", resp.GetSubjects()[1].GetId())
 		require.Equal(t, "user", resp.GetSubjects()[1].GetType())
+		// No Page response when pagination is not supported
+		require.Nil(t, resp.GetPage())
 	})
 
-	t.Run("pagination_initial_request", func(t *testing.T) {
-		// Create 10 users
+	t.Run("returns_all_results_ignores_page_parameter", func(t *testing.T) {
+		// Create 10 users - all should be returned even with page limit
 		users := make([]*openfgav1.User, 10)
 		for i := 0; i < 10; i++ {
 			users[i] = &openfgav1.User{
@@ -62,137 +64,15 @@ func TestSubjectSearchQuery(t *testing.T) {
 			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
 			Action:   &authzenv1.Action{Name: "read"},
 			StoreId:  "01HVMMBCMGZNT3SED4CT2KA89Q",
-			Page:     &authzenv1.PageRequest{Limit: uint32Ptr(3)},
+			Page:     &authzenv1.PageRequest{Limit: uint32Ptr(3)}, // Page parameter is ignored
 		}
 
 		resp, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.Len(t, resp.GetSubjects(), 3)
-		require.NotEmpty(t, resp.GetPage().GetNextToken())
-		require.Equal(t, uint32(3), resp.GetPage().GetCount())
-		require.Equal(t, uint32(10), resp.GetPage().GetTotal())
-		// Verify first page subjects
-		require.Equal(t, "user0", resp.GetSubjects()[0].GetId())
-		require.Equal(t, "user1", resp.GetSubjects()[1].GetId())
-		require.Equal(t, "user2", resp.GetSubjects()[2].GetId())
-	})
-
-	t.Run("pagination_continuation", func(t *testing.T) {
-		users := make([]*openfgav1.User, 10)
-		for i := 0; i < 10; i++ {
-			users[i] = &openfgav1.User{
-				User: &openfgav1.User_Object{Object: &openfgav1.Object{Type: "user", Id: fmt.Sprintf("user%d", i)}},
-			}
-		}
-
-		mockListUsers := func(ctx context.Context, req *openfgav1.ListUsersRequest) (*openfgav1.ListUsersResponse, error) {
-			return &openfgav1.ListUsersResponse{Users: users}, nil
-		}
-
-		query := NewSubjectSearchQuery(WithListUsersFunc(mockListUsers))
-
-		// First request
-		req := &authzenv1.SubjectSearchRequest{
-			Subject:  &authzenv1.SubjectFilter{Type: "user"},
-			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
-			Action:   &authzenv1.Action{Name: "read"},
-			StoreId:  "01HVMMBCMGZNT3SED4CT2KA89Q",
-			Page:     &authzenv1.PageRequest{Limit: uint32Ptr(3)},
-		}
-
-		resp, err := query.Execute(context.Background(), req)
-		require.NoError(t, err)
-		require.NotEmpty(t, resp.GetPage().GetNextToken())
-
-		// Continue with token
-		req.Page.Token = &resp.Page.NextToken
-		resp2, err := query.Execute(context.Background(), req)
-		require.NoError(t, err)
-		require.Len(t, resp2.GetSubjects(), 3)
-		require.Equal(t, "user3", resp2.GetSubjects()[0].GetId())
-		require.Equal(t, "user4", resp2.GetSubjects()[1].GetId())
-		require.Equal(t, "user5", resp2.GetSubjects()[2].GetId())
-	})
-
-	t.Run("pagination_last_page", func(t *testing.T) {
-		users := make([]*openfgav1.User, 5)
-		for i := 0; i < 5; i++ {
-			users[i] = &openfgav1.User{
-				User: &openfgav1.User_Object{Object: &openfgav1.Object{Type: "user", Id: fmt.Sprintf("user%d", i)}},
-			}
-		}
-
-		mockListUsers := func(ctx context.Context, req *openfgav1.ListUsersRequest) (*openfgav1.ListUsersResponse, error) {
-			return &openfgav1.ListUsersResponse{Users: users}, nil
-		}
-
-		query := NewSubjectSearchQuery(WithListUsersFunc(mockListUsers))
-
-		// First request - get 3 of 5
-		req := &authzenv1.SubjectSearchRequest{
-			Subject:  &authzenv1.SubjectFilter{Type: "user"},
-			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
-			Action:   &authzenv1.Action{Name: "read"},
-			StoreId:  "01HVMMBCMGZNT3SED4CT2KA89Q",
-			Page:     &authzenv1.PageRequest{Limit: uint32Ptr(3)},
-		}
-
-		resp, err := query.Execute(context.Background(), req)
-		require.NoError(t, err)
-		require.Len(t, resp.GetSubjects(), 3)
-		require.NotEmpty(t, resp.GetPage().GetNextToken())
-
-		// Second request - get remaining 2
-		req.Page.Token = &resp.Page.NextToken
-		resp2, err := query.Execute(context.Background(), req)
-		require.NoError(t, err)
-		require.Len(t, resp2.GetSubjects(), 2)
-		require.Empty(t, resp2.GetPage().GetNextToken()) // No more pages
-		require.Equal(t, "user3", resp2.GetSubjects()[0].GetId())
-		require.Equal(t, "user4", resp2.GetSubjects()[1].GetId())
-	})
-
-	t.Run("pagination_invalid_token", func(t *testing.T) {
-		mockListUsers := func(ctx context.Context, req *openfgav1.ListUsersRequest) (*openfgav1.ListUsersResponse, error) {
-			return &openfgav1.ListUsersResponse{}, nil
-		}
-
-		query := NewSubjectSearchQuery(WithListUsersFunc(mockListUsers))
-
-		invalidToken := "not-valid-base64-!@#"
-		req := &authzenv1.SubjectSearchRequest{
-			Subject:  &authzenv1.SubjectFilter{Type: "user"},
-			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
-			Action:   &authzenv1.Action{Name: "read"},
-			StoreId:  "01HVMMBCMGZNT3SED4CT2KA89Q",
-			Page:     &authzenv1.PageRequest{Token: &invalidToken},
-		}
-
-		_, err := query.Execute(context.Background(), req)
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "invalid pagination token")
-	})
-
-	t.Run("pagination_invalid_json_token", func(t *testing.T) {
-		mockListUsers := func(ctx context.Context, req *openfgav1.ListUsersRequest) (*openfgav1.ListUsersResponse, error) {
-			return &openfgav1.ListUsersResponse{}, nil
-		}
-
-		query := NewSubjectSearchQuery(WithListUsersFunc(mockListUsers))
-
-		// Valid base64 but invalid JSON
-		invalidToken := "bm90LXZhbGlkLWpzb24=" // "not-valid-json" in base64
-		req := &authzenv1.SubjectSearchRequest{
-			Subject:  &authzenv1.SubjectFilter{Type: "user"},
-			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
-			Action:   &authzenv1.Action{Name: "read"},
-			StoreId:  "01HVMMBCMGZNT3SED4CT2KA89Q",
-			Page:     &authzenv1.PageRequest{Token: &invalidToken},
-		}
-
-		_, err := query.Execute(context.Background(), req)
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "invalid pagination token")
+		// All 10 users should be returned despite limit of 3
+		require.Len(t, resp.GetSubjects(), 10)
+		// No Page response when pagination is not supported
+		require.Nil(t, resp.GetPage())
 	})
 
 	// Test that subject type is now required
@@ -232,9 +112,8 @@ func TestSubjectSearchQuery(t *testing.T) {
 		resp, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
 		require.Empty(t, resp.GetSubjects())
-		require.Empty(t, resp.GetPage().GetNextToken())
-		require.Equal(t, uint32(0), resp.GetPage().GetCount())
-		require.Equal(t, uint32(0), resp.GetPage().GetTotal())
+		// No Page response when pagination is not supported
+		require.Nil(t, resp.GetPage())
 	})
 
 	t.Run("properties_to_context_resource", func(t *testing.T) {
@@ -373,7 +252,7 @@ func TestSubjectSearchQuery(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, resp.GetSubjects(), 2)
 
-		// Verify both subjects are present (order may vary due to sorting)
+		// Verify both subjects are present (order may vary)
 		subjectIDs := make(map[string]bool)
 		for _, s := range resp.GetSubjects() {
 			require.Equal(t, "user", s.GetType())
@@ -383,8 +262,8 @@ func TestSubjectSearchQuery(t *testing.T) {
 		require.True(t, subjectIDs["*"]) // Wildcard user
 	})
 
-	t.Run("limit_default", func(t *testing.T) {
-		// Create 100 users to test default limit
+	t.Run("returns_all_results_with_large_dataset", func(t *testing.T) {
+		// Create 100 users - all should be returned
 		users := make([]*openfgav1.User, 100)
 		for i := 0; i < 100; i++ {
 			users[i] = &openfgav1.User{
@@ -403,70 +282,13 @@ func TestSubjectSearchQuery(t *testing.T) {
 			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
 			Action:   &authzenv1.Action{Name: "read"},
 			StoreId:  "01HVMMBCMGZNT3SED4CT2KA89Q",
-			// No page limit specified - should use DefaultSearchLimit
 		}
 
 		resp, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.Len(t, resp.GetSubjects(), DefaultSearchLimit)
-		require.NotEmpty(t, resp.GetPage().GetNextToken())
-	})
-
-	t.Run("limit_max_enforcement", func(t *testing.T) {
-		// Create more users than max limit
-		users := make([]*openfgav1.User, MaxSearchLimit+100)
-		for i := 0; i < MaxSearchLimit+100; i++ {
-			users[i] = &openfgav1.User{
-				User: &openfgav1.User_Object{Object: &openfgav1.Object{Type: "user", Id: fmt.Sprintf("user%d", i)}},
-			}
-		}
-
-		mockListUsers := func(ctx context.Context, req *openfgav1.ListUsersRequest) (*openfgav1.ListUsersResponse, error) {
-			return &openfgav1.ListUsersResponse{Users: users}, nil
-		}
-
-		query := NewSubjectSearchQuery(WithListUsersFunc(mockListUsers))
-
-		// Request more than max limit
-		req := &authzenv1.SubjectSearchRequest{
-			Subject:  &authzenv1.SubjectFilter{Type: "user"},
-			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
-			Action:   &authzenv1.Action{Name: "read"},
-			StoreId:  "01HVMMBCMGZNT3SED4CT2KA89Q",
-			Page:     &authzenv1.PageRequest{Limit: uint32Ptr(MaxSearchLimit + 500)},
-		}
-
-		resp, err := query.Execute(context.Background(), req)
-		require.NoError(t, err)
-		require.Len(t, resp.GetSubjects(), MaxSearchLimit)
-		require.NotEmpty(t, resp.GetPage().GetNextToken())
-	})
-
-	t.Run("limit_zero_uses_default", func(t *testing.T) {
-		users := make([]*openfgav1.User, 100)
-		for i := 0; i < 100; i++ {
-			users[i] = &openfgav1.User{
-				User: &openfgav1.User_Object{Object: &openfgav1.Object{Type: "user", Id: fmt.Sprintf("user%d", i)}},
-			}
-		}
-
-		mockListUsers := func(ctx context.Context, req *openfgav1.ListUsersRequest) (*openfgav1.ListUsersResponse, error) {
-			return &openfgav1.ListUsersResponse{Users: users}, nil
-		}
-
-		query := NewSubjectSearchQuery(WithListUsersFunc(mockListUsers))
-
-		req := &authzenv1.SubjectSearchRequest{
-			Subject:  &authzenv1.SubjectFilter{Type: "user"},
-			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
-			Action:   &authzenv1.Action{Name: "read"},
-			StoreId:  "01HVMMBCMGZNT3SED4CT2KA89Q",
-			Page:     &authzenv1.PageRequest{Limit: uint32Ptr(0)},
-		}
-
-		resp, err := query.Execute(context.Background(), req)
-		require.NoError(t, err)
-		require.Len(t, resp.GetSubjects(), DefaultSearchLimit)
+		require.Len(t, resp.GetSubjects(), 100)
+		// No Page response when pagination is not supported
+		require.Nil(t, resp.GetPage())
 	})
 
 	t.Run("request_passes_store_and_model_id", func(t *testing.T) {
@@ -533,36 +355,6 @@ func TestSubjectSearchQuery(t *testing.T) {
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "ListUsers failed")
 		require.Contains(t, err.Error(), "database connection failed")
-	})
-
-	t.Run("pagination_offset_beyond_results", func(t *testing.T) {
-		users := make([]*openfgav1.User, 3)
-		for i := 0; i < 3; i++ {
-			users[i] = &openfgav1.User{
-				User: &openfgav1.User_Object{Object: &openfgav1.Object{Type: "user", Id: fmt.Sprintf("user%d", i)}},
-			}
-		}
-
-		mockListUsers := func(ctx context.Context, req *openfgav1.ListUsersRequest) (*openfgav1.ListUsersResponse, error) {
-			return &openfgav1.ListUsersResponse{Users: users}, nil
-		}
-
-		query := NewSubjectSearchQuery(WithListUsersFunc(mockListUsers))
-
-		// Create a token with offset beyond the result set
-		token := encodePaginationToken(&PaginationToken{Offset: 100})
-		req := &authzenv1.SubjectSearchRequest{
-			Subject:  &authzenv1.SubjectFilter{Type: "user"},
-			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
-			Action:   &authzenv1.Action{Name: "read"},
-			StoreId:  "01HVMMBCMGZNT3SED4CT2KA89Q",
-			Page:     &authzenv1.PageRequest{Token: &token},
-		}
-
-		resp, err := query.Execute(context.Background(), req)
-		require.NoError(t, err)
-		require.Empty(t, resp.GetSubjects())
-		require.Empty(t, resp.GetPage().GetNextToken())
 	})
 
 	// These tests verify that subject type is required (changed behavior)

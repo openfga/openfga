@@ -3,7 +3,6 @@ package commands
 import (
 	"context"
 	"fmt"
-	"sort"
 	"strings"
 
 	"google.golang.org/grpc"
@@ -40,7 +39,9 @@ func NewResourceSearchQuery(opts ...ResourceSearchQueryOption) *ResourceSearchQu
 	return q
 }
 
-// Execute runs the resource search and returns matching resources with pagination.
+// Execute runs the resource search and returns matching resources.
+// Note: Pagination is not currently supported per AuthZEN spec (optional feature).
+// The page request parameter is ignored and all results are returned.
 func (q *ResourceSearchQuery) Execute(
 	ctx context.Context,
 	req *authzenv1.ResourceSearchRequest,
@@ -62,18 +63,6 @@ func (q *ResourceSearchQuery) Execute(
 	}
 	resourceType := req.GetResource().GetType()
 
-	// Get pagination parameters
-	limit := getLimit(req.GetPage())
-	offset := 0
-
-	if req.GetPage() != nil && req.GetPage().GetToken() != "" {
-		token, err := decodePaginationToken(req.GetPage().GetToken())
-		if err != nil {
-			return nil, fmt.Errorf("invalid pagination token: %w", err)
-		}
-		offset = token.Offset
-	}
-
 	// Build StreamedListObjects request
 	streamedReq := &openfgav1.StreamedListObjectsRequest{
 		StoreId:              req.GetStoreId(),
@@ -85,7 +74,6 @@ func (q *ResourceSearchQuery) Execute(
 	}
 
 	// Create a collector that consumes the full stream
-	// We must consume all results before sorting to ensure stable pagination
 	collector := &objectCollector{
 		ctx:     ctx,
 		objects: make([]string, 0),
@@ -98,50 +86,17 @@ func (q *ResourceSearchQuery) Execute(
 	}
 
 	// Convert to AuthZEN resources
-	var allResources []*authzenv1.Resource
+	var resources []*authzenv1.Resource
 	for _, objID := range collector.objects {
 		resource := objectIDToResource(objID)
 		if resource != nil {
-			allResources = append(allResources, resource)
+			resources = append(resources, resource)
 		}
 	}
 
-	// Sort resources for consistent pagination across calls (only when pagination is requested)
-	if req.GetPage() != nil {
-		sort.Slice(allResources, func(i, j int) bool {
-			if allResources[i].GetType() != allResources[j].GetType() {
-				return allResources[i].GetType() < allResources[j].GetType()
-			}
-			return allResources[i].GetId() < allResources[j].GetId()
-		})
-	}
-
-	// Apply pagination (offset already handled by maxNeeded calculation)
-	total := len(allResources)
-	start := offset
-	end := offset + int(limit)
-	if start > total {
-		start = total
-	}
-	if end > total {
-		end = total
-	}
-
-	pagedResources := allResources[start:end]
-
-	// Generate next token - there are more results if total exceeds current page end
-	var nextToken string
-	hasMore := end < total
-	if hasMore {
-		nextToken = encodePaginationToken(&PaginationToken{Offset: end})
-	}
-
+	// Return all results without pagination (pagination not supported)
 	return &authzenv1.ResourceSearchResponse{
-		Resources: pagedResources,
-		Page: &authzenv1.PageResponse{
-			NextToken: nextToken,
-			Count:     uint32(len(pagedResources)),
-		},
+		Resources: resources,
 	}, nil
 }
 

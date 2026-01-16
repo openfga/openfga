@@ -6,24 +6,6 @@ This document describes the AuthZEN PDP capabilities implemented by OpenFGA. The
 
 ## Implemented Capabilities
 
-### :search-pagination
-
-| Field | Value |
-|-------|-------|
-| **Capability Name** | `:search-pagination` |
-| **Capability URN** | `urn:ietf:params:authzen:capability:search-pagination` |
-| **Capability Description** | PDP supports pagination for Search APIs using `page.token` and `page.limit` request parameters, and returns `page.next_token` and `page.count` in responses. |
-| **Change Controller** | OpenID Foundation AuthZEN Working Group |
-| **Specification Document(s)** | Authorization API 1.0, Section "Pagination" |
-
-**OpenFGA Implementation:**
-- ✅ Supports `page.limit` (default: 50, max: 1000)
-- ✅ Supports `page.token` for continuation
-- ✅ Returns `page.next_token` when more results available
-- ✅ Returns `page.count` with the number of results in current page
-- ❌ Does not return `page.total` (would require expensive full enumeration)
-- ❌ Does not support `page.properties` for sorting/filtering hints
-
 ### :properties-to-context
 
 | Field | Value |
@@ -93,6 +75,18 @@ This document describes the AuthZEN PDP capabilities implemented by OpenFGA. The
 
 ## Capabilities Not Implemented
 
+### :search-pagination
+
+| Field | Value |
+|-------|-------|
+| **Capability Name** | `:search-pagination` |
+| **Capability URN** | `urn:ietf:params:authzen:capability:search-pagination` |
+| **Capability Description** | PDP supports pagination for Search APIs using `page.token` and `page.limit` request parameters, and returns `page.next_token` and `page.count` in responses. |
+| **Change Controller** | OpenID Foundation AuthZEN Working Group |
+| **Specification Document(s)** | Authorization API 1.0, Section "Pagination" |
+
+**OpenFGA Status:** ❌ Not implemented. Per the AuthZEN specification, pagination is optional ("a PDP MAY support pagination"). OpenFGA's Search APIs return all results in a single response. The `page` request parameter is accepted but ignored, and the `page` object is not included in responses.
+
 ### :decision-context-reasons
 
 | Field | Value |
@@ -125,10 +119,10 @@ This document describes the AuthZEN PDP capabilities implemented by OpenFGA. The
 
 | Capability | Supported | Notes |
 |------------|-----------|-------|
-| `:search-pagination` | ✅ Yes | `limit`, `token`, `next_token`, `count` supported; `total` not supported |
 | `:properties-to-context` | ✅ Yes | Properties merged with `subject_`, `resource_`, `action_` prefixes (uses `_` separator) |
 | `:evaluations-semantic` | ✅ Yes | All three semantics: `execute_all`, `deny_on_first_deny`, `permit_on_first_permit` |
 | `:transitive-search` | ✅ Yes | Full transitive relationship traversal via ListUsers and StreamedListObjects |
 | `:abac-context` | ✅ Yes | Context passed to OpenFGA conditions for ABAC evaluation |
+| `:search-pagination` | ❌ No | Pagination is optional per AuthZEN spec; all results returned in single response |
 | `:decision-context-reasons` | ❌ No | OpenFGA does not return decision explanations |
 | `:signed-metadata` | ❌ No | Metadata endpoint returns unsigned JSON |

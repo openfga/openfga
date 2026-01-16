@@ -40,25 +40,16 @@ AuthZEN allows `properties` objects on `subject`, `resource`, and `action`. Open
 
 ### Search API Pagination
 
-AuthZEN Search APIs (`SubjectSearch`, `ResourceSearch`, `ActionSearch`) support pagination with `limit` and `token` parameters.
+**Current Status:** Pagination is not currently supported per AuthZEN specification (it's an optional feature).
 
-**Challenge:** OpenFGA's underlying APIs (`ListUsers`, `ListObjects`) do not support offset-based pagination natively. They return all matching results in a single response.
+**Behavior:**
+- The `page` request parameter is accepted but ignored
+- All results are returned in a single response
+- The `page` object is not included in responses
 
-**Decision:** Pagination is implemented in-memory:
-1. All results are fetched from the underlying OpenFGA API
-2. Results are sorted by type, then by ID (only when pagination is requested)
-3. The appropriate slice is returned based on `offset` and `limit`
-4. A continuation `token` is generated encoding the next offset
+**Rationale:** Per the AuthZEN specification, pagination is optional: "a PDP MAY support pagination." When a PDP does not support pagination, it should ignore the `page` request parameter, return all matching results, and not include the `page` object in the response.
 
-**Tradeoffs:**
-- **Memory usage**: Large result sets are loaded entirely into memory before pagination. Consider using the `limit` parameter to cap result sizes.
-- **Consistency**: Sorting ensures consistent pagination across requests. Without pagination parameters, results are returned in the order provided by OpenFGA (which may vary).
-- **Performance**: For `ResourceSearch`, the implementation uses `StreamedListObjects` with early termination—streaming stops once enough objects are collected for the current page (offset + limit + 1). This reduces memory usage compared to fetching all results.
-
-**Pagination Limits:**
-- Default limit: 50 results per page
-- Maximum limit: 1000 results per page
-- Requests exceeding the maximum are capped at 1000
+**Future Consideration:** Pagination may be implemented in the future if needed for performance with very large result sets
 
 ### SubjectSearch and Subject Type Requirement
 
@@ -74,13 +65,13 @@ AuthZEN Search APIs (`SubjectSearch`, `ResourceSearch`, `ActionSearch`) support 
 
 **Decision:** `ActionSearch` is implemented by:
 1. Retrieving all relations defined for the resource type from the authorization model
-2. Performing a `Check` call for each relation to determine if the subject has access
+2. Performing a `BatchCheck` call for all relations to determine if the subject has access
 3. Returning only the permitted relations as "actions"
 
 **Tradeoffs:**
-- **Performance**: This requires N `Check` calls where N is the number of relations on the resource type. For types with many relations, this can be expensive.
+- **Performance**: This uses a single `BatchCheck` call for all relations on the resource type, which is more efficient than individual checks.
 - **Consistency**: All checks use the same authorization model version to ensure consistent results.
-- **Pagination**: Actions are sorted alphabetically and paginated in-memory.
+- **Ordering**: Actions are sorted alphabetically for consistent response ordering.
 
 ### Evaluations Semantic Options
 
@@ -144,19 +135,13 @@ AuthZEN does not have a direct equivalent to OpenFGA's contextual tuples feature
 
 **Workaround:** Clients needing contextual tuples must use the native OpenFGA API directly.
 
-### Search API: Pagination `total` Field
+### Search API: Pagination
 
-The AuthZEN specification defines an optional `page.total` field indicating the total number of results matching the query.
+The AuthZEN specification supports optional pagination for Search APIs with `page.limit`, `page.token`, `page.total`, and `page.properties` fields.
 
-**Current status:** The `total` field is not returned in paginated responses for `ResourceSearch`. For `SubjectSearch` and `ActionSearch`, since all results are fetched before pagination, the total could be returned but is currently omitted for consistency.
+**Current status:** Pagination is not supported. The `page` request parameter is ignored, all results are returned, and the `page` object is not included in responses.
 
-**Rationale:** `ResourceSearch` uses `StreamedListObjects` with early termination for efficiency, which means the total count is unknown without fetching all results.
-
-### Search API: Pagination `properties` Field
-
-The AuthZEN specification allows a `page.properties` object for implementation-specific pagination attributes like sorting and filtering.
-
-**Current status:** Not implemented. The `properties` field is ignored in requests and not returned in responses.
+**Rationale:** Per the AuthZEN specification, pagination is optional: "a PDP MAY support pagination." This implementation returns all results in a single response.
 
 ### Search API: Multi-Type Subject Search
 
@@ -423,8 +408,7 @@ POST /stores/<store_id>/access/v1/search/subject
 {
   "subject": { "type": "user"},
   "resource": { "type": "document", "id": "doc1" },
-  "action": { "name": "reader" },
-  "page": { "limit": 10 }
+  "action": { "name": "reader" }
 }
 ```
 
@@ -434,8 +418,7 @@ Response:
   "subjects": [
     { "type": "user", "id": "alice" },
     { "type": "user", "id": "bob" }
-  ],
-  "page": { "next_token": "eyJ...", "count": 2 }
+  ]
 }
 ```
 
@@ -450,8 +433,7 @@ POST /stores/<store_id>/access/v1/search/resource
 {
   "subject": { "type": "user", "id": "alice" },
   "action": { "name": "reader" },
-  "resource": { "type": "document" },
-  "page": { "limit": 10 }
+  "resource": { "type": "document" }
 }
 ```
 
@@ -461,12 +443,11 @@ Response:
   "resources": [
     { "type": "document", "id": "doc1" },
     { "type": "document", "id": "doc2" }
-  ],
-  "page": { "next_token": "eyJ...", "count": 2 }
+  ]
 }
 ```
 
-This maps to OpenFGA's [ListObjects](https://openfga.dev/api/service#/Relationship%20Queries/ListObjects) API.
+This maps to OpenFGA's [ListObjects](https://openfga.dev/api/service#/Relationship%20Queries/ListObjects) API (via StreamedListObjects).
 
 ### Action Search
 
@@ -490,20 +471,13 @@ Response:
 }
 ```
 
-This iterates through all relations defined for the resource type and performs Check calls to determine which actions are permitted.
+This uses a BatchCheck call for all relations defined for the resource type to determine which actions are permitted.
 
 ### Pagination
 
-Search APIs support pagination with the following parameters:
+**Note:** Pagination is not currently supported. The `page` request parameter is accepted but ignored—all results are returned in a single response and the `page` object is not included in responses.
 
-| Parameter | Description |
-|-----------|-------------|
-| `page.limit` | Maximum results per page (default: 50, max: 1000) |
-| `page.token` | Continuation token from previous response |
-
-The response includes:
-- `page.next_token`: Token for the next page (empty if no more results)
-- `page.count`: Number of results in this page
+Per the AuthZEN specification, pagination is optional: "a PDP MAY support pagination."
 
 ---
 

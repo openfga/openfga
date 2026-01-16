@@ -83,6 +83,8 @@ func TestActionSearchQuery(t *testing.T) {
 		require.Contains(t, actionNames, "reader")
 		require.Contains(t, actionNames, "owner")
 		require.NotContains(t, actionNames, "writer")
+		// No Page response when pagination is not supported
+		require.Nil(t, resp.GetPage())
 	})
 
 	t.Run("no_permitted_actions", func(t *testing.T) {
@@ -119,11 +121,11 @@ func TestActionSearchQuery(t *testing.T) {
 		resp, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
 		require.Empty(t, resp.GetActions())
-		require.Equal(t, uint32(0), resp.GetPage().GetCount())
-		require.Equal(t, uint32(0), resp.GetPage().GetTotal())
+		// No Page response when pagination is not supported
+		require.Nil(t, resp.GetPage())
 	})
 
-	t.Run("pagination_initial_request", func(t *testing.T) {
+	t.Run("returns_all_results_ignores_page_parameter", func(t *testing.T) {
 		mockTypesystemResolver := func(ctx context.Context, storeID, modelID string) (*typesystem.TypeSystem, error) {
 			model := testutils.MustTransformDSLToProtoWithID(`
 				model
@@ -156,194 +158,15 @@ func TestActionSearchQuery(t *testing.T) {
 			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
 			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
 			StoreId:  "01HVMMBCMGZNT3SED4CT2KA89Q",
-			Page:     &authzenv1.PageRequest{Limit: &limit},
+			Page:     &authzenv1.PageRequest{Limit: &limit}, // Page parameter is ignored
 		}
 
 		resp, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.Len(t, resp.GetActions(), 2)
-		require.NotEmpty(t, resp.GetPage().GetNextToken())
-		require.Equal(t, uint32(2), resp.GetPage().GetCount())
-		require.Equal(t, uint32(5), resp.GetPage().GetTotal())
-		require.Equal(t, "action1", resp.GetActions()[0].GetName())
-		require.Equal(t, "action2", resp.GetActions()[1].GetName())
-	})
-
-	t.Run("pagination_continuation", func(t *testing.T) {
-		mockTypesystemResolver := func(ctx context.Context, storeID, modelID string) (*typesystem.TypeSystem, error) {
-			model := testutils.MustTransformDSLToProtoWithID(`
-				model
-					schema 1.1
-				type user
-				type document
-					relations
-						define action1: [user]
-						define action2: [user]
-						define action3: [user]
-						define action4: [user]
-						define action5: [user]
-			`)
-			ts, err := typesystem.New(model)
-			require.NoError(t, err)
-			return ts, nil
-		}
-
-		mockBatchCheck := mockBatchCheckFunc(func(tupleKey *openfgav1.CheckRequestTupleKey) (bool, error) {
-			return true, nil
-		})
-
-		query := NewActionSearchQuery(
-			WithTypesystemResolver(mockTypesystemResolver),
-			WithBatchCheckFunc(mockBatchCheck),
-		)
-
-		limit := uint32(2)
-		req := &authzenv1.ActionSearchRequest{
-			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
-			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
-			StoreId:  "01HVMMBCMGZNT3SED4CT2KA89Q",
-			Page:     &authzenv1.PageRequest{Limit: &limit},
-		}
-
-		resp, err := query.Execute(context.Background(), req)
-		require.NoError(t, err)
-		require.NotEmpty(t, resp.GetPage().GetNextToken())
-
-		req.Page.Token = &resp.Page.NextToken
-		resp2, err := query.Execute(context.Background(), req)
-		require.NoError(t, err)
-		require.Len(t, resp2.GetActions(), 2)
-		require.Equal(t, "action3", resp2.GetActions()[0].GetName())
-		require.Equal(t, "action4", resp2.GetActions()[1].GetName())
-	})
-
-	t.Run("pagination_last_page", func(t *testing.T) {
-		mockTypesystemResolver := func(ctx context.Context, storeID, modelID string) (*typesystem.TypeSystem, error) {
-			model := testutils.MustTransformDSLToProtoWithID(`
-				model
-					schema 1.1
-				type user
-				type document
-					relations
-						define action1: [user]
-						define action2: [user]
-						define action3: [user]
-						define action4: [user]
-						define action5: [user]
-			`)
-			ts, err := typesystem.New(model)
-			require.NoError(t, err)
-			return ts, nil
-		}
-
-		mockBatchCheck := mockBatchCheckFunc(func(tupleKey *openfgav1.CheckRequestTupleKey) (bool, error) {
-			return true, nil
-		})
-
-		query := NewActionSearchQuery(
-			WithTypesystemResolver(mockTypesystemResolver),
-			WithBatchCheckFunc(mockBatchCheck),
-		)
-
-		limit := uint32(2)
-		req := &authzenv1.ActionSearchRequest{
-			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
-			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
-			StoreId:  "01HVMMBCMGZNT3SED4CT2KA89Q",
-			Page:     &authzenv1.PageRequest{Limit: &limit},
-		}
-
-		resp, err := query.Execute(context.Background(), req)
-		require.NoError(t, err)
-		require.Len(t, resp.GetActions(), 2)
-		require.NotEmpty(t, resp.GetPage().GetNextToken())
-
-		req.Page.Token = &resp.Page.NextToken
-		resp2, err := query.Execute(context.Background(), req)
-		require.NoError(t, err)
-		require.Len(t, resp2.GetActions(), 2)
-		require.NotEmpty(t, resp2.GetPage().GetNextToken())
-
-		req.Page.Token = &resp2.Page.NextToken
-		resp3, err := query.Execute(context.Background(), req)
-		require.NoError(t, err)
-		require.Len(t, resp3.GetActions(), 1)
-		require.Empty(t, resp3.GetPage().GetNextToken())
-		require.Equal(t, "action5", resp3.GetActions()[0].GetName())
-	})
-
-	t.Run("pagination_invalid_token", func(t *testing.T) {
-		mockTypesystemResolver := func(ctx context.Context, storeID, modelID string) (*typesystem.TypeSystem, error) {
-			model := testutils.MustTransformDSLToProtoWithID(`
-				model
-					schema 1.1
-				type user
-				type document
-					relations
-						define reader: [user]
-			`)
-			ts, err := typesystem.New(model)
-			require.NoError(t, err)
-			return ts, nil
-		}
-
-		mockBatchCheck := mockBatchCheckFunc(func(tupleKey *openfgav1.CheckRequestTupleKey) (bool, error) {
-			return true, nil
-		})
-
-		query := NewActionSearchQuery(
-			WithTypesystemResolver(mockTypesystemResolver),
-			WithBatchCheckFunc(mockBatchCheck),
-		)
-
-		invalidToken := "not-valid-base64-!@#"
-		req := &authzenv1.ActionSearchRequest{
-			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
-			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
-			StoreId:  "01HVMMBCMGZNT3SED4CT2KA89Q",
-			Page:     &authzenv1.PageRequest{Token: &invalidToken},
-		}
-
-		_, err := query.Execute(context.Background(), req)
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "invalid pagination token")
-	})
-
-	t.Run("pagination_invalid_json_token", func(t *testing.T) {
-		mockTypesystemResolver := func(ctx context.Context, storeID, modelID string) (*typesystem.TypeSystem, error) {
-			model := testutils.MustTransformDSLToProtoWithID(`
-				model
-					schema 1.1
-				type user
-				type document
-					relations
-						define reader: [user]
-			`)
-			ts, err := typesystem.New(model)
-			require.NoError(t, err)
-			return ts, nil
-		}
-
-		mockBatchCheck := mockBatchCheckFunc(func(tupleKey *openfgav1.CheckRequestTupleKey) (bool, error) {
-			return true, nil
-		})
-
-		query := NewActionSearchQuery(
-			WithTypesystemResolver(mockTypesystemResolver),
-			WithBatchCheckFunc(mockBatchCheck),
-		)
-
-		invalidToken := "bm90LXZhbGlkLWpzb24=" // "not-valid-json" in base64
-		req := &authzenv1.ActionSearchRequest{
-			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
-			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
-			StoreId:  "01HVMMBCMGZNT3SED4CT2KA89Q",
-			Page:     &authzenv1.PageRequest{Token: &invalidToken},
-		}
-
-		_, err := query.Execute(context.Background(), req)
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "invalid pagination token")
+		// All 5 actions should be returned despite limit of 2
+		require.Len(t, resp.GetActions(), 5)
+		// No Page response when pagination is not supported
+		require.Nil(t, resp.GetPage())
 	})
 
 	t.Run("properties_to_context_subject", func(t *testing.T) {
