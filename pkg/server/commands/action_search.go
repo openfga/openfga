@@ -14,8 +14,9 @@ import (
 
 // ActionSearchQuery handles AuthZEN action search requests.
 type ActionSearchQuery struct {
-	typesystemResolver typesystem.TypesystemResolverFunc
-	batchCheckFunc     func(ctx context.Context, req *openfgav1.BatchCheckRequest) (*openfgav1.BatchCheckResponse, error)
+	typesystemResolver   typesystem.TypesystemResolverFunc
+	batchCheckFunc       func(ctx context.Context, req *openfgav1.BatchCheckRequest) (*openfgav1.BatchCheckResponse, error)
+	authorizationModelID string
 }
 
 // ActionSearchQueryOption is a functional option for ActionSearchQuery.
@@ -32,6 +33,13 @@ func WithTypesystemResolver(resolver typesystem.TypesystemResolverFunc) ActionSe
 func WithBatchCheckFunc(fn func(ctx context.Context, req *openfgav1.BatchCheckRequest) (*openfgav1.BatchCheckResponse, error)) ActionSearchQueryOption {
 	return func(q *ActionSearchQuery) {
 		q.batchCheckFunc = fn
+	}
+}
+
+// WithActionSearchAuthorizationModelID sets the authorization model ID to use.
+func WithActionSearchAuthorizationModelID(id string) ActionSearchQueryOption {
+	return func(q *ActionSearchQuery) {
+		q.authorizationModelID = id
 	}
 }
 
@@ -52,7 +60,7 @@ func (q *ActionSearchQuery) Execute(
 	req *authzenv1.ActionSearchRequest,
 ) (*authzenv1.ActionSearchResponse, error) {
 	// Get typesystem for the model
-	typesys, err := q.typesystemResolver(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
+	typesys, err := q.typesystemResolver(ctx, req.GetStoreId(), q.authorizationModelID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve typesystem: %w", err)
 	}
@@ -102,7 +110,7 @@ func (q *ActionSearchQuery) Execute(
 	// Execute batch check - single call instead of N individual checks
 	batchResp, err := q.batchCheckFunc(ctx, &openfgav1.BatchCheckRequest{
 		StoreId:              req.GetStoreId(),
-		AuthorizationModelId: req.GetAuthorizationModelId(),
+		AuthorizationModelId: q.authorizationModelID,
 		Checks:               checks,
 	})
 	if err != nil {

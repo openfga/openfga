@@ -18,6 +18,7 @@ type StreamedListObjectsFunc func(req *openfgav1.StreamedListObjectsRequest, srv
 // ResourceSearchQuery handles AuthZEN resource search requests.
 type ResourceSearchQuery struct {
 	streamedListObjectsFunc StreamedListObjectsFunc
+	authorizationModelID    string
 }
 
 // ResourceSearchQueryOption is a functional option for ResourceSearchQuery.
@@ -27,6 +28,13 @@ type ResourceSearchQueryOption func(*ResourceSearchQuery)
 func WithStreamedListObjectsFunc(fn StreamedListObjectsFunc) ResourceSearchQueryOption {
 	return func(q *ResourceSearchQuery) {
 		q.streamedListObjectsFunc = fn
+	}
+}
+
+// WithResourceSearchAuthorizationModelID sets the authorization model ID to use.
+func WithResourceSearchAuthorizationModelID(id string) ResourceSearchQueryOption {
+	return func(q *ResourceSearchQuery) {
+		q.authorizationModelID = id
 	}
 }
 
@@ -66,7 +74,7 @@ func (q *ResourceSearchQuery) Execute(
 	// Build StreamedListObjects request
 	streamedReq := &openfgav1.StreamedListObjectsRequest{
 		StoreId:              req.GetStoreId(),
-		AuthorizationModelId: req.GetAuthorizationModelId(),
+		AuthorizationModelId: q.authorizationModelID,
 		User:                 fmt.Sprintf("%s:%s", req.GetSubject().GetType(), req.GetSubject().GetId()),
 		Relation:             req.GetAction().GetName(),
 		Type:                 resourceType,

@@ -10,7 +10,8 @@ import (
 
 // SubjectSearchQuery handles AuthZEN subject search requests.
 type SubjectSearchQuery struct {
-	listUsersFunc func(ctx context.Context, req *openfgav1.ListUsersRequest) (*openfgav1.ListUsersResponse, error)
+	listUsersFunc        func(ctx context.Context, req *openfgav1.ListUsersRequest) (*openfgav1.ListUsersResponse, error)
+	authorizationModelID string
 }
 
 // SubjectSearchQueryOption is a functional option for SubjectSearchQuery.
@@ -20,6 +21,13 @@ type SubjectSearchQueryOption func(*SubjectSearchQuery)
 func WithListUsersFunc(fn func(ctx context.Context, req *openfgav1.ListUsersRequest) (*openfgav1.ListUsersResponse, error)) SubjectSearchQueryOption {
 	return func(q *SubjectSearchQuery) {
 		q.listUsersFunc = fn
+	}
+}
+
+// WithAuthorizationModelID sets the authorization model ID to use.
+func WithAuthorizationModelID(id string) SubjectSearchQueryOption {
+	return func(q *SubjectSearchQuery) {
+		q.authorizationModelID = id
 	}
 }
 
@@ -58,7 +66,7 @@ func (q *SubjectSearchQuery) Execute(
 	// Build ListUsers request
 	listUsersReq := &openfgav1.ListUsersRequest{
 		StoreId:              req.GetStoreId(),
-		AuthorizationModelId: req.GetAuthorizationModelId(),
+		AuthorizationModelId: q.authorizationModelID,
 		Object: &openfgav1.Object{
 			Type: req.GetResource().GetType(),
 			Id:   req.GetResource().GetId(),

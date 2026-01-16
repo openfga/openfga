@@ -17,14 +17,44 @@
 
 @fga_api_url = http://localhost:8080
 @fga_store_id = YOUR_STORE_ID_HERE
+@fga_model_id = YOUR_MODEL_ID_HERE
+
+# =============================================================================
+# NOTE: Authorization Model ID
+# =============================================================================
+# You can specify a specific authorization model ID using the header:
+#   Openfga-Authorization-Model-Id: <model_id>
+# If not specified, the latest model for the store is used.
+# Examples below show both options.
 
 # =============================================================================
 # EVALUATION EXAMPLES
 # =============================================================================
 
 ### Evaluation: Can alice view record 101? (Expected: true - she's the owner)
+# Using latest model (no header)
 POST {{fga_api_url}}/stores/{{fga_store_id}}/access/v1/evaluation
 Content-Type: application/json
+
+{
+  "subject": {
+    "type": "user",
+    "id": "alice"
+  },
+  "action": {
+    "name": "view"
+  },
+  "resource": {
+    "type": "record",
+    "id": "101"
+  }
+}
+
+### Evaluation: Can alice view record 101 (with specific model)?
+# Using specific model via header
+POST {{fga_api_url}}/stores/{{fga_store_id}}/access/v1/evaluation
+Content-Type: application/json
+Openfga-Authorization-Model-Id: {{fga_model_id}}
 
 {
   "subject": {

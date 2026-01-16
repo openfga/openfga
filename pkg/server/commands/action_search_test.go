@@ -508,13 +508,13 @@ func TestActionSearchQuery(t *testing.T) {
 		query := NewActionSearchQuery(
 			WithTypesystemResolver(mockTypesystemResolver),
 			WithBatchCheckFunc(mockBatchCheck),
+			WithActionSearchAuthorizationModelID("01HVMMBCMGZNT3SED4CT2KA90X"),
 		)
 
 		req := &authzenv1.ActionSearchRequest{
-			Subject:              &authzenv1.Subject{Type: "user", Id: "alice"},
-			Resource:             &authzenv1.Resource{Type: "document", Id: "doc1"},
-			StoreId:              "01HVMMBCMGZNT3SED4CT2KA89Q",
-			AuthorizationModelId: "01HVMMBCMGZNT3SED4CT2KA90X",
+			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
+			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
+			StoreId:  "01HVMMBCMGZNT3SED4CT2KA89Q",
 		}
 
 		_, err := query.Execute(context.Background(), req)

@@ -1,6 +1,14 @@
 #### @fga_api_url =
 @fga_api_url =  http://localhost:8080
 @fga_store_id = 01KEVFH4WDFMFD2TA6CD05GM3S
+@fga_model_id = YOUR_MODEL_ID_HERE
+
+# =============================================================================
+# NOTE: Authorization Model ID
+# =============================================================================
+# You can specify a specific authorization model ID using the header:
+#   Openfga-Authorization-Model-Id: <model_id>
+# If not specified, the latest model for the store is used.
 
 # Simple Evaluation Request
 
@@ -19,7 +27,29 @@ Authorization: bearer {{fga_api_key}}
   "resource": {
     "type": "user",
     "id": "CiRmZDA2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs"
- 
+
+  }
+}
+
+### Evaluation Request with specific Authorization Model ID
+# Using the Openfga-Authorization-Model-Id header to specify a model version
+
+POST {{fga_api_url}}/stores/{{fga_store_id}}/access/v1/evaluation
+Content-Type: application/json
+Authorization: bearer {{fga_api_key}}
+Openfga-Authorization-Model-Id: {{fga_model_id}}
+
+{
+  "subject": {
+    "type": "user",
+    "id": "CiRmZDA2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs"
+  },
+  "action": {
+    "name": "can_read_user"
+  },
+  "resource": {
+    "type": "user",
+    "id": "CiRmZDA2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs"
   }
 }
 

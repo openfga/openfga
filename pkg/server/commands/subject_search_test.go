@@ -298,14 +298,16 @@ func TestSubjectSearchQuery(t *testing.T) {
 			return &openfgav1.ListUsersResponse{}, nil
 		}
 
-		query := NewSubjectSearchQuery(WithListUsersFunc(mockListUsers))
+		query := NewSubjectSearchQuery(
+			WithListUsersFunc(mockListUsers),
+			WithAuthorizationModelID("01HVMMBD123456789ABCDEFGH"),
+		)
 
 		req := &authzenv1.SubjectSearchRequest{
-			Subject:              &authzenv1.SubjectFilter{Type: "user"},
-			Resource:             &authzenv1.Resource{Type: "document", Id: "doc1"},
-			Action:               &authzenv1.Action{Name: "read"},
-			StoreId:              "01HVMMBCMGZNT3SED4CT2KA89Q",
-			AuthorizationModelId: "01HVMMBD123456789ABCDEFGH",
+			Subject:  &authzenv1.SubjectFilter{Type: "user"},
+			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
+			Action:   &authzenv1.Action{Name: "read"},
+			StoreId:  "01HVMMBCMGZNT3SED4CT2KA89Q",
 		}
 
 		_, err := query.Execute(context.Background(), req)

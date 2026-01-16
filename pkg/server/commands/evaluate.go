@@ -15,7 +15,7 @@ func (cmd *EvaluateRequestCommand) GetCheckRequest() *openfgav1.CheckRequest {
 	return &cmd.checkParams
 }
 
-func NewEvaluateRequestCommand(req *authzenv1.EvaluationRequest) (*EvaluateRequestCommand, error) {
+func NewEvaluateRequestCommand(req *authzenv1.EvaluationRequest, authorizationModelID string) (*EvaluateRequestCommand, error) {
 	subject := req.GetSubject()
 	if subject == nil {
 		return nil, fmt.Errorf("missing subject")
@@ -48,7 +48,7 @@ func NewEvaluateRequestCommand(req *authzenv1.EvaluationRequest) (*EvaluateReque
 	cmd := &EvaluateRequestCommand{
 		checkParams: openfgav1.CheckRequest{
 			StoreId:              req.GetStoreId(),
-			AuthorizationModelId: req.GetAuthorizationModelId(),
+			AuthorizationModelId: authorizationModelID,
 			TupleKey: &openfgav1.CheckRequestTupleKey{
 				User:     user,
 				Relation: relation,

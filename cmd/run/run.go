@@ -645,6 +645,14 @@ func (s *ServerContext) runHTTPServer(ctx context.Context, config *serverconfig.
 		}),
 		runtime.WithHealthzEndpoint(healthv1pb.NewHealthClient(grpcConn)),
 		runtime.WithOutgoingHeaderMatcher(func(s string) (string, bool) { return s, true }),
+		runtime.WithIncomingHeaderMatcher(func(key string) (string, bool) {
+			// Forward Openfga-Authorization-Model-Id header to gRPC metadata for AuthZEN endpoints
+			if key == "Openfga-Authorization-Model-Id" {
+				return key, true
+			}
+			// Use default behavior for other headers
+			return runtime.DefaultHeaderMatcher(key)
+		}),
 	}
 	mux := runtime.NewServeMux(muxOpts...)
 	if err := openfgav1.RegisterOpenFGAServiceHandler(ctx, mux, grpcConn); err != nil {

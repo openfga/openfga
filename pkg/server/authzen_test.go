@@ -2,12 +2,14 @@ package server
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/oklog/ulid/v2"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
 	authzenv1 "github.com/openfga/api/proto/authzen/v1"
@@ -908,14 +910,19 @@ func TestSubjectSearch(t *testing.T) {
 
 		// Test SubjectSearch - find users who can read doc1
 		req := &authzenv1.SubjectSearchRequest{
-			StoreId:              storeID,
-			AuthorizationModelId: writeModelResp.GetAuthorizationModelId(),
-			Resource:             &authzenv1.Resource{Type: "document", Id: "doc1"},
-			Action:               &authzenv1.Action{Name: "reader"},
-			Subject:              &authzenv1.SubjectFilter{Type: "user"},
+			StoreId:  storeID,
+			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
+			Action:   &authzenv1.Action{Name: "reader"},
+			Subject:  &authzenv1.SubjectFilter{Type: "user"},
 		}
 
-		resp, err := s.SubjectSearch(context.Background(), req)
+		// Pass model ID via header
+		md := metadata.New(map[string]string{
+			strings.ToLower(AuthZenAuthorizationModelIDHeader): writeModelResp.GetAuthorizationModelId(),
+		})
+		ctx := metadata.NewIncomingContext(context.Background(), md)
+
+		resp, err := s.SubjectSearch(ctx, req)
 		require.NoError(t, err)
 		require.NotNil(t, resp)
 
@@ -1044,14 +1051,19 @@ func TestResourceSearch(t *testing.T) {
 
 		// Test ResourceSearch - find documents alice can read
 		req := &authzenv1.ResourceSearchRequest{
-			StoreId:              storeID,
-			AuthorizationModelId: writeModelResp.GetAuthorizationModelId(),
-			Subject:              &authzenv1.Subject{Type: "user", Id: "alice"},
-			Action:               &authzenv1.Action{Name: "reader"},
-			Resource:             &authzenv1.Resource{Type: "document"},
+			StoreId:  storeID,
+			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
+			Action:   &authzenv1.Action{Name: "reader"},
+			Resource: &authzenv1.Resource{Type: "document"},
 		}
 
-		resp, err := s.ResourceSearch(context.Background(), req)
+		// Pass model ID via header
+		md := metadata.New(map[string]string{
+			strings.ToLower(AuthZenAuthorizationModelIDHeader): writeModelResp.GetAuthorizationModelId(),
+		})
+		ctx := metadata.NewIncomingContext(context.Background(), md)
+
+		resp, err := s.ResourceSearch(ctx, req)
 		require.NoError(t, err)
 		require.NotNil(t, resp)
 
@@ -1206,13 +1218,18 @@ func TestActionSearch(t *testing.T) {
 
 		// Now test ActionSearch - this should exercise the success path
 		req := &authzenv1.ActionSearchRequest{
-			StoreId:              storeID,
-			AuthorizationModelId: writeModelResp.GetAuthorizationModelId(),
-			Subject:              &authzenv1.Subject{Type: "user", Id: "alice"},
-			Resource:             &authzenv1.Resource{Type: "document", Id: "doc1"},
+			StoreId:  storeID,
+			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
+			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
 		}
 
-		resp, err := s.ActionSearch(context.Background(), req)
+		// Pass model ID via header
+		md := metadata.New(map[string]string{
+			strings.ToLower(AuthZenAuthorizationModelIDHeader): writeModelResp.GetAuthorizationModelId(),
+		})
+		ctx := metadata.NewIncomingContext(context.Background(), md)
+
+		resp, err := s.ActionSearch(ctx, req)
 		require.NoError(t, err)
 		require.NotNil(t, resp)
 
@@ -1231,5 +1248,158 @@ func TestActionSearch(t *testing.T) {
 			}
 		}
 		require.True(t, foundReader, "Expected to find 'reader' action in results")
+	})
+}
+
+func TestGetAuthorizationModelIDFromHeader(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	t.Run("returns_header_value_when_present", func(t *testing.T) {
+		headerModelID := ulid.Make().String()
+
+		// Create context with gRPC metadata containing the header
+		// grpc-gateway converts header names to lowercase
+		md := metadata.New(map[string]string{
+			strings.ToLower(AuthZenAuthorizationModelIDHeader): headerModelID,
+		})
+		ctx := metadata.NewIncomingContext(context.Background(), md)
+
+		result := getAuthorizationModelIDFromHeader(ctx)
+		require.Equal(t, headerModelID, result)
+	})
+
+	t.Run("returns_empty_when_header_not_present", func(t *testing.T) {
+		// Create context without the header
+		ctx := context.Background()
+
+		result := getAuthorizationModelIDFromHeader(ctx)
+		require.Empty(t, result)
+	})
+
+	t.Run("returns_empty_when_header_is_empty", func(t *testing.T) {
+		// Create context with empty header value
+		md := metadata.New(map[string]string{
+			strings.ToLower(AuthZenAuthorizationModelIDHeader): "",
+		})
+		ctx := metadata.NewIncomingContext(context.Background(), md)
+
+		result := getAuthorizationModelIDFromHeader(ctx)
+		require.Empty(t, result)
+	})
+
+	t.Run("returns_empty_when_no_metadata", func(t *testing.T) {
+		ctx := context.Background()
+
+		result := getAuthorizationModelIDFromHeader(ctx)
+		require.Empty(t, result)
+	})
+}
+
+func TestEvaluationWithAuthorizationModelIDHeader(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
+
+	t.Run("uses_model_id_from_header", func(t *testing.T) {
+		s := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithExperimentals(serverconfig.ExperimentalEnableAuthZen),
+		)
+		t.Cleanup(s.Close)
+
+		// Create store
+		createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
+		require.NoError(t, err)
+		storeID := createStoreResp.GetId()
+
+		// Write two models
+		writeModelResp1, err := s.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
+			StoreId:       storeID,
+			SchemaVersion: "1.1",
+			TypeDefinitions: []*openfgav1.TypeDefinition{
+				{Type: "user"},
+				{
+					Type: "document",
+					Relations: map[string]*openfgav1.Userset{
+						"reader": {Userset: &openfgav1.Userset_This{}},
+					},
+					Metadata: &openfgav1.Metadata{
+						Relations: map[string]*openfgav1.RelationMetadata{
+							"reader": {
+								DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+									{Type: "user"},
+								},
+							},
+						},
+					},
+				},
+			},
+		})
+		require.NoError(t, err)
+		modelID1 := writeModelResp1.GetAuthorizationModelId()
+
+		// Write second model (this becomes the latest)
+		_, err = s.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
+			StoreId:       storeID,
+			SchemaVersion: "1.1",
+			TypeDefinitions: []*openfgav1.TypeDefinition{
+				{Type: "user"},
+				{
+					Type: "document",
+					Relations: map[string]*openfgav1.Userset{
+						"writer": {Userset: &openfgav1.Userset_This{}},
+					},
+					Metadata: &openfgav1.Metadata{
+						Relations: map[string]*openfgav1.RelationMetadata{
+							"writer": {
+								DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+									{Type: "user"},
+								},
+							},
+						},
+					},
+				},
+			},
+		})
+		require.NoError(t, err)
+
+		// Write tuple using model 1 (which has the reader relation)
+		_, err = s.Write(context.Background(), &openfgav1.WriteRequest{
+			StoreId:              storeID,
+			AuthorizationModelId: modelID1,
+			Writes: &openfgav1.WriteRequestWrites{
+				TupleKeys: []*openfgav1.TupleKey{
+					{
+						Object:   "document:doc1",
+						Relation: "reader",
+						User:     "user:alice",
+					},
+				},
+			},
+		})
+		require.NoError(t, err)
+
+		// Create context with header specifying the first model ID
+		md := metadata.New(map[string]string{
+			strings.ToLower(AuthZenAuthorizationModelIDHeader): modelID1,
+		})
+		ctx := metadata.NewIncomingContext(context.Background(), md)
+
+		// Test Evaluation - should use modelID1 from header
+		req := &authzenv1.EvaluationRequest{
+			StoreId:  storeID,
+			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
+			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
+			Action:   &authzenv1.Action{Name: "reader"},
+		}
+
+		resp, err := s.Evaluation(ctx, req)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.True(t, resp.GetDecision())
 	})
 }

@@ -2,8 +2,10 @@ package server
 
 import (
 	"context"
+	"strings"
 
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
 	authzenv1 "github.com/openfga/api/proto/authzen/v1"
@@ -15,9 +17,25 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
+// AuthZenAuthorizationModelIDHeader is the HTTP header name for specifying the authorization model ID.
+const AuthZenAuthorizationModelIDHeader = "Openfga-Authorization-Model-Id"
+
 // IsAuthZenEnabled returns true if the AuthZEN experimental feature is enabled for the given store.
 func (s *Server) IsAuthZenEnabled(storeID string) bool {
 	return s.featureFlagClient.Boolean(serverconfig.ExperimentalEnableAuthZen, storeID)
+}
+
+// getAuthorizationModelIDFromHeader extracts the authorization model ID from the gRPC metadata.
+// Returns empty string if the header is not present.
+func getAuthorizationModelIDFromHeader(ctx context.Context) string {
+	if md, ok := metadata.FromIncomingContext(ctx); ok {
+		// grpc-gateway converts header names to lowercase
+		headerKey := strings.ToLower(AuthZenAuthorizationModelIDHeader)
+		if values := md.Get(headerKey); len(values) > 0 && values[0] != "" {
+			return values[0]
+		}
+	}
+	return ""
 }
 
 func (s *Server) Evaluation(ctx context.Context, req *authzenv1.EvaluationRequest) (*authzenv1.EvaluationResponse, error) {
@@ -40,7 +58,10 @@ func (s *Server) Evaluation(ctx context.Context, req *authzenv1.EvaluationReques
 		Method:  "authzen.Evaluation",
 	})
 
-	evalReqCmd, err := commands.NewEvaluateRequestCommand(req)
+	// Get authorization model ID from header
+	authorizationModelID := getAuthorizationModelIDFromHeader(ctx)
+
+	evalReqCmd, err := commands.NewEvaluateRequestCommand(req, authorizationModelID)
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
@@ -75,6 +96,9 @@ func (s *Server) Evaluations(ctx context.Context, req *authzenv1.EvaluationsRequ
 		Method:  "authzen.Evaluations",
 	})
 
+	// Get authorization model ID from header
+	authorizationModelID := getAuthorizationModelIDFromHeader(ctx)
+
 	// Check for short-circuit semantics
 	semantic := authzenv1.EvaluationsSemantic_execute_all
 	if req.GetOptions() != nil {
@@ -87,7 +111,7 @@ func (s *Server) Evaluations(ctx context.Context, req *authzenv1.EvaluationsRequ
 	}
 
 	// Default: batch all evaluations
-	evalReqCmd, err := commands.NewBatchEvaluateRequestCommand(req)
+	evalReqCmd, err := commands.NewBatchEvaluateRequestCommand(req, authorizationModelID)
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
@@ -142,12 +166,11 @@ func (s *Server) evaluateWithShortCircuit(
 
 		// Build single evaluation request
 		singleReq := &authzenv1.EvaluationRequest{
-			Subject:              subject,
-			Resource:             resource,
-			Action:               action,
-			Context:              evalContext,
-			StoreId:              req.GetStoreId(),
-			AuthorizationModelId: "", // Use latest if not specified
+			Subject:  subject,
+			Resource: resource,
+			Action:   action,
+			Context:  evalContext,
+			StoreId:  req.GetStoreId(),
 		}
 
 		// Use the Evaluation method
@@ -204,7 +227,11 @@ func (s *Server) SubjectSearch(ctx context.Context, req *authzenv1.SubjectSearch
 		Method:  "authzen.SubjectSearch",
 	})
 
+	// Get authorization model ID from header
+	authorizationModelID := getAuthorizationModelIDFromHeader(ctx)
+
 	query := commands.NewSubjectSearchQuery(
+		commands.WithAuthorizationModelID(authorizationModelID),
 		commands.WithListUsersFunc(s.ListUsers),
 	)
 
@@ -232,7 +259,11 @@ func (s *Server) ResourceSearch(ctx context.Context, req *authzenv1.ResourceSear
 		Method:  "authzen.ResourceSearch",
 	})
 
+	// Get authorization model ID from header
+	authorizationModelID := getAuthorizationModelIDFromHeader(ctx)
+
 	query := commands.NewResourceSearchQuery(
+		commands.WithResourceSearchAuthorizationModelID(authorizationModelID),
 		commands.WithStreamedListObjectsFunc(s.StreamedListObjects),
 	)
 
@@ -260,8 +291,11 @@ func (s *Server) ActionSearch(ctx context.Context, req *authzenv1.ActionSearchRe
 		Method:  "authzen.ActionSearch",
 	})
 
+	// Get authorization model ID from header
+	authorizationModelID := getAuthorizationModelIDFromHeader(ctx)
+
 	// Resolve typesystem once to set the header and get the model ID
-	typesys, err := s.resolveTypesystem(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
+	typesys, err := s.resolveTypesystem(ctx, req.GetStoreId(), authorizationModelID)
 	if err != nil {
 		return nil, err
 	}
@@ -275,12 +309,10 @@ func (s *Server) ActionSearch(ctx context.Context, req *authzenv1.ActionSearchRe
 		return typesys, nil
 	}
 
-	// Set the resolved model ID on the request
-	req.AuthorizationModelId = resolvedModelID
-
 	query := commands.NewActionSearchQuery(
 		commands.WithTypesystemResolver(cachedTypesystemResolver),
 		commands.WithBatchCheckFunc(s.BatchCheck),
+		commands.WithActionSearchAuthorizationModelID(resolvedModelID),
 	)
 
 	return query.Execute(ctx, req)

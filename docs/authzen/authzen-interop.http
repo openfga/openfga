@@ -1,6 +1,14 @@
 @fga_api_url = http://localhost:8080
 @fga_api_key = key1
 @fga_store_id = 01JF5W1BKQNDR1T40CA26DNA7P
+@fga_model_id = YOUR_MODEL_ID_HERE
+
+# =============================================================================
+# NOTE: Authorization Model ID
+# =============================================================================
+# You can specify a specific authorization model ID using the header:
+#   Openfga-Authorization-Model-Id: <model_id>
+# If not specified, the latest model for the store is used.
 
 # GET /users/{userID}
 POST {{fga_api_url}}/stores/{{fga_store_id}}/access/v1/evaluation
@@ -21,6 +29,25 @@ Authorization: bearer {{fga_api_key}}
   }
 }
 
+### Evaluation with specific Authorization Model ID
+POST {{fga_api_url}}/stores/{{fga_store_id}}/access/v1/evaluation
+Content-Type: application/json
+Authorization: bearer {{fga_api_key}}
+Openfga-Authorization-Model-Id: {{fga_model_id}}
+
+{
+  "subject": {
+    "type": "user",
+    "id": "CiRmZDA2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs"
+  },
+  "action": {
+    "name": "can_read_user"
+  },
+  "resource": {
+    "type": "user",
+    "id": "beth@the-smiths.com"
+  }
+}
 
 ### Get All Authorization Models
 POST {{fga_api_url}}/stores/{{fga_store_id}}/access/v1/evaluations

@@ -36,7 +36,7 @@ func TestBatchEvaluateRequestCommand(t *testing.T) {
 			},
 		}
 
-		reqCommand, err := NewBatchEvaluateRequestCommand(input)
+		reqCommand, err := NewBatchEvaluateRequestCommand(input, "")
 		require.NoError(t, err)
 		require.Equal(t, input.GetStoreId(), reqCommand.GetBatchCheckRequests().GetStoreId())
 		require.Len(t, reqCommand.GetBatchCheckRequests().GetChecks(), 2)
@@ -65,7 +65,7 @@ func TestBatchEvaluateRequestCommand(t *testing.T) {
 			},
 		}
 
-		cmd, err := NewBatchEvaluateRequestCommand(req)
+		cmd, err := NewBatchEvaluateRequestCommand(req, "")
 		require.NoError(t, err)
 
 		batchReq := cmd.GetBatchCheckRequests()
@@ -92,7 +92,7 @@ func TestBatchEvaluateRequestCommand(t *testing.T) {
 			},
 		}
 
-		cmd, err := NewBatchEvaluateRequestCommand(req)
+		cmd, err := NewBatchEvaluateRequestCommand(req, "")
 		require.NoError(t, err)
 
 		batchReq := cmd.GetBatchCheckRequests()
@@ -119,7 +119,7 @@ func TestBatchEvaluateRequestCommand(t *testing.T) {
 			},
 		}
 
-		cmd, err := NewBatchEvaluateRequestCommand(req)
+		cmd, err := NewBatchEvaluateRequestCommand(req, "")
 		require.NoError(t, err)
 
 		batchReq := cmd.GetBatchCheckRequests()
@@ -146,7 +146,7 @@ func TestBatchEvaluateRequestCommand(t *testing.T) {
 			},
 		}
 
-		cmd, err := NewBatchEvaluateRequestCommand(req)
+		cmd, err := NewBatchEvaluateRequestCommand(req, "")
 		require.NoError(t, err)
 
 		batchReq := cmd.GetBatchCheckRequests()
@@ -184,7 +184,7 @@ func TestBatchEvaluateRequestCommand(t *testing.T) {
 			},
 		}
 
-		cmd, err := NewBatchEvaluateRequestCommand(req)
+		cmd, err := NewBatchEvaluateRequestCommand(req, "")
 		require.NoError(t, err)
 
 		batchReq := cmd.GetBatchCheckRequests()
@@ -226,7 +226,7 @@ func TestBatchEvaluateRequestCommand(t *testing.T) {
 			},
 		}
 
-		cmd, err := NewBatchEvaluateRequestCommand(req)
+		cmd, err := NewBatchEvaluateRequestCommand(req, "")
 		require.NoError(t, err)
 
 		batchReq := cmd.GetBatchCheckRequests()
@@ -251,7 +251,7 @@ func TestBatchEvaluateRequestCommand(t *testing.T) {
 			},
 		}
 
-		cmd, err := NewBatchEvaluateRequestCommand(req)
+		cmd, err := NewBatchEvaluateRequestCommand(req, "")
 		require.NoError(t, err)
 
 		batchReq := cmd.GetBatchCheckRequests()
@@ -275,7 +275,7 @@ func TestBatchEvaluateRequestCommand(t *testing.T) {
 			},
 		}
 
-		cmd, err := NewBatchEvaluateRequestCommand(req)
+		cmd, err := NewBatchEvaluateRequestCommand(req, "")
 		require.NoError(t, err)
 
 		batchReq := cmd.GetBatchCheckRequests()
@@ -307,7 +307,7 @@ func TestBatchEvaluateRequestCommand(t *testing.T) {
 			},
 		}
 
-		cmd, err := NewBatchEvaluateRequestCommand(req)
+		cmd, err := NewBatchEvaluateRequestCommand(req, "")
 		require.NoError(t, err)
 
 		batchReq := cmd.GetBatchCheckRequests()
@@ -340,7 +340,7 @@ func TestBatchEvaluateRequestCommand(t *testing.T) {
 			},
 		}
 
-		cmd, err := NewBatchEvaluateRequestCommand(req)
+		cmd, err := NewBatchEvaluateRequestCommand(req, "")
 		require.NoError(t, err)
 
 		batchReq := cmd.GetBatchCheckRequests()
@@ -366,7 +366,7 @@ func TestBatchEvaluateRequestCommand(t *testing.T) {
 			},
 		}
 
-		cmd, err := NewBatchEvaluateRequestCommand(req)
+		cmd, err := NewBatchEvaluateRequestCommand(req, "")
 		require.NoError(t, err)
 
 		batchReq := cmd.GetBatchCheckRequests()
@@ -397,7 +397,7 @@ func TestBatchEvaluateRequestCommand(t *testing.T) {
 			},
 		}
 
-		cmd, err := NewBatchEvaluateRequestCommand(req)
+		cmd, err := NewBatchEvaluateRequestCommand(req, "")
 		require.NoError(t, err)
 
 		batchReq := cmd.GetBatchCheckRequests()
@@ -418,7 +418,7 @@ func TestBatchEvaluateRequestCommand(t *testing.T) {
 			Evaluations: []*authzenv1.EvaluationsItemRequest{},
 		}
 
-		cmd, err := NewBatchEvaluateRequestCommand(req)
+		cmd, err := NewBatchEvaluateRequestCommand(req, "")
 		require.NoError(t, err)
 
 		batchReq := cmd.GetBatchCheckRequests()
@@ -437,7 +437,7 @@ func TestBatchEvaluateRequestCommand(t *testing.T) {
 			},
 		}
 
-		cmd, err := NewBatchEvaluateRequestCommand(req)
+		cmd, err := NewBatchEvaluateRequestCommand(req, "")
 		require.NoError(t, err)
 
 		batchReq := cmd.GetBatchCheckRequests()
@@ -462,7 +462,7 @@ func TestBatchEvaluateRequestCommand(t *testing.T) {
 			},
 		}
 
-		cmd, err := NewBatchEvaluateRequestCommand(req)
+		cmd, err := NewBatchEvaluateRequestCommand(req, "")
 		require.NoError(t, err)
 
 		batchReq := cmd.GetBatchCheckRequests()
@@ -719,7 +719,7 @@ func TestBatchEvaluateTableDriven(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cmd, err := NewBatchEvaluateRequestCommand(tt.request)
+			cmd, err := NewBatchEvaluateRequestCommand(tt.request, "")
 			require.NoError(t, err)
 
 			batchReq := cmd.GetBatchCheckRequests()
@@ -916,7 +916,7 @@ func TestTransformResponseTableDriven(t *testing.T) {
 			},
 		}
 
-		cmd, err := NewBatchEvaluateRequestCommand(req)
+		cmd, err := NewBatchEvaluateRequestCommand(req, "")
 		// Should succeed - normal properties merge
 		require.NoError(t, err)
 		require.NotNil(t, cmd)

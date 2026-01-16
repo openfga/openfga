@@ -18,11 +18,12 @@ func (cmd *BatchEvaluateRequestCommand) GetBatchCheckRequests() *openfgav1.Batch
 	return cmd.batchCheckParams
 }
 
-func NewBatchEvaluateRequestCommand(req *authzenv1.EvaluationsRequest) (*BatchEvaluateRequestCommand, error) {
+func NewBatchEvaluateRequestCommand(req *authzenv1.EvaluationsRequest, authorizationModelID string) (*BatchEvaluateRequestCommand, error) {
 	cmd := &BatchEvaluateRequestCommand{
 		batchCheckParams: &openfgav1.BatchCheckRequest{
-			StoreId: req.GetStoreId(),
-			Checks:  []*openfgav1.BatchCheckItem{},
+			StoreId:              req.GetStoreId(),
+			AuthorizationModelId: authorizationModelID,
+			Checks:               []*openfgav1.BatchCheckItem{},
 		},
 	}
 

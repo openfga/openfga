@@ -21,7 +21,7 @@ func TestEvaluateRequestCommand(t *testing.T) {
 			StoreId:  storeID,
 		}
 
-		cmd, err := NewEvaluateRequestCommand(req)
+		cmd, err := NewEvaluateRequestCommand(req, "")
 		require.NoError(t, err)
 
 		checkReq := cmd.GetCheckRequest()
@@ -35,14 +35,13 @@ func TestEvaluateRequestCommand(t *testing.T) {
 		storeID := ulid.Make().String()
 		modelID := ulid.Make().String()
 		req := &authzenv1.EvaluationRequest{
-			Subject:              &authzenv1.Subject{Type: "user", Id: "maria"},
-			Resource:             &authzenv1.Resource{Type: "repo", Id: "fga"},
-			Action:               &authzenv1.Action{Name: "write"},
-			StoreId:              storeID,
-			AuthorizationModelId: modelID,
+			Subject:  &authzenv1.Subject{Type: "user", Id: "maria"},
+			Resource: &authzenv1.Resource{Type: "repo", Id: "fga"},
+			Action:   &authzenv1.Action{Name: "write"},
+			StoreId:  storeID,
 		}
 
-		cmd, err := NewEvaluateRequestCommand(req)
+		cmd, err := NewEvaluateRequestCommand(req, modelID)
 		require.NoError(t, err)
 
 		checkReq := cmd.GetCheckRequest()
@@ -63,7 +62,7 @@ func TestEvaluateRequestCommand(t *testing.T) {
 			StoreId:  ulid.Make().String(),
 		}
 
-		cmd, err := NewEvaluateRequestCommand(req)
+		cmd, err := NewEvaluateRequestCommand(req, "")
 		require.NoError(t, err)
 		require.NotNil(t, cmd.GetCheckRequest().GetContext())
 		require.Equal(t, "2024-01-01", cmd.GetCheckRequest().GetContext().AsMap()["time"])
@@ -84,7 +83,7 @@ func TestEvaluateRequestCommand(t *testing.T) {
 			StoreId:  ulid.Make().String(),
 		}
 
-		cmd, err := NewEvaluateRequestCommand(req)
+		cmd, err := NewEvaluateRequestCommand(req, "")
 		require.NoError(t, err)
 
 		resultCtx := cmd.GetCheckRequest().GetContext().AsMap()
@@ -109,7 +108,7 @@ func TestEvaluateRequestCommand(t *testing.T) {
 			StoreId:  ulid.Make().String(),
 		}
 
-		cmd, err := NewEvaluateRequestCommand(req)
+		cmd, err := NewEvaluateRequestCommand(req, "")
 		require.NoError(t, err)
 
 		resultCtx := cmd.GetCheckRequest().GetContext().AsMap()
@@ -131,7 +130,7 @@ func TestEvaluateRequestCommand(t *testing.T) {
 			StoreId:  ulid.Make().String(),
 		}
 
-		cmd, err := NewEvaluateRequestCommand(req)
+		cmd, err := NewEvaluateRequestCommand(req, "")
 		require.NoError(t, err)
 
 		ctx := cmd.GetCheckRequest().GetContext().AsMap()
@@ -151,7 +150,7 @@ func TestEvaluateRequestCommand(t *testing.T) {
 			StoreId: ulid.Make().String(),
 		}
 
-		cmd, err := NewEvaluateRequestCommand(req)
+		cmd, err := NewEvaluateRequestCommand(req, "")
 		require.NoError(t, err)
 
 		ctx := cmd.GetCheckRequest().GetContext().AsMap()
@@ -170,7 +169,7 @@ func TestEvaluateRequestCommand(t *testing.T) {
 			StoreId: ulid.Make().String(),
 		}
 
-		cmd, err := NewEvaluateRequestCommand(req)
+		cmd, err := NewEvaluateRequestCommand(req, "")
 		require.NoError(t, err)
 
 		ctx := cmd.GetCheckRequest().GetContext().AsMap()
@@ -197,7 +196,7 @@ func TestEvaluateRequestCommand(t *testing.T) {
 			StoreId: ulid.Make().String(),
 		}
 
-		cmd, err := NewEvaluateRequestCommand(req)
+		cmd, err := NewEvaluateRequestCommand(req, "")
 		require.NoError(t, err)
 
 		ctx := cmd.GetCheckRequest().GetContext().AsMap()
@@ -219,7 +218,7 @@ func TestEvaluateRequestCommand(t *testing.T) {
 			StoreId:  ulid.Make().String(),
 		}
 
-		cmd, err := NewEvaluateRequestCommand(req)
+		cmd, err := NewEvaluateRequestCommand(req, "")
 		require.NoError(t, err)
 
 		ctx := cmd.GetCheckRequest().GetContext().AsMap()
@@ -243,7 +242,7 @@ func TestEvaluateRequestCommand(t *testing.T) {
 			StoreId: ulid.Make().String(),
 		}
 
-		cmd, err := NewEvaluateRequestCommand(req)
+		cmd, err := NewEvaluateRequestCommand(req, "")
 		require.NoError(t, err)
 
 		ctx := cmd.GetCheckRequest().GetContext().AsMap()
@@ -265,7 +264,7 @@ func TestEvaluateRequestCommand(t *testing.T) {
 			StoreId:  ulid.Make().String(),
 		}
 
-		cmd, err := NewEvaluateRequestCommand(req)
+		cmd, err := NewEvaluateRequestCommand(req, "")
 		require.NoError(t, err)
 
 		ctx := cmd.GetCheckRequest().GetContext().AsMap()
@@ -281,7 +280,7 @@ func TestEvaluateRequestCommand(t *testing.T) {
 			StoreId:  ulid.Make().String(),
 		}
 
-		cmd, err := NewEvaluateRequestCommand(req)
+		cmd, err := NewEvaluateRequestCommand(req, "")
 		require.NoError(t, err)
 		require.Nil(t, cmd.GetCheckRequest().GetContext())
 	})
@@ -310,7 +309,7 @@ func TestEvaluateRequestCommand(t *testing.T) {
 					StoreId:  ulid.Make().String(),
 				}
 
-				cmd, err := NewEvaluateRequestCommand(req)
+				cmd, err := NewEvaluateRequestCommand(req, "")
 				require.NoError(t, err)
 				require.Equal(t, tc.expectedID, cmd.GetCheckRequest().GetTupleKey().GetUser())
 			})
@@ -340,7 +339,7 @@ func TestEvaluateRequestCommand(t *testing.T) {
 					StoreId:  ulid.Make().String(),
 				}
 
-				cmd, err := NewEvaluateRequestCommand(req)
+				cmd, err := NewEvaluateRequestCommand(req, "")
 				require.NoError(t, err)
 				require.Equal(t, tc.expectedID, cmd.GetCheckRequest().GetTupleKey().GetObject())
 			})
@@ -369,7 +368,7 @@ func TestEvaluateRequestCommand(t *testing.T) {
 					StoreId:  ulid.Make().String(),
 				}
 
-				cmd, err := NewEvaluateRequestCommand(req)
+				cmd, err := NewEvaluateRequestCommand(req, "")
 				require.NoError(t, err)
 				require.Equal(t, tc.expectedName, cmd.GetCheckRequest().GetTupleKey().GetRelation())
 			})
@@ -399,7 +398,7 @@ func TestEvaluateRequestCommand(t *testing.T) {
 					StoreId:  ulid.Make().String(),
 				}
 
-				cmd, err := NewEvaluateRequestCommand(req)
+				cmd, err := NewEvaluateRequestCommand(req, "")
 				require.NoError(t, err)
 				require.Equal(t, tc.expectedUser, cmd.GetCheckRequest().GetTupleKey().GetUser())
 			})
@@ -429,7 +428,7 @@ func TestEvaluateRequestCommand(t *testing.T) {
 					StoreId:  ulid.Make().String(),
 				}
 
-				cmd, err := NewEvaluateRequestCommand(req)
+				cmd, err := NewEvaluateRequestCommand(req, "")
 				require.NoError(t, err)
 				require.Equal(t, tc.expectedObject, cmd.GetCheckRequest().GetTupleKey().GetObject())
 			})
@@ -444,7 +443,7 @@ func TestEvaluateRequestCommand(t *testing.T) {
 			StoreId:  ulid.Make().String(),
 		}
 
-		cmd, err := NewEvaluateRequestCommand(req)
+		cmd, err := NewEvaluateRequestCommand(req, "")
 		require.NoError(t, err)
 		require.Equal(t, "user:", cmd.GetCheckRequest().GetTupleKey().GetUser())
 	})
@@ -457,7 +456,7 @@ func TestEvaluateRequestCommand(t *testing.T) {
 			StoreId:  ulid.Make().String(),
 		}
 
-		cmd, err := NewEvaluateRequestCommand(req)
+		cmd, err := NewEvaluateRequestCommand(req, "")
 		require.NoError(t, err)
 		require.Equal(t, "document:", cmd.GetCheckRequest().GetTupleKey().GetObject())
 	})
@@ -470,7 +469,7 @@ func TestEvaluateRequestCommand(t *testing.T) {
 			StoreId:  ulid.Make().String(),
 		}
 
-		cmd, err := NewEvaluateRequestCommand(req)
+		cmd, err := NewEvaluateRequestCommand(req, "")
 		require.NoError(t, err)
 		require.Empty(t, cmd.GetCheckRequest().GetTupleKey().GetRelation())
 	})
@@ -494,7 +493,7 @@ func TestEvaluateRequestCommand(t *testing.T) {
 			StoreId:  ulid.Make().String(),
 		}
 
-		cmd, err := NewEvaluateRequestCommand(req)
+		cmd, err := NewEvaluateRequestCommand(req, "")
 		require.NoError(t, err)
 
 		ctx := cmd.GetCheckRequest().GetContext().AsMap()
@@ -517,7 +516,7 @@ func TestEvaluateRequestCommand(t *testing.T) {
 			StoreId:  "",
 		}
 
-		cmd, err := NewEvaluateRequestCommand(req)
+		cmd, err := NewEvaluateRequestCommand(req, "")
 		require.NoError(t, err)
 		require.Empty(t, cmd.GetCheckRequest().GetStoreId())
 	})
@@ -530,7 +529,7 @@ func TestEvaluateRequestCommand(t *testing.T) {
 			StoreId:  ulid.Make().String(),
 		}
 
-		cmd, err := NewEvaluateRequestCommand(req)
+		cmd, err := NewEvaluateRequestCommand(req, "")
 		require.Error(t, err)
 		require.Nil(t, cmd)
 		require.Contains(t, err.Error(), "missing subject")
@@ -544,7 +543,7 @@ func TestEvaluateRequestCommand(t *testing.T) {
 			StoreId:  ulid.Make().String(),
 		}
 
-		cmd, err := NewEvaluateRequestCommand(req)
+		cmd, err := NewEvaluateRequestCommand(req, "")
 		require.Error(t, err)
 		require.Nil(t, cmd)
 		require.Contains(t, err.Error(), "missing resource")
@@ -558,7 +557,7 @@ func TestEvaluateRequestCommand(t *testing.T) {
 			StoreId:  ulid.Make().String(),
 		}
 
-		cmd, err := NewEvaluateRequestCommand(req)
+		cmd, err := NewEvaluateRequestCommand(req, "")
 		require.Error(t, err)
 		require.Nil(t, cmd)
 		require.Contains(t, err.Error(), "missing action")
@@ -631,7 +630,7 @@ func TestEvaluateRequestCommand(t *testing.T) {
 					StoreId:  ulid.Make().String(),
 				}
 
-				cmd, err := NewEvaluateRequestCommand(req)
+				cmd, err := NewEvaluateRequestCommand(req, "")
 				require.NoError(t, err)
 
 				checkReq := cmd.GetCheckRequest()
@@ -651,7 +650,7 @@ func TestEvaluateRequestCommand(t *testing.T) {
 			StoreId:  ulid.Make().String(),
 		}
 
-		cmd, err := NewEvaluateRequestCommand(req)
+		cmd, err := NewEvaluateRequestCommand(req, "")
 		// Should succeed - no invalid properties
 		require.NoError(t, err)
 		require.NotNil(t, cmd)
@@ -662,15 +661,14 @@ func TestEvaluateRequestCommand(t *testing.T) {
 		modelID := ulid.Make().String()
 
 		req := &authzenv1.EvaluationRequest{
-			Subject:              &authzenv1.Subject{Type: "user", Id: "alice"},
-			Resource:             &authzenv1.Resource{Type: "document", Id: "doc1"},
-			Action:               &authzenv1.Action{Name: "read"},
-			StoreId:              storeID,
-			AuthorizationModelId: modelID,
-			Context:              testutils.MustNewStruct(t, map[string]interface{}{"ip": "127.0.0.1"}),
+			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
+			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
+			Action:   &authzenv1.Action{Name: "read"},
+			StoreId:  storeID,
+			Context:  testutils.MustNewStruct(t, map[string]interface{}{"ip": "127.0.0.1"}),
 		}
 
-		cmd, err := NewEvaluateRequestCommand(req)
+		cmd, err := NewEvaluateRequestCommand(req, modelID)
 		require.NoError(t, err)
 
 		checkReq := cmd.GetCheckRequest()

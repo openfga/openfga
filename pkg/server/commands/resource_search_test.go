@@ -244,14 +244,16 @@ func TestResourceSearchQuery(t *testing.T) {
 	t.Run("request_passes_store_and_model_id", func(t *testing.T) {
 		var capturedReq *openfgav1.StreamedListObjectsRequest
 		mockFn := mockStreamedListObjectsFuncWithCapture([]string{}, &capturedReq)
-		query := NewResourceSearchQuery(WithStreamedListObjectsFunc(mockFn))
+		query := NewResourceSearchQuery(
+			WithStreamedListObjectsFunc(mockFn),
+			WithResourceSearchAuthorizationModelID("01HVMMBD123456789ABCDEFGH"),
+		)
 
 		req := &authzenv1.ResourceSearchRequest{
-			Subject:              &authzenv1.Subject{Type: "user", Id: "alice"},
-			Action:               &authzenv1.Action{Name: "read"},
-			Resource:             &authzenv1.Resource{Type: "document"},
-			StoreId:              "01HVMMBCMGZNT3SED4CT2KA89Q",
-			AuthorizationModelId: "01HVMMBD123456789ABCDEFGH",
+			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
+			Action:   &authzenv1.Action{Name: "read"},
+			Resource: &authzenv1.Resource{Type: "document"},
+			StoreId:  "01HVMMBCMGZNT3SED4CT2KA89Q",
 		}
 
 		_, err := query.Execute(context.Background(), req)

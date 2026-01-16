@@ -209,6 +209,35 @@ Or set the environment variable:
 OPENFGA_EXPERIMENTALS=enable_authzen openfga run
 ```
 
+### Specifying Authorization Model ID
+
+By default, AuthZEN endpoints use the latest authorization model for the store. To use a specific model version, you can specify the authorization model ID using:
+
+1. **HTTP Header** (recommended): `Openfga-Authorization-Model-Id`
+2. **Request Field**: `authorization_model_id` in the request body
+
+**Example using header:**
+```bash
+curl -X POST http://localhost:8080/stores/{store_id}/access/v1/evaluation \
+  -H "Content-Type: application/json" \
+  -H "Openfga-Authorization-Model-Id: 01ARZ3NDEKTSV4RRFFQ69G5FAV" \
+  -d '{
+    "subject": {"type": "user", "id": "alice"},
+    "resource": {"type": "document", "id": "doc1"},
+    "action": {"name": "reader"}
+  }'
+```
+
+**Precedence:** If both the header and request field are specified, the header takes precedence.
+
+**Supported Endpoints:** The header is supported on:
+- `POST /stores/{store_id}/access/v1/evaluation`
+- `POST /stores/{store_id}/access/v1/search/subject`
+- `POST /stores/{store_id}/access/v1/search/resource`
+- `POST /stores/{store_id}/access/v1/search/action`
+
+Note: The `evaluations` (batch) endpoint does not support the `authorization_model_id` parameter—it always uses the latest model.
+
 ### Supported Endpoints
 
 | AuthZEN Endpoint | HTTP Path | Description |

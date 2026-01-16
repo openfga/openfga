@@ -2,9 +2,16 @@
 @fga_api_url =  https://authzen-interop.openfga.dev
 @fga_api_key = <key>
 @fga_store_id = 01JNW1803442023HVDKV03FB3A
+@fga_model_id = YOUR_MODEL_ID_HERE
 
+# =============================================================================
+# NOTE: Authorization Model ID
+# =============================================================================
+# You can specify a specific authorization model ID using the header:
+#   Openfga-Authorization-Model-Id: <model_id>
+# If not specified, the latest model for the store is used.
 
-### Evaluation request 
+### Evaluation request
 
 POST https://authzen-interop.openfga.dev/stores/{{fga_store_id}}/access/v1/evaluation
 Content-Type: application/json
@@ -24,7 +31,28 @@ Authorization: bearer {{fga_api_key}}
   }
 }
 
-### Evaluation request 
+### Evaluation request with specific Authorization Model ID
+
+POST https://authzen-interop.openfga.dev/stores/{{fga_store_id}}/access/v1/evaluation
+Content-Type: application/json
+Authorization: bearer {{fga_api_key}}
+Openfga-Authorization-Model-Id: {{fga_model_id}}
+
+{
+  "subject": {
+    "type": "identity",
+    "id": "peter"
+  },
+  "action": {
+    "name": "GET"
+  },
+  "resource": {
+    "type": "route",
+    "id": "/users/{userId}"
+  }
+}
+
+### Evaluation request
 
 POST https://authzen-interop.openfga.dev/stores/{{fga_store_id}}/access/v1/evaluation
 Content-Type: application/json
