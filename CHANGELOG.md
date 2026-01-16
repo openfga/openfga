@@ -8,7 +8,9 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 ### Added
-- Add AuthZen Experimental support [#2875](https://github.com/openfga/openfga/pull/2875)
+- Add AuthZen 1.0 experimental support[#2875](https://github.com/openfga/openfga/pull/2875)
+- Add configuration option to limit max type system cache size. [2744](https://github.com/openfga/openfga/pull/2744)
+- Add OTEL_* env var support to existing otel env vars. [#2825](https://github.com/openfga/openfga/pull/2825)
 
 ### Changed
 - Datastore throttling separated from dispatch throttling in BatchCheck, ListUsers metadata. Also, `throttling_type` label added to `throttledRequestCounter` metric to differentiate between dispatch/datastore throttling. [#2839](https://github.com/openfga/openfga/pull/2839)
@@ -264,9 +266,6 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Add limit to goroutine concurrency when processing iterator [#2386](https://github.com/openfga/openfga/pull/2386)
 - Fixes case where cached_datastore.ReadStartingWithUser generated bad cache invalidation keys. [#2381](https://github.com/openfga/openfga/pull/2381)
 
-### Changed
-- The serverconfig was moved from internal to pkg to make it available to external users of this package. [#2382](https://github.com/openfga/openfga/pull/2382)
-
 ## [1.8.9] - 2025-04-01
 [Full changelog](https://github.com/openfga/openfga/compare/v1.8.8...v1.8.9)
 
@@ -371,7 +370,6 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Add `Duration` to `ResolveCheckResponseMetadata` for use in metrics. [#2139](https://github.com/openfga/openfga/pull/2139)
 - Add `check_duration_ms` metric to `server` package to enable measurement of check across different API methods. [#2139](https://github.com/openfga/openfga/pull/2139)
 - Added deduplication logic to BatchCheck API. [#2102](https://github.com/openfga/openfga/pull/2102)
-- Add `name` as a filter to `ListStores`. The name parameter instructs the API to only include results that match that name. [#2103](https://github.com/openfga/openfga/pull/2103)
 
 ### Changed
 - OIDC token validation will now exclusively throw error code 1004 for invalid tokens. [#1999](https://github.com/openfga/openfga/pull/1999)
