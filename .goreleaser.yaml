@@ -1,6 +1,6 @@
 version: 2
 
-project_name: openfga-authzen
+project_name: openfga
 
 before:
   hooks:
@@ -18,10 +18,13 @@ builds:
       - darwin
     ldflags:
       - "-s -w"
-      - "-X github.com/aaguiarz/openfga/internal/build.Version=v{{ .Version }}"
-      - "-X github.com/aaguiarz/openfga/internal/build.Commit={{.Commit}}"
-      - "-X github.com/aaguiarz/openfga/internal/build.Date={{.Date}}"
-      - "-X github.com/aaguiarz/openfga/internal/build.ProjectName={{.ProjectName}}"
+      - "-X github.com/openfga/openfga/internal/build.Version=v{{ .Version }}"
+      - "-X github.com/openfga/openfga/internal/build.Commit={{.Commit}}"
+      - "-X github.com/openfga/openfga/internal/build.Date={{.CommitDate}}"
+      - "-X github.com/openfga/openfga/internal/build.ProjectName={{.ProjectName}}"
+    mod_timestamp: "{{.CommitTimestamp}}"
+    flags:
+      - -trimpath
 
 dockers:
   - goos: linux
@@ -30,13 +33,19 @@ dockers:
     dockerfile: Dockerfile.goreleaser
 
     image_templates:
+      - "openfga/openfga:latest-amd64"
+      - "openfga/openfga:{{ .Tag }}-amd64"
+      - "openfga/openfga:v{{ .Version }}-amd64"
+      - "openfga/openfga:v{{ .Major }}-amd64"
+      - "openfga/openfga:v{{ .Major }}.{{ .Minor }}-amd64"
+      - "openfga/openfga:v{{ .Major }}.{{ .Minor }}.{{ .Patch }}-amd64"
       # ghcr.io
-      - "ghcr.io/aaguiarz/openfga:latest-amd64"
-      - "ghcr.io/aaguiarz/openfga:{{ .Tag }}-amd64"
-      - "ghcr.io/aaguiarz/openfga:v{{ .Version }}-amd64"
-      - "ghcr.io/aaguiarz/openfga:v{{ .Major }}-amd64"
-      - "ghcr.io/aaguiarz/openfga:v{{ .Major }}.{{ .Minor }}-amd64"
-      - "ghcr.io/aaguiarz/openfga:v{{ .Major }}.{{ .Minor }}.{{ .Patch }}-amd64"
+      - "ghcr.io/openfga/openfga:latest-amd64"
+      - "ghcr.io/openfga/openfga:{{ .Tag }}-amd64"
+      - "ghcr.io/openfga/openfga:v{{ .Version }}-amd64"
+      - "ghcr.io/openfga/openfga:v{{ .Major }}-amd64"
+      - "ghcr.io/openfga/openfga:v{{ .Major }}.{{ .Minor }}-amd64"
+      - "ghcr.io/openfga/openfga:v{{ .Major }}.{{ .Minor }}.{{ .Patch }}-amd64"
 
     use: buildx
     build_flag_templates:
@@ -51,13 +60,19 @@ dockers:
     dockerfile: Dockerfile.goreleaser
 
     image_templates:
+      - "openfga/openfga:latest-arm64"
+      - "openfga/openfga:{{ .Tag }}-arm64"
+      - "openfga/openfga:v{{ .Version }}-arm64"
+      - "openfga/openfga:v{{ .Major }}-arm64"
+      - "openfga/openfga:v{{ .Major }}.{{ .Minor }}-arm64"
+      - "openfga/openfga:v{{ .Major }}.{{ .Minor }}.{{ .Patch }}-arm64"
       # ghcr.io
-      - "ghcr.io/aaguiarz/openfga:latest-arm64"
-      - "ghcr.io/aaguiarz/openfga:{{ .Tag }}-arm64"
-      - "ghcr.io/aaguiarz/openfga:v{{ .Version }}-arm64"
-      - "ghcr.io/aaguiarz/openfga:v{{ .Major }}-arm64"
-      - "ghcr.io/aaguiarz/openfga:v{{ .Major }}.{{ .Minor }}-arm64"
-      - "ghcr.io/aaguiarz/openfga:v{{ .Major }}.{{ .Minor }}.{{ .Patch }}-arm64"
+      - "ghcr.io/openfga/openfga:latest-arm64"
+      - "ghcr.io/openfga/openfga:{{ .Tag }}-arm64"
+      - "ghcr.io/openfga/openfga:v{{ .Version }}-arm64"
+      - "ghcr.io/openfga/openfga:v{{ .Major }}-arm64"
+      - "ghcr.io/openfga/openfga:v{{ .Major }}.{{ .Minor }}-arm64"
+      - "ghcr.io/openfga/openfga:v{{ .Major }}.{{ .Minor }}.{{ .Patch }}-arm64"
 
     use: buildx
 
@@ -68,31 +83,105 @@ dockers:
       - assets
 
 docker_manifests:
-  - name_template: ghcr.io/aaguiarz/openfga:latest
+  - name_template: openfga/openfga:latest
     image_templates:
-      - "ghcr.io/aaguiarz/openfga:latest-amd64"
-      - "ghcr.io/aaguiarz/openfga:latest-arm64"
-  - name_template: ghcr.io/aaguiarz/openfga:v{{ .Version }}
+      - openfga/openfga:latest-amd64
+      - openfga/openfga:latest-arm64
+  - name_template: openfga/openfga:v{{ .Version }}
     image_templates:
-      - "ghcr.io/aaguiarz/openfga:v{{ .Version }}-amd64"
-      - "ghcr.io/aaguiarz/openfga:v{{ .Version }}-arm64"
-  - name_template: ghcr.io/aaguiarz/openfga:v{{ .Major }}
+      - openfga/openfga:v{{ .Version }}-amd64
+      - openfga/openfga:v{{ .Version }}-arm64
+  - name_template: openfga/openfga:v{{ .Major }}
     image_templates:
-      - "ghcr.io/aaguiarz/openfga:v{{ .Major }}-amd64"
-      - "ghcr.io/aaguiarz/openfga:v{{ .Major }}-arm64"
-  - name_template: ghcr.io/aaguiarz/openfga:v{{ .Major }}.{{ .Minor }}
+      - openfga/openfga:v{{ .Major }}-amd64
+      - openfga/openfga:v{{ .Major }}-arm64
+  - name_template: openfga/openfga:v{{ .Major }}.{{ .Minor }}
     image_templates:
-      - "ghcr.io/aaguiarz/openfga:v{{ .Major }}.{{ .Minor }}-amd64"
-      - "ghcr.io/aaguiarz/openfga:v{{ .Major }}.{{ .Minor }}-arm64"
-  - name_template: ghcr.io/aaguiarz/openfga:v{{ .Major }}.{{ .Minor }}.{{ .Patch }}
+      - openfga/openfga:v{{ .Major }}.{{ .Minor }}-amd64
+      - openfga/openfga:v{{ .Major }}.{{ .Minor }}-arm64
+  - name_template: openfga/openfga:v{{ .Major }}.{{ .Minor }}.{{ .Patch }}
     image_templates:
-      - "ghcr.io/aaguiarz/openfga:v{{ .Major }}.{{ .Minor }}.{{ .Patch }}-amd64"
-      - "ghcr.io/aaguiarz/openfga:v{{ .Major }}.{{ .Minor }}.{{ .Patch }}-arm64"
+      - openfga/openfga:v{{ .Major }}.{{ .Minor }}.{{ .Patch }}-amd64
+      - openfga/openfga:v{{ .Major }}.{{ .Minor }}.{{ .Patch }}-arm64
+  - name_template: ghcr.io/openfga/openfga:latest
+    image_templates:
+      - "ghcr.io/openfga/openfga:latest-amd64"
+      - "ghcr.io/openfga/openfga:latest-arm64"
+  - name_template: ghcr.io/openfga/openfga:v{{ .Version }}
+    image_templates:
+      - "ghcr.io/openfga/openfga:v{{ .Version }}-amd64"
+      - "ghcr.io/openfga/openfga:v{{ .Version }}-arm64"
+  - name_template: ghcr.io/openfga/openfga:v{{ .Major }}
+    image_templates:
+      - "ghcr.io/openfga/openfga:v{{ .Major }}-amd64"
+      - "ghcr.io/openfga/openfga:v{{ .Major }}-arm64"
+  - name_template: ghcr.io/openfga/openfga:v{{ .Major }}.{{ .Minor }}
+    image_templates:
+      - "ghcr.io/openfga/openfga:v{{ .Major }}.{{ .Minor }}-amd64"
+      - "ghcr.io/openfga/openfga:v{{ .Major }}.{{ .Minor }}-arm64"
+  - name_template: ghcr.io/openfga/openfga:v{{ .Major }}.{{ .Minor }}.{{ .Patch }}
+    image_templates:
+      - "ghcr.io/openfga/openfga:v{{ .Major }}.{{ .Minor }}.{{ .Patch }}-amd64"
+      - "ghcr.io/openfga/openfga:v{{ .Major }}.{{ .Minor }}.{{ .Patch }}-arm64"
 
 release:
   github:
-    owner: aaguiarz
+    owner: openfga
     name: openfga
+
+sboms:
+  - artifacts: archive
+
+signs:
+- cmd: cosign
+  env:
+  - COSIGN_EXPERIMENTAL=1
+  certificate: '${artifact}.pem'
+  args:
+    - sign-blob
+    - '--output-certificate=${certificate}'
+    - '--output-signature=${signature}'
+    - '${artifact}'
+    - "--yes" # needed on cosign 2.0.0+
+  artifacts: checksum
+  output: true
+
+docker_signs:
+  - cmd: cosign
+    env:
+    - COSIGN_EXPERIMENTAL=1
+    artifacts: manifests
+    output: true
+    args:
+    - 'sign'
+    - '${artifact}'
+    - "--yes" # needed on cosign 2.0.0+
+
+brews:
+  - repository:
+      owner: openfga
+      name: homebrew-tap
+    homepage: "https://openfga.dev/"
+    description: "A high performance and flexible authorization/permission engine built for developers and inspired by Google Zanzibar."
+    license: "Apache-2.0"
+    directory: "Formula"
+    url_template: "https://github.com/openfga/openfga/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
+    download_strategy: CurlDownloadStrategy
+
+    # update the head formula on each release
+    custom_block: |
+      head "https://github.com/openfga/openfga.git", :branch => "main"
+    dependencies:
+      - name: go
+        type: optional
+      - name: git
+    install: |
+      bin.install "openfga"
+      bash_completion.install "completions/openfga.bash" => "goreleaser"
+      zsh_completion.install "completions/openfga.zsh" => "_goreleaser"
+      fish_completion.install "completions/openfga.fish"
+    test: |
+      system "#{bin}/openfga version"
 
 archives:
   - files:
