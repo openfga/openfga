@@ -37,11 +37,11 @@ func TestSubjectSearch(t *testing.T) {
 			Subject:  &authzenv1.SubjectFilter{Type: "user"},
 		})
 		require.NoError(t, err)
-		require.Len(t, resp.GetSubjects(), 3)
+		require.Len(t, resp.GetResults(), 3)
 
 		// Verify all expected subjects are returned
-		subjectIDs := make([]string, len(resp.GetSubjects()))
-		for i, s := range resp.GetSubjects() {
+		subjectIDs := make([]string, len(resp.GetResults()))
+		for i, s := range resp.GetResults() {
 			subjectIDs[i] = s.GetId()
 		}
 		sort.Strings(subjectIDs)
@@ -70,7 +70,7 @@ func TestSubjectSearch(t *testing.T) {
 			Subject:  &authzenv1.SubjectFilter{Type: "user"},
 		})
 		require.NoError(t, err)
-		require.Empty(t, resp.GetSubjects())
+		require.Empty(t, resp.GetResults())
 	})
 
 	t.Run("returns_all_results_ignores_page_parameter", func(t *testing.T) {
@@ -107,13 +107,13 @@ func TestSubjectSearch(t *testing.T) {
 		})
 		require.NoError(t, err)
 		// All 10 users should be returned despite limit of 3 (pagination not supported)
-		require.Len(t, resp.GetSubjects(), 10)
+		require.Len(t, resp.GetResults(), 10)
 		// No Page response when pagination is not supported
 		require.Nil(t, resp.GetPage())
 
 		// Verify all expected subjects are returned
 		subjectIDs := make(map[string]bool)
-		for _, s := range resp.GetSubjects() {
+		for _, s := range resp.GetResults() {
 			subjectIDs[s.GetId()] = true
 		}
 		for i := 0; i < 10; i++ {
@@ -147,9 +147,9 @@ func TestSubjectSearch(t *testing.T) {
 			Subject:  &authzenv1.SubjectFilter{Type: "user"},
 		})
 		require.NoError(t, err)
-		require.Len(t, resp.GetSubjects(), 2)
+		require.Len(t, resp.GetResults(), 2)
 
-		for _, s := range resp.GetSubjects() {
+		for _, s := range resp.GetResults() {
 			require.Equal(t, "user", s.GetType())
 		}
 	})
@@ -180,11 +180,11 @@ func TestResourceSearch(t *testing.T) {
 			Resource: &authzenv1.Resource{Type: "document"},
 		})
 		require.NoError(t, err)
-		require.Len(t, resp.GetResources(), 3)
+		require.Len(t, resp.GetResults(), 3)
 
 		// Verify all expected resources are returned
-		resourceIDs := make([]string, len(resp.GetResources()))
-		for i, r := range resp.GetResources() {
+		resourceIDs := make([]string, len(resp.GetResults()))
+		for i, r := range resp.GetResults() {
 			resourceIDs[i] = r.GetId()
 		}
 		sort.Strings(resourceIDs)
@@ -211,7 +211,7 @@ func TestResourceSearch(t *testing.T) {
 			Resource: &authzenv1.Resource{Type: "document"},
 		})
 		require.NoError(t, err)
-		require.Empty(t, resp.GetResources())
+		require.Empty(t, resp.GetResults())
 	})
 
 	t.Run("transitive_relationships_via_group", func(t *testing.T) {
@@ -241,10 +241,10 @@ func TestResourceSearch(t *testing.T) {
 			Resource: &authzenv1.Resource{Type: "document"},
 		})
 		require.NoError(t, err)
-		require.Len(t, resp.GetResources(), 2)
+		require.Len(t, resp.GetResults(), 2)
 
-		resourceIDs := make([]string, len(resp.GetResources()))
-		for i, r := range resp.GetResources() {
+		resourceIDs := make([]string, len(resp.GetResults()))
+		for i, r := range resp.GetResults() {
 			resourceIDs[i] = r.GetId()
 		}
 		sort.Strings(resourceIDs)
@@ -279,7 +279,7 @@ func TestResourceSearch(t *testing.T) {
 			Resource: &authzenv1.Resource{Type: "document"},
 		})
 		require.NoError(t, err)
-		require.Len(t, resp.GetResources(), 2)
+		require.Len(t, resp.GetResults(), 2)
 	})
 
 	t.Run("returns_all_results_ignores_page_parameter", func(t *testing.T) {
@@ -316,13 +316,13 @@ func TestResourceSearch(t *testing.T) {
 		})
 		require.NoError(t, err)
 		// All 10 documents should be returned despite limit of 3 (pagination not supported)
-		require.Len(t, resp.GetResources(), 10)
+		require.Len(t, resp.GetResults(), 10)
 		// No Page response when pagination is not supported
 		require.Nil(t, resp.GetPage())
 
 		// Verify all expected resources are returned
 		resourceIDs := make(map[string]bool)
-		for _, r := range resp.GetResources() {
+		for _, r := range resp.GetResults() {
 			resourceIDs[r.GetId()] = true
 		}
 		for i := 0; i < 10; i++ {
@@ -357,9 +357,9 @@ func TestResourceSearch(t *testing.T) {
 			Resource: &authzenv1.Resource{Type: "document"},
 		})
 		require.NoError(t, err)
-		require.Len(t, resp.GetResources(), 1)
-		require.Equal(t, "document", resp.GetResources()[0].GetType())
-		require.Equal(t, "doc1", resp.GetResources()[0].GetId())
+		require.Len(t, resp.GetResults(), 1)
+		require.Equal(t, "document", resp.GetResults()[0].GetType())
+		require.Equal(t, "doc1", resp.GetResults()[0].GetId())
 	})
 }
 
@@ -389,10 +389,10 @@ func TestActionSearch(t *testing.T) {
 			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
 		})
 		require.NoError(t, err)
-		require.Len(t, resp.GetActions(), 2) // reader and writer
+		require.Len(t, resp.GetResults(), 2) // reader and writer
 
-		actionNames := make([]string, len(resp.GetActions()))
-		for i, a := range resp.GetActions() {
+		actionNames := make([]string, len(resp.GetResults()))
+		for i, a := range resp.GetResults() {
 			actionNames[i] = a.GetName()
 		}
 		sort.Strings(actionNames)
@@ -419,7 +419,7 @@ func TestActionSearch(t *testing.T) {
 			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
 		})
 		require.NoError(t, err)
-		require.Empty(t, resp.GetActions())
+		require.Empty(t, resp.GetResults())
 	})
 
 	t.Run("all_permissions", func(t *testing.T) {
@@ -447,10 +447,10 @@ func TestActionSearch(t *testing.T) {
 			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
 		})
 		require.NoError(t, err)
-		require.Len(t, resp.GetActions(), 3)
+		require.Len(t, resp.GetResults(), 3)
 
-		actionNames := make([]string, len(resp.GetActions()))
-		for i, a := range resp.GetActions() {
+		actionNames := make([]string, len(resp.GetResults()))
+		for i, a := range resp.GetResults() {
 			actionNames[i] = a.GetName()
 		}
 		sort.Strings(actionNames)
@@ -481,10 +481,10 @@ func TestActionSearch(t *testing.T) {
 			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
 		})
 		require.NoError(t, err)
-		require.Len(t, resp.GetActions(), 3)
+		require.Len(t, resp.GetResults(), 3)
 
-		actionNames := make([]string, len(resp.GetActions()))
-		for i, a := range resp.GetActions() {
+		actionNames := make([]string, len(resp.GetResults()))
+		for i, a := range resp.GetResults() {
 			actionNames[i] = a.GetName()
 		}
 		sort.Strings(actionNames)
@@ -518,8 +518,8 @@ func TestActionSearch(t *testing.T) {
 			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
 		})
 		require.NoError(t, err)
-		require.Len(t, resp.GetActions(), 1)
-		require.Equal(t, "reader", resp.GetActions()[0].GetName())
+		require.Len(t, resp.GetResults(), 1)
+		require.Equal(t, "reader", resp.GetResults()[0].GetName())
 	})
 
 	t.Run("exclusion_pattern", func(t *testing.T) {
@@ -548,10 +548,10 @@ func TestActionSearch(t *testing.T) {
 			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
 		})
 		require.NoError(t, err)
-		require.Len(t, resp.GetActions(), 2)
+		require.Len(t, resp.GetResults(), 2)
 
 		actionNames := make(map[string]bool)
-		for _, a := range resp.GetActions() {
+		for _, a := range resp.GetResults() {
 			actionNames[a.GetName()] = true
 		}
 		require.True(t, actionNames["blocked"])
@@ -592,8 +592,8 @@ func TestTransitiveRelationships(t *testing.T) {
 			Resource: &authzenv1.Resource{Type: "document"},
 		})
 		require.NoError(t, err)
-		require.Len(t, resp.GetResources(), 1)
-		require.Equal(t, "doc1", resp.GetResources()[0].GetId())
+		require.Len(t, resp.GetResults(), 1)
+		require.Equal(t, "doc1", resp.GetResults()[0].GetId())
 	})
 
 	t.Run("folder_hierarchy", func(t *testing.T) {
@@ -629,8 +629,8 @@ func TestTransitiveRelationships(t *testing.T) {
 			Resource: &authzenv1.Resource{Type: "document"},
 		})
 		require.NoError(t, err)
-		require.Len(t, resp.GetResources(), 1)
-		require.Equal(t, "doc1", resp.GetResources()[0].GetId())
+		require.Len(t, resp.GetResults(), 1)
+		require.Equal(t, "doc1", resp.GetResults()[0].GetId())
 	})
 
 	t.Run("org_hierarchy", func(t *testing.T) {
@@ -668,7 +668,7 @@ func TestTransitiveRelationships(t *testing.T) {
 			Resource: &authzenv1.Resource{Type: "project"},
 		})
 		require.NoError(t, err)
-		require.Len(t, resp.GetResources(), 1)
-		require.Equal(t, "project1", resp.GetResources()[0].GetId())
+		require.Len(t, resp.GetResults(), 1)
+		require.Equal(t, "project1", resp.GetResults()[0].GetId())
 	})
 }
