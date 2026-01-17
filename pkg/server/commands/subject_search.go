@@ -52,7 +52,7 @@ func (q *SubjectSearchQuery) Execute(
 		req.GetContext(),
 		req.GetSubject(),
 		req.GetResource(),
-		nil,
+		req.GetAction(),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to merge properties to context: %w", err)
