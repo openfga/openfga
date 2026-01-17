@@ -397,6 +397,109 @@ func TestSubjectSearchQuery(t *testing.T) {
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "subject type is required")
 	})
+
+	t.Run("nil_resource_returns_error", func(t *testing.T) {
+		mockListUsers := func(ctx context.Context, req *openfgav1.ListUsersRequest) (*openfgav1.ListUsersResponse, error) {
+			return &openfgav1.ListUsersResponse{}, nil
+		}
+
+		query := NewSubjectSearchQuery(WithListUsersFunc(mockListUsers))
+
+		req := &authzenv1.SubjectSearchRequest{
+			Subject:  &authzenv1.SubjectFilter{Type: "user"},
+			Resource: nil, // nil resource
+			Action:   &authzenv1.Action{Name: "read"},
+			StoreId:  "01HVMMBCMGZNT3SED4CT2KA89Q",
+		}
+
+		_, err := query.Execute(context.Background(), req)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "resource is required")
+	})
+
+	t.Run("nil_action_returns_error", func(t *testing.T) {
+		mockListUsers := func(ctx context.Context, req *openfgav1.ListUsersRequest) (*openfgav1.ListUsersResponse, error) {
+			return &openfgav1.ListUsersResponse{}, nil
+		}
+
+		query := NewSubjectSearchQuery(WithListUsersFunc(mockListUsers))
+
+		req := &authzenv1.SubjectSearchRequest{
+			Subject:  &authzenv1.SubjectFilter{Type: "user"},
+			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
+			Action:   nil, // nil action
+			StoreId:  "01HVMMBCMGZNT3SED4CT2KA89Q",
+		}
+
+		_, err := query.Execute(context.Background(), req)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "action is required")
+	})
+
+	t.Run("nil_listUsersFunc_returns_error", func(t *testing.T) {
+		query := NewSubjectSearchQuery() // No listUsersFunc configured
+
+		req := &authzenv1.SubjectSearchRequest{
+			Subject:  &authzenv1.SubjectFilter{Type: "user"},
+			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
+			Action:   &authzenv1.Action{Name: "read"},
+			StoreId:  "01HVMMBCMGZNT3SED4CT2KA89Q",
+		}
+
+		_, err := query.Execute(context.Background(), req)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "listUsersFunc not configured")
+	})
+
+	t.Run("action_properties_forwarded_to_context", func(t *testing.T) {
+		var capturedReq *openfgav1.ListUsersRequest
+		mockListUsers := func(ctx context.Context, req *openfgav1.ListUsersRequest) (*openfgav1.ListUsersResponse, error) {
+			capturedReq = req
+			return &openfgav1.ListUsersResponse{}, nil
+		}
+
+		query := NewSubjectSearchQuery(WithListUsersFunc(mockListUsers))
+
+		req := &authzenv1.SubjectSearchRequest{
+			Subject:  &authzenv1.SubjectFilter{Type: "user"},
+			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
+			Action: &authzenv1.Action{
+				Name:       "read",
+				Properties: testutils.MustNewStruct(t, map[string]interface{}{"requires_mfa": true}),
+			},
+			StoreId: "01HVMMBCMGZNT3SED4CT2KA89Q",
+		}
+
+		_, err := query.Execute(context.Background(), req)
+		require.NoError(t, err)
+		require.NotNil(t, capturedReq.GetContext())
+		require.Equal(t, true, capturedReq.GetContext().AsMap()["action_requires_mfa"])
+	})
+
+	t.Run("user_with_nil_object_and_nil_wildcard_skipped", func(t *testing.T) {
+		mockListUsers := func(ctx context.Context, req *openfgav1.ListUsersRequest) (*openfgav1.ListUsersResponse, error) {
+			return &openfgav1.ListUsersResponse{
+				Users: []*openfgav1.User{
+					{User: &openfgav1.User_Object{Object: &openfgav1.Object{Type: "user", Id: "alice"}}},
+					{}, // User with neither Object nor Wildcard set - should be skipped
+					{User: &openfgav1.User_Object{Object: &openfgav1.Object{Type: "user", Id: "bob"}}},
+				},
+			}, nil
+		}
+
+		query := NewSubjectSearchQuery(WithListUsersFunc(mockListUsers))
+
+		req := &authzenv1.SubjectSearchRequest{
+			Subject:  &authzenv1.SubjectFilter{Type: "user"},
+			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
+			Action:   &authzenv1.Action{Name: "read"},
+			StoreId:  "01HVMMBCMGZNT3SED4CT2KA89Q",
+		}
+
+		resp, err := query.Execute(context.Background(), req)
+		require.NoError(t, err)
+		require.Len(t, resp.GetResults(), 2) // Only alice and bob, not the empty user
+	})
 }
 
 func uint32Ptr(v uint32) *uint32 {

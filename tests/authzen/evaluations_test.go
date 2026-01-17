@@ -692,4 +692,88 @@ func TestEvaluations(t *testing.T) {
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "AuthZEN endpoints are experimental")
 	})
+
+	// Test that errors in permit_on_first_permit continue processing
+	// (unlike deny_on_first_deny which breaks on error)
+	t.Run("permit_on_first_permit_error_continues_processing", func(t *testing.T) {
+		tc := setupTestContext(t)
+		tc.createStore("test-store")
+		tc.writeModel(`
+			model
+				schema 1.1
+			type user
+			type document
+				relations
+					define reader: [user]
+		`)
+		tc.writeTuples([]*openfgav1.TupleKey{
+			{User: "user:alice", Relation: "reader", Object: "document:doc2"},
+		})
+
+		// In permit_on_first_permit, errors should continue processing
+		// until we find a permit (error results in Decision: false which is deny)
+		resp, err := tc.authzenClient.Evaluations(context.Background(), &authzenv1.EvaluationsRequest{
+			StoreId: tc.storeID,
+			Subject: &authzenv1.Subject{Type: "user", Id: "alice"},
+			Action:  &authzenv1.Action{Name: "reader"},
+			Options: &authzenv1.EvaluationsOptions{
+				EvaluationsSemantic: authzenv1.EvaluationsSemantic_permit_on_first_permit,
+			},
+			Evaluations: []*authzenv1.EvaluationsItemRequest{
+				{Resource: &authzenv1.Resource{Type: "invalid_type_not_in_model", Id: "x"}}, // Error - continues
+				{Resource: &authzenv1.Resource{Type: "document", Id: "doc2"}},               // Allowed - stops here
+				{Resource: &authzenv1.Resource{Type: "document", Id: "doc3"}},               // Would not be evaluated
+			},
+		})
+		require.NoError(t, err)
+		require.Len(t, resp.GetEvaluationResponses(), 2) // Error + permit, then stop
+		// First evaluation has error
+		require.False(t, resp.GetEvaluationResponses()[0].GetDecision())
+		require.NotNil(t, resp.GetEvaluationResponses()[0].GetContext())
+		require.NotNil(t, resp.GetEvaluationResponses()[0].GetContext().GetError())
+		// Second evaluation is permit - processing stops
+		require.True(t, resp.GetEvaluationResponses()[1].GetDecision())
+	})
+
+	// Test that execute_all continues processing all evaluations even with errors
+	t.Run("execute_all_with_errors", func(t *testing.T) {
+		tc := setupTestContext(t)
+		tc.createStore("test-store")
+		tc.writeModel(`
+			model
+				schema 1.1
+			type user
+			type document
+				relations
+					define reader: [user]
+		`)
+		tc.writeTuples([]*openfgav1.TupleKey{
+			{User: "user:alice", Relation: "reader", Object: "document:doc2"},
+		})
+
+		// In execute_all mode, all evaluations should be processed regardless of errors
+		resp, err := tc.authzenClient.Evaluations(context.Background(), &authzenv1.EvaluationsRequest{
+			StoreId: tc.storeID,
+			Subject: &authzenv1.Subject{Type: "user", Id: "alice"},
+			Action:  &authzenv1.Action{Name: "reader"},
+			Options: &authzenv1.EvaluationsOptions{
+				EvaluationsSemantic: authzenv1.EvaluationsSemantic_execute_all,
+			},
+			Evaluations: []*authzenv1.EvaluationsItemRequest{
+				{Resource: &authzenv1.Resource{Type: "invalid_type_not_in_model", Id: "x"}}, // Error
+				{Resource: &authzenv1.Resource{Type: "document", Id: "doc2"}},               // Allowed
+				{Resource: &authzenv1.Resource{Type: "document", Id: "doc3"}},               // Denied (no tuple)
+			},
+		})
+		require.NoError(t, err)
+		require.Len(t, resp.GetEvaluationResponses(), 3) // All evaluations processed
+		// First: error
+		require.False(t, resp.GetEvaluationResponses()[0].GetDecision())
+		require.NotNil(t, resp.GetEvaluationResponses()[0].GetContext().GetError())
+		// Second: allowed
+		require.True(t, resp.GetEvaluationResponses()[1].GetDecision())
+		// Third: denied
+		require.False(t, resp.GetEvaluationResponses()[2].GetDecision())
+		require.Nil(t, resp.GetEvaluationResponses()[2].GetContext().GetError()) // No error, just denied
+	})
 }

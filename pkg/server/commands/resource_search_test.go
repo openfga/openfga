@@ -599,4 +599,25 @@ func TestResourceSearchQuery(t *testing.T) {
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "action name is required")
 	})
+
+	t.Run("action_properties_forwarded_to_context", func(t *testing.T) {
+		var capturedReq *openfgav1.StreamedListObjectsRequest
+		mockFn := mockStreamedListObjectsFuncWithCapture([]string{}, &capturedReq)
+		query := NewResourceSearchQuery(WithStreamedListObjectsFunc(mockFn))
+
+		req := &authzenv1.ResourceSearchRequest{
+			Subject: &authzenv1.Subject{Type: "user", Id: "alice"},
+			Action: &authzenv1.Action{
+				Name:       "read",
+				Properties: testutils.MustNewStruct(t, map[string]interface{}{"priority": "high"}),
+			},
+			Resource: &authzenv1.Resource{Type: "document"},
+			StoreId:  "01HVMMBCMGZNT3SED4CT2KA89Q",
+		}
+
+		_, err := query.Execute(context.Background(), req)
+		require.NoError(t, err)
+		require.NotNil(t, capturedReq.GetContext())
+		require.Equal(t, "high", capturedReq.GetContext().AsMap()["action_priority"])
+	})
 }
