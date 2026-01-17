@@ -94,9 +94,9 @@ test: generate-mocks ## Run all tests. To run a specific test, pass the FILTER v
 			-count=1 \
 			-timeout=10m \
 			${GO_PACKAGES}
-	@cat coverageunit.tmp.out | grep -v "mock" > coverageunit.out
-	@rm coverageunit.tmp.out
-
+	@cat coverageunit.tmp.out 2>/dev/null| grep -v "mock" > coverageunit.out || true
+	@rm -f coverageunit.tmp.out
+	
 test-docker: ## Run tests requiring Docker
 	${call print, "Running docker tests"}
 	@if [ -z "$${CI}" ]; then \
