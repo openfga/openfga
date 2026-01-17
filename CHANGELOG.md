@@ -8,7 +8,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 ### Added
-- Add AuthZen 1.0 experimental support[#2875](https://github.com/openfga/openfga/pull/2875)
+- Add AuthZen 1.0 experimental support. [#2875](https://github.com/openfga/openfga/pull/2875)
 - Add configuration option to limit max type system cache size. [2744](https://github.com/openfga/openfga/pull/2744)
 - Add OTEL_* env var support to existing otel env vars. [#2825](https://github.com/openfga/openfga/pull/2825)
 
