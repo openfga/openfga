@@ -63,6 +63,21 @@ func (q *SubjectSearchQuery) Execute(
 		return nil, fmt.Errorf("subject type is required for subject search")
 	}
 
+	// Validate resource is provided
+	if req.GetResource() == nil {
+		return nil, fmt.Errorf("resource is required for subject search")
+	}
+
+	// Validate action is provided
+	if req.GetAction() == nil {
+		return nil, fmt.Errorf("action is required for subject search")
+	}
+
+	// Validate listUsersFunc is configured
+	if q.listUsersFunc == nil {
+		return nil, fmt.Errorf("listUsersFunc not configured")
+	}
+
 	// Build ListUsers request
 	listUsersReq := &openfgav1.ListUsersRequest{
 		StoreId:              req.GetStoreId(),
