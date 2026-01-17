@@ -201,6 +201,10 @@ func (s *Server) evaluateWithShortCircuit(
 					},
 				},
 			})
+			// Error results in Decision: false, honor deny_on_first_deny short-circuit
+			if semantic == authzenv1.EvaluationsSemantic_deny_on_first_deny {
+				break
+			}
 			continue
 		}
 

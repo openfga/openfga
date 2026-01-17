@@ -533,7 +533,7 @@ func TestEvaluations(t *testing.T) {
 		require.NotNil(t, evalResp.GetContext().GetError())
 	})
 
-	t.Run("short_circuit_with_multiple_evaluations_continues_on_error", func(t *testing.T) {
+	t.Run("short_circuit_deny_on_first_deny_breaks_on_error", func(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
 			WithExperimentals(serverconfig.ExperimentalEnableAuthZen),
@@ -543,7 +543,7 @@ func TestEvaluations(t *testing.T) {
 		createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
 		require.NoError(t, err)
 
-		// Test with multiple evaluations - short-circuit continues on errors
+		// Test with multiple evaluations - deny_on_first_deny short-circuits on errors
 		req := &authzenv1.EvaluationsRequest{
 			StoreId: createStoreResp.GetId(),
 			Evaluations: []*authzenv1.EvaluationsItemRequest{
@@ -563,19 +563,18 @@ func TestEvaluations(t *testing.T) {
 			},
 		}
 
-		// When evaluations error (no model), short-circuit continues to next evaluation
-		// (the continue statement on line 166 of authzen.go)
+		// When evaluations error (no model), error results in Decision: false
+		// which triggers deny_on_first_deny short-circuit
 		resp, err := s.Evaluations(context.Background(), req)
 		require.NoError(t, err)
 		require.NotNil(t, resp)
 
-		// Should have both responses because errors don't trigger short-circuit break
-		require.Len(t, resp.GetEvaluationResponses(), 2)
-		for _, evalResp := range resp.GetEvaluationResponses() {
-			require.False(t, evalResp.GetDecision())
-			require.NotNil(t, evalResp.GetContext())
-			require.NotNil(t, evalResp.GetContext().GetError())
-		}
+		// Should have only 1 response because error triggers short-circuit break
+		require.Len(t, resp.GetEvaluationResponses(), 1)
+		evalResp := resp.GetEvaluationResponses()[0]
+		require.False(t, evalResp.GetDecision())
+		require.NotNil(t, evalResp.GetContext())
+		require.NotNil(t, evalResp.GetContext().GetError())
 	})
 
 	t.Run("short_circuit_returns_400_for_invalid_type", func(t *testing.T) {
@@ -919,6 +918,153 @@ func TestEvaluations(t *testing.T) {
 		require.True(t, resp.GetEvaluationResponses()[0].GetDecision())
 		// Should NOT have an error context since it's a valid permit, not an error
 		require.Nil(t, resp.GetEvaluationResponses()[0].GetContext().GetError())
+	})
+
+	t.Run("deny_on_first_deny_returns_results_up_to_deny", func(t *testing.T) {
+		// Per AuthZEN spec: deny_on_first_deny returns all results up to and including first deny
+		// Example from spec: [doc1=true, doc2=false, doc3=true] -> returns [true, false]
+		s := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithExperimentals(serverconfig.ExperimentalEnableAuthZen),
+		)
+		t.Cleanup(s.Close)
+
+		createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
+		require.NoError(t, err)
+		storeID := createStoreResp.GetId()
+
+		// Write model
+		_, err = s.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
+			StoreId:       storeID,
+			SchemaVersion: "1.1",
+			TypeDefinitions: []*openfgav1.TypeDefinition{
+				{Type: "user"},
+				{
+					Type: "document",
+					Relations: map[string]*openfgav1.Userset{
+						"reader": {Userset: &openfgav1.Userset_This{}},
+					},
+					Metadata: &openfgav1.Metadata{
+						Relations: map[string]*openfgav1.RelationMetadata{
+							"reader": {
+								DirectlyRelatedUserTypes: []*openfgav1.RelationReference{{Type: "user"}},
+							},
+						},
+					},
+				},
+			},
+		})
+		require.NoError(t, err)
+
+		// Write tuples: alice can read doc1 and doc3, but NOT doc2
+		_, err = s.Write(context.Background(), &openfgav1.WriteRequest{
+			StoreId: storeID,
+			Writes: &openfgav1.WriteRequestWrites{
+				TupleKeys: []*openfgav1.TupleKey{
+					{Object: "document:doc1", Relation: "reader", User: "user:alice"},
+					{Object: "document:doc3", Relation: "reader", User: "user:alice"},
+				},
+			},
+		})
+		require.NoError(t, err)
+
+		// Request: doc1 (permit), doc2 (deny), doc3 (permit - should not be evaluated)
+		req := &authzenv1.EvaluationsRequest{
+			StoreId: storeID,
+			Subject: &authzenv1.Subject{Type: "user", Id: "alice"},
+			Action:  &authzenv1.Action{Name: "reader"},
+			Evaluations: []*authzenv1.EvaluationsItemRequest{
+				{Resource: &authzenv1.Resource{Type: "document", Id: "doc1"}},
+				{Resource: &authzenv1.Resource{Type: "document", Id: "doc2"}},
+				{Resource: &authzenv1.Resource{Type: "document", Id: "doc3"}},
+			},
+			Options: &authzenv1.EvaluationsOptions{
+				EvaluationsSemantic: authzenv1.EvaluationsSemantic_deny_on_first_deny,
+			},
+		}
+
+		resp, err := s.Evaluations(context.Background(), req)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+
+		// Should have 2 responses: doc1=true, doc2=false (doc3 not evaluated)
+		require.Len(t, resp.GetEvaluationResponses(), 2)
+		require.True(t, resp.GetEvaluationResponses()[0].GetDecision())  // doc1 = permit
+		require.False(t, resp.GetEvaluationResponses()[1].GetDecision()) // doc2 = deny
+	})
+
+	t.Run("permit_on_first_permit_returns_results_up_to_permit", func(t *testing.T) {
+		// Per AuthZEN spec: permit_on_first_permit returns all results up to and including first permit
+		// Like || operator: continues on false until first true
+		s := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithExperimentals(serverconfig.ExperimentalEnableAuthZen),
+		)
+		t.Cleanup(s.Close)
+
+		createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
+		require.NoError(t, err)
+		storeID := createStoreResp.GetId()
+
+		// Write model
+		_, err = s.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
+			StoreId:       storeID,
+			SchemaVersion: "1.1",
+			TypeDefinitions: []*openfgav1.TypeDefinition{
+				{Type: "user"},
+				{
+					Type: "document",
+					Relations: map[string]*openfgav1.Userset{
+						"reader": {Userset: &openfgav1.Userset_This{}},
+					},
+					Metadata: &openfgav1.Metadata{
+						Relations: map[string]*openfgav1.RelationMetadata{
+							"reader": {
+								DirectlyRelatedUserTypes: []*openfgav1.RelationReference{{Type: "user"}},
+							},
+						},
+					},
+				},
+			},
+		})
+		require.NoError(t, err)
+
+		// Write tuple: alice can read doc3 only
+		_, err = s.Write(context.Background(), &openfgav1.WriteRequest{
+			StoreId: storeID,
+			Writes: &openfgav1.WriteRequestWrites{
+				TupleKeys: []*openfgav1.TupleKey{
+					{Object: "document:doc3", Relation: "reader", User: "user:alice"},
+				},
+			},
+		})
+		require.NoError(t, err)
+
+		// Request: doc1 (deny), doc2 (deny), doc3 (permit), doc4 (should not be evaluated)
+		req := &authzenv1.EvaluationsRequest{
+			StoreId: storeID,
+			Subject: &authzenv1.Subject{Type: "user", Id: "alice"},
+			Action:  &authzenv1.Action{Name: "reader"},
+			Evaluations: []*authzenv1.EvaluationsItemRequest{
+				{Resource: &authzenv1.Resource{Type: "document", Id: "doc1"}},
+				{Resource: &authzenv1.Resource{Type: "document", Id: "doc2"}},
+				{Resource: &authzenv1.Resource{Type: "document", Id: "doc3"}},
+				{Resource: &authzenv1.Resource{Type: "document", Id: "doc4"}},
+			},
+			Options: &authzenv1.EvaluationsOptions{
+				EvaluationsSemantic: authzenv1.EvaluationsSemantic_permit_on_first_permit,
+			},
+		}
+
+		resp, err := s.Evaluations(context.Background(), req)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+
+		// Should have 3 responses: doc1=false, doc2=false, doc3=true (doc4 not evaluated)
+		require.Len(t, resp.GetEvaluationResponses(), 3)
+		require.False(t, resp.GetEvaluationResponses()[0].GetDecision()) // doc1 = deny
+		require.False(t, resp.GetEvaluationResponses()[1].GetDecision()) // doc2 = deny
+		require.True(t, resp.GetEvaluationResponses()[2].GetDecision())  // doc3 = permit
 	})
 }
 
