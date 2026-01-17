@@ -51,7 +51,13 @@ func TestGetConfiguration(t *testing.T) {
 		require.NoError(t, err)
 		storeID := createStoreResp.GetId()
 
-		resp, err := s.GetConfiguration(context.Background(), &authzenv1.GetConfigurationRequest{StoreId: storeID})
+		// Create context with host metadata
+		md := metadata.New(map[string]string{
+			":authority": "pdp.example.com",
+		})
+		ctx := metadata.NewIncomingContext(context.Background(), md)
+
+		resp, err := s.GetConfiguration(ctx, &authzenv1.GetConfigurationRequest{StoreId: storeID})
 		require.NoError(t, err)
 		require.NotNil(t, resp)
 
@@ -118,7 +124,7 @@ func TestGetConfiguration(t *testing.T) {
 		require.Equal(t, "https://api.mycompany.com/stores/"+storeID+"/access/v1/evaluation", resp.GetAccessEndpoints().GetEvaluation())
 	})
 
-	t.Run("returns_path_only_when_no_host_context", func(t *testing.T) {
+	t.Run("returns_error_when_no_host_context", func(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
 			WithExperimentals(serverconfig.ExperimentalEnableAuthZen),
@@ -129,13 +135,11 @@ func TestGetConfiguration(t *testing.T) {
 		require.NoError(t, err)
 		storeID := createStoreResp.GetId()
 
-		// No metadata context - falls back to path-only
+		// No metadata context - should return an error
 		resp, err := s.GetConfiguration(context.Background(), &authzenv1.GetConfigurationRequest{StoreId: storeID})
-		require.NoError(t, err)
-
-		// Verify path-only when no host available
-		require.NotNil(t, resp.GetAccessEndpoints())
-		require.Equal(t, "/stores/"+storeID+"/access/v1/evaluation", resp.GetAccessEndpoints().GetEvaluation())
+		require.Error(t, err)
+		require.Nil(t, resp)
+		require.Contains(t, err.Error(), "unable to determine base URL")
 	})
 
 	t.Run("returns_capabilities", func(t *testing.T) {
@@ -149,7 +153,13 @@ func TestGetConfiguration(t *testing.T) {
 		require.NoError(t, err)
 		storeID := createStoreResp.GetId()
 
-		resp, err := s.GetConfiguration(context.Background(), &authzenv1.GetConfigurationRequest{StoreId: storeID})
+		// Create context with host metadata
+		md := metadata.New(map[string]string{
+			":authority": "pdp.example.com",
+		})
+		ctx := metadata.NewIncomingContext(context.Background(), md)
+
+		resp, err := s.GetConfiguration(ctx, &authzenv1.GetConfigurationRequest{StoreId: storeID})
 		require.NoError(t, err)
 
 		require.NotEmpty(t, resp.GetCapabilities())

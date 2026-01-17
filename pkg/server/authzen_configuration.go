@@ -64,6 +64,9 @@ func (s *Server) GetConfiguration(ctx context.Context, req *authzenv1.GetConfigu
 
 	// Get base URL from request context for absolute URLs per AuthZEN spec
 	baseURL := getBaseURLFromContext(ctx)
+	if baseURL == "" {
+		return nil, status.Error(codes.FailedPrecondition, "unable to determine base URL from request context: missing host information in request headers")
+	}
 
 	return &authzenv1.GetConfigurationResponse{
 		PolicyDecisionPoint: &authzenv1.PolicyDecisionPoint{

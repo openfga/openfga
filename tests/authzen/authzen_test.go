@@ -56,6 +56,8 @@ func setupTestContext(t *testing.T) *testContext {
 }
 
 // createStore creates a new store.
+//
+//nolint:unparam // name parameter kept for test flexibility
 func (tc *testContext) createStore(name string) {
 	tc.t.Helper()
 
@@ -96,6 +98,8 @@ func (tc *testContext) writeTuples(tuples []*openfgav1.TupleKey) {
 }
 
 // evaluate calls the AuthZEN Evaluation endpoint.
+//
+//nolint:unparam // resource parameter kept for test flexibility
 func (tc *testContext) evaluate(subject, resource, action string) (*authzenv1.EvaluationResponse, error) {
 	return tc.authzenClient.Evaluation(context.Background(), &authzenv1.EvaluationRequest{
 		StoreId: tc.storeID,
