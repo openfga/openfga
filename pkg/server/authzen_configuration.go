@@ -24,10 +24,14 @@ func getBaseURLFromContext(ctx context.Context) string {
 		return ""
 	}
 
-	// Try to get scheme from x-forwarded-proto
+	// Try to get scheme from x-forwarded-proto, validating it's http or https
 	scheme := "https"
 	if values := md.Get("x-forwarded-proto"); len(values) > 0 && values[0] != "" {
-		scheme = values[0]
+		proto := strings.ToLower(values[0])
+		if proto == "http" || proto == "https" {
+			scheme = proto
+		}
+		// Invalid schemes are ignored, defaulting to https
 	}
 
 	// Try to get host from x-forwarded-host, then :authority

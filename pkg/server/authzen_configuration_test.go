@@ -142,6 +142,81 @@ func TestGetConfiguration(t *testing.T) {
 		require.Contains(t, err.Error(), "unable to determine base URL")
 	})
 
+	t.Run("rejects_invalid_scheme_defaults_to_https", func(t *testing.T) {
+		s := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithExperimentals(serverconfig.ExperimentalEnableAuthZen),
+		)
+		t.Cleanup(s.Close)
+
+		createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
+		require.NoError(t, err)
+		storeID := createStoreResp.GetId()
+
+		// Create context with invalid scheme (e.g., javascript, file, etc.)
+		md := metadata.New(map[string]string{
+			"x-forwarded-host":  "api.mycompany.com",
+			"x-forwarded-proto": "javascript",
+		})
+		ctx := metadata.NewIncomingContext(context.Background(), md)
+
+		resp, err := s.GetConfiguration(ctx, &authzenv1.GetConfigurationRequest{StoreId: storeID})
+		require.NoError(t, err)
+
+		// Invalid scheme should be ignored, defaulting to https
+		require.Equal(t, "https://api.mycompany.com/stores/"+storeID+"/access/v1/evaluation", resp.GetAccessEndpoints().GetEvaluation())
+	})
+
+	t.Run("accepts_http_scheme", func(t *testing.T) {
+		s := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithExperimentals(serverconfig.ExperimentalEnableAuthZen),
+		)
+		t.Cleanup(s.Close)
+
+		createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
+		require.NoError(t, err)
+		storeID := createStoreResp.GetId()
+
+		// Create context with http scheme
+		md := metadata.New(map[string]string{
+			"x-forwarded-host":  "api.mycompany.com",
+			"x-forwarded-proto": "http",
+		})
+		ctx := metadata.NewIncomingContext(context.Background(), md)
+
+		resp, err := s.GetConfiguration(ctx, &authzenv1.GetConfigurationRequest{StoreId: storeID})
+		require.NoError(t, err)
+
+		// HTTP scheme should be accepted
+		require.Equal(t, "http://api.mycompany.com/stores/"+storeID+"/access/v1/evaluation", resp.GetAccessEndpoints().GetEvaluation())
+	})
+
+	t.Run("scheme_validation_is_case_insensitive", func(t *testing.T) {
+		s := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithExperimentals(serverconfig.ExperimentalEnableAuthZen),
+		)
+		t.Cleanup(s.Close)
+
+		createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
+		require.NoError(t, err)
+		storeID := createStoreResp.GetId()
+
+		// Create context with uppercase HTTPS scheme
+		md := metadata.New(map[string]string{
+			"x-forwarded-host":  "api.mycompany.com",
+			"x-forwarded-proto": "HTTPS",
+		})
+		ctx := metadata.NewIncomingContext(context.Background(), md)
+
+		resp, err := s.GetConfiguration(ctx, &authzenv1.GetConfigurationRequest{StoreId: storeID})
+		require.NoError(t, err)
+
+		// Uppercase HTTPS should be normalized to lowercase https
+		require.Equal(t, "https://api.mycompany.com/stores/"+storeID+"/access/v1/evaluation", resp.GetAccessEndpoints().GetEvaluation())
+	})
+
 	t.Run("returns_capabilities", func(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
