@@ -984,4 +984,21 @@ func TestEvaluation(t *testing.T) {
 		require.NoError(t, err)
 		require.False(t, resp.GetDecision(), "Expected deny when roles array is not empty")
 	})
+
+	// AuthZEN spec section 3: Feature disabled should return error
+	t.Run("requires_experimental_flag", func(t *testing.T) {
+		tc := setupTestContextWithExperimentals(t, []string{})
+		// Create a store to get a valid store ID
+		resp, err := tc.openfgaClient.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
+		require.NoError(t, err)
+
+		_, err = tc.authzenClient.Evaluation(context.Background(), &authzenv1.EvaluationRequest{
+			StoreId:  resp.GetId(),
+			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
+			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
+			Action:   &authzenv1.Action{Name: "reader"},
+		})
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "AuthZEN endpoints are experimental")
+	})
 }
