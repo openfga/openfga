@@ -35,11 +35,11 @@ func TestSubjectSearchQuery(t *testing.T) {
 
 		resp, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.Len(t, resp.GetSubjects(), 2)
-		require.Equal(t, "alice", resp.GetSubjects()[0].GetId())
-		require.Equal(t, "user", resp.GetSubjects()[0].GetType())
-		require.Equal(t, "bob", resp.GetSubjects()[1].GetId())
-		require.Equal(t, "user", resp.GetSubjects()[1].GetType())
+		require.Len(t, resp.GetResults(), 2)
+		require.Equal(t, "alice", resp.GetResults()[0].GetId())
+		require.Equal(t, "user", resp.GetResults()[0].GetType())
+		require.Equal(t, "bob", resp.GetResults()[1].GetId())
+		require.Equal(t, "user", resp.GetResults()[1].GetType())
 		// No Page response when pagination is not supported
 		require.Nil(t, resp.GetPage())
 	})
@@ -70,7 +70,7 @@ func TestSubjectSearchQuery(t *testing.T) {
 		resp, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
 		// All 10 users should be returned despite limit of 3
-		require.Len(t, resp.GetSubjects(), 10)
+		require.Len(t, resp.GetResults(), 10)
 		// No Page response when pagination is not supported
 		require.Nil(t, resp.GetPage())
 	})
@@ -111,7 +111,7 @@ func TestSubjectSearchQuery(t *testing.T) {
 
 		resp, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.Empty(t, resp.GetSubjects())
+		require.Empty(t, resp.GetResults())
 		// No Page response when pagination is not supported
 		require.Nil(t, resp.GetPage())
 	})
@@ -220,9 +220,9 @@ func TestSubjectSearchQuery(t *testing.T) {
 
 		resp, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.Len(t, resp.GetSubjects(), 1)
-		require.Equal(t, "employee", resp.GetSubjects()[0].GetType())
-		require.Equal(t, "alice", resp.GetSubjects()[0].GetId())
+		require.Len(t, resp.GetResults(), 1)
+		require.Equal(t, "employee", resp.GetResults()[0].GetType())
+		require.Equal(t, "alice", resp.GetResults()[0].GetId())
 
 		// Verify user filter was applied
 		require.Len(t, capturedReq.GetUserFilters(), 1)
@@ -250,11 +250,11 @@ func TestSubjectSearchQuery(t *testing.T) {
 
 		resp, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.Len(t, resp.GetSubjects(), 2)
+		require.Len(t, resp.GetResults(), 2)
 
 		// Verify both subjects are present (order may vary)
 		subjectIDs := make(map[string]bool)
-		for _, s := range resp.GetSubjects() {
+		for _, s := range resp.GetResults() {
 			require.Equal(t, "user", s.GetType())
 			subjectIDs[s.GetId()] = true
 		}
@@ -286,7 +286,7 @@ func TestSubjectSearchQuery(t *testing.T) {
 
 		resp, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.Len(t, resp.GetSubjects(), 100)
+		require.Len(t, resp.GetResults(), 100)
 		// No Page response when pagination is not supported
 		require.Nil(t, resp.GetPage())
 	})

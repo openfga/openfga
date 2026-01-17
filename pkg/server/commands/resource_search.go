@@ -104,7 +104,7 @@ func (q *ResourceSearchQuery) Execute(
 
 	// Return all results without pagination (pagination not supported)
 	return &authzenv1.ResourceSearchResponse{
-		Resources: resources,
+		Results: resources,
 	}, nil
 }
 

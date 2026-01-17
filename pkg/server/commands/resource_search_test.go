@@ -57,10 +57,10 @@ func TestResourceSearchQuery(t *testing.T) {
 
 		resp, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.Len(t, resp.GetResources(), 3)
+		require.Len(t, resp.GetResults(), 3)
 		// Verify resources exist (order-independent)
 		resourceIDs := make(map[string]bool)
-		for _, r := range resp.GetResources() {
+		for _, r := range resp.GetResults() {
 			resourceIDs[r.GetId()] = true
 			require.Equal(t, "document", r.GetType())
 		}
@@ -92,7 +92,7 @@ func TestResourceSearchQuery(t *testing.T) {
 		resp, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
 		// All 10 resources should be returned despite limit of 3
-		require.Len(t, resp.GetResources(), 10)
+		require.Len(t, resp.GetResults(), 10)
 		// No Page response when pagination is not supported
 		require.Nil(t, resp.GetPage())
 	})
@@ -142,7 +142,7 @@ func TestResourceSearchQuery(t *testing.T) {
 
 		resp, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.Empty(t, resp.GetResources())
+		require.Empty(t, resp.GetResults())
 		// No Page response when pagination is not supported
 		require.Nil(t, resp.GetPage())
 	})
@@ -236,7 +236,7 @@ func TestResourceSearchQuery(t *testing.T) {
 
 		resp, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.Len(t, resp.GetResources(), 100)
+		require.Len(t, resp.GetResults(), 100)
 		// No Page response when pagination is not supported
 		require.Nil(t, resp.GetPage())
 	})
@@ -317,11 +317,11 @@ func TestResourceSearchQuery(t *testing.T) {
 
 		resp, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.Len(t, resp.GetResources(), 5)
+		require.Len(t, resp.GetResults(), 5)
 
 		// Verify all resources are present
 		resourceMap := make(map[string]string)
-		for _, r := range resp.GetResources() {
+		for _, r := range resp.GetResults() {
 			resourceMap[r.GetType()+":"+r.GetId()] = r.GetType()
 		}
 		require.Contains(t, resourceMap, "document:simple-id")
@@ -344,9 +344,9 @@ func TestResourceSearchQuery(t *testing.T) {
 
 		resp, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.Len(t, resp.GetResources(), 1)
-		require.Equal(t, "document", resp.GetResources()[0].GetType())
-		require.Equal(t, "id:with:colons", resp.GetResources()[0].GetId())
+		require.Len(t, resp.GetResults(), 1)
+		require.Equal(t, "document", resp.GetResults()[0].GetType())
+		require.Equal(t, "id:with:colons", resp.GetResults()[0].GetId())
 	})
 
 	t.Run("malformed_object_id_skipped", func(t *testing.T) {
@@ -366,11 +366,11 @@ func TestResourceSearchQuery(t *testing.T) {
 
 		resp, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.Len(t, resp.GetResources(), 2)
+		require.Len(t, resp.GetResults(), 2)
 
 		// Verify both valid IDs are present
 		resourceIDs := make(map[string]bool)
-		for _, r := range resp.GetResources() {
+		for _, r := range resp.GetResults() {
 			resourceIDs[r.GetId()] = true
 		}
 		require.True(t, resourceIDs["valid-id"])
@@ -390,9 +390,9 @@ func TestResourceSearchQuery(t *testing.T) {
 
 		resp, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.Len(t, resp.GetResources(), 2)
+		require.Len(t, resp.GetResults(), 2)
 		// Verify all are folder type
-		for _, r := range resp.GetResources() {
+		for _, r := range resp.GetResults() {
 			require.Equal(t, "folder", r.GetType())
 		}
 	})
@@ -411,7 +411,7 @@ func TestResourceSearchQuery(t *testing.T) {
 
 		resp, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.Empty(t, resp.GetResources())
+		require.Empty(t, resp.GetResults())
 		// No Page response when pagination is not supported
 		require.Nil(t, resp.GetPage())
 	})
@@ -502,6 +502,6 @@ func TestResourceSearchQuery(t *testing.T) {
 
 		resp, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.Empty(t, resp.GetResources())
+		require.Empty(t, resp.GetResults())
 	})
 }

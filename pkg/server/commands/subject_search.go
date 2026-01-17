@@ -95,7 +95,7 @@ func (q *SubjectSearchQuery) Execute(
 
 	// Return all results without pagination (pagination not supported)
 	return &authzenv1.SubjectSearchResponse{
-		Subjects: subjects,
+		Results: subjects,
 	}, nil
 }
 

@@ -145,6 +145,6 @@ func (q *ActionSearchQuery) Execute(
 
 	// Return all results without pagination (pagination not supported)
 	return &authzenv1.ActionSearchResponse{
-		Actions: actions,
+		Results: actions,
 	}, nil
 }

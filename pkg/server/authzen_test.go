@@ -1058,7 +1058,7 @@ func TestSubjectSearch(t *testing.T) {
 		require.NotNil(t, resp)
 
 		// Should find alice and bob
-		subjects := resp.GetSubjects()
+		subjects := resp.GetResults()
 		require.GreaterOrEqual(t, len(subjects), 2)
 	})
 
@@ -1285,7 +1285,7 @@ func TestResourceSearch(t *testing.T) {
 		require.NotNil(t, resp)
 
 		// Should find doc1 and doc2
-		resources := resp.GetResources()
+		resources := resp.GetResults()
 		require.GreaterOrEqual(t, len(resources), 2)
 	})
 
@@ -1536,9 +1536,9 @@ func TestActionSearch(t *testing.T) {
 		require.NotNil(t, resp)
 
 		// Should return actions that alice can perform on doc1
-		require.NotNil(t, resp.GetActions())
+		require.NotNil(t, resp.GetResults())
 		// Alice has 'reader' permission, so should be in the results
-		actions := resp.GetActions()
+		actions := resp.GetResults()
 		require.GreaterOrEqual(t, len(actions), 1)
 
 		// Verify at least one action is present

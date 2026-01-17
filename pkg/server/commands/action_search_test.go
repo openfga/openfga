@@ -74,10 +74,10 @@ func TestActionSearchQuery(t *testing.T) {
 
 		resp, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.Len(t, resp.GetActions(), 2)
+		require.Len(t, resp.GetResults(), 2)
 
-		actionNames := make([]string, len(resp.GetActions()))
-		for i, a := range resp.GetActions() {
+		actionNames := make([]string, len(resp.GetResults()))
+		for i, a := range resp.GetResults() {
 			actionNames[i] = a.GetName()
 		}
 		require.Contains(t, actionNames, "reader")
@@ -120,7 +120,7 @@ func TestActionSearchQuery(t *testing.T) {
 
 		resp, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.Empty(t, resp.GetActions())
+		require.Empty(t, resp.GetResults())
 		// No Page response when pagination is not supported
 		require.Nil(t, resp.GetPage())
 	})
@@ -164,7 +164,7 @@ func TestActionSearchQuery(t *testing.T) {
 		resp, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
 		// All 5 actions should be returned despite limit of 2
-		require.Len(t, resp.GetActions(), 5)
+		require.Len(t, resp.GetResults(), 5)
 		// No Page response when pagination is not supported
 		require.Nil(t, resp.GetPage())
 	})
@@ -422,10 +422,10 @@ func TestActionSearchQuery(t *testing.T) {
 
 		resp, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.Len(t, resp.GetActions(), 2)
+		require.Len(t, resp.GetResults(), 2)
 
-		actionNames := make([]string, len(resp.GetActions()))
-		for i, a := range resp.GetActions() {
+		actionNames := make([]string, len(resp.GetResults()))
+		for i, a := range resp.GetResults() {
 			actionNames[i] = a.GetName()
 		}
 		require.Contains(t, actionNames, "reader")
@@ -468,11 +468,11 @@ func TestActionSearchQuery(t *testing.T) {
 
 		resp, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.Len(t, resp.GetActions(), 4)
-		require.Equal(t, "alpha", resp.GetActions()[0].GetName())
-		require.Equal(t, "bravo", resp.GetActions()[1].GetName())
-		require.Equal(t, "mike", resp.GetActions()[2].GetName())
-		require.Equal(t, "zulu", resp.GetActions()[3].GetName())
+		require.Len(t, resp.GetResults(), 4)
+		require.Equal(t, "alpha", resp.GetResults()[0].GetName())
+		require.Equal(t, "bravo", resp.GetResults()[1].GetName())
+		require.Equal(t, "mike", resp.GetResults()[2].GetName())
+		require.Equal(t, "zulu", resp.GetResults()[3].GetName())
 	})
 
 	t.Run("authorization_model_id_forwarded", func(t *testing.T) {
@@ -613,7 +613,7 @@ func TestActionSearchQuery(t *testing.T) {
 
 		resp, err := query.Execute(context.Background(), req)
 		require.NoError(t, err)
-		require.Len(t, resp.GetActions(), 10)
+		require.Len(t, resp.GetResults(), 10)
 	})
 
 	t.Run("batch_check_error_propagates", func(t *testing.T) {

@@ -447,7 +447,7 @@ POST /stores/<store_id>/access/v1/search/subject
 Response:
 ```json
 {
-  "subjects": [
+  "results": [
     { "type": "user", "id": "alice" },
     { "type": "user", "id": "bob" }
   ]
@@ -472,7 +472,7 @@ POST /stores/<store_id>/access/v1/search/resource
 Response:
 ```json
 {
-  "resources": [
+  "results": [
     { "type": "document", "id": "doc1" },
     { "type": "document", "id": "doc2" }
   ]
@@ -496,7 +496,7 @@ POST /stores/<store_id>/access/v1/search/action
 Response:
 ```json
 {
-  "actions": [
+  "results": [
     { "name": "reader" },
     { "name": "writer" }
   ]
