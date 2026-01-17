@@ -29,7 +29,7 @@ require (
 	github.com/jackc/pgx/v5 v5.8.0
 	github.com/natefinch/wrap v0.2.0
 	github.com/oklog/ulid/v2 v2.1.1
-	github.com/openfga/api/proto v0.0.0-20260116212153-8989d0c3052e
+	github.com/openfga/api/proto v0.0.0-20260117020638-28860bb9d6b5
 	github.com/openfga/language/pkg/go v0.2.0-beta.2.0.20251027165255-0f8f255e5f6c
 	github.com/pressly/goose/v3 v3.26.0
 	github.com/prometheus/client_golang v1.23.2
@@ -164,5 +164,3 @@ require (
 	sigs.k8s.io/randfill v1.0.0 // indirect
 	sigs.k8s.io/structured-merge-diff/v6 v6.3.0 // indirect
 )
-
-replace github.com/openfga/api/proto => /Users/andres.aguiar/gh/api/proto
