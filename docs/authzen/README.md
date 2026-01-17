@@ -334,34 +334,35 @@ POST /stores/<store_id>/access/v1/evaluations
 }
 ```
 
-```json
 ### OpenFGA Check
+
+```json
 POST /stores/<store_id>/batch-check
 {
   "checks": [
-     {
-       "tuple_key": {
-         "object": "document:<document_id>"
-         "relation": "can_edit",
-         "user": "user:<user_id>",
-       },
-        "context":{
-            "time": "2024-05-31T15:22-07:00"
-        },
-       "correlation_id": "1"
-     },
     {
-       "tuple_key": {
-         "object": "document:<document_id>"
-         "relation": "can_read",
-         "user": "user:<user_id>",
-       },
-        "context":{
-            "time": "2024-05-31T15:22-07:00"
-        },
-       "correlation_id": "2"
-     }
-   ]
+      "tuple_key": {
+        "object": "document:<document_id>",
+        "relation": "can_edit",
+        "user": "user:<user_id>"
+      },
+      "context": {
+        "time": "2024-05-31T15:22-07:00"
+      },
+      "correlation_id": "1"
+    },
+    {
+      "tuple_key": {
+        "object": "document:<document_id>",
+        "relation": "can_read",
+        "user": "user:<user_id>"
+      },
+      "context": {
+        "time": "2024-05-31T15:22-07:00"
+      },
+      "correlation_id": "2"
+    }
+  ]
 }
 ```
 
