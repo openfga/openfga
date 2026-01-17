@@ -54,12 +54,36 @@ func (q *ResourceSearchQuery) Execute(
 	ctx context.Context,
 	req *authzenv1.ResourceSearchRequest,
 ) (*authzenv1.ResourceSearchResponse, error) {
+	// Validate streamedListObjectsFunc is configured
+	if q.streamedListObjectsFunc == nil {
+		return nil, fmt.Errorf("streamedListObjectsFunc is not configured")
+	}
+
+	// Validate subject fields required for User
+	if req.GetSubject() == nil {
+		return nil, fmt.Errorf("subject is required for resource search")
+	}
+	if req.GetSubject().GetType() == "" {
+		return nil, fmt.Errorf("subject type is required for resource search")
+	}
+	if req.GetSubject().GetId() == "" {
+		return nil, fmt.Errorf("subject id is required for resource search")
+	}
+
+	// Validate action fields required for Relation
+	if req.GetAction() == nil {
+		return nil, fmt.Errorf("action is required for resource search")
+	}
+	if req.GetAction().GetName() == "" {
+		return nil, fmt.Errorf("action name is required for resource search")
+	}
+
 	// Merge properties to context
 	mergedContext, err := MergePropertiesToContext(
 		req.GetContext(),
 		req.GetSubject(),
 		req.GetResource(),
-		nil,
+		req.GetAction(),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to merge properties to context: %w", err)

@@ -504,4 +504,99 @@ func TestResourceSearchQuery(t *testing.T) {
 		require.NoError(t, err)
 		require.Empty(t, resp.GetResults())
 	})
+
+	t.Run("nil_streamedListObjectsFunc_returns_error", func(t *testing.T) {
+		query := NewResourceSearchQuery() // No func configured
+
+		req := &authzenv1.ResourceSearchRequest{
+			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
+			Action:   &authzenv1.Action{Name: "read"},
+			Resource: &authzenv1.Resource{Type: "document"},
+			StoreId:  "01HVMMBCMGZNT3SED4CT2KA89Q",
+		}
+
+		_, err := query.Execute(context.Background(), req)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "streamedListObjectsFunc is not configured")
+	})
+
+	t.Run("nil_subject_returns_error", func(t *testing.T) {
+		mockFn := mockStreamedListObjectsFunc([]string{}, nil)
+		query := NewResourceSearchQuery(WithStreamedListObjectsFunc(mockFn))
+
+		req := &authzenv1.ResourceSearchRequest{
+			Subject:  nil, // Nil subject
+			Action:   &authzenv1.Action{Name: "read"},
+			Resource: &authzenv1.Resource{Type: "document"},
+			StoreId:  "01HVMMBCMGZNT3SED4CT2KA89Q",
+		}
+
+		_, err := query.Execute(context.Background(), req)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "subject is required")
+	})
+
+	t.Run("empty_subject_type_returns_error", func(t *testing.T) {
+		mockFn := mockStreamedListObjectsFunc([]string{}, nil)
+		query := NewResourceSearchQuery(WithStreamedListObjectsFunc(mockFn))
+
+		req := &authzenv1.ResourceSearchRequest{
+			Subject:  &authzenv1.Subject{Type: "", Id: "alice"}, // Empty type
+			Action:   &authzenv1.Action{Name: "read"},
+			Resource: &authzenv1.Resource{Type: "document"},
+			StoreId:  "01HVMMBCMGZNT3SED4CT2KA89Q",
+		}
+
+		_, err := query.Execute(context.Background(), req)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "subject type is required")
+	})
+
+	t.Run("empty_subject_id_returns_error", func(t *testing.T) {
+		mockFn := mockStreamedListObjectsFunc([]string{}, nil)
+		query := NewResourceSearchQuery(WithStreamedListObjectsFunc(mockFn))
+
+		req := &authzenv1.ResourceSearchRequest{
+			Subject:  &authzenv1.Subject{Type: "user", Id: ""}, // Empty id
+			Action:   &authzenv1.Action{Name: "read"},
+			Resource: &authzenv1.Resource{Type: "document"},
+			StoreId:  "01HVMMBCMGZNT3SED4CT2KA89Q",
+		}
+
+		_, err := query.Execute(context.Background(), req)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "subject id is required")
+	})
+
+	t.Run("nil_action_returns_error", func(t *testing.T) {
+		mockFn := mockStreamedListObjectsFunc([]string{}, nil)
+		query := NewResourceSearchQuery(WithStreamedListObjectsFunc(mockFn))
+
+		req := &authzenv1.ResourceSearchRequest{
+			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
+			Action:   nil, // Nil action
+			Resource: &authzenv1.Resource{Type: "document"},
+			StoreId:  "01HVMMBCMGZNT3SED4CT2KA89Q",
+		}
+
+		_, err := query.Execute(context.Background(), req)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "action is required")
+	})
+
+	t.Run("empty_action_name_returns_error", func(t *testing.T) {
+		mockFn := mockStreamedListObjectsFunc([]string{}, nil)
+		query := NewResourceSearchQuery(WithStreamedListObjectsFunc(mockFn))
+
+		req := &authzenv1.ResourceSearchRequest{
+			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
+			Action:   &authzenv1.Action{Name: ""}, // Empty name
+			Resource: &authzenv1.Resource{Type: "document"},
+			StoreId:  "01HVMMBCMGZNT3SED4CT2KA89Q",
+		}
+
+		_, err := query.Execute(context.Background(), req)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "action name is required")
+	})
 }
