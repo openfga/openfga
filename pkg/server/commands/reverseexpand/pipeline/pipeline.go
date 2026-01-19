@@ -630,28 +630,11 @@ func (r *resolverCore) broadcast(
 	return sentCount
 }
 
-// baseResolver is a struct that implements the Resolver interface and acts as the standard
-// resolver for most workers. A baseResolver handles both recursive and non-recursive edges
-// concurrently.
-type baseResolver struct {
-	resolverCore
-}
-
-// process is a function that reads output from a single sender, processes the output through an
-// interpreter, and then sends the interpreter's output to each listener. The sender's output is
-// deduplicated across all process functions for the same edge when the sender is for a cyclical
-// edge because values of a cycle may be reentrant. Output from the interpreter is always
-// deduplicated across all process functions because input from two different senders may produce
-// the same output value(s).
-func (r *baseResolver) process(
+func (r *resolverCore) drain(
 	ctx context.Context,
 	snd Sender[*Edge, *Message],
-	listeners []Listener[*Edge, *Message],
-	inputBuffer *containers.AtomicMap[string, struct{}],
-	outputBuffer *containers.AtomicMap[string, struct{}],
-) int64 {
-	var sentCount int64
-
+	yield func(context.Context, *Edge, *Message),
+) {
 	edge := snd.Key()
 
 	edgeTo := "nil"
@@ -675,14 +658,45 @@ func (r *baseResolver) process(
 			continue
 		}
 
-		errs := make([]Item, 0, len(msg.Value))
-		unseen := make([]string, 0, len(msg.Value))
-
 		messageAttrs := make([]attribute.KeyValue, 1, 1+len(attrs))
 		messageAttrs[0] = attribute.Int("items.count", len(msg.Value))
 		messageAttrs = append(messageAttrs, attrs...)
 
-		ctx, span := pipelineTracer.Start(ctx, "message.received", trace.WithAttributes(messageAttrs...))
+		ctx, span := pipelineTracer.Start(
+			ctx, "message.received",
+			trace.WithAttributes(messageAttrs...),
+		)
+
+		yield(ctx, edge, msg)
+		span.End()
+	}
+}
+
+// baseResolver is a struct that implements the Resolver interface and acts as the standard
+// resolver for most workers. A baseResolver handles both recursive and non-recursive edges
+// concurrently.
+type baseResolver struct {
+	resolverCore
+}
+
+// process is a function that reads output from a single sender, processes the output through an
+// interpreter, and then sends the interpreter's output to each listener. The sender's output is
+// deduplicated across all process functions for the same edge when the sender is for a cyclical
+// edge because values of a cycle may be reentrant. Output from the interpreter is always
+// deduplicated across all process functions because input from two different senders may produce
+// the same output value(s).
+func (r *baseResolver) process(
+	ctx context.Context,
+	snd Sender[*Edge, *Message],
+	listeners []Listener[*Edge, *Message],
+	inputBuffer *containers.AtomicMap[string, struct{}],
+	outputBuffer *containers.AtomicMap[string, struct{}],
+) int64 {
+	var sentCount int64
+
+	r.drain(ctx, snd, func(ctx context.Context, edge *Edge, msg *Message) {
+		errs := make([]Item, 0, len(msg.Value))
+		unseen := make([]string, 0, len(msg.Value))
 
 		for _, item := range msg.Value {
 			if item.Err != nil {
@@ -721,8 +735,7 @@ func (r *baseResolver) process(
 
 		// Release the received message's resources.
 		msg.Done()
-		span.End()
-	}
+	})
 	return sentCount
 }
 
@@ -824,9 +837,13 @@ type txBag[T any] containers.Bag[T]
 
 // Send implements the pipe.Tx[T] interface.
 func (tx *txBag[T]) Send(t T) bool {
-	bag := (*containers.Bag[T])(tx)
-	bag.Add(t)
+	(*containers.Bag[T])(tx).Add(t)
 	return true
+}
+
+// Seq returns an iter.Seq of all items within the txBag.
+func (tx *txBag[T]) Seq() iter.Seq[T] {
+	return (*containers.Bag[T])(tx).Seq()
 }
 
 // exclusionResolver is a struct that resolves senders to an exclusion operation.
@@ -846,28 +863,7 @@ func (r *exclusionResolver) process(
 	items pipe.Tx[Item],
 	cleanup *containers.Bag[func()],
 ) {
-	edge := snd.Key()
-
-	edgeTo := "nil"
-	edgeFrom := "nil"
-
-	if edge != nil {
-		edgeTo = edge.GetTo().GetUniqueLabel()
-		edgeFrom = edge.GetFrom().GetUniqueLabel()
-	}
-
-	attrs := []attribute.KeyValue{
-		attribute.String("edge.to", edgeTo),
-		attribute.String("edge.from", edgeFrom),
-	}
-
-	var msg *Message
-
-	for snd.Recv(&msg) {
-		if ctx.Err() != nil {
-			msg.Done()
-			continue
-		}
+	r.drain(ctx, snd, func(ctx context.Context, edge *Edge, msg *Message) {
 		// Increment the tracker to account for an in-flight message.
 		r.tracker.Inc()
 		values := r.bufferPool.Get()
@@ -880,12 +876,6 @@ func (r *exclusionResolver) process(
 		msg.Done()
 
 		unseen := make([]string, 0, size)
-
-		messageAttrs := make([]attribute.KeyValue, 1, 1+len(attrs))
-		messageAttrs[0] = attribute.Int("items.count", size)
-		messageAttrs = append(messageAttrs, attrs...)
-
-		ctx, span := pipelineTracer.Start(ctx, "message.received", trace.WithAttributes(messageAttrs...))
 
 		// Only take the number of values that existed in the original
 		// message. Reading beyond that will corrupt pipeline state.
@@ -911,8 +901,7 @@ func (r *exclusionResolver) process(
 		// instance's tracker observe the appropriate count for the entirely
 		// of processing.
 		cleanup.Add(r.tracker.Dec)
-		span.End()
-	}
+	})
 }
 
 func (r *exclusionResolver) Resolve(
@@ -1020,31 +1009,10 @@ type intersectionResolver struct {
 func (r *intersectionResolver) process(
 	ctx context.Context,
 	snd Sender[*Edge, *Message],
-	items *containers.Bag[Item],
+	items pipe.Tx[Item],
 	cleanup *containers.Bag[func()],
 ) {
-	edge := snd.Key()
-
-	edgeTo := "nil"
-	edgeFrom := "nil"
-
-	if edge != nil {
-		edgeTo = edge.GetTo().GetUniqueLabel()
-		edgeFrom = edge.GetFrom().GetUniqueLabel()
-	}
-
-	attrs := []attribute.KeyValue{
-		attribute.String("edge.to", edgeTo),
-		attribute.String("edge.from", edgeFrom),
-	}
-
-	var msg *Message
-
-	for snd.Recv(&msg) {
-		if ctx.Err() != nil {
-			msg.Done()
-			continue
-		}
+	r.drain(ctx, snd, func(ctx context.Context, edge *Edge, msg *Message) {
 		r.tracker.Add(1)
 		values := r.bufferPool.Get()
 		copy(*values, msg.Value)
@@ -1054,19 +1022,9 @@ func (r *intersectionResolver) process(
 		var results iter.Seq[Item]
 		unseen := make([]string, 0, size)
 
-		messageAttrs := make([]attribute.KeyValue, 1, 1+len(attrs))
-		messageAttrs[0] = attribute.Int("items.count", size)
-		messageAttrs = append(messageAttrs, attrs...)
-
-		ctx, span := pipelineTracer.Start(
-			ctx,
-			"message.received",
-			trace.WithAttributes(messageAttrs...),
-		)
-
 		for _, item := range (*values)[:size] {
 			if item.Err != nil {
-				items.Add(item)
+				items.Send(item)
 				continue
 			}
 			unseen = append(unseen, item.Value)
@@ -1076,12 +1034,11 @@ func (r *intersectionResolver) process(
 		results = r.interpreter.Interpret(ctx, edge, unseen)
 
 		for item := range results {
-			items.Add(item)
+			items.Send(item)
 		}
 
 		cleanup.Add(r.tracker.Dec)
-		span.End()
-	}
+	})
 }
 
 func (r *intersectionResolver) Resolve(
@@ -1096,7 +1053,7 @@ func (r *intersectionResolver) Resolve(
 
 	var wg sync.WaitGroup
 
-	bags := make([]containers.Bag[Item], len(senders))
+	bags := make([]txBag[Item], len(senders))
 
 	var cleanup containers.Bag[func()]
 
