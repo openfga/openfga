@@ -4,6 +4,7 @@ import (
 	"context"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
@@ -85,4 +86,23 @@ func TestFanInIteratorChannels(t *testing.T) {
 		iterations++
 	}
 	require.LessOrEqual(t, iterations, 5)
+}
+
+func TestFanInIteratorChannels_RespectsContextCancellationWhileReceiving(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	input := make(chan *Msg) // intentionally never closed
+	out := FanInIteratorChannels(ctx, []<-chan *Msg{input})
+
+	cancel()
+
+	select {
+	case _, ok := <-out:
+		require.False(t, ok, "expected output channel to close after context cancellation")
+	case <-time.After(250 * time.Millisecond):
+		t.Fatal("timed out waiting for output channel to close")
+	}
 }
