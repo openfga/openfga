@@ -29,6 +29,9 @@ type Request struct {
 	Context              *structpb.Struct
 	Consistency          openfgav1.ConsistencyPreference
 
+	// TraceResolution enables building the resolution tree
+	TraceResolution bool
+
 	cacheKey string
 	// Invariant parts of a check request are those that don't change in sub-problems
 	// AuthorizationModelID, Context, and ContextualTuples.
@@ -50,6 +53,7 @@ type RequestParams = struct {
 	ContextualTuples []*openfgav1.TupleKey
 	Context          *structpb.Struct
 	Consistency      openfgav1.ConsistencyPreference
+	TraceResolution  bool
 }
 
 func validateRequestTupleInModel(m *modelgraph.AuthorizationModelGraph, t *openfgav1.TupleKey) error {
@@ -145,6 +149,7 @@ func NewRequest(p RequestParams) (*Request, error) {
 		ContextualTuples:     p.ContextualTuples,
 		Context:              p.Context,
 		Consistency:          p.Consistency,
+		TraceResolution:      p.TraceResolution,
 
 		tupleString:  tuple.TupleKeyWithConditionToString(p.TupleKey),
 		objectType:   tuple.GetType(p.TupleKey.GetObject()),
@@ -376,6 +381,13 @@ func (r *Request) GetTupleString() string {
 	return r.tupleString
 }
 
+func (r *Request) GetTraceResolution() bool {
+	if r == nil {
+		return false
+	}
+	return r.TraceResolution
+}
+
 func (r *Request) cloneWithTupleKey(tk *openfgav1.TupleKey) *Request {
 	req := &Request{
 		StoreID:              r.GetStoreID(),
@@ -384,6 +396,7 @@ func (r *Request) cloneWithTupleKey(tk *openfgav1.TupleKey) *Request {
 		ContextualTuples:     r.GetContextualTuples(),
 		Context:              r.GetContext(),
 		Consistency:          r.GetConsistency(),
+		TraceResolution:      r.TraceResolution,
 	}
 
 	req.invariantCacheKey = r.GetInvariantCacheKey()

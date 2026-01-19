@@ -127,6 +127,12 @@ func (r *Resolver) ResolveCheck(ctx context.Context, req *Request) (*Response, e
 		span.SetAttributes(attribute.Bool("allowed", true))
 	}
 
+	// Set the Check and Result fields on the resolution tree if tracing is enabled
+	if req.GetTraceResolution() && res.Resolution != nil {
+		res.Resolution.Check = req.GetTupleString()
+		res.Resolution.Result = res.Allowed
+	}
+
 	return res, nil
 }
 
@@ -178,6 +184,7 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, edges []
 		close(out)
 	}()
 
+	tracing := req.GetTraceResolution()
 	relation := req.GetTupleKey().GetRelation()
 	objectType := tuple.GetType(req.GetTupleKey().GetObject())
 	objectRelation := tuple.ToObjectRelationString(objectType, relation)
@@ -203,6 +210,11 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, edges []
 	}
 
 	var err error
+	var resBranches []*ResolutionNode
+	if tracing {
+		resBranches = make([]*ResolutionNode, 0, len(edges))
+	}
+
 	for range ids {
 		select {
 		case <-ctx.Done():
@@ -213,11 +225,23 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, edges []
 				continue
 			}
 
+			// Collect resolution node from this branch if tracing
+			if tracing && msg.Res.GetResolutionNode() != nil {
+				resBranches = append(resBranches, msg.Res.GetResolutionNode())
+			}
+
 			if msg.Res.GetAllowed() {
 				// Short-circuit: In a union, if any branch returns true, we can immediately return.
-				entry := &ResponseCacheEntry{Res: msg.Res, LastModified: time.Now()}
+				res := &Response{Allowed: true}
+				if tracing {
+					resNode := NewResolutionNode(req.GetTupleKey().GetObject(), relation)
+					resNode.SetUnion(resBranches)
+					resNode.Complete(true, countTuplesInBranches(resBranches))
+					res.Resolution = &ResolutionTree{Tree: resNode}
+				}
+				entry := &ResponseCacheEntry{Res: res, LastModified: time.Now()}
 				r.cache.Set(req.GetCacheKey(), entry, r.cacheTTL)
-				return msg.Res, nil
+				return res, nil
 			}
 		}
 	}
@@ -226,6 +250,12 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, edges []
 		return nil, err
 	}
 	res := &Response{Allowed: false}
+	if tracing {
+		resNode := NewResolutionNode(req.GetTupleKey().GetObject(), relation)
+		resNode.SetUnion(resBranches)
+		resNode.Complete(false, 0)
+		res.Resolution = &ResolutionTree{Tree: resNode}
+	}
 	entry := &ResponseCacheEntry{Res: res, LastModified: time.Now()}
 	r.cache.Set(req.GetCacheKey(), entry, r.cacheTTL)
 	return res, nil
@@ -454,6 +484,9 @@ func (r *Resolver) ResolveIntersection(ctx context.Context, req *Request, node *
 		close(out)
 	}()
 
+	tracing := req.GetTraceResolution()
+	relation := req.GetTupleKey().GetRelation()
+
 	// in the case wildcard is requested if not all edges have wildcard path for the user type then return FALSE
 	if req.IsTypedWildcard() {
 		for _, edge := range edges {
@@ -479,19 +512,49 @@ func (r *Resolver) ResolveIntersection(ctx context.Context, req *Request, node *
 	}
 
 	var err error
+	var resBranches []*ResolutionNode
+	if tracing {
+		resBranches = make([]*ResolutionNode, 0, len(edges))
+	}
+
 	for i := 0; i < scheduledHandlers; i++ {
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		case msg := <-out:
+			// Collect resolution node from this branch if tracing
+			if tracing && msg.Res != nil && msg.Res.GetResolutionNode() != nil {
+				resBranches = append(resBranches, msg.Res.GetResolutionNode())
+			}
+
 			if msg.Err != nil || !msg.Res.GetAllowed() {
 				// NOTE: This is one of the breaking changes from the current check implementation. Delete this after this rollout.
 				// In intersection _every_ branch must return true.
-				return msg.Res, msg.Err
+				// Preserve original behavior: return msg.Res (which may be nil) when there's an error
+				if msg.Err != nil {
+					return msg.Res, msg.Err
+				}
+				// No error but not allowed - add resolution if tracing
+				res := msg.Res
+				if tracing && res != nil {
+					resNode := NewResolutionNode(req.GetTupleKey().GetObject(), relation)
+					resNode.SetIntersection(resBranches)
+					resNode.Complete(false, 0)
+					res.Resolution = &ResolutionTree{Tree: resNode}
+				}
+				return res, msg.Err
 			}
 		}
 	}
-	return &Response{Allowed: true}, err
+
+	res := &Response{Allowed: true}
+	if tracing {
+		resNode := NewResolutionNode(req.GetTupleKey().GetObject(), relation)
+		resNode.SetIntersection(resBranches)
+		resNode.Complete(true, countTuplesInBranches(resBranches))
+		res.Resolution = &ResolutionTree{Tree: resNode}
+	}
+	return res, err
 }
 
 // reduce as a logical exclusion operation
@@ -506,8 +569,11 @@ func (r *Resolver) ResolveExclusion(ctx context.Context, req *Request, node *aut
 		return nil, ErrPanicRequest
 	}
 	ctx, cancel := context.WithCancel(ctx)
-	base := make(chan ResponseMsg, 1)
+	baseChan := make(chan ResponseMsg, 1)
 	var wg sync.WaitGroup
+
+	tracing := req.GetTraceResolution()
+	relation := req.GetTupleKey().GetRelation()
 
 	scheduledHandlers := 1
 	wg.Add(1)
@@ -515,15 +581,15 @@ func (r *Resolver) ResolveExclusion(ctx context.Context, req *Request, node *aut
 		defer wg.Done()
 		// exclusion is never part of a cycle or recursion
 		res, err := r.ResolveEdge(ctx, req, edges[0], nil)
-		concurrency.TrySendThroughChannel(ctx, ResponseMsg{Res: res, Err: err}, base)
-		close(base)
+		concurrency.TrySendThroughChannel(ctx, ResponseMsg{Res: res, Err: err}, baseChan)
+		close(baseChan)
 	}()
 	defer func() {
 		cancel()
 		wg.Wait()
 	}()
 
-	var subtract chan ResponseMsg
+	var subtractChan chan ResponseMsg
 	// excluded edge
 	_, ok = r.model.GetEdgeWeight(edges[1], req.GetUserType())
 	if tuple.IsObjectRelation(req.GetTupleKey().GetUser()) && !ok {
@@ -533,16 +599,21 @@ func (r *Resolver) ResolveExclusion(ctx context.Context, req *Request, node *aut
 
 	if ok {
 		scheduledHandlers++
-		subtract = make(chan ResponseMsg, 1)
+		subtractChan = make(chan ResponseMsg, 1)
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			// exclusion is never part of a cycle or recursion
 			res, err := r.ResolveEdge(ctx, req, edges[1], nil)
-			concurrency.TrySendThroughChannel(ctx, ResponseMsg{Res: res, Err: err}, subtract)
-			close(subtract)
+			concurrency.TrySendThroughChannel(ctx, ResponseMsg{Res: res, Err: err}, subtractChan)
+			close(subtractChan)
 		}()
 	}
+
+	// Track resolution nodes for base and subtract
+	var baseResNode, subtractResNode *ResolutionNode
+	var baseRes *Response
+	_ = subtractResNode // may be unused in some branches
 
 	// Loop until we have received the necessary results to determine the outcome.
 	resultsReceived := 0
@@ -550,12 +621,17 @@ func (r *Resolver) ResolveExclusion(ctx context.Context, req *Request, node *aut
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
-		case msg, ok := <-base:
+		case msg, ok := <-baseChan:
 			if !ok {
-				base = nil // Stop selecting this case.
+				baseChan = nil // Stop selecting this case.
 				continue
 			}
 			resultsReceived++
+			baseRes = msg.Res
+
+			if tracing && msg.Res != nil && msg.Res.GetResolutionNode() != nil {
+				baseResNode = msg.Res.GetResolutionNode()
+			}
 
 			if msg.Err != nil {
 				// NOTE: This is one of the breaking changes from the current check implementation. Delete this after this rollout.
@@ -565,20 +641,38 @@ func (r *Resolver) ResolveExclusion(ctx context.Context, req *Request, node *aut
 
 			// Short-circuit: If base is false, the whole expression is false.
 			if !msg.Res.GetAllowed() {
-				return &Response{Allowed: false}, nil
+				res := &Response{Allowed: false}
+				if tracing {
+					resNode := NewResolutionNode(req.GetTupleKey().GetObject(), relation)
+					resNode.SetExclusion(baseResNode, nil)
+					resNode.Complete(false, 0)
+					res.Resolution = &ResolutionTree{Tree: resNode}
+				}
+				return res, nil
 			}
 
 			// Short-circuit: If base is true and there's no subtract, the whole expression is true.
-			if msg.Res.GetAllowed() && subtract == nil {
-				return msg.Res, nil
+			if msg.Res.GetAllowed() && subtractChan == nil {
+				res := &Response{Allowed: true}
+				if tracing && baseResNode != nil {
+					resNode := NewResolutionNode(req.GetTupleKey().GetObject(), relation)
+					resNode.SetExclusion(baseResNode, nil)
+					resNode.Complete(true, baseResNode.ItemCount)
+					res.Resolution = &ResolutionTree{Tree: resNode}
+				}
+				return res, nil
 			}
 
-		case msg, ok := <-subtract: // subtract can be nil
+		case msg, ok := <-subtractChan: // subtract can be nil
 			if !ok {
-				subtract = nil // Stop selecting this case.
+				subtractChan = nil // Stop selecting this case.
 				continue
 			}
 			resultsReceived++
+
+			if tracing && msg.Res != nil && msg.Res.GetResolutionNode() != nil {
+				subtractResNode = msg.Res.GetResolutionNode()
+			}
 
 			if msg.Err != nil {
 				// NOTE: This is one of the breaking changes from the current check implementation. Delete this after this rollout.
@@ -588,13 +682,31 @@ func (r *Resolver) ResolveExclusion(ctx context.Context, req *Request, node *aut
 
 			// Short-circuit: If subtract is true, the whole expression is false.
 			if msg.Res.GetAllowed() {
-				return &Response{Allowed: false}, nil
+				res := &Response{Allowed: false}
+				if tracing {
+					resNode := NewResolutionNode(req.GetTupleKey().GetObject(), relation)
+					resNode.SetExclusion(baseResNode, subtractResNode)
+					resNode.Complete(false, 0)
+					res.Resolution = &ResolutionTree{Tree: resNode}
+				}
+				return res, nil
 			}
 		}
 	}
 
 	// The only way to get here is if base was (Allowed: true) and subtract was (Allowed: false).
-	return &Response{Allowed: true}, nil
+	res := &Response{Allowed: true}
+	if tracing {
+		itemCount := 0
+		if baseRes != nil && baseRes.Allowed && baseResNode != nil {
+			itemCount = baseResNode.ItemCount
+		}
+		resNode := NewResolutionNode(req.GetTupleKey().GetObject(), relation)
+		resNode.SetExclusion(baseResNode, subtractResNode)
+		resNode.Complete(true, itemCount)
+		res.Resolution = &ResolutionTree{Tree: resNode}
+	}
+	return res, nil
 }
 
 func (r *Resolver) ResolveEdge(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge, visited *sync.Map) (*Response, error) {
@@ -667,6 +779,11 @@ func (r *Resolver) specificType(ctx context.Context, req *Request, edge *authzGr
 
 	_, relation := tuple.SplitObjectRelation(edge.GetRelationDefinition())
 
+	var resNode *ResolutionNode
+	if req.GetTraceResolution() {
+		resNode = NewResolutionNode(req.GetTupleKey().GetObject(), relation)
+	}
+
 	var t *openfgav1.TupleKey
 
 	if ctxTuples, ok := req.GetContextualTuplesByUserID(req.GetTupleKey().GetUser(), relation, tuple.GetType(req.GetTupleKey().GetObject())); ok {
@@ -685,7 +802,12 @@ func (r *Resolver) specificType(ctx context.Context, req *Request, edge *authzGr
 		}, storage.ReadUserTupleOptions{Consistency: storage.ConsistencyOptions{Preference: req.GetConsistency()}})
 		if err != nil {
 			if errors.Is(err, storage.ErrNotFound) {
-				return &Response{Allowed: false}, nil
+				res := &Response{Allowed: false}
+				if resNode != nil {
+					resNode.Complete(false, 0)
+					res.Resolution = &ResolutionTree{Tree: resNode}
+				}
+				return res, nil
 			}
 			telemetry.TraceError(span, err)
 			return nil, err
@@ -701,7 +823,18 @@ func (r *Resolver) specificType(ctx context.Context, req *Request, edge *authzGr
 	if allowed {
 		span.SetAttributes(attribute.Bool("allowed", true))
 	}
-	return &Response{Allowed: allowed}, nil
+
+	res := &Response{Allowed: allowed}
+	if resNode != nil {
+		itemCount := 0
+		if allowed && t != nil {
+			resNode.AddTuple(NewTupleNode(t))
+			itemCount = 1
+		}
+		resNode.Complete(allowed, itemCount)
+		res.Resolution = &ResolutionTree{Tree: resNode}
+	}
+	return res, nil
 }
 
 func (r *Resolver) specificTypeWildcard(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge) (*Response, error) {
@@ -714,6 +847,12 @@ func (r *Resolver) specificTypeWildcard(ctx context.Context, req *Request, edge 
 	defer span.End()
 
 	_, relation := tuple.SplitObjectRelation(edge.GetRelationDefinition())
+
+	var resNode *ResolutionNode
+	if req.GetTraceResolution() {
+		resNode = NewResolutionNode(req.GetTupleKey().GetObject(), relation+"(wildcard)")
+	}
+
 	var iter storage.TupleKeyIterator
 
 	if ctxTuples, ok := req.GetContextualTuplesByObjectID(req.GetTupleKey().GetObject(), relation, req.GetUserType()); ok {
@@ -749,7 +888,12 @@ func (r *Resolver) specificTypeWildcard(ctx context.Context, req *Request, edge 
 	t, err := iter.Next(ctx)
 	if err != nil {
 		if errors.Is(err, storage.ErrIteratorDone) {
-			return &Response{Allowed: false}, nil
+			res := &Response{Allowed: false}
+			if resNode != nil {
+				resNode.Complete(false, 0)
+				res.Resolution = &ResolutionTree{Tree: resNode}
+			}
+			return res, nil
 		}
 		telemetry.TraceError(span, err)
 		return nil, err
@@ -763,7 +907,18 @@ func (r *Resolver) specificTypeWildcard(ctx context.Context, req *Request, edge 
 	if allowed {
 		span.SetAttributes(attribute.Bool("allowed", true))
 	}
-	return &Response{Allowed: allowed}, nil
+
+	res := &Response{Allowed: allowed}
+	if resNode != nil {
+		itemCount := 0
+		if allowed && t != nil {
+			resNode.AddTuple(NewTupleNode(t))
+			itemCount = 1
+		}
+		resNode.Complete(allowed, itemCount)
+		res.Resolution = &ResolutionTree{Tree: resNode}
+	}
+	return res, nil
 }
 
 func (r *Resolver) specificTypeAndRelation(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge, visited *sync.Map) (*Response, error) {

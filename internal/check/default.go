@@ -3,6 +3,7 @@ package check
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/sourcegraph/conc/panics"
@@ -19,8 +20,10 @@ import (
 type defaultStrategyHandler func(context.Context, *Request, *authzGraph.WeightedAuthorizationModelEdge, storage.TupleKeyIterator, chan requestMsg)
 
 type requestMsg struct {
-	err error
-	req *Request
+	err       error
+	req       *Request
+	tupleKey  string // The tuple key that led to this request (for resolution tracing)
+	tupleUser string // The user from the tuple (for resolution tracing)
 }
 
 type DefaultStrategy struct {
@@ -62,7 +65,12 @@ func (s *DefaultStrategy) userset(ctx context.Context, req *Request, edge *authz
 		usersetObject, usersetRelation := tuple.SplitObjectRelation(t.GetUser())
 		childReq := req.cloneWithTupleKey(tuple.NewTupleKey(usersetObject, usersetRelation, req.GetTupleKey().GetUser()))
 
-		concurrency.TrySendThroughChannel(ctx, requestMsg{req: childReq}, out)
+		msg := requestMsg{req: childReq}
+		if req.GetTraceResolution() {
+			msg.tupleKey = tuple.TupleKeyToString(t)
+			msg.tupleUser = t.GetUser()
+		}
+		concurrency.TrySendThroughChannel(ctx, msg, out)
 	}
 }
 
@@ -89,7 +97,13 @@ func (s *DefaultStrategy) ttu(ctx context.Context, req *Request, edge *authzGrap
 
 		userObj, _ := tuple.SplitObjectRelation(t.GetUser())
 		childReq := req.cloneWithTupleKey(tuple.NewTupleKey(userObj, computedRelation, req.GetTupleKey().GetUser()))
-		concurrency.TrySendThroughChannel(ctx, requestMsg{req: childReq}, out)
+
+		msg := requestMsg{req: childReq}
+		if req.GetTraceResolution() {
+			msg.tupleKey = tuple.TupleKeyToString(t)
+			msg.tupleUser = t.GetUser()
+		}
+		concurrency.TrySendThroughChannel(ctx, msg, out)
 	}
 }
 
@@ -100,6 +114,9 @@ func (s *DefaultStrategy) execute(ctx context.Context, req *Request, edge *authz
 	requestsChan := make(chan requestMsg)
 	responsesChan := make(chan ResponseMsg, s.concurrencyLimit)
 
+	tracing := req.GetTraceResolution()
+	_, relation := tuple.SplitObjectRelation(edge.GetRelationDefinition())
+
 	go func() {
 		handler(ctx, req, edge, iter, requestsChan)
 	}()
@@ -109,21 +126,53 @@ func (s *DefaultStrategy) execute(ctx context.Context, req *Request, edge *authz
 	}()
 
 	var err error
+	var tupleNodes []*TupleNode
+	if tracing {
+		tupleNodes = make([]*TupleNode, 0)
+	}
+
 	for {
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		case outcome, ok := <-responsesChan:
 			if !ok {
-				return &Response{Allowed: false}, err
+				// Channel closed - return with collected tuples
+				res := &Response{Allowed: false}
+				if tracing {
+					resNode := NewResolutionNode(req.GetTupleKey().GetObject(), relation)
+					resNode.Tuples = tupleNodes
+					resNode.Complete(false, 0)
+					res.Resolution = &ResolutionTree{Tree: resNode}
+				}
+				return res, err
 			}
 			if outcome.Err != nil {
 				err = outcome.Err
 				continue
 			}
 
+			// Track tuple and its computed resolution if tracing
+			if tracing && outcome.ID != "" {
+				parts := strings.SplitN(outcome.ID, "|", 2)
+				if len(parts) == 2 && parts[0] != "" {
+					tupleNode := NewTupleNodeFromString(parts[0])
+					if outcome.Res.GetResolutionNode() != nil {
+						tupleNode.Computed = outcome.Res.GetResolutionNode()
+					}
+					tupleNodes = append(tupleNodes, tupleNode)
+				}
+			}
+
 			if outcome.Res.Allowed {
-				return outcome.Res, nil
+				res := &Response{Allowed: true}
+				if tracing {
+					resNode := NewResolutionNode(req.GetTupleKey().GetObject(), relation)
+					resNode.Tuples = tupleNodes
+					resNode.Complete(true, len(tupleNodes))
+					res.Resolution = &ResolutionTree{Tree: resNode}
+				}
+				return res, nil
 			}
 		}
 	}
@@ -157,6 +206,10 @@ func (s *DefaultStrategy) processRequests(ctx context.Context, requests chan req
 				continue
 			}
 
+			// Capture tuple info for resolution tracing
+			tupleKey := msg.tupleKey
+			tupleUser := msg.tupleUser
+
 			pool.Go(func() error {
 				var res *Response
 				var err error
@@ -166,7 +219,8 @@ func (s *DefaultStrategy) processRequests(ctx context.Context, requests chan req
 				if recoveredErr != nil {
 					err = fmt.Errorf("%w: %w", ErrPanicRequest, recoveredErr.AsError())
 				}
-				concurrency.TrySendThroughChannel(ctx, ResponseMsg{Err: err, Res: res}, out)
+				// Use ID field to pass tuple key for resolution tracing
+				concurrency.TrySendThroughChannel(ctx, ResponseMsg{ID: tupleKey + "|" + tupleUser, Err: err, Res: res}, out)
 				return nil
 			})
 		}

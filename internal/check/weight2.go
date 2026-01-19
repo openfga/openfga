@@ -42,7 +42,9 @@ func (s *Weight2) Userset(ctx context.Context, req *Request, edge *authzGraph.We
 	if err != nil {
 		return nil, err
 	}
-	return s.execute(ctx, leftChan, storage.WrapIterator(storage.UsersetKind, iter))
+
+	_, edgeRelation := tuple.SplitObjectRelation(edge.GetRelationDefinition())
+	return s.execute(ctx, req, edgeRelation, leftChan, storage.WrapIterator(storage.UsersetKind, iter))
 }
 
 func (s *Weight2) TTU(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator, _ *sync.Map) (*Response, error) {
@@ -58,7 +60,8 @@ func (s *Weight2) TTU(ctx context.Context, req *Request, edge *authzGraph.Weight
 		return nil, err
 	}
 
-	return s.execute(ctx, leftChan, storage.WrapIterator(storage.TTUKind, iter))
+	_, tuplesetRelation := tuple.SplitObjectRelation(edge.GetTuplesetRelation())
+	return s.execute(ctx, req, computedRelation+"("+tuplesetRelation+")", leftChan, storage.WrapIterator(storage.TTUKind, iter))
 }
 
 // Weight2 attempts to find the intersection across 2 producers (channels) of ObjectIDs.
@@ -66,11 +69,13 @@ func (s *Weight2) TTU(ctx context.Context, req *Request, edge *authzGraph.Weight
 // Right channel is the result set of the Read of ObjectID/Relation that yields the User's ObjectID.
 // Left channel is the result set of ReadStartingWithUser of User/Relation that yields Object's ObjectID.
 // From the perspective of the model, the left hand side of a TTU is the computed relationship being expanded.
-func (s *Weight2) execute(ctx context.Context, leftChan chan *iterator.Msg, rightIter storage.TupleMapper) (*Response, error) {
+func (s *Weight2) execute(ctx context.Context, req *Request, relationLabel string, leftChan chan *iterator.Msg, rightIter storage.TupleMapper) (*Response, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	defer rightIter.Stop()
 	defer iterator.Drain(leftChan)
+
+	tracing := req.GetTraceResolution()
 
 	// Set to store already seen values from each side
 	// We use maps for O(1) lookup complexity, consistent with hashset implementation
@@ -96,7 +101,13 @@ func (s *Weight2) execute(ctx context.Context, leftChan chan *iterator.Msg, righ
 				leftChan = nil
 				if len(leftSeen) == 0 {
 					// If we've processed nothing from the left side, we can't have any intersection
-					return &Response{Allowed: false}, lastErr
+					res := &Response{Allowed: false}
+					if tracing {
+						resNode := NewResolutionNode(req.GetTupleKey().GetObject(), relationLabel)
+						resNode.Complete(false, 0)
+						res.Resolution = &ResolutionTree{Tree: resNode}
+					}
+					return res, lastErr
 				}
 				continue
 			}
@@ -122,7 +133,15 @@ func (s *Weight2) execute(ctx context.Context, leftChan chan *iterator.Msg, righ
 					// Check if this value exists in the right set first (early match)
 					if _, exists := rightSeen[t]; exists {
 						leftMsg.Iter.Stop() // Stop the iterator early
-						return &Response{Allowed: true}, nil
+						res := &Response{Allowed: true}
+						if tracing {
+							resNode := NewResolutionNode(req.GetTupleKey().GetObject(), relationLabel)
+							// Add the matched object as a tuple reference
+							resNode.AddTuple(NewTupleNodeFromString(t))
+							resNode.Complete(true, 1)
+							res.Resolution = &ResolutionTree{Tree: resNode}
+						}
+						return res, nil
 					}
 
 					// we can take this solution to reduce storage because the data is delivered ordered in each channel
@@ -143,7 +162,13 @@ func (s *Weight2) execute(ctx context.Context, leftChan chan *iterator.Msg, righ
 				rightChan = nil
 				if len(rightSeen) == 0 {
 					// If we've processed nothing from the right side, we can't have any intersection
-					return &Response{Allowed: false}, lastErr
+					res := &Response{Allowed: false}
+					if tracing {
+						resNode := NewResolutionNode(req.GetTupleKey().GetObject(), relationLabel)
+						resNode.Complete(false, 0)
+						res.Resolution = &ResolutionTree{Tree: resNode}
+					}
+					return res, lastErr
 				}
 				continue
 			}
@@ -155,7 +180,15 @@ func (s *Weight2) execute(ctx context.Context, leftChan chan *iterator.Msg, righ
 
 			// Check if this value exists in the left set first (early match)
 			if _, exists := leftSeen[rightMsg.Value]; exists {
-				return &Response{Allowed: true}, nil
+				res := &Response{Allowed: true}
+				if tracing {
+					resNode := NewResolutionNode(req.GetTupleKey().GetObject(), relationLabel)
+					// Add the matched object as a tuple reference
+					resNode.AddTuple(NewTupleNodeFromString(rightMsg.Value))
+					resNode.Complete(true, 1)
+					res.Resolution = &ResolutionTree{Tree: resNode}
+				}
+				return res, nil
 			}
 
 			// we can take this solution to reduce storage because the data is delivered ordered in each channel
@@ -171,5 +204,11 @@ func (s *Weight2) execute(ctx context.Context, leftChan chan *iterator.Msg, righ
 	}
 
 	// If we get here, no match was found
-	return &Response{Allowed: false}, lastErr
+	res := &Response{Allowed: false}
+	if tracing {
+		resNode := NewResolutionNode(req.GetTupleKey().GetObject(), relationLabel)
+		resNode.Complete(false, 0)
+		res.Resolution = &ResolutionTree{Tree: resNode}
+	}
+	return res, lastErr
 }
