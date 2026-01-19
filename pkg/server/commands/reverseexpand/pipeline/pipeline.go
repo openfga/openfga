@@ -1154,7 +1154,20 @@ type Pipeline struct {
 	pipeMaxExtensions int
 }
 
-type pipelineWorker = Worker[*Edge, *Message, *Message]
+type pipelineWorker struct {
+	Worker[*Edge, *Message, *Message]
+}
+
+func (w *pipelineWorker) listenForInitialValue(value string, tracker *track.Tracker) {
+	items := []Item{{Value: value}}
+	tracker.Inc()
+	m := Message{
+		Value:       items,
+		ReceiptFunc: tracker.Dec,
+	}
+	w.Listen(&sender[*Edge, *Message]{nil, pipe.StaticRx(&m)})
+}
+
 type workerPool = map[*Node]*pipelineWorker
 
 // Build is a function that constructs the actual pipeline which is returned as an iter.Seq[Item].
@@ -1311,6 +1324,40 @@ type path struct {
 	statusPool  *track.StatusPool
 }
 
+func createOperatorResolver(label string, core resolverCore) Resolver[*Edge, *Message, *Message] {
+	switch label {
+	case weightedGraph.IntersectionOperator:
+		return &intersectionResolver{core}
+	case weightedGraph.ExclusionOperator:
+		return &exclusionResolver{core}
+	case weightedGraph.UnionOperator:
+		return &baseResolver{core}
+	default:
+		panic("unsupported operator node for pipeline resolver")
+	}
+}
+
+func createResolver(node *Node, core resolverCore) Resolver[*Edge, *Message, *Message] {
+	switch node.GetNodeType() {
+	case nodeTypeSpecificType,
+		nodeTypeSpecificTypeAndRelation,
+		nodeTypeSpecificTypeWildcard,
+		nodeTypeLogicalDirectGrouping,
+		nodeTypeLogicalTTUGrouping:
+		return &baseResolver{core}
+	case nodeTypeOperator:
+		return createOperatorResolver(node.GetLabel(), core)
+	default:
+		panic("unsupported node type for pipeline resolver")
+	}
+}
+
+func (pl *Pipeline) configureWorker(w *pipelineWorker) {
+	w.bufferSize = pl.bufferSize
+	w.pipeExtendAfter = pl.pipeExtendAfter
+	w.pipeMaxExtensions = pl.pipeMaxExtensions
+}
+
 func (pl *Pipeline) resolve(p path, workers workerPool) *pipelineWorker {
 	if w, ok := workers[p.source]; ok {
 		return w
@@ -1325,9 +1372,7 @@ func (pl *Pipeline) resolve(p path, workers workerPool) *pipelineWorker {
 	}
 
 	var w pipelineWorker
-	w.bufferSize = pl.bufferSize
-	w.pipeExtendAfter = pl.pipeExtendAfter
-	w.pipeMaxExtensions = pl.pipeMaxExtensions
+	pl.configureWorker(&w)
 
 	reporter := p.statusPool.Register()
 	reporter.Report(true)
@@ -1340,60 +1385,22 @@ func (pl *Pipeline) resolve(p path, workers workerPool) *pipelineWorker {
 		numProcs:    pl.numProcs,
 	}
 
-	switch p.source.GetNodeType() {
-	case nodeTypeSpecificType,
-		nodeTypeSpecificTypeAndRelation,
-		nodeTypeSpecificTypeWildcard,
-		nodeTypeLogicalDirectGrouping,
-		nodeTypeLogicalTTUGrouping:
-		w.Resolver = &baseResolver{core}
-	case nodeTypeOperator:
-		switch p.source.GetLabel() {
-		case weightedGraph.IntersectionOperator:
-			w.Resolver = &intersectionResolver{core}
-		case weightedGraph.UnionOperator:
-			w.Resolver = &baseResolver{core}
-		case weightedGraph.ExclusionOperator:
-			w.Resolver = &exclusionResolver{core}
-		default:
-			panic("unsupported operator node for reverse expand worker")
-		}
-	default:
-		panic("unsupported node type for reverse expand worker")
-	}
+	w.Resolver = createResolver(p.source, core)
 
 	workers[p.source] = &w
 
 	switch p.source.GetNodeType() {
 	case nodeTypeSpecificType, nodeTypeSpecificTypeAndRelation:
 		if p.source == p.target.node {
-			items := []Item{{Value: p.target.Object()}}
-			p.tracker.Add(1)
-			m := Message{
-				Value:       items,
-				ReceiptFunc: p.tracker.Dec,
-			}
-			w.Listen(&sender[*Edge, *Message]{
-				nil,
-				pipe.StaticRx(&m),
-			})
+			w.listenForInitialValue(p.target.Object(), p.tracker)
 		}
 	case nodeTypeSpecificTypeWildcard:
 		label := p.source.GetLabel()
-		typePart := strings.Split(label, ":")[0]
+		typePart, _, _ := strings.Cut(label, ":")
 
 		if p.source == p.target.node || typePart == p.target.node.GetLabel() {
 			// source node is the target node or has the same type as the target.
-			items := []Item{{Value: typePart + ":*"}}
-			p.tracker.Add(1)
-			m := Message{
-				Value:       items,
-				ReceiptFunc: p.tracker.Dec,
-			}
-			w.Listen(&sender[*Edge, *Message]{
-				nil,
-				pipe.StaticRx(&m),
-			})
+			w.listenForInitialValue(typePart+":*", p.tracker)
 		}
 	}
 
@@ -1477,11 +1484,7 @@ type Target struct {
 }
 
 func (t *Target) Object() string {
-	objectParts := strings.Split(t.node.GetLabel(), "#")
-	var objectType string
-	if len(objectParts) > 0 {
-		objectType = objectParts[0]
-	}
+	objectType, _, _ := strings.Cut(t.node.GetLabel(), "#")
 	var value string
 
 	switch t.node.GetNodeType() {
