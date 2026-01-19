@@ -557,7 +557,7 @@ func (qp *QueryEngine) toSequence(ctx context.Context, itr storage.TupleKeyItera
 type resolverCore struct {
 	// interpreter is an `interpreter` that transforms a sender's input into output which it
 	// broadcasts to all of the parent worker's listeners.
-	interpreter interpreter
+	interpreter Interpreter
 
 	// tracker may be owned or shared with other resolvers. It is used to report messages from
 	// this resovler that are still in-flight.
@@ -849,7 +849,7 @@ func (tx *txBag[T]) Seq() iter.Seq[T] {
 type operatorProcessor struct {
 	tracker     *track.Tracker
 	bufferPool  *bufferPool
-	interpreter interpreter
+	interpreter Interpreter
 	items       pipe.Tx[Item]
 	cleanup     *containers.Bag[func()]
 }
@@ -1015,8 +1015,8 @@ type Item struct {
 	Err   error
 }
 
-// interpreter is an interface that exposes a method for interpreting input for an edge into output.
-type interpreter interface {
+// Interpreter is an interface that exposes a method for interpreting input for an edge into output.
+type Interpreter interface {
 	Interpret(ctx context.Context, edge *Edge, items []string) iter.Seq[Item]
 }
 
@@ -1168,18 +1168,21 @@ func (w *pipelineWorker) listenForInitialValue(value string, tracker *track.Trac
 	w.Listen(&sender[*Edge, *Message]{nil, pipe.StaticRx(&m)})
 }
 
-type workerPool = map[*Node]*pipelineWorker
+type workerPool map[*Node]*pipelineWorker
 
-// Build is a function that constructs the actual pipeline which is returned as an iter.Seq[Item].
-// The pipeline will not begin generating values until the returned sequence is iterated over. This
-// is to prevent unnecessary work and resource accummulation in the event that the sequence is never
-// iterated.
-func (pl *Pipeline) Build(ctx context.Context, source Source, target Target) iter.Seq[Item] {
-	ctx, span := pipelineTracer.Start(ctx, "pipeline.build")
-	defer span.End()
+func (wp workerPool) Start(ctx context.Context) {
+	for _, w := range wp {
+		w.Start(ctx)
+	}
+}
 
-	ctx, cancel := context.WithCancel(ctx)
+func (wp workerPool) Wait() {
+	for _, w := range wp {
+		w.Wait()
+	}
+}
 
+func (pl *Pipeline) createInterpreter(ctx context.Context) Interpreter {
 	validator := combineValidators(
 		[]FalibleValidator[*openfgav1.TupleKey]{
 			FalibleValidator[*openfgav1.TupleKey](checkutil.BuildTupleKeyConditionFilter(
@@ -1216,22 +1219,36 @@ func (pl *Pipeline) Build(ctx context.Context, source Source, target Target) ite
 	registry.Register(&ttuEdgeHandler)
 	registry.Register(&identityEdgeHandler)
 
-	registryInterpreter := RegistryInterpreter{
+	return &RegistryInterpreter{
 		registry: &registry,
 	}
+}
+
+// Build is a function that constructs the actual pipeline which is returned as an iter.Seq[Item].
+// The pipeline will not begin generating values until the returned sequence is iterated over.
+// This is to prevent unnecessary work and resource accummulation in the event that the sequence
+// is never iterated.
+func (pl *Pipeline) Build(ctx context.Context, source Source, target Target) iter.Seq[Item] {
+	ctx, span := pipelineTracer.Start(ctx, "pipeline.build")
+	defer span.End()
+
+	ctx, cancel := context.WithCancel(ctx)
+
+	interpreter := pl.createInterpreter(ctx)
 
 	workers := make(workerPool)
 
 	p := path{
 		source:      (*Node)(source),
 		target:      target,
-		interpreter: &registryInterpreter,
+		interpreter: interpreter,
 	}
 	pl.resolve(p, workers)
 
 	sourceWorker, ok := workers[(*Node)(source)]
 	if !ok {
-		panic("no such source worker")
+		cancel()
+		return seq.Sequence(Item{Err: errors.New("no such source")})
 	}
 
 	results := sourceWorker.Subscribe(nil)
@@ -1257,18 +1274,14 @@ func (pl *Pipeline) Build(ctx context.Context, source Source, target Target) ite
 		// to iterate over the sequence. This prevents unnecessary
 		// processing in the event that the caller decides not to
 		// iterate over the sequence.
-		for _, w := range workers {
-			w.Start(ctx)
-		}
+		workers.Start(ctx)
 
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			<-ctx.Done()
 			// Wait for all workers to finish.
-			for _, w := range workers {
-				w.Wait()
-			}
+			workers.Wait()
 		}()
 
 		var abandoned bool
@@ -1319,7 +1332,7 @@ func (pl *Pipeline) Target(name, identifier string) (Target, bool) {
 type path struct {
 	source      *Node
 	target      Target
-	interpreter interpreter
+	interpreter Interpreter
 	tracker     *track.Tracker
 	statusPool  *track.StatusPool
 }
