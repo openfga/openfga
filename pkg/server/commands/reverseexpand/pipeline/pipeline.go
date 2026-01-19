@@ -1013,7 +1013,7 @@ func (r *intersectionResolver) process(
 	cleanup *containers.Bag[func()],
 ) {
 	r.drain(ctx, snd, func(ctx context.Context, edge *Edge, msg *Message) {
-		r.tracker.Add(1)
+		r.tracker.Inc()
 		values := r.bufferPool.Get()
 		copy(*values, msg.Value)
 		size := len(msg.Value)
