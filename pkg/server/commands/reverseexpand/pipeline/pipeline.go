@@ -69,37 +69,15 @@ var (
 	ErrInvalidNumProcs   = errors.New("process number must be greater than zero")
 )
 
-type EdgeHandler interface {
-	CanHandle(edge *Edge) bool
-	Handle(ctx context.Context, edge *Edge, items []string) iter.Seq[Item]
-}
-
-type EdgeHandlerRegistry struct {
-	handlers []EdgeHandler
-}
-
-func (r *EdgeHandlerRegistry) Register(handler EdgeHandler) {
-	r.handlers = append(r.handlers, handler)
-}
-
-func (r *EdgeHandlerRegistry) Handle(ctx context.Context, edge *Edge, items []string) iter.Seq[Item] {
-	for _, handler := range r.handlers {
-		if handler.CanHandle(edge) {
-			return handler.Handle(ctx, edge, items)
-		}
-	}
-	return seq.Sequence(Item{Err: fmt.Errorf("no handler for edge type: %v", edge.GetEdgeType())})
-}
-
 type DirectEdgeHandler struct {
 	queryEngine *QueryEngine
 }
 
-func (h *DirectEdgeHandler) CanHandle(edge *Edge) bool {
-	return edge != nil && edge.GetEdgeType() == edgeTypeDirect
-}
-
-func (h *DirectEdgeHandler) Handle(ctx context.Context, edge *Edge, items []string) iter.Seq[Item] {
+func (h *DirectEdgeHandler) Handle(
+	ctx context.Context,
+	edge *Edge,
+	items []string,
+) iter.Seq[Item] {
 	nodeType, nodeRelation, _ := strings.Cut(edge.GetRelationDefinition(), "#")
 
 	_, userRelation, _ := strings.Cut(edge.GetTo().GetLabel(), "#")
@@ -135,11 +113,11 @@ type TTUEdgeHandler struct {
 	graph       *Graph
 }
 
-func (h *TTUEdgeHandler) CanHandle(edge *Edge) bool {
-	return edge != nil && edge.GetEdgeType() == edgeTypeTTU
-}
-
-func (h *TTUEdgeHandler) Handle(ctx context.Context, edge *Edge, items []string) iter.Seq[Item] {
+func (h *TTUEdgeHandler) Handle(
+	ctx context.Context,
+	edge *Edge,
+	items []string,
+) iter.Seq[Item] {
 	tuplesetType, tuplesetRelation, ok := strings.Cut(edge.GetTuplesetRelation(), "#")
 	if !ok {
 		return seq.Sequence(Item{Err: errors.New("invalid tupleset relation")})
@@ -198,22 +176,11 @@ func (h *TTUEdgeHandler) Handle(ctx context.Context, edge *Edge, items []string)
 
 type IdentityEdgeHandler struct{}
 
-func (h *IdentityEdgeHandler) CanHandle(edge *Edge) bool {
-	if edge == nil {
-		return true
-	}
-	switch edge.GetEdgeType() {
-	case edgeTypeComputed,
-		edgeTypeRewrite,
-		edgeTypeDirectLogical,
-		edgeTypeTTULogical:
-		return true
-	default:
-		return false
-	}
-}
-
-func (h *IdentityEdgeHandler) Handle(_ context.Context, _ *Edge, items []string) iter.Seq[Item] {
+func (h *IdentityEdgeHandler) Handle(
+	_ context.Context,
+	_ *Edge,
+	items []string,
+) iter.Seq[Item] {
 	return func(yield func(Item) bool) {
 		for _, s := range items {
 			if !yield(Item{Value: s}) {
@@ -223,15 +190,36 @@ func (h *IdentityEdgeHandler) Handle(_ context.Context, _ *Edge, items []string)
 	}
 }
 
-type RegistryInterpreter struct {
-	registry *EdgeHandlerRegistry
+type EdgeInterpreter struct {
+	direct   *DirectEdgeHandler
+	ttu      *TTUEdgeHandler
+	identity *IdentityEdgeHandler
 }
 
-func (r *RegistryInterpreter) Interpret(ctx context.Context, edge *Edge, items []string) iter.Seq[Item] {
+func (e *EdgeInterpreter) Interpret(
+	ctx context.Context,
+	edge *Edge,
+	items []string,
+) iter.Seq[Item] {
 	if len(items) == 0 {
 		return emptySequence
 	}
-	return r.registry.Handle(ctx, edge, items)
+	if edge == nil {
+		return e.identity.Handle(ctx, edge, items)
+	}
+	switch edge.GetEdgeType() {
+	case edgeTypeDirect:
+		return e.direct.Handle(ctx, edge, items)
+	case edgeTypeTTU:
+		return e.ttu.Handle(ctx, edge, items)
+	case edgeTypeComputed, edgeTypeRewrite, edgeTypeDirectLogical, edgeTypeTTULogical:
+		return e.identity.Handle(ctx, edge, items)
+	default:
+		return seq.Sequence(Item{Err: fmt.Errorf(
+			"no handler for edge type: %v",
+			edge.GetEdgeType(),
+		)})
+	}
 }
 
 type Option func(*Pipeline) error
@@ -685,11 +673,12 @@ func (r *resolverCore) drain(
 	}
 }
 
-// baseResolver is a struct that implements the Resolver interface and acts as the standard
-// resolver for most workers. A baseResolver handles both recursive and non-recursive edges
-// concurrently.
-type baseResolver struct {
+type baseProcessor struct {
 	resolverCore
+	listeners    []Listener[*Edge, *Message]
+	inputBuffer  *containers.AtomicMap[string, struct{}]
+	outputBuffer *containers.AtomicMap[string, struct{}]
+	SentCount    int64
 }
 
 // process is a function that reads output from a single sender, processes the output through an
@@ -698,61 +687,54 @@ type baseResolver struct {
 // edge because values of a cycle may be reentrant. Output from the interpreter is always
 // deduplicated across all process functions because input from two different senders may produce
 // the same output value(s).
-func (r *baseResolver) process(
-	ctx context.Context,
-	snd Sender[*Edge, *Message],
-	listeners []Listener[*Edge, *Message],
-	inputBuffer *containers.AtomicMap[string, struct{}],
-	outputBuffer *containers.AtomicMap[string, struct{}],
-) int64 {
-	var sentCount int64
+func (p *baseProcessor) process(ctx context.Context, edge *Edge, msg *Message) {
+	errs := make([]Item, 0, len(msg.Value))
+	unseen := make([]string, 0, len(msg.Value))
 
-	errs := make([]Item, 0, 100)
-	unseen := make([]string, 0, 100)
-
-	r.drain(ctx, snd, func(ctx context.Context, edge *Edge, msg *Message) {
-		errs = errs[:0]
-		unseen = unseen[:0]
-
-		for _, item := range msg.Value {
-			if item.Err != nil {
-				errs = append(errs, item)
-				continue
-			}
-
-			if inputBuffer != nil {
-				// Deduplicate the sender's output using the buffer shared by all processors
-				// of this sender.
-				if _, loaded := inputBuffer.LoadOrStore(item.Value, struct{}{}); !loaded {
-					unseen = append(unseen, item.Value)
-				}
-				continue
-			}
-			unseen = append(unseen, item.Value)
+	for _, item := range msg.Value {
+		if item.Err != nil {
+			errs = append(errs, item)
+			continue
 		}
 
-		results := r.interpreter.Interpret(ctx, edge, unseen)
-
-		// Combine the initial errors with the interpreted output.
-		results = seq.Flatten(seq.Sequence(errs...), results)
-
-		results = seq.Filter(results, func(item Item) bool {
-			if item.Err != nil {
-				return true
+		if p.inputBuffer != nil {
+			// Deduplicate the sender's output using the buffer shared by all processors
+			// of this sender.
+			if _, loaded := p.inputBuffer.LoadOrStore(item.Value, struct{}{}); !loaded {
+				unseen = append(unseen, item.Value)
 			}
+			continue
+		}
+		unseen = append(unseen, item.Value)
+	}
 
-			// Deduplicate the interpreted values using the buffer shared by all processors
-			// of all senders.
-			_, loaded := outputBuffer.LoadOrStore(item.Value, struct{}{})
-			return !loaded
-		})
+	results := p.interpreter.Interpret(ctx, edge, unseen)
 
-		sentCount += int64(r.broadcast(results, listeners))
+	// Combine the initial errors with the interpreted output.
+	results = seq.Flatten(seq.Sequence(errs...), results)
 
-		// Release the received message's resources.
-		msg.Done()
+	results = seq.Filter(results, func(item Item) bool {
+		if item.Err != nil {
+			return true
+		}
+
+		// Deduplicate the interpreted values using the buffer shared by all processors
+		// of all senders.
+		_, loaded := p.outputBuffer.LoadOrStore(item.Value, struct{}{})
+		return !loaded
 	})
-	return sentCount
+
+	p.SentCount += int64(p.broadcast(results, p.listeners))
+
+	// Release the received message's resources.
+	msg.Done()
+}
+
+// baseResolver is a struct that implements the Resolver interface and acts as the standard
+// resolver for most workers. A baseResolver handles both recursive and non-recursive edges
+// concurrently.
+type baseResolver struct {
+	resolverCore
 }
 
 // Resolve is a function that orchestrates the processing of all sender output, broadcasting the
@@ -798,10 +780,18 @@ func (r *baseResolver) Resolve(
 			var inputBuffer containers.AtomicMap[string, struct{}]
 
 			for range r.numProcs {
+				processor := baseProcessor{
+					resolverCore: r.resolverCore,
+					listeners:    listeners,
+					inputBuffer:  &inputBuffer,
+					outputBuffer: &outputBuffer,
+				}
+
 				wgRecursive.Add(1)
 				go func() {
 					defer wgRecursive.Done()
-					sentCount.Add(r.process(ctx, snd, listeners, &inputBuffer, &outputBuffer))
+					r.drain(ctx, snd, processor.process)
+					sentCount.Add(processor.SentCount)
 				}()
 			}
 			continue
@@ -809,10 +799,18 @@ func (r *baseResolver) Resolve(
 
 		// The sender's edge is not recursive or part of a tuple cycle.
 		for range r.numProcs {
+			processor := baseProcessor{
+				resolverCore: r.resolverCore,
+				listeners:    listeners,
+				inputBuffer:  nil,
+				outputBuffer: &outputBuffer,
+			}
+
 			wgStandard.Add(1)
 			go func() {
 				defer wgStandard.Done()
-				sentCount.Add(r.process(ctx, snd, listeners, nil, &outputBuffer))
+				r.drain(ctx, snd, processor.process)
+				sentCount.Add(processor.SentCount)
 			}()
 		}
 	}
@@ -1232,13 +1230,10 @@ func (pl *Pipeline) createInterpreter(ctx context.Context) Interpreter {
 
 	var identityEdgeHandler IdentityEdgeHandler
 
-	var registry EdgeHandlerRegistry
-	registry.Register(&directEdgeHandler)
-	registry.Register(&ttuEdgeHandler)
-	registry.Register(&identityEdgeHandler)
-
-	return &RegistryInterpreter{
-		registry: &registry,
+	return &EdgeInterpreter{
+		direct:   &directEdgeHandler,
+		ttu:      &ttuEdgeHandler,
+		identity: &identityEdgeHandler,
 	}
 }
 
