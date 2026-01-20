@@ -861,11 +861,9 @@ func (tx *txBag[T]) Seq() iter.Seq[T] {
 }
 
 type operatorProcessor struct {
-	tracker     *track.Tracker
-	bufferPool  *bufferPool
-	interpreter Interpreter
-	items       pipe.Tx[Item]
-	cleanup     *containers.Bag[func()]
+	resolverCore
+	items   pipe.Tx[Item]
+	cleanup *containers.Bag[func()]
 }
 
 // process is a function that processes the output of a single sender through an interpreter. All
@@ -949,11 +947,9 @@ func (r *exclusionResolver) Resolve(
 	counter.Store(int32(r.numProcs))
 
 	processorInclude := operatorProcessor{
-		tracker:     r.tracker,
-		bufferPool:  r.bufferPool,
-		interpreter: r.interpreter,
-		items:       pipeInclude,
-		cleanup:     &cleanup,
+		resolverCore: r.resolverCore,
+		items:        pipeInclude,
+		cleanup:      &cleanup,
 	}
 
 	for range r.numProcs {
@@ -968,11 +964,9 @@ func (r *exclusionResolver) Resolve(
 	}
 
 	processorExclude := operatorProcessor{
-		tracker:     r.tracker,
-		bufferPool:  r.bufferPool,
-		interpreter: r.interpreter,
-		items:       (*txBag[Item])(&excluded),
-		cleanup:     &cleanup,
+		resolverCore: r.resolverCore,
+		items:        (*txBag[Item])(&excluded),
+		cleanup:      &cleanup,
 	}
 
 	for range r.numProcs {
@@ -1056,11 +1050,9 @@ func (r *intersectionResolver) Resolve(
 
 	for i, snd := range senders {
 		processor := operatorProcessor{
-			tracker:     r.tracker,
-			bufferPool:  r.bufferPool,
-			interpreter: r.interpreter,
-			items:       &bags[i],
-			cleanup:     &cleanup,
+			resolverCore: r.resolverCore,
+			items:        &bags[i],
+			cleanup:      &cleanup,
 		}
 
 		for range r.numProcs {
