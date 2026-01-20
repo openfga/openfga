@@ -617,6 +617,31 @@ func shouldCheckPublicAssignable(ctx context.Context, reqTupleKey *openfgav1.Tup
 	return isPubliclyAssignable
 }
 
+func (c *LocalChecker) profiledRecursiveCheckHandler(resolver CheckHandlerFunc) CheckHandlerFunc {
+	return func(ctx context.Context) (*ResolveCheckResponse, error) {
+		start := time.Now()
+		res, err := resolver(ctx)
+		duration := time.Since(start)
+		if err != nil {
+			// penalize plans that timeout from the upstream context
+			if errors.Is(err, context.DeadlineExceeded) {
+
+				if duration.Milliseconds() > 2000 {
+					c.logger.Warn(fmt.Sprintf("recursive has deadline exceeded and will be updated at %dms", duration.Milliseconds()))
+
+				} else {
+					c.logger.Warn("recursive will skip update for deadline exceeded")
+				}
+				return nil, err
+			}
+		}
+		if duration.Milliseconds() > 2000 {
+			c.logger.Warn(fmt.Sprintf("recursive has %dms", duration.Milliseconds()))
+		}
+		return res, nil
+	}
+}
+
 func (c *LocalChecker) profiledCheckHandler(keyPlan planner.Selector, strategy *planner.PlanConfig, resolver CheckHandlerFunc) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
 		start := time.Now()
@@ -872,9 +897,10 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 				possibleStrategies[weightTwoResolver] = weight2Plan
 				resolver = c.weight2TTU
 			} else if typesys.TTUUseRecursiveResolver(objectType, relation, userType, rewrite.GetTupleToUserset()) {
-				possibleStrategies[defaultResolver] = defaultRecursivePlan
-				possibleStrategies[recursiveResolver] = recursivePlan
+				//possibleStrategies[defaultResolver] = defaultRecursivePlan
+				//possibleStrategies[recursiveResolver] = recursivePlan
 				resolver = c.recursiveTTU
+				return c.profiledRecursiveCheckHandler(resolver(ctx, req, rewrite, filteredIter))(ctx)
 			}
 		}
 
