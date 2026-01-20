@@ -214,7 +214,13 @@ func (h *IdentityEdgeHandler) CanHandle(edge *Edge) bool {
 }
 
 func (h *IdentityEdgeHandler) Handle(_ context.Context, _ *Edge, items []string) iter.Seq[Item] {
-	return seq.Transform(seq.Sequence(items...), strToItem)
+	return func(yield func(Item) bool) {
+		for _, s := range items {
+			if !yield(Item{Value: s}) {
+				return
+			}
+		}
+	}
 }
 
 type RegistryInterpreter struct {
@@ -694,9 +700,12 @@ func (r *baseResolver) process(
 ) int64 {
 	var sentCount int64
 
+	errs := make([]Item, 0, 100)
+	unseen := make([]string, 0, 100)
+
 	r.drain(ctx, snd, func(ctx context.Context, edge *Edge, msg *Message) {
-		errs := make([]Item, 0, len(msg.Value))
-		unseen := make([]string, 0, len(msg.Value))
+		errs = errs[:0]
+		unseen = unseen[:0]
 
 		for _, item := range msg.Value {
 			if item.Err != nil {
