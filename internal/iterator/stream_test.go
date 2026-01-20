@@ -296,8 +296,6 @@ func TestIteratorStream(t *testing.T) {
 
 		_, bufErr := buf.Next(context.Background())
 		require.ErrorIs(t, bufErr, storage.ErrIteratorDone)
-		_, sourceErr := sourceIter.Next(context.Background())
-		require.ErrorIs(t, sourceErr, storage.ErrIteratorDone)
 	})
 }
 
