@@ -664,13 +664,13 @@ func (r *resolverCore) drain(
 			continue
 		}
 
-		messageAttrs := make([]attribute.KeyValue, 1, 1+len(attrs))
+		var messageAttrs [3]attribute.KeyValue
 		messageAttrs[0] = attribute.Int("items.count", len(msg.Value))
-		messageAttrs = append(messageAttrs, attrs...)
+		copy(messageAttrs[1:], attrs)
 
 		ctx, span := pipelineTracer.Start(
 			ctx, "message.received",
-			trace.WithAttributes(messageAttrs...),
+			trace.WithAttributes(messageAttrs[:]...),
 		)
 
 		yield(ctx, edge, msg)
