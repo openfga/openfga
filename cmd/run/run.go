@@ -45,6 +45,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/certwatcher"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
+	authzenv1 "github.com/openfga/api/proto/authzen/v1"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/assets"
@@ -94,7 +95,7 @@ func NewRunCommand() *cobra.Command {
 	defaultConfig := serverconfig.DefaultConfig()
 	flags := cmd.Flags()
 
-	flags.StringSlice("experimentals", defaultConfig.Experimentals, fmt.Sprintf("a comma-separated list of experimental features to enable. Allowed values: %s, %s, %s, %s, %s", serverconfig.ExperimentalCheckOptimizations, serverconfig.ExperimentalListObjectsOptimizations, serverconfig.ExperimentalAccessControlParams, serverconfig.ExperimentalPipelineListObjects, serverconfig.ExperimentalDatastoreThrottling))
+	flags.StringSlice("experimentals", defaultConfig.Experimentals, fmt.Sprintf("a comma-separated list of experimental features to enable. Allowed values: %s, %s, %s, %s, %s, %s", serverconfig.ExperimentalCheckOptimizations, serverconfig.ExperimentalListObjectsOptimizations, serverconfig.ExperimentalAccessControlParams, serverconfig.ExperimentalPipelineListObjects, serverconfig.ExperimentalDatastoreThrottling, serverconfig.ExperimentalEnableAuthZen))
 
 	flags.Bool("access-control-enabled", defaultConfig.AccessControl.Enabled, "enable/disable the access control feature")
 
@@ -644,9 +645,20 @@ func (s *ServerContext) runHTTPServer(ctx context.Context, config *serverconfig.
 		}),
 		runtime.WithHealthzEndpoint(healthv1pb.NewHealthClient(grpcConn)),
 		runtime.WithOutgoingHeaderMatcher(func(s string) (string, bool) { return s, true }),
+		runtime.WithIncomingHeaderMatcher(func(key string) (string, bool) {
+			// Forward Openfga-Authorization-Model-Id header to gRPC metadata for AuthZEN endpoints
+			if key == "Openfga-Authorization-Model-Id" {
+				return key, true
+			}
+			// Use default behavior for other headers
+			return runtime.DefaultHeaderMatcher(key)
+		}),
 	}
 	mux := runtime.NewServeMux(muxOpts...)
 	if err := openfgav1.RegisterOpenFGAServiceHandler(ctx, mux, grpcConn); err != nil {
+		return nil, err
+	}
+	if err := authzenv1.RegisterAuthZenServiceHandler(ctx, mux, grpcConn); err != nil {
 		return nil, err
 	}
 	handler := http.Handler(mux)
@@ -930,6 +942,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	// nosemgrep: grpc-server-insecure-connection
 	grpcServer := grpc.NewServer(serverOpts...)
 	openfgav1.RegisterOpenFGAServiceServer(grpcServer, svr)
+	authzenv1.RegisterAuthZenServiceServer(grpcServer, svr)
 	healthServer := &health.Checker{TargetService: svr, TargetServiceName: openfgav1.OpenFGAService_ServiceDesc.ServiceName}
 	healthv1pb.RegisterHealthServer(grpcServer, healthServer)
 	reflection.Register(grpcServer)
