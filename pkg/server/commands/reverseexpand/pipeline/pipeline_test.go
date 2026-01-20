@@ -181,7 +181,7 @@ func TestPipelineShutdown(t *testing.T) {
 
 		cancel()
 		for range seq {
-			t.Fatalf("received unexpected value")
+			t.Fatal("received item after context canceled")
 		}
 	})
 
@@ -189,15 +189,21 @@ func TestPipelineShutdown(t *testing.T) {
 		defer goleak.VerifyNone(t)
 
 		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
 		seq := pl.Build(ctx, source, target)
 
 		var value string
+		var err error
 		for item := range seq {
-			value = item.Value
+			if item.Err == nil {
+				value = item.Value
+			}
+			err = item.Err
 			cancel()
 		}
-		cancel()
 		require.NotEmpty(t, value)
+		require.ErrorIs(t, err, context.Canceled)
 	})
 
 	t.Run("CancelMidProcessing", func(t *testing.T) {
@@ -209,27 +215,31 @@ func TestPipelineShutdown(t *testing.T) {
 		seq := pl.Build(ctx, source, target)
 
 		var count int
+		var err error
 		limit := nestLevel / 2
-		for range seq {
+		for item := range seq {
+			err = item.Err
 			count++
 			if count >= limit {
 				cancel()
 			}
 		}
+		require.ErrorIs(t, err, context.Canceled)
 	})
 
 	t.Run("TimeoutAfterPull", func(t *testing.T) {
 		defer goleak.VerifyNone(t)
 
 		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-		seq := pl.Build(ctx, source, target)
-
 		defer cancel()
 
-		var count int
+		seq := pl.Build(ctx, source, target)
 
-		for range seq {
-			if count > bufferSize {
+		var count int
+		var err error
+		for item := range seq {
+			err = item.Err
+			if count > bufferSize+1 {
 				t.Fatalf("received unexpected value")
 			}
 
@@ -239,6 +249,7 @@ func TestPipelineShutdown(t *testing.T) {
 			}
 			count++
 		}
+		require.ErrorIs(t, err, context.DeadlineExceeded)
 	})
 
 	t.Run("TimeoutBeforePull", func(t *testing.T) {
@@ -253,7 +264,7 @@ func TestPipelineShutdown(t *testing.T) {
 		time.Sleep(2 * time.Millisecond)
 
 		for range seq {
-			t.Fatalf("received unexpected value")
+			t.Fatal("received value after context deadline exceeded")
 		}
 	})
 }
