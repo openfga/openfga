@@ -335,21 +335,30 @@ func newBufferPool(size int) *bufferPool {
 }
 
 type Message struct {
-	Value       []Item
-	ReceiptFunc func()
-	once        sync.Once
+	Value []Item
+	once  sync.Once
+
+	// stored for cleanup
+	buffer     *[]Item
+	bufferPool *bufferPool
+	tracker    *track.Tracker
 }
 
 func (m *Message) finalize() {
-	if m.ReceiptFunc != nil {
-		m.ReceiptFunc()
+	if m.tracker != nil {
+		m.tracker.Dec()
+	}
+	if m.bufferPool != nil && m.buffer != nil {
+		m.bufferPool.Put(m.buffer)
 	}
 }
 
 func (m *Message) Done() {
 	m.once.Do(m.finalize)
 	m.Value = nil
-	m.ReceiptFunc = nil
+	m.buffer = nil
+	m.bufferPool = nil
+	m.tracker = nil
 }
 
 // Backend is a struct that serves as a container for all backend elements
@@ -612,13 +621,11 @@ func (r *resolverCore) broadcast(
 			m := Message{
 				// Only slice the values in the read buffer up to what was actually read.
 				Value: (*values)[:count],
-				ReceiptFunc: func() {
-					// Decrement the resolver's tracker because the message is no longer
-					// in-flight.
-					r.tracker.Dec()
-					// Relase the message specific buffer back into the buffer pool.
-					r.bufferPool.Put(values)
-				},
+
+				// Stored for cleanup
+				buffer:     values,
+				bufferPool: r.bufferPool,
+				tracker:    r.tracker,
 			}
 
 			if !listeners[i].Send(&m) {
@@ -1171,8 +1178,10 @@ func (w *pipelineWorker) listenForInitialValue(value string, tracker *track.Trac
 	items := []Item{{Value: value}}
 	tracker.Inc()
 	m := Message{
-		Value:       items,
-		ReceiptFunc: tracker.Dec,
+		Value: items,
+
+		// Stored for cleanup
+		tracker: tracker,
 	}
 	w.Listen(&sender[*Edge, *Message]{nil, pipe.StaticRx(&m)})
 }
