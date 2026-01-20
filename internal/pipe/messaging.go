@@ -15,13 +15,13 @@ const (
 	// pipe will wait before extending the pipe's internal buffer.
 	//
 	// A negative value disables the pipe extension functionality.
-	DefaultExtendAfter time.Duration = 0
+	DefaultExtendAfter time.Duration = -1
 
 	// This value is used as the default value that indicates the maximum
 	// number of times that a pipe's internal buffer may be extended.
 	//
-	// A value of 0 will prevent extensions.
-	DefaultMaxExtensions int = 0
+	// A negative value will allow unlimited extensions.
+	DefaultMaxExtensions int = -1
 )
 
 var ErrInvalidSize = errors.New("pipe size must be a power of two")
@@ -178,6 +178,11 @@ func Must[T any](n int) *Pipe[T] {
 // The buffer will be extended up to the maxExtensions value.
 //
 // The buffer's size doubles after each extension.
+//
+// A negative extendAfter value will disable dynamic extension.
+// A 0 value may be provided for extendAfter to indicate immediate extension.
+//
+// A negative maxExtensions value will allow unlimited extensions.
 func (p *Pipe[T]) SetExtensionConfig(extendAfter time.Duration, maxExtensions int) {
 	p.extendAfter = extendAfter
 	p.maxExtensions = maxExtensions
@@ -345,7 +350,7 @@ func (p *Pipe[T]) Send(item T) bool {
 	for p.full() && !p.done {
 		var timer *time.Timer
 
-		if p.extendAfter > 0 && (p.maxExtensions < 0 || p.extendCount < p.maxExtensions) {
+		if p.extendAfter >= 0 && (p.maxExtensions < 0 || p.extendCount < p.maxExtensions) {
 			currentSize := len(p.data)
 			timer = time.AfterFunc(p.extendAfter, func() {
 				p.mu.Lock()
@@ -399,6 +404,7 @@ func (p *Pipe[T]) Recv(t *T) bool {
 	}
 
 	if p.empty() && p.done {
+		p.data = nil
 		return false
 	}
 
