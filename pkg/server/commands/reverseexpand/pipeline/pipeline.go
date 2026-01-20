@@ -69,10 +69,14 @@ var (
 	ErrInvalidNumProcs   = errors.New("process number must be greater than zero")
 )
 
+// DirectEdgeHandler is a struct that handles edges having a direct type. These edges will
+// always require a query for objects using the edge's relation definition -- the downstream
+// type and relation.
 type DirectEdgeHandler struct {
 	queryEngine *QueryEngine
 }
 
+// Handle is a function that queries for objects using the relation definition of edge.
 func (h *DirectEdgeHandler) Handle(
 	ctx context.Context,
 	edge *Edge,
@@ -108,11 +112,14 @@ func (h *DirectEdgeHandler) Handle(
 	return results
 }
 
+// TTUEdgeHandler is a struct that handles edges having a TTU type. These edges will always
+// require a query for objects using the edge's tulpeset relation.
 type TTUEdgeHandler struct {
 	queryEngine *QueryEngine
 	graph       *Graph
 }
 
+// Handle is a function that queries for objects given the tupleset relation of edge.
 func (h *TTUEdgeHandler) Handle(
 	ctx context.Context,
 	edge *Edge,
@@ -174,8 +181,11 @@ func (h *TTUEdgeHandler) Handle(
 	return results
 }
 
+// IdentityEdgeHandler is a struct that handles items for edge types that do not
+// require additional processing.
 type IdentityEdgeHandler struct{}
 
+// Handle is a function that returns a sequence of the provided items as Item values.
 func (h *IdentityEdgeHandler) Handle(
 	_ context.Context,
 	_ *Edge,
@@ -190,12 +200,23 @@ func (h *IdentityEdgeHandler) Handle(
 	}
 }
 
+// EdgeInterpreter is a struct that holds all edge handlers, and acts as a proxy
+// interpreter for each handler.
 type EdgeInterpreter struct {
-	direct   *DirectEdgeHandler
-	ttu      *TTUEdgeHandler
+	// direct contains an edge handler that specifically handles direct edge types.
+	direct *DirectEdgeHandler
+
+	// ttu contains an edge handler that specifically handles ttu edge types.
+	ttu *TTUEdgeHandler
+
+	// identity contains an edge handler that handles nil edge values, computed,
+	// rewrite, direct logical, and ttu logical edge types.
 	identity *IdentityEdgeHandler
 }
 
+// Interpret is a function that selects the appropriate edge handler for a given edge
+// and passes its items to the chosen handler. When the value of edge has a type that
+// is not recognized, an iter.Seq containing an Item with an error is returned.
 func (e *EdgeInterpreter) Interpret(
 	ctx context.Context,
 	edge *Edge,
