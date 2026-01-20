@@ -74,20 +74,20 @@ Workers connect the graph path from source to target using sender and listener e
 graph TB
   id1([Input]) --> U["Worker: user"]
 
-  U -->|subscribed| O5["Worker: org#five"]
-  U -->|subscribed| O7["Worker: org#seven"]
+  U --> O5["Worker: org#five"]
+  U --> O7["Worker: org#seven"]
 
-  O5 -->|subscribed| OpI["Worker: operator (intersection)"]
-  O7 -->|subscribed| OpI
+  O5 --> OpI["Worker: operator (intersection)"]
+  O7 --> OpI
 
-  O5 -->|subscribed| OpU["Worker: operator (union)"]
-  O3["Worker: org#three"] -->|subscribed| OpU
+  O5 --> OpU["Worker: operator (union)"]
+  O3["Worker: org#three"] --> OpU
 
-  OpI -->|subscribed| O3
+  OpI --> O3
 
-  OpU -->|subscribed| O1["Worker: org#one"]
+  OpU --> O1["Worker: org#one"]
 
-  O1 -->|subscribed| O0["Worker: object#zero"]
+  O1 --> O0["Worker: object#zero"]
 
   O0 --> id2([Output])
 ```
