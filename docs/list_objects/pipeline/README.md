@@ -112,9 +112,9 @@ type org
 
 In order to determine whether there are objects in the `org#three` relation that may result in returning objects for the ListObjects call higher up the graph for the root `object#zero` relation, both the `org#five` and `org#seven` relation must have objects for the `user:01ARZ3NDEKTSV4RRFFQ69G5FAV` user. In the pipeline, intersection handling blocks until all `org#five` and `org#seven` objects are received as messages, then compares the found objects to ensure that they exist for both relations, and removes duplicates. As an example, for the `org#three` relation to have the `"org:a"` object, the following tuples would have to exist:
 
-```json
-{ user: "user:01ARZ3NDEKTSV4RRFFQ69G5FAV", relation: "five", object: "org:a" }
-{ user: "user:01ARZ3NDEKTSV4RRFFQ69G5FAV", relation: "seven", object: "org:a" }
+```jsonc
+{ "user": "user:01ARZ3NDEKTSV4RRFFQ69G5FAV", "relation": "five", "object": "org:a" }
+{ "user": "user:01ARZ3NDEKTSV4RRFFQ69G5FAV", "relation": "seven", "object": "org:a" }
 ```
 
 For exclusion, we can convert the above relation
@@ -143,16 +143,16 @@ type team
 
 In pseudocode, the `TTUEdge` would be `edge{ from: "union", to: "org#three", tuplesetRelation: "team#parent" }`. So if the object `"org:b"` was found to exist for the `org#three` relation, the next database query would require a look up for any objects in the `team#parent` relation with the user type `"org:b"`. In otherwords, if we had an object `"object:TTU"` connected via TTU, all of the following tuples would need to exist:
 
-```json
+```jsonc
 <!-- These tuples satisfy the "org#three" relation -->
-{ user: "user:01ARZ3NDEKTSV4RRFFQ69G5FAV", relation: "five", object: "org:b"}
-{ user: "user:01ARZ3NDEKTSV4RRFFQ69G5FAV", relation: "five", object: "org:b"}
+{ "user": "user:01ARZ3NDEKTSV4RRFFQ69G5FAV", "relation": "five", "object": "org:b"}
+{ "user": "user:01ARZ3NDEKTSV4RRFFQ69G5FAV", "relation": "five", "object": "org:b"}
 
 <!-- This tuple satisfies the "team#parent" TTU -->
-{ user: "org:b", relation: "parent", object: "team:a" }
+{ "user": "org:b", "relation": "parent", "object": "team:a" }
 
 <!-- This tuple would result in list objects returning "object:TTU" -->
-{ user: "team:a#eight", relation: "zero", object: "object:TTU" }
+{ "user": "team:a#eight", "relation": "zero", "object": "object:TTU" }
 ```
 
 ## Cyclic Edge
