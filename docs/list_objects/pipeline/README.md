@@ -68,7 +68,29 @@ This model can also be represented as a graph:
     >
 </p>
 
-Workers connect the graph path from source to target using sender and listener edges. Each worker processes messages from its senders and forwards results to its listeners. For example in the above model, the `org#five` worker node would have the sender edges `[]edge{{ from: "org#five", to: "user" }}` and the listener edges `[]edge{{ from: "intersection", to: "org#five" }, { from: "union", to: "org#five" }}` in pseudocode. Workers also set up node and edge type specific message handling, remain open while their senders may still be fetching or processing messages, and close themselves and their listeners once processing is complete.
+Workers connect the graph path from source to target using sender and listener edges. Each worker processes messages from its senders and forwards results to its listeners. For example in the above model, the `org#five` worker node would have the sender edges `[]edge{{ from: "org#five", to: "user" }}` and the listener edges `[]edge{{ from: "intersection", to: "org#five" }, { from: "union", to: "org#five" }}` in pseudocode. Workers also set up node and edge type specific message handling, remain open while their senders may still be fetching or processing messages, and close themselves and their listeners once processing is complete. For the `object#zero` path to `user` through the `org#one` relation, we can use the following graph to trace message passing:
+
+```mermaid
+graph TB
+  id1([Input]) --> U["Worker: user"]
+
+  U -->|subscribed| O5["Worker: org#five"]
+  U -->|subscribed| O7["Worker: org#seven"]
+
+  O5 -->|subscribed| OpI["Worker: operator (intersection)"]
+  O7 -->|subscribed| OpI
+
+  O5 -->|subscribed| OpU["Worker: operator (union)"]
+  O3["Worker: org#three"] -->|subscribed| OpU
+
+  OpI -->|subscribed| O3
+
+  OpU -->|subscribed| O1["Worker: org#one"]
+
+  O1 -->|subscribed| O0["Worker: object#zero"]
+
+  O0 --> id2([Output])
+```
 
 When the pipeline is building, an initial message is sent to all of the nodes with the same user type as the target, ie `user` receives the message `user:01ARZ3NDEKTSV4RRFFQ69G5FAV`, to kick off the message processing. As a result, any of the workers with senders coming from `user` receive the message `user:01ARZ3NDEKTSV4RRFFQ69G5FAV` and start making queries to the database to determine whether the edge they're going to has objects that relate to the user, eg `org#five`. If `org#five` does have objects for the user type, those objects are sent to their listeners in batches up to the size defined for the pipeline `chunkSize` and processed in a single database query. Finally, when messages are returned that connect to the source worker, in this case `object#zero`, or if errors are encountered anywhere along the way, they are returned in the resulting stream of `Item` values.
 
