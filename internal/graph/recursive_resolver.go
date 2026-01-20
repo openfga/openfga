@@ -30,7 +30,7 @@ var recursivePlan = &planner.PlanConfig{
 	InitialGuess: 150 * time.Millisecond,
 	// Medium Lambda: Represents medium confidence in the initial guess. It's like
 	// starting with the belief of having already seen 5 good runs.
-	Lambda: 1.0,
+	Lambda: 5.0,
 	// UNCERTAINTY ABOUT CONSISTENCY: The gap between p50 and p99 is large.
 	// Low Alpha/Beta values create a wider belief curve, telling the planner
 	// to expect and not be overly surprised by performance variations.
