@@ -683,12 +683,29 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 			}
 			defer iter.Stop()
 
+			possibleStrategies[defaultResolver] = defaultRecursivePlan
+			possibleStrategies[recursiveResolver] = recursivePlan
+
+			// If a strategy was already selected by a parent call, use it without re-planning.
+			// This prevents the planner from being called again during recursive dispatch calls.
+			if selectedStrategy := req.GetSelectedStrategy(); selectedStrategy != "" {
+				if _, exists := possibleStrategies[selectedStrategy]; exists {
+					resolver := c.defaultUserset
+					if selectedStrategy == recursiveResolver {
+						resolver = c.recursiveUserset
+					}
+					return resolver(ctx, req, directlyRelatedUsersetTypes, iter)(ctx)
+				}
+				// If the selected strategy is not in the possible strategies, fall through to planner
+			}
+
 			b.WriteString("infinite")
 			key := b.String()
 			keyPlan := c.planner.GetPlanSelector(key)
-			possibleStrategies[defaultResolver] = defaultRecursivePlan
-			possibleStrategies[recursiveResolver] = recursivePlan
 			plan := keyPlan.Select(possibleStrategies)
+
+			// Set the selected strategy on the request so child dispatches will use it
+			req.SelectedStrategy = plan.Name
 
 			resolver := c.defaultUserset
 			if plan.Name == recursiveResolver {
@@ -702,6 +719,10 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 		var remainingUsersetTypes []*openfgav1.RelationReference
 		keyPlanPrefix := b.String()
 		possibleStrategies[weightTwoResolver] = weight2Plan
+
+		// Check if a strategy was already selected by a parent call
+		selectedStrategy := req.GetSelectedStrategy()
+
 		for _, userset := range directlyRelatedUsersetTypes {
 			if !typesys.UsersetUseWeight2Resolver(objectType, relation, userType, userset) {
 				remainingUsersetTypes = append(remainingUsersetTypes, userset)
@@ -714,6 +735,19 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 			}
 			// NOTE: we collect defers given that the iterator won't be consumed until `union` resolves at the end.
 			defer iter.Stop()
+
+			// If a strategy was already selected, use it without re-planning
+			if selectedStrategy != "" {
+				if _, exists := possibleStrategies[selectedStrategy]; exists {
+					resolver := c.defaultUserset
+					if selectedStrategy == weightTwoResolver {
+						resolver = c.weight2Userset
+					}
+					resolvers = append(resolvers, resolver(ctx, req, usersets, iter))
+					continue
+				}
+			}
+
 			var k strings.Builder
 			k.WriteString(keyPlanPrefix)
 			k.WriteString("userset|")
@@ -721,6 +755,9 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 			key := k.String()
 			keyPlan := c.planner.GetPlanSelector(key)
 			strategy := keyPlan.Select(possibleStrategies)
+
+			// Set the selected strategy on the request so child dispatches will use it
+			req.SelectedStrategy = strategy.Name
 
 			resolver := c.defaultUserset
 			if strategy.Name == weightTwoResolver {
@@ -883,6 +920,23 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 			return resolver(ctx, req, rewrite, filteredIter)(ctx)
 		}
 
+		// If a strategy was already selected by a parent call, use it without re-planning.
+		// This prevents the planner from being called again during recursive dispatch calls.
+		if selectedStrategy := req.GetSelectedStrategy(); selectedStrategy != "" {
+			if _, exists := possibleStrategies[selectedStrategy]; exists {
+				switch selectedStrategy {
+				case defaultResolver:
+					resolver = c.defaultTTU
+				case weightTwoResolver:
+					resolver = c.weight2TTU
+				case recursiveResolver:
+					resolver = c.recursiveTTU
+				}
+				return resolver(ctx, req, rewrite, filteredIter)(ctx)
+			}
+			// If the selected strategy is not in the possible strategies, fall through to planner
+		}
+
 		var b strings.Builder
 		b.WriteString("ttu|")
 		b.WriteString(req.GetAuthorizationModelID())
@@ -899,6 +953,9 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 		planKey := b.String()
 		keyPlan := c.planner.GetPlanSelector(planKey)
 		strategy := keyPlan.Select(possibleStrategies)
+
+		// Set the selected strategy on the request so child dispatches will use it
+		req.SelectedStrategy = strategy.Name
 
 		switch strategy.Name {
 		case defaultResolver:

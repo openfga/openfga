@@ -181,6 +181,48 @@ func TestDefaultValueRequestMetadata(t *testing.T) {
 	require.Equal(t, openfgav1.ConsistencyPreference_UNSPECIFIED, r.GetConsistency())
 	require.Equal(t, map[string]struct{}{}, r.GetVisitedPaths())
 	require.Zero(t, r.GetLastCacheInvalidationTime())
+	require.Empty(t, r.GetSelectedStrategy())
+}
+
+func TestSelectedStrategyPropagation(t *testing.T) {
+	t.Run("clone_propagates_selected_strategy", func(t *testing.T) {
+		orig := &ResolveCheckRequest{
+			StoreID:              "store1",
+			AuthorizationModelID: "model1",
+			TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
+			RequestMetadata:      NewCheckRequestMetadata(),
+			SelectedStrategy:     "default",
+		}
+
+		cloned := orig.clone()
+
+		// Verify the selected strategy is propagated to the clone
+		require.Equal(t, "default", cloned.GetSelectedStrategy())
+
+		// Verify modifying the original doesn't affect the clone
+		orig.SelectedStrategy = "recursive"
+		require.Equal(t, "default", cloned.GetSelectedStrategy())
+		require.Equal(t, "recursive", orig.GetSelectedStrategy())
+	})
+
+	t.Run("clone_propagates_empty_selected_strategy", func(t *testing.T) {
+		orig := &ResolveCheckRequest{
+			StoreID:              "store1",
+			AuthorizationModelID: "model1",
+			TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
+			RequestMetadata:      NewCheckRequestMetadata(),
+		}
+
+		cloned := orig.clone()
+
+		// Verify empty strategy is properly propagated (remains empty)
+		require.Empty(t, cloned.GetSelectedStrategy())
+	})
+
+	t.Run("get_selected_strategy_nil_receiver", func(t *testing.T) {
+		var r *ResolveCheckRequest
+		require.Empty(t, r.GetSelectedStrategy())
+	})
 }
 
 func TestNewResolveCheckRequest(t *testing.T) {

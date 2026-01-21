@@ -26,6 +26,12 @@ type ResolveCheckRequest struct {
 	Consistency               openfgav1.ConsistencyPreference
 	LastCacheInvalidationTime time.Time
 
+	// SelectedStrategy is the strategy selected by the planner for this request chain.
+	// When set, child requests dispatched within that strategy should continue using
+	// the same strategy instead of calling the planner again. This prevents re-planning
+	// during recursive dispatch calls (e.g., when default strategy calls checkTTU multiple times).
+	SelectedStrategy string
+
 	// Invariant parts of a check request are those that don't change in sub-problems
 	// AuthorizationModelID, StoreID, Context, and ContextualTuples.
 	// the invariantCacheKey is computed once per request, and passed to sub-problems via copy in .clone()
@@ -136,6 +142,7 @@ func (r *ResolveCheckRequest) clone() *ResolveCheckRequest {
 		VisitedPaths:              maps.Clone(r.GetVisitedPaths()),
 		Consistency:               r.GetConsistency(),
 		LastCacheInvalidationTime: r.GetLastCacheInvalidationTime(),
+		SelectedStrategy:          r.GetSelectedStrategy(),
 		invariantCacheKey:         r.GetInvariantCacheKey(),
 	}
 }
@@ -201,6 +208,13 @@ func (r *ResolveCheckRequest) GetLastCacheInvalidationTime() time.Time {
 		return time.Time{}
 	}
 	return r.LastCacheInvalidationTime
+}
+
+func (r *ResolveCheckRequest) GetSelectedStrategy() string {
+	if r == nil {
+		return ""
+	}
+	return r.SelectedStrategy
 }
 
 func (r *ResolveCheckRequest) GetInvariantCacheKey() string {
