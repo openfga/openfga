@@ -345,7 +345,6 @@ func newBufferPool(size int) *bufferPool {
 
 type Message struct {
 	Value []Item
-	once  sync.Once
 
 	// stored for cleanup
 	buffer     *[]Item
@@ -353,21 +352,13 @@ type Message struct {
 	tracker    *track.Tracker
 }
 
-func (m *Message) finalize() {
+func (m Message) Done() {
 	if m.tracker != nil {
 		m.tracker.Dec()
 	}
 	if m.bufferPool != nil && m.buffer != nil {
 		m.bufferPool.Put(m.buffer)
 	}
-}
-
-func (m *Message) Done() {
-	m.once.Do(m.finalize)
-	m.Value = nil
-	m.buffer = nil
-	m.bufferPool = nil
-	m.tracker = nil
 }
 
 // Backend is a struct that serves as a container for all backend elements
@@ -584,14 +575,14 @@ type resolverCore struct {
 	interpreter Interpreter
 
 	// tracker may be owned or shared with other resolvers. It is used to report messages from
-	// this resovler that are still in-flight.
+	// this resolver that are still in-flight.
 	tracker *track.Tracker
 
 	// reporter may be owned or shared with other resolvers. It is used to report on the status of
 	// the resolver.
 	reporter *track.Reporter
 
-	// bufferPool is intended to be shared with other resovlers. It is used to manage a pool of
+	// bufferPool is intended to be shared with other resolvers. It is used to manage a pool of
 	// Item slices so that additional allocations can be avoided.
 	bufferPool *bufferPool
 
@@ -601,7 +592,7 @@ type resolverCore struct {
 
 func (r *resolverCore) broadcast(
 	results iter.Seq[Item],
-	listeners []Listener[*Edge, *Message],
+	listeners []Listener[*Edge, Message],
 ) int {
 	var sentCount int
 
@@ -637,7 +628,7 @@ func (r *resolverCore) broadcast(
 				tracker:    r.tracker,
 			}
 
-			if !listeners[i].Send(&m) {
+			if !listeners[i].Send(m) {
 				// If the message was not sent, we need to release the message resources.
 				m.Done()
 			}
@@ -654,8 +645,8 @@ func (r *resolverCore) broadcast(
 
 func (r *resolverCore) drain(
 	ctx context.Context,
-	snd Sender[*Edge, *Message],
-	yield func(context.Context, *Edge, *Message),
+	snd Sender[*Edge, Message],
+	yield func(context.Context, *Edge, Message),
 ) {
 	edge := snd.Key()
 
@@ -672,7 +663,7 @@ func (r *resolverCore) drain(
 		attribute.String("edge.from", edgeFrom),
 	}
 
-	var msg *Message
+	var msg Message
 
 	for snd.Recv(&msg) {
 		if ctx.Err() != nil {
@@ -696,7 +687,7 @@ func (r *resolverCore) drain(
 
 type baseProcessor struct {
 	resolverCore
-	listeners    []Listener[*Edge, *Message]
+	listeners    []Listener[*Edge, Message]
 	inputBuffer  *containers.AtomicMap[string, struct{}]
 	outputBuffer *containers.AtomicMap[string, struct{}]
 	SentCount    int64
@@ -708,7 +699,7 @@ type baseProcessor struct {
 // edge because values of a cycle may be reentrant. Output from the interpreter is always
 // deduplicated across all process functions because input from two different senders may produce
 // the same output value(s).
-func (p *baseProcessor) process(ctx context.Context, edge *Edge, msg *Message) {
+func (p *baseProcessor) process(ctx context.Context, edge *Edge, msg Message) {
 	errs := make([]Item, 0, len(msg.Value))
 	unseen := make([]string, 0, len(msg.Value))
 
@@ -764,8 +755,8 @@ type baseResolver struct {
 // `true` and the count of its tracker reaches `0`.
 func (r *baseResolver) Resolve(
 	ctx context.Context,
-	senders []Sender[*Edge, *Message],
-	listeners []Listener[*Edge, *Message],
+	senders []Sender[*Edge, Message],
+	listeners []Listener[*Edge, Message],
 ) {
 	ctx, span := pipelineTracer.Start(ctx, "baseResolver.Resolve")
 	defer span.End()
@@ -893,7 +884,7 @@ type operatorProcessor struct {
 // message is received from the sender, its values are swapped to a buffer that is local to the
 // current iteration, and the message resources are released immediately. Messages are not sent to
 // the listeners at this point.
-func (p *operatorProcessor) process(ctx context.Context, edge *Edge, msg *Message) {
+func (p *operatorProcessor) process(ctx context.Context, edge *Edge, msg Message) {
 	// Increment the tracker to account for an in-flight message.
 	p.tracker.Inc()
 	values := p.bufferPool.Get()
@@ -940,8 +931,8 @@ type exclusionResolver struct {
 
 func (r *exclusionResolver) Resolve(
 	ctx context.Context,
-	senders []Sender[*Edge, *Message],
-	listeners []Listener[*Edge, *Message],
+	senders []Sender[*Edge, Message],
+	listeners []Listener[*Edge, Message],
 ) {
 	ctx, span := pipelineTracer.Start(ctx, "exclusionResolver.Resolve")
 	defer span.End()
@@ -1055,8 +1046,8 @@ type intersectionResolver struct {
 
 func (r *intersectionResolver) Resolve(
 	ctx context.Context,
-	senders []Sender[*Edge, *Message],
-	listeners []Listener[*Edge, *Message],
+	senders []Sender[*Edge, Message],
+	listeners []Listener[*Edge, Message],
 ) {
 	ctx, span := pipelineTracer.Start(ctx, "intersectionResolver.Resolve")
 	defer span.End()
@@ -1181,11 +1172,11 @@ type Pipeline struct {
 	pipeMaxExtensions int
 }
 
-type pipelineWorker struct {
-	Worker[*Edge, *Message, *Message]
+type PipelineWorker struct {
+	Worker[*Edge, Message, Message]
 }
 
-func (w *pipelineWorker) listenForInitialValue(value string, tracker *track.Tracker) {
+func (w *PipelineWorker) listenForInitialValue(value string, tracker *track.Tracker) {
 	items := []Item{{Value: value}}
 	tracker.Inc()
 	m := Message{
@@ -1194,20 +1185,26 @@ func (w *pipelineWorker) listenForInitialValue(value string, tracker *track.Trac
 		// Stored for cleanup
 		tracker: tracker,
 	}
-	w.Listen(&sender[*Edge, *Message]{nil, pipe.StaticRx(&m)})
+	w.Listen(&sender[*Edge, Message]{nil, pipe.StaticRx(m)})
 }
 
-type workerPool map[*Node]*pipelineWorker
+type WorkerPool map[*Node]*PipelineWorker
 
-func (wp workerPool) Start(ctx context.Context) {
+func (wp WorkerPool) Start(ctx context.Context) {
+	var wg sync.WaitGroup
 	for _, w := range wp {
-		w.Start(ctx)
+		wg.Add(1)
+		go func(ctx context.Context, wg *sync.WaitGroup, fn func(context.Context)) {
+			defer wg.Done()
+			fn(ctx)
+		}(ctx, &wg, w.Start)
 	}
+	wg.Wait()
 }
 
-func (wp workerPool) Wait() {
+func (wp WorkerPool) Stop() {
 	for _, w := range wp {
-		w.Wait()
+		w.Close()
 	}
 }
 
@@ -1252,17 +1249,15 @@ func (pl *Pipeline) createInterpreter(ctx context.Context) Interpreter {
 
 // Build is a function that constructs the actual pipeline which is returned as an iter.Seq[Item].
 // The pipeline will not begin generating values until the returned sequence is iterated over.
-// This is to prevent unnecessary work and resource accummulation in the event that the sequence
+// This is to prevent unnecessary work and resource accumulation in the event that the sequence
 // is never iterated.
 func (pl *Pipeline) Build(ctx context.Context, source Source, target Target) iter.Seq[Item] {
 	ctx, span := pipelineTracer.Start(ctx, "pipeline.build")
 	defer span.End()
 
-	ctx, cancel := context.WithCancel(ctx)
-
 	interpreter := pl.createInterpreter(ctx)
 
-	workers := make(workerPool)
+	workers := make(WorkerPool)
 
 	p := path{
 		source:      (*Node)(source),
@@ -1273,7 +1268,6 @@ func (pl *Pipeline) Build(ctx context.Context, source Source, target Target) ite
 
 	sourceWorker, ok := workers[(*Node)(source)]
 	if !ok {
-		cancel()
 		return seq.Sequence(Item{Err: errors.New("no such source")})
 	}
 
@@ -1290,9 +1284,14 @@ func (pl *Pipeline) Build(ctx context.Context, source Source, target Target) ite
 			return
 		}
 
-		var wg sync.WaitGroup
+		// This context is used to end the goroutine that waits on
+		// the context to cancel. Without it, that goroutine could
+		// run indefinitely.
+		ctx, cancel := context.WithCancel(ctx)
 
+		var wg sync.WaitGroup
 		defer wg.Wait()
+
 		defer cancel()
 
 		// Workers are started here so that the pipeline does
@@ -1300,24 +1299,29 @@ func (pl *Pipeline) Build(ctx context.Context, source Source, target Target) ite
 		// to iterate over the sequence. This prevents unnecessary
 		// processing in the event that the caller decides not to
 		// iterate over the sequence.
-		workers.Start(ctx)
-
 		wg.Add(1)
-		go func() {
+		go func(ctx context.Context, wg *sync.WaitGroup, fn func(context.Context)) {
+			defer wg.Done()
+			fn(ctx)
+		}(ctx, &wg, workers.Start)
+
+		// When the context is canceled, for any reason, the pipeline
+		// should shut itself down.
+		wg.Add(1)
+		go func(ctx context.Context, wg *sync.WaitGroup, fn func()) {
 			defer wg.Done()
 			<-ctx.Done()
-			// Wait for all workers to finish.
-			workers.Wait()
-		}()
+			fn()
+		}(ctx, &wg, workers.Stop)
 
 		var abandoned bool
 
 		for msg := range results.Seq() {
-			if ctx.Err() == nil {
+			if !abandoned {
 				for _, item := range msg.Value {
 					if !yield(item) {
 						// The caller has ended sequence iteration early.
-						// Cancel the context so that the pipeline begins
+						// Stop the workers so that the pipeline begins
 						// its shutdown process.
 						abandoned = true
 						cancel()
@@ -1328,11 +1332,13 @@ func (pl *Pipeline) Build(ctx context.Context, source Source, target Target) ite
 			msg.Done()
 		}
 
-		if !abandoned && ctx.Err() != nil {
+		err := ctx.Err()
+
+		if !abandoned && err != nil {
 			// Context was canceled so there is no guarantee that all
 			// objects have been returned. An error must be signaled
 			// here to indicate the possibility of a partial result.
-			yield(Item{Err: ctx.Err()})
+			yield(Item{Err: err})
 		}
 	}
 }
@@ -1363,7 +1369,7 @@ type path struct {
 	statusPool  *track.StatusPool
 }
 
-func createOperatorResolver(label string, core resolverCore) Resolver[*Edge, *Message, *Message] {
+func createOperatorResolver(label string, core resolverCore) Resolver[*Edge, Message, Message] {
 	switch label {
 	case weightedGraph.IntersectionOperator:
 		return &intersectionResolver{core}
@@ -1376,7 +1382,7 @@ func createOperatorResolver(label string, core resolverCore) Resolver[*Edge, *Me
 	}
 }
 
-func createResolver(node *Node, core resolverCore) Resolver[*Edge, *Message, *Message] {
+func createResolver(node *Node, core resolverCore) Resolver[*Edge, Message, Message] {
 	switch node.GetNodeType() {
 	case nodeTypeSpecificType,
 		nodeTypeSpecificTypeAndRelation,
@@ -1391,13 +1397,13 @@ func createResolver(node *Node, core resolverCore) Resolver[*Edge, *Message, *Me
 	}
 }
 
-func (pl *Pipeline) configureWorker(w *pipelineWorker) {
+func (pl *Pipeline) configureWorker(w *PipelineWorker) {
 	w.bufferSize = pl.bufferSize
 	w.pipeExtendAfter = pl.pipeExtendAfter
 	w.pipeMaxExtensions = pl.pipeMaxExtensions
 }
 
-func (pl *Pipeline) resolve(p path, workers workerPool) *pipelineWorker {
+func (pl *Pipeline) resolve(p path, workers WorkerPool) *PipelineWorker {
 	if w, ok := workers[p.source]; ok {
 		return w
 	}
@@ -1410,7 +1416,7 @@ func (pl *Pipeline) resolve(p path, workers workerPool) *pipelineWorker {
 		p.statusPool = new(track.StatusPool)
 	}
 
-	var w pipelineWorker
+	var w PipelineWorker
 	pl.configureWorker(&w)
 
 	reporter := p.statusPool.Register()
@@ -1539,9 +1545,7 @@ type Worker[K any, T any, U any] struct {
 	senders   []Sender[K, T]
 	listeners []Listener[K, U]
 	Resolver  Resolver[K, T, U]
-	finite    func()
-	init      sync.Once
-	wg        sync.WaitGroup
+	started   bool
 
 	// bufferSize is the value that will be set for the worker's internal pipe buffer.
 	// The value must be a power of two; any other value will cause a panic.
@@ -1552,8 +1556,8 @@ type Worker[K any, T any, U any] struct {
 }
 
 func (w *Worker[K, T, U]) Close() {
-	if w.finite != nil {
-		w.finite()
+	for _, lst := range w.listeners {
+		lst.Close()
 	}
 }
 
@@ -1561,37 +1565,15 @@ func (w *Worker[K, T, U]) Listen(s Sender[K, T]) {
 	w.senders = append(w.senders, s)
 }
 
-func (w *Worker[K, T, U]) initialize(ctx context.Context) {
-	ctx, span := pipelineTracer.Start(ctx, "worker")
-	ctx, cancel := context.WithCancel(ctx)
-
-	w.finite = sync.OnceFunc(func() {
-		cancel()
-		for _, lst := range w.listeners {
-			lst.Close()
-		}
-	})
-
-	w.wg.Add(1)
-	go func() {
-		defer span.End()
-		defer w.wg.Done()
-		defer w.Close()
-		w.Resolver.Resolve(ctx, w.senders, w.listeners)
-	}()
-
-	w.wg.Add(1)
-	go func() {
-		defer w.wg.Done()
-		defer w.Close()
-		<-ctx.Done()
-	}()
-}
-
 func (w *Worker[K, T, U]) Start(ctx context.Context) {
-	w.init.Do(func() {
-		w.initialize(ctx)
-	})
+	if w.started {
+		return
+	}
+	ctx, span := pipelineTracer.Start(ctx, "worker")
+	defer span.End()
+
+	w.started = true
+	w.Resolver.Resolve(ctx, w.senders, w.listeners)
 }
 
 func (w *Worker[K, T, U]) Subscribe(key K) Sender[K, U] {
@@ -1611,8 +1593,4 @@ func (w *Worker[K, T, U]) Subscribe(key K) Sender[K, U] {
 		key,
 		p,
 	}
-}
-
-func (w *Worker[K, T, U]) Wait() {
-	w.wg.Wait()
 }
