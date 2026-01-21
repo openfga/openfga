@@ -53,7 +53,7 @@ func BenchmarkPlanner_RecursiveScenario(b *testing.B) {
 	b.ReportAllocs()
 
 	// 4. The Benchmark Loop
-	for i := 0; i < 50000; i++ {
+	for i := 0; i < b.N; i++ {
 		// A. Select Strategy
 		selected := kp.Select(resolvers)
 
@@ -64,7 +64,7 @@ func BenchmarkPlanner_RecursiveScenario(b *testing.B) {
 			slowCount++
 			// Default: Random between 500ms and 3000ms
 			// Range = 2500, Base = 500
-			randomMs := 100 + rng.Int63n(2901)
+			randomMs := 500 + rng.Int63n(2501)
 			actualDuration = time.Duration(randomMs) * time.Millisecond
 		} else {
 			fastCount++

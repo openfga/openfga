@@ -30,7 +30,8 @@ type ResolveCheckRequest struct {
 	// When set, child requests dispatched within that strategy should continue using
 	// the same strategy instead of calling the planner again. This prevents re-planning
 	// during recursive dispatch calls (e.g., when default strategy calls checkTTU multiple times).
-	SelectedStrategy string
+	// This field is atomic to prevent data races when multiple goroutines access the same request.
+	SelectedStrategy atomic.Pointer[string]
 
 	// Invariant parts of a check request are those that don't change in sub-problems
 	// AuthorizationModelID, StoreID, Context, and ContextualTuples.
@@ -132,7 +133,7 @@ func (r *ResolveCheckRequest) clone() *ResolveCheckRequest {
 		tupleKey = proto.Clone(origTupleKey).(*openfgav1.TupleKey)
 	}
 
-	return &ResolveCheckRequest{
+	cloned := &ResolveCheckRequest{
 		StoreID:                   r.GetStoreID(),
 		AuthorizationModelID:      r.GetAuthorizationModelID(),
 		TupleKey:                  tupleKey,
@@ -142,9 +143,12 @@ func (r *ResolveCheckRequest) clone() *ResolveCheckRequest {
 		VisitedPaths:              maps.Clone(r.GetVisitedPaths()),
 		Consistency:               r.GetConsistency(),
 		LastCacheInvalidationTime: r.GetLastCacheInvalidationTime(),
-		SelectedStrategy:          r.GetSelectedStrategy(),
 		invariantCacheKey:         r.GetInvariantCacheKey(),
 	}
+	if strategy := r.GetSelectedStrategy(); strategy != "" {
+		cloned.SetSelectedStrategy(strategy)
+	}
+	return cloned
 }
 
 func (r *ResolveCheckRequest) GetStoreID() string {
@@ -214,7 +218,14 @@ func (r *ResolveCheckRequest) GetSelectedStrategy() string {
 	if r == nil {
 		return ""
 	}
-	return r.SelectedStrategy
+	if v := r.SelectedStrategy.Load(); v != nil {
+		return *v
+	}
+	return ""
+}
+
+func (r *ResolveCheckRequest) SetSelectedStrategy(strategy string) {
+	r.SelectedStrategy.Store(&strategy)
 }
 
 func (r *ResolveCheckRequest) GetInvariantCacheKey() string {

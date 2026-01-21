@@ -191,8 +191,8 @@ func TestSelectedStrategyPropagation(t *testing.T) {
 			AuthorizationModelID: "model1",
 			TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
 			RequestMetadata:      NewCheckRequestMetadata(),
-			SelectedStrategy:     "default",
 		}
+		orig.SetSelectedStrategy("default")
 
 		cloned := orig.clone()
 
@@ -200,7 +200,7 @@ func TestSelectedStrategyPropagation(t *testing.T) {
 		require.Equal(t, "default", cloned.GetSelectedStrategy())
 
 		// Verify modifying the original doesn't affect the clone
-		orig.SelectedStrategy = "recursive"
+		orig.SetSelectedStrategy("recursive")
 		require.Equal(t, "default", cloned.GetSelectedStrategy())
 		require.Equal(t, "recursive", orig.GetSelectedStrategy())
 	})

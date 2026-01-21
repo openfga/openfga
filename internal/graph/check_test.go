@@ -2692,8 +2692,8 @@ func TestSelectedStrategySkipsPlannerOnDispatch(t *testing.T) {
 			AuthorizationModelID: model.GetId(),
 			TupleKey:             tuple.NewTupleKey("group:1", "member", "user:maria"),
 			RequestMetadata:      NewCheckRequestMetadata(),
-			SelectedStrategy:     "default", // Pre-select the default strategy
 		}
+		req.SetSelectedStrategy("default") // Pre-select the default strategy
 
 		resp, err := checker.ResolveCheck(ctx, req)
 		require.NoError(t, err)

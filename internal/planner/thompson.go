@@ -121,7 +121,7 @@ func (ts *ThompsonStats) Update(duration time.Duration) {
 			beta:   newBeta,
 		}
 
-		// 3. Try to atomically swap the old pointer with the new one.
+		// Try to atomically swap the old pointer with the new one.
 		// If another goroutine changed the pointer in the meantime, this will fail,
 		// and we will loop again to retry the whole operation.
 		if atomic.CompareAndSwapPointer(&ts.params, oldPtr, unsafe.Pointer(newParams)) {
@@ -135,11 +135,20 @@ func (ts *ThompsonStats) Update(duration time.Duration) {
 func NewThompsonStats(initialGuess time.Duration, lambda, alpha, beta float64) *ThompsonStats {
 	initialMs := float64(initialGuess.Nanoseconds()) / 1e6
 
+	// Safety check: Log(0) is -Infinity. Clamp to a tiny value if needed.
+	if initialMs <= 0 {
+		initialMs = 0.001
+	}
+
+	// 2. Convert to Log-Space
+	// If we expect 20ms, we store ln(20) ≈ 2.99
+	initialLogMu := math.Log(initialMs)
+
 	ts := &ThompsonStats{}
 
 	// Create the initial immutable parameter snapshot.
 	params := &samplingParams{
-		mu:     initialMs,
+		mu:     initialLogMu,
 		lambda: lambda,
 		alpha:  alpha,
 		beta:   beta,

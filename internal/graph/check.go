@@ -705,7 +705,7 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 			plan := keyPlan.Select(possibleStrategies)
 
 			// Set the selected strategy on the request so child dispatches will use it
-			req.SelectedStrategy = plan.Name
+			req.SetSelectedStrategy(plan.Name)
 
 			resolver := c.defaultUserset
 			if plan.Name == recursiveResolver {
@@ -757,7 +757,7 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 			strategy := keyPlan.Select(possibleStrategies)
 
 			// Set the selected strategy on the request so child dispatches will use it
-			req.SelectedStrategy = strategy.Name
+			req.SetSelectedStrategy(strategy.Name)
 
 			resolver := c.defaultUserset
 			if strategy.Name == weightTwoResolver {
@@ -955,7 +955,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 		strategy := keyPlan.Select(possibleStrategies)
 
 		// Set the selected strategy on the request so child dispatches will use it
-		req.SelectedStrategy = strategy.Name
+		req.SetSelectedStrategy(strategy.Name)
 
 		switch strategy.Name {
 		case defaultResolver:

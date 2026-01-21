@@ -32,12 +32,20 @@ var defaultPlan = &planner.PlanConfig{
 }
 
 var defaultRecursivePlan = &planner.PlanConfig{
-	Name:         defaultResolver,
-	InitialGuess: 500 * time.Millisecond, // Higher initial guess for recursive checks
-	// Low Lambda: Represents zero confidence. It's a pure guess.
+	Name: defaultResolver,
+	// Higher initial guess: We assume the default path is slower (cold starts/unoptimized).
+	InitialGuess: 500 * time.Millisecond,
+	// Low Lambda: Represents very low confidence in this initial guess (1 observation).
+	// The planner will adapt its mean quickly as real data comes in, having low inertia.
 	Lambda: 1,
-	Alpha:  3.0,
-	Beta:   2.0,
+	// CONSISTENCY EXPECTATIONS:
+	// We apply the same variance belief as the optimized strategy to keep comparisons fair.
+	// Higher expected precision: E[τ]= α/β = 3.0/2.0 = 1.5.
+	// Moderate expected variance: E[σ²]= β/(α−1) = 2.0/(3.0−1) = 1.0.
+	// Tighter tolerance for spread: α = 3 implies we expect the latency to stay relatively
+	// stable around the mean, rather than varying wildly (which α=0.5 would imply).
+	Alpha: 3.0,
+	Beta:  2.0,
 }
 
 type dispatchParams struct {

@@ -32,12 +32,12 @@ var recursivePlan = &planner.PlanConfig{
 	// starting with the belief of having already seen 3 good runs.
 	Lambda: 3.0,
 	// UNCERTAINTY ABOUT CONSISTENCY: The gap between p50 and p99 is large.
-	// Low Alpha/Beta values create a wider belief curve, telling the planner
-	// to expect and not be overly surprised by performance variations.
-	// Low expected precision: 𝐸[𝜏]= 𝛼/𝛽 = 2.0/2.5 = 0.8.
-	// High expected variance: E[σ2]= β/(α−1) =2.5/1 = 2.5, this will allow for relative bursty / jiterry results.
-	// Wide tolerance for spread: 𝛼 = 2, this will allow for considerable uncertainty in how spike the latency can be.
-	// When β > α, we expect lower precision and higher variance
+	// Moderate Alpha/Beta values create a balanced belief curve, telling the planner
+	// to expect variations but with higher confidence than before.
+	// Higher expected precision: E[τ]= α/β = 3.0/2.0 = 1.5.
+	// Moderate expected variance: E[σ²]= β/(α−1) = 2.0/(3.0−1) = 1.0. This allows for variance but is less jittery than previous settings.
+	// Tighter tolerance for spread: α = 3 indicates a narrower uncertainty than α = 2, meaning we are more certain about the variance range.
+	// When α > β, we expect higher precision and more controlled variance.
 	Alpha: 3.0,
 	Beta:  2.0,
 }
