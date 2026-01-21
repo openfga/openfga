@@ -29,8 +29,8 @@ var recursivePlan = &planner.PlanConfig{
 	Name:         recursiveResolver,
 	InitialGuess: 150 * time.Millisecond,
 	// Medium Lambda: Represents medium confidence in the initial guess. It's like
-	// starting with the belief of having already seen 5 good runs.
-	Lambda: 5.0,
+	// starting with the belief of having already seen 3 good runs.
+	Lambda: 3.0,
 	// UNCERTAINTY ABOUT CONSISTENCY: The gap between p50 and p99 is large.
 	// Low Alpha/Beta values create a wider belief curve, telling the planner
 	// to expect and not be overly surprised by performance variations.
@@ -38,8 +38,8 @@ var recursivePlan = &planner.PlanConfig{
 	// High expected variance: E[σ2]= β/(α−1) =2.5/1 = 2.5, this will allow for relative bursty / jiterry results.
 	// Wide tolerance for spread: 𝛼 = 2, this will allow for considerable uncertainty in how spike the latency can be.
 	// When β > α, we expect lower precision and higher variance
-	Alpha: 2.0,
-	Beta:  2.5,
+	Alpha: 3.0,
+	Beta:  2.0,
 }
 
 type recursiveMapping struct {
