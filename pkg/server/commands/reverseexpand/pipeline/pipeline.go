@@ -352,7 +352,7 @@ type Message struct {
 	tracker    *track.Tracker
 }
 
-func (m Message) Done() {
+func (m *Message) Done() {
 	if m.tracker != nil {
 		m.tracker.Dec()
 	}
@@ -592,7 +592,7 @@ type resolverCore struct {
 
 func (r *resolverCore) broadcast(
 	results iter.Seq[Item],
-	listeners []Listener[*Edge, Message],
+	listeners []Listener[*Edge, *Message],
 ) int {
 	var sentCount int
 
@@ -618,7 +618,7 @@ func (r *resolverCore) broadcast(
 
 			// Increment the resolver's tracker to account for the new message.
 			r.tracker.Inc()
-			m := Message{
+			m := &Message{
 				// Only slice the values in the read buffer up to what was actually read.
 				Value: (*values)[:count],
 
@@ -645,8 +645,8 @@ func (r *resolverCore) broadcast(
 
 func (r *resolverCore) drain(
 	ctx context.Context,
-	snd Sender[*Edge, Message],
-	yield func(context.Context, *Edge, Message),
+	snd Sender[*Edge, *Message],
+	yield func(context.Context, *Edge, *Message),
 ) {
 	edge := snd.Key()
 
@@ -663,7 +663,7 @@ func (r *resolverCore) drain(
 		attribute.String("edge.from", edgeFrom),
 	}
 
-	var msg Message
+	var msg *Message
 
 	for snd.Recv(&msg) {
 		if ctx.Err() != nil {
@@ -687,7 +687,7 @@ func (r *resolverCore) drain(
 
 type baseProcessor struct {
 	resolverCore
-	listeners    []Listener[*Edge, Message]
+	listeners    []Listener[*Edge, *Message]
 	inputBuffer  *containers.AtomicMap[string, struct{}]
 	outputBuffer *containers.AtomicMap[string, struct{}]
 	SentCount    int64
@@ -699,7 +699,7 @@ type baseProcessor struct {
 // edge because values of a cycle may be reentrant. Output from the interpreter is always
 // deduplicated across all process functions because input from two different senders may produce
 // the same output value(s).
-func (p *baseProcessor) process(ctx context.Context, edge *Edge, msg Message) {
+func (p *baseProcessor) process(ctx context.Context, edge *Edge, msg *Message) {
 	errs := make([]Item, 0, len(msg.Value))
 	unseen := make([]string, 0, len(msg.Value))
 
@@ -755,8 +755,8 @@ type baseResolver struct {
 // `true` and the count of its tracker reaches `0`.
 func (r *baseResolver) Resolve(
 	ctx context.Context,
-	senders []Sender[*Edge, Message],
-	listeners []Listener[*Edge, Message],
+	senders []Sender[*Edge, *Message],
+	listeners []Listener[*Edge, *Message],
 ) {
 	ctx, span := pipelineTracer.Start(ctx, "baseResolver.Resolve")
 	defer span.End()
@@ -884,7 +884,7 @@ type operatorProcessor struct {
 // message is received from the sender, its values are swapped to a buffer that is local to the
 // current iteration, and the message resources are released immediately. Messages are not sent to
 // the listeners at this point.
-func (p *operatorProcessor) process(ctx context.Context, edge *Edge, msg Message) {
+func (p *operatorProcessor) process(ctx context.Context, edge *Edge, msg *Message) {
 	// Increment the tracker to account for an in-flight message.
 	p.tracker.Inc()
 	values := p.bufferPool.Get()
@@ -931,8 +931,8 @@ type exclusionResolver struct {
 
 func (r *exclusionResolver) Resolve(
 	ctx context.Context,
-	senders []Sender[*Edge, Message],
-	listeners []Listener[*Edge, Message],
+	senders []Sender[*Edge, *Message],
+	listeners []Listener[*Edge, *Message],
 ) {
 	ctx, span := pipelineTracer.Start(ctx, "exclusionResolver.Resolve")
 	defer span.End()
@@ -1046,8 +1046,8 @@ type intersectionResolver struct {
 
 func (r *intersectionResolver) Resolve(
 	ctx context.Context,
-	senders []Sender[*Edge, Message],
-	listeners []Listener[*Edge, Message],
+	senders []Sender[*Edge, *Message],
+	listeners []Listener[*Edge, *Message],
 ) {
 	ctx, span := pipelineTracer.Start(ctx, "intersectionResolver.Resolve")
 	defer span.End()
@@ -1173,19 +1173,19 @@ type Pipeline struct {
 }
 
 type PipelineWorker struct {
-	Worker[*Edge, Message, Message]
+	Worker[*Edge, *Message, *Message]
 }
 
 func (w *PipelineWorker) listenForInitialValue(value string, tracker *track.Tracker) {
 	items := []Item{{Value: value}}
 	tracker.Inc()
-	m := Message{
+	m := &Message{
 		Value: items,
 
 		// Stored for cleanup
 		tracker: tracker,
 	}
-	w.Listen(&sender[*Edge, Message]{nil, pipe.StaticRx(m)})
+	w.Listen(&sender[*Edge, *Message]{nil, pipe.StaticRx(m)})
 }
 
 type WorkerPool map[*Node]*PipelineWorker
@@ -1369,7 +1369,7 @@ type path struct {
 	statusPool  *track.StatusPool
 }
 
-func createOperatorResolver(label string, core resolverCore) Resolver[*Edge, Message, Message] {
+func createOperatorResolver(label string, core resolverCore) Resolver[*Edge, *Message, *Message] {
 	switch label {
 	case weightedGraph.IntersectionOperator:
 		return &intersectionResolver{core}
@@ -1382,7 +1382,7 @@ func createOperatorResolver(label string, core resolverCore) Resolver[*Edge, Mes
 	}
 }
 
-func createResolver(node *Node, core resolverCore) Resolver[*Edge, Message, Message] {
+func createResolver(node *Node, core resolverCore) Resolver[*Edge, *Message, *Message] {
 	switch node.GetNodeType() {
 	case nodeTypeSpecificType,
 		nodeTypeSpecificTypeAndRelation,
