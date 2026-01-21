@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"sort"
 	"time"
 
@@ -171,6 +172,7 @@ type Server struct {
 	resolveNodeLimit                 uint32
 	resolveNodeBreadthLimit          uint32
 	changelogHorizonOffset           int
+	readChangesMaxPageSize           int32
 	listObjectsDeadline              time.Duration
 	listObjectsMaxResults            uint32
 	listUsersDeadline                time.Duration
@@ -333,6 +335,17 @@ func WithResolveNodeBreadthLimit(limit uint32) OpenFGAServiceV1Option {
 func WithChangelogHorizonOffset(offset int) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.changelogHorizonOffset = offset
+	}
+}
+
+// WithReadChangesMaxPageSize sets the maximum page size for ReadChanges API requests.
+func WithReadChangesMaxPageSize(max uint32) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		if max <= 0 || max > math.MaxInt32 {
+			max = serverconfig.DefaultReadChangesMaxPageSize
+		}
+
+		s.readChangesMaxPageSize = int32(max)
 	}
 }
 
@@ -830,6 +843,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		encoder:                          encoder.NewBase64Encoder(),
 		transport:                        gateway.NewNoopTransport(),
 		changelogHorizonOffset:           serverconfig.DefaultChangelogHorizonOffset,
+		readChangesMaxPageSize:           serverconfig.DefaultReadChangesMaxPageSize,
 		resolveNodeLimit:                 serverconfig.DefaultResolveNodeLimit,
 		resolveNodeBreadthLimit:          serverconfig.DefaultResolveNodeBreadthLimit,
 		listObjectsDeadline:              serverconfig.DefaultListObjectsDeadline,
@@ -912,6 +926,10 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 
 	if s.listUsersDispatchThrottlingMaxThreshold != 0 && s.listUsersDispatchDefaultThreshold > s.listUsersDispatchThrottlingMaxThreshold {
 		return nil, fmt.Errorf("ListUsers default dispatch throttling threshold must be equal or smaller than max dispatch threshold for ListUsers")
+	}
+
+	if s.readChangesMaxPageSize < storage.DefaultPageSize {
+		return nil, fmt.Errorf("ReadChanges max page size must be a greater than or equal to %d", storage.DefaultPageSize)
 	}
 
 	if s.featureFlagClient == nil {
