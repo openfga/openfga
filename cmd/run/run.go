@@ -468,6 +468,13 @@ func (s *ServerContext) datastoreConfig(config *serverconfig.Config) (storage.Op
 		if err != nil {
 			return nil, nil, fmt.Errorf("initialize sqlite datastore: %w", err)
 		}
+	case "dsql":
+		// Aurora DSQL uses PostgreSQL wire protocol with IAM authentication
+		// The postgres.New function handles dsql:// URIs automatically
+		datastore, err = postgres.New(config.Datastore.URI, dsCfg)
+		if err != nil {
+			return nil, nil, fmt.Errorf("initialize dsql datastore: %w", err)
+		}
 	default:
 		return nil, nil, fmt.Errorf("storage engine '%s' is unsupported", config.Datastore.Engine)
 	}

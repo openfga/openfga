@@ -103,6 +103,14 @@ func RunMigrations(cfg MigrationConfig) error {
 		if err != nil {
 			return err
 		}
+	case "dsql":
+		dsqlCfg, err := prepareDSQLMigration(uri, log)
+		if err != nil {
+			return err
+		}
+		driver = dsqlCfg.driver
+		migrationsPath = dsqlCfg.migrationsPath
+		uri = dsqlCfg.uri
 	case "":
 		return fmt.Errorf("missing datastore engine type")
 	default:
