@@ -638,6 +638,6 @@ func TestBuildCacheKey(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	result := BuildCacheKey(req)
+	result := BuildCacheKey(*req)
 	require.NotEmpty(t, result)
 }

@@ -154,7 +154,7 @@ func (c *CachedCheckResolver) ResolveCheck(
 ) (*ResolveCheckResponse, error) {
 	span := trace.SpanFromContext(ctx)
 
-	cacheKey := BuildCacheKey(req)
+	cacheKey := BuildCacheKey(*req)
 
 	tryCache := req.Consistency != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY
 
@@ -211,7 +211,7 @@ func (c *CachedCheckResolver) ResolveCheck(
 	return resp, nil
 }
 
-func BuildCacheKey(req *ResolveCheckRequest) string {
+func BuildCacheKey(req ResolveCheckRequest) string {
 	tup := tuple.From(req.GetTupleKey())
 	cacheKeyString := tup.String() + req.GetInvariantCacheKey()
 

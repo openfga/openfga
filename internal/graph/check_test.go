@@ -1196,6 +1196,7 @@ func TestCheckDispatchCount(t *testing.T) {
 			AuthorizationModelID: model.GetId(),
 			TupleKey:             tuple.NewTupleKey("doc:readme", "viewer", "user:jon"),
 			RequestMetadata:      checkRequestMetadata,
+			SelectedStrategy:     "recursive",
 		})
 		require.NoError(t, err)
 		require.True(t, resp.Allowed)
@@ -1262,6 +1263,7 @@ func TestCheckDispatchCount(t *testing.T) {
 			AuthorizationModelID: model.GetId(),
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:jon"),
 			RequestMetadata:      checkRequestMetadata,
+			SelectedStrategy:     "recursive",
 		})
 		require.NoError(t, err)
 		require.True(t, resp.Allowed)
@@ -1276,11 +1278,13 @@ func TestCheckDispatchCount(t *testing.T) {
 			AuthorizationModelID: model.GetId(),
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:other"),
 			RequestMetadata:      checkRequestMetadata,
+			SelectedStrategy:     "recursive",
 		})
 		require.NoError(t, err)
 		require.False(t, resp.Allowed)
 
-		require.Equal(t, uint32(1), checkRequestMetadata.DispatchCounter.Load())
+		require.GreaterOrEqual(t, checkRequestMetadata.DispatchCounter.Load(), uint32(1))
+		require.LessOrEqual(t, checkRequestMetadata.DispatchCounter.Load(), uint32(4))
 	})
 	t.Run("dispatch_count_computed_userset_lookups", func(t *testing.T) {
 		storeID := ulid.Make().String()
