@@ -928,10 +928,6 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		return nil, fmt.Errorf("ListUsers default dispatch throttling threshold must be equal or smaller than max dispatch threshold for ListUsers")
 	}
 
-	if s.readChangesMaxPageSize < storage.DefaultPageSize {
-		return nil, fmt.Errorf("ReadChanges max page size must be a greater than or equal to %d", storage.DefaultPageSize)
-	}
-
 	if s.featureFlagClient == nil {
 		s.featureFlagClient = featureflags.NewDefaultClient(s.experimentals)
 	}

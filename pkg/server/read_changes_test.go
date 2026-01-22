@@ -144,6 +144,27 @@ func TestReadChangesPageSizeValidation(t *testing.T) {
 		require.Contains(t, err.Error(), "invalid ReadChangesRequest.PageSize: value must be inside range [1, 50]")
 	})
 
+	t.Run("page_size_not_provided_with_lower_custom_limit", func(t *testing.T) {
+		// When max is lower than default and PageSize is not provided,
+		// the datastore will use its own default page size.
+		// Server-side validation should NOT block this since PageSize is nil.
+		openfga := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithReadChangesMaxPageSize(50),
+		)
+		t.Cleanup(openfga.Close)
+
+		storeID := ulid.Make().String()
+
+		_, err := openfga.ReadChanges(context.Background(), &openfgav1.ReadChangesRequest{
+			StoreId: storeID,
+			Type:    "user",
+			// PageSize is nil (not provided) - datastore will use its default
+		})
+		// Should succeed - server-side validation only applies when PageSize is explicitly provided
+		require.NoError(t, err)
+	})
+
 	t.Run("page_size_with_higher_custom_limit", func(t *testing.T) {
 		openfga := MustNewServerWithOpts(
 			WithDatastore(ds),
@@ -196,24 +217,6 @@ func TestReadChangesPageSizeValidation(t *testing.T) {
 		})
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "invalid ReadChangesRequest.PageSize: value must be inside range [1, 200]")
-	})
-
-	t.Run("error_message_reflects_configured_max_for_higher_limit", func(t *testing.T) {
-		openfga := MustNewServerWithOpts(
-			WithDatastore(ds),
-			WithReadChangesMaxPageSize(500),
-		)
-		t.Cleanup(openfga.Close)
-
-		storeID := ulid.Make().String()
-
-		_, err := openfga.ReadChanges(context.Background(), &openfgav1.ReadChangesRequest{
-			StoreId:  storeID,
-			Type:     "user",
-			PageSize: wrapperspb.Int32(501),
-		})
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "invalid ReadChangesRequest.PageSize: value must be inside range [1, 500]")
 	})
 
 	t.Run("page_size_zero", func(t *testing.T) {
