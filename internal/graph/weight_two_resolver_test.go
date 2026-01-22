@@ -1380,7 +1380,7 @@ func TestCheckUsersetFastPathV2(t *testing.T) {
 		}, []*openfgav1.RelationReference{{
 			Type:               "group",
 			RelationOrWildcard: &openfgav1.RelationReference_Relation{Relation: "all"},
-		}}, iter)(ctx)
+		}}, iter, "weight2")(ctx)
 		require.NoError(t, err)
 		require.NotNil(t, val)
 		require.True(t, val.GetAllowed())
@@ -1454,7 +1454,7 @@ func TestCheckUsersetFastPathV2(t *testing.T) {
 		}, []*openfgav1.RelationReference{{
 			Type:               "group",
 			RelationOrWildcard: &openfgav1.RelationReference_Relation{Relation: "all"},
-		}}, iter)(ctx)
+		}}, iter, "weight2")(ctx)
 		require.NoError(t, err)
 		require.NotNil(t, val)
 		require.True(t, val.GetAllowed())
@@ -1529,7 +1529,7 @@ func TestCheckUsersetFastPathV2(t *testing.T) {
 		}, []*openfgav1.RelationReference{{
 			Type:               "group",
 			RelationOrWildcard: &openfgav1.RelationReference_Relation{Relation: "all"},
-		}}, iter)(ctx)
+		}}, iter, "weight2")(ctx)
 		require.NoError(t, err)
 		require.NotNil(t, val)
 		require.True(t, val.GetAllowed())
@@ -1604,7 +1604,7 @@ func TestCheckUsersetFastPathV2(t *testing.T) {
 		}, []*openfgav1.RelationReference{{
 			Type:               "group",
 			RelationOrWildcard: &openfgav1.RelationReference_Relation{Relation: "all"},
-		}}, iter)(ctx)
+		}}, iter, "weight2")(ctx)
 		require.NoError(t, err)
 		require.NotNil(t, val)
 		require.False(t, val.GetAllowed())
@@ -1684,7 +1684,7 @@ func TestCheckUsersetFastPathV2(t *testing.T) {
 			StoreID:              storeID,
 			AuthorizationModelID: ts.GetAuthorizationModelID(),
 			TupleKey:             tuple.NewTupleKey("folder:target", "target", "user:maria"),
-		}, []*openfgav1.RelationReference{{Type: "group", RelationOrWildcard: &openfgav1.RelationReference_Relation{Relation: "intersect"}}}, usersetIterator)(ctx)
+		}, []*openfgav1.RelationReference{{Type: "group", RelationOrWildcard: &openfgav1.RelationReference_Relation{Relation: "intersect"}}}, usersetIterator, "weight2")(ctx)
 		require.NoError(t, err)
 		require.NotNil(t, checkResult)
 		require.True(t, checkResult.GetAllowed())
@@ -1764,7 +1764,7 @@ func TestCheckTTUFastPathV2(t *testing.T) {
 			StoreID:              storeID,
 			AuthorizationModelID: ts.GetAuthorizationModelID(),
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:1"),
-		}, typesystem.TupleToUserset("parent", "all"), iter)(ctx)
+		}, typesystem.TupleToUserset("parent", "all"), iter, "weight2")(ctx)
 		require.NoError(t, err)
 		require.NotNil(t, val)
 		require.True(t, val.GetAllowed())
@@ -1839,7 +1839,7 @@ func TestCheckTTUFastPathV2(t *testing.T) {
 			StoreID:              storeID,
 			AuthorizationModelID: ts.GetAuthorizationModelID(),
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:1"),
-		}, typesystem.TupleToUserset("parent", "all"), iter)(ctx)
+		}, typesystem.TupleToUserset("parent", "all"), iter, "weight2")(ctx)
 		require.NoError(t, err)
 		require.NotNil(t, val)
 		require.True(t, val.GetAllowed())
@@ -1913,7 +1913,7 @@ func TestCheckTTUFastPathV2(t *testing.T) {
 			StoreID:              storeID,
 			AuthorizationModelID: ts.GetAuthorizationModelID(),
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:1"),
-		}, typesystem.TupleToUserset("parent", "all"), iter)(ctx)
+		}, typesystem.TupleToUserset("parent", "all"), iter, "weight2")(ctx)
 		require.NoError(t, err)
 		require.NotNil(t, val)
 		require.False(t, val.GetAllowed())
@@ -1988,7 +1988,7 @@ func TestCheckTTUFastPathV2(t *testing.T) {
 			StoreID:              storeID,
 			AuthorizationModelID: ts.GetAuthorizationModelID(),
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:1"),
-		}, typesystem.TupleToUserset("parent", "all"), iter)(ctx)
+		}, typesystem.TupleToUserset("parent", "all"), iter, "weight2")(ctx)
 		require.NoError(t, err)
 		require.NotNil(t, val)
 		require.False(t, val.GetAllowed())
@@ -2068,7 +2068,7 @@ func TestCheckTTUFastPathV2(t *testing.T) {
 			StoreID:              storeID,
 			AuthorizationModelID: ts.GetAuthorizationModelID(),
 			TupleKey:             tuple.NewTupleKey("folder:target", "target", "user:maria"),
-		}, ttuRewrite, rightHandSideIterator)(ctx)
+		}, ttuRewrite, rightHandSideIterator, "weight2")(ctx)
 		require.NoError(t, err)
 		require.NotNil(t, checkResult)
 		require.True(t, checkResult.GetAllowed())

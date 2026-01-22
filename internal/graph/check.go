@@ -367,12 +367,13 @@ func (c *LocalChecker) Close() {
 
 // dispatch clones the parent request, modifies its metadata and tupleKey, and dispatches the new request
 // to the CheckResolver this LocalChecker was constructed with.
-func (c *LocalChecker) dispatch(_ context.Context, parentReq *ResolveCheckRequest, tk *openfgav1.TupleKey) CheckHandlerFunc {
+func (c *LocalChecker) dispatch(_ context.Context, parentReq *ResolveCheckRequest, tk *openfgav1.TupleKey, selectedStrategy string) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
 		parentReq.GetRequestMetadata().DispatchCounter.Add(1)
 		childRequest := parentReq.clone()
 		childRequest.TupleKey = tk
 		childRequest.GetRequestMetadata().Depth++
+		childRequest.SelectedStrategy = selectedStrategy
 
 		resp, err := c.delegate.ResolveCheck(ctx, childRequest)
 		if err != nil {
@@ -657,7 +658,7 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 			}
 			defer iter.Stop()
 
-			return c.defaultUserset(ctx, req, directlyRelatedUsersetTypes, iter)(ctx)
+			return c.defaultUserset(ctx, req, directlyRelatedUsersetTypes, iter, "")(ctx)
 		}
 
 		possibleStrategies := map[string]*planner.PlanConfig{
@@ -686,25 +687,15 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 			possibleStrategies[defaultResolver] = defaultRecursivePlan
 			possibleStrategies[recursiveResolver] = recursivePlan
 
-			switch req.GetSelectedStrategy() {
-			case defaultResolver:
-				return c.defaultUserset(ctx, req, directlyRelatedUsersetTypes, iter)(ctx)
-			case recursiveResolver:
-				return c.recursiveUserset(ctx, req, directlyRelatedUsersetTypes, iter)(ctx)
-			default:
-			}
-
-			// If a strategy was already selected by a parent call, use it without re-planning.
+			// If a strategy was already selected by a parent call for the recursive use case, use it without re-planning.
 			// This prevents the planner from being called again during recursive dispatch calls.
-			if selectedStrategy := req.GetSelectedStrategy(); selectedStrategy != "" {
-				if _, exists := possibleStrategies[selectedStrategy]; exists {
-					resolver := c.defaultUserset
-					if selectedStrategy == recursiveResolver {
-						resolver = c.recursiveUserset
-					}
-					return resolver(ctx, req, directlyRelatedUsersetTypes, iter)(ctx)
-				}
-				// If the selected strategy is not in the possible strategies, fall through to planner
+			selectedStrategy := req.GetSelectedStrategy()
+			switch selectedStrategy {
+			case defaultResolver:
+				return c.defaultUserset(ctx, req, directlyRelatedUsersetTypes, iter, selectedStrategy)(ctx)
+			case recursiveResolver:
+				return c.recursiveUserset(ctx, req, directlyRelatedUsersetTypes, iter, selectedStrategy)(ctx)
+			default: // in case is not selected
 			}
 
 			b.WriteString("infinite")
@@ -712,14 +703,11 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 			keyPlan := c.planner.GetPlanSelector(key)
 			plan := keyPlan.Select(possibleStrategies)
 
-			// Set the selected strategy on the request so child dispatches will use it
-			req.SetSelectedStrategy(plan.Name)
-
 			resolver := c.defaultUserset
 			if plan.Name == recursiveResolver {
 				resolver = c.recursiveUserset
 			}
-			return c.profiledCheckHandler(keyPlan, plan, resolver(ctx, req, directlyRelatedUsersetTypes, iter))(ctx)
+			return c.profiledCheckHandler(keyPlan, plan, resolver(ctx, req, directlyRelatedUsersetTypes, iter, plan.Name))(ctx)
 		}
 
 		var resolvers []CheckHandlerFunc
@@ -751,7 +739,7 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 					if selectedStrategy == weightTwoResolver {
 						resolver = c.weight2Userset
 					}
-					resolvers = append(resolvers, resolver(ctx, req, usersets, iter))
+					resolvers = append(resolvers, resolver(ctx, req, usersets, iter, selectedStrategy))
 					continue
 				}
 			}
@@ -764,14 +752,11 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 			keyPlan := c.planner.GetPlanSelector(key)
 			strategy := keyPlan.Select(possibleStrategies)
 
-			// Set the selected strategy on the request so child dispatches will use it
-			req.SetSelectedStrategy(strategy.Name)
-
 			resolver := c.defaultUserset
 			if strategy.Name == weightTwoResolver {
 				resolver = c.weight2Userset
 			}
-			resolvers = append(resolvers, c.profiledCheckHandler(keyPlan, strategy, resolver(ctx, req, usersets, iter)))
+			resolvers = append(resolvers, c.profiledCheckHandler(keyPlan, strategy, resolver(ctx, req, usersets, iter, strategy.Name)))
 		}
 		// for all usersets could not be resolved through weight2 resolver, resolve them all through the default resolver.
 		// they all resolved as a group rather than individually.
@@ -781,7 +766,7 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 				return nil, err
 			}
 			defer iter.Stop()
-			resolvers = append(resolvers, c.defaultUserset(ctx, req, remainingUsersetTypes, iter))
+			resolvers = append(resolvers, c.defaultUserset(ctx, req, remainingUsersetTypes, iter, ""))
 		}
 
 		return union(ctx, c.concurrencyLimit, resolvers...)
@@ -925,7 +910,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 
 		if len(possibleStrategies) == 1 {
 			// short circuit, no additional resolvers are available
-			return resolver(ctx, req, rewrite, filteredIter)(ctx)
+			return resolver(ctx, req, rewrite, filteredIter, "")(ctx)
 		}
 
 		// If a strategy was already selected by a parent call, use it without re-planning.
@@ -940,7 +925,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 				case recursiveResolver:
 					resolver = c.recursiveTTU
 				}
-				return resolver(ctx, req, rewrite, filteredIter)(ctx)
+				return resolver(ctx, req, rewrite, filteredIter, selectedStrategy)(ctx)
 			}
 			// If the selected strategy is not in the possible strategies, fall through to planner
 		}
@@ -962,9 +947,6 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 		keyPlan := c.planner.GetPlanSelector(planKey)
 		strategy := keyPlan.Select(possibleStrategies)
 
-		// Set the selected strategy on the request so child dispatches will use it
-		req.SetSelectedStrategy(strategy.Name)
-
 		switch strategy.Name {
 		case defaultResolver:
 			resolver = c.defaultTTU
@@ -974,7 +956,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 			resolver = c.recursiveTTU
 		}
 
-		return c.profiledCheckHandler(keyPlan, strategy, resolver(ctx, req, rewrite, filteredIter))(ctx)
+		return c.profiledCheckHandler(keyPlan, strategy, resolver(ctx, req, rewrite, filteredIter, strategy.Name))(ctx)
 	}
 }
 

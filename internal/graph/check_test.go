@@ -1790,7 +1790,7 @@ func TestDispatch(t *testing.T) {
 			require.Equal(t, uint32(1), req.GetRequestMetadata().DispatchCounter.Load())
 			return nil, nil
 		})
-	dispatch := checker.dispatch(context.Background(), parentReq, tk)
+	dispatch := checker.dispatch(context.Background(), parentReq, tk, "")
 	_, _ = dispatch(context.Background())
 }
 
@@ -2693,7 +2693,7 @@ func TestSelectedStrategySkipsPlannerOnDispatch(t *testing.T) {
 			TupleKey:             tuple.NewTupleKey("group:1", "member", "user:maria"),
 			RequestMetadata:      NewCheckRequestMetadata(),
 		}
-		req.SetSelectedStrategy("default") // Pre-select the default strategy
+		req.SelectedStrategy = "default" // Pre-select the default strategy
 
 		resp, err := checker.ResolveCheck(ctx, req)
 		require.NoError(t, err)

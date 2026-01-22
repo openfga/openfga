@@ -113,7 +113,7 @@ func TestDefaultUserset(t *testing.T) {
 				TupleKey:        tuple.NewTupleKey("group:1", "member", "user:maria"),
 				RequestMetadata: NewCheckRequestMetadata(),
 			}
-			resp, err := checker.defaultUserset(ctx, req, nil, iter)(ctx)
+			resp, err := checker.defaultUserset(ctx, req, nil, iter, "")(ctx)
 			require.Equal(t, tt.expectedError, err)
 			require.Equal(t, tt.expected, resp)
 		})
@@ -232,7 +232,7 @@ func TestDefaultTTU(t *testing.T) {
 				TupleKey:        tuple.NewTupleKey("group:1", "member", "user:maria"),
 				RequestMetadata: NewCheckRequestMetadata(),
 			}
-			resp, err := checker.defaultTTU(ctx, req, tt.rewrite, iter)(ctx)
+			resp, err := checker.defaultTTU(ctx, req, tt.rewrite, iter, "")(ctx)
 			require.Equal(t, tt.expectedError, err)
 			require.Equal(t, tt.expected, resp)
 		})
@@ -370,7 +370,7 @@ func TestProduceUsersetDispatches(t *testing.T) {
 			dispatchChan := make(chan dispatchMsg, 1)
 
 			pool.Go(func(ctx context.Context) error {
-				checker.produceUsersetDispatches(ctx, req, dispatchChan, iter)
+				checker.produceUsersetDispatches(ctx, req, dispatchChan, iter, "")
 				return nil
 			})
 
@@ -534,7 +534,7 @@ func TestProduceTTUDispatches(t *testing.T) {
 			dispatchChan := make(chan dispatchMsg, 1)
 
 			pool.Go(func(ctx context.Context) error {
-				checker.produceTTUDispatches(ctx, tt.computedRelation, req, dispatchChan, iter)
+				checker.produceTTUDispatches(ctx, tt.computedRelation, req, dispatchChan, iter, "")
 				return nil
 			})
 

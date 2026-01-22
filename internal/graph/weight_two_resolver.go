@@ -48,7 +48,7 @@ var ErrShortCircuit = errors.New("short circuit")
 
 type fastPathSetHandler func(context.Context, *iterator.Streams, chan<- *iterator.Msg)
 
-func (c *LocalChecker) weight2Userset(_ context.Context, req *ResolveCheckRequest, usersets []*openfgav1.RelationReference, iter storage.TupleKeyIterator) CheckHandlerFunc {
+func (c *LocalChecker) weight2Userset(_ context.Context, req *ResolveCheckRequest, usersets []*openfgav1.RelationReference, iter storage.TupleKeyIterator, selectedStrategy string) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
 		cancellableCtx, cancel := context.WithCancel(ctx)
 		defer cancel()
@@ -68,7 +68,7 @@ func (c *LocalChecker) weight2Userset(_ context.Context, req *ResolveCheckReques
 	}
 }
 
-func (c *LocalChecker) weight2TTU(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset, iter storage.TupleKeyIterator) CheckHandlerFunc {
+func (c *LocalChecker) weight2TTU(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset, iter storage.TupleKeyIterator, selectedStrategy string) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
 		typesys, _ := typesystem.TypesystemFromContext(ctx)
 		objectType := tuple.GetType(req.GetTupleKey().GetObject())

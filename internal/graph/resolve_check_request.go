@@ -30,8 +30,7 @@ type ResolveCheckRequest struct {
 	// When set, child requests dispatched within that strategy should continue using
 	// the same strategy instead of calling the planner again. This prevents re-planning
 	// during recursive dispatch calls (e.g., when default strategy calls checkTTU multiple times).
-	// This field is atomic to prevent data races when multiple goroutines access the same request.
-	SelectedStrategy atomic.Pointer[string]
+	SelectedStrategy string
 
 	// Invariant parts of a check request are those that don't change in sub-problems
 	// AuthorizationModelID, StoreID, Context, and ContextualTuples.
@@ -144,9 +143,7 @@ func (r *ResolveCheckRequest) clone() *ResolveCheckRequest {
 		Consistency:               r.GetConsistency(),
 		LastCacheInvalidationTime: r.GetLastCacheInvalidationTime(),
 		invariantCacheKey:         r.GetInvariantCacheKey(),
-	}
-	if strategy := r.GetSelectedStrategy(); strategy != "" {
-		cloned.SetSelectedStrategy(strategy)
+		SelectedStrategy:          r.GetSelectedStrategy(),
 	}
 	return cloned
 }
@@ -214,23 +211,16 @@ func (r *ResolveCheckRequest) GetLastCacheInvalidationTime() time.Time {
 	return r.LastCacheInvalidationTime
 }
 
-func (r *ResolveCheckRequest) GetSelectedStrategy() string {
-	if r == nil {
-		return ""
-	}
-	if v := r.SelectedStrategy.Load(); v != nil {
-		return *v
-	}
-	return ""
-}
-
-func (r *ResolveCheckRequest) SetSelectedStrategy(strategy string) {
-	r.SelectedStrategy.Store(&strategy)
-}
-
 func (r *ResolveCheckRequest) GetInvariantCacheKey() string {
 	if r == nil {
 		return ""
 	}
 	return r.invariantCacheKey
+}
+
+func (r *ResolveCheckRequest) GetSelectedStrategy() string {
+	if r == nil {
+		return ""
+	}
+	return r.SelectedStrategy
 }

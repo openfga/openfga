@@ -48,7 +48,7 @@ type recursiveMapping struct {
 	allowedUserTypeRestrictions []*openfgav1.RelationReference
 }
 
-func (c *LocalChecker) recursiveUserset(_ context.Context, req *ResolveCheckRequest, _ []*openfgav1.RelationReference, rightIter storage.TupleKeyIterator) CheckHandlerFunc {
+func (c *LocalChecker) recursiveUserset(_ context.Context, req *ResolveCheckRequest, _ []*openfgav1.RelationReference, rightIter storage.TupleKeyIterator, selectedStrategy string) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
 		typesys, _ := typesystem.TypesystemFromContext(ctx)
 
@@ -64,7 +64,7 @@ func (c *LocalChecker) recursiveUserset(_ context.Context, req *ResolveCheckRequ
 
 // recursiveTTU solves a union relation of the form "{operand1} OR ... {operandN} OR {recursive TTU}"
 // rightIter gives the iterator for the recursive TTU.
-func (c *LocalChecker) recursiveTTU(_ context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset, rightIter storage.TupleKeyIterator) CheckHandlerFunc {
+func (c *LocalChecker) recursiveTTU(_ context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset, rightIter storage.TupleKeyIterator, selectedStrategy string) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
 		typesys, _ := typesystem.TypesystemFromContext(ctx)
 

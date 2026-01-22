@@ -51,6 +51,7 @@ var defaultRecursivePlan = &planner.PlanConfig{
 type dispatchParams struct {
 	parentReq *ResolveCheckRequest
 	tk        *openfgav1.TupleKey
+	strategy  string
 }
 
 type dispatchMsg struct {
@@ -61,7 +62,7 @@ type dispatchMsg struct {
 
 // defaultUserset will check userset path.
 // This is the slow path as it requires dispatch on all its children.
-func (c *LocalChecker) defaultUserset(_ context.Context, req *ResolveCheckRequest, _ []*openfgav1.RelationReference, iter storage.TupleKeyIterator) CheckHandlerFunc {
+func (c *LocalChecker) defaultUserset(_ context.Context, req *ResolveCheckRequest, _ []*openfgav1.RelationReference, iter storage.TupleKeyIterator, selectedStrategy string) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
 		ctx, span := tracer.Start(ctx, "defaultUserset")
 		defer span.End()
@@ -75,7 +76,7 @@ func (c *LocalChecker) defaultUserset(_ context.Context, req *ResolveCheckReques
 			_ = pool.Wait()
 		}()
 		pool.Go(func(ctx context.Context) error {
-			c.produceUsersetDispatches(ctx, req, dispatchChan, iter)
+			c.produceUsersetDispatches(ctx, req, dispatchChan, iter, selectedStrategy)
 			return nil
 		})
 
@@ -83,7 +84,7 @@ func (c *LocalChecker) defaultUserset(_ context.Context, req *ResolveCheckReques
 	}
 }
 
-func (c *LocalChecker) produceUsersetDispatches(ctx context.Context, req *ResolveCheckRequest, dispatches chan dispatchMsg, iter storage.TupleKeyIterator) {
+func (c *LocalChecker) produceUsersetDispatches(ctx context.Context, req *ResolveCheckRequest, dispatches chan dispatchMsg, iter storage.TupleKeyIterator, selectedStrategy string) {
 	defer close(dispatches)
 	reqTupleKey := req.GetTupleKey()
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
@@ -113,14 +114,14 @@ func (c *LocalChecker) produceUsersetDispatches(ctx context.Context, req *Resolv
 
 		if usersetRelation != "" {
 			tupleKey := tuple.NewTupleKey(usersetObject, usersetRelation, reqTupleKey.GetUser())
-			concurrency.TrySendThroughChannel(ctx, dispatchMsg{dispatchParams: &dispatchParams{parentReq: req, tk: tupleKey}}, dispatches)
+			concurrency.TrySendThroughChannel(ctx, dispatchMsg{dispatchParams: &dispatchParams{parentReq: req, tk: tupleKey, strategy: selectedStrategy}}, dispatches)
 		}
 	}
 }
 
 // defaultTTU is the slow path for checkTTU where we cannot short-circuit TTU evaluation and
 // resort to dispatch check on its children.
-func (c *LocalChecker) defaultTTU(_ context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset, iter storage.TupleKeyIterator) CheckHandlerFunc {
+func (c *LocalChecker) defaultTTU(_ context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset, iter storage.TupleKeyIterator, selectedStrategy string) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
 		ctx, span := tracer.Start(ctx, "defaultTTU")
 		defer span.End()
@@ -137,7 +138,7 @@ func (c *LocalChecker) defaultTTU(_ context.Context, req *ResolveCheckRequest, r
 			_ = pool.Wait()
 		}()
 		pool.Go(func(ctx context.Context) error {
-			c.produceTTUDispatches(ctx, computedRelation, req, dispatchChan, iter)
+			c.produceTTUDispatches(ctx, computedRelation, req, dispatchChan, iter, selectedStrategy)
 			return nil
 		})
 
@@ -145,7 +146,7 @@ func (c *LocalChecker) defaultTTU(_ context.Context, req *ResolveCheckRequest, r
 	}
 }
 
-func (c *LocalChecker) produceTTUDispatches(ctx context.Context, computedRelation string, req *ResolveCheckRequest, dispatches chan dispatchMsg, iter storage.TupleKeyIterator) {
+func (c *LocalChecker) produceTTUDispatches(ctx context.Context, computedRelation string, req *ResolveCheckRequest, dispatches chan dispatchMsg, iter storage.TupleKeyIterator, selectedStrategy string) {
 	defer close(dispatches)
 	reqTupleKey := req.GetTupleKey()
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
@@ -173,7 +174,7 @@ func (c *LocalChecker) produceTTUDispatches(ctx context.Context, computedRelatio
 			User:     reqTupleKey.GetUser(),
 		}
 
-		concurrency.TrySendThroughChannel(ctx, dispatchMsg{dispatchParams: &dispatchParams{parentReq: req, tk: tupleKey}}, dispatches)
+		concurrency.TrySendThroughChannel(ctx, dispatchMsg{dispatchParams: &dispatchParams{parentReq: req, tk: tupleKey, strategy: selectedStrategy}}, dispatches)
 	}
 }
 
@@ -258,7 +259,7 @@ func (c *LocalChecker) processDispatches(ctx context.Context, limit int, dispatc
 				if msg.dispatchParams != nil {
 					dispatchPool.Go(func(ctx context.Context) error {
 						recoveredError := panics.Try(func() {
-							resp, err := c.dispatch(ctx, msg.dispatchParams.parentReq, msg.dispatchParams.tk)(ctx)
+							resp, err := c.dispatch(ctx, msg.dispatchParams.parentReq, msg.dispatchParams.tk, msg.dispatchParams.strategy)(ctx)
 							concurrency.TrySendThroughChannel(ctx, checkOutcome{resp: resp, err: err}, outcomes)
 						})
 						if recoveredError != nil {
