@@ -6,7 +6,6 @@ import (
 	"iter"
 	"slices"
 	"strconv"
-	"strings"
 	"testing"
 	"time"
 
@@ -109,19 +108,15 @@ func TestPipelineShutdown(t *testing.T) {
 		Graph:      g,
 	}
 
-	pl, err := New(backend, WithBufferSize(bufferSize), WithChunkSize(chunkSize))
-	require.NoError(t, err)
-
-	target, ok := pl.Target("user", "bob")
-	require.True(t, ok)
-
-	source, ok := pl.Source("document", "viewer")
-	require.True(t, ok)
+	q := NewQuery(backend, WithBufferSize(bufferSize), WithChunkSize(chunkSize)).
+		From("document", "viewer").
+		To("user:bob")
 
 	t.Run("NoAbandon", func(t *testing.T) {
 		defer goleak.VerifyNone(t)
 
-		seq := pl.Build(context.Background(), source, target)
+		seq, err := q.Execute(context.Background())
+		require.NoError(t, err)
 
 		items := make([]string, 0, len(documents))
 		for item := range seq {
@@ -133,13 +128,15 @@ func TestPipelineShutdown(t *testing.T) {
 	t.Run("AbandonWithoutPull", func(t *testing.T) {
 		defer goleak.VerifyNone(t)
 
-		_ = pl.Build(context.Background(), source, target)
+		_, err := q.Execute(context.Background())
+		require.NoError(t, err)
 	})
 
 	t.Run("AbandonAfterPull", func(t *testing.T) {
 		defer goleak.VerifyNone(t)
 
-		seq := pl.Build(context.Background(), source, target)
+		seq, err := q.Execute(context.Background())
+		require.NoError(t, err)
 
 		var value string
 		for item := range seq {
@@ -152,7 +149,8 @@ func TestPipelineShutdown(t *testing.T) {
 	t.Run("AbandonMidProcessing", func(t *testing.T) {
 		defer goleak.VerifyNone(t)
 
-		seq := pl.Build(context.Background(), source, target)
+		seq, err := q.Execute(context.Background())
+		require.NoError(t, err)
 
 		var count int
 		limit := nestLevel / 2
@@ -168,7 +166,9 @@ func TestPipelineShutdown(t *testing.T) {
 		defer goleak.VerifyNone(t)
 
 		ctx, cancel := context.WithCancel(context.Background())
-		_ = pl.Build(ctx, source, target)
+
+		_, err := q.Execute(ctx)
+		require.NoError(t, err)
 
 		cancel()
 	})
@@ -177,7 +177,9 @@ func TestPipelineShutdown(t *testing.T) {
 		defer goleak.VerifyNone(t)
 
 		ctx, cancel := context.WithCancel(context.Background())
-		seq := pl.Build(ctx, source, target)
+
+		seq, err := q.Execute(ctx)
+		require.NoError(t, err)
 
 		cancel()
 		for range seq {
@@ -189,12 +191,13 @@ func TestPipelineShutdown(t *testing.T) {
 		defer goleak.VerifyNone(t)
 
 		ctx, cancel := context.WithCancel(context.Background())
+
 		defer cancel()
 
-		seq := pl.Build(ctx, source, target)
+		seq, err := q.Execute(ctx)
+		require.NoError(t, err)
 
 		var value string
-		var err error
 		for item := range seq {
 			if item.Err == nil {
 				value = item.Value
@@ -210,12 +213,13 @@ func TestPipelineShutdown(t *testing.T) {
 		defer goleak.VerifyNone(t)
 
 		ctx, cancel := context.WithCancel(context.Background())
+
 		defer cancel()
 
-		seq := pl.Build(ctx, source, target)
+		seq, err := q.Execute(ctx)
+		require.NoError(t, err)
 
 		var count int
-		var err error
 		limit := nestLevel / 2
 		for item := range seq {
 			err = item.Err
@@ -231,12 +235,13 @@ func TestPipelineShutdown(t *testing.T) {
 		defer goleak.VerifyNone(t)
 
 		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+
 		defer cancel()
 
-		seq := pl.Build(ctx, source, target)
+		seq, err := q.Execute(ctx)
+		require.NoError(t, err)
 
 		var count int
-		var err error
 		for item := range seq {
 			err = item.Err
 			if count > bufferSize+1 {
@@ -256,7 +261,9 @@ func TestPipelineShutdown(t *testing.T) {
 		defer goleak.VerifyNone(t)
 
 		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Millisecond)
-		seq := pl.Build(ctx, source, target)
+
+		seq, err := q.Execute(ctx)
+		require.NoError(t, err)
 
 		defer cancel()
 
@@ -2247,26 +2254,13 @@ func BenchmarkPipeline(b *testing.B) {
 
 			b.ResetTimer()
 
-			for i := 0; i < b.N; i++ {
-				pl, err := New(backend)
+			for b.Loop() {
+				seq, err := NewQuery(backend).
+					From(tc.objectType, tc.relation).
+					To(tc.user).
+					Execute(context.Background())
+
 				require.NoError(b, err)
-
-				relationParts := strings.Split(tc.user, "#")
-				userParts := strings.Split(relationParts[0], ":")
-				require.GreaterOrEqual(b, len(userParts), 2)
-
-				userType := userParts[0]
-				if len(relationParts) > 1 {
-					userType += "#" + relationParts[1]
-				}
-
-				target, ok := pl.Target(userType, userParts[1])
-				require.True(b, ok)
-
-				source, ok := pl.Source(tc.objectType, tc.relation)
-				require.True(b, ok)
-
-				seq := pl.Build(context.Background(), source, target)
 
 				for range seq {
 				}
@@ -2304,25 +2298,12 @@ func TestPipeline(t *testing.T) {
 				Graph:      g,
 			}
 
-			pl, err := New(backend)
+			seq, err := NewQuery(backend).
+				From(tc.objectType, tc.relation).
+				To(tc.user).
+				Execute(context.Background())
+
 			require.NoError(t, err)
-
-			relationParts := strings.Split(tc.user, "#")
-			userParts := strings.Split(relationParts[0], ":")
-			require.GreaterOrEqual(t, len(userParts), 2)
-
-			userType := userParts[0]
-			if len(relationParts) > 1 {
-				userType += "#" + relationParts[1]
-			}
-
-			target, ok := pl.Target(userType, userParts[1])
-			require.True(t, ok)
-
-			source, ok := pl.Source(tc.objectType, tc.relation)
-			require.True(t, ok)
-
-			seq := pl.Build(context.Background(), source, target)
 
 			evaluate(t, tc, seq)
 		})
@@ -2381,18 +2362,14 @@ func TestPipeline(t *testing.T) {
 			Graph:      g,
 		}
 
-		pl, err := New(backend)
-		require.NoError(t, err)
-
-		target, ok := pl.Target("user", "1")
-		require.True(t, ok)
-
-		source, ok := pl.Source("document", "viewer")
-		require.True(t, ok)
-
 		ctx, cancel := context.WithCancel(context.Background())
 
-		seq := pl.Build(ctx, source, target)
+		seq, err := NewQuery(backend).
+			From("document", "viewer").
+			To("user:1").
+			Execute(ctx)
+
+		require.NoError(t, err)
 
 		cancel()
 
@@ -2426,16 +2403,12 @@ func TestPipeline(t *testing.T) {
 			Graph:      g,
 		}
 
-		pl, err := New(backend)
+		seq, err := NewQuery(backend).
+			From("document", "viewer").
+			To("user:1").
+			Execute(context.Background())
+
 		require.NoError(t, err)
-
-		target, ok := pl.Target("user", "1")
-		require.True(t, ok)
-
-		source, ok := pl.Source("document", "viewer")
-		require.True(t, ok)
-
-		seq := pl.Build(context.Background(), source, target)
 
 		for range seq {
 			break

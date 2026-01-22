@@ -10,21 +10,7 @@ import (
 	"github.com/openfga/openfga/internal/bitutil"
 )
 
-const (
-	// This value is used as the default duration that a send on a
-	// pipe will wait before extending the pipe's internal buffer.
-	//
-	// A negative value disables the pipe extension functionality.
-	DefaultExtendAfter time.Duration = -1
-
-	// This value is used as the default value that indicates the maximum
-	// number of times that a pipe's internal buffer may be extended.
-	//
-	// A negative value will allow unlimited extensions.
-	DefaultMaxExtensions int = -1
-)
-
-var ErrInvalidSize = errors.New("pipe size must be a power of two")
+var ErrInvalidCapacity = errors.New("pipe capacity must be a power of two")
 
 // Rx is an interface that exposes methods for receiving values.
 // Any implementation of Rx is intended to be concurrency safe.
@@ -76,6 +62,34 @@ type TxCloser[T any] interface {
 	io.Closer
 }
 
+// Config is a struct that provides a Pipe its configuration values.
+type Config struct {
+	// Capacity is a value that sets the initial capacity of a Pipe.
+	// Capacity must be a power of two and must not be negative.
+	Capacity int
+
+	// ExtendAfter is a value that sets the duration of time that a
+	// Pipe will wait on a blocked call to Send before increasing its
+	// capacity. A negative value will disable capacity extension.
+	ExtendAfter time.Duration
+
+	// MaxExtensions is a value that sets the maximum number of times
+	// that a Pipe will dynamically increase its capacity. A zero or
+	// value will disable capacity extension. A negative value enables
+	// unlimited extensions.
+	MaxExtensions int
+}
+
+// Validate is a function that validates the values of the config.
+// An ErrInvalidCapacity error is returned if the capacity value is
+// not a valid power of two.
+func (config *Config) Validate() error {
+	if !bitutil.PowerOfTwo(config.Capacity) {
+		return ErrInvalidCapacity
+	}
+	return nil
+}
+
 // Pipe is a struct that implements the TxCloser and Rx interfaces.
 // A Pipe will buffer sent values up to its capacity. All methods on
 // Pipe are concurrency safe.
@@ -104,6 +118,9 @@ type Pipe[T any] struct {
 	// a power of two. (e.g. 1, 2, 4, 8, 16, 32...)
 	data []T
 
+	// config holds the initial configuration for the Pipe.
+	config Config
+
 	// condFull is a condition that calls to Send will wait on while
 	// a Pipe's ring buffer is filled to capacity.
 	condFull *sync.Cond
@@ -131,61 +148,33 @@ type Pipe[T any] struct {
 	// subsequent calls to Send and Recv must return `false`.
 	done bool
 
-	// extendAfter is the duration that a pipe will wait on a send
-	// to a full buffer before extending the buffer.
-	extendAfter time.Duration
-
-	// extendCount keeps track of the number of times that the pipe's
-	// internal buffer has been extended.
+	// extendCount is a value that is the number of times that the
+	// Pipe's capacity has been extended.
 	extendCount int
-
-	// maxExtensions indicates the maximum number of times that a pipe's
-	// internal buffer may be extended.
-	maxExtensions int
 }
 
 // New is a function that instantiates a new Pipe with a size of n.
 // The value of n must be a valid power of two. Any other value will
 // result in an error.
-func New[T any](n int) (*Pipe[T], error) {
-	if !bitutil.PowerOfTwo(n) {
-		return nil, ErrInvalidSize
+func New[T any](config Config) (*Pipe[T], error) {
+	if !bitutil.PowerOfTwo(config.Capacity) {
+		return nil, ErrInvalidCapacity
 	}
 	var p Pipe[T]
-	p.data = make([]T, n)
+	p.data = make([]T, config.Capacity)
 	p.condFull = sync.NewCond(&p.mu)
 	p.condEmpty = sync.NewCond(&p.mu)
-	p.extendAfter = DefaultExtendAfter
-	p.maxExtensions = DefaultMaxExtensions
 	return &p, nil
 }
 
 // Must is a function that returns a new instance of a Pipe, or panics
 // if an error is encountered.
-func Must[T any](n int) *Pipe[T] {
-	p, err := New[T](n)
+func Must[T any](config Config) *Pipe[T] {
+	p, err := New[T](config)
 	if err != nil {
 		panic(err)
 	}
 	return p
-}
-
-// SetExtensionConfig is a function that sets the configuration for a
-// pipe's internal buffer.
-//
-// When sending a value to a pipe takes longer than the extendAfter
-// duration, the pipe's internal buffer will be extended automatically.
-// The buffer will be extended up to the maxExtensions value.
-//
-// The buffer's size doubles after each extension.
-//
-// A negative extendAfter value will disable dynamic extension.
-// A 0 value may be provided for extendAfter to indicate immediate extension.
-//
-// A negative maxExtensions value will allow unlimited extensions.
-func (p *Pipe[T]) SetExtensionConfig(extendAfter time.Duration, maxExtensions int) {
-	p.extendAfter = extendAfter
-	p.maxExtensions = maxExtensions
 }
 
 // extend is a function that conditionally grows the size of the pipe's
@@ -235,7 +224,7 @@ func (p *Pipe[T]) extend(n uint) {
 // Grow will return an ErrInvalidSize error.
 func (p *Pipe[T]) Grow(n int) error {
 	if !bitutil.PowerOfTwo(n) {
-		return ErrInvalidSize
+		return ErrInvalidCapacity
 	}
 
 	p.mu.Lock()
@@ -350,9 +339,9 @@ func (p *Pipe[T]) Send(item T) bool {
 	for p.full() && !p.done {
 		var timer *time.Timer
 
-		if p.extendAfter >= 0 && (p.maxExtensions < 0 || p.extendCount < p.maxExtensions) {
+		if p.config.ExtendAfter >= 0 && (p.config.MaxExtensions < 0 || p.extendCount < p.config.MaxExtensions) {
 			currentSize := len(p.data)
-			timer = time.AfterFunc(p.extendAfter, func() {
+			timer = time.AfterFunc(p.config.ExtendAfter, func() {
 				p.mu.Lock()
 				defer p.mu.Unlock()
 
@@ -361,7 +350,7 @@ func (p *Pipe[T]) Send(item T) bool {
 				}
 
 				// Ensure that the extension limit hasn't been reached
-				if p.maxExtensions >= 0 && p.extendCount >= p.maxExtensions {
+				if p.config.MaxExtensions >= 0 && p.extendCount >= p.config.MaxExtensions {
 					return
 				}
 				p.extend(uint(currentSize) << 1)

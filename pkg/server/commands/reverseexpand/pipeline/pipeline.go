@@ -19,7 +19,6 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	weightedGraph "github.com/openfga/language/pkg/go/graph"
 
-	"github.com/openfga/openfga/internal/bitutil"
 	"github.com/openfga/openfga/internal/checkutil"
 	"github.com/openfga/openfga/internal/containers"
 	"github.com/openfga/openfga/internal/pipe"
@@ -64,9 +63,10 @@ const (
 )
 
 var (
-	ErrInvalidBufferSize = errors.New("buffer size must be a power of two")
-	ErrInvalidChunkSize  = errors.New("chunk size must be greater than zero")
-	ErrInvalidNumProcs   = errors.New("process number must be greater than zero")
+	ErrInvalidChunkSize = errors.New("chunk size must be greater than zero")
+	ErrInvalidNumProcs  = errors.New("process number must be greater than zero")
+	ErrInvalidObject    = errors.New("invalid object")
+	ErrInvalidUser      = errors.New("invalid user")
 )
 
 // DirectEdgeHandler is a struct that handles edges having a direct type. These edges will
@@ -243,42 +243,27 @@ func (e *EdgeInterpreter) Interpret(
 	}
 }
 
-type Option func(*Pipeline) error
+type Option func(*Config)
 
 // WithBufferSize is a function that sets the value for a pipeline's workers' internal
 // pipe buffer size. The value must be a power of two. (e.g. 1, 2, 4, 8, 16, 32...)
 // The default value of the buffer size is 128. If an invalid value is provided as size
 // then the default value will be applied.
 func WithBufferSize(size int) Option {
-	return func(p *Pipeline) error {
-		if !bitutil.PowerOfTwo(size) {
-			return ErrInvalidBufferSize
-		}
-
-		p.bufferSize = size
-		return nil
+	return func(config *Config) {
+		config.BufferConfig.Capacity = size
 	}
 }
 
 func WithChunkSize(size int) Option {
-	return func(p *Pipeline) error {
-		if size < 1 {
-			return ErrInvalidChunkSize
-		}
-
-		p.chunkSize = size
-		return nil
+	return func(config *Config) {
+		config.ChunkSize = size
 	}
 }
 
 func WithNumProcs(num int) Option {
-	return func(p *Pipeline) error {
-		if num < 1 {
-			return ErrInvalidNumProcs
-		}
-
-		p.numProcs = num
-		return nil
+	return func(config *Config) {
+		config.NumProcs = num
 	}
 }
 
@@ -291,31 +276,58 @@ func WithNumProcs(num int) Option {
 // greater than 0 and set maxExtensions to a value greater than 0, or to -1 to
 // make the number of extensions unbounded.
 func WithPipeExtension(extendAfter time.Duration, maxExtensions int) Option {
-	return func(p *Pipeline) error {
-		p.pipeExtendAfter = extendAfter
-		p.pipeMaxExtensions = maxExtensions
-		return nil
+	return func(config *Config) {
+		config.BufferConfig.ExtendAfter = extendAfter
+		config.BufferConfig.MaxExtensions = maxExtensions
 	}
 }
 
-func New(backend *Backend, options ...Option) (*Pipeline, error) {
-	p := &Pipeline{
-		backend:           backend,
-		bufferSize:        defaultBufferSize,
-		chunkSize:         defaultChunkSize,
-		numProcs:          defaultNumProcs,
-		pipeExtendAfter:   pipe.DefaultExtendAfter,
-		pipeMaxExtensions: pipe.DefaultMaxExtensions,
+func WithConfig(c Config) Option {
+	return func(config *Config) {
+		*config = c
+	}
+}
+
+type Config struct {
+	// BufferConfig is a value that contains configuration values for the pipes
+	// that exist between pipeline workers.
+	BufferConfig pipe.Config
+
+	// ChunkSize is a value that indicates the maximum size of tuples
+	// accumulated from a data store query before sending the tuples
+	// as a message to the next node in the pipeline.
+	//
+	// As an example, if the chunkSize is set to 100, then a new message
+	// is sent for every 100 tuples returned from a data store query.
+	ChunkSize int
+
+	// NumProcs is a value that indicates the maximum number of goroutines
+	// that will be allocated to processing each subscription for a pipeline
+	// worker.
+	NumProcs int
+}
+
+func DefaultConfig() Config {
+	var config Config
+	config.BufferConfig.Capacity = defaultBufferSize
+	config.ChunkSize = defaultChunkSize
+	config.NumProcs = defaultNumProcs
+	return config
+}
+
+func (config *Config) Validate() error {
+	if err := config.BufferConfig.Validate(); err != nil {
+		return err
 	}
 
-	for _, option := range options {
-		if err := option(p); err != nil {
-			return nil, err
-		}
+	if config.ChunkSize < 1 {
+		return ErrInvalidChunkSize
 	}
 
-	p.bufferPool = newBufferPool(p.chunkSize)
-	return p, nil
+	if config.NumProcs < 1 {
+		return ErrInvalidNumProcs
+	}
+	return nil
 }
 
 type bufferPool struct {
@@ -343,7 +355,7 @@ func newBufferPool(size int) *bufferPool {
 	return &b
 }
 
-type Message struct {
+type message struct {
 	Value []Item
 
 	// stored for cleanup
@@ -352,7 +364,7 @@ type Message struct {
 	tracker    *track.Tracker
 }
 
-func (m *Message) Done() {
+func (m *message) Done() {
 	if m.tracker != nil {
 		m.tracker.Dec()
 	}
@@ -592,7 +604,7 @@ type resolverCore struct {
 
 func (r *resolverCore) broadcast(
 	results iter.Seq[Item],
-	listeners []Listener[*Edge, *Message],
+	listeners []Listener[*Edge, *message],
 ) int {
 	var sentCount int
 
@@ -618,7 +630,7 @@ func (r *resolverCore) broadcast(
 
 			// Increment the resolver's tracker to account for the new message.
 			r.tracker.Inc()
-			m := &Message{
+			m := &message{
 				// Only slice the values in the read buffer up to what was actually read.
 				Value: (*values)[:count],
 
@@ -645,8 +657,8 @@ func (r *resolverCore) broadcast(
 
 func (r *resolverCore) drain(
 	ctx context.Context,
-	snd Sender[*Edge, *Message],
-	yield func(context.Context, *Edge, *Message),
+	snd Sender[*Edge, *message],
+	yield func(context.Context, *Edge, *message),
 ) {
 	edge := snd.Key()
 
@@ -663,7 +675,7 @@ func (r *resolverCore) drain(
 		attribute.String("edge.from", edgeFrom),
 	}
 
-	var msg *Message
+	var msg *message
 
 	for snd.Recv(&msg) {
 		if ctx.Err() != nil {
@@ -687,7 +699,7 @@ func (r *resolverCore) drain(
 
 type baseProcessor struct {
 	resolverCore
-	listeners    []Listener[*Edge, *Message]
+	listeners    []Listener[*Edge, *message]
 	inputBuffer  *containers.AtomicMap[string, struct{}]
 	outputBuffer *containers.AtomicMap[string, struct{}]
 	SentCount    int64
@@ -699,7 +711,7 @@ type baseProcessor struct {
 // edge because values of a cycle may be reentrant. Output from the interpreter is always
 // deduplicated across all process functions because input from two different senders may produce
 // the same output value(s).
-func (p *baseProcessor) process(ctx context.Context, edge *Edge, msg *Message) {
+func (p *baseProcessor) process(ctx context.Context, edge *Edge, msg *message) {
 	errs := make([]Item, 0, len(msg.Value))
 	unseen := make([]string, 0, len(msg.Value))
 
@@ -755,8 +767,8 @@ type baseResolver struct {
 // `true` and the count of its tracker reaches `0`.
 func (r *baseResolver) Resolve(
 	ctx context.Context,
-	senders []Sender[*Edge, *Message],
-	listeners []Listener[*Edge, *Message],
+	senders []Sender[*Edge, *message],
+	listeners []Listener[*Edge, *message],
 ) {
 	ctx, span := pipelineTracer.Start(ctx, "baseResolver.Resolve")
 	defer span.End()
@@ -884,7 +896,7 @@ type operatorProcessor struct {
 // message is received from the sender, its values are swapped to a buffer that is local to the
 // current iteration, and the message resources are released immediately. Messages are not sent to
 // the listeners at this point.
-func (p *operatorProcessor) process(ctx context.Context, edge *Edge, msg *Message) {
+func (p *operatorProcessor) process(ctx context.Context, edge *Edge, msg *message) {
 	// Increment the tracker to account for an in-flight message.
 	p.tracker.Inc()
 	values := p.bufferPool.Get()
@@ -931,8 +943,8 @@ type exclusionResolver struct {
 
 func (r *exclusionResolver) Resolve(
 	ctx context.Context,
-	senders []Sender[*Edge, *Message],
-	listeners []Listener[*Edge, *Message],
+	senders []Sender[*Edge, *message],
+	listeners []Listener[*Edge, *message],
 ) {
 	ctx, span := pipelineTracer.Start(ctx, "exclusionResolver.Resolve")
 	defer span.End()
@@ -949,11 +961,11 @@ func (r *exclusionResolver) Resolve(
 
 	var wgExclude sync.WaitGroup
 
-	pipeInclude := pipe.Must[Item](1 << 7) // create a pipe with an initial capacity of 128
-
-	// allow pipe to grow to an unbounded capacity with no wait.
-	// growth is limited by the volume of tuples assigned to the relation.
-	pipeInclude.SetExtensionConfig(0, -1)
+	pipeInclude := pipe.Must[Item](pipe.Config{
+		Capacity:      1 << 7, // create a pipe with an initial capacity of 128.
+		ExtendAfter:   0,      // extend immdiately; no wait.
+		MaxExtensions: -1,     // size of buffer is relative to object in relation.
+	})
 
 	var counter atomic.Int32
 	counter.Store(int32(r.numProcs))
@@ -1046,8 +1058,8 @@ type intersectionResolver struct {
 
 func (r *intersectionResolver) Resolve(
 	ctx context.Context,
-	senders []Sender[*Edge, *Message],
-	listeners []Listener[*Edge, *Message],
+	senders []Sender[*Edge, *message],
+	listeners []Listener[*Edge, *message],
 ) {
 	ctx, span := pipelineTracer.Start(ctx, "intersectionResolver.Resolve")
 	defer span.End()
@@ -1121,71 +1133,20 @@ func (r *intersectionResolver) Resolve(
 	}
 }
 
-// Pipeline is a struct that is used to construct logical pipelines that traverse all connections
-// within a graph from a given source type and relation to a given target type and identifier.
-//
-// A pipeline consists of a variable number of workers that process data concurrently. Within
-// a pipeline, dataflows from the worker that receives the initial input down to any workers
-// that have a subscription to its output. Data continues to flow into downstream workers
-// through their subscriptions to upstream workers until it arrives at the consumer of the
-// pipeline.
-type Pipeline struct {
-	// provides operations that require interacting with dependencies
-	// such as a database or a graph.
-	backend *Backend
-
-	// bufferSize is a value that indicates the size of the message buffer
-	// that exists between each worker and its subscribers. When a buffer
-	// becomes full, send operations on that subscription will block until
-	// messages are removed from the buffer or the subscription is closed.
-	//
-	// This value must be a valid power of two. (e.g. 1, 2, 4, 8, 16, 32...)
-	// The default value is 128. This value can be changed by constructing
-	// a pipeline using NewPipeline and providing the option WithBufferSize.
-	bufferSize int
-
-	// chunkSize is a value that indicates the maximum size of tuples
-	// accummulated from a datastore query before sending the tuples
-	// as a message to the next node in the pipeline.
-	//
-	// As an example, if the chunkSize is set to 100, then a new message
-	// is sent for every 100 tuples returned from a datastore query.
-	//
-	// The default value is 100. This value can be changed by constructing
-	// a pipeline using NewPipeline and providing the option WithChunkSize.
-	chunkSize int
-
-	bufferPool *bufferPool
-
-	// numProcs is a value that indicates the maximum number of goroutines
-	// that will be allocated to processing each subscription for a pipeline
-	// worker.
-	//
-	// The default value is 3. This value can be changed by constructing
-	// a pipeline using NewPipeline and providing the option WithNumProcs.
-	numProcs int
-
-	// pipeExtendAfter is the duration before extending full pipe buffers
-	pipeExtendAfter time.Duration
-
-	// pipeMaxExtensions is the max number of times pipe buffers can extend
-	pipeMaxExtensions int
-}
-
 type PipelineWorker struct {
-	Worker[*Edge, *Message, *Message]
+	Worker[*Edge, *message, *message]
 }
 
 func (w *PipelineWorker) listenForInitialValue(value string, tracker *track.Tracker) {
 	items := []Item{{Value: value}}
 	tracker.Inc()
-	m := &Message{
+	m := &message{
 		Value: items,
 
 		// Stored for cleanup
 		tracker: tracker,
 	}
-	w.Listen(&sender[*Edge, *Message]{nil, pipe.StaticRx(m)})
+	w.Listen(&sender[*Edge, *message]{nil, pipe.StaticRx(m)})
 }
 
 type WorkerPool map[*Node]*PipelineWorker
@@ -1208,26 +1169,57 @@ func (wp WorkerPool) Stop() {
 	}
 }
 
-func (pl *Pipeline) createInterpreter(ctx context.Context) Interpreter {
+type Query struct {
+	backend *Backend
+	config  Config
+
+	objectType     string
+	objectRelation string
+	user           string
+}
+
+func NewQuery(backend *Backend, options ...Option) *Query {
+	var q Query
+	q.config = DefaultConfig()
+	q.backend = backend
+
+	for _, o := range options {
+		o(&q.config)
+	}
+	return &q
+}
+
+func (q *Query) From(targetType string, targetRelation string) *Query {
+	q.objectType = targetType
+	q.objectRelation = targetRelation
+	return q
+}
+
+func (q *Query) To(user string) *Query {
+	q.user = user
+	return q
+}
+
+func (q *Query) createInterpreter(ctx context.Context) Interpreter {
 	validator := combineValidators(
 		[]FalibleValidator[*openfgav1.TupleKey]{
 			FalibleValidator[*openfgav1.TupleKey](checkutil.BuildTupleKeyConditionFilter(
 				ctx,
-				pl.backend.Context,
-				pl.backend.TypeSystem,
+				q.backend.Context,
+				q.backend.TypeSystem,
 			)),
 			MakeValidatorFalible(
 				Validator[*openfgav1.TupleKey](validation.FilterInvalidTuples(
-					pl.backend.TypeSystem,
+					q.backend.TypeSystem,
 				)),
 			),
 		},
 	)
 
 	queryEngine := QueryEngine{
-		pl.backend.Datastore,
-		pl.backend.StoreID,
-		pl.backend.Preference,
+		q.backend.Datastore,
+		q.backend.StoreID,
+		q.backend.Preference,
 		validator,
 	}
 
@@ -1235,7 +1227,7 @@ func (pl *Pipeline) createInterpreter(ctx context.Context) Interpreter {
 
 	ttuEdgeHandler := TTUEdgeHandler{
 		queryEngine: &queryEngine,
-		graph:       pl.backend.Graph,
+		graph:       q.backend.Graph,
 	}
 
 	var identityEdgeHandler IdentityEdgeHandler
@@ -1247,31 +1239,128 @@ func (pl *Pipeline) createInterpreter(ctx context.Context) Interpreter {
 	}
 }
 
-// Build is a function that constructs the actual pipeline which is returned as an iter.Seq[Item].
-// The pipeline will not begin generating values until the returned sequence is iterated over.
-// This is to prevent unnecessary work and resource accumulation in the event that the sequence
-// is never iterated.
-func (pl *Pipeline) Build(ctx context.Context, source Source, target Target) iter.Seq[Item] {
-	ctx, span := pipelineTracer.Start(ctx, "pipeline.build")
+func (q *Query) resolve(p path, workers WorkerPool) *PipelineWorker {
+	if w, ok := workers[p.objectNode]; ok {
+		return w
+	}
+
+	if p.tracker == nil {
+		p.tracker = new(track.Tracker)
+	}
+
+	if p.statusPool == nil {
+		p.statusPool = new(track.StatusPool)
+	}
+
+	var w PipelineWorker
+	w.bufferConfig = q.config.BufferConfig
+
+	reporter := p.statusPool.Register()
+	reporter.Report(true)
+
+	core := resolverCore{
+		interpreter: p.interpreter,
+		tracker:     p.tracker,
+		reporter:    reporter,
+		bufferPool:  p.bufferPool,
+		numProcs:    q.config.NumProcs,
+	}
+
+	w.Resolver = createResolver(p.objectNode, core)
+
+	workers[p.objectNode] = &w
+
+	switch p.objectNode.GetNodeType() {
+	case nodeTypeSpecificType, nodeTypeSpecificTypeAndRelation:
+		if p.objectNode == p.userNode {
+			objectType, _, _ := strings.Cut(p.userNode.GetLabel(), "#")
+			var value string
+
+			switch p.userNode.GetNodeType() {
+			case nodeTypeSpecificTypeWildcard:
+				// the ':*' is part of the type
+			case nodeTypeSpecificType, nodeTypeSpecificTypeAndRelation:
+				value = ":" + p.userIdentifier
+			}
+			w.listenForInitialValue(objectType+value, p.tracker)
+		}
+	case nodeTypeSpecificTypeWildcard:
+		label := p.objectNode.GetLabel()
+		typePart, _, _ := strings.Cut(label, ":")
+
+		if p.objectNode == p.userNode || typePart == p.userNode.GetLabel() {
+			// object node is the user node or has the same type as the user.
+			w.listenForInitialValue(typePart+":*", p.tracker)
+		}
+	}
+
+	edges, ok := q.backend.Graph.GetEdgesFromNode(p.objectNode)
+	if !ok {
+		return &w
+	}
+
+	for _, edge := range edges {
+		nextPath := p
+
+		if len(edge.GetRecursiveRelation()) == 0 && !edge.IsPartOfTupleCycle() {
+			nextPath.tracker = nil
+			nextPath.statusPool = nil
+		}
+
+		nextPath.objectNode = edge.GetTo()
+
+		to := q.resolve(nextPath, workers)
+		w.Listen(to.Subscribe(edge))
+	}
+
+	return &w
+}
+
+func (q *Query) Execute(ctx context.Context) (iter.Seq[Item], error) {
+	if err := q.config.Validate(); err != nil {
+		return emptySequence, err
+	}
+	ctx, span := pipelineTracer.Start(ctx, "pipeline.Query.Execute")
 	defer span.End()
 
-	interpreter := pl.createInterpreter(ctx)
+	objectNode, ok := q.backend.Graph.GetNodeByID(q.objectType + "#" + q.objectRelation)
+	if !ok {
+		return emptySequence, ErrInvalidObject
+	}
 
+	user, userRelation, exists := strings.Cut(q.user, "#")
+	userType, userIdentifier, _ := strings.Cut(user, ":")
+
+	if exists {
+		userType += "#" + userRelation
+	}
+
+	userNode, ok := q.backend.Graph.GetNodeByID(userType)
+	if !ok {
+		return emptySequence, ErrInvalidUser
+	}
+
+	pool := newBufferPool(q.config.ChunkSize)
+
+	interpreter := q.createInterpreter(ctx)
 	workers := make(WorkerPool)
 
 	p := path{
-		source:      (*Node)(source),
-		target:      target,
-		interpreter: interpreter,
+		objectNode:     objectNode,
+		userNode:       userNode,
+		userIdentifier: userIdentifier,
+		interpreter:    interpreter,
+		bufferPool:     pool,
 	}
-	pl.resolve(p, workers)
 
-	sourceWorker, ok := workers[(*Node)(source)]
+	q.resolve(p, workers)
+
+	objectWorker, ok := workers[objectNode]
 	if !ok {
-		return seq.Sequence(Item{Err: errors.New("no such source")})
+		return emptySequence, errors.New("no such source")
 	}
 
-	results := sourceWorker.Subscribe(nil)
+	results := objectWorker.Subscribe(nil)
 
 	return func(yield func(Item) bool) {
 		ctx, span := pipelineTracer.Start(ctx, "pipeline.iterate")
@@ -1340,36 +1429,20 @@ func (pl *Pipeline) Build(ctx context.Context, source Source, target Target) ite
 			// here to indicate the possibility of a partial result.
 			yield(Item{Err: err})
 		}
-	}
-}
-
-func (pl *Pipeline) Source(name, relation string) (Source, bool) {
-	sourceNode, ok := pl.backend.Graph.GetNodeByID(name + "#" + relation)
-	return (Source)(sourceNode), ok
-}
-
-func (pl *Pipeline) Target(name, identifier string) (Target, bool) {
-	if identifier == "*" {
-		name += ":*"
-		identifier = ""
-	}
-	targetNode, ok := pl.backend.Graph.GetNodeByID(name)
-
-	return Target{
-		node: targetNode,
-		id:   identifier,
-	}, ok
+	}, nil
 }
 
 type path struct {
-	source      *Node
-	target      Target
-	interpreter Interpreter
-	tracker     *track.Tracker
-	statusPool  *track.StatusPool
+	objectNode     *Node
+	userNode       *Node
+	userIdentifier string
+	interpreter    Interpreter
+	bufferPool     *bufferPool
+	tracker        *track.Tracker
+	statusPool     *track.StatusPool
 }
 
-func createOperatorResolver(label string, core resolverCore) Resolver[*Edge, *Message, *Message] {
+func createOperatorResolver(label string, core resolverCore) Resolver[*Edge, *message, *message] {
 	switch label {
 	case weightedGraph.IntersectionOperator:
 		return &intersectionResolver{core}
@@ -1382,7 +1455,7 @@ func createOperatorResolver(label string, core resolverCore) Resolver[*Edge, *Me
 	}
 }
 
-func createResolver(node *Node, core resolverCore) Resolver[*Edge, *Message, *Message] {
+func createResolver(node *Node, core resolverCore) Resolver[*Edge, *message, *message] {
 	switch node.GetNodeType() {
 	case nodeTypeSpecificType,
 		nodeTypeSpecificTypeAndRelation,
@@ -1397,80 +1470,6 @@ func createResolver(node *Node, core resolverCore) Resolver[*Edge, *Message, *Me
 	}
 }
 
-func (pl *Pipeline) configureWorker(w *PipelineWorker) {
-	w.bufferSize = pl.bufferSize
-	w.pipeExtendAfter = pl.pipeExtendAfter
-	w.pipeMaxExtensions = pl.pipeMaxExtensions
-}
-
-func (pl *Pipeline) resolve(p path, workers WorkerPool) *PipelineWorker {
-	if w, ok := workers[p.source]; ok {
-		return w
-	}
-
-	if p.tracker == nil {
-		p.tracker = new(track.Tracker)
-	}
-
-	if p.statusPool == nil {
-		p.statusPool = new(track.StatusPool)
-	}
-
-	var w PipelineWorker
-	pl.configureWorker(&w)
-
-	reporter := p.statusPool.Register()
-	reporter.Report(true)
-
-	core := resolverCore{
-		interpreter: p.interpreter,
-		tracker:     p.tracker,
-		reporter:    reporter,
-		bufferPool:  pl.bufferPool,
-		numProcs:    pl.numProcs,
-	}
-
-	w.Resolver = createResolver(p.source, core)
-
-	workers[p.source] = &w
-
-	switch p.source.GetNodeType() {
-	case nodeTypeSpecificType, nodeTypeSpecificTypeAndRelation:
-		if p.source == p.target.node {
-			w.listenForInitialValue(p.target.Object(), p.tracker)
-		}
-	case nodeTypeSpecificTypeWildcard:
-		label := p.source.GetLabel()
-		typePart, _, _ := strings.Cut(label, ":")
-
-		if p.source == p.target.node || typePart == p.target.node.GetLabel() {
-			// source node is the target node or has the same type as the target.
-			w.listenForInitialValue(typePart+":*", p.tracker)
-		}
-	}
-
-	edges, ok := pl.backend.Graph.GetEdgesFromNode(p.source)
-	if !ok {
-		return &w
-	}
-
-	for _, edge := range edges {
-		nextPath := p
-
-		if len(edge.GetRecursiveRelation()) == 0 && !edge.IsPartOfTupleCycle() {
-			nextPath.tracker = nil
-			nextPath.statusPool = nil
-		}
-
-		nextPath.source = edge.GetTo()
-
-		to := pl.resolve(nextPath, workers)
-		w.Listen(to.Subscribe(edge))
-	}
-
-	return &w
-}
-
 // Resolver is an interface that is consumed by a worker struct.
 // A resolver is responsible for consuming messages from a worker's
 // senders and broadcasting the result of processing the consumed
@@ -1482,8 +1481,6 @@ type Resolver[K any, T any, U any] interface {
 	// the consumed messages to the provided listeners.
 	Resolve(context.Context, []Sender[K, T], []Listener[K, U])
 }
-
-type Source *Node
 
 type Sender[K any, T any] interface {
 	Key() K
@@ -1542,17 +1539,11 @@ func (t *Target) Object() string {
 }
 
 type Worker[K any, T any, U any] struct {
-	senders   []Sender[K, T]
-	listeners []Listener[K, U]
-	Resolver  Resolver[K, T, U]
-	started   bool
-
-	// bufferSize is the value that will be set for the worker's internal pipe buffer.
-	// The value must be a power of two; any other value will cause a panic.
-	bufferSize int
-
-	pipeExtendAfter   time.Duration
-	pipeMaxExtensions int
+	senders      []Sender[K, T]
+	listeners    []Listener[K, U]
+	Resolver     Resolver[K, T, U]
+	bufferConfig pipe.Config
+	started      bool
 }
 
 func (w *Worker[K, T, U]) Close() {
@@ -1577,12 +1568,7 @@ func (w *Worker[K, T, U]) Start(ctx context.Context) {
 }
 
 func (w *Worker[K, T, U]) Subscribe(key K) Sender[K, U] {
-	p := pipe.Must[U](w.bufferSize)
-
-	// Configure extension behavior if set on pipeline
-	if w.pipeExtendAfter > 0 {
-		p.SetExtensionConfig(w.pipeExtendAfter, w.pipeMaxExtensions)
-	}
+	p := pipe.Must[U](w.bufferConfig)
 
 	w.listeners = append(w.listeners, &listener[K, U]{
 		key,
