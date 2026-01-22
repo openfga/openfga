@@ -230,6 +230,9 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 		util.MustBindPFlag("listUsersMaxResults", flags.Lookup("listUsers-max-results"))
 		util.MustBindEnv("listUsersMaxResults", "OPENFGA_LIST_USERS_MAX_RESULTS", "OPENFGA_LISTUSERSMAXRESULTS")
 
+		util.MustBindPFlag("readChangesMaxPageSize", flags.Lookup("readChanges-max-page-size"))
+		util.MustBindEnv("readChangesMaxPageSize", "OPENFGA_READ_CHANGES_MAX_PAGE_SIZE", "OPENFGA_READCHANGESMAXPAGESIZE")
+
 		util.MustBindPFlag("checkCache.limit", flags.Lookup("check-cache-limit"))
 		util.MustBindEnv("checkCache.limit", "OPENFGA_CHECK_CACHE_LIMIT")
 
