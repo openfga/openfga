@@ -686,6 +686,14 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 			possibleStrategies[defaultResolver] = defaultRecursivePlan
 			possibleStrategies[recursiveResolver] = recursivePlan
 
+			switch req.GetSelectedStrategy() {
+			case defaultResolver:
+				return c.defaultUserset(ctx, req, directlyRelatedUsersetTypes, iter)(ctx)
+			case recursiveResolver:
+				return c.recursiveUserset(ctx, req, directlyRelatedUsersetTypes, iter)(ctx)
+			default:
+			}
+
 			// If a strategy was already selected by a parent call, use it without re-planning.
 			// This prevents the planner from being called again during recursive dispatch calls.
 			if selectedStrategy := req.GetSelectedStrategy(); selectedStrategy != "" {
