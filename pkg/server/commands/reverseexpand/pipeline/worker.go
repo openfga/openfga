@@ -56,8 +56,7 @@ func (w *worker) Listen(s *sender) {
 }
 
 // Start begins processing messages through this worker's resolver.
-// Idempotent to allow safe concurrent calls during pipeline startup;
-// only the first call actually starts the resolver.
+// Only the first call actually starts the resolver.
 func (w *worker) Start(ctx context.Context) {
 	if w.started {
 		return
