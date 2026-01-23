@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"time"
 
 	"github.com/emirpasic/gods/sets/hashset"
 	"go.opentelemetry.io/otel/attribute"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/openfga/openfga/internal/checkutil"
 	"github.com/openfga/openfga/internal/concurrency"
+	"github.com/openfga/openfga/internal/planner"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -20,6 +22,25 @@ import (
 )
 
 const recursiveResolver = "recursive"
+
+// In general these values tell the query planner that the recursive strategy usually performs around 150 ms but occasionally spikes.
+// However, even when it spikes we want to keep it using it or exploring it despite variance, rather than over-penalizing single slow runs.
+var recursivePlan = &planner.PlanConfig{
+	Name:         recursiveResolver,
+	InitialGuess: 150 * time.Millisecond,
+	// Medium Lambda: Represents medium confidence in the initial guess. It's like
+	// starting with the belief of having already seen 5 good runs.
+	Lambda: 5.0,
+	// UNCERTAINTY ABOUT CONSISTENCY: The gap between p50 and p99 is large.
+	// Low Alpha/Beta values create a wider belief curve, telling the planner
+	// to expect and not be overly surprised by performance variations.
+	// Low expected precision: 𝐸[𝜏]= 𝛼/𝛽 = 2.0/2.5 = 0.8.
+	// High expected variance: E[σ2]= β/(α−1) =2.5/1 = 2.5, this will allow for relative bursty / jiterry results.
+	// Wide tolerance for spread: 𝛼 = 2, this will allow for considerable uncertainty in how spike the latency can be.
+	// When β > α, we expect lower precision and higher variance
+	Alpha: 2.0,
+	Beta:  2.5,
+}
 
 type recursiveMapping struct {
 	kind                        storage.TupleMapperKind
@@ -148,15 +169,20 @@ func buildRecursiveMapper(ctx context.Context, req *ResolveCheckRequest, mapping
 	consistencyOpts := storage.ConsistencyOptions{
 		Preference: req.GetConsistency(),
 	}
+
 	switch mapping.kind {
 	case storage.UsersetKind:
+		objectType := req.GetTupleKey().GetObject()
+		relation := req.GetTupleKey().GetRelation()
 		iter, err = ds.ReadUsersetTuples(ctx, req.GetStoreID(), storage.ReadUsersetTuplesFilter{
-			Object:                      req.GetTupleKey().GetObject(),
-			Relation:                    req.GetTupleKey().GetRelation(),
+			Object:                      objectType,
+			Relation:                    relation,
 			AllowedUserTypeRestrictions: mapping.allowedUserTypeRestrictions,
 		}, storage.ReadUsersetTuplesOptions{Consistency: consistencyOpts})
 	case storage.TTUKind:
-		iter, err = ds.Read(ctx, req.GetStoreID(), tuple.NewTupleKey(req.GetTupleKey().GetObject(), mapping.tuplesetRelation, ""),
+		objectType := req.GetTupleKey().GetObject()
+		iter, err = ds.Read(ctx, req.GetStoreID(),
+			storage.ReadFilter{Object: objectType, Relation: mapping.tuplesetRelation, User: ""},
 			storage.ReadOptions{Consistency: consistencyOpts})
 	default:
 		return nil, errors.New("unsupported mapper kind")

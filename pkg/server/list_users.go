@@ -21,6 +21,7 @@ import (
 	"github.com/openfga/openfga/internal/utils/apimethod"
 	"github.com/openfga/openfga/pkg/middleware/validator"
 	"github.com/openfga/openfga/pkg/server/commands/listusers"
+	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -34,8 +35,9 @@ func (s *Server) ListUsers(
 	req *openfgav1.ListUsersRequest,
 ) (*openfgav1.ListUsersResponse, error) {
 	start := time.Now()
+	storeID := req.GetStoreId()
 	ctx, span := tracer.Start(ctx, apimethod.ListUsers.String(), trace.WithAttributes(
-		attribute.String("store_id", req.GetStoreId()),
+		attribute.String("store_id", storeID),
 		attribute.String("object", tuple.BuildObject(req.GetObject().GetType(), req.GetObject().GetId())),
 		attribute.String("relation", req.GetRelation()),
 		attribute.String("user_filters", userFiltersToString(req.GetUserFilters())),
@@ -57,15 +59,16 @@ func (s *Server) ListUsers(
 		Method:  methodName,
 	})
 
-	err := s.checkAuthz(ctx, req.GetStoreId(), apimethod.ListUsers)
+	err := s.checkAuthz(ctx, storeID, apimethod.ListUsers)
 	if err != nil {
 		return nil, err
 	}
 
-	typesys, err := s.resolveTypesystem(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
+	typesys, err := s.resolveTypesystem(ctx, storeID, req.GetAuthorizationModelId())
 	if err != nil {
 		return nil, err
 	}
+	req.AuthorizationModelId = typesys.GetAuthorizationModelID() // the resolved model id
 
 	err = listusers.ValidateListUsersRequest(ctx, req, typesys)
 	if err != nil {
@@ -88,7 +91,11 @@ func (s *Server) ListUsers(
 			Threshold:    s.listUsersDispatchDefaultThreshold,
 			MaxThreshold: s.listUsersDispatchThrottlingMaxThreshold,
 		}),
-		listusers.WithListUsersDatastoreThrottler(s.listUsersDatastoreThrottleThreshold, s.listUsersDatastoreThrottleDuration),
+		listusers.WithListUsersDatastoreThrottler(
+			s.featureFlagClient.Boolean(serverconfig.ExperimentalDatastoreThrottling, storeID),
+			s.listUsersDatastoreThrottleThreshold,
+			s.listUsersDatastoreThrottleDuration,
+		),
 	)
 
 	resp, err := listUsersQuery.ListUsers(ctx, req)
@@ -114,6 +121,15 @@ func (s *Server) ListUsers(
 		methodName,
 	).Observe(datastoreQueryCount)
 
+	datastoreItemCount := float64(resp.Metadata.DatastoreItemCount)
+
+	grpc_ctxtags.Extract(ctx).Set(datastoreItemCountHistogramName, datastoreItemCount)
+	span.SetAttributes(attribute.Float64(datastoreItemCountHistogramName, datastoreItemCount))
+	datastoreItemCountHistogram.WithLabelValues(
+		s.serviceName,
+		methodName,
+	).Observe(datastoreItemCount)
+
 	dispatchCount := float64(resp.Metadata.DispatchCounter.Load())
 	grpc_ctxtags.Extract(ctx).Set(dispatchCountHistogramName, dispatchCount)
 	span.SetAttributes(attribute.Float64(dispatchCountHistogramName, dispatchCount))
@@ -130,9 +146,14 @@ func (s *Server) ListUsers(
 		req.GetConsistency().String(),
 	).Observe(float64(time.Since(start).Milliseconds()))
 
-	wasRequestThrottled := resp.GetMetadata().WasThrottled.Load()
-	if wasRequestThrottled {
-		throttledRequestCounter.WithLabelValues(s.serviceName, methodName).Inc()
+	wasDispatchThrottled := resp.GetMetadata().WasDispatchThrottled.Load()
+	if wasDispatchThrottled {
+		throttledRequestCounter.WithLabelValues(s.serviceName, methodName, throttleTypeDispatch).Inc()
+	}
+
+	wasDatastoreThrottled := resp.GetMetadata().WasDatastoreThrottled.Load()
+	if wasDatastoreThrottled {
+		throttledRequestCounter.WithLabelValues(s.serviceName, methodName, throttleTypeDatastore).Inc()
 	}
 
 	return &openfgav1.ListUsersResponse{

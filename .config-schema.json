@@ -102,6 +102,13 @@
             "default": 1000,
             "x-env-variable": "OPENFGA_LIST_USERS_MAX_RESULTS"
         },
+        "readChangesMaxPageSize": {
+            "description": "The maximum page size allowed for ReadChanges API requests",
+            "type": "integer",
+            "minimum": 1,
+            "default": 100,
+            "x-env-variable": "OPENFGA_READ_CHANGES_MAX_PAGE_SIZE"
+        },
         "requestDurationDatastoreQueryCountBuckets": {
             "description": "Datastore query count buckets used to label the histogram metric for measuring request duration.",
             "type": "array",
@@ -131,11 +138,11 @@
             "x-env-variable": "OPENFGA_CONTEXT_PROPAGATION_TO_DATASTORE"
         },
         "experimentals": {
-            "description": "a list of experimental features to enable",
+            "description": "a comma-separated list of experimental features to enable",
             "type": "array",
             "items": {
                 "type": "string",
-                "enum": ["enable-check-optimizations", "enable-list-objects-optimizations", "enable-access-control"]
+                "enum": ["enable-check-optimizations", "enable-list-objects-optimizations", "enable-access-control", "pipeline_list_objects", "datastore_throttling"]
             },
             "default": [],
             "x-env-variable": "OPENFGA_EXPERIMENTALS"
@@ -252,17 +259,35 @@
                     "default": 100000,
                     "x-env-variable": "OPENFGA_DATASTORE_MAX_CACHE_SIZE"
                 },
+                "maxTypesystemCacheSize": {
+                    "description": "The maximum number of type system models that will be cached in memory",
+                    "type": "integer",
+                    "default": 100000,
+                    "x-env-variable": "OPENFGA_DATASTORE_MAX_TYPESYSTEM_CACHE_SIZE"
+                },
                 "maxOpenConns": {
                     "description": "The maximum number of open connections to the datastore.",
                     "type": "integer",
                     "default": "30",
                     "x-env-variable": "OPENFGA_DATASTORE_MAX_OPEN_CONNS"
                 },
+                "minOpenConns": {
+                    "description": "The minimum number of open connections to the datastore. This is only available for PostgreSQL.",
+                    "type": "integer",
+                    "default": "0",
+                    "x-env-variable": "OPENFGA_DATASTORE_MIN_OPEN_CONNS"
+                },
                 "maxIdleConns": {
                     "description": "the maximum number of connections to the datastore in the idle connection pool.",
                     "type": "integer",
                     "default": "10",
                     "x-env-variable": "OPENFGA_DATASTORE_MAX_IDLE_CONNS"
+                },
+                "minIdleConns": {
+                    "description": "the minimum number of connections to the datastore in the idle connection pool. This is only available for PostgreSQL.",
+                    "type": "integer",
+                    "default": "0",
+                    "x-env-variable": "OPENFGA_DATASTORE_MIN_IDLE_CONNS"
                 },
                 "connMaxIdleTime": {
                     "description": "the maximum amount of time a connection to the datastore may be idle",
@@ -449,7 +474,7 @@
                             "description": "The grpc endpoint of the trace collector",
                             "type": "string",
                             "default": "0.0.0.0:4317",
-                            "x-env-variable": "OPENFGA_TRACE_OTLP_ENDPOINT"
+                            "x-env-variable": ["OPENFGA_TRACE_OTLP_ENDPOINT", "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", "OTEL_EXPORTER_OTLP_ENDPOINT"]
                         },
                         "tls": {
                             "type": "object",
@@ -468,13 +493,19 @@
                     "description": "The fraction of traces to sample. 1 means all, 0 means none.",
                     "type": "number",
                     "default": "0.2",
-                    "x-env-variable": "OPENFGA_TRACE_SAMPLE_RATIO"
+                    "x-env-variable": ["OPENFGA_TRACE_SAMPLE_RATIO", "OTEL_TRACES_SAMPLER_ARG"]
                 },
                 "serviceName": {
                     "description": "The service name included in sampled traces.",
                     "type": "string",
                     "default": "openfga",
-                    "x-env-variable": "OPENFGA_TRACE_SERVICE_NAME"
+                    "x-env-variable": ["OPENFGA_TRACE_SERVICE_NAME", "OTEL_SERVICE_NAME"]
+                },
+                "resourceAttributes": {
+                    "description": "Key-value pairs to be used as resource attributes",
+                    "type": "string",
+                    "default": "",
+                    "x-env-variable": "OTEL_RESOURCE_ATTRIBUTES"
                 }
             }
         },
@@ -564,13 +595,13 @@
             "type": "object",
             "properties": {
                 "enabled": {
-                    "description": "enabling dynamic invalidation of check query cache and check iterator cache based on whether there are recent tuple writes. If enabled, cache will be invalidated when either 1) there are tuples written to the store OR 2) the check query cache or check iterator cache TTL has expired.",
+                    "description": "enable invalidation of check query cache and iterator cache based on recent tuple writes. Invalidation is triggered by Check and List Objects requests, which periodically check the datastore's changelog table for writes and invalidate cache entries earlier than recent writes. Invalidations from Check requests are rate-limited by cache-controller-ttl, whereas List Objects requests invalidate every time if list objects iterator cache is enabled.",
                     "type": "boolean",
                     "default": false,
                     "x-env-variable": "OPENFGA_CACHE_CONTROLLER_ENABLED"
                 },
                 "ttl": {
-                    "description": "if cache controller is enabled, control how frequent read changes are invoked internally to query for recent tuple writes to the store.",
+                    "description": "if cache controller is enabled, this is the minimum time interval for Check requests to trigger cache invalidation. List Objects requests may trigger invalidation even sooner if list objects iterator cache is enabled.",
                     "type": "string",
                     "format": "duration",
                     "default": "10s",
@@ -689,6 +720,60 @@
                     "type": "integer",
                     "default": "0",
                     "x-env-variable": "OPENFGA_LIST_USERS_DISPATCH_THROTTLING_MAX_THRESHOLD"
+                }
+            }
+        },
+        "checkDatastoreThrottle": {
+            "type": "object",
+            "properties": {
+                "threshold": {
+                    "description": "define the number of datastore requests allowed before being throttled. A value of 0 means throttling is disabled.",
+                    "type": "integer",
+                    "default": 0,
+                    "x-env-variable": "OPENFGA_CHECK_DATASTORE_THROTTLE_THRESHOLD"
+                },
+                "duration": {
+                    "description": "defines the time for which the datastore request will be suspended for being throttled.",
+                    "type": "string",
+                    "format": "duration",
+                    "default": "0s",
+                    "x-env-variable": "OPENFGA_CHECK_DATASTORE_THROTTLE_DURATION"
+                }
+            }
+        },
+        "listObjectsDatastoreThrottle": {
+            "type": "object",
+            "properties": {
+                "threshold": {
+                    "description": "define the number of datastore requests allowed before being throttled. A value of 0 means throttling is disabled.",
+                    "type": "integer",
+                    "default": 0,
+                    "x-env-variable": "OPENFGA_LIST_OBJECTS_DATASTORE_THROTTLE_THRESHOLD"
+                },
+                "duration": {
+                    "description": "defines the time for which the datastore request will be suspended for being throttled.",
+                    "type": "string",
+                    "format": "duration",
+                    "default": "0s",
+                    "x-env-variable": "OPENFGA_LIST_OBJECTS_DATASTORE_THROTTLE_DURATION"
+                }
+            }
+        },
+        "listUsersDatastoreThrottle": {
+            "type": "object",
+            "properties": {
+                "threshold": {
+                    "description": "define the number of datastore requests allowed before being throttled. A value of 0 means throttling is disabled.",
+                    "type": "integer",
+                    "default": 0,
+                    "x-env-variable": "OPENFGA_LIST_USERS_DATASTORE_THROTTLE_THRESHOLD"
+                },
+                "duration": {
+                    "description": "defines the time for which the datastore request will be suspended for being throttled.",
+                    "type": "string",
+                    "format": "duration",
+                    "default": "0s",
+                    "x-env-variable": "OPENFGA_LIST_USERS_DATASTORE_THROTTLE_DURATION"
                 }
             }
         },

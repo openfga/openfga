@@ -953,6 +953,141 @@ func TestHasEntrypoints(t *testing.T) {
 			require.ErrorAs(t, err, &internalError)
 		})
 	})
+	t.Run("invalid_relation_with_insufficient_children", func(t *testing.T) {
+		tests := map[string]struct {
+			model *openfgav1.AuthorizationModel
+		}{
+			"intersection": {
+				model: &openfgav1.AuthorizationModel{
+					SchemaVersion: SchemaVersion1_1,
+					TypeDefinitions: []*openfgav1.TypeDefinition{
+						{
+							Type: "user",
+						},
+						{
+							Type: "document",
+							Relations: map[string]*openfgav1.Userset{
+								"viewer": {
+									Userset: &openfgav1.Userset_Intersection{
+										Intersection: &openfgav1.Usersets{
+											Child: []*openfgav1.Userset{},
+										},
+									},
+								},
+							},
+							Metadata: &openfgav1.Metadata{
+								Relations: map[string]*openfgav1.RelationMetadata{
+									"viewer": {},
+								},
+							},
+						},
+					},
+				},
+			},
+			"single_child_intersection": {
+				model: &openfgav1.AuthorizationModel{
+					SchemaVersion: SchemaVersion1_1,
+					TypeDefinitions: []*openfgav1.TypeDefinition{
+						{
+							Type: "user",
+						},
+						{
+							Type: "document",
+							Relations: map[string]*openfgav1.Userset{
+								"viewer": {
+									Userset: &openfgav1.Userset_Intersection{
+										Intersection: &openfgav1.Usersets{
+											Child: []*openfgav1.Userset{
+												{
+													Userset: &openfgav1.Userset_This{},
+												},
+											},
+										},
+									},
+								},
+							},
+							Metadata: &openfgav1.Metadata{
+								Relations: map[string]*openfgav1.RelationMetadata{
+									"viewer": {},
+								},
+							},
+						},
+					},
+				},
+			},
+			"union": {
+				model: &openfgav1.AuthorizationModel{
+					SchemaVersion: SchemaVersion1_1,
+					TypeDefinitions: []*openfgav1.TypeDefinition{
+						{
+							Type: "user",
+						},
+						{
+							Type: "document",
+							Relations: map[string]*openfgav1.Userset{
+								"viewer": {
+									Userset: &openfgav1.Userset_Union{
+										Union: &openfgav1.Usersets{
+											Child: []*openfgav1.Userset{},
+										},
+									},
+								},
+							},
+							Metadata: &openfgav1.Metadata{
+								Relations: map[string]*openfgav1.RelationMetadata{
+									"viewer": {},
+								},
+							},
+						},
+					},
+				},
+			},
+			"union_1_child": {
+				model: &openfgav1.AuthorizationModel{
+					SchemaVersion: SchemaVersion1_1,
+					TypeDefinitions: []*openfgav1.TypeDefinition{
+						{
+							Type: "user",
+						},
+						{
+							Type: "document",
+							Relations: map[string]*openfgav1.Userset{
+								"viewer": {
+									Userset: &openfgav1.Userset_Union{
+										Union: &openfgav1.Usersets{
+											Child: []*openfgav1.Userset{
+												{
+													Userset: &openfgav1.Userset_This{},
+												},
+											},
+										},
+									},
+								},
+							},
+							Metadata: &openfgav1.Metadata{
+								Relations: map[string]*openfgav1.RelationMetadata{
+									"viewer": {},
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		for name, test := range tests {
+			t.Run(name, func(t *testing.T) {
+				ts, err := New(test.model)
+				require.NoError(t, err)
+
+				inputRelation, _ := ts.GetRelation("document", "viewer")
+				rewrite := inputRelation.GetRewrite()
+
+				_, _, err = hasEntrypoints(ts.GetAllRelations(), "document", "viewer", rewrite, map[string]map[string]bool{})
+				require.ErrorIs(t, err, ErrInvalidRelation)
+			})
+		}
+	})
 }
 
 func TestResolveComputedRelation(t *testing.T) {
@@ -6175,132 +6310,6 @@ func TestGetEdgesForListObjects(t *testing.T) {
 	edges, err = typeSystem.GetConnectedEdges(unionLabel, "employee")
 	require.NoError(t, err)
 	require.Len(t, edges, 1)
-}
-
-func TestCheapestEdgeTo(t *testing.T) {
-	t.Run("returns_lowest_weight_edge_for_type", func(t *testing.T) {
-		model := `
-		model
-		schema 1.1
-		type user
-		type org
-			relations
-				define member: [user]
-		type group
-			relations
-				define parent: [org]
-				define member: [user]
-				define org_member: member from parent
-		type team
-			relations
-				define parent: [group]
-				define ttu_weight3: [group#member] or org_member from parent
-				define userset: [user, group#member]
-		`
-
-		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
-		require.NoError(t, err)
-
-		wg := typeSystem.authzWeightedGraph
-		allEdges := wg.GetEdges()
-
-		// This node has two edges, one with weight 1 and one with weight 2
-		result := cheapestEdgeTo(allEdges["team#userset"], "user")
-		weight, _ := result.GetWeight("user")
-		require.Equal(t, 1, weight)
-
-		ttuNode, ok := wg.GetNodeByID("team#ttu_weight3")
-		require.True(t, ok)
-
-		edges, ok := wg.GetEdgesFromNode(ttuNode)
-		require.True(t, ok)
-		require.Len(t, edges, 1) // this should be only the OR
-
-		unionNode := edges[0].GetTo()
-		edges, ok = wg.GetEdgesFromNode(unionNode)
-		require.True(t, ok)
-		require.Len(t, edges, 2)
-
-		// There is a weight 2 and a weight 3 from here
-		result = cheapestEdgeTo(edges, "user")
-		weight, _ = result.GetWeight("user")
-		require.Equal(t, 2, weight)
-	})
-
-	t.Run("does_not_depend_on_order", func(t *testing.T) {
-		model := `
-		model
-		schema 1.1
-		type user
-		type org
-			relations
-				define member: [user]
-		type group
-			relations
-				define parent: [org]
-				define member: [user]
-				define org_member: member from parent
-		type team
-			relations
-				define parent: [group]
-				define ttu_weight2: [group#member] or member from parent
-				define ttu_weight3: [group#member] or org_member from parent
-				define ttus_weight_3_first: ttu_weight3 or ttu_weight2
-				define userset: [user, group#member]
-		`
-
-		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
-		require.NoError(t, err)
-
-		wg := typeSystem.authzWeightedGraph
-		srcNode, ok := wg.GetNodeByID("team#ttus_weight_3_first")
-		require.True(t, ok)
-
-		edges, ok := wg.GetEdgesFromNode(srcNode)
-		require.True(t, ok)
-		require.Len(t, edges, 1) // should be only 1 edge to a Union node
-
-		unionNode := edges[0].GetTo()
-		edges, ok = wg.GetEdgesFromNode(unionNode)
-		require.True(t, ok)
-		require.Len(t, edges, 2)
-
-		firstEdgeWeight, _ := edges[0].GetWeight("user")
-		require.Equal(t, 3, firstEdgeWeight)
-
-		secondEdgeWeight, _ := edges[1].GetWeight("user")
-		require.Equal(t, 2, secondEdgeWeight)
-
-		result := cheapestEdgeTo(edges, "user")
-		resultWeight, _ := result.GetWeight("user")
-		require.Equal(t, 2, resultWeight)
-	})
-
-	t.Run("returns_nil_if_type_cant_be_reached", func(t *testing.T) {
-		model := `
-		model
-		schema 1.1
-		type user
-		type other
-		type group
-			relations
-				define member: [user]
-		type team
-			relations
-				define parent: [group]
-				define ttu: [group#member] or member from parent
-				define userset: [user, group#member]
-		`
-
-		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
-		require.NoError(t, err)
-
-		allEdges := typeSystem.authzWeightedGraph.GetEdges()
-
-		// This node has two edges but neither goes to "other"
-		result := cheapestEdgeTo(allEdges["team#userset"], "other")
-		require.Nil(t, result)
-	})
 }
 
 func BenchmarkNewAndValidate(b *testing.B) {

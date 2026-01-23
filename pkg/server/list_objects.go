@@ -14,11 +14,13 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/condition"
+	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/throttler/threshold"
 	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/internal/utils/apimethod"
 	"github.com/openfga/openfga/pkg/middleware/validator"
 	"github.com/openfga/openfga/pkg/server/commands"
+	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -28,9 +30,10 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 	start := time.Now()
 
 	targetObjectType := req.GetType()
+	storeID := req.GetStoreId()
 
 	ctx, span := tracer.Start(ctx, apimethod.ListObjects.String(), trace.WithAttributes(
-		attribute.String("store_id", req.GetStoreId()),
+		attribute.String("store_id", storeID),
 		attribute.String("object_type", targetObjectType),
 		attribute.String("relation", req.GetRelation()),
 		attribute.String("user", req.GetUser()),
@@ -52,28 +55,34 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		Method:  methodName,
 	})
 
-	err := s.checkAuthz(ctx, req.GetStoreId(), apimethod.ListObjects)
+	err := s.checkAuthz(ctx, storeID, apimethod.ListObjects)
 	if err != nil {
 		return nil, err
 	}
-
-	storeID := req.GetStoreId()
 
 	typesys, err := s.resolveTypesystem(ctx, storeID, req.GetAuthorizationModelId())
 	if err != nil {
 		return nil, err
 	}
+	req.AuthorizationModelId = typesys.GetAuthorizationModelID() // the resolved model id
+
+	builder := s.getListObjectsCheckResolverBuilder(storeID)
+	checkResolver, checkResolverCloser, err := builder.Build()
+	if err != nil {
+		return nil, err
+	}
+	defer checkResolverCloser()
 
 	q, err := commands.NewListObjectsQueryWithShadowConfig(
 		s.datastore,
-		s.listObjectsCheckResolver,
+		checkResolver,
 		commands.NewShadowListObjectsQueryConfig(
-			commands.WithShadowListObjectsQueryEnabled(s.shadowListObjectsQueryEnabled),
-			commands.WithShadowListObjectsQuerySamplePercentage(s.shadowListObjectsQuerySamplePercentage),
+			commands.WithShadowListObjectsQueryEnabled(s.featureFlagClient.Boolean(serverconfig.ExperimentalShadowListObjects, req.GetStoreId())),
 			commands.WithShadowListObjectsQueryTimeout(s.shadowListObjectsQueryTimeout),
 			commands.WithShadowListObjectsQueryMaxDeltaItems(s.shadowListObjectsQueryMaxDeltaItems),
 			commands.WithShadowListObjectsQueryLogger(s.logger),
 		),
+		storeID,
 		commands.WithLogger(s.logger),
 		commands.WithListObjectsDeadline(s.listObjectsDeadline),
 		commands.WithListObjectsMaxResults(s.listObjectsMaxResults),
@@ -87,8 +96,17 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		commands.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
 		commands.WithMaxConcurrentReads(s.maxConcurrentReadsForListObjects),
 		commands.WithListObjectsCache(s.sharedDatastoreResources, s.cacheSettings),
-		commands.WithListObjectsDatastoreThrottler(s.listObjectsDatastoreThrottleThreshold, s.listObjectsDatastoreThrottleDuration),
-		commands.WithListObjectsOptimizationsEnabled(s.IsExperimentallyEnabled(ExperimentalListObjectsOptimizations)),
+		commands.WithListObjectsDatastoreThrottler(
+			s.featureFlagClient.Boolean(serverconfig.ExperimentalDatastoreThrottling, storeID),
+			s.listObjectsDatastoreThrottleThreshold,
+			s.listObjectsDatastoreThrottleDuration,
+		),
+		commands.WithListObjectsPipelineEnabled(s.featureFlagClient.Boolean(serverconfig.ExperimentalPipelineListObjects, storeID)),
+		commands.WithListObjectsChunkSize(s.listObjectsChunkSize),
+		commands.WithListObjectsBufferSize(s.listObjectsBufferSize),
+		commands.WithListObjectsNumProcs(s.listObjectsNumProcs),
+		commands.WithListObjectsPipeExtension(s.listObjectsPipeExtendAfter, s.listObjectsPipeMaxExtensions),
+		commands.WithFeatureFlagClient(s.featureFlagClient),
 	)
 	if err != nil {
 		return nil, serverErrors.NewInternalError("", err)
@@ -99,7 +117,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		&openfgav1.ListObjectsRequest{
 			StoreId:              storeID,
 			ContextualTuples:     req.GetContextualTuples(),
-			AuthorizationModelId: typesys.GetAuthorizationModelID(), // the resolved model id
+			AuthorizationModelId: req.GetAuthorizationModelId(),
 			Type:                 targetObjectType,
 			Relation:             req.GetRelation(),
 			User:                 req.GetUser(),
@@ -124,6 +142,15 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		methodName,
 	).Observe(datastoreQueryCount)
 
+	datastoreItemCount := float64(result.ResolutionMetadata.DatastoreItemCount.Load())
+
+	grpc_ctxtags.Extract(ctx).Set(datastoreItemCountHistogramName, datastoreItemCount)
+	span.SetAttributes(attribute.Float64(datastoreItemCountHistogramName, datastoreItemCount))
+	datastoreItemCountHistogram.WithLabelValues(
+		s.serviceName,
+		methodName,
+	).Observe(datastoreItemCount)
+
 	dispatchCount := float64(result.ResolutionMetadata.DispatchCounter.Load())
 
 	grpc_ctxtags.Extract(ctx).Set(dispatchCountHistogramName, dispatchCount)
@@ -141,9 +168,17 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		req.GetConsistency().String(),
 	).Observe(float64(time.Since(start).Milliseconds()))
 
-	wasRequestThrottled := result.ResolutionMetadata.WasThrottled.Load()
-	if wasRequestThrottled {
-		throttledRequestCounter.WithLabelValues(s.serviceName, methodName).Inc()
+	wasDispatchThrottled := result.ResolutionMetadata.DispatchThrottled.Load()
+	grpc_ctxtags.Extract(ctx).Set("request.dispatch_throttled", wasDispatchThrottled)
+
+	wasDatastoreThrottled := result.ResolutionMetadata.DatastoreThrottled.Load()
+	grpc_ctxtags.Extract(ctx).Set("request.datastore_throttled", wasDatastoreThrottled)
+
+	if wasDispatchThrottled {
+		throttledRequestCounter.WithLabelValues(s.serviceName, methodName, throttleTypeDispatch).Inc()
+	}
+	if wasDatastoreThrottled {
+		throttledRequestCounter.WithLabelValues(s.serviceName, methodName, throttleTypeDatastore).Inc()
 	}
 
 	listObjectsOptimzationLabel := "non-weighted"
@@ -164,8 +199,10 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 	start := time.Now()
 
 	ctx := srv.Context()
+	storeID := req.GetStoreId()
+
 	ctx, span := tracer.Start(ctx, apimethod.StreamedListObjects.String(), trace.WithAttributes(
-		attribute.String("store_id", req.GetStoreId()),
+		attribute.String("store_id", storeID),
 		attribute.String("object_type", req.GetType()),
 		attribute.String("relation", req.GetRelation()),
 		attribute.String("user", req.GetUser()),
@@ -187,28 +224,34 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 		Method:  methodName,
 	})
 
-	err := s.checkAuthz(ctx, req.GetStoreId(), apimethod.StreamedListObjects)
+	err := s.checkAuthz(ctx, storeID, apimethod.StreamedListObjects)
 	if err != nil {
 		return err
 	}
-
-	storeID := req.GetStoreId()
 
 	typesys, err := s.resolveTypesystem(ctx, storeID, req.GetAuthorizationModelId())
 	if err != nil {
 		return err
 	}
+	req.AuthorizationModelId = typesys.GetAuthorizationModelID() // the resolved model id
+
+	builder := s.getListObjectsCheckResolverBuilder(storeID)
+	checkResolver, checkResolverCloser, err := builder.Build()
+	if err != nil {
+		return err
+	}
+	defer checkResolverCloser()
 
 	q, err := commands.NewListObjectsQueryWithShadowConfig(
 		s.datastore,
-		s.listObjectsCheckResolver,
+		checkResolver,
 		commands.NewShadowListObjectsQueryConfig(
-			commands.WithShadowListObjectsQueryEnabled(s.shadowListObjectsQueryEnabled),
-			commands.WithShadowListObjectsQuerySamplePercentage(s.shadowListObjectsQuerySamplePercentage),
+			commands.WithShadowListObjectsQueryEnabled(s.featureFlagClient.Boolean(serverconfig.ExperimentalShadowListObjects, storeID)),
 			commands.WithShadowListObjectsQueryTimeout(s.shadowListObjectsQueryTimeout),
 			commands.WithShadowListObjectsQueryMaxDeltaItems(s.shadowListObjectsQueryMaxDeltaItems),
 			commands.WithShadowListObjectsQueryLogger(s.logger),
 		),
+		storeID,
 		commands.WithLogger(s.logger),
 		commands.WithListObjectsDeadline(s.listObjectsDeadline),
 		commands.WithDispatchThrottlerConfig(threshold.Config{
@@ -221,12 +264,16 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 		commands.WithResolveNodeLimit(s.resolveNodeLimit),
 		commands.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
 		commands.WithMaxConcurrentReads(s.maxConcurrentReadsForListObjects),
+		commands.WithListObjectsPipelineEnabled(s.featureFlagClient.Boolean(serverconfig.ExperimentalPipelineListObjects, storeID)),
+		commands.WithListObjectsChunkSize(s.listObjectsChunkSize),
+		commands.WithListObjectsBufferSize(s.listObjectsBufferSize),
+		commands.WithListObjectsNumProcs(s.listObjectsNumProcs),
+		commands.WithListObjectsPipeExtension(s.listObjectsPipeExtendAfter, s.listObjectsPipeMaxExtensions),
+		commands.WithFeatureFlagClient(s.featureFlagClient),
 	)
 	if err != nil {
 		return serverErrors.NewInternalError("", err)
 	}
-
-	req.AuthorizationModelId = typesys.GetAuthorizationModelID() // the resolved model id
 
 	resolutionMetadata, err := q.ExecuteStreamed(
 		typesystem.ContextWithTypesystem(ctx, typesys),
@@ -246,6 +293,15 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 		methodName,
 	).Observe(datastoreQueryCount)
 
+	datastoreItemCount := float64(resolutionMetadata.DatastoreItemCount.Load())
+
+	grpc_ctxtags.Extract(ctx).Set(datastoreItemCountHistogramName, datastoreItemCount)
+	span.SetAttributes(attribute.Float64(datastoreItemCountHistogramName, datastoreItemCount))
+	datastoreItemCountHistogram.WithLabelValues(
+		s.serviceName,
+		methodName,
+	).Observe(datastoreItemCount)
+
 	dispatchCount := float64(resolutionMetadata.DispatchCounter.Load())
 
 	grpc_ctxtags.Extract(ctx).Set(dispatchCountHistogramName, dispatchCount)
@@ -263,10 +319,32 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 		req.GetConsistency().String(),
 	).Observe(float64(time.Since(start).Milliseconds()))
 
-	wasRequestThrottled := resolutionMetadata.WasThrottled.Load()
-	if wasRequestThrottled {
-		throttledRequestCounter.WithLabelValues(s.serviceName, methodName).Inc()
+	wasDispatchThrottled := resolutionMetadata.DispatchThrottled.Load()
+	grpc_ctxtags.Extract(ctx).Set("request.dispatch_throttled", wasDispatchThrottled)
+
+	wasDatastoreThrottled := resolutionMetadata.DatastoreThrottled.Load()
+	grpc_ctxtags.Extract(ctx).Set("request.datastore_throttled", wasDatastoreThrottled)
+
+	if wasDispatchThrottled {
+		throttledRequestCounter.WithLabelValues(s.serviceName, methodName, throttleTypeDispatch).Inc()
+	}
+	if wasDatastoreThrottled {
+		throttledRequestCounter.WithLabelValues(s.serviceName, methodName, throttleTypeDatastore).Inc()
 	}
 
 	return nil
+}
+
+func (s *Server) getListObjectsCheckResolverBuilder(storeID string) *graph.CheckResolverOrderedBuilder {
+	checkCacheOptions, checkDispatchThrottlingOptions := s.getCheckResolverOptions()
+
+	return graph.NewOrderedCheckResolvers([]graph.CheckResolverOrderedBuilderOpt{
+		graph.WithLocalCheckerOpts([]graph.LocalCheckerOption{
+			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
+			graph.WithOptimizations(s.featureFlagClient.Boolean(serverconfig.ExperimentalCheckOptimizations, storeID)),
+			graph.WithMaxResolutionDepth(s.resolveNodeLimit),
+		}...),
+		graph.WithCachedCheckResolverOpts(s.cacheSettings.ShouldCacheCheckQueries(), checkCacheOptions...),
+		graph.WithDispatchThrottlingCheckResolverOpts(s.checkDispatchThrottlingEnabled, checkDispatchThrottlingOptions...),
+	}...)
 }

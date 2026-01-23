@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/emirpasic/gods/sets/hashset"
 	"github.com/sourcegraph/conc/panics"
@@ -13,6 +14,7 @@ import (
 	"github.com/openfga/openfga/internal/checkutil"
 	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/iterator"
+	"github.com/openfga/openfga/internal/planner"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -22,6 +24,25 @@ const IteratorMinBatchThreshold = 100
 const BaseIndex = 0
 const DifferenceIndex = 1
 const weightTwoResolver = "weight2"
+
+// This strategy is configured to show that it has proven fast and consistent.
+var weight2Plan = &planner.PlanConfig{
+	Name:         weightTwoResolver,
+	InitialGuess: 20 * time.Millisecond,
+	// High Lambda: Represents strong confidence in the initial guess. It's like
+	// starting with the belief of having already seen 10 good runs.
+	Lambda: 10.0,
+	// High Alpha, Low Beta: Creates a very NARROW belief about variance.
+	// This tells the planner: "I am very confident that the performance is
+	// consistently close to 10ms". A single slow run will be a huge surprise
+	// and will dramatically shift this belief.
+
+	// High expected precision: 𝐸[𝜏]= 𝛼/𝛽 = 20/2 = 10
+	// Low expected variance: E[σ2]= β/(α−1) =2/9 = 0.105, narrow jitter
+	// A slow sample will look like an outlier and move the posterior noticeably but overall this prior exploits.
+	Alpha: 20,
+	Beta:  2,
+}
 
 var ErrShortCircuit = errors.New("short circuit")
 
@@ -575,7 +596,7 @@ func fastPathOperationSetup(ctx context.Context, req *ResolveCheckRequest, resol
 		})
 
 		if recoveredError != nil {
-			concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Err: fmt.Errorf("%w: %s", ErrPanic, recoveredError.AsError())}, outChan)
+			concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Err: fmt.Errorf("%w: %w", ErrPanic, recoveredError.AsError())}, outChan)
 		}
 	}()
 	return outChan, nil

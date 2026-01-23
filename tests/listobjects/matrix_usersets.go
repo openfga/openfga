@@ -115,6 +115,594 @@ var usersets = []matrixTest{
 		},
 	},
 	{
+		Name: "usersets_user_userset_intersect_mixed",
+		Tuples: []*openfgav1.TupleKey{
+			// First case, direct user assignment which intersect with the union single assignment
+			{Object: "usersets-user:userset_intersect_mixed_1", Relation: "userset_intersect_mixed", User: "user:userset_intersect_mixed_1"},
+			{Object: "usersets-user:userset_intersect_mixed_1", Relation: "user_rel1", User: "user:userset_intersect_mixed_1"},
+			{Object: "complexity3:userset_intersect_mixed_1", Relation: "userset_parent", User: "usersets-user:userset_intersect_mixed_1"},
+			{Object: "complexity3:userset_intersect_mixed_1", Relation: "userset_userset_intersect_mixed", User: "usersets-user:userset_intersect_mixed_1#userset_intersect_mixed"},
+
+			// First case, direct user assignment which intersect with the intersection part of the union
+			{Object: "usersets-user:userset_intersect_mixed_2", Relation: "userset_intersect_mixed", User: "user:userset_intersect_mixed_2"},
+			{Object: "usersets-user:userset_intersect_mixed_2", Relation: "user_rel2", User: "user:userset_intersect_mixed_2"},
+			{Object: "usersets-user:userset_intersect_mixed_2", Relation: "user_rel3", User: "user:userset_intersect_mixed_2"},
+			{Object: "complexity3:userset_intersect_mixed_2", Relation: "userset_parent", User: "usersets-user:userset_intersect_mixed_2"},
+			{Object: "complexity3:userset_intersect_mixed_2", Relation: "userset_userset_intersect_mixed", User: "usersets-user:userset_intersect_mixed_2#userset_intersect_mixed"},
+
+			// Missing assignment will not result in list objects
+			{Object: "usersets-user:userset_intersect_mixed_3", Relation: "user_rel1", User: "user:userset_intersect_mixed_3"},
+			{Object: "complexity3:userset_intersect_mixed_3", Relation: "userset_parent", User: "usersets-user:userset_intersect_mixed_3"},
+			{Object: "complexity3:userset_intersect_mixed_3", Relation: "userset_userset_intersect_mixed", User: "usersets-user:userset_intersect_mixed_3#userset_intersect_mixed"},
+
+			{Object: "usersets-user:userset_intersect_mixed_4", Relation: "user_rel2", User: "user:userset_intersect_mixed_4"},
+			{Object: "usersets-user:userset_intersect_mixed_4", Relation: "user_rel3", User: "user:userset_intersect_mixed_4"},
+			{Object: "complexity3:userset_intersect_mixed_4", Relation: "userset_parent", User: "usersets-user:userset_intersect_mixed_4"},
+			{Object: "complexity3:userset_intersect_mixed_4", Relation: "userset_userset_intersect_mixed", User: "usersets-user:userset_intersect_mixed_4#userset_intersect_mixed"},
+
+			{Object: "usersets-user:userset_intersect_mixed_5", Relation: "userset_intersect_mixed", User: "user:userset_intersect_mixed_5"},
+			{Object: "complexity3:userset_intersect_mixed_5", Relation: "userset_parent", User: "usersets-user:userset_intersect_mixed_5"},
+			{Object: "complexity3:userset_intersect_mixed_5", Relation: "userset_userset_intersect_mixed", User: "usersets-user:userset_intersect_mixed_5#userset_intersect_mixed"},
+
+			// Matching via the directs#alg_combined_oneline route
+			{Object: "directs:userset_intersect_mixed_6", Relation: "direct", User: "user:userset_intersect_mixed_6"},
+			{Object: "directs:userset_intersect_mixed_6", Relation: "other_rel", User: "user:userset_intersect_mixed_6"},
+			{Object: "usersets-user:userset_intersect_mixed_6", Relation: "userset_intersect_mixed", User: "directs:userset_intersect_mixed_6#alg_combined_oneline"},
+			{Object: "usersets-user:userset_intersect_mixed_6", Relation: "user_rel1", User: "user:userset_intersect_mixed_6"},
+			{Object: "complexity3:userset_intersect_mixed_6", Relation: "userset_parent", User: "usersets-user:userset_intersect_mixed_6"},
+			{Object: "complexity3:userset_intersect_mixed_6", Relation: "userset_userset_intersect_mixed", User: "usersets-user:userset_intersect_mixed_6#userset_intersect_mixed"},
+
+			// Non-matching via the directs#alg_combined_oneline route (missing other_rel)
+			{Object: "directs:userset_intersect_mixed_7", Relation: "direct", User: "user:userset_intersect_mixed_7"},
+			{Object: "usersets-user:userset_intersect_mixed_7", Relation: "userset_intersect_mixed", User: "directs:userset_intersect_mixed_7#alg_combined_oneline"},
+			{Object: "usersets-user:userset_intersect_mixed_7", Relation: "user_rel1", User: "user:userset_intersect_mixed_7"},
+			{Object: "complexity3:userset_intersect_mixed_7", Relation: "userset_parent", User: "usersets-user:userset_intersect_mixed_7"},
+			{Object: "complexity3:userset_intersect_mixed_7", Relation: "userset_userset_intersect_mixed", User: "usersets-user:userset_intersect_mixed_7#userset_intersect_mixed"},
+
+			// wildcard user assignment
+			{Object: "usersets-user:userset_intersect_mixed_8", Relation: "userset_intersect_mixed", User: "user:*"},
+			{Object: "usersets-user:userset_intersect_mixed_8", Relation: "user_rel1", User: "user:userset_intersect_mixed_8"},
+			{Object: "complexity3:userset_intersect_mixed_8", Relation: "userset_parent", User: "usersets-user:userset_intersect_mixed_8"},
+			{Object: "complexity3:userset_intersect_mixed_8", Relation: "userset_userset_intersect_mixed", User: "usersets-user:userset_intersect_mixed_8#userset_intersect_mixed"},
+
+			{Object: "usersets-user:userset_intersect_mixed_9", Relation: "userset_intersect_mixed", User: "user:userset_intersect_mixed_9"},
+			{Object: "usersets-user:userset_intersect_mixed_9", Relation: "user_rel1", User: "user:*"},
+			{Object: "complexity3:userset_intersect_mixed_9", Relation: "userset_parent", User: "usersets-user:userset_intersect_mixed_9"},
+			{Object: "complexity3:userset_intersect_mixed_9", Relation: "userset_userset_intersect_mixed", User: "usersets-user:userset_intersect_mixed_9#userset_intersect_mixed"},
+
+			{Object: "directs:userset_intersect_mixed_10", Relation: "direct", User: "user:userset_intersect_mixed_10"},
+			{Object: "directs:userset_intersect_mixed_10", Relation: "other_rel", User: "user:*"},
+			{Object: "usersets-user:userset_intersect_mixed_10", Relation: "userset_intersect_mixed", User: "directs:userset_intersect_mixed_10#alg_combined_oneline"},
+			{Object: "usersets-user:userset_intersect_mixed_10", Relation: "user_rel1", User: "user:userset_intersect_mixed_10"},
+			{Object: "complexity3:userset_intersect_mixed_10", Relation: "userset_parent", User: "usersets-user:userset_intersect_mixed_10"},
+			{Object: "complexity3:userset_intersect_mixed_10", Relation: "userset_userset_intersect_mixed", User: "usersets-user:userset_intersect_mixed_10#userset_intersect_mixed"},
+		},
+		ListObjectAssertions: []*listobjectstest.Assertion{
+
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:userset_intersect_mixed_1",
+					Type:     "usersets-user",
+					Relation: "userset_intersect_mixed",
+				},
+				Expectation: []string{
+					"usersets-user:userset_intersect_mixed_1",
+				},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:userset_intersect_mixed_1",
+					Type:     "complexity3",
+					Relation: "ttu_userset_intersect_mixed",
+				},
+				Expectation: []string{
+					"complexity3:userset_intersect_mixed_1",
+				},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:userset_intersect_mixed_1",
+					Type:     "complexity3",
+					Relation: "userset_userset_intersect_mixed",
+				},
+				Expectation: []string{
+					"complexity3:userset_intersect_mixed_1",
+				},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:userset_intersect_mixed_2",
+					Type:     "usersets-user",
+					Relation: "userset_intersect_mixed",
+				},
+				Expectation: []string{
+					"usersets-user:userset_intersect_mixed_2",
+				},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:userset_intersect_mixed_2",
+					Type:     "complexity3",
+					Relation: "ttu_userset_intersect_mixed",
+				},
+				Expectation: []string{
+					"complexity3:userset_intersect_mixed_2",
+				},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:userset_intersect_mixed_2",
+					Type:     "complexity3",
+					Relation: "userset_userset_intersect_mixed",
+				},
+				Expectation: []string{
+					"complexity3:userset_intersect_mixed_2",
+				},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:userset_intersect_mixed_3",
+					Type:     "usersets-user",
+					Relation: "userset_intersect_mixed",
+				},
+				Expectation: []string{},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:userset_intersect_mixed_3",
+					Type:     "complexity3",
+					Relation: "ttu_userset_intersect_mixed",
+				},
+				Expectation: []string{},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:userset_intersect_mixed_3",
+					Type:     "complexity3",
+					Relation: "userset_userset_intersect_mixed",
+				},
+				Expectation: []string{},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:userset_intersect_mixed_4",
+					Type:     "usersets-user",
+					Relation: "userset_intersect_mixed",
+				},
+				Expectation: []string{},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:userset_intersect_mixed_4",
+					Type:     "complexity3",
+					Relation: "ttu_userset_intersect_mixed",
+				},
+				Expectation: []string{},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:userset_intersect_mixed_4",
+					Type:     "complexity3",
+					Relation: "userset_userset_intersect_mixed",
+				},
+				Expectation: []string{},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:userset_intersect_mixed_5",
+					Type:     "usersets-user",
+					Relation: "userset_intersect_mixed",
+				},
+				Expectation: []string{},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:userset_intersect_mixed_5",
+					Type:     "complexity3",
+					Relation: "ttu_userset_intersect_mixed",
+				},
+				Expectation: []string{},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:userset_intersect_mixed_5",
+					Type:     "complexity3",
+					Relation: "userset_userset_intersect_mixed",
+				},
+				Expectation: []string{},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:userset_intersect_mixed_6",
+					Type:     "usersets-user",
+					Relation: "userset_intersect_mixed",
+				},
+				Expectation: []string{
+					"usersets-user:userset_intersect_mixed_6",
+				},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:userset_intersect_mixed_6",
+					Type:     "complexity3",
+					Relation: "ttu_userset_intersect_mixed",
+				},
+				Expectation: []string{
+					"complexity3:userset_intersect_mixed_6",
+				},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:userset_intersect_mixed_6",
+					Type:     "complexity3",
+					Relation: "userset_userset_intersect_mixed",
+				},
+				Expectation: []string{
+					"complexity3:userset_intersect_mixed_6",
+				},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:userset_intersect_mixed_7",
+					Type:     "usersets-user",
+					Relation: "userset_intersect_mixed",
+				},
+				Expectation: []string{},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:userset_intersect_mixed_7",
+					Type:     "complexity3",
+					Relation: "ttu_userset_intersect_mixed",
+				},
+				Expectation: []string{},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:userset_intersect_mixed_7",
+					Type:     "complexity3",
+					Relation: "userset_userset_intersect_mixed",
+				},
+				Expectation: []string{},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:userset_intersect_mixed_8",
+					Type:     "usersets-user",
+					Relation: "userset_intersect_mixed",
+				},
+				Expectation: []string{
+					"usersets-user:userset_intersect_mixed_8",
+				},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:userset_intersect_mixed_8",
+					Type:     "complexity3",
+					Relation: "ttu_userset_intersect_mixed",
+				},
+				Expectation: []string{
+					"complexity3:userset_intersect_mixed_8",
+				},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:userset_intersect_mixed_8",
+					Type:     "complexity3",
+					Relation: "userset_userset_intersect_mixed",
+				},
+				Expectation: []string{
+					"complexity3:userset_intersect_mixed_8",
+				},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:userset_intersect_mixed_9",
+					Type:     "usersets-user",
+					Relation: "userset_intersect_mixed",
+				},
+				Expectation: []string{
+					"usersets-user:userset_intersect_mixed_9",
+				},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:userset_intersect_mixed_9",
+					Type:     "complexity3",
+					Relation: "ttu_userset_intersect_mixed",
+				},
+				Expectation: []string{
+					"complexity3:userset_intersect_mixed_9",
+				},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:userset_intersect_mixed_9",
+					Type:     "complexity3",
+					Relation: "userset_userset_intersect_mixed",
+				},
+				Expectation: []string{
+					"complexity3:userset_intersect_mixed_9",
+				},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:userset_intersect_mixed_10",
+					Type:     "usersets-user",
+					Relation: "userset_intersect_mixed",
+				},
+				Expectation: []string{
+					"usersets-user:userset_intersect_mixed_10",
+				},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:userset_intersect_mixed_10",
+					Type:     "complexity3",
+					Relation: "ttu_userset_intersect_mixed",
+				},
+				Expectation: []string{
+					"complexity3:userset_intersect_mixed_10",
+				},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:userset_intersect_mixed_10",
+					Type:     "complexity3",
+					Relation: "userset_userset_intersect_mixed",
+				},
+				Expectation: []string{
+					"complexity3:userset_intersect_mixed_10",
+				},
+			},
+		},
+	},
+	{
+		Name: "usersets_user_userset_exclude_mixed",
+		Tuples: []*openfgav1.TupleKey{
+			// First case, direct user assignment which has no corresponding exclude assignment
+			{Object: "usersets-user:userset_exclude_mixed_1", Relation: "userset_exclude_mixed", User: "user:userset_exclude_mixed_1"},
+			{Object: "complexity3:userset_exclude_mixed_1", Relation: "userset_parent", User: "usersets-user:userset_exclude_mixed_1"},
+			{Object: "complexity3:userset_exclude_mixed_1", Relation: "userset_userset_exclude_mixed", User: "usersets-user:userset_exclude_mixed_1#userset_exclude_mixed"},
+
+			// Second case, direct user assignment which has corresponding exclude assignment
+			{Object: "usersets-user:userset_exclude_mixed_2", Relation: "userset_exclude_mixed", User: "user:userset_exclude_mixed_2"},
+			{Object: "usersets-user:userset_exclude_mixed_2", Relation: "userset_intersect_mixed", User: "user:userset_exclude_mixed_2"},
+			{Object: "usersets-user:userset_exclude_mixed_2", Relation: "user_rel1", User: "user:userset_exclude_mixed_2"},
+			{Object: "complexity3:userset_exclude_mixed_2", Relation: "userset_parent", User: "usersets-user:userset_exclude_mixed_2"},
+			{Object: "complexity3:userset_exclude_mixed_2", Relation: "userset_userset_exclude_mixed", User: "usersets-user:userset_exclude_mixed_2#userset_exclude_mixed"},
+
+			// Exclude assignment not completely satisfy
+			{Object: "usersets-user:userset_exclude_mixed_3", Relation: "userset_exclude_mixed", User: "user:userset_exclude_mixed_3"},
+			{Object: "usersets-user:userset_exclude_mixed_3", Relation: "user_rel1", User: "user:userset_exclude_mixed_3"},
+			{Object: "complexity3:userset_exclude_mixed_3", Relation: "userset_parent", User: "usersets-user:userset_exclude_mixed_3"},
+			{Object: "complexity3:userset_exclude_mixed_3", Relation: "userset_userset_exclude_mixed", User: "usersets-user:userset_exclude_mixed_3#userset_exclude_mixed"},
+
+			{Object: "usersets-user:userset_exclude_mixed_4", Relation: "userset_exclude_mixed", User: "user:userset_exclude_mixed_4"},
+			{Object: "usersets-user:userset_exclude_mixed_4", Relation: "userset_intersect_mixed", User: "user:userset_exclude_mixed_4"},
+			{Object: "complexity3:userset_exclude_mixed_4", Relation: "userset_parent", User: "usersets-user:userset_exclude_mixed_4"},
+			{Object: "complexity3:userset_exclude_mixed_4", Relation: "userset_userset_exclude_mixed", User: "usersets-user:userset_exclude_mixed_4#userset_exclude_mixed"},
+
+			// Via the directs#alg_combined_oneline
+			{Object: "usersets-user:userset_exclude_mixed_5", Relation: "userset_exclude_mixed", User: "user:userset_exclude_mixed_5"},
+			{Object: "directs:userset_exclude_mixed_5", Relation: "direct", User: "user:userset_exclude_mixed_5"},
+			{Object: "directs:userset_exclude_mixed_5", Relation: "other_rel", User: "user:userset_exclude_mixed_5"},
+			{Object: "usersets-user:userset_exclude_mixed_5", Relation: "userset_intersect_mixed", User: "directs:userset_exclude_mixed_5#alg_combined_oneline"},
+			{Object: "usersets-user:userset_exclude_mixed_5", Relation: "user_rel1", User: "user:userset_exclude_mixed_5"},
+			{Object: "complexity3:userset_exclude_mixed_5", Relation: "userset_parent", User: "usersets-user:userset_exclude_mixed_5"},
+			{Object: "complexity3:userset_exclude_mixed_5", Relation: "userset_userset_exclude_mixed", User: "usersets-user:userset_exclude_mixed_5#userset_exclude_mixed"},
+
+			{Object: "usersets-user:userset_exclude_mixed_6", Relation: "userset_exclude_mixed", User: "user:userset_exclude_mixed_6"},
+			{Object: "directs:userset_exclude_mixed_6", Relation: "direct", User: "user:userset_exclude_mixed_6"},
+			{Object: "usersets-user:userset_exclude_mixed_6", Relation: "userset_intersect_mixed", User: "directs:userset_exclude_mixed_6#alg_combined_oneline"},
+			{Object: "usersets-user:userset_exclude_mixed_6", Relation: "user_rel1", User: "user:userset_exclude_mixed_6"},
+			{Object: "complexity3:userset_exclude_mixed_6", Relation: "userset_parent", User: "usersets-user:userset_exclude_mixed_6"},
+			{Object: "complexity3:userset_exclude_mixed_6", Relation: "userset_userset_exclude_mixed", User: "usersets-user:userset_exclude_mixed_6#userset_exclude_mixed"},
+
+			{Object: "usersets-user:userset_exclude_mixed_7", Relation: "userset_exclude_mixed", User: "user:userset_exclude_mixed_7"},
+			{Object: "directs:userset_exclude_mixed_7", Relation: "direct", User: "user:userset_exclude_mixed_7"},
+			{Object: "directs:userset_exclude_mixed_7", Relation: "other_rel", User: "user:*"},
+			{Object: "usersets-user:userset_exclude_mixed_7", Relation: "userset_intersect_mixed", User: "directs:userset_exclude_mixed_7#alg_combined_oneline"},
+			{Object: "usersets-user:userset_exclude_mixed_7", Relation: "user_rel1", User: "user:userset_exclude_mixed_7"},
+			{Object: "complexity3:userset_exclude_mixed_7", Relation: "userset_parent", User: "usersets-user:userset_exclude_mixed_7"},
+			{Object: "complexity3:userset_exclude_mixed_7", Relation: "userset_userset_exclude_mixed", User: "usersets-user:userset_exclude_mixed_7#userset_exclude_mixed"},
+		},
+		ListObjectAssertions: []*listobjectstest.Assertion{
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:userset_exclude_mixed_1",
+					Type:     "usersets-user",
+					Relation: "userset_exclude_mixed",
+				},
+				Expectation: []string{
+					"usersets-user:userset_exclude_mixed_1",
+				},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:userset_exclude_mixed_1",
+					Type:     "complexity3",
+					Relation: "ttu_userset_exclude_mixed",
+				},
+				Expectation: []string{
+					"complexity3:userset_exclude_mixed_1",
+				},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:userset_exclude_mixed_1",
+					Type:     "complexity3",
+					Relation: "userset_userset_exclude_mixed",
+				},
+				Expectation: []string{
+					"complexity3:userset_exclude_mixed_1",
+				},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:userset_exclude_mixed_2",
+					Type:     "usersets-user",
+					Relation: "userset_exclude_mixed",
+				},
+				Expectation: []string{},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:userset_exclude_mixed_2",
+					Type:     "complexity3",
+					Relation: "ttu_userset_exclude_mixed",
+				},
+				Expectation: []string{},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:userset_exclude_mixed_2",
+					Type:     "complexity3",
+					Relation: "userset_userset_exclude_mixed",
+				},
+				Expectation: []string{},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:userset_exclude_mixed_3",
+					Type:     "usersets-user",
+					Relation: "userset_exclude_mixed",
+				},
+				Expectation: []string{
+					"usersets-user:userset_exclude_mixed_3",
+				},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:userset_exclude_mixed_3",
+					Type:     "complexity3",
+					Relation: "ttu_userset_exclude_mixed",
+				},
+				Expectation: []string{
+					"complexity3:userset_exclude_mixed_3",
+				},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:userset_exclude_mixed_3",
+					Type:     "complexity3",
+					Relation: "userset_userset_exclude_mixed",
+				},
+				Expectation: []string{
+					"complexity3:userset_exclude_mixed_3",
+				},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:userset_exclude_mixed_4",
+					Type:     "usersets-user",
+					Relation: "userset_exclude_mixed",
+				},
+				Expectation: []string{
+					"usersets-user:userset_exclude_mixed_4",
+				},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:userset_exclude_mixed_4",
+					Type:     "complexity3",
+					Relation: "ttu_userset_exclude_mixed",
+				},
+				Expectation: []string{
+					"complexity3:userset_exclude_mixed_4",
+				},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:userset_exclude_mixed_4",
+					Type:     "complexity3",
+					Relation: "userset_userset_exclude_mixed",
+				},
+				Expectation: []string{
+					"complexity3:userset_exclude_mixed_4",
+				},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:userset_exclude_mixed_5",
+					Type:     "usersets-user",
+					Relation: "userset_exclude_mixed",
+				},
+				Expectation: []string{},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:userset_exclude_mixed_5",
+					Type:     "complexity3",
+					Relation: "ttu_userset_exclude_mixed",
+				},
+				Expectation: []string{},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:userset_exclude_mixed_5",
+					Type:     "complexity3",
+					Relation: "userset_userset_exclude_mixed",
+				},
+				Expectation: []string{},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:userset_exclude_mixed_6",
+					Type:     "usersets-user",
+					Relation: "userset_exclude_mixed",
+				},
+				Expectation: []string{
+					"usersets-user:userset_exclude_mixed_6",
+				},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:userset_exclude_mixed_6",
+					Type:     "complexity3",
+					Relation: "ttu_userset_exclude_mixed",
+				},
+				Expectation: []string{
+					"complexity3:userset_exclude_mixed_6",
+				},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:userset_exclude_mixed_6",
+					Type:     "complexity3",
+					Relation: "userset_userset_exclude_mixed",
+				},
+				Expectation: []string{
+					"complexity3:userset_exclude_mixed_6",
+				},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:userset_exclude_mixed_7",
+					Type:     "usersets-user",
+					Relation: "userset_exclude_mixed",
+				},
+				Expectation: []string{},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:userset_exclude_mixed_7",
+					Type:     "complexity3",
+					Relation: "ttu_userset_exclude_mixed",
+				},
+				Expectation: []string{},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:userset_exclude_mixed_7",
+					Type:     "complexity3",
+					Relation: "userset_userset_exclude_mixed",
+				},
+				Expectation: []string{},
+			},
+		},
+	},
+	{
 		Name: "usersets_user_userset_recursive",
 		Tuples: []*openfgav1.TupleKey{
 			// Create a recursive chain
