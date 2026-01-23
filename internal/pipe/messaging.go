@@ -80,6 +80,12 @@ type Config struct {
 	MaxExtensions int
 }
 
+func DefaultConfig() Config {
+	return Config{
+		Capacity: 1 << 7,
+	}
+}
+
 // Validate is a function that validates the values of the config.
 // An ErrInvalidCapacity error is returned if the capacity value is
 // not a valid power of two.
@@ -161,6 +167,7 @@ func New[T any](config Config) (*Pipe[T], error) {
 		return nil, ErrInvalidCapacity
 	}
 	var p Pipe[T]
+	p.config = config
 	p.data = make([]T, config.Capacity)
 	p.condFull = sync.NewCond(&p.mu)
 	p.condEmpty = sync.NewCond(&p.mu)
@@ -196,12 +203,12 @@ func (p *Pipe[T]) extend(n uint) {
 	}
 
 	// Distance between the head and tail is always the size of the buffer
-	currentSize := p.head - p.tail
+	currentCapacity := p.head - p.tail
 
 	newData := make([]T, n)
 
 	// Reorganize the buffer data so that the first element starts at index 0
-	for i := range currentSize {
+	for i := range currentCapacity {
 		oldIndex := p.mask(p.tail + i)
 		newData[i] = p.data[oldIndex]
 	}
@@ -210,7 +217,7 @@ func (p *Pipe[T]) extend(n uint) {
 
 	// Reset the buffer positions since we just reoganized the data
 	p.tail = 0
-	p.head = currentSize
+	p.head = currentCapacity
 
 	p.extendCount++
 
@@ -340,12 +347,12 @@ func (p *Pipe[T]) Send(item T) bool {
 		var timer *time.Timer
 
 		if p.config.ExtendAfter >= 0 && (p.config.MaxExtensions < 0 || p.extendCount < p.config.MaxExtensions) {
-			currentSize := len(p.data)
+			currentCapacity := len(p.data)
 			timer = time.AfterFunc(p.config.ExtendAfter, func() {
 				p.mu.Lock()
 				defer p.mu.Unlock()
 
-				if len(p.data) != currentSize {
+				if len(p.data) != currentCapacity {
 					return
 				}
 
@@ -353,7 +360,7 @@ func (p *Pipe[T]) Send(item T) bool {
 				if p.config.MaxExtensions >= 0 && p.extendCount >= p.config.MaxExtensions {
 					return
 				}
-				p.extend(uint(currentSize) << 1)
+				p.extend(uint(currentCapacity) << 1)
 			})
 		}
 
