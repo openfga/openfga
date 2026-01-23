@@ -22,7 +22,7 @@ func (r *intersectionResolver) Resolve(
 	ctx, span := pipelineTracer.Start(ctx, "intersectionResolver.Resolve")
 	defer span.End()
 
-	defer r.reporter.Report(false)
+	defer r.membership.SignalReady()
 
 	var wg sync.WaitGroup
 

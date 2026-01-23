@@ -5,7 +5,6 @@ import (
 	"sync"
 
 	"github.com/openfga/openfga/internal/pipe"
-	"github.com/openfga/openfga/pkg/server/commands/reverseexpand/pipeline/track"
 )
 
 // sender is a struct that contains fields relevant to the producing
@@ -73,14 +72,14 @@ func (w *worker) Subscribe(key *Edge) *sender {
 	}
 }
 
-func (w *worker) listenForInitialValue(value string, tracker *track.Tracker) {
+func (w *worker) listenForInitialValue(value string, membership *membership) {
 	items := []Item{{Value: value}}
-	tracker.Inc()
+	membership.Tracker().Inc()
 	m := &message{
 		Value: items,
 
 		// Stored for cleanup
-		tracker: tracker,
+		tracker: membership.Tracker(),
 	}
 	w.Listen(&sender{nil, pipe.StaticRx(m)})
 }

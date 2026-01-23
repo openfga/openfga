@@ -5,7 +5,6 @@ import (
 	"iter"
 
 	"github.com/openfga/openfga/internal/seq"
-	"github.com/openfga/openfga/pkg/server/commands/reverseexpand/pipeline/track"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -27,13 +26,9 @@ type resolverCore struct {
 	// broadcasts to all of the parent worker's listeners.
 	interpreter interpreter
 
-	// tracker may be owned or shared with other resolvers. It is used to report messages from
-	// this resolver that are still in-flight.
-	tracker *track.Tracker
-
-	// reporter may be owned or shared with other resolvers. It is used to report on the status of
-	// the resolver.
-	reporter *track.Reporter
+	// membership provides access to the cycle group's coordination primitives.
+	// It is shared with other resolvers in the same cycle.
+	membership *membership
 
 	// bufferPool is intended to be shared with other resolvers. It is used to manage a pool of
 	// Item slices so that additional allocations can be avoided.
@@ -70,7 +65,7 @@ func (r *resolverCore) broadcast(
 			copy(*values, (*buffer)[:count])
 
 			// Increment the resolver's tracker to account for the new message.
-			r.tracker.Inc()
+			r.membership.Tracker().Inc()
 			m := &message{
 				// Only slice the values in the read buffer up to what was actually read.
 				Value: (*values)[:count],
@@ -78,7 +73,7 @@ func (r *resolverCore) broadcast(
 				// Stored for cleanup
 				buffer:     values,
 				bufferPool: r.bufferPool,
-				tracker:    r.tracker,
+				tracker:    r.membership.Tracker(),
 			}
 
 			if !listeners[i].Send(m) {

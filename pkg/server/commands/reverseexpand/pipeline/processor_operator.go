@@ -21,7 +21,7 @@ type operatorProcessor struct {
 // the listeners at this point.
 func (p *operatorProcessor) process(ctx context.Context, edge *Edge, msg *message) {
 	// Increment the tracker to account for an in-flight message.
-	p.tracker.Inc()
+	p.membership.Tracker().Inc()
 	values := p.bufferPool.Get()
 	// Copy values from message to local buffer so that the message
 	// can release its buffer back to the pool.
@@ -54,7 +54,7 @@ func (p *operatorProcessor) process(ctx context.Context, edge *Edge, msg *messag
 
 	// Save the tracker decrementation for later execution in the Resolve
 	// function. This is critical to ensure that resolvers sharing this
-	// instance's tracker observe the appropriate count for the entirely
+	// instance's tracker observe the appropriate count for the entirety
 	// of processing.
-	p.cleanup.Add(p.tracker.Dec)
+	p.cleanup.Add(p.membership.Tracker().Dec)
 }

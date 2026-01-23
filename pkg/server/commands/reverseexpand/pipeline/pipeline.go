@@ -15,7 +15,6 @@ import (
 
 	"github.com/openfga/openfga/internal/checkutil"
 	"github.com/openfga/openfga/internal/validation"
-	"github.com/openfga/openfga/pkg/server/commands/reverseexpand/pipeline/track"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
@@ -147,8 +146,7 @@ type path struct {
 	userIdentifier string
 	interpreter    interpreter
 	bufferPool     *bufferPool
-	tracker        *track.Tracker
-	statusPool     *track.StatusPool
+	cycleGroup     *cycleGroup
 }
 
 func (q *Query) resolve(p path, workers workerPool) *worker {
@@ -156,24 +154,18 @@ func (q *Query) resolve(p path, workers workerPool) *worker {
 		return w
 	}
 
-	if p.tracker == nil {
-		p.tracker = new(track.Tracker)
-	}
-
-	if p.statusPool == nil {
-		p.statusPool = new(track.StatusPool)
+	if p.cycleGroup == nil {
+		p.cycleGroup = newCycleGroup()
 	}
 
 	var w worker
 	w.bufferConfig = q.config.BufferConfig
 
-	reporter := p.statusPool.Register()
-	reporter.Report(true)
+	membership := p.cycleGroup.Join()
 
 	core := resolverCore{
 		interpreter: p.interpreter,
-		tracker:     p.tracker,
-		reporter:    reporter,
+		membership:  membership,
 		bufferPool:  p.bufferPool,
 		numProcs:    q.config.NumProcs,
 	}
@@ -194,7 +186,7 @@ func (q *Query) resolve(p path, workers workerPool) *worker {
 			case nodeTypeSpecificType, nodeTypeSpecificTypeAndRelation:
 				value = ":" + p.userIdentifier
 			}
-			w.listenForInitialValue(objectType+value, p.tracker)
+			w.listenForInitialValue(objectType+value, membership)
 		}
 	case nodeTypeSpecificTypeWildcard:
 		label := p.objectNode.GetLabel()
@@ -202,7 +194,7 @@ func (q *Query) resolve(p path, workers workerPool) *worker {
 
 		if p.objectNode == p.userNode || typePart == p.userNode.GetLabel() {
 			// object node is the user node or has the same type as the user.
-			w.listenForInitialValue(typePart+":*", p.tracker)
+			w.listenForInitialValue(typePart+":*", membership)
 		}
 	}
 
@@ -214,9 +206,8 @@ func (q *Query) resolve(p path, workers workerPool) *worker {
 	for _, edge := range edges {
 		nextPath := p
 
-		if len(edge.GetRecursiveRelation()) == 0 && !edge.IsPartOfTupleCycle() {
-			nextPath.tracker = nil
-			nextPath.statusPool = nil
+		if !isCyclical(edge) {
+			nextPath.cycleGroup = nil
 		}
 
 		nextPath.objectNode = edge.GetTo()

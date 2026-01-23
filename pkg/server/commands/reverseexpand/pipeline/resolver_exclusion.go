@@ -24,7 +24,7 @@ func (r *exclusionResolver) Resolve(
 	ctx, span := pipelineTracer.Start(ctx, "exclusionResolver.Resolve")
 	defer span.End()
 
-	defer r.reporter.Report(false)
+	defer r.membership.SignalReady()
 
 	if len(senders) != 2 {
 		panic("exclusion resolver requires two senders")

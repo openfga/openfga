@@ -101,12 +101,7 @@ func (r *baseResolver) Resolve(
 
 	for _, snd := range senders {
 		edge := snd.Key()
-
-		var isCyclical bool
-
-		if edge != nil {
-			isCyclical = len(edge.GetRecursiveRelation()) > 0 || edge.IsPartOfTupleCycle()
-		}
+		isCyclical := isCyclical(edge)
 
 		if isCyclical {
 			// The sender's edge is either recursive or part of a tuple cycle.
@@ -155,19 +150,15 @@ func (r *baseResolver) Resolve(
 	// All standard senders are guaranteed to end at some point.
 	wgStandard.Wait()
 
-	// Now that all standard senders have been exhaused, this resolver is ready
+	// Now that all standard senders have been exhausted, this resolver is ready
 	// to end once all other resolvers that are part of the same cycle are ready.
-	r.reporter.Report(false)
+	r.membership.SignalReady()
 
 	// Wait for all related resolvers' status to be set to `false`.
-	r.reporter.Wait(func(s bool) bool {
-		return !s
-	})
+	r.membership.WaitForAllReady()
 
 	// Wait until all messages from related resolvers have finished processing.
-	r.tracker.Wait(func(i int64) bool {
-		return i < 1
-	})
+	r.membership.WaitForDrain()
 
 	// Close all listeners to release any processors that are stuck on a full
 	// listener buffer. Without this, an early termination could cause a deadlock
