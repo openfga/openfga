@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"strings"
 	"sync/atomic"
 	"time"
 
@@ -597,51 +596,33 @@ func (q *ListObjectsQuery) Execute(
 			Preference: req.GetConsistency(),
 		}
 
-		var options []pipeline.Option
+		conf := pipeline.DefaultConfig()
 
 		if q.chunkSize > 0 {
-			options = append(options, pipeline.WithChunkSize(q.chunkSize))
+			conf.ChunkSize = q.chunkSize
 		}
 
 		if q.bufferSize > 0 {
-			options = append(options, pipeline.WithBufferSize(q.bufferSize))
+			conf.BufferConfig.Capacity = q.bufferSize
 		}
 
 		if q.numProcs > 0 {
-			options = append(options, pipeline.WithNumProcs(q.numProcs))
+			conf.NumProcs = q.numProcs
 		}
 
 		if q.pipeExtendAfter > 0 {
-			options = append(options, pipeline.WithPipeExtension(q.pipeExtendAfter, q.pipeMaxExtensions))
+			conf.BufferConfig.ExtendAfter = q.pipeExtendAfter
+			conf.BufferConfig.MaxExtensions = q.pipeMaxExtensions
 		}
 
-		pl, err := pipeline.New(backend, options...)
+		seq, err := pipeline.NewQuery(backend, pipeline.WithConfig(conf)).
+			From(targetObjectType, targetRelation).
+			To(req.GetUser()).
+			Execute(timeoutCtx)
+
 		if err != nil {
 			return nil, serverErrors.ValidationError(err)
 		}
-
-		var source pipeline.Source
-		var target pipeline.Target
-
-		if source, ok = pl.Source(targetObjectType, targetRelation); !ok {
-			return nil, serverErrors.ValidationError(fmt.Errorf("object: %s relation: %s not in graph", targetObjectType, targetRelation))
-		}
-
-		userParts := strings.Split(req.GetUser(), "#")
-
-		objectParts := strings.Split(userParts[0], ":")
-		objectType := objectParts[0]
-		objectID := objectParts[1]
-
-		if len(userParts) > 1 {
-			objectType += "#" + userParts[1]
-		}
-
-		if target, ok = pl.Target(objectType, objectID); !ok {
-			return nil, serverErrors.ValidationError(fmt.Errorf("user: %s relation: %s not in graph", objectType, objectID))
-		}
-
-		seq := pl.Build(timeoutCtx, source, target)
 
 		var res ListObjectsResponse
 
@@ -790,51 +771,33 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 			Preference: req.GetConsistency(),
 		}
 
-		var options []pipeline.Option
+		conf := pipeline.DefaultConfig()
 
 		if q.chunkSize > 0 {
-			options = append(options, pipeline.WithChunkSize(q.chunkSize))
+			conf.ChunkSize = q.chunkSize
 		}
 
 		if q.bufferSize > 0 {
-			options = append(options, pipeline.WithBufferSize(q.bufferSize))
+			conf.BufferConfig.Capacity = q.bufferSize
 		}
 
 		if q.numProcs > 0 {
-			options = append(options, pipeline.WithNumProcs(q.numProcs))
+			conf.NumProcs = q.numProcs
 		}
 
 		if q.pipeExtendAfter > 0 {
-			options = append(options, pipeline.WithPipeExtension(q.pipeExtendAfter, q.pipeMaxExtensions))
+			conf.BufferConfig.ExtendAfter = q.pipeExtendAfter
+			conf.BufferConfig.MaxExtensions = q.pipeMaxExtensions
 		}
 
-		pl, err := pipeline.New(backend, options...)
+		seq, err := pipeline.NewQuery(backend, pipeline.WithConfig(conf)).
+			From(targetObjectType, targetRelation).
+			To(req.GetUser()).
+			Execute(timeoutCtx)
+
 		if err != nil {
 			return nil, serverErrors.ValidationError(err)
 		}
-
-		var source pipeline.Source
-		var target pipeline.Target
-
-		if source, ok = pl.Source(targetObjectType, targetRelation); !ok {
-			return nil, serverErrors.ValidationError(fmt.Errorf("object: %s relation: %s not in graph", targetObjectType, targetRelation))
-		}
-
-		userParts := strings.Split(req.GetUser(), "#")
-
-		objectParts := strings.Split(userParts[0], ":")
-		objectType := objectParts[0]
-		objectID := objectParts[1]
-
-		if len(userParts) > 1 {
-			objectType += "#" + userParts[1]
-		}
-
-		if target, ok = pl.Target(objectType, objectID); !ok {
-			return nil, serverErrors.ValidationError(fmt.Errorf("user: %s relation: %s not in graph", objectType, objectID))
-		}
-
-		seq := pl.Build(timeoutCtx, source, target)
 
 		var listObjectsCount uint32 = 0
 
