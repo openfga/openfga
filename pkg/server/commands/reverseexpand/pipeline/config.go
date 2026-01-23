@@ -10,8 +10,7 @@ type Option func(*Config)
 
 // WithBufferSize is a function that sets the value for a pipeline's workers' internal
 // pipe buffer size. The value must be a power of two. (e.g. 1, 2, 4, 8, 16, 32...)
-// The default value of the buffer size is 128. If an invalid value is provided as size
-// then the default value will be applied.
+// The default value of the buffer size is 128.
 func WithBufferSize(size int) Option {
 	return func(config *Config) {
 		config.BufferConfig.Capacity = size
