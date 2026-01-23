@@ -25,6 +25,10 @@ func (r *intersectionResolver) Resolve(
 
 	defer r.membership.SignalReady()
 
+	if len(senders) == 0 {
+		return
+	}
+
 	var wg sync.WaitGroup
 
 	bags := make([]txBag[Item], len(senders))
