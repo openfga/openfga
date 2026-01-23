@@ -29,6 +29,17 @@ func (s *Server) ReadChanges(ctx context.Context, req *openfgav1.ReadChangesRequ
 		}
 	}
 
+	if p := req.GetPageSize(); p != nil {
+		pageSize := p.GetValue()
+		if pageSize < 1 || pageSize > s.readChangesMaxPageSize {
+			return nil, status.Errorf(
+				codes.InvalidArgument,
+				"invalid ReadChangesRequest.PageSize: value must be inside range [1, %d]",
+				s.readChangesMaxPageSize,
+			)
+		}
+	}
+
 	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
 		Service: s.serviceName,
 		Method:  apimethod.ReadChanges.String(),
