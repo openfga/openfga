@@ -1,3 +1,74 @@
+// Package pipeline implements reverse expansion for authorization queries.
+//
+// Reverse expansion answers the question: "What objects can a user access?"
+// Given a target type/relation and a user, the pipeline traverses the
+// authorization model graph to find all objects where the user has the
+// specified relation.
+//
+// # Architecture
+//
+// The pipeline constructs a network of workers, one per node in the
+// authorization graph. Workers communicate through message-passing channels,
+// processing tuples and propagating results upstream toward the query origin.
+//
+//	Query.Execute()
+//	     │
+//	     ▼
+//	resolve() ─── builds worker graph from authorization model
+//	     │
+//	     ▼
+//	┌─────────┐     ┌─────────┐     ┌─────────┐
+//	│ Worker  │◄────│ Worker  │◄────│ Worker  │
+//	│ (root)  │     │         │     │ (leaf)  │
+//	└─────────┘     └─────────┘     └─────────┘
+//	     │
+//	     ▼
+//	iter.Seq[Item] ─── results streamed to caller
+//
+// # Key Types
+//
+//   - [Backend]: Dependencies for query execution (datastore, type system, graph)
+//   - [Query]: Fluent API for constructing and executing queries
+//   - [Item]: A result object ID or error
+//   - [cycleGroup]: Coordinates shutdown among workers in the same graph cycle
+//   - [membership]: A worker's handle for participating in cycle coordination
+//
+// # Cycle Handling
+//
+// Authorization models may contain cycles (e.g., recursive relations or
+// tuple cycles). Workers connected by cyclical edges share a [cycleGroup]
+// to coordinate shutdown. Each worker joins the group to obtain a [membership],
+// which provides:
+//
+//   - Message tracking via [membership.Tracker]
+//   - Ready signaling via [membership.SignalReady]
+//   - Synchronization via [membership.WaitForAllReady] and [membership.WaitForDrain]
+//
+// Workers not in a cycle use their own single-member group.
+//
+// # Configuration
+//
+// Use [Option] functions to configure pipeline behavior:
+//
+//	query := NewQuery(backend,
+//	    WithNumProcs(4),      // goroutines per worker
+//	    WithChunkSize(100),   // batch size for tuple processing
+//	    WithBufferSize(128),  // channel buffer capacity
+//	)
+//
+// # Usage
+//
+//	seq, err := NewQuery(backend).
+//	    From("document", "viewer").
+//	    To("user:alice").
+//	    Execute(ctx)
+//
+//	for item := range seq {
+//	    if item.Err != nil {
+//	        // handle error
+//	    }
+//	    // item.Value is an object ID like "document:readme"
+//	}
 package pipeline
 
 import (
