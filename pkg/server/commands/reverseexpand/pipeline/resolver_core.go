@@ -21,6 +21,7 @@ type resolver interface {
 	Resolve(context.Context, []*sender, []*listener)
 }
 
+// resolverCore contains state and operations common to all resolver implementations.
 type resolverCore struct {
 	// interpreter is an `interpreter` that transforms a sender's input into output which it
 	// broadcasts to all of the parent worker's listeners.
@@ -38,6 +39,8 @@ type resolverCore struct {
 	numProcs int
 }
 
+// broadcast sends results to all downstream listeners in batches.
+// Batching amortizes the overhead of message creation and synchronization across multiple items.
 func (r *resolverCore) broadcast(
 	results iter.Seq[Item],
 	listeners []*listener,
@@ -60,8 +63,8 @@ func (r *resolverCore) broadcast(
 		for i := range len(listeners) {
 			// Grab a buffer that will be specific to this message.
 			values := r.bufferPool.Get()
-			// This copy is done so that the content of the message buffer is
-			// not altered when the read buffer has new values written to it.
+			// Each listener needs its own buffer copy because they process messages independently;
+			// without copying, concurrent access to the shared read buffer would cause data races.
 			copy(*values, (*buffer)[:count])
 
 			// Increment the resolver's tracker to account for the new message.
@@ -91,6 +94,8 @@ func (r *resolverCore) broadcast(
 	return sentCount
 }
 
+// drain consumes all messages from a sender and yields them to the processing function.
+// Attaches telemetry metadata to track message flow through the pipeline.
 func (r *resolverCore) drain(
 	ctx context.Context,
 	snd *sender,

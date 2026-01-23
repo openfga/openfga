@@ -7,6 +7,9 @@ import (
 	"github.com/openfga/openfga/internal/pipe"
 )
 
+// operatorProcessor processes messages for set operation resolvers.
+// Unlike baseProcessor which streams results immediately, operatorProcessor collects
+// all items for the resolver to compute set operations (intersection, exclusion).
 type operatorProcessor struct {
 	resolverCore
 	items   pipe.Tx[Item]
@@ -23,8 +26,9 @@ func (p *operatorProcessor) process(ctx context.Context, edge *Edge, msg *messag
 	// Increment the tracker to account for an in-flight message.
 	p.membership.Tracker().Inc()
 	values := p.bufferPool.Get()
-	// Copy values from message to local buffer so that the message
-	// can release its buffer back to the pool.
+	// Copy to local buffer to allow immediate message cleanup.
+	// Operator resolvers need message data to remain valid until all senders complete;
+	// copying lets us release the message buffer early while preserving the data.
 	copy(*values, msg.Value)
 	size := len(msg.Value)
 
@@ -42,8 +46,8 @@ func (p *operatorProcessor) process(ctx context.Context, edge *Edge, msg *messag
 		}
 		unseen = append(unseen, item.Value)
 	}
-	// When returning the buffer to the pool, its length must remain
-	// unaltered, lest the chunk size no longer be respected.
+	// Buffer length must match pool allocation size; changing it would break
+	// subsequent Get() calls. The pool relies on uniform buffer sizes for reuse.
 	p.bufferPool.Put(values)
 
 	results := p.interpreter.Interpret(ctx, edge, unseen)
@@ -52,9 +56,8 @@ func (p *operatorProcessor) process(ctx context.Context, edge *Edge, msg *messag
 		p.items.Send(item)
 	}
 
-	// Save the tracker decrementation for later execution in the Resolve
-	// function. This is critical to ensure that resolvers sharing this
-	// instance's tracker observe the appropriate count for the entirety
-	// of processing.
+	// Defer tracker decrementation until after set operation completes.
+	// Operator resolvers need accurate tracker counts to know when all inputs have arrived;
+	// decrementing too early would trigger premature shutdown before computing the set operation.
 	p.cleanup.Add(p.membership.Tracker().Dec)
 }

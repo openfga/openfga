@@ -18,12 +18,18 @@ func WithBufferSize(size int) Option {
 	}
 }
 
+// WithChunkSize configures the batch size for tuple processing.
+// Larger chunks reduce message overhead but increase latency and memory usage.
+// The default of 100 balances throughput and responsiveness for most workloads.
 func WithChunkSize(size int) Option {
 	return func(config *Config) {
 		config.ChunkSize = size
 	}
 }
 
+// WithNumProcs sets the number of goroutines spawned per worker to process messages.
+// Higher values increase parallelism within each worker but consume more system resources.
+// The default of 4 provides good parallelism without excessive goroutine overhead.
 func WithNumProcs(num int) Option {
 	return func(config *Config) {
 		config.NumProcs = num
@@ -45,12 +51,16 @@ func WithPipeExtension(extendAfter time.Duration, maxExtensions int) Option {
 	}
 }
 
+// WithConfig replaces the entire configuration.
+// Use this when you have a pre-configured Config struct from another source.
+// Prefer the specific With* functions for clearer intent.
 func WithConfig(c Config) Option {
 	return func(config *Config) {
 		*config = c
 	}
 }
 
+// Config contains pipeline tuning parameters.
 type Config struct {
 	// BufferConfig is a value that contains configuration values for the pipes
 	// that exist between pipeline workers.
@@ -70,6 +80,10 @@ type Config struct {
 	NumProcs int
 }
 
+// DefaultConfig returns a configuration tuned for general-purpose workloads.
+// Buffer size of 128 provides good throughput without excessive memory per connection.
+// Chunk size of 100 balances message overhead against processing latency.
+// NumProcs of 4 exploits common CPU core counts without goroutine proliferation.
 func DefaultConfig() Config {
 	var config Config
 	config.BufferConfig.Capacity = defaultBufferSize

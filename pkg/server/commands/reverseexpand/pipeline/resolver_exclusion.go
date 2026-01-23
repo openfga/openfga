@@ -36,12 +36,15 @@ func (r *exclusionResolver) Resolve(
 
 	var wgExclude sync.WaitGroup
 
+	// Exclusion streams "include" side through a pipe while "exclude" side collects into a bag.
+	// Pipe auto-extends to accommodate streaming include results without blocking.
 	pipeInclude := pipe.Must[Item](pipe.Config{
-		Capacity:      1 << 7, // create a pipe with an initial capacity of 128.
-		ExtendAfter:   0,      // extend immdiately; no wait.
-		MaxExtensions: -1,     // size of buffer is relative to object in relation.
+		Capacity:      1 << 7,
+		ExtendAfter:   0,  // Extend immediately when full to prevent blocking include side
+		MaxExtensions: -1, // Unbounded growth adapts to result set size
 	})
 
+	// Track active goroutines processing include side to know when to close the pipe.
 	var counter atomic.Int32
 	counter.Store(int32(r.numProcs))
 
@@ -54,6 +57,8 @@ func (r *exclusionResolver) Resolve(
 	for range r.numProcs {
 		go func(p operatorProcessor) {
 			defer func() {
+				// Last goroutine to finish closes the pipe to signal completion.
+				// Atomic decrement ensures exactly one goroutine closes the pipe.
 				if counter.Add(-1) < 1 {
 					_ = pipeInclude.Close()
 				}

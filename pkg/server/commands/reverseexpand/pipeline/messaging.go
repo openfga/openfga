@@ -8,6 +8,9 @@ import (
 	"github.com/openfga/openfga/pkg/server/commands/reverseexpand/pipeline/track"
 )
 
+// bufferPool manages reusable Item slice allocations to reduce GC pressure.
+// Workers allocate many short-lived slices for batching results; pooling
+// these allocations significantly reduces garbage collection overhead.
 type bufferPool struct {
 	size int
 	pool sync.Pool
@@ -41,6 +44,9 @@ type Item struct {
 	Err   error
 }
 
+// message is the unit of communication between workers.
+// It carries result items and cleanup state needed to properly release resources
+// when the message is processed.
 type message struct {
 	Value []Item
 
@@ -50,6 +56,9 @@ type message struct {
 	tracker    *track.Tracker
 }
 
+// Done releases the message's resources back to their pools.
+// Must decrement the tracker first to ensure proper shutdown coordination;
+// cycle groups wait for tracker counts to reach zero before completing shutdown.
 func (m *message) Done() {
 	if m.tracker != nil {
 		m.tracker.Dec()
@@ -59,8 +68,10 @@ func (m *message) Done() {
 	}
 }
 
-// txBag is a type that implements the interface pipe.Tx[T]
-// for the type containers.Bag[T].
+// txBag adapts containers.Bag to the pipe.Tx interface.
+// Operator resolvers need to collect all items from their senders before computing results
+// (e.g., intersection, exclusion). Bag provides unordered collection while Tx provides
+// the interface expected by processor code.
 type txBag[T any] containers.Bag[T]
 
 // Send implements the pipe.Tx[T] interface.

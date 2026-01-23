@@ -59,8 +59,8 @@ var (
 	ErrInvalidUser      = errors.New("invalid user")
 )
 
-// Backend is a struct that serves as a container for all backend elements
-// necessary for creating and running a `Pipeline`.
+// Backend provides the dependencies required for pipeline execution.
+// Contains the authorization model, datastore connection, and query context.
 type Backend struct {
 	Datastore  storage.RelationshipTupleReader
 	StoreID    string
@@ -70,6 +70,8 @@ type Backend struct {
 	Preference openfgav1.ConsistencyPreference
 }
 
+// Query represents a reverse expansion query being built.
+// Use the fluent API (From, To) to configure the query, then Execute to run it.
 type Query struct {
 	backend *Backend
 	config  Config
@@ -79,6 +81,8 @@ type Query struct {
 	user           string
 }
 
+// NewQuery creates a new reverse expansion query with the given backend and options.
+// The query must be configured with From() and To() before calling Execute().
 func NewQuery(backend *Backend, options ...Option) *Query {
 	var q Query
 	q.config = DefaultConfig()
@@ -90,26 +94,32 @@ func NewQuery(backend *Backend, options ...Option) *Query {
 	return &q
 }
 
+// From specifies the object type and relation to query.
+// Returns the query for method chaining.
 func (q *Query) From(targetType string, targetRelation string) *Query {
 	q.objectType = targetType
 	q.objectRelation = targetRelation
 	return q
 }
 
+// To specifies the user for whom to find accessible objects.
+// Returns the query for method chaining.
 func (q *Query) To(user string) *Query {
 	q.user = user
 	return q
 }
 
+// createInterpreter builds the edge interpreter with validators for this query.
+// Combines condition evaluation and type system validation to filter invalid tuples.
 func (q *Query) createInterpreter(ctx context.Context) interpreter {
 	validator := combineValidators(
-		[]falibleValidator[*openfgav1.TupleKey]{
-			falibleValidator[*openfgav1.TupleKey](checkutil.BuildTupleKeyConditionFilter(
+		[]fallibleValidator[*openfgav1.TupleKey]{
+			fallibleValidator[*openfgav1.TupleKey](checkutil.BuildTupleKeyConditionFilter(
 				ctx,
 				q.backend.Context,
 				q.backend.TypeSystem,
 			)),
-			makeValidatorFalible(
+			makeValidatorFallible(
 				validator[*openfgav1.TupleKey](validation.FilterInvalidTuples(
 					q.backend.TypeSystem,
 				)),
@@ -140,6 +150,7 @@ func (q *Query) createInterpreter(ctx context.Context) interpreter {
 	}
 }
 
+// path holds the state needed to recursively construct workers from the authorization graph.
 type path struct {
 	objectNode     *Node
 	userNode       *Node
@@ -149,11 +160,16 @@ type path struct {
 	cycleGroup     *cycleGroup
 }
 
+// resolve recursively constructs workers for the authorization model graph.
+// Creates workers on-demand and wires them together based on the graph structure.
+// Detects cycles and groups cyclical workers for coordinated shutdown.
 func (q *Query) resolve(p path, workers workerPool) *worker {
 	if w, ok := workers[p.objectNode]; ok {
 		return w
 	}
 
+	// Create cycle group on first encounter with a cyclical path.
+	// All workers in the cycle will share this group for coordinated shutdown.
 	if p.cycleGroup == nil {
 		p.cycleGroup = newCycleGroup()
 	}
@@ -203,9 +219,12 @@ func (q *Query) resolve(p path, workers workerPool) *worker {
 		return &w
 	}
 
+	// Wire this worker to upstream workers by traversing outgoing edges.
 	for _, edge := range edges {
 		nextPath := p
 
+		// Only cyclical edges continue sharing the cycle group.
+		// Non-cyclical edges start fresh, each worker gets its own single-member group.
 		if !isCyclical(edge) {
 			nextPath.cycleGroup = nil
 		}
@@ -317,6 +336,8 @@ func (q *Query) startWorkerLifecycle(ctx context.Context, workers workerPool) *w
 	return &workerLifecycle{&wg}
 }
 
+// drain consumes and releases all remaining messages from a sender.
+// Called during cleanup to prevent goroutine leaks when shutting down the pipeline.
 func drain(s *sender) {
 	var msg *message
 	for s.Recv(&msg) {
@@ -324,6 +345,8 @@ func drain(s *sender) {
 	}
 }
 
+// iterateOverResults manages the pipeline lifecycle and streams results to the caller.
+// Coordinates worker startup, result consumption, and graceful shutdown.
 func (q *Query) iterateOverResults(ctx context.Context, p *pipeline, yield func(Item) bool) {
 	ctx, cancel := context.WithCancel(ctx)
 
@@ -354,10 +377,9 @@ func (q *Query) iterateOverResults(ctx context.Context, p *pipeline, yield func(
 		}
 	}
 
+	// Context cancellation during iteration means results may be incomplete.
+	// Yield an error item to signal partial results to the caller.
 	if ctx.Err() != nil {
-		// Context was canceled so there is no guarantee that all
-		// objects have been returned. An error must be signaled
-		// here to indicate the possibility of a partial result.
 		yield(Item{Err: ctx.Err()})
 	}
 }
@@ -379,6 +401,10 @@ func (q *Query) streamResults(ctx context.Context, p *pipeline) iter.Seq[Item] {
 	}
 }
 
+// Execute runs the reverse expansion query and returns an iterator of results.
+// The iterator yields Items containing either object IDs or errors.
+// Results stream as they're discovered; iteration can be stopped early without
+// waiting for the full result set.
 func (q *Query) Execute(ctx context.Context) (iter.Seq[Item], error) {
 	if err := q.config.Validate(); err != nil {
 		return emptySequence, err

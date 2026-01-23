@@ -4,6 +4,9 @@ import (
 	weightedGraph "github.com/openfga/language/pkg/go/graph"
 )
 
+// createOperatorResolver selects the appropriate resolver for set operation nodes.
+// Union uses baseResolver for simple streaming; intersection and exclusion need
+// specialized resolvers that collect all inputs before computing results.
 func createOperatorResolver(label string, core resolverCore) resolver {
 	switch label {
 	case weightedGraph.IntersectionOperator:
@@ -17,6 +20,8 @@ func createOperatorResolver(label string, core resolverCore) resolver {
 	}
 }
 
+// createResolver creates the appropriate resolver implementation for a graph node.
+// Most nodes use baseResolver; only set operation nodes require specialized resolvers.
 func createResolver(node *Node, core resolverCore) resolver {
 	switch node.GetNodeType() {
 	case nodeTypeSpecificType,
@@ -32,8 +37,6 @@ func createResolver(node *Node, core resolverCore) resolver {
 	}
 }
 
-// strtoItem is a function that accepts a string input and returns an Item
-// that contains the input as its `Value` value.
 func strToItem(s string) Item {
 	return Item{Value: s}
 }

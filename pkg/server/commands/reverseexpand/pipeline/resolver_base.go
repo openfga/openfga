@@ -10,6 +10,8 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 )
 
+// baseProcessor processes messages from a single sender for baseResolver.
+// Handles deduplication at two levels: input (per-sender) and output (per-worker).
 type baseProcessor struct {
 	resolverCore
 	listeners    []*listener
@@ -35,8 +37,9 @@ func (p *baseProcessor) process(ctx context.Context, edge *Edge, msg *message) {
 		}
 
 		if p.inputBuffer != nil {
-			// Deduplicate the sender's output using the buffer shared by all processors
-			// of this sender.
+			// Deduplicate cyclical input to prevent infinite loops.
+			// LoadOrStore returns loaded=true if value already existed; we only process
+			// new values to avoid reprocessing items that cycle back to this sender.
 			if _, loaded := p.inputBuffer.LoadOrStore(item.Value, struct{}{}); !loaded {
 				unseen = append(unseen, item.Value)
 			}
@@ -104,11 +107,9 @@ func (r *baseResolver) Resolve(
 		isCyclical := isCyclical(edge)
 
 		if isCyclical {
-			// The sender's edge is either recursive or part of a tuple cycle.
-
-			// Only if the sender is for a cyclical edge do we want to deduplicate the
-			// sender's output. This buffer is shared between all processors of this
-			// sender.
+			// Cyclical edges can send the same value multiple times as it flows through the cycle.
+			// Input buffer prevents reprocessing the same value from this specific sender.
+			// Shared across all processors of this sender to deduplicate across goroutines.
 			var inputBuffer containers.AtomicMap[string, struct{}]
 
 			for range r.numProcs {

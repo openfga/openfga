@@ -25,9 +25,9 @@ func (e *errorIterator) Stop() {}
 
 type validator[T any] func(value T) bool
 
-type falibleValidator[T any] func(value T) (bool, error)
+type fallibleValidator[T any] func(value T) (bool, error)
 
-func makeValidatorFalible[T any](v validator[T]) falibleValidator[T] {
+func makeValidatorFallible[T any](v validator[T]) fallibleValidator[T] {
 	return func(value T) (bool, error) {
 		return v(value), nil
 	}
@@ -35,7 +35,7 @@ func makeValidatorFalible[T any](v validator[T]) falibleValidator[T] {
 
 type validatingIterator[T any] struct {
 	base      storage.Iterator[T]
-	validator falibleValidator[T]
+	validator fallibleValidator[T]
 	lastError error
 	onceValid bool
 }
@@ -105,11 +105,11 @@ func (v *validatingIterator[T]) Stop() {
 	v.base.Stop()
 }
 
-func newValidatingIterator[T any](base storage.Iterator[T], validator falibleValidator[T]) storage.Iterator[T] {
+func newValidatingIterator[T any](base storage.Iterator[T], validator fallibleValidator[T]) storage.Iterator[T] {
 	return &validatingIterator[T]{base: base, validator: validator}
 }
 
-func combineValidators[T any](validators []falibleValidator[T]) falibleValidator[T] {
+func combineValidators[T any](validators []fallibleValidator[T]) fallibleValidator[T] {
 	return func(value T) (bool, error) {
 		for _, v := range validators {
 			ok, err := v(value)
