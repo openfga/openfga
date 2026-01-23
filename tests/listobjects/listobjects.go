@@ -141,13 +141,14 @@ func listObjectsAssertion(ctx context.Context, t *testing.T, params testParams, 
 				Context: assertion.Context,
 			})
 
-			if assertion.ErrorCode == 0 {
+			switch {
+			case assertion.ErrorCode == 0:
 				require.NoError(t, err, detailedInfo)
 				require.ElementsMatch(t, assertion.Expectation, resp.GetObjects(), detailedInfo)
-			} else if isPipeline && assertion.PipelineExpectation != nil {
+			case isPipeline && assertion.PipelineExpectation != nil:
 				require.NoError(t, err, detailedInfo)
 				require.ElementsMatch(t, assertion.PipelineExpectation, resp.GetObjects(), detailedInfo)
-			} else {
+			default:
 				require.Error(t, err, detailedInfo)
 				e, ok := status.FromError(err)
 				require.True(t, ok, detailedInfo)
@@ -186,13 +187,14 @@ func listObjectsAssertion(ctx context.Context, t *testing.T, params testParams, 
 			streamingErr := wg.Wait()
 			require.NoError(t, err)
 
-			if assertion.ErrorCode == 0 {
+			switch {
+			case assertion.ErrorCode == 0:
 				require.NoError(t, streamingErr, detailedInfo)
 				require.ElementsMatch(t, assertion.Expectation, streamedObjectIDs, detailedInfo)
-			} else if isPipeline && assertion.PipelineExpectation != nil {
+			case isPipeline && assertion.PipelineExpectation != nil:
 				require.NoError(t, err, detailedInfo)
 				require.ElementsMatch(t, assertion.PipelineExpectation, resp.GetObjects(), detailedInfo)
-			} else {
+			default:
 				require.Error(t, streamingErr, detailedInfo)
 				e, ok := status.FromError(streamingErr)
 				require.True(t, ok, detailedInfo)
