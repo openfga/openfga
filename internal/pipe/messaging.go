@@ -51,6 +51,17 @@ type Tx[T any] interface {
 	Send(T) bool
 }
 
+// RxCloser is an interface that exposes methods for receiving values and
+// closing the instance. It is a combination of Rx and io.Closer interfaces.
+// Any implementation of RxCloser is intended to be concurrency safe.
+//
+// Once Close has been called on an RxCloser, subsequent calls to Receive must
+// return a `true` value until the buffer is empty.
+type RxCloser[T any] interface {
+	Rx[T]
+	io.Closer
+}
+
 // TxCloser is an interface that exposes methods for sending values and
 // closing the instance. It is a combination of Tx and io.Closer interfaces.
 // Any implementation of TxCloser is intended to be concurrency safe.
@@ -215,7 +226,7 @@ func (p *Pipe[T]) extend(n uint) {
 
 	p.data = newData
 
-	// Reset the buffer positions since we just reoganized the data
+	// Reset the buffer positions since we just reorganized the data
 	p.tail = 0
 	p.head = currentCapacity
 
@@ -276,7 +287,7 @@ func (p *Pipe[T]) mask(value uint) uint {
 	//
 	// Then, take value and AND it with the value derived from the length of data.
 	// Following the previous example, given that value is 20, represented as
-	// 10100 in binary: when 10100 is ANDed with 00111 the result is 00100, or
+	// 10100 in binary: when 10100 is AND with 00111 the result is 00100, or
 	// 4 in decimal form.
 	//
 	// Continuing the example, if the value of head is 20 and the length of data
@@ -438,7 +449,7 @@ type staticRx[T any] struct {
 	pos   int
 }
 
-// Recv is a function that returns each value from the staticRx's internal
+// Recv is a function that returns each value from the staticRx internal
 // buffer. Recv will return `true` until each item in the staticRx has been
 // received.
 func (p *staticRx[T]) Recv(t *T) bool {
@@ -454,14 +465,15 @@ func (p *staticRx[T]) Recv(t *T) bool {
 	return true
 }
 
-// Close is a function that sets the staticRx's buffer position to the end
+// Close is a function that sets the staticRx buffer position to the end
 // of the buffer. Calling Close will result in subsequent calls to Recv
 // returning `false`.
-func (p *staticRx[T]) Close() {
+func (p *staticRx[T]) Close() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
 	p.pos = len(p.items)
+	return nil
 }
 
 // Seq is a function that returns an iter.Seq of the values in the staticRx.
@@ -486,7 +498,7 @@ func (p *staticRx[T]) Seq() iter.Seq[T] {
 // StaticRx is a function that instantiates a Rx value with the given items.
 // Once all of the items have been received from the Rx, subsequent calls to
 // Recv on the same Rx will always return `false`.
-func StaticRx[T any](items ...T) Rx[T] {
+func StaticRx[T any](items ...T) RxCloser[T] {
 	return &staticRx[T]{
 		items: items,
 	}

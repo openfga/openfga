@@ -290,18 +290,15 @@ func (q *Query) resolve(p path, workers workerPool) *worker {
 	return &w
 }
 
-func (q *Query) Execute(ctx context.Context) (iter.Seq[Item], error) {
-	if err := q.config.Validate(); err != nil {
-		return emptySequence, err
-	}
-	ctx, span := pipelineTracer.Start(ctx, "pipeline.Query.Execute")
-	defer span.End()
+// userResolution contains the result of resolving a user string to a graph node and identifier.
+type userResolution struct {
+	userNode       *Node
+	userIdentifier string
+}
 
-	objectNode, ok := q.backend.Graph.GetNodeByID(q.objectType + "#" + q.objectRelation)
-	if !ok {
-		return emptySequence, ErrInvalidObject
-	}
-
+// resolveUser parses the user string and resolves it to a graph node.
+// Returns the user node and the user identifier component.
+func (q *Query) resolveUser() (*userResolution, error) {
 	user, userRelation, exists := strings.Cut(q.user, "#")
 	userType, userIdentifier, _ := strings.Cut(user, ":")
 
@@ -311,11 +308,31 @@ func (q *Query) Execute(ctx context.Context) (iter.Seq[Item], error) {
 
 	userNode, ok := q.backend.Graph.GetNodeByID(userType)
 	if !ok {
-		return emptySequence, ErrInvalidUser
+		return nil, ErrInvalidUser
 	}
 
-	pool := newBufferPool(q.config.ChunkSize)
+	return &userResolution{userNode, userIdentifier}, nil
+}
 
+// resolveObjectNode resolves the object type and relation to a graph node.
+func (q *Query) resolveObjectNode() (*Node, error) {
+	nodeID := q.objectType + "#" + q.objectRelation
+	node, ok := q.backend.Graph.GetNodeByID(nodeID)
+	if !ok {
+		return nil, ErrInvalidObject
+	}
+	return node, nil
+}
+
+// pipeline encapsulates the constructed worker graph and result stream.
+type pipeline struct {
+	workers workerPool
+	results *sender
+}
+
+// buildPipeline constructs the worker graph and returns a pipeline ready for execution.
+func (q *Query) buildPipeline(ctx context.Context, objectNode, userNode *Node, userIdentifier string) (*pipeline, error) {
+	pool := newBufferPool(q.config.ChunkSize)
 	interpreter := q.createInterpreter(ctx)
 	workers := make(workerPool)
 
@@ -331,11 +348,93 @@ func (q *Query) Execute(ctx context.Context) (iter.Seq[Item], error) {
 
 	objectWorker, ok := workers[objectNode]
 	if !ok {
-		return emptySequence, errors.New("no such source")
+		return nil, errors.New("no such source")
 	}
 
-	results := objectWorker.Subscribe(nil)
+	return &pipeline{
+		workers: workers,
+		results: objectWorker.Subscribe(nil),
+	}, nil
+}
 
+// workerLifecycle manages the lifecycle of worker goroutines.
+type workerLifecycle struct {
+	wg *sync.WaitGroup
+}
+
+func (wl *workerLifecycle) Wait() {
+	wl.wg.Wait()
+}
+
+// startWorkerLifecycle starts goroutines for worker execution and shutdown coordination.
+func (q *Query) startWorkerLifecycle(ctx context.Context, workers workerPool) *workerLifecycle {
+	var wg sync.WaitGroup
+
+	// Start workers
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		workers.Start(ctx)
+	}()
+
+	// Monitor context cancellation and trigger shutdown
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		<-ctx.Done()
+		workers.Stop()
+	}()
+
+	return &workerLifecycle{&wg}
+}
+
+func drain(s *sender) {
+	var msg *message
+	for s.Recv(&msg) {
+		msg.Done()
+	}
+}
+
+func (q *Query) iterateOverResults(ctx context.Context, p *pipeline, yield func(Item) bool) {
+	ctx, cancel := context.WithCancel(ctx)
+
+	lifecycle := q.startWorkerLifecycle(ctx, p.workers)
+	defer lifecycle.Wait()
+
+	defer drain(p.results)
+	defer p.results.Close()
+	defer cancel()
+
+	buffer := make([]Item, 0, q.config.BufferConfig.Capacity)
+
+	for {
+		if len(buffer) == 0 {
+			var msg *message
+			if !p.results.Recv(&msg) {
+				break
+			}
+			buffer = append(buffer, msg.Value...)
+			msg.Done()
+			continue
+		}
+		item := buffer[0]
+		buffer = buffer[1:]
+
+		if !yield(item) {
+			return
+		}
+	}
+
+	if ctx.Err() != nil {
+		// Context was canceled so there is no guarantee that all
+		// objects have been returned. An error must be signaled
+		// here to indicate the possibility of a partial result.
+		yield(Item{Err: ctx.Err()})
+	}
+}
+
+// streamResults returns an iterator that streams results from the pipeline.
+func (q *Query) streamResults(ctx context.Context, p *pipeline) iter.Seq[Item] {
 	return func(yield func(Item) bool) {
 		ctx, span := pipelineTracer.Start(ctx, "pipeline.iterate")
 		defer span.End()
@@ -347,61 +446,32 @@ func (q *Query) Execute(ctx context.Context) (iter.Seq[Item], error) {
 			return
 		}
 
-		// This context is used to end the goroutine that waits on
-		// the context to cancel. Without it, that goroutine could
-		// run indefinitely.
-		ctx, cancel := context.WithCancel(ctx)
+		q.iterateOverResults(ctx, p, yield)
+	}
+}
 
-		var wg sync.WaitGroup
-		defer wg.Wait()
+func (q *Query) Execute(ctx context.Context) (iter.Seq[Item], error) {
+	if err := q.config.Validate(); err != nil {
+		return emptySequence, err
+	}
 
-		defer cancel()
+	ctx, span := pipelineTracer.Start(ctx, "pipeline.Query.Execute")
+	defer span.End()
 
-		// Workers are started here so that the pipeline does
-		// not begin producing objects until the caller has begun
-		// to iterate over the sequence. This prevents unnecessary
-		// processing in the event that the caller decides not to
-		// iterate over the sequence.
-		wg.Add(1)
-		go func(ctx context.Context, wg *sync.WaitGroup, fn func(context.Context)) {
-			defer wg.Done()
-			fn(ctx)
-		}(ctx, &wg, workers.Start)
+	objectNode, err := q.resolveObjectNode()
+	if err != nil {
+		return emptySequence, err
+	}
 
-		// When the context is canceled, for any reason, the pipeline
-		// should shut itself down.
-		wg.Add(1)
-		go func(ctx context.Context, wg *sync.WaitGroup, fn func()) {
-			defer wg.Done()
-			<-ctx.Done()
-			fn()
-		}(ctx, &wg, workers.Stop)
+	userRes, err := q.resolveUser()
+	if err != nil {
+		return emptySequence, err
+	}
 
-		var abandoned bool
+	pipeline, err := q.buildPipeline(ctx, objectNode, userRes.userNode, userRes.userIdentifier)
+	if err != nil {
+		return emptySequence, err
+	}
 
-		for msg := range results.Seq() {
-			if !abandoned {
-				for _, item := range msg.Value {
-					if !yield(item) {
-						// The caller has ended sequence iteration early.
-						// Stop the workers so that the pipeline begins
-						// its shutdown process.
-						abandoned = true
-						cancel()
-						break
-					}
-				}
-			}
-			msg.Done()
-		}
-
-		err := ctx.Err()
-
-		if !abandoned && err != nil {
-			// Context was canceled so there is no guarantee that all
-			// objects have been returned. An error must be signaled
-			// here to indicate the possibility of a partial result.
-			yield(Item{Err: err})
-		}
-	}, nil
+	return q.streamResults(ctx, pipeline), nil
 }

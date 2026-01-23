@@ -11,7 +11,7 @@ import (
 // end of a pipeline connection.
 type sender struct {
 	key *Edge
-	pipe.Rx[*message]
+	pipe.RxCloser[*message]
 }
 
 func (s *sender) Key() *Edge {
