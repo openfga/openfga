@@ -5,9 +5,10 @@ import (
 	"maps"
 	"sync"
 
+	"go.opentelemetry.io/otel/attribute"
+
 	"github.com/openfga/openfga/internal/containers"
 	"github.com/openfga/openfga/internal/seq"
-	"go.opentelemetry.io/otel/attribute"
 )
 
 type intersectionResolver struct {

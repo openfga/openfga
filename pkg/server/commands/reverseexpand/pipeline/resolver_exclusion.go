@@ -5,10 +5,11 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"go.opentelemetry.io/otel/attribute"
+
 	"github.com/openfga/openfga/internal/containers"
 	"github.com/openfga/openfga/internal/pipe"
 	"github.com/openfga/openfga/internal/seq"
-	"go.opentelemetry.io/otel/attribute"
 )
 
 // exclusionResolver is a struct that resolves senders to an exclusion operation.

@@ -4,9 +4,10 @@ import (
 	"context"
 	"iter"
 
-	"github.com/openfga/openfga/internal/seq"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+
+	"github.com/openfga/openfga/internal/seq"
 )
 
 // resolver is an interface that is consumed by a worker struct.
