@@ -194,7 +194,7 @@ The pipeline's performance can be tuned using three configuration settings:
     - Smaller means fewer goroutines, less contention
 2. `bufferSize` limits the number of messages that a sender can send to its listeners once the sender has received the objects from the database.
     - Implemented as a circular ring buffer for efficient message passing between workers
-    - Must be a power of 2 to enable efficient bitwise masking for index wrapping
+    - Must be a power of 2. The internal ring buffers employ specific optimizations that make this a requirement
     - Larger means more messages can queue which results in less blocking but more memory usage
     - Smaller means more backpressure, ie more blocking and less memory usage
 3. `chunkSize` limits the number of objects that are packed into each message to be sent to the listeners and subsequently processed in batches by the database.
