@@ -35,6 +35,9 @@ type ResolutionNode struct {
 	// ItemCount is the number of tuples found at this node (for leaf nodes)
 	ItemCount int `json:"item_count,omitempty"`
 
+	// TuplesRead is the number of tuples read from the database at this node
+	TuplesRead int `json:"tuples_read,omitempty"`
+
 	// Union is set for union operations (relation defined as: a or b or c)
 	Union *UnionNode `json:"union,omitempty"`
 
@@ -111,6 +114,14 @@ func NewTupleNodeFromString(tupleStr string) *TupleNode {
 func (n *ResolutionNode) Complete(result bool, itemCount int) {
 	n.Result = result
 	n.ItemCount = itemCount
+	n.Duration = time.Since(n.startTime).String()
+}
+
+// CompleteWithTuplesRead marks the node as done with tuples read tracking.
+func (n *ResolutionNode) CompleteWithTuplesRead(result bool, itemCount, tuplesRead int) {
+	n.Result = result
+	n.ItemCount = itemCount
+	n.TuplesRead = tuplesRead
 	n.Duration = time.Since(n.startTime).String()
 }
 
@@ -205,6 +216,17 @@ func countTuplesInBranches(branches []*ResolutionNode) int {
 	for _, branch := range branches {
 		if branch != nil && branch.Result {
 			count += branch.ItemCount
+		}
+	}
+	return count
+}
+
+// countTuplesReadInBranches counts the total number of tuples read from all branches.
+func countTuplesReadInBranches(branches []*ResolutionNode) int {
+	count := 0
+	for _, branch := range branches {
+		if branch != nil {
+			count += branch.TuplesRead
 		}
 	}
 	return count

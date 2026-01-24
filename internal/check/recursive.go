@@ -83,6 +83,13 @@ func (s *Recursive) execute(ctx context.Context, req *Request, edge *authzGraph.
 	tracing := req.GetTraceResolution()
 	_, relation := tuple.SplitObjectRelation(edge.GetRelationDefinition())
 
+	// For TTU edges, include the tupleset relation in the label for better tracing
+	if recursiveType == RecursiveTypeTTU {
+		_, tuplesetRelation := tuple.SplitObjectRelation(edge.GetTuplesetRelation())
+		_, computedRelation := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
+		relation = relation + "(" + computedRelation + " from " + tuplesetRelation + ")"
+	}
+
 	// right hand side bootstrap
 	idsFromObject := make(map[string]struct{})
 	defer rightIter.Stop() // the caller calls stop when creating the iterator, this is just being defensive
@@ -92,15 +99,17 @@ func (s *Recursive) execute(ctx context.Context, req *Request, edge *authzGraph.
 	idsFromUser := make(map[string]struct{})
 	defer iterator.Drain(leftChan)
 
+	var leftTuplesRead, rightTuplesRead int
+
 	buildResolution := func(allowed bool, matchedValue string) *Response {
 		res := &Response{Allowed: allowed}
 		if tracing {
 			resNode := NewResolutionNode(req.GetTupleKey().GetObject(), relation)
 			if allowed && matchedValue != "" {
 				resNode.AddTuple(NewTupleNodeFromString(matchedValue))
-				resNode.Complete(true, 1)
+				resNode.CompleteWithTuplesRead(true, 1, leftTuplesRead+rightTuplesRead)
 			} else {
-				resNode.Complete(false, 0)
+				resNode.CompleteWithTuplesRead(false, 0, leftTuplesRead+rightTuplesRead)
 			}
 			res.Resolution = &ResolutionTree{Tree: resNode}
 		}
@@ -140,6 +149,7 @@ func (s *Recursive) execute(ctx context.Context, req *Request, edge *authzGraph.
 					}
 					break
 				}
+				leftTuplesRead++
 
 				if _, exists := idsFromObject[t]; exists {
 					return buildResolution(true, t), nil
@@ -159,6 +169,7 @@ func (s *Recursive) execute(ctx context.Context, req *Request, edge *authzGraph.
 				err = msg.Err
 				continue
 			}
+			rightTuplesRead++
 			if _, exists := idsFromUser[msg.Value]; exists {
 				return buildResolution(true, msg.Value), nil
 			}
@@ -166,7 +177,7 @@ func (s *Recursive) execute(ctx context.Context, req *Request, edge *authzGraph.
 		}
 	}
 
-	res, errMatch := s.recursiveMatch(ctx, req, edge, recursiveType, idsFromUser, idsFromObject)
+	res, errMatch := s.recursiveMatch(ctx, req, edge, recursiveType, idsFromUser, idsFromObject, leftTuplesRead+rightTuplesRead)
 	if errMatch != nil {
 		return res, errMatch
 	}
@@ -180,7 +191,7 @@ func (s *Recursive) execute(ctx context.Context, req *Request, edge *authzGraph.
 	return res, err
 }
 
-func (s *Recursive) recursiveMatch(ctx context.Context, req *Request, recursiveEdge *authzGraph.WeightedAuthorizationModelEdge, recursiveType RecursiveType, idsFromUser, idsFromObject map[string]struct{}) (*Response, error) {
+func (s *Recursive) recursiveMatch(ctx context.Context, req *Request, recursiveEdge *authzGraph.WeightedAuthorizationModelEdge, recursiveType RecursiveType, idsFromUser, idsFromObject map[string]struct{}, baseTuplesRead int) (*Response, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	responsesChan := make(chan ResponseMsg, s.concurrencyLimit) // needs to be buffered to prevent out of order closed events
@@ -225,7 +236,7 @@ func (s *Recursive) recursiveMatch(ctx context.Context, req *Request, recursiveE
 				res := &Response{Allowed: false}
 				if tracing {
 					resNode := NewResolutionNode(req.GetTupleKey().GetObject(), relation)
-					resNode.Complete(false, 0)
+					resNode.CompleteWithTuplesRead(false, 0, baseTuplesRead)
 					res.Resolution = &ResolutionTree{Tree: resNode}
 				}
 				return res, err
@@ -242,7 +253,7 @@ func (s *Recursive) recursiveMatch(ctx context.Context, req *Request, recursiveE
 					if msg.ID != "" {
 						resNode.AddTuple(NewTupleNodeFromString(msg.ID))
 					}
-					resNode.Complete(true, 1)
+					resNode.CompleteWithTuplesRead(true, 1, baseTuplesRead)
 					msg.Res.Resolution = &ResolutionTree{Tree: resNode}
 				}
 				return msg.Res, nil

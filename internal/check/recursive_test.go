@@ -1073,7 +1073,7 @@ func TestRecursiveMatch(t *testing.T) {
 			require.NoError(t, err)
 
 			strategy := NewRecursive(mg, mockDatastore, 10)
-			res, err := strategy.recursiveMatch(ctx, req, recursiveEdge, RecursiveTypeTTU, tt.idsFromUser, tt.idsFromObject)
+			res, err := strategy.recursiveMatch(ctx, req, recursiveEdge, RecursiveTypeTTU, tt.idsFromUser, tt.idsFromObject, 0)
 			require.NoError(t, err)
 			require.Equal(t, tt.expected, res.Allowed)
 		})
@@ -1126,7 +1126,7 @@ func TestRecursiveMatch(t *testing.T) {
 		strategy := NewRecursive(mg, mockDatastore, 10)
 		res, err := strategy.recursiveMatch(ctx, req, recursiveEdge, RecursiveTypeTTU,
 			map[string]struct{}{"group:target": {}},
-			map[string]struct{}{"group:1": {}})
+			map[string]struct{}{"group:1": {}}, 0)
 
 		require.Error(t, err)
 		require.ErrorIs(t, err, context.Canceled)

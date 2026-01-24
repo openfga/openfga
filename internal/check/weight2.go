@@ -61,7 +61,9 @@ func (s *Weight2) TTU(ctx context.Context, req *Request, edge *authzGraph.Weight
 	}
 
 	_, tuplesetRelation := tuple.SplitObjectRelation(edge.GetTuplesetRelation())
-	return s.execute(ctx, req, computedRelation+"("+tuplesetRelation+")", leftChan, storage.WrapIterator(storage.TTUKind, iter))
+	_, relation := tuple.SplitObjectRelation(edge.GetRelationDefinition())
+	relationLabel := relation + "(" + computedRelation + " from " + tuplesetRelation + ")"
+	return s.execute(ctx, req, relationLabel, leftChan, storage.WrapIterator(storage.TTUKind, iter))
 }
 
 // Weight2 attempts to find the intersection across 2 producers (channels) of ObjectIDs.
@@ -86,6 +88,7 @@ func (s *Weight2) execute(ctx context.Context, req *Request, relationLabel strin
 	rightChan := iterator.ToChannel[string](ctx, rightIter, IteratorMinBatchThreshold)
 
 	var lastErr error
+	var leftTuplesRead, rightTuplesRead int
 	lastLeftVal := ""
 	lastRightVal := ""
 
@@ -104,7 +107,7 @@ func (s *Weight2) execute(ctx context.Context, req *Request, relationLabel strin
 					res := &Response{Allowed: false}
 					if tracing {
 						resNode := NewResolutionNode(req.GetTupleKey().GetObject(), relationLabel)
-						resNode.Complete(false, 0)
+						resNode.CompleteWithTuplesRead(false, 0, leftTuplesRead+rightTuplesRead)
 						res.Resolution = &ResolutionTree{Tree: resNode}
 					}
 					return res, lastErr
@@ -129,6 +132,7 @@ func (s *Weight2) execute(ctx context.Context, req *Request, relationLabel strin
 						lastErr = err
 						continue
 					}
+					leftTuplesRead++
 
 					// Check if this value exists in the right set first (early match)
 					if _, exists := rightSeen[t]; exists {
@@ -138,7 +142,7 @@ func (s *Weight2) execute(ctx context.Context, req *Request, relationLabel strin
 							resNode := NewResolutionNode(req.GetTupleKey().GetObject(), relationLabel)
 							// Add the matched object as a tuple reference
 							resNode.AddTuple(NewTupleNodeFromString(t))
-							resNode.Complete(true, 1)
+							resNode.CompleteWithTuplesRead(true, 1, leftTuplesRead+rightTuplesRead)
 							res.Resolution = &ResolutionTree{Tree: resNode}
 						}
 						return res, nil
@@ -165,7 +169,7 @@ func (s *Weight2) execute(ctx context.Context, req *Request, relationLabel strin
 					res := &Response{Allowed: false}
 					if tracing {
 						resNode := NewResolutionNode(req.GetTupleKey().GetObject(), relationLabel)
-						resNode.Complete(false, 0)
+						resNode.CompleteWithTuplesRead(false, 0, leftTuplesRead+rightTuplesRead)
 						res.Resolution = &ResolutionTree{Tree: resNode}
 					}
 					return res, lastErr
@@ -177,6 +181,7 @@ func (s *Weight2) execute(ctx context.Context, req *Request, relationLabel strin
 				lastErr = rightMsg.Err
 				continue
 			}
+			rightTuplesRead++
 
 			// Check if this value exists in the left set first (early match)
 			if _, exists := leftSeen[rightMsg.Value]; exists {
@@ -185,7 +190,7 @@ func (s *Weight2) execute(ctx context.Context, req *Request, relationLabel strin
 					resNode := NewResolutionNode(req.GetTupleKey().GetObject(), relationLabel)
 					// Add the matched object as a tuple reference
 					resNode.AddTuple(NewTupleNodeFromString(rightMsg.Value))
-					resNode.Complete(true, 1)
+					resNode.CompleteWithTuplesRead(true, 1, leftTuplesRead+rightTuplesRead)
 					res.Resolution = &ResolutionTree{Tree: resNode}
 				}
 				return res, nil
@@ -207,7 +212,7 @@ func (s *Weight2) execute(ctx context.Context, req *Request, relationLabel strin
 	res := &Response{Allowed: false}
 	if tracing {
 		resNode := NewResolutionNode(req.GetTupleKey().GetObject(), relationLabel)
-		resNode.Complete(false, 0)
+		resNode.CompleteWithTuplesRead(false, 0, leftTuplesRead+rightTuplesRead)
 		res.Resolution = &ResolutionTree{Tree: resNode}
 	}
 	return res, lastErr

@@ -117,6 +117,13 @@ func (s *DefaultStrategy) execute(ctx context.Context, req *Request, edge *authz
 	tracing := req.GetTraceResolution()
 	_, relation := tuple.SplitObjectRelation(edge.GetRelationDefinition())
 
+	// For TTU edges, include the tupleset relation in the label for better tracing
+	if edge.GetEdgeType() == authzGraph.TTUEdge {
+		_, tuplesetRelation := tuple.SplitObjectRelation(edge.GetTuplesetRelation())
+		_, computedRelation := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
+		relation = relation + "(" + computedRelation + " from " + tuplesetRelation + ")"
+	}
+
 	go func() {
 		handler(ctx, req, edge, iter, requestsChan)
 	}()
@@ -127,6 +134,7 @@ func (s *DefaultStrategy) execute(ctx context.Context, req *Request, edge *authz
 
 	var err error
 	var tupleNodes []*TupleNode
+	var tuplesRead int
 	if tracing {
 		tupleNodes = make([]*TupleNode, 0)
 	}
@@ -142,7 +150,7 @@ func (s *DefaultStrategy) execute(ctx context.Context, req *Request, edge *authz
 				if tracing {
 					resNode := NewResolutionNode(req.GetTupleKey().GetObject(), relation)
 					resNode.Tuples = tupleNodes
-					resNode.Complete(false, 0)
+					resNode.CompleteWithTuplesRead(false, 0, tuplesRead)
 					res.Resolution = &ResolutionTree{Tree: resNode}
 				}
 				return res, err
@@ -157,8 +165,10 @@ func (s *DefaultStrategy) execute(ctx context.Context, req *Request, edge *authz
 				parts := strings.SplitN(outcome.ID, "|", 2)
 				if len(parts) == 2 && parts[0] != "" {
 					tupleNode := NewTupleNodeFromString(parts[0])
+					tuplesRead++ // Count each tuple read
 					if outcome.Res.GetResolutionNode() != nil {
 						tupleNode.Computed = outcome.Res.GetResolutionNode()
+						tuplesRead += outcome.Res.GetResolutionNode().TuplesRead // Add child tuples read
 					}
 					tupleNodes = append(tupleNodes, tupleNode)
 				}
@@ -169,7 +179,7 @@ func (s *DefaultStrategy) execute(ctx context.Context, req *Request, edge *authz
 				if tracing {
 					resNode := NewResolutionNode(req.GetTupleKey().GetObject(), relation)
 					resNode.Tuples = tupleNodes
-					resNode.Complete(true, len(tupleNodes))
+					resNode.CompleteWithTuplesRead(true, len(tupleNodes), tuplesRead)
 					res.Resolution = &ResolutionTree{Tree: resNode}
 				}
 				return res, nil

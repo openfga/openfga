@@ -236,7 +236,7 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, edges []
 				if tracing {
 					resNode := NewResolutionNode(req.GetTupleKey().GetObject(), relation)
 					resNode.SetUnion(resBranches)
-					resNode.Complete(true, countTuplesInBranches(resBranches))
+					resNode.CompleteWithTuplesRead(true, countTuplesInBranches(resBranches), countTuplesReadInBranches(resBranches))
 					res.Resolution = &ResolutionTree{Tree: resNode}
 				}
 				entry := &ResponseCacheEntry{Res: res, LastModified: time.Now()}
@@ -253,7 +253,7 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, edges []
 	if tracing {
 		resNode := NewResolutionNode(req.GetTupleKey().GetObject(), relation)
 		resNode.SetUnion(resBranches)
-		resNode.Complete(false, 0)
+		resNode.CompleteWithTuplesRead(false, 0, countTuplesReadInBranches(resBranches))
 		res.Resolution = &ResolutionTree{Tree: resNode}
 	}
 	entry := &ResponseCacheEntry{Res: res, LastModified: time.Now()}
@@ -539,7 +539,7 @@ func (r *Resolver) ResolveIntersection(ctx context.Context, req *Request, node *
 				if tracing && res != nil {
 					resNode := NewResolutionNode(req.GetTupleKey().GetObject(), relation)
 					resNode.SetIntersection(resBranches)
-					resNode.Complete(false, 0)
+					resNode.CompleteWithTuplesRead(false, 0, countTuplesReadInBranches(resBranches))
 					res.Resolution = &ResolutionTree{Tree: resNode}
 				}
 				return res, msg.Err
@@ -551,7 +551,7 @@ func (r *Resolver) ResolveIntersection(ctx context.Context, req *Request, node *
 	if tracing {
 		resNode := NewResolutionNode(req.GetTupleKey().GetObject(), relation)
 		resNode.SetIntersection(resBranches)
-		resNode.Complete(true, countTuplesInBranches(resBranches))
+		resNode.CompleteWithTuplesRead(true, countTuplesInBranches(resBranches), countTuplesReadInBranches(resBranches))
 		res.Resolution = &ResolutionTree{Tree: resNode}
 	}
 	return res, err
@@ -643,9 +643,13 @@ func (r *Resolver) ResolveExclusion(ctx context.Context, req *Request, node *aut
 			if !msg.Res.GetAllowed() {
 				res := &Response{Allowed: false}
 				if tracing {
+					tuplesRead := 0
+					if baseResNode != nil {
+						tuplesRead = baseResNode.TuplesRead
+					}
 					resNode := NewResolutionNode(req.GetTupleKey().GetObject(), relation)
 					resNode.SetExclusion(baseResNode, nil)
-					resNode.Complete(false, 0)
+					resNode.CompleteWithTuplesRead(false, 0, tuplesRead)
 					res.Resolution = &ResolutionTree{Tree: resNode}
 				}
 				return res, nil
@@ -657,7 +661,7 @@ func (r *Resolver) ResolveExclusion(ctx context.Context, req *Request, node *aut
 				if tracing && baseResNode != nil {
 					resNode := NewResolutionNode(req.GetTupleKey().GetObject(), relation)
 					resNode.SetExclusion(baseResNode, nil)
-					resNode.Complete(true, baseResNode.ItemCount)
+					resNode.CompleteWithTuplesRead(true, baseResNode.ItemCount, baseResNode.TuplesRead)
 					res.Resolution = &ResolutionTree{Tree: resNode}
 				}
 				return res, nil
@@ -684,9 +688,16 @@ func (r *Resolver) ResolveExclusion(ctx context.Context, req *Request, node *aut
 			if msg.Res.GetAllowed() {
 				res := &Response{Allowed: false}
 				if tracing {
+					tuplesRead := 0
+					if baseResNode != nil {
+						tuplesRead += baseResNode.TuplesRead
+					}
+					if subtractResNode != nil {
+						tuplesRead += subtractResNode.TuplesRead
+					}
 					resNode := NewResolutionNode(req.GetTupleKey().GetObject(), relation)
 					resNode.SetExclusion(baseResNode, subtractResNode)
-					resNode.Complete(false, 0)
+					resNode.CompleteWithTuplesRead(false, 0, tuplesRead)
 					res.Resolution = &ResolutionTree{Tree: resNode}
 				}
 				return res, nil
@@ -698,12 +709,17 @@ func (r *Resolver) ResolveExclusion(ctx context.Context, req *Request, node *aut
 	res := &Response{Allowed: true}
 	if tracing {
 		itemCount := 0
+		tuplesRead := 0
 		if baseRes != nil && baseRes.Allowed && baseResNode != nil {
 			itemCount = baseResNode.ItemCount
+			tuplesRead += baseResNode.TuplesRead
+		}
+		if subtractResNode != nil {
+			tuplesRead += subtractResNode.TuplesRead
 		}
 		resNode := NewResolutionNode(req.GetTupleKey().GetObject(), relation)
 		resNode.SetExclusion(baseResNode, subtractResNode)
-		resNode.Complete(true, itemCount)
+		resNode.CompleteWithTuplesRead(true, itemCount, tuplesRead)
 		res.Resolution = &ResolutionTree{Tree: resNode}
 	}
 	return res, nil
@@ -794,17 +810,19 @@ func (r *Resolver) specificType(ctx context.Context, req *Request, edge *authzGr
 			t = ctxTuples[i]
 		}
 	}
+	var tuplesRead int
 	if t == nil {
 		ut, err := r.datastore.ReadUserTuple(ctx, req.GetStoreID(), storage.ReadUserTupleFilter{
 			Object:   req.GetTupleKey().GetObject(),
 			Relation: relation,
 			User:     req.GetTupleKey().GetUser(),
 		}, storage.ReadUserTupleOptions{Consistency: storage.ConsistencyOptions{Preference: req.GetConsistency()}})
+		tuplesRead = 1 // Count the read attempt
 		if err != nil {
 			if errors.Is(err, storage.ErrNotFound) {
 				res := &Response{Allowed: false}
 				if resNode != nil {
-					resNode.Complete(false, 0)
+					resNode.CompleteWithTuplesRead(false, 0, tuplesRead)
 					res.Resolution = &ResolutionTree{Tree: resNode}
 				}
 				return res, nil
@@ -831,7 +849,7 @@ func (r *Resolver) specificType(ctx context.Context, req *Request, edge *authzGr
 			resNode.AddTuple(NewTupleNode(t))
 			itemCount = 1
 		}
-		resNode.Complete(allowed, itemCount)
+		resNode.CompleteWithTuplesRead(allowed, itemCount, tuplesRead)
 		res.Resolution = &ResolutionTree{Tree: resNode}
 	}
 	return res, nil
@@ -885,12 +903,13 @@ func (r *Resolver) specificTypeWildcard(ctx context.Context, req *Request, edge 
 
 		iter = storage.NewTupleKeyIteratorFromTupleIterator(tIter)
 	}
+	tuplesRead := 1 // We're reading one tuple from the iterator
 	t, err := iter.Next(ctx)
 	if err != nil {
 		if errors.Is(err, storage.ErrIteratorDone) {
 			res := &Response{Allowed: false}
 			if resNode != nil {
-				resNode.Complete(false, 0)
+				resNode.CompleteWithTuplesRead(false, 0, tuplesRead)
 				res.Resolution = &ResolutionTree{Tree: resNode}
 			}
 			return res, nil
@@ -915,7 +934,7 @@ func (r *Resolver) specificTypeWildcard(ctx context.Context, req *Request, edge 
 			resNode.AddTuple(NewTupleNode(t))
 			itemCount = 1
 		}
-		resNode.Complete(allowed, itemCount)
+		resNode.CompleteWithTuplesRead(allowed, itemCount, tuplesRead)
 		res.Resolution = &ResolutionTree{Tree: resNode}
 	}
 	return res, nil
