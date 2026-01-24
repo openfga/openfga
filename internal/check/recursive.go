@@ -80,6 +80,16 @@ func (s *Recursive) execute(ctx context.Context, req *Request, edge *authzGraph.
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
+	tracing := req.GetTraceResolution()
+	_, relation := tuple.SplitObjectRelation(edge.GetRelationDefinition())
+
+	// For TTU edges, include the tupleset relation in the label for better tracing
+	if recursiveType == RecursiveTypeTTU {
+		_, tuplesetRelation := tuple.SplitObjectRelation(edge.GetTuplesetRelation())
+		_, computedRelation := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
+		relation = relation + "(" + computedRelation + " from " + tuplesetRelation + ")"
+	}
+
 	// right hand side bootstrap
 	idsFromObject := make(map[string]struct{})
 	defer rightIter.Stop() // the caller calls stop when creating the iterator, this is just being defensive
@@ -88,6 +98,23 @@ func (s *Recursive) execute(ctx context.Context, req *Request, edge *authzGraph.
 	// left hand side bootstrap
 	idsFromUser := make(map[string]struct{})
 	defer iterator.Drain(leftChan)
+
+	var leftTuplesRead, rightTuplesRead int
+
+	buildResolution := func(allowed bool, matchedValue string) *Response {
+		res := &Response{Allowed: allowed}
+		if tracing {
+			resNode := NewResolutionNode(req.GetTupleKey().GetObject(), relation)
+			if allowed && matchedValue != "" {
+				resNode.AddTuple(NewTupleNodeFromString(matchedValue))
+				resNode.CompleteWithTuplesRead(true, 1, leftTuplesRead+rightTuplesRead)
+			} else {
+				resNode.CompleteWithTuplesRead(false, 0, leftTuplesRead+rightTuplesRead)
+			}
+			res.Resolution = &ResolutionTree{Tree: resNode}
+		}
+		return res
+	}
 
 	// NOTE: This loop initializes the terminal type and the first level of depth as this is a breadth first traversal.
 	// To maintain simplicity the terminal type will be fully loaded, but it could arguably be loaded async.
@@ -101,7 +128,7 @@ func (s *Recursive) execute(ctx context.Context, req *Request, edge *authzGraph.
 				leftChan = nil
 				// if no ids from the left side were returned then return false without error
 				if len(idsFromUser) == 0 {
-					return &Response{Allowed: false}, err
+					return buildResolution(false, ""), err
 				}
 				break
 			}
@@ -109,7 +136,7 @@ func (s *Recursive) execute(ctx context.Context, req *Request, edge *authzGraph.
 				err = msg.Err
 				// if no ids from the left side were returned then return false with error, there are no values to compare against the right side
 				if len(idsFromUser) == 0 {
-					return &Response{Allowed: false}, err
+					return buildResolution(false, ""), err
 				}
 				continue
 			}
@@ -122,9 +149,10 @@ func (s *Recursive) execute(ctx context.Context, req *Request, edge *authzGraph.
 					}
 					break
 				}
+				leftTuplesRead++
 
 				if _, exists := idsFromObject[t]; exists {
-					return &Response{Allowed: true}, nil
+					return buildResolution(true, t), nil
 				}
 				idsFromUser[t] = struct{}{}
 			}
@@ -133,7 +161,7 @@ func (s *Recursive) execute(ctx context.Context, req *Request, edge *authzGraph.
 			if !ok {
 				rightChan = nil
 				if len(idsFromObject) == 0 {
-					return &Response{Allowed: false}, err
+					return buildResolution(false, ""), err
 				}
 				break
 			}
@@ -141,27 +169,35 @@ func (s *Recursive) execute(ctx context.Context, req *Request, edge *authzGraph.
 				err = msg.Err
 				continue
 			}
+			rightTuplesRead++
 			if _, exists := idsFromUser[msg.Value]; exists {
-				return &Response{Allowed: true}, nil
+				return buildResolution(true, msg.Value), nil
 			}
 			idsFromObject[msg.Value] = struct{}{}
 		}
 	}
 
-	res, errMatch := s.recursiveMatch(ctx, req, edge, recursiveType, idsFromUser, idsFromObject)
+	res, errMatch := s.recursiveMatch(ctx, req, edge, recursiveType, idsFromUser, idsFromObject, leftTuplesRead+rightTuplesRead)
 	if errMatch != nil {
 		return res, errMatch
 	}
 	if res.Allowed {
 		return res, nil
 	}
+	// If recursive match didn't find anything, add resolution
+	if tracing && res.Resolution == nil {
+		res = buildResolution(false, "")
+	}
 	return res, err
 }
 
-func (s *Recursive) recursiveMatch(ctx context.Context, req *Request, recursiveEdge *authzGraph.WeightedAuthorizationModelEdge, recursiveType RecursiveType, idsFromUser, idsFromObject map[string]struct{}) (*Response, error) {
+func (s *Recursive) recursiveMatch(ctx context.Context, req *Request, recursiveEdge *authzGraph.WeightedAuthorizationModelEdge, recursiveType RecursiveType, idsFromUser, idsFromObject map[string]struct{}, baseTuplesRead int) (*Response, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	responsesChan := make(chan ResponseMsg, s.concurrencyLimit) // needs to be buffered to prevent out of order closed events
+
+	tracing := req.GetTraceResolution()
+	_, relation := tuple.SplitObjectRelation(recursiveEdge.GetRelationDefinition())
 
 	var err error
 	edge := recursiveEdge
@@ -197,7 +233,13 @@ func (s *Recursive) recursiveMatch(ctx context.Context, req *Request, recursiveE
 			return nil, ctx.Err()
 		case msg, ok := <-responsesChan:
 			if !ok {
-				return &Response{Allowed: false}, err
+				res := &Response{Allowed: false}
+				if tracing {
+					resNode := NewResolutionNode(req.GetTupleKey().GetObject(), relation)
+					resNode.CompleteWithTuplesRead(false, 0, baseTuplesRead)
+					res.Resolution = &ResolutionTree{Tree: resNode}
+				}
+				return res, err
 			}
 			if msg.Err != nil {
 				err = msg.Err
@@ -205,6 +247,15 @@ func (s *Recursive) recursiveMatch(ctx context.Context, req *Request, recursiveE
 			}
 
 			if msg.Res.Allowed {
+				// Add resolution for allowed response
+				if tracing && msg.Res.Resolution == nil {
+					resNode := NewResolutionNode(req.GetTupleKey().GetObject(), relation)
+					if msg.ID != "" {
+						resNode.AddTuple(NewTupleNodeFromString(msg.ID))
+					}
+					resNode.CompleteWithTuplesRead(true, 1, baseTuplesRead)
+					msg.Res.Resolution = &ResolutionTree{Tree: resNode}
+				}
 				return msg.Res, nil
 			}
 		}
@@ -241,7 +292,8 @@ func (s *Recursive) recursiveMatchResolver(ctx context.Context, req *Request, ed
 			return
 		}
 		if _, exists := idsFromUser[t]; exists {
-			concurrency.TrySendThroughChannel(ctx, ResponseMsg{Res: &Response{Allowed: true}}, out)
+			// Use ID field to pass the matched value for resolution tracing
+			concurrency.TrySendThroughChannel(ctx, ResponseMsg{ID: t, Res: &Response{Allowed: true}}, out)
 			return // cancel will be propagated to the remaining goroutines
 		}
 		fn := func() error {

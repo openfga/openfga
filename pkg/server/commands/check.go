@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -102,6 +103,7 @@ func (q *CheckQueryV2) Execute(ctx context.Context, req *openfgav1.CheckRequest)
 		ContextualTuples: req.GetContextualTuples().GetTupleKeys(),
 		Context:          req.GetContext(),
 		Consistency:      req.GetConsistency(),
+		TraceResolution:  req.GetTrace(),
 	})
 
 	if err != nil {
@@ -125,7 +127,17 @@ func (q *CheckQueryV2) Execute(ctx context.Context, req *openfgav1.CheckRequest)
 		return nil, err
 	}
 
-	return &openfgav1.CheckResponse{
+	response := &openfgav1.CheckResponse{
 		Allowed: res.GetAllowed(),
-	}, nil
+	}
+
+	// If tracing was requested and we have a resolution tree, serialize it to JSON
+	if req.GetTrace() && res.GetResolution() != nil {
+		resolutionJSON, err := json.Marshal(res.GetResolution())
+		if err == nil {
+			response.Resolution = string(resolutionJSON)
+		}
+	}
+
+	return response, nil
 }
