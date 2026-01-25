@@ -31,7 +31,7 @@ func (r *intersectionResolver) Resolve(
 
 	var wg sync.WaitGroup
 
-	bags := make([]txBag[Item], len(senders))
+	bags := make([]txBag[Object], len(senders))
 
 	var cleanup containers.Bag[func()]
 
@@ -52,30 +52,32 @@ func (r *intersectionResolver) Resolve(
 	}
 	wg.Wait()
 
-	var errs []Item
+	var errs []Object
 
 	output := make(map[string]struct{})
 
-	for item := range bags[0].Seq() {
-		if item.Err != nil {
-			errs = append(errs, item)
+	for obj := range bags[0].Seq() {
+		value, err := obj.Object()
+		if err != nil {
+			errs = append(errs, obj)
 			continue
 		}
-		output[item.Value] = struct{}{}
+		output[value] = struct{}{}
 	}
 
 	// Compute intersection by iteratively filtering to values present in all bags.
 	// First bag initializes the candidate set; each subsequent bag narrows it down.
 	for i := 1; i < len(bags); i++ {
 		found := make(map[string]struct{}, len(output))
-		for item := range bags[i].Seq() {
-			if item.Err != nil {
-				errs = append(errs, item)
+		for obj := range bags[i].Seq() {
+			value, err := obj.Object()
+			if err != nil {
+				errs = append(errs, obj)
 				continue
 			}
 
-			if _, ok := output[item.Value]; ok {
-				found[item.Value] = struct{}{}
+			if _, ok := output[value]; ok {
+				found[value] = struct{}{}
 			}
 		}
 		output = found

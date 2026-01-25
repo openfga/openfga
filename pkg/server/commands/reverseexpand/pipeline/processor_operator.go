@@ -12,7 +12,7 @@ import (
 // all items for the resolver to compute set operations (intersection, exclusion).
 type operatorProcessor struct {
 	resolverCore
-	items   pipe.Tx[Item]
+	items   pipe.Tx[Object]
 	cleanup *containers.Bag[func()]
 }
 
@@ -39,12 +39,14 @@ func (p *operatorProcessor) process(ctx context.Context, edge *Edge, msg *messag
 
 	// Only take the number of values that existed in the original
 	// message. Reading beyond that will corrupt pipeline state.
-	for _, item := range (*values)[:size] {
-		if item.Err != nil {
-			p.items.Send(item)
+	for _, obj := range (*values)[:size] {
+		value, err := obj.Object()
+
+		if err != nil {
+			p.items.Send(obj)
 			continue
 		}
-		unseen = append(unseen, item.Value)
+		unseen = append(unseen, value)
 	}
 	// Buffer length must match pool allocation size; changing it would break
 	// subsequent Get() calls. The pool relies on uniform buffer sizes for reuse.

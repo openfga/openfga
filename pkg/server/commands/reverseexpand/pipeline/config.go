@@ -85,6 +85,7 @@ type Config struct {
 // NumProcs of 4 exploits common CPU core counts without goroutine proliferation.
 func DefaultConfig() Config {
 	var config Config
+	config.BufferConfig = pipe.DefaultConfig()
 	config.BufferConfig.Capacity = defaultBufferSize
 	config.ChunkSize = defaultChunkSize
 	config.NumProcs = defaultNumProcs

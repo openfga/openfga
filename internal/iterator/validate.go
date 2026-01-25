@@ -1,43 +1,21 @@
-package pipeline
+package iterator
 
 import (
 	"context"
 	"errors"
 
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-
 	"github.com/openfga/openfga/pkg/storage"
 )
 
-type errorIterator struct {
-	err error
-}
-
-func (e *errorIterator) Head(ctx context.Context) (*openfgav1.Tuple, error) {
-	return nil, e.err
-}
-
-func (e *errorIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
-	return nil, e.err
-}
-
-func (e *errorIterator) Stop() {}
-
-type validator[T any] func(value T) bool
-
-type fallibleValidator[T any] func(value T) (bool, error)
-
-func makeValidatorFallible[T any](v validator[T]) fallibleValidator[T] {
-	return func(value T) (bool, error) {
-		return v(value), nil
-	}
-}
-
 type validatingIterator[T any] struct {
 	base      storage.Iterator[T]
-	validator fallibleValidator[T]
+	validator func(T) (bool, error)
 	lastError error
 	onceValid bool
+}
+
+func Validate[T any](base storage.Iterator[T], fn func(T) (bool, error)) storage.Iterator[T] {
+	return &validatingIterator[T]{base: base, validator: fn}
 }
 
 func (v *validatingIterator[T]) Head(ctx context.Context) (T, error) {
@@ -103,20 +81,4 @@ func (v *validatingIterator[T]) Next(ctx context.Context) (T, error) {
 
 func (v *validatingIterator[T]) Stop() {
 	v.base.Stop()
-}
-
-func newValidatingIterator[T any](base storage.Iterator[T], validator fallibleValidator[T]) storage.Iterator[T] {
-	return &validatingIterator[T]{base: base, validator: validator}
-}
-
-func combineValidators[T any](validators []fallibleValidator[T]) fallibleValidator[T] {
-	return func(value T) (bool, error) {
-		for _, v := range validators {
-			ok, err := v(value)
-			if err != nil || !ok {
-				return ok, err
-			}
-		}
-		return true, nil
-	}
 }

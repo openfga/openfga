@@ -8,15 +8,8 @@ import (
 	"sync"
 
 	"go.opentelemetry.io/otel"
-	"google.golang.org/protobuf/types/known/structpb"
 
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	weightedGraph "github.com/openfga/language/pkg/go/graph"
-
-	"github.com/openfga/openfga/internal/checkutil"
-	"github.com/openfga/openfga/internal/validation"
-	"github.com/openfga/openfga/pkg/storage"
-	"github.com/openfga/openfga/pkg/typesystem"
 )
 
 type (
@@ -36,7 +29,7 @@ var (
 	edgeTypeTTULogical    = weightedGraph.TTULogicalEdge
 
 	// EmptySequence represents an `iter.Seq[Item]` that does nothing.
-	emptySequence = func(yield func(Item) bool) {}
+	emptySequence = func(yield func(Object) bool) {}
 
 	nodeTypeLogicalDirectGrouping   = weightedGraph.LogicalDirectGrouping
 	nodeTypeLogicalTTUGrouping      = weightedGraph.LogicalTTUGrouping
@@ -59,86 +52,57 @@ var (
 	ErrInvalidUser      = errors.New("invalid user")
 )
 
-// Backend provides the dependencies required for pipeline execution.
-// Contains the authorization model, datastore connection, and query context.
-type Backend struct {
-	Datastore  storage.RelationshipTupleReader
-	StoreID    string
-	TypeSystem *typesystem.TypeSystem
-	Context    *structpb.Struct
-	Graph      *Graph
-	Preference openfgav1.ConsistencyPreference
+type Object interface {
+	Object() (string, error)
 }
 
-// Query represents a reverse expansion query being built.
+type ObjectQuery struct {
+	ObjectType string
+	Relation   string
+	Users      []string
+	Conditions []string
+}
+
+type ObjectReader interface {
+	Read(context.Context, ObjectQuery) iter.Seq[Object]
+}
+
+type Spec struct {
+	ObjectType string
+	Relation   string
+	User       string
+}
+
+// Pipeline represents a reverse expansion query being built.
 // Use the fluent API (From, To) to configure the query, then Execute to run it.
-type Query struct {
-	backend *Backend
-	config  Config
-
-	objectType     string
-	objectRelation string
-	user           string
+type Pipeline struct {
+	graph  *Graph
+	reader ObjectReader
+	config Config
 }
 
-// NewQuery creates a new reverse expansion query with the given backend and options.
+// New creates a new reverse expansion query with the given backend and options.
 // The query must be configured with From() and To() before calling Execute().
-func NewQuery(backend *Backend, options ...Option) *Query {
-	var q Query
-	q.config = DefaultConfig()
-	q.backend = backend
+func New(graph *Graph, reader ObjectReader, options ...Option) *Pipeline {
+	var pl Pipeline
+	pl.graph = graph
+	pl.reader = reader
+	pl.config = DefaultConfig()
 
 	for _, o := range options {
-		o(&q.config)
+		o(&pl.config)
 	}
-	return &q
-}
-
-// From specifies the object type and relation to query.
-// Returns the query for method chaining.
-func (q *Query) From(targetType string, targetRelation string) *Query {
-	q.objectType = targetType
-	q.objectRelation = targetRelation
-	return q
-}
-
-// To specifies the user for whom to find accessible objects.
-// Returns the query for method chaining.
-func (q *Query) To(user string) *Query {
-	q.user = user
-	return q
+	return &pl
 }
 
 // createInterpreter builds the edge interpreter with validators for this query.
 // Combines condition evaluation and type system validation to filter invalid tuples.
-func (q *Query) createInterpreter(ctx context.Context) interpreter {
-	validator := combineValidators(
-		[]fallibleValidator[*openfgav1.TupleKey]{
-			fallibleValidator[*openfgav1.TupleKey](checkutil.BuildTupleKeyConditionFilter(
-				ctx,
-				q.backend.Context,
-				q.backend.TypeSystem,
-			)),
-			makeValidatorFallible(
-				validator[*openfgav1.TupleKey](validation.FilterInvalidTuples(
-					q.backend.TypeSystem,
-				)),
-			),
-		},
-	)
-
-	queryEngine := queryEngine{
-		q.backend.Datastore,
-		q.backend.StoreID,
-		q.backend.Preference,
-		validator,
-	}
-
-	directEdgeHandler := directEdgeHandler{&queryEngine}
+func (pl *Pipeline) createInterpreter() interpreter {
+	directEdgeHandler := directEdgeHandler{pl.reader}
 
 	ttuEdgeHandler := ttuEdgeHandler{
-		queryEngine: &queryEngine,
-		graph:       q.backend.Graph,
+		reader: pl.reader,
+		graph:  pl.graph,
 	}
 
 	var identityEdgeHandler identityEdgeHandler
@@ -163,7 +127,7 @@ type path struct {
 // resolve recursively constructs workers for the authorization model graph.
 // Creates workers on-demand and wires them together based on the graph structure.
 // Detects cycles and groups cyclical workers for coordinated shutdown.
-func (q *Query) resolve(p path, workers workerPool) *worker {
+func (pl *Pipeline) resolve(p path, workers workerPool) *worker {
 	if w, ok := workers[p.objectNode]; ok {
 		return w
 	}
@@ -175,7 +139,7 @@ func (q *Query) resolve(p path, workers workerPool) *worker {
 	}
 
 	var w worker
-	w.bufferConfig = q.config.BufferConfig
+	w.bufferConfig = pl.config.BufferConfig
 
 	membership := p.cycleGroup.Join()
 
@@ -183,7 +147,7 @@ func (q *Query) resolve(p path, workers workerPool) *worker {
 		interpreter: p.interpreter,
 		membership:  membership,
 		bufferPool:  p.bufferPool,
-		numProcs:    q.config.NumProcs,
+		numProcs:    pl.config.NumProcs,
 	}
 
 	w.Resolver = createResolver(p.objectNode, core)
@@ -214,7 +178,7 @@ func (q *Query) resolve(p path, workers workerPool) *worker {
 		}
 	}
 
-	edges, ok := q.backend.Graph.GetEdgesFromNode(p.objectNode)
+	edges, ok := pl.graph.GetEdgesFromNode(p.objectNode)
 	if !ok {
 		return &w
 	}
@@ -231,7 +195,7 @@ func (q *Query) resolve(p path, workers workerPool) *worker {
 
 		nextPath.objectNode = edge.GetTo()
 
-		to := q.resolve(nextPath, workers)
+		to := pl.resolve(nextPath, workers)
 		w.Listen(to.Subscribe(edge))
 	}
 
@@ -246,15 +210,15 @@ type userResolution struct {
 
 // resolveUser parses the user string and resolves it to a graph node.
 // Returns the user node and the user identifier component.
-func (q *Query) resolveUser() (*userResolution, error) {
-	user, userRelation, exists := strings.Cut(q.user, "#")
+func (pl *Pipeline) resolveUser(u string) (*userResolution, error) {
+	user, userRelation, exists := strings.Cut(u, "#")
 	userType, userIdentifier, _ := strings.Cut(user, ":")
 
 	if exists {
 		userType += "#" + userRelation
 	}
 
-	userNode, ok := q.backend.Graph.GetNodeByID(userType)
+	userNode, ok := pl.graph.GetNodeByID(userType)
 	if !ok {
 		return nil, ErrInvalidUser
 	}
@@ -263,25 +227,25 @@ func (q *Query) resolveUser() (*userResolution, error) {
 }
 
 // resolveObjectNode resolves the object type and relation to a graph node.
-func (q *Query) resolveObjectNode() (*Node, error) {
-	nodeID := q.objectType + "#" + q.objectRelation
-	node, ok := q.backend.Graph.GetNodeByID(nodeID)
+func (pl *Pipeline) resolveObjectNode(objectType, objectRelation string) (*Node, error) {
+	nodeID := objectType + "#" + objectRelation
+	node, ok := pl.graph.GetNodeByID(nodeID)
 	if !ok {
 		return nil, ErrInvalidObject
 	}
 	return node, nil
 }
 
-// pipeline encapsulates the constructed worker graph and result stream.
-type pipeline struct {
+// expansion encapsulates the constructed worker graph and result stream.
+type expansion struct {
 	workers workerPool
 	results *sender
 }
 
 // buildPipeline constructs the worker graph and returns a pipeline ready for execution.
-func (q *Query) buildPipeline(ctx context.Context, objectNode, userNode *Node, userIdentifier string) (*pipeline, error) {
-	pool := newBufferPool(q.config.ChunkSize)
-	interpreter := q.createInterpreter(ctx)
+func (pl *Pipeline) buildPipeline(objectNode, userNode *Node, userIdentifier string) (*expansion, error) {
+	pool := newBufferPool(pl.config.ChunkSize)
+	interpreter := pl.createInterpreter()
 	workers := make(workerPool)
 
 	p := path{
@@ -292,14 +256,14 @@ func (q *Query) buildPipeline(ctx context.Context, objectNode, userNode *Node, u
 		bufferPool:     pool,
 	}
 
-	q.resolve(p, workers)
+	pl.resolve(p, workers)
 
 	objectWorker, ok := workers[objectNode]
 	if !ok {
 		return nil, errors.New("no such source")
 	}
 
-	return &pipeline{
+	return &expansion{
 		workers: workers,
 		results: objectWorker.Subscribe(nil),
 	}, nil
@@ -315,7 +279,7 @@ func (wl *workerLifecycle) Wait() {
 }
 
 // startWorkerLifecycle starts goroutines for worker execution and shutdown coordination.
-func (q *Query) startWorkerLifecycle(ctx context.Context, workers workerPool) *workerLifecycle {
+func (pl *Pipeline) startWorkerLifecycle(ctx context.Context, workers workerPool) *workerLifecycle {
 	var wg sync.WaitGroup
 
 	// Start workers
@@ -347,17 +311,21 @@ func drain(s *sender) {
 
 // iterateOverResults manages the pipeline lifecycle and streams results to the caller.
 // Coordinates worker startup, result consumption, and graceful shutdown.
-func (q *Query) iterateOverResults(ctx context.Context, p *pipeline, yield func(Item) bool) {
+func (pl *Pipeline) iterateOverResults(
+	ctx context.Context,
+	p *expansion,
+	yield func(Object) bool,
+) {
 	ctx, cancel := context.WithCancel(ctx)
 
-	lifecycle := q.startWorkerLifecycle(ctx, p.workers)
+	lifecycle := pl.startWorkerLifecycle(ctx, p.workers)
 	defer lifecycle.Wait()
 
 	defer drain(p.results)
 	defer p.results.Close()
 	defer cancel()
 
-	buffer := make([]Item, 0, q.config.BufferConfig.Capacity)
+	buffer := make([]Object, 0, pl.config.BufferConfig.Capacity)
 
 	for {
 		if len(buffer) == 0 {
@@ -385,8 +353,8 @@ func (q *Query) iterateOverResults(ctx context.Context, p *pipeline, yield func(
 }
 
 // streamResults returns an iterator that streams results from the pipeline.
-func (q *Query) streamResults(ctx context.Context, p *pipeline) iter.Seq[Item] {
-	return func(yield func(Item) bool) {
+func (pl *Pipeline) streamResults(ctx context.Context, p *expansion) iter.Seq[Object] {
+	return func(yield func(Object) bool) {
 		ctx, span := pipelineTracer.Start(ctx, "pipeline.iterate")
 		defer span.End()
 
@@ -397,36 +365,36 @@ func (q *Query) streamResults(ctx context.Context, p *pipeline) iter.Seq[Item] {
 			return
 		}
 
-		q.iterateOverResults(ctx, p, yield)
+		pl.iterateOverResults(ctx, p, yield)
 	}
 }
 
-// Execute runs the reverse expansion query and returns an iterator of results.
+// Expand runs the reverse expansion query and returns an iterator of results.
 // The iterator yields Items containing either object IDs or errors.
 // Results stream as they're discovered; iteration can be stopped early without
 // waiting for the full result set.
-func (q *Query) Execute(ctx context.Context) (iter.Seq[Item], error) {
-	if err := q.config.Validate(); err != nil {
+func (pl *Pipeline) Expand(ctx context.Context, spec Spec) (iter.Seq[Object], error) {
+	if err := pl.config.Validate(); err != nil {
 		return emptySequence, err
 	}
 
 	ctx, span := pipelineTracer.Start(ctx, "pipeline.Query.Execute")
 	defer span.End()
 
-	objectNode, err := q.resolveObjectNode()
+	objectNode, err := pl.resolveObjectNode(spec.ObjectType, spec.Relation)
 	if err != nil {
 		return emptySequence, err
 	}
 
-	userRes, err := q.resolveUser()
+	userRes, err := pl.resolveUser(spec.User)
 	if err != nil {
 		return emptySequence, err
 	}
 
-	pipeline, err := q.buildPipeline(ctx, objectNode, userRes.userNode, userRes.userIdentifier)
+	pipeline, err := pl.buildPipeline(objectNode, userRes.userNode, userRes.userIdentifier)
 	if err != nil {
 		return emptySequence, err
 	}
 
-	return q.streamResults(ctx, pipeline), nil
+	return pl.streamResults(ctx, pipeline), nil
 }

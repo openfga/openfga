@@ -28,12 +28,14 @@ type baseProcessor struct {
 // deduplicated across all process functions because input from two different senders may produce
 // the same output value(s).
 func (p *baseProcessor) process(ctx context.Context, edge *Edge, msg *message) {
-	errs := make([]Item, 0, len(msg.Value))
+	errs := make([]Object, 0, len(msg.Value))
 	unseen := make([]string, 0, len(msg.Value))
 
-	for _, item := range msg.Value {
-		if item.Err != nil {
-			errs = append(errs, item)
+	for _, obj := range msg.Value {
+		value, err := obj.Object()
+
+		if err != nil {
+			errs = append(errs, obj)
 			continue
 		}
 
@@ -41,12 +43,12 @@ func (p *baseProcessor) process(ctx context.Context, edge *Edge, msg *message) {
 			// Deduplicate cyclical input to prevent infinite loops.
 			// LoadOrStore returns loaded=true if value already existed; we only process
 			// new values to avoid reprocessing items that cycle back to this sender.
-			if _, loaded := p.inputBuffer.LoadOrStore(item.Value, struct{}{}); !loaded {
-				unseen = append(unseen, item.Value)
+			if _, loaded := p.inputBuffer.LoadOrStore(value, struct{}{}); !loaded {
+				unseen = append(unseen, value)
 			}
 			continue
 		}
-		unseen = append(unseen, item.Value)
+		unseen = append(unseen, value)
 	}
 
 	results := p.interpreter.Interpret(ctx, edge, unseen)
@@ -54,14 +56,15 @@ func (p *baseProcessor) process(ctx context.Context, edge *Edge, msg *message) {
 	// Combine the initial errors with the interpreted output.
 	results = seq.Flatten(seq.Sequence(errs...), results)
 
-	results = seq.Filter(results, func(item Item) bool {
-		if item.Err != nil {
+	results = seq.Filter(results, func(obj Object) bool {
+		value, err := obj.Object()
+		if err != nil {
 			return true
 		}
 
 		// Deduplicate the interpreted values using the buffer shared by all processors
 		// of all senders.
-		_, loaded := p.outputBuffer.LoadOrStore(item.Value, struct{}{})
+		_, loaded := p.outputBuffer.LoadOrStore(value, struct{}{})
 		return !loaded
 	})
 

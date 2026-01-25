@@ -89,7 +89,7 @@ func (w *worker) Subscribe(key *Edge) *sender {
 // Called when the worker's node matches the query's user node; this initial value
 // propagates through the worker graph to find all reachable objects.
 func (w *worker) listenForInitialValue(value string, membership *membership) {
-	items := []Item{{Value: value}}
+	items := []Object{Item{Value: value}}
 	membership.Tracker().Inc()
 	m := &message{
 		Value: items,

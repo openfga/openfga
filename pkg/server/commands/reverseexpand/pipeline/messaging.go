@@ -16,16 +16,16 @@ type bufferPool struct {
 	pool sync.Pool
 }
 
-func (b *bufferPool) Get() *[]Item {
-	return b.pool.Get().(*[]Item)
+func (b *bufferPool) Get() *[]Object {
+	return b.pool.Get().(*[]Object)
 }
 
-func (b *bufferPool) Put(buffer *[]Item) {
+func (b *bufferPool) Put(buffer *[]Object) {
 	b.pool.Put(buffer)
 }
 
 func (b *bufferPool) create() any {
-	tmp := make([]Item, b.size)
+	tmp := make([]Object, b.size)
 	return &tmp
 }
 
@@ -44,14 +44,18 @@ type Item struct {
 	Err   error
 }
 
+func (i Item) Object() (string, error) {
+	return i.Value, i.Err
+}
+
 // message is the unit of communication between workers.
 // It carries result items and cleanup state needed to properly release resources
 // when the message is processed.
 type message struct {
-	Value []Item
+	Value []Object
 
 	// stored for cleanup
-	buffer     *[]Item
+	buffer     *[]Object
 	bufferPool *bufferPool
 	tracker    *track.Tracker
 }

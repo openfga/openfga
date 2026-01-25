@@ -43,7 +43,7 @@ type resolverCore struct {
 // broadcast sends results to all downstream listeners in batches.
 // Batching amortizes the overhead of message creation and synchronization across multiple items.
 func (r *resolverCore) broadcast(
-	results iter.Seq[Item],
+	results iter.Seq[Object],
 	listeners []*listener,
 ) int {
 	var sentCount int

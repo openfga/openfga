@@ -29,6 +29,7 @@ import (
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/server/commands/reverseexpand"
 	"github.com/openfga/openfga/pkg/server/commands/reverseexpand/pipeline"
+	"github.com/openfga/openfga/pkg/server/commands/reverseexpand/pipeline/obj"
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
@@ -76,12 +77,8 @@ type ListObjectsQuery struct {
 	optimizationsEnabled bool // Indicates if experimental optimizations are enabled for ListObjectsResolver
 	useShadowCache       bool // Indicates that the shadow cache should be used instead of the main cache
 
-	pipelineEnabled   bool // Indicates whether to run with the pipeline optimized code
-	chunkSize         int
-	bufferSize        int
-	numProcs          int
-	pipeExtendAfter   time.Duration
-	pipeMaxExtensions int
+	pipelineEnabled bool // Indicates whether to run with the pipeline optimized code
+	pipelineConfig  pipeline.Config
 }
 
 type ListObjectsResolver interface {
@@ -210,26 +207,26 @@ func WithListObjectsPipelineEnabled(value bool) ListObjectsQueryOption {
 
 func WithListObjectsChunkSize(value int) ListObjectsQueryOption {
 	return func(d *ListObjectsQuery) {
-		d.chunkSize = value
+		d.pipelineConfig.ChunkSize = value
 	}
 }
 
 func WithListObjectsBufferSize(value int) ListObjectsQueryOption {
 	return func(d *ListObjectsQuery) {
-		d.bufferSize = value
+		d.pipelineConfig.BufferConfig.Capacity = value
 	}
 }
 
 func WithListObjectsNumProcs(value int) ListObjectsQueryOption {
 	return func(d *ListObjectsQuery) {
-		d.numProcs = value
+		d.pipelineConfig.NumProcs = value
 	}
 }
 
 func WithListObjectsPipeExtension(extendAfter time.Duration, maxExtensions int) ListObjectsQueryOption {
 	return func(d *ListObjectsQuery) {
-		d.pipeExtendAfter = extendAfter
-		d.pipeMaxExtensions = maxExtensions
+		d.pipelineConfig.BufferConfig.ExtendAfter = extendAfter
+		d.pipelineConfig.BufferConfig.MaxExtensions = maxExtensions
 	}
 }
 
@@ -269,6 +266,7 @@ func NewListObjectsQuery(
 		optimizationsEnabled: false,
 		useShadowCache:       false,
 		ff:                   featureflags.NewNoopFeatureFlagClient(),
+		pipelineConfig:       pipeline.DefaultConfig(),
 	}
 
 	for _, opt := range opts {
@@ -587,38 +585,26 @@ func (q *ListObjectsQuery) Execute(
 			},
 		)
 
-		backend := &pipeline.Backend{
-			Datastore:  ds,
-			StoreID:    req.GetStoreId(),
-			TypeSystem: typesys,
-			Context:    req.GetContext(),
-			Graph:      wgraph,
-			Preference: req.GetConsistency(),
+		validator := obj.NewValidator(timeoutCtx, typesys, req.GetContext())
+
+		reader := obj.NewReader(
+			ds,
+			req.GetStoreId(),
+			obj.WithConsistency(req.GetConsistency()),
+			obj.WithValidator(validator),
+		)
+
+		spec := pipeline.Spec{
+			ObjectType: targetObjectType,
+			Relation:   targetRelation,
+			User:       req.GetUser(),
 		}
 
-		conf := pipeline.DefaultConfig()
-
-		if q.chunkSize > 0 {
-			conf.ChunkSize = q.chunkSize
-		}
-
-		if q.bufferSize > 0 {
-			conf.BufferConfig.Capacity = q.bufferSize
-		}
-
-		if q.numProcs > 0 {
-			conf.NumProcs = q.numProcs
-		}
-
-		if q.pipeExtendAfter > 0 {
-			conf.BufferConfig.ExtendAfter = q.pipeExtendAfter
-			conf.BufferConfig.MaxExtensions = q.pipeMaxExtensions
-		}
-
-		seq, err := pipeline.NewQuery(backend, pipeline.WithConfig(conf)).
-			From(targetObjectType, targetRelation).
-			To(req.GetUser()).
-			Execute(timeoutCtx)
+		seq, err := pipeline.New(
+			wgraph,
+			reader,
+			pipeline.WithConfig(q.pipelineConfig),
+		).Expand(timeoutCtx, spec)
 
 		if err != nil {
 			return nil, serverErrors.ValidationError(err)
@@ -626,18 +612,20 @@ func (q *ListObjectsQuery) Execute(
 
 		var res ListObjectsResponse
 
-		for obj := range seq {
+		for object := range seq {
 			if timeoutCtx.Err() != nil {
 				break
 			}
 
+			value, err := object.Object()
+
 			// If the error is from a context cancelation, the current
 			// behavior for ListObjects is to not report it.
-			if obj.Err != nil && !errors.Is(obj.Err, context.Canceled) && !errors.Is(obj.Err, context.DeadlineExceeded) {
-				return nil, serverErrors.HandleError("", obj.Err)
+			if err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+				return nil, serverErrors.HandleError("", err)
 			}
 
-			res.Objects = append(res.Objects, obj.Value)
+			res.Objects = append(res.Objects, value)
 
 			// Check if we've reached the max results limit
 			if maxResults > 0 && uint32(len(res.Objects)) >= maxResults {
@@ -762,38 +750,26 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 			},
 		)
 
-		backend := &pipeline.Backend{
-			Datastore:  ds,
-			StoreID:    req.GetStoreId(),
-			TypeSystem: typesys,
-			Context:    req.GetContext(),
-			Graph:      wgraph,
-			Preference: req.GetConsistency(),
+		validator := obj.NewValidator(timeoutCtx, typesys, req.GetContext())
+
+		reader := obj.NewReader(
+			ds,
+			req.GetStoreId(),
+			obj.WithConsistency(req.GetConsistency()),
+			obj.WithValidator(validator),
+		)
+
+		spec := pipeline.Spec{
+			ObjectType: targetObjectType,
+			Relation:   targetRelation,
+			User:       req.GetUser(),
 		}
 
-		conf := pipeline.DefaultConfig()
-
-		if q.chunkSize > 0 {
-			conf.ChunkSize = q.chunkSize
-		}
-
-		if q.bufferSize > 0 {
-			conf.BufferConfig.Capacity = q.bufferSize
-		}
-
-		if q.numProcs > 0 {
-			conf.NumProcs = q.numProcs
-		}
-
-		if q.pipeExtendAfter > 0 {
-			conf.BufferConfig.ExtendAfter = q.pipeExtendAfter
-			conf.BufferConfig.MaxExtensions = q.pipeMaxExtensions
-		}
-
-		seq, err := pipeline.NewQuery(backend, pipeline.WithConfig(conf)).
-			From(targetObjectType, targetRelation).
-			To(req.GetUser()).
-			Execute(timeoutCtx)
+		seq, err := pipeline.New(
+			wgraph,
+			reader,
+			pipeline.WithConfig(q.pipelineConfig),
+		).Expand(timeoutCtx, spec)
 
 		if err != nil {
 			return nil, serverErrors.ValidationError(err)
@@ -801,22 +777,24 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 
 		var listObjectsCount uint32 = 0
 
-		for obj := range seq {
+		for object := range seq {
 			if timeoutCtx.Err() != nil {
 				break
 			}
 
+			value, err := object.Object()
+
 			// If the error is from a context cancelation, the current
 			// behavior for ListObjects is to not report it.
-			if obj.Err != nil && !errors.Is(obj.Err, context.Canceled) && !errors.Is(obj.Err, context.DeadlineExceeded) {
-				if errors.Is(obj.Err, condition.ErrEvaluationFailed) {
-					return nil, serverErrors.ValidationError(obj.Err)
+			if err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+				if errors.Is(err, condition.ErrEvaluationFailed) {
+					return nil, serverErrors.ValidationError(err)
 				}
-				return nil, serverErrors.HandleError("", obj.Err)
+				return nil, serverErrors.HandleError("", err)
 			}
 
 			if err := srv.Send(&openfgav1.StreamedListObjectsResponse{
-				Object: obj.Value,
+				Object: value,
 			}); err != nil {
 				return nil, serverErrors.HandleError("", err)
 			}

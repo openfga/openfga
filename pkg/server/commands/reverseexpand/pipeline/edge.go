@@ -7,52 +7,51 @@ import (
 	"iter"
 	"strings"
 
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-
 	"github.com/openfga/openfga/internal/seq"
 )
 
 // interpreter is an interface that exposes a method for interpreting input for an edge into output.
 type interpreter interface {
-	Interpret(ctx context.Context, edge *Edge, items []string) iter.Seq[Item]
+	Interpret(ctx context.Context, edge *Edge, items []string) iter.Seq[Object]
 }
 
 // directEdgeHandler is a struct that handles edges having a direct type. These edges will
 // always require a query for objects using the edge's relation definition -- the downstream
 // type and relation.
 type directEdgeHandler struct {
-	queryEngine *queryEngine
+	reader ObjectReader
 }
 
 // Handle is a function that queries for objects using the relation definition of edge.
 func (h *directEdgeHandler) Handle(
 	ctx context.Context,
 	edge *Edge,
-	items []string,
-) iter.Seq[Item] {
+	objects []string,
+) iter.Seq[Object] {
 	nodeType, nodeRelation, _ := strings.Cut(edge.GetRelationDefinition(), "#")
 
-	_, userRelation, _ := strings.Cut(edge.GetTo().GetLabel(), "#")
+	_, userRelation, exists := strings.Cut(edge.GetTo().GetLabel(), "#")
 
-	userFilter := make([]*openfgav1.ObjectRelation, len(items))
+	userFilter := make([]string, len(objects))
 
-	for i, item := range items {
-		userFilter[i] = &openfgav1.ObjectRelation{
-			Object:   item,
-			Relation: userRelation,
+	for i, obj := range objects {
+		objectRelation := obj
+		if exists {
+			objectRelation += "#" + userRelation
 		}
+		userFilter[i] = objectRelation
 	}
 
-	var results iter.Seq[Item]
+	var results iter.Seq[Object]
 
 	if len(userFilter) > 0 {
-		input := queryInput{
-			objectType:     nodeType,
-			objectRelation: nodeRelation,
-			userFilter:     userFilter,
-			conditions:     edge.GetConditions(),
+		input := ObjectQuery{
+			ObjectType: nodeType,
+			Relation:   nodeRelation,
+			Users:      userFilter,
+			Conditions: edge.GetConditions(),
 		}
-		results = h.queryEngine.Execute(ctx, input)
+		results = h.reader.Read(ctx, input)
 	} else {
 		results = emptySequence
 	}
@@ -63,29 +62,29 @@ func (h *directEdgeHandler) Handle(
 // ttuEdgeHandler is a struct that handles edges having a TTU type. These edges will always
 // require a query for objects using the edge's tulpeset relation.
 type ttuEdgeHandler struct {
-	queryEngine *queryEngine
-	graph       *Graph
+	reader ObjectReader
+	graph  *Graph
 }
 
 // Handle is a function that queries for objects given the tupleset relation of edge.
 func (h *ttuEdgeHandler) Handle(
 	ctx context.Context,
 	edge *Edge,
-	items []string,
-) iter.Seq[Item] {
+	objects []string,
+) iter.Seq[Object] {
 	tuplesetType, tuplesetRelation, ok := strings.Cut(edge.GetTuplesetRelation(), "#")
 	if !ok {
-		return seq.Sequence(Item{Err: errors.New("invalid tupleset relation")})
+		return seq.Sequence(Object(Item{Err: errors.New("invalid tupleset relation")}))
 	}
 
 	tuplesetNode, ok := h.graph.GetNodeByID(edge.GetTuplesetRelation())
 	if !ok {
-		return seq.Sequence(Item{Err: errors.New("tupleset node not in graph")})
+		return seq.Sequence(Object(Item{Err: errors.New("tupleset node not in graph")}))
 	}
 
 	edges, ok := h.graph.GetEdgesFromNode(tuplesetNode)
 	if !ok {
-		return seq.Sequence(Item{Err: errors.New("no edges found for tupleset node")})
+		return seq.Sequence(Object(Item{Err: errors.New("no edges found for tupleset node")}))
 	}
 
 	targetType, _, _ := strings.Cut(edge.GetTo().GetLabel(), "#")
@@ -100,28 +99,19 @@ func (h *ttuEdgeHandler) Handle(
 	}
 
 	if targetEdge == nil {
-		return seq.Sequence(Item{Err: errors.New("ttu target type is not an edge of tupleset")})
+		return seq.Sequence(Object(Item{Err: errors.New("ttu target type is not an edge of tupleset")}))
 	}
 
-	userFilter := make([]*openfgav1.ObjectRelation, len(items))
+	var results iter.Seq[Object]
 
-	for i, item := range items {
-		userFilter[i] = &openfgav1.ObjectRelation{
-			Object:   item,
-			Relation: "",
+	if len(objects) > 0 {
+		input := ObjectQuery{
+			ObjectType: tuplesetType,
+			Relation:   tuplesetRelation,
+			Users:      objects,
+			Conditions: targetEdge.GetConditions(),
 		}
-	}
-
-	var results iter.Seq[Item]
-
-	if len(userFilter) > 0 {
-		input := queryInput{
-			objectType:     tuplesetType,
-			objectRelation: tuplesetRelation,
-			userFilter:     userFilter,
-			conditions:     targetEdge.GetConditions(),
-		}
-		results = h.queryEngine.Execute(ctx, input)
+		results = h.reader.Read(ctx, input)
 	} else {
 		results = emptySequence
 	}
@@ -138,8 +128,8 @@ func (h *identityEdgeHandler) Handle(
 	_ context.Context,
 	_ *Edge,
 	items []string,
-) iter.Seq[Item] {
-	return func(yield func(Item) bool) {
+) iter.Seq[Object] {
+	return func(yield func(Object) bool) {
 		for _, s := range items {
 			if !yield(Item{Value: s}) {
 				return
@@ -169,7 +159,7 @@ func (e *edgeInterpreter) Interpret(
 	ctx context.Context,
 	edge *Edge,
 	items []string,
-) iter.Seq[Item] {
+) iter.Seq[Object] {
 	if len(items) == 0 {
 		return emptySequence
 	}
@@ -184,9 +174,9 @@ func (e *edgeInterpreter) Interpret(
 	case edgeTypeComputed, edgeTypeRewrite, edgeTypeDirectLogical, edgeTypeTTULogical:
 		return e.identity.Handle(ctx, edge, items)
 	default:
-		return seq.Sequence(Item{Err: fmt.Errorf(
+		return seq.Sequence(Object(Item{Err: fmt.Errorf(
 			"no handler for edge type: %v",
 			edge.GetEdgeType(),
-		)})
+		)}))
 	}
 }
