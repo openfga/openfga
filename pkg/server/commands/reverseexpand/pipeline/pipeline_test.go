@@ -145,7 +145,7 @@ func TestPipelineShutdown(t *testing.T) {
 		User:       "user:bob",
 	}
 
-	pl := New(g, &ds, WithBufferSize(bufferSize), WithChunkSize(chunkSize))
+	pl := New(g, &ds, WithBufferCapacity(bufferSize), WithChunkSize(chunkSize))
 
 	t.Run("NoAbandon", func(t *testing.T) {
 		defer goleak.VerifyNone(t)

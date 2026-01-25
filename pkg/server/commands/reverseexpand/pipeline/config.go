@@ -8,9 +8,9 @@ import (
 
 type Option func(*Config)
 
-// WithBufferSize sets the capacity of pipes between workers.
+// WithBufferCapacity sets the capacity of pipes between workers.
 // Must be a power of two. Larger buffers reduce blocking but increase memory.
-func WithBufferSize(size int) Option {
+func WithBufferCapacity(size int) Option {
 	return func(config *Config) {
 		config.BufferConfig.Capacity = size
 	}
