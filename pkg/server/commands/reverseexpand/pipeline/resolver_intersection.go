@@ -65,8 +65,7 @@ func (r *intersectionResolver) Resolve(
 		output[value] = struct{}{}
 	}
 
-	// Compute intersection by iteratively filtering to values present in all bags.
-	// First bag initializes the candidate set; each subsequent bag narrows it down.
+	// Each subsequent bag narrows the candidate set.
 	for i := 1; i < len(bags); i++ {
 		found := make(map[string]struct{}, len(output))
 		for obj := range bags[i].Seq() {

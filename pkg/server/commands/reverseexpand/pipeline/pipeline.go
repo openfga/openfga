@@ -28,7 +28,6 @@ var (
 	edgeTypeTTU           = weightedGraph.TTUEdge
 	edgeTypeTTULogical    = weightedGraph.TTULogicalEdge
 
-	// EmptySequence represents an `iter.Seq[Item]` that does nothing.
 	emptySequence = func(yield func(Object) bool) {}
 
 	nodeTypeLogicalDirectGrouping   = weightedGraph.LogicalDirectGrouping
@@ -73,16 +72,14 @@ type Spec struct {
 	User       string
 }
 
-// Pipeline represents a reverse expansion query being built.
-// Use the fluent API (From, To) to configure the query, then Execute to run it.
+// Pipeline holds the dependencies and configuration for reverse expansion queries.
 type Pipeline struct {
 	graph  *Graph
 	reader ObjectReader
 	config Config
 }
 
-// New creates a new reverse expansion query with the given backend and options.
-// The query must be configured with From() and To() before calling Execute().
+// New creates a Pipeline with the given graph and reader.
 func New(graph *Graph, reader ObjectReader, options ...Option) *Pipeline {
 	var pl Pipeline
 	pl.graph = graph
@@ -95,8 +92,6 @@ func New(graph *Graph, reader ObjectReader, options ...Option) *Pipeline {
 	return &pl
 }
 
-// createInterpreter builds the edge interpreter with validators for this query.
-// Combines condition evaluation and type system validation to filter invalid tuples.
 func (pl *Pipeline) createInterpreter() interpreter {
 	directEdgeHandler := directEdgeHandler{pl.reader}
 
@@ -114,7 +109,7 @@ func (pl *Pipeline) createInterpreter() interpreter {
 	}
 }
 
-// path holds the state needed to recursively construct workers from the authorization graph.
+// path carries state through recursive worker construction.
 type path struct {
 	objectNode     *Node
 	userNode       *Node
@@ -124,9 +119,6 @@ type path struct {
 	cycleGroup     *cycleGroup
 }
 
-// resolve recursively constructs workers for the authorization model graph.
-// Creates workers on-demand and wires them together based on the graph structure.
-// Detects cycles and groups cyclical workers for coordinated shutdown.
 func (pl *Pipeline) resolve(p path, workers workerPool) *worker {
 	if w, ok := workers[p.objectNode]; ok {
 		return w
@@ -173,7 +165,6 @@ func (pl *Pipeline) resolve(p path, workers workerPool) *worker {
 		typePart, _, _ := strings.Cut(label, ":")
 
 		if p.objectNode == p.userNode || typePart == p.userNode.GetLabel() {
-			// object node is the user node or has the same type as the user.
 			w.listenForInitialValue(typePart+":*", membership)
 		}
 	}
@@ -183,7 +174,6 @@ func (pl *Pipeline) resolve(p path, workers workerPool) *worker {
 		return &w
 	}
 
-	// Wire this worker to upstream workers by traversing outgoing edges.
 	for _, edge := range edges {
 		nextPath := p
 
@@ -202,14 +192,11 @@ func (pl *Pipeline) resolve(p path, workers workerPool) *worker {
 	return &w
 }
 
-// userResolution contains the result of resolving a user string to a graph node and identifier.
 type userResolution struct {
 	userNode       *Node
 	userIdentifier string
 }
 
-// resolveUser parses the user string and resolves it to a graph node.
-// Returns the user node and the user identifier component.
 func (pl *Pipeline) resolveUser(u string) (*userResolution, error) {
 	user, userRelation, exists := strings.Cut(u, "#")
 	userType, userIdentifier, _ := strings.Cut(user, ":")
@@ -226,7 +213,6 @@ func (pl *Pipeline) resolveUser(u string) (*userResolution, error) {
 	return &userResolution{userNode, userIdentifier}, nil
 }
 
-// resolveObjectNode resolves the object type and relation to a graph node.
 func (pl *Pipeline) resolveObjectNode(objectType, objectRelation string) (*Node, error) {
 	nodeID := objectType + "#" + objectRelation
 	node, ok := pl.graph.GetNodeByID(nodeID)
@@ -236,14 +222,12 @@ func (pl *Pipeline) resolveObjectNode(objectType, objectRelation string) (*Node,
 	return node, nil
 }
 
-// expansion encapsulates the constructed worker graph and result stream.
 type expansion struct {
 	workers workerPool
 	results *sender
 }
 
-// buildPipeline constructs the worker graph and returns a pipeline ready for execution.
-func (pl *Pipeline) buildPipeline(objectNode, userNode *Node, userIdentifier string) (*expansion, error) {
+func (pl *Pipeline) buildExpansion(objectNode, userNode *Node, userIdentifier string) (*expansion, error) {
 	pool := newBufferPool(pl.config.ChunkSize)
 	interpreter := pl.createInterpreter()
 	workers := make(workerPool)
@@ -269,7 +253,6 @@ func (pl *Pipeline) buildPipeline(objectNode, userNode *Node, userIdentifier str
 	}, nil
 }
 
-// workerLifecycle manages the lifecycle of worker goroutines.
 type workerLifecycle struct {
 	wg *sync.WaitGroup
 }
@@ -278,18 +261,15 @@ func (wl *workerLifecycle) Wait() {
 	wl.wg.Wait()
 }
 
-// startWorkerLifecycle starts goroutines for worker execution and shutdown coordination.
 func (pl *Pipeline) startWorkerLifecycle(ctx context.Context, workers workerPool) *workerLifecycle {
 	var wg sync.WaitGroup
 
-	// Start workers
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		workers.Start(ctx)
 	}()
 
-	// Monitor context cancellation and trigger shutdown
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -300,8 +280,7 @@ func (pl *Pipeline) startWorkerLifecycle(ctx context.Context, workers workerPool
 	return &workerLifecycle{&wg}
 }
 
-// drain consumes and releases all remaining messages from a sender.
-// Called during cleanup to prevent goroutine leaks when shutting down the pipeline.
+// drain prevents goroutine leaks by consuming remaining messages during shutdown.
 func drain(s *sender) {
 	var msg *message
 	for s.Recv(&msg) {
@@ -309,8 +288,6 @@ func drain(s *sender) {
 	}
 }
 
-// iterateOverResults manages the pipeline lifecycle and streams results to the caller.
-// Coordinates worker startup, result consumption, and graceful shutdown.
 func (pl *Pipeline) iterateOverResults(
 	ctx context.Context,
 	p *expansion,
@@ -352,16 +329,13 @@ func (pl *Pipeline) iterateOverResults(
 	}
 }
 
-// streamResults returns an iterator that streams results from the pipeline.
 func (pl *Pipeline) streamResults(ctx context.Context, p *expansion) iter.Seq[Object] {
 	return func(yield func(Object) bool) {
 		ctx, span := pipelineTracer.Start(ctx, "pipeline.iterate")
 		defer span.End()
 
+		// Early exit before any goroutines are created avoids cleanup overhead.
 		if ctx.Err() != nil {
-			// Exit early if the context was already canceled.
-			// No goroutines have been created up to this point
-			// so no cleanup is necessary.
 			return
 		}
 
@@ -369,10 +343,8 @@ func (pl *Pipeline) streamResults(ctx context.Context, p *expansion) iter.Seq[Ob
 	}
 }
 
-// Expand runs the reverse expansion query and returns an iterator of results.
-// The iterator yields Items containing either object IDs or errors.
-// Results stream as they're discovered; iteration can be stopped early without
-// waiting for the full result set.
+// Expand returns a streaming iterator of objects accessible to the user specified in spec.
+// Iteration can be stopped early; the pipeline will clean up resources automatically.
 func (pl *Pipeline) Expand(ctx context.Context, spec Spec) (iter.Seq[Object], error) {
 	if err := pl.config.Validate(); err != nil {
 		return emptySequence, err
@@ -391,7 +363,7 @@ func (pl *Pipeline) Expand(ctx context.Context, spec Spec) (iter.Seq[Object], er
 		return emptySequence, err
 	}
 
-	pipeline, err := pl.buildPipeline(objectNode, userRes.userNode, userRes.userIdentifier)
+	pipeline, err := pl.buildExpansion(objectNode, userRes.userNode, userRes.userIdentifier)
 	if err != nil {
 		return emptySequence, err
 	}

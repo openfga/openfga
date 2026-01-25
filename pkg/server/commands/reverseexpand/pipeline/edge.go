@@ -10,19 +10,15 @@ import (
 	"github.com/openfga/openfga/internal/seq"
 )
 
-// interpreter is an interface that exposes a method for interpreting input for an edge into output.
 type interpreter interface {
 	Interpret(ctx context.Context, edge *Edge, items []string) iter.Seq[Object]
 }
 
-// directEdgeHandler is a struct that handles edges having a direct type. These edges will
-// always require a query for objects using the edge's relation definition -- the downstream
-// type and relation.
+// directEdgeHandler queries objects via the edge's relation definition.
 type directEdgeHandler struct {
 	reader ObjectReader
 }
 
-// Handle is a function that queries for objects using the relation definition of edge.
 func (h *directEdgeHandler) Handle(
 	ctx context.Context,
 	edge *Edge,
@@ -59,14 +55,12 @@ func (h *directEdgeHandler) Handle(
 	return results
 }
 
-// ttuEdgeHandler is a struct that handles edges having a TTU type. These edges will always
-// require a query for objects using the edge's tulpeset relation.
+// ttuEdgeHandler queries objects via the edge's tupleset relation.
 type ttuEdgeHandler struct {
 	reader ObjectReader
 	graph  *Graph
 }
 
-// Handle is a function that queries for objects given the tupleset relation of edge.
 func (h *ttuEdgeHandler) Handle(
 	ctx context.Context,
 	edge *Edge,
@@ -119,11 +113,9 @@ func (h *ttuEdgeHandler) Handle(
 	return results
 }
 
-// identityEdgeHandler is a struct that handles items for edge types that do not
-// require additional processing.
+// identityEdgeHandler passes items through without querying storage.
 type identityEdgeHandler struct{}
 
-// Handle is a function that returns a sequence of the provided items as Item values.
 func (h *identityEdgeHandler) Handle(
 	_ context.Context,
 	_ *Edge,
@@ -138,23 +130,13 @@ func (h *identityEdgeHandler) Handle(
 	}
 }
 
-// edgeInterpreter is a struct that holds all edge handlers, and acts as a proxy
-// interpreter for each handler.
+// edgeInterpreter dispatches to the appropriate handler based on edge type.
 type edgeInterpreter struct {
-	// direct contains an edge handler that specifically handles direct edge types.
-	direct *directEdgeHandler
-
-	// ttu contains an edge handler that specifically handles ttu edge types.
-	ttu *ttuEdgeHandler
-
-	// identity contains an edge handler that handles nil edge values, computed,
-	// rewrite, direct logical, and ttu logical edge types.
+	direct   *directEdgeHandler
+	ttu      *ttuEdgeHandler
 	identity *identityEdgeHandler
 }
 
-// Interpret is a function that selects the appropriate edge handler for a given edge
-// and passes its items to the chosen handler. When the value of edge has a type that
-// is not recognized, an iter.Seq containing an Item with an error is returned.
 func (e *edgeInterpreter) Interpret(
 	ctx context.Context,
 	edge *Edge,

@@ -12,7 +12,6 @@ import (
 	"github.com/openfga/openfga/internal/seq"
 )
 
-// exclusionResolver is a struct that resolves senders to an exclusion operation.
 type exclusionResolver struct {
 	resolverCore
 }
@@ -37,15 +36,13 @@ func (r *exclusionResolver) Resolve(
 
 	var wgExclude sync.WaitGroup
 
-	// Exclusion streams "include" side through a pipe while "exclude" side collects into a bag.
-	// Pipe auto-extends to accommodate streaming include results without blocking.
+	// Include side streams through a pipe; exclude side collects into a bag.
 	pipeInclude := pipe.Must[Object](pipe.Config{
 		Capacity:      1 << 7,
-		ExtendAfter:   0,  // Extend immediately when full to prevent blocking include side
-		MaxExtensions: -1, // Unbounded growth adapts to result set size
+		ExtendAfter:   0,
+		MaxExtensions: -1,
 	})
 
-	// Track active goroutines processing include side to know when to close the pipe.
 	var counter atomic.Int32
 	counter.Store(int32(r.numProcs))
 
@@ -58,8 +55,7 @@ func (r *exclusionResolver) Resolve(
 	for range r.numProcs {
 		go func(p operatorProcessor) {
 			defer func() {
-				// Last goroutine to finish closes the pipe to signal completion.
-				// Atomic decrement ensures exactly one goroutine closes the pipe.
+				// Last goroutine closes the pipe.
 				if counter.Add(-1) < 1 {
 					_ = pipeInclude.Close()
 				}

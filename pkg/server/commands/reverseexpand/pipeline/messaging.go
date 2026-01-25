@@ -8,9 +8,7 @@ import (
 	"github.com/openfga/openfga/pkg/server/commands/reverseexpand/pipeline/track"
 )
 
-// bufferPool manages reusable Item slice allocations to reduce GC pressure.
-// Workers allocate many short-lived slices for batching results; pooling
-// these allocations significantly reduces garbage collection overhead.
+// bufferPool reduces GC pressure by reusing slice allocations across messages.
 type bufferPool struct {
 	size int
 	pool sync.Pool
@@ -36,9 +34,7 @@ func newBufferPool(size int) *bufferPool {
 	return &b
 }
 
-// Item is a struct that contains an object `string` as its `Value` or an
-// encountered error as its `Err`. Item is the primary container used to
-// communicate values as they pass through a `Pipeline`.
+// Item holds either an object ID or an error encountered during processing.
 type Item struct {
 	Value string
 	Err   error
@@ -48,21 +44,15 @@ func (i Item) Object() (string, error) {
 	return i.Value, i.Err
 }
 
-// message is the unit of communication between workers.
-// It carries result items and cleanup state needed to properly release resources
-// when the message is processed.
+// message carries items between workers along with cleanup state.
 type message struct {
-	Value []Object
-
-	// stored for cleanup
+	Value      []Object
 	buffer     *[]Object
 	bufferPool *bufferPool
 	tracker    *track.Tracker
 }
 
-// Done releases the message's resources back to their pools.
-// Must decrement the tracker first to ensure proper shutdown coordination;
-// cycle groups wait for tracker counts to reach zero before completing shutdown.
+// Done releases resources. Tracker must decrement first for correct cycle shutdown.
 func (m *message) Done() {
 	if m.tracker != nil {
 		m.tracker.Dec()
@@ -72,19 +62,15 @@ func (m *message) Done() {
 	}
 }
 
-// txBag adapts containers.Bag to the pipe.Tx interface.
-// Operator resolvers need to collect all items from their senders before computing results
-// (e.g., intersection, exclusion). Bag provides unordered collection while Tx provides
-// the interface expected by processor code.
+// txBag adapts containers.Bag to pipe.Tx for set operation resolvers
+// that must collect all inputs before computing results.
 type txBag[T any] containers.Bag[T]
 
-// Send implements the pipe.Tx[T] interface.
 func (tx *txBag[T]) Send(t T) bool {
 	(*containers.Bag[T])(tx).Add(t)
 	return true
 }
 
-// Seq returns an iter.Seq of all items within the txBag.
 func (tx *txBag[T]) Seq() iter.Seq[T] {
 	return (*containers.Bag[T])(tx).Seq()
 }
