@@ -113,24 +113,15 @@ func TestReadCommand(t *testing.T) {
 		storeID := ulid.Make().String()
 		pageSize := int32(45)
 
-		mockEncoder := mocks.NewMockEncoder(mockController)
-		mockEncoder.EXPECT().Decode(gomock.Any()).Return([]byte("decodedtoken"), nil).Times(1)
-
-		tokenSerializer := mocks.NewMockContinuationTokenSerializer(mockController)
-		tokenSerializer.EXPECT().Deserialize("decodedtoken").Return("deserializedtoken", "", nil).Times(1)
-
 		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
 		opts := storage.ReadPageOptions{
 			Pagination: storage.PaginationOptions{
 				PageSize: int(pageSize),
-				From:     "deserializedtoken",
+				From:     "token",
 			},
 		}
 		mockDatastore.EXPECT().ReadPage(gomock.Any(), storeID, filter, opts).Times(1)
-		cmd := NewReadQuery(mockDatastore,
-			WithReadQueryEncoder(mockEncoder),
-			WithReadQueryTokenSerializer(tokenSerializer),
-		)
+		cmd := NewReadQuery(mockDatastore)
 		resp, err := cmd.Execute(context.Background(), &openfgav1.ReadRequest{
 			StoreId:           storeID,
 			TupleKey:          &openfgav1.ReadRequestTupleKey{Object: "document:1", Relation: "reader", User: "user:maria"},
@@ -153,7 +144,7 @@ func TestReadCommand(t *testing.T) {
 		mockEncoder := mocks.NewMockEncoder(mockController)
 		mockEncoder.EXPECT().Decode(gomock.Any()).Return([]byte{}, fmt.Errorf("error decoding token")).Times(1)
 		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
-		cmd := NewReadQuery(mockDatastore, WithReadQueryEncoder(mockEncoder))
+		cmd := NewReadQuery(mockDatastore)
 		resp, err := cmd.Execute(context.Background(), &openfgav1.ReadRequest{
 			StoreId:           storeID,
 			TupleKey:          &openfgav1.ReadRequestTupleKey{Object: "document:1", Relation: "reader", User: "user:maria"},

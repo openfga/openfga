@@ -75,7 +75,7 @@ func TestReadAuthorizationModelsQuery(t *testing.T) {
 		mockEncoder := mocks.NewMockEncoder(mockController)
 		mockEncoder.EXPECT().Decode(gomock.Any()).Return(nil, errors.New("error"))
 
-		cmd := NewReadAuthorizationModelsQuery(mockDatastore, WithReadAuthModelsQueryEncoder(mockEncoder))
+		cmd := NewReadAuthorizationModelsQuery(mockDatastore)
 		resp, actualError := cmd.Execute(context.Background(), &openfgav1.ReadAuthorizationModelsRequest{
 			StoreId:           storeID,
 			PageSize:          wrapperspb.Int32(1),
@@ -97,7 +97,7 @@ func TestReadAuthorizationModelsQuery(t *testing.T) {
 			mockEncoder.EXPECT().Encode(gomock.Any()).Return("", errors.New("error")),
 		)
 
-		cmd := NewReadAuthorizationModelsQuery(mockDatastore, WithReadAuthModelsQueryEncoder(mockEncoder))
+		cmd := NewReadAuthorizationModelsQuery(mockDatastore)
 		resp, actualError := cmd.Execute(context.Background(), &openfgav1.ReadAuthorizationModelsRequest{
 			StoreId:           storeID,
 			PageSize:          wrapperspb.Int32(1),

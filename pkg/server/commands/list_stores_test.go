@@ -61,10 +61,8 @@ func TestListStores(t *testing.T) {
 		defer mockController.Finish()
 
 		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
-		mockEncoder := mocks.NewMockEncoder(mockController)
-		mockEncoder.EXPECT().Decode(gomock.Any()).Return(nil, errors.New("error"))
 
-		cmd := NewListStoresQuery(mockDatastore, WithListStoresQueryEncoder(mockEncoder))
+		cmd := NewListStoresQuery(mockDatastore)
 		resp, actualError := cmd.Execute(context.Background(), &openfgav1.ListStoresRequest{
 			PageSize:          wrapperspb.Int32(1),
 			ContinuationToken: "",
@@ -78,14 +76,8 @@ func TestListStores(t *testing.T) {
 		defer mockController.Finish()
 
 		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
-		mockEncoder := mocks.NewMockEncoder(mockController)
-		gomock.InOrder(
-			mockEncoder.EXPECT().Decode(gomock.Any()).Return([]byte{}, nil),
-			mockDatastore.EXPECT().ListStores(gomock.Any(), gomock.Any()).Return([]*openfgav1.Store{stores[0]}, "cont-token", nil),
-			mockEncoder.EXPECT().Encode(gomock.Any()).Return("", errors.New("error")),
-		)
 
-		cmd := NewListStoresQuery(mockDatastore, WithListStoresQueryEncoder(mockEncoder))
+		cmd := NewListStoresQuery(mockDatastore)
 		resp, err := cmd.Execute(context.Background(), &openfgav1.ListStoresRequest{
 			PageSize:          wrapperspb.Int32(1),
 			ContinuationToken: "",

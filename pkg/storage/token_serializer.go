@@ -1,0 +1,65 @@
+package storage
+
+import (
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
+	"strings"
+)
+
+// ContToken represents a continuation token structure used in pagination.
+type ContToken struct {
+	Ulid       string `json:"ulid"`
+	ObjectType string `json:"ObjectType"`
+}
+
+// NewContToken creates a new instance of ContToken
+// with the provided ULID and object type.
+func NewContToken(ulid, objectType string) *ContToken {
+	return &ContToken{
+		Ulid:       ulid,
+		ObjectType: objectType,
+	}
+}
+
+// DecodeContToken decodes the continuation token into a ContToken struct.
+func DecodeContToken(continuationToken string) (*ContToken, error) {
+	var token ContToken
+
+	err := token.Deserialize(continuationToken)
+	if err != nil {
+		return nil, err
+	}
+
+	return &token, nil
+}
+
+func (c *ContToken) Serialize() string {
+	// custom encoding of the struct into a json string
+	encoded := fmt.Sprintf("{%q:%q,%q:%q}", "ulid", c.Ulid, "objectType", c.ObjectType)
+	return base64.URLEncoding.EncodeToString([]byte(encoded))
+}
+
+func (c *ContToken) Deserialize(continuationToken string) error {
+	// first decode the base64 string
+	decoded, err := base64.URLEncoding.DecodeString(continuationToken)
+	if err != nil {
+		return err
+	}
+
+	// then unmarshal the json string
+	if err := json.Unmarshal(decoded, c); err == nil {
+		return nil
+	}
+
+	// if we couldn't unmarshal the json string, try the old-style pipe-separated string
+	if strings.Contains(string(decoded), "|") {
+		tokenParts := strings.Split(string(decoded), "|")
+		c.Ulid = tokenParts[0]
+		c.ObjectType = tokenParts[1]
+		return nil
+	}
+
+	// we couldn't find a valid token format
+	return ErrInvalidContinuationToken
+}

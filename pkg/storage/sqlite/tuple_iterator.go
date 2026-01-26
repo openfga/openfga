@@ -222,7 +222,7 @@ func (t *SQLTupleIterator) ToArray(
 		return nil, "", err
 	}
 
-	return res, tupleRecord.Ulid, nil
+	return res, storage.NewContToken(tupleRecord.Ulid, "").Serialize(), nil
 }
 
 // Next will return the next available item.

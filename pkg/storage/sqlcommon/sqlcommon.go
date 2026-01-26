@@ -3,7 +3,6 @@ package sqlcommon
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"sort"
 	"strconv"
@@ -22,7 +21,6 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/build"
-	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
@@ -196,44 +194,6 @@ func NewConfig(opts ...DatastoreOption) *Config {
 	}
 
 	return cfg
-}
-
-// ContToken represents a continuation token structure used in pagination.
-type ContToken struct {
-	Ulid       string `json:"ulid"`
-	ObjectType string `json:"ObjectType"`
-}
-
-// NewContToken creates a new instance of ContToken
-// with the provided ULID and object type.
-func NewContToken(ulid, objectType string) *ContToken {
-	return &ContToken{
-		Ulid:       ulid,
-		ObjectType: objectType,
-	}
-}
-
-// MarshallContToken takes a ContToken struct and attempts to marshal it into a string.
-
-func NewSQLContinuationTokenSerializer() encoder.ContinuationTokenSerializer {
-	return &SQLContinuationTokenSerializer{}
-}
-
-type SQLContinuationTokenSerializer struct{}
-
-func (s *SQLContinuationTokenSerializer) Serialize(ulid string, objType string) ([]byte, error) {
-	if ulid == "" {
-		return nil, errors.New("empty ulid provided for continuation token")
-	}
-	return json.Marshal(NewContToken(ulid, objType))
-}
-
-func (s *SQLContinuationTokenSerializer) Deserialize(continuationToken string) (ulid string, objType string, err error) {
-	var token ContToken
-	if err := json.Unmarshal([]byte(continuationToken), &token); err != nil {
-		return "", "", storage.ErrInvalidContinuationToken
-	}
-	return token.Ulid, token.ObjectType, nil
 }
 
 // SQLIteratorRowGetter is an interface for retrieving rows from a SQL query.
@@ -493,7 +453,8 @@ func (t *SQLTupleIterator) ToArray(ctx context.Context,
 		return nil, "", err
 	}
 
-	return res, tupleRecord.Ulid, nil
+	token := storage.NewContToken(tupleRecord.Ulid, tupleRecord.ObjectType).Serialize()
+	return res, token, nil
 }
 
 // Next will return the next available item.
