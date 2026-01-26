@@ -102,6 +102,13 @@
             "default": 1000,
             "x-env-variable": "OPENFGA_LIST_USERS_MAX_RESULTS"
         },
+        "readChangesMaxPageSize": {
+            "description": "The maximum page size allowed for ReadChanges API requests",
+            "type": "integer",
+            "minimum": 1,
+            "default": 100,
+            "x-env-variable": "OPENFGA_READ_CHANGES_MAX_PAGE_SIZE"
+        },
         "requestDurationDatastoreQueryCountBuckets": {
             "description": "Datastore query count buckets used to label the histogram metric for measuring request duration.",
             "type": "array",
@@ -251,6 +258,12 @@
                     "type": "integer",
                     "default": 100000,
                     "x-env-variable": "OPENFGA_DATASTORE_MAX_CACHE_SIZE"
+                },
+                "maxTypesystemCacheSize": {
+                    "description": "The maximum number of type system models that will be cached in memory",
+                    "type": "integer",
+                    "default": 100000,
+                    "x-env-variable": "OPENFGA_DATASTORE_MAX_TYPESYSTEM_CACHE_SIZE"
                 },
                 "maxOpenConns": {
                     "description": "The maximum number of open connections to the datastore.",
@@ -461,7 +474,7 @@
                             "description": "The grpc endpoint of the trace collector",
                             "type": "string",
                             "default": "0.0.0.0:4317",
-                            "x-env-variable": "OPENFGA_TRACE_OTLP_ENDPOINT"
+                            "x-env-variable": ["OPENFGA_TRACE_OTLP_ENDPOINT", "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", "OTEL_EXPORTER_OTLP_ENDPOINT"]
                         },
                         "tls": {
                             "type": "object",
@@ -480,13 +493,19 @@
                     "description": "The fraction of traces to sample. 1 means all, 0 means none.",
                     "type": "number",
                     "default": "0.2",
-                    "x-env-variable": "OPENFGA_TRACE_SAMPLE_RATIO"
+                    "x-env-variable": ["OPENFGA_TRACE_SAMPLE_RATIO", "OTEL_TRACES_SAMPLER_ARG"]
                 },
                 "serviceName": {
                     "description": "The service name included in sampled traces.",
                     "type": "string",
                     "default": "openfga",
-                    "x-env-variable": "OPENFGA_TRACE_SERVICE_NAME"
+                    "x-env-variable": ["OPENFGA_TRACE_SERVICE_NAME", "OTEL_SERVICE_NAME"]
+                },
+                "resourceAttributes": {
+                    "description": "Key-value pairs to be used as resource attributes",
+                    "type": "string",
+                    "default": "",
+                    "x-env-variable": "OTEL_RESOURCE_ATTRIBUTES"
                 }
             }
         },

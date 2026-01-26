@@ -1,9 +1,10 @@
 # Security Insights 2.0 file https://github.com/ossf/security-insights 
 # Specification: https://github.com/ossf/security-insights/tree/main/spec
+
 header:
   schema-version: 2.0.0
-  last-updated: '2025-07-26'
-  last-reviewed: '2025-07-26'
+  last-updated: '2026-01-12'
+  last-reviewed: '2026-01-12'
   url: https://github.com/openfga/openfga
   project-si-source: https://raw.githubusercontent.com/openfga/.github/main/SECURITY-INSIGHTS.yml
   comment: High-performance and flexible authorization engine built for developers and inspired by Google Zanzibar.
@@ -16,55 +17,55 @@ repository:
   accepts-automated-change-request: true
   no-third-party-packages: false
   core-team:
-    - name: Poovamraj Thanganadar Thiagarajan
-      affiliation: Okta
-      email: poovamraj.thanganadarthiagarajan@okta.com
-      social: https://github.com/poovamraj
-      primary: true
-    - name: Adrian Tam
-      affiliation: Okta
-      email: adrian.tam@okta.com
-      social: https://github.com/adriantam
-    - name: Dan Cech
-      affiliation: Grafana Labs
-      email: dcech@grafana.com
-      social: https://github.com/DanCech
-    - name: Jose Padilla
-      affiliation: Okta
-      email: jose.padilla@okta.com
-      social: https://github.com/jpadilla
-    - name: Joshua Jones
-      affiliation: Okta
-      email: joshua.jones@okta.com
-      social: https://github.com/senojj
-    - name: Justin Cohen
-      affiliation: Okta
-      email: justin.cohen@okta.com
-      social: https://github.com/justincoh
-    - name: Raghd Hamzeh
-      affiliation: Okta
-      email: raghd.hamzeh@okta.com
-      social: https://github.com/rhamzeh
-    - name: Victoria Johns
-      affiliation: Okta
-      email: victoria.johns@okta.com
-      social: https://github.com/vic-dev
-    - name: Will Vedder
-      affiliation: Okta
-      email: will.vedder@okta.com
-      social: https://github.com/willvedd
-    - name: Yamil Asusta
-      affiliation: Okta
-      email: yamil.asusta@okta.com
-      social: https://github.com/elbuo8
-    - name: Yissell Garma
-      affiliation: Okta
-      email: yissell.garma@okta.com
-      social: https://github.com/yissellokta
-    - name: Zilvinas Vilutis
-      affiliation: Okta
-      email: zilvinas.vilutis@okta.com
-      social: https://github.com/cikasfm
+  - name: Poovamraj Thanganadar Thiagarajan
+    affiliation: Okta
+    email: poovamraj.thanganadarthiagarajan@okta.com
+    social: https://github.com/poovamraj
+    primary: true
+  - name: Adrian Tam
+    affiliation: Okta
+    email: adrian.tam@okta.com
+    social: https://github.com/adriantam
+  - name: Dan Cech
+    affiliation: Grafana Labs
+    email: dcech@grafana.com
+    social: https://github.com/DanCech
+  - name: Jose Padilla
+    affiliation: Okta
+    email: jose.padilla@okta.com
+    social: https://github.com/jpadilla
+  - name: Joshua Jones
+    affiliation: Okta
+    email: joshua.jones@okta.com
+    social: https://github.com/senojj
+  - name: Justin Cohen
+    affiliation: Okta
+    email: justin.cohen@okta.com
+    social: https://github.com/justincoh
+  - name: Raghd Hamzeh
+    affiliation: Okta
+    email: raghd.hamzeh@okta.com
+    social: https://github.com/rhamzeh
+  - name: Victoria Johns
+    affiliation: Okta
+    email: victoria.johns@okta.com
+    social: https://github.com/vic-dev
+  - name: Will Vedder
+    affiliation: Okta
+    email: will.vedder@okta.com
+    social: https://github.com/willvedd
+  - name: Yamil Asusta
+    affiliation: Okta
+    email: yamil.asusta@okta.com
+    social: https://github.com/elbuo8
+  - name: Yissell Garma
+    affiliation: Okta
+    email: yissell.garma@okta.com
+    social: https://github.com/yissellokta
+  - name: Saad Hussain
+    affiliation: Okta
+    email: saad.hussain@okta.com
+    social: https://github.com/saad-h1
 
   license:
     url: https://raw.githubusercontent.com/openfga/openfga/main/LICENSE
@@ -104,7 +105,7 @@ repository:
           adhoc: false
           ci: true
           release: true
-        comment: Dependabot is enabled for this repo to automatically update dependencies.
+        comment: Dependabot is enabled for this repository to automatically update dependencies.
       - name: Snyk
         type: SCA
         version: latest
@@ -114,9 +115,9 @@ repository:
           adhoc: false
           ci: true
           release: true
-        comment: Snyk is enabled for this repo to scan for vulnerabilities.
+        comment: Snyk is enabled for this repository to scan for vulnerabilities.
       - name: Socket
-        type: other
+        type: SCA
         version: latest
         rulesets:
           - built-in
@@ -125,3 +126,13 @@ repository:
           ci: true
           release: true
         comment: Socket is enabled for this repo to scan for supply chain security vulnerabilities.
+      - name: OSSF Scorecard
+        type: SCA
+        version: latest
+        rulesets:
+          - built-in
+        integration:
+          adhoc: false
+          ci: true
+          release: true
+        comment: OSSF Scorecard is enabled for this repository
