@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"iter"
 	"slices"
@@ -53,6 +54,20 @@ func (s *StaticObjectStore) Read(ctx context.Context, q ObjectQuery) iter.Seq[It
 				break
 			}
 		}
+	}
+}
+
+type ErrorObjectStore struct {
+	err error
+}
+
+func NewErrorObjectStore(err error) *ErrorObjectStore {
+	return &ErrorObjectStore{err: err}
+}
+
+func (e *ErrorObjectStore) Read(_ context.Context, _ ObjectQuery) iter.Seq[Item] {
+	return func(yield func(Item) bool) {
+		yield(Item{Err: e.err})
 	}
 }
 
@@ -311,6 +326,75 @@ func TestPipelineShutdown(t *testing.T) {
 
 		for range seq {
 			t.Fatal("received value after context deadline exceeded")
+		}
+	})
+}
+
+var ErrSignal = errors.New("signal error")
+
+func TestPipelineError(t *testing.T) {
+	const bufferSize int = 4
+	const chunkSize int = 1
+
+	const dsl string = `
+	model
+	  schema 1.1
+
+	type user
+
+	type org
+	  relations
+	  	define reader: [user]
+	  	define writer: [user]
+	  	define blocked: [user]
+	  	define moderator: (reader and writer) but not blocked
+	    define member: moderator or member from parent
+	    define parent: [team]
+
+	type team
+	  relations
+	  	define reader: [user]
+	  	define writer: [user]
+	  	define blocked: [user]
+	  	define moderator: (reader and writer) but not blocked
+	    define member: moderator or member from parent
+	    define parent: [org]
+
+	type document
+	  relations
+	    define viewer: [org#member, team#member]
+	`
+	ds := NewErrorObjectStore(ErrSignal)
+
+	model := testutils.MustTransformDSLToProtoWithID(dsl)
+
+	typesys, err := typesystem.NewAndValidate(
+		context.Background(),
+		model,
+	)
+
+	require.NoError(t, err)
+
+	g := typesys.GetWeightedGraph()
+
+	spec := Spec{
+		ObjectType: "document",
+		Relation:   "viewer",
+		User:       "user:bob",
+	}
+
+	pl := New(g, ds, WithBufferCapacity(bufferSize), WithChunkSize(chunkSize))
+
+	t.Run("ShouldReturnErrorThenEnd", func(t *testing.T) {
+		defer goleak.VerifyNone(t)
+
+		seq, err := pl.Expand(context.Background(), spec)
+		require.NoError(t, err)
+
+		for obj := range seq {
+			value, err := obj.Object()
+			require.Empty(t, value)
+			require.ErrorIs(t, err, ErrSignal)
 		}
 	})
 }
