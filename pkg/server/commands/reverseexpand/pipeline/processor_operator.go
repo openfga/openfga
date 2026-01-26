@@ -25,9 +25,7 @@ func (p *operatorProcessor) process(ctx context.Context, edge *Edge, msg *messag
 
 	unseen := make([]string, 0, size)
 
-	for _, value := range (*values)[:size] {
-		unseen = append(unseen, value)
-	}
+	unseen = append(unseen, (*values)[:size]...)
 	p.bufferPool.Put(values)
 
 	results := p.interpreter.Interpret(ctx, edge, unseen)

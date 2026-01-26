@@ -10,6 +10,7 @@ import (
 	"go.opentelemetry.io/otel"
 
 	weightedGraph "github.com/openfga/language/pkg/go/graph"
+
 	"github.com/openfga/openfga/internal/pipe"
 )
 

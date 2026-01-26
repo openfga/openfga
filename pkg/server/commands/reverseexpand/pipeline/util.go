@@ -31,7 +31,3 @@ func createResolver(node *Node, core resolverCore) resolver {
 		panic("unsupported node type for pipeline resolver")
 	}
 }
-
-func strToItem(s string) Item {
-	return Item{Value: s}
-}
