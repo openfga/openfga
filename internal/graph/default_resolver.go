@@ -89,7 +89,6 @@ func (c *LocalChecker) defaultUserset(_ context.Context, req *ResolveCheckReques
 func (c *LocalChecker) prepareChildRequest(parentReq *ResolveCheckRequest, tk *openfgav1.TupleKey, strategy string) *ResolveCheckRequest {
 	childRequest := parentReq.clone()
 	childRequest.TupleKey = tk
-	childRequest.GetRequestMetadata().Depth++
 	childRequest.SelectedStrategy = strategy
 	return childRequest
 }

@@ -565,7 +565,7 @@ func TestPrepareChildRequest(t *testing.T) {
 
 	// Check that the child request is properly configured
 	require.Equal(t, tk, childReq.GetTupleKey())
-	require.Equal(t, parentReq.GetRequestMetadata().Depth+1, childReq.GetRequestMetadata().Depth)
+	require.Equal(t, parentReq.GetRequestMetadata().Depth, childReq.GetRequestMetadata().Depth)
 	require.Equal(t, strategy, childReq.GetSelectedStrategy())
 
 	// Check that the parent request wasn't modified
