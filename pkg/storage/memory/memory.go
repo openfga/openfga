@@ -232,6 +232,9 @@ func (s *MemoryBackend) ReadChanges(ctx context.Context, store string, filter st
 			return nil, "", storage.ErrInvalidContinuationToken
 		}
 		from = &parsed
+	} else if !filter.StartTime.IsZero() {
+		newULID := ulid.MustNew(ulid.Timestamp(filter.StartTime), ulid.DefaultEntropy())
+		from = &newULID
 	}
 
 	objectType := filter.ObjectType

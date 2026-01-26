@@ -1147,6 +1147,8 @@ func (s *Datastore) ReadChanges(ctx context.Context, store string, filter storag
 	}
 	if options.Pagination.From != "" {
 		sb = sqlcommon.AddFromUlid(sb, options.Pagination.From, options.SortDesc)
+	} else if !filter.StartTime.IsZero() {
+		sb = sb.Where(sq.GtOrEq{"inserted_at": filter.StartTime})
 	}
 	if options.Pagination.PageSize > 0 {
 		sb = sb.Limit(uint64(options.Pagination.PageSize)) // + 1 is NOT used here as we always return a continuation token.

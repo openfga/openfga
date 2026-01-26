@@ -52,8 +52,6 @@ func (s *Server) ReadChanges(ctx context.Context, req *openfgav1.ReadChangesRequ
 
 	q := commands.NewReadChangesQuery(s.datastore,
 		commands.WithReadChangesQueryLogger(s.logger),
-		commands.WithReadChangesQueryEncoder(s.encoder),
-		commands.WithContinuationTokenSerializer(s.tokenSerializer),
 		commands.WithReadChangeQueryHorizonOffset(s.changelogHorizonOffset),
 	)
 	return q.Execute(ctx, req)

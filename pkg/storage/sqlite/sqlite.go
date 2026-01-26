@@ -171,7 +171,11 @@ func (s *Datastore) ReadPage(ctx context.Context, store string, filter storage.R
 	}
 	defer iter.Stop()
 
-	return iter.ToArray(ctx, options.Pagination)
+	res, ulid, err := iter.ToArray(ctx, options.Pagination)
+	if err != nil {
+		return nil, "", err
+	}
+	return res, storage.NewContToken(ulid, "").Serialize(), nil
 }
 
 func (s *Datastore) read(ctx context.Context, store string, filter storage.ReadFilter, options *storage.ReadPageOptions) (*SQLTupleIterator, error) {
@@ -227,8 +231,11 @@ func (s *Datastore) read(ctx context.Context, store string, filter storage.ReadF
 	}
 
 	if options != nil && options.Pagination.From != "" {
-		token := options.Pagination.From
-		sb = sb.Where(sq.GtOrEq{"ulid": token})
+		token, err := storage.DecodeContToken(options.Pagination.From)
+		if err != nil {
+			return nil, err
+		}
+		sb = sb.Where(sq.GtOrEq{"ulid": token.Ulid})
 	}
 	if options != nil && options.Pagination.PageSize != 0 {
 		sb = sb.Limit(uint64(options.Pagination.PageSize + 1)) // + 1 is used to determine whether to return a continuation token.
@@ -933,7 +940,6 @@ func (s *Datastore) ReadAuthorizationModels(ctx context.Context, store string, o
 	var marshalledModel []byte
 
 	models := make([]*openfgav1.AuthorizationModel, 0, options.Pagination.PageSize)
-	var token string
 
 	for rows.Next() {
 		err = rows.Scan(&modelID, &schemaVersion, &marshalledModel)
@@ -957,7 +963,7 @@ func (s *Datastore) ReadAuthorizationModels(ctx context.Context, store string, o
 		return nil, "", HandleSQLError(err)
 	}
 
-	return models, token, nil
+	return models, "", nil
 }
 
 // FindLatestAuthorizationModel see [storage.AuthorizationModelReadBackend].FindLatestAuthorizationModel.
@@ -1248,6 +1254,8 @@ func (s *Datastore) ReadChanges(ctx context.Context, store string, filter storag
 	}
 	if options.Pagination.From != "" {
 		sb = sqlcommon.AddFromUlid(sb, options.Pagination.From, options.SortDesc)
+	} else if !filter.StartTime.IsZero() {
+		sb = sb.Where(sq.GtOrEq{"inserted_at": filter.StartTime})
 	}
 	if options.Pagination.PageSize > 0 {
 		sb = sb.Limit(uint64(options.Pagination.PageSize)) // + 1 is NOT used here as we always return a continuation token.

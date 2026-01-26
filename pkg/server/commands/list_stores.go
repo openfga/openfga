@@ -5,7 +5,6 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
-	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/logger"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
@@ -14,7 +13,6 @@ import (
 type ListStoresQuery struct {
 	storesBackend storage.StoresBackend
 	logger        logger.Logger
-	encoder       encoder.Encoder
 }
 
 type ListStoresQueryOption func(*ListStoresQuery)
@@ -25,17 +23,10 @@ func WithListStoresQueryLogger(l logger.Logger) ListStoresQueryOption {
 	}
 }
 
-func WithListStoresQueryEncoder(e encoder.Encoder) ListStoresQueryOption {
-	return func(q *ListStoresQuery) {
-		q.encoder = e
-	}
-}
-
 func NewListStoresQuery(storesBackend storage.StoresBackend, opts ...ListStoresQueryOption) *ListStoresQuery {
 	q := &ListStoresQuery{
 		storesBackend: storesBackend,
 		logger:        logger.NewNoopLogger(),
-		encoder:       encoder.NewBase64Encoder(),
 	}
 
 	for _, opt := range opts {
@@ -45,29 +36,19 @@ func NewListStoresQuery(storesBackend storage.StoresBackend, opts ...ListStoresQ
 }
 
 func (q *ListStoresQuery) Execute(ctx context.Context, req *openfgav1.ListStoresRequest, storeIDs []string) (*openfgav1.ListStoresResponse, error) {
-	decodedContToken, err := q.encoder.Decode(req.GetContinuationToken())
-	if err != nil {
-		return nil, serverErrors.ErrInvalidContinuationToken
-	}
-
 	opts := storage.ListStoresOptions{
 		IDs:        storeIDs,
 		Name:       req.GetName(),
-		Pagination: storage.NewPaginationOptions(req.GetPageSize().GetValue(), string(decodedContToken)),
+		Pagination: storage.NewPaginationOptions(req.GetPageSize().GetValue(), req.GetContinuationToken()),
 	}
-	stores, continuationToken, err := q.storesBackend.ListStores(ctx, opts)
-	if err != nil {
-		return nil, serverErrors.HandleError("", err)
-	}
-
-	encodedToken, err := q.encoder.Encode([]byte(continuationToken))
+	stores, contToken, err := q.storesBackend.ListStores(ctx, opts)
 	if err != nil {
 		return nil, serverErrors.HandleError("", err)
 	}
 
 	resp := &openfgav1.ListStoresResponse{
 		Stores:            stores,
-		ContinuationToken: encodedToken,
+		ContinuationToken: contToken,
 	}
 
 	return resp, nil
