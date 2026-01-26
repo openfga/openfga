@@ -100,10 +100,10 @@ func (r *Reader) applyValidator(it storage.TupleIterator) storage.TupleKeyIterat
 func (r *Reader) toSequence(
 	ctx context.Context,
 	itr storage.TupleKeyIterator,
-) iter.Seq[pipeline.Object] {
+) iter.Seq[pipeline.Item] {
 	ctx, cancel := context.WithCancel(ctx)
 
-	return func(yield func(pipeline.Object) bool) {
+	return func(yield func(pipeline.Item) bool) {
 		defer cancel()
 		defer itr.Stop()
 
@@ -139,7 +139,7 @@ func (r *Reader) toSequence(
 func (r *Reader) Read(
 	ctx context.Context,
 	q pipeline.ObjectQuery,
-) iter.Seq[pipeline.Object] {
+) iter.Seq[pipeline.Item] {
 	iterator := r.createIterator(ctx, q)
 	filtered := r.applyValidator(iterator)
 	return r.toSequence(ctx, filtered)

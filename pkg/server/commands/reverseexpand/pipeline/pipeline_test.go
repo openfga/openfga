@@ -37,7 +37,7 @@ func (s *StaticObjectStore) Add(tuples ...string) {
 	}
 }
 
-func (s *StaticObjectStore) Read(ctx context.Context, q ObjectQuery) iter.Seq[Object] {
+func (s *StaticObjectStore) Read(ctx context.Context, q ObjectQuery) iter.Seq[Item] {
 	var objects []string
 	for _, user := range q.Users {
 		if objectMap, ok := s.m[user]; ok {
@@ -47,7 +47,7 @@ func (s *StaticObjectStore) Read(ctx context.Context, q ObjectQuery) iter.Seq[Ob
 		}
 	}
 
-	return func(yield func(o Object) bool) {
+	return func(yield func(o Item) bool) {
 		for _, o := range objects {
 			if !yield(Item{Value: o}) {
 				break
@@ -325,7 +325,7 @@ type testcase struct {
 	expected   []string
 }
 
-func evaluate(t *testing.T, tc testcase, seq iter.Seq[Object]) {
+func evaluate(t *testing.T, tc testcase, seq iter.Seq[Item]) {
 	var results []string
 	for object := range seq {
 		value, err := object.Object()

@@ -30,14 +30,14 @@ func (r *exclusionResolver) Resolve(
 		panic("exclusion resolver requires two senders")
 	}
 
-	var excluded containers.Bag[Object]
+	var excluded containers.Bag[Item]
 
 	var cleanup containers.Bag[func()]
 
 	var wgExclude sync.WaitGroup
 
 	// Include side streams through a pipe; exclude side collects into a bag.
-	pipeInclude := pipe.Must[Object](pipe.Config{
+	pipeInclude := pipe.Must[Item](pipe.Config{
 		Capacity:      1 << 7,
 		ExtendAfter:   0,
 		MaxExtensions: -1,
@@ -66,7 +66,7 @@ func (r *exclusionResolver) Resolve(
 
 	processorExclude := operatorProcessor{
 		resolverCore: r.resolverCore,
-		items:        (*txBag[Object])(&excluded),
+		items:        (*txBag[Item])(&excluded),
 		cleanup:      &cleanup,
 	}
 
@@ -80,7 +80,7 @@ func (r *exclusionResolver) Resolve(
 
 	wgExclude.Wait()
 
-	var errs []Object
+	var errs []Item
 
 	exclusions := make(map[string]struct{})
 
@@ -93,7 +93,7 @@ func (r *exclusionResolver) Resolve(
 		exclusions[value] = struct{}{}
 	}
 
-	results := seq.Filter(pipeInclude.Seq(), func(obj Object) bool {
+	results := seq.Filter(pipeInclude.Seq(), func(obj Item) bool {
 		value, err := obj.Object()
 		if err != nil {
 			return true

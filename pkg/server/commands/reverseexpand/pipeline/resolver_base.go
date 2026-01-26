@@ -21,7 +21,7 @@ type baseProcessor struct {
 }
 
 func (p *baseProcessor) process(ctx context.Context, edge *Edge, msg *message) {
-	errs := make([]Object, 0, len(msg.Value))
+	errs := make([]Item, 0, len(msg.Value))
 	unseen := make([]string, 0, len(msg.Value))
 
 	for _, obj := range msg.Value {
@@ -48,7 +48,7 @@ func (p *baseProcessor) process(ctx context.Context, edge *Edge, msg *message) {
 
 	results = seq.Flatten(seq.Sequence(errs...), results)
 
-	results = seq.Filter(results, func(obj Object) bool {
+	results = seq.Filter(results, func(obj Item) bool {
 		value, err := obj.Object()
 		if err != nil {
 			return true

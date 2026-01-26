@@ -10,7 +10,7 @@ import (
 // operatorProcessor collects all items for set operations (intersection, exclusion).
 type operatorProcessor struct {
 	resolverCore
-	items   pipe.Tx[Object]
+	items   pipe.Tx[Item]
 	cleanup *containers.Bag[func()]
 }
 

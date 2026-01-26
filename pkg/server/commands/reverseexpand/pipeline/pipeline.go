@@ -28,7 +28,7 @@ var (
 	edgeTypeTTU           = weightedGraph.TTUEdge
 	edgeTypeTTULogical    = weightedGraph.TTULogicalEdge
 
-	emptySequence = func(yield func(Object) bool) {}
+	emptySequence = func(yield func(Item) bool) {}
 
 	nodeTypeLogicalDirectGrouping   = weightedGraph.LogicalDirectGrouping
 	nodeTypeLogicalTTUGrouping      = weightedGraph.LogicalTTUGrouping
@@ -51,10 +51,6 @@ var (
 	ErrInvalidUser      = errors.New("invalid user")
 )
 
-type Object interface {
-	Object() (string, error)
-}
-
 type ObjectQuery struct {
 	ObjectType string
 	Relation   string
@@ -63,7 +59,7 @@ type ObjectQuery struct {
 }
 
 type ObjectReader interface {
-	Read(context.Context, ObjectQuery) iter.Seq[Object]
+	Read(context.Context, ObjectQuery) iter.Seq[Item]
 }
 
 type Spec struct {
@@ -291,7 +287,7 @@ func drain(s *sender) {
 func (pl *Pipeline) iterateOverResults(
 	ctx context.Context,
 	p *expansion,
-	yield func(Object) bool,
+	yield func(Item) bool,
 ) {
 	ctx, cancel := context.WithCancel(ctx)
 
@@ -302,7 +298,7 @@ func (pl *Pipeline) iterateOverResults(
 	defer p.results.Close()
 	defer cancel()
 
-	buffer := make([]Object, 0, pl.config.Buffer.Capacity)
+	buffer := make([]Item, 0, pl.config.Buffer.Capacity)
 
 	for {
 		if len(buffer) == 0 {
@@ -329,8 +325,8 @@ func (pl *Pipeline) iterateOverResults(
 	}
 }
 
-func (pl *Pipeline) streamResults(ctx context.Context, p *expansion) iter.Seq[Object] {
-	return func(yield func(Object) bool) {
+func (pl *Pipeline) streamResults(ctx context.Context, p *expansion) iter.Seq[Item] {
+	return func(yield func(Item) bool) {
 		ctx, span := pipelineTracer.Start(ctx, "pipeline.iterate")
 		defer span.End()
 
@@ -345,7 +341,7 @@ func (pl *Pipeline) streamResults(ctx context.Context, p *expansion) iter.Seq[Ob
 
 // Expand returns a streaming iterator of objects accessible to the user specified in spec.
 // Iteration can be stopped early; the pipeline will clean up resources automatically.
-func (pl *Pipeline) Expand(ctx context.Context, spec Spec) (iter.Seq[Object], error) {
+func (pl *Pipeline) Expand(ctx context.Context, spec Spec) (iter.Seq[Item], error) {
 	if err := pl.config.Validate(); err != nil {
 		return emptySequence, err
 	}

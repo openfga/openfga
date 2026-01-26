@@ -32,6 +32,6 @@ func createResolver(node *Node, core resolverCore) resolver {
 	}
 }
 
-func strToItem(s string) Object {
+func strToItem(s string) Item {
 	return Item{Value: s}
 }

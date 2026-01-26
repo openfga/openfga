@@ -11,7 +11,7 @@ import (
 )
 
 type interpreter interface {
-	Interpret(ctx context.Context, edge *Edge, items []string) iter.Seq[Object]
+	Interpret(ctx context.Context, edge *Edge, items []string) iter.Seq[Item]
 }
 
 // directEdgeHandler queries objects via the edge's relation definition.
@@ -23,7 +23,7 @@ func (h *directEdgeHandler) Handle(
 	ctx context.Context,
 	edge *Edge,
 	objects []string,
-) iter.Seq[Object] {
+) iter.Seq[Item] {
 	nodeType, nodeRelation, _ := strings.Cut(edge.GetRelationDefinition(), "#")
 
 	_, userRelation, exists := strings.Cut(edge.GetTo().GetLabel(), "#")
@@ -38,7 +38,7 @@ func (h *directEdgeHandler) Handle(
 		userFilter[i] = objectRelation
 	}
 
-	var results iter.Seq[Object]
+	var results iter.Seq[Item]
 
 	if len(userFilter) > 0 {
 		input := ObjectQuery{
@@ -65,20 +65,20 @@ func (h *ttuEdgeHandler) Handle(
 	ctx context.Context,
 	edge *Edge,
 	objects []string,
-) iter.Seq[Object] {
+) iter.Seq[Item] {
 	tuplesetType, tuplesetRelation, ok := strings.Cut(edge.GetTuplesetRelation(), "#")
 	if !ok {
-		return seq.Sequence(Object(Item{Err: errors.New("invalid tupleset relation")}))
+		return seq.Sequence(Item{Err: errors.New("invalid tupleset relation")})
 	}
 
 	tuplesetNode, ok := h.graph.GetNodeByID(edge.GetTuplesetRelation())
 	if !ok {
-		return seq.Sequence(Object(Item{Err: errors.New("tupleset node not in graph")}))
+		return seq.Sequence(Item{Err: errors.New("tupleset node not in graph")})
 	}
 
 	edges, ok := h.graph.GetEdgesFromNode(tuplesetNode)
 	if !ok {
-		return seq.Sequence(Object(Item{Err: errors.New("no edges found for tupleset node")}))
+		return seq.Sequence(Item{Err: errors.New("no edges found for tupleset node")})
 	}
 
 	targetType, _, _ := strings.Cut(edge.GetTo().GetLabel(), "#")
@@ -93,10 +93,10 @@ func (h *ttuEdgeHandler) Handle(
 	}
 
 	if targetEdge == nil {
-		return seq.Sequence(Object(Item{Err: errors.New("ttu target type is not an edge of tupleset")}))
+		return seq.Sequence(Item{Err: errors.New("ttu target type is not an edge of tupleset")})
 	}
 
-	var results iter.Seq[Object]
+	var results iter.Seq[Item]
 
 	if len(objects) > 0 {
 		input := ObjectQuery{
@@ -120,8 +120,8 @@ func (h *identityEdgeHandler) Handle(
 	_ context.Context,
 	_ *Edge,
 	items []string,
-) iter.Seq[Object] {
-	return func(yield func(Object) bool) {
+) iter.Seq[Item] {
+	return func(yield func(Item) bool) {
 		for _, s := range items {
 			if !yield(Item{Value: s}) {
 				return
@@ -141,7 +141,7 @@ func (e *edgeInterpreter) Interpret(
 	ctx context.Context,
 	edge *Edge,
 	items []string,
-) iter.Seq[Object] {
+) iter.Seq[Item] {
 	if len(items) == 0 {
 		return emptySequence
 	}
@@ -156,9 +156,9 @@ func (e *edgeInterpreter) Interpret(
 	case edgeTypeComputed, edgeTypeRewrite, edgeTypeDirectLogical, edgeTypeTTULogical:
 		return e.identity.Handle(ctx, edge, items)
 	default:
-		return seq.Sequence(Object(Item{Err: fmt.Errorf(
+		return seq.Sequence(Item{Err: fmt.Errorf(
 			"no handler for edge type: %v",
 			edge.GetEdgeType(),
-		)}))
+		)})
 	}
 }

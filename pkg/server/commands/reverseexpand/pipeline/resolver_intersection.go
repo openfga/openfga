@@ -31,7 +31,7 @@ func (r *intersectionResolver) Resolve(
 
 	var wg sync.WaitGroup
 
-	bags := make([]txBag[Object], len(senders))
+	bags := make([]txBag[Item], len(senders))
 
 	var cleanup containers.Bag[func()]
 
@@ -52,7 +52,7 @@ func (r *intersectionResolver) Resolve(
 	}
 	wg.Wait()
 
-	var errs []Object
+	var errs []Item
 
 	output := make(map[string]struct{})
 

@@ -24,7 +24,7 @@ type resolverCore struct {
 
 // broadcast batches results to amortize message overhead.
 func (r *resolverCore) broadcast(
-	results iter.Seq[Object],
+	results iter.Seq[Item],
 	listeners []*listener,
 ) int {
 	var sentCount int

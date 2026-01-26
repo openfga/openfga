@@ -72,7 +72,7 @@ func (w *worker) Subscribe(key *Edge) *sender {
 
 // listenForInitialValue seeds the traversal from the user's starting point.
 func (w *worker) listenForInitialValue(value string, membership *membership) {
-	items := []Object{Item{Value: value}}
+	items := []Item{Item{Value: value}}
 	membership.Tracker().Inc()
 	m := &message{
 		Value:   items,
