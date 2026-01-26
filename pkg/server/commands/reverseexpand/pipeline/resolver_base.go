@@ -21,17 +21,9 @@ type baseProcessor struct {
 }
 
 func (p *baseProcessor) process(ctx context.Context, edge *Edge, msg *message) {
-	errs := make([]Item, 0, len(msg.Value))
 	unseen := make([]string, 0, len(msg.Value))
 
-	for _, obj := range msg.Value {
-		value, err := obj.Object()
-
-		if err != nil {
-			errs = append(errs, obj)
-			continue
-		}
-
+	for _, value := range msg.Value {
 		if p.inputBuffer != nil {
 			// Deduplicate cyclical input to prevent infinite loops.
 			// LoadOrStore returns loaded=true if value already existed; we only process
@@ -46,12 +38,11 @@ func (p *baseProcessor) process(ctx context.Context, edge *Edge, msg *message) {
 
 	results := p.interpreter.Interpret(ctx, edge, unseen)
 
-	results = seq.Flatten(seq.Sequence(errs...), results)
-
 	results = seq.Filter(results, func(obj Item) bool {
 		value, err := obj.Object()
 		if err != nil {
-			return true
+			p.error(err)
+			return false
 		}
 
 		// Deduplicate the interpreted values using the buffer shared by all processors
@@ -60,7 +51,12 @@ func (p *baseProcessor) process(ctx context.Context, edge *Edge, msg *message) {
 		return !loaded
 	})
 
-	p.SentCount += int64(p.broadcast(results, p.listeners))
+	output := seq.Transform(results, func(obj Item) string {
+		value, _ := obj.Object()
+		return value
+	})
+
+	p.SentCount += int64(p.broadcast(output, p.listeners))
 
 	msg.Done()
 }

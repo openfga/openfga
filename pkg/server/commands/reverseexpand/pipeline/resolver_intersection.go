@@ -8,7 +8,6 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/openfga/openfga/internal/containers"
-	"github.com/openfga/openfga/internal/seq"
 )
 
 type intersectionResolver struct {
@@ -31,7 +30,7 @@ func (r *intersectionResolver) Resolve(
 
 	var wg sync.WaitGroup
 
-	bags := make([]txBag[Item], len(senders))
+	bags := make([]txBag[string], len(senders))
 
 	var cleanup containers.Bag[func()]
 
@@ -52,29 +51,16 @@ func (r *intersectionResolver) Resolve(
 	}
 	wg.Wait()
 
-	var errs []Item
-
 	output := make(map[string]struct{})
 
-	for obj := range bags[0].Seq() {
-		value, err := obj.Object()
-		if err != nil {
-			errs = append(errs, obj)
-			continue
-		}
+	for value := range bags[0].Seq() {
 		output[value] = struct{}{}
 	}
 
 	// Each subsequent bag narrows the candidate set.
 	for i := 1; i < len(bags); i++ {
 		found := make(map[string]struct{}, len(output))
-		for obj := range bags[i].Seq() {
-			value, err := obj.Object()
-			if err != nil {
-				errs = append(errs, obj)
-				continue
-			}
-
+		for value := range bags[i].Seq() {
 			if _, ok := output[value]; ok {
 				found[value] = struct{}{}
 			}
@@ -82,11 +68,7 @@ func (r *intersectionResolver) Resolve(
 		output = found
 	}
 
-	results := seq.Transform(maps.Keys(output), strToItem)
-
-	results = seq.Flatten(seq.Sequence(errs...), results)
-
-	sentCount := r.broadcast(results, listeners)
+	sentCount := r.broadcast(maps.Keys(output), listeners)
 
 	span.SetAttributes(attribute.Int("items.count", sentCount))
 

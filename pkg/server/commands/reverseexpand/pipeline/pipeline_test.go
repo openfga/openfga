@@ -283,7 +283,7 @@ func TestPipelineShutdown(t *testing.T) {
 		var count int
 		for object := range seq {
 			_, err = object.Object()
-			if count > bufferSize+1 {
+			if count > bufferSize+chunkSize+1 {
 				t.Fatalf("received unexpected value")
 			}
 

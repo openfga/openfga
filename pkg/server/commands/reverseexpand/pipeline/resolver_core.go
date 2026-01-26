@@ -7,6 +7,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/openfga/openfga/internal/pipe"
 	"github.com/openfga/openfga/internal/seq"
 )
 
@@ -19,12 +20,17 @@ type resolverCore struct {
 	interpreter interpreter
 	membership  *membership
 	bufferPool  *bufferPool
+	errors      pipe.Tx[error]
 	numProcs    int
+}
+
+func (r *resolverCore) error(err error) {
+	r.errors.Send(err)
 }
 
 // broadcast batches results to amortize message overhead.
 func (r *resolverCore) broadcast(
-	results iter.Seq[Item],
+	results iter.Seq[string],
 	listeners []*listener,
 ) int {
 	var sentCount int

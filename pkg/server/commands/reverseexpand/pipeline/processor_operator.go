@@ -10,7 +10,7 @@ import (
 // operatorProcessor collects all items for set operations (intersection, exclusion).
 type operatorProcessor struct {
 	resolverCore
-	items   pipe.Tx[Item]
+	items   pipe.Tx[string]
 	cleanup *containers.Bag[func()]
 }
 
@@ -25,13 +25,7 @@ func (p *operatorProcessor) process(ctx context.Context, edge *Edge, msg *messag
 
 	unseen := make([]string, 0, size)
 
-	for _, obj := range (*values)[:size] {
-		value, err := obj.Object()
-
-		if err != nil {
-			p.items.Send(obj)
-			continue
-		}
+	for _, value := range (*values)[:size] {
 		unseen = append(unseen, value)
 	}
 	p.bufferPool.Put(values)
@@ -39,7 +33,12 @@ func (p *operatorProcessor) process(ctx context.Context, edge *Edge, msg *messag
 	results := p.interpreter.Interpret(ctx, edge, unseen)
 
 	for item := range results {
-		p.items.Send(item)
+		value, err := item.Object()
+		if err != nil {
+			p.error(err)
+			continue
+		}
+		p.items.Send(value)
 	}
 
 	// Defer decrement until set operation completes to prevent premature shutdown.

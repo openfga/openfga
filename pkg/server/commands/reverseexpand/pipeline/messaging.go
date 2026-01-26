@@ -14,16 +14,16 @@ type bufferPool struct {
 	pool sync.Pool
 }
 
-func (b *bufferPool) Get() *[]Item {
-	return b.pool.Get().(*[]Item)
+func (b *bufferPool) Get() *[]string {
+	return b.pool.Get().(*[]string)
 }
 
-func (b *bufferPool) Put(buffer *[]Item) {
+func (b *bufferPool) Put(buffer *[]string) {
 	b.pool.Put(buffer)
 }
 
 func (b *bufferPool) create() any {
-	tmp := make([]Item, b.size)
+	tmp := make([]string, b.size)
 	return &tmp
 }
 
@@ -46,8 +46,8 @@ func (i Item) Object() (string, error) {
 
 // message carries items between workers along with cleanup state.
 type message struct {
-	Value      []Item
-	buffer     *[]Item
+	Value      []string
+	buffer     *[]string
 	bufferPool *bufferPool
 	tracker    *track.Tracker
 }

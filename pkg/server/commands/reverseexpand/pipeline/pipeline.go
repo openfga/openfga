@@ -10,6 +10,7 @@ import (
 	"go.opentelemetry.io/otel"
 
 	weightedGraph "github.com/openfga/language/pkg/go/graph"
+	"github.com/openfga/openfga/internal/pipe"
 )
 
 type (
@@ -113,6 +114,7 @@ type path struct {
 	interpreter    interpreter
 	bufferPool     *bufferPool
 	cycleGroup     *cycleGroup
+	errors         *pipe.Pipe[error]
 }
 
 func (pl *Pipeline) resolve(p path, workers workerPool) *worker {
@@ -136,6 +138,7 @@ func (pl *Pipeline) resolve(p path, workers workerPool) *worker {
 		membership:  membership,
 		bufferPool:  p.bufferPool,
 		numProcs:    pl.config.NumProcs,
+		errors:      p.errors,
 	}
 
 	w.Resolver = createResolver(p.objectNode, core)
@@ -154,14 +157,16 @@ func (pl *Pipeline) resolve(p path, workers workerPool) *worker {
 			case nodeTypeSpecificType, nodeTypeSpecificTypeAndRelation:
 				value = ":" + p.userIdentifier
 			}
-			w.listenForInitialValue(objectType+value, membership)
+			fullObject := objectType + value
+			w.listenForInitialValue(fullObject, membership)
 		}
 	case nodeTypeSpecificTypeWildcard:
 		label := p.objectNode.GetLabel()
 		typePart, _, _ := strings.Cut(label, ":")
 
 		if p.objectNode == p.userNode || typePart == p.userNode.GetLabel() {
-			w.listenForInitialValue(typePart+":*", membership)
+			fullObject := typePart + ":*"
+			w.listenForInitialValue(fullObject, membership)
 		}
 	}
 
@@ -220,6 +225,7 @@ func (pl *Pipeline) resolveObjectNode(objectType, objectRelation string) (*Node,
 
 type expansion struct {
 	workers workerPool
+	errors  *pipe.Pipe[error]
 	results *sender
 }
 
@@ -227,6 +233,10 @@ func (pl *Pipeline) buildExpansion(objectNode, userNode *Node, userIdentifier st
 	pool := newBufferPool(pl.config.ChunkSize)
 	interpreter := pl.createInterpreter()
 	workers := make(workerPool)
+	errorPipe, err := pipe.New[error](pl.config.Buffer)
+	if err != nil {
+		return nil, err
+	}
 
 	p := path{
 		objectNode:     objectNode,
@@ -234,6 +244,7 @@ func (pl *Pipeline) buildExpansion(objectNode, userNode *Node, userIdentifier st
 		userIdentifier: userIdentifier,
 		interpreter:    interpreter,
 		bufferPool:     pool,
+		errors:         errorPipe,
 	}
 
 	pl.resolve(p, workers)
@@ -245,6 +256,7 @@ func (pl *Pipeline) buildExpansion(objectNode, userNode *Node, userIdentifier st
 
 	return &expansion{
 		workers: workers,
+		errors:  errorPipe,
 		results: objectWorker.Subscribe(nil),
 	}, nil
 }
@@ -276,11 +288,16 @@ func (pl *Pipeline) startWorkerLifecycle(ctx context.Context, workers workerPool
 	return &workerLifecycle{&wg}
 }
 
-// drain prevents goroutine leaks by consuming remaining messages during shutdown.
-func drain(s *sender) {
+// drainSender prevents goroutine leaks by consuming remaining messages during shutdown.
+func drainSender(s *sender) {
 	var msg *message
 	for s.Recv(&msg) {
 		msg.Done()
+	}
+}
+
+func drainChannel(ch <-chan Item) {
+	for range ch {
 	}
 }
 
@@ -294,26 +311,53 @@ func (pl *Pipeline) iterateOverResults(
 	lifecycle := pl.startWorkerLifecycle(ctx, p.workers)
 	defer lifecycle.Wait()
 
-	defer drain(p.results)
+	var wg sync.WaitGroup
+
+	output := make(chan Item)
+
+	defer drainSender(p.results)
+	defer wg.Wait()
+	defer drainChannel(output)
 	defer p.results.Close()
 	defer cancel()
 
-	buffer := make([]Item, 0, pl.config.Buffer.Capacity)
+	wg.Add(1)
+	go func(ch chan Item) {
+		defer wg.Done()
+		defer close(ch)
 
-	for {
-		if len(buffer) == 0 {
-			var msg *message
-			if !p.results.Recv(&msg) {
-				break
-			}
-			buffer = append(buffer, msg.Value...)
-			msg.Done()
-			continue
+		var err error
+		for p.errors.Recv(&err) {
+			ch <- Item{Err: err}
 		}
-		item := buffer[0]
-		buffer = buffer[1:]
+	}(output)
 
-		if !yield(item) {
+	wg.Add(1)
+	go func(ch chan<- Item) {
+		defer wg.Done()
+		defer p.errors.Close()
+
+		buffer := make([]string, 0, pl.config.ChunkSize)
+
+		for {
+			if len(buffer) == 0 {
+				var msg *message
+				if !p.results.Recv(&msg) {
+					break
+				}
+				buffer = append(buffer, msg.Value...)
+				msg.Done()
+				continue
+			}
+			item := buffer[0]
+			buffer = buffer[1:]
+
+			ch <- Item{Value: item}
+		}
+	}(output)
+
+	for obj := range output {
+		if !yield(obj) {
 			return
 		}
 	}
