@@ -808,7 +808,7 @@ func WithListObjectsChunkSize(value int) OpenFGAServiceV1Option {
 // memory allocation in a worst case scenario.
 func WithListObjectsBufferCapacity(value int) OpenFGAServiceV1Option {
 	return func(s *Server) {
-		s.listObjectsPipelineConfig.BufferConfig.Capacity = value
+		s.listObjectsPipelineConfig.Buffer.Capacity = value
 	}
 }
 
@@ -830,8 +830,8 @@ func WithListObjectsNumProcs(value int) OpenFGAServiceV1Option {
 // is doubled up to maxExtensions number of times.
 func WithListObjectsPipeExtension(extendAfter time.Duration, maxExtensions int) OpenFGAServiceV1Option {
 	return func(s *Server) {
-		s.listObjectsPipelineConfig.BufferConfig.ExtendAfter = extendAfter
-		s.listObjectsPipelineConfig.BufferConfig.MaxExtensions = maxExtensions
+		s.listObjectsPipelineConfig.Buffer.ExtendAfter = extendAfter
+		s.listObjectsPipelineConfig.Buffer.MaxExtensions = maxExtensions
 	}
 }
 

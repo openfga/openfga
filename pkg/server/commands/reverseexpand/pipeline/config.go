@@ -12,7 +12,7 @@ type Option func(*Config)
 // Must be a power of two. Larger buffers reduce blocking but increase memory.
 func WithBufferCapacity(size int) Option {
 	return func(config *Config) {
-		config.BufferConfig.Capacity = size
+		config.Buffer.Capacity = size
 	}
 }
 
@@ -37,8 +37,8 @@ func WithNumProcs(num int) Option {
 // Disabled by default; enable when workloads have unpredictable burst sizes.
 func WithPipeExtension(extendAfter time.Duration, maxExtensions int) Option {
 	return func(config *Config) {
-		config.BufferConfig.ExtendAfter = extendAfter
-		config.BufferConfig.MaxExtensions = maxExtensions
+		config.Buffer.ExtendAfter = extendAfter
+		config.Buffer.MaxExtensions = maxExtensions
 	}
 }
 
@@ -51,23 +51,23 @@ func WithConfig(c Config) Option {
 
 // Config contains pipeline tuning parameters.
 type Config struct {
-	BufferConfig pipe.Config
-	ChunkSize    int
-	NumProcs     int
+	Buffer    pipe.Config
+	ChunkSize int
+	NumProcs  int
 }
 
 // DefaultConfig returns a balanced configuration suitable for most workloads.
 func DefaultConfig() Config {
 	var config Config
-	config.BufferConfig = pipe.DefaultConfig()
-	config.BufferConfig.Capacity = defaultBufferSize
+	config.Buffer = pipe.DefaultConfig()
+	config.Buffer.Capacity = defaultBufferSize
 	config.ChunkSize = defaultChunkSize
 	config.NumProcs = defaultNumProcs
 	return config
 }
 
 func (config *Config) Validate() error {
-	if err := config.BufferConfig.Validate(); err != nil {
+	if err := config.Buffer.Validate(); err != nil {
 		return err
 	}
 

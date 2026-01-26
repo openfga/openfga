@@ -131,7 +131,7 @@ func (pl *Pipeline) resolve(p path, workers workerPool) *worker {
 	}
 
 	var w worker
-	w.bufferConfig = pl.config.BufferConfig
+	w.bufferConfig = pl.config.Buffer
 
 	membership := p.cycleGroup.Join()
 
@@ -302,7 +302,7 @@ func (pl *Pipeline) iterateOverResults(
 	defer p.results.Close()
 	defer cancel()
 
-	buffer := make([]Object, 0, pl.config.BufferConfig.Capacity)
+	buffer := make([]Object, 0, pl.config.Buffer.Capacity)
 
 	for {
 		if len(buffer) == 0 {
