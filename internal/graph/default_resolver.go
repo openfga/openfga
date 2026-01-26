@@ -84,6 +84,16 @@ func (c *LocalChecker) defaultUserset(_ context.Context, req *ResolveCheckReques
 	}
 }
 
+// prepareChildRequest creates a clone of the parent request and updates its fields
+// to create a child request for dispatching.
+func (c *LocalChecker) prepareChildRequest(parentReq *ResolveCheckRequest, tk *openfgav1.TupleKey, strategy string) *ResolveCheckRequest {
+	childRequest := parentReq.clone()
+	childRequest.TupleKey = tk
+	childRequest.GetRequestMetadata().Depth++
+	childRequest.SelectedStrategy = strategy
+	return childRequest
+}
+
 func (c *LocalChecker) produceUsersetDispatches(ctx context.Context, req *ResolveCheckRequest, dispatches chan dispatchMsg, iter storage.TupleKeyIterator, selectedStrategy string) {
 	defer close(dispatches)
 	reqTupleKey := req.GetTupleKey()
@@ -257,9 +267,27 @@ func (c *LocalChecker) processDispatches(ctx context.Context, limit int, dispatc
 				}
 
 				if msg.dispatchParams != nil {
+					if msg.dispatchParams.parentReq == nil || msg.dispatchParams.tk == nil {
+						// Skip dispatching if parent request or tuple key is nil
+						concurrency.TrySendThroughChannel(
+							ctx,
+							checkOutcome{err: ErrPanic},
+							outcomes,
+						)
+						return
+					}
+					// Increment dispatch counter in the main thread before dispatching
+					msg.dispatchParams.parentReq.GetRequestMetadata().DispatchCounter.Add(1)
+
 					dispatchPool.Go(func(ctx context.Context) error {
 						recoveredError := panics.Try(func() {
-							resp, err := c.dispatch(ctx, msg.dispatchParams.parentReq, msg.dispatchParams.tk, msg.dispatchParams.strategy)(ctx)
+							// Clone and prepare the child request inside the goroutine
+							childRequest := c.prepareChildRequest(
+								msg.dispatchParams.parentReq,
+								msg.dispatchParams.tk,
+								msg.dispatchParams.strategy)
+
+							resp, err := c.dispatch(ctx, childRequest)(ctx)
 							concurrency.TrySendThroughChannel(ctx, checkOutcome{resp: resp, err: err}, outcomes)
 						})
 						if recoveredError != nil {

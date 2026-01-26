@@ -1774,27 +1774,24 @@ func TestDispatch(t *testing.T) {
 	mockResolver := NewMockCheckResolver(ctrl)
 	checker.SetDelegate(mockResolver)
 
-	parentReq := &ResolveCheckRequest{
-		TupleKey:        tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "user:maria", "condition1", nil),
-		RequestMetadata: NewCheckRequestMetadata(),
-	}
-	tk := tuple.NewTupleKeyWithCondition("group:1", "member", "user:maria", "condition1", nil)
-
-	expectedReq := &ResolveCheckRequest{
+	// Create the child request that would be prepared by prepareChildRequest
+	childReq := &ResolveCheckRequest{
 		TupleKey:        tuple.NewTupleKeyWithCondition("group:1", "member", "user:maria", "condition1", nil),
 		RequestMetadata: NewCheckRequestMetadata(),
 	}
-	expectedReq.GetRequestMetadata().Depth++
+	childReq.GetRequestMetadata().Depth++
 
+	// Mock the expected behavior
 	var req *ResolveCheckRequest
 	mockResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.AssignableToTypeOf(req)).DoAndReturn(
 		func(_ context.Context, req *ResolveCheckRequest) (*ResolveCheckResponse, error) {
-			require.Equal(t, expectedReq.GetTupleKey(), req.GetTupleKey())
-			require.Equal(t, expectedReq.GetRequestMetadata().Depth, req.GetRequestMetadata().Depth)
-			require.Equal(t, uint32(1), req.GetRequestMetadata().DispatchCounter.Load())
+			require.Equal(t, childReq.GetTupleKey(), req.GetTupleKey())
+			require.Equal(t, childReq.GetRequestMetadata().Depth, req.GetRequestMetadata().Depth)
 			return nil, nil
 		})
-	dispatch := checker.dispatch(context.Background(), parentReq, tk, "")
+
+	// Test the dispatch function directly with the prepared request
+	dispatch := checker.dispatch(context.Background(), childReq)
 	_, _ = dispatch(context.Background())
 }
 

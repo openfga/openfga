@@ -1,7 +1,6 @@
 package planner
 
 import (
-	"fmt"
 	"math/rand"
 	"testing"
 	"time"
@@ -83,10 +82,10 @@ func BenchmarkPlanner_RecursiveScenario(b *testing.B) {
 	// Optional: Print the win rate to verify the algorithm is working
 	total := fastCount + slowCount
 	if total > 0 {
-		fmt.Printf("\n--- Benchmark Results ---\n")
-		fmt.Printf("Total Iterations: %d\n", total)
-		fmt.Printf("Default (Slow) Chosen: %d (%.2f%%)\n", slowCount, float64(slowCount)/float64(total)*100)
-		fmt.Printf("Recursive (Fast) Chosen: %d (%.2f%%)\n", fastCount, float64(fastCount)/float64(total)*100)
-		fmt.Printf("-------------------------\n")
+		b.Logf("Benchmark Results:")
+		b.Logf("Total Iterations: %d", total)
+		b.Logf("Default (Slow) Chosen: %d (%.2f%%)", slowCount, float64(slowCount)/float64(total)*100)
+		b.Logf("Recursive (Fast) Chosen: %d (%.2f%%)", fastCount, float64(fastCount)/float64(total)*100)
+		b.Logf("-------------------------")
 	}
 }

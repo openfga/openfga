@@ -365,17 +365,10 @@ func exclusion(ctx context.Context, _ int, handlers ...CheckHandlerFunc) (*Resol
 func (c *LocalChecker) Close() {
 }
 
-// dispatch clones the parent request, modifies its metadata and tupleKey, and dispatches the new request
-// to the CheckResolver this LocalChecker was constructed with.
-func (c *LocalChecker) dispatch(_ context.Context, parentReq *ResolveCheckRequest, tk *openfgav1.TupleKey, selectedStrategy string) CheckHandlerFunc {
+// dispatch dispatches the given request to the CheckResolver this LocalChecker was constructed with.
+func (c *LocalChecker) dispatch(_ context.Context, req *ResolveCheckRequest) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
-		parentReq.GetRequestMetadata().DispatchCounter.Add(1)
-		childRequest := parentReq.clone()
-		childRequest.TupleKey = tk
-		childRequest.GetRequestMetadata().Depth++
-		childRequest.SelectedStrategy = selectedStrategy
-
-		resp, err := c.delegate.ResolveCheck(ctx, childRequest)
+		resp, err := c.delegate.ResolveCheck(ctx, req)
 		if err != nil {
 			return nil, err
 		}
