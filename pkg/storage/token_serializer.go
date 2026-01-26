@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/oklog/ulid/v2"
 )
 
 // ContToken represents a continuation token structure used in pagination.
 type ContToken struct {
 	Ulid       string `json:"ulid"`
-	ObjectType string `json:"ObjectType"`
+	ObjectType string `json:"objectType"`
 }
 
 // NewContToken creates a new instance of ContToken
@@ -34,8 +36,27 @@ func DecodeContToken(continuationToken string) (*ContToken, error) {
 	return &token, nil
 }
 
+// DecodeContTokenOrULID decodes a continuation token, supporting both ContToken format
+// (base64-encoded JSON) and plain ULID (for backward compatibility).
+// Returns a ContToken with the ULID extracted, and an empty ObjectType if the token was a plain ULID.
+func DecodeContTokenOrULID(continuationToken string) (*ContToken, error) {
+	token, err := DecodeContToken(continuationToken)
+	if err == nil {
+		return token, nil
+	}
+
+	// If decoding fails, try parsing as plain ULID for backward compatibility
+	parsed, parseErr := ulid.Parse(continuationToken)
+	if parseErr != nil {
+		return nil, ErrInvalidContinuationToken
+	}
+
+	return NewContToken(parsed.String(), ""), nil
+}
+
 func (c *ContToken) Serialize() string {
 	// custom encoding of the struct into a json string
+	// this ensures the token is always valid and avoids needing to handle any encoding errors
 	encoded := fmt.Sprintf("{%q:%q,%q:%q}", "ulid", c.Ulid, "objectType", c.ObjectType)
 	return base64.URLEncoding.EncodeToString([]byte(encoded))
 }
