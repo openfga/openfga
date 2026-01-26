@@ -225,16 +225,20 @@ func (s *MemoryBackend) ReadChanges(ctx context.Context, store string, filter st
 	s.mutexTuples.RLock()
 	defer s.mutexTuples.RUnlock()
 
-	var from *ulid.ULID
+	var from ulid.ULID
 	if options.Pagination.From != "" {
-		parsed, err := ulid.Parse(options.Pagination.From)
+		token, err := storage.DecodeContTokenOrULID(options.Pagination.From)
+		if err != nil {
+			return nil, "", err
+		}
+		parsed, err := ulid.Parse(token.Ulid)
 		if err != nil {
 			return nil, "", storage.ErrInvalidContinuationToken
 		}
-		from = &parsed
+		from = parsed
 	} else if !filter.StartTime.IsZero() {
 		newULID := ulid.MustNew(ulid.Timestamp(filter.StartTime), ulid.DefaultEntropy())
-		from = &newULID
+		from = newULID
 	}
 
 	objectType := filter.ObjectType
@@ -247,10 +251,10 @@ func (s *MemoryBackend) ReadChanges(ctx context.Context, store string, filter st
 			if changeRec.Change.GetTimestamp().AsTime().After(now.Add(-horizonOffset)) {
 				break
 			}
-			if from != nil {
-				if !options.SortDesc && changeRec.Ulid.Compare(*from) <= 0 {
+			if !from.IsZero() {
+				if !options.SortDesc && changeRec.Ulid.Compare(from) <= 0 {
 					continue
-				} else if options.SortDesc && changeRec.Ulid.Compare(*from) >= 0 {
+				} else if options.SortDesc && changeRec.Ulid.Compare(from) >= 0 {
 					continue
 				}
 			}
@@ -280,12 +284,21 @@ func (s *MemoryBackend) ReadChanges(ctx context.Context, store string, filter st
 	res := make([]*openfgav1.TupleChange, 0, to)
 
 	var last ulid.ULID
+	var lastObjectType string
 	for _, change := range allChanges[:to] {
 		res = append(res, change.Change)
 		last = change.Ulid
+		// Extract object type from the tuple key
+		object := change.Change.GetTupleKey().GetObject()
+		if object != "" {
+			objectType, _ := tupleUtils.SplitObject(object)
+			lastObjectType = objectType
+		}
 	}
 
-	return res, last.String(), nil
+	// Return serialized ContToken for consistency with ReadPage
+	contToken := storage.NewContToken(last.String(), lastObjectType).Serialize()
+	return res, contToken, nil
 }
 
 // read returns an iterator of a store's tuples with a given tuple as filter.

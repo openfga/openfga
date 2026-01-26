@@ -1146,7 +1146,11 @@ func (s *Datastore) ReadChanges(ctx context.Context, store string, filter storag
 		sb = sb.Where(sq.Eq{"object_type": objectTypeFilter})
 	}
 	if options.Pagination.From != "" {
-		sb = sqlcommon.AddFromUlid(sb, options.Pagination.From, options.SortDesc)
+		token, err := storage.DecodeContTokenOrULID(options.Pagination.From)
+		if err != nil {
+			return nil, "", err
+		}
+		sb = sqlcommon.AddFromUlid(sb, token.Ulid, options.SortDesc)
 	} else if !filter.StartTime.IsZero() {
 		sb = sb.Where(sq.GtOrEq{"inserted_at": filter.StartTime})
 	}
@@ -1166,13 +1170,15 @@ func (s *Datastore) ReadChanges(ctx context.Context, store string, filter storag
 	defer rows.Close()
 
 	var changes []*openfgav1.TupleChange
-	var ulid string
+	var lastUlid string
+	var lastObjectType string
 	for rows.Next() {
 		var objectType, objectID, relation, user string
 		var operation int
 		var insertedAt time.Time
 		var conditionName sql.NullString
 		var conditionContext []byte
+		var ulid string
 
 		err = rows.Scan(
 			&ulid,
@@ -1211,13 +1217,19 @@ func (s *Datastore) ReadChanges(ctx context.Context, store string, filter storag
 			Operation: openfgav1.TupleOperation(operation),
 			Timestamp: timestamppb.New(insertedAt.UTC()),
 		})
+
+		// Track the last ULID and object type for the continuation token
+		lastUlid = ulid
+		lastObjectType = objectType
 	}
 
 	if len(changes) == 0 {
 		return nil, "", storage.ErrNotFound
 	}
 
-	return changes, ulid, nil
+	// Return serialized ContToken for consistency with ReadPage
+	contToken := storage.NewContToken(lastUlid, lastObjectType).Serialize()
+	return changes, contToken, nil
 }
 
 func isDBReady(ctx context.Context, versionReady bool, db *pgxpool.Pool) (storage.ReadinessStatus, error) {
