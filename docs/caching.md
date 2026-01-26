@@ -20,6 +20,10 @@ OpenFGA implements several complementary types of caching:
 
 - **What it caches**: Authorization decisions (allow/deny) for the overall Check request as well as for any intermediate ("sub-problem") Checks.
 - **Benefits**: Eliminates computation for repeated identical Checks or different Checks that share common relationship evaluations.
+- **Cache key**: `hash("{object}#{relation}@{user} sp.{storeID}/{modelID}[/{contextual_tuples_comma_separated}]")`
+  - E.g., `hash('plan:enterprise#subscriber_member@user:charles sp.01KFB9MX3X2BK3EP2CBJVX8JDC/01KFB9MX467JS5BRQWQXQXPD8Z/organization:cups#member@user:alice,organization:cups#member@user:charles')` = `17904216596666502988`
+  - Essentially, "does `<user>` have `<relation>` with `<object>` for `<storeID>` & `<modelID>` & these contextual tuples?"
+  - Note: this takes contextual tuples into account (since they may have influenced the allow/deny decision).
 
 #### Example
 
@@ -28,6 +32,14 @@ Consider the [Entitlements sample store](https://github.com/openfga/sample-store
 1. (Final result) Key: does user `user:charles` have relationship `can_access` with object `feature:draft_prs`? Value: `true`.
 2. (Sub-problem) Key: does user `user:charles` have relationship `subscriber_member` with object `plan:enterprise`? Value: `true`.
 
+#### Configuration
+
+| Config File | Env Var | Flag Name | Type | Description | Default Value |
+|-------------|---------|-----------|------|-------------|---------------|
+| `checkCache.limit` | <div id="OPENFGA_CHECK_CACHE_LIMIT"><code>OPENFGA_CHECK_CACHE_LIMIT</code></div> | `check-cache-limit` | integer | the size limit (in items) of the cache for Check (queries and iterators) | `10000` |
+| `checkQueryCache.enabled` | <div id="OPENFGA_CHECK_QUERY_CACHE_ENABLED"><code>OPENFGA_CHECK_QUERY_CACHE_ENABLED</code></div> | `check-query-cache-enabled` | boolean | enable caching of Check requests. The key is a string representing a query, and the value is a boolean. For example, if you have a relation `define viewer: owner or editor`, and the query is Check(user:anne, viewer, doc:1), we'll evaluate the `owner` relation and the `editor` relation and cache both results: (user:anne, viewer, doc:1) -> allowed=true and (user:anne, owner, doc:1) -> allowed=true. The cache is stored in-memory; the cached values are overwritten on every change in the result, and cleared after the configured TTL. This flag improves latency, but turns Check and ListObjects into eventually consistent APIs. If the request's consistency is HIGHER_CONSISTENCY, this cache is not used. | `false` |
+| `checkQueryCache.ttl` | <div id="OPENFGA_CHECK_QUERY_CACHE_TTL"><code>OPENFGA_CHECK_QUERY_CACHE_TTL</code></div> | `check-query-cache-ttl` | string (duration) | if caching of Check and ListObjects is enabled, this is the TTL of each value | `10s` |
+
 ### Check Iterator Cache
 
 The Check Iterator Cache stores database query results (tuple iterators) used during Check operations, reducing the number of database queries required.
@@ -35,21 +47,54 @@ The Check Iterator Cache stores database query results (tuple iterators) used du
 - **What it caches**: Raw tuple query results from the database.
 - **Benefits**: Reduces database load by caching some of its results in-memory.
 
-The maximum number of tuples stored for each iterator cache entry can be [configured](https://openfga.dev/docs/getting-started/setup-openfga/configuration).
+Note: Iterator cache entries only cache DB results. Therefore, they do not take contextual tuples into account (since these are not stored in the DB). They do, however, take tuples with conditions into account (the condition is stored alongside the tuple in the cache entry).
+
+Specifically, there are 3 types of iterator cache entries:
+
+1. Read (`ic.r/`)
+   - **What it caches**: Direct tuple lookups for a specific object and relation, optionally filtered by user.
+   - **Cache key**: `ic.r/{storeID}/{object}#{relation}@{user}`
+     - E.g., `ic.r/01KFB9MX3X2BK3EP2CBJVX8JDC/plan:enterprise#subscriber@`
+2. Read Starting With User (`ic.rtwu/`)
+   - **What it caches**: Reverse lookups that find all tuples where a specific user appears as the subject.
+   - **Cache key**: `ic.rtwu/{storeID}/{objectType}#{relation}[/{user}]...[/{objectIDs_hash}]`
+     - E.g., `ic.rtwu/01KFB9MX3X2BK3EP2CBJVX8JDC/organization#member/user:charles`
+3. Read Userset Tuples (`ic.rut/`)
+   - **What it caches**: Tuples where the user field is a userset (e.g., `organization:acme#member`), used when resolving relations that directly accept usersets as assignable types.
+   - **Cache key**: `ic.rut/{storeID}/{object}#{relation}[/{type}:*][/{type}#{relation}]...`
+     - E.g., `ic.rut/01KFY3X47P8033H79SJ2TWJJNQ/document:report#viewer/organization#member`
+
+#### Configuration
+
+| Config File | Env Var | Flag Name | Type | Description | Default Value |
+|-------------|---------|-----------|------|-------------|---------------|
+| `checkCache.limit` | <div id="OPENFGA_CHECK_CACHE_LIMIT"><code>OPENFGA_CHECK_CACHE_LIMIT</code></div> | `check-cache-limit` | integer | the size limit (in items) of the cache for Check (queries and iterators) | `10000` |
+| `checkIteratorCache.enabled` | <div id="OPENFGA_CHECK_ITERATOR_CACHE_ENABLED"><code>OPENFGA_CHECK_ITERATOR_CACHE_ENABLED</code></div> | `check-iterator-cache-enabled` | boolean | enable caching of datastore iterators. The key is a string representing a database query, and the value is a list of tuples. Each iterator is the result of a database query, for example usersets related to a specific object, or objects related to a specific user, up to a certain number of tuples per iterator. If the request's consistency is HIGHER_CONSISTENCY, this cache is not used. | `false` |
+| `checkIteratorCache.maxResults` | <div id="OPENFGA_CHECK_ITERATOR_CACHE_MAX_RESULTS"><code>OPENFGA_CHECK_ITERATOR_CACHE_MAX_RESULTS</code></div> | `check-iterator-cache-max-results` | integer | if caching of datastore iterators of Check requests is enabled, this is the limit of tuples to cache per key | `10000` |
+| `checkIteratorCache.ttl` | <div id="OPENFGA_CHECK_ITERATOR_CACHE_TTL"><code>OPENFGA_CHECK_ITERATOR_CACHE_TTL</code></div> | `check-iterator-cache-ttl` | string (duration) | if caching of datastore iterators of Check requests is enabled, this is the TTL of each value | `10s` |
 
 #### Example
 
 Consider the [Entitlements sample store](https://github.com/openfga/sample-stores/tree/79fa8c1710f12d3f0befaba77f15463bb5a97860/stores/entitlements) and OpenFGA running with check iterator cache enabled. Given the query "does user `user:charles` have relationship `can_access` with `feature:draft_prs`?", the following cache entries (simplified) are set:
 
-1. Key: What users have relationship `associated_plan` with object `feature:draft_prs`? Value: `[plan:enterprise, plan:team]`.
-2. Key: What users have relationship `subscriber` with object `plan:enterprise`? Value: `[organization:cups]`.
-3. Key: What are the tuples where user `user:charles` has relationship `member` with objects of type `organization`? Value: `[organization:cups#member@user:charles]`.
+1. Key: (`ic.r/`) What users have relationship `associated_plan` with object `feature:draft_prs`? Value: `[plan:enterprise, plan:team]`.
+2. Key: (`ic.r/`) What users have relationship `subscriber` with object `plan:enterprise`? Value: `[organization:cups]`.
+3. Key: (`ic.rtwu/`) What are the tuples where user `user:charles` has relationship `member` with objects of type `organization`? Value: `[organization:cups#member@user:charles]`.
 
 ### List Objects Iterator Cache
 
-Same as the Check Iterator Cache, but used in List Objects.
+Same as the Check Iterator Cache (i.e., they share the same cache entries), but used in List Objects.
 
 Note: If this is enabled along with the [cache controller](#cache-controller), the cache controller will trigger invalidation on every List Objects request.
+
+#### Configuration
+
+| Config File | Env Var | Flag Name | Type | Description | Default Value |
+|-------------|---------|-----------|------|-------------|---------------|
+| `checkCache.limit` | <div id="OPENFGA_CHECK_CACHE_LIMIT"><code>OPENFGA_CHECK_CACHE_LIMIT</code></div> | `check-cache-limit` | integer | the size limit (in items) of the cache for Check (queries and iterators) | `10000` |
+| `listObjectsIteratorCache.enabled` | <div id="OPENFGA_LIST_OBJECTS_ITERATOR_CACHE_ENABLED"><code>OPENFGA_LIST_OBJECTS_ITERATOR_CACHE_ENABLED</code></div> | `list-objects-iterator-cache-enabled` | boolean | enable caching of datastore iterators in ListObjects. The key is a string representing a database query, and the value is a list of tuples. Each iterator is the result of a database query, for example usersets related to a specific object, or objects related to a specific user, up to a certain number of tuples per iterator. If the request's consistency is HIGHER_CONSISTENCY, this cache is not used. | `false` |
+| `listObjectsIteratorCache.maxResults` | <div id="OPENFGA_LIST_OBJECTS_ITERATOR_CACHE_MAX_RESULTS"><code>OPENFGA_LIST_OBJECTS_ITERATOR_CACHE_MAX_RESULTS</code></div> | `list-objects-iterator-cache-max-results` | integer | if caching of datastore iterators of ListObjects requests is enabled, this is the limit of tuples to cache per key | `10000` |
+| `listObjectsIteratorCache.ttl` | <div id="OPENFGA_LIST_OBJECTS_ITERATOR_CACHE_TTL"><code>OPENFGA_LIST_OBJECTS_ITERATOR_CACHE_TTL</code></div> | `list-objects-iterator-cache-ttl` | string (duration) | if caching of datastore iterators of ListObjects requests is enabled, this is the TTL of each value | `10s` |
 
 ## Cache Controller
 
@@ -58,17 +103,35 @@ Note: If this is enabled along with the [cache controller](#cache-controller), t
 
 The cache controller periodically checks the store's changelog and compares recent tuple writes/deletes to the time cache entries were set. When the cache controller sees new writes to the store, all previous Check query cache entries are invalidated, while only relevant Check iterator cache entries are invalidated based on what tuples the writes affected.
 
+### Invalidation Details
+
 Invalidation runs asynchronously (eventually consistent) and is triggered on:
 
-- Any Check requests, but not more than once every cache controller TTL.
-- Every List Objects request if List Objects iterator cache is enabled, irrespective of cache controller TTL; however, only one invalidation can be running at a time.
+- Any Check request if cache controller is enabled, but not more than once every cache controller TTL.
+- Any List Objects request if List Objects iterator cache is enabled, **irrespective** of cache controller TTL.
+- Only one invalidation can be running at a time.
+
+When the cache controller runs invalidation, it queries the database's changelog table for the most recent writes and saves the time of the most recent write. Then, it sets a cache entry of type `changelog` with key `cc.<storeID>` which contains the time of the latest write to the store. Now, invalidation is handled differentl for query vs. iterator cache entries:
+
+- **Query Cache**: Whenever Check finds a query cache entry, it will compare it to the time in the `changelog` cache entry (i.e., the time of the last write to the store). The query cache entry is only used if it was set after the latest write. If it was set before the latest write, it can no longer be trusted and is considered invalid, forcing Check to recompute the result from the datastore. I.e., any write to the store will invalidate all previous Check query cache entries.
+- **Iterator Cache**: Invalidation will look at X latest store changes (currently 50) from the changelog and invalidate only the releveant iterator cache entries for each of those changes that are within the Check iterator cache TTL from now. For any changes outside of this window, any iterator cache entry that was set before would have expired by now. Three cases:
+      1. If none of these changes are within the Check iterator cache TTL, no invalidation is necessary.
+      2. If all of these changes are within the Check iterator cache TTL, all iterator cache entries are invalidated. This is done by setting a new cache entry of type `invalid_entity` with key `iq.<storeID>`; iterator cache entries are only used if they were set after the time this `invalid_entity` cache entry was set.
+      3. If only some of these changes are within the Check iterator cache TTL, only the iterator cache entries affected by those changes are invalidated. This is done by setting two cache entries of type `invalid_entity` - one with key `iq.<storeID>-or/<object>#<relation>` (for object-relation DB iterators) and one with key `iq.<storeID>-otr/<user>|<objectType>` (for user-objectType DB iterators); when the code needs to go to the datastore, it will only use the iterator cache if the associated `invalid_entity` cache keys are not set.
+
+Note: since invalidation is done by setting new cache entries which are checked before using a regular cache entry, the metrics for the number of items in the cache and the number of cache removals may be inflated.
+
+### Configuration
+
+| Config File | Env Var | Flag Name | Type | Description | Default Value |
+|-------------|---------|-----------|------|-------------|---------------|
+| `cacheController.enabled` | <div id="OPENFGA_CACHE_CONTROLLER_ENABLED"><code>OPENFGA_CACHE_CONTROLLER_ENABLED</code></div> | `cache-controller-enabled` | boolean | enable invalidation of check query cache and iterator cache based on recent tuple writes. Invalidation is triggered by Check and List Objects requests, which periodically check the datastore's changelog table for writes and invalidate cache entries earlier than recent writes. Invalidations from Check requests are rate-limited by cache-controller-ttl, whereas List Objects requests invalidate every time if list objects iterator cache is enabled. | `false` |
+| `cacheController.ttl` | <div id="OPENFGA_CACHE_CONTROLLER_TTL"><code>OPENFGA_CACHE_CONTROLLER_TTL</code></div> | `cache-controller-ttl` | string (duration) | if cache controller is enabled, this is the minimum time interval for Check requests to trigger cache invalidation. List Objects requests may trigger invalidation even sooner if list objects iterator cache is enabled. | `10s` |
 
 With the cache controller enabled, its TTL sets the staleness window for cache. Check and List Objects cache TTLs will now only affect hit rate and memory usage, not freshness. Choose:
 
 - Controller TTL ≤ your acceptable staleness (e.g., 10s).
-- Cache TTLs as long as your memory budget and workload allow.
-
-Note: "invalidation" is done by setting new cache entries which are checked before using a regular cache entry. Thus, the number of cache removals (eviction/expiration/deletion) in the metrics may be inflated.
+- Other cache entries' TTLs as long as your memory budget and workload allow.
 
 ### Example
 
@@ -107,6 +170,31 @@ Because invalidation is triggered asynchronously by Check and List Objects reque
 For example, if we look at the previous example, if Check 3 had occurred at t=100s, it would have still returned a stale result since it triggers invalidation asynchronously but returns immediately. The next Check, however, would see the results of the invalidation and compute a fresh result.
 
 Note that *any* Check request (if the cache controller TTL has passed since the last invalidation) or List Objects request (if list objects iterator cache is enabled) will trigger invalidation for the entire store, so this issue only occurs with very infrequent requests.
+
+## Observability
+
+OpenFGA exposes the following metrics for caching:
+
+Metric Name                                               | [Type](https://prometheus.io/docs/concepts/metric_types/) | Description
+----------------------------------------------------------|-----------|------------------------------------------------------------
+`openfga_cache_item_count`                                | Gauge     | The current number of items stored in the cache
+`openfga_cache_item_removed_count_total`                  | Counter   | The total number of items removed (evicted/expired/deleted) from the cache
+`openfga_cachecontroller_cache_count_total`               | Counter   | The total number of cache controller requests triggered by Check.
+`openfga_cachecontroller_cache_hit_count_total`           | Counter   | The total number of cache controller requests triggered by Check within the cache controller TTL (i.e., no invalidation).
+`openfga_cachecontroller_cache_invalidation_count_total`  | Counter   | The total number of invalidation requests that invalidated iterator caches.
+`openfga_cachecontroller_invalidation_duration_ms_bucket` | Histogram | The duration (in ms) required for cache controller to find changes and invalidate labeled by whether invalidation is required and buckets of changes size.
+`openfga_cachecontroller_invalidation_duration_ms_count`  | "         | "
+`openfga_cachecontroller_invalidation_duration_ms_sum`    | "         | "
+`openfga_check_cache_count_total`                         | Counter   | The total number of calls to ResolveCheck with caching enabled (including any recursive calls).
+`openfga_check_cache_hit_count_total`                     | Counter   | The total number of valid Check Query cache hits for ResolveCheck (including any recursive calls).
+`openfga_check_cache_invalid_hit_count_total`             | Counter   | The total number of Check Query cache hits for ResolveCheck (including any recursive calls) that were discarded because they were invalidated.
+`openfga_current_iterator_cache_count`                    | Gauge     | The current number of cached iterator instances.
+`openfga_tuples_cache_count_total`                        | Counter   | The total number of created cached iterator instances.
+`openfga_tuples_cache_discard_count_total`                | Counter   | The total number of discards from cached iterator instances.
+`openfga_tuples_cache_hit_count_total`                    | Counter   | The total number of cache hits from cached iterator instances.
+`openfga_tuples_cache_size_bucket`                        | Histogram | The number of tuples cached from iterator cache entries.
+`openfga_tuples_cache_size_count`                         | "         | "
+`openfga_tuples_cache_size_sum`                           | "         | "
 
 ## Best Practices
 
