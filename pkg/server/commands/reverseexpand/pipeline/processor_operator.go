@@ -23,12 +23,7 @@ func (p *operatorProcessor) process(ctx context.Context, edge *Edge, msg *messag
 	size := len(msg.Value)
 	msg.Done()
 
-	unseen := make([]string, 0, size)
-
-	unseen = append(unseen, (*values)[:size]...)
-	p.bufferPool.Put(values)
-
-	results := p.interpreter.Interpret(ctx, edge, unseen)
+	results := p.interpreter.Interpret(ctx, edge, (*values)[:size])
 
 	for item := range results {
 		value, err := item.Object()
@@ -38,6 +33,8 @@ func (p *operatorProcessor) process(ctx context.Context, edge *Edge, msg *messag
 		}
 		p.items.Send(value)
 	}
+
+	p.bufferPool.Put(values)
 
 	// Defer decrement until set operation completes to prevent premature shutdown.
 	p.cleanup.Add(p.membership.Tracker().Dec)
