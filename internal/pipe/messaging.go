@@ -416,6 +416,8 @@ func (p *Pipe[T]) Recv(t *T) bool {
 	}
 
 	*t = p.data[p.mask(p.tail)]
+	var zero T
+	p.data[p.mask(p.tail)] = zero
 	p.tail++
 
 	// Signal that the buffer is no longer full to wake one waiter.
