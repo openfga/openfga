@@ -6,47 +6,37 @@ import (
 
 // Tracker is a concurrency-safe counter with condition-based waiting.
 type Tracker struct {
-	mu     sync.Mutex
-	wait   *sync.Cond
-	init   sync.Once
-	value  int64
-	parent *Tracker
+	value int64
+	mu    sync.Mutex
+	wait  sync.Cond
 }
 
-// Fork creates a child that propagates changes to this tracker.
-func (t *Tracker) Fork() *Tracker {
-	return &Tracker{
-		parent: t,
-	}
-}
-
-func (t *Tracker) initialize() {
-	t.wait = sync.NewCond(&t.mu)
-}
-
-// Add adjusts the count and wakes all waiting goroutines.
-func (t *Tracker) Add(i int64) int64 {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-
-	t.init.Do(t.initialize)
-
-	t.value += i
-	t.wait.Broadcast()
-
-	if t.parent != nil {
-		t.parent.Add(i)
-	}
-
-	return t.value
+func NewTracker() *Tracker {
+	t := &Tracker{}
+	t.wait.L = &t.mu
+	return t
 }
 
 func (t *Tracker) Inc() {
-	t.Add(1)
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	t.value++
+
+	if t.value == 0 || t.value == 1 {
+		t.wait.Broadcast()
+	}
 }
 
 func (t *Tracker) Dec() {
-	t.Add(-1)
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	t.value--
+
+	if t.value <= 1 && t.value >= -1 {
+		t.wait.Broadcast()
+	}
 }
 
 func (t *Tracker) Load() int64 {
@@ -61,9 +51,10 @@ func (t *Tracker) Wait(fn func(int64) bool) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	t.init.Do(t.initialize)
-
-	for !fn(t.value) {
+	for {
+		if fn(t.value) {
+			return
+		}
 		t.wait.Wait()
 	}
 }

@@ -6,13 +6,12 @@ import "github.com/openfga/openfga/pkg/server/commands/reverseexpand/pipeline/tr
 // Workers share a message tracker and synchronize via the status pool.
 type cycleGroup struct {
 	tracker    *track.Tracker
-	statusPool *track.StatusPool
+	statusPool track.StatusPool
 }
 
 func newCycleGroup() *cycleGroup {
 	return &cycleGroup{
-		tracker:    new(track.Tracker),
-		statusPool: new(track.StatusPool),
+		tracker: track.NewTracker(),
 	}
 }
 
