@@ -5,6 +5,7 @@ import (
 	"io"
 	"iter"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/openfga/openfga/internal/bitutil"
@@ -446,24 +447,21 @@ func (p *Pipe[T]) Close() error {
 // `true` until all items in the buffer have been received. It is not
 // possible to add more items to a staticRx after instantiation.
 type staticRx[T any] struct {
-	mu    sync.Mutex
 	items []T
-	pos   int
+	pos   atomic.Int64
 }
 
 // Recv is a function that returns each value from the staticRx internal
 // buffer. Recv will return `true` until each item in the staticRx has been
 // received.
 func (p *staticRx[T]) Recv(t *T) bool {
-	p.mu.Lock()
-	defer p.mu.Unlock()
+	pos := int(p.pos.Add(1) - 1)
 
-	if p.pos == len(p.items) {
+	if pos >= len(p.items) {
 		return false
 	}
 
-	*t = p.items[p.pos]
-	p.pos++
+	*t = p.items[pos]
 	return true
 }
 
@@ -471,10 +469,7 @@ func (p *staticRx[T]) Recv(t *T) bool {
 // of the buffer. Calling Close will result in subsequent calls to Recv
 // returning `false`.
 func (p *staticRx[T]) Close() error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	p.pos = len(p.items)
+	p.pos.Store(int64(len(p.items)))
 	return nil
 }
 
