@@ -21,19 +21,20 @@ type baseProcessor struct {
 }
 
 func (p *baseProcessor) process(ctx context.Context, edge *Edge, msg *message) {
-	unseen := make([]string, 0, len(msg.Value))
+	var unseen []string
 
-	for _, value := range msg.Value {
-		if p.inputBuffer != nil {
+	if p.inputBuffer != nil {
+		unseen = make([]string, 0, len(msg.Value))
+		for _, value := range msg.Value {
 			// Deduplicate cyclical input to prevent infinite loops.
 			// LoadOrStore returns loaded=true if value already existed; we only process
 			// new values to avoid reprocessing items that cycle back to this sender.
 			if _, loaded := p.inputBuffer.LoadOrStore(value, struct{}{}); !loaded {
 				unseen = append(unseen, value)
 			}
-			continue
 		}
-		unseen = append(unseen, value)
+	} else {
+		unseen = msg.Value
 	}
 
 	results := p.interpreter.Interpret(ctx, edge, unseen)
