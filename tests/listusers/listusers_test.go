@@ -44,6 +44,10 @@ func TestListUsersSQLite(t *testing.T) {
 	testRunAll(t, "sqlite")
 }
 
+func TestListUsersDSQL(t *testing.T) {
+	testRunAll(t, "dsql")
+}
+
 func testRunAll(t *testing.T, engine string) {
 	t.Cleanup(func() {
 		// [Goroutine 60101 in state select, with github.com/go-sql-driver/mysql.(*mysqlConn).startWatcher.func1 on top of the stack:

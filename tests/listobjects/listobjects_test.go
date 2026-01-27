@@ -21,6 +21,10 @@ func TestMatrixPostgres(t *testing.T) {
 	runMatrixWithEngine(t, "postgres")
 }
 
+func TestMatrixDSQL(t *testing.T) {
+	runMatrixWithEngine(t, "dsql")
+}
+
 // TODO: re-enable
 // func TestMatrixMysql(t *testing.T) {
 //	runMatrixWithEngine(t, "mysql")
@@ -57,6 +61,10 @@ func TestListObjectsMySQL(t *testing.T) {
 
 func TestListObjectsSQLite(t *testing.T) {
 	testRunAll(t, "sqlite")
+}
+
+func TestListObjectsDSQL(t *testing.T) {
+	testRunAll(t, "dsql")
 }
 
 func testRunAll(t *testing.T, engine string) {

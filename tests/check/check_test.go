@@ -41,6 +41,10 @@ func TestMatrixMysql(t *testing.T) {
 	runMatrixWithEngine(t, "mysql")
 }
 
+func TestMatrixDSQL(t *testing.T) {
+	runMatrixWithEngine(t, "dsql")
+}
+
 // TODO: re-enable after investigating write contention in test
 // func TestMatrixSqlite(t *testing.T) {
 //	runMatrixWithEngine(t, "sqlite")
@@ -72,6 +76,10 @@ func TestCheckMySQL(t *testing.T) {
 
 func TestCheckSQLite(t *testing.T) {
 	testRunAll(t, "sqlite")
+}
+
+func TestCheckDSQL(t *testing.T) {
+	testRunAll(t, "dsql")
 }
 
 // TODO move elsewhere as this isn't asserting on just Check API logs.

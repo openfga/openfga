@@ -47,6 +47,7 @@ type Datastore struct {
 	maxTuplesPerWriteField    int
 	maxTypesPerModelField     int
 	versionReady              bool
+	isDSQL                    bool // true when using Aurora DSQL (affects query behavior)
 }
 
 // Ensures that Datastore implements the OpenFGADatastore interface.
@@ -104,6 +105,11 @@ func parseConfig(uri string, override bool, cfg *sqlcommon.Config) (*pgxpool.Con
 
 // initDB initializes a new postgres database connection.
 func initDB(uri string, override bool, cfg *sqlcommon.Config) (*pgxpool.Pool, error) {
+	// DSQL uses dsql:// URI scheme
+	if strings.HasPrefix(uri, "dsql://") {
+		return initDSQLDB(uri, cfg)
+	}
+
 	c, err := parseConfig(uri, override, cfg)
 	if err != nil {
 		return nil, err
@@ -119,6 +125,9 @@ func initDB(uri string, override bool, cfg *sqlcommon.Config) (*pgxpool.Pool, er
 
 // New creates a new [Datastore] storage.
 func New(uri string, cfg *sqlcommon.Config) (*Datastore, error) {
+	// Detect if this is a DSQL connection
+	isDSQL := strings.HasPrefix(uri, "dsql://")
+
 	primaryDB, err := initDB(uri, cfg.Username != "" || cfg.Password != "", cfg)
 	if err != nil {
 		return nil, fmt.Errorf("initialize postgres connection: %w", err)
@@ -132,7 +141,12 @@ func New(uri string, cfg *sqlcommon.Config) (*Datastore, error) {
 		}
 	}
 
-	return NewWithDB(primaryDB, secondaryDB, cfg)
+	ds, err := NewWithDB(primaryDB, secondaryDB, cfg)
+	if err != nil {
+		return nil, err
+	}
+	ds.isDSQL = isDSQL
+	return ds, nil
 }
 
 func configureDB(db *pgxpool.Pool, cfg *sqlcommon.Config, dbName string) (prometheus.Collector, error) {
@@ -319,15 +333,20 @@ func (s *Datastore) Write(
 ) error {
 	ctx, span := startTrace(ctx, "Write")
 	defer span.End()
-	return s.write(ctx, store, deletes, writes, storage.NewTupleWriteOptions(opts...), time.Now().UTC())
+	writeOpts := storage.NewTupleWriteOptions(opts...)
+	if s.isDSQL {
+		return withOCCRetry(ctx, func() error { return s.write(ctx, store, deletes, writes, writeOpts, time.Now().UTC()) })
+	}
+	return s.write(ctx, store, deletes, writes, writeOpts, time.Now().UTC())
 }
 
-// execute SELECT … FOR UPDATE statement for all the rows indicated by the lockKeys
-// return a map of all the existing keys.
+// selectAllExistingRowsForUpdate executes SELECT … FOR UPDATE for all lockKeys.
+// Returns a map of existing keys. If useForUpdate is false (DSQL), skips FOR UPDATE.
 func selectAllExistingRowsForUpdate(ctx context.Context,
 	lockKeys []sqlcommon.TupleLockKey,
 	txn PgxQuery,
-	store string) (map[string]*openfgav1.Tuple, error) {
+	store string,
+	useForUpdate bool) (map[string]*openfgav1.Tuple, error) {
 	total := len(lockKeys)
 	stbl := sq.StatementBuilder.PlaceholderFormat(sq.Dollar)
 	existing := make(map[string]*openfgav1.Tuple, total)
@@ -339,7 +358,7 @@ func selectAllExistingRowsForUpdate(ctx context.Context,
 		}
 		keys := lockKeys[start:end]
 
-		if err := selectExistingRowsForWrite(ctx, stbl, txn, store, keys, existing); err != nil {
+		if err := selectExistingRowsForWrite(ctx, stbl, txn, store, keys, existing, useForUpdate); err != nil {
 			return nil, err
 		}
 	}
@@ -481,7 +500,14 @@ func (s *Datastore) write(
 	opts storage.TupleWriteOptions,
 	now time.Time,
 ) error {
-	txn, err := s.primaryDB.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
+	// DSQL uses strong snapshot isolation; skip explicit isolation level.
+	var txn pgx.Tx
+	var err error
+	if s.isDSQL {
+		txn, err = s.primaryDB.Begin(ctx)
+	} else {
+		txn, err = s.primaryDB.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
+	}
 	if err != nil {
 		return HandleSQLError(err)
 	}
@@ -499,7 +525,8 @@ func (s *Datastore) write(
 	}
 
 	// 3. If list compiled in step 2 is not empty, execute SELECT … FOR UPDATE statement
-	existing, err := selectAllExistingRowsForUpdate(ctx, lockKeys, txn, store)
+	// DSQL uses OCC, so skip FOR UPDATE (conflicts detected at commit time).
+	existing, err := selectAllExistingRowsForUpdate(ctx, lockKeys, txn, store, !s.isDSQL)
 	if err != nil {
 		return err
 	}
@@ -1290,18 +1317,21 @@ func HandleSQLError(err error, args ...interface{}) error {
 	return fmt.Errorf("sql error: %w", err)
 }
 
-// selectExistingRowsForWrite selects existing rows for the given keys and locks them FOR UPDATE.
-// The existing rows are added to the existing map.
-func selectExistingRowsForWrite(ctx context.Context, stbl sq.StatementBuilderType, txn PgxQuery, store string, keys []sqlcommon.TupleLockKey, existing map[string]*openfgav1.Tuple) error {
+// selectExistingRowsForWrite selects existing rows for the given keys.
+// If useForUpdate is true, locks rows with FOR UPDATE. DSQL skips this (uses OCC).
+func selectExistingRowsForWrite(ctx context.Context, stbl sq.StatementBuilderType, txn PgxQuery, store string, keys []sqlcommon.TupleLockKey, existing map[string]*openfgav1.Tuple, useForUpdate bool) error {
 	inExpr, args := sqlcommon.BuildRowConstructorIN(keys)
 
 	sb := stbl.
 		Select(sqlcommon.SQLIteratorColumns()...).
 		From("tuple").
 		Where(sq.Eq{"store": store}).
-		// Row-constructor IN on full composite key for precise point locks.
-		Where(sq.Expr("(object_type, object_id, relation, _user, user_type) IN "+inExpr, args...)).
-		Suffix("FOR UPDATE")
+		Where(sq.Expr("(object_type, object_id, relation, _user, user_type) IN "+inExpr, args...))
+
+	// DSQL requires equality on all PK columns for FOR UPDATE; skip for DSQL.
+	if useForUpdate {
+		sb = sb.Suffix("FOR UPDATE")
+	}
 
 	poolGetRows, err := NewPgxTxnGetRows(txn, sb)
 	if err != nil {
