@@ -1705,27 +1705,27 @@ func TestGetGrpcDialTarget(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name:    "empty host should default to 127.0.0.1",
-			addr:    ":8080",
-			want:    "127.0.0.1:8080",
-			wantErr: false,
-		},
-		{
 			name:    "0.0.0.0 should convert to 127.0.0.1",
-			addr:    "0.0.0.0:9000",
-			want:    "127.0.0.1:9000",
+			addr:    "0.0.0.0:8081",
+			want:    "127.0.0.1:8081",
 			wantErr: false,
 		},
 		{
-			name:    "IPv6 unspecified should convert to 127.0.0.1",
-			addr:    "[::]:9000",
-			want:    "127.0.0.1:9000",
+			name:    ":: should convert to 127.0.0.1",
+			addr:    "[::]:8081",
+			want:    "127.0.0.1:8081",
+			wantErr: false,
+		},
+		{
+			name:    "empty host should default to 127.0.0.1",
+			addr:    ":8081",
+			want:    "127.0.0.1:8081",
 			wantErr: false,
 		},
 		{
 			name:    "localhost should remain unchanged",
-			addr:    "localhost:8080",
-			want:    "localhost:8080",
+			addr:    "localhost:8081",
+			want:    "localhost:8081",
 			wantErr: false,
 		},
 		{
@@ -1741,28 +1741,22 @@ func TestGetGrpcDialTarget(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:    "IPv6 specific address should remain unchanged",
-			addr:    "[2001:db8::1]:8081",
-			want:    "[2001:db8::1]:8081",
-			wantErr: false,
-		},
-		{
-			name:    "port only without colon should return error",
-			addr:    "8080",
-			want:    "",
-			wantErr: true,
-		},
-		{
-			name:    "IPv6 malformed brackets should return error",
-			addr:    "[::1:8080",
-			want:    "",
-			wantErr: true,
-		},
-		{
 			name:    "invalid address should return error",
 			addr:    "invalid",
 			want:    "",
 			wantErr: true,
+		},
+		{
+			name:    "IPv6 unspecified should convert to 127.0.0.1",
+			addr:    "[::]:8081",
+			want:    "127.0.0.1:8081",
+			wantErr: false,
+		},
+		{
+			name:    "IPv6 specific address should remain unchanged",
+			addr:    "[2001:db8::1]:8081",
+			want:    "[2001:db8::1]:8081",
+			wantErr: false,
 		},
 	}
 

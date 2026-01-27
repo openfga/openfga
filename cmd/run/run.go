@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/pprof"
+	"net/netip"
 	"os"
 	"os/signal"
 	goruntime "runtime"
@@ -602,6 +603,24 @@ func (s *ServerContext) buildServerOpts(ctx context.Context, config *serverconfi
 	return serverOpts, prometheusMetrics, nil
 }
 
+func getGrpcDialTarget(addr string) (string, error) {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse gRPC address: %w", err)
+	}
+
+	if host == "" {
+		return net.JoinHostPort("127.0.0.1", port), nil
+	}
+
+	parsedAddr, parseErr := netip.ParseAddr(host)
+	if parseErr == nil && parsedAddr.IsUnspecified() {
+		return net.JoinHostPort("127.0.0.1", port), nil
+	}
+
+	return net.JoinHostPort(host, port), nil
+}
+
 func (s *ServerContext) dialGrpc(config *serverconfig.Config) (*grpc.ClientConn, context.CancelFunc) {
 	dialOpts := []grpc.DialOption{
 		// nolint:staticcheck // ignoring gRPC deprecations
@@ -620,12 +639,9 @@ func (s *ServerContext) dialGrpc(config *serverconfig.Config) (*grpc.ClientConn,
 		dialOpts = append(dialOpts, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	}
 
-	grpcAddr := config.GRPC.Addr
-	host, port, err := net.SplitHostPort(grpcAddr)
-	if err == nil {
-		if host == "0.0.0.0" {
-			grpcAddr = net.JoinHostPort("127.0.0.1", port)
-		}
+	grpcAddr, err := getGrpcDialTarget(config.GRPC.Addr)
+	if err != nil {
+		s.Logger.Fatal("failed to get gRPC dial target", zap.Error(err))
 	}
 
 	timeoutCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
