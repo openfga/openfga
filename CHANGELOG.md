@@ -22,6 +22,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - ListUsers will now properly get datastore throttled if enabled. [#2846](https://github.com/openfga/openfga/pull/2846)
 - Cache controller now uses the logger provided to the server instead of always using a no-op logger. [#2847](https://github.com/openfga/openfga/pull/2847)
 - Typesystem invalidate model with empty intersection and union. [#2865](https://github.com/openfga/openfga/pull/2865)
+- Ordered iterator to iterate tuples correctly. [#2898](https://github.com/openfga/openfga/pull/2898)
 
 ## [1.11.2] - 2025-12-04
 ### Fixed
