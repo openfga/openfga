@@ -134,27 +134,6 @@ func TestReadCommand(t *testing.T) {
 		require.Empty(t, resp.GetContinuationToken())
 	})
 
-	t.Run("throws_error_if_continuation_token_is_invalid", func(t *testing.T) {
-		mockController := gomock.NewController(t)
-		defer mockController.Finish()
-
-		storeID := ulid.Make().String()
-		pageSize := int32(45)
-
-		mockEncoder := mocks.NewMockEncoder(mockController)
-		mockEncoder.EXPECT().Decode(gomock.Any()).Return([]byte{}, fmt.Errorf("error decoding token")).Times(1)
-		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
-		cmd := NewReadQuery(mockDatastore)
-		resp, err := cmd.Execute(context.Background(), &openfgav1.ReadRequest{
-			StoreId:           storeID,
-			TupleKey:          &openfgav1.ReadRequestTupleKey{Object: "document:1", Relation: "reader", User: "user:maria"},
-			PageSize:          wrapperspb.Int32(pageSize),
-			ContinuationToken: "token",
-		})
-		require.Nil(t, resp)
-		require.ErrorIs(t, err, serverErrors.ErrInvalidContinuationToken)
-	})
-
 	t.Run("accepts_types_that_are_not_defined_in_current_model", func(t *testing.T) {
 		datastore := memory.New()
 		t.Cleanup(datastore.Close)

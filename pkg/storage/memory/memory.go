@@ -231,24 +231,21 @@ func (s *MemoryBackend) ReadChanges(ctx context.Context, store string, filter st
 		if err != nil {
 			return nil, "", err
 		}
+		if token.ObjectType != "" && filter.ObjectType != "" && token.ObjectType != filter.ObjectType {
+			return nil, "", storage.ErrInvalidContinuationToken
+		}
 		parsed, err := ulid.Parse(token.Ulid)
 		if err != nil {
 			return nil, "", storage.ErrInvalidContinuationToken
 		}
 		from = parsed
-	} else if !filter.StartTime.IsZero() {
-		newULID := ulid.MustNew(ulid.Timestamp(filter.StartTime), ulid.DefaultEntropy())
-		from = newULID
 	}
-
-	objectType := filter.ObjectType
-	horizonOffset := filter.HorizonOffset
 
 	var allChanges []*tupleChangeRec
 	now := time.Now().UTC()
 	for _, changeRec := range s.changes[store] {
-		if objectType == "" || (strings.HasPrefix(changeRec.Change.GetTupleKey().GetObject(), objectType+":")) {
-			if changeRec.Change.GetTimestamp().AsTime().After(now.Add(-horizonOffset)) {
+		if filter.ObjectType == "" || (strings.HasPrefix(changeRec.Change.GetTupleKey().GetObject(), filter.ObjectType+":")) {
+			if changeRec.Change.GetTimestamp().AsTime().After(now.Add(-filter.HorizonOffset)) {
 				break
 			}
 			if !from.IsZero() {
@@ -257,6 +254,8 @@ func (s *MemoryBackend) ReadChanges(ctx context.Context, store string, filter st
 				} else if options.SortDesc && changeRec.Ulid.Compare(from) >= 0 {
 					continue
 				}
+			} else if !filter.StartTime.IsZero() && changeRec.Change.GetTimestamp().AsTime().Before(filter.StartTime) {
+				continue
 			}
 			allChanges = append(allChanges, changeRec)
 		}
@@ -332,7 +331,7 @@ func (s *MemoryBackend) read(ctx context.Context, store string, filter storage.R
 		from, err = strconv.Atoi(options.Pagination.From)
 		if err != nil {
 			telemetry.TraceError(span, err)
-			return nil, err
+			return nil, storage.ErrInvalidContinuationToken
 		}
 	}
 

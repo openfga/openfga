@@ -171,11 +171,7 @@ func (s *Datastore) ReadPage(ctx context.Context, store string, filter storage.R
 	}
 	defer iter.Stop()
 
-	res, ulid, err := iter.ToArray(ctx, options.Pagination)
-	if err != nil {
-		return nil, "", err
-	}
-	return res, storage.NewContToken(ulid, "").Serialize(), nil
+	return iter.ToArray(ctx, options.Pagination)
 }
 
 func (s *Datastore) read(ctx context.Context, store string, filter storage.ReadFilter, options *storage.ReadPageOptions) (*SQLTupleIterator, error) {
@@ -234,6 +230,9 @@ func (s *Datastore) read(ctx context.Context, store string, filter storage.ReadF
 		token, err := storage.DecodeContToken(options.Pagination.From)
 		if err != nil {
 			return nil, err
+		}
+		if token.ObjectType != "" && objectType != "" && token.ObjectType != objectType {
+			return nil, storage.ErrInvalidContinuationToken
 		}
 		sb = sb.Where(sq.GtOrEq{"ulid": token.Ulid})
 	}
@@ -1229,9 +1228,6 @@ func (s *Datastore) ReadChanges(ctx context.Context, store string, filter storag
 	ctx, span := startTrace(ctx, "ReadChanges")
 	defer span.End()
 
-	objectTypeFilter := filter.ObjectType
-	horizonOffset := filter.HorizonOffset
-
 	orderBy := "ulid asc"
 	if options.SortDesc {
 		orderBy = "ulid desc"
@@ -1246,16 +1242,19 @@ func (s *Datastore) ReadChanges(ctx context.Context, store string, filter storag
 		).
 		From("changelog").
 		Where(sq.Eq{"store": store}).
-		Where(fmt.Sprintf("inserted_at <= datetime('subsec','-%f seconds')", horizonOffset.Seconds())).
+		Where(fmt.Sprintf("inserted_at <= datetime('subsec','-%f seconds')", filter.HorizonOffset.Seconds())).
 		OrderBy(orderBy)
 
-	if objectTypeFilter != "" {
-		sb = sb.Where(sq.Eq{"object_type": objectTypeFilter})
+	if filter.ObjectType != "" {
+		sb = sb.Where(sq.Eq{"object_type": filter.ObjectType})
 	}
 	if options.Pagination.From != "" {
 		token, err := storage.DecodeContTokenOrULID(options.Pagination.From)
 		if err != nil {
 			return nil, "", err
+		}
+		if token.ObjectType != "" && filter.ObjectType != "" && token.ObjectType != filter.ObjectType {
+			return nil, "", storage.ErrInvalidContinuationToken
 		}
 		sb = sqlcommon.AddFromUlid(sb, token.Ulid, options.SortDesc)
 	} else if !filter.StartTime.IsZero() {
