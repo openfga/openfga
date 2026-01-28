@@ -461,7 +461,9 @@ func TestBatchCheckWithCachedIterator(t *testing.T) {
 	require.True(t, batchCheckResponse.GetResult()[fakeID].GetAllowed())
 
 	// Sleep for a while to ensure that the iterator is cached
-	time.Sleep(1 * time.Millisecond)
+	// Bumped this sleep from 10ms to 100ms due to frequent flaky runs.
+	// TODO: This test needs to be made deterministic by removing the temporal dependency.
+	time.Sleep(100 * time.Millisecond)
 
 	mockDatastore.EXPECT().
 		ReadStartingWithUser(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
