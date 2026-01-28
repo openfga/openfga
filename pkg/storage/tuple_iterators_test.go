@@ -319,137 +319,216 @@ func TestCombinedIterator(t *testing.T) {
 }
 
 type combinedIterTestCasesStruct = map[string]struct {
-	iter1    []*openfgav1.Tuple
-	iter2    []*openfgav1.Tuple
+	iter     [][]*openfgav1.Tuple
 	expected []string
 }
 
 var combinedIterUserMapperTestCases = combinedIterTestCasesStruct{
 	`removes_duplicates_within_iterator`: {
-		iter1: []*openfgav1.Tuple{
-			{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
-			{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
-		},
-		iter2: []*openfgav1.Tuple{
-			{Key: tuple.NewTupleKey("document:1", "2", "user:b")},
-			{Key: tuple.NewTupleKey("document:1", "2", "user:c")},
+		iter: [][]*openfgav1.Tuple{
+			{
+				{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
+				{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
+			},
+			{
+				{Key: tuple.NewTupleKey("document:1", "2", "user:b")},
+				{Key: tuple.NewTupleKey("document:1", "2", "user:c")},
+			},
 		},
 		expected: []string{
 			"user:a", "user:b", "user:c",
 		},
 	},
 	`removes_duplicates_across_iterators_first_entry`: {
-		iter1: []*openfgav1.Tuple{
-			{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
-		},
-		iter2: []*openfgav1.Tuple{
-			{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
+		iter: [][]*openfgav1.Tuple{
+			{
+				{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
+			},
+			{
+				{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
+			},
 		},
 		expected: []string{"user:a"},
 	},
 	`removes_duplicates_across_iterators_last_entry`: {
-		iter1: []*openfgav1.Tuple{
-			{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
-			{Key: tuple.NewTupleKey("document:1", "2", "user:b")},
-		},
-		iter2: []*openfgav1.Tuple{
-			{Key: tuple.NewTupleKey("document:1", "2", "user:b")},
+		iter: [][]*openfgav1.Tuple{
+			{
+				{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
+				{Key: tuple.NewTupleKey("document:1", "2", "user:b")},
+			},
+			{
+				{Key: tuple.NewTupleKey("document:1", "2", "user:b")},
+			},
 		},
 		expected: []string{
 			"user:a", "user:b",
 		},
 	},
 	`non_overlapping_elements_returns_all`: {
-		iter1: []*openfgav1.Tuple{
-			{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
-			{Key: tuple.NewTupleKey("document:1", "2", "user:c")},
-			{Key: tuple.NewTupleKey("document:1", "2", "user:e")},
-		},
-		iter2: []*openfgav1.Tuple{
-			{Key: tuple.NewTupleKey("document:1", "2", "user:b")},
-			{Key: tuple.NewTupleKey("document:1", "2", "user:d")},
-			{Key: tuple.NewTupleKey("document:1", "2", "user:f")},
+		iter: [][]*openfgav1.Tuple{
+			{
+				{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
+				{Key: tuple.NewTupleKey("document:1", "2", "user:c")},
+				{Key: tuple.NewTupleKey("document:1", "2", "user:e")},
+			},
+			{
+				{Key: tuple.NewTupleKey("document:1", "2", "user:b")},
+				{Key: tuple.NewTupleKey("document:1", "2", "user:d")},
+				{Key: tuple.NewTupleKey("document:1", "2", "user:f")},
+			},
 		},
 		expected: []string{
 			"user:a", "user:b", "user:c", "user:d", "user:e", "user:f",
 		},
 	},
 	`overlapping_elements`: {
-		iter1: []*openfgav1.Tuple{},
-		iter2: []*openfgav1.Tuple{
-			{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
-			{Key: tuple.NewTupleKey("document:2", "2", "user:a")},
-			{Key: tuple.NewTupleKey("document:2", "2", "user:b")},
+		iter: [][]*openfgav1.Tuple{
+			{},
+			{
+				{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
+				{Key: tuple.NewTupleKey("document:2", "2", "user:a")},
+				{Key: tuple.NewTupleKey("document:2", "2", "user:b")},
+			},
+		},
+		expected: []string{"user:a", "user:b"},
+	},
+	`overlapping_elements_more_than_once`: {
+		iter: [][]*openfgav1.Tuple{
+			{},
+			{
+				{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
+				{Key: tuple.NewTupleKey("document:2", "2", "user:a")},
+				{Key: tuple.NewTupleKey("document:3", "2", "user:a")},
+				{Key: tuple.NewTupleKey("document:2", "2", "user:b")},
+			},
 		},
 		expected: []string{"user:a", "user:b"},
 	},
 	`overlapping_elements_last_items_across_iter`: {
-		iter1: []*openfgav1.Tuple{
-			{Key: tuple.NewTupleKey("document:2", "2", "user:a")},
-		},
-		iter2: []*openfgav1.Tuple{
-			{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
-			{Key: tuple.NewTupleKey("document:2", "2", "user:b")},
+		iter: [][]*openfgav1.Tuple{
+			{
+				{Key: tuple.NewTupleKey("document:2", "2", "user:a")},
+			},
+			{
+				{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
+				{Key: tuple.NewTupleKey("document:2", "2", "user:b")},
+			},
 		},
 		expected: []string{"user:a", "user:b"},
 	},
 	`many_overlapping_elements`: {
-		iter1: []*openfgav1.Tuple{
-			{Key: tuple.NewTupleKey("document:2", "2", "user:c")},
-			{Key: tuple.NewTupleKey("document:3", "2", "user:c")},
-			{Key: tuple.NewTupleKey("document:4", "2", "user:c")},
-		},
-		iter2: []*openfgav1.Tuple{
-			{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
-			{Key: tuple.NewTupleKey("document:2", "2", "user:a")},
-			{Key: tuple.NewTupleKey("document:2", "2", "user:b")},
-			{Key: tuple.NewTupleKey("document:3", "2", "user:b")},
-			{Key: tuple.NewTupleKey("document:4", "2", "user:b")},
-			{Key: tuple.NewTupleKey("document:5", "2", "user:b")},
-			{Key: tuple.NewTupleKey("document:6", "2", "user:b")},
+		iter: [][]*openfgav1.Tuple{
+			{
+				{Key: tuple.NewTupleKey("document:2", "2", "user:c")},
+				{Key: tuple.NewTupleKey("document:3", "2", "user:c")},
+				{Key: tuple.NewTupleKey("document:4", "2", "user:c")},
+			},
+			{
+				{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
+				{Key: tuple.NewTupleKey("document:2", "2", "user:a")},
+				{Key: tuple.NewTupleKey("document:2", "2", "user:b")},
+				{Key: tuple.NewTupleKey("document:3", "2", "user:b")},
+				{Key: tuple.NewTupleKey("document:4", "2", "user:b")},
+				{Key: tuple.NewTupleKey("document:5", "2", "user:b")},
+				{Key: tuple.NewTupleKey("document:6", "2", "user:b")},
+			},
 		},
 		expected: []string{"user:a", "user:b", "user:c"},
 	},
 
 	`all_empty_iterators`: {
-		iter1:    []*openfgav1.Tuple{},
-		iter2:    []*openfgav1.Tuple{},
+		iter: [][]*openfgav1.Tuple{
+			{},
+			{},
+		},
 		expected: []string{},
 	},
 	`one_empty_iterator`: {
-		iter1: []*openfgav1.Tuple{
-			{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
+		iter: [][]*openfgav1.Tuple{
+			{
+				{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
+			},
+			{},
 		},
-		iter2:    []*openfgav1.Tuple{},
 		expected: []string{"user:a"},
+	},
+	`single_iterator`: {
+		iter: [][]*openfgav1.Tuple{
+			{
+				{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
+				{Key: tuple.NewTupleKey("document:2", "2", "user:b")},
+			},
+		},
+		expected: []string{"user:a", "user:b"},
+	},
+	`single_iterator_duplicate_user`: {
+		iter: [][]*openfgav1.Tuple{
+			{
+				{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
+				{Key: tuple.NewTupleKey("document:2", "2", "user:b")},
+				{Key: tuple.NewTupleKey("document:3", "2", "user:b")},
+				{Key: tuple.NewTupleKey("document:4", "2", "user:b")},
+				{Key: tuple.NewTupleKey("document:2", "2", "user:c")},
+			},
+		},
+		expected: []string{"user:a", "user:b", "user:c"},
+	},
+	`single_iterator_duplicate_user_first_item`: {
+		iter: [][]*openfgav1.Tuple{
+			{
+				{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
+				{Key: tuple.NewTupleKey("document:2", "2", "user:a")},
+				{Key: tuple.NewTupleKey("document:3", "2", "user:b")},
+				{Key: tuple.NewTupleKey("document:4", "2", "user:b")},
+				{Key: tuple.NewTupleKey("document:2", "2", "user:c")},
+			},
+		},
+		expected: []string{"user:a", "user:b", "user:c"},
+	},
+	`single_iterator_duplicate_user_last_item`: {
+		iter: [][]*openfgav1.Tuple{
+			{
+				{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
+				{Key: tuple.NewTupleKey("document:2", "2", "user:a")},
+				{Key: tuple.NewTupleKey("document:3", "2", "user:b")},
+				{Key: tuple.NewTupleKey("document:4", "2", "user:b")},
+				{Key: tuple.NewTupleKey("document:5", "2", "user:c")},
+				{Key: tuple.NewTupleKey("document:6", "2", "user:c")},
+			},
+		},
+		expected: []string{"user:a", "user:b", "user:c"},
 	},
 }
 
 var combinedIterObjectMapperTestCases = combinedIterTestCasesStruct{
 	`iter_map_to_object`: {
-		iter1: []*openfgav1.Tuple{
-			{Key: tuple.NewTupleKey("document:1", "2", "user:*")},
-			{Key: tuple.NewTupleKey("document:2", "2", "user:*")},
-		},
-		iter2: []*openfgav1.Tuple{
-			{Key: tuple.NewTupleKey("document:2", "2", "user:a")},
-			{Key: tuple.NewTupleKey("document:4", "2", "user:a")},
+		iter: [][]*openfgav1.Tuple{
+			{
+				{Key: tuple.NewTupleKey("document:1", "2", "user:*")},
+				{Key: tuple.NewTupleKey("document:2", "2", "user:*")},
+			},
+			{
+				{Key: tuple.NewTupleKey("document:2", "2", "user:a")},
+				{Key: tuple.NewTupleKey("document:4", "2", "user:a")},
+			},
 		},
 		expected: []string{
 			"document:1", "document:2", "document:4",
 		},
 	},
 	`same_object_different_rel`: {
-		iter1: []*openfgav1.Tuple{
-			{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
-			{Key: tuple.NewTupleKey("document:2", "2", "user:a")},
-			{Key: tuple.NewTupleKey("document:2", "3", "user:a")},
-			{Key: tuple.NewTupleKey("document:3", "2", "user:a")},
-		},
-		iter2: []*openfgav1.Tuple{
-			{Key: tuple.NewTupleKey("document:1", "2", "user:*")},
-			{Key: tuple.NewTupleKey("document:2", "2", "user:*")},
-			{Key: tuple.NewTupleKey("document:4", "2", "user:*")},
+		iter: [][]*openfgav1.Tuple{
+			{
+				{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
+				{Key: tuple.NewTupleKey("document:2", "2", "user:a")},
+				{Key: tuple.NewTupleKey("document:2", "3", "user:a")},
+				{Key: tuple.NewTupleKey("document:3", "2", "user:a")},
+			},
+			{
+				{Key: tuple.NewTupleKey("document:1", "2", "user:*")},
+				{Key: tuple.NewTupleKey("document:2", "2", "user:*")},
+				{Key: tuple.NewTupleKey("document:4", "2", "user:*")},
+			},
 		},
 		expected: []string{
 			"document:1", "document:2", "document:3", "document:4",
@@ -490,7 +569,11 @@ func TestOrderedCombinedIterator(t *testing.T) {
 					t.Run(name, func(t *testing.T) {
 						mapper := combinedTest.mapper
 
-						iter := NewOrderedCombinedIterator(mapper, NewStaticTupleIterator(tc.iter1), NewStaticTupleIterator(tc.iter2))
+						var iters []TupleIterator
+						for _, curIter := range tc.iter {
+							iters = append(iters, NewStaticTupleIterator(curIter))
+						}
+						iter := NewOrderedCombinedIterator(mapper, iters...)
 						t.Cleanup(func() {
 							iter.Stop()
 							require.Empty(t, iter.pending)
@@ -567,7 +650,11 @@ func TestOrderedCombinedIterator(t *testing.T) {
 						t.Run(name, func(t *testing.T) {
 							mapper := combinedTest.mapper
 
-							iter := NewOrderedCombinedIterator(mapper, NewStaticTupleIterator(tc.iter1), NewStaticTupleIterator(tc.iter2))
+							var iters []TupleIterator
+							for _, curIter := range tc.iter {
+								iters = append(iters, NewStaticTupleIterator(curIter))
+							}
+							iter := NewOrderedCombinedIterator(mapper, iters...)
 							t.Cleanup(iter.Stop)
 
 							var errorFromHead error
@@ -603,7 +690,11 @@ func TestOrderedCombinedIterator(t *testing.T) {
 						t.Run(name, func(t *testing.T) {
 							mapper := combinedTest.mapper
 
-							iter := NewOrderedCombinedIterator(mapper, NewStaticTupleIterator(tc.iter1), NewStaticTupleIterator(tc.iter2))
+							var iters []TupleIterator
+							for _, curIter := range tc.iter {
+								iters = append(iters, NewStaticTupleIterator(curIter))
+							}
+							iter := NewOrderedCombinedIterator(mapper, iters...)
 							t.Cleanup(iter.Stop)
 
 							var errorFromHead error
