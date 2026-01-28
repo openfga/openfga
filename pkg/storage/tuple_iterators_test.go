@@ -534,6 +534,52 @@ var combinedIterObjectMapperTestCases = combinedIterTestCasesStruct{
 			"document:1", "document:2", "document:3", "document:4",
 		},
 	},
+	`single_iterator`: {
+		iter: [][]*openfgav1.Tuple{
+			{
+				{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
+				{Key: tuple.NewTupleKey("document:2", "2", "user:b")},
+			},
+		},
+		expected: []string{"document:1", "document:2"},
+	},
+	`single_iterator_duplicate_obj`: {
+		iter: [][]*openfgav1.Tuple{
+			{
+				{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
+				{Key: tuple.NewTupleKey("document:2", "2", "user:b")},
+				{Key: tuple.NewTupleKey("document:2", "2", "user:c")},
+				{Key: tuple.NewTupleKey("document:2", "2", "user:d")},
+				{Key: tuple.NewTupleKey("document:3", "2", "user:c")},
+			},
+		},
+		expected: []string{"document:1", "document:2", "document:3"},
+	},
+	`single_iterator_duplicate_obj_first_item`: {
+		iter: [][]*openfgav1.Tuple{
+			{
+				{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
+				{Key: tuple.NewTupleKey("document:1", "2", "user:b")},
+				{Key: tuple.NewTupleKey("document:2", "2", "user:c")},
+				{Key: tuple.NewTupleKey("document:2", "2", "user:d")},
+				{Key: tuple.NewTupleKey("document:3", "2", "user:e")},
+			},
+		},
+		expected: []string{"document:1", "document:2", "document:3"},
+	},
+	`single_iterator_duplicate_obj_last_item`: {
+		iter: [][]*openfgav1.Tuple{
+			{
+				{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
+				{Key: tuple.NewTupleKey("document:1", "2", "user:b")},
+				{Key: tuple.NewTupleKey("document:2", "2", "user:c")},
+				{Key: tuple.NewTupleKey("document:2", "2", "user:d")},
+				{Key: tuple.NewTupleKey("document:3", "2", "user:e")},
+				{Key: tuple.NewTupleKey("document:3", "2", "user:*")},
+			},
+		},
+		expected: []string{"document:1", "document:2", "document:3"},
+	},
 }
 
 var combinedTestCases = map[string]struct {
