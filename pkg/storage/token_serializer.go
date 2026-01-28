@@ -55,6 +55,11 @@ func DecodeContTokenOrULID(continuationToken string) (*ContToken, error) {
 }
 
 func (c *ContToken) Serialize() string {
+	// if the ulid is empty, return an empty string
+	if c.Ulid == "" {
+		return ""
+	}
+
 	// custom encoding of the struct into a json string
 	// this ensures the token is always valid and avoids needing to handle any encoding errors
 	encoded := fmt.Sprintf("{%q:%q,%q:%q}", "ulid", c.Ulid, "objectType", c.ObjectType)
@@ -62,10 +67,17 @@ func (c *ContToken) Serialize() string {
 }
 
 func (c *ContToken) Deserialize(continuationToken string) error {
+	// if the continuation token is empty, set the ulid and object type to empty strings
+	if continuationToken == "" {
+		c.Ulid = ""
+		c.ObjectType = ""
+		return nil
+	}
+
 	// first decode the base64 string
 	decoded, err := base64.URLEncoding.DecodeString(continuationToken)
 	if err != nil {
-		return err
+		return ErrInvalidContinuationToken
 	}
 
 	// then unmarshal the json string

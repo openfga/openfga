@@ -201,8 +201,14 @@ func (s *Datastore) read(ctx context.Context, store string, filter storage.ReadF
 	}
 
 	if options != nil && options.Pagination.From != "" {
-		token := options.Pagination.From
-		sb = sb.Where(sq.GtOrEq{"ulid": token})
+		token, err := storage.DecodeContToken(options.Pagination.From)
+		if err != nil {
+			return nil, err
+		}
+		if token.ObjectType != "" && objectType != "" && token.ObjectType != objectType {
+			return nil, storage.ErrInvalidContinuationToken
+		}
+		sb = sb.Where(sq.GtOrEq{"ulid": token.Ulid})
 	}
 	if options != nil && options.Pagination.PageSize != 0 {
 		sb = sb.Limit(uint64(options.Pagination.PageSize + 1)) // + 1 is used to determine whether to return a continuation token.
@@ -708,9 +714,6 @@ func (s *Datastore) ReadChanges(ctx context.Context, store string, filter storag
 	ctx, span := startTrace(ctx, "ReadChanges")
 	defer span.End()
 
-	objectTypeFilter := filter.ObjectType
-	horizonOffset := filter.HorizonOffset
-
 	orderBy := "ulid asc"
 	if options.SortDesc {
 		orderBy = "ulid desc"
@@ -725,16 +728,19 @@ func (s *Datastore) ReadChanges(ctx context.Context, store string, filter storag
 		).
 		From("changelog").
 		Where(sq.Eq{"store": store}).
-		Where(fmt.Sprintf("inserted_at <= NOW() - INTERVAL %d MICROSECOND", horizonOffset.Microseconds())).
+		Where(fmt.Sprintf("inserted_at <= NOW() - INTERVAL %d MICROSECOND", filter.HorizonOffset.Microseconds())).
 		OrderBy(orderBy)
 
-	if objectTypeFilter != "" {
-		sb = sb.Where(sq.Eq{"object_type": objectTypeFilter})
+	if filter.ObjectType != "" {
+		sb = sb.Where(sq.Eq{"object_type": filter.ObjectType})
 	}
 	if options.Pagination.From != "" {
 		token, err := storage.DecodeContTokenOrULID(options.Pagination.From)
 		if err != nil {
 			return nil, "", err
+		}
+		if token.ObjectType != "" && filter.ObjectType != "" && token.ObjectType != filter.ObjectType {
+			return nil, "", storage.ErrInvalidContinuationToken
 		}
 		sb = sqlcommon.AddFromUlid(sb, token.Ulid, options.SortDesc)
 	} else if !filter.StartTime.IsZero() {
