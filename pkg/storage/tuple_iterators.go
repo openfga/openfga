@@ -497,7 +497,15 @@ IterateOverPending:
 			// If on every call to Head() we discarded, we would need to iterate twice over pending:
 			// one time to find the minIdx, and one time to move the corresponding iterators.
 			for c.mapper(head) == c.mapper(c.lastYielded) {
-				head, err = iter.Next(ctx)
+				// We want to advance to the new tuple. However, notice the "Next"'s returned
+				// tuple is still "old".  Therefore, we will need to load it with "Head" in the
+				// next step.
+				_, err = iter.Next(ctx)
+				if err == nil {
+					// We need to fetch the iter's Head so that head is updated properly.
+					// Otherwise, we will be looking at outdated data
+					head, err = iter.Head(ctx)
+				}
 				if err != nil {
 					if errors.Is(err, ErrIteratorDone) {
 						iter.Stop()
