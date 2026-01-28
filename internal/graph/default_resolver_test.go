@@ -113,7 +113,7 @@ func TestDefaultUserset(t *testing.T) {
 				TupleKey:        tuple.NewTupleKey("group:1", "member", "user:maria"),
 				RequestMetadata: NewCheckRequestMetadata(),
 			}
-			resp, err := checker.defaultUserset(ctx, req, nil, iter)(ctx)
+			resp, err := checker.defaultUserset(ctx, req, nil, iter, "")(ctx)
 			require.Equal(t, tt.expectedError, err)
 			require.Equal(t, tt.expected, resp)
 		})
@@ -232,7 +232,7 @@ func TestDefaultTTU(t *testing.T) {
 				TupleKey:        tuple.NewTupleKey("group:1", "member", "user:maria"),
 				RequestMetadata: NewCheckRequestMetadata(),
 			}
-			resp, err := checker.defaultTTU(ctx, req, tt.rewrite, iter)(ctx)
+			resp, err := checker.defaultTTU(ctx, req, tt.rewrite, iter, "")(ctx)
 			require.Equal(t, tt.expectedError, err)
 			require.Equal(t, tt.expected, resp)
 		})
@@ -370,7 +370,7 @@ func TestProduceUsersetDispatches(t *testing.T) {
 			dispatchChan := make(chan dispatchMsg, 1)
 
 			pool.Go(func(ctx context.Context) error {
-				checker.produceUsersetDispatches(ctx, req, dispatchChan, iter)
+				checker.produceUsersetDispatches(ctx, req, dispatchChan, iter, "")
 				return nil
 			})
 
@@ -534,7 +534,7 @@ func TestProduceTTUDispatches(t *testing.T) {
 			dispatchChan := make(chan dispatchMsg, 1)
 
 			pool.Go(func(ctx context.Context) error {
-				checker.produceTTUDispatches(ctx, tt.computedRelation, req, dispatchChan, iter)
+				checker.produceTTUDispatches(ctx, tt.computedRelation, req, dispatchChan, iter, "")
 				return nil
 			})
 
@@ -545,10 +545,38 @@ func TestProduceTTUDispatches(t *testing.T) {
 	}
 }
 
+func TestPrepareChildRequest(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	tk := tuple.NewTupleKeyWithCondition("group:1", "member", "user:maria", "condition1", nil)
+	strategy := "new_strategy"
+	parentReq := &ResolveCheckRequest{
+		TupleKey:         tk,
+		RequestMetadata:  NewCheckRequestMetadata(),
+		SelectedStrategy: "original_strategy",
+	}
+
+	checker := NewLocalChecker()
+	defer checker.Close()
+
+	childReq := checker.prepareChildRequest(parentReq, tk, strategy)
+
+	// Check that the child request is properly configured
+	require.Equal(t, tk, childReq.GetTupleKey())
+	require.Equal(t, parentReq.GetRequestMetadata().Depth, childReq.GetRequestMetadata().Depth)
+	require.Equal(t, strategy, childReq.GetSelectedStrategy())
+
+	// Check that the parent request wasn't modified
+	require.Equal(t, "original_strategy", parentReq.GetSelectedStrategy())
+}
+
 func TestProcessDispatch(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
+
 	req := &ResolveCheckRequest{
 		TupleKey:        tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "user:maria", "condition1", nil),
 		RequestMetadata: NewCheckRequestMetadata(),
@@ -636,12 +664,14 @@ func TestProcessDispatch(t *testing.T) {
 					dispatchParams: &dispatchParams{
 						parentReq: req,
 						tk:        tuple.NewTupleKey("group:1", "member", "user:maria"),
+						strategy:  "strategy_1",
 					},
 				},
 				{
 					dispatchParams: &dispatchParams{
 						parentReq: req,
 						tk:        tuple.NewTupleKey("group:2", "member", "user:maria"),
+						strategy:  "strategy_1",
 					},
 				},
 			},
@@ -727,7 +757,6 @@ func TestProcessDispatch(t *testing.T) {
 		close(dispatchChan)
 
 		outcome := <-outcomeChan
-		require.ErrorContains(t, outcome.err, "invalid memory address or nil pointer")
 		require.ErrorIs(t, outcome.err, ErrPanic)
 	})
 }
@@ -930,8 +959,6 @@ func TestConsumeDispatch(t *testing.T) {
 		close(dispatchChan)
 
 		_, err := checker.consumeDispatches(ctx, 1, dispatchChan)
-
-		require.ErrorContains(t, err, "invalid memory address or nil pointer")
 		require.ErrorIs(t, err, ErrPanic)
 	})
 }

@@ -25,7 +25,7 @@ func TestPlanner_SelectResolver(t *testing.T) {
 		},
 		"slow": {
 			Name:         "slow",
-			InitialGuess: 10 * time.Millisecond,
+			InitialGuess: 50 * time.Millisecond,
 			Lambda:       1,
 			Alpha:        1,
 			Beta:         1,
