@@ -458,16 +458,16 @@ var combinedIterObjectMapperTestCases = combinedIterTestCasesStruct{
 }
 
 var combinedTestCases = map[string]struct {
-	isUserMapper bool
-	testcases    combinedIterTestCasesStruct
+	mapper    TupleMapperFunc
+	testcases combinedIterTestCasesStruct
 }{
 	"userMapper": {
-		isUserMapper: true,
-		testcases:    combinedIterUserMapperTestCases,
+		mapper:    UserMapper(),
+		testcases: combinedIterUserMapperTestCases,
 	},
 	"objectMapper": {
-		isUserMapper: false,
-		testcases:    combinedIterObjectMapperTestCases,
+		mapper:    ObjectMapper(),
+		testcases: combinedIterObjectMapperTestCases,
 	},
 }
 
@@ -488,10 +488,7 @@ func TestOrderedCombinedIterator(t *testing.T) {
 			t.Run(name, func(t *testing.T) {
 				for name, tc := range combinedTest.testcases {
 					t.Run(name, func(t *testing.T) {
-						mapper := UserMapper()
-						if !combinedTest.isUserMapper {
-							mapper = ObjectMapper()
-						}
+						mapper := combinedTest.mapper
 
 						iter := NewOrderedCombinedIterator(mapper, NewStaticTupleIterator(tc.iter1), NewStaticTupleIterator(tc.iter2))
 						t.Cleanup(func() {
@@ -568,10 +565,7 @@ func TestOrderedCombinedIterator(t *testing.T) {
 				t.Run(name, func(t *testing.T) {
 					for name, tc := range combinedTest.testcases {
 						t.Run(name, func(t *testing.T) {
-							mapper := UserMapper()
-							if !combinedTest.isUserMapper {
-								mapper = ObjectMapper()
-							}
+							mapper := combinedTest.mapper
 
 							iter := NewOrderedCombinedIterator(mapper, NewStaticTupleIterator(tc.iter1), NewStaticTupleIterator(tc.iter2))
 							t.Cleanup(iter.Stop)
@@ -607,10 +601,8 @@ func TestOrderedCombinedIterator(t *testing.T) {
 				t.Run(name, func(t *testing.T) {
 					for name, tc := range combinedTest.testcases {
 						t.Run(name, func(t *testing.T) {
-							mapper := UserMapper()
-							if !combinedTest.isUserMapper {
-								mapper = ObjectMapper()
-							}
+							mapper := combinedTest.mapper
+
 							iter := NewOrderedCombinedIterator(mapper, NewStaticTupleIterator(tc.iter1), NewStaticTupleIterator(tc.iter2))
 							t.Cleanup(iter.Stop)
 
