@@ -318,6 +318,159 @@ func TestCombinedIterator(t *testing.T) {
 	})
 }
 
+type combinedIterTestCasesStruct = map[string]struct {
+	iter1    []*openfgav1.Tuple
+	iter2    []*openfgav1.Tuple
+	expected []string
+}
+
+var combinedIterUserMapperTestCases = combinedIterTestCasesStruct{
+	`removes_duplicates_within_iterator`: {
+		iter1: []*openfgav1.Tuple{
+			{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
+			{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
+		},
+		iter2: []*openfgav1.Tuple{
+			{Key: tuple.NewTupleKey("document:1", "2", "user:b")},
+			{Key: tuple.NewTupleKey("document:1", "2", "user:c")},
+		},
+		expected: []string{
+			"user:a", "user:b", "user:c",
+		},
+	},
+	`removes_duplicates_across_iterators_first_entry`: {
+		iter1: []*openfgav1.Tuple{
+			{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
+		},
+		iter2: []*openfgav1.Tuple{
+			{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
+		},
+		expected: []string{"user:a"},
+	},
+	`removes_duplicates_across_iterators_last_entry`: {
+		iter1: []*openfgav1.Tuple{
+			{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
+			{Key: tuple.NewTupleKey("document:1", "2", "user:b")},
+		},
+		iter2: []*openfgav1.Tuple{
+			{Key: tuple.NewTupleKey("document:1", "2", "user:b")},
+		},
+		expected: []string{
+			"user:a", "user:b",
+		},
+	},
+	`non_overlapping_elements_returns_all`: {
+		iter1: []*openfgav1.Tuple{
+			{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
+			{Key: tuple.NewTupleKey("document:1", "2", "user:c")},
+			{Key: tuple.NewTupleKey("document:1", "2", "user:e")},
+		},
+		iter2: []*openfgav1.Tuple{
+			{Key: tuple.NewTupleKey("document:1", "2", "user:b")},
+			{Key: tuple.NewTupleKey("document:1", "2", "user:d")},
+			{Key: tuple.NewTupleKey("document:1", "2", "user:f")},
+		},
+		expected: []string{
+			"user:a", "user:b", "user:c", "user:d", "user:e", "user:f",
+		},
+	},
+	`overlapping_elements`: {
+		iter1: []*openfgav1.Tuple{},
+		iter2: []*openfgav1.Tuple{
+			{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
+			{Key: tuple.NewTupleKey("document:2", "2", "user:a")},
+			{Key: tuple.NewTupleKey("document:2", "2", "user:b")},
+		},
+		expected: []string{"user:a", "user:b"},
+	},
+	`overlapping_elements_last_items_across_iter`: {
+		iter1: []*openfgav1.Tuple{
+			{Key: tuple.NewTupleKey("document:2", "2", "user:a")},
+		},
+		iter2: []*openfgav1.Tuple{
+			{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
+			{Key: tuple.NewTupleKey("document:2", "2", "user:b")},
+		},
+		expected: []string{"user:a", "user:b"},
+	},
+	`many_overlapping_elements`: {
+		iter1: []*openfgav1.Tuple{
+			{Key: tuple.NewTupleKey("document:2", "2", "user:c")},
+			{Key: tuple.NewTupleKey("document:3", "2", "user:c")},
+			{Key: tuple.NewTupleKey("document:4", "2", "user:c")},
+		},
+		iter2: []*openfgav1.Tuple{
+			{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
+			{Key: tuple.NewTupleKey("document:2", "2", "user:a")},
+			{Key: tuple.NewTupleKey("document:2", "2", "user:b")},
+			{Key: tuple.NewTupleKey("document:3", "2", "user:b")},
+			{Key: tuple.NewTupleKey("document:4", "2", "user:b")},
+			{Key: tuple.NewTupleKey("document:5", "2", "user:b")},
+			{Key: tuple.NewTupleKey("document:6", "2", "user:b")},
+		},
+		expected: []string{"user:a", "user:b", "user:c"},
+	},
+
+	`all_empty_iterators`: {
+		iter1:    []*openfgav1.Tuple{},
+		iter2:    []*openfgav1.Tuple{},
+		expected: []string{},
+	},
+	`one_empty_iterator`: {
+		iter1: []*openfgav1.Tuple{
+			{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
+		},
+		iter2:    []*openfgav1.Tuple{},
+		expected: []string{"user:a"},
+	},
+}
+
+var combinedIterObjectMapperTestCases = combinedIterTestCasesStruct{
+	`iter_map_to_object`: {
+		iter1: []*openfgav1.Tuple{
+			{Key: tuple.NewTupleKey("document:1", "2", "user:*")},
+			{Key: tuple.NewTupleKey("document:2", "2", "user:*")},
+		},
+		iter2: []*openfgav1.Tuple{
+			{Key: tuple.NewTupleKey("document:2", "2", "user:a")},
+			{Key: tuple.NewTupleKey("document:4", "2", "user:a")},
+		},
+		expected: []string{
+			"document:1", "document:2", "document:4",
+		},
+	},
+	`same_object_different_rel`: {
+		iter1: []*openfgav1.Tuple{
+			{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
+			{Key: tuple.NewTupleKey("document:2", "2", "user:a")},
+			{Key: tuple.NewTupleKey("document:2", "3", "user:a")},
+			{Key: tuple.NewTupleKey("document:3", "2", "user:a")},
+		},
+		iter2: []*openfgav1.Tuple{
+			{Key: tuple.NewTupleKey("document:1", "2", "user:*")},
+			{Key: tuple.NewTupleKey("document:2", "2", "user:*")},
+			{Key: tuple.NewTupleKey("document:4", "2", "user:*")},
+		},
+		expected: []string{
+			"document:1", "document:2", "document:3", "document:4",
+		},
+	},
+}
+
+var combinedTestCases = map[string]struct {
+	isUserMapper bool
+	testcases    combinedIterTestCasesStruct
+}{
+	"userMapper": {
+		isUserMapper: true,
+		testcases:    combinedIterUserMapperTestCases,
+	},
+	"objectMapper": {
+		isUserMapper: false,
+		testcases:    combinedIterObjectMapperTestCases,
+	},
+}
+
 func TestOrderedCombinedIterator(t *testing.T) {
 	t.Run("Stop", func(t *testing.T) {
 		iter1 := NewStaticTupleIterator([]*openfgav1.Tuple{
@@ -331,109 +484,36 @@ func TestOrderedCombinedIterator(t *testing.T) {
 	})
 
 	t.Run("Next", func(t *testing.T) {
-		var testcases = map[string]struct {
-			iter1    TupleIterator
-			iter2    TupleIterator
-			expected []*openfgav1.Tuple
-		}{
-			`removes_duplicates_within_iterator`: {
-				iter1: NewStaticTupleIterator([]*openfgav1.Tuple{
-					{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
-					{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
-				}),
-				iter2: NewStaticTupleIterator([]*openfgav1.Tuple{
-					{Key: tuple.NewTupleKey("document:1", "2", "user:b")},
-					{Key: tuple.NewTupleKey("document:1", "2", "user:c")},
-				}),
-				expected: []*openfgav1.Tuple{
-					{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
-					{Key: tuple.NewTupleKey("document:1", "2", "user:b")},
-					{Key: tuple.NewTupleKey("document:1", "2", "user:c")},
-				},
-			},
-			`removes_duplicates_across_iterators_first_entry`: {
-				iter1: NewStaticTupleIterator([]*openfgav1.Tuple{
-					{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
-				}),
-				iter2: NewStaticTupleIterator([]*openfgav1.Tuple{
-					{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
-				}),
-				expected: []*openfgav1.Tuple{
-					{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
-				},
-			},
-			`removes_duplicates_across_iterators_last_entry`: {
-				iter1: NewStaticTupleIterator([]*openfgav1.Tuple{
-					{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
-					{Key: tuple.NewTupleKey("document:1", "2", "user:b")},
-				}),
-				iter2: NewStaticTupleIterator([]*openfgav1.Tuple{
-					{Key: tuple.NewTupleKey("document:1", "2", "user:b")},
-				}),
-				expected: []*openfgav1.Tuple{
-					{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
-					{Key: tuple.NewTupleKey("document:1", "2", "user:b")},
-				},
-			},
-			`non_overlapping_elements_returns_all`: {
-				iter1: NewStaticTupleIterator([]*openfgav1.Tuple{
-					{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
-					{Key: tuple.NewTupleKey("document:1", "2", "user:c")},
-					{Key: tuple.NewTupleKey("document:1", "2", "user:e")},
-				}),
-				iter2: NewStaticTupleIterator([]*openfgav1.Tuple{
-					{Key: tuple.NewTupleKey("document:1", "2", "user:b")},
-					{Key: tuple.NewTupleKey("document:1", "2", "user:d")},
-					{Key: tuple.NewTupleKey("document:1", "2", "user:f")},
-				}),
-				expected: []*openfgav1.Tuple{
-					{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
-					{Key: tuple.NewTupleKey("document:1", "2", "user:b")},
-					{Key: tuple.NewTupleKey("document:1", "2", "user:c")},
-					{Key: tuple.NewTupleKey("document:1", "2", "user:d")},
-					{Key: tuple.NewTupleKey("document:1", "2", "user:e")},
-					{Key: tuple.NewTupleKey("document:1", "2", "user:f")},
-				},
-			},
-			`all_empty_iterators`: {
-				iter1:    NewStaticTupleIterator([]*openfgav1.Tuple{}),
-				iter2:    NewStaticTupleIterator([]*openfgav1.Tuple{}),
-				expected: []*openfgav1.Tuple{},
-			},
-			`one_empty_iterator`: {
-				iter1: NewStaticTupleIterator([]*openfgav1.Tuple{
-					{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
-				}),
-				iter2: NewStaticTupleIterator([]*openfgav1.Tuple{}),
-				expected: []*openfgav1.Tuple{
-					{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
-				},
-			},
-		}
-
-		for name, tc := range testcases {
+		for name, combinedTest := range combinedTestCases {
 			t.Run(name, func(t *testing.T) {
-				iter := NewOrderedCombinedIterator(UserMapper(), tc.iter1, tc.iter2)
-				t.Cleanup(func() {
-					iter.Stop()
-					require.Empty(t, iter.pending)
-				})
-
-				gotItems := make([]*openfgav1.Tuple, 0)
-				for {
-					got, err := iter.Next(context.Background())
-					if err != nil {
-						if errors.Is(err, ErrIteratorDone) {
-							break
+				for name, tc := range combinedTest.testcases {
+					t.Run(name, func(t *testing.T) {
+						mapper := UserMapper()
+						if !combinedTest.isUserMapper {
+							mapper = ObjectMapper()
 						}
-						require.Fail(t, "no error was expected")
-					}
-					require.NotNil(t, got)
-					gotItems = append(gotItems, got)
-				}
 
-				if diff := cmp.Diff(tc.expected, gotItems, protocmp.Transform()); diff != "" {
-					t.Errorf("mismatch (-want +got):\n%s", diff)
+						iter := NewOrderedCombinedIterator(mapper, NewStaticTupleIterator(tc.iter1), NewStaticTupleIterator(tc.iter2))
+						t.Cleanup(func() {
+							iter.Stop()
+							require.Empty(t, iter.pending)
+						})
+
+						gotItems := make([]string, 0)
+						for {
+							got, err := iter.Next(context.Background())
+							if err != nil {
+								if errors.Is(err, ErrIteratorDone) {
+									break
+								}
+								require.Fail(t, "no error was expected")
+							}
+							require.NotNil(t, got)
+							gotItems = append(gotItems, mapper(got))
+						}
+
+						require.Equal(t, tc.expected, gotItems)
+					})
 				}
 			})
 		}
@@ -484,46 +564,89 @@ func TestOrderedCombinedIterator(t *testing.T) {
 			}
 		})
 		t.Run("head_and_next_interleaved", func(t *testing.T) {
-			iter1 := NewStaticTupleIterator([]*openfgav1.Tuple{
-				{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
-				{Key: tuple.NewTupleKey("document:1", "2", "user:b")},
-			})
-			iter2 := NewStaticTupleIterator([]*openfgav1.Tuple{
-				{Key: tuple.NewTupleKey("document:1", "2", "user:c")},
-				{Key: tuple.NewTupleKey("document:1", "2", "user:d")},
-			})
-			expected := []*openfgav1.Tuple{
-				{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
-				{Key: tuple.NewTupleKey("document:1", "2", "user:b")},
-				{Key: tuple.NewTupleKey("document:1", "2", "user:c")},
-				{Key: tuple.NewTupleKey("document:1", "2", "user:d")},
+			for name, combinedTest := range combinedTestCases {
+				t.Run(name, func(t *testing.T) {
+					for name, tc := range combinedTest.testcases {
+						t.Run(name, func(t *testing.T) {
+							mapper := UserMapper()
+							if !combinedTest.isUserMapper {
+								mapper = ObjectMapper()
+							}
+
+							iter := NewOrderedCombinedIterator(mapper, NewStaticTupleIterator(tc.iter1), NewStaticTupleIterator(tc.iter2))
+							t.Cleanup(iter.Stop)
+
+							var errorFromHead error
+							gotItems := make([]string, 0)
+							for {
+								gotHead, err := iter.Head(context.Background())
+								if err != nil {
+									require.ErrorIs(t, err, ErrIteratorDone)
+									errorFromHead = err
+								}
+								gotNext, err := iter.Next(context.Background())
+								if err != nil {
+									require.Equal(t, errorFromHead, err)
+									break
+								}
+								require.NotNil(t, gotNext)
+								if diff := cmp.Diff(gotHead, gotNext, protocmp.Transform()); diff != "" {
+									t.Errorf("mismatch in result of Next compared to Head (-want +got):\n%s", diff)
+								}
+								gotItems = append(gotItems, mapper(gotNext))
+							}
+
+							require.Equal(t, tc.expected, gotItems)
+						})
+					}
+				})
 			}
+		})
+		t.Run("head_head_and_next_interleaved", func(t *testing.T) {
+			for name, combinedTest := range combinedTestCases {
+				t.Run(name, func(t *testing.T) {
+					for name, tc := range combinedTest.testcases {
+						t.Run(name, func(t *testing.T) {
+							mapper := UserMapper()
+							if !combinedTest.isUserMapper {
+								mapper = ObjectMapper()
+							}
+							iter := NewOrderedCombinedIterator(mapper, NewStaticTupleIterator(tc.iter1), NewStaticTupleIterator(tc.iter2))
+							t.Cleanup(iter.Stop)
 
-			iter := NewOrderedCombinedIterator(UserMapper(), iter1, iter2)
-			t.Cleanup(iter.Stop)
+							var errorFromHead error
+							gotItems := make([]string, 0)
+							for {
+								gotHead, err := iter.Head(context.Background())
+								if err != nil {
+									require.ErrorIs(t, err, ErrIteratorDone)
+									errorFromHead = err
+								}
+								var newHead *openfgav1.Tuple
+								newHead, err = iter.Head(context.Background())
+								if err != nil {
+									require.Equal(t, errorFromHead, err)
+									require.Nil(t, newHead)
+								} else {
+									require.Equal(t, gotHead, newHead)
+								}
 
-			var errorFromHead error
-			gotItems := make([]*openfgav1.Tuple, 0)
-			for {
-				gotHead, err := iter.Head(context.Background())
-				if err != nil {
-					require.ErrorIs(t, err, ErrIteratorDone)
-					errorFromHead = err
-				}
-				gotNext, err := iter.Next(context.Background())
-				if err != nil {
-					require.Equal(t, errorFromHead, err)
-					break
-				}
-				require.NotNil(t, gotNext)
-				if diff := cmp.Diff(gotHead, gotNext, protocmp.Transform()); diff != "" {
-					t.Errorf("mismatch in result of Next compared to Head (-want +got):\n%s", diff)
-				}
-				gotItems = append(gotItems, gotNext)
-			}
+								gotNext, err := iter.Next(context.Background())
+								if err != nil {
+									require.Equal(t, errorFromHead, err)
+									break
+								}
+								require.NotNil(t, gotNext)
+								if diff := cmp.Diff(gotHead, gotNext, protocmp.Transform()); diff != "" {
+									t.Errorf("mismatch in result of Next compared to Head (-want +got):\n%s", diff)
+								}
+								gotItems = append(gotItems, mapper(gotNext))
+							}
 
-			if diff := cmp.Diff(expected, gotItems, protocmp.Transform()); diff != "" {
-				t.Errorf("mismatch in result of Next (-want +got):\n%s", diff)
+							require.Equal(t, tc.expected, gotItems)
+						})
+					}
+				})
 			}
 		})
 	})
