@@ -958,9 +958,9 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		return nil, err
 	}
 
-	sharedResourceOptions := append(s.sharedResourceOptions, shared.WithLogger(s.logger))
+	s.sharedResourceOptions = append(s.sharedResourceOptions, shared.WithLogger(s.logger))
 
-	s.sharedDatastoreResources, err = shared.NewSharedDatastoreResources(s.ctx, s.singleflightGroup, s.datastore, s.cacheSettings, sharedResourceOptions...)
+	s.sharedDatastoreResources, err = shared.NewSharedDatastoreResources(s.ctx, s.singleflightGroup, s.datastore, s.cacheSettings, s.sharedResourceOptions...)
 	if err != nil {
 		return nil, err
 	}
