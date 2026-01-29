@@ -2280,7 +2280,7 @@ func TestCheckWithCachedIterator(t *testing.T) {
 	require.Equal(t, 0, cache.Hits())
 
 	// Sleep for a while to ensure that the iterator is cached
-	time.Sleep(1 * time.Millisecond)
+	time.Sleep(100 * time.Millisecond)
 
 	checkResponse, err = s.Check(ctx, &openfgav1.CheckRequest{
 		StoreId:              storeID,
