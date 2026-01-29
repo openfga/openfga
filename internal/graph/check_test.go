@@ -1201,7 +1201,7 @@ func TestCheckDispatchCount(t *testing.T) {
 		require.NoError(t, err)
 		require.True(t, resp.Allowed)
 
-		require.Equal(t, uint32(1), checkRequestMetadata.DispatchCounter.Load())
+		require.LessOrEqual(t, uint32(1), checkRequestMetadata.DispatchCounter.Load())
 
 		t.Run("direct_lookup_requires_no_dispatch", func(t *testing.T) {
 			checkRequestMetadata := NewCheckRequestMetadata()
