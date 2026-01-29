@@ -8,6 +8,9 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+### Fixed
+- MySQL migration 007 now works with Percona XtraDB Cluster by removing unsupported `LOCK=NONE` clauses from index operations. [#2903](https://github.com/openfga/openfga/pull/2903)
+
 ## [1.11.3] - 2026-01-28
 ### Added
 - Add configuration option to limit max type system cache size. [2744](https://github.com/openfga/openfga/pull/2744)
