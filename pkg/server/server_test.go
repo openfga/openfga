@@ -2265,7 +2265,6 @@ func TestCheckWithCachedIterator(t *testing.T) {
 	)
 
 	t.Cleanup(func() {
-		ds.Close()
 		s.Close()
 	})
 
