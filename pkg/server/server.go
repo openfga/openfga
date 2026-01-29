@@ -249,6 +249,8 @@ type Server struct {
 	planner *planner.Planner
 
 	requestTimeout time.Duration
+
+	sharedResourceOptions []shared.SharedDatastoreResourcesOpt
 }
 
 type OpenFGAServiceV1Option func(s *Server)
@@ -834,6 +836,12 @@ func WithListObjectsPipeExtension(extendAfter time.Duration, maxExtensions int) 
 	}
 }
 
+func WithCheckCache(c storage.InMemoryCache[any]) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.sharedResourceOptions = append(s.sharedResourceOptions, shared.WithCheckCache(c))
+	}
+}
+
 // NewServerWithOpts returns a new server.
 // You must call Close on it after you are done using it.
 func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
@@ -950,7 +958,9 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		return nil, err
 	}
 
-	s.sharedDatastoreResources, err = shared.NewSharedDatastoreResources(s.ctx, s.singleflightGroup, s.datastore, s.cacheSettings, []shared.SharedDatastoreResourcesOpt{shared.WithLogger(s.logger)}...)
+	sharedResourceOptions := append(s.sharedResourceOptions, shared.WithLogger(s.logger))
+
+	s.sharedDatastoreResources, err = shared.NewSharedDatastoreResources(s.ctx, s.singleflightGroup, s.datastore, s.cacheSettings, sharedResourceOptions...)
 	if err != nil {
 		return nil, err
 	}
