@@ -11,7 +11,7 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	parser "github.com/openfga/language/pkg/go/transformer"
-	mockstorage "github.com/openfga/openfga/internal/mocks"
+	storageTest "github.com/openfga/openfga/pkg/storage/test"
 	storagefixtures "github.com/openfga/openfga/pkg/testfixtures/storage"
 
 	"github.com/oklog/ulid/v2"
@@ -19,7 +19,7 @@ import (
 	"github.com/openfga/openfga/cmd/util"
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/pkg/server/test"
-	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/storage/memory"
 	"github.com/openfga/openfga/pkg/storage/mysql"
 	"github.com/openfga/openfga/pkg/storage/postgres"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
@@ -28,8 +28,6 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
-	"go.uber.org/mock/gomock"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 func TestServerNotReadyDueToDatastoreRevision(t *testing.T) {
@@ -250,7 +248,7 @@ func TestCheckWithCachedIterator(t *testing.T) {
 	storeID := ulid.Make().String()
 	modelID := ulid.Make().String()
 
-	typedefs := parser.MustTransformDSLToProto(`
+	model := parser.MustTransformDSLToProto(`
 		model
 			schema 1.1
 		type user
@@ -259,68 +257,38 @@ func TestCheckWithCachedIterator(t *testing.T) {
 				define viewer: [user]
 		type license
 			relations
-				define viewer: [user, company#viewer]`).GetTypeDefinitions()
+				define viewer: [user, company#viewer]
+	`)
 
-	mockController := gomock.NewController(t)
-	defer mockController.Finish()
+	model.Id = modelID
 
-	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+	ds := memory.New()
 
-	mockDatastore.EXPECT().
-		ReadAuthorizationModel(gomock.Any(), storeID, modelID).
-		Times(1).
-		Return(&openfgav1.AuthorizationModel{
-			SchemaVersion:   typesystem.SchemaVersion1_1,
-			TypeDefinitions: typedefs,
-			Id:              modelID,
-		}, nil)
+	err := ds.WriteAuthorizationModel(context.Background(), storeID, model)
+	require.NoError(t, err)
 
-	mockDatastore.EXPECT().
-		ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
-		AnyTimes().
-		DoAndReturn(
-			func(_ context.Context, _ string, tk *openfgav1.TupleKey, _ storage.ReadUserTupleOptions) (*openfgav1.Tuple, error) {
-				if tk.GetObject() == "company:1" {
-					return &openfgav1.Tuple{
-						Key:       tk,
-						Timestamp: timestamppb.Now(),
-					}, nil
-				}
+	tuples := []*openfgav1.TupleKey{
+		tuple.NewTupleKey("license:1", "viewer", "company:1#viewer"),
+		tuple.NewTupleKey("company:1", "viewer", "user:1"),
+		tuple.NewTupleKey("company:1", "viewer", "user:2"),
+	}
 
-				return nil, storage.ErrNotFound
-			})
+	err = ds.Write(context.Background(), storeID, nil, tuples)
+	require.NoError(t, err)
 
-	mockDatastore.EXPECT().
-		ReadUsersetTuples(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
-		Times(1).
-		Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{
-			{
-				Key:       tuple.NewTupleKey("license:1", "viewer", "company:1#viewer"),
-				Timestamp: timestamppb.Now(),
-			},
-		}), nil)
-
-	mockDatastore.EXPECT().
-		ReadStartingWithUser(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
-		Times(1).
-		Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{
-			{
-				Key:       tuple.NewTupleKey("company:1", "viewer", "user:1"),
-				Timestamp: timestamppb.Now(),
-			},
-		}), nil)
+	cache := storageTest.NewMapCache()
 
 	s := MustNewServerWithOpts(
 		WithContext(ctx),
-		WithDatastore(mockDatastore),
+		WithDatastore(ds),
 		WithCheckCacheLimit(10),
+		WithCheckCache(cache),
 		WithCheckQueryCacheTTL(1*time.Minute),
 		WithCheckIteratorCacheEnabled(true),
 		WithCheckIteratorCacheMaxResults(10),
 	)
 
 	t.Cleanup(func() {
-		mockDatastore.EXPECT().Close().Times(1)
 		s.Close()
 	})
 
@@ -332,21 +300,11 @@ func TestCheckWithCachedIterator(t *testing.T) {
 
 	require.NoError(t, err)
 	require.True(t, checkResponse.GetAllowed())
+	require.Equal(t, 0, cache.Hits())
 
 	// Sleep for a while to ensure that the iterator is cached
-	time.Sleep(1 * time.Millisecond)
+	time.Sleep(100 * time.Millisecond)
 
-	mockDatastore.EXPECT().
-		ReadStartingWithUser(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
-		Times(1).
-		Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{
-			{
-				Key:       tuple.NewTupleKey("company:1", "viewer", "user:2"),
-				Timestamp: timestamppb.Now(),
-			},
-		}), nil)
-
-	// If we check for the same request, data should come from cached iterator and number of ReadUsersetTuples should still be 1
 	checkResponse, err = s.Check(ctx, &openfgav1.CheckRequest{
 		StoreId:              storeID,
 		TupleKey:             tuple.NewCheckRequestTupleKey("license:1", "viewer", "user:2"),
@@ -355,6 +313,8 @@ func TestCheckWithCachedIterator(t *testing.T) {
 
 	require.NoError(t, err)
 	require.True(t, checkResponse.GetAllowed())
+	// Check cache must have been called and found a result for 'company:1#viewer'.
+	require.Equal(t, 1, cache.Hits())
 }
 
 func TestBatchCheckWithCachedIterator(t *testing.T) {
@@ -367,7 +327,7 @@ func TestBatchCheckWithCachedIterator(t *testing.T) {
 	storeID := ulid.Make().String()
 	modelID := ulid.Make().String()
 
-	typedefs := parser.MustTransformDSLToProto(`
+	model := parser.MustTransformDSLToProto(`
 		model
 			schema 1.1
 		type user
@@ -376,60 +336,31 @@ func TestBatchCheckWithCachedIterator(t *testing.T) {
 				define viewer: [user]
 		type license
 			relations
-				define viewer: [user, company#viewer]`).GetTypeDefinitions()
+				define viewer: [user, company#viewer]
+	`)
 
-	mockController := gomock.NewController(t)
-	defer mockController.Finish()
+	model.Id = modelID
 
-	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+	ds := memory.New()
 
-	mockDatastore.EXPECT().
-		ReadAuthorizationModel(gomock.Any(), storeID, modelID).
-		Times(1).
-		Return(&openfgav1.AuthorizationModel{
-			SchemaVersion:   typesystem.SchemaVersion1_1,
-			TypeDefinitions: typedefs,
-			Id:              modelID,
-		}, nil)
+	err := ds.WriteAuthorizationModel(context.Background(), storeID, model)
+	require.NoError(t, err)
 
-	mockDatastore.EXPECT().
-		ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
-		AnyTimes().
-		DoAndReturn(
-			func(_ context.Context, _ string, tk *openfgav1.TupleKey, _ storage.ReadUserTupleOptions) (*openfgav1.Tuple, error) {
-				if tk.GetObject() == "company:1" {
-					return &openfgav1.Tuple{
-						Key:       tk,
-						Timestamp: timestamppb.Now(),
-					}, nil
-				}
+	tuples := []*openfgav1.TupleKey{
+		tuple.NewTupleKey("license:1", "viewer", "company:1#viewer"),
+		tuple.NewTupleKey("company:1", "viewer", "user:1"),
+		tuple.NewTupleKey("company:1", "viewer", "user:2"),
+	}
 
-				return nil, storage.ErrNotFound
-			})
+	err = ds.Write(context.Background(), storeID, nil, tuples)
+	require.NoError(t, err)
 
-	mockDatastore.EXPECT().
-		ReadUsersetTuples(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
-		Times(1).
-		Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{
-			{
-				Key:       tuple.NewTupleKey("license:1", "viewer", "company:1#viewer"),
-				Timestamp: timestamppb.Now(),
-			},
-		}), nil)
-
-	mockDatastore.EXPECT().
-		ReadStartingWithUser(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
-		Times(1).
-		Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{
-			{
-				Key:       tuple.NewTupleKey("company:1", "viewer", "user:1"),
-				Timestamp: timestamppb.Now(),
-			},
-		}), nil)
+	cache := storageTest.NewMapCache()
 
 	s := MustNewServerWithOpts(
 		WithContext(ctx),
-		WithDatastore(mockDatastore),
+		WithDatastore(ds),
+		WithCheckCache(cache),
 		WithCheckCacheLimit(10),
 		WithCheckQueryCacheTTL(1*time.Minute),
 		WithCheckIteratorCacheEnabled(true),
@@ -437,7 +368,6 @@ func TestBatchCheckWithCachedIterator(t *testing.T) {
 	)
 
 	t.Cleanup(func() {
-		mockDatastore.EXPECT().Close().Times(1)
 		s.Close()
 	})
 
@@ -459,23 +389,12 @@ func TestBatchCheckWithCachedIterator(t *testing.T) {
 
 	require.NoError(t, err)
 	require.True(t, batchCheckResponse.GetResult()[fakeID].GetAllowed())
+	require.Equal(t, 0, cache.Hits())
 
 	// Sleep for a while to ensure that the iterator is cached
-	// Bumped this sleep from 10ms to 100ms due to frequent flaky runs.
-	// TODO: This test needs to be made deterministic by removing the temporal dependency.
 	time.Sleep(100 * time.Millisecond)
 
-	mockDatastore.EXPECT().
-		ReadStartingWithUser(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
-		Times(1).
-		Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{
-			{
-				Key:       tuple.NewTupleKey("company:1", "viewer", "user:2"),
-				Timestamp: timestamppb.Now(),
-			},
-		}), nil)
-
-	// If we check for the same request, data should come from cached iterator and number of ReadUsersetTuples should still be 1
+	// If we check for the same request, data should come from cached iterator.
 	batchCheckResponse, err = s.BatchCheck(ctx, &openfgav1.BatchCheckRequest{
 		StoreId:              storeID,
 		AuthorizationModelId: modelID,
@@ -493,4 +412,5 @@ func TestBatchCheckWithCachedIterator(t *testing.T) {
 
 	require.NoError(t, err)
 	require.True(t, batchCheckResponse.GetResult()[fakeID].GetAllowed())
+	require.Equal(t, 1, cache.Hits())
 }
