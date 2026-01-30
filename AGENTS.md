@@ -85,6 +85,6 @@ Keep this file up to date when making significant changes to the codebase:
 - **Port changes**: Update Ports section
 - **New test patterns**: Add to Testing Guidelines
 - **Import conventions**: Update Code Style if new aliases are adopted
-- **Graph/ListObjects changes**: When modifying `internal/graph/` or `server/commands/reverseexpand.go`, review and stress test matrix tests in `tests/check/` and `tests/listobjects/` to ensure edge cases are covered
+- **Graph/ListObjects changes**: When modifying `internal/graph/` or `server/commands/reverseexpand/`, review and stress test matrix tests in `tests/check/` and `tests/listobjects/` to ensure edge cases are covered
 
 Review this file during major refactors to ensure accuracy.
