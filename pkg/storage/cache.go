@@ -26,13 +26,13 @@ var (
 	cacheItemCount = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: build.ProjectName,
 		Name:      "cache_item_count",
-		Help:      "The total number of items stored in the cache",
+		Help:      "The current number of items stored in the cache",
 	}, []string{"entity"})
 
 	cacheItemRemovedCount = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: build.ProjectName,
 		Name:      "cache_item_removed_count",
-		Help:      "The total number of items removed from the cache",
+		Help:      "The total number of items removed (evicted/expired/deleted) from the cache",
 	}, []string{"entity", "reason"})
 )
 
