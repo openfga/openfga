@@ -29,7 +29,7 @@ HTTP/gRPC Request → Middleware → Server Handler → Command → Graph Resolu
 **pkg/server/** - gRPC/HTTP server implementation
 - `server.go` - Main server struct implementing OpenFGAServiceServer
 - `commands/` - Business logic for each API (Check, Write, ListObjects, etc.)
-- `commands/reverseexpand.go` - Core ListObjects implementation using reverse expansion
+- `commands/reverseexpand/` - Core ListObjects implementation using reverse expansion
 
 **internal/graph/** - Authorization check resolution
 - `check.go` - Recursive graph traversal for Check API
