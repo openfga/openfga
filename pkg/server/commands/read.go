@@ -6,7 +6,6 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
-	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/logger"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
@@ -19,10 +18,8 @@ import (
 // a given object ID or userset in a type, optionally
 // constrained by a relation name.
 type ReadQuery struct {
-	datastore       storage.OpenFGADatastore
-	logger          logger.Logger
-	encoder         encoder.Encoder
-	tokenSerializer encoder.ContinuationTokenSerializer
+	datastore storage.OpenFGADatastore
+	logger    logger.Logger
 }
 
 type ReadQueryOption func(*ReadQuery)
@@ -33,25 +30,11 @@ func WithReadQueryLogger(l logger.Logger) ReadQueryOption {
 	}
 }
 
-func WithReadQueryEncoder(e encoder.Encoder) ReadQueryOption {
-	return func(rq *ReadQuery) {
-		rq.encoder = e
-	}
-}
-
-func WithReadQueryTokenSerializer(serializer encoder.ContinuationTokenSerializer) ReadQueryOption {
-	return func(rq *ReadQuery) {
-		rq.tokenSerializer = serializer
-	}
-}
-
 // NewReadQuery creates a ReadQuery using the provided OpenFGA datastore implementation.
 func NewReadQuery(datastore storage.OpenFGADatastore, opts ...ReadQueryOption) *ReadQuery {
 	rq := &ReadQuery{
-		datastore:       datastore,
-		logger:          logger.NewNoopLogger(),
-		encoder:         encoder.NewBase64Encoder(),
-		tokenSerializer: encoder.NewStringContinuationTokenSerializer(),
+		datastore: datastore,
+		logger:    logger.NewNoopLogger(),
 	}
 
 	for _, opt := range opts {
@@ -76,21 +59,8 @@ func (q *ReadQuery) Execute(ctx context.Context, req *openfgav1.ReadRequest) (*o
 		}
 	}
 
-	decodedContToken, err := q.encoder.Decode(req.GetContinuationToken())
-	if err != nil {
-		return nil, serverErrors.ErrInvalidContinuationToken
-	}
-
-	if len(decodedContToken) > 0 {
-		from, _, err := q.tokenSerializer.Deserialize(string(decodedContToken))
-		if err != nil {
-			return nil, serverErrors.ErrInvalidContinuationToken
-		}
-		decodedContToken = []byte(from)
-	}
-
 	opts := storage.ReadPageOptions{
-		Pagination:  storage.NewPaginationOptions(req.GetPageSize().GetValue(), string(decodedContToken)),
+		Pagination:  storage.NewPaginationOptions(req.GetPageSize().GetValue(), req.GetContinuationToken()),
 		Consistency: storage.ConsistencyOptions{Preference: req.GetConsistency()},
 	}
 
@@ -103,30 +73,13 @@ func (q *ReadQuery) Execute(ctx context.Context, req *openfgav1.ReadRequest) (*o
 		}
 	}
 
-	tuples, contUlid, err := q.datastore.ReadPage(ctx, store, filter, opts)
-	if err != nil {
-		return nil, serverErrors.HandleError("", err)
-	}
-
-	if len(contUlid) == 0 {
-		return &openfgav1.ReadResponse{
-			Tuples:            tuples,
-			ContinuationToken: "",
-		}, nil
-	}
-
-	contToken, err := q.tokenSerializer.Serialize(contUlid, "")
-	if err != nil {
-		return nil, serverErrors.HandleError("", err)
-	}
-
-	encodedContToken, err := q.encoder.Encode(contToken)
+	tuples, contToken, err := q.datastore.ReadPage(ctx, store, filter, opts)
 	if err != nil {
 		return nil, serverErrors.HandleError("", err)
 	}
 
 	return &openfgav1.ReadResponse{
 		Tuples:            tuples,
-		ContinuationToken: encodedContToken,
+		ContinuationToken: contToken,
 	}, nil
 }
