@@ -82,12 +82,14 @@ lint: $(GO_BIN)/golangci-lint ## Lint Go source files
 #-----------------------------------------------------------------------------------------------------------------------
 # Tests
 #-----------------------------------------------------------------------------------------------------------------------
-.PHONY: test test-docker test-bench generate-mocks
+.PHONY: test test-fast test-docker test-bench generate-mocks
 
 test: generate-mocks ## Run all tests. To run a specific test, pass the FILTER var. Usage `make test FILTER="TestCheckLogs"`
-	${call print, "Running tests"}
+	${call print, "Running tests with coverage"}
 	@go test -race \
 			-run "$(FILTER)" \
+			-skip "$(SKIP)" \
+			-tags "integration,$(TAGS)" \
 			-coverpkg=./... \
 			-coverprofile=coverageunit.tmp.out \
 			-covermode=atomic \
@@ -97,12 +99,21 @@ test: generate-mocks ## Run all tests. To run a specific test, pass the FILTER v
 	@cat coverageunit.tmp.out | grep -v "mock" > coverageunit.out
 	@rm coverageunit.tmp.out
 
+test-fast: generate-mocks ## To include integration tests, pass the TAGS var with build tag "integration". Usage `make test-fast TAGS="integration"`
+	${call print, "Running fast tests"}
+	@go test -run "$(FILTER)" \
+			-skip "$(SKIP)" \
+			-tags "$(TAGS)" \
+			-count=1 \
+			-timeout=10m \
+			${GO_PACKAGES}
+
 test-docker: ## Run tests requiring Docker
 	${call print, "Running docker tests"}
 	@if [ -z "$${CI}" ]; then \
 		docker build -t="openfga/openfga:dockertest" .; \
 	fi
-	@go test -v -count=1 -timeout=5m -tags=docker ./cmd/openfga/...
+	@go test -v -count=1 -timeout=5m -tags="docker,integration" ./cmd/openfga/...
 
 test-bench: generate-mocks ## Run benchmark tests. See https://pkg.go.dev/cmd/go#hdr-Testing_flags
 	${call print, "Running benchmark tests"}
