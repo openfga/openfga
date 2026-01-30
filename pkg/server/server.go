@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"sort"
 	"time"
 
@@ -171,6 +172,7 @@ type Server struct {
 	resolveNodeLimit                 uint32
 	resolveNodeBreadthLimit          uint32
 	changelogHorizonOffset           int
+	readChangesMaxPageSize           int32
 	listObjectsDeadline              time.Duration
 	listObjectsMaxResults            uint32
 	listUsersDeadline                time.Duration
@@ -247,6 +249,8 @@ type Server struct {
 	planner *planner.Planner
 
 	requestTimeout time.Duration
+
+	sharedResourceOptions []shared.SharedDatastoreResourcesOpt
 }
 
 type OpenFGAServiceV1Option func(s *Server)
@@ -333,6 +337,17 @@ func WithResolveNodeBreadthLimit(limit uint32) OpenFGAServiceV1Option {
 func WithChangelogHorizonOffset(offset int) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.changelogHorizonOffset = offset
+	}
+}
+
+// WithReadChangesMaxPageSize sets the maximum page size for ReadChanges API requests.
+func WithReadChangesMaxPageSize(max uint32) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		if max <= 0 || max > math.MaxInt32 {
+			max = serverconfig.DefaultReadChangesMaxPageSize
+		}
+
+		s.readChangesMaxPageSize = int32(max)
 	}
 }
 
@@ -821,6 +836,12 @@ func WithListObjectsPipeExtension(extendAfter time.Duration, maxExtensions int) 
 	}
 }
 
+func WithCheckCache(c storage.InMemoryCache[any]) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.sharedResourceOptions = append(s.sharedResourceOptions, shared.WithCheckCache(c))
+	}
+}
+
 // NewServerWithOpts returns a new server.
 // You must call Close on it after you are done using it.
 func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
@@ -830,6 +851,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		encoder:                          encoder.NewBase64Encoder(),
 		transport:                        gateway.NewNoopTransport(),
 		changelogHorizonOffset:           serverconfig.DefaultChangelogHorizonOffset,
+		readChangesMaxPageSize:           serverconfig.DefaultReadChangesMaxPageSize,
 		resolveNodeLimit:                 serverconfig.DefaultResolveNodeLimit,
 		resolveNodeBreadthLimit:          serverconfig.DefaultResolveNodeBreadthLimit,
 		listObjectsDeadline:              serverconfig.DefaultListObjectsDeadline,
@@ -936,7 +958,9 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		return nil, err
 	}
 
-	s.sharedDatastoreResources, err = shared.NewSharedDatastoreResources(s.ctx, s.singleflightGroup, s.datastore, s.cacheSettings, []shared.SharedDatastoreResourcesOpt{shared.WithLogger(s.logger)}...)
+	s.sharedResourceOptions = append(s.sharedResourceOptions, shared.WithLogger(s.logger))
+
+	s.sharedDatastoreResources, err = shared.NewSharedDatastoreResources(s.ctx, s.singleflightGroup, s.datastore, s.cacheSettings, s.sharedResourceOptions...)
 	if err != nil {
 		return nil, err
 	}

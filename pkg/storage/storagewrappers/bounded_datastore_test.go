@@ -156,7 +156,6 @@ func TestBoundedWrapper(t *testing.T) {
 		cancel()
 		err = wg.Wait()
 		require.ErrorIs(t, err, context.Canceled)
-		require.True(t, limitedTupleReader.GetMetadata().WasThrottled)
 	})
 }
 

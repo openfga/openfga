@@ -361,7 +361,7 @@ func TestMessaging(t *testing.T) {
 		require.Equal(t, messageCount*4, count.Load())
 	})
 
-	t.Run("buffer_extension", func(t *testing.T) {
+	t.Run("dynamic_buffer_extension", func(t *testing.T) {
 		const initialBufferSize int = 1
 		const extendAfter time.Duration = time.Microsecond
 		const maxExtensions int = 3
@@ -372,6 +372,45 @@ func TestMessaging(t *testing.T) {
 		defer p.Close()
 
 		p.SetExtensionConfig(extendAfter, maxExtensions)
+
+		for i := maxItems; i > 0; i-- {
+			p.Send(item{})
+		}
+		require.Equal(t, maxItems, p.Size())
+	})
+
+	t.Run("manual_buffer_extension", func(t *testing.T) {
+		const initialBufferSize int = 1
+		const maxExtensions int = 3
+		const maxItems int = 1 << maxExtensions
+
+		p, err := New[item](initialBufferSize)
+		require.NoError(t, err)
+		defer p.Close()
+
+		next := initialBufferSize
+
+		for i := range maxItems {
+			if i == next {
+				next <<= 1
+				err := p.Grow(next)
+				require.NoError(t, err)
+			}
+			p.Send(item{})
+		}
+		require.Equal(t, maxItems, p.Size())
+	})
+
+	t.Run("unbounded_buffer_extension", func(t *testing.T) {
+		const initialBufferSize int = 1
+		const extendAfter time.Duration = 0
+		const maxExtensions int = 10
+		const maxItems int = 1 << maxExtensions
+		p, err := New[item](initialBufferSize)
+		require.NoError(t, err)
+		defer p.Close()
+
+		p.SetExtensionConfig(extendAfter, -1) // unlimited extensions
 
 		for i := maxItems; i > 0; i-- {
 			p.Send(item{})

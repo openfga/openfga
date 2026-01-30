@@ -29,6 +29,7 @@ const (
 	DefaultListUsersDeadline                = 3 * time.Second
 	DefaultListUsersMaxResults              = 1000
 	DefaultMaxConcurrentReadsForListUsers   = math.MaxUint32
+	DefaultReadChangesMaxPageSize           = 100
 
 	DefaultWriteContextByteLimit = 32 * 1_024 // 32KB
 
@@ -334,6 +335,10 @@ type Config struct {
 	// before the non-streaming ListUsers API will respond to the client.
 	// This is to protect the server from misuse of the ListUsers endpoints.
 	ListUsersMaxResults uint32
+
+	// ReadChangesMaxPageSize defines the maximum page size allowed for ReadChanges API requests.
+	// This is to protect the server from misuse of the ReadChanges endpoint.
+	ReadChangesMaxPageSize uint32
 
 	// MaxTuplesPerWrite defines the maximum number of tuples per Write endpoint.
 	MaxTuplesPerWrite int
@@ -708,6 +713,7 @@ func DefaultConfig() *Config {
 		ListObjectsMaxResults:                     DefaultListObjectsMaxResults,
 		ListUsersMaxResults:                       DefaultListUsersMaxResults,
 		ListUsersDeadline:                         DefaultListUsersDeadline,
+		ReadChangesMaxPageSize:                    DefaultReadChangesMaxPageSize,
 		RequestDurationDatastoreQueryCountBuckets: []string{"50", "200"},
 		RequestDurationDispatchCountBuckets:       []string{"50", "200"},
 		Datastore: DatastoreConfig{
