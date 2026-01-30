@@ -393,6 +393,75 @@ var usersetCompleteTestingModelTest = []*stage{
 		},
 	},
 	{
+		Name: "usersets_userset_direct_and_direct_wild",
+		Tuples: []*openfgav1.TupleKey{
+			{Object: "directs-user:uuudadw_1", Relation: "direct_and_direct_wild", User: "user:uuudadw_1"},
+			{Object: "usersets-user:uuudadw_1", Relation: "userset_direct_and_direct_wild", User: "directs-user:uuudadw_1#direct_and_direct_wild"},
+
+			{Object: "directs-user:uuudadw_2", Relation: "direct_and_direct_wild", User: "user:uuudadw_2"},
+			{Object: "directs-user:uuudadw_2", Relation: "direct_and_direct_wild", User: "user:*"},
+			{Object: "directs-user:uuudadw_2a", Relation: "direct_and_direct_wild", User: "user:*"},
+
+			// Need different order because datastore processes order differently (whether wildcard user is first or last)
+			{Object: "directs-user:uuudadw_3", Relation: "direct_and_direct_wild", User: "user:uuudadw_3"},
+			{Object: "directs-user:uuudadw_3", Relation: "direct_and_direct_wild", User: "user:*"},
+			{Object: "directs-user:uuudadw_3a", Relation: "direct_and_direct_wild", User: "user:uuudadw_3"},
+
+			{Object: "usersets-user:uuudadw_2", Relation: "userset_direct_and_direct_wild", User: "directs-user:uuudadw_2#direct_and_direct_wild"},
+			{Object: "usersets-user:uuudadw_2a", Relation: "userset_direct_and_direct_wild", User: "directs-user:uuudadw_2a#direct_and_direct_wild"},
+
+			{Object: "usersets-user:uuudadw_3", Relation: "userset_direct_and_direct_wild", User: "directs-user:uuudadw_3#direct_and_direct_wild"},
+			{Object: "usersets-user:uuudadw_3a", Relation: "userset_direct_and_direct_wild", User: "directs-user:uuudadw_3a#direct_and_direct_wild"},
+		},
+		CheckAssertions: []*checktest.Assertion{
+			{
+				Name:        "valid_user",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:uuudadw_1", Relation: "userset_direct_and_direct_wild", User: "user:uuudadw_1"},
+				Expectation: true,
+			},
+			{
+				Name:        "valid_user_with_wildcard",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:uuudadw_2", Relation: "userset_direct_and_direct_wild", User: "user:uuudadw_2"},
+				Expectation: true,
+			},
+			{
+				Name:        "wildcard_user_with_wildcard",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:uuudadw_2", Relation: "userset_direct_and_direct_wild", User: "user:uuudadw_wildcard"},
+				Expectation: true,
+			},
+			{
+				Name:        "same_user_different_group",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:uuudadw_2a", Relation: "userset_direct_and_direct_wild", User: "user:uuudadw_2"},
+				Expectation: true,
+			},
+			{
+				Name:        "wildcard_non_wildcard_group",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:uuudadw_2a", Relation: "userset_direct_and_direct_wild", User: "user:uuudadw_wildcard"},
+				Expectation: true,
+			},
+			{
+				Name:        "order_3_valid_user_with_wildcard",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:uuudadw_3", Relation: "userset_direct_and_direct_wild", User: "user:uuudadw_2"},
+				Expectation: true,
+			},
+			{
+				Name:        "order_3_wildcard_user_with_wildcard",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:uuudadw_3", Relation: "userset_direct_and_direct_wild", User: "user:uuudadw_wildcard"},
+				Expectation: true,
+			},
+			{
+				Name:        "order_3_same_user_different_group",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:uuudadw_3a", Relation: "userset_direct_and_direct_wild", User: "user:uuudadw_3"},
+				Expectation: true,
+			},
+			{
+				Name:        "order_3_wildcard_non_wildcard_group",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:uuudadw_3a", Relation: "userset_direct_and_direct_wild", User: "user:uuudadw_wildcard"},
+				Expectation: false,
+			},
+		},
+	},
+	{
 		Name: "usersets_userset_to_or_computed",
 		Tuples: []*openfgav1.TupleKey{
 			{Object: "directs-user:utoc_1", Relation: "direct", User: "user:utoc_1"},                                                                  // covers computed

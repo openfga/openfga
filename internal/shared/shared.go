@@ -38,6 +38,12 @@ func WithShadowCacheController(cacheController cachecontroller.CacheController) 
 	}
 }
 
+func WithCheckCache(c storage.InMemoryCache[any]) SharedDatastoreResourcesOpt {
+	return func(s *SharedDatastoreResources) {
+		s.CheckCache = c
+	}
+}
+
 // SharedDatastoreResources contains resources that can be shared across Check requests.
 type SharedDatastoreResources struct {
 	SingleflightGroup     *singleflight.Group
@@ -76,7 +82,7 @@ func NewSharedDatastoreResources(
 		opt(s)
 	}
 
-	if settings.ShouldCreateNewCache() {
+	if settings.ShouldCreateNewCache() && s.CheckCache == nil {
 		var err error
 		s.CheckCache, err = storage.NewInMemoryLRUCache([]storage.InMemoryLRUCacheOpt[any]{
 			storage.WithMaxCacheSize[any](int64(settings.CheckCacheLimit)),
