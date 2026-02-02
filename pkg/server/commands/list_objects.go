@@ -665,6 +665,7 @@ func (q *ListObjectsQuery) Execute(
 		}
 
 		dsMeta := ds.GetMetadata()
+		res.ResolutionMetadata.DatastoreThrottled.Store(dsMeta.WasThrottled)
 		res.ResolutionMetadata.DatastoreQueryCount.Add(dsMeta.DatastoreQueryCount)
 		res.ResolutionMetadata.DatastoreItemCount.Add(dsMeta.DatastoreItemCount)
 		return &res, nil
@@ -867,6 +868,7 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 		}
 
 		dsMeta := ds.GetMetadata()
+		resolutionMetadata.DatastoreThrottled.Store(dsMeta.WasThrottled)
 		resolutionMetadata.DatastoreQueryCount.Add(dsMeta.DatastoreQueryCount)
 		resolutionMetadata.DatastoreItemCount.Add(dsMeta.DatastoreItemCount)
 		return &resolutionMetadata, nil
