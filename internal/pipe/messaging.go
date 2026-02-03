@@ -86,7 +86,7 @@ type Config struct {
 	ExtendAfter time.Duration
 
 	// MaxExtensions is a value that sets the maximum number of times
-	// that a Pipe will dynamically increase its capacity. A zero or
+	// that a Pipe will dynamically increase its capacity. A zero
 	// value will disable capacity extension. A negative value enables
 	// unlimited extensions.
 	MaxExtensions int
