@@ -9,9 +9,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/openfga/openfga/internal/bitutil"
 	"github.com/spf13/viper"
-
-	"github.com/openfga/openfga/internal/pipe"
 )
 
 var (
@@ -38,9 +37,11 @@ const (
 	DefaultMaxConcurrentReadsForListUsers   = math.MaxUint32
 	DefaultReadChangesMaxPageSize           = 100
 
-	DefaultListObjectsBufferSize int = 1 << 7
-	DefaultListObjectsChunkSize  int = 100
-	DefaultListObjectsNumProcs   int = 3
+	DefaultListObjectsChunkSize           = 100
+	DefaultListObjectsNumProcs            = 3
+	DefaultListObjectsBufferSize          = 1 << 7
+	DefaultListObjectsBufferExtendAfter   = 0 * time.Second // 0 means disabled
+	DefaultListObjectsBufferMaxExtensions = 0               // 0 means disabled
 
 	DefaultWriteContextByteLimit = 32 * 1_024 // 32KB
 
@@ -323,13 +324,6 @@ type PlannerConfig struct {
 	CleanupInterval   time.Duration
 }
 
-// PipelineConfig contains pipeline tuning parameters.
-type PipelineConfig struct {
-	Buffer    pipe.Config
-	ChunkSize int
-	NumProcs  int
-}
-
 type Config struct {
 	// If you change any of these settings, please update the documentation at
 	// https://github.com/openfga/openfga.dev/blob/main/docs/content/getting-started/setup-openfga/configuration.mdx
@@ -344,8 +338,21 @@ type Config struct {
 	// This is to protect the server from misuse of the ListObjects endpoints.
 	ListObjectsMaxResults uint32
 
-	// ListObjectsPipelineConfig defines the configuration for the ListObjects pipeline.
-	ListObjectsPipelineConfig PipelineConfig
+	// ListObjectsChunkSize defines how many items are batched before sending between workers.
+	ListObjectsChunkSize int
+
+	// ListObjectsNumProcs sets goroutines per worker for parallel message processing.
+	ListObjectsNumProcs int
+
+	// ListObjectsBufferCapacity sets the capacity of pipes between workers.
+	ListObjectsBufferCapacity int
+
+	// ListObjectsBufferExtendAfter enables dynamic buffer growth when pipes block.
+	ListObjectsBufferExtendAfter time.Duration
+
+	// ListObjectsBufferMaxExtensions sets the maximum number of times that a Pipe will
+	// dynamically increase its capacity in ListObjects queries.
+	ListObjectsBufferMaxExtensions int
 
 	// ListUsersDeadline defines the maximum amount of time to accumulate ListUsers results
 	// before the server will respond. This is to protect the server from misuse of the
@@ -498,7 +505,7 @@ func (cfg *Config) VerifyServerSettings() error {
 		return errors.New("listObjectsDeadline must be non-negative time duration")
 	}
 
-	if err := cfg.ListObjectsPipelineConfig.VerifyPipelineConfig(); err != nil {
+	if err := cfg.VerifyPipelineConfig(); err != nil {
 		return err
 	}
 
@@ -717,27 +724,17 @@ func MaxConditionEvaluationCost() uint64 {
 	return max(DefaultMaxConditionEvaluationCost, viper.GetUint64("maxConditionEvaluationCost"))
 }
 
-// PipelineDefaultConfig returns a balanced configuration suitable for most workloads.
-func PipelineDefaultConfig() PipelineConfig {
-	var config PipelineConfig
-	config.Buffer = pipe.DefaultConfig()
-	config.Buffer.Capacity = DefaultListObjectsBufferSize
-	config.ChunkSize = DefaultListObjectsChunkSize
-	config.NumProcs = DefaultListObjectsNumProcs
-	return config
-}
-
-func (cfg *PipelineConfig) VerifyPipelineConfig() error {
-	if err := cfg.Buffer.Validate(); err != nil {
-		return err
+func (cfg *Config) VerifyPipelineConfig() error {
+	if !bitutil.PowerOfTwo(cfg.ListObjectsBufferCapacity) {
+		return errors.New("buffer capacity must be a power of two")
 	}
 
-	if cfg.ChunkSize < 1 {
-		return ErrListObjectsInvalidChunkSize
+	if cfg.ListObjectsChunkSize < 1 {
+		return errors.New("chunk size must be greater than zero")
 	}
 
-	if cfg.NumProcs < 1 {
-		return ErrListObjectsInvalidNumProcs
+	if cfg.ListObjectsNumProcs < 1 {
+		return errors.New("numProcs must be greater than zero")
 	}
 	return nil
 }
@@ -761,7 +758,11 @@ func DefaultConfig() *Config {
 		AccessControl:                             AccessControlConfig{Enabled: false, StoreID: "", ModelID: ""},
 		ListObjectsDeadline:                       DefaultListObjectsDeadline,
 		ListObjectsMaxResults:                     DefaultListObjectsMaxResults,
-		ListObjectsPipelineConfig:                 PipelineDefaultConfig(),
+		ListObjectsChunkSize:                      DefaultListObjectsChunkSize,
+		ListObjectsNumProcs:                       DefaultListObjectsNumProcs,
+		ListObjectsBufferCapacity:                 DefaultListObjectsBufferSize,
+		ListObjectsBufferExtendAfter:              DefaultListObjectsBufferExtendAfter,
+		ListObjectsBufferMaxExtensions:            DefaultListObjectsBufferMaxExtensions,
 		ListUsersMaxResults:                       DefaultListUsersMaxResults,
 		ListUsersDeadline:                         DefaultListUsersDeadline,
 		ReadChangesMaxPageSize:                    DefaultReadChangesMaxPageSize,

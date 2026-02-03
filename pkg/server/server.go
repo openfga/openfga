@@ -175,7 +175,11 @@ type Server struct {
 	readChangesMaxPageSize           int32
 	listObjectsDeadline              time.Duration
 	listObjectsMaxResults            uint32
-	listObjectsPipelineConfig        serverconfig.PipelineConfig
+	listObjectsChunkSize             int
+	listObjectsNumProcs              int
+	listObjectsBufferCapacity        int
+	listObjectsBufferExtendAfter     time.Duration
+	listObjectsBufferMaxExtensions   int
 	listUsersDeadline                time.Duration
 	listUsersMaxResults              uint32
 	maxChecksPerBatchCheck           uint32
@@ -796,7 +800,7 @@ func WithSharedIteratorTTL(ttl time.Duration) OpenFGAServiceV1Option {
 // and pass them all as a filter to a single query for the document objects.
 func WithListObjectsChunkSize(value int) OpenFGAServiceV1Option {
 	return func(s *Server) {
-		s.listObjectsPipelineConfig.ChunkSize = value
+		s.listObjectsChunkSize = value
 	}
 }
 
@@ -809,7 +813,7 @@ func WithListObjectsChunkSize(value int) OpenFGAServiceV1Option {
 // memory allocation in a worst case scenario.
 func WithListObjectsBufferCapacity(value int) OpenFGAServiceV1Option {
 	return func(s *Server) {
-		s.listObjectsPipelineConfig.Buffer.Capacity = value
+		s.listObjectsBufferCapacity = value
 	}
 }
 
@@ -820,7 +824,7 @@ func WithListObjectsBufferCapacity(value int) OpenFGAServiceV1Option {
 // incoming messages.
 func WithListObjectsNumProcs(value int) OpenFGAServiceV1Option {
 	return func(s *Server) {
-		s.listObjectsPipelineConfig.NumProcs = value
+		s.listObjectsNumProcs = value
 	}
 }
 
@@ -831,8 +835,8 @@ func WithListObjectsNumProcs(value int) OpenFGAServiceV1Option {
 // is doubled up to maxExtensions number of times.
 func WithListObjectsPipeExtension(extendAfter time.Duration, maxExtensions int) OpenFGAServiceV1Option {
 	return func(s *Server) {
-		s.listObjectsPipelineConfig.Buffer.ExtendAfter = extendAfter
-		s.listObjectsPipelineConfig.Buffer.MaxExtensions = maxExtensions
+		s.listObjectsBufferExtendAfter = extendAfter
+		s.listObjectsBufferMaxExtensions = maxExtensions
 	}
 }
 
@@ -856,7 +860,11 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		resolveNodeBreadthLimit:          serverconfig.DefaultResolveNodeBreadthLimit,
 		listObjectsDeadline:              serverconfig.DefaultListObjectsDeadline,
 		listObjectsMaxResults:            serverconfig.DefaultListObjectsMaxResults,
-		listObjectsPipelineConfig:        serverconfig.PipelineDefaultConfig(),
+		listObjectsChunkSize:             serverconfig.DefaultListObjectsChunkSize,
+		listObjectsNumProcs:              serverconfig.DefaultListObjectsNumProcs,
+		listObjectsBufferCapacity:        serverconfig.DefaultListObjectsBufferSize,
+		listObjectsBufferExtendAfter:     serverconfig.DefaultListObjectsBufferExtendAfter,
+		listObjectsBufferMaxExtensions:   serverconfig.DefaultListObjectsBufferMaxExtensions,
 		listUsersDeadline:                serverconfig.DefaultListUsersDeadline,
 		listUsersMaxResults:              serverconfig.DefaultListUsersMaxResults,
 		maxChecksPerBatchCheck:           serverconfig.DefaultMaxChecksPerBatchCheck,

@@ -20,6 +20,7 @@ import (
 	"github.com/openfga/openfga/internal/condition"
 	openfgaErrors "github.com/openfga/openfga/internal/errors"
 	"github.com/openfga/openfga/internal/graph"
+	"github.com/openfga/openfga/internal/pipe"
 	"github.com/openfga/openfga/internal/shared"
 	"github.com/openfga/openfga/internal/throttler"
 	"github.com/openfga/openfga/internal/throttler/threshold"
@@ -77,8 +78,12 @@ type ListObjectsQuery struct {
 	optimizationsEnabled bool // Indicates if experimental optimizations are enabled for ListObjectsResolver
 	useShadowCache       bool // Indicates that the shadow cache should be used instead of the main cache
 
-	pipelineEnabled bool // Indicates whether to run with the pipeline optimized code
-	pipelineConfig  serverconfig.PipelineConfig
+	pipelineEnabled                bool // Indicates whether to run with the pipeline optimized code
+	listObjectsChunkSize           int
+	listObjectsNumProcs            int
+	listObjectsBufferCapacity      int
+	listObjectsBufferExtendAfter   time.Duration
+	listObjectsBufferMaxExtensions int
 }
 
 type ListObjectsResolver interface {
@@ -207,26 +212,26 @@ func WithListObjectsPipelineEnabled(value bool) ListObjectsQueryOption {
 
 func WithListObjectsChunkSize(value int) ListObjectsQueryOption {
 	return func(d *ListObjectsQuery) {
-		d.pipelineConfig.ChunkSize = value
+		d.listObjectsChunkSize = value
 	}
 }
 
 func WithListObjectsBufferSize(value int) ListObjectsQueryOption {
 	return func(d *ListObjectsQuery) {
-		d.pipelineConfig.Buffer.Capacity = value
+		d.listObjectsBufferCapacity = value
 	}
 }
 
 func WithListObjectsNumProcs(value int) ListObjectsQueryOption {
 	return func(d *ListObjectsQuery) {
-		d.pipelineConfig.NumProcs = value
+		d.listObjectsNumProcs = value
 	}
 }
 
 func WithListObjectsPipeExtension(extendAfter time.Duration, maxExtensions int) ListObjectsQueryOption {
 	return func(d *ListObjectsQuery) {
-		d.pipelineConfig.Buffer.ExtendAfter = extendAfter
-		d.pipelineConfig.Buffer.MaxExtensions = maxExtensions
+		d.listObjectsBufferExtendAfter = extendAfter
+		d.listObjectsBufferMaxExtensions = maxExtensions
 	}
 }
 
@@ -263,10 +268,14 @@ func NewListObjectsQuery(
 		sharedDatastoreResources: &shared.SharedDatastoreResources{
 			CacheController: cachecontroller.NewNoopCacheController(),
 		},
-		optimizationsEnabled: false,
-		useShadowCache:       false,
-		ff:                   featureflags.NewNoopFeatureFlagClient(),
-		pipelineConfig:       serverconfig.PipelineDefaultConfig(),
+		optimizationsEnabled:           false,
+		useShadowCache:                 false,
+		ff:                             featureflags.NewNoopFeatureFlagClient(),
+		listObjectsChunkSize:           serverconfig.DefaultListObjectsChunkSize,
+		listObjectsNumProcs:            serverconfig.DefaultListObjectsNumProcs,
+		listObjectsBufferCapacity:      serverconfig.DefaultListObjectsBufferSize,
+		listObjectsBufferExtendAfter:   serverconfig.DefaultListObjectsBufferExtendAfter,
+		listObjectsBufferMaxExtensions: serverconfig.DefaultListObjectsBufferMaxExtensions,
 	}
 
 	for _, opt := range opts {
@@ -603,7 +612,15 @@ func (q *ListObjectsQuery) Execute(
 		seq, err := pipeline.New(
 			wgraph,
 			reader,
-			pipeline.WithConfig(q.pipelineConfig),
+			pipeline.WithConfig(pipeline.Config{
+				ChunkSize: q.listObjectsChunkSize,
+				NumProcs:  q.listObjectsNumProcs,
+				Buffer: pipe.Config{
+					Capacity:      q.listObjectsBufferCapacity,
+					ExtendAfter:   q.listObjectsBufferExtendAfter,
+					MaxExtensions: q.listObjectsBufferMaxExtensions,
+				},
+			}),
 		).Expand(timeoutCtx, spec)
 
 		if err != nil {
@@ -769,7 +786,15 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 		seq, err := pipeline.New(
 			wgraph,
 			reader,
-			pipeline.WithConfig(q.pipelineConfig),
+			pipeline.WithConfig(pipeline.Config{
+				ChunkSize: q.listObjectsChunkSize,
+				NumProcs:  q.listObjectsNumProcs,
+				Buffer: pipe.Config{
+					Capacity:      q.listObjectsBufferCapacity,
+					ExtendAfter:   q.listObjectsBufferExtendAfter,
+					MaxExtensions: q.listObjectsBufferMaxExtensions,
+				},
+			}),
 		).Expand(timeoutCtx, spec)
 
 		if err != nil {

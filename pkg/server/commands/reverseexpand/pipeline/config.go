@@ -3,15 +3,15 @@ package pipeline
 import (
 	"time"
 
-	serverconfig "github.com/openfga/openfga/pkg/server/config"
+	"github.com/openfga/openfga/internal/pipe"
 )
 
-type Option func(*serverconfig.PipelineConfig)
+type Option func(*Config)
 
 // WithBufferCapacity sets the capacity of pipes between workers.
 // Must be a power of two. Larger buffers reduce blocking but increase memory.
 func WithBufferCapacity(size int) Option {
-	return func(config *serverconfig.PipelineConfig) {
+	return func(config *Config) {
 		config.Buffer.Capacity = size
 	}
 }
@@ -19,7 +19,7 @@ func WithBufferCapacity(size int) Option {
 // WithChunkSize sets how many items are batched before sending between workers.
 // Larger chunks improve throughput but increase latency to first result.
 func WithChunkSize(size int) Option {
-	return func(config *serverconfig.PipelineConfig) {
+	return func(config *Config) {
 		config.ChunkSize = size
 	}
 }
@@ -27,7 +27,7 @@ func WithChunkSize(size int) Option {
 // WithNumProcs sets goroutines per worker for parallel message processing.
 // Higher values improve throughput but increase scheduling overhead.
 func WithNumProcs(num int) Option {
-	return func(config *serverconfig.PipelineConfig) {
+	return func(config *Config) {
 		config.NumProcs = num
 	}
 }
@@ -36,15 +36,47 @@ func WithNumProcs(num int) Option {
 // Each extension doubles capacity. Use -1 for maxExtensions to allow unbounded growth.
 // Disabled by default; enable when workloads have unpredictable burst sizes.
 func WithPipeExtension(extendAfter time.Duration, maxExtensions int) Option {
-	return func(config *serverconfig.PipelineConfig) {
+	return func(config *Config) {
 		config.Buffer.ExtendAfter = extendAfter
 		config.Buffer.MaxExtensions = maxExtensions
 	}
 }
 
 // WithConfig replaces the entire configuration.
-func WithConfig(c serverconfig.PipelineConfig) Option {
-	return func(config *serverconfig.PipelineConfig) {
+func WithConfig(c Config) Option {
+	return func(config *Config) {
 		*config = c
 	}
+}
+
+// Config contains pipeline tuning parameters.
+type Config struct {
+	Buffer    pipe.Config
+	ChunkSize int
+	NumProcs  int
+}
+
+// DefaultConfig returns a balanced configuration suitable for most workloads.
+func DefaultConfig() Config {
+	var config Config
+	config.Buffer = pipe.DefaultConfig()
+	config.Buffer.Capacity = defaultBufferSize
+	config.ChunkSize = defaultChunkSize
+	config.NumProcs = defaultNumProcs
+	return config
+}
+
+func (config *Config) Validate() error {
+	if err := config.Buffer.Validate(); err != nil {
+		return err
+	}
+
+	if config.ChunkSize < 1 {
+		return ErrInvalidChunkSize
+	}
+
+	if config.NumProcs < 1 {
+		return ErrInvalidNumProcs
+	}
+	return nil
 }

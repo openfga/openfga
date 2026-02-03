@@ -12,7 +12,6 @@ import (
 	weightedGraph "github.com/openfga/language/pkg/go/graph"
 
 	"github.com/openfga/openfga/internal/pipe"
-	serverconfig "github.com/openfga/openfga/pkg/server/config"
 )
 
 type (
@@ -41,9 +40,17 @@ var (
 	nodeTypeSpecificTypeWildcard    = weightedGraph.SpecificTypeWildcard
 )
 
+const (
+	defaultBufferSize int = 1 << 7
+	defaultChunkSize  int = 100
+	defaultNumProcs   int = 3
+)
+
 var (
-	ErrInvalidObject = errors.New("invalid object")
-	ErrInvalidUser   = errors.New("invalid user")
+	ErrInvalidChunkSize = errors.New("chunk size must be greater than zero")
+	ErrInvalidNumProcs  = errors.New("process number must be greater than zero")
+	ErrInvalidObject    = errors.New("invalid object")
+	ErrInvalidUser      = errors.New("invalid user")
 )
 
 type ObjectQuery struct {
@@ -67,7 +74,7 @@ type Spec struct {
 type Pipeline struct {
 	graph  *Graph
 	reader ObjectReader
-	config serverconfig.PipelineConfig
+	config Config
 }
 
 // New creates a Pipeline with the given graph and reader.
@@ -75,7 +82,7 @@ func New(graph *Graph, reader ObjectReader, options ...Option) *Pipeline {
 	var pl Pipeline
 	pl.graph = graph
 	pl.reader = reader
-	pl.config = serverconfig.PipelineDefaultConfig()
+	pl.config = DefaultConfig()
 
 	for _, o := range options {
 		o(&pl.config)
@@ -380,7 +387,7 @@ func (pl *Pipeline) streamResults(ctx context.Context, p *expansion) iter.Seq[It
 // Expand returns a streaming iterator of objects accessible to the user specified in spec.
 // Iteration can be stopped early; the pipeline will clean up resources automatically.
 func (pl *Pipeline) Expand(ctx context.Context, spec Spec) (iter.Seq[Item], error) {
-	if err := pl.config.VerifyPipelineConfig(); err != nil {
+	if err := pl.config.Validate(); err != nil {
 		return emptySequence, err
 	}
 

@@ -1186,23 +1186,23 @@ func TestDefaultConfig(t *testing.T) {
 
 	val = res.Get("properties.listObjectsChunkSize.default")
 	require.True(t, val.Exists())
-	require.EqualValues(t, val.Int(), cfg.ListObjectsPipelineConfig.ChunkSize)
+	require.EqualValues(t, val.Int(), cfg.ListObjectsChunkSize)
 
 	val = res.Get("properties.listObjectsNumProcs.default")
 	require.True(t, val.Exists())
-	require.EqualValues(t, val.Int(), cfg.ListObjectsPipelineConfig.NumProcs)
+	require.EqualValues(t, val.Int(), cfg.ListObjectsNumProcs)
 
 	val = res.Get("properties.listObjectsBufferCapacity.default")
 	require.True(t, val.Exists())
-	require.EqualValues(t, val.Int(), cfg.ListObjectsPipelineConfig.Buffer.Capacity)
+	require.EqualValues(t, val.Int(), cfg.ListObjectsBufferCapacity)
 
 	val = res.Get("properties.listObjectsBufferExtendAfter.default")
 	require.True(t, val.Exists())
-	require.EqualValues(t, val.Int(), cfg.ListObjectsPipelineConfig.Buffer.ExtendAfter)
+	require.EqualValues(t, val.String(), cfg.ListObjectsBufferExtendAfter.String())
 
 	val = res.Get("properties.listObjectsBufferMaxExtensions.default")
 	require.True(t, val.Exists())
-	require.EqualValues(t, val.Int(), cfg.ListObjectsPipelineConfig.Buffer.MaxExtensions)
+	require.EqualValues(t, val.Int(), cfg.ListObjectsBufferMaxExtensions)
 
 	val = res.Get("properties.listUsersDeadline.default")
 	require.True(t, val.Exists())
@@ -1466,11 +1466,11 @@ func TestRunCommandListObjectsPipelineFlagsAreRespected(t *testing.T) {
 		require.NoError(t, err)
 
 		require.Equal(t, []string{serverconfig.ExperimentalPipelineListObjects}, cfg.Experimentals)
-		require.Equal(t, 1, cfg.ListObjectsPipelineConfig.ChunkSize)
-		require.Equal(t, 2, cfg.ListObjectsPipelineConfig.NumProcs)
-		require.Equal(t, 4, cfg.ListObjectsPipelineConfig.Buffer.Capacity)
-		require.Equal(t, 2*time.Second, cfg.ListObjectsPipelineConfig.Buffer.ExtendAfter)
-		require.Equal(t, -1, cfg.ListObjectsPipelineConfig.Buffer.MaxExtensions)
+		require.Equal(t, 1, cfg.ListObjectsChunkSize)
+		require.Equal(t, 2, cfg.ListObjectsNumProcs)
+		require.Equal(t, 4, cfg.ListObjectsBufferCapacity)
+		require.Equal(t, 2*time.Second, cfg.ListObjectsBufferExtendAfter)
+		require.Equal(t, -1, cfg.ListObjectsBufferMaxExtensions)
 		return nil
 	}
 
