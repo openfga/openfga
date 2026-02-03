@@ -175,11 +175,6 @@ type Server struct {
 	readChangesMaxPageSize           int32
 	listObjectsDeadline              time.Duration
 	listObjectsMaxResults            uint32
-	ListObjectsChunkSize             int
-	listObjectsNumProcs              int
-	listObjectsBufferCapacity        int
-	listObjectsBufferExtendAfter     time.Duration
-	listObjectsBufferMaxExtensions   int
 	listObjectsPipelineConfig        serverconfig.PipelineConfig
 	listUsersDeadline                time.Duration
 	listUsersMaxResults              uint32
