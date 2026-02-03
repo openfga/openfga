@@ -240,7 +240,7 @@ func NewRunCommand() *cobra.Command {
 
 	flags.Int("listObjects-chunk-size", defaultConfig.ListObjectsChunkSize, "the number of results to fetch from the datastore in each chunk when serving ListObjects requests. Only effective when the `pipeline_list_objects` experimental feature is enabled.")
 
-	flags.Int("listObjects-num-procs", defaultConfig.ListObjectsNumProcs, "the maximum results to return in non-streaming ListObjects API responses. If 0, all results can be returned")
+	flags.Int("listObjects-num-procs", defaultConfig.ListObjectsNumProcs, "the number of goroutines used to process chunks in the ListObjects pipeline. Only effective when the `pipeline_list_objects` experimental feature is enabled.")
 
 	flags.Int("listObjects-buffer-capacity", defaultConfig.ListObjectsBufferCapacity, "limits how many intermediate result batches can be queued in memory while serving ListObjects requests. When the queue is full, processing will pause until space is available. Must be a power of two (for example 64, 128, 256). Larger values can reduce blocking under bursty load but increase memory usage (especially with larger listObjectsChunkSize). Only effective when the `pipeline_list_objects` experimental feature is enabled.")
 
