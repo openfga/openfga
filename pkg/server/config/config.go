@@ -10,6 +10,13 @@ import (
 	"time"
 
 	"github.com/spf13/viper"
+
+	"github.com/openfga/openfga/internal/pipe"
+)
+
+var (
+	ErrListObjectsInvalidChunkSize = errors.New("chunk size must be greater than zero")
+	ErrListObjectsInvalidNumProcs  = errors.New("process number must be greater than zero")
 )
 
 const (
@@ -30,6 +37,10 @@ const (
 	DefaultListUsersMaxResults              = 1000
 	DefaultMaxConcurrentReadsForListUsers   = math.MaxUint32
 	DefaultReadChangesMaxPageSize           = 100
+
+	DefaultListObjectsBufferSize int = 1 << 7
+	DefaultListObjectsChunkSize  int = 100
+	DefaultListObjectsNumProcs   int = 3
 
 	DefaultWriteContextByteLimit = 32 * 1_024 // 32KB
 
@@ -312,9 +323,16 @@ type PlannerConfig struct {
 	CleanupInterval   time.Duration
 }
 
+// PipelineConfig contains pipeline tuning parameters.
+type PipelineConfig struct {
+	Buffer    pipe.Config
+	ChunkSize int
+	NumProcs  int
+}
+
 type Config struct {
 	// If you change any of these settings, please update the documentation at
-	// https://github.com/openfga/openfga.dev/blob/main/docs/content/intro/setup-openfga.mdx
+	// https://github.com/openfga/openfga.dev/blob/main/docs/content/getting-started/setup-openfga/configuration.mdx
 
 	// ListObjectsDeadline defines the maximum amount of time to accumulate ListObjects results
 	// before the server will respond. This is to protect the server from misuse of the
@@ -325,6 +343,9 @@ type Config struct {
 	// before the non-streaming ListObjects API will respond to the client.
 	// This is to protect the server from misuse of the ListObjects endpoints.
 	ListObjectsMaxResults uint32
+
+	// ListObjectsPipelineConfig defines the configuration for the ListObjects pipeline.
+	ListObjectsPipelineConfig PipelineConfig
 
 	// ListUsersDeadline defines the maximum amount of time to accumulate ListUsers results
 	// before the server will respond. This is to protect the server from misuse of the
@@ -475,6 +496,10 @@ func (cfg *Config) VerifyServerSettings() error {
 
 	if cfg.ListObjectsDeadline < 0 {
 		return errors.New("listObjectsDeadline must be non-negative time duration")
+	}
+
+	if err := cfg.ListObjectsPipelineConfig.VerifyPipelineConfig(); err != nil {
+		return err
 	}
 
 	if cfg.ListUsersDeadline < 0 {
@@ -692,6 +717,31 @@ func MaxConditionEvaluationCost() uint64 {
 	return max(DefaultMaxConditionEvaluationCost, viper.GetUint64("maxConditionEvaluationCost"))
 }
 
+// PipelineDefaultConfig returns a balanced configuration suitable for most workloads.
+func PipelineDefaultConfig() PipelineConfig {
+	var config PipelineConfig
+	config.Buffer = pipe.DefaultConfig()
+	config.Buffer.Capacity = DefaultListObjectsBufferSize
+	config.ChunkSize = DefaultListObjectsChunkSize
+	config.NumProcs = DefaultListObjectsNumProcs
+	return config
+}
+
+func (cfg *PipelineConfig) VerifyPipelineConfig() error {
+	if err := cfg.Buffer.Validate(); err != nil {
+		return err
+	}
+
+	if cfg.ChunkSize < 1 {
+		return ErrListObjectsInvalidChunkSize
+	}
+
+	if cfg.NumProcs < 1 {
+		return ErrListObjectsInvalidNumProcs
+	}
+	return nil
+}
+
 // DefaultConfig is the OpenFGA server default configurations.
 func DefaultConfig() *Config {
 	return &Config{
@@ -711,6 +761,7 @@ func DefaultConfig() *Config {
 		AccessControl:                             AccessControlConfig{Enabled: false, StoreID: "", ModelID: ""},
 		ListObjectsDeadline:                       DefaultListObjectsDeadline,
 		ListObjectsMaxResults:                     DefaultListObjectsMaxResults,
+		ListObjectsPipelineConfig:                 PipelineDefaultConfig(),
 		ListUsersMaxResults:                       DefaultListUsersMaxResults,
 		ListUsersDeadline:                         DefaultListUsersDeadline,
 		ReadChangesMaxPageSize:                    DefaultReadChangesMaxPageSize,

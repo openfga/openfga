@@ -78,7 +78,7 @@ type ListObjectsQuery struct {
 	useShadowCache       bool // Indicates that the shadow cache should be used instead of the main cache
 
 	pipelineEnabled bool // Indicates whether to run with the pipeline optimized code
-	pipelineConfig  pipeline.Config
+	pipelineConfig  serverconfig.PipelineConfig
 }
 
 type ListObjectsResolver interface {
@@ -266,7 +266,7 @@ func NewListObjectsQuery(
 		optimizationsEnabled: false,
 		useShadowCache:       false,
 		ff:                   featureflags.NewNoopFeatureFlagClient(),
-		pipelineConfig:       pipeline.DefaultConfig(),
+		pipelineConfig:       serverconfig.PipelineDefaultConfig(),
 	}
 
 	for _, opt := range opts {

@@ -34,7 +34,6 @@ import (
 	"github.com/openfga/openfga/pkg/featureflags"
 	"github.com/openfga/openfga/pkg/gateway"
 	"github.com/openfga/openfga/pkg/logger"
-	"github.com/openfga/openfga/pkg/server/commands/reverseexpand/pipeline"
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
@@ -176,7 +175,12 @@ type Server struct {
 	readChangesMaxPageSize           int32
 	listObjectsDeadline              time.Duration
 	listObjectsMaxResults            uint32
-	listObjectsPipelineConfig        pipeline.Config
+	ListObjectsChunkSize             int
+	listObjectsNumProcs              int
+	listObjectsBufferCapacity        int
+	listObjectsBufferExtendAfter     time.Duration
+	listObjectsBufferMaxExtensions   int
+	listObjectsPipelineConfig        serverconfig.PipelineConfig
 	listUsersDeadline                time.Duration
 	listUsersMaxResults              uint32
 	maxChecksPerBatchCheck           uint32
@@ -857,7 +861,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		resolveNodeBreadthLimit:          serverconfig.DefaultResolveNodeBreadthLimit,
 		listObjectsDeadline:              serverconfig.DefaultListObjectsDeadline,
 		listObjectsMaxResults:            serverconfig.DefaultListObjectsMaxResults,
-		listObjectsPipelineConfig:        pipeline.DefaultConfig(),
+		listObjectsPipelineConfig:        serverconfig.PipelineDefaultConfig(),
 		listUsersDeadline:                serverconfig.DefaultListUsersDeadline,
 		listUsersMaxResults:              serverconfig.DefaultListUsersMaxResults,
 		maxChecksPerBatchCheck:           serverconfig.DefaultMaxChecksPerBatchCheck,

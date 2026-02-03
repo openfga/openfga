@@ -224,6 +224,21 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 		util.MustBindPFlag("listObjectsMaxResults", flags.Lookup("listObjects-max-results"))
 		util.MustBindEnv("listObjectsMaxResults", "OPENFGA_LIST_OBJECTS_MAX_RESULTS", "OPENFGA_LISTOBJECTSMAXRESULTS")
 
+		util.MustBindPFlag("listObjectsPipelineConfig.chunkSize", flags.Lookup("listObjects-chunk-size"))
+		util.MustBindEnv("listObjectsPipelineConfig.chunkSize", "OPENFGA_LIST_OBJECTS_CHUNK_SIZE", "OPENFGA_LISTOBJECTSCHUNKSIZE")
+
+		util.MustBindPFlag("listObjectsPipelineConfig.numProcs", flags.Lookup("listObjects-num-procs"))
+		util.MustBindEnv("listObjectsPipelineConfig.numProcs", "OPENFGA_LIST_OBJECTS_NUM_PROCS", "OPENFGA_LISTOBJECTSNUMPROCS")
+
+		util.MustBindPFlag("listObjectsPipelineConfig.buffer.capacity", flags.Lookup("listObjects-buffer-capacity"))
+		util.MustBindEnv("listObjectsPipelineConfig.buffer.capacity", "OPENFGA_LIST_OBJECTS_BUFFER_CAPACITY", "OPENFGA_LISTOBJECTSBUFFERCAPACITY")
+
+		util.MustBindPFlag("listObjectsPipelineConfig.buffer.extendAfter", flags.Lookup("listObjects-buffer-extend-after"))
+		util.MustBindEnv("listObjectsPipelineConfig.buffer.extendAfter", "OPENFGA_LIST_OBJECTS_BUFFER_EXTEND_AFTER", "OPENFGA_LISTOBJECTSBUFFEREXTENDAFTER")
+
+		util.MustBindPFlag("listObjectsPipelineConfig.buffer.maxExtensions", flags.Lookup("listObjects-buffer-max-extensions"))
+		util.MustBindEnv("listObjectsPipelineConfig.buffer.maxExtensions", "OPENFGA_LIST_OBJECTS_BUFFER_MAX_EXTENSIONS", "OPENFGA_LISTOBJECTSBUFFERMAXEXTENSIONS")
+
 		util.MustBindPFlag("listUsersDeadline", flags.Lookup("listUsers-deadline"))
 		util.MustBindEnv("listUsersDeadline", "OPENFGA_LIST_USERS_DEADLINE", "OPENFGA_LISTUSERSDEADLINE")
 

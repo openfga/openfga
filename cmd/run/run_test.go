@@ -1184,6 +1184,26 @@ func TestDefaultConfig(t *testing.T) {
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), cfg.ListObjectsMaxResults)
 
+	val = res.Get("properties.listObjectsChunkSize.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.ListObjectsPipelineConfig.ChunkSize)
+
+	val = res.Get("properties.listObjectsNumProcs.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.ListObjectsPipelineConfig.NumProcs)
+
+	val = res.Get("properties.listObjectsBufferCapacity.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.ListObjectsPipelineConfig.Buffer.Capacity)
+
+	val = res.Get("properties.listObjectsBufferExtendAfter.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.ListObjectsPipelineConfig.Buffer.ExtendAfter)
+
+	val = res.Get("properties.listObjectsBufferMaxExtensions.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.ListObjectsPipelineConfig.Buffer.MaxExtensions)
+
 	val = res.Get("properties.listUsersDeadline.default")
 	require.True(t, val.Exists())
 	require.Equal(t, val.String(), cfg.ListUsersDeadline.String())
@@ -1435,6 +1455,37 @@ requestDurationDispatchCountBuckets: [32,42]
 	require.Equal(t, 5*time.Second, cfg.CheckQueryCache.TTL)
 	require.Equal(t, []string{"33", "44"}, cfg.RequestDurationDatastoreQueryCountBuckets)
 	require.Equal(t, []string{"32", "42"}, cfg.RequestDurationDispatchCountBuckets)
+}
+
+func TestRunCommandListObjectsPipelineFlagsAreRespected(t *testing.T) {
+	util.PrepareTempConfigDir(t)
+
+	runCmd := NewRunCommand()
+	runCmd.RunE = func(cmd *cobra.Command, _ []string) error {
+		cfg, err := ReadConfig()
+		require.NoError(t, err)
+
+		require.Equal(t, []string{serverconfig.ExperimentalPipelineListObjects}, cfg.Experimentals)
+		require.Equal(t, 1, cfg.ListObjectsPipelineConfig.ChunkSize)
+		require.Equal(t, 2, cfg.ListObjectsPipelineConfig.NumProcs)
+		require.Equal(t, 4, cfg.ListObjectsPipelineConfig.Buffer.Capacity)
+		require.Equal(t, 2*time.Second, cfg.ListObjectsPipelineConfig.Buffer.ExtendAfter)
+		require.Equal(t, -1, cfg.ListObjectsPipelineConfig.Buffer.MaxExtensions)
+		return nil
+	}
+
+	rootCmd := cmd.NewRootCommand()
+	rootCmd.AddCommand(runCmd)
+	rootCmd.SetArgs([]string{
+		"run",
+		"--experimentals=pipeline_list_objects",
+		"--listObjects-chunk-size=1",
+		"--listObjects-num-procs=2",
+		"--listObjects-buffer-capacity=4",
+		"--listObjects-buffer-extend-after=2s",
+		"--listObjects-buffer-max-extensions=-1",
+	})
+	require.NoError(t, rootCmd.Execute())
 }
 
 func TestRunCommandConfigIsMerged(t *testing.T) {

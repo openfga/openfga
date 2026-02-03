@@ -88,6 +88,40 @@
             "default": 1000,
             "x-env-variable": "OPENFGA_LIST_OBJECTS_MAX_RESULTS"
         },
+        "listObjectsChunkSize": {
+            "description": "The number of results to fetch from the datastore in each chunk when serving ListObjects requests. Only effective when the `pipeline_list_objects` experimental feature is enabled.",
+            "type": "integer",
+            "minimum": 1,
+            "default": 100,
+            "x-env-variable": "OPENFGA_LIST_OBJECTS_CHUNK_SIZE"
+        },
+        "listObjectsNumProcs": {
+            "description": "The number of goroutines to use for processing chunks when serving ListObjects requests. Only effective when the `pipeline_list_objects` experimental feature is enabled.",
+            "type": "integer",
+            "minimum": 1,
+            "default": 3,
+            "x-env-variable": "OPENFGA_LIST_OBJECTS_NUM_PROCS"
+        },
+        "listObjectsBufferCapacity": {
+            "description": "Limits how many intermediate result batches can be queued in memory while serving ListObjects requests. When the queue is full, processing will pause until space is available. Must be a power of two (for example 64, 128, 256). Larger values can reduce blocking under bursty load but increase memory usage (especially with larger listObjectsChunkSize). Only effective when the `pipeline_list_objects` experimental feature is enabled.",
+            "type": "integer",
+            "minimum": 1,
+            "default": 128,
+            "x-env-variable": "OPENFGA_LIST_OBJECTS_BUFFER_CAPACITY"
+        },
+        "listObjectsBufferExtendAfter": {
+            "description": "The duration of time after which the intermediate result batches wait to be increased in ListObjects. When a buffer blocks for longer than the listObjectsBufferExtendAfter duration, the buffer capacity is doubled. listObjectsBufferMaxExtensions determines how many times the buffer capacity can be doubled. Can be disabled by setting to a negative value. Only effective when the `pipeline_list_objects` experimental feature is enabled.",
+            "type": "string",
+            "format": "duration",
+            "default": "0s",
+            "x-env-variable": "OPENFGA_LIST_OBJECTS_BUFFER_EXTEND_AFTER"
+        },
+        "listObjectsBufferMaxExtensions": {
+            "description": "The maximum number of times the buffer capacity can be doubled when the number of queued intermediate result batches exceeds the threshold specified in listObjectsBufferExtendAfter. A zero value disables extensions. A negative value enables unlimited extensions. Only effective when the `pipeline_list_objects` experimental feature is enabled.",
+            "type": "integer",
+            "default": 0,
+            "x-env-variable": "OPENFGA_LIST_OBJECTS_BUFFER_MAX_EXTENSIONS"
+        },
         "listUsersDeadline": {
             "description": "The timeout deadline for serving ListUsers requests. If 0s, there is no deadline",
             "type": "string",
