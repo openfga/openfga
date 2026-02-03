@@ -86,10 +86,9 @@ func (c *ContToken) Deserialize(continuationToken string) error {
 	}
 
 	// if we couldn't unmarshal the json string, try the old-style pipe-separated string
-	if strings.Contains(string(decoded), "|") {
-		tokenParts := strings.Split(string(decoded), "|")
-		c.Ulid = tokenParts[0]
-		c.ObjectType = tokenParts[1]
+	if u, o, exists := strings.Cut(string(decoded), "|"); exists {
+		c.Ulid = u
+		c.ObjectType = o
 		return nil
 	}
 
