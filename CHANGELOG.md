@@ -8,6 +8,16 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+### Added
+- Add configuration options for ListObjects Pipeline that allow fine-tuning. These configurations are currently only effective when using the experimental feature `pipeline_list_objects` [2911](https://github.com/openfga/openfga/pull/2911).
+  - `--listObjects-chunk-size`: Number of results fetched from the datastore per chunk while serving ListObjects via the pipeline.
+  - `--listObjects-num-procs`: Number of goroutines used to process chunks in the ListObjects pipeline.
+  - `--listObjects-buffer-capacity`: Maximum number of intermediate result batches that can be queued in memory. Must be a power of two (e.g., 64, 128, 256). Larger values may reduce blocking under bursty load but increase memory usage (especially with larger `--listObjects-chunk-size`).
+  - `--listObjects-buffer-extend-after`: If the buffer blocks longer than this duration, the buffer capacity is doubled (subject to `--listObjects-max-extensionse`).
+Can be disabled by setting a negative duration.
+  - `--listObjects-buffer-max-extensions`: Maximum number of times the buffer capacity may be doubled when extension is triggered.
+0 disables extensions; negative enables unlimited extensions.
+
 ## [1.11.3] - 2026-01-28
 ### Added
 - Add configuration option to limit max type system cache size. [2744](https://github.com/openfga/openfga/pull/2744)
