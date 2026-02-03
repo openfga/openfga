@@ -9,8 +9,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/openfga/openfga/internal/bitutil"
 	"github.com/spf13/viper"
+
+	"github.com/openfga/openfga/internal/bitutil"
 )
 
 var (

@@ -1198,7 +1198,7 @@ func TestDefaultConfig(t *testing.T) {
 
 	val = res.Get("properties.listObjectsBufferExtendAfter.default")
 	require.True(t, val.Exists())
-	require.EqualValues(t, val.String(), cfg.ListObjectsBufferExtendAfter.String())
+	require.Equal(t, val.String(), cfg.ListObjectsBufferExtendAfter.String())
 
 	val = res.Get("properties.listObjectsBufferMaxExtensions.default")
 	require.True(t, val.Exists())
