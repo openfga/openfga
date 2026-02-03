@@ -7,16 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Try to keep listed changes to a concise bulleted list of simple explanations of changes. Aim for the amount of information needed so that readers can understand where they would look in the codebase to investigate the changes' implementation, or where they would look in the documentation to understand how to make use of the change in practice - better yet, link directly to the docs and provide detailed information there. Only elaborate if doing so is required to avoid breaking changes or experimental features from ruining someone's day.
 
 ## [Unreleased]
-
 ### Added
 - Add configuration options for ListObjects Pipeline that allow fine-tuning. These configurations are currently only effective when using the experimental feature `pipeline_list_objects` [2911](https://github.com/openfga/openfga/pull/2911).
   - `--listObjects-chunk-size`: Number of results fetched from the datastore per chunk while serving ListObjects via the pipeline.
   - `--listObjects-num-procs`: Number of goroutines used to process chunks in the ListObjects pipeline.
   - `--listObjects-buffer-capacity`: Maximum number of intermediate result batches that can be queued in memory. Must be a power of two (e.g., 64, 128, 256). Larger values may reduce blocking under bursty load but increase memory usage (especially with larger `--listObjects-chunk-size`).
   - `--listObjects-buffer-extend-after`: If the buffer blocks longer than this duration, the buffer capacity is doubled (subject to `--listObjects-max-extensionse`).
-Can be disabled by setting a negative duration.
+  Can be disabled by setting a negative duration.
   - `--listObjects-buffer-max-extensions`: Maximum number of times the buffer capacity may be doubled when extension is triggered.
-0 disables extensions; negative enables unlimited extensions.
+  0 disables extensions; negative enables unlimited extensions.
 
 ## [1.11.3] - 2026-01-28
 ### Added
