@@ -1,18 +1,25 @@
 package postgres
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
 	"errors"
 	"fmt"
 	"net/url"
+	"os"
+	"os/user"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/IBM/pgxpoolprometheus"
 	sq "github.com/Masterminds/squirrel"
 	"github.com/cenkalti/backoff/v4"
+	"github.com/jackc/pgpassfile"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/prometheus/client_golang/prometheus"
@@ -99,7 +106,50 @@ func parseConfig(uri string, override bool, cfg *sqlcommon.Config) (*pgxpool.Con
 	if cfg.ConnMaxIdleTime != 0 {
 		c.MaxConnIdleTime = cfg.ConnMaxIdleTime
 	}
+
+	c.BeforeConnect = createBeforeConnect(cfg)
 	return c, nil
+}
+
+// Fixes issue 2913 where pgxpool doesn't fetch updates to PGPASSFILE upon every connection attempt.
+// This is a behavior change compared to plain pgx conn acquisition and previous versions of OpenFGA.
+//
+// The implementation is copied nearly verbatim from pgx code, but handles errors differently.
+// If a PGPASSFILE exists at program start, it is assumed you intend to read from it constantly. Therefore a read
+// error should fail acquiring the connection
+//
+// https://github.com/jackc/pgx/blob/f56ca73076f3fc935a2a049cf78993bfcbba8f68/pgconn/config.go#L404-L414
+func createBeforeConnect(cfg *sqlcommon.Config) func(ctx context.Context, conn *pgx.ConnConfig) error {
+	osUser, err := user.Current()
+	if err != nil {
+		cfg.Logger.Info("could not get current os user, skipping pgxpool BeforeConnect hook creation", zap.Error(err))
+		return nil
+	}
+	passfileName := cmp.Or(os.Getenv("PGPASSFILE"), filepath.Join(osUser.HomeDir, ".pgpass"))
+	_, err = os.Stat(passfileName)
+	if err != nil {
+		cfg.Logger.Info("no pgpassfile found, skipping pgxpool BeforeConnect hook creation", zap.Error(err))
+		return nil
+	}
+	// At this point, the passfile exists. Any failure to read from it should be considered an error in acquiring the connection
+	return func(ctx context.Context, config *pgx.ConnConfig) error {
+		passfile, err := pgpassfile.ReadPassfile(passfileName)
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("pgxpool BeforeConnect hook - failed to read passfile: %w", err)
+		}
+		host := config.Host
+		if network, _ := pgconn.NetworkAddress(config.Host, config.Port); network == "unix" {
+			host = "localhost"
+		}
+
+		password := passfile.FindPassword(host, strconv.Itoa(int(config.Port)), config.Database, config.User)
+		if password == "" {
+			cfg.Logger.Warn("pgpassfile password was empty")
+		} else {
+			config.Password = password
+		}
+		return nil
+	}
 }
 
 // initDB initializes a new postgres database connection.

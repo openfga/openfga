@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -105,18 +107,21 @@ func TestParseConfig(t *testing.T) {
 	require.NoError(t, err)
 
 	tests := []struct {
-		name        string
-		uri         string
-		override    bool
-		cfg         sqlcommon.Config
-		expected    pgxpool.Config
-		expectedErr bool
+		name               string
+		uri                string
+		override           bool
+		cfg                sqlcommon.Config
+		expected           pgxpool.Config
+		expectedErr        bool
+		expectedPgpassHook bool
 	}{
 		{
 			name:     "default_with_no_overrides",
 			uri:      "postgres://abc:passwd@localhost:5346/dbname",
 			override: false,
-			cfg:      sqlcommon.Config{},
+			cfg: sqlcommon.Config{
+				Logger: logger.NewNoopLogger(),
+			},
 			expected: pgxpool.Config{
 				ConnConfig: &pgx.ConnConfig{
 					Config: pgconn.Config{
@@ -133,6 +138,7 @@ func TestParseConfig(t *testing.T) {
 				MaxConnIdleTime:       defaultConfig.MaxConnIdleTime,
 				MaxConnLifetimeJitter: defaultConfig.MaxConnLifetimeJitter,
 				MaxConnLifetime:       defaultConfig.MaxConnLifetime,
+				BeforeConnect:         nil,
 			},
 		},
 		{
@@ -140,6 +146,7 @@ func TestParseConfig(t *testing.T) {
 			uri:      "postgres://abc:passwd@localhost:5346/dbname",
 			override: true,
 			cfg: sqlcommon.Config{
+				Logger:          logger.NewNoopLogger(),
 				Username:        "override_user",
 				Password:        "override_passwd",
 				MinIdleConns:    10,
@@ -164,6 +171,7 @@ func TestParseConfig(t *testing.T) {
 				MaxConnIdleTime:       1 * time.Minute,
 				MaxConnLifetimeJitter: 2 * time.Minute,
 				MaxConnLifetime:       20 * time.Minute,
+				BeforeConnect:         nil,
 			},
 		},
 		{
@@ -171,6 +179,7 @@ func TestParseConfig(t *testing.T) {
 			uri:      "postgres://abc:passwd@localhost:5346/dbname",
 			override: true,
 			cfg: sqlcommon.Config{
+				Logger:       logger.NewNoopLogger(),
 				Username:     "",
 				Password:     "override_passwd",
 				MinIdleConns: 10,
@@ -193,6 +202,7 @@ func TestParseConfig(t *testing.T) {
 				MaxConnIdleTime:       defaultConfig.MaxConnIdleTime,
 				MaxConnLifetimeJitter: defaultConfig.MaxConnLifetimeJitter,
 				MaxConnLifetime:       defaultConfig.MaxConnLifetime,
+				BeforeConnect:         nil,
 			},
 		},
 		{
@@ -200,6 +210,7 @@ func TestParseConfig(t *testing.T) {
 			uri:      "postgres://abc:passwd@localhost:5346/dbname",
 			override: true,
 			cfg: sqlcommon.Config{
+				Logger:       logger.NewNoopLogger(),
 				Username:     "override_user",
 				Password:     "",
 				MinIdleConns: 10,
@@ -222,6 +233,7 @@ func TestParseConfig(t *testing.T) {
 				MaxConnIdleTime:       defaultConfig.MaxConnIdleTime,
 				MaxConnLifetimeJitter: defaultConfig.MaxConnLifetimeJitter,
 				MaxConnLifetime:       defaultConfig.MaxConnLifetime,
+				BeforeConnect:         nil,
 			},
 		},
 		{
@@ -230,9 +242,42 @@ func TestParseConfig(t *testing.T) {
 			override:    true,
 			expectedErr: true,
 		},
+		{
+			name:     "reads password from PGPASS",
+			uri:      "postgres://abc:passwd@localhost:5346/dbname",
+			override: true,
+			cfg: sqlcommon.Config{
+				Logger: logger.NewNoopLogger(),
+			},
+			expectedPgpassHook: true,
+			expected: pgxpool.Config{
+				ConnConfig: &pgx.ConnConfig{
+					Config: pgconn.Config{
+						User:     "abc",
+						Password: "passwd",
+						Host:     "localhost",
+						Port:     5346,
+						Database: "dbname",
+					},
+				},
+				MinIdleConns:          defaultConfig.MinIdleConns,
+				MaxConns:              defaultConfig.MaxConns,
+				MinConns:              defaultConfig.MinConns,
+				MaxConnIdleTime:       defaultConfig.MaxConnIdleTime,
+				MaxConnLifetimeJitter: defaultConfig.MaxConnLifetimeJitter,
+				MaxConnLifetime:       defaultConfig.MaxConnLifetime,
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			pgPassPath := filepath.Join(t.TempDir(), ".pgpass")
+			if tt.expectedPgpassHook {
+				t.Setenv("PGPASSFILE", pgPassPath)
+				if err := os.WriteFile(pgPassPath, []byte("*:*:*:*:def"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
 			parsed, err := parseConfig(tt.uri, tt.override, &tt.cfg)
 			if tt.expectedErr {
 				require.Error(t, err)
@@ -250,6 +295,20 @@ func TestParseConfig(t *testing.T) {
 				require.Equal(t, tt.expected.MaxConnLifetime, parsed.MaxConnLifetime)
 				require.Equal(t, tt.expected.MaxConnLifetimeJitter, parsed.MaxConnLifetimeJitter)
 				require.Equal(t, tt.expected.MaxConnIdleTime, parsed.MaxConnIdleTime)
+			}
+			if tt.expectedPgpassHook {
+				require.NotNil(t, parsed.BeforeConnect)
+				require.Equal(t, tt.expected.ConnConfig.Password, parsed.ConnConfig.Password)
+
+				require.Nil(t, parsed.BeforeConnect(context.Background(), parsed.ConnConfig))
+				require.NotEqual(t, tt.expected.ConnConfig.Password, parsed.ConnConfig.Password)
+				require.Equal(t, "def", parsed.ConnConfig.Password)
+
+				require.Nil(t, os.WriteFile(pgPassPath, []byte("*:*:*:*:ghi"), 0o600))
+				require.Nil(t, parsed.BeforeConnect(context.Background(), parsed.ConnConfig))
+				require.Equal(t, "ghi", parsed.ConnConfig.Password)
+			} else {
+				require.Nil(t, parsed.BeforeConnect)
 			}
 		})
 	}
