@@ -106,7 +106,6 @@ const (
 	ExperimentalDatastoreThrottling      = "datastore_throttling"
 	ExperimentalPipelineListObjects      = "pipeline_list_objects"
 	ExperimentalShadowWeightedGraphCheck = "shadow_weighted_graph_check"
-	ExperimentalPipelineListObjects      = "pipeline_list_objects"
 	ExperimentalWeightedGraphCheck       = "weighted_graph_check"
 )
 
