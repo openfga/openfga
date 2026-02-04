@@ -41,7 +41,7 @@ const (
 	DefaultListObjectsChunkSize           = 100
 	DefaultListObjectsNumProcs            = 3
 	DefaultListObjectsBufferSize          = 1 << 7
-	DefaultListObjectsBufferExtendAfter   = 0 * time.Second // 0 means disabled
+	DefaultListObjectsBufferExtendAfter   = 0 * time.Second // do not wait to extend
 	DefaultListObjectsBufferMaxExtensions = 0               // 0 means disabled
 
 	DefaultWriteContextByteLimit = 32 * 1_024 // 32KB
