@@ -23,14 +23,17 @@ var DefaultPlan = &planner.PlanConfig{
 
 var DefaultRecursivePlan = &planner.PlanConfig{
 	Name:         DefaultStrategyName,
-	InitialGuess: 300 * time.Millisecond, // Higher initial guess for recursive checks
+	InitialGuess: 500 * time.Millisecond, // Higher initial guess for recursive checks
 	// Low Lambda: Represents zero confidence. It's a pure guess.
 	Lambda: 1,
-	// With α = 0.5 ≤ 1, it means maximum uncertainty about variance; with λ = 1, we also have weak confidence in the mean.
-	// These values will encourage strong exploration of other strategies. Having these values for the default execute helps to enforce the usage of the "faster" strategies,
-	// helping out with the cold start when we don't have enough data.
-	Alpha: 0.5,
-	Beta:  0.5,
+	// Moderate Alpha/Beta values create a balanced belief curve, telling the planner
+	// to expect variations but with higher confidence than before.
+	// Low expected precision: 𝐸[𝜏]= 𝛼/𝛽 = 3.0/2.0 = 1.5.
+	// High expected variance: E[σ2]= β/(α−1) =2.0/(3.0−1) = 1.0, This allows for variance but is less jittery than previous settings
+	// Tighter tolerance for spread: α = 3 indicates a narrower uncertainty than α = 2, meaning we are more certain about the variance range.
+	// When α > β, we expect higher precision and more controlled variance.
+	Alpha: 3.0,
+	Beta:  2.0,
 }
 
 const WeightTwoStrategyName = "weight2"
@@ -63,16 +66,16 @@ var RecursivePlan = &planner.PlanConfig{
 	InitialGuess: 150 * time.Millisecond,
 	// Medium Lambda: Represents medium confidence in the initial guess. It's like
 	// starting with the belief of having already seen 5 good runs.
-	Lambda: 5.0,
+	Lambda: 3.0,
 	// UNCERTAINTY ABOUT CONSISTENCY: The gap between p50 and p99 is large.
-	// Low Alpha/Beta values create a wider belief curve, telling the planner
-	// to expect and not be overly surprised by performance variations.
-	// Low expected precision: 𝐸[𝜏]= 𝛼/𝛽 = 2.0/2.5 = 0.8.
-	// High expected variance: E[σ2]= β/(α−1) =2.5/1 = 2.5, this will allow for relative bursty / jiterry results.
-	// Wide tolerance for spread: 𝛼 = 2, this will allow for considerable uncertainty in how spike the latency can be.
-	// When β > α, we expect lower precision and higher variance
-	Alpha: 2.0,
-	Beta:  2.5,
+	// Moderate Alpha/Beta values create a balanced belief curve, telling the planner
+	// to expect variations but with higher confidence than before.
+	// Low expected precision: 𝐸[𝜏]= 𝛼/𝛽 = 3.0/2.0 = 1.5.
+	// High expected variance: E[σ2]= β/(α−1) =2.0/(3.0−1) = 1.0, This allows for variance but is less jittery than previous settings
+	// Tighter tolerance for spread: α = 3 indicates a narrower uncertainty than α = 2, meaning we are more certain about the variance range.
+	// When α > β, we expect higher precision and more controlled variance.
+	Alpha: 3.0,
+	Beta:  2.0,
 }
 
 func createUsersetPlanKey(req *Request, userset string) string {

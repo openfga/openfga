@@ -226,6 +226,7 @@ func (s *bottomUp) specificTypeWildcard(ctx context.Context, req *Request, edge 
 }
 
 func (s *bottomUp) buildIterator(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge, i storage.TupleIterator, userID string) storage.TupleMapper {
+	// deduplication is only happening on the merged iterator and contextual tuples will always overwrite the base iterator
 	iter := storage.NewTupleKeyIteratorFromTupleIterator(i)
 	objectType, relation := tuple.SplitObjectRelation(edge.GetRelationDefinition())
 	if ctxTuples, ok := req.GetContextualTuplesByUserID(userID, relation, objectType); ok {

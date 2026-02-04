@@ -238,6 +238,7 @@ func (r *ResolveCheckRequest) GetSelectedStrategy() string {
 		return ""
 	}
 	return r.SelectedStrategy
+}
 
 func (r *ResolveCheckRequest) GetObjectType() string {
 	if r == nil {
