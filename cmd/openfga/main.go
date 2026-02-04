@@ -13,7 +13,7 @@ import (
 func main() {
 	rootCmd := cmd.NewRootCommand()
 
-	runCmd := run.NewRunCommand()
+	runCmd := run.NewRunCommand(nil)
 	rootCmd.AddCommand(runCmd)
 
 	migrateCmd := migrate.NewMigrateCommand()

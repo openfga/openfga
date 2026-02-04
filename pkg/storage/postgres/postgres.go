@@ -99,6 +99,10 @@ func parseConfig(uri string, override bool, cfg *sqlcommon.Config) (*pgxpool.Con
 	if cfg.ConnMaxIdleTime != 0 {
 		c.MaxConnIdleTime = cfg.ConnMaxIdleTime
 	}
+
+	if cfg.BeforeConnect != nil {
+		c.BeforeConnect = cfg.BeforeConnect
+	}
 	return c, nil
 }
 

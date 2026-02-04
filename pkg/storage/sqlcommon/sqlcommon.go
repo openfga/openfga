@@ -12,6 +12,7 @@ import (
 	"time"
 
 	sq "github.com/Masterminds/squirrel"
+	"github.com/jackc/pgx/v5"
 	"github.com/oklog/ulid/v2"
 	"github.com/pressly/goose/v3"
 	"go.opentelemetry.io/otel"
@@ -50,6 +51,8 @@ type Config struct {
 	ConnMaxLifetime time.Duration
 
 	ExportMetrics bool
+
+	BeforeConnect func(ctx context.Context, conn *pgx.ConnConfig) error
 }
 
 // DatastoreOption defines a function type
@@ -171,6 +174,16 @@ func WithConnMaxLifetime(d time.Duration) DatastoreOption {
 func WithMetrics() DatastoreOption {
 	return func(cfg *Config) {
 		cfg.ExportMetrics = true
+	}
+}
+
+// WithBeforeConnectHook returns a DatastoreOption that
+// sets the BeforeConnect hook. Only works with Postgres/pgx
+func WithBeforeConnectHook(beforeConnectHook any) DatastoreOption {
+	return func(cfg *Config) {
+		if hook, ok := beforeConnectHook.(func(context.Context, *pgx.ConnConfig) error); ok {
+			cfg.BeforeConnect = hook
+		}
 	}
 }
 

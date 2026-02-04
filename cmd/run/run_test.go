@@ -1373,7 +1373,7 @@ func TestDefaultConfig(t *testing.T) {
 
 func TestRunCommandNoConfigDefaultValues(t *testing.T) {
 	util.PrepareTempConfigDir(t)
-	runCmd := NewRunCommand()
+	runCmd := NewRunCommand(nil)
 	runCmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		require.Empty(t, viper.GetString(datastoreEngineFlag))
 		require.Empty(t, viper.GetString(datastoreURIFlag))
@@ -1398,7 +1398,7 @@ func TestRunCommandConfigFileValuesAreParsed(t *testing.T) {
 `
 	util.PrepareTempConfigFile(t, config)
 
-	runCmd := NewRunCommand()
+	runCmd := NewRunCommand(nil)
 	runCmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		require.Equal(t, "postgres", viper.GetString(datastoreEngineFlag))
 		require.Equal(t, "postgres://postgres:password@127.0.0.1:5432/postgres", viper.GetString(datastoreURIFlag))
@@ -1420,7 +1420,7 @@ requestDurationDispatchCountBuckets: [32,42]
 `
 	util.PrepareTempConfigFile(t, config)
 
-	runCmd := NewRunCommand()
+	runCmd := NewRunCommand(nil)
 	runCmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		return nil
 	}
@@ -1463,7 +1463,7 @@ func TestRunCommandConfigIsMerged(t *testing.T) {
 	t.Setenv("OPENFGA_SHARED_ITERATOR_ENABLED", "true")
 	t.Setenv("OPENFGA_SHARED_ITERATOR_LIMIT", "950")
 
-	runCmd := NewRunCommand()
+	runCmd := NewRunCommand(nil)
 	runCmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		require.Equal(t, "postgres", viper.GetString(datastoreEngineFlag))
 		require.Equal(t, "postgres://postgres:PASS2@127.0.0.1:5432/postgres", viper.GetString(datastoreURIFlag))

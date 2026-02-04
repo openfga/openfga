@@ -152,6 +152,8 @@ type DatastoreConfig struct {
 
 	// Metrics is configuration for the Datastore metrics.
 	Metrics DatastoreMetricsConfig
+
+	BeforeConnectHook any
 }
 
 // GRPCConfig defines OpenFGA server configurations for grpc server specific settings.

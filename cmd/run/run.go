@@ -82,12 +82,12 @@ const (
 	datastoreURIFlag    = "datastore-uri"
 )
 
-func NewRunCommand() *cobra.Command {
+func NewRunCommand(beforeConnect any) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "run",
 		Short: "Run the OpenFGA server",
 		Long:  "Run the OpenFGA server.",
-		Run:   run,
+		Run:   createRun(beforeConnect),
 		Args:  cobra.NoArgs,
 	}
 
@@ -348,20 +348,25 @@ func ReadConfig() (*serverconfig.Config, error) {
 	return config, nil
 }
 
-func run(_ *cobra.Command, _ []string) {
-	config, err := ReadConfig()
-	if err != nil {
-		panic(err)
-	}
+func createRun(beforeConnect any) func(_ *cobra.Command, _ []string) {
+	return func(_ *cobra.Command, _ []string) {
+		config, err := ReadConfig()
+		if err != nil {
+			panic(err)
+		}
 
-	if err := config.Verify(); err != nil {
-		panic(err)
-	}
+		if err := config.Verify(); err != nil {
+			panic(err)
+		}
 
-	logger := logger.MustNewLogger(config.Log.Format, config.Log.Level, config.Log.TimestampFormat)
-	serverCtx := &ServerContext{Logger: logger}
-	if err := serverCtx.Run(context.Background(), config); err != nil {
-		panic(err)
+		logger := logger.MustNewLogger(config.Log.Format, config.Log.Level, config.Log.TimestampFormat)
+		serverCtx := &ServerContext{Logger: logger}
+
+		config.Datastore.BeforeConnectHook = beforeConnect
+
+		if err := serverCtx.Run(context.Background(), config); err != nil {
+			panic(err)
+		}
 	}
 }
 
@@ -434,6 +439,7 @@ func (s *ServerContext) datastoreConfig(config *serverconfig.Config) (storage.Op
 		sqlcommon.WithMinIdleConns(config.Datastore.MinIdleConns),
 		sqlcommon.WithConnMaxIdleTime(config.Datastore.ConnMaxIdleTime),
 		sqlcommon.WithConnMaxLifetime(config.Datastore.ConnMaxLifetime),
+		sqlcommon.WithBeforeConnectHook(config.Datastore.BeforeConnectHook),
 	}
 
 	if config.Datastore.Metrics.Enabled {
