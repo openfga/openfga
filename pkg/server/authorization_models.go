@@ -106,7 +106,6 @@ func (s *Server) ReadAuthorizationModels(ctx context.Context, req *openfgav1.Rea
 
 	c := commands.NewReadAuthorizationModelsQuery(s.datastore,
 		commands.WithReadAuthModelsQueryLogger(s.logger),
-		commands.WithReadAuthModelsQueryEncoder(s.encoder),
 	)
 	return c.Execute(ctx, req)
 }

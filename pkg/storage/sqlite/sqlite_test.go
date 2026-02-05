@@ -674,7 +674,7 @@ func TestReadUserTupleFilterWithConditions(t *testing.T) {
 
 	stmt := `
   INSERT INTO tuple (
-   store, object_type, object_id, relation, 
+   store, object_type, object_id, relation,
    user_object_type, user_object_id, user_relation, user_type,
    condition_name, condition_context, ulid, inserted_at
   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('subsec'));

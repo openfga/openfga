@@ -21,7 +21,6 @@ import (
 type MockCheckResolver struct {
 	ctrl     *gomock.Controller
 	recorder *MockCheckResolverMockRecorder
-	isgomock struct{}
 }
 
 // MockCheckResolverMockRecorder is the mock recorder for MockCheckResolver.
@@ -98,7 +97,6 @@ func (mr *MockCheckResolverMockRecorder) SetDelegate(delegate any) *gomock.Call 
 type MockCheckRewriteResolver struct {
 	ctrl     *gomock.Controller
 	recorder *MockCheckRewriteResolverMockRecorder
-	isgomock struct{}
 }
 
 // MockCheckRewriteResolverMockRecorder is the mock recorder for MockCheckRewriteResolver.
