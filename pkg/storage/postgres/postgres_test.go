@@ -237,8 +237,11 @@ func TestParseConfig(t *testing.T) {
 			},
 		},
 		{
-			name:        "bad_uri",
-			uri:         "bad_uri",
+			name: "bad_uri",
+			uri:  "bad_uri",
+			cfg: sqlcommon.Config{
+				Logger: logger.NewNoopLogger(),
+			},
 			override:    true,
 			expectedErr: true,
 		},
@@ -295,20 +298,20 @@ func TestParseConfig(t *testing.T) {
 				require.Equal(t, tt.expected.MaxConnLifetime, parsed.MaxConnLifetime)
 				require.Equal(t, tt.expected.MaxConnLifetimeJitter, parsed.MaxConnLifetimeJitter)
 				require.Equal(t, tt.expected.MaxConnIdleTime, parsed.MaxConnIdleTime)
-			}
-			if tt.expectedPgpassHook {
-				require.NotNil(t, parsed.BeforeConnect)
-				require.Equal(t, tt.expected.ConnConfig.Password, parsed.ConnConfig.Password)
+				if tt.expectedPgpassHook {
+					require.NotNil(t, parsed.BeforeConnect)
+					require.Equal(t, tt.expected.ConnConfig.Password, parsed.ConnConfig.Password)
 
-				require.Nil(t, parsed.BeforeConnect(context.Background(), parsed.ConnConfig))
-				require.NotEqual(t, tt.expected.ConnConfig.Password, parsed.ConnConfig.Password)
-				require.Equal(t, "def", parsed.ConnConfig.Password)
+					require.NoError(t, parsed.BeforeConnect(context.Background(), parsed.ConnConfig))
+					require.NotEqual(t, tt.expected.ConnConfig.Password, parsed.ConnConfig.Password)
+					require.Equal(t, "def", parsed.ConnConfig.Password)
 
-				require.Nil(t, os.WriteFile(pgPassPath, []byte("*:*:*:*:ghi"), 0o600))
-				require.Nil(t, parsed.BeforeConnect(context.Background(), parsed.ConnConfig))
-				require.Equal(t, "ghi", parsed.ConnConfig.Password)
-			} else {
-				require.Nil(t, parsed.BeforeConnect)
+					require.NoError(t, os.WriteFile(pgPassPath, []byte("*:*:*:*:ghi"), 0o600))
+					require.NoError(t, parsed.BeforeConnect(context.Background(), parsed.ConnConfig))
+					require.Equal(t, "ghi", parsed.ConnConfig.Password)
+				} else {
+					require.Nil(t, parsed.BeforeConnect)
+				}
 			}
 		})
 	}

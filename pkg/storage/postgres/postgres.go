@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"net/url"
 	"os"
-	"os/user"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -120,20 +119,16 @@ func parseConfig(uri string, override bool, cfg *sqlcommon.Config) (*pgxpool.Con
 //
 // https://github.com/jackc/pgx/blob/f56ca73076f3fc935a2a049cf78993bfcbba8f68/pgconn/config.go#L404-L414
 func createBeforeConnect(cfg *sqlcommon.Config) func(ctx context.Context, conn *pgx.ConnConfig) error {
-	osUser, err := user.Current()
-	if err != nil {
-		cfg.Logger.Info("could not get current os user, skipping pgxpool BeforeConnect hook creation", zap.Error(err))
-		return nil
-	}
-	passfileName := cmp.Or(os.Getenv("PGPASSFILE"), filepath.Join(osUser.HomeDir, ".pgpass"))
-	_, err = os.Stat(passfileName)
+	pgpassFileName := getPgPassFileName(cfg.Logger)
+	_, err := os.Stat(pgpassFileName)
 	if err != nil {
 		cfg.Logger.Info("no pgpassfile found, skipping pgxpool BeforeConnect hook creation", zap.Error(err))
 		return nil
 	}
 	// At this point, the passfile exists. Any failure to read from it should be considered an error in acquiring the connection
 	return func(ctx context.Context, config *pgx.ConnConfig) error {
-		passfile, err := pgpassfile.ReadPassfile(passfileName)
+		pgpassFileName := getPgPassFileName(cfg.Logger)
+		passfile, err := pgpassfile.ReadPassfile(pgpassFileName)
 		if err != nil && !errors.Is(err, os.ErrNotExist) {
 			return fmt.Errorf("pgxpool BeforeConnect hook - failed to read passfile: %w", err)
 		}
@@ -150,6 +145,17 @@ func createBeforeConnect(cfg *sqlcommon.Config) func(ctx context.Context, conn *
 		}
 		return nil
 	}
+}
+
+func getPgPassFileName(logger logger.Logger) string {
+	homeDir, err := os.UserHomeDir()
+	homeDirPgPass := ""
+	if err != nil {
+		logger.Info("could not get current user home directory for pgxpool BeforeHook creation", zap.Error(err))
+	} else {
+		homeDirPgPass = filepath.Join(homeDir, ".pgpass")
+	}
+	return cmp.Or(os.Getenv("PGPASSFILE"), homeDirPgPass)
 }
 
 // initDB initializes a new postgres database connection.
