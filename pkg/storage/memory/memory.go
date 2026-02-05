@@ -254,8 +254,12 @@ func (s *MemoryBackend) ReadChanges(ctx context.Context, store string, filter st
 				} else if options.SortDesc && changeRec.Ulid.Compare(from) >= 0 {
 					continue
 				}
-			} else if !filter.StartTime.IsZero() && changeRec.Change.GetTimestamp().AsTime().Before(filter.StartTime) {
-				continue
+			} else if !filter.StartTime.IsZero() {
+				if !options.SortDesc && changeRec.Change.GetTimestamp().AsTime().Compare(filter.StartTime) <= 0 {
+					continue
+				} else if options.SortDesc && changeRec.Change.GetTimestamp().AsTime().Compare(filter.StartTime) >= 0 {
+					continue
+				}
 			}
 			allChanges = append(allChanges, changeRec)
 		}

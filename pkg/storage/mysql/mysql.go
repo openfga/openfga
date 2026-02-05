@@ -509,7 +509,7 @@ func (s *Datastore) CreateStore(ctx context.Context, store *openfgav1.Store) (*o
 	_, err = s.stbl.
 		Insert("store").
 		Columns("id", "name", "created_at", "updated_at").
-		Values(store.GetId(), store.GetName(), sq.Expr("NOW()"), sq.Expr("NOW()")).
+		Values(store.GetId(), store.GetName(), sq.Expr("NOW(6)"), sq.Expr("NOW(6)")).
 		RunWith(txn).
 		ExecContext(ctx)
 	if err != nil {
@@ -645,7 +645,7 @@ func (s *Datastore) DeleteStore(ctx context.Context, id string) error {
 
 	_, err := s.stbl.
 		Update("store").
-		Set("deleted_at", sq.Expr("NOW()")).
+		Set("deleted_at", sq.Expr("NOW(6)")).
 		Where(sq.Eq{"id": id}).
 		ExecContext(ctx)
 	if err != nil {
@@ -728,7 +728,7 @@ func (s *Datastore) ReadChanges(ctx context.Context, store string, filter storag
 		).
 		From("changelog").
 		Where(sq.Eq{"store": store}).
-		Where(fmt.Sprintf("inserted_at <= NOW() - INTERVAL %d MICROSECOND", filter.HorizonOffset.Microseconds())).
+		Where(fmt.Sprintf("inserted_at <= NOW(6) - INTERVAL %d MICROSECOND", filter.HorizonOffset.Microseconds())).
 		OrderBy(orderBy)
 
 	if filter.ObjectType != "" {
@@ -744,7 +744,11 @@ func (s *Datastore) ReadChanges(ctx context.Context, store string, filter storag
 		}
 		sb = sqlcommon.AddFromUlid(sb, token.Ulid, options.SortDesc)
 	} else if !filter.StartTime.IsZero() {
-		sb = sb.Where(sq.GtOrEq{"inserted_at": filter.StartTime})
+		if !options.SortDesc {
+			sb = sb.Where(sq.GtOrEq{"inserted_at": filter.StartTime.UTC()})
+		} else {
+			sb = sb.Where(sq.LtOrEq{"inserted_at": filter.StartTime.UTC()})
+		}
 	}
 	if options.Pagination.PageSize > 0 {
 		sb = sb.Limit(uint64(options.Pagination.PageSize)) // + 1 is NOT used here as we always return a continuation token.

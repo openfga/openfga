@@ -102,6 +102,7 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 			assert.Len(t, changes, len(writtenTuplesAfter))
 			for _, change := range changes {
 				assert.Equal(t, "user:after", change.GetTupleKey().GetUser())
+				assert.GreaterOrEqual(t, change.GetTimestamp().AsTime().UTC(), startTime.UTC())
 			}
 		})
 
@@ -110,6 +111,7 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 			assert.Len(t, changes, len(writtenTuplesAfter))
 			for _, change := range changes {
 				assert.Equal(t, "user:after", change.GetTupleKey().GetUser())
+				assert.GreaterOrEqual(t, change.GetTimestamp().AsTime().UTC(), startTime.UTC())
 			}
 		})
 
@@ -123,6 +125,7 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 			assert.Len(t, changes, len(writtenTuplesBefore))
 			for _, change := range changes {
 				assert.Equal(t, "user:before", change.GetTupleKey().GetUser())
+				assert.LessOrEqual(t, change.GetTimestamp().AsTime().UTC(), startTime.UTC())
 			}
 		})
 	})
@@ -2448,10 +2451,6 @@ func readChangesWithStartTime(t *testing.T, ds storage.OpenFGADatastore, storeID
 		continuationToken string
 		err               error
 	)
-	if !startTime.IsZero() {
-		ulidST := ulid.MustNew(ulid.Timestamp(startTime), ulid.DefaultEntropy())
-		continuationToken = ulidST.String()
-	}
 	for {
 		opts := storage.ReadChangesOptions{
 			Pagination: storage.NewPaginationOptions(
@@ -2460,7 +2459,7 @@ func readChangesWithStartTime(t *testing.T, ds storage.OpenFGADatastore, storeID
 			),
 			SortDesc: desc,
 		}
-		tupleChanges, continuationToken, err = ds.ReadChanges(context.Background(), storeID, storage.ReadChangesFilter{}, opts)
+		tupleChanges, continuationToken, err = ds.ReadChanges(context.Background(), storeID, storage.ReadChangesFilter{StartTime: startTime}, opts)
 		if err != nil {
 			require.ErrorIs(t, err, storage.ErrNotFound)
 			break

@@ -685,7 +685,7 @@ func GetDeleteWriteChangelogItems(
 			nil, // Redact condition info for Deletes since we only need the base triplet (object, relation, user).
 			openfgav1.TupleOperation_TUPLE_OPERATION_DELETE,
 			id,
-			sq.Expr("NOW()"),
+			writeData.Now,
 		})
 	}
 
@@ -741,7 +741,7 @@ func GetDeleteWriteChangelogItems(
 			conditionName,
 			conditionContext,
 			id,
-			sq.Expr("NOW()"),
+			writeData.Now,
 		})
 
 		changeLogItems = append(changeLogItems, []interface{}{
@@ -754,7 +754,7 @@ func GetDeleteWriteChangelogItems(
 			conditionContext,
 			openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
 			id,
-			sq.Expr("NOW()"),
+			writeData.Now,
 		})
 	}
 	return deleteConditions, writeItems, changeLogItems, nil
