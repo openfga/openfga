@@ -20,7 +20,6 @@ import (
 	"github.com/openfga/openfga/internal/condition"
 	openfgaErrors "github.com/openfga/openfga/internal/errors"
 	"github.com/openfga/openfga/internal/graph"
-	"github.com/openfga/openfga/internal/pipe"
 	"github.com/openfga/openfga/internal/shared"
 	"github.com/openfga/openfga/internal/throttler"
 	"github.com/openfga/openfga/internal/throttler/threshold"
@@ -267,16 +266,15 @@ func NewListObjectsQuery(
 		optimizationsEnabled: false,
 		useShadowCache:       false,
 		ff:                   featureflags.NewNoopFeatureFlagClient(),
-		pipelineConfig: pipeline.Config{
-			ChunkSize: serverconfig.DefaultListObjectsChunkSize,
-			NumProcs:  serverconfig.DefaultListObjectsNumProcs,
-			Buffer: pipe.Config{
-				Capacity:      serverconfig.DefaultListObjectsBufferSize,
-				ExtendAfter:   serverconfig.DefaultListObjectsBufferExtendAfter,
-				MaxExtensions: serverconfig.DefaultListObjectsBufferMaxExtensions,
-			},
-		},
 	}
+
+	pipelineConfig := pipeline.DefaultConfig()
+	pipelineConfig.ChunkSize = serverconfig.DefaultListObjectsChunkSize
+	pipelineConfig.NumProcs = serverconfig.DefaultListObjectsNumProcs
+	pipelineConfig.Buffer.Capacity = serverconfig.DefaultListObjectsBufferSize
+	pipelineConfig.Buffer.ExtendAfter = serverconfig.DefaultListObjectsBufferExtendAfter
+	pipelineConfig.Buffer.MaxExtensions = serverconfig.DefaultListObjectsBufferMaxExtensions
+	query.pipelineConfig = pipelineConfig
 
 	for _, opt := range opts {
 		opt(query)
