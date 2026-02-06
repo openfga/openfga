@@ -270,7 +270,7 @@ func TestParseConfig(t *testing.T) {
 			expectedErr: true,
 		},
 		{
-			name:     "reads password from PGPASS",
+			name:     "reads password from PGPASSFILE",
 			uri:      "postgres://abc:passwd@localhost:5346/dbname",
 			override: true,
 			cfg: sqlcommon.Config{
