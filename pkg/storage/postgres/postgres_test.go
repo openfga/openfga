@@ -34,6 +34,19 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
+type MemoryPassfileProvider struct {
+	Content string
+	err     error
+}
+
+func (p *MemoryPassfileProvider) OpenPassfile() (io.Reader, error) {
+	var reader io.Reader
+	if p.Content != "" {
+		reader = strings.NewReader(p.Content)
+	}
+	return reader, p.err
+}
+
 func TestPostgresDatastore(t *testing.T) {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
 
@@ -299,22 +312,9 @@ func TestParseConfig(t *testing.T) {
 
 func TestBeforeConnectHook(t *testing.T) {
 	noOpLogger := logger.NewNoopLogger()
-	getFileName := func(_ logger.Logger) string {
-		return ".pgpass"
-	}
-	t.Run("returns a hook when file doesn't initially exist", func(t *testing.T) {
-		getPgPassFileNotExistError := func(name string) (io.Reader, error) {
-			return nil, os.ErrNotExist
-		}
-		require.NotNil(t, createBeforeConnect(noOpLogger, getFileName, getPgPassFileNotExistError))
-	})
 	t.Run("sets the password from the file", func(t *testing.T) {
-		password := new(string)
-		*password = "*:*:*:*:password"
-		getPgPassFile := func(name string) (io.Reader, error) {
-			return strings.NewReader(*password), nil
-		}
-		hook := createBeforeConnect(noOpLogger, getFileName, getPgPassFile)
+		provider := &MemoryPassfileProvider{"*:*:*:*:password", nil}
+		hook := createBeforeConnect(noOpLogger, provider)
 		ctx := context.Background()
 		config := new(pgx.ConnConfig)
 		err := hook(ctx, config)
@@ -322,16 +322,14 @@ func TestBeforeConnectHook(t *testing.T) {
 		require.Equal(t, "password", config.Password)
 
 		// It updates the password upon change
-		*password = "*:*:*:*:secondpassword"
+		provider.Content = "*:*:*:*:secondpassword"
 		err = hook(ctx, config)
 		require.NoError(t, err)
 		require.Equal(t, "secondpassword", config.Password)
 	})
 	t.Run("does not set the password if there is no file", func(t *testing.T) {
-		getPgPassFile := func(name string) (io.Reader, error) {
-			return nil, os.ErrNotExist
-		}
-		hook := createBeforeConnect(noOpLogger, getFileName, getPgPassFile)
+		provider := &MemoryPassfileProvider{"", ErrNoPassfile}
+		hook := createBeforeConnect(noOpLogger, provider)
 		ctx := context.Background()
 		config := new(pgx.ConnConfig)
 		err := hook(ctx, config)
@@ -339,10 +337,8 @@ func TestBeforeConnectHook(t *testing.T) {
 		require.Empty(t, config.Password)
 	})
 	t.Run("does not set the password if the file is empty", func(t *testing.T) {
-		getPgPassFile := func(name string) (io.Reader, error) {
-			return strings.NewReader(""), nil
-		}
-		hook := createBeforeConnect(noOpLogger, getFileName, getPgPassFile)
+		provider := &MemoryPassfileProvider{"", nil}
+		hook := createBeforeConnect(noOpLogger, provider)
 		ctx := context.Background()
 		config := new(pgx.ConnConfig)
 		err := hook(ctx, config)
@@ -350,10 +346,8 @@ func TestBeforeConnectHook(t *testing.T) {
 		require.Empty(t, config.Password)
 	})
 	t.Run("the hook errors when the file cannot be read", func(t *testing.T) {
-		getPgPassFile := func(name string) (io.Reader, error) {
-			return nil, errors.New("cannot read file")
-		}
-		hook := createBeforeConnect(noOpLogger, getFileName, getPgPassFile)
+		provider := &MemoryPassfileProvider{"", errors.New("cannot read file")}
+		hook := createBeforeConnect(noOpLogger, provider)
 		ctx := context.Background()
 		config := new(pgx.ConnConfig)
 		err := hook(ctx, config)
@@ -361,10 +355,8 @@ func TestBeforeConnectHook(t *testing.T) {
 		require.Empty(t, config.Password)
 	})
 	t.Run("the hook does not set the password when the pgpass file is in an invalid format", func(t *testing.T) {
-		getPgPassFile := func(name string) (io.Reader, error) {
-			return strings.NewReader("invalid pgpass format"), nil
-		}
-		hook := createBeforeConnect(noOpLogger, getFileName, getPgPassFile)
+		provider := &MemoryPassfileProvider{Content: "invalid format"}
+		hook := createBeforeConnect(noOpLogger, provider)
 		ctx := context.Background()
 		config := new(pgx.ConnConfig)
 		err := hook(ctx, config)
@@ -375,19 +367,63 @@ func TestBeforeConnectHook(t *testing.T) {
 	})
 }
 
-func TestGetPgPassFileName(t *testing.T) {
-	logger := logger.NewNoopLogger()
-	osUserHomeDir, err := os.UserHomeDir()
-	require.NoError(t, err)
-	t.Run("without PGPASSFILE env var set", func(t *testing.T) {
-		actual := getPgPassFileName(logger)
-		require.Equal(t, filepath.Join(osUserHomeDir, ".pgpass"), actual)
+func TestFSPassfileProvider_OpenPassfile(t *testing.T) {
+	t.Run("uses home dir without PGPASSFILE env var set", func(t *testing.T) {
+		dir := t.TempDir()
+		filename := filepath.Join(dir, ".pgpass")
+		_, err := os.Create(filename)
+		require.NoError(t, err)
+		provider := &FSPassfileProvider{
+			Logger: logger.NewNoopLogger(),
+			GetHomeDir: func() (string, error) {
+				return dir, nil
+			},
+		}
+		actual, err := provider.OpenPassfile()
+		require.NoError(t, err)
+		require.Equal(t, filename, actual.(*os.File).Name())
 	})
-	t.Run("with PGPASSFILE env var set", func(t *testing.T) {
-		expected := filepath.Join(t.TempDir(), "/.pgpass")
-		t.Setenv("PGPASSFILE", expected)
-		actual := getPgPassFileName(logger)
-		require.Equal(t, expected, actual)
+	t.Run("uses PGPASSFILE env var when set over homedir", func(t *testing.T) {
+		homeDir := t.TempDir()
+		pgPassDir := t.TempDir()
+		filename := filepath.Join(pgPassDir, ".pgpass")
+		_, err := os.Create(filename)
+		require.NoError(t, err)
+		os.Setenv("PGPASSFILE", filename)
+		provider := &FSPassfileProvider{
+			Logger: logger.NewNoopLogger(),
+			GetHomeDir: func() (string, error) {
+				return homeDir, nil
+			},
+		}
+		actual, err := provider.OpenPassfile()
+		require.NoError(t, err)
+		require.Equal(t, filename, actual.(*os.File).Name())
+	})
+	t.Run("returns ErrNoPassfile when homedir is not found", func(t *testing.T) {
+		provider := &FSPassfileProvider{
+			Logger: logger.NewNoopLogger(),
+			GetHomeDir: func() (string, error) {
+				return "", errors.New("homedir not found")
+			},
+		}
+		actual, err := provider.OpenPassfile()
+		require.ErrorIs(t, err, ErrNoPassfile)
+		require.Nil(t, actual)
+	})
+	t.Run("returns ErrNoPassfile when PGPASSFILE is set but file is not found", func(t *testing.T) {
+		homeDir := t.TempDir()
+		pgPassDir := t.TempDir()
+		os.Setenv("PGPASSFILE", filepath.Join(pgPassDir, ".pgpass"))
+		provider := &FSPassfileProvider{
+			Logger: logger.NewNoopLogger(),
+			GetHomeDir: func() (string, error) {
+				return homeDir, nil
+			},
+		}
+		actual, err := provider.OpenPassfile()
+		require.ErrorIs(t, err, ErrNoPassfile)
+		require.Nil(t, actual)
 	})
 }
 

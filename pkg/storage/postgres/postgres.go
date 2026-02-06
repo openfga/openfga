@@ -107,8 +107,34 @@ func parseConfig(uri string, override bool, cfg *sqlcommon.Config) (*pgxpool.Con
 		c.MaxConnIdleTime = cfg.ConnMaxIdleTime
 	}
 
-	c.BeforeConnect = createBeforeConnect(cfg.Logger, getPgPassFileName, getPgPassFile)
+	c.BeforeConnect = createBeforeConnect(cfg.Logger, &FSPassfileProvider{Logger: cfg.Logger, GetHomeDir: os.UserHomeDir})
 	return c, nil
+}
+
+var ErrNoPassfile = errors.New("passfile does not exist")
+
+type PassfileProvider interface {
+	OpenPassfile() (io.Reader, error)
+}
+
+type FSPassfileProvider struct {
+	Logger     logger.Logger
+	GetHomeDir func() (string, error)
+}
+
+func (p *FSPassfileProvider) OpenPassfile() (io.Reader, error) {
+	homeDir, err := p.GetHomeDir()
+	if err != nil {
+		p.Logger.Info("could not get current user home directory for pgxpool BeforeHook creation", zap.Error(err))
+	} else {
+		homeDir = filepath.Join(homeDir, ".pgpass")
+	}
+	fileLocation := cmp.Or(os.Getenv("PGPASSFILE"), homeDir)
+	f, err := os.Open(fileLocation)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, ErrNoPassfile
+	}
+	return f, err
 }
 
 // Fixes issue 2913 where pgxpool doesn't fetch updates to PGPASSFILE upon every connection attempt.
@@ -117,11 +143,10 @@ func parseConfig(uri string, override bool, cfg *sqlcommon.Config) (*pgxpool.Con
 // The implementation is copied nearly verbatim from pgx code, but handles errors differently.
 //
 // https://github.com/jackc/pgx/blob/f56ca73076f3fc935a2a049cf78993bfcbba8f68/pgconn/config.go#L404-L414
-func createBeforeConnect(logger logger.Logger, getFileName func(logger.Logger) string, getFile func(string) (io.Reader, error)) func(ctx context.Context, conn *pgx.ConnConfig) error {
+func createBeforeConnect(logger logger.Logger, provider PassfileProvider) func(ctx context.Context, conn *pgx.ConnConfig) error {
 	return func(ctx context.Context, config *pgx.ConnConfig) error {
-		pgpassFileName := getFileName(logger)
-		file, err := getFile(pgpassFileName)
-		if errors.Is(err, os.ErrNotExist) {
+		file, err := provider.OpenPassfile()
+		if errors.Is(err, ErrNoPassfile) {
 			return nil
 		}
 		if err != nil {
@@ -144,22 +169,6 @@ func createBeforeConnect(logger logger.Logger, getFileName func(logger.Logger) s
 		}
 		return nil
 	}
-}
-
-func getPgPassFileName(logger logger.Logger) string {
-	homeDir, err := os.UserHomeDir()
-	homeDirPgPass := ""
-	if err != nil {
-		logger.Info("could not get current user home directory for pgxpool BeforeHook creation", zap.Error(err))
-	} else {
-		homeDirPgPass = filepath.Join(homeDir, ".pgpass")
-	}
-	return cmp.Or(os.Getenv("PGPASSFILE"), homeDirPgPass)
-}
-
-// light adapter around os.Open because *os.File can't be coerced to io.Reader when it is a part of the function signature.
-func getPgPassFile(pgpassFileName string) (io.Reader, error) {
-	return os.Open(pgpassFileName)
 }
 
 // initDB initializes a new postgres database connection.
