@@ -342,13 +342,13 @@ type Config struct {
 	// ListObjectsChunkSize defines how many items are batched before sending between workers.
 	ListObjectsChunkSize int
 
-	// ListObjectsNumProcs sets goroutines per worker for parallel message processing.
+	// ListObjectsNumProcs sets the goroutines per sender for a given worker for parallel message processing.
 	ListObjectsNumProcs int
 
 	// ListObjectsBufferCapacity sets the capacity of pipes between workers.
 	ListObjectsBufferCapacity int
 
-	// ListObjectsBufferExtendAfter enables dynamic buffer growth when pipes block.
+	// ListObjectsBufferExtendAfter sets the duration that a sender may remain blocked before extending the pipe's buffer.
 	ListObjectsBufferExtendAfter time.Duration
 
 	// ListObjectsBufferMaxExtensions sets the maximum number of times that a Pipe will
