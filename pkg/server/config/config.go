@@ -10,6 +10,13 @@ import (
 	"time"
 
 	"github.com/spf13/viper"
+
+	"github.com/openfga/openfga/internal/bitutil"
+)
+
+var (
+	ErrListObjectsInvalidChunkSize = errors.New("chunk size must be greater than zero")
+	ErrListObjectsInvalidNumProcs  = errors.New("process number must be greater than zero")
 )
 
 const (
@@ -30,6 +37,12 @@ const (
 	DefaultListUsersMaxResults              = 1000
 	DefaultMaxConcurrentReadsForListUsers   = math.MaxUint32
 	DefaultReadChangesMaxPageSize           = 100
+
+	DefaultListObjectsChunkSize           = 100
+	DefaultListObjectsNumProcs            = 3
+	DefaultListObjectsBufferSize          = 1 << 7
+	DefaultListObjectsBufferExtendAfter   = 0 * time.Second // do not wait to extend
+	DefaultListObjectsBufferMaxExtensions = 0               // 0 means disabled
 
 	DefaultWriteContextByteLimit = 32 * 1_024 // 32KB
 
@@ -314,7 +327,7 @@ type PlannerConfig struct {
 
 type Config struct {
 	// If you change any of these settings, please update the documentation at
-	// https://github.com/openfga/openfga.dev/blob/main/docs/content/intro/setup-openfga.mdx
+	// https://github.com/openfga/openfga.dev/blob/main/docs/content/getting-started/setup-openfga/configuration.mdx
 
 	// ListObjectsDeadline defines the maximum amount of time to accumulate ListObjects results
 	// before the server will respond. This is to protect the server from misuse of the
@@ -325,6 +338,22 @@ type Config struct {
 	// before the non-streaming ListObjects API will respond to the client.
 	// This is to protect the server from misuse of the ListObjects endpoints.
 	ListObjectsMaxResults uint32
+
+	// ListObjectsChunkSize defines how many items are batched before sending between workers.
+	ListObjectsChunkSize int
+
+	// ListObjectsNumProcs sets the goroutines per sender for a given worker for parallel message processing.
+	ListObjectsNumProcs int
+
+	// ListObjectsBufferCapacity sets the capacity of pipes between workers.
+	ListObjectsBufferCapacity int
+
+	// ListObjectsBufferExtendAfter sets the duration that a sender may remain blocked before extending the pipe's buffer.
+	ListObjectsBufferExtendAfter time.Duration
+
+	// ListObjectsBufferMaxExtensions sets the maximum number of times that a Pipe will
+	// dynamically increase its capacity in ListObjects queries.
+	ListObjectsBufferMaxExtensions int
 
 	// ListUsersDeadline defines the maximum amount of time to accumulate ListUsers results
 	// before the server will respond. This is to protect the server from misuse of the
@@ -475,6 +504,10 @@ func (cfg *Config) VerifyServerSettings() error {
 
 	if cfg.ListObjectsDeadline < 0 {
 		return errors.New("listObjectsDeadline must be non-negative time duration")
+	}
+
+	if err := cfg.VerifyPipelineConfig(); err != nil {
+		return err
 	}
 
 	if cfg.ListUsersDeadline < 0 {
@@ -692,6 +725,21 @@ func MaxConditionEvaluationCost() uint64 {
 	return max(DefaultMaxConditionEvaluationCost, viper.GetUint64("maxConditionEvaluationCost"))
 }
 
+func (cfg *Config) VerifyPipelineConfig() error {
+	if !bitutil.PowerOfTwo(cfg.ListObjectsBufferCapacity) {
+		return errors.New("buffer capacity must be a power of two")
+	}
+
+	if cfg.ListObjectsChunkSize < 1 {
+		return errors.New("chunk size must be greater than zero")
+	}
+
+	if cfg.ListObjectsNumProcs < 1 {
+		return errors.New("numProcs must be greater than zero")
+	}
+	return nil
+}
+
 // DefaultConfig is the OpenFGA server default configurations.
 func DefaultConfig() *Config {
 	return &Config{
@@ -711,6 +759,11 @@ func DefaultConfig() *Config {
 		AccessControl:                             AccessControlConfig{Enabled: false, StoreID: "", ModelID: ""},
 		ListObjectsDeadline:                       DefaultListObjectsDeadline,
 		ListObjectsMaxResults:                     DefaultListObjectsMaxResults,
+		ListObjectsChunkSize:                      DefaultListObjectsChunkSize,
+		ListObjectsNumProcs:                       DefaultListObjectsNumProcs,
+		ListObjectsBufferCapacity:                 DefaultListObjectsBufferSize,
+		ListObjectsBufferExtendAfter:              DefaultListObjectsBufferExtendAfter,
+		ListObjectsBufferMaxExtensions:            DefaultListObjectsBufferMaxExtensions,
 		ListUsersMaxResults:                       DefaultListUsersMaxResults,
 		ListUsersDeadline:                         DefaultListUsersDeadline,
 		ReadChangesMaxPageSize:                    DefaultReadChangesMaxPageSize,
