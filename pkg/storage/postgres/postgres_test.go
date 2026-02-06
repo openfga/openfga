@@ -418,7 +418,7 @@ func TestFSPassfileProvider_OpenPassfile(t *testing.T) {
 		filename := filepath.Join(pgPassDir, ".pgpass")
 		_, err := os.Create(filename)
 		require.NoError(t, err)
-		os.Setenv("PGPASSFILE", filename)
+		t.Setenv("PGPASSFILE", filename)
 		provider := &FSPassfileProvider{
 			Logger: logger.NewNoopLogger(),
 			GetHomeDir: func() (string, error) {
@@ -443,7 +443,7 @@ func TestFSPassfileProvider_OpenPassfile(t *testing.T) {
 	t.Run("returns ErrNoPassfile when PGPASSFILE is set but file is not found", func(t *testing.T) {
 		homeDir := t.TempDir()
 		pgPassDir := t.TempDir()
-		os.Setenv("PGPASSFILE", filepath.Join(pgPassDir, ".pgpass"))
+		t.Setenv("PGPASSFILE", filepath.Join(pgPassDir, ".pgpass"))
 		provider := &FSPassfileProvider{
 			Logger: logger.NewNoopLogger(),
 			GetHomeDir: func() (string, error) {
