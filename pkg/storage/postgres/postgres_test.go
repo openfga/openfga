@@ -274,8 +274,8 @@ func TestParseConfig(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			pgPassPath := filepath.Join(t.TempDir(), ".pgpass")
 			if tt.expectedPgpassHook {
+				pgPassPath := filepath.Join(t.TempDir(), ".pgpass")
 				t.Setenv("PGPASSFILE", pgPassPath)
 				if err := os.WriteFile(pgPassPath, []byte("*:*:*:*:def"), 0o600); err != nil {
 					t.Fatal(err)
@@ -300,21 +300,103 @@ func TestParseConfig(t *testing.T) {
 				require.Equal(t, tt.expected.MaxConnIdleTime, parsed.MaxConnIdleTime)
 				if tt.expectedPgpassHook {
 					require.NotNil(t, parsed.BeforeConnect)
-					require.Equal(t, tt.expected.ConnConfig.Password, parsed.ConnConfig.Password)
-
-					require.NoError(t, parsed.BeforeConnect(context.Background(), parsed.ConnConfig))
-					require.NotEqual(t, tt.expected.ConnConfig.Password, parsed.ConnConfig.Password)
-					require.Equal(t, "def", parsed.ConnConfig.Password)
-
-					require.NoError(t, os.WriteFile(pgPassPath, []byte("*:*:*:*:ghi"), 0o600))
-					require.NoError(t, parsed.BeforeConnect(context.Background(), parsed.ConnConfig))
-					require.Equal(t, "ghi", parsed.ConnConfig.Password)
 				} else {
 					require.Nil(t, parsed.BeforeConnect)
 				}
 			}
 		})
 	}
+}
+
+func TestBeforeConnectHook(t *testing.T) {
+	noOpLogger := logger.NewNoopLogger()
+	t.Run("returns nil when file doesn't exist", func(t *testing.T) {
+		getFileName := func(_ logger.Logger) string {
+			return ""
+		}
+		require.Nil(t, createBeforeConnect(noOpLogger, getFileName))
+	})
+	t.Run("returns a hook when file does exist", func(t *testing.T) {
+		dir := t.TempDir()
+		f, err := os.CreateTemp(dir, ".pgpass")
+		require.NoError(t, err)
+		getFileName := func(_ logger.Logger) string {
+			return f.Name()
+		}
+		require.NotNil(t, createBeforeConnect(noOpLogger, getFileName))
+	})
+	t.Run("sets the password from the file", func(t *testing.T) {
+		dir := t.TempDir()
+		f, err := os.CreateTemp(dir, ".pgpass")
+		require.NoError(t, err)
+		_, err = f.WriteString("*:*:*:*:password")
+		require.NoError(t, err)
+		getFileName := func(_ logger.Logger) string {
+			return f.Name()
+		}
+		hook := createBeforeConnect(noOpLogger, getFileName)
+		ctx := context.Background()
+		config := new(pgx.ConnConfig)
+		err = hook(ctx, config)
+		require.NoError(t, err)
+		require.Equal(t, "password", config.Password)
+
+		// It updates the password upon change
+		require.NoError(t, os.WriteFile(f.Name(), []byte("*:*:*:*:secondpassword"), os.FileMode(os.O_TRUNC)))
+		err = hook(ctx, config)
+		require.NoError(t, err)
+		require.Equal(t, "secondpassword", config.Password)
+	})
+	t.Run("returns an error if the file becomes non-existent", func(t *testing.T) {
+		dir := t.TempDir()
+		f, err := os.CreateTemp(dir, ".pgpass")
+		name := f.Name()
+		require.NoError(t, err)
+		_, err = f.WriteString("*:*:*:*:password")
+		require.NoError(t, err)
+		getFileName := func(_ logger.Logger) string {
+			return name
+		}
+		hook := createBeforeConnect(noOpLogger, getFileName)
+
+		require.NoError(t, os.Remove(name))
+		ctx := context.Background()
+		config := new(pgx.ConnConfig)
+		err = hook(ctx, config)
+		require.Error(t, err, os.ErrNotExist)
+
+	})
+	t.Run("does not set the password if the file is empty", func(t *testing.T) {
+		dir := t.TempDir()
+		f, err := os.CreateTemp(dir, ".pgpass")
+		require.NoError(t, err)
+		getFileName := func(_ logger.Logger) string {
+			return f.Name()
+		}
+		hook := createBeforeConnect(noOpLogger, getFileName)
+		ctx := context.Background()
+		config := new(pgx.ConnConfig)
+		err = hook(ctx, config)
+		require.NoError(t, err)
+		require.Equal(t, "", config.Password)
+	})
+}
+
+func TestGetPgPassFileName(t *testing.T) {
+	logger := logger.NewNoopLogger()
+	osUserHomeDir, err := os.UserHomeDir()
+	require.NoError(t, err)
+	t.Run("without PGPASSFILE env var set", func(t *testing.T) {
+		actual := getPgPassFileName(logger)
+		require.Equal(t, filepath.Join(osUserHomeDir, ".pgpass"), actual)
+	})
+	t.Run("without PGPASSFILE env var set", func(t *testing.T) {
+		expected := filepath.Join(t.TempDir(), "/.pgpass")
+		t.Setenv("PGPASSFILE", expected)
+		actual := getPgPassFileName(logger)
+		require.Equal(t, expected, actual)
+	})
+
 }
 
 // mostly test various error scenarios.

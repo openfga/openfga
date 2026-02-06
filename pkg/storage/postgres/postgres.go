@@ -106,7 +106,7 @@ func parseConfig(uri string, override bool, cfg *sqlcommon.Config) (*pgxpool.Con
 		c.MaxConnIdleTime = cfg.ConnMaxIdleTime
 	}
 
-	c.BeforeConnect = createBeforeConnect(cfg)
+	c.BeforeConnect = createBeforeConnect(cfg.Logger, getPgPassFileName)
 	return c, nil
 }
 
@@ -118,18 +118,18 @@ func parseConfig(uri string, override bool, cfg *sqlcommon.Config) (*pgxpool.Con
 // error should fail acquiring the connection
 //
 // https://github.com/jackc/pgx/blob/f56ca73076f3fc935a2a049cf78993bfcbba8f68/pgconn/config.go#L404-L414
-func createBeforeConnect(cfg *sqlcommon.Config) func(ctx context.Context, conn *pgx.ConnConfig) error {
-	pgpassFileName := getPgPassFileName(cfg.Logger)
+func createBeforeConnect(logger logger.Logger, getFileName func(logger.Logger) string) func(ctx context.Context, conn *pgx.ConnConfig) error {
+	pgpassFileName := getFileName(logger)
 	_, err := os.Stat(pgpassFileName)
 	if err != nil {
-		cfg.Logger.Info("no pgpassfile found, skipping pgxpool BeforeConnect hook creation", zap.Error(err))
+		logger.Info("no pgpassfile found, skipping pgxpool BeforeConnect hook creation", zap.Error(err))
 		return nil
 	}
 	// At this point, the passfile exists. Any failure to read from it should be considered an error in acquiring the connection
 	return func(ctx context.Context, config *pgx.ConnConfig) error {
-		pgpassFileName := getPgPassFileName(cfg.Logger)
+		pgpassFileName := getFileName(logger)
 		passfile, err := pgpassfile.ReadPassfile(pgpassFileName)
-		if err != nil && !errors.Is(err, os.ErrNotExist) {
+		if err != nil {
 			return fmt.Errorf("pgxpool BeforeConnect hook - failed to read passfile: %w", err)
 		}
 		host := config.Host
@@ -139,7 +139,7 @@ func createBeforeConnect(cfg *sqlcommon.Config) func(ctx context.Context, conn *
 
 		password := passfile.FindPassword(host, strconv.Itoa(int(config.Port)), config.Database, config.User)
 		if password == "" {
-			cfg.Logger.Warn("pgpassfile password was empty")
+			logger.Warn("pgpassfile password was empty")
 		} else {
 			config.Password = password
 		}
