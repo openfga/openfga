@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -106,7 +107,7 @@ func parseConfig(uri string, override bool, cfg *sqlcommon.Config) (*pgxpool.Con
 		c.MaxConnIdleTime = cfg.ConnMaxIdleTime
 	}
 
-	c.BeforeConnect = createBeforeConnect(cfg.Logger, getPgPassFileName)
+	c.BeforeConnect = createBeforeConnect(cfg.Logger, getPgPassFileName, getPgPassFile)
 	return c, nil
 }
 
@@ -114,23 +115,18 @@ func parseConfig(uri string, override bool, cfg *sqlcommon.Config) (*pgxpool.Con
 // This is a behavior change compared to plain pgx conn acquisition and previous versions of OpenFGA.
 //
 // The implementation is copied nearly verbatim from pgx code, but handles errors differently.
-// If a PGPASSFILE exists at program start, it is assumed you intend to read from it constantly. Therefore a read
-// error should fail acquiring the connection
 //
 // https://github.com/jackc/pgx/blob/f56ca73076f3fc935a2a049cf78993bfcbba8f68/pgconn/config.go#L404-L414
-func createBeforeConnect(logger logger.Logger, getFileName func(logger.Logger) string) func(ctx context.Context, conn *pgx.ConnConfig) error {
-	pgpassFileName := getFileName(logger)
-	_, err := os.Stat(pgpassFileName)
-	if err != nil {
-		logger.Info("no pgpassfile found, skipping pgxpool BeforeConnect hook creation", zap.Error(err))
-		return nil
-	}
-	// At this point, the passfile exists. Any failure to read from it should be considered an error in acquiring the connection
+func createBeforeConnect(logger logger.Logger, getFileName func(logger.Logger) string, getFile func(string) (io.Reader, error)) func(ctx context.Context, conn *pgx.ConnConfig) error {
 	return func(ctx context.Context, config *pgx.ConnConfig) error {
 		pgpassFileName := getFileName(logger)
-		passfile, err := pgpassfile.ReadPassfile(pgpassFileName)
-		if err != nil {
+		file, err := getFile(pgpassFileName)
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
 			return fmt.Errorf("pgxpool BeforeConnect hook - failed to read passfile: %w", err)
+		}
+		passfile, err := pgpassfile.ParsePassfile(file)
+		if err != nil {
+			return fmt.Errorf("pgxpool BeforeConnect hook - failed to parse passfile: %w", err)
 		}
 		host := config.Host
 		if network, _ := pgconn.NetworkAddress(config.Host, config.Port); network == "unix" {
@@ -156,6 +152,11 @@ func getPgPassFileName(logger logger.Logger) string {
 		homeDirPgPass = filepath.Join(homeDir, ".pgpass")
 	}
 	return cmp.Or(os.Getenv("PGPASSFILE"), homeDirPgPass)
+}
+
+// light adapter around os.Open because *os.File can't be coerced to io.Reader when it is a part of the function signature
+func getPgPassFile(pgpassFileName string) (io.Reader, error) {
+	return os.Open(pgpassFileName)
 }
 
 // initDB initializes a new postgres database connection.

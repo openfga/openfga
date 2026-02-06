@@ -5,8 +5,10 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -107,13 +109,12 @@ func TestParseConfig(t *testing.T) {
 	require.NoError(t, err)
 
 	tests := []struct {
-		name               string
-		uri                string
-		override           bool
-		cfg                sqlcommon.Config
-		expected           pgxpool.Config
-		expectedErr        bool
-		expectedPgpassHook bool
+		name        string
+		uri         string
+		override    bool
+		cfg         sqlcommon.Config
+		expected    pgxpool.Config
+		expectedErr bool
 	}{
 		{
 			name:     "default_with_no_overrides",
@@ -252,7 +253,6 @@ func TestParseConfig(t *testing.T) {
 			cfg: sqlcommon.Config{
 				Logger: logger.NewNoopLogger(),
 			},
-			expectedPgpassHook: true,
 			expected: pgxpool.Config{
 				ConnConfig: &pgx.ConnConfig{
 					Config: pgconn.Config{
@@ -274,13 +274,6 @@ func TestParseConfig(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if tt.expectedPgpassHook {
-				pgPassPath := filepath.Join(t.TempDir(), ".pgpass")
-				t.Setenv("PGPASSFILE", pgPassPath)
-				if err := os.WriteFile(pgPassPath, []byte("*:*:*:*:secondpassword"), 0o600); err != nil {
-					t.Fatal(err)
-				}
-			}
 			parsed, err := parseConfig(tt.uri, tt.override, &tt.cfg)
 			if tt.expectedErr {
 				require.Error(t, err)
@@ -298,13 +291,7 @@ func TestParseConfig(t *testing.T) {
 				require.Equal(t, tt.expected.MaxConnLifetime, parsed.MaxConnLifetime)
 				require.Equal(t, tt.expected.MaxConnLifetimeJitter, parsed.MaxConnLifetimeJitter)
 				require.Equal(t, tt.expected.MaxConnIdleTime, parsed.MaxConnIdleTime)
-				if tt.expectedPgpassHook {
-					require.NotNil(t, parsed.BeforeConnect)
-					require.NoError(t, parsed.BeforeConnect(context.Background(), parsed.ConnConfig))
-					require.Equal(t, "secondpassword", parsed.ConnConfig.Password)
-				} else {
-					require.Nil(t, parsed.BeforeConnect)
-				}
+				require.NotNil(t, parsed.BeforeConnect)
 			}
 		})
 	}
@@ -312,72 +299,66 @@ func TestParseConfig(t *testing.T) {
 
 func TestBeforeConnectHook(t *testing.T) {
 	noOpLogger := logger.NewNoopLogger()
-	t.Run("returns nil when file doesn't exist", func(t *testing.T) {
-		getFileName := func(_ logger.Logger) string {
-			return ""
+	getFileName := func(_ logger.Logger) string {
+		return ".pgpass"
+	}
+	t.Run("returns a hook when file doesn't initially exist", func(t *testing.T) {
+		getPgPassFileNotExistError := func(name string) (io.Reader, error) {
+			return nil, os.ErrNotExist
 		}
-		require.Nil(t, createBeforeConnect(noOpLogger, getFileName))
-	})
-	t.Run("returns a hook when file does exist", func(t *testing.T) {
-		dir := t.TempDir()
-		f, err := os.CreateTemp(dir, ".pgpass")
-		require.NoError(t, err)
-		getFileName := func(_ logger.Logger) string {
-			return f.Name()
-		}
-		require.NotNil(t, createBeforeConnect(noOpLogger, getFileName))
+		require.NotNil(t, createBeforeConnect(noOpLogger, getFileName, getPgPassFileNotExistError))
 	})
 	t.Run("sets the password from the file", func(t *testing.T) {
-		dir := t.TempDir()
-		f, err := os.CreateTemp(dir, ".pgpass")
-		require.NoError(t, err)
-		_, err = f.WriteString("*:*:*:*:password")
-		require.NoError(t, err)
-		getFileName := func(_ logger.Logger) string {
-			return f.Name()
+		password := new(string)
+		*password = "*:*:*:*:password"
+		getPgPassFile := func(name string) (io.Reader, error) {
+			return strings.NewReader(*password), nil
 		}
-		hook := createBeforeConnect(noOpLogger, getFileName)
+		hook := createBeforeConnect(noOpLogger, getFileName, getPgPassFile)
 		ctx := context.Background()
 		config := new(pgx.ConnConfig)
-		err = hook(ctx, config)
+		err := hook(ctx, config)
 		require.NoError(t, err)
 		require.Equal(t, "password", config.Password)
 
 		// It updates the password upon change
-		require.NoError(t, os.WriteFile(f.Name(), []byte("*:*:*:*:secondpassword"), os.FileMode(os.O_TRUNC)))
+		*password = "*:*:*:*:secondpassword"
 		err = hook(ctx, config)
 		require.NoError(t, err)
 		require.Equal(t, "secondpassword", config.Password)
 	})
-	t.Run("returns an error if the file becomes non-existent", func(t *testing.T) {
-		dir := t.TempDir()
-		f, err := os.CreateTemp(dir, ".pgpass")
-		name := f.Name()
-		require.NoError(t, err)
-		_, err = f.WriteString("*:*:*:*:password")
-		require.NoError(t, err)
-		getFileName := func(_ logger.Logger) string {
-			return name
-		}
-		hook := createBeforeConnect(noOpLogger, getFileName)
-
-		require.NoError(t, os.Remove(name))
-		ctx := context.Background()
-		config := new(pgx.ConnConfig)
-		err = hook(ctx, config)
-		require.ErrorIs(t, err, os.ErrNotExist)
-	})
 	t.Run("does not set the password if the file is empty", func(t *testing.T) {
-		dir := t.TempDir()
-		f, err := os.CreateTemp(dir, ".pgpass")
-		require.NoError(t, err)
-		getFileName := func(_ logger.Logger) string {
-			return f.Name()
+		getPgPassFile := func(name string) (io.Reader, error) {
+			return strings.NewReader(""), nil
 		}
-		hook := createBeforeConnect(noOpLogger, getFileName)
+		hook := createBeforeConnect(noOpLogger, getFileName, getPgPassFile)
 		ctx := context.Background()
 		config := new(pgx.ConnConfig)
-		err = hook(ctx, config)
+		err := hook(ctx, config)
+		require.NoError(t, err)
+		require.Empty(t, config.Password)
+	})
+	t.Run("the hook errors when the file cannot be read", func(t *testing.T) {
+		getPgPassFile := func(name string) (io.Reader, error) {
+			return nil, errors.New("cannot read file")
+		}
+		hook := createBeforeConnect(noOpLogger, getFileName, getPgPassFile)
+		ctx := context.Background()
+		config := new(pgx.ConnConfig)
+		err := hook(ctx, config)
+		require.Error(t, err, "cannot read file")
+		require.Empty(t, config.Password)
+	})
+	t.Run("the hook does not set the password when the pgpass file is in an invalid format", func(t *testing.T) {
+		getPgPassFile := func(name string) (io.Reader, error) {
+			return strings.NewReader("invalid pgpass format"), nil
+		}
+		hook := createBeforeConnect(noOpLogger, getFileName, getPgPassFile)
+		ctx := context.Background()
+		config := new(pgx.ConnConfig)
+		err := hook(ctx, config)
+		// Not a typo - pgpassfile.ParsePassfile only errors upon i/o errors
+		// Given an invalid pgpass format, the line is simply not added to the struct
 		require.NoError(t, err)
 		require.Empty(t, config.Password)
 	})
