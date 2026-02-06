@@ -154,7 +154,7 @@ func getPgPassFileName(logger logger.Logger) string {
 	return cmp.Or(os.Getenv("PGPASSFILE"), homeDirPgPass)
 }
 
-// light adapter around os.Open because *os.File can't be coerced to io.Reader when it is a part of the function signature
+// light adapter around os.Open because *os.File can't be coerced to io.Reader when it is a part of the function signature.
 func getPgPassFile(pgpassFileName string) (io.Reader, error) {
 	return os.Open(pgpassFileName)
 }

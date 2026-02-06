@@ -372,7 +372,7 @@ func TestGetPgPassFileName(t *testing.T) {
 		actual := getPgPassFileName(logger)
 		require.Equal(t, filepath.Join(osUserHomeDir, ".pgpass"), actual)
 	})
-	t.Run("without PGPASSFILE env var set", func(t *testing.T) {
+	t.Run("with PGPASSFILE env var set", func(t *testing.T) {
 		expected := filepath.Join(t.TempDir(), "/.pgpass")
 		t.Setenv("PGPASSFILE", expected)
 		actual := getPgPassFileName(logger)
