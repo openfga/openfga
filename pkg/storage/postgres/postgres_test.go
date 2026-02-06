@@ -41,7 +41,7 @@ type MemoryPassfileProvider struct {
 
 func (p *MemoryPassfileProvider) OpenPassfile() (io.Reader, error) {
 	var reader io.Reader
-	if p.Content != "" {
+	if p.err == nil {
 		reader = strings.NewReader(p.Content)
 	}
 	return reader, p.err
