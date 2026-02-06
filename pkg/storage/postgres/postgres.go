@@ -141,7 +141,7 @@ func (p *FSPassfileProvider) OpenPassfile() (io.Reader, error) {
 // Fixes issue 2913 where pgxpool doesn't fetch updates to PGPASSFILE upon every connection attempt.
 // This is a behavior change compared to plain pgx conn acquisition and previous versions of OpenFGA.
 //
-// The implementation is copied nearly verbatim from pgx code, but handles errors differently.
+// The implementation is inspired by the pgx code, but handles errors differently.
 //
 // https://github.com/jackc/pgx/blob/f56ca73076f3fc935a2a049cf78993bfcbba8f68/pgconn/config.go#L404-L414
 func createBeforeConnect(logger logger.Logger, provider PassfileProvider) func(ctx context.Context, conn *pgx.ConnConfig) error {
