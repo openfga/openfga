@@ -327,6 +327,17 @@ func TestBeforeConnectHook(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, "secondpassword", config.Password)
 	})
+	t.Run("does not set the password if there is no file", func(t *testing.T) {
+		getPgPassFile := func(name string) (io.Reader, error) {
+			return nil, os.ErrNotExist
+		}
+		hook := createBeforeConnect(noOpLogger, getFileName, getPgPassFile)
+		ctx := context.Background()
+		config := new(pgx.ConnConfig)
+		err := hook(ctx, config)
+		require.NoError(t, err)
+		require.Empty(t, config.Password)
+	})
 	t.Run("does not set the password if the file is empty", func(t *testing.T) {
 		getPgPassFile := func(name string) (io.Reader, error) {
 			return strings.NewReader(""), nil

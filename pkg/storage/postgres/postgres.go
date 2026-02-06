@@ -121,7 +121,10 @@ func createBeforeConnect(logger logger.Logger, getFileName func(logger.Logger) s
 	return func(ctx context.Context, config *pgx.ConnConfig) error {
 		pgpassFileName := getFileName(logger)
 		file, err := getFile(pgpassFileName)
-		if err != nil && !errors.Is(err, os.ErrNotExist) {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		if err != nil {
 			return fmt.Errorf("pgxpool BeforeConnect hook - failed to read passfile: %w", err)
 		}
 		passfile, err := pgpassfile.ParsePassfile(file)
