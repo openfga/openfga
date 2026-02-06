@@ -10,7 +10,6 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Changed
 - PGPASSFILE is read upon every connection attempt if it exists instead a single time upon application start. This restores <v1.11.x behavior. [#2913](https://github.com/openfga/openfga/pull/2913)
 
-
 ## [1.11.3] - 2026-01-28
 ### Added
 - Add configuration option to limit max type system cache size. [2744](https://github.com/openfga/openfga/pull/2744)

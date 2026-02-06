@@ -300,7 +300,7 @@ func TestParseConfig(t *testing.T) {
 				require.Equal(t, tt.expected.MaxConnIdleTime, parsed.MaxConnIdleTime)
 				if tt.expectedPgpassHook {
 					require.NotNil(t, parsed.BeforeConnect)
-					require.Nil(t, parsed.BeforeConnect(context.Background(), parsed.ConnConfig))
+					require.NoError(t, parsed.BeforeConnect(context.Background(), parsed.ConnConfig))
 					require.Equal(t, "secondpassword", parsed.ConnConfig.Password)
 				} else {
 					require.Nil(t, parsed.BeforeConnect)
