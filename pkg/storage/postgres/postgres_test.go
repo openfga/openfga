@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/iotest"
 	"time"
 
 	sq "github.com/Masterminds/squirrel"
@@ -36,15 +37,24 @@ import (
 
 type MemoryPassfileProvider struct {
 	Content string
-	err     error
+	Err     error
 }
 
 func (p *MemoryPassfileProvider) OpenPassfile() (io.Reader, error) {
 	var reader io.Reader
-	if p.err == nil {
+	if p.Err == nil {
 		reader = strings.NewReader(p.Content)
 	}
-	return reader, p.err
+	return reader, p.Err
+}
+
+type ReaderPassfileProvider struct {
+	Reader io.Reader
+	Err    error
+}
+
+func (p *ReaderPassfileProvider) OpenPassfile() (io.Reader, error) {
+	return p.Reader, p.Err
 }
 
 func TestPostgresDatastore(t *testing.T) {
@@ -364,6 +374,25 @@ func TestBeforeConnectHook(t *testing.T) {
 		// Given an invalid pgpass format, the line is simply not added to the struct
 		require.NoError(t, err)
 		require.Empty(t, config.Password)
+	})
+	t.Run("the hook returns an error if reading the file fails", func(t *testing.T) {
+		provider := &ReaderPassfileProvider{iotest.ErrReader(errors.New("read error")), nil}
+		hook := createBeforeConnect(noOpLogger, provider)
+		ctx := context.Background()
+		config := new(pgx.ConnConfig)
+		err := hook(ctx, config)
+		require.Error(t, err, "read error")
+		require.Empty(t, config.Password)
+	})
+	t.Run("the retrieves localhost entries for unix socket hosts", func(t *testing.T) {
+		provider := &MemoryPassfileProvider{"localhost:*:*:*:password", nil}
+		hook := createBeforeConnect(noOpLogger, provider)
+		ctx := context.Background()
+		config := new(pgx.ConnConfig)
+		config.Host = "/docker.sock"
+		err := hook(ctx, config)
+		require.NoError(t, err)
+		require.Equal(t, "password", config.Password)
 	})
 }
 
