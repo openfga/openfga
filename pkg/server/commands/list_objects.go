@@ -266,15 +266,8 @@ func NewListObjectsQuery(
 		optimizationsEnabled: false,
 		useShadowCache:       false,
 		ff:                   featureflags.NewNoopFeatureFlagClient(),
+		pipelineConfig:       pipeline.DefaultConfig(),
 	}
-
-	pipelineConfig := pipeline.DefaultConfig()
-	pipelineConfig.ChunkSize = serverconfig.DefaultListObjectsChunkSize
-	pipelineConfig.NumProcs = serverconfig.DefaultListObjectsNumProcs
-	pipelineConfig.Buffer.Capacity = serverconfig.DefaultListObjectsBufferSize
-	pipelineConfig.Buffer.ExtendAfter = serverconfig.DefaultListObjectsBufferExtendAfter
-	pipelineConfig.Buffer.MaxExtensions = serverconfig.DefaultListObjectsBufferMaxExtensions
-	query.pipelineConfig = pipelineConfig
 
 	for _, opt := range opts {
 		opt(query)
