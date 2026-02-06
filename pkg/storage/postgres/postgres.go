@@ -1,7 +1,6 @@
 package postgres
 
 import (
-	"cmp"
 	"context"
 	"database/sql"
 	"errors"
@@ -123,13 +122,15 @@ type FSPassfileProvider struct {
 }
 
 func (p *FSPassfileProvider) OpenPassfile() (io.Reader, error) {
-	homeDir, err := p.GetHomeDir()
-	if err != nil {
-		p.Logger.Info("could not get current user home directory for pgxpool BeforeHook creation", zap.Error(err))
-	} else {
-		homeDir = filepath.Join(homeDir, ".pgpass")
+	fileLocation := os.Getenv("PGPASSFILE")
+	if len(fileLocation) == 0 {
+		homeDir, err := p.GetHomeDir()
+		if err != nil {
+			p.Logger.Info("could not get current user home directory for pgxpool BeforeHook creation", zap.Error(err))
+			return nil, ErrNoPassfile
+		}
+		fileLocation = filepath.Join(homeDir, ".pgpass")
 	}
-	fileLocation := cmp.Or(os.Getenv("PGPASSFILE"), homeDir)
 	f, err := os.Open(fileLocation)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, ErrNoPassfile
