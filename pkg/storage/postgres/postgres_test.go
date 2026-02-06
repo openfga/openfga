@@ -384,7 +384,7 @@ func TestBeforeConnectHook(t *testing.T) {
 		require.Error(t, err, "read error")
 		require.Empty(t, config.Password)
 	})
-	t.Run("the retrieves localhost entries for unix socket hosts", func(t *testing.T) {
+	t.Run("retrieves localhost entries for unix socket hosts", func(t *testing.T) {
 		provider := &MemoryPassfileProvider{"localhost:*:*:*:password", nil}
 		hook := createBeforeConnect(noOpLogger, provider)
 		ctx := context.Background()
