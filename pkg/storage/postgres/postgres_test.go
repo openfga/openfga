@@ -277,7 +277,7 @@ func TestParseConfig(t *testing.T) {
 			if tt.expectedPgpassHook {
 				pgPassPath := filepath.Join(t.TempDir(), ".pgpass")
 				t.Setenv("PGPASSFILE", pgPassPath)
-				if err := os.WriteFile(pgPassPath, []byte("*:*:*:*:def"), 0o600); err != nil {
+				if err := os.WriteFile(pgPassPath, []byte("*:*:*:*:secondpassword"), 0o600); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -300,6 +300,8 @@ func TestParseConfig(t *testing.T) {
 				require.Equal(t, tt.expected.MaxConnIdleTime, parsed.MaxConnIdleTime)
 				if tt.expectedPgpassHook {
 					require.NotNil(t, parsed.BeforeConnect)
+					require.Nil(t, parsed.BeforeConnect(context.Background(), parsed.ConnConfig))
+					require.Equal(t, "secondpassword", parsed.ConnConfig.Password)
 				} else {
 					require.Nil(t, parsed.BeforeConnect)
 				}
