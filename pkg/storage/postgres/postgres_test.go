@@ -363,8 +363,7 @@ func TestBeforeConnectHook(t *testing.T) {
 		ctx := context.Background()
 		config := new(pgx.ConnConfig)
 		err = hook(ctx, config)
-		require.Error(t, err, os.ErrNotExist)
-
+		require.ErrorIs(t, err, os.ErrNotExist)
 	})
 	t.Run("does not set the password if the file is empty", func(t *testing.T) {
 		dir := t.TempDir()
@@ -378,7 +377,7 @@ func TestBeforeConnectHook(t *testing.T) {
 		config := new(pgx.ConnConfig)
 		err = hook(ctx, config)
 		require.NoError(t, err)
-		require.Equal(t, "", config.Password)
+		require.Empty(t, config.Password)
 	})
 }
 
@@ -396,7 +395,6 @@ func TestGetPgPassFileName(t *testing.T) {
 		actual := getPgPassFileName(logger)
 		require.Equal(t, expected, actual)
 	})
-
 }
 
 // mostly test various error scenarios.
