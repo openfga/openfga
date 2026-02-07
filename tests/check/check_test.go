@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
@@ -87,7 +86,7 @@ func TestServerLogs(t *testing.T) {
 	_ = mocks.NewMockTracingServer(t, otlpServerPort)
 
 	cfg := config.MustDefaultConfig()
-	cfg.Experimentals = append(cfg.Experimentals, "enable-check-optimizations")
+	cfg.Experimentals = append(cfg.Experimentals, config.ExperimentalCheckOptimizations)
 	cfg.Trace.Enabled = true
 	cfg.Trace.OTLP.Endpoint = localOTLPServerURL
 	cfg.Datastore.Engine = "memory"
@@ -333,14 +332,11 @@ func testRunAll(t *testing.T, engine string) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
-	cfg := config.MustDefaultConfig()
+	cfg := testutils.MustDefaultConfigForParallelTests()
 	cfg.Experimentals = append(cfg.Experimentals, config.ExperimentalCheckOptimizations)
 	cfg.Log.Level = "error"
 	cfg.Datastore.Engine = engine
-	// extend the timeout for the tests, coverage makes them slower
-	cfg.RequestTimeout = 10 * time.Second
 	cfg.SharedIterator.Enabled = true
-
 	cfg.CheckIteratorCache.Enabled = true
 
 	tests.StartServer(t, cfg)

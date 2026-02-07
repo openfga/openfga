@@ -257,12 +257,32 @@ func EnsureServiceHealthy(t testing.TB, grpcAddr, httpAddr string, transportCred
 	}
 }
 
+// MustDefaultConfigForParallelTests returns default server config suitable for parallel tests.
+// It limits the connection idle time and lifetime to prevent bad connections
+// and extends the request timeout to accommodate slower test environments.
+func MustDefaultConfigForParallelTests() *serverconfig.Config {
+	config := serverconfig.MustDefaultConfig()
+
+	// limit IdleTime and Lifetime to prevent bad connections
+	config.Datastore.ConnMaxIdleTime = 5 * time.Second
+	config.Datastore.ConnMaxLifetime = 10 * time.Second
+
+	// extend the timeout for the tests, coverage makes them slower
+	config.RequestTimeout = 10 * time.Second
+
+	return config
+}
+
 // MustDefaultConfigWithRandomPorts returns default server config but with random ports for the grpc and http addresses
 // and with the playground, tracing and metrics turned off.
 // This function may panic if somehow a random port cannot be chosen.
 func MustDefaultConfigWithRandomPorts() *serverconfig.Config {
 	config := serverconfig.MustDefaultConfig()
-	config.Experimentals = append(config.Experimentals, "enable-check-optimizations", "enable-list-objects-optimizations")
+	config.Experimentals = append(
+		config.Experimentals,
+		serverconfig.ExperimentalCheckOptimizations,
+		serverconfig.ExperimentalListObjectsOptimizations,
+	)
 
 	httpPort, httpPortReleaser := TCPRandomPort()
 	defer httpPortReleaser()
