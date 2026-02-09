@@ -11,4 +11,5 @@ coverage*.out
 
 mise.toml
 
+.devcontainer/
 vendor/

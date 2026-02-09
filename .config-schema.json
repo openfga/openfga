@@ -211,7 +211,7 @@
                 "engine": {
                     "description": "The datastore engine that will be used for persistence.",
                     "type": "string",
-                    "enum": ["memory", "postgres", "mysql", "sqlite"],
+                    "enum": ["memory", "postgres", "mysql", "sqlite", "grpc"],
                     "default": "memory",
                     "x-env-variable": "OPENFGA_DATASTORE_ENGINE"
                 },
@@ -311,6 +311,48 @@
                             "type": "boolean",
                             "default": false,
                             "x-env-variable": "OPENFGA_DATASTORE_METRICS_ENABLED"
+                        }
+                    }
+                },
+                "grpc": {
+                    "description": "Configuration for the gRPC storage client (only used when engine is 'grpc').",
+                    "type": "object",
+                    "properties": {
+                        "addr": {
+                            "description": "The address of the gRPC storage server.",
+                            "type": "string",
+                            "examples": ["localhost:50051", "storage.example.com:443"],
+                            "x-env-variable": "OPENFGA_DATASTORE_GRPC_ADDR"
+                        },
+                        "tlsCertPath": {
+                            "description": "The (absolute) file path of the certificate to use for the TLS connection. TLS is enabled if both tlsCertPath and tlsKeyPath are provided.",
+                            "type": "string",
+                            "x-env-variable": "OPENFGA_DATASTORE_GRPC_TLS_CERT"
+                        },
+                        "tlsKeyPath": {
+                            "description": "The (absolute) file path of the key to use for the TLS connection. TLS is enabled if both tlsCertPath and tlsKeyPath are provided.",
+                            "type": "string",
+                            "x-env-variable": "OPENFGA_DATASTORE_GRPC_TLS_KEY"
+                        },
+                        "keepaliveTime": {
+                            "description": "Duration after which a keepalive ping is sent on the gRPC connection if no activity (0 disables keepalive).",
+                            "type": "string",
+                            "format": "duration",
+                            "default": "0s",
+                            "x-env-variable": "OPENFGA_DATASTORE_GRPC_KEEPALIVE_TIME"
+                        },
+                        "keepaliveTimeout": {
+                            "description": "Duration to wait for keepalive ping response.",
+                            "type": "string",
+                            "format": "duration",
+                            "default": "0s",
+                            "x-env-variable": "OPENFGA_DATASTORE_GRPC_KEEPALIVE_TIMEOUT"
+                        },
+                        "keepalivePermitWithoutStream": {
+                            "description": "Allow keepalive pings even when no streams are active.",
+                            "type": "boolean",
+                            "default": false,
+                            "x-env-variable": "OPENFGA_DATASTORE_GRPC_KEEPALIVE_PERMIT_WITHOUT_STREAM"
                         }
                     }
                 }

@@ -36,6 +36,7 @@ import (
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/server/test"
 	"github.com/openfga/openfga/pkg/storage"
+	grpcstorage "github.com/openfga/openfga/pkg/storage/grpc"
 	"github.com/openfga/openfga/pkg/storage/memory"
 	"github.com/openfga/openfga/pkg/storage/mysql"
 	"github.com/openfga/openfga/pkg/storage/postgres"
@@ -425,6 +426,17 @@ func TestServerWithSQLiteDatastore(t *testing.T) {
 	test.RunAllTests(t, ds)
 }
 
+func TestServerWithGRPCDatastore(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	grpcClient, _, cleanup := grpcstorage.SetupTestClientServer(t)
+	t.Cleanup(cleanup)
+
+	test.RunAllTests(t, grpcClient)
+}
+
 func TestAvoidDeadlockAcrossCheckRequests(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
@@ -807,6 +819,18 @@ func BenchmarkOpenFGAServer(b *testing.B) {
 		ds, err := sqlite.New(uri, sqlcommon.NewConfig())
 		require.NoError(b, err)
 		b.Cleanup(ds.Close)
+		test.RunAllBenchmarks(b, ds)
+	})
+
+	b.Run("BenchmarkGRPCDatastoreOverTCP", func(b *testing.B) {
+		ds, cleanup := grpcstorage.SetupTestClientServerOverTCP(b)
+		b.Cleanup(cleanup)
+		test.RunAllBenchmarks(b, ds)
+	})
+
+	b.Run("BenchmarkGRPCDatastoreOverUnixSocket", func(b *testing.B) {
+		ds, cleanup := grpcstorage.SetupTestClientServerOverUnixSocket(b)
+		b.Cleanup(cleanup)
 		test.RunAllBenchmarks(b, ds)
 	})
 }
