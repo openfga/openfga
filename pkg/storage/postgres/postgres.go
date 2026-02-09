@@ -167,7 +167,9 @@ func (p *FSPassfileProvider) OpenPassfile() (io.Reader, error) {
 func createBeforeConnect(logger logger.Logger, provider PassfileProvider) func(ctx context.Context, conn *pgx.ConnConfig) error {
 	return func(ctx context.Context, config *pgx.ConnConfig) error {
 		file, err := provider.OpenPassfile()
-		if errors.Is(err, ErrNoPassfile) {
+		// Like with libpq - ignore the pgpass file if the permissions are too permissive
+		// https://www.postgresql.org/docs/current/libpq-pgpass.html
+		if errors.Is(err, ErrNoPassfile) || errors.Is(err, ErrInsecurePassfilePermissions) {
 			return nil
 		}
 		if err != nil {

@@ -338,6 +338,15 @@ func TestBeforeConnectHook(t *testing.T) {
 		require.NoError(t, err)
 		require.Empty(t, config.Password)
 	})
+	t.Run("does not set the password if the file perms are to permissive", func(t *testing.T) {
+		provider := &MemoryPassfileProvider{"", nil, ErrInsecurePassfilePermissions}
+		hook := createBeforeConnect(noOpLogger, provider)
+		ctx := context.Background()
+		config := new(pgx.ConnConfig)
+		err := hook(ctx, config)
+		require.NoError(t, err)
+		require.Empty(t, config.Password)
+	})
 	t.Run("does not set the password if the file is empty", func(t *testing.T) {
 		provider := &MemoryPassfileProvider{"", nil, nil}
 		hook := createBeforeConnect(noOpLogger, provider)
