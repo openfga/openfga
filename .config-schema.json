@@ -102,6 +102,13 @@
             "default": 1000,
             "x-env-variable": "OPENFGA_LIST_USERS_MAX_RESULTS"
         },
+        "readChangesMaxPageSize": {
+            "description": "The maximum page size allowed for ReadChanges API requests",
+            "type": "integer",
+            "minimum": 1,
+            "default": 100,
+            "x-env-variable": "OPENFGA_READ_CHANGES_MAX_PAGE_SIZE"
+        },
         "requestDurationDatastoreQueryCountBuckets": {
             "description": "Datastore query count buckets used to label the histogram metric for measuring request duration.",
             "type": "array",

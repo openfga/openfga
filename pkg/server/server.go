@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"sort"
 	"time"
 
@@ -33,6 +34,7 @@ import (
 	"github.com/openfga/openfga/pkg/featureflags"
 	"github.com/openfga/openfga/pkg/gateway"
 	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/pkg/server/commands/reverseexpand/pipeline"
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
@@ -171,15 +173,12 @@ type Server struct {
 	resolveNodeLimit                 uint32
 	resolveNodeBreadthLimit          uint32
 	changelogHorizonOffset           int
+	readChangesMaxPageSize           int32
 	listObjectsDeadline              time.Duration
 	listObjectsMaxResults            uint32
+	listObjectsPipelineConfig        pipeline.Config
 	listUsersDeadline                time.Duration
 	listUsersMaxResults              uint32
-	listObjectsChunkSize             int
-	listObjectsBufferSize            int
-	listObjectsNumProcs              int
-	listObjectsPipeExtendAfter       time.Duration
-	listObjectsPipeMaxExtensions     int
 	maxChecksPerBatchCheck           uint32
 	maxConcurrentChecksPerBatch      uint32
 	maxConcurrentReadsForListObjects uint32
@@ -247,6 +246,8 @@ type Server struct {
 	planner *planner.Planner
 
 	requestTimeout time.Duration
+
+	sharedResourceOptions []shared.SharedDatastoreResourcesOpt
 }
 
 type OpenFGAServiceV1Option func(s *Server)
@@ -333,6 +334,17 @@ func WithResolveNodeBreadthLimit(limit uint32) OpenFGAServiceV1Option {
 func WithChangelogHorizonOffset(offset int) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.changelogHorizonOffset = offset
+	}
+}
+
+// WithReadChangesMaxPageSize sets the maximum page size for ReadChanges API requests.
+func WithReadChangesMaxPageSize(max uint32) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		if max <= 0 || max > math.MaxInt32 {
+			max = serverconfig.DefaultReadChangesMaxPageSize
+		}
+
+		s.readChangesMaxPageSize = int32(max)
 	}
 }
 
@@ -773,9 +785,10 @@ func WithSharedIteratorTTL(ttl time.Duration) OpenFGAServiceV1Option {
 	}
 }
 
-// When the ListObjects "pipeline" algorithm is enabled, this option sets the maximum
-// number of objects to send in a message between pipeline workers. This ultimately
-// equates to the number of objects that will be used in each data store query filter.
+// WithListObjectsChunkSize is only effective when the ListObjects "pipeline" algorithm is
+// enabled, this option sets the maximum number of objects to send in a message between pipeline
+// workers. This ultimately equates to the number of objects that will be used in each data store
+// query filter.
 //
 // For example: If a query for groups that a user is a member of returns 1,000 objects, and
 // the chunk size is set to 100, 10 messages will be sent to the next worker, each having
@@ -784,40 +797,49 @@ func WithSharedIteratorTTL(ttl time.Duration) OpenFGAServiceV1Option {
 // and pass them all as a filter to a single query for the document objects.
 func WithListObjectsChunkSize(value int) OpenFGAServiceV1Option {
 	return func(s *Server) {
-		s.listObjectsChunkSize = value
+		s.listObjectsPipelineConfig.ChunkSize = value
 	}
 }
 
-// When the ListObjects "pipeline" algorithm is enabled, this option sets the maximum
-// number of messages that can be buffered between workers as they await processing.
+// WithListObjectsBufferCapacity is only effective when the ListObjects "pipeline" algorithm
+// is enabled, this option sets the maximum number of messages that can be buffered between
+// workers as they await processing.
 //
-// The larger the buffer size, the more memory may be allocated by the query. A large
-// buffer size combined with a large chunk size can result in a significant amount of
+// The larger the buffer capacity, the more memory may be allocated by the query. A large
+// buffer capacity combined with a large chunk size can result in a significant amount of
 // memory allocation in a worst case scenario.
-func WithListObjectsBufferSize(value int) OpenFGAServiceV1Option {
+func WithListObjectsBufferCapacity(value int) OpenFGAServiceV1Option {
 	return func(s *Server) {
-		s.listObjectsBufferSize = value
+		s.listObjectsPipelineConfig.Buffer.Capacity = value
 	}
 }
 
-// When the ListObjects "pipeline" algorithm is enabled, this option sets the number
-// of goroutines that will be created for each worker subscription. In order to pass
-// data through the pipeline, workers subscribe to the output of other workers. Each
-// subscription receives its own goroutines to concurrently process incoming messages.
+// WithListObjectsNumProcs is only effective when the ListObjects "pipeline" algorithm is
+// enabled, this option sets the number of goroutines that will be created for each worker
+// subscription. In order to pass data through the pipeline, workers subscribe to the output
+// of other workers. Each subscription receives its own goroutines to concurrently process
+// incoming messages.
 func WithListObjectsNumProcs(value int) OpenFGAServiceV1Option {
 	return func(s *Server) {
-		s.listObjectsNumProcs = value
+		s.listObjectsPipelineConfig.NumProcs = value
 	}
 }
 
-// When the ListObjects "pipeline" algorithm is enabled, this option enables extension
-// functionality within a pipeline, which dynamically extends the buffers between pipeline
-// workers, as needed. When a call to send on a buffer blocks for longer than the extendAfter
-// duration, the buffer size is doubled up to maxExtensions number of times.
+// WithListObjectsPipeExtension is only effective when the ListObjects "pipeline"
+// algorithm is enabled, this option enables extension functionality within a pipeline,
+// which dynamically extends the buffers between pipeline workers, as needed. When a call
+// to send on a buffer blocks for longer than the extendAfter duration, the buffer size
+// is doubled up to maxExtensions number of times.
 func WithListObjectsPipeExtension(extendAfter time.Duration, maxExtensions int) OpenFGAServiceV1Option {
 	return func(s *Server) {
-		s.listObjectsPipeExtendAfter = extendAfter
-		s.listObjectsPipeMaxExtensions = maxExtensions
+		s.listObjectsPipelineConfig.Buffer.ExtendAfter = extendAfter
+		s.listObjectsPipelineConfig.Buffer.MaxExtensions = maxExtensions
+	}
+}
+
+func WithCheckCache(c storage.InMemoryCache[any]) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.sharedResourceOptions = append(s.sharedResourceOptions, shared.WithCheckCache(c))
 	}
 }
 
@@ -830,10 +852,12 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		encoder:                          encoder.NewBase64Encoder(),
 		transport:                        gateway.NewNoopTransport(),
 		changelogHorizonOffset:           serverconfig.DefaultChangelogHorizonOffset,
+		readChangesMaxPageSize:           serverconfig.DefaultReadChangesMaxPageSize,
 		resolveNodeLimit:                 serverconfig.DefaultResolveNodeLimit,
 		resolveNodeBreadthLimit:          serverconfig.DefaultResolveNodeBreadthLimit,
 		listObjectsDeadline:              serverconfig.DefaultListObjectsDeadline,
 		listObjectsMaxResults:            serverconfig.DefaultListObjectsMaxResults,
+		listObjectsPipelineConfig:        pipeline.DefaultConfig(),
 		listUsersDeadline:                serverconfig.DefaultListUsersDeadline,
 		listUsersMaxResults:              serverconfig.DefaultListUsersMaxResults,
 		maxChecksPerBatchCheck:           serverconfig.DefaultMaxChecksPerBatchCheck,
@@ -936,7 +960,9 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		return nil, err
 	}
 
-	s.sharedDatastoreResources, err = shared.NewSharedDatastoreResources(s.ctx, s.singleflightGroup, s.datastore, s.cacheSettings, []shared.SharedDatastoreResourcesOpt{shared.WithLogger(s.logger)}...)
+	s.sharedResourceOptions = append(s.sharedResourceOptions, shared.WithLogger(s.logger))
+
+	s.sharedDatastoreResources, err = shared.NewSharedDatastoreResources(s.ctx, s.singleflightGroup, s.datastore, s.cacheSettings, s.sharedResourceOptions...)
 	if err != nil {
 		return nil, err
 	}

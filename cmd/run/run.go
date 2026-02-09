@@ -258,6 +258,8 @@ func NewRunCommand() *cobra.Command {
 
 	flags.Uint32("listUsers-max-results", defaultConfig.ListUsersMaxResults, "the maximum results to return in ListUsers API responses. If 0, all results can be returned")
 
+	flags.Uint32("readChanges-max-page-size", defaultConfig.ReadChangesMaxPageSize, "the maximum page size allowed for ReadChanges API requests")
+
 	flags.Uint32("check-cache-limit", defaultConfig.CheckCache.Limit, "if check-query-cache-enabled or check-iterator-cache-enabled, this is the size limit of the cache")
 
 	flags.Bool("shared-iterator-enabled", defaultConfig.SharedIterator.Enabled, "enabling sharing of datastore iterators with different consumers. Each iterator is the result of a database query, for example usersets related to a specific object, or objects related to a specific user, up to a certain number of tuples per iterator.")
@@ -897,6 +899,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		server.WithResolveNodeLimit(config.ResolveNodeLimit),
 		server.WithResolveNodeBreadthLimit(config.ResolveNodeBreadthLimit),
 		server.WithChangelogHorizonOffset(config.ChangelogHorizonOffset),
+		server.WithReadChangesMaxPageSize(config.ReadChangesMaxPageSize),
 		server.WithListObjectsDeadline(config.ListObjectsDeadline),
 		server.WithListObjectsMaxResults(config.ListObjectsMaxResults),
 		server.WithListUsersDeadline(config.ListUsersDeadline),
