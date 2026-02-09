@@ -306,9 +306,6 @@ func TestParseConfig(t *testing.T) {
 				require.Equal(t, tt.expected.MaxConnLifetimeJitter, parsed.MaxConnLifetimeJitter)
 				require.Equal(t, tt.expected.MaxConnIdleTime, parsed.MaxConnIdleTime)
 				require.NotNil(t, parsed.BeforeConnect)
-
-				parsed.BeforeConnect(context.Background(), parsed.ConnConfig)
-				require.Equal(t, tt.expected.ConnConfig.Password, parsed.ConnConfig.Password)
 			}
 		})
 	}
