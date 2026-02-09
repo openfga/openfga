@@ -36,14 +36,16 @@ func runMatrixWithEngine(t *testing.T, engine string) {
 		goleak.VerifyNone(t)
 	})
 
-	clientWithExperimentals := tests.BuildClientInterface(t, engine, []string{"enable-check-optimizations", "enable-list-objects-optimizations"})
-	RunMatrixTests(t, engine, true, clientWithExperimentals)
+	optimizationExperimentals := []string{config.ExperimentalCheckOptimizations, config.ExperimentalListObjectsOptimizations}
+	clientWithExperimentals := tests.BuildClientInterface(t, engine, optimizationExperimentals)
+	RunMatrixTests(t, engine, clientWithExperimentals, optimizationExperimentals)
 
-	clientWithPipeline := tests.BuildClientInterface(t, engine, []string{"pipeline_list_objects"})
-	RunMatrixTests(t, engine, false, clientWithPipeline)
+	pipelineExperimentals := []string{config.ExperimentalPipelineListObjects}
+	clientWithPipeline := tests.BuildClientInterface(t, engine, pipelineExperimentals)
+	RunMatrixTests(t, engine, clientWithPipeline, pipelineExperimentals)
 
 	clientWithoutExperimentals := tests.BuildClientInterface(t, engine, []string{})
-	RunMatrixTests(t, engine, false, clientWithoutExperimentals)
+	RunMatrixTests(t, engine, clientWithoutExperimentals, []string{})
 }
 
 func TestListObjectsMemory(t *testing.T) {
@@ -75,7 +77,7 @@ func testRunAll(t *testing.T, engine string) {
 
 	t.Run("with optimizations", func(t *testing.T) {
 		cfg := config.MustDefaultConfig()
-		cfg.Experimentals = append(cfg.Experimentals, "enable-check-optimizations", "enable-list-objects-optimizations")
+		cfg.Experimentals = append(cfg.Experimentals, config.ExperimentalCheckOptimizations, config.ExperimentalListObjectsOptimizations)
 		cfg.Log.Level = "error"
 		cfg.Datastore.Engine = engine
 		cfg.ListObjectsDeadline = 0 // no deadline
@@ -91,7 +93,7 @@ func testRunAll(t *testing.T, engine string) {
 
 	t.Run("with pipeline", func(t *testing.T) {
 		cfg := config.MustDefaultConfig()
-		cfg.Experimentals = append(cfg.Experimentals, "pipeline_list_objects")
+		cfg.Experimentals = append(cfg.Experimentals, config.ExperimentalPipelineListObjects)
 		cfg.Log.Level = "error"
 		cfg.Datastore.Engine = engine
 		cfg.ListObjectsDeadline = 0 // no deadline

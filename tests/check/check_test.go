@@ -87,7 +87,7 @@ func TestServerLogs(t *testing.T) {
 	_ = mocks.NewMockTracingServer(t, otlpServerPort)
 
 	cfg := config.MustDefaultConfig()
-	cfg.Experimentals = append(cfg.Experimentals, "enable-check-optimizations")
+	cfg.Experimentals = append(cfg.Experimentals, config.ExperimentalCheckOptimizations)
 	cfg.Trace.Enabled = true
 	cfg.Trace.OTLP.Endpoint = localOTLPServerURL
 	cfg.Datastore.Engine = "memory"

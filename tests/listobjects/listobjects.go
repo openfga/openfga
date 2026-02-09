@@ -20,6 +20,7 @@ import (
 
 	"github.com/openfga/openfga/assets"
 	listobjectstest "github.com/openfga/openfga/internal/test/listobjects"
+	"github.com/openfga/openfga/pkg/server/config"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -63,10 +64,10 @@ type matrixTest struct {
 	ListObjectAssertions []*listobjectstest.Assertion `json:"listObjectsAssertions"`
 }
 
-func RunMatrixTests(t *testing.T, engine string, experimentalsEnabled bool, client tests.ClientInterface) {
-	t.Run("test_matrix_"+engine+"_experimental_"+strconv.FormatBool(experimentalsEnabled), func(t *testing.T) {
+func RunMatrixTests(t *testing.T, engine string, client tests.ClientInterface, experimentals []string) {
+	t.Run("test_matrix_"+engine+"_experimental_"+strconv.FormatBool(len(experimentals) > 0), func(t *testing.T) {
 		t.Parallel()
-		runTestMatrix(t, testParams{typesystem.SchemaVersion1_1, client, nil})
+		runTestMatrix(t, testParams{typesystem.SchemaVersion1_1, client, experimentals})
 	})
 }
 
@@ -113,7 +114,7 @@ func runTests(t *testing.T, params testParams) {
 func listObjectsAssertion(ctx context.Context, t *testing.T, params testParams, storeID, modelID string, contextTupleTest bool, tuples []*openfgav1.TupleKey, listAssertions []*listobjectstest.Assertion) {
 	isPipeline := false
 	for _, exp := range params.experimentals {
-		if exp == "pipeline_list_objects" {
+		if exp == config.ExperimentalPipelineListObjects {
 			isPipeline = true
 			break
 		}
@@ -193,7 +194,7 @@ func listObjectsAssertion(ctx context.Context, t *testing.T, params testParams, 
 				require.ElementsMatch(t, assertion.Expectation, streamedObjectIDs, detailedInfo)
 			case isPipeline && assertion.PipelineExpectation != nil:
 				require.NoError(t, err, detailedInfo)
-				require.ElementsMatch(t, assertion.PipelineExpectation, resp.GetObjects(), detailedInfo)
+				require.ElementsMatch(t, assertion.PipelineExpectation, streamedObjectIDs, detailedInfo)
 			default:
 				require.Error(t, streamingErr, detailedInfo)
 				e, ok := status.FromError(streamingErr)
