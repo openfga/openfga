@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -111,6 +112,7 @@ func parseConfig(uri string, override bool, cfg *sqlcommon.Config) (*pgxpool.Con
 }
 
 var ErrNoPassfile = errors.New("passfile does not exist")
+var ErrInsecurePassfilePermissions = errors.New("passfile permissions are too permissive")
 
 type PassfileProvider interface {
 	OpenPassfile() (io.Reader, error)
@@ -135,7 +137,25 @@ func (p *FSPassfileProvider) OpenPassfile() (io.Reader, error) {
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, ErrNoPassfile
 	}
-	return f, err
+	if err != nil {
+		return nil, err
+	}
+	// Ensure the passfile is 0600 or more strict (i.e. no group/other bits, no owner-exec).
+	// This is modeled after the libpq implementation
+	// https://www.postgresql.org/docs/current/libpq-pgpass.html
+	if runtime.GOOS == "windows" {
+		return f, nil
+	}
+	info, statErr := f.Stat()
+	if statErr != nil {
+		_ = f.Close()
+		return nil, statErr
+	}
+	if (info.Mode().Perm() &^ 0o600) != 0 {
+		_ = f.Close()
+		return nil, ErrInsecurePassfilePermissions
+	}
+	return f, nil
 }
 
 // Fixes issue 2913 where pgxpool doesn't fetch updates to PGPASSFILE upon every connection attempt.

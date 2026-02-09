@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"testing/iotest"
@@ -393,6 +394,7 @@ func TestFSPassfileProvider_OpenPassfile(t *testing.T) {
 		filename := filepath.Join(dir, ".pgpass")
 		_, err := os.Create(filename)
 		require.NoError(t, err)
+		require.NoError(t, os.Chmod(filename, 0o600))
 		provider := &FSPassfileProvider{
 			Logger: logger.NewNoopLogger(),
 			GetHomeDir: func() (string, error) {
@@ -409,6 +411,7 @@ func TestFSPassfileProvider_OpenPassfile(t *testing.T) {
 		filename := filepath.Join(pgPassDir, ".pgpass")
 		_, err := os.Create(filename)
 		require.NoError(t, err)
+		require.NoError(t, os.Chmod(filename, 0o600))
 		t.Setenv("PGPASSFILE", filename)
 		provider := &FSPassfileProvider{
 			Logger: logger.NewNoopLogger(),
@@ -443,6 +446,28 @@ func TestFSPassfileProvider_OpenPassfile(t *testing.T) {
 		}
 		actual, err := provider.OpenPassfile()
 		require.ErrorIs(t, err, ErrNoPassfile)
+		require.Nil(t, actual)
+	})
+	t.Run("returns ErrInsecurePassfilePermissions when passfile is more permissive than 0600", func(t *testing.T) {
+		if runtime.GOOS == "windows" {
+			t.Skip("checking pgpass file permissions is not supported on Windows")
+		}
+		dir := t.TempDir()
+		filename := filepath.Join(dir, ".pgpass")
+		_, err := os.Create(filename)
+		require.NoError(t, err)
+		require.NoError(t, os.Chmod(filename, 0o644))
+
+		t.Setenv("PGPASSFILE", filename)
+		provider := &FSPassfileProvider{
+			Logger: logger.NewNoopLogger(),
+			GetHomeDir: func() (string, error) {
+				return dir, nil
+			},
+		}
+
+		actual, err := provider.OpenPassfile()
+		require.ErrorIs(t, err, ErrInsecurePassfilePermissions)
 		require.Nil(t, actual)
 	})
 }
