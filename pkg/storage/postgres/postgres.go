@@ -107,12 +107,17 @@ func parseConfig(uri string, override bool, cfg *sqlcommon.Config) (*pgxpool.Con
 		c.MaxConnIdleTime = cfg.ConnMaxIdleTime
 	}
 
-	c.BeforeConnect = createBeforeConnect(cfg.Logger, &FSPassfileProvider{Logger: cfg.Logger, GetHomeDir: os.UserHomeDir})
+	c.BeforeConnect = createBeforeConnect(cfg.Logger, &FSPassfileProvider{cfg.Logger, os.UserHomeDir, FileOpener})
 	return c, nil
 }
 
 var ErrNoPassfile = errors.New("passfile does not exist")
 var ErrInsecurePassfilePermissions = errors.New("passfile permissions are too permissive")
+
+// Thin wrapper around os.OpenFile to allow mocking in tests.
+func FileOpener(name string) (FileStat, error) {
+	return os.Open(name)
+}
 
 type PassfileProvider interface {
 	OpenPassfile() (io.Reader, error)
