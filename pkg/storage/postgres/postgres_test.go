@@ -523,7 +523,7 @@ func TestFSPassfileProvider_OpenPassfile(t *testing.T) {
 		require.ErrorIs(t, err, ErrInsecurePassfilePermissions)
 		require.Nil(t, actual)
 	})
-	t.Run("returns the underlying stat error if permissions are not able to be retreived", func(t *testing.T) {
+	t.Run("returns the underlying stat error if permissions are not able to be retrieved", func(t *testing.T) {
 		if runtime.GOOS == "windows" {
 			t.Skip("checking pgpass file permissions is not supported on Windows")
 		}
@@ -541,7 +541,7 @@ func TestFSPassfileProvider_OpenPassfile(t *testing.T) {
 		require.Error(t, err, "stat error")
 		require.Nil(t, actual)
 	})
-	t.Run("returns the underlying error if unable to openf ile", func(t *testing.T) {
+	t.Run("returns the underlying error if unable to open the file", func(t *testing.T) {
 		provider := &FSPassfileProvider{
 			Logger: logger.NewNoopLogger(),
 			GetHomeDir: func() (string, error) {
