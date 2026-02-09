@@ -118,9 +118,15 @@ type PassfileProvider interface {
 	OpenPassfile() (io.Reader, error)
 }
 
+type FileStat interface {
+	io.ReadCloser
+	Stat() (os.FileInfo, error)
+}
+
 type FSPassfileProvider struct {
 	Logger     logger.Logger
 	GetHomeDir func() (string, error)
+	OpenFile   func(name string) (FileStat, error)
 }
 
 func (p *FSPassfileProvider) OpenPassfile() (io.Reader, error) {
@@ -133,7 +139,7 @@ func (p *FSPassfileProvider) OpenPassfile() (io.Reader, error) {
 		}
 		fileLocation = filepath.Join(homeDir, ".pgpass")
 	}
-	f, err := os.Open(fileLocation)
+	f, err := p.OpenFile(fileLocation)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, ErrNoPassfile
 	}
