@@ -36,11 +36,16 @@ func runMatrixWithEngine(t *testing.T, engine string) {
 		goleak.VerifyNone(t)
 	})
 
-	clientWithExperimentals := tests.BuildClientInterface(t, engine, []string{"enable-check-optimizations", "enable-list-objects-optimizations"})
-	RunMatrixTests(t, engine, true, clientWithExperimentals)
+	optimizationExperimentals := []string{config.ExperimentalCheckOptimizations, config.ExperimentalListObjectsOptimizations}
+	clientWithExperimentals := tests.BuildClientInterface(t, engine, optimizationExperimentals)
+	RunMatrixTests(t, engine, clientWithExperimentals, optimizationExperimentals)
+
+	pipelineExperimentals := []string{config.ExperimentalPipelineListObjects}
+	clientWithPipeline := tests.BuildClientInterface(t, engine, pipelineExperimentals)
+	RunMatrixTests(t, engine, clientWithPipeline, pipelineExperimentals)
 
 	clientWithoutExperimentals := tests.BuildClientInterface(t, engine, []string{})
-	RunMatrixTests(t, engine, false, clientWithoutExperimentals)
+	RunMatrixTests(t, engine, clientWithoutExperimentals, []string{})
 }
 
 func TestListObjectsMemory(t *testing.T) {
@@ -69,17 +74,36 @@ func testRunAll(t *testing.T, engine string) {
 		// ]
 		goleak.VerifyNone(t, goleak.IgnoreTopFunction("github.com/go-sql-driver/mysql.(*mysqlConn).startWatcher.func1"))
 	})
-	cfg := config.MustDefaultConfig()
-	cfg.Experimentals = append(cfg.Experimentals, "enable-check-optimizations", "enable-list-objects-optimizations")
-	cfg.Log.Level = "error"
-	cfg.Datastore.Engine = engine
-	cfg.ListObjectsDeadline = 0 // no deadline
-	// extend the timeout for the tests, coverage makes them slower
-	cfg.RequestTimeout = 10 * time.Second
 
-	tests.StartServer(t, cfg)
+	t.Run("with optimizations", func(t *testing.T) {
+		cfg := config.MustDefaultConfig()
+		cfg.Experimentals = append(cfg.Experimentals, config.ExperimentalCheckOptimizations, config.ExperimentalListObjectsOptimizations)
+		cfg.Log.Level = "error"
+		cfg.Datastore.Engine = engine
+		cfg.ListObjectsDeadline = 0 // no deadline
+		// extend the timeout for the tests, coverage makes them slower
+		cfg.RequestTimeout = 10 * time.Second
 
-	conn := testutils.CreateGrpcConnection(t, cfg.GRPC.Addr)
+		tests.StartServer(t, cfg)
 
-	RunAllTests(t, openfgav1.NewOpenFGAServiceClient(conn))
+		conn := testutils.CreateGrpcConnection(t, cfg.GRPC.Addr)
+
+		RunAllTests(t, openfgav1.NewOpenFGAServiceClient(conn), cfg.Experimentals)
+	})
+
+	t.Run("with pipeline", func(t *testing.T) {
+		cfg := config.MustDefaultConfig()
+		cfg.Experimentals = append(cfg.Experimentals, config.ExperimentalPipelineListObjects)
+		cfg.Log.Level = "error"
+		cfg.Datastore.Engine = engine
+		cfg.ListObjectsDeadline = 0 // no deadline
+		// extend the timeout for the tests, coverage makes them slower
+		cfg.RequestTimeout = 10 * time.Second
+
+		tests.StartServer(t, cfg)
+
+		conn := testutils.CreateGrpcConnection(t, cfg.GRPC.Addr)
+
+		RunAllTests(t, openfgav1.NewOpenFGAServiceClient(conn), cfg.Experimentals)
+	})
 }

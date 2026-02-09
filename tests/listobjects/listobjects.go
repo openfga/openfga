@@ -20,6 +20,7 @@ import (
 
 	"github.com/openfga/openfga/assets"
 	listobjectstest "github.com/openfga/openfga/internal/test/listobjects"
+	"github.com/openfga/openfga/pkg/server/config"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -40,6 +41,7 @@ type listObjectTests struct {
 type testParams struct {
 	schemaVersion string
 	client        tests.ClientInterface
+	experimentals []string
 }
 
 // stage is a stage of a test. All stages will be run in a single store.
@@ -62,19 +64,19 @@ type matrixTest struct {
 	ListObjectAssertions []*listobjectstest.Assertion `json:"listObjectsAssertions"`
 }
 
-func RunMatrixTests(t *testing.T, engine string, experimentalsEnabled bool, client tests.ClientInterface) {
-	t.Run("test_matrix_"+engine+"_experimental_"+strconv.FormatBool(experimentalsEnabled), func(t *testing.T) {
+func RunMatrixTests(t *testing.T, engine string, client tests.ClientInterface, experimentals []string) {
+	t.Run("test_matrix_"+engine+"_experimental_"+strconv.FormatBool(len(experimentals) > 0), func(t *testing.T) {
 		t.Parallel()
-		runTestMatrix(t, testParams{typesystem.SchemaVersion1_1, client})
+		runTestMatrix(t, testParams{typesystem.SchemaVersion1_1, client, experimentals})
 	})
 }
 
 // RunAllTests will invoke all list objects tests.
-func RunAllTests(t *testing.T, client tests.ClientInterface) {
+func RunAllTests(t *testing.T, client tests.ClientInterface, experimentals []string) {
 	t.Run("RunAll", func(t *testing.T) {
 		t.Run("ListObjects", func(t *testing.T) {
 			t.Parallel()
-			runTests(t, testParams{typesystem.SchemaVersion1_1, client})
+			runTests(t, testParams{typesystem.SchemaVersion1_1, client, experimentals})
 		})
 	})
 }
@@ -109,7 +111,15 @@ func runTests(t *testing.T, params testParams) {
 	}
 }
 
-func listObjectsAssertion(ctx context.Context, t *testing.T, client tests.ClientInterface, storeID, modelID string, contextTupleTest bool, tuples []*openfgav1.TupleKey, listAssertions []*listobjectstest.Assertion) {
+func listObjectsAssertion(ctx context.Context, t *testing.T, params testParams, storeID, modelID string, contextTupleTest bool, tuples []*openfgav1.TupleKey, listAssertions []*listobjectstest.Assertion) {
+	isPipeline := false
+	for _, exp := range params.experimentals {
+		if exp == config.ExperimentalPipelineListObjects {
+			isPipeline = true
+			break
+		}
+	}
+
 	for assertionNumber, assertion := range listAssertions {
 		t.Run(fmt.Sprintf("assertion_%d", assertionNumber), func(t *testing.T) {
 			detailedInfo := fmt.Sprintf("ListObject request: %s. Model: %s. Tuples: %s. Contextual tuples: %s", assertion.Request, modelID, tuples, assertion.ContextualTuples)
@@ -120,7 +130,7 @@ func listObjectsAssertion(ctx context.Context, t *testing.T, client tests.Client
 			}
 
 			// assert 1: on regular list objects endpoint
-			resp, err := client.ListObjects(ctx, &openfgav1.ListObjectsRequest{
+			resp, err := params.client.ListObjects(ctx, &openfgav1.ListObjectsRequest{
 				StoreId:              storeID,
 				AuthorizationModelId: modelID,
 				Type:                 assertion.Request.GetType(),
@@ -132,10 +142,14 @@ func listObjectsAssertion(ctx context.Context, t *testing.T, client tests.Client
 				Context: assertion.Context,
 			})
 
-			if assertion.ErrorCode == 0 {
+			switch {
+			case assertion.ErrorCode == 0:
 				require.NoError(t, err, detailedInfo)
 				require.ElementsMatch(t, assertion.Expectation, resp.GetObjects(), detailedInfo)
-			} else {
+			case isPipeline && assertion.PipelineExpectation != nil:
+				require.NoError(t, err, detailedInfo)
+				require.ElementsMatch(t, assertion.PipelineExpectation, resp.GetObjects(), detailedInfo)
+			default:
 				require.Error(t, err, detailedInfo)
 				e, ok := status.FromError(err)
 				require.True(t, ok, detailedInfo)
@@ -144,7 +158,7 @@ func listObjectsAssertion(ctx context.Context, t *testing.T, client tests.Client
 			// assert 2: on streaming list objects endpoint
 			var streamedObjectIDs []string
 
-			clientStream, err := client.StreamedListObjects(ctx, &openfgav1.StreamedListObjectsRequest{
+			clientStream, err := params.client.StreamedListObjects(ctx, &openfgav1.StreamedListObjectsRequest{
 				StoreId:              storeID,
 				AuthorizationModelId: modelID,
 				Type:                 assertion.Request.GetType(),
@@ -174,10 +188,14 @@ func listObjectsAssertion(ctx context.Context, t *testing.T, client tests.Client
 			streamingErr := wg.Wait()
 			require.NoError(t, err)
 
-			if assertion.ErrorCode == 0 {
+			switch {
+			case assertion.ErrorCode == 0:
 				require.NoError(t, streamingErr, detailedInfo)
 				require.ElementsMatch(t, assertion.Expectation, streamedObjectIDs, detailedInfo)
-			} else {
+			case isPipeline && assertion.PipelineExpectation != nil:
+				require.NoError(t, err, detailedInfo)
+				require.ElementsMatch(t, assertion.PipelineExpectation, streamedObjectIDs, detailedInfo)
+			default:
 				require.Error(t, streamingErr, detailedInfo)
 				e, ok := status.FromError(streamingErr)
 				require.True(t, ok, detailedInfo)
@@ -186,7 +204,7 @@ func listObjectsAssertion(ctx context.Context, t *testing.T, client tests.Client
 			if assertion.ErrorCode == 0 {
 				// assert 3: each object in the response of ListObjects should return check -> true
 				for _, object := range resp.GetObjects() {
-					checkResp, err := client.Check(ctx, &openfgav1.CheckRequest{
+					checkResp, err := params.client.Check(ctx, &openfgav1.CheckRequest{
 						StoreId:              storeID,
 						TupleKey:             tuple.NewCheckRequestTupleKey(object, assertion.Request.GetRelation(), assertion.Request.GetUser()),
 						AuthorizationModelId: modelID,
@@ -264,7 +282,7 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 					t.Skipf("no list objects assertions defined")
 				}
 
-				listObjectsAssertion(ctx, t, client, storeID, writeModelResponse.GetAuthorizationModelId(), contextTupleTest, stage.Tuples, stage.ListObjectAssertions)
+				listObjectsAssertion(ctx, t, params, storeID, writeModelResponse.GetAuthorizationModelId(), contextTupleTest, stage.Tuples, stage.ListObjectAssertions)
 			})
 		}
 	})
