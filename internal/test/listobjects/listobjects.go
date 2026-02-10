@@ -7,9 +7,10 @@ import (
 )
 
 type Assertion struct {
-	Request          *openfgav1.ListObjectsRequest
-	ContextualTuples []*openfgav1.TupleKey `json:"contextualTuples"`
-	Context          *structpb.Struct
-	Expectation      []string
-	ErrorCode        int `json:"errorCode"` // If ErrorCode is non-zero then we expect that the ListObjects call failed.
+	Request                  *openfgav1.ListObjectsRequest
+	ContextualTuples         []*openfgav1.TupleKey `json:"contextualTuples"`
+	Context                  *structpb.Struct
+	Expectation              []string
+	ErrorCode                int `json:"errorCode"`                // If ErrorCode is non-zero then we expect that the ListObjects call failed.
+	WithoutPipelineErrorCode int `json:"withoutPipelineErrorCode"` // If WithoutPipelineErrorCode is non-zero then we expect that the ListObjects call failed when pipeline is disabled.
 }
