@@ -38,9 +38,9 @@ import (
 )
 
 type MemoryPassfileProvider struct {
-	Content string
-	Reader  io.Reader
-	Err     error
+	Content    string
+	ReadCloser io.ReadCloser
+	Err        error
 }
 
 type MemFile struct {
@@ -85,11 +85,11 @@ func (m *MemFile) Stat() (os.FileInfo, error) {
 	return m, m.StatErr
 }
 
-func (p *MemoryPassfileProvider) OpenPassfile() (io.Reader, error) {
-	if p.Reader != nil {
-		return p.Reader, p.Err
+func (p *MemoryPassfileProvider) OpenPassfile() (io.ReadCloser, error) {
+	if p.ReadCloser != nil {
+		return p.ReadCloser, p.Err
 	}
-	return strings.NewReader(p.Content), p.Err
+	return io.NopCloser(strings.NewReader(p.Content)), p.Err
 }
 
 func TestPostgresDatastore(t *testing.T) {
@@ -304,31 +304,6 @@ func TestParseConfig(t *testing.T) {
 			override:    true,
 			expectedErr: true,
 		},
-		{
-			name:     "reads password from PGPASSFILE",
-			uri:      "postgres://abc:passwd@localhost:5346/dbname",
-			override: true,
-			cfg: sqlcommon.Config{
-				Logger: logger.NewNoopLogger(),
-			},
-			expected: pgxpool.Config{
-				ConnConfig: &pgx.ConnConfig{
-					Config: pgconn.Config{
-						User:     "abc",
-						Password: "passwd",
-						Host:     "localhost",
-						Port:     5346,
-						Database: "dbname",
-					},
-				},
-				MinIdleConns:          defaultConfig.MinIdleConns,
-				MaxConns:              defaultConfig.MaxConns,
-				MinConns:              defaultConfig.MinConns,
-				MaxConnIdleTime:       defaultConfig.MaxConnIdleTime,
-				MaxConnLifetimeJitter: defaultConfig.MaxConnLifetimeJitter,
-				MaxConnLifetime:       defaultConfig.MaxConnLifetime,
-			},
-		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -381,7 +356,7 @@ func TestBeforeConnectHook(t *testing.T) {
 		require.NoError(t, err)
 		require.Empty(t, config.Password)
 	})
-	t.Run("does not set the password if the file perms are to permissive", func(t *testing.T) {
+	t.Run("does not set the password if the file perms are too permissive", func(t *testing.T) {
 		provider := &MemoryPassfileProvider{"", nil, ErrInsecurePassfilePermissions}
 		hook := createBeforeConnect(noOpLogger, provider)
 		ctx := context.Background()
@@ -405,7 +380,7 @@ func TestBeforeConnectHook(t *testing.T) {
 		ctx := context.Background()
 		config := new(pgx.ConnConfig)
 		err := hook(ctx, config)
-		require.Error(t, err, "cannot read file")
+		require.ErrorContains(t, err, "cannot read file")
 		require.Empty(t, config.Password)
 	})
 	t.Run("the hook does not set the password when the pgpass file is in an invalid format", func(t *testing.T) {
@@ -420,12 +395,12 @@ func TestBeforeConnectHook(t *testing.T) {
 		require.Empty(t, config.Password)
 	})
 	t.Run("the hook returns an error if reading the file fails", func(t *testing.T) {
-		provider := &MemoryPassfileProvider{"", iotest.ErrReader(errors.New("read error")), nil}
+		provider := &MemoryPassfileProvider{"", io.NopCloser(iotest.ErrReader(errors.New("read error"))), nil}
 		hook := createBeforeConnect(noOpLogger, provider)
 		ctx := context.Background()
 		config := new(pgx.ConnConfig)
 		err := hook(ctx, config)
-		require.Error(t, err, "read error")
+		require.ErrorContains(t, err, "read error")
 		require.Empty(t, config.Password)
 	})
 	t.Run("retrieves localhost entries for unix socket hosts", func(t *testing.T) {

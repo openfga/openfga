@@ -8,7 +8,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 ### Changed
-- If PGPASSFILE exists it is read upon every connection attempt instead of a single time upon application start. This restores <v1.11.x behavior. [#2913](https://github.com/openfga/openfga/pull/2913)
+- If PGPASSFILE exists it is read upon every connection attempt instead of a single time upon application start. This restores pre-v1.11.x behavior. [#2913](https://github.com/openfga/openfga/pull/2913)
 
 ### Fixed
 - Reverted recent changes made to internal/planner/thompson.go that caused a regression in specific scenarios. [#2915](https://github.com/openfga/openfga/pull/2915)

@@ -114,13 +114,13 @@ func parseConfig(uri string, override bool, cfg *sqlcommon.Config) (*pgxpool.Con
 var ErrNoPassfile = errors.New("passfile does not exist")
 var ErrInsecurePassfilePermissions = errors.New("passfile permissions are too permissive")
 
-// Thin wrapper around os.OpenFile to allow mocking in tests.
+// Thin wrapper around os.Open to allow mocking in tests.
 func FileOpener(name string) (FileStat, error) {
 	return os.Open(name)
 }
 
 type PassfileProvider interface {
-	OpenPassfile() (io.Reader, error)
+	OpenPassfile() (io.ReadCloser, error)
 }
 
 type FileStat interface {
@@ -134,7 +134,7 @@ type FSPassfileProvider struct {
 	OpenFile   func(name string) (FileStat, error)
 }
 
-func (p *FSPassfileProvider) OpenPassfile() (io.Reader, error) {
+func (p *FSPassfileProvider) OpenPassfile() (io.ReadCloser, error) {
 	fileLocation := os.Getenv("PGPASSFILE")
 	if len(fileLocation) == 0 {
 		homeDir, err := p.GetHomeDir()
@@ -186,6 +186,7 @@ func createBeforeConnect(logger logger.Logger, provider PassfileProvider) func(c
 		if err != nil {
 			return fmt.Errorf("pgxpool BeforeConnect hook - failed to read passfile: %w", err)
 		}
+		defer file.Close()
 		passfile, err := pgpassfile.ParsePassfile(file)
 		if err != nil {
 			return fmt.Errorf("pgxpool BeforeConnect hook - failed to parse passfile: %w", err)
