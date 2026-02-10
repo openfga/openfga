@@ -238,6 +238,16 @@ func NewRunCommand() *cobra.Command {
 
 	flags.Uint32("listObjects-max-results", defaultConfig.ListObjectsMaxResults, "the maximum results to return in non-streaming ListObjects API responses. If 0, all results can be returned")
 
+	flags.Int("listObjects-chunk-size", defaultConfig.ListObjectsChunkSize, "the number of results to fetch from the datastore in each chunk when serving ListObjects requests. Only effective when the `pipeline_list_objects` experimental feature is enabled.")
+
+	flags.Int("listObjects-num-procs", defaultConfig.ListObjectsNumProcs, "the number of goroutines used to process chunks in the ListObjects pipeline. Only effective when the `pipeline_list_objects` experimental feature is enabled.")
+
+	flags.Int("listObjects-buffer-capacity", defaultConfig.ListObjectsBufferCapacity, "limits how many intermediate result batches can be queued in memory while serving ListObjects requests. When the queue is full, processing will pause until space is available. Must be a power of two (for example 64, 128, 256). Larger values can reduce blocking under bursty load but increase memory usage (especially with larger listObjectsChunkSize). Only effective when the `pipeline_list_objects` experimental feature is enabled.")
+
+	flags.Duration("listObjects-buffer-extend-after", defaultConfig.ListObjectsBufferExtendAfter, "the duration of time after which the intermediate result batches wait to be increased in ListObjects. When a buffer blocks for longer than the listObjectsBufferExtendAfter duration, the buffer capacity is doubled. listObjectsBufferMaxExtensions determines how many times the buffer capacity can be doubled. Can be disabled by setting to a negative value. Only effective when the `pipeline_list_objects` experimental feature is enabled.")
+
+	flags.Int("listObjects-buffer-max-extensions", defaultConfig.ListObjectsBufferMaxExtensions, "The maximum number of times the buffer capacity can be doubled when the number of queued intermediate result batches exceeds the threshold specified in listObjectsBufferExtendAfter. A zero value disables extensions. A negative value enables unlimited extensions. Only effective when the `pipeline_list_objects` experimental feature is enabled.")
+
 	flags.Duration("listUsers-deadline", defaultConfig.ListUsersDeadline, "the timeout deadline for serving ListUsers requests. If 0, there is no deadline")
 
 	flags.Uint32("listUsers-max-results", defaultConfig.ListUsersMaxResults, "the maximum results to return in ListUsers API responses. If 0, all results can be returned")
@@ -870,6 +880,10 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		server.WithReadChangesMaxPageSize(config.ReadChangesMaxPageSize),
 		server.WithListObjectsDeadline(config.ListObjectsDeadline),
 		server.WithListObjectsMaxResults(config.ListObjectsMaxResults),
+		server.WithListObjectsChunkSize(config.ListObjectsChunkSize),
+		server.WithListObjectsNumProcs(config.ListObjectsNumProcs),
+		server.WithListObjectsBufferCapacity(config.ListObjectsBufferCapacity),
+		server.WithListObjectsPipeExtension(config.ListObjectsBufferExtendAfter, config.ListObjectsBufferMaxExtensions),
 		server.WithListUsersDeadline(config.ListUsersDeadline),
 		server.WithListUsersMaxResults(config.ListUsersMaxResults),
 		server.WithMaxConcurrentReadsForListObjects(config.MaxConcurrentReadsForListObjects),
