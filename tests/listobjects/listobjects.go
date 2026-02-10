@@ -137,20 +137,22 @@ func listObjectsAssertion(ctx context.Context, t *testing.T, params testParams, 
 				Context: assertion.Context,
 			})
 
-			if assertion.ErrorCode == 0 {
+			switch {
+			case assertion.ErrorCode == 0:
 				require.NoError(t, err, detailedInfo)
 				require.ElementsMatch(t, assertion.Expectation, resp.GetObjects(), detailedInfo)
-			} else if !params.pipelineEnabled {
+			case !params.pipelineEnabled:
 				require.Error(t, err, detailedInfo)
 				e, ok := status.FromError(err)
 				require.True(t, ok, detailedInfo)
 				require.Equal(t, assertion.WithoutPipelineErrorCode, int(e.Code()), detailedInfo)
-			} else {
+			default:
 				require.Error(t, err, detailedInfo)
 				e, ok := status.FromError(err)
 				require.True(t, ok, detailedInfo)
 				require.Equal(t, assertion.ErrorCode, int(e.Code()), detailedInfo)
 			}
+
 			// assert 2: on streaming list objects endpoint
 			var streamedObjectIDs []string
 
@@ -184,20 +186,22 @@ func listObjectsAssertion(ctx context.Context, t *testing.T, params testParams, 
 			streamingErr := wg.Wait()
 			require.NoError(t, err)
 
-			if assertion.ErrorCode == 0 {
+			switch {
+			case assertion.ErrorCode == 0:
 				require.NoError(t, streamingErr, detailedInfo)
 				require.ElementsMatch(t, assertion.Expectation, streamedObjectIDs, detailedInfo)
-			} else if !params.pipelineEnabled {
+			case !params.pipelineEnabled:
 				require.Error(t, streamingErr, detailedInfo)
 				e, ok := status.FromError(streamingErr)
 				require.True(t, ok, detailedInfo)
 				require.Equal(t, assertion.WithoutPipelineErrorCode, int(e.Code()), detailedInfo)
-			} else {
+			default:
 				require.Error(t, streamingErr, detailedInfo)
 				e, ok := status.FromError(streamingErr)
 				require.True(t, ok, detailedInfo)
 				require.Equal(t, assertion.ErrorCode, int(e.Code()), detailedInfo)
 			}
+
 			if assertion.ErrorCode == 0 && assertion.WithoutPipelineErrorCode == 0 {
 				// assert 3: each object in the response of ListObjects should return check -> true
 				for _, object := range resp.GetObjects() {
