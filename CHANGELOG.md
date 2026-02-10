@@ -11,6 +11,9 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Streamline continue token handling & treat continue tokens as opaque strings outside of storage. [2897](https://github.com/openfga/openfga/pull/2897)
   - !!MySQL REQUIRES MIGRATION!! Timestamp column precision is updated from seconds to microseconds
 
+### Fixed
+- Reverted recent changes made to internal/planner/thompson.go that caused a regression in specific scenarios. [#2915](https://github.com/openfga/openfga/pull/2915)
+
 ## [1.11.3] - 2026-01-28
 ### Added
 - Add configuration option to limit max type system cache size. [2744](https://github.com/openfga/openfga/pull/2744)
