@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/IBM/pgxpoolprometheus"
@@ -107,7 +108,7 @@ func parseConfig(uri string, override bool, cfg *sqlcommon.Config) (*pgxpool.Con
 		c.MaxConnIdleTime = cfg.ConnMaxIdleTime
 	}
 
-	c.BeforeConnect = createBeforeConnect(cfg.Logger, &FSPassfileProvider{cfg.Logger, os.UserHomeDir, FileOpener})
+	c.BeforeConnect = createBeforeConnect(cfg.Logger, &FSPassfileProvider{cfg.Logger, os.UserHomeDir, FileOpener, sync.Once{}})
 	return c, nil
 }
 
@@ -132,6 +133,7 @@ type FSPassfileProvider struct {
 	Logger     logger.Logger
 	GetHomeDir func() (string, error)
 	OpenFile   func(name string) (FileStat, error)
+	LogOnce    sync.Once
 }
 
 func (p *FSPassfileProvider) OpenPassfile() (io.ReadCloser, error) {
@@ -139,7 +141,9 @@ func (p *FSPassfileProvider) OpenPassfile() (io.ReadCloser, error) {
 	if len(fileLocation) == 0 {
 		homeDir, err := p.GetHomeDir()
 		if err != nil {
-			p.Logger.Info("could not get current user home directory for pgxpool BeforeHook creation", zap.Error(err))
+			p.LogOnce.Do(func() {
+				p.Logger.Info("could not get current user home directory for pgxpool BeforeHook creation", zap.Error(err))
+			})
 			return nil, ErrNoPassfile
 		}
 		fileLocation = filepath.Join(homeDir, ".pgpass")
@@ -176,6 +180,7 @@ func (p *FSPassfileProvider) OpenPassfile() (io.ReadCloser, error) {
 //
 // https://github.com/jackc/pgx/blob/f56ca73076f3fc935a2a049cf78993bfcbba8f68/pgconn/config.go#L404-L414
 func createBeforeConnect(logger logger.Logger, provider PassfileProvider) func(ctx context.Context, conn *pgx.ConnConfig) error {
+	var logOnce sync.Once
 	return func(ctx context.Context, config *pgx.ConnConfig) error {
 		file, err := provider.OpenPassfile()
 		// Like with libpq - ignore the pgpass file if the permissions are too permissive
@@ -198,7 +203,9 @@ func createBeforeConnect(logger logger.Logger, provider PassfileProvider) func(c
 
 		password := passfile.FindPassword(host, strconv.Itoa(int(config.Port)), config.Database, config.User)
 		if password == "" {
-			logger.Warn("pgpassfile password was empty")
+			logOnce.Do(func() {
+				logger.Warn("no password found in pgpassfile for user/host/database combination")
+			})
 		} else {
 			config.Password = password
 		}
