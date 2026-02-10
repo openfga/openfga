@@ -10,6 +10,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Changed
 - If PGPASSFILE exists it is read upon every connection attempt instead of a single time upon application start. This restores pre-v1.11.x behavior. [#2914](https://github.com/openfga/openfga/pull/2914)
 
+## [1.11.4] - 2026-02-10
 ### Fixed
 - Reverted recent changes made to internal/planner/thompson.go that caused a regression in specific scenarios. [#2915](https://github.com/openfga/openfga/pull/2915)
 - Upgrade otel/sdk to v1.40.0 to address [CVE](https://security.snyk.io/vuln/SNYK-GOLANG-GOOPENTELEMETRYIOOTELSDKRESOURCE-15182758) in earlier versions. [#2919](https://github.com/openfga/openfga/pull/2919)
@@ -1512,7 +1513,8 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
 - Memory storage adapter implementation
 - Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.11.3...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.11.4...HEAD
+[1.11.4]: https://github.com/openfga/openfga/compare/v1.11.3...v1.11.4
 [1.11.3]: https://github.com/openfga/openfga/compare/v1.11.2...v1.11.3
 [1.11.2]: https://github.com/openfga/openfga/compare/v1.11.1...v1.11.2
 [1.11.1]: https://github.com/openfga/openfga/compare/v1.11.0...v1.11.1
