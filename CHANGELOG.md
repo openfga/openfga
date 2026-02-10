@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Try to keep listed changes to a concise bulleted list of simple explanations of changes. Aim for the amount of information needed so that readers can understand where they would look in the codebase to investigate the changes' implementation, or where they would look in the documentation to understand how to make use of the change in practice - better yet, link directly to the docs and provide detailed information there. Only elaborate if doing so is required to avoid breaking changes or experimental features from ruining someone's day.
 
 ## [Unreleased]
+### Changed
+- Streamline continue token handling & treat continue tokens as opaque strings outside of storage. [2897](https://github.com/openfga/openfga/pull/2897)
+  - !!MySQL REQUIRES MIGRATION!! Timestamp column precision is updated from seconds to microseconds
+
 ### Fixed
 - Reverted recent changes made to internal/planner/thompson.go that caused a regression in specific scenarios. [#2915](https://github.com/openfga/openfga/pull/2915)
 - Upgrade otel/sdk to v1.40.0 to address [CVE](https://security.snyk.io/vuln/SNYK-GOLANG-GOOPENTELEMETRYIOOTELSDKRESOURCE-15182758) in earlier versions. [#2919](https://github.com/openfga/openfga/pull/2919)
