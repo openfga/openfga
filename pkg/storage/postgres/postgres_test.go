@@ -513,7 +513,7 @@ func TestFSPassfileProvider_OpenPassfile(t *testing.T) {
 			},
 		}
 		actual, err := provider.OpenPassfile()
-		require.Error(t, err, "stat error")
+		require.ErrorContains(t, err, "stat error")
 		require.Nil(t, actual)
 	})
 	t.Run("returns the underlying error if unable to open the file", func(t *testing.T) {
@@ -527,7 +527,7 @@ func TestFSPassfileProvider_OpenPassfile(t *testing.T) {
 			},
 		}
 		actual, err := provider.OpenPassfile()
-		require.Error(t, err, "open error")
+		require.ErrorContains(t, err, "open error")
 		require.Nil(t, actual)
 	})
 }
