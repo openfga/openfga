@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Try to keep listed changes to a concise bulleted list of simple explanations of changes. Aim for the amount of information needed so that readers can understand where they would look in the codebase to investigate the changes' implementation, or where they would look in the documentation to understand how to make use of the change in practice - better yet, link directly to the docs and provide detailed information there. Only elaborate if doing so is required to avoid breaking changes or experimental features from ruining someone's day.
 
 ## [Unreleased]
+
+## [1.11.5] - 2026-02-11
 ### Changed
 - If PGPASSFILE exists it is read upon every connection attempt instead of a single time upon application start. This restores pre-v1.11.x behavior. [#2914](https://github.com/openfga/openfga/pull/2914)
 
@@ -1516,7 +1518,8 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
 - Memory storage adapter implementation
 - Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.11.4...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.11.5...HEAD
+[1.11.5]: https://github.com/openfga/openfga/compare/v1.11.4...v1.11.5
 [1.11.4]: https://github.com/openfga/openfga/compare/v1.11.3...v1.11.4
 [1.11.3]: https://github.com/openfga/openfga/compare/v1.11.2...v1.11.3
 [1.11.2]: https://github.com/openfga/openfga/compare/v1.11.1...v1.11.2
