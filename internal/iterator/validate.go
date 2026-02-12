@@ -10,8 +10,6 @@ import (
 type validatingIterator[T any] struct {
 	base      storage.Iterator[T]
 	validator func(T) (bool, error)
-	lastError error
-	onceValid bool
 }
 
 func Validate[T any](base storage.Iterator[T], fn func(T) (bool, error)) storage.Iterator[T] {
