@@ -5,8 +5,9 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/openfga/openfga/pkg/storage"
 	"github.com/stretchr/testify/require"
+
+	"github.com/openfga/openfga/pkg/storage"
 )
 
 var _ storage.Iterator[any] = &TestIterator[any]{}
