@@ -34,7 +34,7 @@ func (v *validatingIterator[T]) Head(ctx context.Context) (T, error) {
 				return zero, err
 			}
 
-			_, err := v.Next(ctx)
+			_, err := v.base.Next(ctx)
 			if err != nil {
 				var zero T
 				return zero, err
