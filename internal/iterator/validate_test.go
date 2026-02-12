@@ -10,17 +10,24 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 )
 
+var ErrSentinel = errors.New("a sentinel error")
+
 var _ storage.Iterator[any] = &TestIterator[any]{}
 
 type TestIterator[T any] struct {
-	items []T
-	pos   int
+	items   []T
+	errorAt int
+	pos     int
 }
 
 func (t *TestIterator[T]) Head(_ context.Context) (T, error) {
 	if t.pos >= len(t.items) {
 		var zero T
 		return zero, storage.ErrIteratorDone
+	}
+	if t.pos == t.errorAt-1 {
+		var zero T
+		return zero, ErrSentinel
 	}
 	return t.items[t.pos], nil
 }
@@ -29,6 +36,11 @@ func (t *TestIterator[T]) Next(_ context.Context) (T, error) {
 	if t.pos >= len(t.items) {
 		var zero T
 		return zero, storage.ErrIteratorDone
+	}
+	if t.pos == t.errorAt-1 {
+		var zero T
+		t.pos++
+		return zero, ErrSentinel
 	}
 	value := t.items[t.pos]
 	t.pos++
@@ -121,8 +133,6 @@ func TestValidatingIterator(t *testing.T) {
 		require.ErrorIs(t, err, storage.ErrIteratorDone)
 	})
 
-	var ErrSentinel = errors.New("a sentinel error")
-
 	t.Run("Head returns validation error but can continue", func(t *testing.T) {
 		v := Validate(&TestIterator[int]{items: []int{1, 2, 3}}, func(i int) (bool, error) {
 			if i == 2 {
@@ -164,6 +174,42 @@ func TestValidatingIterator(t *testing.T) {
 		require.Equal(t, 1, value)
 		require.NoError(t, err)
 		value, err = v.Next(context.Background())
+		require.Equal(t, 0, value)
+		require.ErrorIs(t, err, ErrSentinel)
+		value, err = v.Next(context.Background())
+		require.Equal(t, 3, value)
+		require.NoError(t, err)
+		value, err = v.Next(context.Background())
+		require.Equal(t, 0, value)
+		require.ErrorIs(t, err, storage.ErrIteratorDone)
+	})
+
+	t.Run("Head returns error after skipping an invalid value", func(t *testing.T) {
+		v := Validate(&TestIterator[int]{items: []int{1, 2, 3}, errorAt: 2}, func(i int) (bool, error) {
+			return i != 1, nil
+		})
+		value, err := v.Head(context.Background())
+		require.Equal(t, 0, value)
+		require.ErrorIs(t, err, ErrSentinel)
+		value, err = v.Next(context.Background())
+		require.Equal(t, 0, value)
+		require.ErrorIs(t, err, ErrSentinel)
+		value, err = v.Head(context.Background())
+		require.Equal(t, 3, value)
+		require.NoError(t, err)
+		value, err = v.Next(context.Background())
+		require.Equal(t, 3, value)
+		require.NoError(t, err)
+		value, err = v.Head(context.Background())
+		require.Equal(t, 0, value)
+		require.ErrorIs(t, err, storage.ErrIteratorDone)
+	})
+
+	t.Run("Next returns error after skipping an invalid value", func(t *testing.T) {
+		v := Validate(&TestIterator[int]{items: []int{1, 2, 3}, errorAt: 2}, func(i int) (bool, error) {
+			return i != 1, nil
+		})
+		value, err := v.Next(context.Background())
 		require.Equal(t, 0, value)
 		require.ErrorIs(t, err, ErrSentinel)
 		value, err = v.Next(context.Background())
