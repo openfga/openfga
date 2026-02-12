@@ -23,29 +23,26 @@ func (v *validatingIterator[T]) Head(ctx context.Context) (T, error) {
 		t, err := v.base.Head(ctx)
 		if err != nil {
 			if errors.Is(err, storage.ErrIteratorDone) {
-				if v.onceValid || v.lastError == nil {
-					return t, storage.ErrIteratorDone
-				}
-				lastError := v.lastError
-				v.lastError = nil
-				return t, lastError
+				return t, storage.ErrIteratorDone
 			}
-			return t, err
+			var zero T
+			return zero, err
 		}
 
 		ok, err := v.validator(t)
 		if err != nil || !ok {
 			if err != nil {
-				v.lastError = err
+				var zero T
+				return zero, err
 			}
 
 			_, err := v.Next(ctx)
 			if err != nil {
-				return t, err
+				var zero T
+				return zero, err
 			}
 			continue
 		}
-		v.onceValid = true
 		return t, nil
 	}
 }
@@ -55,26 +52,21 @@ func (v *validatingIterator[T]) Next(ctx context.Context) (T, error) {
 		t, err := v.base.Next(ctx)
 		if err != nil {
 			if errors.Is(err, storage.ErrIteratorDone) {
-				if v.onceValid || v.lastError == nil {
-					return t, storage.ErrIteratorDone
-				}
-				lastError := v.lastError
-				v.lastError = nil
-				return t, lastError
+				return t, storage.ErrIteratorDone
 			}
-			return t, err
+			var zero T
+			return zero, err
 		}
 
 		ok, err := v.validator(t)
 		if err != nil {
-			v.lastError = err
-			continue
+			var zero T
+			return zero, err
 		}
 
 		if !ok {
 			continue
 		}
-		v.onceValid = true
 		return t, nil
 	}
 }
