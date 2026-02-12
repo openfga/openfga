@@ -153,7 +153,7 @@ func TestValidatingIterator(t *testing.T) {
 		require.ErrorIs(t, err, storage.ErrIteratorDone)
 	})
 
-	t.Run("Next returns only valid value", func(t *testing.T) {
+	t.Run("Next returns validation error but can continue", func(t *testing.T) {
 		v := Validate(&TestIterator[int]{items: []int{1, 2, 3}}, func(i int) (bool, error) {
 			if i == 2 {
 				return false, ErrSentinel
