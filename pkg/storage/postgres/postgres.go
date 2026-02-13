@@ -5,14 +5,21 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"io"
 	"net/url"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/IBM/pgxpoolprometheus"
 	sq "github.com/Masterminds/squirrel"
 	"github.com/cenkalti/backoff/v4"
+	"github.com/jackc/pgpassfile"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/prometheus/client_golang/prometheus"
@@ -99,7 +106,104 @@ func parseConfig(uri string, override bool, cfg *sqlcommon.Config) (*pgxpool.Con
 	if cfg.ConnMaxIdleTime != 0 {
 		c.MaxConnIdleTime = cfg.ConnMaxIdleTime
 	}
+
+	c.BeforeConnect = createBeforeConnect(cfg.Logger, &FSPassfileProvider{cfg.Logger, os.UserHomeDir, FileOpener})
 	return c, nil
+}
+
+var ErrNoPassfile = errors.New("passfile does not exist")
+var ErrInsecurePassfilePermissions = errors.New("passfile permissions are too permissive")
+
+// Thin wrapper around os.Open to allow mocking in tests.
+func FileOpener(name string) (FileStat, error) {
+	return os.Open(name)
+}
+
+type PassfileProvider interface {
+	OpenPassfile() (io.ReadCloser, error)
+}
+
+type FileStat interface {
+	io.ReadCloser
+	Stat() (os.FileInfo, error)
+}
+
+type FSPassfileProvider struct {
+	Logger     logger.Logger
+	GetHomeDir func() (string, error)
+	OpenFile   func(name string) (FileStat, error)
+}
+
+func (p *FSPassfileProvider) OpenPassfile() (io.ReadCloser, error) {
+	fileLocation := os.Getenv("PGPASSFILE")
+	if len(fileLocation) == 0 {
+		homeDir, err := p.GetHomeDir()
+		if err != nil {
+			p.Logger.Debug("could not get current user home directory for pgxpool BeforeHook creation", zap.Error(err))
+			return nil, ErrNoPassfile
+		}
+		fileLocation = filepath.Join(homeDir, ".pgpass")
+	}
+	f, err := p.OpenFile(fileLocation)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, ErrNoPassfile
+	}
+	if err != nil {
+		return nil, err
+	}
+	// Ensure the passfile is 0600 or more strict (i.e. no group/other bits, no owner-exec).
+	// This is modeled after the libpq implementation
+	// https://www.postgresql.org/docs/current/libpq-pgpass.html
+	if runtime.GOOS == "windows" {
+		return f, nil
+	}
+	info, statErr := f.Stat()
+	if statErr != nil {
+		_ = f.Close()
+		return nil, statErr
+	}
+	if (info.Mode().Perm() &^ 0o600) != 0 {
+		_ = f.Close()
+		return nil, ErrInsecurePassfilePermissions
+	}
+	return f, nil
+}
+
+// Fixes issue 2913 where pgxpool doesn't fetch updates to PGPASSFILE upon every connection attempt.
+// This is a behavior change compared to plain pgx conn acquisition and previous versions of OpenFGA.
+//
+// The implementation is inspired by the pgx code, but handles errors differently.
+//
+// https://github.com/jackc/pgx/blob/f56ca73076f3fc935a2a049cf78993bfcbba8f68/pgconn/config.go#L404-L414
+func createBeforeConnect(logger logger.Logger, provider PassfileProvider) func(ctx context.Context, conn *pgx.ConnConfig) error {
+	return func(ctx context.Context, config *pgx.ConnConfig) error {
+		file, err := provider.OpenPassfile()
+		// Like with libpq - ignore the pgpass file if the permissions are too permissive
+		// https://www.postgresql.org/docs/current/libpq-pgpass.html
+		if errors.Is(err, ErrNoPassfile) || errors.Is(err, ErrInsecurePassfilePermissions) {
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("pgxpool BeforeConnect hook - failed to read passfile: %w", err)
+		}
+		defer file.Close()
+		passfile, err := pgpassfile.ParsePassfile(file)
+		if err != nil {
+			return fmt.Errorf("pgxpool BeforeConnect hook - failed to parse passfile: %w", err)
+		}
+		host := config.Host
+		if network, _ := pgconn.NetworkAddress(config.Host, config.Port); network == "unix" {
+			host = "localhost"
+		}
+
+		password := passfile.FindPassword(host, strconv.Itoa(int(config.Port)), config.Database, config.User)
+		if password == "" {
+			logger.Debug("no password found in pgpassfile for user/host/database combination")
+		} else {
+			config.Password = password
+		}
+		return nil
+	}
 }
 
 // initDB initializes a new postgres database connection.

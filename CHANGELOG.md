@@ -10,6 +10,16 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Added
 - Set ListObjects pipeline as the default enabled algorithm, can be disabled by setting the `listObjects-pipeline-enabled` to `false`. [#2921](https://github.com/openfga/openfga/pull/2921)
 
+### Security
+- Bump [`grpc-health-probe`](https://github.com/grpc-ecosystem/grpc-health-probe) to [v0.4.45](https://github.com/grpc-ecosystem/grpc-health-probe/releases/tag/v0.4.45) to address nvd.nist.gov/vuln/detail/CVE-2025-68121 affecting `grpc_health_probe`.
+
+## [1.11.5] - 2026-02-11
+### Changed
+- If PGPASSFILE exists it is read upon every connection attempt instead of a single time upon application start. This restores pre-v1.11.x behavior. [#2914](https://github.com/openfga/openfga/pull/2914)
+
+### Fixed
+- Update toolchain go version to 1.25.7 to address [CVE-2025-68121](https://nvd.nist.gov/vuln/detail/CVE-2025-68121) affecting go std lib. [#2922](https://github.com/openfga/openfga/pull/2922)
+
 ## [1.11.4] - 2026-02-10
 ### Fixed
 - Reverted recent changes made to internal/planner/thompson.go that caused a regression in specific scenarios. [#2915](https://github.com/openfga/openfga/pull/2915)
@@ -1513,7 +1523,8 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
 - Memory storage adapter implementation
 - Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.11.4...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.11.5...HEAD
+[1.11.5]: https://github.com/openfga/openfga/compare/v1.11.4...v1.11.5
 [1.11.4]: https://github.com/openfga/openfga/compare/v1.11.3...v1.11.4
 [1.11.3]: https://github.com/openfga/openfga/compare/v1.11.2...v1.11.3
 [1.11.2]: https://github.com/openfga/openfga/compare/v1.11.1...v1.11.2
