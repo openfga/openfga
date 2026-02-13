@@ -88,6 +88,12 @@
             "default": 1000,
             "x-env-variable": "OPENFGA_LIST_OBJECTS_MAX_RESULTS"
         },
+        "listObjectsPipelineEnabled": {
+            "description": "Enables the ListObjects pipeline optimization algorithm, which can significantly improve the latency of ListObjects requests. When enabled, the server will attempt to resolve intermediate nodes in the ListObjects resolution tree concurrently. This optimization is most effective for workloads with large and complex authorization models, but may not suite all cases. Can be disabled if it causes increased resource usage.",
+            "type": "boolean",
+            "default": true,
+            "x-env-variable": "OPENFGA_LIST_OBJECTS_PIPELINE_ENABLED"
+        },
         "listUsersDeadline": {
             "description": "The timeout deadline for serving ListUsers requests. If 0s, there is no deadline",
             "type": "string",
@@ -142,7 +148,7 @@
             "type": "array",
             "items": {
                 "type": "string",
-                "enum": ["enable-check-optimizations", "enable-list-objects-optimizations", "enable-access-control", "pipeline_list_objects", "datastore_throttling"]
+                "enum": ["enable-check-optimizations", "enable-list-objects-optimizations", "enable-access-control", "datastore_throttling"]
             },
             "default": [],
             "x-env-variable": "OPENFGA_EXPERIMENTALS"
@@ -667,7 +673,7 @@
             "type": "object",
             "properties": {
                 "enabled": {
-                    "description": "enable throttling when ListObjects request's number of dispatches is high",
+                    "description": "enable throttling when ListObjects request's number of dispatches is high. Only applies when pipeline is disabled.",
                     "type": "boolean",
                     "default": false,
                     "x-env-variable": "OPENFGA_LIST_OBJECTS_DISPATCH_THROTTLING_ENABLED"

@@ -7719,7 +7719,9 @@ tests:
               type: resource
               relation: can_view
               user: user:maria
-            errorCode: 2002
+            withoutPipelineErrorCode: 2002
+            expectation:
+              - resource:1
         listUsersAssertions:
           - request:
               filters:
@@ -8306,7 +8308,9 @@ tests:
               type: resource
               relation: can_view
               user: user:maria
-            errorCode: 2002
+            withoutPipelineErrorCode: 2002
+            expectation:
+              - resource:1
   - name: err_and_true_return_err
     stages:
       - model: |
@@ -8436,7 +8440,9 @@ tests:
               type: resource
               relation: can_view
               user: user:maria
-            errorCode: 2002
+            withoutPipelineErrorCode: 2002
+            expectation:
+              - resource:1
   - name: userset_defines_itself_1
     stages:
       - model: |

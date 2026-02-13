@@ -70,7 +70,7 @@ func testRunAll(t *testing.T, engine string) {
 		goleak.VerifyNone(t, goleak.IgnoreTopFunction("github.com/go-sql-driver/mysql.(*mysqlConn).startWatcher.func1"))
 	})
 	cfg := testutils.MustDefaultConfigForParallelTests()
-	cfg.Experimentals = append(cfg.Experimentals, config.ExperimentalCheckOptimizations, config.ExperimentalListObjectsOptimizations)
+	cfg.Experimentals = append(cfg.Experimentals, config.ExperimentalCheckOptimizations)
 	cfg.Log.Level = "error"
 	cfg.Datastore.Engine = engine
 	cfg.ListObjectsDeadline = 0 // no deadline

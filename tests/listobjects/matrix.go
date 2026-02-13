@@ -231,7 +231,7 @@ func runTestMatrix(t *testing.T, params testParams) {
 					t.Skipf("no list objects assertions defined")
 				}
 
-				listObjectsAssertion(ctx, t, client, storeID, writeModelResponse.GetAuthorizationModelId(), false, test.Tuples, test.ListObjectAssertions)
+				listObjectsAssertion(ctx, t, params, storeID, writeModelResponse.GetAuthorizationModelId(), false, test.Tuples, test.ListObjectAssertions)
 			})
 		}
 	})

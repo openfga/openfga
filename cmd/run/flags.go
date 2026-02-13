@@ -224,6 +224,9 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 		util.MustBindPFlag("listObjectsMaxResults", flags.Lookup("listObjects-max-results"))
 		util.MustBindEnv("listObjectsMaxResults", "OPENFGA_LIST_OBJECTS_MAX_RESULTS", "OPENFGA_LISTOBJECTSMAXRESULTS")
 
+		util.MustBindPFlag("listObjectsPipelineEnabled", flags.Lookup("listObjects-pipeline-enabled"))
+		util.MustBindEnv("listObjectsPipelineEnabled", "OPENFGA_LIST_OBJECTS_PIPELINE_ENABLED", "OPENFGA_LISTOBJECTSPIPELINEENABLED")
+
 		util.MustBindPFlag("listUsersDeadline", flags.Lookup("listUsers-deadline"))
 		util.MustBindEnv("listUsersDeadline", "OPENFGA_LIST_USERS_DEADLINE", "OPENFGA_LISTUSERSDEADLINE")
 
