@@ -223,7 +223,6 @@ func listObjectsAssertion(ctx context.Context, t *testing.T, params testParams, 
 }
 
 func runTest(t *testing.T, test individualTest, params testParams, contextTupleTest bool) {
-	fmt.Printf("Is pipeline? %v\n", params.pipelineEnabled)
 	schemaVersion := params.schemaVersion
 	client := params.client
 	ctx := context.Background()
