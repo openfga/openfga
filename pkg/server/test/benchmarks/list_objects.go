@@ -96,6 +96,8 @@ func BenchmarkListObjects(b *testing.B, ds storage.OpenFGADatastore) {
 			checkResolver,
 			"fake_store_id",
 			commands.WithListObjectsMaxResults(1),
+			commands.WithListObjectsChunkSize(1),
+			commands.WithListObjectsBufferSize(1),
 		)
 		require.NoError(b, err)
 
