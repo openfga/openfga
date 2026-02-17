@@ -238,7 +238,7 @@ func NewRunCommand() *cobra.Command {
 
 	flags.Uint32("listObjects-max-results", defaultConfig.ListObjectsMaxResults, "the maximum results to return in non-streaming ListObjects API responses. If 0, all results can be returned")
 
-	flags.Bool("listObjects-pipeline-enabled", defaultConfig.ListObjectsPipelineEnabled, "enabling the ListObjects pipeline optimization algorithm, which can significantly improve the latency of ListObjects requests. When enabled, the server will attempt to resolve intermediate nodes in the ListObjects resolution tree concurrently. This optimization is most effective for workloads with large and complex authorization models, but may not suite all cases. Can be disabled if it causes increased resource usage.")
+	flags.Bool("listObjects-pipeline-enabled", defaultConfig.ListObjectsPipelineEnabled, "enabling the ListObjects pipeline optimization algorithm, which can significantly improve the latency of ListObjects requests. When enabled, the server will attempt to resolve intermediate nodes in the ListObjects resolution tree concurrently. This optimization is most effective for workloads with large and complex authorization models, but may not suit all cases. Can be disabled if it causes increased resource usage.")
 
 	flags.Duration("listUsers-deadline", defaultConfig.ListUsersDeadline, "the timeout deadline for serving ListUsers requests. If 0, there is no deadline")
 
