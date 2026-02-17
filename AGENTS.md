@@ -87,60 +87,6 @@ This file provides guidance to AI coding agents when working with code in this r
 - Production deployment of Playground UI (playground is for localhost development only)
 - Single-node in-memory storage for production (memory storage is ephemeral, dev-only)
 
-## Build & Development Commands
-
-```bash
-make build                    # Build binary to dist/openfga
-make test                     # Run all tests with race detection
-make test FILTER="TestName"   # Run specific test by name
-make lint                     # Run golangci-lint with auto-fix
-make generate-mocks           # Generate mock stubs using mockgen
-make dev-run                  # Run server with hot reloading (in-memory storage)
-make dev-run DATASTORE="postgres"  # Run with Postgres
-make dev-run DATASTORE="mysql"     # Run with MySQL
-```
-
-## Architecture Overview
-
-OpenFGA is a high-performance authorization engine inspired by Google Zanzibar. It evaluates relationship-based access control queries.
-
-### Core Request Flow
-```
-HTTP/gRPC Request → Middleware → Server Handler → Command → Graph Resolution → Storage → Response
-```
-
-### Key Packages
-
-**pkg/server/** - gRPC/HTTP server implementation
-- `server.go` - Main server struct implementing OpenFGAServiceServer
-- `commands/` - Business logic for each API (Check, Write, ListObjects, etc.)
-- `commands/reverseexpand/` - Core ListObjects implementation using reverse expansion
-
-**internal/graph/** - Authorization check resolution
-- `check.go` - Recursive graph traversal for Check API
-- `cached_resolver.go` - Caching layer for check results
-- CheckResolver interface chains: caching → throttling → local resolution
-
-**pkg/storage/** - Storage interfaces and adapters
-- `storage.go` - Core interfaces (RelationshipTupleReader, RelationshipTupleWriter, OpenFGADatastore)
-- Adapters: `memory/`, `postgres/`, `mysql/`, `sqlite/`
-- `storagewrappers/` - Decorators for caching, request bounding
-
-**pkg/typesystem/** - Authorization model parsing and validation
-
-### Key APIs
-- **Check** - Verify if user has relation to object
-- **ListObjects** - List objects user can access
-- **ListUsers** - List users with access to object
-- **Write** - Create/delete relationship tuples
-- **BatchCheck** - Batch authorization checks
-
-### Ports
-- 8080: HTTP API
-- 8081: gRPC API
-- 3000: Playground UI
-- 2112: Prometheus metrics
-
 ## Testing Guidelines
 
 ### Test-Driven Development Workflow
@@ -157,34 +103,6 @@ HTTP/gRPC Request → Middleware → Server Handler → Command → Graph Resolu
 - The test actually validates the behavior you're implementing
 - You understand the problem clearly
 - The test suite would catch regressions if the feature breaks later
-
-### Benchmark Requirements
-
-**All exported functions must have benchmark tests.** This ensures performance regressions are detected early.
-
-```bash
-# Run all benchmark tests
-make test-bench
-
-# Run specific benchmark
-make test-bench FILTER="BenchmarkCheck"
-
-# Compare benchmarks before/after changes
-go test -bench=. -benchmem ./... > before.txt
-# (make changes)
-go test -bench=. -benchmem ./... > after.txt
-benchcmp before.txt after.txt
-```
-
-When adding new exported functions, create corresponding benchmark tests in `*_test.go` files following the pattern:
-```go
-func BenchmarkYourFunction(b *testing.B) {
-    // Setup
-    for i := 0; i < b.N; i++ {
-        // Call function being benchmarked
-    }
-}
-```
 
 ### Test Organization by Component
 
@@ -215,45 +133,171 @@ func BenchmarkYourFunction(b *testing.B) {
 - Test valid and invalid model definitions
 - Test type restrictions, CEL conditions, relation metadata queries
 
-**Docker/CLI changes**:
-- Tests in `cmd/openfga/main_test.go`
+**Server configuration changes**:
+- Server flag tests in `pkg/server/server_test.go`
+- HTTP header tests in `cmd/run/run_test.go` (see `TestHTTPHeaders`)
+- Docker integration tests in `cmd/openfga/main_test.go`
 - Test flag parsing, configuration loading, startup/shutdown behavior
 
-### Test Execution Workflow
+### Coverage Target
 
-When making code changes, follow this bash command workflow:
+- **Target 95% test coverage** for new code (aspirational goal)
+- CI currently enforces 85% via `codecov.yml` - aim to exceed this
+- All exported functions **must** have unit tests
+- All exported functions **must** have benchmark tests
+- Critical paths (Check, ListObjects, ListUsers) **must** have integration tests
 
+### Test Naming
+
+- Pattern: `Test<FunctionName>` for main test function
+- Use nested `t.Run("scenario_description")` for subtests
+- Subtest names: `lowercase_with_underscores` describing scenario
+- Be descriptive: test names should clearly indicate what is being tested
+
+### Table-Driven Tests
+
+- Use `[]struct{name, input, expected}` pattern for multiple scenarios
+- **Always** include `name` field for clear test identification
+- Use descriptive field names (not generic `in`/`out`)
+- Makes it easy to add new test cases and understand failures
+
+### Mocking
+
+- Use `gomock` for interface mocking (never use concrete types in tests when interface exists)
+- Generate mocks with `go generate ./...` (uses `mockgen`)
+- Pattern: `mockController := gomock.NewController(t)` with `defer mockController.Finish()`
+- Use `EXPECT().Times(n).DoAndReturn(func)` for behavior specification
+- Use `gomock.Any()` for arguments you don't care about checking
+
+### Assertions
+
+- Use `testify/require` for fatal assertions (test stops on failure)
+- Use `testify/assert` for non-fatal assertions (test continues)
+- Use `go-cmp/cmp` with `protocmp` for complex protobuf comparisons
+- Choose the right assertion level: use `require` for setup, `assert` for multiple checks
+
+### Benchmarks
+
+**All exported functions must have benchmark tests.** This ensures performance regressions are detected early.
+
+- Pattern: `Benchmark<FunctionName>(b *testing.B)`
+- Use `b.ResetTimer()` after setup to exclude initialization from measurements
+- Loop with `for i := 0; i < b.N; i++` for operation under test
+- Include `b.Cleanup()` for resource cleanup
+- Run with `-benchmem` flag for memory profiling
+
+**Comparing benchmarks:**
 ```bash
-# 1. Generate mocks (required after interface changes)
-make generate-mocks
-
-# 2. Run the specific failing test to observe failure
-make test FILTER="TestYourNewTest"
-
-# 3. Implement the code change
-
-# 4. Run the specific test to verify it passes
-make test FILTER="TestYourNewTest"
-
-# 5. Run all related tests to detect regressions
-make test FILTER="TestComponentName"
-
-# 6. Run benchmarks for affected components
-make test-bench FILTER="BenchmarkComponentName"
-
-# 7. Run full test suite before committing
-make test
+go test -bench=. -benchmem ./... > before.txt
+# (make changes)
+go test -bench=. -benchmem ./... > after.txt
+benchcmp before.txt after.txt
 ```
 
-### Best Practices
+### Cleanup and Leak Detection
 
-- **Isolation**: Use mocks to isolate the unit being tested. Generate mocks with `make generate-mocks`
-- **Coverage**: Test both success and failure paths. Include edge cases (empty input, nil values, boundary conditions)
-- **Error scenarios**: Test authorization failures, validation errors, storage errors, timeout scenarios
-- **Focused benchmarks**: Benchmark critical paths (Check API, graph resolution, storage queries)
-- **Matrix tests**: For query APIs (Check, ListObjects, ListUsers), use YAML test cases to cover model variations
-- **Test helpers**: Use utilities from `internal/testutils` for common setup (creating test stores, models, tuples)
-- **Documentation**: Add comments to complex YAML test cases explaining the authorization model and expected behavior
+- Use `t.Cleanup(func)` for resource cleanup (preferred over `defer` in tests)
+- Use `goleak.VerifyNone(t)` for goroutine leak detection in critical tests
+- Close datastores and connections properly in cleanup
+- Cleanup runs in reverse order, ensuring proper teardown
+
+### Integration Tests
+
+- Storage layer: Use exported `RunAllTests()` pattern in `pkg/storage/test/storage.go`
+- Run against all backends: memory, postgres, mysql, sqlite
+- Use `storagetest` package for backend-agnostic tests
+
+### Test Utilities
+
+- Use helpers from `internal/testutils/` for common setup
+- Mark helpers with `t.Helper()` to improve error reporting line numbers
+- Extract common test data setup into reusable functions
+
+### Examples
+
+**Table-driven test** (from `pkg/server/commands/write_test.go`):
+```go
+func TestWriteCommand(t *testing.T) {
+    tests := []struct {
+        name             string
+        writes           *openfgav1.WriteRequestWrites
+        deletes          *openfgav1.WriteRequestDeletes
+        expectedError    string
+    }{
+        {
+            name:          "empty_writes_and_deletes",
+            writes:        &openfgav1.WriteRequestWrites{},
+            deletes:       &openfgav1.WriteRequestDeletes{},
+            expectedError: "Invalid input...",
+        },
+        // more test cases...
+    }
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            // test implementation
+        })
+    }
+}
+```
+
+**Mock usage** (from `pkg/server/commands/check_command_test.go`):
+```go
+func TestCheckQuery(t *testing.T) {
+    mockController := gomock.NewController(t)
+    defer mockController.Finish()
+
+    mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+    mockCheckResolver := graph.NewMockCheckResolver(mockController)
+
+    mockCheckResolver.EXPECT().
+        ResolveCheck(gomock.Any(), gomock.Any()).
+        Times(1).
+        DoAndReturn(func(_ context.Context, _ *graph.ResolveCheckRequest) (*graph.ResolveCheckResponse, error) {
+            return &graph.ResolveCheckResponse{Allowed: true}, nil
+        })
+
+    // test implementation using mocks
+}
+```
+
+**Cleanup and leak detection** (from `pkg/server/commands/batch_check_command_test.go`):
+```go
+func TestBatchCheckCommand(t *testing.T) {
+    t.Cleanup(func() {
+        goleak.VerifyNone(t)
+    })
+
+    // test implementation - goleak will verify no goroutines leaked
+}
+```
+
+**Benchmark pattern**:
+```go
+func BenchmarkListObjects(b *testing.B) {
+    datastore := memory.New()
+    b.Cleanup(datastore.Close)
+
+    // Setup: create model, write tuples, etc.
+    // ... setup code ...
+
+    b.ResetTimer() // Don't measure setup time
+    for i := 0; i < b.N; i++ {
+        // Operation being benchmarked
+        _, err := query.Execute(ctx, req)
+        if err != nil {
+            b.Fatal(err)
+        }
+    }
+}
+```
+
+### Best Practices Summary
+
+- Test both success and failure paths with edge cases (empty input, nil values, boundary conditions)
+- Test error scenarios: authorization failures, validation errors, storage errors, timeouts
+- Benchmark critical paths (Check API, graph resolution, storage queries)
+- Use YAML matrix tests for query APIs (Check, ListObjects, ListUsers) to cover model variations
+- Add comments to complex YAML test cases explaining the authorization model and expected behavior
 
 ## Code Style
 
@@ -468,152 +512,15 @@ if errors.As(err, &invalidRelationError) {
 }
 ```
 
-### Testing Conventions
-
-Testing is a critical part of OpenFGA's quality standards. Follow test-driven development practices and maintain high test coverage for all code paths.
-
-**Coverage Target**:
-- **Target 95% test coverage** for new code (aspirational goal)
-- CI currently enforces 85% via `codecov.yml` - aim to exceed this
-- All exported functions **must** have unit tests
-- All exported functions **must** have benchmark tests
-- Critical paths (Check, ListObjects, ListUsers) **must** have integration tests
-
-**Test Naming**:
-- Pattern: `Test<FunctionName>` for main test function
-- Use nested `t.Run("scenario_description")` for subtests
-- Subtest names: `lowercase_with_underscores` describing scenario
-- Be descriptive: test names should clearly indicate what is being tested
-
-**Table-Driven Tests**:
-- Use `[]struct{name, input, expected}` pattern for multiple scenarios
-- **Always** include `name` field for clear test identification
-- Use descriptive field names (not generic `in`/`out`)
-- Makes it easy to add new test cases and understand failures
-
-**Mocking**:
-- Use `gomock` for interface mocking (never use concrete types in tests when interface exists)
-- Generate mocks with `make generate-mocks` (uses `mockgen`)
-- Pattern: `mockController := gomock.NewController(t)` with `defer mockController.Finish()`
-- Use `EXPECT().Times(n).DoAndReturn(func)` for behavior specification
-- Use `gomock.Any()` for arguments you don't care about checking
-
-**Assertions**:
-- Use `testify/require` for fatal assertions (test stops on failure)
-- Use `testify/assert` for non-fatal assertions (test continues)
-- Use `go-cmp/cmp` with `protocmp` for complex protobuf comparisons
-- Choose the right assertion level: use `require` for setup, `assert` for multiple checks
-
-**Benchmarks**:
-- Pattern: `Benchmark<FunctionName>(b *testing.B)`
-- Use `b.ResetTimer()` after setup to exclude initialization from measurements
-- Loop with `for i := 0; i < b.N; i++` for operation under test
-- Include `b.Cleanup()` for resource cleanup
-- Run with `-benchmem` flag for memory profiling
-
-**Cleanup and Leak Detection**:
-- Use `t.Cleanup(func)` for resource cleanup (preferred over `defer` in tests)
-- Use `goleak.VerifyNone(t)` for goroutine leak detection in critical tests
-- Close datastores and connections properly in cleanup
-- Cleanup runs in reverse order, ensuring proper teardown
-
-**Integration Tests**:
-- Storage layer: Use exported `RunAllTests()` pattern in `pkg/storage/test/storage.go`
-- Run against all backends: memory, postgres, mysql, sqlite
-- Use `storagetest` package for backend-agnostic tests
-
-**Test Utilities**:
-- Use helpers from `internal/testutils/` for common setup
-- Mark helpers with `t.Helper()` to improve error reporting line numbers
-- Extract common test data setup into reusable functions
-
-**Examples**:
-
-1. **Table-driven test** (from `pkg/server/commands/write_test.go`):
-```go
-func TestWriteCommand(t *testing.T) {
-    tests := []struct {
-        name             string
-        writes           *openfgav1.WriteRequestWrites
-        deletes          *openfgav1.WriteRequestDeletes
-        expectedError    string
-    }{
-        {
-            name:          "empty_writes_and_deletes",
-            writes:        &openfgav1.WriteRequestWrites{},
-            deletes:       &openfgav1.WriteRequestDeletes{},
-            expectedError: "Invalid input...",
-        },
-        // more test cases...
-    }
-    for _, tt := range tests {
-        t.Run(tt.name, func(t *testing.T) {
-            // test implementation
-        })
-    }
-}
-```
-
-2. **Mock usage** (from `pkg/server/commands/check_command_test.go`):
-```go
-func TestCheckQuery(t *testing.T) {
-    mockController := gomock.NewController(t)
-    defer mockController.Finish()
-
-    mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
-    mockCheckResolver := graph.NewMockCheckResolver(mockController)
-
-    mockCheckResolver.EXPECT().
-        ResolveCheck(gomock.Any(), gomock.Any()).
-        Times(1).
-        DoAndReturn(func(_ context.Context, _ *graph.ResolveCheckRequest) (*graph.ResolveCheckResponse, error) {
-            return &graph.ResolveCheckResponse{Allowed: true}, nil
-        })
-
-    // test implementation using mocks
-}
-```
-
-3. **Cleanup and leak detection** (from `pkg/server/commands/batch_check_command_test.go`):
-```go
-func TestBatchCheckCommand(t *testing.T) {
-    t.Cleanup(func() {
-        goleak.VerifyNone(t)
-    })
-
-    // test implementation - goleak will verify no goroutines leaked
-}
-```
-
-4. **Benchmark pattern** (pattern from codebase):
-```go
-func BenchmarkListObjects(b *testing.B) {
-    datastore := memory.New()
-    b.Cleanup(datastore.Close)
-
-    // Setup: create model, write tuples, etc.
-    // ... setup code ...
-
-    b.ResetTimer() // Don't measure setup time
-    for i := 0; i < b.N; i++ {
-        // Operation being benchmarked
-        _, err := query.Execute(ctx, req)
-        if err != nil {
-            b.Fatal(err)
-        }
-    }
-}
-```
-
 ## Maintaining This File
 
 Keep this file up to date when making significant changes to the codebase:
 
-- **New packages**: Add to Key Packages section if architecturally significant
-- **New APIs**: Document in Key APIs section
-- **Build changes**: Update Build & Development Commands
-- **Port changes**: Update Ports section
-- **New test patterns**: Add to Testing Guidelines
+- **New packages**: Add to Architecture > Key Components section if architecturally significant
+- **New APIs**: Document in Architecture > Key APIs section
+- **Build/command changes**: Update Development Commands section
+- **Port changes**: Update Architecture > Ports section
+- **New test patterns**: Add to Testing Guidelines section
 - **Import conventions**: Update Code Style if new aliases are adopted
 - **Graph/ListObjects changes**: When modifying `internal/graph/` or `server/commands/reverseexpand/`, review and stress test matrix tests in `tests/check/` and `tests/listobjects/` to ensure edge cases are covered
 
@@ -624,64 +531,52 @@ Review this file during major refactors to ensure accuracy.
 ### Building & Installing
 ```bash
 # Build the binary (output to ./dist/openfga by default)
-make build
+go build -o ./dist/openfga ./cmd/openfga
 
-# Build to custom location
-BUILD_DIR="." make build
+# Build to current directory
+go build -o ./openfga ./cmd/openfga
 
 # Install to $GOBIN (ensure $GOBIN is on $PATH)
-make install
+go install ./cmd/openfga
 
-# Build directly with go
-go build -o ./openfga ./cmd/openfga
+# Build with custom output path
+go build -o /custom/path/openfga ./cmd/openfga
 ```
 
 ### Testing
 ```bash
-# Run all tests (requires mock generation first)
-make test
+# Generate mock stubs (run this first if interfaces changed)
+go generate ./...
 
-# Run specific test with filter
-make test FILTER="TestCheckLogs"
+# Run all tests with race detection
+go test -race ./...
+
+# Run specific test by name
+go test -race -run "TestCheckLogs" ./...
 
 # Run Docker-specific tests (requires Docker)
-make test-docker
+go test -tags=docker ./cmd/openfga/...
 
 # Run benchmark tests
-make test-bench
-
-# Generate mock stubs (required before running tests)
-make generate-mocks
+go test -bench=. -benchmem ./...
 ```
 
 ### Development Server
 ```bash
-# Run with hot-reload (in-memory storage)
-make dev-run
-
-# Run with MySQL
-DATASTORE="mysql" make dev-run
-
-# Run with Postgres
-DATASTORE="postgres" make dev-run
-
-# Run with SQLite
-DATASTORE="sqlite" make dev-run
-
-# Run directly without hot-reload
+# Run with in-memory storage
 ./openfga run
-
-# Run with specific storage backend
-./openfga run --datastore-engine postgres --datastore-uri 'postgres://postgres:password@localhost:5432/postgres'
 ```
 
 ### Linting & Code Quality
 ```bash
 # Run linter with auto-fix
-make lint
+golangci-lint run --fix ./...
 
-# Download/update dependencies
-make deps
+# Download dependencies
+go mod download
+
+# Update and tidy dependencies
+go mod tidy
 ```
 
 ### Database Migrations
@@ -692,11 +587,19 @@ openfga migrate --datastore-engine postgres --datastore-uri 'postgres://...'
 
 ## Architecture
 
+OpenFGA is a high-performance authorization engine inspired by Google Zanzibar. It evaluates relationship-based access control queries.
+
+### Core Request Flow
+
+```text
+HTTP/gRPC Request → Middleware → Server Handler → Command → Graph Resolution → Storage → Response
+```
+
 ### High-Level Structure
 
 OpenFGA follows a layered architecture:
 
-```
+```text
 ┌─────────────────────────────────────────┐
 │     HTTP/gRPC API Layer (Gateway)       │
 ├─────────────────────────────────────────┤
@@ -760,9 +663,24 @@ OpenFGA follows a layered architecture:
 - `authn/` - Authentication: None, Preshared Key, OIDC
 - `authz/` - Authorization for API methods (uses FGA store to check API access)
 
+### Key APIs
+
+- **Check** - Verify if user has relation to object
+- **ListObjects** - List objects user can access
+- **ListUsers** - List users with access to object
+- **Write** - Create/delete relationship tuples
+- **BatchCheck** - Batch authorization checks
+
+### Ports
+
+- 8080: HTTP API
+- 8081: gRPC API
+- 3000: Playground UI
+- 2112: Prometheus metrics
+
 ### Request Flow: Check API
 
-```
+```text
 1. HTTP/gRPC request arrives
 2. Middleware: Recovery → RequestID → StoreID → Validation → Logging → Auth
 3. Server.Check() handler
@@ -788,7 +706,7 @@ OpenFGA follows a layered architecture:
 
 BatchCheck processes multiple authorization checks concurrently with intelligent deduplication to maximize cache efficiency and minimize redundant graph traversals.
 
-```
+```text
 1. HTTP/gRPC request arrives with multiple check requests (each with correlation ID)
 2. Middleware: Recovery → RequestID → StoreID → Validation → Logging → Auth
 3. Server.BatchCheck() handler
@@ -827,14 +745,14 @@ BatchCheck processes multiple authorization checks concurrently with intelligent
 - `--check-dispatch-throttling-enabled` - Enable dispatch throttling for recursive checks
 
 **Files for Implementation**:
-- `pkg/server/batch_check.go` (192 lines) - BatchCheck gRPC handler
-- `pkg/server/commands/batch_check_command.go` (305 lines) - Deduplication logic and concurrent execution orchestration
+- `pkg/server/batch_check.go` - BatchCheck gRPC handler
+- `pkg/server/commands/batch_check_command.go` - Deduplication logic and concurrent execution orchestration
 
 ### Request Flow: ListObjects API
 
 ListObjects uses **reverse expansion** to find all objects a user can access for a given relation, traversing the authorization graph backwards from the relation to leaf nodes containing actual tuples.
 
-```
+```text
 1. HTTP/gRPC request arrives (user, relation, object type, optional filters)
 2. Middleware: Recovery → RequestID → StoreID → Validation → Logging → Auth
 3. Server.ListObjects() or Server.StreamedListObjects() handler
@@ -880,17 +798,17 @@ ListObjects uses **reverse expansion** to find all objects a user can access for
 - `--experimentals=listobjects-optimizations` - Enable weighted graph optimization
 
 **Files for Implementation**:
-- `pkg/server/list_objects.go` (356 lines) - ListObjects and StreamedListObjects gRPC handlers
-- `pkg/server/commands/list_objects.go` (847 lines) - Strategy selection and orchestration
-- `pkg/server/commands/reverseexpand/reverse_expand.go` (744 lines) - Classic recursive reverse expansion
-- `pkg/server/commands/reverseexpand/reverse_expand_weighted.go` (812 lines) - Weighted graph optimization strategy
-- `pkg/server/commands/reverseexpand/pipeline/` (4,270 lines total) - Pipeline message-passing architecture
+- `pkg/server/list_objects.go` - ListObjects and StreamedListObjects gRPC handlers
+- `pkg/server/commands/list_objects.go` - Strategy selection and orchestration
+- `pkg/server/commands/reverseexpand/reverse_expand.go` - Classic recursive reverse expansion
+- `pkg/server/commands/reverseexpand/reverse_expand_weighted.go` - Weighted graph optimization strategy
+- `pkg/server/commands/reverseexpand/pipeline/` - Pipeline message-passing architecture
 
 ### Request Flow: ListUsers API
 
 ListUsers uses **reverse expansion** to find all users with access to a specific object for a given relation, with optional filtering by user type and relation.
 
-```
+```text
 1. HTTP/gRPC request arrives (object, relation, optional user filters)
 2. Middleware: Recovery → RequestID → StoreID → Validation → Logging → Auth
 3. Server.ListUsers() handler
@@ -935,15 +853,15 @@ ListUsers uses **reverse expansion** to find all users with access to a specific
 - `--listusers-dispatch-throttling-enabled` (default false) - Enable dispatch throttling for ListUsers
 
 **Files for Implementation**:
-- `pkg/server/list_users.go` (174 lines) - ListUsers gRPC handler
-- `pkg/server/commands/listusers/list_users_rpc.go` (992 lines) - Reverse expansion and user filtering logic
-- `pkg/server/commands/listusers/validate.go` (95 lines) - Request validation logic
+- `pkg/server/list_users.go` - ListUsers gRPC handler
+- `pkg/server/commands/listusers/list_users_rpc.go` - Reverse expansion and user filtering logic
+- `pkg/server/commands/listusers/validate.go` - Request validation logic
 
 ### Resolver Chain Pattern
 
 Resolvers are composed in a chain using circular linked list:
 
-```
+```text
 [CacheResolver] → [DispatchThrottlingResolver] → [ShadowResolver] → [LocalChecker] ⟲
 ```
 
@@ -961,19 +879,6 @@ Each resolver can:
 - **Caching**: Multi-layer (model cache, iterator cache, query cache)
 - **Planner**: Thompson Sampling to select best resolver strategy
 - **Shadow resolver**: A/B test new strategies without affecting production
-
-### Testing Locations (from CONTRIBUTING.md)
-
-1. **Storage layer**: Integration tests in `pkg/storage/test/storage.go`
-2. **Commands**: Unit tests in `pkg/server/commands/*_test.go` (mock dependencies)
-3. **Functional API tests**: `tests/functional_test.go` (validates API behavior)
-4. **Query APIs** (Check, ListObjects, ListUsers):
-   - Exported integration tests in `tests/{check,listobjects,listusers}/*.go`
-   - YAML-based test cases for easy maintenance
-   - Can be imported by external implementations
-5. **Server flags**: Tests in `pkg/server/server_test.go`
-6. **HTTP headers**: Test in `cmd/run/run_test.go` (`TestHTTPHeaders`)
-7. **Docker integration**: Tests in `cmd/openfga/main_test.go`
 
 ## Important Patterns
 
