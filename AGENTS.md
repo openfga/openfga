@@ -442,6 +442,161 @@ OpenFGA follows a layered architecture:
 10. Return CheckResponse
 ```
 
+### Request Flow: BatchCheck API
+
+BatchCheck processes multiple authorization checks concurrently with intelligent deduplication to maximize cache efficiency and minimize redundant graph traversals.
+
+```
+1. HTTP/gRPC request arrives with multiple check requests (each with correlation ID)
+2. Middleware: Recovery → RequestID → StoreID → Validation → Logging → Auth
+3. Server.BatchCheck() handler
+4. Load TypeSystem from storage (cached)
+5. BatchCheckCommand.Execute():
+   - Validate batch size against MaxChecksPerBatchCheck
+   - Validate each check request against TypeSystem
+   - Build shared cache controller for all concurrent checks
+6. Deduplication phase:
+   - Generate xxhash cache key for each check (hash of user+relation+object+contextual tuples+context)
+   - Map correlation IDs to deduplicated check parameters
+   - Multiple correlation IDs may map to single deduplicated check
+7. Concurrent execution (up to MaxConcurrentChecksPerBatchCheck goroutines):
+   - Use sourcegraph/conc pool for bounded parallelism
+   - Execute CheckCommand for each unique check (after deduplication)
+   - Share cache controller across all concurrent checks to maximize hit rate
+8. Per-check error handling:
+   - Errors in individual checks don't fail entire batch
+   - Each correlation ID gets result or error
+9. Aggregate metadata (dispatch count, query count, duplicate count across all checks)
+10. Return BatchCheckResponse with map of correlation ID → CheckResponse
+```
+
+**Key Features**:
+- **Deduplication**: Uses xxhash to create cache keys; multiple correlation IDs can share results from a single check execution
+- **Bounded Concurrency**: Configurable parallelism (default 50 concurrent checks) prevents resource exhaustion
+- **Shared Cache Controller**: Single cache instance shared across all concurrent checks maximizes cache hit rate
+- **Per-Check Errors**: Individual check failures don't impact other checks in the batch; errors returned per correlation ID
+- **Metadata Aggregation**: Collects dispatch count, query count, throttle events, and duplicate count across all checks for observability
+
+**Configuration Options**:
+- `--max-checks-per-batch-check` (default 50) - Maximum number of checks allowed per batch request
+- `--max-concurrent-checks-per-batch-check` (default 50) - Maximum concurrent check executions
+- `--check-query-cache-enabled` - Enable query caching (applies to all checks in batch)
+- `--datastore-max-concurrent-reads` - Controls datastore query concurrency
+- `--check-dispatch-throttling-enabled` - Enable dispatch throttling for recursive checks
+
+**Files for Implementation**:
+- `pkg/server/batch_check.go` (192 lines) - BatchCheck gRPC handler
+- `pkg/server/commands/batch_check_command.go` (305 lines) - Deduplication logic and concurrent execution orchestration
+
+### Request Flow: ListObjects API
+
+ListObjects uses **reverse expansion** to find all objects a user can access for a given relation, traversing the authorization graph backwards from the relation to leaf nodes containing actual tuples.
+
+```
+1. HTTP/gRPC request arrives (user, relation, object type, optional filters)
+2. Middleware: Recovery → RequestID → StoreID → Validation → Logging → Auth
+3. Server.ListObjects() or Server.StreamedListObjects() handler
+4. Load TypeSystem from storage (cached)
+5. Strategy selection (based on TypeSystem and feature flags):
+   - Weighted Graph (optimized): Precomputed query path analysis
+   - Pipeline (experimental): Message-passing concurrency with constant memory
+   - Classic: Fallback recursive traversal
+6. ListObjectsCommand.Execute():
+   - Validate request against TypeSystem
+   - Wrap storage with contextual tuples
+7. Reverse expansion phase:
+   - Traverse graph backwards from target relation to leaf nodes
+   - Handle three edge types: DirectEdge, ComputedUsersetEdge, TupleToUsersetEdge
+   - Apply set operations: union, intersection, exclusion
+   - Yield candidate objects with status: NoFurtherEvalStatus or RequiresFurtherEvalStatus
+8. Conditional evaluation phase (for RequiresFurtherEvalStatus results):
+   - Execute Check API for each candidate object to validate conditions
+   - Filter objects based on Check results (intersections/exclusions require validation)
+9. Result streaming/pagination (respect ListObjectsMaxResults limit)
+10. Collect metadata (dispatch count, query count, duration)
+11. Return ListObjectsResponse or stream results
+```
+
+**Key Features**:
+- **Reverse Expansion**: Traverses graph backwards from relation to tuples (unlike Check which traverses forwards from tuple to relation)
+- **Three Algorithmic Strategies**: Weighted Graph (production default with cost-based optimization), Pipeline (experimental constant-memory message-passing), Classic (recursive fallback)
+- **Two-Phase Processing**: First phase yields candidate objects via reverse expansion; second phase validates conditional results via Check API
+- **Result Status**: Objects have NoFurtherEvalStatus (direct match, no Check needed) or RequiresFurtherEvalStatus (needs Check due to intersection/exclusion/condition)
+- **Streaming Support**: StreamedListObjects provides server-side streaming for large result sets
+- **Set Operations**: Handles union (OR), intersection (AND), exclusion (BUT NOT) with correct conditional evaluation
+- **Weighted Optimization**: Analyzes TypeSystem to choose lowest-cost query paths based on estimated tuple counts
+- **Pipeline Architecture**: Experimental message-passing worker graph with natural backpressure and O(1) memory
+
+**Configuration Options**:
+- `--listobjects-deadline` (default 3s) - Maximum duration for ListObjects operation
+- `--listobjects-max-results` (default 1000) - Maximum objects returned per request
+- `--resolve-node-limit` - Maximum recursive dispatches across entire operation
+- `--resolve-node-breadth-limit` - Maximum concurrent goroutines per recursion level
+- `--max-concurrent-reads-for-list-objects` - Concurrent database reads for ListObjects
+- `--experimentals=pipeline-listobjects` - Enable experimental pipeline strategy
+- `--experimentals=shadow-listobjects` - Enable A/B testing between strategies
+- `--experimentals=listobjects-optimizations` - Enable weighted graph optimization
+
+**Files for Implementation**:
+- `pkg/server/list_objects.go` (356 lines) - ListObjects and StreamedListObjects gRPC handlers
+- `pkg/server/commands/list_objects.go` (847 lines) - Strategy selection and orchestration
+- `pkg/server/commands/reverseexpand/reverse_expand.go` (744 lines) - Classic recursive reverse expansion
+- `pkg/server/commands/reverseexpand/reverse_expand_weighted.go` (812 lines) - Weighted graph optimization strategy
+- `pkg/server/commands/reverseexpand/pipeline/` (4,270 lines total) - Pipeline message-passing architecture
+
+### Request Flow: ListUsers API
+
+ListUsers uses **reverse expansion** to find all users with access to a specific object for a given relation, with optional filtering by user type and relation.
+
+```
+1. HTTP/gRPC request arrives (object, relation, optional user filters)
+2. Middleware: Recovery → RequestID → StoreID → Validation → Logging → Auth
+3. Server.ListUsers() handler
+4. Load TypeSystem from storage (cached)
+5. ListUsersCommand.Execute():
+   - Validate request against TypeSystem
+   - Validate user filters (object type + relation pairs)
+   - Wrap storage with contextual tuples
+6. Reverse expansion phase:
+   - Traverse graph backwards from object+relation to users
+   - Handle three edge types: DirectEdge, ComputedUsersetEdge, TupleToUsersetEdge
+   - Apply set operations: union, intersection, exclusion with special wildcard handling
+7. Cycle detection:
+   - Track visited usersets in visitedUsersetsMap
+   - Prevent infinite loops in recursive expansion
+8. User filtering (if user filters provided):
+   - Filter results by user type and relation
+   - Only return users matching specified filters
+9. Relationship status tracking:
+   - Mark users as explicitly related vs excluded (for correct exclusion handling)
+   - Handle typed wildcards (type:*) with special union/intersection/exclusion logic
+10. Collect metadata (dispatch count, query count, duration)
+11. Return ListUsersResponse with User objects (object_user, userset, typed_wildcard)
+```
+
+**Key Features**:
+- **Reverse Expansion**: Traverses graph backwards from object+relation to users who have that relationship
+- **User Filtering**: Optional filters narrow results by user type and relation (e.g., only return users of type "user" with "member" relation)
+- **Set Operations**: Handles union (OR), intersection (AND), exclusion (BUT NOT) with correct wildcard handling
+- **Typed Wildcards**: Special handling for public access patterns (e.g., `type:*` grants access to all users of that type)
+- **Relationship Status**: Tracks explicit relationships vs exclusions for correct set operation evaluation
+- **Cycle Detection**: Uses visitedUsersetsMap to prevent infinite loops in recursive model traversal
+- **Early Exit Optimization**: doesHavePossibleEdges() checks if relation can possibly yield users before expensive expansion
+- **Standalone Architecture**: Unlike ListObjects, doesn't use CheckResolver chain (simpler, specialized implementation)
+
+**Configuration Options**:
+- `--listusers-deadline` (default 3s) - Maximum duration for ListUsers operation
+- `--listusers-max-results` (default 1000) - Maximum users returned per request
+- `--resolve-node-limit` - Maximum recursive dispatches across entire operation
+- `--resolve-node-breadth-limit` - Maximum concurrent goroutines per recursion level
+- `--max-concurrent-reads-for-list-users` - Concurrent database reads for ListUsers
+- `--listusers-dispatch-throttling-enabled` (default false) - Enable dispatch throttling for ListUsers
+
+**Files for Implementation**:
+- `pkg/server/list_users.go` (174 lines) - ListUsers gRPC handler
+- `pkg/server/commands/listusers/list_users_rpc.go` (992 lines) - Reverse expansion and user filtering logic
+- `pkg/server/commands/listusers/validate.go` (95 lines) - Request validation logic
+
 ### Resolver Chain Pattern
 
 Resolvers are composed in a chain using circular linked list:
