@@ -263,6 +263,348 @@ Import aliases:
 
 Import order: standard → external → github.com/openfga → local module
 
+## Code Conventions
+
+This section defines code quality standards for the OpenFGA codebase. AI agents should follow these conventions when writing, reviewing, or modifying code. The emphasis is on writing code that is clear, maintainable, and consistent with existing patterns throughout the project.
+
+### Documentation Comments
+
+Documentation should explain **why** code exists and how to use it, not merely describe **what** the code does. Good documentation provides context, usage guidance, and explains non-obvious decisions.
+
+**Rules**:
+
+- **Exported types**: Must have doc comments explaining purpose and responsibility. Include usage context and what problem the type solves.
+
+- **Exported functions**: Must have multi-paragraph comments with usage guidance, examples, and edge cases. Explain parameters, return values, and error conditions.
+
+- **Interface methods**: Must document preconditions, error conditions, and behavioral guarantees. Specify what callers must provide and what they can expect.
+
+- **Constants**: Should explain rationale ("why this value?") not just definition. Balance considerations and context matter more than the literal value.
+
+- **Private functions**: Brief comments only when logic is non-obvious. Omit comments for self-explanatory code where the function name and signature clearly convey intent.
+
+- **Inline comments**: Use sparingly, only for gotchas, threading issues, or architectural decisions that aren't obvious from the code itself.
+
+- **Cross-references**: Use `[[package.Type]]` syntax for linking related concepts. This creates navigable documentation connections.
+
+**Examples**:
+
+1. **Constant with rationale** (from `pkg/storage/storage.go`):
+```go
+// DefaultMaxTuplesPerWrite specifies the default maximum number of tuples that can be written
+// in a single write operation. This constant is used to limit the batch size in write operations
+// to maintain performance and avoid overloading the system. The value is set to 100 tuples,
+// which is a balance between efficiency and resource usage.
+const DefaultMaxTuplesPerWrite = 100
+```
+
+2. **Function with cross-references** (from `internal/graph/check.go`):
+```go
+// NewLocalChecker constructs a LocalChecker that can be used to evaluate a Check
+// request locally.
+//
+// Developers wanting a LocalChecker with other optional layers (e.g caching and others)
+// are encouraged to use [[NewOrderedCheckResolvers]] instead.
+func NewLocalChecker(opts ...LocalCheckerOption) *LocalChecker
+```
+
+3. **Interface method with contract** (from `pkg/storage/storage.go`):
+```go
+// Read the set of tuples associated with `store` and `tupleKey`, which may be nil or partially filled.
+// If nil, Read will return an iterator over all the tuples in the given `store`. If the `tupleKey`
+// is partially filled, it will return an iterator over those tuples which match the `tupleKey`.
+// Note that at least one of `Object` or `User` (or both), must be specified in this case.
+//
+// The caller must be careful to close the [TupleIterator], either by consuming the entire iterator
+// or by closing it. There is NO guarantee on the order of the tuples returned on the iterator.
+Read(ctx context.Context, store string, filter ReadFilter, options ReadOptions) (TupleIterator, error)
+```
+
+4. **Inline comment for gotcha** (from `pkg/server/server.go`):
+```go
+// NOTE don't use this directly, use function resolveTypesystem. See https://github.com/openfga/openfga/issues/1527
+typesystemResolver typesystem.TypesystemResolverFunc
+```
+
+### Naming Conventions
+
+Consistent naming improves code readability and helps developers quickly understand component roles and relationships. Follow Go idioms and OpenFGA-specific patterns.
+
+**Interfaces**:
+- No "I" prefix (use `CheckResolver`, not `ICheckResolver`)
+- Descriptive names indicating role or action
+- Examples: `CheckResolver`, `RelationshipTupleReader`, `OpenFGADatastore`
+
+**Structs**:
+- PascalCase descriptive compound names
+- Indicate responsibility or pattern (e.g., `CachedCheckResolver` shows caching decorator)
+- Examples: `LocalChecker`, `CheckQuery`, `ResolveCheckResponse`
+
+**Functions**:
+- Constructors: `New<Type>()` pattern
+- Options: `With<Property>()` for functional options
+- Option types: `<Type>Option func(*<Type>)`
+- Methods: Verb form for actions (e.g., `Execute`, `Resolve`, `Check`)
+
+**Variables**:
+- Short names in narrow scopes: `ctx`, `err`, `req`, `res`, `ds`
+- Descriptive names for significant variables: `checkResolver`, `typesys`, `datastore`
+- camelCase throughout (no snake_case except in test names)
+
+**Constants**:
+- Exported: PascalCase (e.g., `DefaultMaxTuplesPerWrite`)
+- Unexported: camelCase (e.g., `relationshipTupleReaderCtxKey`)
+- Context keys: `<name>CtxKey` suffix pattern
+
+**Error Variables**:
+- Sentinel errors: `Err<Name>` pattern (e.g., `ErrNotFound`, `ErrUnknown`)
+
+**Examples**:
+
+```go
+// Good interface naming (no I prefix)
+type CheckResolver interface { ... }
+type RelationshipTupleReader interface { ... }
+
+// Good constructor and option pattern
+func NewCheckCommand(ds storage.OpenFGADatastore, opts ...CheckCommandOption) *CheckCommand
+
+type CheckCommandOption func(*CheckCommand)
+
+func WithCheckCommandLogger(l logger.Logger) CheckCommandOption {
+    return func(c *CheckCommand) { c.logger = l }
+}
+
+// Constants: exported PascalCase, unexported camelCase
+const DefaultMaxTuplesPerWrite = 100
+const relationshipTupleReaderCtxKey ctxKey = "relationship-tuple-reader-context-key"
+
+// Sentinel errors
+var (
+    ErrNotFound = errors.New("not found")
+    ErrUnknown = errors.New("internal server error")
+)
+```
+
+### Error Handling Conventions
+
+OpenFGA uses Go's standard error handling with careful attention to error context and chaining. Always preserve error context for debugging while exposing appropriate errors at API boundaries.
+
+**Sentinel Errors**:
+- Use `var Err<Name> = errors.New("message")` pattern
+- Group related errors in `var ()` blocks
+- Define at package level for reusability
+
+**Error Wrapping**:
+- Use `fmt.Errorf("context: %w", err)` to add context while preserving error chain
+- **Never** use `fmt.Errorf("context: %v", err)` - always use `%w` for wrapped errors
+- Each layer should add meaningful context describing what operation failed
+
+**Custom Error Types**:
+- Must implement `Error() string` method
+- Must implement `Unwrap() error` method for error chain support
+- Optionally implement `Is(target error) bool` for sentinel comparison
+- Use struct types to carry additional error metadata (e.g., tuple key, cause)
+
+**Error Checking**:
+- Use `errors.Is(err, sentinel)` for sentinel error checks
+- Use `errors.As(err, &targetType)` for type-based error handling
+- **Never** use `err == sentinel` direct comparison (breaks wrapping)
+
+**Error Mapping**:
+- Create converter functions to map domain errors to API errors
+- Pattern: `<Command>ErrorToServerError` functions (e.g., `CheckCommandErrorToServerError`)
+- Keep domain errors internal, expose sanitized API errors at boundaries
+
+**Examples**:
+
+1. **Sentinel error definition** (from `pkg/storage/errors.go`):
+```go
+var (
+    ErrNotFound = errors.New("not found")
+    ErrCollision = errors.New("item already exists")
+    ErrInvalidContinuationToken = errors.New("invalid continuation token")
+)
+```
+
+2. **Custom error type** (from `pkg/tuple/tuple_errors.go`):
+```go
+// InvalidTupleError is returned if the tuple is invalid.
+type InvalidTupleError struct {
+    Cause    error
+    TupleKey TupleWithoutCondition
+}
+
+func (i *InvalidTupleError) Error() string {
+    return fmt.Sprintf("Invalid tuple '%s'. Reason: %s", TupleKeyToString(i.TupleKey), i.Cause)
+}
+
+func (i *InvalidTupleError) Is(target error) bool {
+    _, ok := target.(*InvalidTupleError)
+    return ok
+}
+```
+
+3. **Error wrapping** (showing good vs bad):
+```go
+// Good: wraps with context, preserves error chain
+return fmt.Errorf("failed to read tuples: %w", err)
+
+// Bad: loses error chain, can't use errors.Is or errors.As
+return fmt.Errorf("failed to read tuples: %v", err)
+```
+
+4. **Error checking patterns** (showing proper usage):
+```go
+// Using errors.Is for sentinel errors
+if errors.Is(err, storage.ErrNotFound) {
+    return serverErrors.AuthorizationModelNotFound(modelID)
+}
+
+// Using errors.As for type-based handling
+var invalidRelationError *tuple.InvalidTupleError
+if errors.As(err, &invalidRelationError) {
+    return serverErrors.ValidationError(invalidRelationError)
+}
+```
+
+### Testing Conventions
+
+Testing is a critical part of OpenFGA's quality standards. Follow test-driven development practices and maintain high test coverage for all code paths.
+
+**Coverage Target**:
+- **Target 95% test coverage** for new code (aspirational goal)
+- CI currently enforces 85% via `codecov.yml` - aim to exceed this
+- All exported functions **must** have unit tests
+- All exported functions **must** have benchmark tests
+- Critical paths (Check, ListObjects, ListUsers) **must** have integration tests
+
+**Test Naming**:
+- Pattern: `Test<FunctionName>` for main test function
+- Use nested `t.Run("scenario_description")` for subtests
+- Subtest names: `lowercase_with_underscores` describing scenario
+- Be descriptive: test names should clearly indicate what is being tested
+
+**Table-Driven Tests**:
+- Use `[]struct{name, input, expected}` pattern for multiple scenarios
+- **Always** include `name` field for clear test identification
+- Use descriptive field names (not generic `in`/`out`)
+- Makes it easy to add new test cases and understand failures
+
+**Mocking**:
+- Use `gomock` for interface mocking (never use concrete types in tests when interface exists)
+- Generate mocks with `make generate-mocks` (uses `mockgen`)
+- Pattern: `mockController := gomock.NewController(t)` with `defer mockController.Finish()`
+- Use `EXPECT().Times(n).DoAndReturn(func)` for behavior specification
+- Use `gomock.Any()` for arguments you don't care about checking
+
+**Assertions**:
+- Use `testify/require` for fatal assertions (test stops on failure)
+- Use `testify/assert` for non-fatal assertions (test continues)
+- Use `go-cmp/cmp` with `protocmp` for complex protobuf comparisons
+- Choose the right assertion level: use `require` for setup, `assert` for multiple checks
+
+**Benchmarks**:
+- Pattern: `Benchmark<FunctionName>(b *testing.B)`
+- Use `b.ResetTimer()` after setup to exclude initialization from measurements
+- Loop with `for i := 0; i < b.N; i++` for operation under test
+- Include `b.Cleanup()` for resource cleanup
+- Run with `-benchmem` flag for memory profiling
+
+**Cleanup and Leak Detection**:
+- Use `t.Cleanup(func)` for resource cleanup (preferred over `defer` in tests)
+- Use `goleak.VerifyNone(t)` for goroutine leak detection in critical tests
+- Close datastores and connections properly in cleanup
+- Cleanup runs in reverse order, ensuring proper teardown
+
+**Integration Tests**:
+- Storage layer: Use exported `RunAllTests()` pattern in `pkg/storage/test/storage.go`
+- Run against all backends: memory, postgres, mysql, sqlite
+- Use `storagetest` package for backend-agnostic tests
+
+**Test Utilities**:
+- Use helpers from `internal/testutils/` for common setup
+- Mark helpers with `t.Helper()` to improve error reporting line numbers
+- Extract common test data setup into reusable functions
+
+**Examples**:
+
+1. **Table-driven test** (from `pkg/server/commands/write_test.go`):
+```go
+func TestWriteCommand(t *testing.T) {
+    tests := []struct {
+        name             string
+        writes           *openfgav1.WriteRequestWrites
+        deletes          *openfgav1.WriteRequestDeletes
+        expectedError    string
+    }{
+        {
+            name:          "empty_writes_and_deletes",
+            writes:        &openfgav1.WriteRequestWrites{},
+            deletes:       &openfgav1.WriteRequestDeletes{},
+            expectedError: "Invalid input...",
+        },
+        // more test cases...
+    }
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            // test implementation
+        })
+    }
+}
+```
+
+2. **Mock usage** (from `pkg/server/commands/check_command_test.go`):
+```go
+func TestCheckQuery(t *testing.T) {
+    mockController := gomock.NewController(t)
+    defer mockController.Finish()
+
+    mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+    mockCheckResolver := graph.NewMockCheckResolver(mockController)
+
+    mockCheckResolver.EXPECT().
+        ResolveCheck(gomock.Any(), gomock.Any()).
+        Times(1).
+        DoAndReturn(func(_ context.Context, _ *graph.ResolveCheckRequest) (*graph.ResolveCheckResponse, error) {
+            return &graph.ResolveCheckResponse{Allowed: true}, nil
+        })
+
+    // test implementation using mocks
+}
+```
+
+3. **Cleanup and leak detection** (from `pkg/server/commands/batch_check_command_test.go`):
+```go
+func TestBatchCheckCommand(t *testing.T) {
+    t.Cleanup(func() {
+        goleak.VerifyNone(t)
+    })
+
+    // test implementation - goleak will verify no goroutines leaked
+}
+```
+
+4. **Benchmark pattern** (pattern from codebase):
+```go
+func BenchmarkListObjects(b *testing.B) {
+    datastore := memory.New()
+    b.Cleanup(datastore.Close)
+
+    // Setup: create model, write tuples, etc.
+    // ... setup code ...
+
+    b.ResetTimer() // Don't measure setup time
+    for i := 0; i < b.N; i++ {
+        // Operation being benchmarked
+        _, err := query.Execute(ctx, req)
+        if err != nil {
+            b.Fatal(err)
+        }
+    }
+}
+```
+
 ## Maintaining This File
 
 Keep this file up to date when making significant changes to the codebase:
