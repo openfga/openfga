@@ -2,6 +2,91 @@
 
 This file provides guidance to AI coding agents when working with code in this repository.
 
+## Project Goals and Non-Goals
+
+### Goals
+
+**Core Authorization Paradigm:**
+- Relationship-based access control (ReBAC) inspired by Google Zanzibar
+- Evaluate complex authorization graphs with set operations (union, intersection, exclusion)
+- Support for direct relationships, computed usersets, and tuple-to-userset (TTU) relations
+
+**Performance and Efficiency:**
+- Low-latency authorization checks (sub-millisecond to single-digit millisecond response times)
+- Minimal memory allocations in hot paths (efficient graph traversal algorithms)
+- High but bounded concurrency (configurable breadth/depth limits, dispatch throttling)
+- Multi-layer caching (model cache, iterator cache, query cache) for optimal performance
+- Query optimization through weighted graph analysis
+
+**Reliability and Resilience:**
+- Graceful degradation under load (throttling mechanisms to prevent overload)
+- Comprehensive error handling and recovery patterns
+- Timeout controls for all operations
+- Production-grade observability (Prometheus metrics, OpenTelemetry tracing, structured logging)
+
+**Flexible Deployment Models:**
+- **Service mode**: Standalone containerized deployment with HTTP/gRPC APIs
+- **Library mode**: Embeddable as a Go library dependency in other applications
+- Multiple authentication methods (OIDC, preshared keys, or custom)
+- Horizontal scalability through stateless API design
+
+**Data Storage:**
+- SQL relational databases with ACID properties for data integrity
+- Multi-backend support: PostgreSQL (recommended for production), MySQL, SQLite (beta)
+- Abstract storage interface enabling pluggable implementations
+- Database migration tooling for schema evolution
+
+**API Design:**
+- gRPC API for efficient, strongly-typed communication
+- HTTP REST API via grpc-gateway for broad compatibility
+- Consistent request/response patterns across all endpoints
+- Support for contextual tuples (request-scoped relationships)
+
+**Developer Experience:**
+- Playground UI for local development and testing
+- Multiple language SDKs (Java, Node.js, Go, Python, .NET)
+- CLI tools for testing and management
+- YAML-based test matrices for authorization model validation
+- Clear documentation and examples
+
+### Non-Goals
+
+**Storage Backends:**
+- NoSQL databases (MongoDB, DynamoDB, Cassandra, Redis as primary storage)
+  - Focus on SQL backends ensures ACID properties and relational query efficiency
+  - NoSQL backends may not provide the consistency guarantees required for authorization
+
+**Identity and Authentication:**
+- Identity provider functionality (user creation, password management, user profiles)
+- User authentication and credential validation
+- LDAP or SAML integration for user authentication
+  - OpenFGA evaluates relationships between existing entities, assumes identity management is handled externally
+  - For API authentication, OIDC client credentials flow is supported
+
+**Authorization Paradigms:**
+- Pure Attribute-Based Access Control (ABAC) without relationships
+  - OpenFGA is relationship-based (ReBAC); attributes can be modeled as relationships but ABAC is not the primary paradigm
+
+**API Protocols:**
+- GraphQL API
+  - gRPC and HTTP REST provide sufficient coverage for authorization use cases
+  - Adding GraphQL would increase maintenance burden without clear benefits
+
+**Audit and Compliance:**
+- Unlimited historical audit logs with full change tracking
+  - `ReadChanges` API provides paginated change history but not a full audit system
+  - External audit systems should be used for compliance requirements
+
+**General-Purpose Features:**
+- General-purpose database or key-value store
+- Business logic execution or workflow orchestration
+- Rate limiting or API gateway features
+  - OpenFGA is specialized for authorization checks, not general infrastructure
+
+**Production Features:**
+- Production deployment of Playground UI (playground is for localhost development only)
+- Single-node in-memory storage for production (memory storage is ephemeral, dev-only)
+
 ## Build & Development Commands
 
 ```bash
