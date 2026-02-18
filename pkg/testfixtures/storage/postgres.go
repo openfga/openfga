@@ -3,7 +3,6 @@ package storage
 import (
 	"context"
 	"fmt"
-	"io"
 	"strings"
 	"testing"
 	"time"
@@ -11,7 +10,6 @@ import (
 	"github.com/cenkalti/backoff/v4"
 	"github.com/containerd/errdefs"
 	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/client"
 	"github.com/docker/go-connections/nat"
 	_ "github.com/jackc/pgx/v5/stdlib" // PostgreSQL driver.
@@ -20,10 +18,37 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/openfga/openfga/assets"
+	"github.com/openfga/openfga/pkg/testutils"
 )
 
 const (
-	postgresImage = "postgres:17"
+	postgresImage           = "postgres:17-alpine"
+	postgresContainerPrefix = "openfga-test-postgres"
+)
+
+var (
+	postgresContainerCfg = &container.Config{
+		Env: []string{
+			"POSTGRES_PASSWORD=secret",
+		},
+		ExposedPorts: nat.PortSet{
+			nat.Port("5432/tcp"): {},
+		},
+		Image: postgresImage,
+		Cmd: []string{
+			"postgres",
+			"-c", "wal_level=replica",
+			"-c", "max_wal_senders=3",
+			"-c", "max_replication_slots=3",
+			"-c", "wal_keep_size=64MB",
+			"-c", "hot_standby=on",
+		},
+	}
+	postgresHostCfg = &container.HostConfig{
+		AutoRemove:      true,
+		PublishAllPorts: true,
+		ExtraHosts:      []string{"host.docker.internal:host-gateway"},
+	}
 )
 
 type postgresTestContainer struct {
@@ -31,6 +56,7 @@ type postgresTestContainer struct {
 	version  int64
 	username string
 	password string
+	database string
 	replica  *postgresReplicaContainer
 }
 
@@ -54,92 +80,28 @@ func (p *postgresTestContainer) GetDatabaseSchemaVersion() int64 {
 // bootstrapped implementation of the DatastoreTestContainer interface wired up for the
 // Postgres datastore engine.
 func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) DatastoreTestContainer {
-	dockerClient, err := client.NewClientWithOpts(
-		client.FromEnv,
-		client.WithAPIVersionNegotiation(),
-	)
+	docker, err := testutils.NewDockerClient()
 	require.NoError(t, err)
 	t.Cleanup(func() {
-		dockerClient.Close()
+		docker.Close()
 	})
 
-	allImages, err := dockerClient.ImageList(context.Background(), image.ListOptions{
-		All: true,
-	})
-	require.NoError(t, err)
+	cont, found, err := docker.FindRunningContainer(t.Context(), postgresContainerPrefix, postgresImage)
+	require.NoError(t, err, "find running postgres container")
 
-	foundPostgresImage := false
+	if !found {
+		t.Logf("No running container found for %s, creating a new one", postgresImage)
 
-AllImages:
-	for _, image := range allImages {
-		for _, tag := range image.RepoTags {
-			if strings.Contains(tag, postgresImage) {
-				foundPostgresImage = true
-				break AllImages
-			}
-		}
+		require.NoError(t, docker.PullImage(t.Context(), postgresImage), "pull postgres image")
+
+		containerName := postgresContainerPrefix + ulid.Make().String()
+		cont, err = docker.RunContainer(t.Context(), postgresContainerCfg, postgresHostCfg, containerName)
+		require.NoError(t, err, "run postgres container")
 	}
 
-	if !foundPostgresImage {
-		t.Logf("Pulling image %s", postgresImage)
-		reader, err := dockerClient.ImagePull(context.Background(), postgresImage, image.PullOptions{})
-		require.NoError(t, err)
-
-		_, err = io.Copy(io.Discard, reader) // consume the image pull output to make sure it's done
-		require.NoError(t, err)
-	}
-
-	containerCfg := container.Config{
-		Env: []string{
-			"POSTGRES_DB=defaultdb",
-			"POSTGRES_PASSWORD=secret",
-		},
-		ExposedPorts: nat.PortSet{
-			nat.Port("5432/tcp"): {},
-		},
-		Image: postgresImage,
-		Cmd: []string{
-			"postgres",
-			"-c", "wal_level=replica",
-			"-c", "max_wal_senders=3",
-			"-c", "max_replication_slots=3",
-			"-c", "wal_keep_size=64MB",
-			"-c", "hot_standby=on",
-		},
-	}
-
-	hostCfg := container.HostConfig{
-		AutoRemove:      true,
-		PublishAllPorts: true,
-		ExtraHosts:      []string{"host.docker.internal:host-gateway"},
-	}
-
-	name := "postgres-" + ulid.Make().String()
-
-	cont, err := dockerClient.ContainerCreate(context.Background(), &containerCfg, &hostCfg, nil, nil, name)
-	require.NoError(t, err, "failed to create postgres docker container")
-
-	t.Cleanup(func() {
-		t.Logf("stopping container %s", name)
-		timeoutSec := 5
-
-		err := dockerClient.ContainerStop(context.Background(), cont.ID, container.StopOptions{Timeout: &timeoutSec})
-		if err != nil && !errdefs.IsNotFound(err) {
-			t.Logf("failed to stop postgres container: %v", err)
-		}
-
-		t.Logf("stopped container %s", name)
-	})
-
-	err = dockerClient.ContainerStart(context.Background(), cont.ID, container.StartOptions{})
-	require.NoError(t, err, "failed to start postgres container")
-
-	containerJSON, err := dockerClient.ContainerInspect(context.Background(), cont.ID)
-	require.NoError(t, err)
-
-	m, ok := containerJSON.NetworkSettings.Ports["5432/tcp"]
+	m, ok := cont.NetworkSettings.Ports["5432/tcp"]
 	if !ok || len(m) == 0 {
-		require.Fail(t, "failed to get host port mapping from postgres container")
+		require.Fail(t, "get host port mapping from postgres container")
 	}
 
 	pgTestContainer := &postgresTestContainer{
@@ -148,30 +110,35 @@ AllImages:
 		password: "secret",
 	}
 
-	uri := fmt.Sprintf("postgres://%s:%s@%s/defaultdb?sslmode=disable", pgTestContainer.username, pgTestContainer.password, pgTestContainer.addr)
+	// wait for the DB server to be ready before creating the test database.
+	require.NoError(t, waitForDatabase("pgx", pgTestContainer.GetConnectionURI(true)))
+
+	pgTestContainer.database = "openfga-test-db" + ulid.Make().String()
+	creatExec := createPostgresExecConfig(pgTestContainer)
+	require.NoError(t, docker.ExecCommand(t.Context(), cont.ID, creatExec), "create postgres database")
+
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		dropExec := dropPostgresExecConfig(pgTestContainer)
+		err := docker.ExecCommand(ctx, cont.ID, dropExec)
+		require.NoError(t, err, "drop test database in postgres container")
+	})
+
+	// wait for the test database to be created before applying migrations.
+	require.NoError(t, waitForDatabase("pgx", pgTestContainer.GetConnectionURI(true)))
 
 	goose.SetLogger(goose.NopLogger())
+	goose.SetBaseFS(assets.EmbedMigrations)
 
-	db, err := goose.OpenDBWithDriver("pgx", uri)
+	db, err := goose.OpenDBWithDriver("pgx", pgTestContainer.GetConnectionURI(true))
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		_ = db.Close()
 	})
 
-	backoffPolicy := backoff.NewExponentialBackOff()
-	backoffPolicy.MaxElapsedTime = 30 * time.Second
-	err = backoff.Retry(
-		func() error {
-			return db.Ping()
-		},
-		backoffPolicy,
-	)
-	require.NoError(t, err, "failed to connect to postgres container")
-
-	goose.SetBaseFS(assets.EmbedMigrations)
-
-	err = goose.Up(db, assets.PostgresMigrationDir)
-	require.NoError(t, err)
+	require.NoError(t, goose.Up(db, assets.PostgresMigrationDir))
 
 	version, err := goose.GetDBVersion(db)
 	require.NoError(t, err)
@@ -187,12 +154,7 @@ func (p *postgresTestContainer) GetConnectionURI(includeCredentials bool) string
 		creds = fmt.Sprintf("%s:%s@", p.username, p.password)
 	}
 
-	return fmt.Sprintf(
-		"postgres://%s%s/%s?sslmode=disable",
-		creds,
-		p.addr,
-		"defaultdb",
-	)
+	return fmt.Sprintf("postgres://%s%s/%s?sslmode=disable", creds, p.addr, p.database)
 }
 
 func (p *postgresTestContainer) GetUsername() string {
@@ -231,7 +193,7 @@ func (p *postgresTestContainer) CreateSecondary(t testing.TB) error {
 	// Use standard PostgreSQL approach with docker-entrypoint-initdb.d.
 	containerCfg := container.Config{
 		Env: []string{
-			"POSTGRES_DB=defaultdb",
+			"POSTGRES_DB=" + p.database,
 			"POSTGRES_PASSWORD=secret",
 			"PGPASSWORD=secret",
 			"POSTGRES_INITDB_ARGS=--auth-host=trust",
@@ -329,7 +291,7 @@ func (p *postgresTestContainer) getMasterContainerID(dockerClient *client.Client
 
 	for _, cont := range containers {
 		for _, name := range cont.Names {
-			if strings.Contains(name, "postgres-") && !strings.Contains(name, "replica") && !strings.Contains(name, "basebackup") {
+			if strings.Contains(name, postgresContainerPrefix) && !strings.Contains(name, "replica") && !strings.Contains(name, "basebackup") {
 				return cont.ID, nil
 			}
 		}
@@ -343,7 +305,7 @@ func (p *postgresTestContainer) configureMasterForReplication(t testing.TB, dock
 	// Configuration for streaming replication - only pg_hba.conf and reload.
 	commands := [][]string{
 		{"sh", "-c", "echo 'host replication postgres all trust' >> /var/lib/postgresql/data/pg_hba.conf"},
-		{"psql", "-U", "postgres", "-d", "defaultdb", "-c", "SELECT pg_reload_conf()"},
+		{"psql", "-U", "postgres", "-d", p.database, "-c", "SELECT pg_reload_conf()"},
 	}
 
 	for _, cmd := range commands {
@@ -377,7 +339,7 @@ func (p *postgresTestContainer) configureMasterForReplication(t testing.TB, dock
 
 // waitForReplicaSync waits for the replica to be synchronized with the master.
 func (p *postgresTestContainer) waitForReplicaSync(t testing.TB) error {
-	uri := fmt.Sprintf("postgres://%s:%s@%s/defaultdb?sslmode=disable", p.replica.username, p.replica.password, p.replica.addr)
+	uri := fmt.Sprintf("postgres://%s:%s@%s/%s?sslmode=disable", p.replica.username, p.replica.password, p.replica.addr, p.database)
 
 	backoffPolicy := backoff.NewExponentialBackOff()
 	backoffPolicy.MaxElapsedTime = 120 * time.Second // Increase to 2 minutes for initialization.
@@ -439,6 +401,36 @@ func (p *postgresTestContainer) GetSecondaryConnectionURI(includeCredentials boo
 		"postgres://%s%s/%s?sslmode=disable",
 		creds,
 		p.replica.addr,
-		"defaultdb",
+		p.database,
 	)
+}
+
+// createPostgresExecConfig returns the container.ExecOptions for creating the test database in the Postgres container.
+func createPostgresExecConfig(pgTestContainer *postgresTestContainer) container.ExecOptions {
+	return container.ExecOptions{
+		Cmd: []string{
+			"createdb",
+			"-U", pgTestContainer.username,
+			pgTestContainer.database,
+		},
+		Env: []string{
+			"PGPASSWORD=" + pgTestContainer.password,
+		},
+	}
+}
+
+// dropPostgresExecConfig returns the container.ExecOptions for dropping the test database in the Postgres container.
+func dropPostgresExecConfig(pgTestContainer *postgresTestContainer) container.ExecOptions {
+	return container.ExecOptions{
+		Cmd: []string{
+			"psql",
+			"-U", pgTestContainer.username,
+			"-d", "postgres",
+			"-c",
+			fmt.Sprintf("DROP DATABASE IF EXISTS \"%s\" WITH (FORCE);", pgTestContainer.database),
+		},
+		Env: []string{
+			"PGPASSWORD=" + pgTestContainer.password,
+		},
+	}
 }
