@@ -1148,6 +1148,94 @@ func TestCheckConditions(t *testing.T) {
 	require.False(t, resp.Allowed)
 }
 
+func TestCheckTTUWithCondition(t *testing.T) {
+	model := parser.MustTransformDSLToProto(`
+		model
+			schema 1.1
+
+		type user
+
+		type group
+			relations
+				define member: [user]
+
+		type folder
+			relations
+				define editor: [group#member]
+
+		type document
+			relations
+				define parent: [folder with not_expired]
+				define can_edit: editor from parent
+
+		condition not_expired(current_time: timestamp, expiry: timestamp) {
+			current_time < expiry
+		}`)
+
+	typesys, err := typesystem.NewAndValidate(context.Background(), model)
+	require.NoError(t, err)
+
+	tests := []struct {
+		name        string
+		currentTime string
+		expected    bool
+	}{
+		{
+			name:        "condition_met",
+			currentTime: "2025-01-01T00:00:00Z",
+			expected:    true,
+		},
+		{
+			name:        "condition_not_met",
+			currentTime: "2100-01-01T00:00:00Z",
+			expected:    false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Cleanup(func() { goleak.VerifyNone(t) })
+
+			ds := memory.New()
+			storeID := ulid.Make().String()
+
+			tkConditionContext, err := structpb.NewStruct(map[string]interface{}{
+				"expiry": "2099-01-01T00:00:00Z",
+			})
+			require.NoError(t, err)
+
+			tuples := []*openfgav1.TupleKey{
+				tuple.NewTupleKey("group:eng", "member", "user:alice"),
+				tuple.NewTupleKey("folder:1", "editor", "group:eng#member"),
+				tuple.NewTupleKeyWithCondition("document:1", "parent", "folder:1", "not_expired", tkConditionContext),
+			}
+
+			err = ds.Write(context.Background(), storeID, nil, tuples)
+			require.NoError(t, err)
+
+			checker := NewLocalChecker()
+			require.NoError(t, err)
+
+			ctx := setRequestContext(context.Background(), typesys, ds, nil)
+
+			requestContext, err := structpb.NewStruct(map[string]interface{}{
+				"current_time": tc.currentTime,
+			})
+			require.NoError(t, err)
+
+			resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
+				StoreID:              storeID,
+				AuthorizationModelID: model.GetId(),
+				TupleKey:             tuple.NewTupleKey("document:1", "can_edit", "user:alice"),
+				RequestMetadata:      NewCheckRequestMetadata(),
+				Context:              requestContext,
+			})
+			require.NoError(t, err)
+			require.Equal(t, tc.expected, resp.Allowed)
+		})
+	}
+}
+
 func TestCheckDispatchCount(t *testing.T) {
 	ds := memory.New()
 
