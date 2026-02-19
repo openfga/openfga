@@ -207,6 +207,8 @@ The different caches must explicitly enabled - see [OpenFGA Configuration Option
 1. **Gradual rollout**: Enable caching incrementally, starting with query cache
 2. **Monitor memory usage**: Track cache memory consumption
 3. **Set up alerting**: Alert on low cache hit rates or high eviction rates
+   - Check Query Cache hit rate: `openfga_check_cache_hit_count_total / openfga_check_cache_count_total`
+   - Iterator Cache hit rate: `openfga_tuples_cache_hit_count_total / openfga_tuples_cache_count_total`
 4. **Regular tuning**: Periodically review and adjust cache settings based on metrics
 
 ### Cache Sizing
