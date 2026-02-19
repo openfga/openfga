@@ -1214,7 +1214,6 @@ func TestCheckTTUWithCondition(t *testing.T) {
 			require.NoError(t, err)
 
 			checker := NewLocalChecker()
-			require.NoError(t, err)
 
 			ctx := setRequestContext(context.Background(), typesys, ds, nil)
 
