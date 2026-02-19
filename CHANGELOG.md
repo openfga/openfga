@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Try to keep listed changes to a concise bulleted list of simple explanations of changes. Aim for the amount of information needed so that readers can understand where they would look in the codebase to investigate the changes' implementation, or where they would look in the documentation to understand how to make use of the change in practice - better yet, link directly to the docs and provide detailed information there. Only elaborate if doing so is required to avoid breaking changes or experimental features from ruining someone's day.
 
 ## [Unreleased]
+### Security
+- Bump [`grpc-health-probe`](https://github.com/grpc-ecosystem/grpc-health-probe) to [v0.4.45](https://github.com/grpc-ecosystem/grpc-health-probe/releases/tag/v0.4.45) to address nvd.nist.gov/vuln/detail/CVE-2025-68121 affecting `grpc_health_probe`.
+
+## [1.11.5] - 2026-02-11
+### Changed
+- If PGPASSFILE exists it is read upon every connection attempt instead of a single time upon application start. This restores pre-v1.11.x behavior. [#2914](https://github.com/openfga/openfga/pull/2914)
+
+### Fixed
+- Update toolchain go version to 1.25.7 to address [CVE-2025-68121](https://nvd.nist.gov/vuln/detail/CVE-2025-68121) affecting go std lib. [#2922](https://github.com/openfga/openfga/pull/2922)
+
+## [1.11.4] - 2026-02-10
+### Fixed
+- Reverted recent changes made to internal/planner/thompson.go that caused a regression in specific scenarios. [#2915](https://github.com/openfga/openfga/pull/2915)
+- Upgrade otel/sdk to v1.40.0 to address [CVE](https://security.snyk.io/vuln/SNYK-GOLANG-GOOPENTELEMETRYIOOTELSDKRESOURCE-15182758) in earlier versions. [#2919](https://github.com/openfga/openfga/pull/2919)
+
+## [1.11.3] - 2026-01-28
 ### Added
 - Add configuration option to limit max type system cache size. [2744](https://github.com/openfga/openfga/pull/2744)
 - Add OTEL_* env var support to existing otel env vars. [#2825](https://github.com/openfga/openfga/pull/2825)
@@ -22,6 +38,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - ListUsers will now properly get datastore throttled if enabled. [#2846](https://github.com/openfga/openfga/pull/2846)
 - Cache controller now uses the logger provided to the server instead of always using a no-op logger. [#2847](https://github.com/openfga/openfga/pull/2847)
 - Typesystem invalidate model with empty intersection and union. [#2865](https://github.com/openfga/openfga/pull/2865)
+- Ordered iterator to iterate tuples correctly. [#2898](https://github.com/openfga/openfga/pull/2898)
 
 ## [1.11.2] - 2025-12-04
 ### Fixed
@@ -1503,7 +1520,10 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
 - Memory storage adapter implementation
 - Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.11.2...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.11.5...HEAD
+[1.11.5]: https://github.com/openfga/openfga/compare/v1.11.4...v1.11.5
+[1.11.4]: https://github.com/openfga/openfga/compare/v1.11.3...v1.11.4
+[1.11.3]: https://github.com/openfga/openfga/compare/v1.11.2...v1.11.3
 [1.11.2]: https://github.com/openfga/openfga/compare/v1.11.1...v1.11.2
 [1.11.1]: https://github.com/openfga/openfga/compare/v1.11.0...v1.11.1
 [1.11.0]: https://github.com/openfga/openfga/compare/v1.10.5...v1.11.0
