@@ -12,6 +12,7 @@ import (
 	"net/http/pprof"
 	"os"
 	"os/signal"
+	"path/filepath"
 	goruntime "runtime"
 	"strconv"
 	"strings"
@@ -604,22 +605,17 @@ func (s *ServerContext) buildServerOpts(ctx context.Context, config *serverconfi
 	return serverOpts, prometheusMetrics, nil
 }
 
-func (s *ServerContext) dialGrpc(config *serverconfig.Config) *grpc.ClientConn {
-	dialOpts := []grpc.DialOption{}
+func (s *ServerContext) dialGrpc(udsPath string, config *serverconfig.Config) *grpc.ClientConn {
+	dialOpts := []grpc.DialOption{
+		// UDS is local IPC — TLS is unnecessary.
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	}
+
 	if config.Trace.Enabled {
 		dialOpts = append(dialOpts, grpc.WithStatsHandler(otelgrpc.NewClientHandler()))
 	}
-	if config.GRPC.TLS.Enabled {
-		creds, err := credentials.NewClientTLSFromFile(config.GRPC.TLS.CertPath, "")
-		if err != nil {
-			s.Logger.Fatal("failed to load gRPC credentials", zap.Error(err))
-		}
-		dialOpts = append(dialOpts, grpc.WithTransportCredentials(creds))
-	} else {
-		dialOpts = append(dialOpts, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	}
 
-	conn, err := grpc.NewClient(config.GRPC.Addr, dialOpts...)
+	conn, err := grpc.NewClient("unix://"+udsPath, dialOpts...)
 	if err != nil {
 		s.Logger.Fatal("failed to create gRPC client connection", zap.Error(err))
 	}
@@ -946,11 +942,28 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		s.Logger.Info("gRPC server shut down.")
 	}()
 
+	// Create a Unix domain socket listener for the internal HTTP-to-gRPC proxy.
+	udsPath := filepath.Join(os.TempDir(), fmt.Sprintf("openfga-grpc-%d.sock", os.Getpid()))
+	_ = os.Remove(udsPath) // clean up stale socket file
+	udsLis, err := net.Listen("unix", udsPath)
+	if err != nil {
+		return fmt.Errorf("failed to listen on unix socket: %w", err)
+	}
+
+	go func() {
+		s.Logger.Info(fmt.Sprintf("starting gRPC server on unix socket '%s'...", udsPath))
+		if err := grpcServer.Serve(udsLis); err != nil {
+			if !errors.Is(err, grpc.ErrServerStopped) {
+				s.Logger.Fatal("failed to start gRPC server on unix socket", zap.Error(err))
+			}
+		}
+	}()
+
 	var httpServer *http.Server
 	if config.HTTP.Enabled {
 		runtime.DefaultContextTimeout = serverconfig.DefaultContextTimeout(config)
 
-		grpcConn := s.dialGrpc(config)
+		grpcConn := s.dialGrpc(udsPath, config)
 		defer grpcConn.Close()
 
 		httpServer, err = s.runHTTPServer(ctx, config, grpcConn)
@@ -999,6 +1012,10 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	}
 
 	grpcServer.GracefulStop()
+
+	if err := os.Remove(udsPath); err != nil && !os.IsNotExist(err) {
+		s.Logger.Warn("failed to remove unix socket file", zap.Error(err))
+	}
 
 	svr.Close()
 
