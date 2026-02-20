@@ -13,7 +13,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	goruntime "runtime"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -25,7 +25,7 @@ import (
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	grpcauth "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/auth"
 	grpc_recovery "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/recovery"
-	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
+	grpc_runtime "github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/cors"
@@ -605,7 +605,7 @@ func (s *ServerContext) buildServerOpts(ctx context.Context, config *serverconfi
 	return serverOpts, prometheusMetrics, nil
 }
 
-func (s *ServerContext) dialGrpc(udsPath string, config *serverconfig.Config) *grpc.ClientConn {
+func (s *ServerContext) dialGrpc(addr string, config *serverconfig.Config) *grpc.ClientConn {
 	dialOpts := []grpc.DialOption{}
 
 	if config.GRPC.TLS.Enabled {
@@ -622,7 +622,7 @@ func (s *ServerContext) dialGrpc(udsPath string, config *serverconfig.Config) *g
 		dialOpts = append(dialOpts, grpc.WithStatsHandler(otelgrpc.NewClientHandler()))
 	}
 
-	conn, err := grpc.NewClient("unix://"+udsPath, dialOpts...)
+	conn, err := grpc.NewClient(addr, dialOpts...)
 	if err != nil {
 		s.Logger.Fatal("failed to create gRPC client connection", zap.Error(err))
 	}
@@ -630,21 +630,21 @@ func (s *ServerContext) dialGrpc(udsPath string, config *serverconfig.Config) *g
 }
 
 func (s *ServerContext) runHTTPServer(ctx context.Context, config *serverconfig.Config, grpcConn *grpc.ClientConn) (*http.Server, error) {
-	muxOpts := []runtime.ServeMuxOption{
-		runtime.WithForwardResponseOption(httpmiddleware.HTTPResponseModifier),
-		runtime.WithErrorHandler(func(c context.Context, sr *runtime.ServeMux, mm runtime.Marshaler, w http.ResponseWriter, r *http.Request, e error) {
+	muxOpts := []grpc_runtime.ServeMuxOption{
+		grpc_runtime.WithForwardResponseOption(httpmiddleware.HTTPResponseModifier),
+		grpc_runtime.WithErrorHandler(func(c context.Context, sr *grpc_runtime.ServeMux, mm grpc_runtime.Marshaler, w http.ResponseWriter, r *http.Request, e error) {
 			intCode := serverErrors.ConvertToEncodedErrorCode(status.Convert(e))
 			httpmiddleware.CustomHTTPErrorHandler(c, w, r, serverErrors.NewEncodedError(intCode, e.Error()))
 		}),
-		runtime.WithStreamErrorHandler(func(ctx context.Context, e error) *status.Status {
+		grpc_runtime.WithStreamErrorHandler(func(ctx context.Context, e error) *status.Status {
 			intCode := serverErrors.ConvertToEncodedErrorCode(status.Convert(e))
 			encodedErr := serverErrors.NewEncodedError(intCode, e.Error())
 			return status.Convert(encodedErr)
 		}),
-		runtime.WithHealthzEndpoint(healthv1pb.NewHealthClient(grpcConn)),
-		runtime.WithOutgoingHeaderMatcher(func(s string) (string, bool) { return s, true }),
+		grpc_runtime.WithHealthzEndpoint(healthv1pb.NewHealthClient(grpcConn)),
+		grpc_runtime.WithOutgoingHeaderMatcher(func(s string) (string, bool) { return s, true }),
 	}
-	mux := runtime.NewServeMux(muxOpts...)
+	mux := grpc_runtime.NewServeMux(muxOpts...)
 	if err := openfgav1.RegisterOpenFGAServiceHandler(ctx, mux, grpcConn); err != nil {
 		return nil, err
 	}
@@ -923,7 +923,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		zap.String("version", build.Version),
 		zap.String("date", build.Date),
 		zap.String("commit", build.Commit),
-		zap.String("go-version", goruntime.Version()),
+		zap.String("go-version", runtime.Version()),
 		zap.Any("config", config),
 	)
 
@@ -949,41 +949,43 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		s.Logger.Info("gRPC server shut down.")
 	}()
 
-	var udsPath string
+	var udsDir string
 	var httpServer *http.Server
 	if config.HTTP.Enabled {
-		// Path for Unix domain socket listener for the internal HTTP-to-gRPC proxy.
-		udsPath = filepath.Join(os.TempDir(), fmt.Sprintf("openfga-grpc-%d.sock", os.Getpid()))
-
-		_ = os.Remove(udsPath) // clean up stale socket file
-
-		rawUDSLis, err := net.Listen("unix", udsPath)
-		if err != nil {
-			return fmt.Errorf("failed to listen on unix socket: %w", err)
-		}
-
-		// Restrict access to this socket to only the file owner.
-		if err := os.Chmod(udsPath, 0600); err != nil {
-			rawUDSLis.Close()
-			return fmt.Errorf("failed to set unix socket permissions: %w", err)
-		}
-
-		udsLis := &addrOverrideListener{
-			Listener: rawUDSLis,
-			addr:     &net.UnixAddr{Name: udsPath, Net: "unix"},
-		}
-
-		go func() {
-			if err := grpcServer.Serve(udsLis); err != nil {
-				if !errors.Is(err, grpc.ErrServerStopped) {
-					s.Logger.Fatal("failed to start internal gRPC server on unix socket", zap.Error(err))
-				}
+		var addr string
+		if runtime.GOOS != "windows" {
+			// Path for Unix domain socket listener for the internal HTTP-to-gRPC proxy.
+			udsDir, err := os.MkdirTemp("", fmt.Sprintf("openfga-grpc-%d-*", os.Getpid()))
+			if err != nil {
+				return fmt.Errorf("failed to create temporary directory for unix socket: %w", err)
 			}
-		}()
+			udsPath := filepath.Join(udsDir, "grpc.sock")
 
-		runtime.DefaultContextTimeout = serverconfig.DefaultContextTimeout(config)
+			rawUDSLis, err := net.Listen("unix", udsPath)
+			if err != nil {
+				return fmt.Errorf("failed to listen on unix socket: %w", err)
+			}
 
-		grpcConn := s.dialGrpc(udsPath, config)
+			udsLis := &addrOverrideListener{
+				Listener: rawUDSLis,
+				addr:     &net.UnixAddr{Name: udsPath, Net: "unix"},
+			}
+
+			go func() {
+				if err := grpcServer.Serve(udsLis); err != nil {
+					if !errors.Is(err, grpc.ErrServerStopped) {
+						s.Logger.Fatal("failed to start internal gRPC server on unix socket", zap.Error(err))
+					}
+				}
+			}()
+			addr = "unix://" + udsPath
+		} else {
+			addr = config.GRPC.Addr
+		}
+
+		grpc_runtime.DefaultContextTimeout = serverconfig.DefaultContextTimeout(config)
+
+		grpcConn := s.dialGrpc(addr, config)
 		defer grpcConn.Close()
 
 		httpServer, err = s.runHTTPServer(ctx, config, grpcConn)
@@ -1033,7 +1035,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 
 	grpcServer.GracefulStop()
 
-	if err := os.Remove(udsPath); err != nil && !os.IsNotExist(err) {
+	if err := os.RemoveAll(udsDir); err != nil && !os.IsNotExist(err) {
 		s.Logger.Warn("failed to remove unix socket file", zap.Error(err))
 	}
 
