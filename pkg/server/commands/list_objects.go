@@ -249,6 +249,7 @@ func NewListObjectsQuery(
 		logger:                  logger.NewNoopLogger(),
 		listObjectsDeadline:     serverconfig.DefaultListObjectsDeadline,
 		listObjectsMaxResults:   serverconfig.DefaultListObjectsMaxResults,
+		pipelineEnabled:         serverconfig.DefaultListObjectsPipelineEnabled,
 		resolveNodeLimit:        serverconfig.DefaultResolveNodeLimit,
 		resolveNodeBreadthLimit: serverconfig.DefaultResolveNodeBreadthLimit,
 		maxConcurrentReads:      serverconfig.DefaultMaxConcurrentReadsForListObjects,

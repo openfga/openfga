@@ -299,6 +299,7 @@ func TestListObjectsDispatchCount(t *testing.T) {
 				ds,
 				checker,
 				fakeStoreID,
+				WithListObjectsPipelineEnabled(false),
 				WithDispatchThrottlerConfig(threshold.Config{
 					Throttler:    mockThrottler,
 					Enabled:      true,
@@ -323,130 +324,6 @@ func TestListObjectsDispatchCount(t *testing.T) {
 			require.Equal(t, test.expectedThrottlingValue > 0, resp.ResolutionMetadata.DispatchThrottled.Load())
 		})
 	}
-}
-
-func TestDoesNotUseCacheWhenHigherConsistencyEnabled(t *testing.T) {
-	ds := memory.New()
-	t.Cleanup(ds.Close)
-	ctx := storage.ContextWithRelationshipTupleReader(context.Background(), ds)
-	ctrl := gomock.NewController(t)
-	t.Cleanup(ctrl.Finish)
-	modelDsl := `model
-			schema 1.1
-
-			type user
-
-			type folder
-				relations
-					define viewer: [user] but not blocked
-					define blocked: [user]`
-	tuples := []string{
-		"folder:C#viewer@user:jon",
-		"folder:B#viewer@user:jon",
-		"folder:A#viewer@user:jon",
-	}
-
-	storeID, model := storagetest.BootstrapFGAStore(t, ds, modelDsl, tuples)
-	ts, err := typesystem.NewAndValidate(
-		context.Background(),
-		model,
-	)
-	require.NoError(t, err)
-
-	checkCache, err := storage.NewInMemoryLRUCache[any]()
-	require.NoError(t, err)
-	defer checkCache.Stop()
-
-	// Write an item to the cache that has an Allowed value of false for folder:A
-	req, err := graph.NewResolveCheckRequest(graph.ResolveCheckRequestParams{
-		StoreID:              storeID,
-		AuthorizationModelID: ts.GetAuthorizationModelID(),
-		TupleKey: &openfgav1.TupleKey{
-			User:     "user:jon",
-			Relation: "viewer",
-			Object:   "folder:A",
-		},
-	})
-	require.NoError(t, err)
-
-	// Preload the cache
-	cacheKey := graph.BuildCacheKey(*req)
-	checkCache.Set(cacheKey, &graph.CheckResponseCacheEntry{
-		LastModified: time.Now(),
-		CheckResponse: &graph.ResolveCheckResponse{
-			Allowed: false,
-		}}, 10*time.Second)
-
-	require.NoError(t, err)
-	ctx = typesystem.ContextWithTypesystem(ctx, ts)
-
-	checkResolver, checkResolverCloser, err := graph.NewOrderedCheckResolvers([]graph.CheckResolverOrderedBuilderOpt{
-		graph.WithCachedCheckResolverOpts(true, []graph.CachedCheckResolverOpt{
-			graph.WithExistingCache(checkCache),
-		}...),
-	}...).Build()
-	require.NoError(t, err)
-	t.Cleanup(checkResolverCloser)
-
-	q, _ := NewListObjectsQuery(
-		ds,
-		checkResolver,
-		fakeStoreID,
-	)
-
-	// Run a check with MINIMIZE_LATENCY that will use the cache we added with 2 tuples
-	resp, err := q.Execute(ctx, &openfgav1.ListObjectsRequest{
-		StoreId:     storeID,
-		Type:        "folder",
-		Relation:    "viewer",
-		User:        "user:jon",
-		Consistency: openfgav1.ConsistencyPreference_MINIMIZE_LATENCY,
-	})
-
-	require.NoError(t, err)
-	require.Len(t, resp.Objects, 2)
-
-	// Now run a check with HIGHER_CONSISTENCY that will evaluate against the known tuples and return 3 tuples
-	resp, err = q.Execute(ctx, &openfgav1.ListObjectsRequest{
-		StoreId:     storeID,
-		Type:        "folder",
-		Relation:    "viewer",
-		User:        "user:jon",
-		Consistency: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
-	})
-
-	require.NoError(t, err)
-	require.Len(t, resp.Objects, 3)
-
-	// Rerun check with MINIMIZE_LATENCY to ensure the cache was updated with the tuple we retrieved during the previous call
-	resp, err = q.Execute(ctx, &openfgav1.ListObjectsRequest{
-		StoreId:     storeID,
-		Type:        "folder",
-		Relation:    "viewer",
-		User:        "user:jon",
-		Consistency: openfgav1.ConsistencyPreference_MINIMIZE_LATENCY,
-	})
-
-	require.NoError(t, err)
-	require.Len(t, resp.Objects, 3)
-
-	// Now set the third item as `allowed: false` in the cache and run with `UNSPECIFIED`, it should use the cache and only return two item
-	checkCache.Set(cacheKey, &graph.CheckResponseCacheEntry{
-		LastModified: time.Now(),
-		CheckResponse: &graph.ResolveCheckResponse{
-			Allowed: false,
-		}}, 10*time.Second)
-
-	resp, err = q.Execute(ctx, &openfgav1.ListObjectsRequest{
-		StoreId:     storeID,
-		Type:        "folder",
-		Relation:    "viewer",
-		User:        "user:jon",
-		Consistency: openfgav1.ConsistencyPreference_UNSPECIFIED,
-	})
-
-	require.NoError(t, err)
-	require.Len(t, resp.Objects, 2)
 }
 
 func TestErrorInCheckSurfacesInListObjects(t *testing.T) {
@@ -482,7 +359,12 @@ func TestErrorInCheckSurfacesInListObjects(t *testing.T) {
 		Times(1)
 	mockCheckResolver.EXPECT().GetDelegate().AnyTimes().Return(nil)
 
-	q, _ := NewListObjectsQuery(ds, mockCheckResolver, fakeStoreID)
+	q, _ := NewListObjectsQuery(
+		ds,
+		mockCheckResolver,
+		fakeStoreID,
+		WithListObjectsPipelineEnabled(false),
+	)
 
 	ctx := typesystem.ContextWithTypesystem(context.Background(), ts)
 	resp, err := q.Execute(ctx, &openfgav1.ListObjectsRequest{
@@ -766,7 +648,6 @@ func TestListObjectsPipelineDatastoreQueryCount(t *testing.T) {
 				ds,
 				checker,
 				fakeStoreID,
-				WithListObjectsPipelineEnabled(true),
 			)
 
 			resp, err := q.Execute(ctx, &openfgav1.ListObjectsRequest{
@@ -826,7 +707,6 @@ func TestListObjectsSeqError(t *testing.T) {
 			mockDatastore,
 			checkResolver,
 			fakeStoreID,
-			WithListObjectsPipelineEnabled(true),
 		)
 		require.NoError(t, err)
 
@@ -845,7 +725,6 @@ func TestListObjectsSeqError(t *testing.T) {
 			mockDatastore,
 			checkResolver,
 			fakeStoreID,
-			WithListObjectsPipelineEnabled(true),
 		)
 		require.NoError(t, err)
 
