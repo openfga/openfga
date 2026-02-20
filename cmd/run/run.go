@@ -942,28 +942,31 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		s.Logger.Info("gRPC server shut down.")
 	}()
 
-	// Create a Unix domain socket listener for the internal HTTP-to-gRPC proxy.
+	// Path for Unix domain socket listener for the internal HTTP-to-gRPC proxy.
 	udsPath := filepath.Join(os.TempDir(), fmt.Sprintf("openfga-grpc-%d.sock", os.Getpid()))
-	_ = os.Remove(udsPath) // clean up stale socket file
-	rawUDSLis, err := net.Listen("unix", udsPath)
-	if err != nil {
-		return fmt.Errorf("failed to listen on unix socket: %w", err)
-	}
-	udsLis := &addrOverrideListener{
-		Listener: rawUDSLis,
-		addr:     &net.UnixAddr{Name: udsPath, Net: "unix"},
-	}
-
-	go func() {
-		if err := grpcServer.Serve(udsLis); err != nil {
-			if !errors.Is(err, grpc.ErrServerStopped) {
-				s.Logger.Fatal("failed to start internal gRPC server on unix socket", zap.Error(err))
-			}
-		}
-	}()
 
 	var httpServer *http.Server
 	if config.HTTP.Enabled {
+		_ = os.Remove(udsPath) // clean up stale socket file
+
+		rawUDSLis, err := net.Listen("unix", udsPath)
+		if err != nil {
+			return fmt.Errorf("failed to listen on unix socket: %w", err)
+		}
+
+		udsLis := &addrOverrideListener{
+			Listener: rawUDSLis,
+			addr:     &net.UnixAddr{Name: udsPath, Net: "unix"},
+		}
+
+		go func() {
+			if err := grpcServer.Serve(udsLis); err != nil {
+				if !errors.Is(err, grpc.ErrServerStopped) {
+					s.Logger.Fatal("failed to start internal gRPC server on unix socket", zap.Error(err))
+				}
+			}
+		}()
+
 		runtime.DefaultContextTimeout = serverconfig.DefaultContextTimeout(config)
 
 		grpcConn := s.dialGrpc(udsPath, config)
