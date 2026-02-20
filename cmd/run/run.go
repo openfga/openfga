@@ -621,7 +621,7 @@ func (s *ServerContext) dialGrpc(config *serverconfig.Config) *grpc.ClientConn {
 
 	conn, err := grpc.NewClient(config.GRPC.Addr, dialOpts...)
 	if err != nil {
-		s.Logger.Fatal("failed to connect to gRPC server", zap.Error(err))
+		s.Logger.Fatal("failed to create gRPC client connection", zap.Error(err))
 	}
 	return conn
 }
