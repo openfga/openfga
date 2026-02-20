@@ -945,9 +945,13 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	// Create a Unix domain socket listener for the internal HTTP-to-gRPC proxy.
 	udsPath := filepath.Join(os.TempDir(), fmt.Sprintf("openfga-grpc-%d.sock", os.Getpid()))
 	_ = os.Remove(udsPath) // clean up stale socket file
-	udsLis, err := net.Listen("unix", udsPath)
+	rawUDSLis, err := net.Listen("unix", udsPath)
 	if err != nil {
 		return fmt.Errorf("failed to listen on unix socket: %w", err)
+	}
+	udsLis := &addrOverrideListener{
+		Listener: rawUDSLis,
+		addr:     &net.UnixAddr{Name: udsPath, Net: "unix"},
 	}
 
 	go func() {
@@ -1028,6 +1032,30 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	s.Logger.Info("server exited. goodbye 👋")
 
 	return nil
+}
+
+// addrOverrideConn wraps a net.Conn to return a fixed remote address.
+// This is used for UDS connections where RemoteAddr() would otherwise be empty.
+type addrOverrideConn struct {
+	net.Conn
+	addr net.Addr
+}
+
+func (c *addrOverrideConn) RemoteAddr() net.Addr { return c.addr }
+
+// addrOverrideListener wraps a net.Listener so that accepted connections
+// report the given address as their RemoteAddr.
+type addrOverrideListener struct {
+	net.Listener
+	addr net.Addr
+}
+
+func (l *addrOverrideListener) Accept() (net.Conn, error) {
+	conn, err := l.Listener.Accept()
+	if err != nil {
+		return nil, err
+	}
+	return &addrOverrideConn{Conn: conn, addr: l.addr}, nil
 }
 
 func watchAndLoadCertificateWithCertWatcher(ctx context.Context, certPath, keyPath string, logger logger.Logger) (func(*tls.ClientHelloInfo) (*tls.Certificate, error), error) {
