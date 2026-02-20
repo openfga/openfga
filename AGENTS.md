@@ -92,7 +92,7 @@ Follow TDD: write failing test → observe failure → implement → run tests �
 
 ### YAML Matrix Tests
 
-Primary test format for Check, ListObjects, and ListUsers APIs. Test files embedded via `go:embed` in `assets/assets.go`:
+Legacy test format for Check, ListObjects, and ListUsers APIs. Test files embedded via `go:embed` in `assets/assets.go`:
 - `assets/tests/consolidated_1_1_tests.yaml` - Core relationship tests
 - `assets/tests/abac_tests.yaml` - Condition/CEL tests
 
@@ -123,6 +123,8 @@ tests:
 ```
 
 Runners: `tests/check/check.go`, `tests/listobjects/listobjects.go`, `tests/listusers/listusers.go` (each has `RunAllTests()`).
+
+Note: The primary tests for OpenFGA server algorithm correctness are the various "Matrix" tests, also located in the tests directory.
 
 ## Files You Must Not Edit
 
