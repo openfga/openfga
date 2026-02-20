@@ -92,7 +92,7 @@ docker run -p 8080:8080 -p 3000:3000 openfga/openfga run
 ```
 
 > [!IMPORTANT]
-> When running the Docker image using the `--read-only` option, the `--tmpfs /tmp` option must also be set.
+> When running the Docker image using the `--read-only` option, the `--tmpfs` option must also be set. For example `--tmpfs /tmp`.
 >
 > This is necessary for internal communication between the HTTP server and gRPC server.
 
