@@ -30,19 +30,19 @@ var (
 	checkCacheTotalCounter = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: build.ProjectName,
 		Name:      "check_cache_total_count",
-		Help:      "The total number of calls to ResolveCheck.",
+		Help:      "The total number of calls to ResolveCheck with caching enabled (including any recursive calls).",
 	})
 
 	checkCacheHitCounter = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: build.ProjectName,
 		Name:      "check_cache_hit_count",
-		Help:      "The total number of cache hits for ResolveCheck.",
+		Help:      "The total number of valid Check Query cache hits for ResolveCheck (including any recursive calls).",
 	})
 
 	checkCacheInvalidHit = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: build.ProjectName,
 		Name:      "check_cache_invalid_hit_count",
-		Help:      "The total number of cache hits for ResolveCheck that were discarded because they were invalidated.",
+		Help:      "The total number of Check Query cache hits for ResolveCheck (including any recursive calls) that were discarded because they were invalidated.",
 	})
 )
 
