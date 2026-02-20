@@ -606,9 +606,16 @@ func (s *ServerContext) buildServerOpts(ctx context.Context, config *serverconfi
 }
 
 func (s *ServerContext) dialGrpc(udsPath string, config *serverconfig.Config) *grpc.ClientConn {
-	dialOpts := []grpc.DialOption{
-		// UDS is local IPC — TLS is unnecessary.
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	dialOpts := []grpc.DialOption{}
+
+	if config.GRPC.TLS.Enabled {
+		creds, err := credentials.NewClientTLSFromFile(config.GRPC.TLS.CertPath, "")
+		if err != nil {
+			s.Logger.Fatal("failed to load gRPC credentials", zap.Error(err))
+		}
+		dialOpts = append(dialOpts, grpc.WithTransportCredentials(creds))
+	} else {
+		dialOpts = append(dialOpts, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	}
 
 	if config.Trace.Enabled {
