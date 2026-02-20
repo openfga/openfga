@@ -91,6 +91,11 @@ docker pull openfga/openfga
 docker run -p 8080:8080 -p 3000:3000 openfga/openfga run
 ```
 
+> [!IMPORTANT]
+> When running the Docker image using the `--read-only` option, the `--tmpfs /tmp` option must also be set.
+>
+> This is necessary for internal communication between the HTTP server and gRPC server.
+
 ### Docker Compose
 
 [`docker-compose.yaml`](./docker-compose.yaml) provides an example of how to launch OpenFGA with Postgres using `docker compose`.
