@@ -955,10 +955,9 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	}
 
 	go func() {
-		s.Logger.Info(fmt.Sprintf("starting gRPC server on unix socket '%s'...", udsPath))
 		if err := grpcServer.Serve(udsLis); err != nil {
 			if !errors.Is(err, grpc.ErrServerStopped) {
-				s.Logger.Fatal("failed to start gRPC server on unix socket", zap.Error(err))
+				s.Logger.Fatal("failed to start internal gRPC server on unix socket", zap.Error(err))
 			}
 		}
 	}()
