@@ -47,6 +47,9 @@ var (
 
 	// ErrNoConditionForRelation is returned when no condition is defined for a relation in the authorization model.
 	ErrNoConditionForRelation = errors.New("no condition defined for relation")
+
+	// ErrInvalidRelation is returned when a model failed due to invalid relation.
+	ErrInvalidRelation = errors.New("invalid relation")
 )
 
 // InvalidTypeError represents an error indicating an invalid object type.

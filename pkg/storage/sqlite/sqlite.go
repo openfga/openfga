@@ -125,7 +125,7 @@ func NewWithDB(db *sql.DB, cfg *sqlcommon.Config) (*Datastore, error) {
 	}
 
 	stbl := sq.StatementBuilder.RunWith(db)
-	dbInfo := sqlcommon.NewDBInfo(db, stbl, HandleSQLError, "sqlite")
+	dbInfo := sqlcommon.NewDBInfo(stbl, HandleSQLError, "sqlite")
 
 	return &Datastore{
 		stbl:                   stbl,
@@ -151,21 +151,21 @@ func (s *Datastore) Close() {
 func (s *Datastore) Read(
 	ctx context.Context,
 	store string,
-	tupleKey *openfgav1.TupleKey,
+	filter storage.ReadFilter,
 	_ storage.ReadOptions,
 ) (storage.TupleIterator, error) {
 	ctx, span := startTrace(ctx, "Read")
 	defer span.End()
 
-	return s.read(ctx, store, tupleKey, nil)
+	return s.read(ctx, store, filter, nil)
 }
 
 // ReadPage see [storage.RelationshipTupleReader].ReadPage.
-func (s *Datastore) ReadPage(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options storage.ReadPageOptions) ([]*openfgav1.Tuple, string, error) {
+func (s *Datastore) ReadPage(ctx context.Context, store string, filter storage.ReadFilter, options storage.ReadPageOptions) ([]*openfgav1.Tuple, string, error) {
 	ctx, span := startTrace(ctx, "ReadPage")
 	defer span.End()
 
-	iter, err := s.read(ctx, store, tupleKey, &options)
+	iter, err := s.read(ctx, store, filter, &options)
 	if err != nil {
 		return nil, "", err
 	}
@@ -174,7 +174,7 @@ func (s *Datastore) ReadPage(ctx context.Context, store string, tupleKey *openfg
 	return iter.ToArray(ctx, options.Pagination)
 }
 
-func (s *Datastore) read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options *storage.ReadPageOptions) (*SQLTupleIterator, error) {
+func (s *Datastore) read(ctx context.Context, store string, filter storage.ReadFilter, options *storage.ReadPageOptions) (*SQLTupleIterator, error) {
 	_, span := startTrace(ctx, "read")
 	defer span.End()
 
@@ -190,24 +190,42 @@ func (s *Datastore) read(ctx context.Context, store string, tupleKey *openfgav1.
 		sb = sb.OrderBy("ulid")
 	}
 
-	objectType, objectID := tupleUtils.SplitObject(tupleKey.GetObject())
+	objectType, objectID := tupleUtils.SplitObject(filter.Object)
 	if objectType != "" {
 		sb = sb.Where(sq.Eq{"object_type": objectType})
 	}
 	if objectID != "" {
 		sb = sb.Where(sq.Eq{"object_id": objectID})
 	}
-	if tupleKey.GetRelation() != "" {
-		sb = sb.Where(sq.Eq{"relation": tupleKey.GetRelation()})
+	if filter.Relation != "" {
+		sb = sb.Where(sq.Eq{"relation": filter.Relation})
 	}
-	if tupleKey.GetUser() != "" {
-		userObjectType, userObjectID, userRelation := tupleUtils.ToUserParts(tupleKey.GetUser())
-		sb = sb.Where(sq.Eq{
-			"user_object_type": userObjectType,
-			"user_object_id":   userObjectID,
-			"user_relation":    userRelation,
-		})
+	if filter.User != "" {
+		userObjectType, userObjectID, userRelation := tupleUtils.ToUserParts(filter.User)
+		if userObjectType != "" {
+			sb = sb.Where(sq.Eq{
+				"user_object_type": userObjectType,
+			})
+		}
+		if userObjectID != "" {
+			sb = sb.Where(sq.Eq{
+				"user_object_id": userObjectID,
+			})
+		}
+		if userRelation != "" {
+			sb = sb.Where(sq.Eq{
+				"user_relation": userRelation,
+			})
+		}
 	}
+
+	if len(filter.Conditions) > 0 {
+		// Use COALESCE to treat NULL and '' as the same value (empty string).
+		// This allows filtering for "no condition" (e.g., filter.Conditions = [""])
+		// to correctly match rows where condition_name is either '' OR NULL.
+		sb = sb.Where(sq.Eq{"COALESCE(condition_name, '')": filter.Conditions})
+	}
+
 	if options != nil && options.Pagination.From != "" {
 		token := options.Pagination.From
 		sb = sb.Where(sq.GtOrEq{"ulid": token})
@@ -666,19 +684,19 @@ func (s *Datastore) write(
 }
 
 // ReadUserTuple see [storage.RelationshipTupleReader].ReadUserTuple.
-func (s *Datastore) ReadUserTuple(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, _ storage.ReadUserTupleOptions) (*openfgav1.Tuple, error) {
+func (s *Datastore) ReadUserTuple(ctx context.Context, store string, filter storage.ReadUserTupleFilter, _ storage.ReadUserTupleOptions) (*openfgav1.Tuple, error) {
 	ctx, span := startTrace(ctx, "ReadUserTuple")
 	defer span.End()
 
-	objectType, objectID := tupleUtils.SplitObject(tupleKey.GetObject())
-	userType := tupleUtils.GetUserTypeFromUser(tupleKey.GetUser())
-	userObjectType, userObjectID, userRelation := tupleUtils.ToUserParts(tupleKey.GetUser())
+	objectType, objectID := tupleUtils.SplitObject(filter.Object)
+	userType := tupleUtils.GetUserTypeFromUser(filter.User)
+	userObjectType, userObjectID, userRelation := tupleUtils.ToUserParts(filter.User)
 
 	var conditionName sql.NullString
 	var conditionContext []byte
 	var record storage.TupleRecord
 
-	err := s.stbl.
+	sb := s.stbl.
 		Select(
 			"object_type", "object_id", "relation",
 			"user_object_type", "user_object_id", "user_relation",
@@ -689,13 +707,18 @@ func (s *Datastore) ReadUserTuple(ctx context.Context, store string, tupleKey *o
 			"store":            store,
 			"object_type":      objectType,
 			"object_id":        objectID,
-			"relation":         tupleKey.GetRelation(),
+			"relation":         filter.Relation,
 			"user_object_type": userObjectType,
 			"user_object_id":   userObjectID,
 			"user_relation":    userRelation,
 			"user_type":        userType,
-		}).
-		QueryRowContext(ctx).
+		})
+
+	if len(filter.Conditions) > 0 {
+		sb = sb.Where(sq.Eq{"COALESCE(condition_name, '')": filter.Conditions})
+	}
+
+	err := sb.QueryRowContext(ctx).
 		Scan(
 			&record.ObjectType,
 			&record.ObjectID,
@@ -774,6 +797,10 @@ func (s *Datastore) ReadUsersetTuples(
 		sb = sb.Where(orConditions)
 	}
 
+	if len(filter.Conditions) > 0 {
+		sb = sb.Where(sq.Eq{"COALESCE(condition_name, '')": filter.Conditions})
+	}
+
 	return NewSQLTupleIterator(sb, HandleSQLError), nil
 }
 
@@ -816,6 +843,10 @@ func (s *Datastore) ReadStartingWithUser(
 
 	if filter.ObjectIDs != nil && filter.ObjectIDs.Size() > 0 {
 		builder = builder.Where(sq.Eq{"object_id": filter.ObjectIDs.Values()})
+	}
+
+	if len(filter.Conditions) > 0 {
+		builder = builder.Where(sq.Eq{"COALESCE(condition_name, '')": filter.Conditions})
 	}
 
 	return NewSQLTupleIterator(builder, HandleSQLError), nil

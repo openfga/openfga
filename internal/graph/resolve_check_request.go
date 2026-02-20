@@ -26,6 +26,12 @@ type ResolveCheckRequest struct {
 	Consistency               openfgav1.ConsistencyPreference
 	LastCacheInvalidationTime time.Time
 
+	// SelectedStrategy is the strategy selected by the planner for this request chain.
+	// When set, child requests dispatched within that strategy should continue using
+	// the same strategy instead of calling the planner again. This prevents re-planning
+	// during recursive dispatch calls (e.g., when default strategy calls checkTTU multiple times).
+	SelectedStrategy string
+
 	// Invariant parts of a check request are those that don't change in sub-problems
 	// AuthorizationModelID, StoreID, Context, and ContextualTuples.
 	// the invariantCacheKey is computed once per request, and passed to sub-problems via copy in .clone()
@@ -44,14 +50,17 @@ type ResolveCheckRequestMetadata struct {
 	// After the root problem has been solved, this value can be read.
 	DispatchCounter *atomic.Uint32
 
-	// WasThrottled indicates whether the request was throttled
-	WasThrottled *atomic.Bool
+	// DispatchThrottled indicates whether the request was throttled by the dispatch throttling check resolver
+	DispatchThrottled *atomic.Bool
+
+	// DatastoreThrottled indicates whether this request was throttled at the datastore level.
+	DatastoreThrottled *atomic.Bool
 }
 
 type ResolveCheckRequestParams struct {
 	StoreID                   string
 	TupleKey                  *openfgav1.TupleKey
-	ContextualTuples          *openfgav1.ContextualTupleKeys
+	ContextualTuples          []*openfgav1.TupleKey
 	Context                   *structpb.Struct
 	Consistency               openfgav1.ConsistencyPreference
 	LastCacheInvalidationTime time.Time
@@ -60,8 +69,9 @@ type ResolveCheckRequestParams struct {
 
 func NewCheckRequestMetadata() *ResolveCheckRequestMetadata {
 	return &ResolveCheckRequestMetadata{
-		DispatchCounter: new(atomic.Uint32),
-		WasThrottled:    new(atomic.Bool),
+		DispatchCounter:    new(atomic.Uint32),
+		DispatchThrottled:  new(atomic.Bool),
+		DatastoreThrottled: new(atomic.Bool),
 	}
 }
 
@@ -80,7 +90,7 @@ func NewResolveCheckRequest(
 		StoreID:              params.StoreID,
 		AuthorizationModelID: params.AuthorizationModelID,
 		TupleKey:             params.TupleKey,
-		ContextualTuples:     params.ContextualTuples.GetTupleKeys(),
+		ContextualTuples:     params.ContextualTuples,
 		Context:              params.Context,
 		VisitedPaths:         make(map[string]struct{}),
 		RequestMetadata:      NewCheckRequestMetadata(),
@@ -93,7 +103,7 @@ func NewResolveCheckRequest(
 	err := storage.WriteInvariantCheckCacheKey(keyBuilder, &storage.CheckCacheKeyParams{
 		StoreID:              params.StoreID,
 		AuthorizationModelID: params.AuthorizationModelID,
-		ContextualTuples:     params.ContextualTuples.GetTupleKeys(),
+		ContextualTuples:     params.ContextualTuples,
 		Context:              params.Context,
 	})
 	if err != nil {
@@ -110,9 +120,10 @@ func (r *ResolveCheckRequest) clone() *ResolveCheckRequest {
 	origRequestMetadata := r.GetRequestMetadata()
 	if origRequestMetadata != nil {
 		requestMetadata = &ResolveCheckRequestMetadata{
-			DispatchCounter: origRequestMetadata.DispatchCounter,
-			Depth:           origRequestMetadata.Depth,
-			WasThrottled:    origRequestMetadata.WasThrottled,
+			DispatchCounter:    origRequestMetadata.DispatchCounter,
+			Depth:              origRequestMetadata.Depth,
+			DispatchThrottled:  origRequestMetadata.DispatchThrottled,
+			DatastoreThrottled: origRequestMetadata.DatastoreThrottled,
 		}
 	}
 
@@ -121,7 +132,7 @@ func (r *ResolveCheckRequest) clone() *ResolveCheckRequest {
 		tupleKey = proto.Clone(origTupleKey).(*openfgav1.TupleKey)
 	}
 
-	return &ResolveCheckRequest{
+	cloned := &ResolveCheckRequest{
 		StoreID:                   r.GetStoreID(),
 		AuthorizationModelID:      r.GetAuthorizationModelID(),
 		TupleKey:                  tupleKey,
@@ -132,7 +143,9 @@ func (r *ResolveCheckRequest) clone() *ResolveCheckRequest {
 		Consistency:               r.GetConsistency(),
 		LastCacheInvalidationTime: r.GetLastCacheInvalidationTime(),
 		invariantCacheKey:         r.GetInvariantCacheKey(),
+		SelectedStrategy:          r.GetSelectedStrategy(),
 	}
+	return cloned
 }
 
 func (r *ResolveCheckRequest) GetStoreID() string {
@@ -203,4 +216,11 @@ func (r *ResolveCheckRequest) GetInvariantCacheKey() string {
 		return ""
 	}
 	return r.invariantCacheKey
+}
+
+func (r *ResolveCheckRequest) GetSelectedStrategy() string {
+	if r == nil {
+		return ""
+	}
+	return r.SelectedStrategy
 }

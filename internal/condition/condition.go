@@ -94,7 +94,7 @@ func (e *EvaluableCondition) compile() error {
 		if err != nil {
 			return &CompilationError{
 				Condition: e.Name,
-				Cause:     fmt.Errorf("failed to decode parameter type for parameter '%s': %v", paramName, err),
+				Cause:     fmt.Errorf("failed to decode parameter type for parameter '%s': %w", paramName, err),
 			}
 		}
 
@@ -175,7 +175,7 @@ func (e *EvaluableCondition) CastContextToTypedParameters(contextMap map[string]
 		if err != nil {
 			return nil, &ParameterTypeError{
 				Condition: e.Name,
-				Cause:     fmt.Errorf("failed to decode condition parameter type '%s': %v", paramTypeRef.GetTypeName(), err),
+				Cause:     fmt.Errorf("failed to decode condition parameter type '%s': %w", paramTypeRef.GetTypeName(), err),
 			}
 		}
 
@@ -228,7 +228,7 @@ func (e *EvaluableCondition) Evaluate(
 
 	activation, err := e.celEnv.PartialVars(typedParams)
 	if err != nil {
-		return emptyEvaluationResult, NewEvaluationError(e.Name, fmt.Errorf("failed to construct condition partial vars: %v", err))
+		return emptyEvaluationResult, NewEvaluationError(e.Name, fmt.Errorf("failed to construct condition partial vars: %w", err))
 	}
 
 	var missingParameters []string
@@ -244,7 +244,7 @@ func (e *EvaluableCondition) Evaluate(
 	if err != nil {
 		return emptyEvaluationResult, NewEvaluationError(
 			e.Name,
-			fmt.Errorf("failed to evaluate condition expression: %v", err),
+			fmt.Errorf("failed to evaluate condition expression: %w", err),
 		)
 	}
 
@@ -268,7 +268,7 @@ func (e *EvaluableCondition) Evaluate(
 	if err != nil {
 		return emptyEvaluationResult, NewEvaluationError(
 			e.Name,
-			fmt.Errorf("failed to convert condition output to bool: %v", err),
+			fmt.Errorf("failed to convert condition output to bool: %w", err),
 		)
 	}
 

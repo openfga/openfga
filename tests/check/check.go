@@ -520,16 +520,9 @@ var matrix = individualTest{
 		{
 			Name: "object_directs_user_relation_direct_and_direct_wild_cond",
 			Tuples: []*openfgav1.TupleKey{
-				{Object: "directs-user:1", Relation: "direct_and_direct_wild_cond", User: "user:*"},
 				{Object: "directs-user:2", Relation: "direct_and_direct_wild_cond", User: "user:*", Condition: &openfgav1.RelationshipCondition{Name: "xcond"}},
 			},
 			CheckAssertions: []*checktest.Assertion{
-				{
-					Name:                 "valid_user",
-					Tuple:                &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_and_direct_wild_cond", User: "user:valid"},
-					Expectation:          true,
-					ListObjectsErrorCode: 2000, // any tuple with user:* and a condition and missing context will be un-evaluable
-				},
 				{
 					Name:      "valid_user_not_public",
 					Tuple:     &openfgav1.TupleKey{Object: "directs-user:2", Relation: "direct_and_direct_wild_cond", User: "user:valid"},
@@ -550,18 +543,6 @@ var matrix = individualTest{
 					Name:        "valid_user_with_valid_cond",
 					Tuple:       &openfgav1.TupleKey{Object: "directs-user:2", Relation: "direct_and_direct_wild_cond", User: "user:valid"},
 					Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("1")}},
-					Expectation: true,
-				},
-				{
-					Name:        "ignore_valid_cond_valid_user",
-					Tuple:       &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_and_direct_wild_cond", User: "user:valid"},
-					Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("1")}},
-					Expectation: true,
-				},
-				{
-					Name:        "ignore_invalid_cond_valid_user",
-					Tuple:       &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_and_direct_wild_cond", User: "user:valid"},
-					Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("2")}},
 					Expectation: true,
 				},
 			},
@@ -1127,6 +1108,7 @@ type usersets-user
     define userset_cond_to_computed_cond: [directs-user#computed_cond with xcond]
     define userset_cond_to_computed_wild: [directs-user#computed_wild with xcond]
     define userset_cond_to_computed_wild_cond: [directs-user#computed_wild_cond with xcond]
+    define userset_direct_and_direct_wild: [directs-user#direct_and_direct_wild]
     define userset_to_or_computed: [directs-user#or_computed]
     define userset_to_or_computed_no_cond: [directs-user#or_computed_no_cond]
     define userset_to_butnot_computed: [directs-user#butnot_computed]

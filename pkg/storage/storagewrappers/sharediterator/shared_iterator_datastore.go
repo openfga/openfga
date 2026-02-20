@@ -419,13 +419,17 @@ func (sf *IteratorDatastore) ReadUsersetTuples(
 func (sf *IteratorDatastore) Read(
 	ctx context.Context,
 	store string,
-	tupleKey *openfgav1.TupleKey,
+	filter storage.ReadFilter,
 	options storage.ReadOptions) (storage.TupleIterator, error) {
 	if options.Consistency.Preference == openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
-		return sf.RelationshipTupleReader.Read(ctx, store, tupleKey, options)
+		return sf.RelationshipTupleReader.Read(ctx, store, filter, options)
 	}
 	start := time.Now()
-
+	tupleKey := &openfgav1.TupleKey{
+		Object:   filter.Object,
+		Relation: filter.Relation,
+		User:     filter.User,
+	}
 	cacheKey := storagewrappersutil.ReadKey(store, tupleKey)
 
 	// If the limit is zero, we will not use the shared iterator.
@@ -433,7 +437,7 @@ func (sf *IteratorDatastore) Read(
 
 	if full {
 		sharedIteratorBypassed.WithLabelValues(storagewrappersutil.OperationRead).Inc()
-		return sf.RelationshipTupleReader.Read(ctx, store, tupleKey, options)
+		return sf.RelationshipTupleReader.Read(ctx, store, filter, options)
 	}
 
 	// Create a new storage item to hold the shared iterator.
@@ -444,7 +448,7 @@ func (sf *IteratorDatastore) Read(
 
 	// The producer function is called to create a new shared iterator when it is first accessed.
 	newStorageItem.producer = func() (*sharedIterator, error) {
-		it, err := sf.RelationshipTupleReader.Read(ctx, store, tupleKey, options)
+		it, err := sf.RelationshipTupleReader.Read(ctx, store, filter, options)
 		if err != nil {
 			return nil, err
 		}
@@ -484,7 +488,7 @@ func (sf *IteratorDatastore) Read(
 	// This can happen if the cloned shared iterator is already stopped and all references have been cleaned up.
 	if it == nil {
 		sharedIteratorBypassed.WithLabelValues(storagewrappersutil.OperationRead).Inc()
-		return sf.RelationshipTupleReader.Read(ctx, store, tupleKey, options)
+		return sf.RelationshipTupleReader.Read(ctx, store, filter, options)
 	}
 
 	sharedIteratorQueryHistogram.WithLabelValues(

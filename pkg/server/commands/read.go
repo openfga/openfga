@@ -94,7 +94,16 @@ func (q *ReadQuery) Execute(ctx context.Context, req *openfgav1.ReadRequest) (*o
 		Consistency: storage.ConsistencyOptions{Preference: req.GetConsistency()},
 	}
 
-	tuples, contUlid, err := q.datastore.ReadPage(ctx, store, tupleUtils.ConvertReadRequestTupleKeyToTupleKey(tk), opts)
+	filter := storage.ReadFilter{}
+	if tk != nil {
+		filter = storage.ReadFilter{
+			Object:   tk.GetObject(),
+			Relation: tk.GetRelation(),
+			User:     tk.GetUser(),
+		}
+	}
+
+	tuples, contUlid, err := q.datastore.ReadPage(ctx, store, filter, opts)
 	if err != nil {
 		return nil, serverErrors.HandleError("", err)
 	}

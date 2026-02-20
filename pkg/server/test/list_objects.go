@@ -49,6 +49,14 @@ type listObjectsTestCase struct {
 }
 
 func TestListObjects(t *testing.T, ds storage.OpenFGADatastore) {
+	runListObjectsTests(t, ds)
+}
+
+func TestListObjectsWithPipeline(t *testing.T, ds storage.OpenFGADatastore) {
+	runListObjectsTests(t, ds, commands.WithListObjectsPipelineEnabled(true))
+}
+
+func runListObjectsTests(t *testing.T, ds storage.OpenFGADatastore, passedInOpts ...commands.ListObjectsQueryOption) {
 	testCases := []listObjectsTestCase{
 		{
 			name: "max_results_equal_0_with_simple_model",
@@ -499,6 +507,7 @@ func TestListObjects(t *testing.T, ds storage.OpenFGADatastore) {
 				commands.WithListObjectsDeadline(10 * time.Second),
 				commands.WithMaxConcurrentReads(30),
 			}
+			opts = append(opts, passedInOpts...)
 
 			if test.listObjectsDeadline != 0 {
 				opts = append(opts, commands.WithListObjectsDeadline(test.listObjectsDeadline))
@@ -516,7 +525,7 @@ func TestListObjects(t *testing.T, ds storage.OpenFGADatastore) {
 			require.NoError(t, err)
 			t.Cleanup(closer)
 
-			listObjectsQuery, err := commands.NewListObjectsQuery(datastore, checkResolver, opts...)
+			listObjectsQuery, err := commands.NewListObjectsQuery(datastore, checkResolver, "fake_store_id", opts...)
 			require.NoError(t, err)
 
 			// assertions
@@ -529,20 +538,13 @@ func TestListObjects(t *testing.T, ds storage.OpenFGADatastore) {
 				var streamedObjectIDs []string
 				go func() {
 					for {
-						select {
-						case objectID, open := <-server.channel:
-							if !open {
-								done <- struct{}{}
-								return
-							}
-
-							streamedObjectIDs = append(streamedObjectIDs, objectID)
-
-						// for tests whose deadline is sooner than the latency of the storage layer
-						case <-time.After(test.readTuplesDelay + 1*time.Second):
-							done <- struct{}{}
+						objectID, open := <-server.channel
+						if !open {
+							close(done)
 							return
 						}
+
+						streamedObjectIDs = append(streamedObjectIDs, objectID)
 					}
 				}()
 

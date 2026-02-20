@@ -19,8 +19,8 @@ import (
 
 const defaultResolver = "default"
 
-var defaultPlan = &planner.KeyPlanStrategy{
-	Type:         defaultResolver,
+var defaultPlan = &planner.PlanConfig{
+	Name:         defaultResolver,
 	InitialGuess: 50 * time.Millisecond,
 	// Low Lambda: Represents zero confidence. It's a pure guess.
 	Lambda: 1,
@@ -31,21 +31,27 @@ var defaultPlan = &planner.KeyPlanStrategy{
 	Beta:  0.5,
 }
 
-var defaultRecursivePlan = &planner.KeyPlanStrategy{
-	Type:         defaultResolver,
-	InitialGuess: 300 * time.Millisecond, // Higher initial guess for recursive checks
-	// Low Lambda: Represents zero confidence. It's a pure guess.
+var defaultRecursivePlan = &planner.PlanConfig{
+	Name: defaultResolver,
+	// Higher initial guess: We assume the default path is slower (cold starts/unoptimized).
+	InitialGuess: 500 * time.Millisecond,
+	// Low Lambda: Represents very low confidence in this initial guess (1 observation).
+	// The planner will adapt its mean quickly as real data comes in, having low inertia.
 	Lambda: 1,
-	// With α = 0.5 ≤ 1, it means maximum uncertainty about variance; with λ = 1, we also have weak confidence in the mean.
-	// These values will encourage strong exploration of other strategies. Having these values for the default strategy helps to enforce the usage of the "faster" strategies,
-	// helping out with the cold start when we don't have enough data.
-	Alpha: 0.5,
-	Beta:  0.5,
+	// CONSISTENCY EXPECTATIONS:
+	// We apply the same variance belief as the optimized strategy to keep comparisons fair.
+	// Higher expected precision: E[τ]= α/β = 3.0/2.0 = 1.5.
+	// Moderate expected variance: E[σ²]= β/(α−1) = 2.0/(3.0−1) = 1.0.
+	// Tighter tolerance for spread: α = 3 implies we expect the latency to stay relatively
+	// stable around the mean, rather than varying wildly (which α=0.5 would imply).
+	Alpha: 3.0,
+	Beta:  2.0,
 }
 
 type dispatchParams struct {
 	parentReq *ResolveCheckRequest
 	tk        *openfgav1.TupleKey
+	strategy  string
 }
 
 type dispatchMsg struct {
@@ -56,7 +62,7 @@ type dispatchMsg struct {
 
 // defaultUserset will check userset path.
 // This is the slow path as it requires dispatch on all its children.
-func (c *LocalChecker) defaultUserset(_ context.Context, req *ResolveCheckRequest, _ []*openfgav1.RelationReference, iter storage.TupleKeyIterator) CheckHandlerFunc {
+func (c *LocalChecker) defaultUserset(_ context.Context, req *ResolveCheckRequest, _ []*openfgav1.RelationReference, iter storage.TupleKeyIterator, selectedStrategy string) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
 		ctx, span := tracer.Start(ctx, "defaultUserset")
 		defer span.End()
@@ -70,7 +76,7 @@ func (c *LocalChecker) defaultUserset(_ context.Context, req *ResolveCheckReques
 			_ = pool.Wait()
 		}()
 		pool.Go(func(ctx context.Context) error {
-			c.produceUsersetDispatches(ctx, req, dispatchChan, iter)
+			c.produceUsersetDispatches(ctx, req, dispatchChan, iter, selectedStrategy)
 			return nil
 		})
 
@@ -78,7 +84,16 @@ func (c *LocalChecker) defaultUserset(_ context.Context, req *ResolveCheckReques
 	}
 }
 
-func (c *LocalChecker) produceUsersetDispatches(ctx context.Context, req *ResolveCheckRequest, dispatches chan dispatchMsg, iter storage.TupleKeyIterator) {
+// prepareChildRequest creates a clone of the parent request and updates its fields
+// to create a child request for dispatching.
+func (c *LocalChecker) prepareChildRequest(parentReq *ResolveCheckRequest, tk *openfgav1.TupleKey, strategy string) *ResolveCheckRequest {
+	childRequest := parentReq.clone()
+	childRequest.TupleKey = tk
+	childRequest.SelectedStrategy = strategy
+	return childRequest
+}
+
+func (c *LocalChecker) produceUsersetDispatches(ctx context.Context, req *ResolveCheckRequest, dispatches chan dispatchMsg, iter storage.TupleKeyIterator, selectedStrategy string) {
 	defer close(dispatches)
 	reqTupleKey := req.GetTupleKey()
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
@@ -108,14 +123,14 @@ func (c *LocalChecker) produceUsersetDispatches(ctx context.Context, req *Resolv
 
 		if usersetRelation != "" {
 			tupleKey := tuple.NewTupleKey(usersetObject, usersetRelation, reqTupleKey.GetUser())
-			concurrency.TrySendThroughChannel(ctx, dispatchMsg{dispatchParams: &dispatchParams{parentReq: req, tk: tupleKey}}, dispatches)
+			concurrency.TrySendThroughChannel(ctx, dispatchMsg{dispatchParams: &dispatchParams{parentReq: req, tk: tupleKey, strategy: selectedStrategy}}, dispatches)
 		}
 	}
 }
 
 // defaultTTU is the slow path for checkTTU where we cannot short-circuit TTU evaluation and
 // resort to dispatch check on its children.
-func (c *LocalChecker) defaultTTU(_ context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset, iter storage.TupleKeyIterator) CheckHandlerFunc {
+func (c *LocalChecker) defaultTTU(_ context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset, iter storage.TupleKeyIterator, selectedStrategy string) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
 		ctx, span := tracer.Start(ctx, "defaultTTU")
 		defer span.End()
@@ -132,7 +147,7 @@ func (c *LocalChecker) defaultTTU(_ context.Context, req *ResolveCheckRequest, r
 			_ = pool.Wait()
 		}()
 		pool.Go(func(ctx context.Context) error {
-			c.produceTTUDispatches(ctx, computedRelation, req, dispatchChan, iter)
+			c.produceTTUDispatches(ctx, computedRelation, req, dispatchChan, iter, selectedStrategy)
 			return nil
 		})
 
@@ -140,7 +155,7 @@ func (c *LocalChecker) defaultTTU(_ context.Context, req *ResolveCheckRequest, r
 	}
 }
 
-func (c *LocalChecker) produceTTUDispatches(ctx context.Context, computedRelation string, req *ResolveCheckRequest, dispatches chan dispatchMsg, iter storage.TupleKeyIterator) {
+func (c *LocalChecker) produceTTUDispatches(ctx context.Context, computedRelation string, req *ResolveCheckRequest, dispatches chan dispatchMsg, iter storage.TupleKeyIterator, selectedStrategy string) {
 	defer close(dispatches)
 	reqTupleKey := req.GetTupleKey()
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
@@ -168,7 +183,7 @@ func (c *LocalChecker) produceTTUDispatches(ctx context.Context, computedRelatio
 			User:     reqTupleKey.GetUser(),
 		}
 
-		concurrency.TrySendThroughChannel(ctx, dispatchMsg{dispatchParams: &dispatchParams{parentReq: req, tk: tupleKey}}, dispatches)
+		concurrency.TrySendThroughChannel(ctx, dispatchMsg{dispatchParams: &dispatchParams{parentReq: req, tk: tupleKey, strategy: selectedStrategy}}, dispatches)
 	}
 }
 
@@ -251,15 +266,33 @@ func (c *LocalChecker) processDispatches(ctx context.Context, limit int, dispatc
 				}
 
 				if msg.dispatchParams != nil {
+					if msg.dispatchParams.parentReq == nil || msg.dispatchParams.tk == nil {
+						// Skip dispatching if parent request or tuple key is nil
+						concurrency.TrySendThroughChannel(
+							ctx,
+							checkOutcome{err: ErrPanic},
+							outcomes,
+						)
+						return
+					}
+					// Increment dispatch counter in the main thread before dispatching
+					msg.dispatchParams.parentReq.GetRequestMetadata().DispatchCounter.Add(1)
+
 					dispatchPool.Go(func(ctx context.Context) error {
 						recoveredError := panics.Try(func() {
-							resp, err := c.dispatch(ctx, msg.dispatchParams.parentReq, msg.dispatchParams.tk)(ctx)
+							// Clone and prepare the child request inside the goroutine
+							childRequest := c.prepareChildRequest(
+								msg.dispatchParams.parentReq,
+								msg.dispatchParams.tk,
+								msg.dispatchParams.strategy)
+
+							resp, err := c.dispatch(ctx, childRequest)(ctx)
 							concurrency.TrySendThroughChannel(ctx, checkOutcome{resp: resp, err: err}, outcomes)
 						})
 						if recoveredError != nil {
 							concurrency.TrySendThroughChannel(
 								ctx,
-								checkOutcome{err: fmt.Errorf("%w: %s", ErrPanic, recoveredError.AsError())},
+								checkOutcome{err: fmt.Errorf("%w: %w", ErrPanic, recoveredError.AsError())},
 								outcomes,
 							)
 						}

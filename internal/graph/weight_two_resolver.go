@@ -26,8 +26,8 @@ const DifferenceIndex = 1
 const weightTwoResolver = "weight2"
 
 // This strategy is configured to show that it has proven fast and consistent.
-var weight2Plan = &planner.KeyPlanStrategy{
-	Type:         weightTwoResolver,
+var weight2Plan = &planner.PlanConfig{
+	Name:         weightTwoResolver,
 	InitialGuess: 20 * time.Millisecond,
 	// High Lambda: Represents strong confidence in the initial guess. It's like
 	// starting with the belief of having already seen 10 good runs.
@@ -48,7 +48,7 @@ var ErrShortCircuit = errors.New("short circuit")
 
 type fastPathSetHandler func(context.Context, *iterator.Streams, chan<- *iterator.Msg)
 
-func (c *LocalChecker) weight2Userset(_ context.Context, req *ResolveCheckRequest, usersets []*openfgav1.RelationReference, iter storage.TupleKeyIterator) CheckHandlerFunc {
+func (c *LocalChecker) weight2Userset(_ context.Context, req *ResolveCheckRequest, usersets []*openfgav1.RelationReference, iter storage.TupleKeyIterator, _ string) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
 		cancellableCtx, cancel := context.WithCancel(ctx)
 		defer cancel()
@@ -68,7 +68,7 @@ func (c *LocalChecker) weight2Userset(_ context.Context, req *ResolveCheckReques
 	}
 }
 
-func (c *LocalChecker) weight2TTU(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset, iter storage.TupleKeyIterator) CheckHandlerFunc {
+func (c *LocalChecker) weight2TTU(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset, iter storage.TupleKeyIterator, _ string) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
 		typesys, _ := typesystem.TypesystemFromContext(ctx)
 		objectType := tuple.GetType(req.GetTupleKey().GetObject())
@@ -596,7 +596,7 @@ func fastPathOperationSetup(ctx context.Context, req *ResolveCheckRequest, resol
 		})
 
 		if recoveredError != nil {
-			concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Err: fmt.Errorf("%w: %s", ErrPanic, recoveredError.AsError())}, outChan)
+			concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Err: fmt.Errorf("%w: %w", ErrPanic, recoveredError.AsError())}, outChan)
 		}
 	}()
 	return outChan, nil

@@ -104,12 +104,17 @@ type listUsersResponse struct {
 type listUsersResponseMetadata struct {
 	DatastoreQueryCount uint32
 
+	DatastoreItemCount uint64
+
 	// The number of times we are recursively expanding to find users.
 	// Atomic is used to be consistent with the Check and ListObjects.
 	DispatchCounter *atomic.Uint32
 
-	// WasThrottled indicates whether the request was throttled
-	WasThrottled *atomic.Bool
+	// WasDispatchThrottled indicates whether the request was dispatch throttled.
+	WasDispatchThrottled *atomic.Bool
+
+	// WasDatastoreThrottled indicates whether the request was datastore throttled.
+	WasDatastoreThrottled *atomic.Bool
 }
 
 func (r *listUsersResponse) GetUsers() []*openfgav1.User {

@@ -18,6 +18,7 @@ const (
 	DefaultMaxTypesPerAuthorizationModel    = 100
 	DefaultMaxAuthorizationModelSizeInBytes = 256 * 1_024
 	DefaultMaxAuthorizationModelCacheSize   = 100000
+	DefaultMaxTypesystemCacheSize           = 100000
 	DefaultChangelogHorizonOffset           = 0
 	DefaultResolveNodeLimit                 = 25
 	DefaultResolveNodeBreadthLimit          = 10
@@ -28,6 +29,7 @@ const (
 	DefaultListUsersDeadline                = 3 * time.Second
 	DefaultListUsersMaxResults              = 1000
 	DefaultMaxConcurrentReadsForListUsers   = math.MaxUint32
+	DefaultReadChangesMaxPageSize           = 100
 
 	DefaultWriteContextByteLimit = 32 * 1_024 // 32KB
 
@@ -38,8 +40,6 @@ const (
 
 	DefaultCheckQueryCacheEnabled = false
 	DefaultCheckQueryCacheTTL     = 10 * time.Second
-
-	DefaultShadowCheckCacheEnabled = false
 
 	DefaultCheckIteratorCacheEnabled    = false
 	DefaultCheckIteratorCacheMaxResults = 10000
@@ -54,18 +54,10 @@ const (
 	DefaultCacheControllerConfigEnabled = false
 	DefaultCacheControllerConfigTTL     = 10 * time.Second
 
-	DefaultShadowCheckResolverEnabled  = false
-	DefaultShadowCheckSamplePercentage = 10
-	DefaultShadowCheckResolverTimeout  = 1 * time.Second
+	DefaultShadowCheckResolverTimeout = 1 * time.Second
 
-	DefaultShadowListObjectsCheckResolverEnabled  = false
-	DefaultShadowListObjectsCheckSamplePercentage = 10
-	DefaultShadowListObjectsCheckResolverTimeout  = 1 * time.Second
-
-	DefaultShadowListObjectsQueryEnabled          = false
-	DefaultShadowListObjectsQuerySamplePercentage = 10
-	DefaultShadowListObjectsQueryTimeout          = 1 * time.Second
-	DefaultShadowListObjectsQueryMaxDeltaItems    = 100
+	DefaultShadowListObjectsQueryTimeout       = 1 * time.Second
+	DefaultShadowListObjectsQueryMaxDeltaItems = 100
 
 	// Care should be taken here - decreasing can cause API compatibility problems with Conditions.
 	DefaultMaxConditionEvaluationCost = 100
@@ -101,6 +93,18 @@ const (
 
 	DefaultPlannerEvictionThreshold = 0
 	DefaultPlannerCleanupInterval   = 0
+
+	ExperimentalCheckOptimizations       = "enable-check-optimizations"
+	ExperimentalListObjectsOptimizations = "enable-list-objects-optimizations"
+	ExperimentalAccessControlParams      = "enable-access-control"
+
+	// Moving forward, all experimental flags should follow the naming convention below:
+	// 1. Avoid using enable/disable prefixes.
+	// 2. Flag names should have only numbers, letters and underscores.
+	ExperimentalShadowCheck         = "shadow_check"
+	ExperimentalShadowListObjects   = "shadow_list_objects"
+	ExperimentalDatastoreThrottling = "datastore_throttling"
+	ExperimentalPipelineListObjects = "pipeline_list_objects"
 )
 
 type DatastoreMetricsConfig struct {
@@ -122,12 +126,23 @@ type DatastoreConfig struct {
 	// MaxCacheSize is the maximum number of authorization models that will be cached in memory.
 	MaxCacheSize int
 
+	// MaxTypesystemCacheSize is the maximum number of type system models that will be cached in memory
+	MaxTypesystemCacheSize int
+
 	// MaxOpenConns is the maximum number of open connections to the database.
 	MaxOpenConns int
 
+	// MinOpenConns is the minimum number of open connections to the database.
+	// This is only available in Postgresql.
+	MinOpenConns int
+
 	// MaxIdleConns is the maximum number of connections to the datastore in the idle connection
-	// pool.
+	// pool. This is only used for some datastore engines (non-PostgresSQL that uses sql.DB).
 	MaxIdleConns int
+
+	// MinIdleConns is the minimum number of connections to the datastore in the idle connection
+	// pool. This is only available in Postgresql..
+	MinIdleConns int
 
 	// ConnMaxIdleTime is the maximum amount of time a connection to the datastore may be idle.
 	ConnMaxIdleTime time.Duration
@@ -168,7 +183,6 @@ type TLSConfig struct {
 
 // AuthnConfig defines OpenFGA server configurations for authentication specific settings.
 type AuthnConfig struct {
-
 	// Method is the authentication method that should be enforced (e.g. 'none', 'preshared',
 	// 'oidc')
 	Method                   string
@@ -205,10 +219,11 @@ type LogConfig struct {
 }
 
 type TraceConfig struct {
-	Enabled     bool
-	OTLP        OTLPTraceConfig `mapstructure:"otlp"`
-	SampleRatio float64
-	ServiceName string
+	Enabled            bool
+	OTLP               OTLPTraceConfig `mapstructure:"otlp"`
+	SampleRatio        float64
+	ServiceName        string
+	ResourceAttributes string
 }
 
 type OTLPTraceConfig struct {
@@ -279,8 +294,8 @@ type DispatchThrottlingConfig struct {
 }
 
 // DatastoreThrottleConfig defines configurations for database throttling.
+// A threshold <= 0 means DatastoreThrottling is not enabled.
 type DatastoreThrottleConfig struct {
-	Enabled   bool
 	Threshold int
 	Duration  time.Duration
 }
@@ -320,6 +335,10 @@ type Config struct {
 	// before the non-streaming ListUsers API will respond to the client.
 	// This is to protect the server from misuse of the ListUsers endpoints.
 	ListUsersMaxResults uint32
+
+	// ReadChangesMaxPageSize defines the maximum page size allowed for ReadChanges API requests.
+	// This is to protect the server from misuse of the ReadChanges endpoint.
+	ReadChangesMaxPageSize uint32
 
 	// MaxTuplesPerWrite defines the maximum number of tuples per Write endpoint.
 	MaxTuplesPerWrite int
@@ -466,6 +485,14 @@ func (cfg *Config) VerifyServerSettings() error {
 		return errors.New("maxConditionsEvaluationCosts less than 100 can cause API compatibility problems with Conditions")
 	}
 
+	if cfg.Datastore.MaxOpenConns < cfg.Datastore.MinOpenConns {
+		return errors.New("datastore MaxOpenConns must not be less than datastore MinOpenConns")
+	}
+
+	if cfg.Datastore.MinOpenConns < cfg.Datastore.MinIdleConns {
+		return errors.New("datastore MinOpenConns must not be less than datastore MinIdleConns")
+	}
+
 	return nil
 }
 
@@ -587,29 +614,14 @@ func (cfg *Config) VerifyDispatchThrottlingConfig() error {
 
 // VerifyDatastoreThrottlesConfig ensures VerifyDatastoreThrottlesConfig is called so that the right values are verified.
 func (cfg *Config) VerifyDatastoreThrottlesConfig() error {
-	if cfg.CheckDatastoreThrottle.Enabled {
-		if cfg.CheckDatastoreThrottle.Threshold <= 0 {
-			return errors.New("'checkDatastoreThrottler.threshold' must be greater than zero")
-		}
-		if cfg.CheckDatastoreThrottle.Duration <= 0 {
-			return errors.New("'checkDatastoreThrottler.duration' must be greater than zero")
-		}
+	if cfg.CheckDatastoreThrottle.Threshold > 0 && cfg.CheckDatastoreThrottle.Duration <= 0 {
+		return errors.New("'checkDatastoreThrottler.duration' must be greater than zero if threshold > 0")
 	}
-	if cfg.ListObjectsDatastoreThrottle.Enabled {
-		if cfg.ListObjectsDatastoreThrottle.Threshold <= 0 {
-			return errors.New("'listObjectsDatastoreThrottler.threshold' must be greater than zero")
-		}
-		if cfg.ListObjectsDatastoreThrottle.Duration <= 0 {
-			return errors.New("'listObjectsDatastoreThrottler.duration' must be greater than zero")
-		}
+	if cfg.ListObjectsDatastoreThrottle.Threshold > 0 && cfg.ListObjectsDatastoreThrottle.Duration <= 0 {
+		return errors.New("'listObjectsDatastoreThrottler.duration' must be greater than zero if threshold > 0")
 	}
-	if cfg.ListUsersDatastoreThrottle.Enabled {
-		if cfg.ListUsersDatastoreThrottle.Threshold <= 0 {
-			return errors.New("'listUsersDatastoreThrottler.threshold' must be greater than zero")
-		}
-		if cfg.ListUsersDatastoreThrottle.Duration <= 0 {
-			return errors.New("'listUsersDatastoreThrottler.duration' must be greater than zero")
-		}
+	if cfg.ListUsersDatastoreThrottle.Threshold > 0 && cfg.ListUsersDatastoreThrottle.Duration <= 0 {
+		return errors.New("'listUsersDatastoreThrottler.duration' must be greater than zero if threshold > 0")
 	}
 	return nil
 }
@@ -701,13 +713,17 @@ func DefaultConfig() *Config {
 		ListObjectsMaxResults:                     DefaultListObjectsMaxResults,
 		ListUsersMaxResults:                       DefaultListUsersMaxResults,
 		ListUsersDeadline:                         DefaultListUsersDeadline,
+		ReadChangesMaxPageSize:                    DefaultReadChangesMaxPageSize,
 		RequestDurationDatastoreQueryCountBuckets: []string{"50", "200"},
 		RequestDurationDispatchCountBuckets:       []string{"50", "200"},
 		Datastore: DatastoreConfig{
-			Engine:       "memory",
-			MaxCacheSize: DefaultMaxAuthorizationModelCacheSize,
-			MaxIdleConns: 10,
-			MaxOpenConns: 30,
+			Engine:                 "memory",
+			MaxCacheSize:           DefaultMaxAuthorizationModelCacheSize,
+			MaxTypesystemCacheSize: DefaultMaxTypesystemCacheSize,
+			MinIdleConns:           0,
+			MaxIdleConns:           10,
+			MinOpenConns:           0,
+			MaxOpenConns:           30,
 		},
 		GRPC: GRPCConfig{
 			Addr: "0.0.0.0:8081",
@@ -739,8 +755,9 @@ func DefaultConfig() *Config {
 					Enabled: false,
 				},
 			},
-			SampleRatio: 0.2,
-			ServiceName: "openfga",
+			SampleRatio:        0.2,
+			ServiceName:        "openfga",
+			ResourceAttributes: "",
 		},
 		Playground: PlaygroundConfig{
 			Enabled: true,
@@ -799,17 +816,14 @@ func DefaultConfig() *Config {
 			TTL:        DefaultListObjectsIteratorCacheTTL,
 		},
 		CheckDatastoreThrottle: DatastoreThrottleConfig{
-			Enabled:   false,
 			Threshold: 0,
 			Duration:  0,
 		},
 		ListObjectsDatastoreThrottle: DatastoreThrottleConfig{
-			Enabled:   false,
 			Threshold: 0,
 			Duration:  0,
 		},
 		ListUsersDatastoreThrottle: DatastoreThrottleConfig{
-			Enabled:   false,
 			Threshold: 0,
 			Duration:  0,
 		},

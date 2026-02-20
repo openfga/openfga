@@ -25,8 +25,11 @@ import (
 	"github.com/openfga/openfga/internal/throttler/threshold"
 	"github.com/openfga/openfga/internal/utils/apimethod"
 	"github.com/openfga/openfga/internal/validation"
+	"github.com/openfga/openfga/pkg/featureflags"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/server/commands/reverseexpand"
+	"github.com/openfga/openfga/pkg/server/commands/reverseexpand/pipeline"
+	"github.com/openfga/openfga/pkg/server/commands/reverseexpand/pipeline/obj"
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
@@ -53,6 +56,7 @@ var (
 
 type ListObjectsQuery struct {
 	datastore               storage.RelationshipTupleReader
+	ff                      featureflags.Client
 	logger                  logger.Logger
 	listObjectsDeadline     time.Duration
 	listObjectsMaxResults   uint32
@@ -62,6 +66,7 @@ type ListObjectsQuery struct {
 
 	dispatchThrottlerConfig threshold.Config
 
+	datastoreThrottlingEnabled bool
 	datastoreThrottleThreshold int
 	datastoreThrottleDuration  time.Duration
 
@@ -71,6 +76,9 @@ type ListObjectsQuery struct {
 
 	optimizationsEnabled bool // Indicates if experimental optimizations are enabled for ListObjectsResolver
 	useShadowCache       bool // Indicates that the shadow cache should be used instead of the main cache
+
+	pipelineEnabled bool // Indicates whether to run with the pipeline optimized code
+	pipelineConfig  pipeline.Config
 }
 
 type ListObjectsResolver interface {
@@ -88,22 +96,23 @@ type ListObjectsResolutionMetadata struct {
 	// The total number of database reads from reverse_expand and Check (if any) to complete the ListObjects request
 	DatastoreQueryCount atomic.Uint32
 
+	// The total number of items read from the database during a ListObjects request.
+	DatastoreItemCount atomic.Uint64
+
 	// The total number of dispatches aggregated from reverse_expand and check resolutions (if any) to complete the ListObjects request
 	DispatchCounter atomic.Uint32
 
-	// WasThrottled indicates whether the request was throttled
-	WasThrottled atomic.Bool
+	// DispatchThrottled indicates whether this request was throttled by dispatch count.
+	DispatchThrottled atomic.Bool
+
+	// DatastoreThrottled indicates whether the request was throttled by the Datastore.
+	DatastoreThrottled atomic.Bool
 
 	// WasWeightedGraphUsed indicates whether the weighted graph was used as the algorithm for the ListObjects request.
 	WasWeightedGraphUsed atomic.Bool
 
 	// CheckCounter is the total number of check requests made during the ListObjects execution for the optimized path
 	CheckCounter atomic.Uint32
-
-	// Temporary solution to indicate whether shadow list objects query should be run.
-	// For queries with Infinite weight, the weighted graph implementation falls back
-	// to the original code, making any comparison useless.
-	ShouldRunShadowQuery atomic.Bool
 }
 
 type ListObjectsResponse struct {
@@ -165,16 +174,22 @@ func WithListObjectsCache(sharedDatastoreResources *shared.SharedDatastoreResour
 	}
 }
 
-func WithListObjectsDatastoreThrottler(threshold int, duration time.Duration) ListObjectsQueryOption {
+func WithListObjectsDatastoreThrottler(enabled bool, threshold int, duration time.Duration) ListObjectsQueryOption {
 	return func(d *ListObjectsQuery) {
+		d.datastoreThrottlingEnabled = enabled
 		d.datastoreThrottleThreshold = threshold
 		d.datastoreThrottleDuration = duration
 	}
 }
 
-func WithListObjectsOptimizationsEnabled(enabled bool) ListObjectsQueryOption {
+func WithFeatureFlagClient(client featureflags.Client) ListObjectsQueryOption {
 	return func(d *ListObjectsQuery) {
-		d.optimizationsEnabled = enabled
+		if client != nil {
+			d.ff = client
+			return
+		}
+
+		d.ff = featureflags.NewNoopFeatureFlagClient()
 	}
 }
 
@@ -184,9 +199,41 @@ func WithListObjectsUseShadowCache(useShadowCache bool) ListObjectsQueryOption {
 	}
 }
 
+func WithListObjectsPipelineEnabled(value bool) ListObjectsQueryOption {
+	return func(d *ListObjectsQuery) {
+		d.pipelineEnabled = value
+	}
+}
+
+func WithListObjectsChunkSize(value int) ListObjectsQueryOption {
+	return func(d *ListObjectsQuery) {
+		d.pipelineConfig.ChunkSize = value
+	}
+}
+
+func WithListObjectsBufferSize(value int) ListObjectsQueryOption {
+	return func(d *ListObjectsQuery) {
+		d.pipelineConfig.Buffer.Capacity = value
+	}
+}
+
+func WithListObjectsNumProcs(value int) ListObjectsQueryOption {
+	return func(d *ListObjectsQuery) {
+		d.pipelineConfig.NumProcs = value
+	}
+}
+
+func WithListObjectsPipeExtension(extendAfter time.Duration, maxExtensions int) ListObjectsQueryOption {
+	return func(d *ListObjectsQuery) {
+		d.pipelineConfig.Buffer.ExtendAfter = extendAfter
+		d.pipelineConfig.Buffer.MaxExtensions = maxExtensions
+	}
+}
+
 func NewListObjectsQuery(
 	ds storage.RelationshipTupleReader,
 	checkResolver graph.CheckResolver,
+	storeID string,
 	opts ...ListObjectsQueryOption,
 ) (*ListObjectsQuery, error) {
 	if ds == nil {
@@ -216,12 +263,18 @@ func NewListObjectsQuery(
 		sharedDatastoreResources: &shared.SharedDatastoreResources{
 			CacheController: cachecontroller.NewNoopCacheController(),
 		},
-		optimizationsEnabled: serverconfig.DefaultListObjectsOptimizationsEnabled,
+		optimizationsEnabled: false,
 		useShadowCache:       false,
+		ff:                   featureflags.NewNoopFeatureFlagClient(),
+		pipelineConfig:       pipeline.DefaultConfig(),
 	}
 
 	for _, opt := range opts {
 		opt(query)
+	}
+
+	if query.ff.Boolean(serverconfig.ExperimentalListObjectsOptimizations, storeID) {
+		query.optimizationsEnabled = true
 	}
 
 	return query, nil
@@ -269,33 +322,6 @@ func (q *ListObjectsQuery) evaluate(
 		return fmt.Errorf("%w: typesystem missing in context", openfgaErrors.ErrUnknown)
 	}
 
-	if !typesystem.IsSchemaVersionSupported(typesys.GetSchemaVersion()) {
-		return serverErrors.ValidationError(typesystem.ErrInvalidSchemaVersion)
-	}
-
-	for _, ctxTuple := range req.GetContextualTuples().GetTupleKeys() {
-		if err := validation.ValidateTupleForWrite(typesys, ctxTuple); err != nil {
-			return serverErrors.HandleTupleValidateError(err)
-		}
-	}
-
-	_, err := typesys.GetRelation(targetObjectType, targetRelation)
-	if err != nil {
-		if errors.Is(err, typesystem.ErrObjectTypeUndefined) {
-			return serverErrors.TypeNotFound(targetObjectType)
-		}
-
-		if errors.Is(err, typesystem.ErrRelationUndefined) {
-			return serverErrors.RelationNotFound(targetRelation, targetObjectType, nil)
-		}
-
-		return serverErrors.HandleError("", err)
-	}
-
-	if err := validation.ValidateUser(typesys, req.GetUser()); err != nil {
-		return serverErrors.ValidationError(fmt.Errorf("invalid 'user' value: %s", err))
-	}
-
 	handler := func() {
 		userObj, userRel := tuple.SplitObjectRelation(req.GetUser())
 		userObjType, userObjID := tuple.SplitObject(userObj)
@@ -321,7 +347,11 @@ func (q *ListObjectsQuery) evaluate(
 			}
 		}
 
-		reverseExpandResultsChan := make(chan *reverseexpand.ReverseExpandResult, 1)
+		var bufferSize uint32
+		cappedMaxResults := uint32(math.Min(float64(maxResults), 1000)) // cap max results at 1000
+		bufferSize = uint32(math.Max(float64(cappedMaxResults/10), 10)) // 10% of max results, but make it at least 10
+
+		reverseExpandResultsChan := make(chan *reverseexpand.ReverseExpandResult, bufferSize)
 		objectsFound := atomic.Uint32{}
 
 		ds := storagewrappers.NewRequestStorageWrapperWithCache(
@@ -330,6 +360,7 @@ func (q *ListObjectsQuery) evaluate(
 			&storagewrappers.Operation{
 				Method:            apimethod.ListObjects,
 				Concurrency:       q.maxConcurrentReads,
+				ThrottlingEnabled: q.datastoreThrottlingEnabled,
 				ThrottleThreshold: q.datastoreThrottleThreshold,
 				ThrottleDuration:  q.datastoreThrottleDuration,
 			},
@@ -372,12 +403,11 @@ func (q *ListObjectsQuery) evaluate(
 				return err
 			}
 			resolutionMetadata.DispatchCounter.Add(reverseExpandResolutionMetadata.DispatchCounter.Load())
-			if !resolutionMetadata.WasThrottled.Load() && reverseExpandResolutionMetadata.WasThrottled.Load() {
-				resolutionMetadata.WasThrottled.Store(true)
+			if !resolutionMetadata.DispatchThrottled.Load() && reverseExpandResolutionMetadata.DispatchThrottled.Load() {
+				resolutionMetadata.DispatchThrottled.Store(true)
 			}
 			resolutionMetadata.CheckCounter.Add(reverseExpandResolutionMetadata.CheckCounter.Load())
 			resolutionMetadata.WasWeightedGraphUsed.Store(reverseExpandResolutionMetadata.WasWeightedGraphUsed.Load())
-			resolutionMetadata.ShouldRunShadowQuery.Store(reverseExpandResolutionMetadata.ShouldRunShadowQuery.Load())
 			return nil
 		})
 
@@ -417,7 +447,11 @@ func (q *ListObjectsQuery) evaluate(
 					resp, checkRequestMetadata, err := NewCheckCommand(q.datastore, q.checkResolver, typesys,
 						WithCheckCommandLogger(q.logger),
 						WithCheckCommandMaxConcurrentReads(q.maxConcurrentReads),
-						WithCheckDatastoreThrottler(q.datastoreThrottleThreshold, q.datastoreThrottleDuration),
+						WithCheckDatastoreThrottler(
+							q.datastoreThrottlingEnabled,
+							q.datastoreThrottleThreshold,
+							q.datastoreThrottleDuration,
+						),
 					).
 						Execute(ctx, &CheckCommandParams{
 							StoreID:          req.GetStoreId(),
@@ -430,9 +464,10 @@ func (q *ListObjectsQuery) evaluate(
 						return err
 					}
 					resolutionMetadata.DatastoreQueryCount.Add(resp.GetResolutionMetadata().DatastoreQueryCount)
+					resolutionMetadata.DatastoreItemCount.Add(resp.GetResolutionMetadata().DatastoreItemCount)
 					resolutionMetadata.DispatchCounter.Add(checkRequestMetadata.DispatchCounter.Load())
-					if !resolutionMetadata.WasThrottled.Load() && checkRequestMetadata.WasThrottled.Load() {
-						resolutionMetadata.WasThrottled.Store(true)
+					if !resolutionMetadata.DispatchThrottled.Load() && checkRequestMetadata.DispatchThrottled.Load() {
+						resolutionMetadata.DispatchThrottled.Store(true)
 					}
 					if resp.Allowed {
 						trySendObject(ctx, res.Object, &objectsFound, maxResults, resultsChan)
@@ -452,7 +487,8 @@ func (q *ListObjectsQuery) evaluate(
 		close(resultsChan)
 		dsMeta := ds.GetMetadata()
 		resolutionMetadata.DatastoreQueryCount.Add(dsMeta.DatastoreQueryCount)
-		resolutionMetadata.WasThrottled.CompareAndSwap(false, dsMeta.WasThrottled)
+		resolutionMetadata.DatastoreItemCount.Add(dsMeta.DatastoreItemCount)
+		resolutionMetadata.DatastoreThrottled.Store(dsMeta.WasThrottled)
 	}
 
 	go handler()
@@ -475,11 +511,7 @@ func (q *ListObjectsQuery) Execute(
 	ctx context.Context,
 	req *openfgav1.ListObjectsRequest,
 ) (*ListObjectsResponse, error) {
-	resultsChan := make(chan ListObjectsResult, 1)
 	maxResults := q.listObjectsMaxResults
-	if maxResults > 0 {
-		resultsChan = make(chan ListObjectsResult, maxResults)
-	}
 
 	timeoutCtx := ctx
 	if q.listObjectsDeadline != 0 {
@@ -488,7 +520,40 @@ func (q *ListObjectsQuery) Execute(
 		defer cancel()
 	}
 
-	var listObjectsResponse ListObjectsResponse
+	targetObjectType := req.GetType()
+	targetRelation := req.GetRelation()
+
+	typesys, ok := typesystem.TypesystemFromContext(ctx)
+	if !ok {
+		return nil, fmt.Errorf("%w: typesystem missing in context", openfgaErrors.ErrUnknown)
+	}
+
+	if !typesystem.IsSchemaVersionSupported(typesys.GetSchemaVersion()) {
+		return nil, serverErrors.ValidationError(typesystem.ErrInvalidSchemaVersion)
+	}
+
+	for _, ctxTuple := range req.GetContextualTuples().GetTupleKeys() {
+		if err := validation.ValidateTupleForWrite(typesys, ctxTuple); err != nil {
+			return nil, serverErrors.HandleTupleValidateError(err)
+		}
+	}
+
+	_, err := typesys.GetRelation(targetObjectType, targetRelation)
+	if err != nil {
+		if errors.Is(err, typesystem.ErrObjectTypeUndefined) {
+			return nil, serverErrors.TypeNotFound(targetObjectType)
+		}
+
+		if errors.Is(err, typesystem.ErrRelationUndefined) {
+			return nil, serverErrors.RelationNotFound(targetRelation, targetObjectType, nil)
+		}
+
+		return nil, serverErrors.HandleError("", err)
+	}
+
+	if err := validation.ValidateUser(typesys, req.GetUser()); err != nil {
+		return nil, serverErrors.ValidationError(fmt.Errorf("invalid 'user' value: %w", err))
+	}
 
 	if req.GetConsistency() != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
 		if q.cacheSettings.ShouldCacheListObjectsIterators() {
@@ -500,7 +565,90 @@ func (q *ListObjectsQuery) Execute(
 		}
 	}
 
-	err := q.evaluate(timeoutCtx, req, resultsChan, maxResults, &listObjectsResponse.ResolutionMetadata)
+	wgraph := typesys.GetWeightedGraph()
+
+	if wgraph != nil && q.pipelineEnabled {
+		ds := storagewrappers.NewRequestStorageWrapperWithCache(
+			q.datastore,
+			req.GetContextualTuples().GetTupleKeys(),
+			&storagewrappers.Operation{
+				Method:            apimethod.ListObjects,
+				Concurrency:       q.maxConcurrentReads,
+				ThrottlingEnabled: q.datastoreThrottlingEnabled,
+				ThrottleThreshold: q.datastoreThrottleThreshold,
+				ThrottleDuration:  q.datastoreThrottleDuration,
+			},
+			storagewrappers.DataResourceConfiguration{
+				Resources:      q.sharedDatastoreResources,
+				CacheSettings:  q.cacheSettings,
+				UseShadowCache: q.useShadowCache,
+			},
+		)
+
+		validator := obj.NewValidator(timeoutCtx, typesys, req.GetContext())
+
+		reader := obj.NewReader(
+			ds,
+			req.GetStoreId(),
+			obj.WithConsistency(req.GetConsistency()),
+			obj.WithValidator(validator),
+		)
+
+		spec := pipeline.Spec{
+			ObjectType: targetObjectType,
+			Relation:   targetRelation,
+			User:       req.GetUser(),
+		}
+
+		seq, err := pipeline.New(
+			wgraph,
+			reader,
+			pipeline.WithConfig(q.pipelineConfig),
+		).Expand(timeoutCtx, spec)
+
+		if err != nil {
+			return nil, serverErrors.ValidationError(err)
+		}
+
+		var res ListObjectsResponse
+
+		for object := range seq {
+			if timeoutCtx.Err() != nil {
+				break
+			}
+
+			value, err := object.Object()
+
+			// If the error is from a context cancelation, the current
+			// behavior for ListObjects is to not report it.
+			if err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+				return nil, serverErrors.HandleError("", err)
+			}
+
+			res.Objects = append(res.Objects, value)
+
+			// Check if we've reached the max results limit
+			if maxResults > 0 && uint32(len(res.Objects)) >= maxResults {
+				break
+			}
+		}
+
+		dsMeta := ds.GetMetadata()
+		res.ResolutionMetadata.DatastoreThrottled.Store(dsMeta.WasThrottled)
+		res.ResolutionMetadata.DatastoreQueryCount.Add(dsMeta.DatastoreQueryCount)
+		res.ResolutionMetadata.DatastoreItemCount.Add(dsMeta.DatastoreItemCount)
+		return &res, nil
+	}
+
+	// --------- OLD STUFF -----------
+	resultsChan := make(chan ListObjectsResult, 1)
+	if maxResults > 0 {
+		resultsChan = make(chan ListObjectsResult, maxResults)
+	}
+
+	var listObjectsResponse ListObjectsResponse
+
+	err = q.evaluate(timeoutCtx, req, resultsChan, maxResults, &listObjectsResponse.ResolutionMetadata)
 	if err != nil {
 		return nil, err
 	}
@@ -538,8 +686,6 @@ func (q *ListObjectsQuery) Execute(
 // until q.listObjectsDeadline is hit.
 func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.StreamedListObjectsRequest, srv openfgav1.OpenFGAService_StreamedListObjectsServer) (*ListObjectsResolutionMetadata, error) {
 	maxResults := uint32(math.MaxUint32)
-	// make a buffered channel so that writer goroutines aren't blocked when attempting to send a result
-	resultsChan := make(chan ListObjectsResult, streamedBufferSize)
 
 	timeoutCtx := ctx
 	if q.listObjectsDeadline != 0 {
@@ -550,7 +696,129 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 
 	var resolutionMetadata ListObjectsResolutionMetadata
 
-	err := q.evaluate(timeoutCtx, req, resultsChan, maxResults, &resolutionMetadata)
+	targetObjectType := req.GetType()
+	targetRelation := req.GetRelation()
+
+	typesys, ok := typesystem.TypesystemFromContext(ctx)
+	if !ok {
+		return nil, fmt.Errorf("%w: typesystem missing in context", openfgaErrors.ErrUnknown)
+	}
+
+	if !typesystem.IsSchemaVersionSupported(typesys.GetSchemaVersion()) {
+		return nil, serverErrors.ValidationError(typesystem.ErrInvalidSchemaVersion)
+	}
+
+	for _, ctxTuple := range req.GetContextualTuples().GetTupleKeys() {
+		if err := validation.ValidateTupleForWrite(typesys, ctxTuple); err != nil {
+			return nil, serverErrors.HandleTupleValidateError(err)
+		}
+	}
+
+	_, err := typesys.GetRelation(targetObjectType, targetRelation)
+	if err != nil {
+		if errors.Is(err, typesystem.ErrObjectTypeUndefined) {
+			return nil, serverErrors.TypeNotFound(targetObjectType)
+		}
+
+		if errors.Is(err, typesystem.ErrRelationUndefined) {
+			return nil, serverErrors.RelationNotFound(targetRelation, targetObjectType, nil)
+		}
+
+		return nil, serverErrors.HandleError("", err)
+	}
+
+	if err := validation.ValidateUser(typesys, req.GetUser()); err != nil {
+		return nil, serverErrors.ValidationError(fmt.Errorf("invalid 'user' value: %w", err))
+	}
+
+	wgraph := typesys.GetWeightedGraph()
+
+	if wgraph != nil && q.pipelineEnabled {
+		ds := storagewrappers.NewRequestStorageWrapperWithCache(
+			q.datastore,
+			req.GetContextualTuples().GetTupleKeys(),
+			&storagewrappers.Operation{
+				Method:            apimethod.ListObjects,
+				Concurrency:       q.maxConcurrentReads,
+				ThrottlingEnabled: q.datastoreThrottlingEnabled,
+				ThrottleThreshold: q.datastoreThrottleThreshold,
+				ThrottleDuration:  q.datastoreThrottleDuration,
+			},
+			storagewrappers.DataResourceConfiguration{
+				Resources:      q.sharedDatastoreResources,
+				CacheSettings:  q.cacheSettings,
+				UseShadowCache: q.useShadowCache,
+			},
+		)
+
+		validator := obj.NewValidator(timeoutCtx, typesys, req.GetContext())
+
+		reader := obj.NewReader(
+			ds,
+			req.GetStoreId(),
+			obj.WithConsistency(req.GetConsistency()),
+			obj.WithValidator(validator),
+		)
+
+		spec := pipeline.Spec{
+			ObjectType: targetObjectType,
+			Relation:   targetRelation,
+			User:       req.GetUser(),
+		}
+
+		seq, err := pipeline.New(
+			wgraph,
+			reader,
+			pipeline.WithConfig(q.pipelineConfig),
+		).Expand(timeoutCtx, spec)
+
+		if err != nil {
+			return nil, serverErrors.ValidationError(err)
+		}
+
+		var listObjectsCount uint32 = 0
+
+		for object := range seq {
+			if timeoutCtx.Err() != nil {
+				break
+			}
+
+			value, err := object.Object()
+
+			// If the error is from a context cancelation, the current
+			// behavior for ListObjects is to not report it.
+			if err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+				if errors.Is(err, condition.ErrEvaluationFailed) {
+					return nil, serverErrors.ValidationError(err)
+				}
+				return nil, serverErrors.HandleError("", err)
+			}
+
+			if err := srv.Send(&openfgav1.StreamedListObjectsResponse{
+				Object: value,
+			}); err != nil {
+				return nil, serverErrors.HandleError("", err)
+			}
+
+			listObjectsCount++
+
+			// Check if we've reached the max results limit
+			if maxResults > 0 && listObjectsCount >= maxResults {
+				break
+			}
+		}
+
+		dsMeta := ds.GetMetadata()
+		resolutionMetadata.DatastoreThrottled.Store(dsMeta.WasThrottled)
+		resolutionMetadata.DatastoreQueryCount.Add(dsMeta.DatastoreQueryCount)
+		resolutionMetadata.DatastoreItemCount.Add(dsMeta.DatastoreItemCount)
+		return &resolutionMetadata, nil
+	}
+
+	// make a buffered channel so that writer goroutines aren't blocked when attempting to send a result
+	resultsChan := make(chan ListObjectsResult, streamedBufferSize)
+
+	err = q.evaluate(timeoutCtx, req, resultsChan, maxResults, &resolutionMetadata)
 	if err != nil {
 		return nil, err
 	}

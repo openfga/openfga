@@ -184,6 +184,10 @@ type TypeSystem struct {
 	authzWeightedGraph      *graph.WeightedAuthorizationModelGraph
 }
 
+func (t *TypeSystem) GetWeightedGraph() *graph.WeightedAuthorizationModelGraph {
+	return t.authzWeightedGraph
+}
+
 // New creates a *TypeSystem from an *openfgav1.AuthorizationModel.
 // It assumes that the input model is valid. If you need to run validations, use NewAndValidate.
 func New(model *openfgav1.AuthorizationModel) (*TypeSystem, error) {
@@ -1041,6 +1045,9 @@ func hasEntrypoints(
 	case *openfgav1.Userset_Union:
 		// At least one type must have an entrypoint.
 		loop := false
+		if len(rw.Union.GetChild()) < 2 {
+			return false, false, fmt.Errorf("%w: '%s#%s' as union has less than 2 children", ErrInvalidRelation, typeName, relationName)
+		}
 		for _, child := range rw.Union.GetChild() {
 			hasEntrypoints, childLoop, err := hasEntrypoints(typedefs, typeName, relationName, child, visitedRelations)
 			if err != nil {
@@ -1055,7 +1062,9 @@ func hasEntrypoints(
 
 		return false, loop, nil
 	case *openfgav1.Userset_Intersection:
-
+		if len(rw.Intersection.GetChild()) < 2 {
+			return false, false, fmt.Errorf("%w: '%s#%s' as intersection has less than 2 children", ErrInvalidRelation, typeName, relationName)
+		}
 		for _, child := range rw.Intersection.GetChild() {
 			// All the children must have an entrypoint.
 			hasEntrypoints, childLoop, err := hasEntrypoints(typedefs, typeName, relationName, child, visitedRelations)

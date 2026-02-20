@@ -2,13 +2,11 @@ package checkutil
 
 import (
 	"context"
-	"fmt"
 
 	"google.golang.org/protobuf/types/known/structpb"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
-	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/condition/eval"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/storage"
@@ -20,21 +18,10 @@ import (
 // evaluates whether condition is met.
 func BuildTupleKeyConditionFilter(ctx context.Context, reqCtx *structpb.Struct, typesys *typesystem.TypeSystem) storage.TupleKeyConditionFilterFunc {
 	return func(t *openfgav1.TupleKey) (bool, error) {
-		condEvalResult, err := eval.EvaluateTupleCondition(ctx, t, typesys, reqCtx)
-		if err != nil {
-			return false, err
-		}
+		// no condition on tuple or not found gets handled by eval.EvaluateTupleCondition
+		cond, _ := typesys.GetCondition(t.GetCondition().GetName())
 
-		if len(condEvalResult.MissingParameters) > 0 {
-			return false, condition.NewEvaluationError(
-				t.GetCondition().GetName(),
-				fmt.Errorf("tuple '%s' is missing context parameters '%v'",
-					tuple.TupleKeyToString(t),
-					condEvalResult.MissingParameters),
-			)
-		}
-
-		return condEvalResult.ConditionMet, nil
+		return eval.EvaluateTupleCondition(ctx, t, cond, reqCtx)
 	}
 }
 

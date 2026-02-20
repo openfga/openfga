@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
@@ -54,13 +53,11 @@ func testRunAll(t *testing.T, engine string) {
 		// ]
 		goleak.VerifyNone(t, goleak.IgnoreTopFunction("github.com/go-sql-driver/mysql.(*mysqlConn).startWatcher.func1"))
 	})
-	cfg := config.MustDefaultConfig()
-	cfg.Experimentals = append(cfg.Experimentals, "enable-check-optimizations", "enable-list-objects-optimizations")
+	cfg := testutils.MustDefaultConfigForParallelTests()
+	cfg.Experimentals = append(cfg.Experimentals, config.ExperimentalCheckOptimizations, config.ExperimentalListObjectsOptimizations)
 	cfg.Log.Level = "error"
 	cfg.Datastore.Engine = engine
 	cfg.ListUsersDeadline = 0 // no deadline
-	// extend the timeout for the tests, coverage makes them slower
-	cfg.RequestTimeout = 10 * time.Second
 
 	tests.StartServer(t, cfg)
 
@@ -279,8 +276,9 @@ func TestListUsersLogs(t *testing.T) {
 			require.NotEmpty(t, fields["query_duration_ms"])
 			if !test.expectedError {
 				require.GreaterOrEqual(t, fields["datastore_query_count"], float64(1))
+				require.GreaterOrEqual(t, fields["datastore_item_count"], float64(1))
 				require.GreaterOrEqual(t, fields["dispatch_count"], float64(1))
-				require.Len(t, fields, 15)
+				require.Len(t, fields, 16)
 			} else {
 				require.Len(t, fields, 13)
 			}

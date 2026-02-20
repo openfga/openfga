@@ -20,6 +20,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -86,7 +87,7 @@ func genCACert(t *testing.T) (*x509.Certificate, []byte, *rsa.PrivateKey) {
 	priv, err := rsa.GenerateKey(rand.Reader, 2048)
 	require.NoError(t, err)
 
-	var rootTemplate = &x509.Certificate{
+	rootTemplate := &x509.Certificate{
 		SerialNumber:          big.NewInt(1),
 		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
@@ -111,7 +112,7 @@ func genServerCert(t *testing.T, caCert *x509.Certificate, caKey *rsa.PrivateKey
 	priv, err := rsa.GenerateKey(rand.Reader, 2048)
 	require.NoError(t, err)
 
-	var template = &x509.Certificate{
+	template := &x509.Certificate{
 		SerialNumber:          big.NewInt(1),
 		KeyUsage:              x509.KeyUsageCRLSign,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
@@ -792,18 +793,20 @@ func TestServerMetricsReporting(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
+	const nonPgxPrometheusMetrics = "go_sql_idle_connections"
+	const pgxPrometheusMetrics = "pgxpool_idle_conns"
 	t.Run("mysql", func(t *testing.T) {
-		testServerMetricsReporting(t, "mysql")
+		testServerMetricsReporting(t, "mysql", nonPgxPrometheusMetrics)
 	})
 	t.Run("postgres", func(t *testing.T) {
-		testServerMetricsReporting(t, "postgres")
+		testServerMetricsReporting(t, "postgres", pgxPrometheusMetrics)
 	})
 	t.Run("sqlite", func(t *testing.T) {
-		testServerMetricsReporting(t, "sqlite")
+		testServerMetricsReporting(t, "sqlite", nonPgxPrometheusMetrics)
 	})
 }
 
-func testServerMetricsReporting(t *testing.T, engine string) {
+func testServerMetricsReporting(t *testing.T, engine string, connectionMetricName string) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
@@ -945,11 +948,12 @@ func testServerMetricsReporting(t *testing.T, engine string) {
 		"grpc_server_handling_seconds",
 		"openfga_list_objects_further_eval_required_count",
 		"openfga_list_objects_no_further_eval_required_count",
-		"go_sql_idle_connections",
 		"openfga_condition_evaluation_cost",
 		"openfga_condition_compilation_duration_ms",
 		"openfga_condition_evaluation_duration_ms",
 	}
+
+	expectedMetrics = append(expectedMetrics, connectionMetricName)
 
 	for _, metric := range expectedMetrics {
 		count, err := testutil.GatherAndCount(prometheus.DefaultGatherer, metric)
@@ -999,6 +1003,43 @@ func TestHTTPServerEnabled(t *testing.T) {
 	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil)
 }
 
+func TestPlaygroundEnabled(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	cfg := testutils.MustDefaultConfigWithRandomPorts()
+	cfg.Playground.Enabled = true
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := runServer(ctx, cfg); err != nil {
+			log.Fatal(err)
+		}
+	}()
+	t.Cleanup(func() {
+		wg.Wait()
+	})
+
+	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil)
+
+	c := retryablehttp.NewClient()
+	t.Cleanup(c.HTTPClient.CloseIdleConnections)
+
+	playgroundPort := fmt.Sprintf(":%d", cfg.Playground.Port)
+	resp, err := c.Get(fmt.Sprintf("http://localhost%s/playground", playgroundPort))
+	require.NoError(t, err, "http playground endpoint not healthy")
+	t.Cleanup(func() {
+		err := resp.Body.Close()
+		require.NoError(t, err)
+	})
+	require.Equal(t, http.StatusOK, resp.StatusCode, "unexpected status code received from server")
+}
+
 func TestDefaultConfig(t *testing.T) {
 	cfg, err := ReadConfig()
 	require.NoError(t, err)
@@ -1017,13 +1058,25 @@ func TestDefaultConfig(t *testing.T) {
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), cfg.Datastore.MaxCacheSize)
 
+	val = res.Get("properties.datastore.properties.maxTypesystemCacheSize.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.Datastore.MaxTypesystemCacheSize)
+
 	val = res.Get("properties.datastore.properties.maxIdleConns.default")
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), cfg.Datastore.MaxIdleConns)
 
+	val = res.Get("properties.datastore.properties.minIdleConns.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.Datastore.MinIdleConns)
+
 	val = res.Get("properties.datastore.properties.maxOpenConns.default")
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), cfg.Datastore.MaxOpenConns)
+
+	val = res.Get("properties.datastore.properties.minOpenConns.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.Datastore.MinOpenConns)
 
 	val = res.Get("properties.datastore.properties.connMaxIdleTime.default")
 	require.True(t, val.Exists())
@@ -1159,6 +1212,10 @@ func TestDefaultConfig(t *testing.T) {
 	require.True(t, val.Exists())
 	require.Equal(t, val.String(), cfg.Trace.ServiceName)
 
+	val = res.Get("properties.trace.properties.resourceAttributes.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.String(), cfg.Trace.ResourceAttributes)
+
 	val = res.Get("properties.trace.properties.otlp.properties.endpoint.default")
 	require.True(t, val.Exists())
 	require.Equal(t, val.String(), cfg.Trace.OTLP.Endpoint)
@@ -1285,10 +1342,6 @@ func TestDefaultConfig(t *testing.T) {
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), cfg.ListUsersDispatchThrottling.MaxThreshold)
 
-	val = res.Get("properties.checkDatastoreThrottle.properties.enabled.default")
-	require.True(t, val.Exists())
-	require.Equal(t, val.Bool(), cfg.CheckDatastoreThrottle.Enabled)
-
 	val = res.Get("properties.checkDatastoreThrottle.properties.threshold.default")
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), cfg.CheckDatastoreThrottle.Threshold)
@@ -1297,10 +1350,6 @@ func TestDefaultConfig(t *testing.T) {
 	require.True(t, val.Exists())
 	require.Equal(t, val.String(), cfg.CheckDatastoreThrottle.Duration.String())
 
-	val = res.Get("properties.listObjectsDatastoreThrottle.properties.enabled.default")
-	require.True(t, val.Exists())
-	require.Equal(t, val.Bool(), cfg.ListObjectsDatastoreThrottle.Enabled)
-
 	val = res.Get("properties.listObjectsDatastoreThrottle.properties.threshold.default")
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), cfg.ListObjectsDatastoreThrottle.Threshold)
@@ -1308,10 +1357,6 @@ func TestDefaultConfig(t *testing.T) {
 	val = res.Get("properties.listObjectsDatastoreThrottle.properties.duration.default")
 	require.True(t, val.Exists())
 	require.Equal(t, val.String(), cfg.ListObjectsDatastoreThrottle.Duration.String())
-
-	val = res.Get("properties.listUsersDatastoreThrottle.properties.enabled.default")
-	require.True(t, val.Exists())
-	require.Equal(t, val.Bool(), cfg.ListUsersDatastoreThrottle.Enabled)
 
 	val = res.Get("properties.listUsersDatastoreThrottle.properties.threshold.default")
 	require.True(t, val.Exists())
@@ -1498,7 +1543,7 @@ func TestHTTPHeaders(t *testing.T) {
 	httpClient := retryablehttp.NewClient()
 	t.Cleanup(httpClient.HTTPClient.CloseIdleConnections)
 
-	var testCases = map[string]struct {
+	testCases := map[string]struct {
 		httpVerb      string
 		httpPath      string
 		httpJSONBody  string

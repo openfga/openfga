@@ -18,7 +18,6 @@ import (
 	weightedGraph "github.com/openfga/language/pkg/go/graph"
 
 	"github.com/openfga/openfga/internal/concurrency"
-	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/condition/eval"
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/stack"
@@ -225,27 +224,21 @@ type ResolutionMetadata struct {
 	// The number of times we are expanding from each node to find set of objects
 	DispatchCounter *atomic.Uint32
 
-	// WasThrottled indicates whether the request was throttled
-	WasThrottled *atomic.Bool
+	// DispatchThrottled indicates whether the request was throttled by dispatch count
+	DispatchThrottled *atomic.Bool
 
 	// WasWeightedGraphUsed indicates whether the weighted graph was used as the algorithm for the ReverseExpand request.
 	WasWeightedGraphUsed *atomic.Bool
 
 	// The number of times internal check was called for the optimization path
 	CheckCounter *atomic.Uint32
-
-	// Temporary solution to indicate whether shadow list objects query should be run.
-	// For queries with Infinite weight, the weighted graph implementation falls back
-	// to the original code, making any comparison useless.
-	ShouldRunShadowQuery *atomic.Bool
 }
 
 func NewResolutionMetadata() *ResolutionMetadata {
 	return &ResolutionMetadata{
 		DispatchCounter:      new(atomic.Uint32),
-		WasThrottled:         new(atomic.Bool),
+		DispatchThrottled:    new(atomic.Bool),
 		WasWeightedGraphUsed: new(atomic.Bool),
-		ShouldRunShadowQuery: new(atomic.Bool),
 		CheckCounter:         new(atomic.Uint32),
 	}
 }
@@ -431,27 +424,6 @@ func (c *ReverseExpandQuery) execute(
 				resultChan,
 				sourceUserType,
 			)
-		}
-	}
-
-	// NOTE: this is temporary to ensure that the ListObjects shadow query doesn't run unnecessarily.
-	// For cases where the query is weight INF, reverse_expand_weighted falls back to original reverse_expand,
-	// so there is no value in running a shadow query after the main query completes.
-	// This block will hit on the first pass through reverse_expand, and it marks ShouldRunShadowQuery based on
-	// whether the shadow query will actually run the code we want to test.
-	if !req.skipWeightedGraph {
-		req.skipWeightedGraph = true // ensure we don't do this on subsequent recursive calls
-		resolutionMetadata.ShouldRunShadowQuery.Store(true)
-
-		typeRel := tuple.ToObjectRelationString(targetObjRef.GetType(), targetObjRef.GetRelation())
-		node, ok := c.typesystem.GetNode(typeRel)
-		if !ok {
-			resolutionMetadata.ShouldRunShadowQuery.Store(false)
-		} else {
-			weight, _ := node.GetWeight(sourceUserType)
-			if weight == weightedGraph.Infinite {
-				resolutionMetadata.ShouldRunShadowQuery.Store(false)
-			}
 		}
 	}
 
@@ -672,22 +644,14 @@ LoopOnIterator:
 			break LoopOnIterator
 		}
 
-		condEvalResult, err := eval.EvaluateTupleCondition(ctx, tk, c.typesystem, req.Context)
+		cond, _ := c.typesystem.GetCondition(tk.GetCondition().GetName())
+		condMet, err := eval.EvaluateTupleCondition(ctx, tk, cond, req.Context)
 		if err != nil {
 			errs = errors.Join(errs, err)
 			continue
 		}
 
-		if !condEvalResult.ConditionMet {
-			if len(condEvalResult.MissingParameters) > 0 {
-				errs = errors.Join(errs, condition.NewEvaluationError(
-					tk.GetCondition().GetName(),
-					fmt.Errorf("tuple '%s' is missing context parameters '%v'",
-						tuple.TupleKeyToString(tk),
-						condEvalResult.MissingParameters),
-				))
-			}
-
+		if !condMet {
 			continue
 		}
 
@@ -774,7 +738,7 @@ func (c *ReverseExpandQuery) throttle(ctx context.Context, currentNumDispatch ui
 		attribute.Bool("is_throttled", shouldThrottle))
 
 	if shouldThrottle {
-		metadata.WasThrottled.Store(true)
+		metadata.DispatchThrottled.Store(true)
 		c.dispatchThrottlerConfig.Throttler.Throttle(ctx)
 	}
 }
