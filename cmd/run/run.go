@@ -942,16 +942,23 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		s.Logger.Info("gRPC server shut down.")
 	}()
 
-	// Path for Unix domain socket listener for the internal HTTP-to-gRPC proxy.
-	udsPath := filepath.Join(os.TempDir(), fmt.Sprintf("openfga-grpc-%d.sock", os.Getpid()))
-
+	var udsPath string
 	var httpServer *http.Server
 	if config.HTTP.Enabled {
+		// Path for Unix domain socket listener for the internal HTTP-to-gRPC proxy.
+		udsPath = filepath.Join(os.TempDir(), fmt.Sprintf("openfga-grpc-%d.sock", os.Getpid()))
+
 		_ = os.Remove(udsPath) // clean up stale socket file
 
 		rawUDSLis, err := net.Listen("unix", udsPath)
 		if err != nil {
 			return fmt.Errorf("failed to listen on unix socket: %w", err)
+		}
+
+		// Restrict access to this socket to only the file owner.
+		if err := os.Chmod(udsPath, 0600); err != nil {
+			rawUDSLis.Close()
+			return fmt.Errorf("failed to set unix socket permissions: %w", err)
 		}
 
 		udsLis := &addrOverrideListener{
