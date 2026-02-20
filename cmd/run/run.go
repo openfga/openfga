@@ -952,18 +952,22 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	var udsDir string
 	var httpServer *http.Server
 	if config.HTTP.Enabled {
-		var addr string
-		if runtime.GOOS != "windows" {
+		addr := config.GRPC.Addr
+		switch runtime.GOOS {
+		case "windows":
+		default:
 			// Path for Unix domain socket listener for the internal HTTP-to-gRPC proxy.
-			udsDir, err := os.MkdirTemp("", fmt.Sprintf("openfga-grpc-%d-*", os.Getpid()))
+			udsDir, err := os.MkdirTemp("", fmt.Sprintf("openfga-%d-*", os.Getpid()))
 			if err != nil {
-				return fmt.Errorf("failed to create temporary directory for unix socket: %w", err)
+				s.Logger.Warn("failed to create temporary directory for unix socket", zap.Error(err))
+				break
 			}
 			udsPath := filepath.Join(udsDir, "grpc.sock")
 
 			rawUDSLis, err := net.Listen("unix", udsPath)
 			if err != nil {
-				return fmt.Errorf("failed to listen on unix socket: %w", err)
+				s.Logger.Warn("failed to listen on unix socket", zap.Error(err))
+				break
 			}
 
 			udsLis := &addrOverrideListener{
@@ -979,8 +983,6 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 				}
 			}()
 			addr = "unix://" + udsPath
-		} else {
-			addr = config.GRPC.Addr
 		}
 
 		grpc_runtime.DefaultContextTimeout = serverconfig.DefaultContextTimeout(config)
