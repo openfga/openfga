@@ -606,11 +606,8 @@ func (s *ServerContext) buildServerOpts(ctx context.Context, config *serverconfi
 	return serverOpts, prometheusMetrics, nil
 }
 
-func (s *ServerContext) dialGrpc(config *serverconfig.Config) (*grpc.ClientConn, context.CancelFunc) {
-	dialOpts := []grpc.DialOption{
-		// nolint:staticcheck // ignoring gRPC deprecations
-		grpc.WithBlock(),
-	}
+func (s *ServerContext) dialGrpc(config *serverconfig.Config) *grpc.ClientConn {
+	dialOpts := []grpc.DialOption{}
 	if config.Trace.Enabled {
 		dialOpts = append(dialOpts, grpc.WithStatsHandler(otelgrpc.NewClientHandler()))
 	}
@@ -624,14 +621,11 @@ func (s *ServerContext) dialGrpc(config *serverconfig.Config) (*grpc.ClientConn,
 		dialOpts = append(dialOpts, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	}
 
-	timeoutCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-
-	// nolint:staticcheck // ignoring gRPC deprecations
-	conn, err := grpc.DialContext(timeoutCtx, config.GRPC.Addr, dialOpts...)
+	conn, err := grpc.NewClient(config.GRPC.Addr, dialOpts...)
 	if err != nil {
-		s.Logger.Fatal("failed to connect to gRPC server", zap.Error(err))
+		s.Logger.Fatal("failed to create gRPC client connection", zap.Error(err))
 	}
-	return conn, cancel
+	return conn
 }
 
 func (s *ServerContext) runHTTPServer(ctx context.Context, config *serverconfig.Config, grpcConn *grpc.ClientConn) (*http.Server, error) {
@@ -959,8 +953,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	if config.HTTP.Enabled {
 		runtime.DefaultContextTimeout = serverconfig.DefaultContextTimeout(config)
 
-		grpcConn, ctxCancel := s.dialGrpc(config)
-		defer ctxCancel()
+		grpcConn := s.dialGrpc(config)
 		defer grpcConn.Close()
 
 		httpServer, err = s.runHTTPServer(ctx, config, grpcConn)

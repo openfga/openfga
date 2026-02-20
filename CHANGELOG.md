@@ -10,6 +10,9 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Added
 - Set ListObjects pipeline as the default enabled algorithm, can be disabled by setting the `listObjects-pipeline-enabled` to `false`. [#2921](https://github.com/openfga/openfga/pull/2921)
 
+### Changed
+- Migrate `grpc.DialContext` to `grpc.NewClient` for grpc-gateway client [#2714](https://github.com/openfga/openfga/pull/2714)
+
 ### Security
 - Bump [`grpc-health-probe`](https://github.com/grpc-ecosystem/grpc-health-probe) to [v0.4.45](https://github.com/grpc-ecosystem/grpc-health-probe/releases/tag/v0.4.45) to address nvd.nist.gov/vuln/detail/CVE-2025-68121 affecting `grpc_health_probe`.
 
@@ -135,8 +138,8 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Improve performance by allowing weight 2 optimization if the directly assignable userset types are of different types. [#2645](https://github.com/openfga/openfga/pull/2645)
 - Update ListObjects' check resolver to use correct environment variable. [#2653](https://github.com/openfga/openfga/pull/2653)
 - !!REQUIRES MIGRATION!! Collation specification for queries dependent on sort order. [#2661](https://github.com/openfga/openfga/pull/2661)
-    - PostgreSQL is non-disruptive.
-    - MySQL requires a shared lock on the tuple table during the transaction.
+  - PostgreSQL is non-disruptive.
+  - MySQL requires a shared lock on the tuple table during the transaction.
 
 ## [1.9.5] - 2025-08-15
 ### Fixed
