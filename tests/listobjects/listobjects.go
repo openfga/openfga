@@ -38,9 +38,8 @@ type listObjectTests struct {
 }
 
 type testParams struct {
-	schemaVersion   string
-	client          tests.ClientInterface
-	pipelineEnabled bool
+	schemaVersion string
+	client        tests.ClientInterface
 }
 
 // stage is a stage of a test. All stages will be run in a single store.
@@ -67,9 +66,8 @@ func RunMatrixTests(t *testing.T, engine string, experimentalsEnabled bool, clie
 	t.Run("test_matrix_"+engine+"_experimental_"+strconv.FormatBool(experimentalsEnabled), func(t *testing.T) {
 		t.Parallel()
 		runTestMatrix(t, testParams{
-			schemaVersion:   typesystem.SchemaVersion1_1,
-			client:          client,
-			pipelineEnabled: !experimentalsEnabled,
+			schemaVersion: typesystem.SchemaVersion1_1,
+			client:        client,
 		})
 	})
 }
@@ -79,7 +77,7 @@ func RunAllTests(t *testing.T, client tests.ClientInterface) {
 	t.Run("RunAll", func(t *testing.T) {
 		t.Run("ListObjects", func(t *testing.T) {
 			t.Parallel()
-			runTests(t, testParams{schemaVersion: typesystem.SchemaVersion1_1, client: client, pipelineEnabled: true})
+			runTests(t, testParams{schemaVersion: typesystem.SchemaVersion1_1, client: client})
 		})
 	})
 }
@@ -137,15 +135,10 @@ func listObjectsAssertion(ctx context.Context, t *testing.T, params testParams, 
 				Context: assertion.Context,
 			})
 
-			switch {
-			case assertion.ErrorCode == 0:
+			switch assertion.ErrorCode {
+			case 0:
 				require.NoError(t, err, detailedInfo)
 				require.ElementsMatch(t, assertion.Expectation, resp.GetObjects(), detailedInfo)
-			case !params.pipelineEnabled:
-				require.Error(t, err, detailedInfo)
-				e, ok := status.FromError(err)
-				require.True(t, ok, detailedInfo)
-				require.Equal(t, assertion.WithoutPipelineErrorCode, int(e.Code()), detailedInfo)
 			default:
 				require.Error(t, err, detailedInfo)
 				e, ok := status.FromError(err)
@@ -186,15 +179,10 @@ func listObjectsAssertion(ctx context.Context, t *testing.T, params testParams, 
 			streamingErr := wg.Wait()
 			require.NoError(t, err)
 
-			switch {
-			case assertion.ErrorCode == 0:
+			switch assertion.ErrorCode {
+			case 0:
 				require.NoError(t, streamingErr, detailedInfo)
 				require.ElementsMatch(t, assertion.Expectation, streamedObjectIDs, detailedInfo)
-			case !params.pipelineEnabled:
-				require.Error(t, streamingErr, detailedInfo)
-				e, ok := status.FromError(streamingErr)
-				require.True(t, ok, detailedInfo)
-				require.Equal(t, assertion.WithoutPipelineErrorCode, int(e.Code()), detailedInfo)
 			default:
 				require.Error(t, streamingErr, detailedInfo)
 				e, ok := status.FromError(streamingErr)
@@ -202,7 +190,7 @@ func listObjectsAssertion(ctx context.Context, t *testing.T, params testParams, 
 				require.Equal(t, assertion.ErrorCode, int(e.Code()), detailedInfo)
 			}
 
-			if assertion.ErrorCode == 0 && assertion.WithoutPipelineErrorCode == 0 {
+			if assertion.ErrorCode == 0 {
 				// assert 3: each object in the response of ListObjects should return check -> true
 				for _, object := range resp.GetObjects() {
 					checkResp, err := params.client.Check(ctx, &openfgav1.CheckRequest{
