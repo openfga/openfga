@@ -12,7 +12,8 @@ import (
 	"net/http/pprof"
 	"os"
 	"os/signal"
-	goruntime "runtime"
+	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -24,7 +25,7 @@ import (
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	grpcauth "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/auth"
 	grpc_recovery "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/recovery"
-	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
+	grpc_runtime "github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/cors"
@@ -604,11 +605,9 @@ func (s *ServerContext) buildServerOpts(ctx context.Context, config *serverconfi
 	return serverOpts, prometheusMetrics, nil
 }
 
-func (s *ServerContext) dialGrpc(config *serverconfig.Config) *grpc.ClientConn {
+func (s *ServerContext) dialGrpc(addr string, config *serverconfig.Config) *grpc.ClientConn {
 	dialOpts := []grpc.DialOption{}
-	if config.Trace.Enabled {
-		dialOpts = append(dialOpts, grpc.WithStatsHandler(otelgrpc.NewClientHandler()))
-	}
+
 	if config.GRPC.TLS.Enabled {
 		creds, err := credentials.NewClientTLSFromFile(config.GRPC.TLS.CertPath, "")
 		if err != nil {
@@ -619,7 +618,11 @@ func (s *ServerContext) dialGrpc(config *serverconfig.Config) *grpc.ClientConn {
 		dialOpts = append(dialOpts, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	}
 
-	conn, err := grpc.NewClient(config.GRPC.Addr, dialOpts...)
+	if config.Trace.Enabled {
+		dialOpts = append(dialOpts, grpc.WithStatsHandler(otelgrpc.NewClientHandler()))
+	}
+
+	conn, err := grpc.NewClient(addr, dialOpts...)
 	if err != nil {
 		s.Logger.Fatal("failed to create gRPC client connection", zap.Error(err))
 	}
@@ -627,21 +630,21 @@ func (s *ServerContext) dialGrpc(config *serverconfig.Config) *grpc.ClientConn {
 }
 
 func (s *ServerContext) runHTTPServer(ctx context.Context, config *serverconfig.Config, grpcConn *grpc.ClientConn) (*http.Server, error) {
-	muxOpts := []runtime.ServeMuxOption{
-		runtime.WithForwardResponseOption(httpmiddleware.HTTPResponseModifier),
-		runtime.WithErrorHandler(func(c context.Context, sr *runtime.ServeMux, mm runtime.Marshaler, w http.ResponseWriter, r *http.Request, e error) {
+	muxOpts := []grpc_runtime.ServeMuxOption{
+		grpc_runtime.WithForwardResponseOption(httpmiddleware.HTTPResponseModifier),
+		grpc_runtime.WithErrorHandler(func(c context.Context, sr *grpc_runtime.ServeMux, mm grpc_runtime.Marshaler, w http.ResponseWriter, r *http.Request, e error) {
 			intCode := serverErrors.ConvertToEncodedErrorCode(status.Convert(e))
 			httpmiddleware.CustomHTTPErrorHandler(c, w, r, serverErrors.NewEncodedError(intCode, e.Error()))
 		}),
-		runtime.WithStreamErrorHandler(func(ctx context.Context, e error) *status.Status {
+		grpc_runtime.WithStreamErrorHandler(func(ctx context.Context, e error) *status.Status {
 			intCode := serverErrors.ConvertToEncodedErrorCode(status.Convert(e))
 			encodedErr := serverErrors.NewEncodedError(intCode, e.Error())
 			return status.Convert(encodedErr)
 		}),
-		runtime.WithHealthzEndpoint(healthv1pb.NewHealthClient(grpcConn)),
-		runtime.WithOutgoingHeaderMatcher(func(s string) (string, bool) { return s, true }),
+		grpc_runtime.WithHealthzEndpoint(healthv1pb.NewHealthClient(grpcConn)),
+		grpc_runtime.WithOutgoingHeaderMatcher(func(s string) (string, bool) { return s, true }),
 	}
-	mux := runtime.NewServeMux(muxOpts...)
+	mux := grpc_runtime.NewServeMux(muxOpts...)
 	if err := openfgav1.RegisterOpenFGAServiceHandler(ctx, mux, grpcConn); err != nil {
 		return nil, err
 	}
@@ -920,7 +923,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		zap.String("version", build.Version),
 		zap.String("date", build.Date),
 		zap.String("commit", build.Commit),
-		zap.String("go-version", goruntime.Version()),
+		zap.String("go-version", runtime.Version()),
 		zap.Any("config", config),
 	)
 
@@ -946,11 +949,45 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		s.Logger.Info("gRPC server shut down.")
 	}()
 
+	var udsDir string
 	var httpServer *http.Server
 	if config.HTTP.Enabled {
-		runtime.DefaultContextTimeout = serverconfig.DefaultContextTimeout(config)
+		addr := config.GRPC.Addr
+		switch runtime.GOOS {
+		case "windows":
+		default:
+			// Path for Unix domain socket listener for the internal HTTP-to-gRPC proxy.
+			udsDir, err := os.MkdirTemp("", fmt.Sprintf("openfga-%d-*", os.Getpid()))
+			if err != nil {
+				s.Logger.Warn("failed to create temporary directory for unix socket", zap.Error(err))
+				break
+			}
+			udsPath := filepath.Join(udsDir, "grpc.sock")
 
-		grpcConn := s.dialGrpc(config)
+			rawUDSLis, err := net.Listen("unix", udsPath)
+			if err != nil {
+				s.Logger.Warn("failed to listen on unix socket", zap.Error(err))
+				break
+			}
+
+			udsLis := &addrOverrideListener{
+				Listener: rawUDSLis,
+				addr:     &net.UnixAddr{Name: udsPath, Net: "unix"},
+			}
+
+			go func() {
+				if err := grpcServer.Serve(udsLis); err != nil {
+					if !errors.Is(err, grpc.ErrServerStopped) {
+						s.Logger.Fatal("failed to start internal gRPC server on unix socket", zap.Error(err))
+					}
+				}
+			}()
+			addr = "unix://" + udsPath
+		}
+
+		grpc_runtime.DefaultContextTimeout = serverconfig.DefaultContextTimeout(config)
+
+		grpcConn := s.dialGrpc(addr, config)
 		defer grpcConn.Close()
 
 		httpServer, err = s.runHTTPServer(ctx, config, grpcConn)
@@ -1000,6 +1037,10 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 
 	grpcServer.GracefulStop()
 
+	if err := os.RemoveAll(udsDir); err != nil && !os.IsNotExist(err) {
+		s.Logger.Warn("failed to remove unix socket file", zap.Error(err))
+	}
+
 	svr.Close()
 
 	authenticator.Close()
@@ -1011,6 +1052,30 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	s.Logger.Info("server exited. goodbye 👋")
 
 	return nil
+}
+
+// addrOverrideConn wraps a net.Conn to return a fixed remote address.
+// This is used for UDS connections where RemoteAddr() would otherwise be empty.
+type addrOverrideConn struct {
+	net.Conn
+	addr net.Addr
+}
+
+func (c *addrOverrideConn) RemoteAddr() net.Addr { return c.addr }
+
+// addrOverrideListener wraps a net.Listener so that accepted connections
+// report the given address as their RemoteAddr.
+type addrOverrideListener struct {
+	net.Listener
+	addr net.Addr
+}
+
+func (l *addrOverrideListener) Accept() (net.Conn, error) {
+	conn, err := l.Listener.Accept()
+	if err != nil {
+		return nil, err
+	}
+	return &addrOverrideConn{Conn: conn, addr: l.addr}, nil
 }
 
 func watchAndLoadCertificateWithCertWatcher(ctx context.Context, certPath, keyPath string, logger logger.Logger) (func(*tls.ClientHelloInfo) (*tls.Certificate, error), error) {
