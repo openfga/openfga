@@ -94,7 +94,7 @@ func NewRunCommand() *cobra.Command {
 	defaultConfig := serverconfig.DefaultConfig()
 	flags := cmd.Flags()
 
-	flags.StringSlice("experimentals", defaultConfig.Experimentals, fmt.Sprintf("a comma-separated list of experimental features to enable. Allowed values: %s, %s, %s, %s, %s", serverconfig.ExperimentalCheckOptimizations, serverconfig.ExperimentalListObjectsOptimizations, serverconfig.ExperimentalAccessControlParams, serverconfig.ExperimentalPipelineListObjects, serverconfig.ExperimentalDatastoreThrottling))
+	flags.StringSlice("experimentals", defaultConfig.Experimentals, fmt.Sprintf("a comma-separated list of experimental features to enable. Allowed values: %s, %s, %s, %s", serverconfig.ExperimentalCheckOptimizations, serverconfig.ExperimentalListObjectsOptimizations, serverconfig.ExperimentalAccessControlParams, serverconfig.ExperimentalDatastoreThrottling))
 
 	flags.Bool("access-control-enabled", defaultConfig.AccessControl.Enabled, "enable/disable the access control feature")
 
@@ -238,6 +238,8 @@ func NewRunCommand() *cobra.Command {
 
 	flags.Uint32("listObjects-max-results", defaultConfig.ListObjectsMaxResults, "the maximum results to return in non-streaming ListObjects API responses. If 0, all results can be returned")
 
+	flags.Bool("listObjects-pipeline-enabled", defaultConfig.ListObjectsPipelineEnabled, "enabling the ListObjects pipeline optimization algorithm, which can significantly improve the latency of ListObjects requests. When enabled, the server will attempt to resolve intermediate nodes in the ListObjects resolution tree concurrently. This optimization is most effective for workloads with large and complex authorization models, but may not suit all cases. Can be disabled if it causes increased resource usage.")
+
 	flags.Duration("listUsers-deadline", defaultConfig.ListUsersDeadline, "the timeout deadline for serving ListUsers requests. If 0, there is no deadline")
 
 	flags.Uint32("listUsers-max-results", defaultConfig.ListUsersMaxResults, "the maximum results to return in ListUsers API responses. If 0, all results can be returned")
@@ -287,7 +289,7 @@ func NewRunCommand() *cobra.Command {
 
 	flags.Uint32("check-dispatch-throttling-max-threshold", defaultConfig.CheckDispatchThrottling.MaxThreshold, "define the maximum dispatch threshold beyond which a Check requests will be throttled. 0 will use the 'check-dispatch-throttling-threshold' value as maximum")
 
-	flags.Bool("listObjects-dispatch-throttling-enabled", defaultConfig.ListObjectsDispatchThrottling.Enabled, "enable throttling when a ListObjects request's number of dispatches is high. Enabling this feature will prioritize dispatched requests requiring less than the configured dispatch threshold over requests whose dispatch count exceeds the configured threshold.")
+	flags.Bool("listObjects-dispatch-throttling-enabled", defaultConfig.ListObjectsDispatchThrottling.Enabled, "enable throttling when a ListObjects request's number of dispatches is high. Enabling this feature will prioritize dispatched requests requiring less than the configured dispatch threshold over requests whose dispatch count exceeds the configured threshold. Only applies when pipeline is disabled.")
 
 	flags.Duration("listObjects-dispatch-throttling-frequency", defaultConfig.ListObjectsDispatchThrottling.Frequency, "defines how frequent ListObjects dispatch throttling will be evaluated. Frequency controls how frequently throttled dispatch ListObjects requests are dispatched.")
 
@@ -604,11 +606,8 @@ func (s *ServerContext) buildServerOpts(ctx context.Context, config *serverconfi
 	return serverOpts, prometheusMetrics, nil
 }
 
-func (s *ServerContext) dialGrpc(config *serverconfig.Config) (*grpc.ClientConn, context.CancelFunc) {
-	dialOpts := []grpc.DialOption{
-		// nolint:staticcheck // ignoring gRPC deprecations
-		grpc.WithBlock(),
-	}
+func (s *ServerContext) dialGrpc(config *serverconfig.Config) *grpc.ClientConn {
+	dialOpts := []grpc.DialOption{}
 	if config.Trace.Enabled {
 		dialOpts = append(dialOpts, grpc.WithStatsHandler(otelgrpc.NewClientHandler()))
 	}
@@ -622,14 +621,11 @@ func (s *ServerContext) dialGrpc(config *serverconfig.Config) (*grpc.ClientConn,
 		dialOpts = append(dialOpts, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	}
 
-	timeoutCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-
-	// nolint:staticcheck // ignoring gRPC deprecations
-	conn, err := grpc.DialContext(timeoutCtx, config.GRPC.Addr, dialOpts...)
+	conn, err := grpc.NewClient(config.GRPC.Addr, dialOpts...)
 	if err != nil {
-		s.Logger.Fatal("failed to connect to gRPC server", zap.Error(err))
+		s.Logger.Fatal("failed to create gRPC client connection", zap.Error(err))
 	}
-	return conn, cancel
+	return conn
 }
 
 func (s *ServerContext) runHTTPServer(ctx context.Context, config *serverconfig.Config, grpcConn *grpc.ClientConn) (*http.Server, error) {
@@ -870,6 +866,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		server.WithReadChangesMaxPageSize(config.ReadChangesMaxPageSize),
 		server.WithListObjectsDeadline(config.ListObjectsDeadline),
 		server.WithListObjectsMaxResults(config.ListObjectsMaxResults),
+		server.WithListObjectsPipelineEnabled(config.ListObjectsPipelineEnabled),
 		server.WithListUsersDeadline(config.ListUsersDeadline),
 		server.WithListUsersMaxResults(config.ListUsersMaxResults),
 		server.WithMaxConcurrentReadsForListObjects(config.MaxConcurrentReadsForListObjects),
@@ -956,8 +953,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	if config.HTTP.Enabled {
 		runtime.DefaultContextTimeout = serverconfig.DefaultContextTimeout(config)
 
-		grpcConn, ctxCancel := s.dialGrpc(config)
-		defer ctxCancel()
+		grpcConn := s.dialGrpc(config)
 		defer grpcConn.Close()
 
 		httpServer, err = s.runHTTPServer(ctx, config, grpcConn)

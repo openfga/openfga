@@ -1108,6 +1108,7 @@ type usersets-user
     define userset_cond_to_computed_cond: [directs-user#computed_cond with xcond]
     define userset_cond_to_computed_wild: [directs-user#computed_wild with xcond]
     define userset_cond_to_computed_wild_cond: [directs-user#computed_wild_cond with xcond]
+    define userset_direct_and_direct_wild: [directs-user#direct_and_direct_wild]
     define userset_to_or_computed: [directs-user#or_computed]
     define userset_to_or_computed_no_cond: [directs-user#or_computed_no_cond]
     define userset_to_butnot_computed: [directs-user#butnot_computed]

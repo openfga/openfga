@@ -73,15 +73,9 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 	}
 	defer checkResolverCloser()
 
-	q, err := commands.NewListObjectsQueryWithShadowConfig(
+	q, err := commands.NewListObjectsQuery(
 		s.datastore,
 		checkResolver,
-		commands.NewShadowListObjectsQueryConfig(
-			commands.WithShadowListObjectsQueryEnabled(s.featureFlagClient.Boolean(serverconfig.ExperimentalShadowListObjects, req.GetStoreId())),
-			commands.WithShadowListObjectsQueryTimeout(s.shadowListObjectsQueryTimeout),
-			commands.WithShadowListObjectsQueryMaxDeltaItems(s.shadowListObjectsQueryMaxDeltaItems),
-			commands.WithShadowListObjectsQueryLogger(s.logger),
-		),
 		storeID,
 		commands.WithLogger(s.logger),
 		commands.WithListObjectsDeadline(s.listObjectsDeadline),
@@ -101,11 +95,14 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 			s.listObjectsDatastoreThrottleThreshold,
 			s.listObjectsDatastoreThrottleDuration,
 		),
-		commands.WithListObjectsPipelineEnabled(s.featureFlagClient.Boolean(serverconfig.ExperimentalPipelineListObjects, storeID)),
-		commands.WithListObjectsChunkSize(s.listObjectsChunkSize),
-		commands.WithListObjectsBufferSize(s.listObjectsBufferSize),
-		commands.WithListObjectsNumProcs(s.listObjectsNumProcs),
-		commands.WithListObjectsPipeExtension(s.listObjectsPipeExtendAfter, s.listObjectsPipeMaxExtensions),
+		commands.WithListObjectsPipelineEnabled(s.listObjectsPipelineEnabled),
+		commands.WithListObjectsChunkSize(s.listObjectsPipelineConfig.ChunkSize),
+		commands.WithListObjectsBufferSize(s.listObjectsPipelineConfig.Buffer.Capacity),
+		commands.WithListObjectsNumProcs(s.listObjectsPipelineConfig.NumProcs),
+		commands.WithListObjectsPipeExtension(
+			s.listObjectsPipelineConfig.Buffer.ExtendAfter,
+			s.listObjectsPipelineConfig.Buffer.MaxExtensions,
+		),
 		commands.WithFeatureFlagClient(s.featureFlagClient),
 	)
 	if err != nil {
@@ -242,15 +239,9 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 	}
 	defer checkResolverCloser()
 
-	q, err := commands.NewListObjectsQueryWithShadowConfig(
+	q, err := commands.NewListObjectsQuery(
 		s.datastore,
 		checkResolver,
-		commands.NewShadowListObjectsQueryConfig(
-			commands.WithShadowListObjectsQueryEnabled(s.featureFlagClient.Boolean(serverconfig.ExperimentalShadowListObjects, storeID)),
-			commands.WithShadowListObjectsQueryTimeout(s.shadowListObjectsQueryTimeout),
-			commands.WithShadowListObjectsQueryMaxDeltaItems(s.shadowListObjectsQueryMaxDeltaItems),
-			commands.WithShadowListObjectsQueryLogger(s.logger),
-		),
 		storeID,
 		commands.WithLogger(s.logger),
 		commands.WithListObjectsDeadline(s.listObjectsDeadline),
@@ -264,11 +255,14 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 		commands.WithResolveNodeLimit(s.resolveNodeLimit),
 		commands.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
 		commands.WithMaxConcurrentReads(s.maxConcurrentReadsForListObjects),
-		commands.WithListObjectsPipelineEnabled(s.featureFlagClient.Boolean(serverconfig.ExperimentalPipelineListObjects, storeID)),
-		commands.WithListObjectsChunkSize(s.listObjectsChunkSize),
-		commands.WithListObjectsBufferSize(s.listObjectsBufferSize),
-		commands.WithListObjectsNumProcs(s.listObjectsNumProcs),
-		commands.WithListObjectsPipeExtension(s.listObjectsPipeExtendAfter, s.listObjectsPipeMaxExtensions),
+		commands.WithListObjectsPipelineEnabled(s.listObjectsPipelineEnabled),
+		commands.WithListObjectsChunkSize(s.listObjectsPipelineConfig.ChunkSize),
+		commands.WithListObjectsBufferSize(s.listObjectsPipelineConfig.Buffer.Capacity),
+		commands.WithListObjectsNumProcs(s.listObjectsPipelineConfig.NumProcs),
+		commands.WithListObjectsPipeExtension(
+			s.listObjectsPipelineConfig.Buffer.ExtendAfter,
+			s.listObjectsPipelineConfig.Buffer.MaxExtensions,
+		),
 		commands.WithFeatureFlagClient(s.featureFlagClient),
 	)
 	if err != nil {

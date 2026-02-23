@@ -8,6 +8,28 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 ### Added
+- Set ListObjects pipeline as the default enabled algorithm, can be disabled by setting the `listObjects-pipeline-enabled` to `false`. [#2921](https://github.com/openfga/openfga/pull/2921)
+
+### Changed
+- Migrate `grpc.DialContext` to `grpc.NewClient` for grpc-gateway client [#2714](https://github.com/openfga/openfga/pull/2714)
+
+### Security
+- Bump [`grpc-health-probe`](https://github.com/grpc-ecosystem/grpc-health-probe) to [v0.4.45](https://github.com/grpc-ecosystem/grpc-health-probe/releases/tag/v0.4.45) to address nvd.nist.gov/vuln/detail/CVE-2025-68121 affecting `grpc_health_probe`.
+
+## [1.11.5] - 2026-02-11
+### Changed
+- If PGPASSFILE exists it is read upon every connection attempt instead of a single time upon application start. This restores pre-v1.11.x behavior. [#2914](https://github.com/openfga/openfga/pull/2914)
+
+### Fixed
+- Update toolchain go version to 1.25.7 to address [CVE-2025-68121](https://nvd.nist.gov/vuln/detail/CVE-2025-68121) affecting go std lib. [#2922](https://github.com/openfga/openfga/pull/2922)
+
+## [1.11.4] - 2026-02-10
+### Fixed
+- Reverted recent changes made to internal/planner/thompson.go that caused a regression in specific scenarios. [#2915](https://github.com/openfga/openfga/pull/2915)
+- Upgrade otel/sdk to v1.40.0 to address [CVE](https://security.snyk.io/vuln/SNYK-GOLANG-GOOPENTELEMETRYIOOTELSDKRESOURCE-15182758) in earlier versions. [#2919](https://github.com/openfga/openfga/pull/2919)
+
+## [1.11.3] - 2026-01-28
+### Added
 - Add configuration option to limit max type system cache size. [2744](https://github.com/openfga/openfga/pull/2744)
 - Add OTEL_* env var support to existing otel env vars. [#2825](https://github.com/openfga/openfga/pull/2825)
 - Add configurable server-side validation for ReadChanges page size. The default max page size remains 100 to maintain backward compatibility, and can be configured via `--readChanges-max-page-size` CLI flag or `OPENFGA_READ_CHANGES_MAX_PAGE_SIZE` environment variable. [#2887](https://github.com/openfga/openfga/pull/2887)
@@ -22,6 +44,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - ListUsers will now properly get datastore throttled if enabled. [#2846](https://github.com/openfga/openfga/pull/2846)
 - Cache controller now uses the logger provided to the server instead of always using a no-op logger. [#2847](https://github.com/openfga/openfga/pull/2847)
 - Typesystem invalidate model with empty intersection and union. [#2865](https://github.com/openfga/openfga/pull/2865)
+- Ordered iterator to iterate tuples correctly. [#2898](https://github.com/openfga/openfga/pull/2898)
 
 ## [1.11.2] - 2025-12-04
 ### Fixed
@@ -115,8 +138,8 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Improve performance by allowing weight 2 optimization if the directly assignable userset types are of different types. [#2645](https://github.com/openfga/openfga/pull/2645)
 - Update ListObjects' check resolver to use correct environment variable. [#2653](https://github.com/openfga/openfga/pull/2653)
 - !!REQUIRES MIGRATION!! Collation specification for queries dependent on sort order. [#2661](https://github.com/openfga/openfga/pull/2661)
-    - PostgreSQL is non-disruptive.
-    - MySQL requires a shared lock on the tuple table during the transaction.
+  - PostgreSQL is non-disruptive.
+  - MySQL requires a shared lock on the tuple table during the transaction.
 
 ## [1.9.5] - 2025-08-15
 ### Fixed
@@ -1503,7 +1526,10 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
 - Memory storage adapter implementation
 - Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.11.2...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.11.5...HEAD
+[1.11.5]: https://github.com/openfga/openfga/compare/v1.11.4...v1.11.5
+[1.11.4]: https://github.com/openfga/openfga/compare/v1.11.3...v1.11.4
+[1.11.3]: https://github.com/openfga/openfga/compare/v1.11.2...v1.11.3
 [1.11.2]: https://github.com/openfga/openfga/compare/v1.11.1...v1.11.2
 [1.11.1]: https://github.com/openfga/openfga/compare/v1.11.0...v1.11.1
 [1.11.0]: https://github.com/openfga/openfga/compare/v1.10.5...v1.11.0
