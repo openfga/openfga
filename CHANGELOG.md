@@ -9,7 +9,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ## [Unreleased]
 ### Changed
 - Migrate `grpc.DialContext` to `grpc.NewClient` for grpc-gateway client [#2714](https://github.com/openfga/openfga/pull/2714)
-- HTTP server now communicates with gRPC server internally over UDS instead of TCP socket. When running container image using the `--read-only` option, the `--tmpfs /tmp` option must be set. [#2937](https://github.com/openfga/openfga/pull/2937)
+- HTTP server now communicates with gRPC server internally over UDS instead of TCP socket. When running container image using the `--read-only` option, the `--tmpfs /tmp` option must be set to make use of this functionality. When a UDS cannot be established, the client automatically falls back to TCP. [#2937](https://github.com/openfga/openfga/pull/2937)
 
 ### Security
 - Bump [`grpc-health-probe`](https://github.com/grpc-ecosystem/grpc-health-probe) to [v0.4.45](https://github.com/grpc-ecosystem/grpc-health-probe/releases/tag/v0.4.45) to address nvd.nist.gov/vuln/detail/CVE-2025-68121 affecting `grpc_health_probe`.
