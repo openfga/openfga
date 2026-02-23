@@ -91,10 +91,12 @@ docker pull openfga/openfga
 docker run -p 8080:8080 -p 3000:3000 openfga/openfga run
 ```
 
-> [!IMPORTANT]
-> When running the Docker image using the `--read-only` option, the `--tmpfs` option must also be set. For example `--tmpfs /tmp`.
+> [!INFO]
+> When the HTTP server is enabled, it will attempt to establish an internal client connection to the gRPC server via unix domain socket.
+> When it is not possible to establish a UDS, the client connection automatically falls back to using a TCP socket.
 >
-> This is necessary for internal communication between the HTTP server and gRPC server.
+> If running the Docker image using the `--read-only` option, the `--tmpfs` option must also be set in order to enabled use of the unix domain socket.
+> For example `--tmpfs /tmp`
 
 ### Docker Compose
 
