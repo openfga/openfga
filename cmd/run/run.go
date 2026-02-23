@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/pprof"
+	"net/netip"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -605,14 +606,40 @@ func (s *ServerContext) buildServerOpts(ctx context.Context, config *serverconfi
 	return serverOpts, prometheusMetrics, nil
 }
 
-func (s *ServerContext) dialGrpc(addr string, config *serverconfig.Config) *grpc.ClientConn {
+func (s *ServerContext) dialLocalGrpc(network, address string, config *serverconfig.Config) *grpc.ClientConn {
+	const loopback = "127.0.0.1"
+
+	var addr string
+
+	switch network {
+	case "unix":
+		addr = "unix://" + address
+	default:
+		host, port, _ := net.SplitHostPort(address)
+
+		if host == "" {
+			host = loopback
+		}
+
+		ipAddr, err := netip.ParseAddr(host)
+		if err != nil {
+			ipAddr = netip.MustParseAddr(loopback)
+		}
+
+		if ipAddr.IsUnspecified() || !ipAddr.IsLoopback() {
+			host = loopback
+		}
+		addr = net.JoinHostPort(host, port)
+	}
+
 	dialOpts := []grpc.DialOption{}
 
 	if config.GRPC.TLS.Enabled {
-		creds, err := credentials.NewClientTLSFromFile(config.GRPC.TLS.CertPath, "")
-		if err != nil {
-			s.Logger.Fatal("failed to load gRPC credentials", zap.Error(err))
+		tlsConf := &tls.Config{
+			// connection is local, host verification is unnecessary
+			InsecureSkipVerify: true,
 		}
+		creds := credentials.NewTLS(tlsConf)
 		dialOpts = append(dialOpts, grpc.WithTransportCredentials(creds))
 	} else {
 		dialOpts = append(dialOpts, grpc.WithTransportCredentials(insecure.NewCredentials()))
@@ -952,42 +979,44 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	var udsDir string
 	var httpServer *http.Server
 	if config.HTTP.Enabled {
-		addr := config.GRPC.Addr
+		network, address := "tcp", config.GRPC.Addr
+
 		switch runtime.GOOS {
 		case "windows":
 		default:
 			// Path for Unix domain socket listener for the internal HTTP-to-gRPC proxy.
 			udsDir, err := os.MkdirTemp("", fmt.Sprintf("openfga-%d-*", os.Getpid()))
 			if err != nil {
-				s.Logger.Warn("failed to create temporary directory for unix socket", zap.Error(err))
+				s.Logger.Warn("http server failed to establish unix socket to grpc server, falling back to tcp", zap.Error(err))
 				break
 			}
 			udsPath := filepath.Join(udsDir, "grpc.sock")
 
-			rawUDSLis, err := net.Listen("unix", udsPath)
+			udsListener, err := net.Listen("unix", udsPath)
 			if err != nil {
-				s.Logger.Warn("failed to listen on unix socket", zap.Error(err))
+				s.Logger.Warn("http server failed to establish unix socket to grpc server, falling back to tcp", zap.Error(err))
 				break
 			}
 
-			udsLis := &addrOverrideListener{
-				Listener: rawUDSLis,
+			wrappedListener := &addrOverrideListener{
+				Listener: udsListener,
 				addr:     &net.UnixAddr{Name: udsPath, Net: "unix"},
 			}
 
 			go func() {
-				if err := grpcServer.Serve(udsLis); err != nil {
+				if err := grpcServer.Serve(wrappedListener); err != nil {
 					if !errors.Is(err, grpc.ErrServerStopped) {
 						s.Logger.Fatal("failed to start internal gRPC server on unix socket", zap.Error(err))
 					}
 				}
 			}()
-			addr = "unix://" + udsPath
+
+			network, address = "unix", udsPath
 		}
 
 		grpc_runtime.DefaultContextTimeout = serverconfig.DefaultContextTimeout(config)
 
-		grpcConn := s.dialGrpc(addr, config)
+		grpcConn := s.dialLocalGrpc(network, address, config)
 		defer grpcConn.Close()
 
 		httpServer, err = s.runHTTPServer(ctx, config, grpcConn)
