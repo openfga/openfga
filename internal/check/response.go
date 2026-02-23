@@ -9,6 +9,9 @@ type Response struct {
 }
 
 func (r *Response) GetAllowed() bool {
+	if r == nil {
+		return false
+	}
 	return r.Allowed
 }
 
