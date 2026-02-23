@@ -616,17 +616,12 @@ func (s *ServerContext) dialLocalGrpc(network, address string, config *servercon
 		addr = "unix://" + address
 	default:
 		host, port, _ := net.SplitHostPort(address)
-
 		if host == "" {
 			host = loopback
 		}
 
 		ipAddr, err := netip.ParseAddr(host)
-		if err != nil {
-			ipAddr = netip.MustParseAddr(loopback)
-		}
-
-		if ipAddr.IsUnspecified() || !ipAddr.IsLoopback() {
+		if err == nil && ipAddr.IsUnspecified() {
 			host = loopback
 		}
 		addr = net.JoinHostPort(host, port)
@@ -635,11 +630,22 @@ func (s *ServerContext) dialLocalGrpc(network, address string, config *servercon
 	dialOpts := []grpc.DialOption{}
 
 	if config.GRPC.TLS.Enabled {
-		tlsConf := &tls.Config{
-			// connection is local, host verification is unnecessary
-			InsecureSkipVerify: true,
+		var creds credentials.TransportCredentials
+
+		switch network {
+		case "unix":
+			tlsConf := &tls.Config{
+				// connection is unix domain socket, host verification is unnecessary
+				InsecureSkipVerify: true,
+			}
+			creds = credentials.NewTLS(tlsConf)
+		default:
+			var err error
+			creds, err = credentials.NewClientTLSFromFile(config.GRPC.TLS.CertPath, "")
+			if err != nil {
+				s.Logger.Fatal("failed to load gRPC credentials", zap.Error(err))
+			}
 		}
-		creds := credentials.NewTLS(tlsConf)
 		dialOpts = append(dialOpts, grpc.WithTransportCredentials(creds))
 	} else {
 		dialOpts = append(dialOpts, grpc.WithTransportCredentials(insecure.NewCredentials()))
