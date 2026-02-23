@@ -7714,12 +7714,6 @@ tests:
               relation: can_view
               user: user:maria
             errorCode: 2002
-        listObjectsAssertions:
-          - request:
-              type: resource
-              relation: can_view
-              user: user:maria
-            errorCode: 2002
         listUsersAssertions:
           - request:
               filters:
@@ -8301,12 +8295,6 @@ tests:
               relation: can_view
               user: user:maria
             errorCode: 2002
-        listObjectsAssertions:
-          - request:
-              type: resource
-              relation: can_view
-              user: user:maria
-            errorCode: 2002
   - name: err_and_true_return_err
     stages:
       - model: |
@@ -8428,12 +8416,6 @@ tests:
         checkAssertions:
           - tuple:
               object: resource:1
-              relation: can_view
-              user: user:maria
-            errorCode: 2002
-        listObjectsAssertions:
-          - request:
-              type: resource
               relation: can_view
               user: user:maria
             errorCode: 2002

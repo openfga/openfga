@@ -176,6 +176,7 @@ type Server struct {
 	readChangesMaxPageSize           int32
 	listObjectsDeadline              time.Duration
 	listObjectsMaxResults            uint32
+	listObjectsPipelineEnabled       bool
 	listObjectsPipelineConfig        pipeline.Config
 	listUsersDeadline                time.Duration
 	listUsersMaxResults              uint32
@@ -361,6 +362,14 @@ func WithListObjectsDeadline(deadline time.Duration) OpenFGAServiceV1Option {
 func WithListObjectsMaxResults(limit uint32) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.listObjectsMaxResults = limit
+	}
+}
+
+// WithListObjectsPipelineEnabled affects the ListObjects API and Streamed ListObjects API only.
+// It sets whether the ListObjects pipeline optimization algorithm is enabled.
+func WithListObjectsPipelineEnabled(enabled bool) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.listObjectsPipelineEnabled = enabled
 	}
 }
 
@@ -634,7 +643,7 @@ func (s *Server) IsAccessControlEnabled() bool {
 
 // WithListObjectsDispatchThrottlingEnabled sets whether dispatch throttling is enabled for List Objects requests.
 // Enabling this feature will prioritize dispatched requests requiring less than the configured dispatch
-// threshold over requests whose dispatch count exceeds the configured threshold.
+// threshold over requests whose dispatch count exceeds the configured threshold. Only applies when pipeline is disabled.
 func WithListObjectsDispatchThrottlingEnabled(enabled bool) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.listObjectsDispatchThrottlingEnabled = enabled
@@ -857,6 +866,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		resolveNodeBreadthLimit:          serverconfig.DefaultResolveNodeBreadthLimit,
 		listObjectsDeadline:              serverconfig.DefaultListObjectsDeadline,
 		listObjectsMaxResults:            serverconfig.DefaultListObjectsMaxResults,
+		listObjectsPipelineEnabled:       serverconfig.DefaultListObjectsPipelineEnabled,
 		listObjectsPipelineConfig:        pipeline.DefaultConfig(),
 		listUsersDeadline:                serverconfig.DefaultListUsersDeadline,
 		listUsersMaxResults:              serverconfig.DefaultListUsersMaxResults,

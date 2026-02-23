@@ -49,6 +49,7 @@ const (
 	DefaultListObjectsIteratorCacheMaxResults = 10000
 	DefaultListObjectsIteratorCacheTTL        = 10 * time.Second
 
+	DefaultListObjectsPipelineEnabled      = true
 	DefaultListObjectsOptimizationsEnabled = false
 
 	DefaultCacheControllerConfigEnabled = false
@@ -104,7 +105,6 @@ const (
 	ExperimentalShadowCheck         = "shadow_check"
 	ExperimentalShadowListObjects   = "shadow_list_objects"
 	ExperimentalDatastoreThrottling = "datastore_throttling"
-	ExperimentalPipelineListObjects = "pipeline_list_objects"
 )
 
 type DatastoreMetricsConfig struct {
@@ -325,6 +325,10 @@ type Config struct {
 	// before the non-streaming ListObjects API will respond to the client.
 	// This is to protect the server from misuse of the ListObjects endpoints.
 	ListObjectsMaxResults uint32
+
+	// ListObjectsPipelineEnabled defines whether the ListObjects pipeline optimization
+	// algorithm is enabled.
+	ListObjectsPipelineEnabled bool
 
 	// ListUsersDeadline defines the maximum amount of time to accumulate ListUsers results
 	// before the server will respond. This is to protect the server from misuse of the
@@ -711,6 +715,7 @@ func DefaultConfig() *Config {
 		AccessControl:                             AccessControlConfig{Enabled: false, StoreID: "", ModelID: ""},
 		ListObjectsDeadline:                       DefaultListObjectsDeadline,
 		ListObjectsMaxResults:                     DefaultListObjectsMaxResults,
+		ListObjectsPipelineEnabled:                DefaultListObjectsPipelineEnabled,
 		ListUsersMaxResults:                       DefaultListUsersMaxResults,
 		ListUsersDeadline:                         DefaultListUsersDeadline,
 		ReadChangesMaxPageSize:                    DefaultReadChangesMaxPageSize,
