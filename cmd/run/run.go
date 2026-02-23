@@ -1012,6 +1012,12 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 				}
 			}()
 
+			defer func() {
+				if err := os.RemoveAll(udsDir); err != nil && !os.IsNotExist(err) {
+					s.Logger.Warn("failed to remove unix socket file", zap.Error(err))
+				}
+			}()
+
 			network, address = "unix", udsPath
 		}
 
@@ -1066,10 +1072,6 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	}
 
 	grpcServer.GracefulStop()
-
-	if err := os.RemoveAll(udsDir); err != nil && !os.IsNotExist(err) {
-		s.Logger.Warn("failed to remove unix socket file", zap.Error(err))
-	}
 
 	svr.Close()
 
