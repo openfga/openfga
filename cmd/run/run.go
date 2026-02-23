@@ -998,6 +998,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 				s.Logger.Warn("http server failed to establish unix socket to grpc server, falling back to tcp", zap.Error(err))
 				break
 			}
+			defer udsListener.Close()
 
 			wrappedListener := &addrOverrideListener{
 				Listener: udsListener,
