@@ -985,7 +985,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		case "windows":
 		default:
 			// Path for Unix domain socket listener for the internal HTTP-to-gRPC proxy.
-			udsDir, err := os.MkdirTemp("", fmt.Sprintf("openfga-%d-*", os.Getpid()))
+			udsDir, err = os.MkdirTemp("", fmt.Sprintf("openfga-%d-*", os.Getpid()))
 			if err != nil {
 				s.Logger.Warn("http server failed to establish unix socket to grpc server, falling back to tcp", zap.Error(err))
 				break
@@ -994,6 +994,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 
 			udsListener, err := net.Listen("unix", udsPath)
 			if err != nil {
+				_ = os.RemoveAll(udsDir)
 				s.Logger.Warn("http server failed to establish unix socket to grpc server, falling back to tcp", zap.Error(err))
 				break
 			}
