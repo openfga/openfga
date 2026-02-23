@@ -1184,6 +1184,10 @@ func TestDefaultConfig(t *testing.T) {
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), cfg.ListObjectsMaxResults)
 
+	val = res.Get("properties.listObjectsPipelineEnabled.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.Bool(), cfg.ListObjectsPipelineEnabled)
+
 	val = res.Get("properties.listUsersDeadline.default")
 	require.True(t, val.Exists())
 	require.Equal(t, val.String(), cfg.ListUsersDeadline.String())
