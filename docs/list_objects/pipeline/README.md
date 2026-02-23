@@ -1,38 +1,54 @@
 # Pipeline Traversal
 
-The Pipeline instance is initialized by invoking `New()` with a `Backend` and options to set `chunkSize`, `bufferSize`, `numProcs`, `pipeExtendAfter` and `pipeMaxExtensions`.
+The Pipeline instance is initialized by invoking `New()` with a weighted authorization model `Graph`, an `ObjectReader` implementation, and functional options to configure `chunkSize`, `bufferCapacity`, `numProcs`, and pipe extension settings.
 
-Eg:
 ```go
-backend := &pipeline.Backend{
-    Datastore:  ds,
-    StoreID:    req.GetStoreId(),
-    TypeSystem: typesys,
-    Context:    req.GetContext(),
-    Graph:      wgraph,
-    Preference: req.GetConsistency(),
-}
+validator := obj.NewValidator(ctx, typesys, req.GetContext())
 
-pl := pipeline.New(backend, WithBufferSize(bufferSize), WithChunkSize(chunkSize), WithNumProcs(numProcs), WithPipeExtension(pipeExtendAfter, pipeMaxExtensions))
+reader := obj.NewReader(
+    ds,
+    req.GetStoreId(),
+    obj.WithConsistency(req.GetConsistency()),
+    obj.WithValidator(validator),
+)
+
+pl := pipeline.New(
+    wgraph,
+    reader,
+    pipeline.WithBufferCapacity(bufferCapacity),
+    pipeline.WithChunkSize(chunkSize),
+    pipeline.WithNumProcs(numProcs),
+    pipeline.WithPipeExtension(pipeExtendAfter, pipeMaxExtensions),
+)
 ```
 
-Once initialized, a ListObjects request can be processed by invoking `pl.Build()` with the object type and relation as the `source`, and the user and ID as the `target`. 
-```go
-target, ok := pl.Target("user", "01ARZ3NDEKTSV4RRFFQ69G5FAV")
-source, ok := pl.Source("object", "zero")
+Storage access is abstracted behind the `reader`, which handles creating a storage iterator, and applying a validation pipeline (condition evaluation + invalid tuple filtering). This abstraction decouples the pipeline's graph traversal from the specifics of the datastore.
 
-seq := pl.Build(context.Background(), source, target)
+Once initialized, a ListObjects request can be processed by invoking `pl.Expand()` with a `Spec` containing the object type, relation, and user.
+
+```go
+spec := pipeline.Spec{
+    ObjectType: "object",
+    Relation:   "zero",
+    User:       "user:01ARZ3NDEKTSV4RRFFQ69G5FAV",
+}
+
+seq, err := pl.Expand(context.Background(), spec)
+if err != nil {
+    return fmt.Errorf("pipeline error: %w", err)
+}
 
 var results []string
-for item := range seq {
-    if item.Err != nil {
-        fmt.Errorf("pipeline error: %w", item.Err)
+for object := range seq {
+    id, err := object.Object()
+    if err != nil {
+        return fmt.Errorf("pipeline error: %w", err)
     }
-    results = append(results, item.Value)
+    results = append(results, id)
 }
 ```
 
-The `Build()` method builds the pipeline workers by traversing the weighted graph in a DFS, starting at the source object type and relation, creating a worker for each node until a node has no more edges, at which point it backtracks and continues from the previous unexplored edge. Nodes are stored as pointers in the workers, so nodes that were previously traversed are not traversed again.
+The `Expand()` method builds the pipeline workers by traversing the weighted graph in a DFS, starting at the source object type and relation, creating a worker for each node until a node has no more edges, at which point it backtracks and continues from the previous unexplored edge. Nodes are stored as pointers in the workers, so nodes that were previously traversed are not traversed again.
 
 Eg, for the following model, with the source `object#zero` and the target `user:01ARZ3NDEKTSV4RRFFQ69G5FAV`, workers would be added in numerical order. Note that there are missing numbers for when a union/intersection/exclusion node would be added, as well as when the user node is added. Additionally, in the case of a TTU edge, the parent node is not added as a worker.
 ```yaml
@@ -68,7 +84,34 @@ This model can also be represented as a graph:
     >
 </p>
 
-Workers connect the graph path from source to target using sender and listener edges. Each worker processes messages from its senders and forwards results to its listeners. For example in the above model, the `org#five` worker node would have the sender edges `[]edge{{ from: "org#five", to: "user" }}` and the listener edges `[]edge{{ from: "intersection", to: "org#five" }, { from: "union", to: "org#five" }}` in pseudocode. Workers also set up node and edge type specific message handling, remain open while their senders may still be fetching or processing messages, and close themselves and their listeners once processing is complete. For the `object#zero` path to `user` through the `org#one` relation, we can use the following graph to trace message passing:
+## Worker and Resolver Architecture
+
+Each node in the authorization graph is represented by a **worker**. Workers communicate through typed **sender** and **listener** connections backed by bounded ring-buffer pipes. Each worker processes messages from its senders and forwards results to its listeners.
+
+For example in the above model, the `org#five` worker node would have the sender edges `[]edge{{ from: "org#five", to: "user" }}` and the listener edges `[]edge{{ from: "intersection", to: "org#five" }, { from: "union", to: "org#five" }}` in pseudocode.
+
+Every worker delegates its processing logic to a **resolver**. Resolvers implement the `resolver` interface with a single `Resolve(ctx, senders, listeners)` method. The `createResolver()` function in `util.go` selects the appropriate resolver based on the node type:
+
+| Node Type | Resolver | Behavior |
+|---|---|---|
+| `SpecificType`, `SpecificTypeAndRelation`, `SpecificTypeWildcard`, `LogicalDirectGrouping`, `LogicalTTUGrouping` | `baseResolver` | General-purpose concurrent processing with output deduplication |
+| Operator (`union`) | `baseResolver` | Same as above; union is a natural merge of results |
+| Operator (`intersection`) | `intersectionResolver` | Collects all inputs then computes set intersection |
+| Operator (`exclusion`) | `exclusionResolver` | Streams include side, collects exclude side, then filters |
+
+### Edge Interpreter
+
+Within each resolver, an **edge interpreter** dispatches the actual storage queries (or identity pass-throughs) based on the edge type. The `edgeInterpreter` contains three handlers:
+
+| Handler | Edge Types | Behavior |
+|---|---|---|
+| `directEdgeHandler` | `DirectEdge` | Queries the datastore using the edge's relation definition and conditions |
+| `ttuEdgeHandler` | `TTUEdge` | Resolves via the tupleset relation; looks up the tupleset node and its target edge in the graph |
+| `identityEdgeHandler` | `ComputedEdge`, `RewriteEdge`, `DirectLogicalEdge`, `TTULogicalEdge` | Passes items through unchanged without querying the datastore |
+
+### Message Flow
+
+For the `object#zero` path to `user` through the `org#one` relation, we can use the following graph to trace message passing:
 
 ```mermaid
 graph TB
@@ -92,7 +135,7 @@ graph TB
   O0 --> id2([Output])
 ```
 
-When the pipeline is building, an initial message is sent to all of the nodes with the same user type as the target, ie `user` receives the message `user:01ARZ3NDEKTSV4RRFFQ69G5FAV`, to kick off the message processing. As a result, any of the workers with senders coming from `user` receive the message `user:01ARZ3NDEKTSV4RRFFQ69G5FAV` and start making queries to the database to determine whether the edge they're going to has objects that relate to the user, eg `org#five`. If `org#five` does have objects for the user type, those objects are sent to their listeners in batches up to the size defined for the pipeline `chunkSize` and processed in a single database query. Finally, when messages are returned that connect to the source worker, in this case `object#zero`, or if errors are encountered anywhere along the way, they are returned in the resulting stream of `Item` values.
+When the pipeline starts, an initial message is sent to all of the nodes with the same user type as the target, ie `user` receives the message `user:01ARZ3NDEKTSV4RRFFQ69G5FAV`, to kick off the message processing. As a result, any of the workers with senders coming from `user` receive the message `user:01ARZ3NDEKTSV4RRFFQ69G5FAV`. Their resolvers dispatch to the edge interpreter, which uses the `directEdgeHandler` to query the datastore for objects matching the edge's relation, eg `org#five`. If `org#five` does have objects for the user type, those objects are broadcast to the worker's listeners in batches up to the `chunkSize`. Finally, when messages reach the source worker (`object#zero`), or if errors are encountered anywhere along the way, they are returned in the resulting stream of `Item` values.
 
 After construction, the pipeline waits for all workers to finish processing their goroutines, at which time the workers cancel their contexts and close all of their listeners. Closing the listeners uses a broadcast-style mechanism to mark pipes as done, wake any goroutines blocked on writes or reads, and end their goroutines.
 
@@ -101,6 +144,8 @@ A few parts of the algorithm have special considerations to note when the model 
 ## Intersection and Exclusion
 
 During intersection and exclusion evaluation, execution is blocked until all messages are processed since their operation cannot be logically performed until the relations on either side are processed. This blocking behavior can create a performance bottleneck, especially when a branch of the intersection/exclusion takes significantly longer to evaluate than the other, as the faster branch must wait for the slower one to complete. For example, in the following relation from earlier
+
+### Intersection
 
 ```yaml
 type org
@@ -117,7 +162,9 @@ In order to determine whether there are objects in the `org#three` relation that
 { "user": "user:01ARZ3NDEKTSV4RRFFQ69G5FAV", "relation": "seven", "object": "org:a" }
 ```
 
-For exclusion, we can convert the above relation
+### Exclusion
+
+For exclusion, we can convert the above relation:
 
 ```yaml
 type org
@@ -177,34 +224,40 @@ type object
 </p>
 
 The pipeline algorithm addresses the concerns of cyclic edges in a few ways:
-1. Input deduplication
-   - When an edge is part of a cycle, an input buffer is shared across all goroutines processing that sender to prevent re-processing the same items as they loop through the cycle.
-3. Shared message tracking and status
-    - Cyclic edges share the same message tracking and status instances, whereas non-cyclic edges create new instances. This enables coordinating shutdown where: 
-    - Shared message tracking counts in-flight messages across the entire cycle
-    - Shared status enables each worker to report that it is finished non-cyclical work
-4. Separate processing queue and termination logic
-    - A cyclic edge uses a separate processing queue to allow it to coordinate shutdown logic. When the cyclic edge is handling termination, it waits for all of the status entries to be done so that all of the non-cyclical messages are known to be finished processing, and for the shared tracker to finish so that all in-flight messages are also known to be processed.
+
+1. **Input deduplication**
+   - When an edge is cyclical, an input buffer is shared across all goroutines processing that sender to prevent re-processing the same items as they loop through the cycle. Items that have already been seen by the sender are skipped.
+2. **Shared message tracking and status**
+    - When the graph is first being traversed and a cyclical path is encountered, a cycle group is created. All workers that belong to the same cycle join this group so they can coordinate with each other.
+    - The group contains two shared primitives: a **message counter** that tracks how many messages are currently in-flight across the entire cycle, and a **status pool** that each worker uses to report whether it still has non-cyclical work remaining.
+    - Every time a message is sent into the cycle the counter is incremented, and every time a message finishes processing it is decremented. Workers outside of a cycle get their own independent single-member group, so their lifecycle does not interfere with the cycle's coordination.
+3. **Coordinated shutdown sequence**
+    - Each worker in the cycle first processes all of its non-cyclical senders and waits for them to complete.
+    - Once a worker's non-cyclical inputs are exhausted, it signals to the group that it is ready to shut down.
+    - The worker then waits until every other worker in the cycle has also signaled ready. At this point, no new messages can enter the cycle from outside.
+    - Next, the worker waits for the shared in-flight message counter to reach zero, meaning every message that was circulating through the cycle has been fully processed.
+    - Finally, the worker closes its listeners, which unblocks any goroutines that were still waiting on full buffers for the cyclical senders, and waits for those goroutines to finish.
 
 ## Performance Tuning
 
-The pipeline's performance can be tuned using three configuration settings:
-1. `numProcs` limits the number of messages that are processed concurrently and sent to worker's senders to get database entries for the objects that relate to the messages. 
-    - Larger means more goroutines competing for messages from the same sender
-    - Smaller means fewer goroutines, less contention
-2. `bufferSize` limits the number of messages that a sender can send to its listeners once the sender has received the objects from the database.
+The pipeline's performance can be tuned using the following configuration settings:
+
+1. **`numProcs`** (`WithNumProcs`) limits the number of messages that are processed concurrently and sent to worker's senders to get database entries for the objects that relate to the messages. 
+    - Larger means more goroutines competing for messages from the same sender, increasing throughput but also scheduling overhead
+    - Smaller means fewer goroutines, less contention but potentially lower throughput
+2. **`bufferCapacity`** (`WithBufferCapacity`) sets the capacity of the ring-buffer pipes that connect workers. This limits how many messages a sender can queue for its listeners before blocking.
     - Implemented as a circular ring buffer for efficient message passing between workers
-    - Must be a power of 2. The internal ring buffers employ specific optimizations that make this a requirement
+    - Must be a power of 2. The internal ring buffers employ bit-masking optimizations that make this a requirement
     - Larger means more messages can queue which results in less blocking but more memory usage
     - Smaller means more backpressure, ie more blocking and less memory usage
-3. `chunkSize` limits the number of objects that are packed into each message to be sent to the listeners and subsequently processed in batches by the database.
+3. **`chunkSize`** (`WithChunkSize`) limits the number of objects that are packed into each message to be sent to the listeners and subsequently processed in batches by the database.
     - The optimal value can vary depending on the query overhead of your database
     - Larger means fewer messages with more items per message, less overhead but larger memory usage per message
     - Smaller means more messages with fewer items per message, more overhead but less memory usage per message
-4. `pipeExtendAfter` and `pipeMaxExtensions` are settings for enabling dynamic growth of the internal buffers for the per-edge pipes that connect workers, disabled by default. These settings are used to reduce backpressure/deadlocks when downstream processing is slower than upstream sending.
+4. **`extendAfter`** and **`maxExtensions`** (`WithPipeExtension`) enable dynamic growth of the internal buffers for the per-edge pipes that connect workers, disabled by default. These settings are used to reduce backpressure/deadlocks when downstream processing is slower than upstream sending.
     - A pipe is extended only if a sender blocks for longer than the duration of `extendAfter`.
-    - Each extension doubles the pipe's internal `bufferSize` and caps the number of doublings by `maxExtensions`
-    - `extendAfter` can be set to `-1` for disabled, or any value greater for enabled
-    - `maxExtensions` can be set to `-1` for unbounded extensions, `0` for disabled, or any value greater for enabled
+    - Each extension doubles the pipe's internal capacity and caps the number of doublings by `maxExtensions`
+    - `extendAfter` can be set to a negative value for disabled, or any non-negative duration for enabled
+    - `maxExtensions` can be set to `-1` for unbounded extensions, `0` for disabled, or any positive value for a cap
     - Using these settings can help with bursty workloads, highly variable datastore latency, or uneven branch runtimes (eg, one side of an intersection/exclusion is much slower and causes backpressure)
     - However, using these settings can result in higher memory usage due to doubling the buffers of multiple edges
