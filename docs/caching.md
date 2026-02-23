@@ -175,26 +175,28 @@ Note that *any* Check request (if the cache controller TTL has passed since the 
 
 OpenFGA exposes the following metrics for caching:
 
-Metric Name                                               | [Type](https://prometheus.io/docs/concepts/metric_types/) | Description
-----------------------------------------------------------|-----------|------------------------------------------------------------
-`openfga_cache_item_count`                                | Gauge     | The current number of items stored in the cache
-`openfga_cache_item_removed_count_total`                  | Counter   | The total number of items removed (evicted/expired/deleted) from the cache
-`openfga_cachecontroller_cache_count_total`               | Counter   | The total number of cache controller requests triggered by Check.
-`openfga_cachecontroller_cache_hit_count_total`           | Counter   | The total number of cache controller requests triggered by Check within the cache controller TTL (i.e., no invalidation).
-`openfga_cachecontroller_cache_invalidation_count_total`  | Counter   | The total number of invalidation requests that invalidated iterator caches.
-`openfga_cachecontroller_invalidation_duration_ms_bucket` | Histogram | The duration (in ms) required for cache controller to find changes and invalidate labeled by whether invalidation is required and buckets of changes size.
-`openfga_cachecontroller_invalidation_duration_ms_count`  | "         | "
-`openfga_cachecontroller_invalidation_duration_ms_sum`    | "         | "
-`openfga_check_cache_count_total`                         | Counter   | The total number of calls to ResolveCheck with caching enabled (including any recursive calls).
-`openfga_check_cache_hit_count_total`                     | Counter   | The total number of valid Check Query cache hits for ResolveCheck (including any recursive calls).
-`openfga_check_cache_invalid_hit_count_total`             | Counter   | The total number of Check Query cache hits for ResolveCheck (including any recursive calls) that were discarded because they were invalidated.
-`openfga_current_iterator_cache_count`                    | Gauge     | The current number of cached iterator instances.
-`openfga_tuples_cache_count_total`                        | Counter   | The total number of created cached iterator instances.
-`openfga_tuples_cache_discard_count_total`                | Counter   | The total number of discards from cached iterator instances.
-`openfga_tuples_cache_hit_count_total`                    | Counter   | The total number of cache hits from cached iterator instances.
-`openfga_tuples_cache_size_bucket`                        | Histogram | The number of tuples cached from iterator cache entries.
-`openfga_tuples_cache_size_count`                         | "         | "
-`openfga_tuples_cache_size_sum`                           | "         | "
+Raw Metric Name                                           | Metric Name in Prometheus*                                | [Type](https://prometheus.io/docs/concepts/metric_types/) | Description
+----------------------------------------------------------|-----------------------------------------------------------|-----------|------------------------------------------------------------
+`openfga_cache_item_count`                                | `openfga_cache_item_count`                                | Gauge     | The current number of items stored in the cache
+`openfga_cache_item_removed_count`                        | `openfga_cache_item_removed_count_total`                  | Counter   | The total number of items removed (evicted/expired/deleted) from the cache
+`openfga_cachecontroller_cache_total_count`               | `openfga_cachecontroller_cache_count_total`               | Counter   | The total number of cache controller requests triggered by Check.
+`openfga_cachecontroller_cache_hit_count`                 | `openfga_cachecontroller_cache_hit_count_total`           | Counter   | The total number of cache controller requests triggered by Check within the cache controller TTL (i.e., no invalidation).
+`openfga_cachecontroller_cache_invalidation_count`        | `openfga_cachecontroller_cache_invalidation_count_total`  | Counter   | The total number of invalidation requests that invalidated iterator caches.
+`openfga_cachecontroller_invalidation_duration_ms_bucket` | `openfga_cachecontroller_invalidation_duration_ms_bucket` | Histogram | The duration (in ms) required for cache controller to find changes and invalidate labeled by whether invalidation is required and buckets of changes size.
+`openfga_cachecontroller_invalidation_duration_ms_count`  | `openfga_cachecontroller_invalidation_duration_ms_count`  | "         | "
+`openfga_cachecontroller_invalidation_duration_ms_sum`    | `openfga_cachecontroller_invalidation_duration_ms_sum`    | "         | "
+`openfga_check_cache_total_count`                         | `openfga_check_cache_count_total`                         | Counter   | The total number of calls to ResolveCheck with caching enabled (including any recursive calls).
+`openfga_check_cache_hit_count`                           | `openfga_check_cache_hit_count_total`                     | Counter   | The total number of valid Check Query cache hits for ResolveCheck (including any recursive calls).
+`openfga_check_cache_invalid_hit_count`                   | `openfga_check_cache_invalid_hit_count_total`             | Counter   | The total number of Check Query cache hits for ResolveCheck (including any recursive calls) that were discarded because they were invalidated.
+`openfga_current_iterator_cache_count`                    | `openfga_current_iterator_cache_count`                    | Gauge     | The current number of cached iterator instances.
+`openfga_tuples_cache_total_count`                        | `openfga_tuples_cache_count_total`                        | Counter   | The total number of created cached iterator instances.
+`openfga_tuples_cache_discard_count`                      | `openfga_tuples_cache_discard_count_total`                | Counter   | The total number of discards from cached iterator instances.
+`openfga_tuples_cache_hit_count`                          | `openfga_tuples_cache_hit_count_total`                    | Counter   | The total number of cache hits from cached iterator instances.
+`openfga_tuples_cache_size_bucket`                        | `openfga_tuples_cache_size_bucket`                        | Histogram | The number of tuples cached from iterator cache entries.
+`openfga_tuples_cache_size_count`                         | `openfga_tuples_cache_size_count`                         | "         | "
+`openfga_tuples_cache_size_sum`                           | `openfga_tuples_cache_size_sum`                           | "         | "
+
+\* Prometheus automatically applies [naming conventions](https://prometheus.io/docs/practices/naming/) to metric names when viewing metrics in its UI or other interfaces that pull from it (e.g., Grafana UI).
 
 ## Best Practices
 
@@ -207,8 +209,8 @@ The different caches must explicitly enabled - see [OpenFGA Configuration Option
 1. **Gradual rollout**: Enable caching incrementally, starting with query cache
 2. **Monitor memory usage**: Track cache memory consumption
 3. **Set up alerting**: Alert on low cache hit rates or high eviction rates
-   - Check Query Cache hit rate: `openfga_check_cache_hit_count_total / openfga_check_cache_count_total`
-   - Iterator Cache hit rate: `openfga_tuples_cache_hit_count_total / openfga_tuples_cache_count_total`
+   - Check Query Cache hit rate: `openfga_check_cache_hit_count_total / openfga_check_cache_count_total`*
+   - Iterator Cache hit rate: `openfga_tuples_cache_hit_count_total / openfga_tuples_cache_count_total`*
 4. **Regular tuning**: Periodically review and adjust cache settings based on metrics
 
 ### Cache Sizing
