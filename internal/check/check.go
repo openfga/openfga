@@ -187,6 +187,9 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, edges []
 		ids = append(ids, id)
 		if res, ok := r.isCached(req.GetConsistency(), id); ok {
 			concurrency.TrySendThroughChannel(ctx, ResponseMsg{ID: id, Res: res}, out)
+			if res.GetAllowed() {
+				break
+			}
 			continue
 		}
 		pool.Go(func() error {
