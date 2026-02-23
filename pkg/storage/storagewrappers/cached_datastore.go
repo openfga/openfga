@@ -2,7 +2,6 @@ package storagewrappers
 
 import (
 	"context"
-	"errors"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -504,57 +503,57 @@ func (c *cachedIterator) Stop() {
 		return
 	}
 
-	c.wg.Add(1)
-	go func() {
-		defer c.wg.Done()
-		defer c.iter.Stop()
+	// c.wg.Add(1)
+	// go func() {
+	// 	defer c.wg.Done()
+	// 	defer c.iter.Stop()
 
-		// if cache is already set by another instance, we don't need to drain the iterator
-		_, ok := findInCache(c.cache, c.cacheKey, c.invalidStoreKey, c.invalidEntityKeys)
-		if ok {
-			c.iter.Stop()
-			c.tuples = nil
-			return
-		}
+	// 	// if cache is already set by another instance, we don't need to drain the iterator
+	// 	_, ok := findInCache(c.cache, c.cacheKey, c.invalidStoreKey, c.invalidEntityKeys)
+	// 	if ok {
+	// 		c.iter.Stop()
+	// 		c.tuples = nil
+	// 		return
+	// 	}
 
-		// if there was an invalidation _after_ the initialization, it shouldn't be stored
-		if isInvalidAt(c.cache, c.initializedAt, c.invalidStoreKey, c.invalidEntityKeys) {
-			c.iter.Stop()
-			c.tuples = nil
-			return
-		}
+	// 	// if there was an invalidation _after_ the initialization, it shouldn't be stored
+	// 	if isInvalidAt(c.cache, c.initializedAt, c.invalidStoreKey, c.invalidEntityKeys) {
+	// 		c.iter.Stop()
+	// 		c.tuples = nil
+	// 		return
+	// 	}
 
-		c.records = make([]*storage.TupleRecord, 0, len(c.tuples))
+	// 	c.records = make([]*storage.TupleRecord, 0, len(c.tuples))
 
-		for _, t := range c.tuples {
-			c.addToBuffer(t)
-		}
+	// 	for _, t := range c.tuples {
+	// 		c.addToBuffer(t)
+	// 	}
 
-		// prevent goroutine if iterator was already consumed
-		if _, err := c.iter.Head(c.ctx); errors.Is(err, storage.ErrIteratorDone) {
-			c.flush()
-			return
-		}
+	// 	// prevent goroutine if iterator was already consumed
+	// 	if _, err := c.iter.Head(c.ctx); errors.Is(err, storage.ErrIteratorDone) {
+	// 		c.flush()
+	// 		return
+	// 	}
 
-		// prevent draining on the same iterator across multiple requests
-		_, _, _ = c.sf.Do(c.cacheKey, func() (interface{}, error) {
-			for {
-				// attempt to drain the iterator to have it ready for subsequent calls
-				t, err := c.iter.Next(c.ctx)
-				if err != nil {
-					if errors.Is(err, storage.ErrIteratorDone) {
-						c.flush()
-					}
-					break
-				}
-				// if the size is exceeded we don't add anymore and exit
-				if !c.addToBuffer(t) {
-					break
-				}
-			}
-			return nil, nil
-		})
-	}()
+	// 	// prevent draining on the same iterator across multiple requests
+	// 	_, _, _ = c.sf.Do(c.cacheKey, func() (interface{}, error) {
+	// 		for {
+	// 			// attempt to drain the iterator to have it ready for subsequent calls
+	// 			t, err := c.iter.Next(c.ctx)
+	// 			if err != nil {
+	// 				if errors.Is(err, storage.ErrIteratorDone) {
+	// 					c.flush()
+	// 				}
+	// 				break
+	// 			}
+	// 			// if the size is exceeded we don't add anymore and exit
+	// 			if !c.addToBuffer(t) {
+	// 				break
+	// 			}
+	// 		}
+	// 		return nil, nil
+	// 	})
+	// }()
 }
 
 // Head see [storage.Iterator].Head.

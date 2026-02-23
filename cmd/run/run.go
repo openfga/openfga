@@ -383,7 +383,7 @@ func convertStringArrayToUintArray(stringArray []string) []uint {
 
 // telemetryConfig returns the function that must be called to shut down tracing.
 // The context provided to this function should be error-free, or shut down will be incomplete.
-func (s *ServerContext) telemetryConfig(config *serverconfig.Config) func() error {
+func (s *ServerContext) telemetryConfig(config *serverconfig.Config) func(ctx context.Context) error {
 	if config.Trace.Enabled {
 		s.Logger.Info(fmt.Sprintf("🕵 tracing enabled: sampling ratio is %v and sending traces to '%s', tls: %t", config.Trace.SampleRatio, config.Trace.OTLP.Endpoint, config.Trace.OTLP.TLS.Enabled))
 
@@ -403,15 +403,12 @@ func (s *ServerContext) telemetryConfig(config *serverconfig.Config) func() erro
 		}
 
 		tp := telemetry.MustNewTracerProvider(options...)
-		return func() error {
-			// can take up to 5 seconds to complete (https://github.com/open-telemetry/opentelemetry-go/blob/aebcbfcbc2962957a578e9cb3e25dc834125e318/sdk/trace/batch_span_processor.go#L97)
-			ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
-			defer cancel()
+		return func(ctx context.Context) error {
 			return errors.Join(tp.ForceFlush(ctx), tp.Shutdown(ctx))
 		}
 	}
 	otel.SetTracerProvider(noop.NewTracerProvider())
-	return func() error {
+	return func(ctx context.Context) error {
 		return nil
 	}
 }
@@ -913,6 +910,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		server.WithExperimentals(experimentals...),
 		server.WithAccessControlParams(config.AccessControl.Enabled, config.AccessControl.StoreID, config.AccessControl.ModelID, config.Authn.Method),
 		server.WithContext(ctx),
+		server.WithRequestTimeout(config.RequestTimeout),
 	)
 
 	s.Logger.Info(
@@ -971,7 +969,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	<-ctx.Done()
 	s.Logger.Info("attempting to shutdown gracefully...")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	if playground != nil {
@@ -1004,7 +1002,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 
 	authenticator.Close()
 
-	if err := tracerProviderCloser(); err != nil {
+	if err := tracerProviderCloser(ctx); err != nil {
 		s.Logger.Error("failed to shutdown tracing", zap.Error(err))
 	}
 

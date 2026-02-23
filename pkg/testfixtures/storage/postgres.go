@@ -40,6 +40,7 @@ var (
 			"-c", "wal_level=replica",
 			"-c", "max_wal_senders=3",
 			"-c", "max_replication_slots=3",
+			"-c", "max_connections=200",
 			"-c", "wal_keep_size=64MB",
 			"-c", "hot_standby=on",
 		},
