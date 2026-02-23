@@ -1012,6 +1012,9 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 			}
 
 			go func() {
+				// Having the same server listen on a second is intentional here.
+				// The HTTP server's client and external TCP gRPC clients should
+				// both share the same server.
 				if err := grpcServer.Serve(wrappedListener); err != nil {
 					if !errors.Is(err, grpc.ErrServerStopped) {
 						s.Logger.Fatal("failed to start internal gRPC server on unix socket", zap.Error(err))
