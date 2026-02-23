@@ -15,7 +15,7 @@ import (
 
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/condition/metrics"
-	"github.com/openfga/openfga/pkg/telemetry"
+	"github.com/openfga/openfga/internal/telemetry"
 	"github.com/openfga/openfga/pkg/tuple"
 )
 

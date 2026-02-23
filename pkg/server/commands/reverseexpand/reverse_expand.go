@@ -21,13 +21,13 @@ import (
 	"github.com/openfga/openfga/internal/condition/eval"
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/stack"
+	"github.com/openfga/openfga/internal/telemetry"
 	"github.com/openfga/openfga/internal/throttler"
 	"github.com/openfga/openfga/internal/throttler/threshold"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/logger"
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	"github.com/openfga/openfga/pkg/storage"
-	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
@@ -115,7 +115,6 @@ func (u *UserRefObjectRelation) String() string {
 }
 
 type UserRef struct {
-
 	// Types that are assignable to Ref
 	//  *UserRef_Object
 	//  *UserRef_TypedWildcard

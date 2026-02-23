@@ -10,20 +10,18 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/openfga/openfga/internal/build"
-	"github.com/openfga/openfga/pkg/telemetry"
+	"github.com/openfga/openfga/internal/telemetry"
 )
 
-var (
-	throttlingDelayMsHistogram = promauto.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace:                       build.ProjectName,
-		Name:                            "throttling_delay_ms",
-		Help:                            "Time spent waiting for dispatch throttling resolver",
-		Buckets:                         []float64{1, 3, 5, 10, 25, 50, 100, 1000, 5000}, // Milliseconds. Upper bound is config.UpstreamTimeout.
-		NativeHistogramBucketFactor:     1.1,
-		NativeHistogramMaxBucketNumber:  100,
-		NativeHistogramMinResetDuration: time.Hour,
-	}, []string{"grpc_service", "grpc_method", "throttler_name"})
-)
+var throttlingDelayMsHistogram = promauto.NewHistogramVec(prometheus.HistogramOpts{
+	Namespace:                       build.ProjectName,
+	Name:                            "throttling_delay_ms",
+	Help:                            "Time spent waiting for dispatch throttling resolver",
+	Buckets:                         []float64{1, 3, 5, 10, 25, 50, 100, 1000, 5000}, // Milliseconds. Upper bound is config.UpstreamTimeout.
+	NativeHistogramBucketFactor:     1.1,
+	NativeHistogramMaxBucketNumber:  100,
+	NativeHistogramMinResetDuration: time.Hour,
+}, []string{"grpc_service", "grpc_method", "throttler_name"})
 
 type Throttler interface {
 	Close()

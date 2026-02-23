@@ -19,11 +19,11 @@ import (
 	"github.com/openfga/openfga/internal/concurrency"
 	openfgaErrors "github.com/openfga/openfga/internal/errors"
 	"github.com/openfga/openfga/internal/planner"
+	"github.com/openfga/openfga/internal/telemetry"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/logger"
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	"github.com/openfga/openfga/pkg/storage"
-	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
@@ -1070,7 +1070,8 @@ func streamedLookupUsersetFromIterator(ctx context.Context, iter storage.TupleMa
 // This is used to find the intersection between userset from user and userset from object.
 func processUsersetMessage(userset string,
 	primarySet *hashset.Set,
-	secondarySet *hashset.Set) bool {
+	secondarySet *hashset.Set,
+) bool {
 	primarySet.Add(userset)
 	return secondarySet.Contains(userset)
 }
