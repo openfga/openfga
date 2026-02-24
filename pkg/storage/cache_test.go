@@ -814,13 +814,12 @@ func TestWriteInvariantCheckCacheKey(t *testing.T) {
 				},
 				Context: contextStruct,
 			},
-			output: " sp.fake_store_id/fake_model_id/document:1#viewer with condition_name 'key1:'true,@user:anne'key1:'true,",
+			output: "fake_model_id/document:1#viewer with condition_name 'key1:'true,@user:anne'key1:'true,",
 			error:  false,
 		},
 		"writer_error": {
 			writer: &ErrorStringWriter{TriggerAt: 0},
 			params: &CheckCacheKeyParams{},
-			output: "",
 			error:  true,
 		},
 	}
@@ -873,7 +872,7 @@ func TestWriteCheckCacheKey(t *testing.T) {
 				},
 				Context: contextStruct,
 			},
-			output: "document:1#can_view@user:anne sp.fake_store_id/fake_model_id/document:1#viewer with condition_name 'key1:'true,@user:anne'key1:'true,",
+			output: "document:1#can_view@user:annefake_model_id/document:1#viewer with condition_name 'key1:'true,@user:anne'key1:'true,",
 		},
 	}
 	for name, test := range cases {
