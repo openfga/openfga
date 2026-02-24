@@ -52,6 +52,8 @@ func (c *LocalChecker) weight2Userset(_ context.Context, req *ResolveCheckReques
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
 		cancellableCtx, cancel := context.WithCancel(ctx)
 		defer cancel()
+		// bla: [type#member]
+		// member: [user, user:*]
 
 		leftChans, err := produceLeftChannels(cancellableCtx, req, usersets, checkutil.BuildUsersetV2RelationFunc())
 		if err != nil {
@@ -200,6 +202,7 @@ ConsumerLoop:
 	return res, lastErr
 }
 
+// member: [user, user:*]
 func produceLeftChannels(
 	ctx context.Context,
 	req *ResolveCheckRequest,

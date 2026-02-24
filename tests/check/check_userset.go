@@ -326,9 +326,10 @@ var usersetCompleteTestingModelTest = []*stage{
 			},
 
 			{
-				Name:      "no_cond",
-				Tuple:     &openfgav1.TupleKey{Object: "usersets-user:uuctcc_1", Relation: "userset_cond_to_computed_cond", User: "user:uuctcc_2"},
-				ErrorCode: 2000,
+				Name:                 "no_cond",
+				Tuple:                &openfgav1.TupleKey{Object: "usersets-user:uuctcc_1", Relation: "userset_cond_to_computed_cond", User: "user:uuctcc_1"},
+				ErrorCode:            2000,
+				ListObjectsErrorCode: 2000,
 			},
 		},
 	},
@@ -902,7 +903,6 @@ var usersetCompleteTestingModelTest = []*stage{
 			},
 		},
 	},
-
 	{
 		Name: "usersets_userset_recursive_public_alg",
 		Tuples: []*openfgav1.TupleKey{
@@ -1533,15 +1533,15 @@ var usersetCompleteTestingModelTest = []*stage{
 				Expectation:          true,
 				ListObjectsErrorCode: 2000, // any tuple with user:* and a condition and missing context will be un-evaluable
 			},
-			/*
-				// Disable due to https://github.com/openfga/openfga/issues/2179
-				{
-					Name:                 "invalid_user_direct",
-					Tuple:                &openfgav1.TupleKey{Object: "usersets-user:nou_1", Relation: "nested_or_userset", User: "user:nou_2"},
-					Expectation:          false,
-					ListObjectsErrorCode: 2000, // any tuple with user:* and a condition and missing context will be un-evaluable
-				},
-			*/
+
+			// Disable due to https://github.com/openfga/openfga/issues/2179
+			//	{
+			//		Name:                 "invalid_user_direct",
+			//		Tuple:                &openfgav1.TupleKey{Object: "usersets-user:nou_1", Relation: "nested_or_userset", User: "user:nou_2"},
+			//		Expectation:          false,
+			//		ListObjectsErrorCode: 2000, // any tuple with user:* and a condition and missing context will be un-evaluable
+			//	},
+
 			{
 				Name:        "invalid_user_direct_cond",
 				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:nou_2", Relation: "nested_or_userset", User: "user:nou_1"},
