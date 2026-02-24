@@ -869,9 +869,9 @@ func (s *MemoryBackend) ListStores(ctx context.Context, options storage.ListStor
 	})
 
 	var err error
-	var from int64
+	var from int
 	if options.Pagination.From != "" {
-		from, err = strconv.ParseInt(options.Pagination.From, 10, 32)
+		from, err = strconv.Atoi(options.Pagination.From)
 		if err != nil {
 			return nil, "", err
 		}
@@ -880,10 +880,10 @@ func (s *MemoryBackend) ListStores(ctx context.Context, options storage.ListStor
 	if options.Pagination.PageSize > 0 {
 		pageSize = options.Pagination.PageSize
 	}
-	to := int(from) + pageSize
-	if len(stores) < to {
-		to = len(stores)
-	}
+
+	from = min(len(stores), from)
+	to := min(len(stores), from+pageSize)
+
 	res := stores[from:to]
 	if len(res) == 0 {
 		return nil, "", nil
