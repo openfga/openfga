@@ -680,7 +680,7 @@ func (s *MemoryBackend) ReadAuthorizationModels(ctx context.Context, store strin
 		}
 	}
 
-	from = min(from, len(models))
+	from = max(0, min(from, len(models)))
 	to := min(len(models), from+pageSize)
 	res := models[from:to]
 
@@ -881,7 +881,7 @@ func (s *MemoryBackend) ListStores(ctx context.Context, options storage.ListStor
 		pageSize = options.Pagination.PageSize
 	}
 
-	from = min(len(stores), from)
+	from = max(0, min(len(stores), from))
 	to := min(len(stores), from+pageSize)
 
 	res := stores[from:to]
