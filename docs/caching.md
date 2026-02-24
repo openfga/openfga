@@ -20,10 +20,10 @@ OpenFGA implements several complementary types of caching:
 
 - **What it caches**: Authorization decisions (allow/deny) for the overall Check request as well as for any intermediate ("sub-problem") Checks.
 - **Benefits**: Eliminates computation for repeated identical Checks or different Checks that share common relationship evaluations.
-- **Cache key**: `hash("{object}#{relation}@{user} sp.{storeID}/{modelID}[/{contextual_tuples_comma_separated}]")`
-  - E.g., `hash('plan:enterprise#subscriber_member@user:charles sp.01KFB9MX3X2BK3EP2CBJVX8JDC/01KFB9MX467JS5BRQWQXQXPD8Z/organization:cups#member@user:alice,organization:cups#member@user:charles')` = `17904216596666502988`
-  - Essentially, "does `<user>` have `<relation>` with `<object>` for `<storeID>` & `<modelID>` & these contextual tuples?"
-  - Note: this takes contextual tuples into account (since they may have influenced the allow/deny decision).
+- **Cache key**: `hash("{object}#{relation}@{user} sp.{storeID}/{modelID}[/{contextual_tuples_comma_separated}][{request_context_parameters}]")`
+  - E.g., `hash('document:1#can_view@user:anne sp.01KJ88987NFMQYBNHPZPDCJS60/01KJ88987ZHECAKE9DPG5YTMVM/document:1#viewer@user:anne,organization:acme#member@user:anne'dummy_context_parameter:'dummy_value,'user_ip:'192.168.0.1,')` = `17904216596666502988`
+  - Essentially, "does `<user>` have `<relation>` with `<object>` for `<storeID>` & `<modelID>` given these contextual tuples and these context parameters provided in the request?"
+  - Note: this takes contextual tuples & context parameters into account (since they may have influenced the allow/deny decision).
 
 #### Example
 
@@ -47,7 +47,7 @@ The Check Iterator Cache stores database query results (tuple iterators) used du
 - **What it caches**: Raw tuple query results from the database.
 - **Benefits**: Reduces database load by caching some of its results in-memory.
 
-Note: Iterator cache entries only cache DB results. Therefore, they do not take contextual tuples into account (since these are not stored in the DB). They do, however, take tuples with conditions into account (the condition is stored alongside the tuple in the cache entry).
+Note: Iterator cache entries only cache DB results. Therefore, they do not take contextual tuples or context parameters provided in the request into account (since these are not stored in the DB). They do, however, take tuples with conditions into account (since the condition and any context is stored alongside the tuple).
 
 Specifically, there are 3 types of iterator cache entries:
 
