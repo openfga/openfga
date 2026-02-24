@@ -114,7 +114,7 @@ Invalidation runs asynchronously (eventually consistent) and is triggered on:
 When the cache controller runs invalidation, it queries the database's changelog table for the most recent writes and saves the time of the most recent write. Then, it sets a cache entry of type `changelog` with key `cc.<storeID>` which contains the time of the latest write to the store. Now, invalidation is handled differently for query vs. iterator cache entries:
 
 - **Query Cache**: Whenever Check finds a query cache entry, it will compare it to the time in the `changelog` cache entry (i.e., the time of the last write to the store). The query cache entry is only used if it was set after the latest write. If it was set before the latest write, it can no longer be trusted and is considered invalid, forcing Check to recompute the result from the datastore. I.e., any write to the store will invalidate all previous Check query cache entries.
-- **Iterator Cache**: Invalidation will look at X latest store changes (currently 50) from the changelog and invalidate only the releveant iterator cache entries for each of those changes that are within the Check iterator cache TTL from now. For any changes outside of this window, any iterator cache entry that was set before would have expired by now. Three cases:
+- **Iterator Cache**: Invalidation will look at X latest store changes (currently 50) from the changelog and invalidate only the relevant iterator cache entries for each of those changes that are within the Check iterator cache TTL from now. For any changes outside of this window, any iterator cache entry that was set before would have expired by now. Three cases:
       1. If none of these changes are within the Check iterator cache TTL, no invalidation is necessary.
       2. If all of these changes are within the Check iterator cache TTL, all iterator cache entries are invalidated. This is done by setting a new cache entry of type `invalid_entity` with key `iq.<storeID>`; iterator cache entries are only used if they were set after the time this `invalid_entity` cache entry was set.
       3. If only some of these changes are within the Check iterator cache TTL, only the iterator cache entries affected by those changes are invalidated. This is done by setting two cache entries of type `invalid_entity` - one with key `iq.<storeID>-or/<object>#<relation>` (for object-relation DB iterators) and one with key `iq.<storeID>-otr/<user>|<objectType>` (for user-objectType DB iterators); when the code needs to go to the datastore, it will only use the iterator cache if the associated `invalid_entity` cache keys are not set.
@@ -202,7 +202,7 @@ Raw Metric Name                                           | Metric Name in Prome
 
 ### Enablement
 
-The different caches must explicitly enabled - see [OpenFGA Configuration Options](https://openfga.dev/docs/getting-started/setup-openfga/configuration) for more info.
+The different caches must be explicitly enabled - see [OpenFGA Configuration Options](https://openfga.dev/docs/getting-started/setup-openfga/configuration) for more info.
 
 ### Production Deployment
 
