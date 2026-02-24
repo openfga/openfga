@@ -664,7 +664,7 @@ func (s *MemoryBackend) ReadAuthorizationModels(ctx context.Context, store strin
 		return models[i].GetId() > models[j].GetId()
 	})
 
-	var from int64
+	var from int
 	continuationToken := ""
 	var err error
 
@@ -674,16 +674,14 @@ func (s *MemoryBackend) ReadAuthorizationModels(ctx context.Context, store strin
 	}
 
 	if options.Pagination.From != "" {
-		from, err = strconv.ParseInt(options.Pagination.From, 10, 32)
+		from, err = strconv.Atoi(options.Pagination.From)
 		if err != nil {
 			return nil, "", err
 		}
 	}
 
-	to := int(from) + pageSize
-	if len(models) < to {
-		to = len(models)
-	}
+	from = min(from, len(models))
+	to := min(len(models), from+pageSize)
 	res := models[from:to]
 
 	if to != len(models) {
