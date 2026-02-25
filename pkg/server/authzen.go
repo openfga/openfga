@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"regexp"
 	"strings"
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
@@ -22,6 +23,8 @@ import (
 // AuthZenAuthorizationModelIDHeader is the HTTP header name for specifying the authorization model ID.
 const AuthZenAuthorizationModelIDHeader = "Openfga-Authorization-Model-Id"
 
+var authZenAuthorizationModelIDPattern = regexp.MustCompile(`^[ABCDEFGHJKMNPQRSTVWXYZ0-9]{26}$`)
+
 // IsAuthZenEnabled returns true if the AuthZEN experimental feature is enabled for the given store.
 func (s *Server) IsAuthZenEnabled(storeID string) bool {
 	return s.featureFlagClient.Boolean(serverconfig.ExperimentalEnableAuthZen, storeID)
@@ -34,7 +37,10 @@ func getAuthorizationModelIDFromHeader(ctx context.Context) string {
 		// grpc-gateway converts header names to lowercase
 		headerKey := strings.ToLower(AuthZenAuthorizationModelIDHeader)
 		if values := md.Get(headerKey); len(values) > 0 && values[0] != "" {
-			return values[0]
+			authorizationModelID := strings.TrimSpace(values[0])
+			if authZenAuthorizationModelIDPattern.MatchString(authorizationModelID) {
+				return authorizationModelID
+			}
 		}
 	}
 	return ""
