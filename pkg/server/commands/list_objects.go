@@ -278,6 +278,10 @@ func NewListObjectsQuery(
 		query.optimizationsEnabled = true
 	}
 
+	if query.ff.Boolean(serverconfig.ExperimentalPipelineListObjects, storeID) {
+		query.pipelineEnabled = true
+	}
+
 	return query, nil
 }
 
