@@ -86,12 +86,11 @@ func (q *ActionSearchQuery) Execute(
 	user := fmt.Sprintf("%s:%s", req.GetSubject().GetType(), req.GetSubject().GetId())
 	object := fmt.Sprintf("%s:%s", req.GetResource().GetType(), req.GetResource().GetId())
 
-	// Sort relation names for consistent ordering
+	// Collect relation names
 	relationNames := make([]string, 0, len(relations))
 	for name := range relations {
 		relationNames = append(relationNames, name)
 	}
-	sort.Strings(relationNames)
 
 	// Build batch check request with all relations
 	checks := make([]*openfgav1.BatchCheckItem, 0, len(relationNames))
