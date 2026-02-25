@@ -95,6 +95,7 @@ const (
 	DefaultPlannerEvictionThreshold = 0
 	DefaultPlannerCleanupInterval   = 0
 
+	PipelineListObjectsOptOut            = "pipeline_list_objects_opt_out"
 	ExperimentalCheckOptimizations       = "enable-check-optimizations"
 	ExperimentalListObjectsOptimizations = "enable-list-objects-optimizations"
 	ExperimentalAccessControlParams      = "enable-access-control"
@@ -102,12 +103,11 @@ const (
 	// Moving forward, all experimental flags should follow the naming convention below:
 	// 1. Avoid using enable/disable prefixes.
 	// 2. Flag names should have only numbers, letters and underscores.
-	ExperimentalShadowCheck               = "shadow_check"
-	ExperimentalShadowListObjects         = "shadow_list_objects"
-	ExperimentalDatastoreThrottling       = "datastore_throttling"
-	ExperimentalPipelineListObjectsOptOut = "pipeline_list_objects_opt_out"
-	ExperimentalShadowWeightedGraphCheck  = "shadow_weighted_graph_check"
-	ExperimentalWeightedGraphCheck        = "weighted_graph_check"
+	ExperimentalShadowCheck              = "shadow_check"
+	ExperimentalShadowListObjects        = "shadow_list_objects"
+	ExperimentalDatastoreThrottling      = "datastore_throttling"
+	ExperimentalShadowWeightedGraphCheck = "shadow_weighted_graph_check"
+	ExperimentalWeightedGraphCheck       = "weighted_graph_check"
 )
 
 type DatastoreMetricsConfig struct {
