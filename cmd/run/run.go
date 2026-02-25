@@ -647,7 +647,7 @@ func (s *ServerContext) runHTTPServer(ctx context.Context, config *serverconfig.
 		runtime.WithOutgoingHeaderMatcher(func(s string) (string, bool) { return s, true }),
 		runtime.WithIncomingHeaderMatcher(func(key string) (string, bool) {
 			// Forward Openfga-Authorization-Model-Id header to gRPC metadata for AuthZEN endpoints
-			if key == "Openfga-Authorization-Model-Id" {
+			if key == server.AuthZenAuthorizationModelIDHeader {
 				return key, true
 			}
 			// Use default behavior for other headers
