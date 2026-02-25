@@ -3,6 +3,7 @@ package check
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -337,6 +338,9 @@ func TestResolveUnionEdges(t *testing.T) {
 				time.Sleep(10 * time.Millisecond)
 				return nil, storage.ErrNotFound
 			}).MaxTimes(2)
+
+		key := fmt.Sprintf("^c.%s|group:1|user:maria|group#admin.*$", storeID)
+		mockCache.EXPECT().Set(gomock.Regex(key), gomock.Any(), gomock.Any()).Times(1)
 
 		resolver := New(Config{
 			Model:            mg,
