@@ -95,7 +95,6 @@ const (
 	DefaultPlannerEvictionThreshold = 0
 	DefaultPlannerCleanupInterval   = 0
 
-	PipelineListObjectsOptOut            = "pipeline_list_objects_opt_out"
 	ExperimentalCheckOptimizations       = "enable-check-optimizations"
 	ExperimentalListObjectsOptimizations = "enable-list-objects-optimizations"
 	ExperimentalAccessControlParams      = "enable-access-control"
@@ -106,6 +105,7 @@ const (
 	ExperimentalShadowCheck              = "shadow_check"
 	ExperimentalShadowListObjects        = "shadow_list_objects"
 	ExperimentalDatastoreThrottling      = "datastore_throttling"
+	ExperimentalPipelineListObjects      = "pipeline_list_objects"
 	ExperimentalShadowWeightedGraphCheck = "shadow_weighted_graph_check"
 	ExperimentalWeightedGraphCheck       = "weighted_graph_check"
 )

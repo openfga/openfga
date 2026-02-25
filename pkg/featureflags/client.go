@@ -42,3 +42,12 @@ func (h *hardcodedBooleanClient) Boolean(flagName string, _ string) bool {
 func NewNoopFeatureFlagClient() Client {
 	return NewHardcodedBooleanClient(false)
 }
+
+// IsHardcodedFalse returns true if the client is a hardcodedBooleanClient
+// with result set to false (i.e., the noop client).
+func IsHardcodedFalse(c Client) bool {
+	if h, ok := c.(*hardcodedBooleanClient); ok {
+		return !h.result
+	}
+	return false
+}
