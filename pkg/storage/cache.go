@@ -164,19 +164,20 @@ func (i InMemoryLRUCache[T]) Set(key string, value T, ttl time.Duration) {
 		ttl = oneYear
 	}
 
-	// Check if key already exists. Overwrites don't trigger the
-	// removal listener, and we don't want to double count.
+	// If we're overwriting a key, we don't want to increment metrics later
 	_, isOverwrite := i.client.Get(key)
 
-	stored := i.client.SetWithTTL(key, value, 1, ttl)
+	// Ignore the boolean return here as we always pass cost=1 and items are always admitted
+	i.client.SetWithTTL(key, value, 1, ttl)
 
-	// Only increment when the item was actually admitted AND is a new key.
-	if stored && !isOverwrite {
-		if item, ok := any(value).(CacheItem); ok {
-			cacheItemCount.WithLabelValues(item.CacheEntityType()).Inc()
-		} else {
-			cacheItemCount.WithLabelValues(unspecifiedLabel).Inc()
-		}
+	if isOverwrite {
+		return
+	}
+
+	if item, ok := any(value).(CacheItem); ok {
+		cacheItemCount.WithLabelValues(item.CacheEntityType()).Inc()
+	} else {
+		cacheItemCount.WithLabelValues(unspecifiedLabel).Inc()
 	}
 }
 
