@@ -9,6 +9,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ## [Unreleased]
 ### Fixed
 - Fixed a few bugs. Two potential index out of bounds scenarios, and one cache of an invalid result. [#2942](https://github.com/openfga/openfga/pull/2942)
+- Fixed an issue where `cache_item_count` was incrementing on overwrites, causing metric to steadily drift upwards. [#2950](https://github.com/openfga/openfga/pull/2950)
 
 ## [1.11.6] - 2026-02-23
 ### Added
