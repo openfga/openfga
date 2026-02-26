@@ -4,6 +4,7 @@ package run
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"html/template"
@@ -606,16 +607,57 @@ func (s *ServerContext) buildServerOpts(ctx context.Context, config *serverconfi
 	return serverOpts, prometheusMetrics, nil
 }
 
-func (s *ServerContext) dialGrpc(config *serverconfig.Config) *grpc.ClientConn {
+func (s *ServerContext) dialGrpc(ctx context.Context, config *serverconfig.Config) *grpc.ClientConn {
 	dialOpts := []grpc.DialOption{}
 	if config.Trace.Enabled {
 		dialOpts = append(dialOpts, grpc.WithStatsHandler(otelgrpc.NewClientHandler()))
 	}
 	if config.GRPC.TLS.Enabled {
-		creds, err := credentials.NewClientTLSFromFile(config.GRPC.TLS.CertPath, "")
+		// Use a cert watcher so the gateway client picks up rotated certificates.
+		// The watcher dynamically reloads the certificate when the file changes on disk.
+		getCertificate, err := watchAndLoadCertificateWithCertWatcher(ctx, config.GRPC.TLS.CertPath, config.GRPC.TLS.KeyPath, s.Logger)
 		if err != nil {
 			s.Logger.Fatal("failed to load gRPC credentials", zap.Error(err))
 		}
+
+		// Build a TLS config that dynamically verifies the server's certificate
+		// against the latest watched certificate. This ensures that after cert
+		// rotation, the gateway client trusts the new server certificate.
+		creds := credentials.NewTLS(&tls.Config{
+			InsecureSkipVerify: true, //nolint:gosec // We perform manual verification below.
+			VerifyPeerCertificate: func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
+				if len(rawCerts) == 0 {
+					return errors.New("no peer certificates presented")
+				}
+
+				// Get the dynamically loaded certificate from the watcher.
+				watchedCert, certErr := getCertificate(nil)
+				if certErr != nil {
+					return fmt.Errorf("failed to get watched certificate: %w", certErr)
+				}
+
+				// Build a cert pool from the watched certificate to use as trust anchor.
+				certPool := x509.NewCertPool()
+				for _, certDER := range watchedCert.Certificate {
+					parsedCert, parseErr := x509.ParseCertificate(certDER)
+					if parseErr != nil {
+						continue
+					}
+					certPool.AddCert(parsedCert)
+				}
+
+				// Verify the server's certificate against the dynamically loaded trust anchor.
+				peerCert, parseErr := x509.ParseCertificate(rawCerts[0])
+				if parseErr != nil {
+					return fmt.Errorf("failed to parse peer certificate: %w", parseErr)
+				}
+
+				_, verifyErr := peerCert.Verify(x509.VerifyOptions{
+					Roots: certPool,
+				})
+				return verifyErr
+			},
+		})
 		dialOpts = append(dialOpts, grpc.WithTransportCredentials(creds))
 	} else {
 		dialOpts = append(dialOpts, grpc.WithTransportCredentials(insecure.NewCredentials()))
@@ -953,7 +995,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	if config.HTTP.Enabled {
 		runtime.DefaultContextTimeout = serverconfig.DefaultContextTimeout(config)
 
-		grpcConn := s.dialGrpc(config)
+		grpcConn := s.dialGrpc(ctx, config)
 		defer grpcConn.Close()
 
 		httpServer, err = s.runHTTPServer(ctx, config, grpcConn)

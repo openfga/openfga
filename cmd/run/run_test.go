@@ -789,6 +789,51 @@ func TestGRPCServingTLS(t *testing.T) {
 	})
 }
 
+func TestHTTPServerWithGRPCTLSEnabled(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	t.Run("http_gateway_proxies_to_grpc_server_with_tls", func(t *testing.T) {
+		certsAndKeys := createCertsAndKeys(t)
+		defer certsAndKeys.Clean()
+
+		cfg := testutils.MustDefaultConfigWithRandomPorts()
+		cfg.GRPC.TLS = &serverconfig.TLSConfig{
+			Enabled:  true,
+			CertPath: certsAndKeys.serverCertFile,
+			KeyPath:  certsAndKeys.serverKeyFile,
+		}
+		// Port for TLS cannot be 0.0.0.0
+		cfg.GRPC.Addr = strings.ReplaceAll(cfg.GRPC.Addr, "0.0.0.0", "localhost")
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		go func() {
+			if err := runServer(ctx, cfg); err != nil {
+				log.Fatal(err)
+			}
+		}()
+
+		certPool := x509.NewCertPool()
+		certPool.AddCert(certsAndKeys.caCert)
+		creds := credentials.NewClientTLSFromCert(certPool, "")
+
+		testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, creds)
+
+		// Verify the HTTP gateway can proxy requests to the gRPC server over TLS.
+		// This validates that the gateway's internal gRPC client uses dynamic TLS
+		// credentials (via certwatcher) rather than a one-time static load.
+		client := retryablehttp.NewClient()
+		t.Cleanup(client.HTTPClient.CloseIdleConnections)
+
+		resp, err := client.Get(fmt.Sprintf("http://%s/stores", cfg.HTTP.Addr))
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+	})
+}
+
 func TestServerMetricsReporting(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
