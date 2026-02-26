@@ -173,6 +173,9 @@ func TestShadowV2Check(t *testing.T) {
 		require.Equal(t, true, fields["main_result"])
 		require.Equal(t, true, fields["shadow_result"])
 		require.Equal(t, int64(10), fields["main_took"])
+		shadowTook, ok := fields["shadow_took"].(int64)
+		require.True(t, ok, "shadow_took should be int64 milliseconds")
+		require.GreaterOrEqual(t, shadowTook, int64(0))
 	})
 
 	t.Run("logs_mismatch_when_results_disagree", func(t *testing.T) {
@@ -201,6 +204,9 @@ func TestShadowV2Check(t *testing.T) {
 		require.Equal(t, false, fields["main_result"])
 		require.Equal(t, true, fields["shadow_result"])
 		require.Equal(t, int64(20), fields["main_took"])
+		shadowTook, ok := fields["shadow_took"].(int64)
+		require.True(t, ok, "shadow_took should be int64 milliseconds")
+		require.GreaterOrEqual(t, shadowTook, int64(0))
 	})
 
 	t.Run("logs_error_on_invalid_store", func(t *testing.T) {
