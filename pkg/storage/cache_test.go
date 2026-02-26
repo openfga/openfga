@@ -433,7 +433,7 @@ func TestInMemoryCache(t *testing.T) {
 		before := testutil.ToFloat64(cacheItemCount.WithLabelValues(unspecifiedLabel))
 		cache.Set("key", "value", time.Second)
 		after := testutil.ToFloat64(cacheItemCount.WithLabelValues(unspecifiedLabel))
-		require.Equal(t, float64(1), after-before)
+		require.InDelta(t, 1, after-before, 0)
 	})
 
 	t.Run("cache_item_count_doesnt_double_count_on_overwrite", func(t *testing.T) {
@@ -452,7 +452,7 @@ func TestInMemoryCache(t *testing.T) {
 		after := testutil.ToFloat64(cacheItemCount.WithLabelValues(unspecifiedLabel))
 
 		// Should not have changed
-		require.Equal(t, float64(0), after-before)
+		require.InDelta(t, 0, after-before, 0)
 	})
 
 	t.Run("cache_item_count_decrements_on_delete", func(t *testing.T) {
@@ -468,7 +468,7 @@ func TestInMemoryCache(t *testing.T) {
 		cache.Delete("key")
 		cache.client.Wait()
 		after := testutil.ToFloat64(cacheItemCount.WithLabelValues(unspecifiedLabel))
-		require.Equal(t, float64(-1), after-before)
+		require.InDelta(t, -1, after-before, 0)
 	})
 
 	t.Run("cache_item_count_set_delete_set_same_key", func(t *testing.T) {
@@ -487,7 +487,7 @@ func TestInMemoryCache(t *testing.T) {
 
 		cache.Set(k, "value2", time.Second)
 		after := testutil.ToFloat64(cacheItemCount.WithLabelValues(unspecifiedLabel))
-		require.Equal(t, float64(1), after-before)
+		require.InDelta(t, 1, after-before, 0)
 	})
 
 	t.Run("stop_multiple_times", func(t *testing.T) {
