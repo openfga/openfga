@@ -24,6 +24,7 @@ import (
 	"github.com/openfga/openfga/internal/authz"
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/internal/graph"
+	"github.com/openfga/openfga/internal/modelgraph"
 	"github.com/openfga/openfga/internal/planner"
 	"github.com/openfga/openfga/internal/shared"
 	"github.com/openfga/openfga/internal/throttler"
@@ -197,6 +198,8 @@ type Server struct {
 	// NOTE don't use this directly, use function resolveTypesystem. See https://github.com/openfga/openfga/issues/1527
 	typesystemResolver     typesystem.TypesystemResolverFunc
 	typesystemResolverStop func()
+
+	authzModelGraphResolver *modelgraph.AuthorizationModelGraphResolver
 
 	// cacheSettings are given by the user
 	cacheSettings serverconfig.CacheSettings
@@ -989,6 +992,9 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	// TODO: make the cache duration configurable (maybe)
+	s.authzModelGraphResolver = modelgraph.NewResolver(s.datastore, s.sharedDatastoreResources.CheckCache, 24*7*time.Hour)
 
 	if s.IsAccessControlEnabled() {
 		s.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: s.AccessControl.StoreID, ModelID: s.AccessControl.ModelID}, s, s.logger)

@@ -66,6 +66,22 @@ type InMemoryCache[T any] interface {
 	Stop()
 }
 
+type NoopCache struct{}
+
+func (n *NoopCache) Get(_ string) any {
+	return nil
+}
+
+func (n *NoopCache) Set(_ string, _ any, _ time.Duration) {}
+
+func (n *NoopCache) Delete(_ string) {}
+
+func (n *NoopCache) Stop() {}
+
+func NewNoopCache() *NoopCache {
+	return &NoopCache{}
+}
+
 // Specific implementation
 
 type InMemoryLRUCache[T any] struct {
@@ -324,7 +340,7 @@ func writeTuples(w io.StringWriter, tuples ...*openfgav1.TupleKey) (err error) {
 	// copy tuples slice to avoid mutating the original slice during sorting.
 	copy(sortedTuples, tuples)
 
-	// sort tulpes for a deterministic write
+	// sort tuples for a deterministic write
 	sort.Sort(sortedTuples)
 
 	// prefix to avoid overlap with previous strings written
@@ -409,13 +425,7 @@ func WriteCheckCacheKey(w io.StringWriter, params *CheckCacheKeyParams) error {
 }
 
 func WriteInvariantCheckCacheKey(w io.StringWriter, params *CheckCacheKeyParams) error {
-	_, err := w.WriteString(
-		" " + // space to separate from user in the TupleCacheKey, where spaces cannot be present
-			SubproblemCachePrefix +
-			params.StoreID +
-			"/" +
-			params.AuthorizationModelID,
-	)
+	_, err := w.WriteString(params.AuthorizationModelID)
 	if err != nil {
 		return err
 	}
