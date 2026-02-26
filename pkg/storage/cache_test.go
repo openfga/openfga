@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/oklog/ulid/v2"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	"google.golang.org/protobuf/types/known/structpb"
@@ -419,6 +420,74 @@ func TestInMemoryCache(t *testing.T) {
 		cache.Set("key", "value", -2)
 		result := cache.Get("key")
 		require.NotEqual(t, "value", result)
+	})
+
+	t.Run("cache_item_count_increments_on_new_key", func(t *testing.T) {
+		cache, err := NewInMemoryLRUCache[string]()
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			goleak.VerifyNone(t)
+		})
+		defer cache.Stop()
+
+		before := testutil.ToFloat64(cacheItemCount.WithLabelValues(unspecifiedLabel))
+		cache.Set("key", "value", time.Second)
+		after := testutil.ToFloat64(cacheItemCount.WithLabelValues(unspecifiedLabel))
+		require.Equal(t, float64(1), after-before)
+	})
+
+	t.Run("cache_item_count_doesnt_double_count_on_overwrite", func(t *testing.T) {
+		cache, err := NewInMemoryLRUCache[string]()
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			goleak.VerifyNone(t)
+		})
+		defer cache.Stop()
+		k := "key"
+
+		cache.Set(k, "value1", time.Second)
+		before := testutil.ToFloat64(cacheItemCount.WithLabelValues(unspecifiedLabel))
+
+		cache.Set(k, "value2", time.Second)
+		after := testutil.ToFloat64(cacheItemCount.WithLabelValues(unspecifiedLabel))
+
+		// Should not have changed
+		require.Equal(t, float64(0), after-before)
+	})
+
+	t.Run("cache_item_count_decrements_on_delete", func(t *testing.T) {
+		cache, err := NewInMemoryLRUCache[string]()
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			goleak.VerifyNone(t)
+		})
+		defer cache.Stop()
+
+		cache.Set("key", "value", time.Second)
+		before := testutil.ToFloat64(cacheItemCount.WithLabelValues(unspecifiedLabel))
+		cache.Delete("key")
+		cache.client.Wait()
+		after := testutil.ToFloat64(cacheItemCount.WithLabelValues(unspecifiedLabel))
+		require.Equal(t, float64(-1), after-before)
+	})
+
+	t.Run("cache_item_count_set_delete_set_same_key", func(t *testing.T) {
+		cache, err := NewInMemoryLRUCache[string]()
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			goleak.VerifyNone(t)
+		})
+		defer cache.Stop()
+		k := "key"
+
+		before := testutil.ToFloat64(cacheItemCount.WithLabelValues(unspecifiedLabel))
+		cache.Set(k, "value1", time.Second)
+		cache.Delete(k)
+		cache.client.Wait()
+
+		cache.Set(k, "value2", time.Second)
+		after := testutil.ToFloat64(cacheItemCount.WithLabelValues(unspecifiedLabel))
+		require.Equal(t, float64(1), after-before)
 	})
 
 	t.Run("stop_multiple_times", func(t *testing.T) {
