@@ -999,10 +999,20 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 				s.Logger.Warn("http server failed to establish unix socket to grpc server, falling back to tcp", zap.Error(err))
 				break
 			}
+
+			defer func() {
+				// This will be a noop if the directory has already been cleaned up.
+				if err := os.RemoveAll(udsDir); err != nil && !os.IsNotExist(err) {
+					s.Logger.Warn("failed to remove unix socket file", zap.Error(err))
+				}
+			}()
+
 			udsPath := filepath.Join(udsDir, "grpc.sock")
 
 			udsListener, err := net.Listen("unix", udsPath)
 			if err != nil {
+				// Early deletion of the directory so that it does not live for the lifetime
+				// of the server unnecessarily.
 				_ = os.RemoveAll(udsDir)
 				s.Logger.Warn("http server failed to establish unix socket to grpc server, falling back to tcp", zap.Error(err))
 				break
@@ -1022,12 +1032,6 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 					if !errors.Is(err, grpc.ErrServerStopped) {
 						s.Logger.Fatal("failed to start internal gRPC server on unix socket", zap.Error(err))
 					}
-				}
-			}()
-
-			defer func() {
-				if err := os.RemoveAll(udsDir); err != nil && !os.IsNotExist(err) {
-					s.Logger.Warn("failed to remove unix socket file", zap.Error(err))
 				}
 			}()
 
