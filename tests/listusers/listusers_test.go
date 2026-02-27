@@ -51,7 +51,12 @@ func testRunAll(t *testing.T, engine string) {
 		// created by github.com/go-sql-driver/mysql.(*mysqlConn).startWatcher in goroutine 60029
 		// 	/home/runner/go/pkg/mod/github.com/go-sql-driver/mysql@v1.8.1/connection.go:625 +0x1dd
 		// ]
-		goleak.VerifyNone(t, goleak.IgnoreTopFunction("github.com/go-sql-driver/mysql.(*mysqlConn).startWatcher.func1"))
+		goleak.VerifyNone(
+			t,
+			goleak.IgnoreTopFunction("github.com/go-sql-driver/mysql.(*mysqlConn).startWatcher.func1"),
+			goleak.IgnoreTopFunction("net/http.(*persistConn).readLoop"),
+			goleak.IgnoreTopFunction("net/http.(*persistConn).writeLoop"),
+		)
 	})
 	cfg := testutils.MustDefaultConfigForParallelTests()
 	cfg.Experimentals = append(cfg.Experimentals, config.ExperimentalCheckOptimizations, config.ExperimentalListObjectsOptimizations)

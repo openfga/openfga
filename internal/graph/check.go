@@ -158,16 +158,19 @@ func runHandler(ctx context.Context, handler CheckHandlerFunc) checkOutcome {
 // union implements a CheckFuncReducer that requires any of the provided CheckHandlerFunc to resolve
 // to an allowed outcome. The first allowed outcome causes premature termination of the reducer.
 func union(ctx context.Context, concurrencyLimit int, handlers ...CheckHandlerFunc) (resp *ResolveCheckResponse, err error) {
-	cancellableCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
+	ts, _ := typesystem.TypesystemFromContext(ctx)
+	rt, _ := storage.RelationshipTupleReaderFromContext(ctx)
 
-	pool := concurrency.NewPool(cancellableCtx, concurrencyLimit)
+	myctx := typesystem.ContextWithTypesystem(context.Background(), ts)
+	myctx = storage.ContextWithRelationshipTupleReader(myctx, rt)
+
+	pool := concurrency.NewPool(myctx, concurrencyLimit)
 	out := make(chan checkOutcome, len(handlers))
 
 	for _, handler := range handlers {
 		h := handler
 		pool.Go(func(ctx context.Context) error {
-			concurrency.TrySendThroughChannel(cancellableCtx, runHandler(ctx, h), out)
+			concurrency.TrySendThroughChannel(myctx, runHandler(ctx, h), out)
 			return nil
 		})
 	}
@@ -220,16 +223,19 @@ func intersection(ctx context.Context, concurrencyLimit int, handlers ...CheckHa
 		return nil, fmt.Errorf("%w, expected at least two rewrite operands for intersection operator, but got '%d'", openfgaErrors.ErrUnknown, len(handlers))
 	}
 
-	cancellableCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
+	ts, _ := typesystem.TypesystemFromContext(ctx)
+	rt, _ := storage.RelationshipTupleReaderFromContext(ctx)
 
-	pool := concurrency.NewPool(cancellableCtx, concurrencyLimit)
+	myctx := typesystem.ContextWithTypesystem(context.Background(), ts)
+	myctx = storage.ContextWithRelationshipTupleReader(myctx, rt)
+
+	pool := concurrency.NewPool(myctx, concurrencyLimit)
 	out := make(chan checkOutcome, len(handlers))
 
 	for _, handler := range handlers {
 		h := handler // Capture loop variable for the goroutine
-		pool.Go(func(ctx context.Context) error {
-			concurrency.TrySendThroughChannel(cancellableCtx, runHandler(ctx, h), out)
+		pool.Go(func(_ context.Context) error {
+			concurrency.TrySendThroughChannel(myctx, runHandler(myctx, h), out)
 			return nil
 		})
 	}
@@ -289,18 +295,18 @@ func exclusion(ctx context.Context, _ int, handlers ...CheckHandlerFunc) (*Resol
 		return nil, fmt.Errorf("%w, expected two rewrite operands for exclusion operator, but got '%d'", openfgaErrors.ErrUnknown, len(handlers))
 	}
 
-	ctx, cancel := context.WithCancel(ctx)
+	cancellableCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	baseChan := make(chan checkOutcome, 1)
 	subChan := make(chan checkOutcome, 1)
 
 	go func() {
-		concurrency.TrySendThroughChannel(ctx, runHandler(ctx, handlers[0]), baseChan)
+		concurrency.TrySendThroughChannel(cancellableCtx, runHandler(ctx, handlers[0]), baseChan)
 		close(baseChan)
 	}()
 	go func() {
-		concurrency.TrySendThroughChannel(ctx, runHandler(ctx, handlers[1]), subChan)
+		concurrency.TrySendThroughChannel(cancellableCtx, runHandler(ctx, handlers[1]), subChan)
 		close(subChan)
 	}()
 
