@@ -133,7 +133,6 @@ func NewInMemoryLRUCache[T any](opts ...InMemoryLRUCacheOpt[T]) (*InMemoryLRUCac
 			entityLabel = unspecifiedLabel
 		}
 
-		cacheItemCount.WithLabelValues(entityLabel).Dec()
 		cacheItemRemovedCount.WithLabelValues(entityLabel, reasonLabel).Inc()
 	})
 
@@ -164,20 +163,14 @@ func (i InMemoryLRUCache[T]) Set(key string, value T, ttl time.Duration) {
 		ttl = oneYear
 	}
 
-	// If we're overwriting a key, we don't want to increment metrics later
-	_, isOverwrite := i.client.Get(key)
-
 	// Ignore the boolean return here as we always pass cost=1 and items are always admitted
 	i.client.SetWithTTL(key, value, 1, ttl)
 
-	if isOverwrite {
-		return
-	}
-
+	cacheSizeFloat := float64(i.client.EstimatedSize())
 	if item, ok := any(value).(CacheItem); ok {
-		cacheItemCount.WithLabelValues(item.CacheEntityType()).Inc()
+		cacheItemCount.WithLabelValues(item.CacheEntityType()).Set(cacheSizeFloat)
 	} else {
-		cacheItemCount.WithLabelValues(unspecifiedLabel).Inc()
+		cacheItemCount.WithLabelValues(unspecifiedLabel).Set(cacheSizeFloat)
 	}
 }
 

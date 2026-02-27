@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -422,20 +423,6 @@ func TestInMemoryCache(t *testing.T) {
 		require.NotEqual(t, "value", result)
 	})
 
-	t.Run("cache_item_count_increments_on_new_key", func(t *testing.T) {
-		cache, err := NewInMemoryLRUCache[string]()
-		require.NoError(t, err)
-		t.Cleanup(func() {
-			goleak.VerifyNone(t)
-		})
-		defer cache.Stop()
-
-		before := testutil.ToFloat64(cacheItemCount.WithLabelValues(unspecifiedLabel))
-		cache.Set("key", "value", time.Second)
-		after := testutil.ToFloat64(cacheItemCount.WithLabelValues(unspecifiedLabel))
-		require.InDelta(t, 1, after-before, 0)
-	})
-
 	t.Run("cache_item_count_doesnt_double_count_on_overwrite", func(t *testing.T) {
 		cache, err := NewInMemoryLRUCache[string]()
 		require.NoError(t, err)
@@ -445,17 +432,30 @@ func TestInMemoryCache(t *testing.T) {
 		defer cache.Stop()
 		k := "key"
 
+		// Ensure metric is zero before we do anything
+		cacheItemCount.WithLabelValues(unspecifiedLabel).Set(float64(0))
+
 		cache.Set(k, "value1", time.Second)
-		before := testutil.ToFloat64(cacheItemCount.WithLabelValues(unspecifiedLabel))
+
+		// This .Wait() is needed as cache client.EstimatedSize() is eventually consistent
+		// due it its use of a shared mutex with theine's maintenance routine
+		cache.client.Wait()
 
 		cache.Set(k, "value2", time.Second)
+		before := testutil.ToFloat64(cacheItemCount.WithLabelValues(unspecifiedLabel))
+		cache.client.Wait()
+
+		cache.Set(k, "value3", time.Second)
 		after := testutil.ToFloat64(cacheItemCount.WithLabelValues(unspecifiedLabel))
 
-		// Should not have changed
+		// There should only be 1
+		require.InDelta(t, 0, after, 1)
+
+		// Should not have changed further
 		require.InDelta(t, 0, after-before, 0)
 	})
 
-	t.Run("cache_item_count_decrements_on_delete", func(t *testing.T) {
+	t.Run("cache_item_count_decrements_after_deletes", func(t *testing.T) {
 		cache, err := NewInMemoryLRUCache[string]()
 		require.NoError(t, err)
 		t.Cleanup(func() {
@@ -463,31 +463,34 @@ func TestInMemoryCache(t *testing.T) {
 		})
 		defer cache.Stop()
 
-		cache.Set("key", "value", time.Second)
-		before := testutil.ToFloat64(cacheItemCount.WithLabelValues(unspecifiedLabel))
-		cache.Delete("key")
-		cache.client.Wait()
-		after := testutil.ToFloat64(cacheItemCount.WithLabelValues(unspecifiedLabel))
-		require.InDelta(t, -1, after-before, 0)
-	})
-
-	t.Run("cache_item_count_set_delete_set_same_key", func(t *testing.T) {
-		cache, err := NewInMemoryLRUCache[string]()
-		require.NoError(t, err)
-		t.Cleanup(func() {
-			goleak.VerifyNone(t)
-		})
-		defer cache.Stop()
-		k := "key"
-
-		before := testutil.ToFloat64(cacheItemCount.WithLabelValues(unspecifiedLabel))
-		cache.Set(k, "value1", time.Second)
-		cache.Delete(k)
+		// set 10 items in cache
+		for i := range 10 {
+			cache.Set(strconv.Itoa(i), "value"+strconv.Itoa(i), time.Second)
+		}
+		// Allow maintenance routine to finish
 		cache.client.Wait()
 
-		cache.Set(k, "value2", time.Second)
+		// Set once more to ensure metric has caught up
+		cache.Set("10", "value10", time.Second)
+
+		// this will return either 10 or 11 bc of race in EstimatedSize()
+		before := testutil.ToFloat64(cacheItemCount.WithLabelValues(unspecifiedLabel))
+
+		// delete all 11 items in cache
+		for i := range 11 {
+			cache.Delete(strconv.Itoa(i))
+		}
+		// Allow maintenance routine to finish
+		cache.client.Wait()
+
+		// The cache item count is only updated on Set()
+		cache.Set("10", "value10", time.Second)
+
+		// this will be either 0 or 1 after the Set call above
 		after := testutil.ToFloat64(cacheItemCount.WithLabelValues(unspecifiedLabel))
-		require.InDelta(t, 1, after-before, 0)
+
+		// expect before and after to differ by 9 elements, + or - 2 due to race
+		require.InDelta(t, 9, before-after, 2)
 	})
 
 	t.Run("stop_multiple_times", func(t *testing.T) {
@@ -1064,5 +1067,67 @@ func BenchmarkGetInvalidIteratorByUserObjectTypeCacheKeys(b *testing.B) {
 
 	for n := 0; n < b.N; n++ {
 		_ = GetInvalidIteratorByUserObjectTypeCacheKeys(storeID, users, objectType)
+	}
+}
+
+func BenchmarkCacheItemCountOverwriteConcurrent(b *testing.B) {
+	const numGoroutines = 10
+
+	for n := 0; n < b.N; n++ {
+		cache, err := NewInMemoryLRUCache[string]()
+		require.NoError(b, err)
+
+		before := testutil.ToFloat64(cacheItemCount.WithLabelValues(unspecifiedLabel))
+
+		pool := concurrency.NewPool(context.Background(), numGoroutines)
+		for i := range numGoroutines {
+			pool.Go(func(ctx context.Context) error {
+				k := fmt.Sprintf("key-%d", i)
+				cache.Set(k, "value1", time.Second)
+				cache.Set(k, "value2", time.Second)
+				return nil
+			})
+		}
+		require.NoError(b, pool.Wait())
+
+		after := testutil.ToFloat64(cacheItemCount.WithLabelValues(unspecifiedLabel))
+
+		// Each goroutine created 1 unique key and overwrote it once.
+		// Delta should be exactly numGoroutines. If overwrite double-counts,
+		// delta will exceed numGoroutines.
+		require.InDelta(b, float64(numGoroutines), after-before, 0)
+
+		cache.Stop()
+	}
+}
+
+func BenchmarkCacheItemCountOverwriteConcurrentV2(b *testing.B) {
+	const numGoroutines = 10
+
+	for n := 0; n < b.N; n++ {
+		cache, err := NewInMemoryLRUCache[string]()
+		require.NoError(b, err)
+
+		before := testutil.ToFloat64(cacheItemCount.WithLabelValues(unspecifiedLabel))
+
+		pool := concurrency.NewPool(context.Background(), numGoroutines)
+		for i := range numGoroutines {
+			pool.Go(func(ctx context.Context) error {
+				k := fmt.Sprintf("key-%d", i)
+				cache.Set(k, "value1", time.Second)
+				cache.Set(k, "value2", time.Second)
+				return nil
+			})
+		}
+		require.NoError(b, pool.Wait())
+
+		after := testutil.ToFloat64(cacheItemCount.WithLabelValues(unspecifiedLabel))
+
+		// Each goroutine created 1 unique key and overwrote it once.
+		// Delta should be exactly numGoroutines. If overwrite double-counts,
+		// delta will exceed numGoroutines.
+		require.InDelta(b, float64(numGoroutines), after-before, 0)
+
+		cache.Stop()
 	}
 }
