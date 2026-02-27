@@ -50,7 +50,7 @@ var (
 	tuplesCacheSizeHistogram = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace:                       build.ProjectName,
 		Name:                            "tuples_cache_size",
-		Help:                            "The number of tuples cached.",
+		Help:                            "The number of tuples cached from iterator cache entries.",
 		Buckets:                         []float64{0, 1, 10, 100, 1000, 5000, 10000},
 		NativeHistogramBucketFactor:     1.1,
 		NativeHistogramMaxBucketNumber:  100,
@@ -60,7 +60,7 @@ var (
 	currentIteratorCacheCount = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: build.ProjectName,
 		Name:      "current_iterator_cache_count",
-		Help:      "The current number of items of cache iterator.",
+		Help:      "The current number of cached iterator instances.",
 	}, []string{"cached"})
 )
 
