@@ -91,11 +91,21 @@ const (
 // dialGrpc shares this single pool.
 var grpcTLSCertPool sync.Pointer[x509.CertPool]
 
+func init() {
+	// Initialize grpcTLSCertPool to an empty x509.CertPool for safety.
+	// This prevents nil pointer issues if Load() is called before the
+	// watcher callback populates it with the actual certificate.
+	grpcTLSCertPool.Store(x509.NewCertPool())
+}
+
 // updateGRPCCertPool builds a pinned x509.CertPool from the leaf certificate
 // and stores it in the global grpcTLSCertPool. It is intended to be passed as
 // the callback argument to watchAndLoadCertificateWithCertWatcher for the gRPC
 // server setup.
 func updateGRPCCertPool(cert tls.Certificate) {
+	if len(cert.Certificate) == 0 {
+		return
+	}
 	leaf, err := x509.ParseCertificate(cert.Certificate[0])
 	if err != nil {
 		return

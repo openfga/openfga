@@ -174,6 +174,15 @@ func createCertsAndKeys(t *testing.T) certHandle {
 	}
 }
 
+func readFile(t *testing.T, filename string) []byte {
+	t.Helper()
+	data, err := os.ReadFile(filename)
+	if err != nil {
+		t.Fatalf("failed to read file %s: %v", filename, err)
+	}
+	return data
+}
+
 type authTest struct {
 	_name                 string
 	authHeader            string
@@ -703,7 +712,7 @@ func TestHTTPServingTLS(t *testing.T) {
 			CertPath: certsAndKeys.serverCertFile,
 			KeyPath:  certsAndKeys.serverKeyFile,
 		}
-		// Port for TLS cannot be 0.0.0.0
+		// Must be "localhost" because created test cert is for that domain name.
 		cfg.HTTP.Addr = strings.ReplaceAll(cfg.HTTP.Addr, "0.0.0.0", "localhost")
 
 		ctx, cancel := context.WithCancel(context.Background())
@@ -769,7 +778,7 @@ func TestGRPCServingTLS(t *testing.T) {
 			CertPath: certsAndKeys.serverCertFile,
 			KeyPath:  certsAndKeys.serverKeyFile,
 		}
-		// Port for TLS cannot be 0.0.0.0
+		// Must be "localhost" because created test cert is for that domain name.
 		cfg.GRPC.Addr = strings.ReplaceAll(cfg.GRPC.Addr, "0.0.0.0", "localhost")
 
 		ctx, cancel := context.WithCancel(context.Background())
@@ -803,7 +812,7 @@ func TestHTTPServerWithGRPCTLSEnabled(t *testing.T) {
 			CertPath: certsAndKeys.serverCertFile,
 			KeyPath:  certsAndKeys.serverKeyFile,
 		}
-		// Port for TLS cannot be 0.0.0.0
+		// Must be "localhost" because created test cert is for that domain name.
 		cfg.GRPC.Addr = strings.ReplaceAll(cfg.GRPC.Addr, "0.0.0.0", "localhost")
 
 		ctx, cancel := context.WithCancel(context.Background())
@@ -831,6 +840,65 @@ func TestHTTPServerWithGRPCTLSEnabled(t *testing.T) {
 		require.NoError(t, err)
 		defer resp.Body.Close()
 		require.Equal(t, http.StatusOK, resp.StatusCode)
+	})
+
+	t.Run("http_gateway_handles_grpc_certificate_rotation", func(t *testing.T) {
+		certsAndKeys := createCertsAndKeys(t)
+		defer certsAndKeys.Clean()
+
+		cfg := testutils.MustDefaultConfigWithRandomPorts()
+		cfg.GRPC.TLS = &serverconfig.TLSConfig{
+			Enabled:  true,
+			CertPath: certsAndKeys.serverCertFile,
+			KeyPath:  certsAndKeys.serverKeyFile,
+		}
+		// Must be "localhost" because created test cert is for that domain name.
+		cfg.GRPC.Addr = strings.ReplaceAll(cfg.GRPC.Addr, "0.0.0.0", "localhost")
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		go func() {
+			if err := runServer(ctx, cfg); err != nil {
+				log.Fatal(err)
+			}
+		}()
+
+		certPool := x509.NewCertPool()
+		certPool.AddCert(certsAndKeys.caCert)
+		creds := credentials.NewClientTLSFromCert(certPool, "")
+
+		testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, creds)
+
+		// Make initial request to verify connectivity
+		client := retryablehttp.NewClient()
+		t.Cleanup(client.HTTPClient.CloseIdleConnections)
+
+		resp, err := client.Get(fmt.Sprintf("http://%s/stores", cfg.HTTP.Addr))
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+
+		// Simulate certificate rotation by generating new certs and overwriting files
+		newCertsAndKeys := createCertsAndKeys(t)
+		defer newCertsAndKeys.Clean()
+
+		// Overwrite the cert and key files with new ones
+		err = os.WriteFile(certsAndKeys.serverCertFile, readFile(t, newCertsAndKeys.serverCertFile), 0600)
+		require.NoError(t, err)
+		err = os.WriteFile(certsAndKeys.serverKeyFile, readFile(t, newCertsAndKeys.serverKeyFile), 0600)
+		require.NoError(t, err)
+
+		// Wait for certwatcher to detect and reload the certificate
+		time.Sleep(2 * time.Second)
+
+		// Verify the HTTP gateway can still proxy requests after certificate rotation.
+		// This validates that the gateway's internal gRPC client dynamically updates
+		// its certificate pool via the certwatcher callback.
+		resp2, err := client.Get(fmt.Sprintf("http://%s/stores", cfg.HTTP.Addr))
+		require.NoError(t, err)
+		defer resp2.Body.Close()
+		require.Equal(t, http.StatusOK, resp2.StatusCode)
 	})
 }
 
