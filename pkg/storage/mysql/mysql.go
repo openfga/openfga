@@ -201,8 +201,14 @@ func (s *Datastore) read(ctx context.Context, store string, filter storage.ReadF
 	}
 
 	if options != nil && options.Pagination.From != "" {
-		token := options.Pagination.From
-		sb = sb.Where(sq.GtOrEq{"ulid": token})
+		token, err := storage.DecodeContToken(options.Pagination.From)
+		if err != nil {
+			return nil, err
+		}
+		if token.ObjectType != "" && objectType != "" && token.ObjectType != objectType {
+			return nil, storage.ErrInvalidContinuationToken
+		}
+		sb = sb.Where(sq.GtOrEq{"ulid": token.Ulid})
 	}
 	if options != nil && options.Pagination.PageSize != 0 {
 		sb = sb.Limit(uint64(options.Pagination.PageSize + 1)) // + 1 is used to determine whether to return a continuation token.
@@ -503,7 +509,7 @@ func (s *Datastore) CreateStore(ctx context.Context, store *openfgav1.Store) (*o
 	_, err = s.stbl.
 		Insert("store").
 		Columns("id", "name", "created_at", "updated_at").
-		Values(store.GetId(), store.GetName(), sq.Expr("NOW()"), sq.Expr("NOW()")).
+		Values(store.GetId(), store.GetName(), sq.Expr("NOW(6)"), sq.Expr("NOW(6)")).
 		RunWith(txn).
 		ExecContext(ctx)
 	if err != nil {
@@ -639,7 +645,7 @@ func (s *Datastore) DeleteStore(ctx context.Context, id string) error {
 
 	_, err := s.stbl.
 		Update("store").
-		Set("deleted_at", sq.Expr("NOW()")).
+		Set("deleted_at", sq.Expr("NOW(6)")).
 		Where(sq.Eq{"id": id}).
 		ExecContext(ctx)
 	if err != nil {
@@ -708,9 +714,6 @@ func (s *Datastore) ReadChanges(ctx context.Context, store string, filter storag
 	ctx, span := startTrace(ctx, "ReadChanges")
 	defer span.End()
 
-	objectTypeFilter := filter.ObjectType
-	horizonOffset := filter.HorizonOffset
-
 	orderBy := "ulid asc"
 	if options.SortDesc {
 		orderBy = "ulid desc"
@@ -725,14 +728,27 @@ func (s *Datastore) ReadChanges(ctx context.Context, store string, filter storag
 		).
 		From("changelog").
 		Where(sq.Eq{"store": store}).
-		Where(fmt.Sprintf("inserted_at <= NOW() - INTERVAL %d MICROSECOND", horizonOffset.Microseconds())).
+		Where(fmt.Sprintf("inserted_at <= NOW(6) - INTERVAL %d MICROSECOND", filter.HorizonOffset.Microseconds())).
 		OrderBy(orderBy)
 
-	if objectTypeFilter != "" {
-		sb = sb.Where(sq.Eq{"object_type": objectTypeFilter})
+	if filter.ObjectType != "" {
+		sb = sb.Where(sq.Eq{"object_type": filter.ObjectType})
 	}
 	if options.Pagination.From != "" {
-		sb = sqlcommon.AddFromUlid(sb, options.Pagination.From, options.SortDesc)
+		token, err := storage.DecodeContTokenOrULID(options.Pagination.From)
+		if err != nil {
+			return nil, "", err
+		}
+		if token.ObjectType != "" && filter.ObjectType != "" && token.ObjectType != filter.ObjectType {
+			return nil, "", storage.ErrInvalidContinuationToken
+		}
+		sb = sqlcommon.AddFromUlid(sb, token.Ulid, options.SortDesc)
+	} else if !filter.StartTime.IsZero() {
+		if !options.SortDesc {
+			sb = sb.Where(sq.GtOrEq{"inserted_at": filter.StartTime.UTC()})
+		} else {
+			sb = sb.Where(sq.LtOrEq{"inserted_at": filter.StartTime.UTC()})
+		}
 	}
 	if options.Pagination.PageSize > 0 {
 		sb = sb.Limit(uint64(options.Pagination.PageSize)) // + 1 is NOT used here as we always return a continuation token.
@@ -745,13 +761,15 @@ func (s *Datastore) ReadChanges(ctx context.Context, store string, filter storag
 	defer rows.Close()
 
 	var changes []*openfgav1.TupleChange
-	var ulid string
+	var lastUlid string
+	var lastObjectType string
 	for rows.Next() {
 		var objectType, objectID, relation, user string
 		var operation int
 		var insertedAt time.Time
 		var conditionName sql.NullString
 		var conditionContext []byte
+		var ulid string
 
 		err = rows.Scan(
 			&ulid,
@@ -790,13 +808,19 @@ func (s *Datastore) ReadChanges(ctx context.Context, store string, filter storag
 			Operation: openfgav1.TupleOperation(operation),
 			Timestamp: timestamppb.New(insertedAt.UTC()),
 		})
+
+		// Track the last ULID and object type for the continuation token
+		lastUlid = ulid
+		lastObjectType = objectType
 	}
 
 	if len(changes) == 0 {
 		return nil, "", storage.ErrNotFound
 	}
 
-	return changes, ulid, nil
+	// Return serialized ContToken for consistency with ReadPage
+	contToken := storage.NewContToken(lastUlid, lastObjectType).Serialize()
+	return changes, contToken, nil
 }
 
 // IsReady see [sqlcommon.IsReady].

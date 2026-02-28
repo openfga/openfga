@@ -855,18 +855,6 @@ func GRPCReadChangesTest(t *testing.T, client openfgav1.OpenFGAServiceClient) {
 			},
 			nil,
 		},
-		{
-			"with_invalid_start_time",
-			&openfgav1.ReadChangesRequest{
-				StoreId: storeID,
-				StartTime: timestamppb.New(startTime.
-					Add(-1 * startTime.Sub(startTime)). // until the beginning of time
-					Add(-1_000_000 * time.Hour),        // and then minus a million hours
-				),
-			},
-			nil,
-			status.Error(codes.Code(openfgav1.ErrorCode_invalid_start_time), "Invalid start time"),
-		},
 	}
 
 	for _, test := range tests {

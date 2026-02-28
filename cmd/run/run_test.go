@@ -42,14 +42,12 @@ import (
 	"github.com/openfga/openfga/cmd"
 	"github.com/openfga/openfga/cmd/util"
 	"github.com/openfga/openfga/internal/mocks"
-	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/middleware/requestid"
 	"github.com/openfga/openfga/pkg/middleware/storeid"
 	"github.com/openfga/openfga/pkg/server"
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
-	"github.com/openfga/openfga/pkg/storage/sqlcommon"
 	"github.com/openfga/openfga/pkg/storage/sqlite"
 	storagefixtures "github.com/openfga/openfga/pkg/testfixtures/storage"
 	"github.com/openfga/openfga/pkg/testutils"
@@ -1612,11 +1610,10 @@ func TestHTTPHeaders(t *testing.T) {
 
 func TestServerContext_datastoreConfig(t *testing.T) {
 	tests := []struct {
-		name           string
-		config         *serverconfig.Config
-		wantDSType     interface{}
-		wantSerializer encoder.ContinuationTokenSerializer
-		wantErr        error
+		name       string
+		config     *serverconfig.Config
+		wantDSType interface{}
+		wantErr    error
 	}{
 		{
 			name: "sqlite",
@@ -1625,9 +1622,8 @@ func TestServerContext_datastoreConfig(t *testing.T) {
 					Engine: "sqlite",
 				},
 			},
-			wantDSType:     &sqlite.Datastore{},
-			wantSerializer: &sqlcommon.SQLContinuationTokenSerializer{},
-			wantErr:        nil,
+			wantDSType: &sqlite.Datastore{},
+			wantErr:    nil,
 		},
 		{
 			name: "sqlite_bad_uri",
@@ -1637,9 +1633,8 @@ func TestServerContext_datastoreConfig(t *testing.T) {
 					URI:    "uri?is;bad=true",
 				},
 			},
-			wantDSType:     nil,
-			wantSerializer: nil,
-			wantErr:        errors.New("invalid semicolon separator in query"),
+			wantDSType: nil,
+			wantErr:    errors.New("invalid semicolon separator in query"),
 		},
 		{
 			name: "mysql_bad_uri",
@@ -1651,9 +1646,8 @@ func TestServerContext_datastoreConfig(t *testing.T) {
 					URI:      "uri?is;bad=true",
 				},
 			},
-			wantDSType:     nil,
-			wantSerializer: nil,
-			wantErr:        errors.New("missing the slash separating the database name"),
+			wantDSType: nil,
+			wantErr:    errors.New("missing the slash separating the database name"),
 		},
 		{
 			name: "postgres_bad_uri",
@@ -1665,9 +1659,8 @@ func TestServerContext_datastoreConfig(t *testing.T) {
 					URI:      "~!@#$%^&*()_+}{:<>?",
 				},
 			},
-			wantDSType:     nil,
-			wantSerializer: nil,
-			wantErr:        errors.New("parse postgres connection uri"),
+			wantDSType: nil,
+			wantErr:    errors.New("parse postgres connection uri"),
 		},
 		{
 			name: "unsupported_engine",
@@ -1676,9 +1669,8 @@ func TestServerContext_datastoreConfig(t *testing.T) {
 					Engine: "unsupported",
 				},
 			},
-			wantDSType:     nil,
-			wantSerializer: nil,
-			wantErr:        errors.New("storage engine 'unsupported' is unsupported"),
+			wantDSType: nil,
+			wantErr:    errors.New("storage engine 'unsupported' is unsupported"),
 		},
 	}
 	for _, tt := range tests {
@@ -1686,16 +1678,14 @@ func TestServerContext_datastoreConfig(t *testing.T) {
 			s := &ServerContext{
 				Logger: logger.NewNoopLogger(),
 			}
-			datastore, serializer, err := s.datastoreConfig(tt.config)
+			datastore, err := s.datastoreConfig(tt.config)
 			if tt.wantErr != nil {
 				require.Error(t, err)
 				assert.Nil(t, datastore)
-				assert.Nil(t, serializer)
 				assert.ErrorContains(t, err, tt.wantErr.Error())
 			} else {
 				require.NoError(t, err)
 				assert.IsType(t, tt.wantDSType, datastore)
-				assert.Equal(t, tt.wantSerializer, serializer)
 			}
 		})
 	}

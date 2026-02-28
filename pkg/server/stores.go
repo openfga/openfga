@@ -133,7 +133,6 @@ func (s *Server) ListStores(ctx context.Context, req *openfgav1.ListStoresReques
 	// even though we have the list of store IDs, we need to call ListStoresQuery to fetch the entire metadata of the store.
 	q := commands.NewListStoresQuery(s.datastore,
 		commands.WithListStoresQueryLogger(s.logger),
-		commands.WithListStoresQueryEncoder(s.encoder),
 	)
 	return q.Execute(ctx, req, storeIDs)
 }

@@ -31,7 +31,6 @@ import (
 	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/internal/utils/apimethod"
 	"github.com/openfga/openfga/pkg/authclaims"
-	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/featureflags"
 	"github.com/openfga/openfga/pkg/gateway"
 	"github.com/openfga/openfga/pkg/logger"
@@ -168,8 +167,6 @@ type Server struct {
 
 	logger                           logger.Logger
 	datastore                        storage.OpenFGADatastore
-	tokenSerializer                  encoder.ContinuationTokenSerializer
-	encoder                          encoder.Encoder
 	transport                        gateway.Transport
 	resolveNodeLimit                 uint32
 	resolveNodeBreadthLimit          uint32
@@ -264,12 +261,6 @@ func WithDatastore(ds storage.OpenFGADatastore) OpenFGAServiceV1Option {
 	}
 }
 
-func WithContinuationTokenSerializer(ds encoder.ContinuationTokenSerializer) OpenFGAServiceV1Option {
-	return func(s *Server) {
-		s.tokenSerializer = ds
-	}
-}
-
 // WithContext passes the server context to allow for graceful shutdowns.
 func WithContext(ctx context.Context) OpenFGAServiceV1Option {
 	return func(s *Server) {
@@ -294,12 +285,6 @@ func WithTypesystemCacheSize(maxTypesystemCacheSize int) OpenFGAServiceV1Option 
 func WithLogger(l logger.Logger) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.logger = l
-	}
-}
-
-func WithTokenEncoder(encoder encoder.Encoder) OpenFGAServiceV1Option {
-	return func(s *Server) {
-		s.encoder = encoder
 	}
 }
 
@@ -861,7 +846,6 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 	s := &Server{
 		ctx:                              context.Background(),
 		logger:                           logger.NewNoopLogger(),
-		encoder:                          encoder.NewBase64Encoder(),
 		transport:                        gateway.NewNoopTransport(),
 		changelogHorizonOffset:           serverconfig.DefaultChangelogHorizonOffset,
 		readChangesMaxPageSize:           serverconfig.DefaultReadChangesMaxPageSize,
@@ -909,7 +893,6 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		listUsersDispatchDefaultThreshold:       serverconfig.DefaultListUsersDispatchThrottlingDefaultThreshold,
 		listUsersDispatchThrottlingMaxThreshold: serverconfig.DefaultListUsersDispatchThrottlingMaxThreshold,
 
-		tokenSerializer:   encoder.NewStringContinuationTokenSerializer(),
 		singleflightGroup: &singleflight.Group{},
 		authorizer:        authz.NewAuthorizerNoop(),
 		planner: planner.New(&planner.Config{
