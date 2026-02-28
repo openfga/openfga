@@ -84,6 +84,13 @@ const (
 	datastoreURIFlag    = "datastore-uri"
 )
 
+// grpcTLSCertPool is a package-level pinned certificate pool for verifying
+// the gRPC server's TLS certificate from the HTTP gateway client. It is
+// populated and kept up-to-date by watchAndLoadCertificateWithCertWatcher
+// via the certwatcher's RegisterCallback. Every connection created by
+// dialGrpc shares this single pool.
+var grpcTLSCertPool sync.Pointer[x509.CertPool]
+
 func NewRunCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "run",
@@ -504,7 +511,7 @@ func (s *ServerContext) authenticatorConfig(config *serverconfig.Config) (authn.
 	return authenticator, nil
 }
 
-func (s *ServerContext) buildServerOpts(ctx context.Context, config *serverconfig.Config, authenticator authn.Authenticator) ([]grpc.ServerOption, *grpc_prometheus.ServerMetrics, *certwatcher.CertWatcher, error) {
+func (s *ServerContext) buildServerOpts(ctx context.Context, config *serverconfig.Config, authenticator authn.Authenticator) ([]grpc.ServerOption, *grpc_prometheus.ServerMetrics, error) {
 	serverOpts := []grpc.ServerOption{
 		grpc.MaxRecvMsgSize(serverconfig.DefaultMaxRPCMessageSizeInBytes),
 		grpc.ChainUnaryInterceptor(
@@ -587,16 +594,13 @@ func (s *ServerContext) buildServerOpts(ctx context.Context, config *serverconfi
 		),
 	)
 
-	var grpcCertWatcher *certwatcher.CertWatcher
 	if config.GRPC.TLS.Enabled {
 		if config.GRPC.TLS.CertPath == "" || config.GRPC.TLS.KeyPath == "" {
-			return nil, prometheusMetrics, nil, errors.New("'grpc.tls.cert' and 'grpc.tls.key' configs must be set")
+			return nil, prometheusMetrics, errors.New("'grpc.tls.cert' and 'grpc.tls.key' configs must be set")
 		}
-		var grpcGetCertificate func(*tls.ClientHelloInfo) (*tls.Certificate, error)
-		var err error
-		grpcGetCertificate, grpcCertWatcher, err = watchAndLoadCertificateWithCertWatcher(ctx, config.GRPC.TLS.CertPath, config.GRPC.TLS.KeyPath, s.Logger)
+		grpcGetCertificate, err := watchAndLoadCertificateWithCertWatcher(ctx, config.GRPC.TLS.CertPath, config.GRPC.TLS.KeyPath, s.Logger)
 		if err != nil {
-			return nil, prometheusMetrics, nil, err
+			return nil, prometheusMetrics, err
 		}
 		creds := credentials.NewTLS(&tls.Config{
 			GetCertificate: grpcGetCertificate,
@@ -608,10 +612,10 @@ func (s *ServerContext) buildServerOpts(ctx context.Context, config *serverconfi
 	} else {
 		s.Logger.Warn("gRPC TLS is disabled, serving connections using insecure plaintext")
 	}
-	return serverOpts, prometheusMetrics, grpcCertWatcher, nil
+	return serverOpts, prometheusMetrics, nil
 }
 
-func (s *ServerContext) dialGrpc(config *serverconfig.Config, grpcCertWatcher *certwatcher.CertWatcher) *grpc.ClientConn {
+func (s *ServerContext) dialGrpc(config *serverconfig.Config) *grpc.ClientConn {
 	dialOpts := []grpc.DialOption{}
 	if config.Trace.Enabled {
 		dialOpts = append(dialOpts, grpc.WithStatsHandler(otelgrpc.NewClientHandler()))
@@ -626,22 +630,6 @@ func (s *ServerContext) dialGrpc(config *serverconfig.Config, grpcCertWatcher *c
 			grpcHost = config.GRPC.Addr
 		}
 
-		// Register a callback on the existing gRPC cert watcher to maintain
-		// a pinned *x509.CertPool that is atomically updated on cert rotation.
-		// No second watcher is created — we reuse the one from buildServerOpts.
-		var atomicPool sync.Pointer[x509.CertPool]
-		grpcCertWatcher.RegisterCallback(func(cert tls.Certificate) {
-			leaf, parseErr := x509.ParseCertificate(cert.Certificate[0])
-			if parseErr != nil {
-				s.Logger.Error("failed to parse rotated certificate", zap.Error(parseErr))
-				return
-			}
-			pool := x509.NewCertPool()
-			pool.AddCert(leaf)
-			atomicPool.Store(pool)
-			s.Logger.Info("gRPC client cert pool updated")
-		})
-
 		creds := credentials.NewTLS(&tls.Config{
 			InsecureSkipVerify: true, //nolint:gosec // Hostname and cert are verified manually via VerifyPeerCertificate.
 			VerifyPeerCertificate: func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
@@ -654,11 +642,11 @@ func (s *ServerContext) dialGrpc(config *serverconfig.Config, grpcCertWatcher *c
 					return fmt.Errorf("failed to parse peer certificate: %w", err)
 				}
 
-				// Verify the leaf certificate against the pinned pool and check
-				// the hostname in a single call. The pool is updated atomically
-				// by the watcher callback on cert rotation.
+				// Verify the leaf certificate against the global pinned pool
+				// and check the hostname in a single call. The pool is
+				// updated atomically by the watcher callback on cert rotation.
 				_, err = peerCert.Verify(x509.VerifyOptions{
-					Roots:   atomicPool.Load(),
+					Roots:   grpcTLSCertPool.Load(),
 					DNSName: grpcHost,
 				})
 				if err != nil {
@@ -726,7 +714,7 @@ func (s *ServerContext) runHTTPServer(ctx context.Context, config *serverconfig.
 		if config.HTTP.TLS.CertPath == "" || config.HTTP.TLS.KeyPath == "" {
 			s.Logger.Fatal("'http.tls.cert' and 'http.tls.key' configs must be set")
 		}
-		httpGetCertificate, _, err := watchAndLoadCertificateWithCertWatcher(ctx, config.HTTP.TLS.CertPath, config.HTTP.TLS.KeyPath, s.Logger)
+		httpGetCertificate, err := watchAndLoadCertificateWithCertWatcher(ctx, config.HTTP.TLS.CertPath, config.HTTP.TLS.KeyPath, s.Logger)
 		if err != nil {
 			return nil, err
 		}
@@ -855,7 +843,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		return err
 	}
 
-	serverOpts, prometheusMetrics, grpcCertWatcher, err := s.buildServerOpts(ctx, config, authenticator)
+	serverOpts, prometheusMetrics, err := s.buildServerOpts(ctx, config, authenticator)
 	if prometheusMetrics != nil {
 		defer prometheus.Unregister(prometheusMetrics)
 	}
@@ -1004,7 +992,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	if config.HTTP.Enabled {
 		runtime.DefaultContextTimeout = serverconfig.DefaultContextTimeout(config)
 
-		grpcConn := s.dialGrpc(config, grpcCertWatcher)
+		grpcConn := s.dialGrpc(config)
 		defer grpcConn.Close()
 
 		httpServer, err = s.runHTTPServer(ctx, config, grpcConn)
@@ -1067,13 +1055,27 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	return nil
 }
 
-func watchAndLoadCertificateWithCertWatcher(ctx context.Context, certPath, keyPath string, logger logger.Logger) (func(*tls.ClientHelloInfo) (*tls.Certificate, error), *certwatcher.CertWatcher, error) {
+func watchAndLoadCertificateWithCertWatcher(ctx context.Context, certPath, keyPath string, logger logger.Logger) (func(*tls.ClientHelloInfo) (*tls.Certificate, error), error) {
 	log.SetLogger(logr.New(nil))
 	// Create a certificate watcher
 	watcher, err := certwatcher.New(certPath, keyPath)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create certwatcher: %w", err)
+		return nil, fmt.Errorf("failed to create certwatcher: %w", err)
 	}
+
+	// Register a callback to maintain the global grpcTLSCertPool. The callback
+	// fires immediately with the current cert and again on every rotation.
+	watcher.RegisterCallback(func(cert tls.Certificate) {
+		leaf, parseErr := x509.ParseCertificate(cert.Certificate[0])
+		if parseErr != nil {
+			logger.Error("failed to parse rotated certificate for cert pool", zap.Error(parseErr))
+			return
+		}
+		pool := x509.NewCertPool()
+		pool.AddCert(leaf)
+		grpcTLSCertPool.Store(pool)
+		logger.Info("gRPC client cert pool updated", zap.String("certPath", certPath))
+	})
 
 	logger.Info("Initial TLS certificate loaded.", zap.String("certPath", certPath), zap.String("keyPath", keyPath))
 
@@ -1090,5 +1092,5 @@ func watchAndLoadCertificateWithCertWatcher(ctx context.Context, certPath, keyPa
 		return watcher.GetCertificate(nil)
 	}
 
-	return getCertificate, watcher, nil
+	return getCertificate, nil
 }
