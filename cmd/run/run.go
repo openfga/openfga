@@ -2,7 +2,6 @@
 package run
 
 import (
-	"bytes"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -615,48 +614,45 @@ func (s *ServerContext) dialGrpc(ctx context.Context, config *serverconfig.Confi
 		dialOpts = append(dialOpts, grpc.WithStatsHandler(otelgrpc.NewClientHandler()))
 	}
 	if config.GRPC.TLS.Enabled {
-		// Resolve just the hostname portion of the gRPC address so that we can
-		// perform hostname verification manually (required because
-		// InsecureSkipVerify suppresses Go's automatic hostname check).
+		// Resolve just the hostname portion of the gRPC address for use in
+		// peer certificate verification (InsecureSkipVerify suppresses Go's
+		// automatic hostname check, so we must do it ourselves).
 		grpcHost, _, err := net.SplitHostPort(config.GRPC.Addr)
 		if err != nil {
 			// Fall back to the raw address if it has no port component.
 			grpcHost = config.GRPC.Addr
 		}
 
-		// atomicCert holds the latest *tls.Certificate loaded from disk.
-		// A background goroutine replaces it on rotation; each TLS handshake
-		// only does an atomic load – no allocation, no pool rebuild.
-		atomicCert, err := newAtomicCert(ctx, config.GRPC.TLS.CertPath, config.GRPC.TLS.KeyPath, s.Logger)
+		// atomicPool holds a pinned *x509.CertPool built from the leaf certificate
+		// loaded from disk. The watcher's RegisterCallback keeps it up to date
+		// after every cert rotation; each TLS handshake only does an atomic load.
+		atomicPool, err := newAtomicCertPool(ctx, config.GRPC.TLS.CertPath, config.GRPC.TLS.KeyPath, s.Logger)
 		if err != nil {
 			s.Logger.Fatal("failed to load gRPC credentials", zap.Error(err))
 		}
 
 		creds := credentials.NewTLS(&tls.Config{
-			InsecureSkipVerify: true, //nolint:gosec // Hostname and leaf cert are verified manually below.
+			InsecureSkipVerify: true, //nolint:gosec // Hostname and cert are verified manually via VerifyPeerCertificate.
 			VerifyPeerCertificate: func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
 				if len(rawCerts) == 0 {
 					return errors.New("no peer certificates presented")
 				}
 
-				// Exact leaf-cert match: compare the peer's raw leaf DER against
-				// the watched certificate's leaf DER. This is sufficient for a
-				// local self-signed cert where chain verification adds no value.
-				watchedLeaf := atomicCert.Load().Certificate[0]
-				if !bytes.Equal(rawCerts[0], watchedLeaf) {
-					return errors.New("peer certificate does not match the configured server certificate")
+				peerCert, err := x509.ParseCertificate(rawCerts[0])
+				if err != nil {
+					return fmt.Errorf("failed to parse peer certificate: %w", err)
 				}
 
-				// Explicit hostname verification – required because InsecureSkipVerify
-				// disables Go's automatic ServerName / SAN check.
-				peerCert, parseErr := x509.ParseCertificate(rawCerts[0])
-				if parseErr != nil {
-					return fmt.Errorf("failed to parse peer certificate: %w", parseErr)
+				// Verify the leaf certificate against the pinned pool and check
+				// the hostname in a single call. The pool is updated atomically
+				// by the watcher callback on cert rotation.
+				_, err = peerCert.Verify(x509.VerifyOptions{
+					Roots:   atomicPool.Load(),
+					DNSName: grpcHost,
+				})
+				if err != nil {
+					return fmt.Errorf("peer certificate verification failed: %w", err)
 				}
-				if err := peerCert.VerifyHostname(grpcHost); err != nil {
-					return fmt.Errorf("peer certificate hostname verification failed: %w", err)
-				}
-
 				return nil
 			},
 		})
@@ -672,69 +668,47 @@ func (s *ServerContext) dialGrpc(ctx context.Context, config *serverconfig.Confi
 	return conn
 }
 
-// newAtomicCert creates a cert watcher for certPath/keyPath, stores the initial
-// *tls.Certificate in an atomic.Pointer, and starts two background goroutines:
-//   - one that drives the certwatcher's fsnotify loop (watcher.Start),
-//   - one that detects cert changes (by comparing the leaf DER bytes) and
-//     atomically replaces the stored certificate.
+// newAtomicCertPool creates a certwatcher for certPath/keyPath and returns an
+// *atomic.Pointer[x509.CertPool] that is always current.
 //
-// The returned *sync.Pointer[tls.Certificate] is safe for concurrent use; each
-// TLS handshake only does an O(1) atomic load – no allocation, no pool rebuild.
-func newAtomicCert(ctx context.Context, certPath, keyPath string, l logger.Logger) (*sync.Pointer[tls.Certificate], error) {
+// The watcher's RegisterCallback is used to build a fresh pinned pool from the
+// leaf certificate every time the cert file changes on disk. The callback fires
+// immediately on registration (populating the initial pool) and on every
+// subsequent rotation, so no separate polling goroutine is needed.
+func newAtomicCertPool(ctx context.Context, certPath, keyPath string, l logger.Logger) (*sync.Pointer[x509.CertPool], error) {
 	log.SetLogger(logr.New(nil))
 
+	// New() already reads and caches the initial certificate.
 	watcher, err := certwatcher.New(certPath, keyPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create certwatcher: %w", err)
 	}
-	if err := watcher.ReadCertificate(); err != nil {
-		return nil, fmt.Errorf("failed to load initial certificate: %w", err)
-	}
 
-	initialCert, err := watcher.GetCertificate(nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to retrieve initial certificate: %w", err)
-	}
+	var atomicPool sync.Pointer[x509.CertPool]
 
-	var atomicCert sync.Pointer[tls.Certificate]
-	atomicCert.Store(initialCert)
+	// RegisterCallback fires immediately with the current cert and again on
+	// every rotation. We build a pool containing only the leaf certificate
+	// (certificate pinning) and swap it into the atomic pointer.
+	watcher.RegisterCallback(func(cert tls.Certificate) {
+		leaf, parseErr := x509.ParseCertificate(cert.Certificate[0])
+		if parseErr != nil {
+			l.Error("failed to parse rotated certificate", zap.Error(parseErr))
+			return
+		}
+		pool := x509.NewCertPool()
+		pool.AddCert(leaf)
+		atomicPool.Store(pool)
+		l.Info("gRPC client cert pool updated", zap.String("certPath", certPath))
+	})
 
-	// Goroutine 1: drive the fsnotify watcher loop.
+	// Start the watcher's fsnotify loop (drives the callback on file changes).
 	go func() {
-		l.Info("Starting certificate watcher...", zap.String("certPath", certPath), zap.String("keyPath", keyPath))
 		if err := watcher.Start(ctx); err != nil {
-			l.Error("certificate watcher encountered an error", zap.Error(err))
+			l.Error("certwatcher encountered an error", zap.Error(err))
 		}
 	}()
 
-	// Goroutine 2: replace the stored certificate whenever a new one is seen.
-	// Change detection uses the raw leaf DER bytes – cheap and allocation-free.
-	go func() {
-		currentLeaf := initialCert.Certificate[0]
-		ticker := time.NewTicker(time.Second)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				latestCert, certErr := watcher.GetCertificate(nil)
-				if certErr != nil {
-					l.Error("failed to get certificate from watcher", zap.Error(certErr))
-					continue
-				}
-				latestLeaf := latestCert.Certificate[0]
-				if bytes.Equal(currentLeaf, latestLeaf) {
-					continue // cert unchanged
-				}
-				atomicCert.Store(latestCert)
-				currentLeaf = latestLeaf
-				l.Info("client cert updated after certificate rotation", zap.String("certPath", certPath))
-			}
-		}
-	}()
-
-	return &atomicCert, nil
+	return &atomicPool, nil
 }
 
 func (s *ServerContext) runHTTPServer(ctx context.Context, config *serverconfig.Config, grpcConn *grpc.ClientConn) (*http.Server, error) {
