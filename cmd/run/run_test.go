@@ -712,6 +712,8 @@ func TestHTTPServingTLS(t *testing.T) {
 			CertPath: certsAndKeys.serverCertFile,
 			KeyPath:  certsAndKeys.serverKeyFile,
 		}
+		// Ensure address is "localhost" since test cert is for that domain.
+		cfg.HTTP.Addr = strings.ReplaceAll(cfg.HTTP.Addr, "0.0.0.0", "localhost")
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -776,6 +778,8 @@ func TestGRPCServingTLS(t *testing.T) {
 			CertPath: certsAndKeys.serverCertFile,
 			KeyPath:  certsAndKeys.serverKeyFile,
 		}
+		// Ensure address is "localhost" since test cert is for that domain.
+		cfg.GRPC.Addr = strings.ReplaceAll(cfg.GRPC.Addr, "0.0.0.0", "localhost")
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -808,6 +812,8 @@ func TestHTTPServerWithGRPCTLSEnabled(t *testing.T) {
 			CertPath: certsAndKeys.serverCertFile,
 			KeyPath:  certsAndKeys.serverKeyFile,
 		}
+		// Ensure address is "localhost" since test cert is for that domain.
+		cfg.GRPC.Addr = strings.ReplaceAll(cfg.GRPC.Addr, "0.0.0.0", "localhost")
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -846,6 +852,8 @@ func TestHTTPServerWithGRPCTLSEnabled(t *testing.T) {
 			CertPath: certsAndKeys.serverCertFile,
 			KeyPath:  certsAndKeys.serverKeyFile,
 		}
+		// Ensure address is "localhost" since test cert is for that domain.
+		cfg.GRPC.Addr = strings.ReplaceAll(cfg.GRPC.Addr, "0.0.0.0", "localhost")
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
