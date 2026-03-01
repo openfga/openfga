@@ -30,6 +30,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Set up Go
         uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
@@ -37,6 +38,7 @@ jobs:
           go-version-file: './go.mod'
           cache-dependency-path: './go.sum'
           check-latest: true
+          cache: false
 
       - name: Login to Docker Hub
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
@@ -170,7 +172,8 @@ jobs:
   verification-with-slsa-verifier:
     needs: [ goreleaser, binary-provenance ]
     runs-on: ubuntu-latest
-    permissions: read-all
+    permissions:
+      contents: read # To download assets from a release.
     steps:
       - name: Install the verifier
         uses: slsa-framework/slsa-verifier/actions/installer@ea584f4502babc6f60d9bc799dbbb13c1caa9ee6 # pin@v2.7.1
@@ -197,7 +200,7 @@ jobs:
   verification-with-cosign:
     needs: [ goreleaser, image-provenance ]
     runs-on: ubuntu-latest
-    permissions: read-all
+    permissions: {}
     steps:
       - name: Login to Docker Hub
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
