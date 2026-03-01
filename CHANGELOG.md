@@ -8,7 +8,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 ### Changed
-- HTTP gateway's internal gRPC client now uses dynamic TLS credentials that automatically update on certificate rotation via certwatcher, preventing connection failures when certificates are rotated (e.g., by cert-manager). [#XXXX](https://github.com/openfga/openfga/pull/XXXX)
+- HTTP gateway's internal gRPC client now uses dynamic TLS credentials that automatically update on certificate rotation via certwatcher, preventing connection failures when certificates are rotated (e.g., by cert-manager). [#2951](https://github.com/openfga/openfga/pull/2951)
 
 ### Fixed
 - Fixed a few bugs. Two potential index out of bounds scenarios, and one cache of an invalid result. [#2942](https://github.com/openfga/openfga/pull/2942)
