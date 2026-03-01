@@ -689,6 +689,7 @@ func TestHTTPServingTLS(t *testing.T) {
 			CertPath: certsAndKeys.serverCertFile,
 			KeyPath:  certsAndKeys.serverKeyFile,
 		}
+		cfg.HTTP.Addr = strings.Replace(cfg.HTTP.Addr, "0.0.0.0", "localhost", 1)
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -712,6 +713,7 @@ func TestHTTPServingTLS(t *testing.T) {
 			CertPath: certsAndKeys.serverCertFile,
 			KeyPath:  certsAndKeys.serverKeyFile,
 		}
+		cfg.HTTP.Addr = strings.Replace(cfg.HTTP.Addr, "0.0.0.0", "localhost", 1)
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -752,6 +754,7 @@ func TestGRPCServingTLS(t *testing.T) {
 			CertPath: certsAndKeys.serverCertFile,
 			KeyPath:  certsAndKeys.serverKeyFile,
 		}
+		cfg.GRPC.Addr = strings.Replace(cfg.GRPC.Addr, "0.0.0.0", "localhost", 1)
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -776,6 +779,7 @@ func TestGRPCServingTLS(t *testing.T) {
 			CertPath: certsAndKeys.serverCertFile,
 			KeyPath:  certsAndKeys.serverKeyFile,
 		}
+		cfg.GRPC.Addr = strings.Replace(cfg.GRPC.Addr, "0.0.0.0", "localhost", 1)
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -808,6 +812,7 @@ func TestHTTPServerWithGRPCTLSEnabled(t *testing.T) {
 			CertPath: certsAndKeys.serverCertFile,
 			KeyPath:  certsAndKeys.serverKeyFile,
 		}
+		cfg.GRPC.Addr = strings.Replace(cfg.GRPC.Addr, "0.0.0.0", "localhost", 1)
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -846,6 +851,7 @@ func TestHTTPServerWithGRPCTLSEnabled(t *testing.T) {
 			CertPath: certsAndKeys.serverCertFile,
 			KeyPath:  certsAndKeys.serverKeyFile,
 		}
+		cfg.GRPC.Addr = strings.Replace(cfg.GRPC.Addr, "0.0.0.0", "localhost", 1)
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
