@@ -9,6 +9,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ## [Unreleased]
 ### Fixed
 - Fixed a few bugs. Two potential index out of bounds scenarios, and one cache of an invalid result. [#2942](https://github.com/openfga/openfga/pull/2942)
+- Fixed a race condition in check reducers causing non-deterministic nested handler execution due to canceled parent context. [#2947](https://github.com/openfga/openfga/pull/2947)
 
 ## [1.11.6] - 2026-02-23
 ### Added
