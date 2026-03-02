@@ -114,6 +114,8 @@ func NewRunCommand() *cobra.Command {
 
 	cmd.MarkFlagsRequiredTogether("grpc-tls-enabled", "grpc-tls-cert", "grpc-tls-key")
 
+	flags.Int("grpc-max-recv-msg-bytes", defaultConfig.GRPC.MaxRecvMsgBytes, "the maximum size of a received message in bytes")
+
 	flags.Bool("http-enabled", defaultConfig.HTTP.Enabled, "enable/disable the OpenFGA HTTP server")
 
 	flags.String("http-addr", defaultConfig.HTTP.Addr, "the host:port address to serve the HTTP server on")
@@ -504,7 +506,7 @@ func (s *ServerContext) authenticatorConfig(config *serverconfig.Config) (authn.
 
 func (s *ServerContext) buildServerOpts(ctx context.Context, config *serverconfig.Config, authenticator authn.Authenticator) ([]grpc.ServerOption, *grpc_prometheus.ServerMetrics, error) {
 	serverOpts := []grpc.ServerOption{
-		grpc.MaxRecvMsgSize(serverconfig.DefaultMaxRPCMessageSizeInBytes),
+		grpc.MaxRecvMsgSize(config.GRPC.MaxRecvMsgBytes),
 		grpc.ChainUnaryInterceptor(
 			[]grpc.UnaryServerInterceptor{
 				grpc_recovery.UnaryServerInterceptor( // panic middleware must be 1st in chain
