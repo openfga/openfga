@@ -163,6 +163,10 @@ func (i InMemoryLRUCache[T]) Set(key string, value T, ttl time.Duration) {
 		ttl = oneYear
 	}
 
+	if ttl < 0 {
+		return
+	}
+
 	// Ignore the boolean return here as we always pass cost=1 and items are always admitted
 	i.client.SetWithTTL(key, value, 1, ttl)
 
