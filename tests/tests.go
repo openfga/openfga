@@ -67,7 +67,11 @@ func StartServerWithContext(t testing.TB, cfg *serverconfig.Config, serverCtx *r
 		t.Log("waiting for server to stop")
 		cancel()
 		serverErr := <-serverDone
-		t.Log("server stopped with error: ", serverErr)
+		if serverErr != nil {
+			t.Log("server stopped with error: ", serverErr)
+		} else {
+			t.Log("server stopped successfully")
+		}
 	})
 
 	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil)
