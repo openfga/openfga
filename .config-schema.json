@@ -352,6 +352,12 @@
                     "default": "0.0.0.0:8081",
                     "x-env-variable": "OPENFGA_GRPC_ADDR"
                 },
+                "maxRecvMsgBytes": {
+                    "description": "The maximum size, in bytes, of a received gRPC message.",
+                    "type": "integer",
+                    "default": "616448",
+                    "x-env-variable": "OPENFGA_GRPC_MAX_RECV_MSG_BYTES"
+                },
                 "tls": {
                     "type": "object",
                     "properties": {
