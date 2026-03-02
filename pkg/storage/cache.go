@@ -170,6 +170,8 @@ func (i InMemoryLRUCache[T]) Set(key string, value T, ttl time.Duration) {
 	// Ignore the boolean return here as we always pass cost=1 and items are always admitted
 	i.client.SetWithTTL(key, value, 1, ttl)
 
+	// Note: EstimatedSize is eventually consistent due to a shared lock in theine's maintenance routine.
+	// It shouldn't matter in practice, but it may lag behind a few entries.
 	cacheSizeFloat := float64(i.client.EstimatedSize())
 	if item, ok := any(value).(CacheItem); ok {
 		cacheItemCount.WithLabelValues(item.CacheEntityType()).Set(cacheSizeFloat)
