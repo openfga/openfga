@@ -158,6 +158,10 @@ func runHandler(ctx context.Context, handler CheckHandlerFunc) checkOutcome {
 // union implements a CheckFuncReducer that requires any of the provided CheckHandlerFunc to resolve
 // to an allowed outcome. The first allowed outcome causes premature termination of the reducer.
 func union(ctx context.Context, concurrencyLimit int, handlers ...CheckHandlerFunc) (resp *ResolveCheckResponse, err error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+
 	cancellableCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -218,6 +222,10 @@ func union(ctx context.Context, concurrencyLimit int, handlers ...CheckHandlerFu
 func intersection(ctx context.Context, concurrencyLimit int, handlers ...CheckHandlerFunc) (resp *ResolveCheckResponse, err error) {
 	if len(handlers) < 2 {
 		return nil, fmt.Errorf("%w, expected at least two rewrite operands for intersection operator, but got '%d'", openfgaErrors.ErrUnknown, len(handlers))
+	}
+
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
 	}
 
 	cancellableCtx, cancel := context.WithCancel(ctx)
@@ -287,6 +295,10 @@ func intersection(ctx context.Context, concurrencyLimit int, handlers ...CheckHa
 func exclusion(ctx context.Context, _ int, handlers ...CheckHandlerFunc) (*ResolveCheckResponse, error) {
 	if len(handlers) != 2 {
 		return nil, fmt.Errorf("%w, expected two rewrite operands for exclusion operator, but got '%d'", openfgaErrors.ErrUnknown, len(handlers))
+	}
+
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
 	}
 
 	ctx, cancel := context.WithCancel(ctx)
