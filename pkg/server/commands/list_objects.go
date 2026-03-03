@@ -266,7 +266,7 @@ func NewListObjectsQuery(
 		},
 		optimizationsEnabled: false,
 		useShadowCache:       false,
-		ff:                   featureflags.NewNoopFeatureFlagClient(),
+		ff:                   featureflags.NewDefaultClient([]string{serverconfig.ExperimentalPipelineListObjects}),
 		pipelineConfig:       pipeline.DefaultConfig(),
 	}
 
@@ -276,6 +276,10 @@ func NewListObjectsQuery(
 
 	if query.ff.Boolean(serverconfig.ExperimentalListObjectsOptimizations, storeID) {
 		query.optimizationsEnabled = true
+	}
+
+	if !query.ff.Boolean(serverconfig.ExperimentalPipelineListObjects, storeID) {
+		query.pipelineEnabled = false
 	}
 
 	return query, nil
