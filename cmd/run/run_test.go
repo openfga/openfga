@@ -1310,6 +1310,7 @@ func TestDefaultConfig(t *testing.T) {
 	val = res.Get("properties.experimentals.default")
 	require.True(t, val.Exists())
 	require.Len(t, cfg.Experimentals, len(val.Array()))
+	require.Contains(t, cfg.Experimentals, serverconfig.ExperimentalPipelineListObjects)
 
 	val = res.Get("properties.metrics.properties.enabled.default")
 	require.True(t, val.Exists())
