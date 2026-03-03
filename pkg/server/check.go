@@ -222,11 +222,11 @@ func (s *Server) shadowV2Check(ctx context.Context, req *openfgav1.CheckRequest,
 		return
 	}
 	s.logger.InfoWithContext(ctx, "shadow check",
-		zap.Bool("match", mainRes.GetAllowed() == res.GetAllowed()),
+		zap.Bool("matches", mainRes.GetAllowed() == res.GetAllowed()),
 		zap.Int64("main_took", mainTook),
-		zap.Duration("shadow_took", time.Since(start)),
-		zap.Bool("main", mainRes.GetAllowed()),
-		zap.Bool("shadow", res.GetAllowed()),
+		zap.Int64("shadow_took", time.Since(start).Milliseconds()),
+		zap.Bool("main_result", mainRes.GetAllowed()),
+		zap.Bool("shadow_result", res.GetAllowed()),
 	)
 }
 
