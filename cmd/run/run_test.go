@@ -1309,8 +1309,11 @@ func TestDefaultConfig(t *testing.T) {
 
 	val = res.Get("properties.experimentals.default")
 	require.True(t, val.Exists())
-	require.Len(t, cfg.Experimentals, len(val.Array()))
-	require.Contains(t, cfg.Experimentals, serverconfig.ExperimentalPipelineListObjects)
+	schemaDefaults := make([]string, 0, len(val.Array()))
+	for _, v := range val.Array() {
+		schemaDefaults = append(schemaDefaults, v.String())
+	}
+	require.ElementsMatch(t, schemaDefaults, cfg.Experimentals)
 
 	val = res.Get("properties.metrics.properties.enabled.default")
 	require.True(t, val.Exists())
