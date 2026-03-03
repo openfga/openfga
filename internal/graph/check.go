@@ -19,11 +19,11 @@ import (
 	"github.com/openfga/openfga/internal/concurrency"
 	openfgaErrors "github.com/openfga/openfga/internal/errors"
 	"github.com/openfga/openfga/internal/planner"
+	"github.com/openfga/openfga/internal/telemetry"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/logger"
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	"github.com/openfga/openfga/pkg/storage"
-	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
@@ -158,6 +158,10 @@ func runHandler(ctx context.Context, handler CheckHandlerFunc) checkOutcome {
 // union implements a CheckFuncReducer that requires any of the provided CheckHandlerFunc to resolve
 // to an allowed outcome. The first allowed outcome causes premature termination of the reducer.
 func union(ctx context.Context, concurrencyLimit int, handlers ...CheckHandlerFunc) (resp *ResolveCheckResponse, err error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+
 	cancellableCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -218,6 +222,10 @@ func union(ctx context.Context, concurrencyLimit int, handlers ...CheckHandlerFu
 func intersection(ctx context.Context, concurrencyLimit int, handlers ...CheckHandlerFunc) (resp *ResolveCheckResponse, err error) {
 	if len(handlers) < 2 {
 		return nil, fmt.Errorf("%w, expected at least two rewrite operands for intersection operator, but got '%d'", openfgaErrors.ErrUnknown, len(handlers))
+	}
+
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
 	}
 
 	cancellableCtx, cancel := context.WithCancel(ctx)
@@ -287,6 +295,10 @@ func intersection(ctx context.Context, concurrencyLimit int, handlers ...CheckHa
 func exclusion(ctx context.Context, _ int, handlers ...CheckHandlerFunc) (*ResolveCheckResponse, error) {
 	if len(handlers) != 2 {
 		return nil, fmt.Errorf("%w, expected two rewrite operands for exclusion operator, but got '%d'", openfgaErrors.ErrUnknown, len(handlers))
+	}
+
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
 	}
 
 	ctx, cancel := context.WithCancel(ctx)
@@ -1070,7 +1082,8 @@ func streamedLookupUsersetFromIterator(ctx context.Context, iter storage.TupleMa
 // This is used to find the intersection between userset from user and userset from object.
 func processUsersetMessage(userset string,
 	primarySet *hashset.Set,
-	secondarySet *hashset.Set) bool {
+	secondarySet *hashset.Set,
+) bool {
 	primarySet.Add(userset)
 	return secondarySet.Contains(userset)
 }

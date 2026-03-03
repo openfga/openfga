@@ -17,9 +17,9 @@ import (
 
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/internal/concurrency"
+	"github.com/openfga/openfga/internal/telemetry"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
-	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
@@ -198,7 +198,8 @@ func (c *InMemoryCacheController) findChangesDescending(ctx context.Context, sto
 		Pagination: storage.PaginationOptions{
 			PageSize: storage.DefaultPageSize,
 			From:     "",
-		}}
+		},
+	}
 	return c.ds.ReadChanges(ctx, storeID, storage.ReadChangesFilter{}, opts)
 }
 
