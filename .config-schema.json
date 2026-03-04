@@ -355,7 +355,8 @@
                 "maxRecvMsgBytes": {
                     "description": "The maximum size, in bytes, of a received gRPC message.",
                     "type": "integer",
-                    "default": "616448",
+                    "default": 616448,
+                    "minimum": 1,
                     "x-env-variable": "OPENFGA_GRPC_MAX_RECV_MSG_BYTES"
                 },
                 "tls": {
