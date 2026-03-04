@@ -1203,6 +1203,10 @@ func TestDefaultConfig(t *testing.T) {
 	require.True(t, val.Exists())
 	require.Equal(t, val.String(), cfg.GRPC.Addr)
 
+	val = res.Get("properties.grpc.properties.maxRecvMsgBytes.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.GRPC.MaxRecvMsgBytes)
+
 	val = res.Get("properties.http.properties.enabled.default")
 	require.True(t, val.Exists())
 	require.Equal(t, val.Bool(), cfg.HTTP.Enabled)
