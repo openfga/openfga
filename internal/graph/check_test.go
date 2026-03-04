@@ -430,6 +430,15 @@ func TestExclusionCheckFuncReducer(t *testing.T) {
 		wg.Wait() // just to make sure to avoid test leaks
 	})
 
+	t.Run("return_context_canceled_when_parent_context_is_canceled", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		resp, err := exclusion(ctx, concurrencyLimit, trueHandler, trueHandler)
+		require.ErrorIs(t, err, context.Canceled)
+		require.Nil(t, resp)
+	})
+
 	t.Run("return_error_if_context_deadline_before_resolution", func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
 		t.Cleanup(cancel)
@@ -763,6 +772,15 @@ func TestIntersectionCheckFuncReducer(t *testing.T) {
 		require.False(t, resp.GetAllowed())
 
 		wg.Wait() // just to make sure to avoid test leaks
+	})
+
+	t.Run("return_context_canceled_when_parent_context_is_canceled", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		resp, err := intersection(ctx, concurrencyLimit, trueHandler, trueHandler)
+		require.ErrorIs(t, err, context.Canceled)
+		require.Nil(t, resp)
 	})
 
 	t.Run("return_error_if_context_deadline_before_resolution", func(t *testing.T) {
@@ -1683,6 +1701,15 @@ func TestUnionCheckFuncReducer(t *testing.T) {
 		resp, err := union(ctx, concurrencyLimit, trueHandler, falseSlowHandler)
 		require.NoError(t, err)
 		require.True(t, resp.GetAllowed())
+	})
+
+	t.Run("return_context_canceled_when_parent_context_is_canceled", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(ctx)
+		cancel()
+
+		resp, err := union(ctx, concurrencyLimit, trueHandler, falseHandler)
+		require.ErrorIs(t, err, context.Canceled)
+		require.Nil(t, resp)
 	})
 
 	t.Run("return_error_if_context_cancelled_before_resolution", func(t *testing.T) {
