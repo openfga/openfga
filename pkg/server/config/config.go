@@ -448,7 +448,7 @@ func (cfg *Config) VerifyServerSettings() error {
 	}
 
 	if cfg.GRPC.MaxRecvMsgBytes <= 0 {
-		return fmt.Errorf("grpc MaxRecvMsgBytes must be greater than 0")
+		return fmt.Errorf("config 'grpc.maxRecvMsgBytes' must be greater than 0")
 	}
 
 	if cfg.MaxConcurrentReadsForListUsers == 0 {
