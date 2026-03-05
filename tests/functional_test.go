@@ -340,6 +340,7 @@ func TestFunctionalGRPC(t *testing.T) {
 	t.Run("TestReadAuthorizationModel", func(t *testing.T) { GRPCReadAuthorizationModelTest(t, client) })
 	t.Run("TestReadAuthorizationModels", func(t *testing.T) { GRPCReadAuthorizationModelsTest(t, client) })
 	t.Run("TestWriteAssertions", func(t *testing.T) { GRPCWriteAssertionsTest(t, client) })
+	t.Run("TestReadAssertions", func(t *testing.T) { GRPCReadAssertionsTest(t, client) })
 
 	t.Run("TestReadAuthorizationModel", func(t *testing.T) { GRPCReadAuthorizationModelTest(t, client) })
 	t.Run("TestReadAuthorizationModels", func(t *testing.T) { GRPCReadAuthorizationModelsTest(t, client) })
@@ -2339,6 +2340,156 @@ func GRPCWriteAssertionsTest(t *testing.T, client openfgav1.OpenFGAServiceClient
 			} else {
 				require.Error(t, err)
 				require.Contains(t, err.Error(), test.output.errorMessage)
+			}
+		})
+	}
+}
+
+func GRPCReadAssertionsTest(t *testing.T, client openfgav1.OpenFGAServiceClient) {
+	type testData struct {
+		model      string
+		assertions []*openfgav1.Assertion
+	}
+	type output struct {
+		statusCode codes.Code
+	}
+
+	tests := []struct {
+		name     string
+		input    *openfgav1.ReadAssertionsRequest
+		testData *testData
+		output   output
+	}{
+		{
+			name: "happy_path",
+			testData: &testData{
+				model: `
+					model
+						schema 1.1
+					type user
+
+					type document
+						relations
+							define viewer: [user]`,
+				assertions: []*openfgav1.Assertion{
+					{Expectation: true, TupleKey: &openfgav1.AssertionTupleKey{
+						Object:   "document:1",
+						Relation: "viewer",
+						User:     "user:anne",
+					}},
+				},
+			},
+			input: &openfgav1.ReadAssertionsRequest{
+				StoreId:              ulid.Make().String(),
+				AuthorizationModelId: ulid.Make().String(),
+			},
+			output: output{
+				statusCode: codes.OK,
+			},
+		},
+		{
+			name:  "empty_request",
+			input: &openfgav1.ReadAssertionsRequest{},
+			output: output{
+				statusCode: codes.InvalidArgument,
+			},
+		},
+		{
+			name: "invalid_storeID_because_too_short",
+			input: &openfgav1.ReadAssertionsRequest{
+				StoreId:              "1",
+				AuthorizationModelId: ulid.Make().String(),
+			},
+			output: output{
+				statusCode: codes.InvalidArgument,
+			},
+		},
+		{
+			name: "invalid_storeID_because_extra_chars",
+			input: &openfgav1.ReadAssertionsRequest{
+				StoreId:              ulid.Make().String() + "A",
+				AuthorizationModelId: ulid.Make().String(),
+			},
+			output: output{
+				statusCode: codes.InvalidArgument,
+			},
+		},
+		{
+			name: "invalid_storeID_because_invalid_chars",
+			input: &openfgav1.ReadAssertionsRequest{
+				StoreId:              "ABCDEFGHIJKLMNOPQRSTUVWXY@",
+				AuthorizationModelId: ulid.Make().String(),
+			},
+			output: output{
+				statusCode: codes.InvalidArgument,
+			},
+		},
+		{
+			name: "invalid_authorization_model_ID_because_extra_chars",
+			input: &openfgav1.ReadAssertionsRequest{
+				StoreId:              ulid.Make().String(),
+				AuthorizationModelId: ulid.Make().String() + "A",
+			},
+			output: output{
+				statusCode: codes.InvalidArgument,
+			},
+		},
+		{
+			name: "invalid_authorization_model_ID_because_invalid_chars",
+			input: &openfgav1.ReadAssertionsRequest{
+				StoreId:              ulid.Make().String(),
+				AuthorizationModelId: "ABCDEFGHIJKLMNOPQRSTUVWXY@",
+			},
+			output: output{
+				statusCode: codes.InvalidArgument,
+			},
+		},
+		{
+			name: "model_not_found",
+			input: &openfgav1.ReadAssertionsRequest{
+				StoreId:              ulid.Make().String(),
+				AuthorizationModelId: ulid.Make().String(),
+			},
+			output: output{
+				statusCode: codes.Code(openfgav1.ErrorCode_authorization_model_not_found),
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if test.testData != nil {
+				modelResp, err := client.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
+					StoreId:         test.input.GetStoreId(),
+					SchemaVersion:   typesystem.SchemaVersion1_1,
+					TypeDefinitions: parser.MustTransformDSLToProto(test.testData.model).GetTypeDefinitions(),
+				})
+				require.NoError(t, err)
+				test.input.AuthorizationModelId = modelResp.GetAuthorizationModelId()
+
+				_, err = client.WriteAssertions(context.Background(), &openfgav1.WriteAssertionsRequest{
+					StoreId:              test.input.GetStoreId(),
+					AuthorizationModelId: test.input.GetAuthorizationModelId(),
+					Assertions:           test.testData.assertions,
+				})
+				require.NoError(t, err)
+			}
+
+			resp, err := client.ReadAssertions(context.Background(), test.input)
+
+			s, ok := status.FromError(err)
+
+			require.True(t, ok)
+			require.Equal(t, test.output.statusCode.String(), s.Code().String())
+
+			if s.Code() == codes.OK {
+				require.NoError(t, err)
+				require.Equal(t, test.input.GetAuthorizationModelId(), resp.GetAuthorizationModelId())
+				if diff := cmp.Diff(test.testData.assertions, resp.GetAssertions(), protocmp.Transform()); diff != "" {
+					t.Errorf("assertions mismatch (-want +got):\n%s", diff)
+				}
+			} else {
+				require.Error(t, err)
 			}
 		})
 	}
