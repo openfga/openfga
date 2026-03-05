@@ -6,11 +6,13 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/oklog/ulid/v2"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	"google.golang.org/protobuf/types/known/structpb"
@@ -419,6 +421,76 @@ func TestInMemoryCache(t *testing.T) {
 		cache.Set("key", "value", -2)
 		result := cache.Get("key")
 		require.NotEqual(t, "value", result)
+	})
+
+	t.Run("cache_item_count_doesnt_double_count_on_overwrite", func(t *testing.T) {
+		cache, err := NewInMemoryLRUCache[string]()
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			goleak.VerifyNone(t)
+		})
+		defer cache.Stop()
+		k := "key"
+
+		// Ensure metric is zero before we do anything
+		cacheItemCount.WithLabelValues(unspecifiedLabel).Set(float64(0))
+
+		cache.Set(k, "value1", time.Second)
+
+		// This .Wait() is needed as cache client.EstimatedSize() is eventually consistent
+		// due it its use of a shared mutex with theine's maintenance routine
+		cache.client.Wait()
+
+		cache.Set(k, "value2", time.Second)
+		before := testutil.ToFloat64(cacheItemCount.WithLabelValues(unspecifiedLabel))
+		cache.client.Wait()
+
+		cache.Set(k, "value3", time.Second)
+		after := testutil.ToFloat64(cacheItemCount.WithLabelValues(unspecifiedLabel))
+
+		// There should only be 1
+		require.InDelta(t, 0, after, 1)
+
+		// Should not have changed further
+		require.InDelta(t, 0, after-before, 0)
+	})
+
+	t.Run("cache_item_count_decrements_after_deletes", func(t *testing.T) {
+		cache, err := NewInMemoryLRUCache[string]()
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			goleak.VerifyNone(t)
+		})
+		defer cache.Stop()
+
+		// set 10 items in cache
+		for i := range 10 {
+			cache.Set(strconv.Itoa(i), "value"+strconv.Itoa(i), time.Second)
+		}
+		// Allow maintenance routine to finish
+		cache.client.Wait()
+
+		// Set once more to ensure metric has caught up
+		cache.Set("10", "value10", time.Second)
+
+		// this will return either 10 or 11 bc of race in EstimatedSize()
+		before := testutil.ToFloat64(cacheItemCount.WithLabelValues(unspecifiedLabel))
+
+		// delete all 11 items in cache
+		for i := range 11 {
+			cache.Delete(strconv.Itoa(i))
+		}
+		// Allow maintenance routine to finish
+		cache.client.Wait()
+
+		// The cache item count is only updated on Set()
+		cache.Set("10", "value10", time.Second)
+
+		// this will be either 0 or 1 after the Set call above
+		after := testutil.ToFloat64(cacheItemCount.WithLabelValues(unspecifiedLabel))
+
+		// expect before and after to differ by 9 elements, + or - 2 due to race
+		require.InDelta(t, 9, before-after, 2)
 	})
 
 	t.Run("stop_multiple_times", func(t *testing.T) {
