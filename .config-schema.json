@@ -148,9 +148,9 @@
             "type": "array",
             "items": {
                 "type": "string",
-                "enum": ["enable-check-optimizations", "enable-list-objects-optimizations", "enable-access-control", "datastore_throttling"]
+                "enum": ["enable-check-optimizations", "enable-list-objects-optimizations", "enable-access-control", "datastore_throttling", "pipeline_list_objects"]
             },
-            "default": [],
+            "default": ["pipeline_list_objects"],
             "x-env-variable": "OPENFGA_EXPERIMENTALS"
         },
         "accessControl": {

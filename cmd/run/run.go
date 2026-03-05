@@ -851,12 +851,13 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 
 	tracerProviderCloser := s.telemetryConfig(config)
 
+	// Added temporarily to allow us to enable experimental features by default without allowing the user to disable them,
+	// eg for pipeline_list_objects.
+	config.Experimentals = append(serverconfig.DefaultConfig().Experimentals, config.Experimentals...)
+
 	if len(config.Experimentals) > 0 {
 		s.Logger.Info(fmt.Sprintf("🧪 experimental features enabled: %v", config.Experimentals))
 	}
-
-	var experimentals []string
-	experimentals = append(experimentals, config.Experimentals...)
 
 	datastore, continuationTokenSerializer, err := s.datastoreConfig(config)
 	if err != nil {
@@ -977,7 +978,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		// The shared iterator watchdog timeout is set to config.RequestTimeout + 2 seconds
 		// to provide a small buffer for operations that might slightly exceed the request timeout.
 		server.WithSharedIteratorTTL(config.RequestTimeout+2*time.Second),
-		server.WithExperimentals(experimentals...),
+		server.WithExperimentals(config.Experimentals...),
 		server.WithAccessControlParams(config.AccessControl.Enabled, config.AccessControl.StoreID, config.AccessControl.ModelID, config.Authn.Method),
 		server.WithContext(ctx),
 	)

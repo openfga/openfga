@@ -719,7 +719,7 @@ func DefaultConfig() *Config {
 		ChangelogHorizonOffset:                    DefaultChangelogHorizonOffset,
 		ResolveNodeLimit:                          DefaultResolveNodeLimit,
 		ResolveNodeBreadthLimit:                   DefaultResolveNodeBreadthLimit,
-		Experimentals:                             []string{},
+		Experimentals:                             []string{ExperimentalPipelineListObjects},
 		AccessControl:                             AccessControlConfig{Enabled: false, StoreID: "", ModelID: ""},
 		ListObjectsDeadline:                       DefaultListObjectsDeadline,
 		ListObjectsMaxResults:                     DefaultListObjectsMaxResults,
