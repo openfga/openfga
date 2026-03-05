@@ -19,13 +19,13 @@ import (
 
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/modelgraph"
+	"github.com/openfga/openfga/internal/telemetry"
 	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/internal/utils/apimethod"
 	"github.com/openfga/openfga/pkg/middleware/validator"
 	"github.com/openfga/openfga/pkg/server/commands"
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
-	"github.com/openfga/openfga/pkg/telemetry"
 )
 
 func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openfgav1.CheckResponse, error) {
@@ -222,11 +222,11 @@ func (s *Server) shadowV2Check(ctx context.Context, req *openfgav1.CheckRequest,
 		return
 	}
 	s.logger.InfoWithContext(ctx, "shadow check",
-		zap.Bool("match", mainRes.GetAllowed() == res.GetAllowed()),
+		zap.Bool("matches", mainRes.GetAllowed() == res.GetAllowed()),
 		zap.Int64("main_took", mainTook),
-		zap.Duration("shadow_took", time.Since(start)),
-		zap.Bool("main", mainRes.GetAllowed()),
-		zap.Bool("shadow", res.GetAllowed()),
+		zap.Int64("shadow_took", time.Since(start).Milliseconds()),
+		zap.Bool("main_result", mainRes.GetAllowed()),
+		zap.Bool("shadow_result", res.GetAllowed()),
 	)
 }
 
