@@ -40,6 +40,14 @@ func TestVerifyConfig(t *testing.T) {
 		require.EqualError(t, err, "config 'maxConcurrentReadsForListUsers' cannot be 0")
 	})
 
+	t.Run("grpc.MaxRecvMsgBytes_not_zero", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.GRPC.MaxRecvMsgBytes = 0
+
+		err := cfg.Verify()
+		require.EqualError(t, err, "config 'grpc.maxRecvMsgBytes' must be greater than 0")
+	})
+
 	t.Run("failing_to_set_http_cert_path_will_not_allow_server_to_start", func(t *testing.T) {
 		cfg := DefaultConfig()
 		cfg.HTTP.TLS = &TLSConfig{
