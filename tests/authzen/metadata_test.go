@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	authzenv1 "github.com/openfga/api/proto/authzen/v1"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/build"
 )
@@ -16,8 +17,9 @@ import (
 func TestGetConfiguration(t *testing.T) {
 	t.Run("returns_pdp_info", func(t *testing.T) {
 		tc := setupTestContext(t)
+		tc.createStore("test-store")
 
-		resp, err := tc.authzenClient.GetConfiguration(context.Background(), &authzenv1.GetConfigurationRequest{StoreId: "test-store"})
+		resp, err := tc.authzenClient.GetConfiguration(context.Background(), &authzenv1.GetConfigurationRequest{StoreId: tc.storeID})
 		require.NoError(t, err)
 
 		require.NotNil(t, resp.GetPolicyDecisionPoint())
@@ -28,8 +30,9 @@ func TestGetConfiguration(t *testing.T) {
 
 	t.Run("returns_endpoints", func(t *testing.T) {
 		tc := setupTestContext(t)
+		tc.createStore("test-store")
 
-		resp, err := tc.authzenClient.GetConfiguration(context.Background(), &authzenv1.GetConfigurationRequest{StoreId: "test-store"})
+		resp, err := tc.authzenClient.GetConfiguration(context.Background(), &authzenv1.GetConfigurationRequest{StoreId: tc.storeID})
 		require.NoError(t, err)
 
 		require.NotNil(t, resp.GetAccessEndpoints())
@@ -42,8 +45,9 @@ func TestGetConfiguration(t *testing.T) {
 
 	t.Run("returns_capabilities", func(t *testing.T) {
 		tc := setupTestContext(t)
+		tc.createStore("test-store")
 
-		resp, err := tc.authzenClient.GetConfiguration(context.Background(), &authzenv1.GetConfigurationRequest{StoreId: "test-store"})
+		resp, err := tc.authzenClient.GetConfiguration(context.Background(), &authzenv1.GetConfigurationRequest{StoreId: tc.storeID})
 		require.NoError(t, err)
 
 		require.NotEmpty(t, resp.GetCapabilities())
@@ -58,7 +62,10 @@ func TestGetConfiguration(t *testing.T) {
 		// GetConfiguration requires the experimental flag like all AuthZEN endpoints
 		tc := setupTestContextWithExperimentals(t, []string{})
 
-		_, err := tc.authzenClient.GetConfiguration(context.Background(), &authzenv1.GetConfigurationRequest{StoreId: "test-store"})
+		resp, err := tc.openfgaClient.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
+		require.NoError(t, err)
+
+		_, err = tc.authzenClient.GetConfiguration(context.Background(), &authzenv1.GetConfigurationRequest{StoreId: resp.GetId()})
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "AuthZEN endpoints are experimental")
 	})

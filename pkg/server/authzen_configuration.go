@@ -13,6 +13,7 @@ import (
 
 	"github.com/openfga/openfga/internal/build"
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
+	"github.com/openfga/openfga/pkg/middleware/validator"
 )
 
 // getBaseURLFromContext extracts the base URL from gRPC metadata.
@@ -61,6 +62,12 @@ func (s *Server) GetConfiguration(ctx context.Context, req *authzenv1.GetConfigu
 	// Gate behind experimental flag
 	if !s.featureFlagClient.Boolean(serverconfig.ExperimentalEnableAuthZen, storeID) {
 		return nil, status.Error(codes.Unimplemented, "AuthZEN endpoints are experimental. Enable with --experimentals=enable_authzen")
+	}
+
+	if !validator.RequestIsValidatedFromContext(ctx) {
+		if err := req.Validate(); err != nil {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
 	}
 
 	_, span := tracer.Start(ctx, "authzen.GetConfiguration")
