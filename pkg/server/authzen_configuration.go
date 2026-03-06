@@ -11,7 +11,6 @@ import (
 
 	authzenv1 "github.com/openfga/api/proto/authzen/v1"
 
-	"github.com/openfga/openfga/internal/build"
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	"github.com/openfga/openfga/pkg/middleware/validator"
 )
@@ -79,25 +78,14 @@ func (s *Server) GetConfiguration(ctx context.Context, req *authzenv1.GetConfigu
 		return nil, status.Error(codes.FailedPrecondition, "unable to determine base URL from request context: missing host information in request headers")
 	}
 
+	storeBase := fmt.Sprintf("%s/stores/%s", baseURL, storeID)
+
 	return &authzenv1.GetConfigurationResponse{
-		PolicyDecisionPoint: &authzenv1.PolicyDecisionPoint{
-			Name:        "OpenFGA",
-			Version:     build.Version,
-			Description: "OpenFGA is a high-performance and flexible authorization system that supports Fine-Grained Authorization (FGA) and implements the AuthZEN specification.",
-		},
-		AccessEndpoints: &authzenv1.Endpoints{
-			Evaluation:     fmt.Sprintf("%s/stores/%s/access/v1/evaluation", baseURL, storeID),
-			Evaluations:    fmt.Sprintf("%s/stores/%s/access/v1/evaluations", baseURL, storeID),
-			SubjectSearch:  fmt.Sprintf("%s/stores/%s/access/v1/search/subject", baseURL, storeID),
-			ResourceSearch: fmt.Sprintf("%s/stores/%s/access/v1/search/resource", baseURL, storeID),
-			ActionSearch:   fmt.Sprintf("%s/stores/%s/access/v1/search/action", baseURL, storeID),
-		},
-		Capabilities: []string{
-			"evaluation",
-			"evaluations",
-			"subject_search",
-			"resource_search",
-			"action_search",
-		},
+		PolicyDecisionPoint:       storeBase,
+		AccessEvaluationEndpoint:  fmt.Sprintf("%s/access/v1/evaluation", storeBase),
+		AccessEvaluationsEndpoint: fmt.Sprintf("%s/access/v1/evaluations", storeBase),
+		SearchSubjectEndpoint:     fmt.Sprintf("%s/access/v1/search/subject", storeBase),
+		SearchResourceEndpoint:    fmt.Sprintf("%s/access/v1/search/resource", storeBase),
+		SearchActionEndpoint:      fmt.Sprintf("%s/access/v1/search/action", storeBase),
 	}, nil
 }
