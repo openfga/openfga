@@ -113,6 +113,9 @@ const (
 	ExperimentalShadowWeightedGraphCheck = "shadow_weighted_graph_check"
 	ExperimentalWeightedGraphCheck       = "weighted_graph_check"
 	ExperimentalAuthZen                  = "authzen"
+	ExperimentalBulkImport               = "bulk_import"
+	DefaultImportDataBatchSize           = 1000
+	DefaultMaxConcurrentImports          = 3
 )
 
 type DatastoreMetricsConfig struct {

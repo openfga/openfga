@@ -279,6 +279,11 @@ type RelationshipTupleWriter interface {
 	// opts are optional and can be used to customize the behavior of the write operation.
 	Write(ctx context.Context, store string, d Deletes, w Writes, opts ...TupleWriteOption) error
 
+	// BulkWrite writes tuples in bulk with ON CONFLICT IGNORE semantics.
+	// Unlike Write, it only handles writes (no deletes), skips SELECT FOR UPDATE locking,
+	// and ignores duplicate tuples. It still writes changelog entries.
+	BulkWrite(ctx context.Context, store string, w Writes) error
+
 	// MaxTuplesPerWrite returns the maximum number of items (writes and deletes combined)
 	// allowed in a single write transaction.
 	MaxTuplesPerWrite() int
@@ -412,6 +417,7 @@ type OpenFGADatastore interface {
 	StoresBackend
 	AssertionsBackend
 	ChangelogBackend
+	ImportBackend
 
 	// IsReady reports whether the datastore is ready to accept traffic.
 	IsReady(ctx context.Context) (ReadinessStatus, error)
@@ -426,4 +432,37 @@ type ReadinessStatus struct {
 	Message string
 
 	IsReady bool
+}
+
+// Import status constants.
+const (
+	ImportStatusPending     = "pending"
+	ImportStatusProcessing  = "processing"
+	ImportStatusCompleted   = "completed"
+	ImportStatusFailed      = "failed"
+	ImportStatusInterrupted = "interrupted"
+)
+
+// Import represents an import job record tracked in the database.
+type Import struct {
+	ID             string
+	Store          string
+	ModelID        string
+	Source         string
+	Format         string
+	Status         string
+	TuplesImported int64
+	TuplesFailed   int64
+	TuplesTotal    int64
+	ErrorMessage   string
+	CreatedAt      time.Time
+	CompletedAt    *time.Time
+}
+
+// ImportBackend defines the methods for managing import job records.
+type ImportBackend interface {
+	CreateImport(ctx context.Context, imp *Import) error
+	GetImport(ctx context.Context, store, importID string) (*Import, error)
+	UpdateImportProgress(ctx context.Context, store, importID string, imported, failed, total int64) error
+	UpdateImportStatus(ctx context.Context, store, importID, status string, errMsg string) error
 }

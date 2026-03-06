@@ -148,6 +148,10 @@ type MemoryBackend struct {
 	// map: store id | authz model id => assertions
 	assertions      map[string][]*openfgav1.Assertion // GUARDED_BY(mutexAssertions).
 	mutexAssertions sync.RWMutex
+
+	// ImportBackend
+	imports      map[string]*storage.Import // GUARDED_BY(mutexImports). Key: store+importID
+	mutexImports sync.RWMutex
 }
 
 // Ensures that [MemoryBackend] implements the [storage.OpenFGADatastore] interface.
@@ -170,6 +174,7 @@ func New(opts ...StorageOption) storage.OpenFGADatastore {
 		authorizationModels:           make(map[string]map[string]*AuthorizationModelEntry),
 		stores:                        make(map[string]*openfgav1.Store, 0),
 		assertions:                    make(map[string][]*openfgav1.Assertion, 0),
+		imports:                       make(map[string]*storage.Import),
 	}
 
 	for _, opt := range opts {
@@ -900,4 +905,129 @@ func (s *MemoryBackend) ListStores(ctx context.Context, options storage.ListStor
 // IsReady see [storage.OpenFGADatastore].IsReady.
 func (s *MemoryBackend) IsReady(context.Context) (storage.ReadinessStatus, error) {
 	return storage.ReadinessStatus{IsReady: true}, nil
+}
+
+// BulkWrite writes tuples in bulk, ignoring duplicates.
+func (s *MemoryBackend) BulkWrite(ctx context.Context, store string, writes storage.Writes) error {
+	_, span := tracer.Start(ctx, "memory.BulkWrite")
+	defer span.End()
+
+	s.mutexTuples.Lock()
+	defer s.mutexTuples.Unlock()
+
+	now := timestamppb.Now()
+	entropy := ulid.DefaultEntropy()
+	records := s.tuples[store]
+
+	for _, t := range writes {
+		// Skip duplicates
+		duplicate := false
+		for _, et := range records {
+			if match(et, t) {
+				duplicate = true
+				break
+			}
+		}
+		if duplicate {
+			continue
+		}
+
+		var conditionName string
+		var conditionContext *structpb.Struct
+		if condition := t.GetCondition(); condition != nil {
+			conditionName = condition.GetName()
+			conditionContext = condition.GetContext()
+		}
+
+		objectType, objectID := tupleUtils.SplitObject(t.GetObject())
+
+		records = append(records, &storage.TupleRecord{
+			Store:            store,
+			ObjectType:       objectType,
+			ObjectID:         objectID,
+			Relation:         t.GetRelation(),
+			User:             t.GetUser(),
+			ConditionName:    conditionName,
+			ConditionContext: conditionContext,
+			Ulid:             ulid.MustNew(ulid.Timestamp(now.AsTime()), entropy).String(),
+			InsertedAt:       now.AsTime(),
+		})
+
+		tk := tupleUtils.NewTupleKeyWithCondition(
+			tupleUtils.BuildObject(objectType, objectID),
+			t.GetRelation(),
+			t.GetUser(),
+			conditionName,
+			conditionContext,
+		)
+
+		s.changes[store] = append(s.changes[store], &tupleChangeRec{
+			Change: &openfgav1.TupleChange{
+				TupleKey:  tk,
+				Operation: openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
+				Timestamp: now,
+			},
+			Ulid: ulid.MustNew(ulid.Timestamp(now.AsTime()), entropy),
+		})
+	}
+	s.tuples[store] = records
+	return nil
+}
+
+func importKey(store, importID string) string {
+	return store + "/" + importID
+}
+
+// CreateImport creates a new import record.
+func (s *MemoryBackend) CreateImport(_ context.Context, imp *storage.Import) error {
+	s.mutexImports.Lock()
+	defer s.mutexImports.Unlock()
+
+	s.imports[importKey(imp.Store, imp.ID)] = imp
+	return nil
+}
+
+// GetImport returns an import record.
+func (s *MemoryBackend) GetImport(_ context.Context, store, importID string) (*storage.Import, error) {
+	s.mutexImports.RLock()
+	defer s.mutexImports.RUnlock()
+
+	imp, ok := s.imports[importKey(store, importID)]
+	if !ok {
+		return nil, storage.ErrNotFound
+	}
+	return imp, nil
+}
+
+// UpdateImportProgress updates the progress counters of an import.
+func (s *MemoryBackend) UpdateImportProgress(_ context.Context, store, importID string, imported, failed, total int64) error {
+	s.mutexImports.Lock()
+	defer s.mutexImports.Unlock()
+
+	imp, ok := s.imports[importKey(store, importID)]
+	if !ok {
+		return storage.ErrNotFound
+	}
+	imp.TuplesImported = imported
+	imp.TuplesFailed = failed
+	imp.TuplesTotal = total
+	return nil
+}
+
+// UpdateImportStatus updates the status and optional error message of an import.
+func (s *MemoryBackend) UpdateImportStatus(_ context.Context, store, importID, status string, errMsg string) error {
+	s.mutexImports.Lock()
+	defer s.mutexImports.Unlock()
+
+	imp, ok := s.imports[importKey(store, importID)]
+	if !ok {
+		return storage.ErrNotFound
+	}
+	imp.Status = status
+	imp.ErrorMessage = errMsg
+	if status == storage.ImportStatusCompleted || status == storage.ImportStatusFailed || status == storage.ImportStatusInterrupted {
+		now := time.Now().UTC()
+		imp.CompletedAt = &now
+	}
+	return nil
 }

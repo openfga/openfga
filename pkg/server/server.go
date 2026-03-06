@@ -256,6 +256,8 @@ type Server struct {
 	requestTimeout time.Duration
 
 	sharedResourceOptions []shared.SharedDatastoreResourcesOpt
+
+	importManager *ImportManager
 }
 
 type OpenFGAServiceV1Option func(s *Server)
@@ -925,6 +927,10 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		return nil, fmt.Errorf("a datastore option must be provided")
 	}
 
+	if s.importManager == nil {
+		s.importManager = NewImportManager(serverconfig.DefaultMaxConcurrentImports)
+	}
+
 	// ctx can be nil despite the default above if WithContext() was called
 	if s.ctx == nil {
 		return nil, fmt.Errorf("server cannot be started with nil context")
@@ -1024,6 +1030,10 @@ func (s *Server) Close() {
 	}
 	if s.listUsersDispatchThrottler != nil {
 		s.listUsersDispatchThrottler.Close()
+	}
+
+	if s.importManager != nil {
+		s.importManager.Shutdown()
 	}
 
 	s.sharedDatastoreResources.Close()

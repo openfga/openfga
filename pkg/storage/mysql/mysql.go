@@ -809,6 +809,46 @@ func (s *Datastore) IsReady(ctx context.Context) (storage.ReadinessStatus, error
 	return versionReady, nil
 }
 
+// BulkWrite writes tuples in bulk with ON DUPLICATE KEY IGNORE semantics.
+func (s *Datastore) BulkWrite(ctx context.Context, store string, writes storage.Writes) error {
+	ctx, span := startTrace(ctx, "BulkWrite")
+	defer span.End()
+
+	return sqlcommon.BulkWrite(ctx, s.dbInfo, s.db, store, writes, "ON DUPLICATE KEY UPDATE store=store")
+}
+
+// CreateImport creates a new import record.
+func (s *Datastore) CreateImport(ctx context.Context, imp *storage.Import) error {
+	ctx, span := startTrace(ctx, "CreateImport")
+	defer span.End()
+
+	return sqlcommon.CreateImport(ctx, s.dbInfo, s.db, imp)
+}
+
+// GetImport retrieves an import record by ID.
+func (s *Datastore) GetImport(ctx context.Context, store, importID string) (*storage.Import, error) {
+	ctx, span := startTrace(ctx, "GetImport")
+	defer span.End()
+
+	return sqlcommon.GetImport(ctx, s.dbInfo, s.db, store, importID)
+}
+
+// UpdateImportProgress updates progress counters for an import.
+func (s *Datastore) UpdateImportProgress(ctx context.Context, store, importID string, imported, failed, total int64) error {
+	ctx, span := startTrace(ctx, "UpdateImportProgress")
+	defer span.End()
+
+	return sqlcommon.UpdateImportProgress(ctx, s.dbInfo, s.db, store, importID, imported, failed, total)
+}
+
+// UpdateImportStatus updates the status and error message for an import.
+func (s *Datastore) UpdateImportStatus(ctx context.Context, store, importID, status string, errMsg string) error {
+	ctx, span := startTrace(ctx, "UpdateImportStatus")
+	defer span.End()
+
+	return sqlcommon.UpdateImportStatus(ctx, s.dbInfo, s.db, store, importID, status, errMsg)
+}
+
 // HandleSQLError processes an SQL error and converts it into a more
 // specific error type based on the nature of the SQL error.
 func HandleSQLError(err error, args ...interface{}) error {

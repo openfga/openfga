@@ -966,6 +966,212 @@ func Write(
 	return nil
 }
 
+const (
+	// DefaultBulkWriteBatchSize is the number of tuples written per transaction in BulkWrite.
+	DefaultBulkWriteBatchSize = 1000
+)
+
+// BulkWrite writes tuples in bulk with ON CONFLICT IGNORE semantics.
+// The onConflictSuffix is dialect-specific:
+//   - Postgres: "ON CONFLICT DO NOTHING"
+//   - MySQL: "ON DUPLICATE KEY UPDATE store=store"
+//   - SQLite: handled separately (INSERT OR IGNORE)
+func BulkWrite(
+	ctx context.Context,
+	dbInfo *DBInfo,
+	db *sql.DB,
+	store string,
+	writes storage.Writes,
+	onConflictSuffix string,
+) error {
+	if len(writes) == 0 {
+		return nil
+	}
+
+	now := time.Now().UTC()
+	entropy := ulid.DefaultEntropy()
+
+	for start := 0; start < len(writes); start += DefaultBulkWriteBatchSize {
+		end := start + DefaultBulkWriteBatchSize
+		if end > len(writes) {
+			end = len(writes)
+		}
+		batch := writes[start:end]
+
+		txn, err := db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
+		if err != nil {
+			return dbInfo.HandleSQLError(err)
+		}
+
+		// Insert tuples with ON CONFLICT IGNORE
+		insertBuilder := dbInfo.stbl.
+			Insert("tuple").
+			Columns(
+				"store",
+				"object_type",
+				"object_id",
+				"relation",
+				"_user",
+				"user_type",
+				"condition_name",
+				"condition_context",
+				"ulid",
+				"inserted_at",
+			)
+
+		changelogBuilder := dbInfo.stbl.
+			Insert("changelog").
+			Columns(
+				"store",
+				"object_type",
+				"object_id",
+				"relation",
+				"_user",
+				"condition_name",
+				"condition_context",
+				"operation",
+				"ulid",
+				"inserted_at",
+			)
+
+		for _, tk := range batch {
+			id := ulid.MustNew(ulid.Timestamp(now), entropy).String()
+			objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
+			conditionName, conditionContext, err := MarshalRelationshipCondition(tk.GetCondition())
+			if err != nil {
+				_ = txn.Rollback()
+				return err
+			}
+
+			insertBuilder = insertBuilder.Values(
+				store,
+				objectType,
+				objectID,
+				tk.GetRelation(),
+				tk.GetUser(),
+				tupleUtils.GetUserTypeFromUser(tk.GetUser()),
+				conditionName,
+				conditionContext,
+				id,
+				sq.Expr("NOW()"),
+			)
+
+			changelogBuilder = changelogBuilder.Values(
+				store,
+				objectType,
+				objectID,
+				tk.GetRelation(),
+				tk.GetUser(),
+				conditionName,
+				conditionContext,
+				openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
+				id,
+				sq.Expr("NOW()"),
+			)
+		}
+
+		if onConflictSuffix != "" {
+			insertBuilder = insertBuilder.Suffix(onConflictSuffix)
+		}
+
+		_, err = insertBuilder.RunWith(txn).ExecContext(ctx)
+		if err != nil {
+			_ = txn.Rollback()
+			return dbInfo.HandleSQLError(err)
+		}
+
+		_, err = changelogBuilder.RunWith(txn).ExecContext(ctx)
+		if err != nil {
+			_ = txn.Rollback()
+			return dbInfo.HandleSQLError(err)
+		}
+
+		if err := txn.Commit(); err != nil {
+			return dbInfo.HandleSQLError(err)
+		}
+	}
+
+	return nil
+}
+
+// CreateImport inserts a new import record.
+func CreateImport(ctx context.Context, dbInfo *DBInfo, db *sql.DB, imp *storage.Import) error {
+	_, err := dbInfo.stbl.
+		Insert("imports").
+		Columns("id", "store", "model_id", "source", "format", "status", "tuples_imported", "tuples_failed", "tuples_total", "error_message", "created_at").
+		Values(imp.ID, imp.Store, imp.ModelID, imp.Source, imp.Format, imp.Status, imp.TuplesImported, imp.TuplesFailed, imp.TuplesTotal, imp.ErrorMessage, sq.Expr("NOW()")).
+		RunWith(db).
+		ExecContext(ctx)
+	if err != nil {
+		return dbInfo.HandleSQLError(err)
+	}
+	return nil
+}
+
+// GetImport retrieves an import record.
+func GetImport(ctx context.Context, dbInfo *DBInfo, db *sql.DB, store, importID string) (*storage.Import, error) {
+	var imp storage.Import
+	var completedAt sql.NullTime
+	var errorMessage sql.NullString
+
+	err := dbInfo.stbl.
+		Select("id", "store", "model_id", "source", "format", "status", "tuples_imported", "tuples_failed", "tuples_total", "error_message", "created_at", "completed_at").
+		From("imports").
+		Where(sq.Eq{"store": store, "id": importID}).
+		RunWith(db).
+		QueryRowContext(ctx).
+		Scan(&imp.ID, &imp.Store, &imp.ModelID, &imp.Source, &imp.Format, &imp.Status,
+			&imp.TuplesImported, &imp.TuplesFailed, &imp.TuplesTotal,
+			&errorMessage, &imp.CreatedAt, &completedAt)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, storage.ErrNotFound
+		}
+		return nil, dbInfo.HandleSQLError(err)
+	}
+
+	imp.ErrorMessage = errorMessage.String
+	if completedAt.Valid {
+		imp.CompletedAt = &completedAt.Time
+	}
+	return &imp, nil
+}
+
+// UpdateImportProgress updates the progress counters of an import.
+func UpdateImportProgress(ctx context.Context, dbInfo *DBInfo, db *sql.DB, store, importID string, imported, failed, total int64) error {
+	_, err := dbInfo.stbl.
+		Update("imports").
+		Set("tuples_imported", imported).
+		Set("tuples_failed", failed).
+		Set("tuples_total", total).
+		Where(sq.Eq{"store": store, "id": importID}).
+		RunWith(db).
+		ExecContext(ctx)
+	if err != nil {
+		return dbInfo.HandleSQLError(err)
+	}
+	return nil
+}
+
+// UpdateImportStatus updates the status and error message of an import.
+func UpdateImportStatus(ctx context.Context, dbInfo *DBInfo, db *sql.DB, store, importID, status string, errMsg string) error {
+	builder := dbInfo.stbl.
+		Update("imports").
+		Set("status", status).
+		Set("error_message", errMsg).
+		Where(sq.Eq{"store": store, "id": importID})
+
+	if status == storage.ImportStatusCompleted || status == storage.ImportStatusFailed || status == storage.ImportStatusInterrupted {
+		builder = builder.Set("completed_at", sq.Expr("NOW()"))
+	}
+
+	_, err := builder.RunWith(db).ExecContext(ctx)
+	if err != nil {
+		return dbInfo.HandleSQLError(err)
+	}
+	return nil
+}
+
 // WriteAuthorizationModel writes an authorization model for the given store in one row.
 func WriteAuthorizationModel(
 	ctx context.Context,
