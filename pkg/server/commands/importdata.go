@@ -109,14 +109,10 @@ func (c *ImportDataCommand) Run(ctx context.Context, imp *storage.Import) {
 		}
 	}
 
-	// Check for reader errors
-	select {
-	case err := <-errCh:
-		if err != nil {
-			c.failImport(ctx, imp.ID, fmt.Sprintf("file read error: %v", err))
-			return
-		}
-	default:
+	// Check for reader errors (blocking read - channel is guaranteed to close after batchCh)
+	if err := <-errCh; err != nil {
+		c.failImport(ctx, imp.ID, fmt.Sprintf("file read error: %v", err))
+		return
 	}
 
 	// Final progress update
@@ -143,10 +139,12 @@ func (c *ImportDataCommand) validateBatch(tuples []*openfgav1.TupleKey) ([]*open
 			continue
 		}
 
-		contextSize := proto.Size(tk.GetCondition().GetContext())
-		if contextSize > c.conditionContextByteLimit {
-			invalidCount++
-			continue
+		if tk.GetCondition() != nil {
+			contextSize := proto.Size(tk.GetCondition().GetContext())
+			if contextSize > c.conditionContextByteLimit {
+				invalidCount++
+				continue
+			}
 		}
 
 		valid = append(valid, tk)
@@ -163,9 +161,11 @@ func validateNotImplicit(tk *openfgav1.TupleKey) error {
 	return nil
 }
 
-func (c *ImportDataCommand) failImport(ctx context.Context, importID, errMsg string) {
+func (c *ImportDataCommand) failImport(_ context.Context, importID, errMsg string) {
 	c.logger.Error("import failed", zap.String("import_id", importID), zap.String("error", errMsg))
-	if err := c.datastore.UpdateImportStatus(ctx, c.storeID, importID, storage.ImportStatusFailed, errMsg); err != nil {
+	// Use a new context since the original may be cancelled
+	bgCtx := context.Background()
+	if err := c.datastore.UpdateImportStatus(bgCtx, c.storeID, importID, storage.ImportStatusFailed, errMsg); err != nil {
 		c.logger.Error("failed to update import status to failed", zap.Error(err))
 	}
 }

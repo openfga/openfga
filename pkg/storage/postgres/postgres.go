@@ -1537,6 +1537,9 @@ func (s *Datastore) GetImport(ctx context.Context, store, importID string) (*sto
 		&errorMessage, &imp.CreatedAt, &completedAt,
 	)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, storage.ErrNotFound
+		}
 		return nil, HandleSQLError(err)
 	}
 

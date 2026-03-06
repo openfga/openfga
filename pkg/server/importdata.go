@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/oklog/ulid/v2"
@@ -23,7 +22,6 @@ type ImportManager struct {
 	mu            sync.Mutex
 	activeImports map[string]context.CancelFunc
 	wg            sync.WaitGroup
-	activeCount   atomic.Int32
 	maxConcurrent int
 }
 
@@ -40,13 +38,12 @@ func (m *ImportManager) StartImport(parentCtx context.Context, importID string) 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if int(m.activeCount.Load()) >= m.maxConcurrent {
+	if len(m.activeImports) >= m.maxConcurrent {
 		return nil, status.Errorf(codes.ResourceExhausted, "maximum concurrent imports (%d) reached", m.maxConcurrent)
 	}
 
 	ctx, cancel := context.WithCancel(parentCtx)
 	m.activeImports[importID] = cancel
-	m.activeCount.Add(1)
 	m.wg.Add(1)
 
 	return ctx, nil
@@ -58,7 +55,6 @@ func (m *ImportManager) FinishImport(importID string) {
 	defer m.mu.Unlock()
 
 	delete(m.activeImports, importID)
-	m.activeCount.Add(-1)
 	m.wg.Done()
 }
 

@@ -22,7 +22,6 @@ import (
 type MockTupleBackend struct {
 	ctrl     *gomock.Controller
 	recorder *MockTupleBackendMockRecorder
-	isgomock struct{}
 }
 
 // MockTupleBackendMockRecorder is the mock recorder for MockTupleBackend.
@@ -40,6 +39,20 @@ func NewMockTupleBackend(ctrl *gomock.Controller) *MockTupleBackend {
 // EXPECT returns an object that allows the caller to indicate expected use.
 func (m *MockTupleBackend) EXPECT() *MockTupleBackendMockRecorder {
 	return m.recorder
+}
+
+// BulkWrite mocks base method.
+func (m *MockTupleBackend) BulkWrite(ctx context.Context, store string, w storage.Writes) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "BulkWrite", ctx, store, w)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// BulkWrite indicates an expected call of BulkWrite.
+func (mr *MockTupleBackendMockRecorder) BulkWrite(ctx, store, w any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BulkWrite", reflect.TypeOf((*MockTupleBackend)(nil).BulkWrite), ctx, store, w)
 }
 
 // MaxTuplesPerWrite mocks base method.
@@ -155,7 +168,6 @@ func (mr *MockTupleBackendMockRecorder) Write(ctx, store, d, w any, opts ...any)
 type MockRelationshipTupleReader struct {
 	ctrl     *gomock.Controller
 	recorder *MockRelationshipTupleReaderMockRecorder
-	isgomock struct{}
 }
 
 // MockRelationshipTupleReaderMockRecorder is the mock recorder for MockRelationshipTupleReader.
@@ -255,7 +267,6 @@ func (mr *MockRelationshipTupleReaderMockRecorder) ReadUsersetTuples(ctx, store,
 type MockRelationshipTupleWriter struct {
 	ctrl     *gomock.Controller
 	recorder *MockRelationshipTupleWriterMockRecorder
-	isgomock struct{}
 }
 
 // MockRelationshipTupleWriterMockRecorder is the mock recorder for MockRelationshipTupleWriter.
@@ -273,6 +284,20 @@ func NewMockRelationshipTupleWriter(ctrl *gomock.Controller) *MockRelationshipTu
 // EXPECT returns an object that allows the caller to indicate expected use.
 func (m *MockRelationshipTupleWriter) EXPECT() *MockRelationshipTupleWriterMockRecorder {
 	return m.recorder
+}
+
+// BulkWrite mocks base method.
+func (m *MockRelationshipTupleWriter) BulkWrite(ctx context.Context, store string, w storage.Writes) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "BulkWrite", ctx, store, w)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// BulkWrite indicates an expected call of BulkWrite.
+func (mr *MockRelationshipTupleWriterMockRecorder) BulkWrite(ctx, store, w any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BulkWrite", reflect.TypeOf((*MockRelationshipTupleWriter)(nil).BulkWrite), ctx, store, w)
 }
 
 // MaxTuplesPerWrite mocks base method.
@@ -312,7 +337,6 @@ func (mr *MockRelationshipTupleWriterMockRecorder) Write(ctx, store, d, w any, o
 type MockAuthorizationModelReadBackend struct {
 	ctrl     *gomock.Controller
 	recorder *MockAuthorizationModelReadBackendMockRecorder
-	isgomock struct{}
 }
 
 // MockAuthorizationModelReadBackendMockRecorder is the mock recorder for MockAuthorizationModelReadBackend.
@@ -382,7 +406,6 @@ func (mr *MockAuthorizationModelReadBackendMockRecorder) ReadAuthorizationModels
 type MockTypeDefinitionWriteBackend struct {
 	ctrl     *gomock.Controller
 	recorder *MockTypeDefinitionWriteBackendMockRecorder
-	isgomock struct{}
 }
 
 // MockTypeDefinitionWriteBackendMockRecorder is the mock recorder for MockTypeDefinitionWriteBackend.
@@ -434,7 +457,6 @@ func (mr *MockTypeDefinitionWriteBackendMockRecorder) WriteAuthorizationModel(ct
 type MockAuthorizationModelBackend struct {
 	ctrl     *gomock.Controller
 	recorder *MockAuthorizationModelBackendMockRecorder
-	isgomock struct{}
 }
 
 // MockAuthorizationModelBackendMockRecorder is the mock recorder for MockAuthorizationModelBackend.
@@ -532,7 +554,6 @@ func (mr *MockAuthorizationModelBackendMockRecorder) WriteAuthorizationModel(ctx
 type MockStoresBackend struct {
 	ctrl     *gomock.Controller
 	recorder *MockStoresBackendMockRecorder
-	isgomock struct{}
 }
 
 // MockStoresBackendMockRecorder is the mock recorder for MockStoresBackend.
@@ -616,7 +637,6 @@ func (mr *MockStoresBackendMockRecorder) ListStores(ctx, options any) *gomock.Ca
 type MockAssertionsBackend struct {
 	ctrl     *gomock.Controller
 	recorder *MockAssertionsBackendMockRecorder
-	isgomock struct{}
 }
 
 // MockAssertionsBackendMockRecorder is the mock recorder for MockAssertionsBackend.
@@ -669,7 +689,6 @@ func (mr *MockAssertionsBackendMockRecorder) WriteAssertions(ctx, store, modelID
 type MockChangelogBackend struct {
 	ctrl     *gomock.Controller
 	recorder *MockChangelogBackendMockRecorder
-	isgomock struct{}
 }
 
 // MockChangelogBackendMockRecorder is the mock recorder for MockChangelogBackend.
@@ -709,7 +728,6 @@ func (mr *MockChangelogBackendMockRecorder) ReadChanges(ctx, store, filter, opti
 type MockOpenFGADatastore struct {
 	ctrl     *gomock.Controller
 	recorder *MockOpenFGADatastoreMockRecorder
-	isgomock struct{}
 }
 
 // MockOpenFGADatastoreMockRecorder is the mock recorder for MockOpenFGADatastore.
@@ -729,6 +747,20 @@ func (m *MockOpenFGADatastore) EXPECT() *MockOpenFGADatastoreMockRecorder {
 	return m.recorder
 }
 
+// BulkWrite mocks base method.
+func (m *MockOpenFGADatastore) BulkWrite(ctx context.Context, store string, w storage.Writes) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "BulkWrite", ctx, store, w)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// BulkWrite indicates an expected call of BulkWrite.
+func (mr *MockOpenFGADatastoreMockRecorder) BulkWrite(ctx, store, w any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BulkWrite", reflect.TypeOf((*MockOpenFGADatastore)(nil).BulkWrite), ctx, store, w)
+}
+
 // Close mocks base method.
 func (m *MockOpenFGADatastore) Close() {
 	m.ctrl.T.Helper()
@@ -739,6 +771,20 @@ func (m *MockOpenFGADatastore) Close() {
 func (mr *MockOpenFGADatastoreMockRecorder) Close() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Close", reflect.TypeOf((*MockOpenFGADatastore)(nil).Close))
+}
+
+// CreateImport mocks base method.
+func (m *MockOpenFGADatastore) CreateImport(ctx context.Context, imp *storage.Import) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateImport", ctx, imp)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// CreateImport indicates an expected call of CreateImport.
+func (mr *MockOpenFGADatastoreMockRecorder) CreateImport(ctx, imp any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateImport", reflect.TypeOf((*MockOpenFGADatastore)(nil).CreateImport), ctx, imp)
 }
 
 // CreateStore mocks base method.
@@ -783,6 +829,21 @@ func (m *MockOpenFGADatastore) FindLatestAuthorizationModel(ctx context.Context,
 func (mr *MockOpenFGADatastoreMockRecorder) FindLatestAuthorizationModel(ctx, store any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FindLatestAuthorizationModel", reflect.TypeOf((*MockOpenFGADatastore)(nil).FindLatestAuthorizationModel), ctx, store)
+}
+
+// GetImport mocks base method.
+func (m *MockOpenFGADatastore) GetImport(ctx context.Context, store, importID string) (*storage.Import, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetImport", ctx, store, importID)
+	ret0, _ := ret[0].(*storage.Import)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetImport indicates an expected call of GetImport.
+func (mr *MockOpenFGADatastoreMockRecorder) GetImport(ctx, store, importID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetImport", reflect.TypeOf((*MockOpenFGADatastore)(nil).GetImport), ctx, store, importID)
 }
 
 // GetStore mocks base method.
@@ -997,6 +1058,34 @@ func (mr *MockOpenFGADatastoreMockRecorder) ReadUsersetTuples(ctx, store, filter
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadUsersetTuples", reflect.TypeOf((*MockOpenFGADatastore)(nil).ReadUsersetTuples), ctx, store, filter, options)
 }
 
+// UpdateImportProgress mocks base method.
+func (m *MockOpenFGADatastore) UpdateImportProgress(ctx context.Context, store, importID string, imported, failed, total int64) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateImportProgress", ctx, store, importID, imported, failed, total)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateImportProgress indicates an expected call of UpdateImportProgress.
+func (mr *MockOpenFGADatastoreMockRecorder) UpdateImportProgress(ctx, store, importID, imported, failed, total any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateImportProgress", reflect.TypeOf((*MockOpenFGADatastore)(nil).UpdateImportProgress), ctx, store, importID, imported, failed, total)
+}
+
+// UpdateImportStatus mocks base method.
+func (m *MockOpenFGADatastore) UpdateImportStatus(ctx context.Context, store, importID, status, errMsg string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateImportStatus", ctx, store, importID, status, errMsg)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateImportStatus indicates an expected call of UpdateImportStatus.
+func (mr *MockOpenFGADatastoreMockRecorder) UpdateImportStatus(ctx, store, importID, status, errMsg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateImportStatus", reflect.TypeOf((*MockOpenFGADatastore)(nil).UpdateImportStatus), ctx, store, importID, status, errMsg)
+}
+
 // Write mocks base method.
 func (m *MockOpenFGADatastore) Write(ctx context.Context, store string, d storage.Deletes, w storage.Writes, opts ...storage.TupleWriteOption) error {
 	m.ctrl.T.Helper()
@@ -1042,4 +1131,84 @@ func (m *MockOpenFGADatastore) WriteAuthorizationModel(ctx context.Context, stor
 func (mr *MockOpenFGADatastoreMockRecorder) WriteAuthorizationModel(ctx, store, model any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WriteAuthorizationModel", reflect.TypeOf((*MockOpenFGADatastore)(nil).WriteAuthorizationModel), ctx, store, model)
+}
+
+// MockImportBackend is a mock of ImportBackend interface.
+type MockImportBackend struct {
+	ctrl     *gomock.Controller
+	recorder *MockImportBackendMockRecorder
+}
+
+// MockImportBackendMockRecorder is the mock recorder for MockImportBackend.
+type MockImportBackendMockRecorder struct {
+	mock *MockImportBackend
+}
+
+// NewMockImportBackend creates a new mock instance.
+func NewMockImportBackend(ctrl *gomock.Controller) *MockImportBackend {
+	mock := &MockImportBackend{ctrl: ctrl}
+	mock.recorder = &MockImportBackendMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockImportBackend) EXPECT() *MockImportBackendMockRecorder {
+	return m.recorder
+}
+
+// CreateImport mocks base method.
+func (m *MockImportBackend) CreateImport(ctx context.Context, imp *storage.Import) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateImport", ctx, imp)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// CreateImport indicates an expected call of CreateImport.
+func (mr *MockImportBackendMockRecorder) CreateImport(ctx, imp any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateImport", reflect.TypeOf((*MockImportBackend)(nil).CreateImport), ctx, imp)
+}
+
+// GetImport mocks base method.
+func (m *MockImportBackend) GetImport(ctx context.Context, store, importID string) (*storage.Import, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetImport", ctx, store, importID)
+	ret0, _ := ret[0].(*storage.Import)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetImport indicates an expected call of GetImport.
+func (mr *MockImportBackendMockRecorder) GetImport(ctx, store, importID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetImport", reflect.TypeOf((*MockImportBackend)(nil).GetImport), ctx, store, importID)
+}
+
+// UpdateImportProgress mocks base method.
+func (m *MockImportBackend) UpdateImportProgress(ctx context.Context, store, importID string, imported, failed, total int64) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateImportProgress", ctx, store, importID, imported, failed, total)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateImportProgress indicates an expected call of UpdateImportProgress.
+func (mr *MockImportBackendMockRecorder) UpdateImportProgress(ctx, store, importID, imported, failed, total any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateImportProgress", reflect.TypeOf((*MockImportBackend)(nil).UpdateImportProgress), ctx, store, importID, imported, failed, total)
+}
+
+// UpdateImportStatus mocks base method.
+func (m *MockImportBackend) UpdateImportStatus(ctx context.Context, store, importID, status, errMsg string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateImportStatus", ctx, store, importID, status, errMsg)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateImportStatus indicates an expected call of UpdateImportStatus.
+func (mr *MockImportBackendMockRecorder) UpdateImportStatus(ctx, store, importID, status, errMsg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateImportStatus", reflect.TypeOf((*MockImportBackend)(nil).UpdateImportStatus), ctx, store, importID, status, errMsg)
 }
