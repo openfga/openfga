@@ -199,6 +199,75 @@ func TestSplitObjectId(t *testing.T) {
 	}
 }
 
+var outcome any
+
+func BenchmarkSplitObjectId(b *testing.B) {
+	value := "hello:world"
+
+	var part1, part2 string
+
+	for b.Loop() {
+		part1, part2 = SplitObject(value)
+	}
+	outcome = part1
+	outcome = part2
+}
+
+func BenchmarkBuildObject(b *testing.B) {
+	hello, world := "hello", "world"
+
+	var object string
+
+	for b.Loop() {
+		object = BuildObject(hello, world)
+	}
+	outcome = object
+}
+
+func BenchmarkTupleKeyWithConditionToString(b *testing.B) {
+	tk := NewTupleKeyWithCondition("document:1", "viewer", "user:1", "test", nil)
+
+	var value string
+
+	for b.Loop() {
+		value = TupleKeyWithConditionToString(tk)
+	}
+	outcome = value
+}
+
+func BenchmarkIsValidObject(b *testing.B) {
+	value := "hello:world"
+
+	var result bool
+
+	for b.Loop() {
+		result = IsValidObject(value)
+	}
+	outcome = result
+}
+
+func BenchmarkIsValidRelation(b *testing.B) {
+	value := "viewer"
+
+	var result bool
+
+	for b.Loop() {
+		result = IsValidRelation(value)
+	}
+	outcome = result
+}
+
+func BenchmarkIsValidUser(b *testing.B) {
+	value := "group:1#member"
+
+	var result bool
+
+	for b.Loop() {
+		result = IsValidUser(value)
+	}
+	outcome = result
+}
+
 func TestObjectKey(t *testing.T) {
 	key := ObjectKey(&openfgav1.Object{
 		Type: "document",
@@ -251,33 +320,49 @@ func TestSplitObjectRelation(t *testing.T) {
 
 func TestIsObjectRelation(t *testing.T) {
 	for _, tc := range []struct {
-		name           string
-		objectRelation string
-		expected       bool
+		name  string
+		value string
+		valid bool
 	}{
 		{
-			name:     "empty",
-			expected: false,
+			name:  "empty",
+			value: "",
+			valid: false,
 		},
 		{
-			name:           "invalid_object_(missing_type)",
-			objectRelation: "foo#bar",
-			expected:       false,
+			name:  "null_object_type",
+			value: "\000:bar#baz",
+			valid: false,
 		},
 		{
-			name:           "user_literal",
-			objectRelation: "github|foo@bar.com",
-			expected:       false,
+			name:  "null_object_id",
+			value: "foo:\000#baz",
+			valid: false,
 		},
 		{
-			name:           "valid",
-			objectRelation: "foo:bar#baz",
-			expected:       true,
+			name:  "null_relation",
+			value: "foo:bar#\000",
+			valid: false,
+		},
+		{
+			name:  "missing_type",
+			value: "foo#bar",
+			valid: false,
+		},
+		{
+			name:  "user_literal",
+			value: "github|foo@bar.com",
+			valid: false,
+		},
+		{
+			name:  "valid_object_relation",
+			value: "foo:bar#baz",
+			valid: true,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			got := IsObjectRelation(tc.objectRelation)
-			require.Equal(t, tc.expected, got)
+			got := IsObjectRelation(tc.value)
+			require.Equal(t, tc.valid, got)
 		})
 	}
 }
@@ -285,35 +370,52 @@ func TestIsObjectRelation(t *testing.T) {
 func TestIsValidObject(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
+		value string
 		valid bool
 	}{
 		{
-			name:  "repo:sandcastle",
+			name:  "valid_object",
+			value: "repo:sandcastle",
 			valid: true,
 		},
 		{
-			name:  "group:group:group",
+			name:  "null_type",
+			value: "\000:bar",
 			valid: false,
 		},
 		{
-			name:  "github:org-iam#member",
+			name:  "null_id",
+			value: "foo:\000",
 			valid: false,
 		},
 		{
-			name:  "repo:sand castle", // empty space
+			name:  "illegal_colon",
+			value: "group:group:group",
 			valid: false,
 		},
 		{
-			name:  "fga",
+			name:  "illegal_id_hash",
+			value: "github:org-iam#member",
 			valid: false,
 		},
 		{
-			name:  "group#group1:member",
+			name:  "illegal_id_space",
+			value: "repo:sand castle", // empty space
+			valid: false,
+		},
+		{
+			name:  "missing_colon",
+			value: "fga",
+			valid: false,
+		},
+		{
+			name:  "illegal_type_hash",
+			value: "group#group1:member",
 			valid: false,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			got := IsValidObject(tc.name)
+			got := IsValidObject(tc.value)
 			require.Equal(t, tc.valid, got)
 		})
 	}
@@ -322,27 +424,37 @@ func TestIsValidObject(t *testing.T) {
 func TestIsValidRelation(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
+		value string
 		valid bool
 	}{
 		{
-			name:  "repo:sandcastle",
+			name:  "null_character",
+			value: "\000",
 			valid: false,
 		},
 		{
-			name:  "group#group",
+			name:  "with_colon",
+			value: "repo:sandcastle",
 			valid: false,
 		},
 		{
-			name:  "git hub",
+			name:  "with_hash",
+			value: "group#group",
 			valid: false,
 		},
 		{
-			name:  "imavalidrelation",
+			name:  "with_space",
+			value: "git hub",
+			valid: false,
+		},
+		{
+			name:  "valid_relation",
+			value: "imavalidrelation",
 			valid: true,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			got := IsValidRelation(tc.name)
+			got := IsValidRelation(tc.value)
 			require.Equal(t, tc.valid, got)
 		})
 	}
