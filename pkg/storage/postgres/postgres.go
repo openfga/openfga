@@ -22,6 +22,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
+	"github.com/oklog/ulid/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
@@ -1392,6 +1393,205 @@ func HandleSQLError(err error, args ...interface{}) error {
 	}
 
 	return fmt.Errorf("sql error: %w", err)
+}
+
+// BulkWrite writes tuples in bulk with ON CONFLICT DO NOTHING semantics.
+func (s *Datastore) BulkWrite(ctx context.Context, store string, writes storage.Writes) error {
+	ctx, span := startTrace(ctx, "BulkWrite")
+	defer span.End()
+
+	if len(writes) == 0 {
+		return nil
+	}
+
+	stbl := sq.StatementBuilder.PlaceholderFormat(sq.Dollar)
+	now := time.Now().UTC()
+	entropy := ulid.DefaultEntropy()
+	batchSize := sqlcommon.DefaultBulkWriteBatchSize
+
+	for start := 0; start < len(writes); start += batchSize {
+		end := start + batchSize
+		if end > len(writes) {
+			end = len(writes)
+		}
+		batch := writes[start:end]
+
+		txn, err := s.primaryDB.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
+		if err != nil {
+			return HandleSQLError(err)
+		}
+
+		insertBuilder := stbl.
+			Insert("tuple").
+			Columns(
+				"store", "object_type", "object_id", "relation",
+				"_user", "user_type",
+				"condition_name", "condition_context",
+				"ulid", "inserted_at",
+			).
+			Suffix("ON CONFLICT DO NOTHING")
+
+		changelogBuilder := stbl.
+			Insert("changelog").
+			Columns(
+				"store", "object_type", "object_id", "relation",
+				"_user", "condition_name", "condition_context",
+				"operation", "ulid", "inserted_at",
+			)
+
+		for _, tk := range batch {
+			id := ulid.MustNew(ulid.Timestamp(now), entropy).String()
+			objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
+			conditionName, conditionContext, err := sqlcommon.MarshalRelationshipCondition(tk.GetCondition())
+			if err != nil {
+				_ = txn.Rollback(ctx)
+				return err
+			}
+
+			insertBuilder = insertBuilder.Values(
+				store, objectType, objectID, tk.GetRelation(),
+				tk.GetUser(), tupleUtils.GetUserTypeFromUser(tk.GetUser()),
+				conditionName, conditionContext,
+				id, sq.Expr("NOW()"),
+			)
+
+			changelogBuilder = changelogBuilder.Values(
+				store, objectType, objectID, tk.GetRelation(),
+				tk.GetUser(), conditionName, conditionContext,
+				openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
+				id, sq.Expr("NOW()"),
+			)
+		}
+
+		stmt, args, err := insertBuilder.ToSql()
+		if err != nil {
+			_ = txn.Rollback(ctx)
+			return HandleSQLError(err)
+		}
+		if _, err := txn.Exec(ctx, stmt, args...); err != nil {
+			_ = txn.Rollback(ctx)
+			return HandleSQLError(err)
+		}
+
+		stmt, args, err = changelogBuilder.ToSql()
+		if err != nil {
+			_ = txn.Rollback(ctx)
+			return HandleSQLError(err)
+		}
+		if _, err := txn.Exec(ctx, stmt, args...); err != nil {
+			_ = txn.Rollback(ctx)
+			return HandleSQLError(err)
+		}
+
+		if err := txn.Commit(ctx); err != nil {
+			return HandleSQLError(err)
+		}
+	}
+
+	return nil
+}
+
+// CreateImport creates a new import record.
+func (s *Datastore) CreateImport(ctx context.Context, imp *storage.Import) error {
+	ctx, span := startTrace(ctx, "CreateImport")
+	defer span.End()
+
+	stbl := sq.StatementBuilder.PlaceholderFormat(sq.Dollar)
+	stmt, args, err := stbl.
+		Insert("imports").
+		Columns("id", "store", "model_id", "source", "format", "status", "tuples_imported", "tuples_failed", "tuples_total", "error_message", "created_at").
+		Values(imp.ID, imp.Store, imp.ModelID, imp.Source, imp.Format, imp.Status, imp.TuplesImported, imp.TuplesFailed, imp.TuplesTotal, imp.ErrorMessage, sq.Expr("NOW()")).
+		ToSql()
+	if err != nil {
+		return HandleSQLError(err)
+	}
+	if _, err := s.primaryDB.Exec(ctx, stmt, args...); err != nil {
+		return HandleSQLError(err)
+	}
+	return nil
+}
+
+// GetImport retrieves an import record by ID.
+func (s *Datastore) GetImport(ctx context.Context, store, importID string) (*storage.Import, error) {
+	ctx, span := startTrace(ctx, "GetImport")
+	defer span.End()
+
+	stbl := sq.StatementBuilder.PlaceholderFormat(sq.Dollar)
+	stmt, args, err := stbl.
+		Select("id", "store", "model_id", "source", "format", "status", "tuples_imported", "tuples_failed", "tuples_total", "error_message", "created_at", "completed_at").
+		From("imports").
+		Where(sq.Eq{"store": store, "id": importID}).
+		ToSql()
+	if err != nil {
+		return nil, HandleSQLError(err)
+	}
+
+	var imp storage.Import
+	var completedAt sql.NullTime
+	var errorMessage sql.NullString
+
+	err = s.primaryDB.QueryRow(ctx, stmt, args...).Scan(
+		&imp.ID, &imp.Store, &imp.ModelID, &imp.Source, &imp.Format, &imp.Status,
+		&imp.TuplesImported, &imp.TuplesFailed, &imp.TuplesTotal,
+		&errorMessage, &imp.CreatedAt, &completedAt,
+	)
+	if err != nil {
+		return nil, HandleSQLError(err)
+	}
+
+	imp.ErrorMessage = errorMessage.String
+	if completedAt.Valid {
+		imp.CompletedAt = &completedAt.Time
+	}
+	return &imp, nil
+}
+
+// UpdateImportProgress updates the progress counters of an import.
+func (s *Datastore) UpdateImportProgress(ctx context.Context, store, importID string, imported, failed, total int64) error {
+	ctx, span := startTrace(ctx, "UpdateImportProgress")
+	defer span.End()
+
+	stbl := sq.StatementBuilder.PlaceholderFormat(sq.Dollar)
+	stmt, args, err := stbl.
+		Update("imports").
+		Set("tuples_imported", imported).
+		Set("tuples_failed", failed).
+		Set("tuples_total", total).
+		Where(sq.Eq{"store": store, "id": importID}).
+		ToSql()
+	if err != nil {
+		return HandleSQLError(err)
+	}
+	if _, err := s.primaryDB.Exec(ctx, stmt, args...); err != nil {
+		return HandleSQLError(err)
+	}
+	return nil
+}
+
+// UpdateImportStatus updates the status and error message for an import.
+func (s *Datastore) UpdateImportStatus(ctx context.Context, store, importID, status string, errMsg string) error {
+	ctx, span := startTrace(ctx, "UpdateImportStatus")
+	defer span.End()
+
+	stbl := sq.StatementBuilder.PlaceholderFormat(sq.Dollar)
+	builder := stbl.
+		Update("imports").
+		Set("status", status).
+		Set("error_message", errMsg).
+		Where(sq.Eq{"store": store, "id": importID})
+
+	if status == storage.ImportStatusCompleted || status == storage.ImportStatusFailed || status == storage.ImportStatusInterrupted {
+		builder = builder.Set("completed_at", sq.Expr("NOW()"))
+	}
+
+	stmt, args, err := builder.ToSql()
+	if err != nil {
+		return HandleSQLError(err)
+	}
+	if _, err := s.primaryDB.Exec(ctx, stmt, args...); err != nil {
+		return HandleSQLError(err)
+	}
+	return nil
 }
 
 // selectExistingRowsForWrite selects existing rows for the given keys and locks them FOR UPDATE.

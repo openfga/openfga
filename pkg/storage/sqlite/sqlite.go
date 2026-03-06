@@ -1388,3 +1388,133 @@ func isBusyError(err error) bool {
 	_, ok := busyErrors[sqliteErr.Code()]
 	return ok
 }
+
+// BulkWrite writes tuples in bulk with INSERT OR IGNORE semantics.
+func (s *Datastore) BulkWrite(ctx context.Context, store string, writes storage.Writes) error {
+	ctx, span := startTrace(ctx, "BulkWrite")
+	defer span.End()
+
+	if len(writes) == 0 {
+		return nil
+	}
+
+	now := time.Now().UTC()
+	entropy := ulid.DefaultEntropy()
+	batchSize := sqlcommon.DefaultBulkWriteBatchSize
+
+	for start := 0; start < len(writes); start += batchSize {
+		end := start + batchSize
+		if end > len(writes) {
+			end = len(writes)
+		}
+		batch := writes[start:end]
+
+		var txn *sql.Tx
+		err := busyRetry(func() error {
+			var err error
+			txn, err = s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
+			return err
+		})
+		if err != nil {
+			return HandleSQLError(err)
+		}
+
+		insertBuilder := s.stbl.
+			Insert("OR IGNORE INTO tuple").
+			Columns(
+				"store", "object_type", "object_id", "relation",
+				"user_object_type", "user_object_id", "user_relation", "user_type",
+				"condition_name", "condition_context",
+				"ulid", "inserted_at",
+			)
+
+		changelogBuilder := s.stbl.
+			Insert("changelog").
+			Columns(
+				"store", "object_type", "object_id", "relation",
+				"user_object_type", "user_object_id", "user_relation",
+				"condition_name", "condition_context",
+				"operation", "ulid", "inserted_at",
+			)
+
+		for _, tk := range batch {
+			id := ulid.MustNew(ulid.Timestamp(now), entropy).String()
+			objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
+			userObjectType, userObjectID, userRelation := tupleUtils.ToUserParts(tk.GetUser())
+			conditionName, conditionContext, err := sqlcommon.MarshalRelationshipCondition(tk.GetCondition())
+			if err != nil {
+				_ = txn.Rollback()
+				return err
+			}
+
+			insertBuilder = insertBuilder.Values(
+				store, objectType, objectID, tk.GetRelation(),
+				userObjectType, userObjectID, userRelation,
+				tupleUtils.GetUserTypeFromUser(tk.GetUser()),
+				conditionName, conditionContext,
+				id, sq.Expr("datetime('subsec')"),
+			)
+
+			changelogBuilder = changelogBuilder.Values(
+				store, objectType, objectID, tk.GetRelation(),
+				userObjectType, userObjectID, userRelation,
+				conditionName, conditionContext,
+				openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
+				id, sq.Expr("datetime('subsec')"),
+			)
+		}
+
+		_, err = insertBuilder.RunWith(txn).ExecContext(ctx)
+		if err != nil {
+			_ = txn.Rollback()
+			return HandleSQLError(err)
+		}
+
+		_, err = changelogBuilder.RunWith(txn).ExecContext(ctx)
+		if err != nil {
+			_ = txn.Rollback()
+			return HandleSQLError(err)
+		}
+
+		err = busyRetry(func() error {
+			return txn.Commit()
+		})
+		if err != nil {
+			return HandleSQLError(err)
+		}
+	}
+
+	return nil
+}
+
+// CreateImport creates a new import record.
+func (s *Datastore) CreateImport(ctx context.Context, imp *storage.Import) error {
+	ctx, span := startTrace(ctx, "CreateImport")
+	defer span.End()
+
+	return sqlcommon.CreateImport(ctx, s.dbInfo, s.db, imp)
+}
+
+// GetImport retrieves an import record by ID.
+func (s *Datastore) GetImport(ctx context.Context, store, importID string) (*storage.Import, error) {
+	ctx, span := startTrace(ctx, "GetImport")
+	defer span.End()
+
+	return sqlcommon.GetImport(ctx, s.dbInfo, s.db, store, importID)
+}
+
+// UpdateImportProgress updates progress counters for an import.
+func (s *Datastore) UpdateImportProgress(ctx context.Context, store, importID string, imported, failed, total int64) error {
+	ctx, span := startTrace(ctx, "UpdateImportProgress")
+	defer span.End()
+
+	return sqlcommon.UpdateImportProgress(ctx, s.dbInfo, s.db, store, importID, imported, failed, total)
+}
+
+// UpdateImportStatus updates the status and error message for an import.
+func (s *Datastore) UpdateImportStatus(ctx context.Context, store, importID, status string, errMsg string) error {
+	ctx, span := startTrace(ctx, "UpdateImportStatus")
+	defer span.End()
+
+	return sqlcommon.UpdateImportStatus(ctx, s.dbInfo, s.db, store, importID, status, errMsg)
+}
