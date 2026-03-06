@@ -3,7 +3,6 @@ package tuple
 
 import (
 	"fmt"
-	"regexp"
 	"strings"
 
 	"google.golang.org/protobuf/types/known/structpb"
@@ -103,13 +102,6 @@ const (
 	User     UserType = "user"
 	UserSet  UserType = "userset"
 	Wildcard          = "*"
-)
-
-var (
-	userIDRegex   = regexp.MustCompile(`^[^:#\s]+$`)
-	objectRegex   = regexp.MustCompile(`^[^:#\s]+:[^#:\s]+$`)
-	userSetRegex  = regexp.MustCompile(`^[^:#\s]+:[^#:*\s]+#[^:#*\s]+$`)
-	relationRegex = regexp.MustCompile(`^[^:#@\s]+$`)
 )
 
 func ConvertCheckRequestTupleKeyToTupleKey(tk *openfgav1.CheckRequestTupleKey) *openfgav1.TupleKey {
