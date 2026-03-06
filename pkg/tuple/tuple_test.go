@@ -268,6 +268,28 @@ func BenchmarkIsValidUser(b *testing.B) {
 	outcome = result
 }
 
+func BenchmarkIsValidUserID(b *testing.B) {
+	value := "group:1"
+
+	var result bool
+
+	for b.Loop() {
+		result = IsValidUserID(value)
+	}
+	outcome = result
+}
+
+func BenchmarkIsValidUserset(b *testing.B) {
+	value := "group:1#member"
+
+	var result bool
+
+	for b.Loop() {
+		result = IsValidUserset(value)
+	}
+	outcome = result
+}
+
 func TestObjectKey(t *testing.T) {
 	key := ObjectKey(&openfgav1.Object{
 		Type: "document",
@@ -456,6 +478,71 @@ func TestIsValidRelation(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			got := IsValidRelation(tc.value)
 			require.Equal(t, tc.valid, got)
+		})
+	}
+}
+
+func TestIsValidUserset(t *testing.T) {
+	tc := []struct {
+		name  string
+		value string
+		valid bool
+	}{
+		{
+			name:  "null_character_type",
+			value: "\000:1#member",
+			valid: false,
+		},
+		{
+			name:  "null_character_id",
+			value: "group:\000#member",
+			valid: false,
+		},
+		{
+			name:  "null_character_relation",
+			value: "group:1#\000",
+			valid: false,
+		},
+		{
+			name:  "multi_byte",
+			value: "👽:🐱#🐶",
+			valid: true,
+		},
+		{
+			name:  "wildcard_type",
+			value: "*:123#member",
+			valid: true,
+		},
+		{
+			name:  "wildcard_id",
+			value: "group:*#member",
+			valid: false,
+		},
+		{
+			name:  "wildcard_relation",
+			value: "group:1#*",
+			valid: false,
+		},
+		{
+			name:  "missing_type",
+			value: ":123#member",
+			valid: false,
+		},
+		{
+			name:  "missing_id",
+			value: "group:#member",
+			valid: false,
+		},
+		{
+			name:  "missing_relation",
+			value: "group:1#",
+			valid: false,
+		},
+	}
+
+	for _, c := range tc {
+		t.Run(c.name, func(t *testing.T) {
+			require.Equal(t, c.valid, IsValidUserset(c.value))
 		})
 	}
 }
