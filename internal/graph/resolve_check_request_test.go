@@ -184,6 +184,59 @@ func TestDefaultValueRequestMetadata(t *testing.T) {
 	require.Empty(t, r.GetSelectedStrategy())
 }
 
+func TestGetTupleKeyString(t *testing.T) {
+	t.Run("returns_correct_format", func(t *testing.T) {
+		req := &ResolveCheckRequest{
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:alice"),
+		}
+		require.Equal(t, "document:1#viewer@user:alice", req.GetTupleKeyString())
+	})
+
+	t.Run("caches_result", func(t *testing.T) {
+		req := &ResolveCheckRequest{
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:alice"),
+		}
+		first := req.GetTupleKeyString()
+		second := req.GetTupleKeyString()
+		require.Equal(t, first, second)
+		require.Equal(t, "document:1#viewer@user:alice", first)
+	})
+
+	t.Run("nil_tuple_key_returns_empty", func(t *testing.T) {
+		req := &ResolveCheckRequest{}
+		require.Empty(t, req.GetTupleKeyString())
+	})
+
+	t.Run("not_copied_on_clone", func(t *testing.T) {
+		orig := &ResolveCheckRequest{
+			TupleKey:        tuple.NewTupleKey("document:1", "viewer", "user:alice"),
+			RequestMetadata: NewCheckRequestMetadata(),
+			VisitedPaths:    map[string]struct{}{},
+		}
+		// Populate the cache on orig
+		require.Equal(t, "document:1#viewer@user:alice", orig.GetTupleKeyString())
+
+		cloned := orig.clone()
+		// Clone should have empty cached string
+		require.Empty(t, cloned.cachedTupleKeyStr)
+		// But GetTupleKeyString should still work (recomputes lazily)
+		require.Equal(t, "document:1#viewer@user:alice", cloned.GetTupleKeyString())
+	})
+
+	t.Run("recomputes_after_tuple_key_replacement", func(t *testing.T) {
+		orig := &ResolveCheckRequest{
+			TupleKey:        tuple.NewTupleKey("document:1", "viewer", "user:alice"),
+			RequestMetadata: NewCheckRequestMetadata(),
+			VisitedPaths:    map[string]struct{}{},
+		}
+		require.Equal(t, "document:1#viewer@user:alice", orig.GetTupleKeyString())
+
+		cloned := orig.clone()
+		cloned.TupleKey = tuple.NewTupleKey("folder:2", "editor", "user:bob")
+		require.Equal(t, "folder:2#editor@user:bob", cloned.GetTupleKeyString())
+	})
+}
+
 func TestNewResolveCheckRequest(t *testing.T) {
 	var cases = map[string]struct {
 		params ResolveCheckRequestParams
