@@ -4,6 +4,7 @@ package tuple
 import (
 	"fmt"
 	"strings"
+	"unicode"
 
 	"google.golang.org/protobuf/types/known/structpb"
 
@@ -378,6 +379,10 @@ func IsValidObject(s string) bool {
 	var state, idLen int
 
 	for ndx, chr := range s {
+		if unicode.IsControl(chr) {
+			return false
+		}
+
 		switch chr {
 		case '#', ' ', '\t', '\n', '\r', '\f', '\v', '\000':
 			return false
@@ -398,6 +403,10 @@ func IsValidRelation(s string) bool {
 	var count int
 
 	for _, chr := range s {
+		if unicode.IsControl(chr) {
+			return false
+		}
+
 		switch chr {
 		case '#', ':', '@', ' ', '\t', '\n', '\r', '\f', '\v', '\000':
 			return false
@@ -412,6 +421,10 @@ func IsValidUserID(s string) bool {
 	var count int
 
 	for _, chr := range s {
+		if unicode.IsControl(chr) {
+			return false
+		}
+
 		switch chr {
 		case '#', ':', ' ', '\t', '\n', '\r', '\f', '\v', '\000':
 			return false
@@ -426,6 +439,10 @@ func IsValidUserset(s string) bool {
 	var state, idLen, relLen int
 
 	for ndx, chr := range s {
+		if unicode.IsControl(chr) {
+			return false
+		}
+
 		switch chr {
 		case ':':
 			if state > 0 || ndx == 0 {
