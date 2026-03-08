@@ -1,12 +1,20 @@
 package tuple
 
 import (
+	"regexp"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+)
+
+var (
+	userIDRegex   = regexp.MustCompile(`^[^:#\s\x00\p{Cc}]+$`)
+	objectRegex   = regexp.MustCompile(`^[^:#\s\x00\p{Cc}]+:[^#:\s\x00\p{Cc}]+$`)
+	userSetRegex  = regexp.MustCompile(`^[^:#\s\x00\p{Cc}]+:[^#:*\s\x00\p{Cc}]+#[^:#*\s\x00\p{Cc}]+$`)
+	relationRegex = regexp.MustCompile(`^[^:#@\s\x00\p{Cc}]+$`)
 )
 
 // MustNewStruct returns a new *structpb.Struct or panics
@@ -340,211 +348,101 @@ func TestSplitObjectRelation(t *testing.T) {
 	}
 }
 
-func TestIsObjectRelation(t *testing.T) {
-	for _, tc := range []struct {
-		name  string
-		value string
-		valid bool
-	}{
-		{
-			name:  "empty",
-			value: "",
-			valid: false,
-		},
-		{
-			name:  "null_object_type",
-			value: "\000:bar#baz",
-			valid: false,
-		},
-		{
-			name:  "null_object_id",
-			value: "foo:\000#baz",
-			valid: false,
-		},
-		{
-			name:  "null_relation",
-			value: "foo:bar#\000",
-			valid: false,
-		},
-		{
-			name:  "missing_type",
-			value: "foo#bar",
-			valid: false,
-		},
-		{
-			name:  "user_literal",
-			value: "github|foo@bar.com",
-			valid: false,
-		},
-		{
-			name:  "valid_object_relation",
-			value: "foo:bar#baz",
-			valid: true,
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			got := IsObjectRelation(tc.value)
-			require.Equal(t, tc.valid, got)
-		})
-	}
+func FuzzIsValidObject(f *testing.F) {
+	f.Add("")
+	f.Add(" ")
+	f.Add("\x00")
+	f.Add("fo o:bar")
+	f.Add("repo:sandcastle")
+	f.Add("fga")
+	f.Add("group#group1:member")
+	f.Add("👽:🙀")
+
+	f.Fuzz(func(t *testing.T, value string) {
+		result := IsValidObject(value)
+
+		require.Equal(t, result, IsValidObject(value), "failed idempotence: '%s' -- '%X'", value, value)
+		require.Equal(t, objectRegex.MatchString(value), result, "failed accuracy: '%s' -- '%X'", value, value)
+	})
 }
 
-func TestIsValidObject(t *testing.T) {
-	for _, tc := range []struct {
-		name  string
-		value string
-		valid bool
-	}{
-		{
-			name:  "valid_object",
-			value: "repo:sandcastle",
-			valid: true,
-		},
-		{
-			name:  "null_type",
-			value: "\000:bar",
-			valid: false,
-		},
-		{
-			name:  "null_id",
-			value: "foo:\000",
-			valid: false,
-		},
-		{
-			name:  "illegal_colon",
-			value: "group:group:group",
-			valid: false,
-		},
-		{
-			name:  "illegal_id_hash",
-			value: "github:org-iam#member",
-			valid: false,
-		},
-		{
-			name:  "illegal_id_space",
-			value: "repo:sand castle", // empty space
-			valid: false,
-		},
-		{
-			name:  "missing_colon",
-			value: "fga",
-			valid: false,
-		},
-		{
-			name:  "illegal_type_hash",
-			value: "group#group1:member",
-			valid: false,
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			got := IsValidObject(tc.value)
-			require.Equal(t, tc.valid, got)
-		})
-	}
+func FuzzIsValidRelation(f *testing.F) {
+	f.Add("")
+	f.Add(" ")
+	f.Add("\x00")
+	f.Add("fo o:bar")
+	f.Add("imavalidrelation")
+	f.Add("group#group1:member")
+	f.Add("👽🙀✌️")
+
+	f.Fuzz(func(t *testing.T, value string) {
+		result := IsValidRelation(value)
+
+		require.Equal(t, result, IsValidRelation(value), "failed idempotence: '%s' -- '%X'", value, value)
+		require.Equal(t, relationRegex.MatchString(value), result, "failed accuracy: '%s' -- '%X'", value, value)
+	})
 }
 
-func TestIsValidRelation(t *testing.T) {
-	for _, tc := range []struct {
-		name  string
-		value string
-		valid bool
-	}{
-		{
-			name:  "null_character",
-			value: "\000",
-			valid: false,
-		},
-		{
-			name:  "with_colon",
-			value: "repo:sandcastle",
-			valid: false,
-		},
-		{
-			name:  "with_hash",
-			value: "group#group",
-			valid: false,
-		},
-		{
-			name:  "with_space",
-			value: "git hub",
-			valid: false,
-		},
-		{
-			name:  "valid_relation",
-			value: "imavalidrelation",
-			valid: true,
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			got := IsValidRelation(tc.value)
-			require.Equal(t, tc.valid, got)
-		})
-	}
+func FuzzIsValidUserset(f *testing.F) {
+	f.Add("")
+	f.Add(" ")
+	f.Add("\x00")
+	f.Add("fo o:bar#baz")
+	f.Add("\x00:bar#baz")
+	f.Add("foo:\x00#baz")
+	f.Add("foo:bar#\x00")
+	f.Add("foo:bar")
+	f.Add("foo")
+	f.Add("👽:🙀#🥸")
+
+	f.Fuzz(func(t *testing.T, value string) {
+		result := IsValidUserset(value)
+
+		require.Equal(t, result, IsValidUserset(value), "failed idempotence: '%s' -- '%X'", value, value)
+		require.Equal(t, userSetRegex.MatchString(value), result, "failed accuracy: '%s' -- '%X'", value, value)
+	})
 }
 
-func TestIsValidUserset(t *testing.T) {
-	tc := []struct {
-		name  string
-		value string
-		valid bool
-	}{
-		{
-			name:  "null_character_type",
-			value: "\000:1#member",
-			valid: false,
-		},
-		{
-			name:  "null_character_id",
-			value: "group:\000#member",
-			valid: false,
-		},
-		{
-			name:  "null_character_relation",
-			value: "group:1#\000",
-			valid: false,
-		},
-		{
-			name:  "multi_byte",
-			value: "👽:🐱#🐶",
-			valid: true,
-		},
-		{
-			name:  "wildcard_type",
-			value: "*:123#member",
-			valid: true,
-		},
-		{
-			name:  "wildcard_id",
-			value: "group:*#member",
-			valid: false,
-		},
-		{
-			name:  "wildcard_relation",
-			value: "group:1#*",
-			valid: false,
-		},
-		{
-			name:  "missing_type",
-			value: ":123#member",
-			valid: false,
-		},
-		{
-			name:  "missing_id",
-			value: "group:#member",
-			valid: false,
-		},
-		{
-			name:  "missing_relation",
-			value: "group:1#",
-			valid: false,
-		},
-	}
+func FuzzIsValidUserID(f *testing.F) {
+	f.Add("")
+	f.Add(" ")
+	f.Add("\x00")
+	f.Add("fo o:bar")
+	f.Add("repo:sandcastle")
+	f.Add("fga")
+	f.Add("group#group1:member")
+	f.Add("👽:🙀")
 
-	for _, c := range tc {
-		t.Run(c.name, func(t *testing.T) {
-			require.Equal(t, c.valid, IsValidUserset(c.value))
-		})
-	}
+	f.Fuzz(func(t *testing.T, value string) {
+		result := IsValidUserID(value)
+
+		require.Equal(t, result, IsValidUserID(value), "failed idempotence: '%s' -- '%X'", value, value)
+		require.Equal(t, userIDRegex.MatchString(value), result, "failed accuracy: '%s' -- '%X'", value, value)
+	})
+}
+
+func FuzzIsValidUser(f *testing.F) {
+	f.Add("")
+	f.Add(" ")
+	f.Add("\x00")
+	f.Add("anne@openfga")
+	f.Add("*")
+	f.Add("user:*")
+	f.Add("user:10")
+	f.Add("github:org-iam#member")
+	f.Add("josh:albert:doe")
+	f.Add("group:*#member")
+	f.Add("fo o:bar#baz")
+	f.Add("👽🙀✌️")
+	f.Add("👽:🙀🥸")
+	f.Add("👽:🙀#🥸")
+
+	f.Fuzz(func(t *testing.T, value string) {
+		result := IsValidUser(value)
+
+		require.Equal(t, result, IsValidUser(value), "failed idempotence: '%s' -- '%X'", value, value)
+		require.Equal(t, value == Wildcard || userIDRegex.MatchString(value) || objectRegex.MatchString(value) || userSetRegex.MatchString(value), result, "failed accuracy: '%s' -- '%X'", value, value)
+	})
 }
 
 func TestBuildObject(t *testing.T) {
@@ -598,59 +496,6 @@ func TestIsTypedWildcard(t *testing.T) {
 	require.True(t, IsTypedWildcard("user:*"))
 	require.False(t, IsTypedWildcard("user:jon"))
 	require.False(t, IsTypedWildcard("jon"))
-}
-
-func TestIsValidUser(t *testing.T) {
-	for _, tc := range []struct {
-		name  string
-		valid bool
-	}{
-		{
-			name:  "anne@openfga",
-			valid: true,
-		},
-		{
-			name:  "*",
-			valid: true,
-		},
-		{
-			name:  "user:*",
-			valid: true,
-		},
-		{
-			name:  "user:10",
-			valid: true,
-		},
-		{
-			name:  "github:org-iam#member",
-			valid: true,
-		},
-		{
-			name:  "john:albert:doe",
-			valid: false,
-		},
-		{
-			name:  "john#albert#doe",
-			valid: false,
-		},
-		{
-			name:  "invalid#test:go",
-			valid: false,
-		},
-		{
-			name:  "anne@openfga .com", // empty space
-			valid: false,
-		},
-		{
-			name:  "group:*#member",
-			valid: false,
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			got := IsValidUser(tc.name)
-			require.Equal(t, tc.valid, got)
-		})
-	}
 }
 
 func TestGetUsertypeFromUser(t *testing.T) {
