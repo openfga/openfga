@@ -277,7 +277,7 @@ func BenchmarkIsValidUser(b *testing.B) {
 }
 
 func BenchmarkIsValidUserID(b *testing.B) {
-	value := "group:1"
+	value := "some_identifier"
 
 	var result bool
 
