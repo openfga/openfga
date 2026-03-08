@@ -384,7 +384,7 @@ func IsValidObject(s string) bool {
 		}
 
 		switch chr {
-		case '#', ' ', '\t', '\n', '\r', '\f', '\v', '\000':
+		case '#', ' ':
 			return false
 		case ':':
 			if state > 0 || ndx == 0 {
@@ -408,7 +408,7 @@ func IsValidRelation(s string) bool {
 		}
 
 		switch chr {
-		case '#', ':', '@', ' ', '\t', '\n', '\r', '\f', '\v', '\000':
+		case '#', ':', '@', ' ':
 			return false
 		default:
 			count++
@@ -426,7 +426,7 @@ func IsValidUserID(s string) bool {
 		}
 
 		switch chr {
-		case '#', ':', ' ', '\t', '\n', '\r', '\f', '\v', '\000':
+		case '#', ':', ' ':
 			return false
 		default:
 			count++
@@ -454,7 +454,7 @@ func IsValidUserset(s string) bool {
 				return false
 			}
 			state = 2
-		case ' ', '\t', '\n', '\r', '\f', '\v', '\000':
+		case ' ':
 			return false
 		case '*':
 			if state > 0 {
