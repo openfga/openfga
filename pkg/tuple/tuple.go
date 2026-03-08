@@ -354,8 +354,11 @@ func TupleKeyToString(tk TupleWithoutCondition) string {
 func TupleKeyWithConditionToString(tk TupleWithCondition) string {
 	const staticSize int = 15
 	dynamicSize := len(tk.GetObject()) + len(tk.GetRelation()) + len(tk.GetUser())
-	if tk.GetCondition() != nil {
-		dynamicSize += len(tk.GetCondition().GetName())
+	condition := tk.GetCondition()
+	var conditionName string
+	if condition != nil {
+		conditionName = condition.GetName()
+		dynamicSize += len(conditionName)
 	}
 	var sb strings.Builder
 	sb.Grow(staticSize + dynamicSize)
@@ -366,9 +369,9 @@ func TupleKeyWithConditionToString(tk TupleWithCondition) string {
 	sb.WriteByte('@')
 	sb.WriteString(tk.GetUser())
 
-	if tk.GetCondition() != nil {
+	if condition != nil {
 		sb.WriteString(" (condition ")
-		sb.WriteString(tk.GetCondition().GetName())
+		sb.WriteString(conditionName)
 		sb.WriteByte(')')
 	}
 	return sb.String()
