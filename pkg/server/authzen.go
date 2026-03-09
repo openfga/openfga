@@ -2,27 +2,81 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"regexp"
+	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	authzenv1 "github.com/openfga/api/proto/authzen/v1"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/pkg/middleware/validator"
-	"github.com/openfga/openfga/pkg/server/commands"
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	servererrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/telemetry"
-	"github.com/openfga/openfga/pkg/typesystem"
 )
 
 // AuthZenAuthorizationModelIDHeader is the HTTP header name for specifying the authorization model ID.
 const AuthZenAuthorizationModelIDHeader = "Openfga-Authorization-Model-Id"
+
+// propertiesProvider is an interface for types that provide properties.
+// Subject, SubjectFilter, Resource, and ResourceFilter all implement this.
+type propertiesProvider interface {
+	GetProperties() *structpb.Struct
+}
+
+// mergePropertiesToContext merges subject, resource, and action properties into
+// the context struct. Properties are namespaced with their source prefix using
+// underscore as separator (e.g., "subject_department") because OpenFGA does not
+// allow condition parameters with "." in their names.
+// Precedence (lowest to highest): subject.properties, resource.properties,
+// action.properties, request context (request context wins on conflicts).
+func mergePropertiesToContext(
+	requestContext *structpb.Struct,
+	subject propertiesProvider,
+	resource propertiesProvider,
+	action *authzenv1.Action,
+) (*structpb.Struct, error) {
+	merged := make(map[string]any)
+
+	if subject != nil && subject.GetProperties() != nil {
+		for k, v := range subject.GetProperties().AsMap() {
+			merged["subject_"+k] = v
+		}
+	}
+
+	if resource != nil && resource.GetProperties() != nil {
+		for k, v := range resource.GetProperties().AsMap() {
+			merged["resource_"+k] = v
+		}
+	}
+
+	if action != nil && action.GetProperties() != nil {
+		for k, v := range action.GetProperties().AsMap() {
+			merged["action_"+k] = v
+		}
+	}
+
+	if requestContext != nil {
+		for k, v := range requestContext.AsMap() {
+			merged[k] = v
+		}
+	}
+
+	if len(merged) == 0 {
+		return nil, nil
+	}
+
+	return structpb.NewStruct(merged)
+}
 
 var authZenAuthorizationModelIDPattern = regexp.MustCompile(`^[ABCDEFGHJKMNPQRSTVWXYZ0-9]{26}$`)
 
@@ -49,18 +103,67 @@ func getAuthorizationModelIDFromHeader(ctx context.Context) string {
 
 // errorContext builds an arbitrary JSON context object for error responses,
 // per the AuthZen spec where context is a free-form JSON object.
-func errorContext(status uint32, message string) *structpb.Struct {
-	ctx, _ := structpb.NewStruct(map[string]interface{}{
-		"error": map[string]interface{}{
-			"status":  status,
+func errorContext(httpStatus uint32, message string) *structpb.Struct {
+	ctx, _ := structpb.NewStruct(map[string]any{
+		"error": map[string]any{
+			"status":  httpStatus,
 			"message": message,
 		},
 	})
 	return ctx
 }
 
+// buildCheckRequest translates AuthZen evaluation fields into an OpenFGA CheckRequest.
+func buildCheckRequest(
+	storeID, authorizationModelID string,
+	subject *authzenv1.Subject,
+	resource *authzenv1.Resource,
+	action *authzenv1.Action,
+	reqContext *structpb.Struct,
+) (*openfgav1.CheckRequest, error) {
+	if subject == nil {
+		return nil, fmt.Errorf("missing subject")
+	}
+	if resource == nil {
+		return nil, fmt.Errorf("missing resource")
+	}
+	if action == nil {
+		return nil, fmt.Errorf("missing action")
+	}
+
+	mergedContext, err := mergePropertiesToContext(reqContext, subject, resource, action)
+	if err != nil {
+		return nil, err
+	}
+
+	return &openfgav1.CheckRequest{
+		StoreId:              storeID,
+		AuthorizationModelId: authorizationModelID,
+		TupleKey: &openfgav1.CheckRequestTupleKey{
+			User:     fmt.Sprintf("%s:%s", subject.GetType(), subject.GetId()),
+			Relation: action.GetName(),
+			Object:   fmt.Sprintf("%s:%s", resource.GetType(), resource.GetId()),
+		},
+		Context: mergedContext,
+	}, nil
+}
+
+// grpcErrorToHTTPStatus maps a gRPC error to an HTTP status code.
+func grpcErrorToHTTPStatus(err error) uint32 {
+	httpStatus := uint32(500)
+	if st, ok := status.FromError(err); ok {
+		grpcCode := st.Code()
+		if grpcCode < 17 {
+			httpStatus = uint32(runtime.HTTPStatusFromCode(grpcCode))
+		} else {
+			encodedErr := servererrors.NewEncodedError(int32(grpcCode), st.Message())
+			httpStatus = uint32(encodedErr.HTTPStatus())
+		}
+	}
+	return httpStatus
+}
+
 func (s *Server) Evaluation(ctx context.Context, req *authzenv1.EvaluationRequest) (*authzenv1.EvaluationResponse, error) {
-	// Gate behind experimental flag
 	if !s.featureFlagClient.Boolean(serverconfig.ExperimentalEnableAuthZen, req.GetStoreId()) {
 		return nil, status.Error(codes.Unimplemented, "AuthZEN endpoints are experimental. Enable with --experimentals=enable_authzen")
 	}
@@ -79,15 +182,17 @@ func (s *Server) Evaluation(ctx context.Context, req *authzenv1.EvaluationReques
 		Method:  "authzen.Evaluation",
 	})
 
-	// Get authorization model ID from header
 	authorizationModelID := getAuthorizationModelIDFromHeader(ctx)
 
-	evalReqCmd, err := commands.NewEvaluateRequestCommand(req, authorizationModelID)
+	checkReq, err := buildCheckRequest(
+		req.GetStoreId(), authorizationModelID,
+		req.GetSubject(), req.GetResource(), req.GetAction(), req.GetContext(),
+	)
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
-	checkResponse, err := s.Check(ctx, evalReqCmd.GetCheckRequest())
+	checkResponse, err := s.Check(ctx, checkReq)
 	if err != nil {
 		return nil, err
 	}
@@ -98,7 +203,6 @@ func (s *Server) Evaluation(ctx context.Context, req *authzenv1.EvaluationReques
 }
 
 func (s *Server) Evaluations(ctx context.Context, req *authzenv1.EvaluationsRequest) (*authzenv1.EvaluationsResponse, error) {
-	// Gate behind experimental flag
 	if !s.featureFlagClient.Boolean(serverconfig.ExperimentalEnableAuthZen, req.GetStoreId()) {
 		return nil, status.Error(codes.Unimplemented, "AuthZEN endpoints are experimental. Enable with --experimentals=enable_authzen")
 	}
@@ -117,8 +221,7 @@ func (s *Server) Evaluations(ctx context.Context, req *authzenv1.EvaluationsRequ
 		Method:  "authzen.Evaluations",
 	})
 
-	// AuthZEN compatibility: if evaluations is omitted or empty,
-	// behave like a single Access Evaluation request.
+	// If evaluations is omitted or empty, behave like a single Evaluation.
 	if len(req.GetEvaluations()) == 0 {
 		evalResp, err := s.Evaluation(ctx, &authzenv1.EvaluationRequest{
 			Subject:  req.GetSubject(),
@@ -130,16 +233,13 @@ func (s *Server) Evaluations(ctx context.Context, req *authzenv1.EvaluationsRequ
 		if err != nil {
 			return nil, err
 		}
-
 		return &authzenv1.EvaluationsResponse{
 			Evaluations: []*authzenv1.EvaluationResponse{evalResp},
 		}, nil
 	}
 
-	// Get authorization model ID from header
 	authorizationModelID := getAuthorizationModelIDFromHeader(ctx)
 
-	// Check for short-circuit semantics
 	semantic := authzenv1.EvaluationsSemantic_execute_all
 	if req.GetOptions() != nil {
 		semantic = req.GetOptions().GetEvaluationsSemantic()
@@ -147,7 +247,7 @@ func (s *Server) Evaluations(ctx context.Context, req *authzenv1.EvaluationsRequ
 		case authzenv1.EvaluationsSemantic_execute_all,
 			authzenv1.EvaluationsSemantic_deny_on_first_deny,
 			authzenv1.EvaluationsSemantic_permit_on_first_permit:
-			// valid values
+			// valid
 		default:
 			return nil, status.Error(codes.InvalidArgument, "invalid evaluations_semantic: value must be one of the defined enum values")
 		}
@@ -158,30 +258,114 @@ func (s *Server) Evaluations(ctx context.Context, req *authzenv1.EvaluationsRequ
 		return s.evaluateWithShortCircuit(ctx, req, authorizationModelID, semantic)
 	}
 
-	// Default: batch all evaluations
-	evalReqCmd, err := commands.NewBatchEvaluateRequestCommand(req, authorizationModelID)
-	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, err.Error())
+	return s.evaluateAll(ctx, req, authorizationModelID)
+}
+
+// evaluateAll uses BatchCheck to evaluate all items in parallel.
+func (s *Server) evaluateAll(
+	ctx context.Context,
+	req *authzenv1.EvaluationsRequest,
+	authorizationModelID string,
+) (*authzenv1.EvaluationsResponse, error) {
+	topSubject := req.GetSubject()
+	topResource := req.GetResource()
+	topAction := req.GetAction()
+	topContext := req.GetContext()
+
+	batchReq := &openfgav1.BatchCheckRequest{
+		StoreId:              req.GetStoreId(),
+		AuthorizationModelId: authorizationModelID,
+		Checks:               make([]*openfgav1.BatchCheckItem, 0, len(req.GetEvaluations())),
 	}
 
-	batchCheckResponse, err := s.BatchCheck(ctx, evalReqCmd.GetBatchCheckRequests())
+	for i, eval := range req.GetEvaluations() {
+		subject := eval.GetSubject()
+		if subject == nil {
+			subject = topSubject
+		}
+		resource := eval.GetResource()
+		if resource == nil {
+			resource = topResource
+		}
+		action := eval.GetAction()
+		if action == nil {
+			action = topAction
+		}
+		evalContext := eval.GetContext()
+		if evalContext == nil {
+			evalContext = topContext
+		}
+
+		item := &openfgav1.BatchCheckItem{
+			TupleKey:      &openfgav1.CheckRequestTupleKey{},
+			CorrelationId: strconv.Itoa(i),
+		}
+		if action != nil {
+			item.TupleKey.Relation = action.GetName()
+		}
+		if resource != nil {
+			item.TupleKey.Object = fmt.Sprintf("%s:%s", resource.GetType(), resource.GetId())
+		}
+		if subject != nil {
+			item.TupleKey.User = fmt.Sprintf("%s:%s", subject.GetType(), subject.GetId())
+		}
+
+		mergedContext, err := mergePropertiesToContext(evalContext, subject, resource, action)
+		if err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "failed to merge properties for evaluation %d: %v", i, err)
+		}
+		item.Context = mergedContext
+
+		batchReq.Checks = append(batchReq.Checks, item)
+	}
+
+	batchResp, err := s.BatchCheck(ctx, batchReq)
 	if err != nil {
 		return nil, err
 	}
 
-	evaluationsResponse, err := commands.TransformResponse(batchCheckResponse)
-	if err != nil {
-		return nil, err
+	// Map results back to ordered response
+	responses := make([]*authzenv1.EvaluationResponse, len(req.GetEvaluations()))
+	for i := range responses {
+		key := strconv.Itoa(i)
+		result, ok := batchResp.GetResult()[key]
+		if !ok || result == nil {
+			responses[i] = &authzenv1.EvaluationResponse{
+				Decision: false,
+				Context:  errorContext(500, fmt.Sprintf("missing result for evaluation %d", i)),
+			}
+			continue
+		}
+
+		if errResult, ok := result.GetCheckResult().(*openfgav1.BatchCheckSingleResult_Error); ok {
+			httpStatus := uint32(500)
+			if errResult.Error != nil {
+				switch code := errResult.Error.GetCode().(type) {
+				case *openfgav1.CheckError_InputError:
+					encodedErr := servererrors.NewEncodedError(int32(code.InputError), errResult.Error.GetMessage())
+					httpStatus = uint32(encodedErr.HTTPStatus())
+				case *openfgav1.CheckError_InternalError:
+					httpStatus = 500
+				}
+			}
+			responses[i] = &authzenv1.EvaluationResponse{
+				Decision: false,
+				Context:  errorContext(httpStatus, errResult.Error.GetMessage()),
+			}
+		} else {
+			responses[i] = &authzenv1.EvaluationResponse{
+				Decision: result.GetAllowed(),
+			}
+		}
 	}
 
-	return evaluationsResponse, nil
+	return &authzenv1.EvaluationsResponse{Evaluations: responses}, nil
 }
 
 // evaluateWithShortCircuit handles deny_on_first_deny and permit_on_first_permit semantics.
-// It builds CheckRequests directly (rather than calling s.Evaluation) so that the
-// authorizationModelID is resolved once and reused across all sequential evaluations.
+// It builds CheckRequests directly so the authorizationModelID is resolved once and reused.
 //
-//nolint:unparam // error is always nil but kept for interface consistency
+//nolint:unparam
 func (s *Server) evaluateWithShortCircuit(
 	ctx context.Context,
 	req *authzenv1.EvaluationsRequest,
@@ -190,47 +374,37 @@ func (s *Server) evaluateWithShortCircuit(
 ) (*authzenv1.EvaluationsResponse, error) {
 	responses := make([]*authzenv1.EvaluationResponse, 0, len(req.GetEvaluations()))
 
-	// Get defaults from request
-	defaultSubject := req.GetSubject()
-	defaultResource := req.GetResource()
-	defaultAction := req.GetAction()
-	defaultContext := req.GetContext()
+	topSubject := req.GetSubject()
+	topResource := req.GetResource()
+	topAction := req.GetAction()
+	topContext := req.GetContext()
 
 	for _, eval := range req.GetEvaluations() {
-		// Resolve effective values (per-evaluation overrides defaults)
 		subject := eval.GetSubject()
 		if subject == nil {
-			subject = defaultSubject
+			subject = topSubject
 		}
 		resource := eval.GetResource()
 		if resource == nil {
-			resource = defaultResource
+			resource = topResource
 		}
 		action := eval.GetAction()
 		if action == nil {
-			action = defaultAction
+			action = topAction
 		}
 		evalContext := eval.GetContext()
 		if evalContext == nil {
-			evalContext = defaultContext
+			evalContext = topContext
 		}
 
-		// Build CheckRequest directly using the pre-resolved authorization model ID
-		evalReqCmd, err := commands.NewEvaluateRequestCommand(
-			&authzenv1.EvaluationRequest{
-				Subject:  subject,
-				Resource: resource,
-				Action:   action,
-				Context:  evalContext,
-				StoreId:  req.GetStoreId(),
-			},
-			authorizationModelID,
+		checkReq, err := buildCheckRequest(
+			req.GetStoreId(), authorizationModelID,
+			subject, resource, action, evalContext,
 		)
 		if err != nil {
-			httpStatus := uint32(runtime.HTTPStatusFromCode(codes.InvalidArgument))
 			responses = append(responses, &authzenv1.EvaluationResponse{
 				Decision: false,
-				Context:  errorContext(httpStatus, err.Error()),
+				Context:  errorContext(uint32(runtime.HTTPStatusFromCode(codes.InvalidArgument)), err.Error()),
 			})
 			if semantic == authzenv1.EvaluationsSemantic_deny_on_first_deny {
 				break
@@ -238,22 +412,11 @@ func (s *Server) evaluateWithShortCircuit(
 			continue
 		}
 
-		checkResponse, err := s.Check(ctx, evalReqCmd.GetCheckRequest())
+		checkResponse, err := s.Check(ctx, checkReq)
 		if err != nil {
-			// Extract gRPC status code and map to HTTP status
-			httpStatus := uint32(500)
-			if st, ok := status.FromError(err); ok {
-				grpcCode := st.Code()
-				if grpcCode < 17 {
-					httpStatus = uint32(runtime.HTTPStatusFromCode(grpcCode))
-				} else {
-					encodedErr := servererrors.NewEncodedError(int32(grpcCode), st.Message())
-					httpStatus = uint32(encodedErr.HTTPStatus())
-				}
-			}
 			responses = append(responses, &authzenv1.EvaluationResponse{
 				Decision: false,
-				Context:  errorContext(httpStatus, err.Error()),
+				Context:  errorContext(grpcErrorToHTTPStatus(err), err.Error()),
 			})
 			if semantic == authzenv1.EvaluationsSemantic_deny_on_first_deny {
 				break
@@ -262,11 +425,8 @@ func (s *Server) evaluateWithShortCircuit(
 		}
 
 		decision := checkResponse.GetAllowed()
-		responses = append(responses, &authzenv1.EvaluationResponse{
-			Decision: decision,
-		})
+		responses = append(responses, &authzenv1.EvaluationResponse{Decision: decision})
 
-		// Short-circuit logic
 		if semantic == authzenv1.EvaluationsSemantic_deny_on_first_deny && !decision {
 			break
 		}
@@ -275,14 +435,11 @@ func (s *Server) evaluateWithShortCircuit(
 		}
 	}
 
-	return &authzenv1.EvaluationsResponse{
-		Evaluations: responses,
-	}, nil
+	return &authzenv1.EvaluationsResponse{Evaluations: responses}, nil
 }
 
 // SubjectSearch returns subjects that have access to the specified resource.
 func (s *Server) SubjectSearch(ctx context.Context, req *authzenv1.SubjectSearchRequest) (*authzenv1.SubjectSearchResponse, error) {
-	// Gate behind experimental flag
 	if !s.featureFlagClient.Boolean(serverconfig.ExperimentalEnableAuthZen, req.GetStoreId()) {
 		return nil, status.Error(codes.Unimplemented, "AuthZEN endpoints are experimental. Enable with --experimentals=enable_authzen")
 	}
@@ -301,20 +458,46 @@ func (s *Server) SubjectSearch(ctx context.Context, req *authzenv1.SubjectSearch
 		Method:  "authzen.SubjectSearch",
 	})
 
-	// Get authorization model ID from header
 	authorizationModelID := getAuthorizationModelIDFromHeader(ctx)
 
-	query := commands.NewSubjectSearchQuery(
-		commands.WithAuthorizationModelID(authorizationModelID),
-		commands.WithListUsersFunc(s.ListUsers),
+	mergedContext, err := mergePropertiesToContext(
+		req.GetContext(), req.GetSubject(), req.GetResource(), req.GetAction(),
 	)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "failed to merge properties: %v", err)
+	}
 
-	return query.Execute(ctx, req)
+	listUsersResp, err := s.ListUsers(ctx, &openfgav1.ListUsersRequest{
+		StoreId:              req.GetStoreId(),
+		AuthorizationModelId: authorizationModelID,
+		Object: &openfgav1.Object{
+			Type: req.GetResource().GetType(),
+			Id:   req.GetResource().GetId(),
+		},
+		Relation: req.GetAction().GetName(),
+		Context:  mergedContext,
+		UserFilters: []*openfgav1.UserTypeFilter{
+			{Type: req.GetSubject().GetType()},
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	var subjects []*authzenv1.Subject
+	for _, user := range listUsersResp.GetUsers() {
+		if obj := user.GetObject(); obj != nil {
+			subjects = append(subjects, &authzenv1.Subject{Type: obj.GetType(), Id: obj.GetId()})
+		} else if w := user.GetWildcard(); w != nil {
+			subjects = append(subjects, &authzenv1.Subject{Type: w.GetType(), Id: "*"})
+		}
+	}
+
+	return &authzenv1.SubjectSearchResponse{Results: subjects}, nil
 }
 
 // ResourceSearch returns resources that a subject has access to.
 func (s *Server) ResourceSearch(ctx context.Context, req *authzenv1.ResourceSearchRequest) (*authzenv1.ResourceSearchResponse, error) {
-	// Gate behind experimental flag
 	if !s.featureFlagClient.Boolean(serverconfig.ExperimentalEnableAuthZen, req.GetStoreId()) {
 		return nil, status.Error(codes.Unimplemented, "AuthZEN endpoints are experimental. Enable with --experimentals=enable_authzen")
 	}
@@ -333,20 +516,60 @@ func (s *Server) ResourceSearch(ctx context.Context, req *authzenv1.ResourceSear
 		Method:  "authzen.ResourceSearch",
 	})
 
-	// Get authorization model ID from header
 	authorizationModelID := getAuthorizationModelIDFromHeader(ctx)
 
-	query := commands.NewResourceSearchQuery(
-		commands.WithResourceSearchAuthorizationModelID(authorizationModelID),
-		commands.WithStreamedListObjectsFunc(s.StreamedListObjects),
+	mergedContext, err := mergePropertiesToContext(
+		req.GetContext(), req.GetSubject(), req.GetResource(), req.GetAction(),
 	)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "failed to merge properties: %v", err)
+	}
 
-	return query.Execute(ctx, req)
+	collector := &objectCollector{ctx: ctx}
+
+	err = s.StreamedListObjects(&openfgav1.StreamedListObjectsRequest{
+		StoreId:              req.GetStoreId(),
+		AuthorizationModelId: authorizationModelID,
+		User:                 fmt.Sprintf("%s:%s", req.GetSubject().GetType(), req.GetSubject().GetId()),
+		Relation:             req.GetAction().GetName(),
+		Type:                 req.GetResource().GetType(),
+		Context:              mergedContext,
+	}, collector)
+	if err != nil {
+		return nil, err
+	}
+
+	var resources []*authzenv1.Resource
+	for _, objID := range collector.objects {
+		parts := strings.SplitN(objID, ":", 2)
+		if len(parts) == 2 {
+			resources = append(resources, &authzenv1.Resource{Type: parts[0], Id: parts[1]})
+		}
+	}
+
+	return &authzenv1.ResourceSearchResponse{Results: resources}, nil
+}
+
+// objectCollector implements OpenFGAService_StreamedListObjectsServer to collect streamed objects.
+type objectCollector struct {
+	ctx     context.Context
+	objects []string
+	grpc.ServerStream
+}
+
+func (c *objectCollector) Context() context.Context                  { return c.ctx }
+func (c *objectCollector) SetHeader(metadata.MD) error               { return nil }
+func (c *objectCollector) SendHeader(metadata.MD) error              { return nil }
+func (c *objectCollector) SetTrailer(metadata.MD)                    {}
+func (c *objectCollector) SendMsg(any) error                         { return nil }
+func (c *objectCollector) RecvMsg(any) error                         { return nil }
+func (c *objectCollector) Send(resp *openfgav1.StreamedListObjectsResponse) error {
+	c.objects = append(c.objects, resp.GetObject())
+	return nil
 }
 
 // ActionSearch returns actions a subject can perform on a resource.
 func (s *Server) ActionSearch(ctx context.Context, req *authzenv1.ActionSearchRequest) (*authzenv1.ActionSearchResponse, error) {
-	// Gate behind experimental flag
 	if !s.featureFlagClient.Boolean(serverconfig.ExperimentalEnableAuthZen, req.GetStoreId()) {
 		return nil, status.Error(codes.Unimplemented, "AuthZEN endpoints are experimental. Enable with --experimentals=enable_authzen")
 	}
@@ -365,29 +588,74 @@ func (s *Server) ActionSearch(ctx context.Context, req *authzenv1.ActionSearchRe
 		Method:  "authzen.ActionSearch",
 	})
 
-	// Get authorization model ID from header
 	authorizationModelID := getAuthorizationModelIDFromHeader(ctx)
 
-	// Resolve typesystem once to set the header and get the model ID
+	// Resolve typesystem to get all relations for the resource type
 	typesys, err := s.resolveTypesystem(ctx, req.GetStoreId(), authorizationModelID)
 	if err != nil {
 		return nil, err
 	}
-
-	// Get the resolved model ID
 	resolvedModelID := typesys.GetAuthorizationModelID()
 
-	// Use a typesystem resolver that returns the already-resolved typesystem
-	// to avoid re-resolving it in the action search query
-	cachedTypesystemResolver := func(ctx context.Context, storeID, modelID string) (*typesystem.TypeSystem, error) {
-		return typesys, nil
+	relations, err := typesys.GetRelations(req.GetResource().GetType())
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "failed to get relations for type %s: %v", req.GetResource().GetType(), err)
 	}
 
-	query := commands.NewActionSearchQuery(
-		commands.WithTypesystemResolver(cachedTypesystemResolver),
-		commands.WithBatchCheckFunc(s.BatchCheck),
-		commands.WithActionSearchAuthorizationModelID(resolvedModelID),
+	mergedContext, err := mergePropertiesToContext(
+		req.GetContext(), req.GetSubject(), req.GetResource(), nil,
 	)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "failed to merge properties: %v", err)
+	}
 
-	return query.Execute(ctx, req)
+	user := fmt.Sprintf("%s:%s", req.GetSubject().GetType(), req.GetSubject().GetId())
+	object := fmt.Sprintf("%s:%s", req.GetResource().GetType(), req.GetResource().GetId())
+
+	relationNames := make([]string, 0, len(relations))
+	for name := range relations {
+		relationNames = append(relationNames, name)
+	}
+
+	checks := make([]*openfgav1.BatchCheckItem, 0, len(relationNames))
+	for i, rel := range relationNames {
+		checks = append(checks, &openfgav1.BatchCheckItem{
+			TupleKey: &openfgav1.CheckRequestTupleKey{
+				User:     user,
+				Relation: rel,
+				Object:   object,
+			},
+			Context:       mergedContext,
+			CorrelationId: strconv.Itoa(i),
+		})
+	}
+
+	batchResp, err := s.BatchCheck(ctx, &openfgav1.BatchCheckRequest{
+		StoreId:              req.GetStoreId(),
+		AuthorizationModelId: resolvedModelID,
+		Checks:               checks,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	var actions []*authzenv1.Action
+	for correlationID, result := range batchResp.GetResult() {
+		if result.GetError() != nil {
+			continue
+		}
+		if result.GetAllowed() {
+			idx, err := strconv.Atoi(correlationID)
+			if err != nil || idx < 0 || idx >= len(relationNames) {
+				continue
+			}
+			actions = append(actions, &authzenv1.Action{Name: relationNames[idx]})
+		}
+	}
+
+	sort.Slice(actions, func(i, j int) bool {
+		return actions[i].GetName() < actions[j].GetName()
+	})
+
+	return &authzenv1.ActionSearchResponse{Results: actions}, nil
 }
