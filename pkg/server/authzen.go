@@ -261,6 +261,33 @@ func (s *Server) Evaluations(ctx context.Context, req *authzenv1.EvaluationsRequ
 	return s.evaluateAll(ctx, req, authorizationModelID)
 }
 
+// resolveEvalFields returns the subject, resource, action, and context for a
+// single evaluation item, falling back to the top-level request fields when the
+// item-level fields are nil.
+func resolveEvalFields(
+	eval *authzenv1.EvaluationsItemRequest,
+	topSubject *authzenv1.Subject, topResource *authzenv1.Resource,
+	topAction *authzenv1.Action, topContext *structpb.Struct,
+) (*authzenv1.Subject, *authzenv1.Resource, *authzenv1.Action, *structpb.Struct) {
+	subject := eval.GetSubject()
+	if subject == nil {
+		subject = topSubject
+	}
+	resource := eval.GetResource()
+	if resource == nil {
+		resource = topResource
+	}
+	action := eval.GetAction()
+	if action == nil {
+		action = topAction
+	}
+	evalContext := eval.GetContext()
+	if evalContext == nil {
+		evalContext = topContext
+	}
+	return subject, resource, action, evalContext
+}
+
 // evaluateAll uses BatchCheck to evaluate all items in parallel.
 func (s *Server) evaluateAll(
 	ctx context.Context,
@@ -279,44 +306,18 @@ func (s *Server) evaluateAll(
 	}
 
 	for i, eval := range req.GetEvaluations() {
-		subject := eval.GetSubject()
-		if subject == nil {
-			subject = topSubject
-		}
-		resource := eval.GetResource()
-		if resource == nil {
-			resource = topResource
-		}
-		action := eval.GetAction()
-		if action == nil {
-			action = topAction
-		}
-		evalContext := eval.GetContext()
-		if evalContext == nil {
-			evalContext = topContext
-		}
+		subject, resource, action, evalContext := resolveEvalFields(eval, topSubject, topResource, topAction, topContext)
 
-		item := &openfgav1.BatchCheckItem{
-			TupleKey:      &openfgav1.CheckRequestTupleKey{},
-			CorrelationId: strconv.Itoa(i),
-		}
-		if action != nil {
-			item.TupleKey.Relation = action.GetName()
-		}
-		if resource != nil {
-			item.TupleKey.Object = fmt.Sprintf("%s:%s", resource.GetType(), resource.GetId())
-		}
-		if subject != nil {
-			item.TupleKey.User = fmt.Sprintf("%s:%s", subject.GetType(), subject.GetId())
-		}
-
-		mergedContext, err := mergePropertiesToContext(evalContext, subject, resource, action)
+		checkReq, err := buildCheckRequest(req.GetStoreId(), authorizationModelID, subject, resource, action, evalContext)
 		if err != nil {
-			return nil, status.Errorf(codes.InvalidArgument, "failed to merge properties for evaluation %d: %v", i, err)
+			return nil, status.Errorf(codes.InvalidArgument, "evaluation %d: %v", i, err)
 		}
-		item.Context = mergedContext
 
-		batchReq.Checks = append(batchReq.Checks, item)
+		batchReq.Checks = append(batchReq.Checks, &openfgav1.BatchCheckItem{
+			TupleKey:      checkReq.GetTupleKey(),
+			Context:       checkReq.GetContext(),
+			CorrelationId: strconv.Itoa(i),
+		})
 	}
 
 	batchResp, err := s.BatchCheck(ctx, batchReq)
@@ -382,22 +383,7 @@ func (s *Server) evaluateWithShortCircuit(
 	topContext := req.GetContext()
 
 	for _, eval := range req.GetEvaluations() {
-		subject := eval.GetSubject()
-		if subject == nil {
-			subject = topSubject
-		}
-		resource := eval.GetResource()
-		if resource == nil {
-			resource = topResource
-		}
-		action := eval.GetAction()
-		if action == nil {
-			action = topAction
-		}
-		evalContext := eval.GetContext()
-		if evalContext == nil {
-			evalContext = topContext
-		}
+		subject, resource, action, evalContext := resolveEvalFields(eval, topSubject, topResource, topAction, topContext)
 
 		checkReq, err := buildCheckRequest(
 			req.GetStoreId(), authorizationModelID,
