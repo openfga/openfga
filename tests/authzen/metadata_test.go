@@ -59,7 +59,7 @@ func TestGetConfiguration(t *testing.T) {
 // TestGetConfigurationHTTPHeaderForwarding verifies that X-Forwarded-Proto is
 // correctly forwarded through grpc-gateway to getBaseURLFromContext.
 //
-// grpc-gateway's annotateContext has built-in special handling for
+// Grpc-gateway's annotateContext has built-in special handling for
 // X-Forwarded-For and X-Forwarded-Host (they bypass the header matcher and
 // are always forwarded as gRPC metadata). However, X-Forwarded-Proto is NOT
 // included in that special handling, and DefaultHeaderMatcher only forwards
