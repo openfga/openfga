@@ -339,10 +339,12 @@ func (s *Server) evaluateAll(
 
 		if errResult, ok := result.GetCheckResult().(*openfgav1.BatchCheckSingleResult_Error); ok {
 			httpStatus := uint32(500)
+			errMessage := "internal error"
 			if errResult.Error != nil {
+				errMessage = errResult.Error.GetMessage()
 				switch code := errResult.Error.GetCode().(type) {
 				case *openfgav1.CheckError_InputError:
-					encodedErr := servererrors.NewEncodedError(int32(code.InputError), errResult.Error.GetMessage())
+					encodedErr := servererrors.NewEncodedError(int32(code.InputError), errMessage)
 					httpStatus = uint32(encodedErr.HTTPStatus())
 				case *openfgav1.CheckError_InternalError:
 					httpStatus = 500
@@ -350,7 +352,7 @@ func (s *Server) evaluateAll(
 			}
 			responses[i] = &authzenv1.EvaluationResponse{
 				Decision: false,
-				Context:  errorContext(httpStatus, errResult.Error.GetMessage()),
+				Context:  errorContext(httpStatus, errMessage),
 			}
 		} else {
 			responses[i] = &authzenv1.EvaluationResponse{
