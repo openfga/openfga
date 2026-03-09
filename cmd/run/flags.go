@@ -39,6 +39,9 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 
 		command.MarkFlagsRequiredTogether("grpc-tls-enabled", "grpc-tls-cert", "grpc-tls-key")
 
+		util.MustBindPFlag("grpc.maxRecvMsgBytes", flags.Lookup("grpc-max-recv-msg-bytes"))
+		util.MustBindEnv("grpc.maxRecvMsgBytes", "OPENFGA_GRPC_MAX_RECV_MSG_BYTES")
+
 		util.MustBindPFlag("http.enabled", flags.Lookup("http-enabled"))
 		util.MustBindEnv("http.enabled", "OPENFGA_HTTP_ENABLED")
 
@@ -224,11 +227,17 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 		util.MustBindPFlag("listObjectsMaxResults", flags.Lookup("listObjects-max-results"))
 		util.MustBindEnv("listObjectsMaxResults", "OPENFGA_LIST_OBJECTS_MAX_RESULTS", "OPENFGA_LISTOBJECTSMAXRESULTS")
 
+		util.MustBindPFlag("listObjectsPipelineEnabled", flags.Lookup("listObjects-pipeline-enabled"))
+		util.MustBindEnv("listObjectsPipelineEnabled", "OPENFGA_LIST_OBJECTS_PIPELINE_ENABLED", "OPENFGA_LISTOBJECTSPIPELINEENABLED")
+
 		util.MustBindPFlag("listUsersDeadline", flags.Lookup("listUsers-deadline"))
 		util.MustBindEnv("listUsersDeadline", "OPENFGA_LIST_USERS_DEADLINE", "OPENFGA_LISTUSERSDEADLINE")
 
 		util.MustBindPFlag("listUsersMaxResults", flags.Lookup("listUsers-max-results"))
 		util.MustBindEnv("listUsersMaxResults", "OPENFGA_LIST_USERS_MAX_RESULTS", "OPENFGA_LISTUSERSMAXRESULTS")
+
+		util.MustBindPFlag("readChangesMaxPageSize", flags.Lookup("readChanges-max-page-size"))
+		util.MustBindEnv("readChangesMaxPageSize", "OPENFGA_READ_CHANGES_MAX_PAGE_SIZE", "OPENFGA_READCHANGESMAXPAGESIZE")
 
 		util.MustBindPFlag("checkCache.limit", flags.Lookup("check-cache-limit"))
 		util.MustBindEnv("checkCache.limit", "OPENFGA_CHECK_CACHE_LIMIT")

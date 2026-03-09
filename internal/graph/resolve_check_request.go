@@ -13,6 +13,7 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/tuple"
 )
 
 type ResolveCheckRequest struct {
@@ -26,10 +27,19 @@ type ResolveCheckRequest struct {
 	Consistency               openfgav1.ConsistencyPreference
 	LastCacheInvalidationTime time.Time
 
+	// SelectedStrategy is the strategy selected by the planner for this request chain.
+	// When set, child requests dispatched within that strategy should continue using
+	// the same strategy instead of calling the planner again. This prevents re-planning
+	// during recursive dispatch calls (e.g., when default strategy calls checkTTU multiple times).
+	SelectedStrategy string
+
 	// Invariant parts of a check request are those that don't change in sub-problems
 	// AuthorizationModelID, StoreID, Context, and ContextualTuples.
 	// the invariantCacheKey is computed once per request, and passed to sub-problems via copy in .clone()
 	invariantCacheKey string
+
+	objectType string
+	userType   string
 }
 
 type ResolveCheckRequestMetadata struct {
@@ -80,6 +90,12 @@ func NewResolveCheckRequest(
 		return nil, errors.New("missing store_id")
 	}
 
+	userType := tuple.GetType(params.TupleKey.GetUser())
+	if tuple.IsObjectRelation(params.TupleKey.GetUser()) {
+		objectRelation := tuple.GetRelation(params.TupleKey.GetUser())
+		userType = tuple.ToObjectRelationString(userType, objectRelation)
+	}
+
 	r := &ResolveCheckRequest{
 		StoreID:              params.StoreID,
 		AuthorizationModelID: params.AuthorizationModelID,
@@ -91,6 +107,9 @@ func NewResolveCheckRequest(
 		Consistency:          params.Consistency,
 		// avoid having to read from cache consistently by propagating it
 		LastCacheInvalidationTime: params.LastCacheInvalidationTime,
+
+		objectType: tuple.GetType(params.TupleKey.GetObject()),
+		userType:   userType,
 	}
 
 	keyBuilder := &strings.Builder{}
@@ -126,7 +145,7 @@ func (r *ResolveCheckRequest) clone() *ResolveCheckRequest {
 		tupleKey = proto.Clone(origTupleKey).(*openfgav1.TupleKey)
 	}
 
-	return &ResolveCheckRequest{
+	cloned := &ResolveCheckRequest{
 		StoreID:                   r.GetStoreID(),
 		AuthorizationModelID:      r.GetAuthorizationModelID(),
 		TupleKey:                  tupleKey,
@@ -137,7 +156,11 @@ func (r *ResolveCheckRequest) clone() *ResolveCheckRequest {
 		Consistency:               r.GetConsistency(),
 		LastCacheInvalidationTime: r.GetLastCacheInvalidationTime(),
 		invariantCacheKey:         r.GetInvariantCacheKey(),
+		SelectedStrategy:          r.GetSelectedStrategy(),
+		objectType:                r.GetObjectType(),
+		userType:                  r.GetUserType(),
 	}
+	return cloned
 }
 
 func (r *ResolveCheckRequest) GetStoreID() string {
@@ -208,4 +231,25 @@ func (r *ResolveCheckRequest) GetInvariantCacheKey() string {
 		return ""
 	}
 	return r.invariantCacheKey
+}
+
+func (r *ResolveCheckRequest) GetSelectedStrategy() string {
+	if r == nil {
+		return ""
+	}
+	return r.SelectedStrategy
+}
+
+func (r *ResolveCheckRequest) GetObjectType() string {
+	if r == nil {
+		return ""
+	}
+	return r.objectType
+}
+
+func (r *ResolveCheckRequest) GetUserType() string {
+	if r == nil {
+		return ""
+	}
+	return r.userType
 }

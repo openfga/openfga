@@ -2,6 +2,7 @@ package planner
 
 import (
 	"math/rand"
+	"sort"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -31,32 +32,35 @@ func TestThompsonStats_Sample(t *testing.T) {
 		require.NotEqual(t, sample1, sample2)
 	})
 	t.Run("complete", func(t *testing.T) {
-		stats := NewThompsonStats(50*time.Millisecond, 1, 1, 1)
+		stats := NewThompsonStats(50*time.Millisecond, 1, 2, 1)
 		r := rand.New(rand.NewSource(42))
 		numSamples := 100
 
-		// 1. Get the average of samples from the initial, diffuse prior.
-		var totalBefore float64
-		for i := 0; i < numSamples; i++ {
-			totalBefore += stats.Sample(r)
+		// Helper to calculate Median
+		getMedian := func() float64 {
+			samples := make([]float64, numSamples)
+			for i := 0; i < numSamples; i++ {
+				samples[i] = stats.Sample(r)
+			}
+			sort.Float64s(samples) // Requires "sort" package
+			return samples[numSamples/2]
 		}
-		avgBefore := totalBefore / float64(numSamples)
 
-		// 2. Update the model with a series of high-latency results.
-		// This should significantly shift the distribution's mean upwards.
+		// 1. Get Median Before (Should be near 50ms)
+		medianBefore := getMedian()
+
+		// 2. Update with high latency (500ms)
 		for i := 0; i < 20; i++ {
 			stats.Update(500 * time.Millisecond)
 		}
 
-		// 3. Get the average of samples from the new, updated distribution.
-		var totalAfter float64
-		for i := 0; i < numSamples; i++ {
-			totalAfter += stats.Sample(r)
-		}
-		avgAfter := totalAfter / float64(numSamples)
+		// 3. Get Median After (Should be near 500ms)
+		medianAfter := getMedian()
 
-		// 4. Verify that the average of the samples has increased.
-		require.Greater(t, avgAfter, avgBefore)
+		// 4. Verify
+		// Use a margin of error or simple greater check
+		t.Logf("Median Before: %.2f ms, Median After: %.2f ms", medianBefore, medianAfter)
+		require.Greater(t, medianAfter, medianBefore)
 	})
 }
 

@@ -29,6 +29,9 @@ linters:
     - wastedassign
     - whitespace
   settings:
+    gocritic:
+      disabled-checks:
+        - ifElseChain
     gocyclo:
       min-complexity: 58
     godot:

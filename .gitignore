@@ -11,3 +11,5 @@ coverage*.out
 
 mise.toml
 .DS_Store
+
+vendor/

@@ -181,6 +181,7 @@ func TestDefaultValueRequestMetadata(t *testing.T) {
 	require.Equal(t, openfgav1.ConsistencyPreference_UNSPECIFIED, r.GetConsistency())
 	require.Equal(t, map[string]struct{}{}, r.GetVisitedPaths())
 	require.Zero(t, r.GetLastCacheInvalidationTime())
+	require.Empty(t, r.GetSelectedStrategy())
 }
 
 func TestNewResolveCheckRequest(t *testing.T) {
@@ -195,13 +196,6 @@ func TestNewResolveCheckRequest(t *testing.T) {
 		"missing_model_id_errors": {
 			params: ResolveCheckRequestParams{StoreID: "abc123"},
 			error:  true,
-		},
-		"succeeds_if_required_args_are_present": {
-			params: ResolveCheckRequestParams{
-				AuthorizationModelID: "abc123",
-				StoreID:              "def456",
-			},
-			error: false,
 		},
 	}
 

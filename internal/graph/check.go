@@ -19,11 +19,11 @@ import (
 	"github.com/openfga/openfga/internal/concurrency"
 	openfgaErrors "github.com/openfga/openfga/internal/errors"
 	"github.com/openfga/openfga/internal/planner"
+	"github.com/openfga/openfga/internal/telemetry"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/logger"
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	"github.com/openfga/openfga/pkg/storage"
-	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
@@ -158,6 +158,10 @@ func runHandler(ctx context.Context, handler CheckHandlerFunc) checkOutcome {
 // union implements a CheckFuncReducer that requires any of the provided CheckHandlerFunc to resolve
 // to an allowed outcome. The first allowed outcome causes premature termination of the reducer.
 func union(ctx context.Context, concurrencyLimit int, handlers ...CheckHandlerFunc) (resp *ResolveCheckResponse, err error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+
 	cancellableCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -218,6 +222,10 @@ func union(ctx context.Context, concurrencyLimit int, handlers ...CheckHandlerFu
 func intersection(ctx context.Context, concurrencyLimit int, handlers ...CheckHandlerFunc) (resp *ResolveCheckResponse, err error) {
 	if len(handlers) < 2 {
 		return nil, fmt.Errorf("%w, expected at least two rewrite operands for intersection operator, but got '%d'", openfgaErrors.ErrUnknown, len(handlers))
+	}
+
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
 	}
 
 	cancellableCtx, cancel := context.WithCancel(ctx)
@@ -287,6 +295,10 @@ func intersection(ctx context.Context, concurrencyLimit int, handlers ...CheckHa
 func exclusion(ctx context.Context, _ int, handlers ...CheckHandlerFunc) (*ResolveCheckResponse, error) {
 	if len(handlers) != 2 {
 		return nil, fmt.Errorf("%w, expected two rewrite operands for exclusion operator, but got '%d'", openfgaErrors.ErrUnknown, len(handlers))
+	}
+
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
 	}
 
 	ctx, cancel := context.WithCancel(ctx)
@@ -365,16 +377,11 @@ func exclusion(ctx context.Context, _ int, handlers ...CheckHandlerFunc) (*Resol
 func (c *LocalChecker) Close() {
 }
 
-// dispatch clones the parent request, modifies its metadata and tupleKey, and dispatches the new request
-// to the CheckResolver this LocalChecker was constructed with.
-func (c *LocalChecker) dispatch(_ context.Context, parentReq *ResolveCheckRequest, tk *openfgav1.TupleKey) CheckHandlerFunc {
+// dispatch dispatches the given request to the CheckResolver this LocalChecker was constructed with.
+func (c *LocalChecker) dispatch(_ context.Context, req *ResolveCheckRequest) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
-		parentReq.GetRequestMetadata().DispatchCounter.Add(1)
-		childRequest := parentReq.clone()
-		childRequest.TupleKey = tk
-		childRequest.GetRequestMetadata().Depth++
-
-		resp, err := c.delegate.ResolveCheck(ctx, childRequest)
+		req.GetRequestMetadata().Depth++
+		resp, err := c.delegate.ResolveCheck(ctx, req)
 		if err != nil {
 			return nil, err
 		}
@@ -657,7 +664,7 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 			}
 			defer iter.Stop()
 
-			return c.defaultUserset(ctx, req, directlyRelatedUsersetTypes, iter)(ctx)
+			return c.defaultUserset(ctx, req, directlyRelatedUsersetTypes, iter, "")(ctx)
 		}
 
 		possibleStrategies := map[string]*planner.PlanConfig{
@@ -683,18 +690,30 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 			}
 			defer iter.Stop()
 
+			possibleStrategies[defaultResolver] = defaultRecursivePlan
+			possibleStrategies[recursiveResolver] = recursivePlan
+
+			// If a strategy was already selected by a parent call for the recursive use case, use it without re-planning.
+			// This prevents the planner from being called again during recursive dispatch calls.
+			selectedStrategy := req.GetSelectedStrategy()
+			switch selectedStrategy {
+			case defaultResolver:
+				return c.defaultUserset(ctx, req, directlyRelatedUsersetTypes, iter, selectedStrategy)(ctx)
+			case recursiveResolver:
+				return c.recursiveUserset(ctx, req, directlyRelatedUsersetTypes, iter, selectedStrategy)(ctx)
+			default: // in case is not selected
+			}
+
 			b.WriteString("infinite")
 			key := b.String()
 			keyPlan := c.planner.GetPlanSelector(key)
-			possibleStrategies[defaultResolver] = defaultRecursivePlan
-			possibleStrategies[recursiveResolver] = recursivePlan
 			plan := keyPlan.Select(possibleStrategies)
 
 			resolver := c.defaultUserset
 			if plan.Name == recursiveResolver {
 				resolver = c.recursiveUserset
 			}
-			return c.profiledCheckHandler(keyPlan, plan, resolver(ctx, req, directlyRelatedUsersetTypes, iter))(ctx)
+			return c.profiledCheckHandler(keyPlan, plan, resolver(ctx, req, directlyRelatedUsersetTypes, iter, plan.Name))(ctx)
 		}
 
 		var resolvers []CheckHandlerFunc
@@ -702,6 +721,10 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 		var remainingUsersetTypes []*openfgav1.RelationReference
 		keyPlanPrefix := b.String()
 		possibleStrategies[weightTwoResolver] = weight2Plan
+
+		// Check if a strategy was already selected by a parent call
+		selectedStrategy := req.GetSelectedStrategy()
+
 		for _, userset := range directlyRelatedUsersetTypes {
 			if !typesys.UsersetUseWeight2Resolver(objectType, relation, userType, userset) {
 				remainingUsersetTypes = append(remainingUsersetTypes, userset)
@@ -714,6 +737,19 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 			}
 			// NOTE: we collect defers given that the iterator won't be consumed until `union` resolves at the end.
 			defer iter.Stop()
+
+			// If a strategy was already selected, use it without re-planning
+			if selectedStrategy != "" {
+				if _, exists := possibleStrategies[selectedStrategy]; exists {
+					resolver := c.defaultUserset
+					if selectedStrategy == weightTwoResolver {
+						resolver = c.weight2Userset
+					}
+					resolvers = append(resolvers, resolver(ctx, req, usersets, iter, selectedStrategy))
+					continue
+				}
+			}
+
 			var k strings.Builder
 			k.WriteString(keyPlanPrefix)
 			k.WriteString("userset|")
@@ -726,7 +762,7 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 			if strategy.Name == weightTwoResolver {
 				resolver = c.weight2Userset
 			}
-			resolvers = append(resolvers, c.profiledCheckHandler(keyPlan, strategy, resolver(ctx, req, usersets, iter)))
+			resolvers = append(resolvers, c.profiledCheckHandler(keyPlan, strategy, resolver(ctx, req, usersets, iter, strategy.Name)))
 		}
 		// for all usersets could not be resolved through weight2 resolver, resolve them all through the default resolver.
 		// they all resolved as a group rather than individually.
@@ -736,7 +772,7 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 				return nil, err
 			}
 			defer iter.Stop()
-			resolvers = append(resolvers, c.defaultUserset(ctx, req, remainingUsersetTypes, iter))
+			resolvers = append(resolvers, c.defaultUserset(ctx, req, remainingUsersetTypes, iter, ""))
 		}
 
 		return union(ctx, c.concurrencyLimit, resolvers...)
@@ -880,7 +916,24 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 
 		if len(possibleStrategies) == 1 {
 			// short circuit, no additional resolvers are available
-			return resolver(ctx, req, rewrite, filteredIter)(ctx)
+			return resolver(ctx, req, rewrite, filteredIter, "")(ctx)
+		}
+
+		// If a strategy was already selected by a parent call, use it without re-planning.
+		// This prevents the planner from being called again during recursive dispatch calls.
+		if selectedStrategy := req.GetSelectedStrategy(); selectedStrategy != "" {
+			if _, exists := possibleStrategies[selectedStrategy]; exists {
+				switch selectedStrategy {
+				case defaultResolver:
+					resolver = c.defaultTTU
+				case weightTwoResolver:
+					resolver = c.weight2TTU
+				case recursiveResolver:
+					resolver = c.recursiveTTU
+				}
+				return resolver(ctx, req, rewrite, filteredIter, selectedStrategy)(ctx)
+			}
+			// If the selected strategy is not in the possible strategies, fall through to planner
 		}
 
 		var b strings.Builder
@@ -909,7 +962,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 			resolver = c.recursiveTTU
 		}
 
-		return c.profiledCheckHandler(keyPlan, strategy, resolver(ctx, req, rewrite, filteredIter))(ctx)
+		return c.profiledCheckHandler(keyPlan, strategy, resolver(ctx, req, rewrite, filteredIter, strategy.Name))(ctx)
 	}
 }
 
@@ -1029,7 +1082,8 @@ func streamedLookupUsersetFromIterator(ctx context.Context, iter storage.TupleMa
 // This is used to find the intersection between userset from user and userset from object.
 func processUsersetMessage(userset string,
 	primarySet *hashset.Set,
-	secondarySet *hashset.Set) bool {
+	secondarySet *hashset.Set,
+) bool {
 	primarySet.Add(userset)
 	return secondarySet.Contains(userset)
 }

@@ -29,6 +29,7 @@ const (
 	DefaultListUsersDeadline                = 3 * time.Second
 	DefaultListUsersMaxResults              = 1000
 	DefaultMaxConcurrentReadsForListUsers   = math.MaxUint32
+	DefaultReadChangesMaxPageSize           = 100
 
 	DefaultWriteContextByteLimit = 32 * 1_024 // 32KB
 
@@ -48,6 +49,7 @@ const (
 	DefaultListObjectsIteratorCacheMaxResults = 10000
 	DefaultListObjectsIteratorCacheTTL        = 10 * time.Second
 
+	DefaultListObjectsPipelineEnabled      = true
 	DefaultListObjectsOptimizationsEnabled = false
 
 	DefaultCacheControllerConfigEnabled = false
@@ -100,12 +102,14 @@ const (
 	// Moving forward, all experimental flags should follow the naming convention below:
 	// 1. Avoid using enable/disable prefixes.
 	// 2. Flag names should have only numbers, letters and underscores.
-	ExperimentalShadowCheck         = "shadow_check"
-	ExperimentalShadowListObjects   = "shadow_list_objects"
-	ExperimentalDatastoreThrottling = "datastore_throttling"
-	ExperimentalPipelineListObjects = "pipeline_list_objects"
+	ExperimentalShadowCheck              = "shadow_check"
+	ExperimentalShadowListObjects        = "shadow_list_objects"
+	ExperimentalDatastoreThrottling      = "datastore_throttling"
+	ExperimentalPipelineListObjects      = "pipeline_list_objects"
+	ExperimentalShadowWeightedGraphCheck = "shadow_weighted_graph_check"
+	ExperimentalWeightedGraphCheck       = "weighted_graph_check"
 	// ExperimentalEnableAuthZen enables the AuthZEN API endpoints for interoperability compliance.
-	ExperimentalEnableAuthZen = "enable_authzen"
+	ExperimentalEnableAuthZen = "enable_authzen"  
 )
 
 type DatastoreMetricsConfig struct {
@@ -157,8 +161,9 @@ type DatastoreConfig struct {
 
 // GRPCConfig defines OpenFGA server configurations for grpc server specific settings.
 type GRPCConfig struct {
-	Addr string
-	TLS  *TLSConfig
+	Addr            string
+	TLS             *TLSConfig
+	MaxRecvMsgBytes int
 }
 
 // HTTPConfig defines OpenFGA server configurations for HTTP server specific settings.
@@ -327,6 +332,10 @@ type Config struct {
 	// This is to protect the server from misuse of the ListObjects endpoints.
 	ListObjectsMaxResults uint32
 
+	// ListObjectsPipelineEnabled defines whether the ListObjects pipeline optimization
+	// algorithm is enabled.
+	ListObjectsPipelineEnabled bool
+
 	// ListUsersDeadline defines the maximum amount of time to accumulate ListUsers results
 	// before the server will respond. This is to protect the server from misuse of the
 	// ListUsers endpoints. It cannot be larger than the configured server's request timeout (RequestTimeout or HTTPConfig.UpstreamTimeout).
@@ -336,6 +345,10 @@ type Config struct {
 	// before the non-streaming ListUsers API will respond to the client.
 	// This is to protect the server from misuse of the ListUsers endpoints.
 	ListUsersMaxResults uint32
+
+	// ReadChangesMaxPageSize defines the maximum page size allowed for ReadChanges API requests.
+	// This is to protect the server from misuse of the ReadChanges endpoint.
+	ReadChangesMaxPageSize uint32
 
 	// MaxTuplesPerWrite defines the maximum number of tuples per Write endpoint.
 	MaxTuplesPerWrite int
@@ -434,6 +447,10 @@ func (cfg *Config) Verify() error {
 func (cfg *Config) VerifyServerSettings() error {
 	if err := cfg.verifyDeadline(); err != nil {
 		return err
+	}
+
+	if cfg.GRPC.MaxRecvMsgBytes <= 0 {
+		return fmt.Errorf("config 'grpc.maxRecvMsgBytes' must be greater than 0")
 	}
 
 	if cfg.MaxConcurrentReadsForListUsers == 0 {
@@ -704,12 +721,14 @@ func DefaultConfig() *Config {
 		ChangelogHorizonOffset:                    DefaultChangelogHorizonOffset,
 		ResolveNodeLimit:                          DefaultResolveNodeLimit,
 		ResolveNodeBreadthLimit:                   DefaultResolveNodeBreadthLimit,
-		Experimentals:                             []string{},
+		Experimentals:                             []string{ExperimentalPipelineListObjects},
 		AccessControl:                             AccessControlConfig{Enabled: false, StoreID: "", ModelID: ""},
 		ListObjectsDeadline:                       DefaultListObjectsDeadline,
 		ListObjectsMaxResults:                     DefaultListObjectsMaxResults,
+		ListObjectsPipelineEnabled:                DefaultListObjectsPipelineEnabled,
 		ListUsersMaxResults:                       DefaultListUsersMaxResults,
 		ListUsersDeadline:                         DefaultListUsersDeadline,
+		ReadChangesMaxPageSize:                    DefaultReadChangesMaxPageSize,
 		RequestDurationDatastoreQueryCountBuckets: []string{"50", "200"},
 		RequestDurationDispatchCountBuckets:       []string{"50", "200"},
 		Datastore: DatastoreConfig{
@@ -722,8 +741,9 @@ func DefaultConfig() *Config {
 			MaxOpenConns:           30,
 		},
 		GRPC: GRPCConfig{
-			Addr: "0.0.0.0:8081",
-			TLS:  &TLSConfig{Enabled: false},
+			Addr:            "0.0.0.0:8081",
+			TLS:             &TLSConfig{Enabled: false},
+			MaxRecvMsgBytes: DefaultMaxRPCMessageSizeInBytes,
 		},
 		HTTP: HTTPConfig{
 			Enabled:            true,

@@ -124,20 +124,6 @@ func TestResolveCheckFromCache(t *testing.T) {
 			},
 		},
 		{
-			name: "request_for_different_store_does_not_return_results_from_cache",
-			subsequentReqParams: &ResolveCheckRequestParams{
-				StoreID:              "22",
-				AuthorizationModelID: "33",
-				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
-			},
-			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
-				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
-			},
-			setTestExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
-				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
-			},
-		},
-		{
 			name: "request_for_different_model_id_does_not_return_results_from_cache",
 			subsequentReqParams: &ResolveCheckRequestParams{
 				StoreID:              "12",

@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
@@ -28,6 +27,17 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/tests"
 )
+
+func TestContextualTuplesMemory(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	client := tests.BuildClientInterface(t, "memory", []string{config.ExperimentalWeightedGraphCheck})
+	t.Run("test_matrix_contextual_experimental", func(t *testing.T) {
+		t.Parallel()
+		runTestMatrix(t, testParams{schemaVersion: typesystem.SchemaVersion1_1, contextual: true, client: client})
+	})
+}
 
 func TestMatrixMemory(t *testing.T) {
 	runMatrixWithEngine(t, "memory")
@@ -52,26 +62,31 @@ func runMatrixWithEngine(t *testing.T, engine string) {
 	})
 
 	clientWithExperimentals := tests.BuildClientInterface(t, engine, []string{config.ExperimentalCheckOptimizations})
-	RunMatrixTests(t, engine, true, clientWithExperimentals)
+	RunMatrixTests(t, engine, "with experimentals", clientWithExperimentals)
 
 	clientWithoutExperimentals := tests.BuildClientInterface(t, engine, []string{})
-	RunMatrixTests(t, engine, false, clientWithoutExperimentals)
+	RunMatrixTests(t, engine, "default", clientWithoutExperimentals)
+
+	wgCheck := tests.BuildClientInterface(t, engine, []string{config.ExperimentalWeightedGraphCheck})
+	RunMatrixTests(t, engine, "with check rewrite", wgCheck)
 }
 
 func TestCheckMemory(t *testing.T) {
-	testRunAll(t, "memory")
+	testRunAll(t, "memory", config.ExperimentalCheckOptimizations)
+	// need to deprecate some tests first before re-enabling
+	// testRunAll(t, "memory", config.ExperimentalWeightedGraphCheck)
 }
 
 func TestCheckPostgres(t *testing.T) {
-	testRunAll(t, "postgres")
+	testRunAll(t, "postgres", config.ExperimentalCheckOptimizations)
 }
 
 func TestCheckMySQL(t *testing.T) {
-	testRunAll(t, "mysql")
+	testRunAll(t, "mysql", config.ExperimentalCheckOptimizations)
 }
 
 func TestCheckSQLite(t *testing.T) {
-	testRunAll(t, "sqlite")
+	testRunAll(t, "sqlite", config.ExperimentalCheckOptimizations)
 }
 
 // TODO move elsewhere as this isn't asserting on just Check API logs.
@@ -87,7 +102,7 @@ func TestServerLogs(t *testing.T) {
 	_ = mocks.NewMockTracingServer(t, otlpServerPort)
 
 	cfg := config.MustDefaultConfig()
-	cfg.Experimentals = append(cfg.Experimentals, "enable-check-optimizations")
+	cfg.Experimentals = append(cfg.Experimentals, config.ExperimentalCheckOptimizations)
 	cfg.Trace.Enabled = true
 	cfg.Trace.OTLP.Endpoint = localOTLPServerURL
 	cfg.Datastore.Engine = "memory"
@@ -329,18 +344,15 @@ func TestServerLogs(t *testing.T) {
 	}
 }
 
-func testRunAll(t *testing.T, engine string) {
+func testRunAll(t *testing.T, engine string, flags ...string) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
-	cfg := config.MustDefaultConfig()
-	cfg.Experimentals = append(cfg.Experimentals, config.ExperimentalCheckOptimizations)
+	cfg := testutils.MustDefaultConfigForParallelTests()
+	cfg.Experimentals = append(cfg.Experimentals, flags...)
 	cfg.Log.Level = "error"
 	cfg.Datastore.Engine = engine
-	// extend the timeout for the tests, coverage makes them slower
-	cfg.RequestTimeout = 10 * time.Second
 	cfg.SharedIterator.Enabled = true
-
 	cfg.CheckIteratorCache.Enabled = true
 
 	tests.StartServer(t, cfg)

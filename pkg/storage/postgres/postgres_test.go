@@ -5,7 +5,14 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"io"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
+	"testing/iotest"
 	"time"
 
 	sq "github.com/Masterminds/squirrel"
@@ -29,6 +36,61 @@ import (
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
+
+type MemoryPassfileProvider struct {
+	Content    string
+	ReadCloser io.ReadCloser
+	Err        error
+}
+
+type MemFile struct {
+	Content  io.ReadCloser
+	ModeBits os.FileMode
+	StatErr  error
+}
+
+func (m *MemFile) Name() string {
+	panic("unimplemented")
+}
+
+func (m *MemFile) Size() int64 {
+	panic("unimplemented")
+}
+
+func (m *MemFile) Mode() fs.FileMode {
+	return m.ModeBits
+}
+
+func (m *MemFile) ModTime() time.Time {
+	panic("unimplemented")
+}
+
+func (m *MemFile) IsDir() bool {
+	panic("unimplemented")
+}
+
+func (m *MemFile) Sys() any {
+	panic("unimplemented")
+}
+
+func (m *MemFile) Read(p []byte) (n int, err error) {
+	return m.Content.Read(p)
+}
+
+func (m *MemFile) Close() error {
+	return m.Content.Close()
+}
+
+func (m *MemFile) Stat() (os.FileInfo, error) {
+	return m, m.StatErr
+}
+
+func (p *MemoryPassfileProvider) OpenPassfile() (io.ReadCloser, error) {
+	if p.ReadCloser != nil {
+		return p.ReadCloser, p.Err
+	}
+	return io.NopCloser(strings.NewReader(p.Content)), p.Err
+}
 
 func TestPostgresDatastore(t *testing.T) {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
@@ -116,7 +178,9 @@ func TestParseConfig(t *testing.T) {
 			name:     "default_with_no_overrides",
 			uri:      "postgres://abc:passwd@localhost:5346/dbname",
 			override: false,
-			cfg:      sqlcommon.Config{},
+			cfg: sqlcommon.Config{
+				Logger: logger.NewNoopLogger(),
+			},
 			expected: pgxpool.Config{
 				ConnConfig: &pgx.ConnConfig{
 					Config: pgconn.Config{
@@ -133,6 +197,7 @@ func TestParseConfig(t *testing.T) {
 				MaxConnIdleTime:       defaultConfig.MaxConnIdleTime,
 				MaxConnLifetimeJitter: defaultConfig.MaxConnLifetimeJitter,
 				MaxConnLifetime:       defaultConfig.MaxConnLifetime,
+				BeforeConnect:         nil,
 			},
 		},
 		{
@@ -140,6 +205,7 @@ func TestParseConfig(t *testing.T) {
 			uri:      "postgres://abc:passwd@localhost:5346/dbname",
 			override: true,
 			cfg: sqlcommon.Config{
+				Logger:          logger.NewNoopLogger(),
 				Username:        "override_user",
 				Password:        "override_passwd",
 				MinIdleConns:    10,
@@ -164,6 +230,7 @@ func TestParseConfig(t *testing.T) {
 				MaxConnIdleTime:       1 * time.Minute,
 				MaxConnLifetimeJitter: 2 * time.Minute,
 				MaxConnLifetime:       20 * time.Minute,
+				BeforeConnect:         nil,
 			},
 		},
 		{
@@ -171,6 +238,7 @@ func TestParseConfig(t *testing.T) {
 			uri:      "postgres://abc:passwd@localhost:5346/dbname",
 			override: true,
 			cfg: sqlcommon.Config{
+				Logger:       logger.NewNoopLogger(),
 				Username:     "",
 				Password:     "override_passwd",
 				MinIdleConns: 10,
@@ -193,6 +261,7 @@ func TestParseConfig(t *testing.T) {
 				MaxConnIdleTime:       defaultConfig.MaxConnIdleTime,
 				MaxConnLifetimeJitter: defaultConfig.MaxConnLifetimeJitter,
 				MaxConnLifetime:       defaultConfig.MaxConnLifetime,
+				BeforeConnect:         nil,
 			},
 		},
 		{
@@ -200,6 +269,7 @@ func TestParseConfig(t *testing.T) {
 			uri:      "postgres://abc:passwd@localhost:5346/dbname",
 			override: true,
 			cfg: sqlcommon.Config{
+				Logger:       logger.NewNoopLogger(),
 				Username:     "override_user",
 				Password:     "",
 				MinIdleConns: 10,
@@ -222,11 +292,15 @@ func TestParseConfig(t *testing.T) {
 				MaxConnIdleTime:       defaultConfig.MaxConnIdleTime,
 				MaxConnLifetimeJitter: defaultConfig.MaxConnLifetimeJitter,
 				MaxConnLifetime:       defaultConfig.MaxConnLifetime,
+				BeforeConnect:         nil,
 			},
 		},
 		{
-			name:        "bad_uri",
-			uri:         "bad_uri",
+			name: "bad_uri",
+			uri:  "bad_uri",
+			cfg: sqlcommon.Config{
+				Logger: logger.NewNoopLogger(),
+			},
 			override:    true,
 			expectedErr: true,
 		},
@@ -250,9 +324,212 @@ func TestParseConfig(t *testing.T) {
 				require.Equal(t, tt.expected.MaxConnLifetime, parsed.MaxConnLifetime)
 				require.Equal(t, tt.expected.MaxConnLifetimeJitter, parsed.MaxConnLifetimeJitter)
 				require.Equal(t, tt.expected.MaxConnIdleTime, parsed.MaxConnIdleTime)
+				require.NotNil(t, parsed.BeforeConnect)
 			}
 		})
 	}
+}
+
+func TestBeforeConnectHook(t *testing.T) {
+	noOpLogger := logger.NewNoopLogger()
+	t.Run("sets the password from the file", func(t *testing.T) {
+		provider := &MemoryPassfileProvider{"*:*:*:*:password", nil, nil}
+		hook := createBeforeConnect(noOpLogger, provider)
+		ctx := context.Background()
+		config := new(pgx.ConnConfig)
+		err := hook(ctx, config)
+		require.NoError(t, err)
+		require.Equal(t, "password", config.Password)
+
+		// It updates the password upon change
+		provider.Content = "*:*:*:*:secondpassword"
+		err = hook(ctx, config)
+		require.NoError(t, err)
+		require.Equal(t, "secondpassword", config.Password)
+	})
+	t.Run("does not set the password if there is no file", func(t *testing.T) {
+		provider := &MemoryPassfileProvider{"", nil, ErrNoPassfile}
+		hook := createBeforeConnect(noOpLogger, provider)
+		ctx := context.Background()
+		config := new(pgx.ConnConfig)
+		err := hook(ctx, config)
+		require.NoError(t, err)
+		require.Empty(t, config.Password)
+	})
+	t.Run("does not set the password if the file perms are too permissive", func(t *testing.T) {
+		provider := &MemoryPassfileProvider{"", nil, ErrInsecurePassfilePermissions}
+		hook := createBeforeConnect(noOpLogger, provider)
+		ctx := context.Background()
+		config := new(pgx.ConnConfig)
+		err := hook(ctx, config)
+		require.NoError(t, err)
+		require.Empty(t, config.Password)
+	})
+	t.Run("does not set the password if the file is empty", func(t *testing.T) {
+		provider := &MemoryPassfileProvider{"", nil, nil}
+		hook := createBeforeConnect(noOpLogger, provider)
+		ctx := context.Background()
+		config := new(pgx.ConnConfig)
+		err := hook(ctx, config)
+		require.NoError(t, err)
+		require.Empty(t, config.Password)
+	})
+	t.Run("the hook errors when the file cannot be read", func(t *testing.T) {
+		provider := &MemoryPassfileProvider{"", nil, errors.New("cannot read file")}
+		hook := createBeforeConnect(noOpLogger, provider)
+		ctx := context.Background()
+		config := new(pgx.ConnConfig)
+		err := hook(ctx, config)
+		require.ErrorContains(t, err, "cannot read file")
+		require.Empty(t, config.Password)
+	})
+	t.Run("the hook does not set the password when the pgpass file is in an invalid format", func(t *testing.T) {
+		provider := &MemoryPassfileProvider{Content: "invalid format"}
+		hook := createBeforeConnect(noOpLogger, provider)
+		ctx := context.Background()
+		config := new(pgx.ConnConfig)
+		err := hook(ctx, config)
+		// Not a typo - pgpassfile.ParsePassfile only errors upon i/o errors
+		// Given an invalid pgpass format, the line is simply not added to the struct
+		require.NoError(t, err)
+		require.Empty(t, config.Password)
+	})
+	t.Run("the hook returns an error if reading the file fails", func(t *testing.T) {
+		provider := &MemoryPassfileProvider{"", io.NopCloser(iotest.ErrReader(errors.New("read error"))), nil}
+		hook := createBeforeConnect(noOpLogger, provider)
+		ctx := context.Background()
+		config := new(pgx.ConnConfig)
+		err := hook(ctx, config)
+		require.ErrorContains(t, err, "read error")
+		require.Empty(t, config.Password)
+	})
+	t.Run("retrieves localhost entries for unix socket hosts", func(t *testing.T) {
+		provider := &MemoryPassfileProvider{"localhost:*:*:*:password", nil, nil}
+		hook := createBeforeConnect(noOpLogger, provider)
+		ctx := context.Background()
+		config := new(pgx.ConnConfig)
+		config.Host = "/docker.sock"
+		err := hook(ctx, config)
+		require.NoError(t, err)
+		require.Equal(t, "password", config.Password)
+	})
+}
+
+func TestFSPassfileProvider_OpenPassfile(t *testing.T) {
+	t.Run("uses home dir without PGPASSFILE env var set", func(t *testing.T) {
+		file := &MemFile{Content: io.NopCloser(strings.NewReader("*:*:*:*:password")), ModeBits: 0o600}
+		provider := &FSPassfileProvider{
+			Logger: logger.NewNoopLogger(),
+			GetHomeDir: func() (string, error) {
+				return "HOME", nil
+			},
+			OpenFile: func(name string) (FileStat, error) {
+				if name == filepath.Join("HOME", ".pgpass") {
+					return file, nil
+				}
+				return nil, ErrNoPassfile
+			},
+		}
+		actual, err := provider.OpenPassfile()
+		require.NoError(t, err)
+		require.Equal(t, file, actual)
+	})
+	t.Run("uses PGPASSFILE env var when set over homedir", func(t *testing.T) {
+		file := &MemFile{Content: io.NopCloser(strings.NewReader("*:*:*:*:password")), ModeBits: 0o600}
+		filename := "anotherdir/.pgpass"
+		t.Setenv("PGPASSFILE", filename)
+		provider := &FSPassfileProvider{
+			Logger: logger.NewNoopLogger(),
+			GetHomeDir: func() (string, error) {
+				return "HOME", nil
+			},
+			OpenFile: func(name string) (FileStat, error) {
+				if name == filename {
+					return file, nil
+				}
+				return nil, ErrNoPassfile
+			},
+		}
+		actual, err := provider.OpenPassfile()
+		require.NoError(t, err)
+		require.Equal(t, file, actual)
+	})
+	t.Run("returns ErrNoPassfile when homedir is not found", func(t *testing.T) {
+		provider := &FSPassfileProvider{
+			Logger: logger.NewNoopLogger(),
+			GetHomeDir: func() (string, error) {
+				return "", errors.New("homedir not found")
+			},
+		}
+		actual, err := provider.OpenPassfile()
+		require.ErrorIs(t, err, ErrNoPassfile)
+		require.Nil(t, actual)
+	})
+	t.Run("returns ErrNoPassfile when PGPASSFILE is set but file is not found", func(t *testing.T) {
+		t.Setenv("PGPASSFILE", "anotherdir/.pgpass")
+		provider := &FSPassfileProvider{
+			Logger: logger.NewNoopLogger(),
+			GetHomeDir: func() (string, error) {
+				return "HOME", nil
+			},
+			OpenFile: func(name string) (FileStat, error) {
+				return nil, os.ErrNotExist
+			},
+		}
+		actual, err := provider.OpenPassfile()
+		require.ErrorIs(t, err, ErrNoPassfile)
+		require.Nil(t, actual)
+	})
+	t.Run("returns ErrInsecurePassfilePermissions when passfile is more permissive than 0600", func(t *testing.T) {
+		if runtime.GOOS == "windows" {
+			t.Skip("checking pgpass file permissions is not supported on Windows")
+		}
+		file := &MemFile{Content: io.NopCloser(strings.NewReader("*:*:*:*:password")), ModeBits: 0o644}
+		provider := &FSPassfileProvider{
+			Logger: logger.NewNoopLogger(),
+			GetHomeDir: func() (string, error) {
+				return "HOME", nil
+			},
+			OpenFile: func(name string) (FileStat, error) {
+				return file, nil
+			},
+		}
+		actual, err := provider.OpenPassfile()
+		require.ErrorIs(t, err, ErrInsecurePassfilePermissions)
+		require.Nil(t, actual)
+	})
+	t.Run("returns the underlying stat error if permissions are not able to be retrieved", func(t *testing.T) {
+		if runtime.GOOS == "windows" {
+			t.Skip("checking pgpass file permissions is not supported on Windows")
+		}
+		file := &MemFile{Content: io.NopCloser(strings.NewReader("*:*:*:*:password")), ModeBits: 0o644, StatErr: errors.New("stat error")}
+		provider := &FSPassfileProvider{
+			Logger: logger.NewNoopLogger(),
+			GetHomeDir: func() (string, error) {
+				return "HOME", nil
+			},
+			OpenFile: func(name string) (FileStat, error) {
+				return file, nil
+			},
+		}
+		actual, err := provider.OpenPassfile()
+		require.ErrorContains(t, err, "stat error")
+		require.Nil(t, actual)
+	})
+	t.Run("returns the underlying error if unable to open the file", func(t *testing.T) {
+		provider := &FSPassfileProvider{
+			Logger: logger.NewNoopLogger(),
+			GetHomeDir: func() (string, error) {
+				return "HOME", nil
+			},
+			OpenFile: func(name string) (FileStat, error) {
+				return nil, errors.New("open error")
+			},
+		}
+		actual, err := provider.OpenPassfile()
+		require.ErrorContains(t, err, "open error")
+		require.Nil(t, actual)
+	})
 }
 
 // mostly test various error scenarios.

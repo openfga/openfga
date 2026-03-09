@@ -52,7 +52,7 @@ func (n UsersetMapper) Next(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return n.doMap(tupleRes)
+	return MapUserset(tupleRes)
 }
 
 func (n UsersetMapper) Stop() {
@@ -66,10 +66,10 @@ func (n UsersetMapper) Head(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return n.doMap(tupleRes)
+	return MapUserset(tupleRes)
 }
 
-func (n UsersetMapper) doMap(t *openfgav1.TupleKey) (string, error) {
+func MapUserset(t *openfgav1.TupleKey) (string, error) {
 	usersetName, relation := tuple.SplitObjectRelation(t.GetUser())
 	if relation == "" && !tuple.IsWildcard(usersetName) {
 		// This should never happen because ReadUsersetTuples only returns usersets as users.
@@ -90,7 +90,7 @@ func (n TTUMapper) Next(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return n.doMap(tupleRes)
+	return MapTTU(tupleRes)
 }
 
 func (n TTUMapper) Stop() {
@@ -104,10 +104,10 @@ func (n TTUMapper) Head(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return n.doMap(tupleRes)
+	return MapTTU(tupleRes)
 }
 
-func (n TTUMapper) doMap(t *openfgav1.TupleKey) (string, error) {
+func MapTTU(t *openfgav1.TupleKey) (string, error) {
 	return t.GetUser(), nil
 }
 
@@ -123,7 +123,7 @@ func (n ObjectIDMapper) Next(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return n.doMap(tupleRes)
+	return MapObjectID(tupleRes)
 }
 
 func (n ObjectIDMapper) Stop() {
@@ -137,10 +137,10 @@ func (n ObjectIDMapper) Head(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return n.doMap(tupleRes)
+	return MapObjectID(tupleRes)
 }
 
-func (n ObjectIDMapper) doMap(t *openfgav1.TupleKey) (string, error) {
+func MapObjectID(t *openfgav1.TupleKey) (string, error) {
 	return t.GetObject(), nil
 }
 

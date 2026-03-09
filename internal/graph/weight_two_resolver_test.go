@@ -181,7 +181,7 @@ func TestFastPathUnion(t *testing.T) {
 		res := make(chan *iterator.Msg)
 		producers := make([]*iterator.Stream, 0)
 		iter1 := mocks.NewMockIterator[string](ctrl)
-		iter1.EXPECT().Stop().Times(1)
+		iter1.EXPECT().Stop().MaxTimes(1)
 		producer := make(chan *iterator.Msg, 1)
 		producer <- &iterator.Msg{Iter: iter1}
 		close(producer)
@@ -208,14 +208,14 @@ func TestFastPathUnion(t *testing.T) {
 		producers := make([]*iterator.Stream, 0)
 		iter1 := mocks.NewMockIterator[string](ctrl)
 		iter1.EXPECT().Head(gomock.Any()).MaxTimes(1).Return("", errors.New("boom"))
-		iter1.EXPECT().Stop().Times(1)
+		iter1.EXPECT().Stop().MaxTimes(1)
 		producer1 := make(chan *iterator.Msg, 1)
 		producer1 <- &iterator.Msg{Iter: iter1}
 		close(producer1)
 		producers = append(producers, iterator.NewStream(0, producer1))
 
 		iter2 := mocks.NewMockIterator[string](ctrl)
-		iter2.EXPECT().Stop().Times(1)
+		iter2.EXPECT().Stop().MaxTimes(1)
 		producer2 := make(chan *iterator.Msg, 1)
 		producer2 <- &iterator.Msg{Iter: iter2}
 		close(producer2)
@@ -463,7 +463,7 @@ func TestFastPathUnion(t *testing.T) {
 		iter1.EXPECT().Head(gomock.Any()).MaxTimes(1).Return("obj:0", nil)
 		iter1.EXPECT().Next(gomock.Any()).MaxTimes(1).Return("", errors.New("boom"))
 
-		iter1.EXPECT().Stop().Times(1)
+		iter1.EXPECT().Stop().MaxTimes(1)
 		producer1 := make(chan *iterator.Msg, 1)
 		producer1 <- &iterator.Msg{Iter: iter1}
 		close(producer1)
@@ -500,7 +500,7 @@ func TestFastPathIntersection(t *testing.T) {
 		res := make(chan *iterator.Msg)
 		producers := make([]*iterator.Stream, 0)
 		iter1 := mocks.NewMockIterator[string](ctrl)
-		iter1.EXPECT().Stop().Times(1)
+		iter1.EXPECT().Stop().MaxTimes(1)
 		producer := make(chan *iterator.Msg, 1)
 		producer <- &iterator.Msg{Iter: iter1}
 		close(producer)
@@ -527,13 +527,13 @@ func TestFastPathIntersection(t *testing.T) {
 		producers := make([]*iterator.Stream, 0)
 		iter1 := mocks.NewMockIterator[string](ctrl)
 		iter1.EXPECT().Head(gomock.Any()).MaxTimes(1).Return("", errors.New("boom"))
-		iter1.EXPECT().Stop().Times(1)
+		iter1.EXPECT().Stop().MaxTimes(1)
 		producer1 := make(chan *iterator.Msg, 1)
 		producer1 <- &iterator.Msg{Iter: iter1}
 		close(producer1)
 		producers = append(producers, iterator.NewStream(0, producer1))
 		iter2 := mocks.NewMockIterator[string](ctrl)
-		iter2.EXPECT().Stop().Times(1)
+		iter2.EXPECT().Stop().MaxTimes(1)
 		producer2 := make(chan *iterator.Msg, 1)
 		producer2 <- &iterator.Msg{Iter: iter2}
 		close(producer2)
@@ -784,7 +784,7 @@ func TestFastPathIntersection(t *testing.T) {
 		iter1.EXPECT().Head(gomock.Any()).MaxTimes(1).Return("obj:0", nil)
 		iter1.EXPECT().Next(gomock.Any()).MaxTimes(1).Return("", errors.New("boom"))
 
-		iter1.EXPECT().Stop().Times(1)
+		iter1.EXPECT().Stop().MaxTimes(1)
 		producer1 := make(chan *iterator.Msg, 1)
 		producer1 <- &iterator.Msg{Iter: iter1}
 		close(producer1)
@@ -819,7 +819,7 @@ func TestFastPathIntersection(t *testing.T) {
 		iter1.EXPECT().Head(gomock.Any()).MaxTimes(1).Return("obj:1", nil)
 		iter1.EXPECT().Head(gomock.Any()).MaxTimes(1).Return("", errors.New("boom"))
 
-		iter1.EXPECT().Stop().Times(1)
+		iter1.EXPECT().Stop().MaxTimes(1)
 		producer1 := make(chan *iterator.Msg, 1)
 		producer1 <- &iterator.Msg{Iter: iter1}
 		close(producer1)
@@ -858,7 +858,7 @@ func TestFastPathIntersection(t *testing.T) {
 		// the next get Head() is bad
 		iter1.EXPECT().Head(gomock.Any()).MaxTimes(1).Return("", fmt.Errorf("bad_head"))
 
-		iter1.EXPECT().Stop().Times(1)
+		iter1.EXPECT().Stop().MaxTimes(1)
 		producer1 := make(chan *iterator.Msg, 1)
 		producer1 <- &iterator.Msg{Iter: iter1}
 		close(producer1)
@@ -896,14 +896,14 @@ func TestFastPathDifference(t *testing.T) {
 		producers := make([]*iterator.Stream, 0)
 
 		iter1 := mocks.NewMockIterator[string](ctrl)
-		iter1.EXPECT().Stop().Times(1)
+		iter1.EXPECT().Stop().MaxTimes(1)
 		producer1 := make(chan *iterator.Msg, 1)
 		producer1 <- &iterator.Msg{Iter: iter1}
 		close(producer1)
 		producers = append(producers, iterator.NewStream(0, producer1))
 
 		iter2 := mocks.NewMockIterator[string](ctrl)
-		iter2.EXPECT().Stop().Times(1)
+		iter2.EXPECT().Stop().MaxTimes(1)
 		producer2 := make(chan *iterator.Msg, 1)
 		producer2 <- &iterator.Msg{Iter: iter2}
 		close(producer2)
@@ -930,13 +930,13 @@ func TestFastPathDifference(t *testing.T) {
 		producers := make([]*iterator.Stream, 0)
 		iter1 := mocks.NewMockIterator[string](ctrl)
 		iter1.EXPECT().Head(gomock.Any()).MaxTimes(1).Return("", errors.New("boom"))
-		iter1.EXPECT().Stop().Times(1)
+		iter1.EXPECT().Stop().MaxTimes(1)
 		producer1 := make(chan *iterator.Msg, 1)
 		producer1 <- &iterator.Msg{Iter: iter1}
 		close(producer1)
 		producers = append(producers, iterator.NewStream(0, producer1))
 		iter2 := mocks.NewMockIterator[string](ctrl)
-		iter2.EXPECT().Stop().Times(1)
+		iter2.EXPECT().Stop().MaxTimes(1)
 		producer2 := make(chan *iterator.Msg, 1)
 		producer2 <- &iterator.Msg{Iter: iter2}
 		close(producer2)
@@ -1195,7 +1195,7 @@ func TestFastPathDifference(t *testing.T) {
 		iter1 := mocks.NewMockIterator[string](ctrl)
 		iter1.EXPECT().Head(gomock.Any()).AnyTimes().Return("obj:1", nil)
 		iter1.EXPECT().Next(gomock.Any()).MaxTimes(1).Return("", errors.New("boom"))
-		iter1.EXPECT().Stop().Times(1)
+		iter1.EXPECT().Stop().MaxTimes(1)
 		producer1 := make(chan *iterator.Msg, 1)
 		producer1 <- &iterator.Msg{Iter: iter1}
 		close(producer1)
@@ -1227,7 +1227,7 @@ func TestFastPathDifference(t *testing.T) {
 		iter1 := mocks.NewMockIterator[string](ctrl)
 		iter1.EXPECT().Head(gomock.Any()).AnyTimes().Return("obj:1", nil)
 		iter1.EXPECT().Next(gomock.Any()).MaxTimes(1).Return("", errors.New("boom"))
-		iter1.EXPECT().Stop().Times(1)
+		iter1.EXPECT().Stop().MaxTimes(1)
 		producer1 := make(chan *iterator.Msg, 1)
 		producer1 <- &iterator.Msg{Iter: iter1}
 		close(producer1)
@@ -1264,7 +1264,7 @@ func TestFastPathDifference(t *testing.T) {
 		iter1.EXPECT().Head(gomock.Any()).MaxTimes(2).Return("obj:1", nil)
 		iter1.EXPECT().Next(gomock.Any()).MaxTimes(2).Return("obj:1", nil)
 		iter1.EXPECT().Head(gomock.Any()).MaxTimes(1).Return("", errors.New("boom"))
-		iter1.EXPECT().Stop().Times(1)
+		iter1.EXPECT().Stop().MaxTimes(1)
 		producer2 := make(chan *iterator.Msg, 1)
 		producer2 <- &iterator.Msg{Iter: iter1}
 		close(producer2)
@@ -1380,7 +1380,7 @@ func TestCheckUsersetFastPathV2(t *testing.T) {
 		}, []*openfgav1.RelationReference{{
 			Type:               "group",
 			RelationOrWildcard: &openfgav1.RelationReference_Relation{Relation: "all"},
-		}}, iter)(ctx)
+		}}, iter, "weight2")(ctx)
 		require.NoError(t, err)
 		require.NotNil(t, val)
 		require.True(t, val.GetAllowed())
@@ -1454,7 +1454,7 @@ func TestCheckUsersetFastPathV2(t *testing.T) {
 		}, []*openfgav1.RelationReference{{
 			Type:               "group",
 			RelationOrWildcard: &openfgav1.RelationReference_Relation{Relation: "all"},
-		}}, iter)(ctx)
+		}}, iter, "weight2")(ctx)
 		require.NoError(t, err)
 		require.NotNil(t, val)
 		require.True(t, val.GetAllowed())
@@ -1529,7 +1529,7 @@ func TestCheckUsersetFastPathV2(t *testing.T) {
 		}, []*openfgav1.RelationReference{{
 			Type:               "group",
 			RelationOrWildcard: &openfgav1.RelationReference_Relation{Relation: "all"},
-		}}, iter)(ctx)
+		}}, iter, "weight2")(ctx)
 		require.NoError(t, err)
 		require.NotNil(t, val)
 		require.True(t, val.GetAllowed())
@@ -1604,7 +1604,7 @@ func TestCheckUsersetFastPathV2(t *testing.T) {
 		}, []*openfgav1.RelationReference{{
 			Type:               "group",
 			RelationOrWildcard: &openfgav1.RelationReference_Relation{Relation: "all"},
-		}}, iter)(ctx)
+		}}, iter, "weight2")(ctx)
 		require.NoError(t, err)
 		require.NotNil(t, val)
 		require.False(t, val.GetAllowed())
@@ -1684,7 +1684,7 @@ func TestCheckUsersetFastPathV2(t *testing.T) {
 			StoreID:              storeID,
 			AuthorizationModelID: ts.GetAuthorizationModelID(),
 			TupleKey:             tuple.NewTupleKey("folder:target", "target", "user:maria"),
-		}, []*openfgav1.RelationReference{{Type: "group", RelationOrWildcard: &openfgav1.RelationReference_Relation{Relation: "intersect"}}}, usersetIterator)(ctx)
+		}, []*openfgav1.RelationReference{{Type: "group", RelationOrWildcard: &openfgav1.RelationReference_Relation{Relation: "intersect"}}}, usersetIterator, "weight2")(ctx)
 		require.NoError(t, err)
 		require.NotNil(t, checkResult)
 		require.True(t, checkResult.GetAllowed())
@@ -1764,7 +1764,7 @@ func TestCheckTTUFastPathV2(t *testing.T) {
 			StoreID:              storeID,
 			AuthorizationModelID: ts.GetAuthorizationModelID(),
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:1"),
-		}, typesystem.TupleToUserset("parent", "all"), iter)(ctx)
+		}, typesystem.TupleToUserset("parent", "all"), iter, "weight2")(ctx)
 		require.NoError(t, err)
 		require.NotNil(t, val)
 		require.True(t, val.GetAllowed())
@@ -1839,7 +1839,7 @@ func TestCheckTTUFastPathV2(t *testing.T) {
 			StoreID:              storeID,
 			AuthorizationModelID: ts.GetAuthorizationModelID(),
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:1"),
-		}, typesystem.TupleToUserset("parent", "all"), iter)(ctx)
+		}, typesystem.TupleToUserset("parent", "all"), iter, "weight2")(ctx)
 		require.NoError(t, err)
 		require.NotNil(t, val)
 		require.True(t, val.GetAllowed())
@@ -1913,7 +1913,7 @@ func TestCheckTTUFastPathV2(t *testing.T) {
 			StoreID:              storeID,
 			AuthorizationModelID: ts.GetAuthorizationModelID(),
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:1"),
-		}, typesystem.TupleToUserset("parent", "all"), iter)(ctx)
+		}, typesystem.TupleToUserset("parent", "all"), iter, "weight2")(ctx)
 		require.NoError(t, err)
 		require.NotNil(t, val)
 		require.False(t, val.GetAllowed())
@@ -1988,7 +1988,7 @@ func TestCheckTTUFastPathV2(t *testing.T) {
 			StoreID:              storeID,
 			AuthorizationModelID: ts.GetAuthorizationModelID(),
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:1"),
-		}, typesystem.TupleToUserset("parent", "all"), iter)(ctx)
+		}, typesystem.TupleToUserset("parent", "all"), iter, "weight2")(ctx)
 		require.NoError(t, err)
 		require.NotNil(t, val)
 		require.False(t, val.GetAllowed())
@@ -2068,7 +2068,7 @@ func TestCheckTTUFastPathV2(t *testing.T) {
 			StoreID:              storeID,
 			AuthorizationModelID: ts.GetAuthorizationModelID(),
 			TupleKey:             tuple.NewTupleKey("folder:target", "target", "user:maria"),
-		}, ttuRewrite, rightHandSideIterator)(ctx)
+		}, ttuRewrite, rightHandSideIterator, "weight2")(ctx)
 		require.NoError(t, err)
 		require.NotNil(t, checkResult)
 		require.True(t, checkResult.GetAllowed())

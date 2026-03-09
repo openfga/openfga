@@ -1,7 +1,8 @@
-package pipeline
+package pipeline_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"iter"
 	"slices"
@@ -12,11 +13,70 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
+	"google.golang.org/protobuf/types/known/structpb"
 
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+
+	"github.com/openfga/openfga/pkg/server/commands/reverseexpand/pipeline"
+	"github.com/openfga/openfga/pkg/server/commands/reverseexpand/pipeline/obj"
 	"github.com/openfga/openfga/pkg/storage/memory"
-	storagetest "github.com/openfga/openfga/pkg/storage/test"
+	"github.com/openfga/openfga/pkg/testutils"
+	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
+
+type StaticObjectStore struct {
+	m map[string]map[string][]string
+}
+
+func (s *StaticObjectStore) Add(tuples ...string) {
+	if s.m == nil {
+		s.m = make(map[string]map[string][]string)
+	}
+	for _, tuple := range tuples {
+		objectRelation, user, _ := strings.Cut(tuple, "@")
+		if _, ok := s.m[user]; !ok {
+			s.m[user] = make(map[string][]string)
+		}
+		objectMap := s.m[user]
+		object, relation, _ := strings.Cut(objectRelation, "#")
+		objectType, _, _ := strings.Cut(object, ":")
+		objectMap[objectType+"#"+relation] = append(objectMap[objectType+"#"+relation], object)
+	}
+}
+
+func (s *StaticObjectStore) Read(ctx context.Context, q pipeline.ObjectQuery) iter.Seq[pipeline.Item] {
+	var objects []string
+	for _, user := range q.Users {
+		if objectMap, ok := s.m[user]; ok {
+			if ids, ok := objectMap[q.ObjectType+"#"+q.Relation]; ok {
+				objects = append(objects, ids...)
+			}
+		}
+	}
+
+	return func(yield func(o pipeline.Item) bool) {
+		for _, o := range objects {
+			if !yield(pipeline.Item{Value: o}) {
+				break
+			}
+		}
+	}
+}
+
+type ErrorObjectStore struct {
+	err error
+}
+
+func NewErrorObjectStore(err error) *ErrorObjectStore {
+	return &ErrorObjectStore{err: err}
+}
+
+func (e *ErrorObjectStore) Read(_ context.Context, _ pipeline.ObjectQuery) iter.Seq[pipeline.Item] {
+	return func(yield func(pipeline.Item) bool) {
+		yield(pipeline.Item{Err: e.err})
+	}
+}
 
 func TestPipelineShutdown(t *testing.T) {
 	const bufferSize int = 4
@@ -87,10 +147,10 @@ func TestPipelineShutdown(t *testing.T) {
 
 	slices.Reverse(documents)
 
-	ds := memory.New()
-	t.Cleanup(ds.Close)
+	var ds StaticObjectStore
+	ds.Add(tuples...)
 
-	storeID, model := storagetest.BootstrapFGAStore(t, ds, dsl, tuples)
+	model := testutils.MustTransformDSLToProtoWithID(dsl)
 
 	typesys, err := typesystem.NewAndValidate(
 		context.Background(),
@@ -101,58 +161,56 @@ func TestPipelineShutdown(t *testing.T) {
 
 	g := typesys.GetWeightedGraph()
 
-	backend := &Backend{
-		Datastore:  ds,
-		StoreID:    storeID,
-		TypeSystem: typesys,
-		Context:    nil,
-		Graph:      g,
+	spec := pipeline.Spec{
+		ObjectType: "document",
+		Relation:   "viewer",
+		User:       "user:bob",
 	}
 
-	pl, err := New(backend, WithBufferSize(bufferSize), WithChunkSize(chunkSize))
-	require.NoError(t, err)
-
-	target, ok := pl.Target("user", "bob")
-	require.True(t, ok)
-
-	source, ok := pl.Source("document", "viewer")
-	require.True(t, ok)
+	pl := pipeline.New(g, &ds, pipeline.WithBufferCapacity(bufferSize), pipeline.WithChunkSize(chunkSize))
 
 	t.Run("NoAbandon", func(t *testing.T) {
 		defer goleak.VerifyNone(t)
 
-		seq := pl.Build(context.Background(), source, target)
+		seq, err := pl.Expand(context.Background(), spec)
+		require.NoError(t, err)
 
-		items := make([]string, 0, len(documents))
-		for item := range seq {
-			items = append(items, item.Value)
+		values := make([]string, 0, len(documents))
+		for object := range seq {
+			value, err := object.Object()
+			require.NoError(t, err)
+			values = append(values, value)
 		}
-		require.ElementsMatch(t, documents, items)
+		require.ElementsMatch(t, documents, values)
 	})
 
 	t.Run("AbandonWithoutPull", func(t *testing.T) {
 		defer goleak.VerifyNone(t)
 
-		_ = pl.Build(context.Background(), source, target)
+		_, err := pl.Expand(context.Background(), spec)
+		require.NoError(t, err)
 	})
 
 	t.Run("AbandonAfterPull", func(t *testing.T) {
 		defer goleak.VerifyNone(t)
 
-		seq := pl.Build(context.Background(), source, target)
+		seq, err := pl.Expand(context.Background(), spec)
+		require.NoError(t, err)
 
 		var value string
-		for item := range seq {
-			value = item.Value
+		for objects := range seq {
+			value, err = objects.Object()
 			break
 		}
+		require.NoError(t, err)
 		require.NotEmpty(t, value)
 	})
 
 	t.Run("AbandonMidProcessing", func(t *testing.T) {
 		defer goleak.VerifyNone(t)
 
-		seq := pl.Build(context.Background(), source, target)
+		seq, err := pl.Expand(context.Background(), spec)
+		require.NoError(t, err)
 
 		var count int
 		limit := nestLevel / 2
@@ -168,7 +226,9 @@ func TestPipelineShutdown(t *testing.T) {
 		defer goleak.VerifyNone(t)
 
 		ctx, cancel := context.WithCancel(context.Background())
-		_ = pl.Build(ctx, source, target)
+
+		_, err := pl.Expand(ctx, spec)
+		require.NoError(t, err)
 
 		cancel()
 	})
@@ -177,7 +237,9 @@ func TestPipelineShutdown(t *testing.T) {
 		defer goleak.VerifyNone(t)
 
 		ctx, cancel := context.WithCancel(context.Background())
-		seq := pl.Build(ctx, source, target)
+
+		seq, err := pl.Expand(ctx, spec)
+		require.NoError(t, err)
 
 		cancel()
 		for range seq {
@@ -189,17 +251,19 @@ func TestPipelineShutdown(t *testing.T) {
 		defer goleak.VerifyNone(t)
 
 		ctx, cancel := context.WithCancel(context.Background())
+
 		defer cancel()
 
-		seq := pl.Build(ctx, source, target)
+		seq, err := pl.Expand(ctx, spec)
+		require.NoError(t, err)
 
 		var value string
-		var err error
-		for item := range seq {
-			if item.Err == nil {
-				value = item.Value
+		for object := range seq {
+			var v string
+			v, err = object.Object()
+			if err == nil {
+				value = v
 			}
-			err = item.Err
 			cancel()
 		}
 		require.NotEmpty(t, value)
@@ -210,15 +274,16 @@ func TestPipelineShutdown(t *testing.T) {
 		defer goleak.VerifyNone(t)
 
 		ctx, cancel := context.WithCancel(context.Background())
+
 		defer cancel()
 
-		seq := pl.Build(ctx, source, target)
+		seq, err := pl.Expand(ctx, spec)
+		require.NoError(t, err)
 
 		var count int
-		var err error
 		limit := nestLevel / 2
-		for item := range seq {
-			err = item.Err
+		for object := range seq {
+			_, err = object.Object()
 			count++
 			if count >= limit {
 				cancel()
@@ -231,15 +296,16 @@ func TestPipelineShutdown(t *testing.T) {
 		defer goleak.VerifyNone(t)
 
 		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+
 		defer cancel()
 
-		seq := pl.Build(ctx, source, target)
+		seq, err := pl.Expand(ctx, spec)
+		require.NoError(t, err)
 
 		var count int
-		var err error
-		for item := range seq {
-			err = item.Err
-			if count > bufferSize+1 {
+		for object := range seq {
+			_, err = object.Object()
+			if count > bufferSize+chunkSize+1 {
 				t.Fatalf("received unexpected value")
 			}
 
@@ -256,7 +322,9 @@ func TestPipelineShutdown(t *testing.T) {
 		defer goleak.VerifyNone(t)
 
 		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Millisecond)
-		seq := pl.Build(ctx, source, target)
+
+		seq, err := pl.Expand(ctx, spec)
+		require.NoError(t, err)
 
 		defer cancel()
 
@@ -265,6 +333,75 @@ func TestPipelineShutdown(t *testing.T) {
 
 		for range seq {
 			t.Fatal("received value after context deadline exceeded")
+		}
+	})
+}
+
+var ErrSignal = errors.New("signal error")
+
+func TestPipelineError(t *testing.T) {
+	const bufferSize int = 4
+	const chunkSize int = 1
+
+	const dsl string = `
+	model
+	  schema 1.1
+
+	type user
+
+	type org
+	  relations
+	  	define reader: [user]
+	  	define writer: [user]
+	  	define blocked: [user]
+	  	define moderator: (reader and writer) but not blocked
+	    define member: moderator or member from parent
+	    define parent: [team]
+
+	type team
+	  relations
+	  	define reader: [user]
+	  	define writer: [user]
+	  	define blocked: [user]
+	  	define moderator: (reader and writer) but not blocked
+	    define member: moderator or member from parent
+	    define parent: [org]
+
+	type document
+	  relations
+	    define viewer: [org#member, team#member]
+	`
+	ds := NewErrorObjectStore(ErrSignal)
+
+	model := testutils.MustTransformDSLToProtoWithID(dsl)
+
+	typesys, err := typesystem.NewAndValidate(
+		context.Background(),
+		model,
+	)
+
+	require.NoError(t, err)
+
+	g := typesys.GetWeightedGraph()
+
+	spec := pipeline.Spec{
+		ObjectType: "document",
+		Relation:   "viewer",
+		User:       "user:bob",
+	}
+
+	pl := pipeline.New(g, ds, pipeline.WithBufferCapacity(bufferSize), pipeline.WithChunkSize(chunkSize))
+
+	t.Run("ShouldReturnErrorThenEnd", func(t *testing.T) {
+		defer goleak.VerifyNone(t)
+
+		seq, err := pl.Expand(context.Background(), spec)
+		require.NoError(t, err)
+
+		for obj := range seq {
+			value, err := obj.Object()
+			require.Empty(t, value)
+			require.ErrorIs(t, err, ErrSignal)
 		}
 	})
 }
@@ -279,11 +416,12 @@ type testcase struct {
 	expected   []string
 }
 
-func evaluate(t *testing.T, tc testcase, seq iter.Seq[Item]) {
+func evaluate(t *testing.T, tc testcase, seq iter.Seq[pipeline.Item]) {
 	var results []string
-	for item := range seq {
-		require.NoError(t, item.Err)
-		results = append(results, item.Value)
+	for object := range seq {
+		value, err := object.Object()
+		require.NoError(t, err)
+		results = append(results, value)
 	}
 	require.ElementsMatch(t, tc.expected, results)
 }
@@ -2223,10 +2361,10 @@ var cases = []testcase{
 func BenchmarkPipeline(b *testing.B) {
 	for _, tc := range cases {
 		b.Run(tc.name, func(b *testing.B) {
-			ds := memory.New()
-			b.Cleanup(ds.Close)
+			var ds StaticObjectStore
+			ds.Add(tc.tuples...)
 
-			storeID, model := storagetest.BootstrapFGAStore(b, ds, tc.model, tc.tuples)
+			model := testutils.MustTransformDSLToProtoWithID(tc.model)
 
 			typesys, err := typesystem.NewAndValidate(
 				context.Background(),
@@ -2237,36 +2375,18 @@ func BenchmarkPipeline(b *testing.B) {
 
 			g := typesys.GetWeightedGraph()
 
-			backend := &Backend{
-				Datastore:  ds,
-				StoreID:    storeID,
-				TypeSystem: typesys,
-				Context:    nil,
-				Graph:      g,
-			}
-
 			b.ResetTimer()
 
-			for i := 0; i < b.N; i++ {
-				pl, err := New(backend)
-				require.NoError(b, err)
-
-				relationParts := strings.Split(tc.user, "#")
-				userParts := strings.Split(relationParts[0], ":")
-				require.GreaterOrEqual(b, len(userParts), 2)
-
-				userType := userParts[0]
-				if len(relationParts) > 1 {
-					userType += "#" + relationParts[1]
+			for b.Loop() {
+				spec := pipeline.Spec{
+					ObjectType: tc.objectType,
+					Relation:   tc.relation,
+					User:       tc.user,
 				}
 
-				target, ok := pl.Target(userType, userParts[1])
-				require.True(b, ok)
+				seq, err := pipeline.New(g, &ds).Expand(context.Background(), spec)
 
-				source, ok := pl.Source(tc.objectType, tc.relation)
-				require.True(b, ok)
-
-				seq := pl.Build(context.Background(), source, target)
+				require.NoError(b, err)
 
 				for range seq {
 				}
@@ -2280,10 +2400,10 @@ func TestPipeline(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			defer goleak.VerifyNone(t)
 
-			ds := memory.New()
-			t.Cleanup(ds.Close)
+			var ds StaticObjectStore
+			ds.Add(tc.tuples...)
 
-			storeID, model := storagetest.BootstrapFGAStore(t, ds, tc.model, tc.tuples)
+			model := testutils.MustTransformDSLToProtoWithID(tc.model)
 
 			typesys, err := typesystem.NewAndValidate(
 				context.Background(),
@@ -2294,151 +2414,122 @@ func TestPipeline(t *testing.T) {
 
 			g := typesys.GetWeightedGraph()
 
-			require.NotNil(t, g)
-
-			backend := &Backend{
-				Datastore:  ds,
-				StoreID:    storeID,
-				TypeSystem: typesys,
-				Context:    nil,
-				Graph:      g,
+			spec := pipeline.Spec{
+				ObjectType: tc.objectType,
+				Relation:   tc.relation,
+				User:       tc.user,
 			}
 
-			pl, err := New(backend)
+			seq, err := pipeline.New(g, &ds).Expand(context.Background(), spec)
+
 			require.NoError(t, err)
-
-			relationParts := strings.Split(tc.user, "#")
-			userParts := strings.Split(relationParts[0], ":")
-			require.GreaterOrEqual(t, len(userParts), 2)
-
-			userType := userParts[0]
-			if len(relationParts) > 1 {
-				userType += "#" + relationParts[1]
-			}
-
-			target, ok := pl.Target(userType, userParts[1])
-			require.True(t, ok)
-
-			source, ok := pl.Source(tc.objectType, tc.relation)
-			require.True(t, ok)
-
-			seq := pl.Build(context.Background(), source, target)
 
 			evaluate(t, tc, seq)
 		})
 	}
+}
 
-	const cycleModel string = `
-		model
-		  schema 1.1
+func TestPipelineTTUWithCondition(t *testing.T) {
+	const dsl string = `
+	model
+	  schema 1.2
 
-		type user
+	type user
 
-		type org
-		  relations
-		    define member: [user, team#member]
+	type group
+	  relations
+	    define member: [user]
 
-		type team
-		  relations
-		    define member: [user, org#member]
+	type folder
+	  relations
+	    define editor: [group#member]
 
-		type document
-		  relations
-		    define viewer: [org#member, team#member]
-		`
+	type document
+	  relations
+	    define parent: [folder with not_expired]
+	    define can_edit: editor from parent
 
-	cycleTuples := []string{
-		"org:1#member@user:1",
-		"team:1#member@user:1",
-		"org:2#member@team:1#member",
-		"team:2#member@org:1#member",
-		"document:1#viewer@org:2#member",
-		"document:2#viewer@team:2#member",
+	condition not_expired(current_time: timestamp, expiry: timestamp) {
+	  current_time < expiry
+	}
+	`
+
+	storeID := "test-store"
+	model := testutils.MustTransformDSLToProtoWithID(dsl)
+	typesys, err := typesystem.NewAndValidate(context.Background(), model)
+	require.NoError(t, err)
+
+	g := typesys.GetWeightedGraph()
+
+	spec := pipeline.Spec{
+		ObjectType: "document",
+		Relation:   "can_edit",
+		User:       "user:alice",
 	}
 
-	t.Run("context_cancelation", func(t *testing.T) {
-		defer goleak.VerifyNone(t)
+	tests := []struct {
+		name        string
+		expiry      string
+		currentTime string
+		expected    []string
+	}{
+		{
+			name:        "not_expired_returns_documents",
+			expiry:      "2099-01-01T00:00:00Z",
+			currentTime: "2025-01-01T00:00:00Z",
+			expected:    []string{"document:1"},
+		},
+		{
+			name:        "expired_excludes_documents",
+			expiry:      "2020-01-01T00:00:00Z",
+			currentTime: "2025-01-01T00:00:00Z",
+			expected:    []string{},
+		},
+	}
 
-		ds := memory.New()
-		t.Cleanup(ds.Close)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			defer goleak.VerifyNone(t)
 
-		storeID, model := storagetest.BootstrapFGAStore(t, ds, cycleModel, cycleTuples)
+			ds := memory.New()
+			t.Cleanup(ds.Close)
 
-		typesys, err := typesystem.NewAndValidate(
-			context.Background(),
-			model,
-		)
+			err := ds.WriteAuthorizationModel(context.Background(), storeID, model)
+			require.NoError(t, err)
 
-		require.NoError(t, err)
+			err = ds.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{
+				tuple.NewTupleKey("group:eng", "member", "user:alice"),
+				tuple.NewTupleKey("folder:1", "editor", "group:eng#member"),
+				tuple.NewTupleKeyWithCondition("document:1", "parent", "folder:1", "not_expired", &structpb.Struct{
+					Fields: map[string]*structpb.Value{
+						"expiry": structpb.NewStringValue(tc.expiry),
+					},
+				}),
+			})
+			require.NoError(t, err)
 
-		g := typesys.GetWeightedGraph()
+			reqCtx := &structpb.Struct{
+				Fields: map[string]*structpb.Value{
+					"current_time": structpb.NewStringValue(tc.currentTime),
+				},
+			}
 
-		backend := &Backend{
-			Datastore:  ds,
-			StoreID:    storeID,
-			TypeSystem: typesys,
-			Context:    nil,
-			Graph:      g,
-		}
+			reader := obj.NewReader(
+				ds,
+				storeID,
+				obj.WithValidator(obj.NewValidator(context.Background(), typesys, reqCtx)),
+			)
 
-		pl, err := New(backend)
-		require.NoError(t, err)
+			seq, err := pipeline.New(g, reader).Expand(context.Background(), spec)
+			require.NoError(t, err)
 
-		target, ok := pl.Target("user", "1")
-		require.True(t, ok)
-
-		source, ok := pl.Source("document", "viewer")
-		require.True(t, ok)
-
-		ctx, cancel := context.WithCancel(context.Background())
-
-		seq := pl.Build(ctx, source, target)
-
-		cancel()
-
-		for range seq {
-			t.Fatalf("iteration did not stop after context cancelation")
-		}
-	})
-
-	t.Run("iterator_cancelation", func(t *testing.T) {
-		defer goleak.VerifyNone(t)
-
-		ds := memory.New()
-		t.Cleanup(ds.Close)
-
-		storeID, model := storagetest.BootstrapFGAStore(t, ds, cycleModel, cycleTuples)
-
-		typesys, err := typesystem.NewAndValidate(
-			context.Background(),
-			model,
-		)
-
-		require.NoError(t, err)
-
-		g := typesys.GetWeightedGraph()
-
-		backend := &Backend{
-			Datastore:  ds,
-			StoreID:    storeID,
-			TypeSystem: typesys,
-			Context:    nil,
-			Graph:      g,
-		}
-
-		pl, err := New(backend)
-		require.NoError(t, err)
-
-		target, ok := pl.Target("user", "1")
-		require.True(t, ok)
-
-		source, ok := pl.Source("document", "viewer")
-		require.True(t, ok)
-
-		seq := pl.Build(context.Background(), source, target)
-
-		for range seq {
-			break
-		}
-	})
+			var results []string
+			for object := range seq {
+				value, err := object.Object()
+				require.NoError(t, err)
+				results = append(results, value)
+			}
+			require.ElementsMatch(t, tc.expected, results)
+		})
+	}
 }

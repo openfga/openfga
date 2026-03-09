@@ -10,9 +10,10 @@ import (
 )
 
 const (
-	pipeBufferSize int    = 1 << 7
-	messageCount   uint64 = 1000
+	messageCount uint64 = 1000
 )
+
+var defaultConfig Config = DefaultConfig()
 
 type item struct{}
 
@@ -36,7 +37,7 @@ func consume(p *Pipe[item], count *atomic.Uint64) {
 func BenchmarkMessaging(b *testing.B) {
 	b.Run("single_producer_single_consumer", func(b *testing.B) {
 		for b.Loop() {
-			p, err := New[item](pipeBufferSize)
+			p, err := New[item](defaultConfig)
 			require.NoError(b, err)
 
 			var count atomic.Uint64
@@ -63,7 +64,7 @@ func BenchmarkMessaging(b *testing.B) {
 
 	b.Run("multiple_producer_single_consumer", func(b *testing.B) {
 		for b.Loop() {
-			p, err := New[item](pipeBufferSize)
+			p, err := New[item](defaultConfig)
 			require.NoError(b, err)
 
 			var count atomic.Uint64
@@ -94,7 +95,7 @@ func BenchmarkMessaging(b *testing.B) {
 
 	b.Run("single_producer_multiple_consumer", func(b *testing.B) {
 		for b.Loop() {
-			p, err := New[item](pipeBufferSize)
+			p, err := New[item](defaultConfig)
 			require.NoError(b, err)
 
 			var count atomic.Uint64
@@ -125,7 +126,7 @@ func BenchmarkMessaging(b *testing.B) {
 
 	b.Run("multiple_producer_multiple_consumer", func(b *testing.B) {
 		for b.Loop() {
-			p, err := New[item](pipeBufferSize)
+			p, err := New[item](defaultConfig)
 			require.NoError(b, err)
 
 			var count atomic.Uint64
@@ -161,25 +162,31 @@ func TestMessaging(t *testing.T) {
 	t.Run("buffer_cycles", func(t *testing.T) {
 		tests := []struct {
 			name   string
-			size   int
+			config Config
 			parts  int
 			cycles int
 		}{
 			{
-				name:   "small",
-				size:   1 << 2,
+				name: "small",
+				config: Config{
+					Capacity: 1 << 2,
+				},
 				parts:  1,
 				cycles: 10,
 			},
 			{
-				name:   "medium",
-				size:   1 << 10,
+				name: "medium",
+				config: Config{
+					Capacity: 1 << 10,
+				},
 				parts:  13,
 				cycles: 10,
 			},
 			{
-				name:   "large",
-				size:   1 << 20,
+				name: "large",
+				config: Config{
+					Capacity: 1 << 20,
+				},
 				parts:  333,
 				cycles: 10,
 			},
@@ -187,12 +194,12 @@ func TestMessaging(t *testing.T) {
 
 		for _, tc := range tests {
 			t.Run(tc.name, func(t *testing.T) {
-				expected := make([]int, tc.size)
-				for i := range tc.size {
+				expected := make([]int, tc.config.Capacity)
+				for i := range tc.config.Capacity {
 					expected[i] = i + 1
 				}
 
-				p, err := New[int](tc.size)
+				p, err := New[int](tc.config)
 				require.NoError(t, err)
 
 				for range tc.cycles {
@@ -201,7 +208,7 @@ func TestMessaging(t *testing.T) {
 
 					actual := make([]int, 0, 10)
 
-					for i := range tc.size {
+					for i := range tc.config.Capacity {
 						p.Send(i + 1)
 						count++
 
@@ -226,8 +233,8 @@ func TestMessaging(t *testing.T) {
 					require.Equal(t, expected, actual)
 				}
 
-				expected = make([]int, 0, tc.size)
-				for i := tc.size; i > 0; i-- {
+				expected = make([]int, 0, tc.config.Capacity)
+				for i := tc.config.Capacity; i > 0; i-- {
 					p.Send(i)
 					expected = append(expected, i)
 				}
@@ -248,7 +255,7 @@ func TestMessaging(t *testing.T) {
 	})
 
 	t.Run("single_producer_single_consumer", func(t *testing.T) {
-		p, err := New[item](pipeBufferSize)
+		p, err := New[item](defaultConfig)
 		require.NoError(t, err)
 
 		var count atomic.Uint64
@@ -273,7 +280,7 @@ func TestMessaging(t *testing.T) {
 	})
 
 	t.Run("multiple_producer_single_consumer", func(t *testing.T) {
-		p, err := New[item](pipeBufferSize)
+		p, err := New[item](defaultConfig)
 		require.NoError(t, err)
 
 		var count atomic.Uint64
@@ -302,7 +309,7 @@ func TestMessaging(t *testing.T) {
 	})
 
 	t.Run("single_producer_multiple_consumer", func(t *testing.T) {
-		p, err := New[item](pipeBufferSize)
+		p, err := New[item](defaultConfig)
 		require.NoError(t, err)
 
 		var count atomic.Uint64
@@ -331,7 +338,7 @@ func TestMessaging(t *testing.T) {
 	})
 
 	t.Run("multiple_producer_multiple_consumer", func(t *testing.T) {
-		p, err := New[item](pipeBufferSize)
+		p, err := New[item](defaultConfig)
 		require.NoError(t, err)
 
 		var count atomic.Uint64
@@ -362,16 +369,20 @@ func TestMessaging(t *testing.T) {
 	})
 
 	t.Run("dynamic_buffer_extension", func(t *testing.T) {
-		const initialBufferSize int = 1
+		const initialCapacity int = 1
 		const extendAfter time.Duration = time.Microsecond
 		const maxExtensions int = 3
 		const maxItems int = 1 << maxExtensions
 
-		p, err := New[item](initialBufferSize)
+		var config = Config{
+			Capacity:      initialCapacity,
+			ExtendAfter:   extendAfter,
+			MaxExtensions: maxExtensions,
+		}
+
+		p, err := New[item](config)
 		require.NoError(t, err)
 		defer p.Close()
-
-		p.SetExtensionConfig(extendAfter, maxExtensions)
 
 		for i := maxItems; i > 0; i-- {
 			p.Send(item{})
@@ -380,17 +391,22 @@ func TestMessaging(t *testing.T) {
 	})
 
 	t.Run("manual_buffer_extension", func(t *testing.T) {
-		const initialBufferSize int = 1
-		const maxExtensions int = 3
-		const maxItems int = 1 << maxExtensions
+		const initialBufferCapacity int = 1
+		const maxExtensions int = 3                      // Set to ensure limit is bypassed.
+		const targetItems int = 1 << (maxExtensions + 1) // Grow once beyond max.
 
-		p, err := New[item](initialBufferSize)
+		var config = Config{
+			Capacity:      initialBufferCapacity,
+			MaxExtensions: maxExtensions,
+		}
+
+		p, err := New[item](config)
 		require.NoError(t, err)
 		defer p.Close()
 
-		next := initialBufferSize
+		next := initialBufferCapacity
 
-		for i := range maxItems {
+		for i := range targetItems {
 			if i == next {
 				next <<= 1
 				err := p.Grow(next)
@@ -398,23 +414,28 @@ func TestMessaging(t *testing.T) {
 			}
 			p.Send(item{})
 		}
-		require.Equal(t, maxItems, p.Size())
+		require.Equal(t, targetItems, p.Size())
 	})
 
 	t.Run("unbounded_buffer_extension", func(t *testing.T) {
-		const initialBufferSize int = 1
+		const initialCapacity int = 1
 		const extendAfter time.Duration = 0
-		const maxExtensions int = 10
-		const maxItems int = 1 << maxExtensions
-		p, err := New[item](initialBufferSize)
+		const targetExtensions int = 10
+		const targetItems int = 1 << targetExtensions
+
+		var config = Config{
+			Capacity:      initialCapacity,
+			ExtendAfter:   extendAfter,
+			MaxExtensions: -1,
+		}
+
+		p, err := New[item](config)
 		require.NoError(t, err)
 		defer p.Close()
 
-		p.SetExtensionConfig(extendAfter, -1) // unlimited extensions
-
-		for i := maxItems; i > 0; i-- {
+		for i := targetItems; i > 0; i-- {
 			p.Send(item{})
 		}
-		require.Equal(t, maxItems, p.Size())
+		require.Equal(t, targetItems, p.Size())
 	})
 }

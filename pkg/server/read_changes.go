@@ -10,10 +10,10 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
+	"github.com/openfga/openfga/internal/telemetry"
 	"github.com/openfga/openfga/internal/utils/apimethod"
 	"github.com/openfga/openfga/pkg/middleware/validator"
 	"github.com/openfga/openfga/pkg/server/commands"
-	"github.com/openfga/openfga/pkg/telemetry"
 )
 
 func (s *Server) ReadChanges(ctx context.Context, req *openfgav1.ReadChangesRequest) (*openfgav1.ReadChangesResponse, error) {
@@ -26,6 +26,17 @@ func (s *Server) ReadChanges(ctx context.Context, req *openfgav1.ReadChangesRequ
 	if !validator.RequestIsValidatedFromContext(ctx) {
 		if err := req.Validate(); err != nil {
 			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
+	}
+
+	if p := req.GetPageSize(); p != nil {
+		pageSize := p.GetValue()
+		if pageSize < 1 || pageSize > s.readChangesMaxPageSize {
+			return nil, status.Errorf(
+				codes.InvalidArgument,
+				"invalid ReadChangesRequest.PageSize: value must be inside range [1, %d]",
+				s.readChangesMaxPageSize,
+			)
 		}
 	}
 

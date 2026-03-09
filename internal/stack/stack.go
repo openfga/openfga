@@ -43,7 +43,7 @@ func String[T any](stack Stack[T]) string {
 	var sb strings.Builder
 	for stack != nil {
 		val, stack = Pop(stack)
-		sb.WriteString(fmt.Sprintf("%v", val))
+		fmt.Fprintf(&sb, "%v", val)
 	}
 	return sb.String()
 }
