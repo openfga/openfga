@@ -52,7 +52,7 @@ func setupTestContextWithExperimentals(t *testing.T, experimentals []string) *te
 // The server is automatically configured with AuthZEN experimental flag enabled.
 func setupTestContext(t *testing.T) *testContext {
 	t.Helper()
-	return setupTestContextWithExperimentals(t, []string{serverconfig.ExperimentalEnableAuthZen})
+	return setupTestContextWithExperimentals(t, []string{serverconfig.ExperimentalAuthZen})
 }
 
 // createStore creates a new store.

@@ -18,10 +18,10 @@ import (
 	authzenv1 "github.com/openfga/api/proto/authzen/v1"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
+	"github.com/openfga/openfga/internal/telemetry"
 	"github.com/openfga/openfga/pkg/middleware/validator"
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	servererrors "github.com/openfga/openfga/pkg/server/errors"
-	"github.com/openfga/openfga/pkg/telemetry"
 )
 
 // AuthZenAuthorizationModelIDHeader is the HTTP header name for specifying the authorization model ID.
@@ -82,7 +82,7 @@ var authZenAuthorizationModelIDPattern = regexp.MustCompile(`^[ABCDEFGHJKMNPQRST
 
 // IsAuthZenEnabled returns true if the AuthZEN experimental feature is enabled for the given store.
 func (s *Server) IsAuthZenEnabled(storeID string) bool {
-	return s.featureFlagClient.Boolean(serverconfig.ExperimentalEnableAuthZen, storeID)
+	return s.featureFlagClient.Boolean(serverconfig.ExperimentalAuthZen, storeID)
 }
 
 // getAuthorizationModelIDFromHeader extracts the authorization model ID from the gRPC metadata.
@@ -164,8 +164,8 @@ func grpcErrorToHTTPStatus(err error) uint32 {
 }
 
 func (s *Server) Evaluation(ctx context.Context, req *authzenv1.EvaluationRequest) (*authzenv1.EvaluationResponse, error) {
-	if !s.featureFlagClient.Boolean(serverconfig.ExperimentalEnableAuthZen, req.GetStoreId()) {
-		return nil, status.Error(codes.Unimplemented, "AuthZEN endpoints are experimental. Enable with --experimentals=enable_authzen")
+	if !s.featureFlagClient.Boolean(serverconfig.ExperimentalAuthZen, req.GetStoreId()) {
+		return nil, status.Error(codes.Unimplemented, "AuthZEN endpoints are experimental. Enable with --experimentals=authzen")
 	}
 
 	ctx, span := tracer.Start(ctx, "authzen.Evaluation")
@@ -203,8 +203,8 @@ func (s *Server) Evaluation(ctx context.Context, req *authzenv1.EvaluationReques
 }
 
 func (s *Server) Evaluations(ctx context.Context, req *authzenv1.EvaluationsRequest) (*authzenv1.EvaluationsResponse, error) {
-	if !s.featureFlagClient.Boolean(serverconfig.ExperimentalEnableAuthZen, req.GetStoreId()) {
-		return nil, status.Error(codes.Unimplemented, "AuthZEN endpoints are experimental. Enable with --experimentals=enable_authzen")
+	if !s.featureFlagClient.Boolean(serverconfig.ExperimentalAuthZen, req.GetStoreId()) {
+		return nil, status.Error(codes.Unimplemented, "AuthZEN endpoints are experimental. Enable with --experimentals=authzen")
 	}
 
 	ctx, span := tracer.Start(ctx, "authzen.Evaluations")
@@ -440,8 +440,8 @@ func (s *Server) evaluateWithShortCircuit(
 
 // SubjectSearch returns subjects that have access to the specified resource.
 func (s *Server) SubjectSearch(ctx context.Context, req *authzenv1.SubjectSearchRequest) (*authzenv1.SubjectSearchResponse, error) {
-	if !s.featureFlagClient.Boolean(serverconfig.ExperimentalEnableAuthZen, req.GetStoreId()) {
-		return nil, status.Error(codes.Unimplemented, "AuthZEN endpoints are experimental. Enable with --experimentals=enable_authzen")
+	if !s.featureFlagClient.Boolean(serverconfig.ExperimentalAuthZen, req.GetStoreId()) {
+		return nil, status.Error(codes.Unimplemented, "AuthZEN endpoints are experimental. Enable with --experimentals=authzen")
 	}
 
 	ctx, span := tracer.Start(ctx, "authzen.SubjectSearch")
@@ -498,8 +498,8 @@ func (s *Server) SubjectSearch(ctx context.Context, req *authzenv1.SubjectSearch
 
 // ResourceSearch returns resources that a subject has access to.
 func (s *Server) ResourceSearch(ctx context.Context, req *authzenv1.ResourceSearchRequest) (*authzenv1.ResourceSearchResponse, error) {
-	if !s.featureFlagClient.Boolean(serverconfig.ExperimentalEnableAuthZen, req.GetStoreId()) {
-		return nil, status.Error(codes.Unimplemented, "AuthZEN endpoints are experimental. Enable with --experimentals=enable_authzen")
+	if !s.featureFlagClient.Boolean(serverconfig.ExperimentalAuthZen, req.GetStoreId()) {
+		return nil, status.Error(codes.Unimplemented, "AuthZEN endpoints are experimental. Enable with --experimentals=authzen")
 	}
 
 	ctx, span := tracer.Start(ctx, "authzen.ResourceSearch")
@@ -557,12 +557,12 @@ type objectCollector struct {
 	grpc.ServerStream
 }
 
-func (c *objectCollector) Context() context.Context                  { return c.ctx }
-func (c *objectCollector) SetHeader(metadata.MD) error               { return nil }
-func (c *objectCollector) SendHeader(metadata.MD) error              { return nil }
-func (c *objectCollector) SetTrailer(metadata.MD)                    {}
-func (c *objectCollector) SendMsg(any) error                         { return nil }
-func (c *objectCollector) RecvMsg(any) error                         { return nil }
+func (c *objectCollector) Context() context.Context     { return c.ctx }
+func (c *objectCollector) SetHeader(metadata.MD) error  { return nil }
+func (c *objectCollector) SendHeader(metadata.MD) error { return nil }
+func (c *objectCollector) SetTrailer(metadata.MD)       {}
+func (c *objectCollector) SendMsg(any) error            { return nil }
+func (c *objectCollector) RecvMsg(any) error            { return nil }
 func (c *objectCollector) Send(resp *openfgav1.StreamedListObjectsResponse) error {
 	c.objects = append(c.objects, resp.GetObject())
 	return nil
@@ -570,8 +570,8 @@ func (c *objectCollector) Send(resp *openfgav1.StreamedListObjectsResponse) erro
 
 // ActionSearch returns actions a subject can perform on a resource.
 func (s *Server) ActionSearch(ctx context.Context, req *authzenv1.ActionSearchRequest) (*authzenv1.ActionSearchResponse, error) {
-	if !s.featureFlagClient.Boolean(serverconfig.ExperimentalEnableAuthZen, req.GetStoreId()) {
-		return nil, status.Error(codes.Unimplemented, "AuthZEN endpoints are experimental. Enable with --experimentals=enable_authzen")
+	if !s.featureFlagClient.Boolean(serverconfig.ExperimentalAuthZen, req.GetStoreId()) {
+		return nil, status.Error(codes.Unimplemented, "AuthZEN endpoints are experimental. Enable with --experimentals=authzen")
 	}
 
 	ctx, span := tracer.Start(ctx, "authzen.ActionSearch")

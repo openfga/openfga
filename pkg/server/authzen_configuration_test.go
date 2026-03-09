@@ -42,7 +42,7 @@ func TestGetConfiguration(t *testing.T) {
 	t.Run("returns_pdp_identifier", func(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalEnableAuthZen),
+			WithExperimentals(serverconfig.ExperimentalAuthZen),
 		)
 		t.Cleanup(s.Close)
 
@@ -67,7 +67,7 @@ func TestGetConfiguration(t *testing.T) {
 	t.Run("returns_absolute_urls_from_request_context", func(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalEnableAuthZen),
+			WithExperimentals(serverconfig.ExperimentalAuthZen),
 		)
 		t.Cleanup(s.Close)
 
@@ -95,7 +95,7 @@ func TestGetConfiguration(t *testing.T) {
 	t.Run("returns_absolute_urls_with_forwarded_headers", func(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalEnableAuthZen),
+			WithExperimentals(serverconfig.ExperimentalAuthZen),
 		)
 		t.Cleanup(s.Close)
 
@@ -120,7 +120,7 @@ func TestGetConfiguration(t *testing.T) {
 	t.Run("returns_error_when_no_host_context", func(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalEnableAuthZen),
+			WithExperimentals(serverconfig.ExperimentalAuthZen),
 		)
 		t.Cleanup(s.Close)
 
@@ -138,7 +138,7 @@ func TestGetConfiguration(t *testing.T) {
 	t.Run("rejects_invalid_scheme_defaults_to_https", func(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalEnableAuthZen),
+			WithExperimentals(serverconfig.ExperimentalAuthZen),
 		)
 		t.Cleanup(s.Close)
 
@@ -163,7 +163,7 @@ func TestGetConfiguration(t *testing.T) {
 	t.Run("accepts_http_scheme", func(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalEnableAuthZen),
+			WithExperimentals(serverconfig.ExperimentalAuthZen),
 		)
 		t.Cleanup(s.Close)
 
@@ -188,7 +188,7 @@ func TestGetConfiguration(t *testing.T) {
 	t.Run("scheme_validation_is_case_insensitive", func(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalEnableAuthZen),
+			WithExperimentals(serverconfig.ExperimentalAuthZen),
 		)
 		t.Cleanup(s.Close)
 
@@ -213,7 +213,7 @@ func TestGetConfiguration(t *testing.T) {
 	t.Run("authzen_spec_compliance", func(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalEnableAuthZen),
+			WithExperimentals(serverconfig.ExperimentalAuthZen),
 		)
 		t.Cleanup(s.Close)
 

@@ -38,15 +38,15 @@ tests/authzen/
 
 ### Feature Flag
 
-All AuthZen endpoints are gated behind the `enable_authzen` experimental flag. The check happens at the top of every handler:
+All AuthZen endpoints are gated behind the `authzen` experimental flag. The check happens at the top of every handler:
 
 ```go
-if !s.featureFlagClient.Boolean(serverconfig.ExperimentalEnableAuthZen, req.GetStoreId()) {
+if !s.featureFlagClient.Boolean(serverconfig.ExperimentalAuthZen, req.GetStoreId()) {
     return nil, status.Error(codes.Unimplemented, "AuthZEN endpoints are experimental...")
 }
 ```
 
-The flag is defined in `pkg/server/config/config.go` as `ExperimentalEnableAuthZen = "enable_authzen"` and flows through the standard experimentals configuration (`--experimentals=enable_authzen` or `OPENFGA_EXPERIMENTALS`).
+The flag is defined in `pkg/server/config/config.go` as `ExperimentalAuthZen = "authzen"` and flows through the standard experimentals configuration (`--experimentals=authzen` or `OPENFGA_EXPERIMENTALS`).
 
 ### gRPC and HTTP Registration
 

@@ -12,10 +12,10 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/types/known/structpb"
 
 	authzenv1 "github.com/openfga/api/proto/authzen/v1"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/openfga/openfga/cmd/util"
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
@@ -57,7 +57,7 @@ func TestEvaluation(t *testing.T) {
 	t.Run("success_with_valid_model", func(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalEnableAuthZen),
+			WithExperimentals(serverconfig.ExperimentalAuthZen),
 		)
 		t.Cleanup(s.Close)
 
@@ -151,7 +151,7 @@ func TestEvaluation(t *testing.T) {
 	t.Run("model_not_found", func(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalEnableAuthZen),
+			WithExperimentals(serverconfig.ExperimentalAuthZen),
 		)
 		t.Cleanup(s.Close)
 
@@ -178,7 +178,7 @@ func TestEvaluation(t *testing.T) {
 	t.Run("validation_error_missing_subject", func(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalEnableAuthZen),
+			WithExperimentals(serverconfig.ExperimentalAuthZen),
 		)
 		t.Cleanup(s.Close)
 
@@ -204,7 +204,7 @@ func TestEvaluation(t *testing.T) {
 	t.Run("validation_error_missing_resource", func(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalEnableAuthZen),
+			WithExperimentals(serverconfig.ExperimentalAuthZen),
 		)
 		t.Cleanup(s.Close)
 
@@ -230,7 +230,7 @@ func TestEvaluation(t *testing.T) {
 	t.Run("validation_error_missing_action", func(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalEnableAuthZen),
+			WithExperimentals(serverconfig.ExperimentalAuthZen),
 		)
 		t.Cleanup(s.Close)
 
@@ -256,7 +256,7 @@ func TestEvaluation(t *testing.T) {
 	t.Run("returns_validation_error_for_invalid_type", func(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalEnableAuthZen),
+			WithExperimentals(serverconfig.ExperimentalAuthZen),
 		)
 		t.Cleanup(s.Close)
 
@@ -350,7 +350,7 @@ func TestEvaluations(t *testing.T) {
 	t.Run("validation_error_empty_evaluations", func(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalEnableAuthZen),
+			WithExperimentals(serverconfig.ExperimentalAuthZen),
 		)
 		t.Cleanup(s.Close)
 
@@ -374,7 +374,7 @@ func TestEvaluations(t *testing.T) {
 	t.Run("short_circuit_deny_on_first_deny", func(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalEnableAuthZen),
+			WithExperimentals(serverconfig.ExperimentalAuthZen),
 		)
 		t.Cleanup(s.Close)
 
@@ -415,7 +415,7 @@ func TestEvaluations(t *testing.T) {
 	t.Run("short_circuit_permit_on_first_permit", func(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalEnableAuthZen),
+			WithExperimentals(serverconfig.ExperimentalAuthZen),
 		)
 		t.Cleanup(s.Close)
 
@@ -454,7 +454,7 @@ func TestEvaluations(t *testing.T) {
 	t.Run("batch_evaluation_with_default_semantic", func(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalEnableAuthZen),
+			WithExperimentals(serverconfig.ExperimentalAuthZen),
 		)
 		t.Cleanup(s.Close)
 
@@ -487,7 +487,7 @@ func TestEvaluations(t *testing.T) {
 	t.Run("batch_evaluation_with_explicit_execute_all", func(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalEnableAuthZen),
+			WithExperimentals(serverconfig.ExperimentalAuthZen),
 		)
 		t.Cleanup(s.Close)
 
@@ -521,7 +521,7 @@ func TestEvaluations(t *testing.T) {
 	t.Run("short_circuit_with_default_values", func(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalEnableAuthZen),
+			WithExperimentals(serverconfig.ExperimentalAuthZen),
 		)
 		t.Cleanup(s.Close)
 
@@ -563,7 +563,7 @@ func TestEvaluations(t *testing.T) {
 	t.Run("short_circuit_deny_on_first_deny_breaks_on_error", func(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalEnableAuthZen),
+			WithExperimentals(serverconfig.ExperimentalAuthZen),
 		)
 		t.Cleanup(s.Close)
 
@@ -607,7 +607,7 @@ func TestEvaluations(t *testing.T) {
 	t.Run("short_circuit_returns_400_for_invalid_type", func(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalEnableAuthZen),
+			WithExperimentals(serverconfig.ExperimentalAuthZen),
 		)
 		t.Cleanup(s.Close)
 
@@ -676,7 +676,7 @@ func TestEvaluations(t *testing.T) {
 	t.Run("success_batch_with_valid_model", func(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalEnableAuthZen),
+			WithExperimentals(serverconfig.ExperimentalAuthZen),
 		)
 		t.Cleanup(s.Close)
 
@@ -766,7 +766,7 @@ func TestEvaluations(t *testing.T) {
 	t.Run("short_circuit_deny_on_first_deny_with_valid_model_breaks", func(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalEnableAuthZen),
+			WithExperimentals(serverconfig.ExperimentalAuthZen),
 		)
 		t.Cleanup(s.Close)
 
@@ -858,7 +858,7 @@ func TestEvaluations(t *testing.T) {
 	t.Run("short_circuit_permit_on_first_permit_with_valid_model_breaks", func(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalEnableAuthZen),
+			WithExperimentals(serverconfig.ExperimentalAuthZen),
 		)
 		t.Cleanup(s.Close)
 
@@ -952,7 +952,7 @@ func TestEvaluations(t *testing.T) {
 		// Example from spec: [doc1=true, doc2=false, doc3=true] -> returns [true, false]
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalEnableAuthZen),
+			WithExperimentals(serverconfig.ExperimentalAuthZen),
 		)
 		t.Cleanup(s.Close)
 
@@ -1025,7 +1025,7 @@ func TestEvaluations(t *testing.T) {
 		// Like || operator: continues on false until first true
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalEnableAuthZen),
+			WithExperimentals(serverconfig.ExperimentalAuthZen),
 		)
 		t.Cleanup(s.Close)
 
@@ -1128,7 +1128,7 @@ func TestSubjectSearch(t *testing.T) {
 	t.Run("validation_error_missing_resource", func(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalEnableAuthZen),
+			WithExperimentals(serverconfig.ExperimentalAuthZen),
 		)
 		t.Cleanup(s.Close)
 
@@ -1154,7 +1154,7 @@ func TestSubjectSearch(t *testing.T) {
 	t.Run("success_with_valid_model", func(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalEnableAuthZen),
+			WithExperimentals(serverconfig.ExperimentalAuthZen),
 		)
 		t.Cleanup(s.Close)
 
@@ -1238,7 +1238,7 @@ func TestSubjectSearch(t *testing.T) {
 	t.Run("json_response_omits_page_when_pagination_not_supported", func(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalEnableAuthZen),
+			WithExperimentals(serverconfig.ExperimentalAuthZen),
 		)
 		t.Cleanup(s.Close)
 
@@ -1355,7 +1355,7 @@ func TestResourceSearch(t *testing.T) {
 	t.Run("validation_error_missing_subject", func(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalEnableAuthZen),
+			WithExperimentals(serverconfig.ExperimentalAuthZen),
 		)
 		t.Cleanup(s.Close)
 
@@ -1381,7 +1381,7 @@ func TestResourceSearch(t *testing.T) {
 	t.Run("success_with_valid_model", func(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalEnableAuthZen),
+			WithExperimentals(serverconfig.ExperimentalAuthZen),
 		)
 		t.Cleanup(s.Close)
 
@@ -1465,7 +1465,7 @@ func TestResourceSearch(t *testing.T) {
 	t.Run("json_response_omits_page_when_pagination_not_supported", func(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalEnableAuthZen),
+			WithExperimentals(serverconfig.ExperimentalAuthZen),
 		)
 		t.Cleanup(s.Close)
 
@@ -1580,7 +1580,7 @@ func TestActionSearch(t *testing.T) {
 	t.Run("validation_error_missing_subject", func(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalEnableAuthZen),
+			WithExperimentals(serverconfig.ExperimentalAuthZen),
 		)
 		t.Cleanup(s.Close)
 
@@ -1605,7 +1605,7 @@ func TestActionSearch(t *testing.T) {
 	t.Run("model_not_found", func(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalEnableAuthZen),
+			WithExperimentals(serverconfig.ExperimentalAuthZen),
 		)
 		t.Cleanup(s.Close)
 
@@ -1630,7 +1630,7 @@ func TestActionSearch(t *testing.T) {
 	t.Run("success_with_valid_model", func(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalEnableAuthZen),
+			WithExperimentals(serverconfig.ExperimentalAuthZen),
 		)
 		t.Cleanup(s.Close)
 
@@ -1728,7 +1728,7 @@ func TestActionSearch(t *testing.T) {
 	t.Run("json_response_omits_page_when_pagination_not_supported", func(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalEnableAuthZen),
+			WithExperimentals(serverconfig.ExperimentalAuthZen),
 		)
 		t.Cleanup(s.Close)
 
@@ -1866,7 +1866,7 @@ func TestEvaluationWithAuthorizationModelIDHeader(t *testing.T) {
 	t.Run("uses_model_id_from_header", func(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalEnableAuthZen),
+			WithExperimentals(serverconfig.ExperimentalAuthZen),
 		)
 		t.Cleanup(s.Close)
 

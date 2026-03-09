@@ -1944,7 +1944,7 @@ func TestIsAuthZenEnabled(t *testing.T) {
 	t.Run("returns_true_if_experimentals_has_authzen", func(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalEnableAuthZen),
+			WithExperimentals(serverconfig.ExperimentalAuthZen),
 		)
 		t.Cleanup(s.Close)
 		require.True(t, s.IsAuthZenEnabled(storeID))

@@ -11,8 +11,8 @@ import (
 
 	authzenv1 "github.com/openfga/api/proto/authzen/v1"
 
-	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	"github.com/openfga/openfga/pkg/middleware/validator"
+	serverconfig "github.com/openfga/openfga/pkg/server/config"
 )
 
 // getBaseURLFromContext extracts the base URL from gRPC metadata.
@@ -59,8 +59,8 @@ func (s *Server) GetConfiguration(ctx context.Context, req *authzenv1.GetConfigu
 	storeID := req.GetStoreId()
 
 	// Gate behind experimental flag
-	if !s.featureFlagClient.Boolean(serverconfig.ExperimentalEnableAuthZen, storeID) {
-		return nil, status.Error(codes.Unimplemented, "AuthZEN endpoints are experimental. Enable with --experimentals=enable_authzen")
+	if !s.featureFlagClient.Boolean(serverconfig.ExperimentalAuthZen, storeID) {
+		return nil, status.Error(codes.Unimplemented, "AuthZEN endpoints are experimental. Enable with --experimentals=authzen")
 	}
 
 	if !validator.RequestIsValidatedFromContext(ctx) {
@@ -82,10 +82,10 @@ func (s *Server) GetConfiguration(ctx context.Context, req *authzenv1.GetConfigu
 
 	return &authzenv1.GetConfigurationResponse{
 		PolicyDecisionPoint:       storeBase,
-		AccessEvaluationEndpoint:  fmt.Sprintf("%s/access/v1/evaluation", storeBase),
-		AccessEvaluationsEndpoint: fmt.Sprintf("%s/access/v1/evaluations", storeBase),
-		SearchSubjectEndpoint:     fmt.Sprintf("%s/access/v1/search/subject", storeBase),
-		SearchResourceEndpoint:    fmt.Sprintf("%s/access/v1/search/resource", storeBase),
-		SearchActionEndpoint:      fmt.Sprintf("%s/access/v1/search/action", storeBase),
+		AccessEvaluationEndpoint:  storeBase + "/access/v1/evaluation",
+		AccessEvaluationsEndpoint: storeBase + "/access/v1/evaluations",
+		SearchSubjectEndpoint:     storeBase + "/access/v1/search/subject",
+		SearchResourceEndpoint:    storeBase + "/access/v1/search/resource",
+		SearchActionEndpoint:      storeBase + "/access/v1/search/action",
 	}, nil
 }

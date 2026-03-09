@@ -108,8 +108,7 @@ const (
 	ExperimentalPipelineListObjects      = "pipeline_list_objects"
 	ExperimentalShadowWeightedGraphCheck = "shadow_weighted_graph_check"
 	ExperimentalWeightedGraphCheck       = "weighted_graph_check"
-	// ExperimentalEnableAuthZen enables the AuthZEN API endpoints for interoperability compliance.
-	ExperimentalEnableAuthZen = "enable_authzen"  
+	ExperimentalAuthZen                  = "authzen"
 )
 
 type DatastoreMetricsConfig struct {

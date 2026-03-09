@@ -226,13 +226,13 @@ The AuthZEN specification is defined transport-agnostic, with HTTPS as the norma
 AuthZEN endpoints are gated behind an experimental feature flag. To enable them, start OpenFGA with:
 
 ```bash
-openfga run --experimentals enable_authzen
+openfga run --experimentals authzen
 ```
 
 Or set the environment variable:
 
 ```bash
-OPENFGA_EXPERIMENTALS=enable_authzen openfga run
+OPENFGA_EXPERIMENTALS=authzen openfga run
 ```
 
 ### Specifying Authorization Model ID
