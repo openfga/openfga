@@ -401,7 +401,7 @@ func IsValidObject(s string) bool {
 	return idLen > 0
 }
 
-// IsValidRelation determines if a string s is a valid relation. This means it does not contain any `:`, `#`, or spaces.
+// IsValidRelation determines if a string s is a valid relation. This means it does not contain any `:`, `#`, `@`, or spaces.
 func IsValidRelation(s string) bool {
 	var count int
 
