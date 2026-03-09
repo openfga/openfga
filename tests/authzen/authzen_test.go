@@ -21,6 +21,7 @@ type testContext struct {
 	storeID       string
 	modelID       string
 	grpcAddr      string
+	httpAddr      string
 	openfgaClient openfgav1.OpenFGAServiceClient
 	authzenClient authzenv1.AuthZenServiceClient
 }
@@ -41,6 +42,7 @@ func setupTestContextWithExperimentals(t *testing.T, experimentals []string) *te
 	tc := &testContext{
 		t:             t,
 		grpcAddr:      cfg.GRPC.Addr,
+		httpAddr:      cfg.HTTP.Addr,
 		openfgaClient: openfgav1.NewOpenFGAServiceClient(conn),
 		authzenClient: authzenv1.NewAuthZenServiceClient(conn),
 	}

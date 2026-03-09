@@ -153,7 +153,7 @@ func grpcErrorToHTTPStatus(err error) uint32 {
 	httpStatus := uint32(500)
 	if st, ok := status.FromError(err); ok {
 		grpcCode := st.Code()
-		if grpcCode < 17 {
+		if grpcCode < 17 { // standard gRPC codes are 0–16; anything >= 17 is an OpenFGA-encoded error
 			httpStatus = uint32(runtime.HTTPStatusFromCode(grpcCode))
 		} else {
 			encodedErr := servererrors.NewEncodedError(int32(grpcCode), st.Message())

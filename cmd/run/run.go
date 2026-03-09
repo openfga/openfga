@@ -713,6 +713,12 @@ func (s *ServerContext) runHTTPServer(ctx context.Context, config *serverconfig.
 			if key == server.AuthZenAuthorizationModelIDHeader {
 				return key, true
 			}
+			// Forward X-Forwarded-Proto so getBaseURLFromContext can determine the scheme.
+			// grpc-gateway's annotateContext handles X-Forwarded-For and X-Forwarded-Host
+			// natively, but does not forward X-Forwarded-Proto.
+			if strings.EqualFold(key, "X-Forwarded-Proto") {
+				return strings.ToLower(key), true
+			}
 			// Use default behavior for other headers
 			return runtime.DefaultHeaderMatcher(key)
 		}),
