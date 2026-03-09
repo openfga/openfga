@@ -366,9 +366,6 @@ func (s *Server) evaluateAll(
 }
 
 // evaluateWithShortCircuit handles deny_on_first_deny and permit_on_first_permit semantics.
-// It builds CheckRequests directly so the authorizationModelID is resolved once and reused.
-//
-//nolint:unparam
 func (s *Server) evaluateWithShortCircuit(
 	ctx context.Context,
 	req *authzenv1.EvaluationsRequest,

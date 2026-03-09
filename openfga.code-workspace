@@ -1,0 +1,17 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../api"
+		},
+		{
+			"path": "../openfga.dev"
+		},
+		{
+			"path": "../authzen-interop"
+		}
+	],
+	"settings": {}
+}
