@@ -39,6 +39,9 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 
 		command.MarkFlagsRequiredTogether("grpc-tls-enabled", "grpc-tls-cert", "grpc-tls-key")
 
+		util.MustBindPFlag("grpc.maxRecvMsgBytes", flags.Lookup("grpc-max-recv-msg-bytes"))
+		util.MustBindEnv("grpc.maxRecvMsgBytes", "OPENFGA_GRPC_MAX_RECV_MSG_BYTES")
+
 		util.MustBindPFlag("http.enabled", flags.Lookup("http-enabled"))
 		util.MustBindEnv("http.enabled", "OPENFGA_HTTP_ENABLED")
 

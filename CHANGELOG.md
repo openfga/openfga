@@ -7,8 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Try to keep listed changes to a concise bulleted list of simple explanations of changes. Aim for the amount of information needed so that readers can understand where they would look in the codebase to investigate the changes' implementation, or where they would look in the documentation to understand how to make use of the change in practice - better yet, link directly to the docs and provide detailed information there. Only elaborate if doing so is required to avoid breaking changes or experimental features from ruining someone's day.
 
 ## [Unreleased]
+### Added
+- Add configuration for maximum size of received gRPC message bytes. [#2952](https://github.com/openfga/openfga/pull/2952)
+
+### Changed
+- HTTP gateway's internal gRPC client now uses dynamic TLS credentials that automatically update on certificate rotation via certwatcher, preventing connection failures when certificates are rotated (e.g., by cert-manager). [#2951](https://github.com/openfga/openfga/pull/2951)
+
 ### Fixed
 - Fixed a few bugs. Two potential index out of bounds scenarios, and one cache of an invalid result. [#2942](https://github.com/openfga/openfga/pull/2942)
+- Fixed a race condition in check reducers causing non-deterministic nested handler execution due to canceled parent context. [#2947](https://github.com/openfga/openfga/pull/2947)
+- Fixed an issue where `cache_item_count` was incrementing on overwrites, causing the metric to steadily drift upward. [#2950](https://github.com/openfga/openfga/pull/2950)
+- Set `pipeline_list_objects` enabled by default in experimentals so that setting new experimental values does not disable it. This is required so that a user may pass in a custom featureflag client where `pipeline_list_objects` can be disabled on a per store basis. To disable the ListObjects pipeline algorithm entirely, set `listObjects-pipeline-enabled` to `false`. [#2957](https://github.com/openfga/openfga/pull/2957)
 
 ## [1.11.6] - 2026-02-23
 ### Added

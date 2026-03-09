@@ -4,6 +4,7 @@ package run
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"html/template"
@@ -17,6 +18,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	sync "sync/atomic"
 	"syscall"
 	"time"
 
@@ -56,6 +58,7 @@ import (
 	"github.com/openfga/openfga/internal/build"
 	authnmw "github.com/openfga/openfga/internal/middleware/authn"
 	"github.com/openfga/openfga/internal/planner"
+	"github.com/openfga/openfga/internal/telemetry"
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/gateway"
 	"github.com/openfga/openfga/pkg/logger"
@@ -76,13 +79,47 @@ import (
 	"github.com/openfga/openfga/pkg/storage/postgres"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
 	"github.com/openfga/openfga/pkg/storage/sqlite"
-	"github.com/openfga/openfga/pkg/telemetry"
 )
 
 const (
 	datastoreEngineFlag = "datastore-engine"
 	datastoreURIFlag    = "datastore-uri"
+
+	windows = "windows"
+	unix    = "unix"
+	tcp     = "tcp"
 )
+
+// grpcTLSCertPool is a package-level pinned certificate pool for verifying
+// the gRPC server's TLS certificate from the HTTP gateway client. It is
+// populated and kept up-to-date by watchAndLoadCertificateWithCertWatcher
+// via the certwatcher's RegisterCallback. Every connection created by
+// dialGrpc shares this single pool.
+var grpcTLSCertPool sync.Pointer[x509.CertPool]
+
+func init() {
+	// Initialize grpcTLSCertPool to an empty x509.CertPool for safety.
+	// This prevents nil pointer issues if Load() is called before the
+	// watcher callback populates it with the actual certificate.
+	grpcTLSCertPool.Store(x509.NewCertPool())
+}
+
+// updateGRPCCertPool builds a pinned x509.CertPool from the leaf certificate
+// and stores it in the global grpcTLSCertPool. It is intended to be passed as
+// the callback argument to watchAndLoadCertificateWithCertWatcher for the gRPC
+// server setup.
+func updateGRPCCertPool(cert tls.Certificate) {
+	if len(cert.Certificate) == 0 {
+		return
+	}
+	leaf, err := x509.ParseCertificate(cert.Certificate[0])
+	if err != nil {
+		return
+	}
+	pool := x509.NewCertPool()
+	pool.AddCert(leaf)
+	grpcTLSCertPool.Store(pool)
+}
 
 func NewRunCommand() *cobra.Command {
 	cmd := &cobra.Command{
@@ -115,6 +152,8 @@ func NewRunCommand() *cobra.Command {
 	flags.String("grpc-tls-key", defaultConfig.GRPC.TLS.KeyPath, "the (absolute) file path of the TLS key that should be used for the TLS connection")
 
 	cmd.MarkFlagsRequiredTogether("grpc-tls-enabled", "grpc-tls-cert", "grpc-tls-key")
+
+	flags.Int("grpc-max-recv-msg-bytes", defaultConfig.GRPC.MaxRecvMsgBytes, "the maximum size of a received message in bytes")
 
 	flags.Bool("http-enabled", defaultConfig.HTTP.Enabled, "enable/disable the OpenFGA HTTP server")
 
@@ -506,7 +545,7 @@ func (s *ServerContext) authenticatorConfig(config *serverconfig.Config) (authn.
 
 func (s *ServerContext) buildServerOpts(ctx context.Context, config *serverconfig.Config, authenticator authn.Authenticator) ([]grpc.ServerOption, *grpc_prometheus.ServerMetrics, error) {
 	serverOpts := []grpc.ServerOption{
-		grpc.MaxRecvMsgSize(serverconfig.DefaultMaxRPCMessageSizeInBytes),
+		grpc.MaxRecvMsgSize(config.GRPC.MaxRecvMsgBytes),
 		grpc.ChainUnaryInterceptor(
 			[]grpc.UnaryServerInterceptor{
 				grpc_recovery.UnaryServerInterceptor( // panic middleware must be 1st in chain
@@ -591,7 +630,7 @@ func (s *ServerContext) buildServerOpts(ctx context.Context, config *serverconfi
 		if config.GRPC.TLS.CertPath == "" || config.GRPC.TLS.KeyPath == "" {
 			return nil, prometheusMetrics, errors.New("'grpc.tls.cert' and 'grpc.tls.key' configs must be set")
 		}
-		grpcGetCertificate, err := watchAndLoadCertificateWithCertWatcher(ctx, config.GRPC.TLS.CertPath, config.GRPC.TLS.KeyPath, s.Logger)
+		grpcGetCertificate, err := watchAndLoadCertificateWithCertWatcher(ctx, config.GRPC.TLS.CertPath, config.GRPC.TLS.KeyPath, s.Logger, updateGRPCCertPool)
 		if err != nil {
 			return nil, prometheusMetrics, err
 		}
@@ -609,15 +648,18 @@ func (s *ServerContext) buildServerOpts(ctx context.Context, config *serverconfi
 }
 
 func (s *ServerContext) dialLocalGrpc(network, address string, config *serverconfig.Config) *grpc.ClientConn {
-	const loopback = "127.0.0.1"
+	const loopback = "localhost"
 
 	var addr string
 
+	host := loopback
+
 	switch network {
-	case "unix":
+	case unix:
 		addr = "unix://" + address
 	default:
-		host, port, _ := net.SplitHostPort(address)
+		var port string
+		host, port, _ = net.SplitHostPort(address)
 		if host == "" {
 			host = loopback
 		}
@@ -635,18 +677,39 @@ func (s *ServerContext) dialLocalGrpc(network, address string, config *servercon
 		var creds credentials.TransportCredentials
 
 		switch network {
-		case "unix":
-			tlsConf := &tls.Config{
-				// connection is unix domain socket, host verification is unnecessary
+		case unix:
+			tlsConf := tls.Config{
+				// A secure connection is ensured through the filesystem permissions of the unix domain socket.
 				InsecureSkipVerify: true,
 			}
-			creds = credentials.NewTLS(tlsConf)
+			creds = credentials.NewTLS(&tlsConf)
 		default:
-			var err error
-			creds, err = credentials.NewClientTLSFromFile(config.GRPC.TLS.CertPath, "")
-			if err != nil {
-				s.Logger.Fatal("failed to load gRPC credentials", zap.Error(err))
+			tlsConf := tls.Config{
+				InsecureSkipVerify: true, //nolint:gosec // Hostname and cert are verified manually via VerifyPeerCertificate.
+				VerifyPeerCertificate: func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
+					if len(rawCerts) == 0 {
+						return errors.New("no peer certificates presented")
+					}
+
+					peerCert, err := x509.ParseCertificate(rawCerts[0])
+					if err != nil {
+						return fmt.Errorf("failed to parse peer certificate: %w", err)
+					}
+
+					// Verify the leaf certificate against the global pinned pool
+					// and check the hostname in a single call. The pool is
+					// updated atomically by the watcher callback on cert rotation.
+					_, err = peerCert.Verify(x509.VerifyOptions{
+						Roots:   grpcTLSCertPool.Load(),
+						DNSName: host,
+					})
+					if err != nil {
+						return fmt.Errorf("peer certificate verification failed: %w", err)
+					}
+					return nil
+				},
 			}
+			creds = credentials.NewTLS(&tlsConf)
 		}
 		dialOpts = append(dialOpts, grpc.WithTransportCredentials(creds))
 	} else {
@@ -711,7 +774,7 @@ func (s *ServerContext) runHTTPServer(ctx context.Context, config *serverconfig.
 		if config.HTTP.TLS.CertPath == "" || config.HTTP.TLS.KeyPath == "" {
 			s.Logger.Fatal("'http.tls.cert' and 'http.tls.key' configs must be set")
 		}
-		httpGetCertificate, err := watchAndLoadCertificateWithCertWatcher(ctx, config.HTTP.TLS.CertPath, config.HTTP.TLS.KeyPath, s.Logger)
+		httpGetCertificate, err := watchAndLoadCertificateWithCertWatcher(ctx, config.HTTP.TLS.CertPath, config.HTTP.TLS.KeyPath, s.Logger, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -822,12 +885,13 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 
 	tracerProviderCloser := s.telemetryConfig(config)
 
+	// Added temporarily to allow us to enable experimental features by default without allowing the user to disable them,
+	// eg for pipeline_list_objects.
+	config.Experimentals = append(serverconfig.DefaultConfig().Experimentals, config.Experimentals...)
+
 	if len(config.Experimentals) > 0 {
 		s.Logger.Info(fmt.Sprintf("🧪 experimental features enabled: %v", config.Experimentals))
 	}
-
-	var experimentals []string
-	experimentals = append(experimentals, config.Experimentals...)
 
 	datastore, continuationTokenSerializer, err := s.datastoreConfig(config)
 	if err != nil {
@@ -835,7 +899,6 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	}
 
 	authenticator, err := s.authenticatorConfig(config)
-
 	if err != nil {
 		return err
 	}
@@ -949,7 +1012,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		// The shared iterator watchdog timeout is set to config.RequestTimeout + 2 seconds
 		// to provide a small buffer for operations that might slightly exceed the request timeout.
 		server.WithSharedIteratorTTL(config.RequestTimeout+2*time.Second),
-		server.WithExperimentals(experimentals...),
+		server.WithExperimentals(config.Experimentals...),
 		server.WithAccessControlParams(config.AccessControl.Enabled, config.AccessControl.StoreID, config.AccessControl.ModelID, config.Authn.Method),
 		server.WithContext(ctx),
 	)
@@ -970,7 +1033,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	healthv1pb.RegisterHealthServer(grpcServer, healthServer)
 	reflection.Register(grpcServer)
 
-	lis, err := net.Listen("tcp", config.GRPC.Addr)
+	lis, err := net.Listen(tcp, config.GRPC.Addr)
 	if err != nil {
 		return fmt.Errorf("failed to listen: %w", err)
 	}
@@ -988,10 +1051,10 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	var udsDir string
 	var httpServer *http.Server
 	if config.HTTP.Enabled {
-		network, address := "tcp", config.GRPC.Addr
+		network, address := tcp, config.GRPC.Addr
 
 		switch runtime.GOOS {
-		case "windows":
+		case windows:
 		default:
 			// Path for Unix domain socket listener for the internal HTTP-to-gRPC proxy.
 			udsDir, err = os.MkdirTemp("", fmt.Sprintf("openfga-%d-*", os.Getpid()))
@@ -1009,7 +1072,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 
 			udsPath := filepath.Join(udsDir, "grpc.sock")
 
-			udsListener, err := net.Listen("unix", udsPath)
+			udsListener, err := net.Listen(unix, udsPath)
 			if err != nil {
 				// Early deletion of the directory so that it does not live for the lifetime
 				// of the server unnecessarily.
@@ -1021,7 +1084,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 
 			wrappedListener := &addrOverrideListener{
 				Listener: udsListener,
-				addr:     &net.UnixAddr{Name: udsPath, Net: "unix"},
+				addr:     &net.UnixAddr{Name: udsPath, Net: unix},
 			}
 
 			go func() {
@@ -1035,7 +1098,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 				}
 			}()
 
-			network, address = "unix", udsPath
+			network, address = unix, udsPath
 		}
 
 		grpc_runtime.DefaultContextTimeout = serverconfig.DefaultContextTimeout(config)
@@ -1127,7 +1190,7 @@ func (l *addrOverrideListener) Accept() (net.Conn, error) {
 	return &addrOverrideConn{Conn: conn, addr: l.addr}, nil
 }
 
-func watchAndLoadCertificateWithCertWatcher(ctx context.Context, certPath, keyPath string, logger logger.Logger) (func(*tls.ClientHelloInfo) (*tls.Certificate, error), error) {
+func watchAndLoadCertificateWithCertWatcher(ctx context.Context, certPath, keyPath string, logger logger.Logger, callback func(tls.Certificate)) (func(*tls.ClientHelloInfo) (*tls.Certificate, error), error) {
 	log.SetLogger(logr.New(nil))
 	// Create a certificate watcher
 	watcher, err := certwatcher.New(certPath, keyPath)
@@ -1135,10 +1198,12 @@ func watchAndLoadCertificateWithCertWatcher(ctx context.Context, certPath, keyPa
 		return nil, fmt.Errorf("failed to create certwatcher: %w", err)
 	}
 
-	// Load the initial certificate
-	if err := watcher.ReadCertificate(); err != nil {
-		return nil, fmt.Errorf("failed to load initial certificate: %w", err)
+	// If a callback is provided, register it with the watcher. The callback
+	// fires immediately with the current cert and again on every rotation.
+	if callback != nil {
+		watcher.RegisterCallback(callback)
 	}
+
 	logger.Info("Initial TLS certificate loaded.", zap.String("certPath", certPath), zap.String("keyPath", keyPath))
 
 	// Start watching for certificate changes

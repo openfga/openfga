@@ -159,8 +159,9 @@ type DatastoreConfig struct {
 
 // GRPCConfig defines OpenFGA server configurations for grpc server specific settings.
 type GRPCConfig struct {
-	Addr string
-	TLS  *TLSConfig
+	Addr            string
+	TLS             *TLSConfig
+	MaxRecvMsgBytes int
 }
 
 // HTTPConfig defines OpenFGA server configurations for HTTP server specific settings.
@@ -446,6 +447,10 @@ func (cfg *Config) VerifyServerSettings() error {
 		return err
 	}
 
+	if cfg.GRPC.MaxRecvMsgBytes <= 0 {
+		return fmt.Errorf("config 'grpc.maxRecvMsgBytes' must be greater than 0")
+	}
+
 	if cfg.MaxConcurrentReadsForListUsers == 0 {
 		return fmt.Errorf("config 'maxConcurrentReadsForListUsers' cannot be 0")
 	}
@@ -714,7 +719,7 @@ func DefaultConfig() *Config {
 		ChangelogHorizonOffset:                    DefaultChangelogHorizonOffset,
 		ResolveNodeLimit:                          DefaultResolveNodeLimit,
 		ResolveNodeBreadthLimit:                   DefaultResolveNodeBreadthLimit,
-		Experimentals:                             []string{},
+		Experimentals:                             []string{ExperimentalPipelineListObjects},
 		AccessControl:                             AccessControlConfig{Enabled: false, StoreID: "", ModelID: ""},
 		ListObjectsDeadline:                       DefaultListObjectsDeadline,
 		ListObjectsMaxResults:                     DefaultListObjectsMaxResults,
@@ -734,8 +739,9 @@ func DefaultConfig() *Config {
 			MaxOpenConns:           30,
 		},
 		GRPC: GRPCConfig{
-			Addr: "0.0.0.0:8081",
-			TLS:  &TLSConfig{Enabled: false},
+			Addr:            "0.0.0.0:8081",
+			TLS:             &TLSConfig{Enabled: false},
+			MaxRecvMsgBytes: DefaultMaxRPCMessageSizeInBytes,
 		},
 		HTTP: HTTPConfig{
 			Enabled:            true,

@@ -14,12 +14,12 @@ import (
 
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/graph"
+	"github.com/openfga/openfga/internal/telemetry"
 	"github.com/openfga/openfga/internal/utils/apimethod"
 	"github.com/openfga/openfga/pkg/middleware/validator"
 	"github.com/openfga/openfga/pkg/server/commands"
 	"github.com/openfga/openfga/pkg/server/config"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
-	"github.com/openfga/openfga/pkg/telemetry"
 )
 
 func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckRequest) (*openfgav1.BatchCheckResponse, error) {
@@ -81,7 +81,6 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 		Consistency:          req.GetConsistency(),
 		StoreID:              storeID,
 	})
-
 	if err != nil {
 		telemetry.TraceError(span, err)
 		var batchValidationError *commands.BatchCheckValidationError
@@ -132,7 +131,7 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 	span.SetAttributes(attribute.Int(duplicateChecks, metadata.DuplicateCheckCount))
 	grpc_ctxtags.Extract(ctx).Set(duplicateChecks, metadata.DuplicateCheckCount)
 
-	var batchResult = map[string]*openfgav1.BatchCheckSingleResult{}
+	batchResult := map[string]*openfgav1.BatchCheckSingleResult{}
 	for correlationID, outcome := range result {
 		batchResult[string(correlationID)] = transformCheckResultToProto(outcome)
 		s.emitCheckDurationMetric(outcome.CheckResponse.GetResolutionMetadata(), methodName)

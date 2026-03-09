@@ -148,9 +148,9 @@
             "type": "array",
             "items": {
                 "type": "string",
-                "enum": ["enable-check-optimizations", "enable-list-objects-optimizations", "enable-access-control", "datastore_throttling"]
+                "enum": ["enable-check-optimizations", "enable-list-objects-optimizations", "enable-access-control", "datastore_throttling", "pipeline_list_objects"]
             },
-            "default": [],
+            "default": ["pipeline_list_objects"],
             "x-env-variable": "OPENFGA_EXPERIMENTALS"
         },
         "accessControl": {
@@ -351,6 +351,13 @@
                     "type": "string",
                     "default": "0.0.0.0:8081",
                     "x-env-variable": "OPENFGA_GRPC_ADDR"
+                },
+                "maxRecvMsgBytes": {
+                    "description": "The maximum size, in bytes, of a received gRPC message.",
+                    "type": "integer",
+                    "default": 616448,
+                    "minimum": 1,
+                    "x-env-variable": "OPENFGA_GRPC_MAX_RECV_MSG_BYTES"
                 },
                 "tls": {
                     "type": "object",
