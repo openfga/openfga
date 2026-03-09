@@ -533,38 +533,27 @@ Per the AuthZEN specification, pagination is optional: "a PDP MAY support pagina
 
 ## PDP Metadata Discovery
 
-The `/.well-known/authzen-configuration/{store_id}` endpoint provides store-scoped PDP discovery per [AuthZEN spec section 13](https://github.com/openid/authzen/blob/main/api/authorization-api-1_1_02.md#13-pdp-discovery).
+The `/.well-known/authzen-configuration/{store_id}` endpoint provides store-scoped PDP discovery per [AuthZEN spec](https://openid.net/specs/authorization-api-1_0.html).
 
 Following the AuthZEN spec's multi-tenant pattern (example: `https://pdp.example.com/.well-known/authzen-configuration/tenant1`), OpenFGA provides a per-store discovery endpoint that returns absolute endpoint URLs specific to that store.
 
-```json
+```
 GET /.well-known/authzen-configuration/01ARZ3NDEKTSV4RRFFQ69G5FAV
 ```
 
 Response:
 ```json
 {
-  "policy_decision_point": {
-    "name": "OpenFGA",
-    "version": "1.8.0",
-    "description": "OpenFGA is a high-performance authorization/permission engine"
-  },
-  "access_endpoints": {
-    "evaluation": "/stores/01ARZ3NDEKTSV4RRFFQ69G5FAV/access/v1/evaluation",
-    "evaluations": "/stores/01ARZ3NDEKTSV4RRFFQ69G5FAV/access/v1/evaluations",
-    "subject_search": "/stores/01ARZ3NDEKTSV4RRFFQ69G5FAV/access/v1/search/subject",
-    "resource_search": "/stores/01ARZ3NDEKTSV4RRFFQ69G5FAV/access/v1/search/resource",
-    "action_search": "/stores/01ARZ3NDEKTSV4RRFFQ69G5FAV/access/v1/search/action"
-  },
-  "capabilities": [
-    "evaluation",
-    "evaluations",
-    "subject_search",
-    "resource_search",
-    "action_search"
-  ]
+  "policy_decision_point": "https://example.com/stores/01ARZ3NDEKTSV4RRFFQ69G5FAV",
+  "access_evaluation_endpoint": "https://example.com/stores/01ARZ3NDEKTSV4RRFFQ69G5FAV/access/v1/evaluation",
+  "access_evaluations_endpoint": "https://example.com/stores/01ARZ3NDEKTSV4RRFFQ69G5FAV/access/v1/evaluations",
+  "search_subject_endpoint": "https://example.com/stores/01ARZ3NDEKTSV4RRFFQ69G5FAV/access/v1/search/subject",
+  "search_resource_endpoint": "https://example.com/stores/01ARZ3NDEKTSV4RRFFQ69G5FAV/access/v1/search/resource",
+  "search_action_endpoint": "https://example.com/stores/01ARZ3NDEKTSV4RRFFQ69G5FAV/access/v1/search/action"
 }
 ```
 
-**Note:** The endpoint URLs are absolute paths specific to the requested store, meeting the AuthZEN spec requirement for directly-usable URLs without templating.
+Per the spec, `policy_decision_point` and `access_evaluation_endpoint` are required. All other fields are optional.
+
+**Note:** The endpoint URLs are absolute URLs specific to the requested store, meeting the AuthZEN spec requirement for directly-usable URLs without templating.
 

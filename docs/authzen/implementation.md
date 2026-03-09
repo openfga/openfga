@@ -20,17 +20,15 @@ The AuthZen layer is a thin translation layer on top of existing OpenFGA APIs. I
 
 ```
 pkg/server/
-  authzen.go                  # All AuthZen endpoint handlers (Evaluation, Evaluations, Search)
-  authzen_configuration.go    # GetConfiguration handler
-  authzen_test.go             # Server-level tests for all handlers
-  commands/
-    authzen_utils.go          # MergePropertiesToContext helper + provider interfaces
-    authzen_utils_test.go     # Tests for property merging
+  authzen.go                    # All AuthZen handlers, helpers, and property merging
+  authzen_configuration.go      # GetConfiguration handler
+  authzen_test.go               # Server-level tests for all handlers
+  authzen_utils_test.go         # Tests for property merging
 tests/authzen/
-    authzen_test.go           # Shared test harness (store/model/tuple helpers)
-    evaluation_test.go        # Integration tests for Evaluation
-    evaluations_test.go       # Integration tests for Evaluations (batch + semantics)
-    search_test.go            # Integration tests for all Search endpoints
+    authzen_test.go             # Shared test harness (store/model/tuple helpers)
+    evaluation_test.go          # Integration tests for Evaluation
+    evaluations_test.go         # Integration tests for Evaluations (batch + semantics)
+    search_test.go              # Integration tests for all Search endpoints
     store_id_validation_test.go # Store ID validation across endpoints
 ```
 
@@ -86,7 +84,7 @@ Type and ID are concatenated with `:` to form the OpenFGA `user` and `object` st
 
 AuthZen allows `properties` on Subject, Resource, and Action. OpenFGA has no direct equivalent — it only has a single `context` struct for ABAC conditions.
 
-`MergePropertiesToContext()` in `commands/authzen_utils.go` merges properties into the OpenFGA context with namespaced prefixes:
+`mergePropertiesToContext()` in `authzen.go` merges properties into the OpenFGA context with namespaced prefixes:
 
 | Source | Prefix | Example |
 |---|---|---|
@@ -99,7 +97,7 @@ Precedence (lowest to highest): subject properties, resource properties, action 
 
 Underscore is used as separator because OpenFGA does not allow condition parameters with `.` in their names.
 
-Both `SubjectPropertiesProvider` and `ResourcePropertiesProvider` interfaces abstract over the full entity types and their filter variants (e.g., `Subject` vs `SubjectFilter`, `Resource` vs `ResourceFilter`), so the same merge function works for all endpoints.
+The `propertiesProvider` interface abstracts over all entity types and their filter variants (`Subject`, `SubjectFilter`, `Resource`, `ResourceFilter`), so the same merge function works for all endpoints.
 
 ## Endpoint Implementations
 
@@ -221,7 +219,7 @@ The endpoint is scoped per store: `/.well-known/authzen-configuration/{store_id}
 
 ## Shared Helpers
 
-All helpers are defined in `authzen.go` except `MergePropertiesToContext` which lives in `commands/authzen_utils.go` since it depends on the provider interfaces.
+All helpers are defined in `authzen.go`:
 
 | Helper | Purpose |
 |---|---|
@@ -229,7 +227,7 @@ All helpers are defined in `authzen.go` except `MergePropertiesToContext` which 
 | `grpcErrorToHTTPStatus()` | Maps gRPC error codes (standard and OpenFGA custom) to HTTP status codes |
 | `errorContext()` | Builds the `{error: {status, message}}` JSON struct for error responses |
 | `getAuthorizationModelIDFromHeader()` | Extracts and validates the model ID from gRPC metadata |
-| `MergePropertiesToContext()` | Merges subject/resource/action properties into the OpenFGA context with prefixes |
+| `mergePropertiesToContext()` | Merges subject/resource/action properties into the OpenFGA context with prefixes |
 
 ## Error Context
 
