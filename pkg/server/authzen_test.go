@@ -341,6 +341,83 @@ func TestEvaluations(t *testing.T) {
 		require.Equal(t, codes.InvalidArgument, st.Code())
 	})
 
+	t.Run("nil_evaluations_falls_back_to_single_evaluation", func(t *testing.T) {
+		s := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithExperimentals(serverconfig.ExperimentalAuthZen),
+		)
+		t.Cleanup(s.Close)
+
+		createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
+		require.NoError(t, err)
+		storeID := createStoreResp.GetId()
+
+		writeModel(t, s, storeID, simpleModel("reader"))
+
+		_, err = s.Write(context.Background(), &openfgav1.WriteRequest{
+			StoreId: storeID,
+			Writes: &openfgav1.WriteRequestWrites{
+				TupleKeys: []*openfgav1.TupleKey{
+					{Object: "document:doc1", Relation: "reader", User: "user:alice"},
+				},
+			},
+		})
+		require.NoError(t, err)
+
+		// Nil evaluations should fall back to a single Evaluation using top-level fields
+		req := &authzenv1.EvaluationsRequest{
+			StoreId:     storeID,
+			Subject:     &authzenv1.Subject{Type: "user", Id: "alice"},
+			Resource:    &authzenv1.Resource{Type: "document", Id: "doc1"},
+			Action:      &authzenv1.Action{Name: "reader"},
+			Evaluations: nil,
+		}
+
+		resp, err := s.Evaluations(context.Background(), req)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.Len(t, resp.GetEvaluations(), 1)
+		require.True(t, resp.GetEvaluations()[0].GetDecision())
+	})
+
+	t.Run("invalid_semantic_returns_error", func(t *testing.T) {
+		s := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithExperimentals(serverconfig.ExperimentalAuthZen),
+		)
+		t.Cleanup(s.Close)
+
+		createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
+		require.NoError(t, err)
+		storeID := createStoreResp.GetId()
+
+		writeModel(t, s, storeID, simpleModel("reader"))
+
+		// Use an invalid enum value (999)
+		req := &authzenv1.EvaluationsRequest{
+			StoreId: storeID,
+			Evaluations: []*authzenv1.EvaluationsItemRequest{
+				{
+					Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
+					Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
+					Action:   &authzenv1.Action{Name: "reader"},
+				},
+			},
+			Options: &authzenv1.EvaluationsOptions{
+				EvaluationsSemantic: authzenv1.EvaluationsSemantic(999),
+			},
+		}
+
+		resp, err := s.Evaluations(context.Background(), req)
+		require.Error(t, err)
+		require.Nil(t, resp)
+
+		st, ok := status.FromError(err)
+		require.True(t, ok)
+		require.Equal(t, codes.InvalidArgument, st.Code())
+		require.Contains(t, st.Message(), "EvaluationsSemantic")
+	})
+
 	t.Run("batch_evaluation_with_default_semantic", func(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
@@ -693,6 +770,161 @@ func TestEvaluations(t *testing.T) {
 		require.Nil(t, getContextError(resp.GetEvaluations()[0].GetContext()))
 	})
 
+	t.Run("short_circuit_buildcheck_error_deny_on_first_deny_breaks", func(t *testing.T) {
+		s := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithExperimentals(serverconfig.ExperimentalAuthZen),
+		)
+		t.Cleanup(s.Close)
+
+		createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
+		require.NoError(t, err)
+		storeID := createStoreResp.GetId()
+
+		writeModel(t, s, storeID, simpleModel("reader"))
+
+		// First item has nil subject → buildCheckRequest error → break (deny_on_first_deny)
+		// Second item should never be evaluated
+		req := &authzenv1.EvaluationsRequest{
+			StoreId: storeID,
+			Evaluations: []*authzenv1.EvaluationsItemRequest{
+				{
+					Subject:  nil, // triggers buildCheckRequest error
+					Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
+					Action:   &authzenv1.Action{Name: "reader"},
+				},
+				{
+					Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
+					Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
+					Action:   &authzenv1.Action{Name: "reader"},
+				},
+			},
+			Options: &authzenv1.EvaluationsOptions{
+				EvaluationsSemantic: authzenv1.EvaluationsSemantic_deny_on_first_deny,
+			},
+		}
+
+		resp, err := s.Evaluations(context.Background(), req)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+
+		// Should have 1 response: the error triggers break
+		require.Len(t, resp.GetEvaluations(), 1)
+		require.False(t, resp.GetEvaluations()[0].GetDecision())
+		require.NotNil(t, getContextError(resp.GetEvaluations()[0].GetContext()))
+		require.Equal(t, uint32(400), getContextErrorStatus(resp.GetEvaluations()[0].GetContext()))
+	})
+
+	t.Run("short_circuit_buildcheck_error_permit_on_first_permit_continues", func(t *testing.T) {
+		s := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithExperimentals(serverconfig.ExperimentalAuthZen),
+		)
+		t.Cleanup(s.Close)
+
+		createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
+		require.NoError(t, err)
+		storeID := createStoreResp.GetId()
+
+		writeModel(t, s, storeID, simpleModel("reader"))
+
+		_, err = s.Write(context.Background(), &openfgav1.WriteRequest{
+			StoreId: storeID,
+			Writes: &openfgav1.WriteRequestWrites{
+				TupleKeys: []*openfgav1.TupleKey{
+					{Object: "document:doc1", Relation: "reader", User: "user:alice"},
+				},
+			},
+		})
+		require.NoError(t, err)
+
+		// First item has nil subject → buildCheckRequest error (continue, not break for permit_on_first_permit)
+		// Second item succeeds with permit → break
+		req := &authzenv1.EvaluationsRequest{
+			StoreId: storeID,
+			Evaluations: []*authzenv1.EvaluationsItemRequest{
+				{
+					Subject:  nil, // triggers buildCheckRequest error → continue
+					Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
+					Action:   &authzenv1.Action{Name: "reader"},
+				},
+				{
+					Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
+					Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
+					Action:   &authzenv1.Action{Name: "reader"},
+				},
+			},
+			Options: &authzenv1.EvaluationsOptions{
+				EvaluationsSemantic: authzenv1.EvaluationsSemantic_permit_on_first_permit,
+			},
+		}
+
+		resp, err := s.Evaluations(context.Background(), req)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+
+		// Should have 2 responses: error (continue) + permit (break)
+		require.Len(t, resp.GetEvaluations(), 2)
+		require.False(t, resp.GetEvaluations()[0].GetDecision())
+		require.NotNil(t, getContextError(resp.GetEvaluations()[0].GetContext()))
+		require.True(t, resp.GetEvaluations()[1].GetDecision())
+	})
+
+	t.Run("short_circuit_check_error_permit_on_first_permit_continues", func(t *testing.T) {
+		s := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithExperimentals(serverconfig.ExperimentalAuthZen),
+		)
+		t.Cleanup(s.Close)
+
+		createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
+		require.NoError(t, err)
+		storeID := createStoreResp.GetId()
+
+		writeModel(t, s, storeID, simpleModel("reader"))
+
+		_, err = s.Write(context.Background(), &openfgav1.WriteRequest{
+			StoreId: storeID,
+			Writes: &openfgav1.WriteRequestWrites{
+				TupleKeys: []*openfgav1.TupleKey{
+					{Object: "document:doc1", Relation: "reader", User: "user:alice"},
+				},
+			},
+		})
+		require.NoError(t, err)
+
+		// First item has invalid type → Check returns error → continue
+		// Second item succeeds with permit → break
+		req := &authzenv1.EvaluationsRequest{
+			StoreId: storeID,
+			Evaluations: []*authzenv1.EvaluationsItemRequest{
+				{
+					Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
+					Resource: &authzenv1.Resource{Type: "unknown_type", Id: "resource1"},
+					Action:   &authzenv1.Action{Name: "reader"},
+				},
+				{
+					Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
+					Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
+					Action:   &authzenv1.Action{Name: "reader"},
+				},
+			},
+			Options: &authzenv1.EvaluationsOptions{
+				EvaluationsSemantic: authzenv1.EvaluationsSemantic_permit_on_first_permit,
+			},
+		}
+
+		resp, err := s.Evaluations(context.Background(), req)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+
+		// Should have 2 responses: error (continue) + permit (break)
+		require.Len(t, resp.GetEvaluations(), 2)
+		require.False(t, resp.GetEvaluations()[0].GetDecision())
+		require.NotNil(t, getContextError(resp.GetEvaluations()[0].GetContext()))
+		require.True(t, resp.GetEvaluations()[1].GetDecision())
+	})
+
 	t.Run("deny_on_first_deny_returns_results_up_to_deny", func(t *testing.T) {
 		// Per AuthZEN spec: deny_on_first_deny returns all results up to and including first deny
 		// Example from spec: [doc1=true, doc2=false, doc3=true] -> returns [true, false]
@@ -743,6 +975,101 @@ func TestEvaluations(t *testing.T) {
 		require.Len(t, resp.GetEvaluations(), 2)
 		require.True(t, resp.GetEvaluations()[0].GetDecision())  // doc1 = permit
 		require.False(t, resp.GetEvaluations()[1].GetDecision()) // doc2 = deny
+	})
+
+	t.Run("execute_all_invalid_item_returns_error", func(t *testing.T) {
+		s := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithExperimentals(serverconfig.ExperimentalAuthZen),
+		)
+		t.Cleanup(s.Close)
+
+		createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
+		require.NoError(t, err)
+		storeID := createStoreResp.GetId()
+
+		writeModel(t, s, storeID, simpleModel("reader"))
+
+		// One valid item + one with nil subject (triggers buildCheckRequest error in evaluateAll)
+		req := &authzenv1.EvaluationsRequest{
+			StoreId: storeID,
+			Evaluations: []*authzenv1.EvaluationsItemRequest{
+				{
+					Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
+					Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
+					Action:   &authzenv1.Action{Name: "reader"},
+				},
+				{
+					Subject:  nil, // missing subject
+					Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
+					Action:   &authzenv1.Action{Name: "reader"},
+				},
+			},
+		}
+
+		resp, err := s.Evaluations(context.Background(), req)
+		require.Error(t, err)
+		require.Nil(t, resp)
+
+		st, ok := status.FromError(err)
+		require.True(t, ok)
+		require.Equal(t, codes.InvalidArgument, st.Code())
+		require.Contains(t, st.Message(), "evaluation 1")
+	})
+
+	t.Run("execute_all_batch_error_result_returns_error_context", func(t *testing.T) {
+		s := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithExperimentals(serverconfig.ExperimentalAuthZen),
+		)
+		t.Cleanup(s.Close)
+
+		createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
+		require.NoError(t, err)
+		storeID := createStoreResp.GetId()
+
+		writeModel(t, s, storeID, simpleModel("reader"))
+
+		// Write tuple for alice
+		_, err = s.Write(context.Background(), &openfgav1.WriteRequest{
+			StoreId: storeID,
+			Writes: &openfgav1.WriteRequestWrites{
+				TupleKeys: []*openfgav1.TupleKey{
+					{Object: "document:doc1", Relation: "reader", User: "user:alice"},
+				},
+			},
+		})
+		require.NoError(t, err)
+
+		// Mix valid and invalid type evaluations — invalid type triggers a per-item
+		// error in BatchCheck, which evaluateAll maps to an error context response.
+		req := &authzenv1.EvaluationsRequest{
+			StoreId: storeID,
+			Evaluations: []*authzenv1.EvaluationsItemRequest{
+				{
+					Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
+					Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
+					Action:   &authzenv1.Action{Name: "reader"},
+				},
+				{
+					Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
+					Resource: &authzenv1.Resource{Type: "unknown_type", Id: "resource1"},
+					Action:   &authzenv1.Action{Name: "reader"},
+				},
+			},
+		}
+
+		resp, err := s.Evaluations(context.Background(), req)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.Len(t, resp.GetEvaluations(), 2)
+
+		// First should succeed
+		require.True(t, resp.GetEvaluations()[0].GetDecision())
+
+		// Second should have an error context (invalid type)
+		require.False(t, resp.GetEvaluations()[1].GetDecision())
+		require.NotNil(t, getContextError(resp.GetEvaluations()[1].GetContext()))
 	})
 
 	t.Run("permit_on_first_permit_returns_results_up_to_permit", func(t *testing.T) {
@@ -969,6 +1296,70 @@ func TestSubjectSearch(t *testing.T) {
 
 		// The JSON should NOT contain "page" at all
 		require.NotContains(t, jsonStr, "page", "JSON response should not contain 'page' field when pagination is not supported")
+	})
+
+	t.Run("returns_wildcard_subjects", func(t *testing.T) {
+		s := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithExperimentals(serverconfig.ExperimentalAuthZen),
+		)
+		t.Cleanup(s.Close)
+
+		createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
+		require.NoError(t, err)
+		storeID := createStoreResp.GetId()
+
+		// Model with wildcard support
+		modelID := writeModel(t, s, storeID, []*openfgav1.TypeDefinition{
+			{Type: "user"},
+			{
+				Type: "document",
+				Relations: map[string]*openfgav1.Userset{
+					"viewer": {Userset: &openfgav1.Userset_This{}},
+				},
+				Metadata: &openfgav1.Metadata{
+					Relations: map[string]*openfgav1.RelationMetadata{
+						"viewer": {
+							DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+								{Type: "user"},
+								{Type: "user", RelationOrWildcard: &openfgav1.RelationReference_Wildcard{Wildcard: &openfgav1.Wildcard{}}},
+							},
+						},
+					},
+				},
+			},
+		})
+
+		// Write wildcard tuple: all users can view doc1
+		_, err = s.Write(context.Background(), &openfgav1.WriteRequest{
+			StoreId: storeID,
+			Writes: &openfgav1.WriteRequestWrites{
+				TupleKeys: []*openfgav1.TupleKey{
+					{Object: "document:doc1", Relation: "viewer", User: "user:*"},
+				},
+			},
+		})
+		require.NoError(t, err)
+
+		md := metadata.New(map[string]string{
+			strings.ToLower(AuthorizationModelIDHeader): modelID,
+		})
+		ctx := metadata.NewIncomingContext(context.Background(), md)
+
+		resp, err := s.SubjectSearch(ctx, &authzenv1.SubjectSearchRequest{
+			StoreId:  storeID,
+			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
+			Action:   &authzenv1.Action{Name: "viewer"},
+			Subject:  &authzenv1.SubjectFilter{Type: "user"},
+		})
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+
+		// Should contain wildcard subject
+		subjects := resp.GetResults()
+		require.Len(t, subjects, 1)
+		require.Equal(t, "user", subjects[0].GetType())
+		require.Equal(t, "*", subjects[0].GetId())
 	})
 }
 
@@ -1226,6 +1617,40 @@ func TestActionSearch(t *testing.T) {
 			}
 		}
 		require.True(t, foundReader, "Expected to find 'reader' action in results")
+	})
+
+	t.Run("invalid_resource_type_returns_error", func(t *testing.T) {
+		s := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithExperimentals(serverconfig.ExperimentalAuthZen),
+		)
+		t.Cleanup(s.Close)
+
+		createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
+		require.NoError(t, err)
+		storeID := createStoreResp.GetId()
+
+		modelID := writeModel(t, s, storeID, simpleModel("reader"))
+
+		md := metadata.New(map[string]string{
+			strings.ToLower(AuthorizationModelIDHeader): modelID,
+		})
+		ctx := metadata.NewIncomingContext(context.Background(), md)
+
+		// Resource type not in model → GetRelations error
+		req := &authzenv1.ActionSearchRequest{
+			StoreId:  storeID,
+			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
+			Resource: &authzenv1.Resource{Type: "unknown_type", Id: "doc1"},
+		}
+
+		resp, err := s.ActionSearch(ctx, req)
+		require.Error(t, err)
+		require.Nil(t, resp)
+
+		st, ok := status.FromError(err)
+		require.True(t, ok)
+		require.Equal(t, codes.InvalidArgument, st.Code())
 	})
 }
 

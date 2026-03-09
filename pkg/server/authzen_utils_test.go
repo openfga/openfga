@@ -4,10 +4,78 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	authzenv1 "github.com/openfga/api/proto/authzen/v1"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 )
+
+func TestBuildCheckRequest(t *testing.T) {
+	t.Run("returns_error_when_subject_is_nil", func(t *testing.T) {
+		_, err := buildCheckRequest("store1", "model1",
+			nil,
+			&authzenv1.Resource{Type: "document", Id: "doc1"},
+			&authzenv1.Action{Name: "read"},
+			nil,
+		)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "missing subject")
+	})
+
+	t.Run("returns_error_when_resource_is_nil", func(t *testing.T) {
+		_, err := buildCheckRequest("store1", "model1",
+			&authzenv1.Subject{Type: "user", Id: "alice"},
+			nil,
+			&authzenv1.Action{Name: "read"},
+			nil,
+		)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "missing resource")
+	})
+
+	t.Run("returns_error_when_action_is_nil", func(t *testing.T) {
+		_, err := buildCheckRequest("store1", "model1",
+			&authzenv1.Subject{Type: "user", Id: "alice"},
+			&authzenv1.Resource{Type: "document", Id: "doc1"},
+			nil,
+			nil,
+		)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "missing action")
+	})
+
+	t.Run("builds_valid_request", func(t *testing.T) {
+		req, err := buildCheckRequest("store1", "model1",
+			&authzenv1.Subject{Type: "user", Id: "alice"},
+			&authzenv1.Resource{Type: "document", Id: "doc1"},
+			&authzenv1.Action{Name: "reader"},
+			nil,
+		)
+		require.NoError(t, err)
+		require.Equal(t, "store1", req.GetStoreId())
+		require.Equal(t, "model1", req.GetAuthorizationModelId())
+		require.Equal(t, "user:alice", req.GetTupleKey().GetUser())
+		require.Equal(t, "document:doc1", req.GetTupleKey().GetObject())
+		require.Equal(t, "reader", req.GetTupleKey().GetRelation())
+	})
+}
+
+func TestGrpcErrorToHTTPStatus(t *testing.T) {
+	t.Run("standard_grpc_code", func(t *testing.T) {
+		err := status.Error(codes.NotFound, "not found")
+		httpStatus := grpcErrorToHTTPStatus(err)
+		require.Equal(t, uint32(404), httpStatus)
+	})
+
+	t.Run("openfga_encoded_error", func(t *testing.T) {
+		// OpenFGA error codes are >= 17 (above standard gRPC range)
+		err := status.Error(codes.Code(openfgav1.ErrorCode_validation_error), "validation failed")
+		httpStatus := grpcErrorToHTTPStatus(err)
+		require.Equal(t, uint32(400), httpStatus)
+	})
+}
 
 func TestMergePropertiesToContext(t *testing.T) {
 	t.Run("returns_nil_when_all_inputs_are_nil", func(t *testing.T) {
