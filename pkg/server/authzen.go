@@ -252,7 +252,7 @@ func (s *Server) Evaluations(ctx context.Context, req *authzenv1.EvaluationsRequ
 
 	if semantic == authzenv1.EvaluationsSemantic_deny_on_first_deny ||
 		semantic == authzenv1.EvaluationsSemantic_permit_on_first_permit {
-		return s.evaluateWithShortCircuit(ctx, req, authorizationModelID, semantic)
+		return s.evaluateWithShortCircuit(ctx, req, authorizationModelID, semantic), nil
 	}
 
 	return s.evaluateAll(ctx, req, authorizationModelID)
@@ -368,7 +368,7 @@ func (s *Server) evaluateWithShortCircuit(
 	req *authzenv1.EvaluationsRequest,
 	authorizationModelID string,
 	semantic authzenv1.EvaluationsSemantic,
-) (*authzenv1.EvaluationsResponse, error) {
+) *authzenv1.EvaluationsResponse {
 	responses := make([]*authzenv1.EvaluationResponse, 0, len(req.GetEvaluations()))
 
 	topSubject := req.GetSubject()
@@ -417,7 +417,7 @@ func (s *Server) evaluateWithShortCircuit(
 		}
 	}
 
-	return &authzenv1.EvaluationsResponse{Evaluations: responses}, nil
+	return &authzenv1.EvaluationsResponse{Evaluations: responses}
 }
 
 // SubjectSearch returns subjects that have access to the specified resource.
