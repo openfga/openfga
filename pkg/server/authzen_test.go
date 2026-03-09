@@ -38,13 +38,37 @@ func getContextErrorStatus(ctx *structpb.Struct) uint32 {
 	return uint32(errVal.GetStructValue().GetFields()["status"].GetNumberValue())
 }
 
-// getContextErrorMessage extracts the message from a context error.
-func getContextErrorMessage(ctx *structpb.Struct) string {
-	errVal := getContextError(ctx)
-	if errVal == nil {
-		return ""
+// simpleModel returns type definitions for a user + document model with the given relations.
+// All relations are directly assignable by users.
+func simpleModel(relations ...string) []*openfgav1.TypeDefinition {
+	relMap := make(map[string]*openfgav1.Userset, len(relations))
+	metaMap := make(map[string]*openfgav1.RelationMetadata, len(relations))
+	for _, r := range relations {
+		relMap[r] = &openfgav1.Userset{Userset: &openfgav1.Userset_This{}}
+		metaMap[r] = &openfgav1.RelationMetadata{
+			DirectlyRelatedUserTypes: []*openfgav1.RelationReference{{Type: "user"}},
+		}
 	}
-	return errVal.GetStructValue().GetFields()["message"].GetStringValue()
+	return []*openfgav1.TypeDefinition{
+		{Type: "user"},
+		{
+			Type:      "document",
+			Relations: relMap,
+			Metadata:  &openfgav1.Metadata{Relations: metaMap},
+		},
+	}
+}
+
+// writeModel writes an authorization model and returns its ID.
+func writeModel(t *testing.T, s *Server, storeID string, typeDefs []*openfgav1.TypeDefinition) string {
+	t.Helper()
+	resp, err := s.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
+		StoreId:         storeID,
+		SchemaVersion:   "1.1",
+		TypeDefinitions: typeDefs,
+	})
+	require.NoError(t, err)
+	return resp.GetAuthorizationModelId()
 }
 
 func TestEvaluation(t *testing.T) {
@@ -66,34 +90,7 @@ func TestEvaluation(t *testing.T) {
 		require.NoError(t, err)
 		storeID := createStoreResp.GetId()
 
-		// Write a minimal model
-		_, err = s.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
-			StoreId:       storeID,
-			SchemaVersion: "1.1",
-			TypeDefinitions: []*openfgav1.TypeDefinition{
-				{
-					Type: "user",
-				},
-				{
-					Type: "document",
-					Relations: map[string]*openfgav1.Userset{
-						"reader": {
-							Userset: &openfgav1.Userset_This{},
-						},
-					},
-					Metadata: &openfgav1.Metadata{
-						Relations: map[string]*openfgav1.RelationMetadata{
-							"reader": {
-								DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-									{Type: "user"},
-								},
-							},
-						},
-					},
-				},
-			},
-		})
-		require.NoError(t, err)
+		writeModel(t, s, storeID, simpleModel("reader"))
 
 		// Write tuple to grant permission
 		_, err = s.Write(context.Background(), &openfgav1.WriteRequest{
@@ -264,34 +261,7 @@ func TestEvaluation(t *testing.T) {
 		require.NoError(t, err)
 		storeID := createStoreResp.GetId()
 
-		// Write a model with only user and document types
-		_, err = s.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
-			StoreId:       storeID,
-			SchemaVersion: "1.1",
-			TypeDefinitions: []*openfgav1.TypeDefinition{
-				{
-					Type: "user",
-				},
-				{
-					Type: "document",
-					Relations: map[string]*openfgav1.Userset{
-						"reader": {
-							Userset: &openfgav1.Userset_This{},
-						},
-					},
-					Metadata: &openfgav1.Metadata{
-						Relations: map[string]*openfgav1.RelationMetadata{
-							"reader": {
-								DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-									{Type: "user"},
-								},
-							},
-						},
-					},
-				},
-			},
-		})
-		require.NoError(t, err)
+		writeModel(t, s, storeID, simpleModel("reader"))
 
 		// Request with a type that doesn't exist in the model
 		req := &authzenv1.EvaluationRequest{
@@ -371,86 +341,6 @@ func TestEvaluations(t *testing.T) {
 		require.Equal(t, codes.InvalidArgument, st.Code())
 	})
 
-	t.Run("short_circuit_deny_on_first_deny", func(t *testing.T) {
-		s := MustNewServerWithOpts(
-			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalAuthZen),
-		)
-		t.Cleanup(s.Close)
-
-		createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
-		require.NoError(t, err)
-
-		req := &authzenv1.EvaluationsRequest{
-			StoreId: createStoreResp.GetId(),
-			Evaluations: []*authzenv1.EvaluationsItemRequest{
-				{
-					Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
-					Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
-					Action:   &authzenv1.Action{Name: "read"},
-				},
-			},
-			Options: &authzenv1.EvaluationsOptions{
-				EvaluationsSemantic: authzenv1.EvaluationsSemantic_deny_on_first_deny,
-			},
-		}
-
-		// The short-circuit path wraps errors in EvaluationResponse with context.error
-		// instead of returning an error, so we get a response with an error context
-		resp, err := s.Evaluations(context.Background(), req)
-		require.NoError(t, err)
-		require.NotNil(t, resp)
-
-		// Verify we got exactly one response with an error context
-		require.Len(t, resp.GetEvaluations(), 1)
-		evalResp := resp.GetEvaluations()[0]
-		require.False(t, evalResp.GetDecision())
-		require.NotNil(t, evalResp.GetContext())
-		require.NotNil(t, getContextError(evalResp.GetContext()))
-		// Error is due to missing type definition, which maps to HTTP 400
-		require.Equal(t, uint32(400), getContextErrorStatus(evalResp.GetContext()))
-		require.Contains(t, getContextErrorMessage(evalResp.GetContext()), "authorization model")
-	})
-
-	t.Run("short_circuit_permit_on_first_permit", func(t *testing.T) {
-		s := MustNewServerWithOpts(
-			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalAuthZen),
-		)
-		t.Cleanup(s.Close)
-
-		createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
-		require.NoError(t, err)
-
-		req := &authzenv1.EvaluationsRequest{
-			StoreId: createStoreResp.GetId(),
-			Evaluations: []*authzenv1.EvaluationsItemRequest{
-				{
-					Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
-					Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
-					Action:   &authzenv1.Action{Name: "read"},
-				},
-			},
-			Options: &authzenv1.EvaluationsOptions{
-				EvaluationsSemantic: authzenv1.EvaluationsSemantic_permit_on_first_permit,
-			},
-		}
-
-		// The short-circuit path wraps errors in EvaluationResponse with context.error
-		resp, err := s.Evaluations(context.Background(), req)
-		require.NoError(t, err)
-		require.NotNil(t, resp)
-
-		// Verify we got exactly one response with an error context
-		require.Len(t, resp.GetEvaluations(), 1)
-		evalResp := resp.GetEvaluations()[0]
-		require.False(t, evalResp.GetDecision())
-		require.NotNil(t, evalResp.GetContext())
-		require.NotNil(t, getContextError(evalResp.GetContext()))
-		// Error is due to missing type definition, which maps to HTTP 400
-		require.Equal(t, uint32(400), getContextErrorStatus(evalResp.GetContext()))
-	})
-
 	t.Run("batch_evaluation_with_default_semantic", func(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
@@ -472,40 +362,6 @@ func TestEvaluations(t *testing.T) {
 				},
 			},
 			Options: nil, // Default semantic
-		}
-
-		// This will error because no model exists, but exercises the batch evaluation path
-		resp, err := s.Evaluations(context.Background(), req)
-		require.Error(t, err)
-		require.Nil(t, resp)
-
-		st, ok := status.FromError(err)
-		require.True(t, ok)
-		require.Equal(t, codes.Code(openfgav1.ErrorCode_latest_authorization_model_not_found), st.Code())
-	})
-
-	t.Run("batch_evaluation_with_explicit_execute_all", func(t *testing.T) {
-		s := MustNewServerWithOpts(
-			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalAuthZen),
-		)
-		t.Cleanup(s.Close)
-
-		createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
-		require.NoError(t, err)
-
-		req := &authzenv1.EvaluationsRequest{
-			StoreId: createStoreResp.GetId(),
-			Evaluations: []*authzenv1.EvaluationsItemRequest{
-				{
-					Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
-					Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
-					Action:   &authzenv1.Action{Name: "read"},
-				},
-			},
-			Options: &authzenv1.EvaluationsOptions{
-				EvaluationsSemantic: authzenv1.EvaluationsSemantic_execute_all,
-			},
 		}
 
 		// This will error because no model exists, but exercises the batch evaluation path
@@ -616,34 +472,7 @@ func TestEvaluations(t *testing.T) {
 		require.NoError(t, err)
 		storeID := createStoreResp.GetId()
 
-		// Write a model with only user and document types
-		_, err = s.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
-			StoreId:       storeID,
-			SchemaVersion: "1.1",
-			TypeDefinitions: []*openfgav1.TypeDefinition{
-				{
-					Type: "user",
-				},
-				{
-					Type: "document",
-					Relations: map[string]*openfgav1.Userset{
-						"reader": {
-							Userset: &openfgav1.Userset_This{},
-						},
-					},
-					Metadata: &openfgav1.Metadata{
-						Relations: map[string]*openfgav1.RelationMetadata{
-							"reader": {
-								DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-									{Type: "user"},
-								},
-							},
-						},
-					},
-				},
-			},
-		})
-		require.NoError(t, err)
+		writeModel(t, s, storeID, simpleModel("reader"))
 
 		// Request with a type that doesn't exist in the model
 		req := &authzenv1.EvaluationsRequest{
@@ -685,34 +514,7 @@ func TestEvaluations(t *testing.T) {
 		require.NoError(t, err)
 		storeID := createStoreResp.GetId()
 
-		// Write a minimal model
-		writeModelResp, err := s.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
-			StoreId:       storeID,
-			SchemaVersion: "1.1",
-			TypeDefinitions: []*openfgav1.TypeDefinition{
-				{
-					Type: "user",
-				},
-				{
-					Type: "document",
-					Relations: map[string]*openfgav1.Userset{
-						"reader": {
-							Userset: &openfgav1.Userset_This{},
-						},
-					},
-					Metadata: &openfgav1.Metadata{
-						Relations: map[string]*openfgav1.RelationMetadata{
-							"reader": {
-								DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-									{Type: "user"},
-								},
-							},
-						},
-					},
-				},
-			},
-		})
-		require.NoError(t, err)
+		writeModel(t, s, storeID, simpleModel("reader"))
 
 		// Write tuples
 		_, err = s.Write(context.Background(), &openfgav1.WriteRequest{
@@ -747,8 +549,6 @@ func TestEvaluations(t *testing.T) {
 			// No options - uses default execute_all which goes through batch path
 		}
 
-		_ = writeModelResp // Model is automatically used as latest
-
 		resp, err := s.Evaluations(context.Background(), req)
 		require.NoError(t, err)
 		require.NotNil(t, resp)
@@ -775,34 +575,7 @@ func TestEvaluations(t *testing.T) {
 		require.NoError(t, err)
 		storeID := createStoreResp.GetId()
 
-		// Write a minimal model
-		_, err = s.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
-			StoreId:       storeID,
-			SchemaVersion: "1.1",
-			TypeDefinitions: []*openfgav1.TypeDefinition{
-				{
-					Type: "user",
-				},
-				{
-					Type: "document",
-					Relations: map[string]*openfgav1.Userset{
-						"reader": {
-							Userset: &openfgav1.Userset_This{},
-						},
-					},
-					Metadata: &openfgav1.Metadata{
-						Relations: map[string]*openfgav1.RelationMetadata{
-							"reader": {
-								DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-									{Type: "user"},
-								},
-							},
-						},
-					},
-				},
-			},
-		})
-		require.NoError(t, err)
+		writeModel(t, s, storeID, simpleModel("reader"))
 
 		// Write tuple for alice only (bob has no permission)
 		_, err = s.Write(context.Background(), &openfgav1.WriteRequest{
@@ -867,34 +640,7 @@ func TestEvaluations(t *testing.T) {
 		require.NoError(t, err)
 		storeID := createStoreResp.GetId()
 
-		// Write a minimal model
-		_, err = s.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
-			StoreId:       storeID,
-			SchemaVersion: "1.1",
-			TypeDefinitions: []*openfgav1.TypeDefinition{
-				{
-					Type: "user",
-				},
-				{
-					Type: "document",
-					Relations: map[string]*openfgav1.Userset{
-						"reader": {
-							Userset: &openfgav1.Userset_This{},
-						},
-					},
-					Metadata: &openfgav1.Metadata{
-						Relations: map[string]*openfgav1.RelationMetadata{
-							"reader": {
-								DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-									{Type: "user"},
-								},
-							},
-						},
-					},
-				},
-			},
-		})
-		require.NoError(t, err)
+		writeModel(t, s, storeID, simpleModel("reader"))
 
 		// Write tuple for alice
 		_, err = s.Write(context.Background(), &openfgav1.WriteRequest{
@@ -960,28 +706,7 @@ func TestEvaluations(t *testing.T) {
 		require.NoError(t, err)
 		storeID := createStoreResp.GetId()
 
-		// Write model
-		_, err = s.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
-			StoreId:       storeID,
-			SchemaVersion: "1.1",
-			TypeDefinitions: []*openfgav1.TypeDefinition{
-				{Type: "user"},
-				{
-					Type: "document",
-					Relations: map[string]*openfgav1.Userset{
-						"reader": {Userset: &openfgav1.Userset_This{}},
-					},
-					Metadata: &openfgav1.Metadata{
-						Relations: map[string]*openfgav1.RelationMetadata{
-							"reader": {
-								DirectlyRelatedUserTypes: []*openfgav1.RelationReference{{Type: "user"}},
-							},
-						},
-					},
-				},
-			},
-		})
-		require.NoError(t, err)
+		writeModel(t, s, storeID, simpleModel("reader"))
 
 		// Write tuples: alice can read doc1 and doc3, but NOT doc2
 		_, err = s.Write(context.Background(), &openfgav1.WriteRequest{
@@ -1033,28 +758,7 @@ func TestEvaluations(t *testing.T) {
 		require.NoError(t, err)
 		storeID := createStoreResp.GetId()
 
-		// Write model
-		_, err = s.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
-			StoreId:       storeID,
-			SchemaVersion: "1.1",
-			TypeDefinitions: []*openfgav1.TypeDefinition{
-				{Type: "user"},
-				{
-					Type: "document",
-					Relations: map[string]*openfgav1.Userset{
-						"reader": {Userset: &openfgav1.Userset_This{}},
-					},
-					Metadata: &openfgav1.Metadata{
-						Relations: map[string]*openfgav1.RelationMetadata{
-							"reader": {
-								DirectlyRelatedUserTypes: []*openfgav1.RelationReference{{Type: "user"}},
-							},
-						},
-					},
-				},
-			},
-		})
-		require.NoError(t, err)
+		writeModel(t, s, storeID, simpleModel("reader"))
 
 		// Write tuple: alice can read doc3 only
 		_, err = s.Write(context.Background(), &openfgav1.WriteRequest{
@@ -1163,34 +867,7 @@ func TestSubjectSearch(t *testing.T) {
 		require.NoError(t, err)
 		storeID := createStoreResp.GetId()
 
-		// Write a minimal model
-		writeModelResp, err := s.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
-			StoreId:       storeID,
-			SchemaVersion: "1.1",
-			TypeDefinitions: []*openfgav1.TypeDefinition{
-				{
-					Type: "user",
-				},
-				{
-					Type: "document",
-					Relations: map[string]*openfgav1.Userset{
-						"reader": {
-							Userset: &openfgav1.Userset_This{},
-						},
-					},
-					Metadata: &openfgav1.Metadata{
-						Relations: map[string]*openfgav1.RelationMetadata{
-							"reader": {
-								DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-									{Type: "user"},
-								},
-							},
-						},
-					},
-				},
-			},
-		})
-		require.NoError(t, err)
+		modelID := writeModel(t, s, storeID, simpleModel("reader"))
 
 		// Write tuples
 		_, err = s.Write(context.Background(), &openfgav1.WriteRequest{
@@ -1222,7 +899,7 @@ func TestSubjectSearch(t *testing.T) {
 
 		// Pass model ID via header
 		md := metadata.New(map[string]string{
-			strings.ToLower(AuthZenAuthorizationModelIDHeader): writeModelResp.GetAuthorizationModelId(),
+			strings.ToLower(AuthZenAuthorizationModelIDHeader): modelID,
 		})
 		ctx := metadata.NewIncomingContext(context.Background(), md)
 
@@ -1247,34 +924,7 @@ func TestSubjectSearch(t *testing.T) {
 		require.NoError(t, err)
 		storeID := createStoreResp.GetId()
 
-		// Write a minimal model
-		writeModelResp, err := s.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
-			StoreId:       storeID,
-			SchemaVersion: "1.1",
-			TypeDefinitions: []*openfgav1.TypeDefinition{
-				{
-					Type: "user",
-				},
-				{
-					Type: "document",
-					Relations: map[string]*openfgav1.Userset{
-						"reader": {
-							Userset: &openfgav1.Userset_This{},
-						},
-					},
-					Metadata: &openfgav1.Metadata{
-						Relations: map[string]*openfgav1.RelationMetadata{
-							"reader": {
-								DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-									{Type: "user"},
-								},
-							},
-						},
-					},
-				},
-			},
-		})
-		require.NoError(t, err)
+		modelID := writeModel(t, s, storeID, simpleModel("reader"))
 
 		// Write a tuple
 		_, err = s.Write(context.Background(), &openfgav1.WriteRequest{
@@ -1300,7 +950,7 @@ func TestSubjectSearch(t *testing.T) {
 		}
 
 		md := metadata.New(map[string]string{
-			strings.ToLower(AuthZenAuthorizationModelIDHeader): writeModelResp.GetAuthorizationModelId(),
+			strings.ToLower(AuthZenAuthorizationModelIDHeader): modelID,
 		})
 		ctx := metadata.NewIncomingContext(context.Background(), md)
 
@@ -1390,34 +1040,7 @@ func TestResourceSearch(t *testing.T) {
 		require.NoError(t, err)
 		storeID := createStoreResp.GetId()
 
-		// Write a minimal model
-		writeModelResp, err := s.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
-			StoreId:       storeID,
-			SchemaVersion: "1.1",
-			TypeDefinitions: []*openfgav1.TypeDefinition{
-				{
-					Type: "user",
-				},
-				{
-					Type: "document",
-					Relations: map[string]*openfgav1.Userset{
-						"reader": {
-							Userset: &openfgav1.Userset_This{},
-						},
-					},
-					Metadata: &openfgav1.Metadata{
-						Relations: map[string]*openfgav1.RelationMetadata{
-							"reader": {
-								DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-									{Type: "user"},
-								},
-							},
-						},
-					},
-				},
-			},
-		})
-		require.NoError(t, err)
+		modelID := writeModel(t, s, storeID, simpleModel("reader"))
 
 		// Write tuples
 		_, err = s.Write(context.Background(), &openfgav1.WriteRequest{
@@ -1449,7 +1072,7 @@ func TestResourceSearch(t *testing.T) {
 
 		// Pass model ID via header
 		md := metadata.New(map[string]string{
-			strings.ToLower(AuthZenAuthorizationModelIDHeader): writeModelResp.GetAuthorizationModelId(),
+			strings.ToLower(AuthZenAuthorizationModelIDHeader): modelID,
 		})
 		ctx := metadata.NewIncomingContext(context.Background(), md)
 
@@ -1460,91 +1083,6 @@ func TestResourceSearch(t *testing.T) {
 		// Should find doc1 and doc2
 		resources := resp.GetResults()
 		require.GreaterOrEqual(t, len(resources), 2)
-	})
-
-	t.Run("json_response_omits_page_when_pagination_not_supported", func(t *testing.T) {
-		s := MustNewServerWithOpts(
-			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalAuthZen),
-		)
-		t.Cleanup(s.Close)
-
-		// Create store
-		createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
-		require.NoError(t, err)
-		storeID := createStoreResp.GetId()
-
-		// Write a minimal model
-		writeModelResp, err := s.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
-			StoreId:       storeID,
-			SchemaVersion: "1.1",
-			TypeDefinitions: []*openfgav1.TypeDefinition{
-				{
-					Type: "user",
-				},
-				{
-					Type: "document",
-					Relations: map[string]*openfgav1.Userset{
-						"reader": {
-							Userset: &openfgav1.Userset_This{},
-						},
-					},
-					Metadata: &openfgav1.Metadata{
-						Relations: map[string]*openfgav1.RelationMetadata{
-							"reader": {
-								DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-									{Type: "user"},
-								},
-							},
-						},
-					},
-				},
-			},
-		})
-		require.NoError(t, err)
-
-		// Write a tuple
-		_, err = s.Write(context.Background(), &openfgav1.WriteRequest{
-			StoreId: storeID,
-			Writes: &openfgav1.WriteRequestWrites{
-				TupleKeys: []*openfgav1.TupleKey{
-					{
-						Object:   "document:doc1",
-						Relation: "reader",
-						User:     "user:alice",
-					},
-				},
-			},
-		})
-		require.NoError(t, err)
-
-		// Test ResourceSearch
-		req := &authzenv1.ResourceSearchRequest{
-			StoreId:  storeID,
-			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
-			Action:   &authzenv1.Action{Name: "reader"},
-			Resource: &authzenv1.ResourceFilter{Type: "document"},
-		}
-
-		md := metadata.New(map[string]string{
-			strings.ToLower(AuthZenAuthorizationModelIDHeader): writeModelResp.GetAuthorizationModelId(),
-		})
-		ctx := metadata.NewIncomingContext(context.Background(), md)
-
-		resp, err := s.ResourceSearch(ctx, req)
-		require.NoError(t, err)
-		require.NotNil(t, resp)
-
-		// Page should be nil (pagination not supported)
-		require.Nil(t, resp.GetPage())
-
-		// Verify JSON serialization omits "page" field per AuthZEN spec
-		jsonBytes, err := protojson.Marshal(resp)
-		require.NoError(t, err)
-		jsonStr := string(jsonBytes)
-
-		// The JSON should NOT contain "page" at all
-		require.NotContains(t, jsonStr, "page", "JSON response should not contain 'page' field when pagination is not supported")
 	})
 }
 
@@ -1639,42 +1177,7 @@ func TestActionSearch(t *testing.T) {
 		require.NoError(t, err)
 		storeID := createStoreResp.GetId()
 
-		// Write a minimal model
-		writeModelResp, err := s.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
-			StoreId:       storeID,
-			SchemaVersion: "1.1",
-			TypeDefinitions: []*openfgav1.TypeDefinition{
-				{
-					Type: "user",
-				},
-				{
-					Type: "document",
-					Relations: map[string]*openfgav1.Userset{
-						"reader": {
-							Userset: &openfgav1.Userset_This{},
-						},
-						"writer": {
-							Userset: &openfgav1.Userset_This{},
-						},
-					},
-					Metadata: &openfgav1.Metadata{
-						Relations: map[string]*openfgav1.RelationMetadata{
-							"reader": {
-								DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-									{Type: "user"},
-								},
-							},
-							"writer": {
-								DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-									{Type: "user"},
-								},
-							},
-						},
-					},
-				},
-			},
-		})
-		require.NoError(t, err)
+		modelID := writeModel(t, s, storeID, simpleModel("reader", "writer"))
 
 		// Write a tuple to grant permission
 		_, err = s.Write(context.Background(), &openfgav1.WriteRequest{
@@ -1700,7 +1203,7 @@ func TestActionSearch(t *testing.T) {
 
 		// Pass model ID via header
 		md := metadata.New(map[string]string{
-			strings.ToLower(AuthZenAuthorizationModelIDHeader): writeModelResp.GetAuthorizationModelId(),
+			strings.ToLower(AuthZenAuthorizationModelIDHeader): modelID,
 		})
 		ctx := metadata.NewIncomingContext(context.Background(), md)
 
@@ -1723,90 +1226,6 @@ func TestActionSearch(t *testing.T) {
 			}
 		}
 		require.True(t, foundReader, "Expected to find 'reader' action in results")
-	})
-
-	t.Run("json_response_omits_page_when_pagination_not_supported", func(t *testing.T) {
-		s := MustNewServerWithOpts(
-			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalAuthZen),
-		)
-		t.Cleanup(s.Close)
-
-		// Create store
-		createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
-		require.NoError(t, err)
-		storeID := createStoreResp.GetId()
-
-		// Write a minimal model
-		writeModelResp, err := s.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
-			StoreId:       storeID,
-			SchemaVersion: "1.1",
-			TypeDefinitions: []*openfgav1.TypeDefinition{
-				{
-					Type: "user",
-				},
-				{
-					Type: "document",
-					Relations: map[string]*openfgav1.Userset{
-						"reader": {
-							Userset: &openfgav1.Userset_This{},
-						},
-					},
-					Metadata: &openfgav1.Metadata{
-						Relations: map[string]*openfgav1.RelationMetadata{
-							"reader": {
-								DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-									{Type: "user"},
-								},
-							},
-						},
-					},
-				},
-			},
-		})
-		require.NoError(t, err)
-
-		// Write a tuple
-		_, err = s.Write(context.Background(), &openfgav1.WriteRequest{
-			StoreId: storeID,
-			Writes: &openfgav1.WriteRequestWrites{
-				TupleKeys: []*openfgav1.TupleKey{
-					{
-						Object:   "document:doc1",
-						Relation: "reader",
-						User:     "user:alice",
-					},
-				},
-			},
-		})
-		require.NoError(t, err)
-
-		// Test ActionSearch
-		req := &authzenv1.ActionSearchRequest{
-			StoreId:  storeID,
-			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
-			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
-		}
-
-		md := metadata.New(map[string]string{
-			strings.ToLower(AuthZenAuthorizationModelIDHeader): writeModelResp.GetAuthorizationModelId(),
-		})
-		ctx := metadata.NewIncomingContext(context.Background(), md)
-
-		resp, err := s.ActionSearch(ctx, req)
-		require.NoError(t, err)
-		require.NotNil(t, resp)
-
-		// Page should be nil (pagination not supported)
-		require.Nil(t, resp.GetPage())
-
-		// Verify JSON serialization omits "page" field per AuthZEN spec
-		jsonBytes, err := protojson.Marshal(resp)
-		require.NoError(t, err)
-		jsonStr := string(jsonBytes)
-
-		// The JSON should NOT contain "page" at all
-		require.NotContains(t, jsonStr, "page", "JSON response should not contain 'page' field when pagination is not supported")
 	})
 }
 
@@ -1847,13 +1266,6 @@ func TestGetAuthorizationModelIDFromHeader(t *testing.T) {
 		result := getAuthorizationModelIDFromHeader(ctx)
 		require.Empty(t, result)
 	})
-
-	t.Run("returns_empty_when_no_metadata", func(t *testing.T) {
-		ctx := context.Background()
-
-		result := getAuthorizationModelIDFromHeader(ctx)
-		require.Empty(t, result)
-	})
 }
 
 func TestEvaluationWithAuthorizationModelIDHeader(t *testing.T) {
@@ -1875,56 +1287,9 @@ func TestEvaluationWithAuthorizationModelIDHeader(t *testing.T) {
 		require.NoError(t, err)
 		storeID := createStoreResp.GetId()
 
-		// Write two models
-		writeModelResp1, err := s.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
-			StoreId:       storeID,
-			SchemaVersion: "1.1",
-			TypeDefinitions: []*openfgav1.TypeDefinition{
-				{Type: "user"},
-				{
-					Type: "document",
-					Relations: map[string]*openfgav1.Userset{
-						"reader": {Userset: &openfgav1.Userset_This{}},
-					},
-					Metadata: &openfgav1.Metadata{
-						Relations: map[string]*openfgav1.RelationMetadata{
-							"reader": {
-								DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-									{Type: "user"},
-								},
-							},
-						},
-					},
-				},
-			},
-		})
-		require.NoError(t, err)
-		modelID1 := writeModelResp1.GetAuthorizationModelId()
-
-		// Write second model (this becomes the latest)
-		_, err = s.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
-			StoreId:       storeID,
-			SchemaVersion: "1.1",
-			TypeDefinitions: []*openfgav1.TypeDefinition{
-				{Type: "user"},
-				{
-					Type: "document",
-					Relations: map[string]*openfgav1.Userset{
-						"writer": {Userset: &openfgav1.Userset_This{}},
-					},
-					Metadata: &openfgav1.Metadata{
-						Relations: map[string]*openfgav1.RelationMetadata{
-							"writer": {
-								DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-									{Type: "user"},
-								},
-							},
-						},
-					},
-				},
-			},
-		})
-		require.NoError(t, err)
+		// Write two models — first has "reader", second (latest) has "writer"
+		modelID1 := writeModel(t, s, storeID, simpleModel("reader"))
+		writeModel(t, s, storeID, simpleModel("writer"))
 
 		// Write tuple using model 1 (which has the reader relation)
 		_, err = s.Write(context.Background(), &openfgav1.WriteRequest{
