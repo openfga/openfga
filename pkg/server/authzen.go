@@ -466,7 +466,7 @@ func (s *Server) SubjectSearch(ctx context.Context, req *authzenv1.SubjectSearch
 		return nil, err
 	}
 
-	var subjects []*authzenv1.Subject
+	subjects := make([]*authzenv1.Subject, 0, len(listUsersResp.GetUsers()))
 	for _, user := range listUsersResp.GetUsers() {
 		if obj := user.GetObject(); obj != nil {
 			subjects = append(subjects, &authzenv1.Subject{Type: obj.GetType(), Id: obj.GetId()})
@@ -521,11 +521,10 @@ func (s *Server) ResourceSearch(ctx context.Context, req *authzenv1.ResourceSear
 		return nil, err
 	}
 
-	var resources []*authzenv1.Resource
+	resources := make([]*authzenv1.Resource, 0, len(collector.objects))
 	for _, objID := range collector.objects {
-		parts := strings.SplitN(objID, ":", 2)
-		if len(parts) == 2 {
-			resources = append(resources, &authzenv1.Resource{Type: parts[0], Id: parts[1]})
+		if typ, id, ok := strings.Cut(objID, ":"); ok {
+			resources = append(resources, &authzenv1.Resource{Type: typ, Id: id})
 		}
 	}
 
@@ -621,7 +620,7 @@ func (s *Server) ActionSearch(ctx context.Context, req *authzenv1.ActionSearchRe
 		return nil, err
 	}
 
-	var actions []*authzenv1.Action
+	actions := make([]*authzenv1.Action, 0, len(relationNames))
 	for correlationID, result := range batchResp.GetResult() {
 		if result.GetError() != nil {
 			continue
