@@ -209,5 +209,4 @@ func TestGetConfiguration(t *testing.T) {
 		// Uppercase HTTPS should be normalized to lowercase https
 		require.Equal(t, "https://api.mycompany.com/stores/"+storeID+"/access/v1/evaluation", resp.GetAccessEvaluationEndpoint())
 	})
-
 }

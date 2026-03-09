@@ -1,7 +1,11 @@
 package authzen_test
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"io"
+	"net/http"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -983,5 +987,106 @@ func TestEvaluation(t *testing.T) {
 		})
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "AuthZEN endpoints are experimental")
+	})
+}
+
+// TestEvaluationHTTPAuthorizationModelIDHeader verifies that the
+// Openfga-Authorization-Model-Id HTTP header is forwarded through grpc-gateway
+// to the AuthZEN Evaluation endpoint.
+//
+// Like X-Forwarded-Proto, this header is not an IANA permanent header and is
+// not prefixed with Grpc-Metadata-, so it requires an explicit match in
+// WithIncomingHeaderMatcher (cmd/run/run.go). Without it, the header would be
+// silently dropped and the endpoint would always use the latest model.
+func TestEvaluationHTTPAuthorizationModelIDHeader(t *testing.T) {
+	tc := setupTestContext(t)
+	tc.createStore("test-store")
+
+	// Write model1 with "reader" relation
+	tc.writeModel(`
+		model
+			schema 1.1
+		type user
+		type document
+			relations
+				define reader: [user]
+	`)
+	modelID1 := tc.modelID
+
+	// Write model2 (becomes latest) with "writer" relation only — no "reader"
+	tc.writeModel(`
+		model
+			schema 1.1
+		type user
+		type document
+			relations
+				define writer: [user]
+	`)
+
+	// Write a tuple against model1's "reader" relation.
+	// Must specify model1 explicitly since the latest model (model2) lacks "reader".
+	_, err := tc.openfgaClient.Write(context.Background(), &openfgav1.WriteRequest{
+		StoreId:              tc.storeID,
+		AuthorizationModelId: modelID1,
+		Writes: &openfgav1.WriteRequestWrites{
+			TupleKeys: []*openfgav1.TupleKey{
+				{User: "user:alice", Relation: "reader", Object: "document:doc1"},
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	evalURL := "http://" + tc.httpAddr + "/stores/" + tc.storeID + "/access/v1/evaluation"
+
+	t.Run("pinned_model_id_is_used", func(t *testing.T) {
+		// Pin to model1 via header. model1 has "reader", so this should succeed.
+		// Without the header, the latest model (model2, which only has "writer")
+		// would be used and the request would fail with a validation error.
+		body, _ := json.Marshal(map[string]any{
+			"subject":  map[string]any{"type": "user", "id": "alice"},
+			"resource": map[string]any{"type": "document", "id": "doc1"},
+			"action":   map[string]any{"name": "reader"},
+		})
+
+		req, err := http.NewRequest("POST", evalURL, bytes.NewReader(body))
+		require.NoError(t, err)
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Openfga-Authorization-Model-Id", modelID1)
+
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		respBody, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, resp.StatusCode, "body: %s", respBody)
+
+		var result map[string]any
+		require.NoError(t, json.Unmarshal(respBody, &result))
+		require.Equal(t, true, result["decision"], "expected permit when pinned to model1 with reader relation")
+	})
+
+	t.Run("without_header_uses_latest_model", func(t *testing.T) {
+		// Without the header, the latest model (model2) is used.
+		// model2 has no "reader" relation, so this should fail.
+		body, _ := json.Marshal(map[string]any{
+			"subject":  map[string]any{"type": "user", "id": "alice"},
+			"resource": map[string]any{"type": "document", "id": "doc1"},
+			"action":   map[string]any{"name": "reader"},
+		})
+
+		req, err := http.NewRequest("POST", evalURL, bytes.NewReader(body))
+		require.NoError(t, err)
+		req.Header.Set("Content-Type", "application/json")
+		// No Openfga-Authorization-Model-Id header
+
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		respBody, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		// Latest model has no "reader" relation → validation error (400)
+		require.Equal(t, http.StatusBadRequest, resp.StatusCode, "body: %s", respBody)
 	})
 }

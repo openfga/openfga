@@ -899,7 +899,7 @@ func TestSubjectSearch(t *testing.T) {
 
 		// Pass model ID via header
 		md := metadata.New(map[string]string{
-			strings.ToLower(AuthZenAuthorizationModelIDHeader): modelID,
+			strings.ToLower(AuthorizationModelIDHeader): modelID,
 		})
 		ctx := metadata.NewIncomingContext(context.Background(), md)
 
@@ -950,7 +950,7 @@ func TestSubjectSearch(t *testing.T) {
 		}
 
 		md := metadata.New(map[string]string{
-			strings.ToLower(AuthZenAuthorizationModelIDHeader): modelID,
+			strings.ToLower(AuthorizationModelIDHeader): modelID,
 		})
 		ctx := metadata.NewIncomingContext(context.Background(), md)
 
@@ -1072,7 +1072,7 @@ func TestResourceSearch(t *testing.T) {
 
 		// Pass model ID via header
 		md := metadata.New(map[string]string{
-			strings.ToLower(AuthZenAuthorizationModelIDHeader): modelID,
+			strings.ToLower(AuthorizationModelIDHeader): modelID,
 		})
 		ctx := metadata.NewIncomingContext(context.Background(), md)
 
@@ -1203,7 +1203,7 @@ func TestActionSearch(t *testing.T) {
 
 		// Pass model ID via header
 		md := metadata.New(map[string]string{
-			strings.ToLower(AuthZenAuthorizationModelIDHeader): modelID,
+			strings.ToLower(AuthorizationModelIDHeader): modelID,
 		})
 		ctx := metadata.NewIncomingContext(context.Background(), md)
 
@@ -1240,7 +1240,7 @@ func TestGetAuthorizationModelIDFromHeader(t *testing.T) {
 		// Create context with gRPC metadata containing the header
 		// grpc-gateway converts header names to lowercase
 		md := metadata.New(map[string]string{
-			strings.ToLower(AuthZenAuthorizationModelIDHeader): headerModelID,
+			strings.ToLower(AuthorizationModelIDHeader): headerModelID,
 		})
 		ctx := metadata.NewIncomingContext(context.Background(), md)
 
@@ -1259,7 +1259,7 @@ func TestGetAuthorizationModelIDFromHeader(t *testing.T) {
 	t.Run("returns_empty_when_header_is_empty", func(t *testing.T) {
 		// Create context with empty header value
 		md := metadata.New(map[string]string{
-			strings.ToLower(AuthZenAuthorizationModelIDHeader): "",
+			strings.ToLower(AuthorizationModelIDHeader): "",
 		})
 		ctx := metadata.NewIncomingContext(context.Background(), md)
 
@@ -1309,7 +1309,7 @@ func TestEvaluationWithAuthorizationModelIDHeader(t *testing.T) {
 
 		// Create context with header specifying the first model ID
 		md := metadata.New(map[string]string{
-			strings.ToLower(AuthZenAuthorizationModelIDHeader): modelID1,
+			strings.ToLower(AuthorizationModelIDHeader): modelID1,
 		})
 		ctx := metadata.NewIncomingContext(context.Background(), md)
 

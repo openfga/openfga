@@ -59,7 +59,7 @@ AuthZen uses the `Openfga-Authorization-Model-Id` HTTP header (not a request bod
 ```go
 // cmd/run/run.go — custom header matcher
 runtime.WithIncomingHeaderMatcher(func(key string) (string, bool) {
-    if key == server.AuthZenAuthorizationModelIDHeader {
+    if key == server.AuthorizationModelIDHeader {
         return key, true
     }
     return runtime.DefaultHeaderMatcher(key)

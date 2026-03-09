@@ -709,9 +709,9 @@ func (s *ServerContext) runHTTPServer(ctx context.Context, config *serverconfig.
 		runtime.WithHealthzEndpoint(healthv1pb.NewHealthClient(grpcConn)),
 		runtime.WithOutgoingHeaderMatcher(func(s string) (string, bool) { return s, true }),
 		runtime.WithIncomingHeaderMatcher(func(key string) (string, bool) {
-			// Forward Openfga-Authorization-Model-Id header to gRPC metadata for AuthZEN endpoints
-			if key == server.AuthZenAuthorizationModelIDHeader {
-				return key, true
+			// Forward Openfga-Authorization-Model-Id header to gRPC metadata for AuthZEN endpoints.
+			if strings.EqualFold(key, server.AuthorizationModelIDHeader) {
+				return strings.ToLower(key), true
 			}
 			// Forward X-Forwarded-Proto so getBaseURLFromContext can determine the scheme.
 			// grpc-gateway's annotateContext handles X-Forwarded-For and X-Forwarded-Host

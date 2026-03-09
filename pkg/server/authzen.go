@@ -24,9 +24,6 @@ import (
 	servererrors "github.com/openfga/openfga/pkg/server/errors"
 )
 
-// AuthZenAuthorizationModelIDHeader is the HTTP header name for specifying the authorization model ID.
-const AuthZenAuthorizationModelIDHeader = "Openfga-Authorization-Model-Id"
-
 // propertiesProvider is an interface for types that provide properties.
 // Subject, SubjectFilter, Resource, and ResourceFilter all implement this.
 type propertiesProvider interface {
@@ -90,7 +87,7 @@ func (s *Server) IsAuthZenEnabled(storeID string) bool {
 func getAuthorizationModelIDFromHeader(ctx context.Context) string {
 	if md, ok := metadata.FromIncomingContext(ctx); ok {
 		// grpc-gateway converts header names to lowercase
-		headerKey := strings.ToLower(AuthZenAuthorizationModelIDHeader)
+		headerKey := strings.ToLower(AuthorizationModelIDHeader)
 		if values := md.Get(headerKey); len(values) > 0 && values[0] != "" {
 			authorizationModelID := strings.TrimSpace(values[0])
 			if authZenAuthorizationModelIDPattern.MatchString(authorizationModelID) {
