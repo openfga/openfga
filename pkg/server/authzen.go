@@ -155,7 +155,7 @@ func (s *Server) Evaluations(ctx context.Context, req *authzenv1.EvaluationsRequ
 
 	if semantic == authzenv1.EvaluationsSemantic_deny_on_first_deny ||
 		semantic == authzenv1.EvaluationsSemantic_permit_on_first_permit {
-		return s.evaluateWithShortCircuit(ctx, req, semantic)
+		return s.evaluateWithShortCircuit(ctx, req, authorizationModelID, semantic)
 	}
 
 	// Default: batch all evaluations
@@ -178,11 +178,14 @@ func (s *Server) Evaluations(ctx context.Context, req *authzenv1.EvaluationsRequ
 }
 
 // evaluateWithShortCircuit handles deny_on_first_deny and permit_on_first_permit semantics.
+// It builds CheckRequests directly (rather than calling s.Evaluation) so that the
+// authorizationModelID is resolved once and reused across all sequential evaluations.
 //
 //nolint:unparam // error is always nil but kept for interface consistency
 func (s *Server) evaluateWithShortCircuit(
 	ctx context.Context,
 	req *authzenv1.EvaluationsRequest,
+	authorizationModelID string,
 	semantic authzenv1.EvaluationsSemantic,
 ) (*authzenv1.EvaluationsResponse, error) {
 	responses := make([]*authzenv1.EvaluationResponse, 0, len(req.GetEvaluations()))
@@ -212,28 +215,38 @@ func (s *Server) evaluateWithShortCircuit(
 			evalContext = defaultContext
 		}
 
-		// Build single evaluation request
-		singleReq := &authzenv1.EvaluationRequest{
-			Subject:  subject,
-			Resource: resource,
-			Action:   action,
-			Context:  evalContext,
-			StoreId:  req.GetStoreId(),
+		// Build CheckRequest directly using the pre-resolved authorization model ID
+		evalReqCmd, err := commands.NewEvaluateRequestCommand(
+			&authzenv1.EvaluationRequest{
+				Subject:  subject,
+				Resource: resource,
+				Action:   action,
+				Context:  evalContext,
+				StoreId:  req.GetStoreId(),
+			},
+			authorizationModelID,
+		)
+		if err != nil {
+			httpStatus := uint32(runtime.HTTPStatusFromCode(codes.InvalidArgument))
+			responses = append(responses, &authzenv1.EvaluationResponse{
+				Decision: false,
+				Context:  errorContext(httpStatus, err.Error()),
+			})
+			if semantic == authzenv1.EvaluationsSemantic_deny_on_first_deny {
+				break
+			}
+			continue
 		}
 
-		// Use the Evaluation method
-		evalResp, err := s.Evaluation(ctx, singleReq)
+		checkResponse, err := s.Check(ctx, evalReqCmd.GetCheckRequest())
 		if err != nil {
 			// Extract gRPC status code and map to HTTP status
 			httpStatus := uint32(500)
 			if st, ok := status.FromError(err); ok {
 				grpcCode := st.Code()
-				// Check if it's a standard gRPC code (0-16) or OpenFGA custom code (>= 1000)
 				if grpcCode < 17 {
-					// Standard gRPC code - use grpc-gateway's mapping
 					httpStatus = uint32(runtime.HTTPStatusFromCode(grpcCode))
 				} else {
-					// OpenFGA custom error code - use encoded error mapping
 					encodedErr := servererrors.NewEncodedError(int32(grpcCode), st.Message())
 					httpStatus = uint32(encodedErr.HTTPStatus())
 				}
@@ -242,22 +255,22 @@ func (s *Server) evaluateWithShortCircuit(
 				Decision: false,
 				Context:  errorContext(httpStatus, err.Error()),
 			})
-			// Error results in Decision: false, honor deny_on_first_deny short-circuit
 			if semantic == authzenv1.EvaluationsSemantic_deny_on_first_deny {
 				break
 			}
 			continue
 		}
 
-		responses = append(responses, evalResp)
+		decision := checkResponse.GetAllowed()
+		responses = append(responses, &authzenv1.EvaluationResponse{
+			Decision: decision,
+		})
 
 		// Short-circuit logic
-		if semantic == authzenv1.EvaluationsSemantic_deny_on_first_deny && !evalResp.GetDecision() {
-			// Stop on first deny
+		if semantic == authzenv1.EvaluationsSemantic_deny_on_first_deny && !decision {
 			break
 		}
-		if semantic == authzenv1.EvaluationsSemantic_permit_on_first_permit && evalResp.GetDecision() {
-			// Stop on first permit
+		if semantic == authzenv1.EvaluationsSemantic_permit_on_first_permit && decision {
 			break
 		}
 	}
