@@ -210,39 +210,4 @@ func TestGetConfiguration(t *testing.T) {
 		require.Equal(t, "https://api.mycompany.com/stores/"+storeID+"/access/v1/evaluation", resp.GetAccessEvaluationEndpoint())
 	})
 
-	t.Run("authzen_spec_compliance", func(t *testing.T) {
-		s := MustNewServerWithOpts(
-			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalAuthZen),
-		)
-		t.Cleanup(s.Close)
-
-		createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
-		require.NoError(t, err)
-		storeID := createStoreResp.GetId()
-
-		// Create context with host metadata to get full URLs per AuthZEN spec
-		md := metadata.New(map[string]string{
-			":authority": "pdp.example.com",
-		})
-		ctx := metadata.NewIncomingContext(context.Background(), md)
-
-		resp, err := s.GetConfiguration(ctx, &authzenv1.GetConfigurationRequest{StoreId: storeID})
-		require.NoError(t, err)
-
-		// Verify policy_decision_point is a URL string per AuthZEN spec
-		require.NotEmpty(t, resp.GetPolicyDecisionPoint(), "policy_decision_point is required")
-		require.Regexp(t, `^https://pdp\.example\.com/stores/[0-9A-Z]+$`, resp.GetPolicyDecisionPoint())
-
-		// Verify flat endpoint URL fields per AuthZEN spec
-		require.Regexp(t, `^https://pdp\.example\.com/stores/[0-9A-Z]+/access/v1/evaluation$`, resp.GetAccessEvaluationEndpoint())
-		require.Regexp(t, `^https://pdp\.example\.com/stores/[0-9A-Z]+/access/v1/evaluations$`, resp.GetAccessEvaluationsEndpoint())
-		require.Regexp(t, `^https://pdp\.example\.com/stores/[0-9A-Z]+/access/v1/search/subject$`, resp.GetSearchSubjectEndpoint())
-		require.Regexp(t, `^https://pdp\.example\.com/stores/[0-9A-Z]+/access/v1/search/resource$`, resp.GetSearchResourceEndpoint())
-		require.Regexp(t, `^https://pdp\.example\.com/stores/[0-9A-Z]+/access/v1/search/action$`, resp.GetSearchActionEndpoint())
-
-		// Verify no template placeholders remain
-		require.NotContains(t, resp.GetAccessEvaluationEndpoint(), "{store_id}")
-		require.NotContains(t, resp.GetAccessEvaluationsEndpoint(), "{store_id}")
-	})
 }

@@ -416,9 +416,6 @@ func TestEvaluation(t *testing.T) {
 	})
 
 	t.Run("properties_auto_merge_with_underscore_separator", func(t *testing.T) {
-		// This test verifies that AuthZEN properties are automatically merged
-		// into the OpenFGA context using underscore as separator (e.g., subject_department)
-		// because OpenFGA does not allow condition parameters with "." in names.
 		tc := setupTestContext(t)
 		tc.createStore("test-store")
 		tc.writeModel(`
@@ -476,7 +473,6 @@ func TestEvaluation(t *testing.T) {
 	})
 
 	t.Run("properties_context_precedence", func(t *testing.T) {
-		// This test verifies that explicit context values take precedence over properties
 		tc := setupTestContext(t)
 		tc.createStore("test-store")
 		tc.writeModel(`
@@ -526,7 +522,6 @@ func TestEvaluation(t *testing.T) {
 	})
 
 	t.Run("action_properties_merge", func(t *testing.T) {
-		// This test verifies that action properties are also merged with action_ prefix
 		tc := setupTestContext(t)
 		tc.createStore("test-store")
 		tc.writeModel(`
@@ -572,11 +567,7 @@ func TestEvaluation(t *testing.T) {
 		require.False(t, resp.GetDecision(), "Expected deny when action.method doesn't match")
 	})
 
-	// Tests for complex property types (arrays, nested objects) per AuthZEN spec
-	// The AuthZEN spec states properties can contain "complex values, such as arrays and objects"
-
 	t.Run("complex_properties_array_of_strings", func(t *testing.T) {
-		// This test verifies that array properties are properly mapped to list<string> condition parameters
 		tc := setupTestContext(t)
 		tc.createStore("test-store")
 		tc.writeModel(`
@@ -639,8 +630,6 @@ func TestEvaluation(t *testing.T) {
 	})
 
 	t.Run("complex_properties_map_string", func(t *testing.T) {
-		// This test verifies that map properties with string values work correctly
-		// OpenFGA map<T> has string keys and values of type T
 		tc := setupTestContext(t)
 		tc.createStore("test-store")
 		tc.writeModel(`
@@ -699,7 +688,6 @@ func TestEvaluation(t *testing.T) {
 	})
 
 	t.Run("complex_properties_map_int", func(t *testing.T) {
-		// This test verifies that map properties with int values work correctly
 		tc := setupTestContext(t)
 		tc.createStore("test-store")
 		tc.writeModel(`
@@ -758,7 +746,6 @@ func TestEvaluation(t *testing.T) {
 	})
 
 	t.Run("complex_properties_array_size_check", func(t *testing.T) {
-		// This test verifies that array size checks work with list properties
 		tc := setupTestContext(t)
 		tc.createStore("test-store")
 		tc.writeModel(`
@@ -807,7 +794,6 @@ func TestEvaluation(t *testing.T) {
 	})
 
 	t.Run("complex_properties_resource_array", func(t *testing.T) {
-		// This test verifies that resource array properties work correctly
 		tc := setupTestContext(t)
 		tc.createStore("test-store")
 		tc.writeModel(`
@@ -862,7 +848,6 @@ func TestEvaluation(t *testing.T) {
 	})
 
 	t.Run("complex_properties_combined_types", func(t *testing.T) {
-		// This test verifies that multiple complex property types work together
 		tc := setupTestContext(t)
 		tc.createStore("test-store")
 		tc.writeModel(`
@@ -937,7 +922,6 @@ func TestEvaluation(t *testing.T) {
 	})
 
 	t.Run("complex_properties_empty_array", func(t *testing.T) {
-		// This test verifies that empty arrays are handled correctly
 		tc := setupTestContext(t)
 		tc.createStore("test-store")
 		tc.writeModel(`
@@ -985,7 +969,6 @@ func TestEvaluation(t *testing.T) {
 		require.False(t, resp.GetDecision(), "Expected deny when roles array is not empty")
 	})
 
-	// AuthZEN spec section 3: Feature disabled should return error
 	t.Run("requires_experimental_flag", func(t *testing.T) {
 		tc := setupTestContextWithExperimentals(t, []string{})
 		// Create a store to get a valid store ID

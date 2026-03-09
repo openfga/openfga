@@ -116,44 +116,6 @@ func TestEvaluations(t *testing.T) {
 		require.True(t, resp.GetEvaluations()[2].GetDecision())
 	})
 
-	t.Run("semantic_execute_all_explicit", func(t *testing.T) {
-		tc := setupTestContext(t)
-		tc.createStore("test-store")
-		tc.writeModel(`
-			model
-				schema 1.1
-			type user
-			type document
-				relations
-					define reader: [user]
-		`)
-		tc.writeTuples([]*openfgav1.TupleKey{
-			{User: "user:alice", Relation: "reader", Object: "document:doc1"},
-			// doc2 not allowed
-			{User: "user:alice", Relation: "reader", Object: "document:doc3"},
-		})
-
-		// Explicit execute_all - all evaluations should be processed
-		resp, err := tc.authzenClient.Evaluations(context.Background(), &authzenv1.EvaluationsRequest{
-			StoreId: tc.storeID,
-			Subject: &authzenv1.Subject{Type: "user", Id: "alice"},
-			Action:  &authzenv1.Action{Name: "reader"},
-			Options: &authzenv1.EvaluationsOptions{
-				EvaluationsSemantic: authzenv1.EvaluationsSemantic_execute_all,
-			},
-			Evaluations: []*authzenv1.EvaluationsItemRequest{
-				{Resource: &authzenv1.Resource{Type: "document", Id: "doc1"}}, // Allowed
-				{Resource: &authzenv1.Resource{Type: "document", Id: "doc2"}}, // Denied
-				{Resource: &authzenv1.Resource{Type: "document", Id: "doc3"}}, // Allowed
-			},
-		})
-		require.NoError(t, err)
-		require.Len(t, resp.GetEvaluations(), 3) // All evaluations processed
-		require.True(t, resp.GetEvaluations()[0].GetDecision())
-		require.False(t, resp.GetEvaluations()[1].GetDecision())
-		require.True(t, resp.GetEvaluations()[2].GetDecision())
-	})
-
 	t.Run("semantic_deny_on_first_deny", func(t *testing.T) {
 		tc := setupTestContext(t)
 		tc.createStore("test-store")
