@@ -15,10 +15,37 @@ import (
 
 	authzenv1 "github.com/openfga/api/proto/authzen/v1"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/openfga/openfga/cmd/util"
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
 )
+
+// getContextError extracts the "error" field from an evaluation response context struct.
+func getContextError(ctx *structpb.Struct) *structpb.Value {
+	if ctx == nil {
+		return nil
+	}
+	return ctx.GetFields()["error"]
+}
+
+// getContextErrorStatus extracts the status from a context error.
+func getContextErrorStatus(ctx *structpb.Struct) uint32 {
+	errVal := getContextError(ctx)
+	if errVal == nil {
+		return 0
+	}
+	return uint32(errVal.GetStructValue().GetFields()["status"].GetNumberValue())
+}
+
+// getContextErrorMessage extracts the message from a context error.
+func getContextErrorMessage(ctx *structpb.Struct) string {
+	errVal := getContextError(ctx)
+	if errVal == nil {
+		return ""
+	}
+	return errVal.GetStructValue().GetFields()["message"].GetStringValue()
+}
 
 func TestEvaluation(t *testing.T) {
 	t.Cleanup(func() {
@@ -375,14 +402,14 @@ func TestEvaluations(t *testing.T) {
 		require.NotNil(t, resp)
 
 		// Verify we got exactly one response with an error context
-		require.Len(t, resp.GetEvaluationResponses(), 1)
-		evalResp := resp.GetEvaluationResponses()[0]
+		require.Len(t, resp.GetEvaluations(), 1)
+		evalResp := resp.GetEvaluations()[0]
 		require.False(t, evalResp.GetDecision())
 		require.NotNil(t, evalResp.GetContext())
-		require.NotNil(t, evalResp.GetContext().GetError())
+		require.NotNil(t, getContextError(evalResp.GetContext()))
 		// Error is due to missing type definition, which maps to HTTP 400
-		require.Equal(t, uint32(400), evalResp.GetContext().GetError().GetStatus())
-		require.Contains(t, evalResp.GetContext().GetError().GetMessage(), "authorization model")
+		require.Equal(t, uint32(400), getContextErrorStatus(evalResp.GetContext()))
+		require.Contains(t, getContextErrorMessage(evalResp.GetContext()), "authorization model")
 	})
 
 	t.Run("short_circuit_permit_on_first_permit", func(t *testing.T) {
@@ -415,13 +442,13 @@ func TestEvaluations(t *testing.T) {
 		require.NotNil(t, resp)
 
 		// Verify we got exactly one response with an error context
-		require.Len(t, resp.GetEvaluationResponses(), 1)
-		evalResp := resp.GetEvaluationResponses()[0]
+		require.Len(t, resp.GetEvaluations(), 1)
+		evalResp := resp.GetEvaluations()[0]
 		require.False(t, evalResp.GetDecision())
 		require.NotNil(t, evalResp.GetContext())
-		require.NotNil(t, evalResp.GetContext().GetError())
+		require.NotNil(t, getContextError(evalResp.GetContext()))
 		// Error is due to missing type definition, which maps to HTTP 400
-		require.Equal(t, uint32(400), evalResp.GetContext().GetError().GetStatus())
+		require.Equal(t, uint32(400), getContextErrorStatus(evalResp.GetContext()))
 	})
 
 	t.Run("batch_evaluation_with_default_semantic", func(t *testing.T) {
@@ -526,11 +553,11 @@ func TestEvaluations(t *testing.T) {
 		require.NotNil(t, resp)
 
 		// Verify we got a response with an error (because no model exists)
-		require.Len(t, resp.GetEvaluationResponses(), 1)
-		evalResp := resp.GetEvaluationResponses()[0]
+		require.Len(t, resp.GetEvaluations(), 1)
+		evalResp := resp.GetEvaluations()[0]
 		require.False(t, evalResp.GetDecision())
 		require.NotNil(t, evalResp.GetContext())
-		require.NotNil(t, evalResp.GetContext().GetError())
+		require.NotNil(t, getContextError(evalResp.GetContext()))
 	})
 
 	t.Run("short_circuit_deny_on_first_deny_breaks_on_error", func(t *testing.T) {
@@ -570,11 +597,11 @@ func TestEvaluations(t *testing.T) {
 		require.NotNil(t, resp)
 
 		// Should have only 1 response because error triggers short-circuit break
-		require.Len(t, resp.GetEvaluationResponses(), 1)
-		evalResp := resp.GetEvaluationResponses()[0]
+		require.Len(t, resp.GetEvaluations(), 1)
+		evalResp := resp.GetEvaluations()[0]
 		require.False(t, evalResp.GetDecision())
 		require.NotNil(t, evalResp.GetContext())
-		require.NotNil(t, evalResp.GetContext().GetError())
+		require.NotNil(t, getContextError(evalResp.GetContext()))
 	})
 
 	t.Run("short_circuit_returns_400_for_invalid_type", func(t *testing.T) {
@@ -636,14 +663,14 @@ func TestEvaluations(t *testing.T) {
 		resp, err := s.Evaluations(context.Background(), req)
 		require.NoError(t, err)
 		require.NotNil(t, resp)
-		require.Len(t, resp.GetEvaluationResponses(), 1)
+		require.Len(t, resp.GetEvaluations(), 1)
 
-		evalResp := resp.GetEvaluationResponses()[0]
+		evalResp := resp.GetEvaluations()[0]
 		require.False(t, evalResp.GetDecision())
 		require.NotNil(t, evalResp.GetContext())
-		require.NotNil(t, evalResp.GetContext().GetError())
+		require.NotNil(t, getContextError(evalResp.GetContext()))
 		// InvalidArgument maps to HTTP 400
-		require.Equal(t, uint32(400), evalResp.GetContext().GetError().GetStatus())
+		require.Equal(t, uint32(400), getContextErrorStatus(evalResp.GetContext()))
 	})
 
 	t.Run("success_batch_with_valid_model", func(t *testing.T) {
@@ -727,13 +754,13 @@ func TestEvaluations(t *testing.T) {
 		require.NotNil(t, resp)
 
 		// Should have 2 evaluation responses
-		require.Len(t, resp.GetEvaluationResponses(), 2)
+		require.Len(t, resp.GetEvaluations(), 2)
 
 		// First should be true (alice has permission)
-		require.True(t, resp.GetEvaluationResponses()[0].GetDecision())
+		require.True(t, resp.GetEvaluations()[0].GetDecision())
 
 		// Second should be false (bob doesn't have permission)
-		require.False(t, resp.GetEvaluationResponses()[1].GetDecision())
+		require.False(t, resp.GetEvaluations()[1].GetDecision())
 	})
 
 	t.Run("short_circuit_deny_on_first_deny_with_valid_model_breaks", func(t *testing.T) {
@@ -820,12 +847,12 @@ func TestEvaluations(t *testing.T) {
 		require.NotNil(t, resp)
 
 		// Should have only 1 response due to short-circuit break
-		require.Len(t, resp.GetEvaluationResponses(), 1)
+		require.Len(t, resp.GetEvaluations(), 1)
 
 		// First (and only) should be false (bob denied)
-		require.False(t, resp.GetEvaluationResponses()[0].GetDecision())
+		require.False(t, resp.GetEvaluations()[0].GetDecision())
 		// Should NOT have an error context since it's a valid deny, not an error
-		require.Nil(t, resp.GetEvaluationResponses()[0].GetContext().GetError())
+		require.Nil(t, getContextError(resp.GetEvaluations()[0].GetContext()))
 	})
 
 	t.Run("short_circuit_permit_on_first_permit_with_valid_model_breaks", func(t *testing.T) {
@@ -912,12 +939,12 @@ func TestEvaluations(t *testing.T) {
 		require.NotNil(t, resp)
 
 		// Should have only 1 response due to short-circuit break
-		require.Len(t, resp.GetEvaluationResponses(), 1)
+		require.Len(t, resp.GetEvaluations(), 1)
 
 		// First (and only) should be true (alice permitted)
-		require.True(t, resp.GetEvaluationResponses()[0].GetDecision())
+		require.True(t, resp.GetEvaluations()[0].GetDecision())
 		// Should NOT have an error context since it's a valid permit, not an error
-		require.Nil(t, resp.GetEvaluationResponses()[0].GetContext().GetError())
+		require.Nil(t, getContextError(resp.GetEvaluations()[0].GetContext()))
 	})
 
 	t.Run("deny_on_first_deny_returns_results_up_to_deny", func(t *testing.T) {
@@ -988,9 +1015,9 @@ func TestEvaluations(t *testing.T) {
 		require.NotNil(t, resp)
 
 		// Should have 2 responses: doc1=true, doc2=false (doc3 not evaluated)
-		require.Len(t, resp.GetEvaluationResponses(), 2)
-		require.True(t, resp.GetEvaluationResponses()[0].GetDecision())  // doc1 = permit
-		require.False(t, resp.GetEvaluationResponses()[1].GetDecision()) // doc2 = deny
+		require.Len(t, resp.GetEvaluations(), 2)
+		require.True(t, resp.GetEvaluations()[0].GetDecision())  // doc1 = permit
+		require.False(t, resp.GetEvaluations()[1].GetDecision()) // doc2 = deny
 	})
 
 	t.Run("permit_on_first_permit_returns_results_up_to_permit", func(t *testing.T) {
@@ -1061,10 +1088,10 @@ func TestEvaluations(t *testing.T) {
 		require.NotNil(t, resp)
 
 		// Should have 3 responses: doc1=false, doc2=false, doc3=true (doc4 not evaluated)
-		require.Len(t, resp.GetEvaluationResponses(), 3)
-		require.False(t, resp.GetEvaluationResponses()[0].GetDecision()) // doc1 = deny
-		require.False(t, resp.GetEvaluationResponses()[1].GetDecision()) // doc2 = deny
-		require.True(t, resp.GetEvaluationResponses()[2].GetDecision())  // doc3 = permit
+		require.Len(t, resp.GetEvaluations(), 3)
+		require.False(t, resp.GetEvaluations()[0].GetDecision()) // doc1 = deny
+		require.False(t, resp.GetEvaluations()[1].GetDecision()) // doc2 = deny
+		require.True(t, resp.GetEvaluations()[2].GetDecision())  // doc3 = permit
 	})
 }
 
@@ -1312,7 +1339,7 @@ func TestResourceSearch(t *testing.T) {
 			StoreId:  ulid.Make().String(),
 			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
 			Action:   &authzenv1.Action{Name: "read"},
-			Resource: &authzenv1.Resource{Type: "document"},
+			Resource: &authzenv1.ResourceFilter{Type: "document"},
 		}
 
 		resp, err := s.ResourceSearch(context.Background(), req)
@@ -1339,7 +1366,7 @@ func TestResourceSearch(t *testing.T) {
 			StoreId:  createStoreResp.GetId(),
 			Subject:  nil, // Missing
 			Action:   &authzenv1.Action{Name: "read"},
-			Resource: &authzenv1.Resource{Type: "document"},
+			Resource: &authzenv1.ResourceFilter{Type: "document"},
 		}
 
 		resp, err := s.ResourceSearch(context.Background(), req)
@@ -1417,7 +1444,7 @@ func TestResourceSearch(t *testing.T) {
 			StoreId:  storeID,
 			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
 			Action:   &authzenv1.Action{Name: "reader"},
-			Resource: &authzenv1.Resource{Type: "document"},
+			Resource: &authzenv1.ResourceFilter{Type: "document"},
 		}
 
 		// Pass model ID via header
@@ -1496,7 +1523,7 @@ func TestResourceSearch(t *testing.T) {
 			StoreId:  storeID,
 			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
 			Action:   &authzenv1.Action{Name: "reader"},
-			Resource: &authzenv1.Resource{Type: "document"},
+			Resource: &authzenv1.ResourceFilter{Type: "document"},
 		}
 
 		md := metadata.New(map[string]string{

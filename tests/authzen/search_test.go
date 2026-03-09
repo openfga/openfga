@@ -177,7 +177,7 @@ func TestResourceSearch(t *testing.T) {
 			StoreId:  tc.storeID,
 			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
 			Action:   &authzenv1.Action{Name: "reader"},
-			Resource: &authzenv1.Resource{Type: "document"},
+			Resource: &authzenv1.ResourceFilter{Type: "document"},
 		})
 		require.NoError(t, err)
 		require.Len(t, resp.GetResults(), 3)
@@ -208,7 +208,7 @@ func TestResourceSearch(t *testing.T) {
 			StoreId:  tc.storeID,
 			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
 			Action:   &authzenv1.Action{Name: "reader"},
-			Resource: &authzenv1.Resource{Type: "document"},
+			Resource: &authzenv1.ResourceFilter{Type: "document"},
 		})
 		require.NoError(t, err)
 		require.Empty(t, resp.GetResults())
@@ -238,7 +238,7 @@ func TestResourceSearch(t *testing.T) {
 			StoreId:  tc.storeID,
 			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
 			Action:   &authzenv1.Action{Name: "reader"},
-			Resource: &authzenv1.Resource{Type: "document"},
+			Resource: &authzenv1.ResourceFilter{Type: "document"},
 		})
 		require.NoError(t, err)
 		require.Len(t, resp.GetResults(), 2)
@@ -276,7 +276,7 @@ func TestResourceSearch(t *testing.T) {
 			StoreId:  tc.storeID,
 			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
 			Action:   &authzenv1.Action{Name: "viewer"},
-			Resource: &authzenv1.Resource{Type: "document"},
+			Resource: &authzenv1.ResourceFilter{Type: "document"},
 		})
 		require.NoError(t, err)
 		require.Len(t, resp.GetResults(), 2)
@@ -311,7 +311,7 @@ func TestResourceSearch(t *testing.T) {
 			StoreId:  tc.storeID,
 			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
 			Action:   &authzenv1.Action{Name: "reader"},
-			Resource: &authzenv1.Resource{Type: "document"},
+			Resource: &authzenv1.ResourceFilter{Type: "document"},
 			Page:     &authzenv1.PageRequest{Limit: &limit},
 		})
 		require.NoError(t, err)
@@ -354,7 +354,7 @@ func TestResourceSearch(t *testing.T) {
 			StoreId:  tc.storeID,
 			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
 			Action:   &authzenv1.Action{Name: "reader"},
-			Resource: &authzenv1.Resource{Type: "document"},
+			Resource: &authzenv1.ResourceFilter{Type: "document"},
 		})
 		require.NoError(t, err)
 		require.Len(t, resp.GetResults(), 1)
@@ -589,7 +589,7 @@ func TestTransitiveRelationships(t *testing.T) {
 			StoreId:  tc.storeID,
 			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
 			Action:   &authzenv1.Action{Name: "reader"},
-			Resource: &authzenv1.Resource{Type: "document"},
+			Resource: &authzenv1.ResourceFilter{Type: "document"},
 		})
 		require.NoError(t, err)
 		require.Len(t, resp.GetResults(), 1)
@@ -626,7 +626,7 @@ func TestTransitiveRelationships(t *testing.T) {
 			StoreId:  tc.storeID,
 			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
 			Action:   &authzenv1.Action{Name: "viewer"},
-			Resource: &authzenv1.Resource{Type: "document"},
+			Resource: &authzenv1.ResourceFilter{Type: "document"},
 		})
 		require.NoError(t, err)
 		require.Len(t, resp.GetResults(), 1)
@@ -665,7 +665,7 @@ func TestTransitiveRelationships(t *testing.T) {
 			StoreId:  tc.storeID,
 			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
 			Action:   &authzenv1.Action{Name: "viewer"},
-			Resource: &authzenv1.Resource{Type: "project"},
+			Resource: &authzenv1.ResourceFilter{Type: "project"},
 		})
 		require.NoError(t, err)
 		require.Len(t, resp.GetResults(), 1)

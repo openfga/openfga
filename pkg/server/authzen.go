@@ -9,6 +9,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/structpb"
 
 	authzenv1 "github.com/openfga/api/proto/authzen/v1"
 
@@ -44,6 +45,18 @@ func getAuthorizationModelIDFromHeader(ctx context.Context) string {
 		}
 	}
 	return ""
+}
+
+// errorContext builds an arbitrary JSON context object for error responses,
+// per the AuthZen spec where context is a free-form JSON object.
+func errorContext(status uint32, message string) *structpb.Struct {
+	ctx, _ := structpb.NewStruct(map[string]interface{}{
+		"error": map[string]interface{}{
+			"status":  status,
+			"message": message,
+		},
+	})
+	return ctx
 }
 
 func (s *Server) Evaluation(ctx context.Context, req *authzenv1.EvaluationRequest) (*authzenv1.EvaluationResponse, error) {
@@ -104,6 +117,25 @@ func (s *Server) Evaluations(ctx context.Context, req *authzenv1.EvaluationsRequ
 		Method:  "authzen.Evaluations",
 	})
 
+	// AuthZEN compatibility: if evaluations is omitted or empty,
+	// behave like a single Access Evaluation request.
+	if len(req.GetEvaluations()) == 0 {
+		evalResp, err := s.Evaluation(ctx, &authzenv1.EvaluationRequest{
+			Subject:  req.GetSubject(),
+			Resource: req.GetResource(),
+			Action:   req.GetAction(),
+			Context:  req.GetContext(),
+			StoreId:  req.GetStoreId(),
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		return &authzenv1.EvaluationsResponse{
+			Evaluations: []*authzenv1.EvaluationResponse{evalResp},
+		}, nil
+	}
+
 	// Get authorization model ID from header
 	authorizationModelID := getAuthorizationModelIDFromHeader(ctx)
 
@@ -111,6 +143,14 @@ func (s *Server) Evaluations(ctx context.Context, req *authzenv1.EvaluationsRequ
 	semantic := authzenv1.EvaluationsSemantic_execute_all
 	if req.GetOptions() != nil {
 		semantic = req.GetOptions().GetEvaluationsSemantic()
+		switch semantic {
+		case authzenv1.EvaluationsSemantic_execute_all,
+			authzenv1.EvaluationsSemantic_deny_on_first_deny,
+			authzenv1.EvaluationsSemantic_permit_on_first_permit:
+			// valid values
+		default:
+			return nil, status.Error(codes.InvalidArgument, "invalid evaluations_semantic: value must be one of the defined enum values")
+		}
 	}
 
 	if semantic == authzenv1.EvaluationsSemantic_deny_on_first_deny ||
@@ -200,12 +240,7 @@ func (s *Server) evaluateWithShortCircuit(
 			}
 			responses = append(responses, &authzenv1.EvaluationResponse{
 				Decision: false,
-				Context: &authzenv1.EvaluationResponseContext{
-					Error: &authzenv1.ResponseContextError{
-						Status:  httpStatus,
-						Message: err.Error(),
-					},
-				},
+				Context:  errorContext(httpStatus, err.Error()),
 			})
 			// Error results in Decision: false, honor deny_on_first_deny short-circuit
 			if semantic == authzenv1.EvaluationsSemantic_deny_on_first_deny {
@@ -228,7 +263,7 @@ func (s *Server) evaluateWithShortCircuit(
 	}
 
 	return &authzenv1.EvaluationsResponse{
-		EvaluationResponses: responses,
+		Evaluations: responses,
 	}, nil
 }
 

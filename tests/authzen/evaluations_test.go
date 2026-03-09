@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	authzenv1 "github.com/openfga/api/proto/authzen/v1"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -40,9 +42,9 @@ func TestEvaluations(t *testing.T) {
 			},
 		})
 		require.NoError(t, err)
-		require.Len(t, resp.GetEvaluationResponses(), 2)
-		require.True(t, resp.GetEvaluationResponses()[0].GetDecision())  // reader - allowed
-		require.False(t, resp.GetEvaluationResponses()[1].GetDecision()) // writer - denied
+		require.Len(t, resp.GetEvaluations(), 2)
+		require.True(t, resp.GetEvaluations()[0].GetDecision())  // reader - allowed
+		require.False(t, resp.GetEvaluations()[1].GetDecision()) // writer - denied
 	})
 
 	t.Run("default_value_inheritance", func(t *testing.T) {
@@ -73,10 +75,10 @@ func TestEvaluations(t *testing.T) {
 			},
 		})
 		require.NoError(t, err)
-		require.Len(t, resp.GetEvaluationResponses(), 3)
-		require.True(t, resp.GetEvaluationResponses()[0].GetDecision())
-		require.True(t, resp.GetEvaluationResponses()[1].GetDecision())
-		require.False(t, resp.GetEvaluationResponses()[2].GetDecision())
+		require.Len(t, resp.GetEvaluations(), 3)
+		require.True(t, resp.GetEvaluations()[0].GetDecision())
+		require.True(t, resp.GetEvaluations()[1].GetDecision())
+		require.False(t, resp.GetEvaluations()[2].GetDecision())
 	})
 
 	t.Run("semantic_execute_all_default", func(t *testing.T) {
@@ -108,10 +110,10 @@ func TestEvaluations(t *testing.T) {
 			},
 		})
 		require.NoError(t, err)
-		require.Len(t, resp.GetEvaluationResponses(), 3) // All evaluations processed
-		require.True(t, resp.GetEvaluationResponses()[0].GetDecision())
-		require.False(t, resp.GetEvaluationResponses()[1].GetDecision())
-		require.True(t, resp.GetEvaluationResponses()[2].GetDecision())
+		require.Len(t, resp.GetEvaluations(), 3) // All evaluations processed
+		require.True(t, resp.GetEvaluations()[0].GetDecision())
+		require.False(t, resp.GetEvaluations()[1].GetDecision())
+		require.True(t, resp.GetEvaluations()[2].GetDecision())
 	})
 
 	t.Run("semantic_execute_all_explicit", func(t *testing.T) {
@@ -146,10 +148,10 @@ func TestEvaluations(t *testing.T) {
 			},
 		})
 		require.NoError(t, err)
-		require.Len(t, resp.GetEvaluationResponses(), 3) // All evaluations processed
-		require.True(t, resp.GetEvaluationResponses()[0].GetDecision())
-		require.False(t, resp.GetEvaluationResponses()[1].GetDecision())
-		require.True(t, resp.GetEvaluationResponses()[2].GetDecision())
+		require.Len(t, resp.GetEvaluations(), 3) // All evaluations processed
+		require.True(t, resp.GetEvaluations()[0].GetDecision())
+		require.False(t, resp.GetEvaluations()[1].GetDecision())
+		require.True(t, resp.GetEvaluations()[2].GetDecision())
 	})
 
 	t.Run("semantic_deny_on_first_deny", func(t *testing.T) {
@@ -183,9 +185,9 @@ func TestEvaluations(t *testing.T) {
 			},
 		})
 		require.NoError(t, err)
-		require.Len(t, resp.GetEvaluationResponses(), 2) // Should only have 2 responses
-		require.True(t, resp.GetEvaluationResponses()[0].GetDecision())
-		require.False(t, resp.GetEvaluationResponses()[1].GetDecision())
+		require.Len(t, resp.GetEvaluations(), 2) // Should only have 2 responses
+		require.True(t, resp.GetEvaluations()[0].GetDecision())
+		require.False(t, resp.GetEvaluations()[1].GetDecision())
 	})
 
 	t.Run("semantic_deny_on_first_deny_first_item_denied", func(t *testing.T) {
@@ -218,8 +220,8 @@ func TestEvaluations(t *testing.T) {
 			},
 		})
 		require.NoError(t, err)
-		require.Len(t, resp.GetEvaluationResponses(), 1) // Should only have 1 response
-		require.False(t, resp.GetEvaluationResponses()[0].GetDecision())
+		require.Len(t, resp.GetEvaluations(), 1) // Should only have 1 response
+		require.False(t, resp.GetEvaluations()[0].GetDecision())
 	})
 
 	t.Run("semantic_deny_on_first_deny_all_permitted", func(t *testing.T) {
@@ -253,10 +255,10 @@ func TestEvaluations(t *testing.T) {
 			},
 		})
 		require.NoError(t, err)
-		require.Len(t, resp.GetEvaluationResponses(), 3) // All should be evaluated
-		require.True(t, resp.GetEvaluationResponses()[0].GetDecision())
-		require.True(t, resp.GetEvaluationResponses()[1].GetDecision())
-		require.True(t, resp.GetEvaluationResponses()[2].GetDecision())
+		require.Len(t, resp.GetEvaluations(), 3) // All should be evaluated
+		require.True(t, resp.GetEvaluations()[0].GetDecision())
+		require.True(t, resp.GetEvaluations()[1].GetDecision())
+		require.True(t, resp.GetEvaluations()[2].GetDecision())
 	})
 
 	t.Run("semantic_permit_on_first_permit", func(t *testing.T) {
@@ -290,9 +292,9 @@ func TestEvaluations(t *testing.T) {
 			},
 		})
 		require.NoError(t, err)
-		require.Len(t, resp.GetEvaluationResponses(), 2) // Should only have 2 responses
-		require.False(t, resp.GetEvaluationResponses()[0].GetDecision())
-		require.True(t, resp.GetEvaluationResponses()[1].GetDecision())
+		require.Len(t, resp.GetEvaluations(), 2) // Should only have 2 responses
+		require.False(t, resp.GetEvaluations()[0].GetDecision())
+		require.True(t, resp.GetEvaluations()[1].GetDecision())
 	})
 
 	t.Run("semantic_permit_on_first_permit_first_item_permitted", func(t *testing.T) {
@@ -325,8 +327,8 @@ func TestEvaluations(t *testing.T) {
 			},
 		})
 		require.NoError(t, err)
-		require.Len(t, resp.GetEvaluationResponses(), 1) // Should only have 1 response
-		require.True(t, resp.GetEvaluationResponses()[0].GetDecision())
+		require.Len(t, resp.GetEvaluations(), 1) // Should only have 1 response
+		require.True(t, resp.GetEvaluations()[0].GetDecision())
 	})
 
 	t.Run("semantic_permit_on_first_permit_all_denied", func(t *testing.T) {
@@ -356,10 +358,10 @@ func TestEvaluations(t *testing.T) {
 			},
 		})
 		require.NoError(t, err)
-		require.Len(t, resp.GetEvaluationResponses(), 3) // All should be evaluated
-		require.False(t, resp.GetEvaluationResponses()[0].GetDecision())
-		require.False(t, resp.GetEvaluationResponses()[1].GetDecision())
-		require.False(t, resp.GetEvaluationResponses()[2].GetDecision())
+		require.Len(t, resp.GetEvaluations(), 3) // All should be evaluated
+		require.False(t, resp.GetEvaluations()[0].GetDecision())
+		require.False(t, resp.GetEvaluations()[1].GetDecision())
+		require.False(t, resp.GetEvaluations()[2].GetDecision())
 	})
 
 	t.Run("response_ordering", func(t *testing.T) {
@@ -391,12 +393,12 @@ func TestEvaluations(t *testing.T) {
 			},
 		})
 		require.NoError(t, err)
-		require.Len(t, resp.GetEvaluationResponses(), 5)
-		require.False(t, resp.GetEvaluationResponses()[0].GetDecision())
-		require.True(t, resp.GetEvaluationResponses()[1].GetDecision())
-		require.False(t, resp.GetEvaluationResponses()[2].GetDecision())
-		require.True(t, resp.GetEvaluationResponses()[3].GetDecision())
-		require.False(t, resp.GetEvaluationResponses()[4].GetDecision())
+		require.Len(t, resp.GetEvaluations(), 5)
+		require.False(t, resp.GetEvaluations()[0].GetDecision())
+		require.True(t, resp.GetEvaluations()[1].GetDecision())
+		require.False(t, resp.GetEvaluations()[2].GetDecision())
+		require.True(t, resp.GetEvaluations()[3].GetDecision())
+		require.False(t, resp.GetEvaluations()[4].GetDecision())
 	})
 
 	t.Run("mixed_inheritance_per_item", func(t *testing.T) {
@@ -437,13 +439,13 @@ func TestEvaluations(t *testing.T) {
 			},
 		})
 		require.NoError(t, err)
-		require.Len(t, resp.GetEvaluationResponses(), 3)
-		require.True(t, resp.GetEvaluationResponses()[0].GetDecision())  // alice is reader
-		require.False(t, resp.GetEvaluationResponses()[1].GetDecision()) // alice is not writer
-		require.True(t, resp.GetEvaluationResponses()[2].GetDecision())  // bob is writer
+		require.Len(t, resp.GetEvaluations(), 3)
+		require.True(t, resp.GetEvaluations()[0].GetDecision())  // alice is reader
+		require.False(t, resp.GetEvaluations()[1].GetDecision()) // alice is not writer
+		require.True(t, resp.GetEvaluations()[2].GetDecision())  // bob is writer
 	})
 
-	t.Run("empty_evaluations_list", func(t *testing.T) {
+	t.Run("evaluations_omitted_behaves_like_single_evaluation", func(t *testing.T) {
 		tc := setupTestContext(t)
 		tc.createStore("test-store")
 		tc.writeModel(`
@@ -454,16 +456,46 @@ func TestEvaluations(t *testing.T) {
 				relations
 					define reader: [user]
 		`)
+		tc.writeTuples([]*openfgav1.TupleKey{
+			{User: "user:alice", Relation: "reader", Object: "document:doc1"},
+		})
 
-		// Empty evaluations list returns an error because BatchCheck requires at least one check
-		_, err := tc.authzenClient.Evaluations(context.Background(), &authzenv1.EvaluationsRequest{
+		resp, err := tc.authzenClient.Evaluations(context.Background(), &authzenv1.EvaluationsRequest{
+			StoreId:  tc.storeID,
+			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
+			Action:   &authzenv1.Action{Name: "reader"},
+			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
+		})
+		require.NoError(t, err)
+		require.Len(t, resp.GetEvaluations(), 1)
+		require.True(t, resp.GetEvaluations()[0].GetDecision())
+	})
+
+	t.Run("evaluations_empty_behaves_like_single_evaluation", func(t *testing.T) {
+		tc := setupTestContext(t)
+		tc.createStore("test-store")
+		tc.writeModel(`
+			model
+				schema 1.1
+			type user
+			type document
+				relations
+					define reader: [user]
+		`)
+		tc.writeTuples([]*openfgav1.TupleKey{
+			{User: "user:alice", Relation: "reader", Object: "document:doc1"},
+		})
+
+		resp, err := tc.authzenClient.Evaluations(context.Background(), &authzenv1.EvaluationsRequest{
 			StoreId:     tc.storeID,
 			Subject:     &authzenv1.Subject{Type: "user", Id: "alice"},
 			Action:      &authzenv1.Action{Name: "reader"},
+			Resource:    &authzenv1.Resource{Type: "document", Id: "doc1"},
 			Evaluations: []*authzenv1.EvaluationsItemRequest{},
 		})
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "batch check requires at least one check")
+		require.NoError(t, err)
+		require.Len(t, resp.GetEvaluations(), 1)
+		require.True(t, resp.GetEvaluations()[0].GetDecision())
 	})
 
 	t.Run("single_evaluation", func(t *testing.T) {
@@ -490,8 +522,8 @@ func TestEvaluations(t *testing.T) {
 			},
 		})
 		require.NoError(t, err)
-		require.Len(t, resp.GetEvaluationResponses(), 1)
-		require.True(t, resp.GetEvaluationResponses()[0].GetDecision())
+		require.Len(t, resp.GetEvaluations(), 1)
+		require.True(t, resp.GetEvaluations()[0].GetDecision())
 	})
 
 	t.Run("multiple_subjects_different_resources", func(t *testing.T) {
@@ -533,11 +565,11 @@ func TestEvaluations(t *testing.T) {
 			},
 		})
 		require.NoError(t, err)
-		require.Len(t, resp.GetEvaluationResponses(), 4)
-		require.True(t, resp.GetEvaluationResponses()[0].GetDecision())  // alice can read doc1
-		require.False(t, resp.GetEvaluationResponses()[1].GetDecision()) // alice cannot read doc2
-		require.False(t, resp.GetEvaluationResponses()[2].GetDecision()) // bob cannot read doc1
-		require.True(t, resp.GetEvaluationResponses()[3].GetDecision())  // bob can read doc2
+		require.Len(t, resp.GetEvaluations(), 4)
+		require.True(t, resp.GetEvaluations()[0].GetDecision())  // alice can read doc1
+		require.False(t, resp.GetEvaluations()[1].GetDecision()) // alice cannot read doc2
+		require.False(t, resp.GetEvaluations()[2].GetDecision()) // bob cannot read doc1
+		require.True(t, resp.GetEvaluations()[3].GetDecision())  // bob can read doc2
 	})
 
 	// AuthZEN spec section 7.1.1: Context is inherited from top-level defaults
@@ -573,9 +605,9 @@ func TestEvaluations(t *testing.T) {
 			},
 		})
 		require.NoError(t, err)
-		require.Len(t, resp.GetEvaluationResponses(), 2)
-		require.True(t, resp.GetEvaluationResponses()[0].GetDecision(), "doc1 should be allowed with inherited context")
-		require.True(t, resp.GetEvaluationResponses()[1].GetDecision(), "doc2 should be allowed with inherited context")
+		require.Len(t, resp.GetEvaluations(), 2)
+		require.True(t, resp.GetEvaluations()[0].GetDecision(), "doc1 should be allowed with inherited context")
+		require.True(t, resp.GetEvaluations()[1].GetDecision(), "doc2 should be allowed with inherited context")
 
 		// Outside office hours - all should be denied
 		resp, err = tc.authzenClient.Evaluations(context.Background(), &authzenv1.EvaluationsRequest{
@@ -589,9 +621,9 @@ func TestEvaluations(t *testing.T) {
 			},
 		})
 		require.NoError(t, err)
-		require.Len(t, resp.GetEvaluationResponses(), 2)
-		require.False(t, resp.GetEvaluationResponses()[0].GetDecision(), "doc1 should be denied outside office hours")
-		require.False(t, resp.GetEvaluationResponses()[1].GetDecision(), "doc2 should be denied outside office hours")
+		require.Len(t, resp.GetEvaluations(), 2)
+		require.False(t, resp.GetEvaluations()[0].GetDecision(), "doc1 should be denied outside office hours")
+		require.False(t, resp.GetEvaluations()[1].GetDecision(), "doc2 should be denied outside office hours")
 	})
 
 	// AuthZEN spec section 7.1.1: Per-evaluation context overrides default context
@@ -630,9 +662,9 @@ func TestEvaluations(t *testing.T) {
 			},
 		})
 		require.NoError(t, err)
-		require.Len(t, resp.GetEvaluationResponses(), 2)
-		require.False(t, resp.GetEvaluationResponses()[0].GetDecision(), "doc1 should be denied with default context (hour=22)")
-		require.True(t, resp.GetEvaluationResponses()[1].GetDecision(), "doc2 should be allowed with overridden context (hour=10)")
+		require.Len(t, resp.GetEvaluations(), 2)
+		require.False(t, resp.GetEvaluations()[0].GetDecision(), "doc1 should be denied with default context (hour=22)")
+		require.True(t, resp.GetEvaluations()[1].GetDecision(), "doc2 should be allowed with overridden context (hour=10)")
 	})
 
 	// AuthZEN spec section 7.2.1: Per-evaluation errors
@@ -666,12 +698,12 @@ func TestEvaluations(t *testing.T) {
 			},
 		})
 		require.NoError(t, err) // Overall request succeeds
-		require.Len(t, resp.GetEvaluationResponses(), 2)
-		require.True(t, resp.GetEvaluationResponses()[0].GetDecision())  // First is allowed
-		require.False(t, resp.GetEvaluationResponses()[1].GetDecision()) // Error results in false decision
-		// Per spec, error info is in context.error
-		require.NotNil(t, resp.GetEvaluationResponses()[1].GetContext())
-		require.NotNil(t, resp.GetEvaluationResponses()[1].GetContext().GetError())
+		require.Len(t, resp.GetEvaluations(), 2)
+		require.True(t, resp.GetEvaluations()[0].GetDecision())  // First is allowed
+		require.False(t, resp.GetEvaluations()[1].GetDecision()) // Error results in false decision
+		// Per spec, error info is in context.error (context is a free-form JSON object)
+		require.NotNil(t, resp.GetEvaluations()[1].GetContext())
+		require.NotNil(t, resp.GetEvaluations()[1].GetContext().GetFields()["error"])
 	})
 
 	// AuthZEN spec section 3: Feature disabled should return error
@@ -726,13 +758,13 @@ func TestEvaluations(t *testing.T) {
 			},
 		})
 		require.NoError(t, err)
-		require.Len(t, resp.GetEvaluationResponses(), 2) // Error + permit, then stop
+		require.Len(t, resp.GetEvaluations(), 2) // Error + permit, then stop
 		// First evaluation has error
-		require.False(t, resp.GetEvaluationResponses()[0].GetDecision())
-		require.NotNil(t, resp.GetEvaluationResponses()[0].GetContext())
-		require.NotNil(t, resp.GetEvaluationResponses()[0].GetContext().GetError())
+		require.False(t, resp.GetEvaluations()[0].GetDecision())
+		require.NotNil(t, resp.GetEvaluations()[0].GetContext())
+		require.NotNil(t, resp.GetEvaluations()[0].GetContext().GetFields()["error"])
 		// Second evaluation is permit - processing stops
-		require.True(t, resp.GetEvaluationResponses()[1].GetDecision())
+		require.True(t, resp.GetEvaluations()[1].GetDecision())
 	})
 
 	// Test that execute_all continues processing all evaluations even with errors
@@ -766,14 +798,49 @@ func TestEvaluations(t *testing.T) {
 			},
 		})
 		require.NoError(t, err)
-		require.Len(t, resp.GetEvaluationResponses(), 3) // All evaluations processed
+		require.Len(t, resp.GetEvaluations(), 3) // All evaluations processed
 		// First: error
-		require.False(t, resp.GetEvaluationResponses()[0].GetDecision())
-		require.NotNil(t, resp.GetEvaluationResponses()[0].GetContext().GetError())
+		require.False(t, resp.GetEvaluations()[0].GetDecision())
+		require.NotNil(t, resp.GetEvaluations()[0].GetContext().GetFields()["error"])
 		// Second: allowed
-		require.True(t, resp.GetEvaluationResponses()[1].GetDecision())
+		require.True(t, resp.GetEvaluations()[1].GetDecision())
 		// Third: denied
-		require.False(t, resp.GetEvaluationResponses()[2].GetDecision())
-		require.Nil(t, resp.GetEvaluationResponses()[2].GetContext().GetError()) // No error, just denied
+		require.False(t, resp.GetEvaluations()[2].GetDecision())
+		require.Nil(t, resp.GetEvaluations()[2].GetContext()) // No error, just denied
+	})
+
+	// EvaluationsOptions.evaluations_semantic must be one of the defined enum values.
+	t.Run("invalid_evaluations_semantic_rejected", func(t *testing.T) {
+		tc := setupTestContext(t)
+		tc.createStore("test-store")
+		tc.writeModel(`
+			model
+				schema 1.1
+			type user
+			type document
+				relations
+					define reader: [user]
+		`)
+		tc.writeTuples([]*openfgav1.TupleKey{
+			{User: "user:alice", Relation: "reader", Object: "document:doc1"},
+		})
+
+		_, err := tc.authzenClient.Evaluations(context.Background(), &authzenv1.EvaluationsRequest{
+			StoreId: tc.storeID,
+			Subject: &authzenv1.Subject{Type: "user", Id: "alice"},
+			Action:  &authzenv1.Action{Name: "reader"},
+			Evaluations: []*authzenv1.EvaluationsItemRequest{
+				{Resource: &authzenv1.Resource{Type: "document", Id: "doc1"}},
+			},
+			Options: &authzenv1.EvaluationsOptions{
+				EvaluationsSemantic: authzenv1.EvaluationsSemantic(99),
+			},
+		})
+
+		require.Error(t, err)
+		st, ok := status.FromError(err)
+		require.True(t, ok)
+		require.Equal(t, codes.InvalidArgument, st.Code())
+		require.Contains(t, st.Message(), "defined enum values")
 	})
 }

@@ -64,9 +64,17 @@ AuthZEN allows `properties` objects on `subject`, `resource`, and `action`. Open
 
 **Challenge:** OpenFGA's `ListUsers` API requires at least one `UserTypeFilter` specifying the type of users to search for. This is a fundamental requirement of the API.
 
-**Decision:** `SubjectSearch` uses `SubjectFilter` (not `Subject`) where `type` is required but `id` is optional. This allows clients to search for all subjects of a type without specifying a specific ID.
+**Decision:** The `subject` field in `SubjectSearch` only accepts a `type` (no `id`). If you already know the subject's ID, use the `Evaluation` endpoint instead.
 
 **Tradeoff:** Clients must always specify a subject type when calling `SubjectSearch`. Searching across all subject types in a single request is not supported.
+
+### ResourceSearch and Resource Type Requirement
+
+**Challenge:** OpenFGA's `ListObjects` API requires a resource type to search for. Specifying a resource ID does not make sense for a search operation — if you already know the resource ID, use the `Evaluation` endpoint instead.
+
+**Decision:** The `resource` field in `ResourceSearch` only accepts a `type` (no `id`), mirroring how `ListObjects` only takes a type. If you already know the resource's ID, use the `Evaluation` endpoint instead.
+
+**Tradeoff:** Clients must always specify a resource type when calling `ResourceSearch`. Searching across all resource types in a single request is not supported.
 
 ### ActionSearch Implementation
 
@@ -125,16 +133,25 @@ This section documents AuthZEN specification features that are **not currently i
 
 ### Response Context (Decision Context)
 
-The AuthZEN specification allows PDPs to return a `context` object in evaluation responses containing:
-- **Reason codes** explaining why a decision was made
-- **Advices and obligations** tied to the access decision
-- **UI rendering hints** for the PEP
-- **Step-up authentication instructions** (e.g., required `acr`/`amr` values)
-- **Environmental information** and metadata
+The AuthZEN specification allows PDPs to return a `context` object in evaluation responses. Per the spec, `context` is an arbitrary JSON object — its format is implementation-defined. The spec provides non-normative examples including reasons, obligations, UI hints, and step-up authentication instructions.
 
-**Current status:** OpenFGA returns only the `decision` boolean. The response `context` object is not populated with reasons, obligations, or hints.
+**Current status:** The `context` field is modeled as a free-form JSON object (`google.protobuf.Struct`). OpenFGA populates it with error information when an individual evaluation fails:
 
-**Rationale:** OpenFGA's Check API does not natively return decision explanations or obligations. Implementing this would require significant architectural changes.
+```json
+{
+  "decision": false,
+  "context": {
+    "error": {
+      "status": 400,
+      "message": "type 'unknown_type' not found"
+    }
+  }
+}
+```
+
+For successful evaluations, only the `decision` boolean is returned. Reasons, obligations, and hints are not populated.
+
+**Rationale:** OpenFGA's Check API does not natively return decision explanations or obligations. Error context is provided so that batch evaluation consumers can distinguish between "denied" and "error" results.
 
 ### Contextual Tuples
 
@@ -152,13 +169,13 @@ The AuthZEN specification supports optional pagination for Search APIs with `pag
 
 **Rationale:** Per the AuthZEN specification, pagination is optional: "a PDP MAY support pagination." This implementation returns all results in a single response.
 
-### Search API: Multi-Type Subject Search
+### Search API: Multi-Type Search
 
-The AuthZEN specification allows searching for subjects without specifying a type, which would return subjects of all types.
+The AuthZEN specification allows searching for subjects or resources without specifying a type, which would return results of all types.
 
-**Current status:** `SubjectSearch` requires a subject `type` to be specified.
+**Current status:** `SubjectSearch` requires a subject `type` and `ResourceSearch` requires a resource `type` to be specified.
 
-**Rationale:** OpenFGA's `ListUsers` API requires at least one `UserTypeFilter`. Searching across all types would require multiple API calls and result aggregation.
+**Rationale:** OpenFGA's `ListUsers` and `ListObjects` APIs require a type filter. Searching across all types would require multiple API calls and result aggregation.
 
 ### Search API: Action Properties in Responses
 
@@ -186,7 +203,7 @@ No mechanism exists for a PEP to hint at desired parallelism behavior.
 
 The AuthZEN specification shows examples of individual evaluation errors being conveyed in the response `context` field (e.g., `"error": "resource not found"`).
 
-**Current status:** Individual evaluation errors are not returned with detailed reason codes. Failed evaluations return `decision: false` without additional context.
+**Current status:** Individual evaluation errors are returned in the `context` field as a free-form JSON object containing an `error` object with `status` (HTTP status code) and `message` fields. This allows consumers to distinguish between a denied decision and an error.
 
 ### PDP Capabilities Registry
 

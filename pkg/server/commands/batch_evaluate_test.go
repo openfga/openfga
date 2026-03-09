@@ -8,9 +8,36 @@ import (
 
 	authzenv1 "github.com/openfga/api/proto/authzen/v1"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/openfga/openfga/pkg/testutils"
 )
+
+// getContextError extracts the "error" field from an evaluation response context struct.
+func getContextError(ctx *structpb.Struct) *structpb.Value {
+	if ctx == nil {
+		return nil
+	}
+	return ctx.GetFields()["error"]
+}
+
+// getContextErrorStatus extracts the status from a context error.
+func getContextErrorStatus(ctx *structpb.Struct) uint32 {
+	errVal := getContextError(ctx)
+	if errVal == nil {
+		return 0
+	}
+	return uint32(errVal.GetStructValue().GetFields()["status"].GetNumberValue())
+}
+
+// getContextErrorMessage extracts the message from a context error.
+func getContextErrorMessage(ctx *structpb.Struct) string {
+	errVal := getContextError(ctx)
+	if errVal == nil {
+		return ""
+	}
+	return errVal.GetStructValue().GetFields()["message"].GetStringValue()
+}
 
 func TestBatchEvaluateRequestCommand(t *testing.T) {
 	t.Run("basic_batch_check_conversion", func(t *testing.T) {
@@ -485,9 +512,9 @@ func TestTransformResponse(t *testing.T) {
 
 		resp, err := TransformResponse(batchResp)
 		require.NoError(t, err)
-		require.Len(t, resp.GetEvaluationResponses(), 2)
-		require.True(t, resp.GetEvaluationResponses()[0].GetDecision())
-		require.False(t, resp.GetEvaluationResponses()[1].GetDecision())
+		require.Len(t, resp.GetEvaluations(), 2)
+		require.True(t, resp.GetEvaluations()[0].GetDecision())
+		require.False(t, resp.GetEvaluations()[1].GetDecision())
 	})
 
 	t.Run("response_ordering_matches_request_ordering", func(t *testing.T) {
@@ -503,13 +530,13 @@ func TestTransformResponse(t *testing.T) {
 
 		resp, err := TransformResponse(batchResp)
 		require.NoError(t, err)
-		require.Len(t, resp.GetEvaluationResponses(), 4)
+		require.Len(t, resp.GetEvaluations(), 4)
 
 		// Results should be ordered by correlation ID (index)
-		require.False(t, resp.GetEvaluationResponses()[0].GetDecision()) // "0" -> false
-		require.False(t, resp.GetEvaluationResponses()[1].GetDecision()) // "1" -> false
-		require.True(t, resp.GetEvaluationResponses()[2].GetDecision())  // "2" -> true
-		require.True(t, resp.GetEvaluationResponses()[3].GetDecision())  // "3" -> true
+		require.False(t, resp.GetEvaluations()[0].GetDecision()) // "0" -> false
+		require.False(t, resp.GetEvaluations()[1].GetDecision()) // "1" -> false
+		require.True(t, resp.GetEvaluations()[2].GetDecision())  // "2" -> true
+		require.True(t, resp.GetEvaluations()[3].GetDecision())  // "3" -> true
 	})
 
 	t.Run("handles_error_results", func(t *testing.T) {
@@ -528,21 +555,21 @@ func TestTransformResponse(t *testing.T) {
 
 		resp, err := TransformResponse(batchResp)
 		require.NoError(t, err)
-		require.Len(t, resp.GetEvaluationResponses(), 3)
+		require.Len(t, resp.GetEvaluations(), 3)
 
 		// First result is allowed
-		require.True(t, resp.GetEvaluationResponses()[0].GetDecision())
-		require.Nil(t, resp.GetEvaluationResponses()[0].GetContext())
+		require.True(t, resp.GetEvaluations()[0].GetDecision())
+		require.Nil(t, resp.GetEvaluations()[0].GetContext())
 
 		// Second result is an error - validation_error maps to HTTP 400
-		require.False(t, resp.GetEvaluationResponses()[1].GetDecision())
-		require.NotNil(t, resp.GetEvaluationResponses()[1].GetContext())
-		require.NotNil(t, resp.GetEvaluationResponses()[1].GetContext().GetError())
-		require.Equal(t, uint32(400), resp.GetEvaluationResponses()[1].GetContext().GetError().GetStatus())
-		require.Equal(t, "type not found", resp.GetEvaluationResponses()[1].GetContext().GetError().GetMessage())
+		require.False(t, resp.GetEvaluations()[1].GetDecision())
+		require.NotNil(t, resp.GetEvaluations()[1].GetContext())
+		require.NotNil(t, getContextError(resp.GetEvaluations()[1].GetContext()))
+		require.Equal(t, uint32(400), getContextErrorStatus(resp.GetEvaluations()[1].GetContext()))
+		require.Equal(t, "type not found", getContextErrorMessage(resp.GetEvaluations()[1].GetContext()))
 
 		// Third result is not allowed
-		require.False(t, resp.GetEvaluationResponses()[2].GetDecision())
+		require.False(t, resp.GetEvaluations()[2].GetDecision())
 	})
 
 	t.Run("empty_results", func(t *testing.T) {
@@ -552,7 +579,7 @@ func TestTransformResponse(t *testing.T) {
 
 		resp, err := TransformResponse(batchResp)
 		require.NoError(t, err)
-		require.Empty(t, resp.GetEvaluationResponses())
+		require.Empty(t, resp.GetEvaluations())
 	})
 
 	t.Run("single_result", func(t *testing.T) {
@@ -564,8 +591,8 @@ func TestTransformResponse(t *testing.T) {
 
 		resp, err := TransformResponse(batchResp)
 		require.NoError(t, err)
-		require.Len(t, resp.GetEvaluationResponses(), 1)
-		require.True(t, resp.GetEvaluationResponses()[0].GetDecision())
+		require.Len(t, resp.GetEvaluations(), 1)
+		require.True(t, resp.GetEvaluations()[0].GetDecision())
 	})
 
 	t.Run("all_allowed", func(t *testing.T) {
@@ -579,9 +606,9 @@ func TestTransformResponse(t *testing.T) {
 
 		resp, err := TransformResponse(batchResp)
 		require.NoError(t, err)
-		require.Len(t, resp.GetEvaluationResponses(), 3)
+		require.Len(t, resp.GetEvaluations(), 3)
 
-		for _, evalResp := range resp.GetEvaluationResponses() {
+		for _, evalResp := range resp.GetEvaluations() {
 			require.True(t, evalResp.GetDecision())
 		}
 	})
@@ -597,9 +624,9 @@ func TestTransformResponse(t *testing.T) {
 
 		resp, err := TransformResponse(batchResp)
 		require.NoError(t, err)
-		require.Len(t, resp.GetEvaluationResponses(), 3)
+		require.Len(t, resp.GetEvaluations(), 3)
 
-		for _, evalResp := range resp.GetEvaluationResponses() {
+		for _, evalResp := range resp.GetEvaluations() {
 			require.False(t, evalResp.GetDecision())
 		}
 	})
@@ -624,15 +651,15 @@ func TestTransformResponse(t *testing.T) {
 
 		resp, err := TransformResponse(batchResp)
 		require.NoError(t, err)
-		require.Len(t, resp.GetEvaluationResponses(), 2)
+		require.Len(t, resp.GetEvaluations(), 2)
 
-		for i, evalResp := range resp.GetEvaluationResponses() {
+		for i, evalResp := range resp.GetEvaluations() {
 			require.False(t, evalResp.GetDecision())
 			require.NotNil(t, evalResp.GetContext())
-			require.NotNil(t, evalResp.GetContext().GetError())
+			require.NotNil(t, getContextError(evalResp.GetContext()))
 			// validation_error maps to HTTP 400
-			require.Equal(t, uint32(400), evalResp.GetContext().GetError().GetStatus())
-			require.Contains(t, evalResp.GetContext().GetError().GetMessage(), "error")
+			require.Equal(t, uint32(400), getContextErrorStatus(evalResp.GetContext()))
+			require.Contains(t, getContextErrorMessage(evalResp.GetContext()), "error")
 			_ = i
 		}
 	})
@@ -781,16 +808,16 @@ func TestTransformResponseTableDriven(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			resp, err := TransformResponse(tt.batchResponse)
 			require.NoError(t, err)
-			require.Len(t, resp.GetEvaluationResponses(), tt.expectedResponses)
+			require.Len(t, resp.GetEvaluations(), tt.expectedResponses)
 
 			for i, expected := range tt.expectedDecisions {
-				require.Equal(t, expected, resp.GetEvaluationResponses()[i].GetDecision())
+				require.Equal(t, expected, resp.GetEvaluations()[i].GetDecision())
 			}
 
 			for i, hasError := range tt.expectedErrors {
 				if hasError {
-					require.NotNil(t, resp.GetEvaluationResponses()[i].GetContext())
-					require.NotNil(t, resp.GetEvaluationResponses()[i].GetContext().GetError())
+					require.NotNil(t, resp.GetEvaluations()[i].GetContext())
+					require.NotNil(t, getContextError(resp.GetEvaluations()[i].GetContext()))
 				}
 			}
 		})
@@ -826,25 +853,25 @@ func TestTransformResponseTableDriven(t *testing.T) {
 
 		resp, err := TransformResponse(bcr)
 		require.NoError(t, err)
-		require.Len(t, resp.GetEvaluationResponses(), 3)
+		require.Len(t, resp.GetEvaluations(), 3)
 
 		// First: error - validation_error maps to HTTP 400
-		require.False(t, resp.GetEvaluationResponses()[0].GetDecision())
-		require.NotNil(t, resp.GetEvaluationResponses()[0].GetContext())
-		require.NotNil(t, resp.GetEvaluationResponses()[0].GetContext().GetError())
-		require.Equal(t, uint32(400), resp.GetEvaluationResponses()[0].GetContext().GetError().GetStatus())
-		require.Contains(t, resp.GetEvaluationResponses()[0].GetContext().GetError().GetMessage(), "type not found")
+		require.False(t, resp.GetEvaluations()[0].GetDecision())
+		require.NotNil(t, resp.GetEvaluations()[0].GetContext())
+		require.NotNil(t, getContextError(resp.GetEvaluations()[0].GetContext()))
+		require.Equal(t, uint32(400), getContextErrorStatus(resp.GetEvaluations()[0].GetContext()))
+		require.Contains(t, getContextErrorMessage(resp.GetEvaluations()[0].GetContext()), "type not found")
 
 		// Second: allowed
-		require.True(t, resp.GetEvaluationResponses()[1].GetDecision())
-		require.Nil(t, resp.GetEvaluationResponses()[1].GetContext())
+		require.True(t, resp.GetEvaluations()[1].GetDecision())
+		require.Nil(t, resp.GetEvaluations()[1].GetContext())
 
 		// Third: error - latest_authorization_model_not_found is a validation error, maps to HTTP 400
-		require.False(t, resp.GetEvaluationResponses()[2].GetDecision())
-		require.NotNil(t, resp.GetEvaluationResponses()[2].GetContext())
-		require.NotNil(t, resp.GetEvaluationResponses()[2].GetContext().GetError())
-		require.Equal(t, uint32(400), resp.GetEvaluationResponses()[2].GetContext().GetError().GetStatus())
-		require.Contains(t, resp.GetEvaluationResponses()[2].GetContext().GetError().GetMessage(), "authorization model not found")
+		require.False(t, resp.GetEvaluations()[2].GetDecision())
+		require.NotNil(t, resp.GetEvaluations()[2].GetContext())
+		require.NotNil(t, getContextError(resp.GetEvaluations()[2].GetContext()))
+		require.Equal(t, uint32(400), getContextErrorStatus(resp.GetEvaluations()[2].GetContext()))
+		require.Contains(t, getContextErrorMessage(resp.GetEvaluations()[2].GetContext()), "authorization model not found")
 	})
 
 	t.Run("transform_response_missing_result_entry", func(t *testing.T) {
@@ -869,20 +896,20 @@ func TestTransformResponseTableDriven(t *testing.T) {
 		resp, err := TransformResponse(bcr)
 		require.NoError(t, err)
 		// Response array size equals map size (2)
-		require.Len(t, resp.GetEvaluationResponses(), 2)
+		require.Len(t, resp.GetEvaluations(), 2)
 
 		// Index 0: allowed (key "0" exists)
-		require.True(t, resp.GetEvaluationResponses()[0].GetDecision())
-		require.Nil(t, resp.GetEvaluationResponses()[0].GetContext())
+		require.True(t, resp.GetEvaluations()[0].GetDecision())
+		require.Nil(t, resp.GetEvaluations()[0].GetContext())
 
 		// Index 1: will look for key "1" which doesn't exist - should error
 		// But since we only iterate up to len(map)=2, we check indices 0,1
 		// So this should hit the missing case
-		require.False(t, resp.GetEvaluationResponses()[1].GetDecision())
-		require.NotNil(t, resp.GetEvaluationResponses()[1].GetContext())
-		require.NotNil(t, resp.GetEvaluationResponses()[1].GetContext().GetError())
-		require.Equal(t, uint32(500), resp.GetEvaluationResponses()[1].GetContext().GetError().GetStatus())
-		require.Contains(t, resp.GetEvaluationResponses()[1].GetContext().GetError().GetMessage(), "missing result for evaluation 1")
+		require.False(t, resp.GetEvaluations()[1].GetDecision())
+		require.NotNil(t, resp.GetEvaluations()[1].GetContext())
+		require.NotNil(t, getContextError(resp.GetEvaluations()[1].GetContext()))
+		require.Equal(t, uint32(500), getContextErrorStatus(resp.GetEvaluations()[1].GetContext()))
+		require.Contains(t, getContextErrorMessage(resp.GetEvaluations()[1].GetContext()), "missing result for evaluation 1")
 	})
 
 	t.Run("transform_response_nil_result_entry", func(t *testing.T) {
@@ -900,18 +927,18 @@ func TestTransformResponseTableDriven(t *testing.T) {
 
 		resp, err := TransformResponse(bcr)
 		require.NoError(t, err)
-		require.Len(t, resp.GetEvaluationResponses(), 2)
+		require.Len(t, resp.GetEvaluations(), 2)
 
 		// Index 0: allowed
-		require.True(t, resp.GetEvaluationResponses()[0].GetDecision())
-		require.Nil(t, resp.GetEvaluationResponses()[0].GetContext())
+		require.True(t, resp.GetEvaluations()[0].GetDecision())
+		require.Nil(t, resp.GetEvaluations()[0].GetContext())
 
 		// Index 1: nil result - should have error
-		require.False(t, resp.GetEvaluationResponses()[1].GetDecision())
-		require.NotNil(t, resp.GetEvaluationResponses()[1].GetContext())
-		require.NotNil(t, resp.GetEvaluationResponses()[1].GetContext().GetError())
-		require.Equal(t, uint32(500), resp.GetEvaluationResponses()[1].GetContext().GetError().GetStatus())
-		require.Contains(t, resp.GetEvaluationResponses()[1].GetContext().GetError().GetMessage(), "missing result for evaluation 1")
+		require.False(t, resp.GetEvaluations()[1].GetDecision())
+		require.NotNil(t, resp.GetEvaluations()[1].GetContext())
+		require.NotNil(t, getContextError(resp.GetEvaluations()[1].GetContext()))
+		require.Equal(t, uint32(500), getContextErrorStatus(resp.GetEvaluations()[1].GetContext()))
+		require.Contains(t, getContextErrorMessage(resp.GetEvaluations()[1].GetContext()), "missing result for evaluation 1")
 	})
 
 	t.Run("properties_merge_error_propagation", func(t *testing.T) {

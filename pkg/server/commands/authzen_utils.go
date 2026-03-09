@@ -12,6 +12,12 @@ type SubjectPropertiesProvider interface {
 	GetProperties() *structpb.Struct
 }
 
+// ResourcePropertiesProvider is an interface for types that provide resource properties.
+// Both Resource and ResourceFilter implement this interface.
+type ResourcePropertiesProvider interface {
+	GetProperties() *structpb.Struct
+}
+
 // MergePropertiesToContext merges subject, resource, and action properties into
 // the context struct. Properties are namespaced with their source prefix using
 // underscore as separator (e.g., "subject_department") because OpenFGA does not
@@ -21,7 +27,7 @@ type SubjectPropertiesProvider interface {
 func MergePropertiesToContext(
 	requestContext *structpb.Struct,
 	subject SubjectPropertiesProvider,
-	resource *authzenv1.Resource,
+	resource ResourcePropertiesProvider,
 	action *authzenv1.Action,
 ) (*structpb.Struct, error) {
 	merged := make(map[string]interface{})

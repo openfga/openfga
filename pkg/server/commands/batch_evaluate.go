@@ -12,6 +12,18 @@ import (
 	servererrors "github.com/openfga/openfga/pkg/server/errors"
 )
 
+// errorContext builds an arbitrary JSON context object for error responses,
+// per the AuthZen spec where context is a free-form JSON object.
+func errorContext(status uint32, message string) *structpb.Struct {
+	ctx, _ := structpb.NewStruct(map[string]interface{}{
+		"error": map[string]interface{}{
+			"status":  status,
+			"message": message,
+		},
+	})
+	return ctx
+}
+
 type BatchEvaluateRequestCommand struct {
 	batchCheckParams *openfgav1.BatchCheckRequest
 }
@@ -106,22 +118,17 @@ func NewBatchEvaluateRequestCommand(req *authzenv1.EvaluationsRequest, authoriza
 
 func TransformResponse(bcr *openfgav1.BatchCheckResponse) (*authzenv1.EvaluationsResponse, error) {
 	evaluationsResponse := &authzenv1.EvaluationsResponse{
-		EvaluationResponses: make([]*authzenv1.EvaluationResponse, len(bcr.GetResult())),
+		Evaluations: make([]*authzenv1.EvaluationResponse, len(bcr.GetResult())),
 	}
 
-	for i := range evaluationsResponse.GetEvaluationResponses() {
+	for i := range evaluationsResponse.GetEvaluations() {
 		key := strconv.Itoa(i)
 		result, ok := bcr.GetResult()[key]
 		if !ok || result == nil {
 			// Missing result in map - return error response
-			evaluationsResponse.EvaluationResponses[i] = &authzenv1.EvaluationResponse{
+			evaluationsResponse.Evaluations[i] = &authzenv1.EvaluationResponse{
 				Decision: false,
-				Context: &authzenv1.EvaluationResponseContext{
-					Error: &authzenv1.ResponseContextError{
-						Status:  500,
-						Message: fmt.Sprintf("missing result for evaluation %d", i),
-					},
-				},
+				Context:  errorContext(500, fmt.Sprintf("missing result for evaluation %d", i)),
 			}
 			continue
 		}
@@ -143,17 +150,12 @@ func TransformResponse(bcr *openfgav1.BatchCheckResponse) (*authzenv1.Evaluation
 					httpStatus = 500
 				}
 			}
-			evaluationsResponse.EvaluationResponses[i] = &authzenv1.EvaluationResponse{
+			evaluationsResponse.Evaluations[i] = &authzenv1.EvaluationResponse{
 				Decision: false,
-				Context: &authzenv1.EvaluationResponseContext{
-					Error: &authzenv1.ResponseContextError{
-						Status:  httpStatus,
-						Message: errResult.Error.GetMessage(),
-					},
-				},
+				Context:  errorContext(httpStatus, errResult.Error.GetMessage()),
 			}
 		} else {
-			evaluationsResponse.EvaluationResponses[i] = &authzenv1.EvaluationResponse{
+			evaluationsResponse.Evaluations[i] = &authzenv1.EvaluationResponse{
 				Decision: result.GetAllowed(),
 			}
 		}

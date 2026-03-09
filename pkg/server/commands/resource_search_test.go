@@ -51,7 +51,7 @@ func TestResourceSearchQuery(t *testing.T) {
 		req := &authzenv1.ResourceSearchRequest{
 			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
 			Action:   &authzenv1.Action{Name: "read"},
-			Resource: &authzenv1.Resource{Type: "document"},
+			Resource: &authzenv1.ResourceFilter{Type: "document"},
 			StoreId:  "01HVMMBCMGZNT3SED4CT2KA89Q",
 		}
 
@@ -84,7 +84,7 @@ func TestResourceSearchQuery(t *testing.T) {
 		req := &authzenv1.ResourceSearchRequest{
 			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
 			Action:   &authzenv1.Action{Name: "read"},
-			Resource: &authzenv1.Resource{Type: "document"},
+			Resource: &authzenv1.ResourceFilter{Type: "document"},
 			StoreId:  "01HVMMBCMGZNT3SED4CT2KA89Q",
 			Page:     &authzenv1.PageRequest{Limit: &limit}, // Page parameter is ignored
 		}
@@ -120,7 +120,7 @@ func TestResourceSearchQuery(t *testing.T) {
 		req := &authzenv1.ResourceSearchRequest{
 			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
 			Action:   &authzenv1.Action{Name: "read"},
-			Resource: &authzenv1.Resource{Type: ""}, // Empty type
+			Resource: &authzenv1.ResourceFilter{Type: ""}, // Empty type
 			StoreId:  "01HVMMBCMGZNT3SED4CT2KA89Q",
 		}
 
@@ -136,7 +136,7 @@ func TestResourceSearchQuery(t *testing.T) {
 		req := &authzenv1.ResourceSearchRequest{
 			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
 			Action:   &authzenv1.Action{Name: "read"},
-			Resource: &authzenv1.Resource{Type: "document"},
+			Resource: &authzenv1.ResourceFilter{Type: "document"},
 			StoreId:  "01HVMMBCMGZNT3SED4CT2KA89Q",
 		}
 
@@ -159,7 +159,7 @@ func TestResourceSearchQuery(t *testing.T) {
 				Properties: testutils.MustNewStruct(t, map[string]interface{}{"department": "engineering"}),
 			},
 			Action:   &authzenv1.Action{Name: "read"},
-			Resource: &authzenv1.Resource{Type: "document"},
+			Resource: &authzenv1.ResourceFilter{Type: "document"},
 			StoreId:  "01HVMMBCMGZNT3SED4CT2KA89Q",
 		}
 
@@ -177,7 +177,7 @@ func TestResourceSearchQuery(t *testing.T) {
 		req := &authzenv1.ResourceSearchRequest{
 			Subject: &authzenv1.Subject{Type: "user", Id: "alice"},
 			Action:  &authzenv1.Action{Name: "read"},
-			Resource: &authzenv1.Resource{
+			Resource: &authzenv1.ResourceFilter{
 				Type:       "document",
 				Properties: testutils.MustNewStruct(t, map[string]interface{}{"classification": "secret"}),
 			},
@@ -202,7 +202,7 @@ func TestResourceSearchQuery(t *testing.T) {
 				Properties: testutils.MustNewStruct(t, map[string]interface{}{"role": "admin"}),
 			},
 			Action: &authzenv1.Action{Name: "read"},
-			Resource: &authzenv1.Resource{
+			Resource: &authzenv1.ResourceFilter{
 				Type:       "document",
 				Properties: testutils.MustNewStruct(t, map[string]interface{}{"level": "top-secret"}),
 			},
@@ -230,7 +230,7 @@ func TestResourceSearchQuery(t *testing.T) {
 		req := &authzenv1.ResourceSearchRequest{
 			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
 			Action:   &authzenv1.Action{Name: "read"},
-			Resource: &authzenv1.Resource{Type: "document"},
+			Resource: &authzenv1.ResourceFilter{Type: "document"},
 			StoreId:  "01HVMMBCMGZNT3SED4CT2KA89Q",
 		}
 
@@ -252,7 +252,7 @@ func TestResourceSearchQuery(t *testing.T) {
 		req := &authzenv1.ResourceSearchRequest{
 			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
 			Action:   &authzenv1.Action{Name: "read"},
-			Resource: &authzenv1.Resource{Type: "document"},
+			Resource: &authzenv1.ResourceFilter{Type: "document"},
 			StoreId:  "01HVMMBCMGZNT3SED4CT2KA89Q",
 		}
 
@@ -270,7 +270,7 @@ func TestResourceSearchQuery(t *testing.T) {
 		req := &authzenv1.ResourceSearchRequest{
 			Subject:  &authzenv1.Subject{Type: "employee", Id: "bob"},
 			Action:   &authzenv1.Action{Name: "write"},
-			Resource: &authzenv1.Resource{Type: "folder"},
+			Resource: &authzenv1.ResourceFilter{Type: "folder"},
 			StoreId:  "01HVMMBCMGZNT3SED4CT2KA89Q",
 		}
 
@@ -288,7 +288,7 @@ func TestResourceSearchQuery(t *testing.T) {
 		req := &authzenv1.ResourceSearchRequest{
 			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
 			Action:   &authzenv1.Action{Name: "read"},
-			Resource: &authzenv1.Resource{Type: "document"},
+			Resource: &authzenv1.ResourceFilter{Type: "document"},
 			StoreId:  "01HVMMBCMGZNT3SED4CT2KA89Q",
 		}
 
@@ -311,7 +311,7 @@ func TestResourceSearchQuery(t *testing.T) {
 		req := &authzenv1.ResourceSearchRequest{
 			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
 			Action:   &authzenv1.Action{Name: "read"},
-			Resource: &authzenv1.Resource{Type: "document"},
+			Resource: &authzenv1.ResourceFilter{Type: "document"},
 			StoreId:  "01HVMMBCMGZNT3SED4CT2KA89Q",
 		}
 
@@ -338,7 +338,7 @@ func TestResourceSearchQuery(t *testing.T) {
 		req := &authzenv1.ResourceSearchRequest{
 			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
 			Action:   &authzenv1.Action{Name: "read"},
-			Resource: &authzenv1.Resource{Type: "document"},
+			Resource: &authzenv1.ResourceFilter{Type: "document"},
 			StoreId:  "01HVMMBCMGZNT3SED4CT2KA89Q",
 		}
 
@@ -360,7 +360,7 @@ func TestResourceSearchQuery(t *testing.T) {
 		req := &authzenv1.ResourceSearchRequest{
 			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
 			Action:   &authzenv1.Action{Name: "read"},
-			Resource: &authzenv1.Resource{Type: "document"},
+			Resource: &authzenv1.ResourceFilter{Type: "document"},
 			StoreId:  "01HVMMBCMGZNT3SED4CT2KA89Q",
 		}
 
@@ -384,7 +384,7 @@ func TestResourceSearchQuery(t *testing.T) {
 		req := &authzenv1.ResourceSearchRequest{
 			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
 			Action:   &authzenv1.Action{Name: "viewer"},
-			Resource: &authzenv1.Resource{Type: "folder"},
+			Resource: &authzenv1.ResourceFilter{Type: "folder"},
 			StoreId:  "01HVMMBCMGZNT3SED4CT2KA89Q",
 		}
 
@@ -405,7 +405,7 @@ func TestResourceSearchQuery(t *testing.T) {
 		req := &authzenv1.ResourceSearchRequest{
 			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
 			Action:   &authzenv1.Action{Name: "read"},
-			Resource: &authzenv1.Resource{Type: "document"},
+			Resource: &authzenv1.ResourceFilter{Type: "document"},
 			StoreId:  "01HVMMBCMGZNT3SED4CT2KA89Q",
 		}
 
@@ -425,7 +425,7 @@ func TestResourceSearchQuery(t *testing.T) {
 		req := &authzenv1.ResourceSearchRequest{
 			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
 			Action:   &authzenv1.Action{Name: "read"},
-			Resource: &authzenv1.Resource{Type: "document"},
+			Resource: &authzenv1.ResourceFilter{Type: "document"},
 			StoreId:  "01HVMMBCMGZNT3SED4CT2KA89Q",
 			Context:  &structpb.Struct{Fields: map[string]*structpb.Value{}},
 		}
@@ -442,7 +442,7 @@ func TestResourceSearchQuery(t *testing.T) {
 		req := &authzenv1.ResourceSearchRequest{
 			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
 			Action:   &authzenv1.Action{Name: "read"},
-			Resource: &authzenv1.Resource{Type: ""}, // Empty type
+			Resource: &authzenv1.ResourceFilter{Type: ""}, // Empty type
 			StoreId:  "01HVMMBCMGZNT3SED4CT2KA89Q",
 		}
 
@@ -475,7 +475,7 @@ func TestResourceSearchQuery(t *testing.T) {
 		req := &authzenv1.ResourceSearchRequest{
 			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
 			Action:   &authzenv1.Action{Name: "read"},
-			Resource: &authzenv1.Resource{Type: "document"},
+			Resource: &authzenv1.ResourceFilter{Type: "document"},
 			StoreId:  "01HVMMBCMGZNT3SED4CT2KA89Q",
 		}
 
@@ -496,7 +496,7 @@ func TestResourceSearchQuery(t *testing.T) {
 		req := &authzenv1.ResourceSearchRequest{
 			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
 			Action:   &authzenv1.Action{Name: "read"},
-			Resource: &authzenv1.Resource{Type: "document"},
+			Resource: &authzenv1.ResourceFilter{Type: "document"},
 			StoreId:  "01HVMMBCMGZNT3SED4CT2KA89Q",
 		}
 
@@ -511,7 +511,7 @@ func TestResourceSearchQuery(t *testing.T) {
 		req := &authzenv1.ResourceSearchRequest{
 			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
 			Action:   &authzenv1.Action{Name: "read"},
-			Resource: &authzenv1.Resource{Type: "document"},
+			Resource: &authzenv1.ResourceFilter{Type: "document"},
 			StoreId:  "01HVMMBCMGZNT3SED4CT2KA89Q",
 		}
 
@@ -527,7 +527,7 @@ func TestResourceSearchQuery(t *testing.T) {
 		req := &authzenv1.ResourceSearchRequest{
 			Subject:  nil, // Nil subject
 			Action:   &authzenv1.Action{Name: "read"},
-			Resource: &authzenv1.Resource{Type: "document"},
+			Resource: &authzenv1.ResourceFilter{Type: "document"},
 			StoreId:  "01HVMMBCMGZNT3SED4CT2KA89Q",
 		}
 
@@ -543,7 +543,7 @@ func TestResourceSearchQuery(t *testing.T) {
 		req := &authzenv1.ResourceSearchRequest{
 			Subject:  &authzenv1.Subject{Type: "", Id: "alice"}, // Empty type
 			Action:   &authzenv1.Action{Name: "read"},
-			Resource: &authzenv1.Resource{Type: "document"},
+			Resource: &authzenv1.ResourceFilter{Type: "document"},
 			StoreId:  "01HVMMBCMGZNT3SED4CT2KA89Q",
 		}
 
@@ -559,7 +559,7 @@ func TestResourceSearchQuery(t *testing.T) {
 		req := &authzenv1.ResourceSearchRequest{
 			Subject:  &authzenv1.Subject{Type: "user", Id: ""}, // Empty id
 			Action:   &authzenv1.Action{Name: "read"},
-			Resource: &authzenv1.Resource{Type: "document"},
+			Resource: &authzenv1.ResourceFilter{Type: "document"},
 			StoreId:  "01HVMMBCMGZNT3SED4CT2KA89Q",
 		}
 
@@ -575,7 +575,7 @@ func TestResourceSearchQuery(t *testing.T) {
 		req := &authzenv1.ResourceSearchRequest{
 			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
 			Action:   nil, // Nil action
-			Resource: &authzenv1.Resource{Type: "document"},
+			Resource: &authzenv1.ResourceFilter{Type: "document"},
 			StoreId:  "01HVMMBCMGZNT3SED4CT2KA89Q",
 		}
 
@@ -591,7 +591,7 @@ func TestResourceSearchQuery(t *testing.T) {
 		req := &authzenv1.ResourceSearchRequest{
 			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
 			Action:   &authzenv1.Action{Name: ""}, // Empty name
-			Resource: &authzenv1.Resource{Type: "document"},
+			Resource: &authzenv1.ResourceFilter{Type: "document"},
 			StoreId:  "01HVMMBCMGZNT3SED4CT2KA89Q",
 		}
 
@@ -611,7 +611,7 @@ func TestResourceSearchQuery(t *testing.T) {
 				Name:       "read",
 				Properties: testutils.MustNewStruct(t, map[string]interface{}{"priority": "high"}),
 			},
-			Resource: &authzenv1.Resource{Type: "document"},
+			Resource: &authzenv1.ResourceFilter{Type: "document"},
 			StoreId:  "01HVMMBCMGZNT3SED4CT2KA89Q",
 		}
 
