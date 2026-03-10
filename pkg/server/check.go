@@ -234,10 +234,12 @@ func (s *Server) v2Check(ctx context.Context, req *openfgav1.CheckRequest) (*ope
 	cacheInvalidationTime := time.Time{}
 
 	if req.GetConsistency() != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
-		cacheInvalidationTime = s.sharedDatastoreResources.CacheController.DetermineInvalidationTime(ctx, req.GetStoreId())
+		// TODO: Should use s.sharedDatastoreResources.CacheController when no longer shadowing
+		cacheInvalidationTime = s.sharedDatastoreResources.ShadowCacheController.DetermineInvalidationTime(ctx, req.GetStoreId())
 	}
 
-	mg, err := s.authzModelGraphResolver.Resolve(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
+	// TODO: Should use s.authzModelGraphResolver when no longer shadowing
+	mg, err := s.shadowAuthzModelGraphResolver.Resolve(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
 	if err != nil {
 		return nil, err
 	}
@@ -246,7 +248,7 @@ func (s *Server) v2Check(ctx context.Context, req *openfgav1.CheckRequest) (*ope
 		commands.WithCheckQueryV2Logger(s.logger),
 		commands.WithCheckQueryV2Datastore(s.datastore),
 		commands.WithCheckQueryV2Model(mg),
-		commands.WithCheckQueryV2Cache(s.sharedDatastoreResources.CheckCache),
+		commands.WithCheckQueryV2Cache(s.sharedDatastoreResources.ShadowCheckCache), // TODO: Should use s.sharedDatastoreResources.CheckCache when no longer shadowing
 		commands.WithCheckQueryV2CacheTTL(s.cacheSettings.CheckQueryCacheTTL),
 		commands.WithCheckQueryV2Planner(s.planner),
 		commands.WithCheckQueryV2LastCacheInvalidationTime(cacheInvalidationTime),
