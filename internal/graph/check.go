@@ -49,16 +49,23 @@ type checkOutcome struct {
 }
 
 type LocalChecker struct {
-	delegate             CheckResolver
-	concurrencyLimit     int
-	upstreamTimeout      time.Duration
-	planner              planner.Manager
-	logger               logger.Logger
-	optimizationsEnabled bool
-	maxResolutionDepth   uint32
+	delegate                     CheckResolver
+	concurrencyLimit             int
+	upstreamTimeout              time.Duration
+	planner                      planner.Manager
+	logger                       logger.Logger
+	optimizationsEnabled         bool
+	maxResolutionDepth           uint32
+	recursiveOptimizationEnabled bool
 }
 
 type LocalCheckerOption func(d *LocalChecker)
+
+func WithRecursiveOptimizations(enabled bool) LocalCheckerOption {
+	return func(d *LocalChecker) {
+		d.recursiveOptimizationEnabled = enabled
+	}
+}
 
 // WithResolveNodeBreadthLimit see server.WithResolveNodeBreadthLimit.
 func WithResolveNodeBreadthLimit(limit uint32) LocalCheckerOption {
@@ -870,19 +877,52 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 			attribute.String("computed_relation", computedRelation),
 		)
 
-		opts := storage.ReadOptions{
-			Consistency: storage.ConsistencyOptions{
-				Preference: req.GetConsistency(),
-			},
+		storeID := req.GetStoreID()
+
+		resolver := c.defaultTTU
+		possibleStrategies := map[string]*planner.PlanConfig{
+			defaultResolver: defaultPlan,
+		}
+		isUserset := tuple.IsObjectRelation(tk.GetUser())
+		recursiveCTE := false
+
+		if !isUserset {
+			if typesys.TTUUseWeight2Resolver(objectType, relation, userType, rewrite.GetTupleToUserset()) {
+				possibleStrategies[weightTwoResolver] = weight2Plan
+				resolver = c.weight2TTU
+			} else if typesys.TTUUseRecursiveResolver(objectType, relation, userType, rewrite.GetTupleToUserset()) {
+				possibleStrategies[defaultResolver] = defaultRecursivePlan
+				possibleStrategies[recursiveResolver] = recursivePlan
+				if c.recursiveOptimizationEnabled {
+					recursiveCTE = true
+					resolver = c.recursiveTTUFastPathV3
+					span.SetAttributes(attribute.String("resolver", "recursivefastpathv3"))
+				} else {
+					resolver = c.recursiveTTU
+					span.SetAttributes(attribute.String("resolver", "recursivefastpathv2"))
+				}
+			}
 		}
 
-		storeID := req.GetStoreID()
-		iter, err := ds.Read(
-			ctx,
-			storeID,
-			storage.ReadFilter{Object: object, Relation: tuplesetRelation, User: ""},
-			opts,
-		)
+		var iter storage.TupleIterator
+		var err error
+		if !recursiveCTE {
+			opts := storage.ReadOptions{
+				Consistency: storage.ConsistencyOptions{
+					Preference: req.GetConsistency(),
+				},
+			}
+
+			iter, err = ds.Read(
+				ctx,
+				storeID,
+				storage.ReadFilter{Object: object, Relation: tuplesetRelation, User: ""},
+				opts,
+			)
+		} else {
+			iter, err = ds.ReadRecursive(ctx, storeID, storage.ReadFilter{Object: object, Relation: tuplesetRelation, User: ""})
+		}
+
 		if err != nil {
 			return nil, err
 		}
@@ -897,43 +937,30 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 		)
 		defer filteredIter.Stop()
 
-		resolver := c.defaultTTU
-		possibleStrategies := map[string]*planner.PlanConfig{
-			defaultResolver: defaultPlan,
-		}
-		isUserset := tuple.IsObjectRelation(tk.GetUser())
-
-		if !isUserset {
-			if typesys.TTUUseWeight2Resolver(objectType, relation, userType, rewrite.GetTupleToUserset()) {
-				possibleStrategies[weightTwoResolver] = weight2Plan
-				resolver = c.weight2TTU
-			} else if typesys.TTUUseRecursiveResolver(objectType, relation, userType, rewrite.GetTupleToUserset()) {
-				possibleStrategies[defaultResolver] = defaultRecursivePlan
-				possibleStrategies[recursiveResolver] = recursivePlan
-				resolver = c.recursiveTTU
-			}
-		}
-
-		if len(possibleStrategies) == 1 {
+		if !recursiveCTE && len(possibleStrategies) == 1 {
 			// short circuit, no additional resolvers are available
 			return resolver(ctx, req, rewrite, filteredIter, "")(ctx)
 		}
 
 		// If a strategy was already selected by a parent call, use it without re-planning.
 		// This prevents the planner from being called again during recursive dispatch calls.
-		if selectedStrategy := req.GetSelectedStrategy(); selectedStrategy != "" {
-			if _, exists := possibleStrategies[selectedStrategy]; exists {
-				switch selectedStrategy {
-				case defaultResolver:
-					resolver = c.defaultTTU
-				case weightTwoResolver:
-					resolver = c.weight2TTU
-				case recursiveResolver:
-					resolver = c.recursiveTTU
+		if !recursiveCTE {
+			if selectedStrategy := req.GetSelectedStrategy(); selectedStrategy != "" {
+				if _, exists := possibleStrategies[selectedStrategy]; exists {
+					switch selectedStrategy {
+					case defaultResolver:
+						resolver = c.defaultTTU
+					case weightTwoResolver:
+						resolver = c.weight2TTU
+					case recursiveResolver:
+						resolver = c.recursiveTTU
+					}
+					return resolver(ctx, req, rewrite, filteredIter, selectedStrategy)(ctx)
 				}
-				return resolver(ctx, req, rewrite, filteredIter, selectedStrategy)(ctx)
+				// If the selected strategy is not in the possible strategies, fall through to planner
 			}
-			// If the selected strategy is not in the possible strategies, fall through to planner
+		} else {
+			return resolver(ctx, req, rewrite, filteredIter, recursiveResolver)(ctx)
 		}
 
 		var b strings.Builder

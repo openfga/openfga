@@ -96,6 +96,7 @@ const (
 	DefaultPlannerCleanupInterval   = 0
 
 	ExperimentalCheckOptimizations       = "enable-check-optimizations"
+	ExperimentalRecursionOptimizations   = "enable-recursion-optimizations"
 	ExperimentalListObjectsOptimizations = "enable-list-objects-optimizations"
 	ExperimentalAccessControlParams      = "enable-access-control"
 

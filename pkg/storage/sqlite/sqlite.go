@@ -147,6 +147,13 @@ func (s *Datastore) Close() {
 	_ = s.db.Close()
 }
 
+// ReadRecursive implements storage.OpenFGADatastore.
+func (s *Datastore) ReadRecursive(ctx context.Context,
+	store string,
+	filter storage.ReadFilter) (storage.TupleIterator, error) {
+	panic("unimplemented")
+}
+
 // Read see [storage.RelationshipTupleReader].Read.
 func (s *Datastore) Read(
 	ctx context.Context,

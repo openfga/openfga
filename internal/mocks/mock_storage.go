@@ -87,6 +87,21 @@ func (mr *MockTupleBackendMockRecorder) ReadPage(ctx, store, filter, options any
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadPage", reflect.TypeOf((*MockTupleBackend)(nil).ReadPage), ctx, store, filter, options)
 }
 
+// ReadRecursive mocks base method.
+func (m *MockTupleBackend) ReadRecursive(ctx context.Context, store string, filter storage.ReadFilter) (storage.TupleIterator, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ReadRecursive", ctx, store, filter)
+	ret0, _ := ret[0].(storage.TupleIterator)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ReadRecursive indicates an expected call of ReadRecursive.
+func (mr *MockTupleBackendMockRecorder) ReadRecursive(ctx, store, filter any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadRecursive", reflect.TypeOf((*MockTupleBackend)(nil).ReadRecursive), ctx, store, filter)
+}
+
 // ReadStartingWithUser mocks base method.
 func (m *MockTupleBackend) ReadStartingWithUser(ctx context.Context, store string, filter storage.ReadStartingWithUserFilter, options storage.ReadStartingWithUserOptions) (storage.TupleIterator, error) {
 	m.ctrl.T.Helper()
@@ -204,6 +219,21 @@ func (m *MockRelationshipTupleReader) ReadPage(ctx context.Context, store string
 func (mr *MockRelationshipTupleReaderMockRecorder) ReadPage(ctx, store, filter, options any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadPage", reflect.TypeOf((*MockRelationshipTupleReader)(nil).ReadPage), ctx, store, filter, options)
+}
+
+// ReadRecursive mocks base method.
+func (m *MockRelationshipTupleReader) ReadRecursive(ctx context.Context, store string, filter storage.ReadFilter) (storage.TupleIterator, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ReadRecursive", ctx, store, filter)
+	ret0, _ := ret[0].(storage.TupleIterator)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ReadRecursive indicates an expected call of ReadRecursive.
+func (mr *MockRelationshipTupleReaderMockRecorder) ReadRecursive(ctx, store, filter any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadRecursive", reflect.TypeOf((*MockRelationshipTupleReader)(nil).ReadRecursive), ctx, store, filter)
 }
 
 // ReadStartingWithUser mocks base method.
@@ -950,6 +980,21 @@ func (m *MockOpenFGADatastore) ReadPage(ctx context.Context, store string, filte
 func (mr *MockOpenFGADatastoreMockRecorder) ReadPage(ctx, store, filter, options any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadPage", reflect.TypeOf((*MockOpenFGADatastore)(nil).ReadPage), ctx, store, filter, options)
+}
+
+// ReadRecursive mocks base method.
+func (m *MockOpenFGADatastore) ReadRecursive(ctx context.Context, store string, filter storage.ReadFilter) (storage.TupleIterator, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ReadRecursive", ctx, store, filter)
+	ret0, _ := ret[0].(storage.TupleIterator)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ReadRecursive indicates an expected call of ReadRecursive.
+func (mr *MockOpenFGADatastoreMockRecorder) ReadRecursive(ctx, store, filter any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadRecursive", reflect.TypeOf((*MockOpenFGADatastore)(nil).ReadRecursive), ctx, store, filter)
 }
 
 // ReadStartingWithUser mocks base method.

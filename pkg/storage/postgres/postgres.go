@@ -644,6 +644,13 @@ func (s *Datastore) write(
 	return nil
 }
 
+// ReadRecursive implements storage.OpenFGADatastore.
+func (s *Datastore) ReadRecursive(ctx context.Context,
+	store string,
+	filter storage.ReadFilter) (storage.TupleIterator, error) {
+	panic("unimplemented")
+}
+
 // ReadUserTuple see [storage.RelationshipTupleReader].ReadUserTuple.
 func (s *Datastore) ReadUserTuple(ctx context.Context, store string, filter storage.ReadUserTupleFilter, options storage.ReadUserTupleOptions) (*openfgav1.Tuple, error) {
 	ctx, span := startTrace(ctx, "ReadUserTuple")
