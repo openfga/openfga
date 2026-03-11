@@ -3,8 +3,8 @@ package tuple
 
 import (
 	"fmt"
-	"regexp"
 	"strings"
+	"unicode"
 
 	"google.golang.org/protobuf/types/known/structpb"
 
@@ -103,13 +103,6 @@ const (
 	User     UserType = "user"
 	UserSet  UserType = "userset"
 	Wildcard          = "*"
-)
-
-var (
-	userIDRegex   = regexp.MustCompile(`^[^:#\s]+$`)
-	objectRegex   = regexp.MustCompile(`^[^:#\s]+:[^#:\s]+$`)
-	userSetRegex  = regexp.MustCompile(`^[^:#\s]+:[^#:*\s]+#[^:#*\s]+$`)
-	relationRegex = regexp.MustCompile(`^[^:#@\s]+$`)
 )
 
 func ConvertCheckRequestTupleKeyToTupleKey(tk *openfgav1.CheckRequestTupleKey) *openfgav1.TupleKey {
@@ -329,7 +322,7 @@ func GetRelation(objectRelation string) string {
 
 // IsObjectRelation returns true if the given string specifies a valid object and relation.
 func IsObjectRelation(userset string) bool {
-	return GetType(userset) != "" && GetRelation(userset) != ""
+	return IsValidUserset(userset)
 }
 
 // ToObjectRelationString formats an object/relation pair as an object#relation string. This is the inverse of
@@ -359,31 +352,132 @@ func TupleKeyToString(tk TupleWithoutCondition) string {
 // TupleKeyWithConditionToString converts a tuple key with condition into its string representation. It assumes the tupleKey is valid
 // (i.e. no forbidden characters).
 func TupleKeyWithConditionToString(tk TupleWithCondition) string {
+	const staticSize int = 15
+	dynamicSize := len(tk.GetObject()) + len(tk.GetRelation()) + len(tk.GetUser())
+	condition := tk.GetCondition()
+	var conditionName string
+	if condition != nil {
+		conditionName = condition.GetName()
+		dynamicSize += len(conditionName)
+	}
 	var sb strings.Builder
-	sb.WriteString(TupleKeyToString(tk))
-	if tk.GetCondition() != nil {
-		sb.WriteString(" (condition " + tk.GetCondition().GetName() + ")")
+	sb.Grow(staticSize + dynamicSize)
+
+	sb.WriteString(tk.GetObject())
+	sb.WriteByte('#')
+	sb.WriteString(tk.GetRelation())
+	sb.WriteByte('@')
+	sb.WriteString(tk.GetUser())
+
+	if condition != nil {
+		sb.WriteString(" (condition ")
+		sb.WriteString(conditionName)
+		sb.WriteByte(')')
 	}
 	return sb.String()
 }
 
 // IsValidObject determines if a string s is a valid object. A valid object contains exactly one `:` and no `#` or spaces.
 func IsValidObject(s string) bool {
-	return objectRegex.MatchString(s)
+	var state, idLen int
+
+	for ndx, chr := range s {
+		if unicode.IsControl(chr) {
+			return false
+		}
+
+		switch chr {
+		case '#', ' ':
+			return false
+		case ':':
+			if state > 0 || ndx == 0 {
+				return false
+			}
+			state = 1
+		default:
+			idLen += state
+		}
+	}
+	return idLen > 0
 }
 
-// IsValidRelation determines if a string s is a valid relation. This means it does not contain any `:`, `#`, or spaces.
+// IsValidRelation determines if a string s is a valid relation. This means it does not contain any `:`, `#`, `@`, or spaces.
 func IsValidRelation(s string) bool {
-	return relationRegex.MatchString(s)
+	var count int
+
+	for _, chr := range s {
+		if unicode.IsControl(chr) {
+			return false
+		}
+
+		switch chr {
+		case '#', ':', '@', ' ':
+			return false
+		default:
+			count++
+		}
+	}
+	return count > 0
+}
+
+func IsValidUserID(s string) bool {
+	var count int
+
+	for _, chr := range s {
+		if unicode.IsControl(chr) {
+			return false
+		}
+
+		switch chr {
+		case '#', ':', ' ':
+			return false
+		default:
+			count++
+		}
+	}
+	return count > 0
+}
+
+func IsValidUserset(s string) bool {
+	var state, idLen, relLen int
+
+	for ndx, chr := range s {
+		if unicode.IsControl(chr) {
+			return false
+		}
+
+		switch chr {
+		case ':':
+			if state > 0 || ndx == 0 {
+				return false
+			}
+			state = 1
+		case '#':
+			if state > 1 || idLen == 0 {
+				return false
+			}
+			state = 2
+		case ' ':
+			return false
+		case '*':
+			if state > 0 {
+				return false
+			}
+		default:
+			switch state {
+			case 1:
+				idLen++
+			case 2:
+				relLen++
+			}
+		}
+	}
+	return relLen > 0
 }
 
 // IsValidUser determines if a string is a valid user. A valid user contains at most one `:`, at most one `#` and no spaces.
 func IsValidUser(user string) bool {
-	if user == Wildcard || userIDRegex.MatchString(user) || objectRegex.MatchString(user) || userSetRegex.MatchString(user) {
-		return true
-	}
-
-	return false
+	return user == Wildcard || IsValidUserID(user) || IsValidObject(user) || IsValidUserset(user)
 }
 
 // IsWildcard returns true if the string 's' could be interpreted as a typed or untyped wildcard (e.g. '*' or 'type:*').
