@@ -14,6 +14,9 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - HTTP gateway's internal gRPC client now uses dynamic TLS credentials that automatically update on certificate rotation via certwatcher, preventing connection failures when certificates are rotated (e.g., by cert-manager). [#2951](https://github.com/openfga/openfga/pull/2951)
 - Tuple validation will now fail when any unicode control characters, or null bytes are present within a tuple string. [#2963](https://github.com/openfga/openfga/pull/2963)
 
+### Security
+- Update toolchain go version to 1.25.8 to address std lib vulnerabilities [GO-2026-4603](https://pkg.go.dev/vuln/GO-2026-4603) and [GO-2026-4601](https://pkg.go.dev/vuln/GO-2026-4601). [#2971](https://github.com/openfga/openfga/pull/2971)
+
 ### Fixed
 - Fixed swapped format arguments in `DecodeParameterType` error message that reported required and found generic type counts in the wrong order. [#2961](https://github.com/openfga/openfga/pull/2961)
 - Fixed a few bugs. Two potential index out of bounds scenarios, and one cache of an invalid result. [#2942](https://github.com/openfga/openfga/pull/2942)
