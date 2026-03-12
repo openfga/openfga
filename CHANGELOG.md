@@ -11,6 +11,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ## [1.12.0] - 2026-03-13
 ### Added
 - Add configuration for maximum size of received gRPC message bytes. [#2952](https://github.com/openfga/openfga/pull/2952)
+- Added configuration for the server shutdown timeout. [#2976](https://github.com/openfga/openfga/pull/2976)
 
 ### Changed
 - HTTP gateway's internal gRPC client now uses dynamic TLS credentials that automatically update on certificate rotation via certwatcher, preventing connection failures when certificates are rotated (e.g., by cert-manager). [#2951](https://github.com/openfga/openfga/pull/2951)

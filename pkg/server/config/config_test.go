@@ -346,6 +346,22 @@ func TestVerifyConfig(t *testing.T) {
 		require.Error(t, err)
 	})
 
+	t.Run("negative_shutdown_timeout_duration", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.ShutdownTimeout = -2 * time.Second
+
+		err := cfg.Verify()
+		require.EqualError(t, err, "shutdownTimeout must be greater than 0")
+	})
+
+	t.Run("zero_shutdown_timeout_duration", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.ShutdownTimeout = 0
+
+		err := cfg.Verify()
+		require.EqualError(t, err, "shutdownTimeout must be greater than 0")
+	})
+
 	t.Run("negative_upstream_timeout", func(t *testing.T) {
 		cfg := DefaultConfig()
 		cfg.RequestTimeout = 0
