@@ -357,6 +357,8 @@ func NewRunCommand() *cobra.Command {
 
 	flags.Duration("request-timeout", defaultConfig.RequestTimeout, "configures request timeout.  If both HTTP upstream timeout and request timeout are specified, request timeout will be used.")
 
+	flags.Duration("shutdown-timeout", defaultConfig.ShutdownTimeout, "configures how long the server waits for a graceful shutdown.")
+
 	flags.Duration("planner-eviction-threshold", defaultConfig.Planner.EvictionThreshold, "how long a planner key can be unused before being evicted")
 	flags.Duration("planner-cleanup-interval", defaultConfig.Planner.CleanupInterval, "how often the planner checks for stale keys")
 
@@ -1064,7 +1066,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	<-ctx.Done()
 	s.Logger.Info("attempting to shutdown gracefully...")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), config.ShutdownTimeout)
 	defer cancel()
 
 	if playground != nil {
