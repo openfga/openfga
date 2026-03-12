@@ -16,8 +16,8 @@ func DecodeParameterType(conditionParamType *openfgav1.ConditionParamTypeRef) (*
 		return nil, fmt.Errorf(
 			"condition parameter type `%s` requires %d generic types; found %d",
 			conditionParamType.GetTypeName(),
-			len(conditionParamType.GetGenericTypes()),
 			paramTypedef.genericTypeCount,
+			len(conditionParamType.GetGenericTypes()),
 		)
 	}
 
