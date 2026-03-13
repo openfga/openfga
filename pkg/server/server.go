@@ -199,7 +199,8 @@ type Server struct {
 	typesystemResolver     typesystem.TypesystemResolverFunc
 	typesystemResolverStop func()
 
-	authzModelGraphResolver *modelgraph.AuthorizationModelGraphResolver
+	authzModelGraphResolver       *modelgraph.AuthorizationModelGraphResolver
+	shadowAuthzModelGraphResolver *modelgraph.AuthorizationModelGraphResolver
 
 	// cacheSettings are given by the user
 	cacheSettings serverconfig.CacheSettings
@@ -995,6 +996,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 
 	// TODO: make the cache duration configurable (maybe)
 	s.authzModelGraphResolver = modelgraph.NewResolver(s.datastore, s.sharedDatastoreResources.CheckCache, 24*7*time.Hour)
+	s.shadowAuthzModelGraphResolver = modelgraph.NewResolver(s.datastore, s.sharedDatastoreResources.ShadowCheckCache, 24*7*time.Hour)
 
 	if s.IsAccessControlEnabled() {
 		s.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: s.AccessControl.StoreID, ModelID: s.AccessControl.ModelID}, s, s.logger)
