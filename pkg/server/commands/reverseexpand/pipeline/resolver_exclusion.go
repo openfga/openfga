@@ -35,17 +35,15 @@ func (r *exclusionResolver) Resolve(
 
 	var wgExclude sync.WaitGroup
 
-	// Include side streams through a channel; exclude side collects into a bag.
-	ch := make(chan string, cap(senders[0].C))
-
-	txInclude := ChanTx{ch}
+	// Include side streams through an Accumulator; exclude side collects into a bag.
+	included := containers.NewAccumulator[string]()
 
 	var counter atomic.Int32
 	counter.Store(int32(r.numProcs))
 
 	processorInclude := operatorProcessor{
 		resolverCore: r.resolverCore,
-		items:        &txInclude,
+		items:        included,
 		cleanup:      &cleanup,
 	}
 
@@ -54,7 +52,7 @@ func (r *exclusionResolver) Resolve(
 			defer func() {
 				// Last goroutine closes the pipe.
 				if counter.Add(-1) < 1 {
-					close(ch)
+					included.Close()
 				}
 			}()
 			r.drain(ctx, senders[0], processorInclude.process)
@@ -63,7 +61,7 @@ func (r *exclusionResolver) Resolve(
 
 	processorExclude := operatorProcessor{
 		resolverCore: r.resolverCore,
-		items:        (*txBag[string])(&excluded),
+		items:        &excluded,
 		cleanup:      &cleanup,
 	}
 
@@ -83,7 +81,7 @@ func (r *exclusionResolver) Resolve(
 		exclusions[value] = struct{}{}
 	}
 
-	results := seq.Filter(seq.Channel(ch), func(value string) bool {
+	results := seq.Filter(included.Seq(), func(value string) bool {
 		_, ok := exclusions[value]
 		return !ok
 	})

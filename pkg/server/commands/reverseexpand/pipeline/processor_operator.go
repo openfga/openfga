@@ -7,7 +7,7 @@ import (
 )
 
 type Tx interface {
-	Send(string)
+	Add(...string)
 }
 
 type ChanTx struct {
@@ -42,7 +42,7 @@ func (p *operatorProcessor) process(ctx context.Context, edge *Edge, msg *messag
 			p.error(err)
 			continue
 		}
-		p.items.Send(value)
+		p.items.Add(value)
 	}
 
 	p.bufferPool.Put(values)
