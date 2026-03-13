@@ -77,14 +77,17 @@ func (l *ZapLogger) Fatal(msg string, fields ...zap.Field) {
 }
 
 func (l *ZapLogger) DebugWithContext(ctx context.Context, msg string, fields ...zap.Field) {
+	fields = append(fields, ctxzap.TagsToFields(ctx)...)
 	l.Logger.Debug(msg, fields...)
 }
 
 func (l *ZapLogger) InfoWithContext(ctx context.Context, msg string, fields ...zap.Field) {
+	fields = append(fields, ctxzap.TagsToFields(ctx)...)
 	l.Logger.Info(msg, fields...)
 }
 
 func (l *ZapLogger) WarnWithContext(ctx context.Context, msg string, fields ...zap.Field) {
+	fields = append(fields, ctxzap.TagsToFields(ctx)...)
 	l.Logger.Warn(msg, fields...)
 }
 
@@ -94,10 +97,12 @@ func (l *ZapLogger) ErrorWithContext(ctx context.Context, msg string, fields ...
 }
 
 func (l *ZapLogger) PanicWithContext(ctx context.Context, msg string, fields ...zap.Field) {
+	fields = append(fields, ctxzap.TagsToFields(ctx)...)
 	l.Logger.Panic(msg, fields...)
 }
 
 func (l *ZapLogger) FatalWithContext(ctx context.Context, msg string, fields ...zap.Field) {
+	fields = append(fields, ctxzap.TagsToFields(ctx)...)
 	l.Logger.Fatal(msg, fields...)
 }
 
