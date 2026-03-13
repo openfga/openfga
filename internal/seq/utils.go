@@ -16,7 +16,7 @@ func Sequence[T any](items ...T) iter.Seq[T] {
 
 // Channel is a function that runs a channel into an `iter.Seq[T]` that
 // yields values in the order that they are produced by the channel.
-func Channel[T any](ch chan T) iter.Seq[T] {
+func Channel[T any](ch <-chan T) iter.Seq[T] {
 	return func(yield func(T) bool) {
 		for item := range ch {
 			if !yield(item) {
