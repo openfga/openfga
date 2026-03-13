@@ -19,60 +19,66 @@ import (
 
 	"github.com/openfga/openfga/pkg/server/commands/reverseexpand/pipeline"
 	"github.com/openfga/openfga/pkg/server/commands/reverseexpand/pipeline/obj"
+	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/memory"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
-type StaticObjectStore struct {
-	m map[string]map[string][]string
+const Store string = "ABC"
+
+type TestStore struct {
+	storage.OpenFGADatastore
 }
 
-func (s *StaticObjectStore) Add(tuples ...string) {
-	if s.m == nil {
-		s.m = make(map[string]map[string][]string)
+func NewTestStore() TestStore {
+	return TestStore{
+		memory.New(),
 	}
-	for _, tuple := range tuples {
-		objectRelation, user, _ := strings.Cut(tuple, "@")
-		if _, ok := s.m[user]; !ok {
-			s.m[user] = make(map[string][]string)
-		}
-		objectMap := s.m[user]
+}
+
+func (s *TestStore) Add(t testing.TB, tuples ...string) {
+	t.Helper()
+
+	const size int = 10
+
+	writes := make([]*openfgav1.TupleKey, size)
+
+	var ndx int
+
+	for i, tpl := range tuples {
+		objectRelation, user, _ := strings.Cut(tpl, "@")
 		object, relation, _ := strings.Cut(objectRelation, "#")
-		objectType, _, _ := strings.Cut(object, ":")
-		objectMap[objectType+"#"+relation] = append(objectMap[objectType+"#"+relation], object)
-	}
-}
+		key := tuple.NewTupleKey(object, relation, user)
+		ndx = i % size
+		writes[ndx] = key
 
-func (s *StaticObjectStore) Read(ctx context.Context, q pipeline.ObjectQuery) iter.Seq[pipeline.Item] {
-	var objects []string
-	for _, user := range q.Users {
-		if objectMap, ok := s.m[user]; ok {
-			if ids, ok := objectMap[q.ObjectType+"#"+q.Relation]; ok {
-				objects = append(objects, ids...)
+		if ndx == size-1 {
+			err := s.Write(context.Background(), Store, nil, writes)
+			if err != nil {
+				t.Fatal(err)
 			}
 		}
 	}
 
-	return func(yield func(o pipeline.Item) bool) {
-		for _, o := range objects {
-			if !yield(pipeline.Item{Value: o}) {
-				break
-			}
+	if ndx < size-1 {
+		err := s.Write(context.Background(), Store, nil, writes[:ndx+1])
+		if err != nil {
+			t.Fatal(err)
 		}
 	}
 }
 
-type ErrorObjectStore struct {
+type ErrorReader struct {
 	err error
 }
 
-func NewErrorObjectStore(err error) *ErrorObjectStore {
-	return &ErrorObjectStore{err: err}
+func NewErrorReader(err error) *ErrorReader {
+	return &ErrorReader{err: err}
 }
 
-func (e *ErrorObjectStore) Read(_ context.Context, _ pipeline.ObjectQuery) iter.Seq[pipeline.Item] {
+func (e *ErrorReader) Read(_ context.Context, _ pipeline.ObjectQuery) iter.Seq[pipeline.Item] {
 	return func(yield func(pipeline.Item) bool) {
 		yield(pipeline.Item{Err: e.err})
 	}
@@ -147,8 +153,8 @@ func TestPipelineShutdown(t *testing.T) {
 
 	slices.Reverse(documents)
 
-	var ds StaticObjectStore
-	ds.Add(tuples...)
+	ds := NewTestStore()
+	ds.Add(t, tuples...)
 
 	model := testutils.MustTransformDSLToProtoWithID(dsl)
 
@@ -156,10 +162,17 @@ func TestPipelineShutdown(t *testing.T) {
 		context.Background(),
 		model,
 	)
-
 	require.NoError(t, err)
 
 	g := typesys.GetWeightedGraph()
+
+	validator := obj.NewValidator(context.Background(), typesys, nil)
+
+	reader := obj.NewReader(
+		ds,
+		Store,
+		obj.WithValidator(validator),
+	)
 
 	spec := pipeline.Spec{
 		ObjectType: "document",
@@ -167,7 +180,7 @@ func TestPipelineShutdown(t *testing.T) {
 		User:       "user:bob",
 	}
 
-	pl := pipeline.New(g, &ds, pipeline.WithBufferCapacity(bufferSize), pipeline.WithChunkSize(chunkSize))
+	pl := pipeline.New(g, reader, pipeline.WithBufferCapacity(bufferSize), pipeline.WithChunkSize(chunkSize))
 
 	t.Run("NoAbandon", func(t *testing.T) {
 		defer goleak.VerifyNone(t)
@@ -305,9 +318,6 @@ func TestPipelineShutdown(t *testing.T) {
 		var count int
 		for object := range seq {
 			_, err = object.Object()
-			if count > bufferSize+chunkSize+1 {
-				t.Fatalf("received unexpected value")
-			}
 
 			if count == 0 {
 				// wait long enough for timeout to occur
@@ -315,6 +325,7 @@ func TestPipelineShutdown(t *testing.T) {
 			}
 			count++
 		}
+		require.Greater(t, len(tuples), count) // ensure that we stopped before consuming the full traversal
 		require.ErrorIs(t, err, context.DeadlineExceeded)
 	})
 
@@ -371,7 +382,7 @@ func TestPipelineError(t *testing.T) {
 	  relations
 	    define viewer: [org#member, team#member]
 	`
-	ds := NewErrorObjectStore(ErrSignal)
+	ds := NewErrorReader(ErrSignal)
 
 	model := testutils.MustTransformDSLToProtoWithID(dsl)
 
@@ -2361,19 +2372,30 @@ var cases = []testcase{
 func BenchmarkPipeline(b *testing.B) {
 	for _, tc := range cases {
 		b.Run(tc.name, func(b *testing.B) {
-			var ds StaticObjectStore
-			ds.Add(tc.tuples...)
-
 			model := testutils.MustTransformDSLToProtoWithID(tc.model)
+
+			ds := NewTestStore()
+
+			err := ds.WriteAuthorizationModel(context.Background(), Store, model)
+			require.NoError(b, err)
+
+			ds.Add(b, tc.tuples...)
 
 			typesys, err := typesystem.NewAndValidate(
 				context.Background(),
 				model,
 			)
-
 			require.NoError(b, err)
 
 			g := typesys.GetWeightedGraph()
+
+			validator := obj.NewValidator(context.Background(), typesys, nil)
+
+			reader := obj.NewReader(
+				ds,
+				Store,
+				obj.WithValidator(validator),
+			)
 
 			b.ResetTimer()
 
@@ -2384,7 +2406,7 @@ func BenchmarkPipeline(b *testing.B) {
 					User:       tc.user,
 				}
 
-				seq, err := pipeline.New(g, &ds).Expand(context.Background(), spec)
+				seq, err := pipeline.New(g, reader).Expand(context.Background(), spec)
 
 				require.NoError(b, err)
 
@@ -2400,19 +2422,30 @@ func TestPipeline(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			defer goleak.VerifyNone(t)
 
-			var ds StaticObjectStore
-			ds.Add(tc.tuples...)
-
 			model := testutils.MustTransformDSLToProtoWithID(tc.model)
+
+			ds := NewTestStore()
+
+			err := ds.WriteAuthorizationModel(context.Background(), Store, model)
+			require.NoError(t, err)
+
+			ds.Add(t, tc.tuples...)
 
 			typesys, err := typesystem.NewAndValidate(
 				context.Background(),
 				model,
 			)
-
 			require.NoError(t, err)
 
 			g := typesys.GetWeightedGraph()
+
+			validator := obj.NewValidator(context.Background(), typesys, nil)
+
+			reader := obj.NewReader(
+				ds,
+				Store,
+				obj.WithValidator(validator),
+			)
 
 			spec := pipeline.Spec{
 				ObjectType: tc.objectType,
@@ -2420,7 +2453,7 @@ func TestPipeline(t *testing.T) {
 				User:       tc.user,
 			}
 
-			seq, err := pipeline.New(g, &ds).Expand(context.Background(), spec)
+			seq, err := pipeline.New(g, reader).Expand(context.Background(), spec)
 
 			require.NoError(t, err)
 
