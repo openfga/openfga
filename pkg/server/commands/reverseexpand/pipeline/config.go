@@ -3,7 +3,8 @@ package pipeline
 type Option func(*Config)
 
 // WithBufferCapacity sets the capacity of pipes between workers.
-// Larger buffers reduce blocking but increase memory.
+// A value of 0 creates unbuffered channels. Larger buffers reduce
+// blocking but increase memory.
 func WithBufferCapacity(size int) Option {
 	return func(config *Config) {
 		config.BufferCapacity = size
