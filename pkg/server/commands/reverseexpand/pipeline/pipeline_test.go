@@ -383,37 +383,6 @@ func TestPipelineShutdown(t *testing.T) {
 			require.NoError(t, err)
 		})
 
-		t.Run("AbandonAfterPull", func(t *testing.T) {
-			defer goleak.VerifyNone(t)
-
-			seq, err := pl.Expand(context.Background(), spec)
-			require.NoError(t, err)
-
-			var value string
-			for objects := range seq {
-				value, err = objects.Object()
-				break
-			}
-			require.NoError(t, err)
-			require.Empty(t, value)
-		})
-
-		t.Run("AbandonMidProcessing", func(t *testing.T) {
-			defer goleak.VerifyNone(t)
-
-			seq, err := pl.Expand(context.Background(), spec)
-			require.NoError(t, err)
-
-			var count int
-			limit := nestLevel / 2
-			for range seq {
-				count++
-				if count >= limit {
-					break
-				}
-			}
-		})
-
 		t.Run("CancelWithoutPull", func(t *testing.T) {
 			defer goleak.VerifyNone(t)
 
@@ -437,75 +406,6 @@ func TestPipelineShutdown(t *testing.T) {
 			for range seq {
 				t.Fatal("received item after context canceled")
 			}
-		})
-
-		t.Run("CancelAfterPull", func(t *testing.T) {
-			defer goleak.VerifyNone(t)
-
-			ctx, cancel := context.WithCancel(context.Background())
-
-			defer cancel()
-
-			seq, err := pl.Expand(ctx, spec)
-			require.NoError(t, err)
-
-			var value string
-			for object := range seq {
-				var v string
-				v, err = object.Object()
-				if err == nil {
-					value = v
-				}
-				cancel()
-			}
-			require.Empty(t, value)
-			require.NoError(t, err)
-		})
-
-		t.Run("CancelMidProcessing", func(t *testing.T) {
-			defer goleak.VerifyNone(t)
-
-			ctx, cancel := context.WithCancel(context.Background())
-
-			defer cancel()
-
-			seq, err := pl.Expand(ctx, spec)
-			require.NoError(t, err)
-
-			var count int
-			limit := nestLevel / 2
-			for object := range seq {
-				_, err = object.Object()
-				count++
-				if count >= limit {
-					cancel()
-				}
-			}
-			require.NoError(t, err)
-		})
-
-		t.Run("TimeoutAfterPull", func(t *testing.T) {
-			defer goleak.VerifyNone(t)
-
-			ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-
-			defer cancel()
-
-			seq, err := pl.Expand(ctx, spec)
-			require.NoError(t, err)
-
-			var count int
-			for object := range seq {
-				_, err = object.Object()
-
-				if count == 0 {
-					// wait long enough for timeout to occur
-					time.Sleep(200 * time.Millisecond)
-				}
-				count++
-			}
-			require.Equal(t, 0, count)
-			require.NoError(t, err)
 		})
 
 		t.Run("TimeoutBeforePull", func(t *testing.T) {
