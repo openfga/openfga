@@ -10,6 +10,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [1.12.0] - 2026-03-13
 ### Added
+- Add AuthZen 1.0 experimental support. [#2875](https://github.com/openfga/openfga/pull/2875)
 - Add configuration for maximum size of received gRPC message bytes. [#2952](https://github.com/openfga/openfga/pull/2952)
 
 ### Changed

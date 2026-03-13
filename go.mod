@@ -30,7 +30,7 @@ require (
 	github.com/jackc/pgx/v5 v5.8.0
 	github.com/natefinch/wrap v0.2.0
 	github.com/oklog/ulid/v2 v2.1.1
-	github.com/openfga/api/proto v0.0.0-20260122164422-25e22cb1875b
+	github.com/openfga/api/proto v0.0.0-20260309012146-9380d3ca2322
 	github.com/openfga/language/pkg/go v0.2.0-beta.2.0.20251202173232-1e8bf16f1dce
 	github.com/pressly/goose/v3 v3.27.0
 	github.com/prometheus/client_golang v1.23.2
