@@ -133,7 +133,10 @@ func (r *baseResolver) Resolve(
 	r.membership.WaitForAllReady()
 	r.membership.WaitForDrain()
 
-	// Close listeners to unlock the cyclical chain.
+	// Close the listeners to unblock the cyclical chain. At this point, all cycle
+	// participants have entered a "ready" state and have been drained of messages.
+	// At this point, there will never be in-flight messages that could be sent to
+	// these listeners after close.
 	for _, lst := range listeners {
 		lst.Close()
 	}
