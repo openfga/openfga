@@ -16,10 +16,14 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Tuple validation will now fail when any unicode control characters, or null bytes are present within a tuple string. [#2963](https://github.com/openfga/openfga/pull/2963)
 
 ### Fixed
+- Fixed swapped format arguments in `DecodeParameterType` error message that reported required and found generic type counts in the wrong order. [#2961](https://github.com/openfga/openfga/pull/2961)
 - Fixed a few bugs. Two potential index out of bounds scenarios, and one cache of an invalid result. [#2942](https://github.com/openfga/openfga/pull/2942)
 - Fixed a race condition in check reducers causing non-deterministic nested handler execution due to canceled parent context. [#2947](https://github.com/openfga/openfga/pull/2947)
 - Fixed an issue where `cache_item_count` was incrementing on overwrites, causing the metric to steadily drift upward. [#2950](https://github.com/openfga/openfga/pull/2950)
 - Set `pipeline_list_objects` enabled by default in experimentals so that setting new experimental values does not disable it. This is required so that a user may pass in a custom featureflag client where `pipeline_list_objects` can be disabled on a per store basis. To disable the ListObjects pipeline algorithm entirely, set `listObjects-pipeline-enabled` to `false`. [#2957](https://github.com/openfga/openfga/pull/2957)
+
+### Security
+- Update toolchain go version to 1.25.8 to address std lib vulnerabilities [GO-2026-4603](https://pkg.go.dev/vuln/GO-2026-4603) and [GO-2026-4601](https://pkg.go.dev/vuln/GO-2026-4601). [#2971](https://github.com/openfga/openfga/pull/2971)
 
 ## [1.11.6] - 2026-02-23
 ### Added
