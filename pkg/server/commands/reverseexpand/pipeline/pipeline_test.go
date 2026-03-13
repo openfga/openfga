@@ -325,7 +325,7 @@ func TestPipelineShutdown(t *testing.T) {
 			}
 			count++
 		}
-		require.Greater(t, len(tuples), count) // ensure that we stopped before consuming the full traversal
+		require.Greater(t, len(documents), count) // ensure that we stopped before consuming the full traversal
 		require.ErrorIs(t, err, context.DeadlineExceeded)
 	})
 
