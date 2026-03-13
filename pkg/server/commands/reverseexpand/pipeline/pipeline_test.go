@@ -101,6 +101,7 @@ func TestPipelineShutdown(t *testing.T) {
 	  	define blocked: [user]
 	  	define moderator: (reader and writer) but not blocked
 	    define member: moderator or member from parent
+	    define fault: member but not member
 	    define parent: [team]
 
 	type team
@@ -110,11 +111,14 @@ func TestPipelineShutdown(t *testing.T) {
 	  	define blocked: [user]
 	  	define moderator: (reader and writer) but not blocked
 	    define member: moderator or member from parent
+	    define fault: member but not member
 	    define parent: [org]
 
 	type document
 	  relations
 	    define viewer: [org#member, team#member]
+	    define parent: [org, team]
+	    define fault: fault from parent
 	`
 
 	const user string = "user:bob"
@@ -138,6 +142,7 @@ func TestPipelineShutdown(t *testing.T) {
 		tuples = append(tuples, fmt.Sprintf("%s#parent@%s", child, parent))
 		documents = append(documents, fmt.Sprintf("document:%d", i))
 		tuples = append(tuples, fmt.Sprintf("document:%d#viewer@%s#member", i, child))
+		tuples = append(tuples, fmt.Sprintf("document:%d#parent@%s", i, child))
 
 		for j := range 20 {
 			tuples = append(
@@ -174,177 +179,352 @@ func TestPipelineShutdown(t *testing.T) {
 		obj.WithValidator(validator),
 	)
 
-	spec := pipeline.Spec{
-		ObjectType: "document",
-		Relation:   "viewer",
-		User:       "user:bob",
-	}
-
 	pl := pipeline.New(g, reader, pipeline.WithBufferCapacity(bufferSize), pipeline.WithChunkSize(chunkSize))
 
-	t.Run("NoAbandon", func(t *testing.T) {
-		defer goleak.VerifyNone(t)
+	t.Run("exclusive_path", func(t *testing.T) {
+		spec := pipeline.Spec{
+			ObjectType: "document",
+			Relation:   "viewer",
+			User:       "user:bob",
+		}
 
-		seq, err := pl.Expand(context.Background(), spec)
-		require.NoError(t, err)
+		t.Run("NoAbandon", func(t *testing.T) {
+			defer goleak.VerifyNone(t)
 
-		values := make([]string, 0, len(documents))
-		for object := range seq {
-			value, err := object.Object()
+			seq, err := pl.Expand(context.Background(), spec)
 			require.NoError(t, err)
-			values = append(values, value)
-		}
-		require.ElementsMatch(t, documents, values)
-	})
 
-	t.Run("AbandonWithoutPull", func(t *testing.T) {
-		defer goleak.VerifyNone(t)
+			values := make([]string, 0, len(documents))
+			for object := range seq {
+				value, err := object.Object()
+				require.NoError(t, err)
+				values = append(values, value)
+			}
+			require.ElementsMatch(t, documents, values)
+		})
 
-		_, err := pl.Expand(context.Background(), spec)
-		require.NoError(t, err)
-	})
+		t.Run("AbandonWithoutPull", func(t *testing.T) {
+			defer goleak.VerifyNone(t)
 
-	t.Run("AbandonAfterPull", func(t *testing.T) {
-		defer goleak.VerifyNone(t)
+			_, err := pl.Expand(context.Background(), spec)
+			require.NoError(t, err)
+		})
 
-		seq, err := pl.Expand(context.Background(), spec)
-		require.NoError(t, err)
+		t.Run("AbandonAfterPull", func(t *testing.T) {
+			defer goleak.VerifyNone(t)
 
-		var value string
-		for objects := range seq {
-			value, err = objects.Object()
-			break
-		}
-		require.NoError(t, err)
-		require.NotEmpty(t, value)
-	})
+			seq, err := pl.Expand(context.Background(), spec)
+			require.NoError(t, err)
 
-	t.Run("AbandonMidProcessing", func(t *testing.T) {
-		defer goleak.VerifyNone(t)
-
-		seq, err := pl.Expand(context.Background(), spec)
-		require.NoError(t, err)
-
-		var count int
-		limit := nestLevel / 2
-		for range seq {
-			count++
-			if count >= limit {
+			var value string
+			for objects := range seq {
+				value, err = objects.Object()
 				break
 			}
-		}
-	})
+			require.NoError(t, err)
+			require.NotEmpty(t, value)
+		})
 
-	t.Run("CancelWithoutPull", func(t *testing.T) {
-		defer goleak.VerifyNone(t)
+		t.Run("AbandonMidProcessing", func(t *testing.T) {
+			defer goleak.VerifyNone(t)
 
-		ctx, cancel := context.WithCancel(context.Background())
+			seq, err := pl.Expand(context.Background(), spec)
+			require.NoError(t, err)
 
-		_, err := pl.Expand(ctx, spec)
-		require.NoError(t, err)
-
-		cancel()
-	})
-
-	t.Run("CancelBeforePull", func(t *testing.T) {
-		defer goleak.VerifyNone(t)
-
-		ctx, cancel := context.WithCancel(context.Background())
-
-		seq, err := pl.Expand(ctx, spec)
-		require.NoError(t, err)
-
-		cancel()
-		for range seq {
-			t.Fatal("received item after context canceled")
-		}
-	})
-
-	t.Run("CancelAfterPull", func(t *testing.T) {
-		defer goleak.VerifyNone(t)
-
-		ctx, cancel := context.WithCancel(context.Background())
-
-		defer cancel()
-
-		seq, err := pl.Expand(ctx, spec)
-		require.NoError(t, err)
-
-		var value string
-		for object := range seq {
-			var v string
-			v, err = object.Object()
-			if err == nil {
-				value = v
+			var count int
+			limit := nestLevel / 2
+			for range seq {
+				count++
+				if count >= limit {
+					break
+				}
 			}
+		})
+
+		t.Run("CancelWithoutPull", func(t *testing.T) {
+			defer goleak.VerifyNone(t)
+
+			ctx, cancel := context.WithCancel(context.Background())
+
+			_, err := pl.Expand(ctx, spec)
+			require.NoError(t, err)
+
 			cancel()
-		}
-		require.NotEmpty(t, value)
-		require.ErrorIs(t, err, context.Canceled)
-	})
+		})
 
-	t.Run("CancelMidProcessing", func(t *testing.T) {
-		defer goleak.VerifyNone(t)
+		t.Run("CancelBeforePull", func(t *testing.T) {
+			defer goleak.VerifyNone(t)
 
-		ctx, cancel := context.WithCancel(context.Background())
+			ctx, cancel := context.WithCancel(context.Background())
 
-		defer cancel()
+			seq, err := pl.Expand(ctx, spec)
+			require.NoError(t, err)
 
-		seq, err := pl.Expand(ctx, spec)
-		require.NoError(t, err)
+			cancel()
+			for range seq {
+				t.Fatal("received item after context canceled")
+			}
+		})
 
-		var count int
-		limit := nestLevel / 2
-		for object := range seq {
-			_, err = object.Object()
-			count++
-			if count >= limit {
+		t.Run("CancelAfterPull", func(t *testing.T) {
+			defer goleak.VerifyNone(t)
+
+			ctx, cancel := context.WithCancel(context.Background())
+
+			defer cancel()
+
+			seq, err := pl.Expand(ctx, spec)
+			require.NoError(t, err)
+
+			var value string
+			for object := range seq {
+				var v string
+				v, err = object.Object()
+				if err == nil {
+					value = v
+				}
 				cancel()
 			}
-		}
-		require.ErrorIs(t, err, context.Canceled)
-	})
+			require.NotEmpty(t, value)
+			require.ErrorIs(t, err, context.Canceled)
+		})
 
-	t.Run("TimeoutAfterPull", func(t *testing.T) {
-		defer goleak.VerifyNone(t)
+		t.Run("CancelMidProcessing", func(t *testing.T) {
+			defer goleak.VerifyNone(t)
 
-		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+			ctx, cancel := context.WithCancel(context.Background())
 
-		defer cancel()
+			defer cancel()
 
-		seq, err := pl.Expand(ctx, spec)
-		require.NoError(t, err)
+			seq, err := pl.Expand(ctx, spec)
+			require.NoError(t, err)
 
-		var count int
-		for object := range seq {
-			_, err = object.Object()
-
-			if count == 0 {
-				// wait long enough for timeout to occur
-				time.Sleep(200 * time.Millisecond)
+			var count int
+			limit := nestLevel / 2
+			for object := range seq {
+				_, err = object.Object()
+				count++
+				if count >= limit {
+					cancel()
+				}
 			}
-			count++
-		}
-		require.Greater(t, len(documents), count) // ensure that we stopped before consuming the full traversal
-		require.ErrorIs(t, err, context.DeadlineExceeded)
+			require.ErrorIs(t, err, context.Canceled)
+		})
+
+		t.Run("TimeoutAfterPull", func(t *testing.T) {
+			defer goleak.VerifyNone(t)
+
+			ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+
+			defer cancel()
+
+			seq, err := pl.Expand(ctx, spec)
+			require.NoError(t, err)
+
+			var count int
+			for object := range seq {
+				_, err = object.Object()
+
+				if count == 0 {
+					// wait long enough for timeout to occur
+					time.Sleep(200 * time.Millisecond)
+				}
+				count++
+			}
+			require.Greater(t, len(documents), count) // ensure that we stopped before consuming the full traversal
+			require.ErrorIs(t, err, context.DeadlineExceeded)
+		})
+
+		t.Run("TimeoutBeforePull", func(t *testing.T) {
+			defer goleak.VerifyNone(t)
+
+			ctx, cancel := context.WithTimeout(context.Background(), 1*time.Millisecond)
+
+			seq, err := pl.Expand(ctx, spec)
+			require.NoError(t, err)
+
+			defer cancel()
+
+			// wait long enough for timeout to occur
+			time.Sleep(2 * time.Millisecond)
+
+			for range seq {
+				t.Fatal("received value after context deadline exceeded")
+			}
+		})
 	})
 
-	t.Run("TimeoutBeforePull", func(t *testing.T) {
-		defer goleak.VerifyNone(t)
-
-		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Millisecond)
-
-		seq, err := pl.Expand(ctx, spec)
-		require.NoError(t, err)
-
-		defer cancel()
-
-		// wait long enough for timeout to occur
-		time.Sleep(2 * time.Millisecond)
-
-		for range seq {
-			t.Fatal("received value after context deadline exceeded")
+	t.Run("mutual_path", func(t *testing.T) {
+		spec := pipeline.Spec{
+			ObjectType: "document",
+			Relation:   "fault",
+			User:       "user:bob",
 		}
+
+		t.Run("NoAbandon", func(t *testing.T) {
+			defer goleak.VerifyNone(t)
+
+			seq, err := pl.Expand(context.Background(), spec)
+			require.NoError(t, err)
+
+			values := make([]string, 0, len(documents))
+			for object := range seq {
+				value, err := object.Object()
+				require.NoError(t, err)
+				values = append(values, value)
+			}
+			require.Empty(t, values)
+		})
+
+		t.Run("AbandonWithoutPull", func(t *testing.T) {
+			defer goleak.VerifyNone(t)
+
+			_, err := pl.Expand(context.Background(), spec)
+			require.NoError(t, err)
+		})
+
+		t.Run("AbandonAfterPull", func(t *testing.T) {
+			defer goleak.VerifyNone(t)
+
+			seq, err := pl.Expand(context.Background(), spec)
+			require.NoError(t, err)
+
+			var value string
+			for objects := range seq {
+				value, err = objects.Object()
+				break
+			}
+			require.NoError(t, err)
+			require.Empty(t, value)
+		})
+
+		t.Run("AbandonMidProcessing", func(t *testing.T) {
+			defer goleak.VerifyNone(t)
+
+			seq, err := pl.Expand(context.Background(), spec)
+			require.NoError(t, err)
+
+			var count int
+			limit := nestLevel / 2
+			for range seq {
+				count++
+				if count >= limit {
+					break
+				}
+			}
+		})
+
+		t.Run("CancelWithoutPull", func(t *testing.T) {
+			defer goleak.VerifyNone(t)
+
+			ctx, cancel := context.WithCancel(context.Background())
+
+			_, err := pl.Expand(ctx, spec)
+			require.NoError(t, err)
+
+			cancel()
+		})
+
+		t.Run("CancelBeforePull", func(t *testing.T) {
+			defer goleak.VerifyNone(t)
+
+			ctx, cancel := context.WithCancel(context.Background())
+
+			seq, err := pl.Expand(ctx, spec)
+			require.NoError(t, err)
+
+			cancel()
+			for range seq {
+				t.Fatal("received item after context canceled")
+			}
+		})
+
+		t.Run("CancelAfterPull", func(t *testing.T) {
+			defer goleak.VerifyNone(t)
+
+			ctx, cancel := context.WithCancel(context.Background())
+
+			defer cancel()
+
+			seq, err := pl.Expand(ctx, spec)
+			require.NoError(t, err)
+
+			var value string
+			for object := range seq {
+				var v string
+				v, err = object.Object()
+				if err == nil {
+					value = v
+				}
+				cancel()
+			}
+			require.Empty(t, value)
+			require.NoError(t, err)
+		})
+
+		t.Run("CancelMidProcessing", func(t *testing.T) {
+			defer goleak.VerifyNone(t)
+
+			ctx, cancel := context.WithCancel(context.Background())
+
+			defer cancel()
+
+			seq, err := pl.Expand(ctx, spec)
+			require.NoError(t, err)
+
+			var count int
+			limit := nestLevel / 2
+			for object := range seq {
+				_, err = object.Object()
+				count++
+				if count >= limit {
+					cancel()
+				}
+			}
+			require.NoError(t, err)
+		})
+
+		t.Run("TimeoutAfterPull", func(t *testing.T) {
+			defer goleak.VerifyNone(t)
+
+			ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+
+			defer cancel()
+
+			seq, err := pl.Expand(ctx, spec)
+			require.NoError(t, err)
+
+			var count int
+			for object := range seq {
+				_, err = object.Object()
+
+				if count == 0 {
+					// wait long enough for timeout to occur
+					time.Sleep(200 * time.Millisecond)
+				}
+				count++
+			}
+			require.Equal(t, 0, count)
+			require.NoError(t, err)
+		})
+
+		t.Run("TimeoutBeforePull", func(t *testing.T) {
+			defer goleak.VerifyNone(t)
+
+			ctx, cancel := context.WithTimeout(context.Background(), 1*time.Millisecond)
+
+			seq, err := pl.Expand(ctx, spec)
+			require.NoError(t, err)
+
+			defer cancel()
+
+			// wait long enough for timeout to occur
+			time.Sleep(2 * time.Millisecond)
+
+			for range seq {
+				t.Fatal("received value after context deadline exceeded")
+			}
+		})
 	})
 }
 
