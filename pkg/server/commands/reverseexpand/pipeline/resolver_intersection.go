@@ -68,7 +68,7 @@ func (r *intersectionResolver) Resolve(
 		output = found
 	}
 
-	sentCount := r.broadcast(maps.Keys(output), listeners)
+	sentCount := r.broadcast(ctx, maps.Keys(output), listeners)
 
 	span.SetAttributes(attribute.Int("items.count", sentCount))
 

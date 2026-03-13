@@ -8,7 +8,6 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/openfga/openfga/internal/containers"
-	"github.com/openfga/openfga/internal/pipe"
 	"github.com/openfga/openfga/internal/seq"
 )
 
@@ -36,32 +35,30 @@ func (r *exclusionResolver) Resolve(
 
 	var wgExclude sync.WaitGroup
 
+	ch := make(chan string, 1<<7)
+
 	// Include side streams through a pipe; exclude side collects into a bag.
-	pipeInclude := pipe.Must[string](pipe.Config{
-		Capacity:      1 << 7,
-		ExtendAfter:   0,
-		MaxExtensions: -1,
-	})
+	txInclude := ChanTx{ch}
 
 	var counter atomic.Int32
 	counter.Store(int32(r.numProcs))
 
 	processorInclude := operatorProcessor{
 		resolverCore: r.resolverCore,
-		items:        pipeInclude,
+		items:        &txInclude,
 		cleanup:      &cleanup,
 	}
 
 	for range r.numProcs {
-		go func(p operatorProcessor) {
+		go func() {
 			defer func() {
 				// Last goroutine closes the pipe.
 				if counter.Add(-1) < 1 {
-					_ = pipeInclude.Close()
+					close(ch)
 				}
 			}()
-			r.drain(ctx, senders[0], p.process)
-		}(processorInclude)
+			r.drain(ctx, senders[0], processorInclude.process)
+		}()
 	}
 
 	processorExclude := operatorProcessor{
@@ -72,10 +69,10 @@ func (r *exclusionResolver) Resolve(
 
 	for range r.numProcs {
 		wgExclude.Add(1)
-		go func(p operatorProcessor) {
+		go func() {
 			defer wgExclude.Done()
-			r.drain(ctx, senders[1], p.process)
-		}(processorExclude)
+			r.drain(ctx, senders[1], processorExclude.process)
+		}()
 	}
 
 	wgExclude.Wait()
@@ -86,12 +83,12 @@ func (r *exclusionResolver) Resolve(
 		exclusions[value] = struct{}{}
 	}
 
-	results := seq.Filter(pipeInclude.Seq(), func(value string) bool {
+	results := seq.Filter(seq.Channel(ch), func(value string) bool {
 		_, ok := exclusions[value]
 		return !ok
 	})
 
-	sentCount := r.broadcast(results, listeners)
+	sentCount := r.broadcast(ctx, results, listeners)
 
 	span.SetAttributes(attribute.Int("items.count", sentCount))
 

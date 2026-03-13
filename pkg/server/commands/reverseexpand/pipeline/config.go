@@ -1,18 +1,12 @@
 package pipeline
 
-import (
-	"time"
-
-	"github.com/openfga/openfga/internal/pipe"
-)
-
 type Option func(*Config)
 
 // WithBufferCapacity sets the capacity of pipes between workers.
 // Must be a power of two. Larger buffers reduce blocking but increase memory.
 func WithBufferCapacity(size int) Option {
 	return func(config *Config) {
-		config.Buffer.Capacity = size
+		config.BufferCapacity = size
 	}
 }
 
@@ -32,16 +26,6 @@ func WithNumProcs(num int) Option {
 	}
 }
 
-// WithPipeExtension enables dynamic buffer growth when pipes block.
-// Each extension doubles capacity. Use -1 for maxExtensions to allow unbounded growth.
-// Disabled by default; enable when workloads have unpredictable burst sizes.
-func WithPipeExtension(extendAfter time.Duration, maxExtensions int) Option {
-	return func(config *Config) {
-		config.Buffer.ExtendAfter = extendAfter
-		config.Buffer.MaxExtensions = maxExtensions
-	}
-}
-
 // WithConfig replaces the entire configuration.
 func WithConfig(c Config) Option {
 	return func(config *Config) {
@@ -51,24 +35,23 @@ func WithConfig(c Config) Option {
 
 // Config contains pipeline tuning parameters.
 type Config struct {
-	Buffer    pipe.Config
-	ChunkSize int
-	NumProcs  int
+	BufferCapacity int
+	ChunkSize      int
+	NumProcs       int
 }
 
 // DefaultConfig returns a balanced configuration suitable for most workloads.
 func DefaultConfig() Config {
 	var config Config
-	config.Buffer = pipe.DefaultConfig()
-	config.Buffer.Capacity = defaultBufferSize
+	config.BufferCapacity = defaultBufferSize
 	config.ChunkSize = defaultChunkSize
 	config.NumProcs = defaultNumProcs
 	return config
 }
 
 func (config *Config) Validate() error {
-	if err := config.Buffer.Validate(); err != nil {
-		return err
+	if config.BufferCapacity < 0 {
+		return ErrInvalidBufferCapacity
 	}
 
 	if config.ChunkSize < 1 {

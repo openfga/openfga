@@ -4,13 +4,24 @@ import (
 	"context"
 
 	"github.com/openfga/openfga/internal/containers"
-	"github.com/openfga/openfga/internal/pipe"
 )
+
+type Tx interface {
+	Send(string)
+}
+
+type ChanTx struct {
+	c chan<- string
+}
+
+func (c *ChanTx) Send(s string) {
+	c.c <- s
+}
 
 // operatorProcessor collects all items for set operations (intersection, exclusion).
 type operatorProcessor struct {
 	resolverCore
-	items   pipe.Tx[string]
+	items   Tx
 	cleanup *containers.Bag[func()]
 }
 

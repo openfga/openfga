@@ -57,7 +57,7 @@ func (p *baseProcessor) process(ctx context.Context, edge *Edge, msg *message) {
 		return value
 	})
 
-	p.SentCount += int64(p.broadcast(output, p.listeners))
+	p.SentCount += int64(p.broadcast(ctx, output, p.listeners))
 
 	msg.Done()
 }
@@ -84,7 +84,7 @@ func (r *baseResolver) Resolve(
 	var wgRecursive sync.WaitGroup
 
 	for _, snd := range senders {
-		edge := snd.Key()
+		edge := snd.Key
 		isCyclical := isCyclical(edge)
 
 		if isCyclical {
@@ -133,11 +133,10 @@ func (r *baseResolver) Resolve(
 	r.membership.WaitForAllReady()
 	r.membership.WaitForDrain()
 
-	// Unblock processors stuck on full listener buffers.
+	// Close listeners to unlock the cyclical chain.
 	for _, lst := range listeners {
 		lst.Close()
 	}
-
 	wgRecursive.Wait()
 
 	span.SetAttributes(attribute.Int64("items.count", sentCount.Load()))

@@ -66,9 +66,8 @@ func (m *message) Done() {
 // that must collect all inputs before computing results.
 type txBag[T any] containers.Bag[T]
 
-func (tx *txBag[T]) Send(t T) bool {
+func (tx *txBag[T]) Send(t T) {
 	(*containers.Bag[T])(tx).Add(t)
-	return true
 }
 
 func (tx *txBag[T]) Seq() iter.Seq[T] {
