@@ -2,24 +2,9 @@ package iterator
 
 import (
 	"context"
-	"sync"
 
 	"github.com/openfga/openfga/internal/concurrency"
 )
-
-func Drain(ch <-chan *Msg) *sync.WaitGroup {
-	wg := &sync.WaitGroup{}
-	wg.Add(1)
-	go func() {
-		for msg := range ch {
-			if msg.Iter != nil {
-				msg.Iter.Stop()
-			}
-		}
-		wg.Done()
-	}()
-	return wg
-}
 
 func FanInIteratorChannels(ctx context.Context, chans []<-chan *Msg) <-chan *Msg {
 	limit := len(chans)

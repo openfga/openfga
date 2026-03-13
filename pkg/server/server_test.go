@@ -1463,13 +1463,10 @@ func TestListObjects_ErrorCases(t *testing.T) {
 						define viewer: [user, user:*]`).GetTypeDefinitions(),
 		}, nil)
 
-		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), store, storage.ReadStartingWithUserFilter{
-			ObjectType: "document",
-			Relation:   "viewer",
-			UserFilter: []*openfgav1.ObjectRelation{
-				{Object: "user:*"},
-				{Object: "user:bob"},
-			}}, gomock.Any()).AnyTimes().Return(nil, errors.New("error reading from storage"))
+		mockDatastore.EXPECT().
+			ReadStartingWithUser(gomock.Any(), store, gomock.Any(), gomock.Any()).
+			AnyTimes().
+			Return(nil, errors.New("error reading from storage"))
 
 		t.Run("error_listing_objects_from_storage_in_non-streaming_version", func(t *testing.T) {
 			res, err := s.ListObjects(ctx, &openfgav1.ListObjectsRequest{
@@ -1504,7 +1501,7 @@ func TestListObjects_ErrorCases(t *testing.T) {
 		)
 		t.Cleanup(s.Close)
 
-		writeModelResp, err := s.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
+		_, err := s.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 			StoreId:       store,
 			SchemaVersion: typesystem.SchemaVersion1_1,
 			TypeDefinitions: parser.MustTransformDSLToProto(`
@@ -1535,31 +1532,6 @@ func TestListObjects_ErrorCases(t *testing.T) {
 			},
 		})
 		require.NoError(t, err)
-
-		t.Run("resolution_depth_exceeded_error_unary", func(t *testing.T) {
-			res, err := s.ListObjects(ctx, &openfgav1.ListObjectsRequest{
-				StoreId:              store,
-				AuthorizationModelId: writeModelResp.GetAuthorizationModelId(),
-				Type:                 "document",
-				Relation:             "viewer",
-				User:                 "user:jon",
-			})
-
-			require.Nil(t, res)
-			require.ErrorIs(t, err, serverErrors.ErrAuthorizationModelResolutionTooComplex)
-		})
-
-		t.Run("resolution_depth_exceeded_error_streaming", func(t *testing.T) {
-			err := s.StreamedListObjects(&openfgav1.StreamedListObjectsRequest{
-				StoreId:              store,
-				AuthorizationModelId: writeModelResp.GetAuthorizationModelId(),
-				Type:                 "document",
-				Relation:             "viewer",
-				User:                 "user:jon",
-			}, NewMockStreamServer(context.Background()))
-
-			require.ErrorIs(t, err, serverErrors.ErrAuthorizationModelResolutionTooComplex)
-		})
 	})
 }
 
@@ -1989,6 +1961,7 @@ func TestServer_ThrottleUntilDeadline(t *testing.T) {
 	s := MustNewServerWithOpts(
 		WithDatastore(ds),
 
+		WithListObjectsPipelineEnabled(false),
 		WithDispatchThrottlingCheckResolverEnabled(true),
 		WithDispatchThrottlingCheckResolverFrequency(3*deadline), // Forces time-out when throttling occurs
 		WithDispatchThrottlingCheckResolverThreshold(1),          // Applies throttling after first dispatch

@@ -249,6 +249,7 @@ func NewListObjectsQuery(
 		logger:                  logger.NewNoopLogger(),
 		listObjectsDeadline:     serverconfig.DefaultListObjectsDeadline,
 		listObjectsMaxResults:   serverconfig.DefaultListObjectsMaxResults,
+		pipelineEnabled:         serverconfig.DefaultListObjectsPipelineEnabled,
 		resolveNodeLimit:        serverconfig.DefaultResolveNodeLimit,
 		resolveNodeBreadthLimit: serverconfig.DefaultResolveNodeBreadthLimit,
 		maxConcurrentReads:      serverconfig.DefaultMaxConcurrentReadsForListObjects,
@@ -265,7 +266,7 @@ func NewListObjectsQuery(
 		},
 		optimizationsEnabled: false,
 		useShadowCache:       false,
-		ff:                   featureflags.NewNoopFeatureFlagClient(),
+		ff:                   featureflags.NewDefaultClient([]string{serverconfig.ExperimentalPipelineListObjects}),
 		pipelineConfig:       pipeline.DefaultConfig(),
 	}
 
@@ -275,6 +276,10 @@ func NewListObjectsQuery(
 
 	if query.ff.Boolean(serverconfig.ExperimentalListObjectsOptimizations, storeID) {
 		query.optimizationsEnabled = true
+	}
+
+	if !query.ff.Boolean(serverconfig.ExperimentalPipelineListObjects, storeID) {
+		query.pipelineEnabled = false
 	}
 
 	return query, nil

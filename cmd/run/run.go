@@ -4,6 +4,7 @@ package run
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"html/template"
@@ -15,6 +16,7 @@ import (
 	goruntime "runtime"
 	"strconv"
 	"strings"
+	sync "sync/atomic"
 	"syscall"
 	"time"
 
@@ -54,6 +56,7 @@ import (
 	"github.com/openfga/openfga/internal/build"
 	authnmw "github.com/openfga/openfga/internal/middleware/authn"
 	"github.com/openfga/openfga/internal/planner"
+	"github.com/openfga/openfga/internal/telemetry"
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/gateway"
 	"github.com/openfga/openfga/pkg/logger"
@@ -74,13 +77,43 @@ import (
 	"github.com/openfga/openfga/pkg/storage/postgres"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
 	"github.com/openfga/openfga/pkg/storage/sqlite"
-	"github.com/openfga/openfga/pkg/telemetry"
 )
 
 const (
 	datastoreEngineFlag = "datastore-engine"
 	datastoreURIFlag    = "datastore-uri"
 )
+
+// grpcTLSCertPool is a package-level pinned certificate pool for verifying
+// the gRPC server's TLS certificate from the HTTP gateway client. It is
+// populated and kept up-to-date by watchAndLoadCertificateWithCertWatcher
+// via the certwatcher's RegisterCallback. Every connection created by
+// dialGrpc shares this single pool.
+var grpcTLSCertPool sync.Pointer[x509.CertPool]
+
+func init() {
+	// Initialize grpcTLSCertPool to an empty x509.CertPool for safety.
+	// This prevents nil pointer issues if Load() is called before the
+	// watcher callback populates it with the actual certificate.
+	grpcTLSCertPool.Store(x509.NewCertPool())
+}
+
+// updateGRPCCertPool builds a pinned x509.CertPool from the leaf certificate
+// and stores it in the global grpcTLSCertPool. It is intended to be passed as
+// the callback argument to watchAndLoadCertificateWithCertWatcher for the gRPC
+// server setup.
+func updateGRPCCertPool(cert tls.Certificate) {
+	if len(cert.Certificate) == 0 {
+		return
+	}
+	leaf, err := x509.ParseCertificate(cert.Certificate[0])
+	if err != nil {
+		return
+	}
+	pool := x509.NewCertPool()
+	pool.AddCert(leaf)
+	grpcTLSCertPool.Store(pool)
+}
 
 func NewRunCommand() *cobra.Command {
 	cmd := &cobra.Command{
@@ -94,7 +127,7 @@ func NewRunCommand() *cobra.Command {
 	defaultConfig := serverconfig.DefaultConfig()
 	flags := cmd.Flags()
 
-	flags.StringSlice("experimentals", defaultConfig.Experimentals, fmt.Sprintf("a comma-separated list of experimental features to enable. Allowed values: %s, %s, %s, %s, %s", serverconfig.ExperimentalCheckOptimizations, serverconfig.ExperimentalListObjectsOptimizations, serverconfig.ExperimentalAccessControlParams, serverconfig.ExperimentalPipelineListObjects, serverconfig.ExperimentalDatastoreThrottling))
+	flags.StringSlice("experimentals", defaultConfig.Experimentals, fmt.Sprintf("a comma-separated list of experimental features to enable. Allowed values: %s, %s, %s, %s", serverconfig.ExperimentalCheckOptimizations, serverconfig.ExperimentalListObjectsOptimizations, serverconfig.ExperimentalAccessControlParams, serverconfig.ExperimentalDatastoreThrottling))
 
 	flags.Bool("access-control-enabled", defaultConfig.AccessControl.Enabled, "enable/disable the access control feature")
 
@@ -113,6 +146,8 @@ func NewRunCommand() *cobra.Command {
 	flags.String("grpc-tls-key", defaultConfig.GRPC.TLS.KeyPath, "the (absolute) file path of the TLS key that should be used for the TLS connection")
 
 	cmd.MarkFlagsRequiredTogether("grpc-tls-enabled", "grpc-tls-cert", "grpc-tls-key")
+
+	flags.Int("grpc-max-recv-msg-bytes", defaultConfig.GRPC.MaxRecvMsgBytes, "the maximum size of a received message in bytes")
 
 	flags.Bool("http-enabled", defaultConfig.HTTP.Enabled, "enable/disable the OpenFGA HTTP server")
 
@@ -238,6 +273,8 @@ func NewRunCommand() *cobra.Command {
 
 	flags.Uint32("listObjects-max-results", defaultConfig.ListObjectsMaxResults, "the maximum results to return in non-streaming ListObjects API responses. If 0, all results can be returned")
 
+	flags.Bool("listObjects-pipeline-enabled", defaultConfig.ListObjectsPipelineEnabled, "enabling the ListObjects pipeline optimization algorithm, which can significantly improve the latency of ListObjects requests. When enabled, the server will attempt to resolve intermediate nodes in the ListObjects resolution tree concurrently. This optimization is most effective for workloads with large and complex authorization models, but may not suit all cases. Can be disabled if it causes increased resource usage.")
+
 	flags.Duration("listUsers-deadline", defaultConfig.ListUsersDeadline, "the timeout deadline for serving ListUsers requests. If 0, there is no deadline")
 
 	flags.Uint32("listUsers-max-results", defaultConfig.ListUsersMaxResults, "the maximum results to return in ListUsers API responses. If 0, all results can be returned")
@@ -287,7 +324,7 @@ func NewRunCommand() *cobra.Command {
 
 	flags.Uint32("check-dispatch-throttling-max-threshold", defaultConfig.CheckDispatchThrottling.MaxThreshold, "define the maximum dispatch threshold beyond which a Check requests will be throttled. 0 will use the 'check-dispatch-throttling-threshold' value as maximum")
 
-	flags.Bool("listObjects-dispatch-throttling-enabled", defaultConfig.ListObjectsDispatchThrottling.Enabled, "enable throttling when a ListObjects request's number of dispatches is high. Enabling this feature will prioritize dispatched requests requiring less than the configured dispatch threshold over requests whose dispatch count exceeds the configured threshold.")
+	flags.Bool("listObjects-dispatch-throttling-enabled", defaultConfig.ListObjectsDispatchThrottling.Enabled, "enable throttling when a ListObjects request's number of dispatches is high. Enabling this feature will prioritize dispatched requests requiring less than the configured dispatch threshold over requests whose dispatch count exceeds the configured threshold. Only applies when pipeline is disabled.")
 
 	flags.Duration("listObjects-dispatch-throttling-frequency", defaultConfig.ListObjectsDispatchThrottling.Frequency, "defines how frequent ListObjects dispatch throttling will be evaluated. Frequency controls how frequently throttled dispatch ListObjects requests are dispatched.")
 
@@ -502,7 +539,7 @@ func (s *ServerContext) authenticatorConfig(config *serverconfig.Config) (authn.
 
 func (s *ServerContext) buildServerOpts(ctx context.Context, config *serverconfig.Config, authenticator authn.Authenticator) ([]grpc.ServerOption, *grpc_prometheus.ServerMetrics, error) {
 	serverOpts := []grpc.ServerOption{
-		grpc.MaxRecvMsgSize(serverconfig.DefaultMaxRPCMessageSizeInBytes),
+		grpc.MaxRecvMsgSize(config.GRPC.MaxRecvMsgBytes),
 		grpc.ChainUnaryInterceptor(
 			[]grpc.UnaryServerInterceptor{
 				grpc_recovery.UnaryServerInterceptor( // panic middleware must be 1st in chain
@@ -587,7 +624,7 @@ func (s *ServerContext) buildServerOpts(ctx context.Context, config *serverconfi
 		if config.GRPC.TLS.CertPath == "" || config.GRPC.TLS.KeyPath == "" {
 			return nil, prometheusMetrics, errors.New("'grpc.tls.cert' and 'grpc.tls.key' configs must be set")
 		}
-		grpcGetCertificate, err := watchAndLoadCertificateWithCertWatcher(ctx, config.GRPC.TLS.CertPath, config.GRPC.TLS.KeyPath, s.Logger)
+		grpcGetCertificate, err := watchAndLoadCertificateWithCertWatcher(ctx, config.GRPC.TLS.CertPath, config.GRPC.TLS.KeyPath, s.Logger, updateGRPCCertPool)
 		if err != nil {
 			return nil, prometheusMetrics, err
 		}
@@ -604,32 +641,56 @@ func (s *ServerContext) buildServerOpts(ctx context.Context, config *serverconfi
 	return serverOpts, prometheusMetrics, nil
 }
 
-func (s *ServerContext) dialGrpc(config *serverconfig.Config) (*grpc.ClientConn, context.CancelFunc) {
-	dialOpts := []grpc.DialOption{
-		// nolint:staticcheck // ignoring gRPC deprecations
-		grpc.WithBlock(),
-	}
+func (s *ServerContext) dialGrpc(config *serverconfig.Config) *grpc.ClientConn {
+	dialOpts := []grpc.DialOption{}
 	if config.Trace.Enabled {
 		dialOpts = append(dialOpts, grpc.WithStatsHandler(otelgrpc.NewClientHandler()))
 	}
 	if config.GRPC.TLS.Enabled {
-		creds, err := credentials.NewClientTLSFromFile(config.GRPC.TLS.CertPath, "")
+		// Resolve just the hostname portion of the gRPC address for use in
+		// peer certificate verification (InsecureSkipVerify suppresses Go's
+		// automatic hostname check, so we must do it ourselves).
+		grpcHost, _, err := net.SplitHostPort(config.GRPC.Addr)
 		if err != nil {
-			s.Logger.Fatal("failed to load gRPC credentials", zap.Error(err))
+			// Fall back to the raw address if it has no port component.
+			grpcHost = config.GRPC.Addr
 		}
+
+		creds := credentials.NewTLS(&tls.Config{
+			InsecureSkipVerify: true, //nolint:gosec // Hostname and cert are verified manually via VerifyPeerCertificate.
+			VerifyPeerCertificate: func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
+				if len(rawCerts) == 0 {
+					return errors.New("no peer certificates presented")
+				}
+
+				peerCert, err := x509.ParseCertificate(rawCerts[0])
+				if err != nil {
+					return fmt.Errorf("failed to parse peer certificate: %w", err)
+				}
+
+				// Verify the leaf certificate against the global pinned pool
+				// and check the hostname in a single call. The pool is
+				// updated atomically by the watcher callback on cert rotation.
+				_, err = peerCert.Verify(x509.VerifyOptions{
+					Roots:   grpcTLSCertPool.Load(),
+					DNSName: grpcHost,
+				})
+				if err != nil {
+					return fmt.Errorf("peer certificate verification failed: %w", err)
+				}
+				return nil
+			},
+		})
 		dialOpts = append(dialOpts, grpc.WithTransportCredentials(creds))
 	} else {
 		dialOpts = append(dialOpts, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	}
 
-	timeoutCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-
-	// nolint:staticcheck // ignoring gRPC deprecations
-	conn, err := grpc.DialContext(timeoutCtx, config.GRPC.Addr, dialOpts...)
+	conn, err := grpc.NewClient(config.GRPC.Addr, dialOpts...)
 	if err != nil {
-		s.Logger.Fatal("failed to connect to gRPC server", zap.Error(err))
+		s.Logger.Fatal("failed to create gRPC client connection", zap.Error(err))
 	}
-	return conn, cancel
+	return conn
 }
 
 func (s *ServerContext) runHTTPServer(ctx context.Context, config *serverconfig.Config, grpcConn *grpc.ClientConn) (*http.Server, error) {
@@ -679,7 +740,7 @@ func (s *ServerContext) runHTTPServer(ctx context.Context, config *serverconfig.
 		if config.HTTP.TLS.CertPath == "" || config.HTTP.TLS.KeyPath == "" {
 			s.Logger.Fatal("'http.tls.cert' and 'http.tls.key' configs must be set")
 		}
-		httpGetCertificate, err := watchAndLoadCertificateWithCertWatcher(ctx, config.HTTP.TLS.CertPath, config.HTTP.TLS.KeyPath, s.Logger)
+		httpGetCertificate, err := watchAndLoadCertificateWithCertWatcher(ctx, config.HTTP.TLS.CertPath, config.HTTP.TLS.KeyPath, s.Logger, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -790,12 +851,13 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 
 	tracerProviderCloser := s.telemetryConfig(config)
 
+	// Added temporarily to allow us to enable experimental features by default without allowing the user to disable them,
+	// eg for pipeline_list_objects.
+	config.Experimentals = append(serverconfig.DefaultConfig().Experimentals, config.Experimentals...)
+
 	if len(config.Experimentals) > 0 {
 		s.Logger.Info(fmt.Sprintf("🧪 experimental features enabled: %v", config.Experimentals))
 	}
-
-	var experimentals []string
-	experimentals = append(experimentals, config.Experimentals...)
 
 	datastore, continuationTokenSerializer, err := s.datastoreConfig(config)
 	if err != nil {
@@ -803,7 +865,6 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	}
 
 	authenticator, err := s.authenticatorConfig(config)
-
 	if err != nil {
 		return err
 	}
@@ -870,6 +931,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		server.WithReadChangesMaxPageSize(config.ReadChangesMaxPageSize),
 		server.WithListObjectsDeadline(config.ListObjectsDeadline),
 		server.WithListObjectsMaxResults(config.ListObjectsMaxResults),
+		server.WithListObjectsPipelineEnabled(config.ListObjectsPipelineEnabled),
 		server.WithListUsersDeadline(config.ListUsersDeadline),
 		server.WithListUsersMaxResults(config.ListUsersMaxResults),
 		server.WithMaxConcurrentReadsForListObjects(config.MaxConcurrentReadsForListObjects),
@@ -916,7 +978,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		// The shared iterator watchdog timeout is set to config.RequestTimeout + 2 seconds
 		// to provide a small buffer for operations that might slightly exceed the request timeout.
 		server.WithSharedIteratorTTL(config.RequestTimeout+2*time.Second),
-		server.WithExperimentals(experimentals...),
+		server.WithExperimentals(config.Experimentals...),
 		server.WithAccessControlParams(config.AccessControl.Enabled, config.AccessControl.StoreID, config.AccessControl.ModelID, config.Authn.Method),
 		server.WithContext(ctx),
 	)
@@ -956,8 +1018,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	if config.HTTP.Enabled {
 		runtime.DefaultContextTimeout = serverconfig.DefaultContextTimeout(config)
 
-		grpcConn, ctxCancel := s.dialGrpc(config)
-		defer ctxCancel()
+		grpcConn := s.dialGrpc(config)
 		defer grpcConn.Close()
 
 		httpServer, err = s.runHTTPServer(ctx, config, grpcConn)
@@ -1020,7 +1081,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	return nil
 }
 
-func watchAndLoadCertificateWithCertWatcher(ctx context.Context, certPath, keyPath string, logger logger.Logger) (func(*tls.ClientHelloInfo) (*tls.Certificate, error), error) {
+func watchAndLoadCertificateWithCertWatcher(ctx context.Context, certPath, keyPath string, logger logger.Logger, callback func(tls.Certificate)) (func(*tls.ClientHelloInfo) (*tls.Certificate, error), error) {
 	log.SetLogger(logr.New(nil))
 	// Create a certificate watcher
 	watcher, err := certwatcher.New(certPath, keyPath)
@@ -1028,10 +1089,12 @@ func watchAndLoadCertificateWithCertWatcher(ctx context.Context, certPath, keyPa
 		return nil, fmt.Errorf("failed to create certwatcher: %w", err)
 	}
 
-	// Load the initial certificate
-	if err := watcher.ReadCertificate(); err != nil {
-		return nil, fmt.Errorf("failed to load initial certificate: %w", err)
+	// If a callback is provided, register it with the watcher. The callback
+	// fires immediately with the current cert and again on every rotation.
+	if callback != nil {
+		watcher.RegisterCallback(callback)
 	}
+
 	logger.Info("Initial TLS certificate loaded.", zap.String("certPath", certPath), zap.String("keyPath", keyPath))
 
 	// Start watching for certificate changes

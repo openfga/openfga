@@ -1,4 +1,4 @@
-package pipeline
+package pipeline_test
 
 import (
 	"context"
@@ -13,8 +13,15 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
+	"google.golang.org/protobuf/types/known/structpb"
 
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+
+	"github.com/openfga/openfga/pkg/server/commands/reverseexpand/pipeline"
+	"github.com/openfga/openfga/pkg/server/commands/reverseexpand/pipeline/obj"
+	"github.com/openfga/openfga/pkg/storage/memory"
 	"github.com/openfga/openfga/pkg/testutils"
+	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
@@ -38,7 +45,7 @@ func (s *StaticObjectStore) Add(tuples ...string) {
 	}
 }
 
-func (s *StaticObjectStore) Read(ctx context.Context, q ObjectQuery) iter.Seq[Item] {
+func (s *StaticObjectStore) Read(ctx context.Context, q pipeline.ObjectQuery) iter.Seq[pipeline.Item] {
 	var objects []string
 	for _, user := range q.Users {
 		if objectMap, ok := s.m[user]; ok {
@@ -48,9 +55,9 @@ func (s *StaticObjectStore) Read(ctx context.Context, q ObjectQuery) iter.Seq[It
 		}
 	}
 
-	return func(yield func(o Item) bool) {
+	return func(yield func(o pipeline.Item) bool) {
 		for _, o := range objects {
-			if !yield(Item{Value: o}) {
+			if !yield(pipeline.Item{Value: o}) {
 				break
 			}
 		}
@@ -65,9 +72,9 @@ func NewErrorObjectStore(err error) *ErrorObjectStore {
 	return &ErrorObjectStore{err: err}
 }
 
-func (e *ErrorObjectStore) Read(_ context.Context, _ ObjectQuery) iter.Seq[Item] {
-	return func(yield func(Item) bool) {
-		yield(Item{Err: e.err})
+func (e *ErrorObjectStore) Read(_ context.Context, _ pipeline.ObjectQuery) iter.Seq[pipeline.Item] {
+	return func(yield func(pipeline.Item) bool) {
+		yield(pipeline.Item{Err: e.err})
 	}
 }
 
@@ -154,13 +161,13 @@ func TestPipelineShutdown(t *testing.T) {
 
 	g := typesys.GetWeightedGraph()
 
-	spec := Spec{
+	spec := pipeline.Spec{
 		ObjectType: "document",
 		Relation:   "viewer",
 		User:       "user:bob",
 	}
 
-	pl := New(g, &ds, WithBufferCapacity(bufferSize), WithChunkSize(chunkSize))
+	pl := pipeline.New(g, &ds, pipeline.WithBufferCapacity(bufferSize), pipeline.WithChunkSize(chunkSize))
 
 	t.Run("NoAbandon", func(t *testing.T) {
 		defer goleak.VerifyNone(t)
@@ -377,13 +384,13 @@ func TestPipelineError(t *testing.T) {
 
 	g := typesys.GetWeightedGraph()
 
-	spec := Spec{
+	spec := pipeline.Spec{
 		ObjectType: "document",
 		Relation:   "viewer",
 		User:       "user:bob",
 	}
 
-	pl := New(g, ds, WithBufferCapacity(bufferSize), WithChunkSize(chunkSize))
+	pl := pipeline.New(g, ds, pipeline.WithBufferCapacity(bufferSize), pipeline.WithChunkSize(chunkSize))
 
 	t.Run("ShouldReturnErrorThenEnd", func(t *testing.T) {
 		defer goleak.VerifyNone(t)
@@ -409,7 +416,7 @@ type testcase struct {
 	expected   []string
 }
 
-func evaluate(t *testing.T, tc testcase, seq iter.Seq[Item]) {
+func evaluate(t *testing.T, tc testcase, seq iter.Seq[pipeline.Item]) {
 	var results []string
 	for object := range seq {
 		value, err := object.Object()
@@ -2371,13 +2378,13 @@ func BenchmarkPipeline(b *testing.B) {
 			b.ResetTimer()
 
 			for b.Loop() {
-				spec := Spec{
+				spec := pipeline.Spec{
 					ObjectType: tc.objectType,
 					Relation:   tc.relation,
 					User:       tc.user,
 				}
 
-				seq, err := New(g, &ds).Expand(context.Background(), spec)
+				seq, err := pipeline.New(g, &ds).Expand(context.Background(), spec)
 
 				require.NoError(b, err)
 
@@ -2407,17 +2414,122 @@ func TestPipeline(t *testing.T) {
 
 			g := typesys.GetWeightedGraph()
 
-			spec := Spec{
+			spec := pipeline.Spec{
 				ObjectType: tc.objectType,
 				Relation:   tc.relation,
 				User:       tc.user,
 			}
 
-			seq, err := New(g, &ds).Expand(context.Background(), spec)
+			seq, err := pipeline.New(g, &ds).Expand(context.Background(), spec)
 
 			require.NoError(t, err)
 
 			evaluate(t, tc, seq)
+		})
+	}
+}
+
+func TestPipelineTTUWithCondition(t *testing.T) {
+	const dsl string = `
+	model
+	  schema 1.2
+
+	type user
+
+	type group
+	  relations
+	    define member: [user]
+
+	type folder
+	  relations
+	    define editor: [group#member]
+
+	type document
+	  relations
+	    define parent: [folder with not_expired]
+	    define can_edit: editor from parent
+
+	condition not_expired(current_time: timestamp, expiry: timestamp) {
+	  current_time < expiry
+	}
+	`
+
+	storeID := "test-store"
+	model := testutils.MustTransformDSLToProtoWithID(dsl)
+	typesys, err := typesystem.NewAndValidate(context.Background(), model)
+	require.NoError(t, err)
+
+	g := typesys.GetWeightedGraph()
+
+	spec := pipeline.Spec{
+		ObjectType: "document",
+		Relation:   "can_edit",
+		User:       "user:alice",
+	}
+
+	tests := []struct {
+		name        string
+		expiry      string
+		currentTime string
+		expected    []string
+	}{
+		{
+			name:        "not_expired_returns_documents",
+			expiry:      "2099-01-01T00:00:00Z",
+			currentTime: "2025-01-01T00:00:00Z",
+			expected:    []string{"document:1"},
+		},
+		{
+			name:        "expired_excludes_documents",
+			expiry:      "2020-01-01T00:00:00Z",
+			currentTime: "2025-01-01T00:00:00Z",
+			expected:    []string{},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			defer goleak.VerifyNone(t)
+
+			ds := memory.New()
+			t.Cleanup(ds.Close)
+
+			err := ds.WriteAuthorizationModel(context.Background(), storeID, model)
+			require.NoError(t, err)
+
+			err = ds.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{
+				tuple.NewTupleKey("group:eng", "member", "user:alice"),
+				tuple.NewTupleKey("folder:1", "editor", "group:eng#member"),
+				tuple.NewTupleKeyWithCondition("document:1", "parent", "folder:1", "not_expired", &structpb.Struct{
+					Fields: map[string]*structpb.Value{
+						"expiry": structpb.NewStringValue(tc.expiry),
+					},
+				}),
+			})
+			require.NoError(t, err)
+
+			reqCtx := &structpb.Struct{
+				Fields: map[string]*structpb.Value{
+					"current_time": structpb.NewStringValue(tc.currentTime),
+				},
+			}
+
+			reader := obj.NewReader(
+				ds,
+				storeID,
+				obj.WithValidator(obj.NewValidator(context.Background(), typesys, reqCtx)),
+			)
+
+			seq, err := pipeline.New(g, reader).Expand(context.Background(), spec)
+			require.NoError(t, err)
+
+			var results []string
+			for object := range seq {
+				value, err := object.Object()
+				require.NoError(t, err)
+				results = append(results, value)
+			}
+			require.ElementsMatch(t, tc.expected, results)
 		})
 	}
 }

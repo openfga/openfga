@@ -430,6 +430,15 @@ func TestExclusionCheckFuncReducer(t *testing.T) {
 		wg.Wait() // just to make sure to avoid test leaks
 	})
 
+	t.Run("return_context_canceled_when_parent_context_is_canceled", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		resp, err := exclusion(ctx, concurrencyLimit, trueHandler, trueHandler)
+		require.ErrorIs(t, err, context.Canceled)
+		require.Nil(t, resp)
+	})
+
 	t.Run("return_error_if_context_deadline_before_resolution", func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
 		t.Cleanup(cancel)
@@ -763,6 +772,15 @@ func TestIntersectionCheckFuncReducer(t *testing.T) {
 		require.False(t, resp.GetAllowed())
 
 		wg.Wait() // just to make sure to avoid test leaks
+	})
+
+	t.Run("return_context_canceled_when_parent_context_is_canceled", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		resp, err := intersection(ctx, concurrencyLimit, trueHandler, trueHandler)
+		require.ErrorIs(t, err, context.Canceled)
+		require.Nil(t, resp)
 	})
 
 	t.Run("return_error_if_context_deadline_before_resolution", func(t *testing.T) {
@@ -1146,6 +1164,93 @@ func TestCheckConditions(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.False(t, resp.Allowed)
+}
+
+func TestCheckTTUWithCondition(t *testing.T) {
+	model := parser.MustTransformDSLToProto(`
+		model
+			schema 1.1
+
+		type user
+
+		type group
+			relations
+				define member: [user]
+
+		type folder
+			relations
+				define editor: [group#member]
+
+		type document
+			relations
+				define parent: [folder with not_expired]
+				define can_edit: editor from parent
+
+		condition not_expired(current_time: timestamp, expiry: timestamp) {
+			current_time < expiry
+		}`)
+
+	typesys, err := typesystem.NewAndValidate(context.Background(), model)
+	require.NoError(t, err)
+
+	tests := []struct {
+		name        string
+		currentTime string
+		expected    bool
+	}{
+		{
+			name:        "condition_met",
+			currentTime: "2025-01-01T00:00:00Z",
+			expected:    true,
+		},
+		{
+			name:        "condition_not_met",
+			currentTime: "2100-01-01T00:00:00Z",
+			expected:    false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Cleanup(func() { goleak.VerifyNone(t) })
+
+			ds := memory.New()
+			storeID := ulid.Make().String()
+
+			tkConditionContext, err := structpb.NewStruct(map[string]interface{}{
+				"expiry": "2099-01-01T00:00:00Z",
+			})
+			require.NoError(t, err)
+
+			tuples := []*openfgav1.TupleKey{
+				tuple.NewTupleKey("group:eng", "member", "user:alice"),
+				tuple.NewTupleKey("folder:1", "editor", "group:eng#member"),
+				tuple.NewTupleKeyWithCondition("document:1", "parent", "folder:1", "not_expired", tkConditionContext),
+			}
+
+			err = ds.Write(context.Background(), storeID, nil, tuples)
+			require.NoError(t, err)
+
+			checker := NewLocalChecker()
+
+			ctx := setRequestContext(context.Background(), typesys, ds, nil)
+
+			requestContext, err := structpb.NewStruct(map[string]interface{}{
+				"current_time": tc.currentTime,
+			})
+			require.NoError(t, err)
+
+			resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
+				StoreID:              storeID,
+				AuthorizationModelID: model.GetId(),
+				TupleKey:             tuple.NewTupleKey("document:1", "can_edit", "user:alice"),
+				RequestMetadata:      NewCheckRequestMetadata(),
+				Context:              requestContext,
+			})
+			require.NoError(t, err)
+			require.Equal(t, tc.expected, resp.Allowed)
+		})
+	}
 }
 
 func TestCheckDispatchCount(t *testing.T) {
@@ -1596,6 +1701,15 @@ func TestUnionCheckFuncReducer(t *testing.T) {
 		resp, err := union(ctx, concurrencyLimit, trueHandler, falseSlowHandler)
 		require.NoError(t, err)
 		require.True(t, resp.GetAllowed())
+	})
+
+	t.Run("return_context_canceled_when_parent_context_is_canceled", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(ctx)
+		cancel()
+
+		resp, err := union(ctx, concurrencyLimit, trueHandler, falseHandler)
+		require.ErrorIs(t, err, context.Canceled)
+		require.Nil(t, resp)
 	})
 
 	t.Run("return_error_if_context_cancelled_before_resolution", func(t *testing.T) {
