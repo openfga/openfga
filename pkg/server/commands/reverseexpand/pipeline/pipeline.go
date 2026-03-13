@@ -316,6 +316,9 @@ func (pl *Pipeline) iterateOverResults(
 	wg.Add(1)
 	go func(ch chan<- Item) {
 		defer wg.Done()
+		// Closing the errors channel here is safe because at this point all in-flight
+		// messages have been drained from the pipeline. If there are no messages, there
+		// is nothing to cause an error within the pipeline.
 		defer close(p.errors)
 
 		buffer := make([]string, 0, pl.config.ChunkSize)
