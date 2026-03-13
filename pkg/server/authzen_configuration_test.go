@@ -15,6 +15,58 @@ import (
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
 )
 
+func TestGetBaseURLFromContext(t *testing.T) {
+	tests := []struct {
+		name     string
+		md       metadata.MD
+		expected string
+	}{
+		{
+			name:     "comma_separated_hosts_takes_first",
+			md:       metadata.New(map[string]string{"x-forwarded-host": "good.com, evil.com"}),
+			expected: "https://good.com",
+		},
+		{
+			name:     "comma_separated_hosts_trims_whitespace",
+			md:       metadata.New(map[string]string{"x-forwarded-host": "  good.com , evil.com"}),
+			expected: "https://good.com",
+		},
+		{
+			name:     "rejects_host_with_path",
+			md:       metadata.New(map[string]string{"x-forwarded-host": "evil.com/path"}),
+			expected: "",
+		},
+		{
+			name:     "rejects_host_with_query",
+			md:       metadata.New(map[string]string{"x-forwarded-host": "evil.com?q=x"}),
+			expected: "",
+		},
+		{
+			name:     "rejects_host_with_fragment",
+			md:       metadata.New(map[string]string{"x-forwarded-host": "evil.com#frag"}),
+			expected: "",
+		},
+		{
+			name:     "accepts_host_with_port",
+			md:       metadata.New(map[string]string{":authority": "example.com:8080"}),
+			expected: "https://example.com:8080",
+		},
+		{
+			name:     "rejects_empty_host_after_trim",
+			md:       metadata.New(map[string]string{"x-forwarded-host": "  "}),
+			expected: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := metadata.NewIncomingContext(context.Background(), tt.md)
+			result := getBaseURLFromContext(ctx)
+			require.Equal(t, tt.expected, result)
+		})
+	}
+}
+
 func TestGetConfiguration(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)

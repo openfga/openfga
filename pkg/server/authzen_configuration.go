@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"net"
 	"strings"
 
 	"google.golang.org/grpc/codes"
@@ -46,8 +47,25 @@ func getBaseURLFromContext(ctx context.Context) string {
 		return ""
 	}
 
-	// Remove any trailing slashes
-	host = strings.TrimSuffix(host, "/")
+	// x-forwarded-host may contain comma-separated hosts; take only the first.
+	if idx := strings.IndexByte(host, ','); idx != -1 {
+		host = host[:idx]
+	}
+	host = strings.TrimSpace(host)
+
+	// Reject values that contain path, query, or fragment components.
+	if strings.ContainsAny(host, "/?#") {
+		return ""
+	}
+
+	// Validate as host or host:port.
+	hostname := host
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		hostname = h
+	}
+	if hostname == "" {
+		return ""
+	}
 
 	return fmt.Sprintf("%s://%s", scheme, host)
 }
