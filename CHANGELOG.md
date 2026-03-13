@@ -22,6 +22,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Set `pipeline_list_objects` enabled by default in experimentals so that setting new experimental values does not disable it. This is required so that a user may pass in a custom featureflag client where `pipeline_list_objects` can be disabled on a per store basis. To disable the ListObjects pipeline algorithm entirely, set `listObjects-pipeline-enabled` to `false`. [#2957](https://github.com/openfga/openfga/pull/2957)
 
 ### Security
+- Update toolchain go version to 1.26.1 to be latest. [#2975](https://github.com/openfga/openfga/pull/2975)
 - Update toolchain go version to 1.25.8 to address std lib vulnerabilities [GO-2026-4603](https://pkg.go.dev/vuln/GO-2026-4603) and [GO-2026-4601](https://pkg.go.dev/vuln/GO-2026-4601). [#2971](https://github.com/openfga/openfga/pull/2971)
 
 ## [1.11.6] - 2026-02-23
