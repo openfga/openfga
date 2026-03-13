@@ -8,7 +8,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
-## [1.11.7] - 2026-03-12
+## [1.12.0] - 2026-03-13
 ### Added
 - Add configuration for maximum size of received gRPC message bytes. [#2952](https://github.com/openfga/openfga/pull/2952)
 
@@ -1547,8 +1547,8 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
 - Memory storage adapter implementation
 - Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.11.7...HEAD
-[1.11.7]: https://github.com/openfga/openfga/compare/v1.11.6...v1.11.7
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.12.0...HEAD
+[1.12.0]: https://github.com/openfga/openfga/compare/v1.11.6...v1.12.0
 [1.11.6]: https://github.com/openfga/openfga/compare/v1.11.5...v1.11.6
 [1.11.5]: https://github.com/openfga/openfga/compare/v1.11.4...v1.11.5
 [1.11.4]: https://github.com/openfga/openfga/compare/v1.11.3...v1.11.4
