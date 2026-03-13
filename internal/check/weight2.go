@@ -3,6 +3,9 @@ package check
 import (
 	"context"
 	"sync"
+	"time"
+
+	"golang.org/x/sync/singleflight"
 
 	authzGraph "github.com/openfga/language/pkg/go/graph"
 
@@ -17,16 +20,24 @@ const BaseIndex = 0
 const DifferenceIndex = 1
 
 type Weight2 struct {
-	bottomUp  *bottomUp
-	model     *modelgraph.AuthorizationModelGraph
-	datastore storage.RelationshipTupleReader
+	bottomUp             *bottomUp
+	model                *modelgraph.AuthorizationModelGraph
+	datastore            storage.RelationshipTupleReader
+	iteratorCache        storage.InMemoryCache[any]
+	iteratorCacheTTL     time.Duration
+	iteratorCacheMaxSize int
+	iteratorDrainSF      *singleflight.Group
 }
 
-func NewWeight2(model *modelgraph.AuthorizationModelGraph, ds storage.RelationshipTupleReader) *Weight2 {
+func NewWeight2(model *modelgraph.AuthorizationModelGraph, ds storage.RelationshipTupleReader, cache storage.InMemoryCache[any], ttl time.Duration, maxSize int, sf *singleflight.Group) *Weight2 {
 	return &Weight2{
-		bottomUp:  newBottomUp(model, ds),
-		model:     model,
-		datastore: ds,
+		bottomUp:             newBottomUpWithCache(model, ds, cache, ttl, maxSize, sf),
+		model:                model,
+		datastore:            ds,
+		iteratorCache:        cache,
+		iteratorCacheTTL:     ttl,
+		iteratorCacheMaxSize: maxSize,
+		iteratorDrainSF:      sf,
 	}
 }
 

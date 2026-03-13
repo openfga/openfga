@@ -94,7 +94,7 @@ func TestWeight2Userset(t *testing.T) {
 			Object:   "document:1",
 		}})
 
-		strategy := NewWeight2(mg, mockDatastore)
+		strategy := NewWeight2(mg, mockDatastore, nil, 0, 1000, nil)
 		req, err := NewRequest(RequestParams{
 			StoreID:  storeID,
 			Model:    mg,
@@ -177,7 +177,7 @@ func TestWeight2Userset(t *testing.T) {
 			Relation: "viewer",
 			Object:   "document:1",
 		}})
-		strategy := NewWeight2(mg, mockDatastore)
+		strategy := NewWeight2(mg, mockDatastore, nil, 0, 1000, nil)
 		req, err := NewRequest(RequestParams{
 			StoreID:  storeID,
 			Model:    mg,
@@ -261,7 +261,7 @@ func TestWeight2Userset(t *testing.T) {
 			Relation: "viewer",
 			Object:   "document:1",
 		}})
-		strategy := NewWeight2(mg, mockDatastore)
+		strategy := NewWeight2(mg, mockDatastore, nil, 0, 1000, nil)
 		req, err := NewRequest(RequestParams{
 			StoreID:  storeID,
 			Model:    mg,
@@ -345,7 +345,7 @@ func TestWeight2Userset(t *testing.T) {
 			Object:   "document:1",
 		}})
 
-		strategy := NewWeight2(mg, mockDatastore)
+		strategy := NewWeight2(mg, mockDatastore, nil, 0, 1000, nil)
 		req, err := NewRequest(RequestParams{
 			StoreID:  storeID,
 			Model:    mg,
@@ -456,7 +456,7 @@ func TestWeight2Userset(t *testing.T) {
 			Object:   "document:1",
 		}})
 
-		strategy := NewWeight2(mg, mockDatastore)
+		strategy := NewWeight2(mg, mockDatastore, nil, 0, 1000, nil)
 		req, err := NewRequest(RequestParams{
 			StoreID:  storeID,
 			Model:    mg,
@@ -547,7 +547,7 @@ func TestWeight2TTU(t *testing.T) {
 			Relation: "parent",
 			Object:   "document:1",
 		}})
-		strategy := NewWeight2(mg, mockDatastore)
+		strategy := NewWeight2(mg, mockDatastore, nil, 0, 1000, nil)
 		req, err := NewRequest(RequestParams{
 			StoreID:  storeID,
 			Model:    mg,
@@ -632,7 +632,7 @@ func TestWeight2TTU(t *testing.T) {
 			Relation: "parent",
 			Object:   "document:1",
 		}})
-		strategy := NewWeight2(mg, mockDatastore)
+		strategy := NewWeight2(mg, mockDatastore, nil, 0, 1000, nil)
 		req, err := NewRequest(RequestParams{
 			StoreID:  storeID,
 			Model:    mg,
@@ -717,7 +717,7 @@ func TestWeight2TTU(t *testing.T) {
 			Relation: "parent",
 			Object:   "document:1",
 		}})
-		strategy := NewWeight2(mg, mockDatastore)
+		strategy := NewWeight2(mg, mockDatastore, nil, 0, 1000, nil)
 		req, err := NewRequest(RequestParams{
 			StoreID:  storeID,
 			Model:    mg,
@@ -802,7 +802,7 @@ func TestWeight2TTU(t *testing.T) {
 			Relation: "parent",
 			Object:   "document:1",
 		}})
-		strategy := NewWeight2(mg, mockDatastore)
+		strategy := NewWeight2(mg, mockDatastore, nil, 0, 1000, nil)
 		req, err := NewRequest(RequestParams{
 			StoreID:  storeID,
 			Model:    mg,
@@ -914,7 +914,7 @@ func TestWeight2TTU(t *testing.T) {
 			Object:   "document:1",
 		}})
 
-		strategy := NewWeight2(mg, mockDatastore)
+		strategy := NewWeight2(mg, mockDatastore, nil, 0, 1000, nil)
 		req, err := NewRequest(RequestParams{
 			StoreID:  storeID,
 			Model:    mg,

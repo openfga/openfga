@@ -13,6 +13,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/errgroup"
+	"golang.org/x/sync/singleflight"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	authzGraph "github.com/openfga/language/pkg/go/graph"
@@ -48,6 +49,10 @@ type Config struct {
 	UpstreamTimeout           time.Duration
 	Logger                    logger.Logger
 	Strategies                map[string]Strategy
+	// IteratorCacheEnabled enables caching of iterator results for ReadStartingWithUser.
+	IteratorCacheEnabled bool
+	// IteratorCacheMaxSize is the max number of items to cache per iterator (default 1000).
+	IteratorCacheMaxSize int
 }
 type Resolver struct {
 	model                     *modelgraph.AuthorizationModelGraph
@@ -59,11 +64,21 @@ type Resolver struct {
 	concurrencyLimit          int
 	upstreamTimeout           time.Duration
 	logger                    logger.Logger
+	iteratorCacheEnabled      bool
+	iteratorCacheMaxSize      int
+	iteratorDrainSF           *singleflight.Group
 
 	strategies map[string]Strategy
 }
 
+const defaultIteratorCacheMaxSize = 1000
+
 func New(cfg Config) *Resolver {
+	iteratorCacheMaxSize := cfg.IteratorCacheMaxSize
+	if iteratorCacheMaxSize <= 0 {
+		iteratorCacheMaxSize = defaultIteratorCacheMaxSize
+	}
+
 	r := &Resolver{
 		model:                     cfg.Model,
 		datastore:                 cfg.Datastore,
@@ -75,17 +90,26 @@ func New(cfg Config) *Resolver {
 		upstreamTimeout:           cfg.UpstreamTimeout,
 		logger:                    cfg.Logger,
 		strategies:                cfg.Strategies,
+		iteratorCacheEnabled:      cfg.IteratorCacheEnabled,
+		iteratorCacheMaxSize:      iteratorCacheMaxSize,
+		iteratorDrainSF:           &singleflight.Group{},
 	}
 
 	if r.cache == nil {
 		r.cache = storage.NewNoopCache()
 	}
 
+	// Build iterator cache config for strategies.
+	var iterCache storage.InMemoryCache[any]
+	if r.iteratorCacheEnabled {
+		iterCache = r.cache
+	}
+
 	if r.strategies == nil {
 		r.strategies = map[string]Strategy{
 			DefaultStrategyName:   NewDefault(cfg.Model, r, cfg.ConcurrencyLimit),
-			WeightTwoStrategyName: NewWeight2(cfg.Model, cfg.Datastore),
-			RecursiveStrategyName: NewRecursive(cfg.Model, cfg.Datastore, cfg.ConcurrencyLimit),
+			WeightTwoStrategyName: NewWeight2(cfg.Model, cfg.Datastore, iterCache, r.cacheTTL, iteratorCacheMaxSize, r.iteratorDrainSF),
+			RecursiveStrategyName: NewRecursive(cfg.Model, cfg.Datastore, cfg.ConcurrencyLimit, iterCache, r.cacheTTL, iteratorCacheMaxSize, r.iteratorDrainSF),
 		}
 	}
 

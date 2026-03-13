@@ -3,8 +3,10 @@ package check
 import (
 	"context"
 	"sync"
+	"time"
 
 	"golang.org/x/sync/errgroup"
+	"golang.org/x/sync/singleflight"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	authzGraph "github.com/openfga/language/pkg/go/graph"
@@ -24,18 +26,26 @@ const (
 )
 
 type Recursive struct {
-	concurrencyLimit int
-	bottomUp         *bottomUp
-	model            *modelgraph.AuthorizationModelGraph
-	datastore        storage.RelationshipTupleReader
+	concurrencyLimit     int
+	bottomUp             *bottomUp
+	model                *modelgraph.AuthorizationModelGraph
+	datastore            storage.RelationshipTupleReader
+	iteratorCache        storage.InMemoryCache[any]
+	iteratorCacheTTL     time.Duration
+	iteratorCacheMaxSize int
+	iteratorDrainSF      *singleflight.Group
 }
 
-func NewRecursive(model *modelgraph.AuthorizationModelGraph, ds storage.RelationshipTupleReader, limit int) *Recursive {
+func NewRecursive(model *modelgraph.AuthorizationModelGraph, ds storage.RelationshipTupleReader, limit int, cache storage.InMemoryCache[any], ttl time.Duration, maxSize int, sf *singleflight.Group) *Recursive {
 	return &Recursive{
-		bottomUp:         newBottomUpRecursive(model, ds),
-		model:            model,
-		datastore:        ds,
-		concurrencyLimit: limit,
+		bottomUp:             newBottomUpRecursiveWithCache(model, ds, cache, ttl, maxSize, sf),
+		model:                model,
+		datastore:            ds,
+		concurrencyLimit:     limit,
+		iteratorCache:        cache,
+		iteratorCacheTTL:     ttl,
+		iteratorCacheMaxSize: maxSize,
+		iteratorDrainSF:      sf,
 	}
 }
 

@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"time"
 
 	"github.com/sourcegraph/conc/panics"
+	"golang.org/x/sync/singleflight"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	authzGraph "github.com/openfga/language/pkg/go/graph"
@@ -27,9 +29,13 @@ const (
 type bottomUpHandler func(context.Context, []storage.Iterator[string], chan<- *iterator.Msg)
 
 type bottomUp struct {
-	model     *modelgraph.AuthorizationModelGraph
-	datastore storage.RelationshipTupleReader
-	strategy  strategyKind
+	model                *modelgraph.AuthorizationModelGraph
+	datastore            storage.RelationshipTupleReader
+	strategy             strategyKind
+	iteratorCache        storage.InMemoryCache[any]
+	iteratorCacheTTL     time.Duration
+	iteratorCacheMaxSize int
+	iteratorDrainSF      *singleflight.Group
 }
 
 func newBottomUp(model *modelgraph.AuthorizationModelGraph, ds storage.RelationshipTupleReader) *bottomUp {
@@ -40,11 +46,27 @@ func newBottomUp(model *modelgraph.AuthorizationModelGraph, ds storage.Relations
 	}
 }
 
-func newBottomUpRecursive(model *modelgraph.AuthorizationModelGraph, ds storage.RelationshipTupleReader) *bottomUp {
+func newBottomUpWithCache(model *modelgraph.AuthorizationModelGraph, ds storage.RelationshipTupleReader, cache storage.InMemoryCache[any], ttl time.Duration, maxSize int, sf *singleflight.Group) *bottomUp {
 	return &bottomUp{
-		model:     model,
-		datastore: ds,
-		strategy:  recursive,
+		model:                model,
+		datastore:            ds,
+		strategy:             normal,
+		iteratorCache:        cache,
+		iteratorCacheTTL:     ttl,
+		iteratorCacheMaxSize: maxSize,
+		iteratorDrainSF:      sf,
+	}
+}
+
+func newBottomUpRecursiveWithCache(model *modelgraph.AuthorizationModelGraph, ds storage.RelationshipTupleReader, cache storage.InMemoryCache[any], ttl time.Duration, maxSize int, sf *singleflight.Group) *bottomUp {
+	return &bottomUp{
+		model:                model,
+		datastore:            ds,
+		strategy:             recursive,
+		iteratorCache:        cache,
+		iteratorCacheTTL:     ttl,
+		iteratorCacheMaxSize: maxSize,
+		iteratorDrainSF:      sf,
 	}
 }
 
@@ -174,12 +196,14 @@ func (s *bottomUp) specificType(ctx context.Context, req *Request, edge *authzGr
 		},
 	}
 	objectType, relation := tuple.SplitObjectRelation(edge.GetRelationDefinition())
+	user := req.GetTupleKey().GetUser()
+
 	tIter, err := s.datastore.ReadStartingWithUser(ctx, req.GetStoreID(),
 		storage.ReadStartingWithUserFilter{
 			ObjectType: objectType,
 			Relation:   relation,
 			UserFilter: []*openfgav1.ObjectRelation{{
-				Object: req.GetTupleKey().GetUser(),
+				Object: user,
 			}},
 			Conditions: edge.GetConditions(),
 		}, opts)
@@ -187,7 +211,10 @@ func (s *bottomUp) specificType(ctx context.Context, req *Request, edge *authzGr
 		return nil, err
 	}
 
-	iter := s.buildIterator(ctx, req, edge, tIter, req.GetTupleKey().GetUser())
+	// Wrap with caching if enabled.
+	cachedIter := s.wrapWithCache(ctx, req, tIter, objectType, relation, user, edge.GetConditions())
+
+	iter := s.buildIterator(ctx, req, edge, cachedIter, user)
 	iterChan := make(chan *iterator.Msg, 1)
 	if !concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Iter: iter}, iterChan) {
 		iter.Stop() // will not be received to be cleaned up
@@ -203,12 +230,14 @@ func (s *bottomUp) specificTypeWildcard(ctx context.Context, req *Request, edge 
 		},
 	}
 	objectType, relation := tuple.SplitObjectRelation(edge.GetRelationDefinition())
+	wildcardUser := tuple.TypedPublicWildcard(req.GetUserType())
+
 	tIter, err := s.datastore.ReadStartingWithUser(ctx, req.GetStoreID(),
 		storage.ReadStartingWithUserFilter{
 			ObjectType: objectType,
 			Relation:   relation,
 			UserFilter: []*openfgav1.ObjectRelation{{
-				Object: tuple.TypedPublicWildcard(req.GetUserType()),
+				Object: wildcardUser,
 			}},
 			Conditions: edge.GetConditions(),
 		}, opts)
@@ -216,13 +245,36 @@ func (s *bottomUp) specificTypeWildcard(ctx context.Context, req *Request, edge 
 		return nil, err
 	}
 
-	iter := s.buildIterator(ctx, req, edge, tIter, tuple.TypedPublicWildcard(req.GetUserType()))
+	// Wrap with caching if enabled.
+	cachedIter := s.wrapWithCache(ctx, req, tIter, objectType, relation, wildcardUser, edge.GetConditions())
+
+	iter := s.buildIterator(ctx, req, edge, cachedIter, wildcardUser)
 	iterChan := make(chan *iterator.Msg, 1)
 	if !concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Iter: iter}, iterChan) {
 		iter.Stop() // will not be received to be cleaned up
 	}
 	close(iterChan)
 	return iterChan, nil
+}
+
+// wrapWithCache wraps a TupleIterator with caching if the iterator cache is enabled.
+// It returns the original iterator if caching is disabled or not configured.
+func (s *bottomUp) wrapWithCache(ctx context.Context, req *Request, iter storage.TupleIterator, objectType, relation, user string, conditions []string) storage.TupleIterator {
+	if s.iteratorCache == nil {
+		return iter
+	}
+
+	cacheKey := BuildRSWUCacheKey(req.GetStoreID(), objectType, relation, user, conditions)
+
+	return WrapIterator(iter, IteratorCacheConfig{
+		Cache:    s.iteratorCache,
+		CacheKey: cacheKey,
+		TTL:      s.iteratorCacheTTL,
+		MaxSize:  s.iteratorCacheMaxSize,
+		MapFunc:  MapObjectID,
+		DrainCtx: ctx,
+		SF:       s.iteratorDrainSF,
+	})
 }
 
 func (s *bottomUp) buildIterator(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge, i storage.TupleIterator, userID string) storage.TupleMapper {
