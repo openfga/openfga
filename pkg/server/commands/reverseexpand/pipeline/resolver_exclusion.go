@@ -35,9 +35,9 @@ func (r *exclusionResolver) Resolve(
 
 	var wgExclude sync.WaitGroup
 
-	ch := make(chan string, 1<<7)
+	// Include side streams through a channel; exclude side collects into a bag.
+	ch := make(chan string, cap(senders[0].C))
 
-	// Include side streams through a pipe; exclude side collects into a bag.
 	txInclude := ChanTx{ch}
 
 	var counter atomic.Int32
