@@ -76,7 +76,10 @@ func (kp *keyPlan) Select(resolvers map[string]*PlanConfig) *PlanConfig {
 	}
 
 	selected := resolvers[bestResolver]
-	strategySelectedCounter.WithLabelValues(selected.Name).Inc()
+	if selected != nil {
+		strategySelectedCounter.WithLabelValues(selected.Name).Inc()
+	}
+
 	return selected
 }
 
