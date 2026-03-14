@@ -298,6 +298,75 @@ func BenchmarkIsValidUserset(b *testing.B) {
 	outcome = result
 }
 
+func BenchmarkGetType(b *testing.B) {
+	value := "document:budget-123"
+
+	var result string
+
+	for b.Loop() {
+		result = GetType(value)
+	}
+	outcome = result
+}
+
+func BenchmarkSplitObjectRelation(b *testing.B) {
+	value := "group:abc#member"
+
+	var obj, rel string
+
+	for b.Loop() {
+		obj, rel = SplitObjectRelation(value)
+	}
+	outcome = obj
+	outcome = rel
+}
+
+func BenchmarkTupleKeyToString(b *testing.B) {
+	tk := NewTupleKey("document:1", "viewer", "user:jon")
+
+	var result string
+
+	for b.Loop() {
+		result = TupleKeyToString(tk)
+	}
+	outcome = result
+}
+
+func BenchmarkFromUserParts(b *testing.B) {
+	var result string
+
+	for b.Loop() {
+		result = FromUserParts("group", "abc", "member")
+	}
+	outcome = result
+}
+
+func BenchmarkUserProtoToString(b *testing.B) {
+	user := &openfgav1.User{User: &openfgav1.User_Userset{Userset: &openfgav1.UsersetUser{
+		Type:     "group",
+		Id:       "engineering",
+		Relation: "member",
+	}}}
+
+	var result string
+
+	for b.Loop() {
+		result = UserProtoToString(user)
+	}
+	outcome = result
+}
+
+func BenchmarkIsSelfDefining(b *testing.B) {
+	tk := NewTupleKey("document:1#viewer", "viewer", "document:1#viewer")
+
+	var result bool
+
+	for b.Loop() {
+		result = IsSelfDefining(tk)
+	}
+	outcome = result
+}
+
 func TestObjectKey(t *testing.T) {
 	key := ObjectKey(&openfgav1.Object{
 		Type: "document",

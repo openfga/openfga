@@ -6346,3 +6346,108 @@ func BenchmarkNewAndValidate(b *testing.B) {
 		require.NoError(b, err)
 	}
 }
+
+func BenchmarkGetRelation(b *testing.B) {
+	model := testutils.MustTransformDSLToProtoWithID(`
+		model
+			schema 1.1
+		type user
+		type group
+			relations
+				define member: [user]
+		type document
+			relations
+				define owner: [user]
+				define parent: [document]
+				define viewer: [user, group#member] or owner or viewer from parent`)
+
+	ts, err := NewAndValidate(context.Background(), model)
+	require.NoError(b, err)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, err = ts.GetRelation("document", "viewer")
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkIsDirectlyRelated(b *testing.B) {
+	model := testutils.MustTransformDSLToProtoWithID(`
+		model
+			schema 1.1
+		type user
+		type group
+			relations
+				define member: [user]
+		type document
+			relations
+				define viewer: [user, group#member]`)
+
+	ts, err := NewAndValidate(context.Background(), model)
+	require.NoError(b, err)
+
+	target := DirectRelationReference("document", "viewer")
+	source := DirectRelationReference("group", "member")
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, err = ts.IsDirectlyRelated(target, source)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkDirectlyRelatedUsersets(b *testing.B) {
+	model := testutils.MustTransformDSLToProtoWithID(`
+		model
+			schema 1.1
+		type user
+		type group
+			relations
+				define member: [user]
+		type team
+			relations
+				define member: [user]
+		type document
+			relations
+				define viewer: [user, group#member, team#member]`)
+
+	ts, err := NewAndValidate(context.Background(), model)
+	require.NoError(b, err)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, err = ts.DirectlyRelatedUsersets("document", "viewer")
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkPathExists(b *testing.B) {
+	model := testutils.MustTransformDSLToProtoWithID(`
+		model
+			schema 1.1
+		type user
+		type folder
+			relations
+				define viewer: [user]
+		type document
+			relations
+				define parent: [folder]
+				define viewer: [user] or viewer from parent`)
+
+	ts, err := NewAndValidate(context.Background(), model)
+	require.NoError(b, err)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, err = ts.PathExists("user:bob", "viewer", "document")
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
