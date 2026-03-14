@@ -1,44 +1,49 @@
-package containers
+package mpsc
 
 import (
 	"iter"
-	"sync"
+	"runtime"
+	"sync/atomic"
 )
+
+type node[T any] struct {
+	Value T
+	Next  atomic.Pointer[node[T]]
+}
 
 // Accumulator is a struct type that can concurrently store an
 // unbounded set of elements and stream those elements out to a
 // consumer.
 type Accumulator[T any] struct {
-	tail   *node[T]
-	pos    *node[T]
-	posx   sync.Mutex
-	nomo   *sync.Cond
-	closed bool
+	head   atomic.Pointer[node[T]]
+	tail   atomic.Pointer[node[T]]
+	closed atomic.Bool
 }
 
 func NewAccumulator[T any]() *Accumulator[T] {
 	var a Accumulator[T]
-	a.nomo = sync.NewCond(&a.posx)
+	var n node[T]
+	a.head.Store(&n)
+	a.tail.Store(&n)
 	return &a
 }
 
-// Close informs any iter.Seq[T] value created from a call to Seq()
+// Close informs an iter.Seq[T] value created from a call to Seq()
 // that no more values should be expected. Subsequent calls to Add
 // will result in a panic. It is safe to call Close multiple times
 // from different goroutines.
 func (a *Accumulator[T]) Close() error {
-	a.posx.Lock()
-	defer a.posx.Unlock()
-	a.closed = true
-	a.nomo.Broadcast()
+	a.closed.Store(true)
 	return nil
 }
 
 // Add adds values to the Accumulator[T] in the order they were
-// provided. Add acquires a lock on the Accumulator when adding
-// all values and signals any waiting iter.Seq[T] instances to
-// wake and continue iterating.
+// provided.
 func (a *Accumulator[T]) Add(values ...T) {
+	if a.closed.Load() {
+		panic("call to add on a closed accumulator")
+	}
+
 	if len(values) == 0 {
 		return
 	}
@@ -48,58 +53,59 @@ func (a *Accumulator[T]) Add(values ...T) {
 
 	for _, i := range values {
 		n := &node[T]{
-			value: i,
+			Value: i,
 		}
 		if newTail == nil {
 			newTail = n
 			tail = n
 			continue
 		}
-		tail.next = n
+		tail.Next.Store(n)
 		tail = n
 	}
 
-	a.posx.Lock()
-	defer a.posx.Unlock()
-
-	if a.pos == nil {
-		a.pos = newTail
+	for {
+		oldTail := a.tail.Load()
+		oldTail.Next.Store(newTail)
+		if a.tail.CompareAndSwap(oldTail, tail) {
+			break
+		}
 	}
-
-	if a.tail != nil {
-		a.tail.next = newTail
-	}
-	a.tail = tail
-	a.nomo.Signal()
 }
 
 // Seq returns an iter.Seq[T] that iterates over the elements in
-// the Accumulator. As long as elements that have yet to be yielded
-// are present, a lock will be held until the iterator reaches the
-// head of the Accumulator. Therefore, writing is blocked while the
-// iterator is actively iterating.
+// the Accumulator.
 //
 // The behavior of multiple calls to Seq() on the same Accumulator
 // is unpredictable because all iter.Seq[T] values share the same
-// position. It is best to only call Seq() once.
+// position. Only call Seq() once.
 func (a *Accumulator[T]) Seq() iter.Seq[T] {
 	return func(yield func(T) bool) {
-		a.posx.Lock()
-		defer a.posx.Unlock()
+		var spinCount int
 
 		for {
-			for a.pos == nil && !a.closed {
-				a.nomo.Wait()
+			currentHead := a.head.Load()
+			nextNode := currentHead.Next.Load()
+
+			if nextNode == nil {
+				if a.closed.Load() {
+					break
+				}
+				spinCount++
+
+				if spinCount >= 100 {
+					spinCount = 0
+
+					// Give up some processor time.
+					runtime.Gosched()
+				}
+				continue
 			}
 
-			if a.closed && a.pos == nil {
+			if !yield(nextNode.Value) {
 				break
 			}
-
-			if !yield(a.pos.value) {
-				break
-			}
-			a.pos = a.pos.next
+			a.head.Store(nextNode)
 		}
 	}
 }

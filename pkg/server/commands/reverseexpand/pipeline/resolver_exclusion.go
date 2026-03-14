@@ -8,6 +8,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/openfga/openfga/internal/containers"
+	"github.com/openfga/openfga/internal/containers/mpsc"
 	"github.com/openfga/openfga/internal/seq"
 )
 
@@ -36,7 +37,7 @@ func (r *exclusionResolver) Resolve(
 	var wgExclude sync.WaitGroup
 
 	// Include side streams through an Accumulator; exclude side collects into a bag.
-	included := containers.NewAccumulator[string]()
+	included := mpsc.NewAccumulator[string]()
 
 	var counter atomic.Int32
 	counter.Store(int32(r.numProcs))
