@@ -66,8 +66,8 @@ func (a *Accumulator[T]) Add(values ...T) {
 
 	for {
 		oldTail := a.tail.Load()
-		oldTail.Next.Store(newTail)
 		if a.tail.CompareAndSwap(oldTail, tail) {
+			oldTail.Next.Store(newTail)
 			break
 		}
 	}
@@ -89,7 +89,10 @@ func (a *Accumulator[T]) Seq() iter.Seq[T] {
 
 			if nextNode == nil {
 				if a.closed.Load() {
-					break
+					if currentHead.Next.Load() == nil {
+						break
+					}
+					continue
 				}
 				spinCount++
 
