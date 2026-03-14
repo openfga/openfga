@@ -31,11 +31,12 @@ func ReadStartingWithUserKey(
 	// NOTE: There is no need to limit the length of this
 	// since at most it will have 2 entries (user and wildcard if possible)
 	for _, objectRel := range filter.UserFilter {
-		subject := objectRel.GetObject()
+		b.WriteByte('/')
+		b.WriteString(objectRel.GetObject())
 		if objectRel.GetRelation() != "" {
-			subject = tuple.ToObjectRelationString(objectRel.GetObject(), objectRel.GetRelation())
+			b.WriteByte('#')
+			b.WriteString(objectRel.GetRelation())
 		}
-		b.WriteString("/" + subject)
 	}
 
 	if filter.ObjectIDs != nil {
@@ -46,7 +47,8 @@ func ReadStartingWithUserKey(
 			}
 		}
 
-		b.WriteString("/" + strconv.FormatUint(hasher.Sum64(), 10))
+		b.WriteByte('/')
+		b.WriteString(strconv.FormatUint(hasher.Sum64(), 10))
 	}
 	return b.String(), nil
 }
@@ -62,10 +64,15 @@ func ReadUsersetTuplesKey(store string, filter storage.ReadUsersetTuplesFilter) 
 
 	for _, userset := range filter.AllowedUserTypeRestrictions {
 		if _, ok := userset.GetRelationOrWildcard().(*openfgav1.RelationReference_Relation); ok {
-			rb.WriteString("/" + userset.GetType() + "#" + userset.GetRelation())
+			rb.WriteByte('/')
+			rb.WriteString(userset.GetType())
+			rb.WriteByte('#')
+			rb.WriteString(userset.GetRelation())
 		}
 		if _, ok := userset.GetRelationOrWildcard().(*openfgav1.RelationReference_Wildcard); ok {
-			wb.WriteString("/" + userset.GetType() + ":*")
+			wb.WriteByte('/')
+			wb.WriteString(userset.GetType())
+			wb.WriteString(":*")
 		}
 	}
 
@@ -81,9 +88,5 @@ func ReadUsersetTuplesKey(store string, filter storage.ReadUsersetTuplesFilter) 
 }
 
 func ReadKey(store string, tupleKey *openfgav1.TupleKey) string {
-	var b strings.Builder
-	b.WriteString(
-		storage.GetReadCacheKey(store, tuple.TupleKeyToString(tupleKey)),
-	)
-	return b.String()
+	return storage.GetReadCacheKey(store, tuple.TupleKeyToString(tupleKey))
 }

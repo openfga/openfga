@@ -292,7 +292,7 @@ func (t *TypeSystem) GetTypeDefinition(objectType string) (*openfgav1.TypeDefini
 // ResolveComputedRelation traverses the typesystem until finding the final resolution of a computed relationship.
 // Subsequent calls to this method are resolved from a cache.
 func (t *TypeSystem) ResolveComputedRelation(objectType, relation string) (string, error) {
-	memoizeKey := fmt.Sprintf("%s-%s", objectType, relation)
+	memoizeKey := objectType + "-" + relation
 	if val, ok := t.computedRelations.Load(memoizeKey); ok {
 		return val.(string), nil
 	}
@@ -329,9 +329,12 @@ func (t *TypeSystem) GetRelations(objectType string) (map[string]*openfgav1.Rela
 // based on the provided objectType and relation strings.
 // It can return ErrObjectTypeUndefined and ErrRelationUndefined.
 func (t *TypeSystem) GetRelation(objectType, relation string) (*openfgav1.Relation, error) {
-	relations, err := t.GetRelations(objectType)
-	if err != nil {
-		return nil, err
+	relations, ok := t.relations[objectType]
+	if !ok {
+		return nil, &ObjectTypeUndefinedError{
+			ObjectType: objectType,
+			Err:        ErrObjectTypeUndefined,
+		}
 	}
 
 	r, ok := relations[relation]
@@ -348,10 +351,11 @@ func (t *TypeSystem) GetRelation(objectType, relation string) (*openfgav1.Relati
 
 // GetCondition searches for an EvaluableCondition in the TypeSystem by its name.
 func (t *TypeSystem) GetCondition(name string) (*condition.EvaluableCondition, bool) {
-	if _, ok := t.conditions[name]; !ok {
+	cond, ok := t.conditions[name]
+	if !ok {
 		return nil, false
 	}
-	return t.conditions[name], true
+	return cond, true
 }
 
 // GetRelationReferenceAsString returns team#member, or team:*, or an empty string if the input is nil.
@@ -360,7 +364,7 @@ func GetRelationReferenceAsString(rr *openfgav1.RelationReference) string {
 		return ""
 	}
 	if _, ok := rr.GetRelationOrWildcard().(*openfgav1.RelationReference_Relation); ok {
-		return fmt.Sprintf("%s#%s", rr.GetType(), rr.GetRelation())
+		return rr.GetType() + "#" + rr.GetRelation()
 	}
 	if _, ok := rr.GetRelationOrWildcard().(*openfgav1.RelationReference_Wildcard); ok {
 		return tuple.TypedPublicWildcard(rr.GetType())
@@ -382,13 +386,16 @@ func (t *TypeSystem) GetDirectlyRelatedUserTypes(objectType, relation string) ([
 // DirectlyRelatedUsersets returns a list of the directly user related types that are usersets.
 func (t *TypeSystem) DirectlyRelatedUsersets(objectType, relation string) ([]*openfgav1.RelationReference, error) {
 	refs, err := t.GetDirectlyRelatedUserTypes(objectType, relation)
-	var usersetRelationReferences []*openfgav1.RelationReference
 	if err != nil {
-		return usersetRelationReferences, err
+		return nil, err
 	}
 
+	var usersetRelationReferences []*openfgav1.RelationReference
 	for _, ref := range refs {
 		if ref.GetRelation() != "" {
+			if usersetRelationReferences == nil {
+				usersetRelationReferences = make([]*openfgav1.RelationReference, 0, len(refs))
+			}
 			usersetRelationReferences = append(usersetRelationReferences, ref)
 		}
 	}
