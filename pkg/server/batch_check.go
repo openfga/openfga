@@ -131,7 +131,7 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 	span.SetAttributes(attribute.Int(duplicateChecks, metadata.DuplicateCheckCount))
 	grpc_ctxtags.Extract(ctx).Set(duplicateChecks, metadata.DuplicateCheckCount)
 
-	batchResult := map[string]*openfgav1.BatchCheckSingleResult{}
+	batchResult := make(map[string]*openfgav1.BatchCheckSingleResult, len(result))
 	for correlationID, outcome := range result {
 		batchResult[string(correlationID)] = transformCheckResultToProto(outcome)
 		s.emitCheckDurationMetric(outcome.CheckResponse.GetResolutionMetadata(), methodName)

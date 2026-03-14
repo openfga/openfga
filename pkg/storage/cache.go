@@ -4,7 +4,6 @@ package storage
 
 import (
 	"errors"
-	"fmt"
 	"io"
 	"sort"
 	"strconv"
@@ -227,10 +226,10 @@ func GetInvalidIteratorByObjectRelationCacheKey(storeID, object, relation string
 
 func GetInvalidIteratorByUserObjectTypeCacheKeys(storeID string, users []string, objectType string) []string {
 	res := make([]string, len(users))
-	var i int
-	for _, user := range users {
-		res[i] = invalidIteratorCachePrefix + storeID + "-otr/" + user + "|" + objectType
-		i++
+	prefix := invalidIteratorCachePrefix + storeID + "-otr/"
+	suffix := "|" + objectType
+	for i, user := range users {
+		res[i] = prefix + user + suffix
 	}
 	return res
 }
@@ -322,7 +321,13 @@ func writeStruct(w io.StringWriter, s *structpb.Struct) (err error) {
 	sort.Strings(keys)
 
 	for _, key := range keys {
-		if _, err = w.WriteString(fmt.Sprintf("'%s:'", key)); err != nil {
+		if _, err = w.WriteString("'"); err != nil {
+			return
+		}
+		if _, err = w.WriteString(key); err != nil {
+			return
+		}
+		if _, err = w.WriteString(":'"); err != nil {
 			return
 		}
 
@@ -358,8 +363,13 @@ func writeTuples(w io.StringWriter, tuples ...*openfgav1.TupleKey) (err error) {
 	}
 
 	for n, tupleKey := range sortedTuples {
-		_, err = w.WriteString(tupleKey.GetObject() + "#" + tupleKey.GetRelation())
-		if err != nil {
+		if _, err = w.WriteString(tupleKey.GetObject()); err != nil {
+			return
+		}
+		if _, err = w.WriteString("#"); err != nil {
+			return
+		}
+		if _, err = w.WriteString(tupleKey.GetRelation()); err != nil {
 			return
 		}
 
@@ -368,8 +378,10 @@ func writeTuples(w io.StringWriter, tuples ...*openfgav1.TupleKey) (err error) {
 			// " with " is separated by spaces as those are invalid in relation names
 			// and we need to ensure this cache key is unique
 			// resultant cache key format is "object:object_id#relation with {condition} {context}@user:user_id"
-			_, err = w.WriteString(" with " + cond.GetName())
-			if err != nil {
+			if _, err = w.WriteString(" with "); err != nil {
+				return
+			}
+			if _, err = w.WriteString(cond.GetName()); err != nil {
 				return
 			}
 
@@ -388,7 +400,10 @@ func writeTuples(w io.StringWriter, tuples ...*openfgav1.TupleKey) (err error) {
 			}
 		}
 
-		if _, err = w.WriteString("@" + tupleKey.GetUser()); err != nil {
+		if _, err = w.WriteString("@"); err != nil {
+			return
+		}
+		if _, err = w.WriteString(tupleKey.GetUser()); err != nil {
 			return
 		}
 
@@ -417,19 +432,24 @@ type CheckCacheKeyParams struct {
 // should produce the same cache key. Contextual tuple order and context parameter order is ignored,
 // only the contents are compared.
 func WriteCheckCacheKey(w io.StringWriter, params *CheckCacheKeyParams) error {
-	t := tuple.From(params.TupleKey)
-
-	_, err := w.WriteString(t.String())
-	if err != nil {
+	tk := params.TupleKey
+	if _, err := w.WriteString(tk.GetObject()); err != nil {
+		return err
+	}
+	if _, err := w.WriteString("#"); err != nil {
+		return err
+	}
+	if _, err := w.WriteString(tk.GetRelation()); err != nil {
+		return err
+	}
+	if _, err := w.WriteString("@"); err != nil {
+		return err
+	}
+	if _, err := w.WriteString(tk.GetUser()); err != nil {
 		return err
 	}
 
-	err = WriteInvariantCheckCacheKey(w, params)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return WriteInvariantCheckCacheKey(w, params)
 }
 
 func WriteInvariantCheckCacheKey(w io.StringWriter, params *CheckCacheKeyParams) error {

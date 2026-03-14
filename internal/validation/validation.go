@@ -3,7 +3,6 @@ package validation
 import (
 	"errors"
 	"fmt"
-	"reflect"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
@@ -99,8 +98,10 @@ func validateTuplesetRestrictions(typesys *typesystem.TypeSystem, tk *openfgav1.
 	rewrite := rel.GetRewrite().GetUserset()
 
 	// tupleset relation involving a rewrite
-	if rewrite != nil && reflect.TypeOf(rewrite) != reflect.TypeOf(&openfgav1.Userset_This{}) {
-		return fmt.Errorf("unexpected rewrite encountered with tupleset relation '%s#%s'", objectType, relation)
+	if rewrite != nil {
+		if _, isThis := rewrite.(*openfgav1.Userset_This); !isThis {
+			return fmt.Errorf("unexpected rewrite encountered with tupleset relation '%s#%s'", objectType, relation)
+		}
 	}
 
 	user := tk.GetUser()
@@ -124,9 +125,9 @@ func validateTuplesetRestrictions(typesys *typesystem.TypeSystem, tk *openfgav1.
 // 2. If the tuple is of the form doc:budget#reader@group:abc#member, then 'doc#reader' must allow 'group#member'.
 // 3. If the tuple is of the form doc:budget#reader@person:*, we allow it only if 'doc#reader' allows the typed wildcard 'person:*'.
 func validateTypeRestrictions(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) error {
-	objectType := tuple.GetType(tk.GetObject())           // e.g. "doc"
-	userType, _ := tuple.SplitObject(tk.GetUser())        // e.g. (person, bob) or (group, abc#member) or ("", person:*)
-	_, userRel := tuple.SplitObjectRelation(tk.GetUser()) // e.g. (person:bob, "") or (group:abc, member) or (person:*, "")
+	objectType := tuple.GetType(tk.GetObject())                  // e.g. "doc"
+	userObject, userRel := tuple.SplitObjectRelation(tk.GetUser()) // e.g. (person:bob, "") or (group:abc, member) or (person:*, "")
+	userType, _ := tuple.SplitObject(userObject)                   // e.g. (person, bob) or (group, abc) or ("", person:*)
 
 	typeDefinitionForObject, ok := typesys.GetTypeDefinition(objectType)
 	if !ok {
