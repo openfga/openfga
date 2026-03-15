@@ -2,7 +2,6 @@ package mpsc
 
 import (
 	"iter"
-	"runtime"
 	"sync/atomic"
 )
 
@@ -25,8 +24,9 @@ type node[T any] struct {
 // iterates with Seq(). Close inserts a sentinel terminal node that
 // causes Seq to return, and the Accumulator can then be reused.
 type Accumulator[T any] struct {
-	head atomic.Pointer[node[T]]
-	tail *node[T]
+	head   atomic.Pointer[node[T]]
+	tail   *node[T]
+	signal chan struct{}
 }
 
 func NewAccumulator[T any]() *Accumulator[T] {
@@ -34,6 +34,7 @@ func NewAccumulator[T any]() *Accumulator[T] {
 	var n node[T]
 	a.head.Store(&n)
 	a.tail = &n
+	a.signal = make(chan struct{}, 1)
 	return &a
 }
 
@@ -47,6 +48,10 @@ func (a *Accumulator[T]) Close() error {
 	n.Kind = end
 	oldHead := a.head.Swap(&n)
 	oldHead.Next.Store(&n)
+	select {
+	case a.signal <- struct{}{}:
+	default:
+	}
 	return nil
 }
 
@@ -76,6 +81,10 @@ func (a *Accumulator[T]) Add(values ...T) {
 
 	oldHead := a.head.Swap(head)
 	oldHead.Next.Store(newHead)
+	select {
+	case a.signal <- struct{}{}:
+	default:
+	}
 }
 
 // Seq returns an iter.Seq[T] that yields elements in insertion order,
@@ -90,21 +99,12 @@ func (a *Accumulator[T]) Add(values ...T) {
 // share the same tail position and the behavior is unpredictable.
 func (a *Accumulator[T]) Seq() iter.Seq[T] {
 	return func(yield func(T) bool) {
-		var spinCount int
-
 		for {
 			currentTail := a.tail
 			nextNode := currentTail.Next.Load()
 
 			if nextNode == nil {
-				spinCount++
-
-				if spinCount >= 100 {
-					spinCount = 0
-
-					// Give up some processor time.
-					runtime.Gosched()
-				}
+				<-a.signal
 				continue
 			}
 
