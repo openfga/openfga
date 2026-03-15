@@ -75,7 +75,7 @@ func StartServerWithContext(t testing.TB, cfg *serverconfig.Config, serverCtx *r
 
 // BuildClientInterface sets up test client interface to be used for matrix test.
 func BuildClientInterface(t *testing.T, engine string, experimentals []string) ClientInterface {
-	cfg := serverconfig.MustDefaultConfig()
+	cfg := testutils.MustDefaultConfig()
 	if len(experimentals) > 0 {
 		cfg.Experimentals = append(cfg.Experimentals, experimentals...)
 	}

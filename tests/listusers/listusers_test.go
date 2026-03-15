@@ -75,7 +75,7 @@ func TestListUsersLogs(t *testing.T) {
 	localOTLPServerURL := fmt.Sprintf("localhost:%d", otlpServerPort)
 	otlpServerPortReleaser()
 
-	cfg := config.MustDefaultConfig()
+	cfg := testutils.MustDefaultConfig()
 	cfg.Trace.Enabled = true
 	cfg.Trace.OTLP.Endpoint = localOTLPServerURL
 	cfg.Datastore.Engine = "memory"

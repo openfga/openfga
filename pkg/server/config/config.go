@@ -857,15 +857,3 @@ func DefaultConfig() *Config {
 		},
 	}
 }
-
-// MustDefaultConfig returns default server config with the playground, tracing and metrics turned off.
-func MustDefaultConfig() *Config {
-	config := DefaultConfig()
-
-	config.Playground.Enabled = false
-	config.Metrics.Enabled = false
-
-	config.ShutdownTimeout = 30 * time.Second
-
-	return config
-}
