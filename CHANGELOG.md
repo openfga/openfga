@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Try to keep listed changes to a concise bulleted list of simple explanations of changes. Aim for the amount of information needed so that readers can understand where they would look in the codebase to investigate the changes' implementation, or where they would look in the documentation to understand how to make use of the change in practice - better yet, link directly to the docs and provide detailed information there. Only elaborate if doing so is required to avoid breaking changes or experimental features from ruining someone's day.
 
 ## [Unreleased]
+### Fixed
+- Fixed `OTEL_EXPORTER_OTLP_ENDPOINT` not accepting URIs with schemes (e.g. `http://host:4317`). The endpoint is now parsed to strip the scheme before passing to the gRPC exporter, and an explicit `http://` or `https://` scheme takes precedence over the `trace.otlp.tls.enabled` flag. [#2981](https://github.com/openfga/openfga/pull/2981) - thanks @simongottschlag
 
 ## [1.12.0] - 2026-03-13
 ### Added
