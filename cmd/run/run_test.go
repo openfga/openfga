@@ -1492,6 +1492,10 @@ func TestDefaultConfig(t *testing.T) {
 	val = res.Get("properties.requestTimeout.default")
 	require.True(t, val.Exists())
 	require.Equal(t, val.String(), cfg.RequestTimeout.String())
+
+	val = res.Get("properties.shutdownTimeout.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.String(), cfg.ShutdownTimeout.String())
 }
 
 func TestRunCommandNoConfigDefaultValues(t *testing.T) {
