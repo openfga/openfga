@@ -10,6 +10,52 @@ import (
 	"github.com/openfga/openfga/internal/containers/mpsc"
 )
 
+func BenchmarkAccumulator(b *testing.B) {
+	const totalItems int = 1000
+
+	b.Run("remake", func(b *testing.B) {
+		for b.Loop() {
+			acc := mpsc.NewAccumulator[int]()
+
+			var wg sync.WaitGroup
+			wg.Go(func() {
+				for i := range totalItems {
+					acc.Add(i)
+				}
+				acc.Close()
+			})
+
+			wg.Go(func() {
+				for range acc.Seq() {
+				}
+			})
+
+			wg.Wait()
+		}
+	})
+
+	b.Run("reuse", func(b *testing.B) {
+		acc := mpsc.NewAccumulator[int]()
+
+		for b.Loop() {
+			var wg sync.WaitGroup
+			wg.Go(func() {
+				for i := range totalItems {
+					acc.Add(i)
+				}
+				acc.Close()
+			})
+
+			wg.Go(func() {
+				for range acc.Seq() {
+				}
+			})
+
+			wg.Wait()
+		}
+	})
+}
+
 func TestAccumulator_AddCloseThenRead(t *testing.T) {
 	acc := mpsc.NewAccumulator[int]()
 	acc.Add(1)
@@ -207,4 +253,25 @@ func TestAccumulator_EarlyBreak(t *testing.T) {
 	}
 
 	require.Equal(t, []int{1, 2, 3}, got)
+}
+
+func TestAccumulator_SeqResumptionAfterEarlyBreak(t *testing.T) {
+	acc := mpsc.NewAccumulator[int]()
+	acc.Add(1, 2, 3, 4, 5)
+	acc.Close()
+
+	var got []int
+	for v := range acc.Seq() {
+		got = append(got, v)
+		if v == 3 {
+			break
+		}
+	}
+	require.Equal(t, []int{1, 2, 3}, got)
+
+	got = nil
+	for v := range acc.Seq() {
+		got = append(got, v)
+	}
+	require.Equal(t, []int{4, 5}, got)
 }

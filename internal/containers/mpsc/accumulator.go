@@ -20,9 +20,14 @@ type node[T any] struct {
 
 // Accumulator is a lock-free MPSC (multiple-producer, single-consumer)
 // queue that streams an unbounded set of elements to a consumer via
-// iter.Seq[T]. Producers call Add concurrently; a single consumer
-// iterates with Seq(). Close inserts a sentinel terminal node that
-// causes Seq to return, and the Accumulator can then be reused.
+// [Accumulator.Seq]. Producers call [Accumulator.Add] concurrently;
+// a single consumer iterates with Seq. [Accumulator.Close] inserts a
+// sentinel node that causes Seq to return, after which the Accumulator
+// can be reused for another Add/Close/Seq cycle.
+//
+// Delivery is exactly-once: on early break from Seq, the last yielded
+// item is consumed and a subsequent Seq resumes from the next
+// unconsumed item.
 type Accumulator[T any] struct {
 	head   atomic.Pointer[node[T]]
 	tail   *node[T]
@@ -88,8 +93,12 @@ func (a *Accumulator[T]) Add(values ...T) {
 }
 
 // Seq returns an iter.Seq[T] that yields elements in insertion order,
-// spinning until new nodes appear and terminating when it encounters
+// blocking until new nodes appear and terminating when it encounters
 // a sentinel terminal node produced by Close().
+//
+// Delivery is exactly-once: tail advances past each yielded item
+// immediately, so on early break the last yielded item is consumed
+// and a subsequent Seq() resumes from the next unconsumed item.
 //
 // After Seq() returns, the Accumulator can be reused: call Add to
 // enqueue more items, Close to insert a new terminal node, and Seq
@@ -113,10 +122,11 @@ func (a *Accumulator[T]) Seq() iter.Seq[T] {
 				break
 			}
 
-			if !yield(nextNode.Value) {
+			yielded := yield(nextNode.Value)
+			a.tail = nextNode
+			if !yielded {
 				break
 			}
-			a.tail = nextNode
 		}
 	}
 }
