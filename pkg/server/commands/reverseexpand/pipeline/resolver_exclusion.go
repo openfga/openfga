@@ -94,8 +94,4 @@ func (r *exclusionResolver) Resolve(
 	for fn := range cleanup.Seq() {
 		fn()
 	}
-
-	for _, lst := range listeners {
-		lst.Close()
-	}
 }
