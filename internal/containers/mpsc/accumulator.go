@@ -6,94 +6,97 @@ import (
 	"sync/atomic"
 )
 
+type kind int
+
+const (
+	end kind = iota
+	data
+)
+
 type node[T any] struct {
 	Value T
+	Kind  kind
 	Next  atomic.Pointer[node[T]]
 }
 
-// Accumulator is a struct type that can concurrently store an
-// unbounded set of elements and stream those elements out to a
-// consumer.
+// Accumulator is a lock-free MPSC (multiple-producer, single-consumer)
+// queue that streams an unbounded set of elements to a consumer via
+// iter.Seq[T]. Producers call Add concurrently; a single consumer
+// iterates with Seq(). Close inserts a sentinel terminal node that
+// causes Seq to return, and the Accumulator can then be reused.
 type Accumulator[T any] struct {
-	head   atomic.Pointer[node[T]]
-	tail   atomic.Pointer[node[T]]
-	closed atomic.Bool
+	head atomic.Pointer[node[T]]
+	tail *node[T]
 }
 
 func NewAccumulator[T any]() *Accumulator[T] {
 	var a Accumulator[T]
 	var n node[T]
 	a.head.Store(&n)
-	a.tail.Store(&n)
+	a.tail = &n
 	return &a
 }
 
-// Close informs an iter.Seq[T] value created from a call to Seq()
-// that no more values should be expected. Subsequent calls to Add
-// will result in a panic. It is safe to call Close multiple times
-// from different goroutines.
+// Close signals a running Seq() iterator to terminate by atomically
+// swapping in a sentinel terminal node. It is safe to call Close
+// multiple times from different goroutines. Values added after Close
+// are not visible to the current Seq() but can be consumed by calling
+// Close again followed by a new Seq().
 func (a *Accumulator[T]) Close() error {
-	a.closed.Store(true)
+	var n node[T]
+	n.Kind = end
+	oldHead := a.head.Swap(&n)
+	oldHead.Next.Store(&n)
 	return nil
 }
 
 // Add adds values to the Accumulator[T] in the order they were
 // provided.
 func (a *Accumulator[T]) Add(values ...T) {
-	if a.closed.Load() {
-		panic("call to add on a closed accumulator")
-	}
-
 	if len(values) == 0 {
 		return
 	}
 
-	var newTail *node[T]
-	var tail *node[T]
+	var newHead *node[T]
+	var head *node[T]
 
 	for _, i := range values {
 		n := &node[T]{
 			Value: i,
+			Kind:  data,
 		}
-		if newTail == nil {
-			newTail = n
-			tail = n
+		if newHead == nil {
+			newHead = n
+			head = n
 			continue
 		}
-		tail.Next.Store(n)
-		tail = n
+		head.Next.Store(n)
+		head = n
 	}
 
-	for {
-		oldTail := a.tail.Load()
-		if a.tail.CompareAndSwap(oldTail, tail) {
-			oldTail.Next.Store(newTail)
-			break
-		}
-	}
+	oldHead := a.head.Swap(head)
+	oldHead.Next.Store(newHead)
 }
 
-// Seq returns an iter.Seq[T] that iterates over the elements in
-// the Accumulator.
+// Seq returns an iter.Seq[T] that yields elements in insertion order,
+// spinning until new nodes appear and terminating when it encounters
+// a sentinel terminal node produced by Close().
 //
-// The behavior of multiple calls to Seq() on the same Accumulator
-// is unpredictable because all iter.Seq[T] values share the same
-// position. Only call Seq() once.
+// After Seq() returns, the Accumulator can be reused: call Add to
+// enqueue more items, Close to insert a new terminal node, and Seq
+// again to consume them.
+//
+// Only one Seq() should be active at a time — concurrent iterators
+// share the same tail position and the behavior is unpredictable.
 func (a *Accumulator[T]) Seq() iter.Seq[T] {
 	return func(yield func(T) bool) {
 		var spinCount int
 
 		for {
-			currentHead := a.head.Load()
-			nextNode := currentHead.Next.Load()
+			currentTail := a.tail
+			nextNode := currentTail.Next.Load()
 
 			if nextNode == nil {
-				if a.closed.Load() {
-					if currentHead.Next.Load() == nil {
-						break
-					}
-					continue
-				}
 				spinCount++
 
 				if spinCount >= 100 {
@@ -105,10 +108,15 @@ func (a *Accumulator[T]) Seq() iter.Seq[T] {
 				continue
 			}
 
+			if nextNode.Kind == end {
+				a.tail = nextNode
+				break
+			}
+
 			if !yield(nextNode.Value) {
 				break
 			}
-			a.head.Store(nextNode)
+			a.tail = nextNode
 		}
 	}
 }

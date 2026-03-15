@@ -108,13 +108,26 @@ func TestAccumulator_ConcurrentProducers(t *testing.T) {
 	require.Len(t, got, numProducers*itemsPerProducer)
 }
 
-func TestAccumulator_PanicOnAddAfterClose(t *testing.T) {
+func TestAccumulator_AddAfterClose(t *testing.T) {
 	acc := mpsc.NewAccumulator[int]()
+	acc.Add(1)
 	acc.Close()
 
-	require.Panics(t, func() {
-		acc.Add(1)
-	})
+	var got []int
+	for v := range acc.Seq() {
+		got = append(got, v)
+	}
+	require.Equal(t, []int{1}, got)
+
+	// Reuse: add more, close again, consume again.
+	acc.Add(2, 3)
+	acc.Close()
+
+	got = nil
+	for v := range acc.Seq() {
+		got = append(got, v)
+	}
+	require.Equal(t, []int{2, 3}, got)
 }
 
 func TestAccumulator_CloseMultipleTimes(t *testing.T) {
