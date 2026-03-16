@@ -295,6 +295,36 @@ func BenchmarkBuildObject(b *testing.B) {
 	outcome = object
 }
 
+func BenchmarkTupleKeyToString(b *testing.B) {
+	tk := openfgav1.TupleKeyWithoutCondition{
+		User:     "user:1",
+		Relation: "member",
+		Object:   "group:1",
+	}
+
+	var value string
+
+	for b.Loop() {
+		value = TupleKeyToString(&tk)
+	}
+	outcome = value
+}
+
+func BenchmarkFromUserParts(b *testing.B) {
+	const (
+		objectType string = "group"
+		objectID   string = "1"
+		relation   string = "member"
+	)
+
+	var value string
+
+	for b.Loop() {
+		value = FromUserParts(objectType, objectID, relation)
+	}
+	outcome = value
+}
+
 func BenchmarkTupleKeyWithConditionToString(b *testing.B) {
 	tk := NewTupleKeyWithCondition("document:1", "viewer", "user:1", "test", nil)
 

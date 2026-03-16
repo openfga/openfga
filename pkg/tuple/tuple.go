@@ -368,11 +368,19 @@ func GetUserTypeFromUser(user string) UserType {
 // TupleKeyToString converts a tuple key into its string representation. It assumes the tupleKey is valid
 // (i.e. no forbidden characters).
 func TupleKeyToString(tk TupleWithoutCondition) string {
-	return tk.GetObject() +
-		"#" +
-		tk.GetRelation() +
-		"@" +
-		tk.GetUser()
+	obj := tk.GetObject()
+	rel := tk.GetRelation()
+	user := tk.GetUser()
+
+	var sb strings.Builder
+	sb.Grow(len(obj) + 1 + len(rel) + 1 + len(user))
+
+	sb.WriteString(obj)
+	sb.WriteByte('#')
+	sb.WriteString(rel)
+	sb.WriteByte('@')
+	sb.WriteString(user)
+	return sb.String()
 }
 
 // TupleKeyWithConditionToString converts a tuple key with condition into its string representation. It assumes the tupleKey is valid
@@ -598,14 +606,20 @@ func ToUserParts(user string) (string, string, string) {
 }
 
 func FromUserParts(userObjectType, userObjectID, userRelation string) string {
-	user := userObjectID
-	if userObjectType != "" {
-		user = userObjectType + ":" + userObjectID
+	size := len(userObjectType) + len(userObjectID) + len(userRelation) + 2
+	buf := make([]byte, size)
+	w := copy(buf, userObjectType)
+	if w > 0 && size > w {
+		buf[w] = ':'
+		w += 1
 	}
-	if userRelation != "" {
-		user = user + "#" + userRelation
+	w += copy(buf[w:], userObjectID)
+	if len(userRelation) > 0 {
+		buf[w] = '#'
+		w += 1
+		w += copy(buf[w:], userRelation)
 	}
-	return user
+	return unsafe.String(unsafe.SliceData(buf[:w]), w)
 }
 
 // IsSelfDefining returns true if the tuple is reflexive/self-defining. E.g. Document:1#viewer@document:1#viewer.
