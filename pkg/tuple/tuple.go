@@ -303,8 +303,10 @@ func StringToUserProto(userKey UserString) *openfgav1.User {
 //  3. "anne" returns "" and "anne".
 func SplitObject(object string) (string, string) {
 	ndx := strings.IndexByte(object, ':')
-	i := ndx &^ (ndx >> (64 - 1))
-	return object[0:i], object[ndx+1:]
+	if ndx == -1 {
+		return "", object
+	}
+	return object[0:ndx], object[ndx+1:]
 }
 
 func BuildObject(objectType, objectID string) string {
