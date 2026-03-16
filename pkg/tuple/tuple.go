@@ -271,14 +271,9 @@ func StringToUserProto(userKey UserString) *openfgav1.User {
 //  2. "group#member:fga" returns "group#member" and "fga".
 //  3. "anne" returns "" and "anne".
 func SplitObject(object string) (string, string) {
-	switch i := strings.IndexByte(object, ':'); i {
-	case -1:
-		return "", object
-	case len(object) - 1:
-		return object[0:i], ""
-	default:
-		return object[0:i], object[i+1:]
-	}
+	ndx := strings.IndexByte(object, ':')
+	i := ndx &^ (ndx >> (64 - 1))
+	return object[0:i], object[ndx+1:]
 }
 
 func BuildObject(objectType, objectID string) string {
