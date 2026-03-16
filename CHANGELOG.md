@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Try to keep listed changes to a concise bulleted list of simple explanations of changes. Aim for the amount of information needed so that readers can understand where they would look in the codebase to investigate the changes' implementation, or where they would look in the documentation to understand how to make use of the change in practice - better yet, link directly to the docs and provide detailed information there. Only elaborate if doing so is required to avoid breaking changes or experimental features from ruining someone's day.
 
 ## [Unreleased]
+
+## [1.12.0] - 2026-03-13
 ### Added
 - Add AuthZen 1.0 experimental support. [#2875](https://github.com/openfga/openfga/pull/2875)
 - Add configuration for maximum size of received gRPC message bytes. [#2952](https://github.com/openfga/openfga/pull/2952)
@@ -23,6 +25,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Set `pipeline_list_objects` enabled by default in experimentals so that setting new experimental values does not disable it. This is required so that a user may pass in a custom featureflag client where `pipeline_list_objects` can be disabled on a per store basis. To disable the ListObjects pipeline algorithm entirely, set `listObjects-pipeline-enabled` to `false`. [#2957](https://github.com/openfga/openfga/pull/2957)
 
 ### Security
+- Update toolchain go version to 1.26.1 to be latest. [#2975](https://github.com/openfga/openfga/pull/2975)
 - Update toolchain go version to 1.25.8 to address std lib vulnerabilities [GO-2026-4603](https://pkg.go.dev/vuln/GO-2026-4603) and [GO-2026-4601](https://pkg.go.dev/vuln/GO-2026-4601). [#2971](https://github.com/openfga/openfga/pull/2971)
 
 ## [1.11.6] - 2026-02-23
@@ -1545,7 +1548,8 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
 - Memory storage adapter implementation
 - Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.11.6...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.12.0...HEAD
+[1.12.0]: https://github.com/openfga/openfga/compare/v1.11.6...v1.12.0
 [1.11.6]: https://github.com/openfga/openfga/compare/v1.11.5...v1.11.6
 [1.11.5]: https://github.com/openfga/openfga/compare/v1.11.4...v1.11.5
 [1.11.4]: https://github.com/openfga/openfga/compare/v1.11.3...v1.11.4
