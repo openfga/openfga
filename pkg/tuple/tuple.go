@@ -28,11 +28,18 @@ func (t *Tuple) GetUser() string {
 func (t *Tuple) String() string {
 	tk := (*openfgav1.TupleKey)(t)
 
-	return tk.GetObject() +
-		"#" +
-		tk.GetRelation() +
-		"@" +
-		tk.GetUser()
+	obj := tk.GetObject()
+	rel := tk.GetRelation()
+	user := tk.GetUser()
+
+	var sb strings.Builder
+	sb.Grow(len(obj) + 1 + len(rel) + 1 + len(user))
+	sb.WriteString(obj)
+	sb.WriteByte('#')
+	sb.WriteString(rel)
+	sb.WriteByte('@')
+	sb.WriteString(user)
+	return sb.String()
 }
 
 func From(tk *openfgav1.TupleKey) *Tuple {

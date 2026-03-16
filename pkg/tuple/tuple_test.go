@@ -209,6 +209,18 @@ func TestSplitObjectId(t *testing.T) {
 
 var outcome any
 
+func BenchmarkTuple_String(b *testing.B) {
+	tk := NewTupleKey("document:1", "viewer", "user:1")
+	t := From(tk)
+
+	var value string
+
+	for b.Loop() {
+		value = t.String()
+	}
+	outcome = value
+}
+
 func BenchmarkSplitObjectId(b *testing.B) {
 	value := "hello:world"
 
