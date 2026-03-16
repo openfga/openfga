@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"unicode"
+	"unsafe"
 
 	"google.golang.org/protobuf/types/known/structpb"
 
@@ -233,15 +234,38 @@ type UserString = string
 // UserProtoToString returns a string from a User proto. Ex: 'user:maria' or 'group:fga#member'. It is
 // the opposite of StringToUserProto function.
 func UserProtoToString(obj *openfgav1.User) UserString {
-	switch obj.GetUser().(type) {
+	switch v := obj.GetUser().(type) {
 	case *openfgav1.User_Wildcard:
-		return obj.GetWildcard().GetType() + ":*"
+		t := v.Wildcard.GetType()
+		buf := make([]byte, len(t), len(t)+2)
+		copy(buf, t)
+		buf = append(buf, ':', '*')
+		return unsafe.String(unsafe.SliceData(buf), len(buf))
 	case *openfgav1.User_Userset:
-		us := obj.GetUser().(*openfgav1.User_Userset)
-		return us.Userset.GetType() + ":" + us.Userset.GetId() + "#" + us.Userset.GetRelation()
+		t := v.Userset.GetType()
+		id := v.Userset.GetId()
+		r := v.Userset.GetRelation()
+
+		var sb strings.Builder
+		sb.Grow(len(t) + 1 + len(id) + 1 + len(r))
+
+		sb.WriteString(t)
+		sb.WriteByte(':')
+		sb.WriteString(id)
+		sb.WriteByte('#')
+		sb.WriteString(r)
+		return sb.String()
 	case *openfgav1.User_Object:
-		us := obj.GetUser().(*openfgav1.User_Object)
-		return us.Object.GetType() + ":" + us.Object.GetId()
+		t := v.Object.GetType()
+		id := v.Object.GetId()
+
+		var sb strings.Builder
+		sb.Grow(len(t) + 1 + len(id))
+
+		sb.WriteString(t)
+		sb.WriteByte(':')
+		sb.WriteString(id)
+		return sb.String()
 	default:
 		panic("unsupported type")
 	}

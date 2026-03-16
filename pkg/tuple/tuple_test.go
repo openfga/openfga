@@ -221,6 +221,57 @@ func BenchmarkTuple_String(b *testing.B) {
 	outcome = value
 }
 
+func BenchmarkUserProtoToString_Wildcard(b *testing.B) {
+	var obj openfgav1.User_Wildcard
+	var wildcard openfgav1.TypedWildcard
+	wildcard.Type = "user"
+	obj.Wildcard = &wildcard
+	var user openfgav1.User
+	user.User = &obj
+
+	var value string
+
+	for b.Loop() {
+		value = UserProtoToString(&user)
+	}
+	outcome = value
+}
+
+func BenchmarkUserProtoToString_Userset(b *testing.B) {
+	var obj openfgav1.User_Userset
+	var userset openfgav1.UsersetUser
+	userset.Type = "group"
+	userset.Id = "1"
+	userset.Relation = "member"
+	obj.Userset = &userset
+	var user openfgav1.User
+	user.User = &obj
+
+	var value string
+
+	for b.Loop() {
+		value = UserProtoToString(&user)
+	}
+	outcome = value
+}
+
+func BenchmarkUserProtoToString_Object(b *testing.B) {
+	var userobj openfgav1.User_Object
+	var obj openfgav1.Object
+	obj.Type = "user"
+	obj.Id = "1"
+	userobj.Object = &obj
+	var user openfgav1.User
+	user.User = &userobj
+
+	var value string
+
+	for b.Loop() {
+		value = UserProtoToString(&user)
+	}
+	outcome = value
+}
+
 func BenchmarkSplitObjectId(b *testing.B) {
 	value := "hello:world"
 
