@@ -374,7 +374,11 @@ func TestV2CheckCacheSeparation(t *testing.T) {
 		s.authzModelGraphResolver = modelgraph.NewResolver(s.datastore, checkCache, 24*7*time.Hour)
 		s.shadowAuthzModelGraphResolver = modelgraph.NewResolver(s.datastore, shadowCache, 24*7*time.Hour)
 
-		_, err := s.v2Check(ctx, req, true)
+		_, err := s.v2Check(ctx, req,
+			s.sharedDatastoreResources.ShadowCheckCache,
+			s.sharedDatastoreResources.ShadowCacheController,
+			s.shadowAuthzModelGraphResolver,
+		)
 		require.NoError(t, err)
 
 		// Shadow mode should route model graph and subproblem entries to the shadow cache.
@@ -396,7 +400,11 @@ func TestV2CheckCacheSeparation(t *testing.T) {
 		s.authzModelGraphResolver = modelgraph.NewResolver(s.datastore, checkCache, 24*7*time.Hour)
 		s.shadowAuthzModelGraphResolver = modelgraph.NewResolver(s.datastore, shadowCache, 24*7*time.Hour)
 
-		_, err := s.v2Check(ctx, req, false)
+		_, err := s.v2Check(ctx, req,
+			s.sharedDatastoreResources.CheckCache,
+			s.sharedDatastoreResources.CacheController,
+			s.authzModelGraphResolver,
+		)
 		require.NoError(t, err)
 
 		// Non-shadow mode should route model graph and subproblem entries to the main cache.

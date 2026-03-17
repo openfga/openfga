@@ -7,6 +7,8 @@ import (
 	"time"
 
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
+	"github.com/openfga/openfga/internal/cachecontroller"
+	"github.com/openfga/openfga/pkg/storage"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sourcegraph/conc/panics"
 	"go.opentelemetry.io/otel/attribute"
@@ -69,7 +71,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 	storeID := req.GetStoreId()
 
 	if s.featureFlagClient.Boolean(serverconfig.ExperimentalWeightedGraphCheck, storeID) {
-		return s.v2Check(ctx, req, false)
+		return s.v2Check(ctx, req, s.sharedDatastoreResources.CheckCache, s.sharedDatastoreResources.CacheController, s.authzModelGraphResolver)
 	}
 
 	typesys, err := s.resolveTypesystem(ctx, storeID, req.GetAuthorizationModelId())
@@ -208,7 +210,7 @@ func (s *Server) shadowV2Check(ctx context.Context, req *openfgav1.CheckRequest,
 	recoveredErr := panics.Try(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), s.shadowCheckResolverTimeout)
 		defer cancel()
-		res, err = s.v2Check(ctx, req, true)
+		res, err = s.v2Check(ctx, req, s.sharedDatastoreResources.ShadowCheckCache, s.sharedDatastoreResources.ShadowCacheController, s.shadowAuthzModelGraphResolver)
 	})
 	if recoveredErr != nil {
 		err = recoveredErr.AsError()
@@ -230,23 +232,20 @@ func (s *Server) shadowV2Check(ctx context.Context, req *openfgav1.CheckRequest,
 	)
 }
 
-func (s *Server) v2Check(ctx context.Context, req *openfgav1.CheckRequest, shadowMode bool) (*openfgav1.CheckResponse, error) {
+func (s *Server) v2Check(
+	ctx context.Context,
+	req *openfgav1.CheckRequest,
+	cache storage.InMemoryCache[any],
+	cacheController cachecontroller.CacheController,
+	modelGraphResolver *modelgraph.AuthorizationModelGraphResolver,
+) (*openfgav1.CheckResponse, error) {
 	cacheInvalidationTime := time.Time{}
-
-	cache := s.sharedDatastoreResources.CheckCache
-	cacheController := s.sharedDatastoreResources.CacheController
-	authzModelGraphResolver := s.authzModelGraphResolver
-	if shadowMode {
-		cache = s.sharedDatastoreResources.ShadowCheckCache
-		cacheController = s.sharedDatastoreResources.ShadowCacheController
-		authzModelGraphResolver = s.shadowAuthzModelGraphResolver
-	}
 
 	if req.GetConsistency() != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
 		cacheInvalidationTime = cacheController.DetermineInvalidationTime(ctx, req.GetStoreId())
 	}
 
-	mg, err := authzModelGraphResolver.Resolve(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
+	mg, err := modelGraphResolver.Resolve(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
 	if err != nil {
 		return nil, err
 	}
