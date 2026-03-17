@@ -824,7 +824,7 @@ func WithListObjectsChunkSize(value int) OpenFGAServiceV1Option {
 // memory allocation in a worst case scenario.
 func WithListObjectsBufferCapacity(value int) OpenFGAServiceV1Option {
 	return func(s *Server) {
-		s.listObjectsPipelineConfig.Buffer.Capacity = value
+		s.listObjectsPipelineConfig.BufferCapacity = value
 	}
 }
 
@@ -836,18 +836,6 @@ func WithListObjectsBufferCapacity(value int) OpenFGAServiceV1Option {
 func WithListObjectsNumProcs(value int) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.listObjectsPipelineConfig.NumProcs = value
-	}
-}
-
-// WithListObjectsPipeExtension is only effective when the ListObjects "pipeline"
-// algorithm is enabled, this option enables extension functionality within a pipeline,
-// which dynamically extends the buffers between pipeline workers, as needed. When a call
-// to send on a buffer blocks for longer than the extendAfter duration, the buffer size
-// is doubled up to maxExtensions number of times.
-func WithListObjectsPipeExtension(extendAfter time.Duration, maxExtensions int) OpenFGAServiceV1Option {
-	return func(s *Server) {
-		s.listObjectsPipelineConfig.Buffer.ExtendAfter = extendAfter
-		s.listObjectsPipelineConfig.Buffer.MaxExtensions = maxExtensions
 	}
 }
 

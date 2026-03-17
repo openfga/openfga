@@ -10,8 +10,6 @@ import (
 	"go.opentelemetry.io/otel"
 
 	weightedGraph "github.com/openfga/language/pkg/go/graph"
-
-	"github.com/openfga/openfga/internal/pipe"
 )
 
 type (
@@ -47,10 +45,11 @@ const (
 )
 
 var (
-	ErrInvalidChunkSize = errors.New("chunk size must be greater than zero")
-	ErrInvalidNumProcs  = errors.New("process number must be greater than zero")
-	ErrInvalidObject    = errors.New("invalid object")
-	ErrInvalidUser      = errors.New("invalid user")
+	ErrInvalidBufferCapacity = errors.New("buffer capacity must be a positive number")
+	ErrInvalidChunkSize      = errors.New("chunk size must be greater than zero")
+	ErrInvalidNumProcs       = errors.New("process number must be greater than zero")
+	ErrInvalidObject         = errors.New("invalid object")
+	ErrInvalidUser           = errors.New("invalid user")
 )
 
 type ObjectQuery struct {
@@ -115,7 +114,7 @@ type path struct {
 	interpreter    interpreter
 	bufferPool     *bufferPool
 	cycleGroup     *cycleGroup
-	errors         *pipe.Pipe[error]
+	errors         chan error
 }
 
 func (pl *Pipeline) resolve(p path, workers workerPool) *worker {
@@ -130,7 +129,7 @@ func (pl *Pipeline) resolve(p path, workers workerPool) *worker {
 	}
 
 	var w worker
-	w.bufferConfig = pl.config.Buffer
+	w.bufferCapacity = pl.config.BufferCapacity
 
 	membership := p.cycleGroup.Join()
 
@@ -226,7 +225,7 @@ func (pl *Pipeline) resolveObjectNode(objectType, objectRelation string) (*Node,
 
 type expansion struct {
 	workers workerPool
-	errors  *pipe.Pipe[error]
+	errors  chan error
 	results *sender
 }
 
@@ -234,10 +233,7 @@ func (pl *Pipeline) buildExpansion(objectNode, userNode *Node, userIdentifier st
 	pool := newBufferPool(pl.config.ChunkSize)
 	interpreter := pl.createInterpreter()
 	workers := make(workerPool)
-	errorPipe, err := pipe.New[error](pl.config.Buffer)
-	if err != nil {
-		return nil, err
-	}
+	chError := make(chan error, pl.config.BufferCapacity)
 
 	p := path{
 		objectNode:     objectNode,
@@ -245,7 +241,7 @@ func (pl *Pipeline) buildExpansion(objectNode, userNode *Node, userIdentifier st
 		userIdentifier: userIdentifier,
 		interpreter:    interpreter,
 		bufferPool:     pool,
-		errors:         errorPipe,
+		errors:         chError,
 	}
 
 	pl.resolve(p, workers)
@@ -257,7 +253,7 @@ func (pl *Pipeline) buildExpansion(objectNode, userNode *Node, userIdentifier st
 
 	return &expansion{
 		workers: workers,
-		errors:  errorPipe,
+		errors:  chError,
 		results: objectWorker.Subscribe(nil),
 	}, nil
 }
@@ -279,26 +275,12 @@ func (pl *Pipeline) startWorkerLifecycle(ctx context.Context, workers workerPool
 		workers.Start(ctx)
 	}()
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		<-ctx.Done()
-		workers.Stop()
-	}()
-
 	return &workerLifecycle{&wg}
 }
 
-// drainSender prevents goroutine leaks by consuming remaining messages during shutdown.
-func drainSender(s *sender) {
-	var msg *message
-	for s.Recv(&msg) {
-		msg.Done()
-	}
-}
-
-func drainChannel(ch <-chan Item) {
-	for range ch {
+func drainChannel[T any](ch <-chan T, fn func(T)) {
+	for v := range ch {
+		fn(v)
 	}
 }
 
@@ -316,10 +298,9 @@ func (pl *Pipeline) iterateOverResults(
 
 	output := make(chan Item)
 
-	defer drainSender(p.results)
+	defer drainChannel(p.results.C, func(msg *message) { msg.Done() })
 	defer wg.Wait()
-	defer drainChannel(output)
-	defer p.results.Close()
+	defer drainChannel(output, func(_ Item) {})
 	defer cancel()
 
 	wg.Add(1)
@@ -327,8 +308,7 @@ func (pl *Pipeline) iterateOverResults(
 		defer wg.Done()
 		defer close(ch)
 
-		var err error
-		for p.errors.Recv(&err) {
+		for err := range p.errors {
 			ch <- Item{Err: err}
 		}
 	}(output)
@@ -336,14 +316,17 @@ func (pl *Pipeline) iterateOverResults(
 	wg.Add(1)
 	go func(ch chan<- Item) {
 		defer wg.Done()
-		defer p.errors.Close()
+		// Closing the errors channel here is safe because at this point all in-flight
+		// messages have been drained from the pipeline. If there are no messages, there
+		// is nothing to cause an error within the pipeline.
+		defer close(p.errors)
 
 		buffer := make([]string, 0, pl.config.ChunkSize)
 
 		for {
 			if len(buffer) == 0 {
-				var msg *message
-				if !p.results.Recv(&msg) {
+				msg, ok := <-p.results.C
+				if !ok {
 					break
 				}
 				buffer = append(buffer, msg.Value...)
