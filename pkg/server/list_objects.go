@@ -97,12 +97,8 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		),
 		commands.WithListObjectsPipelineEnabled(s.listObjectsPipelineEnabled),
 		commands.WithListObjectsChunkSize(s.listObjectsPipelineConfig.ChunkSize),
-		commands.WithListObjectsBufferSize(s.listObjectsPipelineConfig.Buffer.Capacity),
+		commands.WithListObjectsBufferCapacity(s.listObjectsPipelineConfig.BufferCapacity),
 		commands.WithListObjectsNumProcs(s.listObjectsPipelineConfig.NumProcs),
-		commands.WithListObjectsPipeExtension(
-			s.listObjectsPipelineConfig.Buffer.ExtendAfter,
-			s.listObjectsPipelineConfig.Buffer.MaxExtensions,
-		),
 		commands.WithFeatureFlagClient(s.featureFlagClient),
 	)
 	if err != nil {
@@ -257,12 +253,8 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 		commands.WithMaxConcurrentReads(s.maxConcurrentReadsForListObjects),
 		commands.WithListObjectsPipelineEnabled(s.listObjectsPipelineEnabled),
 		commands.WithListObjectsChunkSize(s.listObjectsPipelineConfig.ChunkSize),
-		commands.WithListObjectsBufferSize(s.listObjectsPipelineConfig.Buffer.Capacity),
+		commands.WithListObjectsBufferCapacity(s.listObjectsPipelineConfig.BufferCapacity),
 		commands.WithListObjectsNumProcs(s.listObjectsPipelineConfig.NumProcs),
-		commands.WithListObjectsPipeExtension(
-			s.listObjectsPipelineConfig.Buffer.ExtendAfter,
-			s.listObjectsPipelineConfig.Buffer.MaxExtensions,
-		),
 		commands.WithFeatureFlagClient(s.featureFlagClient),
 	)
 	if err != nil {
