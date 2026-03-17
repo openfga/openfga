@@ -422,9 +422,8 @@ func convertStringArrayToUintArray(stringArray []string) []uint {
 // The context provided to this function should be error-free, or shut down will be incomplete.
 func (s *ServerContext) telemetryConfig(config *serverconfig.Config) func() error {
 	if config.Trace.Enabled {
-		endpoint, schemeInsecure := telemetry.ParseOTLPEndpoint(config.Trace.OTLP.Endpoint)
-		configInsecure := !config.Trace.OTLP.TLS.Enabled
-		effectiveTLS := !telemetry.ResolveOTLPInsecure(configInsecure, schemeInsecure)
+		endpoint, schemeSecure := telemetry.ParseOTLPEndpoint(config.Trace.OTLP.Endpoint)
+		effectiveTLS := telemetry.ResolveOTLPSecurity(config.Trace.OTLP.TLS.Enabled, schemeSecure)
 
 		s.Logger.Info(fmt.Sprintf("🕵 tracing enabled: sampling ratio is %v and sending traces to '%s', tls: %t", config.Trace.SampleRatio, endpoint, effectiveTLS))
 

@@ -62,41 +62,32 @@ type customTracer struct {
 // include a port. For non-http(s) schemes or bare host:port inputs the string
 // is returned unchanged.
 //
-// The second return value conveys the security mode implied by the URI scheme:
-//   - *true  — http:// scheme, insecure connection
-//   - *false — https:// scheme, secure (TLS) connection
-//   - nil    — no recognized scheme, fall back to explicit TLS configuration
-//
-// When non-nil, the scheme takes precedence over any explicit TLS flag.
-// See [ResolveOTLPInsecure] for the full precedence logic.
-func ParseOTLPEndpoint(endpoint string) (string, *bool) {
+// The second return value indicates whether the scheme specifies TLS (true for
+// https://, false otherwise). Use [ResolveOTLPSecurity] to combine this with
+// the configured TLS flag.
+func ParseOTLPEndpoint(endpoint string) (string, bool) {
 	u, err := url.Parse(endpoint)
 	if err != nil || u.Host == "" {
 		// Not a valid URI — treat as a bare host:port.
-		return endpoint, nil
+		return endpoint, false
 	}
 
 	switch u.Scheme {
-	case "http":
-		insecure := true
-		return u.Host, &insecure
 	case "https":
-		insecure := false
-		return u.Host, &insecure
+		return u.Host, true
+	case "http":
+		return u.Host, false
 	default:
 		// Unknown scheme — return as-is.
-		return endpoint, nil
+		return endpoint, false
 	}
 }
 
-// ResolveOTLPInsecure determines whether the OTLP connection should be
-// insecure. When schemeInsecure is non-nil (from [ParseOTLPEndpoint]), the URI
-// scheme takes precedence over the configured flag.
-func ResolveOTLPInsecure(configInsecure bool, schemeInsecure *bool) bool {
-	if schemeInsecure != nil {
-		return *schemeInsecure
-	}
-	return configInsecure
+// ResolveOTLPSecurity returns true if TLS should be used for the OTLP
+// connection. TLS is enabled if either the configuration flag or the URI
+// scheme (https://) indicates it.
+func ResolveOTLPSecurity(configSecure, schemeSecure bool) bool {
+	return configSecure || schemeSecure
 }
 
 func MustNewTracerProvider(opts ...TracerOption) *sdktrace.TracerProvider {
@@ -126,8 +117,8 @@ func MustNewTracerProvider(opts ...TracerOption) *sdktrace.TracerProvider {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	endpoint, schemeInsecure := ParseOTLPEndpoint(tracer.endpoint)
-	insecure := ResolveOTLPInsecure(tracer.insecure, schemeInsecure)
+	endpoint, schemeSecure := ParseOTLPEndpoint(tracer.endpoint)
+	secure := ResolveOTLPSecurity(!tracer.insecure, schemeSecure)
 
 	options := []otlptracegrpc.Option{
 		otlptracegrpc.WithEndpoint(endpoint),
@@ -137,7 +128,7 @@ func MustNewTracerProvider(opts ...TracerOption) *sdktrace.TracerProvider {
 		),
 	}
 
-	if insecure {
+	if !secure {
 		options = append(options, otlptracegrpc.WithInsecure())
 	}
 
