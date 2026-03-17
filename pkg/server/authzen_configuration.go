@@ -11,9 +11,6 @@ import (
 	"google.golang.org/grpc/status"
 
 	authzenv1 "github.com/openfga/api/proto/authzen/v1"
-
-	"github.com/openfga/openfga/pkg/middleware/validator"
-	serverconfig "github.com/openfga/openfga/pkg/server/config"
 )
 
 // getBaseURLFromContext extracts the base URL from gRPC metadata.
@@ -74,21 +71,13 @@ func getBaseURLFromContext(ctx context.Context) string {
 // Following the AuthZEN spec's multi-tenant pattern, this endpoint is scoped to a specific
 // store and returns absolute endpoint URLs for that store.
 func (s *Server) GetConfiguration(ctx context.Context, req *authzenv1.GetConfigurationRequest) (*authzenv1.GetConfigurationResponse, error) {
+	ctx, end, err := s.prepareAuthZenRequest(ctx, "authzen.GetConfiguration", req)
+	if err != nil {
+		return nil, err
+	}
+	defer end()
+
 	storeID := req.GetStoreId()
-
-	// Gate behind experimental flag
-	if !s.featureFlagClient.Boolean(serverconfig.ExperimentalAuthZen, storeID) {
-		return nil, status.Error(codes.Unimplemented, "AuthZEN endpoints are experimental. Enable with --experimentals=authzen")
-	}
-
-	if !validator.RequestIsValidatedFromContext(ctx) {
-		if err := req.Validate(); err != nil {
-			return nil, status.Error(codes.InvalidArgument, err.Error())
-		}
-	}
-
-	_, span := tracer.Start(ctx, "authzen.GetConfiguration")
-	defer span.End()
 
 	// Get base URL from request context for absolute URLs per AuthZEN spec
 	baseURL := getBaseURLFromContext(ctx)

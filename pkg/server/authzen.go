@@ -82,6 +82,53 @@ func (s *Server) IsAuthZenEnabled(storeID string) bool {
 	return s.featureFlagClient.Boolean(serverconfig.ExperimentalAuthZen, storeID)
 }
 
+// authzenRequest is the common interface for all AuthZen requests.
+type authzenRequest interface {
+	GetStoreId() string
+	Validate() error
+}
+
+// ensureAuthZenEnabled validates that the AuthZen experimental flag is enabled.
+func (s *Server) ensureAuthZenEnabled(storeID string) error {
+	if !s.IsAuthZenEnabled(storeID) {
+		return status.Error(codes.Unimplemented, "AuthZEN endpoints are experimental. Enable with --experimentals=authzen")
+	}
+
+	return nil
+}
+
+// initAuthZenRequest runs request validation and sets telemetry context.
+func (s *Server) initAuthZenRequest(ctx context.Context, method string, req authzenRequest) (context.Context, error) {
+	if !validator.RequestIsValidatedFromContext(ctx) {
+		if err := req.Validate(); err != nil {
+			return ctx, status.Error(codes.InvalidArgument, err.Error())
+		}
+	}
+	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{Service: s.serviceName, Method: method})
+	return ctx, nil
+}
+
+// prepareAuthZenRequest validates the feature flag, starts a span, validates
+// the request, and sets telemetry context. The returned function must be
+// called to end the span.
+func (s *Server) prepareAuthZenRequest(ctx context.Context, method string, req authzenRequest) (context.Context, func(), error) {
+	if err := s.ensureAuthZenEnabled(req.GetStoreId()); err != nil {
+		return ctx, nil, err
+	}
+
+	ctx, span := tracer.Start(ctx, method)
+
+	ctx, err := s.initAuthZenRequest(ctx, method, req)
+	if err != nil {
+		span.End()
+		return ctx, nil, err
+	}
+
+	return ctx, func() {
+		span.End()
+	}, nil
+}
+
 // getAuthorizationModelIDFromHeader extracts the authorization model ID from the gRPC metadata.
 // Returns empty string if the header is not present.
 func getAuthorizationModelIDFromHeader(ctx context.Context) string {
@@ -161,23 +208,11 @@ func grpcErrorToHTTPStatus(err error) uint32 {
 }
 
 func (s *Server) Evaluation(ctx context.Context, req *authzenv1.EvaluationRequest) (*authzenv1.EvaluationResponse, error) {
-	if !s.featureFlagClient.Boolean(serverconfig.ExperimentalAuthZen, req.GetStoreId()) {
-		return nil, status.Error(codes.Unimplemented, "AuthZEN endpoints are experimental. Enable with --experimentals=authzen")
+	ctx, end, err := s.prepareAuthZenRequest(ctx, "authzen.Evaluation", req)
+	if err != nil {
+		return nil, err
 	}
-
-	ctx, span := tracer.Start(ctx, "authzen.Evaluation")
-	defer span.End()
-
-	if !validator.RequestIsValidatedFromContext(ctx) {
-		if err := req.Validate(); err != nil {
-			return nil, status.Error(codes.InvalidArgument, err.Error())
-		}
-	}
-
-	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
-		Service: s.serviceName,
-		Method:  "authzen.Evaluation",
-	})
+	defer end()
 
 	authorizationModelID := getAuthorizationModelIDFromHeader(ctx)
 
@@ -200,23 +235,11 @@ func (s *Server) Evaluation(ctx context.Context, req *authzenv1.EvaluationReques
 }
 
 func (s *Server) Evaluations(ctx context.Context, req *authzenv1.EvaluationsRequest) (*authzenv1.EvaluationsResponse, error) {
-	if !s.featureFlagClient.Boolean(serverconfig.ExperimentalAuthZen, req.GetStoreId()) {
-		return nil, status.Error(codes.Unimplemented, "AuthZEN endpoints are experimental. Enable with --experimentals=authzen")
+	ctx, end, err := s.prepareAuthZenRequest(ctx, "authzen.Evaluations", req)
+	if err != nil {
+		return nil, err
 	}
-
-	ctx, span := tracer.Start(ctx, "authzen.Evaluations")
-	defer span.End()
-
-	if !validator.RequestIsValidatedFromContext(ctx) {
-		if err := req.Validate(); err != nil {
-			return nil, status.Error(codes.InvalidArgument, err.Error())
-		}
-	}
-
-	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
-		Service: s.serviceName,
-		Method:  "authzen.Evaluations",
-	})
+	defer end()
 
 	// If evaluations is omitted or empty, behave like a single Evaluation.
 	if len(req.GetEvaluations()) == 0 {
@@ -422,23 +445,11 @@ func (s *Server) evaluateWithShortCircuit(
 
 // SubjectSearch returns subjects that have access to the specified resource.
 func (s *Server) SubjectSearch(ctx context.Context, req *authzenv1.SubjectSearchRequest) (*authzenv1.SubjectSearchResponse, error) {
-	if !s.featureFlagClient.Boolean(serverconfig.ExperimentalAuthZen, req.GetStoreId()) {
-		return nil, status.Error(codes.Unimplemented, "AuthZEN endpoints are experimental. Enable with --experimentals=authzen")
+	ctx, end, err := s.prepareAuthZenRequest(ctx, "authzen.SubjectSearch", req)
+	if err != nil {
+		return nil, err
 	}
-
-	ctx, span := tracer.Start(ctx, "authzen.SubjectSearch")
-	defer span.End()
-
-	if !validator.RequestIsValidatedFromContext(ctx) {
-		if err := req.Validate(); err != nil {
-			return nil, status.Error(codes.InvalidArgument, err.Error())
-		}
-	}
-
-	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
-		Service: s.serviceName,
-		Method:  "authzen.SubjectSearch",
-	})
+	defer end()
 
 	authorizationModelID := getAuthorizationModelIDFromHeader(ctx)
 
@@ -480,23 +491,11 @@ func (s *Server) SubjectSearch(ctx context.Context, req *authzenv1.SubjectSearch
 
 // ResourceSearch returns resources that a subject has access to.
 func (s *Server) ResourceSearch(ctx context.Context, req *authzenv1.ResourceSearchRequest) (*authzenv1.ResourceSearchResponse, error) {
-	if !s.featureFlagClient.Boolean(serverconfig.ExperimentalAuthZen, req.GetStoreId()) {
-		return nil, status.Error(codes.Unimplemented, "AuthZEN endpoints are experimental. Enable with --experimentals=authzen")
+	ctx, end, err := s.prepareAuthZenRequest(ctx, "authzen.ResourceSearch", req)
+	if err != nil {
+		return nil, err
 	}
-
-	ctx, span := tracer.Start(ctx, "authzen.ResourceSearch")
-	defer span.End()
-
-	if !validator.RequestIsValidatedFromContext(ctx) {
-		if err := req.Validate(); err != nil {
-			return nil, status.Error(codes.InvalidArgument, err.Error())
-		}
-	}
-
-	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
-		Service: s.serviceName,
-		Method:  "authzen.ResourceSearch",
-	})
+	defer end()
 
 	authorizationModelID := getAuthorizationModelIDFromHeader(ctx)
 
@@ -551,23 +550,11 @@ func (c *objectCollector) Send(resp *openfgav1.StreamedListObjectsResponse) erro
 
 // ActionSearch returns actions a subject can perform on a resource.
 func (s *Server) ActionSearch(ctx context.Context, req *authzenv1.ActionSearchRequest) (*authzenv1.ActionSearchResponse, error) {
-	if !s.featureFlagClient.Boolean(serverconfig.ExperimentalAuthZen, req.GetStoreId()) {
-		return nil, status.Error(codes.Unimplemented, "AuthZEN endpoints are experimental. Enable with --experimentals=authzen")
+	ctx, end, err := s.prepareAuthZenRequest(ctx, "authzen.ActionSearch", req)
+	if err != nil {
+		return nil, err
 	}
-
-	ctx, span := tracer.Start(ctx, "authzen.ActionSearch")
-	defer span.End()
-
-	if !validator.RequestIsValidatedFromContext(ctx) {
-		if err := req.Validate(); err != nil {
-			return nil, status.Error(codes.InvalidArgument, err.Error())
-		}
-	}
-
-	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
-		Service: s.serviceName,
-		Method:  "authzen.ActionSearch",
-	})
+	defer end()
 
 	authorizationModelID := getAuthorizationModelIDFromHeader(ctx)
 

@@ -19,6 +19,7 @@ import (
 
 	"github.com/openfga/openfga/cmd/util"
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
+	"github.com/openfga/openfga/pkg/storage"
 )
 
 // getContextError extracts the "error" field from an evaluation response context struct.
@@ -71,6 +72,136 @@ func writeModel(t *testing.T, s *Server, storeID string, typeDefs []*openfgav1.T
 	return resp.GetAuthorizationModelId()
 }
 
+func writeTuples(t *testing.T, s *Server, storeID string, tupleKeys ...*openfgav1.TupleKey) {
+	t.Helper()
+
+	_, err := s.Write(context.Background(), &openfgav1.WriteRequest{
+		StoreId: storeID,
+		Writes: &openfgav1.WriteRequestWrites{
+			TupleKeys: tupleKeys,
+		},
+	})
+	require.NoError(t, err)
+}
+
+func writeTuplesWithModel(t *testing.T, s *Server, storeID, modelID string, tupleKeys ...*openfgav1.TupleKey) {
+	t.Helper()
+
+	_, err := s.Write(context.Background(), &openfgav1.WriteRequest{
+		StoreId:              storeID,
+		AuthorizationModelId: modelID,
+		Writes: &openfgav1.WriteRequestWrites{
+			TupleKeys: tupleKeys,
+		},
+	})
+	require.NoError(t, err)
+}
+
+func contextWithAuthorizationModelID(modelID string) context.Context {
+	md := metadata.New(map[string]string{
+		strings.ToLower(AuthorizationModelIDHeader): modelID,
+	})
+
+	return metadata.NewIncomingContext(context.Background(), md)
+}
+
+func newExperimentalAuthZenServer(t *testing.T, ds storage.OpenFGADatastore) *Server {
+	t.Helper()
+
+	s := MustNewServerWithOpts(
+		WithDatastore(ds),
+		WithExperimentals(serverconfig.ExperimentalAuthZen),
+	)
+	t.Cleanup(s.Close)
+
+	return s
+}
+
+func newExperimentalAuthZenServerAndStore(t *testing.T, ds storage.OpenFGADatastore) (*Server, string) {
+	t.Helper()
+
+	s := newExperimentalAuthZenServer(t, ds)
+	resp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
+	require.NoError(t, err)
+
+	return s, resp.GetId()
+}
+
+func TestAuthZenFeatureFlagDisabled(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
+
+	s := MustNewServerWithOpts(WithDatastore(ds))
+	t.Cleanup(s.Close)
+
+	storeID := ulid.Make().String()
+
+	tests := []struct {
+		name string
+		call func() error
+	}{
+		{"Evaluation", func() error {
+			_, err := s.Evaluation(context.Background(), &authzenv1.EvaluationRequest{
+				StoreId: storeID, Subject: &authzenv1.Subject{Type: "user", Id: "alice"},
+				Resource: &authzenv1.Resource{Type: "document", Id: "doc1"}, Action: &authzenv1.Action{Name: "read"},
+			})
+			return err
+		}},
+		{"Evaluations", func() error {
+			_, err := s.Evaluations(context.Background(), &authzenv1.EvaluationsRequest{
+				StoreId: storeID, Evaluations: []*authzenv1.EvaluationsItemRequest{{
+					Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
+					Resource: &authzenv1.Resource{Type: "document", Id: "doc1"}, Action: &authzenv1.Action{Name: "read"},
+				}},
+			})
+			return err
+		}},
+		{"SubjectSearch", func() error {
+			_, err := s.SubjectSearch(context.Background(), &authzenv1.SubjectSearchRequest{
+				StoreId: storeID, Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
+				Action: &authzenv1.Action{Name: "read"}, Subject: &authzenv1.SubjectFilter{Type: "user"},
+			})
+			return err
+		}},
+		{"ResourceSearch", func() error {
+			_, err := s.ResourceSearch(context.Background(), &authzenv1.ResourceSearchRequest{
+				StoreId: storeID, Subject: &authzenv1.Subject{Type: "user", Id: "alice"},
+				Action: &authzenv1.Action{Name: "read"}, Resource: &authzenv1.ResourceFilter{Type: "document"},
+			})
+			return err
+		}},
+		{"ActionSearch", func() error {
+			_, err := s.ActionSearch(context.Background(), &authzenv1.ActionSearchRequest{
+				StoreId: storeID, Subject: &authzenv1.Subject{Type: "user", Id: "alice"},
+				Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
+			})
+			return err
+		}},
+		{"GetConfiguration", func() error {
+			ctx := metadata.NewIncomingContext(context.Background(), metadata.New(map[string]string{
+				":authority": "pdp.example.com",
+			}))
+			_, err := s.GetConfiguration(ctx, &authzenv1.GetConfigurationRequest{StoreId: storeID})
+			return err
+		}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.call()
+			require.Error(t, err)
+
+			st, ok := status.FromError(err)
+			require.True(t, ok)
+			require.Equal(t, codes.Unimplemented, st.Code())
+			require.Contains(t, st.Message(), "experimental")
+		})
+	}
+}
+
 func TestEvaluation(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
@@ -79,33 +210,15 @@ func TestEvaluation(t *testing.T) {
 	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
 
 	t.Run("success_with_valid_model", func(t *testing.T) {
-		s := MustNewServerWithOpts(
-			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalAuthZen),
-		)
-		t.Cleanup(s.Close)
-
-		// Create store
-		createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
-		require.NoError(t, err)
-		storeID := createStoreResp.GetId()
+		s, storeID := newExperimentalAuthZenServerAndStore(t, ds)
 
 		writeModel(t, s, storeID, simpleModel("reader"))
 
-		// Write tuple to grant permission
-		_, err = s.Write(context.Background(), &openfgav1.WriteRequest{
-			StoreId: storeID,
-			Writes: &openfgav1.WriteRequestWrites{
-				TupleKeys: []*openfgav1.TupleKey{
-					{
-						Object:   "document:doc1",
-						Relation: "reader",
-						User:     "user:alice",
-					},
-				},
-			},
+		writeTuples(t, s, storeID, &openfgav1.TupleKey{
+			Object:   "document:doc1",
+			Relation: "reader",
+			User:     "user:alice",
 		})
-		require.NoError(t, err)
 
 		// Test Evaluation success path - this covers lines 54-56
 		req := &authzenv1.EvaluationRequest{
@@ -121,43 +234,11 @@ func TestEvaluation(t *testing.T) {
 		require.True(t, resp.GetDecision())
 	})
 
-	t.Run("feature_flag_disabled", func(t *testing.T) {
-		// Server without AuthZEN experimental enabled
-		s := MustNewServerWithOpts(
-			WithDatastore(ds),
-		)
-		t.Cleanup(s.Close)
-
-		req := &authzenv1.EvaluationRequest{
-			StoreId:  ulid.Make().String(),
-			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
-			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
-			Action:   &authzenv1.Action{Name: "read"},
-		}
-
-		resp, err := s.Evaluation(context.Background(), req)
-		require.Error(t, err)
-		require.Nil(t, resp)
-
-		st, ok := status.FromError(err)
-		require.True(t, ok)
-		require.Equal(t, codes.Unimplemented, st.Code())
-		require.Contains(t, st.Message(), "experimental")
-	})
-
 	t.Run("model_not_found", func(t *testing.T) {
-		s := MustNewServerWithOpts(
-			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalAuthZen),
-		)
-		t.Cleanup(s.Close)
-
-		// Create store without model
-		createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
-		require.NoError(t, err)
+		s, storeID := newExperimentalAuthZenServerAndStore(t, ds)
 
 		req := &authzenv1.EvaluationRequest{
-			StoreId:  createStoreResp.GetId(),
+			StoreId:  storeID,
 			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
 			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
 			Action:   &authzenv1.Action{Name: "read"},
@@ -172,94 +253,40 @@ func TestEvaluation(t *testing.T) {
 		require.Equal(t, codes.Code(openfgav1.ErrorCode_latest_authorization_model_not_found), st.Code())
 	})
 
-	t.Run("validation_error_missing_subject", func(t *testing.T) {
-		s := MustNewServerWithOpts(
-			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalAuthZen),
-		)
-		t.Cleanup(s.Close)
+	t.Run("validation_errors", func(t *testing.T) {
+		s, storeID := newExperimentalAuthZenServerAndStore(t, ds)
 
-		createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
-		require.NoError(t, err)
-
-		req := &authzenv1.EvaluationRequest{
-			StoreId:  createStoreResp.GetId(),
-			Subject:  nil, // Missing required field
-			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
-			Action:   &authzenv1.Action{Name: "read"},
+		tests := []struct {
+			name     string
+			subject  *authzenv1.Subject
+			resource *authzenv1.Resource
+			action   *authzenv1.Action
+		}{
+			{"missing_subject", nil, &authzenv1.Resource{Type: "document", Id: "doc1"}, &authzenv1.Action{Name: "read"}},
+			{"missing_resource", &authzenv1.Subject{Type: "user", Id: "alice"}, nil, &authzenv1.Action{Name: "read"}},
+			{"missing_action", &authzenv1.Subject{Type: "user", Id: "alice"}, &authzenv1.Resource{Type: "document", Id: "doc1"}, nil},
 		}
 
-		resp, err := s.Evaluation(context.Background(), req)
-		require.Error(t, err)
-		require.Nil(t, resp)
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				resp, err := s.Evaluation(context.Background(), &authzenv1.EvaluationRequest{
+					StoreId:  storeID,
+					Subject:  tt.subject,
+					Resource: tt.resource,
+					Action:   tt.action,
+				})
+				require.Error(t, err)
+				require.Nil(t, resp)
 
-		st, ok := status.FromError(err)
-		require.True(t, ok)
-		require.Equal(t, codes.InvalidArgument, st.Code())
-	})
-
-	t.Run("validation_error_missing_resource", func(t *testing.T) {
-		s := MustNewServerWithOpts(
-			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalAuthZen),
-		)
-		t.Cleanup(s.Close)
-
-		createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
-		require.NoError(t, err)
-
-		req := &authzenv1.EvaluationRequest{
-			StoreId:  createStoreResp.GetId(),
-			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
-			Resource: nil, // Missing required field
-			Action:   &authzenv1.Action{Name: "read"},
+				st, ok := status.FromError(err)
+				require.True(t, ok)
+				require.Equal(t, codes.InvalidArgument, st.Code())
+			})
 		}
-
-		resp, err := s.Evaluation(context.Background(), req)
-		require.Error(t, err)
-		require.Nil(t, resp)
-
-		st, ok := status.FromError(err)
-		require.True(t, ok)
-		require.Equal(t, codes.InvalidArgument, st.Code())
-	})
-
-	t.Run("validation_error_missing_action", func(t *testing.T) {
-		s := MustNewServerWithOpts(
-			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalAuthZen),
-		)
-		t.Cleanup(s.Close)
-
-		createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
-		require.NoError(t, err)
-
-		req := &authzenv1.EvaluationRequest{
-			StoreId:  createStoreResp.GetId(),
-			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
-			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
-			Action:   nil, // Missing required field
-		}
-
-		resp, err := s.Evaluation(context.Background(), req)
-		require.Error(t, err)
-		require.Nil(t, resp)
-
-		st, ok := status.FromError(err)
-		require.True(t, ok)
-		require.Equal(t, codes.InvalidArgument, st.Code())
 	})
 
 	t.Run("returns_validation_error_for_invalid_type", func(t *testing.T) {
-		s := MustNewServerWithOpts(
-			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalAuthZen),
-		)
-		t.Cleanup(s.Close)
-
-		createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
-		require.NoError(t, err)
-		storeID := createStoreResp.GetId()
+		s, storeID := newExperimentalAuthZenServerAndStore(t, ds)
 
 		writeModel(t, s, storeID, simpleModel("reader"))
 
@@ -290,45 +317,11 @@ func TestEvaluations(t *testing.T) {
 
 	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
 
-	t.Run("feature_flag_disabled", func(t *testing.T) {
-		s := MustNewServerWithOpts(
-			WithDatastore(ds),
-		)
-		t.Cleanup(s.Close)
-
-		req := &authzenv1.EvaluationsRequest{
-			StoreId: ulid.Make().String(),
-			Evaluations: []*authzenv1.EvaluationsItemRequest{
-				{
-					Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
-					Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
-					Action:   &authzenv1.Action{Name: "read"},
-				},
-			},
-		}
-
-		resp, err := s.Evaluations(context.Background(), req)
-		require.Error(t, err)
-		require.Nil(t, resp)
-
-		st, ok := status.FromError(err)
-		require.True(t, ok)
-		require.Equal(t, codes.Unimplemented, st.Code())
-		require.Contains(t, st.Message(), "experimental")
-	})
-
 	t.Run("validation_error_empty_evaluations", func(t *testing.T) {
-		s := MustNewServerWithOpts(
-			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalAuthZen),
-		)
-		t.Cleanup(s.Close)
-
-		createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
-		require.NoError(t, err)
+		s, storeID := newExperimentalAuthZenServerAndStore(t, ds)
 
 		req := &authzenv1.EvaluationsRequest{
-			StoreId:     createStoreResp.GetId(),
+			StoreId:     storeID,
 			Evaluations: []*authzenv1.EvaluationsItemRequest{}, // Empty
 		}
 
@@ -342,27 +335,11 @@ func TestEvaluations(t *testing.T) {
 	})
 
 	t.Run("nil_evaluations_falls_back_to_single_evaluation", func(t *testing.T) {
-		s := MustNewServerWithOpts(
-			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalAuthZen),
-		)
-		t.Cleanup(s.Close)
-
-		createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
-		require.NoError(t, err)
-		storeID := createStoreResp.GetId()
+		s, storeID := newExperimentalAuthZenServerAndStore(t, ds)
 
 		writeModel(t, s, storeID, simpleModel("reader"))
 
-		_, err = s.Write(context.Background(), &openfgav1.WriteRequest{
-			StoreId: storeID,
-			Writes: &openfgav1.WriteRequestWrites{
-				TupleKeys: []*openfgav1.TupleKey{
-					{Object: "document:doc1", Relation: "reader", User: "user:alice"},
-				},
-			},
-		})
-		require.NoError(t, err)
+		writeTuples(t, s, storeID, &openfgav1.TupleKey{Object: "document:doc1", Relation: "reader", User: "user:alice"})
 
 		// Nil evaluations should fall back to a single Evaluation using top-level fields
 		req := &authzenv1.EvaluationsRequest{
@@ -381,15 +358,7 @@ func TestEvaluations(t *testing.T) {
 	})
 
 	t.Run("invalid_semantic_returns_error", func(t *testing.T) {
-		s := MustNewServerWithOpts(
-			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalAuthZen),
-		)
-		t.Cleanup(s.Close)
-
-		createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
-		require.NoError(t, err)
-		storeID := createStoreResp.GetId()
+		s, storeID := newExperimentalAuthZenServerAndStore(t, ds)
 
 		writeModel(t, s, storeID, simpleModel("reader"))
 
@@ -419,18 +388,11 @@ func TestEvaluations(t *testing.T) {
 	})
 
 	t.Run("batch_evaluation_with_default_semantic", func(t *testing.T) {
-		s := MustNewServerWithOpts(
-			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalAuthZen),
-		)
-		t.Cleanup(s.Close)
-
-		createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
-		require.NoError(t, err)
+		s, storeID := newExperimentalAuthZenServerAndStore(t, ds)
 
 		// Test with nil options (default execute_all)
 		req := &authzenv1.EvaluationsRequest{
-			StoreId: createStoreResp.GetId(),
+			StoreId: storeID,
 			Evaluations: []*authzenv1.EvaluationsItemRequest{
 				{
 					Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
@@ -452,18 +414,11 @@ func TestEvaluations(t *testing.T) {
 	})
 
 	t.Run("short_circuit_with_default_values", func(t *testing.T) {
-		s := MustNewServerWithOpts(
-			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalAuthZen),
-		)
-		t.Cleanup(s.Close)
-
-		createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
-		require.NoError(t, err)
+		s, storeID := newExperimentalAuthZenServerAndStore(t, ds)
 
 		// Test that default values from request level are used when per-evaluation values are nil
 		req := &authzenv1.EvaluationsRequest{
-			StoreId:  createStoreResp.GetId(),
+			StoreId:  storeID,
 			Subject:  &authzenv1.Subject{Type: "user", Id: "default_user"},
 			Resource: &authzenv1.Resource{Type: "document", Id: "default_doc"},
 			Action:   &authzenv1.Action{Name: "default_action"},
@@ -494,18 +449,11 @@ func TestEvaluations(t *testing.T) {
 	})
 
 	t.Run("short_circuit_deny_on_first_deny_breaks_on_error", func(t *testing.T) {
-		s := MustNewServerWithOpts(
-			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalAuthZen),
-		)
-		t.Cleanup(s.Close)
-
-		createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
-		require.NoError(t, err)
+		s, storeID := newExperimentalAuthZenServerAndStore(t, ds)
 
 		// Test with multiple evaluations - deny_on_first_deny short-circuits on errors
 		req := &authzenv1.EvaluationsRequest{
-			StoreId: createStoreResp.GetId(),
+			StoreId: storeID,
 			Evaluations: []*authzenv1.EvaluationsItemRequest{
 				{
 					Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
@@ -538,16 +486,7 @@ func TestEvaluations(t *testing.T) {
 	})
 
 	t.Run("short_circuit_returns_400_for_invalid_type", func(t *testing.T) {
-		s := MustNewServerWithOpts(
-			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalAuthZen),
-		)
-		t.Cleanup(s.Close)
-
-		// Create store
-		createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
-		require.NoError(t, err)
-		storeID := createStoreResp.GetId()
+		s, storeID := newExperimentalAuthZenServerAndStore(t, ds)
 
 		writeModel(t, s, storeID, simpleModel("reader"))
 
@@ -580,33 +519,15 @@ func TestEvaluations(t *testing.T) {
 	})
 
 	t.Run("success_batch_with_valid_model", func(t *testing.T) {
-		s := MustNewServerWithOpts(
-			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalAuthZen),
-		)
-		t.Cleanup(s.Close)
-
-		// Create store
-		createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
-		require.NoError(t, err)
-		storeID := createStoreResp.GetId()
+		s, storeID := newExperimentalAuthZenServerAndStore(t, ds)
 
 		writeModel(t, s, storeID, simpleModel("reader"))
 
-		// Write tuples
-		_, err = s.Write(context.Background(), &openfgav1.WriteRequest{
-			StoreId: storeID,
-			Writes: &openfgav1.WriteRequestWrites{
-				TupleKeys: []*openfgav1.TupleKey{
-					{
-						Object:   "document:doc1",
-						Relation: "reader",
-						User:     "user:alice",
-					},
-				},
-			},
+		writeTuples(t, s, storeID, &openfgav1.TupleKey{
+			Object:   "document:doc1",
+			Relation: "reader",
+			User:     "user:alice",
 		})
-		require.NoError(t, err)
 
 		// Test Evaluations with execute_all (default) - this uses batch path
 		req := &authzenv1.EvaluationsRequest{
@@ -641,33 +562,15 @@ func TestEvaluations(t *testing.T) {
 	})
 
 	t.Run("short_circuit_deny_on_first_deny_with_valid_model_breaks", func(t *testing.T) {
-		s := MustNewServerWithOpts(
-			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalAuthZen),
-		)
-		t.Cleanup(s.Close)
-
-		// Create store
-		createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
-		require.NoError(t, err)
-		storeID := createStoreResp.GetId()
+		s, storeID := newExperimentalAuthZenServerAndStore(t, ds)
 
 		writeModel(t, s, storeID, simpleModel("reader"))
 
-		// Write tuple for alice only (bob has no permission)
-		_, err = s.Write(context.Background(), &openfgav1.WriteRequest{
-			StoreId: storeID,
-			Writes: &openfgav1.WriteRequestWrites{
-				TupleKeys: []*openfgav1.TupleKey{
-					{
-						Object:   "document:doc1",
-						Relation: "reader",
-						User:     "user:alice",
-					},
-				},
-			},
+		writeTuples(t, s, storeID, &openfgav1.TupleKey{
+			Object:   "document:doc1",
+			Relation: "reader",
+			User:     "user:alice",
 		})
-		require.NoError(t, err)
 
 		// Test deny_on_first_deny: first evaluation is bob (no permission = deny)
 		// This should trigger the break on line 172-174 in authzen.go
@@ -706,33 +609,15 @@ func TestEvaluations(t *testing.T) {
 	})
 
 	t.Run("short_circuit_permit_on_first_permit_with_valid_model_breaks", func(t *testing.T) {
-		s := MustNewServerWithOpts(
-			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalAuthZen),
-		)
-		t.Cleanup(s.Close)
-
-		// Create store
-		createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
-		require.NoError(t, err)
-		storeID := createStoreResp.GetId()
+		s, storeID := newExperimentalAuthZenServerAndStore(t, ds)
 
 		writeModel(t, s, storeID, simpleModel("reader"))
 
-		// Write tuple for alice
-		_, err = s.Write(context.Background(), &openfgav1.WriteRequest{
-			StoreId: storeID,
-			Writes: &openfgav1.WriteRequestWrites{
-				TupleKeys: []*openfgav1.TupleKey{
-					{
-						Object:   "document:doc1",
-						Relation: "reader",
-						User:     "user:alice",
-					},
-				},
-			},
+		writeTuples(t, s, storeID, &openfgav1.TupleKey{
+			Object:   "document:doc1",
+			Relation: "reader",
+			User:     "user:alice",
 		})
-		require.NoError(t, err)
 
 		// Test permit_on_first_permit: first evaluation is alice (has permission = permit)
 		// This should trigger the break on line 176-178 in authzen.go
@@ -771,15 +656,7 @@ func TestEvaluations(t *testing.T) {
 	})
 
 	t.Run("short_circuit_buildcheck_error_deny_on_first_deny_breaks", func(t *testing.T) {
-		s := MustNewServerWithOpts(
-			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalAuthZen),
-		)
-		t.Cleanup(s.Close)
-
-		createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
-		require.NoError(t, err)
-		storeID := createStoreResp.GetId()
+		s, storeID := newExperimentalAuthZenServerAndStore(t, ds)
 
 		writeModel(t, s, storeID, simpleModel("reader"))
 
@@ -816,27 +693,11 @@ func TestEvaluations(t *testing.T) {
 	})
 
 	t.Run("short_circuit_buildcheck_error_permit_on_first_permit_continues", func(t *testing.T) {
-		s := MustNewServerWithOpts(
-			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalAuthZen),
-		)
-		t.Cleanup(s.Close)
-
-		createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
-		require.NoError(t, err)
-		storeID := createStoreResp.GetId()
+		s, storeID := newExperimentalAuthZenServerAndStore(t, ds)
 
 		writeModel(t, s, storeID, simpleModel("reader"))
 
-		_, err = s.Write(context.Background(), &openfgav1.WriteRequest{
-			StoreId: storeID,
-			Writes: &openfgav1.WriteRequestWrites{
-				TupleKeys: []*openfgav1.TupleKey{
-					{Object: "document:doc1", Relation: "reader", User: "user:alice"},
-				},
-			},
-		})
-		require.NoError(t, err)
+		writeTuples(t, s, storeID, &openfgav1.TupleKey{Object: "document:doc1", Relation: "reader", User: "user:alice"})
 
 		// First item has nil subject → buildCheckRequest error (continue, not break for permit_on_first_permit)
 		// Second item succeeds with permit → break
@@ -871,27 +732,11 @@ func TestEvaluations(t *testing.T) {
 	})
 
 	t.Run("short_circuit_check_error_permit_on_first_permit_continues", func(t *testing.T) {
-		s := MustNewServerWithOpts(
-			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalAuthZen),
-		)
-		t.Cleanup(s.Close)
-
-		createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
-		require.NoError(t, err)
-		storeID := createStoreResp.GetId()
+		s, storeID := newExperimentalAuthZenServerAndStore(t, ds)
 
 		writeModel(t, s, storeID, simpleModel("reader"))
 
-		_, err = s.Write(context.Background(), &openfgav1.WriteRequest{
-			StoreId: storeID,
-			Writes: &openfgav1.WriteRequestWrites{
-				TupleKeys: []*openfgav1.TupleKey{
-					{Object: "document:doc1", Relation: "reader", User: "user:alice"},
-				},
-			},
-		})
-		require.NoError(t, err)
+		writeTuples(t, s, storeID, &openfgav1.TupleKey{Object: "document:doc1", Relation: "reader", User: "user:alice"})
 
 		// First item has invalid type → Check returns error → continue
 		// Second item succeeds with permit → break
@@ -928,29 +773,15 @@ func TestEvaluations(t *testing.T) {
 	t.Run("deny_on_first_deny_returns_results_up_to_deny", func(t *testing.T) {
 		// Per AuthZEN spec: deny_on_first_deny returns all results up to and including first deny
 		// Example from spec: [doc1=true, doc2=false, doc3=true] -> returns [true, false]
-		s := MustNewServerWithOpts(
-			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalAuthZen),
-		)
-		t.Cleanup(s.Close)
-
-		createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
-		require.NoError(t, err)
-		storeID := createStoreResp.GetId()
+		s, storeID := newExperimentalAuthZenServerAndStore(t, ds)
 
 		writeModel(t, s, storeID, simpleModel("reader"))
 
 		// Write tuples: alice can read doc1 and doc3, but NOT doc2
-		_, err = s.Write(context.Background(), &openfgav1.WriteRequest{
-			StoreId: storeID,
-			Writes: &openfgav1.WriteRequestWrites{
-				TupleKeys: []*openfgav1.TupleKey{
-					{Object: "document:doc1", Relation: "reader", User: "user:alice"},
-					{Object: "document:doc3", Relation: "reader", User: "user:alice"},
-				},
-			},
-		})
-		require.NoError(t, err)
+		writeTuples(t, s, storeID,
+			&openfgav1.TupleKey{Object: "document:doc1", Relation: "reader", User: "user:alice"},
+			&openfgav1.TupleKey{Object: "document:doc3", Relation: "reader", User: "user:alice"},
+		)
 
 		// Request: doc1 (permit), doc2 (deny), doc3 (permit - should not be evaluated)
 		req := &authzenv1.EvaluationsRequest{
@@ -978,15 +809,7 @@ func TestEvaluations(t *testing.T) {
 	})
 
 	t.Run("execute_all_invalid_item_returns_error", func(t *testing.T) {
-		s := MustNewServerWithOpts(
-			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalAuthZen),
-		)
-		t.Cleanup(s.Close)
-
-		createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
-		require.NoError(t, err)
-		storeID := createStoreResp.GetId()
+		s, storeID := newExperimentalAuthZenServerAndStore(t, ds)
 
 		writeModel(t, s, storeID, simpleModel("reader"))
 
@@ -1018,28 +841,12 @@ func TestEvaluations(t *testing.T) {
 	})
 
 	t.Run("execute_all_batch_error_result_returns_error_context", func(t *testing.T) {
-		s := MustNewServerWithOpts(
-			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalAuthZen),
-		)
-		t.Cleanup(s.Close)
-
-		createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
-		require.NoError(t, err)
-		storeID := createStoreResp.GetId()
+		s, storeID := newExperimentalAuthZenServerAndStore(t, ds)
 
 		writeModel(t, s, storeID, simpleModel("reader"))
 
 		// Write tuple for alice
-		_, err = s.Write(context.Background(), &openfgav1.WriteRequest{
-			StoreId: storeID,
-			Writes: &openfgav1.WriteRequestWrites{
-				TupleKeys: []*openfgav1.TupleKey{
-					{Object: "document:doc1", Relation: "reader", User: "user:alice"},
-				},
-			},
-		})
-		require.NoError(t, err)
+		writeTuples(t, s, storeID, &openfgav1.TupleKey{Object: "document:doc1", Relation: "reader", User: "user:alice"})
 
 		// Mix valid and invalid type evaluations — invalid type triggers a per-item
 		// error in BatchCheck, which evaluateAll maps to an error context response.
@@ -1075,28 +882,12 @@ func TestEvaluations(t *testing.T) {
 	t.Run("permit_on_first_permit_returns_results_up_to_permit", func(t *testing.T) {
 		// Per AuthZEN spec: permit_on_first_permit returns all results up to and including first permit
 		// Like || operator: continues on false until first true
-		s := MustNewServerWithOpts(
-			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalAuthZen),
-		)
-		t.Cleanup(s.Close)
-
-		createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
-		require.NoError(t, err)
-		storeID := createStoreResp.GetId()
+		s, storeID := newExperimentalAuthZenServerAndStore(t, ds)
 
 		writeModel(t, s, storeID, simpleModel("reader"))
 
 		// Write tuple: alice can read doc3 only
-		_, err = s.Write(context.Background(), &openfgav1.WriteRequest{
-			StoreId: storeID,
-			Writes: &openfgav1.WriteRequestWrites{
-				TupleKeys: []*openfgav1.TupleKey{
-					{Object: "document:doc3", Relation: "reader", User: "user:alice"},
-				},
-			},
-		})
-		require.NoError(t, err)
+		writeTuples(t, s, storeID, &openfgav1.TupleKey{Object: "document:doc3", Relation: "reader", User: "user:alice"})
 
 		// Request: doc1 (deny), doc2 (deny), doc3 (permit), doc4 (should not be evaluated)
 		req := &authzenv1.EvaluationsRequest{
@@ -1133,41 +924,11 @@ func TestSubjectSearch(t *testing.T) {
 
 	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
 
-	t.Run("feature_flag_disabled", func(t *testing.T) {
-		s := MustNewServerWithOpts(
-			WithDatastore(ds),
-		)
-		t.Cleanup(s.Close)
-
-		req := &authzenv1.SubjectSearchRequest{
-			StoreId:  ulid.Make().String(),
-			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
-			Action:   &authzenv1.Action{Name: "read"},
-			Subject:  &authzenv1.SubjectFilter{Type: "user"},
-		}
-
-		resp, err := s.SubjectSearch(context.Background(), req)
-		require.Error(t, err)
-		require.Nil(t, resp)
-
-		st, ok := status.FromError(err)
-		require.True(t, ok)
-		require.Equal(t, codes.Unimplemented, st.Code())
-		require.Contains(t, st.Message(), "experimental")
-	})
-
 	t.Run("validation_error_missing_resource", func(t *testing.T) {
-		s := MustNewServerWithOpts(
-			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalAuthZen),
-		)
-		t.Cleanup(s.Close)
-
-		createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
-		require.NoError(t, err)
+		s, storeID := newExperimentalAuthZenServerAndStore(t, ds)
 
 		req := &authzenv1.SubjectSearchRequest{
-			StoreId:  createStoreResp.GetId(),
+			StoreId:  storeID,
 			Resource: nil, // Missing
 			Action:   &authzenv1.Action{Name: "read"},
 			Subject:  &authzenv1.SubjectFilter{Type: "user"},
@@ -1183,38 +944,14 @@ func TestSubjectSearch(t *testing.T) {
 	})
 
 	t.Run("success_with_valid_model", func(t *testing.T) {
-		s := MustNewServerWithOpts(
-			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalAuthZen),
-		)
-		t.Cleanup(s.Close)
-
-		// Create store
-		createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
-		require.NoError(t, err)
-		storeID := createStoreResp.GetId()
+		s, storeID := newExperimentalAuthZenServerAndStore(t, ds)
 
 		modelID := writeModel(t, s, storeID, simpleModel("reader"))
 
-		// Write tuples
-		_, err = s.Write(context.Background(), &openfgav1.WriteRequest{
-			StoreId: storeID,
-			Writes: &openfgav1.WriteRequestWrites{
-				TupleKeys: []*openfgav1.TupleKey{
-					{
-						Object:   "document:doc1",
-						Relation: "reader",
-						User:     "user:alice",
-					},
-					{
-						Object:   "document:doc1",
-						Relation: "reader",
-						User:     "user:bob",
-					},
-				},
-			},
-		})
-		require.NoError(t, err)
+		writeTuples(t, s, storeID,
+			&openfgav1.TupleKey{Object: "document:doc1", Relation: "reader", User: "user:alice"},
+			&openfgav1.TupleKey{Object: "document:doc1", Relation: "reader", User: "user:bob"},
+		)
 
 		// Test SubjectSearch - find users who can read doc1
 		req := &authzenv1.SubjectSearchRequest{
@@ -1224,11 +961,7 @@ func TestSubjectSearch(t *testing.T) {
 			Subject:  &authzenv1.SubjectFilter{Type: "user"},
 		}
 
-		// Pass model ID via header
-		md := metadata.New(map[string]string{
-			strings.ToLower(AuthorizationModelIDHeader): modelID,
-		})
-		ctx := metadata.NewIncomingContext(context.Background(), md)
+		ctx := contextWithAuthorizationModelID(modelID)
 
 		resp, err := s.SubjectSearch(ctx, req)
 		require.NoError(t, err)
@@ -1240,33 +973,15 @@ func TestSubjectSearch(t *testing.T) {
 	})
 
 	t.Run("json_response_omits_page_when_pagination_not_supported", func(t *testing.T) {
-		s := MustNewServerWithOpts(
-			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalAuthZen),
-		)
-		t.Cleanup(s.Close)
-
-		// Create store
-		createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
-		require.NoError(t, err)
-		storeID := createStoreResp.GetId()
+		s, storeID := newExperimentalAuthZenServerAndStore(t, ds)
 
 		modelID := writeModel(t, s, storeID, simpleModel("reader"))
 
-		// Write a tuple
-		_, err = s.Write(context.Background(), &openfgav1.WriteRequest{
-			StoreId: storeID,
-			Writes: &openfgav1.WriteRequestWrites{
-				TupleKeys: []*openfgav1.TupleKey{
-					{
-						Object:   "document:doc1",
-						Relation: "reader",
-						User:     "user:alice",
-					},
-				},
-			},
+		writeTuples(t, s, storeID, &openfgav1.TupleKey{
+			Object:   "document:doc1",
+			Relation: "reader",
+			User:     "user:alice",
 		})
-		require.NoError(t, err)
 
 		// Test SubjectSearch
 		req := &authzenv1.SubjectSearchRequest{
@@ -1276,10 +991,7 @@ func TestSubjectSearch(t *testing.T) {
 			Subject:  &authzenv1.SubjectFilter{Type: "user"},
 		}
 
-		md := metadata.New(map[string]string{
-			strings.ToLower(AuthorizationModelIDHeader): modelID,
-		})
-		ctx := metadata.NewIncomingContext(context.Background(), md)
+		ctx := contextWithAuthorizationModelID(modelID)
 
 		resp, err := s.SubjectSearch(ctx, req)
 		require.NoError(t, err)
@@ -1299,15 +1011,7 @@ func TestSubjectSearch(t *testing.T) {
 	})
 
 	t.Run("returns_wildcard_subjects", func(t *testing.T) {
-		s := MustNewServerWithOpts(
-			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalAuthZen),
-		)
-		t.Cleanup(s.Close)
-
-		createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
-		require.NoError(t, err)
-		storeID := createStoreResp.GetId()
+		s, storeID := newExperimentalAuthZenServerAndStore(t, ds)
 
 		// Model with wildcard support
 		modelID := writeModel(t, s, storeID, []*openfgav1.TypeDefinition{
@@ -1330,21 +1034,9 @@ func TestSubjectSearch(t *testing.T) {
 			},
 		})
 
-		// Write wildcard tuple: all users can view doc1
-		_, err = s.Write(context.Background(), &openfgav1.WriteRequest{
-			StoreId: storeID,
-			Writes: &openfgav1.WriteRequestWrites{
-				TupleKeys: []*openfgav1.TupleKey{
-					{Object: "document:doc1", Relation: "viewer", User: "user:*"},
-				},
-			},
-		})
-		require.NoError(t, err)
+		writeTuples(t, s, storeID, &openfgav1.TupleKey{Object: "document:doc1", Relation: "viewer", User: "user:*"})
 
-		md := metadata.New(map[string]string{
-			strings.ToLower(AuthorizationModelIDHeader): modelID,
-		})
-		ctx := metadata.NewIncomingContext(context.Background(), md)
+		ctx := contextWithAuthorizationModelID(modelID)
 
 		resp, err := s.SubjectSearch(ctx, &authzenv1.SubjectSearchRequest{
 			StoreId:  storeID,
@@ -1370,41 +1062,11 @@ func TestResourceSearch(t *testing.T) {
 
 	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
 
-	t.Run("feature_flag_disabled", func(t *testing.T) {
-		s := MustNewServerWithOpts(
-			WithDatastore(ds),
-		)
-		t.Cleanup(s.Close)
-
-		req := &authzenv1.ResourceSearchRequest{
-			StoreId:  ulid.Make().String(),
-			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
-			Action:   &authzenv1.Action{Name: "read"},
-			Resource: &authzenv1.ResourceFilter{Type: "document"},
-		}
-
-		resp, err := s.ResourceSearch(context.Background(), req)
-		require.Error(t, err)
-		require.Nil(t, resp)
-
-		st, ok := status.FromError(err)
-		require.True(t, ok)
-		require.Equal(t, codes.Unimplemented, st.Code())
-		require.Contains(t, st.Message(), "experimental")
-	})
-
 	t.Run("validation_error_missing_subject", func(t *testing.T) {
-		s := MustNewServerWithOpts(
-			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalAuthZen),
-		)
-		t.Cleanup(s.Close)
-
-		createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
-		require.NoError(t, err)
+		s, storeID := newExperimentalAuthZenServerAndStore(t, ds)
 
 		req := &authzenv1.ResourceSearchRequest{
-			StoreId:  createStoreResp.GetId(),
+			StoreId:  storeID,
 			Subject:  nil, // Missing
 			Action:   &authzenv1.Action{Name: "read"},
 			Resource: &authzenv1.ResourceFilter{Type: "document"},
@@ -1420,38 +1082,14 @@ func TestResourceSearch(t *testing.T) {
 	})
 
 	t.Run("success_with_valid_model", func(t *testing.T) {
-		s := MustNewServerWithOpts(
-			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalAuthZen),
-		)
-		t.Cleanup(s.Close)
-
-		// Create store
-		createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
-		require.NoError(t, err)
-		storeID := createStoreResp.GetId()
+		s, storeID := newExperimentalAuthZenServerAndStore(t, ds)
 
 		modelID := writeModel(t, s, storeID, simpleModel("reader"))
 
-		// Write tuples
-		_, err = s.Write(context.Background(), &openfgav1.WriteRequest{
-			StoreId: storeID,
-			Writes: &openfgav1.WriteRequestWrites{
-				TupleKeys: []*openfgav1.TupleKey{
-					{
-						Object:   "document:doc1",
-						Relation: "reader",
-						User:     "user:alice",
-					},
-					{
-						Object:   "document:doc2",
-						Relation: "reader",
-						User:     "user:alice",
-					},
-				},
-			},
-		})
-		require.NoError(t, err)
+		writeTuples(t, s, storeID,
+			&openfgav1.TupleKey{Object: "document:doc1", Relation: "reader", User: "user:alice"},
+			&openfgav1.TupleKey{Object: "document:doc2", Relation: "reader", User: "user:alice"},
+		)
 
 		// Test ResourceSearch - find documents alice can read
 		req := &authzenv1.ResourceSearchRequest{
@@ -1461,11 +1099,7 @@ func TestResourceSearch(t *testing.T) {
 			Resource: &authzenv1.ResourceFilter{Type: "document"},
 		}
 
-		// Pass model ID via header
-		md := metadata.New(map[string]string{
-			strings.ToLower(AuthorizationModelIDHeader): modelID,
-		})
-		ctx := metadata.NewIncomingContext(context.Background(), md)
+		ctx := contextWithAuthorizationModelID(modelID)
 
 		resp, err := s.ResourceSearch(ctx, req)
 		require.NoError(t, err)
@@ -1484,40 +1118,11 @@ func TestActionSearch(t *testing.T) {
 
 	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
 
-	t.Run("feature_flag_disabled", func(t *testing.T) {
-		s := MustNewServerWithOpts(
-			WithDatastore(ds),
-		)
-		t.Cleanup(s.Close)
-
-		req := &authzenv1.ActionSearchRequest{
-			StoreId:  ulid.Make().String(),
-			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
-			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
-		}
-
-		resp, err := s.ActionSearch(context.Background(), req)
-		require.Error(t, err)
-		require.Nil(t, resp)
-
-		st, ok := status.FromError(err)
-		require.True(t, ok)
-		require.Equal(t, codes.Unimplemented, st.Code())
-		require.Contains(t, st.Message(), "experimental")
-	})
-
 	t.Run("validation_error_missing_subject", func(t *testing.T) {
-		s := MustNewServerWithOpts(
-			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalAuthZen),
-		)
-		t.Cleanup(s.Close)
-
-		createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
-		require.NoError(t, err)
+		s, storeID := newExperimentalAuthZenServerAndStore(t, ds)
 
 		req := &authzenv1.ActionSearchRequest{
-			StoreId:  createStoreResp.GetId(),
+			StoreId:  storeID,
 			Subject:  nil, // Missing
 			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
 		}
@@ -1532,17 +1137,10 @@ func TestActionSearch(t *testing.T) {
 	})
 
 	t.Run("model_not_found", func(t *testing.T) {
-		s := MustNewServerWithOpts(
-			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalAuthZen),
-		)
-		t.Cleanup(s.Close)
-
-		createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
-		require.NoError(t, err)
+		s, storeID := newExperimentalAuthZenServerAndStore(t, ds)
 
 		req := &authzenv1.ActionSearchRequest{
-			StoreId:  createStoreResp.GetId(),
+			StoreId:  storeID,
 			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
 			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
 		}
@@ -1557,33 +1155,15 @@ func TestActionSearch(t *testing.T) {
 	})
 
 	t.Run("success_with_valid_model", func(t *testing.T) {
-		s := MustNewServerWithOpts(
-			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalAuthZen),
-		)
-		t.Cleanup(s.Close)
-
-		// Create store
-		createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
-		require.NoError(t, err)
-		storeID := createStoreResp.GetId()
+		s, storeID := newExperimentalAuthZenServerAndStore(t, ds)
 
 		modelID := writeModel(t, s, storeID, simpleModel("reader", "writer"))
 
-		// Write a tuple to grant permission
-		_, err = s.Write(context.Background(), &openfgav1.WriteRequest{
-			StoreId: storeID,
-			Writes: &openfgav1.WriteRequestWrites{
-				TupleKeys: []*openfgav1.TupleKey{
-					{
-						Object:   "document:doc1",
-						Relation: "reader",
-						User:     "user:alice",
-					},
-				},
-			},
+		writeTuples(t, s, storeID, &openfgav1.TupleKey{
+			Object:   "document:doc1",
+			Relation: "reader",
+			User:     "user:alice",
 		})
-		require.NoError(t, err)
 
 		// Now test ActionSearch - this should exercise the success path
 		req := &authzenv1.ActionSearchRequest{
@@ -1592,11 +1172,7 @@ func TestActionSearch(t *testing.T) {
 			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
 		}
 
-		// Pass model ID via header
-		md := metadata.New(map[string]string{
-			strings.ToLower(AuthorizationModelIDHeader): modelID,
-		})
-		ctx := metadata.NewIncomingContext(context.Background(), md)
+		ctx := contextWithAuthorizationModelID(modelID)
 
 		resp, err := s.ActionSearch(ctx, req)
 		require.NoError(t, err)
@@ -1620,22 +1196,11 @@ func TestActionSearch(t *testing.T) {
 	})
 
 	t.Run("invalid_resource_type_returns_error", func(t *testing.T) {
-		s := MustNewServerWithOpts(
-			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalAuthZen),
-		)
-		t.Cleanup(s.Close)
-
-		createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
-		require.NoError(t, err)
-		storeID := createStoreResp.GetId()
+		s, storeID := newExperimentalAuthZenServerAndStore(t, ds)
 
 		modelID := writeModel(t, s, storeID, simpleModel("reader"))
 
-		md := metadata.New(map[string]string{
-			strings.ToLower(AuthorizationModelIDHeader): modelID,
-		})
-		ctx := metadata.NewIncomingContext(context.Background(), md)
+		ctx := contextWithAuthorizationModelID(modelID)
 
 		// Resource type not in model → GetRelations error
 		req := &authzenv1.ActionSearchRequest{
@@ -1662,12 +1227,7 @@ func TestGetAuthorizationModelIDFromHeader(t *testing.T) {
 	t.Run("returns_header_value_when_present", func(t *testing.T) {
 		headerModelID := ulid.Make().String()
 
-		// Create context with gRPC metadata containing the header
-		// grpc-gateway converts header names to lowercase
-		md := metadata.New(map[string]string{
-			strings.ToLower(AuthorizationModelIDHeader): headerModelID,
-		})
-		ctx := metadata.NewIncomingContext(context.Background(), md)
+		ctx := contextWithAuthorizationModelID(headerModelID)
 
 		result := getAuthorizationModelIDFromHeader(ctx)
 		require.Equal(t, headerModelID, result)
@@ -1682,11 +1242,7 @@ func TestGetAuthorizationModelIDFromHeader(t *testing.T) {
 	})
 
 	t.Run("returns_empty_when_header_is_empty", func(t *testing.T) {
-		// Create context with empty header value
-		md := metadata.New(map[string]string{
-			strings.ToLower(AuthorizationModelIDHeader): "",
-		})
-		ctx := metadata.NewIncomingContext(context.Background(), md)
+		ctx := contextWithAuthorizationModelID("")
 
 		result := getAuthorizationModelIDFromHeader(ctx)
 		require.Empty(t, result)
@@ -1701,42 +1257,20 @@ func TestEvaluationWithAuthorizationModelIDHeader(t *testing.T) {
 	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
 
 	t.Run("uses_model_id_from_header", func(t *testing.T) {
-		s := MustNewServerWithOpts(
-			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalAuthZen),
-		)
-		t.Cleanup(s.Close)
-
-		// Create store
-		createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
-		require.NoError(t, err)
-		storeID := createStoreResp.GetId()
+		s, storeID := newExperimentalAuthZenServerAndStore(t, ds)
 
 		// Write two models — first has "reader", second (latest) has "writer"
 		modelID1 := writeModel(t, s, storeID, simpleModel("reader"))
 		writeModel(t, s, storeID, simpleModel("writer"))
 
-		// Write tuple using model 1 (which has the reader relation)
-		_, err = s.Write(context.Background(), &openfgav1.WriteRequest{
-			StoreId:              storeID,
-			AuthorizationModelId: modelID1,
-			Writes: &openfgav1.WriteRequestWrites{
-				TupleKeys: []*openfgav1.TupleKey{
-					{
-						Object:   "document:doc1",
-						Relation: "reader",
-						User:     "user:alice",
-					},
-				},
-			},
+		writeTuplesWithModel(t, s, storeID, modelID1, &openfgav1.TupleKey{
+			Object:   "document:doc1",
+			Relation: "reader",
+			User:     "user:alice",
 		})
-		require.NoError(t, err)
 
 		// Create context with header specifying the first model ID
-		md := metadata.New(map[string]string{
-			strings.ToLower(AuthorizationModelIDHeader): modelID1,
-		})
-		ctx := metadata.NewIncomingContext(context.Background(), md)
+		ctx := contextWithAuthorizationModelID(modelID1)
 
 		// Test Evaluation - should use modelID1 from header
 		req := &authzenv1.EvaluationRequest{
