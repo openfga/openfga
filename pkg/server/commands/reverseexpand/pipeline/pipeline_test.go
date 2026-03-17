@@ -19,60 +19,66 @@ import (
 
 	"github.com/openfga/openfga/pkg/server/commands/reverseexpand/pipeline"
 	"github.com/openfga/openfga/pkg/server/commands/reverseexpand/pipeline/obj"
+	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/memory"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
-type StaticObjectStore struct {
-	m map[string]map[string][]string
+const Store string = "ABC"
+
+type TestStore struct {
+	storage.OpenFGADatastore
 }
 
-func (s *StaticObjectStore) Add(tuples ...string) {
-	if s.m == nil {
-		s.m = make(map[string]map[string][]string)
+func NewTestStore() TestStore {
+	return TestStore{
+		memory.New(),
 	}
-	for _, tuple := range tuples {
-		objectRelation, user, _ := strings.Cut(tuple, "@")
-		if _, ok := s.m[user]; !ok {
-			s.m[user] = make(map[string][]string)
-		}
-		objectMap := s.m[user]
+}
+
+func (s *TestStore) Add(t testing.TB, tuples ...string) {
+	t.Helper()
+
+	const size int = 10
+
+	writes := make([]*openfgav1.TupleKey, size)
+
+	var ndx int
+
+	for i, tpl := range tuples {
+		objectRelation, user, _ := strings.Cut(tpl, "@")
 		object, relation, _ := strings.Cut(objectRelation, "#")
-		objectType, _, _ := strings.Cut(object, ":")
-		objectMap[objectType+"#"+relation] = append(objectMap[objectType+"#"+relation], object)
-	}
-}
+		key := tuple.NewTupleKey(object, relation, user)
+		ndx = i % size
+		writes[ndx] = key
 
-func (s *StaticObjectStore) Read(ctx context.Context, q pipeline.ObjectQuery) iter.Seq[pipeline.Item] {
-	var objects []string
-	for _, user := range q.Users {
-		if objectMap, ok := s.m[user]; ok {
-			if ids, ok := objectMap[q.ObjectType+"#"+q.Relation]; ok {
-				objects = append(objects, ids...)
+		if ndx == size-1 {
+			err := s.Write(context.Background(), Store, nil, writes)
+			if err != nil {
+				t.Fatal(err)
 			}
 		}
 	}
 
-	return func(yield func(o pipeline.Item) bool) {
-		for _, o := range objects {
-			if !yield(pipeline.Item{Value: o}) {
-				break
-			}
+	if ndx < size-1 {
+		err := s.Write(context.Background(), Store, nil, writes[:ndx+1])
+		if err != nil {
+			t.Fatal(err)
 		}
 	}
 }
 
-type ErrorObjectStore struct {
+type ErrorReader struct {
 	err error
 }
 
-func NewErrorObjectStore(err error) *ErrorObjectStore {
-	return &ErrorObjectStore{err: err}
+func NewErrorReader(err error) *ErrorReader {
+	return &ErrorReader{err: err}
 }
 
-func (e *ErrorObjectStore) Read(_ context.Context, _ pipeline.ObjectQuery) iter.Seq[pipeline.Item] {
+func (e *ErrorReader) Read(_ context.Context, _ pipeline.ObjectQuery) iter.Seq[pipeline.Item] {
 	return func(yield func(pipeline.Item) bool) {
 		yield(pipeline.Item{Err: e.err})
 	}
@@ -95,6 +101,7 @@ func TestPipelineShutdown(t *testing.T) {
 	  	define blocked: [user]
 	  	define moderator: (reader and writer) but not blocked
 	    define member: moderator or member from parent
+	    define fault: member but not member
 	    define parent: [team]
 
 	type team
@@ -104,11 +111,14 @@ func TestPipelineShutdown(t *testing.T) {
 	  	define blocked: [user]
 	  	define moderator: (reader and writer) but not blocked
 	    define member: moderator or member from parent
+	    define fault: member but not member
 	    define parent: [org]
 
 	type document
 	  relations
 	    define viewer: [org#member, team#member]
+	    define parent: [org, team]
+	    define fault: fault from parent
 	`
 
 	const user string = "user:bob"
@@ -132,6 +142,7 @@ func TestPipelineShutdown(t *testing.T) {
 		tuples = append(tuples, fmt.Sprintf("%s#parent@%s", child, parent))
 		documents = append(documents, fmt.Sprintf("document:%d", i))
 		tuples = append(tuples, fmt.Sprintf("document:%d#viewer@%s#member", i, child))
+		tuples = append(tuples, fmt.Sprintf("document:%d#parent@%s", i, child))
 
 		for j := range 20 {
 			tuples = append(
@@ -147,8 +158,8 @@ func TestPipelineShutdown(t *testing.T) {
 
 	slices.Reverse(documents)
 
-	var ds StaticObjectStore
-	ds.Add(tuples...)
+	ds := NewTestStore()
+	ds.Add(t, tuples...)
 
 	model := testutils.MustTransformDSLToProtoWithID(dsl)
 
@@ -156,184 +167,264 @@ func TestPipelineShutdown(t *testing.T) {
 		context.Background(),
 		model,
 	)
-
 	require.NoError(t, err)
 
 	g := typesys.GetWeightedGraph()
 
-	spec := pipeline.Spec{
-		ObjectType: "document",
-		Relation:   "viewer",
-		User:       "user:bob",
-	}
+	validator := obj.NewValidator(context.Background(), typesys, nil)
 
-	pl := pipeline.New(g, &ds, pipeline.WithBufferCapacity(bufferSize), pipeline.WithChunkSize(chunkSize))
+	reader := obj.NewReader(
+		ds,
+		Store,
+		obj.WithValidator(validator),
+	)
 
-	t.Run("NoAbandon", func(t *testing.T) {
-		defer goleak.VerifyNone(t)
+	pl := pipeline.New(g, reader, pipeline.WithBufferCapacity(bufferSize), pipeline.WithChunkSize(chunkSize))
 
-		seq, err := pl.Expand(context.Background(), spec)
-		require.NoError(t, err)
+	t.Run("exclusive_path", func(t *testing.T) {
+		spec := pipeline.Spec{
+			ObjectType: "document",
+			Relation:   "viewer",
+			User:       "user:bob",
+		}
 
-		values := make([]string, 0, len(documents))
-		for object := range seq {
-			value, err := object.Object()
+		t.Run("NoAbandon", func(t *testing.T) {
+			defer goleak.VerifyNone(t)
+
+			seq, err := pl.Expand(context.Background(), spec)
 			require.NoError(t, err)
-			values = append(values, value)
-		}
-		require.ElementsMatch(t, documents, values)
-	})
 
-	t.Run("AbandonWithoutPull", func(t *testing.T) {
-		defer goleak.VerifyNone(t)
+			values := make([]string, 0, len(documents))
+			for object := range seq {
+				value, err := object.Object()
+				require.NoError(t, err)
+				values = append(values, value)
+			}
+			require.ElementsMatch(t, documents, values)
+		})
 
-		_, err := pl.Expand(context.Background(), spec)
-		require.NoError(t, err)
-	})
+		t.Run("AbandonWithoutPull", func(t *testing.T) {
+			defer goleak.VerifyNone(t)
 
-	t.Run("AbandonAfterPull", func(t *testing.T) {
-		defer goleak.VerifyNone(t)
+			_, err := pl.Expand(context.Background(), spec)
+			require.NoError(t, err)
+		})
 
-		seq, err := pl.Expand(context.Background(), spec)
-		require.NoError(t, err)
+		t.Run("AbandonAfterPull", func(t *testing.T) {
+			defer goleak.VerifyNone(t)
 
-		var value string
-		for objects := range seq {
-			value, err = objects.Object()
-			break
-		}
-		require.NoError(t, err)
-		require.NotEmpty(t, value)
-	})
+			seq, err := pl.Expand(context.Background(), spec)
+			require.NoError(t, err)
 
-	t.Run("AbandonMidProcessing", func(t *testing.T) {
-		defer goleak.VerifyNone(t)
-
-		seq, err := pl.Expand(context.Background(), spec)
-		require.NoError(t, err)
-
-		var count int
-		limit := nestLevel / 2
-		for range seq {
-			count++
-			if count >= limit {
+			var value string
+			for objects := range seq {
+				value, err = objects.Object()
 				break
 			}
-		}
-	})
+			require.NoError(t, err)
+			require.NotEmpty(t, value)
+		})
 
-	t.Run("CancelWithoutPull", func(t *testing.T) {
-		defer goleak.VerifyNone(t)
+		t.Run("AbandonMidProcessing", func(t *testing.T) {
+			defer goleak.VerifyNone(t)
 
-		ctx, cancel := context.WithCancel(context.Background())
+			seq, err := pl.Expand(context.Background(), spec)
+			require.NoError(t, err)
 
-		_, err := pl.Expand(ctx, spec)
-		require.NoError(t, err)
-
-		cancel()
-	})
-
-	t.Run("CancelBeforePull", func(t *testing.T) {
-		defer goleak.VerifyNone(t)
-
-		ctx, cancel := context.WithCancel(context.Background())
-
-		seq, err := pl.Expand(ctx, spec)
-		require.NoError(t, err)
-
-		cancel()
-		for range seq {
-			t.Fatal("received item after context canceled")
-		}
-	})
-
-	t.Run("CancelAfterPull", func(t *testing.T) {
-		defer goleak.VerifyNone(t)
-
-		ctx, cancel := context.WithCancel(context.Background())
-
-		defer cancel()
-
-		seq, err := pl.Expand(ctx, spec)
-		require.NoError(t, err)
-
-		var value string
-		for object := range seq {
-			var v string
-			v, err = object.Object()
-			if err == nil {
-				value = v
+			var count int
+			limit := nestLevel / 2
+			for range seq {
+				count++
+				if count >= limit {
+					break
+				}
 			}
+		})
+
+		t.Run("CancelWithoutPull", func(t *testing.T) {
+			defer goleak.VerifyNone(t)
+
+			ctx, cancel := context.WithCancel(context.Background())
+
+			_, err := pl.Expand(ctx, spec)
+			require.NoError(t, err)
+
 			cancel()
-		}
-		require.NotEmpty(t, value)
-		require.ErrorIs(t, err, context.Canceled)
-	})
+		})
 
-	t.Run("CancelMidProcessing", func(t *testing.T) {
-		defer goleak.VerifyNone(t)
+		t.Run("CancelBeforePull", func(t *testing.T) {
+			defer goleak.VerifyNone(t)
 
-		ctx, cancel := context.WithCancel(context.Background())
+			ctx, cancel := context.WithCancel(context.Background())
 
-		defer cancel()
+			seq, err := pl.Expand(ctx, spec)
+			require.NoError(t, err)
 
-		seq, err := pl.Expand(ctx, spec)
-		require.NoError(t, err)
+			cancel()
+			for range seq {
+				t.Fatal("received item after context canceled")
+			}
+		})
 
-		var count int
-		limit := nestLevel / 2
-		for object := range seq {
-			_, err = object.Object()
-			count++
-			if count >= limit {
+		t.Run("CancelAfterPull", func(t *testing.T) {
+			defer goleak.VerifyNone(t)
+
+			ctx, cancel := context.WithCancel(context.Background())
+
+			defer cancel()
+
+			seq, err := pl.Expand(ctx, spec)
+			require.NoError(t, err)
+
+			var value string
+			for object := range seq {
+				var v string
+				v, err = object.Object()
+				if err == nil {
+					value = v
+				}
 				cancel()
 			}
-		}
-		require.ErrorIs(t, err, context.Canceled)
+			require.NotEmpty(t, value)
+			require.ErrorIs(t, err, context.Canceled)
+		})
+
+		t.Run("CancelMidProcessing", func(t *testing.T) {
+			defer goleak.VerifyNone(t)
+
+			ctx, cancel := context.WithCancel(context.Background())
+
+			defer cancel()
+
+			seq, err := pl.Expand(ctx, spec)
+			require.NoError(t, err)
+
+			var count int
+			limit := nestLevel / 2
+			for object := range seq {
+				_, err = object.Object()
+				count++
+				if count >= limit {
+					cancel()
+				}
+			}
+			require.ErrorIs(t, err, context.Canceled)
+		})
+
+		t.Run("TimeoutAfterPull", func(t *testing.T) {
+			defer goleak.VerifyNone(t)
+
+			ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+
+			defer cancel()
+
+			seq, err := pl.Expand(ctx, spec)
+			require.NoError(t, err)
+
+			var count int
+			for object := range seq {
+				_, err = object.Object()
+
+				if count == 0 {
+					// wait long enough for timeout to occur
+					time.Sleep(200 * time.Millisecond)
+				}
+				count++
+			}
+			require.Greater(t, len(documents), count) // ensure that we stopped before consuming the full traversal
+			require.ErrorIs(t, err, context.DeadlineExceeded)
+		})
+
+		t.Run("TimeoutBeforePull", func(t *testing.T) {
+			defer goleak.VerifyNone(t)
+
+			ctx, cancel := context.WithTimeout(context.Background(), 1*time.Millisecond)
+
+			seq, err := pl.Expand(ctx, spec)
+			require.NoError(t, err)
+
+			defer cancel()
+
+			// wait long enough for timeout to occur
+			time.Sleep(2 * time.Millisecond)
+
+			for range seq {
+				t.Fatal("received value after context deadline exceeded")
+			}
+		})
 	})
 
-	t.Run("TimeoutAfterPull", func(t *testing.T) {
-		defer goleak.VerifyNone(t)
-
-		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-
-		defer cancel()
-
-		seq, err := pl.Expand(ctx, spec)
-		require.NoError(t, err)
-
-		var count int
-		for object := range seq {
-			_, err = object.Object()
-			if count > bufferSize+chunkSize+1 {
-				t.Fatalf("received unexpected value")
-			}
-
-			if count == 0 {
-				// wait long enough for timeout to occur
-				time.Sleep(200 * time.Millisecond)
-			}
-			count++
+	t.Run("mutual_path", func(t *testing.T) {
+		spec := pipeline.Spec{
+			ObjectType: "document",
+			Relation:   "fault",
+			User:       "user:bob",
 		}
-		require.ErrorIs(t, err, context.DeadlineExceeded)
-	})
 
-	t.Run("TimeoutBeforePull", func(t *testing.T) {
-		defer goleak.VerifyNone(t)
+		t.Run("NoAbandon", func(t *testing.T) {
+			defer goleak.VerifyNone(t)
 
-		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Millisecond)
+			seq, err := pl.Expand(context.Background(), spec)
+			require.NoError(t, err)
 
-		seq, err := pl.Expand(ctx, spec)
-		require.NoError(t, err)
+			values := make([]string, 0, len(documents))
+			for object := range seq {
+				value, err := object.Object()
+				require.NoError(t, err)
+				values = append(values, value)
+			}
+			require.Empty(t, values)
+		})
 
-		defer cancel()
+		t.Run("AbandonWithoutPull", func(t *testing.T) {
+			defer goleak.VerifyNone(t)
 
-		// wait long enough for timeout to occur
-		time.Sleep(2 * time.Millisecond)
+			_, err := pl.Expand(context.Background(), spec)
+			require.NoError(t, err)
+		})
 
-		for range seq {
-			t.Fatal("received value after context deadline exceeded")
-		}
+		t.Run("CancelWithoutPull", func(t *testing.T) {
+			defer goleak.VerifyNone(t)
+
+			ctx, cancel := context.WithCancel(context.Background())
+
+			_, err := pl.Expand(ctx, spec)
+			require.NoError(t, err)
+
+			cancel()
+		})
+
+		t.Run("CancelBeforePull", func(t *testing.T) {
+			defer goleak.VerifyNone(t)
+
+			ctx, cancel := context.WithCancel(context.Background())
+
+			seq, err := pl.Expand(ctx, spec)
+			require.NoError(t, err)
+
+			cancel()
+			for range seq {
+				t.Fatal("received item after context canceled")
+			}
+		})
+
+		t.Run("TimeoutBeforePull", func(t *testing.T) {
+			defer goleak.VerifyNone(t)
+
+			ctx, cancel := context.WithTimeout(context.Background(), 1*time.Millisecond)
+
+			seq, err := pl.Expand(ctx, spec)
+			require.NoError(t, err)
+
+			defer cancel()
+
+			// wait long enough for timeout to occur
+			time.Sleep(2 * time.Millisecond)
+
+			for range seq {
+				t.Fatal("received value after context deadline exceeded")
+			}
+		})
 	})
 }
 
@@ -371,7 +462,7 @@ func TestPipelineError(t *testing.T) {
 	  relations
 	    define viewer: [org#member, team#member]
 	`
-	ds := NewErrorObjectStore(ErrSignal)
+	ds := NewErrorReader(ErrSignal)
 
 	model := testutils.MustTransformDSLToProtoWithID(dsl)
 
@@ -2361,19 +2452,30 @@ var cases = []testcase{
 func BenchmarkPipeline(b *testing.B) {
 	for _, tc := range cases {
 		b.Run(tc.name, func(b *testing.B) {
-			var ds StaticObjectStore
-			ds.Add(tc.tuples...)
-
 			model := testutils.MustTransformDSLToProtoWithID(tc.model)
+
+			ds := NewTestStore()
+
+			err := ds.WriteAuthorizationModel(context.Background(), Store, model)
+			require.NoError(b, err)
+
+			ds.Add(b, tc.tuples...)
 
 			typesys, err := typesystem.NewAndValidate(
 				context.Background(),
 				model,
 			)
-
 			require.NoError(b, err)
 
 			g := typesys.GetWeightedGraph()
+
+			validator := obj.NewValidator(context.Background(), typesys, nil)
+
+			reader := obj.NewReader(
+				ds,
+				Store,
+				obj.WithValidator(validator),
+			)
 
 			b.ResetTimer()
 
@@ -2384,7 +2486,7 @@ func BenchmarkPipeline(b *testing.B) {
 					User:       tc.user,
 				}
 
-				seq, err := pipeline.New(g, &ds).Expand(context.Background(), spec)
+				seq, err := pipeline.New(g, reader).Expand(context.Background(), spec)
 
 				require.NoError(b, err)
 
@@ -2400,19 +2502,30 @@ func TestPipeline(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			defer goleak.VerifyNone(t)
 
-			var ds StaticObjectStore
-			ds.Add(tc.tuples...)
-
 			model := testutils.MustTransformDSLToProtoWithID(tc.model)
+
+			ds := NewTestStore()
+
+			err := ds.WriteAuthorizationModel(context.Background(), Store, model)
+			require.NoError(t, err)
+
+			ds.Add(t, tc.tuples...)
 
 			typesys, err := typesystem.NewAndValidate(
 				context.Background(),
 				model,
 			)
-
 			require.NoError(t, err)
 
 			g := typesys.GetWeightedGraph()
+
+			validator := obj.NewValidator(context.Background(), typesys, nil)
+
+			reader := obj.NewReader(
+				ds,
+				Store,
+				obj.WithValidator(validator),
+			)
 
 			spec := pipeline.Spec{
 				ObjectType: tc.objectType,
@@ -2420,7 +2533,7 @@ func TestPipeline(t *testing.T) {
 				User:       tc.user,
 			}
 
-			seq, err := pipeline.New(g, &ds).Expand(context.Background(), spec)
+			seq, err := pipeline.New(g, reader).Expand(context.Background(), spec)
 
 			require.NoError(t, err)
 

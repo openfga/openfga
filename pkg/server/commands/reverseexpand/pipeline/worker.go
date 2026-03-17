@@ -3,42 +3,35 @@ package pipeline
 import (
 	"context"
 	"sync"
-
-	"github.com/openfga/openfga/internal/pipe"
 )
 
 type sender struct {
-	key *Edge
-	pipe.RxCloser[*message]
-}
-
-func (s *sender) Key() *Edge {
-	return s.key
+	Key *Edge
+	C   <-chan *message
 }
 
 type listener struct {
-	key *Edge
-	pipe.TxCloser[*message]
+	closed bool
+	Key    *Edge
+	C      chan<- *message
 }
 
-func (l *listener) Key() *Edge {
-	return l.key
+func (l *listener) Close() error {
+	if l.closed {
+		return nil
+	}
+	l.closed = true
+	close(l.C)
+	return nil
 }
 
 // worker processes messages for a single node in the authorization graph.
 type worker struct {
-	senders      []*sender
-	listeners    []*listener
-	Resolver     resolver
-	bufferConfig pipe.Config
-	started      bool
-}
-
-// Close shuts down outputs. Inputs are owned by upstream workers.
-func (w *worker) Close() {
-	for _, lst := range w.listeners {
-		lst.Close()
-	}
+	senders        []*sender
+	listeners      []*listener
+	Resolver       resolver
+	bufferCapacity int
+	started        bool
 }
 
 func (w *worker) Listen(s *sender) {
@@ -53,20 +46,25 @@ func (w *worker) Start(ctx context.Context) {
 	defer span.End()
 
 	w.started = true
+
 	w.Resolver.Resolve(ctx, w.senders, w.listeners)
+
+	for _, lst := range w.listeners {
+		lst.Close()
+	}
 }
 
 func (w *worker) Subscribe(key *Edge) *sender {
-	p := pipe.Must[*message](w.bufferConfig)
+	ch := make(chan *message, w.bufferCapacity)
 
 	w.listeners = append(w.listeners, &listener{
-		key,
-		p,
+		Key: key,
+		C:   ch,
 	})
 
 	return &sender{
 		key,
-		p,
+		ch,
 	}
 }
 
@@ -74,11 +72,14 @@ func (w *worker) Subscribe(key *Edge) *sender {
 func (w *worker) listenForInitialValue(value string, membership *membership) {
 	items := []string{value}
 	membership.Tracker().Inc()
-	m := &message{
+	m := message{
 		Value:   items,
 		tracker: membership.Tracker(),
 	}
-	w.Listen(&sender{nil, pipe.StaticRx(m)})
+	ch := make(chan *message, 1)
+	ch <- &m
+	close(ch)
+	w.Listen(&sender{Key: nil, C: ch})
 }
 
 type workerPool map[*Node]*worker
@@ -88,16 +89,11 @@ func (wp workerPool) Start(ctx context.Context) {
 	var wg sync.WaitGroup
 	for _, w := range wp {
 		wg.Add(1)
-		go func(ctx context.Context, wg *sync.WaitGroup, fn func(context.Context)) {
+
+		go func() {
 			defer wg.Done()
-			fn(ctx)
-		}(ctx, &wg, w.Start)
+			w.Start(ctx)
+		}()
 	}
 	wg.Wait()
-}
-
-func (wp workerPool) Stop() {
-	for _, w := range wp {
-		w.Close()
-	}
 }
