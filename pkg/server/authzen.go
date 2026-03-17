@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
+	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -113,7 +114,7 @@ func (s *Server) initAuthZenRequest(ctx context.Context, method string, req auth
 // called to end the span.
 func (s *Server) prepareAuthZenRequest(ctx context.Context, method string, req authzenRequest) (context.Context, func(), error) {
 	if err := s.ensureAuthZenEnabled(req.GetStoreId()); err != nil {
-		return ctx, nil, err
+		return ctx, func() {}, err
 	}
 
 	ctx, span := tracer.Start(ctx, method)
@@ -121,7 +122,7 @@ func (s *Server) prepareAuthZenRequest(ctx context.Context, method string, req a
 	ctx, err := s.initAuthZenRequest(ctx, method, req)
 	if err != nil {
 		span.End()
-		return ctx, nil, err
+		return ctx, func() {}, err
 	}
 
 	return ctx, func() {
@@ -610,6 +611,10 @@ func (s *Server) ActionSearch(ctx context.Context, req *authzenv1.ActionSearchRe
 	actions := make([]*authzenv1.Action, 0, len(relationNames))
 	for correlationID, result := range batchResp.GetResult() {
 		if result.GetError() != nil {
+			s.logger.WarnWithContext(ctx, "action search: batch check item returned error",
+				zap.String("correlation_id", correlationID),
+				zap.String("error_message", result.GetError().GetMessage()),
+			)
 			continue
 		}
 		if result.GetAllowed() {
