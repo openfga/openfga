@@ -620,6 +620,10 @@ func (s *Server) ActionSearch(ctx context.Context, req *authzenv1.ActionSearchRe
 		if result.GetAllowed() {
 			idx, err := strconv.Atoi(correlationID)
 			if err != nil || idx < 0 || idx >= len(relationNames) {
+				s.logger.WarnWithContext(ctx, "action search: invalid correlation ID in batch check result",
+					zap.String("correlation_id", correlationID),
+					zap.Error(err),
+				)
 				continue
 			}
 			actions = append(actions, &authzenv1.Action{Name: relationNames[idx]})
