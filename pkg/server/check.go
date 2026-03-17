@@ -7,8 +7,6 @@ import (
 	"time"
 
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
-	"github.com/openfga/openfga/internal/cachecontroller"
-	"github.com/openfga/openfga/pkg/storage"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sourcegraph/conc/panics"
 	"go.opentelemetry.io/otel/attribute"
@@ -19,6 +17,8 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
+	"github.com/openfga/openfga/internal/cachecontroller"
+	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/modelgraph"
 	"github.com/openfga/openfga/internal/telemetry"
