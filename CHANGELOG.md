@@ -11,7 +11,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - The ListObjects "pipeline" algorithm ditches its custom Pipe implementation and replaces it with Go native channels. [#2977](https://github.com/openfga/openfga/pull/2977)
 
 ### Fixed
-- Fixed `OTEL_EXPORTER_OTLP_ENDPOINT` not accepting URIs with schemes (e.g. `http://host:4317`). The scheme is now stripped before passing to the gRPC exporter, and an `https://` scheme enables TLS regardless of the `trace.otlp.tls.enabled` flag. [#2981](https://github.com/openfga/openfga/pull/2981) - thanks @simongottschlag
+- Fixed `OTEL_EXPORTER_OTLP_ENDPOINT` not accepting URIs with schemes (e.g. `http://host:4317`). The scheme is now stripped before passing to the gRPC exporter, and an `https://` scheme enables TLS regardless of the `trace.otlp.tls.enabled` flag. [#2981](https://github.com/openfga/openfga/pull/2981)
 
 ## [1.12.0] - 2026-03-13
 ### Added
