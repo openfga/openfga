@@ -15,6 +15,29 @@ import (
 	"github.com/openfga/openfga/tests"
 )
 
+const (
+	testStoreName = "test-store"
+
+	simpleReaderModel = `
+		model
+			schema 1.1
+		type user
+		type document
+			relations
+				define reader: [user]
+	`
+
+	simpleReaderWriterModel = `
+		model
+			schema 1.1
+		type user
+		type document
+			relations
+				define reader: [user]
+				define writer: [user]
+	`
+)
+
 // testContext holds shared test state.
 type testContext struct {
 	t             *testing.T
@@ -55,6 +78,26 @@ func setupTestContextWithExperimentals(t *testing.T, experimentals []string) *te
 func setupTestContext(t *testing.T) *testContext {
 	t.Helper()
 	return setupTestContextWithExperimentals(t, []string{serverconfig.ExperimentalAuthZen})
+}
+
+// setupTestContextWithStore creates a test context and store.
+func setupTestContextWithStore(t *testing.T) *testContext {
+	t.Helper()
+
+	tc := setupTestContext(t)
+	tc.createStore(testStoreName)
+
+	return tc
+}
+
+// setupTestContextWithStoreAndModel creates a test context, store, and model.
+func setupTestContextWithStoreAndModel(t *testing.T, model string) *testContext {
+	t.Helper()
+
+	tc := setupTestContextWithStore(t)
+	tc.writeModel(model)
+
+	return tc
 }
 
 // createStore creates a new store.

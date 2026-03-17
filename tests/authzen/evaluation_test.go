@@ -18,16 +18,7 @@ import (
 
 func TestEvaluation(t *testing.T) {
 	t.Run("basic_permit", func(t *testing.T) {
-		tc := setupTestContext(t)
-		tc.createStore("test-store")
-		tc.writeModel(`
-			model
-				schema 1.1
-			type user
-			type document
-				relations
-					define reader: [user]
-		`)
+		tc := setupTestContextWithStoreAndModel(t, simpleReaderModel)
 		tc.writeTuples([]*openfgav1.TupleKey{
 			{User: "user:alice", Relation: "reader", Object: "document:doc1"},
 		})
@@ -38,16 +29,7 @@ func TestEvaluation(t *testing.T) {
 	})
 
 	t.Run("basic_deny", func(t *testing.T) {
-		tc := setupTestContext(t)
-		tc.createStore("test-store")
-		tc.writeModel(`
-			model
-				schema 1.1
-			type user
-			type document
-				relations
-					define reader: [user]
-		`)
+		tc := setupTestContextWithStoreAndModel(t, simpleReaderModel)
 		// No tuples written
 
 		resp, err := tc.evaluate("user:alice", "document:doc1", "reader")
@@ -56,8 +38,7 @@ func TestEvaluation(t *testing.T) {
 	})
 
 	t.Run("with_abac_condition", func(t *testing.T) {
-		tc := setupTestContext(t)
-		tc.createStore("test-store")
+		tc := setupTestContextWithStore(t)
 		tc.writeModel(`
 			model
 				schema 1.1
@@ -100,8 +81,7 @@ func TestEvaluation(t *testing.T) {
 	})
 
 	t.Run("properties_in_conditions", func(t *testing.T) {
-		tc := setupTestContext(t)
-		tc.createStore("test-store")
+		tc := setupTestContextWithStore(t)
 		tc.writeModel(`
 			model
 				schema 1.1
@@ -164,17 +144,7 @@ func TestEvaluation(t *testing.T) {
 	})
 
 	t.Run("interop_with_check", func(t *testing.T) {
-		tc := setupTestContext(t)
-		tc.createStore("test-store")
-		tc.writeModel(`
-			model
-				schema 1.1
-			type user
-			type document
-				relations
-					define reader: [user]
-					define writer: [user]
-		`)
+		tc := setupTestContextWithStoreAndModel(t, simpleReaderWriterModel)
 		tc.writeTuples([]*openfgav1.TupleKey{
 			{User: "user:alice", Relation: "reader", Object: "document:doc1"},
 			{User: "user:alice", Relation: "writer", Object: "document:doc1"},

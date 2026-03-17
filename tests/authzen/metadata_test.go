@@ -13,6 +13,29 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 )
 
+func mustGetConfigurationHTTP(t *testing.T, url string, headers map[string]string) map[string]any {
+	t.Helper()
+
+	req, err := http.NewRequest("GET", url, nil)
+	require.NoError(t, err)
+	for key, value := range headers {
+		req.Header.Set(key, value)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode, "body: %s", body)
+
+	var result map[string]any
+	require.NoError(t, json.Unmarshal(body, &result))
+
+	return result
+}
+
 // TestGetConfiguration tests the AuthZEN GetConfiguration (metadata/discovery) endpoint.
 // This endpoint returns a PDP identifier URL, flat endpoint URLs, and capabilities per the AuthZEN spec.
 func TestGetConfiguration(t *testing.T) {
@@ -47,7 +70,7 @@ func TestGetConfiguration(t *testing.T) {
 		// GetConfiguration requires the experimental flag like all AuthZEN endpoints
 		tc := setupTestContextWithExperimentals(t, []string{})
 
-		resp, err := tc.openfgaClient.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
+		resp, err := tc.openfgaClient.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: testStoreName})
 		require.NoError(t, err)
 
 		_, err = tc.authzenClient.GetConfiguration(context.Background(), &authzenv1.GetConfigurationRequest{StoreId: resp.GetId()})
@@ -71,30 +94,15 @@ func TestGetConfiguration(t *testing.T) {
 // These tests send real HTTP requests through grpc-gateway to verify the
 // header reaches the server and affects the returned URLs.
 func TestGetConfigurationHTTPHeaderForwarding(t *testing.T) {
-	tc := setupTestContext(t)
-	tc.createStore("test-store")
+	tc := setupTestContextWithStore(t)
 
 	configURL := "http://" + tc.httpAddr + "/.well-known/authzen-configuration/" + tc.storeID
 
 	t.Run("x_forwarded_proto_http_is_forwarded", func(t *testing.T) {
-		// When a reverse proxy terminates TLS and forwards traffic over
-		// plain HTTP, it sets X-Forwarded-Proto: http. The discovery
-		// endpoint must reflect this in the returned URLs.
-		req, err := http.NewRequest("GET", configURL, nil)
-		require.NoError(t, err)
-		req.Header.Set("X-Forwarded-Proto", "http")
-		req.Header.Set("X-Forwarded-Host", "api.example.com")
-
-		resp, err := http.DefaultClient.Do(req)
-		require.NoError(t, err)
-		defer resp.Body.Close()
-
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-		require.Equal(t, http.StatusOK, resp.StatusCode, "body: %s", body)
-
-		var result map[string]any
-		require.NoError(t, json.Unmarshal(body, &result))
+		result := mustGetConfigurationHTTP(t, configURL, map[string]string{
+			"X-Forwarded-Proto": "http",
+			"X-Forwarded-Host":  "api.example.com",
+		})
 
 		// The evaluation endpoint URL must start with http://, proving
 		// X-Forwarded-Proto was forwarded through grpc-gateway.
@@ -104,21 +112,10 @@ func TestGetConfigurationHTTPHeaderForwarding(t *testing.T) {
 	})
 
 	t.Run("x_forwarded_proto_https_is_forwarded", func(t *testing.T) {
-		req, err := http.NewRequest("GET", configURL, nil)
-		require.NoError(t, err)
-		req.Header.Set("X-Forwarded-Proto", "https")
-		req.Header.Set("X-Forwarded-Host", "api.example.com")
-
-		resp, err := http.DefaultClient.Do(req)
-		require.NoError(t, err)
-		defer resp.Body.Close()
-
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-		require.Equal(t, http.StatusOK, resp.StatusCode, "body: %s", body)
-
-		var result map[string]any
-		require.NoError(t, json.Unmarshal(body, &result))
+		result := mustGetConfigurationHTTP(t, configURL, map[string]string{
+			"X-Forwarded-Proto": "https",
+			"X-Forwarded-Host":  "api.example.com",
+		})
 
 		evalEndpoint, ok := result["access_evaluation_endpoint"].(string)
 		require.True(t, ok)
@@ -126,22 +123,9 @@ func TestGetConfigurationHTTPHeaderForwarding(t *testing.T) {
 	})
 
 	t.Run("without_x_forwarded_proto_defaults_to_https", func(t *testing.T) {
-		// When no X-Forwarded-Proto header is present, the scheme
-		// must default to https for security.
-		req, err := http.NewRequest("GET", configURL, nil)
-		require.NoError(t, err)
-		req.Header.Set("X-Forwarded-Host", "api.example.com")
-
-		resp, err := http.DefaultClient.Do(req)
-		require.NoError(t, err)
-		defer resp.Body.Close()
-
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-		require.Equal(t, http.StatusOK, resp.StatusCode, "body: %s", body)
-
-		var result map[string]any
-		require.NoError(t, json.Unmarshal(body, &result))
+		result := mustGetConfigurationHTTP(t, configURL, map[string]string{
+			"X-Forwarded-Host": "api.example.com",
+		})
 
 		evalEndpoint, ok := result["access_evaluation_endpoint"].(string)
 		require.True(t, ok)

@@ -14,16 +14,7 @@ import (
 
 func TestSubjectSearch(t *testing.T) {
 	t.Run("basic_subject_search", func(t *testing.T) {
-		tc := setupTestContext(t)
-		tc.createStore("test-store")
-		tc.writeModel(`
-			model
-				schema 1.1
-			type user
-			type document
-				relations
-					define reader: [user]
-		`)
+		tc := setupTestContextWithStoreAndModel(t, simpleReaderModel)
 		tc.writeTuples([]*openfgav1.TupleKey{
 			{User: "user:alice", Relation: "reader", Object: "document:doc1"},
 			{User: "user:bob", Relation: "reader", Object: "document:doc1"},
@@ -51,16 +42,7 @@ func TestSubjectSearch(t *testing.T) {
 	})
 
 	t.Run("empty_result", func(t *testing.T) {
-		tc := setupTestContext(t)
-		tc.createStore("test-store")
-		tc.writeModel(`
-			model
-				schema 1.1
-			type user
-			type document
-				relations
-					define reader: [user]
-		`)
+		tc := setupTestContextWithStoreAndModel(t, simpleReaderModel)
 		// No tuples written
 
 		resp, err := tc.authzenClient.SubjectSearch(context.Background(), &authzenv1.SubjectSearchRequest{
@@ -74,16 +56,7 @@ func TestSubjectSearch(t *testing.T) {
 	})
 
 	t.Run("returns_all_results_ignores_page_parameter", func(t *testing.T) {
-		tc := setupTestContext(t)
-		tc.createStore("test-store")
-		tc.writeModel(`
-			model
-				schema 1.1
-			type user
-			type document
-				relations
-					define reader: [user]
-		`)
+		tc := setupTestContextWithStoreAndModel(t, simpleReaderModel)
 
 		// Create 10 users with reader access
 		tuples := make([]*openfgav1.TupleKey, 10)
@@ -157,16 +130,7 @@ func TestSubjectSearch(t *testing.T) {
 
 func TestResourceSearch(t *testing.T) {
 	t.Run("basic_resource_search", func(t *testing.T) {
-		tc := setupTestContext(t)
-		tc.createStore("test-store")
-		tc.writeModel(`
-			model
-				schema 1.1
-			type user
-			type document
-				relations
-					define reader: [user]
-		`)
+		tc := setupTestContextWithStoreAndModel(t, simpleReaderModel)
 		tc.writeTuples([]*openfgav1.TupleKey{
 			{User: "user:alice", Relation: "reader", Object: "document:doc1"},
 			{User: "user:alice", Relation: "reader", Object: "document:doc2"},
@@ -192,16 +156,7 @@ func TestResourceSearch(t *testing.T) {
 	})
 
 	t.Run("empty_result", func(t *testing.T) {
-		tc := setupTestContext(t)
-		tc.createStore("test-store")
-		tc.writeModel(`
-			model
-				schema 1.1
-			type user
-			type document
-				relations
-					define reader: [user]
-		`)
+		tc := setupTestContextWithStoreAndModel(t, simpleReaderModel)
 		// No tuples written
 
 		resp, err := tc.authzenClient.ResourceSearch(context.Background(), &authzenv1.ResourceSearchRequest{
@@ -365,8 +320,7 @@ func TestResourceSearch(t *testing.T) {
 
 func TestActionSearch(t *testing.T) {
 	t.Run("basic_action_search", func(t *testing.T) {
-		tc := setupTestContext(t)
-		tc.createStore("test-store")
+		tc := setupTestContextWithStore(t)
 		tc.writeModel(`
 			model
 				schema 1.1
@@ -400,17 +354,7 @@ func TestActionSearch(t *testing.T) {
 	})
 
 	t.Run("no_permissions", func(t *testing.T) {
-		tc := setupTestContext(t)
-		tc.createStore("test-store")
-		tc.writeModel(`
-			model
-				schema 1.1
-			type user
-			type document
-				relations
-					define reader: [user]
-					define writer: [user]
-		`)
+		tc := setupTestContextWithStoreAndModel(t, simpleReaderWriterModel)
 		// No tuples written
 
 		resp, err := tc.authzenClient.ActionSearch(context.Background(), &authzenv1.ActionSearchRequest{

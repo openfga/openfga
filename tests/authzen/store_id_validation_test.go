@@ -25,89 +25,87 @@ func TestStoreIDValidation(t *testing.T) {
 		{name: "invalid_chars", storeID: "ABCDEFGHIJKLMNOPQRSTUVWXY@"},
 	}
 
-	t.Run("Evaluation", func(t *testing.T) {
-		for _, tt := range malformedStoreIDs {
-			t.Run(tt.name, func(t *testing.T) {
-				_, err := tc.authzenClient.Evaluation(context.Background(), &authzenv1.EvaluationRequest{
-					StoreId:  tt.storeID,
+	tests := []struct {
+		name string
+		call func(context.Context, string) error
+	}{
+		{
+			name: "Evaluation",
+			call: func(ctx context.Context, storeID string) error {
+				_, err := tc.authzenClient.Evaluation(ctx, &authzenv1.EvaluationRequest{
+					StoreId:  storeID,
 					Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
 					Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
 					Action:   &authzenv1.Action{Name: "reader"},
 				})
-				require.Error(t, err)
-				require.Equal(t, codes.InvalidArgument, status.Code(err))
-			})
-		}
-	})
-
-	t.Run("Evaluations", func(t *testing.T) {
-		for _, tt := range malformedStoreIDs {
-			t.Run(tt.name, func(t *testing.T) {
-				_, err := tc.authzenClient.Evaluations(context.Background(), &authzenv1.EvaluationsRequest{
-					StoreId: tt.storeID,
+				return err
+			},
+		},
+		{
+			name: "Evaluations",
+			call: func(ctx context.Context, storeID string) error {
+				_, err := tc.authzenClient.Evaluations(ctx, &authzenv1.EvaluationsRequest{
+					StoreId: storeID,
 					Subject: &authzenv1.Subject{Type: "user", Id: "alice"},
 					Action:  &authzenv1.Action{Name: "reader"},
 					Evaluations: []*authzenv1.EvaluationsItemRequest{
 						{Resource: &authzenv1.Resource{Type: "document", Id: "doc1"}},
 					},
 				})
-				require.Error(t, err)
-				require.Equal(t, codes.InvalidArgument, status.Code(err))
-			})
-		}
-	})
-
-	t.Run("SubjectSearch", func(t *testing.T) {
-		for _, tt := range malformedStoreIDs {
-			t.Run(tt.name, func(t *testing.T) {
-				_, err := tc.authzenClient.SubjectSearch(context.Background(), &authzenv1.SubjectSearchRequest{
-					StoreId:  tt.storeID,
+				return err
+			},
+		},
+		{
+			name: "SubjectSearch",
+			call: func(ctx context.Context, storeID string) error {
+				_, err := tc.authzenClient.SubjectSearch(ctx, &authzenv1.SubjectSearchRequest{
+					StoreId:  storeID,
 					Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
 					Action:   &authzenv1.Action{Name: "reader"},
 				})
-				require.Error(t, err)
-				require.Equal(t, codes.InvalidArgument, status.Code(err))
-			})
-		}
-	})
-
-	t.Run("ResourceSearch", func(t *testing.T) {
-		for _, tt := range malformedStoreIDs {
-			t.Run(tt.name, func(t *testing.T) {
-				_, err := tc.authzenClient.ResourceSearch(context.Background(), &authzenv1.ResourceSearchRequest{
-					StoreId: tt.storeID,
+				return err
+			},
+		},
+		{
+			name: "ResourceSearch",
+			call: func(ctx context.Context, storeID string) error {
+				_, err := tc.authzenClient.ResourceSearch(ctx, &authzenv1.ResourceSearchRequest{
+					StoreId: storeID,
 					Subject: &authzenv1.Subject{Type: "user", Id: "alice"},
 					Action:  &authzenv1.Action{Name: "reader"},
 				})
-				require.Error(t, err)
-				require.Equal(t, codes.InvalidArgument, status.Code(err))
-			})
-		}
-	})
-
-	t.Run("ActionSearch", func(t *testing.T) {
-		for _, tt := range malformedStoreIDs {
-			t.Run(tt.name, func(t *testing.T) {
-				_, err := tc.authzenClient.ActionSearch(context.Background(), &authzenv1.ActionSearchRequest{
-					StoreId:  tt.storeID,
+				return err
+			},
+		},
+		{
+			name: "ActionSearch",
+			call: func(ctx context.Context, storeID string) error {
+				_, err := tc.authzenClient.ActionSearch(ctx, &authzenv1.ActionSearchRequest{
+					StoreId:  storeID,
 					Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
 					Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
 				})
-				require.Error(t, err)
-				require.Equal(t, codes.InvalidArgument, status.Code(err))
-			})
-		}
-	})
+				return err
+			},
+		},
+		{
+			name: "GetConfiguration",
+			call: func(ctx context.Context, storeID string) error {
+				_, err := tc.authzenClient.GetConfiguration(ctx, &authzenv1.GetConfigurationRequest{StoreId: storeID})
+				return err
+			},
+		},
+	}
 
-	t.Run("GetConfiguration", func(t *testing.T) {
-		for _, tt := range malformedStoreIDs {
-			t.Run(tt.name, func(t *testing.T) {
-				_, err := tc.authzenClient.GetConfiguration(context.Background(), &authzenv1.GetConfigurationRequest{
-					StoreId: tt.storeID,
+	for _, endpoint := range tests {
+		t.Run(endpoint.name, func(t *testing.T) {
+			for _, tt := range malformedStoreIDs {
+				t.Run(tt.name, func(t *testing.T) {
+					err := endpoint.call(context.Background(), tt.storeID)
+					require.Error(t, err)
+					require.Equal(t, codes.InvalidArgument, status.Code(err))
 				})
-				require.Error(t, err)
-				require.Equal(t, codes.InvalidArgument, status.Code(err))
-			})
-		}
-	})
+			}
+		})
+	}
 }

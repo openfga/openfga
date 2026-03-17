@@ -16,17 +16,7 @@ import (
 
 func TestEvaluations(t *testing.T) {
 	t.Run("batch_evaluations", func(t *testing.T) {
-		tc := setupTestContext(t)
-		tc.createStore("test-store")
-		tc.writeModel(`
-			model
-				schema 1.1
-			type user
-			type document
-				relations
-					define reader: [user]
-					define writer: [user]
-		`)
+		tc := setupTestContextWithStoreAndModel(t, simpleReaderWriterModel)
 		tc.writeTuples([]*openfgav1.TupleKey{
 			{User: "user:alice", Relation: "reader", Object: "document:doc1"},
 			// alice is not a writer
@@ -48,16 +38,7 @@ func TestEvaluations(t *testing.T) {
 	})
 
 	t.Run("default_value_inheritance", func(t *testing.T) {
-		tc := setupTestContext(t)
-		tc.createStore("test-store")
-		tc.writeModel(`
-			model
-				schema 1.1
-			type user
-			type document
-				relations
-					define reader: [user]
-		`)
+		tc := setupTestContextWithStoreAndModel(t, simpleReaderModel)
 		tc.writeTuples([]*openfgav1.TupleKey{
 			{User: "user:alice", Relation: "reader", Object: "document:doc1"},
 			{User: "user:alice", Relation: "reader", Object: "document:doc2"},
@@ -82,16 +63,7 @@ func TestEvaluations(t *testing.T) {
 	})
 
 	t.Run("semantic_execute_all_default", func(t *testing.T) {
-		tc := setupTestContext(t)
-		tc.createStore("test-store")
-		tc.writeModel(`
-			model
-				schema 1.1
-			type user
-			type document
-				relations
-					define reader: [user]
-		`)
+		tc := setupTestContextWithStoreAndModel(t, simpleReaderModel)
 		tc.writeTuples([]*openfgav1.TupleKey{
 			{User: "user:alice", Relation: "reader", Object: "document:doc1"},
 			// doc2 not allowed
@@ -117,16 +89,7 @@ func TestEvaluations(t *testing.T) {
 	})
 
 	t.Run("semantic_deny_on_first_deny", func(t *testing.T) {
-		tc := setupTestContext(t)
-		tc.createStore("test-store")
-		tc.writeModel(`
-			model
-				schema 1.1
-			type user
-			type document
-				relations
-					define reader: [user]
-		`)
+		tc := setupTestContextWithStoreAndModel(t, simpleReaderModel)
 		tc.writeTuples([]*openfgav1.TupleKey{
 			{User: "user:alice", Relation: "reader", Object: "document:doc1"},
 			// doc2 not allowed
@@ -153,16 +116,7 @@ func TestEvaluations(t *testing.T) {
 	})
 
 	t.Run("semantic_deny_on_first_deny_first_item_denied", func(t *testing.T) {
-		tc := setupTestContext(t)
-		tc.createStore("test-store")
-		tc.writeModel(`
-			model
-				schema 1.1
-			type user
-			type document
-				relations
-					define reader: [user]
-		`)
+		tc := setupTestContextWithStoreAndModel(t, simpleReaderModel)
 		tc.writeTuples([]*openfgav1.TupleKey{
 			{User: "user:alice", Relation: "reader", Object: "document:doc2"},
 			{User: "user:alice", Relation: "reader", Object: "document:doc3"},
