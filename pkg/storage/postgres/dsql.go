@@ -5,16 +5,10 @@ import (
 	"fmt"
 
 	"github.com/awslabs/aurora-dsql-connectors/go/pgx/dsql"
-	"github.com/awslabs/aurora-dsql-connectors/go/pgx/occretry"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
 )
-
-// withOCCRetry executes fn with automatic retry on DSQL OCC errors.
-func withOCCRetry(ctx context.Context, fn func() error) error {
-	return occretry.Retry(ctx, occretry.DefaultConfig(), fn)
-}
 
 // initDSQLDB initializes a new Aurora DSQL database connection.
 // DSQL uses IAM authentication which the connector handles automatically.

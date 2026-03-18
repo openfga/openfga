@@ -16,6 +16,7 @@ import (
 
 	"github.com/IBM/pgxpoolprometheus"
 	sq "github.com/Masterminds/squirrel"
+	"github.com/awslabs/aurora-dsql-connectors/go/pgx/occretry"
 	"github.com/cenkalti/backoff/v4"
 	"github.com/jackc/pgpassfile"
 	"github.com/jackc/pgx/v5"
@@ -439,7 +440,7 @@ func (s *Datastore) Write(
 	defer span.End()
 	writeOpts := storage.NewTupleWriteOptions(opts...)
 	if s.isDSQL {
-		return withOCCRetry(ctx, func() error { return s.write(ctx, store, deletes, writes, writeOpts, time.Now().UTC()) })
+		return occretry.Retry(ctx, occretry.DefaultConfig(), func() error { return s.write(ctx, store, deletes, writes, writeOpts, time.Now().UTC()) })
 	}
 	return s.write(ctx, store, deletes, writes, writeOpts, time.Now().UTC())
 }
