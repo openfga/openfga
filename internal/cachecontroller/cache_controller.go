@@ -29,19 +29,19 @@ var (
 	cacheTotalCounter = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: build.ProjectName,
 		Name:      "cachecontroller_cache_total_count",
-		Help:      "The total number of cachecontroller requests.",
+		Help:      "The total number of cache controller requests triggered by Check.",
 	})
 
 	cacheHitCounter = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: build.ProjectName,
 		Name:      "cachecontroller_cache_hit_count",
-		Help:      "The total number of cache hits from cachecontroller requests within the TTL.",
+		Help:      "The total number of cache controller requests triggered by Check within the cache controller TTL (i.e., no invalidation).",
 	})
 
 	cacheInvalidationCounter = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: build.ProjectName,
 		Name:      "cachecontroller_cache_invalidation_count",
-		Help:      "The total number of invalidations performed by the cache controller.",
+		Help:      "The total number of invalidation requests that invalidated iterator caches.",
 	})
 
 	findChangesAndInvalidateHistogram = promauto.NewHistogramVec(prometheus.HistogramOpts{

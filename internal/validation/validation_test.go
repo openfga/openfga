@@ -1200,9 +1200,10 @@ func BenchmarkValidateTupleForRead(b *testing.B) {
 
 	ts, err := typesystem.New(model)
 	require.NoError(b, err)
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		err := ValidateTupleForRead(ts, tuple.NewTupleKey("folder:x", "viewer", fmt.Sprintf("user:%v", i)))
+	t := tuple.NewTupleKey("folder:x", "viewer", "user:1")
+
+	for b.Loop() {
+		err := ValidateTupleForRead(ts, t)
 		require.NoError(b, err)
 	}
 }

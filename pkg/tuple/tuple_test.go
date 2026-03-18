@@ -209,6 +209,69 @@ func TestSplitObjectId(t *testing.T) {
 
 var outcome any
 
+func BenchmarkTuple_String(b *testing.B) {
+	tk := NewTupleKey("document:1", "viewer", "user:1")
+	t := From(tk)
+
+	var value string
+
+	for b.Loop() {
+		value = t.String()
+	}
+	outcome = value
+}
+
+func BenchmarkUserProtoToString_Wildcard(b *testing.B) {
+	var obj openfgav1.User_Wildcard
+	var wildcard openfgav1.TypedWildcard
+	wildcard.Type = "user"
+	obj.Wildcard = &wildcard
+	var user openfgav1.User
+	user.User = &obj
+
+	var value string
+
+	for b.Loop() {
+		value = UserProtoToString(&user)
+	}
+	outcome = value
+}
+
+func BenchmarkUserProtoToString_Userset(b *testing.B) {
+	var obj openfgav1.User_Userset
+	var userset openfgav1.UsersetUser
+	userset.Type = "group"
+	userset.Id = "1"
+	userset.Relation = "member"
+	obj.Userset = &userset
+	var user openfgav1.User
+	user.User = &obj
+
+	var value string
+
+	for b.Loop() {
+		value = UserProtoToString(&user)
+	}
+	outcome = value
+}
+
+func BenchmarkUserProtoToString_Object(b *testing.B) {
+	var userobj openfgav1.User_Object
+	var obj openfgav1.Object
+	obj.Type = "user"
+	obj.Id = "1"
+	userobj.Object = &obj
+	var user openfgav1.User
+	user.User = &userobj
+
+	var value string
+
+	for b.Loop() {
+		value = UserProtoToString(&user)
+	}
+	outcome = value
+}
+
 func BenchmarkSplitObjectId(b *testing.B) {
 	value := "hello:world"
 
@@ -230,6 +293,36 @@ func BenchmarkBuildObject(b *testing.B) {
 		object = BuildObject(hello, world)
 	}
 	outcome = object
+}
+
+func BenchmarkTupleKeyToString(b *testing.B) {
+	tk := openfgav1.TupleKeyWithoutCondition{
+		User:     "user:1",
+		Relation: "member",
+		Object:   "group:1",
+	}
+
+	var value string
+
+	for b.Loop() {
+		value = TupleKeyToString(&tk)
+	}
+	outcome = value
+}
+
+func BenchmarkFromUserParts(b *testing.B) {
+	const (
+		objectType string = "group"
+		objectID   string = "1"
+		relation   string = "member"
+	)
+
+	var value string
+
+	for b.Loop() {
+		value = FromUserParts(objectType, objectID, relation)
+	}
+	outcome = value
 }
 
 func BenchmarkTupleKeyWithConditionToString(b *testing.B) {
