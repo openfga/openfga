@@ -1626,7 +1626,7 @@ func TestExecuteDeleteTuples(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
 		mockPgxExec := mocks.NewMockpgxExec(ctrl)
-		err := executeDeleteTuples(context.Background(), mockPgxExec, "123", deleteConditions)
+		err := executeDeleteTuples(context.Background(), mockPgxExec, "123", deleteConditions, false)
 		require.NoError(t, err)
 	})
 
@@ -1640,7 +1640,7 @@ func TestExecuteDeleteTuples(t *testing.T) {
 		t.Cleanup(ctrl.Finish)
 		mockPgxExec := mocks.NewMockpgxExec(ctrl)
 		mockPgxExec.EXPECT().Exec(gomock.Any(), gomock.Any(), gomock.Any()).Return(pgconn.NewCommandTag(""), fmt.Errorf("error"))
-		err := executeDeleteTuples(context.Background(), mockPgxExec, "123", deleteConditions)
+		err := executeDeleteTuples(context.Background(), mockPgxExec, "123", deleteConditions, false)
 		require.Error(t, err)
 	})
 
@@ -1654,7 +1654,7 @@ func TestExecuteDeleteTuples(t *testing.T) {
 		t.Cleanup(ctrl.Finish)
 		mockPgxExec := mocks.NewMockpgxExec(ctrl)
 		mockPgxExec.EXPECT().Exec(gomock.Any(), gomock.Any(), gomock.Any()).Return(pgconn.NewCommandTag(""), nil)
-		err := executeDeleteTuples(context.Background(), mockPgxExec, "123", deleteConditions)
+		err := executeDeleteTuples(context.Background(), mockPgxExec, "123", deleteConditions, false)
 		require.ErrorIs(t, err, storage.ErrWriteConflictOnDelete)
 	})
 	t.Run("correct_row", func(t *testing.T) {
@@ -1667,7 +1667,7 @@ func TestExecuteDeleteTuples(t *testing.T) {
 		t.Cleanup(ctrl.Finish)
 		mockPgxExec := mocks.NewMockpgxExec(ctrl)
 		mockPgxExec.EXPECT().Exec(gomock.Any(), gomock.Any(), gomock.Any()).Return(pgconn.NewCommandTag("DELETE 1"), nil)
-		err := executeDeleteTuples(context.Background(), mockPgxExec, "123", deleteConditions)
+		err := executeDeleteTuples(context.Background(), mockPgxExec, "123", deleteConditions, false)
 		require.NoError(t, err)
 	})
 }
