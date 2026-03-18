@@ -29,7 +29,7 @@ Per DSQL best practices, each migration should ideally contain only one DDL stat
 
 While these work correctly with `-- +goose NO TRANSACTION` (goose executes each statement separately), consider splitting them into individual migration files if you encounter OCC errors during migration. For example:
 
-```
+```text
 005a_add_condition_name_to_tuple.sql
 005b_add_condition_context_to_tuple.sql
 005c_add_condition_name_to_changelog.sql

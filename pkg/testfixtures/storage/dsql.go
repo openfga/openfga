@@ -59,6 +59,7 @@ func (d *dsqlTestContainer) RunDSQLTestContainer(t testing.TB) DatastoreTestCont
 
 	db, err := goose.OpenDBWithDriver("pgx", pgURI)
 	require.NoError(t, err)
+	defer db.Close()
 
 	err = ensureGooseTableWithRetry(db)
 	require.NoError(t, err, "failed to create goose table")
@@ -71,9 +72,6 @@ func (d *dsqlTestContainer) RunDSQLTestContainer(t testing.TB) DatastoreTestCont
 	version, err := goose.GetDBVersion(db)
 	require.NoError(t, err)
 	d.version = version
-
-	err = db.Close()
-	require.NoError(t, err)
 
 	t.Cleanup(func() {
 		pgURI, err := dsql.PreparePostgresURI(d.GetConnectionURI(false), "")

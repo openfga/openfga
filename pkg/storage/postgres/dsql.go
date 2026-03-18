@@ -24,7 +24,10 @@ func initDSQLDB(uri string, cfg *sqlcommon.Config) (*pgxpool.Pool, error) {
 	}
 
 	// Apply OpenFGA pool settings via pgxpool.Config.
-	poolCfg, _ := pgxpool.ParseConfig("")
+	poolCfg, err := pgxpool.ParseConfig("")
+	if err != nil {
+		return nil, fmt.Errorf("parse pgx pool config: %w", err)
+	}
 	if cfg.MaxOpenConns != 0 {
 		poolCfg.MaxConns = int32(cfg.MaxOpenConns)
 	}

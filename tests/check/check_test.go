@@ -94,7 +94,7 @@ func TestCheckSQLite(t *testing.T) {
 }
 
 func TestCheckDSQL(t *testing.T) {
-	testRunAll(t, "dsql")
+	testRunAll(t, "dsql", config.ExperimentalCheckOptimizations)
 }
 
 // TODO move elsewhere as this isn't asserting on just Check API logs.
