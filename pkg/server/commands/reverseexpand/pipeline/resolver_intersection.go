@@ -30,7 +30,7 @@ func (r *intersectionResolver) Resolve(
 
 	var wg sync.WaitGroup
 
-	bags := make([]txBag[string], len(senders))
+	bags := make([]containers.Bag[string], len(senders))
 
 	var cleanup containers.Bag[func()]
 
@@ -68,15 +68,11 @@ func (r *intersectionResolver) Resolve(
 		output = found
 	}
 
-	sentCount := r.broadcast(maps.Keys(output), listeners)
+	sentCount := r.broadcast(ctx, maps.Keys(output), listeners)
 
 	span.SetAttributes(attribute.Int("items.count", sentCount))
 
 	for fn := range cleanup.Seq() {
 		fn()
-	}
-
-	for _, lst := range listeners {
-		lst.Close()
 	}
 }
