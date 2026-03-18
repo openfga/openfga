@@ -2,47 +2,18 @@ package postgres
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"time"
 
 	"github.com/awslabs/aurora-dsql-connectors/go/pgx/dsql"
-	"github.com/cenkalti/backoff/v4"
-	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/awslabs/aurora-dsql-connectors/go/pgx/occretry"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
 )
 
-// isOCCError checks if the error is a DSQL optimistic concurrency control conflict.
-// DSQL returns OC000 for mutation conflicts and OC001 for schema conflicts.
-func isOCCError(err error) bool {
-	if err == nil {
-		return false
-	}
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) {
-		return pgErr.Code == "OC000" || pgErr.Code == "OC001" || pgErr.Code == "40001"
-	}
-	return false
-}
-
 // withOCCRetry executes fn with automatic retry on DSQL OCC errors.
 func withOCCRetry(ctx context.Context, fn func() error) error {
-	policy := backoff.NewExponentialBackOff()
-	policy.InitialInterval = 10 * time.Millisecond
-	policy.MaxElapsedTime = 5 * time.Second
-
-	return backoff.Retry(func() error {
-		err := fn()
-		if err == nil {
-			return nil
-		}
-		if isOCCError(err) {
-			return err
-		}
-		return backoff.Permanent(err)
-	}, backoff.WithContext(policy, ctx))
+	return occretry.Retry(ctx, occretry.DefaultConfig(), fn)
 }
 
 // initDSQLDB initializes a new Aurora DSQL database connection.
@@ -73,10 +44,5 @@ func initDSQLDB(uri string, cfg *sqlcommon.Config) (*pgxpool.Pool, error) {
 		poolCfg.MaxConnIdleTime = cfg.ConnMaxIdleTime
 	}
 
-	pool, err := dsql.NewPool(context.Background(), dsqlCfg, poolCfg)
-	if err != nil {
-		return nil, fmt.Errorf("create DSQL pool: %w", err)
-	}
-
-	return pool.Pool, nil
+	return dsql.NewPool(context.Background(), dsqlCfg, poolCfg)
 }
