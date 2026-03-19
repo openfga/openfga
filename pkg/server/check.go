@@ -268,7 +268,7 @@ func (s *Server) getCheckResolverBuilder(storeID string) *graph.CheckResolverOrd
 		graph.WithLocalCheckerOpts([]graph.LocalCheckerOption{
 			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
 			graph.WithOptimizations(s.featureFlagClient.Boolean(serverconfig.ExperimentalCheckOptimizations, storeID)),
-			graph.WithOptimizations(s.featureFlagClient.Boolean(serverconfig.ExperimentalRecursionOptimizations, storeID)),
+			graph.WithRecursiveOptimizations(s.featureFlagClient.Boolean(serverconfig.ExperimentalRecursionOptimizations, storeID)),
 			graph.WithMaxResolutionDepth(s.resolveNodeLimit),
 			graph.WithPlanner(s.planner),
 			graph.WithUpstreamTimeout(s.requestTimeout),
