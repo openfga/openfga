@@ -12,6 +12,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
@@ -903,6 +904,8 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 				}
 			}
 		}
+
+		c.logger.InfoWithContext(ctx, "checkTTU recursive", zap.Bool("recursiveCTE", recursiveCTE))
 
 		var iter storage.TupleIterator
 		var err error
