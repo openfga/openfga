@@ -38,7 +38,6 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.12.0"
 	"go.opentelemetry.io/otel/trace/noop"
 	"go.uber.org/zap"
-	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
@@ -1079,21 +1078,16 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	defer cancel()
 
 	cleanups = append(cleanups,
-		cleanupWithMessage(tracerProviderCloser, "tracing"),
-		cleanupFromPlainFunc(authenticator.Close, "authenticator"),
 		cleanupFromPlainFunc(grpcServer.GracefulStop, "grpc server"),
 		cleanupFromPlainFunc(svr.Close, "server"),
+		cleanupFromPlainFunc(authenticator.Close, "authenticator"),
+		cleanupWithMessage(tracerProviderCloser, "tracing"),
 	)
 
-	var eg errgroup.Group
-	for _, fn := range cleanups {
-		eg.Go(func() error {
-			return fn(ctx)
-		})
-	}
-
-	if err := eg.Wait(); err != nil {
-		s.Logger.Info("failed to shutdown", zap.Error(err))
+	for _, cleanup := range cleanups {
+		if err := cleanup(ctx); err != nil {
+			s.Logger.Info("failed to shutdown", zap.Error(err))
+		}
 	}
 
 	s.Logger.Info("server exited. goodbye 👋")
