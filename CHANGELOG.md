@@ -10,6 +10,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Changed
 - The ListObjects "pipeline" algorithm ditches its custom Pipe implementation and replaces it with Go native channels. [#2977](https://github.com/openfga/openfga/pull/2977)
 - Refactor tuple validation and manipulation functions for optimal performance. [#2984](https://github.com/openfga/openfga/pull/2984)
+- Update grpc go version to v1.79.3 and grpc-healthprobe to v0.4.47. [#2988](https://github.com/openfga/openfga/pull/2988)
 
 ### Fixed
 - Fixed `OTEL_EXPORTER_OTLP_ENDPOINT` not accepting URIs with schemes (e.g. `http://host:4317`). The scheme is now stripped before passing to the gRPC exporter, and an `https://` scheme enables TLS regardless of the `trace.otlp.tls.enabled` flag. [#2981](https://github.com/openfga/openfga/pull/2981)
