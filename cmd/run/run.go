@@ -1078,7 +1078,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	defer cancel()
 
 	cleanups = append(cleanups,
-		cleanupFromPlainFunc(grpcServer.GracefulStop, "grpc server"),
+		cleanupGrpcServer(grpcServer),
 		cleanupFromPlainFunc(svr.Close, "server"),
 		cleanupFromPlainFunc(authenticator.Close, "authenticator"),
 		cleanupWithMessage(tracerProviderCloser, "tracing"),

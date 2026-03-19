@@ -3,6 +3,8 @@ package run
 import (
 	"context"
 	"fmt"
+
+	"google.golang.org/grpc"
 )
 
 // cleanup runs resource cleanup with context and returns an error on failure.
@@ -35,5 +37,20 @@ func cleanupFromPlainFunc(fn func(), msg string) cleanup {
 		case <-ctx.Done():
 			return fmt.Errorf("%s: %w", msg, ctx.Err())
 		}
+	}
+}
+
+// cleanupGrpcServer returns a cleanup function that gracefully stops the gRPC server,
+// falling back to a hard stop on context timeout.
+func cleanupGrpcServer(grpcServer *grpc.Server) cleanup {
+	return func(ctx context.Context) error {
+		gracefulCleanup := cleanupFromPlainFunc(grpcServer.GracefulStop, "grpc server")
+
+		if err := gracefulCleanup(ctx); err != nil {
+			grpcServer.Stop()
+			return err
+		}
+
+		return nil
 	}
 }
