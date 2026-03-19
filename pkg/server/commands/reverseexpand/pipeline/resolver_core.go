@@ -7,7 +7,6 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/openfga/openfga/internal/pipe"
 	"github.com/openfga/openfga/internal/seq"
 )
 
@@ -20,24 +19,29 @@ type resolverCore struct {
 	interpreter interpreter
 	membership  *membership
 	bufferPool  *bufferPool
-	errors      pipe.Tx[error]
+	errors      chan error
 	numProcs    int
 }
 
 func (r *resolverCore) error(err error) {
-	r.errors.Send(err)
+	r.errors <- err
 }
 
 // broadcast batches results to amortize message overhead.
 func (r *resolverCore) broadcast(
+	ctx context.Context,
 	results iter.Seq[string],
 	listeners []*listener,
 ) int {
 	var sentCount int
-	buffer := r.bufferPool.Get()
-	reader := seq.NewSeqReader(results)
 
-	for {
+	buffer := r.bufferPool.Get()
+	defer r.bufferPool.Put(buffer)
+
+	reader := seq.NewSeqReader(results)
+	defer reader.Close()
+
+	for ctx.Err() == nil {
 		count := reader.Read(*buffer)
 
 		if count == 0 {
@@ -57,15 +61,10 @@ func (r *resolverCore) broadcast(
 				tracker:    r.membership.Tracker(),
 			}
 
-			if !listeners[i].Send(m) {
-				m.Done()
-			}
+			listeners[i].C <- m
 		}
 		sentCount += count
 	}
-	reader.Close()
-	r.bufferPool.Put(buffer)
-
 	return sentCount
 }
 
@@ -74,7 +73,7 @@ func (r *resolverCore) drain(
 	snd *sender,
 	yield func(context.Context, *Edge, *message),
 ) {
-	edge := snd.Key()
+	edge := snd.Key
 
 	edgeTo := "nil"
 	edgeFrom := "nil"
@@ -89,9 +88,7 @@ func (r *resolverCore) drain(
 		attribute.String("edge.from", edgeFrom),
 	}
 
-	var msg *message
-
-	for snd.Recv(&msg) {
+	for msg := range snd.C {
 		if ctx.Err() != nil {
 			msg.Done()
 			continue

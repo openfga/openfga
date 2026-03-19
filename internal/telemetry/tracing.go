@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -52,6 +53,43 @@ type customTracer struct {
 	samplingRatio float64
 }
 
+// ParseOTLPEndpoint strips the scheme from an endpoint string that may contain
+// a URI (e.g. "http://host:4317"). The OTEL_EXPORTER_OTLP_ENDPOINT env var
+// uses full URIs per the OpenTelemetry spec, but the gRPC exporter's
+// WithEndpoint expects a bare authority (host or host:port).
+//
+// For http/https URIs the authority (u.Host) is returned, which may or may not
+// include a port. For non-http(s) schemes or bare host:port inputs the string
+// is returned unchanged.
+//
+// The second return value indicates whether the scheme specifies TLS (true for
+// https://, false otherwise). Use [ResolveOTLPSecurity] to combine this with
+// the configured TLS flag.
+func ParseOTLPEndpoint(endpoint string) (string, bool) {
+	u, err := url.Parse(endpoint)
+	if err != nil || u.Host == "" {
+		// Not a valid URI — treat as a bare host:port.
+		return endpoint, false
+	}
+
+	switch u.Scheme {
+	case "https":
+		return u.Host, true
+	case "http":
+		return u.Host, false
+	default:
+		// Unknown scheme — return as-is.
+		return endpoint, false
+	}
+}
+
+// ResolveOTLPSecurity returns true if TLS should be used for the OTLP
+// connection. TLS is enabled if either the configuration flag or the URI
+// scheme (https://) indicates it.
+func ResolveOTLPSecurity(configSecure, schemeSecure bool) bool {
+	return configSecure || schemeSecure
+}
+
 func MustNewTracerProvider(opts ...TracerOption) *sdktrace.TracerProvider {
 	tracer := &customTracer{
 		endpoint:      "",
@@ -79,15 +117,18 @@ func MustNewTracerProvider(opts ...TracerOption) *sdktrace.TracerProvider {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
+	endpoint, schemeSecure := ParseOTLPEndpoint(tracer.endpoint)
+	secure := ResolveOTLPSecurity(!tracer.insecure, schemeSecure)
+
 	options := []otlptracegrpc.Option{
-		otlptracegrpc.WithEndpoint(tracer.endpoint),
+		otlptracegrpc.WithEndpoint(endpoint),
 		otlptracegrpc.WithDialOption(
 			// nolint:staticcheck // ignoring gRPC deprecations
 			grpc.WithBlock(),
 		),
 	}
 
-	if tracer.insecure {
+	if !secure {
 		options = append(options, otlptracegrpc.WithInsecure())
 	}
 

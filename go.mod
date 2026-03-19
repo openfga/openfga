@@ -2,7 +2,7 @@ module github.com/openfga/openfga
 
 go 1.25.0
 
-toolchain go1.25.7
+toolchain go1.26.1
 
 require (
 	github.com/IBM/pgxpoolprometheus v1.1.2
@@ -54,7 +54,7 @@ require (
 	golang.org/x/exp v0.0.0-20260218203240-3dfff04db8fa
 	golang.org/x/sync v0.19.0
 	gonum.org/v1/gonum v0.17.0
-	google.golang.org/grpc v1.79.1
+	google.golang.org/grpc v1.79.3
 	google.golang.org/protobuf v1.36.11
 	modernc.org/sqlite v1.46.1
 	sigs.k8s.io/controller-runtime v0.23.1

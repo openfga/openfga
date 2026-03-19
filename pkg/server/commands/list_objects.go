@@ -211,22 +211,15 @@ func WithListObjectsChunkSize(value int) ListObjectsQueryOption {
 	}
 }
 
-func WithListObjectsBufferSize(value int) ListObjectsQueryOption {
+func WithListObjectsBufferCapacity(value int) ListObjectsQueryOption {
 	return func(d *ListObjectsQuery) {
-		d.pipelineConfig.Buffer.Capacity = value
+		d.pipelineConfig.BufferCapacity = value
 	}
 }
 
 func WithListObjectsNumProcs(value int) ListObjectsQueryOption {
 	return func(d *ListObjectsQuery) {
 		d.pipelineConfig.NumProcs = value
-	}
-}
-
-func WithListObjectsPipeExtension(extendAfter time.Duration, maxExtensions int) ListObjectsQueryOption {
-	return func(d *ListObjectsQuery) {
-		d.pipelineConfig.Buffer.ExtendAfter = extendAfter
-		d.pipelineConfig.Buffer.MaxExtensions = maxExtensions
 	}
 }
 

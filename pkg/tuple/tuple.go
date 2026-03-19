@@ -3,8 +3,9 @@ package tuple
 
 import (
 	"fmt"
-	"regexp"
 	"strings"
+	"unicode"
+	"unsafe"
 
 	"google.golang.org/protobuf/types/known/structpb"
 
@@ -28,11 +29,18 @@ func (t *Tuple) GetUser() string {
 func (t *Tuple) String() string {
 	tk := (*openfgav1.TupleKey)(t)
 
-	return tk.GetObject() +
-		"#" +
-		tk.GetRelation() +
-		"@" +
-		tk.GetUser()
+	obj := tk.GetObject()
+	rel := tk.GetRelation()
+	user := tk.GetUser()
+
+	var sb strings.Builder
+	sb.Grow(len(obj) + 1 + len(rel) + 1 + len(user))
+	sb.WriteString(obj)
+	sb.WriteByte('#')
+	sb.WriteString(rel)
+	sb.WriteByte('@')
+	sb.WriteString(user)
+	return sb.String()
 }
 
 func From(tk *openfgav1.TupleKey) *Tuple {
@@ -103,13 +111,6 @@ const (
 	User     UserType = "user"
 	UserSet  UserType = "userset"
 	Wildcard          = "*"
-)
-
-var (
-	userIDRegex   = regexp.MustCompile(`^[^:#\s]+$`)
-	objectRegex   = regexp.MustCompile(`^[^:#\s]+:[^#:\s]+$`)
-	userSetRegex  = regexp.MustCompile(`^[^:#\s]+:[^#:*\s]+#[^:#*\s]+$`)
-	relationRegex = regexp.MustCompile(`^[^:#@\s]+$`)
 )
 
 func ConvertCheckRequestTupleKeyToTupleKey(tk *openfgav1.CheckRequestTupleKey) *openfgav1.TupleKey {
@@ -233,15 +234,38 @@ type UserString = string
 // UserProtoToString returns a string from a User proto. Ex: 'user:maria' or 'group:fga#member'. It is
 // the opposite of StringToUserProto function.
 func UserProtoToString(obj *openfgav1.User) UserString {
-	switch obj.GetUser().(type) {
+	switch v := obj.GetUser().(type) {
 	case *openfgav1.User_Wildcard:
-		return obj.GetWildcard().GetType() + ":*"
+		t := v.Wildcard.GetType()
+		buf := make([]byte, len(t), len(t)+2)
+		copy(buf, t)
+		buf = append(buf, ':', '*')
+		return unsafe.String(unsafe.SliceData(buf), len(buf))
 	case *openfgav1.User_Userset:
-		us := obj.GetUser().(*openfgav1.User_Userset)
-		return us.Userset.GetType() + ":" + us.Userset.GetId() + "#" + us.Userset.GetRelation()
+		t := v.Userset.GetType()
+		id := v.Userset.GetId()
+		r := v.Userset.GetRelation()
+
+		var sb strings.Builder
+		sb.Grow(len(t) + 1 + len(id) + 1 + len(r))
+
+		sb.WriteString(t)
+		sb.WriteByte(':')
+		sb.WriteString(id)
+		sb.WriteByte('#')
+		sb.WriteString(r)
+		return sb.String()
 	case *openfgav1.User_Object:
-		us := obj.GetUser().(*openfgav1.User_Object)
-		return us.Object.GetType() + ":" + us.Object.GetId()
+		t := v.Object.GetType()
+		id := v.Object.GetId()
+
+		var sb strings.Builder
+		sb.Grow(len(t) + 1 + len(id))
+
+		sb.WriteString(t)
+		sb.WriteByte(':')
+		sb.WriteString(id)
+		return sb.String()
 	default:
 		panic("unsupported type")
 	}
@@ -278,14 +302,11 @@ func StringToUserProto(userKey UserString) *openfgav1.User {
 //  2. "group#member:fga" returns "group#member" and "fga".
 //  3. "anne" returns "" and "anne".
 func SplitObject(object string) (string, string) {
-	switch i := strings.IndexByte(object, ':'); i {
-	case -1:
+	ndx := strings.IndexByte(object, ':')
+	if ndx == -1 {
 		return "", object
-	case len(object) - 1:
-		return object[0:i], ""
-	default:
-		return object[0:i], object[i+1:]
 	}
+	return object[0:ndx], object[ndx+1:]
 }
 
 func BuildObject(objectType, objectID string) string {
@@ -329,7 +350,7 @@ func GetRelation(objectRelation string) string {
 
 // IsObjectRelation returns true if the given string specifies a valid object and relation.
 func IsObjectRelation(userset string) bool {
-	return GetType(userset) != "" && GetRelation(userset) != ""
+	return IsValidUserset(userset)
 }
 
 // ToObjectRelationString formats an object/relation pair as an object#relation string. This is the inverse of
@@ -349,41 +370,150 @@ func GetUserTypeFromUser(user string) UserType {
 // TupleKeyToString converts a tuple key into its string representation. It assumes the tupleKey is valid
 // (i.e. no forbidden characters).
 func TupleKeyToString(tk TupleWithoutCondition) string {
-	return tk.GetObject() +
-		"#" +
-		tk.GetRelation() +
-		"@" +
-		tk.GetUser()
+	obj := tk.GetObject()
+	rel := tk.GetRelation()
+	user := tk.GetUser()
+
+	var sb strings.Builder
+	sb.Grow(len(obj) + 1 + len(rel) + 1 + len(user))
+
+	sb.WriteString(obj)
+	sb.WriteByte('#')
+	sb.WriteString(rel)
+	sb.WriteByte('@')
+	sb.WriteString(user)
+	return sb.String()
 }
 
 // TupleKeyWithConditionToString converts a tuple key with condition into its string representation. It assumes the tupleKey is valid
 // (i.e. no forbidden characters).
 func TupleKeyWithConditionToString(tk TupleWithCondition) string {
+	const staticSize int = 15
+	dynamicSize := len(tk.GetObject()) + len(tk.GetRelation()) + len(tk.GetUser())
+	condition := tk.GetCondition()
+	var conditionName string
+	if condition != nil {
+		conditionName = condition.GetName()
+		dynamicSize += len(conditionName)
+	}
 	var sb strings.Builder
-	sb.WriteString(TupleKeyToString(tk))
-	if tk.GetCondition() != nil {
-		sb.WriteString(" (condition " + tk.GetCondition().GetName() + ")")
+	sb.Grow(staticSize + dynamicSize)
+
+	sb.WriteString(tk.GetObject())
+	sb.WriteByte('#')
+	sb.WriteString(tk.GetRelation())
+	sb.WriteByte('@')
+	sb.WriteString(tk.GetUser())
+
+	if condition != nil {
+		sb.WriteString(" (condition ")
+		sb.WriteString(conditionName)
+		sb.WriteByte(')')
 	}
 	return sb.String()
 }
 
 // IsValidObject determines if a string s is a valid object. A valid object contains exactly one `:` and no `#` or spaces.
 func IsValidObject(s string) bool {
-	return objectRegex.MatchString(s)
+	var state, idLen int
+
+	for ndx, chr := range s {
+		if unicode.IsControl(chr) {
+			return false
+		}
+
+		switch chr {
+		case '#', ' ':
+			return false
+		case ':':
+			if state > 0 || ndx == 0 {
+				return false
+			}
+			state = 1
+		default:
+			idLen += state
+		}
+	}
+	return idLen > 0
 }
 
-// IsValidRelation determines if a string s is a valid relation. This means it does not contain any `:`, `#`, or spaces.
+// IsValidRelation determines if a string s is a valid relation. This means it does not contain any `:`, `#`, `@`, or spaces.
 func IsValidRelation(s string) bool {
-	return relationRegex.MatchString(s)
+	var count int
+
+	for _, chr := range s {
+		if unicode.IsControl(chr) {
+			return false
+		}
+
+		switch chr {
+		case '#', ':', '@', ' ':
+			return false
+		default:
+			count++
+		}
+	}
+	return count > 0
+}
+
+func IsValidUserID(s string) bool {
+	var count int
+
+	for _, chr := range s {
+		if unicode.IsControl(chr) {
+			return false
+		}
+
+		switch chr {
+		case '#', ':', ' ':
+			return false
+		default:
+			count++
+		}
+	}
+	return count > 0
+}
+
+func IsValidUserset(s string) bool {
+	var state, idLen, relLen int
+
+	for ndx, chr := range s {
+		if unicode.IsControl(chr) {
+			return false
+		}
+
+		switch chr {
+		case ':':
+			if state > 0 || ndx == 0 {
+				return false
+			}
+			state = 1
+		case '#':
+			if state > 1 || idLen == 0 {
+				return false
+			}
+			state = 2
+		case ' ':
+			return false
+		case '*':
+			if state > 0 {
+				return false
+			}
+		default:
+			switch state {
+			case 1:
+				idLen++
+			case 2:
+				relLen++
+			}
+		}
+	}
+	return relLen > 0
 }
 
 // IsValidUser determines if a string is a valid user. A valid user contains at most one `:`, at most one `#` and no spaces.
 func IsValidUser(user string) bool {
-	if user == Wildcard || userIDRegex.MatchString(user) || objectRegex.MatchString(user) || userSetRegex.MatchString(user) {
-		return true
-	}
-
-	return false
+	return user == Wildcard || IsValidUserID(user) || IsValidObject(user) || IsValidUserset(user)
 }
 
 // IsWildcard returns true if the string 's' could be interpreted as a typed or untyped wildcard (e.g. '*' or 'type:*').
@@ -478,14 +608,20 @@ func ToUserParts(user string) (string, string, string) {
 }
 
 func FromUserParts(userObjectType, userObjectID, userRelation string) string {
-	user := userObjectID
-	if userObjectType != "" {
-		user = userObjectType + ":" + userObjectID
+	size := len(userObjectType) + len(userObjectID) + len(userRelation) + 2
+	buf := make([]byte, size)
+	w := copy(buf, userObjectType)
+	if w > 0 && size > w {
+		buf[w] = ':'
+		w += 1
 	}
-	if userRelation != "" {
-		user = user + "#" + userRelation
+	w += copy(buf[w:], userObjectID)
+	if len(userRelation) > 0 {
+		buf[w] = '#'
+		w += 1
+		w += copy(buf[w:], userRelation)
 	}
-	return user
+	return unsafe.String(unsafe.SliceData(buf[:w]), w)
 }
 
 // IsSelfDefining returns true if the tuple is reflexive/self-defining. E.g. Document:1#viewer@document:1#viewer.

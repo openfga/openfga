@@ -7,17 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Try to keep listed changes to a concise bulleted list of simple explanations of changes. Aim for the amount of information needed so that readers can understand where they would look in the codebase to investigate the changes' implementation, or where they would look in the documentation to understand how to make use of the change in practice - better yet, link directly to the docs and provide detailed information there. Only elaborate if doing so is required to avoid breaking changes or experimental features from ruining someone's day.
 
 ## [Unreleased]
+### Changed
+- The ListObjects "pipeline" algorithm ditches its custom Pipe implementation and replaces it with Go native channels. [#2977](https://github.com/openfga/openfga/pull/2977)
+- Refactor tuple validation and manipulation functions for optimal performance. [#2984](https://github.com/openfga/openfga/pull/2984)
+- Update grpc-go version to v1.79.3 and grpc-health-probe to v0.4.47. [#2988](https://github.com/openfga/openfga/pull/2988)
+
+### Fixed
+- Fixed `OTEL_EXPORTER_OTLP_ENDPOINT` not accepting URIs with schemes (e.g. `http://host:4317`). The scheme is now stripped before passing to the gRPC exporter, and an `https://` scheme enables TLS regardless of the `trace.otlp.tls.enabled` flag. [#2981](https://github.com/openfga/openfga/pull/2981)
+
+## [1.12.0] - 2026-03-13
 ### Added
 - Add configuration for maximum size of received gRPC message bytes. [#2952](https://github.com/openfga/openfga/pull/2952)
 
 ### Changed
 - HTTP gateway's internal gRPC client now uses dynamic TLS credentials that automatically update on certificate rotation via certwatcher, preventing connection failures when certificates are rotated (e.g., by cert-manager). [#2951](https://github.com/openfga/openfga/pull/2951)
+- Tuple validation will now fail when any unicode control characters, or null bytes are present within a tuple string. [#2963](https://github.com/openfga/openfga/pull/2963)
 
 ### Fixed
+- Fixed swapped format arguments in `DecodeParameterType` error message that reported required and found generic type counts in the wrong order. [#2961](https://github.com/openfga/openfga/pull/2961)
 - Fixed a few bugs. Two potential index out of bounds scenarios, and one cache of an invalid result. [#2942](https://github.com/openfga/openfga/pull/2942)
 - Fixed a race condition in check reducers causing non-deterministic nested handler execution due to canceled parent context. [#2947](https://github.com/openfga/openfga/pull/2947)
 - Fixed an issue where `cache_item_count` was incrementing on overwrites, causing the metric to steadily drift upward. [#2950](https://github.com/openfga/openfga/pull/2950)
 - Set `pipeline_list_objects` enabled by default in experimentals so that setting new experimental values does not disable it. This is required so that a user may pass in a custom featureflag client where `pipeline_list_objects` can be disabled on a per store basis. To disable the ListObjects pipeline algorithm entirely, set `listObjects-pipeline-enabled` to `false`. [#2957](https://github.com/openfga/openfga/pull/2957)
+
+### Security
+- Update toolchain go version to 1.26.1 to be latest. [#2975](https://github.com/openfga/openfga/pull/2975)
+- Update toolchain go version to 1.25.8 to address std lib vulnerabilities [GO-2026-4603](https://pkg.go.dev/vuln/GO-2026-4603) and [GO-2026-4601](https://pkg.go.dev/vuln/GO-2026-4601). [#2971](https://github.com/openfga/openfga/pull/2971)
 
 ## [1.11.6] - 2026-02-23
 ### Added
@@ -1539,7 +1554,8 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
 - Memory storage adapter implementation
 - Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.11.6...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.12.0...HEAD
+[1.12.0]: https://github.com/openfga/openfga/compare/v1.11.6...v1.12.0
 [1.11.6]: https://github.com/openfga/openfga/compare/v1.11.5...v1.11.6
 [1.11.5]: https://github.com/openfga/openfga/compare/v1.11.4...v1.11.5
 [1.11.4]: https://github.com/openfga/openfga/compare/v1.11.3...v1.11.4
