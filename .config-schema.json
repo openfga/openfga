@@ -123,7 +123,10 @@
                 "type": "integer"
             },
             "minItems": 1,
-            "default": [50, 200],
+            "default": [
+                50,
+                200
+            ],
             "x-env-variable": "OPENFGA_REQUEST_DURATION_DATASTORE_QUERY_COUNT_BUCKETS"
         },
         "requestDurationDispatchCountBuckets": {
@@ -134,7 +137,10 @@
                 "type": "integer"
             },
             "minItems": 1,
-            "default": [50, 200],
+            "default": [
+                50,
+                200
+            ],
             "x-env-variable": "OPENFGA_REQUEST_DURATION_DISPATCH_COUNT_BUCKETS"
         },
         "contextPropagationToDatastore": {
@@ -148,9 +154,17 @@
             "type": "array",
             "items": {
                 "type": "string",
-                "enum": ["enable-check-optimizations", "enable-list-objects-optimizations", "enable-access-control", "datastore_throttling", "pipeline_list_objects"]
+                "enum": [
+                    "enable-check-optimizations",
+                    "enable-list-objects-optimizations",
+                    "enable-access-control",
+                    "datastore_throttling",
+                    "pipeline_list_objects"
+                ]
             },
-            "default": ["pipeline_list_objects"],
+            "default": [
+                "pipeline_list_objects"
+            ],
             "x-env-variable": "OPENFGA_EXPERIMENTALS"
         },
         "accessControl": {
@@ -224,7 +238,12 @@
                 "engine": {
                     "description": "The datastore engine that will be used for persistence.",
                     "type": "string",
-                    "enum": ["memory", "postgres", "mysql", "sqlite"],
+                    "enum": [
+                        "memory",
+                        "postgres",
+                        "mysql",
+                        "sqlite"
+                    ],
                     "default": "memory",
                     "x-env-variable": "OPENFGA_DATASTORE_ENGINE"
                 },
@@ -335,7 +354,11 @@
                 "method": {
                     "description": "The authentication method to use.",
                     "type": "string",
-                    "enum": ["none", "preshared", "oidc"],
+                    "enum": [
+                        "none",
+                        "preshared",
+                        "oidc"
+                    ],
                     "default": "none",
                     "x-env-variable": "OPENFGA_AUTHN_METHOD"
                 },
@@ -347,7 +370,6 @@
                     "description": "The OIDC provider specific settings. This must be set if 'authn.method=oidc'.",
                     "$ref": "#/definitions/oidc"
                 }
-
             }
         },
         "grpc": {
@@ -386,7 +408,11 @@
                             "x-env-variable": "OPENFGA_GRPC_TLS_KEY"
                         }
                     },
-                    "required": ["enabled", "cert", "key"]
+                    "required": [
+                        "enabled",
+                        "cert",
+                        "key"
+                    ]
                 }
             }
         },
@@ -424,7 +450,11 @@
                             "x-env-variable": "OPENFGA_HTTP_TLS_KEY"
                         }
                     },
-                    "required": ["enabled", "cert", "key"]
+                    "required": [
+                        "enabled",
+                        "cert",
+                        "key"
+                    ]
                 },
                 "upstreamTimeout": {
                     "description": "The timeout duration for proxying HTTP requests upstream to the grpc endpoint.",
@@ -438,7 +468,9 @@
                     "items": {
                         "type": "string"
                     },
-                    "default": ["*"],
+                    "default": [
+                        "*"
+                    ],
                     "x-env-variable": "OPENFGA_HTTP_CORS_ALLOWED_ORIGINS"
                 },
                 "corsAllowedHeaders": {
@@ -447,7 +479,9 @@
                     "items": {
                         "type": "string"
                     },
-                    "default": ["*"],
+                    "default": [
+                        "*"
+                    ],
                     "x-env-variable": "OPENFGA_HTTP_CORS_ALLOWED_HEADERS"
                 }
             }
@@ -458,21 +492,35 @@
                 "format": {
                     "description": "The log format to output logs in. For production we recommend 'json' format.",
                     "type": "string",
-                    "enum": ["text", "json"],
+                    "enum": [
+                        "text",
+                        "json"
+                    ],
                     "default": "text",
                     "x-env-variable": "OPENFGA_LOG_FORMAT"
                 },
                 "level": {
                     "description": "The log level to set. For production we recommend 'info' format.",
                     "type": "string",
-                    "enum": ["none", "debug", "info", "warn", "error", "panic", "fatal"],
+                    "enum": [
+                        "none",
+                        "debug",
+                        "info",
+                        "warn",
+                        "error",
+                        "panic",
+                        "fatal"
+                    ],
                     "default": "info",
                     "x-env-variable": "OPENFGA_LOG_LEVEL"
                 },
                 "timestampFormat": {
                     "description": "The timestamp format to use for the log output.",
                     "type": "string",
-                    "enum": ["Unix", "ISO8601"],
+                    "enum": [
+                        "Unix",
+                        "ISO8601"
+                    ],
                     "default": "Unix",
                     "x-env-variable": "OPENFGA_LOG_TIMESTAMP_FORMAT"
                 }
@@ -494,7 +542,11 @@
                             "description": "The grpc endpoint of the trace collector",
                             "type": "string",
                             "default": "0.0.0.0:4317",
-                            "x-env-variable": ["OPENFGA_TRACE_OTLP_ENDPOINT", "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", "OTEL_EXPORTER_OTLP_ENDPOINT"]
+                            "x-env-variable": [
+                                "OPENFGA_TRACE_OTLP_ENDPOINT",
+                                "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT",
+                                "OTEL_EXPORTER_OTLP_ENDPOINT"
+                            ]
                         },
                         "tls": {
                             "type": "object",
@@ -513,13 +565,19 @@
                     "description": "The fraction of traces to sample. 1 means all, 0 means none.",
                     "type": "number",
                     "default": "0.2",
-                    "x-env-variable": ["OPENFGA_TRACE_SAMPLE_RATIO", "OTEL_TRACES_SAMPLER_ARG"]
+                    "x-env-variable": [
+                        "OPENFGA_TRACE_SAMPLE_RATIO",
+                        "OTEL_TRACES_SAMPLER_ARG"
+                    ]
                 },
                 "serviceName": {
                     "description": "The service name included in sampled traces.",
                     "type": "string",
                     "default": "openfga",
-                    "x-env-variable": ["OPENFGA_TRACE_SERVICE_NAME", "OTEL_SERVICE_NAME"]
+                    "x-env-variable": [
+                        "OPENFGA_TRACE_SERVICE_NAME",
+                        "OTEL_SERVICE_NAME"
+                    ]
                 },
                 "resourceAttributes": {
                     "description": "Key-value pairs to be used as resource attributes",
@@ -825,7 +883,7 @@
             "description": "The timeout duration for a graceful shutdown.",
             "type": "string",
             "format": "duration",
-            "default": "5s",
+            "default": "10s",
             "x-env-variable": "OPENFGA_SHUTDOWN_TIMEOUT"
         },
         "planner": {
@@ -893,7 +951,10 @@
                     "x-env-variable": "OPENFGA_AUTHN_OIDC_CLIENT_ID_CLAIMS"
                 }
             },
-            "required": ["issuer", "audience"]
+            "required": [
+                "issuer",
+                "audience"
+            ]
         },
         "preshared": {
             "type": "object",
@@ -908,7 +969,9 @@
                     "x-env-variable": "OPENFGA_AUTHN_PRESHARED_KEYS"
                 }
             },
-            "required": ["keys"]
+            "required": [
+                "keys"
+            ]
         }
     }
 }

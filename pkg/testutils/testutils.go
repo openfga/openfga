@@ -264,6 +264,7 @@ func MustDefaultConfig() *serverconfig.Config {
 	config := serverconfig.DefaultConfig()
 
 	config.Playground.Enabled = false
+	config.Trace.Enabled = false
 	config.Metrics.Enabled = false
 
 	// increase timeout to reduce the likelihood of server shutdown failures
