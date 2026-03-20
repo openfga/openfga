@@ -3,6 +3,7 @@ package pipeline
 import (
 	"context"
 	"iter"
+	"time"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -73,37 +74,102 @@ func (r *resolverCore) drain(
 	snd *sender,
 	yield func(context.Context, *Edge, *message),
 ) {
+	var sumIdleNanoseconds int64
+	var maxIdleNanoseconds int64
+	var sumActiveNanoseconds int64
+	var maxActiveNanoseconds int64
+	var sumMessages int64
+	var sumItems int64
+	var maxItems int64
+
 	edge := snd.Key
 
 	edgeTo := "nil"
 	edgeFrom := "nil"
+
+	var edgeType string
+	switch edge.GetEdgeType() {
+	case edgeTypeDirect:
+		edgeType = "direct"
+	case edgeTypeComputed:
+		edgeType = "computed"
+	case edgeTypeRewrite:
+		edgeType = "rewrite"
+	case edgeTypeTTU:
+		edgeType = "ttu"
+	case edgeTypeDirectLogical:
+		edgeType = "direct_logical"
+	case edgeTypeTTULogical:
+		edgeType = "ttu_logical"
+	default:
+		edgeType = "unknown"
+	}
 
 	if edge != nil {
 		edgeTo = edge.GetTo().GetUniqueLabel()
 		edgeFrom = edge.GetFrom().GetUniqueLabel()
 	}
 
-	attrs := []attribute.KeyValue{
-		attribute.String("edge.to", edgeTo),
-		attribute.String("edge.from", edgeFrom),
-	}
+	const (
+		labelEdgeTo            string = "edge.to"
+		labelEdgeFrom          string = "edge.from"
+		labelEdgeType          string = "edge.type"
+		labelIdleDurationSum   string = "idle.duration.sum"
+		labelIdleDurationMax   string = "idle.duration.max"
+		labelActiveDurationSum string = "active.duration.sum"
+		labelActiveDurationMax string = "active.duration.max"
+		labelMessagesSum       string = "messages.sum"
+		labelItemsSum          string = "items.sum"
+		labelItemsMax          string = "items.max"
+	)
 
+	ctx, span := pipelineTracer.Start(
+		ctx, "sender.drain",
+		trace.WithAttributes(
+			attribute.String(labelEdgeTo, edgeTo),
+			attribute.String(labelEdgeFrom, edgeFrom),
+			attribute.String(labelEdgeType, edgeType),
+			attribute.Int64(labelIdleDurationSum, sumIdleNanoseconds),
+			attribute.Int64(labelIdleDurationMax, maxIdleNanoseconds),
+			attribute.Int64(labelActiveDurationSum, sumActiveNanoseconds),
+			attribute.Int64(labelActiveDurationMax, maxActiveNanoseconds),
+			attribute.Int64(labelMessagesSum, sumMessages),
+			attribute.Int64(labelItemsSum, sumItems),
+			attribute.Int64(labelItemsMax, maxItems),
+		),
+	)
+
+	idleStart := time.Now()
 	for msg := range snd.C {
+		elapsedIdleNanoseconds := time.Since(idleStart).Nanoseconds()
+		maxIdleNanoseconds = max(maxIdleNanoseconds, elapsedIdleNanoseconds)
+		sumIdleNanoseconds += elapsedIdleNanoseconds
+		activeStart := time.Now()
+
+		sumMessages++
+		maxItems = max(maxItems, int64(len(msg.Value)))
+		sumItems += int64(len(msg.Value))
+
 		if ctx.Err() != nil {
 			msg.Done()
 			continue
 		}
 
-		var messageAttrs [3]attribute.KeyValue
-		messageAttrs[0] = attribute.Int("items.count", len(msg.Value))
-		copy(messageAttrs[1:], attrs)
-
-		ctx, span := pipelineTracer.Start(
-			ctx, "message.received",
-			trace.WithAttributes(messageAttrs[:]...),
-		)
-
 		yield(ctx, edge, msg)
-		span.End()
+		elapsedActiveNanoseconds := time.Since(activeStart).Nanoseconds()
+		maxActiveNanoseconds = max(maxActiveNanoseconds, elapsedActiveNanoseconds)
+		sumActiveNanoseconds += elapsedActiveNanoseconds
+		idleStart = time.Now()
 	}
+
+	span.SetAttributes(
+		attribute.Int64(labelIdleDurationSum, sumIdleNanoseconds),
+		attribute.Int64(labelIdleDurationMax, maxIdleNanoseconds),
+		attribute.Int64(labelActiveDurationSum, sumActiveNanoseconds),
+		attribute.Int64(labelActiveDurationMax, maxActiveNanoseconds),
+		attribute.Int64(labelMessagesSum, sumMessages),
+		attribute.Int64(labelItemsSum, sumItems),
+		attribute.Int64(labelItemsMax, maxItems),
+	)
+	span.End()
 }
