@@ -6,13 +6,13 @@ This document describes the versioning and release process of OpenFGA. This docu
 OpenFGA endeavours to rapidly release new features to the community.  To support that goal releases are performed based on the impact and quantity of updates to the codebase in a release-ready state.  Releases may be initiated based on a number of factors.
 
 ### Functional Changes
-Changes ready for use in production environments which add new functionality or performance improvements may individually trigger an new release.
+Changes ready for use in production environments which add new functionality or performance improvements may individually trigger a new release.
 
 ### Feature Previews
 New features which are ready for testing by the community but are disabled unless OpenFGA is launched with a feature flag may also trigger a new release.
 
 ### Maintenance Updates
-Minor updates, performance improvements, code refinements, or other items which do not introduce signifigant changes may not trigger a release individually, however when several minor changes have been merged a release may be initiated if no new version has been released in two weeks.
+Minor updates, performance improvements, code refinements, or other items which do not introduce significant changes may not trigger a release individually, however when several minor changes have been merged a release may be initiated if no new version has been released in two weeks.
 
 ### Security Updates and Bugfixes
 Changes made to address a known vulnerability or security issue or fixes to resolve a bug impacting users in production will trigger a release as soon as the changes have been tested and are considered production-ready.  A CVE will also be issued if relevant.
@@ -40,7 +40,7 @@ One of the OpenFGA maintainers is designated as the release manager.  The releas
 - Verifying the release's publication to GitHub, DockerHub, and the release of the associated Helm chart.
 - Publishing release announcements or coordinating with other maintainers and community managers to publish release announcements to the openfga.dev website, the #openfga channel in the CNCF slack, and on other channels
 
-In addition to these duties, if the release is a security fix the release manager will coordinate with relevant maintainers and contributors to create and publish a CVE detailing the identified vulnerabilites and their resolution.
+In addition to these duties, if the release is a security fix the release manager will coordinate with relevant maintainers and contributors to create and publish a CVE detailing the identified vulnerabilities and their resolution.
 
 ## Artifacts
 
