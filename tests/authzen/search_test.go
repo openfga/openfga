@@ -70,13 +70,12 @@ func TestSubjectSearch(t *testing.T) {
 		tc.writeTuples(tuples)
 
 		// Request with page limit - should be ignored, all results returned
-		limit := uint32(3)
 		resp, err := tc.authzenClient.SubjectSearch(context.Background(), &authzenv1.SubjectSearchRequest{
 			StoreId:  tc.storeID,
 			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
 			Action:   &authzenv1.Action{Name: "reader"},
 			Subject:  &authzenv1.SubjectFilter{Type: "user"},
-			Page:     &authzenv1.PageRequest{Limit: &limit},
+			Page:     &authzenv1.PageRequest{Limit: new(uint32(3))},
 		})
 		require.NoError(t, err)
 		// All 10 users should be returned despite limit of 3 (pagination not supported)
@@ -261,13 +260,12 @@ func TestResourceSearch(t *testing.T) {
 		tc.writeTuples(tuples)
 
 		// Request with page limit - should be ignored, all results returned
-		limit := uint32(3)
 		resp, err := tc.authzenClient.ResourceSearch(context.Background(), &authzenv1.ResourceSearchRequest{
 			StoreId:  tc.storeID,
 			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
 			Action:   &authzenv1.Action{Name: "reader"},
 			Resource: &authzenv1.ResourceFilter{Type: "document"},
-			Page:     &authzenv1.PageRequest{Limit: &limit},
+			Page:     &authzenv1.PageRequest{Limit: new(uint32(3))},
 		})
 		require.NoError(t, err)
 		// All 10 documents should be returned despite limit of 3 (pagination not supported)

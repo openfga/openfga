@@ -106,9 +106,7 @@ AllImages:
 
 	t.Cleanup(func() {
 		t.Logf("stopping container %s", name)
-		timeoutSec := 5
-
-		err := dockerClient.ContainerStop(context.Background(), cont.ID, container.StopOptions{Timeout: &timeoutSec})
+		err := dockerClient.ContainerStop(context.Background(), cont.ID, container.StopOptions{Timeout: new(5)})
 		if err != nil && !errdefs.IsNotFound(err) {
 			t.Logf("failed to stop mysql container: %v", err)
 		}

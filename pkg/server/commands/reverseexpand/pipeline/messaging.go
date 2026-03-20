@@ -21,8 +21,7 @@ func (b *bufferPool) Put(buffer *[]string) {
 }
 
 func (b *bufferPool) create() any {
-	tmp := make([]string, b.size)
-	return &tmp
+	return new(make([]string, b.size))
 }
 
 func newBufferPool(size int) *bufferPool {

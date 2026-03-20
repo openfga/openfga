@@ -121,9 +121,7 @@ AllImages:
 
 	t.Cleanup(func() {
 		t.Logf("stopping container %s", name)
-		timeoutSec := 5
-
-		err := dockerClient.ContainerStop(context.Background(), cont.ID, container.StopOptions{Timeout: &timeoutSec})
+		err := dockerClient.ContainerStop(context.Background(), cont.ID, container.StopOptions{Timeout: new(5)})
 		if err != nil && !errdefs.IsNotFound(err) {
 			t.Logf("failed to stop postgres container: %v", err)
 		}
@@ -286,9 +284,7 @@ exec docker-entrypoint.sh postgres -c hot_standby=on -c wal_level=replica
 
 	t.Cleanup(func() {
 		t.Logf("stopping replica container %s", name)
-		timeoutSec := 5
-
-		err := dockerClient.ContainerStop(context.Background(), cont.ID, container.StopOptions{Timeout: &timeoutSec})
+		err := dockerClient.ContainerStop(context.Background(), cont.ID, container.StopOptions{Timeout: new(5)})
 		if err != nil && !errdefs.IsNotFound(err) {
 			t.Logf("failed to stop postgres replica container: %v", err)
 		}

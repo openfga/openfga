@@ -62,8 +62,7 @@ func registerParamTypeWithGenerics(
 				return nil, fmt.Errorf("type `%s` requires %d generic types; found %d", paramTypeKeyword, genericTypeCount, len(genericTypes))
 			}
 
-			built := toParameterType(genericTypes)
-			return &built, nil
+			return new(toParameterType(genericTypes)), nil
 		},
 	}
 

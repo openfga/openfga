@@ -54,8 +54,7 @@ func (r *ReverseExpandRequest) clone() *ReverseExpandRequest {
 	if r == nil {
 		return nil
 	}
-	copyRequest := *r
-	return &copyRequest
+	return new(*r)
 }
 
 type IsUserRef interface {
