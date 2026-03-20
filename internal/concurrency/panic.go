@@ -6,6 +6,12 @@ import (
 )
 
 func RecoverFromPanic(err *error) {
+	if err == nil {
+		_ = recover()
+		// no error to write to, so just return.
+		return
+	}
+
 	if r := recover(); r != nil {
 		const size = 64 << 10
 		stacktrace := make([]byte, size)
