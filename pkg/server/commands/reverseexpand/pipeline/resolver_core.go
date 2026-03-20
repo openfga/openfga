@@ -86,28 +86,28 @@ func (r *resolverCore) drain(
 
 	edgeTo := "nil"
 	edgeFrom := "nil"
-
-	var edgeType string
-	switch edge.GetEdgeType() {
-	case edgeTypeDirect:
-		edgeType = "direct"
-	case edgeTypeComputed:
-		edgeType = "computed"
-	case edgeTypeRewrite:
-		edgeType = "rewrite"
-	case edgeTypeTTU:
-		edgeType = "ttu"
-	case edgeTypeDirectLogical:
-		edgeType = "direct_logical"
-	case edgeTypeTTULogical:
-		edgeType = "ttu_logical"
-	default:
-		edgeType = "unknown"
-	}
+	edgeType := "nil"
 
 	if edge != nil {
 		edgeTo = edge.GetTo().GetUniqueLabel()
 		edgeFrom = edge.GetFrom().GetUniqueLabel()
+
+		switch edge.GetEdgeType() {
+		case edgeTypeDirect:
+			edgeType = "direct"
+		case edgeTypeComputed:
+			edgeType = "computed"
+		case edgeTypeRewrite:
+			edgeType = "rewrite"
+		case edgeTypeTTU:
+			edgeType = "ttu"
+		case edgeTypeDirectLogical:
+			edgeType = "direct_logical"
+		case edgeTypeTTULogical:
+			edgeType = "ttu_logical"
+		default:
+			edgeType = "unknown"
+		}
 	}
 
 	const (
