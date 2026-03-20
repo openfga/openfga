@@ -11,5 +11,6 @@ coverage*.out
 *.swp
 
 mise.toml
+.DS_Store
 
 vendor/
