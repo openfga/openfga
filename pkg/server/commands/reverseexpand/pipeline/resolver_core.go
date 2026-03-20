@@ -24,7 +24,7 @@ type resolverCore struct {
 }
 
 func (r *resolverCore) error(err *error) {
-	if err != nil {
+	if err != nil && *err != nil {
 		r.errors <- *err
 	}
 }
