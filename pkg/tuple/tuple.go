@@ -535,7 +535,7 @@ func TypedPublicWildcard(objectType string) string {
 
 // MustParseTupleString attempts to parse a relationship tuple specified
 // in string notation and return the protobuf TupleKey for it. If parsing
-// of the string fails this  function will panic. It is meant for testing
+// of the string fails this function will panic. It is meant for testing
 // purposes.
 //
 // Given string 'document:1#viewer@user:jon', return the protobuf TupleKey
@@ -560,7 +560,7 @@ func MustParseTupleStrings(tupleStrs ...string) []*openfgav1.TupleKey {
 
 // ParseTupleString attempts to parse a relationship tuple specified
 // in string notation and return the protobuf TupleKey for it. If parsing
-// of the string fails this  function returns an err.
+// of the string fails this function returns an err.
 //
 // Given string 'document:1#viewer@user:jon', return the protobuf TupleKey
 // for it or an error.
