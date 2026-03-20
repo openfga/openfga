@@ -152,6 +152,10 @@ func (r *resolverCore) drain(
 
 		if ctx.Err() != nil {
 			msg.Done()
+			elapsedActiveNanoseconds := time.Since(activeStart).Nanoseconds()
+			maxActiveNanoseconds = max(maxActiveNanoseconds, elapsedActiveNanoseconds)
+			sumActiveNanoseconds += elapsedActiveNanoseconds
+			idleStart = time.Now()
 			continue
 		}
 
