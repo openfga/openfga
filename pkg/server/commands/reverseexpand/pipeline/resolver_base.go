@@ -101,14 +101,14 @@ func (r *baseResolver) Resolve(
 				}
 
 				wgRecursive.Add(1)
-				go func() (err error) {
+				go func() {
+					var err error
 					defer wgRecursive.Done()
 					defer r.error(&err)
 					defer sentCount.Add(processor.SentCount)
 					defer concurrency.RecoverFromPanic(&err)
 					r.drain(ctx, snd, processor.process)
-					return nil
-				}() //nolint:errcheck
+				}()
 			}
 			continue
 		}
@@ -122,14 +122,14 @@ func (r *baseResolver) Resolve(
 			}
 
 			wgStandard.Add(1)
-			go func() (err error) {
+			go func() {
+				var err error
 				defer wgStandard.Done()
 				defer r.error(&err)
 				defer sentCount.Add(processor.SentCount)
 				defer concurrency.RecoverFromPanic(&err)
 				r.drain(ctx, snd, processor.process)
-				return nil
-			}() //nolint:errcheck
+			}()
 		}
 	}
 

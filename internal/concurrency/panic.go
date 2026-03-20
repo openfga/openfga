@@ -12,9 +12,8 @@ func RecoverFromPanic(err *error) {
 		stacktrace = stacktrace[:runtime.Stack(stacktrace, false)]
 
 		*err = fmt.Errorf(
-			"recovered from panic %q. (err=%w) Call stack:\n%s",
+			"recovered from panic %q. Call stack:\n%s",
 			r,
-			*err,
 			stacktrace,
 		)
 	}
