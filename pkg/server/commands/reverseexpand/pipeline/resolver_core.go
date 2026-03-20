@@ -141,6 +141,20 @@ func (r *resolverCore) drain(
 		),
 	)
 
+	defer func() {
+		span.SetAttributes(
+			attribute.Int64(labelIdleDurationSum, sumIdleNanoseconds),
+			attribute.Int64(labelIdleDurationMax, maxIdleNanoseconds),
+			attribute.Int64(labelActiveDurationSum, sumActiveNanoseconds),
+			attribute.Int64(labelActiveDurationMax, maxActiveNanoseconds),
+			attribute.Int64(labelMessagesSum, sumMessages),
+			attribute.Int64(labelItemsSum, sumItems),
+			attribute.Int64(labelItemsMax, maxItems),
+		)
+
+		span.End()
+	}()
+
 	idleStart := time.Now()
 	for msg := range snd.C {
 		elapsedIdleNanoseconds := time.Since(idleStart).Nanoseconds()
@@ -167,15 +181,4 @@ func (r *resolverCore) drain(
 		sumActiveNanoseconds += elapsedActiveNanoseconds
 		idleStart = time.Now()
 	}
-
-	span.SetAttributes(
-		attribute.Int64(labelIdleDurationSum, sumIdleNanoseconds),
-		attribute.Int64(labelIdleDurationMax, maxIdleNanoseconds),
-		attribute.Int64(labelActiveDurationSum, sumActiveNanoseconds),
-		attribute.Int64(labelActiveDurationMax, maxActiveNanoseconds),
-		attribute.Int64(labelMessagesSum, sumMessages),
-		attribute.Int64(labelItemsSum, sumItems),
-		attribute.Int64(labelItemsMax, maxItems),
-	)
-	span.End()
 }
