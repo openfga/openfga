@@ -22,6 +22,8 @@ type baseProcessor struct {
 }
 
 func (p *baseProcessor) process(ctx context.Context, edge *Edge, msg *message) {
+	defer msg.Done()
+
 	var unseen []string
 
 	if p.inputBuffer != nil {
@@ -59,8 +61,6 @@ func (p *baseProcessor) process(ctx context.Context, edge *Edge, msg *message) {
 	})
 
 	p.SentCount += int64(p.broadcast(ctx, output, p.listeners))
-
-	msg.Done()
 }
 
 // baseResolver handles both recursive and non-recursive edges concurrently.
