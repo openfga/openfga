@@ -1010,6 +1010,26 @@ func TestSubjectSearch(t *testing.T) {
 		require.NotContains(t, jsonStr, "page", "JSON response should not contain 'page' field when pagination is not supported")
 	})
 
+	t.Run("returns_error_when_list_users_fails", func(t *testing.T) {
+		s, storeID := newExperimentalAuthZenServerAndStore(t, ds)
+
+		modelID := writeModel(t, s, storeID, simpleModel("reader"))
+
+		ctx := contextWithAuthorizationModelID(modelID)
+
+		// Use a relation that doesn't exist in the model → ListUsers will fail
+		req := &authzenv1.SubjectSearchRequest{
+			StoreId:  storeID,
+			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
+			Action:   &authzenv1.Action{Name: "nonexistent_relation"},
+			Subject:  &authzenv1.SubjectFilter{Type: "user"},
+		}
+
+		resp, err := s.SubjectSearch(ctx, req)
+		require.Error(t, err)
+		require.Nil(t, resp)
+	})
+
 	t.Run("returns_wildcard_subjects", func(t *testing.T) {
 		s, storeID := newExperimentalAuthZenServerAndStore(t, ds)
 
@@ -1079,6 +1099,26 @@ func TestResourceSearch(t *testing.T) {
 		st, ok := status.FromError(err)
 		require.True(t, ok)
 		require.Equal(t, codes.InvalidArgument, st.Code())
+	})
+
+	t.Run("returns_error_when_streamed_list_objects_fails", func(t *testing.T) {
+		s, storeID := newExperimentalAuthZenServerAndStore(t, ds)
+
+		modelID := writeModel(t, s, storeID, simpleModel("reader"))
+
+		ctx := contextWithAuthorizationModelID(modelID)
+
+		// Use a relation that doesn't exist → StreamedListObjects will fail
+		req := &authzenv1.ResourceSearchRequest{
+			StoreId:  storeID,
+			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
+			Action:   &authzenv1.Action{Name: "nonexistent_relation"},
+			Resource: &authzenv1.ResourceFilter{Type: "document"},
+		}
+
+		resp, err := s.ResourceSearch(ctx, req)
+		require.Error(t, err)
+		require.Nil(t, resp)
 	})
 
 	t.Run("success_with_valid_model", func(t *testing.T) {
@@ -1193,6 +1233,78 @@ func TestActionSearch(t *testing.T) {
 			}
 		}
 		require.True(t, foundReader, "Expected to find 'reader' action in results")
+	})
+
+	t.Run("handles_batch_error_items_gracefully", func(t *testing.T) {
+		s, storeID := newExperimentalAuthZenServerAndStore(t, ds)
+
+		// Create a model with a condition-based relation that will cause some batch items to error
+		resp, err := s.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
+			StoreId:       storeID,
+			SchemaVersion: "1.1",
+			TypeDefinitions: []*openfgav1.TypeDefinition{
+				{Type: "user"},
+				{
+					Type: "document",
+					Relations: map[string]*openfgav1.Userset{
+						"reader":             {Userset: &openfgav1.Userset_This{}},
+						"conditional_reader": {Userset: &openfgav1.Userset_This{}},
+					},
+					Metadata: &openfgav1.Metadata{
+						Relations: map[string]*openfgav1.RelationMetadata{
+							"reader": {
+								DirectlyRelatedUserTypes: []*openfgav1.RelationReference{{Type: "user"}},
+							},
+							"conditional_reader": {
+								DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+									{Type: "user", Condition: "time_check"},
+								},
+							},
+						},
+					},
+				},
+			},
+			Conditions: map[string]*openfgav1.Condition{
+				"time_check": {
+					Name:       "time_check",
+					Expression: "current_time > threshold",
+					Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+						"current_time": {TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_TIMESTAMP},
+						"threshold":    {TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_TIMESTAMP},
+					},
+				},
+			},
+		})
+		require.NoError(t, err)
+		modelID := resp.GetAuthorizationModelId()
+
+		// Write tuple for reader (no condition) and conditional_reader (with condition)
+		writeTuplesWithModel(t, s, storeID, modelID,
+			&openfgav1.TupleKey{Object: "document:doc1", Relation: "reader", User: "user:alice"},
+			&openfgav1.TupleKey{
+				Object: "document:doc1", Relation: "conditional_reader", User: "user:alice",
+				Condition: &openfgav1.RelationshipCondition{Name: "time_check"},
+			},
+		)
+
+		ctx := contextWithAuthorizationModelID(modelID)
+
+		// ActionSearch will BatchCheck both relations. The conditional_reader check
+		// will return an error because the required condition parameters are missing.
+		actionReq := &authzenv1.ActionSearchRequest{
+			StoreId:  storeID,
+			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
+			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
+		}
+
+		actionResp, err := s.ActionSearch(ctx, actionReq)
+		require.NoError(t, err)
+		require.NotNil(t, actionResp)
+
+		// Should only return 'reader' since conditional_reader check will error
+		actions := actionResp.GetResults()
+		require.Len(t, actions, 1)
+		require.Equal(t, "reader", actions[0].GetName())
 	})
 
 	t.Run("invalid_resource_type_returns_error", func(t *testing.T) {

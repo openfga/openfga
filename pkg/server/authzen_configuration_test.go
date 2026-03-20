@@ -52,6 +52,16 @@ func TestGetBaseURLFromContext(t *testing.T) {
 			expected: "https://example.com:8080",
 		},
 		{
+			name:     "returns_empty_when_no_host_headers",
+			md:       metadata.New(map[string]string{"x-forwarded-proto": "https"}),
+			expected: "",
+		},
+		{
+			name:     "rejects_empty_hostname_after_split_port",
+			md:       metadata.New(map[string]string{":authority": ":8080"}),
+			expected: "",
+		},
+		{
 			name:     "rejects_empty_host_after_trim",
 			md:       metadata.New(map[string]string{"x-forwarded-host": "  "}),
 			expected: "",
