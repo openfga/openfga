@@ -23,8 +23,10 @@ type resolverCore struct {
 	numProcs    int
 }
 
-func (r *resolverCore) error(err error) {
-	r.errors <- err
+func (r *resolverCore) error(err *error) {
+	if err != nil && *err != nil {
+		r.errors <- *err
+	}
 }
 
 // broadcast batches results to amortize message overhead.
