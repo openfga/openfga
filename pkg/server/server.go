@@ -19,6 +19,7 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/sync/singleflight"
 
+	authzenv1 "github.com/openfga/api/proto/authzen/v1"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/authz"
@@ -165,6 +166,7 @@ var (
 // a GRPC and HTTP server.
 type Server struct {
 	openfgav1.UnimplementedOpenFGAServiceServer
+	authzenv1.UnimplementedAuthZenServiceServer
 
 	logger                           logger.Logger
 	datastore                        storage.OpenFGADatastore
