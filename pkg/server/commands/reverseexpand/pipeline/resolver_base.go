@@ -7,6 +7,7 @@ import (
 
 	"go.opentelemetry.io/otel/attribute"
 
+	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/containers"
 	"github.com/openfga/openfga/internal/seq"
 )
@@ -42,7 +43,7 @@ func (p *baseProcessor) process(ctx context.Context, edge *Edge, msg *message) {
 	results = seq.Filter(results, func(obj Item) bool {
 		value, err := obj.Object()
 		if err != nil {
-			p.error(err)
+			p.error(&err)
 			return false
 		}
 
@@ -100,11 +101,14 @@ func (r *baseResolver) Resolve(
 				}
 
 				wgRecursive.Add(1)
-				go func() {
+				go func() (err error) {
 					defer wgRecursive.Done()
+					defer r.error(&err)
+					defer sentCount.Add(processor.SentCount)
+					defer concurrency.RecoverFromPanic(&err)
 					r.drain(ctx, snd, processor.process)
-					sentCount.Add(processor.SentCount)
-				}()
+					return nil
+				}() //nolint:errcheck
 			}
 			continue
 		}
@@ -118,11 +122,14 @@ func (r *baseResolver) Resolve(
 			}
 
 			wgStandard.Add(1)
-			go func() {
+			go func() (err error) {
 				defer wgStandard.Done()
+				defer r.error(&err)
+				defer sentCount.Add(processor.SentCount)
+				defer concurrency.RecoverFromPanic(&err)
 				r.drain(ctx, snd, processor.process)
-				sentCount.Add(processor.SentCount)
-			}()
+				return nil
+			}() //nolint:errcheck
 		}
 	}
 
