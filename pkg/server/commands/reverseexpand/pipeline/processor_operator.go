@@ -39,7 +39,7 @@ func (p *operatorProcessor) process(ctx context.Context, edge *Edge, msg *messag
 	for item := range results {
 		value, err := item.Object()
 		if err != nil {
-			p.error(err)
+			p.error(&err)
 			continue
 		}
 		p.items.Add(value)
