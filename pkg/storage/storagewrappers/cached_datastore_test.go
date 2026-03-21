@@ -18,6 +18,7 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
+	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
@@ -49,8 +50,8 @@ func TestFindInCache(t *testing.T) {
 	maxSize := 10
 	ttl := 5 * time.Hour
 	sf := &singleflight.Group{}
-	wg := &sync.WaitGroup{}
-	ds := NewCachedDatastore(ctx, mockDatastore, mockCache, maxSize, ttl, sf, wg)
+	sg := &concurrency.ShutdownGroup{}
+	ds := NewCachedDatastore(ctx, mockDatastore, mockCache, maxSize, ttl, sf, sg)
 
 	storeID := ulid.Make().String()
 	var kb keys.Builder
@@ -166,8 +167,6 @@ func TestReadStartingWithUser(t *testing.T) {
 	maxSize := 10
 	ttl := 5 * time.Hour
 	sf := &singleflight.Group{}
-	wg := &sync.WaitGroup{}
-	ds := NewCachedDatastore(ctx, mockDatastore, mockCache, maxSize, ttl, sf, wg)
 
 	storeID := ulid.Make().String()
 
@@ -231,6 +230,8 @@ func TestReadStartingWithUser(t *testing.T) {
 			}),
 		)
 
+		sg := &concurrency.ShutdownGroup{}
+		ds := NewCachedDatastore(ctx, mockDatastore, mockCache, maxSize, ttl, sf, sg)
 		iter, err := ds.ReadStartingWithUser(ctx, storeID, filter, options)
 		require.NoError(t, err)
 
@@ -252,7 +253,7 @@ func TestReadStartingWithUser(t *testing.T) {
 		iter.Stop() // has to be sync otherwise the assertion fails
 		i, ok := iter.(*cachedIterator)
 		require.True(t, ok)
-		i.wg.Wait()
+		i.sg.Wait()
 
 		if diff := cmp.Diff(tuples, actual, cmpOpts...); diff != "" {
 			t.Fatalf("mismatch (-want +got):\n%s", diff)
@@ -268,6 +269,8 @@ func TestReadStartingWithUser(t *testing.T) {
 				mockCache.EXPECT().Get(invalidEntityKeys[1]).Return(nil),
 			)
 
+			sg := &concurrency.ShutdownGroup{}
+			ds := NewCachedDatastore(ctx, mockDatastore, mockCache, maxSize, ttl, sf, sg)
 			iter, err := ds.ReadStartingWithUser(ctx, storeID, filter, options)
 			require.NoError(t, err)
 
@@ -313,6 +316,8 @@ func TestReadStartingWithUser(t *testing.T) {
 				mockCache.EXPECT().Get(invalidEntityKeysWithRelation[1]).Return(nil),
 			)
 
+			sg := &concurrency.ShutdownGroup{}
+			ds := NewCachedDatastore(ctx, mockDatastore, mockCache, maxSize, ttl, sf, sg)
 			iter, err := ds.ReadStartingWithUser(ctx, storeID, filterWithUserRelation, options)
 			require.NoError(t, err)
 
@@ -352,6 +357,8 @@ func TestReadStartingWithUser(t *testing.T) {
 			}),
 		)
 
+		sg := &concurrency.ShutdownGroup{}
+		ds := NewCachedDatastore(ctx, mockDatastore, mockCache, maxSize, ttl, sf, sg)
 		iter, err := ds.ReadStartingWithUser(ctx, storeID, filter, options)
 		require.NoError(t, err)
 
@@ -373,7 +380,7 @@ func TestReadStartingWithUser(t *testing.T) {
 		iter.Stop() // has to be sync otherwise the assertion fails
 		i, ok := iter.(*cachedIterator)
 		require.True(t, ok)
-		i.wg.Wait()
+		i.sg.Wait()
 
 		require.Empty(t, actual)
 	})
@@ -391,6 +398,8 @@ func TestReadStartingWithUser(t *testing.T) {
 				Return(storage.NewStaticTupleIterator(tuples), nil),
 		)
 
+		sg := &concurrency.ShutdownGroup{}
+		ds := NewCachedDatastore(ctx, mockDatastore, mockCache, maxSize, ttl, sf, sg)
 		iter, err := ds.ReadStartingWithUser(ctx, storeID, filter, opts)
 		require.NoError(t, err)
 		defer iter.Stop()
@@ -430,8 +439,6 @@ func TestReadUsersetTuples(t *testing.T) {
 	maxSize := 10
 	ttl := 5 * time.Hour
 	sf := &singleflight.Group{}
-	wg := &sync.WaitGroup{}
-	ds := NewCachedDatastore(ctx, mockDatastore, mockCache, maxSize, ttl, sf, wg)
 
 	storeID := ulid.Make().String()
 
@@ -491,6 +498,8 @@ func TestReadUsersetTuples(t *testing.T) {
 			}),
 		)
 
+		sg := &concurrency.ShutdownGroup{}
+		ds := NewCachedDatastore(ctx, mockDatastore, mockCache, maxSize, ttl, sf, sg)
 		iter, err := ds.ReadUsersetTuples(ctx, storeID, filter, options)
 		require.NoError(t, err)
 
@@ -512,7 +521,7 @@ func TestReadUsersetTuples(t *testing.T) {
 		iter.Stop() // has to be sync otherwise the assertion fails
 		i, ok := iter.(*cachedIterator)
 		require.True(t, ok)
-		i.wg.Wait()
+		i.sg.Wait()
 
 		if diff := cmp.Diff(tuples, actual, cmpOpts...); diff != "" {
 			t.Fatalf("mismatch (-want +got):\n%s", diff)
@@ -526,6 +535,8 @@ func TestReadUsersetTuples(t *testing.T) {
 			mockCache.EXPECT().Get(invalidEntityKey).Return(nil),
 		)
 
+		sg := &concurrency.ShutdownGroup{}
+		ds := NewCachedDatastore(ctx, mockDatastore, mockCache, maxSize, ttl, sf, sg)
 		iter, err := ds.ReadUsersetTuples(ctx, storeID, filter, options)
 		require.NoError(t, err)
 		defer iter.Stop()
@@ -564,6 +575,8 @@ func TestReadUsersetTuples(t *testing.T) {
 			}),
 		)
 
+		sg := &concurrency.ShutdownGroup{}
+		ds := NewCachedDatastore(ctx, mockDatastore, mockCache, maxSize, ttl, sf, sg)
 		iter, err := ds.ReadUsersetTuples(ctx, storeID, filter, options)
 		require.NoError(t, err)
 
@@ -585,7 +598,7 @@ func TestReadUsersetTuples(t *testing.T) {
 		iter.Stop() // has to be sync otherwise the assertion fails
 		i, ok := iter.(*cachedIterator)
 		require.True(t, ok)
-		i.wg.Wait()
+		i.sg.Wait()
 
 		require.Empty(t, actual)
 	})
@@ -603,6 +616,8 @@ func TestReadUsersetTuples(t *testing.T) {
 				Return(storage.NewStaticTupleIterator(tuples), nil),
 		)
 
+		sg := &concurrency.ShutdownGroup{}
+		ds := NewCachedDatastore(ctx, mockDatastore, mockCache, maxSize, ttl, sf, sg)
 		iter, err := ds.ReadUsersetTuples(ctx, storeID, filter, opts)
 		require.NoError(t, err)
 		defer iter.Stop()
@@ -643,8 +658,6 @@ func TestRead(t *testing.T) {
 	maxSize := 10
 	ttl := 5 * time.Hour
 	sf := &singleflight.Group{}
-	wg := &sync.WaitGroup{}
-	ds := NewCachedDatastore(ctx, mockDatastore, mockCache, maxSize, ttl, sf, wg)
 
 	storeID := ulid.Make().String()
 
@@ -697,6 +710,8 @@ func TestRead(t *testing.T) {
 			}),
 		)
 
+		sg := &concurrency.ShutdownGroup{}
+		ds := NewCachedDatastore(ctx, mockDatastore, mockCache, maxSize, ttl, sf, sg)
 		iter, err := ds.Read(ctx, storeID, filter, storage.ReadOptions{})
 		require.NoError(t, err)
 
@@ -718,7 +733,7 @@ func TestRead(t *testing.T) {
 		iter.Stop() // has to be sync otherwise the assertion fails
 		i, ok := iter.(*cachedIterator)
 		require.True(t, ok)
-		i.wg.Wait()
+		i.sg.Wait()
 
 		if diff := cmp.Diff(tuples, actual, cmpOpts...); diff != "" {
 			t.Fatalf("mismatch (-want +got):\n%s", diff)
@@ -732,6 +747,8 @@ func TestRead(t *testing.T) {
 			mockCache.EXPECT().Get(invalidEntityKey).Return(nil),
 		)
 
+		sg := &concurrency.ShutdownGroup{}
+		ds := NewCachedDatastore(ctx, mockDatastore, mockCache, maxSize, ttl, sf, sg)
 		iter, err := ds.Read(ctx, storeID, filter, storage.ReadOptions{})
 		require.NoError(t, err)
 		defer iter.Stop()
@@ -770,6 +787,8 @@ func TestRead(t *testing.T) {
 			}),
 		)
 
+		sg := &concurrency.ShutdownGroup{}
+		ds := NewCachedDatastore(ctx, mockDatastore, mockCache, maxSize, ttl, sf, sg)
 		iter, err := ds.Read(ctx, storeID, filter, storage.ReadOptions{})
 		require.NoError(t, err)
 
@@ -791,7 +810,7 @@ func TestRead(t *testing.T) {
 		iter.Stop() // has to be sync otherwise the assertion fails
 		i, ok := iter.(*cachedIterator)
 		require.True(t, ok)
-		i.wg.Wait()
+		i.sg.Wait()
 
 		require.Empty(t, actual)
 	})
@@ -809,6 +828,8 @@ func TestRead(t *testing.T) {
 				Return(storage.NewStaticTupleIterator(tuples), nil),
 		)
 
+		sg := &concurrency.ShutdownGroup{}
+		ds := NewCachedDatastore(ctx, mockDatastore, mockCache, maxSize, ttl, sf, sg)
 		iter, err := ds.Read(ctx, storeID, filter, opts)
 		require.NoError(t, err)
 		defer iter.Stop()
@@ -846,6 +867,8 @@ func TestRead(t *testing.T) {
 				Return(storage.NewStaticTupleIterator(tuples), nil),
 		)
 
+		sg := &concurrency.ShutdownGroup{}
+		ds := NewCachedDatastore(ctx, mockDatastore, mockCache, maxSize, ttl, sf, sg)
 		iter, err := ds.Read(ctx, storeID, invalidObjectFilter, storage.ReadOptions{})
 		require.NoError(t, err)
 		defer iter.Stop()
@@ -885,8 +908,8 @@ func TestDatastoreIteratorError(t *testing.T) {
 	maxSize := 10
 	ttl := 5 * time.Hour
 	sf := &singleflight.Group{}
-	wg := &sync.WaitGroup{}
-	ds := NewCachedDatastore(ctx, mockDatastore, mockCache, maxSize, ttl, sf, wg)
+	sg := &concurrency.ShutdownGroup{}
+	ds := NewCachedDatastore(ctx, mockDatastore, mockCache, maxSize, ttl, sf, sg)
 
 	storeID := ulid.Make().String()
 
@@ -978,7 +1001,7 @@ func TestCachedIterator(t *testing.T) {
 			maxResultSize:     maxCacheSize,
 			ttl:               ttl,
 			sf:                &singleflight.Group{},
-			wg:                &sync.WaitGroup{},
+			sg:                &concurrency.ShutdownGroup{},
 			objectType:        "",
 			objectID:          "",
 			relation:          "",
@@ -1019,7 +1042,7 @@ func TestCachedIterator(t *testing.T) {
 			maxResultSize:     maxCacheSize,
 			ttl:               ttl,
 			sf:                &singleflight.Group{},
-			wg:                &sync.WaitGroup{},
+			sg:                &concurrency.ShutdownGroup{},
 			objectType:        "",
 			objectID:          "",
 			relation:          "",
@@ -1054,7 +1077,7 @@ func TestCachedIterator(t *testing.T) {
 			maxResultSize:     maxCacheSize,
 			ttl:               ttl,
 			sf:                &singleflight.Group{},
-			wg:                &sync.WaitGroup{},
+			sg:                &concurrency.ShutdownGroup{},
 			objectType:        "",
 			objectID:          "",
 			relation:          "",
@@ -1082,7 +1105,7 @@ func TestCachedIterator(t *testing.T) {
 		}
 
 		iter.Stop()
-		iter.wg.Wait()
+		iter.sg.Wait()
 
 		cachedResults := cache.Get(cacheKey)
 		require.Nil(t, cachedResults)
@@ -1111,7 +1134,7 @@ func TestCachedIterator(t *testing.T) {
 			maxResultSize:     maxCacheSize,
 			ttl:               ttl,
 			sf:                &singleflight.Group{},
-			wg:                &sync.WaitGroup{},
+			sg:                &concurrency.ShutdownGroup{},
 			objectType:        "",
 			objectID:          "",
 			relation:          "",
@@ -1120,7 +1143,7 @@ func TestCachedIterator(t *testing.T) {
 		}
 
 		iter.Stop()
-		iter.wg.Wait()
+		iter.sg.Wait()
 
 		cachedResults := cache.Get(cacheKey)
 		require.Nil(t, cachedResults)
@@ -1149,7 +1172,7 @@ func TestCachedIterator(t *testing.T) {
 			maxResultSize:     maxCacheSize,
 			ttl:               ttl,
 			sf:                &singleflight.Group{},
-			wg:                &sync.WaitGroup{},
+			sg:                &concurrency.ShutdownGroup{},
 			objectType:        "",
 			objectID:          "",
 			relation:          "",
@@ -1177,7 +1200,7 @@ func TestCachedIterator(t *testing.T) {
 		}
 
 		iter.Stop()
-		iter.wg.Wait()
+		iter.sg.Wait()
 
 		cachedResults := cache.Get(cacheKey)
 		require.NotNil(t, cachedResults)
@@ -1212,7 +1235,7 @@ func TestCachedIterator(t *testing.T) {
 			maxResultSize:     maxCacheSize,
 			ttl:               ttl,
 			sf:                &singleflight.Group{},
-			wg:                &sync.WaitGroup{},
+			sg:                &concurrency.ShutdownGroup{},
 			objectType:        "",
 			objectID:          "",
 			relation:          "",
@@ -1221,7 +1244,7 @@ func TestCachedIterator(t *testing.T) {
 		}
 
 		iter.Stop()
-		iter.wg.Wait()
+		iter.sg.Wait()
 
 		cachedResults := cache.Get(cacheKey)
 		require.NotNil(t, cachedResults)
@@ -1256,7 +1279,7 @@ func TestCachedIterator(t *testing.T) {
 			maxResultSize:     maxCacheSize,
 			ttl:               ttl,
 			sf:                &singleflight.Group{},
-			wg:                &sync.WaitGroup{},
+			sg:                &concurrency.ShutdownGroup{},
 			objectType:        "",
 			objectID:          "",
 			relation:          "",
@@ -1271,7 +1294,7 @@ func TestCachedIterator(t *testing.T) {
 		require.ErrorIs(t, err, context.Canceled)
 
 		iter.Stop()
-		iter.wg.Wait()
+		iter.sg.Wait()
 
 		cachedResults := cache.Get(cacheKey)
 		require.NotNil(t, cachedResults)
@@ -1322,7 +1345,7 @@ func TestCachedIterator(t *testing.T) {
 			maxResultSize:     maxCacheSize,
 			ttl:               ttl,
 			sf:                &singleflight.Group{},
-			wg:                &sync.WaitGroup{},
+			sg:                &concurrency.ShutdownGroup{},
 			objectType:        "",
 			objectID:          "",
 			relation:          "",
@@ -1339,7 +1362,7 @@ func TestCachedIterator(t *testing.T) {
 		}()
 
 		wg.Wait()
-		iter.wg.Wait()
+		iter.sg.Wait()
 
 		require.Zero(t, mockedIter.nextCalled)
 		require.Nil(t, iter.tuples)
@@ -1457,7 +1480,7 @@ func TestCachedIterator(t *testing.T) {
 			ttl:               ttl,
 			initializedAt:     time.Now(),
 			sf:                &singleflight.Group{},
-			wg:                &sync.WaitGroup{},
+			sg:                &concurrency.ShutdownGroup{},
 			objectType:        "",
 			objectID:          "",
 			relation:          "",
@@ -1474,7 +1497,7 @@ func TestCachedIterator(t *testing.T) {
 		}()
 
 		wg.Wait()
-		iter.wg.Wait()
+		iter.sg.Wait()
 
 		require.Zero(t, mockedIter.nextCalled)
 		require.Nil(t, iter.tuples)
@@ -1517,7 +1540,7 @@ func TestCachedIterator(t *testing.T) {
 				maxResultSize:     maxCacheSize,
 				ttl:               ttl,
 				sf:                sf,
-				wg:                &sync.WaitGroup{},
+				sg:                &concurrency.ShutdownGroup{},
 				objectType:        "",
 				objectID:          "",
 				relation:          "",
@@ -1541,7 +1564,7 @@ func TestCachedIterator(t *testing.T) {
 				maxResultSize:     maxCacheSize,
 				ttl:               ttl,
 				sf:                sf,
-				wg:                &sync.WaitGroup{},
+				sg:                &concurrency.ShutdownGroup{},
 				objectType:        "",
 				objectID:          "",
 				relation:          "",
@@ -1555,14 +1578,14 @@ func TestCachedIterator(t *testing.T) {
 				defer wg.Done()
 
 				iter1.Stop()
-				iter1.wg.Wait()
+				iter1.sg.Wait()
 			}()
 
 			go func() {
 				defer wg.Done()
 
 				iter2.Stop()
-				iter2.wg.Wait()
+				iter2.sg.Wait()
 			}()
 
 			wg.Wait()

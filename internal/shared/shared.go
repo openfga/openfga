@@ -2,16 +2,15 @@ package shared
 
 import (
 	"context"
-	"sync"
 	"time"
 
-	"golang.org/x/sync/singleflight"
-
 	"github.com/openfga/openfga/internal/cachecontroller"
+	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/pkg/logger"
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers/sharediterator"
+	"golang.org/x/sync/singleflight"
 )
 
 // SharedDatastoreResourcesOpt defines an option that can be used to change the behavior of SharedDatastoreResources
@@ -48,7 +47,7 @@ func WithCheckCache(c storage.InMemoryCache[any]) SharedDatastoreResourcesOpt {
 // SharedDatastoreResources contains resources that can be shared across Check requests.
 type SharedDatastoreResources struct {
 	SingleflightGroup     *singleflight.Group
-	WaitGroup             *sync.WaitGroup
+	ShutdownGroup         *concurrency.ShutdownGroup
 	ServerCtx             context.Context
 	CheckCache            storage.InMemoryCache[any]
 	CacheController       cachecontroller.CacheController
@@ -74,7 +73,7 @@ func NewSharedDatastoreResources(
 	defaultCacheController := cachecontroller.NewNoopCacheController()
 
 	s := &SharedDatastoreResources{
-		WaitGroup:         &sync.WaitGroup{},
+		ShutdownGroup:     &concurrency.ShutdownGroup{},
 		SingleflightGroup: sharedSf,
 		ServerCtx:         sharedCtx,
 		CacheController:   defaultCacheController,
@@ -143,7 +142,7 @@ func NewSharedDatastoreResources(
 func (s *SharedDatastoreResources) Close() {
 	// wait for any goroutines still in flight before
 	// closing the cache instance to avoid data races
-	s.WaitGroup.Wait()
+	s.ShutdownGroup.Wait()
 	if s.CheckCache != nil {
 		s.CheckCache.Stop()
 	}
