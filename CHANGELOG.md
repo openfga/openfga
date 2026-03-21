@@ -9,6 +9,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ## [Unreleased]
 ### Fixed
 - Prevent recoverable panics in list objects from terminating the process. Return an error instead. [#2994](https://github.com/openfga/openfga/pull/2994)
+- Fix data race between server shutdown and cached iterator stop. [#2996](https://github.com/openfga/openfga/pull/2996)
 
 ## [1.12.1] - 2026-03-19
 ### Changed

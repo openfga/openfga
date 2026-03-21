@@ -18,6 +18,7 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/build"
+	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers/storagewrappersutil"
@@ -97,9 +98,9 @@ type CachedDatastore struct {
 	// across multiple requests.
 	sf *singleflight.Group
 
-	// wg is used to synchronize inflight goroutines from underlying
+	// sg is used to synchronize inflight goroutines from underlying
 	// cached iterators.
-	wg *sync.WaitGroup
+	sg *concurrency.ShutdownGroup
 
 	logger logger.Logger
 
@@ -114,7 +115,7 @@ func NewCachedDatastore(
 	maxSize int,
 	ttl time.Duration,
 	sf *singleflight.Group,
-	wg *sync.WaitGroup,
+	sg *concurrency.ShutdownGroup,
 	opts ...CachedDatastoreOpt,
 ) *CachedDatastore {
 	c := &CachedDatastore{
@@ -124,7 +125,7 @@ func NewCachedDatastore(
 		maxResultSize:           maxSize,
 		ttl:                     ttl,
 		sf:                      sf,
-		wg:                      wg,
+		sg:                      sg,
 		logger:                  logger.NewNoopLogger(),
 		method:                  "",
 	}
@@ -397,7 +398,7 @@ func (c *CachedDatastore) newCachedIterator(
 		objectID:          objectID,
 		relation:          relation,
 		userType:          userType,
-		wg:                c.wg,
+		sg:                c.sg,
 		logger:            c.logger,
 	}, nil
 }
@@ -441,9 +442,9 @@ type cachedIterator struct {
 	// mu is used to synchronize access to the iterator.
 	mu sync.Mutex
 
-	// wg is used to synchronize inflight goroutines spawned
+	// sg is used to synchronize inflight goroutines spawned
 	// when stopping the iterator.
-	wg *sync.WaitGroup
+	sg *concurrency.ShutdownGroup
 
 	logger  logger.Logger
 	stopped bool
@@ -504,9 +505,7 @@ func (c *cachedIterator) Stop() {
 		return
 	}
 
-	c.wg.Add(1)
-	go func() {
-		defer c.wg.Done()
+	c.sg.Go(func() {
 		defer c.iter.Stop()
 
 		// if cache is already set by another instance, we don't need to drain the iterator
@@ -554,7 +553,7 @@ func (c *cachedIterator) Stop() {
 			}
 			return nil, nil
 		})
-	}()
+	})
 }
 
 // Head see [storage.Iterator].Head.

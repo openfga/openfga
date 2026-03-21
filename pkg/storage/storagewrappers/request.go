@@ -56,7 +56,7 @@ func NewRequestStorageWrapperWithCache(
 			int(dataResourceConfiguration.CacheSettings.CheckIteratorCacheMaxResults),
 			dataResourceConfiguration.CacheSettings.CheckIteratorCacheTTL,
 			dataResourceConfiguration.Resources.SingleflightGroup,
-			dataResourceConfiguration.Resources.WaitGroup,
+			dataResourceConfiguration.Resources.ShutdownGroup,
 			WithCachedDatastoreLogger(dataResourceConfiguration.Resources.Logger),
 			WithCachedDatastoreMethodName(string(op.Method)),
 		)
@@ -72,7 +72,7 @@ func NewRequestStorageWrapperWithCache(
 			int(dataResourceConfiguration.CacheSettings.ListObjectsIteratorCacheMaxResults),
 			dataResourceConfiguration.CacheSettings.ListObjectsIteratorCacheTTL,
 			dataResourceConfiguration.Resources.SingleflightGroup,
-			dataResourceConfiguration.Resources.WaitGroup,
+			dataResourceConfiguration.Resources.ShutdownGroup,
 			WithCachedDatastoreLogger(dataResourceConfiguration.Resources.Logger),
 			WithCachedDatastoreMethodName(string(op.Method)),
 		)
