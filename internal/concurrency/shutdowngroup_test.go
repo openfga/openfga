@@ -13,12 +13,11 @@ func TestShutdownGroupGoAndWaitRace(t *testing.T) {
 		var sg ShutdownGroup
 
 		start := make(chan struct{})
-		done := make(chan struct{})
+		accepted := make(chan bool, 1)
 
 		go func() {
 			<-start
-			sg.Go(func() {})
-			close(done)
+			accepted <- sg.Go(func() {})
 		}()
 
 		go func() {
@@ -27,7 +26,7 @@ func TestShutdownGroupGoAndWaitRace(t *testing.T) {
 		}()
 
 		close(start)
-		<-done
+		<-accepted
 		sg.Wait()
 	}
 }
@@ -36,20 +35,21 @@ func TestShutdownGroupGoRunsFunc(t *testing.T) {
 	var sg ShutdownGroup
 	done := make(chan struct{})
 
-	sg.Go(func() {
+	accepted := sg.Go(func() {
 		close(done)
 	})
+	require.True(t, accepted)
 
 	sg.Wait()
 
 	select {
 	case <-done:
 	default:
-		t.Fatal("expected goroutine to run before wait returned")
+		t.Fatal("expected func to run before wait returned")
 	}
 }
 
-func TestShutdownGroupWaitBlocksUntilStartedGoroutinesFinish(t *testing.T) {
+func TestShutdownGroupWaitBlocksUntilStartedFuncFinish(t *testing.T) {
 	var sg ShutdownGroup
 
 	started := make(chan struct{})
@@ -57,11 +57,12 @@ func TestShutdownGroupWaitBlocksUntilStartedGoroutinesFinish(t *testing.T) {
 	finished := make(chan struct{})
 	waitDone := make(chan struct{})
 
-	sg.Go(func() {
+	accepted := sg.Go(func() {
 		close(started)
 		<-release
 		close(finished)
 	})
+	require.True(t, accepted)
 
 	go func() {
 		sg.Wait()
@@ -79,7 +80,7 @@ func TestShutdownGroupWaitBlocksUntilStartedGoroutinesFinish(t *testing.T) {
 
 	select {
 	case <-waitDone:
-		t.Fatal("expected wait to block until the goroutine is released")
+		t.Fatal("expected wait to block until the func is released")
 	default:
 	}
 
@@ -110,16 +111,17 @@ func TestShutdownGroupGoAfterWaitDoesNotRun(t *testing.T) {
 	done := make(chan struct{})
 
 	sg.Wait()
-	sg.Go(func() {
+	accepted := sg.Go(func() {
 		ran.Store(true)
 		close(done)
 	})
+	require.False(t, accepted)
 
 	sg.Wait()
 
 	select {
 	case <-done:
-		t.Fatal("expected no goroutine to start after wait")
+		t.Fatal("expected no func to start after wait")
 	default:
 	}
 

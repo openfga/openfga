@@ -505,7 +505,7 @@ func (c *cachedIterator) Stop() {
 		return
 	}
 
-	c.sg.Go(func() {
+	accepted := c.sg.Go(func() {
 		defer c.iter.Stop()
 
 		// if cache is already set by another instance, we don't need to drain the iterator
@@ -554,6 +554,10 @@ func (c *cachedIterator) Stop() {
 			return nil, nil
 		})
 	})
+
+	if !accepted {
+		c.iter.Stop()
+	}
 }
 
 // Head see [storage.Iterator].Head.
