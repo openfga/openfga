@@ -64,3 +64,7 @@ func (b *Bag[T]) Seq() iter.Seq[T] {
 		}
 	}
 }
+
+func (b *Bag[T]) Clear() {
+	b.head.Store(nil)
+}

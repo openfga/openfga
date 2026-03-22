@@ -1,5 +1,6 @@
 package pipeline
 
+// Option configures a [Pipeline].
 type Option func(*Config)
 
 // WithBufferCapacity sets the capacity of pipes between workers.
@@ -50,6 +51,7 @@ func DefaultConfig() Config {
 	return config
 }
 
+// Validate returns an error if any configuration value is out of range.
 func (config *Config) Validate() error {
 	if config.BufferCapacity < 0 {
 		return ErrInvalidBufferCapacity

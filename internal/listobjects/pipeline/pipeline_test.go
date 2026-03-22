@@ -17,8 +17,7 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
-	"github.com/openfga/openfga/pkg/server/commands/reverseexpand/pipeline"
-	"github.com/openfga/openfga/pkg/server/commands/reverseexpand/pipeline/obj"
+	"github.com/openfga/openfga/internal/listobjects/pipeline"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/memory"
 	"github.com/openfga/openfga/pkg/testutils"
@@ -45,16 +44,16 @@ func (s *TestStore) Add(t testing.TB, tuples ...string) {
 
 	writes := make([]*openfgav1.TupleKey, size)
 
-	var ndx int
+	var index int
 
 	for i, tpl := range tuples {
 		objectRelation, user, _ := strings.Cut(tpl, "@")
 		object, relation, _ := strings.Cut(objectRelation, "#")
 		key := tuple.NewTupleKey(object, relation, user)
-		ndx = i % size
-		writes[ndx] = key
+		index = i % size
+		writes[index] = key
 
-		if ndx == size-1 {
+		if index == size-1 {
 			err := s.Write(context.Background(), Store, nil, writes)
 			if err != nil {
 				t.Fatal(err)
@@ -62,8 +61,8 @@ func (s *TestStore) Add(t testing.TB, tuples ...string) {
 		}
 	}
 
-	if ndx < size-1 {
-		err := s.Write(context.Background(), Store, nil, writes[:ndx+1])
+	if index < size-1 {
+		err := s.Write(context.Background(), Store, nil, writes[:index+1])
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -171,12 +170,12 @@ func TestPipelineShutdown(t *testing.T) {
 
 	g := typesys.GetWeightedGraph()
 
-	validator := obj.NewValidator(context.Background(), typesys, nil)
+	validator := pipeline.NewValidator(context.Background(), typesys, nil)
 
-	reader := obj.NewReader(
+	reader := pipeline.NewReader(
 		ds,
 		Store,
-		obj.WithValidator(validator),
+		pipeline.WithReaderValidator(validator),
 	)
 
 	pl := pipeline.New(g, reader, pipeline.WithBufferCapacity(bufferSize), pipeline.WithChunkSize(chunkSize))
@@ -261,8 +260,9 @@ func TestPipelineShutdown(t *testing.T) {
 			require.NoError(t, err)
 
 			cancel()
-			for range seq {
-				t.Fatal("received item after context canceled")
+			for item := range seq {
+				_, err := item.Object()
+				require.ErrorIs(t, err, context.Canceled)
 			}
 		})
 
@@ -348,8 +348,9 @@ func TestPipelineShutdown(t *testing.T) {
 			// wait long enough for timeout to occur
 			time.Sleep(2 * time.Millisecond)
 
-			for range seq {
-				t.Fatal("received value after context deadline exceeded")
+			for item := range seq {
+				_, err := item.Object()
+				require.ErrorIs(t, err, context.DeadlineExceeded)
 			}
 		})
 	})
@@ -403,8 +404,9 @@ func TestPipelineShutdown(t *testing.T) {
 			require.NoError(t, err)
 
 			cancel()
-			for range seq {
-				t.Fatal("received item after context canceled")
+			for item := range seq {
+				_, err := item.Object()
+				require.ErrorIs(t, err, context.Canceled)
 			}
 		})
 
@@ -421,8 +423,9 @@ func TestPipelineShutdown(t *testing.T) {
 			// wait long enough for timeout to occur
 			time.Sleep(2 * time.Millisecond)
 
-			for range seq {
-				t.Fatal("received value after context deadline exceeded")
+			for item := range seq {
+				_, err := item.Object()
+				require.ErrorIs(t, err, context.DeadlineExceeded)
 			}
 		})
 	})
@@ -2469,12 +2472,12 @@ func BenchmarkPipeline(b *testing.B) {
 
 			g := typesys.GetWeightedGraph()
 
-			validator := obj.NewValidator(context.Background(), typesys, nil)
+			validator := pipeline.NewValidator(context.Background(), typesys, nil)
 
-			reader := obj.NewReader(
+			reader := pipeline.NewReader(
 				ds,
 				Store,
-				obj.WithValidator(validator),
+				pipeline.WithReaderValidator(validator),
 			)
 
 			b.ResetTimer()
@@ -2519,12 +2522,12 @@ func TestPipeline(t *testing.T) {
 
 			g := typesys.GetWeightedGraph()
 
-			validator := obj.NewValidator(context.Background(), typesys, nil)
+			validator := pipeline.NewValidator(context.Background(), typesys, nil)
 
-			reader := obj.NewReader(
+			reader := pipeline.NewReader(
 				ds,
 				Store,
-				obj.WithValidator(validator),
+				pipeline.WithReaderValidator(validator),
 			)
 
 			spec := pipeline.Spec{
@@ -2627,10 +2630,10 @@ func TestPipelineTTUWithCondition(t *testing.T) {
 				},
 			}
 
-			reader := obj.NewReader(
+			reader := pipeline.NewReader(
 				ds,
 				storeID,
-				obj.WithValidator(obj.NewValidator(context.Background(), typesys, reqCtx)),
+				pipeline.WithReaderValidator(pipeline.NewValidator(context.Background(), typesys, reqCtx)),
 			)
 
 			seq, err := pipeline.New(g, reader).Expand(context.Background(), spec)
