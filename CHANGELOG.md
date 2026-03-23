@@ -9,6 +9,9 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ## [Unreleased]
 
 ## [1.13.0] - 2026-03-23
+### Added
+- Add AuthZen 1.0 experimental support. [#2875](https://github.com/openfga/openfga/pull/2875)
+
 ### Fixed
 - Prevent recoverable panics in list objects from terminating the process. Return an error instead. [#2994](https://github.com/openfga/openfga/pull/2994)
 
