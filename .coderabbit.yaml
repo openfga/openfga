@@ -1,0 +1,16 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+language: "en-US"
+reviews:
+  path_instructions:
+    - path: "CHANGELOG.md"
+      instructions: |
+        This project uses Keep a Changelog format and Semantic Versioning.
+
+        When reviewing a PR whose title starts with "release: update changelog for release":
+
+        1. Identify the new version number from the newly added `## [X.Y.Z]` header.
+        2. Scan all entries under that new version header for the word "Breaking" (including bold markdown "**Breaking**").
+        3. If any breaking change entry is found, verify the version bump is at least a MINOR bump in semver terms: either the MAJOR version component increased, or (if MAJOR is unchanged) the MINOR component increased compared to the previous release. For example, going from 1.11.6 to 1.12.0 or 2.0.0 is correct; going from 1.11.6 to 1.11.7 is NOT correct.
+        4. If breaking changes are present but only a PATCH version bump occurred (i.e., neither MAJOR nor MINOR increased), flag this as a critical issue: the release requires at least a MINOR version bump per semver.
+
+        Only apply this rule to release PRs (title starts with "release: update changelog for release"). For non-release PRs that modify CHANGELOG.md, this rule does not apply.

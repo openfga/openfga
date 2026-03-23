@@ -47,6 +47,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/certwatcher"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
+	authzenv1 "github.com/openfga/api/proto/authzen/v1"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/assets"
@@ -127,7 +128,7 @@ func NewRunCommand() *cobra.Command {
 	defaultConfig := serverconfig.DefaultConfig()
 	flags := cmd.Flags()
 
-	flags.StringSlice("experimentals", defaultConfig.Experimentals, fmt.Sprintf("a comma-separated list of experimental features to enable. Allowed values: %s, %s, %s, %s", serverconfig.ExperimentalCheckOptimizations, serverconfig.ExperimentalListObjectsOptimizations, serverconfig.ExperimentalAccessControlParams, serverconfig.ExperimentalDatastoreThrottling))
+	flags.StringSlice("experimentals", defaultConfig.Experimentals, fmt.Sprintf("a comma-separated list of experimental features to enable. Allowed values: %s, %s, %s, %s, %s", serverconfig.ExperimentalCheckOptimizations, serverconfig.ExperimentalListObjectsOptimizations, serverconfig.ExperimentalAccessControlParams, serverconfig.ExperimentalDatastoreThrottling, serverconfig.ExperimentalAuthZen))
 
 	flags.Bool("access-control-enabled", defaultConfig.AccessControl.Enabled, "enable/disable the access control feature")
 
@@ -422,7 +423,10 @@ func convertStringArrayToUintArray(stringArray []string) []uint {
 // The context provided to this function should be error-free, or shut down will be incomplete.
 func (s *ServerContext) telemetryConfig(config *serverconfig.Config) func() error {
 	if config.Trace.Enabled {
-		s.Logger.Info(fmt.Sprintf("🕵 tracing enabled: sampling ratio is %v and sending traces to '%s', tls: %t", config.Trace.SampleRatio, config.Trace.OTLP.Endpoint, config.Trace.OTLP.TLS.Enabled))
+		endpoint, schemeSecure := telemetry.ParseOTLPEndpoint(config.Trace.OTLP.Endpoint)
+		effectiveTLS := telemetry.ResolveOTLPSecurity(config.Trace.OTLP.TLS.Enabled, schemeSecure)
+
+		s.Logger.Info(fmt.Sprintf("🕵 tracing enabled: sampling ratio is %v and sending traces to '%s', tls: %t", config.Trace.SampleRatio, endpoint, effectiveTLS))
 
 		options := []telemetry.TracerOption{
 			telemetry.WithOTLPEndpoint(
@@ -707,9 +711,26 @@ func (s *ServerContext) runHTTPServer(ctx context.Context, config *serverconfig.
 		}),
 		runtime.WithHealthzEndpoint(healthv1pb.NewHealthClient(grpcConn)),
 		runtime.WithOutgoingHeaderMatcher(func(s string) (string, bool) { return s, true }),
+		runtime.WithIncomingHeaderMatcher(func(key string) (string, bool) {
+			// Forward Openfga-Authorization-Model-Id header to gRPC metadata for AuthZEN endpoints.
+			if strings.EqualFold(key, server.AuthorizationModelIDHeader) {
+				return strings.ToLower(key), true
+			}
+			// Forward X-Forwarded-Proto so getBaseURLFromContext can determine the scheme.
+			// grpc-gateway's annotateContext handles X-Forwarded-For and X-Forwarded-Host
+			// natively, but does not forward X-Forwarded-Proto.
+			if strings.EqualFold(key, "X-Forwarded-Proto") {
+				return strings.ToLower(key), true
+			}
+			// Use default behavior for other headers
+			return runtime.DefaultHeaderMatcher(key)
+		}),
 	}
 	mux := runtime.NewServeMux(muxOpts...)
 	if err := openfgav1.RegisterOpenFGAServiceHandler(ctx, mux, grpcConn); err != nil {
+		return nil, err
+	}
+	if err := authzenv1.RegisterAuthZenServiceHandler(ctx, mux, grpcConn); err != nil {
 		return nil, err
 	}
 	handler := http.Handler(mux)
@@ -995,6 +1016,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	// nosemgrep: grpc-server-insecure-connection
 	grpcServer := grpc.NewServer(serverOpts...)
 	openfgav1.RegisterOpenFGAServiceServer(grpcServer, svr)
+	authzenv1.RegisterAuthZenServiceServer(grpcServer, svr)
 	healthServer := &health.Checker{TargetService: svr, TargetServiceName: openfgav1.OpenFGAService_ServiceDesc.ServiceName}
 	healthv1pb.RegisterHealthServer(grpcServer, healthServer)
 	reflection.Register(grpcServer)

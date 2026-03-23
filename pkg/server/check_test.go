@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -16,6 +18,7 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/cmd/util"
+	"github.com/openfga/openfga/internal/modelgraph"
 	"github.com/openfga/openfga/pkg/featureflags"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/testutils"
@@ -242,4 +245,184 @@ func fieldMap(fields []zap.Field) map[string]interface{} {
 		f.AddTo(enc)
 	}
 	return enc.Fields
+}
+
+// recordingCache implements storage.InMemoryCache[any] and records all Set/Get/Delete keys
+// so tests can assert which cache received entries.
+type recordingCache struct {
+	mu      sync.Mutex
+	entries map[string]any
+}
+
+func newRecordingCache() *recordingCache {
+	return &recordingCache{entries: make(map[string]any)}
+}
+
+func (c *recordingCache) Get(key string) any {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.entries[key]
+}
+
+func (c *recordingCache) Set(key string, value any, _ time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.entries[key] = value
+}
+
+func (c *recordingCache) Delete(key string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	delete(c.entries, key)
+}
+
+func (c *recordingCache) Stop() {}
+
+func (c *recordingCache) keysWithPrefix(prefix string) []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	var keys []string
+	for k := range c.entries {
+		if strings.HasPrefix(k, prefix) {
+			keys = append(keys, k)
+		}
+	}
+	return keys
+}
+
+func TestV2CheckCacheSeparation(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
+
+	// Create server with cache and cache controller enabled to ensure both main and shadow caches/controllers are initialized.
+	s := MustNewServerWithOpts(
+		WithDatastore(ds),
+		WithCheckQueryCacheEnabled(true),
+		WithCheckCacheLimit(10),
+		WithCheckQueryCacheTTL(1*time.Minute),
+		WithCacheControllerEnabled(true),
+	)
+	t.Cleanup(s.Close)
+
+	ctx := context.Background()
+
+	createStoreResp, err := s.CreateStore(ctx, &openfgav1.CreateStoreRequest{
+		Name: "cache-separation-test",
+	})
+	require.NoError(t, err)
+	storeID := createStoreResp.GetId()
+
+	model := testutils.MustTransformDSLToProtoWithID(`
+		model
+			schema 1.1
+		type user
+		type document
+			relations
+				define viewer: [user]
+	`)
+
+	writeModelResp, err := s.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
+		StoreId:         storeID,
+		SchemaVersion:   model.GetSchemaVersion(),
+		TypeDefinitions: model.GetTypeDefinitions(),
+	})
+	require.NoError(t, err)
+	modelID := writeModelResp.GetAuthorizationModelId()
+
+	_, err = s.Write(ctx, &openfgav1.WriteRequest{
+		StoreId:              storeID,
+		AuthorizationModelId: modelID,
+		Writes: &openfgav1.WriteRequestWrites{
+			TupleKeys: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "user:alice"),
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	req := &openfgav1.CheckRequest{
+		StoreId:              storeID,
+		AuthorizationModelId: modelID,
+		TupleKey: &openfgav1.CheckRequestTupleKey{
+			Object:   "document:1",
+			Relation: "viewer",
+			User:     "user:alice",
+		},
+	}
+
+	// Stop the original LRU caches created during server construction so their
+	// background maintenance goroutines don't leak when we swap in recording caches.
+	origCheckCache := s.sharedDatastoreResources.CheckCache
+	origShadowCache := s.sharedDatastoreResources.ShadowCheckCache
+	origCheckCache.Stop()
+	if origShadowCache != origCheckCache {
+		origShadowCache.Stop()
+	}
+
+	t.Run("shadow_mode_uses_shadow_cache", func(t *testing.T) {
+		checkCache := newRecordingCache()
+		shadowCache := newRecordingCache()
+
+		// Replace caches on the server's shared resources.
+		s.sharedDatastoreResources.CheckCache = checkCache
+		s.sharedDatastoreResources.ShadowCheckCache = shadowCache
+
+		// Re-create resolvers so they capture the new cache instances.
+		s.authzModelGraphResolver = modelgraph.NewResolver(s.datastore, checkCache, 24*7*time.Hour)
+		s.shadowAuthzModelGraphResolver = modelgraph.NewResolver(s.datastore, shadowCache, 24*7*time.Hour)
+
+		_, err := s.v2Check(ctx, req,
+			s.sharedDatastoreResources.ShadowCheckCache,
+			s.sharedDatastoreResources.ShadowCacheController,
+			s.shadowAuthzModelGraphResolver,
+		)
+		require.NoError(t, err)
+
+		// Shadow mode should route model graph and subproblem entries to the shadow cache.
+		require.NotEmpty(t, shadowCache.keysWithPrefix("wg|"), "shadow cache should have model graph entries")
+		require.NotEmpty(t, shadowCache.keysWithPrefix("c."), "shadow cache should have subproblem cache entries")
+
+		// Main cache should remain empty.
+		require.Empty(t, checkCache.keysWithPrefix("wg|"), "main check cache should not have model graph entries")
+		require.Empty(t, checkCache.keysWithPrefix("c."), "main check cache should not have subproblem cache entries")
+	})
+
+	t.Run("non_shadow_mode_uses_main_cache", func(t *testing.T) {
+		checkCache := newRecordingCache()
+		shadowCache := newRecordingCache()
+
+		s.sharedDatastoreResources.CheckCache = checkCache
+		s.sharedDatastoreResources.ShadowCheckCache = shadowCache
+
+		s.authzModelGraphResolver = modelgraph.NewResolver(s.datastore, checkCache, 24*7*time.Hour)
+		s.shadowAuthzModelGraphResolver = modelgraph.NewResolver(s.datastore, shadowCache, 24*7*time.Hour)
+
+		_, err := s.v2Check(ctx, req,
+			s.sharedDatastoreResources.CheckCache,
+			s.sharedDatastoreResources.CacheController,
+			s.authzModelGraphResolver,
+		)
+		require.NoError(t, err)
+
+		// Non-shadow mode should route model graph and subproblem entries to the main cache.
+		require.NotEmpty(t, checkCache.keysWithPrefix("wg|"), "main check cache should have model graph entries")
+		require.NotEmpty(t, checkCache.keysWithPrefix("c."), "main check cache should have subproblem cache entries")
+
+		// Shadow cache should remain empty.
+		require.Empty(t, shadowCache.keysWithPrefix("wg|"), "shadow cache should not have model graph entries")
+		require.Empty(t, shadowCache.keysWithPrefix("c."), "shadow cache should not have subproblem cache entries")
+	})
+
+	t.Run("cache_controller_instances_are_separate", func(t *testing.T) {
+		// When caching and cache controller are both enabled, the shadow cache controller
+		// should be a separate instance from the main cache controller.
+		require.NotSame(t,
+			s.sharedDatastoreResources.CacheController,
+			s.sharedDatastoreResources.ShadowCacheController,
+			"ShadowCacheController should be a different instance than CacheController",
+		)
+	})
 }

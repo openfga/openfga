@@ -7,6 +7,7 @@ import (
 
 	"go.opentelemetry.io/otel/attribute"
 
+	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/containers"
 	"github.com/openfga/openfga/internal/seq"
 )
@@ -21,6 +22,8 @@ type baseProcessor struct {
 }
 
 func (p *baseProcessor) process(ctx context.Context, edge *Edge, msg *message) {
+	defer msg.Done()
+
 	var unseen []string
 
 	if p.inputBuffer != nil {
@@ -42,7 +45,7 @@ func (p *baseProcessor) process(ctx context.Context, edge *Edge, msg *message) {
 	results = seq.Filter(results, func(obj Item) bool {
 		value, err := obj.Object()
 		if err != nil {
-			p.error(err)
+			p.error(&err)
 			return false
 		}
 
@@ -57,9 +60,7 @@ func (p *baseProcessor) process(ctx context.Context, edge *Edge, msg *message) {
 		return value
 	})
 
-	p.SentCount += int64(p.broadcast(output, p.listeners))
-
-	msg.Done()
+	p.SentCount += int64(p.broadcast(ctx, output, p.listeners))
 }
 
 // baseResolver handles both recursive and non-recursive edges concurrently.
@@ -84,7 +85,7 @@ func (r *baseResolver) Resolve(
 	var wgRecursive sync.WaitGroup
 
 	for _, snd := range senders {
-		edge := snd.Key()
+		edge := snd.Key
 		isCyclical := isCyclical(edge)
 
 		if isCyclical {
@@ -101,9 +102,14 @@ func (r *baseResolver) Resolve(
 
 				wgRecursive.Add(1)
 				go func() {
+					var err error
 					defer wgRecursive.Done()
+					defer r.error(&err)
+					defer func() {
+						sentCount.Add(processor.SentCount)
+					}()
+					defer concurrency.RecoverFromPanic(&err)
 					r.drain(ctx, snd, processor.process)
-					sentCount.Add(processor.SentCount)
 				}()
 			}
 			continue
@@ -119,9 +125,14 @@ func (r *baseResolver) Resolve(
 
 			wgStandard.Add(1)
 			go func() {
+				var err error
 				defer wgStandard.Done()
+				defer r.error(&err)
+				defer func() {
+					sentCount.Add(processor.SentCount)
+				}()
+				defer concurrency.RecoverFromPanic(&err)
 				r.drain(ctx, snd, processor.process)
-				sentCount.Add(processor.SentCount)
 			}()
 		}
 	}
@@ -133,11 +144,13 @@ func (r *baseResolver) Resolve(
 	r.membership.WaitForAllReady()
 	r.membership.WaitForDrain()
 
-	// Unblock processors stuck on full listener buffers.
+	// Close the listeners to unblock the cyclical chain. At this point, all cycle
+	// participants have entered a "ready" state and have been drained of messages.
+	// At this point, there will never be in-flight messages that could be sent to
+	// these listeners after close.
 	for _, lst := range listeners {
 		lst.Close()
 	}
-
 	wgRecursive.Wait()
 
 	span.SetAttributes(attribute.Int64("items.count", sentCount.Load()))

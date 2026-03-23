@@ -4,13 +4,24 @@ import (
 	"context"
 
 	"github.com/openfga/openfga/internal/containers"
-	"github.com/openfga/openfga/internal/pipe"
 )
+
+type Tx interface {
+	Add(...string)
+}
+
+type ChanTx struct {
+	c chan<- string
+}
+
+func (c *ChanTx) Send(s string) {
+	c.c <- s
+}
 
 // operatorProcessor collects all items for set operations (intersection, exclusion).
 type operatorProcessor struct {
 	resolverCore
-	items   pipe.Tx[string]
+	items   Tx
 	cleanup *containers.Bag[func()]
 }
 
@@ -28,10 +39,10 @@ func (p *operatorProcessor) process(ctx context.Context, edge *Edge, msg *messag
 	for item := range results {
 		value, err := item.Object()
 		if err != nil {
-			p.error(err)
+			p.error(&err)
 			continue
 		}
-		p.items.Send(value)
+		p.items.Add(value)
 	}
 
 	p.bufferPool.Put(values)
