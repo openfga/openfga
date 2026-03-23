@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"sync"
 	"time"
+	"unicode"
 
 	"github.com/Yiling-J/theine-go"
 	"github.com/prometheus/client_golang/prometheus"
@@ -270,7 +271,20 @@ func writeValue(w io.StringWriter, v *structpb.Value) (err error) {
 	case *structpb.Value_NullValue:
 		_, err = w.WriteString("null")
 	case *structpb.Value_StringValue:
-		_, err = w.WriteString(val.StringValue)
+		for _, c := range val.StringValue {
+			// Strip out any control characters so strings can't be manipulated
+			if unicode.IsControl(c) {
+				_, err = w.WriteString("?")
+				if err != nil {
+					return
+				}
+				continue
+			}
+
+			if _, err = w.WriteString(string(c)); err != nil {
+				return
+			}
+		}
 	case *structpb.Value_NumberValue:
 		_, err = w.WriteString(strconv.FormatFloat(val.NumberValue, 'f', -1, 64)) // -1 precision ensures we represent the 64-bit value with the maximum precision needed to represent it, see strconv#FormatFloat for more info.
 	case *structpb.Value_ListValue:
@@ -320,6 +334,12 @@ func writeStruct(w io.StringWriter, s *structpb.Struct) (err error) {
 	fields := s.GetFields()
 	keys := keys(fields)
 	sort.Strings(keys)
+
+	// encode the length of the keys to ensure the correct number of keys are reflected
+	// e.g. "a": "x,'b:'y"
+	if _, err = w.WriteString(strconv.Itoa(len(keys))); err != nil {
+		return
+	}
 
 	for _, key := range keys {
 		if _, err = w.WriteString(fmt.Sprintf("'%s:'", key)); err != nil {

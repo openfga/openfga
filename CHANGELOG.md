@@ -8,6 +8,9 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+### Fixed
+- Fixed a bug in cache key construction for Check requests using conditions.
+
 ## [1.13.0] - 2026-03-23
 ### Added
 - Add AuthZen 1.0 experimental support. [#2875](https://github.com/openfga/openfga/pull/2875)
