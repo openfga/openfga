@@ -98,7 +98,7 @@ func TestWriteValue(t *testing.T) {
 					})),
 				},
 			}),
-			output: "A,null,true,1111111111,'key:'value,",
+			output: "A,null,true,1111111111,1'key:'value,",
 		},
 		"list_write_value_error": {
 			writer: &ErrorStringWriter{},
@@ -161,7 +161,16 @@ func TestWriteStruct(t *testing.T) {
 				"keyA": "valueA",
 				"keyB": "valueB",
 			}),
-			output: "'keyA:'valueA,'keyB:'valueB,",
+			output: "2'keyA:'valueA,'keyB:'valueB,",
+		},
+		"incorrect_value": {
+			writer: &validWriter,
+			value: MustNewStruct(map[string]any{
+				// This value is crafted to appear as if it were 2 keys
+				"a": "x,'b:'y",
+			}),
+			// but our cache key should identify it correctly as 1 key
+			output: "1'a:'x,'b:'y,",
 		},
 		"fields_write_key_error": {
 			writer: &ErrorStringWriter{},
@@ -290,7 +299,7 @@ func TestWriteTuples(t *testing.T) {
 					}),
 				),
 			},
-			output: "/document:A#relationA with A 'key:'value,@user:A,document:A#relationA with B 'key:'value,@user:A",
+			output: "/document:A#relationA with A 1'key:'value,@user:A,document:A#relationA with B 1'key:'value,@user:A",
 		},
 		"with_condition_write_with_error": {
 			writer: &ErrorStringWriter{
@@ -697,6 +706,62 @@ func TestCheckCacheKeyConditionContextOrderAgnostic(t *testing.T) {
 	require.Equal(t, key1, key2)
 }
 
+func TestCheckCacheKeySanitizesUnicodeControlCharacters(t *testing.T) {
+	storeID := ulid.Make().String()
+	modelID := ulid.Make().String()
+
+	struct1, err := structpb.NewStruct(map[string]interface{}{
+		"a": "x",
+	})
+	require.NoError(t, err)
+
+	// The unicode chars below are backspaces.
+	// Without sanitization, the cache key for struct1 and struct2 are the same.
+	struct2, err := structpb.NewStruct(map[string]interface{}{
+		"a": "y",
+		"b": "\u0008\u0008\u0008\u0008\u0008\u0008x",
+	})
+
+	require.NoError(t, err)
+
+	jonContextOne := tuple.NewTupleKeyWithCondition(
+		"document:2",
+		"admin",
+		"user:jon",
+		"some_condition",
+		struct1,
+	)
+
+	jonContextTwo := tuple.NewTupleKeyWithCondition(
+		"document:2",
+		"admin",
+		"user:jon",
+		"some_condition",
+		struct2,
+	)
+
+	tupleKey := tuple.NewTupleKey("document:x", "viewer", "user:jon")
+
+	key1 := MustGetCheckCacheKey(&CheckCacheKeyParams{
+		StoreID:              storeID,
+		AuthorizationModelID: modelID,
+		TupleKey:             tupleKey,
+		ContextualTuples:     []*openfgav1.TupleKey{jonContextOne},
+	})
+
+	key2 := MustGetCheckCacheKey(&CheckCacheKeyParams{
+		StoreID:              storeID,
+		AuthorizationModelID: modelID,
+		TupleKey:             tupleKey,
+		ContextualTuples:     []*openfgav1.TupleKey{jonContextTwo},
+	})
+
+	require.NotEqual(t, key1, key2)
+
+	// One '?' for each backspace character
+	require.Contains(t, key2, "??????")
+}
+
 func TestCheckCacheKeyContextualTuplesConditionsOrderDoesNotMatter(t *testing.T) {
 	storeID := ulid.Make().String()
 	modelID := ulid.Make().String()
@@ -814,13 +879,12 @@ func TestWriteInvariantCheckCacheKey(t *testing.T) {
 				},
 				Context: contextStruct,
 			},
-			output: " sp.fake_store_id/fake_model_id/document:1#viewer with condition_name 'key1:'true,@user:anne'key1:'true,",
+			output: "fake_model_id/document:1#viewer with condition_name 1'key1:'true,@user:anne1'key1:'true,",
 			error:  false,
 		},
 		"writer_error": {
 			writer: &ErrorStringWriter{TriggerAt: 0},
 			params: &CheckCacheKeyParams{},
-			output: "",
 			error:  true,
 		},
 	}
@@ -873,7 +937,7 @@ func TestWriteCheckCacheKey(t *testing.T) {
 				},
 				Context: contextStruct,
 			},
-			output: "document:1#can_view@user:anne sp.fake_store_id/fake_model_id/document:1#viewer with condition_name 'key1:'true,@user:anne'key1:'true,",
+			output: "document:1#can_view@user:annefake_model_id/document:1#viewer with condition_name 1'key1:'true,@user:anne1'key1:'true,",
 		},
 	}
 	for name, test := range cases {
