@@ -8,6 +8,10 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+## [Unreleased]
+### Fixed
+- testing - ignore
+
 ## [1.13.1] - 2026-03-24
 ### Fixed
 - Fixed a bug in cache key construction for Check requests using conditions.
@@ -1568,6 +1572,7 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
 - Memory storage adapter implementation
 - Early support for preshared key or OIDC authentication methods
 
+[Unreleased]: https://github.com/openfga/openfga/compare/vundefined...HEAD
 [Unreleased]: https://github.com/openfga/openfga/compare/v1.13.1...HEAD
 [1.13.1]: https://github.com/openfga/openfga/compare/v1.13.0...v1.13.1
 [1.13.0]: https://github.com/openfga/openfga/compare/v1.12.1...v1.13.0
