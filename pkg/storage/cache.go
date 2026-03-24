@@ -345,6 +345,11 @@ func writeStruct(w io.StringWriter, s *structpb.Struct) (err error) {
 			return
 		}
 
+		// key:value separator
+		if _, err = w.WriteString(":"); err != nil {
+			return
+		}
+
 		if err = writeValue(w, fields[key]); err != nil {
 			return
 		}
