@@ -17,6 +17,7 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
+	"github.com/openfga/openfga/internal/cachecontroller"
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/modelgraph"
 	"github.com/openfga/openfga/internal/telemetry"
@@ -26,6 +27,7 @@ import (
 	"github.com/openfga/openfga/pkg/server/commands"
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
+	"github.com/openfga/openfga/pkg/storage"
 )
 
 func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openfgav1.CheckResponse, error) {
@@ -69,7 +71,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 	storeID := req.GetStoreId()
 
 	if s.featureFlagClient.Boolean(serverconfig.ExperimentalWeightedGraphCheck, storeID) {
-		return s.v2Check(ctx, req)
+		return s.v2Check(ctx, req, s.sharedDatastoreResources.CheckCache, s.sharedDatastoreResources.CacheController, s.authzModelGraphResolver)
 	}
 
 	typesys, err := s.resolveTypesystem(ctx, storeID, req.GetAuthorizationModelId())
@@ -208,7 +210,7 @@ func (s *Server) shadowV2Check(ctx context.Context, req *openfgav1.CheckRequest,
 	recoveredErr := panics.Try(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), s.shadowCheckResolverTimeout)
 		defer cancel()
-		res, err = s.v2Check(ctx, req)
+		res, err = s.v2Check(ctx, req, s.sharedDatastoreResources.ShadowCheckCache, s.sharedDatastoreResources.ShadowCacheController, s.shadowAuthzModelGraphResolver)
 	})
 	if recoveredErr != nil {
 		err = recoveredErr.AsError()
@@ -230,14 +232,20 @@ func (s *Server) shadowV2Check(ctx context.Context, req *openfgav1.CheckRequest,
 	)
 }
 
-func (s *Server) v2Check(ctx context.Context, req *openfgav1.CheckRequest) (*openfgav1.CheckResponse, error) {
+func (s *Server) v2Check(
+	ctx context.Context,
+	req *openfgav1.CheckRequest,
+	cache storage.InMemoryCache[any],
+	cacheController cachecontroller.CacheController,
+	modelGraphResolver *modelgraph.AuthorizationModelGraphResolver,
+) (*openfgav1.CheckResponse, error) {
 	cacheInvalidationTime := time.Time{}
 
 	if req.GetConsistency() != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
-		cacheInvalidationTime = s.sharedDatastoreResources.CacheController.DetermineInvalidationTime(ctx, req.GetStoreId())
+		cacheInvalidationTime = cacheController.DetermineInvalidationTime(ctx, req.GetStoreId())
 	}
 
-	mg, err := s.authzModelGraphResolver.Resolve(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
+	mg, err := modelGraphResolver.Resolve(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
 	if err != nil {
 		return nil, err
 	}
@@ -246,7 +254,7 @@ func (s *Server) v2Check(ctx context.Context, req *openfgav1.CheckRequest) (*ope
 		commands.WithCheckQueryV2Logger(s.logger),
 		commands.WithCheckQueryV2Datastore(s.datastore),
 		commands.WithCheckQueryV2Model(mg),
-		commands.WithCheckQueryV2Cache(s.sharedDatastoreResources.CheckCache),
+		commands.WithCheckQueryV2Cache(cache),
 		commands.WithCheckQueryV2CacheTTL(s.cacheSettings.CheckQueryCacheTTL),
 		commands.WithCheckQueryV2Planner(s.planner),
 		commands.WithCheckQueryV2LastCacheInvalidationTime(cacheInvalidationTime),

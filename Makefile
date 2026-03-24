@@ -96,7 +96,7 @@ test: generate-mocks ## Run all tests. To run a specific test, pass the FILTER v
 			${GO_PACKAGES}
 	@cat coverageunit.tmp.out | grep -v "mock" > coverageunit.out
 	@rm coverageunit.tmp.out
-
+	
 test-docker: ## Run tests requiring Docker
 	${call print, "Running docker tests"}
 	@if [ -z "$${CI}" ]; then \
@@ -113,7 +113,7 @@ test-bench: generate-mocks ## Run benchmark tests. See https://pkg.go.dev/cmd/go
 #-----------------------------------------------------------------------------------------------------------------------
 .PHONY: dev-run
 
-dev-run: $(GO_BIN)/CompileDaemon $(GO_BIN)/openfga ## Run the OpenFGA server with hot reloading. Data storage type can be overridden using DATASTORE="mysql", available options are `in-memory`, `mysql`, ´postgres`, `sqlite`, default is "in-memory". Usage `DATASTORE="mysql" make dev-run`
+dev-run: $(GO_BIN)/CompileDaemon $(GO_BIN)/openfga ## Run the OpenFGA server with hot reloading. Data storage type can be overridden using DATASTORE="mysql", available options are `in-memory`, `mysql`, `postgres`, `sqlite`, default is "in-memory". Usage `DATASTORE="mysql" make dev-run`
 	${call print, "Starting OpenFGA server"}
 	@case "${DATASTORE}" in \
 		"in-memory") \
