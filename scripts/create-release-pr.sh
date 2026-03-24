@@ -177,8 +177,10 @@ git checkout -b "$helm_branch_name"
 current_version=$(grep '^version:' "$chart_file" | awk '{print $2}')
 new_version=$(echo "$current_version" | awk -F. -v OFS=. '{$NF=$NF+1; print}')
 
-sed -i '' "s/^version: .*/version: $new_version/" "$chart_file"
-sed -i '' "s/^appVersion: .*/appVersion: \"v${tag}\"/" "$chart_file"
+tmp_chart_file="$(mktemp)"
+sed "s/^version: .*/version: $new_version/" "$chart_file" \
+  | sed "s/^appVersion: .*/appVersion: \"v${tag}\"/" > "$tmp_chart_file"
+mv "$tmp_chart_file" "$chart_file"
 
 echo "Updated Chart.yaml: version ${current_version} -> ${new_version}, appVersion -> v${tag}"
 
