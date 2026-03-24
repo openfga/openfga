@@ -341,11 +341,17 @@ func writeStruct(w io.StringWriter, s *structpb.Struct) (err error) {
 	}
 
 	for _, key := range keys {
+		if _, err = w.WriteString("'"); err != nil {
+			return
+		}
 		if _, err = w.WriteString(key); err != nil {
 			return
 		}
+		if _, err = w.WriteString("'"); err != nil {
+			return
+		}
 
-		// key:value separator
+		// 'key':value separator
 		if _, err = w.WriteString(":"); err != nil {
 			return
 		}
