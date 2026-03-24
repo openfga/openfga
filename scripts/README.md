@@ -14,7 +14,7 @@ These scripts use two important packages, `gh` and `jq`. The scripts were writte
 
 ### openfga/helm-charts repo
 
-The script also updates the versions in [openfga/helm-charts](https://github.com/openfga/helm-charts) by default, and as such expects it to be cloned as a sibling directory to this repo (i.e. `../helm-charts` relative to this repo):
+The script also updates the versions in [openfga/helm-charts](https://github.com/openfga/helm-charts) by default, and as such expects it to be cloned as a sibling directory to this repo (e.g., if this repo is in `~/repos/openfga/openfga`, then the helm-charts repo should be in `~/repos/openfga/helm-charts`):
 
 ```sh
 git clone git@github.com:openfga/helm-charts.git ../helm-charts
