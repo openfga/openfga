@@ -60,7 +60,7 @@ func TestBottomUpSpecificType(t *testing.T) {
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
-		strategy := newBottomUp(mg, mockDatastore)
+		strategy := newBottomUp(mg, mockDatastore, nil)
 
 		ctx := context.Background()
 		edges, ok := mg.GetEdgesFromNodeId("document#member")
@@ -112,7 +112,7 @@ func TestBottomUpSpecificType(t *testing.T) {
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
-		strategy := newBottomUp(mg, mockDatastore)
+		strategy := newBottomUp(mg, mockDatastore, nil)
 
 		ctx := context.Background()
 		edges, ok := mg.GetEdgesFromNodeId("document#member")
@@ -167,7 +167,7 @@ func TestBottomUpSpecificType(t *testing.T) {
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
-		strategy := newBottomUp(mg, mockDatastore)
+		strategy := newBottomUp(mg, mockDatastore, nil)
 
 		ctx := context.Background()
 		edges, ok := mg.GetEdgesFromNodeId("document#member")
@@ -230,7 +230,7 @@ func TestBottomUpSpecificType(t *testing.T) {
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
-		strategy := newBottomUp(mg, mockDatastore)
+		strategy := newBottomUp(mg, mockDatastore, nil)
 
 		ctx := context.Background()
 		edges, ok := mg.GetEdgesFromNodeId("document#member")
@@ -283,7 +283,7 @@ func TestBottomUpSpecificType(t *testing.T) {
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
-		strategy := newBottomUp(mg, mockDatastore)
+		strategy := newBottomUp(mg, mockDatastore, nil)
 
 		ctx := context.Background()
 		edges, ok := mg.GetEdgesFromNodeId("document#member")
@@ -338,7 +338,7 @@ func TestBottomUpSpecificTypeWildcard(t *testing.T) {
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
-		strategy := newBottomUp(mg, mockDatastore)
+		strategy := newBottomUp(mg, mockDatastore, nil)
 
 		ctx := context.Background()
 		edges, ok := mg.GetEdgesFromNodeId("document#member")
@@ -390,7 +390,7 @@ func TestBottomUpSpecificTypeWildcard(t *testing.T) {
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
-		strategy := newBottomUp(mg, mockDatastore)
+		strategy := newBottomUp(mg, mockDatastore, nil)
 
 		ctx := context.Background()
 		edges, ok := mg.GetEdgesFromNodeId("document#member")
@@ -444,7 +444,7 @@ func TestBottomUpSpecificTypeWildcard(t *testing.T) {
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
-		strategy := newBottomUp(mg, mockDatastore)
+		strategy := newBottomUp(mg, mockDatastore, nil)
 
 		ctx := context.Background()
 		edges, ok := mg.GetEdgesFromNodeId("document#member")
@@ -506,7 +506,7 @@ func TestBottomUpSpecificTypeWildcard(t *testing.T) {
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
-		strategy := newBottomUp(mg, mockDatastore)
+		strategy := newBottomUp(mg, mockDatastore, nil)
 
 		ctx := context.Background()
 		edges, ok := mg.GetEdgesFromNodeId("document#member")
@@ -559,7 +559,7 @@ func TestBottomUpSpecificTypeWildcard(t *testing.T) {
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
-		strategy := newBottomUp(mg, mockDatastore)
+		strategy := newBottomUp(mg, mockDatastore, nil)
 
 		ctx := context.Background()
 		edges, ok := mg.GetEdgesFromNodeId("document#member")
@@ -1761,7 +1761,7 @@ func TestBottomUpResolveRewrite(t *testing.T) {
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
-		strategy := newBottomUp(mg, mockDatastore)
+		strategy := newBottomUp(mg, mockDatastore, nil)
 
 		ctx := context.Background()
 		// Get the node for the union operator in document#viewer
@@ -1876,7 +1876,7 @@ func TestBottomUpResolveRewrite(t *testing.T) {
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
-		strategy := newBottomUp(mg, mockDatastore)
+		strategy := newBottomUp(mg, mockDatastore, nil)
 
 		ctx := context.Background()
 		// Get the node for the intersection operator in document#viewer
@@ -1988,7 +1988,7 @@ func TestBottomUpResolveRewrite(t *testing.T) {
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
-		strategy := newBottomUp(mg, mockDatastore)
+		strategy := newBottomUp(mg, mockDatastore, nil)
 
 		ctx := context.Background()
 		// Get the node for the exclusion operator in document#viewer
@@ -2107,7 +2107,7 @@ func TestBottomUpResolveRewrite(t *testing.T) {
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
-		strategy := newBottomUp(mg, mockDatastore)
+		strategy := newBottomUp(mg, mockDatastore, nil)
 
 		ctx := context.Background()
 		// Get the node for the complex operator in document#viewer
@@ -2191,7 +2191,7 @@ func TestBottomUpResolveRewriteForWildcardRequests(t *testing.T) {
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
-		strategy := newBottomUp(mg, mockDatastore)
+		strategy := newBottomUp(mg, mockDatastore, nil)
 
 		ctx := context.Background()
 		// Get the node for the union operator in document#viewer
@@ -2246,7 +2246,7 @@ func TestBottomUpResolveRewriteForWildcardRequests(t *testing.T) {
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
-		strategy := newBottomUp(mg, mockDatastore)
+		strategy := newBottomUp(mg, mockDatastore, nil)
 
 		ctx := context.Background()
 		// Get the node for the union operator in document#viewer
@@ -2330,7 +2330,7 @@ func TestBottomUpResolveRewriteForWildcardRequests(t *testing.T) {
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
-		strategy := newBottomUp(mg, mockDatastore)
+		strategy := newBottomUp(mg, mockDatastore, nil)
 
 		ctx := context.Background()
 		// Get the node for the intersection operator in document#viewer
@@ -2386,7 +2386,7 @@ func TestBottomUpResolveRewriteForWildcardRequests(t *testing.T) {
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
-		strategy := newBottomUp(mg, mockDatastore)
+		strategy := newBottomUp(mg, mockDatastore, nil)
 
 		ctx := context.Background()
 		// Get the node for the intersection operator in document#viewer
@@ -2431,7 +2431,7 @@ func TestBottomUpResolveRewriteForWildcardRequests(t *testing.T) {
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
-		strategy := newBottomUp(mg, mockDatastore)
+		strategy := newBottomUp(mg, mockDatastore, nil)
 
 		ctx := context.Background()
 		// Get the node for the exclusion operator in document#viewer
@@ -2471,7 +2471,7 @@ func TestBottomUpResolveRewriteForWildcardRequests(t *testing.T) {
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
-		strategy := newBottomUp(mg, mockDatastore)
+		strategy := newBottomUp(mg, mockDatastore, nil)
 
 		ctx := context.Background()
 		// Get the node for the exclusion operator in document#viewer

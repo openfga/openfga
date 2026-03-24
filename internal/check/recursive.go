@@ -2,6 +2,7 @@ package check
 
 import (
 	"context"
+	"strings"
 	"sync"
 
 	"golang.org/x/sync/errgroup"
@@ -28,14 +29,16 @@ type Recursive struct {
 	bottomUp         *bottomUp
 	model            *modelgraph.AuthorizationModelGraph
 	datastore        storage.RelationshipTupleReader
+	iterCacheCfg     *IteratorCacheConfig
 }
 
-func NewRecursive(model *modelgraph.AuthorizationModelGraph, ds storage.RelationshipTupleReader, limit int) *Recursive {
+func NewRecursive(model *modelgraph.AuthorizationModelGraph, ds storage.RelationshipTupleReader, limit int, iterCacheCfg *IteratorCacheConfig) *Recursive {
 	return &Recursive{
-		bottomUp:         newBottomUpRecursive(model, ds),
+		bottomUp:         newBottomUpRecursive(model, ds, iterCacheCfg),
 		model:            model,
 		datastore:        ds,
 		concurrencyLimit: limit,
+		iterCacheCfg:     iterCacheCfg,
 	}
 }
 
@@ -270,12 +273,23 @@ func (s *Recursive) buildTupleMapperForID(ctx context.Context, req *Request, edg
 	if recursiveType == RecursiveTypeTTU {
 		subjectType, _ := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
 		_, relation := tuple.SplitObjectRelation(edge.GetFrom().GetUniqueLabel())
+		userFilter := subjectType + ":"
 		tIter, err = s.datastore.Read(ctx, req.GetStoreID(), storage.ReadFilter{
 			Object:     id,
 			Relation:   relation,
-			User:       subjectType + ":",
+			User:       userFilter,
 			Conditions: edge.GetConditions(),
 		}, storage.ReadOptions{Consistency: consistencyOpts})
+		if err != nil {
+			return nil, err
+		}
+
+		// Wrap with pre-condition cache before condition evaluation
+		if s.iterCacheCfg != nil {
+			objectType := id[:strings.IndexByte(id, ':')]
+			cacheKey := BuildReadCacheKey(req.GetStoreID(), id, relation, userFilter, edge.GetConditions())
+			tIter = WrapWithPreConditionCache(ctx, tIter, cacheKey, objectType, relation, "recursive_ttu", *s.iterCacheCfg)
+		}
 
 		if ctxTuples, ok := req.GetContextualTuplesByObjectID(id, relation, subjectType); ok {
 			ctxIter = storage.NewStaticTupleKeyIterator(ctxTuples)
@@ -288,15 +302,27 @@ func (s *Recursive) buildTupleMapperForID(ctx context.Context, req *Request, edg
 		}
 	} else {
 		userObjectType, userRelation := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
+		allowedTypes := []*openfgav1.RelationReference{{
+			Type:               userObjectType,
+			RelationOrWildcard: &openfgav1.RelationReference_Relation{Relation: userRelation},
+		}}
 		tIter, err = s.datastore.ReadUsersetTuples(ctx, req.GetStoreID(), storage.ReadUsersetTuplesFilter{
-			Object:   id,
-			Relation: userRelation, // a recursive relation userset, the relation to where it belongs is the same where is going to
-			AllowedUserTypeRestrictions: []*openfgav1.RelationReference{{
-				Type:               userObjectType,
-				RelationOrWildcard: &openfgav1.RelationReference_Relation{Relation: userRelation},
-			}},
-			Conditions: edge.GetConditions(),
+			Object:                      id,
+			Relation:                    userRelation, // a recursive relation userset, the relation to where it belongs is the same where is going to
+			AllowedUserTypeRestrictions: allowedTypes,
+			Conditions:                  edge.GetConditions(),
 		}, storage.ReadUsersetTuplesOptions{Consistency: consistencyOpts})
+		if err != nil {
+			return nil, err
+		}
+
+		// Wrap with pre-condition cache before condition evaluation
+		if s.iterCacheCfg != nil {
+			objectType := id[:strings.IndexByte(id, ':')]
+			cacheKey := BuildRUTCacheKey(req.GetStoreID(), id, userRelation, allowedTypes, edge.GetConditions())
+			tIter = WrapWithPreConditionCache(ctx, tIter, cacheKey, objectType, userRelation, "recursive_userset", *s.iterCacheCfg)
+		}
+
 		if ctxTuples, ok := req.GetContextualTuplesByObjectID(id, userRelation, edge.GetTo().GetUniqueLabel()); ok {
 			ctxIter = storage.NewStaticTupleKeyIterator(ctxTuples)
 		}
@@ -306,9 +332,6 @@ func (s *Recursive) buildTupleMapperForID(ctx context.Context, req *Request, edg
 			t, _ := storage.MapUserset(key)
 			return t
 		}
-	}
-	if err != nil {
-		return nil, err
 	}
 	iter := storage.NewTupleKeyIteratorFromTupleIterator(tIter)
 	if ctxIter != nil {

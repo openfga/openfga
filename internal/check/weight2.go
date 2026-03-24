@@ -22,9 +22,9 @@ type Weight2 struct {
 	datastore storage.RelationshipTupleReader
 }
 
-func NewWeight2(model *modelgraph.AuthorizationModelGraph, ds storage.RelationshipTupleReader) *Weight2 {
+func NewWeight2(model *modelgraph.AuthorizationModelGraph, ds storage.RelationshipTupleReader, iterCacheCfg *IteratorCacheConfig) *Weight2 {
 	return &Weight2{
-		bottomUp:  newBottomUp(model, ds),
+		bottomUp:  newBottomUp(model, ds, iterCacheCfg),
 		model:     model,
 		datastore: ds,
 	}
