@@ -100,7 +100,7 @@ func TestWriteValue(t *testing.T) {
 					})),
 				},
 			}),
-			output: "A,null,true,1111111111,1'key:'value,",
+			output: "A,null,true,1111111111,1keyvalue,",
 		},
 		"list_write_value_error": {
 			writer: &ErrorStringWriter{},
@@ -163,7 +163,7 @@ func TestWriteStruct(t *testing.T) {
 				"keyA": "valueA",
 				"keyB": "valueB",
 			}),
-			output: "2'keyA:'valueA,'keyB:'valueB,",
+			output: "2keyAvalueA,keyBvalueB,",
 		},
 		"incorrect_value": {
 			writer: &validWriter,
@@ -172,7 +172,7 @@ func TestWriteStruct(t *testing.T) {
 				"a": "x,'b:'y",
 			}),
 			// but our cache key should identify it correctly as 1 key
-			output: "1'a:'x,'b:'y,",
+			output: "1ax,'b:'y,",
 		},
 		"fields_write_key_error": {
 			writer: &ErrorStringWriter{},
@@ -301,7 +301,7 @@ func TestWriteTuples(t *testing.T) {
 					}),
 				),
 			},
-			output: "/document:A#relationA with A 1'key:'value,@user:A,document:A#relationA with B 1'key:'value,@user:A",
+			output: "/document:A#relationA with A 1keyvalue,@user:A,document:A#relationA with B 1keyvalue,@user:A",
 		},
 		"with_condition_write_with_error": {
 			writer: &ErrorStringWriter{
@@ -951,7 +951,7 @@ func TestWriteInvariantCheckCacheKey(t *testing.T) {
 				},
 				Context: contextStruct,
 			},
-			output: "fake_model_id/document:1#viewer with condition_name 1'key1:'true,@user:anne1'key1:'true,",
+			output: "fake_model_id/document:1#viewer with condition_name 1key1true,@user:anne1key1true,",
 			error:  false,
 		},
 		"writer_error": {
@@ -1009,7 +1009,7 @@ func TestWriteCheckCacheKey(t *testing.T) {
 				},
 				Context: contextStruct,
 			},
-			output: "document:1#can_view@user:annefake_model_id/document:1#viewer with condition_name 1'key1:'true,@user:anne1'key1:'true,",
+			output: "document:1#can_view@user:annefake_model_id/document:1#viewer with condition_name 1key1true,@user:anne1key1true,",
 		},
 	}
 	for name, test := range cases {

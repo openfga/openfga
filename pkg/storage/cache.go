@@ -4,7 +4,6 @@ package storage
 
 import (
 	"errors"
-	"fmt"
 	"io"
 	"sort"
 	"strconv"
@@ -342,7 +341,7 @@ func writeStruct(w io.StringWriter, s *structpb.Struct) (err error) {
 	}
 
 	for _, key := range keys {
-		if _, err = w.WriteString(fmt.Sprintf("'%s:'", key)); err != nil {
+		if _, err = w.WriteString(key); err != nil {
 			return
 		}
 
