@@ -134,6 +134,11 @@ func TestWriteValue(t *testing.T) {
 			value:  nil,
 			error:  true,
 		},
+		"string_with_control_chars": {
+			writer: &validWriter,
+			value:  structpb.NewStringValue("hello\x00world"),
+			output: "hello?world",
+		},
 	}
 
 	for name, test := range cases {
@@ -241,6 +246,13 @@ func TestWriteStruct(t *testing.T) {
 			writer: &ErrorStringWriter{},
 			value:  nil,
 			output: "",
+		},
+		"key_with_control_chars": {
+			writer: &validWriter,
+			value: MustNewStruct(map[string]any{
+				"key\x00A": "value",
+			}),
+			output: "1'key?A:'value,",
 		},
 	}
 
@@ -410,6 +422,27 @@ func TestWriteTuples(t *testing.T) {
 				),
 			},
 			error: true,
+		},
+		"control_chars_in_object_and_relation": {
+			writer: &validWriter,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("doc:\x00A", "view\x00er", "user:B"),
+			},
+			output: "/doc:?A#view?er@user:B",
+		},
+		"control_chars_in_user": {
+			writer: &validWriter,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:A", "viewer", "user:\x00B"),
+			},
+			output: "/document:A#viewer@user:?B",
+		},
+		"control_chars_in_condition_name": {
+			writer: &validWriter,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKeyWithCondition("document:A", "viewer", "user:A", "cond\x00X", nil),
+			},
+			output: "/document:A#viewer with cond?X 0@user:A",
 		},
 	}
 
