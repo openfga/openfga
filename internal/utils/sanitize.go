@@ -7,11 +7,11 @@ import (
 
 func Sanitize(s string) string {
 	for _, c := range s {
-		// Most of the time we can just return the original string and avoid any allocs
 		if unicode.IsControl(c) {
 			return replaceDangerousCharacters(s)
 		}
 	}
+	// Most of the time we can just return the original string and avoid any allocs
 	return s
 }
 
