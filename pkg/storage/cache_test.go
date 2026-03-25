@@ -237,8 +237,8 @@ func TestWriteStruct(t *testing.T) {
 				TriggerAt: 7,
 			},
 			value: MustNewStruct(map[string]any{
-				"keyA": "valueA",
-				"keyB": "valueB",
+				"keyA": 1,
+				"keyB": 2,
 			}),
 			error: true,
 		},
