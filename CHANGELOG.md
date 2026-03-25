@@ -8,7 +8,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 ### Changed
-- Remove `fmt` from cache key generation for requests with context. [#3006](https://github.com/openfga/openfga/pull/3006)
+- Improve cache key generation performance by removing `fmt` usage and extend control-character sanitization to all cache key inputs (tuples, conditions, context). [#3006](https://github.com/openfga/openfga/pull/3006)
 
 ## [1.13.1] - 2026-03-24
 ### Fixed

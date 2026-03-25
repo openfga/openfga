@@ -18,6 +18,7 @@ func TestSanitize(t *testing.T) {
 		{name: "multiple_control_chars", input: "hello\u0008 \u0008 \u0008 world\u0008", expected: "hello? ? ? world?"},
 		{name: "only_control_chars", input: "\x00\x01\x02\x03", expected: "????"},
 		{name: "cjk_preserved", input: "日本語テスト", expected: "日本語テスト"},
+		{name: "c1_control_char", input: "a\u0085b", expected: "a?b"},
 	}
 
 	for _, tc := range tests {
