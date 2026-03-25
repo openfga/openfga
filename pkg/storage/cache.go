@@ -347,11 +347,8 @@ func writeStruct(w io.StringWriter, s *structpb.Struct) (err error) {
 		if _, err = w.WriteString(key); err != nil {
 			return
 		}
-		// 'key:'value separator
-		if _, err = w.WriteString(":"); err != nil {
-			return
-		}
-		if _, err = w.WriteString("'"); err != nil {
+		// 'key:'value separator and quote
+		if _, err = w.WriteString(":'"); err != nil {
 			return
 		}
 

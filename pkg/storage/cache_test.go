@@ -212,7 +212,7 @@ func TestWriteStruct(t *testing.T) {
 			}),
 			error: true,
 		},
-		"fields_write_quote_two_error": {
+		"fields_write_value_error": {
 			writer: &ErrorStringWriter{
 				TriggerAt: 5,
 			},
@@ -222,19 +222,9 @@ func TestWriteStruct(t *testing.T) {
 			}),
 			error: true,
 		},
-		"fields_write_value_error": {
-			writer: &ErrorStringWriter{
-				TriggerAt: 6,
-			},
-			value: MustNewStruct(map[string]any{
-				"keyA": "valueA",
-				"keyB": "valueB",
-			}),
-			error: true,
-		},
 		"fields_write_comma_error": {
 			writer: &ErrorStringWriter{
-				TriggerAt: 7,
+				TriggerAt: 6,
 			},
 			value: MustNewStruct(map[string]any{
 				"keyA": 1,
