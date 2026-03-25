@@ -270,19 +270,9 @@ func writeValue(w io.StringWriter, v *structpb.Value) (err error) {
 	case *structpb.Value_NullValue:
 		_, err = w.WriteString("null")
 	case *structpb.Value_StringValue:
-		for _, c := range val.StringValue {
-			// Strip out any control characters so strings can't be manipulated
-			if unicode.IsControl(c) {
-				_, err = w.WriteString("?")
-				if err != nil {
-					return
-				}
-				continue
-			}
-
-			if _, err = w.WriteString(string(c)); err != nil {
-				return
-			}
+		_, err = w.WriteString(utils.Sanitize(val.StringValue))
+		if err != nil {
+			return
 		}
 	case *structpb.Value_NumberValue:
 		_, err = w.WriteString(strconv.FormatFloat(val.NumberValue, 'f', -1, 64)) // -1 precision ensures we represent the 64-bit value with the maximum precision needed to represent it, see strconv#FormatFloat for more info.
@@ -344,7 +334,7 @@ func writeStruct(w io.StringWriter, s *structpb.Struct) (err error) {
 		if _, err = w.WriteString("'"); err != nil {
 			return
 		}
-		if _, err = w.WriteString(key); err != nil {
+		if _, err = w.WriteString(utils.Sanitize(key)); err != nil {
 			return
 		}
 		// 'key:'value separator and quote
@@ -384,7 +374,7 @@ func writeTuples(w io.StringWriter, tuples ...*openfgav1.TupleKey) (err error) {
 	}
 
 	for n, tupleKey := range sortedTuples {
-		_, err = w.WriteString(tupleKey.GetObject() + "#" + tupleKey.GetRelation())
+		_, err = w.WriteString(utils.Sanitize(tupleKey.GetObject() + "#" + tupleKey.GetRelation()))
 		if err != nil {
 			return
 		}
@@ -394,7 +384,7 @@ func writeTuples(w io.StringWriter, tuples ...*openfgav1.TupleKey) (err error) {
 			// " with " is separated by spaces as those are invalid in relation names
 			// and we need to ensure this cache key is unique
 			// resultant cache key format is "object:object_id#relation with {condition} {context}@user:user_id"
-			_, err = w.WriteString(" with " + cond.GetName())
+			_, err = w.WriteString(" with " + utils.Sanitize(cond.GetName()))
 			if err != nil {
 				return
 			}
@@ -414,7 +404,7 @@ func writeTuples(w io.StringWriter, tuples ...*openfgav1.TupleKey) (err error) {
 			}
 		}
 
-		if _, err = w.WriteString("@" + tupleKey.GetUser()); err != nil {
+		if _, err = w.WriteString("@" + utils.Sanitize(tupleKey.GetUser())); err != nil {
 			return
 		}
 
@@ -445,7 +435,7 @@ type CheckCacheKeyParams struct {
 func WriteCheckCacheKey(w io.StringWriter, params *CheckCacheKeyParams) error {
 	t := tuple.From(params.TupleKey)
 
-	_, err := w.WriteString(t.String())
+	_, err := w.WriteString(utils.Sanitize(t.String()))
 	if err != nil {
 		return err
 	}
