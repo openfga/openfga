@@ -18,6 +18,7 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/build"
+	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
