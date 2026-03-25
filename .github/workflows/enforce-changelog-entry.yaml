@@ -24,5 +24,6 @@ jobs:
             >&2 echo ""
             >&2 echo "${files}"
             >&2 echo ""
+            >&2 git diff
             exit 1
           fi
