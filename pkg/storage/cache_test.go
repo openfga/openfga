@@ -174,7 +174,7 @@ func TestWriteStruct(t *testing.T) {
 			// but our cache key should identify it correctly as 1 key
 			output: "1'a:'x,'b:'y,",
 		},
-		"fields_write_key_error": {
+		"fields_write_len_error": {
 			writer: &ErrorStringWriter{},
 			value: MustNewStruct(map[string]any{
 				"keyA": "valueA",
@@ -182,7 +182,7 @@ func TestWriteStruct(t *testing.T) {
 			}),
 			error: true,
 		},
-		"fields_write_value_error": {
+		"fields_write_quote_error": {
 			writer: &ErrorStringWriter{
 				TriggerAt: 2,
 			},
@@ -192,9 +192,49 @@ func TestWriteStruct(t *testing.T) {
 			}),
 			error: true,
 		},
-		"fields_write_comma_error": {
+		"fields_write_key_error": {
 			writer: &ErrorStringWriter{
 				TriggerAt: 3,
+			},
+			value: MustNewStruct(map[string]any{
+				"keyA": "valueA",
+				"keyB": "valueB",
+			}),
+			error: true,
+		},
+		"fields_write_separator_error": {
+			writer: &ErrorStringWriter{
+				TriggerAt: 4,
+			},
+			value: MustNewStruct(map[string]any{
+				"keyA": "valueA",
+				"keyB": "valueB",
+			}),
+			error: true,
+		},
+		"fields_write_quote_two_error": {
+			writer: &ErrorStringWriter{
+				TriggerAt: 5,
+			},
+			value: MustNewStruct(map[string]any{
+				"keyA": "valueA",
+				"keyB": "valueB",
+			}),
+			error: true,
+		},
+		"fields_write_value_error": {
+			writer: &ErrorStringWriter{
+				TriggerAt: 6,
+			},
+			value: MustNewStruct(map[string]any{
+				"keyA": "valueA",
+				"keyB": "valueB",
+			}),
+			error: true,
+		},
+		"fields_write_comma_error": {
+			writer: &ErrorStringWriter{
+				TriggerAt: 7,
 			},
 			value: MustNewStruct(map[string]any{
 				"keyA": "valueA",
