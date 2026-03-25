@@ -1615,6 +1615,11 @@ func TestHandleSQLError(t *testing.T) {
 		err := HandleSQLError(sql.ErrNoRows)
 		require.ErrorIs(t, err, storage.ErrNotFound)
 	})
+
+	t.Run("pgx.ErrNoRows_is_converted_to_storage.ErrNotFound_error", func(t *testing.T) {
+		err := HandleSQLError(pgx.ErrNoRows)
+		require.ErrorIs(t, err, storage.ErrNotFound)
+	})
 }
 
 // The following are tests for internal functions for related to write
