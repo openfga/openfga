@@ -9,7 +9,6 @@ import (
 	"strconv"
 	"sync"
 	"time"
-	"unicode"
 
 	"github.com/Yiling-J/theine-go"
 	"github.com/prometheus/client_golang/prometheus"
