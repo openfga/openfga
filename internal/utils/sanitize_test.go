@@ -1,8 +1,9 @@
 package utils
 
 import (
-	"github.com/stretchr/testify/require"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestSanitize(t *testing.T) {
@@ -30,11 +31,21 @@ func TestSanitize(t *testing.T) {
 var y string
 
 func BenchmarkSanitize(b *testing.B) {
-	a := "hello\u0008 \u0008 \u0008 world\u0008"
+	b.Run("with_control_chars", func(b *testing.B) {
+		a := "hello\u0008 \u0008 \u0008 world\u0008"
+		var x string
+		for b.Loop() {
+			x = Sanitize(a)
+		}
+		y = x
+	})
 
-	var x string
-	for b.Loop() {
-		x = Sanitize(a)
-	}
-	y = x
+	b.Run("clean_string", func(b *testing.B) {
+		a := "document:12345#viewer@user:alice"
+		var x string
+		for b.Loop() {
+			x = Sanitize(a)
+		}
+		y = x
+	})
 }

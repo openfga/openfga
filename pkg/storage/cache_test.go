@@ -897,6 +897,27 @@ func TestCheckCacheKeySanitizesUnicodeControlCharacters(t *testing.T) {
 	require.Contains(t, key2, "??????")
 }
 
+func TestWriteCheckCacheKeySanitizesControlChars(t *testing.T) {
+	storeID := ulid.Make().String()
+	modelID := ulid.Make().String()
+
+	// Control chars in the primary tuple key should be sanitized
+	key1 := MustGetCheckCacheKey(&CheckCacheKeyParams{
+		StoreID:              storeID,
+		AuthorizationModelID: modelID,
+		TupleKey:             tuple.NewTupleKey("document:\x00X", "viewer", "user:jon"),
+	})
+
+	key2 := MustGetCheckCacheKey(&CheckCacheKeyParams{
+		StoreID:              storeID,
+		AuthorizationModelID: modelID,
+		TupleKey:             tuple.NewTupleKey("document:X", "viewer", "user:jon"),
+	})
+
+	require.NotEqual(t, key1, key2)
+	require.Contains(t, key1, "document:?X")
+}
+
 func TestCheckCacheKeyContextualTuplesConditionsOrderDoesNotMatter(t *testing.T) {
 	storeID := ulid.Make().String()
 	modelID := ulid.Make().String()
