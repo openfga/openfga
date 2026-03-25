@@ -27,27 +27,24 @@ const (
 type bottomUpHandler func(context.Context, []storage.Iterator[string], chan<- *iterator.Msg)
 
 type bottomUp struct {
-	model        *modelgraph.AuthorizationModelGraph
-	datastore    storage.RelationshipTupleReader
-	strategy     strategyKind
-	iterCacheCfg *IteratorCacheConfig
+	model     *modelgraph.AuthorizationModelGraph
+	datastore storage.RelationshipTupleReader
+	strategy  strategyKind
 }
 
-func newBottomUp(model *modelgraph.AuthorizationModelGraph, ds storage.RelationshipTupleReader, iterCacheCfg *IteratorCacheConfig) *bottomUp {
+func newBottomUp(model *modelgraph.AuthorizationModelGraph, ds storage.RelationshipTupleReader) *bottomUp {
 	return &bottomUp{
-		model:        model,
-		datastore:    ds,
-		strategy:     normal,
-		iterCacheCfg: iterCacheCfg,
+		model:     model,
+		datastore: ds,
+		strategy:  normal,
 	}
 }
 
-func newBottomUpRecursive(model *modelgraph.AuthorizationModelGraph, ds storage.RelationshipTupleReader, iterCacheCfg *IteratorCacheConfig) *bottomUp {
+func newBottomUpRecursive(model *modelgraph.AuthorizationModelGraph, ds storage.RelationshipTupleReader) *bottomUp {
 	return &bottomUp{
-		model:        model,
-		datastore:    ds,
-		strategy:     recursive,
-		iterCacheCfg: iterCacheCfg,
+		model:     model,
+		datastore: ds,
+		strategy:  recursive,
 	}
 }
 
@@ -190,23 +187,6 @@ func (s *bottomUp) specificType(ctx context.Context, req *Request, edge *authzGr
 		return nil, err
 	}
 
-	// Wrap with pre-condition cache BEFORE building filtered iterator
-	if s.iterCacheCfg != nil {
-		cacheKey := BuildRSWUCacheKey(
-			req.GetStoreID(),
-			objectType,
-			relation,
-			[]string{req.GetTupleKey().GetUser()},
-			edge.GetConditions(),
-		)
-		tIter = WrapWithPreConditionCache(
-			ctx, tIter, cacheKey,
-			objectType, relation,
-			"bottom_up",
-			*s.iterCacheCfg,
-		)
-	}
-
 	iter := s.buildIterator(ctx, req, edge, tIter, req.GetTupleKey().GetUser())
 	iterChan := make(chan *iterator.Msg, 1)
 	if !concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Iter: iter}, iterChan) {
@@ -237,23 +217,6 @@ func (s *bottomUp) specificTypeWildcard(ctx context.Context, req *Request, edge 
 		return nil, err
 	}
 
-	// Wrap with pre-condition cache BEFORE building filtered iterator
-	if s.iterCacheCfg != nil {
-		cacheKey := BuildRSWUCacheKey(
-			req.GetStoreID(),
-			objectType,
-			relation,
-			[]string{wildcardUser},
-			edge.GetConditions(),
-		)
-		tIter = WrapWithPreConditionCache(
-			ctx, tIter, cacheKey,
-			objectType, relation,
-			"bottom_up_wildcard",
-			*s.iterCacheCfg,
-		)
-	}
-
 	iter := s.buildIterator(ctx, req, edge, tIter, wildcardUser)
 	iterChan := make(chan *iterator.Msg, 1)
 	if !concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Iter: iter}, iterChan) {
@@ -264,9 +227,11 @@ func (s *bottomUp) specificTypeWildcard(ctx context.Context, req *Request, edge 
 }
 
 func (s *bottomUp) buildIterator(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge, i storage.TupleIterator, userID string) storage.TupleMapper {
+	// Note: Iterator caching is now handled by CachedTupleReader wrapper at the storage layer.
+	objectType, relation := tuple.SplitObjectRelation(edge.GetRelationDefinition())
+
 	// deduplication is only happening on the merged iterator and contextual tuples will always overwrite the base iterator
 	iter := storage.NewTupleKeyIteratorFromTupleIterator(i)
-	objectType, relation := tuple.SplitObjectRelation(edge.GetRelationDefinition())
 	if ctxTuples, ok := req.GetContextualTuplesByUserID(userID, relation, objectType); ok {
 		iter = iterator.Merge(iter, storage.NewStaticTupleKeyIterator(ctxTuples), func(a, b *openfgav1.TupleKey) int {
 			if a.GetObject() < b.GetObject() {

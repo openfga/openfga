@@ -4925,7 +4925,7 @@ func TestResolveRecursiveCheck(t *testing.T) {
 		require.NoError(t, err)
 
 		resolver.strategies[DefaultStrategyName] = NewDefault(mg, resolver, 10)
-		resolver.strategies[WeightTwoStrategyName] = NewWeight2(mg, mockDatastore, nil)
+		resolver.strategies[WeightTwoStrategyName] = NewWeight2(mg, mockDatastore)
 
 		res, err := resolver.ResolveCheck(context.Background(), req)
 		require.NoError(t, err)
@@ -5027,7 +5027,7 @@ func TestResolveRecursiveCheck(t *testing.T) {
 		require.NoError(t, err)
 
 		resolver.strategies[DefaultStrategyName] = NewDefault(mg, resolver, 10)
-		resolver.strategies[WeightTwoStrategyName] = NewWeight2(mg, mockDatastore, nil)
+		resolver.strategies[WeightTwoStrategyName] = NewWeight2(mg, mockDatastore)
 
 		res, err := resolver.ResolveCheck(context.Background(), req)
 		require.NoError(t, err)
@@ -5204,7 +5204,7 @@ func TestResolveRecursiveCheck(t *testing.T) {
 		require.NoError(t, err)
 
 		resolver.strategies[DefaultStrategyName] = NewDefault(mg, resolver, 10)
-		resolver.strategies[WeightTwoStrategyName] = NewWeight2(mg, mockDatastore, nil)
+		resolver.strategies[WeightTwoStrategyName] = NewWeight2(mg, mockDatastore)
 
 		res, err := resolver.ResolveCheck(context.Background(), req)
 		require.NoError(t, err)
@@ -5305,7 +5305,7 @@ func TestResolveRecursiveCheck(t *testing.T) {
 		require.NoError(t, err)
 
 		resolver.strategies[DefaultStrategyName] = NewDefault(mg, resolver, 10)
-		resolver.strategies[WeightTwoStrategyName] = NewWeight2(mg, mockDatastore, nil)
+		resolver.strategies[WeightTwoStrategyName] = NewWeight2(mg, mockDatastore)
 
 		res, err := resolver.ResolveCheck(context.Background(), req)
 		require.NoError(t, err)
@@ -5747,7 +5747,7 @@ func TestResolveCheck(t *testing.T) {
 		require.NoError(t, err)
 
 		resolver.strategies[DefaultStrategyName] = NewDefault(mg, resolver, 10)
-		resolver.strategies[WeightTwoStrategyName] = NewWeight2(mg, mockDatastore, nil)
+		resolver.strategies[WeightTwoStrategyName] = NewWeight2(mg, mockDatastore)
 
 		_, err = resolver.ResolveCheck(context.Background(), req)
 		require.Error(t, err)

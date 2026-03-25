@@ -2,7 +2,6 @@ package check
 
 import (
 	"context"
-	"strings"
 	"sync"
 
 	"golang.org/x/sync/errgroup"
@@ -29,16 +28,14 @@ type Recursive struct {
 	bottomUp         *bottomUp
 	model            *modelgraph.AuthorizationModelGraph
 	datastore        storage.RelationshipTupleReader
-	iterCacheCfg     *IteratorCacheConfig
 }
 
-func NewRecursive(model *modelgraph.AuthorizationModelGraph, ds storage.RelationshipTupleReader, limit int, iterCacheCfg *IteratorCacheConfig) *Recursive {
+func NewRecursive(model *modelgraph.AuthorizationModelGraph, ds storage.RelationshipTupleReader, limit int) *Recursive {
 	return &Recursive{
-		bottomUp:         newBottomUpRecursive(model, ds, iterCacheCfg),
+		bottomUp:         newBottomUpRecursive(model, ds),
 		model:            model,
 		datastore:        ds,
 		concurrencyLimit: limit,
-		iterCacheCfg:     iterCacheCfg,
 	}
 }
 
@@ -270,6 +267,7 @@ func (s *Recursive) buildTupleMapperForID(ctx context.Context, req *Request, edg
 	var uniqueKeyFunc func(key *openfgav1.TupleKey) string
 	var err error
 
+	// Note: Iterator caching is now handled by CachedTupleReader wrapper at the storage layer.
 	if recursiveType == RecursiveTypeTTU {
 		subjectType, _ := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
 		_, relation := tuple.SplitObjectRelation(edge.GetFrom().GetUniqueLabel())
@@ -282,13 +280,6 @@ func (s *Recursive) buildTupleMapperForID(ctx context.Context, req *Request, edg
 		}, storage.ReadOptions{Consistency: consistencyOpts})
 		if err != nil {
 			return nil, err
-		}
-
-		// Wrap with pre-condition cache before condition evaluation
-		if s.iterCacheCfg != nil {
-			objectType := id[:strings.IndexByte(id, ':')]
-			cacheKey := BuildReadCacheKey(req.GetStoreID(), id, relation, userFilter, edge.GetConditions())
-			tIter = WrapWithPreConditionCache(ctx, tIter, cacheKey, objectType, relation, "recursive_ttu", *s.iterCacheCfg)
 		}
 
 		if ctxTuples, ok := req.GetContextualTuplesByObjectID(id, relation, subjectType); ok {
@@ -314,13 +305,6 @@ func (s *Recursive) buildTupleMapperForID(ctx context.Context, req *Request, edg
 		}, storage.ReadUsersetTuplesOptions{Consistency: consistencyOpts})
 		if err != nil {
 			return nil, err
-		}
-
-		// Wrap with pre-condition cache before condition evaluation
-		if s.iterCacheCfg != nil {
-			objectType := id[:strings.IndexByte(id, ':')]
-			cacheKey := BuildRUTCacheKey(req.GetStoreID(), id, userRelation, allowedTypes, edge.GetConditions())
-			tIter = WrapWithPreConditionCache(ctx, tIter, cacheKey, objectType, userRelation, "recursive_userset", *s.iterCacheCfg)
 		}
 
 		if ctxTuples, ok := req.GetContextualTuplesByObjectID(id, userRelation, edge.GetTo().GetUniqueLabel()); ok {

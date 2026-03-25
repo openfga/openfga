@@ -1,4 +1,4 @@
-package check
+package storagewrappers
 
 import (
 	"context"
@@ -30,7 +30,7 @@ const (
 	maxCachedElements     = 1000
 	initialBufferCapacity = 64
 
-	// State machine states for PreConditionCachingIterator.
+	// State machine states for CachingIterator.
 	stateActive    uint32 = 0
 	stateDraining  uint32 = 1
 	stateDone      uint32 = 2
@@ -123,24 +123,12 @@ func putEntryBuffer(buf []MinimalCacheEntry) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// IteratorCacheConfig - Configuration for the cache
+// CachingIterator - Lock-free caching iterator for cache miss
 // ─────────────────────────────────────────────────────────────────────────────
 
-// IteratorCacheConfig holds configuration for iterator caching.
-type IteratorCacheConfig struct {
-	Cache        storage.InMemoryCache[any]
-	TTL          time.Duration
-	Singleflight *singleflight.Group
-	WaitGroup    *sync.WaitGroup
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// PreConditionCachingIterator - Lock-free caching iterator
-// ─────────────────────────────────────────────────────────────────────────────
-
-// PreConditionCachingIterator wraps a TupleIterator to cache tuples BEFORE
-// condition evaluation. This ensures cache correctness when conditions depend
-// on request context.
+// CachingIterator wraps a storage iterator to cache results.
+// Lock-free design: uses atomic state machine, single-writer assumption.
+// No double buffering: collects directly into MinimalCacheEntry slice.
 //
 // Thread Safety:
 //   - NOT safe for concurrent use from multiple goroutines
@@ -151,87 +139,58 @@ type IteratorCacheConfig struct {
 //
 //	Active → Draining → Done
 //	   ↓
-//	Abandoned (if exceeds maxCachedElements)
-type PreConditionCachingIterator struct {
+//	Abandoned (if exceeds maxSize)
+type CachingIterator struct {
 	inner storage.TupleIterator
 
-	// State machine (atomic, no mutex needed)
+	// State machine (atomic)
 	state atomic.Uint32
 
-	// Collection buffer (single buffer, no double buffering)
+	// Single buffer - no double buffering
 	entries []MinimalCacheEntry
 
-	// Cache configuration
+	// Cache config
 	cache    storage.InMemoryCache[any]
 	cacheKey string
+	maxSize  int // Configurable max entries (passed from CachedTupleReader)
 	ttl      time.Duration
 
-	// Background drain coordination
+	// Background drain
 	sf       *singleflight.Group
 	wg       *sync.WaitGroup
 	drainCtx context.Context
 
-	// Reconstruction parameters (derived from cache key context)
+	// Reconstruction params
 	objectType string
 	relation   string
-
-	// Metrics
-	operation string
+	operation  string
 }
 
-// Ensure PreConditionCachingIterator implements TupleIterator.
-var _ storage.TupleIterator = (*PreConditionCachingIterator)(nil)
+// Ensure CachingIterator implements TupleIterator.
+var _ storage.TupleIterator = (*CachingIterator)(nil)
 
-// WrapWithPreConditionCache wraps a TupleIterator to cache tuples before
-// condition evaluation. Returns a cached iterator on hit, or a caching
-// iterator on miss.
-//
-// Parameters:
-//   - ctx: Request context (used for background drain on Stop)
-//   - iter: The underlying storage iterator
-//   - cacheKey: Unique key for this query (must include condition names)
-//   - objectType: Object type for tuple reconstruction on cache hit
-//   - relation: Relation for tuple reconstruction on cache hit
-//   - operation: Operation name for metrics
-//   - cfg: Cache configuration
-func WrapWithPreConditionCache(
+// newCachingIterator creates a new caching iterator for cache miss scenarios.
+func newCachingIterator(
 	ctx context.Context,
-	iter storage.TupleIterator,
+	inner storage.TupleIterator,
+	cache storage.InMemoryCache[any],
 	cacheKey string,
-	objectType string,
-	relation string,
-	operation string,
-	cfg IteratorCacheConfig,
-) storage.TupleIterator {
-	if cfg.Cache == nil {
-		return iter
-	}
-
-	v2IterCacheTotal.WithLabelValues(operation).Inc()
-
-	// Check for cache hit
-	if entry := cfg.Cache.Get(cacheKey); entry != nil {
-		if cached, ok := entry.(*V2IteratorCacheEntry); ok {
-			v2IterCacheHits.WithLabelValues(operation).Inc()
-			// Stop the inner iterator since we won't use it
-			if iter != nil {
-				iter.Stop()
-			}
-			// Return lock-free iterator over cached entries
-			return NewLockFreeCachedIterator(cached.Entries, objectType, relation)
-		}
-	}
-
-	// Cache miss - return caching iterator
-	return &PreConditionCachingIterator{
-		inner:      iter,
+	maxSize int,
+	ttl time.Duration,
+	sf *singleflight.Group,
+	wg *sync.WaitGroup,
+	objectType, relation, operation string,
+) *CachingIterator {
+	return &CachingIterator{
+		inner:      inner,
 		entries:    getEntryBuffer(),
-		cache:      cfg.Cache,
+		cache:      cache,
 		cacheKey:   cacheKey,
-		ttl:        cfg.TTL,
-		sf:         cfg.Singleflight,
-		wg:         cfg.WaitGroup,
-		drainCtx:   ctx, // Will be used for background drain
+		maxSize:    maxSize,
+		ttl:        ttl,
+		sf:         sf,
+		wg:         wg,
+		drainCtx:   ctx,
 		objectType: objectType,
 		relation:   relation,
 		operation:  operation,
@@ -243,13 +202,12 @@ func WrapWithPreConditionCache(
 //
 // Lock-free: Uses atomic state check, single-writer assumption.
 // Complexity: O(1) amortized.
-func (c *PreConditionCachingIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
-	// Fast path: check if already done (atomic, no lock)
+func (c *CachingIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
+	// Fast path: atomic check, no lock
 	if c.state.Load() >= stateDone {
 		return nil, storage.ErrIteratorDone
 	}
 
-	// Get next tuple from storage
 	t, err := c.inner.Next(ctx)
 	if err != nil {
 		if storage.IterIsDoneOrCancelled(err) {
@@ -258,13 +216,13 @@ func (c *PreConditionCachingIterator) Next(ctx context.Context) (*openfgav1.Tupl
 		return nil, err
 	}
 
-	// Collect for caching (single writer, no lock needed)
+	// Collect for caching (single writer, no lock)
 	c.collect(t)
 	return t, nil
 }
 
 // Head returns the next tuple without advancing the iterator.
-func (c *PreConditionCachingIterator) Head(ctx context.Context) (*openfgav1.Tuple, error) {
+func (c *CachingIterator) Head(ctx context.Context) (*openfgav1.Tuple, error) {
 	if c.state.Load() >= stateDone {
 		return nil, storage.ErrIteratorDone
 	}
@@ -273,21 +231,18 @@ func (c *PreConditionCachingIterator) Head(ctx context.Context) (*openfgav1.Tupl
 
 // Stop terminates iteration and triggers caching.
 // If not fully consumed, drains in background with singleflight deduplication.
-func (c *PreConditionCachingIterator) Stop() {
+func (c *CachingIterator) Stop() {
 	state := c.state.Load()
 
-	// Already abandoned or done
 	if state == stateAbandoned || state == stateDone {
 		c.inner.Stop()
 		c.releaseBuffer()
 		return
 	}
 
-	// Transition Active → Draining
 	if c.state.CompareAndSwap(stateActive, stateDraining) {
 		// Check if already exhausted
 		if _, err := c.inner.Head(c.drainCtx); err != nil {
-			// Already exhausted, flush directly
 			c.state.Store(stateDone)
 			c.flush()
 			c.inner.Stop()
@@ -303,11 +258,17 @@ func (c *PreConditionCachingIterator) Stop() {
 }
 
 // collect extracts minimal data from tuple and adds to buffer.
-// Called during iteration (single writer, no lock).
-// Accepts both Active and Draining states (Draining is for background drain).
-func (c *PreConditionCachingIterator) collect(t *openfgav1.Tuple) {
+func (c *CachingIterator) collect(t *openfgav1.Tuple) {
 	state := c.state.Load()
 	if state != stateActive && state != stateDraining {
+		return
+	}
+
+	// Check threshold BEFORE adding (uses configurable maxSize)
+	if len(c.entries) >= c.maxSize {
+		c.state.Store(stateAbandoned)
+		v2IterCacheAbandoned.WithLabelValues(c.operation).Inc()
+		c.releaseBuffer()
 		return
 	}
 
@@ -317,49 +278,39 @@ func (c *PreConditionCachingIterator) collect(t *openfgav1.Tuple) {
 		User:     tk.GetUser(),
 	}
 
-	// Only store condition data if present
 	if cond := tk.GetCondition(); cond != nil {
 		entry.ConditionName = cond.GetName()
 		entry.ConditionContext = cond.GetContext()
 	}
 
 	c.entries = append(c.entries, entry)
-
-	// Check size limit
-	if len(c.entries) >= maxCachedElements {
-		c.state.Store(stateAbandoned)
-		v2IterCacheAbandoned.WithLabelValues(c.operation).Inc()
-		c.releaseBuffer()
-	}
 }
 
 // markDone transitions to Done state and flushes cache.
-func (c *PreConditionCachingIterator) markDone() {
+func (c *CachingIterator) markDone() {
 	if c.state.CompareAndSwap(stateActive, stateDone) {
 		c.flush()
 	}
 }
 
 // flush stores collected entries in cache.
-func (c *PreConditionCachingIterator) flush() {
+func (c *CachingIterator) flush() {
 	if len(c.entries) == 0 {
 		return
 	}
 
-	// Record metrics
 	v2IterCacheSize.WithLabelValues(c.operation).Observe(float64(len(c.entries)))
 
-	// Store in cache (entries slice ownership transfers to cache)
 	c.cache.Set(c.cacheKey, &V2IteratorCacheEntry{
 		Entries:      c.entries,
 		LastModified: time.Now(),
 	}, c.ttl)
 
-	c.entries = nil // Don't return to pool - now owned by cache
+	c.entries = nil // Ownership transferred to cache
 }
 
 // releaseBuffer returns buffer to pool if not flushed.
-func (c *PreConditionCachingIterator) releaseBuffer() {
+func (c *CachingIterator) releaseBuffer() {
 	if c.entries != nil {
 		putEntryBuffer(c.entries)
 		c.entries = nil
@@ -367,13 +318,12 @@ func (c *PreConditionCachingIterator) releaseBuffer() {
 }
 
 // drainInBackground continues fetching tuples after Stop().
-func (c *PreConditionCachingIterator) drainInBackground() {
+func (c *CachingIterator) drainInBackground() {
 	if c.wg != nil {
 		defer c.wg.Done()
 	}
 	defer c.inner.Stop()
 
-	// Singleflight prevents duplicate drains for same key
 	_, _, _ = c.sf.Do(c.cacheKey, func() (interface{}, error) {
 		for c.state.Load() == stateDraining {
 			t, err := c.inner.Next(c.drainCtx)
@@ -387,7 +337,6 @@ func (c *PreConditionCachingIterator) drainInBackground() {
 
 			c.collect(t)
 
-			// Check if abandoned due to size
 			if c.state.Load() == stateAbandoned {
 				return nil, nil
 			}
@@ -397,7 +346,6 @@ func (c *PreConditionCachingIterator) drainInBackground() {
 }
 
 // extractObjectID extracts the ID portion from "type:id" format.
-// Inlined for performance.
 func extractObjectID(object string) string {
 	if idx := strings.IndexByte(object, ':'); idx >= 0 {
 		return object[idx+1:]
@@ -477,14 +425,6 @@ func (c *LockFreeCachedIterator) Stop() {
 }
 
 // reconstruct builds a full Tuple from minimal cached data.
-// Uses objectType and relation from cache key context.
-//
-// Cost breakdown:
-//   - Object string concat: ~15-20ns
-//   - Condition handling: ~5ns (pointer check + assignment)
-//   - Proto allocation: ~10-15ns (small struct)
-//
-// Total: ~30-50ns.
 func (c *LockFreeCachedIterator) reconstruct(e *MinimalCacheEntry) *openfgav1.Tuple {
 	tk := &openfgav1.TupleKey{
 		Object:   c.objectType + ":" + e.ObjectID,
@@ -492,7 +432,6 @@ func (c *LockFreeCachedIterator) reconstruct(e *MinimalCacheEntry) *openfgav1.Tu
 		User:     e.User,
 	}
 
-	// Only create condition if present
 	if e.ConditionName != "" {
 		tk.Condition = &openfgav1.RelationshipCondition{
 			Name:    e.ConditionName,
@@ -504,92 +443,8 @@ func (c *LockFreeCachedIterator) reconstruct(e *MinimalCacheEntry) *openfgav1.Tu
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Cache Key Generation
+// Cache Key Helpers
 // ─────────────────────────────────────────────────────────────────────────────
-
-// BuildRSWUCacheKey builds a cache key for ReadStartingWithUser queries.
-// Includes condition names to ensure correctness.
-func BuildRSWUCacheKey(store, objectType, relation string, users []string, conditions []string) string {
-	var b strings.Builder
-	b.Grow(128) // Pre-allocate reasonable size
-
-	b.WriteString(v2IteratorCachePrefix)
-	b.WriteString("rswu/")
-	b.WriteString(store)
-	b.WriteByte('/')
-	b.WriteString(objectType)
-	b.WriteByte('#')
-	b.WriteString(relation)
-
-	// Add users (sorted for determinism)
-	if len(users) > 1 {
-		sorted := make([]string, len(users))
-		copy(sorted, users)
-		sort.Strings(sorted)
-		for _, u := range sorted {
-			b.WriteByte('/')
-			b.WriteString(u)
-		}
-	} else if len(users) == 1 {
-		b.WriteByte('/')
-		b.WriteString(users[0])
-	}
-
-	// Add conditions hash
-	appendConditionsHash(&b, conditions)
-
-	return b.String()
-}
-
-// BuildRUTCacheKey builds a cache key for ReadUsersetTuples queries.
-func BuildRUTCacheKey(store, object, relation string, allowedTypes []*openfgav1.RelationReference, conditions []string) string {
-	var b strings.Builder
-	b.Grow(128)
-
-	b.WriteString(v2IteratorCachePrefix)
-	b.WriteString("rut/")
-	b.WriteString(store)
-	b.WriteByte('/')
-	b.WriteString(object)
-	b.WriteByte('#')
-	b.WriteString(relation)
-
-	// Add allowed user types
-	for _, ref := range allowedTypes {
-		b.WriteByte('/')
-		b.WriteString(ref.GetType())
-		if rel := ref.GetRelation(); rel != "" {
-			b.WriteByte('#')
-			b.WriteString(rel)
-		} else if ref.GetWildcard() != nil {
-			b.WriteString(":*")
-		}
-	}
-
-	appendConditionsHash(&b, conditions)
-
-	return b.String()
-}
-
-// BuildReadCacheKey builds a cache key for Read queries.
-func BuildReadCacheKey(store, object, relation, userFilter string, conditions []string) string {
-	var b strings.Builder
-	b.Grow(128)
-
-	b.WriteString(v2IteratorCachePrefix)
-	b.WriteString("r/")
-	b.WriteString(store)
-	b.WriteByte('/')
-	b.WriteString(object)
-	b.WriteByte('#')
-	b.WriteString(relation)
-	b.WriteByte('@')
-	b.WriteString(userFilter)
-
-	appendConditionsHash(&b, conditions)
-
-	return b.String()
-}
 
 // appendConditionsHash adds a hash of condition names to the key builder.
 func appendConditionsHash(b *strings.Builder, conditions []string) {

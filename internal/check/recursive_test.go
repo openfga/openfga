@@ -198,7 +198,7 @@ func TestRecursiveTTU(t *testing.T) {
 				})
 			}
 
-			strategy := NewRecursive(mg, mockDatastore, 5, nil)
+			strategy := NewRecursive(mg, mockDatastore, 5)
 
 			result, err := strategy.TTU(ctx, req, recursiveEdge, storage.NewStaticTupleKeyIterator(tupleKeys), nil)
 			require.Equal(t, tt.expectedError, err)
@@ -450,7 +450,7 @@ type group
 					})
 				}
 
-				strategy := NewRecursive(mg, mockDatastore, 5, nil)
+				strategy := NewRecursive(mg, mockDatastore, 5)
 				result, err := strategy.TTU(ctx, req, recursiveEdge, storage.NewStaticTupleKeyIterator(tupleKeys), nil)
 				require.Equal(t, tt.expectedError, err)
 				require.Equal(t, tt.expected.GetAllowed(), result.GetAllowed())
@@ -629,7 +629,7 @@ func TestRecursiveUserset(t *testing.T) {
 				})
 			}
 
-			strategy := NewRecursive(mg, mockDatastore, 5, nil)
+			strategy := NewRecursive(mg, mockDatastore, 5)
 			result, err := strategy.Userset(ctx, req, recursiveEdge, storage.NewStaticTupleKeyIterator(tupleKeys), nil)
 			require.Equal(t, tt.expectedError, err)
 			if tt.expected != nil {
@@ -857,7 +857,7 @@ func TestRecursiveUserset(t *testing.T) {
 					})
 				}
 
-				strategy := NewRecursive(mg, mockDatastore, 5, nil)
+				strategy := NewRecursive(mg, mockDatastore, 5)
 				result, err := strategy.Userset(ctx, req, recursiveEdge, storage.NewStaticTupleKeyIterator(tupleKeys), nil)
 				require.Equal(t, tt.expectedError, err)
 				require.Equal(t, tt.expected.GetAllowed(), result.GetAllowed())
@@ -1072,7 +1072,7 @@ func TestRecursiveMatch(t *testing.T) {
 			})
 			require.NoError(t, err)
 
-			strategy := NewRecursive(mg, mockDatastore, 10, nil)
+			strategy := NewRecursive(mg, mockDatastore, 10)
 			res, err := strategy.recursiveMatch(ctx, req, recursiveEdge, RecursiveTypeTTU, tt.idsFromUser, tt.idsFromObject)
 			require.NoError(t, err)
 			require.Equal(t, tt.expected, res.Allowed)
@@ -1123,7 +1123,7 @@ func TestRecursiveMatch(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		strategy := NewRecursive(mg, mockDatastore, 10, nil)
+		strategy := NewRecursive(mg, mockDatastore, 10)
 		res, err := strategy.recursiveMatch(ctx, req, recursiveEdge, RecursiveTypeTTU,
 			map[string]struct{}{"group:target": {}},
 			map[string]struct{}{"group:1": {}})
@@ -1294,7 +1294,7 @@ func TestRecursiveTTUWithTupleCycles(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		strategy := NewRecursive(mg, mockDatastore, 5, nil)
+		strategy := NewRecursive(mg, mockDatastore, 5)
 		result, err := strategy.TTU(ctx, req, recursiveEdge, storage.NewStaticTupleKeyIterator(initialTks), nil)
 		require.NoError(t, err)
 		require.True(t, result.GetAllowed())
@@ -1460,7 +1460,7 @@ func TestRecursiveUsersetWithTupleCycles(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		strategy := NewRecursive(mg, mockDatastore, 5, nil)
+		strategy := NewRecursive(mg, mockDatastore, 5)
 		result, err := strategy.Userset(ctx, req, recursiveEdge, storage.NewStaticTupleKeyIterator(initialTks), nil)
 		require.NoError(t, err)
 		require.True(t, result.GetAllowed())
@@ -1588,7 +1588,7 @@ func TestRecursiveTTUWithContextualTuples(t *testing.T) {
 				})
 			}
 
-			strategy := NewRecursive(mg, mockDatastore, 5, nil)
+			strategy := NewRecursive(mg, mockDatastore, 5)
 			result, err := strategy.TTU(ctx, req, recursiveEdge, storage.NewStaticTupleKeyIterator(tupleKeys), nil)
 			require.NoError(t, err)
 			require.Equal(t, tt.expected.GetAllowed(), result.GetAllowed())
@@ -1717,7 +1717,7 @@ func TestRecursiveUsersetWithContextualTuples(t *testing.T) {
 				})
 			}
 
-			strategy := NewRecursive(mg, mockDatastore, 5, nil)
+			strategy := NewRecursive(mg, mockDatastore, 5)
 			result, err := strategy.Userset(ctx, req, recursiveEdge, storage.NewStaticTupleKeyIterator(tupleKeys), nil)
 			require.NoError(t, err)
 			require.Equal(t, tt.expected.GetAllowed(), result.GetAllowed())

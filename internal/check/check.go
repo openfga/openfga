@@ -25,6 +25,7 @@ import (
 	"github.com/openfga/openfga/internal/telemetry"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
@@ -53,6 +54,7 @@ type Config struct {
 	// Iterator cache configuration
 	IteratorCacheEnabled bool
 	IteratorCacheTTL     time.Duration
+	IteratorCacheMaxSize int
 }
 
 type Resolver struct {
@@ -69,16 +71,39 @@ type Resolver struct {
 	strategies map[string]Strategy
 
 	// Iterator cache fields
-	iteratorCacheEnabled bool
-	iteratorCacheCfg     *IteratorCacheConfig
-	iteratorCacheSf      *singleflight.Group
-	iteratorCacheWg      *sync.WaitGroup
+	iteratorCacheWg *sync.WaitGroup
 }
 
 func New(cfg Config) *Resolver {
+	datastore := cfg.Datastore
+	var iteratorCacheWg *sync.WaitGroup
+
+	// Wrap datastore with caching layer if enabled
+	if cfg.IteratorCacheEnabled && cfg.Cache != nil {
+		sf := &singleflight.Group{}
+		wg := &sync.WaitGroup{}
+		iteratorCacheWg = wg
+
+		iterCacheTTL := cfg.IteratorCacheTTL
+		if iterCacheTTL == 0 {
+			iterCacheTTL = cfg.CacheTTL // Default to same TTL as subproblem cache
+		}
+
+		// Default handled inside NewCachedTupleReader (defaults to maxCachedElements = 1000)
+		datastore = storagewrappers.NewCachedTupleReader(
+			context.Background(), // Context for background operations
+			cfg.Datastore,
+			cfg.Cache,
+			cfg.IteratorCacheMaxSize, // Configurable max size (0 = default 1000)
+			iterCacheTTL,
+			sf,
+			wg,
+		)
+	}
+
 	r := &Resolver{
 		model:                     cfg.Model,
-		datastore:                 cfg.Datastore,
+		datastore:                 datastore,
 		cache:                     cfg.Cache,
 		cacheTTL:                  cfg.CacheTTL,
 		lastCacheInvalidationTime: cfg.LastCacheInvalidationTime,
@@ -87,34 +112,18 @@ func New(cfg Config) *Resolver {
 		upstreamTimeout:           cfg.UpstreamTimeout,
 		logger:                    cfg.Logger,
 		strategies:                cfg.Strategies,
-		iteratorCacheEnabled:      cfg.IteratorCacheEnabled,
+		iteratorCacheWg:           iteratorCacheWg,
 	}
 
 	if r.cache == nil {
 		r.cache = storage.NewNoopCache()
 	}
 
-	// Initialize iterator cache if enabled
-	if cfg.IteratorCacheEnabled && cfg.Cache != nil {
-		iterCacheTTL := cfg.IteratorCacheTTL
-		if iterCacheTTL == 0 {
-			iterCacheTTL = cfg.CacheTTL // Default to same TTL as subproblem cache
-		}
-		r.iteratorCacheSf = &singleflight.Group{}
-		r.iteratorCacheWg = &sync.WaitGroup{}
-		r.iteratorCacheCfg = &IteratorCacheConfig{
-			Cache:        cfg.Cache,
-			TTL:          iterCacheTTL,
-			Singleflight: r.iteratorCacheSf,
-			WaitGroup:    r.iteratorCacheWg,
-		}
-	}
-
 	if r.strategies == nil {
 		r.strategies = map[string]Strategy{
 			DefaultStrategyName:   NewDefault(cfg.Model, r, cfg.ConcurrencyLimit),
-			WeightTwoStrategyName: NewWeight2(cfg.Model, cfg.Datastore, r.iteratorCacheCfg),
-			RecursiveStrategyName: NewRecursive(cfg.Model, cfg.Datastore, cfg.ConcurrencyLimit, r.iteratorCacheCfg),
+			WeightTwoStrategyName: NewWeight2(cfg.Model, cfg.Datastore),
+			RecursiveStrategyName: NewRecursive(cfg.Model, cfg.Datastore, cfg.ConcurrencyLimit),
 		}
 	}
 
@@ -333,8 +342,7 @@ func (r *Resolver) resolveRecursiveUserset(ctx context.Context, req *Request, ed
 	}
 	defer tIter.Stop()
 
-	cacheKey := r.buildRUTCacheKey(req.GetStoreID(), req.GetTupleKey().GetObject(), userRelation, allowedTypes, edge.GetConditions())
-	iter := r.buildIterator(ctx, req, tIter, edge.GetConditions(), userRelation, edge.GetTo().GetUniqueLabel(), visited, cacheKey)
+	iter := r.buildIterator(ctx, req, tIter, edge.GetConditions(), userRelation, edge.GetTo().GetUniqueLabel(), visited)
 	if !canApplyOptimization {
 		res, err := r.strategies[DefaultStrategyName].Userset(ctx, req, edge, iter, visited)
 		if err != nil {
@@ -397,8 +405,7 @@ func (r *Resolver) resolveRecursiveTTU(ctx context.Context, req *Request, edge *
 	}
 
 	defer tIter.Stop()
-	cacheKey := r.buildReadCacheKey(req.GetStoreID(), req.GetTupleKey().GetObject(), tuplesetRelation, userFilter, conditionEdge.GetConditions())
-	iter := r.buildIterator(ctx, req, tIter, conditionEdge.GetConditions(), tuplesetRelation, subjectType, visited, cacheKey)
+	iter := r.buildIterator(ctx, req, tIter, conditionEdge.GetConditions(), tuplesetRelation, subjectType, visited)
 
 	if !canApplyOptimization {
 		res, err := r.strategies[DefaultStrategyName].TTU(ctx, req, edge, iter, visited)
@@ -762,7 +769,7 @@ func (r *Resolver) specificTypeWildcard(ctx context.Context, req *Request, edge 
 	}
 
 	if iter == nil {
-		// Query via ReadUsersetTuples instead of ReadUserTuple tuples to take iterator cache.
+		// Query via ReadUsersetTuples - caching is now handled by CachedTupleReader wrapper
 		allowedTypes := []*openfgav1.RelationReference{modelgraph.WildcardRelationReference(req.GetUserType())}
 		tIter, err := r.datastore.ReadUsersetTuples(ctx, req.GetStoreID(), storage.ReadUsersetTuplesFilter{
 			Object:                      req.GetTupleKey().GetObject(),
@@ -777,13 +784,6 @@ func (r *Resolver) specificTypeWildcard(ctx context.Context, req *Request, edge 
 		if err != nil {
 			telemetry.TraceError(span, err)
 			return nil, err
-		}
-
-		// Wrap with pre-condition cache before condition evaluation
-		if r.iteratorCacheCfg != nil {
-			objectType, _ := tuple.SplitObject(req.GetTupleKey().GetObject())
-			cacheKey := BuildRUTCacheKey(req.GetStoreID(), req.GetTupleKey().GetObject(), relation, allowedTypes, edge.GetConditions())
-			tIter = WrapWithPreConditionCache(ctx, tIter, cacheKey, objectType, relation, "specificTypeWildcard", *r.iteratorCacheCfg)
 		}
 
 		defer tIter.Stop()
@@ -854,8 +854,7 @@ func (r *Resolver) specificTypeAndRelation(ctx context.Context, req *Request, ed
 	}
 	defer tIter.Stop()
 
-	cacheKey := r.buildRUTCacheKey(req.GetStoreID(), req.GetTupleKey().GetObject(), relation, allowedTypes, edge.GetConditions())
-	iter := r.buildIterator(ctx, req, tIter, edge.GetConditions(), relation, edge.GetTo().GetUniqueLabel(), visited, cacheKey)
+	iter := r.buildIterator(ctx, req, tIter, edge.GetConditions(), relation, edge.GetTo().GetUniqueLabel(), visited)
 	// when the request usertype is a userset, then only available strategy at the moment is default strategy
 	if tuple.IsObjectRelation(req.GetTupleKey().GetUser()) {
 		res, err := r.strategies[DefaultStrategyName].Userset(ctx, req, edge, iter, visited)
@@ -925,8 +924,7 @@ func (r *Resolver) ttu(ctx context.Context, req *Request, edge *authzGraph.Weigh
 
 	defer tIter.Stop()
 
-	cacheKey := r.buildReadCacheKey(req.GetStoreID(), req.GetTupleKey().GetObject(), tuplesetRelation, userFilter, tuplesetEdge.GetConditions())
-	iter := r.buildIterator(ctx, req, tIter, tuplesetEdge.GetConditions(), tuplesetRelation, subjectType, visited, cacheKey)
+	iter := r.buildIterator(ctx, req, tIter, tuplesetEdge.GetConditions(), tuplesetRelation, subjectType, visited)
 
 	if tuple.IsObjectRelation(req.GetTupleKey().GetUser()) {
 		res, err := r.strategies[DefaultStrategyName].TTU(ctx, req, edge, iter, visited)
@@ -957,23 +955,19 @@ func (r *Resolver) ttu(ctx context.Context, req *Request, edge *authzGraph.Weigh
 	})
 }
 
-func (r *Resolver) buildIterator(ctx context.Context, req *Request, iter storage.TupleIterator, conditions []string, relation string, userType string, visited *sync.Map, cacheKey string) storage.TupleKeyIterator {
-	// STEP 1: Wrap with pre-condition cache (if enabled and cache key provided)
-	// This must happen BEFORE any condition filtering to ensure correct cache reuse
-	objectType := tuple.GetType(req.GetTupleKey().GetObject())
-	if r.iteratorCacheCfg != nil && cacheKey != "" {
-		iter = WrapWithPreConditionCache(ctx, iter, cacheKey, objectType, relation, "check", *r.iteratorCacheCfg)
-	}
+func (r *Resolver) buildIterator(ctx context.Context, req *Request, iter storage.TupleIterator, conditions []string, relation string, userType string, visited *sync.Map) storage.TupleKeyIterator {
+	// Note: Iterator caching is now handled by CachedTupleReader wrapper at the storage layer.
+	// This method only handles contextual tuples merge and condition filtering.
 
-	// STEP 2: Convert TupleIterator to TupleKeyIterator
+	// STEP 1: Convert TupleIterator to TupleKeyIterator
 	tupleKeyIter := storage.NewTupleKeyIteratorFromTupleIterator(iter)
 
-	// STEP 3: Merge contextual tuples (after cache, as these are request-specific)
+	// STEP 2: Merge contextual tuples (these are request-specific and not cached)
 	if ctxTuples, ok := req.GetContextualTuplesByObjectID(req.GetTupleKey().GetObject(), relation, userType); ok {
 		tupleKeyIter = iterator.Concat(storage.NewStaticTupleKeyIterator(ctxTuples), tupleKeyIter)
 	}
 
-	// STEP 4: Build filter chain
+	// STEP 3: Build filter chain
 	iterFilters := make([]iterator.FilterFunc[*openfgav1.TupleKey], 0, 2)
 	if visited != nil {
 		iterFilters = append(iterFilters, BuildUniqueTupleKeyFilter(visited, func(key *openfgav1.TupleKey) string {
@@ -981,7 +975,7 @@ func (r *Resolver) buildIterator(ctx context.Context, req *Request, iter storage
 		}))
 	}
 
-	// STEP 5: Condition filter - evaluates conditions at retrieval time
+	// STEP 4: Condition filter - evaluates conditions at retrieval time
 	// This uses the cached tuple's condition context + request context
 	if len(conditions) > 1 || conditions[0] != authzGraph.NoCond {
 		iterFilters = append(iterFilters, BuildConditionTupleKeyFilter(ctx, r.model, conditions, req.GetContext()))
@@ -992,22 +986,4 @@ func (r *Resolver) buildIterator(ctx context.Context, req *Request, iter storage
 	}
 
 	return tupleKeyIter
-}
-
-// buildRUTCacheKey builds a cache key for ReadUsersetTuples operations.
-// Returns empty string if iterator caching is disabled.
-func (r *Resolver) buildRUTCacheKey(storeID, object, relation string, allowedTypes []*openfgav1.RelationReference, conditions []string) string {
-	if !r.iteratorCacheEnabled {
-		return ""
-	}
-	return BuildRUTCacheKey(storeID, object, relation, allowedTypes, conditions)
-}
-
-// buildReadCacheKey builds a cache key for Read operations.
-// Returns empty string if iterator caching is disabled.
-func (r *Resolver) buildReadCacheKey(storeID, object, relation, userFilter string, conditions []string) string {
-	if !r.iteratorCacheEnabled {
-		return ""
-	}
-	return BuildReadCacheKey(storeID, object, relation, userFilter, conditions)
 }
