@@ -8,6 +8,9 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+### Fixed
+- Fixed Write operations failing with `invalid input syntax for type integer` (SQLSTATE 22P02) when PostgreSQL is behind PgBouncer or a connection pooler using the simple query protocol. [#3014] (https://github.com/openfga/openfga/pull/3014)
+
 ## [1.13.1] - 2026-03-24
 ### Fixed
 - Fixed a bug in cache key construction for Check requests using conditions.
