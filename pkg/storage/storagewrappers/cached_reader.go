@@ -81,7 +81,7 @@ func (c *CachedTupleReader) ReadUsersetTuples(
 	objectType, _ := tuple.SplitObject(filter.Object)
 
 	// Build invalidation keys for this query
-	invalidEntityKeys := buildInvalidationKeys(storeID, filter.Object)
+	invalidEntityKeys := buildInvalidationKeys(storeID, filter.Object, filter.Relation)
 
 	// CHECK CACHE FIRST - before any database call
 	if iter := c.tryGetFromCache(cacheKey, storeID, objectType, filter.Relation, "ReadUsersetTuples", invalidEntityKeys); iter != nil {
@@ -122,7 +122,7 @@ func (c *CachedTupleReader) Read(
 
 	cacheKey := buildReadCacheKey(storeID, filter)
 	objectType, _ := tuple.SplitObject(filter.Object)
-	invalidEntityKeys := buildInvalidationKeys(storeID, filter.Object)
+	invalidEntityKeys := buildInvalidationKeys(storeID, filter.Object, filter.Relation)
 
 	if iter := c.tryGetFromCache(cacheKey, storeID, objectType, filter.Relation, "Read", invalidEntityKeys); iter != nil {
 		span.SetAttributes(attribute.Bool("cached", true))
@@ -239,10 +239,10 @@ func (c *CachedTupleReader) isEntityInvalidated(invalidKey string, lastModified 
 }
 
 // buildInvalidationKeys returns cache keys to check for invalidation.
-func buildInvalidationKeys(storeID, object string) []string {
-	objectType, objectID := tuple.SplitObject(object)
+// Uses the full object (e.g., "document:1") and relation to match invalidation records.
+func buildInvalidationKeys(storeID, object, relation string) []string {
 	return []string{
-		storage.GetInvalidIteratorByObjectRelationCacheKey(storeID, objectType, objectID),
+		storage.GetInvalidIteratorByObjectRelationCacheKey(storeID, object, relation),
 	}
 }
 

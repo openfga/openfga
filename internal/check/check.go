@@ -130,6 +130,15 @@ func New(cfg Config) *Resolver {
 	return r
 }
 
+// Close waits for any background iterator cache operations to complete.
+// This should be called during graceful shutdown to ensure all cache entries
+// are properly persisted before the process exits.
+func (r *Resolver) Close() {
+	if r.iteratorCacheWg != nil {
+		r.iteratorCacheWg.Wait()
+	}
+}
+
 func (r *Resolver) ResolveCheck(ctx context.Context, req *Request) (*Response, error) {
 	ctx, span := tracer.Start(ctx, "ResolveCheck", trace.WithAttributes(
 		attribute.String("store_id", req.GetStoreID()),

@@ -442,6 +442,107 @@ func TestCachingIterator_CustomMaxSizeAbandoned(t *testing.T) {
 	require.Nil(t, iter.entries)
 }
 
+// TestCachingIterator_BackgroundDrainIgnoresRequestContextCancellation verifies
+// that the background drain completes and caches even when the original request
+// context is canceled. This is important because:
+// 1. Consumer calls Stop() after finding a result early
+// 2. Original request completes and cancels its context
+// 3. Background drain should still complete using context.Background().
+func TestCachingIterator_BackgroundDrainIgnoresRequestContextCancellation(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+
+	mockCache := mocks.NewMockInMemoryCache[any](mockController)
+
+	// Create a request context that we'll cancel to simulate request completion
+	requestCtx, cancelRequest := context.WithCancel(context.Background())
+
+	sf := &singleflight.Group{}
+	wg := &sync.WaitGroup{}
+
+	// Create tuples - use StaticTupleIterator since background drain uses context.Background()
+	tuples := make([]*openfgav1.Tuple, 10)
+	for i := 0; i < 10; i++ {
+		tuples[i] = &openfgav1.Tuple{Key: tuple.NewTupleKey("document:"+string(rune('1'+i)), "viewer", "user:test")}
+	}
+
+	innerIter := storage.NewStaticTupleIterator(tuples)
+
+	// Expect cache.Set because background drain uses context.Background() and should complete
+	mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).Times(1)
+
+	iter := newCachingIterator(
+		requestCtx, innerIter, mockCache, "test-key", 1000, time.Hour,
+		sf, wg, "document", "viewer", "ReadUsersetTuples",
+	)
+
+	// Consume just a few tuples (simulating finding a result early)
+	for i := 0; i < 3; i++ {
+		_, err := iter.Next(requestCtx)
+		require.NoError(t, err)
+	}
+
+	// Cancel the request context to simulate request completion
+	cancelRequest()
+
+	// Stop triggers background drain which should complete and cache
+	// despite the request context being canceled
+	iter.Stop()
+
+	// Wait for background drain to complete
+	wg.Wait()
+
+	// Verify: cache.Set was called (checked by gomock)
+}
+
+func TestCachingIterator_BackgroundDrainCompletes_DoesCache(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+
+	mockCache := mocks.NewMockInMemoryCache[any](mockController)
+
+	ctx := context.Background()
+	sf := &singleflight.Group{}
+	wg := &sync.WaitGroup{}
+
+	tuples := make([]*openfgav1.Tuple, 10)
+	for i := 0; i < 10; i++ {
+		tuples[i] = &openfgav1.Tuple{Key: tuple.NewTupleKey("document:"+string(rune('1'+i)), "viewer", "user:test")}
+	}
+
+	innerIter := storage.NewStaticTupleIterator(tuples)
+
+	// Expect cache.Set because drain will complete successfully
+	mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).Times(1)
+
+	iter := newCachingIterator(
+		ctx, innerIter, mockCache, "test-key", 1000, time.Hour,
+		sf, wg, "document", "viewer", "ReadUsersetTuples",
+	)
+
+	// Consume just a few tuples (not all)
+	for i := 0; i < 3; i++ {
+		_, err := iter.Next(ctx)
+		require.NoError(t, err)
+	}
+
+	// Stop triggers background drain which should complete and cache
+	iter.Stop()
+
+	// Wait for background drain to complete
+	wg.Wait()
+
+	// Verify: cache.Set was called once (checked by gomock)
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Cache Key Tests
 // ─────────────────────────────────────────────────────────────────────────────
@@ -762,4 +863,272 @@ func TestExtractObjectID(t *testing.T) {
 			require.Equal(t, tt.expected, result)
 		})
 	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Benchmarks
+// ─────────────────────────────────────────────────────────────────────────────
+
+// BenchmarkCachingIterator_CacheMiss benchmarks cache miss scenario:
+// wrapping a database iterator and collecting tuples for caching.
+func BenchmarkCachingIterator_CacheMiss(b *testing.B) {
+	mockController := gomock.NewController(b)
+	defer mockController.Finish()
+
+	mockCache := mocks.NewMockInMemoryCache[any](mockController)
+	mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+
+	ctx := context.Background()
+	sf := &singleflight.Group{}
+	wg := &sync.WaitGroup{}
+
+	// Create 100 tuples for iteration
+	tuples := make([]*openfgav1.Tuple, 100)
+	for i := 0; i < 100; i++ {
+		tuples[i] = &openfgav1.Tuple{
+			Key: tuple.NewTupleKey("document:"+string(rune('a'+i%26)), "viewer", "user:test"),
+		}
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		innerIter := storage.NewStaticTupleIterator(tuples)
+		iter := newCachingIterator(
+			ctx, innerIter, mockCache, "test-key", 1000, time.Hour,
+			sf, wg, "document", "viewer", "benchmark",
+		)
+
+		// Consume all tuples
+		for {
+			_, err := iter.Next(ctx)
+			if err != nil {
+				break
+			}
+		}
+	}
+}
+
+// BenchmarkCachingIterator_CacheHit benchmarks cache hit scenario:
+// creating a LockFreeCachedIterator and iterating over cached entries.
+func BenchmarkCachingIterator_CacheHit(b *testing.B) {
+	// Create 100 cached entries
+	entries := make([]MinimalCacheEntry, 100)
+	for i := 0; i < 100; i++ {
+		entries[i] = MinimalCacheEntry{
+			ObjectID: string(rune('a' + i%26)),
+			User:     "user:test",
+		}
+	}
+
+	ctx := context.Background()
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		iter := NewLockFreeCachedIterator(entries, "document", "viewer")
+
+		// Consume all entries
+		for {
+			_, err := iter.Next(ctx)
+			if err != nil {
+				break
+			}
+		}
+	}
+}
+
+// BenchmarkLockFreeCachedIterator_Next benchmarks the Next() operation
+// of the lock-free cached iterator.
+func BenchmarkLockFreeCachedIterator_Next(b *testing.B) {
+	// Create 100 cached entries
+	entries := make([]MinimalCacheEntry, 100)
+	for i := 0; i < 100; i++ {
+		entries[i] = MinimalCacheEntry{
+			ObjectID:      string(rune('a' + i%26)),
+			User:          "user:test",
+			ConditionName: "test_condition",
+		}
+	}
+
+	ctx := context.Background()
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		iter := NewLockFreeCachedIterator(entries, "document", "viewer")
+
+		// Consume all entries
+		for {
+			_, err := iter.Next(ctx)
+			if err != nil {
+				break
+			}
+		}
+	}
+}
+
+// BenchmarkLockFreeCachedIterator_VsStaticIterator compares the lock-free
+// cached iterator against the standard StaticTupleIterator.
+func BenchmarkLockFreeCachedIterator_VsStaticIterator(b *testing.B) {
+	// Create data for both iterators
+	entries := make([]MinimalCacheEntry, 100)
+	tuples := make([]*openfgav1.Tuple, 100)
+	for i := 0; i < 100; i++ {
+		entries[i] = MinimalCacheEntry{
+			ObjectID: string(rune('a' + i%26)),
+			User:     "user:test",
+		}
+		tuples[i] = &openfgav1.Tuple{
+			Key: tuple.NewTupleKey("document:"+string(rune('a'+i%26)), "viewer", "user:test"),
+		}
+	}
+
+	ctx := context.Background()
+
+	b.Run("LockFreeCachedIterator", func(b *testing.B) {
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			iter := NewLockFreeCachedIterator(entries, "document", "viewer")
+			for {
+				_, err := iter.Next(ctx)
+				if err != nil {
+					break
+				}
+			}
+		}
+	})
+
+	b.Run("StaticTupleIterator", func(b *testing.B) {
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			iter := storage.NewStaticTupleIterator(tuples)
+			for {
+				_, err := iter.Next(ctx)
+				if err != nil {
+					break
+				}
+			}
+		}
+	})
+}
+
+// BenchmarkMinimalCacheEntry_Memory benchmarks memory usage of MinimalCacheEntry
+// vs full TupleRecord storage.
+func BenchmarkMinimalCacheEntry_Memory(b *testing.B) {
+	b.Run("MinimalCacheEntry_100", func(b *testing.B) {
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			entries := make([]MinimalCacheEntry, 100)
+			for j := 0; j < 100; j++ {
+				entries[j] = MinimalCacheEntry{
+					ObjectID: "object-" + string(rune('a'+j%26)),
+					User:     "user:test-user",
+				}
+			}
+			_ = entries
+		}
+	})
+
+	b.Run("FullTuple_100", func(b *testing.B) {
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			tuples := make([]*openfgav1.Tuple, 100)
+			for j := 0; j < 100; j++ {
+				tuples[j] = &openfgav1.Tuple{
+					Key: tuple.NewTupleKey(
+						"document:object-"+string(rune('a'+j%26)),
+						"viewer",
+						"user:test-user",
+					),
+				}
+			}
+			_ = tuples
+		}
+	})
+}
+
+// BenchmarkBufferPool benchmarks the buffer pool performance.
+func BenchmarkBufferPool(b *testing.B) {
+	b.Run("WithPool", func(b *testing.B) {
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			buf := getEntryBuffer()
+			for j := 0; j < 100; j++ {
+				buf = append(buf, MinimalCacheEntry{ObjectID: "test", User: "user:test"})
+			}
+			putEntryBuffer(buf)
+		}
+	})
+
+	b.Run("WithoutPool", func(b *testing.B) {
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			buf := make([]MinimalCacheEntry, 0, initialBufferCapacity)
+			for j := 0; j < 100; j++ {
+				buf = append(buf, MinimalCacheEntry{ObjectID: "test", User: "user:test"})
+			}
+			_ = buf
+		}
+	})
+}
+
+// BenchmarkCacheKeyGeneration benchmarks cache key generation performance.
+func BenchmarkCacheKeyGeneration(b *testing.B) {
+	b.Run("ReadUsersetTuples", func(b *testing.B) {
+		filter := storage.ReadUsersetTuplesFilter{
+			Object:   "document:1",
+			Relation: "viewer",
+			AllowedUserTypeRestrictions: []*openfgav1.RelationReference{
+				{Type: "group", RelationOrWildcard: &openfgav1.RelationReference_Relation{Relation: "member"}},
+				{Type: "user"},
+			},
+			Conditions: []string{"cond1", "cond2"},
+		}
+
+		b.ReportAllocs()
+		b.ResetTimer()
+
+		for i := 0; i < b.N; i++ {
+			_ = buildReadUsersetTuplesCacheKey("store123", filter)
+		}
+	})
+
+	b.Run("Read", func(b *testing.B) {
+		filter := storage.ReadFilter{
+			Object:     "document:1",
+			Relation:   "parent",
+			User:       "folder:",
+			Conditions: []string{"cond1"},
+		}
+
+		b.ReportAllocs()
+		b.ResetTimer()
+
+		for i := 0; i < b.N; i++ {
+			_ = buildReadCacheKey("store123", filter)
+		}
+	})
+
+	b.Run("ReadStartingWithUser", func(b *testing.B) {
+		filter := storage.ReadStartingWithUserFilter{
+			ObjectType: "document",
+			Relation:   "viewer",
+			UserFilter: []*openfgav1.ObjectRelation{
+				{Object: "user:alice"},
+				{Object: "user:bob"},
+			},
+			Conditions: []string{"cond1", "cond2"},
+		}
+
+		b.ReportAllocs()
+		b.ResetTimer()
+
+		for i := 0; i < b.N; i++ {
+			_ = buildReadStartingWithUserCacheKey("store123", filter)
+		}
+	})
 }

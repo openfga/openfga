@@ -24,6 +24,11 @@ type CheckQueryV2 struct {
 	planner                   planner.Manager
 	concurrencyLimit          int
 	upstreamTimeout           time.Duration
+
+	// Iterator cache configuration
+	iteratorCacheEnabled bool
+	iteratorCacheTTL     time.Duration
+	iteratorCacheMaxSize int
 }
 
 type CheckQueryV2Option func(*CheckQueryV2)
@@ -82,6 +87,27 @@ func WithCheckQueryV2UpstreamTimeout(timeout time.Duration) CheckQueryV2Option {
 	}
 }
 
+// WithCheckQueryV2IteratorCacheEnabled enables iterator caching for database queries.
+func WithCheckQueryV2IteratorCacheEnabled(enabled bool) CheckQueryV2Option {
+	return func(cmd *CheckQueryV2) {
+		cmd.iteratorCacheEnabled = enabled
+	}
+}
+
+// WithCheckQueryV2IteratorCacheTTL sets the TTL for cached iterators.
+func WithCheckQueryV2IteratorCacheTTL(ttl time.Duration) CheckQueryV2Option {
+	return func(cmd *CheckQueryV2) {
+		cmd.iteratorCacheTTL = ttl
+	}
+}
+
+// WithCheckQueryV2IteratorCacheMaxSize sets the maximum number of tuples to cache per iterator.
+func WithCheckQueryV2IteratorCacheMaxSize(maxSize int) CheckQueryV2Option {
+	return func(cmd *CheckQueryV2) {
+		cmd.iteratorCacheMaxSize = maxSize
+	}
+}
+
 func NewCheckQuery(opts ...CheckQueryV2Option) *CheckQueryV2 {
 	q := &CheckQueryV2{
 		logger: logger.NewNoopLogger(),
@@ -118,6 +144,9 @@ func (q *CheckQueryV2) Execute(ctx context.Context, req *openfgav1.CheckRequest)
 		ConcurrencyLimit:          q.concurrencyLimit,
 		UpstreamTimeout:           q.upstreamTimeout,
 		Logger:                    q.logger,
+		IteratorCacheEnabled:      q.iteratorCacheEnabled,
+		IteratorCacheTTL:          q.iteratorCacheTTL,
+		IteratorCacheMaxSize:      q.iteratorCacheMaxSize,
 	})
 
 	res, err := resolver.ResolveCheck(ctx, r)

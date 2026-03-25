@@ -260,6 +260,9 @@ func (s *Server) v2Check(
 		commands.WithCheckQueryV2LastCacheInvalidationTime(cacheInvalidationTime),
 		commands.WithCheckQueryV2ConcurrencyLimit(int(s.resolveNodeBreadthLimit)),
 		commands.WithCheckQueryV2UpstreamTimeout(s.requestTimeout),
+		commands.WithCheckQueryV2IteratorCacheEnabled(s.cacheSettings.ShouldCacheCheckIterators()),
+		commands.WithCheckQueryV2IteratorCacheTTL(s.cacheSettings.CheckIteratorCacheTTL),
+		commands.WithCheckQueryV2IteratorCacheMaxSize(int(s.cacheSettings.CheckIteratorCacheMaxResults)),
 	)
 
 	res, err := q.Execute(ctx, req)

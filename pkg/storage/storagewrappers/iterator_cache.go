@@ -2,6 +2,7 @@ package storagewrappers
 
 import (
 	"context"
+	"errors"
 	"sort"
 	"strconv"
 	"strings"
@@ -155,10 +156,9 @@ type CachingIterator struct {
 	maxSize  int // Configurable max entries (passed from CachedTupleReader)
 	ttl      time.Duration
 
-	// Background drain
-	sf       *singleflight.Group
-	wg       *sync.WaitGroup
-	drainCtx context.Context
+	// Background drain coordination
+	sf *singleflight.Group
+	wg *sync.WaitGroup
 
 	// Reconstruction params
 	objectType string
@@ -170,8 +170,11 @@ type CachingIterator struct {
 var _ storage.TupleIterator = (*CachingIterator)(nil)
 
 // newCachingIterator creates a new caching iterator for cache miss scenarios.
+// Note: The ctx parameter is currently unused but kept for API compatibility.
+// Background drains use context.Background() to ensure they complete even if
+// the original request context is canceled.
 func newCachingIterator(
-	ctx context.Context,
+	_ context.Context, // unused - background drains use context.Background()
 	inner storage.TupleIterator,
 	cache storage.InMemoryCache[any],
 	cacheKey string,
@@ -190,7 +193,6 @@ func newCachingIterator(
 		ttl:        ttl,
 		sf:         sf,
 		wg:         wg,
-		drainCtx:   ctx,
 		objectType: objectType,
 		relation:   relation,
 		operation:  operation,
@@ -241,10 +243,17 @@ func (c *CachingIterator) Stop() {
 	}
 
 	if c.state.CompareAndSwap(stateActive, stateDraining) {
-		// Check if already exhausted
-		if _, err := c.inner.Head(c.drainCtx); err != nil {
+		// Check if already exhausted using background context since the
+		// original request context may be canceled by the time Stop() is called.
+		if _, err := c.inner.Head(context.Background()); err != nil {
 			c.state.Store(stateDone)
-			c.flush()
+			// Only cache if iterator completed naturally (ErrIteratorDone).
+			// Any other error (e.g., database error) means partial results.
+			if errors.Is(err, storage.ErrIteratorDone) {
+				c.flush()
+			} else {
+				c.releaseBuffer()
+			}
 			c.inner.Stop()
 			return
 		}
@@ -318,19 +327,31 @@ func (c *CachingIterator) releaseBuffer() {
 }
 
 // drainInBackground continues fetching tuples after Stop().
+// Uses context.Background() because the drain should complete independently
+// of the original request lifecycle. When a consumer calls Stop() (e.g., found
+// a result early), the request may complete and cancel its context, but we still
+// want to drain and cache the complete iterator results.
 func (c *CachingIterator) drainInBackground() {
 	if c.wg != nil {
 		defer c.wg.Done()
 	}
 	defer c.inner.Stop()
 
+	// Use background context for draining - the drain should complete
+	// even if the original request context is canceled.
+	drainCtx := context.Background()
+
 	_, _, _ = c.sf.Do(c.cacheKey, func() (interface{}, error) {
 		for c.state.Load() == stateDraining {
-			t, err := c.inner.Next(c.drainCtx)
+			t, err := c.inner.Next(drainCtx)
 			if err != nil {
-				if storage.IterIsDoneOrCancelled(err) {
-					c.state.Store(stateDone)
+				c.state.Store(stateDone)
+				// Only cache if iterator completed naturally (ErrIteratorDone).
+				// Any other error (e.g., database error) means partial results.
+				if errors.Is(err, storage.ErrIteratorDone) {
 					c.flush()
+				} else {
+					c.releaseBuffer()
 				}
 				return nil, nil
 			}
