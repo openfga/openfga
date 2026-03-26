@@ -29,7 +29,10 @@ import (
 const (
 	v2IteratorCachePrefix = "v2ic."
 	maxCachedElements     = 1000
-	initialBufferCapacity = 64
+	// initialBufferCapacity is the default initial capacity for tuple buffers.
+	// Most queries return fewer than 100 tuples, so this avoids over-allocation
+	// while still providing reasonable capacity to minimize slice growth.
+	initialBufferCapacity = 100
 
 	// State machine states for CachingIterator.
 	stateActive    uint32 = 0
@@ -157,9 +160,13 @@ func newCachingIterator(
 	wg *sync.WaitGroup,
 	objectType, relation, operation string,
 ) *CachingIterator {
+	// Cap initial capacity to avoid over-allocation for large maxSize values.
+	// Most queries return few tuples, so initialBufferCapacity is usually sufficient.
+	initCap := min(maxSize/2, initialBufferCapacity)
+
 	return &CachingIterator{
 		inner:        inner,
-		tuples:       make([]*openfgav1.Tuple, 0, maxSize/2), // Pre-allocate half capacity
+		tuples:       make([]*openfgav1.Tuple, 0, initCap),
 		cache:        cache,
 		cacheKey:     cacheKey,
 		maxSize:      maxSize,
@@ -217,6 +224,7 @@ func (c *CachingIterator) Head(ctx context.Context) (*openfgav1.Tuple, error) {
 
 // Stop terminates iteration and triggers caching.
 // If not fully consumed, drains in background with singleflight deduplication.
+// Follows V1's pattern: always spawns goroutine to avoid blocking Stop() on I/O.
 func (c *CachingIterator) Stop() {
 	c.mu.Lock()
 
@@ -231,18 +239,8 @@ func (c *CachingIterator) Stop() {
 		return
 	}
 
-	// Check if already exhausted
-	if _, err := c.inner.Head(context.Background()); err != nil {
-		// Iterator is done - flush in foreground
-		if errors.Is(err, storage.ErrIteratorDone) {
-			c.flush()
-		}
-		c.mu.Unlock()
-		c.inner.Stop()
-		return
-	}
-
-	// Not exhausted - drain in background
+	// Spawn background goroutine to handle draining/flushing (like V1).
+	// This avoids holding mutex during potential I/O operations.
 	if c.wg != nil {
 		c.wg.Add(1)
 	}
@@ -285,17 +283,45 @@ func (c *CachingIterator) flush() {
 // drainInBackground continues fetching tuples after Stop().
 // Uses a background context with timeout to ensure drains complete even if the
 // original request context is cancelled, but don't block indefinitely.
+//
+// Optimizations (following V1's pattern):
+//  1. Check if cache is already populated by another goroutine
+//  2. Check if iterator is exhausted - flush directly without singleflight overhead
+//  3. Use singleflight only when actual draining is needed
 func (c *CachingIterator) drainInBackground() {
 	if c.wg != nil {
 		defer c.wg.Done()
 	}
 	defer c.inner.Stop()
 
+	// Optimization 1: Check if cache is already populated by another goroutine.
+	// This avoids redundant work when multiple iterators for the same key finish concurrently.
+	if entry := c.cache.Get(c.cacheKey); entry != nil {
+		if _, ok := entry.(*V2IteratorCacheEntry); ok {
+			c.mu.Lock()
+			c.tuples = nil // Another goroutine already cached
+			c.mu.Unlock()
+			return
+		}
+	}
+
 	// Use background context with timeout - drain should complete even if
 	// request context is cancelled, but should not block indefinitely.
 	drainCtx, cancel := context.WithTimeout(context.Background(), c.drainTimeout)
 	defer cancel()
 
+	// Optimization 2: Check if iterator is already exhausted.
+	// If so, flush directly without singleflight overhead.
+	// This is the common case when caller fully consumed the iterator.
+	if _, err := c.inner.Head(drainCtx); errors.Is(err, storage.ErrIteratorDone) {
+		c.mu.Lock()
+		c.flush()
+		c.mu.Unlock()
+		return
+	}
+
+	// Optimization 3: Use singleflight only for actual draining.
+	// This prevents multiple goroutines from draining the same iterator key concurrently.
 	_, _, _ = c.sf.Do(c.cacheKey, func() (interface{}, error) {
 		for {
 			// Check for timeout before each iteration

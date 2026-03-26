@@ -264,6 +264,8 @@ func TestCachingIterator_Next_Basic(t *testing.T) {
 	// Use static iterator
 	innerIter := storage.NewStaticTupleIterator(tuples)
 
+	// Expect cache.Get to check if already cached (optimization 1), return nil (not cached)
+	mockCache.EXPECT().Get("test-key").Return(nil).Times(1)
 	// Expect cache.Set when Stop() is called after iterator is exhausted
 	mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).Times(1)
 
@@ -284,8 +286,11 @@ func TestCachingIterator_Next_Basic(t *testing.T) {
 	_, err = iter.Next(ctx)
 	require.ErrorIs(t, err, storage.ErrIteratorDone)
 
-	// Stop triggers flush to cache
+	// Stop triggers flush to cache (now async via goroutine)
 	iter.Stop()
+
+	// Wait for background goroutine to complete
+	wg.Wait()
 }
 
 func TestCachingIterator_State_Abandoned_OnMaxSize(t *testing.T) {
@@ -351,6 +356,8 @@ func TestCachingIterator_PopulatesCache(t *testing.T) {
 
 	innerIter := storage.NewStaticTupleIterator(tuples)
 
+	// Expect cache.Get to check if already cached (optimization 1), return nil (not cached)
+	mockCache.EXPECT().Get(cacheKey).Return(nil).Times(1)
 	// Capture the cache entry
 	var capturedEntry *V2IteratorCacheEntry
 	mockCache.EXPECT().Set(cacheKey, gomock.Any(), ttl).DoAndReturn(
@@ -371,8 +378,11 @@ func TestCachingIterator_PopulatesCache(t *testing.T) {
 	_, err = iter.Next(ctx)
 	require.ErrorIs(t, err, storage.ErrIteratorDone)
 
-	// Stop triggers flush to cache
+	// Stop triggers flush to cache (now async via goroutine)
 	iter.Stop()
+
+	// Wait for background goroutine to complete
+	wg.Wait()
 
 	// Verify cache was populated correctly
 	require.NotNil(t, capturedEntry)
@@ -478,6 +488,8 @@ func TestCachingIterator_BackgroundDrainIgnoresRequestContextCancellation(t *tes
 
 	innerIter := storage.NewStaticTupleIterator(tuples)
 
+	// Expect cache.Get to check if already cached (optimization 1), return nil (not cached)
+	mockCache.EXPECT().Get("test-key").Return(nil).Times(1)
 	// Expect cache.Set because background drain uses context.Background() and should complete
 	mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).Times(1)
 
@@ -526,6 +538,8 @@ func TestCachingIterator_BackgroundDrainCompletes_DoesCache(t *testing.T) {
 
 	innerIter := storage.NewStaticTupleIterator(tuples)
 
+	// Expect cache.Get to check if already cached (optimization 1), return nil (not cached)
+	mockCache.EXPECT().Get("test-key").Return(nil).Times(1)
 	// Expect cache.Set because drain will complete successfully
 	mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).Times(1)
 

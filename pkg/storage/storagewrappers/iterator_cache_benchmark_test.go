@@ -514,6 +514,8 @@ func TestV2_NoRaceCondition(t *testing.T) {
 	defer mockController.Finish()
 
 	mockCache := mocks.NewMockInMemoryCache[any](mockController)
+	// Expect Get calls for optimization 1 (check if already cached)
+	mockCache.EXPECT().Get(gomock.Any()).Return(nil).AnyTimes()
 	mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 
 	tuples := createTestTuples(100)

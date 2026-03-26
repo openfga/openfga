@@ -92,6 +92,9 @@ func (c *CachedTupleReader) ReadUsersetTuples(
 	// Build invalidation keys for this query
 	invalidEntityKeys := buildInvalidationKeys(storeID, filter.Object, filter.Relation)
 
+	// Track total cache operations (before cache check, like V1)
+	v2IterCacheTotal.WithLabelValues("ReadUsersetTuples").Inc()
+
 	// CHECK CACHE FIRST - before any database call
 	if iter := c.tryGetFromCache(cacheKey, storeID, objectType, filter.Relation, "ReadUsersetTuples", invalidEntityKeys); iter != nil {
 		span.SetAttributes(attribute.Bool("cached", true))
@@ -99,7 +102,6 @@ func (c *CachedTupleReader) ReadUsersetTuples(
 	}
 
 	// CACHE MISS - execute database call
-	v2IterCacheTotal.WithLabelValues("ReadUsersetTuples").Inc()
 
 	dbIter, err := c.delegate.ReadUsersetTuples(ctx, storeID, filter, opts)
 	if err != nil {
@@ -133,12 +135,15 @@ func (c *CachedTupleReader) Read(
 	objectType, _ := tuple.SplitObject(filter.Object)
 	invalidEntityKeys := buildInvalidationKeys(storeID, filter.Object, filter.Relation)
 
+	// Track total cache operations (before cache check, like V1)
+	v2IterCacheTotal.WithLabelValues("Read").Inc()
+
 	if iter := c.tryGetFromCache(cacheKey, storeID, objectType, filter.Relation, "Read", invalidEntityKeys); iter != nil {
 		span.SetAttributes(attribute.Bool("cached", true))
 		return iter, nil
 	}
 
-	v2IterCacheTotal.WithLabelValues("Read").Inc()
+	// CACHE MISS - execute database call
 
 	dbIter, err := c.delegate.Read(ctx, storeID, filter, opts)
 	if err != nil {
@@ -170,12 +175,15 @@ func (c *CachedTupleReader) ReadStartingWithUser(
 	cacheKey := buildReadStartingWithUserCacheKey(storeID, filter)
 	invalidEntityKeys := buildInvalidationKeysForUser(storeID, filter.UserFilter, filter.ObjectType)
 
+	// Track total cache operations (before cache check, like V1)
+	v2IterCacheTotal.WithLabelValues("ReadStartingWithUser").Inc()
+
 	if iter := c.tryGetFromCache(cacheKey, storeID, filter.ObjectType, filter.Relation, "ReadStartingWithUser", invalidEntityKeys); iter != nil {
 		span.SetAttributes(attribute.Bool("cached", true))
 		return iter, nil
 	}
 
-	v2IterCacheTotal.WithLabelValues("ReadStartingWithUser").Inc()
+	// CACHE MISS - execute database call
 
 	dbIter, err := c.delegate.ReadStartingWithUser(ctx, storeID, filter, opts)
 	if err != nil {
