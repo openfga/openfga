@@ -20,42 +20,51 @@ import (
 
 var cachedReaderTracer = otel.Tracer("openfga/pkg/storage/storagewrappers/cached_reader")
 
+// DefaultDrainTimeout is the default timeout for background iterator drain operations.
+const DefaultDrainTimeout = 30 * time.Second
+
 // CachedTupleReader wraps a RelationshipTupleReader to provide iterator caching.
 // Cache is checked BEFORE any database call.
 type CachedTupleReader struct {
-	ctx      context.Context // For background operations
-	delegate storage.RelationshipTupleReader
-	cache    storage.InMemoryCache[any]
-	maxSize  int // Configurable max cache entries
-	ttl      time.Duration
-	sf       *singleflight.Group
-	wg       *sync.WaitGroup
+	delegate     storage.RelationshipTupleReader
+	cache        storage.InMemoryCache[any]
+	maxSize      int // Configurable max cache entries
+	ttl          time.Duration
+	drainTimeout time.Duration // Timeout for background drain operations
+	sf           *singleflight.Group
+	wg           *sync.WaitGroup
 }
 
 // Ensure CachedTupleReader implements RelationshipTupleReader.
 var _ storage.RelationshipTupleReader = (*CachedTupleReader)(nil)
 
 // NewCachedTupleReader creates a new CachedTupleReader.
+// The drainTimeout parameter controls how long background drain operations can run.
+// If drainTimeout is 0, DefaultDrainTimeout (30s) is used.
 func NewCachedTupleReader(
-	ctx context.Context,
+	_ context.Context, // Kept for API compatibility, but no longer used
 	delegate storage.RelationshipTupleReader,
 	cache storage.InMemoryCache[any],
 	maxSize int,
 	ttl time.Duration,
 	sf *singleflight.Group,
 	wg *sync.WaitGroup,
+	drainTimeout time.Duration,
 ) *CachedTupleReader {
 	if maxSize <= 0 {
 		maxSize = maxCachedElements // Default to 1000
 	}
+	if drainTimeout <= 0 {
+		drainTimeout = DefaultDrainTimeout
+	}
 	return &CachedTupleReader{
-		ctx:      ctx,
-		delegate: delegate,
-		cache:    cache,
-		maxSize:  maxSize,
-		ttl:      ttl,
-		sf:       sf,
-		wg:       wg,
+		delegate:     delegate,
+		cache:        cache,
+		maxSize:      maxSize,
+		ttl:          ttl,
+		drainTimeout: drainTimeout,
+		sf:           sf,
+		wg:           wg,
 	}
 }
 
@@ -99,7 +108,7 @@ func (c *CachedTupleReader) ReadUsersetTuples(
 
 	// Return caching iterator
 	return newCachingIterator(
-		c.ctx, dbIter, c.cache, cacheKey, c.maxSize, c.ttl,
+		dbIter, c.cache, cacheKey, c.maxSize, c.ttl, c.drainTimeout,
 		c.sf, c.wg, objectType, filter.Relation, "ReadUsersetTuples",
 	), nil
 }
@@ -137,7 +146,7 @@ func (c *CachedTupleReader) Read(
 	}
 
 	return newCachingIterator(
-		c.ctx, dbIter, c.cache, cacheKey, c.maxSize, c.ttl,
+		dbIter, c.cache, cacheKey, c.maxSize, c.ttl, c.drainTimeout,
 		c.sf, c.wg, objectType, filter.Relation, "Read",
 	), nil
 }
@@ -174,7 +183,7 @@ func (c *CachedTupleReader) ReadStartingWithUser(
 	}
 
 	return newCachingIterator(
-		c.ctx, dbIter, c.cache, cacheKey, c.maxSize, c.ttl,
+		dbIter, c.cache, cacheKey, c.maxSize, c.ttl, c.drainTimeout,
 		c.sf, c.wg, filter.ObjectType, filter.Relation, "ReadStartingWithUser",
 	), nil
 }

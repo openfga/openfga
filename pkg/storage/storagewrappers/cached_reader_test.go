@@ -39,7 +39,7 @@ func TestCachedTupleReader_ReadUsersetTuples_CacheMiss(t *testing.T) {
 	sf := &singleflight.Group{}
 	wg := &sync.WaitGroup{}
 
-	reader := NewCachedTupleReader(ctx, mockDatastore, mockCache, 1000, time.Hour, sf, wg)
+	reader := NewCachedTupleReader(ctx, mockDatastore, mockCache, 1000, time.Hour, sf, wg, 30*time.Second)
 
 	filter := storage.ReadUsersetTuplesFilter{
 		Object:   "document:1",
@@ -85,7 +85,7 @@ func TestCachedTupleReader_ReadUsersetTuples_CacheHit(t *testing.T) {
 	sf := &singleflight.Group{}
 	wg := &sync.WaitGroup{}
 
-	reader := NewCachedTupleReader(ctx, mockDatastore, mockCache, 1000, time.Hour, sf, wg)
+	reader := NewCachedTupleReader(ctx, mockDatastore, mockCache, 1000, time.Hour, sf, wg, 30*time.Second)
 
 	filter := storage.ReadUsersetTuplesFilter{
 		Object:   "document:1",
@@ -137,7 +137,7 @@ func TestCachedTupleReader_ReadUsersetTuples_HigherConsistency(t *testing.T) {
 	sf := &singleflight.Group{}
 	wg := &sync.WaitGroup{}
 
-	reader := NewCachedTupleReader(ctx, mockDatastore, mockCache, 1000, time.Hour, sf, wg)
+	reader := NewCachedTupleReader(ctx, mockDatastore, mockCache, 1000, time.Hour, sf, wg, 30*time.Second)
 
 	filter := storage.ReadUsersetTuplesFilter{
 		Object:   "document:1",
@@ -182,7 +182,7 @@ func TestCachedTupleReader_Read_CacheMiss(t *testing.T) {
 	sf := &singleflight.Group{}
 	wg := &sync.WaitGroup{}
 
-	reader := NewCachedTupleReader(ctx, mockDatastore, mockCache, 1000, time.Hour, sf, wg)
+	reader := NewCachedTupleReader(ctx, mockDatastore, mockCache, 1000, time.Hour, sf, wg, 30*time.Second)
 
 	filter := storage.ReadFilter{
 		Object:   "document:1",
@@ -226,7 +226,7 @@ func TestCachedTupleReader_Read_CacheHit(t *testing.T) {
 	sf := &singleflight.Group{}
 	wg := &sync.WaitGroup{}
 
-	reader := NewCachedTupleReader(ctx, mockDatastore, mockCache, 1000, time.Hour, sf, wg)
+	reader := NewCachedTupleReader(ctx, mockDatastore, mockCache, 1000, time.Hour, sf, wg, 30*time.Second)
 
 	filter := storage.ReadFilter{
 		Object:   "document:1",
@@ -271,7 +271,7 @@ func TestCachedTupleReader_Read_HigherConsistency(t *testing.T) {
 	sf := &singleflight.Group{}
 	wg := &sync.WaitGroup{}
 
-	reader := NewCachedTupleReader(ctx, mockDatastore, mockCache, 1000, time.Hour, sf, wg)
+	reader := NewCachedTupleReader(ctx, mockDatastore, mockCache, 1000, time.Hour, sf, wg, 30*time.Second)
 
 	filter := storage.ReadFilter{
 		Object:   "document:1",
@@ -313,7 +313,7 @@ func TestCachedTupleReader_ReadStartingWithUser_CacheMiss(t *testing.T) {
 	sf := &singleflight.Group{}
 	wg := &sync.WaitGroup{}
 
-	reader := NewCachedTupleReader(ctx, mockDatastore, mockCache, 1000, time.Hour, sf, wg)
+	reader := NewCachedTupleReader(ctx, mockDatastore, mockCache, 1000, time.Hour, sf, wg, 30*time.Second)
 
 	filter := storage.ReadStartingWithUserFilter{
 		ObjectType: "document",
@@ -358,7 +358,7 @@ func TestCachedTupleReader_ReadStartingWithUser_CacheHit(t *testing.T) {
 	sf := &singleflight.Group{}
 	wg := &sync.WaitGroup{}
 
-	reader := NewCachedTupleReader(ctx, mockDatastore, mockCache, 1000, time.Hour, sf, wg)
+	reader := NewCachedTupleReader(ctx, mockDatastore, mockCache, 1000, time.Hour, sf, wg, 30*time.Second)
 
 	filter := storage.ReadStartingWithUserFilter{
 		ObjectType: "document",
@@ -405,7 +405,7 @@ func TestCachedTupleReader_ReadStartingWithUser_HigherConsistency(t *testing.T) 
 	sf := &singleflight.Group{}
 	wg := &sync.WaitGroup{}
 
-	reader := NewCachedTupleReader(ctx, mockDatastore, mockCache, 1000, time.Hour, sf, wg)
+	reader := NewCachedTupleReader(ctx, mockDatastore, mockCache, 1000, time.Hour, sf, wg, 30*time.Second)
 
 	filter := storage.ReadStartingWithUserFilter{
 		ObjectType: "document",
@@ -449,7 +449,7 @@ func TestCachedTupleReader_StoreInvalidation(t *testing.T) {
 	sf := &singleflight.Group{}
 	wg := &sync.WaitGroup{}
 
-	reader := NewCachedTupleReader(ctx, mockDatastore, mockCache, 1000, time.Hour, sf, wg)
+	reader := NewCachedTupleReader(ctx, mockDatastore, mockCache, 1000, time.Hour, sf, wg, 30*time.Second)
 
 	filter := storage.ReadUsersetTuplesFilter{
 		Object:   "document:1",
@@ -507,7 +507,7 @@ func TestCachedTupleReader_EntityInvalidation(t *testing.T) {
 	sf := &singleflight.Group{}
 	wg := &sync.WaitGroup{}
 
-	reader := NewCachedTupleReader(ctx, mockDatastore, mockCache, 1000, time.Hour, sf, wg)
+	reader := NewCachedTupleReader(ctx, mockDatastore, mockCache, 1000, time.Hour, sf, wg, 30*time.Second)
 
 	filter := storage.ReadUsersetTuplesFilter{
 		Object:   "document:1",
@@ -566,7 +566,7 @@ func TestCachedTupleReader_InvalidationBeforeLastModified(t *testing.T) {
 	sf := &singleflight.Group{}
 	wg := &sync.WaitGroup{}
 
-	reader := NewCachedTupleReader(ctx, mockDatastore, mockCache, 1000, time.Hour, sf, wg)
+	reader := NewCachedTupleReader(ctx, mockDatastore, mockCache, 1000, time.Hour, sf, wg, 30*time.Second)
 
 	filter := storage.ReadUsersetTuplesFilter{
 		Object:   "document:1",
@@ -622,7 +622,7 @@ func TestCachedTupleReader_ReadUserTuple_Delegates(t *testing.T) {
 	sf := &singleflight.Group{}
 	wg := &sync.WaitGroup{}
 
-	reader := NewCachedTupleReader(ctx, mockDatastore, mockCache, 1000, time.Hour, sf, wg)
+	reader := NewCachedTupleReader(ctx, mockDatastore, mockCache, 1000, time.Hour, sf, wg, 30*time.Second)
 
 	filter := storage.ReadUserTupleFilter{
 		Object:   "document:1",
@@ -659,7 +659,7 @@ func TestCachedTupleReader_ReadPage_Delegates(t *testing.T) {
 	sf := &singleflight.Group{}
 	wg := &sync.WaitGroup{}
 
-	reader := NewCachedTupleReader(ctx, mockDatastore, mockCache, 1000, time.Hour, sf, wg)
+	reader := NewCachedTupleReader(ctx, mockDatastore, mockCache, 1000, time.Hour, sf, wg, 30*time.Second)
 
 	filter := storage.ReadFilter{
 		Object: "document:1",
@@ -704,7 +704,7 @@ func TestCachedTupleReader_DelegateError(t *testing.T) {
 	sf := &singleflight.Group{}
 	wg := &sync.WaitGroup{}
 
-	reader := NewCachedTupleReader(ctx, mockDatastore, mockCache, 1000, time.Hour, sf, wg)
+	reader := NewCachedTupleReader(ctx, mockDatastore, mockCache, 1000, time.Hour, sf, wg, 30*time.Second)
 
 	filter := storage.ReadUsersetTuplesFilter{
 		Object:   "document:1",
@@ -744,7 +744,7 @@ func TestCachedTupleReader_DefaultMaxSize(t *testing.T) {
 	wg := &sync.WaitGroup{}
 
 	// Pass 0 for maxSize - should default to 1000
-	reader := NewCachedTupleReader(ctx, mockDatastore, mockCache, 0, time.Hour, sf, wg)
+	reader := NewCachedTupleReader(ctx, mockDatastore, mockCache, 0, time.Hour, sf, wg, 30*time.Second)
 
 	require.Equal(t, maxCachedElements, reader.maxSize)
 }
@@ -765,7 +765,7 @@ func TestCachedTupleReader_CustomMaxSize(t *testing.T) {
 	wg := &sync.WaitGroup{}
 
 	customMaxSize := 500
-	reader := NewCachedTupleReader(ctx, mockDatastore, mockCache, customMaxSize, time.Hour, sf, wg)
+	reader := NewCachedTupleReader(ctx, mockDatastore, mockCache, customMaxSize, time.Hour, sf, wg, 30*time.Second)
 
 	require.Equal(t, customMaxSize, reader.maxSize)
 }

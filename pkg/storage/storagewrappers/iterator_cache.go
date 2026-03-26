@@ -99,7 +99,6 @@ func (e *V2IteratorCacheEntry) CacheEntityType() string {
 	return "v2_iterator"
 }
 
-
 // ─────────────────────────────────────────────────────────────────────────────
 // CachingIterator - Mutex-based caching iterator for cache miss
 // ─────────────────────────────────────────────────────────────────────────────
@@ -133,8 +132,9 @@ type CachingIterator struct {
 	ttl      time.Duration
 
 	// Background drain coordination
-	sf *singleflight.Group
-	wg *sync.WaitGroup
+	sf           *singleflight.Group
+	wg           *sync.WaitGroup
+	drainTimeout time.Duration // Timeout for background drain operations
 
 	// Reconstruction params (used during transform)
 	objectType string
@@ -147,28 +147,29 @@ var _ storage.TupleIterator = (*CachingIterator)(nil)
 
 // newCachingIterator creates a new caching iterator for cache miss scenarios.
 func newCachingIterator(
-	_ context.Context,
 	inner storage.TupleIterator,
 	cache storage.InMemoryCache[any],
 	cacheKey string,
 	maxSize int,
 	ttl time.Duration,
+	drainTimeout time.Duration,
 	sf *singleflight.Group,
 	wg *sync.WaitGroup,
 	objectType, relation, operation string,
 ) *CachingIterator {
 	return &CachingIterator{
-		inner:      inner,
-		tuples:     make([]*openfgav1.Tuple, 0, maxSize/2), // Pre-allocate half capacity
-		cache:      cache,
-		cacheKey:   cacheKey,
-		maxSize:    maxSize,
-		ttl:        ttl,
-		sf:         sf,
-		wg:         wg,
-		objectType: objectType,
-		relation:   relation,
-		operation:  operation,
+		inner:        inner,
+		tuples:       make([]*openfgav1.Tuple, 0, maxSize/2), // Pre-allocate half capacity
+		cache:        cache,
+		cacheKey:     cacheKey,
+		maxSize:      maxSize,
+		ttl:          ttl,
+		drainTimeout: drainTimeout,
+		sf:           sf,
+		wg:           wg,
+		objectType:   objectType,
+		relation:     relation,
+		operation:    operation,
 	}
 }
 
@@ -282,16 +283,30 @@ func (c *CachingIterator) flush() {
 }
 
 // drainInBackground continues fetching tuples after Stop().
+// Uses a background context with timeout to ensure drains complete even if the
+// original request context is cancelled, but don't block indefinitely.
 func (c *CachingIterator) drainInBackground() {
 	if c.wg != nil {
 		defer c.wg.Done()
 	}
 	defer c.inner.Stop()
 
-	drainCtx := context.Background()
+	// Use background context with timeout - drain should complete even if
+	// request context is cancelled, but should not block indefinitely.
+	drainCtx, cancel := context.WithTimeout(context.Background(), c.drainTimeout)
+	defer cancel()
 
 	_, _, _ = c.sf.Do(c.cacheKey, func() (interface{}, error) {
 		for {
+			// Check for timeout before each iteration
+			if drainCtx.Err() != nil {
+				v2IterCacheAbandoned.WithLabelValues(c.operation).Inc()
+				c.mu.Lock()
+				c.tuples = nil // Don't cache incomplete results
+				c.mu.Unlock()
+				return nil, nil
+			}
+
 			t, err := c.inner.Next(drainCtx)
 			if err != nil {
 				if errors.Is(err, storage.ErrIteratorDone) {
@@ -299,6 +314,7 @@ func (c *CachingIterator) drainInBackground() {
 					c.flush()
 					c.mu.Unlock()
 				}
+				// On timeout or other errors, don't cache
 				return nil, nil
 			}
 

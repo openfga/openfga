@@ -13,7 +13,6 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/errgroup"
-	"golang.org/x/sync/singleflight"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	authzGraph "github.com/openfga/language/pkg/go/graph"
@@ -25,7 +24,6 @@ import (
 	"github.com/openfga/openfga/internal/telemetry"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
-	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
@@ -50,11 +48,6 @@ type Config struct {
 	UpstreamTimeout           time.Duration
 	Logger                    logger.Logger
 	Strategies                map[string]Strategy
-
-	// Iterator cache configuration
-	IteratorCacheEnabled bool
-	IteratorCacheTTL     time.Duration
-	IteratorCacheMaxSize int
 }
 
 type Resolver struct {
@@ -69,41 +62,12 @@ type Resolver struct {
 	logger                    logger.Logger
 
 	strategies map[string]Strategy
-
-	// Iterator cache fields
-	iteratorCacheWg *sync.WaitGroup
 }
 
 func New(cfg Config) *Resolver {
-	datastore := cfg.Datastore
-	var iteratorCacheWg *sync.WaitGroup
-
-	// Wrap datastore with caching layer if enabled
-	if cfg.IteratorCacheEnabled && cfg.Cache != nil {
-		sf := &singleflight.Group{}
-		wg := &sync.WaitGroup{}
-		iteratorCacheWg = wg
-
-		iterCacheTTL := cfg.IteratorCacheTTL
-		if iterCacheTTL == 0 {
-			iterCacheTTL = cfg.CacheTTL // Default to same TTL as subproblem cache
-		}
-
-		// Default handled inside NewCachedTupleReader (defaults to maxCachedElements = 1000)
-		datastore = storagewrappers.NewCachedTupleReader(
-			context.Background(), // Context for background operations
-			cfg.Datastore,
-			cfg.Cache,
-			cfg.IteratorCacheMaxSize, // Configurable max size (0 = default 1000)
-			iterCacheTTL,
-			sf,
-			wg,
-		)
-	}
-
 	r := &Resolver{
 		model:                     cfg.Model,
-		datastore:                 datastore,
+		datastore:                 cfg.Datastore,
 		cache:                     cfg.Cache,
 		cacheTTL:                  cfg.CacheTTL,
 		lastCacheInvalidationTime: cfg.LastCacheInvalidationTime,
@@ -112,7 +76,6 @@ func New(cfg Config) *Resolver {
 		upstreamTimeout:           cfg.UpstreamTimeout,
 		logger:                    cfg.Logger,
 		strategies:                cfg.Strategies,
-		iteratorCacheWg:           iteratorCacheWg,
 	}
 
 	if r.cache == nil {
@@ -128,15 +91,6 @@ func New(cfg Config) *Resolver {
 	}
 
 	return r
-}
-
-// Close waits for any background iterator cache operations to complete.
-// This should be called during graceful shutdown to ensure all cache entries
-// are properly persisted before the process exits.
-func (r *Resolver) Close() {
-	if r.iteratorCacheWg != nil {
-		r.iteratorCacheWg.Wait()
-	}
 }
 
 func (r *Resolver) ResolveCheck(ctx context.Context, req *Request) (*Response, error) {

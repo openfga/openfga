@@ -77,7 +77,7 @@ func createTupleRecords(count int) []*storage.TupleRecord {
 
 // BenchmarkV1vsV2_CacheHit_Iteration compares iterating over cached entries.
 // V1 uses cachedTupleIterator (wraps StaticIterator with TupleRecord)
-// V2 uses LockFreeCachedIterator (atomic index, MinimalCacheEntry)
+// V2 uses LockFreeCachedIterator (atomic index, MinimalCacheEntry).
 func BenchmarkV1vsV2_CacheHit_Iteration(b *testing.B) {
 	sizes := []int{10, 100, 500, 1000}
 
@@ -247,7 +247,7 @@ func BenchmarkV1vsV2_CacheMiss_Collection(b *testing.B) {
 				innerIter := storage.NewStaticTupleIterator(tuples)
 
 				iter := newCachingIterator(
-					ctx, innerIter, mockCache, "test-key", size+100, time.Hour,
+					innerIter, mockCache, "test-key", size+100, time.Hour, 30*time.Second,
 					sf, wg, "document", "viewer", "ReadUsersetTuples",
 				)
 
@@ -479,7 +479,7 @@ func BenchmarkV1vsV2_EndToEnd(b *testing.B) {
 			// Cache miss - populate cache
 			innerIter := storage.NewStaticTupleIterator(tuples)
 			cachingIter := newCachingIterator(
-				ctx, innerIter, mockCache, "test-key", size+100, time.Hour,
+				innerIter, mockCache, "test-key", size+100, time.Hour, 30*time.Second,
 				sf, wg, "document", "viewer", "ReadUsersetTuples",
 			)
 
@@ -525,7 +525,7 @@ func TestV2_NoRaceCondition(t *testing.T) {
 	for i := 0; i < 100; i++ {
 		innerIter := storage.NewStaticTupleIterator(tuples)
 		iter := newCachingIterator(
-			ctx, innerIter, mockCache, fmt.Sprintf("test-key-%d", i), 1000, time.Hour,
+			innerIter, mockCache, fmt.Sprintf("test-key-%d", i), 1000, time.Hour, 30*time.Second,
 			sf, wg, "document", "viewer", "ReadUsersetTuples",
 		)
 

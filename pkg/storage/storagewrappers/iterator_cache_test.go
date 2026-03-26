@@ -268,7 +268,7 @@ func TestCachingIterator_Next_Basic(t *testing.T) {
 	mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).Times(1)
 
 	iter := newCachingIterator(
-		ctx, innerIter, mockCache, "test-key", 1000, time.Hour,
+		innerIter, mockCache, "test-key", 1000, time.Hour, 30*time.Second,
 		sf, wg, "document", "viewer", "ReadUsersetTuples",
 	)
 
@@ -315,7 +315,7 @@ func TestCachingIterator_State_Abandoned_OnMaxSize(t *testing.T) {
 	// No cache.Set expected because we exceed maxSize
 
 	iter := newCachingIterator(
-		ctx, innerIter, mockCache, "test-key", maxSize, time.Hour,
+		innerIter, mockCache, "test-key", maxSize, time.Hour, 30*time.Second,
 		sf, wg, "document", "viewer", "ReadUsersetTuples",
 	)
 
@@ -360,7 +360,7 @@ func TestCachingIterator_PopulatesCache(t *testing.T) {
 	)
 
 	iter := newCachingIterator(
-		ctx, innerIter, mockCache, cacheKey, 1000, ttl,
+		innerIter, mockCache, cacheKey, 1000, ttl, 30*time.Second,
 		sf, wg, "document", "viewer", "ReadUsersetTuples",
 	)
 
@@ -401,7 +401,7 @@ func TestCachingIterator_InnerError(t *testing.T) {
 	// No cache.Set expected on empty iteration
 
 	iter := newCachingIterator(
-		ctx, innerIter, mockCache, "test-key", 1000, time.Hour,
+		innerIter, mockCache, "test-key", 1000, time.Hour, 30*time.Second,
 		sf, wg, "document", "viewer", "ReadUsersetTuples",
 	)
 
@@ -434,7 +434,7 @@ func TestCachingIterator_CustomMaxSizeAbandoned(t *testing.T) {
 	innerIter := storage.NewStaticTupleIterator(tuples)
 
 	iter := newCachingIterator(
-		ctx, innerIter, mockCache, "test-key", customMaxSize, time.Hour,
+		innerIter, mockCache, "test-key", customMaxSize, time.Hour, 30*time.Second,
 		sf, wg, "document", "viewer", "ReadUsersetTuples",
 	)
 
@@ -482,7 +482,7 @@ func TestCachingIterator_BackgroundDrainIgnoresRequestContextCancellation(t *tes
 	mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).Times(1)
 
 	iter := newCachingIterator(
-		requestCtx, innerIter, mockCache, "test-key", 1000, time.Hour,
+		innerIter, mockCache, "test-key", 1000, time.Hour, 30*time.Second,
 		sf, wg, "document", "viewer", "ReadUsersetTuples",
 	)
 
@@ -530,7 +530,7 @@ func TestCachingIterator_BackgroundDrainCompletes_DoesCache(t *testing.T) {
 	mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).Times(1)
 
 	iter := newCachingIterator(
-		ctx, innerIter, mockCache, "test-key", 1000, time.Hour,
+		innerIter, mockCache, "test-key", 1000, time.Hour, 30*time.Second,
 		sf, wg, "document", "viewer", "ReadUsersetTuples",
 	)
 
@@ -815,7 +815,6 @@ func TestAppendConditionsHash(t *testing.T) {
 	})
 }
 
-
 // ─────────────────────────────────────────────────────────────────────────────
 // extractObjectID Tests
 // ─────────────────────────────────────────────────────────────────────────────
@@ -871,7 +870,7 @@ func BenchmarkCachingIterator_CacheMiss(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		innerIter := storage.NewStaticTupleIterator(tuples)
 		iter := newCachingIterator(
-			ctx, innerIter, mockCache, "test-key", 1000, time.Hour,
+			innerIter, mockCache, "test-key", 1000, time.Hour, 30*time.Second,
 			sf, wg, "document", "viewer", "benchmark",
 		)
 
@@ -1025,7 +1024,6 @@ func BenchmarkMinimalCacheEntry_Memory(b *testing.B) {
 		}
 	})
 }
-
 
 // BenchmarkCacheKeyGeneration benchmarks cache key generation performance.
 func BenchmarkCacheKeyGeneration(b *testing.B) {

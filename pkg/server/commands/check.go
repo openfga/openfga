@@ -9,8 +9,10 @@ import (
 	"github.com/openfga/openfga/internal/check"
 	"github.com/openfga/openfga/internal/modelgraph"
 	"github.com/openfga/openfga/internal/planner"
+	"github.com/openfga/openfga/internal/shared"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
@@ -25,10 +27,8 @@ type CheckQueryV2 struct {
 	concurrencyLimit          int
 	upstreamTimeout           time.Duration
 
-	// Iterator cache configuration
-	iteratorCacheEnabled bool
-	iteratorCacheTTL     time.Duration
-	iteratorCacheMaxSize int
+	// Shared resources for iterator cache (singleflight, waitgroup)
+	sharedResources *shared.SharedDatastoreResources
 }
 
 type CheckQueryV2Option func(*CheckQueryV2)
@@ -87,24 +87,12 @@ func WithCheckQueryV2UpstreamTimeout(timeout time.Duration) CheckQueryV2Option {
 	}
 }
 
-// WithCheckQueryV2IteratorCacheEnabled enables iterator caching for database queries.
-func WithCheckQueryV2IteratorCacheEnabled(enabled bool) CheckQueryV2Option {
+// WithCheckQueryV2SharedResources sets shared resources for iterator caching.
+// This includes the shared singleflight.Group and sync.WaitGroup to prevent
+// cache stampedes across concurrent requests.
+func WithCheckQueryV2SharedResources(r *shared.SharedDatastoreResources) CheckQueryV2Option {
 	return func(cmd *CheckQueryV2) {
-		cmd.iteratorCacheEnabled = enabled
-	}
-}
-
-// WithCheckQueryV2IteratorCacheTTL sets the TTL for cached iterators.
-func WithCheckQueryV2IteratorCacheTTL(ttl time.Duration) CheckQueryV2Option {
-	return func(cmd *CheckQueryV2) {
-		cmd.iteratorCacheTTL = ttl
-	}
-}
-
-// WithCheckQueryV2IteratorCacheMaxSize sets the maximum number of tuples to cache per iterator.
-func WithCheckQueryV2IteratorCacheMaxSize(maxSize int) CheckQueryV2Option {
-	return func(cmd *CheckQueryV2) {
-		cmd.iteratorCacheMaxSize = maxSize
+		cmd.sharedResources = r
 	}
 }
 
@@ -134,9 +122,27 @@ func (q *CheckQueryV2) Execute(ctx context.Context, req *openfgav1.CheckRequest)
 		return nil, err
 	}
 
+	// Wrap datastore with iterator cache using SHARED resources to prevent cache stampedes.
+	// The singleflight.Group and sync.WaitGroup are shared across all requests.
+	datastore := q.datastore
+	if q.sharedResources != nil &&
+		q.sharedResources.V2IteratorCacheEnabled &&
+		q.cache != nil {
+		datastore = storagewrappers.NewCachedTupleReader(
+			q.sharedResources.ServerCtx,
+			q.datastore,
+			q.cache,
+			q.sharedResources.V2IteratorCacheMaxSize,
+			q.sharedResources.V2IteratorCacheTTL,
+			q.sharedResources.SingleflightGroup,  // SHARED across requests
+			q.sharedResources.WaitGroup,          // SHARED across requests
+			q.sharedResources.V2IteratorDrainTimeout,
+		)
+	}
+
 	resolver := check.New(check.Config{
 		Model:                     q.model,
-		Datastore:                 q.datastore,
+		Datastore:                 datastore,
 		Cache:                     q.cache,
 		CacheTTL:                  q.cacheTTL,
 		LastCacheInvalidationTime: q.lastCacheInvalidationTime,
@@ -144,9 +150,6 @@ func (q *CheckQueryV2) Execute(ctx context.Context, req *openfgav1.CheckRequest)
 		ConcurrencyLimit:          q.concurrencyLimit,
 		UpstreamTimeout:           q.upstreamTimeout,
 		Logger:                    q.logger,
-		IteratorCacheEnabled:      q.iteratorCacheEnabled,
-		IteratorCacheTTL:          q.iteratorCacheTTL,
-		IteratorCacheMaxSize:      q.iteratorCacheMaxSize,
 	})
 
 	res, err := resolver.ResolveCheck(ctx, r)
