@@ -12,8 +12,8 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Fixed PostgreSQL `HandleSQLError` and `GetStore` returning a wrapped error instead of `storage.ErrNotFound` when no rows are found. When using pgxpool directly, `QueryRow().Scan()` returns `pgx.ErrNoRows`, not `sql.ErrNoRows`; both are now handled. [#3014](https://github.com/openfga/openfga/pull/3014)
 
 ## [1.13.1] - 2026-03-24
-### Fixed
-- Fixed a bug in cache key construction for Check requests using conditions.
+### Security
+- Fixed a security vulnerability ([CVE-2026-33729](https://github.com/openfga/openfga/security/advisories/GHSA-h6c8-cww8-35hf)) where Check requests with conditions and caching enabled could return incorrect cached results.
 
 ## [1.13.0] - 2026-03-23
 ### Added
