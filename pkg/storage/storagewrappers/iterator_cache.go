@@ -99,68 +99,44 @@ func (e *V2IteratorCacheEntry) CacheEntityType() string {
 	return "v2_iterator"
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Buffer Pool - Reduces allocation pressure
-// ─────────────────────────────────────────────────────────────────────────────
-
-var entryBufferPool = sync.Pool{
-	New: func() interface{} {
-		buf := make([]MinimalCacheEntry, 0, initialBufferCapacity)
-		return &buf
-	},
-}
-
-func getEntryBuffer() []MinimalCacheEntry {
-	buf := entryBufferPool.Get().(*[]MinimalCacheEntry)
-	return (*buf)[:0] // Reset length, keep capacity
-}
-
-func putEntryBuffer(buf []MinimalCacheEntry) {
-	if cap(buf) <= maxCachedElements {
-		// Clear references to allow GC of condition contexts
-		clear(buf[:cap(buf)])
-		entryBufferPool.Put(&buf)
-	}
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
-// CachingIterator - Lock-free caching iterator for cache miss
+// CachingIterator - Mutex-based caching iterator for cache miss
 // ─────────────────────────────────────────────────────────────────────────────
 
 // CachingIterator wraps a storage iterator to cache results.
-// Lock-free design: uses atomic state machine, single-writer assumption.
-// No double buffering: collects directly into MinimalCacheEntry slice.
+// Uses V1-style mutex for fast pointer collection, transforms to MinimalCacheEntry at flush.
+//
+// Design: Optimized for cache miss path performance while maintaining V2's
+// memory-efficient MinimalCacheEntry storage format for cache hits.
 //
 // Thread Safety:
-//   - NOT safe for concurrent use from multiple goroutines
-//   - Designed for single-writer during Active state
-//   - Ownership transfers to background goroutine on Stop()
-//
-// State Machine:
-//
-//	Active → Draining → Done
-//	   ↓
-//	Abandoned (if exceeds maxSize)
+//   - Mutex protects tuples slice during collection
+//   - Atomic closing flag prevents collection after Stop()
+//   - Transform to MinimalCacheEntry happens at flush (single goroutine)
 type CachingIterator struct {
 	inner storage.TupleIterator
 
-	// State machine (atomic)
-	state atomic.Uint32
+	// Mutex protects tuples slice
+	mu sync.Mutex
 
-	// Single buffer - no double buffering
-	entries []MinimalCacheEntry
+	// Tuples collected during iteration (pointer append - fast)
+	tuples []*openfgav1.Tuple
+
+	// Atomic flag to signal closing
+	closing atomic.Bool
 
 	// Cache config
 	cache    storage.InMemoryCache[any]
 	cacheKey string
-	maxSize  int // Configurable max entries (passed from CachedTupleReader)
+	maxSize  int
 	ttl      time.Duration
 
 	// Background drain coordination
 	sf *singleflight.Group
 	wg *sync.WaitGroup
 
-	// Reconstruction params
+	// Reconstruction params (used during transform)
 	objectType string
 	relation   string
 	operation  string
@@ -170,11 +146,8 @@ type CachingIterator struct {
 var _ storage.TupleIterator = (*CachingIterator)(nil)
 
 // newCachingIterator creates a new caching iterator for cache miss scenarios.
-// Note: The ctx parameter is currently unused but kept for API compatibility.
-// Background drains use context.Background() to ensure they complete even if
-// the original request context is canceled.
 func newCachingIterator(
-	_ context.Context, // unused - background drains use context.Background()
+	_ context.Context,
 	inner storage.TupleIterator,
 	cache storage.InMemoryCache[any],
 	cacheKey string,
@@ -186,7 +159,7 @@ func newCachingIterator(
 ) *CachingIterator {
 	return &CachingIterator{
 		inner:      inner,
-		entries:    getEntryBuffer(),
+		tuples:     make([]*openfgav1.Tuple, 0, maxSize/2), // Pre-allocate half capacity
 		cache:      cache,
 		cacheKey:   cacheKey,
 		maxSize:    maxSize,
@@ -200,169 +173,149 @@ func newCachingIterator(
 }
 
 // Next returns the next tuple from the underlying iterator.
-// Tuples are collected for caching (before condition evaluation).
-//
-// Lock-free: Uses atomic state check, single-writer assumption.
-// Complexity: O(1) amortized.
+// Collects tuple pointers for later transformation (V1 pattern - fast).
 func (c *CachingIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
-	// Fast path: atomic check, no lock
-	if c.state.Load() >= stateDone {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.closing.Load() {
 		return nil, storage.ErrIteratorDone
 	}
 
 	t, err := c.inner.Next(ctx)
 	if err != nil {
-		if storage.IterIsDoneOrCancelled(err) {
-			c.markDone()
+		if !storage.IterIsDoneOrCancelled(err) {
+			c.tuples = nil // Don't cache incomplete results
 		}
 		return nil, err
 	}
 
-	// Collect for caching (single writer, no lock)
-	c.collect(t)
+	// Fast path: just append pointer (like V1)
+	if c.tuples != nil {
+		c.tuples = append(c.tuples, t)
+		if len(c.tuples) >= c.maxSize {
+			v2IterCacheAbandoned.WithLabelValues(c.operation).Inc()
+			c.tuples = nil // Exceeded max size, abandon caching
+		}
+	}
+
 	return t, nil
 }
 
 // Head returns the next tuple without advancing the iterator.
 func (c *CachingIterator) Head(ctx context.Context) (*openfgav1.Tuple, error) {
-	if c.state.Load() >= stateDone {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.closing.Load() {
 		return nil, storage.ErrIteratorDone
 	}
+
 	return c.inner.Head(ctx)
 }
 
 // Stop terminates iteration and triggers caching.
 // If not fully consumed, drains in background with singleflight deduplication.
 func (c *CachingIterator) Stop() {
-	state := c.state.Load()
+	c.mu.Lock()
 
-	if state == stateAbandoned || state == stateDone {
+	if !c.closing.CompareAndSwap(false, true) {
+		c.mu.Unlock()
+		return
+	}
+
+	if c.tuples == nil {
+		c.mu.Unlock()
 		c.inner.Stop()
-		c.releaseBuffer()
 		return
 	}
 
-	if c.state.CompareAndSwap(stateActive, stateDraining) {
-		// Check if already exhausted using background context since the
-		// original request context may be canceled by the time Stop() is called.
-		if _, err := c.inner.Head(context.Background()); err != nil {
-			c.state.Store(stateDone)
-			// Only cache if iterator completed naturally (ErrIteratorDone).
-			// Any other error (e.g., database error) means partial results.
-			if errors.Is(err, storage.ErrIteratorDone) {
-				c.flush()
-			} else {
-				c.releaseBuffer()
-			}
-			c.inner.Stop()
-			return
+	// Check if already exhausted
+	if _, err := c.inner.Head(context.Background()); err != nil {
+		// Iterator is done - flush in foreground
+		if errors.Is(err, storage.ErrIteratorDone) {
+			c.flush()
 		}
-
-		// Drain in background
-		if c.wg != nil {
-			c.wg.Add(1)
-		}
-		go c.drainInBackground()
-	}
-}
-
-// collect extracts minimal data from tuple and adds to buffer.
-func (c *CachingIterator) collect(t *openfgav1.Tuple) {
-	state := c.state.Load()
-	if state != stateActive && state != stateDraining {
+		c.mu.Unlock()
+		c.inner.Stop()
 		return
 	}
 
-	// Check threshold BEFORE adding (uses configurable maxSize)
-	if len(c.entries) >= c.maxSize {
-		c.state.Store(stateAbandoned)
-		v2IterCacheAbandoned.WithLabelValues(c.operation).Inc()
-		c.releaseBuffer()
-		return
+	// Not exhausted - drain in background
+	if c.wg != nil {
+		c.wg.Add(1)
 	}
-
-	tk := t.GetKey()
-	entry := MinimalCacheEntry{
-		ObjectID: extractObjectID(tk.GetObject()),
-		User:     tk.GetUser(),
-	}
-
-	if cond := tk.GetCondition(); cond != nil {
-		entry.ConditionName = cond.GetName()
-		entry.ConditionContext = cond.GetContext()
-	}
-
-	c.entries = append(c.entries, entry)
+	c.mu.Unlock()
+	go c.drainInBackground()
 }
 
-// markDone transitions to Done state and flushes cache.
-func (c *CachingIterator) markDone() {
-	if c.state.CompareAndSwap(stateActive, stateDone) {
-		c.flush()
-	}
-}
-
-// flush stores collected entries in cache.
+// flush transforms collected tuples to MinimalCacheEntry and stores in cache.
+// Must be called with mutex held or after closing is set.
 func (c *CachingIterator) flush() {
-	if len(c.entries) == 0 {
+	if c.tuples == nil || len(c.tuples) == 0 {
+		c.tuples = nil
 		return
 	}
 
-	v2IterCacheSize.WithLabelValues(c.operation).Observe(float64(len(c.entries)))
+	// Transform to MinimalCacheEntry (memory-efficient storage)
+	entries := make([]MinimalCacheEntry, len(c.tuples))
+	for i, t := range c.tuples {
+		tk := t.GetKey()
+		entries[i] = MinimalCacheEntry{
+			ObjectID: extractObjectID(tk.GetObject()),
+			User:     tk.GetUser(),
+		}
+		if cond := tk.GetCondition(); cond != nil {
+			entries[i].ConditionName = cond.GetName()
+			entries[i].ConditionContext = cond.GetContext()
+		}
+	}
+
+	v2IterCacheSize.WithLabelValues(c.operation).Observe(float64(len(entries)))
 
 	c.cache.Set(c.cacheKey, &V2IteratorCacheEntry{
-		Entries:      c.entries,
+		Entries:      entries,
 		LastModified: time.Now(),
 	}, c.ttl)
 
-	c.entries = nil // Ownership transferred to cache
-}
-
-// releaseBuffer returns buffer to pool if not flushed.
-func (c *CachingIterator) releaseBuffer() {
-	if c.entries != nil {
-		putEntryBuffer(c.entries)
-		c.entries = nil
-	}
+	c.tuples = nil // Release for GC
 }
 
 // drainInBackground continues fetching tuples after Stop().
-// Uses context.Background() because the drain should complete independently
-// of the original request lifecycle. When a consumer calls Stop() (e.g., found
-// a result early), the request may complete and cancel its context, but we still
-// want to drain and cache the complete iterator results.
 func (c *CachingIterator) drainInBackground() {
 	if c.wg != nil {
 		defer c.wg.Done()
 	}
 	defer c.inner.Stop()
 
-	// Use background context for draining - the drain should complete
-	// even if the original request context is canceled.
 	drainCtx := context.Background()
 
 	_, _, _ = c.sf.Do(c.cacheKey, func() (interface{}, error) {
-		for c.state.Load() == stateDraining {
+		for {
 			t, err := c.inner.Next(drainCtx)
 			if err != nil {
-				c.state.Store(stateDone)
-				// Only cache if iterator completed naturally (ErrIteratorDone).
-				// Any other error (e.g., database error) means partial results.
 				if errors.Is(err, storage.ErrIteratorDone) {
+					c.mu.Lock()
 					c.flush()
-				} else {
-					c.releaseBuffer()
+					c.mu.Unlock()
 				}
 				return nil, nil
 			}
 
-			c.collect(t)
-
-			if c.state.Load() == stateAbandoned {
+			c.mu.Lock()
+			if c.tuples == nil {
+				c.mu.Unlock()
+				return nil, nil // Abandoned
+			}
+			c.tuples = append(c.tuples, t)
+			if len(c.tuples) >= c.maxSize {
+				v2IterCacheAbandoned.WithLabelValues(c.operation).Inc()
+				c.tuples = nil
+				c.mu.Unlock()
 				return nil, nil
 			}
+			c.mu.Unlock()
 		}
-		return nil, nil
 	})
 }
 

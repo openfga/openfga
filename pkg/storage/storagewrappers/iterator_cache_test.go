@@ -264,7 +264,7 @@ func TestCachingIterator_Next_Basic(t *testing.T) {
 	// Use static iterator
 	innerIter := storage.NewStaticTupleIterator(tuples)
 
-	// Expect cache.Set when iterator completes
+	// Expect cache.Set when Stop() is called after iterator is exhausted
 	mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).Times(1)
 
 	iter := newCachingIterator(
@@ -283,6 +283,9 @@ func TestCachingIterator_Next_Basic(t *testing.T) {
 	// Iterator done
 	_, err = iter.Next(ctx)
 	require.ErrorIs(t, err, storage.ErrIteratorDone)
+
+	// Stop triggers flush to cache
+	iter.Stop()
 }
 
 func TestCachingIterator_State_Abandoned_OnMaxSize(t *testing.T) {
@@ -322,8 +325,8 @@ func TestCachingIterator_State_Abandoned_OnMaxSize(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	// Verify state is abandoned (entries should be released)
-	require.Nil(t, iter.entries)
+	// Verify tuples is nil (abandoned due to exceeding maxSize)
+	require.Nil(t, iter.tuples)
 }
 
 func TestCachingIterator_PopulatesCache(t *testing.T) {
@@ -367,6 +370,9 @@ func TestCachingIterator_PopulatesCache(t *testing.T) {
 
 	_, err = iter.Next(ctx)
 	require.ErrorIs(t, err, storage.ErrIteratorDone)
+
+	// Stop triggers flush to cache
+	iter.Stop()
 
 	// Verify cache was populated correctly
 	require.NotNil(t, capturedEntry)
@@ -438,8 +444,8 @@ func TestCachingIterator_CustomMaxSizeAbandoned(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	// Verify entries were released
-	require.Nil(t, iter.entries)
+	// Verify tuples is nil (abandoned due to exceeding maxSize)
+	require.Nil(t, iter.tuples)
 }
 
 // TestCachingIterator_BackgroundDrainIgnoresRequestContextCancellation verifies
@@ -809,37 +815,6 @@ func TestAppendConditionsHash(t *testing.T) {
 	})
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Buffer Pool Tests
-// ─────────────────────────────────────────────────────────────────────────────
-
-func TestBufferPool(t *testing.T) {
-	t.Run("get_returns_empty_slice", func(t *testing.T) {
-		buf := getEntryBuffer()
-		require.NotNil(t, buf)
-		require.Empty(t, buf)
-		require.GreaterOrEqual(t, cap(buf), initialBufferCapacity)
-		putEntryBuffer(buf)
-	})
-
-	t.Run("put_clears_references", func(t *testing.T) {
-		buf := getEntryBuffer()
-		buf = append(buf, MinimalCacheEntry{ObjectID: "test", User: "user:test"})
-		putEntryBuffer(buf)
-
-		// Get a new buffer and verify it's empty
-		buf2 := getEntryBuffer()
-		require.Empty(t, buf2)
-		putEntryBuffer(buf2)
-	})
-
-	t.Run("large_buffer_not_returned_to_pool", func(t *testing.T) {
-		// Create a buffer larger than maxCachedElements
-		buf := make([]MinimalCacheEntry, 0, maxCachedElements+100)
-		putEntryBuffer(buf)
-		// No panic expected
-	})
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // extractObjectID Tests
@@ -1051,30 +1026,6 @@ func BenchmarkMinimalCacheEntry_Memory(b *testing.B) {
 	})
 }
 
-// BenchmarkBufferPool benchmarks the buffer pool performance.
-func BenchmarkBufferPool(b *testing.B) {
-	b.Run("WithPool", func(b *testing.B) {
-		b.ReportAllocs()
-		for i := 0; i < b.N; i++ {
-			buf := getEntryBuffer()
-			for j := 0; j < 100; j++ {
-				buf = append(buf, MinimalCacheEntry{ObjectID: "test", User: "user:test"})
-			}
-			putEntryBuffer(buf)
-		}
-	})
-
-	b.Run("WithoutPool", func(b *testing.B) {
-		b.ReportAllocs()
-		for i := 0; i < b.N; i++ {
-			buf := make([]MinimalCacheEntry, 0, initialBufferCapacity)
-			for j := 0; j < 100; j++ {
-				buf = append(buf, MinimalCacheEntry{ObjectID: "test", User: "user:test"})
-			}
-			_ = buf
-		}
-	})
-}
 
 // BenchmarkCacheKeyGeneration benchmarks cache key generation performance.
 func BenchmarkCacheKeyGeneration(b *testing.B) {
