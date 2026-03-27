@@ -10,6 +10,10 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Changed
 - Improve cache key generation performance by removing `fmt` usage and extend control-character sanitization to all cache key inputs (tuples, conditions, context). [#3006](https://github.com/openfga/openfga/pull/3006)
 
+### Fixed
+- Fixed Write operations failing with `invalid input syntax for type integer` (SQLSTATE 22P02) when PostgreSQL is behind PgBouncer or a connection pooler using the simple query protocol. [#3014](https://github.com/openfga/openfga/pull/3014)
+- Fixed PostgreSQL `HandleSQLError` and `GetStore` returning a wrapped error instead of `storage.ErrNotFound` when no rows are found. When using pgxpool directly, `QueryRow().Scan()` returns `pgx.ErrNoRows`, not `sql.ErrNoRows`; both are now handled. [#3014](https://github.com/openfga/openfga/pull/3014)
+
 ## [1.13.1] - 2026-03-24
 ### Security
 - Fixed a security vulnerability ([CVE-2026-33729](https://github.com/openfga/openfga/security/advisories/GHSA-h6c8-cww8-35hf)) where Check requests with conditions and caching enabled could return incorrect cached results.

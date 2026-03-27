@@ -722,7 +722,7 @@ func GetDeleteWriteChangelogItems(
 			tk.GetUser(),
 			"",
 			nil, // Redact condition info for Deletes since we only need the base triplet (object, relation, user).
-			openfgav1.TupleOperation_TUPLE_OPERATION_DELETE,
+			int32(openfgav1.TupleOperation_TUPLE_OPERATION_DELETE),
 			id,
 			sq.Expr("NOW()"),
 		})
@@ -791,7 +791,7 @@ func GetDeleteWriteChangelogItems(
 			tk.GetUser(),
 			conditionName,
 			conditionContext,
-			openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
+			int32(openfgav1.TupleOperation_TUPLE_OPERATION_WRITE),
 			id,
 			sq.Expr("NOW()"),
 		})
