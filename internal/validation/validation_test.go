@@ -1166,7 +1166,7 @@ func mustNewStruct(fields map[string]interface{}) *structpb.Struct {
 	return s
 }
 
-func TestValidateContext(t *testing.T) {
+func TestValidateStruct(t *testing.T) {
 	tests := []struct {
 		name    string
 		context *structpb.Struct
@@ -1225,7 +1225,7 @@ func TestValidateContext(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			err := ValidateContext(tc.context)
+			err := ValidateStruct(tc.context)
 			if tc.wantErr {
 				require.Error(t, err)
 				require.Contains(t, err.Error(), "control characters")
