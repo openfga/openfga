@@ -7,7 +7,7 @@ This performs the following steps:
 - Adds the body to the pull request
 - Adds the pull request labels
 
-After the release PR merges, two GitHub Action are triggered:
+After the release PR merges, two GitHub Actions are triggered:
 1. Create the git tag + release for the new version.
 2. Create a PR against [openfga/helm-charts](https://github.com/openfga/helm-charts) to bump the chart versions.
 
