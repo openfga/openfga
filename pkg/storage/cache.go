@@ -4,11 +4,13 @@ package storage
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"sort"
 	"strconv"
 	"sync"
 	"time"
+	"unicode"
 
 	"github.com/Yiling-J/theine-go"
 	"github.com/prometheus/client_golang/prometheus"
@@ -18,7 +20,6 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/build"
-	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
@@ -260,6 +261,18 @@ func GetReadCacheKey(store, tuple string) string {
 // an unexpected structpb.Value kind was encountered.
 var ErrUnexpectedStructValue = errors.New("unexpected structpb value encountered")
 
+// assertNoControlChars returns an error if s contains Unicode control characters.
+// Control characters should be rejected at validation boundaries before reaching
+// cache key generation. If this fires, it indicates a validation bug upstream.
+func assertNoControlChars(s string) error {
+	for _, c := range s {
+		if unicode.IsControl(c) {
+			return fmt.Errorf("invariant violation: control character in cache key input")
+		}
+	}
+	return nil
+}
+
 // writeValue writes value v to the writer w. An error
 // is returned only when the underlying writer returns
 // an error or an unexpected value kind is encountered.
@@ -270,7 +283,10 @@ func writeValue(w io.StringWriter, v *structpb.Value) (err error) {
 	case *structpb.Value_NullValue:
 		_, err = w.WriteString("null")
 	case *structpb.Value_StringValue:
-		_, err = w.WriteString(utils.Sanitize(val.StringValue))
+		if err = assertNoControlChars(val.StringValue); err != nil {
+			return
+		}
+		_, err = w.WriteString(val.StringValue)
 		if err != nil {
 			return
 		}
@@ -334,7 +350,10 @@ func writeStruct(w io.StringWriter, s *structpb.Struct) (err error) {
 		if _, err = w.WriteString("'"); err != nil {
 			return
 		}
-		if _, err = w.WriteString(utils.Sanitize(key)); err != nil {
+		if err = assertNoControlChars(key); err != nil {
+			return
+		}
+		if _, err = w.WriteString(key); err != nil {
 			return
 		}
 		// 'key:'value separator and quote
@@ -374,7 +393,11 @@ func writeTuples(w io.StringWriter, tuples ...*openfgav1.TupleKey) (err error) {
 	}
 
 	for n, tupleKey := range sortedTuples {
-		_, err = w.WriteString(utils.Sanitize(tupleKey.GetObject() + "#" + tupleKey.GetRelation()))
+		objectRelation := tupleKey.GetObject() + "#" + tupleKey.GetRelation()
+		if err = assertNoControlChars(objectRelation); err != nil {
+			return
+		}
+		_, err = w.WriteString(objectRelation)
 		if err != nil {
 			return
 		}
@@ -384,7 +407,11 @@ func writeTuples(w io.StringWriter, tuples ...*openfgav1.TupleKey) (err error) {
 			// " with " is separated by spaces as those are invalid in relation names
 			// and we need to ensure this cache key is unique
 			// resultant cache key format is "object:object_id#relation with {condition} {context}@user:user_id"
-			_, err = w.WriteString(" with " + utils.Sanitize(cond.GetName()))
+			condName := cond.GetName()
+			if err = assertNoControlChars(condName); err != nil {
+				return
+			}
+			_, err = w.WriteString(" with " + condName)
 			if err != nil {
 				return
 			}
@@ -404,7 +431,11 @@ func writeTuples(w io.StringWriter, tuples ...*openfgav1.TupleKey) (err error) {
 			}
 		}
 
-		if _, err = w.WriteString("@" + utils.Sanitize(tupleKey.GetUser())); err != nil {
+		user := tupleKey.GetUser()
+		if err = assertNoControlChars(user); err != nil {
+			return
+		}
+		if _, err = w.WriteString("@" + user); err != nil {
 			return
 		}
 
@@ -435,7 +466,11 @@ type CheckCacheKeyParams struct {
 func WriteCheckCacheKey(w io.StringWriter, params *CheckCacheKeyParams) error {
 	t := tuple.From(params.TupleKey)
 
-	_, err := w.WriteString(utils.Sanitize(t.String()))
+	tupleStr := t.String()
+	if err := assertNoControlChars(tupleStr); err != nil {
+		return err
+	}
+	_, err := w.WriteString(tupleStr)
 	if err != nil {
 		return err
 	}

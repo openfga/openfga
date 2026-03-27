@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/types/known/structpb"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
@@ -1154,6 +1155,84 @@ func BenchmarkValidateTupleForWrite(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		err := ValidateTupleForWrite(ts, tuple.NewTupleKey("folder:x", "viewer", fmt.Sprintf("user:%v", i)))
 		require.NoError(b, err)
+	}
+}
+
+func mustNewStruct(fields map[string]interface{}) *structpb.Struct {
+	s, err := structpb.NewStruct(fields)
+	if err != nil {
+		panic(err)
+	}
+	return s
+}
+
+func TestValidateContext(t *testing.T) {
+	tests := []struct {
+		name    string
+		context *structpb.Struct
+		wantErr bool
+	}{
+		{
+			name:    "nil_context",
+			context: nil,
+			wantErr: false,
+		},
+		{
+			name:    "clean_context",
+			context: mustNewStruct(map[string]interface{}{"key": "value"}),
+			wantErr: false,
+		},
+		{
+			name:    "control_char_in_key",
+			context: mustNewStruct(map[string]interface{}{"key\x00bad": "value"}),
+			wantErr: true,
+		},
+		{
+			name:    "control_char_in_string_value",
+			context: mustNewStruct(map[string]interface{}{"key": "value\x01bad"}),
+			wantErr: true,
+		},
+		{
+			name: "control_char_in_nested_struct_key",
+			context: mustNewStruct(map[string]interface{}{
+				"nested": map[string]interface{}{"inner\x02key": "value"},
+			}),
+			wantErr: true,
+		},
+		{
+			name: "control_char_in_list_value",
+			context: mustNewStruct(map[string]interface{}{
+				"items": []interface{}{"good", "bad\x03item"},
+			}),
+			wantErr: true,
+		},
+		{
+			name: "clean_nested_struct",
+			context: mustNewStruct(map[string]interface{}{
+				"nested": map[string]interface{}{"innerKey": "innerValue"},
+			}),
+			wantErr: false,
+		},
+		{
+			name: "number_and_bool_values_pass",
+			context: mustNewStruct(map[string]interface{}{
+				"count":  42.0,
+				"active": true,
+			}),
+			wantErr: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := ValidateContext(tc.context)
+			if tc.wantErr {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), "control characters")
+			} else {
+				require.NoError(t, err)
+			}
+		})
 	}
 }
 

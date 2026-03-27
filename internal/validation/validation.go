@@ -5,7 +5,9 @@ import (
 	"fmt"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"google.golang.org/protobuf/types/known/structpb"
 
+	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -236,7 +238,20 @@ func validateCondition(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) e
 		}
 	}
 
+	if utils.ContainsControlChars(tk.GetCondition().GetName()) {
+		return &tuple.InvalidConditionalTupleError{
+			Cause: fmt.Errorf("condition name contains control characters"), TupleKey: tk,
+		}
+	}
+
 	contextStruct := tk.GetCondition().GetContext()
+
+	if err := ValidateStruct(contextStruct); err != nil {
+		return &tuple.InvalidConditionalTupleError{
+			Cause: err, TupleKey: tk,
+		}
+	}
+
 	contextFieldMap := contextStruct.GetFields()
 
 	typedParams, err := condition.CastContextToTypedParameters(contextFieldMap)
@@ -362,5 +377,46 @@ func ValidateUser(typesys *typesystem.TypeSystem, user string) error {
 		}
 	}
 
+	return nil
+}
+
+// ValidateStruct checks that a structpb.Struct does not contain Unicode control
+// characters in any string keys or values. This prevents control characters from
+// reaching cache key generation or log output.
+func ValidateStruct(s *structpb.Struct) error {
+	if s == nil {
+		return nil
+	}
+	for key, value := range s.GetFields() {
+		if utils.ContainsControlChars(key) {
+			return fmt.Errorf("context key %q contains control characters", key)
+		}
+		if err := validateValueControlChars(value); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateValueControlChars(v *structpb.Value) error {
+	if v == nil {
+		return nil
+	}
+	switch val := v.GetKind().(type) {
+	case *structpb.Value_StringValue:
+		if utils.ContainsControlChars(val.StringValue) {
+			return fmt.Errorf("context value %q contains control characters", val.StringValue)
+		}
+	case *structpb.Value_ListValue:
+		for _, item := range val.ListValue.GetValues() {
+			if err := validateValueControlChars(item); err != nil {
+				return err
+			}
+		}
+	case *structpb.Value_StructValue:
+		if err := ValidateStruct(val.StructValue); err != nil {
+			return err
+		}
+	}
 	return nil
 }

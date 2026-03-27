@@ -137,7 +137,7 @@ func TestWriteValue(t *testing.T) {
 		"string_with_control_chars": {
 			writer: &validWriter,
 			value:  structpb.NewStringValue("hello\x00world"),
-			output: "hello?world",
+			error:  true,
 		},
 	}
 
@@ -252,7 +252,7 @@ func TestWriteStruct(t *testing.T) {
 			value: MustNewStruct(map[string]any{
 				"key\x00A": "value",
 			}),
-			output: "1'key?A:'value,",
+			error: true,
 		},
 	}
 
@@ -428,21 +428,21 @@ func TestWriteTuples(t *testing.T) {
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("doc:\x00A", "view\x00er", "user:B"),
 			},
-			output: "/doc:?A#view?er@user:B",
+			error: true,
 		},
 		"control_chars_in_user": {
 			writer: &validWriter,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:A", "viewer", "user:\x00B"),
 			},
-			output: "/document:A#viewer@user:?B",
+			error: true,
 		},
 		"control_chars_in_condition_name": {
 			writer: &validWriter,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKeyWithCondition("document:A", "viewer", "user:A", "cond\x00X", nil),
 			},
-			output: "/document:A#viewer with cond?X 0@user:A",
+			error: true,
 		},
 	}
 
@@ -841,31 +841,16 @@ func TestCheckCacheKeyConditionContextOrderAgnostic(t *testing.T) {
 	require.Equal(t, key1, key2)
 }
 
-func TestCheckCacheKeySanitizesUnicodeControlCharacters(t *testing.T) {
+func TestCheckCacheKeyRejectsControlCharactersInContext(t *testing.T) {
 	storeID := ulid.Make().String()
 	modelID := ulid.Make().String()
 
-	struct1, err := structpb.NewStruct(map[string]interface{}{
-		"a": "x",
-	})
-	require.NoError(t, err)
-
-	// The unicode chars below are backspaces.
-	// Without sanitization, the cache key for struct1 and struct2 are the same.
+	// The unicode chars below are backspaces — these should be rejected, not silently replaced.
 	struct2, err := structpb.NewStruct(map[string]interface{}{
 		"a": "y",
 		"b": "\u0008\u0008\u0008\u0008\u0008\u0008x",
 	})
-
 	require.NoError(t, err)
-
-	jonContextOne := tuple.NewTupleKeyWithCondition(
-		"document:2",
-		"admin",
-		"user:jon",
-		"some_condition",
-		struct1,
-	)
 
 	jonContextTwo := tuple.NewTupleKeyWithCondition(
 		"document:2",
@@ -877,45 +862,29 @@ func TestCheckCacheKeySanitizesUnicodeControlCharacters(t *testing.T) {
 
 	tupleKey := tuple.NewTupleKey("document:x", "viewer", "user:jon")
 
-	key1 := MustGetCheckCacheKey(&CheckCacheKeyParams{
-		StoreID:              storeID,
-		AuthorizationModelID: modelID,
-		TupleKey:             tupleKey,
-		ContextualTuples:     []*openfgav1.TupleKey{jonContextOne},
-	})
-
-	key2 := MustGetCheckCacheKey(&CheckCacheKeyParams{
+	var w strings.Builder
+	err = WriteCheckCacheKey(&w, &CheckCacheKeyParams{
 		StoreID:              storeID,
 		AuthorizationModelID: modelID,
 		TupleKey:             tupleKey,
 		ContextualTuples:     []*openfgav1.TupleKey{jonContextTwo},
 	})
-
-	require.NotEqual(t, key1, key2)
-
-	// One '?' for each backspace character
-	require.Contains(t, key2, "??????")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "invariant violation")
 }
 
-func TestWriteCheckCacheKeySanitizesControlChars(t *testing.T) {
+func TestWriteCheckCacheKeyRejectsControlCharsInTuple(t *testing.T) {
 	storeID := ulid.Make().String()
 	modelID := ulid.Make().String()
 
-	// Control chars in the primary tuple key should be sanitized
-	key1 := MustGetCheckCacheKey(&CheckCacheKeyParams{
+	var w strings.Builder
+	err := WriteCheckCacheKey(&w, &CheckCacheKeyParams{
 		StoreID:              storeID,
 		AuthorizationModelID: modelID,
 		TupleKey:             tuple.NewTupleKey("document:\x00X", "viewer", "user:jon"),
 	})
-
-	key2 := MustGetCheckCacheKey(&CheckCacheKeyParams{
-		StoreID:              storeID,
-		AuthorizationModelID: modelID,
-		TupleKey:             tuple.NewTupleKey("document:X", "viewer", "user:jon"),
-	})
-
-	require.NotEqual(t, key1, key2)
-	require.Contains(t, key1, "document:?X")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "invariant violation")
 }
 
 func TestCheckCacheKeyContextualTuplesConditionsOrderDoesNotMatter(t *testing.T) {
