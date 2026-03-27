@@ -179,7 +179,7 @@ func transformCheckCommandErrorToBatchCheckError(cmdErr error) *openfgav1.CheckE
 		err.Code = &openfgav1.CheckError_InputError{InputError: openfgav1.ErrorCode_authorization_model_resolution_too_complex}
 	case errors.Is(cmdErr, condition.ErrEvaluationFailed):
 		err.Code = &openfgav1.CheckError_InputError{InputError: openfgav1.ErrorCode_validation_error}
-	case errors.Is(cmdErr, &invalidContextError):
+	case errors.As(cmdErr, &invalidContextError):
 		err.Code = &openfgav1.CheckError_InputError{InputError: openfgav1.ErrorCode_validation_error}
 	case errors.As(cmdErr, &throttledError):
 		err.Code = &openfgav1.CheckError_InputError{InputError: openfgav1.ErrorCode_validation_error}
