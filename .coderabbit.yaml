@@ -2,6 +2,22 @@
 language: "en-US"
 reviews:
   path_instructions:
+    - path: "**/*.go"
+      instructions: |
+        Priorities: Correctness > Reliability > Performance.
+
+        **Imports (blocker):** Required aliases: `openfgav1` for `github.com/openfga/api/proto/openfga/v1`, `parser` for `github.com/openfga/language/pkg/go/transformer`. Order: standard → external → `github.com/openfga` → local module.
+
+        **Naming:** No "I" prefix on interfaces. Constructors: `New<Type>()`. Options: `With<Property>()`. Context keys: `<name>CtxKey`.
+
+        **Errors:** Sentinel `var Err... = errors.New(...)`. Wrap with `%w`, never `%v`. Check with `errors.Is`/`errors.As`, never `==`.
+
+        **Performance:** Flag unnecessary allocations in hot paths (`internal/graph/`, `pkg/storage/`).
+
+        **Protected files (blocker):** Flag any PR editing `internal/mocks/` (mockgen output) or `*.pb.go` (generated protobuf).
+
+        **Concurrency:** For any code using goroutines, channels, `sync`, `sync/atomic`, or `unsafe`, apply the audit methodology in `.github/instructions/concurrency-audit.instructions.md` — flag goroutine leaks, lost wakeups, memory model violations, and lock-free races with interleaving trace + hardware context + happens-before chain.
+
     - path: "Dockerfile"
       instructions: |
         When reviewing changes to `Dockerfile`, check if the `ghcr.io/grpc-ecosystem/grpc-health-probe` image reference (version tag and/or digest) was modified.
