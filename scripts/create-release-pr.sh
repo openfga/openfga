@@ -4,7 +4,6 @@ set -eo pipefail
  
 tag=
 base="main"
-skip_helm=false
  
 die() {
 local exit_code=1
@@ -38,7 +37,6 @@ This performs the following steps:
 - Creates the pull request against the base branch
 - Adds the body to the pull request
 - Adds the pull request labels
-- Creates a PR against openfga/helm-charts to bump Chart.yaml versions
 
 $(echo -e "\033[1mOPTIONS\033[0m")
 EOF
@@ -60,15 +58,11 @@ info() {
 echo "===>" "$@"
 }
 
-while getopts ":t:Hh" opt; do
+while getopts ":t:h" opt; do
 case "$opt" in
     t)
     ### -t    The version of the release to use for the tag.
     tag="$OPTARG"
-    ;;
-    H)
-    ### -H    Skip creating a PR against openfga/helm-charts.
-    skip_helm=true
     ;;
     ### -h    Print this help.
     h)
@@ -148,59 +142,3 @@ info "Creating pull request..."
 pull_request=$(gh pr create --base ${base} --title "release: update changelog for release \`v${tag}\`" --body "$body" --label "$labels")
 
 echo "Pull Request: $pull_request"
-
-if [[ "$skip_helm" == "true" ]]; then
-  info "Skipping helm-charts PR (-H was provided)."
-  exit 0
-fi
-
-# --- Create PR against openfga/helm-charts ---
-
-openfga_dir="$(pwd)"
-helm_charts_dir="$(cd "$(dirname "$0")/.." && cd ../helm-charts && pwd 2>/dev/null)" \
-  || die "Could not find helm-charts repo as a sibling directory. Expected at ../helm-charts relative to this repo."
-
-chart_file="charts/openfga/Chart.yaml"
-helm_branch_name="release/openfga-v${tag}"
-
-info "Updating helm-charts..."
-
-cd "$helm_charts_dir"
-
-git checkout main && git pull || die "Could not checkout or pull main in helm-charts."
-
-info "Creating branch '${helm_branch_name}' in helm-charts..."
-git checkout -b "$helm_branch_name"
-
-[[ -f "$chart_file" ]] || die "Chart file not found at ${chart_file}"
-
-current_version=$(grep '^version:' "$chart_file" | awk '{print $2}')
-new_version=$(echo "$current_version" | awk -F. -v OFS=. '{$NF=$NF+1; print}')
-
-tmp_chart_file="$(mktemp)"
-sed "s/^version: .*/version: $new_version/" "$chart_file" \
-  | sed "s/^appVersion: .*/appVersion: \"v${tag}\"/" > "$tmp_chart_file"
-mv "$tmp_chart_file" "$chart_file"
-
-echo "Updated Chart.yaml: version ${current_version} -> ${new_version}, appVersion -> v${tag}"
-
-git add "$chart_file" && git commit -m "chore: bump openfga to v${tag}"
-
-git push --set-upstream origin "$helm_branch_name"
-
-helm_body=$(cat << END
-## Description
-Bump OpenFGA to \`v${tag}\`.
-
-- \`appVersion\`: \`v${tag}\`
-- \`version\`: \`${current_version}\` → \`${new_version}\`
-END
-)
-
-info "Creating helm-charts pull request..."
-
-helm_pull_request=$(gh pr create --repo openfga/helm-charts --base main --title "chore: bump openfga to \`v${tag}\`" --body "$helm_body")
-
-echo "Helm Charts Pull Request: $helm_pull_request"
-
-cd "$openfga_dir"

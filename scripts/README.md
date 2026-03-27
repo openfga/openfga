@@ -6,21 +6,14 @@ This performs the following steps:
 - Creates the pull request against the base branch
 - Adds the body to the pull request
 - Adds the pull request labels
-- Creates a PR against openfga/helm-charts to bump Chart.yaml versions
- 
+
+After the release PR merges, two GitHub Action are triggered:
+1. Create the git tag + release for the new version.
+2. Create a PR against [openfga/helm-charts](https://github.com/openfga/helm-charts) to bump the chart versions.
+
 ## Setup
 
 These scripts use two important packages, `gh` and `jq`. The scripts were written on a Mac in bash.
-
-### openfga/helm-charts repo
-
-The script also updates the versions in [openfga/helm-charts](https://github.com/openfga/helm-charts) by default, and as such expects it to be cloned as a sibling directory to this repo (e.g., if this repo is in `~/repos/openfga/openfga`, then the helm-charts repo should be in `~/repos/openfga/helm-charts`):
-
-```sh
-git clone git@github.com:openfga/helm-charts.git ../helm-charts
-```
-
-If desired, you can skip this step by providing an argument to the script, see [Usage](#usage) below.
 
 ### Installing gh
 
@@ -60,19 +53,13 @@ Check if you are already logged in using `gh auth status`. If not, follow the br
 gh auth login --hostname github.com --git-protocol ssh --skip-ssh-key --web
 ```
 
-Next, run the script by passing the tag version. This will create a release PR for both openfga and helm-charts:
+Next, run the script by passing the tag version:
 
 ```sh
 ./scripts/create-release-pr.sh -t <version>
 
-# e.g.,
+# eg.,
 ./scripts/create-release-pr.sh -t 1.9.2
-```
-
-To skip the helm-charts PR, pass `-H`:
-
-```sh
-./scripts/create-release-pr.sh -t 1.9.2 -H
 ```
 
 If the tag already exists, or the branch was already used, the script will be cancelled and you will need to proceed further manually.
