@@ -1,8 +1,8 @@
 -- +goose Up
 CREATE TABLE tuple (
     store CHAR(26) NOT NULL,
-    object_type VARCHAR(128) NOT NULL,
-    object_id VARCHAR(128) NOT NULL,
+    object_type VARCHAR(256) NOT NULL,
+    object_id VARCHAR(256) NOT NULL,
     relation VARCHAR(50) NOT NULL,
     user_object_type VARCHAR(128) NOT NULL,
     user_object_id VARCHAR(128) NOT NULL,
