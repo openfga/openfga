@@ -2,17 +2,12 @@ package worker
 
 import (
 	"context"
-	"iter"
 	"sync"
-	"sync/atomic"
 
 	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/containers"
 	"github.com/openfga/openfga/internal/seq"
 )
-
-var white Color = White
-var black Color = Black
 
 // Deduplicator tracks previously seen values and filters duplicates
 // across multiple calls to [Deduplicator.Deduplicate]. It is safe for
@@ -46,15 +41,7 @@ func Identity(values []string) []string {
 type Basic struct {
 	Membership   *Membership
 	outputBuffer containers.AtomicMap[string, struct{}]
-	color        atomic.Pointer[Color]
 	*Core
-}
-
-// Broadcast marks the worker as active (color [Black]) and then delegates
-// to [Core.Broadcast].
-func (w *Basic) Broadcast(ctx context.Context, values iter.Seq[string]) {
-	w.color.Store(&black)
-	w.Core.Broadcast(ctx, values)
 }
 
 // ProcessSender reads messages from the sender at the given index,
@@ -131,8 +118,13 @@ MessageLoop:
 
 // Execute processes all registered senders concurrently. Standard senders run
 // in parallel goroutines. Cyclical senders run in their own goroutines and
-// are terminated by a probe-based protocol once all standard senders have
-// been exhausted and the cycle reaches quiescence.
+// are terminated once all standard senders have been exhausted and the
+// in-flight message count across the cycle group reaches zero.
+//
+// After quiescence is detected, the leader initiates an ordered teardown:
+// each member closes its listeners and wakes the next member in the ring.
+// This ensures downstream channels are closed in dependency order so that
+// cyclical ProcessSender goroutines drain and exit cleanly.
 func (w *Basic) Execute(ctx context.Context) {
 	defer w.Cleanup()
 
@@ -140,23 +132,16 @@ func (w *Basic) Execute(ctx context.Context) {
 		return
 	}
 
-	w.color.Store(&white)
-
-	label := w.String()
-
 	defer w.outputBuffer.Clear()
 
 	var wgStandard sync.WaitGroup
 	var wgRecursive sync.WaitGroup
-
-	var hasCycles bool
 
 	for ndx, sender := range w.senders {
 		edge := sender.Key()
 		cyclical := IsCyclical(edge)
 
 		if cyclical {
-			hasCycles = true
 			wgRecursive.Add(1)
 			go func(index int) {
 				var err error
@@ -192,40 +177,17 @@ func (w *Basic) Execute(ctx context.Context) {
 			return
 		}
 
-		if !hasCycles {
+		// Ordered teardown: the leader starts the cascade immediately;
+		// non-leaders wait to be woken by their predecessor. Each member
+		// closes its listeners (unblocking the next member's cyclical
+		// Recv calls) and then wakes the next member.
+		if w.Membership.IsLeader() {
+			w.Cleanup()
+			w.Membership.Next().Wake()
 			return
 		}
-		defer w.Cleanup()
-
-		if w.Membership.IsLeader() {
-			w.Membership.SendProbe(ctx, &Probe{
-				Label: label,
-			})
-		}
-
-		for {
-			probe, ok := w.Membership.RecvProbe(ctx)
-			if !ok {
-				break
-			}
-
-			color := *w.color.Swap(&white)
-
-			if probe.Label == label {
-				if probe.Color == White && color == White {
-					w.Membership.EndProbe()
-					break
-				}
-				probe.Color = White
-			}
-
-			if color == Black {
-				probe.Color = Black
-			}
-
-			if !w.Membership.SendProbe(ctx, probe) {
-				break
-			}
-		}
+		w.Membership.Sleep(ctx)
+		w.Cleanup()
+		w.Membership.Next().Wake()
 	}
 }

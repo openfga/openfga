@@ -6,6 +6,7 @@ import (
 	"iter"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	weightedGraph "github.com/openfga/language/pkg/go/graph"
 
@@ -15,24 +16,6 @@ import (
 
 // Edge is an alias for the weighted authorization model edge type.
 type Edge = weightedGraph.WeightedAuthorizationModelEdge
-
-// Color represents the activity state of a worker during cycle detection.
-type Color int32
-
-const (
-	// White indicates no activity since the last probe.
-	White Color = iota
-	// Black indicates activity has occurred since the last probe.
-	Black
-)
-
-// Probe carries cycle detection state through a ring of workers.
-// The Label identifies the originating member, and the Color accumulates
-// the activity state observed along the ring.
-type Probe struct {
-	Label string
-	Color Color
-}
 
 // Message carries a batch of values between workers.
 // Callback, when non-nil, is invoked by Done to release pooled resources.
@@ -177,15 +160,16 @@ func (c *Core) Broadcast(ctx context.Context, values iter.Seq[string]) {
 }
 
 // Membership represents a worker's participation in a [CycleGroup].
-// It provides probe-based cycle detection and readiness coordination.
+// It coordinates readiness signaling, quiescence detection via in-flight
+// message counting, and ordered teardown through a sleep/wake chain.
 type Membership struct {
 	reporter *track.Reporter
 	next     *Membership
 	prev     *Membership
 	label    string
 	leader   bool
-	probe    chan *Probe
 	wake     chan struct{}
+	awake    atomic.Bool
 }
 
 // String returns a representation of the cycle path starting from this member.
@@ -200,44 +184,16 @@ func (m *Membership) String() string {
 	return sb.String()
 }
 
+// Next returns the next member in the ring. This is the member that
+// should be woken during ordered teardown.
+func (m *Membership) Next() *Membership {
+	return m.prev
+}
+
 // IsLeader reports whether this member is the cycle group's leader.
-// The leader initiates cycle detection probes.
+// The leader initiates the ordered teardown cascade after quiescence.
 func (m *Membership) IsLeader() bool {
 	return m.leader
-}
-
-// RecvProbe blocks until a probe arrives, the context is cancelled,
-// or the member is woken. It returns false when no probe was received.
-func (m *Membership) RecvProbe(ctx context.Context) (*Probe, bool) {
-	select {
-	case probe, ok := <-m.probe:
-		return probe, ok
-	case <-ctx.Done():
-		return nil, false
-	case <-m.wake:
-		return nil, false
-	}
-}
-
-// SendProbe sends a probe to the next member in the cycle.
-// It returns false if the context is cancelled before the send completes.
-func (m *Membership) SendProbe(ctx context.Context, probe *Probe) bool {
-	next := m.prev
-	select {
-	case next.probe <- probe:
-		return true
-	case <-ctx.Done():
-		return false
-	}
-}
-
-// EndProbe closes the probe channels of all members in the group,
-// unblocking any pending [Membership.RecvProbe] calls.
-func (m *Membership) EndProbe() {
-	close(m.probe)
-	for next := m.prev; next != m; next = next.prev {
-		close(next.probe)
-	}
 }
 
 // SignalReady indicates that this member's non-cyclical inputs are exhausted.
@@ -253,6 +209,23 @@ func (m *Membership) WaitForAllReady(ctx context.Context) bool {
 	return m.reporter.Wait(ctx)
 }
 
+// Sleep blocks until this member is woken by its predecessor in the
+// teardown cascade, or until ctx is cancelled.
+func (m *Membership) Sleep(ctx context.Context) {
+	select {
+	case <-m.wake:
+	case <-ctx.Done():
+	}
+}
+
+// Wake unblocks a pending Sleep call. It is safe to call multiple times;
+// only the first call has any effect.
+func (m *Membership) Wake() {
+	if !m.awake.Swap(true) {
+		close(m.wake)
+	}
+}
+
 // Inc increments the group's in-flight message count.
 func (m *Membership) Inc() {
 	m.reporter.Inc()
@@ -264,12 +237,16 @@ func (m *Membership) Dec() {
 }
 
 // CycleGroup coordinates a set of workers that form a cycle in the
-// authorization model graph. Members are linked in a ring and use
-// probe-based detection to determine when the cycle has reached quiescence.
-// The members are always a subset of the authorization model graph that form
-// a cycle, and are ordered as a reverse topological sort of the graph.
-// It is possible for multiple independent CycleGroup instances to exist
-// within a pipeline.
+// authorization model graph. Members are linked in a ring and share a
+// [track.StatusPool] that detects quiescence: all members have exhausted
+// their non-cyclical inputs and the in-flight message count has reached
+// zero. After quiescence, the leader initiates an ordered teardown that
+// cascades through the ring via [Membership.Wake].
+//
+// The members are always a subset of the authorization model graph that
+// form a cycle, and are ordered as a reverse topological sort of the
+// graph. It is possible for multiple independent CycleGroup instances
+// to exist within a pipeline.
 type CycleGroup struct {
 	statusPool *track.StatusPool
 	size       int
@@ -297,8 +274,7 @@ func (g *CycleGroup) Join(label string) *Membership {
 	m := Membership{
 		label:    label,
 		reporter: reporter,
-		probe:    make(chan *Probe, 1),
-		wake:     make(chan struct{}, 1),
+		wake:     make(chan struct{}),
 	}
 
 	if g.head == nil {

@@ -292,94 +292,64 @@ func TestMembership_String_ShowsCyclePath(t *testing.T) {
 	assert.Equal(t, "A->C->B->A", a.String())
 }
 
-func TestMembership_ProbeCirculation(t *testing.T) {
+func TestMembership_Next_TraversesRing(t *testing.T) {
 	g := worker.NewCycleGroup()
 	a := g.Join("A")
 	b := g.Join("B")
 	c := g.Join("C")
 
-	ctx := context.Background()
-	probe := &worker.Probe{Label: "test", Color: worker.White}
-
-	// C (leader) sends probe to B.
-	ok := c.SendProbe(ctx, probe)
-	require.True(t, ok)
-
-	// B receives the probe.
-	received, ok := b.RecvProbe(ctx)
-	require.True(t, ok)
-	assert.Equal(t, "test", received.Label)
-	assert.Equal(t, worker.White, received.Color)
-
-	// B forwards to A.
-	ok = b.SendProbe(ctx, received)
-	require.True(t, ok)
-
-	// A receives.
-	received, ok = a.RecvProbe(ctx)
-	require.True(t, ok)
-	assert.Equal(t, "test", received.Label)
-
-	// A forwards back to C, completing the ring.
-	ok = a.SendProbe(ctx, received)
-	require.True(t, ok)
-
-	received, ok = c.RecvProbe(ctx)
-	require.True(t, ok)
-	assert.Equal(t, "test", received.Label)
+	// Next follows the ring in the teardown direction.
+	assert.Equal(t, b, c.Next())
+	assert.Equal(t, a, b.Next())
+	assert.Equal(t, c, a.Next())
 }
 
-func TestMembership_SendProbe_ContextCancelled(t *testing.T) {
-	g := worker.NewCycleGroup()
-	_ = g.Join("A")
-	b := g.Join("B")
-
-	// Fill the next member's probe channel (capacity 1) with a live context.
-	ok := b.SendProbe(context.Background(), &worker.Probe{Label: "fill"})
-	require.True(t, ok)
-
-	// Channel is full. With cancelled context, send must fail.
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-
-	ok = b.SendProbe(ctx, &worker.Probe{Label: "blocked"})
-	assert.False(t, ok)
-}
-
-func TestMembership_RecvProbe_ContextCancelled(t *testing.T) {
+func TestMembership_Wake_UnblocksSleep(t *testing.T) {
 	g := worker.NewCycleGroup()
 	a := g.Join("A")
+	a.SignalReady()
+
+	done := make(chan struct{})
+	go func() {
+		a.Sleep(context.Background())
+		close(done)
+	}()
+
+	a.Wake()
+	<-done
+}
+
+func TestMembership_Wake_IsIdempotent(t *testing.T) {
+	g := worker.NewCycleGroup()
+	a := g.Join("A")
+	a.SignalReady()
+
+	// Multiple Wake calls must not panic.
+	a.Wake()
+	a.Wake()
+	a.Wake()
+}
+
+func TestMembership_Sleep_ReturnsOnContextCancellation(t *testing.T) {
+	g := worker.NewCycleGroup()
+	a := g.Join("A")
+	a.SignalReady()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	probe, ok := a.RecvProbe(ctx)
-	assert.Nil(t, probe)
-	assert.False(t, ok)
+	// Sleep returns immediately when the context is already cancelled.
+	a.Sleep(ctx)
 }
 
-func TestMembership_EndProbe_ClosesAllChannels(t *testing.T) {
+func TestMembership_WakeThenSleep_ReturnsImmediately(t *testing.T) {
 	g := worker.NewCycleGroup()
 	a := g.Join("A")
-	b := g.Join("B")
-	c := g.Join("C")
+	a.SignalReady()
 
-	c.EndProbe()
-
-	ctx := context.Background()
-
-	// All probe channels are closed — RecvProbe returns (nil, false).
-	probe, ok := a.RecvProbe(ctx)
-	assert.Nil(t, probe)
-	assert.False(t, ok)
-
-	probe, ok = b.RecvProbe(ctx)
-	assert.Nil(t, probe)
-	assert.False(t, ok)
-
-	probe, ok = c.RecvProbe(ctx)
-	assert.Nil(t, probe)
-	assert.False(t, ok)
+	// If Wake is called before Sleep, Sleep must not block.
+	a.Wake()
+	a.Sleep(context.Background())
 }
 
 func TestMembership_SignalReady_WaitForAllReady(t *testing.T) {
