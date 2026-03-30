@@ -4,11 +4,10 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/stretchr/testify/require"
-	"google.golang.org/protobuf/types/known/structpb"
-
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/stretchr/testify/require"
 
+	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
@@ -1158,18 +1157,10 @@ func BenchmarkValidateTupleForWrite(b *testing.B) {
 	}
 }
 
-func mustNewStruct(fields map[string]interface{}) *structpb.Struct {
-	s, err := structpb.NewStruct(fields)
-	if err != nil {
-		panic(err)
-	}
-	return s
-}
-
 func TestValidateStruct(t *testing.T) {
 	tests := []struct {
 		name    string
-		context *structpb.Struct
+		context map[string]interface{}
 		wantErr bool
 	}{
 		{
@@ -1179,53 +1170,54 @@ func TestValidateStruct(t *testing.T) {
 		},
 		{
 			name:    "clean_context",
-			context: mustNewStruct(map[string]interface{}{"key": "value"}),
+			context: map[string]interface{}{"key": "value"},
 			wantErr: false,
 		},
 		{
 			name:    "control_char_in_key",
-			context: mustNewStruct(map[string]interface{}{"key\x00bad": "value"}),
+			context: map[string]interface{}{"key\x00bad": "value"},
 			wantErr: true,
 		},
 		{
 			name:    "control_char_in_string_value",
-			context: mustNewStruct(map[string]interface{}{"key": "value\x01bad"}),
+			context: map[string]interface{}{"key": "value\x01bad"},
 			wantErr: true,
 		},
 		{
 			name: "control_char_in_nested_struct_key",
-			context: mustNewStruct(map[string]interface{}{
+			context: map[string]interface{}{
 				"nested": map[string]interface{}{"inner\x02key": "value"},
-			}),
+			},
 			wantErr: true,
 		},
 		{
 			name: "control_char_in_list_value",
-			context: mustNewStruct(map[string]interface{}{
+			context: map[string]interface{}{
 				"items": []interface{}{"good", "bad\x03item"},
-			}),
+			},
 			wantErr: true,
 		},
 		{
 			name: "clean_nested_struct",
-			context: mustNewStruct(map[string]interface{}{
+			context: map[string]interface{}{
 				"nested": map[string]interface{}{"innerKey": "innerValue"},
-			}),
+			},
 			wantErr: false,
 		},
 		{
 			name: "number_and_bool_values_pass",
-			context: mustNewStruct(map[string]interface{}{
+			context: map[string]interface{}{
 				"count":  42.0,
 				"active": true,
-			}),
+			},
 			wantErr: false,
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			err := ValidateStruct(tc.context)
+			newStruct := testutils.MustNewStruct(t, tc.context)
+			err := ValidateStruct(newStruct)
 			if tc.wantErr {
 				require.Error(t, err)
 				require.Contains(t, err.Error(), "control characters")
