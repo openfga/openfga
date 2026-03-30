@@ -218,6 +218,12 @@ func validateCondition(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) e
 		}
 	}
 
+	if utils.ContainsControlChars(tk.GetCondition().GetName()) {
+		return &tuple.InvalidConditionalTupleError{
+			Cause: fmt.Errorf("condition name contains control characters"), TupleKey: tk,
+		}
+	}
+
 	condition, ok := typesys.GetConditions()[tk.GetCondition().GetName()]
 	if !ok {
 		return &tuple.InvalidConditionalTupleError{
@@ -236,12 +242,6 @@ func validateCondition(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) e
 	if !validCondition {
 		return &tuple.InvalidConditionalTupleError{
 			Cause: fmt.Errorf("invalid condition for type restriction"), TupleKey: tk,
-		}
-	}
-
-	if utils.ContainsControlChars(tk.GetCondition().GetName()) {
-		return &tuple.InvalidConditionalTupleError{
-			Cause: fmt.Errorf("condition name contains control characters"), TupleKey: tk,
 		}
 	}
 

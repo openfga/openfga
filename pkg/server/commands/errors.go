@@ -78,6 +78,11 @@ func CheckCommandErrorToServerError(err error) error {
 		return serverErrors.ValidationError(err)
 	}
 
+	var invalidContext *InvalidContextError
+	if errors.As(err, &invalidContext) {
+		return serverErrors.ValidationError(err)
+	}
+
 	var invalidTupleDeprecate *InvalidTupleError
 	if errors.As(err, &invalidTupleDeprecate) {
 		tupleError := tuple.InvalidTupleError{Cause: err}

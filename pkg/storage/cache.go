@@ -10,7 +10,6 @@ import (
 	"strconv"
 	"sync"
 	"time"
-	"unicode"
 
 	"github.com/Yiling-J/theine-go"
 	"github.com/prometheus/client_golang/prometheus"
@@ -20,6 +19,7 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/build"
+	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
@@ -265,10 +265,8 @@ var ErrUnexpectedStructValue = errors.New("unexpected structpb value encountered
 // Control characters should be rejected at validation boundaries before reaching
 // cache key generation. If this fires, it indicates a validation bug upstream.
 func assertNoControlChars(s string) error {
-	for _, c := range s {
-		if unicode.IsControl(c) {
-			return fmt.Errorf("invariant violation: control character in cache key input")
-		}
+	if utils.ContainsControlChars(s) {
+		return fmt.Errorf("invariant violation: control character in cache key input")
 	}
 	return nil
 }
