@@ -5,7 +5,6 @@ import (
 	"errors"
 	"iter"
 	"sort"
-	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -80,13 +79,8 @@ func passthroughInterpreter() *mockInterpreter {
 	}
 }
 
-func newPool() *sync.Pool {
-	return &sync.Pool{
-		New: func() any {
-			s := make([]string, 0, chunkSize)
-			return &s
-		},
-	}
+func newPool() *worker.BufferPool {
+	return worker.NewBufferPool(chunkSize, 10)
 }
 
 func newCore(interp worker.Interpreter, errs chan<- error) *worker.Core {
@@ -123,6 +117,64 @@ func sorted(s []string) []string {
 	copy(out, s)
 	sort.Strings(out)
 	return out
+}
+
+// --- Preprocessor Tests ---
+
+func TestIdentityProcessor_Process(t *testing.T) {
+	var p worker.IdentityProcessor
+	input := []string{"a", "b", "c"}
+	result := p.Process(input, make([]string, 0))
+	assert.Equal(t, input, result)
+}
+
+func TestIdentityProcessor_Process_Empty(t *testing.T) {
+	var p worker.IdentityProcessor
+	result := p.Process([]string{}, make([]string, 0))
+	assert.Empty(t, result)
+}
+
+func TestIdentityProcessor_Process_Nil(t *testing.T) {
+	var p worker.IdentityProcessor
+	result := p.Process(nil, make([]string, 0))
+	assert.Nil(t, result)
+}
+
+func TestDeduplicatingProcessor_Process_RemovesDuplicates(t *testing.T) {
+	var d worker.DeduplicatingProcessor
+	result := d.Process([]string{"a", "b", "a", "c", "b"}, make([]string, 0))
+	assert.Equal(t, []string{"a", "b", "c"}, result)
+}
+
+func TestDeduplicatingProcessor_Process_AcrossCalls(t *testing.T) {
+	var d worker.DeduplicatingProcessor
+
+	r1 := d.Process([]string{"a", "b"}, make([]string, 0))
+	assert.Equal(t, []string{"a", "b"}, r1)
+
+	r2 := d.Process([]string{"b", "c"}, make([]string, 0))
+	assert.Equal(t, []string{"c"}, r2)
+
+	r3 := d.Process([]string{"a", "b", "c"}, make([]string, 0))
+	assert.Empty(t, r3)
+}
+
+func TestDeduplicatingProcessor_Process_Empty(t *testing.T) {
+	var d worker.DeduplicatingProcessor
+	result := d.Process([]string{}, make([]string, 0))
+	assert.Empty(t, result)
+}
+
+func TestDeduplicatingProcessor_Process_AllUnique(t *testing.T) {
+	var d worker.DeduplicatingProcessor
+	result := d.Process([]string{"x", "y", "z"}, make([]string, 0))
+	assert.Equal(t, []string{"x", "y", "z"}, result)
+}
+
+func TestDefaultPreprocessor_IsIdentity(t *testing.T) {
+	input := []string{"a", "b"}
+	result := worker.DefaultPreprocessor.Process(input, make([]string, 0))
+	assert.Equal(t, input, result)
 }
 
 // --- Basic Worker Tests ---
@@ -326,6 +378,72 @@ func TestIntersection_Execute_ThreeSenders(t *testing.T) {
 	assert.Empty(t, errs)
 }
 
+func TestIntersection_Execute_InterpreterError(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	sentinelErr := errors.New("interpret failed")
+	errs := make(chan error, 10)
+
+	interp := &mockInterpreter{
+		fn: func(_ context.Context, _ *worker.Edge, items []string) iter.Seq[worker.Item] {
+			return func(yield func(worker.Item) bool) {
+				for _, item := range items {
+					if item == "bad" {
+						yield(worker.Item{Err: sentinelErr})
+						return
+					}
+					if !yield(worker.Item{Value: item}) {
+						return
+					}
+				}
+			}
+		},
+	}
+
+	w := &worker.Intersection{Core: newCore(interp, errs)}
+	w.Listen(sendItems("a", "bad"))
+	w.Listen(sendItems("a"))
+	output := w.Subscribe(nil, chunkSize)
+
+	w.Execute(context.Background())
+
+	_ = collectOutput(output)
+	require.NotEmpty(t, errs)
+	assert.ErrorIs(t, <-errs, sentinelErr)
+}
+
+func TestIntersection_Execute_ContextCancelled(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	errs := make(chan error, 10)
+	w := &worker.Intersection{Core: newCore(passthroughInterpreter(), errs)}
+	w.Listen(sendItems("a", "b"))
+	w.Listen(sendItems("a", "b"))
+	output := w.Subscribe(nil, chunkSize)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	w.Execute(ctx)
+
+	assert.Empty(t, collectOutput(output))
+}
+
+func TestIntersection_Execute_SingleSender(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	errs := make(chan error, 10)
+	w := &worker.Intersection{Core: newCore(passthroughInterpreter(), errs)}
+	w.Listen(sendItems("a", "b", "c"))
+	output := w.Subscribe(nil, chunkSize)
+
+	w.Execute(context.Background())
+
+	// With a single sender, all items should pass through (intersection of one set).
+	assert.Equal(t, []string{"a", "b", "c"}, sorted(collectOutput(output)))
+	assert.Empty(t, errs)
+}
+
 // --- Difference Worker Tests ---
 
 func TestDifference_Execute_LessThanTwoSenders(t *testing.T) {
@@ -414,5 +532,69 @@ func TestDifference_Execute_DisjointSets(t *testing.T) {
 	w.Execute(context.Background())
 
 	assert.Equal(t, []string{"a", "b"}, sorted(collectOutput(output)))
+	assert.Empty(t, errs)
+}
+
+func TestDifference_Execute_InterpreterError(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	sentinelErr := errors.New("interpret failed")
+	errs := make(chan error, 10)
+
+	interp := &mockInterpreter{
+		fn: func(_ context.Context, _ *worker.Edge, items []string) iter.Seq[worker.Item] {
+			return func(yield func(worker.Item) bool) {
+				for _, item := range items {
+					if item == "bad" {
+						yield(worker.Item{Err: sentinelErr})
+						return
+					}
+					if !yield(worker.Item{Value: item}) {
+						return
+					}
+				}
+			}
+		},
+	}
+
+	w := &worker.Difference{Core: newCore(interp, errs)}
+	w.Listen(sendItems("a", "bad"))
+	w.Listen(sendItems("x"))
+	output := w.Subscribe(nil, chunkSize)
+
+	w.Execute(context.Background())
+
+	_ = collectOutput(output)
+	require.NotEmpty(t, errs)
+	assert.ErrorIs(t, <-errs, sentinelErr)
+}
+
+func TestDifference_Execute_ContextCancelled(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	errs := make(chan error, 10)
+	w := &worker.Difference{Core: newCore(passthroughInterpreter(), errs)}
+	w.Listen(sendItems("a", "b"))
+	w.Listen(sendItems("c"))
+	output := w.Subscribe(nil, chunkSize)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	w.Execute(ctx)
+
+	assert.Empty(t, collectOutput(output))
+}
+
+func TestDifference_Execute_NoSenders(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	errs := make(chan error, 10)
+	w := &worker.Difference{Core: newCore(passthroughInterpreter(), errs)}
+	output := w.Subscribe(nil, chunkSize)
+
+	w.Execute(context.Background())
+
+	assert.Empty(t, collectOutput(output))
 	assert.Empty(t, errs)
 }

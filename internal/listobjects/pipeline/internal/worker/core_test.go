@@ -3,7 +3,6 @@ package worker_test
 import (
 	"context"
 	"errors"
-	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -56,6 +55,31 @@ func TestMessage_Done_CallsCallback(t *testing.T) {
 	m.Done()
 
 	assert.True(t, called)
+}
+
+func TestMessage_Done_ClearsFields(t *testing.T) {
+	m := &worker.Message{
+		Value:    []string{"a", "b"},
+		Callback: func() {},
+	}
+
+	m.Done()
+
+	assert.Nil(t, m.Value, "Value should be nil after Done")
+	assert.Nil(t, m.Callback, "Callback should be nil after Done")
+}
+
+func TestMessage_Done_IdempotentAfterClear(t *testing.T) {
+	callCount := 0
+	m := &worker.Message{
+		Value:    []string{"a"},
+		Callback: func() { callCount++ },
+	}
+
+	m.Done()
+	m.Done() // second call should be safe and not invoke callback again
+
+	assert.Equal(t, 1, callCount)
 }
 
 // --- Item Tests ---
@@ -226,12 +250,7 @@ func TestCore_Message_EmptyIterator(t *testing.T) {
 }
 
 func TestCore_Message_ReturnsBufferToPool(t *testing.T) {
-	pool := &sync.Pool{
-		New: func() any {
-			s := make([]string, 0, chunkSize)
-			return &s
-		},
-	}
+	pool := worker.NewBufferPool(chunkSize, 10)
 
 	core := &worker.Core{
 		ChunkSize: chunkSize,
@@ -247,7 +266,7 @@ func TestCore_Message_ReturnsBufferToPool(t *testing.T) {
 
 	// The pool should have buffers returned (the read buffer + the message buffer).
 	// Verify by getting from the pool — should not allocate.
-	buf := pool.Get().(*[]string)
+	buf := pool.Get()
 	assert.NotNil(t, buf)
 	assert.Empty(t, *buf)
 }

@@ -40,29 +40,17 @@ func NewTestStore() TestStore {
 func (s *TestStore) Add(t testing.TB, tuples ...string) {
 	t.Helper()
 
-	const size int = 10
+	const batchSize int = 10
 
-	writes := make([]*openfgav1.TupleKey, size)
-
-	var index int
-
+	keys := make([]*openfgav1.TupleKey, len(tuples))
 	for i, tpl := range tuples {
 		objectRelation, user, _ := strings.Cut(tpl, "@")
 		object, relation, _ := strings.Cut(objectRelation, "#")
-		key := tuple.NewTupleKey(object, relation, user)
-		index = i % size
-		writes[index] = key
-
-		if index == size-1 {
-			err := s.Write(context.Background(), Store, nil, writes)
-			if err != nil {
-				t.Fatal(err)
-			}
-		}
+		keys[i] = tuple.NewTupleKey(object, relation, user)
 	}
 
-	if index < size-1 {
-		err := s.Write(context.Background(), Store, nil, writes[:index+1])
+	for batch := range slices.Chunk(keys, batchSize) {
+		err := s.Write(context.Background(), Store, nil, batch)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -429,6 +417,154 @@ func TestPipelineShutdown(t *testing.T) {
 			}
 		})
 	})
+}
+
+func TestPipelineExpand_InvalidConfig(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	const dsl = `
+	model
+	  schema 1.1
+	type user
+	type document
+	  relations
+	    define viewer: [user]
+	`
+
+	model := testutils.MustTransformDSLToProtoWithID(dsl)
+	typesys, err := typesystem.NewAndValidate(context.Background(), model)
+	require.NoError(t, err)
+
+	g := typesys.GetWeightedGraph()
+	reader := pipeline.NewReader(memory.New(), Store)
+
+	pl := pipeline.New(g, reader, pipeline.WithConfig(pipeline.Config{
+		BufferCapacity: -1, ChunkSize: 1, NumProcs: 1,
+	}))
+
+	_, err = pl.Expand(context.Background(), pipeline.Spec{
+		ObjectType: "document", Relation: "viewer", User: "user:alice",
+	})
+	require.ErrorIs(t, err, pipeline.ErrInvalidBufferCapacity)
+}
+
+func TestPipelineExpand_InvalidObjectType(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	const dsl = `
+	model
+	  schema 1.1
+	type user
+	type document
+	  relations
+	    define viewer: [user]
+	`
+
+	model := testutils.MustTransformDSLToProtoWithID(dsl)
+	typesys, err := typesystem.NewAndValidate(context.Background(), model)
+	require.NoError(t, err)
+
+	g := typesys.GetWeightedGraph()
+	reader := pipeline.NewReader(memory.New(), Store)
+	pl := pipeline.New(g, reader)
+
+	_, err = pl.Expand(context.Background(), pipeline.Spec{
+		ObjectType: "nonexistent", Relation: "viewer", User: "user:alice",
+	})
+	require.ErrorIs(t, err, pipeline.ErrInvalidObject)
+}
+
+func TestPipelineExpand_InvalidRelation(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	const dsl = `
+	model
+	  schema 1.1
+	type user
+	type document
+	  relations
+	    define viewer: [user]
+	`
+
+	model := testutils.MustTransformDSLToProtoWithID(dsl)
+	typesys, err := typesystem.NewAndValidate(context.Background(), model)
+	require.NoError(t, err)
+
+	g := typesys.GetWeightedGraph()
+	reader := pipeline.NewReader(memory.New(), Store)
+	pl := pipeline.New(g, reader)
+
+	_, err = pl.Expand(context.Background(), pipeline.Spec{
+		ObjectType: "document", Relation: "nonexistent", User: "user:alice",
+	})
+	require.ErrorIs(t, err, pipeline.ErrInvalidObject)
+}
+
+func TestPipelineExpand_InvalidUser(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	const dsl = `
+	model
+	  schema 1.1
+	type user
+	type document
+	  relations
+	    define viewer: [user]
+	`
+
+	model := testutils.MustTransformDSLToProtoWithID(dsl)
+	typesys, err := typesystem.NewAndValidate(context.Background(), model)
+	require.NoError(t, err)
+
+	g := typesys.GetWeightedGraph()
+	reader := pipeline.NewReader(memory.New(), Store)
+	pl := pipeline.New(g, reader)
+
+	_, err = pl.Expand(context.Background(), pipeline.Spec{
+		ObjectType: "document", Relation: "viewer", User: "nonexistent:alice",
+	})
+	require.ErrorIs(t, err, pipeline.ErrInvalidUser)
+}
+
+func TestPipelineExpand_EmptyResult(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	const dsl = `
+	model
+	  schema 1.1
+	type user
+	type document
+	  relations
+	    define viewer: [user]
+	`
+
+	model := testutils.MustTransformDSLToProtoWithID(dsl)
+	ds := NewTestStore()
+	err := ds.WriteAuthorizationModel(context.Background(), Store, model)
+	require.NoError(t, err)
+
+	// No tuples written — user has no access.
+	typesys, err := typesystem.NewAndValidate(context.Background(), model)
+	require.NoError(t, err)
+
+	g := typesys.GetWeightedGraph()
+	reader := pipeline.NewReader(ds, Store,
+		pipeline.WithReaderValidator(pipeline.NewValidator(context.Background(), typesys, nil)),
+	)
+	pl := pipeline.New(g, reader)
+
+	seq, err := pl.Expand(context.Background(), pipeline.Spec{
+		ObjectType: "document", Relation: "viewer", User: "user:alice",
+	})
+	require.NoError(t, err)
+
+	var results []string
+	for obj := range seq {
+		value, err := obj.Object()
+		require.NoError(t, err)
+		results = append(results, value)
+	}
+	require.Empty(t, results)
 }
 
 var ErrSignal = errors.New("signal error")

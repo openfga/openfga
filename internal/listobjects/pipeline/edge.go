@@ -16,6 +16,8 @@ type directEdgeHandler struct {
 	reader ObjectReader
 }
 
+// Handle queries storage for objects related to the given items through
+// the edge's relation definition.
 func (h *directEdgeHandler) Handle(
 	ctx context.Context,
 	edge *Edge,
@@ -25,23 +27,22 @@ func (h *directEdgeHandler) Handle(
 
 	_, userRelation, exists := strings.Cut(edge.GetTo().GetLabel(), "#")
 
-	userFilter := make([]string, len(objects))
-
-	for i, obj := range objects {
-		objectRelation := obj
-		if exists {
-			objectRelation += "#" + userRelation
+	if exists {
+		mutated := make([]string, len(objects))
+		for i, obj := range objects {
+			obj += "#" + userRelation
+			mutated[i] = obj
 		}
-		userFilter[i] = objectRelation
+		objects = mutated
 	}
 
 	var results iter.Seq[worker.Item]
 
-	if len(userFilter) > 0 {
+	if len(objects) > 0 {
 		input := ObjectQuery{
 			ObjectType: nodeType,
 			Relation:   nodeRelation,
-			Users:      userFilter,
+			Users:      objects,
 			Conditions: edge.GetConditions(),
 		}
 		results = h.reader.Read(ctx, input)
@@ -58,6 +59,8 @@ type ttuEdgeHandler struct {
 	graph  *Graph
 }
 
+// Handle resolves the tupleset relation for the edge, then queries storage
+// for objects related to the given items through the tupleset's target type.
 func (h *ttuEdgeHandler) Handle(
 	ctx context.Context,
 	edge *Edge,
@@ -113,6 +116,7 @@ func (h *ttuEdgeHandler) Handle(
 // identityEdgeHandler passes items through without querying storage.
 type identityEdgeHandler struct{}
 
+// Handle returns each input string as a successful Item without querying storage.
 func (h *identityEdgeHandler) Handle(
 	_ context.Context,
 	_ *Edge,
@@ -134,6 +138,8 @@ type edgeInterpreter struct {
 	identity *identityEdgeHandler
 }
 
+// Interpret dispatches to the handler matching edge's type. A nil edge
+// is treated as an identity pass-through.
 func (e *edgeInterpreter) Interpret(
 	ctx context.Context,
 	edge *Edge,

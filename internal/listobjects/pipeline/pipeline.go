@@ -15,15 +15,20 @@ import (
 )
 
 type (
-	Edge  = weightedGraph.WeightedAuthorizationModelEdge
+	// Edge is an alias for the weighted authorization model edge type.
+	Edge = weightedGraph.WeightedAuthorizationModelEdge
+	// Graph is an alias for the weighted authorization model graph type.
 	Graph = weightedGraph.WeightedAuthorizationModelGraph
-	Node  = weightedGraph.WeightedAuthorizationModelNode
+	// Node is an alias for the weighted authorization model node type.
+	Node = weightedGraph.WeightedAuthorizationModelNode
 
+	// Item is an alias for a single result from a worker, carrying either
+	// a value or an error.
 	Item = worker.Item
 )
 
 var (
-	pipelineTracer = otel.Tracer("pipeline")
+	tracer = otel.Tracer("openfga/internal/listobjects/pipeline")
 
 	edgeTypeComputed      = weightedGraph.ComputedEdge
 	edgeTypeDirect        = weightedGraph.DirectEdge
@@ -97,6 +102,8 @@ func New(graph *Graph, reader ObjectReader, options ...Option) *Pipeline {
 	return &pl
 }
 
+// createInterpreter returns an Interpreter that dispatches to the
+// appropriate edge handler (direct, TTU, or identity) based on edge type.
 func (pl *Pipeline) createInterpreter() worker.Interpreter {
 	directEdgeHandler := directEdgeHandler{pl.reader}
 
@@ -122,9 +129,12 @@ type path struct {
 	cycleGroup     *worker.CycleGroup
 	errors         chan error
 	interpreter    worker.Interpreter
-	pool           *sync.Pool
+	pool           *worker.BufferPool
 }
 
+// resolve recursively constructs a worker for the given graph node,
+// wiring it to upstream workers for each outgoing edge. Workers are
+// memoized in the workers map so each node is built at most once.
 func (pl *Pipeline) resolve(p path, workers map[*Node]worker.Worker) worker.Worker {
 	if w, ok := workers[p.objectNode]; ok {
 		return w
@@ -268,11 +278,15 @@ func (pl *Pipeline) resolve(p path, workers map[*Node]worker.Worker) worker.Work
 	return w
 }
 
+// userResolution holds the resolved graph node and identifier for a user
+// string like "user:alice" or "group:eng#member".
 type userResolution struct {
 	userNode       *Node
 	userIdentifier string
 }
 
+// resolveUser parses a user string into its graph node and bare identifier.
+// It returns ErrInvalidUser if the user's type is not present in the graph.
 func (pl *Pipeline) resolveUser(u string) (*userResolution, error) {
 	user, userRelation, exists := strings.Cut(u, "#")
 	userType, userIdentifier, _ := strings.Cut(user, ":")
@@ -289,6 +303,8 @@ func (pl *Pipeline) resolveUser(u string) (*userResolution, error) {
 	return &userResolution{userNode, userIdentifier}, nil
 }
 
+// resolveObjectNode looks up the graph node for the given type#relation pair.
+// It returns ErrInvalidObject if the node is not present in the graph.
 func (pl *Pipeline) resolveObjectNode(objectType, objectRelation string) (*Node, error) {
 	nodeID := objectType + "#" + objectRelation
 	node, ok := pl.graph.GetNodeByID(nodeID)
@@ -298,19 +314,17 @@ func (pl *Pipeline) resolveObjectNode(objectType, objectRelation string) (*Node,
 	return node, nil
 }
 
+// expansion holds the fully constructed worker graph, the shared error
+// channel, and the root worker's output sender.
 type expansion struct {
 	workers map[*Node]worker.Worker
 	errors  chan error
 	results worker.Sender
 }
 
-func (e *expansion) Cleanup() {
-	for _, worker := range e.workers {
-		worker.Cleanup()
-	}
-	close(e.errors)
-}
-
+// buildExpansion constructs the full worker graph for a reverse expansion
+// query, seeds leaf workers with the user identifier, and returns an
+// expansion ready to be executed.
 func (pl *Pipeline) buildExpansion(objectNode, userNode *Node, userIdentifier string) *expansion {
 	interpreter := pl.createInterpreter()
 	workers := make(map[*Node]worker.Worker)
@@ -322,12 +336,7 @@ func (pl *Pipeline) buildExpansion(objectNode, userNode *Node, userIdentifier st
 		userIdentifier: userIdentifier,
 		errors:         chError,
 		interpreter:    interpreter,
-		pool: &sync.Pool{
-			New: func() any {
-				a := make([]string, 0, pl.config.ChunkSize)
-				return &a
-			},
-		},
+		pool:           worker.NewBufferPool(pl.config.ChunkSize, pl.config.BufferCapacity),
 	}
 
 	pl.resolve(p, workers)
@@ -344,28 +353,33 @@ func (pl *Pipeline) buildExpansion(objectNode, userNode *Node, userIdentifier st
 	}
 }
 
+// workerLifecycle manages the goroutines running each worker's Execute method.
 type workerLifecycle struct {
 	wg *sync.WaitGroup
 }
 
+// Wait blocks until all worker goroutines have returned.
 func (wl *workerLifecycle) Wait() {
 	wl.wg.Wait()
 }
 
+// startWorkerLifecycle launches a goroutine for each worker's Execute method
+// and returns a handle that can be used to wait for all of them to finish.
 func (pl *Pipeline) startWorkerLifecycle(ctx context.Context, workers map[*Node]worker.Worker) *workerLifecycle {
 	var wg sync.WaitGroup
 
 	for _, worker := range workers {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			worker.Execute(ctx)
-		}()
+		})
 	}
 
 	return &workerLifecycle{&wg}
 }
 
+// iterateOverResults starts all workers, drains the root worker's output
+// and the error channel into the yield callback, and ensures all
+// goroutines are cleaned up on return.
 func (pl *Pipeline) iterateOverResults(
 	ctx context.Context,
 	p *expansion,
@@ -456,18 +470,19 @@ OutputLoop:
 	}
 }
 
+// streamResults builds the worker graph and returns an iter.Seq that, when
+// iterated, executes the pipeline and streams results to the caller.
 func (pl *Pipeline) streamResults(ctx context.Context, objectNode, userNode *Node, userIdentifier string) iter.Seq[Item] {
 	return func(yield func(Item) bool) {
-		_, span := pipelineTracer.Start(ctx, "pipeline.build")
+		_, span := tracer.Start(ctx, "pipeline.build")
 		expansion := pl.buildExpansion(objectNode, userNode, userIdentifier)
 		span.End()
 
-		ctx, span := pipelineTracer.Start(ctx, "pipeline.iterate")
+		ctx, span := tracer.Start(ctx, "pipeline.iterate")
 		defer span.End()
 
 		// Early exit before any goroutines are created avoids cleanup overhead.
 		if ctx.Err() != nil {
-			expansion.Cleanup()
 			yield(Item{Err: ctx.Err()})
 			return
 		}
@@ -483,7 +498,7 @@ func (pl *Pipeline) Expand(ctx context.Context, spec Spec) (iter.Seq[Item], erro
 		return emptySequence, err
 	}
 
-	ctx, span := pipelineTracer.Start(ctx, "pipeline.Query.Execute")
+	ctx, span := tracer.Start(ctx, "pipeline.Query.Execute")
 	defer span.End()
 
 	objectNode, err := pl.resolveObjectNode(spec.ObjectType, spec.Relation)

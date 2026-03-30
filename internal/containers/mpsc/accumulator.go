@@ -118,7 +118,6 @@ PopLoop:
 		}
 
 		if nextNode.Kind == end {
-			a.tail = nextNode
 			break
 		}
 

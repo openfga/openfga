@@ -26,7 +26,8 @@ type Listener interface {
 }
 
 // Medium is a unidirectional pipe between two workers, combining the
-// [Sender] (read) and [Listener] (write) ends.
+// [Sender] (read) and [Listener] (write) ends. All Medium variants must
+// be considered multiple-producer, single-consumer.
 type Medium interface {
 	Sender
 	Listener

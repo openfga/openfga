@@ -3,117 +3,96 @@ package worker
 import (
 	"context"
 	"sync"
+	"time"
+
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/containers"
 	"github.com/openfga/openfga/internal/seq"
 )
 
-// Deduplicator tracks previously seen values and filters duplicates
-// across multiple calls to [Deduplicator.Deduplicate]. It is safe for
+// Preprocessor filters or transforms a batch of values before they are
+// passed to the [Interpreter].
+type Preprocessor interface {
+	Process([]string, []string) []string
+}
+
+// DeduplicatingProcessor tracks previously seen values and filters duplicates
+// across multiple calls to [DeduplicatingProcessor.Process]. It is safe for
 // concurrent use.
-type Deduplicator struct {
+type DeduplicatingProcessor struct {
 	m containers.AtomicMap[string, struct{}]
 }
 
-// Deduplicate returns only the values that have not been seen in any
-// previous call. The returned slice preserves the order of first occurrence.
-func (d *Deduplicator) Deduplicate(values []string) []string {
-	unseen := make([]string, 0, len(values))
+// Process returns only the values that have not been seen in any previous call.
+func (d *DeduplicatingProcessor) Process(values []string, buffer []string) []string {
 	for _, value := range values {
 		if _, ok := d.m.LoadOrStore(value, struct{}{}); !ok {
-			unseen = append(unseen, value)
+			buffer = append(buffer, value)
 		}
 	}
-	return unseen
+	return buffer
 }
 
-// Identity returns values unmodified. It serves as a no-op preprocessor
-// for [Basic.ProcessSender] when deduplication is not needed.
-func Identity(values []string) []string {
+// IdentityProcessor is a [Preprocessor] that returns values unmodified.
+type IdentityProcessor struct{}
+
+// Process returns values unchanged.
+func (p *IdentityProcessor) Process(values []string, _ []string) []string {
 	return values
 }
+
+// DefaultPreprocessor is an [IdentityProcessor] used when no deduplication
+// is required.
+var DefaultPreprocessor Preprocessor = &IdentityProcessor{}
 
 // Basic is a worker that passes interpreted results through to its listeners,
 // deduplicating output across all senders. It handles both standard (non-cyclical)
 // and cyclical edges, coordinating cycle termination through its [Membership]
 // when present.
 type Basic struct {
-	Membership   *Membership
-	outputBuffer containers.AtomicMap[string, struct{}]
+	Membership    *Membership
+	outputBuffer  containers.AtomicMap[string, struct{}]
+	preprocessors []Preprocessor
 	*Core
 }
 
-// ProcessSender reads messages from the sender at the given index,
-// interprets them, deduplicates the results, and broadcasts output to
-// listeners. It spawns NumProcs goroutines for parallel interpretation.
-func (w *Basic) ProcessSender(ctx context.Context, index int, preprocess func([]string) []string) {
+// ProcessMessage interprets the message values through the sender's edge,
+// deduplicates the results against all other senders, and broadcasts any
+// new values to downstream listeners.
+func (w *Basic) ProcessMessage(ctx context.Context, index int, msg *Message) {
 	sender := w.senders[index]
 	edge := sender.Key()
 
-	input := make(chan *Message)
-
-	var wg sync.WaitGroup
-
-	for range w.NumProcs {
-		wg.Add(1)
-		go func(ctx context.Context) {
-			var err error
-			var msg *Message
-			defer wg.Done()
-			defer func() {
-				if msg != nil {
-					msg.Done()
-				}
-			}()
-			defer w.error(&err)
-			defer concurrency.RecoverFromPanic(&err)
-
-			for msg = range input {
-				values := preprocess(msg.Value)
-				results := w.Interpreter.Interpret(ctx, edge, values)
-				results = seq.Filter(results, func(obj Item) bool {
-					value, err := obj.Object()
-					if err != nil {
-						w.error(&err)
-						return false
-					}
-
-					// Deduplicate the interpreted values using the buffer shared by all processors
-					// of all senders.
-					_, loaded := w.outputBuffer.LoadOrStore(value, struct{}{})
-					return !loaded
-				})
-
-				output := seq.Transform(results, func(obj Item) string {
-					value, _ := obj.Object()
-					return value
-				})
-
-				w.Broadcast(ctx, output)
-				msg.Done()
-			}
-		}(ctx)
+	buffer, ok := ctx.Value(BufferKey).([]string)
+	if !ok || buffer == nil {
+		buffer = make([]string, w.ChunkSize)
 	}
+	buffer = buffer[:0]
 
-MessageLoop:
-	for {
-		msg, ok := sender.Recv(ctx)
-		if !ok {
-			break
+	values := w.preprocessors[index].Process(msg.Value, buffer)
+
+	results := w.Interpreter.Interpret(ctx, edge, values)
+
+	results = seq.Filter(results, func(obj Item) bool {
+		value, err := obj.Object()
+		if err != nil {
+			w.error(&err)
+			return false
 		}
+		// Deduplicate the interpreted values using the buffer shared by all senders.
+		_, loaded := w.outputBuffer.LoadOrStore(value, struct{}{})
+		return !loaded
+	})
 
-		select {
-		case input <- msg:
-		case <-ctx.Done():
-			msg.Done()
-			break MessageLoop
-		}
-	}
+	output := seq.Transform(results, func(obj Item) string {
+		value, _ := obj.Object()
+		return value
+	})
 
-	close(input)
-
-	wg.Wait()
+	w.Broadcast(ctx, output)
 }
 
 // Execute processes all registered senders concurrently. Standard senders run
@@ -126,45 +105,54 @@ MessageLoop:
 // This ensures downstream channels are closed in dependency order so that
 // cyclical ProcessSender goroutines drain and exit cleanly.
 func (w *Basic) Execute(ctx context.Context) {
+	membership := "nil"
+	if w.Membership != nil {
+		membership = w.Membership.String()
+	}
+	ctx, span := tracer.Start(ctx, "Basic.Execute", trace.WithAttributes(
+		attribute.String("worker.label", w.String()),
+		attribute.String("worker.membership", membership),
+	))
+	defer span.End()
+
 	defer w.Cleanup()
 
 	if len(w.senders) == 0 {
 		return
 	}
 
+	w.preprocessors = make([]Preprocessor, len(w.senders))
+
 	defer w.outputBuffer.Clear()
 
 	var wgStandard sync.WaitGroup
 	var wgRecursive sync.WaitGroup
 
-	for ndx, sender := range w.senders {
+	for index, sender := range w.senders {
 		edge := sender.Key()
 		cyclical := IsCyclical(edge)
 
 		if cyclical {
-			wgRecursive.Add(1)
-			go func(index int) {
+			wgRecursive.Go(func() {
 				var err error
-				defer wgRecursive.Done()
 				defer w.error(&err)
 				defer concurrency.RecoverFromPanic(&err)
 
-				var d Deduplicator
-				w.ProcessSender(ctx, index, d.Deduplicate)
-			}(ndx)
+				var d DeduplicatingProcessor
+				w.preprocessors[index] = &d
+				w.ProcessSender(ctx, index, w)
+			})
 			continue
 		}
 
-		wgStandard.Add(1)
-		go func(index int) {
+		wgStandard.Go(func() {
 			var err error
-			defer wgStandard.Done()
 			defer w.error(&err)
 			defer concurrency.RecoverFromPanic(&err)
-			defer DrainSender(w.senders[index])
 
-			w.ProcessSender(ctx, index, Identity)
-		}(ndx)
+			w.preprocessors[index] = DefaultPreprocessor
+			w.ProcessSender(ctx, index, w)
+		})
 	}
 
 	wgStandard.Wait()
@@ -173,9 +161,15 @@ func (w *Basic) Execute(ctx context.Context) {
 
 	if w.Membership != nil {
 		w.Membership.SignalReady()
-		if !w.Membership.WaitForAllReady(ctx) {
-			return
-		}
+
+		// Introduce a one minute timeout to ensure that deadlocks do not live forever.
+		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		defer cancel()
+
+		// When the context is canceled, WaitForAllReady should still wait for
+		// all members of the cycle group to enter a ready state. Therefore,
+		// we use [context.Background] here.
+		w.Membership.WaitForAllReady(ctx)
 
 		// Ordered teardown: the leader starts the cascade immediately;
 		// non-leaders wait to be woken by their predecessor. Each member
@@ -186,6 +180,9 @@ func (w *Basic) Execute(ctx context.Context) {
 			w.Membership.Next().Wake()
 			return
 		}
+
+		// When the context is canceled, sleep should still wait for the upstream
+		// worker to finish. Therefore, we use [context.Background] here.
 		w.Membership.Sleep(ctx)
 		w.Cleanup()
 		w.Membership.Next().Wake()

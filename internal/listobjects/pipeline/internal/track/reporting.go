@@ -56,11 +56,14 @@ func NewStatusPool() *StatusPool {
 	return &sp
 }
 
+// inc atomically increments both the total and in-flight counters.
 func (sp *StatusPool) inc() int64 {
 	sp.total.Add(1)
 	return sp.inflight.Add(1)
 }
 
+// dec atomically decrements the in-flight counter and closes the
+// quiescence channel when it reaches zero.
 func (sp *StatusPool) dec() int64 {
 	value := sp.inflight.Add(-1)
 	if value == 0 {
@@ -85,13 +88,13 @@ func (sp *StatusPool) Register() *Reporter {
 	}
 }
 
+// set marks the source at index as ready. When all sources have been
+// marked ready, the ready channel is closed.
 func (sp *StatusPool) set(index int) {
-	// Check-then-lock: the unguarded read is safe because pool[index]
-	// transitions from true to false exactly once and is only written
-	// under the lock. The early return avoids locking after the first call.
+	sp.mu.Lock()
+	defer sp.mu.Unlock()
+
 	if sp.pool[index] {
-		sp.mu.Lock()
-		defer sp.mu.Unlock()
 		sp.pool[index] = false
 
 		for _, value := range sp.pool {
