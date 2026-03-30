@@ -25,7 +25,7 @@ type node[T any] struct {
 // a single consumer iterates with Seq.
 //
 // [Accumulator.Close] must be called only after all producers have
-// completed their Add calls. It inserts a sentinel node that causes
+// completed their Send calls. It inserts a sentinel node that causes
 // Seq to return. The Accumulator is single-use and cannot be reused
 // after Close.
 //
