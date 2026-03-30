@@ -15,6 +15,10 @@ func MakeFallible[T any](fn func(T) bool) Validator[T] {
 func CombineValidators[T any](validators ...Validator[T]) Validator[T] {
 	return func(value T) (bool, error) {
 		for _, v := range validators {
+			if v == nil {
+				continue
+			}
+
 			ok, err := v(value)
 			if err != nil || !ok {
 				return ok, err
