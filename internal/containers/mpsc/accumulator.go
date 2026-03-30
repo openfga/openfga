@@ -39,6 +39,7 @@ type Accumulator[T any] struct {
 	closed atomic.Bool
 }
 
+// NewAccumulator returns a new, empty Accumulator ready for use.
 func NewAccumulator[T any]() *Accumulator[T] {
 	var a Accumulator[T]
 	var n node[T]
@@ -98,6 +99,9 @@ func (a *Accumulator[T]) Send(value T) bool {
 	return sent
 }
 
+// Recv returns the next value from the queue, blocking until one is
+// available. It returns false when the Accumulator has been closed and
+// drained, or when ctx is cancelled.
 func (a *Accumulator[T]) Recv(ctx context.Context) (T, bool) {
 	var value T
 	var ok bool
