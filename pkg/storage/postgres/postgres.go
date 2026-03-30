@@ -1053,9 +1053,6 @@ func (s *Datastore) GetStore(ctx context.Context, id string) (*openfgav1.Store, 
 	var createdAt, updatedAt time.Time
 	err = row.Scan(&storeID, &name, &createdAt, &updatedAt)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, storage.ErrNotFound
-		}
 		return nil, HandleSQLError(err)
 	}
 
@@ -1385,7 +1382,7 @@ func (s *Datastore) IsReady(ctx context.Context) (storage.ReadinessStatus, error
 // HandleSQLError processes an SQL error and converts it into a more
 // specific error type based on the nature of the SQL error.
 func HandleSQLError(err error, args ...interface{}) error {
-	if errors.Is(err, sql.ErrNoRows) {
+	if errors.Is(err, sql.ErrNoRows) || errors.Is(err, pgx.ErrNoRows) {
 		return storage.ErrNotFound
 	}
 
