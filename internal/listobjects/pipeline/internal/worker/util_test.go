@@ -24,7 +24,7 @@ func TestDrainSender_EmptySender(t *testing.T) {
 	m.Close()
 
 	// DrainSender on a closed, empty sender should return immediately.
-	worker.DrainSender(m)
+	worker.DrainSender(context.Background(), m)
 }
 
 func TestDrainSender_WithMessages(t *testing.T) {
@@ -40,7 +40,7 @@ func TestDrainSender_WithMessages(t *testing.T) {
 	}
 	m.Close()
 
-	worker.DrainSender(m)
+	worker.DrainSender(context.Background(), m)
 
 	// All callbacks should have been invoked by Done.
 	assert.Equal(t, 3, callbackCount)

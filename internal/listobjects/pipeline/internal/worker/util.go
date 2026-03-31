@@ -2,7 +2,6 @@ package worker
 
 import (
 	"context"
-	"time"
 )
 
 // EdgeLabels returns the source and destination labels for edge,
@@ -19,12 +18,7 @@ func EdgeLabels(edge *Edge) (string, string) {
 
 // DrainSender consumes and discards all remaining messages from sender,
 // invoking Done on each to release pooled resources.
-func DrainSender(sender Sender) {
-	// To prevent deadlocks from lasting forever, provide a context with
-	// a long timeout.
-	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
-	defer cancel()
-
+func DrainSender(ctx context.Context, sender Sender) {
 	for {
 		msg, ok := sender.Recv(ctx)
 		if !ok {

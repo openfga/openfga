@@ -199,7 +199,9 @@ func (c *Core) ProcessSender(ctx context.Context, index int, processor MessagePr
 		)
 	}()
 
-	defer DrainSender(c.senders[index])
+	// The drain must fully release all queued messages in order to prevent
+	// deadlocks during cleanup.
+	defer DrainSender(context.Background(), c.senders[index])
 
 	var wg sync.WaitGroup
 	defer wg.Wait()

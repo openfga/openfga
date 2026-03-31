@@ -3,7 +3,6 @@ package worker
 import (
 	"context"
 	"sync"
-	"time"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -162,14 +161,10 @@ func (w *Basic) Execute(ctx context.Context) {
 	if w.Membership != nil {
 		w.Membership.SignalReady()
 
-		// Introduce a one minute timeout to ensure that deadlocks do not live forever.
-		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
-		defer cancel()
-
 		// When the context is canceled, WaitForAllReady should still wait for
 		// all members of the cycle group to enter a ready state. Therefore,
 		// we use [context.Background] here.
-		w.Membership.WaitForAllReady(ctx)
+		w.Membership.WaitForAllReady(context.Background())
 
 		// Ordered teardown: the leader starts the cascade immediately;
 		// non-leaders wait to be woken by their predecessor. Each member
@@ -183,7 +178,7 @@ func (w *Basic) Execute(ctx context.Context) {
 
 		// When the context is canceled, sleep should still wait for the upstream
 		// worker to finish. Therefore, we use [context.Background] here.
-		w.Membership.Sleep(ctx)
+		w.Membership.Sleep(context.Background())
 		w.Cleanup()
 		w.Membership.Next().Wake()
 	}
