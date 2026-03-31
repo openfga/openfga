@@ -56,7 +56,7 @@ func TestPgxTxnIterQueryGetRows(t *testing.T) {
 
 		mockTxn := mocks.NewMockPgxQuery(ctrl)
 		mockTxn.EXPECT().
-			Query(gomock.Any(), "SELECT 1", gomock.Any()).
+			Query(gomock.Any(), "SELECT 1").
 			Return(&stubPgxRows{}, nil)
 
 		before := pgxIterQuerySampleCount(t, "true")
@@ -75,7 +75,7 @@ func TestPgxTxnIterQueryGetRows(t *testing.T) {
 
 		mockTxn := mocks.NewMockPgxQuery(ctrl)
 		mockTxn.EXPECT().
-			Query(gomock.Any(), "SELECT 1", gomock.Any()).
+			Query(gomock.Any(), "SELECT 1").
 			Return(nil, errors.New("db error"))
 
 		before := pgxIterQuerySampleCount(t, "false")
@@ -94,7 +94,7 @@ func TestPgxTxnIterQueryGetRows(t *testing.T) {
 
 		mockTxn := mocks.NewMockPgxQuery(ctrl)
 		mockTxn.EXPECT().
-			Query(gomock.Any(), "SELECT 1", gomock.Any()).
+			Query(gomock.Any(), "SELECT 1").
 			Return(nil, pgx.ErrNoRows)
 
 		before := pgxIterQuerySampleCount(t, "true")
@@ -113,7 +113,7 @@ func TestPgxTxnIterQueryGetRows(t *testing.T) {
 
 		mockTxn := mocks.NewMockPgxQuery(ctrl)
 		mockTxn.EXPECT().
-			Query(gomock.Any(), "SELECT 1", gomock.Any()).
+			Query(gomock.Any(), "SELECT 1").
 			Return(nil, sql.ErrNoRows)
 
 		before := pgxIterQuerySampleCount(t, "true")
@@ -132,7 +132,7 @@ func TestPgxTxnIterQueryGetRows(t *testing.T) {
 
 		mockTxn := mocks.NewMockPgxQuery(ctrl)
 		mockTxn.EXPECT().
-			Query(gomock.Any(), "SELECT 1", gomock.Any()).
+			Query(gomock.Any(), "SELECT 1").
 			Return(nil, errors.New("duplicate key value"))
 
 		before := pgxIterQuerySampleCount(t, "true")
