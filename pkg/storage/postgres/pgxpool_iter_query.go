@@ -4,6 +4,7 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -12,6 +13,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/openfga/openfga/internal/build"
+	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
 )
 
@@ -68,11 +70,24 @@ func (p *PgxTxnIterQuery) GetRows(ctx context.Context) (sqlcommon.Rows, error) {
 	start := time.Now()
 	rows, err := p.txn.Query(ctx, p.query, p.args...)
 	if err != nil {
-		pgxIterQueryDurationHistogram.WithLabelValues("false").Observe(float64(time.Since(start).Milliseconds()))
-		return nil, HandleSQLError(err)
+		storageErr := HandleSQLError(err)
+		pgxIterQueryDurationHistogram.WithLabelValues(successLabel(storageErr)).Observe(float64(time.Since(start).Milliseconds()))
+		return nil, storageErr
 	}
 	pgxIterQueryDurationHistogram.WithLabelValues("true").Observe(float64(time.Since(start).Milliseconds()))
 	return &pgxRowsWrapper{rows: rows}, nil
+}
+
+// successLabel returns the prometheus success label for an error returned by HandleSQLError.
+// Expected storage errors (not found, collision, invalid write) are not infrastructure failures,
+// so they are labelled "true". Only genuine internal SQL errors are labelled "false".
+func successLabel(err error) string {
+	if errors.Is(err, storage.ErrNotFound) ||
+		errors.Is(err, storage.ErrCollision) ||
+		errors.Is(err, storage.ErrInvalidWriteInput) {
+		return "true"
+	}
+	return "false"
 }
 
 // pgxRowsWrapper wraps pgx.Rows to implement sqlcommon.Rows interface.
