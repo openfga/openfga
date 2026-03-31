@@ -261,10 +261,10 @@ func GetReadCacheKey(store, tuple string) string {
 // an unexpected structpb.Value kind was encountered.
 var ErrUnexpectedStructValue = errors.New("unexpected structpb value encountered")
 
-// assertNoControlChars returns an error if s contains Unicode control characters.
+// validateNoControlChars returns an error if s contains Unicode control characters.
 // Control characters should be rejected at validation boundaries before reaching
 // cache key generation. If this fires, it indicates a validation bug upstream.
-func assertNoControlChars(s string) error {
+func validateNoControlChars(s string) error {
 	if utils.ContainsControlChars(s) {
 		return fmt.Errorf("invariant violation: control character in cache key input")
 	}
@@ -281,7 +281,7 @@ func writeValue(w io.StringWriter, v *structpb.Value) (err error) {
 	case *structpb.Value_NullValue:
 		_, err = w.WriteString("null")
 	case *structpb.Value_StringValue:
-		if err = assertNoControlChars(val.StringValue); err != nil {
+		if err = validateNoControlChars(val.StringValue); err != nil {
 			return
 		}
 		_, err = w.WriteString(val.StringValue)
@@ -348,7 +348,7 @@ func writeStruct(w io.StringWriter, s *structpb.Struct) (err error) {
 		if _, err = w.WriteString("'"); err != nil {
 			return
 		}
-		if err = assertNoControlChars(key); err != nil {
+		if err = validateNoControlChars(key); err != nil {
 			return
 		}
 		if _, err = w.WriteString(key); err != nil {
@@ -392,7 +392,7 @@ func writeTuples(w io.StringWriter, tuples ...*openfgav1.TupleKey) (err error) {
 
 	for n, tupleKey := range sortedTuples {
 		objectRelation := tupleKey.GetObject() + "#" + tupleKey.GetRelation()
-		if err = assertNoControlChars(objectRelation); err != nil {
+		if err = validateNoControlChars(objectRelation); err != nil {
 			return
 		}
 		_, err = w.WriteString(objectRelation)
@@ -406,7 +406,7 @@ func writeTuples(w io.StringWriter, tuples ...*openfgav1.TupleKey) (err error) {
 			// and we need to ensure this cache key is unique
 			// resultant cache key format is "object:object_id#relation with {condition} {context}@user:user_id"
 			condName := cond.GetName()
-			if err = assertNoControlChars(condName); err != nil {
+			if err = validateNoControlChars(condName); err != nil {
 				return
 			}
 			_, err = w.WriteString(" with " + condName)
@@ -430,7 +430,7 @@ func writeTuples(w io.StringWriter, tuples ...*openfgav1.TupleKey) (err error) {
 		}
 
 		user := tupleKey.GetUser()
-		if err = assertNoControlChars(user); err != nil {
+		if err = validateNoControlChars(user); err != nil {
 			return
 		}
 		if _, err = w.WriteString("@" + user); err != nil {
@@ -465,7 +465,7 @@ func WriteCheckCacheKey(w io.StringWriter, params *CheckCacheKeyParams) error {
 	t := tuple.From(params.TupleKey)
 
 	tupleStr := t.String()
-	if err := assertNoControlChars(tupleStr); err != nil {
+	if err := validateNoControlChars(tupleStr); err != nil {
 		return err
 	}
 	_, err := w.WriteString(tupleStr)
