@@ -1,11 +1,17 @@
 package postgres
 
+//go:generate mockgen -source=pgxpool_iter_query.go --destination ../../../internal/mocks/mock_pgx_tx.go --package mocks
+
 import (
 	"context"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 
+	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
 )
 
@@ -24,6 +30,16 @@ type PgxExec interface {
 type SQLBuilder interface {
 	ToSql() (string, []interface{}, error)
 }
+
+var pgxIterQueryDurationHistogram = promauto.NewHistogramVec(prometheus.HistogramOpts{
+	Namespace:                       build.ProjectName,
+	Name:                            "pgx_txn_iter_query_duration_ms",
+	Help:                            "The duration (in ms) of a PgxTxnIterQuery GetRows query labeled by success.",
+	Buckets:                         []float64{1, 5, 10, 25, 50, 100, 200, 300, 1000},
+	NativeHistogramBucketFactor:     1.1,
+	NativeHistogramMaxBucketNumber:  100,
+	NativeHistogramMinResetDuration: time.Hour,
+}, []string{"success"})
 
 // PgxTxnIterQuery is a helper to run queries using pgxpool when used in sqlcommon iterator.
 type PgxTxnIterQuery struct {
@@ -49,10 +65,13 @@ func NewPgxTxnGetRows(txn PgxQuery, sb SQLBuilder) (*PgxTxnIterQuery, error) {
 
 // GetRows executes the txn query and returns the sqlcommon.Rows.
 func (p *PgxTxnIterQuery) GetRows(ctx context.Context) (sqlcommon.Rows, error) {
+	start := time.Now()
 	rows, err := p.txn.Query(ctx, p.query, p.args...)
 	if err != nil {
+		pgxIterQueryDurationHistogram.WithLabelValues("false").Observe(float64(time.Since(start).Milliseconds()))
 		return nil, HandleSQLError(err)
 	}
+	pgxIterQueryDurationHistogram.WithLabelValues("true").Observe(float64(time.Since(start).Milliseconds()))
 	return &pgxRowsWrapper{rows: rows}, nil
 }
 
