@@ -21,7 +21,7 @@ import (
 // sender into memory before computing the intersection. Memory usage is
 // proportional to the total number of unique items across all senders.
 type Intersection struct {
-	bags []containers.Bag[string]
+	bags []containers.AtomicMap[string, struct{}]
 	*Core
 }
 
@@ -44,7 +44,7 @@ func (w *Intersection) ProcessMessage(ctx context.Context, ndx int, msg *Message
 			w.error(&err)
 			break
 		}
-		bag.Add(value)
+		bag.Store(value, struct{}{})
 	}
 }
 
@@ -71,7 +71,7 @@ func (w *Intersection) Execute(ctx context.Context) {
 
 	var wg sync.WaitGroup
 
-	w.bags = make([]containers.Bag[string], len(w.senders))
+	w.bags = make([]containers.AtomicMap[string, struct{}], len(w.senders))
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -95,20 +95,31 @@ func (w *Intersection) Execute(ctx context.Context) {
 		return
 	}
 
-	output := make(map[string]struct{})
+	inputs := make([]map[string]struct{}, 0, len(w.bags)-1)
 
-	for value := range w.bags[0].Seq() {
-		output[value] = struct{}{}
+	objMin := len(w.bags[0].Unwrap())
+	ndxMin := 0
+	for i := 1; i < len(w.bags); i++ {
+		bag := w.bags[i].Unwrap()
+		if len(bag) < objMin {
+			inputs = append(inputs, w.bags[ndxMin].Unwrap())
+			ndxMin = i
+			objMin = len(bag)
+		} else {
+			inputs = append(inputs, bag)
+		}
 	}
 
-	for i := 1; i < len(w.bags); i++ {
-		found := make(map[string]struct{}, len(output))
-		for value := range w.bags[i].Seq() {
-			if _, ok := output[value]; ok {
-				found[value] = struct{}{}
+	output := w.bags[ndxMin].Unwrap()
+
+OutputLoop:
+	for value := range output {
+		for _, m := range inputs {
+			if _, ok := m[value]; !ok {
+				delete(output, value)
+				continue OutputLoop
 			}
 		}
-		output = found
 	}
 
 	w.Broadcast(ctx, maps.Keys(output))
