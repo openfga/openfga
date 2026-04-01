@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"sync"
+	"time"
 
 	sq "github.com/Masterminds/squirrel"
 	"go.opentelemetry.io/otel/trace"
@@ -14,6 +15,7 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/storage/sqlcommon"
 )
 
 type errorHandlerFn func(error, ...interface{}) error
@@ -50,10 +52,15 @@ func (t *SQLTupleIterator) fetchBuffer(ctx context.Context) error {
 	ctx, span := tracer.Start(ctx, "sqlite.fetchBuffer", trace.WithAttributes())
 	defer span.End()
 	ctx = context.WithoutCancel(ctx)
+	start := time.Now()
 	rows, err := t.sb.QueryContext(ctx)
+	elapsed := time.Since(start)
 	if err != nil {
-		return t.handleSQLError(err)
+		storageErr := t.handleSQLError(err)
+		sqlcommon.ObserveIterQueryDuration(storageErr, elapsed)
+		return storageErr
 	}
+	sqlcommon.ObserveIterQueryDuration(nil, elapsed)
 	t.rows = rows
 	return nil
 }

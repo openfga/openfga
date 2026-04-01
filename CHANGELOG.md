@@ -8,7 +8,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 ### Added
-- Added `openfga_sql_iter_query_duration_ms` histogram metric to track SQL iterator query latency across all storage backends, labeled by `success`. The metric is recorded in `SQLTupleIterator.fetchBuffer` after error classification: infrastructure failures are labeled `success=false`; expected storage outcomes (`ErrNotFound`, `ErrCollision`, `ErrInvalidWriteInput`) are labeled `success=true`. [#3030](https://github.com/openfga/openfga/pull/3030)
+- Added `openfga_sql_iter_query_duration_ms` histogram metric to track SQL iterator query latency across all SQL storage backends (PostgreSQL, MySQL, and SQLite), labeled by `success`. The metric is recorded in each backend's `fetchBuffer` after error classification: infrastructure failures are labeled `success=false`; expected storage outcomes (`ErrNotFound`, `ErrCollision`, `ErrInvalidWriteInput`) are labeled `success=true`. [#3030](https://github.com/openfga/openfga/pull/3030)
 
 ### Changed
 - Changed the ListObjects pipeline intersection algorithm to improve intersection performance. [#3031](https://github.com/openfga/openfga/pull/3031)

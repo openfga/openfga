@@ -57,8 +57,10 @@ func SuccessLabel(err error) string {
 }
 
 // ObserveIterQueryDuration records a duration observation on the shared SQL iterator query histogram.
-func ObserveIterQueryDuration(successLabel string, d time.Duration) {
-	sqlIterQueryDurationHistogram.WithLabelValues(successLabel).Observe(float64(d.Milliseconds()))
+// err must be a storage-layer error (nil or a sentinel from HandleSQLError); the success label is
+// derived via SuccessLabel to guarantee only the fixed values "true"/"false" are ever emitted.
+func ObserveIterQueryDuration(err error, d time.Duration) {
+	sqlIterQueryDurationHistogram.WithLabelValues(SuccessLabel(err)).Observe(float64(d.Milliseconds()))
 }
 
 // Config defines the configuration parameters
@@ -359,12 +361,13 @@ func (t *SQLTupleIterator) fetchBuffer(ctx context.Context) error {
 	ctx = context.WithoutCancel(ctx)
 	start := time.Now()
 	curRows, err := t.rowGetter.GetRows(ctx)
+	elapsed := time.Since(start)
 	if err != nil {
 		storageErr := t.handleSQLError(err)
-		ObserveIterQueryDuration(SuccessLabel(storageErr), time.Since(start))
+		ObserveIterQueryDuration(storageErr, elapsed)
 		return storageErr
 	}
-	ObserveIterQueryDuration("true", time.Since(start))
+	ObserveIterQueryDuration(nil, elapsed)
 	t.rows = curRows
 	return nil
 }

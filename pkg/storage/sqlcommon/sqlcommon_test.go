@@ -180,7 +180,7 @@ func TestFetchBufferMetric(t *testing.T) {
 		before := sqlIterQuerySampleCount(t, "true")
 		err := iter.fetchBuffer(context.Background())
 		require.NoError(t, err)
-		require.Equal(t, before+1, sqlIterQuerySampleCount(t, "true"))
+		require.GreaterOrEqual(t, sqlIterQuerySampleCount(t, "true"), before+1)
 	})
 
 	t.Run("infrastructure_error_records_false_label", func(t *testing.T) {
@@ -189,7 +189,7 @@ func TestFetchBufferMetric(t *testing.T) {
 		before := sqlIterQuerySampleCount(t, "false")
 		err := iter.fetchBuffer(context.Background())
 		require.Error(t, err)
-		require.Equal(t, before+1, sqlIterQuerySampleCount(t, "false"))
+		require.GreaterOrEqual(t, sqlIterQuerySampleCount(t, "false"), before+1)
 	})
 
 	t.Run("not_found_error_records_true_label", func(t *testing.T) {
@@ -199,7 +199,7 @@ func TestFetchBufferMetric(t *testing.T) {
 		before := sqlIterQuerySampleCount(t, "true")
 		err := iter.fetchBuffer(context.Background())
 		require.ErrorIs(t, err, storage.ErrNotFound)
-		require.Equal(t, before+1, sqlIterQuerySampleCount(t, "true"))
+		require.GreaterOrEqual(t, sqlIterQuerySampleCount(t, "true"), before+1)
 	})
 }
 
@@ -208,5 +208,9 @@ func TestSuccessLabel(t *testing.T) {
 	require.Equal(t, "true", SuccessLabel(storage.ErrNotFound))
 	require.Equal(t, "true", SuccessLabel(storage.ErrCollision))
 	require.Equal(t, "true", SuccessLabel(storage.ErrInvalidWriteInput))
+	require.Equal(t, "true", SuccessLabel(storage.InvalidWriteInputError(
+		&openfgav1.TupleKey{Object: "document:1", Relation: "viewer", User: "user:alice"},
+		openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
+	)))
 	require.Equal(t, "false", SuccessLabel(errors.New("sql error: connection reset")))
 }

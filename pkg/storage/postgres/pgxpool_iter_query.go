@@ -52,7 +52,7 @@ func NewPgxTxnGetRows(txn PgxQuery, sb SQLBuilder) (*PgxTxnIterQuery, error) {
 // GetRows executes the txn query and returns the sqlcommon.Rows.
 // Metric recording is handled by sqlcommon.SQLTupleIterator.fetchBuffer, which applies
 // handleSQLError before classifying the result. Direct callers outside fetchBuffer should
-// use sqlcommon.ObserveIterQueryDuration with sqlcommon.SuccessLabel if they need stats.
+// use sqlcommon.ObserveIterQueryDuration(err, elapsed) if they need stats.
 func (p *PgxTxnIterQuery) GetRows(ctx context.Context) (sqlcommon.Rows, error) {
 	rows, err := p.txn.Query(ctx, p.query, p.args...)
 	if err != nil {
