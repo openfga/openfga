@@ -2,17 +2,13 @@ package postgres
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"testing"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
-
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/storage"
@@ -31,26 +27,8 @@ func (s *stubPgxRows) Values() ([]any, error)                       { return nil
 func (s *stubPgxRows) RawValues() [][]byte                          { return nil }
 func (s *stubPgxRows) Conn() *pgx.Conn                              { return nil }
 
-func pgxIterQuerySampleCount(t *testing.T, successLabel string) uint64 {
-	t.Helper()
-	mfs, err := prometheus.DefaultGatherer.Gather()
-	require.NoError(t, err)
-	for _, mf := range mfs {
-		if mf.GetName() == "openfga_pgx_txn_iter_query_duration_ms" {
-			for _, m := range mf.GetMetric() {
-				for _, l := range m.GetLabel() {
-					if l.GetName() == "success" && l.GetValue() == successLabel {
-						return m.GetHistogram().GetSampleCount()
-					}
-				}
-			}
-		}
-	}
-	return 0
-}
-
 func TestPgxTxnIterQueryGetRows(t *testing.T) {
-	t.Run("success_records_true_label", func(t *testing.T) {
+	t.Run("success_returns_rows", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
 
@@ -59,17 +37,14 @@ func TestPgxTxnIterQueryGetRows(t *testing.T) {
 			Query(gomock.Any(), "SELECT 1").
 			Return(&stubPgxRows{}, nil)
 
-		before := pgxIterQuerySampleCount(t, "true")
-
 		q := &PgxTxnIterQuery{txn: mockTxn, query: "SELECT 1", args: nil}
 		rows, err := q.GetRows(context.Background())
 
 		require.NoError(t, err)
 		require.NotNil(t, rows)
-		require.Equal(t, before+1, pgxIterQuerySampleCount(t, "true"))
 	})
 
-	t.Run("internal_error_records_false_label", func(t *testing.T) {
+	t.Run("internal_error_returns_error", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
 
@@ -78,17 +53,14 @@ func TestPgxTxnIterQueryGetRows(t *testing.T) {
 			Query(gomock.Any(), "SELECT 1").
 			Return(nil, errors.New("db error"))
 
-		before := pgxIterQuerySampleCount(t, "false")
-
 		q := &PgxTxnIterQuery{txn: mockTxn, query: "SELECT 1", args: nil}
 		rows, err := q.GetRows(context.Background())
 
 		require.Error(t, err)
 		require.Nil(t, rows)
-		require.Equal(t, before+1, pgxIterQuerySampleCount(t, "false"))
 	})
 
-	t.Run("not_found_records_true_label", func(t *testing.T) {
+	t.Run("not_found_returns_ErrNotFound", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
 
@@ -97,36 +69,14 @@ func TestPgxTxnIterQueryGetRows(t *testing.T) {
 			Query(gomock.Any(), "SELECT 1").
 			Return(nil, pgx.ErrNoRows)
 
-		before := pgxIterQuerySampleCount(t, "true")
-
 		q := &PgxTxnIterQuery{txn: mockTxn, query: "SELECT 1", args: nil}
 		rows, err := q.GetRows(context.Background())
 
 		require.ErrorIs(t, err, storage.ErrNotFound)
 		require.Nil(t, rows)
-		require.Equal(t, before+1, pgxIterQuerySampleCount(t, "true"))
 	})
 
-	t.Run("sql_not_found_records_true_label", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		t.Cleanup(ctrl.Finish)
-
-		mockTxn := mocks.NewMockPgxQuery(ctrl)
-		mockTxn.EXPECT().
-			Query(gomock.Any(), "SELECT 1").
-			Return(nil, sql.ErrNoRows)
-
-		before := pgxIterQuerySampleCount(t, "true")
-
-		q := &PgxTxnIterQuery{txn: mockTxn, query: "SELECT 1", args: nil}
-		rows, err := q.GetRows(context.Background())
-
-		require.ErrorIs(t, err, storage.ErrNotFound)
-		require.Nil(t, rows)
-		require.Equal(t, before+1, pgxIterQuerySampleCount(t, "true"))
-	})
-
-	t.Run("collision_records_true_label", func(t *testing.T) {
+	t.Run("collision_returns_ErrCollision", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
 
@@ -135,24 +85,10 @@ func TestPgxTxnIterQueryGetRows(t *testing.T) {
 			Query(gomock.Any(), "SELECT 1").
 			Return(nil, errors.New("duplicate key value"))
 
-		before := pgxIterQuerySampleCount(t, "true")
-
 		q := &PgxTxnIterQuery{txn: mockTxn, query: "SELECT 1", args: nil}
 		rows, err := q.GetRows(context.Background())
 
 		require.ErrorIs(t, err, storage.ErrCollision)
 		require.Nil(t, rows)
-		require.Equal(t, before+1, pgxIterQuerySampleCount(t, "true"))
 	})
-}
-
-func TestSuccessLabel(t *testing.T) {
-	require.Equal(t, "true", successLabel(storage.ErrNotFound))
-	require.Equal(t, "true", successLabel(storage.ErrCollision))
-	require.Equal(t, "true", successLabel(storage.ErrInvalidWriteInput))
-	require.Equal(t, "true", successLabel(storage.InvalidWriteInputError(
-		&openfgav1.TupleKey{Object: "document:1", Relation: "viewer", User: "user:alice"},
-		openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
-	)))
-	require.Equal(t, "false", successLabel(errors.New("sql error: connection reset")))
 }

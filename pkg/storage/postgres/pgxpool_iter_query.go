@@ -4,16 +4,10 @@ package postgres
 
 import (
 	"context"
-	"errors"
-	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 
-	"github.com/openfga/openfga/internal/build"
-	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
 )
 
@@ -32,16 +26,6 @@ type PgxExec interface {
 type SQLBuilder interface {
 	ToSql() (string, []interface{}, error)
 }
-
-var pgxIterQueryDurationHistogram = promauto.NewHistogramVec(prometheus.HistogramOpts{
-	Namespace:                       build.ProjectName,
-	Name:                            "pgx_txn_iter_query_duration_ms",
-	Help:                            "The duration (in ms) of a PgxTxnIterQuery GetRows query labeled by success.",
-	Buckets:                         []float64{1, 5, 10, 25, 50, 100, 200, 300, 1000},
-	NativeHistogramBucketFactor:     1.1,
-	NativeHistogramMaxBucketNumber:  100,
-	NativeHistogramMinResetDuration: time.Hour,
-}, []string{"success"})
 
 // PgxTxnIterQuery is a helper to run queries using pgxpool when used in sqlcommon iterator.
 type PgxTxnIterQuery struct {
@@ -66,28 +50,15 @@ func NewPgxTxnGetRows(txn PgxQuery, sb SQLBuilder) (*PgxTxnIterQuery, error) {
 }
 
 // GetRows executes the txn query and returns the sqlcommon.Rows.
+// Metric recording is handled by sqlcommon.SQLTupleIterator.fetchBuffer, which applies
+// handleSQLError before classifying the result. Direct callers outside fetchBuffer should
+// use sqlcommon.ObserveIterQueryDuration with sqlcommon.SuccessLabel if they need stats.
 func (p *PgxTxnIterQuery) GetRows(ctx context.Context) (sqlcommon.Rows, error) {
-	start := time.Now()
 	rows, err := p.txn.Query(ctx, p.query, p.args...)
 	if err != nil {
-		storageErr := HandleSQLError(err)
-		pgxIterQueryDurationHistogram.WithLabelValues(successLabel(storageErr)).Observe(float64(time.Since(start).Milliseconds()))
-		return nil, storageErr
+		return nil, HandleSQLError(err)
 	}
-	pgxIterQueryDurationHistogram.WithLabelValues("true").Observe(float64(time.Since(start).Milliseconds()))
 	return &pgxRowsWrapper{rows: rows}, nil
-}
-
-// successLabel returns the prometheus success label for an error returned by HandleSQLError.
-// Expected storage errors (not found, collision, invalid write) are not infrastructure failures,
-// so they are labelled "true". Only genuine internal SQL errors are labelled "false".
-func successLabel(err error) string {
-	if errors.Is(err, storage.ErrNotFound) ||
-		errors.Is(err, storage.ErrCollision) ||
-		errors.Is(err, storage.ErrInvalidWriteInput) {
-		return "true"
-	}
-	return "false"
 }
 
 // pgxRowsWrapper wraps pgx.Rows to implement sqlcommon.Rows interface.
