@@ -57,7 +57,7 @@ func SuccessLabel(err error) string {
 }
 
 // ObserveIterQueryDuration records a duration observation on the shared SQL iterator query histogram.
-// err must be a storage-layer error (nil or a sentinel from HandleSQLError); the success label is
+// Err must be a storage-layer error (nil or a sentinel from HandleSQLError); the success label is
 // derived via SuccessLabel to guarantee only the fixed values "true"/"false" are ever emitted.
 func ObserveIterQueryDuration(err error, d time.Duration) {
 	sqlIterQueryDurationHistogram.WithLabelValues(SuccessLabel(err)).Observe(float64(d.Milliseconds()))
