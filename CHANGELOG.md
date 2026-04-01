@@ -13,6 +13,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Fixed
 - Fixed Write operations failing with `invalid input syntax for type integer` (SQLSTATE 22P02) when PostgreSQL is behind PgBouncer or a connection pooler using the simple query protocol. [#3014](https://github.com/openfga/openfga/pull/3014)
 - Fixed PostgreSQL `HandleSQLError` and `GetStore` returning a wrapped error instead of `storage.ErrNotFound` when no rows are found. When using pgxpool directly, `QueryRow().Scan()` returns `pgx.ErrNoRows`, not `sql.ErrNoRows`; both are now handled. [#3014](https://github.com/openfga/openfga/pull/3014)
+- Fixed the possibility of deadlocks within the ListObjects pipeline algorithm. Also added short-circuit enhancments that will reduce latency and message processing in certain scenarios. Cyclical edges now use as much memory as necessary to process deep and wide data heirarchies without the risk of a deadlock. [#3028](https://github.com/openfga/openfga/pull/3028)
 
 ## [1.13.1] - 2026-03-24
 ### Security
