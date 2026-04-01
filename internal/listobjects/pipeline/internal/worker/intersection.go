@@ -99,11 +99,11 @@ func (w *Intersection) Execute(ctx context.Context) {
 
 	objMin := w.stats[0].SumObjectsReceived
 	ndxMin := 0
-	for i, stats := range w.stats {
-		if stats.SumObjectsReceived < objMin {
+	for i := 1; i < len(w.stats); i++ {
+		if w.stats[i].SumObjectsReceived < objMin {
 			inputs = append(inputs, w.bags[ndxMin].Unwrap())
 			ndxMin = i
-			objMin = stats.SumObjectsReceived
+			objMin = w.stats[i].SumObjectsReceived
 		} else {
 			inputs = append(inputs, w.bags[i].Unwrap())
 		}
