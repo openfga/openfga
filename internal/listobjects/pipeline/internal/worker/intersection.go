@@ -97,15 +97,16 @@ func (w *Intersection) Execute(ctx context.Context) {
 
 	inputs := make([]map[string]struct{}, 0, len(w.bags)-1)
 
-	objMin := w.stats[0].SumObjectsReceived
+	objMin := len(w.bags[0].Unwrap())
 	ndxMin := 0
-	for i := 1; i < len(w.stats); i++ {
-		if w.stats[i].SumObjectsReceived < objMin {
+	for i := 1; i < len(w.bags); i++ {
+		bag := w.bags[i].Unwrap()
+		if len(bag) < objMin {
 			inputs = append(inputs, w.bags[ndxMin].Unwrap())
 			ndxMin = i
-			objMin = w.stats[i].SumObjectsReceived
+			objMin = len(bag)
 		} else {
-			inputs = append(inputs, w.bags[i].Unwrap())
+			inputs = append(inputs, bag)
 		}
 	}
 
