@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"sync"
+	"time"
 
 	sq "github.com/Masterminds/squirrel"
 	"go.opentelemetry.io/otel/trace"
@@ -50,10 +51,15 @@ func (t *SQLTupleIterator) fetchBuffer(ctx context.Context) error {
 	ctx, span := tracer.Start(ctx, "sqlite.fetchBuffer", trace.WithAttributes())
 	defer span.End()
 	ctx = context.WithoutCancel(ctx)
+	start := time.Now()
 	rows, err := t.sb.QueryContext(ctx)
+	elapsed := time.Since(start)
 	if err != nil {
-		return t.handleSQLError(err)
+		storageErr := t.handleSQLError(err)
+		storage.ObserveIterQueryDuration(storage.SuccessLabel(storageErr), elapsed)
+		return storageErr
 	}
+	storage.ObserveIterQueryDuration(true, elapsed)
 	t.rows = rows
 	return nil
 }
