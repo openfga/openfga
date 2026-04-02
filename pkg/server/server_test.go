@@ -20,6 +20,7 @@ import (
 	"go.uber.org/mock/gomock"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -32,6 +33,7 @@ import (
 	"github.com/openfga/openfga/internal/graph"
 	mockstorage "github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/featureflags"
+	"github.com/openfga/openfga/pkg/gateway"
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/server/test"
@@ -2039,6 +2041,202 @@ func TestServer_ThrottleUntilDeadline(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, resp)
 		require.LessOrEqual(t, len(resp.GetObjects()), 1) // race condition of context cancellation
+	})
+}
+
+// capturingTransport records headers set via SetHeader so tests can assert
+// on the externally visible gRPC/HTTP response metadata.
+type capturingTransport struct {
+	gateway.Transport
+	mu      sync.Mutex
+	headers map[string]string
+}
+
+func newCapturingTransport() *capturingTransport {
+	return &capturingTransport{headers: make(map[string]string)}
+}
+
+func (c *capturingTransport) SetHeader(_ context.Context, key, value string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.headers[key] = value
+}
+
+func (c *capturingTransport) getHeader(key string) (string, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	v, ok := c.headers[key]
+	return v, ok
+}
+
+// capturingStreamServer extends the mockStreamServer with SetTrailer capture
+// so tests can assert on the trailer metadata sent by StreamedListObjects.
+type capturingStreamServer struct {
+	grpc.ServerStream
+
+	ctx      context.Context
+	mu       sync.Mutex
+	objects  []string
+	trailers metadata.MD
+}
+
+func newCapturingStreamServer(ctx context.Context) *capturingStreamServer {
+	return &capturingStreamServer{
+		ctx:      ctx,
+		trailers: metadata.MD{},
+	}
+}
+
+func (c *capturingStreamServer) Context() context.Context { return c.ctx }
+
+func (c *capturingStreamServer) Send(resp *openfgav1.StreamedListObjectsResponse) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.objects = append(c.objects, resp.GetObject())
+	return nil
+}
+
+func (c *capturingStreamServer) SetHeader(metadata.MD) error  { return nil }
+func (c *capturingStreamServer) SendHeader(metadata.MD) error { return nil }
+func (c *capturingStreamServer) SetTrailer(md metadata.MD) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for k, v := range md {
+		c.trailers[k] = append(c.trailers[k], v...)
+	}
+}
+
+func TestIsPartialListHeaderSetOnResponse(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	ds := memory.New()
+	t.Cleanup(ds.Close)
+
+	modelStr := `
+		model
+			schema 1.1
+		type user
+		type document
+			relations
+				define viewer: [user]`
+
+	tuples := []string{
+		"document:1#viewer@user:alice",
+		"document:2#viewer@user:alice",
+		"document:3#viewer@user:alice",
+	}
+
+	storeID, model := storageTest.BootstrapFGAStore(t, ds, modelStr, tuples)
+
+	t.Run("list_objects_sets_partial_header_when_max_results_reached", func(t *testing.T) {
+		transport := newCapturingTransport()
+
+		s := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithTransport(transport),
+			WithListObjectsMaxResults(2),
+			WithListObjectsDeadline(10*time.Second),
+			WithListObjectsPipelineEnabled(false),
+		)
+		t.Cleanup(s.Close)
+
+		resp, err := s.ListObjects(context.Background(), &openfgav1.ListObjectsRequest{
+			StoreId:              storeID,
+			AuthorizationModelId: model.GetId(),
+			User:                 "user:alice",
+			Relation:             "viewer",
+			Type:                 "document",
+		})
+
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.LessOrEqual(t, len(resp.GetObjects()), 2)
+
+		value, ok := transport.getHeader(IsPartialListHeader)
+		require.True(t, ok, "expected %s header to be set", IsPartialListHeader)
+		require.Equal(t, "true", value)
+	})
+
+	t.Run("list_objects_does_not_set_partial_header_when_all_results_returned", func(t *testing.T) {
+		transport := newCapturingTransport()
+
+		s := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithTransport(transport),
+			WithListObjectsMaxResults(0), // unlimited
+			WithListObjectsDeadline(10*time.Second),
+			WithListObjectsPipelineEnabled(false),
+		)
+		t.Cleanup(s.Close)
+
+		resp, err := s.ListObjects(context.Background(), &openfgav1.ListObjectsRequest{
+			StoreId:              storeID,
+			AuthorizationModelId: model.GetId(),
+			User:                 "user:alice",
+			Relation:             "viewer",
+			Type:                 "document",
+		})
+
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.Len(t, resp.GetObjects(), 3)
+
+		_, ok := transport.getHeader(IsPartialListHeader)
+		require.False(t, ok, "expected %s header to NOT be set when results are complete", IsPartialListHeader)
+	})
+
+	t.Run("streamed_list_objects_sets_partial_trailer_when_deadline_exceeded", func(t *testing.T) {
+		slowDS := mockstorage.NewMockSlowDataStorage(ds, 2*time.Second)
+
+		s := MustNewServerWithOpts(
+			WithDatastore(slowDS),
+			WithListObjectsDeadline(100*time.Millisecond),
+			WithListObjectsPipelineEnabled(false),
+		)
+		t.Cleanup(s.Close)
+
+		srv := newCapturingStreamServer(context.Background())
+
+		err := s.StreamedListObjects(&openfgav1.StreamedListObjectsRequest{
+			StoreId:              storeID,
+			AuthorizationModelId: model.GetId(),
+			User:                 "user:alice",
+			Relation:             "viewer",
+			Type:                 "document",
+		}, srv)
+
+		require.NoError(t, err)
+
+		vals := srv.trailers.Get(IsPartialListHeader)
+		require.NotEmpty(t, vals, "expected %s trailer to be set", IsPartialListHeader)
+		require.Equal(t, "true", vals[0])
+	})
+
+	t.Run("streamed_list_objects_does_not_set_partial_trailer_when_all_results_returned", func(t *testing.T) {
+		s := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithListObjectsDeadline(10*time.Second),
+			WithListObjectsPipelineEnabled(false),
+		)
+		t.Cleanup(s.Close)
+
+		srv := newCapturingStreamServer(context.Background())
+
+		err := s.StreamedListObjects(&openfgav1.StreamedListObjectsRequest{
+			StoreId:              storeID,
+			AuthorizationModelId: model.GetId(),
+			User:                 "user:alice",
+			Relation:             "viewer",
+			Type:                 "document",
+		}, srv)
+
+		require.NoError(t, err)
+		require.Len(t, srv.objects, 3)
+
+		vals := srv.trailers.Get(IsPartialListHeader)
+		require.Empty(t, vals, "expected %s trailer to NOT be set when results are complete", IsPartialListHeader)
 	})
 }
 
