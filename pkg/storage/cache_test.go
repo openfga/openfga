@@ -1253,6 +1253,13 @@ func TestJitteredTTL(t *testing.T) {
 			expectedMin:      10 * time.Second,
 			expectedMax:      20 * time.Second,
 		},
+		{
+			name:             "jitter_percentage_over_hundred_is_capped",
+			baseTTL:          10 * time.Second,
+			jitterPercentage: 150,
+			expectedMin:      10 * time.Second,
+			expectedMax:      20 * time.Second,
+		},
 	}
 
 	for _, tt := range tests {
@@ -1275,5 +1282,13 @@ func TestJitteredTTL(t *testing.T) {
 		}
 		// With 50% jitter on a 10s TTL (5s range), we should see multiple distinct values
 		require.Greater(t, len(results), 1, "expected variation in jittered TTL values")
+	})
+
+	t.Run("does_not_overflow_for_max_duration", func(t *testing.T) {
+		var result time.Duration
+		require.NotPanics(t, func() {
+			result = JitteredTTL(time.Duration(math.MaxInt64), 100)
+		})
+		require.Equal(t, time.Duration(math.MaxInt64), result)
 	})
 }

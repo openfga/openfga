@@ -1568,6 +1568,47 @@ requestDurationDispatchCountBuckets: [32,42]
 	require.Equal(t, []string{"32", "42"}, cfg.RequestDurationDispatchCountBuckets)
 }
 
+func TestParseConfigCacheTTLJitterPercentageFromFlag(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+	util.PrepareTempConfigDir(t)
+
+	runCmd := NewRunCommand()
+	runCmd.RunE = func(cmd *cobra.Command, _ []string) error {
+		return nil
+	}
+
+	rootCmd := cmd.NewRootCommand()
+	rootCmd.AddCommand(runCmd)
+	rootCmd.SetArgs([]string{"run", "--cache-ttl-jitter-percentage", "17"})
+	require.NoError(t, rootCmd.Execute())
+
+	cfg, err := ReadConfig()
+	require.NoError(t, err)
+	require.Equal(t, uint32(17), cfg.CacheTTLJitterPercentage)
+}
+
+func TestParseConfigCacheTTLJitterPercentageFromEnv(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+	util.PrepareTempConfigDir(t)
+	t.Setenv("OPENFGA_CACHE_TTL_JITTER_PERCENTAGE", "18")
+
+	runCmd := NewRunCommand()
+	runCmd.RunE = func(cmd *cobra.Command, _ []string) error {
+		return nil
+	}
+
+	rootCmd := cmd.NewRootCommand()
+	rootCmd.AddCommand(runCmd)
+	rootCmd.SetArgs([]string{"run"})
+	require.NoError(t, rootCmd.Execute())
+
+	cfg, err := ReadConfig()
+	require.NoError(t, err)
+	require.Equal(t, uint32(18), cfg.CacheTTLJitterPercentage)
+}
+
 func TestRunCommandConfigIsMerged(t *testing.T) {
 	config := `datastore:
     engine: postgres

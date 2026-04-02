@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"math/rand"
 	"sort"
 	"strconv"
@@ -455,15 +456,34 @@ func writeTuples(w io.StringWriter, tuples ...*openfgav1.TupleKey) (err error) {
 }
 
 // JitteredTTL returns a TTL with random jitter added. The jitter is a random duration
-// in the range [0, baseTTL * jitterPercentage / 100]. If jitterPercentage is 0 the
-// base TTL is returned unchanged.
+// in the range [0, baseTTL * jitterPercentage / 100]. Values above 100 are treated as
+// 100. If jitterPercentage is 0 the base TTL is returned unchanged.
 func JitteredTTL(baseTTL time.Duration, jitterPercentage uint32) time.Duration {
-	if jitterPercentage == 0 || baseTTL <= 0 {
+	if baseTTL <= 0 || jitterPercentage == 0 {
 		return baseTTL
 	}
-	maxJitter := time.Duration(float64(baseTTL) * float64(jitterPercentage) / 100.0)
-	//nolint:gosec // G404: no security implications, jitter is for load distribution
-	jitter := time.Duration(rand.Int63n(int64(maxJitter) + 1))
+
+	if jitterPercentage > 100 {
+		jitterPercentage = 100
+	}
+
+	quotient := baseTTL / 100
+	remainder := baseTTL % 100
+	maxJitter := quotient*time.Duration(jitterPercentage) + remainder*time.Duration(jitterPercentage)/100
+
+	var jitter time.Duration
+	if maxJitter == time.Duration(math.MaxInt64) {
+		//nolint:gosec // G404: no security implications, jitter is for load distribution
+		jitter = time.Duration(rand.Uint64() & uint64(math.MaxInt64))
+	} else {
+		//nolint:gosec // G404: no security implications, jitter is for load distribution
+		jitter = time.Duration(rand.Int63n(int64(maxJitter) + 1))
+	}
+
+	if jitter > time.Duration(math.MaxInt64)-baseTTL {
+		return time.Duration(math.MaxInt64)
+	}
+
 	return baseTTL + jitter
 }
 
