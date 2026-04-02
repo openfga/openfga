@@ -158,7 +158,7 @@ func sqlIterQuerySampleCount(t *testing.T, successVal string) uint64 {
 	mfs, err := prometheus.DefaultGatherer.Gather()
 	require.NoError(t, err)
 	for _, mf := range mfs {
-		if mf.GetName() == "openfga_sql_iter_query_duration_ms" {
+		if mf.GetName() == "openfga_iter_query_duration_ms" {
 			for _, m := range mf.GetMetric() {
 				for _, l := range m.GetLabel() {
 					if l.GetName() == "success" && l.GetValue() == successVal {
@@ -201,16 +201,4 @@ func TestFetchBufferMetric(t *testing.T) {
 		require.ErrorIs(t, err, storage.ErrNotFound)
 		require.GreaterOrEqual(t, sqlIterQuerySampleCount(t, "true"), before+1)
 	})
-}
-
-func TestSuccessLabel(t *testing.T) {
-	require.Equal(t, "true", SuccessLabel(nil))
-	require.Equal(t, "true", SuccessLabel(storage.ErrNotFound))
-	require.Equal(t, "true", SuccessLabel(storage.ErrCollision))
-	require.Equal(t, "true", SuccessLabel(storage.ErrInvalidWriteInput))
-	require.Equal(t, "true", SuccessLabel(storage.InvalidWriteInputError(
-		&openfgav1.TupleKey{Object: "document:1", Relation: "viewer", User: "user:alice"},
-		openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
-	)))
-	require.Equal(t, "false", SuccessLabel(errors.New("sql error: connection reset")))
 }

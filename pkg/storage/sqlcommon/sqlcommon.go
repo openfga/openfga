@@ -14,8 +14,6 @@ import (
 	sq "github.com/Masterminds/squirrel"
 	"github.com/oklog/ulid/v2"
 	"github.com/pressly/goose/v3"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/proto"
@@ -31,41 +29,6 @@ import (
 )
 
 var tracer = otel.Tracer("pkg/storage/sqlcommon")
-
-var sqlIterQueryDurationHistogram = promauto.NewHistogramVec(prometheus.HistogramOpts{
-	Namespace:                       build.ProjectName,
-	Name:                            "sql_iter_query_duration_ms",
-	Help:                            "The duration (in ms) of a SQLTupleIterator fetchBuffer query labeled by success.",
-	Buckets:                         []float64{1, 5, 10, 25, 50, 100, 200, 300, 1000},
-	NativeHistogramBucketFactor:     1.1,
-	NativeHistogramMaxBucketNumber:  100,
-	NativeHistogramMinResetDuration: time.Hour,
-}, []string{"success"})
-
-// SuccessLabel returns the prometheus success label for a storage error.
-// A nil error or expected storage outcomes (not found, collision, invalid write) are labelled
-// "true" since the DB processed the query correctly. Only genuine infrastructure errors are
-// labelled "false".
-func SuccessLabel(err error) string {
-	if err == nil ||
-		errors.Is(err, storage.ErrNotFound) ||
-		errors.Is(err, storage.ErrCollision) ||
-		errors.Is(err, storage.ErrInvalidWriteInput) {
-		return "true"
-	}
-	return "false"
-}
-
-// ObserveIterQueryDuration records a duration observation on the shared SQL iterator query histogram.
-// Err must be a storage-layer error (nil or a sentinel from HandleSQLError); the success label is
-// derived via SuccessLabel to guarantee only the fixed values "true"/"false" are ever emitted.
-//
-// Since sqlIterQueryDurationHistogram buckets are defined in whole milliseconds, sub-millisecond
-// accuracy is unnecessary. We use d.Milliseconds() (integer truncation) instead of float division
-// (e.g. d.Seconds()*1000) as a deliberate performance tradeoff.
-func ObserveIterQueryDuration(err error, d time.Duration) {
-	sqlIterQueryDurationHistogram.WithLabelValues(SuccessLabel(err)).Observe(float64(d.Milliseconds()))
-}
 
 // Config defines the configuration parameters
 // for setting up and managing a sql connection.
@@ -368,10 +331,10 @@ func (t *SQLTupleIterator) fetchBuffer(ctx context.Context) error {
 	elapsed := time.Since(start)
 	if err != nil {
 		storageErr := t.handleSQLError(err)
-		ObserveIterQueryDuration(storageErr, elapsed)
+		storage.ObserveIterQueryDuration(storageErr, elapsed)
 		return storageErr
 	}
-	ObserveIterQueryDuration(nil, elapsed)
+	storage.ObserveIterQueryDuration(nil, elapsed)
 	t.rows = curRows
 	return nil
 }

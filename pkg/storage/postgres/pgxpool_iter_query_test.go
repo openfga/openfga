@@ -83,7 +83,7 @@ func TestPgxTxnIterQueryGetRows(t *testing.T) {
 		mockTxn := mocks.NewMockPgxQuery(ctrl)
 		mockTxn.EXPECT().
 			Query(gomock.Any(), "SELECT 1").
-			Return(nil, errors.New("duplicate key value"))
+			Return(nil, &pgconn.PgError{Code: "23505", Message: "duplicate key value violates unique constraint"})
 
 		q := &PgxTxnIterQuery{txn: mockTxn, query: "SELECT 1", args: nil}
 		rows, err := q.GetRows(context.Background())

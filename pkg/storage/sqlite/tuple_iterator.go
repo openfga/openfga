@@ -15,7 +15,6 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/pkg/storage"
-	"github.com/openfga/openfga/pkg/storage/sqlcommon"
 )
 
 type errorHandlerFn func(error, ...interface{}) error
@@ -57,10 +56,10 @@ func (t *SQLTupleIterator) fetchBuffer(ctx context.Context) error {
 	elapsed := time.Since(start)
 	if err != nil {
 		storageErr := t.handleSQLError(err)
-		sqlcommon.ObserveIterQueryDuration(storageErr, elapsed)
+		storage.ObserveIterQueryDuration(storageErr, elapsed)
 		return storageErr
 	}
-	sqlcommon.ObserveIterQueryDuration(nil, elapsed)
+	storage.ObserveIterQueryDuration(nil, elapsed)
 	t.rows = rows
 	return nil
 }
