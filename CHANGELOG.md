@@ -8,7 +8,8 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 ### Changed
-- Improve cache key generation performance by removing `fmt` usage and extend control-character sanitization to all cache key inputs (tuples, conditions, context). [#3006](https://github.com/openfga/openfga/pull/3006)
+- Changed the ListObjects pipeline intersection algorithm to improve intersection performance. [#3031](https://github.com/openfga/openfga/pull/3031)
+- - Improve cache key generation performance by removing `fmt` usage and extend control-character sanitization to all cache key inputs (tuples, conditions, context). [#3006](https://github.com/openfga/openfga/pull/3006)
 
 ### Fixed
 - Fixed Write operations failing with `invalid input syntax for type integer` (SQLSTATE 22P02) when PostgreSQL is behind PgBouncer or a connection pooler using the simple query protocol. [#3014](https://github.com/openfga/openfga/pull/3014)
