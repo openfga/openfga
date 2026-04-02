@@ -567,7 +567,7 @@ func runListObjectsTests(t *testing.T, ds storage.OpenFGADatastore, passedInOpts
 				require.ElementsMatch(t, test.allResults, streamedObjectIDs)
 
 				if test.expectPartialList {
-					require.True(t, resolutionMetadata.IsPartialList.Load(), "expected IsPartialList to be true")
+					require.True(t, resolutionMetadata.IsPartialList, "expected IsPartialList to be true")
 				}
 			})
 
@@ -590,7 +590,7 @@ func runListObjectsTests(t *testing.T, ds storage.OpenFGADatastore, passedInOpts
 				require.Subset(t, test.allResults, res.Objects)
 
 				if test.expectPartialList {
-					require.True(t, res.ResolutionMetadata.IsPartialList.Load(), "expected IsPartialList to be true")
+					require.True(t, res.ResolutionMetadata.IsPartialList, "expected IsPartialList to be true")
 				}
 			})
 		})

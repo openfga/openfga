@@ -184,10 +184,9 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 	checkCounter := float64(result.ResolutionMetadata.CheckCounter.Load())
 	grpc_ctxtags.Extract(ctx).Set(listObjectsCheckCountName, checkCounter)
 
-	isPartialList := result.ResolutionMetadata.IsPartialList.Load()
-	grpc_ctxtags.Extract(ctx).Set("request.is_partial_list", isPartialList)
+	grpc_ctxtags.Extract(ctx).Set("request.is_partial_list", result.ResolutionMetadata.IsPartialList)
 
-	if isPartialList {
+	if result.ResolutionMetadata.IsPartialList {
 		s.transport.SetHeader(ctx, IsPartialListHeader, "true")
 	}
 
@@ -326,10 +325,9 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 		throttledRequestCounter.WithLabelValues(s.serviceName, methodName, throttleTypeDatastore).Inc()
 	}
 
-	isPartialList := resolutionMetadata.IsPartialList.Load()
-	grpc_ctxtags.Extract(ctx).Set("request.is_partial_list", isPartialList)
+	grpc_ctxtags.Extract(ctx).Set("request.is_partial_list", resolutionMetadata.IsPartialList)
 
-	if isPartialList {
+	if resolutionMetadata.IsPartialList {
 		srv.SetTrailer(metadata.Pairs(IsPartialListHeader, "true"))
 	}
 

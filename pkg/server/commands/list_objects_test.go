@@ -583,7 +583,7 @@ func TestListObjectsIsPartialListFlag(t *testing.T) {
 			User:     "user:alice",
 		})
 		require.NoError(t, err)
-		require.True(t, resp.ResolutionMetadata.IsPartialList.Load(), "expected IsPartialList to be true when deadline is exceeded")
+		require.True(t, resp.ResolutionMetadata.IsPartialList, "expected IsPartialList to be true when deadline is exceeded")
 	})
 
 	t.Run("max_results_reached_sets_partial_flag", func(t *testing.T) {
@@ -633,7 +633,7 @@ func TestListObjectsIsPartialListFlag(t *testing.T) {
 		})
 		require.NoError(t, err)
 		require.Len(t, resp.Objects, 2)
-		require.True(t, resp.ResolutionMetadata.IsPartialList.Load(), "expected IsPartialList to be true when max results is reached")
+		require.True(t, resp.ResolutionMetadata.IsPartialList, "expected IsPartialList to be true when max results is reached")
 	})
 
 	t.Run("complete_results_does_not_set_partial_flag", func(t *testing.T) {
@@ -682,7 +682,7 @@ func TestListObjectsIsPartialListFlag(t *testing.T) {
 		})
 		require.NoError(t, err)
 		require.Len(t, resp.Objects, 2)
-		require.False(t, resp.ResolutionMetadata.IsPartialList.Load(), "expected IsPartialList to be false when all results are returned")
+		require.False(t, resp.ResolutionMetadata.IsPartialList, "expected IsPartialList to be false when all results are returned")
 	})
 }
 
