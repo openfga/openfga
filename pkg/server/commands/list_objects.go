@@ -641,6 +641,12 @@ func (q *ListObjectsQuery) Execute(
 			}
 		}
 
+		// If the context expired before or during iteration, ensure the flag is set
+		// even if the loop exited without entering the body (zero items yielded).
+		if timeoutCtx.Err() != nil {
+			res.ResolutionMetadata.IsPartialList = true
+		}
+
 		dsMeta := ds.GetMetadata()
 		res.ResolutionMetadata.DatastoreThrottled.Store(dsMeta.WasThrottled)
 		res.ResolutionMetadata.DatastoreQueryCount.Add(dsMeta.DatastoreQueryCount)
@@ -818,6 +824,12 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 				resolutionMetadata.IsPartialList = true
 				break
 			}
+		}
+
+		// If the context expired before or during iteration, ensure the flag is set
+		// even if the loop exited without entering the body (zero items yielded).
+		if timeoutCtx.Err() != nil {
+			resolutionMetadata.IsPartialList = true
 		}
 
 		dsMeta := ds.GetMetadata()
