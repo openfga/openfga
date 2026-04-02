@@ -47,6 +47,7 @@ import (
 
 const (
 	AuthorizationModelIDHeader = "Openfga-Authorization-Model-Id"
+	IsPartialListHeader        = "x-fga-is-partial-list"
 	authorizationModelIDKey    = "authorization_model_id"
 
 	allowedLabel = "allowed"
