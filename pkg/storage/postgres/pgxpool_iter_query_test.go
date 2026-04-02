@@ -11,7 +11,6 @@ import (
 	"go.uber.org/mock/gomock"
 
 	"github.com/openfga/openfga/internal/mocks"
-	"github.com/openfga/openfga/pkg/storage"
 )
 
 // stubPgxRows is a minimal pgx.Rows implementation for testing.
@@ -60,7 +59,7 @@ func TestPgxTxnIterQueryGetRows(t *testing.T) {
 		require.Nil(t, rows)
 	})
 
-	t.Run("not_found_returns_ErrNotFound", func(t *testing.T) {
+	t.Run("not_found_returns_raw_pgx_error", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
 
@@ -72,23 +71,28 @@ func TestPgxTxnIterQueryGetRows(t *testing.T) {
 		q := &PgxTxnIterQuery{txn: mockTxn, query: "SELECT 1", args: nil}
 		rows, err := q.GetRows(context.Background())
 
-		require.ErrorIs(t, err, storage.ErrNotFound)
+		// GetRows returns raw driver errors; translation to storage.ErrNotFound
+		// happens in fetchBuffer via handleSQLError.
+		require.ErrorIs(t, err, pgx.ErrNoRows)
 		require.Nil(t, rows)
 	})
 
-	t.Run("collision_returns_ErrCollision", func(t *testing.T) {
+	t.Run("duplicate_key_returns_raw_pgx_error", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
 
+		pgErr := &pgconn.PgError{Code: "23505", Message: "duplicate key value violates unique constraint"}
 		mockTxn := mocks.NewMockPgxQuery(ctrl)
 		mockTxn.EXPECT().
 			Query(gomock.Any(), "SELECT 1").
-			Return(nil, &pgconn.PgError{Code: "23505", Message: "duplicate key value violates unique constraint"})
+			Return(nil, pgErr)
 
 		q := &PgxTxnIterQuery{txn: mockTxn, query: "SELECT 1", args: nil}
 		rows, err := q.GetRows(context.Background())
 
-		require.ErrorIs(t, err, storage.ErrCollision)
+		// GetRows returns raw driver errors; translation to storage.ErrCollision
+		// happens in fetchBuffer via handleSQLError.
+		require.ErrorIs(t, err, pgErr)
 		require.Nil(t, rows)
 	})
 }

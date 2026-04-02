@@ -50,13 +50,12 @@ func NewPgxTxnGetRows(txn PgxQuery, sb SQLBuilder) (*PgxTxnIterQuery, error) {
 }
 
 // GetRows executes the txn query and returns the sqlcommon.Rows.
-// Metric recording is handled by each backend's fetchBuffer via storage.ObserveIterQueryDuration.
-// HandleSQLError must be applied before calling ObserveIterQueryDuration so that the success
-// label reflects storage-layer sentinels, not raw driver errors.
+// Raw driver errors are returned unchanged; error translation to storage-layer sentinels
+// is the responsibility of the caller (sqlcommon.SQLTupleIterator.fetchBuffer via handleSQLError).
 func (p *PgxTxnIterQuery) GetRows(ctx context.Context) (sqlcommon.Rows, error) {
 	rows, err := p.txn.Query(ctx, p.query, p.args...)
 	if err != nil {
-		return nil, HandleSQLError(err)
+		return nil, err
 	}
 	return &pgxRowsWrapper{rows: rows}, nil
 }
