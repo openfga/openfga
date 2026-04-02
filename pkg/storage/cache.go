@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand"
 	"sort"
 	"strconv"
 	"sync"
@@ -451,6 +452,19 @@ func writeTuples(w io.StringWriter, tuples ...*openfgav1.TupleKey) (err error) {
 		}
 	}
 	return
+}
+
+// JitteredTTL returns a TTL with random jitter added. The jitter is a random duration
+// in the range [0, baseTTL * jitterPercentage / 100]. If jitterPercentage is 0 the
+// base TTL is returned unchanged.
+func JitteredTTL(baseTTL time.Duration, jitterPercentage uint32) time.Duration {
+	if jitterPercentage == 0 || baseTTL <= 0 {
+		return baseTTL
+	}
+	maxJitter := time.Duration(float64(baseTTL) * float64(jitterPercentage) / 100.0)
+	//nolint:gosec // G404: no security implications, jitter is for load distribution
+	jitter := time.Duration(rand.Int63n(int64(maxJitter) + 1))
+	return baseTTL + jitter
 }
 
 // CheckCacheKeyParams is all the necessary pieces to create a unique-per-check cache key.

@@ -1209,3 +1209,71 @@ func BenchmarkGetInvalidIteratorByUserObjectTypeCacheKeys(b *testing.B) {
 		_ = GetInvalidIteratorByUserObjectTypeCacheKeys(storeID, users, objectType)
 	}
 }
+
+func TestJitteredTTL(t *testing.T) {
+	tests := []struct {
+		name             string
+		baseTTL          time.Duration
+		jitterPercentage uint32
+		expectedMin      time.Duration
+		expectedMax      time.Duration
+	}{
+		{
+			name:             "zero_jitter_returns_base_ttl",
+			baseTTL:          10 * time.Second,
+			jitterPercentage: 0,
+			expectedMin:      10 * time.Second,
+			expectedMax:      10 * time.Second,
+		},
+		{
+			name:             "zero_base_ttl_returns_zero",
+			baseTTL:          0,
+			jitterPercentage: 10,
+			expectedMin:      0,
+			expectedMax:      0,
+		},
+		{
+			name:             "negative_base_ttl_returns_base",
+			baseTTL:          -5 * time.Second,
+			jitterPercentage: 10,
+			expectedMin:      -5 * time.Second,
+			expectedMax:      -5 * time.Second,
+		},
+		{
+			name:             "ten_percent_jitter",
+			baseTTL:          10 * time.Second,
+			jitterPercentage: 10,
+			expectedMin:      10 * time.Second,
+			expectedMax:      11 * time.Second,
+		},
+		{
+			name:             "hundred_percent_jitter",
+			baseTTL:          10 * time.Second,
+			jitterPercentage: 100,
+			expectedMin:      10 * time.Second,
+			expectedMax:      20 * time.Second,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Run multiple times to verify the range
+			for i := 0; i < 100; i++ {
+				result := JitteredTTL(tt.baseTTL, tt.jitterPercentage)
+				require.GreaterOrEqual(t, result, tt.expectedMin, "result %v is less than minimum %v", result, tt.expectedMin)
+				require.LessOrEqual(t, result, tt.expectedMax, "result %v is greater than maximum %v", result, tt.expectedMax)
+			}
+		})
+	}
+
+	t.Run("produces_variation", func(t *testing.T) {
+		baseTTL := 10 * time.Second
+		jitterPct := uint32(50)
+		results := make(map[time.Duration]struct{})
+		for i := 0; i < 1000; i++ {
+			results[JitteredTTL(baseTTL, jitterPct)] = struct{}{}
+		}
+		// With 50% jitter on a 10s TTL (5s range), we should see multiple distinct values
+		require.Greater(t, len(results), 1, "expected variation in jittered TTL values")
+	})
+}
