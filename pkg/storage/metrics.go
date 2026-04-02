@@ -2,6 +2,7 @@ package storage
 
 import (
 	"errors"
+	"strconv"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -39,9 +40,5 @@ func SuccessLabel(err error) bool {
 // accuracy is unnecessary. We use d.Milliseconds() (integer truncation) instead of float division
 // (e.g. d.Seconds()*1000) as a deliberate performance tradeoff.
 func ObserveIterQueryDuration(success bool, d time.Duration) {
-	label := "false"
-	if success {
-		label = "true"
-	}
-	iterQueryDurationHistogram.WithLabelValues(label).Observe(float64(d.Milliseconds()))
+	iterQueryDurationHistogram.WithLabelValues(strconv.FormatBool(success)).Observe(float64(d.Milliseconds()))
 }
