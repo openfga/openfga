@@ -104,6 +104,10 @@ func WithCheckQueryV2UpstreamTimeout(timeout time.Duration) CheckQueryV2Option {
 func NewCheckQuery(opts ...CheckQueryV2Option) *CheckQueryV2 {
 	q := &CheckQueryV2{
 		logger: logger.NewNoopLogger(),
+		datastoreOp: storagewrappers.Operation{
+			Method:      V2CheckMethodName, // Must be different from base Check to avoid metric pollution when both Check algorithms are running
+			Concurrency: defaultMaxConcurrentReadsForCheck,
+		},
 	}
 
 	for _, opt := range opts {
@@ -114,7 +118,6 @@ func NewCheckQuery(opts ...CheckQueryV2Option) *CheckQueryV2 {
 }
 
 func (q *CheckQueryV2) Execute(ctx context.Context, req *openfgav1.CheckRequest) (*openfgav1.CheckResponse, storagewrappers.Metadata, error) {
-	q.datastoreOp.Method = V2CheckMethodName // Must be different from base Check to avoid metric pollution when both Check algorithms are running
 	ds := storagewrappers.NewBoundedTupleReader(q.datastore, &q.datastoreOp)
 
 	r, err := check.NewRequest(check.RequestParams{
