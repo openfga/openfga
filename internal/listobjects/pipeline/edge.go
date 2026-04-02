@@ -7,7 +7,6 @@ import (
 	"iter"
 	"strings"
 
-	"github.com/openfga/openfga/internal/listobjects/pipeline/internal/worker"
 	"github.com/openfga/openfga/internal/seq"
 )
 
@@ -22,7 +21,7 @@ func (h *directEdgeHandler) Handle(
 	ctx context.Context,
 	edge *Edge,
 	objects []string,
-) iter.Seq[worker.Item] {
+) iter.Seq[Item] {
 	nodeType, nodeRelation, _ := strings.Cut(edge.GetRelationDefinition(), "#")
 
 	_, userRelation, exists := strings.Cut(edge.GetTo().GetLabel(), "#")
@@ -36,7 +35,7 @@ func (h *directEdgeHandler) Handle(
 		objects = mutated
 	}
 
-	var results iter.Seq[worker.Item]
+	var results iter.Seq[Item]
 
 	if len(objects) > 0 {
 		input := ObjectQuery{
@@ -65,20 +64,20 @@ func (h *ttuEdgeHandler) Handle(
 	ctx context.Context,
 	edge *Edge,
 	objects []string,
-) iter.Seq[worker.Item] {
+) iter.Seq[Item] {
 	tuplesetType, tuplesetRelation, ok := strings.Cut(edge.GetTuplesetRelation(), "#")
 	if !ok {
-		return seq.Sequence(worker.Item{Err: errors.New("invalid tupleset relation")})
+		return seq.Sequence(Item{Err: errors.New("invalid tupleset relation")})
 	}
 
 	tuplesetNode, ok := h.graph.GetNodeByID(edge.GetTuplesetRelation())
 	if !ok {
-		return seq.Sequence(worker.Item{Err: errors.New("tupleset node not in graph")})
+		return seq.Sequence(Item{Err: errors.New("tupleset node not in graph")})
 	}
 
 	edges, ok := h.graph.GetEdgesFromNode(tuplesetNode)
 	if !ok {
-		return seq.Sequence(worker.Item{Err: errors.New("no edges found for tupleset node")})
+		return seq.Sequence(Item{Err: errors.New("no edges found for tupleset node")})
 	}
 
 	targetType, _, _ := strings.Cut(edge.GetTo().GetLabel(), "#")
@@ -93,10 +92,10 @@ func (h *ttuEdgeHandler) Handle(
 	}
 
 	if targetEdge == nil {
-		return seq.Sequence(worker.Item{Err: errors.New("ttu target type is not an edge of tupleset")})
+		return seq.Sequence(Item{Err: errors.New("ttu target type is not an edge of tupleset")})
 	}
 
-	var results iter.Seq[worker.Item]
+	var results iter.Seq[Item]
 
 	if len(objects) > 0 {
 		input := ObjectQuery{
@@ -121,10 +120,10 @@ func (h *identityEdgeHandler) Handle(
 	_ context.Context,
 	_ *Edge,
 	items []string,
-) iter.Seq[worker.Item] {
-	return func(yield func(worker.Item) bool) {
+) iter.Seq[Item] {
+	return func(yield func(Item) bool) {
 		for _, s := range items {
-			if !yield(worker.Item{Value: s}) {
+			if !yield(Item{Value: s}) {
 				return
 			}
 		}
@@ -144,7 +143,7 @@ func (e *edgeInterpreter) Interpret(
 	ctx context.Context,
 	edge *Edge,
 	items []string,
-) iter.Seq[worker.Item] {
+) iter.Seq[Item] {
 	if len(items) == 0 {
 		return emptySequence
 	}
@@ -159,7 +158,7 @@ func (e *edgeInterpreter) Interpret(
 	case edgeTypeComputed, edgeTypeRewrite, edgeTypeDirectLogical, edgeTypeTTULogical:
 		return e.identity.Handle(ctx, edge, items)
 	default:
-		return seq.Sequence(worker.Item{Err: fmt.Errorf(
+		return seq.Sequence(Item{Err: fmt.Errorf(
 			"no handler for edge type: %v",
 			edge.GetEdgeType(),
 		)})
