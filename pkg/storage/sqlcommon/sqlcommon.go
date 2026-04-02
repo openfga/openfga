@@ -326,10 +326,15 @@ func (t *SQLTupleIterator) fetchBuffer(ctx context.Context) error {
 	ctx, span := tracer.Start(ctx, "sqlcommon.fetchBuffer", trace.WithAttributes())
 	defer span.End()
 	ctx = context.WithoutCancel(ctx)
+	start := time.Now()
 	curRows, err := t.rowGetter.GetRows(ctx)
+	elapsed := time.Since(start)
 	if err != nil {
-		return t.handleSQLError(err)
+		storageErr := t.handleSQLError(err)
+		storage.ObserveIterQueryDuration(storage.SuccessLabel(storageErr), elapsed)
+		return storageErr
 	}
+	storage.ObserveIterQueryDuration(true, elapsed)
 	t.rows = curRows
 	return nil
 }
