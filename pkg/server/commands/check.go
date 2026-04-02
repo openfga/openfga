@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -146,11 +147,15 @@ func (q *CheckQueryV2) Execute(ctx context.Context, req *openfgav1.CheckRequest)
 	})
 
 	res, err := resolver.ResolveCheck(ctx, r)
+	metadata := ds.GetMetadata()
 	if err != nil {
-		return nil, ds.GetMetadata(), err
+		if metadata.WasThrottled && errors.Is(err, context.DeadlineExceeded) {
+			err = &ThrottledError{Cause: err}
+		}
+		return nil, metadata, err
 	}
 
 	return &openfgav1.CheckResponse{
 		Allowed: res.GetAllowed(),
-	}, ds.GetMetadata(), nil
+	}, metadata, nil
 }
