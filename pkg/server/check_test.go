@@ -101,8 +101,9 @@ func TestCheck_Validation(t *testing.T) {
 
 // setupCheckServer creates a server with a model and tuples for Check tests.
 // If modelDSL is empty, a default model with document#viewer:[user] is used.
+// If tuples is empty, a default tuple document:1#viewer@user:alice is written.
 // Returns the server and a check request for document:1#viewer@user:alice.
-func setupCheckServer(t *testing.T, modelDSL string, opts ...OpenFGAServiceV1Option) (*Server, *openfgav1.CheckRequest) {
+func setupCheckServer(t *testing.T, modelDSL string, tuples []*openfgav1.TupleKey, opts ...OpenFGAServiceV1Option) (*Server, *openfgav1.CheckRequest) {
 	t.Helper()
 
 	if modelDSL == "" {
@@ -114,6 +115,12 @@ func setupCheckServer(t *testing.T, modelDSL string, opts ...OpenFGAServiceV1Opt
 				relations
 					define viewer: [user]
 		`
+	}
+
+	if len(tuples) == 0 {
+		tuples = []*openfgav1.TupleKey{
+			tuple.NewTupleKey("document:1", "viewer", "user:alice"),
+		}
 	}
 
 	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
@@ -148,9 +155,7 @@ func setupCheckServer(t *testing.T, modelDSL string, opts ...OpenFGAServiceV1Opt
 		StoreId:              storeID,
 		AuthorizationModelId: modelID,
 		Writes: &openfgav1.WriteRequestWrites{
-			TupleKeys: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("document:1", "viewer", "user:alice"),
-			},
+			TupleKeys: tuples,
 		},
 	})
 	require.NoError(t, err)
@@ -176,7 +181,7 @@ func TestShadowV2Check(t *testing.T) {
 	core, logs := observer.New(zap.DebugLevel)
 	testLogger := &logger.ZapLogger{Logger: zap.New(core)}
 
-	s, req := setupCheckServer(t, "",
+	s, req := setupCheckServer(t, "", nil,
 		WithLogger(testLogger),
 		WithShadowCheckResolverTimeout(5*time.Second),
 	)
@@ -307,7 +312,7 @@ func TestV2CheckCacheSeparation(t *testing.T) {
 		goleak.VerifyNone(t)
 	})
 
-	s, req := setupCheckServer(t, "",
+	s, req := setupCheckServer(t, "", nil,
 		WithCheckQueryCacheEnabled(true),
 		WithCheckCacheLimit(10),
 		WithCheckQueryCacheTTL(1*time.Minute),
@@ -395,7 +400,7 @@ func TestV2CheckMetadata(t *testing.T) {
 	})
 
 	t.Run("publishes_datastore_query_and_item_counts", func(t *testing.T) {
-		s, req := setupCheckServer(t, "")
+		s, req := setupCheckServer(t, "", nil)
 
 		ctx := grpc_ctxtags.SetInContext(context.Background(), grpc_ctxtags.NewTags())
 
@@ -423,8 +428,12 @@ func TestV2CheckMetadata(t *testing.T) {
 	})
 
 	t.Run("throttling_enabled_when_flag_on_and_threshold_exceeded", func(t *testing.T) {
-		// Use a model with a union so the check requires multiple datastore reads,
-		// exceeding the throttle threshold of 1.
+		// Use an intersection model so the check requires multiple datastore reads,
+		// exceeding the throttle threshold of 1. Intersection is used instead of union
+		// because union short-circuits on the first allowed=true result, which can
+		// nondeterministically reduce the number of reads depending on goroutine scheduling.
+		// Intersection only short-circuits on false, so when both branches are true,
+		// all reads are guaranteed to complete.
 		s, req := setupCheckServer(t, `
 			model
 				schema 1.1
@@ -432,8 +441,12 @@ func TestV2CheckMetadata(t *testing.T) {
 			type document
 				relations
 					define editor: [user]
-					define viewer: [user] or editor
+					define viewer: [user] and editor
 		`,
+			[]*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "user:alice"),
+				tuple.NewTupleKey("document:1", "editor", "user:alice"),
+			},
 			WithFeatureFlagClient(featureflags.NewHardcodedBooleanClient(true)),
 			WithCheckDatabaseThrottle(1, 1*time.Millisecond),
 		)
@@ -456,7 +469,7 @@ func TestV2CheckMetadata(t *testing.T) {
 	})
 
 	t.Run("throttling_disabled_when_flag_off", func(t *testing.T) {
-		s, req := setupCheckServer(t, "",
+		s, req := setupCheckServer(t, "", nil,
 			WithFeatureFlagClient(featureflags.NewNoopFeatureFlagClient()),
 			WithCheckDatabaseThrottle(1, 1*time.Millisecond),
 		)
