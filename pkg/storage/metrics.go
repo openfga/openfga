@@ -20,28 +20,28 @@ var iterQueryDurationHistogram = promauto.NewHistogramVec(prometheus.HistogramOp
 	NativeHistogramMinResetDuration: time.Hour,
 }, []string{"success"})
 
-// SuccessLabel returns the prometheus success label for a storage error.
-// A nil error or expected storage outcomes (not found, collision, invalid write) are labelled
-// "true" since the DB processed the query correctly. Only genuine infrastructure errors are
-// labelled "false".
-func SuccessLabel(err error) string {
-	if err == nil ||
+// SuccessLabel returns true if err represents a successful storage outcome.
+// A nil error or expected storage outcomes (not found, collision, invalid write) are considered
+// successful since the DB processed the query correctly. Only genuine infrastructure errors
+// return false.
+func SuccessLabel(err error) bool {
+	return err == nil ||
 		errors.Is(err, ErrNotFound) ||
 		errors.Is(err, ErrCollision) ||
-		errors.Is(err, ErrInvalidWriteInput) {
-		return "true"
-	}
-	return "false"
+		errors.Is(err, ErrInvalidWriteInput)
 }
 
 // ObserveIterQueryDuration records a duration observation on the shared iterator query histogram.
-// Err must be a storage-layer error (nil or a sentinel returned by the backend's error handler,
-// e.g. ErrNotFound, ErrCollision); the success label is derived via SuccessLabel to guarantee
-// only the fixed values "true"/"false" are ever emitted.
+// Callers determine the success value — typically via SuccessLabel(err) for error-based classification,
+// but any boolean is accepted to support unforeseen use cases.
 //
 // Since iterQueryDurationHistogram buckets are defined in whole milliseconds, sub-millisecond
 // accuracy is unnecessary. We use d.Milliseconds() (integer truncation) instead of float division
 // (e.g. d.Seconds()*1000) as a deliberate performance tradeoff.
-func ObserveIterQueryDuration(err error, d time.Duration) {
-	iterQueryDurationHistogram.WithLabelValues(SuccessLabel(err)).Observe(float64(d.Milliseconds()))
+func ObserveIterQueryDuration(success bool, d time.Duration) {
+	label := "false"
+	if success {
+		label = "true"
+	}
+	iterQueryDurationHistogram.WithLabelValues(label).Observe(float64(d.Milliseconds()))
 }

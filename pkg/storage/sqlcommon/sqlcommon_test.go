@@ -162,7 +162,12 @@ func sqlIterQuerySampleCount(t *testing.T, successVal string) uint64 {
 			for _, m := range mf.GetMetric() {
 				for _, l := range m.GetLabel() {
 					if l.GetName() == "success" && l.GetValue() == successVal {
-						return m.GetHistogram().GetSampleCount()
+						h := m.GetHistogram()
+						// SampleCountFloat overrides SampleCount when native histograms are active.
+						if f := h.GetSampleCountFloat(); f > 0 {
+							return uint64(f)
+						}
+						return h.GetSampleCount()
 					}
 				}
 			}
