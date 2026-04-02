@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	"go.uber.org/zap"
@@ -98,39 +99,44 @@ func TestCheck_Validation(t *testing.T) {
 	}
 }
 
-func TestShadowV2Check(t *testing.T) {
-	t.Cleanup(func() {
-		goleak.VerifyNone(t)
-	})
+// setupCheckServer creates a server with a model and tuples for Check tests.
+// If modelDSL is empty, a default model with document#viewer:[user] is used.
+// Returns the server and a check request for document:1#viewer@user:alice.
+func setupCheckServer(t *testing.T, modelDSL string, opts ...OpenFGAServiceV1Option) (*Server, *openfgav1.CheckRequest) {
+	t.Helper()
+
+	if modelDSL == "" {
+		modelDSL = `
+			model
+				schema 1.1
+			type user
+			type document
+				relations
+					define viewer: [user]
+		`
+	}
 
 	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
 
-	core, logs := observer.New(zap.DebugLevel)
-	testLogger := &logger.ZapLogger{Logger: zap.New(core)}
-
-	s := MustNewServerWithOpts(
+	defaultOpts := []OpenFGAServiceV1Option{
 		WithDatastore(ds),
-		WithLogger(testLogger),
-		WithShadowCheckResolverTimeout(5*time.Second),
-	)
+	}
+	defaultOpts = append(defaultOpts, opts...)
+
+	s := MustNewServerWithOpts(defaultOpts...)
 	t.Cleanup(s.Close)
 
-	createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{
-		Name: "shadow-check-test",
+	ctx := context.Background()
+
+	createStoreResp, err := s.CreateStore(ctx, &openfgav1.CreateStoreRequest{
+		Name: "v2check-test",
 	})
 	require.NoError(t, err)
 	storeID := createStoreResp.GetId()
 
-	model := testutils.MustTransformDSLToProtoWithID(`
-		model
-			schema 1.1
-		type user
-		type document
-			relations
-				define viewer: [user]
-	`)
+	model := testutils.MustTransformDSLToProtoWithID(modelDSL)
 
-	writeModelResp, err := s.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
+	writeModelResp, err := s.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 		StoreId:         storeID,
 		SchemaVersion:   model.GetSchemaVersion(),
 		TypeDefinitions: model.GetTypeDefinitions(),
@@ -138,7 +144,7 @@ func TestShadowV2Check(t *testing.T) {
 	require.NoError(t, err)
 	modelID := writeModelResp.GetAuthorizationModelId()
 
-	_, err = s.Write(context.Background(), &openfgav1.WriteRequest{
+	_, err = s.Write(ctx, &openfgav1.WriteRequest{
 		StoreId:              storeID,
 		AuthorizationModelId: modelID,
 		Writes: &openfgav1.WriteRequestWrites{
@@ -149,20 +155,36 @@ func TestShadowV2Check(t *testing.T) {
 	})
 	require.NoError(t, err)
 
+	req := &openfgav1.CheckRequest{
+		StoreId:              storeID,
+		AuthorizationModelId: modelID,
+		TupleKey: &openfgav1.CheckRequestTupleKey{
+			Object:   "document:1",
+			Relation: "viewer",
+			User:     "user:alice",
+		},
+	}
+
+	return s, req
+}
+
+func TestShadowV2Check(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	core, logs := observer.New(zap.DebugLevel)
+	testLogger := &logger.ZapLogger{Logger: zap.New(core)}
+
+	s, req := setupCheckServer(t, "",
+		WithLogger(testLogger),
+		WithShadowCheckResolverTimeout(5*time.Second),
+	)
+
 	t.Run("logs_match_when_results_agree", func(t *testing.T) {
 		logs.TakeAll() // clear previous logs
 
 		mainRes := &openfgav1.CheckResponse{Allowed: true}
-		req := &openfgav1.CheckRequest{
-			StoreId:              storeID,
-			AuthorizationModelId: modelID,
-			TupleKey: &openfgav1.CheckRequestTupleKey{
-				Object:   "document:1",
-				Relation: "viewer",
-				User:     "user:alice",
-			},
-		}
-
 		s.shadowV2Check(context.Background(), req, mainRes, 10)
 
 		shadowLogs := logs.FilterMessage("shadow check")
@@ -186,16 +208,6 @@ func TestShadowV2Check(t *testing.T) {
 
 		// main says allowed=false, but alice IS a viewer, so shadow will say true
 		mainRes := &openfgav1.CheckResponse{Allowed: false}
-		req := &openfgav1.CheckRequest{
-			StoreId:              storeID,
-			AuthorizationModelId: modelID,
-			TupleKey: &openfgav1.CheckRequestTupleKey{
-				Object:   "document:1",
-				Relation: "viewer",
-				User:     "user:alice",
-			},
-		}
-
 		s.shadowV2Check(context.Background(), req, mainRes, 20)
 
 		shadowLogs := logs.FilterMessage("shadow check")
@@ -218,7 +230,7 @@ func TestShadowV2Check(t *testing.T) {
 		mainRes := &openfgav1.CheckResponse{Allowed: false}
 		req := &openfgav1.CheckRequest{
 			StoreId:              "01K3RZVNE3NJ4FYKK99QN013G2", // non-existent store
-			AuthorizationModelId: modelID,
+			AuthorizationModelId: req.GetAuthorizationModelId(),
 			TupleKey: &openfgav1.CheckRequestTupleKey{
 				Object:   "document:1",
 				Relation: "viewer",
@@ -295,63 +307,13 @@ func TestV2CheckCacheSeparation(t *testing.T) {
 		goleak.VerifyNone(t)
 	})
 
-	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
-
-	// Create server with cache and cache controller enabled to ensure both main and shadow caches/controllers are initialized.
-	s := MustNewServerWithOpts(
-		WithDatastore(ds),
+	s, req := setupCheckServer(t, "",
 		WithCheckQueryCacheEnabled(true),
 		WithCheckCacheLimit(10),
 		WithCheckQueryCacheTTL(1*time.Minute),
 		WithCacheControllerEnabled(true),
 	)
-	t.Cleanup(s.Close)
-
 	ctx := context.Background()
-
-	createStoreResp, err := s.CreateStore(ctx, &openfgav1.CreateStoreRequest{
-		Name: "cache-separation-test",
-	})
-	require.NoError(t, err)
-	storeID := createStoreResp.GetId()
-
-	model := testutils.MustTransformDSLToProtoWithID(`
-		model
-			schema 1.1
-		type user
-		type document
-			relations
-				define viewer: [user]
-	`)
-
-	writeModelResp, err := s.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
-		StoreId:         storeID,
-		SchemaVersion:   model.GetSchemaVersion(),
-		TypeDefinitions: model.GetTypeDefinitions(),
-	})
-	require.NoError(t, err)
-	modelID := writeModelResp.GetAuthorizationModelId()
-
-	_, err = s.Write(ctx, &openfgav1.WriteRequest{
-		StoreId:              storeID,
-		AuthorizationModelId: modelID,
-		Writes: &openfgav1.WriteRequestWrites{
-			TupleKeys: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("document:1", "viewer", "user:alice"),
-			},
-		},
-	})
-	require.NoError(t, err)
-
-	req := &openfgav1.CheckRequest{
-		StoreId:              storeID,
-		AuthorizationModelId: modelID,
-		TupleKey: &openfgav1.CheckRequestTupleKey{
-			Object:   "document:1",
-			Relation: "viewer",
-			User:     "user:alice",
-		},
-	}
 
 	// Stop the original LRU caches created during server construction so their
 	// background maintenance goroutines don't leak when we swap in recording caches.
@@ -424,5 +386,95 @@ func TestV2CheckCacheSeparation(t *testing.T) {
 			s.sharedDatastoreResources.ShadowCacheController,
 			"ShadowCacheController should be a different instance than CacheController",
 		)
+	})
+}
+
+func TestV2CheckMetadata(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	t.Run("publishes_datastore_query_and_item_counts", func(t *testing.T) {
+		s, req := setupCheckServer(t, "")
+
+		ctx := grpc_ctxtags.SetInContext(context.Background(), grpc_ctxtags.NewTags())
+
+		res, err := s.v2Check(ctx, req,
+			s.sharedDatastoreResources.CheckCache,
+			s.sharedDatastoreResources.CacheController,
+			s.authzModelGraphResolver,
+		)
+		require.NoError(t, err)
+		require.True(t, res.GetAllowed())
+
+		tags := grpc_ctxtags.Extract(ctx).Values()
+
+		queryCount, ok := tags[datastoreQueryCountHistogramName]
+		require.True(t, ok, "datastoreQueryCount should be set in context tags")
+		require.Greater(t, queryCount, float64(0), "datastoreQueryCount should be > 0")
+
+		itemCount, ok := tags[datastoreItemCountHistogramName]
+		require.True(t, ok, "datastoreItemCount should be set in context tags")
+		require.Greater(t, itemCount, float64(0), "datastoreItemCount should be > 0")
+
+		throttled, ok := tags["request.datastore_throttled"]
+		require.True(t, ok, "request.datastore_throttled should be set in context tags")
+		require.Equal(t, false, throttled, "throttling should be disabled by default")
+	})
+
+	t.Run("throttling_enabled_when_flag_on_and_threshold_exceeded", func(t *testing.T) {
+		// Use a model with a union so the check requires multiple datastore reads,
+		// exceeding the throttle threshold of 1.
+		s, req := setupCheckServer(t, `
+			model
+				schema 1.1
+			type user
+			type document
+				relations
+					define editor: [user]
+					define viewer: [user] or editor
+		`,
+			WithFeatureFlagClient(featureflags.NewHardcodedBooleanClient(true)),
+			WithCheckDatabaseThrottle(1, 1*time.Millisecond),
+		)
+
+		ctx := grpc_ctxtags.SetInContext(context.Background(), grpc_ctxtags.NewTags())
+
+		res, err := s.v2Check(ctx, req,
+			s.sharedDatastoreResources.CheckCache,
+			s.sharedDatastoreResources.CacheController,
+			s.authzModelGraphResolver,
+		)
+		require.NoError(t, err)
+		require.True(t, res.GetAllowed())
+
+		tags := grpc_ctxtags.Extract(ctx).Values()
+
+		throttled, ok := tags["request.datastore_throttled"]
+		require.True(t, ok, "request.datastore_throttled should be set in context tags")
+		require.Equal(t, true, throttled, "throttling should be enabled when feature flag is true and threshold exceeded")
+	})
+
+	t.Run("throttling_disabled_when_flag_off", func(t *testing.T) {
+		s, req := setupCheckServer(t, "",
+			WithFeatureFlagClient(featureflags.NewNoopFeatureFlagClient()),
+			WithCheckDatabaseThrottle(1, 1*time.Millisecond),
+		)
+
+		ctx := grpc_ctxtags.SetInContext(context.Background(), grpc_ctxtags.NewTags())
+
+		res, err := s.v2Check(ctx, req,
+			s.sharedDatastoreResources.CheckCache,
+			s.sharedDatastoreResources.CacheController,
+			s.authzModelGraphResolver,
+		)
+		require.NoError(t, err)
+		require.True(t, res.GetAllowed())
+
+		tags := grpc_ctxtags.Extract(ctx).Values()
+
+		throttled, ok := tags["request.datastore_throttled"]
+		require.True(t, ok, "request.datastore_throttled should be set in context tags")
+		require.Equal(t, false, throttled, "throttling should be disabled when feature flag is false")
 	})
 }
