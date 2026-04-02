@@ -27,6 +27,10 @@ func (v *validatingIterator[T]) Head(ctx context.Context) (T, error) {
 			return zero, err
 		}
 
+		if v.validator == nil {
+			return t, nil
+		}
+
 		ok, err := v.validator(t)
 		if err != nil || !ok {
 			if err != nil {
@@ -54,6 +58,10 @@ func (v *validatingIterator[T]) Next(ctx context.Context) (T, error) {
 			}
 			var zero T
 			return zero, err
+		}
+
+		if v.validator == nil {
+			return t, nil
 		}
 
 		ok, err := v.validator(t)
