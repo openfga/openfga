@@ -134,8 +134,8 @@ func (q *CheckQueryV2) Execute(ctx context.Context, req *openfgav1.CheckRequest)
 			q.cache,
 			q.sharedResources.V2IteratorCacheMaxSize,
 			q.sharedResources.V2IteratorCacheTTL,
-			q.sharedResources.SingleflightGroup,  // SHARED across requests
-			q.sharedResources.WaitGroup,          // SHARED across requests
+			q.sharedResources.SingleflightGroup, // SHARED across requests
+			q.sharedResources.WaitGroup,         // SHARED across requests
 			q.sharedResources.V2IteratorDrainTimeout,
 		)
 	}

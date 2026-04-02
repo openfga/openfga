@@ -29,7 +29,7 @@ import (
 const (
 	v2IteratorCachePrefix = "v2ic."
 	maxCachedElements     = 1000
-	// initialBufferCapacity is the default initial capacity for tuple buffers.
+	// InitialBufferCapacity is the default initial capacity for tuple buffers.
 	// Most queries return fewer than 100 tuples, so this avoids over-allocation
 	// while still providing reasonable capacity to minimize slice growth.
 	initialBufferCapacity = 100
@@ -164,6 +164,12 @@ func newCachingIterator(
 	// Most queries return few tuples, so initialBufferCapacity is usually sufficient.
 	initCap := min(maxSize/2, initialBufferCapacity)
 
+	// Register with WaitGroup at construction time to prevent Add-after-Wait panic.
+	// This ensures Add() always happens before any Wait() can be called during shutdown.
+	if wg != nil {
+		wg.Add(1)
+	}
+
 	return &CachingIterator{
 		inner:        inner,
 		tuples:       make([]*openfgav1.Tuple, 0, initCap),
@@ -228,7 +234,7 @@ func (c *CachingIterator) Head(ctx context.Context) (*openfgav1.Tuple, error) {
 func (c *CachingIterator) Stop() {
 	c.mu.Lock()
 
-	if !c.closing.CompareAndSwap(false, true) {
+	if c.closing.Swap(true) {
 		c.mu.Unlock()
 		return
 	}
@@ -236,14 +242,16 @@ func (c *CachingIterator) Stop() {
 	if c.tuples == nil {
 		c.mu.Unlock()
 		c.inner.Stop()
+		// Must call Done since we Added in constructor
+		if c.wg != nil {
+			c.wg.Done()
+		}
 		return
 	}
 
 	// Spawn background goroutine to handle draining/flushing (like V1).
 	// This avoids holding mutex during potential I/O operations.
-	if c.wg != nil {
-		c.wg.Add(1)
-	}
+	// Note: wg.Add(1) is now called in constructor to prevent Add-after-Wait panic.
 	c.mu.Unlock()
 	go c.drainInBackground()
 }
@@ -251,8 +259,7 @@ func (c *CachingIterator) Stop() {
 // flush transforms collected tuples to MinimalCacheEntry and stores in cache.
 // Must be called with mutex held or after closing is set.
 func (c *CachingIterator) flush() {
-	if c.tuples == nil || len(c.tuples) == 0 {
-		c.tuples = nil
+	if len(c.tuples) == 0 {
 		return
 	}
 

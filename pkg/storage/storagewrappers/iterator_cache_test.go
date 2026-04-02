@@ -2,6 +2,7 @@ package storagewrappers
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -561,6 +562,219 @@ func TestCachingIterator_BackgroundDrainCompletes_DoesCache(t *testing.T) {
 	wg.Wait()
 
 	// Verify: cache.Set was called once (checked by gomock)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Issue Fix Tests - Verifying fixes for PR review comments
+// ─────────────────────────────────────────────────────────────────────────────
+
+// TestCachingIterator_Stop_Idempotent verifies that Stop() can be called
+// multiple times safely (Issue 1: Swap vs CompareAndSwap).
+func TestCachingIterator_Stop_Idempotent(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+
+	mockCache := mocks.NewMockInMemoryCache[any](mockController)
+
+	ctx := context.Background()
+	sf := &singleflight.Group{}
+	wg := &sync.WaitGroup{}
+
+	tuples := []*openfgav1.Tuple{
+		{Key: tuple.NewTupleKey("document:1", "viewer", "user:alice")},
+	}
+
+	innerIter := storage.NewStaticTupleIterator(tuples)
+
+	// Expect cache operations
+	mockCache.EXPECT().Get("test-key").Return(nil).AnyTimes()
+	mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+
+	iter := newCachingIterator(
+		innerIter, mockCache, "test-key", 1000, time.Hour, 30*time.Second,
+		sf, wg, "document", "viewer", "ReadUsersetTuples",
+	)
+
+	// Consume all tuples
+	_, err := iter.Next(ctx)
+	require.NoError(t, err)
+	_, err = iter.Next(ctx)
+	require.ErrorIs(t, err, storage.ErrIteratorDone)
+
+	// Call Stop multiple times - should be idempotent and not panic
+	iter.Stop()
+	iter.Stop()
+	iter.Stop()
+
+	// Wait for background goroutine
+	wg.Wait()
+
+	// Verify closing flag is set
+	require.True(t, iter.closing.Load())
+}
+
+// TestCachingIterator_Flush_EmptyAndNil verifies that flush() handles
+// nil and empty slices correctly (Issue 2: redundant nil check).
+func TestCachingIterator_Flush_EmptyAndNil(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+
+	mockCache := mocks.NewMockInMemoryCache[any](mockController)
+
+	sf := &singleflight.Group{}
+	wg := &sync.WaitGroup{}
+
+	t.Run("flush_with_nil_tuples_does_not_panic", func(t *testing.T) {
+		iter := newCachingIterator(
+			storage.NewStaticTupleIterator([]*openfgav1.Tuple{}),
+			mockCache, "test-key", 1000, time.Hour, 30*time.Second,
+			sf, wg, "document", "viewer", "ReadUsersetTuples",
+		)
+
+		// Manually set tuples to nil to simulate abandoned state
+		iter.tuples = nil
+
+		// flush should not panic and should not call cache.Set
+		// (no mockCache.EXPECT().Set() means test fails if Set is called)
+		iter.flush()
+	})
+
+	t.Run("flush_with_empty_tuples_does_not_cache", func(t *testing.T) {
+		iter := newCachingIterator(
+			storage.NewStaticTupleIterator([]*openfgav1.Tuple{}),
+			mockCache, "test-key", 1000, time.Hour, 30*time.Second,
+			sf, wg, "document", "viewer", "ReadUsersetTuples",
+		)
+
+		// tuples is initialized as empty slice
+		require.NotNil(t, iter.tuples)
+		require.Empty(t, iter.tuples)
+
+		// flush should not panic and should not call cache.Set
+		iter.flush()
+	})
+}
+
+// TestCachingIterator_WaitGroup_AddInConstructor verifies that wg.Add is
+// called in the constructor, not in Stop(), to prevent Add-after-Wait panic
+// (Issue 5).
+func TestCachingIterator_WaitGroup_AddInConstructor(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+
+	mockCache := mocks.NewMockInMemoryCache[any](mockController)
+	mockCache.EXPECT().Get(gomock.Any()).Return(nil).AnyTimes()
+	mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+
+	sf := &singleflight.Group{}
+	wg := &sync.WaitGroup{}
+
+	tuples := []*openfgav1.Tuple{
+		{Key: tuple.NewTupleKey("document:1", "viewer", "user:alice")},
+	}
+
+	// Create multiple iterators - wg.Add(1) is called in constructor for each
+	// This verifies that even if we create iterators rapidly, the WaitGroup
+	// is properly incremented at construction time (not at Stop time)
+	iterators := make([]*CachingIterator, 10)
+	for i := 0; i < 10; i++ {
+		innerIter := storage.NewStaticTupleIterator(tuples)
+		iterators[i] = newCachingIterator(
+			innerIter, mockCache, "test-key-"+strconv.Itoa(i), 1000, time.Hour, 30*time.Second,
+			sf, wg, "document", "viewer", "ReadUsersetTuples",
+		)
+	}
+
+	// Start a goroutine that will wait - this should not panic because
+	// all Add() calls happened at construction time
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	// Now stop all iterators - this calls wg.Done() for each
+	for _, iter := range iterators {
+		iter.Stop()
+	}
+
+	// Wait should complete without panic
+	select {
+	case <-done:
+		// Success - all iterators properly decremented WaitGroup
+	case <-time.After(5 * time.Second):
+		t.Fatal("wg.Wait() timed out - wg.Done() was not called for all iterators")
+	}
+}
+
+// TestCachingIterator_WaitGroup_DoneCalledOnNilTuples verifies that wg.Done()
+// is called even when tuples is nil (early return path in Stop()).
+func TestCachingIterator_WaitGroup_DoneCalledOnNilTuples(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+
+	mockCache := mocks.NewMockInMemoryCache[any](mockController)
+
+	sf := &singleflight.Group{}
+	wg := &sync.WaitGroup{}
+
+	// Create iterator with tuples that will exceed maxSize
+	maxSize := 2
+	tuples := make([]*openfgav1.Tuple, maxSize+1)
+	for i := 0; i < maxSize+1; i++ {
+		tuples[i] = &openfgav1.Tuple{Key: tuple.NewTupleKey("document:"+strconv.Itoa(i), "viewer", "user:test")}
+	}
+
+	innerIter := storage.NewStaticTupleIterator(tuples)
+
+	iter := newCachingIterator(
+		innerIter, mockCache, "test-key", maxSize, time.Hour, 30*time.Second,
+		sf, wg, "document", "viewer", "ReadUsersetTuples",
+	)
+
+	ctx := context.Background()
+
+	// Consume all tuples - this will set tuples to nil due to maxSize exceeded
+	for i := 0; i < maxSize+1; i++ {
+		_, err := iter.Next(ctx)
+		require.NoError(t, err)
+	}
+
+	// Verify tuples is nil (abandoned)
+	require.Nil(t, iter.tuples)
+
+	// Stop should call wg.Done() even though tuples is nil
+	iter.Stop()
+
+	// This should not hang - wg.Done() must have been called
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		// Success - wg.Wait() returned
+	case <-time.After(1 * time.Second):
+		t.Fatal("wg.Wait() timed out - wg.Done() was not called")
+	}
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -58,10 +58,10 @@ type SharedDatastoreResources struct {
 	SharedIteratorStorage *sharediterator.Storage
 
 	// V2 iterator cache settings - used by CheckQueryV2 to wrap datastore with shared singleflight
-	V2IteratorCacheEnabled  bool
-	V2IteratorCacheTTL      time.Duration
-	V2IteratorCacheMaxSize  int
-	V2IteratorDrainTimeout  time.Duration // Timeout for background iterator drain operations
+	V2IteratorCacheEnabled bool
+	V2IteratorCacheTTL     time.Duration
+	V2IteratorCacheMaxSize int
+	V2IteratorDrainTimeout time.Duration // Timeout for background iterator drain operations
 }
 
 func NewSharedDatastoreResources(
@@ -84,10 +84,10 @@ func NewSharedDatastoreResources(
 				int(settings.SharedIteratorLimit))),
 
 		// V2 iterator cache settings
-		V2IteratorCacheEnabled:  settings.ShouldCacheCheckIterators(),
-		V2IteratorCacheTTL:      settings.CheckIteratorCacheTTL,
-		V2IteratorCacheMaxSize:  int(settings.CheckIteratorCacheMaxResults),
-		V2IteratorDrainTimeout:  settings.CheckIteratorDrainTimeout,
+		V2IteratorCacheEnabled: settings.ShouldCacheCheckIterators(),
+		V2IteratorCacheTTL:     settings.CheckIteratorCacheTTL,
+		V2IteratorCacheMaxSize: int(settings.CheckIteratorCacheMaxResults),
+		V2IteratorDrainTimeout: settings.CheckIteratorDrainTimeout,
 	}
 
 	// Apply opts now to get SharedDatastoresResources customizations for subsequent logic.
