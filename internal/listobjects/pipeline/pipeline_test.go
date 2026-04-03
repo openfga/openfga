@@ -18,6 +18,7 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/listobjects/pipeline"
+	"github.com/openfga/openfga/internal/listobjects/pipeline/internal/worker"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/memory"
 	"github.com/openfga/openfga/pkg/testutils"
@@ -65,10 +66,8 @@ func NewErrorReader(err error) *ErrorReader {
 	return &ErrorReader{err: err}
 }
 
-func (e *ErrorReader) Read(_ context.Context, _ pipeline.ObjectQuery) iter.Seq[pipeline.Item] {
-	return func(yield func(pipeline.Item) bool) {
-		yield(pipeline.Item{Err: e.err})
-	}
+func (e *ErrorReader) Read(_ context.Context, _ pipeline.ObjectQuery) pipeline.Receiver[pipeline.Item] {
+	return worker.NewValueReceiver(pipeline.Item{Err: e.err})
 }
 
 func TestPipelineShutdown(t *testing.T) {

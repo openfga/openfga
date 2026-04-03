@@ -32,11 +32,18 @@ func TestReaderRead(t *testing.T) {
 		reader := pipeline.NewReader(store, "store-1")
 
 		var got []string
-		for item := range reader.Read(context.Background(), pipeline.ObjectQuery{
+		receiver := reader.Read(context.Background(), pipeline.ObjectQuery{
 			ObjectType: "document",
 			Relation:   "viewer",
 			Users:      []string{"user:alice"},
-		}) {
+		})
+		defer receiver.Close()
+
+		for {
+			item, ok := receiver.Recv(context.Background())
+			if !ok {
+				break
+			}
 			if item.Err != nil {
 				t.Fatalf("unexpected error: %v", item.Err)
 			}
@@ -61,11 +68,18 @@ func TestReaderRead(t *testing.T) {
 		reader := pipeline.NewReader(store, "store-1")
 
 		var gotErr error
-		for item := range reader.Read(context.Background(), pipeline.ObjectQuery{
+		receiver := reader.Read(context.Background(), pipeline.ObjectQuery{
 			ObjectType: "document",
 			Relation:   "viewer",
 			Users:      []string{"user:alice"},
-		}) {
+		})
+		defer receiver.Close()
+
+		for {
+			item, ok := receiver.Recv(context.Background())
+			if !ok {
+				break
+			}
 			gotErr = item.Err
 		}
 
@@ -85,11 +99,18 @@ func TestReaderRead(t *testing.T) {
 		reader := pipeline.NewReader(store, "store-1")
 
 		count := 0
-		for item := range reader.Read(context.Background(), pipeline.ObjectQuery{
+		receiver := reader.Read(context.Background(), pipeline.ObjectQuery{
 			ObjectType: "document",
 			Relation:   "viewer",
 			Users:      []string{"user:alice"},
-		}) {
+		})
+		defer receiver.Close()
+
+		for {
+			item, ok := receiver.Recv(context.Background())
+			if !ok {
+				break
+			}
 			if item.Err != nil {
 				t.Fatalf("unexpected error: %v", item.Err)
 			}
@@ -123,11 +144,18 @@ func TestReaderRead(t *testing.T) {
 		reader := pipeline.NewReader(store, "store-1", pipeline.WithReaderValidator(validator))
 
 		var got []string
-		for item := range reader.Read(context.Background(), pipeline.ObjectQuery{
+		receiver := reader.Read(context.Background(), pipeline.ObjectQuery{
 			ObjectType: "document",
 			Relation:   "viewer",
 			Users:      []string{"user:alice"},
-		}) {
+		})
+		defer receiver.Close()
+
+		for {
+			item, ok := receiver.Recv(context.Background())
+			if !ok {
+				break
+			}
 			if item.Err != nil {
 				t.Fatalf("unexpected error: %v", item.Err)
 			}
@@ -159,11 +187,18 @@ func TestReaderRead(t *testing.T) {
 		cancel()
 
 		count := 0
-		for range reader.Read(ctx, pipeline.ObjectQuery{
+		receiver := reader.Read(ctx, pipeline.ObjectQuery{
 			ObjectType: "document",
 			Relation:   "viewer",
 			Users:      []string{"user:alice"},
-		}) {
+		})
+		defer receiver.Close()
+
+		for {
+			_, ok := receiver.Recv(ctx)
+			if !ok {
+				break
+			}
 			count++
 		}
 
@@ -192,11 +227,126 @@ func TestReaderRead(t *testing.T) {
 
 		reader := pipeline.NewReader(store, "store-1")
 
-		for range reader.Read(context.Background(), pipeline.ObjectQuery{
+		receiver := reader.Read(context.Background(), pipeline.ObjectQuery{
 			ObjectType: "document",
 			Relation:   "viewer",
 			Users:      []string{"group:eng#member"},
-		}) {
+		})
+		defer receiver.Close()
+
+		for {
+			_, ok := receiver.Recv(context.Background())
+			if !ok {
+				break
+			}
+		}
+	})
+
+	t.Run("consistency option reaches storage", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		store := mocks.NewMockRelationshipTupleReader(ctrl)
+
+		store.EXPECT().
+			ReadStartingWithUser(gomock.Any(), "store-1", gomock.Any(),
+				gomock.Cond(func(x any) bool {
+					opts, ok := x.(storage.ReadStartingWithUserOptions)
+					if !ok {
+						return false
+					}
+					return opts.Consistency.Preference == openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY
+				}),
+			).
+			Return(storage.NewStaticTupleIterator(nil), nil)
+
+		reader := pipeline.NewReader(store, "store-1",
+			pipeline.WithReaderConsistency(openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY),
+		)
+
+		receiver := reader.Read(context.Background(), pipeline.ObjectQuery{
+			ObjectType: "document",
+			Relation:   "viewer",
+			Users:      []string{"user:alice"},
+		})
+		defer receiver.Close()
+
+		for {
+			_, ok := receiver.Recv(context.Background())
+			if !ok {
+				break
+			}
+		}
+	})
+
+	t.Run("multiple users are all included in storage filter", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		store := mocks.NewMockRelationshipTupleReader(ctrl)
+
+		store.EXPECT().
+			ReadStartingWithUser(gomock.Any(), "store-1",
+				gomock.Cond(func(x any) bool {
+					f, ok := x.(storage.ReadStartingWithUserFilter)
+					if !ok || len(f.UserFilter) != 2 {
+						return false
+					}
+					// First user is a direct user, second is a userset.
+					return f.UserFilter[0].GetObject() == "user:alice" &&
+						f.UserFilter[0].GetRelation() == "" &&
+						f.UserFilter[1].GetObject() == "group:eng" &&
+						f.UserFilter[1].GetRelation() == "member"
+				}),
+				gomock.Any(),
+			).
+			Return(storage.NewStaticTupleIterator(nil), nil)
+
+		reader := pipeline.NewReader(store, "store-1")
+
+		receiver := reader.Read(context.Background(), pipeline.ObjectQuery{
+			ObjectType: "document",
+			Relation:   "viewer",
+			Users:      []string{"user:alice", "group:eng#member"},
+		})
+		defer receiver.Close()
+
+		for {
+			_, ok := receiver.Recv(context.Background())
+			if !ok {
+				break
+			}
+		}
+	})
+
+	t.Run("conditions are passed to storage filter", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		store := mocks.NewMockRelationshipTupleReader(ctrl)
+
+		store.EXPECT().
+			ReadStartingWithUser(gomock.Any(), "store-1",
+				gomock.Cond(func(x any) bool {
+					f, ok := x.(storage.ReadStartingWithUserFilter)
+					if !ok {
+						return false
+					}
+					return slices.Equal(f.Conditions, []string{"ipaddr"})
+				}),
+				gomock.Any(),
+			).
+			Return(storage.NewStaticTupleIterator(nil), nil)
+
+		reader := pipeline.NewReader(store, "store-1")
+
+		receiver := reader.Read(context.Background(), pipeline.ObjectQuery{
+			ObjectType: "document",
+			Relation:   "viewer",
+			Users:      []string{"user:alice"},
+			Conditions: []string{"ipaddr"},
+		})
+		defer receiver.Close()
+
+		for {
+			_, ok := receiver.Recv(context.Background())
+			if !ok {
+				break
+			}
 		}
 	})
 
@@ -217,17 +367,21 @@ func TestReaderRead(t *testing.T) {
 		reader := pipeline.NewReader(store, "store-1")
 
 		var got []string
-		for item := range reader.Read(context.Background(), pipeline.ObjectQuery{
+		receiver := reader.Read(context.Background(), pipeline.ObjectQuery{
 			ObjectType: "document",
 			Relation:   "viewer",
 			Users:      []string{"user:alice"},
-		}) {
-			if item.Err != nil {
-				t.Fatalf("unexpected error: %v", item.Err)
-			}
-			got = append(got, item.Value)
-			break // take only the first item
+		})
+		defer receiver.Close()
+
+		item, ok := receiver.Recv(context.Background())
+		if !ok {
+			t.Fatal("unexpected termination")
 		}
+		if item.Err != nil {
+			t.Fatalf("unexpected error: %v", item.Err)
+		}
+		got = append(got, item.Value)
 
 		if len(got) != 1 || got[0] != "document:1" {
 			t.Fatalf("got %v, want [document:1]", got)

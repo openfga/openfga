@@ -3,7 +3,6 @@ package worker_test
 import (
 	"context"
 	"errors"
-	"iter"
 	"sort"
 	"testing"
 
@@ -48,6 +47,19 @@ func sendItems(values ...string) *mockSender {
 	return &mockSender{ch: ch}
 }
 
+// sendMultipleMessages creates a mockSender that delivers each batch as a
+// separate message, then closes.
+func sendMultipleMessages(batches ...[]string) *mockSender {
+	ch := make(chan *worker.Message, len(batches))
+	for _, batch := range batches {
+		items := make([]string, len(batch))
+		copy(items, batch)
+		ch <- &worker.Message{Value: items}
+	}
+	close(ch)
+	return &mockSender{ch: ch}
+}
+
 // sendNothing creates a mockSender that delivers no messages.
 func sendNothing() *mockSender {
 	ch := make(chan *worker.Message)
@@ -57,30 +69,26 @@ func sendNothing() *mockSender {
 
 // mockInterpreter implements worker.Interpreter with a configurable function.
 type mockInterpreter struct {
-	fn func(context.Context, *worker.Edge, []string) iter.Seq[worker.Item]
+	fn func(context.Context, *worker.Edge, []string) worker.Receiver[worker.Item]
 }
 
-func (m *mockInterpreter) Interpret(ctx context.Context, edge *worker.Edge, items []string) iter.Seq[worker.Item] {
+func (m *mockInterpreter) Interpret(ctx context.Context, edge *worker.Edge, items []string) worker.Receiver[worker.Item] {
 	return m.fn(ctx, edge, items)
 }
 
 // passthroughInterpreter returns each input string as a successful Item.
 func passthroughInterpreter() *mockInterpreter {
 	return &mockInterpreter{
-		fn: func(_ context.Context, _ *worker.Edge, items []string) iter.Seq[worker.Item] {
-			return func(yield func(worker.Item) bool) {
-				for _, item := range items {
-					if !yield(worker.Item{Value: item}) {
-						return
-					}
-				}
-			}
+		fn: func(_ context.Context, _ *worker.Edge, items []string) worker.Receiver[worker.Item] {
+			return worker.MapReceiver(worker.NewSliceReceiver(items), func(s string) worker.Item {
+				return worker.Item{Value: s}
+			})
 		},
 	}
 }
 
-func newPool() *worker.BufferPool {
-	return worker.NewBufferPool(chunkSize, 10)
+func newPool() *worker.MessagePool {
+	return worker.NewMessagePool(chunkSize, 10)
 }
 
 func newCore(interp worker.Interpreter, errs chan<- error) *worker.Core {
@@ -242,20 +250,13 @@ func TestBasic_Execute_InterpreterError(t *testing.T) {
 	errs := make(chan error, 10)
 
 	interp := &mockInterpreter{
-		fn: func(_ context.Context, _ *worker.Edge, items []string) iter.Seq[worker.Item] {
-			return func(yield func(worker.Item) bool) {
-				for _, item := range items {
-					if item == "bad" {
-						if !yield(worker.Item{Err: sentinelErr}) {
-							return
-						}
-						continue
-					}
-					if !yield(worker.Item{Value: item}) {
-						return
-					}
+		fn: func(_ context.Context, _ *worker.Edge, items []string) worker.Receiver[worker.Item] {
+			return worker.MapReceiver(worker.NewSliceReceiver(items), func(s string) worker.Item {
+				if s == "bad" {
+					return worker.Item{Err: sentinelErr}
 				}
-			}
+				return worker.Item{Value: s}
+			})
 		},
 	}
 
@@ -385,18 +386,13 @@ func TestIntersection_Execute_InterpreterError(t *testing.T) {
 	errs := make(chan error, 10)
 
 	interp := &mockInterpreter{
-		fn: func(_ context.Context, _ *worker.Edge, items []string) iter.Seq[worker.Item] {
-			return func(yield func(worker.Item) bool) {
-				for _, item := range items {
-					if item == "bad" {
-						yield(worker.Item{Err: sentinelErr})
-						return
-					}
-					if !yield(worker.Item{Value: item}) {
-						return
-					}
+		fn: func(_ context.Context, _ *worker.Edge, items []string) worker.Receiver[worker.Item] {
+			return worker.MapReceiver(worker.NewSliceReceiver(items), func(s string) worker.Item {
+				if s == "bad" {
+					return worker.Item{Err: sentinelErr}
 				}
-			}
+				return worker.Item{Value: s}
+			})
 		},
 	}
 
@@ -542,18 +538,13 @@ func TestDifference_Execute_InterpreterError(t *testing.T) {
 	errs := make(chan error, 10)
 
 	interp := &mockInterpreter{
-		fn: func(_ context.Context, _ *worker.Edge, items []string) iter.Seq[worker.Item] {
-			return func(yield func(worker.Item) bool) {
-				for _, item := range items {
-					if item == "bad" {
-						yield(worker.Item{Err: sentinelErr})
-						return
-					}
-					if !yield(worker.Item{Value: item}) {
-						return
-					}
+		fn: func(_ context.Context, _ *worker.Edge, items []string) worker.Receiver[worker.Item] {
+			return worker.MapReceiver(worker.NewSliceReceiver(items), func(s string) worker.Item {
+				if s == "bad" {
+					return worker.Item{Err: sentinelErr}
 				}
-			}
+				return worker.Item{Value: s}
+			})
 		},
 	}
 
@@ -596,5 +587,50 @@ func TestDifference_Execute_NoSenders(t *testing.T) {
 	w.Execute(context.Background())
 
 	assert.Empty(t, collectOutput(output))
+	assert.Empty(t, errs)
+}
+
+func TestDifference_Execute_DuplicatesInSubtractSet(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	errs := make(chan error, 10)
+	w := &worker.Difference{Core: newCore(passthroughInterpreter(), errs)}
+	w.Listen(sendItems("a", "b", "c"))
+	w.Listen(sendItems("b", "b", "c", "c"))
+	output := w.Subscribe(nil, chunkSize)
+
+	w.Execute(context.Background())
+
+	assert.Equal(t, []string{"a"}, sorted(collectOutput(output)))
+	assert.Empty(t, errs)
+}
+
+func TestBasic_Execute_MultipleMessagesPerSender(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	errs := make(chan error, 10)
+	w := &worker.Basic{Core: newCore(passthroughInterpreter(), errs)}
+	w.Listen(sendMultipleMessages([]string{"a", "b"}, []string{"b", "c"}))
+	output := w.Subscribe(nil, chunkSize)
+
+	w.Execute(context.Background())
+
+	// "b" appears in both messages but should be deduplicated.
+	assert.Equal(t, []string{"a", "b", "c"}, sorted(collectOutput(output)))
+	assert.Empty(t, errs)
+}
+
+func TestIntersection_Execute_DuplicatesWithinSender(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	errs := make(chan error, 10)
+	w := &worker.Intersection{Core: newCore(passthroughInterpreter(), errs)}
+	w.Listen(sendItems("a", "a", "b"))
+	w.Listen(sendItems("a", "b", "b"))
+	output := w.Subscribe(nil, chunkSize)
+
+	w.Execute(context.Background())
+
+	assert.Equal(t, []string{"a", "b"}, sorted(collectOutput(output)))
 	assert.Empty(t, errs)
 }

@@ -10,22 +10,39 @@ import (
 	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/containers"
 	"github.com/openfga/openfga/internal/containers/mpsc"
-	"github.com/openfga/openfga/internal/seq"
 )
 
-// Adder is a generic interface for appending values to a collection.
-type Adder[T any] interface {
-	Add(...T)
+// SubtractingReceiver wraps a Receiver[string] and filters out any
+// values present in the subtraction set.
+type SubtractingReceiver struct {
+	inner        Receiver[string]
+	subtractions map[string]struct{}
 }
 
-// AccumulatorAdder adapts an [mpsc.Accumulator] to satisfy the [Adder] interface.
-type AccumulatorAdder[T any] mpsc.Accumulator[T]
-
-// Add sends each value to the underlying accumulator.
-func (a *AccumulatorAdder[T]) Add(values ...T) {
-	for _, value := range values {
-		(*mpsc.Accumulator[T])(a).Send(value)
+func newSubtractingReceiver(inner Receiver[string], subtractions map[string]struct{}) *SubtractingReceiver {
+	return &SubtractingReceiver{
+		inner:        inner,
+		subtractions: subtractions,
 	}
+}
+
+// Recv returns the next value not in the subtraction set.
+func (r *SubtractingReceiver) Recv(ctx context.Context) (string, bool) {
+	for {
+		value, ok := r.inner.Recv(ctx)
+		if !ok {
+			return "", false
+		}
+
+		if _, subtract := r.subtractions[value]; !subtract {
+			return value, true
+		}
+	}
+}
+
+// Close releases the underlying receiver.
+func (r *SubtractingReceiver) Close() {
+	r.inner.Close()
 }
 
 // Difference is a worker that computes the set difference of its first
@@ -36,7 +53,8 @@ func (a *AccumulatorAdder[T]) Add(values ...T) {
 // begins, so memory usage is proportional to the size of the subtract
 // set. The base set is streamed and never fully materialized.
 type Difference struct {
-	adders []Adder[string]
+	base     *mpsc.Accumulator[string]
+	subtract containers.Bag[string]
 	*Core
 }
 
@@ -45,12 +63,13 @@ type Difference struct {
 func (w *Difference) ProcessMessage(ctx context.Context, index int, msg *Message) {
 	sender := w.senders[index]
 	edge := sender.Key()
-	adder := w.adders[index]
 
 	results := w.Interpreter.Interpret(ctx, edge, msg.Value)
+	defer results.Close()
 
-	for item := range results {
-		if ctx.Err() != nil {
+	for {
+		item, ok := results.Recv(ctx)
+		if !ok {
 			break
 		}
 
@@ -59,7 +78,13 @@ func (w *Difference) ProcessMessage(ctx context.Context, index int, msg *Message
 			w.error(&err)
 			break
 		}
-		adder.Add(value)
+
+		switch index {
+		case 0:
+			w.base.Send(value)
+		case 1:
+			w.subtract.Add(value)
+		}
 	}
 }
 
@@ -72,19 +97,15 @@ func (w *Difference) Execute(ctx context.Context) {
 	))
 	defer span.End()
 
+	defer w.instrument(span)
+
 	defer w.Cleanup()
 
 	if len(w.senders) < 2 {
 		return
 	}
 
-	w.adders = make([]Adder[string], len(w.senders))
-
-	base := mpsc.NewAccumulator[string]()
-	w.adders[0] = (*AccumulatorAdder[string])(base)
-
-	var subtract containers.Bag[string]
-	w.adders[1] = &subtract
+	w.base = mpsc.NewAccumulator[string]()
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -94,7 +115,7 @@ func (w *Difference) Execute(ctx context.Context) {
 
 	wgBase.Go(func() {
 		var err error
-		defer base.Close()
+		defer w.base.Close()
 		defer w.error(&err)
 		defer concurrency.RecoverFromPanic(&err)
 
@@ -123,14 +144,11 @@ func (w *Difference) Execute(ctx context.Context) {
 
 	subtractions := make(map[string]struct{})
 
-	for value := range subtract.Seq() {
+	for value := range w.subtract.Seq() {
 		subtractions[value] = struct{}{}
 	}
+	results := newSubtractingReceiver(w.base, subtractions)
+	defer results.Close()
 
-	output := seq.Filter(base.Seq(ctx), func(value string) bool {
-		_, ok := subtractions[value]
-		return !ok
-	})
-
-	w.Broadcast(ctx, output)
+	w.Broadcast(ctx, results)
 }

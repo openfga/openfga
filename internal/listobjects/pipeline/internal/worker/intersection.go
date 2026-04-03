@@ -3,6 +3,7 @@ package worker
 import (
 	"context"
 	"maps"
+	"slices"
 	"sync"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -27,15 +28,17 @@ type Intersection struct {
 
 // ProcessMessage interprets the message values through the sender's edge and
 // accumulates the results into the bag corresponding to the sender index.
-func (w *Intersection) ProcessMessage(ctx context.Context, ndx int, msg *Message) {
-	sender := w.senders[ndx]
-	bag := &w.bags[ndx]
+func (w *Intersection) ProcessMessage(ctx context.Context, index int, msg *Message) {
+	sender := w.senders[index]
+	bag := &w.bags[index]
 	edge := sender.Key()
 
 	results := w.Interpreter.Interpret(ctx, edge, msg.Value)
+	defer results.Close()
 
-	for item := range results {
-		if ctx.Err() != nil {
+	for {
+		item, ok := results.Recv(ctx)
+		if !ok {
 			break
 		}
 
@@ -57,6 +60,8 @@ func (w *Intersection) Execute(ctx context.Context) {
 	))
 	defer span.End()
 
+	defer w.instrument(span)
+
 	defer func() {
 		for i := range len(w.bags) {
 			w.bags[i].Clear()
@@ -76,15 +81,15 @@ func (w *Intersection) Execute(ctx context.Context) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	for ndx := range len(w.senders) {
+	for index := range len(w.senders) {
 		wg.Go(func() {
 			var err error
 			defer w.error(&err)
 			defer concurrency.RecoverFromPanic(&err)
 
-			w.ProcessSender(ctx, ndx, w)
+			w.ProcessSender(ctx, index, w)
 
-			if w.stats[ndx].SumObjectsReceived == 0 {
+			if w.stats[index].SumObjectsReceived == 0 {
 				cancel()
 			}
 		})
@@ -98,20 +103,22 @@ func (w *Intersection) Execute(ctx context.Context) {
 	inputs := make([]map[string]struct{}, 0, len(w.bags)-1)
 
 	objMin := len(w.bags[0].Unwrap())
-	ndxMin := 0
+	indexMin := 0
 	for i := 1; i < len(w.bags); i++ {
 		bag := w.bags[i].Unwrap()
 		if len(bag) < objMin {
-			inputs = append(inputs, w.bags[ndxMin].Unwrap())
-			ndxMin = i
+			inputs = append(inputs, w.bags[indexMin].Unwrap())
+			indexMin = i
 			objMin = len(bag)
 		} else {
 			inputs = append(inputs, bag)
 		}
 	}
 
-	output := w.bags[ndxMin].Unwrap()
+	output := w.bags[indexMin].Unwrap()
 
+	// Deleting from a map during range iteration is well-defined in Go:
+	// deleted keys that have not yet been reached are skipped.
 OutputLoop:
 	for value := range output {
 		for _, m := range inputs {
@@ -122,5 +129,9 @@ OutputLoop:
 		}
 	}
 
-	w.Broadcast(ctx, maps.Keys(output))
+	values := slices.Collect(maps.Keys(output))
+	results := NewSliceReceiver(values)
+	defer results.Close()
+
+	w.Broadcast(ctx, results)
 }

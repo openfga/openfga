@@ -61,5 +61,8 @@ func (m *AtomicMap[K, V]) Clear() {
 // Once the internal map has been unwrapped, methods on the
 // AtomicMap instance are no longer safe.
 func (m *AtomicMap[K, V]) Unwrap() map[K]V {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	return m.m
 }

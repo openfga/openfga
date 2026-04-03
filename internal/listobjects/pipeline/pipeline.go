@@ -25,6 +25,11 @@ type (
 	// Item is an alias for a single result from a worker, carrying either
 	// a value or an error.
 	Item = worker.Item
+
+	// Receiver is a generic streaming result interface used throughout
+	// the pipeline to consume values one at a time without buffering
+	// the entire result set.
+	Receiver[T any] = worker.Receiver[T]
 )
 
 var (
@@ -37,7 +42,8 @@ var (
 	edgeTypeTTU           = weightedGraph.TTUEdge
 	edgeTypeTTULogical    = weightedGraph.TTULogicalEdge
 
-	emptySequence = func(yield func(Item) bool) {}
+	emptyReceiver = worker.NewEmptyReceiver[Item]()
+	emptySequence = func(func(Item) bool) {}
 
 	nodeTypeLogicalDirectGrouping   = weightedGraph.LogicalDirectGrouping
 	nodeTypeLogicalTTUGrouping      = weightedGraph.LogicalTTUGrouping
@@ -72,7 +78,7 @@ type ObjectQuery struct {
 
 // ObjectReader reads relationship tuples from storage.
 type ObjectReader interface {
-	Read(context.Context, ObjectQuery) iter.Seq[Item]
+	Read(context.Context, ObjectQuery) Receiver[Item]
 }
 
 // Spec identifies the target of a reverse expansion query.
@@ -129,7 +135,7 @@ type path struct {
 	cycleGroup     *worker.CycleGroup
 	errors         chan error
 	interpreter    worker.Interpreter
-	pool           *worker.BufferPool
+	pool           *worker.MessagePool
 }
 
 // resolve recursively constructs a worker for the given graph node,
@@ -336,10 +342,17 @@ func (pl *Pipeline) buildExpansion(objectNode, userNode *Node, userIdentifier st
 		userIdentifier: userIdentifier,
 		errors:         chError,
 		interpreter:    interpreter,
-		pool:           worker.NewBufferPool(pl.config.ChunkSize, pl.config.BufferCapacity),
+		pool:           new(worker.MessagePool),
 	}
 
 	pl.resolve(p, workers)
+
+	var totalListeners int
+	for _, w := range workers {
+		totalListeners += w.Len()
+	}
+
+	worker.InitMessagePool(p.pool, pl.config.ChunkSize, pl.config.BufferCapacity*totalListeners)
 
 	objectWorker, ok := workers[objectNode]
 	if !ok {
