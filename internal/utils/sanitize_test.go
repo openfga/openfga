@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestContainsControlChars(t *testing.T) {
+func TestContainsForbiddenChars(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    string
@@ -24,7 +24,7 @@ func TestContainsControlChars(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := ContainsControlChars(tc.input)
+			got := ContainsForbiddenChars(tc.input)
 			require.Equal(t, tc.expected, got)
 		})
 	}

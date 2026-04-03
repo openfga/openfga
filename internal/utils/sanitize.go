@@ -5,7 +5,7 @@ import (
 	"unicode"
 )
 
-// ContainsControlChars reports whether s contains any Unicode control characters.
-func ContainsControlChars(s string) bool {
+// ContainsForbiddenChars reports whether s contains any characters OpenFGA does not allow.
+func ContainsForbiddenChars(s string) bool {
 	return strings.ContainsFunc(s, unicode.IsControl)
 }

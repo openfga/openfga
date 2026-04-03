@@ -218,7 +218,7 @@ func validateCondition(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) e
 		}
 	}
 
-	if utils.ContainsControlChars(tk.GetCondition().GetName()) {
+	if utils.ContainsForbiddenChars(tk.GetCondition().GetName()) {
 		return &tuple.InvalidConditionalTupleError{
 			Cause: fmt.Errorf("condition name contains control characters"), TupleKey: tk,
 		}
@@ -389,7 +389,7 @@ func ValidateStruct(s *structpb.Struct) error {
 		return nil
 	}
 	for key, value := range s.GetFields() {
-		if utils.ContainsControlChars(key) {
+		if utils.ContainsForbiddenChars(key) {
 			return fmt.Errorf("context key %q contains control characters", key)
 		}
 		if err := validateValueControlChars(value); err != nil {
@@ -405,7 +405,7 @@ func validateValueControlChars(v *structpb.Value) error {
 	}
 	switch val := v.GetKind().(type) {
 	case *structpb.Value_StringValue:
-		if utils.ContainsControlChars(val.StringValue) {
+		if utils.ContainsForbiddenChars(val.StringValue) {
 			return fmt.Errorf("context value %q contains control characters", val.StringValue)
 		}
 	case *structpb.Value_ListValue:
