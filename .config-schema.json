@@ -181,16 +181,23 @@
             "type": "object",
             "properties": {
                 "enabled": {
-                    "description": "Enable/disable the OpenFGA Playground.",
+                    "description": "Enable/disable the OpenFGA Playground. The Playground can only be run when the authentication method is set to 'none'. Note that the built-in Playground is intended for local development and testing purposes, and is not recommended for production use. It has been deprecated and will be removed in a subsequent release.",
                     "type": "boolean",
-                    "default": true,
+                    "default": false,
                     "x-env-variable": "OPENFGA_PLAYGROUND_ENABLED"
                 },
                 "port": {
-                    "description": "The port to serve the local OpenFGA Playground on.",
+                    "description": "Deprecated: The port to serve the local OpenFGA Playground on. Use 'addr' instead.",
                     "type": "integer",
                     "default": 3000,
+                    "deprecated": true,
                     "x-env-variable": "OPENFGA_PLAYGROUND_PORT"
+                },
+                "addr": {
+                    "description": "The host:port address to serve the local OpenFGA Playground on.",
+                    "type": "string",
+                    "default": "",
+                    "x-env-variable": "OPENFGA_PLAYGROUND_ADDR"
                 }
             }
         },

@@ -17,8 +17,7 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
-	"github.com/openfga/openfga/pkg/server/commands/reverseexpand/pipeline"
-	"github.com/openfga/openfga/pkg/server/commands/reverseexpand/pipeline/obj"
+	"github.com/openfga/openfga/internal/listobjects/pipeline"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/memory"
 	"github.com/openfga/openfga/pkg/testutils"
@@ -41,29 +40,17 @@ func NewTestStore() TestStore {
 func (s *TestStore) Add(t testing.TB, tuples ...string) {
 	t.Helper()
 
-	const size int = 10
+	const batchSize int = 10
 
-	writes := make([]*openfgav1.TupleKey, size)
-
-	var ndx int
-
+	keys := make([]*openfgav1.TupleKey, len(tuples))
 	for i, tpl := range tuples {
 		objectRelation, user, _ := strings.Cut(tpl, "@")
 		object, relation, _ := strings.Cut(objectRelation, "#")
-		key := tuple.NewTupleKey(object, relation, user)
-		ndx = i % size
-		writes[ndx] = key
-
-		if ndx == size-1 {
-			err := s.Write(context.Background(), Store, nil, writes)
-			if err != nil {
-				t.Fatal(err)
-			}
-		}
+		keys[i] = tuple.NewTupleKey(object, relation, user)
 	}
 
-	if ndx < size-1 {
-		err := s.Write(context.Background(), Store, nil, writes[:ndx+1])
+	for batch := range slices.Chunk(keys, batchSize) {
+		err := s.Write(context.Background(), Store, nil, batch)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -171,12 +158,12 @@ func TestPipelineShutdown(t *testing.T) {
 
 	g := typesys.GetWeightedGraph()
 
-	validator := obj.NewValidator(context.Background(), typesys, nil)
+	validator := pipeline.NewValidator(context.Background(), typesys, nil)
 
-	reader := obj.NewReader(
+	reader := pipeline.NewReader(
 		ds,
 		Store,
-		obj.WithValidator(validator),
+		pipeline.WithReaderValidator(validator),
 	)
 
 	pl := pipeline.New(g, reader, pipeline.WithBufferCapacity(bufferSize), pipeline.WithChunkSize(chunkSize))
@@ -261,8 +248,9 @@ func TestPipelineShutdown(t *testing.T) {
 			require.NoError(t, err)
 
 			cancel()
-			for range seq {
-				t.Fatal("received item after context canceled")
+			for item := range seq {
+				_, err := item.Object()
+				require.ErrorIs(t, err, context.Canceled)
 			}
 		})
 
@@ -348,8 +336,9 @@ func TestPipelineShutdown(t *testing.T) {
 			// wait long enough for timeout to occur
 			time.Sleep(2 * time.Millisecond)
 
-			for range seq {
-				t.Fatal("received value after context deadline exceeded")
+			for item := range seq {
+				_, err := item.Object()
+				require.ErrorIs(t, err, context.DeadlineExceeded)
 			}
 		})
 	})
@@ -403,8 +392,9 @@ func TestPipelineShutdown(t *testing.T) {
 			require.NoError(t, err)
 
 			cancel()
-			for range seq {
-				t.Fatal("received item after context canceled")
+			for item := range seq {
+				_, err := item.Object()
+				require.ErrorIs(t, err, context.Canceled)
 			}
 		})
 
@@ -421,11 +411,160 @@ func TestPipelineShutdown(t *testing.T) {
 			// wait long enough for timeout to occur
 			time.Sleep(2 * time.Millisecond)
 
-			for range seq {
-				t.Fatal("received value after context deadline exceeded")
+			for item := range seq {
+				_, err := item.Object()
+				require.ErrorIs(t, err, context.DeadlineExceeded)
 			}
 		})
 	})
+}
+
+func TestPipelineExpand_InvalidConfig(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	const dsl = `
+	model
+	  schema 1.1
+	type user
+	type document
+	  relations
+	    define viewer: [user]
+	`
+
+	model := testutils.MustTransformDSLToProtoWithID(dsl)
+	typesys, err := typesystem.NewAndValidate(context.Background(), model)
+	require.NoError(t, err)
+
+	g := typesys.GetWeightedGraph()
+	reader := pipeline.NewReader(memory.New(), Store)
+
+	pl := pipeline.New(g, reader, pipeline.WithConfig(pipeline.Config{
+		BufferCapacity: -1, ChunkSize: 1, NumProcs: 1,
+	}))
+
+	_, err = pl.Expand(context.Background(), pipeline.Spec{
+		ObjectType: "document", Relation: "viewer", User: "user:alice",
+	})
+	require.ErrorIs(t, err, pipeline.ErrInvalidBufferCapacity)
+}
+
+func TestPipelineExpand_InvalidObjectType(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	const dsl = `
+	model
+	  schema 1.1
+	type user
+	type document
+	  relations
+	    define viewer: [user]
+	`
+
+	model := testutils.MustTransformDSLToProtoWithID(dsl)
+	typesys, err := typesystem.NewAndValidate(context.Background(), model)
+	require.NoError(t, err)
+
+	g := typesys.GetWeightedGraph()
+	reader := pipeline.NewReader(memory.New(), Store)
+	pl := pipeline.New(g, reader)
+
+	_, err = pl.Expand(context.Background(), pipeline.Spec{
+		ObjectType: "nonexistent", Relation: "viewer", User: "user:alice",
+	})
+	require.ErrorIs(t, err, pipeline.ErrInvalidObject)
+}
+
+func TestPipelineExpand_InvalidRelation(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	const dsl = `
+	model
+	  schema 1.1
+	type user
+	type document
+	  relations
+	    define viewer: [user]
+	`
+
+	model := testutils.MustTransformDSLToProtoWithID(dsl)
+	typesys, err := typesystem.NewAndValidate(context.Background(), model)
+	require.NoError(t, err)
+
+	g := typesys.GetWeightedGraph()
+	reader := pipeline.NewReader(memory.New(), Store)
+	pl := pipeline.New(g, reader)
+
+	_, err = pl.Expand(context.Background(), pipeline.Spec{
+		ObjectType: "document", Relation: "nonexistent", User: "user:alice",
+	})
+	require.ErrorIs(t, err, pipeline.ErrInvalidObject)
+}
+
+func TestPipelineExpand_InvalidUser(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	const dsl = `
+	model
+	  schema 1.1
+	type user
+	type document
+	  relations
+	    define viewer: [user]
+	`
+
+	model := testutils.MustTransformDSLToProtoWithID(dsl)
+	typesys, err := typesystem.NewAndValidate(context.Background(), model)
+	require.NoError(t, err)
+
+	g := typesys.GetWeightedGraph()
+	reader := pipeline.NewReader(memory.New(), Store)
+	pl := pipeline.New(g, reader)
+
+	_, err = pl.Expand(context.Background(), pipeline.Spec{
+		ObjectType: "document", Relation: "viewer", User: "nonexistent:alice",
+	})
+	require.ErrorIs(t, err, pipeline.ErrInvalidUser)
+}
+
+func TestPipelineExpand_EmptyResult(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	const dsl = `
+	model
+	  schema 1.1
+	type user
+	type document
+	  relations
+	    define viewer: [user]
+	`
+
+	model := testutils.MustTransformDSLToProtoWithID(dsl)
+	ds := NewTestStore()
+	err := ds.WriteAuthorizationModel(context.Background(), Store, model)
+	require.NoError(t, err)
+
+	// No tuples written — user has no access.
+	typesys, err := typesystem.NewAndValidate(context.Background(), model)
+	require.NoError(t, err)
+
+	g := typesys.GetWeightedGraph()
+	reader := pipeline.NewReader(ds, Store,
+		pipeline.WithReaderValidator(pipeline.NewValidator(context.Background(), typesys, nil)),
+	)
+	pl := pipeline.New(g, reader)
+
+	seq, err := pl.Expand(context.Background(), pipeline.Spec{
+		ObjectType: "document", Relation: "viewer", User: "user:alice",
+	})
+	require.NoError(t, err)
+
+	var results []string
+	for obj := range seq {
+		value, err := obj.Object()
+		require.NoError(t, err)
+		results = append(results, value)
+	}
+	require.Empty(t, results)
 }
 
 var ErrSignal = errors.New("signal error")
@@ -2469,12 +2608,12 @@ func BenchmarkPipeline(b *testing.B) {
 
 			g := typesys.GetWeightedGraph()
 
-			validator := obj.NewValidator(context.Background(), typesys, nil)
+			validator := pipeline.NewValidator(context.Background(), typesys, nil)
 
-			reader := obj.NewReader(
+			reader := pipeline.NewReader(
 				ds,
 				Store,
-				obj.WithValidator(validator),
+				pipeline.WithReaderValidator(validator),
 			)
 
 			b.ResetTimer()
@@ -2519,12 +2658,12 @@ func TestPipeline(t *testing.T) {
 
 			g := typesys.GetWeightedGraph()
 
-			validator := obj.NewValidator(context.Background(), typesys, nil)
+			validator := pipeline.NewValidator(context.Background(), typesys, nil)
 
-			reader := obj.NewReader(
+			reader := pipeline.NewReader(
 				ds,
 				Store,
-				obj.WithValidator(validator),
+				pipeline.WithReaderValidator(validator),
 			)
 
 			spec := pipeline.Spec{
@@ -2627,10 +2766,10 @@ func TestPipelineTTUWithCondition(t *testing.T) {
 				},
 			}
 
-			reader := obj.NewReader(
+			reader := pipeline.NewReader(
 				ds,
 				storeID,
-				obj.WithValidator(obj.NewValidator(context.Background(), typesys, reqCtx)),
+				pipeline.WithReaderValidator(pipeline.NewValidator(context.Background(), typesys, reqCtx)),
 			)
 
 			seq, err := pipeline.New(g, reader).Expand(context.Background(), spec)

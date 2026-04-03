@@ -20,6 +20,7 @@ import (
 	"github.com/openfga/openfga/internal/condition"
 	openfgaErrors "github.com/openfga/openfga/internal/errors"
 	"github.com/openfga/openfga/internal/graph"
+	"github.com/openfga/openfga/internal/listobjects/pipeline"
 	"github.com/openfga/openfga/internal/shared"
 	"github.com/openfga/openfga/internal/throttler"
 	"github.com/openfga/openfga/internal/throttler/threshold"
@@ -28,8 +29,6 @@ import (
 	"github.com/openfga/openfga/pkg/featureflags"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/server/commands/reverseexpand"
-	"github.com/openfga/openfga/pkg/server/commands/reverseexpand/pipeline"
-	"github.com/openfga/openfga/pkg/server/commands/reverseexpand/pipeline/obj"
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
@@ -583,13 +582,13 @@ func (q *ListObjectsQuery) Execute(
 			},
 		)
 
-		validator := obj.NewValidator(timeoutCtx, typesys, req.GetContext())
+		validator := pipeline.NewValidator(timeoutCtx, typesys, req.GetContext())
 
-		reader := obj.NewReader(
+		reader := pipeline.NewReader(
 			ds,
 			req.GetStoreId(),
-			obj.WithConsistency(req.GetConsistency()),
-			obj.WithValidator(validator),
+			pipeline.WithReaderConsistency(req.GetConsistency()),
+			pipeline.WithReaderValidator(validator),
 		)
 
 		spec := pipeline.Spec{
@@ -623,7 +622,9 @@ func (q *ListObjectsQuery) Execute(
 				return nil, serverErrors.HandleError("", err)
 			}
 
-			res.Objects = append(res.Objects, value)
+			if err == nil {
+				res.Objects = append(res.Objects, value)
+			}
 
 			// Check if we've reached the max results limit
 			if maxResults > 0 && uint32(len(res.Objects)) >= maxResults {
@@ -749,13 +750,13 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 			},
 		)
 
-		validator := obj.NewValidator(timeoutCtx, typesys, req.GetContext())
+		validator := pipeline.NewValidator(timeoutCtx, typesys, req.GetContext())
 
-		reader := obj.NewReader(
+		reader := pipeline.NewReader(
 			ds,
 			req.GetStoreId(),
-			obj.WithConsistency(req.GetConsistency()),
-			obj.WithValidator(validator),
+			pipeline.WithReaderConsistency(req.GetConsistency()),
+			pipeline.WithReaderValidator(validator),
 		)
 
 		spec := pipeline.Spec{
@@ -792,13 +793,15 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 				return nil, serverErrors.HandleError("", err)
 			}
 
-			if err := srv.Send(&openfgav1.StreamedListObjectsResponse{
-				Object: value,
-			}); err != nil {
-				return nil, serverErrors.HandleError("", err)
-			}
+			if err == nil {
+				if err := srv.Send(&openfgav1.StreamedListObjectsResponse{
+					Object: value,
+				}); err != nil {
+					return nil, serverErrors.HandleError("", err)
+				}
 
-			listObjectsCount++
+				listObjectsCount++
+			}
 
 			// Check if we've reached the max results limit
 			if maxResults > 0 && listObjectsCount >= maxResults {

@@ -1,6 +1,7 @@
 package mpsc
 
 import (
+	"context"
 	"iter"
 	"sync/atomic"
 )
@@ -20,76 +21,116 @@ type node[T any] struct {
 
 // Accumulator is a lock-free MPSC (multiple-producer, single-consumer)
 // queue that streams an unbounded set of elements to a consumer via
-// [Accumulator.Seq]. Producers call [Accumulator.Add] concurrently;
-// a single consumer iterates with Seq. [Accumulator.Close] inserts a
-// sentinel node that causes Seq to return, after which the Accumulator
-// can be reused for another Add/Close/Seq cycle.
+// [Accumulator.Seq]. Producers call [Accumulator.Send] concurrently;
+// a single consumer iterates with Seq.
+//
+// [Accumulator.Close] must be called only after all producers have
+// completed their Send calls. It inserts a sentinel node that causes
+// Seq to return. The Accumulator is single-use and cannot be reused
+// after Close.
 //
 // Delivery is exactly-once: on early break from Seq, the last yielded
-// item is consumed and a subsequent Seq resumes from the next
-// unconsumed item.
+// item is consumed.
 type Accumulator[T any] struct {
 	head   atomic.Pointer[node[T]]
 	tail   *node[T]
 	signal chan struct{}
+	done   chan struct{}
+	closed atomic.Bool
 }
 
+// NewAccumulator returns a new, empty Accumulator ready for use.
 func NewAccumulator[T any]() *Accumulator[T] {
 	var a Accumulator[T]
 	var n node[T]
 	a.head.Store(&n)
 	a.tail = &n
 	a.signal = make(chan struct{}, 1)
+	a.done = make(chan struct{})
 	return &a
 }
 
 // Close signals a running Seq() iterator to terminate by atomically
-// swapping in a sentinel terminal node. It is safe to call Close
-// multiple times from different goroutines. Values added after Close
-// are not visible to the current Seq() but can be consumed by calling
-// Close again followed by a new Seq().
+// swapping in a sentinel terminal node and closing an internal done
+// channel. Close must be called only after all producers have
+// completed their Send calls.
+//
+// It is safe to call Close multiple times from different goroutines;
+// only the first call has any effect.
 func (a *Accumulator[T]) Close() error {
+	if a.closed.Swap(true) {
+		return nil
+	}
 	var n node[T]
 	n.Kind = end
-	oldHead := a.head.Swap(&n)
+	oldHead := a.head.Swap(nil)
 	oldHead.Next.Store(&n)
-	select {
-	case a.signal <- struct{}{}:
-	default:
-	}
+	close(a.done)
 	return nil
 }
 
-// Add adds values to the Accumulator[T] in the order they were
-// provided.
-func (a *Accumulator[T]) Add(values ...T) {
-	if len(values) == 0 {
-		return
+// Send adds a value to the Accumulator[T].
+// It is safe to call Send concurrently.
+// After Close has been called, Send will always return false.
+func (a *Accumulator[T]) Send(value T) bool {
+	head := node[T]{
+		Value: value,
+		Kind:  data,
 	}
 
-	var newHead *node[T]
-	var head *node[T]
+	var sent bool
 
-	for _, i := range values {
-		n := &node[T]{
-			Value: i,
-			Kind:  data,
+	for {
+		currentHead := a.head.Load()
+		if currentHead == nil {
+			break
 		}
-		if newHead == nil {
-			newHead = n
-			head = n
+		if !a.head.CompareAndSwap(currentHead, &head) {
 			continue
 		}
-		head.Next.Store(n)
-		head = n
+		currentHead.Next.Store(&head)
+		select {
+		case a.signal <- struct{}{}:
+		default:
+		}
+		sent = true
+		break
 	}
+	return sent
+}
 
-	oldHead := a.head.Swap(head)
-	oldHead.Next.Store(newHead)
-	select {
-	case a.signal <- struct{}{}:
-	default:
+// Recv returns the next value from the queue, blocking until one is
+// available. It returns false when the Accumulator has been closed and
+// drained, or when ctx is cancelled.
+func (a *Accumulator[T]) Recv(ctx context.Context) (T, bool) {
+	var value T
+	var ok bool
+
+PopLoop:
+	for {
+		currentTail := a.tail
+		nextNode := currentTail.Next.Load()
+
+		if nextNode == nil {
+			select {
+			case <-a.signal:
+			case <-a.done:
+			case <-ctx.Done():
+				break PopLoop
+			}
+			continue
+		}
+
+		if nextNode.Kind == end {
+			break
+		}
+
+		value = nextNode.Value
+		ok = true
+		a.tail = nextNode
+		break
 	}
+	return value, ok
 }
 
 // Seq returns an iter.Seq[T] that yields elements in insertion order,
@@ -97,34 +138,19 @@ func (a *Accumulator[T]) Add(values ...T) {
 // a sentinel terminal node produced by Close().
 //
 // Delivery is exactly-once: tail advances past each yielded item
-// immediately, so on early break the last yielded item is consumed
-// and a subsequent Seq() resumes from the next unconsumed item.
-//
-// After Seq() returns, the Accumulator can be reused: call Add to
-// enqueue more items, Close to insert a new terminal node, and Seq
-// again to consume them.
+// immediately, so on early break the last yielded item is consumed.
 //
 // Only one Seq() should be active at a time — concurrent iterators
 // share the same tail position and the behavior is unpredictable.
-func (a *Accumulator[T]) Seq() iter.Seq[T] {
+func (a *Accumulator[T]) Seq(ctx context.Context) iter.Seq[T] {
 	return func(yield func(T) bool) {
 		for {
-			currentTail := a.tail
-			nextNode := currentTail.Next.Load()
-
-			if nextNode == nil {
-				<-a.signal
-				continue
-			}
-
-			if nextNode.Kind == end {
-				a.tail = nextNode
+			value, ok := a.Recv(ctx)
+			if !ok {
 				break
 			}
 
-			yielded := yield(nextNode.Value)
-			a.tail = nextNode
-			if !yielded {
+			if !yield(value) {
 				break
 			}
 		}

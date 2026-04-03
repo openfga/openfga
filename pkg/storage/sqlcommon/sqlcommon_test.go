@@ -1,10 +1,13 @@
 package sqlcommon
 
 import (
+	"context"
+	"errors"
 	"reflect"
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -129,5 +132,78 @@ func TestGetDeleteWriteChangelogItems_OperationIsInt32(t *testing.T) {
 				intVal,
 			)
 		}
+	})
+}
+
+// stubRowGetter is a minimal SQLIteratorRowGetter for testing fetchBuffer.
+type stubRowGetter struct {
+	rows Rows
+	err  error
+}
+
+func (s *stubRowGetter) GetRows(_ context.Context) (Rows, error) {
+	return s.rows, s.err
+}
+
+// stubRows is a no-op Rows implementation.
+type stubRows struct{}
+
+func (r *stubRows) Close() error      { return nil }
+func (r *stubRows) Err() error        { return nil }
+func (r *stubRows) Next() bool        { return false }
+func (r *stubRows) Scan(...any) error { return nil }
+
+func sqlIterQuerySampleCount(t *testing.T, successVal string) uint64 {
+	t.Helper()
+	mfs, err := prometheus.DefaultGatherer.Gather()
+	require.NoError(t, err)
+	for _, mf := range mfs {
+		if mf.GetName() == "openfga_iter_query_duration_ms" {
+			for _, m := range mf.GetMetric() {
+				for _, l := range m.GetLabel() {
+					if l.GetName() == "success" && l.GetValue() == successVal {
+						h := m.GetHistogram()
+						// SampleCountFloat overrides SampleCount when native histograms are active.
+						if f := h.GetSampleCountFloat(); f > 0 {
+							return uint64(f)
+						}
+						return h.GetSampleCount()
+					}
+				}
+			}
+		}
+	}
+	return 0
+}
+
+// identityErrHandler passes errors through unchanged (no translation).
+func identityErrHandler(err error, _ ...interface{}) error { return err }
+
+func TestFetchBufferMetric(t *testing.T) {
+	t.Run("success_records_true_label", func(t *testing.T) {
+		iter := NewSQLTupleIterator(&stubRowGetter{rows: &stubRows{}}, identityErrHandler)
+		before := sqlIterQuerySampleCount(t, "true")
+		err := iter.fetchBuffer(context.Background())
+		require.NoError(t, err)
+		require.GreaterOrEqual(t, sqlIterQuerySampleCount(t, "true"), before+1)
+	})
+
+	t.Run("infrastructure_error_records_false_label", func(t *testing.T) {
+		dbErr := errors.New("connection reset")
+		iter := NewSQLTupleIterator(&stubRowGetter{err: dbErr}, identityErrHandler)
+		before := sqlIterQuerySampleCount(t, "false")
+		err := iter.fetchBuffer(context.Background())
+		require.Error(t, err)
+		require.GreaterOrEqual(t, sqlIterQuerySampleCount(t, "false"), before+1)
+	})
+
+	t.Run("not_found_error_records_true_label", func(t *testing.T) {
+		// errHandler translates the raw error to the storage sentinel, as real backends do.
+		notFoundHandler := func(err error, _ ...interface{}) error { return storage.ErrNotFound }
+		iter := NewSQLTupleIterator(&stubRowGetter{err: errors.New("no rows")}, notFoundHandler)
+		before := sqlIterQuerySampleCount(t, "true")
+		err := iter.fetchBuffer(context.Background())
+		require.ErrorIs(t, err, storage.ErrNotFound)
+		require.GreaterOrEqual(t, sqlIterQuerySampleCount(t, "true"), before+1)
 	})
 }

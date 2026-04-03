@@ -1372,8 +1372,12 @@ func (s *Datastore) IsReady(ctx context.Context) (storage.ReadinessStatus, error
 	return multipleReadyStatus, nil
 }
 
-// HandleSQLError processes an SQL error and converts it into a more
-// specific error type based on the nature of the SQL error.
+// HandleSQLError translates a raw SQL/pgx error into a storage-layer sentinel error.
+// Callers can expect the following sentinels:
+//   - [storage.ErrNotFound] — when the query matched no rows (sql.ErrNoRows / pgx.ErrNoRows)
+//   - [storage.ErrInvalidWriteInput] — on a duplicate-key violation when a [openfgav1.TupleKey] is provided as args[0]
+//   - [storage.ErrCollision] — on a duplicate-key violation with no tuple key argument
+//   - a wrapped "sql error: ..." — for all other unexpected infrastructure errors
 func HandleSQLError(err error, args ...interface{}) error {
 	if errors.Is(err, sql.ErrNoRows) || errors.Is(err, pgx.ErrNoRows) {
 		return storage.ErrNotFound
