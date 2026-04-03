@@ -271,6 +271,11 @@ func writeValue(w io.StringWriter, v *structpb.Value) (err error) {
 	case *structpb.Value_NullValue:
 		_, err = w.WriteString("null")
 	case *structpb.Value_StringValue:
+		numBytes := len(val.StringValue)
+		_, err = w.WriteString(strconv.Itoa(numBytes) + ":")
+		if err != nil {
+			return
+		}
 		for _, c := range val.StringValue {
 			// Strip out any control characters so strings can't be manipulated
 			if unicode.IsControl(c) {
