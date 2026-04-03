@@ -345,10 +345,10 @@ func writeStruct(w io.StringWriter, s *structpb.Struct) (err error) {
 	}
 
 	for _, key := range keys {
-		if _, err = w.WriteString("'"); err != nil {
+		if err = validateNoForbiddenChars(key); err != nil {
 			return
 		}
-		if err = validateNoForbiddenChars(key); err != nil {
+		if _, err = w.WriteString("'"); err != nil {
 			return
 		}
 		if _, err = w.WriteString(key); err != nil {
