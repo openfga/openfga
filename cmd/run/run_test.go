@@ -1141,8 +1141,8 @@ func TestPlaygroundEnabled(t *testing.T) {
 	c := retryablehttp.NewClient()
 	t.Cleanup(c.HTTPClient.CloseIdleConnections)
 
-	playgroundPort := fmt.Sprintf(":%d", cfg.Playground.Port)
-	resp, err := c.Get(fmt.Sprintf("http://localhost%s/playground", playgroundPort))
+	playgroundAddr := cfg.Playground.PlaygroundAddr()
+	resp, err := c.Get(fmt.Sprintf("http://%s/playground", playgroundAddr))
 	require.NoError(t, err, "http playground endpoint not healthy")
 	t.Cleanup(func() {
 		err := resp.Body.Close()
@@ -1221,7 +1221,7 @@ func TestDefaultConfig(t *testing.T) {
 
 	val = res.Get("properties.playground.properties.port.default")
 	require.True(t, val.Exists())
-	require.EqualValues(t, val.Int(), cfg.Playground.Port)
+	require.EqualValues(t, val.Int(), cfg.Playground.Port) //nolint:staticcheck
 
 	val = res.Get("properties.profiler.properties.enabled.default")
 	require.True(t, val.Exists())

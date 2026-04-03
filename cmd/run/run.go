@@ -216,7 +216,9 @@ func NewRunCommand() *cobra.Command {
 
 	flags.Bool("playground-enabled", defaultConfig.Playground.Enabled, "enable/disable the OpenFGA Playground")
 
-	flags.Int("playground-port", defaultConfig.Playground.Port, "the port to serve the local OpenFGA Playground on")
+	flags.Int("playground-port", defaultConfig.Playground.Port, "the port to serve the local OpenFGA Playground on") //nolint:staticcheck
+
+	flags.String("playground-addr", defaultConfig.Playground.Addr, "the host:port address to serve the local OpenFGA Playground on")
 
 	flags.Bool("profiler-enabled", defaultConfig.Profiler.Enabled, "enable/disable pprof profiling")
 
@@ -792,12 +794,13 @@ func (s *ServerContext) runPlaygroundServer(config *serverconfig.Config) (*http.
 	}
 
 	authMethod := config.Authn.Method
-	if authMethod != "none" && authMethod != "preshared" {
-		return nil, errors.New("the playground only supports authn methods 'none' and 'preshared'")
+	if authMethod != "none" {
+		return nil, errors.New("the playground only supports authn method 'none'")
 	}
 
-	playgroundAddr := fmt.Sprintf(":%d", config.Playground.Port)
-	s.Logger.Info(fmt.Sprintf("🛝 starting openfga playground on http://localhost%s/playground", playgroundAddr))
+	playgroundAddr := config.Playground.PlaygroundAddr()
+	s.Logger.Info(fmt.Sprintf("🛝 starting openfga playground on http://%s/playground", playgroundAddr))
+	s.Logger.Warn("⚠️ Please note that the built-in Playground is deprecated and will be removed in a future release")
 
 	tmpl, err := template.ParseFS(assets.EmbedPlayground, "playground/index.html")
 	if err != nil {

@@ -143,6 +143,9 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 		util.MustBindPFlag("playground.port", flags.Lookup("playground-port"))
 		util.MustBindEnv("playground.port", "OPENFGA_PLAYGROUND_PORT")
 
+		util.MustBindPFlag("playground.addr", flags.Lookup("playground-addr"))
+		util.MustBindEnv("playground.addr", "OPENFGA_PLAYGROUND_ADDR")
+
 		util.MustBindPFlag("profiler.enabled", flags.Lookup("profiler-enabled"))
 		util.MustBindEnv("profiler.enabled", "OPENFGA_PROFILER_ENABLED")
 

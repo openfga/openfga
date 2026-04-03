@@ -18,6 +18,13 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Fixed PostgreSQL `HandleSQLError` and `GetStore` returning a wrapped error instead of `storage.ErrNotFound` when no rows are found. When using pgxpool directly, `QueryRow().Scan()` returns `pgx.ErrNoRows`, not `sql.ErrNoRows`; both are now handled. [#3014](https://github.com/openfga/openfga/pull/3014)
 - Fixed the possibility of deadlocks within the ListObjects pipeline algorithm. Also added short-circuit enhancments that will reduce latency and message processing in certain scenarios. Cyclical edges now use as much memory as necessary to process deep and wide data heirarchies without the risk of a deadlock. [#3028](https://github.com/openfga/openfga/pull/3028)
 
+### Deprecated
+- The built-in OpenFGA Playground is intended for development purposes only and is deprecated. It will be removed entirely in a future release.
+- The `--playground-port` flag and `OPENFGA_PLAYGROUND_PORT` environment variable are deprecated. Use `--playground-addr` (`OPENFGA_PLAYGROUND_ADDR`) instead to specify the full `host:port` address for the Playground server. When `--playground-addr` is not set, the Playground binds to `127.0.0.1` using the port from `--playground-port`.
+
+### Changed
+- The Playground now only supports the `none` authentication method. Running the Playground with `preshared` key authentication is no longer supported.
+
 ## [1.13.1] - 2026-03-24
 ### Security
 - Fixed a security vulnerability ([CVE-2026-33729](https://github.com/openfga/openfga/security/advisories/GHSA-h6c8-cww8-35hf)) where Check requests with conditions and caching enabled could return incorrect cached results.
