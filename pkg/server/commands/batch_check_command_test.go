@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
+	"google.golang.org/protobuf/types/known/structpb"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
@@ -419,6 +420,67 @@ func TestBatchCheckCommand(t *testing.T) {
 		require.Equal(t, uint32(2), meta.DispatchThrottleCount)
 		// DatastoreThrottleCount should be 0 since no actual datastore throttling occurred
 		require.Equal(t, uint32(0), meta.DatastoreThrottleCount)
+	})
+}
+
+func TestGenerateCacheKeyFromCheck(t *testing.T) {
+	storeID := ulid.Make().String()
+	authModelID := ulid.Make().String()
+
+	baseCheck := &openfgav1.BatchCheckItem{
+		TupleKey: &openfgav1.CheckRequestTupleKey{
+			Object:   "doc:doc1",
+			Relation: "viewer",
+			User:     "user:alice",
+		},
+	}
+
+	t.Run("context_affects_key", func(t *testing.T) {
+		ctx, err := structpb.NewStruct(map[string]interface{}{
+			"ip_address": "10.0.0.1",
+		})
+		require.NoError(t, err)
+
+		checkWithContext := &openfgav1.BatchCheckItem{
+			TupleKey: baseCheck.GetTupleKey(),
+			Context:  ctx,
+		}
+
+		key1, err := generateCacheKeyFromCheck(baseCheck, storeID, authModelID)
+		require.NoError(t, err)
+		key2, err := generateCacheKeyFromCheck(checkWithContext, storeID, authModelID)
+		require.NoError(t, err)
+		require.NotEqual(t, key1, key2)
+	})
+
+	t.Run("context_list_with_comma_in_string_vs_separate_elements", func(t *testing.T) {
+		// A single-element list whose string contains a comma should NOT
+		// collide with a multi-element list whose elements are separated
+		// by that same comma.
+		singleElement, err := structpb.NewStruct(map[string]interface{}{
+			"roles": []interface{}{"editor,viewer"},
+		})
+		require.NoError(t, err)
+
+		twoElements, err := structpb.NewStruct(map[string]interface{}{
+			"roles": []interface{}{"editor", "viewer"},
+		})
+		require.NoError(t, err)
+
+		check1 := &openfgav1.BatchCheckItem{
+			TupleKey: baseCheck.GetTupleKey(),
+			Context:  singleElement,
+		}
+		check2 := &openfgav1.BatchCheckItem{
+			TupleKey: baseCheck.GetTupleKey(),
+			Context:  twoElements,
+		}
+
+		key1, err := generateCacheKeyFromCheck(check1, storeID, authModelID)
+		require.NoError(t, err)
+		key2, err := generateCacheKeyFromCheck(check2, storeID, authModelID)
+		require.NoError(t, err)
+		require.NotEqual(t, key1, key2, "single string 'editor,viewer' and two strings 'editor','viewer' must produce different cache keys")
 	})
 }
 
