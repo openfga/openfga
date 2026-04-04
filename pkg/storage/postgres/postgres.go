@@ -1404,8 +1404,13 @@ func (s *Datastore) ReadChanges(ctx context.Context, store string, filter storag
 		})
 	}
 
+	if err := rows.Err(); err != nil {
+		sqlErr := HandleSQLError(err)
+		telemetry.TraceError(span, sqlErr)
+		return nil, "", sqlErr
+	}
+
 	if len(changes) == 0 {
-		telemetry.TraceError(span, storage.ErrNotFound)
 		return nil, "", storage.ErrNotFound
 	}
 
