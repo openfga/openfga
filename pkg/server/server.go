@@ -558,8 +558,12 @@ func WithListObjectsIteratorCacheTTL(ttl time.Duration) OpenFGAServiceV1Option {
 // WithCacheTTLJitterPercentage sets the jitter percentage applied to cache TTLs.
 // A value of 10 means up to 10% of the base TTL is added as random jitter to each
 // cache entry, spreading out expirations and preventing thundering herd effects.
+// Values above 100 are capped to 100.
 func WithCacheTTLJitterPercentage(pct uint32) OpenFGAServiceV1Option {
 	return func(s *Server) {
+		if pct > 100 {
+			pct = 100
+		}
 		s.cacheSettings.CacheTTLJitterPercentage = pct
 	}
 }
