@@ -562,6 +562,8 @@ func WithListObjectsIteratorCacheTTL(ttl time.Duration) OpenFGAServiceV1Option {
 func WithCacheTTLJitterPercentage(pct uint32) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		if pct > 100 {
+			s.logger.Warn("cache TTL jitter percentage exceeded 100, capping to 100",
+				zap.Uint32("requested", pct))
 			pct = 100
 		}
 		s.cacheSettings.CacheTTLJitterPercentage = pct
