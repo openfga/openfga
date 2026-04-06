@@ -11,17 +11,22 @@ import (
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/containerd/errdefs"
-	"github.com/docker/docker/api/types"
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/client"
-	"github.com/docker/go-connections/nat"
 	"github.com/hashicorp/go-retryablehttp"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/network"
+	"github.com/moby/moby/client"
 	"github.com/oklog/ulid/v2"
 	"github.com/stretchr/testify/require"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/pkg/testutils"
+)
+
+var (
+	httpPort       = network.MustParsePort("8080/tcp")
+	grpcPort       = network.MustParsePort("8081/tcp")
+	playgroundPort = network.MustParsePort("3000/tcp")
 )
 
 type OpenFGATester interface {
@@ -48,10 +53,7 @@ func (s *serverHandle) GetHTTPAddress() string {
 func runOpenFGAContainerWithArgs(t *testing.T, commandArgs []string) OpenFGATester {
 	t.Helper()
 
-	dockerClient, err := client.NewClientWithOpts(
-		client.FromEnv,
-		client.WithAPIVersionNegotiation(),
-	)
+	dockerClient, err := client.New(client.FromEnv)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		dockerClient.Close()
@@ -59,10 +61,10 @@ func runOpenFGAContainerWithArgs(t *testing.T, commandArgs []string) OpenFGATest
 
 	containerCfg := container.Config{
 		Env: []string{},
-		ExposedPorts: nat.PortSet{
-			nat.Port("8080/tcp"): {},
-			nat.Port("8081/tcp"): {},
-			nat.Port("3000/tcp"): {},
+		ExposedPorts: network.PortSet{
+			httpPort:       {},
+			grpcPort:       {},
+			playgroundPort: {},
 		},
 		Image: "openfga/openfga:dockertest",
 		Cmd:   commandArgs,
@@ -71,10 +73,10 @@ func runOpenFGAContainerWithArgs(t *testing.T, commandArgs []string) OpenFGATest
 	hostCfg := container.HostConfig{
 		AutoRemove:      true,
 		PublishAllPorts: true,
-		PortBindings: nat.PortMap{
-			"8080/tcp": []nat.PortBinding{},
-			"8081/tcp": []nat.PortBinding{},
-			"3000/tcp": []nat.PortBinding{},
+		PortBindings: network.PortMap{
+			httpPort:       []network.PortBinding{},
+			grpcPort:       []network.PortBinding{},
+			playgroundPort: []network.PortBinding{},
 		},
 	}
 
@@ -83,22 +85,26 @@ func runOpenFGAContainerWithArgs(t *testing.T, commandArgs []string) OpenFGATest
 
 	ctx := context.Background()
 
-	cont, err := dockerClient.ContainerCreate(ctx, &containerCfg, &hostCfg, nil, nil, name)
+	cont, err := dockerClient.ContainerCreate(ctx, client.ContainerCreateOptions{
+		Name:       name,
+		Config:     &containerCfg,
+		HostConfig: &hostCfg,
+	})
 	require.NoError(t, err, "failed to create openfga docker container")
 
-	err = dockerClient.ContainerStart(ctx, cont.ID, container.StartOptions{})
+	_, err = dockerClient.ContainerStart(ctx, cont.ID, client.ContainerStartOptions{})
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
 		t.Logf("%s: stopping container %s", time.Now(), name)
 
-		containerJSON, err := dockerClient.ContainerInspect(ctx, cont.ID)
+		inspectResult, err := dockerClient.ContainerInspect(ctx, cont.ID, client.ContainerInspectOptions{})
 		require.NoError(t, err)
-		require.Zero(t, containerJSON.State.ExitCode, "expected exit code of the container to be zero")
+		require.Zero(t, inspectResult.Container.State.ExitCode, "expected exit code of the container to be zero")
 
 		timeoutSec := 5
 
-		err = dockerClient.ContainerStop(ctx, cont.ID, container.StopOptions{Timeout: &timeoutSec})
+		_, err = dockerClient.ContainerStop(ctx, cont.ID, client.ContainerStopOptions{Timeout: &timeoutSec})
 		if err != nil && !errdefs.IsNotFound(err) {
 			t.Logf("failed to stop openfga container: %v", err)
 		}
@@ -106,37 +112,37 @@ func runOpenFGAContainerWithArgs(t *testing.T, commandArgs []string) OpenFGATest
 		t.Logf("%s: stopped container %s", time.Now(), name)
 	})
 
-	containerJSON, err := dockerClient.ContainerInspect(ctx, cont.ID)
+	inspectResult, err := dockerClient.ContainerInspect(ctx, cont.ID, client.ContainerInspectOptions{})
 	require.NoError(t, err)
 
-	ports := containerJSON.NetworkSettings.Ports
+	ports := inspectResult.Container.NetworkSettings.Ports
 
-	m, ok := ports["8080/tcp"]
+	m, ok := ports[httpPort]
 	if !ok || len(m) == 0 {
 		t.Fatalf("failed to get HTTP host port mapping from openfga container")
 	}
-	httpPort := m[0].HostPort
+	httpHostPort := m[0].HostPort
 
-	m, ok = ports["8081/tcp"]
+	m, ok = ports[grpcPort]
 	if !ok || len(m) == 0 {
 		t.Fatalf("failed to get grpc host port mapping from openfga container")
 	}
-	grpcPort := m[0].HostPort
+	grpcHostPort := m[0].HostPort
 
 	if len(commandArgs) > 0 && commandArgs[0] == "run" {
 		policy := backoff.NewExponentialBackOff()
 		policy.MaxElapsedTime = 30 * time.Second
 
 		err = backoff.Retry(func() error {
-			containerJSON, err := dockerClient.ContainerInspect(ctx, cont.ID)
+			inspectResult, err := dockerClient.ContainerInspect(ctx, cont.ID, client.ContainerInspectOptions{})
 			require.NoError(t, err)
-			require.NotNil(t, containerJSON.State.Health)
+			require.NotNil(t, inspectResult.Container.State.Health)
 
-			if containerJSON.State.Health.Status == types.Healthy {
+			if inspectResult.Container.State.Health.Status == container.Healthy {
 				return nil
 			}
-			if containerJSON.State.Health.Status == types.Unhealthy {
-				for _, healthLog := range containerJSON.State.Health.Log {
+			if inspectResult.Container.State.Health.Status == container.Unhealthy {
+				for _, healthLog := range inspectResult.Container.State.Health.Log {
 					t.Log(healthLog.Output)
 				}
 				return fmt.Errorf("container unhealthy")
@@ -147,8 +153,8 @@ func runOpenFGAContainerWithArgs(t *testing.T, commandArgs []string) OpenFGATest
 	}
 
 	return &serverHandle{
-		grpcAddress: fmt.Sprintf("localhost:%s", grpcPort),
-		httpAddress: fmt.Sprintf("localhost:%s", httpPort),
+		grpcAddress: fmt.Sprintf("localhost:%s", grpcHostPort),
+		httpAddress: fmt.Sprintf("localhost:%s", httpHostPort),
 	}
 }
 
