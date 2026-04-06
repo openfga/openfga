@@ -86,9 +86,12 @@ func NewSliceReceiver[T any](inner []T) *SliceReceiver[T] {
 // Recv atomically claims the next position and returns the element at
 // that index. Concurrent callers each receive a distinct element.
 func (r *SliceReceiver[T]) Recv(ctx context.Context) (T, bool) {
-	pos := r.pos.Add(1) - 1
 	var value T
-	if r.closed.Load() || pos >= int64(len(r.inner)) || ctx.Err() != nil {
+	if ctx.Err() != nil {
+		return value, false
+	}
+	pos := r.pos.Add(1) - 1
+	if r.closed.Load() || pos >= int64(len(r.inner)) {
 		return value, false
 	}
 	value = r.inner[pos]
