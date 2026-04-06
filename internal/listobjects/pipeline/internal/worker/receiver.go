@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"iter"
 	"sync/atomic"
 )
 
@@ -101,4 +102,46 @@ func (r *SliceReceiver[T]) Recv(ctx context.Context) (T, bool) {
 // Close marks the receiver as exhausted.
 func (r *SliceReceiver[T]) Close() {
 	r.closed.Store(true)
+}
+
+// SeqReceiver adapts an [iter.Seq] into a [Receiver] using [iter.Pull].
+// This allows push-based iterators to be consumed through the pull-based
+// Receiver interface without requiring a dedicated goroutine at the call
+// site.
+//
+// SeqReceiver is NOT safe for concurrent use: the pull and cancel
+// functions returned by [iter.Pull] must not be called simultaneously.
+type SeqReceiver[T any] struct {
+	cancel func()
+	pull   func() (T, bool)
+}
+
+// NewSeqReceiver converts seq into a pull-based [Receiver]. The caller
+// must call [SeqReceiver.Close] when done to release the iterator
+// goroutine created by [iter.Pull].
+func NewSeqReceiver[T any](seq iter.Seq[T]) *SeqReceiver[T] {
+	pull, cancel := iter.Pull(seq)
+	return &SeqReceiver[T]{
+		cancel: cancel,
+		pull:   pull,
+	}
+}
+
+// Recv returns the next value from the underlying iterator, or
+// (zero, false) when the sequence is exhausted or the receiver
+// has been closed. If the context has been cancelled the iterator
+// is released immediately and (zero, false) is returned.
+func (r *SeqReceiver[T]) Recv(ctx context.Context) (T, bool) {
+	var zero T
+	if ctx.Err() != nil {
+		r.cancel()
+		return zero, false
+	}
+	return r.pull()
+}
+
+// Close releases the iterator goroutine. It is safe to call
+// multiple times; subsequent calls are no-ops.
+func (r *SeqReceiver[T]) Close() {
+	r.cancel()
 }

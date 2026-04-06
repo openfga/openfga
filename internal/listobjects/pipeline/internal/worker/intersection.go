@@ -2,8 +2,6 @@ package worker
 
 import (
 	"context"
-	"maps"
-	"slices"
 	"sync"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -129,7 +127,11 @@ OutputLoop:
 		}
 	}
 
-	values := slices.Collect(maps.Keys(output))
+	values := make([]string, 0, len(output))
+	for value := range output {
+		values = append(values, value)
+	}
+
 	results := NewSliceReceiver(values)
 	defer results.Close()
 
