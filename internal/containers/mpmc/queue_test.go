@@ -193,7 +193,7 @@ func TestQueue(t *testing.T) {
 					expected[i] = i + 1
 				}
 
-				p, err := NewQueue[int](tc.capacity, defaultExtensions)
+				p, err := NewQueue[int](tc.capacity, 0)
 				require.NoError(t, err)
 
 				for range tc.cycles {
@@ -360,9 +360,9 @@ func TestQueue(t *testing.T) {
 	})
 
 	t.Run("dynamic_buffer_extension", func(t *testing.T) {
-		const initialCapacity int = 1
+		const initialCapacity int = 2
 		const maxExtensions int = 3
-		const maxItems int = 1 << maxExtensions
+		const maxItems int = initialCapacity << maxExtensions
 
 		p, err := NewQueue[item](initialCapacity, maxExtensions)
 		require.NoError(t, err)
@@ -375,9 +375,9 @@ func TestQueue(t *testing.T) {
 	})
 
 	t.Run("manual_buffer_extension", func(t *testing.T) {
-		const initialCapacity int = 1
+		const initialCapacity int = 2
 		const maxExtensions int = 3                      // Set to ensure limit is bypassed.
-		const targetItems int = 1 << (maxExtensions + 1) // Grow once beyond max.
+		const targetItems int = 1 << (maxExtensions + 2) // Grow once beyond max.
 
 		p, err := NewQueue[item](initialCapacity, maxExtensions)
 		require.NoError(t, err)
@@ -397,7 +397,7 @@ func TestQueue(t *testing.T) {
 	})
 
 	t.Run("unbounded_buffer_extension", func(t *testing.T) {
-		const initialCapacity int = 1
+		const initialCapacity int = 2
 		const maxExtensions int = -1
 		const targetExtensions int = 10
 		const targetItems int = 1 << targetExtensions
@@ -414,6 +414,11 @@ func TestQueue(t *testing.T) {
 
 	t.Run("invalid_capacity_returns_error", func(t *testing.T) {
 		_, err := NewQueue[int](3, 0)
+		require.ErrorIs(t, err, ErrInvalidCapacity)
+	})
+
+	t.Run("capacity_one_returns_error", func(t *testing.T) {
+		_, err := NewQueue[int](1, 0)
 		require.ErrorIs(t, err, ErrInvalidCapacity)
 	})
 
@@ -480,24 +485,30 @@ func TestQueue(t *testing.T) {
 		p, err := NewQueue[int](4, 0)
 		require.NoError(t, err)
 
-		require.NoError(t, p.Close())
-		require.NoError(t, p.Close())
+		p.Close()
+		p.Close()
 	})
 
 	t.Run("close_wakes_blocked_receiver", func(t *testing.T) {
 		p, err := NewQueue[int](4, 0)
 		require.NoError(t, err)
 
-		done := make(chan struct{})
+		type result struct {
+			value int
+			ok    bool
+		}
+		ch := make(chan result, 1)
 		go func() {
-			defer close(done)
-			_, _ = p.Recv(context.Background())
+			v, ok := p.Recv(context.Background())
+			ch <- result{v, ok}
 		}()
 
 		p.Close()
 
 		select {
-		case <-done:
+		case r := <-ch:
+			require.False(t, r.ok)
+			require.Zero(t, r.value)
 		case <-time.After(time.Second):
 			t.Fatal("Recv did not return after Close")
 		}
@@ -519,6 +530,285 @@ func TestQueue(t *testing.T) {
 			got = append(got, v)
 		}
 		require.Equal(t, []int{0, 1, 2}, got)
+	})
+
+	t.Run("seq_break_closes_queue", func(t *testing.T) {
+		p, err := NewQueue[int](8, 0)
+		require.NoError(t, err)
+
+		for i := range 5 {
+			p.Send(context.Background(), i)
+		}
+
+		var got []int
+		for v := range p.Seq(context.Background()) {
+			got = append(got, v)
+			if len(got) == 2 {
+				break
+			}
+		}
+		require.Equal(t, []int{0, 1}, got)
+
+		// Seq defers Close, so Send should return false.
+		ok := p.Send(context.Background(), 99)
+		require.False(t, ok)
+	})
+
+	t.Run("fifo_ordering_spsc", func(t *testing.T) {
+		const n = 256
+		p, err := NewQueue[int](16, 0)
+		require.NoError(t, err)
+
+		go func() {
+			for i := range n {
+				p.Send(context.Background(), i)
+			}
+			p.Close()
+		}()
+
+		got := make([]int, 0, n)
+		for v := range p.Seq(context.Background()) {
+			got = append(got, v)
+		}
+
+		require.Len(t, got, n)
+		for i, v := range got {
+			require.Equal(t, i, v)
+		}
+	})
+
+	t.Run("send_blocks_on_full_then_wakes", func(t *testing.T) {
+		p, err := NewQueue[int](2, 0)
+		require.NoError(t, err)
+		defer p.Close()
+
+		// Fill the buffer.
+		p.Send(context.Background(), 1)
+		p.Send(context.Background(), 2)
+
+		sent := make(chan bool, 1)
+		go func() {
+			sent <- p.Send(context.Background(), 3)
+		}()
+
+		// Sender should be parked; give it time to block.
+		select {
+		case <-sent:
+			t.Fatal("Send returned before Recv freed a slot")
+		case <-time.After(50 * time.Millisecond):
+		}
+
+		// Free a slot.
+		v, ok := p.Recv(context.Background())
+		require.True(t, ok)
+		require.Equal(t, 1, v)
+
+		select {
+		case result := <-sent:
+			require.True(t, result)
+		case <-time.After(time.Second):
+			t.Fatal("Send did not wake after Recv")
+		}
+	})
+
+	t.Run("close_wakes_blocked_sender", func(t *testing.T) {
+		p, err := NewQueue[int](2, 0)
+		require.NoError(t, err)
+
+		p.Send(context.Background(), 1)
+		p.Send(context.Background(), 2)
+
+		sent := make(chan bool, 1)
+		go func() {
+			sent <- p.Send(context.Background(), 3)
+		}()
+
+		// Let the sender block.
+		select {
+		case <-sent:
+			t.Fatal("Send returned before Close")
+		case <-time.After(50 * time.Millisecond):
+		}
+
+		p.Close()
+
+		select {
+		case ok := <-sent:
+			require.False(t, ok)
+		case <-time.After(time.Second):
+			t.Fatal("Send did not return after Close")
+		}
+	})
+
+	t.Run("recv_drains_after_close", func(t *testing.T) {
+		p, err := NewQueue[int](8, 0)
+		require.NoError(t, err)
+
+		for i := range 4 {
+			p.Send(context.Background(), i+1)
+		}
+		p.Close()
+
+		var got []int
+		for {
+			v, ok := p.Recv(context.Background())
+			if !ok {
+				break
+			}
+			got = append(got, v)
+		}
+		require.Equal(t, []int{1, 2, 3, 4}, got)
+	})
+
+	t.Run("recv_returns_zero_when_closed_and_empty", func(t *testing.T) {
+		p, err := NewQueue[int](4, 0)
+		require.NoError(t, err)
+
+		p.Close()
+
+		v, ok := p.Recv(context.Background())
+		require.False(t, ok)
+		require.Zero(t, v)
+	})
+
+	t.Run("send_context_cancelled_while_blocked", func(t *testing.T) {
+		p, err := NewQueue[int](2, 0)
+		require.NoError(t, err)
+		defer p.Close()
+
+		p.Send(context.Background(), 1)
+		p.Send(context.Background(), 2)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		sent := make(chan bool, 1)
+		go func() {
+			sent <- p.Send(ctx, 3)
+		}()
+
+		// Let the sender park.
+		select {
+		case <-sent:
+			t.Fatal("Send returned before cancel")
+		case <-time.After(50 * time.Millisecond):
+		}
+
+		cancel()
+
+		select {
+		case ok := <-sent:
+			require.False(t, ok)
+		case <-time.After(time.Second):
+			t.Fatal("Send did not return after context cancel")
+		}
+	})
+
+	t.Run("recv_context_cancelled_while_blocked", func(t *testing.T) {
+		p, err := NewQueue[int](4, 0)
+		require.NoError(t, err)
+		defer p.Close()
+
+		ctx, cancel := context.WithCancel(context.Background())
+
+		type result struct {
+			value int
+			ok    bool
+		}
+		ch := make(chan result, 1)
+		go func() {
+			v, ok := p.Recv(ctx)
+			ch <- result{v, ok}
+		}()
+
+		// Let the receiver park.
+		select {
+		case <-ch:
+			t.Fatal("Recv returned before cancel")
+		case <-time.After(50 * time.Millisecond):
+		}
+
+		cancel()
+
+		select {
+		case r := <-ch:
+			require.False(t, r.ok)
+			require.Zero(t, r.value)
+		case <-time.After(time.Second):
+			t.Fatal("Recv did not return after context cancel")
+		}
+	})
+
+	t.Run("grow_noop_when_sufficient", func(t *testing.T) {
+		p, err := NewQueue[int](8, 0)
+		require.NoError(t, err)
+		defer p.Close()
+
+		require.NoError(t, p.Grow(4))
+		require.Equal(t, 8, p.Capacity())
+
+		require.NoError(t, p.Grow(8))
+		require.Equal(t, 8, p.Capacity())
+	})
+
+	t.Run("size_reflects_sends_and_recvs", func(t *testing.T) {
+		p, err := NewQueue[int](8, 0)
+		require.NoError(t, err)
+		defer p.Close()
+
+		require.Equal(t, 0, p.Size())
+
+		p.Send(context.Background(), 1)
+		p.Send(context.Background(), 2)
+		p.Send(context.Background(), 3)
+		require.Equal(t, 3, p.Size())
+
+		p.Recv(context.Background())
+		require.Equal(t, 2, p.Size())
+
+		p.Recv(context.Background())
+		p.Recv(context.Background())
+		require.Equal(t, 0, p.Size())
+	})
+
+	t.Run("slot_data_zeroed_after_recv", func(t *testing.T) {
+		p, err := NewQueue[*int](4, 0)
+		require.NoError(t, err)
+		defer p.Close()
+
+		v := 42
+		p.Send(context.Background(), &v)
+
+		got, ok := p.Recv(context.Background())
+		require.True(t, ok)
+		require.Equal(t, 42, *got)
+
+		// The slot that held the pointer should now contain nil,
+		// verifiable by inspecting the internal data slice.
+		require.Nil(t, p.data[0].Data)
+	})
+
+	t.Run("extend_preserves_data_integrity", func(t *testing.T) {
+		p, err := NewQueue[int](2, -1)
+		require.NoError(t, err)
+		defer p.Close()
+
+		// Fill and trigger an extension.
+		p.Send(context.Background(), 10)
+		p.Send(context.Background(), 20)
+		p.Send(context.Background(), 30) // triggers extend to 4
+
+		require.Equal(t, 4, p.Capacity())
+
+		v1, ok := p.Recv(context.Background())
+		require.True(t, ok)
+		require.Equal(t, 10, v1)
+
+		v2, ok := p.Recv(context.Background())
+		require.True(t, ok)
+		require.Equal(t, 20, v2)
+
+		v3, ok := p.Recv(context.Background())
+		require.True(t, ok)
+		require.Equal(t, 30, v3)
 	})
 }
 

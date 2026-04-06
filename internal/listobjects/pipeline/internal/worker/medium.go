@@ -11,10 +11,10 @@ import (
 )
 
 // FloorPowerOfTwo returns the largest power of two not exceeding i,
-// or 1 if i is zero.
+// or 2 if i is equal to or less than 2.
 func FloorPowerOfTwo(i uint) int {
-	if i == 0 {
-		return 1
+	if i <= 2 {
+		return 2
 	}
 	return 1 << (bits.Len(i) - 1)
 }

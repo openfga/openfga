@@ -227,8 +227,8 @@ func TestFloorPowerOfTwo(t *testing.T) {
 		input  uint
 		expect int
 	}{
-		{name: "zero_returns_one", input: 0, expect: 1},
-		{name: "one", input: 1, expect: 1},
+		{name: "zero_returns_two", input: 0, expect: 2},
+		{name: "one", input: 1, expect: 2},
 		{name: "two", input: 2, expect: 2},
 		{name: "three_rounds_down", input: 3, expect: 2},
 		{name: "four", input: 4, expect: 4},
