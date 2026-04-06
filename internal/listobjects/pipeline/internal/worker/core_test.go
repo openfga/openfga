@@ -292,7 +292,7 @@ func TestMessagePool_Put_ClearsValueContents(t *testing.T) {
 	// The backing array should be zeroed out.
 	raw := recycled.Value[:cap(recycled.Value)]
 	for i, v := range raw {
-		assert.Equal(t, "", v, "backing array index %d should be zero-value", i)
+		assert.Empty(t, v, "backing array index %d should be zero-value", i)
 	}
 }
 

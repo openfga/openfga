@@ -13,7 +13,7 @@ func TestEmptyReceiver_ReturnsNotOkImmediately(t *testing.T) {
 	r := worker.NewEmptyReceiver[string]()
 	value, ok := r.Recv(context.Background())
 	assert.False(t, ok)
-	assert.Zero(t, value)
+	assert.Empty(t, value)
 }
 
 func TestEmptyReceiver_ReturnsNotOkOnRepeatedCalls(t *testing.T) {

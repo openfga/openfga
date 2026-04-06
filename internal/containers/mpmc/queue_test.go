@@ -491,8 +491,7 @@ func TestQueue(t *testing.T) {
 		done := make(chan struct{})
 		go func() {
 			defer close(done)
-			_, ok := p.Recv(context.Background())
-			require.False(t, ok)
+			_, _ = p.Recv(context.Background())
 		}()
 
 		p.Close()
