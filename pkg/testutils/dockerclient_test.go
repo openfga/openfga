@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/docker/docker/api/types/container"
@@ -350,18 +351,23 @@ type dockerMockStep struct {
 func newDockerClientMock(t *testing.T, steps []dockerMockStep) *DockerClient {
 	t.Helper()
 
+	var stepIndex atomic.Int32
+
 	t.Cleanup(func() {
-		if len(steps) != 0 {
-			t.Errorf("%d mock step(s) were not consumed", len(steps))
+		remaining := len(steps) - int(stepIndex.Load())
+		if remaining != 0 {
+			t.Errorf("%d mock step(s) were not consumed", remaining)
 		}
 	})
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if len(steps) == 0 {
+		currentIndex := int(stepIndex.Add(1)) - 1
+
+		if currentIndex >= len(steps) {
 			t.Fatalf("no more steps left for request %s %s", r.Method, r.URL.Path)
 		}
-		step := steps[0]
-		steps = steps[1:]
+
+		step := steps[currentIndex]
 
 		if r.Method != step.Method {
 			t.Fatalf("expected method %s, got %s", step.Method, r.Method)
