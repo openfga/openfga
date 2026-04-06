@@ -54,6 +54,7 @@ func (m *AtomicMap[K, V]) Clear() {
 	m.m = nil
 }
 
+// Len returns the number of entries in the map.
 func (m *AtomicMap[K, V]) Len() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
