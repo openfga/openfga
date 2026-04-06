@@ -44,18 +44,18 @@ type Medium interface {
 	Listener
 }
 
-// NewStandardMedium returns a [ChannelMedium] for non-cyclical edges.
+// NewStandardMedium returns a medium for non-cyclical edges.
 func NewStandardMedium(edge *Edge, capacity int) Medium {
 	return NewChannelMedium(edge, capacity)
 }
 
-// NewCyclicalMedium returns an [AccumulatorMedium] for cyclical edges.
+// NewCyclicalMedium returns a medium for cyclical edges.
 func NewCyclicalMedium(edge *Edge, capacity int) Medium {
 	return NewQueueMedium(edge, capacity)
 }
 
-// QueueMedium is a [Medium] backed by an [mpmc.Queue], a lock-free
-// multi-producer multi-consumer ring buffer.
+// QueueMedium is a [Medium] backed by an [mpmc.Queue], providing
+// multi-producer multi-consumer queue semantics.
 type QueueMedium struct {
 	key    *Edge
 	queue  *mpmc.Queue[*Message]
