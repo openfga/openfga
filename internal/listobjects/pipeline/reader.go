@@ -146,11 +146,11 @@ func (r *TupleKeyItemReceiver) Recv(ctx context.Context) (Item, bool) {
 		t, err := r.itr.Next(ctx)
 
 		if err != nil {
+			defer r.Close()
 			if errors.Is(err, storage.ErrIteratorDone) {
 				return item, false
 			}
 			item.Err = err
-			r.Close()
 			return item, true
 		}
 
