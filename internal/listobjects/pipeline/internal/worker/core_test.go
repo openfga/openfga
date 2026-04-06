@@ -243,19 +243,23 @@ func TestCore_Message_ReturnsMessageToPool(t *testing.T) {
 		ChunkSize: chunkSize,
 		Pool:      pool,
 	}
+	defer core.Cleanup()
+
 	output := core.Subscribe(nil, chunkSize)
 
 	core.Broadcast(context.Background(), worker.NewValueReceiver("a"))
 	core.Cleanup()
 
 	// Drain the output so the message callback returns the message.
-	_ = collectOutput(output)
+	msg, ok := output.Recv(context.Background())
+	require.True(t, ok)
+	msg.Done()
 
 	// The pool should have message returned.
 	// Verify by getting from the pool — should not allocate.
 	buf := pool.Get()
 	assert.NotNil(t, buf)
-	assert.Empty(t, buf.Value)
+	assert.Same(t, msg, buf)
 }
 
 // --- MessagePool Tests ---
@@ -306,7 +310,7 @@ func TestMessagePool_Put_DropsWhenFull(t *testing.T) {
 	pool.Put(msg2) // pool capacity is 1, so this should be silently dropped
 
 	got := pool.Get()
-	assert.NotNil(t, got)
+	assert.Same(t, msg1, got)
 }
 
 func TestInitMessagePool(t *testing.T) {
