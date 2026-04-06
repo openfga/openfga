@@ -72,6 +72,9 @@ func (m *QueueMedium) String() string {
 // is rounded down to the nearest power of two as required by the
 // underlying ring buffer.
 func NewQueueMedium(edge *Edge, capacity int) *QueueMedium {
+	if capacity < 0 {
+		capacity = 2
+	}
 	medium := mpmc.MustQueue[*Message](FloorPowerOfTwo(uint(capacity)), -1)
 	src, dst := EdgeLabels(edge)
 	return &QueueMedium{
