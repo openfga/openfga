@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -11,13 +12,18 @@ import (
 	"github.com/openfga/openfga/internal/planner"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"github.com/openfga/openfga/pkg/tuple"
 )
+
+// V2CheckMethodName is used to differentiate v2Check from base Check for metric reporting when both are running.
+const V2CheckMethodName = "v2Check"
 
 type CheckQueryV2 struct {
 	logger                    logger.Logger
 	model                     *modelgraph.AuthorizationModelGraph
 	datastore                 storage.RelationshipTupleReader
+	datastoreOp               storagewrappers.Operation
 	cache                     storage.InMemoryCache[any]
 	cacheTTL                  time.Duration
 	lastCacheInvalidationTime time.Time
@@ -76,6 +82,20 @@ func WithCheckQueryV2ConcurrencyLimit(limit int) CheckQueryV2Option {
 	}
 }
 
+func WithCheckQueryV2MaxConcurrentReads(n uint32) CheckQueryV2Option {
+	return func(cmd *CheckQueryV2) {
+		cmd.datastoreOp.Concurrency = n
+	}
+}
+
+func WithCheckQueryV2DatastoreThrottling(enabled bool, threshold int, duration time.Duration) CheckQueryV2Option {
+	return func(cmd *CheckQueryV2) {
+		cmd.datastoreOp.ThrottlingEnabled = enabled
+		cmd.datastoreOp.ThrottleThreshold = threshold
+		cmd.datastoreOp.ThrottleDuration = duration
+	}
+}
+
 func WithCheckQueryV2UpstreamTimeout(timeout time.Duration) CheckQueryV2Option {
 	return func(cmd *CheckQueryV2) {
 		cmd.upstreamTimeout = timeout
@@ -85,6 +105,10 @@ func WithCheckQueryV2UpstreamTimeout(timeout time.Duration) CheckQueryV2Option {
 func NewCheckQuery(opts ...CheckQueryV2Option) *CheckQueryV2 {
 	q := &CheckQueryV2{
 		logger: logger.NewNoopLogger(),
+		datastoreOp: storagewrappers.Operation{
+			Method:      V2CheckMethodName, // Must be different from base Check to avoid metric pollution when both Check algorithms are running
+			Concurrency: defaultMaxConcurrentReadsForCheck,
+		},
 	}
 
 	for _, opt := range opts {
@@ -94,7 +118,9 @@ func NewCheckQuery(opts ...CheckQueryV2Option) *CheckQueryV2 {
 	return q
 }
 
-func (q *CheckQueryV2) Execute(ctx context.Context, req *openfgav1.CheckRequest) (*openfgav1.CheckResponse, error) {
+func (q *CheckQueryV2) Execute(ctx context.Context, req *openfgav1.CheckRequest) (*openfgav1.CheckResponse, storagewrappers.Metadata, error) {
+	ds := storagewrappers.NewBoundedTupleReader(q.datastore, &q.datastoreOp)
+
 	r, err := check.NewRequest(check.RequestParams{
 		StoreID:          req.GetStoreId(),
 		Model:            q.model,
@@ -105,12 +131,12 @@ func (q *CheckQueryV2) Execute(ctx context.Context, req *openfgav1.CheckRequest)
 	})
 
 	if err != nil {
-		return nil, err
+		return nil, ds.GetMetadata(), err
 	}
 
 	resolver := check.New(check.Config{
 		Model:                     q.model,
-		Datastore:                 q.datastore,
+		Datastore:                 ds,
 		Cache:                     q.cache,
 		CacheTTL:                  q.cacheTTL,
 		LastCacheInvalidationTime: q.lastCacheInvalidationTime,
@@ -121,11 +147,15 @@ func (q *CheckQueryV2) Execute(ctx context.Context, req *openfgav1.CheckRequest)
 	})
 
 	res, err := resolver.ResolveCheck(ctx, r)
+	metadata := ds.GetMetadata()
 	if err != nil {
-		return nil, err
+		if metadata.WasThrottled && errors.Is(err, context.DeadlineExceeded) {
+			err = &ThrottledError{Cause: err}
+		}
+		return nil, metadata, err
 	}
 
 	return &openfgav1.CheckResponse{
 		Allowed: res.GetAllowed(),
-	}, nil
+	}, metadata, nil
 }
