@@ -1006,7 +1006,18 @@ func TestVerifyBinarySettings(t *testing.T) {
 
 		err := cfg.VerifyBinarySettings()
 		require.Error(t, err)
-		require.Contains(t, err.Error(), "the playground only supports authn methods 'none' and 'preshared'")
+		require.Contains(t, err.Error(), "the playground only supports authn method 'none'")
+	})
+
+	t.Run("playground_enabled_with_preshared_authn", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Playground.Enabled = true
+		cfg.HTTP.Enabled = true
+		cfg.Authn.Method = "preshared"
+
+		err := cfg.VerifyBinarySettings()
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "the playground only supports authn method 'none'")
 	})
 
 	t.Run("playground_enabled_with_supported_authn", func(t *testing.T) {
@@ -1016,10 +1027,6 @@ func TestVerifyBinarySettings(t *testing.T) {
 		cfg.Authn.Method = "none"
 
 		err := cfg.VerifyBinarySettings()
-		require.NoError(t, err)
-
-		cfg.Authn.Method = "preshared"
-		err = cfg.VerifyBinarySettings()
 		require.NoError(t, err)
 	})
 
@@ -1108,4 +1115,24 @@ func TestDefaultContextTimeout(t *testing.T) {
 			require.Equal(t, test.expectedContextTimeout, timeout)
 		})
 	}
+}
+
+func TestPlaygroundAddr(t *testing.T) {
+	t.Run("returns_Addr_when_set", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Playground.Addr = "0.0.0.0:4000"
+		cfg.Playground.Port = 3000
+		require.Equal(t, "0.0.0.0:4000", cfg.Playground.PlaygroundAddr())
+	})
+
+	t.Run("falls_back_to_Port_bound_to_localhost_when_Addr_and_Port_are_empty", func(t *testing.T) {
+		cfg := DefaultConfig()
+		require.Equal(t, "127.0.0.1:3000", cfg.Playground.PlaygroundAddr())
+	})
+
+	t.Run("uses_custom_port_when_Addr_is_empty", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Playground.Port = 9090
+		require.Equal(t, "127.0.0.1:9090", cfg.Playground.PlaygroundAddr())
+	})
 }
