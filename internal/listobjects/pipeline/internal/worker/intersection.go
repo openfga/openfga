@@ -87,7 +87,7 @@ func (w *Intersection) Execute(ctx context.Context) {
 
 			w.ProcessSender(ctx, index, w)
 
-			if w.stats[index].SumObjectsReceived == 0 {
+			if w.bags[index].Len() == 0 {
 				cancel()
 			}
 		})

@@ -54,6 +54,13 @@ func (m *AtomicMap[K, V]) Clear() {
 	m.m = nil
 }
 
+func (m *AtomicMap[K, V]) Len() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	return len(m.m)
+}
+
 // Unwrap returns the internal map that backs the AtomicMap.
 // A nil value may be returned if the AtomicMap has not yet
 // been initialized, or Unwrap is called after a Clear call.
