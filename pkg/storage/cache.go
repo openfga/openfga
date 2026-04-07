@@ -284,7 +284,14 @@ func writeValue(w io.StringWriter, v *structpb.Value) (err error) {
 		if err = validateNoForbiddenChars(val.StringValue); err != nil {
 			return
 		}
-		_, err = w.WriteString(val.StringValue)
+    
+    numBytes := len(val.StringValue)
+		_, err = w.WriteString(strconv.Itoa(numBytes) + ":")
+		if err != nil {
+			return
+		}
+
+    _, err = w.WriteString(val.StringValue)
 		if err != nil {
 			return
 		}

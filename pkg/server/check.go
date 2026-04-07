@@ -71,6 +71,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 	storeID := req.GetStoreId()
 
 	if s.featureFlagClient.Boolean(serverconfig.ExperimentalWeightedGraphCheck, storeID) {
+		// TODO: This path is missing some of the metrics/tracing information reported below
 		return s.v2Check(ctx, req, s.sharedDatastoreResources.CheckCache, s.sharedDatastoreResources.CacheController, s.authzModelGraphResolver)
 	}
 
@@ -239,13 +240,14 @@ func (s *Server) v2Check(
 	cacheController cachecontroller.CacheController,
 	modelGraphResolver *modelgraph.AuthorizationModelGraphResolver,
 ) (*openfgav1.CheckResponse, error) {
-	cacheInvalidationTime := time.Time{}
+	storeID := req.GetStoreId()
 
+	cacheInvalidationTime := time.Time{}
 	if req.GetConsistency() != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
-		cacheInvalidationTime = cacheController.DetermineInvalidationTime(ctx, req.GetStoreId())
+		cacheInvalidationTime = cacheController.DetermineInvalidationTime(ctx, storeID)
 	}
 
-	mg, err := modelGraphResolver.Resolve(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
+	mg, err := modelGraphResolver.Resolve(ctx, storeID, req.GetAuthorizationModelId())
 	if err != nil {
 		return nil, err
 	}
@@ -253,6 +255,12 @@ func (s *Server) v2Check(
 	q := commands.NewCheckQuery(
 		commands.WithCheckQueryV2Logger(s.logger),
 		commands.WithCheckQueryV2Datastore(s.datastore),
+		commands.WithCheckQueryV2MaxConcurrentReads(s.maxConcurrentReadsForCheck),
+		commands.WithCheckQueryV2DatastoreThrottling(
+			s.featureFlagClient.Boolean(serverconfig.ExperimentalDatastoreThrottling, storeID),
+			s.checkDatastoreThrottleThreshold,
+			s.checkDatastoreThrottleDuration,
+		),
 		commands.WithCheckQueryV2Model(mg),
 		commands.WithCheckQueryV2Cache(cache),
 		commands.WithCheckQueryV2CacheTTL(s.cacheSettings.CheckQueryCacheTTL),
@@ -262,7 +270,27 @@ func (s *Server) v2Check(
 		commands.WithCheckQueryV2UpstreamTimeout(s.requestTimeout),
 	)
 
-	res, err := q.Execute(ctx, req)
+	res, metadata, err := q.Execute(ctx, req)
+
+	// Publish metrics from datastore metadata.
+	queryCount := float64(metadata.DatastoreQueryCount)
+	itemCount := float64(metadata.DatastoreItemCount)
+
+	span := trace.SpanFromContext(ctx)
+
+	grpc_ctxtags.Extract(ctx).Set(datastoreQueryCountHistogramName, queryCount)
+	span.SetAttributes(attribute.Float64(datastoreQueryCountHistogramName, queryCount))
+	datastoreQueryCountHistogram.WithLabelValues(s.serviceName, commands.V2CheckMethodName).Observe(queryCount)
+
+	grpc_ctxtags.Extract(ctx).Set(datastoreItemCountHistogramName, itemCount)
+	span.SetAttributes(attribute.Float64(datastoreItemCountHistogramName, itemCount))
+	datastoreItemCountHistogram.WithLabelValues(s.serviceName, commands.V2CheckMethodName).Observe(itemCount)
+
+	if metadata.WasThrottled {
+		throttledRequestCounter.WithLabelValues(s.serviceName, commands.V2CheckMethodName, throttleTypeDatastore).Inc()
+	}
+	grpc_ctxtags.Extract(ctx).Set("request.datastore_throttled", metadata.WasThrottled)
+
 	if err != nil {
 		return nil, commands.CheckCommandErrorToServerError(err)
 	}

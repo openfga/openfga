@@ -100,7 +100,7 @@ func TestWriteValue(t *testing.T) {
 					})),
 				},
 			}),
-			output: "A,null,true,1111111111,1'key:'value,",
+			output: "1:A,null,true,1111111111,1'key:'5:value,",
 		},
 		"list_write_value_error": {
 			writer: &ErrorStringWriter{},
@@ -153,6 +153,28 @@ func TestWriteValue(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("list_string_with_comma_vs_separate_elements", func(t *testing.T) {
+		// ["editor,viewer"] (single string containing a comma) must not
+		// hash the same as ["editor","viewer"] (two separate strings).
+		singleElement := structpb.NewListValue(&structpb.ListValue{
+			Values: []*structpb.Value{
+				structpb.NewStringValue("editor,viewer"),
+			},
+		})
+		twoElements := structpb.NewListValue(&structpb.ListValue{
+			Values: []*structpb.Value{
+				structpb.NewStringValue("editor"),
+				structpb.NewStringValue("viewer"),
+			},
+		})
+
+		var w1, w2 strings.Builder
+		require.NoError(t, writeValue(&w1, singleElement))
+		require.NoError(t, writeValue(&w2, twoElements))
+		require.NotEqual(t, w1.String(), w2.String(),
+			"single string 'editor,viewer' and two strings 'editor','viewer' must serialize differently")
+	})
 }
 
 func TestWriteStruct(t *testing.T) {
@@ -168,7 +190,7 @@ func TestWriteStruct(t *testing.T) {
 				"keyA": "valueA",
 				"keyB": "valueB",
 			}),
-			output: "2'keyA:'valueA,'keyB:'valueB,",
+			output: "2'keyA:'6:valueA,'keyB:'6:valueB,",
 		},
 		"incorrect_value": {
 			writer: &validWriter,
@@ -177,7 +199,7 @@ func TestWriteStruct(t *testing.T) {
 				"a": "x,'b:'y",
 			}),
 			// but our cache key should identify it correctly as 1 key
-			output: "1'a:'x,'b:'y,",
+			output: "1'a:'7:x,'b:'y,",
 		},
 		"fields_write_len_error": {
 			writer: &ErrorStringWriter{},
@@ -343,7 +365,7 @@ func TestWriteTuples(t *testing.T) {
 					}),
 				),
 			},
-			output: "/document:A#relationA with A 1'key:'value,@user:A,document:A#relationA with B 1'key:'value,@user:A",
+			output: "/document:A#relationA with A 1'key:'5:value,@user:A,document:A#relationA with B 1'key:'5:value,@user:A",
 		},
 		"with_condition_write_with_error": {
 			writer: &ErrorStringWriter{
