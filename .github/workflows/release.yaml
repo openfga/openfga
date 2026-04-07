@@ -39,23 +39,23 @@ jobs:
           check-latest: true
 
       - name: Login to Docker Hub
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4.0.0
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Log in to GHCR
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4.0.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: sigstore/cosign-installer@faadad0cce49287aee09b3a48701e75088a2c6ad # v4.0.0
+      - uses: sigstore/cosign-installer@ba7bc0a3fef59531c69a25acd34668d6d3fe6f22 # v4.1.0
         with:
           cosign-release: "v2.6.1"
 
-      - uses: anchore/sbom-action/download-syft@17ae1740179002c89186b61233e0f892c3118b11 # v0.23.0
+      - uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
 
       - name: Run GoReleaser
         id: goreleaser
@@ -84,7 +84,7 @@ jobs:
           hashes=$(echo "$ARTIFACTS" | jq --raw-output '[.[] | {name, "digest": (.extra.Digest // .extra.Checksum)}] | unique | .[] | select(.digest) | {digest} + {name} | join("  ") | sub("^sha256:";"")' | base64 -w0)
           echo "$hashes" > digests.txt
 
-      - uses: slsa-framework/slsa-github-generator/actions/generator/generic/create-base64-subjects-from-file@a09dd8c05eda63cace134cb7dccd7e019f25e6f3 # pin@v2.1.0
+      - uses: slsa-framework/slsa-github-generator/actions/generator/generic/create-base64-subjects-from-file@4d014fae4dbd39eb09e8d40348b73db095e6ba9a # pin@v2.1.0
         id: hashes
         with:
           path: digests.txt
@@ -133,7 +133,7 @@ jobs:
           mv snyk.categorized.sarif snyk.sarif
 
       - name: Upload result to GitHub Code Scanning
-        uses: github/codeql-action/upload-sarif@c793b717bc78562f491db7b0e93a3a178b099162 # pin@v2
+        uses: github/codeql-action/upload-sarif@38697555549f1db7851b81482ff19f1fa5c4fedc # pin@v2
         with:
           sarif_file: snyk.sarif
 
@@ -200,13 +200,13 @@ jobs:
     permissions: read-all
     steps:
       - name: Login to Docker Hub
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4.0.0
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Install Cosign
-        uses: sigstore/cosign-installer@faadad0cce49287aee09b3a48701e75088a2c6ad # v4.0.0
+        uses: sigstore/cosign-installer@ba7bc0a3fef59531c69a25acd34668d6d3fe6f22 # v4.1.0
         with:
           cosign-release: "v2.6.1"
 

@@ -326,10 +326,15 @@ func (t *SQLTupleIterator) fetchBuffer(ctx context.Context) error {
 	ctx, span := tracer.Start(ctx, "sqlcommon.fetchBuffer", trace.WithAttributes())
 	defer span.End()
 	ctx = context.WithoutCancel(ctx)
+	start := time.Now()
 	curRows, err := t.rowGetter.GetRows(ctx)
+	elapsed := time.Since(start)
 	if err != nil {
-		return t.handleSQLError(err)
+		storageErr := t.handleSQLError(err)
+		storage.ObserveIterQueryDuration(storage.SuccessLabel(storageErr), elapsed)
+		return storageErr
 	}
+	storage.ObserveIterQueryDuration(true, elapsed)
 	t.rows = curRows
 	return nil
 }
@@ -722,7 +727,7 @@ func GetDeleteWriteChangelogItems(
 			tk.GetUser(),
 			"",
 			nil, // Redact condition info for Deletes since we only need the base triplet (object, relation, user).
-			openfgav1.TupleOperation_TUPLE_OPERATION_DELETE,
+			int32(openfgav1.TupleOperation_TUPLE_OPERATION_DELETE),
 			id,
 			sq.Expr("NOW()"),
 		})
@@ -791,7 +796,7 @@ func GetDeleteWriteChangelogItems(
 			tk.GetUser(),
 			conditionName,
 			conditionContext,
-			openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
+			int32(openfgav1.TupleOperation_TUPLE_OPERATION_WRITE),
 			id,
 			sq.Expr("NOW()"),
 		})

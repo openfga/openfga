@@ -8,9 +8,27 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
-## [1.13.1] - 2026-03-24
+## [1.14.0] - 2026-04-03
+### Added
+- Added `openfga_iter_query_duration_ms` histogram metric to track storage iterator query latency across all storage backends, labeled by `success`. The metric is recorded in each backend's `fetchBuffer` after error classification: infrastructure failures are labeled `success=false`; expected storage outcomes (`ErrNotFound`, `ErrCollision`, `ErrInvalidWriteInput`) are labeled `success=true`. [#3030](https://github.com/openfga/openfga/pull/3030)
+
+### Changed
+- Changed the ListObjects pipeline intersection algorithm to improve intersection performance. [#3031](https://github.com/openfga/openfga/pull/3031)
+- **[BREAKING]** The Playground now only supports the `none` authentication method. Running the Playground with `preshared` key authentication is no longer supported. The server will error and not start if it detects this combination.
+
+### Deprecated
+- The built-in OpenFGA Playground is intended for development purposes only and is deprecated. It will be removed entirely in a future release.
+- The `--playground-port` flag and `OPENFGA_PLAYGROUND_PORT` environment variable are deprecated. Use `--playground-addr` (`OPENFGA_PLAYGROUND_ADDR`) instead to specify the full `host:port` address for the Playground server. When `--playground-addr` is not set, the Playground binds to `127.0.0.1` using the port from `--playground-port`.
+
 ### Fixed
-- Fixed a bug in cache key construction for Check requests using conditions.
+- Fixed Write operations failing with `invalid input syntax for type integer` (SQLSTATE 22P02) when PostgreSQL is behind PgBouncer or a connection pooler using the simple query protocol. [#3014](https://github.com/openfga/openfga/pull/3014)
+- Fixed PostgreSQL `HandleSQLError` and `GetStore` returning a wrapped error instead of `storage.ErrNotFound` when no rows are found. When using pgxpool directly, `QueryRow().Scan()` returns `pgx.ErrNoRows`, not `sql.ErrNoRows`; both are now handled. [#3014](https://github.com/openfga/openfga/pull/3014)
+- Fixed the possibility of deadlocks within the ListObjects pipeline algorithm. Also added short-circuit enhancements that will reduce latency and message processing in certain scenarios. Cyclical edges now use as much memory as necessary to process deep and wide data hierarchies without the risk of a deadlock. [#3028](https://github.com/openfga/openfga/pull/3028)
+- Fixed issue where BatchCheck calls with multiple checks for the same tuple could result in improper policy enforcement. [CVE-2026-34972](https://github.com/openfga/openfga/security/advisories/GHSA-jwvj-g8pc-cx45)
+
+## [1.13.1] - 2026-03-24
+### Security
+- Fixed a security vulnerability ([CVE-2026-33729](https://github.com/openfga/openfga/security/advisories/GHSA-h6c8-cww8-35hf)) where Check requests with conditions and caching enabled could return incorrect cached results.
 
 ## [1.13.0] - 2026-03-23
 ### Added
@@ -1568,7 +1586,8 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
 - Memory storage adapter implementation
 - Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.13.1...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.14.0...HEAD
+[1.14.0]: https://github.com/openfga/openfga/compare/v1.13.1...v1.14.0
 [1.13.1]: https://github.com/openfga/openfga/compare/v1.13.0...v1.13.1
 [1.13.0]: https://github.com/openfga/openfga/compare/v1.12.1...v1.13.0
 [1.12.1]: https://github.com/openfga/openfga/compare/v1.12.0...v1.12.1

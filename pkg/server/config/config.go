@@ -242,9 +242,30 @@ type OTLPTraceTLSConfig struct {
 }
 
 // PlaygroundConfig defines OpenFGA server configurations for the Playground specific settings.
+//
+// Deprecated: The built in FGA Playground is deprecated and will be removed in a subsequent release.
 type PlaygroundConfig struct {
+	// Enabled enables or disables the OpenFGA Playground.
 	Enabled bool
-	Port    int
+
+	// Port defines the port on which the Playground HTTP server will listen.
+	//
+	// Deprecated: Port has been deprecated, use Addr to specify the address with the port instead.
+	// If Addr is not specified, but Playground is enabled, Playground will bind to 127.0.0.1.
+	Port int
+
+	// Addr defines the address (host:port) on which the Playground HTTP server will listen.
+	Addr string
+}
+
+// PlaygroundAddr resolves the address for the Playground HTTP server.
+// If Addr is explicitly set, it is returned as-is. Otherwise, the address is
+// constructed from Port, binding to 127.0.0.1.
+func (cfg PlaygroundConfig) PlaygroundAddr() string {
+	if cfg.Addr != "" {
+		return cfg.Addr
+	}
+	return fmt.Sprintf("127.0.0.1:%d", cfg.Port)
 }
 
 // ProfilerConfig defines server configurations specific to pprof profiling.
@@ -540,8 +561,8 @@ func (cfg *Config) VerifyBinarySettings() error {
 			return errors.New("the HTTP server must be enabled to run the openfga playground")
 		}
 
-		if cfg.Authn.Method != "none" && cfg.Authn.Method != "preshared" {
-			return errors.New("the playground only supports authn methods 'none' and 'preshared'")
+		if cfg.Authn.Method != "none" {
+			return errors.New("the playground only supports authn method 'none'")
 		}
 	}
 
@@ -776,7 +797,7 @@ func DefaultConfig() *Config {
 			ResourceAttributes: "",
 		},
 		Playground: PlaygroundConfig{
-			Enabled: true,
+			Enabled: false,
 			Port:    3000,
 		},
 		Profiler: ProfilerConfig{

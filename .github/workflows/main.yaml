@@ -23,7 +23,7 @@ jobs:
         run: make test
 
       - name: upload coverage to codecov
-        uses: codecov/codecov-action@671740ac38dd9b0130fbe1cec585b89eea48d3de # v5.5.2
+        uses: codecov/codecov-action@1af58845a975a7985b0beb0cbe6fbbb71a41dbad # v5.5.3
         with:
           files: ./coverageunit.out
           verbose: true
@@ -67,7 +67,7 @@ jobs:
         id: system-info
 
       - name: Save benchmark JSON to cache
-        uses: actions/cache/save@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
+        uses: actions/cache/save@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
         with:
           path: ./cache/benchmark-data.json
           # Save with commit hash to avoid "cache already exists"
