@@ -60,12 +60,14 @@ type Difference struct {
 
 // ProcessMessage interprets the message values through the sender's edge and
 // adds the results to the adder corresponding to the sender index.
-func (w *Difference) ProcessMessage(ctx context.Context, index int, msg *Message) {
+func (w *Difference) ProcessMessage(ctx context.Context, index int, msg *Message) error {
 	sender := w.senders[index]
 	edge := sender.Key()
 
 	results := w.Interpreter.Interpret(ctx, edge, msg.Value)
 	defer results.Close()
+
+	var err error
 
 	for {
 		item, ok := results.Recv(ctx)
@@ -73,9 +75,9 @@ func (w *Difference) ProcessMessage(ctx context.Context, index int, msg *Message
 			break
 		}
 
-		value, err := item.Object()
+		var value string
+		value, err = item.Object()
 		if err != nil {
-			w.error(&err)
 			break
 		}
 
@@ -86,6 +88,7 @@ func (w *Difference) ProcessMessage(ctx context.Context, index int, msg *Message
 			w.subtract.Add(value)
 		}
 	}
+	return err
 }
 
 // Execute processes the base and subtract senders concurrently. Once both

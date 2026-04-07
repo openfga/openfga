@@ -266,7 +266,7 @@ func TestBasic_Execute_InterpreterError(t *testing.T) {
 
 	w.Execute(context.Background())
 
-	assert.Equal(t, []string{"good"}, collectOutput(output))
+	assert.Nil(t, collectOutput(output))
 	require.Len(t, errs, 1)
 	assert.ErrorIs(t, <-errs, sentinelErr)
 }

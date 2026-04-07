@@ -26,7 +26,7 @@ type Intersection struct {
 
 // ProcessMessage interprets the message values through the sender's edge and
 // accumulates the results into the bag corresponding to the sender index.
-func (w *Intersection) ProcessMessage(ctx context.Context, index int, msg *Message) {
+func (w *Intersection) ProcessMessage(ctx context.Context, index int, msg *Message) error {
 	sender := w.senders[index]
 	bag := &w.bags[index]
 	edge := sender.Key()
@@ -34,19 +34,22 @@ func (w *Intersection) ProcessMessage(ctx context.Context, index int, msg *Messa
 	results := w.Interpreter.Interpret(ctx, edge, msg.Value)
 	defer results.Close()
 
+	var err error
+
 	for {
 		item, ok := results.Recv(ctx)
 		if !ok {
 			break
 		}
 
-		value, err := item.Object()
+		var value string
+		value, err = item.Object()
 		if err != nil {
-			w.error(&err)
 			break
 		}
 		bag.Store(value, struct{}{})
 	}
+	return err
 }
 
 // Execute processes all senders concurrently, accumulating each sender's
@@ -87,7 +90,7 @@ func (w *Intersection) Execute(ctx context.Context) {
 
 			w.ProcessSender(ctx, index, w)
 
-			if w.bags[index].Len() == 0 {
+			if w.bags[index].Len() == 0 && w.stats[index].SumErrors == 0 {
 				cancel()
 			}
 		})

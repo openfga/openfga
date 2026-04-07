@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"sync"
+	"sync/atomic"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -40,7 +41,7 @@ type Worker interface {
 // MessageProcessor handles a single message received from a sender.
 // The index parameter identifies which sender produced the message.
 type MessageProcessor interface {
-	ProcessMessage(context.Context, int, *Message)
+	ProcessMessage(context.Context, int, *Message) error
 }
 
 // Message carries a batch of values between workers.
@@ -83,6 +84,7 @@ type Stats struct {
 	Source              string
 	Destination         string
 	Cyclical            bool
+	SumErrors           int64
 	SumMessagesReceived int64
 	SumObjectsReceived  int64
 	MaxObjectsReceived  int64
@@ -229,6 +231,12 @@ func (c *Core) ProcessSender(ctx context.Context, index int, processor MessagePr
 	stats.Source = src
 	stats.Destination = dst
 
+	var errCount atomic.Int64
+
+	defer func(stats *Stats, errCount *atomic.Int64) {
+		stats.SumErrors = errCount.Load()
+	}(stats, &errCount)
+
 	// The drain must fully release all queued messages in order to prevent
 	// deadlocks during cleanup.
 	defer DrainSender(context.Background(), c.senders[index])
@@ -256,7 +264,10 @@ func (c *Core) ProcessSender(ctx context.Context, index int, processor MessagePr
 
 			for msg = range input {
 				if processor != nil {
-					processor.ProcessMessage(ctx, index, msg)
+					if e := processor.ProcessMessage(ctx, index, msg); e != nil {
+						errCount.Add(1)
+						c.error(&e)
+					}
 				}
 				msg.Done()
 				msg = nil
