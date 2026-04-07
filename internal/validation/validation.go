@@ -220,7 +220,7 @@ func validateCondition(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) e
 
 	if utils.ContainsForbiddenChars(tk.GetCondition().GetName()) {
 		return &tuple.InvalidConditionalTupleError{
-			Cause: fmt.Errorf("condition name contains control characters"), TupleKey: tk,
+			Cause: fmt.Errorf("condition name contains forbidden characters"), TupleKey: tk,
 		}
 	}
 
@@ -381,8 +381,8 @@ func ValidateUser(typesys *typesystem.TypeSystem, user string) error {
 	return nil
 }
 
-// ValidateStruct checks that a structpb.Struct does not contain Unicode control
-// characters in any string keys or values. This prevents control characters from
+// ValidateStruct checks that a structpb.Struct does not contain forbidden
+// characters in any string keys or values. This prevents dangerous characters from
 // reaching cache key generation or log output.
 func ValidateStruct(s *structpb.Struct) error {
 	if s == nil {
@@ -390,27 +390,27 @@ func ValidateStruct(s *structpb.Struct) error {
 	}
 	for key, value := range s.GetFields() {
 		if utils.ContainsForbiddenChars(key) {
-			return fmt.Errorf("context key %q contains control characters", key)
+			return fmt.Errorf("context key %q contains forbidden characters", key)
 		}
-		if err := validateValueControlChars(value); err != nil {
+		if err := validateValueForbiddenChars(value); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func validateValueControlChars(v *structpb.Value) error {
+func validateValueForbiddenChars(v *structpb.Value) error {
 	if v == nil {
 		return nil
 	}
 	switch val := v.GetKind().(type) {
 	case *structpb.Value_StringValue:
 		if utils.ContainsForbiddenChars(val.StringValue) {
-			return fmt.Errorf("context value %q contains control characters", val.StringValue)
+			return fmt.Errorf("context value %q contains forbidden characters", val.StringValue)
 		}
 	case *structpb.Value_ListValue:
 		for _, item := range val.ListValue.GetValues() {
-			if err := validateValueControlChars(item); err != nil {
+			if err := validateValueForbiddenChars(item); err != nil {
 				return err
 			}
 		}

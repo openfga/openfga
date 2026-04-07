@@ -266,7 +266,7 @@ var ErrUnexpectedStructValue = errors.New("unexpected structpb value encountered
 // cache key generation. If this errors, it indicates a validation bug upstream.
 func validateNoForbiddenChars(s string) error {
 	if utils.ContainsForbiddenChars(s) {
-		return fmt.Errorf("invariant violation: control character in cache key input")
+		return fmt.Errorf("invariant violation: forbidden character in cache key input")
 	}
 	return nil
 }
