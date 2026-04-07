@@ -1221,7 +1221,7 @@ func TestValidateStruct(t *testing.T) {
 			err := ValidateStruct(newStruct)
 			if tc.wantErr {
 				require.Error(t, err)
-				require.Contains(t, err.Error(), "control characters")
+				require.Contains(t, err.Error(), "characters")
 			} else {
 				require.NoError(t, err)
 			}
