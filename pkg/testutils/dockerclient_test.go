@@ -52,14 +52,11 @@ func TestPullImage_Fail(t *testing.T) {
 	})
 
 	t.Run("image_nonexistent", func(t *testing.T) {
-		dc, err := NewDockerClient()
-		require.NoError(t, err)
-
-		t.Cleanup(func() {
-			require.NoError(t, dc.Close())
+		dc := newDockerClientMock(t, []dockerMockStep{
+			{Method: http.MethodGet, Path: "/images/json", Body: []byte(`[]`)},
+			{Method: http.MethodPost, Path: "/images/create", Error: "pull failed"},
 		})
-
-		err = dc.PullImage(t.Context(), "image:nonexistent")
+		err := dc.PullImage(t.Context(), "image:nonexistent")
 		require.Error(t, err)
 		require.ErrorContains(t, err, "pull image")
 	})

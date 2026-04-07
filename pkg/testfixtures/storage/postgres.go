@@ -317,10 +317,11 @@ exec docker-entrypoint.sh postgres -c hot_standby=on -c max_connections=200
 
 // waitForReplicaSync waits for the replica to be synchronized with the master.
 func waitForPostgresReplicaSync(t testing.TB, uri string) error {
-	backoffPolicy := backoff.NewExponentialBackOff()
-	backoffPolicy.MaxElapsedTime = 120 * time.Second // Increase to 2 minutes for initialization.
-	backoffPolicy.InitialInterval = 2 * time.Second  // Start with 2 seconds.
-	backoffPolicy.MaxInterval = 10 * time.Second     // Cap at 10 seconds.
+	backoffPolicy := backoff.NewExponentialBackOff(
+		backoff.WithInitialInterval(2*time.Second),
+		backoff.WithMaxInterval(10*time.Second),
+		backoff.WithMaxElapsedTime(120*time.Second),
+	)
 
 	return backoff.Retry(
 		func() error {
