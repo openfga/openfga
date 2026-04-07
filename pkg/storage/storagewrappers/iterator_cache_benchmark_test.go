@@ -7,13 +7,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 	"golang.org/x/sync/singleflight"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/mocks"
+	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
 )
@@ -191,16 +191,6 @@ func BenchmarkV1vsV2_CacheMiss_Collection(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				innerIter := storage.NewStaticTupleIterator(tuples)
 
-				ds := NewCachedDatastore(
-					ctx,
-					nil, // RelationshipTupleReader not used directly
-					mockCache,
-					size+100,
-					time.Hour,
-					sf,
-					wg,
-				)
-
 				// Simulate cache miss path
 				iter := &cachedIterator{
 					ctx:           ctx,
@@ -217,7 +207,6 @@ func BenchmarkV1vsV2_CacheMiss_Collection(b *testing.B) {
 					relation:      "viewer",
 					wg:            wg,
 				}
-				_ = ds // avoid unused
 
 				for {
 					_, err := iter.Next(ctx)
@@ -449,6 +438,77 @@ func BenchmarkV1vsV2_BufferAllocation(b *testing.B) {
 func BenchmarkV1vsV2_EndToEnd(b *testing.B) {
 	size := 100
 
+	b.Run("V1_CacheMissThenHit", func(b *testing.B) {
+		mockController := gomock.NewController(b)
+		defer mockController.Finish()
+
+		mockCache := mocks.NewMockInMemoryCache[any](mockController)
+
+		var cachedRecords []*storage.TupleRecord
+		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ string, value any, _ time.Duration) {
+				entry := value.(*storage.TupleIteratorCacheEntry)
+				cachedRecords = entry.Tuples
+			},
+		).AnyTimes()
+		mockCache.EXPECT().Get(gomock.Any()).Return(nil).AnyTimes()
+		mockCache.EXPECT().Delete(gomock.Any()).AnyTimes()
+
+		tuples := createTestTuples(size)
+		ctx := context.Background()
+		sf := &singleflight.Group{}
+		wg := &sync.WaitGroup{}
+
+		b.ReportAllocs()
+		b.ResetTimer()
+
+		for i := 0; i < b.N; i++ {
+			// Cache miss - collect tuples via cachedIterator
+			innerIter := storage.NewStaticTupleIterator(tuples)
+			iter := &cachedIterator{
+				ctx:           ctx,
+				iter:          innerIter,
+				store:         "store123",
+				operation:     "ReadUsersetTuples",
+				tuples:        make([]*openfgav1.Tuple, 0, size),
+				cacheKey:      "test-key",
+				cache:         mockCache,
+				maxResultSize: size + 100,
+				ttl:           time.Hour,
+				sf:            sf,
+				objectType:    "document",
+				relation:      "viewer",
+				wg:            wg,
+				logger:        logger.NewNoopLogger(),
+			}
+
+			for {
+				_, err := iter.Next(ctx)
+				if err != nil {
+					break
+				}
+			}
+			iter.Stop()
+			wg.Wait()
+
+			// Cache hit - iterate from cached TupleRecords
+			if cachedRecords != nil {
+				staticIter := storage.NewStaticIterator[*storage.TupleRecord](cachedRecords)
+				cachedIter := &cachedTupleIterator{
+					objectType: "document",
+					relation:   "viewer",
+					iter:       staticIter,
+				}
+				for {
+					_, err := cachedIter.Next(ctx)
+					if err != nil {
+						break
+					}
+				}
+			}
+		}
+	})
+
 	b.Run("V2_CacheMissThenHit", func(b *testing.B) {
 		mockController := gomock.NewController(b)
 		defer mockController.Finish()
@@ -489,6 +549,8 @@ func BenchmarkV1vsV2_EndToEnd(b *testing.B) {
 					break
 				}
 			}
+			cachingIter.Stop()
+			wg.Wait()
 
 			// Cache hit - iterate from cache
 			if cachedEntry != nil {
@@ -502,58 +564,4 @@ func BenchmarkV1vsV2_EndToEnd(b *testing.B) {
 			}
 		}
 	})
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Test to verify V2 atomic operations are race-free
-// ─────────────────────────────────────────────────────────────────────────────
-
-func TestV2_NoRaceCondition(t *testing.T) {
-	// This test should pass with -race flag
-	mockController := gomock.NewController(t)
-	defer mockController.Finish()
-
-	mockCache := mocks.NewMockInMemoryCache[any](mockController)
-	// Expect Get calls for optimization 1 (check if already cached)
-	mockCache.EXPECT().Get(gomock.Any()).Return(nil).AnyTimes()
-	mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
-
-	tuples := createTestTuples(100)
-	ctx := context.Background()
-	sf := &singleflight.Group{}
-	wg := &sync.WaitGroup{}
-
-	// Run multiple iterations to increase chance of detecting race
-	for i := 0; i < 100; i++ {
-		innerIter := storage.NewStaticTupleIterator(tuples)
-		iter := newCachingIterator(
-			innerIter, mockCache, fmt.Sprintf("test-key-%d", i), 1000, time.Hour, 30*time.Second,
-			sf, wg, "document", "viewer", "ReadUsersetTuples",
-		)
-
-		// Concurrent access pattern that previously caused race
-		var testWg sync.WaitGroup
-		testWg.Add(2)
-
-		go func() {
-			defer testWg.Done()
-			for {
-				_, err := iter.Next(ctx)
-				if err != nil {
-					return
-				}
-			}
-		}()
-
-		go func() {
-			defer testWg.Done()
-			time.Sleep(time.Microsecond)
-			iter.Stop()
-		}()
-
-		testWg.Wait()
-	}
-
-	wg.Wait()
-	require.True(t, true, "No race condition detected")
 }

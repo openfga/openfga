@@ -2,6 +2,7 @@ package storagewrappers
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"strings"
 	"sync"
@@ -562,6 +563,62 @@ func TestCachingIterator_BackgroundDrainCompletes_DoesCache(t *testing.T) {
 	wg.Wait()
 
 	// Verify: cache.Set was called once (checked by gomock)
+}
+
+// TestCachingIterator_ConcurrentNextAndStop verifies that concurrent Next()
+// and Stop() calls on a CachingIterator do not race. This test should pass
+// with the -race flag.
+func TestCachingIterator_ConcurrentNextAndStop(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+
+	mockCache := mocks.NewMockInMemoryCache[any](mockController)
+	// Expect Get calls for optimization 1 (check if already cached)
+	mockCache.EXPECT().Get(gomock.Any()).Return(nil).AnyTimes()
+	mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+
+	tuples := createTestTuples(100)
+	ctx := context.Background()
+	sf := &singleflight.Group{}
+	wg := &sync.WaitGroup{}
+
+	// Run multiple iterations to increase chance of detecting race
+	for i := 0; i < 100; i++ {
+		innerIter := storage.NewStaticTupleIterator(tuples)
+		iter := newCachingIterator(
+			innerIter, mockCache, fmt.Sprintf("test-key-%d", i), 1000, time.Hour, 30*time.Second,
+			sf, wg, "document", "viewer", "ReadUsersetTuples",
+		)
+
+		// Concurrent access pattern that previously caused race
+		var testWg sync.WaitGroup
+		testWg.Add(2)
+
+		go func() {
+			defer testWg.Done()
+			for {
+				_, err := iter.Next(ctx)
+				if err != nil {
+					return
+				}
+			}
+		}()
+
+		go func() {
+			defer testWg.Done()
+			time.Sleep(time.Microsecond)
+			iter.Stop()
+		}()
+
+		testWg.Wait()
+	}
+
+	wg.Wait()
+	// If the test got here with the -race flag without failing, no race condition detected
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
