@@ -106,7 +106,7 @@ func InitMessagePool(pool *MessagePool, size, capacity int) {
 	pool.size = size
 }
 
-// NewMessagePool returns a BufferPool that retains up to capacity buffers,
+// NewMessagePool returns a MessagePool that retains up to capacity messages,
 // each pre-sized to hold size elements.
 func NewMessagePool(size, capacity int) *MessagePool {
 	return &MessagePool{
@@ -131,8 +131,8 @@ func (p *MessagePool) Get() *Message {
 	}
 }
 
-// Put clears buf and returns it to the pool. If the pool is already full
-// the buffer is dropped for garbage collection.
+// Put clears msg and returns it to the pool. If the pool is already full
+// the message is dropped for garbage collection.
 func (p *MessagePool) Put(msg *Message) {
 	clear(msg.Value[:cap(msg.Value)])
 	msg.Value = msg.Value[:0]
