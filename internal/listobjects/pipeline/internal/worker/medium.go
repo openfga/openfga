@@ -54,8 +54,8 @@ func NewCyclicalMedium(edge *Edge, capacity int) Medium {
 	return NewQueueMedium(edge, capacity)
 }
 
-// QueueMedium is a [Medium] backed by an [mpmc.Queue], providing
-// multi-producer multi-consumer queue semantics.
+// QueueMedium is a [Medium] backed by an [mpmc.Queue]. Like all
+// [Medium] variants, it is multiple-producer, single-consumer.
 type QueueMedium struct {
 	key    *Edge
 	queue  *mpmc.Queue[*Message]
