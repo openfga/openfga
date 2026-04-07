@@ -100,12 +100,51 @@ func TestWithContext(t *testing.T) {
 
 			actualMessage := logs.All()[0]
 			require.Equal(t, testMessage, actualMessage.Message)
-
-			expectedZapFields := map[string]interface{}{}
-			require.Equal(t, expectedZapFields, actualMessage.ContextMap())
 			require.Equal(t, tc.expectedLevel, actualMessage.Level)
+
+			// The "ctx" field is present (for otelzap bridge consumption).
+			require.Contains(t, actualMessage.ContextMap(), "ctx")
 		})
 	}
+}
+
+func TestContextFilterCore(t *testing.T) {
+	observerCore, logs := observer.New(zap.DebugLevel)
+	filtered := &contextFilterCore{Core: observerCore}
+
+	log := zap.New(filtered)
+	log.Info("test",
+		zap.String("keep", "value"),
+		zap.Any("ctx", context.Background()),
+	)
+
+	require.Equal(t, 1, logs.Len())
+
+	entry := logs.All()[0]
+	require.Equal(t, "test", entry.Message)
+
+	// "ctx" should be stripped, "keep" should remain.
+	contextMap := entry.ContextMap()
+	require.Contains(t, contextMap, "keep")
+	require.NotContains(t, contextMap, "ctx")
+}
+
+func TestContextFilterCoreWith(t *testing.T) {
+	observerCore, logs := observer.New(zap.DebugLevel)
+	filtered := &contextFilterCore{Core: observerCore}
+
+	// With should also strip "ctx" from persistent fields.
+	log := zap.New(filtered).With(
+		zap.String("persistent", "yes"),
+		zap.Any("ctx", context.Background()),
+	)
+	log.Info("test")
+
+	require.Equal(t, 1, logs.Len())
+
+	contextMap := logs.All()[0].ContextMap()
+	require.Contains(t, contextMap, "persistent")
+	require.NotContains(t, contextMap, "ctx")
 }
 
 func TestWithFields(t *testing.T) {
