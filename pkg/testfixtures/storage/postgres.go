@@ -84,6 +84,7 @@ AllImages:
 		t.Logf("Pulling image %s", postgresImage)
 		reader, err := dockerClient.ImagePull(context.Background(), postgresImage, client.ImagePullOptions{})
 		require.NoError(t, err)
+		defer reader.Close()
 
 		_, err = io.Copy(io.Discard, reader) // consume the image pull output to make sure it's done
 		require.NoError(t, err)
