@@ -3,8 +3,8 @@ package pipeline
 import (
 	"context"
 	"errors"
-	"iter"
 	"strings"
+	"sync/atomic"
 
 	"google.golang.org/protobuf/types/known/structpb"
 
@@ -125,44 +125,48 @@ func (r *Reader) applyValidator(it storage.TupleIterator) storage.TupleKeyIterat
 	return base
 }
 
-// toSequence converts the iterator to an iter.Seq for pipeline consumption.
-// Manages iterator lifecycle and ensures cleanup on early termination.
-func (r *Reader) toSequence(
-	ctx context.Context,
-	itr storage.TupleKeyIterator,
-) iter.Seq[Item] {
-	ctx, cancel := context.WithCancel(ctx)
+// TupleKeyItemReceiver adapts a [storage.TupleKeyIterator] into a
+// [Receiver] of [Item] values, extracting the object identifier from
+// each tuple key.
+type TupleKeyItemReceiver struct {
+	itr    storage.TupleKeyIterator
+	closed atomic.Bool
+}
 
-	return func(yield func(Item) bool) {
-		defer cancel()
-		defer itr.Stop()
+// Recv returns the next object identifier from the underlying iterator.
+// It returns false when the iterator is exhausted, closed, or the context
+// is cancelled.
+func (r *TupleKeyItemReceiver) Recv(ctx context.Context) (Item, bool) {
+	var item Item
 
-		for ctx.Err() == nil {
-			t, err := itr.Next(ctx)
-
-			var item Item
-
-			if err != nil {
-				if errors.Is(err, storage.ErrIteratorDone) {
-					break
-				}
-
-				item.Err = err
-
-				yield(item)
-				break
-			}
-
-			if t == nil {
-				continue
-			}
-
-			item.Value = t.GetObject()
-
-			if !yield(item) {
-				break
-			}
+	for {
+		if r.closed.Load() || ctx.Err() != nil {
+			return item, false
 		}
+		t, err := r.itr.Next(ctx)
+
+		if err != nil {
+			defer r.Close()
+			if errors.Is(err, storage.ErrIteratorDone) {
+				return item, false
+			}
+			item.Err = err
+			return item, true
+		}
+
+		if t == nil {
+			continue
+		}
+
+		item.Value = t.GetObject()
+		return item, true
+	}
+}
+
+// Close stops the underlying iterator. It is safe to call multiple times.
+func (r *TupleKeyItemReceiver) Close() {
+	if !r.closed.Swap(true) {
+		r.itr.Stop()
 	}
 }
 
@@ -171,8 +175,10 @@ func (r *Reader) toSequence(
 func (r *Reader) Read(
 	ctx context.Context,
 	q ObjectQuery,
-) iter.Seq[Item] {
+) Receiver[Item] {
 	iterator := r.createIterator(ctx, q)
 	filtered := r.applyValidator(iterator)
-	return r.toSequence(ctx, filtered)
+	return &TupleKeyItemReceiver{
+		itr: filtered,
+	}
 }

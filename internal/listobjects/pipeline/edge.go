@@ -4,10 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"iter"
 	"strings"
 
-	"github.com/openfga/openfga/internal/seq"
+	"github.com/openfga/openfga/internal/listobjects/pipeline/internal/worker"
 )
 
 // directEdgeHandler queries objects via the edge's relation definition.
@@ -21,7 +20,7 @@ func (h *directEdgeHandler) Handle(
 	ctx context.Context,
 	edge *Edge,
 	objects []string,
-) iter.Seq[Item] {
+) Receiver[Item] {
 	nodeType, nodeRelation, _ := strings.Cut(edge.GetRelationDefinition(), "#")
 
 	_, userRelation, exists := strings.Cut(edge.GetTo().GetLabel(), "#")
@@ -35,7 +34,7 @@ func (h *directEdgeHandler) Handle(
 		objects = mutated
 	}
 
-	var results iter.Seq[Item]
+	var results Receiver[Item]
 
 	if len(objects) > 0 {
 		input := ObjectQuery{
@@ -46,7 +45,7 @@ func (h *directEdgeHandler) Handle(
 		}
 		results = h.reader.Read(ctx, input)
 	} else {
-		results = emptySequence
+		results = emptyReceiver
 	}
 
 	return results
@@ -64,20 +63,20 @@ func (h *ttuEdgeHandler) Handle(
 	ctx context.Context,
 	edge *Edge,
 	objects []string,
-) iter.Seq[Item] {
+) Receiver[Item] {
 	tuplesetType, tuplesetRelation, ok := strings.Cut(edge.GetTuplesetRelation(), "#")
 	if !ok {
-		return seq.Sequence(Item{Err: errors.New("invalid tupleset relation")})
+		return worker.NewValueReceiver(Item{Err: errors.New("invalid tupleset relation")})
 	}
 
 	tuplesetNode, ok := h.graph.GetNodeByID(edge.GetTuplesetRelation())
 	if !ok {
-		return seq.Sequence(Item{Err: errors.New("tupleset node not in graph")})
+		return worker.NewValueReceiver(Item{Err: errors.New("tupleset node not in graph")})
 	}
 
 	edges, ok := h.graph.GetEdgesFromNode(tuplesetNode)
 	if !ok {
-		return seq.Sequence(Item{Err: errors.New("no edges found for tupleset node")})
+		return worker.NewValueReceiver(Item{Err: errors.New("no edges found for tupleset node")})
 	}
 
 	targetType, _, _ := strings.Cut(edge.GetTo().GetLabel(), "#")
@@ -92,10 +91,10 @@ func (h *ttuEdgeHandler) Handle(
 	}
 
 	if targetEdge == nil {
-		return seq.Sequence(Item{Err: errors.New("ttu target type is not an edge of tupleset")})
+		return worker.NewValueReceiver(Item{Err: errors.New("ttu target type is not an edge of tupleset")})
 	}
 
-	var results iter.Seq[Item]
+	var results Receiver[Item]
 
 	if len(objects) > 0 {
 		input := ObjectQuery{
@@ -106,7 +105,7 @@ func (h *ttuEdgeHandler) Handle(
 		}
 		results = h.reader.Read(ctx, input)
 	} else {
-		results = emptySequence
+		results = emptyReceiver
 	}
 
 	return results
@@ -120,14 +119,10 @@ func (h *identityEdgeHandler) Handle(
 	_ context.Context,
 	_ *Edge,
 	items []string,
-) iter.Seq[Item] {
-	return func(yield func(Item) bool) {
-		for _, s := range items {
-			if !yield(Item{Value: s}) {
-				return
-			}
-		}
-	}
+) Receiver[Item] {
+	return worker.MapReceiver(worker.NewSliceReceiver(items), func(s string) Item {
+		return Item{Value: s}
+	})
 }
 
 // edgeInterpreter dispatches to the appropriate handler based on edge type.
@@ -143,9 +138,9 @@ func (e *edgeInterpreter) Interpret(
 	ctx context.Context,
 	edge *Edge,
 	items []string,
-) iter.Seq[Item] {
+) Receiver[Item] {
 	if len(items) == 0 {
-		return emptySequence
+		return emptyReceiver
 	}
 	if edge == nil {
 		return e.identity.Handle(ctx, edge, items)
@@ -158,7 +153,7 @@ func (e *edgeInterpreter) Interpret(
 	case edgeTypeComputed, edgeTypeRewrite, edgeTypeDirectLogical, edgeTypeTTULogical:
 		return e.identity.Handle(ctx, edge, items)
 	default:
-		return seq.Sequence(Item{Err: fmt.Errorf(
+		return worker.NewValueReceiver(Item{Err: fmt.Errorf(
 			"no handler for edge type: %v",
 			edge.GetEdgeType(),
 		)})

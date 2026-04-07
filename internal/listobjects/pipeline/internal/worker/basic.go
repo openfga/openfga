@@ -9,7 +9,6 @@ import (
 
 	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/containers"
-	"github.com/openfga/openfga/internal/seq"
 )
 
 // Preprocessor filters or transforms a batch of values before they are
@@ -58,10 +57,56 @@ type Basic struct {
 	*Core
 }
 
+// DeduplicatingReceiver wraps a Receiver[Item] and suppresses values
+// that have already been emitted by the owning Basic worker, ensuring
+// each unique object identifier is broadcast at most once across all
+// senders.
+type DeduplicatingReceiver struct {
+	inner  Receiver[Item]
+	output *containers.AtomicMap[string, struct{}]
+	err    error
+}
+
+func (w *Basic) newDeduplicatingReceiver(inner Receiver[Item], output *containers.AtomicMap[string, struct{}]) *DeduplicatingReceiver {
+	return &DeduplicatingReceiver{
+		inner:  inner,
+		output: output,
+	}
+}
+
+// Recv returns the next unique value, skipping duplicates and errors.
+func (r *DeduplicatingReceiver) Recv(ctx context.Context) (string, bool) {
+	for {
+		item, ok := r.inner.Recv(ctx)
+		if !ok {
+			return "", false
+		}
+
+		value, err := item.Object()
+		if err != nil {
+			r.err = err
+			return "", false
+		}
+
+		if _, loaded := r.output.LoadOrStore(value, struct{}{}); !loaded {
+			return value, true
+		}
+	}
+}
+
+func (r *DeduplicatingReceiver) Err() error {
+	return r.err
+}
+
+// Close releases the underlying receiver.
+func (r *DeduplicatingReceiver) Close() {
+	r.inner.Close()
+}
+
 // ProcessMessage interprets the message values through the sender's edge,
 // deduplicates the results against all other senders, and broadcasts any
 // new values to downstream listeners.
-func (w *Basic) ProcessMessage(ctx context.Context, index int, msg *Message) {
+func (w *Basic) ProcessMessage(ctx context.Context, index int, msg *Message) error {
 	sender := w.senders[index]
 	edge := sender.Key()
 
@@ -74,24 +119,13 @@ func (w *Basic) ProcessMessage(ctx context.Context, index int, msg *Message) {
 	values := w.preprocessors[index].Process(msg.Value, buffer)
 
 	results := w.Interpreter.Interpret(ctx, edge, values)
+	defer results.Close()
 
-	results = seq.Filter(results, func(obj Item) bool {
-		value, err := obj.Object()
-		if err != nil {
-			w.error(&err)
-			return false
-		}
-		// Deduplicate the interpreted values using the buffer shared by all senders.
-		_, loaded := w.outputBuffer.LoadOrStore(value, struct{}{})
-		return !loaded
-	})
-
-	output := seq.Transform(results, func(obj Item) string {
-		value, _ := obj.Object()
-		return value
-	})
+	output := w.newDeduplicatingReceiver(results, &w.outputBuffer)
 
 	w.Broadcast(ctx, output)
+
+	return output.Err()
 }
 
 // Execute processes all registered senders concurrently. Standard senders run
@@ -113,6 +147,8 @@ func (w *Basic) Execute(ctx context.Context) {
 		attribute.String("worker.membership", membership),
 	))
 	defer span.End()
+
+	defer w.instrument(span)
 
 	defer w.Cleanup()
 

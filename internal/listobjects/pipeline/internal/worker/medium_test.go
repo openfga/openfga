@@ -219,6 +219,122 @@ func TestChannelMedium_CallbackInvokedOnDone(t *testing.T) {
 	assert.True(t, called)
 }
 
+// --- FloorPowerOfTwo Tests ---
+
+func TestFloorPowerOfTwo(t *testing.T) {
+	tests := []struct {
+		name   string
+		input  uint
+		expect int
+	}{
+		{name: "zero_returns_two", input: 0, expect: 2},
+		{name: "one", input: 1, expect: 2},
+		{name: "two", input: 2, expect: 2},
+		{name: "three_rounds_down", input: 3, expect: 2},
+		{name: "four", input: 4, expect: 4},
+		{name: "five_rounds_down", input: 5, expect: 4},
+		{name: "seven_rounds_down", input: 7, expect: 4},
+		{name: "eight", input: 8, expect: 8},
+		{name: "127_rounds_down", input: 127, expect: 64},
+		{name: "128", input: 128, expect: 128},
+		{name: "129_rounds_down", input: 129, expect: 128},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.expect, worker.FloorPowerOfTwo(tc.input))
+		})
+	}
+}
+
+// --- QueueMedium Tests ---
+
+func TestQueueMedium_SendRecv(t *testing.T) {
+	m := worker.NewQueueMedium(nil, 4)
+
+	msg := &worker.Message{Value: []string{"a", "b"}}
+	ok := m.Send(context.Background(), msg)
+	require.True(t, ok)
+
+	m.Close()
+
+	got, more := m.Recv(context.Background())
+	require.True(t, more)
+	assert.Equal(t, []string{"a", "b"}, got.Value)
+
+	// After draining, Recv returns false.
+	got, more = m.Recv(context.Background())
+	assert.Nil(t, got)
+	assert.False(t, more)
+}
+
+func TestQueueMedium_RecvAfterClose_ReturnsFalse(t *testing.T) {
+	m := worker.NewQueueMedium(nil, 4)
+	m.Close()
+
+	got, more := m.Recv(context.Background())
+	assert.Nil(t, got)
+	assert.False(t, more)
+}
+
+func TestQueueMedium_RecvAfterDrain_ReturnsFalseRepeatedly(t *testing.T) {
+	m := worker.NewQueueMedium(nil, 4)
+	m.Close()
+
+	// First call sets closed = true internally.
+	_, _ = m.Recv(context.Background())
+
+	// Second call takes the m.closed fast path.
+	got, more := m.Recv(context.Background())
+	assert.Nil(t, got)
+	assert.False(t, more)
+}
+
+func TestQueueMedium_Send_CancelledContext(t *testing.T) {
+	m := worker.NewQueueMedium(nil, 4)
+	defer m.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	ok := m.Send(ctx, &worker.Message{Value: []string{"x"}})
+	assert.False(t, ok)
+}
+
+func TestQueueMedium_OrderPreserved(t *testing.T) {
+	m := worker.NewQueueMedium(nil, 4)
+
+	for _, v := range []string{"first", "second", "third"} {
+		m.Send(context.Background(), &worker.Message{Value: []string{v}})
+	}
+	m.Close()
+
+	var order []string
+	for {
+		msg, more := m.Recv(context.Background())
+		if !more {
+			break
+		}
+		order = append(order, msg.Value...)
+	}
+
+	assert.Equal(t, []string{"first", "second", "third"}, order)
+}
+
+func TestQueueMedium_Key(t *testing.T) {
+	m := worker.NewQueueMedium(nil, 4)
+	assert.Nil(t, m.Key())
+}
+
+func TestQueueMedium_String(t *testing.T) {
+	m := worker.NewQueueMedium(nil, 4)
+	assert.Equal(t, "nil->nil", m.String())
+}
+
+func TestQueueMedium_ImplementsMedium(t *testing.T) {
+	var _ worker.Medium = worker.NewQueueMedium(nil, 4)
+}
+
 // --- Interface compliance ---
 
 func TestAccumulatorMedium_ImplementsMedium(t *testing.T) {
