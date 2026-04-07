@@ -77,6 +77,7 @@ AllImages:
 		t.Logf("Pulling image %s", mySQLImage)
 		reader, err := dockerClient.ImagePull(context.Background(), mySQLImage, client.ImagePullOptions{})
 		require.NoError(t, err)
+		defer reader.Close()
 
 		_, err = io.Copy(io.Discard, reader) // consume the image pull output to make sure it's done
 		require.NoError(t, err)
