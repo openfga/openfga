@@ -15,10 +15,10 @@ func isPowerOfTwo(n int) bool {
 	return n > 0 && (n&(n-1)) == 0
 }
 
-// slot is a single element in the ring buffer. Sequence is used by the
-// Vyukov MPMC algorithm to coordinate lock-free access: a slot is
-// writable when Sequence == pos and readable when Sequence == pos+1,
-// where pos is the caller's claimed head or tail position.
+// slot is a single element in the ring buffer. Sequence coordinates
+// concurrent access: a slot is writable when Sequence == pos and
+// readable when Sequence == pos+1, where pos is the caller's claimed
+// head or tail position.
 type slot[T any] struct {
 	Sequence atomic.Int64
 	Data     T
@@ -26,9 +26,10 @@ type slot[T any] struct {
 
 // Queue is a bounded, concurrency-safe FIFO buffer based on Dmitry
 // Vyukov's MPMC algorithm. Multiple goroutines may call Send and Recv
-// concurrently; they claim positions via atomic CAS on head and tail
-// and coordinate through per-slot sequence counters, so the common
-// path is lock-free.
+// concurrently under a shared read lock, claiming positions via atomic
+// CAS on head and tail and coordinating through per-slot sequence
+// counters. A write lock is only acquired for buffer extension, Grow,
+// and Close.
 //
 // Send blocks when the buffer is full; Recv blocks when it is empty.
 // When extensions are configured (see [NewQueue]), the buffer doubles
@@ -194,8 +195,9 @@ func (p *Queue[T]) Seq(ctx context.Context) iter.Seq[T] {
 // Send enqueues item, blocking if the buffer is full. It returns true on
 // success, or false if the queue has been closed or ctx is cancelled.
 //
-// On the fast path (slot available, CAS wins) the operation is lock-free
-// under the shared read lock. When the buffer is full, Send either
+// On the fast path (slot available, CAS wins) concurrent senders
+// proceed without mutual exclusion under the shared read lock.
+// When the buffer is full, Send either
 // doubles the buffer (if extensions remain) or parks on the full channel
 // until a Recv frees a slot.
 func (p *Queue[T]) Send(ctx context.Context, item T) bool {
