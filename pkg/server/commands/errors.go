@@ -22,10 +22,11 @@ func (e *InvalidTupleError) Unwrap() error {
 }
 
 func (e *InvalidTupleError) Error() string {
+	const msg = "invalid tuple"
 	if e.Cause == nil {
-		return "invalid tuple"
+		return msg
 	}
-	return "invalid tuple: " + e.Cause.Error()
+	return msg + ": " + e.Cause.Error()
 }
 
 type InvalidRelationError struct {
@@ -37,10 +38,11 @@ func (e *InvalidRelationError) Unwrap() error {
 }
 
 func (e *InvalidRelationError) Error() string {
+	const msg = "invalid relation"
 	if e.Cause == nil {
-		return "invalid relation"
+		return msg
 	}
-	return "invalid relation: " + e.Cause.Error()
+	return msg + ": " + e.Cause.Error()
 }
 
 type ThrottledError struct {
@@ -52,10 +54,11 @@ func (e *ThrottledError) Unwrap() error {
 }
 
 func (e *ThrottledError) Error() string {
+	const msg = "throttled"
 	if e.Cause == nil {
-		return "throttled"
+		return msg
 	}
-	return "throttled: " + e.Cause.Error()
+	return msg + ": " + e.Cause.Error()
 }
 
 type InvalidContextError struct {
@@ -67,10 +70,11 @@ func (e *InvalidContextError) Unwrap() error {
 }
 
 func (e *InvalidContextError) Error() string {
+	const msg = "invalid context"
 	if e.Cause == nil {
-		return "invalid context"
+		return msg
 	}
-	return "invalid context: " + e.Cause.Error()
+	return msg + ": " + e.Cause.Error()
 }
 
 // CheckCommandErrorToServerError converts internal errors thrown during the
