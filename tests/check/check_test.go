@@ -101,7 +101,7 @@ func TestServerLogs(t *testing.T) {
 	otlpServerPortReleaser()
 	_ = mocks.NewMockTracingServer(t, otlpServerPort)
 
-	cfg := config.MustDefaultConfig()
+	cfg := testutils.MustDefaultConfig()
 	cfg.Experimentals = append(cfg.Experimentals, config.ExperimentalCheckOptimizations)
 	cfg.Trace.Enabled = true
 	cfg.Trace.OTLP.Endpoint = localOTLPServerURL
