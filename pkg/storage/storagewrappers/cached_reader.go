@@ -221,14 +221,14 @@ func (c *CachedTupleReader) tryGetFromCache(
 	}
 
 	// Check store-level invalidation
-	if c.isInvalidated(storeID, cached.LastModified) {
+	if c.isStoreInvalidated(storeID, cached.LastModified) {
 		c.cache.Delete(cacheKey)
 		return nil
 	}
 
 	// Check entity-level invalidation
 	for _, invalidKey := range invalidEntityKeys {
-		if c.isEntityInvalidated(invalidKey, cached.LastModified) {
+		if c.isCacheEntryInvalidated(invalidKey, cached.LastModified) {
 			c.cache.Delete(cacheKey)
 			return nil
 		}
@@ -238,20 +238,14 @@ func (c *CachedTupleReader) tryGetFromCache(
 	return NewLockFreeCachedIterator(cached.Entries, objectType, relation)
 }
 
-func (c *CachedTupleReader) isInvalidated(storeID string, lastModified time.Time) bool {
-	invalidKey := storage.GetInvalidIteratorCacheKey(storeID)
-	entry := c.cache.Get(invalidKey)
-	if entry == nil {
-		return false
-	}
-	invalidEntry, ok := entry.(*storage.InvalidEntityCacheEntry)
-	if !ok {
-		return false
-	}
-	return invalidEntry.LastModified.After(lastModified)
+// isStoreInvalidated returns whether the entire store's cache has been invalidated since lastModified.
+func (c *CachedTupleReader) isStoreInvalidated(storeID string, lastModified time.Time) bool {
+	return c.isCacheEntryInvalidated(storage.GetInvalidIteratorCacheKey(storeID), lastModified)
 }
 
-func (c *CachedTupleReader) isEntityInvalidated(invalidKey string, lastModified time.Time) bool {
+// isCacheEntryInvalidated returns whether an invalidation cache entry at invalidKey was
+// written after a cache entry's lastModified time, indicating the cache entry is stale.
+func (c *CachedTupleReader) isCacheEntryInvalidated(invalidKey string, lastModified time.Time) bool {
 	entry := c.cache.Get(invalidKey)
 	if entry == nil {
 		return false
