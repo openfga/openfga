@@ -874,9 +874,29 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, os.Kill, syscall.SIGTERM)
 	defer stop()
 
-	tracerProviderCloser := s.telemetryConfig(config)
-
 	cleanups := list.New()
+	defer func() {
+		s.Logger.Info("attempting to shutdown gracefully...")
+
+		ctx, cancel := context.WithTimeout(context.Background(), config.ShutdownTimeout)
+		defer cancel()
+
+		for el := cleanups.Front(); el != nil; el = el.Next() {
+			clean, ok := el.Value.(cleanup)
+			if !ok {
+				s.Logger.Info("cleanup type casting failed during graceful shutdown", zap.Any("value", el.Value))
+				continue
+			}
+
+			if err := clean(ctx); err != nil {
+				s.Logger.Info("resource cleanup failed during graceful shutdown", zap.Error(err))
+			}
+		}
+
+		s.Logger.Info("graceful shutdown completed successfully")
+	}()
+
+	tracerProviderCloser := s.telemetryConfig(config)
 	cleanups.PushFront(cleanupWithMessage(tracerProviderCloser, "tracing"))
 
 	// Added temporarily to allow us to enable experimental features by default without allowing the user to disable them,
@@ -1076,26 +1096,9 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		cleanups.PushFront(cleanupWithMessage(playground.Shutdown, "playground"))
 	}
 
-	// wait for cancellation signal
+	// Wait for cancellation signal.
+	// After this, deferred functions handle resource cleanup.
 	<-ctx.Done()
-	s.Logger.Info("attempting to shutdown gracefully...")
-
-	ctx, cancel := context.WithTimeout(context.Background(), config.ShutdownTimeout)
-	defer cancel()
-
-	for el := cleanups.Front(); el != nil; el = el.Next() {
-		clean, ok := el.Value.(cleanup)
-		if !ok {
-			s.Logger.Info("failed to convert cleanup", zap.Any("value", el.Value))
-			continue
-		}
-
-		if err := clean(ctx); err != nil {
-			s.Logger.Info("failed to shutdown", zap.Error(err))
-		}
-	}
-
-	s.Logger.Info("server exited. goodbye 👋")
 
 	return nil
 }
