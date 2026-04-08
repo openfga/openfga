@@ -821,6 +821,13 @@
             "default": "3s",
             "x-env-variable": "OPENFGA_REQUEST_TIMEOUT"
         },
+        "shutdownTimeout": {
+            "description": "The timeout duration for a graceful shutdown.",
+            "type": "string",
+            "format": "duration",
+            "default": "10s",
+            "x-env-variable": "OPENFGA_SHUTDOWN_TIMEOUT"
+        },
         "planner": {
             "type": "object",
             "properties": {

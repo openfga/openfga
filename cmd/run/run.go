@@ -2,6 +2,7 @@
 package run
 
 import (
+	"container/list"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -357,6 +358,8 @@ func NewRunCommand() *cobra.Command {
 
 	flags.Duration("request-timeout", defaultConfig.RequestTimeout, "configures request timeout.  If both HTTP upstream timeout and request timeout are specified, request timeout will be used.")
 
+	flags.Duration("shutdown-timeout", defaultConfig.ShutdownTimeout, "configures how long the server waits for a graceful shutdown.")
+
 	flags.Duration("planner-eviction-threshold", defaultConfig.Planner.EvictionThreshold, "how long a planner key can be unused before being evicted")
 	flags.Duration("planner-cleanup-interval", defaultConfig.Planner.CleanupInterval, "how often the planner checks for stale keys")
 
@@ -423,7 +426,7 @@ func convertStringArrayToUintArray(stringArray []string) []uint {
 
 // telemetryConfig returns the function that must be called to shut down tracing.
 // The context provided to this function should be error-free, or shut down will be incomplete.
-func (s *ServerContext) telemetryConfig(config *serverconfig.Config) func() error {
+func (s *ServerContext) telemetryConfig(config *serverconfig.Config) func(context.Context) error {
 	if config.Trace.Enabled {
 		endpoint, schemeSecure := telemetry.ParseOTLPEndpoint(config.Trace.OTLP.Endpoint)
 		effectiveTLS := telemetry.ResolveOTLPSecurity(config.Trace.OTLP.TLS.Enabled, schemeSecure)
@@ -446,15 +449,13 @@ func (s *ServerContext) telemetryConfig(config *serverconfig.Config) func() erro
 		}
 
 		tp := telemetry.MustNewTracerProvider(options...)
-		return func() error {
+		return func(ctx context.Context) error {
 			// can take up to 5 seconds to complete (https://github.com/open-telemetry/opentelemetry-go/blob/aebcbfcbc2962957a578e9cb3e25dc834125e318/sdk/trace/batch_span_processor.go#L97)
-			ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
-			defer cancel()
 			return errors.Join(tp.ForceFlush(ctx), tp.Shutdown(ctx))
 		}
 	}
 	otel.SetTracerProvider(noop.NewTracerProvider())
-	return func() error {
+	return func(_ context.Context) error {
 		return nil
 	}
 }
@@ -873,7 +874,30 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, os.Kill, syscall.SIGTERM)
 	defer stop()
 
+	cleanups := list.New()
+	defer func() {
+		s.Logger.Info("attempting to shutdown gracefully...")
+
+		ctx, cancel := context.WithTimeout(context.Background(), config.ShutdownTimeout)
+		defer cancel()
+
+		for el := cleanups.Front(); el != nil; el = el.Next() {
+			clean, ok := el.Value.(cleanup)
+			if !ok {
+				s.Logger.Info("cleanup type casting failed during graceful shutdown", zap.Any("value", el.Value))
+				continue
+			}
+
+			if err := clean(ctx); err != nil {
+				s.Logger.Info("resource cleanup failed during graceful shutdown", zap.Error(err))
+			}
+		}
+
+		s.Logger.Info("graceful shutdown completed successfully")
+	}()
+
 	tracerProviderCloser := s.telemetryConfig(config)
+	cleanups.PushFront(cleanupWithMessage(tracerProviderCloser, "tracing"))
 
 	// Added temporarily to allow us to enable experimental features by default without allowing the user to disable them,
 	// eg for pipeline_list_objects.
@@ -892,6 +916,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	if err != nil {
 		return err
 	}
+	cleanups.PushFront(cleanupFromPlainFunc(authenticator.Close, "authenticator"))
 
 	serverOpts, prometheusMetrics, err := s.buildServerOpts(ctx, config, authenticator)
 	if prometheusMetrics != nil {
@@ -922,6 +947,8 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 			}
 			s.Logger.Info("profiler shut down.")
 		}()
+
+		cleanups.PushFront(cleanupWithMessage(profilerServer.Shutdown, "profiler"))
 	}
 
 	var metricsServer *http.Server
@@ -940,6 +967,8 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 			}
 			s.Logger.Info("metrics server shut down.")
 		}()
+
+		cleanups.PushFront(cleanupWithMessage(metricsServer.Shutdown, "prometheus metrics server"))
 	}
 
 	svr := server.MustNewServerWithOpts(
@@ -1007,6 +1036,8 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		server.WithContext(ctx),
 	)
 
+	cleanups.PushFront(cleanupFromPlainFunc(svr.Close, "server"))
+
 	s.Logger.Info(
 		"starting openfga service...",
 		zap.String("version", build.Version),
@@ -1023,6 +1054,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	healthServer := &health.Checker{TargetService: svr, TargetServiceName: openfgav1.OpenFGAService_ServiceDesc.ServiceName}
 	healthv1pb.RegisterHealthServer(grpcServer, healthServer)
 	reflection.Register(grpcServer)
+	cleanups.PushFront(cleanupGrpcServer(grpcServer))
 
 	lis, err := net.Listen("tcp", config.GRPC.Addr)
 	if err != nil {
@@ -1050,6 +1082,8 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		if err != nil {
 			return err
 		}
+
+		cleanups.PushFront(cleanupWithMessage(httpServer.Shutdown, "http server"))
 	}
 
 	var playground *http.Server
@@ -1058,50 +1092,13 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		if err != nil {
 			return err
 		}
+
+		cleanups.PushFront(cleanupWithMessage(playground.Shutdown, "playground"))
 	}
 
-	// wait for cancellation signal
+	// Wait for cancellation signal.
+	// After this, deferred functions handle resource cleanup.
 	<-ctx.Done()
-	s.Logger.Info("attempting to shutdown gracefully...")
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	if playground != nil {
-		if err := playground.Shutdown(ctx); err != nil {
-			s.Logger.Info("failed to shutdown the playground", zap.Error(err))
-		}
-	}
-
-	if httpServer != nil {
-		if err := httpServer.Shutdown(ctx); err != nil {
-			s.Logger.Info("failed to shutdown the http server", zap.Error(err))
-		}
-	}
-
-	if profilerServer != nil {
-		if err := profilerServer.Shutdown(ctx); err != nil {
-			s.Logger.Info("failed to shutdown the profiler", zap.Error(err))
-		}
-	}
-
-	if metricsServer != nil {
-		if err := metricsServer.Shutdown(ctx); err != nil {
-			s.Logger.Info("failed to shutdown the prometheus metrics server", zap.Error(err))
-		}
-	}
-
-	grpcServer.GracefulStop()
-
-	svr.Close()
-
-	authenticator.Close()
-
-	if err := tracerProviderCloser(); err != nil {
-		s.Logger.Error("failed to shutdown tracing", zap.Error(err))
-	}
-
-	s.Logger.Info("server exited. goodbye 👋")
 
 	return nil
 }

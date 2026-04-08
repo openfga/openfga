@@ -84,6 +84,7 @@ const (
 	DefaultListUsersDispatchThrottlingMaxThreshold     = 0 // 0 means use the default threshold as max
 
 	DefaultRequestTimeout     = 3 * time.Second
+	DefaultShutdownTimeout    = 10 * time.Second
 	additionalUpstreamTimeout = 3 * time.Second
 
 	DefaultSharedIteratorEnabled          = false
@@ -339,8 +340,7 @@ type PlannerConfig struct {
 }
 
 type Config struct {
-	// If you change any of these settings, please update the documentation at
-	// https://github.com/openfga/openfga.dev/blob/main/docs/content/intro/setup-openfga.mdx
+	// If you change any of these settings, please update the documentation at .config-schema.json
 
 	// ListObjectsDeadline defines the maximum amount of time to accumulate ListObjects results
 	// before the server will respond. This is to protect the server from misuse of the
@@ -422,9 +422,12 @@ type Config struct {
 	// concurrently in a query
 	ResolveNodeBreadthLimit uint32
 
-	// RequestTimeout configures request timeout.  If both HTTP upstream timeout and request timeout are specified,
+	// RequestTimeout configures request timeout. If both HTTP upstream timeout and request timeout are specified,
 	// request timeout will be prioritized
 	RequestTimeout time.Duration
+
+	// ShutdownTimeout configures how long the server waits for a graceful shutdown.
+	ShutdownTimeout time.Duration
 
 	// ContextPropagationToDatastore enables propagation of a requests context to the datastore,
 	// thereby receiving API cancellation signals
@@ -583,6 +586,10 @@ func (cfg *Config) VerifyBinarySettings() error {
 
 	if cfg.RequestTimeout == 0 && cfg.HTTP.Enabled && cfg.HTTP.UpstreamTimeout < 0 {
 		return errors.New("http.upstreamTimeout must be a non-negative time duration")
+	}
+
+	if cfg.ShutdownTimeout <= 0 {
+		return errors.New("shutdownTimeout must be greater than 0")
 	}
 
 	if viper.IsSet("cache.limit") && !viper.IsSet("checkCache.limit") {
@@ -864,20 +871,11 @@ func DefaultConfig() *Config {
 			Duration:  0,
 		},
 		RequestTimeout:                DefaultRequestTimeout,
+		ShutdownTimeout:               DefaultShutdownTimeout,
 		ContextPropagationToDatastore: false,
 		Planner: PlannerConfig{
 			EvictionThreshold: DefaultPlannerEvictionThreshold,
 			CleanupInterval:   DefaultPlannerCleanupInterval,
 		},
 	}
-}
-
-// MustDefaultConfig returns default server config with the playground, tracing and metrics turned off.
-func MustDefaultConfig() *Config {
-	config := DefaultConfig()
-
-	config.Playground.Enabled = false
-	config.Metrics.Enabled = false
-
-	return config
 }
