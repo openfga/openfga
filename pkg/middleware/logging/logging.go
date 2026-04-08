@@ -72,19 +72,19 @@ func (r *reporter) PostCall(err error, rpcDuration time.Duration) {
 		var internalError serverErrors.InternalError
 		if errors.As(err, &internalError) {
 			r.fields = append(r.fields, zap.String(internalErrorKey, internalError.Unwrap().Error()))
-			r.logger.Error(err.Error(), r.fields...)
+			r.logger.ErrorWithContext(r.ctx, err.Error(), r.fields...)
 		} else {
 			r.fields = append(r.fields, zap.Error(err))
-			r.logger.Info(grpcReqCompleteKey, r.fields...)
+			r.logger.InfoWithContext(r.ctx, grpcReqCompleteKey, r.fields...)
 		}
 
 		return
 	}
 
 	if r.serviceName == healthCheckService {
-		r.logger.Debug(grpcReqCompleteKey, r.fields...)
+		r.logger.DebugWithContext(r.ctx, grpcReqCompleteKey, r.fields...)
 	} else {
-		r.logger.Info(grpcReqCompleteKey, r.fields...)
+		r.logger.InfoWithContext(r.ctx, grpcReqCompleteKey, r.fields...)
 	}
 }
 
