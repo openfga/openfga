@@ -18,6 +18,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Changed
 - Changed the ListObjects pipeline intersection algorithm to improve intersection performance. [#3031](https://github.com/openfga/openfga/pull/3031)
 - **[BREAKING]** The Playground now only supports the `none` authentication method. Running the Playground with `preshared` key authentication is no longer supported. The server will error and not start if it detects this combination.
+- The Playground is now disabled by default as a result of https://github.com/openfga/openfga/security/advisories/GHSA-68m9-983m-f3v5
 
 ### Deprecated
 - The built-in OpenFGA Playground is intended for development purposes only and is deprecated. It will be removed entirely in a future release.
