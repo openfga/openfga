@@ -2,6 +2,7 @@
 package run
 
 import (
+	"container/list"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -875,7 +876,8 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 
 	tracerProviderCloser := s.telemetryConfig(config)
 
-	var cleanups []cleanup
+	cleanups := list.New()
+	cleanups.PushFront(cleanupWithMessage(tracerProviderCloser, "tracing"))
 
 	// Added temporarily to allow us to enable experimental features by default without allowing the user to disable them,
 	// eg for pipeline_list_objects.
@@ -894,6 +896,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	if err != nil {
 		return err
 	}
+	cleanups.PushFront(cleanupFromPlainFunc(authenticator.Close, "authenticator"))
 
 	serverOpts, prometheusMetrics, err := s.buildServerOpts(ctx, config, authenticator)
 	if prometheusMetrics != nil {
@@ -925,7 +928,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 			s.Logger.Info("profiler shut down.")
 		}()
 
-		cleanups = append(cleanups, cleanupWithMessage(profilerServer.Shutdown, "profiler"))
+		cleanups.PushFront(cleanupWithMessage(profilerServer.Shutdown, "profiler"))
 	}
 
 	var metricsServer *http.Server
@@ -945,7 +948,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 			s.Logger.Info("metrics server shut down.")
 		}()
 
-		cleanups = append(cleanups, cleanupWithMessage(metricsServer.Shutdown, "prometheus metrics server"))
+		cleanups.PushFront(cleanupWithMessage(metricsServer.Shutdown, "prometheus metrics server"))
 	}
 
 	svr := server.MustNewServerWithOpts(
@@ -1013,6 +1016,8 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		server.WithContext(ctx),
 	)
 
+	cleanups.PushFront(cleanupFromPlainFunc(svr.Close, "server"))
+
 	s.Logger.Info(
 		"starting openfga service...",
 		zap.String("version", build.Version),
@@ -1029,6 +1034,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	healthServer := &health.Checker{TargetService: svr, TargetServiceName: openfgav1.OpenFGAService_ServiceDesc.ServiceName}
 	healthv1pb.RegisterHealthServer(grpcServer, healthServer)
 	reflection.Register(grpcServer)
+	cleanups.PushFront(cleanupGrpcServer(grpcServer))
 
 	lis, err := net.Listen("tcp", config.GRPC.Addr)
 	if err != nil {
@@ -1057,7 +1063,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 			return err
 		}
 
-		cleanups = append(cleanups, cleanupWithMessage(httpServer.Shutdown, "http server"))
+		cleanups.PushFront(cleanupWithMessage(httpServer.Shutdown, "http server"))
 	}
 
 	var playground *http.Server
@@ -1067,7 +1073,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 			return err
 		}
 
-		cleanups = append(cleanups, cleanupWithMessage(playground.Shutdown, "playground"))
+		cleanups.PushFront(cleanupWithMessage(playground.Shutdown, "playground"))
 	}
 
 	// wait for cancellation signal
@@ -1077,15 +1083,14 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	ctx, cancel := context.WithTimeout(context.Background(), config.ShutdownTimeout)
 	defer cancel()
 
-	cleanups = append(cleanups,
-		cleanupGrpcServer(grpcServer),
-		cleanupFromPlainFunc(svr.Close, "server"),
-		cleanupFromPlainFunc(authenticator.Close, "authenticator"),
-		cleanupWithMessage(tracerProviderCloser, "tracing"),
-	)
+	for el := cleanups.Front(); el != nil; el = el.Next() {
+		clean, ok := el.Value.(cleanup)
+		if !ok {
+			s.Logger.Info("failed to convert cleanup", zap.Any("value", el.Value))
+			continue
+		}
 
-	for _, cleanup := range cleanups {
-		if err := cleanup(ctx); err != nil {
+		if err := clean(ctx); err != nil {
 			s.Logger.Info("failed to shutdown", zap.Error(err))
 		}
 	}
