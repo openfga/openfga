@@ -128,6 +128,11 @@ type CachingIterator struct {
 	maxSize  int
 	ttl      time.Duration
 
+	// createdAt records when the DB query was initiated.
+	// Used as LastModified when flushing to cache, so invalidation entries
+	// written after the query are correctly detected as newer.
+	createdAt time.Time
+
 	// Background drain coordination
 	sf           *singleflight.Group
 	wg           *sync.WaitGroup
@@ -174,6 +179,7 @@ func newCachingIterator(
 		drainTimeout: drainTimeout,
 		sf:           sf,
 		wg:           wg,
+		createdAt:    time.Now(),
 		objectType:   objectType,
 		relation:     relation,
 		operation:    operation,
@@ -276,7 +282,7 @@ func (c *CachingIterator) flush() {
 
 	c.cache.Set(c.cacheKey, &V2IteratorCacheEntry{
 		Entries:      entries,
-		LastModified: time.Now(),
+		LastModified: c.createdAt,
 	}, c.ttl)
 
 	c.tuples = nil // Release for GC
