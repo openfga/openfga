@@ -22,6 +22,9 @@ func (e *InvalidTupleError) Unwrap() error {
 }
 
 func (e *InvalidTupleError) Error() string {
+	if e.Cause == nil {
+		return "invalid tuple"
+	}
 	return "invalid tuple: " + e.Cause.Error()
 }
 
@@ -34,6 +37,9 @@ func (e *InvalidRelationError) Unwrap() error {
 }
 
 func (e *InvalidRelationError) Error() string {
+	if e.Cause == nil {
+		return "invalid relation"
+	}
 	return "invalid relation: " + e.Cause.Error()
 }
 
@@ -46,6 +52,9 @@ func (e *ThrottledError) Unwrap() error {
 }
 
 func (e *ThrottledError) Error() string {
+	if e.Cause == nil {
+		return "throttled"
+	}
 	return "throttled: " + e.Cause.Error()
 }
 
@@ -58,6 +67,9 @@ func (e *InvalidContextError) Unwrap() error {
 }
 
 func (e *InvalidContextError) Error() string {
+	if e.Cause == nil {
+		return "invalid context"
+	}
 	return "invalid context: " + e.Cause.Error()
 }
 
