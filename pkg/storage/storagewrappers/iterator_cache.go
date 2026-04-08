@@ -108,7 +108,7 @@ func (e *V2IteratorCacheEntry) CacheEntityType() string {
 //
 // Thread Safety:
 //   - Mutex protects tuples slice during collection
-//   - Atomic closing flag prevents collection after Stop()
+//   - Closing flag accessed within mutex prevents collection after Stop()
 //   - Transform to MinimalCacheEntry happens at flush (single goroutine)
 type CachingIterator struct {
 	inner storage.TupleIterator
@@ -119,8 +119,8 @@ type CachingIterator struct {
 	// Tuples collected during iteration (pointer append - fast)
 	tuples []*openfgav1.Tuple
 
-	// Atomic flag to signal closing
-	closing atomic.Bool
+	// Flag to signal closing (always accessed within mutex)
+	closing bool
 
 	// Cache config
 	cache    storage.InMemoryCache[any]
@@ -186,7 +186,7 @@ func (c *CachingIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if c.closing.Load() {
+	if c.closing {
 		return nil, storage.ErrIteratorDone
 	}
 
@@ -215,7 +215,7 @@ func (c *CachingIterator) Head(ctx context.Context) (*openfgav1.Tuple, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if c.closing.Load() {
+	if c.closing {
 		return nil, storage.ErrIteratorDone
 	}
 
@@ -228,10 +228,11 @@ func (c *CachingIterator) Head(ctx context.Context) (*openfgav1.Tuple, error) {
 func (c *CachingIterator) Stop() {
 	c.mu.Lock()
 
-	if c.closing.Swap(true) {
+	if c.closing {
 		c.mu.Unlock()
 		return
 	}
+	c.closing = true
 
 	if c.tuples == nil {
 		c.mu.Unlock()
