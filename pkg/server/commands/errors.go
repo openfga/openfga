@@ -49,6 +49,18 @@ func (e *ThrottledError) Error() string {
 	return e.Unwrap().Error()
 }
 
+type InvalidContextError struct {
+	Cause error
+}
+
+func (e *InvalidContextError) Unwrap() error {
+	return e.Cause
+}
+
+func (e *InvalidContextError) Error() string {
+	return e.Unwrap().Error()
+}
+
 // CheckCommandErrorToServerError converts internal errors thrown during the
 // check_command into consumer-facing errors to be sent over the wire.
 func CheckCommandErrorToServerError(err error) error {
@@ -63,6 +75,11 @@ func CheckCommandErrorToServerError(err error) error {
 
 	var invalidRelation *InvalidRelationError
 	if errors.As(err, &invalidRelation) {
+		return serverErrors.ValidationError(err)
+	}
+
+	var invalidContext *InvalidContextError
+	if errors.As(err, &invalidContext) {
 		return serverErrors.ValidationError(err)
 	}
 
