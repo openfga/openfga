@@ -132,7 +132,8 @@ func NewCheckQuery(opts ...CheckQueryV2Option) *CheckQueryV2 {
 }
 
 func (q *CheckQueryV2) Execute(ctx context.Context, req *openfgav1.CheckRequest) (*openfgav1.CheckResponse, storagewrappers.Metadata, error) {
-	ds := storagewrappers.NewBoundedTupleReader(q.datastore, &q.datastoreOp)
+	boundedDS := storagewrappers.NewBoundedTupleReader(q.datastore, &q.datastoreOp) // Datastore throttling and concurrency limiting
+	var datastore storage.RelationshipTupleReader = boundedDS
 
 	r, err := check.NewRequest(check.RequestParams{
 		StoreID:          req.GetStoreId(),
@@ -144,18 +145,17 @@ func (q *CheckQueryV2) Execute(ctx context.Context, req *openfgav1.CheckRequest)
 	})
 
 	if err != nil {
-		return nil, ds.GetMetadata(), err
+		return nil, boundedDS.GetMetadata(), err
 	}
 
 	// Wrap datastore with iterator cache using SHARED resources to prevent cache stampedes.
 	// The singleflight.Group and sync.WaitGroup are shared across all requests.
-	datastore := q.datastore
 	if q.sharedResources != nil &&
 		q.sharedResources.V2IteratorCacheEnabled &&
 		q.cache != nil {
 		datastore = storagewrappers.NewCachedTupleReader(
 			q.sharedResources.ServerCtx,
-			q.datastore,
+			datastore,
 			q.cache,
 			q.sharedResources.V2IteratorCacheMaxSize,
 			q.sharedResources.V2IteratorCacheTTL,
@@ -178,7 +178,7 @@ func (q *CheckQueryV2) Execute(ctx context.Context, req *openfgav1.CheckRequest)
 	})
 
 	res, err := resolver.ResolveCheck(ctx, r)
-	metadata := ds.GetMetadata()
+	metadata := boundedDS.GetMetadata()
 	if err != nil {
 		if metadata.WasThrottled && errors.Is(err, context.DeadlineExceeded) {
 			err = &ThrottledError{Cause: err}
