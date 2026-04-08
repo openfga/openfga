@@ -237,14 +237,14 @@ func TestTransformCheckCommandErrorToBatchCheckError(t *testing.T) {
 			inputError: &commands.InvalidRelationError{Cause: errors.New(errMsg)},
 			expectedOutput: &openfgav1.CheckError{
 				Code:    &openfgav1.CheckError_InputError{InputError: openfgav1.ErrorCode_validation_error},
-				Message: errMsg,
+				Message: "invalid relation: " + errMsg,
 			},
 		},
 		`test_invalid_tuple_error`: {
 			inputError: &commands.InvalidTupleError{Cause: errors.New(errMsg)},
 			expectedOutput: &openfgav1.CheckError{
 				Code:    &openfgav1.CheckError_InputError{InputError: openfgav1.ErrorCode_invalid_tuple},
-				Message: errMsg,
+				Message: "invalid tuple: " + errMsg,
 			},
 		},
 		`test_resolution_depth_error`: {
@@ -265,7 +265,7 @@ func TestTransformCheckCommandErrorToBatchCheckError(t *testing.T) {
 			inputError: &commands.ThrottledError{Cause: errors.New(errMsg)},
 			expectedOutput: &openfgav1.CheckError{
 				Code:    &openfgav1.CheckError_InputError{InputError: openfgav1.ErrorCode_validation_error},
-				Message: errMsg,
+				Message: "throttled: " + errMsg,
 			},
 		},
 		`test_deadline_exceeded`: {
