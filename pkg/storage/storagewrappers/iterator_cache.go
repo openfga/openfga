@@ -201,7 +201,7 @@ func (c *CachingIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
 	// Fast path: just append pointer (like V1)
 	if c.tuples != nil {
 		c.tuples = append(c.tuples, t)
-		if len(c.tuples) >= c.maxSize {
+		if len(c.tuples) > c.maxSize {
 			v2IterCacheAbandoned.WithLabelValues(c.operation).Inc()
 			c.tuples = nil // Exceeded max size, abandon caching
 		}
@@ -351,7 +351,7 @@ func (c *CachingIterator) drainInBackground() {
 				return nil, nil // Abandoned
 			}
 			c.tuples = append(c.tuples, t)
-			if len(c.tuples) >= c.maxSize {
+			if len(c.tuples) > c.maxSize {
 				v2IterCacheAbandoned.WithLabelValues(c.operation).Inc()
 				c.tuples = nil
 				c.mu.Unlock()
