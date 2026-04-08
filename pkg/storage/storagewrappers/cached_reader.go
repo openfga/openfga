@@ -57,6 +57,14 @@ func NewCachedTupleReader(
 	if drainTimeout <= 0 {
 		drainTimeout = DefaultDrainTimeout
 	}
+	// Initialize a singleflight.Group for this CachedTupleReader if not provided, which
+	// ensures only one cachingIterator created from this CachedTupleReader drains at a time.
+	// However, other CachedTupleReaders (e.g., from concurrent requests) may duplicate the
+	// draining effort; ideally, a singleflight.Group should be provided that is shared across
+	// all requests (at the server level) to prevent this.
+	if sf == nil {
+		sf = &singleflight.Group{}
+	}
 	return &CachedTupleReader{
 		delegate:     delegate,
 		cache:        cache,
