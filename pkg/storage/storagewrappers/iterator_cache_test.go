@@ -671,7 +671,7 @@ func TestCachingIterator_Stop_Idempotent(t *testing.T) {
 	wg.Wait()
 
 	// Verify closing flag is set
-	require.True(t, iter.closing.Load())
+	require.True(t, iter.closing)
 }
 
 // TestCachingIterator_Flush_EmptyAndNil verifies that flush() handles
