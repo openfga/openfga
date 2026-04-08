@@ -33,12 +33,6 @@ const (
 	// Most queries return fewer than 100 tuples, so this avoids over-allocation
 	// while still providing reasonable capacity to minimize slice growth.
 	initialBufferCapacity = 100
-
-	// State machine states for CachingIterator.
-	stateActive    uint32 = 0
-	stateDraining  uint32 = 1
-	stateDone      uint32 = 2
-	stateAbandoned uint32 = 3
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
