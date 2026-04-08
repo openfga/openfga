@@ -18,6 +18,10 @@ import (
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
+// benchSink prevents the compiler from optimizing away allocations in benchmarks.
+// Assigning results to a package-level variable forces heap escape.
+var benchSink any
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Benchmark: V1 vs V2 Iterator Cache Comparison
 // ─────────────────────────────────────────────────────────────────────────────
@@ -261,6 +265,7 @@ func BenchmarkV1vsV2_Memory_CacheEntry(b *testing.B) {
 
 	for _, size := range sizes {
 		b.Run(fmt.Sprintf("V1_TupleRecord_%d", size), func(b *testing.B) {
+			var sink any
 			b.ReportAllocs()
 			for i := 0; i < b.N; i++ {
 				records := make([]*storage.TupleRecord, size)
@@ -274,14 +279,16 @@ func BenchmarkV1vsV2_Memory_CacheEntry(b *testing.B) {
 						UserRelation:   "",
 					}
 				}
-				_ = &storage.TupleIteratorCacheEntry{
+				sink = &storage.TupleIteratorCacheEntry{
 					Tuples:       records,
 					LastModified: time.Now(),
 				}
 			}
+			benchSink = sink // escape to heap
 		})
 
 		b.Run(fmt.Sprintf("V2_MinimalEntry_%d", size), func(b *testing.B) {
+			var sink any
 			b.ReportAllocs()
 			for i := 0; i < b.N; i++ {
 				entries := make([]MinimalCacheEntry, size)
@@ -291,11 +298,12 @@ func BenchmarkV1vsV2_Memory_CacheEntry(b *testing.B) {
 						User:     fmt.Sprintf("user:user%d", j%100),
 					}
 				}
-				_ = &V2IteratorCacheEntry{
+				sink = &V2IteratorCacheEntry{
 					Entries:      entries,
 					LastModified: time.Now(),
 				}
 			}
+			benchSink = sink // escape to heap
 		})
 	}
 }
@@ -385,6 +393,7 @@ func BenchmarkV1vsV2_BufferAllocation(b *testing.B) {
 	size := 100
 
 	b.Run("V1_TuplePointers", func(b *testing.B) {
+		var sink any
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
 			// V1 allocates slice of tuple pointers
@@ -398,11 +407,13 @@ func BenchmarkV1vsV2_BufferAllocation(b *testing.B) {
 					),
 				})
 			}
-			_ = tuples
+			sink = tuples
 		}
+		benchSink = sink // escape to heap
 	})
 
 	b.Run("V2_TuplePointers_ThenTransform", func(b *testing.B) {
+		var sink any
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
 			// V2 now uses same pattern: collect pointers, then transform at flush
@@ -425,8 +436,9 @@ func BenchmarkV1vsV2_BufferAllocation(b *testing.B) {
 					User:     tk.GetUser(),
 				}
 			}
-			_ = entries
+			sink = entries
 		}
+		benchSink = sink // escape to heap
 	})
 }
 
