@@ -336,12 +336,16 @@ func (c *CachingIterator) drainInBackground() {
 
 			t, err := c.inner.Next(drainCtx)
 			if err != nil {
+				c.mu.Lock()
 				if errors.Is(err, storage.ErrIteratorDone) {
-					c.mu.Lock()
-					c.flush()
+					c.flush() // write buffered tuples to cache
 					c.mu.Unlock()
+					return nil, nil
 				}
 				// On timeout or other errors, don't cache
+				c.tuples = nil
+				c.mu.Unlock()
+				v2IterCacheAbandoned.WithLabelValues(c.operation).Inc()
 				return nil, nil
 			}
 
