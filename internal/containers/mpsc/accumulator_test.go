@@ -170,6 +170,43 @@ func TestAccumulator_AddThenCloseRace(t *testing.T) {
 	}
 }
 
+func TestAccumulator_SendAfterClose(t *testing.T) {
+	acc := mpsc.NewAccumulator[int]()
+	acc.Close()
+
+	require.False(t, acc.Send(1))
+}
+
+func TestAccumulator_RecvCancelledContext(t *testing.T) {
+	acc := mpsc.NewAccumulator[int]()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, ok := acc.Recv(ctx)
+	require.False(t, ok)
+
+	acc.Close()
+}
+
+func TestAccumulator_RecvDirect(t *testing.T) {
+	acc := mpsc.NewAccumulator[int]()
+	require.True(t, acc.Send(10))
+	require.True(t, acc.Send(20))
+	acc.Close()
+
+	v1, ok := acc.Recv(context.Background())
+	require.True(t, ok)
+	require.Equal(t, 10, v1)
+
+	v2, ok := acc.Recv(context.Background())
+	require.True(t, ok)
+	require.Equal(t, 20, v2)
+
+	_, ok = acc.Recv(context.Background())
+	require.False(t, ok)
+}
+
 func TestAccumulator_EarlyBreak(t *testing.T) {
 	acc := mpsc.NewAccumulator[int]()
 	for i := range 5 {

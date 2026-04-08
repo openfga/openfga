@@ -3,10 +3,21 @@ package worker
 import (
 	"context"
 	"fmt"
+	"math/bits"
 	"sync/atomic"
 
+	"github.com/openfga/openfga/internal/containers/mpmc"
 	"github.com/openfga/openfga/internal/containers/mpsc"
 )
+
+// FloorPowerOfTwo returns the largest power of two not exceeding i,
+// or 2 if i is equal to or less than 2.
+func FloorPowerOfTwo(i uint) int {
+	if i <= 2 {
+		return 2
+	}
+	return 1 << (bits.Len(i) - 1)
+}
 
 // Sender is the read end of a [Medium]. A worker reads from its senders
 // to receive messages produced by upstream workers.
@@ -31,6 +42,77 @@ type Listener interface {
 type Medium interface {
 	Sender
 	Listener
+}
+
+// NewStandardMedium returns a medium for non-cyclical edges.
+func NewStandardMedium(edge *Edge, capacity int) Medium {
+	return NewChannelMedium(edge, capacity)
+}
+
+// NewCyclicalMedium returns a medium for cyclical edges.
+func NewCyclicalMedium(edge *Edge, capacity int) Medium {
+	return NewQueueMedium(edge, capacity)
+}
+
+// QueueMedium is a [Medium] backed by an [mpmc.Queue]. Like all
+// [Medium] variants, it is multiple-producer, single-consumer.
+type QueueMedium struct {
+	key    *Edge
+	queue  *mpmc.Queue[*Message]
+	label  string
+	closed bool
+}
+
+// String returns a label of the form "source->destination".
+func (m *QueueMedium) String() string {
+	return m.label
+}
+
+// NewQueueMedium returns a QueueMedium for the given edge. The capacity
+// is rounded down to the nearest power of two as required by the
+// underlying ring buffer.
+func NewQueueMedium(edge *Edge, capacity int) *QueueMedium {
+	if capacity < 0 {
+		capacity = 2
+	}
+	medium := mpmc.MustQueue[*Message](FloorPowerOfTwo(uint(capacity)), -1)
+	src, dst := EdgeLabels(edge)
+	return &QueueMedium{
+		key:   edge,
+		queue: medium,
+		label: src + "->" + dst,
+	}
+}
+
+// Key returns the edge associated with this medium.
+func (m *QueueMedium) Key() *Edge {
+	return m.key
+}
+
+// Recv blocks until a message is available, the queue is closed, or the
+// context is cancelled.
+func (m *QueueMedium) Recv(ctx context.Context) (*Message, bool) {
+	if m.closed {
+		return nil, false
+	}
+	msg, more := m.queue.Recv(ctx)
+	if !more && ctx.Err() == nil {
+		m.closed = true
+	}
+	return msg, more
+}
+
+// Send enqueues a message. It returns false if the context is already cancelled.
+func (m *QueueMedium) Send(ctx context.Context, value *Message) bool {
+	if ctx.Err() != nil {
+		return false
+	}
+	return m.queue.Send(ctx, value)
+}
+
+// Close closes the underlying queue, signaling no more messages will be sent.
+func (m *QueueMedium) Close() {
+	m.queue.Close()
 }
 
 // AccumulatorMedium is a [Medium] backed by an [mpsc.Accumulator].

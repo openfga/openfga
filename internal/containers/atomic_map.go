@@ -54,6 +54,14 @@ func (m *AtomicMap[K, V]) Clear() {
 	m.m = nil
 }
 
+// Len returns the number of entries in the map.
+func (m *AtomicMap[K, V]) Len() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	return len(m.m)
+}
+
 // Unwrap returns the internal map that backs the AtomicMap.
 // A nil value may be returned if the AtomicMap has not yet
 // been initialized, or Unwrap is called after a Clear call.
@@ -61,5 +69,8 @@ func (m *AtomicMap[K, V]) Clear() {
 // Once the internal map has been unwrapped, methods on the
 // AtomicMap instance are no longer safe.
 func (m *AtomicMap[K, V]) Unwrap() map[K]V {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	return m.m
 }

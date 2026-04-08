@@ -54,6 +54,9 @@ func (b *Bag[T]) Add(v ...T) {
 
 // Seq atomically removes all values from the Bag and returns an
 // iterator that yields them in LIFO (most-recently-added-first) order.
+// The returned iterator is single-use: on early break it resumes from
+// the break point rather than restarting, and a fully consumed iterator
+// yields nothing on subsequent calls.
 func (b *Bag[T]) Seq() iter.Seq[T] {
 	head := b.head.Swap(nil)
 	return func(yield func(T) bool) {
