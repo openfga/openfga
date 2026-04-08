@@ -22,7 +22,7 @@ func (e *InvalidTupleError) Unwrap() error {
 }
 
 func (e *InvalidTupleError) Error() string {
-	return e.Unwrap().Error()
+	return "invalid tuple: " + e.Cause.Error()
 }
 
 type InvalidRelationError struct {
@@ -34,7 +34,7 @@ func (e *InvalidRelationError) Unwrap() error {
 }
 
 func (e *InvalidRelationError) Error() string {
-	return e.Unwrap().Error()
+	return "invalid relation: " + e.Cause.Error()
 }
 
 type ThrottledError struct {
@@ -46,7 +46,7 @@ func (e *ThrottledError) Unwrap() error {
 }
 
 func (e *ThrottledError) Error() string {
-	return e.Unwrap().Error()
+	return "throttled: " + e.Cause.Error()
 }
 
 type InvalidContextError struct {
@@ -58,7 +58,7 @@ func (e *InvalidContextError) Unwrap() error {
 }
 
 func (e *InvalidContextError) Error() string {
-	return e.Unwrap().Error()
+	return "invalid context: " + e.Cause.Error()
 }
 
 // CheckCommandErrorToServerError converts internal errors thrown during the
