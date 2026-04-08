@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"time"
@@ -12,18 +13,25 @@ import (
 // waitForDatabase attempts to establish a connection to the database
 // and ping it until it's ready or a timeout occurs.
 func waitForDatabase(driverName, uri string) error { //nolint:unparam
-	db, err := sql.Open(driverName, uri)
-	if err != nil {
-		return fmt.Errorf("open connection to %s: %w", driverName, err)
-	}
-	defer db.Close()
-
 	backoffPolicy := backoff.NewExponentialBackOff(
 		backoff.WithInitialInterval(10*time.Millisecond),
-		backoff.WithMaxElapsedTime(30*time.Second),
+		backoff.WithMaxElapsedTime(10*time.Second),
 	)
 
-	if err := backoff.Retry(db.Ping, backoffPolicy); err != nil {
+	err := backoff.Retry(func() error {
+		db, err := sql.Open(driverName, uri)
+		if err != nil {
+			return fmt.Errorf("open connection to %s: %w", driverName, err)
+		}
+		defer db.Close()
+
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+
+		return db.PingContext(ctx)
+	}, backoffPolicy)
+
+	if err != nil {
 		return fmt.Errorf("ping %s database: %w", driverName, err)
 	}
 
@@ -34,14 +42,14 @@ func waitForDatabase(driverName, uri string) error { //nolint:unparam
 // until it matches the expected version or a timeout occurs.
 func waitForMigrationVersion(driverName, uri string, expectedVersion int64) error {
 	backoffPolicy := backoff.NewExponentialBackOff(
-		backoff.WithInitialInterval(100*time.Millisecond),
-		backoff.WithMaxElapsedTime(1*time.Minute),
+		backoff.WithInitialInterval(10*time.Millisecond),
+		backoff.WithMaxElapsedTime(10*time.Second),
 	)
 
 	err := backoff.Retry(func() error {
 		db, err := goose.OpenDBWithDriver(driverName, uri)
 		if err != nil {
-			return fmt.Errorf("open connection: %w", err)
+			return fmt.Errorf("open connection to %s: %w", driverName, err)
 		}
 		defer db.Close()
 
