@@ -209,7 +209,6 @@ func TestLockFreeCachedIterator_Concurrent_Stop(t *testing.T) {
 	}
 
 	// Stop from another goroutine
-	time.Sleep(10 * time.Millisecond)
 	iter.Stop()
 
 	wg.Wait()
