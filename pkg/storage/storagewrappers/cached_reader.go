@@ -274,7 +274,11 @@ func buildInvalidationKeys(storeID, object, relation string) []string {
 func buildInvalidationKeysForUser(storeID string, userFilters []*openfgav1.ObjectRelation, objectType string) []string {
 	users := make([]string, len(userFilters))
 	for i, f := range userFilters {
-		users[i] = f.GetObject()
+		if rel := f.GetRelation(); rel != "" {
+			users[i] = f.GetObject() + "#" + rel
+		} else {
+			users[i] = f.GetObject()
+		}
 	}
 	return storage.GetInvalidIteratorByUserObjectTypeCacheKeys(storeID, users, objectType)
 }

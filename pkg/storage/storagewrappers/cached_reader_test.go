@@ -746,12 +746,7 @@ func TestCachedTupleReader_ReadStartingWithUser_CacheHit_UsersetFilter(t *testin
 	}
 
 	cacheKey := buildReadStartingWithUserCacheKey(storeID, filter)
-
-	// NOTE: buildInvalidationKeysForUser currently uses f.GetObject() which drops
-	// the "#member" relation. This means the invalidation key uses "group:eng"
-	// instead of "group:eng#member". This is a known bug — when fixed, the
-	// expected invalidation key below should change to use "group:eng#member".
-	userInvalidKeys := storage.GetInvalidIteratorByUserObjectTypeCacheKeys(storeID, []string{"group:eng"}, "document")
+	userInvalidKeys := storage.GetInvalidIteratorByUserObjectTypeCacheKeys(storeID, []string{"group:eng#member"}, "document")
 
 	// Cache hit
 	mockCache.EXPECT().Get(cacheKey).Return(cachedEntry).Times(1)
