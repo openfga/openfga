@@ -2490,3 +2490,138 @@ func TestBottomUpResolveRewriteForWildcardRequests(t *testing.T) {
 		require.ErrorIs(t, err, ErrWildcardInvalidRequest)
 	})
 }
+
+// TestBottomUp_SetOperationSetup_StopsIteratorsOnError verifies that when
+// resolveEdge fails for a later edge in setOperationSetup, all previously
+// created iterators are properly stopped (lines 81-83 in bottom_up.go).
+// Uses mock TupleIterators to assert Stop() is called on already-created
+// iterators when a subsequent edge fails.
+func TestBottomUp_SetOperationSetup_StopsIteratorsOnError(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	t.Run("intersection_second_edge_error_stops_first_iterator", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		storeID := ulid.Make().String()
+
+		// Model: viewer = member and editor (intersection of two relations)
+		// member: [user] — first edge succeeds
+		// editor: [user] — second edge fails
+		model := testutils.MustTransformDSLToProtoWithID(`
+			model
+				schema 1.1
+			type user
+			type document
+				relations
+					define member: [user]
+					define editor: [user]
+					define viewer: member and editor
+		`)
+
+		mg, err := modelgraph.New(model)
+		require.NoError(t, err)
+
+		// Return enough tuples (> IteratorMinBatchThreshold) so the resolveUnion
+		// goroutine in the inner setOperationSetup tries to send a second batch
+		// to the output channel (capacity 1). Without the cleanup code calling
+		// Stop() → Drain() on the outer channelIterator, the goroutine blocks
+		// forever, which goleak detects.
+		tuples := make([]*openfgav1.Tuple, IteratorMinBatchThreshold+1)
+		for i := range tuples {
+			tuples[i] = &openfgav1.Tuple{Key: tuple.NewTupleKey(
+				"document:"+strconv.Itoa(i), "member", "user:1",
+			)}
+		}
+
+		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+			DoAndReturn(func(ctx context.Context, sID string, filter storage.ReadStartingWithUserFilter, opts storage.ReadStartingWithUserOptions) (storage.TupleIterator, error) {
+				switch filter.Relation {
+				case "member":
+					return storage.NewStaticTupleIterator(tuples), nil
+				case "editor":
+					return nil, errors.New("datastore error")
+				default:
+					return nil, fmt.Errorf("unexpected relation: %s", filter.Relation)
+				}
+			}).AnyTimes()
+
+		strategy := newBottomUp(mg, mockDatastore)
+
+		ctx := context.Background()
+		node, ok := mg.GetNodeByID("document#viewer")
+		require.True(t, ok)
+
+		req, err := NewRequest(RequestParams{
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:1"),
+		})
+		require.NoError(t, err)
+
+		_, err = strategy.resolveRewrite(ctx, req, node)
+		require.Error(t, err)
+		// goleak.VerifyNone detects leaked goroutine if cleanup didn't drain the channel
+	})
+
+	t.Run("exclusion_second_edge_error_stops_first_iterator", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		storeID := ulid.Make().String()
+
+		// Model: viewer = member but not editor (exclusion)
+		model := testutils.MustTransformDSLToProtoWithID(`
+			model
+				schema 1.1
+			type user
+			type document
+				relations
+					define member: [user]
+					define editor: [user]
+					define viewer: member but not editor
+		`)
+
+		mg, err := modelgraph.New(model)
+		require.NoError(t, err)
+
+		tuples := make([]*openfgav1.Tuple, IteratorMinBatchThreshold+1)
+		for i := range tuples {
+			tuples[i] = &openfgav1.Tuple{Key: tuple.NewTupleKey(
+				"document:"+strconv.Itoa(i), "member", "user:1",
+			)}
+		}
+
+		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+			DoAndReturn(func(ctx context.Context, sID string, filter storage.ReadStartingWithUserFilter, opts storage.ReadStartingWithUserOptions) (storage.TupleIterator, error) {
+				switch filter.Relation {
+				case "member":
+					return storage.NewStaticTupleIterator(tuples), nil
+				case "editor":
+					return nil, errors.New("datastore error")
+				default:
+					return nil, fmt.Errorf("unexpected relation: %s", filter.Relation)
+				}
+			}).AnyTimes()
+
+		strategy := newBottomUp(mg, mockDatastore)
+
+		ctx := context.Background()
+		node, ok := mg.GetNodeByID("document#viewer")
+		require.True(t, ok)
+
+		req, err := NewRequest(RequestParams{
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:1"),
+		})
+		require.NoError(t, err)
+
+		_, err = strategy.resolveRewrite(ctx, req, node)
+		require.Error(t, err)
+	})
+}
