@@ -15,6 +15,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Changed
 - Made some minor changes in ListObjects to reduce heap allocations. Results in minor latency reduction. [#3043](https://github.com/openfga/openfga/pull/3043)
 - Improve cache key generation performance by removing `fmt` usage and extend control-character sanitization to all cache key inputs (tuples, conditions, context). [#3006](https://github.com/openfga/openfga/pull/3006)
+- Add jitter to internal cache TTLs to spread expirations and reduce thundering herd effects. [#3033](https://github.com/openfga/openfga/pull/3033)
 
 ### Security
 - Fixed AuthZEN discovery metadata to publish endpoint URLs from the configured `authzen.baseURL` instead of request-supplied host headers, preventing host-header poisoning of `/.well-known/authzen-configuration/{store_id}`.

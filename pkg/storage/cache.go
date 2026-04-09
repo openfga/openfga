@@ -39,15 +39,6 @@ var (
 	}, []string{"entity", "reason"})
 )
 
-// jitterRng is a locally-seeded random source used exclusively by JitteredTTL
-// so that each process gets an independent jitter sequence.
-//
-//nolint:gosec // G404: no security implications, jitter is for load distribution
-var jitterRng = rand.New(rand.NewSource(time.Now().UnixNano()))
-
-// jitterMu protects jitterRng which is not safe for concurrent use.
-var jitterMu sync.Mutex
-
 const (
 	SubproblemCachePrefix      = "sp."
 	iteratorCachePrefix        = "ic."
@@ -480,14 +471,12 @@ func JitteredTTL(baseTTL time.Duration, jitterPercentage uint32) time.Duration {
 	remainder := baseTTL % 100
 	maxJitter := quotient*time.Duration(jitterPercentage) + remainder*time.Duration(jitterPercentage)/100
 
-	jitterMu.Lock()
 	var jitter time.Duration
 	if maxJitter == time.Duration(math.MaxInt64) {
-		jitter = time.Duration(jitterRng.Uint64() & uint64(math.MaxInt64))
+		jitter = time.Duration(rand.Int63())
 	} else {
-		jitter = time.Duration(jitterRng.Int63n(int64(maxJitter) + 1))
+		jitter = time.Duration(rand.Int63n(int64(maxJitter) + 1))
 	}
-	jitterMu.Unlock()
 
 	if jitter > time.Duration(math.MaxInt64)-baseTTL {
 		return time.Duration(math.MaxInt64)
