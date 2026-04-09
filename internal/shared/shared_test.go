@@ -30,7 +30,7 @@ func TestSharedDatastoreResources(t *testing.T) {
 		require.Equal(t, sharedCtx, s.ServerCtx)
 		require.Equal(t, sharedSf, s.SingleflightGroup)
 		require.Nil(t, s.CheckCache)
-		require.NotNil(t, s.WaitGroup)
+		require.NotNil(t, s.ShutdownGroup)
 		require.NotNil(t, s.CacheController)
 		_, ok := s.CacheController.(*cachecontroller.NoopCacheController)
 		require.True(t, ok)
