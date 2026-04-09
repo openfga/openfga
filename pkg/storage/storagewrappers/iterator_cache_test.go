@@ -23,6 +23,57 @@ import (
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Test Helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+// blockingIterator is a test helper that returns pre-loaded tuples, then
+// blocks on Next()/Head() until the context is cancelled or Stop() is called.
+// Callers must ensure Stop() is eventually called (or the context cancelled)
+// to avoid hanging the test.
+type blockingIterator struct {
+	tuples  []*openfgav1.Tuple
+	index   int
+	blockCh chan struct{}
+}
+
+// Next returns the next pre-loaded tuple. Once all tuples are consumed, it
+// blocks until ctx is cancelled or Stop() closes blockCh. Tests that use a
+// short drainTimeout rely on this blocking to trigger context expiry.
+func (b *blockingIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
+	if b.index < len(b.tuples) {
+		t := b.tuples[b.index]
+		b.index++
+		return t, nil
+	}
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-b.blockCh:
+		return nil, storage.ErrIteratorDone
+	}
+}
+
+func (b *blockingIterator) Head(ctx context.Context) (*openfgav1.Tuple, error) {
+	if b.index < len(b.tuples) {
+		return b.tuples[b.index], nil
+	}
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-b.blockCh:
+		return nil, storage.ErrIteratorDone
+	}
+}
+
+func (b *blockingIterator) Stop() {
+	select {
+	case <-b.blockCh:
+	default:
+		close(b.blockCh)
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // LockFreeCachedIterator Tests
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -134,6 +185,45 @@ func TestLockFreeCachedIterator_Head_Basic(t *testing.T) {
 	require.Equal(t, "document:2", t4.GetKey().GetObject())
 }
 
+func TestLockFreeCachedIterator_Head_AfterStop(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	entries := []MinimalCacheEntry{
+		{ObjectID: "1", User: "user:alice"},
+	}
+
+	iter := NewLockFreeCachedIterator(entries, "document", "viewer")
+
+	iter.Stop()
+
+	_, err := iter.Head(context.Background())
+	require.ErrorIs(t, err, storage.ErrIteratorDone)
+}
+
+func TestLockFreeCachedIterator_Head_PastEnd(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	entries := []MinimalCacheEntry{
+		{ObjectID: "1", User: "user:alice"},
+	}
+
+	iter := NewLockFreeCachedIterator(entries, "document", "viewer")
+
+	ctx := context.Background()
+
+	// Consume the only entry
+	_, err := iter.Next(ctx)
+	require.NoError(t, err)
+
+	// Head should return ErrIteratorDone since index >= len(entries)
+	_, err = iter.Head(ctx)
+	require.ErrorIs(t, err, storage.ErrIteratorDone)
+}
+
 func TestLockFreeCachedIterator_Concurrent_Next(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
@@ -240,7 +330,7 @@ func TestLockFreeCachedIterator_ContextCanceled(t *testing.T) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// CachingIterator Tests - Using Static Iterators
+// CachingIterator Tests
 // ─────────────────────────────────────────────────────────────────────────────
 
 func TestCachingIterator_Next_Basic(t *testing.T) {
@@ -294,6 +384,133 @@ func TestCachingIterator_Next_Basic(t *testing.T) {
 	wg.Wait()
 }
 
+// TestCachingIterator_Next_NonIteratorDoneError_NilsTuples verifies that a
+// non-done/non-cancelled error from the inner iterator causes tuples to be
+// set to nil, preventing caching of incomplete results.
+func TestCachingIterator_Next_NonIteratorDoneError_NilsTuples(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+
+	mockCache := mocks.NewMockInMemoryCache[any](mockController)
+
+	ctx := context.Background()
+	sf := &singleflight.Group{}
+	wg := &sync.WaitGroup{}
+
+	// errorIterator returns first tuple, then ErrSimulatedError on second Next()
+	innerIter := mocks.NewErrorTupleIterator([]*openfgav1.Tuple{
+		{Key: tuple.NewTupleKey("document:1", "viewer", "user:alice")},
+	})
+
+	iter := newCachingIterator(
+		innerIter, mockCache, "test-key", 1000, time.Hour, 30*time.Second,
+		sf, wg, "document", "viewer", "ReadUsersetTuples",
+	)
+
+	// First call succeeds
+	t1, err := iter.Next(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "document:1", t1.GetKey().GetObject())
+	require.NotNil(t, iter.tuples) // tuples still collecting
+
+	// Second call returns simulated error (not done/cancelled)
+	_, err = iter.Next(ctx)
+	require.ErrorIs(t, err, mocks.ErrSimulatedError)
+
+	// tuples should be nil — incomplete results must not be cached
+	require.Nil(t, iter.tuples)
+
+	// Stop should not panic and should call wg.Done
+	iter.Stop()
+	wg.Wait()
+}
+
+func TestCachingIterator_Head_DelegatesToInner(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+
+	mockCache := mocks.NewMockInMemoryCache[any](mockController)
+	mockCache.EXPECT().Get(gomock.Any()).Return(nil).AnyTimes()
+	mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+
+	ctx := context.Background()
+	sf := &singleflight.Group{}
+	wg := &sync.WaitGroup{}
+
+	tuples := []*openfgav1.Tuple{
+		{Key: tuple.NewTupleKey("document:1", "viewer", "user:alice")},
+		{Key: tuple.NewTupleKey("document:2", "viewer", "user:bob")},
+	}
+
+	innerIter := storage.NewStaticTupleIterator(tuples)
+
+	iter := newCachingIterator(
+		innerIter, mockCache, "test-key", 1000, time.Hour, 30*time.Second,
+		sf, wg, "document", "viewer", "ReadUsersetTuples",
+	)
+
+	// Head returns first tuple without advancing
+	t1, err := iter.Head(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "document:1", t1.GetKey().GetObject())
+
+	// Calling Head again returns the same tuple
+	t2, err := iter.Head(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "document:1", t2.GetKey().GetObject())
+
+	// Next also returns the first tuple (Head didn't advance)
+	t3, err := iter.Next(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "document:1", t3.GetKey().GetObject())
+
+	iter.Stop()
+	wg.Wait()
+}
+
+func TestCachingIterator_Head_AfterStop(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+
+	mockCache := mocks.NewMockInMemoryCache[any](mockController)
+	mockCache.EXPECT().Get(gomock.Any()).Return(nil).AnyTimes()
+	mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+
+	ctx := context.Background()
+	sf := &singleflight.Group{}
+	wg := &sync.WaitGroup{}
+
+	tuples := []*openfgav1.Tuple{
+		{Key: tuple.NewTupleKey("document:1", "viewer", "user:alice")},
+	}
+
+	innerIter := storage.NewStaticTupleIterator(tuples)
+
+	iter := newCachingIterator(
+		innerIter, mockCache, "test-key", 1000, time.Hour, 30*time.Second,
+		sf, wg, "document", "viewer", "ReadUsersetTuples",
+	)
+
+	iter.Stop()
+	wg.Wait()
+
+	// Head after Stop returns ErrIteratorDone
+	_, err := iter.Head(ctx)
+	require.ErrorIs(t, err, storage.ErrIteratorDone)
+}
+
 func TestCachingIterator_State_Abandoned_OnMaxSize(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
@@ -327,6 +544,45 @@ func TestCachingIterator_State_Abandoned_OnMaxSize(t *testing.T) {
 
 	// Consume all tuples
 	for i := 0; i < maxSize+1; i++ {
+		_, err := iter.Next(ctx)
+		require.NoError(t, err)
+	}
+
+	// Verify tuples is nil (abandoned due to exceeding maxSize)
+	require.Nil(t, iter.tuples)
+}
+
+func TestCachingIterator_CustomMaxSizeAbandoned(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+
+	mockCache := mocks.NewMockInMemoryCache[any](mockController)
+
+	ctx := context.Background()
+	sf := &singleflight.Group{}
+	wg := &sync.WaitGroup{}
+
+	customMaxSize := 5
+
+	// Create more tuples than customMaxSize
+	tuples := make([]*openfgav1.Tuple, customMaxSize+1)
+	for i := 0; i < customMaxSize+1; i++ {
+		tuples[i] = &openfgav1.Tuple{Key: tuple.NewTupleKey("document:"+string(rune('1'+i)), "viewer", "user:test")}
+	}
+
+	innerIter := storage.NewStaticTupleIterator(tuples)
+
+	iter := newCachingIterator(
+		innerIter, mockCache, "test-key", customMaxSize, time.Hour, 30*time.Second,
+		sf, wg, "document", "viewer", "ReadUsersetTuples",
+	)
+
+	// Consume all tuples
+	for i := 0; i < customMaxSize+1; i++ {
 		_, err := iter.Next(ctx)
 		require.NoError(t, err)
 	}
@@ -420,212 +676,8 @@ func TestCachingIterator_InnerError(t *testing.T) {
 	require.ErrorIs(t, err, storage.ErrIteratorDone)
 }
 
-func TestCachingIterator_CustomMaxSizeAbandoned(t *testing.T) {
-	t.Cleanup(func() {
-		goleak.VerifyNone(t)
-	})
-
-	mockController := gomock.NewController(t)
-	defer mockController.Finish()
-
-	mockCache := mocks.NewMockInMemoryCache[any](mockController)
-
-	ctx := context.Background()
-	sf := &singleflight.Group{}
-	wg := &sync.WaitGroup{}
-
-	customMaxSize := 5
-
-	// Create more tuples than customMaxSize
-	tuples := make([]*openfgav1.Tuple, customMaxSize+1)
-	for i := 0; i < customMaxSize+1; i++ {
-		tuples[i] = &openfgav1.Tuple{Key: tuple.NewTupleKey("document:"+string(rune('1'+i)), "viewer", "user:test")}
-	}
-
-	innerIter := storage.NewStaticTupleIterator(tuples)
-
-	iter := newCachingIterator(
-		innerIter, mockCache, "test-key", customMaxSize, time.Hour, 30*time.Second,
-		sf, wg, "document", "viewer", "ReadUsersetTuples",
-	)
-
-	// Consume all tuples
-	for i := 0; i < customMaxSize+1; i++ {
-		_, err := iter.Next(ctx)
-		require.NoError(t, err)
-	}
-
-	// Verify tuples is nil (abandoned due to exceeding maxSize)
-	require.Nil(t, iter.tuples)
-}
-
-// TestCachingIterator_BackgroundDrainIgnoresRequestContextCancellation verifies
-// that the background drain completes and caches even when the original request
-// context is canceled. This is important because:
-// 1. Consumer calls Stop() after finding a result early
-// 2. Original request completes and cancels its context
-// 3. Background drain should still complete using context.Background().
-func TestCachingIterator_BackgroundDrainIgnoresRequestContextCancellation(t *testing.T) {
-	t.Cleanup(func() {
-		goleak.VerifyNone(t)
-	})
-
-	mockController := gomock.NewController(t)
-	defer mockController.Finish()
-
-	mockCache := mocks.NewMockInMemoryCache[any](mockController)
-
-	// Create a request context that we'll cancel to simulate request completion
-	requestCtx, cancelRequest := context.WithCancel(context.Background())
-
-	sf := &singleflight.Group{}
-	wg := &sync.WaitGroup{}
-
-	// Create tuples - use StaticTupleIterator since background drain uses context.Background()
-	tuples := make([]*openfgav1.Tuple, 10)
-	for i := 0; i < 10; i++ {
-		tuples[i] = &openfgav1.Tuple{Key: tuple.NewTupleKey("document:"+string(rune('1'+i)), "viewer", "user:test")}
-	}
-
-	innerIter := storage.NewStaticTupleIterator(tuples)
-
-	// Expect cache.Get to check if already cached (optimization 1), return nil (not cached)
-	mockCache.EXPECT().Get("test-key").Return(nil).Times(1)
-	// Expect cache.Set because background drain uses context.Background() and should complete
-	mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).Times(1)
-
-	iter := newCachingIterator(
-		innerIter, mockCache, "test-key", 1000, time.Hour, 30*time.Second,
-		sf, wg, "document", "viewer", "ReadUsersetTuples",
-	)
-
-	// Consume just a few tuples (simulating finding a result early)
-	for i := 0; i < 3; i++ {
-		_, err := iter.Next(requestCtx)
-		require.NoError(t, err)
-	}
-
-	// Cancel the request context to simulate request completion
-	cancelRequest()
-
-	// Stop triggers background drain which should complete and cache
-	// despite the request context being canceled
-	iter.Stop()
-
-	// Wait for background drain to complete
-	wg.Wait()
-
-	// Verify: cache.Set was called (checked by gomock)
-}
-
-func TestCachingIterator_BackgroundDrainCompletes_DoesCache(t *testing.T) {
-	t.Cleanup(func() {
-		goleak.VerifyNone(t)
-	})
-
-	mockController := gomock.NewController(t)
-	defer mockController.Finish()
-
-	mockCache := mocks.NewMockInMemoryCache[any](mockController)
-
-	ctx := context.Background()
-	sf := &singleflight.Group{}
-	wg := &sync.WaitGroup{}
-
-	tuples := make([]*openfgav1.Tuple, 10)
-	for i := 0; i < 10; i++ {
-		tuples[i] = &openfgav1.Tuple{Key: tuple.NewTupleKey("document:"+string(rune('1'+i)), "viewer", "user:test")}
-	}
-
-	innerIter := storage.NewStaticTupleIterator(tuples)
-
-	// Expect cache.Get to check if already cached (optimization 1), return nil (not cached)
-	mockCache.EXPECT().Get("test-key").Return(nil).Times(1)
-	// Expect cache.Set because drain will complete successfully
-	mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).Times(1)
-
-	iter := newCachingIterator(
-		innerIter, mockCache, "test-key", 1000, time.Hour, 30*time.Second,
-		sf, wg, "document", "viewer", "ReadUsersetTuples",
-	)
-
-	// Consume just a few tuples (not all)
-	for i := 0; i < 3; i++ {
-		_, err := iter.Next(ctx)
-		require.NoError(t, err)
-	}
-
-	// Stop triggers background drain which should complete and cache
-	iter.Stop()
-
-	// Wait for background drain to complete
-	wg.Wait()
-
-	// Verify: cache.Set was called once (checked by gomock)
-}
-
-// TestCachingIterator_ConcurrentNextAndStop verifies that concurrent Next()
-// and Stop() calls on a CachingIterator do not race. This test should pass
-// with the -race flag.
-func TestCachingIterator_ConcurrentNextAndStop(t *testing.T) {
-	t.Cleanup(func() {
-		goleak.VerifyNone(t)
-	})
-
-	mockController := gomock.NewController(t)
-	defer mockController.Finish()
-
-	mockCache := mocks.NewMockInMemoryCache[any](mockController)
-	// Expect Get calls for optimization 1 (check if already cached)
-	mockCache.EXPECT().Get(gomock.Any()).Return(nil).AnyTimes()
-	mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
-
-	tuples := createTestTuples(100)
-	ctx := context.Background()
-	sf := &singleflight.Group{}
-	wg := &sync.WaitGroup{}
-
-	// Run multiple iterations to increase chance of detecting race
-	for i := 0; i < 100; i++ {
-		innerIter := storage.NewStaticTupleIterator(tuples)
-		iter := newCachingIterator(
-			innerIter, mockCache, fmt.Sprintf("test-key-%d", i), 1000, time.Hour, 30*time.Second,
-			sf, wg, "document", "viewer", "ReadUsersetTuples",
-		)
-
-		// Concurrent access pattern that previously caused race
-		var testWg sync.WaitGroup
-		testWg.Add(2)
-
-		go func() {
-			defer testWg.Done()
-			for {
-				_, err := iter.Next(ctx)
-				if err != nil {
-					return
-				}
-			}
-		}()
-
-		go func() {
-			defer testWg.Done()
-			time.Sleep(time.Microsecond)
-			iter.Stop()
-		}()
-
-		testWg.Wait()
-	}
-
-	wg.Wait()
-	// If the test got here with the -race flag without failing, no race condition detected
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Issue Fix Tests - Verifying fixes for PR review comments
-// ─────────────────────────────────────────────────────────────────────────────
-
 // TestCachingIterator_Stop_Idempotent verifies that Stop() can be called
-// multiple times safely (Issue 1: Swap vs CompareAndSwap).
+// multiple times safely.
 func TestCachingIterator_Stop_Idempotent(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
@@ -674,7 +726,7 @@ func TestCachingIterator_Stop_Idempotent(t *testing.T) {
 }
 
 // TestCachingIterator_Flush_EmptyAndNil verifies that flush() handles
-// nil and empty slices correctly (Issue 2: redundant nil check).
+// nil and empty slices correctly.
 func TestCachingIterator_Flush_EmptyAndNil(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
@@ -720,8 +772,7 @@ func TestCachingIterator_Flush_EmptyAndNil(t *testing.T) {
 }
 
 // TestCachingIterator_WaitGroup_AddInConstructor verifies that wg.Add is
-// called in the constructor, not in Stop(), to prevent Add-after-Wait panic
-// (Issue 5).
+// called in the constructor, not in Stop(), to prevent Add-after-Wait panic.
 func TestCachingIterator_WaitGroup_AddInConstructor(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
@@ -831,6 +882,309 @@ func TestCachingIterator_WaitGroup_DoneCalledOnNilTuples(t *testing.T) {
 	case <-time.After(1 * time.Second):
 		t.Fatal("wg.Wait() timed out - wg.Done() was not called")
 	}
+}
+
+// TestCachingIterator_ConcurrentNextAndStop verifies that concurrent Next()
+// and Stop() calls on a CachingIterator do not race. This test should pass
+// with the -race flag.
+func TestCachingIterator_ConcurrentNextAndStop(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+
+	mockCache := mocks.NewMockInMemoryCache[any](mockController)
+	// Expect Get calls for optimization 1 (check if already cached)
+	mockCache.EXPECT().Get(gomock.Any()).Return(nil).AnyTimes()
+	mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+
+	tuples := createTestTuples(100)
+	ctx := context.Background()
+	sf := &singleflight.Group{}
+	wg := &sync.WaitGroup{}
+
+	// Run multiple iterations to increase chance of detecting race
+	for i := 0; i < 100; i++ {
+		innerIter := storage.NewStaticTupleIterator(tuples)
+		iter := newCachingIterator(
+			innerIter, mockCache, fmt.Sprintf("test-key-%d", i), 1000, time.Hour, 30*time.Second,
+			sf, wg, "document", "viewer", "ReadUsersetTuples",
+		)
+
+		// Concurrent access pattern that previously caused race
+		var testWg sync.WaitGroup
+		testWg.Add(2)
+
+		go func() {
+			defer testWg.Done()
+			for {
+				_, err := iter.Next(ctx)
+				if err != nil {
+					return
+				}
+			}
+		}()
+
+		go func() {
+			defer testWg.Done()
+			time.Sleep(time.Microsecond)
+			iter.Stop()
+		}()
+
+		testWg.Wait()
+	}
+
+	wg.Wait()
+	// If the test got here with the -race flag without failing, no race condition detected
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CachingIterator Background Drain Tests
+// ─────────────────────────────────────────────────────────────────────────────
+
+// TestCachingIterator_BackgroundDrainIgnoresRequestContextCancellation verifies
+// that the background drain completes and caches even when the original request
+// context is canceled. This is important because:
+// 1. Consumer calls Stop() after finding a result early
+// 2. Original request completes and cancels its context
+// 3. Background drain should still complete using context.Background().
+func TestCachingIterator_BackgroundDrainIgnoresRequestContextCancellation(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+
+	mockCache := mocks.NewMockInMemoryCache[any](mockController)
+
+	// Create a request context that we'll cancel to simulate request completion
+	requestCtx, cancelRequest := context.WithCancel(context.Background())
+
+	sf := &singleflight.Group{}
+	wg := &sync.WaitGroup{}
+
+	// Create tuples - use StaticTupleIterator since background drain uses context.Background()
+	tuples := make([]*openfgav1.Tuple, 10)
+	for i := 0; i < 10; i++ {
+		tuples[i] = &openfgav1.Tuple{Key: tuple.NewTupleKey("document:"+string(rune('1'+i)), "viewer", "user:test")}
+	}
+
+	innerIter := storage.NewStaticTupleIterator(tuples)
+
+	// Expect cache.Get to check if already cached (optimization 1), return nil (not cached)
+	mockCache.EXPECT().Get("test-key").Return(nil).Times(1)
+	// Expect cache.Set because background drain uses context.Background() and should complete
+	mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).Times(1)
+
+	iter := newCachingIterator(
+		innerIter, mockCache, "test-key", 1000, time.Hour, 30*time.Second,
+		sf, wg, "document", "viewer", "ReadUsersetTuples",
+	)
+
+	// Consume just a few tuples (simulating finding a result early)
+	for i := 0; i < 3; i++ {
+		_, err := iter.Next(requestCtx)
+		require.NoError(t, err)
+	}
+
+	// Cancel the request context to simulate request completion
+	cancelRequest()
+
+	// Stop triggers background drain which should complete and cache
+	// despite the request context being canceled
+	iter.Stop()
+
+	// Wait for background drain to complete
+	wg.Wait()
+
+	// Verify: cache.Set was called (checked by gomock)
+}
+
+func TestCachingIterator_BackgroundDrainCompletes_DoesCache(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+
+	mockCache := mocks.NewMockInMemoryCache[any](mockController)
+
+	ctx := context.Background()
+	sf := &singleflight.Group{}
+	wg := &sync.WaitGroup{}
+
+	tuples := make([]*openfgav1.Tuple, 10)
+	for i := 0; i < 10; i++ {
+		tuples[i] = &openfgav1.Tuple{Key: tuple.NewTupleKey("document:"+string(rune('1'+i)), "viewer", "user:test")}
+	}
+
+	innerIter := storage.NewStaticTupleIterator(tuples)
+
+	// Expect cache.Get to check if already cached (optimization 1), return nil (not cached)
+	mockCache.EXPECT().Get("test-key").Return(nil).Times(1)
+	// Expect cache.Set because drain will complete successfully
+	mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).Times(1)
+
+	iter := newCachingIterator(
+		innerIter, mockCache, "test-key", 1000, time.Hour, 30*time.Second,
+		sf, wg, "document", "viewer", "ReadUsersetTuples",
+	)
+
+	// Consume just a few tuples (not all)
+	for i := 0; i < 3; i++ {
+		_, err := iter.Next(ctx)
+		require.NoError(t, err)
+	}
+
+	// Stop triggers background drain which should complete and cache
+	iter.Stop()
+
+	// Wait for background drain to complete
+	wg.Wait()
+
+	// Verify: cache.Set was called once (checked by gomock)
+}
+
+// TestCachingIterator_DrainTimeout_AbandonsCaching verifies that when the
+// drain timeout expires mid-drain, tuples are abandoned.
+func TestCachingIterator_DrainTimeout_AbandonsCaching(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+
+	mockCache := mocks.NewMockInMemoryCache[any](mockController)
+	// cache.Get returns nil (not cached) — needed for optimization 1 check
+	mockCache.EXPECT().Get("test-key").Return(nil).Times(1)
+	// No Set expected — drain should abandon due to timeout
+
+	sf := &singleflight.Group{}
+	wg := &sync.WaitGroup{}
+
+	initialTuples := []*openfgav1.Tuple{
+		{Key: tuple.NewTupleKey("document:1", "viewer", "user:alice")},
+		{Key: tuple.NewTupleKey("document:2", "viewer", "user:bob")},
+	}
+
+	blockIter := &blockingIterator{
+		tuples:  initialTuples,
+		blockCh: make(chan struct{}),
+	}
+
+	iter := newCachingIterator(
+		blockIter, mockCache, "test-key", 1000,
+		time.Hour,
+		1*time.Nanosecond, // Very short drain timeout to trigger context expiry
+		sf, wg, "document", "viewer", "ReadUsersetTuples",
+	)
+
+	ctx := context.Background()
+
+	// Consume first tuple only
+	_, err := iter.Next(ctx)
+	require.NoError(t, err)
+
+	// Stop triggers background drain. The drain timeout is 1ns so context
+	// will expire almost immediately, causing abandonment.
+	iter.Stop()
+
+	wg.Wait()
+	// If we get here without hanging, drain properly abandoned and called wg.Done
+}
+
+// TestCachingIterator_DrainError_AbandonsCaching verifies that a non-done
+// error during background drain causes tuples to be abandoned.
+func TestCachingIterator_DrainError_AbandonsCaching(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+
+	mockCache := mocks.NewMockInMemoryCache[any](mockController)
+	mockCache.EXPECT().Get("test-key").Return(nil).Times(1)
+	// No Set expected — drain encounters error and abandons
+
+	sf := &singleflight.Group{}
+	wg := &sync.WaitGroup{}
+
+	// errorIterator: first Next() returns tuple, second Next() returns ErrSimulatedError
+	innerIter := mocks.NewErrorTupleIterator([]*openfgav1.Tuple{
+		{Key: tuple.NewTupleKey("document:1", "viewer", "user:alice")},
+		{Key: tuple.NewTupleKey("document:2", "viewer", "user:bob")},
+	})
+
+	iter := newCachingIterator(
+		innerIter, mockCache, "test-key", 1000, time.Hour, 30*time.Second,
+		sf, wg, "document", "viewer", "ReadUsersetTuples",
+	)
+
+	ctx := context.Background()
+
+	// Consume first tuple
+	_, err := iter.Next(ctx)
+	require.NoError(t, err)
+
+	// Stop triggers background drain. The drain calls inner.Next() which
+	// returns ErrSimulatedError (not done/cancelled), causing abandonment.
+	iter.Stop()
+
+	wg.Wait()
+}
+
+// TestCachingIterator_DrainExceedsMaxSize_AbandonsCaching verifies that when
+// the total number of tuples collected during drain exceeds maxSize, caching
+// is abandoned.
+func TestCachingIterator_DrainExceedsMaxSize_AbandonsCaching(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+
+	mockCache := mocks.NewMockInMemoryCache[any](mockController)
+	mockCache.EXPECT().Get("test-key").Return(nil).Times(1)
+	// No Set expected — max size exceeded during drain
+
+	sf := &singleflight.Group{}
+	wg := &sync.WaitGroup{}
+
+	maxSize := 5
+	tuples := make([]*openfgav1.Tuple, 10)
+	for i := 0; i < 10; i++ {
+		tuples[i] = &openfgav1.Tuple{Key: tuple.NewTupleKey("document:"+strconv.Itoa(i), "viewer", "user:test")}
+	}
+
+	innerIter := storage.NewStaticTupleIterator(tuples)
+
+	iter := newCachingIterator(
+		innerIter, mockCache, "test-key", maxSize, time.Hour, 30*time.Second,
+		sf, wg, "document", "viewer", "ReadUsersetTuples",
+	)
+
+	ctx := context.Background()
+
+	// Consume 3 tuples (under maxSize, so tuples is still collecting)
+	for i := 0; i < 3; i++ {
+		_, err := iter.Next(ctx)
+		require.NoError(t, err)
+	}
+	require.NotNil(t, iter.tuples)
+	require.Len(t, iter.tuples, 3)
+
+	// Stop triggers drain. Drain collects remaining 7 tuples.
+	// After 3 more, total=6 > maxSize=5, causing abandonment.
+	iter.Stop()
+
+	wg.Wait()
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
