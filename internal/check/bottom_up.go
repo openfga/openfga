@@ -79,6 +79,9 @@ func (s *bottomUp) setOperationSetup(ctx context.Context, req *Request, resolver
 		}
 		producerChan, err := s.resolveEdge(ctx, req, edge)
 		if err != nil {
+			for _, ch := range iterChans {
+				ch.Stop()
+			}
 			return nil, err
 		}
 		iterChans = append(iterChans, iterator.FromChannel(producerChan))
