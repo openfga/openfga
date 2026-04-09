@@ -53,7 +53,7 @@ type testContext struct {
 func setupTestContextWithExperimentals(t *testing.T, experimentals []string) *testContext {
 	t.Helper()
 
-	cfg := serverconfig.MustDefaultConfig()
+	cfg := testutils.MustDefaultConfig()
 	cfg.Experimentals = experimentals
 	cfg.Log.Level = "error"
 	cfg.Datastore.Engine = "memory"
