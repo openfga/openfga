@@ -79,8 +79,8 @@ func (s *bottomUp) setOperationSetup(ctx context.Context, req *Request, resolver
 		}
 		producerChan, err := s.resolveEdge(ctx, req, edge)
 		if err != nil {
-			for _, ch := range iterChans {
-				ch.Stop()
+			for _, iter := range iterChans {
+				iter.Stop()
 			}
 			return nil, err
 		}
