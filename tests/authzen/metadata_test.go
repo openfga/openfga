@@ -47,8 +47,7 @@ func TestGetConfiguration(t *testing.T) {
 		require.NoError(t, err)
 
 		// policy_decision_point is a URL string per AuthZEN spec
-		require.NotEmpty(t, resp.GetPolicyDecisionPoint())
-		require.Contains(t, resp.GetPolicyDecisionPoint(), tc.storeID)
+		require.Equal(t, "http://openfga.example/stores/"+tc.storeID, resp.GetPolicyDecisionPoint())
 	})
 
 	t.Run("returns_endpoints", func(t *testing.T) {
@@ -59,11 +58,11 @@ func TestGetConfiguration(t *testing.T) {
 		require.NoError(t, err)
 
 		// Flat endpoint URL fields per AuthZEN spec
-		require.Contains(t, resp.GetAccessEvaluationEndpoint(), "/access/v1/evaluation")
-		require.Contains(t, resp.GetAccessEvaluationsEndpoint(), "/access/v1/evaluations")
-		require.Contains(t, resp.GetSearchSubjectEndpoint(), "/access/v1/search/subject")
-		require.Contains(t, resp.GetSearchResourceEndpoint(), "/access/v1/search/resource")
-		require.Contains(t, resp.GetSearchActionEndpoint(), "/access/v1/search/action")
+		require.Equal(t, "http://openfga.example/stores/"+tc.storeID+"/access/v1/evaluation", resp.GetAccessEvaluationEndpoint())
+		require.Equal(t, "http://openfga.example/stores/"+tc.storeID+"/access/v1/evaluations", resp.GetAccessEvaluationsEndpoint())
+		require.Equal(t, "http://openfga.example/stores/"+tc.storeID+"/access/v1/search/subject", resp.GetSearchSubjectEndpoint())
+		require.Equal(t, "http://openfga.example/stores/"+tc.storeID+"/access/v1/search/resource", resp.GetSearchResourceEndpoint())
+		require.Equal(t, "http://openfga.example/stores/"+tc.storeID+"/access/v1/search/action", resp.GetSearchActionEndpoint())
 	})
 
 	t.Run("requires_experimental_flag", func(t *testing.T) {
@@ -79,56 +78,22 @@ func TestGetConfiguration(t *testing.T) {
 	})
 }
 
-// TestGetConfigurationHTTPHeaderForwarding verifies that X-Forwarded-Proto is
-// correctly forwarded through grpc-gateway to getBaseURLFromContext.
-//
-// Grpc-gateway's annotateContext has built-in special handling for
-// X-Forwarded-For and X-Forwarded-Host (they bypass the header matcher and
-// are always forwarded as gRPC metadata). However, X-Forwarded-Proto is NOT
-// included in that special handling, and DefaultHeaderMatcher only forwards
-// IANA permanent headers (Accept, Cookie, Host, etc.) and Grpc-Metadata-*
-// prefixed headers. Without an explicit match in WithIncomingHeaderMatcher,
-// X-Forwarded-Proto would be silently dropped and the scheme would always
-// default to "https".
-//
-// These tests send real HTTP requests through grpc-gateway to verify the
-// header reaches the server and affects the returned URLs.
-func TestGetConfigurationHTTPHeaderForwarding(t *testing.T) {
+// TestGetConfigurationHTTPHeadersIgnored verifies that discovery metadata is
+// anchored to the configured base URL instead of request-supplied host headers.
+func TestGetConfigurationHTTPHeadersIgnored(t *testing.T) {
 	tc := setupTestContextWithStore(t)
 
 	configURL := "http://" + tc.httpAddr + "/.well-known/authzen-configuration/" + tc.storeID
 
-	t.Run("x_forwarded_proto_http_is_forwarded", func(t *testing.T) {
+	t.Run("host_header_poisoning_is_ignored", func(t *testing.T) {
 		result := mustGetConfigurationHTTP(t, configURL, map[string]string{
 			"X-Forwarded-Proto": "http",
-			"X-Forwarded-Host":  "api.example.com",
-		})
-
-		// The evaluation endpoint URL must start with http://, proving
-		// X-Forwarded-Proto was forwarded through grpc-gateway.
-		evalEndpoint, ok := result["access_evaluation_endpoint"].(string)
-		require.True(t, ok)
-		require.Contains(t, evalEndpoint, "http://api.example.com/")
-	})
-
-	t.Run("x_forwarded_proto_https_is_forwarded", func(t *testing.T) {
-		result := mustGetConfigurationHTTP(t, configURL, map[string]string{
-			"X-Forwarded-Proto": "https",
-			"X-Forwarded-Host":  "api.example.com",
+			"X-Forwarded-Host":  "attacker.example",
+			"Host":              "attacker.example",
 		})
 
 		evalEndpoint, ok := result["access_evaluation_endpoint"].(string)
 		require.True(t, ok)
-		require.Contains(t, evalEndpoint, "https://api.example.com/")
-	})
-
-	t.Run("without_x_forwarded_proto_defaults_to_https", func(t *testing.T) {
-		result := mustGetConfigurationHTTP(t, configURL, map[string]string{
-			"X-Forwarded-Host": "api.example.com",
-		})
-
-		evalEndpoint, ok := result["access_evaluation_endpoint"].(string)
-		require.True(t, ok)
-		require.Contains(t, evalEndpoint, "https://api.example.com/")
+		require.Equal(t, "http://openfga.example/stores/"+tc.storeID+"/access/v1/evaluation", evalEndpoint)
 	})
 }

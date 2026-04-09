@@ -1215,6 +1215,10 @@ func TestDefaultConfig(t *testing.T) {
 	require.True(t, val.Exists())
 	require.Equal(t, val.String(), cfg.HTTP.Addr)
 
+	val = res.Get("properties.authzen.properties.baseURL.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.String(), cfg.Authzen.BaseURL)
+
 	val = res.Get("properties.playground.properties.enabled.default")
 	require.True(t, val.Exists())
 	require.Equal(t, val.Bool(), cfg.Playground.Enabled)
