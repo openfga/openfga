@@ -6,7 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/spf13/viper"
@@ -179,6 +181,13 @@ type HTTPConfig struct {
 
 	CORSAllowedOrigins []string
 	CORSAllowedHeaders []string
+}
+
+// AuthzenConfig defines configuration for the AuthZEN discovery endpoint.
+type AuthzenConfig struct {
+	// BaseURL is the canonical absolute base URL published in AuthZEN discovery
+	// metadata. It may include an optional path prefix.
+	BaseURL string `mapstructure:"baseURL"`
 }
 
 // TLSConfig defines configuration specific to Transport Layer Security (TLS) settings.
@@ -437,6 +446,7 @@ type Config struct {
 	Datastore                     DatastoreConfig
 	GRPC                          GRPCConfig
 	HTTP                          HTTPConfig
+	Authzen                       AuthzenConfig `mapstructure:"authzen"`
 	Authn                         AuthnConfig
 	Log                           LogConfig
 	Trace                         TraceConfig
@@ -573,6 +583,10 @@ func (cfg *Config) VerifyBinarySettings() error {
 		if cfg.HTTP.TLS.CertPath == "" || cfg.HTTP.TLS.KeyPath == "" {
 			return errors.New("'http.tls.cert' and 'http.tls.key' configs must be set")
 		}
+	}
+
+	if err := verifyAuthzenBaseURL(cfg.Authzen.BaseURL); err != nil {
+		return err
 	}
 
 	if cfg.GRPC.TLS.Enabled {
@@ -729,6 +743,55 @@ func (cfg *Config) verifyCacheConfig() error {
 	return nil
 }
 
+// NormalizeAuthzenBaseURL validates and normalizes an AuthZEN base URL.
+// It ensures the URL uses http or https, is absolute, contains no user info,
+// query string, fragment, or multiple hosts, and trims any trailing slash.
+// An empty input returns an empty string with no error.
+func NormalizeAuthzenBaseURL(rawURL string) (string, error) {
+	if rawURL == "" {
+		return "", nil
+	}
+
+	parsedURL, err := url.Parse(rawURL)
+	if err != nil {
+		return "", fmt.Errorf("must be a valid URL: %w", err)
+	}
+
+	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
+		return "", errors.New("scheme must be http or https")
+	}
+
+	if !parsedURL.IsAbs() || parsedURL.Host == "" {
+		return "", errors.New("URL must be absolute and include a host")
+	}
+
+	if parsedURL.User != nil {
+		return "", errors.New("URL must not include user info")
+	}
+
+	if parsedURL.RawQuery != "" || parsedURL.Fragment != "" {
+		return "", errors.New("URL must not include a query string or fragment")
+	}
+
+	if strings.Contains(parsedURL.Host, ",") {
+		return "", errors.New("URL must contain exactly one host")
+	}
+
+	parsedURL.Path = strings.TrimRight(parsedURL.Path, "/")
+	parsedURL.RawPath = strings.TrimRight(parsedURL.RawPath, "/")
+
+	return parsedURL.String(), nil
+}
+
+func verifyAuthzenBaseURL(rawURL string) error {
+	_, err := NormalizeAuthzenBaseURL(rawURL)
+	if err != nil {
+		return fmt.Errorf("config 'authzen.baseURL': %w", err)
+	}
+
+	return nil
+}
+
 // MaxConditionEvaluationCost ensures a safe value for CEL evaluation cost.
 func MaxConditionEvaluationCost() uint64 {
 	return max(DefaultMaxConditionEvaluationCost, viper.GetUint64("maxConditionEvaluationCost"))
@@ -780,6 +843,9 @@ func DefaultConfig() *Config {
 			UpstreamTimeout:    5 * time.Second,
 			CORSAllowedOrigins: []string{"*"},
 			CORSAllowedHeaders: []string{"*"},
+		},
+		Authzen: AuthzenConfig{
+			BaseURL: "",
 		},
 		Authn: AuthnConfig{
 			Method:                  "none",

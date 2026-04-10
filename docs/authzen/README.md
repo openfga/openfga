@@ -226,14 +226,16 @@ The AuthZEN specification is defined transport-agnostic, with HTTPS as the norma
 AuthZEN endpoints are gated behind an experimental feature flag. To enable them, start OpenFGA with:
 
 ```bash
-openfga run --experimentals authzen
+openfga run --experimentals authzen --authzen-base-url https://pdp.example.com
 ```
 
-Or set the environment variable:
+Or set the environment variables:
 
 ```bash
-OPENFGA_EXPERIMENTALS=authzen openfga run
+OPENFGA_EXPERIMENTALS=authzen OPENFGA_AUTHZEN_BASE_URL=https://pdp.example.com openfga run
 ```
+
+The `--authzen-base-url` (or `OPENFGA_AUTHZEN_BASE_URL`) flag specifies the canonical absolute base URL published in AuthZEN discovery metadata. It must be an `http` or `https` URL and may include an optional path prefix (e.g., `https://pdp.example.com/openfga`). This value is used to construct the absolute endpoint URLs returned by the discovery endpoint, ensuring they are not derived from request-supplied host headers.
 
 ### Specifying Authorization Model ID
 
@@ -555,5 +557,5 @@ Response:
 
 Per the spec, `policy_decision_point` and `access_evaluation_endpoint` are required. All other fields are optional.
 
-**Note:** The endpoint URLs are absolute URLs specific to the requested store, meeting the AuthZEN spec requirement for directly-usable URLs without templating.
+**Note:** The endpoint URLs are absolute URLs constructed from the configured `authzen.baseURL` value and the requested store ID, meeting the AuthZEN spec requirement for directly-usable URLs without templating. Request-supplied `Host` and forwarded host headers are not used, preventing host-header poisoning of discovery metadata.
 

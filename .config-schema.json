@@ -148,10 +148,21 @@
             "type": "array",
             "items": {
                 "type": "string",
-                "enum": ["enable-check-optimizations", "enable-list-objects-optimizations", "enable-access-control", "datastore_throttling", "pipeline_list_objects"]
+                "enum": ["enable-check-optimizations", "enable-list-objects-optimizations", "enable-access-control", "datastore_throttling", "pipeline_list_objects", "authzen"]
             },
             "default": ["pipeline_list_objects"],
             "x-env-variable": "OPENFGA_EXPERIMENTALS"
+        },
+        "authzen": {
+            "type": "object",
+            "properties": {
+                "baseURL": {
+                    "description": "The canonical absolute base URL published in AuthZEN discovery metadata. It may include an optional path prefix.",
+                    "type": "string",
+                    "default": "",
+                    "x-env-variable": "OPENFGA_AUTHZEN_BASE_URL"
+                }
+            }
         },
         "accessControl": {
             "description": "the configuration needed for the access control store",

@@ -57,6 +57,7 @@ func setupTestContextWithExperimentals(t *testing.T, experimentals []string) *te
 	cfg.Experimentals = experimentals
 	cfg.Log.Level = "error"
 	cfg.Datastore.Engine = "memory"
+	cfg.Authzen.BaseURL = "http://openfga.example"
 
 	tests.StartServer(t, cfg)
 
