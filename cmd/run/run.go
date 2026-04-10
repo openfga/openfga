@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/signal"
 	goruntime "runtime"
+	"slices"
 	"strconv"
 	"strings"
 	sync "sync/atomic"
@@ -901,6 +902,10 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 
 	if len(config.Experimentals) > 0 {
 		s.Logger.Info(fmt.Sprintf("🧪 experimental features enabled: %v", config.Experimentals))
+	}
+
+	if slices.Contains(config.Experimentals, serverconfig.ExperimentalAuthZen) && config.Authzen.BaseURL == "" {
+		s.Logger.Warn("AuthZEN experimental is enabled but 'authzen.baseURL' is not configured. The discovery endpoint (/.well-known/authzen-configuration) will not work. Set --authzen-base-url or OPENFGA_AUTHZEN_BASE_URL to fix this.")
 	}
 
 	datastore, continuationTokenSerializer, err := s.datastoreConfig(config)
