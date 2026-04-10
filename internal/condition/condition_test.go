@@ -685,7 +685,7 @@ func TestEvaluateWithInterruptCheckFrequency(t *testing.T) {
 			require.NoError(t, err)
 
 			evalCtx, cancel := context.WithCancel(ctx)
-			cancel() // cancel immediately so ctx.Done() is closed before Evaluate
+			cancel() // cancel immediately so evalCtx.Done() is closed before Evaluate
 
 			result, err := condition.Evaluate(evalCtx, contextStruct.GetFields())
 
