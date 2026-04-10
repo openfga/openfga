@@ -46,6 +46,7 @@ const (
 	DefaultCheckIteratorCacheEnabled    = false
 	DefaultCheckIteratorCacheMaxResults = 10000
 	DefaultCheckIteratorCacheTTL        = 10 * time.Second
+	DefaultCheckIteratorDrainTimeout    = 30 * time.Second
 
 	DefaultListObjectsIteratorCacheEnabled    = false
 	DefaultListObjectsIteratorCacheMaxResults = 10000

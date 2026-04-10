@@ -79,6 +79,9 @@ func (s *bottomUp) setOperationSetup(ctx context.Context, req *Request, resolver
 		}
 		producerChan, err := s.resolveEdge(ctx, req, edge)
 		if err != nil {
+			for _, iter := range iterChans {
+				iter.Stop()
+			}
 			return nil, err
 		}
 		iterChans = append(iterChans, iterator.FromChannel(producerChan))
@@ -203,12 +206,13 @@ func (s *bottomUp) specificTypeWildcard(ctx context.Context, req *Request, edge 
 		},
 	}
 	objectType, relation := tuple.SplitObjectRelation(edge.GetRelationDefinition())
+	wildcardUser := tuple.TypedPublicWildcard(req.GetUserType())
 	tIter, err := s.datastore.ReadStartingWithUser(ctx, req.GetStoreID(),
 		storage.ReadStartingWithUserFilter{
 			ObjectType: objectType,
 			Relation:   relation,
 			UserFilter: []*openfgav1.ObjectRelation{{
-				Object: tuple.TypedPublicWildcard(req.GetUserType()),
+				Object: wildcardUser,
 			}},
 			Conditions: edge.GetConditions(),
 		}, opts)
@@ -216,7 +220,7 @@ func (s *bottomUp) specificTypeWildcard(ctx context.Context, req *Request, edge 
 		return nil, err
 	}
 
-	iter := s.buildIterator(ctx, req, edge, tIter, tuple.TypedPublicWildcard(req.GetUserType()))
+	iter := s.buildIterator(ctx, req, edge, tIter, wildcardUser)
 	iterChan := make(chan *iterator.Msg, 1)
 	if !concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Iter: iter}, iterChan) {
 		iter.Stop() // will not be received to be cleaned up
@@ -226,9 +230,11 @@ func (s *bottomUp) specificTypeWildcard(ctx context.Context, req *Request, edge 
 }
 
 func (s *bottomUp) buildIterator(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge, i storage.TupleIterator, userID string) storage.TupleMapper {
+	// Note: Iterator caching is now handled by CachedTupleReader wrapper at the storage layer.
+	objectType, relation := tuple.SplitObjectRelation(edge.GetRelationDefinition())
+
 	// deduplication is only happening on the merged iterator and contextual tuples will always overwrite the base iterator
 	iter := storage.NewTupleKeyIteratorFromTupleIterator(i)
-	objectType, relation := tuple.SplitObjectRelation(edge.GetRelationDefinition())
 	if ctxTuples, ok := req.GetContextualTuplesByUserID(userID, relation, objectType); ok {
 		iter = iterator.Merge(iter, storage.NewStaticTupleKeyIterator(ctxTuples), func(a, b *openfgav1.TupleKey) int {
 			if a.GetObject() < b.GetObject() {
