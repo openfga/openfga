@@ -16,6 +16,7 @@ import (
 	"github.com/moby/moby/api/types/network"
 	"github.com/moby/moby/client"
 	"github.com/oklog/ulid/v2"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -71,7 +72,6 @@ func runOpenFGAContainerWithArgs(t *testing.T, commandArgs []string) OpenFGATest
 	}
 
 	hostCfg := container.HostConfig{
-		AutoRemove:      true,
 		PublishAllPorts: true,
 		PortBindings: network.PortMap{
 			httpPort:       []network.PortBinding{},
@@ -98,15 +98,46 @@ func runOpenFGAContainerWithArgs(t *testing.T, commandArgs []string) OpenFGATest
 	t.Cleanup(func() {
 		t.Logf("%s: stopping container %s", time.Now(), name)
 
-		inspectResult, err := dockerClient.ContainerInspect(ctx, cont.ID, client.ContainerInspectOptions{})
+		cctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		inspectResult, err := dockerClient.ContainerInspect(cctx, cont.ID, client.ContainerInspectOptions{})
+		if errdefs.IsNotFound(err) {
+			return
+		}
+
 		require.NoError(t, err)
-		require.Zero(t, inspectResult.Container.State.ExitCode, "expected exit code of the container to be zero")
 
-		timeoutSec := 5
+		if inspectResult.Container.State.Running {
+			timeoutSec := 5
 
-		_, err = dockerClient.ContainerStop(ctx, cont.ID, client.ContainerStopOptions{Timeout: &timeoutSec})
+			_, err = dockerClient.ContainerStop(cctx, cont.ID, client.ContainerStopOptions{Timeout: &timeoutSec})
+			if err != nil && !errdefs.IsNotFound(err) {
+				t.Logf("failed to stop openfga container: %v", err)
+			}
+		}
+
+		waitResult := dockerClient.ContainerWait(cctx, cont.ID, client.ContainerWaitOptions{
+			Condition: container.WaitConditionNotRunning,
+		})
+
+		var waitResponse container.WaitResponse
+
+		select {
+		case waitResponse = <-waitResult.Result:
+		case err := <-waitResult.Error:
+			if err != nil && !errdefs.IsNotFound(err) {
+				assert.NoError(t, err)
+			}
+		case <-cctx.Done():
+			assert.NoError(t, cctx.Err())
+		}
+
+		assert.Zero(t, waitResponse.StatusCode, "expected exit code of the container to be zero")
+
+		_, err = dockerClient.ContainerRemove(context.Background(), cont.ID, client.ContainerRemoveOptions{Force: true})
 		if err != nil && !errdefs.IsNotFound(err) {
-			t.Logf("failed to stop openfga container: %v", err)
+			t.Logf("failed to remove openfga container: %v", err)
 		}
 
 		t.Logf("%s: stopped container %s", time.Now(), name)
@@ -130,8 +161,8 @@ func runOpenFGAContainerWithArgs(t *testing.T, commandArgs []string) OpenFGATest
 	grpcHostPort := m[0].HostPort
 
 	if len(commandArgs) > 0 && commandArgs[0] == "run" {
-		policy := backoff.NewExponentialBackOff()
-		policy.MaxElapsedTime = 30 * time.Second
+		// wait for healthy service
+		policy := backoff.NewExponentialBackOff(backoff.WithMaxElapsedTime(30 * time.Second))
 
 		err = backoff.Retry(func() error {
 			inspectResult, err := dockerClient.ContainerInspect(ctx, cont.ID, client.ContainerInspectOptions{})
@@ -150,6 +181,24 @@ func runOpenFGAContainerWithArgs(t *testing.T, commandArgs []string) OpenFGATest
 			return fmt.Errorf("container starting")
 		}, policy)
 		require.NoError(t, err)
+	} else {
+		// wait for command to finish
+		cctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		waitResult := dockerClient.ContainerWait(cctx, cont.ID, client.ContainerWaitOptions{
+			Condition: container.WaitConditionNotRunning,
+		})
+
+		select {
+		case <-waitResult.Result:
+		case err := <-waitResult.Error:
+			if err != nil && !errdefs.IsNotFound(err) {
+				require.NoError(t, err)
+			}
+		case <-cctx.Done():
+			require.NoError(t, cctx.Err())
+		}
 	}
 
 	return &serverHandle{
