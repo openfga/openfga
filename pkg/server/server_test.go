@@ -2566,18 +2566,37 @@ func TestV2CheckWithIteratorCache_Invalidation(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// Each Check triggers the cache controller which reads the changelog
-	// asynchronously. With a ~0 TTL, repeated checks will eventually detect
-	// the new write, write invalidation markers, evict the stale iterator
-	// entry, and hit the database to get fresh results including bob's group.
+	// Delete the stale store-level invalidation marker so we can detect
+	// when the cache controller writes a fresh one after seeing the new writes.
+	cache.Delete(storage.GetInvalidIteratorCacheKey(storeID))
+
+	// WORKAROUND: Ideally, this test should disable the query cache; however,
+	// ExperimentalWeightedGraphCheck currently does not have an option to
+	// disable that. Instead, trigger cache controller invalidation through
+	// Check requests on a dummy user for the same object-relation used above
+	// until the new invalidation marker is written.
 	require.Eventually(t, func() bool {
 		resp, err := s.Check(ctx, &openfgav1.CheckRequest{
 			StoreId:              storeID,
-			TupleKey:             tuple.NewCheckRequestTupleKey("document:1", "viewer", "user:bob"),
+			TupleKey:             tuple.NewCheckRequestTupleKey("document:1", "viewer", "user:dummy"),
 			AuthorizationModelId: modelID,
 		})
-		return err == nil && resp.GetAllowed()
+		require.NoError(t, err)
+		require.False(t, resp.GetAllowed()) // user doesn't exist
+		return cache.Get(storage.GetInvalidIteratorCacheKey(storeID)) != nil
 	}, 2*time.Second, 10*time.Millisecond)
+
+	// Now perform the check for bob. If the iterator cache was properly
+	// invalidated, this should return true since bob is a viewer via
+	// group:product. If cache was not invalidated, this would return false
+	// since the stale iterator cache entry only contains group:eng#member.
+	resp, err := s.Check(ctx, &openfgav1.CheckRequest{
+		StoreId:              storeID,
+		TupleKey:             tuple.NewCheckRequestTupleKey("document:1", "viewer", "user:bob"),
+		AuthorizationModelId: modelID,
+	})
+	require.NoError(t, err)
+	require.True(t, resp.GetAllowed())
 }
 
 // TestV2CheckWithIteratorCache_HigherConsistencyBypassesCache tests that
