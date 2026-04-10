@@ -703,7 +703,7 @@ func (s *ServerContext) dialGrpc(config *serverconfig.Config) *grpc.ClientConn {
 	return conn
 }
 
-func (s *ServerContext) runHTTPServer(ctx context.Context, config *serverconfig.Config, grpcConn *grpc.ClientConn) (*http.Server, error) {
+func (s *ServerContext) runHTTPServer(ctx context.Context, config *serverconfig.Config, grpcConn *grpc.ClientConn, svr *server.Server) (*http.Server, error) {
 	muxOpts := []runtime.ServeMuxOption{
 		runtime.WithForwardResponseOption(httpmiddleware.HTTPResponseModifier),
 		runtime.WithErrorHandler(func(c context.Context, sr *runtime.ServeMux, mm runtime.Marshaler, w http.ResponseWriter, r *http.Request, e error) {
@@ -733,7 +733,13 @@ func (s *ServerContext) runHTTPServer(ctx context.Context, config *serverconfig.
 	if err := authzenv1.RegisterAuthZenServiceHandler(ctx, mux, grpcConn); err != nil {
 		return nil, err
 	}
-	handler := http.Handler(mux)
+
+	// Wrap grpc-gateway mux with custom HTTP handlers for bulk import
+	wrapperMux := http.NewServeMux()
+	server.RegisterImportHandlers(wrapperMux, svr, s.Logger)
+	wrapperMux.Handle("/", mux)
+
+	handler := http.Handler(wrapperMux)
 
 	if config.Trace.Enabled {
 		handler = otelhttp.NewHandler(handler, "grpc-gateway")
@@ -1080,7 +1086,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		grpcConn := s.dialGrpc(config)
 		defer grpcConn.Close()
 
-		httpServer, err = s.runHTTPServer(ctx, config, grpcConn)
+		httpServer, err = s.runHTTPServer(ctx, config, grpcConn, svr)
 		if err != nil {
 			return err
 		}
