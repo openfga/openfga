@@ -268,6 +268,7 @@ func (s *Server) v2Check(
 		commands.WithCheckQueryV2LastCacheInvalidationTime(cacheInvalidationTime),
 		commands.WithCheckQueryV2ConcurrencyLimit(int(s.resolveNodeBreadthLimit)),
 		commands.WithCheckQueryV2UpstreamTimeout(s.requestTimeout),
+		commands.WithCheckQueryV2SharedResources(s.sharedDatastoreResources),
 	)
 
 	res, metadata, err := q.Execute(ctx, req)

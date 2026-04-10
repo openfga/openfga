@@ -70,3 +70,23 @@ func (m *MapCache) Delete(key string) {
 }
 
 func (m *MapCache) Stop() {}
+
+// Size returns the number of entries in the cache.
+func (m *MapCache) Size() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.size
+}
+
+// KeysWithPrefix returns all keys in the cache that start with the given prefix.
+func (m *MapCache) KeysWithPrefix(prefix string) []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var keys []string
+	for k := range m.m {
+		if len(k) >= len(prefix) && k[:len(prefix)] == prefix {
+			keys = append(keys, k)
+		}
+	}
+	return keys
+}

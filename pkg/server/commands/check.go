@@ -10,6 +10,7 @@ import (
 	"github.com/openfga/openfga/internal/check"
 	"github.com/openfga/openfga/internal/modelgraph"
 	"github.com/openfga/openfga/internal/planner"
+	"github.com/openfga/openfga/internal/shared"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
@@ -30,6 +31,9 @@ type CheckQueryV2 struct {
 	planner                   planner.Manager
 	concurrencyLimit          int
 	upstreamTimeout           time.Duration
+
+	// Shared resources for iterator cache (singleflight, waitgroup)
+	sharedResources *shared.SharedDatastoreResources
 }
 
 type CheckQueryV2Option func(*CheckQueryV2)
@@ -102,6 +106,15 @@ func WithCheckQueryV2UpstreamTimeout(timeout time.Duration) CheckQueryV2Option {
 	}
 }
 
+// WithCheckQueryV2SharedResources sets shared resources for iterator caching.
+// This includes the shared singleflight.Group and sync.WaitGroup to prevent
+// cache stampedes across concurrent requests.
+func WithCheckQueryV2SharedResources(r *shared.SharedDatastoreResources) CheckQueryV2Option {
+	return func(cmd *CheckQueryV2) {
+		cmd.sharedResources = r
+	}
+}
+
 func NewCheckQuery(opts ...CheckQueryV2Option) *CheckQueryV2 {
 	q := &CheckQueryV2{
 		logger: logger.NewNoopLogger(),
@@ -119,7 +132,8 @@ func NewCheckQuery(opts ...CheckQueryV2Option) *CheckQueryV2 {
 }
 
 func (q *CheckQueryV2) Execute(ctx context.Context, req *openfgav1.CheckRequest) (*openfgav1.CheckResponse, storagewrappers.Metadata, error) {
-	ds := storagewrappers.NewBoundedTupleReader(q.datastore, &q.datastoreOp)
+	boundedDS := storagewrappers.NewBoundedTupleReader(q.datastore, &q.datastoreOp) // Datastore throttling and concurrency limiting
+	var datastore storage.RelationshipTupleReader = boundedDS
 
 	r, err := check.NewRequest(check.RequestParams{
 		StoreID:          req.GetStoreId(),
@@ -131,12 +145,29 @@ func (q *CheckQueryV2) Execute(ctx context.Context, req *openfgav1.CheckRequest)
 	})
 
 	if err != nil {
-		return nil, ds.GetMetadata(), err
+		return nil, boundedDS.GetMetadata(), err
+	}
+
+	// Wrap datastore with iterator cache using SHARED resources to prevent cache stampedes.
+	// The singleflight.Group and sync.WaitGroup are shared across all requests.
+	if q.sharedResources != nil &&
+		q.sharedResources.V2IteratorCacheEnabled &&
+		q.cache != nil {
+		datastore = storagewrappers.NewCachedTupleReader(
+			q.sharedResources.ServerCtx,
+			datastore,
+			q.cache,
+			q.sharedResources.V2IteratorCacheMaxSize,
+			q.sharedResources.V2IteratorCacheTTL,
+			q.sharedResources.SingleflightGroup, // SHARED across requests
+			q.sharedResources.WaitGroup,         // SHARED across requests
+			q.sharedResources.V2IteratorDrainTimeout,
+		)
 	}
 
 	resolver := check.New(check.Config{
 		Model:                     q.model,
-		Datastore:                 ds,
+		Datastore:                 datastore,
 		Cache:                     q.cache,
 		CacheTTL:                  q.cacheTTL,
 		LastCacheInvalidationTime: q.lastCacheInvalidationTime,
@@ -147,7 +178,7 @@ func (q *CheckQueryV2) Execute(ctx context.Context, req *openfgav1.CheckRequest)
 	})
 
 	res, err := resolver.ResolveCheck(ctx, r)
-	metadata := ds.GetMetadata()
+	metadata := boundedDS.GetMetadata()
 	if err != nil {
 		if metadata.WasThrottled && errors.Is(err, context.DeadlineExceeded) {
 			err = &ThrottledError{Cause: err}

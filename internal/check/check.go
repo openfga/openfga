@@ -49,6 +49,7 @@ type Config struct {
 	Logger                    logger.Logger
 	Strategies                map[string]Strategy
 }
+
 type Resolver struct {
 	model                     *modelgraph.AuthorizationModelGraph
 	datastore                 storage.RelationshipTupleReader
@@ -289,14 +290,15 @@ func (r *Resolver) resolveRecursiveUserset(ctx context.Context, req *Request, ed
 	)
 	defer span.End()
 
+	allowedTypes := []*openfgav1.RelationReference{{
+		Type:               userObjectType,
+		RelationOrWildcard: &openfgav1.RelationReference_Relation{Relation: userRelation},
+	}}
 	tIter, err := r.datastore.ReadUsersetTuples(ctx, req.GetStoreID(), storage.ReadUsersetTuplesFilter{
-		Object:   req.GetTupleKey().GetObject(),
-		Relation: userRelation, // a user relation in a recursive userset is the same than the defined relation
-		AllowedUserTypeRestrictions: []*openfgav1.RelationReference{{
-			Type:               userObjectType,
-			RelationOrWildcard: &openfgav1.RelationReference_Relation{Relation: userRelation},
-		}},
-		Conditions: edge.GetConditions(),
+		Object:                      req.GetTupleKey().GetObject(),
+		Relation:                    userRelation, // a user relation in a recursive userset is the same than the defined relation
+		AllowedUserTypeRestrictions: allowedTypes,
+		Conditions:                  edge.GetConditions(),
 	}, storage.ReadUsersetTuplesOptions{Consistency: storage.ConsistencyOptions{Preference: req.GetConsistency()}})
 	if err != nil {
 		return nil, err
@@ -348,13 +350,14 @@ func (r *Resolver) resolveRecursiveTTU(ctx context.Context, req *Request, edge *
 		return nil, errors.Join(ErrPanicRequest, err)
 	}
 
+	userFilter := subjectType + ":"
 	tIter, err := r.datastore.Read(
 		ctx,
 		req.GetStoreID(),
 		storage.ReadFilter{
 			Object:     req.GetTupleKey().GetObject(),
 			Relation:   tuplesetRelation,
-			User:       subjectType + ":",
+			User:       userFilter,
 			Conditions: conditionEdge.GetConditions(),
 		},
 		storage.ReadOptions{Consistency: storage.ConsistencyOptions{Preference: req.GetConsistency()}},
@@ -729,11 +732,12 @@ func (r *Resolver) specificTypeWildcard(ctx context.Context, req *Request, edge 
 	}
 
 	if iter == nil {
-		// Query via ReadUsersetTuples instead of ReadUserTuple tuples to take iterator cache.
+		// Query via ReadUsersetTuples - caching is now handled by CachedTupleReader wrapper
+		allowedTypes := []*openfgav1.RelationReference{modelgraph.WildcardRelationReference(req.GetUserType())}
 		tIter, err := r.datastore.ReadUsersetTuples(ctx, req.GetStoreID(), storage.ReadUsersetTuplesFilter{
 			Object:                      req.GetTupleKey().GetObject(),
 			Relation:                    relation,
-			AllowedUserTypeRestrictions: []*openfgav1.RelationReference{modelgraph.WildcardRelationReference(req.GetUserType())},
+			AllowedUserTypeRestrictions: allowedTypes,
 			Conditions:                  edge.GetConditions(),
 		}, storage.ReadUsersetTuplesOptions{
 			Consistency: storage.ConsistencyOptions{
@@ -793,14 +797,15 @@ func (r *Resolver) specificTypeAndRelation(ctx context.Context, req *Request, ed
 	_, relation := tuple.SplitObjectRelation(edge.GetRelationDefinition())
 
 	// userset that is represented by the same edge, conditions on the iterator will be defined in this edge
+	allowedTypes := []*openfgav1.RelationReference{{
+		Type:               userObjectType,
+		RelationOrWildcard: &openfgav1.RelationReference_Relation{Relation: userRelation},
+	}}
 	tIter, err := r.datastore.ReadUsersetTuples(ctx, req.GetStoreID(), storage.ReadUsersetTuplesFilter{
-		Object:   req.GetTupleKey().GetObject(),
-		Relation: relation,
-		AllowedUserTypeRestrictions: []*openfgav1.RelationReference{{
-			Type:               userObjectType,
-			RelationOrWildcard: &openfgav1.RelationReference_Relation{Relation: userRelation},
-		}},
-		Conditions: edge.GetConditions(),
+		Object:                      req.GetTupleKey().GetObject(),
+		Relation:                    relation,
+		AllowedUserTypeRestrictions: allowedTypes,
+		Conditions:                  edge.GetConditions(),
 	}, storage.ReadUsersetTuplesOptions{
 		Consistency: storage.ConsistencyOptions{
 			Preference: req.GetConsistency(),
@@ -864,13 +869,14 @@ func (r *Resolver) ttu(ctx context.Context, req *Request, edge *authzGraph.Weigh
 		return nil, errors.Join(ErrPanicRequest, err)
 	}
 
+	userFilter := subjectType + ":"
 	tIter, err := r.datastore.Read(
 		ctx,
 		req.GetStoreID(),
 		storage.ReadFilter{
 			Object:     req.GetTupleKey().GetObject(),
 			Relation:   tuplesetRelation,
-			User:       subjectType + ":",
+			User:       userFilter,
 			Conditions: tuplesetEdge.GetConditions(),
 		},
 		storage.ReadOptions{Consistency: storage.ConsistencyOptions{Preference: req.GetConsistency()}},
@@ -913,11 +919,18 @@ func (r *Resolver) ttu(ctx context.Context, req *Request, edge *authzGraph.Weigh
 }
 
 func (r *Resolver) buildIterator(ctx context.Context, req *Request, iter storage.TupleIterator, conditions []string, relation string, userType string, visited *sync.Map) storage.TupleKeyIterator {
+	// Note: Iterator caching is now handled by CachedTupleReader wrapper at the storage layer.
+	// This method only handles contextual tuples merge and condition filtering.
+
+	// STEP 1: Convert TupleIterator to TupleKeyIterator
 	tupleKeyIter := storage.NewTupleKeyIteratorFromTupleIterator(iter)
+
+	// STEP 2: Merge contextual tuples (these are request-specific and not cached)
 	if ctxTuples, ok := req.GetContextualTuplesByObjectID(req.GetTupleKey().GetObject(), relation, userType); ok {
 		tupleKeyIter = iterator.Concat(storage.NewStaticTupleKeyIterator(ctxTuples), tupleKeyIter)
 	}
 
+	// STEP 3: Build filter chain
 	iterFilters := make([]iterator.FilterFunc[*openfgav1.TupleKey], 0, 2)
 	if visited != nil {
 		iterFilters = append(iterFilters, BuildUniqueTupleKeyFilter(visited, func(key *openfgav1.TupleKey) string {
@@ -925,6 +938,8 @@ func (r *Resolver) buildIterator(ctx context.Context, req *Request, iter storage
 		}))
 	}
 
+	// STEP 4: Condition filter - evaluates conditions at retrieval time
+	// This uses the cached tuple's condition context + request context
 	if len(conditions) > 1 || conditions[0] != authzGraph.NoCond {
 		iterFilters = append(iterFilters, BuildConditionTupleKeyFilter(ctx, r.model, conditions, req.GetContext()))
 	}
