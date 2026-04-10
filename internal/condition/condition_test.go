@@ -593,7 +593,7 @@ func TestEvaluateWithInterruptCheckFrequency(t *testing.T) {
 			result: condition.EvaluationResult{
 				ConditionMet: false,
 			},
-			err: fmt.Errorf("failed to evaluate relationship condition: 'condition1' - failed to evaluate condition expression: operation interrupted"),
+			err: fmt.Errorf("failed to evaluate relationship condition: 'condition1' - failed to evaluate condition expression: context canceled"),
 		},
 		{
 			name: "operation_not_interrupted_one_comprehension",
@@ -643,7 +643,7 @@ func TestEvaluateWithInterruptCheckFrequency(t *testing.T) {
 			result: condition.EvaluationResult{
 				ConditionMet: false,
 			},
-			err: fmt.Errorf("failed to evaluate relationship condition: 'condition1' - failed to evaluate condition expression: operation interrupted"),
+			err: fmt.Errorf("failed to evaluate relationship condition: 'condition1' - failed to evaluate condition expression: context canceled"),
 		},
 		{
 			name: "operation_not_interrupted_two_comprehensions",
@@ -668,7 +668,7 @@ func TestEvaluateWithInterruptCheckFrequency(t *testing.T) {
 			result: condition.EvaluationResult{
 				ConditionMet: false,
 			},
-			err: fmt.Errorf("failed to evaluate relationship condition: 'condition1' - failed to evaluate condition expression: operation interrupted"),
+			err: fmt.Errorf("failed to evaluate relationship condition: 'condition1' - failed to evaluate condition expression: context canceled"),
 		},
 	}
 
