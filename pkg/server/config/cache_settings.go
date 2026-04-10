@@ -13,6 +13,7 @@ type CacheSettings struct {
 	CheckIteratorCacheEnabled          bool
 	CheckIteratorCacheMaxResults       uint32
 	CheckIteratorCacheTTL              time.Duration
+	CheckIteratorDrainTimeout          time.Duration // Timeout for background iterator drain operations
 	ListObjectsIteratorCacheEnabled    bool
 	ListObjectsIteratorCacheMaxResults uint32
 	ListObjectsIteratorCacheTTL        time.Duration
@@ -31,6 +32,7 @@ func NewDefaultCacheSettings() CacheSettings {
 		CheckIteratorCacheEnabled:          DefaultCheckIteratorCacheEnabled,
 		CheckIteratorCacheMaxResults:       DefaultCheckIteratorCacheMaxResults,
 		CheckIteratorCacheTTL:              DefaultCheckIteratorCacheTTL,
+		CheckIteratorDrainTimeout:          DefaultCheckIteratorDrainTimeout,
 		ListObjectsIteratorCacheEnabled:    DefaultListObjectsIteratorCacheEnabled,
 		ListObjectsIteratorCacheMaxResults: DefaultListObjectsIteratorCacheMaxResults,
 		ListObjectsIteratorCacheTTL:        DefaultListObjectsIteratorCacheTTL,
