@@ -995,6 +995,49 @@ func TestVerifyBinarySettings(t *testing.T) {
 		require.Contains(t, err.Error(), "http.upstreamTimeout must be a non-negative time duration")
 	})
 
+	t.Run("invalid_authzen_base_url", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Authzen.BaseURL = "not-a-url"
+
+		err := cfg.VerifyBinarySettings()
+		require.ErrorContains(t, err, "config 'authzen.baseURL'")
+		require.ErrorContains(t, err, "scheme must be http or https")
+	})
+
+	t.Run("valid_authzen_base_url", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Authzen.BaseURL = "https://pdp.example.com/openfga"
+
+		err := cfg.VerifyBinarySettings()
+		require.NoError(t, err)
+	})
+
+	t.Run("authzen_base_url_with_user_info", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Authzen.BaseURL = "https://user:pass@example.com"
+
+		err := cfg.VerifyBinarySettings()
+		require.ErrorContains(t, err, "config 'authzen.baseURL'")
+		require.ErrorContains(t, err, "URL must not include user info")
+	})
+
+	t.Run("authzen_base_url_with_query", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Authzen.BaseURL = "https://example.com?q=x"
+
+		err := cfg.VerifyBinarySettings()
+		require.ErrorContains(t, err, "config 'authzen.baseURL'")
+		require.ErrorContains(t, err, "URL must not include a query string or fragment")
+	})
+
+	t.Run("empty_authzen_base_url_is_valid", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Authzen.BaseURL = ""
+
+		err := cfg.VerifyBinarySettings()
+		require.NoError(t, err)
+	})
+
 	t.Run("invalid_log_level", func(t *testing.T) {
 		cfg := DefaultConfig()
 		cfg.Log.Level = "invalid_level"
