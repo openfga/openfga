@@ -10,11 +10,10 @@ import (
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/containerd/errdefs"
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/image"
-	"github.com/docker/docker/client"
-	"github.com/docker/go-connections/nat"
 	_ "github.com/jackc/pgx/v5/stdlib" // PostgreSQL driver.
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/network"
+	"github.com/moby/moby/client"
 	"github.com/oklog/ulid/v2"
 	"github.com/pressly/goose/v3"
 	"github.com/stretchr/testify/require"
@@ -24,6 +23,10 @@ import (
 
 const (
 	postgresImage = "postgres:17"
+)
+
+var (
+	postgresPort = network.MustParsePort("5432/tcp")
 )
 
 type postgresTestContainer struct {
@@ -54,16 +57,13 @@ func (p *postgresTestContainer) GetDatabaseSchemaVersion() int64 {
 // bootstrapped implementation of the DatastoreTestContainer interface wired up for the
 // Postgres datastore engine.
 func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) DatastoreTestContainer {
-	dockerClient, err := client.NewClientWithOpts(
-		client.FromEnv,
-		client.WithAPIVersionNegotiation(),
-	)
+	dockerClient, err := client.New(client.FromEnv)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		dockerClient.Close()
 	})
 
-	allImages, err := dockerClient.ImageList(context.Background(), image.ListOptions{
+	imageListResult, err := dockerClient.ImageList(context.Background(), client.ImageListOptions{
 		All: true,
 	})
 	require.NoError(t, err)
@@ -71,7 +71,7 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) Datastore
 	foundPostgresImage := false
 
 AllImages:
-	for _, image := range allImages {
+	for _, image := range imageListResult.Items {
 		for _, tag := range image.RepoTags {
 			if strings.Contains(tag, postgresImage) {
 				foundPostgresImage = true
@@ -82,8 +82,9 @@ AllImages:
 
 	if !foundPostgresImage {
 		t.Logf("Pulling image %s", postgresImage)
-		reader, err := dockerClient.ImagePull(context.Background(), postgresImage, image.PullOptions{})
+		reader, err := dockerClient.ImagePull(context.Background(), postgresImage, client.ImagePullOptions{})
 		require.NoError(t, err)
+		defer reader.Close()
 
 		_, err = io.Copy(io.Discard, reader) // consume the image pull output to make sure it's done
 		require.NoError(t, err)
@@ -94,8 +95,8 @@ AllImages:
 			"POSTGRES_DB=defaultdb",
 			"POSTGRES_PASSWORD=secret",
 		},
-		ExposedPorts: nat.PortSet{
-			nat.Port("5432/tcp"): {},
+		ExposedPorts: network.PortSet{
+			postgresPort: {},
 		},
 		Image: postgresImage,
 		Cmd: []string{
@@ -116,14 +117,18 @@ AllImages:
 
 	name := "postgres-" + ulid.Make().String()
 
-	cont, err := dockerClient.ContainerCreate(context.Background(), &containerCfg, &hostCfg, nil, nil, name)
+	cont, err := dockerClient.ContainerCreate(context.Background(), client.ContainerCreateOptions{
+		Name:       name,
+		Config:     &containerCfg,
+		HostConfig: &hostCfg,
+	})
 	require.NoError(t, err, "failed to create postgres docker container")
 
 	t.Cleanup(func() {
 		t.Logf("stopping container %s", name)
 		timeoutSec := 5
 
-		err := dockerClient.ContainerStop(context.Background(), cont.ID, container.StopOptions{Timeout: &timeoutSec})
+		_, err := dockerClient.ContainerStop(context.Background(), cont.ID, client.ContainerStopOptions{Timeout: &timeoutSec})
 		if err != nil && !errdefs.IsNotFound(err) {
 			t.Logf("failed to stop postgres container: %v", err)
 		}
@@ -131,13 +136,13 @@ AllImages:
 		t.Logf("stopped container %s", name)
 	})
 
-	err = dockerClient.ContainerStart(context.Background(), cont.ID, container.StartOptions{})
+	_, err = dockerClient.ContainerStart(context.Background(), cont.ID, client.ContainerStartOptions{})
 	require.NoError(t, err, "failed to start postgres container")
 
-	containerJSON, err := dockerClient.ContainerInspect(context.Background(), cont.ID)
+	inspectResult, err := dockerClient.ContainerInspect(context.Background(), cont.ID, client.ContainerInspectOptions{})
 	require.NoError(t, err)
 
-	m, ok := containerJSON.NetworkSettings.Ports["5432/tcp"]
+	m, ok := inspectResult.Container.NetworkSettings.Ports[postgresPort]
 	if !ok || len(m) == 0 {
 		require.Fail(t, "failed to get host port mapping from postgres container")
 	}
@@ -205,10 +210,7 @@ func (p *postgresTestContainer) GetPassword() string {
 
 // CreateSecondary creates a secondary PostgreSQL container.
 func (p *postgresTestContainer) CreateSecondary(t testing.TB) error {
-	dockerClient, err := client.NewClientWithOpts(
-		client.FromEnv,
-		client.WithAPIVersionNegotiation(),
-	)
+	dockerClient, err := client.New(client.FromEnv)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		dockerClient.Close()
@@ -238,8 +240,8 @@ func (p *postgresTestContainer) CreateSecondary(t testing.TB) error {
 			"POSTGRES_MASTER_HOST=" + masterHost,
 			"POSTGRES_MASTER_PORT=" + masterPort,
 		},
-		ExposedPorts: nat.PortSet{
-			nat.Port("5432/tcp"): {},
+		ExposedPorts: network.PortSet{
+			postgresPort: {},
 		},
 		Image:      postgresImage,
 		Entrypoint: []string{"/bin/bash", "-c"},
@@ -281,14 +283,18 @@ exec docker-entrypoint.sh postgres -c hot_standby=on -c wal_level=replica
 
 	name := "postgres-replica-" + ulid.Make().String()
 
-	cont, err := dockerClient.ContainerCreate(context.Background(), &containerCfg, &hostCfg, nil, nil, name)
+	cont, err := dockerClient.ContainerCreate(context.Background(), client.ContainerCreateOptions{
+		Name:       name,
+		Config:     &containerCfg,
+		HostConfig: &hostCfg,
+	})
 	require.NoError(t, err, "failed to create postgres replica docker container")
 
 	t.Cleanup(func() {
 		t.Logf("stopping replica container %s", name)
 		timeoutSec := 5
 
-		err := dockerClient.ContainerStop(context.Background(), cont.ID, container.StopOptions{Timeout: &timeoutSec})
+		_, err := dockerClient.ContainerStop(context.Background(), cont.ID, client.ContainerStopOptions{Timeout: &timeoutSec})
 		if err != nil && !errdefs.IsNotFound(err) {
 			t.Logf("failed to stop postgres replica container: %v", err)
 		}
@@ -296,13 +302,13 @@ exec docker-entrypoint.sh postgres -c hot_standby=on -c wal_level=replica
 		t.Logf("stopped replica container %s", name)
 	})
 
-	err = dockerClient.ContainerStart(context.Background(), cont.ID, container.StartOptions{})
+	_, err = dockerClient.ContainerStart(context.Background(), cont.ID, client.ContainerStartOptions{})
 	require.NoError(t, err, "failed to start postgres replica container")
 
-	containerJSON, err := dockerClient.ContainerInspect(context.Background(), cont.ID)
+	inspectResult, err := dockerClient.ContainerInspect(context.Background(), cont.ID, client.ContainerInspectOptions{})
 	require.NoError(t, err)
 
-	m, ok := containerJSON.NetworkSettings.Ports["5432/tcp"]
+	m, ok := inspectResult.Container.NetworkSettings.Ports[postgresPort]
 	if !ok || len(m) == 0 {
 		require.Fail(t, "failed to get host port mapping from postgres replica container")
 	}
@@ -322,12 +328,12 @@ exec docker-entrypoint.sh postgres -c hot_standby=on -c wal_level=replica
 
 // getMasterContainerID finds the master container ID.
 func (p *postgresTestContainer) getMasterContainerID(dockerClient *client.Client) (string, error) {
-	containers, err := dockerClient.ContainerList(context.Background(), container.ListOptions{})
+	containerListResult, err := dockerClient.ContainerList(context.Background(), client.ContainerListOptions{})
 	if err != nil {
 		return "", err
 	}
 
-	for _, cont := range containers {
+	for _, cont := range containerListResult.Items {
 		for _, name := range cont.Names {
 			if strings.Contains(name, "postgres-") && !strings.Contains(name, "replica") && !strings.Contains(name, "basebackup") {
 				return cont.ID, nil
@@ -347,22 +353,19 @@ func (p *postgresTestContainer) configureMasterForReplication(t testing.TB, dock
 	}
 
 	for _, cmd := range commands {
-		execConfig := container.ExecOptions{
-			Cmd: cmd,
-		}
-
-		exec, err := dockerClient.ContainerExecCreate(context.Background(), masterContainerID, execConfig)
+		execConfig := client.ExecCreateOptions{Cmd: cmd}
+		exec, err := dockerClient.ExecCreate(context.Background(), masterContainerID, execConfig)
 		if err != nil {
 			return fmt.Errorf("failed to create exec for command %v: %w", cmd, err)
 		}
 
-		err = dockerClient.ContainerExecStart(context.Background(), exec.ID, container.ExecStartOptions{})
+		_, err = dockerClient.ExecStart(context.Background(), exec.ID, client.ExecStartOptions{})
 		if err != nil {
 			return fmt.Errorf("failed to execute command %v: %w", cmd, err)
 		}
 
 		// Wait for command to complete.
-		inspect, err := dockerClient.ContainerExecInspect(context.Background(), exec.ID)
+		inspect, err := dockerClient.ExecInspect(context.Background(), exec.ID, client.ExecInspectOptions{})
 		if err != nil {
 			return fmt.Errorf("failed to inspect exec %v: %w", cmd, err)
 		}
