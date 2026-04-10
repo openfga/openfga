@@ -23,7 +23,7 @@ func (s *Server) GetConfiguration(ctx context.Context, req *authzenv1.GetConfigu
 	storeID := req.GetStoreId()
 
 	if s.authzenBaseURL == "" {
-		return nil, status.Error(codes.FailedPrecondition, "AuthZEN discovery base URL is not configured")
+		return nil, status.Error(codes.FailedPrecondition, "AuthZEN discovery base URL is not configured; set authzen.baseURL, --authzen-base-url, or OPENFGA_AUTHZEN_BASE_URL")
 	}
 
 	storeBase := fmt.Sprintf("%s/stores/%s", s.authzenBaseURL, storeID)

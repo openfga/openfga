@@ -19,7 +19,11 @@ func mustGetConfigurationHTTP(t *testing.T, url string, headers map[string]strin
 	req, err := http.NewRequest("GET", url, nil)
 	require.NoError(t, err)
 	for key, value := range headers {
-		req.Header.Set(key, value)
+		if http.CanonicalHeaderKey(key) == "Host" {
+			req.Host = value
+		} else {
+			req.Header.Set(key, value)
+		}
 	}
 
 	resp, err := http.DefaultClient.Do(req)

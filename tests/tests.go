@@ -55,7 +55,16 @@ func StartServerWithContext(t testing.TB, cfg *serverconfig.Config, serverCtx *r
 	grpcPort, grpcPortReleaser := testutils.TCPRandomPort()
 	cfg.GRPC.Addr = fmt.Sprintf("localhost:%d", grpcPort)
 	if cfg.Authzen.BaseURL == "" {
-		cfg.Authzen.BaseURL = "http://" + cfg.HTTP.Addr
+		for _, exp := range cfg.Experimentals {
+			if exp == serverconfig.ExperimentalAuthZen {
+				scheme := "http"
+				if cfg.HTTP.TLS != nil && cfg.HTTP.TLS.Enabled {
+					scheme = "https"
+				}
+				cfg.Authzen.BaseURL = scheme + "://" + cfg.HTTP.Addr
+				break
+			}
+		}
 	}
 
 	// these two functions release the ports so that the server can start listening on them
