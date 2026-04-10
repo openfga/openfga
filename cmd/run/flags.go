@@ -68,6 +68,9 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 		util.MustBindPFlag("http.corsAllowedHeaders", flags.Lookup("http-cors-allowed-headers"))
 		util.MustBindEnv("http.corsAllowedHeaders", "OPENFGA_HTTP_CORS_ALLOWED_HEADERS", "OPENFGA_HTTP_CORSALLOWEDHEADERS")
 
+		util.MustBindPFlag("authzen.baseURL", flags.Lookup("authzen-base-url"))
+		util.MustBindEnv("authzen.baseURL", "OPENFGA_AUTHZEN_BASE_URL")
+
 		util.MustBindPFlag("authn.method", flags.Lookup("authn-method"))
 		util.MustBindEnv("authn.method", "OPENFGA_AUTHN_METHOD")
 

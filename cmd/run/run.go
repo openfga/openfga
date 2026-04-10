@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/signal"
 	goruntime "runtime"
+	"slices"
 	"strconv"
 	"strings"
 	sync "sync/atomic"
@@ -168,6 +169,8 @@ func NewRunCommand() *cobra.Command {
 	flags.StringSlice("http-cors-allowed-origins", defaultConfig.HTTP.CORSAllowedOrigins, "specifies the CORS allowed origins")
 
 	flags.StringSlice("http-cors-allowed-headers", defaultConfig.HTTP.CORSAllowedHeaders, "specifies the CORS allowed headers")
+
+	flags.String("authzen-base-url", defaultConfig.Authzen.BaseURL, "the canonical absolute base URL to publish in AuthZEN discovery metadata")
 
 	flags.String("authn-method", defaultConfig.Authn.Method, "the authentication method to use")
 
@@ -719,12 +722,6 @@ func (s *ServerContext) runHTTPServer(ctx context.Context, config *serverconfig.
 			if strings.EqualFold(key, server.AuthorizationModelIDHeader) {
 				return strings.ToLower(key), true
 			}
-			// Forward X-Forwarded-Proto so getBaseURLFromContext can determine the scheme.
-			// grpc-gateway's annotateContext handles X-Forwarded-For and X-Forwarded-Host
-			// natively, but does not forward X-Forwarded-Proto.
-			if strings.EqualFold(key, "X-Forwarded-Proto") {
-				return strings.ToLower(key), true
-			}
 			// Use default behavior for other headers
 			return runtime.DefaultHeaderMatcher(key)
 		}),
@@ -907,6 +904,10 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		s.Logger.Info(fmt.Sprintf("🧪 experimental features enabled: %v", config.Experimentals))
 	}
 
+	if slices.Contains(config.Experimentals, serverconfig.ExperimentalAuthZen) && config.Authzen.BaseURL == "" {
+		s.Logger.Warn("AuthZEN experimental is enabled but 'authzen.baseURL' is not configured. The discovery endpoint (/.well-known/authzen-configuration/{store_id}) will not work. Set --authzen-base-url or OPENFGA_AUTHZEN_BASE_URL to fix this.")
+	}
+
 	datastore, continuationTokenSerializer, err := s.datastoreConfig(config)
 	if err != nil {
 		return err
@@ -973,6 +974,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 
 	svr := server.MustNewServerWithOpts(
 		server.WithDatastore(datastore),
+		server.WithAuthzenBaseURL(config.Authzen.BaseURL),
 		server.WithContinuationTokenSerializer(continuationTokenSerializer),
 		server.WithAuthorizationModelCacheSize(config.Datastore.MaxCacheSize),
 		server.WithTypesystemCacheSize(config.Datastore.MaxTypesystemCacheSize),
