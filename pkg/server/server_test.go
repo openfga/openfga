@@ -19,6 +19,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zaptest/observer"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -33,6 +35,7 @@ import (
 	"github.com/openfga/openfga/internal/graph"
 	mockstorage "github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/featureflags"
+	"github.com/openfga/openfga/pkg/logger"
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/server/test"
@@ -2148,6 +2151,40 @@ func TestServerListObjectsCache(t *testing.T) {
 		t.Cleanup(s.Close)
 
 		require.Nil(t, s.sharedDatastoreResources.CheckCache)
+	})
+}
+
+func TestWithCacheTTLJitterPercentage(t *testing.T) {
+	t.Run("keeps values within range without warning", func(t *testing.T) {
+		core, logs := observer.New(zap.WarnLevel)
+		testLogger := &logger.ZapLogger{Logger: zap.New(core)}
+
+		s := MustNewServerWithOpts(
+			WithDatastore(memory.New()),
+			WithLogger(testLogger),
+			WithCacheTTLJitterPercentage(10),
+		)
+		t.Cleanup(s.Close)
+
+		require.EqualValues(t, 10, s.cacheSettings.CacheTTLJitterPercentage)
+		require.Zero(t, logs.Len())
+	})
+
+	t.Run("caps values above 100 and logs the requested value", func(t *testing.T) {
+		core, logs := observer.New(zap.WarnLevel)
+		testLogger := &logger.ZapLogger{Logger: zap.New(core)}
+
+		s := MustNewServerWithOpts(
+			WithDatastore(memory.New()),
+			WithLogger(testLogger),
+			WithCacheTTLJitterPercentage(101),
+		)
+		t.Cleanup(s.Close)
+
+		require.EqualValues(t, 100, s.cacheSettings.CacheTTLJitterPercentage)
+		require.Equal(t, 1, logs.Len())
+		require.Equal(t, "cacheTTLJitterPercentage exceeded 100, capping to 100", logs.All()[0].Message)
+		require.EqualValues(t, 101, logs.All()[0].ContextMap()["requested"])
 	})
 }
 
