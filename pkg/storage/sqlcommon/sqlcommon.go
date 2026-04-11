@@ -332,7 +332,7 @@ func (t *SQLTupleIterator) fetchBuffer(ctx context.Context) error {
 	elapsed := time.Since(start)
 	if err != nil {
 		storageErr := t.handleSQLError(err)
-		telemetry.TraceError(span, storageErr)
+		telemetry.TraceStorageError(span, storageErr)
 		storage.ObserveIterQueryDuration(storage.SuccessLabel(storageErr), elapsed)
 		return storageErr
 	}
