@@ -227,9 +227,9 @@ func (r *Request) buildContextualTupleMaps() {
 		// Build key for ctxTuplesByUserID: userId+relation+objectType
 		keyBuilder.Reset()
 		keyBuilder.WriteString(user)
-		keyBuilder.WriteString(ctxTupleKeyDelimiter)
+		keyBuilder.WriteByte(ctxTupleKeyDelimiter)
 		keyBuilder.WriteString(relation)
-		keyBuilder.WriteString(ctxTupleKeyDelimiter)
+		keyBuilder.WriteByte(ctxTupleKeyDelimiter)
 		keyBuilder.WriteString(objectType)
 		userKey := keyBuilder.String()
 
@@ -238,9 +238,9 @@ func (r *Request) buildContextualTupleMaps() {
 		// Build key for ctxTuplesByObjectID: objectId+relation+userType
 		keyBuilder.Reset()
 		keyBuilder.WriteString(object)
-		keyBuilder.WriteString(ctxTupleKeyDelimiter)
+		keyBuilder.WriteByte(ctxTupleKeyDelimiter)
 		keyBuilder.WriteString(relation)
-		keyBuilder.WriteString(ctxTupleKeyDelimiter)
+		keyBuilder.WriteByte(ctxTupleKeyDelimiter)
 		keyBuilder.WriteString(userType)
 		objectKey := keyBuilder.String()
 
@@ -292,9 +292,9 @@ func insertSortedTuple(slice []*openfgav1.TupleKey, t *openfgav1.TupleKey, sortK
 func (r *Request) GetContextualTuplesByUserID(userID, relation, objectType string) ([]*openfgav1.TupleKey, bool) {
 	var keyBuilder strings.Builder
 	keyBuilder.WriteString(userID)
-	keyBuilder.WriteString(ctxTupleKeyDelimiter)
+	keyBuilder.WriteByte(ctxTupleKeyDelimiter)
 	keyBuilder.WriteString(relation)
-	keyBuilder.WriteString(ctxTupleKeyDelimiter)
+	keyBuilder.WriteByte(ctxTupleKeyDelimiter)
 	keyBuilder.WriteString(objectType)
 
 	entry, ok := r.ctxTuplesByUserID[keyBuilder.String()]
@@ -305,9 +305,9 @@ func (r *Request) GetContextualTuplesByUserID(userID, relation, objectType strin
 func (r *Request) GetContextualTuplesByObjectID(objectID, relation, userType string) ([]*openfgav1.TupleKey, bool) {
 	var keyBuilder strings.Builder
 	keyBuilder.WriteString(objectID)
-	keyBuilder.WriteString(ctxTupleKeyDelimiter)
+	keyBuilder.WriteByte(ctxTupleKeyDelimiter)
 	keyBuilder.WriteString(relation)
-	keyBuilder.WriteString(ctxTupleKeyDelimiter)
+	keyBuilder.WriteByte(ctxTupleKeyDelimiter)
 	keyBuilder.WriteString(userType)
 
 	entry, ok := r.ctxTuplesByObjectID[keyBuilder.String()]
