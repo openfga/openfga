@@ -491,3 +491,109 @@ func TestV2CheckMetadata(t *testing.T) {
 		require.Equal(t, false, throttled, "throttling should be disabled when feature flag is false")
 	})
 }
+
+func TestV2Check_SanitizeRequest(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	modelDSL := `
+		model
+			schema 1.1
+		type user
+		type document
+			relations
+				define view: [user]
+	`
+
+	s, baseReq := setupCheckServer(t, modelDSL, []*openfgav1.TupleKey{
+		tuple.NewTupleKey("document:1", "view", "user:bob"),
+	})
+	ctx := context.Background()
+
+	doV2Check := func(t *testing.T, req *openfgav1.CheckRequest) error {
+		t.Helper()
+		_, err := s.v2Check(ctx, req,
+			s.sharedDatastoreResources.CheckCache,
+			s.sharedDatastoreResources.CacheController,
+			s.authzModelGraphResolver,
+		)
+		return err
+	}
+
+	// Helper to clone the base request with a clean tuple key.
+	freshReq := func() *openfgav1.CheckRequest {
+		return &openfgav1.CheckRequest{
+			StoreId:              baseReq.GetStoreId(),
+			AuthorizationModelId: baseReq.GetAuthorizationModelId(),
+			TupleKey: &openfgav1.CheckRequestTupleKey{
+				Object:   "document:1",
+				Relation: "view",
+				User:     "user:alice",
+			},
+		}
+	}
+
+	t.Run("rejects_null_byte_in_tuple_key_object", func(t *testing.T) {
+		req := freshReq()
+		req.TupleKey.Object = "document:1\x00"
+		require.Error(t, doV2Check(t, req))
+	})
+
+	t.Run("rejects_null_byte_in_tuple_key_relation", func(t *testing.T) {
+		req := freshReq()
+		req.TupleKey.Relation = "vi\x00ew"
+		require.Error(t, doV2Check(t, req))
+	})
+
+	t.Run("rejects_null_byte_in_tuple_key_user", func(t *testing.T) {
+		req := freshReq()
+		req.TupleKey.User = "user:ali\x00ce"
+		require.Error(t, doV2Check(t, req))
+	})
+
+	t.Run("rejects_null_byte_in_contextual_tuple_object", func(t *testing.T) {
+		req := freshReq()
+		req.ContextualTuples = &openfgav1.ContextualTupleKeys{
+			TupleKeys: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:\x001", "view", "user:bob"),
+			},
+		}
+		require.Error(t, doV2Check(t, req))
+	})
+
+	t.Run("rejects_null_byte_in_contextual_tuple_relation", func(t *testing.T) {
+		req := freshReq()
+		req.ContextualTuples = &openfgav1.ContextualTupleKeys{
+			TupleKeys: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "v\x00iew", "user:bob"),
+			},
+		}
+		require.Error(t, doV2Check(t, req))
+	})
+
+	t.Run("rejects_null_byte_in_contextual_tuple_user", func(t *testing.T) {
+		req := freshReq()
+		req.ContextualTuples = &openfgav1.ContextualTupleKeys{
+			TupleKeys: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "view", "user:b\x00ob"),
+			},
+		}
+		require.Error(t, doV2Check(t, req))
+	})
+
+	t.Run("accepts_valid_request_without_contextual_tuples", func(t *testing.T) {
+		req := freshReq()
+		require.NoError(t, doV2Check(t, req))
+	})
+
+	t.Run("accepts_valid_request_with_contextual_tuples", func(t *testing.T) {
+		req := freshReq()
+		req.ContextualTuples = &openfgav1.ContextualTupleKeys{
+			TupleKeys: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "view", "user:bob"),
+			},
+		}
+		require.NoError(t, doV2Check(t, req))
+	})
+}
