@@ -260,6 +260,7 @@ jobs:
               - 'pkg/storage/*.go'
               - 'pkg/storage/sqlcommon/**'
               - 'pkg/server/commands/**'
+              - 'pkg/typesystem/**'
 
       - name: Set up Go
         if: steps.changes.outputs.perf == 'true' || github.event_name == 'merge_group'

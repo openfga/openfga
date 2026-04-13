@@ -18,6 +18,7 @@ jobs:
         with:
           go-version-file: './go.mod'
           cache-dependency-path: './go.sum'
+          check-latest: true
 
       - id: go-cache-paths
         name: Get Go cache paths
@@ -54,6 +55,7 @@ jobs:
         with:
           go-version-file: './go.mod'
           cache-dependency-path: './go.sum'
+          check-latest: true
 
       - id: go-cache-paths
         name: Get Go cache paths
@@ -90,6 +92,7 @@ jobs:
         with:
           go-version-file: './go.mod'
           cache-dependency-path: './go.sum'
+          check-latest: true
 
       - id: go-cache-paths
         name: Get Go cache paths
