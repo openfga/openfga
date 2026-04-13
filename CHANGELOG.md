@@ -8,7 +8,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 ### Fixed
-- Use delimiter in contextual tuple key in experimental `weighted_graph_check`. [#3064](https://github.com/openfga/openfga/pull/3064)
+- Use delimiter in contextual tuple key in experimental `weighted_graph_check`, and add validation in v2Check. [#3064](https://github.com/openfga/openfga/pull/3064)
 
 ## [1.14.1] - 2026-04-10
 ### Added
