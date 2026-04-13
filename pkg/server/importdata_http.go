@@ -33,25 +33,31 @@ func handleCreateImport(svr *Server, l logger.Logger) http.HandlerFunc {
 		}
 		modelID := r.URL.Query().Get("authorization_model_id")
 
-		tmpFile, err := os.CreateTemp("", "openfga-import-*")
-		if err != nil {
-			l.Error("failed to create temp file for import", zap.Error(err))
-			http.Error(w, "failed to create temp file", http.StatusInternalServerError)
-			return
-		}
+		// If source param is provided, use the file path directly.
+		// Otherwise, write the request body to a temp file.
+		source := r.URL.Query().Get("source")
+		if source == "" {
+			tmpFile, err := os.CreateTemp("", "openfga-import-*")
+			if err != nil {
+				l.Error("failed to create temp file for import", zap.Error(err))
+				http.Error(w, "failed to create temp file", http.StatusInternalServerError)
+				return
+			}
 
-		if _, err := io.Copy(tmpFile, r.Body); err != nil {
+			if _, err := io.Copy(tmpFile, r.Body); err != nil {
+				tmpFile.Close()
+				l.Error("failed to write request body to temp file", zap.Error(err))
+				http.Error(w, "failed to read request body", http.StatusInternalServerError)
+				return
+			}
 			tmpFile.Close()
-			l.Error("failed to write request body to temp file", zap.Error(err))
-			http.Error(w, "failed to read request body", http.StatusInternalServerError)
-			return
+			source = tmpFile.Name()
 		}
-		tmpFile.Close()
 
 		resp, err := svr.CreateImport(r.Context(), &CreateImportRequest{
 			StoreID:              storeID,
 			AuthorizationModelID: modelID,
-			Source:               "file://" + tmpFile.Name(),
+			Source:               "file://" + source,
 			Format:               format,
 		})
 		if err != nil {
