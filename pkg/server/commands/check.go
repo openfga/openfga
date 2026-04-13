@@ -135,7 +135,7 @@ func NewCheckQuery(opts ...CheckQueryV2Option) *CheckQueryV2 {
 }
 
 func (q *CheckQueryV2) Execute(ctx context.Context, req *openfgav1.CheckRequest) (*openfgav1.CheckResponse, storagewrappers.Metadata, error) {
-	err := sanitizeRequest(req)
+	err := validateRequest(req)
 	if err != nil {
 		return nil, storagewrappers.Metadata{}, serverErrors.ValidationError(err)
 	}
@@ -199,7 +199,7 @@ func (q *CheckQueryV2) Execute(ctx context.Context, req *openfgav1.CheckRequest)
 	}, metadata, nil
 }
 
-func sanitizeRequest(req *openfgav1.CheckRequest) error {
+func validateRequest(req *openfgav1.CheckRequest) error {
 	tk := req.GetTupleKey()
 	if utils.ContainsForbiddenChars(tk.GetObject()) ||
 		utils.ContainsForbiddenChars(tk.GetRelation()) ||
