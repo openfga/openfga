@@ -28,9 +28,9 @@ jobs:
         uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
         with:
           path: ${{ steps.go-cache-paths.outputs.go-build }}
-          key: ${{ runner.os }}-go-build-unit-${{ hashFiles('**/*.go', 'go.sum') }}
+          key: ${{ runner.os }}-go-build-${{ hashFiles('**/*.go', 'go.sum') }}
           restore-keys: |
-            ${{ runner.os }}-go-build-unit-
+            ${{ runner.os }}-go-build-
 
       - name: Unit Tests
         run: make test-unit
@@ -64,9 +64,9 @@ jobs:
         uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
         with:
           path: ${{ steps.go-cache-paths.outputs.go-build }}
-          key: ${{ runner.os }}-go-build-storage-${{ hashFiles('**/*.go', 'go.sum') }}
+          key: ${{ runner.os }}-go-build-${{ hashFiles('**/*.go', 'go.sum') }}
           restore-keys: |
-            ${{ runner.os }}-go-build-storage-
+            ${{ runner.os }}-go-build-
 
       - name: Storage Integration Tests
         run: make test-storage
@@ -100,9 +100,9 @@ jobs:
         uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
         with:
           path: ${{ steps.go-cache-paths.outputs.go-build }}
-          key: ${{ runner.os }}-go-build-matrix-${{ hashFiles('**/*.go', 'go.sum') }}
+          key: ${{ runner.os }}-go-build-${{ hashFiles('**/*.go', 'go.sum') }}
           restore-keys: |
-            ${{ runner.os }}-go-build-matrix-
+            ${{ runner.os }}-go-build-
 
       - name: Matrix Integration Tests
         run: make test-matrix

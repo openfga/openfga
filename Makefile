@@ -87,12 +87,12 @@ lint: $(GO_BIN)/golangci-lint ## Lint Go source files
 # Package groups for parallel CI jobs
 STORAGE_PACKAGES := ./pkg/storage/sqlite/... ./pkg/storage/mysql/... ./pkg/storage/postgres/... ./pkg/storage/memory/... ./pkg/storage/migrate/...
 MATRIX_PACKAGES := ./tests/... ./cmd/run/... ./cmd/validatemodels/...
-UNIT_PACKAGES := $(shell go list ./... | grep -vE "(pkg/storage/(sqlite|mysql|postgres|memory|migrate)|openfga/tests|cmd/run|cmd/validatemodels)" | tr '\n' ' ')
 
 test: generate-mocks ## Run all tests. To run a specific test, pass the FILTER var. Usage `make test FILTER="TestCheckLogs"`
 	${call print, "Running tests"}
 	@go test -race \
 			-run "$(FILTER)" \
+			-coverpkg=./... \
 			-coverprofile=coverageunit.tmp.out \
 			-covermode=atomic \
 			-count=1 \
@@ -101,6 +101,8 @@ test: generate-mocks ## Run all tests. To run a specific test, pass the FILTER v
 	@cat coverageunit.tmp.out | grep -v "mock" > coverageunit.out
 	@rm coverageunit.tmp.out
 
+# Split test targets use per-package coverage (no -coverpkg=./...) for faster compilation.
+# Use `make test` for cross-package coverage metrics.
 test-unit: generate-mocks ## Run unit tests (fast packages only)
 	${call print, "Running unit tests"}
 	@go test -race \
@@ -109,7 +111,7 @@ test-unit: generate-mocks ## Run unit tests (fast packages only)
 			-covermode=atomic \
 			-count=1 \
 			-timeout=10m \
-			${UNIT_PACKAGES}
+			$$(go list ./... | grep -vE '(pkg/storage/(sqlite|mysql|postgres|memory|migrate)|openfga/tests|cmd/run|cmd/validatemodels)')
 	@cat coverageunit.tmp.out | grep -v "mock" > coverageunit.out
 	@rm coverageunit.tmp.out
 

@@ -47,9 +47,9 @@ jobs:
         uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
         with:
           path: ${{ steps.go-cache-paths.outputs.go-build }}
-          key: ${{ runner.os }}-go-build-unit-${{ hashFiles('**/*.go', 'go.sum') }}
+          key: ${{ runner.os }}-go-build-${{ hashFiles('**/*.go', 'go.sum') }}
           restore-keys: |
-            ${{ runner.os }}-go-build-unit-
+            ${{ runner.os }}-go-build-
 
       - name: Unit Tests
         run: make test-unit
@@ -86,9 +86,9 @@ jobs:
         uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
         with:
           path: ${{ steps.go-cache-paths.outputs.go-build }}
-          key: ${{ runner.os }}-go-build-storage-${{ hashFiles('**/*.go', 'go.sum') }}
+          key: ${{ runner.os }}-go-build-${{ hashFiles('**/*.go', 'go.sum') }}
           restore-keys: |
-            ${{ runner.os }}-go-build-storage-
+            ${{ runner.os }}-go-build-
 
       - name: Storage Integration Tests
         run: make test-storage
@@ -125,9 +125,9 @@ jobs:
         uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
         with:
           path: ${{ steps.go-cache-paths.outputs.go-build }}
-          key: ${{ runner.os }}-go-build-matrix-${{ hashFiles('**/*.go', 'go.sum') }}
+          key: ${{ runner.os }}-go-build-${{ hashFiles('**/*.go', 'go.sum') }}
           restore-keys: |
-            ${{ runner.os }}-go-build-matrix-
+            ${{ runner.os }}-go-build-
 
       - name: Matrix Integration Tests
         run: make test-matrix
@@ -173,8 +173,6 @@ jobs:
               - 'Dockerfile'
               - 'Dockerfile.goreleaser'
               - 'cmd/openfga/**'
-              - 'go.mod'
-              - 'go.sum'
 
       - name: Set up Go
         if: steps.changes.outputs.release == 'true' || github.event_name == 'merge_group'
@@ -257,10 +255,11 @@ jobs:
               - 'internal/listobjects/**'
               - 'internal/check/**'
               - 'internal/planner/**'
-              - 'pkg/storage/**'
-              - 'pkg/server/**'
-              - 'go.mod'
-              - 'go.sum'
+              - 'internal/iterator/**'
+              - 'internal/containers/**'
+              - 'pkg/storage/*.go'
+              - 'pkg/storage/sqlcommon/**'
+              - 'pkg/server/commands/**'
 
       - name: Set up Go
         if: steps.changes.outputs.perf == 'true' || github.event_name == 'merge_group'
