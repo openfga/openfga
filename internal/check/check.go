@@ -29,6 +29,7 @@ import (
 
 const cacheKeyDelimiter = "|"
 const cacheKeyPrefix = "c."
+const ctxTupleKeyDelimiter = "\x00"
 
 var tracer = otel.Tracer("internal/check")
 
