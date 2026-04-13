@@ -141,6 +141,21 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: true
 
+  # Aggregate job to satisfy branch protection rules that require "tests" status
+  tests:
+    runs-on: ubuntu-latest
+    needs: [tests-unit, tests-storage, tests-matrix]
+    if: always()
+    steps:
+      - name: Check results
+        run: |
+          if [[ "${{ needs.tests-unit.result }}" != "success" || \
+                "${{ needs.tests-storage.result }}" != "success" || \
+                "${{ needs.tests-matrix.result }}" != "success" ]]; then
+            echo "One or more test jobs failed"
+            exit 1
+          fi
+
   goreleaser-dryrun:
     name: Dry Run GoReleaser
     runs-on: ubuntu-latest
