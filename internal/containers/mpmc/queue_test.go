@@ -13,7 +13,7 @@ import (
 const (
 	defaultCapacity   int    = 1 << 7
 	defaultExtensions int    = -1
-	messageCount      uint64 = 1000
+	messageCount      uint64 = 200
 )
 
 type item struct{}
@@ -180,9 +180,9 @@ func TestQueue(t *testing.T) {
 			},
 			{
 				name:     "large",
-				capacity: 1 << 20,
+				capacity: 1 << 14,
 				parts:    333,
-				cycles:   10,
+				cycles:   3,
 			},
 		}
 

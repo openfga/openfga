@@ -82,13 +82,17 @@ lint: $(GO_BIN)/golangci-lint ## Lint Go source files
 #-----------------------------------------------------------------------------------------------------------------------
 # Tests
 #-----------------------------------------------------------------------------------------------------------------------
-.PHONY: test test-docker test-bench generate-mocks
+.PHONY: test test-unit test-storage test-matrix test-docker test-bench generate-mocks
+
+# Package groups for parallel CI jobs
+STORAGE_PACKAGES := ./pkg/storage/sqlite/... ./pkg/storage/mysql/... ./pkg/storage/postgres/... ./pkg/storage/memory/... ./pkg/storage/migrate/...
+MATRIX_PACKAGES := ./tests/... ./cmd/run/... ./cmd/validatemodels/...
+UNIT_PACKAGES := $(shell go list ./... | grep -vE "(pkg/storage/(sqlite|mysql|postgres|memory|migrate)|openfga/tests|cmd/run|cmd/validatemodels)" | tr '\n' ' ')
 
 test: generate-mocks ## Run all tests. To run a specific test, pass the FILTER var. Usage `make test FILTER="TestCheckLogs"`
 	${call print, "Running tests"}
 	@go test -race \
 			-run "$(FILTER)" \
-			-coverpkg=./... \
 			-coverprofile=coverageunit.tmp.out \
 			-covermode=atomic \
 			-count=1 \
@@ -96,7 +100,43 @@ test: generate-mocks ## Run all tests. To run a specific test, pass the FILTER v
 			${GO_PACKAGES}
 	@cat coverageunit.tmp.out | grep -v "mock" > coverageunit.out
 	@rm coverageunit.tmp.out
-	
+
+test-unit: generate-mocks ## Run unit tests (fast packages only)
+	${call print, "Running unit tests"}
+	@go test -race \
+			-run "$(FILTER)" \
+			-coverprofile=coverageunit.tmp.out \
+			-covermode=atomic \
+			-count=1 \
+			-timeout=10m \
+			${UNIT_PACKAGES}
+	@cat coverageunit.tmp.out | grep -v "mock" > coverageunit.out
+	@rm coverageunit.tmp.out
+
+test-storage: generate-mocks ## Run storage integration tests (sqlite, mysql, postgres, memory)
+	${call print, "Running storage integration tests"}
+	@go test -race \
+			-run "$(FILTER)" \
+			-coverprofile=coverageunit.tmp.out \
+			-covermode=atomic \
+			-count=1 \
+			-timeout=10m \
+			${STORAGE_PACKAGES}
+	@cat coverageunit.tmp.out | grep -v "mock" > coverageunit.out
+	@rm coverageunit.tmp.out
+
+test-matrix: generate-mocks ## Run matrix / integration tests (check, listobjects, listusers, authzen, run)
+	${call print, "Running matrix integration tests"}
+	@go test -race \
+			-run "$(FILTER)" \
+			-coverprofile=coverageunit.tmp.out \
+			-covermode=atomic \
+			-count=1 \
+			-timeout=10m \
+			${MATRIX_PACKAGES}
+	@cat coverageunit.tmp.out | grep -v "mock" > coverageunit.out
+	@rm coverageunit.tmp.out
+
 test-docker: ## Run tests requiring Docker
 	${call print, "Running docker tests"}
 	@if [ -z "$${CI}" ]; then \
