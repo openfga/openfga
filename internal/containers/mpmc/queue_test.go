@@ -11,10 +11,10 @@ import (
 )
 
 const (
-	defaultCapacity    int    = 1 << 7
-	defaultExtensions  int    = -1
-	testMessageCount   uint64 = 200
-	benchMessageCount  uint64 = 1000
+	defaultCapacity   int    = 1 << 7
+	defaultExtensions int    = -1
+	testMessageCount  uint64 = 200
+	benchMessageCount uint64 = 1000
 )
 
 type item struct{}
