@@ -28,6 +28,7 @@ type CheckQueryV2 struct {
 	cache                     storage.InMemoryCache[any]
 	cacheTTL                  time.Duration
 	lastCacheInvalidationTime time.Time
+	queryCacheEnabled         bool
 	planner                   planner.Manager
 	concurrencyLimit          int
 	upstreamTimeout           time.Duration
@@ -65,6 +66,12 @@ func WithCheckQueryV2Cache(c storage.InMemoryCache[any]) CheckQueryV2Option {
 func WithCheckQueryV2CacheTTL(ttl time.Duration) CheckQueryV2Option {
 	return func(cmd *CheckQueryV2) {
 		cmd.cacheTTL = ttl
+	}
+}
+
+func WithCheckQueryV2QueryCacheEnabled(enabled bool) CheckQueryV2Option {
+	return func(cmd *CheckQueryV2) {
+		cmd.queryCacheEnabled = enabled
 	}
 }
 
@@ -171,6 +178,7 @@ func (q *CheckQueryV2) Execute(ctx context.Context, req *openfgav1.CheckRequest)
 		Cache:                     q.cache,
 		CacheTTL:                  q.cacheTTL,
 		LastCacheInvalidationTime: q.lastCacheInvalidationTime,
+		QueryCacheEnabled:         q.queryCacheEnabled,
 		Planner:                   q.planner,
 		ConcurrencyLimit:          q.concurrencyLimit,
 		UpstreamTimeout:           q.upstreamTimeout,

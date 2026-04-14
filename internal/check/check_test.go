@@ -165,6 +165,7 @@ func TestResolveUnionEdges(t *testing.T) {
 			Datastore:                 mockDatastore,
 			Cache:                     mockCache,
 			ConcurrencyLimit:          10,
+			QueryCacheEnabled:         true,
 			LastCacheInvalidationTime: time.Now().Add(-time.Hour),
 		})
 
@@ -233,6 +234,7 @@ func TestResolveUnionEdges(t *testing.T) {
 			Datastore:                 mockDatastore,
 			Cache:                     mockCache,
 			ConcurrencyLimit:          10,
+			QueryCacheEnabled:         true,
 			LastCacheInvalidationTime: time.Now().Add(-time.Hour),
 		})
 
@@ -343,10 +345,11 @@ func TestResolveUnionEdges(t *testing.T) {
 		mockCache.EXPECT().Set(gomock.Regex(key), gomock.Any(), gomock.Any()).Times(1)
 
 		resolver := New(Config{
-			Model:            mg,
-			Datastore:        mockDatastore,
-			Cache:            mockCache,
-			ConcurrencyLimit: 10,
+			Model:             mg,
+			Datastore:         mockDatastore,
+			Cache:             mockCache,
+			ConcurrencyLimit:  10,
+			QueryCacheEnabled: true,
 		})
 
 		req, err := NewRequest(RequestParams{
@@ -391,10 +394,11 @@ func TestResolveUnionEdges(t *testing.T) {
 		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).Times(1)
 
 		resolver := New(Config{
-			Model:            mg,
-			Datastore:        mockDatastore,
-			Cache:            mockCache,
-			ConcurrencyLimit: 10,
+			Model:             mg,
+			Datastore:         mockDatastore,
+			Cache:             mockCache,
+			ConcurrencyLimit:  10,
+			QueryCacheEnabled: true,
 		})
 
 		req, err := NewRequest(RequestParams{
