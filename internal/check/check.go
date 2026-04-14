@@ -28,7 +28,6 @@ import (
 )
 
 const cacheKeyDelimiter = "|"
-const cacheKeyDelimiterByte byte = '\x00'
 const cacheKeyPrefix = "c."
 
 var tracer = otel.Tracer("internal/check")
@@ -154,11 +153,11 @@ func buildEdgeCacheKey(modelID string, req *Request, edge *authzGraph.WeightedAu
 	keyBuilder := &strings.Builder{}
 	keyBuilder.WriteString(cacheKeyPrefix)
 	keyBuilder.WriteString(modelID)
-	keyBuilder.WriteByte(cacheKeyDelimiterByte)
+	keyBuilder.WriteString(cacheKeyDelimiter)
 	keyBuilder.WriteString(req.GetTupleKey().GetObject())
-	keyBuilder.WriteByte(cacheKeyDelimiterByte)
+	keyBuilder.WriteString(cacheKeyDelimiter)
 	keyBuilder.WriteString(req.GetTupleKey().GetUser())
-	keyBuilder.WriteByte(cacheKeyDelimiterByte)
+	keyBuilder.WriteString(cacheKeyDelimiter)
 	keyBuilder.WriteString(edge.GetRelationDefinition())
 	keyBuilder.WriteString(req.GetInvariantCacheKey())
 	return keyBuilder.String()

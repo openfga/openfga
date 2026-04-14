@@ -17,6 +17,8 @@ import (
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
+const ctxTupleMapKeyDelimiter byte = '\x00'
+
 var ErrMissingStoreID = errors.New("missing store_id")
 var ErrMissingAuthZModelID = errors.New("missing authorization_model_id")
 var ErrInvalidUser = errors.New("the 'user' field is malformed")
@@ -227,9 +229,9 @@ func (r *Request) buildContextualTupleMaps() {
 		// Build key for ctxTuplesByUserID: userId+relation+objectType
 		keyBuilder.Reset()
 		keyBuilder.WriteString(user)
-		keyBuilder.WriteByte(cacheKeyDelimiterByte)
+		keyBuilder.WriteByte(ctxTupleMapKeyDelimiter)
 		keyBuilder.WriteString(relation)
-		keyBuilder.WriteByte(cacheKeyDelimiterByte)
+		keyBuilder.WriteByte(ctxTupleMapKeyDelimiter)
 		keyBuilder.WriteString(objectType)
 		userKey := keyBuilder.String()
 
@@ -238,9 +240,9 @@ func (r *Request) buildContextualTupleMaps() {
 		// Build key for ctxTuplesByObjectID: objectId+relation+userType
 		keyBuilder.Reset()
 		keyBuilder.WriteString(object)
-		keyBuilder.WriteByte(cacheKeyDelimiterByte)
+		keyBuilder.WriteByte(ctxTupleMapKeyDelimiter)
 		keyBuilder.WriteString(relation)
-		keyBuilder.WriteByte(cacheKeyDelimiterByte)
+		keyBuilder.WriteByte(ctxTupleMapKeyDelimiter)
 		keyBuilder.WriteString(userType)
 		objectKey := keyBuilder.String()
 
@@ -292,9 +294,9 @@ func insertSortedTuple(slice []*openfgav1.TupleKey, t *openfgav1.TupleKey, sortK
 func (r *Request) GetContextualTuplesByUserID(userID, relation, objectType string) ([]*openfgav1.TupleKey, bool) {
 	var keyBuilder strings.Builder
 	keyBuilder.WriteString(userID)
-	keyBuilder.WriteByte(cacheKeyDelimiterByte)
+	keyBuilder.WriteByte(ctxTupleMapKeyDelimiter)
 	keyBuilder.WriteString(relation)
-	keyBuilder.WriteByte(cacheKeyDelimiterByte)
+	keyBuilder.WriteByte(ctxTupleMapKeyDelimiter)
 	keyBuilder.WriteString(objectType)
 
 	entry, ok := r.ctxTuplesByUserID[keyBuilder.String()]
@@ -305,9 +307,9 @@ func (r *Request) GetContextualTuplesByUserID(userID, relation, objectType strin
 func (r *Request) GetContextualTuplesByObjectID(objectID, relation, userType string) ([]*openfgav1.TupleKey, bool) {
 	var keyBuilder strings.Builder
 	keyBuilder.WriteString(objectID)
-	keyBuilder.WriteByte(cacheKeyDelimiterByte)
+	keyBuilder.WriteByte(ctxTupleMapKeyDelimiter)
 	keyBuilder.WriteString(relation)
-	keyBuilder.WriteByte(cacheKeyDelimiterByte)
+	keyBuilder.WriteByte(ctxTupleMapKeyDelimiter)
 	keyBuilder.WriteString(userType)
 
 	entry, ok := r.ctxTuplesByObjectID[keyBuilder.String()]
