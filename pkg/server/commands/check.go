@@ -3,6 +3,7 @@ package commands
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -11,7 +12,9 @@ import (
 	"github.com/openfga/openfga/internal/modelgraph"
 	"github.com/openfga/openfga/internal/planner"
 	"github.com/openfga/openfga/internal/shared"
+	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/pkg/logger"
+	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -132,6 +135,11 @@ func NewCheckQuery(opts ...CheckQueryV2Option) *CheckQueryV2 {
 }
 
 func (q *CheckQueryV2) Execute(ctx context.Context, req *openfgav1.CheckRequest) (*openfgav1.CheckResponse, storagewrappers.Metadata, error) {
+	err := validateRequest(req)
+	if err != nil {
+		return nil, storagewrappers.Metadata{}, serverErrors.ValidationError(err)
+	}
+
 	boundedDS := storagewrappers.NewBoundedTupleReader(q.datastore, &q.datastoreOp) // Datastore throttling and concurrency limiting
 	var datastore storage.RelationshipTupleReader = boundedDS
 
@@ -189,4 +197,26 @@ func (q *CheckQueryV2) Execute(ctx context.Context, req *openfgav1.CheckRequest)
 	return &openfgav1.CheckResponse{
 		Allowed: res.GetAllowed(),
 	}, metadata, nil
+}
+
+func validateRequest(req *openfgav1.CheckRequest) error {
+	tk := req.GetTupleKey()
+	if utils.ContainsForbiddenChars(tk.GetObject()) ||
+		utils.ContainsForbiddenChars(tk.GetRelation()) ||
+		utils.ContainsForbiddenChars(tk.GetUser()) {
+		return fmt.Errorf("request tuple_key contains forbidden characters")
+	}
+
+	for _, ct := range req.GetContextualTuples().GetTupleKeys() {
+		if utils.ContainsForbiddenChars(ct.GetObject()) ||
+			utils.ContainsForbiddenChars(ct.GetRelation()) ||
+			utils.ContainsForbiddenChars(ct.GetUser()) {
+			return &tuple.InvalidTupleError{
+				Cause:    fmt.Errorf("contextual tuple contains forbidden characters"),
+				TupleKey: ct,
+			}
+		}
+	}
+
+	return nil
 }
