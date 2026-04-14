@@ -20,8 +20,10 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Made some minor changes in ListObjects to reduce heap allocations. Results in minor latency reduction. [#3043](https://github.com/openfga/openfga/pull/3043)
 - Improve cache key generation performance by removing `fmt` usage and extend control-character sanitization to all cache key inputs (tuples, conditions, context). [#3006](https://github.com/openfga/openfga/pull/3006)
 
+### Fixed
+- Fixed AuthZEN discovery metadata to publish endpoint URLs from the configured `authzen.baseURL` instead of request-supplied host headers, preventing host-header poisoning of `/.well-known/authzen-configuration/{store_id}`. Thanks to [@Jvr2022](https://github.com/Jvr2022) for reporting this. [#3057](https://github.com/openfga/openfga/pull/3057)
+
 ### Security
-- Fixed AuthZEN discovery metadata to publish endpoint URLs from the configured `authzen.baseURL` instead of request-supplied host headers, preventing host-header poisoning of `/.well-known/authzen-configuration/{store_id}`. Thanks to [@Jvr2022](https://github.com/Jvr2022) for reporting this.
 - Removed the vulnerable `github.com/docker/docker` package (used only in tests) and replaced it with Moby (client & api). [#3047](https://github.com/openfga/openfga/pull/3047)
 
 ## [1.14.0] - 2026-04-03
