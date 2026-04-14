@@ -491,3 +491,58 @@ func TestV2CheckMetadata(t *testing.T) {
 		require.Equal(t, false, throttled, "throttling should be disabled when feature flag is false")
 	})
 }
+
+func TestV2CheckQueryCacheEnabled(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	t.Run("caches_subproblem_results_when_enabled", func(t *testing.T) {
+		s, req := setupCheckServer(t, "", nil,
+			WithCheckQueryCacheEnabled(true),
+			WithCheckCacheLimit(10),
+			WithCheckQueryCacheTTL(1*time.Minute),
+			WithCacheControllerEnabled(true),
+		)
+
+		checkCache := newRecordingCache()
+		s.sharedDatastoreResources.CheckCache.Stop()
+		s.sharedDatastoreResources.CheckCache = checkCache
+		s.authzModelGraphResolver = modelgraph.NewResolver(s.datastore, checkCache, 24*7*time.Hour)
+
+		ctx := context.Background()
+		res, err := s.v2Check(ctx, req,
+			s.sharedDatastoreResources.CheckCache,
+			s.sharedDatastoreResources.CacheController,
+			s.authzModelGraphResolver,
+		)
+		require.NoError(t, err)
+		require.True(t, res.GetAllowed())
+
+		require.NotEmpty(t, checkCache.keysWithPrefix("c."), "cache should have subproblem entries when query cache is enabled")
+	})
+
+	t.Run("skips_subproblem_caching_when_disabled", func(t *testing.T) {
+		s, req := setupCheckServer(t, "", nil,
+			WithCheckQueryCacheEnabled(false),
+			WithCheckCacheLimit(10),
+			WithCheckQueryCacheTTL(1*time.Minute),
+			WithCacheControllerEnabled(true),
+		)
+
+		checkCache := newRecordingCache()
+		s.sharedDatastoreResources.CheckCache = checkCache
+		s.authzModelGraphResolver = modelgraph.NewResolver(s.datastore, checkCache, 24*7*time.Hour)
+
+		ctx := context.Background()
+		res, err := s.v2Check(ctx, req,
+			s.sharedDatastoreResources.CheckCache,
+			s.sharedDatastoreResources.CacheController,
+			s.authzModelGraphResolver,
+		)
+		require.NoError(t, err)
+		require.True(t, res.GetAllowed())
+
+		require.Empty(t, checkCache.keysWithPrefix("c."), "cache should have no subproblem entries when query cache is disabled")
+	})
+}
