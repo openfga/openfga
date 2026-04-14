@@ -9,9 +9,10 @@ import (
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/containerd/errdefs"
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/go-connections/nat"
 	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/network"
+	"github.com/moby/moby/client"
 	"github.com/oklog/ulid/v2"
 	"github.com/pressly/goose/v3"
 	"github.com/stretchr/testify/require"
@@ -21,9 +22,8 @@ import (
 )
 
 const (
-	postgresImage           = "postgres:17-alpine"
-	postgresContainerPrefix = "openfga-test-postgres-"
-	postgresPort            = nat.Port("5432/tcp")
+	postgresImage     = "postgres:17-alpine"
+	postgresContainer = "openfga-test-postgres"
 
 	postgresDBPrefix   = "openfga-test-db-"
 	postgresTemplateDB = postgresDBPrefix + "template"
@@ -31,7 +31,11 @@ const (
 	postgresPassword   = "secret"
 )
 
-var _ DatastoreTestContainer = (*postgresTestContainer)(nil)
+var (
+	_ DatastoreTestContainer = (*postgresTestContainer)(nil)
+
+	postgresPort = network.MustParsePort("5432/tcp")
+)
 
 type (
 	postgresTestContainer struct {
@@ -107,7 +111,7 @@ func RunPostgresTestContainer(t testing.TB) DatastoreTestContainer {
 		docker.Close()
 	})
 
-	dockerCont, found, err := docker.FindRunningContainer(t.Context(), "^"+postgresContainerPrefix, postgresImage)
+	dockerCont, found, err := docker.FindRunningContainer(t.Context(), postgresContainer, postgresImage)
 	require.NoError(t, err, "find running postgres container")
 
 	if !found {
@@ -132,7 +136,7 @@ func RunPostgresTestContainer(t testing.TB) DatastoreTestContainer {
 	tplURI := postgresConnectionURI(testCont.host, testCont.port, postgresTemplateDB, testCont.username, testCont.password)
 	require.NoError(t, waitForMigrationVersion("pgx", tplURI, testCont.version))
 
-	createExec := container.ExecOptions{
+	createExec := client.ExecCreateOptions{
 		Cmd: []string{"createdb", "-U", testCont.username, "-T", postgresTemplateDB, testCont.database},
 		Env: []string{"PGPASSWORD=" + testCont.password},
 	}
@@ -143,7 +147,7 @@ func RunPostgresTestContainer(t testing.TB) DatastoreTestContainer {
 		defer cancel()
 
 		dropQuery := fmt.Sprintf("DROP DATABASE IF EXISTS \"%s\" WITH (FORCE);", testCont.database)
-		dropExec := container.ExecOptions{
+		dropExec := client.ExecCreateOptions{
 			Cmd: []string{"psql", "-U", testCont.username, "-c", dropQuery},
 			Env: []string{"PGPASSWORD=" + testCont.password},
 		}
@@ -168,7 +172,7 @@ func bootstrapPostgresContainer(t testing.TB, docker *testutils.DockerClient) *c
 			"POSTGRES_DB=" + postgresTemplateDB,
 			"POSTGRES_PASSWORD=" + postgresPassword,
 		},
-		ExposedPorts: nat.PortSet{
+		ExposedPorts: network.PortSet{
 			postgresPort: {},
 		},
 		Image: postgresImage,
@@ -189,8 +193,7 @@ func bootstrapPostgresContainer(t testing.TB, docker *testutils.DockerClient) *c
 		ExtraHosts:      []string{"host.docker.internal:host-gateway"},
 	}
 
-	containerName := postgresContainerPrefix + ulid.Make().String()
-	cont, err := docker.RunContainer(t.Context(), contCfg, hostCfg, containerName)
+	cont, err := docker.RunContainer(t.Context(), contCfg, hostCfg, postgresContainer)
 	require.NoError(t, err, "run postgres container")
 
 	port, err := docker.GetHostPort(cont, postgresPort)
@@ -199,12 +202,12 @@ func bootstrapPostgresContainer(t testing.TB, docker *testutils.DockerClient) *c
 	dbURI := postgresConnectionURI("localhost", port, postgresTemplateDB, postgresUsername, postgresPassword)
 	require.NoError(t, waitForDatabase("pgx", dbURI))
 
-	allowReplicationExec := container.ExecOptions{
+	allowReplicationExec := client.ExecCreateOptions{
 		Cmd: []string{"sh", "-c", "echo 'host replication postgres all trust' >> /var/lib/postgresql/data/pg_hba.conf"},
 	}
 	require.NoError(t, docker.ExecCommand(t.Context(), cont.ID, allowReplicationExec))
 
-	reloadExec := container.ExecOptions{
+	reloadExec := client.ExecCreateOptions{
 		Cmd: []string{"psql", "-U", "postgres", "-c", "SELECT pg_reload_conf();"},
 	}
 	require.NoError(t, docker.ExecCommand(t.Context(), cont.ID, reloadExec))
@@ -239,7 +242,7 @@ func runPostgresReplica(t testing.TB, primary *postgresTestContainer) *postgresR
 			"POSTGRES_MASTER_HOST=" + primaryHost,
 			"POSTGRES_MASTER_PORT=" + primary.port,
 		},
-		ExposedPorts: nat.PortSet{
+		ExposedPorts: network.PortSet{
 			postgresPort: {},
 		},
 		Image:      postgresImage,
@@ -280,7 +283,7 @@ exec docker-entrypoint.sh postgres -c hot_standby=on -c max_connections=200
 		ExtraHosts:      []string{"host.docker.internal:host-gateway"},
 	}
 
-	contName := "secondary-" + postgresContainerPrefix + ulid.Make().String()
+	contName := "secondary-" + postgresContainer
 	cont, err := docker.RunContainer(t.Context(), contCfg, hostCfg, contName)
 	require.NoError(t, err, "run postgres container")
 

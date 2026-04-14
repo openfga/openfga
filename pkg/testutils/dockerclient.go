@@ -7,11 +7,10 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/filters"
-	"github.com/docker/docker/api/types/image"
-	"github.com/docker/docker/client"
-	"github.com/docker/go-connections/nat"
+	"github.com/containerd/errdefs"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/network"
+	"github.com/moby/moby/client"
 )
 
 // DockerClient is a simple wrapper around the Docker client
@@ -22,7 +21,7 @@ type DockerClient struct {
 
 // NewDockerClient creates a new instance of DockerClient.
 func NewDockerClient() (*DockerClient, error) {
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	cli, err := client.New(client.FromEnv)
 	if err != nil {
 		return nil, fmt.Errorf("create docker client: %w", err)
 	}
@@ -37,17 +36,15 @@ func (d *DockerClient) Close() error {
 
 // PullImage checks if the specified image is already present locally, and if not, it pulls it from the registry.
 func (d *DockerClient) PullImage(ctx context.Context, imageName string) error {
-	images, err := d.client.ImageList(ctx, image.ListOptions{
-		Filters: filters.NewArgs(
-			filters.Arg("reference", imageName),
-		),
+	imageListResult, err := d.client.ImageList(ctx, client.ImageListOptions{
+		Filters: make(client.Filters).Add("reference", imageName),
 	})
 	if err != nil {
 		return fmt.Errorf("list images: %w", err)
 	}
 
-	if len(images) == 0 {
-		reader, err := d.client.ImagePull(ctx, imageName, image.PullOptions{})
+	if len(imageListResult.Items) == 0 {
+		reader, err := d.client.ImagePull(ctx, imageName, client.ImagePullOptions{})
 		if err != nil {
 			return fmt.Errorf("pull image: %w", err)
 		}
@@ -67,38 +64,41 @@ func (d *DockerClient) PullImage(ctx context.Context, imageName string) error {
 func (d *DockerClient) FindRunningContainer(
 	ctx context.Context, containerName, imageName string,
 ) (*container.InspectResponse, bool, error) {
-	filterArgs := filters.NewArgs(
-		filters.Arg("name", containerName),
-		filters.Arg("ancestor", imageName),
-		filters.Arg("status", "running"),
-	)
-
-	containers, err := d.client.ContainerList(ctx, container.ListOptions{
-		Filters: filterArgs,
-		Limit:   1,
+	containerListResult, err := d.client.ContainerList(ctx, client.ContainerListOptions{
+		Limit: 1,
+		Filters: make(client.Filters).
+			Add("name", "^"+containerName+"$").
+			Add("ancestor", imageName).
+			Add("status", "running"),
 	})
 	if err != nil {
 		return nil, false, fmt.Errorf("list containers: %w", err)
 	}
 
-	if len(containers) == 0 {
+	if len(containerListResult.Items) == 0 {
 		return nil, false, nil
 	}
 
-	inspect, err := d.client.ContainerInspect(ctx, containers[0].ID)
+	inspectResult, err := d.client.ContainerInspect(ctx, containerListResult.Items[0].ID, client.ContainerInspectOptions{})
 	if err != nil {
 		return nil, false, fmt.Errorf("inspect %s container: %w", containerName, err)
 	}
 
-	return &inspect, true, nil
+	return &inspectResult.Container, true, nil
 }
 
-// RunContainer starts a container and returns its inspection data.
+// RunContainer starts a container, then returns its inspection data.
+// If Docker reports a conflict because a container with the same name already
+// exists, the existing container is reused and started instead.
 func (d *DockerClient) RunContainer(
 	ctx context.Context, containerCfg *container.Config, hostCfg *container.HostConfig, containerName string,
 ) (*container.InspectResponse, error) {
-	cont, err := d.client.ContainerCreate(ctx, containerCfg, hostCfg, nil, nil, containerName)
-	if err != nil {
+	_, err := d.client.ContainerCreate(ctx, client.ContainerCreateOptions{
+		Name:       containerName,
+		Config:     containerCfg,
+		HostConfig: hostCfg,
+	})
+	if err != nil && !errdefs.IsConflict(err) {
 		return nil, fmt.Errorf("create %s container: %w", containerName, err)
 	}
 
@@ -107,11 +107,11 @@ func (d *DockerClient) RunContainer(
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 
-			d.RemoveContainer(ctx, cont.ID)
+			d.RemoveContainer(ctx, containerName)
 		}
 	}()
 
-	err = d.client.ContainerStart(ctx, cont.ID, container.StartOptions{})
+	_, err = d.client.ContainerStart(ctx, containerName, client.ContainerStartOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("start %s container: %w", containerName, err)
 	}
@@ -121,22 +121,23 @@ func (d *DockerClient) RunContainer(
 		backoff.WithMaxElapsedTime(5*time.Second),
 	)
 
-	var inspect container.InspectResponse
+	var cont container.InspectResponse
 	err = backoff.Retry(func() error {
-		inspect, err = d.client.ContainerInspect(ctx, cont.ID)
+		inspectResult, err := d.client.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
 		if err != nil {
 			return backoff.Permanent(fmt.Errorf("inspect %s container: %w", containerName, err))
 		}
+		cont = inspectResult.Container
 
 		if len(containerCfg.ExposedPorts) == 0 {
 			return nil
 		}
 
-		if len(inspect.NetworkSettings.Ports) == 0 {
+		if len(cont.NetworkSettings.Ports) == 0 {
 			return fmt.Errorf("port bindings not yet available for container %s", containerName)
 		}
 
-		for _, portBindings := range inspect.NetworkSettings.Ports {
+		for _, portBindings := range cont.NetworkSettings.Ports {
 			if len(portBindings) == 0 {
 				return fmt.Errorf("port bindings not yet available for container %s", containerName)
 			}
@@ -149,17 +150,17 @@ func (d *DockerClient) RunContainer(
 		return nil, fmt.Errorf("inspect %s container: %w", containerName, err)
 	}
 
-	return &inspect, nil
+	return &cont, nil
 }
 
 // RemoveContainer kills and removes a container.
 func (d *DockerClient) RemoveContainer(ctx context.Context, containerID string) error {
-	removeOpts := container.RemoveOptions{
+	removeOpts := client.ContainerRemoveOptions{
 		Force:         true,
 		RemoveVolumes: true,
 	}
 
-	if err := d.client.ContainerRemove(ctx, containerID, removeOpts); err != nil {
+	if _, err := d.client.ContainerRemove(ctx, containerID, removeOpts); err != nil {
 		return fmt.Errorf("remove container %s: %w", containerID, err)
 	}
 
@@ -167,13 +168,13 @@ func (d *DockerClient) RemoveContainer(ctx context.Context, containerID string) 
 }
 
 // ExecCommand executes a command in the specified container and waits for it to complete.
-func (d *DockerClient) ExecCommand(ctx context.Context, containerID string, execConfig container.ExecOptions) error {
-	exec, err := d.client.ContainerExecCreate(ctx, containerID, execConfig)
+func (d *DockerClient) ExecCommand(ctx context.Context, containerID string, execConfig client.ExecCreateOptions) error {
+	exec, err := d.client.ExecCreate(ctx, containerID, execConfig)
 	if err != nil {
 		return fmt.Errorf("failed to create exec for command %v: %w", execConfig.Cmd, err)
 	}
 
-	resp, err := d.client.ContainerExecAttach(ctx, exec.ID, container.ExecAttachOptions{})
+	resp, err := d.client.ExecAttach(ctx, exec.ID, client.ExecAttachOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to execute command %v: %w", execConfig.Cmd, err)
 	}
@@ -183,7 +184,7 @@ func (d *DockerClient) ExecCommand(ctx context.Context, containerID string, exec
 		return fmt.Errorf("failed to read exec output for command %v: %w", execConfig.Cmd, err)
 	}
 
-	inspect, err := d.client.ContainerExecInspect(ctx, exec.ID)
+	inspect, err := d.client.ExecInspect(ctx, exec.ID, client.ExecInspectOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to inspect exec %v: %w", execConfig.Cmd, err)
 	}
@@ -196,7 +197,7 @@ func (d *DockerClient) ExecCommand(ctx context.Context, containerID string, exec
 }
 
 // GetHostPort returns the published host port for the given container port.
-func (d *DockerClient) GetHostPort(inspect *container.InspectResponse, containerPort nat.Port) (string, error) {
+func (d *DockerClient) GetHostPort(inspect *container.InspectResponse, containerPort network.Port) (string, error) {
 	m, ok := inspect.NetworkSettings.Ports[containerPort]
 	if !ok || len(m) == 0 {
 		return "", fmt.Errorf("port bindings not available for container port %s", containerPort)

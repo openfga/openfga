@@ -5,20 +5,25 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"net/url"
 	"strings"
 	"sync/atomic"
 	"testing"
 
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/client"
-	"github.com/docker/go-connections/nat"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/network"
+	"github.com/moby/moby/client"
 	"github.com/oklog/ulid/v2"
 	"github.com/stretchr/testify/require"
 )
 
 const (
 	alpineImage = "alpine:3"
+)
+
+var (
+	testPort = network.MustParsePort("5432/tcp")
 )
 
 func TestNewDockerClient_InvalidHost(t *testing.T) {
@@ -92,7 +97,7 @@ func TestContainerLifecycle_PullAndExec(t *testing.T) {
 	require.True(t, running)
 	require.Equal(t, inspect.ID, foundInspect.ID)
 
-	err = dc.ExecCommand(t.Context(), inspect.ID, container.ExecOptions{
+	err = dc.ExecCommand(t.Context(), inspect.ID, client.ExecCreateOptions{
 		Cmd: []string{"echo", "hello!"},
 	})
 	require.NoError(t, err)
@@ -141,17 +146,18 @@ func TestRunContainer_WithExposedPorts(t *testing.T) {
 	portsReadyBody := []byte(`{"Id":"container-id","NetworkSettings":{"Ports":{"5432/tcp":[{"HostIp":"0.0.0.0","HostPort":"54321"}]}}}`)
 
 	exposedCfg := &container.Config{
-		ExposedPorts: nat.PortSet{"5432/tcp": struct{}{}},
+		Image:        alpineImage,
+		ExposedPorts: network.PortSet{testPort: struct{}{}},
 	}
 
 	t.Run("ports_ready_immediately", func(t *testing.T) {
 		dc := newDockerClientMock(t, []dockerMockStep{
 			{Method: http.MethodPost, Path: "/containers/create", Body: createBody},
-			{Method: http.MethodPost, Path: "/containers/container-id/start", Body: startBody},
-			{Method: http.MethodGet, Path: "/containers/container-id/json", Body: portsReadyBody},
+			{Method: http.MethodPost, Path: "/containers/container-name/start", Body: startBody},
+			{Method: http.MethodGet, Path: "/containers/container-name/json", Body: portsReadyBody},
 		})
 
-		inspect, err := dc.RunContainer(t.Context(), exposedCfg, &container.HostConfig{}, "test")
+		inspect, err := dc.RunContainer(t.Context(), exposedCfg, &container.HostConfig{}, "container-name")
 		require.NoError(t, err)
 		require.NotNil(t, inspect)
 	})
@@ -160,12 +166,12 @@ func TestRunContainer_WithExposedPorts(t *testing.T) {
 		noPortsBody := []byte(`{"Id":"container-id","NetworkSettings":{"Ports":{}}}`)
 		dc := newDockerClientMock(t, []dockerMockStep{
 			{Method: http.MethodPost, Path: "/containers/create", Body: createBody},
-			{Method: http.MethodPost, Path: "/containers/container-id/start", Body: startBody},
-			{Method: http.MethodGet, Path: "/containers/container-id/json", Body: noPortsBody},
-			{Method: http.MethodGet, Path: "/containers/container-id/json", Body: portsReadyBody},
+			{Method: http.MethodPost, Path: "/containers/container-name/start", Body: startBody},
+			{Method: http.MethodGet, Path: "/containers/container-name/json", Body: noPortsBody},
+			{Method: http.MethodGet, Path: "/containers/container-name/json", Body: portsReadyBody},
 		})
 
-		inspect, err := dc.RunContainer(t.Context(), exposedCfg, &container.HostConfig{}, "test")
+		inspect, err := dc.RunContainer(t.Context(), exposedCfg, &container.HostConfig{}, "container-name")
 		require.NoError(t, err)
 		require.NotNil(t, inspect)
 	})
@@ -174,12 +180,12 @@ func TestRunContainer_WithExposedPorts(t *testing.T) {
 		emptyBindingsBody := []byte(`{"Id":"container-id","NetworkSettings":{"Ports":{"5432/tcp":[]}}}`)
 		dc := newDockerClientMock(t, []dockerMockStep{
 			{Method: http.MethodPost, Path: "/containers/create", Body: createBody},
-			{Method: http.MethodPost, Path: "/containers/container-id/start", Body: startBody},
-			{Method: http.MethodGet, Path: "/containers/container-id/json", Body: emptyBindingsBody},
-			{Method: http.MethodGet, Path: "/containers/container-id/json", Body: portsReadyBody},
+			{Method: http.MethodPost, Path: "/containers/container-name/start", Body: startBody},
+			{Method: http.MethodGet, Path: "/containers/container-name/json", Body: emptyBindingsBody},
+			{Method: http.MethodGet, Path: "/containers/container-name/json", Body: portsReadyBody},
 		})
 
-		inspect, err := dc.RunContainer(t.Context(), exposedCfg, &container.HostConfig{}, "test")
+		inspect, err := dc.RunContainer(t.Context(), exposedCfg, &container.HostConfig{}, "container-name")
 		require.NoError(t, err)
 		require.NotNil(t, inspect)
 	})
@@ -188,13 +194,16 @@ func TestRunContainer_WithExposedPorts(t *testing.T) {
 func TestRunContainer_Fail(t *testing.T) {
 	createBody := []byte(`{"Id":"container-id"}`)
 	emptyBody := []byte(`{}`)
+	containerCfg := &container.Config{
+		Image: alpineImage,
+	}
 
 	t.Run("create_container", func(t *testing.T) {
 		dc := newDockerClientMock(t, []dockerMockStep{
 			{Method: http.MethodPost, Path: "/containers/create", Error: "create failed"},
 		})
 
-		inspect, err := dc.RunContainer(t.Context(), &container.Config{}, &container.HostConfig{}, "test")
+		inspect, err := dc.RunContainer(t.Context(), containerCfg, &container.HostConfig{}, "test")
 		require.Nil(t, inspect)
 		require.Error(t, err)
 		require.ErrorContains(t, err, "create test container")
@@ -203,28 +212,28 @@ func TestRunContainer_Fail(t *testing.T) {
 	t.Run("start_container", func(t *testing.T) {
 		dc := newDockerClientMock(t, []dockerMockStep{
 			{Method: http.MethodPost, Path: "/containers/create", Body: createBody},
-			{Method: http.MethodPost, Path: "/containers/container-id/start", Error: "start failed"},
-			{Method: http.MethodDelete, Path: "/containers/container-id", Body: emptyBody},
+			{Method: http.MethodPost, Path: "/containers/container-name/start", Error: "start failed"},
+			{Method: http.MethodDelete, Path: "/containers/container-name", Body: emptyBody},
 		})
 
-		inspect, err := dc.RunContainer(t.Context(), &container.Config{}, &container.HostConfig{}, "test")
+		inspect, err := dc.RunContainer(t.Context(), containerCfg, &container.HostConfig{}, "container-name")
 		require.Nil(t, inspect)
 		require.Error(t, err)
-		require.ErrorContains(t, err, "start test container")
+		require.ErrorContains(t, err, "start container-name")
 	})
 
 	t.Run("inspect_container", func(t *testing.T) {
 		dc := newDockerClientMock(t, []dockerMockStep{
 			{Method: http.MethodPost, Path: "/containers/create", Body: createBody},
-			{Method: http.MethodPost, Path: "/containers/container-id/start", Body: emptyBody},
-			{Method: http.MethodGet, Path: "/containers/container-id/json", Error: "inspect failed"},
-			{Method: http.MethodDelete, Path: "/containers/container-id", Body: emptyBody},
+			{Method: http.MethodPost, Path: "/containers/container-name/start", Body: emptyBody},
+			{Method: http.MethodGet, Path: "/containers/container-name/json", Error: "inspect failed"},
+			{Method: http.MethodDelete, Path: "/containers/container-name", Body: emptyBody},
 		})
 
-		inspect, err := dc.RunContainer(t.Context(), &container.Config{}, &container.HostConfig{}, "test")
+		inspect, err := dc.RunContainer(t.Context(), containerCfg, &container.HostConfig{}, "container-name")
 		require.Nil(t, inspect)
 		require.Error(t, err)
-		require.ErrorContains(t, err, "inspect test container")
+		require.ErrorContains(t, err, "inspect container-name")
 	})
 }
 
@@ -255,7 +264,7 @@ func TestExecCommand_Fail(t *testing.T) {
 		require.NoError(t, err)
 		t.Cleanup(func() { _ = dc.RemoveContainer(context.Background(), inspect.ID) })
 
-		err = dc.ExecCommand(t.Context(), inspect.ID, container.ExecOptions{
+		err = dc.ExecCommand(t.Context(), inspect.ID, client.ExecCreateOptions{
 			Cmd: []string{"badcommand"},
 		})
 		require.Error(t, err)
@@ -267,7 +276,7 @@ func TestExecCommand_Fail(t *testing.T) {
 			{Method: http.MethodPost, Path: "/containers/container-id/exec", Error: "create exec failed"},
 		})
 
-		err := dc.ExecCommand(t.Context(), "container-id", container.ExecOptions{
+		err := dc.ExecCommand(t.Context(), "container-id", client.ExecCreateOptions{
 			Cmd: []string{"echo", "hello"},
 		})
 		require.Error(t, err)
@@ -280,7 +289,7 @@ func TestExecCommand_Fail(t *testing.T) {
 			{Method: http.MethodPost, Path: "/exec/exec-id/start", Error: "start exec failed"},
 		})
 
-		err := dc.ExecCommand(t.Context(), "container-id", container.ExecOptions{
+		err := dc.ExecCommand(t.Context(), "container-id", client.ExecCreateOptions{
 			Cmd: []string{"echo", "hello"},
 		})
 		require.Error(t, err)
@@ -292,16 +301,16 @@ func TestGetHostPort(t *testing.T) {
 	t.Run("returns_host_port", func(t *testing.T) {
 		dc := &DockerClient{}
 		networkSettings := &container.NetworkSettings{}
-		networkSettings.Ports = nat.PortMap{
-			"5432/tcp": []nat.PortBinding{
-				{HostIP: "0.0.0.0", HostPort: "54321"},
+		networkSettings.Ports = network.PortMap{
+			testPort: []network.PortBinding{
+				{HostIP: netip.MustParseAddr("0.0.0.0"), HostPort: "54321"},
 			},
 		}
 		inspect := &container.InspectResponse{
 			NetworkSettings: networkSettings,
 		}
 
-		port, err := dc.GetHostPort(inspect, nat.Port("5432/tcp"))
+		port, err := dc.GetHostPort(inspect, testPort)
 		require.NoError(t, err)
 		require.Equal(t, "54321", port)
 	})
@@ -309,12 +318,12 @@ func TestGetHostPort(t *testing.T) {
 	t.Run("returns_error_when_port_missing", func(t *testing.T) {
 		dc := &DockerClient{}
 		networkSettings := &container.NetworkSettings{}
-		networkSettings.Ports = nat.PortMap{}
+		networkSettings.Ports = network.PortMap{}
 		inspect := &container.InspectResponse{
 			NetworkSettings: networkSettings,
 		}
 
-		port, err := dc.GetHostPort(inspect, nat.Port("5432/tcp"))
+		port, err := dc.GetHostPort(inspect, testPort)
 		require.Empty(t, port)
 		require.Error(t, err)
 		require.ErrorContains(t, err, "port bindings not available for container port 5432/tcp")
@@ -323,14 +332,14 @@ func TestGetHostPort(t *testing.T) {
 	t.Run("returns_error_when_binding_empty", func(t *testing.T) {
 		dc := &DockerClient{}
 		networkSettings := &container.NetworkSettings{}
-		networkSettings.Ports = nat.PortMap{
-			"5432/tcp": []nat.PortBinding{},
+		networkSettings.Ports = network.PortMap{
+			testPort: []network.PortBinding{},
 		}
 		inspect := &container.InspectResponse{
 			NetworkSettings: networkSettings,
 		}
 
-		port, err := dc.GetHostPort(inspect, nat.Port("5432/tcp"))
+		port, err := dc.GetHostPort(inspect, testPort)
 		require.Empty(t, port)
 		require.Error(t, err)
 		require.ErrorContains(t, err, "port bindings not available for container port 5432/tcp")
@@ -358,6 +367,12 @@ func newDockerClientMock(t *testing.T, steps []dockerMockStep) *DockerClient {
 	})
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// ignore HEAD requests since the Docker client may send them
+		// to check if the server is alive before sending the actual request
+		if r.Method == http.MethodHead {
+			return
+		}
+
 		currentIndex := int(stepIndex.Add(1)) - 1
 
 		if currentIndex >= len(steps) {
@@ -395,7 +410,7 @@ func newDockerClientMock(t *testing.T, steps []dockerMockStep) *DockerClient {
 	serverURL, err := url.Parse(server.URL)
 	require.NoError(t, err)
 
-	cli, err := client.NewClientWithOpts(
+	cli, err := client.New(
 		client.WithHost("tcp://"+serverURL.Host),
 		client.WithHTTPClient(server.Client()),
 	)
