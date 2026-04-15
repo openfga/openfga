@@ -608,7 +608,6 @@ func TestV2CheckQueryCacheEnabled(t *testing.T) {
 			WithCheckQueryCacheEnabled(true),
 			WithCheckCacheLimit(10),
 			WithCheckQueryCacheTTL(1*time.Minute),
-			WithCacheControllerEnabled(true),
 		)
 
 		checkCache := newRecordingCache()
@@ -633,7 +632,6 @@ func TestV2CheckQueryCacheEnabled(t *testing.T) {
 			WithCheckQueryCacheEnabled(false),
 			WithCheckCacheLimit(10),
 			WithCheckQueryCacheTTL(1*time.Minute),
-			WithCacheControllerEnabled(true),
 		)
 
 		checkCache := newRecordingCache()
