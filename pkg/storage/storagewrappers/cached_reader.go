@@ -204,6 +204,13 @@ func (c *CachedTupleReader) ReadStartingWithUser(
 	), nil
 }
 
+// ReadRecursive implements storage.OpenFGADatastore.
+func (c *CachedTupleReader) ReadRecursive(ctx context.Context,
+	store string,
+	filter storage.ReadFilter) (storage.TupleIterator, error) {
+	panic("unimplemented")
+}
+
 // tryGetFromCache checks for cache hit with invalidation support.
 // Returns LockFreeCachedIterator if found and not invalidated.
 func (c *CachedTupleReader) tryGetFromCache(
