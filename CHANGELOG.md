@@ -8,6 +8,10 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+## [1.14.2] - 2026-04-14
+### Fixed
+- Use delimiter in contextual tuple key in experimental `weighted_graph_check`, and add validation in v2Check. Thanks to [@0xmrma](https://github.com/0xmrma) for reporting this bug. [#3064](https://github.com/openfga/openfga/pull/3064)
+
 ## [1.14.1] - 2026-04-10
 ### Added
 - Added configuration for the server shutdown timeout. [#2976](https://github.com/openfga/openfga/pull/2976)
@@ -16,8 +20,10 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Made some minor changes in ListObjects to reduce heap allocations. Results in minor latency reduction. [#3043](https://github.com/openfga/openfga/pull/3043)
 - Improve cache key generation performance by removing `fmt` usage and extend control-character sanitization to all cache key inputs (tuples, conditions, context). [#3006](https://github.com/openfga/openfga/pull/3006)
 
+### Fixed
+- Fixed AuthZEN discovery metadata to publish endpoint URLs from the configured `authzen.baseURL` instead of request-supplied host headers, preventing host-header poisoning of `/.well-known/authzen-configuration/{store_id}`. Thanks to [@Jvr2022](https://github.com/Jvr2022) for reporting this. [#3057](https://github.com/openfga/openfga/pull/3057)
+
 ### Security
-- Fixed AuthZEN discovery metadata to publish endpoint URLs from the configured `authzen.baseURL` instead of request-supplied host headers, preventing host-header poisoning of `/.well-known/authzen-configuration/{store_id}`.
 - Removed the vulnerable `github.com/docker/docker` package (used only in tests) and replaced it with Moby (client & api). [#3047](https://github.com/openfga/openfga/pull/3047)
 
 ## [1.14.0] - 2026-04-03
@@ -1599,7 +1605,8 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
 - Memory storage adapter implementation
 - Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.14.1...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.14.2...HEAD
+[1.14.2]: https://github.com/openfga/openfga/compare/v1.14.1...v1.14.2
 [1.14.1]: https://github.com/openfga/openfga/compare/v1.14.0...v1.14.1
 [1.14.0]: https://github.com/openfga/openfga/compare/v1.13.1...v1.14.0
 [1.13.1]: https://github.com/openfga/openfga/compare/v1.13.0...v1.13.1
