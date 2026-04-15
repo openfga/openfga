@@ -6,7 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/spf13/viper"
@@ -44,6 +46,7 @@ const (
 	DefaultCheckIteratorCacheEnabled    = false
 	DefaultCheckIteratorCacheMaxResults = 10000
 	DefaultCheckIteratorCacheTTL        = 10 * time.Second
+	DefaultCheckIteratorDrainTimeout    = 30 * time.Second
 
 	DefaultListObjectsIteratorCacheEnabled    = false
 	DefaultListObjectsIteratorCacheMaxResults = 10000
@@ -84,6 +87,7 @@ const (
 	DefaultListUsersDispatchThrottlingMaxThreshold     = 0 // 0 means use the default threshold as max
 
 	DefaultRequestTimeout     = 3 * time.Second
+	DefaultShutdownTimeout    = 10 * time.Second
 	additionalUpstreamTimeout = 3 * time.Second
 
 	DefaultSharedIteratorEnabled          = false
@@ -180,6 +184,13 @@ type HTTPConfig struct {
 	CORSAllowedHeaders []string
 }
 
+// AuthzenConfig defines configuration for the AuthZEN discovery endpoint.
+type AuthzenConfig struct {
+	// BaseURL is the canonical absolute base URL published in AuthZEN discovery
+	// metadata. It may include an optional path prefix.
+	BaseURL string `mapstructure:"baseURL"`
+}
+
 // TLSConfig defines configuration specific to Transport Layer Security (TLS) settings.
 type TLSConfig struct {
 	Enabled  bool
@@ -242,9 +253,30 @@ type OTLPTraceTLSConfig struct {
 }
 
 // PlaygroundConfig defines OpenFGA server configurations for the Playground specific settings.
+//
+// Deprecated: The built in FGA Playground is deprecated and will be removed in a subsequent release.
 type PlaygroundConfig struct {
+	// Enabled enables or disables the OpenFGA Playground.
 	Enabled bool
-	Port    int
+
+	// Port defines the port on which the Playground HTTP server will listen.
+	//
+	// Deprecated: Port has been deprecated, use Addr to specify the address with the port instead.
+	// If Addr is not specified, but Playground is enabled, Playground will bind to 127.0.0.1.
+	Port int
+
+	// Addr defines the address (host:port) on which the Playground HTTP server will listen.
+	Addr string
+}
+
+// PlaygroundAddr resolves the address for the Playground HTTP server.
+// If Addr is explicitly set, it is returned as-is. Otherwise, the address is
+// constructed from Port, binding to 127.0.0.1.
+func (cfg PlaygroundConfig) PlaygroundAddr() string {
+	if cfg.Addr != "" {
+		return cfg.Addr
+	}
+	return fmt.Sprintf("127.0.0.1:%d", cfg.Port)
 }
 
 // ProfilerConfig defines server configurations specific to pprof profiling.
@@ -319,8 +351,7 @@ type PlannerConfig struct {
 }
 
 type Config struct {
-	// If you change any of these settings, please update the documentation at
-	// https://github.com/openfga/openfga.dev/blob/main/docs/content/intro/setup-openfga.mdx
+	// If you change any of these settings, please update the documentation at .config-schema.json
 
 	// ListObjectsDeadline defines the maximum amount of time to accumulate ListObjects results
 	// before the server will respond. This is to protect the server from misuse of the
@@ -402,9 +433,12 @@ type Config struct {
 	// concurrently in a query
 	ResolveNodeBreadthLimit uint32
 
-	// RequestTimeout configures request timeout.  If both HTTP upstream timeout and request timeout are specified,
+	// RequestTimeout configures request timeout. If both HTTP upstream timeout and request timeout are specified,
 	// request timeout will be prioritized
 	RequestTimeout time.Duration
+
+	// ShutdownTimeout configures how long the server waits for a graceful shutdown.
+	ShutdownTimeout time.Duration
 
 	// ContextPropagationToDatastore enables propagation of a requests context to the datastore,
 	// thereby receiving API cancellation signals
@@ -413,6 +447,7 @@ type Config struct {
 	Datastore                     DatastoreConfig
 	GRPC                          GRPCConfig
 	HTTP                          HTTPConfig
+	Authzen                       AuthzenConfig `mapstructure:"authzen"`
 	Authn                         AuthnConfig
 	Log                           LogConfig
 	Trace                         TraceConfig
@@ -540,8 +575,8 @@ func (cfg *Config) VerifyBinarySettings() error {
 			return errors.New("the HTTP server must be enabled to run the openfga playground")
 		}
 
-		if cfg.Authn.Method != "none" && cfg.Authn.Method != "preshared" {
-			return errors.New("the playground only supports authn methods 'none' and 'preshared'")
+		if cfg.Authn.Method != "none" {
+			return errors.New("the playground only supports authn method 'none'")
 		}
 	}
 
@@ -549,6 +584,10 @@ func (cfg *Config) VerifyBinarySettings() error {
 		if cfg.HTTP.TLS.CertPath == "" || cfg.HTTP.TLS.KeyPath == "" {
 			return errors.New("'http.tls.cert' and 'http.tls.key' configs must be set")
 		}
+	}
+
+	if err := verifyAuthzenBaseURL(cfg.Authzen.BaseURL); err != nil {
+		return err
 	}
 
 	if cfg.GRPC.TLS.Enabled {
@@ -563,6 +602,10 @@ func (cfg *Config) VerifyBinarySettings() error {
 
 	if cfg.RequestTimeout == 0 && cfg.HTTP.Enabled && cfg.HTTP.UpstreamTimeout < 0 {
 		return errors.New("http.upstreamTimeout must be a non-negative time duration")
+	}
+
+	if cfg.ShutdownTimeout <= 0 {
+		return errors.New("shutdownTimeout must be greater than 0")
 	}
 
 	if viper.IsSet("cache.limit") && !viper.IsSet("checkCache.limit") {
@@ -701,6 +744,55 @@ func (cfg *Config) verifyCacheConfig() error {
 	return nil
 }
 
+// NormalizeAuthzenBaseURL validates and normalizes an AuthZEN base URL.
+// It ensures the URL uses http or https, is absolute, contains no user info,
+// query string, fragment, or multiple hosts, and trims any trailing slash.
+// An empty input returns an empty string with no error.
+func NormalizeAuthzenBaseURL(rawURL string) (string, error) {
+	if rawURL == "" {
+		return "", nil
+	}
+
+	parsedURL, err := url.Parse(rawURL)
+	if err != nil {
+		return "", fmt.Errorf("must be a valid URL: %w", err)
+	}
+
+	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
+		return "", errors.New("scheme must be http or https")
+	}
+
+	if !parsedURL.IsAbs() || parsedURL.Host == "" {
+		return "", errors.New("URL must be absolute and include a host")
+	}
+
+	if parsedURL.User != nil {
+		return "", errors.New("URL must not include user info")
+	}
+
+	if parsedURL.RawQuery != "" || parsedURL.Fragment != "" {
+		return "", errors.New("URL must not include a query string or fragment")
+	}
+
+	if strings.Contains(parsedURL.Host, ",") {
+		return "", errors.New("URL must contain exactly one host")
+	}
+
+	parsedURL.Path = strings.TrimRight(parsedURL.Path, "/")
+	parsedURL.RawPath = strings.TrimRight(parsedURL.RawPath, "/")
+
+	return parsedURL.String(), nil
+}
+
+func verifyAuthzenBaseURL(rawURL string) error {
+	_, err := NormalizeAuthzenBaseURL(rawURL)
+	if err != nil {
+		return fmt.Errorf("config 'authzen.baseURL': %w", err)
+	}
+
+	return nil
+}
+
 // MaxConditionEvaluationCost ensures a safe value for CEL evaluation cost.
 func MaxConditionEvaluationCost() uint64 {
 	return max(DefaultMaxConditionEvaluationCost, viper.GetUint64("maxConditionEvaluationCost"))
@@ -753,6 +845,9 @@ func DefaultConfig() *Config {
 			CORSAllowedOrigins: []string{"*"},
 			CORSAllowedHeaders: []string{"*"},
 		},
+		Authzen: AuthzenConfig{
+			BaseURL: "",
+		},
 		Authn: AuthnConfig{
 			Method:                  "none",
 			AuthnPresharedKeyConfig: &AuthnPresharedKeyConfig{},
@@ -776,7 +871,7 @@ func DefaultConfig() *Config {
 			ResourceAttributes: "",
 		},
 		Playground: PlaygroundConfig{
-			Enabled: true,
+			Enabled: false,
 			Port:    3000,
 		},
 		Profiler: ProfilerConfig{
@@ -844,20 +939,11 @@ func DefaultConfig() *Config {
 			Duration:  0,
 		},
 		RequestTimeout:                DefaultRequestTimeout,
+		ShutdownTimeout:               DefaultShutdownTimeout,
 		ContextPropagationToDatastore: false,
 		Planner: PlannerConfig{
 			EvictionThreshold: DefaultPlannerEvictionThreshold,
 			CleanupInterval:   DefaultPlannerCleanupInterval,
 		},
 	}
-}
-
-// MustDefaultConfig returns default server config with the playground, tracing and metrics turned off.
-func MustDefaultConfig() *Config {
-	config := DefaultConfig()
-
-	config.Playground.Enabled = false
-	config.Metrics.Enabled = false
-
-	return config
 }

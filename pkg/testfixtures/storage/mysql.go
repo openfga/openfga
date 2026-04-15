@@ -10,11 +10,10 @@ import (
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/containerd/errdefs"
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/image"
-	"github.com/docker/docker/client"
-	"github.com/docker/go-connections/nat"
 	"github.com/go-sql-driver/mysql"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/network"
+	"github.com/moby/moby/client"
 	"github.com/oklog/ulid/v2"
 	"github.com/pressly/goose/v3"
 	"github.com/stretchr/testify/require"
@@ -24,6 +23,10 @@ import (
 
 const (
 	mySQLImage = "mysql:8"
+)
+
+var (
+	mySQLPort = network.MustParsePort("3306/tcp")
 )
 
 type mySQLTestContainer struct {
@@ -47,16 +50,13 @@ func (m *mySQLTestContainer) GetDatabaseSchemaVersion() int64 {
 // bootstrapped implementation of the DatastoreTestContainer interface wired up for the
 // MySQL datastore engine.
 func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) DatastoreTestContainer {
-	dockerClient, err := client.NewClientWithOpts(
-		client.FromEnv,
-		client.WithAPIVersionNegotiation(),
-	)
+	dockerClient, err := client.New(client.FromEnv)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		dockerClient.Close()
 	})
 
-	allImages, err := dockerClient.ImageList(context.Background(), image.ListOptions{
+	imageListResult, err := dockerClient.ImageList(context.Background(), client.ImageListOptions{
 		All: true,
 	})
 	require.NoError(t, err)
@@ -64,7 +64,7 @@ func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) DatastoreTestCo
 	foundMysqlImage := false
 
 AllImages:
-	for _, image := range allImages {
+	for _, image := range imageListResult.Items {
 		for _, tag := range image.RepoTags {
 			if strings.Contains(tag, mySQLImage) {
 				foundMysqlImage = true
@@ -75,8 +75,9 @@ AllImages:
 
 	if !foundMysqlImage {
 		t.Logf("Pulling image %s", mySQLImage)
-		reader, err := dockerClient.ImagePull(context.Background(), mySQLImage, image.PullOptions{})
+		reader, err := dockerClient.ImagePull(context.Background(), mySQLImage, client.ImagePullOptions{})
 		require.NoError(t, err)
+		defer reader.Close()
 
 		_, err = io.Copy(io.Discard, reader) // consume the image pull output to make sure it's done
 		require.NoError(t, err)
@@ -87,8 +88,8 @@ AllImages:
 			"MYSQL_DATABASE=defaultdb",
 			"MYSQL_ROOT_PASSWORD=secret",
 		},
-		ExposedPorts: nat.PortSet{
-			nat.Port("3306/tcp"): {},
+		ExposedPorts: network.PortSet{
+			mySQLPort: {},
 		},
 		Image: mySQLImage,
 	}
@@ -101,27 +102,31 @@ AllImages:
 
 	name := "mysql-" + ulid.Make().String()
 
-	cont, err := dockerClient.ContainerCreate(context.Background(), &containerCfg, &hostCfg, nil, nil, name)
+	cont, err := dockerClient.ContainerCreate(context.Background(), client.ContainerCreateOptions{
+		Name:       name,
+		Config:     &containerCfg,
+		HostConfig: &hostCfg,
+	})
 	require.NoError(t, err, "failed to create mysql docker container")
 
 	t.Cleanup(func() {
 		t.Logf("stopping container %s", name)
 		timeoutSec := 5
 
-		err := dockerClient.ContainerStop(context.Background(), cont.ID, container.StopOptions{Timeout: &timeoutSec})
+		_, err := dockerClient.ContainerStop(context.Background(), cont.ID, client.ContainerStopOptions{Timeout: &timeoutSec})
 		if err != nil && !errdefs.IsNotFound(err) {
 			t.Logf("failed to stop mysql container: %v", err)
 		}
 		t.Logf("stopped container %s", name)
 	})
 
-	err = dockerClient.ContainerStart(context.Background(), cont.ID, container.StartOptions{})
+	_, err = dockerClient.ContainerStart(context.Background(), cont.ID, client.ContainerStartOptions{})
 	require.NoError(t, err, "failed to start mysql container")
 
-	containerJSON, err := dockerClient.ContainerInspect(context.Background(), cont.ID)
+	inspectResult, err := dockerClient.ContainerInspect(context.Background(), cont.ID, client.ContainerInspectOptions{})
 	require.NoError(t, err)
 
-	p, ok := containerJSON.NetworkSettings.Ports["3306/tcp"]
+	p, ok := inspectResult.Container.NetworkSettings.Ports[mySQLPort]
 	if !ok || len(p) == 0 {
 		require.Fail(t, "failed to get host port mapping from mysql container")
 	}

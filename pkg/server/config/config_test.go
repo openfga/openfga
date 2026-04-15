@@ -346,6 +346,22 @@ func TestVerifyConfig(t *testing.T) {
 		require.Error(t, err)
 	})
 
+	t.Run("negative_shutdown_timeout_duration", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.ShutdownTimeout = -2 * time.Second
+
+		err := cfg.Verify()
+		require.EqualError(t, err, "shutdownTimeout must be greater than 0")
+	})
+
+	t.Run("zero_shutdown_timeout_duration", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.ShutdownTimeout = 0
+
+		err := cfg.Verify()
+		require.EqualError(t, err, "shutdownTimeout must be greater than 0")
+	})
+
 	t.Run("negative_upstream_timeout", func(t *testing.T) {
 		cfg := DefaultConfig()
 		cfg.RequestTimeout = 0
@@ -979,6 +995,49 @@ func TestVerifyBinarySettings(t *testing.T) {
 		require.Contains(t, err.Error(), "http.upstreamTimeout must be a non-negative time duration")
 	})
 
+	t.Run("invalid_authzen_base_url", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Authzen.BaseURL = "not-a-url"
+
+		err := cfg.VerifyBinarySettings()
+		require.ErrorContains(t, err, "config 'authzen.baseURL'")
+		require.ErrorContains(t, err, "scheme must be http or https")
+	})
+
+	t.Run("valid_authzen_base_url", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Authzen.BaseURL = "https://pdp.example.com/openfga"
+
+		err := cfg.VerifyBinarySettings()
+		require.NoError(t, err)
+	})
+
+	t.Run("authzen_base_url_with_user_info", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Authzen.BaseURL = "https://user:pass@example.com"
+
+		err := cfg.VerifyBinarySettings()
+		require.ErrorContains(t, err, "config 'authzen.baseURL'")
+		require.ErrorContains(t, err, "URL must not include user info")
+	})
+
+	t.Run("authzen_base_url_with_query", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Authzen.BaseURL = "https://example.com?q=x"
+
+		err := cfg.VerifyBinarySettings()
+		require.ErrorContains(t, err, "config 'authzen.baseURL'")
+		require.ErrorContains(t, err, "URL must not include a query string or fragment")
+	})
+
+	t.Run("empty_authzen_base_url_is_valid", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Authzen.BaseURL = ""
+
+		err := cfg.VerifyBinarySettings()
+		require.NoError(t, err)
+	})
+
 	t.Run("invalid_log_level", func(t *testing.T) {
 		cfg := DefaultConfig()
 		cfg.Log.Level = "invalid_level"
@@ -1006,7 +1065,18 @@ func TestVerifyBinarySettings(t *testing.T) {
 
 		err := cfg.VerifyBinarySettings()
 		require.Error(t, err)
-		require.Contains(t, err.Error(), "the playground only supports authn methods 'none' and 'preshared'")
+		require.Contains(t, err.Error(), "the playground only supports authn method 'none'")
+	})
+
+	t.Run("playground_enabled_with_preshared_authn", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Playground.Enabled = true
+		cfg.HTTP.Enabled = true
+		cfg.Authn.Method = "preshared"
+
+		err := cfg.VerifyBinarySettings()
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "the playground only supports authn method 'none'")
 	})
 
 	t.Run("playground_enabled_with_supported_authn", func(t *testing.T) {
@@ -1016,10 +1086,6 @@ func TestVerifyBinarySettings(t *testing.T) {
 		cfg.Authn.Method = "none"
 
 		err := cfg.VerifyBinarySettings()
-		require.NoError(t, err)
-
-		cfg.Authn.Method = "preshared"
-		err = cfg.VerifyBinarySettings()
 		require.NoError(t, err)
 	})
 
@@ -1108,4 +1174,24 @@ func TestDefaultContextTimeout(t *testing.T) {
 			require.Equal(t, test.expectedContextTimeout, timeout)
 		})
 	}
+}
+
+func TestPlaygroundAddr(t *testing.T) {
+	t.Run("returns_Addr_when_set", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Playground.Addr = "0.0.0.0:4000"
+		cfg.Playground.Port = 3000
+		require.Equal(t, "0.0.0.0:4000", cfg.Playground.PlaygroundAddr())
+	})
+
+	t.Run("falls_back_to_Port_bound_to_localhost_when_Addr_and_Port_are_empty", func(t *testing.T) {
+		cfg := DefaultConfig()
+		require.Equal(t, "127.0.0.1:3000", cfg.Playground.PlaygroundAddr())
+	})
+
+	t.Run("uses_custom_port_when_Addr_is_empty", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Playground.Port = 9090
+		require.Equal(t, "127.0.0.1:9090", cfg.Playground.PlaygroundAddr())
+	})
 }

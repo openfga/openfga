@@ -213,7 +213,7 @@ Flow:
 
 Returns PDP metadata per [AuthZEN spec section 9](https://openid.net/specs/authorization-api-1_0.html). Implemented in `authzen_configuration.go`.
 
-Constructs absolute endpoint URLs from the incoming request's `Host` header and store ID. Required fields per spec: `policy_decision_point` and `access_evaluation_endpoint`. All search and batch endpoints are optional.
+Constructs absolute endpoint URLs from the configured `authzen.baseURL` value and the store ID. The value must be a canonical absolute `http` or `https` URL and may include an optional path prefix. Request-supplied `Host` and forwarded host headers are ignored to avoid publishing attacker-controlled discovery metadata. Required fields per spec: `policy_decision_point` and `access_evaluation_endpoint`. All search and batch endpoints are optional.
 
 The endpoint is scoped per store: `/.well-known/authzen-configuration/{store_id}`.
 

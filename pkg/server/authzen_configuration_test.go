@@ -15,63 +15,74 @@ import (
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
 )
 
-func TestGetBaseURLFromContext(t *testing.T) {
+func TestNormalizeAuthzenBaseURL(t *testing.T) {
 	tests := []struct {
 		name     string
-		md       metadata.MD
+		input    string
 		expected string
+		err      string
 	}{
 		{
-			name:     "comma_separated_hosts_takes_first",
-			md:       metadata.New(map[string]string{"x-forwarded-host": "good.com, evil.com"}),
+			name:     "accepts_https_url",
+			input:    "https://good.com",
 			expected: "https://good.com",
 		},
 		{
-			name:     "comma_separated_hosts_trims_whitespace",
-			md:       metadata.New(map[string]string{"x-forwarded-host": "  good.com , evil.com"}),
-			expected: "https://good.com",
+			name:     "accepts_path_prefix_and_trims_trailing_slash",
+			input:    "https://good.com/openfga/",
+			expected: "https://good.com/openfga",
 		},
 		{
-			name:     "rejects_host_with_path",
-			md:       metadata.New(map[string]string{"x-forwarded-host": "evil.com/path"}),
-			expected: "",
+			name:  "rejects_relative_url",
+			input: "/openfga",
+			err:   "scheme must be http or https",
 		},
 		{
-			name:     "rejects_host_with_query",
-			md:       metadata.New(map[string]string{"x-forwarded-host": "evil.com?q=x"}),
-			expected: "",
+			name:  "rejects_non_http_scheme",
+			input: "javascript://evil.example",
+			err:   "scheme must be http or https",
 		},
 		{
-			name:     "rejects_host_with_fragment",
-			md:       metadata.New(map[string]string{"x-forwarded-host": "evil.com#frag"}),
-			expected: "",
+			name:  "rejects_query_string",
+			input: "https://good.com?q=x",
+			err:   "URL must not include a query string or fragment",
 		},
 		{
-			name:     "accepts_host_with_port",
-			md:       metadata.New(map[string]string{":authority": "example.com:8080"}),
-			expected: "https://example.com:8080",
+			name:  "rejects_user_info",
+			input: "https://user:pass@good.com",
+			err:   "URL must not include user info",
 		},
 		{
-			name:     "returns_empty_when_no_host_headers",
-			md:       metadata.New(map[string]string{"x-forwarded-proto": "https"}),
-			expected: "",
+			name:  "rejects_comma_separated_hosts",
+			input: "https://good.com,evil.com",
+			err:   "URL must contain exactly one host",
 		},
 		{
-			name:     "rejects_empty_hostname_after_split_port",
-			md:       metadata.New(map[string]string{":authority": ":8080"}),
-			expected: "",
+			name:  "rejects_fragment",
+			input: "https://good.com#frag",
+			err:   "URL must not include a query string or fragment",
 		},
 		{
-			name:     "rejects_empty_host_after_trim",
-			md:       metadata.New(map[string]string{"x-forwarded-host": "  "}),
+			name:     "accepts_http_url",
+			input:    "http://localhost:8080",
+			expected: "http://localhost:8080",
+		},
+		{
+			name:     "empty_input_returns_empty",
+			input:    "",
 			expected: "",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ctx := metadata.NewIncomingContext(context.Background(), tt.md)
-			result := getBaseURLFromContext(ctx)
+			result, err := serverconfig.NormalizeAuthzenBaseURL(tt.input)
+			if tt.err != "" {
+				require.EqualError(t, err, tt.err)
+				return
+			}
+
+			require.NoError(t, err)
 			require.Equal(t, tt.expected, result)
 		})
 	}
@@ -88,6 +99,7 @@ func TestGetConfiguration(t *testing.T) {
 		t.Helper()
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
+			WithAuthzenBaseURL("https://pdp.example.com"),
 			WithExperimentals(serverconfig.ExperimentalAuthZen),
 		)
 		t.Cleanup(s.Close)
@@ -110,15 +122,10 @@ func TestGetConfiguration(t *testing.T) {
 		require.Equal(t, "https://pdp.example.com/stores/"+storeID, resp.GetPolicyDecisionPoint())
 	})
 
-	t.Run("returns_absolute_urls_from_request_context", func(t *testing.T) {
+	t.Run("returns_absolute_urls_from_configured_base_url", func(t *testing.T) {
 		s, storeID := newServerAndStore(t)
 
-		md := metadata.New(map[string]string{
-			":authority": "pdp.example.com",
-		})
-		ctx := metadata.NewIncomingContext(context.Background(), md)
-
-		resp, err := s.GetConfiguration(ctx, &authzenv1.GetConfigurationRequest{StoreId: storeID})
+		resp, err := s.GetConfiguration(context.Background(), &authzenv1.GetConfigurationRequest{StoreId: storeID})
 		require.NoError(t, err)
 
 		require.Equal(t, "https://pdp.example.com/stores/"+storeID+"/access/v1/evaluation", resp.GetAccessEvaluationEndpoint())
@@ -128,54 +135,33 @@ func TestGetConfiguration(t *testing.T) {
 		require.Equal(t, "https://pdp.example.com/stores/"+storeID+"/access/v1/search/action", resp.GetSearchActionEndpoint())
 	})
 
-	t.Run("returns_absolute_urls_with_forwarded_headers", func(t *testing.T) {
+	t.Run("ignores_request_host_headers", func(t *testing.T) {
 		s, storeID := newServerAndStore(t)
 
 		md := metadata.New(map[string]string{
-			"x-forwarded-host":  "api.mycompany.com",
-			"x-forwarded-proto": "https",
+			"x-forwarded-host":  "attacker.example",
+			"x-forwarded-proto": "http",
+			":authority":        "attacker.example",
 		})
 		ctx := metadata.NewIncomingContext(context.Background(), md)
 
 		resp, err := s.GetConfiguration(ctx, &authzenv1.GetConfigurationRequest{StoreId: storeID})
 		require.NoError(t, err)
-		require.Equal(t, "https://api.mycompany.com/stores/"+storeID+"/access/v1/evaluation", resp.GetAccessEvaluationEndpoint())
+		require.Equal(t, "https://pdp.example.com/stores/"+storeID+"/access/v1/evaluation", resp.GetAccessEvaluationEndpoint())
 	})
 
-	t.Run("returns_error_when_no_host_context", func(t *testing.T) {
-		s, storeID := newServerAndStore(t)
+	t.Run("returns_error_when_base_url_is_not_configured", func(t *testing.T) {
+		s := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithExperimentals(serverconfig.ExperimentalAuthZen),
+		)
+		t.Cleanup(s.Close)
+		storeResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "test"})
+		require.NoError(t, err)
 
-		resp, err := s.GetConfiguration(context.Background(), &authzenv1.GetConfigurationRequest{StoreId: storeID})
+		resp, err := s.GetConfiguration(context.Background(), &authzenv1.GetConfigurationRequest{StoreId: storeResp.GetId()})
 		require.Error(t, err)
 		require.Nil(t, resp)
-		require.Contains(t, err.Error(), "unable to determine base URL")
-	})
-
-	t.Run("scheme_handling", func(t *testing.T) {
-		s, storeID := newServerAndStore(t)
-
-		tests := []struct {
-			name           string
-			proto          string
-			expectedScheme string
-		}{
-			{"accepts_http_scheme", "http", "http"},
-			{"rejects_invalid_scheme_defaults_to_https", "javascript", "https"},
-			{"scheme_validation_is_case_insensitive", "HTTPS", "https"},
-		}
-
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				md := metadata.New(map[string]string{
-					"x-forwarded-host":  "api.mycompany.com",
-					"x-forwarded-proto": tt.proto,
-				})
-				ctx := metadata.NewIncomingContext(context.Background(), md)
-
-				resp, err := s.GetConfiguration(ctx, &authzenv1.GetConfigurationRequest{StoreId: storeID})
-				require.NoError(t, err)
-				require.Equal(t, tt.expectedScheme+"://api.mycompany.com/stores/"+storeID+"/access/v1/evaluation", resp.GetAccessEvaluationEndpoint())
-			})
-		}
+		require.Contains(t, err.Error(), "AuthZEN discovery base URL is not configured")
 	})
 }

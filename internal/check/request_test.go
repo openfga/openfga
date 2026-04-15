@@ -256,6 +256,45 @@ func TestCloneWithTupleKey(t *testing.T) {
 }
 
 func TestGetContextualTuplesByUserID(t *testing.T) {
+	t.Run("no_collision_with_ambiguous_user_and_relation", func(t *testing.T) {
+		// This is a regression test for a bug where concatenating
+		// user+relation+objectType without a delimiter caused collisions.
+		// e.g. user:"user:alicev" relation:"iew" vs user:"user:alice" relation:"view"
+		// both produced the key "user:aliceviewdocument".
+		model := testutils.MustTransformDSLToProtoWithID(`
+   model
+    schema 1.1
+   type user
+   type document
+    relations
+     define view: [user]
+     define iew: [user]
+  `)
+		mg, err := modelgraph.New(model)
+		require.NoError(t, err)
+
+		req, err := NewRequest(RequestParams{
+			StoreID:  ulid.Make().String(),
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "view", "user:alice"),
+			ContextualTuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "iew", "user:alicev"),
+			},
+		})
+		require.NoError(t, err)
+
+		// The contextual tuple has user:"user:alicev" relation:"iew",
+		// so looking up user:"user:alice" relation:"view" must NOT match.
+		result, ok := req.GetContextualTuplesByUserID("user:alice", "view", "document")
+		require.False(t, ok)
+		require.Empty(t, result)
+
+		// But the actual contextual tuple should be findable.
+		result, ok = req.GetContextualTuplesByUserID("user:alicev", "iew", "document")
+		require.True(t, ok)
+		require.Len(t, result, 1)
+	})
+
 	t.Run("returns_empty_when_no_matching_tuples", func(t *testing.T) {
 		req, err := NewRequest(RequestParams{
 			StoreID:  ulid.Make().String(),
@@ -359,6 +398,44 @@ func TestGetContextualTuplesByUserID(t *testing.T) {
 }
 
 func TestGetContextualTuplesByObjectID(t *testing.T) {
+	t.Run("no_collision_with_ambiguous_object_and_relation", func(t *testing.T) {
+		// Regression test: concatenating objectId+relation+userType without a
+		// delimiter caused collisions. e.g. object:"document:1v" relation:"iew"
+		// vs object:"document:1" relation:"view" both produced the same key.
+		model := testutils.MustTransformDSLToProtoWithID(`
+   model
+    schema 1.1
+   type user
+   type document
+    relations
+     define view: [user]
+     define iew: [user]
+  `)
+		mg, err := modelgraph.New(model)
+		require.NoError(t, err)
+
+		req, err := NewRequest(RequestParams{
+			StoreID:  ulid.Make().String(),
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "view", "user:alice"),
+			ContextualTuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1v", "iew", "user:alice"),
+			},
+		})
+		require.NoError(t, err)
+
+		// The contextual tuple has object:"document:1v" relation:"iew",
+		// so looking up object:"document:1" relation:"view" must NOT match.
+		result, ok := req.GetContextualTuplesByObjectID("document:1", "view", "user")
+		require.False(t, ok)
+		require.Empty(t, result)
+
+		// But the actual contextual tuple should be findable.
+		result, ok = req.GetContextualTuplesByObjectID("document:1v", "iew", "user")
+		require.True(t, ok)
+		require.Len(t, result, 1)
+	})
+
 	t.Run("returns_empty_when_no_matching_tuples", func(t *testing.T) {
 		req, err := NewRequest(RequestParams{
 			StoreID:  ulid.Make().String(),

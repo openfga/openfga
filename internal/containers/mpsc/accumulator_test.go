@@ -1,6 +1,7 @@
 package mpsc_test
 
 import (
+	"context"
 	"sync"
 	"testing"
 	"time"
@@ -13,58 +14,37 @@ import (
 func BenchmarkAccumulator(b *testing.B) {
 	const totalItems int = 1000
 
-	b.Run("remake", func(b *testing.B) {
-		for b.Loop() {
-			acc := mpsc.NewAccumulator[int]()
-
-			var wg sync.WaitGroup
-			wg.Go(func() {
-				for i := range totalItems {
-					acc.Add(i)
-				}
-				acc.Close()
-			})
-
-			wg.Go(func() {
-				for range acc.Seq() {
-				}
-			})
-
-			wg.Wait()
-		}
-	})
-
-	b.Run("reuse", func(b *testing.B) {
+	for b.Loop() {
 		acc := mpsc.NewAccumulator[int]()
 
-		for b.Loop() {
-			var wg sync.WaitGroup
-			wg.Go(func() {
-				for i := range totalItems {
-					acc.Add(i)
+		var wg sync.WaitGroup
+		wg.Go(func() {
+			for i := range totalItems {
+				if !acc.Send(i) {
+					b.Fail()
 				}
-				acc.Close()
-			})
+			}
+			acc.Close()
+		})
 
-			wg.Go(func() {
-				for range acc.Seq() {
-				}
-			})
+		wg.Go(func() {
+			for range acc.Seq(context.Background()) {
+			}
+		})
 
-			wg.Wait()
-		}
-	})
+		wg.Wait()
+	}
 }
 
 func TestAccumulator_AddCloseThenRead(t *testing.T) {
 	acc := mpsc.NewAccumulator[int]()
-	acc.Add(1)
-	acc.Add(2)
-	acc.Add(3)
+	require.True(t, acc.Send(1))
+	require.True(t, acc.Send(2))
+	require.True(t, acc.Send(3))
 	acc.Close()
 
 	var got []int
-	for v := range acc.Seq() {
+	for v := range acc.Seq(context.Background()) {
 		got = append(got, v)
 	}
 
@@ -79,13 +59,13 @@ func TestAccumulator_ReadWhileAdding(t *testing.T) {
 
 	go func() {
 		defer close(done)
-		for v := range acc.Seq() {
+		for v := range acc.Seq(context.Background()) {
 			got = append(got, v)
 		}
 	}()
 
 	for i := range 100 {
-		acc.Add(i)
+		require.True(t, acc.Send(i))
 	}
 	acc.Close()
 
@@ -101,19 +81,6 @@ func TestAccumulator_ReadWhileAdding(t *testing.T) {
 	}
 }
 
-func TestAccumulator_AddMultipleValues(t *testing.T) {
-	acc := mpsc.NewAccumulator[string]()
-	acc.Add("a", "b", "c")
-	acc.Close()
-
-	var got []string
-	for v := range acc.Seq() {
-		got = append(got, v)
-	}
-
-	require.Equal(t, []string{"a", "b", "c"}, got)
-}
-
 func TestAccumulator_ConcurrentProducers(t *testing.T) {
 	acc := mpsc.NewAccumulator[int]()
 
@@ -127,7 +94,7 @@ func TestAccumulator_ConcurrentProducers(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for i := range itemsPerProducer {
-				acc.Add(i)
+				acc.Send(i)
 			}
 		}()
 	}
@@ -137,7 +104,7 @@ func TestAccumulator_ConcurrentProducers(t *testing.T) {
 
 	go func() {
 		defer close(done)
-		for v := range acc.Seq() {
+		for v := range acc.Seq(context.Background()) {
 			got = append(got, v)
 		}
 	}()
@@ -152,28 +119,6 @@ func TestAccumulator_ConcurrentProducers(t *testing.T) {
 	}
 
 	require.Len(t, got, numProducers*itemsPerProducer)
-}
-
-func TestAccumulator_AddAfterClose(t *testing.T) {
-	acc := mpsc.NewAccumulator[int]()
-	acc.Add(1)
-	acc.Close()
-
-	var got []int
-	for v := range acc.Seq() {
-		got = append(got, v)
-	}
-	require.Equal(t, []int{1}, got)
-
-	// Reuse: add more, close again, consume again.
-	acc.Add(2, 3)
-	acc.Close()
-
-	got = nil
-	for v := range acc.Seq() {
-		got = append(got, v)
-	}
-	require.Equal(t, []int{2, 3}, got)
 }
 
 func TestAccumulator_CloseMultipleTimes(t *testing.T) {
@@ -191,25 +136,11 @@ func TestAccumulator_EmptyAccumulator(t *testing.T) {
 	acc.Close()
 
 	var got []int
-	for v := range acc.Seq() {
+	for v := range acc.Seq(context.Background()) {
 		got = append(got, v)
 	}
 
 	require.Empty(t, got)
-}
-
-func TestAccumulator_AddEmpty(t *testing.T) {
-	acc := mpsc.NewAccumulator[int]()
-	acc.Add()
-	acc.Add(1)
-	acc.Close()
-
-	var got []int
-	for v := range acc.Seq() {
-		got = append(got, v)
-	}
-
-	require.Equal(t, []int{1}, got)
 }
 
 func TestAccumulator_AddThenCloseRace(t *testing.T) {
@@ -221,12 +152,12 @@ func TestAccumulator_AddThenCloseRace(t *testing.T) {
 
 		go func() {
 			defer close(done)
-			for v := range acc.Seq() {
+			for v := range acc.Seq(context.Background()) {
 				got = append(got, v)
 			}
 		}()
 
-		acc.Add(42)
+		require.True(t, acc.Send(42))
 		acc.Close()
 
 		select {
@@ -239,39 +170,57 @@ func TestAccumulator_AddThenCloseRace(t *testing.T) {
 	}
 }
 
-func TestAccumulator_EarlyBreak(t *testing.T) {
+func TestAccumulator_SendAfterClose(t *testing.T) {
 	acc := mpsc.NewAccumulator[int]()
-	acc.Add(1, 2, 3, 4, 5)
 	acc.Close()
 
-	var got []int
-	for v := range acc.Seq() {
-		got = append(got, v)
-		if v == 3 {
-			break
-		}
-	}
-
-	require.Equal(t, []int{1, 2, 3}, got)
+	require.False(t, acc.Send(1))
 }
 
-func TestAccumulator_SeqResumptionAfterEarlyBreak(t *testing.T) {
+func TestAccumulator_RecvCancelledContext(t *testing.T) {
 	acc := mpsc.NewAccumulator[int]()
-	acc.Add(1, 2, 3, 4, 5)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, ok := acc.Recv(ctx)
+	require.False(t, ok)
+
+	acc.Close()
+}
+
+func TestAccumulator_RecvDirect(t *testing.T) {
+	acc := mpsc.NewAccumulator[int]()
+	require.True(t, acc.Send(10))
+	require.True(t, acc.Send(20))
+	acc.Close()
+
+	v1, ok := acc.Recv(context.Background())
+	require.True(t, ok)
+	require.Equal(t, 10, v1)
+
+	v2, ok := acc.Recv(context.Background())
+	require.True(t, ok)
+	require.Equal(t, 20, v2)
+
+	_, ok = acc.Recv(context.Background())
+	require.False(t, ok)
+}
+
+func TestAccumulator_EarlyBreak(t *testing.T) {
+	acc := mpsc.NewAccumulator[int]()
+	for i := range 5 {
+		require.True(t, acc.Send(i))
+	}
 	acc.Close()
 
 	var got []int
-	for v := range acc.Seq() {
+	for v := range acc.Seq(context.Background()) {
 		got = append(got, v)
 		if v == 3 {
 			break
 		}
 	}
-	require.Equal(t, []int{1, 2, 3}, got)
 
-	got = nil
-	for v := range acc.Seq() {
-		got = append(got, v)
-	}
-	require.Equal(t, []int{4, 5}, got)
+	require.Equal(t, []int{0, 1, 2, 3}, got)
 }
