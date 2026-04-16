@@ -436,7 +436,8 @@ func (s *ServerContext) telemetryConfig(config *serverconfig.Config) func(contex
 		endpoint, schemeSecure := telemetry.ParseOTLPEndpoint(config.Trace.OTLP.Endpoint)
 		effectiveTLS := telemetry.ResolveOTLPSecurity(config.Trace.OTLP.TLS.Enabled, schemeSecure)
 
-		s.Logger.Info(fmt.Sprintf("🕵 tracing enabled: sampler is '%s', sampling ratio is %v, sending traces to '%s', tls: %t", config.Trace.Sampler, config.Trace.SampleRatio, endpoint, effectiveTLS))
+		resolvedSampler := telemetry.ResolveSampler(config.Trace.Sampler, config.Trace.SampleRatio)
+		s.Logger.Info(fmt.Sprintf("🕵 tracing enabled: sampler is '%s' (resolved to '%s'), sampling ratio is %v, sending traces to '%s', tls: %t", config.Trace.Sampler, resolvedSampler.Description(), config.Trace.SampleRatio, endpoint, effectiveTLS))
 
 		options := []telemetry.TracerOption{
 			telemetry.WithOTLPEndpoint(
