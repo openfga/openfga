@@ -572,18 +572,18 @@ func (cfg *Config) VerifyBinarySettings() error {
 		return fmt.Errorf("config 'log.TimestampFormat' must be one of ['Unix', 'ISO8601']")
 	}
 
-	validSamplers := map[string]bool{
-		"always_on":                true,
-		"always_off":               true,
-		"traceidratio":             true,
-		"parentbased_always_on":    true,
-		"parentbased_always_off":   true,
-		"parentbased_traceidratio": true,
-	}
-	if !validSamplers[cfg.Trace.Sampler] {
-		return fmt.Errorf(
-			"config 'trace.sampler' must be one of ['always_on', 'always_off', 'traceidratio', 'parentbased_always_on', 'parentbased_always_off', 'parentbased_traceidratio']",
-		)
+	if cfg.Trace.Enabled {
+		supportedSamplers := map[string]bool{
+			"always_on":                true,
+			"always_off":               true,
+			"traceidratio":             true,
+			"parentbased_always_on":    true,
+			"parentbased_always_off":   true,
+			"parentbased_traceidratio": true,
+		}
+		if !supportedSamplers[strings.ToLower(cfg.Trace.Sampler)] {
+			fmt.Printf("WARNING: unrecognized trace sampler '%s', falling back to 'traceidratio'. Supported values: always_on, always_off, traceidratio, parentbased_always_on, parentbased_always_off, parentbased_traceidratio\n", cfg.Trace.Sampler)
+		}
 	}
 
 	if cfg.Playground.Enabled {

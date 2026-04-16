@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"strings"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -100,7 +101,7 @@ func ResolveOTLPSecurity(configSecure, schemeSecure bool) bool {
 // ResolveSampler maps a sampler name (as defined by the OTEL_TRACES_SAMPLER spec)
 // and a sampling ratio to the corresponding Go SDK sampler.
 func ResolveSampler(name string, ratio float64) sdktrace.Sampler {
-	switch name {
+	switch strings.ToLower(name) {
 	case "always_on":
 		return sdktrace.AlwaysSample()
 	case "always_off":

@@ -192,8 +192,20 @@ func TestResolveSampler(t *testing.T) {
 			descriptionMust: []string{"ParentBased", "TraceIDRatioBased", "0.3"},
 		},
 		{
+			name:            "uppercase_always_on",
+			samplerName:     "ALWAYS_ON",
+			ratio:           0.5,
+			descriptionMust: []string{"AlwaysOnSampler"},
+		},
+		{
+			name:            "mixed_case_parentbased",
+			samplerName:     "ParentBased_TraceIDRatio",
+			ratio:           0.5,
+			descriptionMust: []string{"TraceIDRatioBased", "0.5"},
+		},
+		{
 			name:            "unknown_falls_back_to_traceidratio",
-			samplerName:     "unknown",
+			samplerName:     "jaeger_remote",
 			ratio:           0.5,
 			descriptionMust: []string{"TraceIDRatioBased", "0.5"},
 		},

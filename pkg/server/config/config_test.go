@@ -1120,17 +1120,35 @@ func TestVerifyBinarySettings_TraceSampler(t *testing.T) {
 	for _, sampler := range validSamplers {
 		t.Run("valid_"+sampler, func(t *testing.T) {
 			cfg := DefaultConfig()
+			cfg.Trace.Enabled = true
 			cfg.Trace.Sampler = sampler
 			err := cfg.VerifyBinarySettings()
 			require.NoError(t, err)
 		})
 	}
 
-	t.Run("invalid_trace_sampler", func(t *testing.T) {
+	t.Run("uppercase_sampler_accepted", func(t *testing.T) {
 		cfg := DefaultConfig()
-		cfg.Trace.Sampler = "invalid_sampler"
+		cfg.Trace.Enabled = true
+		cfg.Trace.Sampler = "ALWAYS_ON"
 		err := cfg.VerifyBinarySettings()
-		require.EqualError(t, err, "config 'trace.sampler' must be one of ['always_on', 'always_off', 'traceidratio', 'parentbased_always_on', 'parentbased_always_off', 'parentbased_traceidratio']")
+		require.NoError(t, err)
+	})
+
+	t.Run("unrecognized_sampler_does_not_error", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Trace.Enabled = true
+		cfg.Trace.Sampler = "jaeger_remote"
+		err := cfg.VerifyBinarySettings()
+		require.NoError(t, err)
+	})
+
+	t.Run("tracing_disabled_skips_sampler_validation", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Trace.Enabled = false
+		cfg.Trace.Sampler = "totally_invalid"
+		err := cfg.VerifyBinarySettings()
+		require.NoError(t, err)
 	})
 }
 
