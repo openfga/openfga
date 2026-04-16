@@ -176,6 +176,9 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 		util.MustBindPFlag("trace.sampleRatio", flags.Lookup("trace-sample-ratio"))
 		util.MustBindEnv("trace.sampleRatio", "OPENFGA_TRACE_SAMPLE_RATIO", "OTEL_TRACES_SAMPLER_ARG")
 
+		util.MustBindPFlag("trace.sampler", flags.Lookup("trace-sampler"))
+		util.MustBindEnv("trace.sampler", "OPENFGA_TRACE_SAMPLER", "OTEL_TRACES_SAMPLER")
+
 		util.MustBindPFlag("trace.serviceName", flags.Lookup("trace-service-name"))
 		util.MustBindEnv("trace.serviceName", "OPENFGA_TRACE_SERVICE_NAME", "OTEL_SERVICE_NAME")
 

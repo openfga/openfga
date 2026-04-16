@@ -33,6 +33,12 @@ func WithOTLPInsecure() TracerOption {
 	}
 }
 
+func WithSampler(sampler string) TracerOption {
+	return func(d *customTracer) {
+		d.sampler = sampler
+	}
+}
+
 func WithSamplingRatio(samplingRatio float64) TracerOption {
 	return func(d *customTracer) {
 		d.samplingRatio = samplingRatio
@@ -50,6 +56,7 @@ type customTracer struct {
 	insecure   bool
 	attributes []attribute.KeyValue
 
+	sampler       string
 	samplingRatio float64
 }
 
@@ -88,6 +95,27 @@ func ParseOTLPEndpoint(endpoint string) (string, bool) {
 // scheme (https://) indicates it.
 func ResolveOTLPSecurity(configSecure, schemeSecure bool) bool {
 	return configSecure || schemeSecure
+}
+
+// ResolveSampler maps a sampler name (as defined by the OTEL_TRACES_SAMPLER spec)
+// and a sampling ratio to the corresponding Go SDK sampler.
+func ResolveSampler(name string, ratio float64) sdktrace.Sampler {
+	switch name {
+	case "always_on":
+		return sdktrace.AlwaysSample()
+	case "always_off":
+		return sdktrace.NeverSample()
+	case "traceidratio":
+		return sdktrace.TraceIDRatioBased(ratio)
+	case "parentbased_always_on":
+		return sdktrace.ParentBased(sdktrace.AlwaysSample())
+	case "parentbased_always_off":
+		return sdktrace.ParentBased(sdktrace.NeverSample())
+	case "parentbased_traceidratio":
+		return sdktrace.ParentBased(sdktrace.TraceIDRatioBased(ratio))
+	default:
+		return sdktrace.TraceIDRatioBased(ratio)
+	}
 }
 
 func MustNewTracerProvider(opts ...TracerOption) *sdktrace.TracerProvider {
@@ -139,7 +167,7 @@ func MustNewTracerProvider(opts ...TracerOption) *sdktrace.TracerProvider {
 	}
 
 	tp := sdktrace.NewTracerProvider(
-		sdktrace.WithSampler(sdktrace.TraceIDRatioBased(tracer.samplingRatio)),
+		sdktrace.WithSampler(ResolveSampler(tracer.sampler, tracer.samplingRatio)),
 		sdktrace.WithResource(res),
 		sdktrace.WithSpanProcessor(sdktrace.NewBatchSpanProcessor(exp)),
 	)

@@ -1112,6 +1112,28 @@ func TestVerifyBinarySettings(t *testing.T) {
 	})
 }
 
+func TestVerifyBinarySettings_TraceSampler(t *testing.T) {
+	validSamplers := []string{
+		"always_on", "always_off", "traceidratio",
+		"parentbased_always_on", "parentbased_always_off", "parentbased_traceidratio",
+	}
+	for _, sampler := range validSamplers {
+		t.Run("valid_"+sampler, func(t *testing.T) {
+			cfg := DefaultConfig()
+			cfg.Trace.Sampler = sampler
+			err := cfg.VerifyBinarySettings()
+			require.NoError(t, err)
+		})
+	}
+
+	t.Run("invalid_trace_sampler", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Trace.Sampler = "invalid_sampler"
+		err := cfg.VerifyBinarySettings()
+		require.EqualError(t, err, "config 'trace.sampler' must be one of ['always_on', 'always_off', 'traceidratio', 'parentbased_always_on', 'parentbased_always_off', 'parentbased_traceidratio']")
+	})
+}
+
 func TestDefaultMaxConditionValuationCost(t *testing.T) {
 	// check to make sure DefaultMaxConditionEvaluationCost never drops below an explicit 100, because
 	// API compatibility can be impacted otherwise
