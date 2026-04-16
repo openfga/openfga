@@ -96,6 +96,7 @@ test: generate-mocks ## Run all tests. To run a specific test, pass the FILTER v
 			${GO_PACKAGES}
 	@cat coverageunit.tmp.out | grep -v "mock" > coverageunit.out
 	@rm coverageunit.tmp.out
+	@docker ps -q --filter "name=openfga-test-*" | xargs -r docker rm -f >/dev/null
 	
 test-docker: ## Run tests requiring Docker
 	${call print, "Running docker tests"}
