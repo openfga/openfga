@@ -6,13 +6,15 @@ import (
 	"sync/atomic"
 )
 
+// kind distinguishes data nodes from the sentinel that terminates the list.
 type kind int
 
 const (
-	end kind = iota
-	data
+	end  kind = iota // sentinel inserted by Close
+	data             // node carrying a producer value
 )
 
+// node is a singly linked list element used by [Accumulator].
 type node[T any] struct {
 	Value T
 	Kind  kind
@@ -57,16 +59,15 @@ func NewAccumulator[T any]() *Accumulator[T] {
 //
 // It is safe to call Close multiple times from different goroutines;
 // only the first call has any effect.
-func (a *Accumulator[T]) Close() error {
+func (a *Accumulator[T]) Close() {
 	if a.closed.Swap(true) {
-		return nil
+		return
 	}
 	var n node[T]
 	n.Kind = end
 	oldHead := a.head.Swap(nil)
 	oldHead.Next.Store(&n)
 	close(a.done)
-	return nil
 }
 
 // Send adds a value to the Accumulator[T].

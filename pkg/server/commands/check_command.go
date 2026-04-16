@@ -100,7 +100,7 @@ func NewCheckCommand(datastore storage.RelationshipTupleReader, checkResolver gr
 }
 
 func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*graph.ResolveCheckResponse, *graph.ResolveCheckRequestMetadata, error) {
-	err := validateCheckRequest(c.typesys, params.TupleKey, params.ContextualTuples)
+	err := validateCheckRequest(c.typesys, params.TupleKey, params.ContextualTuples, params.Context)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -182,10 +182,19 @@ func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*
 	return resp, resolveCheckRequest.GetRequestMetadata(), nil
 }
 
-func validateCheckRequest(typesys *typesystem.TypeSystem, tupleKey *openfgav1.CheckRequestTupleKey, contextualTuples *openfgav1.ContextualTupleKeys) error {
+func validateCheckRequest(
+	typesys *typesystem.TypeSystem,
+	tupleKey *openfgav1.CheckRequestTupleKey,
+	contextualTuples *openfgav1.ContextualTupleKeys,
+	requestCtx *structpb.Struct,
+) error {
 	// The input tuple Key should be validated loosely.
 	if err := validation.ValidateUserObjectRelation(typesys, tuple.ConvertCheckRequestTupleKeyToTupleKey(tupleKey)); err != nil {
 		return &InvalidRelationError{Cause: err}
+	}
+
+	if err := validation.ValidateStruct(requestCtx); err != nil {
+		return &InvalidContextError{Cause: err}
 	}
 
 	// But contextual tuples need to be validated more strictly, the same as an input to a Write Tuple request.

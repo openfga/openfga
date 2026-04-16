@@ -27,17 +27,6 @@ func collectMessages(sender worker.Sender) [][]string {
 	return messages
 }
 
-// iterOf returns an iter.Seq[string] that yields the given values in order.
-func iterOf(values ...string) func(yield func(string) bool) {
-	return func(yield func(string) bool) {
-		for _, v := range values {
-			if !yield(v) {
-				return
-			}
-		}
-	}
-}
-
 // --- Message Tests ---
 
 func TestMessage_Done_NilCallback(t *testing.T) {
@@ -65,7 +54,6 @@ func TestMessage_Done_ClearsFields(t *testing.T) {
 
 	m.Done()
 
-	assert.Nil(t, m.Value, "Value should be nil after Done")
 	assert.Nil(t, m.Callback, "Callback should be nil after Done")
 }
 
@@ -157,8 +145,7 @@ func TestCore_Message_SendsToListener(t *testing.T) {
 		Pool:      newPool(),
 	}
 	output := core.Subscribe(nil, chunkSize)
-
-	core.Broadcast(context.Background(), iterOf("a", "b", "c"))
+	core.Broadcast(context.Background(), worker.NewValueReceiver("a", "b", "c"))
 	core.Cleanup()
 
 	assert.Equal(t, []string{"a", "b", "c"}, collectOutput(output))
@@ -171,7 +158,7 @@ func TestCore_Message_ChunksOutput(t *testing.T) {
 	}
 	output := core.Subscribe(nil, chunkSize)
 
-	core.Broadcast(context.Background(), iterOf("a", "b", "c", "d", "e"))
+	core.Broadcast(context.Background(), worker.NewValueReceiver("a", "b", "c", "d", "e"))
 	core.Cleanup()
 
 	messages := collectMessages(output)
@@ -189,7 +176,7 @@ func TestCore_Message_BroadcastsToMultipleListeners(t *testing.T) {
 	out1 := core.Subscribe(nil, chunkSize)
 	out2 := core.Subscribe(nil, chunkSize)
 
-	core.Broadcast(context.Background(), iterOf("x", "y"))
+	core.Broadcast(context.Background(), worker.NewValueReceiver("x", "y"))
 	core.Cleanup()
 
 	assert.Equal(t, []string{"x", "y"}, collectOutput(out1))
@@ -209,7 +196,7 @@ func TestCore_Message_CallsMsgFunc(t *testing.T) {
 	}
 	output := core.Subscribe(nil, chunkSize)
 
-	core.Broadcast(context.Background(), iterOf("a", "b", "c"))
+	core.Broadcast(context.Background(), worker.NewValueReceiver("a", "b", "c"))
 	core.Cleanup()
 
 	_ = collectOutput(output)
@@ -230,7 +217,7 @@ func TestCore_Message_StopsOnCancelledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	core.Broadcast(ctx, iterOf("a", "b", "c"))
+	core.Broadcast(ctx, worker.NewValueReceiver("a", "b", "c"))
 	core.Cleanup()
 
 	assert.Empty(t, collectOutput(output))
@@ -243,32 +230,111 @@ func TestCore_Message_EmptyIterator(t *testing.T) {
 	}
 	output := core.Subscribe(nil, chunkSize)
 
-	core.Broadcast(context.Background(), iterOf())
+	core.Broadcast(context.Background(), worker.NewEmptyReceiver[string]())
 	core.Cleanup()
 
 	assert.Empty(t, collectOutput(output))
 }
 
-func TestCore_Message_ReturnsBufferToPool(t *testing.T) {
-	pool := worker.NewBufferPool(chunkSize, 10)
+func TestCore_Message_ReturnsMessageToPool(t *testing.T) {
+	pool := worker.NewMessagePool(chunkSize, 10)
 
 	core := &worker.Core{
 		ChunkSize: chunkSize,
 		Pool:      pool,
 	}
+	defer core.Cleanup()
+
 	output := core.Subscribe(nil, chunkSize)
 
-	core.Broadcast(context.Background(), iterOf("a"))
+	core.Broadcast(context.Background(), worker.NewValueReceiver("a"))
 	core.Cleanup()
 
-	// Drain the output so the message callback returns the buffer.
-	_ = collectOutput(output)
+	// Drain the output so the message callback returns the message.
+	msg, ok := output.Recv(context.Background())
+	require.True(t, ok)
+	msg.Done()
 
-	// The pool should have buffers returned (the read buffer + the message buffer).
+	// The pool should have message returned.
 	// Verify by getting from the pool — should not allocate.
 	buf := pool.Get()
 	assert.NotNil(t, buf)
-	assert.Empty(t, *buf)
+	assert.Same(t, msg, buf)
+}
+
+// --- MessagePool Tests ---
+
+func TestMessagePool_Get_ReturnsMessageWithEmptyValue(t *testing.T) {
+	pool := worker.NewMessagePool(10, 5)
+	msg := pool.Get()
+	assert.NotNil(t, msg)
+	assert.Empty(t, msg.Value)
+	assert.Equal(t, 10, cap(msg.Value))
+}
+
+func TestMessagePool_PutGet_RecyclesMessage(t *testing.T) {
+	pool := worker.NewMessagePool(10, 5)
+	msg := pool.Get()
+
+	// Simulate usage.
+	msg.Value = append(msg.Value, "a", "b", "c")
+	pool.Put(msg)
+
+	recycled := pool.Get()
+	assert.Empty(t, recycled.Value, "recycled message Value should be empty")
+	assert.Equal(t, 10, cap(recycled.Value), "recycled message should retain original capacity")
+}
+
+func TestMessagePool_Put_ClearsValueContents(t *testing.T) {
+	pool := worker.NewMessagePool(4, 5)
+	msg := pool.Get()
+
+	msg.Value = append(msg.Value, "secret")
+	pool.Put(msg)
+
+	recycled := pool.Get()
+	// The backing array should be zeroed out.
+	raw := recycled.Value[:cap(recycled.Value)]
+	for i, v := range raw {
+		assert.Empty(t, v, "backing array index %d should be zero-value", i)
+	}
+}
+
+func TestMessagePool_Put_DropsWhenFull(t *testing.T) {
+	pool := worker.NewMessagePool(4, 1)
+
+	msg1 := pool.Get()
+	msg2 := pool.Get()
+
+	pool.Put(msg1)
+	pool.Put(msg2) // pool capacity is 1, so this should be silently dropped
+
+	got := pool.Get()
+	assert.Same(t, msg1, got)
+}
+
+func TestInitMessagePool(t *testing.T) {
+	var pool worker.MessagePool
+	worker.InitMessagePool(&pool, 8, 3)
+
+	msg := pool.Get()
+	assert.NotNil(t, msg)
+	assert.Equal(t, 8, cap(msg.Value))
+}
+
+// --- Core.Len Tests ---
+
+func TestCore_Len_ReturnsListenerCount(t *testing.T) {
+	core := &worker.Core{}
+	assert.Equal(t, 0, core.Len())
+
+	core.Subscribe(nil, 10)
+	assert.Equal(t, 1, core.Len())
+
+	core.Subscribe(nil, 10)
+	assert.Equal(t, 2, core.Len())
+
+	core.Cleanup()
 }
 
 // --- CycleGroup / Membership Tests ---
@@ -395,6 +461,16 @@ func TestMembership_WaitForAllReady_ContextCancelled(t *testing.T) {
 	cancel()
 
 	assert.False(t, a.WaitForAllReady(ctx))
+}
+
+func TestCycleGroup_SingleMember(t *testing.T) {
+	g := worker.NewCycleGroup()
+	m := g.Join("A")
+
+	assert.Equal(t, 1, g.Size())
+	assert.True(t, m.IsLeader())
+	assert.Equal(t, m, m.Next(), "single member's Next should point to itself")
+	assert.Equal(t, "A->A", m.String())
 }
 
 func TestMembership_IncDec_AffectsQuiescence(t *testing.T) {

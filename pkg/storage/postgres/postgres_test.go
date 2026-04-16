@@ -1681,7 +1681,7 @@ func TestExecuteDeleteTuples(t *testing.T) {
 		deleteConditions := sq.Or{}
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
-		mockPgxExec := mocks.NewMockpgxExec(ctrl)
+		mockPgxExec := mocks.NewMockPgxExec(ctrl)
 		err := executeDeleteTuples(context.Background(), mockPgxExec, "123", deleteConditions)
 		require.NoError(t, err)
 	})
@@ -1694,7 +1694,7 @@ func TestExecuteDeleteTuples(t *testing.T) {
 		}
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
-		mockPgxExec := mocks.NewMockpgxExec(ctrl)
+		mockPgxExec := mocks.NewMockPgxExec(ctrl)
 		mockPgxExec.EXPECT().Exec(gomock.Any(), gomock.Any(), gomock.Any()).Return(pgconn.NewCommandTag(""), fmt.Errorf("error"))
 		err := executeDeleteTuples(context.Background(), mockPgxExec, "123", deleteConditions)
 		require.Error(t, err)
@@ -1708,7 +1708,7 @@ func TestExecuteDeleteTuples(t *testing.T) {
 		}
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
-		mockPgxExec := mocks.NewMockpgxExec(ctrl)
+		mockPgxExec := mocks.NewMockPgxExec(ctrl)
 		mockPgxExec.EXPECT().Exec(gomock.Any(), gomock.Any(), gomock.Any()).Return(pgconn.NewCommandTag(""), nil)
 		err := executeDeleteTuples(context.Background(), mockPgxExec, "123", deleteConditions)
 		require.ErrorIs(t, err, storage.ErrWriteConflictOnDelete)
@@ -1721,7 +1721,7 @@ func TestExecuteDeleteTuples(t *testing.T) {
 		}
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
-		mockPgxExec := mocks.NewMockpgxExec(ctrl)
+		mockPgxExec := mocks.NewMockPgxExec(ctrl)
 		mockPgxExec.EXPECT().Exec(gomock.Any(), gomock.Any(), gomock.Any()).Return(pgconn.NewCommandTag("DELETE 1"), nil)
 		err := executeDeleteTuples(context.Background(), mockPgxExec, "123", deleteConditions)
 		require.NoError(t, err)
@@ -1732,14 +1732,14 @@ func TestExecuteWriteTuples(t *testing.T) {
 	t.Run("empty_statement", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
-		mockPgxExec := mocks.NewMockpgxExec(ctrl)
+		mockPgxExec := mocks.NewMockPgxExec(ctrl)
 		err := executeWriteTuples(context.Background(), mockPgxExec, nil)
 		require.NoError(t, err)
 	})
 	t.Run("txn_exec_good", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
-		mockPgxExec := mocks.NewMockpgxExec(ctrl)
+		mockPgxExec := mocks.NewMockPgxExec(ctrl)
 		mockPgxExec.EXPECT().Exec(gomock.Any(), gomock.Any(), gomock.Any()).Return(pgconn.NewCommandTag("INSERT 1"), nil)
 
 		writeItems := [][]interface{}{}
@@ -1761,7 +1761,7 @@ func TestExecuteWriteTuples(t *testing.T) {
 	t.Run("txn_exec_collision_error", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
-		mockPgxExec := mocks.NewMockpgxExec(ctrl)
+		mockPgxExec := mocks.NewMockPgxExec(ctrl)
 		mockPgxExec.EXPECT().Exec(gomock.Any(), gomock.Any(), gomock.Any()).Return(pgconn.NewCommandTag(""), fmt.Errorf("duplicate key value"))
 
 		writeItems := [][]interface{}{}
@@ -1783,7 +1783,7 @@ func TestExecuteWriteTuples(t *testing.T) {
 	t.Run("txn_exec_no_collision_error", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
-		mockPgxExec := mocks.NewMockpgxExec(ctrl)
+		mockPgxExec := mocks.NewMockPgxExec(ctrl)
 		mockPgxExec.EXPECT().Exec(gomock.Any(), gomock.Any(), gomock.Any()).Return(pgconn.NewCommandTag(""), fmt.Errorf("error"))
 
 		writeItems := [][]interface{}{}
@@ -1808,14 +1808,14 @@ func TestExecuteInsertChanges(t *testing.T) {
 	t.Run("empty_statement", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
-		mockPgxExec := mocks.NewMockpgxExec(ctrl)
+		mockPgxExec := mocks.NewMockPgxExec(ctrl)
 		err := executeInsertChanges(context.Background(), mockPgxExec, nil)
 		require.NoError(t, err)
 	})
 	t.Run("txn_exec_good", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
-		mockPgxExec := mocks.NewMockpgxExec(ctrl)
+		mockPgxExec := mocks.NewMockPgxExec(ctrl)
 		mockPgxExec.EXPECT().Exec(gomock.Any(), gomock.Any(), gomock.Any()).Return(pgconn.NewCommandTag("INSERT 1"), nil)
 
 		writeItems := [][]interface{}{}
@@ -1838,7 +1838,7 @@ func TestExecuteInsertChanges(t *testing.T) {
 	t.Run("txn_exec_error", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
-		mockPgxExec := mocks.NewMockpgxExec(ctrl)
+		mockPgxExec := mocks.NewMockPgxExec(ctrl)
 		mockPgxExec.EXPECT().Exec(gomock.Any(), gomock.Any(), gomock.Any()).Return(pgconn.NewCommandTag(""), fmt.Errorf("error"))
 
 		writeItems := [][]interface{}{}

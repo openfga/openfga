@@ -68,6 +68,9 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 		util.MustBindPFlag("http.corsAllowedHeaders", flags.Lookup("http-cors-allowed-headers"))
 		util.MustBindEnv("http.corsAllowedHeaders", "OPENFGA_HTTP_CORS_ALLOWED_HEADERS", "OPENFGA_HTTP_CORSALLOWEDHEADERS")
 
+		util.MustBindPFlag("authzen.baseURL", flags.Lookup("authzen-base-url"))
+		util.MustBindEnv("authzen.baseURL", "OPENFGA_AUTHZEN_BASE_URL")
+
 		util.MustBindPFlag("authn.method", flags.Lookup("authn-method"))
 		util.MustBindEnv("authn.method", "OPENFGA_AUTHN_METHOD")
 
@@ -142,6 +145,9 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 
 		util.MustBindPFlag("playground.port", flags.Lookup("playground-port"))
 		util.MustBindEnv("playground.port", "OPENFGA_PLAYGROUND_PORT")
+
+		util.MustBindPFlag("playground.addr", flags.Lookup("playground-addr"))
+		util.MustBindEnv("playground.addr", "OPENFGA_PLAYGROUND_ADDR")
 
 		util.MustBindPFlag("profiler.enabled", flags.Lookup("profiler-enabled"))
 		util.MustBindEnv("profiler.enabled", "OPENFGA_PROFILER_ENABLED")
@@ -347,6 +353,9 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 
 		util.MustBindPFlag("requestTimeout", flags.Lookup("request-timeout"))
 		util.MustBindEnv("requestTimeout", "OPENFGA_REQUEST_TIMEOUT")
+
+		util.MustBindPFlag("shutdownTimeout", flags.Lookup("shutdown-timeout"))
+		util.MustBindEnv("shutdownTimeout", "OPENFGA_SHUTDOWN_TIMEOUT")
 
 		// these are irrelevant unless the check-experimental flag is enabled at the current time
 		util.MustBindPFlag("planner.evictionThreshold", flags.Lookup("planner-eviction-threshold"))

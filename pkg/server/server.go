@@ -192,6 +192,7 @@ type Server struct {
 	maxAuthorizationModelCacheSize   int
 	maxTypesystemCacheSize           int
 	maxAuthorizationModelSizeInBytes int
+	authzenBaseURL                   string
 	experimentals                    []string
 	AccessControl                    serverconfig.AccessControlConfig
 	AuthnMethod                      string
@@ -450,6 +451,12 @@ func WithFeatureFlagClient(client featureflags.Client) OpenFGAServiceV1Option {
 		}
 
 		s.featureFlagClient = featureflags.NewNoopFeatureFlagClient()
+	}
+}
+
+func WithAuthzenBaseURL(baseURL string) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.authzenBaseURL = baseURL
 	}
 }
 
@@ -931,6 +938,16 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 	if len(s.requestDurationByDispatchCountHistogramBuckets) == 0 {
 		return nil, fmt.Errorf("request duration by dispatch count buckets must not be empty")
 	}
+
+	if s.authzenBaseURL != "" {
+		normalizedAuthzenBaseURL, err := serverconfig.NormalizeAuthzenBaseURL(s.authzenBaseURL)
+		if err != nil {
+			return nil, fmt.Errorf("invalid AuthZEN base URL: %w", err)
+		}
+
+		s.authzenBaseURL = normalizedAuthzenBaseURL
+	}
+
 	if s.checkDispatchThrottlingEnabled && s.checkDispatchThrottlingMaxThreshold != 0 && s.checkDispatchThrottlingDefaultThreshold > s.checkDispatchThrottlingMaxThreshold {
 		return nil, fmt.Errorf("check default dispatch throttling threshold must be equal or smaller than max dispatch threshold for Check")
 	}

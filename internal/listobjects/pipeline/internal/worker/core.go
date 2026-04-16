@@ -3,11 +3,13 @@ package worker
 import (
 	"context"
 	"fmt"
-	"iter"
+	"strconv"
 	"sync"
+	"sync/atomic"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	weightedGraph "github.com/openfga/language/pkg/go/graph"
 
@@ -22,7 +24,7 @@ type Edge = weightedGraph.WeightedAuthorizationModelEdge
 // Interpreter transforms raw input items by querying storage through
 // an edge's relation definition.
 type Interpreter interface {
-	Interpret(ctx context.Context, edge *Edge, items []string) iter.Seq[Item]
+	Interpret(ctx context.Context, edge *Edge, items []string) Receiver[Item]
 }
 
 // Worker processes messages from upstream senders, transforms them
@@ -32,18 +34,20 @@ type Worker interface {
 	Execute(context.Context)
 	Subscribe(*Edge, int) Sender
 	Cleanup()
+	Len() int
 	fmt.Stringer
 }
 
 // MessageProcessor handles a single message received from a sender.
 // The index parameter identifies which sender produced the message.
 type MessageProcessor interface {
-	ProcessMessage(context.Context, int, *Message)
+	ProcessMessage(context.Context, int, *Message) error
 }
 
 // Message carries a batch of values between workers.
 // Callback, when non-nil, is invoked by Done to release pooled resources.
 type Message struct {
+	pool     *MessagePool
 	Value    []string
 	Callback func()
 }
@@ -54,7 +58,12 @@ func (m *Message) Done() {
 		m.Callback()
 	}
 	m.Callback = nil
-	m.Value = nil
+
+	pool := m.pool
+	m.pool = nil
+	if pool != nil {
+		pool.Put(m)
+	}
 }
 
 // Item represents a single result from an [Interpreter], carrying either
@@ -74,48 +83,61 @@ func (i Item) Object() (string, error) {
 type Stats struct {
 	Source              string
 	Destination         string
+	Cyclical            bool
+	SumErrors           int64
 	SumMessagesReceived int64
 	SumObjectsReceived  int64
 	MaxObjectsReceived  int64
 }
 
-// BufferPool is a channel-based free list of reusable string slices.
+// MessagePool is a channel-based free list of reusable string slices.
 // Unlike [sync.Pool], items in the channel are strong references that
 // are not subject to garbage collection between GC cycles, which
 // prevents allocation thrashing on hot paths.
-type BufferPool struct {
-	free chan *[]string
+type MessagePool struct {
+	free chan *Message
 	size int
 }
 
-// NewBufferPool returns a BufferPool that retains up to capacity buffers,
+// InitMessagePool configures an existing MessagePool with the given
+// element size and channel capacity.
+func InitMessagePool(pool *MessagePool, size, capacity int) {
+	pool.free = make(chan *Message, capacity)
+	pool.size = size
+}
+
+// NewMessagePool returns a MessagePool that retains up to capacity messages,
 // each pre-sized to hold size elements.
-func NewBufferPool(size, capacity int) *BufferPool {
-	return &BufferPool{
-		free: make(chan *[]string, capacity),
+func NewMessagePool(size, capacity int) *MessagePool {
+	return &MessagePool{
+		free: make(chan *Message, capacity),
 		size: size,
 	}
 }
 
 // Get returns a buffer from the pool, or allocates a new one if the pool
 // is empty.
-func (p *BufferPool) Get() *[]string {
+func (p *MessagePool) Get() *Message {
 	select {
-	case buf := <-p.free:
-		return buf
+	case msg := <-p.free:
+		msg.pool = p
+		return msg
 	default:
-		buf := make([]string, 0, p.size)
-		return &buf
+		msg := &Message{
+			pool:  p,
+			Value: make([]string, 0, p.size),
+		}
+		return msg
 	}
 }
 
-// Put clears buf and returns it to the pool. If the pool is already full
-// the buffer is dropped for garbage collection.
-func (p *BufferPool) Put(buf *[]string) {
-	clear((*buf)[:cap(*buf)])
-	*buf = (*buf)[:0]
+// Put clears msg and returns it to the pool. If the pool is already full
+// the message is dropped for garbage collection.
+func (p *MessagePool) Put(msg *Message) {
+	clear(msg.Value[:cap(msg.Value)])
+	msg.Value = msg.Value[:0]
 	select {
-	case p.free <- buf:
+	case p.free <- msg:
 	default:
 	}
 }
@@ -133,7 +155,25 @@ type Core struct {
 	Interpreter Interpreter
 	ChunkSize   int
 	NumProcs    int
-	Pool        *BufferPool
+	Pool        *MessagePool
+}
+
+func (c *Core) instrument(span trace.Span) {
+	attrs := make([]attribute.KeyValue, 0, len(c.senders)*6)
+	for i := range len(c.senders) {
+		index := strconv.Itoa(i)
+		prefix := "worker.sender." + index + "."
+		attrs = append(
+			attrs,
+			attribute.String(prefix+"source", c.stats[i].Source),
+			attribute.String(prefix+"destination", c.stats[i].Destination),
+			attribute.Bool(prefix+"cyclical", c.stats[i].Cyclical),
+			attribute.Int64(prefix+"received.message.sum", c.stats[i].SumMessagesReceived),
+			attribute.Int64(prefix+"received.object.sum", c.stats[i].SumObjectsReceived),
+			attribute.Int64(prefix+"received.object.max", c.stats[i].MaxObjectsReceived),
+		)
+	}
+	span.SetAttributes(attrs...)
 }
 
 // error sends a non-nil *err to the shared error channel. If the channel
@@ -159,6 +199,11 @@ func (c *Core) Cleanup() {
 	}
 }
 
+// Len returns the number of downstream listeners.
+func (c *Core) Len() int {
+	return len(c.listeners)
+}
+
 // Key is a typed context key used to store per-goroutine scratch buffers.
 type Key int
 
@@ -174,9 +219,6 @@ const (
 // [Stats] entry. When the sender is exhausted or ctx is cancelled, any
 // remaining messages are drained.
 func (c *Core) ProcessSender(ctx context.Context, index int, processor MessageProcessor) {
-	ctx, span := tracer.Start(ctx, "Core.ProcessSender")
-	defer span.End()
-
 	sender := c.senders[index]
 	stats := &c.stats[index]
 
@@ -185,19 +227,15 @@ func (c *Core) ProcessSender(ctx context.Context, index int, processor MessagePr
 
 	cyclical := IsCyclical(edge)
 
+	stats.Cyclical = cyclical
 	stats.Source = src
 	stats.Destination = dst
 
-	defer func() {
-		span.SetAttributes(
-			attribute.String("sender.source", src),
-			attribute.String("sender.destination", dst),
-			attribute.Bool("sender.cyclical", cyclical),
-			attribute.Int64("sender.messages.received.sum", stats.SumMessagesReceived),
-			attribute.Int64("sender.objects.received.sum", stats.SumObjectsReceived),
-			attribute.Int64("sender.objects.received.max", stats.MaxObjectsReceived),
-		)
-	}()
+	var errCount atomic.Int64
+
+	defer func(stats *Stats, errCount *atomic.Int64) {
+		stats.SumErrors = errCount.Load()
+	}(stats, &errCount)
 
 	// The drain must fully release all queued messages in order to prevent
 	// deadlocks during cleanup.
@@ -226,9 +264,13 @@ func (c *Core) ProcessSender(ctx context.Context, index int, processor MessagePr
 
 			for msg = range input {
 				if processor != nil {
-					processor.ProcessMessage(ctx, index, msg)
+					if e := processor.ProcessMessage(ctx, index, msg); e != nil {
+						errCount.Add(1)
+						c.error(&e)
+					}
 				}
 				msg.Done()
+				msg = nil
 			}
 		})
 	}
@@ -260,9 +302,9 @@ var DefaultMediumFunc = func(edge *Edge, capacity int) Medium {
 	var medium Medium
 
 	if IsCyclical(edge) {
-		medium = NewAccumulatorMedium(edge)
+		medium = NewCyclicalMedium(edge, capacity)
 	} else {
-		medium = NewChannelMedium(edge, capacity)
+		medium = NewStandardMedium(edge, capacity)
 	}
 	return medium
 }
@@ -294,23 +336,16 @@ func (c *Core) Listen(sender Sender) {
 // downstream consumer calls [Message.Done].
 func (c *Core) send(ctx context.Context, buffer []string) {
 	for _, listener := range c.listeners {
-		pooled := c.Pool.Get()
-		output := (*pooled)[:len(buffer)]
-		copy(output, buffer)
-
-		m := &Message{
-			Value: output,
-			Callback: func() {
-				c.Pool.Put(pooled)
-			},
-		}
+		msg := c.Pool.Get()
+		msg.Value = msg.Value[:len(buffer)]
+		copy(msg.Value, buffer)
 
 		if c.MsgFunc != nil {
-			c.MsgFunc(m, listener.Key())
+			c.MsgFunc(msg, listener.Key())
 		}
 
-		if !listener.Send(ctx, m) {
-			m.Done()
+		if !listener.Send(ctx, msg) {
+			msg.Done()
 		}
 	}
 }
@@ -318,15 +353,16 @@ func (c *Core) send(ctx context.Context, buffer []string) {
 // Broadcast reads values from the iterator in batches of ChunkSize and
 // broadcasts each batch to all registered listeners. It stops when the
 // iterator is exhausted or ctx is cancelled.
-func (c *Core) Broadcast(ctx context.Context, values iter.Seq[string]) {
+func (c *Core) Broadcast(ctx context.Context, values Receiver[string]) {
 	buffer, ok := ctx.Value(BufferKey).([]string)
 	if !ok || buffer == nil {
 		buffer = make([]string, c.ChunkSize)
 	}
 	buffer = buffer[:0]
 
-	for value := range values {
-		if ctx.Err() != nil {
+	for {
+		value, ok := values.Recv(ctx)
+		if !ok {
 			break
 		}
 		buffer = append(buffer, value)

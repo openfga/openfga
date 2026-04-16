@@ -9,6 +9,7 @@ import (
 	"path"
 	"runtime"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -2457,7 +2458,6 @@ func TestCheckWithCachedIterator(t *testing.T) {
 		WithDatastore(ds),
 		WithCheckCacheLimit(10),
 		WithCheckCache(cache),
-		WithCheckQueryCacheTTL(1*time.Minute),
 		WithCheckIteratorCacheEnabled(true),
 		WithCheckIteratorCacheMaxResults(10),
 	)
@@ -2536,7 +2536,6 @@ func TestBatchCheckWithCachedIterator(t *testing.T) {
 		WithDatastore(ds),
 		WithCheckCache(cache),
 		WithCheckCacheLimit(10),
-		WithCheckQueryCacheTTL(1*time.Minute),
 		WithCheckIteratorCacheEnabled(true),
 		WithCheckIteratorCacheMaxResults(10),
 	)
@@ -2587,4 +2586,395 @@ func TestBatchCheckWithCachedIterator(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, batchCheckResponse.GetResult()[fakeID].GetAllowed())
 	require.Equal(t, 1, cache.Hits())
+}
+
+// TestV2CheckWithIteratorCache tests the V2 check path (weighted graph check)
+// with iterator cache enabled. This verifies the end-to-end integration of the
+// iterator cache v2 implementation in pkg/storage/storagewrappers/.
+func TestV2CheckWithIteratorCache(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	ctx := context.Background()
+	storeID := ulid.Make().String()
+	modelID := ulid.Make().String()
+
+	// Use a model with a userset so iterator cache reads (ReadUsersetTuples)
+	// are triggered. A simple [user] model only uses ReadUserTuple which is
+	// not cached, making cache assertions vacuous.
+	model := parser.MustTransformDSLToProto(`
+		model
+			schema 1.1
+		type user
+		type group
+			relations
+				define member: [user]
+		type document
+			relations
+				define viewer: [user, group#member]
+	`)
+	model.Id = modelID
+
+	ds := memory.New()
+	err := ds.WriteAuthorizationModel(context.Background(), storeID, model)
+	require.NoError(t, err)
+
+	// Create tuples that will exercise the iterator cache:
+	// - document:1 -> viewer -> group:eng#member (userset)
+	// - group:eng -> member -> user:alice
+	// - group:eng -> member -> user:bob
+	tuples := []*openfgav1.TupleKey{
+		tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
+		tuple.NewTupleKey("group:eng", "member", "user:alice"),
+		tuple.NewTupleKey("group:eng", "member", "user:bob"),
+	}
+	err = ds.Write(context.Background(), storeID, nil, tuples)
+	require.NoError(t, err)
+
+	cache := storageTest.NewMapCache()
+
+	// Create server with v2 check enabled via feature flag
+	s := MustNewServerWithOpts(
+		WithContext(ctx),
+		WithDatastore(ds),
+		WithCheckCacheLimit(100),
+		WithCheckCache(cache),
+		WithCheckIteratorCacheEnabled(true),
+		WithCheckIteratorCacheMaxResults(1000),
+		WithCheckIteratorCacheTTL(1*time.Minute),
+		// Enable v2 weighted graph check
+		WithFeatureFlagClient(featureflags.NewDefaultClient([]string{serverconfig.ExperimentalWeightedGraphCheck})),
+	)
+	t.Cleanup(s.Close)
+
+	// First check - should miss cache and populate iterator cache
+	checkResponse, err := s.Check(ctx, &openfgav1.CheckRequest{
+		StoreId:              storeID,
+		TupleKey:             tuple.NewCheckRequestTupleKey("document:1", "viewer", "user:alice"),
+		AuthorizationModelId: modelID,
+	})
+	require.NoError(t, err)
+	require.True(t, checkResponse.GetAllowed())
+
+	initialHits := cache.Hits()
+
+	// Verify iterator cache entries were created (v2ic. prefix) by waiting for
+	// background cache population with a bounded timeout.
+	require.Eventually(t, func() bool {
+		return len(cache.KeysWithPrefix("v2ic.")) > 0
+	}, 2*time.Second, 10*time.Millisecond, "V2 iterator cache should have entries after first check")
+
+	// Second check with different user but same userset traversal
+	// This should hit the iterator cache for group:eng#member lookup
+	checkResponse, err = s.Check(ctx, &openfgav1.CheckRequest{
+		StoreId:              storeID,
+		TupleKey:             tuple.NewCheckRequestTupleKey("document:1", "viewer", "user:bob"),
+		AuthorizationModelId: modelID,
+	})
+	require.NoError(t, err)
+	require.True(t, checkResponse.GetAllowed())
+	// Should have more cache hits from iterator cache
+	require.Greater(t, cache.Hits(), initialHits, "Should have cache hits from iterator cache")
+}
+
+// TestV2CheckWithIteratorCache_Invalidation tests that the iterator cache
+// is properly invalidated when tuples are written.
+func TestV2CheckWithIteratorCache_Invalidation(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	ctx := context.Background()
+	storeID := ulid.Make().String()
+	modelID := ulid.Make().String()
+
+	// Use a model with a userset so iterator cache reads (ReadUsersetTuples)
+	// are triggered. A simple [user] model only uses ReadUserTuple which is
+	// not cached, making cache assertions vacuous.
+	model := parser.MustTransformDSLToProto(`
+		model
+			schema 1.1
+		type user
+		type group
+			relations
+				define member: [user]
+		type document
+			relations
+				define viewer: [user, group#member]
+	`)
+	model.Id = modelID
+
+	ds := memory.New()
+	err := ds.WriteAuthorizationModel(context.Background(), storeID, model)
+	require.NoError(t, err)
+
+	// Write initial tuple: alice is a viewer via group membership.
+	err = ds.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{
+		tuple.NewTupleKey("group:eng", "member", "user:alice"),
+		tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
+	})
+	require.NoError(t, err)
+
+	cache := storageTest.NewMapCache()
+
+	s := MustNewServerWithOpts(
+		WithContext(ctx),
+		WithDatastore(ds),
+		WithCheckCacheLimit(100),
+		WithCheckCache(cache),
+		WithCheckIteratorCacheEnabled(true),
+		WithCheckIteratorCacheMaxResults(1000),
+		WithCheckIteratorCacheTTL(1*time.Minute),
+		WithCacheControllerEnabled(true),
+		WithCacheControllerTTL(1*time.Nanosecond),
+		WithFeatureFlagClient(featureflags.NewDefaultClient([]string{serverconfig.ExperimentalWeightedGraphCheck})),
+	)
+	t.Cleanup(s.Close)
+
+	// Check alice — populates the iterator cache for ReadUsersetTuples on
+	// (document:1, viewer) and ReadStartingWithUser on (user:alice, group).
+	checkResponse, err := s.Check(ctx, &openfgav1.CheckRequest{
+		StoreId:              storeID,
+		TupleKey:             tuple.NewCheckRequestTupleKey("document:1", "viewer", "user:alice"),
+		AuthorizationModelId: modelID,
+	})
+	require.NoError(t, err)
+	require.True(t, checkResponse.GetAllowed())
+
+	// Wait for the iterator cache to be populated.
+	require.Eventually(t, func() bool {
+		return len(cache.KeysWithPrefix("v2ic.")) > 0
+	}, 2*time.Second, 10*time.Millisecond)
+
+	// Write a DIFFERENT group membership on the same (document:1, viewer).
+	// The cached iterator for ReadUsersetTuples on (document:1, viewer) only
+	// contains [group:eng#member]. If cache is not invalidated, a check for
+	// bob (who is a member of group:product) would use the stale entry and
+	// incorrectly return false.
+	_, err = s.Write(ctx, &openfgav1.WriteRequest{
+		StoreId:              storeID,
+		AuthorizationModelId: modelID,
+		Writes: &openfgav1.WriteRequestWrites{
+			TupleKeys: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("group:product", "member", "user:bob"),
+				tuple.NewTupleKey("document:1", "viewer", "group:product#member"),
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	// Delete the stale store-level invalidation marker so we can detect
+	// when the cache controller writes a fresh one after seeing the new writes.
+	cache.Delete(storage.GetInvalidIteratorCacheKey(storeID))
+
+	// WORKAROUND: Ideally, this test should disable the query cache; however,
+	// ExperimentalWeightedGraphCheck currently does not have an option to
+	// disable that. Instead, trigger cache controller invalidation through
+	// Check requests on a dummy user for the same object-relation used above
+	// until the new invalidation marker is written.
+	require.Eventually(t, func() bool {
+		resp, err := s.Check(ctx, &openfgav1.CheckRequest{
+			StoreId:              storeID,
+			TupleKey:             tuple.NewCheckRequestTupleKey("document:1", "viewer", "user:dummy"),
+			AuthorizationModelId: modelID,
+		})
+		require.NoError(t, err)
+		require.False(t, resp.GetAllowed()) // user doesn't exist
+		return cache.Get(storage.GetInvalidIteratorCacheKey(storeID)) != nil
+	}, 2*time.Second, 10*time.Millisecond)
+
+	// Now perform the check for bob. If the iterator cache was properly
+	// invalidated, this should return true since bob is a viewer via
+	// group:product. If cache was not invalidated, this would return false
+	// since the stale iterator cache entry only contains group:eng#member.
+	resp, err := s.Check(ctx, &openfgav1.CheckRequest{
+		StoreId:              storeID,
+		TupleKey:             tuple.NewCheckRequestTupleKey("document:1", "viewer", "user:bob"),
+		AuthorizationModelId: modelID,
+	})
+	require.NoError(t, err)
+	require.True(t, resp.GetAllowed())
+}
+
+// TestV2CheckWithIteratorCache_HigherConsistencyBypassesCache tests that
+// HIGHER_CONSISTENCY requests bypass the iterator cache.
+func TestV2CheckWithIteratorCache_HigherConsistencyBypassesCache(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	ctx := context.Background()
+	storeID := ulid.Make().String()
+	modelID := ulid.Make().String()
+
+	// Use a model with a userset so iterator cache reads (ReadUsersetTuples)
+	// are triggered. A simple [user] model only uses ReadUserTuple which is
+	// not cached, making cache assertions vacuous.
+	model := parser.MustTransformDSLToProto(`
+		model
+			schema 1.1
+		type user
+		type group
+			relations
+				define member: [user]
+		type document
+			relations
+				define viewer: [user, group#member]
+	`)
+	model.Id = modelID
+
+	ds := memory.New()
+	err := ds.WriteAuthorizationModel(context.Background(), storeID, model)
+	require.NoError(t, err)
+
+	err = ds.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{
+		tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
+		tuple.NewTupleKey("group:eng", "member", "user:alice"),
+		tuple.NewTupleKey("document:2", "viewer", "group:product#member"),
+		tuple.NewTupleKey("group:product", "member", "user:bob"),
+	})
+	require.NoError(t, err)
+
+	cache := storageTest.NewMapCache()
+
+	s := MustNewServerWithOpts(
+		WithContext(ctx),
+		WithDatastore(ds),
+		WithCheckCacheLimit(100),
+		WithCheckCache(cache),
+		WithCheckIteratorCacheEnabled(true),
+		WithCheckIteratorCacheMaxResults(1000),
+		WithCheckIteratorCacheTTL(1*time.Minute),
+		WithFeatureFlagClient(featureflags.NewDefaultClient([]string{serverconfig.ExperimentalWeightedGraphCheck})),
+	)
+	t.Cleanup(s.Close)
+
+	// First: verify that default consistency DOES populate the iterator cache.
+	// This proves the model/setup actually triggers iterator cache reads.
+	checkResponse, err := s.Check(ctx, &openfgav1.CheckRequest{
+		StoreId:              storeID,
+		TupleKey:             tuple.NewCheckRequestTupleKey("document:1", "viewer", "user:alice"),
+		AuthorizationModelId: modelID,
+	})
+	require.NoError(t, err)
+	require.True(t, checkResponse.GetAllowed())
+
+	require.Eventually(t, func() bool {
+		return len(cache.KeysWithPrefix("v2ic.")) > 0
+	}, 2*time.Second, 10*time.Millisecond, "default consistency should populate iterator cache")
+
+	// Record cache key count before HIGHER_CONSISTENCY checks.
+	keysCountBefore := len(cache.KeysWithPrefix("v2ic."))
+
+	// Now make HIGHER_CONSISTENCY requests for a different document/user
+	// to ensure any new cache entries would be distinct from existing ones.
+	for range 3 {
+		checkResponse, err := s.Check(ctx, &openfgav1.CheckRequest{
+			StoreId:              storeID,
+			TupleKey:             tuple.NewCheckRequestTupleKey("document:2", "viewer", "user:bob"),
+			AuthorizationModelId: modelID,
+			Consistency:          openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
+		})
+		require.NoError(t, err)
+		require.True(t, checkResponse.GetAllowed())
+	}
+
+	// HIGHER_CONSISTENCY should not have added any new iterator cache entries.
+	keysCountAfter := len(cache.KeysWithPrefix("v2ic."))
+	require.Equal(t, keysCountBefore, keysCountAfter, "HIGHER_CONSISTENCY should not populate iterator cache")
+}
+
+// TestV2CheckWithIteratorCache_Conditions tests that iterator cache correctly
+// handles tuples with conditions by including conditions in the cache key.
+func TestV2CheckWithIteratorCache_Conditions(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	ctx := context.Background()
+	storeID := ulid.Make().String()
+	modelID := ulid.Make().String()
+
+	// Use a model with a userset that has a condition, so iterator cache
+	// reads (ReadUsersetTuples) are triggered that include conditions
+	// in the cache key. A simple [user with condition] model only uses
+	// ReadUserTuple which is not cached.
+	model := parser.MustTransformDSLToProto(`
+		model
+			schema 1.1
+		type user
+		type group
+			relations
+				define member: [user with time_range]
+		type document
+			relations
+				define viewer: [user, group#member]
+		condition time_range(current_time: timestamp, start_time: timestamp, end_time: timestamp) {
+			current_time >= start_time && current_time <= end_time
+		}
+	`)
+	model.Id = modelID
+
+	ds := memory.New()
+	err := ds.WriteAuthorizationModel(context.Background(), storeID, model)
+	require.NoError(t, err)
+
+	// Write tuples: alice is a member of group:eng with a condition,
+	// and document:1 has group:eng#member as a viewer.
+	err = ds.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{
+		tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
+		{
+			Object:   "group:eng",
+			Relation: "member",
+			User:     "user:alice",
+			Condition: &openfgav1.RelationshipCondition{
+				Name: "time_range",
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	cache := storageTest.NewMapCache()
+
+	s := MustNewServerWithOpts(
+		WithContext(ctx),
+		WithDatastore(ds),
+		WithCheckCacheLimit(100),
+		WithCheckCache(cache),
+		WithCheckIteratorCacheEnabled(true),
+		WithCheckIteratorCacheMaxResults(1000),
+		WithCheckIteratorCacheTTL(1*time.Minute),
+		WithFeatureFlagClient(featureflags.NewDefaultClient([]string{serverconfig.ExperimentalWeightedGraphCheck})),
+	)
+	t.Cleanup(s.Close)
+
+	// Check with context that satisfies the condition
+	checkResponse, err := s.Check(ctx, &openfgav1.CheckRequest{
+		StoreId:              storeID,
+		TupleKey:             tuple.NewCheckRequestTupleKey("document:1", "viewer", "user:alice"),
+		AuthorizationModelId: modelID,
+		Context: testutils.MustNewStruct(t, map[string]any{
+			"current_time": "2023-01-15T10:00:00Z",
+			"start_time":   "2023-01-01T00:00:00Z",
+			"end_time":     "2023-12-31T23:59:59Z",
+		}),
+	})
+	require.NoError(t, err)
+	require.True(t, checkResponse.GetAllowed())
+
+	// Wait for iterator cache to be populated and verify entries exist
+	// with condition hash segments (/c:) in the cache keys.
+	require.Eventually(t, func() bool {
+		v2CacheKeys := cache.KeysWithPrefix("v2ic.")
+		if len(v2CacheKeys) == 0 {
+			return false
+		}
+		for _, key := range v2CacheKeys {
+			if strings.Contains(key, "/c:") {
+				return true
+			}
+		}
+		return false
+	}, 2*time.Second, 10*time.Millisecond, "iterator cache should contain entries with condition hash")
 }

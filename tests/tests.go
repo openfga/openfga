@@ -54,6 +54,18 @@ func StartServerWithContext(t testing.TB, cfg *serverconfig.Config, serverCtx *r
 	cfg.HTTP.Addr = fmt.Sprintf("localhost:%d", httpPort)
 	grpcPort, grpcPortReleaser := testutils.TCPRandomPort()
 	cfg.GRPC.Addr = fmt.Sprintf("localhost:%d", grpcPort)
+	if cfg.Authzen.BaseURL == "" {
+		for _, exp := range cfg.Experimentals {
+			if exp == serverconfig.ExperimentalAuthZen {
+				scheme := "http"
+				if cfg.HTTP.TLS != nil && cfg.HTTP.TLS.Enabled {
+					scheme = "https"
+				}
+				cfg.Authzen.BaseURL = scheme + "://" + cfg.HTTP.Addr
+				break
+			}
+		}
+	}
 
 	// these two functions release the ports so that the server can start listening on them
 	httpPortReleaser()
@@ -66,8 +78,13 @@ func StartServerWithContext(t testing.TB, cfg *serverconfig.Config, serverCtx *r
 	t.Cleanup(func() {
 		t.Log("waiting for server to stop")
 		cancel()
-		serverErr := <-serverDone
-		t.Log("server stopped with error: ", serverErr)
+
+		if serverErr := <-serverDone; serverErr != nil {
+			t.Log("server stopped with error: ", serverErr)
+			return
+		}
+
+		t.Log("server stopped successfully")
 	})
 
 	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil)
@@ -75,7 +92,7 @@ func StartServerWithContext(t testing.TB, cfg *serverconfig.Config, serverCtx *r
 
 // BuildClientInterface sets up test client interface to be used for matrix test.
 func BuildClientInterface(t *testing.T, engine string, experimentals []string) ClientInterface {
-	cfg := serverconfig.MustDefaultConfig()
+	cfg := testutils.MustDefaultConfig()
 	if len(experimentals) > 0 {
 		cfg.Experimentals = append(cfg.Experimentals, experimentals...)
 	}
