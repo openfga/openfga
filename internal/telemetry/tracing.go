@@ -100,6 +100,12 @@ func ResolveOTLPSecurity(configSecure, schemeSecure bool) bool {
 
 // ResolveSampler maps a sampler name (as defined by the OTEL_TRACES_SAMPLER spec)
 // and a sampling ratio to the corresponding Go SDK sampler.
+//
+// Unrecognized names (e.g. "jaeger_remote", "xray") fall back to TraceIDRatioBased.
+// Note: because Viper binds OTEL_TRACES_SAMPLER with env-over-config precedence,
+// an unsupported env value will displace a valid config-file sampler and land here
+// in the default branch. This is a known limitation of partial OTEL_TRACES_SAMPLER
+// support rather than full "ignore unknown" semantics.
 func ResolveSampler(name string, ratio float64) sdktrace.Sampler {
 	switch strings.ToLower(name) {
 	case "always_on":
