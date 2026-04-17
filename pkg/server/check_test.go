@@ -628,13 +628,20 @@ func TestV2CheckQueryCacheEnabled(t *testing.T) {
 	})
 
 	t.Run("skips_subproblem_caching_when_disabled", func(t *testing.T) {
+		// Use WithCheckIteratorCacheEnabled so that a real cache is created even though
+		// query caching is disabled. This tests the real-world scenario where the shared
+		// CheckCache is non-nil (due to iterator caching) but query sub-problem caching
+		// must still be skipped.
 		s, req := setupCheckServer(t, "", nil,
 			WithCheckQueryCacheEnabled(false),
 			WithCheckCacheLimit(10),
 			WithCheckQueryCacheTTL(1*time.Minute),
+			WithCheckIteratorCacheEnabled(true),
+			WithCheckIteratorCacheTTL(1*time.Minute),
 		)
 
 		checkCache := newRecordingCache()
+		s.sharedDatastoreResources.CheckCache.Stop()
 		s.sharedDatastoreResources.CheckCache = checkCache
 		s.authzModelGraphResolver = modelgraph.NewResolver(s.datastore, checkCache, 24*7*time.Hour)
 
