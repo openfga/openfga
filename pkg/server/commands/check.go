@@ -30,7 +30,7 @@ type CheckQueryV2 struct {
 	datastoreOp               storagewrappers.Operation
 	cache                     storage.InMemoryCache[any]
 	queryCacheEnabled         bool
-	queryCacheTTL                  time.Duration
+	queryCacheTTL             time.Duration
 	lastCacheInvalidationTime time.Time
 	planner                   planner.Manager
 	concurrencyLimit          int
