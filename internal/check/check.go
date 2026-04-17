@@ -43,7 +43,6 @@ type Config struct {
 	Cache                     storage.InMemoryCache[any]
 	CacheTTL                  time.Duration
 	LastCacheInvalidationTime time.Time
-	QueryCacheEnabled         bool
 	Planner                   planner.Manager
 	ConcurrencyLimit          int
 	UpstreamTimeout           time.Duration
@@ -57,7 +56,6 @@ type Resolver struct {
 	cache                     storage.InMemoryCache[any]
 	cacheTTL                  time.Duration
 	lastCacheInvalidationTime time.Time
-	queryCacheEnabled         bool
 	planner                   planner.Manager
 	concurrencyLimit          int
 	upstreamTimeout           time.Duration
@@ -73,7 +71,6 @@ func New(cfg Config) *Resolver {
 		cache:                     cfg.Cache,
 		cacheTTL:                  cfg.CacheTTL,
 		lastCacheInvalidationTime: cfg.LastCacheInvalidationTime,
-		queryCacheEnabled:         cfg.QueryCacheEnabled,
 		planner:                   cfg.Planner,
 		concurrencyLimit:          cfg.ConcurrencyLimit,
 		upstreamTimeout:           cfg.UpstreamTimeout,
@@ -170,10 +167,8 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, edges []
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	if r.queryCacheEnabled {
-		if res, ok := r.isCached(req.GetConsistency(), req.GetCacheKey()); ok {
-			return res, nil
-		}
+	if res, ok := r.isCached(req.GetConsistency(), req.GetCacheKey()); ok {
+		return res, nil
 	}
 
 	out := make(chan ResponseMsg, len(edges))
@@ -187,41 +182,32 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, edges []
 	relation := req.GetTupleKey().GetRelation()
 	objectType := tuple.GetType(req.GetTupleKey().GetObject())
 	objectRelation := tuple.ToObjectRelationString(objectType, relation)
-	pendingEdgeResponses := 0 // number of responses to collect from out, one per edge touched
+	ids := make([]string, 0, len(edges))
 	for _, edge := range edges {
-		if r.queryCacheEnabled {
-			id := buildEdgeCacheKey(r.model.GetModelID(), req, edge)
-			pendingEdgeResponses++
-			if res, ok := r.isCached(req.GetConsistency(), id); ok {
-				concurrency.TrySendThroughChannel(ctx, ResponseMsg{ID: id, Res: res}, out)
-				if res.GetAllowed() {
-					break
-				}
-				continue
+		id := buildEdgeCacheKey(r.model.GetModelID(), req, edge)
+		ids = append(ids, id)
+		if res, ok := r.isCached(req.GetConsistency(), id); ok {
+			concurrency.TrySendThroughChannel(ctx, ResponseMsg{ID: id, Res: res}, out)
+			if res.GetAllowed() {
+				break
 			}
-			pool.Go(func() error {
-				res, err := r.ResolveEdge(ctx, req, edge, visited)
-				// we only need to cache the response for the edge if the edge does not belong to the request relation
-				// otherwise the subproblem should be sufficient
-				if err == nil && edge.GetRelationDefinition() != objectRelation {
-					entry := &ResponseCacheEntry{Res: res, LastModified: time.Now()}
-					r.cache.Set(id, entry, r.cacheTTL)
-				}
-				concurrency.TrySendThroughChannel(ctx, ResponseMsg{ID: id, Res: res, Err: err}, out)
-				return nil
-			})
-		} else {
-			pendingEdgeResponses++
-			pool.Go(func() error {
-				res, err := r.ResolveEdge(ctx, req, edge, visited)
-				concurrency.TrySendThroughChannel(ctx, ResponseMsg{Res: res, Err: err}, out)
-				return nil
-			})
+			continue
 		}
+		pool.Go(func() error {
+			res, err := r.ResolveEdge(ctx, req, edge, visited)
+			// we only need to cache the response for the edge if the edge does not belong to the request relation
+			// otherwise the subproblem should be sufficient
+			if err == nil && edge.GetRelationDefinition() != objectRelation {
+				entry := &ResponseCacheEntry{Res: res, LastModified: time.Now()}
+				r.cache.Set(id, entry, r.cacheTTL)
+			}
+			concurrency.TrySendThroughChannel(ctx, ResponseMsg{ID: id, Res: res, Err: err}, out)
+			return nil
+		})
 	}
 
 	var err error
-	for range pendingEdgeResponses {
+	for range ids {
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
@@ -233,10 +219,8 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, edges []
 
 			if msg.Res.GetAllowed() {
 				// Short-circuit: In a union, if any branch returns true, we can immediately return.
-				if r.queryCacheEnabled {
-					entry := &ResponseCacheEntry{Res: msg.Res, LastModified: time.Now()}
-					r.cache.Set(req.GetCacheKey(), entry, r.cacheTTL)
-				}
+				entry := &ResponseCacheEntry{Res: msg.Res, LastModified: time.Now()}
+				r.cache.Set(req.GetCacheKey(), entry, r.cacheTTL)
 				return msg.Res, nil
 			}
 		}
@@ -246,10 +230,8 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, edges []
 		return nil, err
 	}
 	res := &Response{Allowed: false}
-	if r.queryCacheEnabled {
-		entry := &ResponseCacheEntry{Res: res, LastModified: time.Now()}
-		r.cache.Set(req.GetCacheKey(), entry, r.cacheTTL)
-	}
+	entry := &ResponseCacheEntry{Res: res, LastModified: time.Now()}
+	r.cache.Set(req.GetCacheKey(), entry, r.cacheTTL)
 	return res, nil
 }
 

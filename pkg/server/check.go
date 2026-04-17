@@ -264,7 +264,6 @@ func (s *Server) v2Check(
 		commands.WithCheckQueryV2Model(mg),
 		commands.WithCheckQueryV2Cache(cache),
 		commands.WithCheckQueryV2CacheTTL(s.cacheSettings.CheckQueryCacheTTL),
-		commands.WithCheckQueryV2QueryCacheEnabled(s.cacheSettings.ShouldCacheCheckQueries()),
 		commands.WithCheckQueryV2Planner(s.planner),
 		commands.WithCheckQueryV2LastCacheInvalidationTime(cacheInvalidationTime),
 		commands.WithCheckQueryV2ConcurrencyLimit(int(s.resolveNodeBreadthLimit)),
