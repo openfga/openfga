@@ -283,7 +283,7 @@ exec docker-entrypoint.sh postgres -c hot_standby=on -c max_connections=200
 		ExtraHosts:      []string{"host.docker.internal:host-gateway"},
 	}
 
-	contName := "secondary-" + postgresContainer
+	contName := postgresContainer + "-replica"
 	cont, err := docker.RunContainer(t.Context(), contCfg, hostCfg, contName)
 	require.NoError(t, err, "run postgres container")
 
