@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 
+	"github.com/openfga/openfga/internal/containers/mpsc"
 	"github.com/openfga/openfga/internal/listobjects/pipeline/internal/worker"
 )
 
@@ -91,7 +92,7 @@ func newPool() *worker.MessagePool {
 	return worker.NewMessagePool(chunkSize, 10)
 }
 
-func newCore(interp worker.Interpreter, errs chan<- error) *worker.Core {
+func newCore(interp worker.Interpreter, errs *mpsc.Accumulator[error]) *worker.Core {
 	return &worker.Core{
 		Label:       "test",
 		Errors:      errs,
@@ -103,6 +104,19 @@ func newCore(interp worker.Interpreter, errs chan<- error) *worker.Core {
 			return worker.NewChannelMedium(edge, capacity)
 		},
 	}
+}
+
+// collectErrors drains all errors from an Accumulator after it has been closed.
+func collectErrors(acc *mpsc.Accumulator[error]) []error {
+	var errs []error
+	for {
+		e, ok := acc.TryRecv(context.Background())
+		if !ok {
+			break
+		}
+		errs = append(errs, e)
+	}
+	return errs
 }
 
 // collectOutput drains all messages from a Sender and returns the combined values.
@@ -190,20 +204,21 @@ func TestDefaultPreprocessor_IsIdentity(t *testing.T) {
 func TestBasic_Execute_NoSenders(t *testing.T) {
 	defer goleak.VerifyNone(t)
 
-	errs := make(chan error, 10)
+	errs := mpsc.NewAccumulator[error]()
 	w := &worker.Basic{Core: newCore(passthroughInterpreter(), errs)}
 	output := w.Subscribe(nil, chunkSize)
 
 	w.Execute(context.Background())
 
 	assert.Empty(t, collectOutput(output))
-	assert.Empty(t, errs)
+	errs.Close()
+	assert.Empty(t, collectErrors(errs))
 }
 
 func TestBasic_Execute_SingleSender(t *testing.T) {
 	defer goleak.VerifyNone(t)
 
-	errs := make(chan error, 10)
+	errs := mpsc.NewAccumulator[error]()
 	w := &worker.Basic{Core: newCore(passthroughInterpreter(), errs)}
 	w.Listen(sendItems("a", "b", "c"))
 	output := w.Subscribe(nil, chunkSize)
@@ -211,13 +226,14 @@ func TestBasic_Execute_SingleSender(t *testing.T) {
 	w.Execute(context.Background())
 
 	assert.Equal(t, []string{"a", "b", "c"}, sorted(collectOutput(output)))
-	assert.Empty(t, errs)
+	errs.Close()
+	assert.Empty(t, collectErrors(errs))
 }
 
 func TestBasic_Execute_DeduplicatesWithinSender(t *testing.T) {
 	defer goleak.VerifyNone(t)
 
-	errs := make(chan error, 10)
+	errs := mpsc.NewAccumulator[error]()
 	w := &worker.Basic{Core: newCore(passthroughInterpreter(), errs)}
 	w.Listen(sendItems("a", "b", "a", "b", "c"))
 	output := w.Subscribe(nil, chunkSize)
@@ -225,13 +241,14 @@ func TestBasic_Execute_DeduplicatesWithinSender(t *testing.T) {
 	w.Execute(context.Background())
 
 	assert.Equal(t, []string{"a", "b", "c"}, sorted(collectOutput(output)))
-	assert.Empty(t, errs)
+	errs.Close()
+	assert.Empty(t, collectErrors(errs))
 }
 
 func TestBasic_Execute_DeduplicatesAcrossSenders(t *testing.T) {
 	defer goleak.VerifyNone(t)
 
-	errs := make(chan error, 10)
+	errs := mpsc.NewAccumulator[error]()
 	w := &worker.Basic{Core: newCore(passthroughInterpreter(), errs)}
 	w.Listen(sendItems("a", "b"))
 	w.Listen(sendItems("b", "c"))
@@ -240,14 +257,15 @@ func TestBasic_Execute_DeduplicatesAcrossSenders(t *testing.T) {
 	w.Execute(context.Background())
 
 	assert.Equal(t, []string{"a", "b", "c"}, sorted(collectOutput(output)))
-	assert.Empty(t, errs)
+	errs.Close()
+	assert.Empty(t, collectErrors(errs))
 }
 
 func TestBasic_Execute_InterpreterError(t *testing.T) {
 	defer goleak.VerifyNone(t)
 
 	sentinelErr := errors.New("interpret failed")
-	errs := make(chan error, 10)
+	errs := mpsc.NewAccumulator[error]()
 
 	interp := &mockInterpreter{
 		fn: func(_ context.Context, _ *worker.Edge, items []string) worker.Receiver[worker.Item] {
@@ -265,16 +283,18 @@ func TestBasic_Execute_InterpreterError(t *testing.T) {
 	output := w.Subscribe(nil, chunkSize)
 
 	w.Execute(context.Background())
+	errs.Close()
 
 	assert.Nil(t, collectOutput(output))
-	require.Len(t, errs, 1)
-	assert.ErrorIs(t, <-errs, sentinelErr)
+	got := collectErrors(errs)
+	require.Len(t, got, 1)
+	assert.ErrorIs(t, got[0], sentinelErr)
 }
 
 func TestBasic_Execute_ContextCancelled(t *testing.T) {
 	defer goleak.VerifyNone(t)
 
-	errs := make(chan error, 10)
+	errs := mpsc.NewAccumulator[error]()
 	w := &worker.Basic{Core: newCore(passthroughInterpreter(), errs)}
 	w.Listen(sendItems("a", "b", "c"))
 	output := w.Subscribe(nil, chunkSize)
@@ -285,7 +305,8 @@ func TestBasic_Execute_ContextCancelled(t *testing.T) {
 	w.Execute(ctx)
 
 	assert.Empty(t, collectOutput(output))
-	assert.Empty(t, errs)
+	errs.Close()
+	assert.Empty(t, collectErrors(errs))
 }
 
 // --- Intersection Worker Tests ---
@@ -293,20 +314,21 @@ func TestBasic_Execute_ContextCancelled(t *testing.T) {
 func TestIntersection_Execute_NoSenders(t *testing.T) {
 	defer goleak.VerifyNone(t)
 
-	errs := make(chan error, 10)
+	errs := mpsc.NewAccumulator[error]()
 	w := &worker.Intersection{Core: newCore(passthroughInterpreter(), errs)}
 	output := w.Subscribe(nil, chunkSize)
 
 	w.Execute(context.Background())
 
 	assert.Empty(t, collectOutput(output))
-	assert.Empty(t, errs)
+	errs.Close()
+	assert.Empty(t, collectErrors(errs))
 }
 
 func TestIntersection_Execute_CommonItems(t *testing.T) {
 	defer goleak.VerifyNone(t)
 
-	errs := make(chan error, 10)
+	errs := mpsc.NewAccumulator[error]()
 	w := &worker.Intersection{Core: newCore(passthroughInterpreter(), errs)}
 	w.Listen(sendItems("a", "b", "c"))
 	w.Listen(sendItems("b", "c", "d"))
@@ -315,13 +337,14 @@ func TestIntersection_Execute_CommonItems(t *testing.T) {
 	w.Execute(context.Background())
 
 	assert.Equal(t, []string{"b", "c"}, sorted(collectOutput(output)))
-	assert.Empty(t, errs)
+	errs.Close()
+	assert.Empty(t, collectErrors(errs))
 }
 
 func TestIntersection_Execute_NoOverlap(t *testing.T) {
 	defer goleak.VerifyNone(t)
 
-	errs := make(chan error, 10)
+	errs := mpsc.NewAccumulator[error]()
 	w := &worker.Intersection{Core: newCore(passthroughInterpreter(), errs)}
 	w.Listen(sendItems("a", "b"))
 	w.Listen(sendItems("c", "d"))
@@ -330,13 +353,14 @@ func TestIntersection_Execute_NoOverlap(t *testing.T) {
 	w.Execute(context.Background())
 
 	assert.Empty(t, collectOutput(output))
-	assert.Empty(t, errs)
+	errs.Close()
+	assert.Empty(t, collectErrors(errs))
 }
 
 func TestIntersection_Execute_OneSenderEmpty(t *testing.T) {
 	defer goleak.VerifyNone(t)
 
-	errs := make(chan error, 10)
+	errs := mpsc.NewAccumulator[error]()
 	w := &worker.Intersection{Core: newCore(passthroughInterpreter(), errs)}
 	w.Listen(sendItems("a", "b"))
 	w.Listen(sendNothing())
@@ -345,13 +369,14 @@ func TestIntersection_Execute_OneSenderEmpty(t *testing.T) {
 	w.Execute(context.Background())
 
 	assert.Empty(t, collectOutput(output))
-	assert.Empty(t, errs)
+	errs.Close()
+	assert.Empty(t, collectErrors(errs))
 }
 
 func TestIntersection_Execute_IdenticalSets(t *testing.T) {
 	defer goleak.VerifyNone(t)
 
-	errs := make(chan error, 10)
+	errs := mpsc.NewAccumulator[error]()
 	w := &worker.Intersection{Core: newCore(passthroughInterpreter(), errs)}
 	w.Listen(sendItems("a", "b"))
 	w.Listen(sendItems("a", "b"))
@@ -360,13 +385,14 @@ func TestIntersection_Execute_IdenticalSets(t *testing.T) {
 	w.Execute(context.Background())
 
 	assert.Equal(t, []string{"a", "b"}, sorted(collectOutput(output)))
-	assert.Empty(t, errs)
+	errs.Close()
+	assert.Empty(t, collectErrors(errs))
 }
 
 func TestIntersection_Execute_ThreeSenders(t *testing.T) {
 	defer goleak.VerifyNone(t)
 
-	errs := make(chan error, 10)
+	errs := mpsc.NewAccumulator[error]()
 	w := &worker.Intersection{Core: newCore(passthroughInterpreter(), errs)}
 	w.Listen(sendItems("a", "b", "c"))
 	w.Listen(sendItems("b", "c", "d"))
@@ -376,14 +402,15 @@ func TestIntersection_Execute_ThreeSenders(t *testing.T) {
 	w.Execute(context.Background())
 
 	assert.Equal(t, []string{"c"}, sorted(collectOutput(output)))
-	assert.Empty(t, errs)
+	errs.Close()
+	assert.Empty(t, collectErrors(errs))
 }
 
 func TestIntersection_Execute_InterpreterError(t *testing.T) {
 	defer goleak.VerifyNone(t)
 
 	sentinelErr := errors.New("interpret failed")
-	errs := make(chan error, 10)
+	errs := mpsc.NewAccumulator[error]()
 
 	interp := &mockInterpreter{
 		fn: func(_ context.Context, _ *worker.Edge, items []string) worker.Receiver[worker.Item] {
@@ -402,16 +429,18 @@ func TestIntersection_Execute_InterpreterError(t *testing.T) {
 	output := w.Subscribe(nil, chunkSize)
 
 	w.Execute(context.Background())
+	errs.Close()
 
 	_ = collectOutput(output)
-	require.NotEmpty(t, errs)
-	assert.ErrorIs(t, <-errs, sentinelErr)
+	got := collectErrors(errs)
+	require.NotEmpty(t, got)
+	assert.ErrorIs(t, got[0], sentinelErr)
 }
 
 func TestIntersection_Execute_ContextCancelled(t *testing.T) {
 	defer goleak.VerifyNone(t)
 
-	errs := make(chan error, 10)
+	errs := mpsc.NewAccumulator[error]()
 	w := &worker.Intersection{Core: newCore(passthroughInterpreter(), errs)}
 	w.Listen(sendItems("a", "b"))
 	w.Listen(sendItems("a", "b"))
@@ -421,6 +450,7 @@ func TestIntersection_Execute_ContextCancelled(t *testing.T) {
 	cancel()
 
 	w.Execute(ctx)
+	errs.Close()
 
 	assert.Empty(t, collectOutput(output))
 }
@@ -428,7 +458,7 @@ func TestIntersection_Execute_ContextCancelled(t *testing.T) {
 func TestIntersection_Execute_SingleSender(t *testing.T) {
 	defer goleak.VerifyNone(t)
 
-	errs := make(chan error, 10)
+	errs := mpsc.NewAccumulator[error]()
 	w := &worker.Intersection{Core: newCore(passthroughInterpreter(), errs)}
 	w.Listen(sendItems("a", "b", "c"))
 	output := w.Subscribe(nil, chunkSize)
@@ -437,7 +467,8 @@ func TestIntersection_Execute_SingleSender(t *testing.T) {
 
 	// With a single sender, all items should pass through (intersection of one set).
 	assert.Equal(t, []string{"a", "b", "c"}, sorted(collectOutput(output)))
-	assert.Empty(t, errs)
+	errs.Close()
+	assert.Empty(t, collectErrors(errs))
 }
 
 // --- Difference Worker Tests ---
@@ -445,7 +476,7 @@ func TestIntersection_Execute_SingleSender(t *testing.T) {
 func TestDifference_Execute_LessThanTwoSenders(t *testing.T) {
 	defer goleak.VerifyNone(t)
 
-	errs := make(chan error, 10)
+	errs := mpsc.NewAccumulator[error]()
 	w := &worker.Difference{Core: newCore(passthroughInterpreter(), errs)}
 	w.Listen(sendItems("a"))
 	output := w.Subscribe(nil, chunkSize)
@@ -453,13 +484,14 @@ func TestDifference_Execute_LessThanTwoSenders(t *testing.T) {
 	w.Execute(context.Background())
 
 	assert.Empty(t, collectOutput(output))
-	assert.Empty(t, errs)
+	errs.Close()
+	assert.Empty(t, collectErrors(errs))
 }
 
 func TestDifference_Execute_SubtractsFromBase(t *testing.T) {
 	defer goleak.VerifyNone(t)
 
-	errs := make(chan error, 10)
+	errs := mpsc.NewAccumulator[error]()
 	w := &worker.Difference{Core: newCore(passthroughInterpreter(), errs)}
 	w.Listen(sendItems("a", "b", "c"))
 	w.Listen(sendItems("b"))
@@ -468,13 +500,14 @@ func TestDifference_Execute_SubtractsFromBase(t *testing.T) {
 	w.Execute(context.Background())
 
 	assert.Equal(t, []string{"a", "c"}, sorted(collectOutput(output)))
-	assert.Empty(t, errs)
+	errs.Close()
+	assert.Empty(t, collectErrors(errs))
 }
 
 func TestDifference_Execute_EmptyBase(t *testing.T) {
 	defer goleak.VerifyNone(t)
 
-	errs := make(chan error, 10)
+	errs := mpsc.NewAccumulator[error]()
 	w := &worker.Difference{Core: newCore(passthroughInterpreter(), errs)}
 	w.Listen(sendNothing())
 	w.Listen(sendItems("a"))
@@ -483,13 +516,14 @@ func TestDifference_Execute_EmptyBase(t *testing.T) {
 	w.Execute(context.Background())
 
 	assert.Empty(t, collectOutput(output))
-	assert.Empty(t, errs)
+	errs.Close()
+	assert.Empty(t, collectErrors(errs))
 }
 
 func TestDifference_Execute_EmptySubtract(t *testing.T) {
 	defer goleak.VerifyNone(t)
 
-	errs := make(chan error, 10)
+	errs := mpsc.NewAccumulator[error]()
 	w := &worker.Difference{Core: newCore(passthroughInterpreter(), errs)}
 	w.Listen(sendItems("a", "b"))
 	w.Listen(sendNothing())
@@ -498,13 +532,14 @@ func TestDifference_Execute_EmptySubtract(t *testing.T) {
 	w.Execute(context.Background())
 
 	assert.Equal(t, []string{"a", "b"}, sorted(collectOutput(output)))
-	assert.Empty(t, errs)
+	errs.Close()
+	assert.Empty(t, collectErrors(errs))
 }
 
 func TestDifference_Execute_CompleteSubtraction(t *testing.T) {
 	defer goleak.VerifyNone(t)
 
-	errs := make(chan error, 10)
+	errs := mpsc.NewAccumulator[error]()
 	w := &worker.Difference{Core: newCore(passthroughInterpreter(), errs)}
 	w.Listen(sendItems("a", "b"))
 	w.Listen(sendItems("a", "b"))
@@ -513,13 +548,14 @@ func TestDifference_Execute_CompleteSubtraction(t *testing.T) {
 	w.Execute(context.Background())
 
 	assert.Empty(t, collectOutput(output))
-	assert.Empty(t, errs)
+	errs.Close()
+	assert.Empty(t, collectErrors(errs))
 }
 
 func TestDifference_Execute_DisjointSets(t *testing.T) {
 	defer goleak.VerifyNone(t)
 
-	errs := make(chan error, 10)
+	errs := mpsc.NewAccumulator[error]()
 	w := &worker.Difference{Core: newCore(passthroughInterpreter(), errs)}
 	w.Listen(sendItems("a", "b"))
 	w.Listen(sendItems("c", "d"))
@@ -528,14 +564,15 @@ func TestDifference_Execute_DisjointSets(t *testing.T) {
 	w.Execute(context.Background())
 
 	assert.Equal(t, []string{"a", "b"}, sorted(collectOutput(output)))
-	assert.Empty(t, errs)
+	errs.Close()
+	assert.Empty(t, collectErrors(errs))
 }
 
 func TestDifference_Execute_InterpreterError(t *testing.T) {
 	defer goleak.VerifyNone(t)
 
 	sentinelErr := errors.New("interpret failed")
-	errs := make(chan error, 10)
+	errs := mpsc.NewAccumulator[error]()
 
 	interp := &mockInterpreter{
 		fn: func(_ context.Context, _ *worker.Edge, items []string) worker.Receiver[worker.Item] {
@@ -554,16 +591,18 @@ func TestDifference_Execute_InterpreterError(t *testing.T) {
 	output := w.Subscribe(nil, chunkSize)
 
 	w.Execute(context.Background())
+	errs.Close()
 
 	_ = collectOutput(output)
-	require.NotEmpty(t, errs)
-	assert.ErrorIs(t, <-errs, sentinelErr)
+	got := collectErrors(errs)
+	require.NotEmpty(t, got)
+	assert.ErrorIs(t, got[0], sentinelErr)
 }
 
 func TestDifference_Execute_ContextCancelled(t *testing.T) {
 	defer goleak.VerifyNone(t)
 
-	errs := make(chan error, 10)
+	errs := mpsc.NewAccumulator[error]()
 	w := &worker.Difference{Core: newCore(passthroughInterpreter(), errs)}
 	w.Listen(sendItems("a", "b"))
 	w.Listen(sendItems("c"))
@@ -573,6 +612,7 @@ func TestDifference_Execute_ContextCancelled(t *testing.T) {
 	cancel()
 
 	w.Execute(ctx)
+	errs.Close()
 
 	assert.Empty(t, collectOutput(output))
 }
@@ -580,20 +620,21 @@ func TestDifference_Execute_ContextCancelled(t *testing.T) {
 func TestDifference_Execute_NoSenders(t *testing.T) {
 	defer goleak.VerifyNone(t)
 
-	errs := make(chan error, 10)
+	errs := mpsc.NewAccumulator[error]()
 	w := &worker.Difference{Core: newCore(passthroughInterpreter(), errs)}
 	output := w.Subscribe(nil, chunkSize)
 
 	w.Execute(context.Background())
 
 	assert.Empty(t, collectOutput(output))
-	assert.Empty(t, errs)
+	errs.Close()
+	assert.Empty(t, collectErrors(errs))
 }
 
 func TestDifference_Execute_DuplicatesInSubtractSet(t *testing.T) {
 	defer goleak.VerifyNone(t)
 
-	errs := make(chan error, 10)
+	errs := mpsc.NewAccumulator[error]()
 	w := &worker.Difference{Core: newCore(passthroughInterpreter(), errs)}
 	w.Listen(sendItems("a", "b", "c"))
 	w.Listen(sendItems("b", "b", "c", "c"))
@@ -602,13 +643,14 @@ func TestDifference_Execute_DuplicatesInSubtractSet(t *testing.T) {
 	w.Execute(context.Background())
 
 	assert.Equal(t, []string{"a"}, sorted(collectOutput(output)))
-	assert.Empty(t, errs)
+	errs.Close()
+	assert.Empty(t, collectErrors(errs))
 }
 
 func TestBasic_Execute_MultipleMessagesPerSender(t *testing.T) {
 	defer goleak.VerifyNone(t)
 
-	errs := make(chan error, 10)
+	errs := mpsc.NewAccumulator[error]()
 	w := &worker.Basic{Core: newCore(passthroughInterpreter(), errs)}
 	w.Listen(sendMultipleMessages([]string{"a", "b"}, []string{"b", "c"}))
 	output := w.Subscribe(nil, chunkSize)
@@ -617,13 +659,14 @@ func TestBasic_Execute_MultipleMessagesPerSender(t *testing.T) {
 
 	// "b" appears in both messages but should be deduplicated.
 	assert.Equal(t, []string{"a", "b", "c"}, sorted(collectOutput(output)))
-	assert.Empty(t, errs)
+	errs.Close()
+	assert.Empty(t, collectErrors(errs))
 }
 
 func TestIntersection_Execute_DuplicatesWithinSender(t *testing.T) {
 	defer goleak.VerifyNone(t)
 
-	errs := make(chan error, 10)
+	errs := mpsc.NewAccumulator[error]()
 	w := &worker.Intersection{Core: newCore(passthroughInterpreter(), errs)}
 	w.Listen(sendItems("a", "a", "b"))
 	w.Listen(sendItems("a", "b", "b"))
@@ -632,5 +675,6 @@ func TestIntersection_Execute_DuplicatesWithinSender(t *testing.T) {
 	w.Execute(context.Background())
 
 	assert.Equal(t, []string{"a", "b"}, sorted(collectOutput(output)))
-	assert.Empty(t, errs)
+	errs.Close()
+	assert.Empty(t, collectErrors(errs))
 }

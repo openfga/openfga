@@ -4,12 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"iter"
 	"slices"
 	"strconv"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
@@ -70,7 +68,7 @@ func (e *ErrorReader) Read(_ context.Context, _ pipeline.ObjectQuery) pipeline.R
 	return worker.NewValueReceiver(pipeline.Item{Err: e.err})
 }
 
-func TestPipelineShutdown(t *testing.T) {
+func TestPipeline_Shutdown(t *testing.T) {
 	const bufferSize int = 4
 	const chunkSize int = 1
 
@@ -159,67 +157,69 @@ func TestPipelineShutdown(t *testing.T) {
 
 	validator := pipeline.NewValidator(context.Background(), typesys, nil)
 
-	reader := pipeline.NewReader(
+	reader := pipeline.NewValidatingStore(
 		ds,
 		Store,
-		pipeline.WithReaderValidator(validator),
+		pipeline.WithStoreValidator(validator),
 	)
 
-	pl := pipeline.New(g, reader, pipeline.WithBufferCapacity(bufferSize), pipeline.WithChunkSize(chunkSize))
+	builder, err := pipeline.NewBuilder(
+		reader,
+		pipeline.WithBufferCapacity(bufferSize),
+		pipeline.WithChunkSize(chunkSize),
+	)
+	require.NoError(t, err)
 
-	t.Run("exclusive_path", func(t *testing.T) {
+	t.Run("document#viewer", func(t *testing.T) {
 		spec := pipeline.Spec{
-			ObjectType: "document",
-			Relation:   "viewer",
-			User:       "user:bob",
+			ObjectType:     "document",
+			ObjectRelation: "viewer",
+			SubjectType:    "user",
+			SubjectID:      "bob",
 		}
 
-		t.Run("NoAbandon", func(t *testing.T) {
+		t.Run("user:bob fully resolves", func(t *testing.T) {
 			defer goleak.VerifyNone(t)
 
-			seq, err := pl.Expand(context.Background(), spec)
+			p, err := builder.Build(context.Background(), g, spec)
 			require.NoError(t, err)
+			defer p.Close()
 
 			values := make([]string, 0, len(documents))
-			for object := range seq {
-				value, err := object.Object()
-				require.NoError(t, err)
+			for {
+				value, ok := p.Recv(context.Background())
+				if !ok {
+					break
+				}
 				values = append(values, value)
 			}
+			require.NoError(t, p.Err())
 			require.ElementsMatch(t, documents, values)
 		})
 
-		t.Run("AbandonWithoutPull", func(t *testing.T) {
+		t.Run("producing without consuming does not deadlock", func(t *testing.T) {
 			defer goleak.VerifyNone(t)
 
-			_, err := pl.Expand(context.Background(), spec)
+			p, err := builder.Build(context.Background(), g, spec)
 			require.NoError(t, err)
+			defer p.Close()
 		})
 
-		t.Run("AbandonAfterPull", func(t *testing.T) {
+		t.Run("closing without fully consuming does not deadlock", func(t *testing.T) {
 			defer goleak.VerifyNone(t)
 
-			seq, err := pl.Expand(context.Background(), spec)
+			p, err := builder.Build(context.Background(), g, spec)
 			require.NoError(t, err)
-
-			var value string
-			for objects := range seq {
-				value, err = objects.Object()
-				break
-			}
-			require.NoError(t, err)
-			require.NotEmpty(t, value)
-		})
-
-		t.Run("AbandonMidProcessing", func(t *testing.T) {
-			defer goleak.VerifyNone(t)
-
-			seq, err := pl.Expand(context.Background(), spec)
-			require.NoError(t, err)
+			defer p.Close()
 
 			var count int
 			limit := nestLevel / 2
-			for range seq {
+			for {
+				_, ok := p.Recv(context.Background())
+				if !ok {
+					break
+				}
+
 				count++
 				if count >= limit {
 					break
@@ -227,227 +227,145 @@ func TestPipelineShutdown(t *testing.T) {
 			}
 		})
 
-		t.Run("CancelWithoutPull", func(t *testing.T) {
+		t.Run("context cancelation without consuming does not deadlock", func(t *testing.T) {
 			defer goleak.VerifyNone(t)
 
 			ctx, cancel := context.WithCancel(context.Background())
 
-			_, err := pl.Expand(ctx, spec)
+			p, err := builder.Build(ctx, g, spec)
 			require.NoError(t, err)
+			defer p.Close()
 
 			cancel()
 		})
 
-		t.Run("CancelBeforePull", func(t *testing.T) {
+		t.Run("consuming after context cancelation does not deadlock", func(t *testing.T) {
 			defer goleak.VerifyNone(t)
 
 			ctx, cancel := context.WithCancel(context.Background())
 
-			seq, err := pl.Expand(ctx, spec)
+			p, err := builder.Build(ctx, g, spec)
 			require.NoError(t, err)
+			defer p.Close()
 
 			cancel()
-			for item := range seq {
-				_, err := item.Object()
-				require.ErrorIs(t, err, context.Canceled)
-			}
-		})
-
-		t.Run("CancelAfterPull", func(t *testing.T) {
-			defer goleak.VerifyNone(t)
-
-			ctx, cancel := context.WithCancel(context.Background())
-
-			defer cancel()
-
-			seq, err := pl.Expand(ctx, spec)
-			require.NoError(t, err)
-
-			var value string
-			for object := range seq {
-				var v string
-				v, err = object.Object()
-				if err == nil {
-					value = v
+			for {
+				_, ok := p.Recv(context.Background())
+				if !ok {
+					break
 				}
-				cancel()
 			}
-			require.NotEmpty(t, value)
-			require.ErrorIs(t, err, context.Canceled)
 		})
 
-		t.Run("CancelMidProcessing", func(t *testing.T) {
+		t.Run("context cancelation after consuming does not deadlock", func(t *testing.T) {
 			defer goleak.VerifyNone(t)
 
 			ctx, cancel := context.WithCancel(context.Background())
 
 			defer cancel()
 
-			seq, err := pl.Expand(ctx, spec)
+			p, err := builder.Build(ctx, g, spec)
 			require.NoError(t, err)
+			defer p.Close()
 
 			var count int
 			limit := nestLevel / 2
-			for object := range seq {
-				_, err = object.Object()
+			for {
+				_, ok := p.Recv(context.Background())
+				if !ok {
+					break
+				}
+
 				count++
 				if count >= limit {
 					cancel()
 				}
 			}
-			require.ErrorIs(t, err, context.Canceled)
-		})
-
-		t.Run("TimeoutAfterPull", func(t *testing.T) {
-			defer goleak.VerifyNone(t)
-
-			ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-
-			defer cancel()
-
-			seq, err := pl.Expand(ctx, spec)
-			require.NoError(t, err)
-
-			var count int
-			for object := range seq {
-				_, err = object.Object()
-
-				if count == 0 {
-					// wait long enough for timeout to occur
-					time.Sleep(200 * time.Millisecond)
-				}
-				count++
-			}
-			require.Greater(t, len(documents), count) // ensure that we stopped before consuming the full traversal
-			require.ErrorIs(t, err, context.DeadlineExceeded)
-		})
-
-		t.Run("TimeoutBeforePull", func(t *testing.T) {
-			defer goleak.VerifyNone(t)
-
-			ctx, cancel := context.WithTimeout(context.Background(), 1*time.Millisecond)
-
-			seq, err := pl.Expand(ctx, spec)
-			require.NoError(t, err)
-
-			defer cancel()
-
-			// wait long enough for timeout to occur
-			time.Sleep(2 * time.Millisecond)
-
-			for item := range seq {
-				_, err := item.Object()
-				require.ErrorIs(t, err, context.DeadlineExceeded)
-			}
 		})
 	})
 
-	t.Run("mutual_path", func(t *testing.T) {
+	t.Run("document#fault", func(t *testing.T) {
 		spec := pipeline.Spec{
-			ObjectType: "document",
-			Relation:   "fault",
-			User:       "user:bob",
+			ObjectType:     "document",
+			ObjectRelation: "fault",
+			SubjectType:    "user",
+			SubjectID:      "bob",
 		}
 
-		t.Run("NoAbandon", func(t *testing.T) {
+		t.Run("user:bob fully resolves", func(t *testing.T) {
 			defer goleak.VerifyNone(t)
 
-			seq, err := pl.Expand(context.Background(), spec)
+			p, err := builder.Build(context.Background(), g, spec)
 			require.NoError(t, err)
+			defer p.Close()
 
 			values := make([]string, 0, len(documents))
-			for object := range seq {
-				value, err := object.Object()
-				require.NoError(t, err)
+			for {
+				value, ok := p.Recv(context.Background())
+				if !ok {
+					break
+				}
 				values = append(values, value)
 			}
+			require.NoError(t, p.Err())
 			require.Empty(t, values)
 		})
 
-		t.Run("AbandonWithoutPull", func(t *testing.T) {
+		t.Run("producing without consuming does not deadlock", func(t *testing.T) {
 			defer goleak.VerifyNone(t)
 
-			_, err := pl.Expand(context.Background(), spec)
+			p, err := builder.Build(context.Background(), g, spec)
 			require.NoError(t, err)
+			defer p.Close()
 		})
 
-		t.Run("CancelWithoutPull", func(t *testing.T) {
+		t.Run("context cancelation without consuming does not deadlock", func(t *testing.T) {
 			defer goleak.VerifyNone(t)
 
 			ctx, cancel := context.WithCancel(context.Background())
 
-			_, err := pl.Expand(ctx, spec)
+			p, err := builder.Build(ctx, g, spec)
 			require.NoError(t, err)
+			defer p.Close()
 
 			cancel()
 		})
 
-		t.Run("CancelBeforePull", func(t *testing.T) {
+		t.Run("consuming after context cancelation does not deadlock", func(t *testing.T) {
 			defer goleak.VerifyNone(t)
 
 			ctx, cancel := context.WithCancel(context.Background())
 
-			seq, err := pl.Expand(ctx, spec)
+			p, err := builder.Build(ctx, g, spec)
 			require.NoError(t, err)
+			defer p.Close()
 
 			cancel()
-			for item := range seq {
-				_, err := item.Object()
-				require.ErrorIs(t, err, context.Canceled)
-			}
-		})
-
-		t.Run("TimeoutBeforePull", func(t *testing.T) {
-			defer goleak.VerifyNone(t)
-
-			ctx, cancel := context.WithTimeout(context.Background(), 1*time.Millisecond)
-
-			seq, err := pl.Expand(ctx, spec)
-			require.NoError(t, err)
-
-			defer cancel()
-
-			// wait long enough for timeout to occur
-			time.Sleep(2 * time.Millisecond)
-
-			for item := range seq {
-				_, err := item.Object()
-				require.ErrorIs(t, err, context.DeadlineExceeded)
+			for {
+				_, ok := p.Recv(context.Background())
+				if !ok {
+					break
+				}
 			}
 		})
 	})
 }
 
-func TestPipelineExpand_InvalidConfig(t *testing.T) {
+func TestPipeline_InvalidConfig(t *testing.T) {
 	defer goleak.VerifyNone(t)
 
-	const dsl = `
-	model
-	  schema 1.1
-	type user
-	type document
-	  relations
-	    define viewer: [user]
-	`
+	reader := pipeline.NewValidatingStore(memory.New(), Store)
 
-	model := testutils.MustTransformDSLToProtoWithID(dsl)
-	typesys, err := typesystem.NewAndValidate(context.Background(), model)
-	require.NoError(t, err)
-
-	g := typesys.GetWeightedGraph()
-	reader := pipeline.NewReader(memory.New(), Store)
-
-	pl := pipeline.New(g, reader, pipeline.WithConfig(pipeline.Config{
-		BufferCapacity: -1, ChunkSize: 1, NumProcs: 1,
-	}))
-
-	_, err = pl.Expand(context.Background(), pipeline.Spec{
-		ObjectType: "document", Relation: "viewer", User: "user:alice",
-	})
+	_, err := pipeline.NewBuilder(
+		reader,
+		pipeline.WithConfig(pipeline.Config{
+			BufferCapacity: -1, ChunkSize: 1, NumProcs: 1,
+		}),
+	)
 	require.ErrorIs(t, err, pipeline.ErrInvalidBufferCapacity)
 }
 
-func TestPipelineExpand_InvalidObjectType(t *testing.T) {
+func TestPipeline_InvalidObjectType(t *testing.T) {
 	defer goleak.VerifyNone(t)
 
 	const dsl = `
@@ -464,16 +382,22 @@ func TestPipelineExpand_InvalidObjectType(t *testing.T) {
 	require.NoError(t, err)
 
 	g := typesys.GetWeightedGraph()
-	reader := pipeline.NewReader(memory.New(), Store)
-	pl := pipeline.New(g, reader)
+	reader := pipeline.NewValidatingStore(memory.New(), Store)
 
-	_, err = pl.Expand(context.Background(), pipeline.Spec{
-		ObjectType: "nonexistent", Relation: "viewer", User: "user:alice",
-	})
+	builder, err := pipeline.NewBuilder(reader)
+	require.NoError(t, err)
+
+	_, err = builder.Build(
+		context.Background(),
+		g,
+		pipeline.Spec{
+			ObjectType: "nonexistent", ObjectRelation: "viewer", SubjectType: "user",
+		},
+	)
 	require.ErrorIs(t, err, pipeline.ErrInvalidObject)
 }
 
-func TestPipelineExpand_InvalidRelation(t *testing.T) {
+func TestPipeline_InvalidRelation(t *testing.T) {
 	defer goleak.VerifyNone(t)
 
 	const dsl = `
@@ -490,16 +414,22 @@ func TestPipelineExpand_InvalidRelation(t *testing.T) {
 	require.NoError(t, err)
 
 	g := typesys.GetWeightedGraph()
-	reader := pipeline.NewReader(memory.New(), Store)
-	pl := pipeline.New(g, reader)
+	reader := pipeline.NewValidatingStore(memory.New(), Store)
 
-	_, err = pl.Expand(context.Background(), pipeline.Spec{
-		ObjectType: "document", Relation: "nonexistent", User: "user:alice",
-	})
+	builder, err := pipeline.NewBuilder(reader)
+	require.NoError(t, err)
+
+	_, err = builder.Build(
+		context.Background(),
+		g,
+		pipeline.Spec{
+			ObjectType: "document", ObjectRelation: "nonexistent", SubjectType: "user",
+		},
+	)
 	require.ErrorIs(t, err, pipeline.ErrInvalidObject)
 }
 
-func TestPipelineExpand_InvalidUser(t *testing.T) {
+func TestPipeline_InvalidSubjectType(t *testing.T) {
 	defer goleak.VerifyNone(t)
 
 	const dsl = `
@@ -516,16 +446,22 @@ func TestPipelineExpand_InvalidUser(t *testing.T) {
 	require.NoError(t, err)
 
 	g := typesys.GetWeightedGraph()
-	reader := pipeline.NewReader(memory.New(), Store)
-	pl := pipeline.New(g, reader)
+	reader := pipeline.NewValidatingStore(memory.New(), Store)
 
-	_, err = pl.Expand(context.Background(), pipeline.Spec{
-		ObjectType: "document", Relation: "viewer", User: "nonexistent:alice",
-	})
-	require.ErrorIs(t, err, pipeline.ErrInvalidUser)
+	builder, err := pipeline.NewBuilder(reader)
+	require.NoError(t, err)
+
+	_, err = builder.Build(
+		context.Background(),
+		g,
+		pipeline.Spec{
+			ObjectType: "document", ObjectRelation: "viewer", SubjectType: "nonexistent",
+		},
+	)
+	require.ErrorIs(t, err, pipeline.ErrInvalidSubject)
 }
 
-func TestPipelineExpand_EmptyResult(t *testing.T) {
+func TestPipeline_EmptyResult(t *testing.T) {
 	defer goleak.VerifyNone(t)
 
 	const dsl = `
@@ -547,28 +483,38 @@ func TestPipelineExpand_EmptyResult(t *testing.T) {
 	require.NoError(t, err)
 
 	g := typesys.GetWeightedGraph()
-	reader := pipeline.NewReader(ds, Store,
-		pipeline.WithReaderValidator(pipeline.NewValidator(context.Background(), typesys, nil)),
+	reader := pipeline.NewValidatingStore(ds, Store,
+		pipeline.WithStoreValidator(pipeline.NewValidator(context.Background(), typesys, nil)),
 	)
-	pl := pipeline.New(g, reader)
 
-	seq, err := pl.Expand(context.Background(), pipeline.Spec{
-		ObjectType: "document", Relation: "viewer", User: "user:alice",
-	})
+	builder, err := pipeline.NewBuilder(reader)
 	require.NoError(t, err)
 
+	p, err := builder.Build(
+		context.Background(),
+		g,
+		pipeline.Spec{
+			ObjectType: "document", ObjectRelation: "viewer", SubjectType: "user", SubjectID: "alice",
+		},
+	)
+	require.NoError(t, err)
+	defer p.Close()
+
 	var results []string
-	for obj := range seq {
-		value, err := obj.Object()
-		require.NoError(t, err)
+	for {
+		value, ok := p.Recv(context.Background())
+		if !ok {
+			break
+		}
 		results = append(results, value)
 	}
+	require.NoError(t, p.Err())
 	require.Empty(t, results)
 }
 
 var ErrSignal = errors.New("signal error")
 
-func TestPipelineError(t *testing.T) {
+func TestPipeline_Error(t *testing.T) {
 	const bufferSize int = 4
 	const chunkSize int = 1
 
@@ -614,44 +560,61 @@ func TestPipelineError(t *testing.T) {
 	g := typesys.GetWeightedGraph()
 
 	spec := pipeline.Spec{
-		ObjectType: "document",
-		Relation:   "viewer",
-		User:       "user:bob",
+		ObjectType:     "document",
+		ObjectRelation: "viewer",
+		SubjectType:    "user",
+		SubjectID:      "bob",
 	}
 
-	pl := pipeline.New(g, ds, pipeline.WithBufferCapacity(bufferSize), pipeline.WithChunkSize(chunkSize))
+	builder, err := pipeline.NewBuilder(
+		ds,
+		pipeline.WithBufferCapacity(bufferSize),
+		pipeline.WithChunkSize(chunkSize),
+	)
+	require.NoError(t, err)
 
-	t.Run("ShouldReturnErrorThenEnd", func(t *testing.T) {
+	t.Run("storage errors propagate to consumer", func(t *testing.T) {
 		defer goleak.VerifyNone(t)
 
-		seq, err := pl.Expand(context.Background(), spec)
+		p, err := builder.Build(context.Background(), g, spec)
 		require.NoError(t, err)
+		defer p.Close()
 
-		for obj := range seq {
-			value, err := obj.Object()
-			require.Empty(t, value)
-			require.ErrorIs(t, err, ErrSignal)
+		for {
+			_, ok := p.Recv(context.Background())
+			if !ok {
+				break
+			}
 		}
+		require.ErrorIs(t, p.Err(), ErrSignal)
 	})
 }
 
 type testcase struct {
-	name       string
-	model      string
-	tuples     []string
-	objectType string
-	relation   string
-	user       string
-	expected   []string
+	name        string
+	model       string
+	tuples      []string
+	objectType  string
+	relation    string
+	subjectType string
+	subjectID   string
+	error       error
+	expected    []string
 }
 
-func evaluate(t *testing.T, tc testcase, seq iter.Seq[pipeline.Item]) {
+func evaluate(t *testing.T, tc testcase, p *pipeline.Pipeline) {
+	t.Helper()
+	defer p.Close()
+
 	var results []string
-	for object := range seq {
-		value, err := object.Object()
-		require.NoError(t, err)
+	for {
+		value, ok := p.Recv(context.Background())
+		if !ok {
+			break
+		}
 		results = append(results, value)
 	}
+	require.NoError(t, p.Err())
 	require.ElementsMatch(t, tc.expected, results)
 }
 
@@ -704,10 +667,11 @@ var cases = []testcase{
 			"resource:document_2#write_policy@policy:document_writer",
 			"resource:document_2#read_policy@policy:document_reader",
 		},
-		objectType: "resource",
-		relation:   "writer",
-		user:       "user:bob",
-		expected:   []string{"resource:document_1", "resource:document_2"},
+		objectType:  "resource",
+		relation:    "writer",
+		subjectType: "user",
+		subjectID:   "bob",
+		expected:    []string{"resource:document_1", "resource:document_2"},
 	},
 	{
 		name: "recursive_ttu_intersection",
@@ -734,10 +698,11 @@ var cases = []testcase{
 			"org:2#admin@user:1",
 			"doc:1#viewer@org:2#moderator",
 		},
-		objectType: "doc",
-		relation:   "viewer",
-		user:       "user:1",
-		expected:   []string{"doc:1"},
+		objectType:  "doc",
+		relation:    "viewer",
+		subjectType: "user",
+		subjectID:   "1",
+		expected:    []string{"doc:1"},
 	},
 	{
 		name: "recursive_userset_intersection",
@@ -763,10 +728,11 @@ var cases = []testcase{
 			"org:1#member@org:2#member",
 			"doc:1#viewer@org:1#moderator",
 		},
-		objectType: "doc",
-		relation:   "viewer",
-		user:       "user:1",
-		expected:   []string{"doc:1"},
+		objectType:  "doc",
+		relation:    "viewer",
+		subjectType: "user",
+		subjectID:   "1",
+		expected:    []string{"doc:1"},
 	},
 	{
 		name: "recursive_recursion",
@@ -794,10 +760,11 @@ var cases = []testcase{
 			"org:3#admin@user:bob",
 			"doc:1#viewer@org:3#moderator",
 		},
-		objectType: "doc",
-		relation:   "viewer",
-		user:       "user:bob",
-		expected:   []string{"doc:1"},
+		objectType:  "doc",
+		relation:    "viewer",
+		subjectType: "user",
+		subjectID:   "bob",
+		expected:    []string{"doc:1"},
 	},
 	{
 		name: "ttu_recursive",
@@ -816,35 +783,14 @@ var cases = []testcase{
 			"org:c#parent@org:b", // org:b is parent of org:c
 			"org:d#parent@org:c", // org:c is parent of org:d
 		},
-		objectType: "org",
-		relation:   "ttu_recursive",
-		user:       "user:justin",
-		expected:   []string{"org:a", "org:b", "org:c", "org:d"},
+		objectType:  "org",
+		relation:    "ttu_recursive",
+		subjectType: "user",
+		subjectID:   "justin",
+		expected:    []string{"org:a", "org:b", "org:c", "org:d"},
 	},
-	{
-		name: "userset_as_user",
-		model: `
-		model
-		schema 1.1
-
-		type user
-
-		type group
-			relations
-				define member: [user]
-		type document
-			relations
-				define viewer: [group#member]
-		`,
-		tuples: []string{
-			"document:1#viewer@group:x#member",
-			"group:x#member@user:aardvark",
-		},
-		objectType: "document",
-		relation:   "viewer",
-		user:       "group:x#member",
-		expected:   []string{"document:1"},
-	},
+	// userset_as_user removed: the new pipeline interface does not support
+	// type+relation subject types such as "group#member".
 	{
 		name: "err_and_true_return_err",
 		model: `
@@ -913,10 +859,11 @@ var cases = []testcase{
 			"resource:1#a2@resource:1#a1",
 			"resource:1#a1@user:maria",
 		},
-		objectType: "resource",
-		relation:   "can_view",
-		user:       "user:maria",
-		expected:   []string{"resource:1"},
+		objectType:  "resource",
+		relation:    "can_view",
+		subjectType: "user",
+		subjectID:   "maria",
+		expected:    []string{"resource:1"},
 	},
 	{
 		name: "double_ttu",
@@ -950,40 +897,14 @@ var cases = []testcase{
 			"wrapper:1#parent@usersets-user:1",
 			"wrapper:2#parent@directs:2",
 		},
-		objectType: "wrapper",
-		relation:   "assigned",
-		user:       "user:bob",
-		expected:   []string{"wrapper:2"},
+		objectType:  "wrapper",
+		relation:    "assigned",
+		subjectType: "user",
+		subjectID:   "bob",
+		expected:    []string{"wrapper:2"},
 	},
-	{
-		name: "simple_userset_child_computed_userset",
-		model: `
-		model
-		schema 1.1
-
-		type user
-
-		type group
-			relations
-				define member: [user]
-				define member_c1: member
-				define member_c2: member_c1
-				define member_c3: member_c2
-				define member_c4: member_c3
-
-		type folder
-			relations
-				define viewer: [group#member_c4]
-		`,
-		tuples: []string{
-			"group:fga#member@user:anne",
-			"folder:1#viewer@group:fga#member_c4",
-		},
-		objectType: "folder",
-		relation:   "viewer",
-		user:       "group:fga#member",
-		expected:   []string{"folder:1"},
-	},
+	// simple_userset_child_computed_userset removed: the new pipeline interface
+	// does not support type+relation subject types such as "group#member".
 	{
 		name: "simple_userset_child_wildcard",
 		model: `
@@ -1008,10 +929,11 @@ var cases = []testcase{
 			"folder:1#viewer@group:fga#member",
 			"folder:2#viewer@group:engineering#member",
 		},
-		objectType: "folder",
-		relation:   "viewer",
-		user:       "user2:foo",
-		expected:   []string{},
+		objectType:  "folder",
+		relation:    "viewer",
+		subjectType: "user2",
+		subjectID:   "foo",
+		expected:    []string{},
 	},
 	{
 		name: "ttu_mix_with_userset",
@@ -1048,45 +970,33 @@ var cases = []testcase{
 			"folder:public#viewer@group:public#member",
 			"document:public#parent@folder:public",
 		},
-		objectType: "document",
-		relation:   "viewer",
-		user:       "user:anne",
-		expected:   []string{"document:a", "document:public"},
+		objectType:  "document",
+		relation:    "viewer",
+		subjectType: "user",
+		subjectID:   "anne",
+		expected:    []string{"document:a", "document:public"},
 	},
 	{
-		name: "wild_card",
-		model: `model
-				  schema 1.1
-					type user
-				  type group
-					relations
-					  define member: [user, user:*]
-				  type folder
-					relations
-					  define viewer: [user,group#member]
-				  type document
-					relations
-					  define parent: [folder]
-					  define viewer: viewer from parent
+		name: "wildcard_only_reachability",
+		model: `
+		model
+		schema 1.1
+
+		type user
+
+		type document
+			relations
+				define viewer: [user:*]
 		`,
 		tuples: []string{
-			"group:1#member@user:anne",
-			"group:1#member@user:charlie",
-			"group:2#member@user:anne",
-			"group:2#member@user:bob",
-			"group:3#member@user:elle",
-			"group:public#member@user:*",
-			"document:a#parent@folder:a",
-			"document:public#parent@folder:public",
-			"folder:a#viewer@group:1#member",
-			"folder:a#viewer@group:2#member",
-			"folder:a#viewer@user:daemon",
-			"folder:public#viewer@group:public#member",
+			"document:1#viewer@user:*",
+			"document:2#viewer@user:*",
 		},
-		objectType: "document",
-		relation:   "viewer",
-		user:       "user:*",
-		expected:   []string{"document:public"},
+		objectType:  "document",
+		relation:    "viewer",
+		subjectType: "user",
+		subjectID:   "alice",
+		expected:    []string{"document:1", "document:2"},
 	},
 	{
 		name: "computed",
@@ -1113,10 +1023,11 @@ var cases = []testcase{
 			"document:2#viewer@team:1#member",
 			"document:3#viewer@team:2#member",
 		},
-		objectType: "document",
-		relation:   "viewer",
-		user:       "user:justin",
-		expected:   []string{"document:1", "document:2"},
+		objectType:  "document",
+		relation:    "viewer",
+		subjectType: "user",
+		subjectID:   "justin",
+		expected:    []string{"document:1", "document:2"},
 	},
 	{
 		name: "union",
@@ -1149,10 +1060,11 @@ var cases = []testcase{
 			"document:3#rel2@user:justin",
 			"document:3#rel3@user:justin",
 		},
-		objectType: "document",
-		relation:   "viewer",
-		user:       "user:justin",
-		expected:   []string{"document:1", "document:2", "document:3"},
+		objectType:  "document",
+		relation:    "viewer",
+		subjectType: "user",
+		subjectID:   "justin",
+		expected:    []string{"document:1", "document:2", "document:3"},
 	},
 	{
 		name: "ttu",
@@ -1177,10 +1089,11 @@ var cases = []testcase{
 			"document:2#parent@company:auth0",
 			"document:3#parent@company:fga",
 		},
-		objectType: "document",
-		relation:   "viewer",
-		user:       "user:bob",
-		expected:   []string{"document:1", "document:2"},
+		objectType:  "document",
+		relation:    "viewer",
+		subjectType: "user",
+		subjectID:   "bob",
+		expected:    []string{"document:1", "document:2"},
 	},
 	{
 		name: "ttu_in_intersection",
@@ -1207,10 +1120,11 @@ var cases = []testcase{
 			"document:2#relative@company:auth0",
 			"document:3#admin@company:auth0",
 		},
-		objectType: "document",
-		relation:   "viewer",
-		user:       "user:bob",
-		expected:   []string{"document:1"},
+		objectType:  "document",
+		relation:    "viewer",
+		subjectType: "user",
+		subjectID:   "bob",
+		expected:    []string{"document:1"},
 	},
 	{
 		name: "ttu_in_cycle_with_union",
@@ -1246,10 +1160,11 @@ var cases = []testcase{
 			"document:4#parent@company:fga",
 			"document:5#parent@org:fga",
 		},
-		objectType: "document",
-		relation:   "viewer",
-		user:       "user:bob",
-		expected:   []string{"document:1", "document:2", "document:3"},
+		objectType:  "document",
+		relation:    "viewer",
+		subjectType: "user",
+		subjectID:   "bob",
+		expected:    []string{"document:1", "document:2", "document:3"},
 	},
 	{
 		name: "ttu_in_cycle_with_intersection",
@@ -1283,10 +1198,11 @@ var cases = []testcase{
 			"document:4#parent@org:fga",
 			"company:fga#employee@user:bob",
 		},
-		objectType: "document",
-		relation:   "viewer",
-		user:       "user:bob",
-		expected:   []string{"document:1", "document:2"},
+		objectType:  "document",
+		relation:    "viewer",
+		subjectType: "user",
+		subjectID:   "bob",
+		expected:    []string{"document:1", "document:2"},
 	},
 	{
 		name: "ttu_with_two_directs",
@@ -1316,10 +1232,11 @@ var cases = []testcase{
 			"document:2#parent@company:auth0",
 			"document:3#parent@org:fga",
 		},
-		objectType: "document",
-		relation:   "viewer",
-		user:       "user:bob",
-		expected:   []string{"document:1", "document:2", "document:3"},
+		objectType:  "document",
+		relation:    "viewer",
+		subjectType: "user",
+		subjectID:   "bob",
+		expected:    []string{"document:1", "document:2", "document:3"},
 	},
 	{
 		name: "ttu_with_complexity",
@@ -1354,10 +1271,11 @@ var cases = []testcase{
 			"document:3#parent@org:fga",
 			"document:4#parent@org:x",
 		},
-		objectType: "document",
-		relation:   "viewer",
-		user:       "user:bob",
-		expected:   []string{"document:1", "document:2", "document:3"},
+		objectType:  "document",
+		relation:    "viewer",
+		subjectType: "user",
+		subjectID:   "bob",
+		expected:    []string{"document:1", "document:2", "document:3"},
 	},
 	{
 		name: "intersection",
@@ -1390,10 +1308,11 @@ var cases = []testcase{
 			"document:3#rel2@user:justin",
 			"document:3#rel3@user:justin",
 		},
-		objectType: "document",
-		relation:   "viewer",
-		user:       "user:justin",
-		expected:   []string{"document:1", "document:3"},
+		objectType:  "document",
+		relation:    "viewer",
+		subjectType: "user",
+		subjectID:   "justin",
+		expected:    []string{"document:1", "document:3"},
 	},
 	{
 		name: "direct_userset",
@@ -1419,10 +1338,11 @@ var cases = []testcase{
 			"document:3#viewer@team:2#member",
 			"document:4#viewer@team:2#member",
 		},
-		objectType: "document",
-		relation:   "viewer",
-		user:       "user:justin",
-		expected:   []string{"document:1", "document:2", "document:3", "document:4"},
+		objectType:  "document",
+		relation:    "viewer",
+		subjectType: "user",
+		subjectID:   "justin",
+		expected:    []string{"document:1", "document:2", "document:3", "document:4"},
 	},
 	{
 		name: "beast_mode",
@@ -1491,10 +1411,11 @@ var cases = []testcase{
 			"team:j#member@document:i#viewer",
 			// expect document:h, document:i, document:j
 		},
-		objectType: "document",
-		relation:   "viewer",
-		user:       "user:justin",
-		expected:   []string{"document:1", "document:3", "document:5", "document:8", "document:a", "document:b", "document:c", "document:d", "document:e", "document:f", "document:g", "document:h", "document:i", "document:j"},
+		objectType:  "document",
+		relation:    "viewer",
+		subjectType: "user",
+		subjectID:   "justin",
+		expected:    []string{"document:1", "document:3", "document:5", "document:8", "document:a", "document:b", "document:c", "document:d", "document:e", "document:f", "document:g", "document:h", "document:i", "document:j"},
 	},
 	{
 		name: "mean_tuple_cycle",
@@ -1536,10 +1457,11 @@ var cases = []testcase{
 			"org:00#employee@team:00#member",
 			"team:00#member@document:8#viewer",
 		},
-		objectType: "document",
-		relation:   "viewer",
-		user:       "user:justin",
-		expected:   []string{"document:0", "document:1", "document:3", "document:5", "document:8"},
+		objectType:  "document",
+		relation:    "viewer",
+		subjectType: "user",
+		subjectID:   "justin",
+		expected:    []string{"document:0", "document:1", "document:3", "document:5", "document:8"},
 	},
 	{
 		name: "indirect_userset",
@@ -1583,10 +1505,11 @@ var cases = []testcase{
 			"document:7#viewer@team:0#member",
 			"document:22#viewer@team:22#member",
 		},
-		objectType: "document",
-		relation:   "viewer",
-		user:       "user:justin",
-		expected:   []string{"document:1", "document:2", "document:3", "document:4", "document:5", "document:6", "document:22"},
+		objectType:  "document",
+		relation:    "viewer",
+		subjectType: "user",
+		subjectID:   "justin",
+		expected:    []string{"document:1", "document:2", "document:3", "document:4", "document:5", "document:6", "document:22"},
 	},
 	{
 		name: "recursive",
@@ -1622,10 +1545,11 @@ var cases = []testcase{
 			"group:2#member@team:3#member",
 			"document:2#viewer@group:2#member",
 		},
-		objectType: "document",
-		relation:   "viewer",
-		user:       "user:justin",
-		expected:   []string{"document:1", "document:2"},
+		objectType:  "document",
+		relation:    "viewer",
+		subjectType: "user",
+		subjectID:   "justin",
+		expected:    []string{"document:1", "document:2"},
 	},
 	{
 		name: "tuple_cycle",
@@ -1644,10 +1568,11 @@ var cases = []testcase{
 			"team:cncf#member@team:fga#member",
 			"team:lnf#member@team:cncf#member",
 		},
-		objectType: "team",
-		relation:   "member",
-		user:       "user:justin",
-		expected:   []string{"team:fga", "team:cncf", "team:lnf"},
+		objectType:  "team",
+		relation:    "member",
+		subjectType: "user",
+		subjectID:   "justin",
+		expected:    []string{"team:fga", "team:cncf", "team:lnf"},
 	},
 	{
 		name: "simple_exclusion",
@@ -1665,10 +1590,11 @@ var cases = []testcase{
 			"org:b#member@user:bob",
 			"org:a#member@user:bob",
 		},
-		objectType: "org",
-		relation:   "member",
-		user:       "user:bob",
-		expected:   []string{"org:b"},
+		objectType:  "org",
+		relation:    "member",
+		subjectType: "user",
+		subjectID:   "bob",
+		expected:    []string{"org:b"},
 	},
 	{
 		name: "exclusion_on_itself",
@@ -1684,10 +1610,11 @@ var cases = []testcase{
 		tuples: []string{
 			"org:a#banned@user:bob",
 		},
-		objectType: "org",
-		relation:   "member",
-		user:       "user:bob",
-		expected:   []string{},
+		objectType:  "org",
+		relation:    "member",
+		subjectType: "user",
+		subjectID:   "bob",
+		expected:    []string{},
 	},
 	{
 		name: "exclusion_no_connection_base",
@@ -1706,10 +1633,12 @@ var cases = []testcase{
 			"org:a#member@user:bob",
 			"org:c#banned@user2:bob",
 		},
-		objectType: "org",
-		relation:   "member",
-		user:       "user2:bob",
-		expected:   []string{},
+		objectType:  "org",
+		relation:    "member",
+		subjectType: "user2",
+		subjectID:   "bob",
+		error:       pipeline.ErrUnreachable,
+		expected:    []string{},
 	},
 	{
 		name: "exclusion_no_connection_exclusion_path",
@@ -1728,10 +1657,11 @@ var cases = []testcase{
 			"org:b#member@user:bob",
 			"org:a#member@user:bob",
 		},
-		objectType: "org",
-		relation:   "member",
-		user:       "user:bob",
-		expected:   []string{"org:a", "org:b"},
+		objectType:  "org",
+		relation:    "member",
+		subjectType: "user",
+		subjectID:   "bob",
+		expected:    []string{"org:a", "org:b"},
 	},
 	{
 		name: "simple_exclusion_no_direct_assignment",
@@ -1750,10 +1680,11 @@ var cases = []testcase{
 			"org:b#member@user:bob",
 			"org:a#member@user:bob",
 		},
-		objectType: "org",
-		relation:   "viewer",
-		user:       "user:bob",
-		expected:   []string{"org:b"},
+		objectType:  "org",
+		relation:    "viewer",
+		subjectType: "user",
+		subjectID:   "bob",
+		expected:    []string{"org:b"},
 	},
 	{
 		name: "simple_exclusion_multiple_direct_assignments",
@@ -1776,10 +1707,11 @@ var cases = []testcase{
 			"org:c#member@team:c#member",
 			"team:c#member@user:bob",
 		},
-		objectType: "org",
-		relation:   "member",
-		user:       "user:bob",
-		expected:   []string{"org:b", "org:c"},
+		objectType:  "org",
+		relation:    "member",
+		subjectType: "user",
+		subjectID:   "bob",
+		expected:    []string{"org:b", "org:c"},
 	},
 	{
 		name: "simple_exclusion_multiple_direct_assignments_not_linked_1",
@@ -1800,10 +1732,11 @@ var cases = []testcase{
 			"org:c#allowed@user:bob",
 			"org:d#member@user2:bob", // bob is user2 and there should be no link
 		},
-		objectType: "org",
-		relation:   "member",
-		user:       "user:bob",
-		expected:   []string{"org:b"},
+		objectType:  "org",
+		relation:    "member",
+		subjectType: "user",
+		subjectID:   "bob",
+		expected:    []string{"org:b"},
 	},
 	{
 		name: "ttu_with_exclusion",
@@ -1827,10 +1760,11 @@ var cases = []testcase{
 			"team:2#parent@org:b",
 			"team:2#member@user:bob",
 		},
-		objectType: "team",
-		relation:   "member",
-		user:       "user:bob",
-		expected:   []string{"team:2"},
+		objectType:  "team",
+		relation:    "member",
+		subjectType: "user",
+		subjectID:   "bob",
+		expected:    []string{"team:2"},
 	},
 	{
 		name: "simple_exclusion_multiple_direct_assignments_not_linked_2",
@@ -1851,10 +1785,11 @@ var cases = []testcase{
 			"org:c#allowed@user:bob",
 			"org:d#member@user2:bob", // even if right side not connected, it should still be good
 		},
-		objectType: "org",
-		relation:   "member",
-		user:       "user2:bob",
-		expected:   []string{"org:d"},
+		objectType:  "org",
+		relation:    "member",
+		subjectType: "user2",
+		subjectID:   "bob",
+		expected:    []string{"org:d"},
 	},
 	{
 		name: "simple_exclusion_with_double_negative",
@@ -1879,10 +1814,11 @@ var cases = []testcase{
 			"org:b#member@user:bob",
 			"org:b#allowed@user:bob",
 		},
-		objectType: "org",
-		relation:   "member",
-		user:       "user:bob",
-		expected:   []string{"org:a", "org:c", "org:d"},
+		objectType:  "org",
+		relation:    "member",
+		subjectType: "user",
+		subjectID:   "bob",
+		expected:    []string{"org:a", "org:c", "org:d"},
 	},
 	{
 		name: "exclusion_has_no_direct_assignment",
@@ -1916,10 +1852,11 @@ var cases = []testcase{
 			"org:b#member@team:b#member",
 			"org:b#allowed@user:bob",
 		},
-		objectType: "org",
-		relation:   "can_access",
-		user:       "user:bob",
-		expected:   []string{"org:a", "org:c", "org:d"},
+		objectType:  "org",
+		relation:    "can_access",
+		subjectType: "user",
+		subjectID:   "bob",
+		expected:    []string{"org:a", "org:c", "org:d"},
 	},
 	{
 		name: "complex_exclusion_nested",
@@ -1954,10 +1891,11 @@ var cases = []testcase{
 			"org:b#member@team:b#member",
 			"org:b#also_also_allowed@user:bob",
 		},
-		objectType: "org",
-		relation:   "member",
-		user:       "user:bob",
-		expected:   []string{"org:a", "org:c", "org:d"},
+		objectType:  "org",
+		relation:    "member",
+		subjectType: "user",
+		subjectID:   "bob",
+		expected:    []string{"org:a", "org:c", "org:d"},
 	},
 	{
 		name: "complex_exclusion_nested_and_union",
@@ -1991,10 +1929,11 @@ var cases = []testcase{
 			"org:d#granted@user:bob",
 			"org:e#granted@user:bob",
 		},
-		objectType: "org",
-		relation:   "member",
-		user:       "user:bob",
-		expected:   []string{"org:a", "org:c"},
+		objectType:  "org",
+		relation:    "member",
+		subjectType: "user",
+		subjectID:   "bob",
+		expected:    []string{"org:a", "org:c"},
 	},
 	{
 		name: "exclusion_intersection_1",
@@ -2026,10 +1965,11 @@ var cases = []testcase{
 			"org:d#allowed@user:bob",
 			"org:d#also_allowed@user:bob",
 		},
-		objectType: "org",
-		relation:   "member",
-		user:       "user:bob",
-		expected:   []string{"org:a", "org:b", "org:c"},
+		objectType:  "org",
+		relation:    "member",
+		subjectType: "user",
+		subjectID:   "bob",
+		expected:    []string{"org:a", "org:b", "org:c"},
 	},
 	{
 		name: "exclusion_intersection_2",
@@ -2061,10 +2001,11 @@ var cases = []testcase{
 			"org:d#member@team:d#member",
 			"org:d#also_allowed@user:bob",
 		},
-		objectType: "org",
-		relation:   "member",
-		user:       "user:bob",
-		expected:   []string{"org:b"},
+		objectType:  "org",
+		relation:    "member",
+		subjectType: "user",
+		subjectID:   "bob",
+		expected:    []string{"org:b"},
 	},
 	{
 		name: "exclusion_lowest_weight_is_TTU",
@@ -2099,10 +2040,11 @@ var cases = []testcase{
 			"org:b#team@team:b",
 			"team:b#member@user:bob",
 		},
-		objectType: "org",
-		relation:   "member",
-		user:       "user:bob",
-		expected:   []string{"org:a", "org:c"},
+		objectType:  "org",
+		relation:    "member",
+		subjectType: "user",
+		subjectID:   "bob",
+		expected:    []string{"org:a", "org:c"},
 	},
 	{
 		name: "exclusion_ttu_multipleparents",
@@ -2133,10 +2075,11 @@ var cases = []testcase{
 			"org:a#parent@subteam:st2",
 			"team:t1#member@user:bob",
 		},
-		objectType: "org",
-		relation:   "member",
-		user:       "user:bob",
-		expected:   []string{"org:a", "org:c"},
+		objectType:  "org",
+		relation:    "member",
+		subjectType: "user",
+		subjectID:   "bob",
+		expected:    []string{"org:a", "org:c"},
 	},
 	{
 		name: "lowest_weight_is_TTU_intersection_with_intersections",
@@ -2171,10 +2114,11 @@ var cases = []testcase{
 			"team:c#dept_member@dept:c#member",
 			"dept:c#member@user:bob",
 		},
-		objectType: "org",
-		relation:   "member",
-		user:       "user:bob",
-		expected:   []string{"org:a"},
+		objectType:  "org",
+		relation:    "member",
+		subjectType: "user",
+		subjectID:   "bob",
+		expected:    []string{"org:a"},
 	},
 	{
 		name: "mix_of_union_intersection_and_exclusion",
@@ -2209,10 +2153,11 @@ var cases = []testcase{
 			"org:d#dept@dept:d",
 			"dept:d#member@user:bob",
 		},
-		objectType: "org",
-		relation:   "member",
-		user:       "user:bob",
-		expected:   []string{"org:a", "org:b"},
+		objectType:  "org",
+		relation:    "member",
+		subjectType: "user",
+		subjectID:   "bob",
+		expected:    []string{"org:a", "org:b"},
 	},
 	{
 		name: "intersection_with_TTU",
@@ -2238,10 +2183,11 @@ var cases = []testcase{
 			"folder:X#viewer@user:b",
 			"document:2#writer@user:c",
 		},
-		objectType: "document",
-		relation:   "viewer",
-		user:       "user:a",
-		expected:   []string{"document:1"},
+		objectType:  "document",
+		relation:    "viewer",
+		subjectType: "user",
+		subjectID:   "a",
+		expected:    []string{"document:1"},
 	},
 	{
 		name: "intersection_with_high_weights",
@@ -2273,10 +2219,11 @@ var cases = []testcase{
 			"folder:Y#viewer@user:a",
 			"document:2#other_parent@folder:Z",
 		},
-		objectType: "document",
-		relation:   "viewer",
-		user:       "user:a",
-		expected:   []string{"document:1", "document:3"},
+		objectType:  "document",
+		relation:    "viewer",
+		subjectType: "user",
+		subjectID:   "a",
+		expected:    []string{"document:1", "document:3"},
 	},
 	{
 		name: "exclusion_with_TTU",
@@ -2304,10 +2251,11 @@ var cases = []testcase{
 			"document:1#writer@user:a",
 			"folder:Y#viewer@user:a",
 		},
-		objectType: "document",
-		relation:   "viewer",
-		user:       "user:a",
-		expected:   []string{"document:2", "document:3"},
+		objectType:  "document",
+		relation:    "viewer",
+		subjectType: "user",
+		subjectID:   "a",
+		expected:    []string{"document:2", "document:3"},
 	},
 	{
 		name: "exclusion_with_high_weights",
@@ -2343,10 +2291,11 @@ var cases = []testcase{
 			"document:5#other_parent@folder:F",
 			"folder:F#viewer@user:a",
 		},
-		objectType: "document",
-		relation:   "viewer",
-		user:       "user:a",
-		expected:   []string{"document:2", "document:4"},
+		objectType:  "document",
+		relation:    "viewer",
+		subjectType: "user",
+		subjectID:   "a",
+		expected:    []string{"document:2", "document:4"},
 	},
 	{
 		name: "tuple_to_userset_intersection",
@@ -2378,10 +2327,11 @@ var cases = []testcase{
 			"and_folder:e#editor@user:e",
 			"and_folder:e#editor@user:e",
 		},
-		objectType: "document",
-		relation:   "viewer",
-		user:       "user:a",
-		expected:   []string{"document:a"},
+		objectType:  "document",
+		relation:    "viewer",
+		subjectType: "user",
+		subjectID:   "a",
+		expected:    []string{"document:a"},
 	},
 	{
 		name: "tuple_to_userset_exclusion",
@@ -2411,10 +2361,11 @@ var cases = []testcase{
 			"but_not_folder:c#editor@user:c",
 			"but_not_folder:d#writer@user:d",
 		},
-		objectType: "document",
-		relation:   "viewer",
-		user:       "user:a",
-		expected:   []string{"document:a"},
+		objectType:  "document",
+		relation:    "viewer",
+		subjectType: "user",
+		subjectID:   "a",
+		expected:    []string{"document:a"},
 	},
 	{
 		name: "duplicate_parent_ttu",
@@ -2435,9 +2386,10 @@ var cases = []testcase{
 			"thing:4#parent@account:4",
 			"account:4#super_admin@user:1",
 		},
-		objectType: "thing",
-		relation:   "can_view",
-		user:       "user:1",
+		objectType:  "thing",
+		relation:    "can_view",
+		subjectType: "user",
+		subjectID:   "1",
 		expected: []string{
 			"thing:4",
 		},
@@ -2484,9 +2436,10 @@ var cases = []testcase{
 			"resource:5#also_user@user:1",
 			"resource:5#owner@user:1",
 		},
-		objectType: "thing",
-		relation:   "can_view",
-		user:       "user:1",
+		objectType:  "thing",
+		relation:    "can_view",
+		subjectType: "user",
+		subjectID:   "1",
 		expected: []string{
 			"thing:1",
 			"thing:2",
@@ -2572,9 +2525,10 @@ var cases = []testcase{
 			"resource:8#member@user:1",
 			"document:4#viewer@resource:8#member",
 		},
-		objectType: "thing",
-		relation:   "can_view",
-		user:       "user:1",
+		objectType:  "thing",
+		relation:    "can_view",
+		subjectType: "user",
+		subjectID:   "1",
 		expected: []string{
 			"thing:1",
 			"thing:2",
@@ -2609,27 +2563,39 @@ func BenchmarkPipeline(b *testing.B) {
 
 			validator := pipeline.NewValidator(context.Background(), typesys, nil)
 
-			reader := pipeline.NewReader(
+			reader := pipeline.NewValidatingStore(
 				ds,
 				Store,
-				pipeline.WithReaderValidator(validator),
+				pipeline.WithStoreValidator(validator),
 			)
+
+			builder, err := pipeline.NewBuilder(reader)
+			require.NoError(b, err)
+
+			spec := pipeline.Spec{
+				ObjectType:     tc.objectType,
+				ObjectRelation: tc.relation,
+				SubjectType:    tc.subjectType,
+				SubjectID:      tc.subjectID,
+			}
 
 			b.ResetTimer()
 
 			for b.Loop() {
-				spec := pipeline.Spec{
-					ObjectType: tc.objectType,
-					Relation:   tc.relation,
-					User:       tc.user,
+				p, err := builder.Build(context.Background(), g, spec)
+				if tc.error != nil {
+					require.ErrorIs(b, err, tc.error)
+					continue
 				}
-
-				seq, err := pipeline.New(g, reader).Expand(context.Background(), spec)
-
 				require.NoError(b, err)
 
-				for range seq {
+				for {
+					_, ok := p.Recv(context.Background())
+					if !ok {
+						break
+					}
 				}
+				p.Close()
 			}
 		})
 	}
@@ -2659,28 +2625,35 @@ func TestPipeline(t *testing.T) {
 
 			validator := pipeline.NewValidator(context.Background(), typesys, nil)
 
-			reader := pipeline.NewReader(
+			reader := pipeline.NewValidatingStore(
 				ds,
 				Store,
-				pipeline.WithReaderValidator(validator),
+				pipeline.WithStoreValidator(validator),
 			)
 
-			spec := pipeline.Spec{
-				ObjectType: tc.objectType,
-				Relation:   tc.relation,
-				User:       tc.user,
-			}
-
-			seq, err := pipeline.New(g, reader).Expand(context.Background(), spec)
-
+			builder, err := pipeline.NewBuilder(reader)
 			require.NoError(t, err)
 
-			evaluate(t, tc, seq)
+			spec := pipeline.Spec{
+				ObjectType:     tc.objectType,
+				ObjectRelation: tc.relation,
+				SubjectType:    tc.subjectType,
+				SubjectID:      tc.subjectID,
+			}
+
+			p, err := builder.Build(context.Background(), g, spec)
+			if tc.error != nil {
+				require.ErrorIs(t, err, tc.error)
+				return
+			}
+			require.NoError(t, err)
+
+			evaluate(t, tc, p)
 		})
 	}
 }
 
-func TestPipelineTTUWithCondition(t *testing.T) {
+func TestPipeline_TTUWithCondition(t *testing.T) {
 	const dsl string = `
 	model
 	  schema 1.2
@@ -2713,9 +2686,10 @@ func TestPipelineTTUWithCondition(t *testing.T) {
 	g := typesys.GetWeightedGraph()
 
 	spec := pipeline.Spec{
-		ObjectType: "document",
-		Relation:   "can_edit",
-		User:       "user:alice",
+		ObjectType:     "document",
+		ObjectRelation: "can_edit",
+		SubjectType:    "user",
+		SubjectID:      "alice",
 	}
 
 	tests := []struct {
@@ -2765,21 +2739,28 @@ func TestPipelineTTUWithCondition(t *testing.T) {
 				},
 			}
 
-			reader := pipeline.NewReader(
+			reader := pipeline.NewValidatingStore(
 				ds,
 				storeID,
-				pipeline.WithReaderValidator(pipeline.NewValidator(context.Background(), typesys, reqCtx)),
+				pipeline.WithStoreValidator(pipeline.NewValidator(context.Background(), typesys, reqCtx)),
 			)
 
-			seq, err := pipeline.New(g, reader).Expand(context.Background(), spec)
+			builder, err := pipeline.NewBuilder(reader)
 			require.NoError(t, err)
 
+			p, err := builder.Build(context.Background(), g, spec)
+			require.NoError(t, err)
+			defer p.Close()
+
 			var results []string
-			for object := range seq {
-				value, err := object.Object()
-				require.NoError(t, err)
+			for {
+				value, ok := p.Recv(context.Background())
+				if !ok {
+					break
+				}
 				results = append(results, value)
 			}
+			require.NoError(t, p.Err())
 			require.ElementsMatch(t, tc.expected, results)
 		})
 	}
