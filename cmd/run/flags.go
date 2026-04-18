@@ -137,6 +137,12 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 		util.MustBindPFlag("datastore.connMaxLifetime", flags.Lookup("datastore-conn-max-lifetime"))
 		util.MustBindEnv("datastore.connMaxLifetime", "OPENFGA_DATASTORE_CONN_MAX_LIFETIME", "OPENFGA_DATASTORE_CONNMAXLIFETIME")
 
+		util.MustBindPFlag("datastore.pingTimeout", flags.Lookup("datastore-ping-timeout"))
+		util.MustBindEnv("datastore.pingTimeout", "OPENFGA_DATASTORE_PING_TIMEOUT", "OPENFGA_DATASTORE_PINGTIMEOUT")
+
+		util.MustBindPFlag("datastore.pingRetryMaxElapsedTime", flags.Lookup("datastore-ping-retry-max-elapsed-time"))
+		util.MustBindEnv("datastore.pingRetryMaxElapsedTime", "OPENFGA_DATASTORE_PING_RETRY_MAX_ELAPSED_TIME", "OPENFGA_DATASTORE_PINGRETRYMAXELAPSEDTIME")
+
 		util.MustBindPFlag("datastore.metrics.enabled", flags.Lookup("datastore-metrics-enabled"))
 		util.MustBindEnv("datastore.metrics.enabled", "OPENFGA_DATASTORE_METRICS_ENABLED")
 

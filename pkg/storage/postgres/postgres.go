@@ -107,6 +107,10 @@ func parseConfig(uri string, override bool, cfg *sqlcommon.Config) (*pgxpool.Con
 		c.MaxConnIdleTime = cfg.ConnMaxIdleTime
 	}
 
+	if cfg.PingTimeout != 0 {
+		c.PingTimeout = cfg.PingTimeout
+	}
+
 	c.BeforeConnect = createBeforeConnect(cfg.Logger, &FSPassfileProvider{cfg.Logger, os.UserHomeDir, FileOpener})
 	return c, nil
 }
@@ -240,9 +244,10 @@ func New(uri string, cfg *sqlcommon.Config) (*Datastore, error) {
 }
 
 func configureDB(db *pgxpool.Pool, cfg *sqlcommon.Config, dbName string) (prometheus.Collector, error) {
-	policy := backoff.NewExponentialBackOff(backoff.WithMaxElapsedTime(1 * time.Minute))
+	policy := backoff.NewExponentialBackOff(backoff.WithMaxElapsedTime(cfg.PingRetryMaxElapsedTime))
 	attempt := 1
 	err := backoff.Retry(func() error {
+		// using context.Background() is safe here as pgx enforces the PingTimeout internally.
 		err := db.Ping(context.Background())
 		if err != nil {
 			cfg.Logger.Info("waiting for database", zap.Int("attempt", attempt))
@@ -1319,9 +1324,6 @@ func (s *Datastore) ReadChanges(ctx context.Context, store string, filter storag
 }
 
 func isDBReady(ctx context.Context, versionReady bool, db *pgxpool.Pool) (storage.ReadinessStatus, error) {
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
-	defer cancel()
-
 	err := db.Ping(ctx)
 	if err != nil {
 		return storage.ReadinessStatus{}, err

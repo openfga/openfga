@@ -327,6 +327,20 @@
                     "default": "0s",
                     "x-env-variable": "OPENFGA_DATASTORE_CONN_MAX_LIFETIME"
                 },
+                "pingTimeout": {
+                    "description": "the maximum amount of time to wait for a successful ping to the datastore",
+                    "type": "string",
+                    "format": "duration",
+                    "default": "2s",
+                    "x-env-variable": "OPENFGA_DATASTORE_PING_TIMEOUT"
+                },
+                "pingRetryMaxElapsedTime": {
+                    "description": "the maximum time to retry ping attempts",
+                    "type": "string",
+                    "format": "duration",
+                    "default": "1m0s",
+                    "x-env-variable": "OPENFGA_DATASTORE_PING_RETRY_MAX_ELAPSED_TIME"
+                },
                 "metrics": {
                     "type": "object",
                     "properties": {

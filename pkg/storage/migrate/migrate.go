@@ -115,10 +115,12 @@ func RunMigrations(cfg MigrationConfig) error {
 	}
 	defer db.Close()
 
-	policy := backoff.NewExponentialBackOff()
-	policy.MaxElapsedTime = cfg.Timeout
+	policy := backoff.NewExponentialBackOff(backoff.WithMaxElapsedTime(cfg.Timeout))
 	err = backoff.Retry(func() error {
-		return db.PingContext(context.Background())
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+
+		return db.PingContext(ctx)
 	}, policy)
 	if err != nil {
 		return fmt.Errorf("failed to initialize database connection: %w", err)

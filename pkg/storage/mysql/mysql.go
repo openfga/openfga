@@ -84,11 +84,13 @@ func NewWithDB(db *sql.DB, cfg *sqlcommon.Config) (*Datastore, error) {
 	db.SetConnMaxIdleTime(cfg.ConnMaxIdleTime)
 	db.SetConnMaxLifetime(cfg.ConnMaxLifetime)
 
-	policy := backoff.NewExponentialBackOff()
-	policy.MaxElapsedTime = 1 * time.Minute
+	policy := backoff.NewExponentialBackOff(backoff.WithMaxElapsedTime(cfg.PingRetryMaxElapsedTime))
 	attempt := 1
 	err := backoff.Retry(func() error {
-		err := db.PingContext(context.Background())
+		ctx, cancel := context.WithTimeout(context.Background(), cfg.PingTimeout)
+		defer cancel()
+
+		err := db.PingContext(ctx)
 		if err != nil {
 			cfg.Logger.Info("waiting for database", zap.Int("attempt", attempt))
 			attempt++
