@@ -160,6 +160,9 @@ type DatastoreConfig struct {
 	// ConnMaxLifetime is the maximum amount of time a connection to the datastore may be reused.
 	ConnMaxLifetime time.Duration
 
+	// PingTimeout is the maximum amount of time to wait for a successful ping to the datastore.
+	PingTimeout time.Duration
+
 	// Metrics is configuration for the Datastore metrics.
 	Metrics DatastoreMetricsConfig
 }
@@ -836,6 +839,7 @@ func DefaultConfig() *Config {
 			MaxIdleConns:           10,
 			MinOpenConns:           0,
 			MaxOpenConns:           30,
+			PingTimeout:            2 * time.Second,
 		},
 		GRPC: GRPCConfig{
 			Addr:            "0.0.0.0:8081",

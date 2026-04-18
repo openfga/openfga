@@ -48,6 +48,7 @@ type Config struct {
 	MinIdleConns    int
 	ConnMaxIdleTime time.Duration
 	ConnMaxLifetime time.Duration
+	PingTimeout     time.Duration
 
 	ExportMetrics bool
 }
@@ -163,6 +164,14 @@ func WithConnMaxIdleTime(d time.Duration) DatastoreOption {
 func WithConnMaxLifetime(d time.Duration) DatastoreOption {
 	return func(cfg *Config) {
 		cfg.ConnMaxLifetime = d
+	}
+}
+
+// WithPingTimeout returns a DatastoreOption that sets
+// the maximum lifetime for a connection in the Config.
+func WithPingTimeout(d time.Duration) DatastoreOption {
+	return func(cfg *Config) {
+		cfg.PingTimeout = d
 	}
 }
 
