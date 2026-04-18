@@ -600,8 +600,7 @@ func TestNewDB(t *testing.T) {
 		require.Error(t, err)
 	})
 	t.Run("cannot_ping_primary_uri", func(t *testing.T) {
-		uri :=
-			"postgres://abc:passwd@localhost:5346/dbname"
+		uri := "postgres://abc:passwd@localhost:5346/dbname"
 		cfg := sqlcommon.Config{
 			Username:        "override_user",
 			Password:        "override_passwd",
