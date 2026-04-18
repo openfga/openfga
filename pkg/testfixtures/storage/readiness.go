@@ -14,8 +14,8 @@ import (
 // and ping it until it's ready or a timeout occurs.
 func waitForDatabase(driverName, uri string) error { //nolint:unparam
 	backoffPolicy := backoff.NewExponentialBackOff(
-		backoff.WithInitialInterval(10*time.Millisecond),
-		backoff.WithMaxElapsedTime(10*time.Second),
+		backoff.WithInitialInterval(100*time.Millisecond),
+		backoff.WithMaxElapsedTime(30*time.Second),
 	)
 
 	err := backoff.Retry(func() error {
@@ -42,8 +42,8 @@ func waitForDatabase(driverName, uri string) error { //nolint:unparam
 // until it matches the expected version or a timeout occurs.
 func waitForMigrationVersion(driverName, uri string, expectedVersion int64) error {
 	backoffPolicy := backoff.NewExponentialBackOff(
-		backoff.WithInitialInterval(10*time.Millisecond),
-		backoff.WithMaxElapsedTime(10*time.Second),
+		backoff.WithInitialInterval(100*time.Millisecond),
+		backoff.WithMaxElapsedTime(30*time.Second),
 	)
 
 	err := backoff.Retry(func() error {
