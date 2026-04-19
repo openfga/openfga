@@ -520,6 +520,8 @@ func (q *ListObjectsQuery) Execute(
 	targetObjectType := req.GetType()
 	targetRelation := req.GetRelation()
 
+	subjectType, subjectIdentifier, subjectRelation := tuple.ToUserParts(req.GetUser())
+
 	typesys, ok := typesystem.TypesystemFromContext(ctx)
 	if !ok {
 		return nil, fmt.Errorf("%w: typesystem missing in context", openfgaErrors.ErrUnknown)
@@ -564,7 +566,7 @@ func (q *ListObjectsQuery) Execute(
 
 	wgraph := typesys.GetWeightedGraph()
 
-	if wgraph != nil && q.pipelineEnabled {
+	if wgraph != nil && subjectRelation == "" && subjectIdentifier != "*" && q.pipelineEnabled {
 		ds := storagewrappers.NewRequestStorageWrapperWithCache(
 			q.datastore,
 			req.GetContextualTuples().GetTupleKeys(),
@@ -595,8 +597,6 @@ func (q *ListObjectsQuery) Execute(
 		if err != nil {
 			return nil, serverErrors.HandleError("", err)
 		}
-
-		subjectType, subjectIdentifier, _ := tuple.ToUserParts(req.GetUser())
 
 		spec := pipeline.Spec{
 			ObjectType:     targetObjectType,
@@ -647,7 +647,7 @@ func (q *ListObjectsQuery) Execute(
 		return &res, nil
 	}
 
-	// --------- OLD STUFF -----------
+	// --------- OLD ALGORITHM FALLBACK -----------
 	resultsChan := make(chan ListObjectsResult, 1)
 	if maxResults > 0 {
 		resultsChan = make(chan ListObjectsResult, maxResults)
@@ -706,6 +706,8 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 	targetObjectType := req.GetType()
 	targetRelation := req.GetRelation()
 
+	subjectType, subjectIdentifier, subjectRelation := tuple.ToUserParts(req.GetUser())
+
 	typesys, ok := typesystem.TypesystemFromContext(ctx)
 	if !ok {
 		return nil, fmt.Errorf("%w: typesystem missing in context", openfgaErrors.ErrUnknown)
@@ -740,7 +742,7 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 
 	wgraph := typesys.GetWeightedGraph()
 
-	if wgraph != nil && q.pipelineEnabled {
+	if wgraph != nil && subjectRelation == "" && subjectIdentifier != "*" && q.pipelineEnabled {
 		ds := storagewrappers.NewRequestStorageWrapperWithCache(
 			q.datastore,
 			req.GetContextualTuples().GetTupleKeys(),
@@ -771,8 +773,6 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 		if err != nil {
 			return nil, serverErrors.HandleError("", err)
 		}
-
-		subjectType, subjectIdentifier, _ := tuple.ToUserParts(req.GetUser())
 
 		spec := pipeline.Spec{
 			ObjectType:     targetObjectType,
@@ -830,6 +830,8 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 		resolutionMetadata.WasWeightedGraphUsed.Store(true)
 		return &resolutionMetadata, nil
 	}
+
+	// --------- OLD ALGORITHM FALLBACK -----------
 
 	// make a buffered channel so that writer goroutines aren't blocked when attempting to send a result
 	resultsChan := make(chan ListObjectsResult, streamedBufferSize)
