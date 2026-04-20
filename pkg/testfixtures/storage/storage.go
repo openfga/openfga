@@ -2,8 +2,18 @@
 package storage
 
 import (
+	"fmt"
 	"testing"
+
+	"github.com/pressly/goose/v3"
+
+	"github.com/openfga/openfga/assets"
 )
+
+func init() {
+	goose.SetLogger(goose.NopLogger())
+	goose.SetBaseFS(assets.EmbedMigrations)
+}
 
 // DatastoreTestContainer represents a runnable container for testing specific datastore engines.
 type DatastoreTestContainer interface {
@@ -56,12 +66,14 @@ func (m memoryTestContainer) GetSecondaryConnectionURI(includeCredentials bool) 
 // RunDatastoreTestContainer constructs and runs a specific DatastoreTestContainer for the provided
 // datastore engine. If applicable, it also runs all existing database migrations.
 // The resources used by the test engine will be cleaned up after the test has finished.
+//
+// NOTE: PostgreSQL uses a shared container across tests, so it is not automatically cleaned up after each test.
 func RunDatastoreTestContainer(t testing.TB, engine string) DatastoreTestContainer {
 	switch engine {
 	case "mysql":
 		return NewMySQLTestContainer().RunMySQLTestContainer(t)
 	case "postgres":
-		return NewPostgresTestContainer().RunPostgresTestContainer(t)
+		return RunPostgresTestContainer(t)
 	case "memory":
 		return memoryTestContainer{}
 	case "sqlite":
@@ -70,4 +82,17 @@ func RunDatastoreTestContainer(t testing.TB, engine string) DatastoreTestContain
 		t.Fatalf("unsupported datastore engine: %q", engine)
 		return nil
 	}
+}
+
+// latestMigrationVersion returns the latest goose migration version in migrationDir.
+func latestMigrationVersion(migrationDir string) (int64, error) {
+	migrations, err := goose.CollectMigrations(migrationDir, 0, goose.MaxVersion)
+	if err != nil {
+		return 0, err
+	}
+	if len(migrations) == 0 {
+		return 0, fmt.Errorf("no migrations found in %s", migrationDir)
+	}
+
+	return migrations[len(migrations)-1].Version, nil
 }

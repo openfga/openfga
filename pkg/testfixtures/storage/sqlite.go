@@ -40,13 +40,9 @@ func (m *sqliteTestContainer) RunSqliteTestDatabase(t testing.TB) DatastoreTestC
 
 	uri := m.GetConnectionURI(true)
 
-	goose.SetLogger(goose.NopLogger())
-
 	db, err := goose.OpenDBWithDriver("sqlite", uri)
 	require.NoError(t, err)
 	defer db.Close()
-
-	goose.SetBaseFS(assets.EmbedMigrations)
 
 	err = goose.Up(db, assets.SqliteMigrationDir)
 	require.NoError(t, err)
