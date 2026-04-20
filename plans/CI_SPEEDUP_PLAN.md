@@ -18,7 +18,7 @@ The CI pipeline takes ~13-14 minutes on the critical path (up to ~47 minutes wit
 
 The Pull Request workflow runs **6 parallel jobs**, all on `ubuntu-latest`:
 
-```
+```text
 ┌─────────────────────────────────────────────────────────┐
 │                    PR Workflow                           │
 │                                                         │
