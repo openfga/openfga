@@ -110,7 +110,7 @@ This is a **single `go test` invocation** that runs all ~65 packages.
 
 #### 2.1 Use larger runners for test jobs
 
-- [x] **Done** — Test jobs now use `ubuntu-latest-16-cores`
+- [x] **Done** — Test jobs now use `ubuntu-latest-4-cores`
 
 **Estimated savings:** 3-5 minutes on the tests job.
 
