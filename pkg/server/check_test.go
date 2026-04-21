@@ -22,6 +22,7 @@ import (
 	"github.com/openfga/openfga/internal/modelgraph"
 	"github.com/openfga/openfga/pkg/featureflags"
 	"github.com/openfga/openfga/pkg/logger"
+	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 )
@@ -190,7 +191,7 @@ func TestShadowV2Check(t *testing.T) {
 		logs.TakeAll() // clear previous logs
 
 		mainRes := &openfgav1.CheckResponse{Allowed: true}
-		s.shadowV2Check(context.Background(), req, mainRes, 10)
+		s.shadowV2Check(context.Background(), req, mainRes, 10, 3, 5)
 
 		shadowLogs := logs.FilterMessage("shadow check")
 		require.Equal(t, 1, shadowLogs.Len())
@@ -206,6 +207,10 @@ func TestShadowV2Check(t *testing.T) {
 		shadowTook, ok := fields["shadow_took"].(int64)
 		require.True(t, ok, "shadow_took should be int64 milliseconds")
 		require.GreaterOrEqual(t, shadowTook, int64(0))
+		require.Equal(t, uint32(3), fields["main_datastore_query_count"])
+		require.Equal(t, uint64(5), fields["main_datastore_item_count"])
+		require.NotNil(t, fields["shadow_datastore_query_count"])
+		require.NotNil(t, fields["shadow_datastore_item_count"])
 	})
 
 	t.Run("logs_mismatch_when_results_disagree", func(t *testing.T) {
@@ -213,7 +218,7 @@ func TestShadowV2Check(t *testing.T) {
 
 		// main says allowed=false, but alice IS a viewer, so shadow will say true
 		mainRes := &openfgav1.CheckResponse{Allowed: false}
-		s.shadowV2Check(context.Background(), req, mainRes, 20)
+		s.shadowV2Check(context.Background(), req, mainRes, 20, 0, 0)
 
 		shadowLogs := logs.FilterMessage("shadow check")
 		require.Equal(t, 1, shadowLogs.Len())
@@ -243,7 +248,7 @@ func TestShadowV2Check(t *testing.T) {
 			},
 		}
 
-		s.shadowV2Check(context.Background(), req, mainRes, 5)
+		s.shadowV2Check(context.Background(), req, mainRes, 5, 0, 0)
 
 		// Should log an error, not a "shadow check" info log
 		shadowInfoLogs := logs.FilterMessage("shadow check")
@@ -253,6 +258,43 @@ func TestShadowV2Check(t *testing.T) {
 		require.Equal(t, 1, errorLogs.Len())
 		require.Equal(t, zapcore.ErrorLevel, errorLogs.All()[0].Level)
 	})
+}
+
+func TestCheck_ShadowV2CheckGoroutine(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	core, logs := observer.New(zap.DebugLevel)
+	testLogger := &logger.ZapLogger{Logger: zap.New(core)}
+
+	s, req := setupCheckServer(t, "", nil,
+		WithLogger(testLogger),
+		WithShadowCheckResolverTimeout(5*time.Second),
+		WithFeatureFlagClient(featureflags.NewDefaultClient([]string{serverconfig.ExperimentalShadowWeightedGraphCheck})),
+	)
+
+	resp, err := s.Check(context.Background(), req)
+	require.NoError(t, err)
+	require.True(t, resp.GetAllowed())
+
+	// The shadow check runs in a goroutine; wait for the log to appear.
+	require.Eventually(t, func() bool {
+		return logs.FilterMessage("shadow check").Len() == 1
+	}, 2*time.Second, 10*time.Millisecond)
+
+	entry := logs.FilterMessage("shadow check").All()[0]
+	require.Equal(t, zapcore.InfoLevel, entry.Level)
+
+	fields := fieldMap(entry.Context)
+	require.Equal(t, true, fields["matches"])
+	require.Equal(t, true, fields["main_result"])
+	require.Equal(t, true, fields["shadow_result"])
+	require.NotEmpty(t, fields["store_id"])
+	require.NotNil(t, fields["main_datastore_query_count"])
+	require.NotNil(t, fields["shadow_datastore_query_count"])
+	require.NotNil(t, fields["main_datastore_item_count"])
+	require.NotNil(t, fields["shadow_datastore_item_count"])
 }
 
 // fieldMap converts a slice of zap.Field into a map for easy lookup in assertions.
@@ -341,7 +383,7 @@ func TestV2CheckCacheSeparation(t *testing.T) {
 		s.authzModelGraphResolver = modelgraph.NewResolver(s.datastore, checkCache, 24*7*time.Hour)
 		s.shadowAuthzModelGraphResolver = modelgraph.NewResolver(s.datastore, shadowCache, 24*7*time.Hour)
 
-		_, err := s.v2Check(ctx, req,
+		_, _, err := s.v2Check(ctx, req,
 			s.sharedDatastoreResources.ShadowCheckCache,
 			s.sharedDatastoreResources.ShadowCacheController,
 			s.shadowAuthzModelGraphResolver,
@@ -367,7 +409,7 @@ func TestV2CheckCacheSeparation(t *testing.T) {
 		s.authzModelGraphResolver = modelgraph.NewResolver(s.datastore, checkCache, 24*7*time.Hour)
 		s.shadowAuthzModelGraphResolver = modelgraph.NewResolver(s.datastore, shadowCache, 24*7*time.Hour)
 
-		_, err := s.v2Check(ctx, req,
+		_, _, err := s.v2Check(ctx, req,
 			s.sharedDatastoreResources.CheckCache,
 			s.sharedDatastoreResources.CacheController,
 			s.authzModelGraphResolver,
@@ -404,7 +446,7 @@ func TestV2CheckMetadata(t *testing.T) {
 
 		ctx := grpc_ctxtags.SetInContext(context.Background(), grpc_ctxtags.NewTags())
 
-		res, err := s.v2Check(ctx, req,
+		res, _, err := s.v2Check(ctx, req,
 			s.sharedDatastoreResources.CheckCache,
 			s.sharedDatastoreResources.CacheController,
 			s.authzModelGraphResolver,
@@ -453,7 +495,7 @@ func TestV2CheckMetadata(t *testing.T) {
 
 		ctx := grpc_ctxtags.SetInContext(context.Background(), grpc_ctxtags.NewTags())
 
-		res, err := s.v2Check(ctx, req,
+		res, _, err := s.v2Check(ctx, req,
 			s.sharedDatastoreResources.CheckCache,
 			s.sharedDatastoreResources.CacheController,
 			s.authzModelGraphResolver,
@@ -476,7 +518,7 @@ func TestV2CheckMetadata(t *testing.T) {
 
 		ctx := grpc_ctxtags.SetInContext(context.Background(), grpc_ctxtags.NewTags())
 
-		res, err := s.v2Check(ctx, req,
+		res, _, err := s.v2Check(ctx, req,
 			s.sharedDatastoreResources.CheckCache,
 			s.sharedDatastoreResources.CacheController,
 			s.authzModelGraphResolver,
@@ -513,7 +555,7 @@ func TestV2Check_SanitizeRequest(t *testing.T) {
 
 	doV2Check := func(t *testing.T, req *openfgav1.CheckRequest) error {
 		t.Helper()
-		_, err := s.v2Check(ctx, req,
+		_, _, err := s.v2Check(ctx, req,
 			s.sharedDatastoreResources.CheckCache,
 			s.sharedDatastoreResources.CacheController,
 			s.authzModelGraphResolver,
@@ -616,7 +658,7 @@ func TestV2CheckQueryCacheEnabled(t *testing.T) {
 		s.authzModelGraphResolver = modelgraph.NewResolver(s.datastore, checkCache, 24*7*time.Hour)
 
 		ctx := context.Background()
-		res, err := s.v2Check(ctx, req,
+		res, _, err := s.v2Check(ctx, req,
 			s.sharedDatastoreResources.CheckCache,
 			s.sharedDatastoreResources.CacheController,
 			s.authzModelGraphResolver,
@@ -639,7 +681,7 @@ func TestV2CheckQueryCacheEnabled(t *testing.T) {
 		s.authzModelGraphResolver = modelgraph.NewResolver(s.datastore, checkCache, 24*7*time.Hour)
 
 		ctx := context.Background()
-		res, err := s.v2Check(ctx, req,
+		res, _, err := s.v2Check(ctx, req,
 			s.sharedDatastoreResources.CheckCache,
 			s.sharedDatastoreResources.CacheController,
 			s.authzModelGraphResolver,
