@@ -535,6 +535,157 @@ func TestListObjectsSeqError(t *testing.T) {
 	})
 }
 
+func TestListObjectsIsPartialListFlag(t *testing.T) {
+	t.Run("deadline_exceeded_sets_partial_flag", func(t *testing.T) {
+		t.Cleanup(func() {
+			goleak.VerifyNone(t)
+		})
+		ds := memory.New()
+		t.Cleanup(ds.Close)
+
+		modelDsl := `
+			model
+				schema 1.1
+			type user
+			type repo
+				relations
+					define admin: [user]`
+		tuples := []string{
+			"repo:1#admin@user:alice",
+			"repo:2#admin@user:alice",
+		}
+
+		storeID, model := storagetest.BootstrapFGAStore(t, ds, modelDsl, tuples)
+		ts, err := typesystem.NewAndValidate(context.Background(), model)
+		require.NoError(t, err)
+
+		slowDS := mocks.NewMockSlowDataStorage(ds, 2*time.Second)
+
+		checkResolver, checkResolverCloser, err := graph.NewOrderedCheckResolvers().Build()
+		require.NoError(t, err)
+		t.Cleanup(checkResolverCloser)
+
+		q, err := NewListObjectsQuery(
+			slowDS,
+			checkResolver,
+			fakeStoreID,
+			WithListObjectsDeadline(100*time.Millisecond),
+			WithListObjectsMaxResults(10),
+			WithListObjectsPipelineEnabled(false),
+		)
+		require.NoError(t, err)
+
+		ctx := typesystem.ContextWithTypesystem(context.Background(), ts)
+		resp, err := q.Execute(ctx, &openfgav1.ListObjectsRequest{
+			StoreId:  storeID,
+			Type:     "repo",
+			Relation: "admin",
+			User:     "user:alice",
+		})
+		require.NoError(t, err)
+		require.True(t, resp.ResolutionMetadata.IsPartialList, "expected IsPartialList to be true when deadline is exceeded")
+	})
+
+	t.Run("max_results_reached_sets_partial_flag", func(t *testing.T) {
+		t.Cleanup(func() {
+			goleak.VerifyNone(t)
+		})
+		ds := memory.New()
+		t.Cleanup(ds.Close)
+
+		modelDsl := `
+			model
+				schema 1.1
+			type user
+			type repo
+				relations
+					define admin: [user]`
+		tuples := []string{
+			"repo:1#admin@user:alice",
+			"repo:2#admin@user:alice",
+			"repo:3#admin@user:alice",
+		}
+
+		storeID, model := storagetest.BootstrapFGAStore(t, ds, modelDsl, tuples)
+		ts, err := typesystem.NewAndValidate(context.Background(), model)
+		require.NoError(t, err)
+
+		checkResolver, checkResolverCloser, err := graph.NewOrderedCheckResolvers().Build()
+		require.NoError(t, err)
+		t.Cleanup(checkResolverCloser)
+
+		q, err := NewListObjectsQuery(
+			ds,
+			checkResolver,
+			fakeStoreID,
+			WithListObjectsDeadline(10*time.Second),
+			WithListObjectsMaxResults(2),
+			WithListObjectsPipelineEnabled(false),
+		)
+		require.NoError(t, err)
+
+		ctx := typesystem.ContextWithTypesystem(context.Background(), ts)
+		resp, err := q.Execute(ctx, &openfgav1.ListObjectsRequest{
+			StoreId:  storeID,
+			Type:     "repo",
+			Relation: "admin",
+			User:     "user:alice",
+		})
+		require.NoError(t, err)
+		require.Len(t, resp.Objects, 2)
+		require.True(t, resp.ResolutionMetadata.IsPartialList, "expected IsPartialList to be true when max results is reached")
+	})
+
+	t.Run("complete_results_does_not_set_partial_flag", func(t *testing.T) {
+		t.Cleanup(func() {
+			goleak.VerifyNone(t)
+		})
+		ds := memory.New()
+		t.Cleanup(ds.Close)
+
+		modelDsl := `
+			model
+				schema 1.1
+			type user
+			type repo
+				relations
+					define admin: [user]`
+		tuples := []string{
+			"repo:1#admin@user:alice",
+			"repo:2#admin@user:alice",
+		}
+
+		storeID, model := storagetest.BootstrapFGAStore(t, ds, modelDsl, tuples)
+		ts, err := typesystem.NewAndValidate(context.Background(), model)
+		require.NoError(t, err)
+
+		checkResolver, checkResolverCloser, err := graph.NewOrderedCheckResolvers().Build()
+		require.NoError(t, err)
+		t.Cleanup(checkResolverCloser)
+
+		q, err := NewListObjectsQuery(
+			ds,
+			checkResolver,
+			fakeStoreID,
+			WithListObjectsDeadline(10*time.Second),
+			WithListObjectsMaxResults(0), // unlimited
+			WithListObjectsPipelineEnabled(false),
+		)
+		require.NoError(t, err)
+
+		ctx := typesystem.ContextWithTypesystem(context.Background(), ts)
+		resp, err := q.Execute(ctx, &openfgav1.ListObjectsRequest{
+			StoreId:  storeID,
+			Type:     "repo",
+			Relation: "admin",
+			User:     "user:alice",
+		})
+		require.NoError(t, err)
+		require.Len(t, resp.Objects, 2)
+		require.False(t, resp.ResolutionMetadata.IsPartialList, "expected IsPartialList to be false when all results are returned")
+	})
+}
+
 func reportLatencies(b *testing.B, latencies []time.Duration) {
 	// Sort latencies ascending
 	sort.Slice(latencies, func(i, j int) bool {

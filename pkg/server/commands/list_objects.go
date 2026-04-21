@@ -112,6 +112,12 @@ type ListObjectsResolutionMetadata struct {
 
 	// CheckCounter is the total number of check requests made during the ListObjects execution for the optimized path
 	CheckCounter atomic.Uint32
+
+	// IsPartialList indicates whether the returned result set is incomplete,
+	// either due to a deadline/timeout being exceeded or the max results limit being reached.
+	// Not atomic because writes happen within a single goroutine, and reads occur
+	// only after synchronization (channel close or function return).
+	IsPartialList bool
 }
 
 type ListObjectsResponse struct {
@@ -428,6 +434,7 @@ func (q *ListObjectsQuery) evaluate(
 				}
 
 				if (maxResults != 0) && objectsFound.Load() >= maxResults {
+					resolutionMetadata.IsPartialList = true
 					cancel() // cancel any inflight work if we already found enough results
 					break ConsumerReadLoop
 				}
@@ -479,7 +486,7 @@ func (q *ListObjectsQuery) evaluate(
 			if !errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, context.Canceled) {
 				resultsChan <- ListObjectsResult{Err: err}
 			}
-			// TODO set header to indicate "deadline exceeded"
+			resolutionMetadata.IsPartialList = true
 		}
 		close(resultsChan)
 		dsMeta := ds.GetMetadata()
@@ -611,6 +618,7 @@ func (q *ListObjectsQuery) Execute(
 
 		for object := range seq {
 			if timeoutCtx.Err() != nil {
+				res.ResolutionMetadata.IsPartialList = true
 				break
 			}
 
@@ -628,8 +636,15 @@ func (q *ListObjectsQuery) Execute(
 
 			// Check if we've reached the max results limit
 			if maxResults > 0 && uint32(len(res.Objects)) >= maxResults {
+				res.ResolutionMetadata.IsPartialList = true
 				break
 			}
+		}
+
+		// If the context expired before or during iteration, ensure the flag is set
+		// even if the loop exited without entering the body (zero items yielded).
+		if timeoutCtx.Err() != nil {
+			res.ResolutionMetadata.IsPartialList = true
 		}
 
 		dsMeta := ds.GetMetadata()
@@ -779,6 +794,7 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 
 		for object := range seq {
 			if timeoutCtx.Err() != nil {
+				resolutionMetadata.IsPartialList = true
 				break
 			}
 
@@ -805,8 +821,15 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 
 			// Check if we've reached the max results limit
 			if maxResults > 0 && listObjectsCount >= maxResults {
+				resolutionMetadata.IsPartialList = true
 				break
 			}
+		}
+
+		// If the context expired before or during iteration, ensure the flag is set
+		// even if the loop exited without entering the body (zero items yielded).
+		if timeoutCtx.Err() != nil {
+			resolutionMetadata.IsPartialList = true
 		}
 
 		dsMeta := ds.GetMetadata()

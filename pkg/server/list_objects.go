@@ -9,6 +9,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -183,6 +184,12 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 	checkCounter := float64(result.ResolutionMetadata.CheckCounter.Load())
 	grpc_ctxtags.Extract(ctx).Set(listObjectsCheckCountName, checkCounter)
 
+	grpc_ctxtags.Extract(ctx).Set("request.is_partial_list", result.ResolutionMetadata.IsPartialList)
+
+	if result.ResolutionMetadata.IsPartialList {
+		s.transport.SetHeader(ctx, IsPartialListHeader, "true")
+	}
+
 	return &openfgav1.ListObjectsResponse{
 		Objects: result.Objects,
 	}, nil
@@ -316,6 +323,12 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 	}
 	if wasDatastoreThrottled {
 		throttledRequestCounter.WithLabelValues(s.serviceName, methodName, throttleTypeDatastore).Inc()
+	}
+
+	grpc_ctxtags.Extract(ctx).Set("request.is_partial_list", resolutionMetadata.IsPartialList)
+
+	if resolutionMetadata.IsPartialList {
+		srv.SetTrailer(metadata.Pairs(IsPartialListHeader, "true"))
 	}
 
 	return nil

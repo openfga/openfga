@@ -46,6 +46,7 @@ type listObjectsTestCase struct {
 	listObjectsDeadline    time.Duration // 10 seconds if not set
 	readTuplesDelay        time.Duration // if set, purposely use a slow storage to slow down read and simulate timeout
 	useCheckCache          bool
+	expectPartialList      bool // if true, assert that the response metadata indicates a partial list
 }
 
 func TestListObjects(t *testing.T, ds storage.OpenFGADatastore) {
@@ -200,6 +201,7 @@ func runListObjectsTests(t *testing.T, ds storage.OpenFGADatastore, passedInOpts
 			listObjectsDeadline: 1 * time.Second,
 			readTuplesDelay:     2 * time.Second, // We are mocking the ds to slow down the read call and simulate timeout
 			useCheckCache:       false,
+			expectPartialList:   true,
 		},
 		{
 			name: "list_object_use_check_cache",
@@ -548,7 +550,7 @@ func runListObjectsTests(t *testing.T, ds storage.OpenFGADatastore, passedInOpts
 					}
 				}()
 
-				_, err := listObjectsQuery.ExecuteStreamed(ctx, &openfgav1.StreamedListObjectsRequest{
+				resolutionMetadata, err := listObjectsQuery.ExecuteStreamed(ctx, &openfgav1.StreamedListObjectsRequest{
 					StoreId:          storeID,
 					Type:             test.objectType,
 					Relation:         test.relation,
@@ -563,6 +565,10 @@ func runListObjectsTests(t *testing.T, ds storage.OpenFGADatastore, passedInOpts
 				// there is no upper bound of the number of results for the streamed version
 				require.GreaterOrEqual(t, len(streamedObjectIDs), int(test.minimumResultsExpected))
 				require.ElementsMatch(t, test.allResults, streamedObjectIDs)
+
+				if test.expectPartialList {
+					require.True(t, resolutionMetadata.IsPartialList, "expected IsPartialList to be true")
+				}
 			})
 
 			t.Run("regular_endpoint", func(t *testing.T) {
@@ -582,6 +588,10 @@ func runListObjectsTests(t *testing.T, ds storage.OpenFGADatastore, passedInOpts
 				}
 				require.GreaterOrEqual(t, len(res.Objects), int(test.minimumResultsExpected))
 				require.Subset(t, test.allResults, res.Objects)
+
+				if test.expectPartialList {
+					require.True(t, res.ResolutionMetadata.IsPartialList, "expected IsPartialList to be true")
+				}
 			})
 		})
 	}
