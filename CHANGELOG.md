@@ -19,6 +19,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Changed
 - Made some minor changes in ListObjects to reduce heap allocations. Results in minor latency reduction. [#3043](https://github.com/openfga/openfga/pull/3043)
 - Improve cache key generation performance by removing `fmt` usage and extend control-character sanitization to all cache key inputs (tuples, conditions, context). [#3006](https://github.com/openfga/openfga/pull/3006)
+- Reuse a single PostgreSQL container across tests by replacing the test fixture implementation, improving test performance and reducing resource usage. [#3018](https://github.com/openfga/openfga/pull/3018)
 
 ### Fixed
 - Fixed AuthZEN discovery metadata to publish endpoint URLs from the configured `authzen.baseURL` instead of request-supplied host headers, preventing host-header poisoning of `/.well-known/authzen-configuration/{store_id}`. Thanks to [@Jvr2022](https://github.com/Jvr2022) for reporting this. [#3057](https://github.com/openfga/openfga/pull/3057)

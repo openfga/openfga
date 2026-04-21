@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"testing"
-	"time"
 
 	"google.golang.org/grpc"
 
@@ -92,7 +91,7 @@ func StartServerWithContext(t testing.TB, cfg *serverconfig.Config, serverCtx *r
 
 // BuildClientInterface sets up test client interface to be used for matrix test.
 func BuildClientInterface(t *testing.T, engine string, experimentals []string) ClientInterface {
-	cfg := testutils.MustDefaultConfig()
+	cfg := testutils.MustDefaultConfigForParallelTests()
 	if len(experimentals) > 0 {
 		cfg.Experimentals = append(cfg.Experimentals, experimentals...)
 	}
@@ -100,8 +99,6 @@ func BuildClientInterface(t *testing.T, engine string, experimentals []string) C
 	cfg.Datastore.Engine = engine
 	cfg.ListUsersDeadline = 0   // no deadline
 	cfg.ListObjectsDeadline = 0 // no deadline
-	// extend the timeout for the tests, coverage makes them slower
-	cfg.RequestTimeout = 10 * time.Second
 	cfg.SharedIterator.Enabled = true
 
 	cfg.CheckIteratorCache.Enabled = true
