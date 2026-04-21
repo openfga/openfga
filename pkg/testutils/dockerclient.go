@@ -98,17 +98,20 @@ func (d *DockerClient) RunContainer(
 		Config:     containerCfg,
 		HostConfig: hostCfg,
 	})
+	createdContainer := err == nil
 	if err != nil && !errdefs.IsConflict(err) {
 		return nil, fmt.Errorf("create %s container: %w", containerName, err)
 	}
 
 	defer func() {
-		if err != nil {
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancel()
-
-			d.RemoveContainer(ctx, containerName)
+		if err == nil || !createdContainer {
+			return
 		}
+
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		_ = d.RemoveContainer(cleanupCtx, containerName)
 	}()
 
 	_, err = d.client.ContainerStart(ctx, containerName, client.ContainerStartOptions{})
