@@ -251,11 +251,24 @@ func (s *Server) v2Check(
 	modelGraphResolver *modelgraph.AuthorizationModelGraphResolver,
 ) (*openfgav1.CheckResponse, storagewrappers.Metadata, error) {
 	storeID := req.GetStoreId()
+	tk := req.GetTupleKey()
+
+	ctx, span := tracer.Start(ctx, commands.V2CheckMethodName, trace.WithAttributes(
+		attribute.String("store_id", storeID),
+		attribute.String("object", tk.GetObject()),
+		attribute.String("relation", tk.GetRelation()),
+		attribute.String("user", tk.GetUser()),
+		attribute.String("consistency", req.GetConsistency().String()),
+	))
+	defer span.End()
 
 	cacheInvalidationTime := time.Time{}
 	if req.GetConsistency() != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
 		cacheInvalidationTime = cacheController.DetermineInvalidationTime(ctx, storeID)
 	}
+	span.SetAttributes(
+		attribute.Bool("cache_invalidation_active", !cacheInvalidationTime.IsZero()),
+	)
 
 	mg, err := modelGraphResolver.Resolve(ctx, storeID, req.GetAuthorizationModelId())
 	if err != nil {
@@ -284,11 +297,11 @@ func (s *Server) v2Check(
 
 	res, metadata, err := q.Execute(ctx, req)
 
+	span.SetAttributes(attribute.Bool("allowed", res.GetAllowed()))
+
 	// Publish metrics from datastore metadata.
 	queryCount := float64(metadata.DatastoreQueryCount)
 	itemCount := float64(metadata.DatastoreItemCount)
-
-	span := trace.SpanFromContext(ctx)
 
 	grpc_ctxtags.Extract(ctx).Set(datastoreQueryCountHistogramName, queryCount)
 	span.SetAttributes(attribute.Float64(datastoreQueryCountHistogramName, queryCount))
@@ -304,8 +317,10 @@ func (s *Server) v2Check(
 	grpc_ctxtags.Extract(ctx).Set("request.datastore_throttled", metadata.WasThrottled)
 
 	if err != nil {
+		telemetry.TraceError(span, err)
 		return nil, metadata, commands.CheckCommandErrorToServerError(err)
 	}
+
 	return res, metadata, nil
 }
 

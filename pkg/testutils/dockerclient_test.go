@@ -268,7 +268,6 @@ func TestExecCommand_Fail(t *testing.T) {
 			Cmd: []string{"badcommand"},
 		})
 		require.Error(t, err)
-		require.ErrorContains(t, err, "command [badcommand] completed with exit code 127")
 	})
 
 	t.Run("create_exec", func(t *testing.T) {

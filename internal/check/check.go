@@ -263,6 +263,8 @@ func (r *Resolver) executeStrategy(ctx context.Context, selector planner.Selecto
 	span := trace.SpanFromContext(ctx)
 	start := time.Now()
 	res, err := fn()
+	duration := time.Since(start)
+	span.SetAttributes(attribute.Int64("strategy_duration_ms", duration.Milliseconds()))
 	if err != nil {
 		// penalize plans that timeout from the upstream context
 		if errors.Is(err, context.DeadlineExceeded) {
@@ -271,7 +273,7 @@ func (r *Resolver) executeStrategy(ctx context.Context, selector planner.Selecto
 		telemetry.TraceError(span, err)
 		return nil, err
 	}
-	selector.UpdateStats(strategy, time.Since(start))
+	selector.UpdateStats(strategy, duration)
 	if res.GetAllowed() {
 		span.SetAttributes(attribute.Bool("allowed", true))
 	}
@@ -322,9 +324,14 @@ func (r *Resolver) resolveRecursiveUserset(ctx context.Context, req *Request, ed
 		RecursiveStrategyName: RecursivePlan,
 	}
 
-	keyPlan := r.planner.GetPlanSelector(createRecursiveUsersetPlanKey(req, edge.GetTo().GetUniqueLabel()))
+	planKey := createRecursiveUsersetPlanKey(req, edge.GetTo().GetUniqueLabel())
+	keyPlan := r.planner.GetPlanSelector(planKey)
 	strategy := keyPlan.Select(possibleStrategies)
-	span.SetAttributes(attribute.Bool("allowed", true))
+	span.SetAttributes(
+		attribute.String("plan_key", planKey),
+		attribute.String("strategy", strategy.Name),
+		attribute.Int("candidate_strategies", len(possibleStrategies)),
+	)
 	return r.executeStrategy(ctx, keyPlan, strategy, func() (*Response, error) {
 		return r.strategies[strategy.Name].Userset(ctx, req, edge, iter, visited)
 	})
@@ -386,9 +393,14 @@ func (r *Resolver) resolveRecursiveTTU(ctx context.Context, req *Request, edge *
 		RecursiveStrategyName: RecursivePlan,
 	}
 
-	keyPlan := r.planner.GetPlanSelector(createRecursiveTTUPlanKey(req, edge.GetRecursiveRelation()))
+	planKey := createRecursiveTTUPlanKey(req, edge.GetRecursiveRelation())
+	keyPlan := r.planner.GetPlanSelector(planKey)
 	strategy := keyPlan.Select(possibleStrategies)
-	span.SetAttributes(attribute.String("strategy", strategy.Name))
+	span.SetAttributes(
+		attribute.String("plan_key", planKey),
+		attribute.String("strategy", strategy.Name),
+		attribute.Int("candidate_strategies", len(possibleStrategies)),
+	)
 	return r.executeStrategy(ctx, keyPlan, strategy, func() (*Response, error) {
 		return r.strategies[strategy.Name].TTU(ctx, req, edge, iter, visited)
 	})
@@ -842,7 +854,11 @@ func (r *Resolver) specificTypeAndRelation(ctx context.Context, req *Request, ed
 	usersetKey := createUsersetPlanKey(req, edge.GetTo().GetUniqueLabel())
 	keyPlan := r.planner.GetPlanSelector(usersetKey)
 	strategy := keyPlan.Select(possibleStrategies)
-	span.SetAttributes(attribute.String("strategy", strategy.Name))
+	span.SetAttributes(
+		attribute.String("plan_key", usersetKey),
+		attribute.String("strategy", strategy.Name),
+		attribute.Int("candidate_strategies", len(possibleStrategies)),
+	)
 	return r.executeStrategy(ctx, keyPlan, strategy, func() (*Response, error) {
 		return r.strategies[strategy.Name].Userset(ctx, req, edge, iter, visited)
 	})
@@ -912,7 +928,11 @@ func (r *Resolver) ttu(ctx context.Context, req *Request, edge *authzGraph.Weigh
 	planKey := createTTUPlanKey(req, tuplesetRelation, computedRelation)
 	keyPlan := r.planner.GetPlanSelector(planKey)
 	strategy := keyPlan.Select(possibleStrategies)
-	span.SetAttributes(attribute.String("strategy", strategy.Name))
+	span.SetAttributes(
+		attribute.String("plan_key", planKey),
+		attribute.String("strategy", strategy.Name),
+		attribute.Int("candidate_strategies", len(possibleStrategies)),
+	)
 	return r.executeStrategy(ctx, keyPlan, strategy, func() (*Response, error) {
 		return r.strategies[strategy.Name].TTU(ctx, req, edge, iter, visited)
 	})
