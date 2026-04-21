@@ -658,7 +658,7 @@ func TestV2CheckQueryCacheEnabled(t *testing.T) {
 		s.authzModelGraphResolver = modelgraph.NewResolver(s.datastore, checkCache, 24*7*time.Hour)
 
 		ctx := context.Background()
-		res, err := s.v2Check(ctx, req,
+		res, _, err := s.v2Check(ctx, req,
 			s.sharedDatastoreResources.CheckCache,
 			s.sharedDatastoreResources.CacheController,
 			s.authzModelGraphResolver,
@@ -681,7 +681,7 @@ func TestV2CheckQueryCacheEnabled(t *testing.T) {
 		s.authzModelGraphResolver = modelgraph.NewResolver(s.datastore, checkCache, 24*7*time.Hour)
 
 		ctx := context.Background()
-		res, err := s.v2Check(ctx, req,
+		res, _, err := s.v2Check(ctx, req,
 			s.sharedDatastoreResources.CheckCache,
 			s.sharedDatastoreResources.CacheController,
 			s.authzModelGraphResolver,
