@@ -786,7 +786,7 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 			if errors.Is(err, pipeline.ErrUnreachable) {
 				return &resolutionMetadata, nil
 			}
-			return nil, serverErrors.ValidationError(err)
+			return nil, serverErrors.HandleError("", err)
 		}
 		defer p.Close()
 
