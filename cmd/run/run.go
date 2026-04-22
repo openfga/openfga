@@ -1146,9 +1146,9 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 			}
 
 			go func() {
-				// Having the same server listen on a second is intentional here.
-				// The HTTP server's client and external TCP gRPC clients should
-				// both share the same server.
+				// Serving the same gRPC server on a second listener (UDS) in addition to
+				// the TCP listener is intentional: the HTTP gateway's internal client uses
+				// UDS while external gRPC clients continue to use TCP.
 				if err := grpcServer.Serve(wrappedListener); err != nil {
 					if !errors.Is(err, grpc.ErrServerStopped) {
 						s.Logger.Fatal("failed to start internal gRPC server on unix socket", zap.Error(err))
@@ -1162,7 +1162,6 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		grpc_runtime.DefaultContextTimeout = serverconfig.DefaultContextTimeout(config)
 
 		grpcConn := s.dialLocalGrpc(network, address, config)
-		defer grpcConn.Close()
 
 		cleanups.PushFront(cleanupFromPlainFunc(func() {
 			_ = grpcConn.Close()
