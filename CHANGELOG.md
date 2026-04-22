@@ -20,6 +20,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ## [1.14.1] - 2026-04-10
 ### Added
 - Added configuration for the server shutdown timeout. [#2976](https://github.com/openfga/openfga/pull/2976)
+- Add jitter to internal cache TTLs to spread expirations and reduce thundering herd effects. [#3033](https://github.com/openfga/openfga/pull/3033)
 
 ### Changed
 - Made some minor changes in ListObjects to reduce heap allocations. Results in minor latency reduction. [#3043](https://github.com/openfga/openfga/pull/3043)
