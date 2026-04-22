@@ -1,6 +1,6 @@
 package pipeline
 
-// Option configures a [Pipeline].
+// Option configures a [Builder].
 type Option func(*Config)
 
 // WithBufferCapacity sets the capacity of pipes between workers.

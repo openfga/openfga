@@ -3,6 +3,7 @@ package pipeline
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync/atomic"
 
@@ -18,7 +19,7 @@ import (
 )
 
 // NewValidator returns a validator that combines condition evaluation
-// and type-system filtering for use with [WithReaderValidator].
+// and type-system filtering for use with [WithStoreValidator].
 func NewValidator(
 	ctx context.Context,
 	ts *typesystem.TypeSystem,
@@ -36,40 +37,40 @@ func NewValidator(
 	)
 }
 
-// ReaderOption configures a [Reader].
-type ReaderOption func(o *Reader)
+// StoreOption configures a [ValidatingStore].
+type StoreOption func(o *ValidatingStore)
 
-// NewReader returns a Reader that queries store for relationship tuples.
-func NewReader(
+// NewValidatingStore returns a ValidatingStore that queries store for relationship tuples.
+func NewValidatingStore(
 	store storage.RelationshipTupleReader,
 	storeID string,
-	opts ...ReaderOption,
-) *Reader {
-	r := &Reader{store: store, storeID: storeID}
+	opts ...StoreOption,
+) *ValidatingStore {
+	r := &ValidatingStore{store: store, storeID: storeID}
 	for _, opt := range opts {
 		opt(r)
 	}
 	return r
 }
 
-// WithReaderConsistency sets the consistency preference for storage reads.
-func WithReaderConsistency(pref openfgav1.ConsistencyPreference) ReaderOption {
-	return func(r *Reader) {
+// WithStoreConsistency sets the consistency preference for storage reads.
+func WithStoreConsistency(pref openfgav1.ConsistencyPreference) StoreOption {
+	return func(r *ValidatingStore) {
 		r.consistency = pref
 	}
 }
 
-// WithReaderValidator sets a function that filters tuples during iteration.
+// WithStoreValidator sets a function that filters tuples during iteration.
 // Tuples for which fn returns false are silently skipped.
-func WithReaderValidator(fn func(*openfgav1.TupleKey) (bool, error)) ReaderOption {
-	return func(r *Reader) {
+func WithStoreValidator(fn func(*openfgav1.TupleKey) (bool, error)) StoreOption {
+	return func(r *ValidatingStore) {
 		r.validator = fn
 	}
 }
 
-// Reader implements [ObjectReader] by querying a [storage.RelationshipTupleReader]
+// ValidatingStore implements [ObjectStore] by querying a [storage.RelationshipTupleReader]
 // and optionally filtering results through a validator.
-type Reader struct {
+type ValidatingStore struct {
 	store       storage.RelationshipTupleReader
 	storeID     string
 	consistency openfgav1.ConsistencyPreference
@@ -79,7 +80,7 @@ type Reader struct {
 // createIterator queries the datastore for tuples matching the input parameters.
 // Returns an error iterator if the query fails to preserve error information
 // through the iterator interface.
-func (r *Reader) createIterator(
+func (r *ValidatingStore) createIterator(
 	ctx context.Context,
 	q ObjectQuery,
 ) storage.TupleIterator {
@@ -111,7 +112,7 @@ func (r *Reader) createIterator(
 	)
 
 	if err != nil {
-		return iterator.Error[*openfgav1.Tuple](err)
+		return iterator.Error[*openfgav1.Tuple](fmt.Errorf("datastore: %w", err))
 	}
 	return it
 }
@@ -119,9 +120,11 @@ func (r *Reader) createIterator(
 // applyValidator wraps the iterator with validation to filter invalid tuples.
 // Invalid tuples (wrong type, failing conditions, etc.) are skipped; this prevents
 // them from corrupting pipeline results or causing downstream errors.
-func (r *Reader) applyValidator(it storage.TupleIterator) storage.TupleKeyIterator {
+func (r *ValidatingStore) applyValidator(it storage.TupleIterator) storage.TupleKeyIterator {
 	base := storage.NewTupleKeyIteratorFromTupleIterator(it)
-	base = iterator.Validate(base, r.validator)
+	if r.validator != nil {
+		base = iterator.Validate(base, r.validator)
+	}
 	return base
 }
 
@@ -150,7 +153,7 @@ func (r *TupleKeyItemReceiver) Recv(ctx context.Context) (Item, bool) {
 			if errors.Is(err, storage.ErrIteratorDone) {
 				return item, false
 			}
-			item.Err = err
+			item.Err = fmt.Errorf("iterator: %w", err)
 			return item, true
 		}
 
@@ -172,7 +175,7 @@ func (r *TupleKeyItemReceiver) Close() {
 
 // Read queries storage for tuples matching q and returns the matching
 // object identifiers as a streaming sequence.
-func (r *Reader) Read(
+func (r *ValidatingStore) Read(
 	ctx context.Context,
 	q ObjectQuery,
 ) Receiver[Item] {
