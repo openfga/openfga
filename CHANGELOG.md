@@ -8,6 +8,9 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+### Security
+- Update toolchain go version to 1.26.2 to address CVEs in std lib. [#3084](https://github.com/openfga/openfga/pull/3084)
+
 ## [1.14.2] - 2026-04-14
 ### Fixed
 - Use delimiter in contextual tuple key in experimental `weighted_graph_check`, and add validation in v2Check. Thanks to [@0xmrma](https://github.com/0xmrma) for reporting this bug. [#3064](https://github.com/openfga/openfga/pull/3064)
