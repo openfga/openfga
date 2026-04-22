@@ -656,16 +656,31 @@ func (s *ServerContext) dialGrpc(config *serverconfig.Config) *grpc.ClientConn {
 	if config.Trace.Enabled {
 		dialOpts = append(dialOpts, grpc.WithStatsHandler(otelgrpc.NewClientHandler()))
 	}
-	if config.GRPC.TLS.Enabled {
-		// Resolve just the hostname portion of the gRPC address for use in
-		// peer certificate verification (InsecureSkipVerify suppresses Go's
-		// automatic hostname check, so we must do it ourselves).
-		grpcHost, _, err := net.SplitHostPort(config.GRPC.Addr)
-		if err != nil {
-			// Fall back to the raw address if it has no port component.
-			grpcHost = config.GRPC.Addr
-		}
 
+	// The gRPC server usually binds to a wildcard address (":8081", "0.0.0.0:8081"
+	// or "[::]:8081"), which isn't a valid dial target for a client: on Linux
+	// it happens to route to the loopback, on other platforms it fails, and in
+	// all cases it breaks TLS SAN verification because server certificates
+	// aren't issued for 0.0.0.0 / ::. Rewrite wildcard hosts to 127.0.0.1
+	// before dialing the local gRPC server from the in-process HTTP gateway.
+	// See https://github.com/openfga/openfga/issues/2871.
+	grpcHost, grpcPort, err := net.SplitHostPort(config.GRPC.Addr)
+	if err != nil {
+		// Fall back to the raw address if it has no port component.
+		grpcHost = config.GRPC.Addr
+		grpcPort = ""
+	}
+	dialHost := grpcHost
+	switch dialHost {
+	case "", "0.0.0.0", "::":
+		dialHost = "127.0.0.1"
+	}
+	dialAddr := config.GRPC.Addr
+	if grpcPort != "" && dialHost != grpcHost {
+		dialAddr = net.JoinHostPort(dialHost, grpcPort)
+	}
+
+	if config.GRPC.TLS.Enabled {
 		creds := credentials.NewTLS(&tls.Config{
 			InsecureSkipVerify: true, //nolint:gosec // Hostname and cert are verified manually via VerifyPeerCertificate.
 			VerifyPeerCertificate: func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
@@ -681,9 +696,11 @@ func (s *ServerContext) dialGrpc(config *serverconfig.Config) *grpc.ClientConn {
 				// Verify the leaf certificate against the global pinned pool
 				// and check the hostname in a single call. The pool is
 				// updated atomically by the watcher callback on cert rotation.
+				// dialHost (not the original wildcard grpcHost) is what the
+				// cert has to cover as an IP SAN or DNS name.
 				_, err = peerCert.Verify(x509.VerifyOptions{
 					Roots:   grpcTLSCertPool.Load(),
-					DNSName: grpcHost,
+					DNSName: dialHost,
 				})
 				if err != nil {
 					return fmt.Errorf("peer certificate verification failed: %w", err)
@@ -696,7 +713,7 @@ func (s *ServerContext) dialGrpc(config *serverconfig.Config) *grpc.ClientConn {
 		dialOpts = append(dialOpts, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	}
 
-	conn, err := grpc.NewClient(config.GRPC.Addr, dialOpts...)
+	conn, err := grpc.NewClient(dialAddr, dialOpts...)
 	if err != nil {
 		s.Logger.Fatal("failed to create gRPC client connection", zap.Error(err))
 	}
