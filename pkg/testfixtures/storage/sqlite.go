@@ -40,13 +40,9 @@ func (m *sqliteTestContainer) RunSqliteTestDatabase(t testing.TB) DatastoreTestC
 
 	uri := m.GetConnectionURI(true)
 
-	goose.SetLogger(goose.NopLogger())
-
 	db, err := goose.OpenDBWithDriver("sqlite", uri)
 	require.NoError(t, err)
 	defer db.Close()
-
-	goose.SetBaseFS(assets.EmbedMigrations)
 
 	err = goose.Up(db, assets.SqliteMigrationDir)
 	require.NoError(t, err)
@@ -62,7 +58,7 @@ func (m *sqliteTestContainer) RunSqliteTestDatabase(t testing.TB) DatastoreTestC
 
 // GetConnectionURI returns the sqlite connection uri for the running sqlite test container.
 func (m *sqliteTestContainer) GetConnectionURI(includeCredentials bool) string {
-	return fmt.Sprintf("file:%s?_pragma=journal_mode(WAL)&_pragma=busy_timeout(100)", m.path)
+	return fmt.Sprintf("file:%s?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=synchronous(NORMAL)", m.path)
 }
 
 func (m *sqliteTestContainer) GetUsername() string {

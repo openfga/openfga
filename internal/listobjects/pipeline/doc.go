@@ -11,10 +11,10 @@
 // authorization graph. Workers communicate through message passing,
 // processing tuples and propagating results toward the query origin.
 //
-//	Pipeline.Expand()
+//	Builder.Build(ctx, graph, spec)
 //	       │
 //	       ▼
-//	  resolve() ─── builds worker graph from authorization model
+//	  DFS walk ─── builds worker graph from authorization model
 //	       │
 //	       ▼
 //	  ┌─────────┐     ┌─────────┐     ┌─────────┐
@@ -23,7 +23,7 @@
 //	  └─────────┘     └─────────┘     └─────────┘
 //	       │
 //	       ▼
-//	  iter.Seq[Object] ─── results streamed to caller
+//	  Pipeline.Recv() ─── results streamed to caller
 //
 // # Trade-offs
 //
@@ -34,7 +34,7 @@
 //
 // Streaming Results:
 //   - Memory usage remains constant regardless of result set size
-//   - Enables early termination when caller stops iteration
+//   - Enables early termination when caller calls Close
 //
 // Cycle Handling:
 //   - Cycles require input deduplication to prevent infinite loops
@@ -42,22 +42,35 @@
 //
 // # Usage
 //
-//	p := pipeline.New(graph, reader,
+//	builder, err := pipeline.NewBuilder(store,
 //	    pipeline.WithNumProcs(4),
 //	    pipeline.WithChunkSize(100),
 //	)
+//	if err != nil {
+//	    return err
+//	}
 //
-//	seq, err := p.Expand(ctx, pipeline.Spec{
-//	    ObjectType: "document",
-//	    Relation:   "viewer",
-//	    User:       "user:alice",
+//	p, err := builder.Build(ctx, graph, pipeline.Spec{
+//	    ObjectType:     "document",
+//	    ObjectRelation: "viewer",
+//	    SubjectType:    "user",
+//	    SubjectID:      "alice",
 //	})
+//	if err != nil {
+//	    return err
+//	}
+//	defer p.Close()
 //
-//	for obj := range seq {
-//	    id, err := obj.Object()
-//	    if err != nil {
-//	        // handle error
+//	for {
+//	    id, ok := p.Recv(ctx)
+//	    if !ok {
+//	        break
 //	    }
 //	    // id is an object ID like "document:readme"
+//	}
+//
+//	if err := p.Err(); err != nil {
+//	    // handle error (e.g. storage failure, context cancellation)
+//	    return err
 //	}
 package pipeline

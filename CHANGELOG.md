@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Try to keep listed changes to a concise bulleted list of simple explanations of changes. Aim for the amount of information needed so that readers can understand where they would look in the codebase to investigate the changes' implementation, or where they would look in the documentation to understand how to make use of the change in practice - better yet, link directly to the docs and provide detailed information there. Only elaborate if doing so is required to avoid breaking changes or experimental features from ruining someone's day.
 
 ## [Unreleased]
+### Changed
+- Implemented edge pruning in the list objects pipeline algorithm. This introduces a measurable improvement to request latency for larger, more complex authorization models. [#3075](https://github.com/openfga/openfga/pull/3075)
+
+### Security
+- Update toolchain Go version to 1.26.2 to address the Go standard library vulnerabilities documented in the [Go 1.26.2 release notes](https://go.dev/doc/devel/release#go1.26.2). [#3084](https://github.com/openfga/openfga/pull/3084)
+
+## [1.14.2] - 2026-04-14
+### Fixed
+- Use delimiter in contextual tuple key in experimental `weighted_graph_check`, and add validation in v2Check. Thanks to [@0xmrma](https://github.com/0xmrma) for reporting this bug. [#3064](https://github.com/openfga/openfga/pull/3064)
 
 ## [1.14.1] - 2026-04-10
 ### Added
@@ -16,9 +25,12 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Changed
 - Made some minor changes in ListObjects to reduce heap allocations. Results in minor latency reduction. [#3043](https://github.com/openfga/openfga/pull/3043)
 - Improve cache key generation performance by removing `fmt` usage and extend control-character sanitization to all cache key inputs (tuples, conditions, context). [#3006](https://github.com/openfga/openfga/pull/3006)
+- Reuse a single PostgreSQL container across tests by replacing the test fixture implementation, improving test performance and reducing resource usage. [#3018](https://github.com/openfga/openfga/pull/3018)
+
+### Fixed
+- Fixed AuthZEN discovery metadata to publish endpoint URLs from the configured `authzen.baseURL` instead of request-supplied host headers, preventing host-header poisoning of `/.well-known/authzen-configuration/{store_id}`. Thanks to [@Jvr2022](https://github.com/Jvr2022) for reporting this. [#3057](https://github.com/openfga/openfga/pull/3057)
 
 ### Security
-- Fixed AuthZEN discovery metadata to publish endpoint URLs from the configured `authzen.baseURL` instead of request-supplied host headers, preventing host-header poisoning of `/.well-known/authzen-configuration/{store_id}`.
 - Removed the vulnerable `github.com/docker/docker` package (used only in tests) and replaced it with Moby (client & api). [#3047](https://github.com/openfga/openfga/pull/3047)
 
 ## [1.14.0] - 2026-04-03
@@ -1600,7 +1612,8 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
 - Memory storage adapter implementation
 - Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.14.1...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.14.2...HEAD
+[1.14.2]: https://github.com/openfga/openfga/compare/v1.14.1...v1.14.2
 [1.14.1]: https://github.com/openfga/openfga/compare/v1.14.0...v1.14.1
 [1.14.0]: https://github.com/openfga/openfga/compare/v1.13.1...v1.14.0
 [1.13.1]: https://github.com/openfga/openfga/compare/v1.13.0...v1.13.1
