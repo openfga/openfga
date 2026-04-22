@@ -760,6 +760,8 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 			},
 		)
 
+		resolutionMetadata.WasWeightedGraphUsed.Store(true)
+
 		validator := pipeline.NewValidator(timeoutCtx, typesys, req.GetContext())
 
 		reader := pipeline.NewValidatingStore(
@@ -827,7 +829,6 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 		resolutionMetadata.DatastoreThrottled.Store(dsMeta.WasThrottled)
 		resolutionMetadata.DatastoreQueryCount.Add(dsMeta.DatastoreQueryCount)
 		resolutionMetadata.DatastoreItemCount.Add(dsMeta.DatastoreItemCount)
-		resolutionMetadata.WasWeightedGraphUsed.Store(true)
 		return &resolutionMetadata, nil
 	}
 
