@@ -122,7 +122,9 @@ func (r *ValidatingStore) createIterator(
 // them from corrupting pipeline results or causing downstream errors.
 func (r *ValidatingStore) applyValidator(it storage.TupleIterator) storage.TupleKeyIterator {
 	base := storage.NewTupleKeyIteratorFromTupleIterator(it)
-	base = iterator.Validate(base, r.validator)
+	if r.validator != nil {
+		base = iterator.Validate(base, r.validator)
+	}
 	return base
 }
 
