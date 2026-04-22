@@ -258,6 +258,9 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 		util.MustBindPFlag("cacheController.ttl", flags.Lookup("cache-controller-ttl"))
 		util.MustBindEnv("cacheController.ttl", "OPENFGA_CACHE_CONTROLLER_TTL")
 
+		util.MustBindPFlag("cacheTTLJitterPercentage", flags.Lookup("cache-ttl-jitter-percentage"))
+		util.MustBindEnv("cacheTTLJitterPercentage", "OPENFGA_CACHE_TTL_JITTER_PERCENTAGE")
+
 		util.MustBindPFlag("checkIteratorCache.enabled", flags.Lookup("check-iterator-cache-enabled"))
 		util.MustBindEnv("checkIteratorCache.enabled", "OPENFGA_CHECK_ITERATOR_CACHE_ENABLED")
 
