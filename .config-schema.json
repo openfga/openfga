@@ -640,6 +640,14 @@
                 }
             }
         },
+        "cacheTTLJitterPercentage": {
+            "description": "A percentage (0-100) of the base TTL added as random jitter to each cache entry's TTL, spreading out expirations to prevent thundering herd effects. For example, a value of 10 with a base TTL of 10s means each entry gets a TTL between 10s and 11s.",
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100,
+            "default": 0,
+            "x-env-variable": "OPENFGA_CACHE_TTL_JITTER_PERCENTAGE"
+        },
         "checkDispatchThrottling": {
             "type": "object",
             "properties": {
