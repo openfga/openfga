@@ -22,12 +22,12 @@ require (
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0
 	github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus v1.1.0
 	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.3.3
-	github.com/grpc-ecosystem/grpc-gateway/v2 v2.28.0
+	github.com/grpc-ecosystem/grpc-gateway/v2 v2.29.0
 	github.com/hashicorp/go-retryablehttp v0.7.8
 	github.com/jackc/pgpassfile v1.0.0
-	github.com/jackc/pgx/v5 v5.9.1
-	github.com/moby/moby/api v1.53.0
-	github.com/moby/moby/client v0.2.2
+	github.com/jackc/pgx/v5 v5.9.2
+	github.com/moby/moby/api v1.54.2
+	github.com/moby/moby/client v0.4.1
 	github.com/natefinch/wrap v0.2.0
 	github.com/oklog/ulid/v2 v2.1.1
 	github.com/openfga/api/proto v0.0.0-20260319214821-f153694bfc20
@@ -56,7 +56,7 @@ require (
 	gonum.org/v1/gonum v0.17.0
 	google.golang.org/grpc v1.80.0
 	google.golang.org/protobuf v1.36.11
-	modernc.org/sqlite v1.48.2
+	modernc.org/sqlite v1.49.1
 	sigs.k8s.io/controller-runtime v0.23.3
 	sigs.k8s.io/yaml v1.6.0
 )
@@ -72,7 +72,7 @@ require (
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/distribution/reference v0.6.0 // indirect
-	github.com/docker/go-connections v0.6.0 // indirect
+	github.com/docker/go-connections v0.7.0 // indirect
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/emicklei/go-restful/v3 v3.12.2 // indirect
@@ -130,13 +130,13 @@ require (
 	go.yaml.in/yaml/v2 v2.4.3 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/net v0.52.0 // indirect
-	golang.org/x/oauth2 v0.35.0 // indirect
+	golang.org/x/oauth2 v0.36.0 // indirect
 	golang.org/x/sys v0.42.0 // indirect
 	golang.org/x/term v0.41.0 // indirect
-	golang.org/x/text v0.35.0 // indirect
+	golang.org/x/text v0.36.0 // indirect
 	golang.org/x/time v0.11.0 // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20260401024825-9d38bb4040a9 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20260406210006-6f92a3bedf2d // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20260414002931-afd174a4e478 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20260414002931-afd174a4e478 // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.13.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
@@ -146,7 +146,7 @@ require (
 	k8s.io/klog/v2 v2.130.1 // indirect
 	k8s.io/kube-openapi v0.0.0-20250910181357-589584f1c912 // indirect
 	k8s.io/utils v0.0.0-20251002143259-bc988d571ff4 // indirect
-	modernc.org/libc v1.70.0 // indirect
+	modernc.org/libc v1.72.0 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect
 	sigs.k8s.io/json v0.0.0-20250730193827-2d320260d730 // indirect
