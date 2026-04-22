@@ -614,7 +614,7 @@ func (q *ListObjectsQuery) Execute(
 			if errors.Is(err, pipeline.ErrUnreachable) {
 				return &res, nil
 			}
-			return nil, serverErrors.ValidationError(err)
+			return nil, serverErrors.HandleError("", err)
 		}
 		defer p.Close()
 
