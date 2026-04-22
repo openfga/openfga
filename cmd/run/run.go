@@ -1149,6 +1149,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 			listener, err := s.createUDS(cleanups)
 			if err != nil {
 				s.Logger.Warn("http server failed to establish unix socket to grpc server, falling back to tcp", zap.Error(err))
+				goto DIAL_SERVER
 			}
 
 			go func() {
@@ -1166,6 +1167,8 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 			network = udsAddr.Network()
 			address = udsAddr.String()
 		}
+
+	DIAL_SERVER:
 
 		grpc_runtime.DefaultContextTimeout = serverconfig.DefaultContextTimeout(config)
 
