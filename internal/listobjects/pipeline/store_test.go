@@ -29,7 +29,7 @@ func TestReaderRead(t *testing.T) {
 			ReadStartingWithUser(gomock.Any(), "store-1", gomock.Any(), gomock.Any()).
 			Return(storage.NewStaticTupleIterator(tuples), nil)
 
-		reader := pipeline.NewReader(store, "store-1")
+		reader := pipeline.NewValidatingStore(store, "store-1")
 
 		var got []string
 		receiver := reader.Read(context.Background(), pipeline.ObjectQuery{
@@ -65,7 +65,7 @@ func TestReaderRead(t *testing.T) {
 			ReadStartingWithUser(gomock.Any(), "store-1", gomock.Any(), gomock.Any()).
 			Return(nil, sentinel)
 
-		reader := pipeline.NewReader(store, "store-1")
+		reader := pipeline.NewValidatingStore(store, "store-1")
 
 		var gotErr error
 		receiver := reader.Read(context.Background(), pipeline.ObjectQuery{
@@ -96,7 +96,7 @@ func TestReaderRead(t *testing.T) {
 			ReadStartingWithUser(gomock.Any(), "store-1", gomock.Any(), gomock.Any()).
 			Return(storage.NewStaticTupleIterator(nil), nil)
 
-		reader := pipeline.NewReader(store, "store-1")
+		reader := pipeline.NewValidatingStore(store, "store-1")
 
 		count := 0
 		receiver := reader.Read(context.Background(), pipeline.ObjectQuery{
@@ -141,7 +141,7 @@ func TestReaderRead(t *testing.T) {
 			return tk.GetObject() == "document:1" || tk.GetObject() == "document:3", nil
 		}
 
-		reader := pipeline.NewReader(store, "store-1", pipeline.WithReaderValidator(validator))
+		reader := pipeline.NewValidatingStore(store, "store-1", pipeline.WithStoreValidator(validator))
 
 		var got []string
 		receiver := reader.Read(context.Background(), pipeline.ObjectQuery{
@@ -181,7 +181,7 @@ func TestReaderRead(t *testing.T) {
 			ReadStartingWithUser(gomock.Any(), "store-1", gomock.Any(), gomock.Any()).
 			Return(storage.NewStaticTupleIterator(tuples), nil)
 
-		reader := pipeline.NewReader(store, "store-1")
+		reader := pipeline.NewValidatingStore(store, "store-1")
 
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
@@ -225,7 +225,7 @@ func TestReaderRead(t *testing.T) {
 			).
 			Return(storage.NewStaticTupleIterator(nil), nil)
 
-		reader := pipeline.NewReader(store, "store-1")
+		reader := pipeline.NewValidatingStore(store, "store-1")
 
 		receiver := reader.Read(context.Background(), pipeline.ObjectQuery{
 			ObjectType: "document",
@@ -258,8 +258,8 @@ func TestReaderRead(t *testing.T) {
 			).
 			Return(storage.NewStaticTupleIterator(nil), nil)
 
-		reader := pipeline.NewReader(store, "store-1",
-			pipeline.WithReaderConsistency(openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY),
+		reader := pipeline.NewValidatingStore(store, "store-1",
+			pipeline.WithStoreConsistency(openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY),
 		)
 
 		receiver := reader.Read(context.Background(), pipeline.ObjectQuery{
@@ -298,7 +298,7 @@ func TestReaderRead(t *testing.T) {
 			).
 			Return(storage.NewStaticTupleIterator(nil), nil)
 
-		reader := pipeline.NewReader(store, "store-1")
+		reader := pipeline.NewValidatingStore(store, "store-1")
 
 		receiver := reader.Read(context.Background(), pipeline.ObjectQuery{
 			ObjectType: "document",
@@ -332,7 +332,7 @@ func TestReaderRead(t *testing.T) {
 			).
 			Return(storage.NewStaticTupleIterator(nil), nil)
 
-		reader := pipeline.NewReader(store, "store-1")
+		reader := pipeline.NewValidatingStore(store, "store-1")
 
 		receiver := reader.Read(context.Background(), pipeline.ObjectQuery{
 			ObjectType: "document",
@@ -364,7 +364,7 @@ func TestReaderRead(t *testing.T) {
 			ReadStartingWithUser(gomock.Any(), "store-1", gomock.Any(), gomock.Any()).
 			Return(storage.NewStaticTupleIterator(tuples), nil)
 
-		reader := pipeline.NewReader(store, "store-1")
+		reader := pipeline.NewValidatingStore(store, "store-1")
 
 		var got []string
 		receiver := reader.Read(context.Background(), pipeline.ObjectQuery{

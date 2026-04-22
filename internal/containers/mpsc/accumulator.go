@@ -134,6 +134,25 @@ PopLoop:
 	return value, ok
 }
 
+// TryRecv attempts a non-blocking receive from the queue. It returns the
+// next value and true if one is immediately available, or the zero value
+// and false if the queue is empty. Unlike [Accumulator.Recv], it never
+// blocks waiting for a producer.
+func (a *Accumulator[T]) TryRecv() (T, bool) {
+	var value T
+	var ok bool
+
+	currentTail := a.tail
+	nextNode := currentTail.Next.Load()
+
+	if nextNode != nil && nextNode.Kind != end {
+		value = nextNode.Value
+		ok = true
+		a.tail = nextNode
+	}
+	return value, ok
+}
+
 // Seq returns an iter.Seq[T] that yields elements in insertion order,
 // blocking until new nodes appear and terminating when it encounters
 // a sentinel terminal node produced by Close().
