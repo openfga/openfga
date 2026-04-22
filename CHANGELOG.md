@@ -8,7 +8,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 ### Security
-- Update toolchain go version to 1.26.2 to address CVEs in std lib. [#3084](https://github.com/openfga/openfga/pull/3084)
+- Update toolchain Go version to 1.26.2 to address the Go standard library vulnerabilities documented in the [Go 1.26.2 release notes](https://go.dev/doc/devel/release#go1.26.2). [#3084](https://github.com/openfga/openfga/pull/3084)
 
 ## [1.14.2] - 2026-04-14
 ### Fixed
