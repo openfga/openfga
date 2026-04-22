@@ -39,6 +39,7 @@ func TestRequestStorageWrapper(t *testing.T) {
 				CacheSettings: config.CacheSettings{
 					CheckIteratorCacheEnabled: true,
 					CheckCacheLimit:           1,
+					CacheTTLJitterPercentage:  7,
 				},
 			},
 		)
@@ -54,6 +55,7 @@ func TestRequestStorageWrapper(t *testing.T) {
 		// require.Equal(t, 1000, c.maxResultSize)
 		// require.Equal(t, 10*time.Second, c.ttl)
 		require.True(t, ok)
+		require.EqualValues(t, 7, c.jitterPercentage)
 
 		d, ok := c.RelationshipTupleReader.(*BoundedTupleReader)
 		require.Equal(t, maxConcurrentReads, cap(d.limiter))
@@ -180,6 +182,7 @@ func TestRequestStorageWrapper(t *testing.T) {
 					ListObjectsIteratorCacheEnabled:    true,
 					CheckCacheLimit:                    1,
 					ListObjectsIteratorCacheMaxResults: 1,
+					CacheTTLJitterPercentage:           9,
 				},
 			},
 		)
@@ -191,6 +194,7 @@ func TestRequestStorageWrapper(t *testing.T) {
 
 		c, ok := a.RelationshipTupleReader.(*CachedDatastore)
 		require.True(t, ok)
+		require.EqualValues(t, 9, c.jitterPercentage)
 
 		d, ok := c.RelationshipTupleReader.(*BoundedTupleReader)
 		require.Equal(t, maxConcurrentReads, cap(d.limiter))
@@ -220,6 +224,7 @@ func TestRequestStorageWrapper(t *testing.T) {
 					ListObjectsIteratorCacheEnabled:    true,
 					CheckCacheLimit:                    1,
 					ListObjectsIteratorCacheMaxResults: 1,
+					CacheTTLJitterPercentage:           11,
 				},
 				UseShadowCache: true,
 			},
@@ -232,6 +237,7 @@ func TestRequestStorageWrapper(t *testing.T) {
 
 		c, ok := a.RelationshipTupleReader.(*CachedDatastore)
 		require.True(t, ok)
+		require.EqualValues(t, 11, c.jitterPercentage)
 
 		d, ok := c.RelationshipTupleReader.(*BoundedTupleReader)
 		require.Equal(t, maxConcurrentReads, cap(d.limiter))
