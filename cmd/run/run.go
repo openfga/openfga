@@ -1122,12 +1122,12 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 				break
 			}
 
-			defer func() {
+			cleanups.PushBack(cleanupFromPlainFunc(func() {
 				// This will be a noop if the directory has already been cleaned up.
 				if err := os.RemoveAll(udsDir); err != nil && !os.IsNotExist(err) {
 					s.Logger.Warn("failed to remove unix socket file", zap.Error(err))
 				}
-			}()
+			}, "unix socket directory"))
 
 			udsPath := filepath.Join(udsDir, "grpc.sock")
 
@@ -1139,7 +1139,6 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 				s.Logger.Warn("http server failed to establish unix socket to grpc server, falling back to tcp", zap.Error(err))
 				break
 			}
-			defer udsListener.Close()
 
 			wrappedListener := &addrOverrideListener{
 				Listener: udsListener,
@@ -1164,6 +1163,10 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 
 		grpcConn := s.dialLocalGrpc(network, address, config)
 		defer grpcConn.Close()
+
+		cleanups.PushFront(cleanupFromPlainFunc(func() {
+			_ = grpcConn.Close()
+		}, "internal grpc client connection"))
 
 		httpServer, err = s.runHTTPServer(ctx, config, grpcConn)
 		if err != nil {
