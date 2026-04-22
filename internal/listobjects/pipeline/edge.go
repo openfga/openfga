@@ -11,7 +11,7 @@ import (
 
 // directEdgeHandler queries objects via the edge's relation definition.
 type directEdgeHandler struct {
-	reader ObjectReader
+	reader ObjectStore
 }
 
 // Handle queries storage for objects related to the given items through
@@ -53,7 +53,7 @@ func (h *directEdgeHandler) Handle(
 
 // ttuEdgeHandler queries objects via the edge's tupleset relation.
 type ttuEdgeHandler struct {
-	reader ObjectReader
+	reader ObjectStore
 	graph  *Graph
 }
 

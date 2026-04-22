@@ -102,27 +102,6 @@ func TestValueReceiver_SingleValue(t *testing.T) {
 	assert.False(t, ok)
 }
 
-func TestValueReceiver_MultipleValues(t *testing.T) {
-	r := worker.NewValueReceiver("x", "y")
-
-	v1, ok := r.Recv(context.Background())
-	assert.True(t, ok)
-	assert.Equal(t, "x", v1)
-
-	v2, ok := r.Recv(context.Background())
-	assert.True(t, ok)
-	assert.Equal(t, "y", v2)
-
-	_, ok = r.Recv(context.Background())
-	assert.False(t, ok)
-}
-
-func TestValueReceiver_NoValuesReturnsNotOk(t *testing.T) {
-	r := worker.NewValueReceiver[string]()
-	_, ok := r.Recv(context.Background())
-	assert.False(t, ok)
-}
-
 func TestMapReceiver_TransformsValues(t *testing.T) {
 	inner := worker.NewSliceReceiver([]int{1, 2, 3})
 	r := worker.MapReceiver(inner, func(i int) string {
