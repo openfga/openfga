@@ -445,7 +445,7 @@ func (p *Pipeline) Recv(ctx context.Context) (string, bool) {
 		p.pos = 0
 		p.buffer = p.buffer[:0]
 
-		e, ok := p.errs.TryRecv(ctx)
+		e, ok := p.errs.TryRecv()
 		if ok {
 			p.err = e
 			p.Close()
@@ -497,7 +497,7 @@ func (p *Pipeline) Close() {
 	p.errs.Close()
 
 	for {
-		e, ok := p.errs.TryRecv(context.Background())
+		e, ok := p.errs.TryRecv()
 		if !ok {
 			break
 		}

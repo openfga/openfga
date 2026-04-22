@@ -138,7 +138,7 @@ PopLoop:
 // next value and true if one is immediately available, or the zero value
 // and false if the queue is empty. Unlike [Accumulator.Recv], it never
 // blocks waiting for a producer.
-func (a *Accumulator[T]) TryRecv(ctx context.Context) (T, bool) {
+func (a *Accumulator[T]) TryRecv() (T, bool) {
 	var value T
 	var ok bool
 

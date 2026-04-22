@@ -110,7 +110,7 @@ func newCore(interp worker.Interpreter, errs *mpsc.Accumulator[error]) *worker.C
 func collectErrors(acc *mpsc.Accumulator[error]) []error {
 	var errs []error
 	for {
-		e, ok := acc.TryRecv(context.Background())
+		e, ok := acc.TryRecv()
 		if !ok {
 			break
 		}
