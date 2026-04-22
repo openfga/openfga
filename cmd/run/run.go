@@ -901,6 +901,37 @@ func (s *ServerContext) runPlaygroundServer(config *serverconfig.Config) (*http.
 	return playground, nil
 }
 
+func (s *ServerContext) createUDS(cleanups *list.List) (net.Listener, error) {
+	// Path for Unix domain socket listener for the internal HTTP-to-gRPC proxy.
+	udsDir, err := os.MkdirTemp("", fmt.Sprintf("openfga-%d-*", os.Getpid()))
+	if err != nil {
+		return nil, err
+	}
+
+	cleanups.PushBack(cleanupFromPlainFunc(func() {
+		// This will be a noop if the directory has already been cleaned up.
+		if err := os.RemoveAll(udsDir); err != nil && !os.IsNotExist(err) {
+			s.Logger.Warn("failed to remove unix socket file", zap.Error(err))
+		}
+	}, "unix socket directory"))
+
+	udsPath := filepath.Join(udsDir, "grpc.sock")
+
+	udsListener, err := net.Listen(unix, udsPath)
+	if err != nil {
+		// Early deletion of the directory so that it does not live for the lifetime
+		// of the server unnecessarily.
+		_ = os.RemoveAll(udsDir)
+		return nil, err
+	}
+
+	wrappedListener := &addrOverrideListener{
+		Listener: udsListener,
+		addr:     &net.UnixAddr{Name: udsPath, Net: unix},
+	}
+	return wrappedListener, nil
+}
+
 // Run returns an error if the server was unable to start successfully.
 // If it started and terminated successfully, it returns a nil error.
 func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) error {
@@ -1110,56 +1141,30 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		s.Logger.Info("gRPC server shut down.")
 	}()
 
-	var udsDir string
 	var httpServer *http.Server
 	if config.HTTP.Enabled {
 		network, address := tcp, config.GRPC.Addr
 
-		switch runtime.GOOS {
-		case windows:
-		default:
-			// Path for Unix domain socket listener for the internal HTTP-to-gRPC proxy.
-			udsDir, err = os.MkdirTemp("", fmt.Sprintf("openfga-%d-*", os.Getpid()))
+		if runtime.GOOS != windows {
+			listener, err := s.createUDS(cleanups)
 			if err != nil {
 				s.Logger.Warn("http server failed to establish unix socket to grpc server, falling back to tcp", zap.Error(err))
-				break
-			}
-
-			cleanups.PushBack(cleanupFromPlainFunc(func() {
-				// This will be a noop if the directory has already been cleaned up.
-				if err := os.RemoveAll(udsDir); err != nil && !os.IsNotExist(err) {
-					s.Logger.Warn("failed to remove unix socket file", zap.Error(err))
-				}
-			}, "unix socket directory"))
-
-			udsPath := filepath.Join(udsDir, "grpc.sock")
-
-			udsListener, err := net.Listen(unix, udsPath)
-			if err != nil {
-				// Early deletion of the directory so that it does not live for the lifetime
-				// of the server unnecessarily.
-				_ = os.RemoveAll(udsDir)
-				s.Logger.Warn("http server failed to establish unix socket to grpc server, falling back to tcp", zap.Error(err))
-				break
-			}
-
-			wrappedListener := &addrOverrideListener{
-				Listener: udsListener,
-				addr:     &net.UnixAddr{Name: udsPath, Net: unix},
 			}
 
 			go func() {
 				// Serving the same gRPC server on a second listener (UDS) in addition to
 				// the TCP listener is intentional: the HTTP gateway's internal client uses
 				// UDS while external gRPC clients continue to use TCP.
-				if err := grpcServer.Serve(wrappedListener); err != nil {
+				if err := grpcServer.Serve(listener); err != nil {
 					if !errors.Is(err, grpc.ErrServerStopped) {
 						s.Logger.Fatal("failed to start internal gRPC server on unix socket", zap.Error(err))
 					}
 				}
 			}()
 
-			network, address = unix, udsPath
+			udsAddr := listener.Addr()
+			network = udsAddr.Network()
+			address = udsAddr.String()
 		}
 
 		grpc_runtime.DefaultContextTimeout = serverconfig.DefaultContextTimeout(config)
@@ -1209,6 +1214,10 @@ func (c *addrOverrideConn) RemoteAddr() net.Addr { return c.addr }
 type addrOverrideListener struct {
 	net.Listener
 	addr net.Addr
+}
+
+func (l *addrOverrideListener) Addr() net.Addr {
+	return l.addr
 }
 
 func (l *addrOverrideListener) Accept() (net.Conn, error) {
