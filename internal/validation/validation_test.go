@@ -8,6 +8,7 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
+	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
@@ -1157,6 +1158,77 @@ func BenchmarkValidateTupleForWrite(b *testing.B) {
 	}
 }
 
+func TestValidateStruct(t *testing.T) {
+	tests := []struct {
+		name    string
+		context map[string]interface{}
+		wantErr bool
+	}{
+		{
+			name:    "nil_context",
+			context: nil,
+			wantErr: false,
+		},
+		{
+			name:    "clean_context",
+			context: map[string]interface{}{"key": "value"},
+			wantErr: false,
+		},
+		{
+			name:    "control_char_in_key",
+			context: map[string]interface{}{"key\x00bad": "value"},
+			wantErr: true,
+		},
+		{
+			name:    "control_char_in_string_value",
+			context: map[string]interface{}{"key": "value\x01bad"},
+			wantErr: true,
+		},
+		{
+			name: "control_char_in_nested_struct_key",
+			context: map[string]interface{}{
+				"nested": map[string]interface{}{"inner\x02key": "value"},
+			},
+			wantErr: true,
+		},
+		{
+			name: "control_char_in_list_value",
+			context: map[string]interface{}{
+				"items": []interface{}{"good", "bad\x03item"},
+			},
+			wantErr: true,
+		},
+		{
+			name: "clean_nested_struct",
+			context: map[string]interface{}{
+				"nested": map[string]interface{}{"innerKey": "innerValue"},
+			},
+			wantErr: false,
+		},
+		{
+			name: "number_and_bool_values_pass",
+			context: map[string]interface{}{
+				"count":  42.0,
+				"active": true,
+			},
+			wantErr: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			newStruct := testutils.MustNewStruct(t, tc.context)
+			err := ValidateStruct(newStruct)
+			if tc.wantErr {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), "characters")
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
 func BenchmarkValidateTupleForRead(b *testing.B) {
 	model := &openfgav1.AuthorizationModel{
 		SchemaVersion: typesystem.SchemaVersion1_1,
@@ -1200,9 +1272,10 @@ func BenchmarkValidateTupleForRead(b *testing.B) {
 
 	ts, err := typesystem.New(model)
 	require.NoError(b, err)
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		err := ValidateTupleForRead(ts, tuple.NewTupleKey("folder:x", "viewer", fmt.Sprintf("user:%v", i)))
+	t := tuple.NewTupleKey("folder:x", "viewer", "user:1")
+
+	for b.Loop() {
+		err := ValidateTupleForRead(ts, t)
 		require.NoError(b, err)
 	}
 }

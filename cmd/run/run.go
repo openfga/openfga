@@ -2,6 +2,7 @@
 package run
 
 import (
+	"container/list"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -16,6 +17,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	sync "sync/atomic"
@@ -49,6 +51,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/certwatcher"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
+	authzenv1 "github.com/openfga/api/proto/authzen/v1"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/assets"
@@ -133,7 +136,7 @@ func NewRunCommand() *cobra.Command {
 	defaultConfig := serverconfig.DefaultConfig()
 	flags := cmd.Flags()
 
-	flags.StringSlice("experimentals", defaultConfig.Experimentals, fmt.Sprintf("a comma-separated list of experimental features to enable. Allowed values: %s, %s, %s, %s", serverconfig.ExperimentalCheckOptimizations, serverconfig.ExperimentalListObjectsOptimizations, serverconfig.ExperimentalAccessControlParams, serverconfig.ExperimentalDatastoreThrottling))
+	flags.StringSlice("experimentals", defaultConfig.Experimentals, fmt.Sprintf("a comma-separated list of experimental features to enable. Allowed values: %s, %s, %s, %s, %s", serverconfig.ExperimentalCheckOptimizations, serverconfig.ExperimentalListObjectsOptimizations, serverconfig.ExperimentalAccessControlParams, serverconfig.ExperimentalDatastoreThrottling, serverconfig.ExperimentalAuthZen))
 
 	flags.Bool("access-control-enabled", defaultConfig.AccessControl.Enabled, "enable/disable the access control feature")
 
@@ -172,6 +175,8 @@ func NewRunCommand() *cobra.Command {
 	flags.StringSlice("http-cors-allowed-origins", defaultConfig.HTTP.CORSAllowedOrigins, "specifies the CORS allowed origins")
 
 	flags.StringSlice("http-cors-allowed-headers", defaultConfig.HTTP.CORSAllowedHeaders, "specifies the CORS allowed headers")
+
+	flags.String("authzen-base-url", defaultConfig.Authzen.BaseURL, "the canonical absolute base URL to publish in AuthZEN discovery metadata")
 
 	flags.String("authn-method", defaultConfig.Authn.Method, "the authentication method to use")
 
@@ -221,7 +226,9 @@ func NewRunCommand() *cobra.Command {
 
 	flags.Bool("playground-enabled", defaultConfig.Playground.Enabled, "enable/disable the OpenFGA Playground")
 
-	flags.Int("playground-port", defaultConfig.Playground.Port, "the port to serve the local OpenFGA Playground on")
+	flags.Int("playground-port", defaultConfig.Playground.Port, "the port to serve the local OpenFGA Playground on") //nolint:staticcheck
+
+	flags.String("playground-addr", defaultConfig.Playground.Addr, "the host:port address to serve the local OpenFGA Playground on")
 
 	flags.Bool("profiler-enabled", defaultConfig.Profiler.Enabled, "enable/disable pprof profiling")
 
@@ -360,6 +367,8 @@ func NewRunCommand() *cobra.Command {
 
 	flags.Duration("request-timeout", defaultConfig.RequestTimeout, "configures request timeout.  If both HTTP upstream timeout and request timeout are specified, request timeout will be used.")
 
+	flags.Duration("shutdown-timeout", defaultConfig.ShutdownTimeout, "configures how long the server waits for a graceful shutdown.")
+
 	flags.Duration("planner-eviction-threshold", defaultConfig.Planner.EvictionThreshold, "how long a planner key can be unused before being evicted")
 	flags.Duration("planner-cleanup-interval", defaultConfig.Planner.CleanupInterval, "how often the planner checks for stale keys")
 
@@ -426,9 +435,12 @@ func convertStringArrayToUintArray(stringArray []string) []uint {
 
 // telemetryConfig returns the function that must be called to shut down tracing.
 // The context provided to this function should be error-free, or shut down will be incomplete.
-func (s *ServerContext) telemetryConfig(config *serverconfig.Config) func() error {
+func (s *ServerContext) telemetryConfig(config *serverconfig.Config) func(context.Context) error {
 	if config.Trace.Enabled {
-		s.Logger.Info(fmt.Sprintf("🕵 tracing enabled: sampling ratio is %v and sending traces to '%s', tls: %t", config.Trace.SampleRatio, config.Trace.OTLP.Endpoint, config.Trace.OTLP.TLS.Enabled))
+		endpoint, schemeSecure := telemetry.ParseOTLPEndpoint(config.Trace.OTLP.Endpoint)
+		effectiveTLS := telemetry.ResolveOTLPSecurity(config.Trace.OTLP.TLS.Enabled, schemeSecure)
+
+		s.Logger.Info(fmt.Sprintf("🕵 tracing enabled: sampling ratio is %v and sending traces to '%s', tls: %t", config.Trace.SampleRatio, endpoint, effectiveTLS))
 
 		options := []telemetry.TracerOption{
 			telemetry.WithOTLPEndpoint(
@@ -446,15 +458,13 @@ func (s *ServerContext) telemetryConfig(config *serverconfig.Config) func() erro
 		}
 
 		tp := telemetry.MustNewTracerProvider(options...)
-		return func() error {
+		return func(ctx context.Context) error {
 			// can take up to 5 seconds to complete (https://github.com/open-telemetry/opentelemetry-go/blob/aebcbfcbc2962957a578e9cb3e25dc834125e318/sdk/trace/batch_span_processor.go#L97)
-			ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
-			defer cancel()
 			return errors.Join(tp.ForceFlush(ctx), tp.Shutdown(ctx))
 		}
 	}
 	otel.SetTracerProvider(noop.NewTracerProvider())
-	return func() error {
+	return func(_ context.Context) error {
 		return nil
 	}
 }
@@ -741,9 +751,20 @@ func (s *ServerContext) runHTTPServer(ctx context.Context, config *serverconfig.
 		}),
 		grpc_runtime.WithHealthzEndpoint(healthv1pb.NewHealthClient(grpcConn)),
 		grpc_runtime.WithOutgoingHeaderMatcher(func(s string) (string, bool) { return s, true }),
+		grpc_runtime.WithIncomingHeaderMatcher(func(key string) (string, bool) {
+			// Forward Openfga-Authorization-Model-Id header to gRPC metadata for AuthZEN endpoints.
+			if strings.EqualFold(key, server.AuthorizationModelIDHeader) {
+				return strings.ToLower(key), true
+			}
+			// Use default behavior for other headers
+			return grpc_runtime.DefaultHeaderMatcher(key)
+		}),
 	}
 	mux := grpc_runtime.NewServeMux(muxOpts...)
 	if err := openfgav1.RegisterOpenFGAServiceHandler(ctx, mux, grpcConn); err != nil {
+		return nil, err
+	}
+	if err := authzenv1.RegisterAuthZenServiceHandler(ctx, mux, grpcConn); err != nil {
 		return nil, err
 	}
 	handler := http.Handler(mux)
@@ -805,12 +826,13 @@ func (s *ServerContext) runPlaygroundServer(config *serverconfig.Config) (*http.
 	}
 
 	authMethod := config.Authn.Method
-	if authMethod != "none" && authMethod != "preshared" {
-		return nil, errors.New("the playground only supports authn methods 'none' and 'preshared'")
+	if authMethod != "none" {
+		return nil, errors.New("the playground only supports authn method 'none'")
 	}
 
-	playgroundAddr := fmt.Sprintf(":%d", config.Playground.Port)
-	s.Logger.Info(fmt.Sprintf("🛝 starting openfga playground on http://localhost%s/playground", playgroundAddr))
+	playgroundAddr := config.Playground.PlaygroundAddr()
+	s.Logger.Info(fmt.Sprintf("🛝 starting openfga playground on http://%s/playground", playgroundAddr))
+	s.Logger.Warn("⚠️ Please note that the built-in Playground is deprecated and will be removed in a future release")
 
 	tmpl, err := template.ParseFS(assets.EmbedPlayground, "playground/index.html")
 	if err != nil {
@@ -883,7 +905,30 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, os.Kill, syscall.SIGTERM)
 	defer stop()
 
+	cleanups := list.New()
+	defer func() {
+		s.Logger.Info("attempting to shutdown gracefully...")
+
+		ctx, cancel := context.WithTimeout(context.Background(), config.ShutdownTimeout)
+		defer cancel()
+
+		for el := cleanups.Front(); el != nil; el = el.Next() {
+			clean, ok := el.Value.(cleanup)
+			if !ok {
+				s.Logger.Info("cleanup type casting failed during graceful shutdown", zap.Any("value", el.Value))
+				continue
+			}
+
+			if err := clean(ctx); err != nil {
+				s.Logger.Info("resource cleanup failed during graceful shutdown", zap.Error(err))
+			}
+		}
+
+		s.Logger.Info("graceful shutdown completed successfully")
+	}()
+
 	tracerProviderCloser := s.telemetryConfig(config)
+	cleanups.PushFront(cleanupWithMessage(tracerProviderCloser, "tracing"))
 
 	// Added temporarily to allow us to enable experimental features by default without allowing the user to disable them,
 	// eg for pipeline_list_objects.
@@ -891,6 +936,10 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 
 	if len(config.Experimentals) > 0 {
 		s.Logger.Info(fmt.Sprintf("🧪 experimental features enabled: %v", config.Experimentals))
+	}
+
+	if slices.Contains(config.Experimentals, serverconfig.ExperimentalAuthZen) && config.Authzen.BaseURL == "" {
+		s.Logger.Warn("AuthZEN experimental is enabled but 'authzen.baseURL' is not configured. The discovery endpoint (/.well-known/authzen-configuration/{store_id}) will not work. Set --authzen-base-url or OPENFGA_AUTHZEN_BASE_URL to fix this.")
 	}
 
 	datastore, continuationTokenSerializer, err := s.datastoreConfig(config)
@@ -902,6 +951,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	if err != nil {
 		return err
 	}
+	cleanups.PushFront(cleanupFromPlainFunc(authenticator.Close, "authenticator"))
 
 	serverOpts, prometheusMetrics, err := s.buildServerOpts(ctx, config, authenticator)
 	if prometheusMetrics != nil {
@@ -932,6 +982,8 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 			}
 			s.Logger.Info("profiler shut down.")
 		}()
+
+		cleanups.PushFront(cleanupWithMessage(profilerServer.Shutdown, "profiler"))
 	}
 
 	var metricsServer *http.Server
@@ -950,10 +1002,13 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 			}
 			s.Logger.Info("metrics server shut down.")
 		}()
+
+		cleanups.PushFront(cleanupWithMessage(metricsServer.Shutdown, "prometheus metrics server"))
 	}
 
 	svr := server.MustNewServerWithOpts(
 		server.WithDatastore(datastore),
+		server.WithAuthzenBaseURL(config.Authzen.BaseURL),
 		server.WithContinuationTokenSerializer(continuationTokenSerializer),
 		server.WithAuthorizationModelCacheSize(config.Datastore.MaxCacheSize),
 		server.WithTypesystemCacheSize(config.Datastore.MaxTypesystemCacheSize),
@@ -1017,6 +1072,8 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		server.WithContext(ctx),
 	)
 
+	cleanups.PushFront(cleanupFromPlainFunc(svr.Close, "server"))
+
 	s.Logger.Info(
 		"starting openfga service...",
 		zap.String("version", build.Version),
@@ -1029,9 +1086,11 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	// nosemgrep: grpc-server-insecure-connection
 	grpcServer := grpc.NewServer(serverOpts...)
 	openfgav1.RegisterOpenFGAServiceServer(grpcServer, svr)
+	authzenv1.RegisterAuthZenServiceServer(grpcServer, svr)
 	healthServer := &health.Checker{TargetService: svr, TargetServiceName: openfgav1.OpenFGAService_ServiceDesc.ServiceName}
 	healthv1pb.RegisterHealthServer(grpcServer, healthServer)
 	reflection.Register(grpcServer)
+	cleanups.PushFront(cleanupGrpcServer(grpcServer))
 
 	lis, err := net.Listen(tcp, config.GRPC.Addr)
 	if err != nil {
@@ -1110,6 +1169,8 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		if err != nil {
 			return err
 		}
+
+		cleanups.PushFront(cleanupWithMessage(httpServer.Shutdown, "http server"))
 	}
 
 	var playground *http.Server
@@ -1118,50 +1179,13 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		if err != nil {
 			return err
 		}
+
+		cleanups.PushFront(cleanupWithMessage(playground.Shutdown, "playground"))
 	}
 
-	// wait for cancellation signal
+	// Wait for cancellation signal.
+	// After this, deferred functions handle resource cleanup.
 	<-ctx.Done()
-	s.Logger.Info("attempting to shutdown gracefully...")
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	if playground != nil {
-		if err := playground.Shutdown(ctx); err != nil {
-			s.Logger.Info("failed to shutdown the playground", zap.Error(err))
-		}
-	}
-
-	if httpServer != nil {
-		if err := httpServer.Shutdown(ctx); err != nil {
-			s.Logger.Info("failed to shutdown the http server", zap.Error(err))
-		}
-	}
-
-	if profilerServer != nil {
-		if err := profilerServer.Shutdown(ctx); err != nil {
-			s.Logger.Info("failed to shutdown the profiler", zap.Error(err))
-		}
-	}
-
-	if metricsServer != nil {
-		if err := metricsServer.Shutdown(ctx); err != nil {
-			s.Logger.Info("failed to shutdown the prometheus metrics server", zap.Error(err))
-		}
-	}
-
-	grpcServer.GracefulStop()
-
-	svr.Close()
-
-	authenticator.Close()
-
-	if err := tracerProviderCloser(); err != nil {
-		s.Logger.Error("failed to shutdown tracing", zap.Error(err))
-	}
-
-	s.Logger.Info("server exited. goodbye 👋")
 
 	return nil
 }

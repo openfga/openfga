@@ -19,11 +19,13 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/sync/singleflight"
 
+	authzenv1 "github.com/openfga/api/proto/authzen/v1"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/authz"
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/internal/graph"
+	"github.com/openfga/openfga/internal/listobjects/pipeline"
 	"github.com/openfga/openfga/internal/modelgraph"
 	"github.com/openfga/openfga/internal/planner"
 	"github.com/openfga/openfga/internal/shared"
@@ -36,7 +38,6 @@ import (
 	"github.com/openfga/openfga/pkg/featureflags"
 	"github.com/openfga/openfga/pkg/gateway"
 	"github.com/openfga/openfga/pkg/logger"
-	"github.com/openfga/openfga/pkg/server/commands/reverseexpand/pipeline"
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
@@ -165,6 +166,7 @@ var (
 // a GRPC and HTTP server.
 type Server struct {
 	openfgav1.UnimplementedOpenFGAServiceServer
+	authzenv1.UnimplementedAuthZenServiceServer
 
 	logger                           logger.Logger
 	datastore                        storage.OpenFGADatastore
@@ -189,6 +191,7 @@ type Server struct {
 	maxAuthorizationModelCacheSize   int
 	maxTypesystemCacheSize           int
 	maxAuthorizationModelSizeInBytes int
+	authzenBaseURL                   string
 	experimentals                    []string
 	AccessControl                    serverconfig.AccessControlConfig
 	AuthnMethod                      string
@@ -199,7 +202,8 @@ type Server struct {
 	typesystemResolver     typesystem.TypesystemResolverFunc
 	typesystemResolverStop func()
 
-	authzModelGraphResolver *modelgraph.AuthorizationModelGraphResolver
+	authzModelGraphResolver       *modelgraph.AuthorizationModelGraphResolver
+	shadowAuthzModelGraphResolver *modelgraph.AuthorizationModelGraphResolver
 
 	// cacheSettings are given by the user
 	cacheSettings serverconfig.CacheSettings
@@ -446,6 +450,12 @@ func WithFeatureFlagClient(client featureflags.Client) OpenFGAServiceV1Option {
 		}
 
 		s.featureFlagClient = featureflags.NewNoopFeatureFlagClient()
+	}
+}
+
+func WithAuthzenBaseURL(baseURL string) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.authzenBaseURL = baseURL
 	}
 }
 
@@ -822,7 +832,7 @@ func WithListObjectsChunkSize(value int) OpenFGAServiceV1Option {
 // memory allocation in a worst case scenario.
 func WithListObjectsBufferCapacity(value int) OpenFGAServiceV1Option {
 	return func(s *Server) {
-		s.listObjectsPipelineConfig.Buffer.Capacity = value
+		s.listObjectsPipelineConfig.BufferCapacity = value
 	}
 }
 
@@ -834,18 +844,6 @@ func WithListObjectsBufferCapacity(value int) OpenFGAServiceV1Option {
 func WithListObjectsNumProcs(value int) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.listObjectsPipelineConfig.NumProcs = value
-	}
-}
-
-// WithListObjectsPipeExtension is only effective when the ListObjects "pipeline"
-// algorithm is enabled, this option enables extension functionality within a pipeline,
-// which dynamically extends the buffers between pipeline workers, as needed. When a call
-// to send on a buffer blocks for longer than the extendAfter duration, the buffer size
-// is doubled up to maxExtensions number of times.
-func WithListObjectsPipeExtension(extendAfter time.Duration, maxExtensions int) OpenFGAServiceV1Option {
-	return func(s *Server) {
-		s.listObjectsPipelineConfig.Buffer.ExtendAfter = extendAfter
-		s.listObjectsPipelineConfig.Buffer.MaxExtensions = maxExtensions
 	}
 }
 
@@ -939,6 +937,16 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 	if len(s.requestDurationByDispatchCountHistogramBuckets) == 0 {
 		return nil, fmt.Errorf("request duration by dispatch count buckets must not be empty")
 	}
+
+	if s.authzenBaseURL != "" {
+		normalizedAuthzenBaseURL, err := serverconfig.NormalizeAuthzenBaseURL(s.authzenBaseURL)
+		if err != nil {
+			return nil, fmt.Errorf("invalid AuthZEN base URL: %w", err)
+		}
+
+		s.authzenBaseURL = normalizedAuthzenBaseURL
+	}
+
 	if s.checkDispatchThrottlingEnabled && s.checkDispatchThrottlingMaxThreshold != 0 && s.checkDispatchThrottlingDefaultThreshold > s.checkDispatchThrottlingMaxThreshold {
 		return nil, fmt.Errorf("check default dispatch throttling threshold must be equal or smaller than max dispatch threshold for Check")
 	}
@@ -995,6 +1003,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 
 	// TODO: make the cache duration configurable (maybe)
 	s.authzModelGraphResolver = modelgraph.NewResolver(s.datastore, s.sharedDatastoreResources.CheckCache, 24*7*time.Hour)
+	s.shadowAuthzModelGraphResolver = modelgraph.NewResolver(s.datastore, s.sharedDatastoreResources.ShadowCheckCache, 24*7*time.Hour)
 
 	if s.IsAccessControlEnabled() {
 		s.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: s.AccessControl.StoreID, ModelID: s.AccessControl.ModelID}, s, s.logger)

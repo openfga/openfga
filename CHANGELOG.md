@@ -7,17 +7,84 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Try to keep listed changes to a concise bulleted list of simple explanations of changes. Aim for the amount of information needed so that readers can understand where they would look in the codebase to investigate the changes' implementation, or where they would look in the documentation to understand how to make use of the change in practice - better yet, link directly to the docs and provide detailed information there. Only elaborate if doing so is required to avoid breaking changes or experimental features from ruining someone's day.
 
 ## [Unreleased]
+
+## [1.14.2] - 2026-04-14
+### Fixed
+- Use delimiter in contextual tuple key in experimental `weighted_graph_check`, and add validation in v2Check. Thanks to [@0xmrma](https://github.com/0xmrma) for reporting this bug. [#3064](https://github.com/openfga/openfga/pull/3064)
+
+## [1.14.1] - 2026-04-10
 ### Added
+- Added configuration for the server shutdown timeout. [#2976](https://github.com/openfga/openfga/pull/2976)
+
+### Changed
+- Made some minor changes in ListObjects to reduce heap allocations. Results in minor latency reduction. [#3043](https://github.com/openfga/openfga/pull/3043)
+- Improve cache key generation performance by removing `fmt` usage and extend control-character sanitization to all cache key inputs (tuples, conditions, context). [#3006](https://github.com/openfga/openfga/pull/3006)
+- Reuse a single PostgreSQL container across tests by replacing the test fixture implementation, improving test performance and reducing resource usage. [#3018](https://github.com/openfga/openfga/pull/3018)
+
+### Fixed
+- Fixed AuthZEN discovery metadata to publish endpoint URLs from the configured `authzen.baseURL` instead of request-supplied host headers, preventing host-header poisoning of `/.well-known/authzen-configuration/{store_id}`. Thanks to [@Jvr2022](https://github.com/Jvr2022) for reporting this. [#3057](https://github.com/openfga/openfga/pull/3057)
+
+### Security
+- Removed the vulnerable `github.com/docker/docker` package (used only in tests) and replaced it with Moby (client & api). [#3047](https://github.com/openfga/openfga/pull/3047)
+
+## [1.14.0] - 2026-04-03
+### Added
+- Added `openfga_iter_query_duration_ms` histogram metric to track storage iterator query latency across all storage backends, labeled by `success`. The metric is recorded in each backend's `fetchBuffer` after error classification: infrastructure failures are labeled `success=false`; expected storage outcomes (`ErrNotFound`, `ErrCollision`, `ErrInvalidWriteInput`) are labeled `success=true`. [#3030](https://github.com/openfga/openfga/pull/3030)
+
+### Changed
+- Changed the ListObjects pipeline intersection algorithm to improve intersection performance. [#3031](https://github.com/openfga/openfga/pull/3031)
+- **[BREAKING]** The Playground now only supports the `none` authentication method. Running the Playground with `preshared` key authentication is no longer supported. The server will error and not start if it detects this combination.
+- The Playground is now disabled by default as a result of [GHSA-68m9-983m-f3v5](https://github.com/openfga/openfga/security/advisories/GHSA-68m9-983m-f3v5)
+
+### Deprecated
+- The built-in OpenFGA Playground is intended for development purposes only and is deprecated. It will be removed entirely in a future release.
+- The `--playground-port` flag and `OPENFGA_PLAYGROUND_PORT` environment variable are deprecated. Use `--playground-addr` (`OPENFGA_PLAYGROUND_ADDR`) instead to specify the full `host:port` address for the Playground server. When `--playground-addr` is not set, the Playground binds to `127.0.0.1` using the port from `--playground-port`.
+
+### Fixed
+- Fixed Write operations failing with `invalid input syntax for type integer` (SQLSTATE 22P02) when PostgreSQL is behind PgBouncer or a connection pooler using the simple query protocol. [#3014](https://github.com/openfga/openfga/pull/3014)
+- Fixed PostgreSQL `HandleSQLError` and `GetStore` returning a wrapped error instead of `storage.ErrNotFound` when no rows are found. When using pgxpool directly, `QueryRow().Scan()` returns `pgx.ErrNoRows`, not `sql.ErrNoRows`; both are now handled. [#3014](https://github.com/openfga/openfga/pull/3014)
+- Fixed the possibility of deadlocks within the ListObjects pipeline algorithm. Also added short-circuit enhancements that will reduce latency and message processing in certain scenarios. Cyclical edges now use as much memory as necessary to process deep and wide data hierarchies without the risk of a deadlock. [#3028](https://github.com/openfga/openfga/pull/3028)
+- Fixed issue where BatchCheck calls with multiple checks for the same tuple could result in improper policy enforcement. [CVE-2026-34972](https://github.com/openfga/openfga/security/advisories/GHSA-jwvj-g8pc-cx45)
+
+## [1.13.1] - 2026-03-24
+### Security
+- Fixed a security vulnerability ([CVE-2026-33729](https://github.com/openfga/openfga/security/advisories/GHSA-h6c8-cww8-35hf)) where Check requests with conditions and caching enabled could return incorrect cached results.
+
+## [1.13.0] - 2026-03-23
+### Added
+- Add AuthZen 1.0 experimental support. [#2875](https://github.com/openfga/openfga/pull/2875)
+
+### Fixed
+- Prevent recoverable panics in list objects from terminating the process. Return an error instead. [#2994](https://github.com/openfga/openfga/pull/2994)
+
+## [1.12.1] - 2026-03-19
+### Changed
+- The ListObjects "pipeline" algorithm ditches its custom Pipe implementation and replaces it with Go native channels. [#2977](https://github.com/openfga/openfga/pull/2977)
+- Refactor tuple validation and manipulation functions for optimal performance. [#2984](https://github.com/openfga/openfga/pull/2984)
+- Update grpc-go version to v1.79.3 and grpc-health-probe to v0.4.47. [#2988](https://github.com/openfga/openfga/pull/2988)
+
+### Fixed
+- Fixed `OTEL_EXPORTER_OTLP_ENDPOINT` not accepting URIs with schemes (e.g. `http://host:4317`). The scheme is now stripped before passing to the gRPC exporter, and an `https://` scheme enables TLS regardless of the `trace.otlp.tls.enabled` flag. [#2981](https://github.com/openfga/openfga/pull/2981)
+
+## [1.12.0] - 2026-03-13
+### Added
+- Add AuthZen 1.0 experimental support. [#2875](https://github.com/openfga/openfga/pull/2875)
 - Add configuration for maximum size of received gRPC message bytes. [#2952](https://github.com/openfga/openfga/pull/2952)
 
 ### Changed
 - HTTP gateway's internal gRPC client now uses dynamic TLS credentials that automatically update on certificate rotation via certwatcher, preventing connection failures when certificates are rotated (e.g., by cert-manager). [#2951](https://github.com/openfga/openfga/pull/2951)
+- Tuple validation will now fail when any unicode control characters, or null bytes are present within a tuple string. [#2963](https://github.com/openfga/openfga/pull/2963)
 
 ### Fixed
+- Fixed swapped format arguments in `DecodeParameterType` error message that reported required and found generic type counts in the wrong order. [#2961](https://github.com/openfga/openfga/pull/2961)
 - Fixed a few bugs. Two potential index out of bounds scenarios, and one cache of an invalid result. [#2942](https://github.com/openfga/openfga/pull/2942)
 - Fixed a race condition in check reducers causing non-deterministic nested handler execution due to canceled parent context. [#2947](https://github.com/openfga/openfga/pull/2947)
 - Fixed an issue where `cache_item_count` was incrementing on overwrites, causing the metric to steadily drift upward. [#2950](https://github.com/openfga/openfga/pull/2950)
 - Set `pipeline_list_objects` enabled by default in experimentals so that setting new experimental values does not disable it. This is required so that a user may pass in a custom featureflag client where `pipeline_list_objects` can be disabled on a per store basis. To disable the ListObjects pipeline algorithm entirely, set `listObjects-pipeline-enabled` to `false`. [#2957](https://github.com/openfga/openfga/pull/2957)
+
+### Security
+- Update toolchain go version to 1.26.1 to be latest. [#2975](https://github.com/openfga/openfga/pull/2975)
+- Update toolchain go version to 1.25.8 to address std lib vulnerabilities [GO-2026-4603](https://pkg.go.dev/vuln/GO-2026-4603) and [GO-2026-4601](https://pkg.go.dev/vuln/GO-2026-4601). [#2971](https://github.com/openfga/openfga/pull/2971)
 
 ## [1.11.6] - 2026-02-23
 ### Added
@@ -1540,7 +1607,14 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
 - Memory storage adapter implementation
 - Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.11.6...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.14.2...HEAD
+[1.14.2]: https://github.com/openfga/openfga/compare/v1.14.1...v1.14.2
+[1.14.1]: https://github.com/openfga/openfga/compare/v1.14.0...v1.14.1
+[1.14.0]: https://github.com/openfga/openfga/compare/v1.13.1...v1.14.0
+[1.13.1]: https://github.com/openfga/openfga/compare/v1.13.0...v1.13.1
+[1.13.0]: https://github.com/openfga/openfga/compare/v1.12.1...v1.13.0
+[1.12.1]: https://github.com/openfga/openfga/compare/v1.12.0...v1.12.1
+[1.12.0]: https://github.com/openfga/openfga/compare/v1.11.6...v1.12.0
 [1.11.6]: https://github.com/openfga/openfga/compare/v1.11.5...v1.11.6
 [1.11.5]: https://github.com/openfga/openfga/compare/v1.11.4...v1.11.5
 [1.11.4]: https://github.com/openfga/openfga/compare/v1.11.3...v1.11.4

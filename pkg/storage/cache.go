@@ -19,6 +19,7 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/build"
+	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
@@ -26,13 +27,13 @@ var (
 	cacheItemCount = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: build.ProjectName,
 		Name:      "cache_item_count",
-		Help:      "The total number of items stored in the cache",
+		Help:      "The current number of items stored in the cache",
 	}, []string{"entity"})
 
 	cacheItemRemovedCount = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: build.ProjectName,
 		Name:      "cache_item_removed_count",
-		Help:      "The total number of items removed from the cache",
+		Help:      "The total number of items removed (evicted/expired/deleted) from the cache",
 	}, []string{"entity", "reason"})
 )
 
@@ -260,6 +261,16 @@ func GetReadCacheKey(store, tuple string) string {
 // an unexpected structpb.Value kind was encountered.
 var ErrUnexpectedStructValue = errors.New("unexpected structpb value encountered")
 
+// validateNoForbiddenChars returns an error if s contains characters OpenFGA doesn't allow.
+// These characters should be rejected at validation boundaries before reaching
+// cache key generation. If this errors, it indicates a validation bug upstream.
+func validateNoForbiddenChars(s string) error {
+	if utils.ContainsForbiddenChars(s) {
+		return fmt.Errorf("invariant violation: forbidden character in cache key input")
+	}
+	return nil
+}
+
 // writeValue writes value v to the writer w. An error
 // is returned only when the underlying writer returns
 // an error or an unexpected value kind is encountered.
@@ -270,7 +281,20 @@ func writeValue(w io.StringWriter, v *structpb.Value) (err error) {
 	case *structpb.Value_NullValue:
 		_, err = w.WriteString("null")
 	case *structpb.Value_StringValue:
+		if err = validateNoForbiddenChars(val.StringValue); err != nil {
+			return
+		}
+
+		numBytes := len(val.StringValue)
+		_, err = w.WriteString(strconv.Itoa(numBytes) + ":")
+		if err != nil {
+			return
+		}
+
 		_, err = w.WriteString(val.StringValue)
+		if err != nil {
+			return
+		}
 	case *structpb.Value_NumberValue:
 		_, err = w.WriteString(strconv.FormatFloat(val.NumberValue, 'f', -1, 64)) // -1 precision ensures we represent the 64-bit value with the maximum precision needed to represent it, see strconv#FormatFloat for more info.
 	case *structpb.Value_ListValue:
@@ -321,8 +345,24 @@ func writeStruct(w io.StringWriter, s *structpb.Struct) (err error) {
 	keys := keys(fields)
 	sort.Strings(keys)
 
+	// encode the length of the keys to ensure the correct number of keys are reflected
+	// e.g. "a": "x,'b:'y"
+	if _, err = w.WriteString(strconv.Itoa(len(keys))); err != nil {
+		return
+	}
+
 	for _, key := range keys {
-		if _, err = w.WriteString(fmt.Sprintf("'%s:'", key)); err != nil {
+		if err = validateNoForbiddenChars(key); err != nil {
+			return
+		}
+		if _, err = w.WriteString("'"); err != nil {
+			return
+		}
+		if _, err = w.WriteString(key); err != nil {
+			return
+		}
+		// 'key:'value separator and quote
+		if _, err = w.WriteString(":'"); err != nil {
 			return
 		}
 
@@ -358,7 +398,11 @@ func writeTuples(w io.StringWriter, tuples ...*openfgav1.TupleKey) (err error) {
 	}
 
 	for n, tupleKey := range sortedTuples {
-		_, err = w.WriteString(tupleKey.GetObject() + "#" + tupleKey.GetRelation())
+		objectRelation := tupleKey.GetObject() + "#" + tupleKey.GetRelation()
+		if err = validateNoForbiddenChars(objectRelation); err != nil {
+			return
+		}
+		_, err = w.WriteString(objectRelation)
 		if err != nil {
 			return
 		}
@@ -368,7 +412,11 @@ func writeTuples(w io.StringWriter, tuples ...*openfgav1.TupleKey) (err error) {
 			// " with " is separated by spaces as those are invalid in relation names
 			// and we need to ensure this cache key is unique
 			// resultant cache key format is "object:object_id#relation with {condition} {context}@user:user_id"
-			_, err = w.WriteString(" with " + cond.GetName())
+			condName := cond.GetName()
+			if err = validateNoForbiddenChars(condName); err != nil {
+				return
+			}
+			_, err = w.WriteString(" with " + condName)
 			if err != nil {
 				return
 			}
@@ -388,7 +436,11 @@ func writeTuples(w io.StringWriter, tuples ...*openfgav1.TupleKey) (err error) {
 			}
 		}
 
-		if _, err = w.WriteString("@" + tupleKey.GetUser()); err != nil {
+		user := tupleKey.GetUser()
+		if err = validateNoForbiddenChars(user); err != nil {
+			return
+		}
+		if _, err = w.WriteString("@" + user); err != nil {
 			return
 		}
 
@@ -419,7 +471,11 @@ type CheckCacheKeyParams struct {
 func WriteCheckCacheKey(w io.StringWriter, params *CheckCacheKeyParams) error {
 	t := tuple.From(params.TupleKey)
 
-	_, err := w.WriteString(t.String())
+	tupleStr := t.String()
+	if err := validateNoForbiddenChars(tupleStr); err != nil {
+		return err
+	}
+	_, err := w.WriteString(tupleStr)
 	if err != nil {
 		return err
 	}

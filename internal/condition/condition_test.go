@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"reflect"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/structpb"
@@ -558,9 +557,9 @@ func TestEvaluateWithInterruptCheckFrequency(t *testing.T) {
 		return items
 	}
 
-	// numLoops is the number of loops being evaluated by a CEL
-	// expression. This number needs to be large enough to not
-	// be resolved before the 1 microsecond context timeout.
+	// numLoops is used as both the list size and the interrupt check
+	// frequency. With N items and checkFrequency=N, the interrupt fires
+	// exactly at the last iteration; with N-1 items it never fires.
 	numLoops := 500
 
 	var tests = []struct {
@@ -594,7 +593,7 @@ func TestEvaluateWithInterruptCheckFrequency(t *testing.T) {
 			result: condition.EvaluationResult{
 				ConditionMet: false,
 			},
-			err: fmt.Errorf("failed to evaluate relationship condition: 'condition1' - failed to evaluate condition expression: operation interrupted"),
+			err: fmt.Errorf("failed to evaluate relationship condition: 'condition1' - failed to evaluate condition expression: context canceled"),
 		},
 		{
 			name: "operation_not_interrupted_one_comprehension",
@@ -644,7 +643,7 @@ func TestEvaluateWithInterruptCheckFrequency(t *testing.T) {
 			result: condition.EvaluationResult{
 				ConditionMet: false,
 			},
-			err: fmt.Errorf("failed to evaluate relationship condition: 'condition1' - failed to evaluate condition expression: operation interrupted"),
+			err: fmt.Errorf("failed to evaluate relationship condition: 'condition1' - failed to evaluate condition expression: context canceled"),
 		},
 		{
 			name: "operation_not_interrupted_two_comprehensions",
@@ -669,7 +668,7 @@ func TestEvaluateWithInterruptCheckFrequency(t *testing.T) {
 			result: condition.EvaluationResult{
 				ConditionMet: false,
 			},
-			err: fmt.Errorf("failed to evaluate relationship condition: 'condition1' - failed to evaluate condition expression: operation interrupted"),
+			err: fmt.Errorf("failed to evaluate relationship condition: 'condition1' - failed to evaluate condition expression: context canceled"),
 		},
 	}
 
@@ -685,8 +684,8 @@ func TestEvaluateWithInterruptCheckFrequency(t *testing.T) {
 			contextStruct, err := structpb.NewStruct(test.context)
 			require.NoError(t, err)
 
-			evalCtx, cancel := context.WithTimeout(ctx, time.Microsecond)
-			defer cancel()
+			evalCtx, cancel := context.WithCancel(ctx)
+			cancel() // cancel immediately so evalCtx.Done() is closed before Evaluate
 
 			result, err := condition.Evaluate(evalCtx, contextStruct.GetFields())
 

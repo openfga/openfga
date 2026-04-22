@@ -100,7 +100,7 @@ func TestWriteValue(t *testing.T) {
 					})),
 				},
 			}),
-			output: "A,null,true,1111111111,'key:'value,",
+			output: "1:A,null,true,1111111111,1'key:'5:value,",
 		},
 		"list_write_value_error": {
 			writer: &ErrorStringWriter{},
@@ -134,6 +134,11 @@ func TestWriteValue(t *testing.T) {
 			value:  nil,
 			error:  true,
 		},
+		"string_with_control_chars": {
+			writer: &validWriter,
+			value:  structpb.NewStringValue("hello\x00world"),
+			error:  true,
+		},
 	}
 
 	for name, test := range cases {
@@ -148,6 +153,28 @@ func TestWriteValue(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("list_string_with_comma_vs_separate_elements", func(t *testing.T) {
+		// ["editor,viewer"] (single string containing a comma) must not
+		// hash the same as ["editor","viewer"] (two separate strings).
+		singleElement := structpb.NewListValue(&structpb.ListValue{
+			Values: []*structpb.Value{
+				structpb.NewStringValue("editor,viewer"),
+			},
+		})
+		twoElements := structpb.NewListValue(&structpb.ListValue{
+			Values: []*structpb.Value{
+				structpb.NewStringValue("editor"),
+				structpb.NewStringValue("viewer"),
+			},
+		})
+
+		var w1, w2 strings.Builder
+		require.NoError(t, writeValue(&w1, singleElement))
+		require.NoError(t, writeValue(&w2, twoElements))
+		require.NotEqual(t, w1.String(), w2.String(),
+			"single string 'editor,viewer' and two strings 'editor','viewer' must serialize differently")
+	})
 }
 
 func TestWriteStruct(t *testing.T) {
@@ -163,9 +190,18 @@ func TestWriteStruct(t *testing.T) {
 				"keyA": "valueA",
 				"keyB": "valueB",
 			}),
-			output: "'keyA:'valueA,'keyB:'valueB,",
+			output: "2'keyA:'6:valueA,'keyB:'6:valueB,",
 		},
-		"fields_write_key_error": {
+		"incorrect_value": {
+			writer: &validWriter,
+			value: MustNewStruct(map[string]any{
+				// This value is crafted to appear as if it were 2 keys
+				"a": "x,'b:'y",
+			}),
+			// but our cache key should identify it correctly as 1 key
+			output: "1'a:'7:x,'b:'y,",
+		},
+		"fields_write_len_error": {
 			writer: &ErrorStringWriter{},
 			value: MustNewStruct(map[string]any{
 				"keyA": "valueA",
@@ -173,7 +209,7 @@ func TestWriteStruct(t *testing.T) {
 			}),
 			error: true,
 		},
-		"fields_write_value_error": {
+		"fields_write_quote_error": {
 			writer: &ErrorStringWriter{
 				TriggerAt: 2,
 			},
@@ -183,13 +219,43 @@ func TestWriteStruct(t *testing.T) {
 			}),
 			error: true,
 		},
-		"fields_write_comma_error": {
+		"fields_write_key_error": {
 			writer: &ErrorStringWriter{
 				TriggerAt: 3,
 			},
 			value: MustNewStruct(map[string]any{
 				"keyA": "valueA",
 				"keyB": "valueB",
+			}),
+			error: true,
+		},
+		"fields_write_separator_error": {
+			writer: &ErrorStringWriter{
+				TriggerAt: 4,
+			},
+			value: MustNewStruct(map[string]any{
+				"keyA": "valueA",
+				"keyB": "valueB",
+			}),
+			error: true,
+		},
+		"fields_write_value_error": {
+			writer: &ErrorStringWriter{
+				TriggerAt: 5,
+			},
+			value: MustNewStruct(map[string]any{
+				"keyA": "valueA",
+				"keyB": "valueB",
+			}),
+			error: true,
+		},
+		"fields_write_comma_error": {
+			writer: &ErrorStringWriter{
+				TriggerAt: 6,
+			},
+			value: MustNewStruct(map[string]any{
+				"keyA": 1,
+				"keyB": 2,
 			}),
 			error: true,
 		},
@@ -202,6 +268,13 @@ func TestWriteStruct(t *testing.T) {
 			writer: &ErrorStringWriter{},
 			value:  nil,
 			output: "",
+		},
+		"key_with_control_chars": {
+			writer: &validWriter,
+			value: MustNewStruct(map[string]any{
+				"key\x00A": "value",
+			}),
+			error: true,
 		},
 	}
 
@@ -292,7 +365,7 @@ func TestWriteTuples(t *testing.T) {
 					}),
 				),
 			},
-			output: "/document:A#relationA with A 'key:'value,@user:A,document:A#relationA with B 'key:'value,@user:A",
+			output: "/document:A#relationA with A 1'key:'5:value,@user:A,document:A#relationA with B 1'key:'5:value,@user:A",
 		},
 		"with_condition_write_with_error": {
 			writer: &ErrorStringWriter{
@@ -369,6 +442,27 @@ func TestWriteTuples(t *testing.T) {
 						"key": "value",
 					}),
 				),
+			},
+			error: true,
+		},
+		"control_chars_in_object_and_relation": {
+			writer: &validWriter,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("doc:\x00A", "view\x00er", "user:B"),
+			},
+			error: true,
+		},
+		"control_chars_in_user": {
+			writer: &validWriter,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:A", "viewer", "user:\x00B"),
+			},
+			error: true,
+		},
+		"control_chars_in_condition_name": {
+			writer: &validWriter,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKeyWithCondition("document:A", "viewer", "user:A", "cond\x00X", nil),
 			},
 			error: true,
 		},
@@ -769,6 +863,52 @@ func TestCheckCacheKeyConditionContextOrderAgnostic(t *testing.T) {
 	require.Equal(t, key1, key2)
 }
 
+func TestCheckCacheKeyRejectsControlCharactersInContext(t *testing.T) {
+	storeID := ulid.Make().String()
+	modelID := ulid.Make().String()
+
+	// The unicode chars below are backspaces — these should be rejected, not silently replaced.
+	struct2, err := structpb.NewStruct(map[string]interface{}{
+		"a": "y",
+		"b": "\u0008\u0008\u0008\u0008\u0008\u0008x",
+	})
+	require.NoError(t, err)
+
+	jonContextTwo := tuple.NewTupleKeyWithCondition(
+		"document:2",
+		"admin",
+		"user:jon",
+		"some_condition",
+		struct2,
+	)
+
+	tupleKey := tuple.NewTupleKey("document:x", "viewer", "user:jon")
+
+	var w strings.Builder
+	err = WriteCheckCacheKey(&w, &CheckCacheKeyParams{
+		StoreID:              storeID,
+		AuthorizationModelID: modelID,
+		TupleKey:             tupleKey,
+		ContextualTuples:     []*openfgav1.TupleKey{jonContextTwo},
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "invariant violation")
+}
+
+func TestWriteCheckCacheKeyRejectsControlCharsInTuple(t *testing.T) {
+	storeID := ulid.Make().String()
+	modelID := ulid.Make().String()
+
+	var w strings.Builder
+	err := WriteCheckCacheKey(&w, &CheckCacheKeyParams{
+		StoreID:              storeID,
+		AuthorizationModelID: modelID,
+		TupleKey:             tuple.NewTupleKey("document:\x00X", "viewer", "user:jon"),
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "invariant violation")
+}
+
 func TestCheckCacheKeyContextualTuplesConditionsOrderDoesNotMatter(t *testing.T) {
 	storeID := ulid.Make().String()
 	modelID := ulid.Make().String()
@@ -886,7 +1026,7 @@ func TestWriteInvariantCheckCacheKey(t *testing.T) {
 				},
 				Context: contextStruct,
 			},
-			output: "fake_model_id/document:1#viewer with condition_name 'key1:'true,@user:anne'key1:'true,",
+			output: "fake_model_id/document:1#viewer with condition_name 1'key1:'true,@user:anne1'key1:'true,",
 			error:  false,
 		},
 		"writer_error": {
@@ -944,7 +1084,7 @@ func TestWriteCheckCacheKey(t *testing.T) {
 				},
 				Context: contextStruct,
 			},
-			output: "document:1#can_view@user:annefake_model_id/document:1#viewer with condition_name 'key1:'true,@user:anne'key1:'true,",
+			output: "document:1#can_view@user:annefake_model_id/document:1#viewer with condition_name 1'key1:'true,@user:anne1'key1:'true,",
 		},
 	}
 	for name, test := range cases {

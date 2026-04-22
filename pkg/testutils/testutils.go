@@ -257,11 +257,27 @@ func EnsureServiceHealthy(t testing.TB, grpcAddr, httpAddr string, transportCred
 	}
 }
 
+// MustDefaultConfig returns the default server configuration for tests.
+// Playground, tracing, and metrics are disabled.
+// The shutdown timeout is increased.
+func MustDefaultConfig() *serverconfig.Config {
+	config := serverconfig.DefaultConfig()
+
+	config.Playground.Enabled = false
+	config.Trace.Enabled = false
+	config.Metrics.Enabled = false
+
+	// increase timeout to reduce the likelihood of server shutdown failures
+	config.ShutdownTimeout = 30 * time.Second
+
+	return config
+}
+
 // MustDefaultConfigForParallelTests returns default server config suitable for parallel tests.
 // It limits the connection idle time and lifetime to prevent bad connections
 // and extends the request timeout to accommodate slower test environments.
 func MustDefaultConfigForParallelTests() *serverconfig.Config {
-	config := serverconfig.MustDefaultConfig()
+	config := MustDefaultConfig()
 
 	// limit IdleTime and Lifetime to prevent bad connections
 	config.Datastore.ConnMaxIdleTime = 5 * time.Second
@@ -277,7 +293,7 @@ func MustDefaultConfigForParallelTests() *serverconfig.Config {
 // and with the playground, tracing and metrics turned off.
 // This function may panic if somehow a random port cannot be chosen.
 func MustDefaultConfigWithRandomPorts() *serverconfig.Config {
-	config := serverconfig.MustDefaultConfig()
+	config := MustDefaultConfig()
 	config.Experimentals = append(
 		config.Experimentals,
 		serverconfig.ExperimentalCheckOptimizations,

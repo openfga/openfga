@@ -70,7 +70,7 @@ case "$opt" in
     exit 0
     ;;
     :)
-    die 2 "Option -$OPTARG requires an argument."
+    die -c 2 "Option -$OPTARG requires an argument."
     ;;
     \?)
     die "Invalid option: -${OPTARG}"

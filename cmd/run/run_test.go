@@ -65,7 +65,9 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 
-	os.Exit(m.Run())
+	code := m.Run()
+	storagefixtures.CleanupPostgresContainer()
+	os.Exit(code)
 }
 
 func genCert(t *testing.T, template, parent *x509.Certificate, pub *rsa.PublicKey, priv *rsa.PrivateKey) (*x509.Certificate, []byte) {
@@ -1141,8 +1143,8 @@ func TestPlaygroundEnabled(t *testing.T) {
 	c := retryablehttp.NewClient()
 	t.Cleanup(c.HTTPClient.CloseIdleConnections)
 
-	playgroundPort := fmt.Sprintf(":%d", cfg.Playground.Port)
-	resp, err := c.Get(fmt.Sprintf("http://localhost%s/playground", playgroundPort))
+	playgroundAddr := cfg.Playground.PlaygroundAddr()
+	resp, err := c.Get(fmt.Sprintf("http://%s/playground", playgroundAddr))
 	require.NoError(t, err, "http playground endpoint not healthy")
 	t.Cleanup(func() {
 		err := resp.Body.Close()
@@ -1215,13 +1217,17 @@ func TestDefaultConfig(t *testing.T) {
 	require.True(t, val.Exists())
 	require.Equal(t, val.String(), cfg.HTTP.Addr)
 
+	val = res.Get("properties.authzen.properties.baseURL.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.String(), cfg.Authzen.BaseURL)
+
 	val = res.Get("properties.playground.properties.enabled.default")
 	require.True(t, val.Exists())
 	require.Equal(t, val.Bool(), cfg.Playground.Enabled)
 
 	val = res.Get("properties.playground.properties.port.default")
 	require.True(t, val.Exists())
-	require.EqualValues(t, val.Int(), cfg.Playground.Port)
+	require.EqualValues(t, val.Int(), cfg.Playground.Port) //nolint:staticcheck
 
 	val = res.Get("properties.profiler.properties.enabled.default")
 	require.True(t, val.Exists())
@@ -1492,6 +1498,10 @@ func TestDefaultConfig(t *testing.T) {
 	val = res.Get("properties.requestTimeout.default")
 	require.True(t, val.Exists())
 	require.Equal(t, val.String(), cfg.RequestTimeout.String())
+
+	val = res.Get("properties.shutdownTimeout.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.String(), cfg.ShutdownTimeout.String())
 }
 
 func TestRunCommandNoConfigDefaultValues(t *testing.T) {
