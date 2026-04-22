@@ -312,7 +312,12 @@ func (b *Builder) Build(
 
 			if _, ok := key.GetWeight(subject); !ok {
 				if _, ok := key.GetWeight(wildcard); !ok {
+					// No path exists from this edge to the subject type, so there
+					// is no possibility of it producing results.
 					if w, ok := workers[key.GetFrom().GetUniqueLabel()]; ok {
+						// The worker still needs a sender for this edge. Workers such as
+						// Difference expect a specific number of senders in order to operate.
+						// Therefore, the worker is subscribed to a noop sender.
 						w.Listen(worker.NewNoopMedium(key))
 					}
 					continue
