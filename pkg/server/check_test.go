@@ -707,6 +707,8 @@ func TestV2CheckQueryCacheEnabled(t *testing.T) {
 		require.True(t, res.GetAllowed())
 		require.NotEmpty(t, checkCache.getKeysWithPrefix("c."),
 			"second check should read subproblem entries from cache")
+		require.Empty(t, checkCache.setKeysWithPrefix("c."),
+			"second check should not write new subproblem entries (cache should be hit)")
 	})
 
 	t.Run("skips_subproblem_caching_when_disabled", func(t *testing.T) {
