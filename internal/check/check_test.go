@@ -2231,11 +2231,35 @@ func TestIsCached(t *testing.T) {
 		require.Nil(t, res)
 	})
 
-	t.Run("returns_false_when_last_cache_invalidation_time_is_zero", func(t *testing.T) {
+	t.Run("returns_true_when_last_cache_invalidation_time_is_zero_and_entry_exists", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
 		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
+
+		expectedResponse := &Response{Allowed: true}
+		cacheEntry := &ResponseCacheEntry{
+			Res:          expectedResponse,
+			LastModified: time.Now(),
+		}
+		mockCache.EXPECT().Get("test-key").Return(cacheEntry).Times(1)
+
+		resolver := &Resolver{
+			cache:                     mockCache,
+			lastCacheInvalidationTime: time.Time{},
+		}
+
+		res, ok := resolver.isCached(openfgav1.ConsistencyPreference_MINIMIZE_LATENCY, "test-key")
+		require.True(t, ok)
+		require.Equal(t, expectedResponse, res)
+	})
+
+	t.Run("returns_false_when_last_cache_invalidation_time_is_zero_and_no_entry", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
+		mockCache.EXPECT().Get("test-key").Return(nil).Times(1)
 
 		resolver := &Resolver{
 			cache:                     mockCache,

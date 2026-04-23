@@ -311,6 +311,9 @@ func fieldMap(fields []zap.Field) map[string]interface{} {
 type recordingCache struct {
 	mu      sync.Mutex
 	entries map[string]any
+	getKeys []string
+	setKeys []string
+	delKeys []string
 }
 
 func newRecordingCache() *recordingCache {
@@ -320,33 +323,56 @@ func newRecordingCache() *recordingCache {
 func (c *recordingCache) Get(key string) any {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.getKeys = append(c.getKeys, key)
 	return c.entries[key]
 }
 
 func (c *recordingCache) Set(key string, value any, _ time.Duration) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.setKeys = append(c.setKeys, key)
 	c.entries[key] = value
 }
 
 func (c *recordingCache) Delete(key string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.delKeys = append(c.delKeys, key)
 	delete(c.entries, key)
 }
 
 func (c *recordingCache) Stop() {}
 
-func (c *recordingCache) keysWithPrefix(prefix string) []string {
+func (c *recordingCache) getKeysWithPrefix(prefix string) []string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	var keys []string
-	for k := range c.entries {
+	for _, k := range c.getKeys {
 		if strings.HasPrefix(k, prefix) {
 			keys = append(keys, k)
 		}
 	}
 	return keys
+}
+
+func (c *recordingCache) setKeysWithPrefix(prefix string) []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	var keys []string
+	for _, k := range c.setKeys {
+		if strings.HasPrefix(k, prefix) {
+			keys = append(keys, k)
+		}
+	}
+	return keys
+}
+
+func (c *recordingCache) resetTracking() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.getKeys = nil
+	c.setKeys = nil
+	c.delKeys = nil
 }
 
 func TestV2CheckCacheSeparation(t *testing.T) {
@@ -391,12 +417,12 @@ func TestV2CheckCacheSeparation(t *testing.T) {
 		require.NoError(t, err)
 
 		// Shadow mode should route model graph and subproblem entries to the shadow cache.
-		require.NotEmpty(t, shadowCache.keysWithPrefix("wg|"), "shadow cache should have model graph entries")
-		require.NotEmpty(t, shadowCache.keysWithPrefix("c."), "shadow cache should have subproblem cache entries")
+		require.NotEmpty(t, shadowCache.setKeysWithPrefix("wg|"), "shadow cache should have model graph entries")
+		require.NotEmpty(t, shadowCache.setKeysWithPrefix("c."), "shadow cache should have subproblem cache entries")
 
 		// Main cache should remain empty.
-		require.Empty(t, checkCache.keysWithPrefix("wg|"), "main check cache should not have model graph entries")
-		require.Empty(t, checkCache.keysWithPrefix("c."), "main check cache should not have subproblem cache entries")
+		require.Empty(t, checkCache.setKeysWithPrefix("wg|"), "main check cache should not have model graph entries")
+		require.Empty(t, checkCache.setKeysWithPrefix("c."), "main check cache should not have subproblem cache entries")
 	})
 
 	t.Run("non_shadow_mode_uses_main_cache", func(t *testing.T) {
@@ -417,12 +443,12 @@ func TestV2CheckCacheSeparation(t *testing.T) {
 		require.NoError(t, err)
 
 		// Non-shadow mode should route model graph and subproblem entries to the main cache.
-		require.NotEmpty(t, checkCache.keysWithPrefix("wg|"), "main check cache should have model graph entries")
-		require.NotEmpty(t, checkCache.keysWithPrefix("c."), "main check cache should have subproblem cache entries")
+		require.NotEmpty(t, checkCache.setKeysWithPrefix("wg|"), "main check cache should have model graph entries")
+		require.NotEmpty(t, checkCache.setKeysWithPrefix("c."), "main check cache should have subproblem cache entries")
 
 		// Shadow cache should remain empty.
-		require.Empty(t, shadowCache.keysWithPrefix("wg|"), "shadow cache should not have model graph entries")
-		require.Empty(t, shadowCache.keysWithPrefix("c."), "shadow cache should not have subproblem cache entries")
+		require.Empty(t, shadowCache.setKeysWithPrefix("wg|"), "shadow cache should not have model graph entries")
+		require.Empty(t, shadowCache.setKeysWithPrefix("c."), "shadow cache should not have subproblem cache entries")
 	})
 
 	t.Run("cache_controller_instances_are_separate", func(t *testing.T) {
@@ -666,7 +692,21 @@ func TestV2CheckQueryCacheEnabled(t *testing.T) {
 		require.NoError(t, err)
 		require.True(t, res.GetAllowed())
 
-		require.NotEmpty(t, checkCache.keysWithPrefix("c."), "cache should have subproblem entries when query cache is enabled")
+		require.NotEmpty(t, checkCache.setKeysWithPrefix("c."), "cache should have subproblem entries written when query cache is enabled")
+
+		// Reset tracking so the second call's Get activity is isolated.
+		checkCache.resetTracking()
+
+		// Call v2Check again with the same request to verify cached entries are retrieved.
+		res, _, err = s.v2Check(ctx, req,
+			s.sharedDatastoreResources.CheckCache,
+			s.sharedDatastoreResources.CacheController,
+			s.authzModelGraphResolver,
+		)
+		require.NoError(t, err)
+		require.True(t, res.GetAllowed())
+		require.NotEmpty(t, checkCache.getKeysWithPrefix("c."),
+			"second check should read subproblem entries from cache")
 	})
 
 	t.Run("skips_subproblem_caching_when_disabled", func(t *testing.T) {
@@ -689,6 +729,6 @@ func TestV2CheckQueryCacheEnabled(t *testing.T) {
 		require.NoError(t, err)
 		require.True(t, res.GetAllowed())
 
-		require.Empty(t, checkCache.keysWithPrefix("c."), "cache should have no subproblem entries when query cache is disabled")
+		require.Empty(t, checkCache.setKeysWithPrefix("c."), "cache should have no subproblem entries when query cache is disabled")
 	})
 }

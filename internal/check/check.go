@@ -132,7 +132,7 @@ func (r *Resolver) ResolveCheck(ctx context.Context, req *Request) (*Response, e
 }
 
 func (r *Resolver) isCached(consistency openfgav1.ConsistencyPreference, key string) (*Response, bool) {
-	if consistency == openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY || r.lastCacheInvalidationTime.IsZero() {
+	if consistency == openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
 		return nil, false
 	}
 	v := r.cache.Get(key)
