@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cenkalti/backoff/v4"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/network"
@@ -21,13 +20,12 @@ import (
 )
 
 const (
-	mysqlImage                 = "mysql:8"
-	mysqlDBPrefix              = "openfga-test-db-"
-	mysqlTemplateDB            = mysqlDBPrefix + "template"
-	mysqlTemplateDBDump        = "/tmp/" + mysqlTemplateDB + ".sql"
-	mysqlTemplateDBPartialDump = mysqlTemplateDBDump + ".partial"
-	mysqlUsername              = "root"
-	mysqlPassword              = "secret"
+	mysqlImage          = "mysql:8"
+	mysqlDBPrefix       = "openfga-test-db-"
+	mysqlTemplateDB     = mysqlDBPrefix + "template"
+	mysqlTemplateDBDump = "/tmp/" + mysqlTemplateDB + ".sql"
+	mysqlUsername       = "root"
+	mysqlPassword       = "secret"
 )
 
 var (
@@ -187,37 +185,16 @@ func bootstrapMysqlContainer(t testing.TB, docker *testutils.DockerClient) *cont
 	// Append goose_db_version last so it is restored after all schema tables.
 	dumpShell := fmt.Sprintf(
 		"mysqldump -u %[1]s --ignore-table=%[2]s.goose_db_version %[2]s > %[3]s "+
-			"&& mysqldump -u %[1]s %[2]s goose_db_version >> %[3]s "+
-			"&& mv %[3]s %[4]s",
-		mysqlUsername, mysqlTemplateDB, mysqlTemplateDBPartialDump, mysqlTemplateDBDump,
+			"&& mysqldump -u %[1]s %[2]s goose_db_version >> %[3]s ",
+		mysqlUsername, mysqlTemplateDB, mysqlTemplateDBDump,
 	)
 	dumpExec := client.ExecCreateOptions{
 		Cmd: []string{"sh", "-ec", dumpShell},
 		Env: []string{"MYSQL_PWD=" + mysqlPassword},
 	}
 	require.NoError(t, docker.ExecCommand(t.Context(), cont.ID, dumpExec))
-	require.NoError(t, waitForMysqlDumpFile(t.Context(), docker, cont.ID))
 
 	return cont
-}
-
-// waitForMysqlDumpFile waits until the template database dump is present and non-empty.
-func waitForMysqlDumpFile(ctx context.Context, docker *testutils.DockerClient, containerID string) error {
-	backoffPolicy := backoff.NewExponentialBackOff(
-		backoff.WithInitialInterval(100*time.Millisecond),
-		backoff.WithMaxElapsedTime(30*time.Second),
-	)
-
-	return backoff.Retry(func() error {
-		checkExec := client.ExecCreateOptions{
-			Cmd: []string{"test", "-s", mysqlTemplateDBDump},
-		}
-		if err := docker.ExecCommand(ctx, containerID, checkExec); err != nil {
-			return fmt.Errorf("mysql template dump not ready: %w", err)
-		}
-
-		return nil
-	}, backoff.WithContext(backoffPolicy, ctx))
 }
 
 func mysqlConnectionURI(host, port, database, username, password string) string {
