@@ -10,6 +10,9 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Changed
 - Implemented edge pruning in the list objects pipeline algorithm. This introduces a measurable improvement to request latency for larger, more complex authorization models. [#3075](https://github.com/openfga/openfga/pull/3075)
 
+### Fixed
+- Fixed experimental `weighted_graph_check` query cache being skipped when the cache controller returns a zero invalidation time (e.g., on cold start or when disabled), despite the cache controller documenting that zero time should allow cache use. [#3086](https://github.com/openfga/openfga/pull/3086)
+
 ### Security
 - Update toolchain Go version to 1.26.2 to address the Go standard library vulnerabilities documented in the [Go 1.26.2 release notes](https://go.dev/doc/devel/release#go1.26.2). [#3084](https://github.com/openfga/openfga/pull/3084)
 
