@@ -59,6 +59,7 @@ func NewRequestStorageWrapperWithCache(
 			dataResourceConfiguration.Resources.WaitGroup,
 			WithCachedDatastoreLogger(dataResourceConfiguration.Resources.Logger),
 			WithCachedDatastoreMethodName(string(op.Method)),
+			WithCachedDatastoreJitterPercentage(dataResourceConfiguration.CacheSettings.CacheTTLJitterPercentage),
 		)
 	} else if op.Method == apimethod.ListObjects && dataResourceConfiguration.CacheSettings.ShouldCacheListObjectsIterators() {
 		checkCache := dataResourceConfiguration.Resources.CheckCache
@@ -75,6 +76,7 @@ func NewRequestStorageWrapperWithCache(
 			dataResourceConfiguration.Resources.WaitGroup,
 			WithCachedDatastoreLogger(dataResourceConfiguration.Resources.Logger),
 			WithCachedDatastoreMethodName(string(op.Method)),
+			WithCachedDatastoreJitterPercentage(dataResourceConfiguration.CacheSettings.CacheTTLJitterPercentage),
 		)
 	}
 	if dataResourceConfiguration.CacheSettings.SharedIteratorEnabled {
