@@ -34,7 +34,9 @@ var (
 	mysqlContainerName = "openfga-test-mysql-" + ulid.Make().String()
 	mysqlPort          = network.MustParsePort("3306/tcp")
 	mysqlDockerCont    *container.InspectResponse
-	mysqlOnce          sync.Once
+
+	mysqlBootstrapping bool
+	mysqlCond          = sync.NewCond(&sync.Mutex{})
 )
 
 type mysqlTestContainer struct {
@@ -87,9 +89,36 @@ func RunMysqlTestContainer(t testing.TB) DatastoreTestContainer {
 		docker.Close()
 	})
 
-	mysqlOnce.Do(func() {
-		mysqlDockerCont = bootstrapMysqlContainer(t, docker)
-	})
+	// Shared MySQL container bootstrap for concurrent tests using sync.Cond.
+	// Only one test bootstraps the shared container at a time, while others wait efficiently using sync.Cond.
+	// If bootstrap fails, waiting tests are awakened so another test can retry without being affected by the failure.
+	mysqlCond.L.Lock()
+	for mysqlDockerCont == nil {
+		if !mysqlBootstrapping {
+			mysqlBootstrapping = true
+			mysqlCond.L.Unlock()
+
+			dockerCont, err := bootstrapMysqlContainer(t.Context(), docker)
+			mysqlCond.L.Lock()
+			mysqlBootstrapping = false
+			if err == nil {
+				mysqlDockerCont = dockerCont
+			}
+
+			mysqlCond.Broadcast()
+
+			if err != nil {
+				// Unlock before failing the test to allow waiting tests to proceed with bootstrapping.
+				mysqlCond.L.Unlock()
+				require.NoError(t, err)
+			}
+
+			continue
+		}
+
+		mysqlCond.Wait()
+	}
+	mysqlCond.L.Unlock()
 
 	port, err := docker.GetHostPort(mysqlDockerCont, mysqlPort)
 	require.NoError(t, err)
@@ -145,10 +174,10 @@ func CleanupMysqlContainer() {
 	_ = cleanupDatastoreTestContainer(mysqlContainerName)
 }
 
-func bootstrapMysqlContainer(t testing.TB, docker *testutils.DockerClient) *container.InspectResponse {
-	t.Logf("No running container found for %s, creating a new one", mysqlImage)
-
-	require.NoError(t, docker.PullImage(t.Context(), mysqlImage), "pull mysql image")
+func bootstrapMysqlContainer(ctx context.Context, docker *testutils.DockerClient) (*container.InspectResponse, error) {
+	if err := docker.PullImage(ctx, mysqlImage); err != nil {
+		return nil, fmt.Errorf("pull mysql image: %w", err)
+	}
 
 	contCfg := &container.Config{
 		Env: []string{
@@ -167,20 +196,40 @@ func bootstrapMysqlContainer(t testing.TB, docker *testutils.DockerClient) *cont
 		Tmpfs:           map[string]string{"/var/lib/mysql": "", "/tmp": ""},
 	}
 
-	cont, err := docker.RunContainer(t.Context(), contCfg, hostCfg, mysqlContainerName)
-	require.NoError(t, err, "run mysql container")
+	cont, err := docker.RunContainer(ctx, contCfg, hostCfg, mysqlContainerName)
+	if err != nil {
+		return nil, fmt.Errorf("run mysql container: %w", err)
+	}
+
+	needsCleanup := true
+	defer func() {
+		if needsCleanup {
+			cleanupCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+
+			_ = docker.RemoveContainer(cleanupCtx, cont.ID)
+		}
+	}()
 
 	port, err := docker.GetHostPort(cont, mysqlPort)
-	require.NoError(t, err)
+	if err != nil {
+		return nil, fmt.Errorf("get mysql host port: %w", err)
+	}
 
 	dbURI := mysqlConnectionURI("localhost", port, mysqlTemplateDB, mysqlUsername, mysqlPassword)
-	require.NoError(t, waitForDatabase("mysql", dbURI))
+	if err := waitForDatabase("mysql", dbURI); err != nil {
+		return nil, fmt.Errorf("wait for mysql database: %w", err)
+	}
 
 	db, err := goose.OpenDBWithDriver("mysql", dbURI)
-	require.NoError(t, err)
+	if err != nil {
+		return nil, fmt.Errorf("open mysql database: %w", err)
+	}
 	defer db.Close()
 
-	require.NoError(t, goose.Up(db, assets.MySQLMigrationDir))
+	if err := goose.Up(db, assets.MySQLMigrationDir); err != nil {
+		return nil, fmt.Errorf("apply mysql migrations: %w", err)
+	}
 
 	// Append goose_db_version last so it is restored after all schema tables.
 	dumpShell := fmt.Sprintf(
@@ -192,9 +241,12 @@ func bootstrapMysqlContainer(t testing.TB, docker *testutils.DockerClient) *cont
 		Cmd: []string{"sh", "-ec", dumpShell},
 		Env: []string{"MYSQL_PWD=" + mysqlPassword},
 	}
-	require.NoError(t, docker.ExecCommand(t.Context(), cont.ID, dumpExec))
+	if err := docker.ExecCommand(ctx, cont.ID, dumpExec); err != nil {
+		return nil, fmt.Errorf("dump mysql template database: %w", err)
+	}
 
-	return cont
+	needsCleanup = false
+	return cont, nil
 }
 
 func mysqlConnectionURI(host, port, database, username, password string) string {

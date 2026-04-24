@@ -36,7 +36,9 @@ var (
 	postgresContainerName = "openfga-test-postgres-" + ulid.Make().String()
 	postgresPort          = network.MustParsePort("5432/tcp")
 	postgresDockerCont    *container.InspectResponse
-	postgresOnce          sync.Once
+
+	postgresBootstrapping bool
+	postgresCond          = sync.NewCond(&sync.Mutex{})
 )
 
 type (
@@ -113,9 +115,35 @@ func RunPostgresTestContainer(t testing.TB) DatastoreTestContainer {
 		docker.Close()
 	})
 
-	postgresOnce.Do(func() {
-		postgresDockerCont = bootstrapPostgresContainer(t, docker)
-	})
+	// Shared PostgreSQL container bootstrap for concurrent tests using sync.Cond.
+	// Only one test bootstraps the shared container at a time, while others wait efficiently using sync.Cond.
+	// If bootstrap fails, waiting tests are awakened so another test can retry without being affected by the failure.
+	postgresCond.L.Lock()
+	for postgresDockerCont == nil {
+		if !postgresBootstrapping {
+			postgresBootstrapping = true
+			postgresCond.L.Unlock()
+
+			dockerCont, err := bootstrapPostgresContainer(t.Context(), docker)
+			postgresCond.L.Lock()
+			postgresBootstrapping = false
+			if err == nil {
+				postgresDockerCont = dockerCont
+			}
+
+			postgresCond.Broadcast()
+
+			if err != nil {
+				postgresCond.L.Unlock()
+				require.NoError(t, err)
+			}
+
+			continue
+		}
+
+		postgresCond.Wait()
+	}
+	postgresCond.L.Unlock()
 
 	port, err := docker.GetHostPort(postgresDockerCont, postgresPort)
 	require.NoError(t, err)
@@ -164,10 +192,10 @@ func CleanupPostgresContainer() {
 	_ = cleanupDatastoreTestContainer(postgresContainerName)
 }
 
-func bootstrapPostgresContainer(t testing.TB, docker *testutils.DockerClient) *container.InspectResponse {
-	t.Logf("No running container found for %s, creating a new one", postgresImage)
-
-	require.NoError(t, docker.PullImage(t.Context(), postgresImage), "pull postgres image")
+func bootstrapPostgresContainer(ctx context.Context, docker *testutils.DockerClient) (*container.InspectResponse, error) {
+	if err := docker.PullImage(ctx, postgresImage); err != nil {
+		return nil, fmt.Errorf("pull postgres image: %w", err)
+	}
 
 	contCfg := &container.Config{
 		Env: []string{
@@ -195,33 +223,60 @@ func bootstrapPostgresContainer(t testing.TB, docker *testutils.DockerClient) *c
 		ExtraHosts:      []string{"host.docker.internal:host-gateway"},
 	}
 
-	cont, err := docker.RunContainer(t.Context(), contCfg, hostCfg, postgresContainerName)
-	require.NoError(t, err, "run postgres container")
+	cont, err := docker.RunContainer(ctx, contCfg, hostCfg, postgresContainerName)
+	if err != nil {
+		return nil, fmt.Errorf("run postgres container: %w", err)
+	}
+
+	needsCleanup := true
+	defer func() {
+		if needsCleanup {
+			cleanupCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+
+			_ = docker.RemoveContainer(cleanupCtx, cont.ID)
+		}
+	}()
 
 	port, err := docker.GetHostPort(cont, postgresPort)
-	require.NoError(t, err)
+	if err != nil {
+		return nil, fmt.Errorf("get postgres host port: %w", err)
+	}
 
 	dbURI := postgresConnectionURI("localhost", port, postgresTemplateDB, postgresUsername, postgresPassword)
-	require.NoError(t, waitForDatabase("pgx", dbURI))
+	if err := waitForDatabase("pgx", dbURI); err != nil {
+		return nil, fmt.Errorf("wait for postgres database: %w", err)
+	}
 
 	allowReplicationExec := client.ExecCreateOptions{
 		Cmd: []string{"sh", "-c", "echo 'host replication postgres all trust' >> /var/lib/postgresql/data/pg_hba.conf"},
 	}
-	require.NoError(t, docker.ExecCommand(t.Context(), cont.ID, allowReplicationExec))
+	if err := docker.ExecCommand(ctx, cont.ID, allowReplicationExec); err != nil {
+		return nil, fmt.Errorf("allow postgres replication: %w", err)
+	}
 
 	reloadExec := client.ExecCreateOptions{
 		Cmd: []string{"psql", "-U", "postgres", "-c", "SELECT pg_reload_conf();"},
 	}
-	require.NoError(t, docker.ExecCommand(t.Context(), cont.ID, reloadExec))
-	require.NoError(t, waitForDatabase("pgx", dbURI))
+	if err := docker.ExecCommand(ctx, cont.ID, reloadExec); err != nil {
+		return nil, fmt.Errorf("reload postgres config: %w", err)
+	}
+	if err := waitForDatabase("pgx", dbURI); err != nil {
+		return nil, fmt.Errorf("wait for postgres database after config reload: %w", err)
+	}
 
 	db, err := goose.OpenDBWithDriver("pgx", dbURI)
-	require.NoError(t, err)
+	if err != nil {
+		return nil, fmt.Errorf("open postgres database: %w", err)
+	}
 	defer db.Close()
 
-	require.NoError(t, goose.Up(db, assets.PostgresMigrationDir))
+	if err := goose.Up(db, assets.PostgresMigrationDir); err != nil {
+		return nil, fmt.Errorf("apply postgres migrations: %w", err)
+	}
 
-	return cont
+	needsCleanup = false
+	return cont, nil
 }
 
 func runPostgresReplica(t testing.TB, primary *postgresTestContainer) *postgresReplicaContainer {
