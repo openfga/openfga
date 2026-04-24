@@ -193,7 +193,10 @@ func bootstrapMysqlContainer(ctx context.Context, docker *testutils.DockerClient
 	hostCfg := &container.HostConfig{
 		AutoRemove:      true,
 		PublishAllPorts: true,
-		Tmpfs:           map[string]string{"/var/lib/mysql": "", "/tmp": ""},
+		Tmpfs: map[string]string{
+			"/var/lib/mysql": "size=2g",
+			"/tmp":           "size=512m",
+		},
 	}
 
 	cont, err := docker.RunContainer(ctx, contCfg, hostCfg, mysqlContainerName)

@@ -337,7 +337,7 @@ exec docker-entrypoint.sh postgres -c hot_standby=on -c max_connections=200
 	hostCfg := &container.HostConfig{
 		AutoRemove:      true,
 		PublishAllPorts: true,
-		Tmpfs:           map[string]string{"/var/lib/postgresql/data": ""},
+		Tmpfs:           map[string]string{"/var/lib/postgresql/data": "size=2g"},
 		ExtraHosts:      []string{"host.docker.internal:host-gateway"},
 	}
 

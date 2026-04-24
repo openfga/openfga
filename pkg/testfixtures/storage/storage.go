@@ -99,7 +99,6 @@ func cleanupDatastoreTestContainer(containerName string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	// Best-effort cleanup: container may already be removed.
 	if err := docker.RemoveContainer(ctx, containerName); err != nil {
 		return fmt.Errorf("remove container %s: %w", containerName, err)
 	}
