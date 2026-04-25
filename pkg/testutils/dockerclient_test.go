@@ -225,7 +225,7 @@ func TestRunContainer_Fail(t *testing.T) {
 		require.ErrorContains(t, err, "inspect container-name")
 	})
 
-	t.Run("conflict_and_inspect_container", func(t *testing.T) {
+	t.Run("name_conflict", func(t *testing.T) {
 		dc := newDockerClientMock(t, []dockerMockStep{
 			{Method: http.MethodPost, Path: "/containers/create", Error: "conflict", Status: http.StatusConflict},
 		})
