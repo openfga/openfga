@@ -118,9 +118,10 @@ func RunMysqlTestContainer(t testing.TB) DatastoreTestContainer {
 
 		mysqlCond.Wait()
 	}
+	dockerCont := mysqlDockerCont
 	mysqlCond.L.Unlock()
 
-	port, err := docker.GetHostPort(mysqlDockerCont, mysqlPort)
+	port, err := docker.GetHostPort(dockerCont, mysqlPort)
 	require.NoError(t, err)
 
 	version, err := latestMigrationVersion(assets.MySQLMigrationDir)
@@ -142,7 +143,7 @@ func RunMysqlTestContainer(t testing.TB) DatastoreTestContainer {
 		Cmd: []string{"mysql", "-u", testCont.username, "-e", fmt.Sprintf("CREATE DATABASE `%s`;", testCont.database)},
 		Env: []string{"MYSQL_PWD=" + testCont.password},
 	}
-	require.NoError(t, docker.ExecCommand(t.Context(), mysqlDockerCont.ID, createExec))
+	require.NoError(t, docker.ExecCommand(t.Context(), dockerCont.ID, createExec))
 
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -153,7 +154,7 @@ func RunMysqlTestContainer(t testing.TB) DatastoreTestContainer {
 			Cmd: []string{"mysql", "-u", testCont.username, "-e", dropQuery},
 			Env: []string{"MYSQL_PWD=" + testCont.password},
 		}
-		if err := docker.ExecCommand(ctx, mysqlDockerCont.ID, dropExec); err != nil {
+		if err := docker.ExecCommand(ctx, dockerCont.ID, dropExec); err != nil {
 			t.Errorf("drop test database in the mysql container: %v", err)
 		}
 	})
@@ -163,13 +164,15 @@ func RunMysqlTestContainer(t testing.TB) DatastoreTestContainer {
 		Cmd: []string{"sh", "-ec", copyShell},
 		Env: []string{"MYSQL_PWD=" + testCont.password},
 	}
-	require.NoError(t, docker.ExecCommand(t.Context(), mysqlDockerCont.ID, copyExec))
+	require.NoError(t, docker.ExecCommand(t.Context(), dockerCont.ID, copyExec))
 
 	require.NoError(t, waitForMigrationVersion("mysql", testCont.GetConnectionURI(true), testCont.version))
 
 	return testCont
 }
 
+// CleanupMysqlContainer removes the shared mysql test container.
+// It should be called from TestMain after all tests in a package have finished.
 func CleanupMysqlContainer() {
 	_ = cleanupDatastoreTestContainer(mysqlContainerName)
 }

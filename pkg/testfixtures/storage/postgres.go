@@ -143,9 +143,10 @@ func RunPostgresTestContainer(t testing.TB) DatastoreTestContainer {
 
 		postgresCond.Wait()
 	}
+	dockerCont := postgresDockerCont
 	postgresCond.L.Unlock()
 
-	port, err := docker.GetHostPort(postgresDockerCont, postgresPort)
+	port, err := docker.GetHostPort(dockerCont, postgresPort)
 	require.NoError(t, err)
 
 	version, err := latestMigrationVersion(assets.PostgresMigrationDir)
@@ -167,7 +168,7 @@ func RunPostgresTestContainer(t testing.TB) DatastoreTestContainer {
 		Cmd: []string{"createdb", "-U", testCont.username, "-T", postgresTemplateDB, testCont.database},
 		Env: []string{"PGPASSWORD=" + testCont.password},
 	}
-	require.NoError(t, docker.ExecCommand(t.Context(), postgresDockerCont.ID, createExec))
+	require.NoError(t, docker.ExecCommand(t.Context(), dockerCont.ID, createExec))
 
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -178,7 +179,7 @@ func RunPostgresTestContainer(t testing.TB) DatastoreTestContainer {
 			Cmd: []string{"psql", "-U", testCont.username, "-c", dropQuery},
 			Env: []string{"PGPASSWORD=" + testCont.password},
 		}
-		if err := docker.ExecCommand(ctx, postgresDockerCont.ID, dropExec); err != nil {
+		if err := docker.ExecCommand(ctx, dockerCont.ID, dropExec); err != nil {
 			t.Errorf("drop test database in the postgres container: %v", err)
 		}
 	})
@@ -188,6 +189,8 @@ func RunPostgresTestContainer(t testing.TB) DatastoreTestContainer {
 	return testCont
 }
 
+// CleanupPostgresContainer removes the shared postgres test container.
+// It should be called from TestMain after all tests in a package have finished.
 func CleanupPostgresContainer() {
 	_ = cleanupDatastoreTestContainer(postgresContainerName)
 }
