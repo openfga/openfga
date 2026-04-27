@@ -25,12 +25,9 @@ type SQLTupleIterator struct {
 	rows           *sql.Rows // GUARDED_BY(mu)
 	sb             sq.SelectBuilder
 	handleSQLError errorHandlerFn
-	// firstRow is used as a temporary storage place if head is called.
-	// If firstRow is nil and Head is called, rows.Next() will return the first item and advance
-	// the iterator. Thus, we will need to store this first item so that future Head() and Next()
-	// will use this item instead. Otherwise, the first item will be lost.
-	firstRow *storage.TupleRecord // GUARDED_BY(mu)
-	mu       sync.Mutex
+	firstRow       *storage.TupleRecord // GUARDED_BY(mu)
+	mu             sync.Mutex
+	inFlight       sync.Mutex
 }
 
 // Ensures that SQLTupleIterator implements the TupleIterator interface.
@@ -48,19 +45,37 @@ func NewSQLTupleIterator(sb sq.SelectBuilder, errHandler errorHandlerFn) *SQLTup
 }
 
 func (t *SQLTupleIterator) fetchBuffer(ctx context.Context) error {
+	t.inFlight.Lock()
+	defer t.inFlight.Unlock()
+
 	ctx, span := tracer.Start(ctx, "sqlite.fetchBuffer", trace.WithAttributes())
 	defer span.End()
+
+	// We intentionally detach cancellation so DB query can complete
 	ctx = context.WithoutCancel(ctx)
+
 	start := time.Now()
 	rows, err := t.sb.QueryContext(ctx)
 	elapsed := time.Since(start)
+
 	if err != nil {
 		storageErr := t.handleSQLError(err)
 		storage.ObserveIterQueryDuration(storage.SuccessLabel(storageErr), elapsed)
 		return storageErr
 	}
+
 	storage.ObserveIterQueryDuration(true, elapsed)
+
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	if t.rows != nil {
+		_ = t.rows.Close()
+	}
+
 	t.rows = rows
+	t.firstRow = nil
+
 	return nil
 }
 
@@ -68,22 +83,20 @@ func (t *SQLTupleIterator) next(ctx context.Context) (*storage.TupleRecord, erro
 	t.mu.Lock()
 
 	if t.rows == nil {
+		t.mu.Unlock()
+
 		if err := t.fetchBuffer(ctx); err != nil {
-			t.mu.Unlock()
 			return nil, err
+		}
+
+		t.mu.Lock()
+		if t.rows == nil {
+			t.mu.Unlock()
+			return nil, errors.New("failed to initialize iterator rows")
 		}
 	}
 
 	if t.firstRow != nil {
-		// If head was called previously, we don't need to scan / next
-		// again as the data is already there and the internal iterator would be advanced via `t.rows.Next()`.
-		// Calling t.rows.Next() in this case would lose the first row data.
-		//
-		// For example, let's say there are 3 items [1,2,3]
-		// If we called Head() and t.firstRow is empty, the rows will only be left with [2,3].
-		// Thus, we will need to save item [1] in firstRow.  This allows future next() and head() to consume
-		// [1] first.
-		// If head() was not called, t.firstRow would be nil and we can follow the t.rows.Next() logic below.
 		firstRow := t.firstRow
 		t.firstRow = nil
 		t.mu.Unlock()
@@ -92,7 +105,13 @@ func (t *SQLTupleIterator) next(ctx context.Context) (*storage.TupleRecord, erro
 
 	if !t.rows.Next() {
 		err := t.rows.Err()
+
+		// FIX: close rows when exhausted
+		_ = t.rows.Close()
+		t.rows = nil
+
 		t.mu.Unlock()
+
 		if err != nil {
 			return nil, t.handleSQLError(err)
 		}
@@ -102,6 +121,7 @@ func (t *SQLTupleIterator) next(ctx context.Context) (*storage.TupleRecord, erro
 	var conditionName sql.NullString
 	var conditionContext []byte
 	var record storage.TupleRecord
+
 	err := t.rows.Scan(
 		&record.Store,
 		&record.ObjectType,
@@ -115,6 +135,7 @@ func (t *SQLTupleIterator) next(ctx context.Context) (*storage.TupleRecord, erro
 		&record.Ulid,
 		&record.InsertedAt,
 	)
+
 	t.mu.Unlock()
 
 	if err != nil {
@@ -126,7 +147,7 @@ func (t *SQLTupleIterator) next(ctx context.Context) (*storage.TupleRecord, erro
 	if conditionContext != nil {
 		var conditionContextStruct structpb.Struct
 		if err := proto.Unmarshal(conditionContext, &conditionContextStruct); err != nil {
-			return nil, err
+			return nil, t.handleSQLError(err) // FIX: consistent error handling
 		}
 		record.ConditionContext = &conditionContextStruct
 	}
@@ -136,25 +157,24 @@ func (t *SQLTupleIterator) next(ctx context.Context) (*storage.TupleRecord, erro
 
 func (t *SQLTupleIterator) head(ctx context.Context) (*storage.TupleRecord, error) {
 	t.mu.Lock()
-	defer t.mu.Unlock()
 
 	if t.rows == nil {
+		t.mu.Unlock()
+
 		if err := t.fetchBuffer(ctx); err != nil {
 			return nil, err
 		}
+
+		t.mu.Lock()
+		if t.rows == nil {
+			t.mu.Unlock()
+			return nil, errors.New("failed to initialize iterator rows")
+		}
 	}
 
+	defer t.mu.Unlock()
+
 	if t.firstRow != nil {
-		// If head was called previously, we don't need to scan / next
-		// again as the data is already there and the internal iterator would be advanced via `t.rows.Next()`.
-		// Calling t.rows.Next() in this case would lose the first row data.
-		//
-		// For example, let's say there are 3 items [1,2,3]
-		// If we called Head() and t.firstRow is empty, the rows will only be left with [2,3].
-		// Thus, we will need to save item [1] in firstRow.  This allows future next() and head() to return
-		// [1] first. Note that for head(), we will not unset t.firstRow.  Therefore, calling head() multiple times
-		// will yield the same result.
-		// If head() was not called, t.firstRow would be nil, and we can follow the t.rows.Next() logic below.
 		return t.firstRow, nil
 	}
 
@@ -162,12 +182,18 @@ func (t *SQLTupleIterator) head(ctx context.Context) (*storage.TupleRecord, erro
 		if err := t.rows.Err(); err != nil {
 			return nil, t.handleSQLError(err)
 		}
+
+		// FIX: close rows when exhausted
+		_ = t.rows.Close()
+		t.rows = nil
+
 		return nil, storage.ErrIteratorDone
 	}
 
 	var conditionName sql.NullString
 	var conditionContext []byte
 	var record storage.TupleRecord
+
 	err := t.rows.Scan(
 		&record.Store,
 		&record.ObjectType,
@@ -181,6 +207,7 @@ func (t *SQLTupleIterator) head(ctx context.Context) (*storage.TupleRecord, erro
 		&record.Ulid,
 		&record.InsertedAt,
 	)
+
 	if err != nil {
 		return nil, t.handleSQLError(err)
 	}
@@ -190,13 +217,15 @@ func (t *SQLTupleIterator) head(ctx context.Context) (*storage.TupleRecord, erro
 	if conditionContext != nil {
 		var conditionContextStruct structpb.Struct
 		if err := proto.Unmarshal(conditionContext, &conditionContextStruct); err != nil {
-			return nil, err
+			return nil, t.handleSQLError(err)
 		}
 		record.ConditionContext = &conditionContextStruct
 	}
-	t.firstRow = &record
 
-	return &record, nil
+	// FIX: avoid pointer-to-stack ambiguity by copying
+	rec := record
+	t.firstRow = &rec
+	return &rec, nil
 }
 
 // ToArray converts the tupleIterator to an []*openfgav1.Tuple and a possibly empty continuation token.
@@ -217,9 +246,7 @@ func (t *SQLTupleIterator) ToArray(
 		res = append(res, tupleRecord.AsTuple())
 	}
 
-	// Check if we are at the end of the iterator.
-	// If we are then we do not need to return a continuation token.
-	// This is why we have LIMIT+1 in the query.
+	// NOTE: Query must use LIMIT pageSize+1 for pagination correctness
 	tupleRecord, err := t.next(ctx)
 	if err != nil {
 		if errors.Is(err, storage.ErrIteratorDone) {
