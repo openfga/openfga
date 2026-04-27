@@ -8,6 +8,20 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+## [1.15.0] - 2026-04-27
+### Changed
+- Implemented edge pruning in the list objects pipeline algorithm. This introduces a measurable improvement to request latency for larger, more complex authorization models. [#3075](https://github.com/openfga/openfga/pull/3075)
+
+### Fixed
+- Fixed experimental `weighted_graph_check` query cache being skipped when the cache controller returns a zero invalidation time (e.g., on cold start or when disabled), despite the cache controller documenting that zero time should allow cache use. [#3086](https://github.com/openfga/openfga/pull/3086)
+
+### Security
+- Update toolchain Go version to 1.26.2 to address the Go standard library vulnerabilities documented in the [Go 1.26.2 release notes](https://go.dev/doc/devel/release#go1.26.2). [#3084](https://github.com/openfga/openfga/pull/3084)
+
+## [1.14.2] - 2026-04-14
+### Fixed
+- Use delimiter in contextual tuple key in experimental `weighted_graph_check`, and add validation in v2Check. Thanks to [@0xmrma](https://github.com/0xmrma) for reporting this bug. [#3064](https://github.com/openfga/openfga/pull/3064)
+
 ## [1.14.1] - 2026-04-10
 ### Added
 - Added configuration for the server shutdown timeout. [#2976](https://github.com/openfga/openfga/pull/2976)
@@ -1599,7 +1613,13 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
 - Memory storage adapter implementation
 - Early support for preshared key or OIDC authentication methods
 
+<<<<<<< HEAD
 [Unreleased]: https://github.com/openfga/openfga/compare/v1.14.1...HEAD
+=======
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.15.0...HEAD
+[1.15.0]: https://github.com/openfga/openfga/compare/v1.14.2...v1.15.0
+[1.14.2]: https://github.com/openfga/openfga/compare/v1.14.1...v1.14.2
+>>>>>>> 83b2b469 (release: update changelog for release `v1.15.0` (#3090))
 [1.14.1]: https://github.com/openfga/openfga/compare/v1.14.0...v1.14.1
 [1.14.0]: https://github.com/openfga/openfga/compare/v1.13.1...v1.14.0
 [1.13.1]: https://github.com/openfga/openfga/compare/v1.13.0...v1.13.1
