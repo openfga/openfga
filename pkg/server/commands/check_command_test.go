@@ -294,6 +294,10 @@ func TestCheckCommandErrorToServerError(t *testing.T) {
 				},
 			),
 		},
+		`9`: {
+			inputError:    nil,
+			expectedError: serverErrors.ErrNil,
+		},
 	}
 
 	for name, testCase := range testcases {
