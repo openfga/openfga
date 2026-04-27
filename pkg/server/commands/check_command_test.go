@@ -284,6 +284,16 @@ func TestCheckCommandErrorToServerError(t *testing.T) {
 			inputError:    ofga_errors.ErrUnknown,
 			expectedError: ofga_errors.ErrUnknown,
 		},
+		`8`: {
+			inputError: &tuple.InvalidTupleError{
+				Cause: &InvalidTupleError{Cause: errors.New("oh no")},
+			},
+			expectedError: serverErrors.HandleTupleValidateError(
+				&tuple.InvalidTupleError{
+					Cause: &InvalidTupleError{Cause: errors.New("oh no")},
+				},
+			),
+		},
 	}
 
 	for name, testCase := range testcases {
