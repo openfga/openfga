@@ -167,10 +167,6 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, edges []
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	if res, ok := r.isCached(req.GetConsistency(), req.GetCacheKey()); ok {
-		return res, nil
-	}
-
 	out := make(chan ResponseMsg, len(edges))
 	var pool errgroup.Group
 	pool.SetLimit(r.concurrencyLimit)
@@ -219,8 +215,6 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, edges []
 
 			if msg.Res.GetAllowed() {
 				// Short-circuit: In a union, if any branch returns true, we can immediately return.
-				entry := &ResponseCacheEntry{Res: msg.Res, LastModified: time.Now()}
-				r.cache.Set(req.GetCacheKey(), entry, r.cacheTTL)
 				return msg.Res, nil
 			}
 		}
@@ -230,13 +224,23 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, edges []
 		return nil, err
 	}
 	res := &Response{Allowed: false}
-	entry := &ResponseCacheEntry{Res: res, LastModified: time.Now()}
-	r.cache.Set(req.GetCacheKey(), entry, r.cacheTTL)
 	return res, nil
 }
 
 // reduce as a logical union operation (exit the moment we have a single true).
-func (r *Resolver) ResolveUnion(ctx context.Context, req *Request, node *authzGraph.WeightedAuthorizationModelNode, visited *sync.Map) (*Response, error) {
+func (r *Resolver) ResolveUnion(ctx context.Context, req *Request, node *authzGraph.WeightedAuthorizationModelNode, visited *sync.Map) (resp *Response, err error) {
+	if res, ok := r.isCached(req.GetConsistency(), req.GetCacheKey()); ok {
+		return res, nil
+	}
+
+	defer func() {
+		if err != nil {
+			return
+		}
+		entry := &ResponseCacheEntry{Res: resp, LastModified: time.Now()}
+		r.cache.Set(req.GetCacheKey(), entry, r.cacheTTL)
+	}()
+
 	emptyCycle := visited == nil
 	if emptyCycle && node.GetNodeType() == authzGraph.SpecificTypeAndRelation && (node.GetRecursiveRelation() == node.GetUniqueLabel() || node.IsPartOfTupleCycle()) {
 		// initialize visited map for first time,
