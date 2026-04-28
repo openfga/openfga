@@ -167,10 +167,6 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, edges []
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	if res, ok := r.isCached(req.GetConsistency(), req.GetCacheKey()); ok {
-		return res, nil
-	}
-
 	out := make(chan ResponseMsg, len(edges))
 	var pool errgroup.Group
 	pool.SetLimit(r.concurrencyLimit)
@@ -237,6 +233,10 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, edges []
 
 // reduce as a logical union operation (exit the moment we have a single true).
 func (r *Resolver) ResolveUnion(ctx context.Context, req *Request, node *authzGraph.WeightedAuthorizationModelNode, visited *sync.Map) (*Response, error) {
+	if res, ok := r.isCached(req.GetConsistency(), req.GetCacheKey()); ok {
+		return res, nil
+	}
+
 	emptyCycle := visited == nil
 	if emptyCycle && node.GetNodeType() == authzGraph.SpecificTypeAndRelation && (node.GetRecursiveRelation() == node.GetUniqueLabel() || node.IsPartOfTupleCycle()) {
 		// initialize visited map for first time,
