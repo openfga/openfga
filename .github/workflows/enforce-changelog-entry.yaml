@@ -11,7 +11,7 @@ jobs:
   changelog:
     runs-on: ubuntu-latest
     steps:
-      - uses: dangoslen/changelog-enforcer@204e7d3ef26579f4cd0fd759c57032656fdf23c7 # v3.6.1
+      - uses: dangoslen/changelog-enforcer@8b5e9dc3121363bb7c0115f8533404d92af382de # v3.7.0
         with:
           skipLabels: 'Skip-Changelog,dependencies,tests'
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
