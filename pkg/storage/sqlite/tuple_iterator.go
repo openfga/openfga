@@ -189,12 +189,14 @@ func (t *SQLTupleIterator) head(ctx context.Context) (*storage.TupleRecord, erro
 	}
 
 	if !t.rows.Next() {
-		if err := t.rows.Err(); err != nil {
-			return nil, t.handleSQLError(err)
-		}
+		err := t.rows.Err(); 
 
 		_ = t.rows.Close()
 		t.rows = nil
+
+		if err != nil {
+			return nil, t.handleSQLError(err)
+		}
 
 		return nil, storage.ErrIteratorDone
 	}
