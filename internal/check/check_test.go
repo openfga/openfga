@@ -185,7 +185,7 @@ func TestResolveUnionEdges(t *testing.T) {
 					return nil, storage.ErrNotFound
 				}
 				return &openfgav1.Tuple{Key: tuple.NewTupleKey("group:1", "member", "user:maria")}, nil
-			}).MaxTimes(2)
+			}).MinTimes(1)
 
 		resolver := New(Config{
 			Model:            mg,
