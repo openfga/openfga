@@ -9,6 +9,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ## [Unreleased]
 ### Fixed
 - Fixed a potential panic within command error handling. [#3091](https://github.com/openfga/openfga/pull/3091)
+- Fixed a bug that propagated expected errors from list objects when a path short-circuits. [#3096](https://github.com/openfga/openfga/pull/3096)
 - Fixed cache key collisions in experimental `weighted_graph_check` for edges in unions with multiple branches (direct types, wildcards, TTU paths, or intersections). [#3097](https://github.com/openfga/openfga/pull/3097)
 
 ## [1.15.0] - 2026-04-27
