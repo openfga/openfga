@@ -112,6 +112,9 @@ func (r *ValidatingStore) createIterator(
 	)
 
 	if err != nil {
+		// The context error is a potential cause of the
+		// datastore error; expose the context error.
+		err = errors.Join(ctx.Err(), err)
 		return iterator.Error[*openfgav1.Tuple](fmt.Errorf("datastore: %w", err))
 	}
 	return it
@@ -137,13 +140,12 @@ type TupleKeyItemReceiver struct {
 }
 
 // Recv returns the next object identifier from the underlying iterator.
-// It returns false when the iterator is exhausted, closed, or the context
-// is cancelled.
+// It returns false when the iterator is exhausted or closed.
 func (r *TupleKeyItemReceiver) Recv(ctx context.Context) (Item, bool) {
 	var item Item
 
 	for {
-		if r.closed.Load() || ctx.Err() != nil {
+		if r.closed.Load() {
 			return item, false
 		}
 		t, err := r.itr.Next(ctx)
@@ -153,6 +155,10 @@ func (r *TupleKeyItemReceiver) Recv(ctx context.Context) (Item, bool) {
 			if errors.Is(err, storage.ErrIteratorDone) {
 				return item, false
 			}
+
+			// The context error is a potential cause of the
+			// datastore error; expose the context error.
+			err = errors.Join(ctx.Err(), err)
 			item.Err = fmt.Errorf("iterator: %w", err)
 			return item, true
 		}
