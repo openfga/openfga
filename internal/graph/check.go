@@ -468,7 +468,7 @@ func (c *LocalChecker) ResolveCheck(
 
 // hasCycle returns true if a cycle has been found. It modifies the request object.
 func (c *LocalChecker) hasCycle(req *ResolveCheckRequest) bool {
-	key := tuple.TupleKeyToString(req.GetTupleKey())
+	key := req.GetTupleKeyString()
 	if req.VisitedPaths == nil {
 		req.VisitedPaths = map[string]struct{}{}
 	}
