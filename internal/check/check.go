@@ -5,6 +5,7 @@ import (
 	"errors"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -159,6 +160,13 @@ func buildEdgeCacheKey(modelID string, req *Request, edge *authzGraph.WeightedAu
 	keyBuilder.WriteString(req.GetTupleKey().GetUser())
 	keyBuilder.WriteString(cacheKeyDelimiter)
 	keyBuilder.WriteString(edge.GetRelationDefinition())
+	keyBuilder.WriteString(cacheKeyDelimiter)
+	keyBuilder.WriteString(strconv.FormatInt(int64(edge.GetEdgeType()), 10))
+	keyBuilder.WriteString(cacheKeyDelimiter)
+	keyBuilder.WriteString(edge.GetTo().GetUniqueLabel())
+	keyBuilder.WriteString(cacheKeyDelimiter)
+	keyBuilder.WriteString(edge.GetTuplesetRelation())
+	keyBuilder.WriteString(cacheKeyDelimiter)
 	keyBuilder.WriteString(req.GetInvariantCacheKey())
 	return keyBuilder.String()
 }

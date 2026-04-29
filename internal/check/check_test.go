@@ -344,7 +344,7 @@ func TestResolveUnionEdges(t *testing.T) {
 				return nil, storage.ErrNotFound
 			}).MaxTimes(2)
 
-		key := fmt.Sprintf("^c.%s|group:1|user:maria|group#admin.*$", storeID)
+		key := fmt.Sprintf("^c.%s|group:1|user:maria|group#admin|.*$", storeID)
 		mockCache.EXPECT().Get(gomock.Any()).Return(nil).AnyTimes()
 		mockCache.EXPECT().Set(gomock.Regex(key), gomock.Any(), gomock.Any()).Times(1)
 
@@ -5605,5 +5605,156 @@ func TestResolveCheck(t *testing.T) {
 
 		_, err = resolver.ResolveCheck(context.Background(), req)
 		require.Error(t, err)
+	})
+}
+
+func TestBuildEdgeCacheKey(t *testing.T) {
+	// buildEdgeCacheKey uses: modelID, object, user, relationDefinition, edgeType, to.UniqueLabel, tuplesetRelation, invariantCacheKey.
+	// All collision scenarios share the same relationDefinition across sibling edges (it's always set to the
+	// parent relation that generated the edge). The remaining fields must uniquely identify each edge.
+
+	storeID := ulid.Make().String()
+
+	buildKeys := func(t *testing.T, modelDSL, nodeID, userType, object, relation, user string) []string {
+		t.Helper()
+		model := testutils.MustTransformDSLToProtoWithID(modelDSL)
+		mg, err := modelgraph.New(model)
+		require.NoError(t, err)
+
+		req, err := NewRequest(RequestParams{
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey(object, relation, user),
+		})
+		require.NoError(t, err)
+
+		node, ok := mg.GetNodeByID(nodeID)
+		require.True(t, ok, "node %q not found", nodeID)
+
+		edges, err := mg.FlattenNode(node, userType, false, false)
+		require.NoError(t, err)
+
+		keys := make([]string, len(edges))
+		for i, edge := range edges {
+			keys[i] = buildEdgeCacheKey(mg.GetModelID(), req, edge)
+		}
+		return keys
+	}
+
+	assertAllDistinct := func(t *testing.T, keys []string) {
+		t.Helper()
+		seen := make(map[string]struct{}, len(keys))
+		for _, k := range keys {
+			_, exists := seen[k]
+			require.False(t, exists, "duplicate cache key %q", k)
+			seen[k] = struct{}{}
+		}
+	}
+
+	t.Run("direct_type_and_wildcard_via_computed_relation", func(t *testing.T) {
+		// define viewer: [user, user:*]  +  define can_access: viewer
+		// FlattenNode(can_access) yields two DirectEdges sharing relDef="document#viewer"
+		// but targeting different nodes ("user" vs "user:*").
+		keys := buildKeys(t, `
+			model
+			  schema 1.1
+			type user
+			type document
+			  relations
+			    define viewer: [user, user:*]
+			    define can_access: viewer
+		`, "document#can_access", "user", "document:1", "can_access", "user:alice")
+		require.Len(t, keys, 2)
+		assertAllDistinct(t, keys)
+	})
+
+	t.Run("intersection_branches_in_union_via_computed_relation", func(t *testing.T) {
+		// define viewer: (writer and admin) or (editor and contributor)  +  define can_access: viewer
+		// FlattenNode(can_access) yields two RewriteEdges sharing relDef="document#viewer"
+		// but targeting different intersection operator nodes (distinct ULIDs).
+		keys := buildKeys(t, `
+			model
+			  schema 1.1
+			type user
+			type document
+			  relations
+			    define writer: [user]
+			    define admin: [user]
+			    define editor: [user]
+			    define contributor: [user]
+			    define viewer: (writer and admin) or (editor and contributor)
+			    define can_access: viewer
+		`, "document#can_access", "user", "document:1", "can_access", "user:alice")
+		require.Len(t, keys, 2)
+		assertAllDistinct(t, keys)
+	})
+
+	t.Run("multiple_ttu_paths_to_different_targets", func(t *testing.T) {
+		// define viewer: viewer from org_parent or viewer from team_parent  +  define can_access: viewer
+		// FlattenNode(can_access) yields two TTUEdges sharing relDef="document#viewer"
+		// but targeting different nodes ("org#viewer" vs "team#viewer").
+		keys := buildKeys(t, `
+			model
+			  schema 1.1
+			type user
+			type org
+			  relations
+			    define viewer: [user]
+			type team
+			  relations
+			    define viewer: [user]
+			type document
+			  relations
+			    define org_parent: [org]
+			    define team_parent: [team]
+			    define viewer: viewer from org_parent or viewer from team_parent
+			    define can_access: viewer
+		`, "document#can_access", "user", "document:1", "can_access", "user:alice")
+		require.Len(t, keys, 2)
+		assertAllDistinct(t, keys)
+	})
+
+	t.Run("multiple_ttu_paths_to_same_target_via_different_tupleset", func(t *testing.T) {
+		// define viewer: admin from parent or admin from owner  (both parent and owner: [org])
+		// FlattenNode(can_access) yields two TTUEdges sharing relDef="document#viewer" AND
+		// the same to.UniqueLabel="org#admin", differing only in tuplesetRelation.
+		keys := buildKeys(t, `
+			model
+			  schema 1.1
+			type user
+			type org
+			  relations
+			    define admin: [user]
+			type document
+			  relations
+			    define parent: [org]
+			    define owner: [org]
+			    define viewer: admin from parent or admin from owner
+			    define can_access: viewer
+		`, "document#can_access", "user", "document:1", "can_access", "user:alice")
+		require.Len(t, keys, 2)
+		assertAllDistinct(t, keys)
+	})
+
+	t.Run("direct_edge_and_ttu_to_same_target", func(t *testing.T) {
+		// define viewer: [group#member] or member from parent  (parent: [group])
+		// FlattenNode(can_access) yields a DirectEdge and a TTUEdge, both targeting
+		// "group#member", sharing relDef="document#viewer" and to.UniqueLabel,
+		// differing only in tuplesetRelation ("" vs "document#parent").
+		keys := buildKeys(t, `
+			model
+			  schema 1.1
+			type user
+			type group
+			  relations
+			    define member: [user]
+			type document
+			  relations
+			    define parent: [group]
+			    define viewer: [group#member] or member from parent
+			    define can_access: viewer
+		`, "document#can_access", "user", "document:1", "can_access", "user:alice")
+		require.Len(t, keys, 2)
+		assertAllDistinct(t, keys)
 	})
 }
