@@ -28,7 +28,7 @@ import (
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
-const cacheKeyDelimiter = "|"
+const cacheKeyDelimiter byte = '|'
 const cacheKeyPrefix = "c."
 
 var tracer = otel.Tracer("internal/check")
@@ -154,19 +154,19 @@ func buildEdgeCacheKey(modelID string, req *Request, edge *authzGraph.WeightedAu
 	keyBuilder := &strings.Builder{}
 	keyBuilder.WriteString(cacheKeyPrefix)
 	keyBuilder.WriteString(modelID)
-	keyBuilder.WriteString(cacheKeyDelimiter)
+	keyBuilder.WriteByte(cacheKeyDelimiter)
 	keyBuilder.WriteString(req.GetTupleKey().GetObject())
-	keyBuilder.WriteString(cacheKeyDelimiter)
+	keyBuilder.WriteByte(cacheKeyDelimiter)
 	keyBuilder.WriteString(req.GetTupleKey().GetUser())
-	keyBuilder.WriteString(cacheKeyDelimiter)
+	keyBuilder.WriteByte(cacheKeyDelimiter)
 	keyBuilder.WriteString(edge.GetRelationDefinition())
-	keyBuilder.WriteString(cacheKeyDelimiter)
+	keyBuilder.WriteByte(cacheKeyDelimiter)
 	keyBuilder.WriteString(strconv.FormatInt(int64(edge.GetEdgeType()), 10))
-	keyBuilder.WriteString(cacheKeyDelimiter)
+	keyBuilder.WriteByte(cacheKeyDelimiter)
 	keyBuilder.WriteString(edge.GetTo().GetUniqueLabel())
-	keyBuilder.WriteString(cacheKeyDelimiter)
+	keyBuilder.WriteByte(cacheKeyDelimiter)
 	keyBuilder.WriteString(edge.GetTuplesetRelation())
-	keyBuilder.WriteString(cacheKeyDelimiter)
+	keyBuilder.WriteByte(cacheKeyDelimiter)
 	keyBuilder.WriteString(req.GetInvariantCacheKey())
 	return keyBuilder.String()
 }
