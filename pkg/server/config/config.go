@@ -234,6 +234,14 @@ type LogConfig struct {
 
 	// Format of the timestamp in the log output (e.g. 'Unix'(default) or 'ISO8601')
 	TimestampFormat string
+
+	// TraceContext controls whether cloud-specific trace context fields are added
+	// to structured log output for log-trace correlation. Supported values:
+	//   - "" (empty/default): no additional trace context fields
+	//   - "gcp": adds logging.googleapis.com/trace, logging.googleapis.com/spanId,
+	//     and logging.googleapis.com/trace_sampled fields. Requires GOOGLE_CLOUD_PROJECT
+	//     env var to be set.
+	TraceContext string
 }
 
 type TraceConfig struct {
