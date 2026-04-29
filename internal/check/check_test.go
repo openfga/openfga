@@ -344,7 +344,7 @@ func TestResolveUnionEdges(t *testing.T) {
 				return nil, storage.ErrNotFound
 			}).MaxTimes(2)
 
-		key := fmt.Sprintf("^c.%s|group:1|user:maria|group#admin|.*$", storeID)
+		key := fmt.Sprintf(`^c\.%s\|group:1\|user:maria\|group#admin\|`, mg.GetModelID())
 		mockCache.EXPECT().Get(gomock.Any()).Return(nil).AnyTimes()
 		mockCache.EXPECT().Set(gomock.Regex(key), gomock.Any(), gomock.Any()).Times(1)
 
