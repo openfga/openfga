@@ -1139,6 +1139,46 @@ func TestVerifyBinarySettings(t *testing.T) {
 	})
 }
 
+func TestVerifyBinarySettings_TraceSampler(t *testing.T) {
+	validSamplers := []string{
+		"always_on", "always_off", "traceidratio",
+		"parentbased_always_on", "parentbased_always_off", "parentbased_traceidratio",
+	}
+	for _, sampler := range validSamplers {
+		t.Run("valid_"+sampler, func(t *testing.T) {
+			cfg := DefaultConfig()
+			cfg.Trace.Enabled = true
+			cfg.Trace.Sampler = sampler
+			err := cfg.VerifyBinarySettings()
+			require.NoError(t, err)
+		})
+	}
+
+	t.Run("uppercase_sampler_accepted", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Trace.Enabled = true
+		cfg.Trace.Sampler = "ALWAYS_ON"
+		err := cfg.VerifyBinarySettings()
+		require.NoError(t, err)
+	})
+
+	t.Run("unrecognized_sampler_does_not_error", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Trace.Enabled = true
+		cfg.Trace.Sampler = "jaeger_remote"
+		err := cfg.VerifyBinarySettings()
+		require.NoError(t, err)
+	})
+
+	t.Run("tracing_disabled_skips_sampler_validation", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Trace.Enabled = false
+		cfg.Trace.Sampler = "totally_invalid"
+		err := cfg.VerifyBinarySettings()
+		require.NoError(t, err)
+	})
+}
+
 func TestDefaultMaxConditionValuationCost(t *testing.T) {
 	// check to make sure DefaultMaxConditionEvaluationCost never drops below an explicit 100, because
 	// API compatibility can be impacted otherwise

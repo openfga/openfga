@@ -1337,6 +1337,10 @@ func TestDefaultConfig(t *testing.T) {
 	require.True(t, val.Exists())
 	require.Equal(t, val.Bool(), cfg.Metrics.EnableRPCHistograms)
 
+	val = res.Get("properties.trace.properties.sampler.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.String(), cfg.Trace.Sampler)
+
 	val = res.Get("properties.trace.properties.serviceName.default")
 	require.True(t, val.Exists())
 	require.Equal(t, val.String(), cfg.Trace.ServiceName)

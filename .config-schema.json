@@ -520,6 +520,13 @@
                         }
                     }
                 },
+                "sampler": {
+                    "description": "The sampler to use for tracing. Controls how sampling decisions are made.",
+                    "type": "string",
+                    "enum": ["always_on", "always_off", "traceidratio", "parentbased_always_on", "parentbased_always_off", "parentbased_traceidratio"],
+                    "default": "traceidratio",
+                    "x-env-variable": ["OPENFGA_TRACE_SAMPLER", "OTEL_TRACES_SAMPLER"]
+                },
                 "sampleRatio": {
                     "description": "The fraction of traces to sample. 1 means all, 0 means none.",
                     "type": "number",
