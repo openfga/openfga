@@ -2,15 +2,12 @@ package storage
 
 import (
 	"context"
-	"io"
-	"log"
-	"strings"
+	"fmt"
+	"sync"
 	"testing"
 	"time"
 
-	"github.com/cenkalti/backoff/v4"
-	"github.com/containerd/errdefs"
-	"github.com/go-sql-driver/mysql"
+	_ "github.com/go-sql-driver/mysql"
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/network"
 	"github.com/moby/moby/client"
@@ -19,180 +16,250 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/openfga/openfga/assets"
+	"github.com/openfga/openfga/pkg/testutils"
 )
 
 const (
-	mySQLImage = "mysql:8"
+	mysqlImage          = "mysql:8"
+	mysqlDBPrefix       = "openfga-test-db-"
+	mysqlTemplateDB     = mysqlDBPrefix + "template"
+	mysqlTemplateDBDump = "/tmp/" + mysqlTemplateDB + ".sql"
+	mysqlUsername       = "root"
+	mysqlPassword       = "secret"
 )
 
 var (
-	mySQLPort = network.MustParsePort("3306/tcp")
+	_ DatastoreTestContainer = (*mysqlTestContainer)(nil)
+
+	mysqlContainerName = "openfga-test-mysql-" + ulid.Make().String()
+	mysqlPort          = network.MustParsePort("3306/tcp")
+	mysqlDockerCont    *container.InspectResponse
+
+	mysqlBootstrapping bool
+	mysqlCond          = sync.NewCond(&sync.Mutex{})
 )
 
-type mySQLTestContainer struct {
-	addr     string
-	version  int64
+type mysqlTestContainer struct {
+	host string
+	port string
+
+	database string
 	username string
 	password string
-}
 
-// NewMySQLTestContainer returns an implementation of the DatastoreTestContainer interface
-// for MySQL.
-func NewMySQLTestContainer() *mySQLTestContainer {
-	return &mySQLTestContainer{}
-}
-
-func (m *mySQLTestContainer) GetDatabaseSchemaVersion() int64 {
-	return m.version
-}
-
-// RunMySQLTestContainer runs a MySQL container, connects to it, and returns a
-// bootstrapped implementation of the DatastoreTestContainer interface wired up for the
-// MySQL datastore engine.
-func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) DatastoreTestContainer {
-	dockerClient, err := client.New(client.FromEnv)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		dockerClient.Close()
-	})
-
-	imageListResult, err := dockerClient.ImageList(context.Background(), client.ImageListOptions{
-		All: true,
-	})
-	require.NoError(t, err)
-
-	foundMysqlImage := false
-
-AllImages:
-	for _, image := range imageListResult.Items {
-		for _, tag := range image.RepoTags {
-			if strings.Contains(tag, mySQLImage) {
-				foundMysqlImage = true
-				break AllImages
-			}
-		}
-	}
-
-	if !foundMysqlImage {
-		t.Logf("Pulling image %s", mySQLImage)
-		reader, err := dockerClient.ImagePull(context.Background(), mySQLImage, client.ImagePullOptions{})
-		require.NoError(t, err)
-		defer reader.Close()
-
-		_, err = io.Copy(io.Discard, reader) // consume the image pull output to make sure it's done
-		require.NoError(t, err)
-	}
-
-	containerCfg := container.Config{
-		Env: []string{
-			"MYSQL_DATABASE=defaultdb",
-			"MYSQL_ROOT_PASSWORD=secret",
-		},
-		ExposedPorts: network.PortSet{
-			mySQLPort: {},
-		},
-		Image: mySQLImage,
-	}
-
-	hostCfg := container.HostConfig{
-		AutoRemove:      true,
-		PublishAllPorts: true,
-		Tmpfs:           map[string]string{"/var/lib/mysql": ""},
-	}
-
-	name := "mysql-" + ulid.Make().String()
-
-	cont, err := dockerClient.ContainerCreate(context.Background(), client.ContainerCreateOptions{
-		Name:       name,
-		Config:     &containerCfg,
-		HostConfig: &hostCfg,
-	})
-	require.NoError(t, err, "failed to create mysql docker container")
-
-	t.Cleanup(func() {
-		t.Logf("stopping container %s", name)
-		timeoutSec := 5
-
-		_, err := dockerClient.ContainerStop(context.Background(), cont.ID, client.ContainerStopOptions{Timeout: &timeoutSec})
-		if err != nil && !errdefs.IsNotFound(err) {
-			t.Logf("failed to stop mysql container: %v", err)
-		}
-		t.Logf("stopped container %s", name)
-	})
-
-	_, err = dockerClient.ContainerStart(context.Background(), cont.ID, client.ContainerStartOptions{})
-	require.NoError(t, err, "failed to start mysql container")
-
-	inspectResult, err := dockerClient.ContainerInspect(context.Background(), cont.ID, client.ContainerInspectOptions{})
-	require.NoError(t, err)
-
-	p, ok := inspectResult.Container.NetworkSettings.Ports[mySQLPort]
-	if !ok || len(p) == 0 {
-		require.Fail(t, "failed to get host port mapping from mysql container")
-	}
-
-	mySQLTestContainer := &mySQLTestContainer{
-		addr:     "localhost:" + p[0].HostPort,
-		username: "root",
-		password: "secret",
-	}
-
-	uri := mySQLTestContainer.username + ":" + mySQLTestContainer.password + "@tcp(" + mySQLTestContainer.addr + ")/defaultdb?parseTime=true"
-
-	err = mysql.SetLogger(log.New(io.Discard, "", 0))
-	require.NoError(t, err)
-
-	goose.SetLogger(goose.NopLogger())
-
-	db, err := goose.OpenDBWithDriver("mysql", uri)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		_ = db.Close()
-	})
-
-	backoffPolicy := backoff.NewExponentialBackOff()
-	backoffPolicy.MaxElapsedTime = 2 * time.Minute
-	err = backoff.Retry(
-		func() error {
-			return db.Ping()
-		},
-		backoffPolicy,
-	)
-	require.NoError(t, err, "failed to connect to mysql container")
-
-	goose.SetBaseFS(assets.EmbedMigrations)
-
-	err = goose.Up(db, assets.MySQLMigrationDir)
-	require.NoError(t, err)
-	version, err := goose.GetDBVersion(db)
-	require.NoError(t, err)
-	mySQLTestContainer.version = version
-
-	return mySQLTestContainer
+	version int64
 }
 
 // GetConnectionURI returns the mysql connection uri for the running mysql test container.
-func (m *mySQLTestContainer) GetConnectionURI(includeCredentials bool) string {
-	creds := ""
+func (m *mysqlTestContainer) GetConnectionURI(includeCredentials bool) string {
+	var username, password string
 	if includeCredentials {
-		creds = m.username + ":" + m.password + "@"
+		username = m.username
+		password = m.password
 	}
 
-	return creds + "tcp(" + m.addr + ")/defaultdb?parseTime=true"
+	return mysqlConnectionURI(m.host, m.port, m.database, username, password)
 }
 
-func (m *mySQLTestContainer) GetUsername() string {
+func (m *mysqlTestContainer) GetDatabaseSchemaVersion() int64 {
+	return m.version
+}
+
+func (m *mysqlTestContainer) GetUsername() string {
 	return m.username
 }
 
-func (m *mySQLTestContainer) GetPassword() string {
+func (m *mysqlTestContainer) GetPassword() string {
 	return m.password
 }
 
-func (m *mySQLTestContainer) CreateSecondary(t testing.TB) error {
+func (m *mysqlTestContainer) CreateSecondary(t testing.TB) error {
 	return nil
 }
 
-func (m *mySQLTestContainer) GetSecondaryConnectionURI(includeCredentials bool) string {
+func (m *mysqlTestContainer) GetSecondaryConnectionURI(includeCredentials bool) string {
 	return ""
+}
+
+func RunMysqlTestContainer(t testing.TB) DatastoreTestContainer {
+	docker, err := testutils.NewDockerClient()
+	require.NoError(t, err)
+
+	t.Cleanup(func() {
+		docker.Close()
+	})
+
+	// Shared MySQL container bootstrap for concurrent tests using sync.Cond.
+	// Only one test bootstraps the shared container at a time, while others wait efficiently using sync.Cond.
+	// If bootstrap fails, waiting tests are awakened so another test can retry without being affected by the failure.
+	mysqlCond.L.Lock()
+	for mysqlDockerCont == nil {
+		if !mysqlBootstrapping {
+			mysqlBootstrapping = true
+			mysqlCond.L.Unlock()
+
+			dockerCont, err := bootstrapMysqlContainer(t.Context(), docker)
+			mysqlCond.L.Lock()
+			mysqlBootstrapping = false
+			if err == nil {
+				mysqlDockerCont = dockerCont
+			}
+
+			mysqlCond.Broadcast()
+
+			if err != nil {
+				// Unlock before failing the test to allow waiting tests to proceed with bootstrapping.
+				mysqlCond.L.Unlock()
+				require.NoError(t, err)
+			}
+
+			continue
+		}
+
+		mysqlCond.Wait()
+	}
+	dockerCont := mysqlDockerCont
+	mysqlCond.L.Unlock()
+
+	port, err := docker.GetHostPort(dockerCont, mysqlPort)
+	require.NoError(t, err)
+
+	version, err := latestMigrationVersion(assets.MySQLMigrationDir)
+	require.NoError(t, err, "get expected mysql migration version")
+
+	testCont := &mysqlTestContainer{
+		host:     "localhost",
+		port:     port,
+		database: mysqlDBPrefix + ulid.Make().String(),
+		username: mysqlUsername,
+		password: mysqlPassword,
+		version:  version,
+	}
+
+	tplURI := mysqlConnectionURI(testCont.host, testCont.port, mysqlTemplateDB, testCont.username, testCont.password)
+	require.NoError(t, waitForMigrationVersion("mysql", tplURI, testCont.version))
+
+	createExec := client.ExecCreateOptions{
+		Cmd: []string{"mysql", "-u", testCont.username, "-e", fmt.Sprintf("CREATE DATABASE `%s`;", testCont.database)},
+		Env: []string{"MYSQL_PWD=" + testCont.password},
+	}
+	require.NoError(t, docker.ExecCommand(t.Context(), dockerCont.ID, createExec))
+
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		dropQuery := fmt.Sprintf("DROP DATABASE IF EXISTS `%s`;", testCont.database)
+		dropExec := client.ExecCreateOptions{
+			Cmd: []string{"mysql", "-u", testCont.username, "-e", dropQuery},
+			Env: []string{"MYSQL_PWD=" + testCont.password},
+		}
+		if err := docker.ExecCommand(ctx, dockerCont.ID, dropExec); err != nil {
+			t.Errorf("drop test database in the mysql container: %v", err)
+		}
+	})
+
+	copyShell := fmt.Sprintf("mysql -u %s %s < %s", testCont.username, testCont.database, mysqlTemplateDBDump)
+	copyExec := client.ExecCreateOptions{
+		Cmd: []string{"sh", "-ec", copyShell},
+		Env: []string{"MYSQL_PWD=" + testCont.password},
+	}
+	require.NoError(t, docker.ExecCommand(t.Context(), dockerCont.ID, copyExec))
+
+	require.NoError(t, waitForMigrationVersion("mysql", testCont.GetConnectionURI(true), testCont.version))
+
+	return testCont
+}
+
+// CleanupMysqlContainer removes the shared mysql test container.
+// It should be called from TestMain after all tests in a package have finished.
+func CleanupMysqlContainer() {
+	_ = cleanupDatastoreTestContainer(mysqlContainerName)
+}
+
+func bootstrapMysqlContainer(ctx context.Context, docker *testutils.DockerClient) (*container.InspectResponse, error) {
+	if err := docker.PullImage(ctx, mysqlImage); err != nil {
+		return nil, fmt.Errorf("pull mysql image: %w", err)
+	}
+
+	contCfg := &container.Config{
+		Env: []string{
+			"MYSQL_DATABASE=" + mysqlTemplateDB,
+			"MYSQL_ROOT_PASSWORD=" + mysqlPassword,
+		},
+		ExposedPorts: network.PortSet{
+			mysqlPort: {},
+		},
+		Image: mysqlImage,
+	}
+
+	hostCfg := &container.HostConfig{
+		AutoRemove:      true,
+		PublishAllPorts: true,
+		Tmpfs: map[string]string{
+			"/var/lib/mysql": "size=2g",
+			"/tmp":           "size=512m",
+		},
+	}
+
+	cont, err := docker.RunContainer(ctx, contCfg, hostCfg, mysqlContainerName)
+	if err != nil {
+		return nil, fmt.Errorf("run mysql container: %w", err)
+	}
+
+	needsCleanup := true
+	defer func() {
+		if needsCleanup {
+			cleanupCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+
+			_ = docker.RemoveContainer(cleanupCtx, cont.ID)
+		}
+	}()
+
+	port, err := docker.GetHostPort(cont, mysqlPort)
+	if err != nil {
+		return nil, fmt.Errorf("get mysql host port: %w", err)
+	}
+
+	dbURI := mysqlConnectionURI("localhost", port, mysqlTemplateDB, mysqlUsername, mysqlPassword)
+	if err := waitForDatabase("mysql", dbURI); err != nil {
+		return nil, fmt.Errorf("wait for mysql database: %w", err)
+	}
+
+	db, err := goose.OpenDBWithDriver("mysql", dbURI)
+	if err != nil {
+		return nil, fmt.Errorf("open mysql database: %w", err)
+	}
+	defer db.Close()
+
+	if err := goose.Up(db, assets.MySQLMigrationDir); err != nil {
+		return nil, fmt.Errorf("apply mysql migrations: %w", err)
+	}
+
+	// Append goose_db_version last so it is restored after all schema tables.
+	dumpShell := fmt.Sprintf(
+		"mysqldump -u %[1]s --ignore-table=%[2]s.goose_db_version %[2]s > %[3]s "+
+			"&& mysqldump -u %[1]s %[2]s goose_db_version >> %[3]s ",
+		mysqlUsername, mysqlTemplateDB, mysqlTemplateDBDump,
+	)
+	dumpExec := client.ExecCreateOptions{
+		Cmd: []string{"sh", "-ec", dumpShell},
+		Env: []string{"MYSQL_PWD=" + mysqlPassword},
+	}
+	if err := docker.ExecCommand(ctx, cont.ID, dumpExec); err != nil {
+		return nil, fmt.Errorf("dump mysql template database: %w", err)
+	}
+
+	needsCleanup = false
+	return cont, nil
+}
+
+func mysqlConnectionURI(host, port, database, username, password string) string {
+	creds := ""
+	if username != "" && password != "" {
+		creds = fmt.Sprintf("%s:%s@", username, password)
+	}
+
+	return fmt.Sprintf("%stcp(%s:%s)/%s?parseTime=true", creds, host, port, database)
 }

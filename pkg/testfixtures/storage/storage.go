@@ -2,12 +2,15 @@
 package storage
 
 import (
+	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/pressly/goose/v3"
 
 	"github.com/openfga/openfga/assets"
+	"github.com/openfga/openfga/pkg/testutils"
 )
 
 func init() {
@@ -67,11 +70,11 @@ func (m memoryTestContainer) GetSecondaryConnectionURI(includeCredentials bool) 
 // datastore engine. If applicable, it also runs all existing database migrations.
 // The resources used by the test engine will be cleaned up after the test has finished.
 //
-// NOTE: PostgreSQL uses a shared container across tests, so it is not automatically cleaned up after each test.
+// NOTE: The caller is responsible for cleanup.
 func RunDatastoreTestContainer(t testing.TB, engine string) DatastoreTestContainer {
 	switch engine {
 	case "mysql":
-		return NewMySQLTestContainer().RunMySQLTestContainer(t)
+		return RunMysqlTestContainer(t)
 	case "postgres":
 		return RunPostgresTestContainer(t)
 	case "memory":
@@ -82,6 +85,25 @@ func RunDatastoreTestContainer(t testing.TB, engine string) DatastoreTestContain
 		t.Fatalf("unsupported datastore engine: %q", engine)
 		return nil
 	}
+}
+
+// cleanupDatastoreTestContainer removes the shared datastore test container used by the package.
+// Call it from TestMain after all package tests have completed.
+func cleanupDatastoreTestContainer(containerName string) error {
+	docker, err := testutils.NewDockerClient()
+	if err != nil {
+		return fmt.Errorf("docker client creation: %w", err)
+	}
+	defer docker.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	if err := docker.RemoveContainer(ctx, containerName); err != nil {
+		return fmt.Errorf("remove container %s: %w", containerName, err)
+	}
+
+	return nil
 }
 
 // latestMigrationVersion returns the latest goose migration version in migrationDir.

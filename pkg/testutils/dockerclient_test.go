@@ -84,66 +84,28 @@ func TestContainerLifecycle_PullAndExec(t *testing.T) {
 	hostCfg := &container.HostConfig{}
 	containerName := "test-dc-client-" + ulid.Make().String()
 
-	inspect, err := dc.RunContainer(t.Context(), containerCfg, hostCfg, containerName)
+	cont, err := dc.RunContainer(t.Context(), containerCfg, hostCfg, containerName)
 	require.NoError(t, err)
-	require.NotEmpty(t, inspect.ID)
+	require.NotEmpty(t, cont.ID)
 
 	t.Cleanup(func() {
-		_ = dc.RemoveContainer(context.Background(), inspect.ID)
+		_ = dc.RemoveContainer(context.Background(), cont.ID)
 	})
 
-	foundInspect, running, err := dc.FindRunningContainer(t.Context(), containerName, alpineImage)
-	require.NoError(t, err)
-	require.True(t, running)
-	require.Equal(t, inspect.ID, foundInspect.ID)
-
-	err = dc.ExecCommand(t.Context(), inspect.ID, client.ExecCreateOptions{
+	err = dc.ExecCommand(t.Context(), cont.ID, client.ExecCreateOptions{
 		Cmd: []string{"echo", "hello!"},
 	})
 	require.NoError(t, err)
 }
 
-func TestFindRunningContainer_Fail(t *testing.T) {
-	t.Run("not_found", func(t *testing.T) {
-		dc := newDockerClientMock(t, []dockerMockStep{
-			{Method: http.MethodGet, Path: "/containers/json", Body: []byte(`[]`)},
-		})
-
-		_, found, err := dc.FindRunningContainer(t.Context(), "does-not-exist", alpineImage)
-		require.NoError(t, err)
-		require.False(t, found)
-	})
-
-	t.Run("list_containers", func(t *testing.T) {
-		dc := newDockerClientMock(t, []dockerMockStep{
-			{Method: http.MethodGet, Path: "/containers/json", Error: "list failed"},
-		})
-
-		inspect, found, err := dc.FindRunningContainer(t.Context(), "test", alpineImage)
-		require.Nil(t, inspect)
-		require.False(t, found)
-		require.Error(t, err)
-		require.ErrorContains(t, err, "list containers")
-	})
-
-	t.Run("inspect_container", func(t *testing.T) {
-		dc := newDockerClientMock(t, []dockerMockStep{
-			{Method: http.MethodGet, Path: "/containers/json", Body: []byte(`[{"Id":"container-id"}]`)},
-			{Method: http.MethodGet, Path: "/containers/container-id/json", Error: "inspect failed"},
-		})
-
-		inspect, found, err := dc.FindRunningContainer(t.Context(), "test", alpineImage)
-		require.Nil(t, inspect)
-		require.False(t, found)
-		require.Error(t, err)
-		require.ErrorContains(t, err, "inspect test container")
-	})
-}
-
 func TestRunContainer_WithExposedPorts(t *testing.T) {
 	createBody := []byte(`{"Id":"container-id"}`)
 	startBody := []byte(`{}`)
-	portsReadyBody := []byte(`{"Id":"container-id","NetworkSettings":{"Ports":{"5432/tcp":[{"HostIp":"0.0.0.0","HostPort":"54321"}]}}}`)
+	portsReadyBody := []byte(`{
+		"Id":"container-id",
+		"NetworkSettings":{"Ports":{"5432/tcp":[{"HostIp":"0.0.0.0","HostPort":"54321"}]}},
+		"State":{"Running":true}
+	}`)
 
 	exposedCfg := &container.Config{
 		Image:        alpineImage,
@@ -157,13 +119,13 @@ func TestRunContainer_WithExposedPorts(t *testing.T) {
 			{Method: http.MethodGet, Path: "/containers/container-name/json", Body: portsReadyBody},
 		})
 
-		inspect, err := dc.RunContainer(t.Context(), exposedCfg, &container.HostConfig{}, "container-name")
+		cont, err := dc.RunContainer(t.Context(), exposedCfg, &container.HostConfig{}, "container-name")
 		require.NoError(t, err)
-		require.NotNil(t, inspect)
+		require.NotNil(t, cont)
 	})
 
 	t.Run("empty_ports_map_then_ready", func(t *testing.T) {
-		noPortsBody := []byte(`{"Id":"container-id","NetworkSettings":{"Ports":{}}}`)
+		noPortsBody := []byte(`{"Id":"container-id","NetworkSettings":{"Ports":{}}, "State":{"Running":true}}`)
 		dc := newDockerClientMock(t, []dockerMockStep{
 			{Method: http.MethodPost, Path: "/containers/create", Body: createBody},
 			{Method: http.MethodPost, Path: "/containers/container-name/start", Body: startBody},
@@ -171,13 +133,13 @@ func TestRunContainer_WithExposedPorts(t *testing.T) {
 			{Method: http.MethodGet, Path: "/containers/container-name/json", Body: portsReadyBody},
 		})
 
-		inspect, err := dc.RunContainer(t.Context(), exposedCfg, &container.HostConfig{}, "container-name")
+		cont, err := dc.RunContainer(t.Context(), exposedCfg, &container.HostConfig{}, "container-name")
 		require.NoError(t, err)
-		require.NotNil(t, inspect)
+		require.NotNil(t, cont)
 	})
 
 	t.Run("empty_port_bindings_then_ready", func(t *testing.T) {
-		emptyBindingsBody := []byte(`{"Id":"container-id","NetworkSettings":{"Ports":{"5432/tcp":[]}}}`)
+		emptyBindingsBody := []byte(`{"Id":"container-id","NetworkSettings":{"Ports":{"5432/tcp":[]}}, "State":{"Running":true}}`)
 		dc := newDockerClientMock(t, []dockerMockStep{
 			{Method: http.MethodPost, Path: "/containers/create", Body: createBody},
 			{Method: http.MethodPost, Path: "/containers/container-name/start", Body: startBody},
@@ -185,9 +147,36 @@ func TestRunContainer_WithExposedPorts(t *testing.T) {
 			{Method: http.MethodGet, Path: "/containers/container-name/json", Body: portsReadyBody},
 		})
 
-		inspect, err := dc.RunContainer(t.Context(), exposedCfg, &container.HostConfig{}, "container-name")
+		cont, err := dc.RunContainer(t.Context(), exposedCfg, &container.HostConfig{}, "container-name")
 		require.NoError(t, err)
-		require.NotNil(t, inspect)
+		require.NotNil(t, cont)
+	})
+
+	t.Run("empty_state_then_running", func(t *testing.T) {
+		emptyStateBody := []byte(`{"Id":"container-id","NetworkSettings":{"Ports":{"5432/tcp":[{"HostIp":"0.0.0.0","HostPort":"54321"}]}}}`)
+		dc := newDockerClientMock(t, []dockerMockStep{
+			{Method: http.MethodPost, Path: "/containers/create", Body: createBody},
+			{Method: http.MethodPost, Path: "/containers/container-name/start", Body: startBody},
+			{Method: http.MethodGet, Path: "/containers/container-name/json", Body: emptyStateBody},
+			{Method: http.MethodGet, Path: "/containers/container-name/json", Body: portsReadyBody},
+		})
+
+		cont, err := dc.RunContainer(t.Context(), exposedCfg, &container.HostConfig{}, "container-name")
+		require.NoError(t, err)
+		require.NotNil(t, cont)
+	})
+
+	t.Run("not_found_inspect_at_start", func(t *testing.T) {
+		dc := newDockerClientMock(t, []dockerMockStep{
+			{Method: http.MethodPost, Path: "/containers/create", Body: createBody},
+			{Method: http.MethodPost, Path: "/containers/container-name/start", Body: startBody},
+			{Method: http.MethodGet, Path: "/containers/container-name/json", Error: "not found", Status: http.StatusNotFound},
+			{Method: http.MethodGet, Path: "/containers/container-name/json", Body: portsReadyBody},
+		})
+
+		cont, err := dc.RunContainer(t.Context(), exposedCfg, &container.HostConfig{}, "container-name")
+		require.NoError(t, err)
+		require.NotNil(t, cont)
 	})
 }
 
@@ -203,8 +192,8 @@ func TestRunContainer_Fail(t *testing.T) {
 			{Method: http.MethodPost, Path: "/containers/create", Error: "create failed"},
 		})
 
-		inspect, err := dc.RunContainer(t.Context(), containerCfg, &container.HostConfig{}, "test")
-		require.Nil(t, inspect)
+		runResult, err := dc.RunContainer(t.Context(), containerCfg, &container.HostConfig{}, "test")
+		require.Nil(t, runResult)
 		require.Error(t, err)
 		require.ErrorContains(t, err, "create test container")
 	})
@@ -216,8 +205,8 @@ func TestRunContainer_Fail(t *testing.T) {
 			{Method: http.MethodDelete, Path: "/containers/container-name", Body: emptyBody},
 		})
 
-		inspect, err := dc.RunContainer(t.Context(), containerCfg, &container.HostConfig{}, "container-name")
-		require.Nil(t, inspect)
+		runResult, err := dc.RunContainer(t.Context(), containerCfg, &container.HostConfig{}, "container-name")
+		require.Nil(t, runResult)
 		require.Error(t, err)
 		require.ErrorContains(t, err, "start container-name")
 	})
@@ -230,10 +219,21 @@ func TestRunContainer_Fail(t *testing.T) {
 			{Method: http.MethodDelete, Path: "/containers/container-name", Body: emptyBody},
 		})
 
-		inspect, err := dc.RunContainer(t.Context(), containerCfg, &container.HostConfig{}, "container-name")
-		require.Nil(t, inspect)
+		runResult, err := dc.RunContainer(t.Context(), containerCfg, &container.HostConfig{}, "container-name")
+		require.Nil(t, runResult)
 		require.Error(t, err)
 		require.ErrorContains(t, err, "inspect container-name")
+	})
+
+	t.Run("name_conflict", func(t *testing.T) {
+		dc := newDockerClientMock(t, []dockerMockStep{
+			{Method: http.MethodPost, Path: "/containers/create", Error: "conflict", Status: http.StatusConflict},
+		})
+
+		runResult, err := dc.RunContainer(t.Context(), containerCfg, &container.HostConfig{}, "container-name")
+		require.Nil(t, runResult)
+		require.Error(t, err)
+		require.ErrorContains(t, err, "conflict")
 	})
 }
 
@@ -260,14 +260,15 @@ func TestExecCommand_Fail(t *testing.T) {
 			Image: alpineImage,
 			Cmd:   []string{"sleep", "30"},
 		}
-		inspect, err := dc.RunContainer(t.Context(), contConf, &container.HostConfig{}, containerName)
+		cont, err := dc.RunContainer(t.Context(), contConf, &container.HostConfig{}, containerName)
 		require.NoError(t, err)
-		t.Cleanup(func() { _ = dc.RemoveContainer(context.Background(), inspect.ID) })
+		t.Cleanup(func() { _ = dc.RemoveContainer(context.Background(), cont.ID) })
 
-		err = dc.ExecCommand(t.Context(), inspect.ID, client.ExecCreateOptions{
+		err = dc.ExecCommand(t.Context(), cont.ID, client.ExecCreateOptions{
 			Cmd: []string{"badcommand"},
 		})
 		require.Error(t, err)
+		require.ErrorContains(t, err, "command [badcommand] completed with exit code 127")
 	})
 
 	t.Run("create_exec", func(t *testing.T) {
@@ -350,6 +351,7 @@ type dockerMockStep struct {
 	Path   string
 	Body   []byte
 	Error  string
+	Status int
 }
 
 // newDockerClientMock wires a Docker client to a httptest server for unit tests.
@@ -387,6 +389,13 @@ func newDockerClientMock(t *testing.T, steps []dockerMockStep) *DockerClient {
 			t.Fatalf("unexpected path %s", r.URL.Path)
 		}
 
+		switch {
+		case step.Status == 0 && step.Error != "":
+			w.WriteHeader(http.StatusInternalServerError)
+		case step.Status != 0:
+			w.WriteHeader(step.Status)
+		}
+
 		if step.Body != nil {
 			_, _ = w.Write(step.Body)
 			return
@@ -394,7 +403,6 @@ func newDockerClientMock(t *testing.T, steps []dockerMockStep) *DockerClient {
 
 		if step.Error != "" {
 			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
 			_ = json.NewEncoder(w).Encode(map[string]string{
 				"message": step.Error,
 			})

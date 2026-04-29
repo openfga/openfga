@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"fmt"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -24,9 +23,7 @@ import (
 )
 
 const (
-	postgresImage     = "postgres:17-alpine"
-	postgresContainer = "openfga-test-postgres"
-
+	postgresImage      = "postgres:17-alpine"
 	postgresDBPrefix   = "openfga-test-db-"
 	postgresTemplateDB = postgresDBPrefix + "template"
 	postgresUsername   = "postgres"
@@ -36,18 +33,13 @@ const (
 var (
 	_ DatastoreTestContainer = (*postgresTestContainer)(nil)
 
-	containerName = postgresContainer + ulid.MustNewDefault(time.Now()).String()
+	postgresContainerName = "openfga-test-postgres-" + ulid.Make().String()
+	postgresPort          = network.MustParsePort("5432/tcp")
+	postgresDockerCont    *container.InspectResponse
 
-	postgresPort = network.MustParsePort("5432/tcp")
-
-	mu            sync.Mutex
-	cond          sync.Cond
-	bootstrapping atomic.Bool
+	postgresBootstrapping bool
+	postgresCond          = sync.NewCond(&sync.Mutex{})
 )
-
-func init() {
-	cond.L = &mu
-}
 
 type (
 	postgresTestContainer struct {
@@ -115,24 +107,6 @@ func (p *postgresTestContainer) GetSecondaryConnectionURI(includeCredentials boo
 	return postgresConnectionURI(p.replica.host, p.replica.port, p.database, username, password)
 }
 
-// CleanupPostgresContainer removes the shared postgres test container.
-// It should be called from TestMain after all tests in a package have finished.
-func CleanupPostgresContainer() {
-	docker, err := testutils.NewDockerClient()
-	if err != nil {
-		return
-	}
-	defer docker.Close()
-
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	if err := docker.RemoveContainer(ctx, containerName); err != nil {
-		// Container may not exist or already be removed; ignore errors.
-		return
-	}
-}
-
 func RunPostgresTestContainer(t testing.TB) DatastoreTestContainer {
 	docker, err := testutils.NewDockerClient()
 	require.NoError(t, err)
@@ -141,37 +115,36 @@ func RunPostgresTestContainer(t testing.TB) DatastoreTestContainer {
 		docker.Close()
 	})
 
-	var dockerCont *container.InspectResponse
+	// Shared PostgreSQL container bootstrap for concurrent tests using sync.Cond.
+	// Only one test bootstraps the shared container at a time, while others wait efficiently using sync.Cond.
+	// If bootstrap fails, waiting tests are awakened so another test can retry without being affected by the failure.
+	postgresCond.L.Lock()
+	for postgresDockerCont == nil {
+		if !postgresBootstrapping {
+			postgresBootstrapping = true
+			postgresCond.L.Unlock()
 
-	mu.Lock()
-	for {
-		var found bool
-		dockerCont, found, err = docker.FindRunningContainer(t.Context(), containerName, postgresImage)
-		if err != nil {
-			mu.Unlock()
-			require.NoError(t, err, "find running postgres container")
-		}
-
-		if !found {
-			if !bootstrapping.Swap(true) {
-				var err error
-				dockerCont, err = bootstrapPostgresContainer(t, docker)
-				if err != nil {
-					bootstrapping.Store(false)
-					cond.Broadcast()
-					mu.Unlock()
-					require.NoError(t, err, "bootstrapping postgres container")
-				}
-				bootstrapping.Store(false)
-				cond.Broadcast()
-				break
+			dockerCont, err := bootstrapPostgresContainer(t.Context(), docker)
+			postgresCond.L.Lock()
+			postgresBootstrapping = false
+			if err == nil {
+				postgresDockerCont = dockerCont
 			}
-			cond.Wait()
+
+			postgresCond.Broadcast()
+
+			if err != nil {
+				postgresCond.L.Unlock()
+				require.NoError(t, err)
+			}
+
 			continue
 		}
-		break
+
+		postgresCond.Wait()
 	}
-	mu.Unlock()
+	dockerCont := postgresDockerCont
+	postgresCond.L.Unlock()
 
 	port, err := docker.GetHostPort(dockerCont, postgresPort)
 	require.NoError(t, err)
@@ -216,15 +189,17 @@ func RunPostgresTestContainer(t testing.TB) DatastoreTestContainer {
 	return testCont
 }
 
-func bootstrapPostgresContainer(t testing.TB, docker *testutils.DockerClient) (*container.InspectResponse, error) {
-	t.Logf("No running container found for %s, creating a new one", postgresImage)
+// CleanupPostgresContainer removes the shared postgres test container.
+// It should be called from TestMain after all tests in a package have finished.
+func CleanupPostgresContainer() {
+	_ = cleanupDatastoreTestContainer(postgresContainerName)
+}
 
-	err := docker.PullImage(t.Context(), postgresImage)
-	if err != nil {
-		return nil, err
+func bootstrapPostgresContainer(ctx context.Context, docker *testutils.DockerClient) (*container.InspectResponse, error) {
+	if err := docker.PullImage(ctx, postgresImage); err != nil {
+		return nil, fmt.Errorf("pull postgres image: %w", err)
 	}
 
-	// Run container
 	contCfg := &container.Config{
 		Env: []string{
 			"POSTGRES_DB=" + postgresTemplateDB,
@@ -251,51 +226,59 @@ func bootstrapPostgresContainer(t testing.TB, docker *testutils.DockerClient) (*
 		ExtraHosts:      []string{"host.docker.internal:host-gateway"},
 	}
 
-	cont, err := docker.RunContainer(t.Context(), contCfg, hostCfg, containerName)
+	cont, err := docker.RunContainer(ctx, contCfg, hostCfg, postgresContainerName)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("run postgres container: %w", err)
 	}
+
+	needsCleanup := true
+	defer func() {
+		if needsCleanup {
+			cleanupCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+
+			_ = docker.RemoveContainer(cleanupCtx, cont.ID)
+		}
+	}()
 
 	port, err := docker.GetHostPort(cont, postgresPort)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get postgres host port: %w", err)
 	}
 
 	dbURI := postgresConnectionURI("localhost", port, postgresTemplateDB, postgresUsername, postgresPassword)
 	if err := waitForDatabase("pgx", dbURI); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("wait for postgres database: %w", err)
 	}
 
 	allowReplicationExec := client.ExecCreateOptions{
 		Cmd: []string{"sh", "-c", "echo 'host replication postgres all trust' >> /var/lib/postgresql/data/pg_hba.conf"},
 	}
-	err = docker.ExecCommand(t.Context(), cont.ID, allowReplicationExec)
-	if err != nil {
-		return nil, err
+	if err := docker.ExecCommand(ctx, cont.ID, allowReplicationExec); err != nil {
+		return nil, fmt.Errorf("allow postgres replication: %w", err)
 	}
 
 	reloadExec := client.ExecCreateOptions{
 		Cmd: []string{"psql", "-U", "postgres", "-c", "SELECT pg_reload_conf();"},
 	}
-	err = docker.ExecCommand(t.Context(), cont.ID, reloadExec)
-	if err != nil {
-		return nil, err
+	if err := docker.ExecCommand(ctx, cont.ID, reloadExec); err != nil {
+		return nil, fmt.Errorf("reload postgres config: %w", err)
 	}
-
 	if err := waitForDatabase("pgx", dbURI); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("wait for postgres database after config reload: %w", err)
 	}
 
 	db, err := goose.OpenDBWithDriver("pgx", dbURI)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("open postgres database: %w", err)
 	}
 	defer db.Close()
 
 	if err := goose.Up(db, assets.PostgresMigrationDir); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("apply postgres migrations: %w", err)
 	}
 
+	needsCleanup = false
 	return cont, nil
 }
 
@@ -357,10 +340,11 @@ exec docker-entrypoint.sh postgres -c hot_standby=on -c max_connections=200
 	hostCfg := &container.HostConfig{
 		AutoRemove:      true,
 		PublishAllPorts: true,
+		Tmpfs:           map[string]string{"/var/lib/postgresql/data": "size=2g"},
 		ExtraHosts:      []string{"host.docker.internal:host-gateway"},
 	}
 
-	contName := containerName + "-replica"
+	contName := postgresContainerName + "-replica"
 	cont, err := docker.RunContainer(t.Context(), contCfg, hostCfg, contName)
 	require.NoError(t, err, "run postgres container")
 
