@@ -140,13 +140,12 @@ type TupleKeyItemReceiver struct {
 }
 
 // Recv returns the next object identifier from the underlying iterator.
-// It returns false when the iterator is exhausted, closed, or the context
-// is cancelled.
+// It returns false when the iterator is exhausted or closed.
 func (r *TupleKeyItemReceiver) Recv(ctx context.Context) (Item, bool) {
 	var item Item
 
 	for {
-		if r.closed.Load() || ctx.Err() != nil {
+		if r.closed.Load() {
 			return item, false
 		}
 		t, err := r.itr.Next(ctx)
