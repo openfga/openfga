@@ -24,7 +24,7 @@ jobs:
     steps:
       - name: Check if PR author is a maintainer
         run: |
-          pr_author="${{ github.event.pull_request.user.login }}"
+          pr_author="${GITHUB_EVENT_PULL_REQUEST_USER_LOGIN}"
           permission=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
             "https://api.github.com/repos/${{ github.repository }}/collaborators/$pr_author/permission" | jq -r .permission)
 
@@ -34,6 +34,8 @@ jobs:
             echo "$pr_author is NOT a maintainer. Exiting..."
             exit 1
           fi
+        env:
+          GITHUB_EVENT_PULL_REQUEST_USER_LOGIN: ${{ github.event.pull_request.user.login }}
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: Create new tag
@@ -59,7 +61,7 @@ jobs:
             tag_name="v$tag_name"
           fi
           echo "Creating a new tag $tag_name..."
-          SHA=${{ github.event.pull_request.merge_commit_sha }}
+          SHA=${GITHUB_EVENT_PULL_REQUEST_MERGE_COMMIT_SHA}
           response=$(curl -s -o response.json -w "%{http_code}" -X POST -H "Authorization: token ${{ secrets.GORELEASER_GITHUB_TOKEN }}" \
             -d "{\"ref\":\"refs/tags/$tag_name\", \"sha\":\"$SHA\"}" \
             https://api.github.com/repos/${{ github.repository }}/git/refs)
@@ -70,3 +72,5 @@ jobs:
           else
             cat response.json
           fi
+        env:
+          GITHUB_EVENT_PULL_REQUEST_MERGE_COMMIT_SHA: ${{ github.event.pull_request.merge_commit_sha }}
