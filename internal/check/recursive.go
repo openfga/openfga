@@ -92,6 +92,13 @@ func (s *Recursive) execute(ctx context.Context, req *Request, edge *authzGraph.
 	idsFromUser := make(map[string]struct{})
 	defer iterator.Drain(leftChan)
 
+	defer func() {
+		span.SetAttributes(
+			attribute.Int("ids_from_user", len(idsFromUser)),
+			attribute.Int("ids_from_object", len(idsFromObject)),
+		)
+	}()
+
 	// NOTE: This loop initializes the terminal type and the first level of depth as this is a breadth first traversal.
 	// To maintain simplicity the terminal type will be fully loaded, but it could arguably be loaded async.
 	var err error
@@ -151,10 +158,6 @@ func (s *Recursive) execute(ctx context.Context, req *Request, edge *authzGraph.
 		}
 	}
 
-	span.SetAttributes(
-		attribute.Int("ids_from_user", len(idsFromUser)),
-		attribute.Int("ids_from_object", len(idsFromObject)),
-	)
 	res, errMatch := s.recursiveMatch(ctx, req, edge, recursiveType, idsFromUser, idsFromObject)
 	if errMatch != nil {
 		return res, errMatch
