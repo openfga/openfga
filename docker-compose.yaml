@@ -48,8 +48,3 @@ services:
       - "8081:8081" #grpc
       - "3000:3000" #playground
       - "2112:2112" #prometheus metrics
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/healthz || exit 1"]
-      interval: 5s
-      timeout: 30s
-      retries: 3
