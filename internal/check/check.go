@@ -237,7 +237,12 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, edges []
 
 // reduce as a logical union operation (exit the moment we have a single true).
 func (r *Resolver) ResolveUnion(ctx context.Context, req *Request, node *authzGraph.WeightedAuthorizationModelNode, visited *sync.Map) (resp *Response, err error) {
+	ctx, span := tracer.Start(ctx, "ResolveUnion")
+	defer span.End()
+	span.SetAttributes(attribute.String("tuple_key", req.GetTupleString()))
+
 	if res, ok := r.isCached(req.GetConsistency(), req.GetCacheKey()); ok {
+		span.SetAttributes(attribute.Bool("cached", true))
 		return res, nil
 	}
 
@@ -467,10 +472,15 @@ func (r *Resolver) ResolveRecursive(ctx context.Context, req *Request, edge *aut
 // reduce as a logical intersection operation (exit the moment we have a single false)
 // should panic if a single handler returns nil.
 func (r *Resolver) ResolveIntersection(ctx context.Context, req *Request, node *authzGraph.WeightedAuthorizationModelNode) (*Response, error) {
+	ctx, span := tracer.Start(ctx, "ResolveIntersection")
+	defer span.End()
+	span.SetAttributes(attribute.String("tuple_key", req.GetTupleString()))
+
 	edges, ok := r.model.GetEdgesFromNode(node)
 	if !ok {
 		return nil, ErrPanicRequest
 	}
+	span.SetAttributes(attribute.Int("num_edges", len(edges)))
 
 	ctx, cancel := context.WithCancel(ctx)
 	out := make(chan ResponseMsg, len(edges))
@@ -527,6 +537,10 @@ func (r *Resolver) ResolveIntersection(ctx context.Context, req *Request, node *
 // reduce as a logical exclusion operation
 // if base is false, short circuit.
 func (r *Resolver) ResolveExclusion(ctx context.Context, req *Request, node *authzGraph.WeightedAuthorizationModelNode) (*Response, error) {
+	ctx, span := tracer.Start(ctx, "ResolveExclusion")
+	defer span.End()
+	span.SetAttributes(attribute.String("tuple_key", req.GetTupleString()))
+
 	edges, ok := r.model.GetEdgesFromNode(node)
 	if !ok {
 		return nil, ErrPanicRequest
