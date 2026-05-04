@@ -173,12 +173,12 @@ func buildEdgeCacheKey(modelID string, req *Request, edge *authzGraph.WeightedAu
 
 func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, edges []*authzGraph.WeightedAuthorizationModelEdge, visited *sync.Map) (*Response, error) {
 	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
 
 	out := make(chan ResponseMsg, len(edges))
 	var pool errgroup.Group
 	pool.SetLimit(r.concurrencyLimit)
 	defer func() {
+		cancel()
 		_ = pool.Wait()
 		close(out)
 	}()
