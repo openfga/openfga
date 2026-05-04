@@ -96,6 +96,8 @@ const (
 	DefaultSharedIteratorMaxAdmissionTime = 10 * time.Second
 	DefaultSharedIteratorMaxIdleTime      = 1 * time.Second
 
+	DefaultCacheTTLJitterPercentage = 0
+
 	DefaultPlannerEvictionThreshold = 0
 	DefaultPlannerCleanupInterval   = 0
 
@@ -458,6 +460,7 @@ type Config struct {
 	CheckIteratorCache            IteratorCacheConfig
 	CheckQueryCache               CheckQueryCache
 	CacheController               CacheControllerConfig
+	CacheTTLJitterPercentage      uint32
 	CheckDispatchThrottling       DispatchThrottlingConfig
 	ListObjectsDispatchThrottling DispatchThrottlingConfig
 	ListUsersDispatchThrottling   DispatchThrottlingConfig
@@ -741,6 +744,9 @@ func (cfg *Config) verifyCacheConfig() error {
 	if cfg.CacheController.Enabled && cfg.CacheController.TTL <= 0 {
 		return errors.New("'cacheController.ttl' must be greater than zero")
 	}
+	if cfg.CacheTTLJitterPercentage > 100 {
+		return errors.New("'cacheTTLJitterPercentage' must be between 0 and 100")
+	}
 	return nil
 }
 
@@ -903,6 +909,7 @@ func DefaultConfig() *Config {
 			Enabled: DefaultCacheControllerConfigEnabled,
 			TTL:     DefaultCacheControllerConfigTTL,
 		},
+		CacheTTLJitterPercentage: DefaultCacheTTLJitterPercentage,
 		CheckDispatchThrottling: DispatchThrottlingConfig{
 			Enabled:      DefaultCheckDispatchThrottlingEnabled,
 			Frequency:    DefaultCheckDispatchThrottlingFrequency,

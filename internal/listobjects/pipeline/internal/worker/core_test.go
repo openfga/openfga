@@ -145,7 +145,7 @@ func TestCore_Message_SendsToListener(t *testing.T) {
 		Pool:      newPool(),
 	}
 	output := core.Subscribe(nil, chunkSize)
-	core.Broadcast(context.Background(), worker.NewValueReceiver("a", "b", "c"))
+	core.Broadcast(context.Background(), worker.NewSliceReceiver([]string{"a", "b", "c"}))
 	core.Cleanup()
 
 	assert.Equal(t, []string{"a", "b", "c"}, collectOutput(output))
@@ -158,7 +158,7 @@ func TestCore_Message_ChunksOutput(t *testing.T) {
 	}
 	output := core.Subscribe(nil, chunkSize)
 
-	core.Broadcast(context.Background(), worker.NewValueReceiver("a", "b", "c", "d", "e"))
+	core.Broadcast(context.Background(), worker.NewSliceReceiver([]string{"a", "b", "c", "d", "e"}))
 	core.Cleanup()
 
 	messages := collectMessages(output)
@@ -176,7 +176,7 @@ func TestCore_Message_BroadcastsToMultipleListeners(t *testing.T) {
 	out1 := core.Subscribe(nil, chunkSize)
 	out2 := core.Subscribe(nil, chunkSize)
 
-	core.Broadcast(context.Background(), worker.NewValueReceiver("x", "y"))
+	core.Broadcast(context.Background(), worker.NewSliceReceiver([]string{"x", "y"}))
 	core.Cleanup()
 
 	assert.Equal(t, []string{"x", "y"}, collectOutput(out1))
@@ -196,7 +196,7 @@ func TestCore_Message_CallsMsgFunc(t *testing.T) {
 	}
 	output := core.Subscribe(nil, chunkSize)
 
-	core.Broadcast(context.Background(), worker.NewValueReceiver("a", "b", "c"))
+	core.Broadcast(context.Background(), worker.NewSliceReceiver([]string{"a", "b", "c"}))
 	core.Cleanup()
 
 	_ = collectOutput(output)
@@ -217,7 +217,7 @@ func TestCore_Message_StopsOnCancelledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	core.Broadcast(ctx, worker.NewValueReceiver("a", "b", "c"))
+	core.Broadcast(ctx, worker.NewSliceReceiver([]string{"a", "b", "c"}))
 	core.Cleanup()
 
 	assert.Empty(t, collectOutput(output))

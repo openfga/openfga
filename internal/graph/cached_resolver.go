@@ -60,10 +60,11 @@ func (c *CheckResponseCacheEntry) CacheEntityType() string {
 // CachedCheckResolver attempts to resolve check sub-problems via prior computations before
 // delegating the request to some underlying CheckResolver.
 type CachedCheckResolver struct {
-	delegate CheckResolver
-	cache    storage.InMemoryCache[any]
-	cacheTTL time.Duration
-	logger   logger.Logger
+	delegate         CheckResolver
+	cache            storage.InMemoryCache[any]
+	cacheTTL         time.Duration
+	jitterPercentage uint32
+	logger           logger.Logger
 	// allocatedCache is used to denote whether the cache is allocated by this struct.
 	// If so, CachedCheckResolver is responsible for cleaning up.
 	allocatedCache bool
@@ -88,6 +89,15 @@ func WithCacheTTL(ttl time.Duration) CachedCheckResolverOpt {
 func WithExistingCache(cache storage.InMemoryCache[any]) CachedCheckResolverOpt {
 	return func(ccr *CachedCheckResolver) {
 		ccr.cache = cache
+	}
+}
+
+// WithJitterPercentage sets the jitter percentage for cache TTLs.
+// A value of 10 means up to 10% of the base TTL is added as random jitter
+// to each cache entry, spreading out expirations.
+func WithJitterPercentage(pct uint32) CachedCheckResolverOpt {
+	return func(ccr *CachedCheckResolver) {
+		ccr.jitterPercentage = pct
 	}
 }
 
@@ -207,7 +217,7 @@ func (c *CachedCheckResolver) ResolveCheck(
 
 	clonedResp := resp.clone()
 
-	c.cache.Set(cacheKey, &CheckResponseCacheEntry{LastModified: time.Now(), CheckResponse: clonedResp}, c.cacheTTL)
+	c.cache.Set(cacheKey, &CheckResponseCacheEntry{LastModified: time.Now(), CheckResponse: clonedResp}, storage.JitteredTTL(c.cacheTTL, c.jitterPercentage))
 	return resp, nil
 }
 

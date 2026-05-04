@@ -3,14 +3,16 @@ package pipeline
 import (
 	"context"
 	"errors"
-	"iter"
-	"strings"
 	"sync"
 
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	weightedGraph "github.com/openfga/language/pkg/go/graph"
 
+	"github.com/openfga/openfga/internal/concurrency"
+	"github.com/openfga/openfga/internal/containers/mpsc"
 	"github.com/openfga/openfga/internal/listobjects/pipeline/internal/worker"
 )
 
@@ -43,7 +45,6 @@ var (
 	edgeTypeTTULogical    = weightedGraph.TTULogicalEdge
 
 	emptyReceiver = worker.NewEmptyReceiver[Item]()
-	emptySequence = func(func(Item) bool) {}
 
 	nodeTypeLogicalDirectGrouping   = weightedGraph.LogicalDirectGrouping
 	nodeTypeLogicalTTUGrouping      = weightedGraph.LogicalTTUGrouping
@@ -60,11 +61,14 @@ const (
 )
 
 var (
+	ErrInvalidStore          = errors.New("store is nil")
+	ErrInvalidGraph          = errors.New("graph is nil")
 	ErrInvalidBufferCapacity = errors.New("buffer capacity must be a positive number")
 	ErrInvalidChunkSize      = errors.New("chunk size must be greater than zero")
 	ErrInvalidNumProcs       = errors.New("process number must be greater than zero")
 	ErrInvalidObject         = errors.New("invalid object")
-	ErrInvalidUser           = errors.New("invalid user")
+	ErrInvalidSubject        = errors.New("invalid subject")
+	ErrUnreachable           = errors.New("no path exists")
 )
 
 // ObjectQuery describes a reverse lookup: find objects of ObjectType where
@@ -76,46 +80,64 @@ type ObjectQuery struct {
 	Conditions []string
 }
 
-// ObjectReader reads relationship tuples from storage.
-type ObjectReader interface {
+// ObjectStore reads relationship tuples from storage.
+type ObjectStore interface {
 	Read(context.Context, ObjectQuery) Receiver[Item]
 }
 
 // Spec identifies the target of a reverse expansion query.
 type Spec struct {
-	ObjectType string
-	Relation   string
-	User       string
+	ObjectType     string
+	ObjectRelation string
+	SubjectType    string
+	SubjectID      string
 }
 
-// Pipeline holds the dependencies and configuration for reverse expansion queries.
-type Pipeline struct {
-	graph  *Graph
-	reader ObjectReader
+// Builder holds infrastructure configuration for constructing Pipelines.
+// A single Builder can produce multiple Pipelines concurrently.
+type Builder struct {
+	store  ObjectStore
 	config Config
 }
 
-// New creates a Pipeline with the given graph and reader.
-func New(graph *Graph, reader ObjectReader, options ...Option) *Pipeline {
-	var pl Pipeline
-	pl.graph = graph
-	pl.reader = reader
-	pl.config = DefaultConfig()
-
-	for _, o := range options {
-		o(&pl.config)
+// NewBuilder returns a Builder that uses store for tuple reads.
+// Options configure tuning parameters (buffer size, chunk size, concurrency).
+func NewBuilder(store ObjectStore, options ...Option) (*Builder, error) {
+	if store == nil {
+		return nil, ErrInvalidStore
 	}
-	return &pl
+
+	config := DefaultConfig()
+	for _, o := range options {
+		o(&config)
+	}
+	if err := config.Validate(); err != nil {
+		return nil, err
+	}
+	return &Builder{store: store, config: config}, nil
+}
+
+// Pipeline holds the state for a single reverse expansion query.
+type Pipeline struct {
+	output  worker.Sender
+	workers map[string]worker.Worker
+	errs    *mpsc.Accumulator[error]
+	wg      *sync.WaitGroup
+	cancel  context.CancelFunc
+	buffer  []string
+	pos     int
+	err     error
+	closed  bool
 }
 
 // createInterpreter returns an Interpreter that dispatches to the
 // appropriate edge handler (direct, TTU, or identity) based on edge type.
-func (pl *Pipeline) createInterpreter() worker.Interpreter {
-	directEdgeHandler := directEdgeHandler{pl.reader}
+func createInterpreter(graph *Graph, store ObjectStore) worker.Interpreter {
+	directEdgeHandler := directEdgeHandler{store}
 
 	ttuEdgeHandler := ttuEdgeHandler{
-		reader: pl.reader,
-		graph:  pl.graph,
+		reader: store,
+		graph:  graph,
 	}
 
 	var identityEdgeHandler identityEdgeHandler
@@ -127,49 +149,28 @@ func (pl *Pipeline) createInterpreter() worker.Interpreter {
 	}
 }
 
-// path carries state through recursive worker construction.
-type path struct {
-	objectNode     *Node
-	userNode       *Node
-	userIdentifier string
-	cycleGroup     *worker.CycleGroup
-	errors         chan error
-	interpreter    worker.Interpreter
-	pool           *worker.MessagePool
-}
-
-// resolve recursively constructs a worker for the given graph node,
-// wiring it to upstream workers for each outgoing edge. Workers are
-// memoized in the workers map so each node is built at most once.
-func (pl *Pipeline) resolve(p path, workers map[*Node]worker.Worker) worker.Worker {
-	if w, ok := workers[p.objectNode]; ok {
-		return w
-	}
-
-	// Create cycle group on first encounter with a cyclical path.
-	// All workers in the cycle will share this group for coordinated shutdown.
-	if p.cycleGroup == nil {
-		p.cycleGroup = worker.NewCycleGroup()
-	}
-
+// createWorker returns a Worker appropriate for node's type, configured
+// with the given core and cycle group. The core is passed by value so
+// that each worker gets independent listener/sender slices while sharing
+// the pool, error channel, and interpreter via pointers.
+func createWorker(node *Node, core worker.Core, group *worker.CycleGroup) worker.Worker {
 	var w worker.Worker
+	core.Label = node.GetUniqueLabel()
 
-	var core worker.Core
-	core.Label = p.objectNode.GetUniqueLabel()
-	core.Errors = p.errors
-	core.Interpreter = p.interpreter
-	core.ChunkSize = pl.config.ChunkSize
-	core.NumProcs = pl.config.NumProcs
-	core.Pool = p.pool
-
-	switch p.objectNode.GetNodeType() {
-	case nodeTypeSpecificType,
-		nodeTypeSpecificTypeAndRelation,
-		nodeTypeSpecificTypeWildcard,
+	switch node.GetNodeType() {
+	case nodeTypeSpecificType:
+		var terminal worker.Terminal
+		terminal.Core = &core
+		w = &terminal
+	case nodeTypeSpecificTypeWildcard:
+		var wildcard worker.Wildcard
+		wildcard.Core = &core
+		w = &wildcard
+	case nodeTypeSpecificTypeAndRelation,
 		nodeTypeLogicalDirectGrouping,
 		nodeTypeLogicalTTUGrouping:
 		var basic worker.Basic
-		basic.Membership = p.cycleGroup.Join(core.Label)
+		basic.Membership = group.Join(core.Label)
 		basic.Core = &core
 		basic.MsgFunc = func(m *worker.Message, e *worker.Edge) {
 			if worker.IsCyclical(e) {
@@ -185,7 +186,7 @@ func (pl *Pipeline) resolve(p path, workers map[*Node]worker.Worker) worker.Work
 		}
 		w = &basic
 	case nodeTypeOperator:
-		switch p.objectNode.GetLabel() {
+		switch node.GetLabel() {
 		case weightedGraph.IntersectionOperator:
 			var intersection worker.Intersection
 			intersection.Core = &core
@@ -196,7 +197,7 @@ func (pl *Pipeline) resolve(p path, workers map[*Node]worker.Worker) worker.Work
 			w = &difference
 		case weightedGraph.UnionOperator:
 			var basic worker.Basic
-			basic.Membership = p.cycleGroup.Join(core.Label)
+			basic.Membership = group.Join(core.Label)
 			basic.Core = &core
 			basic.MsgFunc = func(m *worker.Message, e *worker.Edge) {
 				if worker.IsCyclical(e) {
@@ -217,312 +218,298 @@ func (pl *Pipeline) resolve(p path, workers map[*Node]worker.Worker) worker.Work
 	default:
 		panic("unsupported node type for pipeline resolver")
 	}
-
-	workers[p.objectNode] = w
-
-	// Leaf nodes matching the query user are seeded with an initial message
-	// containing the user identifier. This bootstraps the pipeline: workers
-	// process this seed and propagate results toward the root.
-	switch p.objectNode.GetNodeType() {
-	case nodeTypeSpecificType, nodeTypeSpecificTypeAndRelation:
-		if p.objectNode == p.userNode {
-			objectType, _, _ := strings.Cut(p.userNode.GetLabel(), "#")
-			var value string
-
-			switch p.userNode.GetNodeType() {
-			case nodeTypeSpecificTypeWildcard:
-				// the ':*' is part of the type
-			case nodeTypeSpecificType, nodeTypeSpecificTypeAndRelation:
-				value = ":" + p.userIdentifier
-			}
-			fullObject := objectType + value
-			items := []string{fullObject}
-			m := worker.Message{
-				Value: items,
-			}
-			medium := worker.NewChannelMedium(nil, 1)
-			medium.Send(context.Background(), &m)
-			medium.Close()
-			w.Listen(medium)
-		}
-	case nodeTypeSpecificTypeWildcard:
-		label := p.objectNode.GetLabel()
-		typePart, _, _ := strings.Cut(label, ":")
-
-		if p.objectNode == p.userNode || typePart == p.userNode.GetLabel() {
-			fullObject := typePart + ":*"
-			items := []string{fullObject}
-			m := worker.Message{
-				Value: items,
-			}
-			medium := worker.NewChannelMedium(nil, 1)
-			medium.Send(context.Background(), &m)
-			medium.Close()
-			w.Listen(medium)
-		}
-	}
-
-	edges, ok := pl.graph.GetEdgesFromNode(p.objectNode)
-	if !ok {
-		return w
-	}
-
-	for _, edge := range edges {
-		nextPath := p
-
-		// Only cyclical edges continue sharing the cycle group.
-		// Non-cyclical edges start fresh, each worker gets its own single-member group.
-		if !worker.IsCyclical(edge) {
-			nextPath.cycleGroup = nil
-		}
-
-		nextPath.objectNode = edge.GetTo()
-
-		to := pl.resolve(nextPath, workers)
-		w.Listen(to.Subscribe(edge, pl.config.BufferCapacity))
-	}
 	return w
 }
 
-// userResolution holds the resolved graph node and identifier for a user
-// string like "user:alice" or "group:eng#member".
-type userResolution struct {
-	userNode       *Node
-	userIdentifier string
+// stacker is an intrusive linked-list node used as the DFS stack during
+// pipeline construction.
+type stacker struct {
+	node  *Node
+	edge  *Edge
+	group *worker.CycleGroup
+	next  *stacker
 }
 
-// resolveUser parses a user string into its graph node and bare identifier.
-// It returns ErrInvalidUser if the user's type is not present in the graph.
-func (pl *Pipeline) resolveUser(u string) (*userResolution, error) {
-	user, userRelation, exists := strings.Cut(u, "#")
-	userType, userIdentifier, _ := strings.Cut(user, ":")
-
-	if exists {
-		userType += "#" + userRelation
+// Build constructs a Pipeline for the given graph and spec, starts all
+// workers, injects the subject identifier, and closes the input stream.
+// The caller must call Close on the returned Pipeline to avoid leaking
+// goroutines.
+func (b *Builder) Build(
+	ctx context.Context,
+	graph *Graph,
+	spec Spec,
+) (*Pipeline, error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
 	}
 
-	userNode, ok := pl.graph.GetNodeByID(userType)
-	if !ok {
-		return nil, ErrInvalidUser
+	if graph == nil {
+		return nil, ErrInvalidGraph
 	}
 
-	return &userResolution{userNode, userIdentifier}, nil
-}
+	config := b.config
 
-// resolveObjectNode looks up the graph node for the given type#relation pair.
-// It returns ErrInvalidObject if the node is not present in the graph.
-func (pl *Pipeline) resolveObjectNode(objectType, objectRelation string) (*Node, error) {
-	nodeID := objectType + "#" + objectRelation
-	node, ok := pl.graph.GetNodeByID(nodeID)
+	_, span := tracer.Start(ctx, "pipeline.Build", trace.WithAttributes(
+		attribute.String("object_type", spec.ObjectType),
+		attribute.String("object_relation", spec.ObjectRelation),
+		attribute.String("subject_type", spec.SubjectType),
+		attribute.String("subject_id", spec.SubjectID),
+		attribute.Int("buffer_capacity", config.BufferCapacity),
+		attribute.Int("chunk_size", config.ChunkSize),
+		attribute.Int("num_procs", config.NumProcs),
+	))
+	defer span.End()
+
+	buffer := make([]string, 0, config.ChunkSize)
+	errs := mpsc.NewAccumulator[error]()
+
+	var core worker.Core
+	core.Interpreter = createInterpreter(graph, b.store)
+	core.Errors = errs
+	core.ChunkSize = config.ChunkSize
+	core.NumProcs = config.NumProcs
+	core.Pool = new(worker.MessagePool)
+
+	workers := make(map[string]worker.Worker)
+	visited := make(map[*Edge]struct{})
+
+	object := spec.ObjectType + "#" + spec.ObjectRelation
+	subject := spec.SubjectType
+	wildcard := spec.SubjectType + ":*"
+
+	n, ok := graph.GetNodeByID(object)
 	if !ok {
 		return nil, ErrInvalidObject
 	}
-	return node, nil
-}
 
-// expansion holds the fully constructed worker graph, the shared error
-// channel, and the root worker's output sender.
-type expansion struct {
-	workers map[*Node]worker.Worker
-	errors  chan error
-	results worker.Sender
-}
-
-// buildExpansion constructs the full worker graph for a reverse expansion
-// query, seeds leaf workers with the user identifier, and returns an
-// expansion ready to be executed.
-func (pl *Pipeline) buildExpansion(objectNode, userNode *Node, userIdentifier string) *expansion {
-	interpreter := pl.createInterpreter()
-	workers := make(map[*Node]worker.Worker)
-	chError := make(chan error, pl.config.BufferCapacity)
-
-	p := path{
-		objectNode:     objectNode,
-		userNode:       userNode,
-		userIdentifier: userIdentifier,
-		errors:         chError,
-		interpreter:    interpreter,
-		pool:           new(worker.MessagePool),
+	_, ok = graph.GetNodeByID(subject)
+	if !ok {
+		return nil, ErrInvalidSubject
 	}
-
-	pl.resolve(p, workers)
 
 	var totalListeners int
-	for _, w := range workers {
-		totalListeners += w.Len()
+
+	var root stacker
+	root.node = n
+
+	stack := &root
+
+	for stack != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		current := stack
+		stack = stack.next
+
+		label := current.node.GetUniqueLabel()
+
+		if current.edge != nil {
+			key := current.edge
+			if _, ok := visited[key]; ok {
+				continue
+			}
+			visited[key] = struct{}{}
+
+			if _, ok := key.GetWeight(subject); !ok {
+				if _, ok := key.GetWeight(wildcard); !ok {
+					// No path exists from this edge to the subject type, so there
+					// is no possibility of it producing results.
+					if w, ok := workers[key.GetFrom().GetUniqueLabel()]; ok {
+						// The worker still needs a sender for this edge. Workers such as
+						// Difference expect a specific number of senders in order to operate.
+						// Therefore, the worker is subscribed to a noop sender.
+						w.Listen(worker.NewNoopMedium(key))
+					}
+					continue
+				}
+			}
+		}
+
+		var w worker.Worker
+		var ok bool
+
+		w, ok = workers[label]
+		if !ok {
+			if current.group == nil {
+				current.group = worker.NewCycleGroup()
+			}
+			w = createWorker(current.node, core, current.group)
+			workers[label] = w
+		}
+
+		if current.edge != nil {
+			if subscriber, ok := workers[current.edge.GetFrom().GetUniqueLabel()]; ok {
+				subscriber.Listen(w.Subscribe(current.edge, config.BufferCapacity))
+				totalListeners++
+			}
+		}
+
+		edges, ok := graph.GetEdgesFromNode(current.node)
+		if !ok {
+			continue
+		}
+
+		for i := len(edges) - 1; i >= 0; i-- {
+			var newStack stacker
+			newStack.node = edges[i].GetTo()
+			newStack.edge = edges[i]
+			if worker.IsCyclical(edges[i]) {
+				newStack.group = current.group
+			}
+			newStack.next = stack
+			stack = &newStack
+		}
 	}
 
-	worker.InitMessagePool(p.pool, pl.config.ChunkSize, pl.config.BufferCapacity*totalListeners)
+	// Size by buffer capacity multiplied by the number of actual listeners.
+	// The additional one is included for the pipeline's output channel.
+	worker.InitMessagePool(core.Pool, config.ChunkSize, config.BufferCapacity*(totalListeners+1))
 
-	objectWorker, ok := workers[objectNode]
+	objectWorker, ok := workers[object]
 	if !ok {
-		panic("unable to find source worker; if you see this, something is broken in the code.")
+		return nil, ErrInvalidObject
+	}
+	// Bind the pipeline's output to the object worker.
+	output := objectWorker.Subscribe(nil, config.BufferCapacity)
+
+	subjectWorker, canReachSubject := workers[subject]
+	_, canReachWildcard := workers[wildcard]
+
+	if !canReachSubject && !canReachWildcard {
+		return nil, ErrUnreachable
 	}
 
-	return &expansion{
-		workers: workers,
-		errors:  chError,
-		results: objectWorker.Subscribe(nil, pl.config.BufferCapacity),
+	if canReachSubject {
+		input := worker.NewStandardMedium(nil, 1)
+		subjectWorker.Listen(input)
+
+		if spec.SubjectID != "" {
+			msg := worker.Message{Value: []string{spec.SubjectID}}
+			if !input.Send(ctx, &msg) {
+				msg.Done()
+			}
+		}
+		input.Close()
 	}
-}
 
-// workerLifecycle manages the goroutines running each worker's Execute method.
-type workerLifecycle struct {
-	wg *sync.WaitGroup
-}
-
-// Wait blocks until all worker goroutines have returned.
-func (wl *workerLifecycle) Wait() {
-	wl.wg.Wait()
-}
-
-// startWorkerLifecycle launches a goroutine for each worker's Execute method
-// and returns a handle that can be used to wait for all of them to finish.
-func (pl *Pipeline) startWorkerLifecycle(ctx context.Context, workers map[*Node]worker.Worker) *workerLifecycle {
 	var wg sync.WaitGroup
 
-	for _, worker := range workers {
+	ctx, cancel := context.WithCancel(ctx)
+
+	for _, w := range workers {
 		wg.Go(func() {
-			worker.Execute(ctx)
+			var err error
+			defer func(err *error) {
+				if err != nil && *err != nil {
+					errs.Send(*err)
+				}
+			}(&err)
+			defer concurrency.RecoverFromPanic(&err)
+			w.Execute(ctx)
 		})
 	}
 
-	return &workerLifecycle{&wg}
+	return &Pipeline{
+		output:  output,
+		workers: workers,
+		wg:      &wg,
+		cancel:  cancel,
+		errs:    errs,
+		buffer:  buffer,
+	}, nil
 }
 
-// iterateOverResults starts all workers, drains the root worker's output
-// and the error channel into the yield callback, and ensures all
-// goroutines are cleaned up on return.
-func (pl *Pipeline) iterateOverResults(
-	ctx context.Context,
-	p *expansion,
-	yield func(Item) bool,
-) {
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
+// Recv returns the next result from the pipeline. It is nil-safe and
+// returns ("", false) immediately if the pipeline is nil or has already
+// encountered an error. Otherwise it blocks until a value is available,
+// draining any buffered values before checking for new errors or output.
+// When an error is received from a worker, it is stored and the pipeline
+// is automatically closed. When the output stream is exhausted without
+// context cancellation, the pipeline is also closed. On context
+// cancellation, Recv returns ("", false) without closing, leaving that
+// responsibility to the caller. After Recv returns ("", false), call
+// Err to distinguish between clean exhaustion and failure.
+func (p *Pipeline) Recv(ctx context.Context) (string, bool) {
+	if p == nil || p.err != nil {
+		return "", false
+	}
 
-	var wgErr sync.WaitGroup
-	defer wgErr.Wait()
-
-	lifecycle := pl.startWorkerLifecycle(ctx, p.workers)
-
-	var wg sync.WaitGroup
-
-	chOutput := make(chan Item)
-
-	wgErr.Add(1)
-	go func(ch chan Item) {
-		defer wgErr.Done()
-		defer close(ch)
-		defer wg.Wait()
-
-	ErrorLoop:
-		for err := range p.errors {
-			select {
-			case ch <- Item{Err: err}:
-			case <-ctx.Done():
-				break ErrorLoop
-			}
-		}
-	}(chOutput)
-
-	wg.Add(1)
-	go func(ch chan<- Item) {
-		defer wg.Done()
-		defer close(p.errors)
-		defer lifecycle.Wait()
-
-		buffer := make([]string, 0, pl.config.ChunkSize)
-
-	BufferLoop:
-		for {
-			if len(buffer) == 0 {
-				msg, ok := p.results.Recv(ctx)
-				if !ok {
-					break
-				}
-
-				buffer = append(buffer, msg.Value...)
-				msg.Done()
-				continue
-			}
-
-			for _, item := range buffer {
-				select {
-				case ch <- Item{Value: item}:
-				case <-ctx.Done():
-					break BufferLoop
-				}
-			}
-			clear(buffer[:cap(buffer)])
-			buffer = buffer[:0]
-		}
-	}(chOutput)
-
-OutputLoop:
 	for {
-		select {
-		case obj, ok := <-chOutput:
-			if !ok {
-				break OutputLoop
-			}
-
-			if !yield(obj) {
-				cancel()
-				return
-			}
-		case <-ctx.Done():
-			break OutputLoop
-		}
-	}
-
-	// Context cancellation during iteration means results may be incomplete.
-	// Yield an error item to signal partial results to the caller.
-	if ctx.Err() != nil {
-		yield(Item{Err: ctx.Err()})
-	}
-}
-
-// streamResults builds the worker graph and returns an iter.Seq that, when
-// iterated, executes the pipeline and streams results to the caller.
-func (pl *Pipeline) streamResults(ctx context.Context, objectNode, userNode *Node, userIdentifier string) iter.Seq[Item] {
-	return func(yield func(Item) bool) {
-		_, span := tracer.Start(ctx, "pipeline.build")
-		expansion := pl.buildExpansion(objectNode, userNode, userIdentifier)
-		span.End()
-
-		ctx, span := tracer.Start(ctx, "pipeline.iterate")
-		defer span.End()
-
-		// Early exit before any goroutines are created avoids cleanup overhead.
 		if ctx.Err() != nil {
-			yield(Item{Err: ctx.Err()})
-			return
+			return "", false
 		}
 
-		pl.iterateOverResults(ctx, expansion, yield)
+		// Drain buffered values before checking for errors. Values in
+		// the buffer were produced before any concurrently arriving
+		// error, so delivering them first preserves ordering.
+		if p.pos < len(p.buffer) {
+			value := p.buffer[p.pos]
+			p.pos++
+			return value, true
+		}
+		p.pos = 0
+		p.buffer = p.buffer[:0]
+
+		e, ok := p.errs.TryRecv()
+		if ok {
+			p.err = e
+			p.Close()
+			return "", false
+		}
+
+		msg, ok := p.output.Recv(ctx)
+		if !ok {
+			if ctx.Err() == nil {
+				p.Close()
+			}
+			return "", false
+		}
+		p.buffer = append(p.buffer, msg.Value...)
+		msg.Done()
 	}
 }
 
-// Expand returns a streaming iterator of objects accessible to the user specified in spec.
-// Iteration can be stopped early; the pipeline will clean up resources automatically.
-func (pl *Pipeline) Expand(ctx context.Context, spec Spec) (iter.Seq[Item], error) {
-	if err := pl.config.Validate(); err != nil {
-		return emptySequence, err
+// Err returns the first error encountered during pipeline execution,
+// or nil if the pipeline completed successfully. It should be called
+// after Recv returns ("", false).
+func (p *Pipeline) Err() error {
+	return p.err
+}
+
+// Close cancels the pipeline context, drains any remaining output
+// messages, and waits for all workers to finish. It is nil-safe and
+// idempotent: subsequent calls after the first are no-ops. After
+// workers complete, it closes and drains the error accumulator,
+// storing the first non-context-cancellation error for retrieval
+// via Err. Close must be called to avoid leaking goroutines.
+func (p *Pipeline) Close() {
+	if p == nil || p.closed {
+		return
 	}
+	p.closed = true
 
-	ctx, span := tracer.Start(ctx, "pipeline.Query.Execute")
-	defer span.End()
+	p.cancel()
 
-	objectNode, err := pl.resolveObjectNode(spec.ObjectType, spec.Relation)
-	if err != nil {
-		return emptySequence, err
+	for {
+		msg, ok := p.output.Recv(context.Background())
+		if !ok {
+			break
+		}
+		msg.Done()
 	}
+	p.wg.Wait()
 
-	userRes, err := pl.resolveUser(spec.User)
-	if err != nil {
-		return emptySequence, err
+	p.errs.Close()
+
+	for {
+		e, ok := p.errs.TryRecv()
+		if !ok {
+			break
+		}
+		if p.err == nil &&
+			!errors.Is(e, context.Canceled) &&
+			!errors.Is(e, context.DeadlineExceeded) {
+			p.err = e
+		}
 	}
-
-	return pl.streamResults(ctx, objectNode, userRes.userNode, userRes.userIdentifier), nil
 }

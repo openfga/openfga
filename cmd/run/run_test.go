@@ -65,7 +65,9 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 
-	os.Exit(m.Run())
+	code := m.Run()
+	storagefixtures.CleanupPostgresContainer()
+	os.Exit(code)
 }
 
 func genCert(t *testing.T, template, parent *x509.Certificate, pub *rsa.PublicKey, priv *rsa.PrivateKey) (*x509.Certificate, []byte) {
@@ -1566,6 +1568,47 @@ requestDurationDispatchCountBuckets: [32,42]
 	require.Equal(t, 5*time.Second, cfg.CheckQueryCache.TTL)
 	require.Equal(t, []string{"33", "44"}, cfg.RequestDurationDatastoreQueryCountBuckets)
 	require.Equal(t, []string{"32", "42"}, cfg.RequestDurationDispatchCountBuckets)
+}
+
+func TestParseConfigCacheTTLJitterPercentageFromFlag(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+	util.PrepareTempConfigDir(t)
+
+	runCmd := NewRunCommand()
+	runCmd.RunE = func(cmd *cobra.Command, _ []string) error {
+		return nil
+	}
+
+	rootCmd := cmd.NewRootCommand()
+	rootCmd.AddCommand(runCmd)
+	rootCmd.SetArgs([]string{"run", "--cache-ttl-jitter-percentage", "17"})
+	require.NoError(t, rootCmd.Execute())
+
+	cfg, err := ReadConfig()
+	require.NoError(t, err)
+	require.Equal(t, uint32(17), cfg.CacheTTLJitterPercentage)
+}
+
+func TestParseConfigCacheTTLJitterPercentageFromEnv(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+	util.PrepareTempConfigDir(t)
+	t.Setenv("OPENFGA_CACHE_TTL_JITTER_PERCENTAGE", "18")
+
+	runCmd := NewRunCommand()
+	runCmd.RunE = func(cmd *cobra.Command, _ []string) error {
+		return nil
+	}
+
+	rootCmd := cmd.NewRootCommand()
+	rootCmd.AddCommand(runCmd)
+	rootCmd.SetArgs([]string{"run"})
+	require.NoError(t, rootCmd.Execute())
+
+	cfg, err := ReadConfig()
+	require.NoError(t, err)
+	require.Equal(t, uint32(18), cfg.CacheTTLJitterPercentage)
 }
 
 func TestRunCommandConfigIsMerged(t *testing.T) {

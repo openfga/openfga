@@ -5,6 +5,7 @@ import (
 	"errors"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -27,7 +28,7 @@ import (
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
-const cacheKeyDelimiter = "|"
+const cacheKeyDelimiter byte = '|'
 const cacheKeyPrefix = "c."
 
 var tracer = otel.Tracer("internal/check")
@@ -132,7 +133,7 @@ func (r *Resolver) ResolveCheck(ctx context.Context, req *Request) (*Response, e
 }
 
 func (r *Resolver) isCached(consistency openfgav1.ConsistencyPreference, key string) (*Response, bool) {
-	if consistency == openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY || r.lastCacheInvalidationTime.IsZero() {
+	if consistency == openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
 		return nil, false
 	}
 	v := r.cache.Get(key)
@@ -153,28 +154,31 @@ func buildEdgeCacheKey(modelID string, req *Request, edge *authzGraph.WeightedAu
 	keyBuilder := &strings.Builder{}
 	keyBuilder.WriteString(cacheKeyPrefix)
 	keyBuilder.WriteString(modelID)
-	keyBuilder.WriteString(cacheKeyDelimiter)
+	keyBuilder.WriteByte(cacheKeyDelimiter)
 	keyBuilder.WriteString(req.GetTupleKey().GetObject())
-	keyBuilder.WriteString(cacheKeyDelimiter)
+	keyBuilder.WriteByte(cacheKeyDelimiter)
 	keyBuilder.WriteString(req.GetTupleKey().GetUser())
-	keyBuilder.WriteString(cacheKeyDelimiter)
+	keyBuilder.WriteByte(cacheKeyDelimiter)
 	keyBuilder.WriteString(edge.GetRelationDefinition())
+	keyBuilder.WriteByte(cacheKeyDelimiter)
+	keyBuilder.WriteString(strconv.FormatInt(int64(edge.GetEdgeType()), 10))
+	keyBuilder.WriteByte(cacheKeyDelimiter)
+	keyBuilder.WriteString(edge.GetTo().GetUniqueLabel())
+	keyBuilder.WriteByte(cacheKeyDelimiter)
+	keyBuilder.WriteString(edge.GetTuplesetRelation())
+	keyBuilder.WriteByte(cacheKeyDelimiter)
 	keyBuilder.WriteString(req.GetInvariantCacheKey())
 	return keyBuilder.String()
 }
 
 func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, edges []*authzGraph.WeightedAuthorizationModelEdge, visited *sync.Map) (*Response, error) {
 	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	if res, ok := r.isCached(req.GetConsistency(), req.GetCacheKey()); ok {
-		return res, nil
-	}
 
 	out := make(chan ResponseMsg, len(edges))
 	var pool errgroup.Group
 	pool.SetLimit(r.concurrencyLimit)
 	defer func() {
+		cancel()
 		_ = pool.Wait()
 		close(out)
 	}()
@@ -219,8 +223,6 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, edges []
 
 			if msg.Res.GetAllowed() {
 				// Short-circuit: In a union, if any branch returns true, we can immediately return.
-				entry := &ResponseCacheEntry{Res: msg.Res, LastModified: time.Now()}
-				r.cache.Set(req.GetCacheKey(), entry, r.cacheTTL)
 				return msg.Res, nil
 			}
 		}
@@ -230,13 +232,23 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, edges []
 		return nil, err
 	}
 	res := &Response{Allowed: false}
-	entry := &ResponseCacheEntry{Res: res, LastModified: time.Now()}
-	r.cache.Set(req.GetCacheKey(), entry, r.cacheTTL)
 	return res, nil
 }
 
 // reduce as a logical union operation (exit the moment we have a single true).
-func (r *Resolver) ResolveUnion(ctx context.Context, req *Request, node *authzGraph.WeightedAuthorizationModelNode, visited *sync.Map) (*Response, error) {
+func (r *Resolver) ResolveUnion(ctx context.Context, req *Request, node *authzGraph.WeightedAuthorizationModelNode, visited *sync.Map) (resp *Response, err error) {
+	if res, ok := r.isCached(req.GetConsistency(), req.GetCacheKey()); ok {
+		return res, nil
+	}
+
+	defer func() {
+		if err != nil {
+			return
+		}
+		entry := &ResponseCacheEntry{Res: resp, LastModified: time.Now()}
+		r.cache.Set(req.GetCacheKey(), entry, r.cacheTTL)
+	}()
+
 	emptyCycle := visited == nil
 	if emptyCycle && node.GetNodeType() == authzGraph.SpecificTypeAndRelation && (node.GetRecursiveRelation() == node.GetUniqueLabel() || node.IsPartOfTupleCycle()) {
 		// initialize visited map for first time,
@@ -263,6 +275,8 @@ func (r *Resolver) executeStrategy(ctx context.Context, selector planner.Selecto
 	span := trace.SpanFromContext(ctx)
 	start := time.Now()
 	res, err := fn()
+	duration := time.Since(start)
+	span.SetAttributes(attribute.Int64("strategy_duration_ms", duration.Milliseconds()))
 	if err != nil {
 		// penalize plans that timeout from the upstream context
 		if errors.Is(err, context.DeadlineExceeded) {
@@ -271,7 +285,7 @@ func (r *Resolver) executeStrategy(ctx context.Context, selector planner.Selecto
 		telemetry.TraceError(span, err)
 		return nil, err
 	}
-	selector.UpdateStats(strategy, time.Since(start))
+	selector.UpdateStats(strategy, duration)
 	if res.GetAllowed() {
 		span.SetAttributes(attribute.Bool("allowed", true))
 	}
@@ -322,9 +336,14 @@ func (r *Resolver) resolveRecursiveUserset(ctx context.Context, req *Request, ed
 		RecursiveStrategyName: RecursivePlan,
 	}
 
-	keyPlan := r.planner.GetPlanSelector(createRecursiveUsersetPlanKey(req, edge.GetTo().GetUniqueLabel()))
+	planKey := createRecursiveUsersetPlanKey(req, edge.GetTo().GetUniqueLabel())
+	keyPlan := r.planner.GetPlanSelector(planKey)
 	strategy := keyPlan.Select(possibleStrategies)
-	span.SetAttributes(attribute.Bool("allowed", true))
+	span.SetAttributes(
+		attribute.String("plan_key", planKey),
+		attribute.String("strategy", strategy.Name),
+		attribute.Int("candidate_strategies", len(possibleStrategies)),
+	)
 	return r.executeStrategy(ctx, keyPlan, strategy, func() (*Response, error) {
 		return r.strategies[strategy.Name].Userset(ctx, req, edge, iter, visited)
 	})
@@ -386,9 +405,14 @@ func (r *Resolver) resolveRecursiveTTU(ctx context.Context, req *Request, edge *
 		RecursiveStrategyName: RecursivePlan,
 	}
 
-	keyPlan := r.planner.GetPlanSelector(createRecursiveTTUPlanKey(req, edge.GetRecursiveRelation()))
+	planKey := createRecursiveTTUPlanKey(req, edge.GetRecursiveRelation())
+	keyPlan := r.planner.GetPlanSelector(planKey)
 	strategy := keyPlan.Select(possibleStrategies)
-	span.SetAttributes(attribute.String("strategy", strategy.Name))
+	span.SetAttributes(
+		attribute.String("plan_key", planKey),
+		attribute.String("strategy", strategy.Name),
+		attribute.Int("candidate_strategies", len(possibleStrategies)),
+	)
 	return r.executeStrategy(ctx, keyPlan, strategy, func() (*Response, error) {
 		return r.strategies[strategy.Name].TTU(ctx, req, edge, iter, visited)
 	})
@@ -842,7 +866,11 @@ func (r *Resolver) specificTypeAndRelation(ctx context.Context, req *Request, ed
 	usersetKey := createUsersetPlanKey(req, edge.GetTo().GetUniqueLabel())
 	keyPlan := r.planner.GetPlanSelector(usersetKey)
 	strategy := keyPlan.Select(possibleStrategies)
-	span.SetAttributes(attribute.String("strategy", strategy.Name))
+	span.SetAttributes(
+		attribute.String("plan_key", usersetKey),
+		attribute.String("strategy", strategy.Name),
+		attribute.Int("candidate_strategies", len(possibleStrategies)),
+	)
 	return r.executeStrategy(ctx, keyPlan, strategy, func() (*Response, error) {
 		return r.strategies[strategy.Name].Userset(ctx, req, edge, iter, visited)
 	})
@@ -912,7 +940,11 @@ func (r *Resolver) ttu(ctx context.Context, req *Request, edge *authzGraph.Weigh
 	planKey := createTTUPlanKey(req, tuplesetRelation, computedRelation)
 	keyPlan := r.planner.GetPlanSelector(planKey)
 	strategy := keyPlan.Select(possibleStrategies)
-	span.SetAttributes(attribute.String("strategy", strategy.Name))
+	span.SetAttributes(
+		attribute.String("plan_key", planKey),
+		attribute.String("strategy", strategy.Name),
+		attribute.Int("candidate_strategies", len(possibleStrategies)),
+	)
 	return r.executeStrategy(ctx, keyPlan, strategy, func() (*Response, error) {
 		return r.strategies[strategy.Name].TTU(ctx, req, edge, iter, visited)
 	})

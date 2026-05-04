@@ -22,6 +22,7 @@ import (
 	"github.com/openfga/openfga/internal/modelgraph"
 	"github.com/openfga/openfga/pkg/featureflags"
 	"github.com/openfga/openfga/pkg/logger"
+	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 )
@@ -190,7 +191,7 @@ func TestShadowV2Check(t *testing.T) {
 		logs.TakeAll() // clear previous logs
 
 		mainRes := &openfgav1.CheckResponse{Allowed: true}
-		s.shadowV2Check(context.Background(), req, mainRes, 10)
+		s.shadowV2Check(context.Background(), req, mainRes, 10, 3, 5)
 
 		shadowLogs := logs.FilterMessage("shadow check")
 		require.Equal(t, 1, shadowLogs.Len())
@@ -206,6 +207,10 @@ func TestShadowV2Check(t *testing.T) {
 		shadowTook, ok := fields["shadow_took"].(int64)
 		require.True(t, ok, "shadow_took should be int64 milliseconds")
 		require.GreaterOrEqual(t, shadowTook, int64(0))
+		require.Equal(t, uint32(3), fields["main_datastore_query_count"])
+		require.Equal(t, uint64(5), fields["main_datastore_item_count"])
+		require.NotNil(t, fields["shadow_datastore_query_count"])
+		require.NotNil(t, fields["shadow_datastore_item_count"])
 	})
 
 	t.Run("logs_mismatch_when_results_disagree", func(t *testing.T) {
@@ -213,7 +218,7 @@ func TestShadowV2Check(t *testing.T) {
 
 		// main says allowed=false, but alice IS a viewer, so shadow will say true
 		mainRes := &openfgav1.CheckResponse{Allowed: false}
-		s.shadowV2Check(context.Background(), req, mainRes, 20)
+		s.shadowV2Check(context.Background(), req, mainRes, 20, 0, 0)
 
 		shadowLogs := logs.FilterMessage("shadow check")
 		require.Equal(t, 1, shadowLogs.Len())
@@ -243,7 +248,7 @@ func TestShadowV2Check(t *testing.T) {
 			},
 		}
 
-		s.shadowV2Check(context.Background(), req, mainRes, 5)
+		s.shadowV2Check(context.Background(), req, mainRes, 5, 0, 0)
 
 		// Should log an error, not a "shadow check" info log
 		shadowInfoLogs := logs.FilterMessage("shadow check")
@@ -253,6 +258,43 @@ func TestShadowV2Check(t *testing.T) {
 		require.Equal(t, 1, errorLogs.Len())
 		require.Equal(t, zapcore.ErrorLevel, errorLogs.All()[0].Level)
 	})
+}
+
+func TestCheck_ShadowV2CheckGoroutine(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	core, logs := observer.New(zap.DebugLevel)
+	testLogger := &logger.ZapLogger{Logger: zap.New(core)}
+
+	s, req := setupCheckServer(t, "", nil,
+		WithLogger(testLogger),
+		WithShadowCheckResolverTimeout(5*time.Second),
+		WithFeatureFlagClient(featureflags.NewDefaultClient([]string{serverconfig.ExperimentalShadowWeightedGraphCheck})),
+	)
+
+	resp, err := s.Check(context.Background(), req)
+	require.NoError(t, err)
+	require.True(t, resp.GetAllowed())
+
+	// The shadow check runs in a goroutine; wait for the log to appear.
+	require.Eventually(t, func() bool {
+		return logs.FilterMessage("shadow check").Len() == 1
+	}, 2*time.Second, 10*time.Millisecond)
+
+	entry := logs.FilterMessage("shadow check").All()[0]
+	require.Equal(t, zapcore.InfoLevel, entry.Level)
+
+	fields := fieldMap(entry.Context)
+	require.Equal(t, true, fields["matches"])
+	require.Equal(t, true, fields["main_result"])
+	require.Equal(t, true, fields["shadow_result"])
+	require.NotEmpty(t, fields["store_id"])
+	require.NotNil(t, fields["main_datastore_query_count"])
+	require.NotNil(t, fields["shadow_datastore_query_count"])
+	require.NotNil(t, fields["main_datastore_item_count"])
+	require.NotNil(t, fields["shadow_datastore_item_count"])
 }
 
 // fieldMap converts a slice of zap.Field into a map for easy lookup in assertions.
@@ -269,6 +311,9 @@ func fieldMap(fields []zap.Field) map[string]interface{} {
 type recordingCache struct {
 	mu      sync.Mutex
 	entries map[string]any
+	getKeys []string
+	setKeys []string
+	delKeys []string
 }
 
 func newRecordingCache() *recordingCache {
@@ -278,33 +323,56 @@ func newRecordingCache() *recordingCache {
 func (c *recordingCache) Get(key string) any {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.getKeys = append(c.getKeys, key)
 	return c.entries[key]
 }
 
 func (c *recordingCache) Set(key string, value any, _ time.Duration) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.setKeys = append(c.setKeys, key)
 	c.entries[key] = value
 }
 
 func (c *recordingCache) Delete(key string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.delKeys = append(c.delKeys, key)
 	delete(c.entries, key)
 }
 
 func (c *recordingCache) Stop() {}
 
-func (c *recordingCache) keysWithPrefix(prefix string) []string {
+func (c *recordingCache) getKeysWithPrefix(prefix string) []string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	var keys []string
-	for k := range c.entries {
+	for _, k := range c.getKeys {
 		if strings.HasPrefix(k, prefix) {
 			keys = append(keys, k)
 		}
 	}
 	return keys
+}
+
+func (c *recordingCache) setKeysWithPrefix(prefix string) []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	var keys []string
+	for _, k := range c.setKeys {
+		if strings.HasPrefix(k, prefix) {
+			keys = append(keys, k)
+		}
+	}
+	return keys
+}
+
+func (c *recordingCache) resetTracking() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.getKeys = nil
+	c.setKeys = nil
+	c.delKeys = nil
 }
 
 func TestV2CheckCacheSeparation(t *testing.T) {
@@ -341,7 +409,7 @@ func TestV2CheckCacheSeparation(t *testing.T) {
 		s.authzModelGraphResolver = modelgraph.NewResolver(s.datastore, checkCache, 24*7*time.Hour)
 		s.shadowAuthzModelGraphResolver = modelgraph.NewResolver(s.datastore, shadowCache, 24*7*time.Hour)
 
-		_, err := s.v2Check(ctx, req,
+		_, _, err := s.v2Check(ctx, req,
 			s.sharedDatastoreResources.ShadowCheckCache,
 			s.sharedDatastoreResources.ShadowCacheController,
 			s.shadowAuthzModelGraphResolver,
@@ -349,12 +417,12 @@ func TestV2CheckCacheSeparation(t *testing.T) {
 		require.NoError(t, err)
 
 		// Shadow mode should route model graph and subproblem entries to the shadow cache.
-		require.NotEmpty(t, shadowCache.keysWithPrefix("wg|"), "shadow cache should have model graph entries")
-		require.NotEmpty(t, shadowCache.keysWithPrefix("c."), "shadow cache should have subproblem cache entries")
+		require.NotEmpty(t, shadowCache.setKeysWithPrefix("wg|"), "shadow cache should have model graph entries")
+		require.NotEmpty(t, shadowCache.setKeysWithPrefix("c."), "shadow cache should have subproblem cache entries")
 
 		// Main cache should remain empty.
-		require.Empty(t, checkCache.keysWithPrefix("wg|"), "main check cache should not have model graph entries")
-		require.Empty(t, checkCache.keysWithPrefix("c."), "main check cache should not have subproblem cache entries")
+		require.Empty(t, checkCache.setKeysWithPrefix("wg|"), "main check cache should not have model graph entries")
+		require.Empty(t, checkCache.setKeysWithPrefix("c."), "main check cache should not have subproblem cache entries")
 	})
 
 	t.Run("non_shadow_mode_uses_main_cache", func(t *testing.T) {
@@ -367,7 +435,7 @@ func TestV2CheckCacheSeparation(t *testing.T) {
 		s.authzModelGraphResolver = modelgraph.NewResolver(s.datastore, checkCache, 24*7*time.Hour)
 		s.shadowAuthzModelGraphResolver = modelgraph.NewResolver(s.datastore, shadowCache, 24*7*time.Hour)
 
-		_, err := s.v2Check(ctx, req,
+		_, _, err := s.v2Check(ctx, req,
 			s.sharedDatastoreResources.CheckCache,
 			s.sharedDatastoreResources.CacheController,
 			s.authzModelGraphResolver,
@@ -375,12 +443,12 @@ func TestV2CheckCacheSeparation(t *testing.T) {
 		require.NoError(t, err)
 
 		// Non-shadow mode should route model graph and subproblem entries to the main cache.
-		require.NotEmpty(t, checkCache.keysWithPrefix("wg|"), "main check cache should have model graph entries")
-		require.NotEmpty(t, checkCache.keysWithPrefix("c."), "main check cache should have subproblem cache entries")
+		require.NotEmpty(t, checkCache.setKeysWithPrefix("wg|"), "main check cache should have model graph entries")
+		require.NotEmpty(t, checkCache.setKeysWithPrefix("c."), "main check cache should have subproblem cache entries")
 
 		// Shadow cache should remain empty.
-		require.Empty(t, shadowCache.keysWithPrefix("wg|"), "shadow cache should not have model graph entries")
-		require.Empty(t, shadowCache.keysWithPrefix("c."), "shadow cache should not have subproblem cache entries")
+		require.Empty(t, shadowCache.setKeysWithPrefix("wg|"), "shadow cache should not have model graph entries")
+		require.Empty(t, shadowCache.setKeysWithPrefix("c."), "shadow cache should not have subproblem cache entries")
 	})
 
 	t.Run("cache_controller_instances_are_separate", func(t *testing.T) {
@@ -404,7 +472,7 @@ func TestV2CheckMetadata(t *testing.T) {
 
 		ctx := grpc_ctxtags.SetInContext(context.Background(), grpc_ctxtags.NewTags())
 
-		res, err := s.v2Check(ctx, req,
+		res, _, err := s.v2Check(ctx, req,
 			s.sharedDatastoreResources.CheckCache,
 			s.sharedDatastoreResources.CacheController,
 			s.authzModelGraphResolver,
@@ -453,7 +521,7 @@ func TestV2CheckMetadata(t *testing.T) {
 
 		ctx := grpc_ctxtags.SetInContext(context.Background(), grpc_ctxtags.NewTags())
 
-		res, err := s.v2Check(ctx, req,
+		res, _, err := s.v2Check(ctx, req,
 			s.sharedDatastoreResources.CheckCache,
 			s.sharedDatastoreResources.CacheController,
 			s.authzModelGraphResolver,
@@ -476,7 +544,7 @@ func TestV2CheckMetadata(t *testing.T) {
 
 		ctx := grpc_ctxtags.SetInContext(context.Background(), grpc_ctxtags.NewTags())
 
-		res, err := s.v2Check(ctx, req,
+		res, _, err := s.v2Check(ctx, req,
 			s.sharedDatastoreResources.CheckCache,
 			s.sharedDatastoreResources.CacheController,
 			s.authzModelGraphResolver,
@@ -513,7 +581,7 @@ func TestV2Check_SanitizeRequest(t *testing.T) {
 
 	doV2Check := func(t *testing.T, req *openfgav1.CheckRequest) error {
 		t.Helper()
-		_, err := s.v2Check(ctx, req,
+		_, _, err := s.v2Check(ctx, req,
 			s.sharedDatastoreResources.CheckCache,
 			s.sharedDatastoreResources.CacheController,
 			s.authzModelGraphResolver,
@@ -595,5 +663,74 @@ func TestV2Check_SanitizeRequest(t *testing.T) {
 			},
 		}
 		require.NoError(t, doV2Check(t, req))
+	})
+}
+
+func TestV2CheckQueryCacheEnabled(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	t.Run("caches_subproblem_results_when_enabled", func(t *testing.T) {
+		s, req := setupCheckServer(t, "", nil,
+			WithCheckQueryCacheEnabled(true),
+			WithCheckCacheLimit(10),
+			WithCheckQueryCacheTTL(1*time.Minute),
+		)
+
+		checkCache := newRecordingCache()
+		s.sharedDatastoreResources.CheckCache.Stop()
+		s.sharedDatastoreResources.CheckCache = checkCache
+		s.authzModelGraphResolver = modelgraph.NewResolver(s.datastore, checkCache, 24*7*time.Hour)
+
+		ctx := context.Background()
+		res, _, err := s.v2Check(ctx, req,
+			s.sharedDatastoreResources.CheckCache,
+			s.sharedDatastoreResources.CacheController,
+			s.authzModelGraphResolver,
+		)
+		require.NoError(t, err)
+		require.True(t, res.GetAllowed())
+
+		require.NotEmpty(t, checkCache.setKeysWithPrefix("c."), "cache should have subproblem entries written when query cache is enabled")
+
+		// Reset tracking so the second call's Get activity is isolated.
+		checkCache.resetTracking()
+
+		// Call v2Check again with the same request to verify cached entries are retrieved.
+		res, _, err = s.v2Check(ctx, req,
+			s.sharedDatastoreResources.CheckCache,
+			s.sharedDatastoreResources.CacheController,
+			s.authzModelGraphResolver,
+		)
+		require.NoError(t, err)
+		require.True(t, res.GetAllowed())
+		require.NotEmpty(t, checkCache.getKeysWithPrefix("c."),
+			"second check should read subproblem entries from cache")
+		require.Empty(t, checkCache.setKeysWithPrefix("c."),
+			"second check should not write new subproblem entries (cache should be hit)")
+	})
+
+	t.Run("skips_subproblem_caching_when_disabled", func(t *testing.T) {
+		s, req := setupCheckServer(t, "", nil,
+			WithCheckQueryCacheEnabled(false),
+			WithCheckCacheLimit(10),
+			WithCheckQueryCacheTTL(1*time.Minute),
+		)
+
+		checkCache := newRecordingCache()
+		s.sharedDatastoreResources.CheckCache = checkCache
+		s.authzModelGraphResolver = modelgraph.NewResolver(s.datastore, checkCache, 24*7*time.Hour)
+
+		ctx := context.Background()
+		res, _, err := s.v2Check(ctx, req,
+			s.sharedDatastoreResources.CheckCache,
+			s.sharedDatastoreResources.CacheController,
+			s.authzModelGraphResolver,
+		)
+		require.NoError(t, err)
+		require.True(t, res.GetAllowed())
+
+		require.Empty(t, checkCache.setKeysWithPrefix("c."), "cache should have no subproblem entries when query cache is disabled")
 	})
 }
