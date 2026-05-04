@@ -4,7 +4,6 @@ import (
 	"context"
 	"sync"
 
-	"go.opentelemetry.io/otel/attribute"
 	"golang.org/x/sync/errgroup"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -78,8 +77,6 @@ func (s *Recursive) TTU(ctx context.Context, req *Request, edge *authzGraph.Weig
 }
 
 func (s *Recursive) execute(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge, recursiveType RecursiveType, leftChan chan *iterator.Msg, rightIter storage.TupleMapper) (*Response, error) {
-	ctx, span := tracer.Start(ctx, "recursive.execute")
-	defer span.End()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -91,13 +88,6 @@ func (s *Recursive) execute(ctx context.Context, req *Request, edge *authzGraph.
 	// left hand side bootstrap
 	idsFromUser := make(map[string]struct{})
 	defer iterator.Drain(leftChan)
-
-	defer func() {
-		span.SetAttributes(
-			attribute.Int("ids_from_user", len(idsFromUser)),
-			attribute.Int("ids_from_object", len(idsFromObject)),
-		)
-	}()
 
 	// NOTE: This loop initializes the terminal type and the first level of depth as this is a breadth first traversal.
 	// To maintain simplicity the terminal type will be fully loaded, but it could arguably be loaded async.
