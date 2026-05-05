@@ -32,6 +32,7 @@ type SQLTupleIterator struct {
 	firstRow       *storage.TupleRecord // GUARDED_BY(mu)
 	mu             sync.Mutex
 	inFlight       sync.Mutex
+	fetched        bool // GUARDED_BY(mu)
 }
 
 // Ensures that SQLTupleIterator implements the TupleIterator interface.
@@ -54,10 +55,12 @@ func (t *SQLTupleIterator) fetchBuffer(ctx context.Context) error {
 
 	// FIX: prevent duplicate fetch
 	t.mu.Lock()
-	if t.rows != nil {
+	// USE: If we have already attempted a fetch, don't do it again
+	if t.fetched {
 		t.mu.Unlock()
 		return nil
 	}
+	t.fetched = true
 	t.mu.Unlock()
 
 	ctx, span := tracer.Start(ctx, "sqlite.fetchBuffer", trace.WithAttributes())
@@ -93,18 +96,17 @@ func (t *SQLTupleIterator) fetchBuffer(ctx context.Context) error {
 func (t *SQLTupleIterator) next(ctx context.Context) (*storage.TupleRecord, error) {
 	t.mu.Lock()
 
-	if t.rows == nil {
+	if t.fetched && t.rows == nil && t.firstRow == nil {
 		t.mu.Unlock()
+		return nil, storage.ErrIteratorDone
+	}
 
+	if !t.fetched {
+		t.mu.Unlock()
 		if err := t.fetchBuffer(ctx); err != nil {
 			return nil, err
 		}
-
 		t.mu.Lock()
-		if t.rows == nil {
-			t.mu.Unlock()
-			return nil, ErrIteratorRowsNotInitialized
-		}
 	}
 
 	if t.firstRow != nil {
@@ -114,12 +116,15 @@ func (t *SQLTupleIterator) next(ctx context.Context) (*storage.TupleRecord, erro
 		return firstRow, nil
 	}
 
+	if t.rows == nil {
+		t.mu.Unlock()
+		return nil, ErrIteratorRowsNotInitialized
+	}
+
 	if !t.rows.Next() {
 		err := t.rows.Err()
-
 		_ = t.rows.Close()
-		t.rows = nil
-
+		t.rows = nil // Mark as nil so we stay finished
 		t.mu.Unlock()
 
 		if err != nil {
@@ -153,7 +158,6 @@ func (t *SQLTupleIterator) next(ctx context.Context) (*storage.TupleRecord, erro
 	}
 
 	record.ConditionName = conditionName.String
-
 	if conditionContext != nil {
 		var conditionContextStruct structpb.Struct
 		if err := proto.Unmarshal(conditionContext, &conditionContextStruct); err != nil {
@@ -168,74 +172,67 @@ func (t *SQLTupleIterator) next(ctx context.Context) (*storage.TupleRecord, erro
 func (t *SQLTupleIterator) head(ctx context.Context) (*storage.TupleRecord, error) {
 	t.mu.Lock()
 
-	if t.rows == nil {
+	// USE: Check if we are already done
+	if t.fetched && t.rows == nil && t.firstRow == nil {
 		t.mu.Unlock()
+		return nil, storage.ErrIteratorDone
+	}
 
+	if !t.fetched {
+		t.mu.Unlock()
 		if err := t.fetchBuffer(ctx); err != nil {
 			return nil, err
 		}
-
 		t.mu.Lock()
-		if t.rows == nil {
-			t.mu.Unlock()
-			return nil, ErrIteratorRowsNotInitialized
-		}
 	}
 
-	defer t.mu.Unlock()
-
 	if t.firstRow != nil {
-		return t.firstRow, nil
+		row := t.firstRow
+		t.mu.Unlock()
+		return row, nil
+	}
+
+	if t.rows == nil {
+		t.mu.Unlock()
+		return nil, ErrIteratorRowsNotInitialized
 	}
 
 	if !t.rows.Next() {
-		err := t.rows.Err(); 
-
+		err := t.rows.Err()
 		_ = t.rows.Close()
 		t.rows = nil
+		t.mu.Unlock()
 
 		if err != nil {
 			return nil, t.handleSQLError(err)
 		}
-
 		return nil, storage.ErrIteratorDone
 	}
 
+	// ... (Scanning logic same as next)
 	var conditionName sql.NullString
 	var conditionContext []byte
 	var record storage.TupleRecord
-
-	err := t.rows.Scan(
-		&record.Store,
-		&record.ObjectType,
-		&record.ObjectID,
-		&record.Relation,
-		&record.UserObjectType,
-		&record.UserObjectID,
-		&record.UserRelation,
-		&conditionName,
-		&conditionContext,
-		&record.Ulid,
-		&record.InsertedAt,
-	)
+	err := t.rows.Scan(&record.Store, &record.ObjectType, &record.ObjectID, &record.Relation, &record.UserObjectType, &record.UserObjectID, &record.UserRelation, &conditionName, &conditionContext, &record.Ulid, &record.InsertedAt)
 
 	if err != nil {
+		t.mu.Unlock()
 		return nil, t.handleSQLError(err)
 	}
 
 	record.ConditionName = conditionName.String
-
 	if conditionContext != nil {
 		var conditionContextStruct structpb.Struct
 		if err := proto.Unmarshal(conditionContext, &conditionContextStruct); err != nil {
+			t.mu.Unlock()
 			return nil, t.handleSQLError(err)
 		}
 		record.ConditionContext = &conditionContextStruct
 	}
 
-	rec := record
-	t.firstRow = &rec
-	return &rec, nil
+	t.firstRow = &record
+	t.mu.Unlock()
+	return &record, nil
 }
 
 func (t *SQLTupleIterator) ToArray(
@@ -293,8 +290,10 @@ func (t *SQLTupleIterator) Head(ctx context.Context) (*openfgav1.Tuple, error) {
 
 func (t *SQLTupleIterator) Stop() {
 	t.mu.Lock()
+	t.fetched = true
 	defer t.mu.Unlock()
 	if t.rows != nil {
 		_ = t.rows.Close()
+		t.rows = nil
 	}
 }
