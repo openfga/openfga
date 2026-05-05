@@ -325,7 +325,17 @@ func NewSQLTupleIterator(rowGetter SQLIteratorRowGetter, errHandler errorHandler
 func (t *SQLTupleIterator) fetchBuffer(ctx context.Context) error {
 	ctx, span := tracer.Start(ctx, "sqlcommon.fetchBuffer", trace.WithAttributes())
 	defer span.End()
+	// Strip parent cancellation so a client cancel does not poison the
+	// underlying database connection (see PR #2508), but preserve any
+	// deadline so a slow query cannot block the iterator indefinitely
+	// (see issue #3098).
+	deadline, hasDeadline := ctx.Deadline()
 	ctx = context.WithoutCancel(ctx)
+	if hasDeadline {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithDeadline(ctx, deadline)
+		defer cancel()
+	}
 	start := time.Now()
 	curRows, err := t.rowGetter.GetRows(ctx)
 	elapsed := time.Since(start)
