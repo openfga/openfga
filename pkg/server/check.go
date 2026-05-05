@@ -208,15 +208,22 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 	return res, nil
 }
 
+// linkedSpanContextKey is a context key used to carry the original span context
+// into a detached context so that v2Check can create a trace link back to the
+// original Check span without parenting under it.
+type linkedSpanContextKey struct{}
+
 func (s *Server) shadowV2Check(ctx context.Context, req *openfgav1.CheckRequest, mainRes *openfgav1.CheckResponse, mainTook int64, mainDatastoreQueryCount uint32, mainDatastoreItemCount uint64) {
 	start := time.Now()
 	var res *openfgav1.CheckResponse
 	var shadowMetadata storagewrappers.Metadata
 	var err error
+	originalSpanCtx := trace.SpanContextFromContext(ctx)
 	recoveredErr := panics.Try(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), s.shadowCheckResolverTimeout)
+		newCtx, cancel := context.WithTimeout(context.Background(), s.shadowCheckResolverTimeout)
 		defer cancel()
-		res, shadowMetadata, err = s.v2Check(ctx, req, s.sharedDatastoreResources.ShadowCheckCache, s.sharedDatastoreResources.ShadowCacheController, s.shadowAuthzModelGraphResolver)
+		newCtx = context.WithValue(newCtx, linkedSpanContextKey{}, originalSpanCtx)
+		res, shadowMetadata, err = s.v2Check(newCtx, req, s.sharedDatastoreResources.ShadowCheckCache, s.sharedDatastoreResources.ShadowCacheController, s.shadowAuthzModelGraphResolver)
 	})
 	if recoveredErr != nil {
 		err = recoveredErr.AsError()
@@ -253,13 +260,20 @@ func (s *Server) v2Check(
 	storeID := req.GetStoreId()
 	tk := req.GetTupleKey()
 
-	ctx, span := tracer.Start(ctx, commands.V2CheckMethodName, trace.WithAttributes(
-		attribute.String("store_id", storeID),
-		attribute.String("object", tk.GetObject()),
-		attribute.String("relation", tk.GetRelation()),
-		attribute.String("user", tk.GetUser()),
-		attribute.String("consistency", req.GetConsistency().String()),
-	))
+	spanOpts := []trace.SpanStartOption{
+		trace.WithAttributes(
+			attribute.String("store_id", storeID),
+			attribute.String("object", tk.GetObject()),
+			attribute.String("relation", tk.GetRelation()),
+			attribute.String("user", tk.GetUser()),
+			attribute.String("consistency", req.GetConsistency().String()),
+		),
+	}
+	if linkedSC, ok := ctx.Value(linkedSpanContextKey{}).(trace.SpanContext); ok && linkedSC.IsValid() {
+		spanOpts = append(spanOpts, trace.WithLinks(trace.Link{SpanContext: linkedSC}))
+		spanOpts = append(spanOpts, trace.WithAttributes(attribute.String("request_id", linkedSC.TraceID().String())))
+	}
+	ctx, span := tracer.Start(ctx, commands.V2CheckMethodName, spanOpts...)
 	defer span.End()
 
 	cacheInvalidationTime := time.Time{}
