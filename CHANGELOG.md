@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Try to keep listed changes to a concise bulleted list of simple explanations of changes. Aim for the amount of information needed so that readers can understand where they would look in the codebase to investigate the changes' implementation, or where they would look in the documentation to understand how to make use of the change in practice - better yet, link directly to the docs and provide detailed information there. Only elaborate if doing so is required to avoid breaking changes or experimental features from ruining someone's day.
 
 ## [Unreleased]
+### Fixed
+- Dial the loopback when the gRPC server binds to a wildcard address (`""`, `0.0.0.0`, `::`) so the in-process HTTP gateway can connect on platforms where wildcard addresses are not valid dial targets, and so TLS hostname verification works against issued IP/DNS SANs. [#3083](https://github.com/openfga/openfga/pull/3083)
 
 ## [1.14.2] - 2026-04-14
 ### Fixed
