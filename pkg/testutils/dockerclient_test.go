@@ -115,8 +115,8 @@ func TestRunContainer_WithExposedPorts(t *testing.T) {
 	t.Run("ports_ready_immediately", func(t *testing.T) {
 		dc := newDockerClientMock(t, []dockerMockStep{
 			{Method: http.MethodPost, Path: "/containers/create", Body: createBody},
-			{Method: http.MethodPost, Path: "/containers/container-name/start", Body: startBody},
-			{Method: http.MethodGet, Path: "/containers/container-name/json", Body: portsReadyBody},
+			{Method: http.MethodPost, Path: "/containers/container-id/start", Body: startBody},
+			{Method: http.MethodGet, Path: "/containers/container-id/json", Body: portsReadyBody},
 		})
 
 		cont, err := dc.RunContainer(t.Context(), exposedCfg, &container.HostConfig{}, "container-name")
@@ -128,9 +128,9 @@ func TestRunContainer_WithExposedPorts(t *testing.T) {
 		noPortsBody := []byte(`{"Id":"container-id","NetworkSettings":{"Ports":{}}, "State":{"Running":true}}`)
 		dc := newDockerClientMock(t, []dockerMockStep{
 			{Method: http.MethodPost, Path: "/containers/create", Body: createBody},
-			{Method: http.MethodPost, Path: "/containers/container-name/start", Body: startBody},
-			{Method: http.MethodGet, Path: "/containers/container-name/json", Body: noPortsBody},
-			{Method: http.MethodGet, Path: "/containers/container-name/json", Body: portsReadyBody},
+			{Method: http.MethodPost, Path: "/containers/container-id/start", Body: startBody},
+			{Method: http.MethodGet, Path: "/containers/container-id/json", Body: noPortsBody},
+			{Method: http.MethodGet, Path: "/containers/container-id/json", Body: portsReadyBody},
 		})
 
 		cont, err := dc.RunContainer(t.Context(), exposedCfg, &container.HostConfig{}, "container-name")
@@ -142,9 +142,9 @@ func TestRunContainer_WithExposedPorts(t *testing.T) {
 		emptyBindingsBody := []byte(`{"Id":"container-id","NetworkSettings":{"Ports":{"5432/tcp":[]}}, "State":{"Running":true}}`)
 		dc := newDockerClientMock(t, []dockerMockStep{
 			{Method: http.MethodPost, Path: "/containers/create", Body: createBody},
-			{Method: http.MethodPost, Path: "/containers/container-name/start", Body: startBody},
-			{Method: http.MethodGet, Path: "/containers/container-name/json", Body: emptyBindingsBody},
-			{Method: http.MethodGet, Path: "/containers/container-name/json", Body: portsReadyBody},
+			{Method: http.MethodPost, Path: "/containers/container-id/start", Body: startBody},
+			{Method: http.MethodGet, Path: "/containers/container-id/json", Body: emptyBindingsBody},
+			{Method: http.MethodGet, Path: "/containers/container-id/json", Body: portsReadyBody},
 		})
 
 		cont, err := dc.RunContainer(t.Context(), exposedCfg, &container.HostConfig{}, "container-name")
@@ -156,9 +156,9 @@ func TestRunContainer_WithExposedPorts(t *testing.T) {
 		emptyStateBody := []byte(`{"Id":"container-id","NetworkSettings":{"Ports":{"5432/tcp":[{"HostIp":"0.0.0.0","HostPort":"54321"}]}}}`)
 		dc := newDockerClientMock(t, []dockerMockStep{
 			{Method: http.MethodPost, Path: "/containers/create", Body: createBody},
-			{Method: http.MethodPost, Path: "/containers/container-name/start", Body: startBody},
-			{Method: http.MethodGet, Path: "/containers/container-name/json", Body: emptyStateBody},
-			{Method: http.MethodGet, Path: "/containers/container-name/json", Body: portsReadyBody},
+			{Method: http.MethodPost, Path: "/containers/container-id/start", Body: startBody},
+			{Method: http.MethodGet, Path: "/containers/container-id/json", Body: emptyStateBody},
+			{Method: http.MethodGet, Path: "/containers/container-id/json", Body: portsReadyBody},
 		})
 
 		cont, err := dc.RunContainer(t.Context(), exposedCfg, &container.HostConfig{}, "container-name")
@@ -169,9 +169,9 @@ func TestRunContainer_WithExposedPorts(t *testing.T) {
 	t.Run("not_found_inspect_at_start", func(t *testing.T) {
 		dc := newDockerClientMock(t, []dockerMockStep{
 			{Method: http.MethodPost, Path: "/containers/create", Body: createBody},
-			{Method: http.MethodPost, Path: "/containers/container-name/start", Body: startBody},
-			{Method: http.MethodGet, Path: "/containers/container-name/json", Error: "not found", Status: http.StatusNotFound},
-			{Method: http.MethodGet, Path: "/containers/container-name/json", Body: portsReadyBody},
+			{Method: http.MethodPost, Path: "/containers/container-id/start", Body: startBody},
+			{Method: http.MethodGet, Path: "/containers/container-id/json", Error: "not found", Status: http.StatusNotFound},
+			{Method: http.MethodGet, Path: "/containers/container-id/json", Body: portsReadyBody},
 		})
 
 		cont, err := dc.RunContainer(t.Context(), exposedCfg, &container.HostConfig{}, "container-name")
@@ -201,8 +201,8 @@ func TestRunContainer_Fail(t *testing.T) {
 	t.Run("start_container", func(t *testing.T) {
 		dc := newDockerClientMock(t, []dockerMockStep{
 			{Method: http.MethodPost, Path: "/containers/create", Body: createBody},
-			{Method: http.MethodPost, Path: "/containers/container-name/start", Error: "start failed"},
-			{Method: http.MethodDelete, Path: "/containers/container-name", Body: emptyBody},
+			{Method: http.MethodPost, Path: "/containers/container-id/start", Error: "start failed"},
+			{Method: http.MethodDelete, Path: "/containers/container-id", Body: emptyBody},
 		})
 
 		runResult, err := dc.RunContainer(t.Context(), containerCfg, &container.HostConfig{}, "container-name")
@@ -214,9 +214,9 @@ func TestRunContainer_Fail(t *testing.T) {
 	t.Run("inspect_container", func(t *testing.T) {
 		dc := newDockerClientMock(t, []dockerMockStep{
 			{Method: http.MethodPost, Path: "/containers/create", Body: createBody},
-			{Method: http.MethodPost, Path: "/containers/container-name/start", Body: emptyBody},
-			{Method: http.MethodGet, Path: "/containers/container-name/json", Error: "inspect failed"},
-			{Method: http.MethodDelete, Path: "/containers/container-name", Body: emptyBody},
+			{Method: http.MethodPost, Path: "/containers/container-id/start", Body: emptyBody},
+			{Method: http.MethodGet, Path: "/containers/container-id/json", Error: "inspect failed"},
+			{Method: http.MethodDelete, Path: "/containers/container-id", Body: emptyBody},
 		})
 
 		runResult, err := dc.RunContainer(t.Context(), containerCfg, &container.HostConfig{}, "container-name")

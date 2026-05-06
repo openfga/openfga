@@ -65,7 +65,7 @@ func (d *DockerClient) PullImage(ctx context.Context, imageName string) error {
 func (d *DockerClient) RunContainer(
 	ctx context.Context, containerCfg *container.Config, hostCfg *container.HostConfig, containerName string,
 ) (*container.InspectResponse, error) {
-	_, err := d.client.ContainerCreate(ctx, client.ContainerCreateOptions{
+	createResult, err := d.client.ContainerCreate(ctx, client.ContainerCreateOptions{
 		Name:       containerName,
 		Config:     containerCfg,
 		HostConfig: hostCfg,
@@ -80,11 +80,11 @@ func (d *DockerClient) RunContainer(
 			cleanupCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 
-			_ = d.RemoveContainer(cleanupCtx, containerName)
+			_ = d.RemoveContainer(cleanupCtx, createResult.ID)
 		}
 	}()
 
-	if _, err = d.client.ContainerStart(ctx, containerName, client.ContainerStartOptions{}); err != nil {
+	if _, err = d.client.ContainerStart(ctx, createResult.ID, client.ContainerStartOptions{}); err != nil {
 		return nil, fmt.Errorf("start %s container: %w", containerName, err)
 	}
 
@@ -95,7 +95,7 @@ func (d *DockerClient) RunContainer(
 
 	var cont *container.InspectResponse
 	err = backoff.Retry(func() error {
-		inspectResult, err := d.client.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
+		inspectResult, err := d.client.ContainerInspect(ctx, createResult.ID, client.ContainerInspectOptions{})
 		if err != nil {
 			if errdefs.IsNotFound(err) {
 				return err
