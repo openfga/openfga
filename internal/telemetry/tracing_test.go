@@ -1,7 +1,16 @@
 package telemetry
 
 import (
+	"context"
+	"errors"
 	"testing"
+
+	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/codes"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
+
+	"github.com/openfga/openfga/pkg/storage"
 )
 
 func TestResolveOTLPSecurity(t *testing.T) {
@@ -143,6 +152,56 @@ func TestParseOTLPEndpoint(t *testing.T) {
 			if secure != tt.expectedSecure {
 				t.Errorf("ParseOTLPEndpoint(%q) secure = %v, want %v", tt.input, secure, tt.expectedSecure)
 			}
+		})
+	}
+}
+
+func TestTraceStorageError(t *testing.T) {
+	tests := []struct {
+		name       string
+		err        error
+		wantCode   codes.Code
+		wantEvents int
+	}{
+		{
+			name:       "storage_not_found_is_not_traced",
+			err:        storage.ErrNotFound,
+			wantCode:   codes.Unset,
+			wantEvents: 0,
+		},
+		{
+			name:       "storage_collision_is_not_traced",
+			err:        storage.ErrCollision,
+			wantCode:   codes.Unset,
+			wantEvents: 0,
+		},
+		{
+			name:       "context_canceled_is_not_traced",
+			err:        context.Canceled,
+			wantCode:   codes.Unset,
+			wantEvents: 0,
+		},
+		{
+			name:       "infrastructure_error_is_traced",
+			err:        errors.New("db connection reset"),
+			wantCode:   codes.Error,
+			wantEvents: 1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			recorder := tracetest.NewSpanRecorder()
+			tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
+			_, span := tp.Tracer("test").Start(context.Background(), "trace-storage-error")
+
+			TraceStorageError(span, tt.err)
+			span.End()
+
+			ended := recorder.Ended()
+			require.Len(t, ended, 1)
+			require.Equal(t, tt.wantCode, ended[0].Status().Code)
+			require.Len(t, ended[0].Events(), tt.wantEvents)
 		})
 	}
 }
