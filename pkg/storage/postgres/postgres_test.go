@@ -602,14 +602,16 @@ func TestNewDB(t *testing.T) {
 	t.Run("cannot_ping_primary_uri", func(t *testing.T) {
 		uri := "postgres://abc:passwd@localhost:5346/dbname"
 		cfg := sqlcommon.Config{
-			Username:        "override_user",
-			Password:        "override_passwd",
-			MinIdleConns:    10,
-			MaxOpenConns:    50,
-			MinOpenConns:    15,
-			ConnMaxLifetime: time.Minute * 20,
-			ConnMaxIdleTime: 1 * time.Minute,
-			Logger:          logger.NewNoopLogger(),
+			Username:                "override_user",
+			Password:                "override_passwd",
+			MinIdleConns:            10,
+			MaxOpenConns:            50,
+			MinOpenConns:            15,
+			ConnMaxLifetime:         time.Minute * 20,
+			ConnMaxIdleTime:         1 * time.Minute,
+			Logger:                  logger.NewNoopLogger(),
+			PingTimeout:             100 * time.Second,
+			PingRetryMaxElapsedTime: 2 * time.Second,
 		}
 		_, err := New(uri, &cfg)
 		require.Error(t, err)

@@ -940,6 +940,24 @@ func TestVerifyServerSettings(t *testing.T) {
 			require.NoError(t, err)
 		})
 	})
+
+	t.Run("verify_ping_settings", func(t *testing.T) {
+		t.Run("error_when_ping_retry_max_elapsed_time_less_than_ping_timeout", func(t *testing.T) {
+			cfg := DefaultConfig()
+			cfg.Datastore.PingRetryMaxElapsedTime = 5 * time.Second
+			cfg.Datastore.PingTimeout = 10 * time.Second
+			err := cfg.VerifyServerSettings()
+			require.Error(t, err)
+		})
+
+		t.Run("no_error_when_ping_retry_max_elapsed_time_equal_to_ping_timeout", func(t *testing.T) {
+			cfg := DefaultConfig()
+			cfg.Datastore.PingRetryMaxElapsedTime = 10 * time.Second
+			cfg.Datastore.PingTimeout = 10 * time.Second
+			err := cfg.VerifyServerSettings()
+			require.NoError(t, err)
+		})
+	})
 }
 
 func TestVerifyBinarySettings(t *testing.T) {

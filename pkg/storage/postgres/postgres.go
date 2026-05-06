@@ -244,7 +244,7 @@ func New(uri string, cfg *sqlcommon.Config) (*Datastore, error) {
 }
 
 func configureDB(db *pgxpool.Pool, cfg *sqlcommon.Config, dbName string) (prometheus.Collector, error) {
-	policy := backoff.NewExponentialBackOff(backoff.WithMaxElapsedTime(1 * time.Minute))
+	policy := backoff.NewExponentialBackOff(backoff.WithMaxElapsedTime(cfg.PingRetryMaxElapsedTime))
 	attempt := 1
 	err := backoff.Retry(func() error {
 		// using context.Background() is safe here as pgx enforces the PingTimeout internally.
