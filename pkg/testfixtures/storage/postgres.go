@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -35,7 +36,7 @@ var (
 
 	postgresContainerName = "openfga-test-postgres-" + ulid.Make().String()
 	postgresPort          = network.MustParsePort("5432/tcp")
-	postgresDockerCont    *container.InspectResponse
+	postgresDockerCont    atomic.Pointer[container.InspectResponse]
 
 	postgresBootstrapping bool
 	postgresCond          = sync.NewCond(&sync.Mutex{})
@@ -119,7 +120,7 @@ func RunPostgresTestContainer(t testing.TB) DatastoreTestContainer {
 	// Only one test bootstraps the shared container at a time, while others wait efficiently using sync.Cond.
 	// If bootstrap fails, waiting tests are awakened so another test can retry without being affected by the failure.
 	postgresCond.L.Lock()
-	for postgresDockerCont == nil {
+	for postgresDockerCont.Load() == nil {
 		if !postgresBootstrapping {
 			postgresBootstrapping = true
 			postgresCond.L.Unlock()
@@ -128,7 +129,7 @@ func RunPostgresTestContainer(t testing.TB) DatastoreTestContainer {
 			postgresCond.L.Lock()
 			postgresBootstrapping = false
 			if err == nil {
-				postgresDockerCont = dockerCont
+				postgresDockerCont.Store(dockerCont)
 			}
 
 			postgresCond.Broadcast()
@@ -143,9 +144,9 @@ func RunPostgresTestContainer(t testing.TB) DatastoreTestContainer {
 
 		postgresCond.Wait()
 	}
-	dockerCont := postgresDockerCont
 	postgresCond.L.Unlock()
 
+	dockerCont := postgresDockerCont.Load()
 	port, err := docker.GetHostPort(dockerCont, postgresPort)
 	require.NoError(t, err)
 

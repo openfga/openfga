@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -33,7 +34,7 @@ var (
 
 	mysqlContainerName = "openfga-test-mysql-" + ulid.Make().String()
 	mysqlPort          = network.MustParsePort("3306/tcp")
-	mysqlDockerCont    *container.InspectResponse
+	mysqlDockerCont    atomic.Pointer[container.InspectResponse]
 
 	mysqlBootstrapping bool
 	mysqlCond          = sync.NewCond(&sync.Mutex{})
@@ -93,7 +94,7 @@ func RunMysqlTestContainer(t testing.TB) DatastoreTestContainer {
 	// Only one test bootstraps the shared container at a time, while others wait efficiently using sync.Cond.
 	// If bootstrap fails, waiting tests are awakened so another test can retry without being affected by the failure.
 	mysqlCond.L.Lock()
-	for mysqlDockerCont == nil {
+	for mysqlDockerCont.Load() == nil {
 		if !mysqlBootstrapping {
 			mysqlBootstrapping = true
 			mysqlCond.L.Unlock()
@@ -102,7 +103,7 @@ func RunMysqlTestContainer(t testing.TB) DatastoreTestContainer {
 			mysqlCond.L.Lock()
 			mysqlBootstrapping = false
 			if err == nil {
-				mysqlDockerCont = dockerCont
+				mysqlDockerCont.Store(dockerCont)
 			}
 
 			mysqlCond.Broadcast()
@@ -118,9 +119,9 @@ func RunMysqlTestContainer(t testing.TB) DatastoreTestContainer {
 
 		mysqlCond.Wait()
 	}
-	dockerCont := mysqlDockerCont
 	mysqlCond.L.Unlock()
 
+	dockerCont := mysqlDockerCont.Load()
 	port, err := docker.GetHostPort(dockerCont, mysqlPort)
 	require.NoError(t, err)
 

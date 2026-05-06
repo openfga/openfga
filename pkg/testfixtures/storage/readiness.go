@@ -15,7 +15,7 @@ import (
 func waitForDatabase(driverName, uri string) error { //nolint:unparam
 	backoffPolicy := backoff.NewExponentialBackOff(
 		backoff.WithInitialInterval(100*time.Millisecond),
-		backoff.WithMaxElapsedTime(30*time.Second),
+		backoff.WithMaxElapsedTime(60*time.Second),
 	)
 
 	err := backoff.Retry(func() error {
@@ -43,7 +43,7 @@ func waitForDatabase(driverName, uri string) error { //nolint:unparam
 func waitForMigrationVersion(driverName, uri string, expectedVersion int64) error {
 	backoffPolicy := backoff.NewExponentialBackOff(
 		backoff.WithInitialInterval(100*time.Millisecond),
-		backoff.WithMaxElapsedTime(30*time.Second),
+		backoff.WithMaxElapsedTime(60*time.Second),
 	)
 
 	err := backoff.Retry(func() error {
