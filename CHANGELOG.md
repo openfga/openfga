@@ -7,11 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Try to keep listed changes to a concise bulleted list of simple explanations of changes. Aim for the amount of information needed so that readers can understand where they would look in the codebase to investigate the changes' implementation, or where they would look in the documentation to understand how to make use of the change in practice - better yet, link directly to the docs and provide detailed information there. Only elaborate if doing so is required to avoid breaking changes or experimental features from ruining someone's day.
 
 ## [Unreleased]
+
+## [1.15.1] - 2026-05-06
+### Changed
+- Reuse a single MySQL container across tests by replacing the test fixture implementation, improving test performance and reducing resource usage. [#3042](https://github.com/openfga/openfga/pull/3042)
+
 ### Fixed
 - Fixed a potential panic within command error handling. [#3091](https://github.com/openfga/openfga/pull/3091)
 - Fixed a bug that propagated expected errors from list objects when a path short-circuits. [#3096](https://github.com/openfga/openfga/pull/3096)
 - Fixed cache key collisions in experimental `weighted_graph_check` for edges in unions with multiple branches (direct types, wildcards, TTU paths, or intersections). [#3097](https://github.com/openfga/openfga/pull/3097)
 - Fixed a bug in the bounded tuple reader that would cause semaphore token leaks under context cancelation. [#3106](https://github.com/openfga/openfga/pull/3106)
+- Fixed a bug that could cause deadlocks in check by holding message streams open indefinitely upon error. [#3111](https://github.com/openfga/openfga/pull/3111)
 
 ## [1.15.0] - 2026-04-27
 ### Changed
@@ -1623,7 +1629,8 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
 - Memory storage adapter implementation
 - Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.15.0...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.15.1...HEAD
+[1.15.1]: https://github.com/openfga/openfga/compare/v1.15.0...v1.15.1
 [1.15.0]: https://github.com/openfga/openfga/compare/v1.14.2...v1.15.0
 [1.14.2]: https://github.com/openfga/openfga/compare/v1.14.1...v1.14.2
 [1.14.1]: https://github.com/openfga/openfga/compare/v1.14.0...v1.14.1

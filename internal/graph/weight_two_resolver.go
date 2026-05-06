@@ -587,6 +587,9 @@ func fastPathOperationSetup(ctx context.Context, req *ResolveCheckRequest, resol
 	for idx, child := range children {
 		producerChan, err := fastPathRewrite(ctx, req, child)
 		if err != nil {
+			for _, stream := range iterStreams {
+				stream.Stop()
+			}
 			return nil, err
 		}
 		iterStreams = append(iterStreams, iterator.NewStream(idx, producerChan))
