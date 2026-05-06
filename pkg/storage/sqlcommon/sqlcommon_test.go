@@ -207,3 +207,32 @@ func TestFetchBufferMetric(t *testing.T) {
 		require.GreaterOrEqual(t, sqlIterQuerySampleCount(t, "true"), before+1)
 	})
 }
+
+// blockingRowGetter blocks in GetRows until the supplied context is done,
+// emulating a slow / hanging database query.
+type blockingRowGetter struct{}
+
+func (blockingRowGetter) GetRows(ctx context.Context) (Rows, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+// TestFetchBufferRespectsDeadline verifies that a deadline on the caller's
+// context is honored by fetchBuffer even though the underlying parent
+// cancellation is intentionally stripped to avoid poisoning the connection
+// pool (see PR #2508). Regression test for issue #3098.
+func TestFetchBufferRespectsDeadline(t *testing.T) {
+	iter := NewSQLTupleIterator(blockingRowGetter{}, identityErrHandler)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	start := time.Now()
+	err := iter.fetchBuffer(ctx)
+	elapsed := time.Since(start)
+
+	require.Error(t, err)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	// Generous upper bound — the call must not hang for the full test timeout.
+	require.Less(t, elapsed, 5*time.Second, "fetchBuffer did not honor deadline; took %s", elapsed)
+}
