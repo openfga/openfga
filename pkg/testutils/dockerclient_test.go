@@ -248,7 +248,7 @@ func TestRemoveContainer_Fail(t *testing.T) {
 }
 
 func TestExecCommand_Fail(t *testing.T) {
-	t.Run("bad_cmd", func(t *testing.T) {
+	t.Run("command_failure_includes_output", func(t *testing.T) {
 		dc, err := NewDockerClient()
 		require.NoError(t, err)
 		t.Cleanup(func() { require.NoError(t, dc.Close()) })
@@ -265,10 +265,12 @@ func TestExecCommand_Fail(t *testing.T) {
 		t.Cleanup(func() { _ = dc.RemoveContainer(context.Background(), cont.ID) })
 
 		err = dc.ExecCommand(t.Context(), cont.ID, client.ExecCreateOptions{
-			Cmd: []string{"badcommand"},
+			Cmd: []string{"sh", "-c", "echo stdout-message; echo stderr-message >&2; exit 42"},
 		})
 		require.Error(t, err)
-		require.ErrorContains(t, err, "command [badcommand] completed with exit code 127")
+		require.ErrorContains(t, err, "command [sh -c echo stdout-message; echo stderr-message >&2; exit 42] completed with exit code 42")
+		require.ErrorContains(t, err, `stdout="stdout-message\n"`)
+		require.ErrorContains(t, err, `stderr="stderr-message\n"`)
 	})
 
 	t.Run("create_exec", func(t *testing.T) {

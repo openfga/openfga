@@ -1,6 +1,7 @@
 package testutils
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/containerd/errdefs"
+	"github.com/moby/moby/api/pkg/stdcopy"
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/network"
 	"github.com/moby/moby/client"
@@ -147,6 +149,9 @@ func (d *DockerClient) RemoveContainer(ctx context.Context, containerID string) 
 
 // ExecCommand executes a command in the specified container and waits for it to complete.
 func (d *DockerClient) ExecCommand(ctx context.Context, containerID string, execConfig client.ExecCreateOptions) error {
+	execConfig.AttachStdout = true
+	execConfig.AttachStderr = true
+
 	exec, err := d.client.ExecCreate(ctx, containerID, execConfig)
 	if err != nil {
 		return fmt.Errorf("failed to create exec for command %v: %w", execConfig.Cmd, err)
@@ -158,7 +163,9 @@ func (d *DockerClient) ExecCommand(ctx context.Context, containerID string, exec
 	}
 	defer resp.Close()
 
-	if _, err := io.Copy(io.Discard, resp.Reader); err != nil {
+	var stdout, stderr bytes.Buffer
+	_, err = stdcopy.StdCopy(&stdout, &stderr, resp.Reader)
+	if err != nil {
 		return fmt.Errorf("failed to read exec output for command %v: %w", execConfig.Cmd, err)
 	}
 
@@ -168,7 +175,13 @@ func (d *DockerClient) ExecCommand(ctx context.Context, containerID string, exec
 	}
 
 	if inspect.ExitCode != 0 {
-		return fmt.Errorf("command %v completed with exit code %d", execConfig.Cmd, inspect.ExitCode)
+		return fmt.Errorf(
+			"command %v completed with exit code %d: stdout=%q stderr=%q",
+			execConfig.Cmd,
+			inspect.ExitCode,
+			stdout.String(),
+			stderr.String(),
+		)
 	}
 
 	return nil
