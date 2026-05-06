@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Try to keep listed changes to a concise bulleted list of simple explanations of changes. Aim for the amount of information needed so that readers can understand where they would look in the codebase to investigate the changes' implementation, or where they would look in the documentation to understand how to make use of the change in practice - better yet, link directly to the docs and provide detailed information there. Only elaborate if doing so is required to avoid breaking changes or experimental features from ruining someone's day.
 
 ## [Unreleased]
+### Changed
+- Reuse a single MySQL container across tests by replacing the test fixture implementation, improving test performance and reducing resource usage. [#3042](https://github.com/openfga/openfga/pull/3042)
+
 ### Fixed
 - Fixed a potential panic within command error handling. [#3091](https://github.com/openfga/openfga/pull/3091)
 - Fixed a bug that propagated expected errors from list objects when a path short-circuits. [#3096](https://github.com/openfga/openfga/pull/3096)
@@ -17,7 +20,6 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ## [1.15.0] - 2026-04-27
 ### Changed
 - Implemented edge pruning in the list objects pipeline algorithm. This introduces a measurable improvement to request latency for larger, more complex authorization models. [#3075](https://github.com/openfga/openfga/pull/3075)
-- Reuse a single MySQL container across tests by replacing the test fixture implementation, improving test performance and reducing resource usage. [#3042](https://github.com/openfga/openfga/pull/3042)
 
 ### Fixed
 - Fixed experimental `weighted_graph_check` query cache being skipped when the cache controller returns a zero invalidation time (e.g., on cold start or when disabled), despite the cache controller documenting that zero time should allow cache use. [#3086](https://github.com/openfga/openfga/pull/3086)
