@@ -42,12 +42,14 @@ type Config struct {
 	MaxTuplesPerWriteField int
 	MaxTypesPerModelField  int
 
-	MaxOpenConns    int
-	MinOpenConns    int
-	MaxIdleConns    int
-	MinIdleConns    int
-	ConnMaxIdleTime time.Duration
-	ConnMaxLifetime time.Duration
+	MaxOpenConns            int
+	MinOpenConns            int
+	MaxIdleConns            int
+	MinIdleConns            int
+	ConnMaxIdleTime         time.Duration
+	ConnMaxLifetime         time.Duration
+	PingTimeout             time.Duration
+	PingRetryMaxElapsedTime time.Duration
 
 	ExportMetrics bool
 }
@@ -166,6 +168,22 @@ func WithConnMaxLifetime(d time.Duration) DatastoreOption {
 	}
 }
 
+// WithPingTimeout returns a DatastoreOption that sets
+// the maximum timeout for ping operations in the Config.
+func WithPingTimeout(d time.Duration) DatastoreOption {
+	return func(cfg *Config) {
+		cfg.PingTimeout = d
+	}
+}
+
+// PingRetryMaxElapsedTime returns a DatastoreOption that sets
+// the maximum elapsed time for ping retries in the Config.
+func WithPingRetryMaxElapsedTime(d time.Duration) DatastoreOption {
+	return func(cfg *Config) {
+		cfg.PingRetryMaxElapsedTime = d
+	}
+}
+
 // WithMetrics returns a DatastoreOption that
 // enables the export of metrics in the Config.
 func WithMetrics() DatastoreOption {
@@ -193,6 +211,14 @@ func NewConfig(opts ...DatastoreOption) *Config {
 
 	if cfg.MaxTypesPerModelField == 0 {
 		cfg.MaxTypesPerModelField = storage.DefaultMaxTypesPerAuthorizationModel
+	}
+
+	if cfg.PingTimeout == 0 {
+		cfg.PingTimeout = storage.DefaultPingTimeout
+	}
+
+	if cfg.PingRetryMaxElapsedTime == 0 {
+		cfg.PingRetryMaxElapsedTime = storage.DefaultPingRetryMaxElapsedTime
 	}
 
 	return cfg

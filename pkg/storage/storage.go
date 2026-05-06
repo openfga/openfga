@@ -28,6 +28,19 @@ const (
 	// value is set to 50, balancing detail per page with the overall number of pages.
 	DefaultPageSize = 50
 
+	// DefaultPingTimeout defines the default timeout for ping operations when checking the readiness
+	// of the datastore. This constant is used to prevent indefinite blocking and to ensure that
+	// the system can fail fast if the datastore is not responding. The default value is set to 2 seconds,
+	//  providing a reasonable window for transient issues to resolve while avoiding excessive delays.
+	DefaultPingTimeout = 2 * time.Second
+
+	// DefaultPingRetryMaxElapsedTime defines the default maximum amount of time to retry ping attempts
+	// when checking the readiness of the datastore. This constant is used to prevent indefinite retries
+	// and to ensure that the system can fail fast if the datastore is not responding. The default value
+	// is set to 1 minute, providing a reasonable window for transient issues to resolve while avoiding
+	// excessive delays in detecting persistent problems.
+	DefaultPingRetryMaxElapsedTime = 1 * time.Minute
+
 	relationshipTupleReaderCtxKey ctxKey = "relationship-tuple-reader-context-key"
 )
 

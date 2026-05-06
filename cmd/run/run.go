@@ -222,6 +222,10 @@ func NewRunCommand() *cobra.Command {
 
 	flags.Duration("datastore-conn-max-lifetime", defaultConfig.Datastore.ConnMaxLifetime, "the maximum amount of time a connection to the datastore may be reused")
 
+	flags.Duration("datastore-ping-timeout", defaultConfig.Datastore.PingTimeout, "the maximum amount of time to wait for a successful ping to the datastore")
+
+	flags.Duration("datastore-ping-retry-max-elapsed-time", defaultConfig.Datastore.PingRetryMaxElapsedTime, "the maximum time to retry datastore ping attempts")
+
 	flags.Bool("datastore-metrics-enabled", defaultConfig.Datastore.Metrics.Enabled, "enable/disable sql metrics")
 
 	flags.Bool("playground-enabled", defaultConfig.Playground.Enabled, "enable/disable the OpenFGA Playground")
@@ -489,6 +493,8 @@ func (s *ServerContext) datastoreConfig(config *serverconfig.Config) (storage.Op
 		sqlcommon.WithMinIdleConns(config.Datastore.MinIdleConns),
 		sqlcommon.WithConnMaxIdleTime(config.Datastore.ConnMaxIdleTime),
 		sqlcommon.WithConnMaxLifetime(config.Datastore.ConnMaxLifetime),
+		sqlcommon.WithPingTimeout(config.Datastore.PingTimeout),
+		sqlcommon.WithPingRetryMaxElapsedTime(config.Datastore.PingRetryMaxElapsedTime),
 	}
 
 	if config.Datastore.Metrics.Enabled {
