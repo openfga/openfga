@@ -208,15 +208,30 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 	return res, nil
 }
 
+// requestIDKey is a context key used to propagate the original request_id
+// into the detached shadow context so v2Check spans carry it as an attribute.
+type requestIDKey struct{}
+
 func (s *Server) shadowV2Check(ctx context.Context, req *openfgav1.CheckRequest, mainRes *openfgav1.CheckResponse, mainTook int64, mainDatastoreQueryCount uint32, mainDatastoreItemCount uint64) {
 	start := time.Now()
 	var res *openfgav1.CheckResponse
 	var shadowMetadata storagewrappers.Metadata
 	var err error
+	originalSpanCtx := trace.SpanContextFromContext(ctx)
+	var shadowTraceID string
 	recoveredErr := panics.Try(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), s.shadowCheckResolverTimeout)
+		newCtx, cancel := context.WithTimeout(context.Background(), s.shadowCheckResolverTimeout)
 		defer cancel()
-		res, shadowMetadata, err = s.v2Check(ctx, req, s.sharedDatastoreResources.ShadowCheckCache, s.sharedDatastoreResources.ShadowCacheController, s.shadowAuthzModelGraphResolver)
+		// Propagate the original request_id so v2Check spans can carry it as an attribute.
+		newCtx = context.WithValue(newCtx, requestIDKey{}, originalSpanCtx.TraceID().String())
+		// Start a root span to establish the shadow trace_id before entering v2Check.
+		newCtx, rootSpan := tracer.Start(newCtx, "shadowV2Check", trace.WithAttributes(
+			attribute.String("request_id", originalSpanCtx.TraceID().String()),
+			attribute.String("store_id", req.GetStoreId()),
+		))
+		defer rootSpan.End()
+		shadowTraceID = rootSpan.SpanContext().TraceID().String()
+		res, shadowMetadata, err = s.v2Check(newCtx, req, s.sharedDatastoreResources.ShadowCheckCache, s.sharedDatastoreResources.ShadowCacheController, s.shadowAuthzModelGraphResolver)
 	})
 	if recoveredErr != nil {
 		err = recoveredErr.AsError()
@@ -230,6 +245,7 @@ func (s *Server) shadowV2Check(ctx context.Context, req *openfgav1.CheckRequest,
 		return
 	}
 	s.logger.InfoWithContext(ctx, "shadow check",
+		zap.String("shadow_trace_id", shadowTraceID),
 		zap.Bool("matches", mainRes.GetAllowed() == res.GetAllowed()),
 		zap.Int64("main_took", mainTook),
 		zap.Int64("shadow_took", time.Since(start).Milliseconds()),
@@ -253,13 +269,19 @@ func (s *Server) v2Check(
 	storeID := req.GetStoreId()
 	tk := req.GetTupleKey()
 
-	ctx, span := tracer.Start(ctx, commands.V2CheckMethodName, trace.WithAttributes(
-		attribute.String("store_id", storeID),
-		attribute.String("object", tk.GetObject()),
-		attribute.String("relation", tk.GetRelation()),
-		attribute.String("user", tk.GetUser()),
-		attribute.String("consistency", req.GetConsistency().String()),
-	))
+	spanOpts := []trace.SpanStartOption{
+		trace.WithAttributes(
+			attribute.String("store_id", storeID),
+			attribute.String("object", tk.GetObject()),
+			attribute.String("relation", tk.GetRelation()),
+			attribute.String("user", tk.GetUser()),
+			attribute.String("consistency", req.GetConsistency().String()),
+		),
+	}
+	if reqID, ok := ctx.Value(requestIDKey{}).(string); ok && reqID != "" {
+		spanOpts = append(spanOpts, trace.WithAttributes(attribute.String("request_id", reqID)))
+	}
+	ctx, span := tracer.Start(ctx, commands.V2CheckMethodName, spanOpts...)
 	defer span.End()
 
 	cacheInvalidationTime := time.Time{}
