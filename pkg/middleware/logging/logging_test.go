@@ -11,6 +11,7 @@ import (
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"google.golang.org/grpc"
@@ -50,7 +51,7 @@ func TestNewLoggingInterceptor_concrete(t *testing.T) {
 	argLogger := &logger.ZapLogger{Logger: zap.New(core)}
 
 	serverOpts := []grpc.ServerOption{
-		grpc.ChainUnaryInterceptor(grpc_ctxtags.UnaryServerInterceptor(), requestid.NewUnaryInterceptor(), NewLoggingInterceptor(argLogger)),
+		grpc.ChainUnaryInterceptor(grpc_ctxtags.UnaryServerInterceptor(), requestid.NewUnaryInterceptor(), NewLoggingInterceptor(argLogger, "")),
 	}
 
 	listner := bufconn.Listen(1024 * 1024)
@@ -104,6 +105,48 @@ func TestNewLoggingInterceptor_concrete(t *testing.T) {
 
 	srv.Stop()
 	wg.Wait()
+}
+
+func TestGCPTraceFields(t *testing.T) {
+	traceID, _ := trace.TraceIDFromHex("4bf92f3577b34da6a3ce929d0e0e4736")
+	spanID, _ := trace.SpanIDFromHex("00f067aa0ba902b7")
+	spanCtx := trace.NewSpanContext(trace.SpanContextConfig{
+		TraceID:    traceID,
+		SpanID:     spanID,
+		TraceFlags: trace.FlagsSampled,
+	})
+
+	t.Run("returns_nil_when_not_gcp", func(t *testing.T) {
+		fn := traceContextFieldsFn("")
+		fields := fn(spanCtx)
+		assert.Nil(t, fields)
+	})
+
+	t.Run("returns_gcp_fields", func(t *testing.T) {
+		fields := gcpTraceFields(spanCtx, "my-project")
+
+		fieldMap := make(map[string]interface{})
+		for _, f := range fields {
+			switch f.Type {
+			case zapcore.StringType:
+				fieldMap[f.Key] = f.String
+			case zapcore.BoolType:
+				fieldMap[f.Key] = f.Integer == 1
+			}
+		}
+
+		assert.Equal(t, "projects/my-project/traces/4bf92f3577b34da6a3ce929d0e0e4736", fieldMap["logging.googleapis.com/trace"])
+		assert.Equal(t, "00f067aa0ba902b7", fieldMap["logging.googleapis.com/spanId"])
+		assert.Equal(t, true, fieldMap["logging.googleapis.com/trace_sampled"])
+	})
+
+	t.Run("omits_trace_field_when_no_project", func(t *testing.T) {
+		fields := gcpTraceFields(spanCtx, "")
+
+		for _, f := range fields {
+			assert.NotEqual(t, "logging.googleapis.com/trace", f.Key)
+		}
+	})
 }
 
 type fgaServer struct {

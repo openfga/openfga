@@ -240,6 +240,8 @@ func NewRunCommand() *cobra.Command {
 
 	flags.String("log-timestamp-format", defaultConfig.Log.TimestampFormat, "the timestamp format to use for log messages")
 
+	flags.String("log-trace-context", defaultConfig.Log.TraceContext, "add cloud-specific trace context fields to structured logs for log-trace correlation. Supported: 'gcp'")
+
 	flags.Bool("trace-enabled", defaultConfig.Trace.Enabled, "enable tracing")
 
 	flags.String("trace-otlp-endpoint", defaultConfig.Trace.OTLP.Endpoint, "the endpoint of the trace collector")
@@ -593,7 +595,7 @@ func (s *ServerContext) buildServerOpts(ctx context.Context, config *serverconfi
 		grpc.ChainUnaryInterceptor(
 			[]grpc.UnaryServerInterceptor{
 				storeid.NewUnaryInterceptor(),           // if available, add store_id to ctxtags
-				logging.NewLoggingInterceptor(s.Logger), // needed to log invalid requests
+				logging.NewLoggingInterceptor(s.Logger, config.Log.TraceContext), // needed to log invalid requests
 				validator.UnaryServerInterceptor(),
 			}...,
 		),
@@ -633,7 +635,7 @@ func (s *ServerContext) buildServerOpts(ctx context.Context, config *serverconfi
 				// The following interceptors wrap the server stream with our own
 				// wrapper and must come last.
 				storeid.NewStreamingInterceptor(),
-				logging.NewStreamingLoggingInterceptor(s.Logger),
+				logging.NewStreamingLoggingInterceptor(s.Logger, config.Log.TraceContext),
 			}...,
 		),
 	)
