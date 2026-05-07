@@ -208,10 +208,10 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 	if isShadowRunning {
 		shadowClosesSpan = true
 		go func() {
+			defer span.End()
 			s.shadowV2Check(ctx, req, res, endTime,
 				resp.GetResolutionMetadata().DatastoreQueryCount,
 				resp.GetResolutionMetadata().DatastoreItemCount)
-			span.End()
 		}()
 	}
 
