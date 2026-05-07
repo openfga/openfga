@@ -51,7 +51,13 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		attribute.KeyValue{Key: "user", Value: attribute.StringValue(tk.GetUser())},
 		attribute.KeyValue{Key: "consistency", Value: attribute.StringValue(req.GetConsistency().String())},
 	))
-	defer span.End()
+	isShadowRunning := s.featureFlagClient.Boolean(serverconfig.ExperimentalShadowWeightedGraphCheck, req.GetStoreId())
+	shadowClosesSpan := false
+	defer func() {
+		if !shadowClosesSpan {
+			span.End()
+		}
+	}()
 
 	if !validator.RequestIsValidatedFromContext(ctx) {
 		if err := req.Validate(); err != nil {
@@ -199,10 +205,14 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		Allowed: resp.Allowed,
 	}
 
-	if s.featureFlagClient.Boolean(serverconfig.ExperimentalShadowWeightedGraphCheck, storeID) {
-		go s.shadowV2Check(ctx, req, res, endTime,
-			resp.GetResolutionMetadata().DatastoreQueryCount,
-			resp.GetResolutionMetadata().DatastoreItemCount)
+	if isShadowRunning {
+		shadowClosesSpan = true
+		go func() {
+			s.shadowV2Check(ctx, req, res, endTime,
+				resp.GetResolutionMetadata().DatastoreQueryCount,
+				resp.GetResolutionMetadata().DatastoreItemCount)
+			span.End()
+		}()
 	}
 
 	return res, nil
