@@ -485,9 +485,11 @@ func (r *Resolver) ResolveRecursive(ctx context.Context, req *Request, edge *aut
 // reduce as a logical intersection operation (exit the moment we have a single false)
 // should panic if a single handler returns nil.
 func (r *Resolver) ResolveIntersection(ctx context.Context, req *Request, node *authzGraph.WeightedAuthorizationModelNode) (*Response, error) {
-	ctx, span := tracer.Start(ctx, "ResolveIntersection")
+	ctx, span := tracer.Start(ctx, "ResolveIntersection", trace.WithAttributes(
+		attribute.String("tuple_key", req.GetTupleString()),
+		attribute.Bool("allowed", false),
+	))
 	defer span.End()
-	span.SetAttributes(attribute.String("tuple_key", req.GetTupleString()))
 
 	edges, ok := r.model.GetEdgesFromNode(node)
 	if !ok {
@@ -539,7 +541,6 @@ func (r *Resolver) ResolveIntersection(ctx context.Context, req *Request, node *
 			if msg.Err != nil || !msg.Res.GetAllowed() {
 				// NOTE: This is one of the breaking changes from the current check implementation. Delete this after this rollout.
 				// In intersection _every_ branch must return true.
-				span.SetAttributes(attribute.Bool("allowed", false))
 				return msg.Res, msg.Err
 			}
 		}
@@ -551,9 +552,11 @@ func (r *Resolver) ResolveIntersection(ctx context.Context, req *Request, node *
 // reduce as a logical exclusion operation
 // if base is false, short circuit.
 func (r *Resolver) ResolveExclusion(ctx context.Context, req *Request, node *authzGraph.WeightedAuthorizationModelNode) (*Response, error) {
-	ctx, span := tracer.Start(ctx, "ResolveExclusion")
+	ctx, span := tracer.Start(ctx, "ResolveExclusion", trace.WithAttributes(
+		attribute.String("tuple_key", req.GetTupleString()),
+		attribute.Bool("allowed", false),
+	))
 	defer span.End()
-	span.SetAttributes(attribute.String("tuple_key", req.GetTupleString()))
 
 	edges, ok := r.model.GetEdgesFromNode(node)
 	if !ok {
@@ -623,7 +626,6 @@ func (r *Resolver) ResolveExclusion(ctx context.Context, req *Request, node *aut
 
 			// Short-circuit: If base is false, the whole expression is false.
 			if !msg.Res.GetAllowed() {
-				span.SetAttributes(attribute.Bool("allowed", false))
 				return &Response{Allowed: false}, nil
 			}
 
@@ -648,7 +650,6 @@ func (r *Resolver) ResolveExclusion(ctx context.Context, req *Request, node *aut
 
 			// Short-circuit: If subtract is true, the whole expression is false.
 			if msg.Res.GetAllowed() {
-				span.SetAttributes(attribute.Bool("allowed", false))
 				return &Response{Allowed: false}, nil
 			}
 		}

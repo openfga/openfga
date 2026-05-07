@@ -395,7 +395,7 @@ var _ CheckResolver = (*LocalChecker)(nil)
 func (c *LocalChecker) ResolveCheck(
 	ctx context.Context,
 	req *ResolveCheckRequest,
-) (*ResolveCheckResponse, error) {
+) (resp *ResolveCheckResponse, err error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
@@ -405,7 +405,12 @@ func (c *LocalChecker) ResolveCheck(
 		attribute.String("resolver_type", "LocalChecker"),
 		attribute.String("tuple_key", tuple.TupleKeyWithConditionToString(req.GetTupleKey())),
 	))
-	defer span.End()
+	defer func() {
+		if resp != nil {
+			span.SetAttributes(attribute.Bool("allowed", resp.GetAllowed()))
+		}
+		span.End()
+	}()
 
 	if req.GetRequestMetadata().Depth == c.maxResolutionDepth {
 		return nil, ErrResolutionDepthExceeded
@@ -457,15 +462,12 @@ func (c *LocalChecker) ResolveCheck(
 		}, nil
 	}
 
-	resp, err := c.CheckRewrite(ctx, req, rel.GetRewrite())(ctx)
+	resp, err = c.CheckRewrite(ctx, req, rel.GetRewrite())(ctx)
 	if err != nil {
 		telemetry.TraceError(span, err)
 		return nil, err
 	}
 
-	if resp != nil {
-		span.SetAttributes(attribute.Bool("allowed", resp.GetAllowed()))
-	}
 	return resp, nil
 }
 
