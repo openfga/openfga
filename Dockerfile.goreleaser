@@ -2,10 +2,4 @@ FROM cgr.dev/chainguard/static@sha256:1f14279403150757d801f6308bb0f4b816b162fddc
 COPY assets /assets
 COPY openfga /
 
-# Goreleaser does not support multi-stage builds. See:
-# https://github.com/goreleaser/goreleaser/issues/609
-#
-# Dependabot is also not capable of updating inline image copies at this time, so
-# this needs to be updated manually until one of these issues is resolved.
-COPY --from=ghcr.io/grpc-ecosystem/grpc-health-probe:v0.4.48@sha256:b615f8b80a6796490b91bfe0f7f4d59cf73767d4921968495cb8b4024090e151 /ko-app/grpc-health-probe /usr/local/bin/grpc_health_probe
 ENTRYPOINT ["/openfga"]
