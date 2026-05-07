@@ -211,6 +211,9 @@ func TestShadowV2Check(t *testing.T) {
 		require.Equal(t, uint64(5), fields["main_datastore_item_count"])
 		require.NotNil(t, fields["shadow_datastore_query_count"])
 		require.NotNil(t, fields["shadow_datastore_item_count"])
+		require.Equal(t, "document:1", fields["object"])
+		require.Equal(t, "viewer", fields["relation"])
+		require.Equal(t, "user:alice", fields["user"])
 	})
 
 	t.Run("logs_mismatch_when_results_disagree", func(t *testing.T) {
@@ -232,6 +235,9 @@ func TestShadowV2Check(t *testing.T) {
 		shadowTook, ok := fields["shadow_took"].(int64)
 		require.True(t, ok, "shadow_took should be int64 milliseconds")
 		require.GreaterOrEqual(t, shadowTook, int64(0))
+		require.Equal(t, "document:1", fields["object"])
+		require.Equal(t, "viewer", fields["relation"])
+		require.Equal(t, "user:alice", fields["user"])
 	})
 
 	t.Run("logs_error_on_invalid_store", func(t *testing.T) {
