@@ -172,6 +172,12 @@ func buildEdgeCacheKey(modelID string, req *Request, edge *authzGraph.WeightedAu
 }
 
 func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, edges []*authzGraph.WeightedAuthorizationModelEdge, visited *sync.Map) (*Response, error) {
+	ctx, span := tracer.Start(ctx, "ResolveUnionEdges", trace.WithAttributes(
+		attribute.String("tuple_key", req.GetTupleString()),
+		attribute.Bool("allowed", false),
+	))
+	defer span.End()
+
 	ctx, cancel := context.WithCancel(ctx)
 
 	out := make(chan ResponseMsg, len(edges))
@@ -191,6 +197,10 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, edges []
 		id := buildEdgeCacheKey(r.model.GetModelID(), req, edge)
 		ids = append(ids, id)
 		if res, ok := r.isCached(req.GetConsistency(), id); ok {
+			span.AddEvent("cache_hit", trace.WithAttributes(
+				attribute.String("cache_key", id),
+				attribute.Bool("allowed", res.GetAllowed()),
+			))
 			concurrency.TrySendThroughChannel(ctx, ResponseMsg{ID: id, Res: res}, out)
 			if res.GetAllowed() {
 				break
@@ -223,6 +233,7 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, edges []
 
 			if msg.Res.GetAllowed() {
 				// Short-circuit: In a union, if any branch returns true, we can immediately return.
+				span.SetAttributes(attribute.Bool("allowed", true))
 				return msg.Res, nil
 			}
 		}
@@ -482,7 +493,6 @@ func (r *Resolver) ResolveIntersection(ctx context.Context, req *Request, node *
 	if !ok {
 		return nil, ErrPanicRequest
 	}
-	span.SetAttributes(attribute.Int("num_edges", len(edges)))
 
 	ctx, cancel := context.WithCancel(ctx)
 	out := make(chan ResponseMsg, len(edges))
@@ -529,10 +539,12 @@ func (r *Resolver) ResolveIntersection(ctx context.Context, req *Request, node *
 			if msg.Err != nil || !msg.Res.GetAllowed() {
 				// NOTE: This is one of the breaking changes from the current check implementation. Delete this after this rollout.
 				// In intersection _every_ branch must return true.
+				span.SetAttributes(attribute.Bool("allowed", false))
 				return msg.Res, msg.Err
 			}
 		}
 	}
+	span.SetAttributes(attribute.Bool("allowed", true))
 	return &Response{Allowed: true}, err
 }
 
@@ -611,11 +623,13 @@ func (r *Resolver) ResolveExclusion(ctx context.Context, req *Request, node *aut
 
 			// Short-circuit: If base is false, the whole expression is false.
 			if !msg.Res.GetAllowed() {
+				span.SetAttributes(attribute.Bool("allowed", false))
 				return &Response{Allowed: false}, nil
 			}
 
 			// Short-circuit: If base is true and there's no subtract, the whole expression is true.
 			if msg.Res.GetAllowed() && subtract == nil {
+				span.SetAttributes(attribute.Bool("allowed", true))
 				return msg.Res, nil
 			}
 
@@ -634,12 +648,14 @@ func (r *Resolver) ResolveExclusion(ctx context.Context, req *Request, node *aut
 
 			// Short-circuit: If subtract is true, the whole expression is false.
 			if msg.Res.GetAllowed() {
+				span.SetAttributes(attribute.Bool("allowed", false))
 				return &Response{Allowed: false}, nil
 			}
 		}
 	}
 
 	// The only way to get here is if base was (Allowed: true) and subtract was (Allowed: false).
+	span.SetAttributes(attribute.Bool("allowed", true))
 	return &Response{Allowed: true}, nil
 }
 

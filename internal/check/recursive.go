@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync"
 
+	"go.opentelemetry.io/otel/attribute"
 	"golang.org/x/sync/errgroup"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -53,7 +54,11 @@ func (s *Recursive) Userset(ctx context.Context, req *Request, edge *authzGraph.
 		return nil, err
 	}
 
-	return s.execute(ctx, req, edge, RecursiveTypeUserset, leftChan, storage.WrapIterator(storage.UsersetKind, rightIter))
+	res, err := s.execute(ctx, req, edge, RecursiveTypeUserset, leftChan, storage.WrapIterator(storage.UsersetKind, rightIter))
+	if err == nil && res != nil {
+		span.SetAttributes(attribute.Bool("allowed", res.Allowed))
+	}
+	return res, err
 }
 
 // recursiveTTU solves a union relation of the form "{operand1} OR ... {operandN} OR {recursive TTU}"
@@ -73,7 +78,11 @@ func (s *Recursive) TTU(ctx context.Context, req *Request, edge *authzGraph.Weig
 		return nil, err
 	}
 
-	return s.execute(ctx, req, edge, RecursiveTypeTTU, leftChan, storage.WrapIterator(storage.TTUKind, rightIter))
+	res, err := s.execute(ctx, req, edge, RecursiveTypeTTU, leftChan, storage.WrapIterator(storage.TTUKind, rightIter))
+	if err == nil && res != nil {
+		span.SetAttributes(attribute.Bool("allowed", res.Allowed))
+	}
+	return res, err
 }
 
 func (s *Recursive) execute(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge, recursiveType RecursiveType, leftChan chan *iterator.Msg, rightIter storage.TupleMapper) (*Response, error) {
