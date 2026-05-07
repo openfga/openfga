@@ -52,9 +52,8 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		attribute.KeyValue{Key: "consistency", Value: attribute.StringValue(req.GetConsistency().String())},
 	))
 	isShadowRunning := s.featureFlagClient.Boolean(serverconfig.ExperimentalShadowWeightedGraphCheck, req.GetStoreId())
-	shadowClosesSpan := false
 	defer func() {
-		if !shadowClosesSpan {
+		if !isShadowRunning {
 			span.End()
 		}
 	}()
@@ -206,7 +205,6 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 	}
 
 	if isShadowRunning {
-		shadowClosesSpan = true
 		go func() {
 			s.shadowV2Check(ctx, req, res, endTime,
 				resp.GetResolutionMetadata().DatastoreQueryCount,
