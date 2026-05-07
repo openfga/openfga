@@ -232,6 +232,11 @@ func (s *Server) shadowV2Check(ctx context.Context, req *openfgav1.CheckRequest,
 		defer rootSpan.End()
 		shadowTraceID = rootSpan.SpanContext().TraceID().String()
 		res, shadowMetadata, err = s.v2Check(newCtx, req, s.sharedDatastoreResources.ShadowCheckCache, s.sharedDatastoreResources.ShadowCacheController, s.shadowAuthzModelGraphResolver)
+		if err == nil {
+			matches := mainRes.GetAllowed() == res.GetAllowed()
+			rootSpan.SetAttributes(attribute.Bool("matches", matches))
+			trace.SpanFromContext(ctx).SetAttributes(attribute.Bool("matches", matches))
+		}
 	})
 	if recoveredErr != nil {
 		err = recoveredErr.AsError()
