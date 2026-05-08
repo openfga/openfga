@@ -283,7 +283,9 @@ func (r *Resolver) ResolveUnion(ctx context.Context, req *Request, node *authzGr
 	))
 	defer span.End()
 
-	if res, ok := r.isCached(req.GetConsistency(), r.buildNodeCacheKey(req, node)); ok {
+	cacheKey := r.buildNodeCacheKey(req, node)
+
+	if res, ok := r.isCached(req.GetConsistency(), cacheKey); ok {
 		span.SetAttributes(attribute.Bool("cached", true))
 		return res, nil
 	}
@@ -293,7 +295,7 @@ func (r *Resolver) ResolveUnion(ctx context.Context, req *Request, node *authzGr
 			return
 		}
 		entry := &ResponseCacheEntry{Res: resp, LastModified: time.Now()}
-		r.cache.Set(r.buildNodeCacheKey(req, node), entry, r.cacheTTL)
+		r.cache.Set(cacheKey, entry, r.cacheTTL)
 	}()
 
 	emptyCycle := visited == nil
