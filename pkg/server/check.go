@@ -51,7 +51,13 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		attribute.KeyValue{Key: "user", Value: attribute.StringValue(tk.GetUser())},
 		attribute.KeyValue{Key: "consistency", Value: attribute.StringValue(req.GetConsistency().String())},
 	))
-	defer span.End()
+	isShadowRunning := s.featureFlagClient.Boolean(serverconfig.ExperimentalShadowWeightedGraphCheck, req.GetStoreId())
+	shadowClosesSpan := false
+	defer func() {
+		if !shadowClosesSpan {
+			span.End()
+		}
+	}()
 
 	if !validator.RequestIsValidatedFromContext(ctx) {
 		if err := req.Validate(); err != nil {
@@ -199,10 +205,14 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		Allowed: resp.Allowed,
 	}
 
-	if s.featureFlagClient.Boolean(serverconfig.ExperimentalShadowWeightedGraphCheck, storeID) {
-		go s.shadowV2Check(ctx, req, res, endTime,
-			resp.GetResolutionMetadata().DatastoreQueryCount,
-			resp.GetResolutionMetadata().DatastoreItemCount)
+	if isShadowRunning {
+		shadowClosesSpan = true
+		go func() {
+			defer span.End()
+			s.shadowV2Check(ctx, req, res, endTime,
+				resp.GetResolutionMetadata().DatastoreQueryCount,
+				resp.GetResolutionMetadata().DatastoreItemCount)
+		}()
 	}
 
 	return res, nil
@@ -232,6 +242,11 @@ func (s *Server) shadowV2Check(ctx context.Context, req *openfgav1.CheckRequest,
 		defer rootSpan.End()
 		shadowTraceID = rootSpan.SpanContext().TraceID().String()
 		res, shadowMetadata, err = s.v2Check(newCtx, req, s.sharedDatastoreResources.ShadowCheckCache, s.sharedDatastoreResources.ShadowCacheController, s.shadowAuthzModelGraphResolver)
+		if err == nil {
+			matches := mainRes.GetAllowed() == res.GetAllowed()
+			rootSpan.SetAttributes(attribute.Bool("matches", matches))
+			trace.SpanFromContext(ctx).SetAttributes(attribute.Bool("matches", matches))
+		}
 	})
 	if recoveredErr != nil {
 		err = recoveredErr.AsError()
@@ -252,6 +267,9 @@ func (s *Server) shadowV2Check(ctx context.Context, req *openfgav1.CheckRequest,
 		zap.Bool("main_result", mainRes.GetAllowed()),
 		zap.Bool("shadow_result", res.GetAllowed()),
 		zap.String("store_id", req.GetStoreId()),
+		zap.String("object", req.GetTupleKey().GetObject()),
+		zap.String("relation", req.GetTupleKey().GetRelation()),
+		zap.String("user", req.GetTupleKey().GetUser()),
 		zap.Uint32("main_datastore_query_count", mainDatastoreQueryCount),
 		zap.Uint32("shadow_datastore_query_count", shadowMetadata.DatastoreQueryCount),
 		zap.Uint64("main_datastore_item_count", mainDatastoreItemCount),
