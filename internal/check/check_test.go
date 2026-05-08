@@ -64,12 +64,12 @@ func TestResolveUnion(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		cacheKey := buildNodeCacheKey(model.GetId(), req, mg.GetOrAddNode("group#member", "group#member", authzGraph.SpecificTypeAndRelation))
-
-		mockCache.EXPECT().Get(cacheKey).Return(cachedEntry).Times(1)
-
 		node, ok := mg.GetNodeByID("group#member")
 		require.True(t, ok)
+
+		cacheKey := buildNodeCacheKey(model.GetId(), req, node)
+
+		mockCache.EXPECT().Get(cacheKey).Return(cachedEntry).Times(1)
 
 		res, err := resolver.ResolveUnion(context.Background(), req, node, nil)
 		require.NoError(t, err)
@@ -110,7 +110,10 @@ func TestResolveUnion(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		cacheKey := buildNodeCacheKey(model.GetId(), req, mg.GetOrAddNode("group#member", "group#member", authzGraph.SpecificTypeAndRelation))
+		node, ok := mg.GetNodeByID("group#member")
+		require.True(t, ok)
+
+		cacheKey := buildNodeCacheKey(model.GetId(), req, node)
 
 		// the first cache call should be to check for a subproblem cache entry
 		mockCache.EXPECT().Get(cacheKey).Return(nil).Times(1)
@@ -151,9 +154,6 @@ func TestResolveUnion(t *testing.T) {
 			ConcurrencyLimit:          10,
 			LastCacheInvalidationTime: time.Now().Add(-time.Hour),
 		})
-
-		node, ok := mg.GetNodeByID("group#member")
-		require.True(t, ok)
 
 		res, err := resolver.ResolveUnion(context.Background(), req, node, nil)
 		require.NoError(t, err)
