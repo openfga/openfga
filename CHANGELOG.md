@@ -10,6 +10,9 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Changed
 - Report `allowed` result and `tuple_key` on Check and experimental `weighted_graph_check` resolution trace spans. [#3116](https://github.com/openfga/openfga/pull/3116)
 
+### Security
+- Update toolchain Go version to 1.26.3 to address the Go standard library vulnerabilities documented in the [Go 1.26.3 release notes](https://go.dev/doc/devel/release#go1.26.3). [#3115](https://github.com/openfga/openfga/pull/3115)
+
 ## [1.15.1] - 2026-05-06
 ### Changed
 - Reuse a single MySQL container across tests by replacing the test fixture implementation, improving test performance and reducing resource usage. [#3042](https://github.com/openfga/openfga/pull/3042)
