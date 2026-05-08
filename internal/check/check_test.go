@@ -44,11 +44,6 @@ func TestResolveUnion(t *testing.T) {
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
-		cachedEntry := &ResponseCacheEntry{
-			Res:          &Response{Allowed: true},
-			LastModified: time.Now(),
-		}
-
 		resolver := New(Config{
 			Model:                     mg,
 			Datastore:                 mockDatastore,
@@ -67,9 +62,30 @@ func TestResolveUnion(t *testing.T) {
 		node, ok := mg.GetNodeByID("group#member")
 		require.True(t, ok)
 
-		cacheKey := buildNodeCacheKey(model.GetId(), req, node)
+		edges, ok := mg.GetEdgesFromNode(node)
+		require.True(t, ok)
 
-		mockCache.EXPECT().Get(cacheKey).Return(cachedEntry).Times(1)
+		union := edges[0].GetTo()
+		edges, ok = mg.GetEdgesFromNode(union)
+		require.True(t, ok)
+
+		cachedTrue := &ResponseCacheEntry{
+			Res:          &Response{Allowed: true},
+			LastModified: time.Now(),
+		}
+		firstCacheKey := buildEdgeCacheKey(model.GetId(), req, edges[0])
+		mockCache.EXPECT().Get(firstCacheKey).Return(cachedTrue).Times(1)
+
+		admin := edges[1].GetTo()
+		edges, ok = mg.GetEdgesFromNode(admin)
+		require.True(t, ok)
+
+		cachedFalse := &ResponseCacheEntry{
+			Res:          &Response{Allowed: false},
+			LastModified: time.Now(),
+		}
+		secondCacheKey := buildEdgeCacheKey(model.GetId(), req, edges[0])
+		mockCache.EXPECT().Get(secondCacheKey).Return(cachedFalse).MaxTimes(1)
 
 		res, err := resolver.ResolveUnion(context.Background(), req, node, nil)
 		require.NoError(t, err)
@@ -113,11 +129,6 @@ func TestResolveUnion(t *testing.T) {
 		node, ok := mg.GetNodeByID("group#member")
 		require.True(t, ok)
 
-		cacheKey := buildNodeCacheKey(model.GetId(), req, node)
-
-		// the first cache call should be to check for a subproblem cache entry
-		mockCache.EXPECT().Get(cacheKey).Return(nil).Times(1)
-
 		// simulate an edge with a cached false result
 		mockCache.EXPECT().Get(gomock.Any()).Return(cachedFalse).Times(1)
 
@@ -137,15 +148,9 @@ func TestResolveUnion(t *testing.T) {
 				}).Times(2)
 
 		// each edge sets the results of its resolution
-		edgeCacheSets := mockCache.EXPECT().
-			Set(gomock.Not(gomock.Eq(cacheKey)), gomock.Any(), gomock.Any()).
-			Times(2)
-
-		// the last cache call should be to set the subproblem cache entry
 		mockCache.EXPECT().
-			Set(cacheKey, gomock.Any(), gomock.Any()).
-			After(edgeCacheSets).
-			Times(1)
+			Set(gomock.Any(), gomock.Any(), gomock.Any()).
+			Times(2)
 
 		resolver := New(Config{
 			Model:                     mg,

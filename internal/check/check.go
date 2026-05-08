@@ -246,34 +246,6 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, edges []
 	return res, nil
 }
 
-func buildNodeCacheKey(modelID string, req *Request, node *authzGraph.WeightedAuthorizationModelNode) string {
-	object := req.GetTupleKey().GetObject()
-	relation := req.GetTupleKey().GetRelation()
-	user := req.GetTupleKey().GetUser()
-	label := node.GetUniqueLabel()
-	invariant := req.GetInvariantCacheKey()
-
-	size := len(cacheKeyPrefix) + len(modelID) + len(object) + len(relation) + len(user) + len(label) + len(invariant)
-	size += 5 // delimiters are one byte each
-
-	var b strings.Builder
-	b.Grow(size)
-
-	b.WriteString(cacheKeyPrefix)
-	b.WriteString(modelID)
-	b.WriteByte(cacheKeyDelimiter)
-	b.WriteString(object)
-	b.WriteByte(cacheKeyDelimiter)
-	b.WriteString(relation)
-	b.WriteByte(cacheKeyDelimiter)
-	b.WriteString(user)
-	b.WriteByte(cacheKeyDelimiter)
-	b.WriteString(label)
-	b.WriteByte(cacheKeyDelimiter)
-	b.WriteString(invariant)
-	return b.String()
-}
-
 // reduce as a logical union operation (exit the moment we have a single true).
 func (r *Resolver) ResolveUnion(ctx context.Context, req *Request, node *authzGraph.WeightedAuthorizationModelNode, visited *sync.Map) (resp *Response, err error) {
 	ctx, span := tracer.Start(ctx, "ResolveUnion", trace.WithAttributes(
@@ -281,21 +253,6 @@ func (r *Resolver) ResolveUnion(ctx context.Context, req *Request, node *authzGr
 		attribute.Bool("cached", false),
 	))
 	defer span.End()
-
-	cacheKey := buildNodeCacheKey(r.model.GetModelID(), req, node)
-
-	if res, ok := r.isCached(req.GetConsistency(), cacheKey); ok {
-		span.SetAttributes(attribute.Bool("cached", true))
-		return res, nil
-	}
-
-	defer func() {
-		if err != nil {
-			return
-		}
-		entry := &ResponseCacheEntry{Res: resp, LastModified: time.Now()}
-		r.cache.Set(cacheKey, entry, r.cacheTTL)
-	}()
 
 	emptyCycle := visited == nil
 	if emptyCycle && node.GetNodeType() == authzGraph.SpecificTypeAndRelation && (node.GetRecursiveRelation() == node.GetUniqueLabel() || node.IsPartOfTupleCycle()) {
@@ -480,8 +437,19 @@ func (r *Resolver) ResolveRecursive(ctx context.Context, req *Request, edge *aut
 	}()
 
 	go func() {
+		cacheKey := buildEdgeCacheKey(r.model.GetModelID(), req, edge)
+
+		if res, ok := r.isCached(req.GetConsistency(), cacheKey); ok {
+			span := trace.SpanFromContext(ctx)
+			span.SetAttributes(attribute.Bool("cached", true))
+
+			concurrency.TrySendThroughChannel(ctx, ResponseMsg{Res: res}, out)
+			return
+		}
+
 		var err error
 		var res *Response
+
 		switch edge.GetEdgeType() {
 		case authzGraph.DirectEdge:
 			res, err = r.resolveRecursiveUserset(ctx, req, edge, visited, canApplyOptimization)
@@ -491,6 +459,10 @@ func (r *Resolver) ResolveRecursive(ctx context.Context, req *Request, edge *aut
 			res, err = nil, ErrPanicRequest
 		}
 
+		if err == nil {
+			entry := &ResponseCacheEntry{Res: res, LastModified: time.Now()}
+			r.cache.Set(cacheKey, entry, r.cacheTTL)
+		}
 		concurrency.TrySendThroughChannel(ctx, ResponseMsg{Res: res, Err: err}, out)
 	}()
 
