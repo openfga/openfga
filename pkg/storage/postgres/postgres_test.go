@@ -610,7 +610,7 @@ func TestNewDB(t *testing.T) {
 			ConnMaxLifetime:         time.Minute * 20,
 			ConnMaxIdleTime:         1 * time.Minute,
 			Logger:                  logger.NewNoopLogger(),
-			PingTimeout:             100 * time.Second,
+			PingTimeout:             100 * time.Millisecond,
 			PingRetryMaxElapsedTime: 2 * time.Second,
 		}
 		_, err := New(uri, &cfg)

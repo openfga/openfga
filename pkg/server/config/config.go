@@ -550,6 +550,14 @@ func (cfg *Config) VerifyServerSettings() error {
 		return errors.New("datastore MinOpenConns must not be less than datastore MinIdleConns")
 	}
 
+	if cfg.Datastore.PingTimeout <= 0 {
+		return errors.New("datastore PingTimeout must be greater than 0")
+	}
+
+	if cfg.Datastore.PingRetryMaxElapsedTime <= 0 {
+		return errors.New("datastore PingRetryMaxElapsedTime must be greater than 0")
+	}
+
 	if cfg.Datastore.PingRetryMaxElapsedTime < cfg.Datastore.PingTimeout {
 		return errors.New("datastore PingRetryMaxElapsedTime must not be less than datastore PingTimeout")
 	}

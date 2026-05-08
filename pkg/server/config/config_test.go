@@ -942,12 +942,44 @@ func TestVerifyServerSettings(t *testing.T) {
 	})
 
 	t.Run("verify_ping_settings", func(t *testing.T) {
+		t.Run("negative_ping_timeout_duration", func(t *testing.T) {
+			cfg := DefaultConfig()
+			cfg.Datastore.PingTimeout = -2 * time.Second
+
+			err := cfg.VerifyServerSettings()
+			require.EqualError(t, err, "datastore PingTimeout must be greater than 0")
+		})
+
+		t.Run("zero_ping_timeout_duration", func(t *testing.T) {
+			cfg := DefaultConfig()
+			cfg.Datastore.PingTimeout = 0
+
+			err := cfg.VerifyServerSettings()
+			require.EqualError(t, err, "datastore PingTimeout must be greater than 0")
+		})
+
+		t.Run("negative_ping_retry_max_elapsed_time_duration", func(t *testing.T) {
+			cfg := DefaultConfig()
+			cfg.Datastore.PingRetryMaxElapsedTime = -2 * time.Second
+
+			err := cfg.VerifyServerSettings()
+			require.EqualError(t, err, "datastore PingRetryMaxElapsedTime must be greater than 0")
+		})
+
+		t.Run("zero_ping_retry_max_elapsed_time_duration", func(t *testing.T) {
+			cfg := DefaultConfig()
+			cfg.Datastore.PingRetryMaxElapsedTime = 0
+
+			err := cfg.VerifyServerSettings()
+			require.EqualError(t, err, "datastore PingRetryMaxElapsedTime must be greater than 0")
+		})
+
 		t.Run("error_when_ping_retry_max_elapsed_time_less_than_ping_timeout", func(t *testing.T) {
 			cfg := DefaultConfig()
 			cfg.Datastore.PingRetryMaxElapsedTime = 5 * time.Second
 			cfg.Datastore.PingTimeout = 10 * time.Second
 			err := cfg.VerifyServerSettings()
-			require.Error(t, err)
+			require.EqualError(t, err, "datastore PingRetryMaxElapsedTime must not be less than datastore PingTimeout")
 		})
 
 		t.Run("no_error_when_ping_retry_max_elapsed_time_equal_to_ping_timeout", func(t *testing.T) {

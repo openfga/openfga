@@ -176,7 +176,7 @@ func WithPingTimeout(d time.Duration) DatastoreOption {
 	}
 }
 
-// PingRetryMaxElapsedTime returns a DatastoreOption that sets
+// WithPingRetryMaxElapsedTime returns a DatastoreOption that sets
 // the maximum elapsed time for ping retries in the Config.
 func WithPingRetryMaxElapsedTime(d time.Duration) DatastoreOption {
 	return func(cfg *Config) {

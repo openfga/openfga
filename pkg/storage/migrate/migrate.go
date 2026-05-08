@@ -13,6 +13,7 @@ import (
 
 	"github.com/openfga/openfga/assets"
 	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/sqlite"
 )
 
@@ -117,7 +118,7 @@ func RunMigrations(cfg MigrationConfig) error {
 
 	policy := backoff.NewExponentialBackOff(backoff.WithMaxElapsedTime(cfg.Timeout))
 	err = backoff.Retry(func() error {
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), storage.DefaultPingTimeout)
 		defer cancel()
 
 		return db.PingContext(ctx)
