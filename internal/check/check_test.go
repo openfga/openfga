@@ -64,7 +64,9 @@ func TestResolveUnion(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		mockCache.EXPECT().Get(req.GetCacheKey()).Return(cachedEntry).Times(1)
+		cacheKey := buildNodeCacheKey(model.GetId(), req, mg.GetOrAddNode("group#member", "group#member", authzGraph.SpecificTypeAndRelation))
+
+		mockCache.EXPECT().Get(cacheKey).Return(cachedEntry).Times(1)
 
 		node, ok := mg.GetNodeByID("group#member")
 		require.True(t, ok)
@@ -108,8 +110,10 @@ func TestResolveUnion(t *testing.T) {
 		})
 		require.NoError(t, err)
 
+		cacheKey := buildNodeCacheKey(model.GetId(), req, mg.GetOrAddNode("group#member", "group#member", authzGraph.SpecificTypeAndRelation))
+
 		// the first cache call should be to check for a subproblem cache entry
-		mockCache.EXPECT().Get(req.GetCacheKey()).Return(nil).Times(1)
+		mockCache.EXPECT().Get(cacheKey).Return(nil).Times(1)
 
 		// simulate an edge with a cached false result
 		mockCache.EXPECT().Get(gomock.Any()).Return(cachedFalse).Times(1)
@@ -131,12 +135,12 @@ func TestResolveUnion(t *testing.T) {
 
 		// each edge sets the results of its resolution
 		edgeCacheSets := mockCache.EXPECT().
-			Set(gomock.Not(gomock.Eq(req.GetCacheKey())), gomock.Any(), gomock.Any()).
+			Set(gomock.Not(gomock.Eq(cacheKey)), gomock.Any(), gomock.Any()).
 			Times(2)
 
 		// the last cache call should be to set the subproblem cache entry
 		mockCache.EXPECT().
-			Set(req.GetCacheKey(), gomock.Any(), gomock.Any()).
+			Set(cacheKey, gomock.Any(), gomock.Any()).
 			After(edgeCacheSets).
 			Times(1)
 

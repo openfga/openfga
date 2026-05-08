@@ -246,22 +246,21 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, edges []
 	return res, nil
 }
 
-func (r *Resolver) buildNodeCacheKey(req *Request, node *authzGraph.WeightedAuthorizationModelNode) string {
-	model := r.model.GetModelID()
+func buildNodeCacheKey(modelID string, req *Request, node *authzGraph.WeightedAuthorizationModelNode) string {
 	object := req.GetTupleKey().GetObject()
 	relation := req.GetTupleKey().GetRelation()
 	user := req.GetTupleKey().GetUser()
 	label := node.GetUniqueLabel()
 	invariant := req.GetInvariantCacheKey()
 
-	size := len(cacheKeyPrefix) + len(model) + len(object) + len(relation) + len(user) + len(label) + len(invariant)
+	size := len(cacheKeyPrefix) + len(modelID) + len(object) + len(relation) + len(user) + len(label) + len(invariant)
 	size += 5 // delimiters are one byte each
 
 	var b strings.Builder
 	b.Grow(size)
 
 	b.WriteString(cacheKeyPrefix)
-	b.WriteString(model)
+	b.WriteString(modelID)
 	b.WriteByte(cacheKeyDelimiter)
 	b.WriteString(object)
 	b.WriteByte(cacheKeyDelimiter)
@@ -283,7 +282,7 @@ func (r *Resolver) ResolveUnion(ctx context.Context, req *Request, node *authzGr
 	))
 	defer span.End()
 
-	cacheKey := r.buildNodeCacheKey(req, node)
+	cacheKey := buildNodeCacheKey(r.model.GetModelID(), req, node)
 
 	if res, ok := r.isCached(req.GetConsistency(), cacheKey); ok {
 		span.SetAttributes(attribute.Bool("cached", true))
