@@ -246,6 +246,35 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, edges []
 	return res, nil
 }
 
+func (r *Resolver) buildNodeCacheKey(req *Request, node *authzGraph.WeightedAuthorizationModelNode) string {
+	model := r.model.GetModelID()
+	object := req.GetTupleKey().GetObject()
+	relation := req.GetTupleKey().GetRelation()
+	user := req.GetTupleKey().GetUser()
+	label := node.GetUniqueLabel()
+	invariant := req.GetInvariantCacheKey()
+
+	size := len(cacheKeyPrefix) + len(model) + len(object) + len(relation) + len(user) + len(label) + len(invariant)
+	size += 5 // delimiters are one byte each
+
+	var b strings.Builder
+	b.Grow(size)
+
+	b.WriteString(cacheKeyPrefix)
+	b.WriteString(model)
+	b.WriteByte(cacheKeyDelimiter)
+	b.WriteString(object)
+	b.WriteByte(cacheKeyDelimiter)
+	b.WriteString(relation)
+	b.WriteByte(cacheKeyDelimiter)
+	b.WriteString(user)
+	b.WriteByte(cacheKeyDelimiter)
+	b.WriteString(label)
+	b.WriteByte(cacheKeyDelimiter)
+	b.WriteString(invariant)
+	return b.String()
+}
+
 // reduce as a logical union operation (exit the moment we have a single true).
 func (r *Resolver) ResolveUnion(ctx context.Context, req *Request, node *authzGraph.WeightedAuthorizationModelNode, visited *sync.Map) (resp *Response, err error) {
 	ctx, span := tracer.Start(ctx, "ResolveUnion", trace.WithAttributes(
@@ -254,7 +283,7 @@ func (r *Resolver) ResolveUnion(ctx context.Context, req *Request, node *authzGr
 	))
 	defer span.End()
 
-	if res, ok := r.isCached(req.GetConsistency(), req.GetCacheKey()); ok {
+	if res, ok := r.isCached(req.GetConsistency(), r.buildNodeCacheKey(req, node)); ok {
 		span.SetAttributes(attribute.Bool("cached", true))
 		return res, nil
 	}
@@ -264,7 +293,7 @@ func (r *Resolver) ResolveUnion(ctx context.Context, req *Request, node *authzGr
 			return
 		}
 		entry := &ResponseCacheEntry{Res: resp, LastModified: time.Now()}
-		r.cache.Set(req.GetCacheKey(), entry, r.cacheTTL)
+		r.cache.Set(r.buildNodeCacheKey(req, node), entry, r.cacheTTL)
 	}()
 
 	emptyCycle := visited == nil
