@@ -101,6 +101,9 @@ const (
 	DefaultPlannerEvictionThreshold = 0
 	DefaultPlannerCleanupInterval   = 0
 
+	DefaultDatastorePingTimeout             = 2 * time.Second
+	DefaultDatastorePingRetryMaxElapsedTime = 1 * time.Minute
+
 	ExperimentalCheckOptimizations       = "enable-check-optimizations"
 	ExperimentalListObjectsOptimizations = "enable-list-objects-optimizations"
 	ExperimentalAccessControlParams      = "enable-access-control"
@@ -854,8 +857,8 @@ func DefaultConfig() *Config {
 			MaxIdleConns:            10,
 			MinOpenConns:            0,
 			MaxOpenConns:            30,
-			PingTimeout:             2 * time.Second,
-			PingRetryMaxElapsedTime: 1 * time.Minute,
+			PingTimeout:             DefaultDatastorePingTimeout,
+			PingRetryMaxElapsedTime: DefaultDatastorePingRetryMaxElapsedTime,
 		},
 		GRPC: GRPCConfig{
 			Addr:            "0.0.0.0:8081",

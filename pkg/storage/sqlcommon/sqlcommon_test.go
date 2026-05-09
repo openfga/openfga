@@ -14,6 +14,7 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/pkg/server/config"
 	"github.com/openfga/openfga/pkg/storage"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 )
@@ -29,8 +30,8 @@ func TestNewConfig(t *testing.T) {
 		require.NotNil(t, cfg.Logger)
 		assert.Equal(t, storage.DefaultMaxTuplesPerWrite, cfg.MaxTuplesPerWriteField)
 		assert.Equal(t, storage.DefaultMaxTypesPerAuthorizationModel, cfg.MaxTypesPerModelField)
-		assert.Equal(t, storage.DefaultPingTimeout, cfg.PingTimeout)
-		assert.Equal(t, storage.DefaultPingRetryMaxElapsedTime, cfg.PingRetryMaxElapsedTime)
+		assert.Equal(t, config.DefaultDatastorePingTimeout, cfg.PingTimeout)
+		assert.Equal(t, config.DefaultDatastorePingRetryMaxElapsedTime, cfg.PingRetryMaxElapsedTime)
 
 		// Assert that all other fields are zero values.
 		assert.Empty(t, cfg.SecondaryURI)

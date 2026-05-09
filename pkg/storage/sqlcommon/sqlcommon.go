@@ -24,6 +24,7 @@ import (
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/pkg/server/config"
 	"github.com/openfga/openfga/pkg/storage"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 )
@@ -214,11 +215,11 @@ func NewConfig(opts ...DatastoreOption) *Config {
 	}
 
 	if cfg.PingTimeout == 0 {
-		cfg.PingTimeout = storage.DefaultPingTimeout
+		cfg.PingTimeout = config.DefaultDatastorePingTimeout
 	}
 
 	if cfg.PingRetryMaxElapsedTime == 0 {
-		cfg.PingRetryMaxElapsedTime = storage.DefaultPingRetryMaxElapsedTime
+		cfg.PingRetryMaxElapsedTime = config.DefaultDatastorePingRetryMaxElapsedTime
 	}
 
 	return cfg
