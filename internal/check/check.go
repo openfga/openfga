@@ -245,6 +245,7 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, edges []
 func (r *Resolver) ResolveUnion(ctx context.Context, req *Request, node *authzGraph.WeightedAuthorizationModelNode, visited *sync.Map) (*Response, error) {
 	ctx, span := tracer.Start(ctx, "ResolveUnion", trace.WithAttributes(
 		attribute.String("tuple_key", req.GetTupleString()),
+		attribute.Bool("cached", false),
 	))
 	defer span.End()
 
