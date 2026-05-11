@@ -617,18 +617,24 @@ func TestRemoteOidcAuthenticator_RefreshRateLimit(t *testing.T) {
 	require.NoError(t, err)
 	defer oidc.Close()
 
-	hitsBeforeBurst := server.hits()
-
-	// Burst several JWTs with distinct unknown kids in quick succession.
+	// Pre-generate RSA keys and tokens outside the burst loop so that RSA
+	// keygen latency doesn't eat into the jwkRefreshRateLimit window.
 	const burst = 5
+	tokens := make([]string, burst)
 	for i := 0; i < burst; i++ {
 		privKey, _ := generateJWTSignatureKeys()
-		token := generateJWT(privKey, fmt.Sprintf("unknown_kid_%d", i), jwt.MapClaims{
+		tokens[i] = generateJWT(privKey, fmt.Sprintf("unknown_kid_%d", i), jwt.MapClaims{
 			"iss": server.server.URL,
 			"aud": "aud",
 			"sub": "some-user",
 			"exp": time.Now().Add(10 * time.Minute).Unix(),
 		})
+	}
+
+	hitsBeforeBurst := server.hits()
+
+	// Burst several JWTs with distinct unknown kids in quick succession.
+	for _, token := range tokens {
 		_, _ = oidc.Authenticate(generateContext(token))
 	}
 
