@@ -2685,7 +2685,7 @@ func TestV2CheckWithIteratorCache_HigherConsistencyBypassesCache(t *testing.T) {
 	// before wg.Done() (LIFO defer ordering in drainInBackground), so when Wait() returns
 	// all cache entries from the default-consistency check are guaranteed to be written.
 	s.sharedDatastoreResources.WaitGroup.Wait()
-	require.Greater(t, len(cache.KeysWithPrefix("v2ic.")), 0,
+	require.NotEmpty(t, cache.KeysWithPrefix("v2ic."),
 		"default consistency should populate iterator cache")
 
 	// Record cache key count before HIGHER_CONSISTENCY checks.
