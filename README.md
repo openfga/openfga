@@ -141,8 +141,15 @@ openfga run
 
 ```shell
 git clone https://github.com/openfga/openfga.git && cd openfga
-go build -o ./openfga ./cmd/openfga
-./openfga run
+make build
+./dist/openfga run
+```
+
+To build directly with `go build`, use the same output path:
+
+```shell
+go build -o ./dist/openfga ./cmd/openfga
+./dist/openfga run
 ```
 
 ### Verify Installation
