@@ -189,9 +189,6 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, edges []
 		close(out)
 	}()
 
-	relation := req.GetTupleKey().GetRelation()
-	objectType := tuple.GetType(req.GetTupleKey().GetObject())
-	objectRelation := tuple.ToObjectRelationString(objectType, relation)
 	ids := make([]string, 0, len(edges))
 	for _, edge := range edges {
 		id := buildEdgeCacheKey(r.model.GetModelID(), req, edge)
@@ -209,9 +206,7 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, edges []
 		}
 		pool.Go(func() error {
 			res, err := r.ResolveEdge(ctx, req, edge, visited)
-			// we only need to cache the response for the edge if the edge does not belong to the request relation
-			// otherwise the subproblem should be sufficient
-			if err == nil && edge.GetRelationDefinition() != objectRelation {
+			if err == nil {
 				entry := &ResponseCacheEntry{Res: res, LastModified: time.Now()}
 				r.cache.Set(id, entry, r.cacheTTL)
 			}
