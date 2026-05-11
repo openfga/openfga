@@ -10,6 +10,35 @@ import (
 	"github.com/openfga/openfga/pkg/storage/migrate"
 )
 
+func TestRunMigrationsRequiresDatastoreURI(t *testing.T) {
+	tests := []struct {
+		name        string
+		engine      string
+		expectedErr string
+	}{
+		{
+			name:        "postgres",
+			engine:      "postgres",
+			expectedErr: "missing datastore uri for postgres datastore engine",
+		},
+		{
+			name:        "mysql",
+			engine:      "mysql",
+			expectedErr: "missing datastore uri for mysql datastore engine",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := migrate.RunMigrations(migrate.MigrationConfig{
+				Engine:  test.engine,
+				Timeout: 5 * time.Second,
+			})
+			require.EqualError(t, err, test.expectedErr)
+		})
+	}
+}
+
 func TestMigrateCommandRollbacks(t *testing.T) {
 	type EngineConfig struct {
 		Engine     string

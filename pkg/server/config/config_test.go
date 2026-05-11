@@ -48,6 +48,38 @@ func TestVerifyConfig(t *testing.T) {
 		require.EqualError(t, err, "config 'grpc.maxRecvMsgBytes' must be greater than 0")
 	})
 
+	t.Run("datastore_engine_must_be_set", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Datastore.Engine = ""
+
+		err := cfg.Verify()
+		require.EqualError(t, err, "config 'datastore.engine' must be set")
+	})
+
+	t.Run("datastore_uri_must_be_empty_for_memory", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Datastore.URI = "postgres://postgres:password@localhost:5432/postgres"
+
+		err := cfg.Verify()
+		require.EqualError(t, err, "config 'datastore.uri' must be empty when 'datastore.engine' is 'memory'")
+	})
+
+	t.Run("datastore_uri_required_for_postgres", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Datastore.Engine = "postgres"
+
+		err := cfg.Verify()
+		require.EqualError(t, err, "config 'datastore.uri' must be set when 'datastore.engine' is 'postgres'")
+	})
+
+	t.Run("datastore_uri_required_for_mysql", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Datastore.Engine = "mysql"
+
+		err := cfg.Verify()
+		require.EqualError(t, err, "config 'datastore.uri' must be set when 'datastore.engine' is 'mysql'")
+	})
+
 	t.Run("failing_to_set_http_cert_path_will_not_allow_server_to_start", func(t *testing.T) {
 		cfg := DefaultConfig()
 		cfg.HTTP.TLS = &TLSConfig{

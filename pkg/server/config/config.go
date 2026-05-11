@@ -486,6 +486,10 @@ func (cfg *Config) VerifyServerSettings() error {
 		return err
 	}
 
+	if err := cfg.verifyDatastoreConfig(); err != nil {
+		return err
+	}
+
 	if cfg.GRPC.MaxRecvMsgBytes <= 0 {
 		return fmt.Errorf("config 'grpc.maxRecvMsgBytes' must be greater than 0")
 	}
@@ -542,6 +546,23 @@ func (cfg *Config) VerifyServerSettings() error {
 
 	if cfg.Datastore.MinOpenConns < cfg.Datastore.MinIdleConns {
 		return errors.New("datastore MinOpenConns must not be less than datastore MinIdleConns")
+	}
+
+	return nil
+}
+
+func (cfg *Config) verifyDatastoreConfig() error {
+	switch cfg.Datastore.Engine {
+	case "":
+		return errors.New("config 'datastore.engine' must be set")
+	case "memory":
+		if cfg.Datastore.URI != "" {
+			return errors.New("config 'datastore.uri' must be empty when 'datastore.engine' is 'memory'")
+		}
+	case "postgres", "mysql":
+		if cfg.Datastore.URI == "" {
+			return fmt.Errorf("config 'datastore.uri' must be set when 'datastore.engine' is '%s'", cfg.Datastore.Engine)
+		}
 	}
 
 	return nil

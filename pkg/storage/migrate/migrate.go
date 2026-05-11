@@ -54,6 +54,10 @@ func RunMigrations(cfg MigrationConfig) error {
 		log.Info("no migrations to run for `memory` datastore")
 		return nil
 	case "mysql":
+		if cfg.URI == "" {
+			return fmt.Errorf("missing datastore uri for mysql datastore engine")
+		}
+
 		driver = "mysql"
 		migrationsPath = assets.MySQLMigrationDir
 
@@ -71,6 +75,10 @@ func RunMigrations(cfg MigrationConfig) error {
 		uri = dsn.FormatDSN()
 
 	case "postgres":
+		if cfg.URI == "" {
+			return fmt.Errorf("missing datastore uri for postgres datastore engine")
+		}
+
 		driver = "pgx"
 		migrationsPath = assets.PostgresMigrationDir
 		var username, password string
