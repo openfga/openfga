@@ -163,6 +163,57 @@ func TestResolveUnion(t *testing.T) {
 		require.NoError(t, err)
 		require.True(t, res.Allowed)
 	})
+
+	t.Run("caches_all_edges", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		storeID := ulid.Make().String()
+		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
+
+		model := testutils.MustTransformDSLToProtoWithID(`
+            model
+              schema 1.1
+            type user
+            type group
+              relations
+                define member: [user] or admin
+                define admin: [user]
+        `)
+
+		mg, err := modelgraph.New(model)
+		require.NoError(t, err)
+
+		mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+			Return(nil, storage.ErrNotFound).Times(2)
+
+		mockCache.EXPECT().Get(gomock.Any()).Return(nil).AnyTimes()
+		// Both edges (including the one whose relationDefinition matches objectRelation) must be cached.
+		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).Times(2)
+
+		resolver := New(Config{
+			Model:                     mg,
+			Datastore:                 mockDatastore,
+			Cache:                     mockCache,
+			ConcurrencyLimit:          10,
+			LastCacheInvalidationTime: time.Now().Add(-time.Hour),
+		})
+
+		req, err := NewRequest(RequestParams{
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("group:1", "member", "user:maria"),
+		})
+		require.NoError(t, err)
+
+		node, ok := mg.GetNodeByID("group#member")
+		require.True(t, ok)
+
+		res, err := resolver.ResolveUnion(context.Background(), req, node, nil)
+		require.NoError(t, err)
+		require.False(t, res.GetAllowed())
+	})
 }
 
 func TestResolveUnionEdges(t *testing.T) {
@@ -5492,6 +5543,142 @@ func TestResolveRecursiveCheck(t *testing.T) {
 			TupleKey: tuple.NewTupleKey("document:4", "viewer", "user:*"),
 		})
 		require.NoError(t, err)
+
+		resolver.strategies[DefaultStrategyName] = NewDefault(mg, resolver, 10)
+
+		res, err := resolver.ResolveCheck(context.Background(), req)
+		require.NoError(t, err)
+		require.True(t, res.GetAllowed())
+	})
+
+	t.Run("caches_recursive_edge_on_miss", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		storeID := ulid.Make().String()
+		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
+		mockPlanner := mocks.NewMockManager(ctrl)
+		mockSelector := mocks.NewMockSelector(ctrl)
+
+		model := testutils.MustTransformDSLToProtoWithID(`
+		   model
+			schema 1.1
+		   type user
+		   type document
+			relations
+			   define viewer: [user] or viewer from parent
+			   define parent: [document]
+	  	`)
+
+		mg, err := modelgraph.New(model)
+		require.NoError(t, err)
+
+		mockPlanner.EXPECT().GetPlanSelector(gomock.Any()).Return(mockSelector).AnyTimes()
+		mockSelector.EXPECT().Select(gomock.Any()).Return(DefaultPlan).AnyTimes()
+		mockSelector.EXPECT().UpdateStats(gomock.Any(), gomock.Any()).AnyTimes()
+
+		mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+			Return(nil, storage.ErrNotFound).AnyTimes()
+
+		mockDatastore.EXPECT().Read(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+			AnyTimes().
+			DoAndReturn(func(_ context.Context, _ string, filter storage.ReadFilter, _ storage.ReadOptions) (storage.TupleIterator, error) {
+				if filter.Object == "document:1" {
+					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:1", "parent", "document:2")}}), nil
+				}
+				return storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil
+			})
+
+		mockCache.EXPECT().Get(gomock.Any()).Return(nil).AnyTimes()
+		// ResolveRecursive must write its result to the cache after resolution.
+		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).MinTimes(1)
+
+		resolver := New(Config{
+			Model:                     mg,
+			Datastore:                 mockDatastore,
+			Cache:                     mockCache,
+			Planner:                   mockPlanner,
+			ConcurrencyLimit:          10,
+			LastCacheInvalidationTime: time.Now().Add(-time.Hour),
+		})
+
+		req, err := NewRequest(RequestParams{
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+		})
+		require.NoError(t, err)
+
+		resolver.strategies[DefaultStrategyName] = NewDefault(mg, resolver, 10)
+
+		res, err := resolver.ResolveCheck(context.Background(), req)
+		require.NoError(t, err)
+		require.False(t, res.GetAllowed())
+	})
+
+	t.Run("cache_hit_on_recursive_edge", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		storeID := ulid.Make().String()
+		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
+		mockPlanner := mocks.NewMockManager(ctrl)
+		mockSelector := mocks.NewMockSelector(ctrl)
+
+		model := testutils.MustTransformDSLToProtoWithID(`
+		   model
+			schema 1.1
+		   type user
+		   type document
+			relations
+			   define viewer: [user] or viewer from parent
+			   define parent: [document]
+	  	`)
+
+		mg, err := modelgraph.New(model)
+		require.NoError(t, err)
+
+		mockPlanner.EXPECT().GetPlanSelector(gomock.Any()).Return(mockSelector).AnyTimes()
+		mockSelector.EXPECT().Select(gomock.Any()).Return(DefaultPlan).AnyTimes()
+		mockSelector.EXPECT().UpdateStats(gomock.Any(), gomock.Any()).AnyTimes()
+
+		// Only the non-recursive direct [user] edge calls the datastore.
+		mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+			Return(nil, storage.ErrNotFound).AnyTimes()
+
+		req, err := NewRequest(RequestParams{
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+		})
+		require.NoError(t, err)
+
+		// Pre-populate the cache for the recursive edge.
+		node, ok := mg.GetNodeByID("document#viewer")
+		require.True(t, ok)
+		recursiveEdge, ok := mg.CanApplyRecursion(node, "", true)
+		require.True(t, ok)
+		recursiveKey := buildEdgeCacheKey(model.GetId(), req, recursiveEdge)
+
+		cachedTrue := &ResponseCacheEntry{
+			Res:          &Response{Allowed: true},
+			LastModified: time.Now(),
+		}
+		mockCache.EXPECT().Get(recursiveKey).Return(cachedTrue).Times(1)
+		mockCache.EXPECT().Get(gomock.Any()).Return(nil).AnyTimes()
+		// Non-recursive edges may still write to the cache.
+		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+
+		resolver := New(Config{
+			Model:                     mg,
+			Datastore:                 mockDatastore,
+			Cache:                     mockCache,
+			Planner:                   mockPlanner,
+			ConcurrencyLimit:          10,
+			LastCacheInvalidationTime: time.Now().Add(-time.Hour),
+		})
 
 		resolver.strategies[DefaultStrategyName] = NewDefault(mg, resolver, 10)
 
