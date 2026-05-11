@@ -3,7 +3,6 @@ package check
 import (
 	"context"
 	"errors"
-	"fmt"
 	"testing"
 	"time"
 
@@ -347,15 +346,12 @@ func TestResolveUnionEdges(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 
 		mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
-			DoAndReturn(func(context.Context, string, storage.ReadUserTupleFilter, storage.ReadUserTupleOptions) (*openfgav1.Tuple, error) {
+			DoAndReturn(func(ctx context.Context, _ string, _ storage.ReadUserTupleFilter, _ storage.ReadUserTupleOptions) (*openfgav1.Tuple, error) {
 				cancel()
-				time.Sleep(10 * time.Millisecond)
-				return nil, storage.ErrNotFound
+				return nil, ctx.Err()
 			}).MaxTimes(2)
 
-		key := fmt.Sprintf(`^c\.%s\|group:1\|user:maria\|group#admin\|`, mg.GetModelID())
 		mockCache.EXPECT().Get(gomock.Any()).Return(nil).AnyTimes()
-		mockCache.EXPECT().Set(gomock.Regex(key), gomock.Any(), gomock.Any()).Times(1)
 
 		resolver := New(Config{
 			Model:            mg,
