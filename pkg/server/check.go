@@ -219,7 +219,7 @@ func (s *Server) shadowV2Check(ctx context.Context, req *openfgav1.CheckRequest,
 		newCtx, cancel := context.WithTimeout(context.Background(), s.shadowCheckResolverTimeout)
 		defer cancel()
 		// Inject the original span context so shadow spans share the same trace ID.
-		newCtx = trace.ContextWithRemoteSpanContext(newCtx, originalSpanCtx)
+		newCtx = trace.ContextWithSpanContext(newCtx, originalSpanCtx)
 		newCtx, shadowSpan := tracer.Start(newCtx, "shadowV2Check", trace.WithAttributes(
 			attribute.String("store_id", req.GetStoreId()),
 		))
