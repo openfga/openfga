@@ -11,11 +11,11 @@ jobs:
   changelog:
     runs-on: ubuntu-latest
     steps:
-      - uses: dangoslen/changelog-enforcer@204e7d3ef26579f4cd0fd759c57032656fdf23c7 # v3.6.1
+      - uses: dangoslen/changelog-enforcer@8b5e9dc3121363bb7c0115f8533404d92af382de # v3.7.0
         with:
           skipLabels: 'Skip-Changelog,dependencies,tests'
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # pin@v4
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # pin@v4
       - run: npx keep-a-changelog@2.5.3
       - run: |
           files=$(git status --porcelain)

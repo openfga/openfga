@@ -12,9 +12,11 @@ import (
 	"net"
 	"net/http"
 	"net/http/pprof"
+	"net/netip"
 	"os"
 	"os/signal"
-	goruntime "runtime"
+	"path/filepath"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -28,7 +30,7 @@ import (
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	grpcauth "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/auth"
 	grpc_recovery "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/recovery"
-	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
+	grpc_runtime "github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/cors"
@@ -85,6 +87,10 @@ import (
 const (
 	datastoreEngineFlag = "datastore-engine"
 	datastoreURIFlag    = "datastore-uri"
+
+	windows = "windows"
+	unix    = "unix"
+	tcp     = "tcp"
 )
 
 // grpcTLSCertPool is a package-level pinned certificate pool for verifying
@@ -315,6 +321,8 @@ func NewRunCommand() *cobra.Command {
 	flags.Bool("cache-controller-enabled", defaultConfig.CacheController.Enabled, "enable invalidation of check query cache and iterator cache based on recent tuple writes. Invalidation is triggered by Check and List Objects requests, which periodically check the datastore's changelog table for writes and invalidate cache entries earlier than recent writes. Invalidations from Check requests are rate-limited by cache-controller-ttl, whereas List Objects requests invalidate every time if list objects iterator cache is enabled.")
 
 	flags.Duration("cache-controller-ttl", defaultConfig.CacheController.TTL, "if cache controller is enabled, this is the minimum time interval for Check requests to trigger cache invalidation. List Objects requests may trigger invalidation even sooner if list objects iterator cache is enabled.")
+
+	flags.Uint32("cache-ttl-jitter-percentage", defaultConfig.CacheTTLJitterPercentage, "a percentage (0-100) of the base TTL added as random jitter to each cache entry's TTL, spreading out expirations to prevent thundering herd effects. For example, a value of 10 with a base TTL of 10s means each entry gets a TTL between 10s and 11s. Default is 0 (no jitter).")
 
 	// Unfortunately UintSlice/IntSlice does not work well when used as environment variable, we need to stick with string slice and convert back to integer
 	flags.StringSlice("request-duration-datastore-query-count-buckets", defaultConfig.RequestDurationDatastoreQueryCountBuckets, "datastore query count buckets used in labelling request_duration_ms.")
@@ -651,52 +659,80 @@ func (s *ServerContext) buildServerOpts(ctx context.Context, config *serverconfi
 	return serverOpts, prometheusMetrics, nil
 }
 
-func (s *ServerContext) dialGrpc(config *serverconfig.Config) *grpc.ClientConn {
-	dialOpts := []grpc.DialOption{}
-	if config.Trace.Enabled {
-		dialOpts = append(dialOpts, grpc.WithStatsHandler(otelgrpc.NewClientHandler()))
-	}
-	if config.GRPC.TLS.Enabled {
-		// Resolve just the hostname portion of the gRPC address for use in
-		// peer certificate verification (InsecureSkipVerify suppresses Go's
-		// automatic hostname check, so we must do it ourselves).
-		grpcHost, _, err := net.SplitHostPort(config.GRPC.Addr)
-		if err != nil {
-			// Fall back to the raw address if it has no port component.
-			grpcHost = config.GRPC.Addr
+func (s *ServerContext) dialLocalGrpc(network, address string, config *serverconfig.Config) *grpc.ClientConn {
+	const loopback = "localhost"
+
+	var addr string
+
+	host := loopback
+
+	switch network {
+	case unix:
+		addr = "unix://" + address
+	default:
+		var port string
+		host, port, _ = net.SplitHostPort(address)
+		if host == "" {
+			host = loopback
 		}
 
-		creds := credentials.NewTLS(&tls.Config{
-			InsecureSkipVerify: true, //nolint:gosec // Hostname and cert are verified manually via VerifyPeerCertificate.
-			VerifyPeerCertificate: func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
-				if len(rawCerts) == 0 {
-					return errors.New("no peer certificates presented")
-				}
+		ipAddr, err := netip.ParseAddr(host)
+		if err == nil && ipAddr.IsUnspecified() {
+			host = loopback
+		}
+		addr = net.JoinHostPort(host, port)
+	}
 
-				peerCert, err := x509.ParseCertificate(rawCerts[0])
-				if err != nil {
-					return fmt.Errorf("failed to parse peer certificate: %w", err)
-				}
+	dialOpts := []grpc.DialOption{}
 
-				// Verify the leaf certificate against the global pinned pool
-				// and check the hostname in a single call. The pool is
-				// updated atomically by the watcher callback on cert rotation.
-				_, err = peerCert.Verify(x509.VerifyOptions{
-					Roots:   grpcTLSCertPool.Load(),
-					DNSName: grpcHost,
-				})
-				if err != nil {
-					return fmt.Errorf("peer certificate verification failed: %w", err)
-				}
-				return nil
-			},
-		})
+	if config.GRPC.TLS.Enabled {
+		var creds credentials.TransportCredentials
+
+		switch network {
+		case unix:
+			tlsConf := tls.Config{
+				// A secure connection is ensured through the filesystem permissions of the unix domain socket.
+				InsecureSkipVerify: true,
+			}
+			creds = credentials.NewTLS(&tlsConf)
+		default:
+			tlsConf := tls.Config{
+				InsecureSkipVerify: true, //nolint:gosec // Hostname and cert are verified manually via VerifyPeerCertificate.
+				VerifyPeerCertificate: func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
+					if len(rawCerts) == 0 {
+						return errors.New("no peer certificates presented")
+					}
+
+					peerCert, err := x509.ParseCertificate(rawCerts[0])
+					if err != nil {
+						return fmt.Errorf("failed to parse peer certificate: %w", err)
+					}
+
+					// Verify the leaf certificate against the global pinned pool
+					// and check the hostname in a single call. The pool is
+					// updated atomically by the watcher callback on cert rotation.
+					_, err = peerCert.Verify(x509.VerifyOptions{
+						Roots:   grpcTLSCertPool.Load(),
+						DNSName: host,
+					})
+					if err != nil {
+						return fmt.Errorf("peer certificate verification failed: %w", err)
+					}
+					return nil
+				},
+			}
+			creds = credentials.NewTLS(&tlsConf)
+		}
 		dialOpts = append(dialOpts, grpc.WithTransportCredentials(creds))
 	} else {
 		dialOpts = append(dialOpts, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	}
 
-	conn, err := grpc.NewClient(config.GRPC.Addr, dialOpts...)
+	if config.Trace.Enabled {
+		dialOpts = append(dialOpts, grpc.WithStatsHandler(otelgrpc.NewClientHandler()))
+	}
+
+	conn, err := grpc.NewClient(addr, dialOpts...)
 	if err != nil {
 		s.Logger.Fatal("failed to create gRPC client connection", zap.Error(err))
 	}
@@ -704,29 +740,29 @@ func (s *ServerContext) dialGrpc(config *serverconfig.Config) *grpc.ClientConn {
 }
 
 func (s *ServerContext) runHTTPServer(ctx context.Context, config *serverconfig.Config, grpcConn *grpc.ClientConn) (*http.Server, error) {
-	muxOpts := []runtime.ServeMuxOption{
-		runtime.WithForwardResponseOption(httpmiddleware.HTTPResponseModifier),
-		runtime.WithErrorHandler(func(c context.Context, sr *runtime.ServeMux, mm runtime.Marshaler, w http.ResponseWriter, r *http.Request, e error) {
+	muxOpts := []grpc_runtime.ServeMuxOption{
+		grpc_runtime.WithForwardResponseOption(httpmiddleware.HTTPResponseModifier),
+		grpc_runtime.WithErrorHandler(func(c context.Context, sr *grpc_runtime.ServeMux, mm grpc_runtime.Marshaler, w http.ResponseWriter, r *http.Request, e error) {
 			intCode := serverErrors.ConvertToEncodedErrorCode(status.Convert(e))
 			httpmiddleware.CustomHTTPErrorHandler(c, w, r, serverErrors.NewEncodedError(intCode, e.Error()))
 		}),
-		runtime.WithStreamErrorHandler(func(ctx context.Context, e error) *status.Status {
+		grpc_runtime.WithStreamErrorHandler(func(ctx context.Context, e error) *status.Status {
 			intCode := serverErrors.ConvertToEncodedErrorCode(status.Convert(e))
 			encodedErr := serverErrors.NewEncodedError(intCode, e.Error())
 			return status.Convert(encodedErr)
 		}),
-		runtime.WithHealthzEndpoint(healthv1pb.NewHealthClient(grpcConn)),
-		runtime.WithOutgoingHeaderMatcher(func(s string) (string, bool) { return s, true }),
-		runtime.WithIncomingHeaderMatcher(func(key string) (string, bool) {
+		grpc_runtime.WithHealthzEndpoint(healthv1pb.NewHealthClient(grpcConn)),
+		grpc_runtime.WithOutgoingHeaderMatcher(func(s string) (string, bool) { return s, true }),
+		grpc_runtime.WithIncomingHeaderMatcher(func(key string) (string, bool) {
 			// Forward Openfga-Authorization-Model-Id header to gRPC metadata for AuthZEN endpoints.
 			if strings.EqualFold(key, server.AuthorizationModelIDHeader) {
 				return strings.ToLower(key), true
 			}
 			// Use default behavior for other headers
-			return runtime.DefaultHeaderMatcher(key)
+			return grpc_runtime.DefaultHeaderMatcher(key)
 		}),
 	}
-	mux := runtime.NewServeMux(muxOpts...)
+	mux := grpc_runtime.NewServeMux(muxOpts...)
 	if err := openfgav1.RegisterOpenFGAServiceHandler(ctx, mux, grpcConn); err != nil {
 		return nil, err
 	}
@@ -863,6 +899,37 @@ func (s *ServerContext) runPlaygroundServer(config *serverconfig.Config) (*http.
 		s.Logger.Info("playground shut down.")
 	}()
 	return playground, nil
+}
+
+func (s *ServerContext) createUDS(cleanups *list.List) (net.Listener, error) {
+	// Path for Unix domain socket listener for the internal HTTP-to-gRPC proxy.
+	udsDir, err := os.MkdirTemp("", fmt.Sprintf("openfga-%d-*", os.Getpid()))
+	if err != nil {
+		return nil, err
+	}
+
+	cleanups.PushBack(cleanupFromPlainFunc(func() {
+		// This will be a noop if the directory has already been cleaned up.
+		if err := os.RemoveAll(udsDir); err != nil && !os.IsNotExist(err) {
+			s.Logger.Warn("failed to remove unix socket file", zap.Error(err))
+		}
+	}, "unix socket directory"))
+
+	udsPath := filepath.Join(udsDir, "grpc.sock")
+
+	udsListener, err := net.Listen(unix, udsPath)
+	if err != nil {
+		// Early deletion of the directory so that it does not live for the lifetime
+		// of the server unnecessarily.
+		_ = os.RemoveAll(udsDir)
+		return nil, err
+	}
+
+	wrappedListener := &addrOverrideListener{
+		Listener: udsListener,
+		addr:     &net.UnixAddr{Name: udsPath, Net: unix},
+	}
+	return wrappedListener, nil
 }
 
 // Run returns an error if the server was unable to start successfully.
@@ -1022,6 +1089,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		server.WithListObjectsIteratorCacheEnabled(config.ListObjectsIteratorCache.Enabled),
 		server.WithListObjectsIteratorCacheMaxResults(config.ListObjectsIteratorCache.MaxResults),
 		server.WithListObjectsIteratorCacheTTL(config.ListObjectsIteratorCache.TTL),
+		server.WithCacheTTLJitterPercentage(config.CacheTTLJitterPercentage),
 		server.WithMaxChecksPerBatchCheck(config.MaxChecksPerBatchCheck),
 		server.WithMaxConcurrentChecksPerBatchCheck(config.MaxConcurrentChecksPerBatchCheck),
 		server.WithSharedIteratorEnabled(config.SharedIterator.Enabled),
@@ -1045,7 +1113,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		zap.String("version", build.Version),
 		zap.String("date", build.Date),
 		zap.String("commit", build.Commit),
-		zap.String("go-version", goruntime.Version()),
+		zap.String("go-version", runtime.Version()),
 		zap.Any("config", config),
 	)
 
@@ -1058,7 +1126,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	reflection.Register(grpcServer)
 	cleanups.PushFront(cleanupGrpcServer(grpcServer))
 
-	lis, err := net.Listen("tcp", config.GRPC.Addr)
+	lis, err := net.Listen(tcp, config.GRPC.Addr)
 	if err != nil {
 		return fmt.Errorf("failed to listen: %w", err)
 	}
@@ -1075,10 +1143,40 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 
 	var httpServer *http.Server
 	if config.HTTP.Enabled {
-		runtime.DefaultContextTimeout = serverconfig.DefaultContextTimeout(config)
+		network, address := tcp, config.GRPC.Addr
 
-		grpcConn := s.dialGrpc(config)
-		defer grpcConn.Close()
+		if runtime.GOOS != windows {
+			listener, err := s.createUDS(cleanups)
+			if err != nil {
+				s.Logger.Warn("http server failed to establish unix socket to grpc server, falling back to tcp", zap.Error(err))
+				goto DIAL_SERVER
+			}
+
+			go func() {
+				// Serving the same gRPC server on a second listener (UDS) in addition to
+				// the TCP listener is intentional: the HTTP gateway's internal client uses
+				// UDS while external gRPC clients continue to use TCP.
+				if err := grpcServer.Serve(listener); err != nil {
+					if !errors.Is(err, grpc.ErrServerStopped) {
+						s.Logger.Fatal("failed to start internal gRPC server on unix socket", zap.Error(err))
+					}
+				}
+			}()
+
+			udsAddr := listener.Addr()
+			network = udsAddr.Network()
+			address = udsAddr.String()
+		}
+
+	DIAL_SERVER:
+
+		grpc_runtime.DefaultContextTimeout = serverconfig.DefaultContextTimeout(config)
+
+		grpcConn := s.dialLocalGrpc(network, address, config)
+
+		cleanups.PushFront(cleanupFromPlainFunc(func() {
+			_ = grpcConn.Close()
+		}, "internal grpc client connection"))
 
 		httpServer, err = s.runHTTPServer(ctx, config, grpcConn)
 		if err != nil {
@@ -1103,6 +1201,34 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	<-ctx.Done()
 
 	return nil
+}
+
+// addrOverrideConn wraps a net.Conn to return a fixed remote address.
+// This is used for UDS connections where RemoteAddr() would otherwise be empty.
+type addrOverrideConn struct {
+	net.Conn
+	addr net.Addr
+}
+
+func (c *addrOverrideConn) RemoteAddr() net.Addr { return c.addr }
+
+// addrOverrideListener wraps a net.Listener so that accepted connections
+// report the given address as their RemoteAddr.
+type addrOverrideListener struct {
+	net.Listener
+	addr net.Addr
+}
+
+func (l *addrOverrideListener) Addr() net.Addr {
+	return l.addr
+}
+
+func (l *addrOverrideListener) Accept() (net.Conn, error) {
+	conn, err := l.Listener.Accept()
+	if err != nil {
+		return nil, err
+	}
+	return &addrOverrideConn{Conn: conn, addr: l.addr}, nil
 }
 
 func watchAndLoadCertificateWithCertWatcher(ctx context.Context, certPath, keyPath string, logger logger.Logger, callback func(tls.Certificate)) (func(*tls.ClientHelloInfo) (*tls.Certificate, error), error) {

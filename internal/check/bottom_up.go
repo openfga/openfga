@@ -6,6 +6,7 @@ import (
 	"slices"
 
 	"github.com/sourcegraph/conc/panics"
+	"go.opentelemetry.io/otel/attribute"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	authzGraph "github.com/openfga/language/pkg/go/graph"
@@ -171,12 +172,20 @@ func (s *bottomUp) setFlattenOperation(ctx context.Context, req *Request, node *
 // The element is an iterator over all objects that are directly related to the user or the wildcard (if applicable).
 // TODO: DETERMINE IF ITS WORTH WAITING FOR RESULTS OF RIGHT HAND SIDE TO PERFORM BOUNDED QUERIES RATHER THAN THE FULL SET OF OBJECTIDS (BASICALLY INTERSECTION AT THE DATASTORE LEVEL).
 func (s *bottomUp) specificType(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge) (chan *iterator.Msg, error) {
+	ctx, span := tracer.Start(ctx, "bottomUp.specificType")
+	defer span.End()
+
 	opts := storage.ReadStartingWithUserOptions{
 		Consistency: storage.ConsistencyOptions{
 			Preference: req.GetConsistency(),
 		},
 	}
 	objectType, relation := tuple.SplitObjectRelation(edge.GetRelationDefinition())
+	span.SetAttributes(
+		attribute.String("object_type", objectType),
+		attribute.String("relation", relation),
+		attribute.String("user", req.GetTupleKey().GetUser()),
+	)
 	tIter, err := s.datastore.ReadStartingWithUser(ctx, req.GetStoreID(),
 		storage.ReadStartingWithUserFilter{
 			ObjectType: objectType,
@@ -200,6 +209,9 @@ func (s *bottomUp) specificType(ctx context.Context, req *Request, edge *authzGr
 }
 
 func (s *bottomUp) specificTypeWildcard(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge) (chan *iterator.Msg, error) {
+	ctx, span := tracer.Start(ctx, "bottomUp.specificTypeWildcard")
+	defer span.End()
+
 	opts := storage.ReadStartingWithUserOptions{
 		Consistency: storage.ConsistencyOptions{
 			Preference: req.GetConsistency(),
@@ -207,6 +219,11 @@ func (s *bottomUp) specificTypeWildcard(ctx context.Context, req *Request, edge 
 	}
 	objectType, relation := tuple.SplitObjectRelation(edge.GetRelationDefinition())
 	wildcardUser := tuple.TypedPublicWildcard(req.GetUserType())
+	span.SetAttributes(
+		attribute.String("object_type", objectType),
+		attribute.String("relation", relation),
+		attribute.String("user", wildcardUser),
+	)
 	tIter, err := s.datastore.ReadStartingWithUser(ctx, req.GetStoreID(),
 		storage.ReadStartingWithUserFilter{
 			ObjectType: objectType,

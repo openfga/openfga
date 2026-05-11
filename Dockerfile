@@ -1,6 +1,6 @@
-FROM ghcr.io/grpc-ecosystem/grpc-health-probe:v0.4.47@sha256:c96d67e1e2f55c61d152bb1230ad4e2fbe56345d07bc45e789f2712f284ccc31 AS grpc_health_probe
+FROM ghcr.io/grpc-ecosystem/grpc-health-probe:v0.4.48@sha256:b615f8b80a6796490b91bfe0f7f4d59cf73767d4921968495cb8b4024090e151 AS grpc_health_probe
 # Please manually update the Dockerfile.goreleaser whenever the grpc health probe is updated
-FROM cgr.dev/chainguard/go:1.26.1@sha256:d5001b2123d44314a16ca4300e32d99905810b00bc5db1e56ffd227dc8811876 AS builder
+FROM cgr.dev/chainguard/go:1.26.3@sha256:e476979fab066f2ac354111fac6002542d6411b4ae7120b13cc229cac0fa0820 AS builder
 
 WORKDIR /app
 
@@ -16,7 +16,7 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
     --mount=type=bind,target=. \
     CGO_ENABLED=0 go build -o /bin/openfga ./cmd/openfga
 
-FROM cgr.dev/chainguard/static@sha256:2fdfacc8d61164aa9e20909dceec7cc28b9feb66580e8e1a65b9f2443c53b61b
+FROM cgr.dev/chainguard/static@sha256:77d8b8925dc27970ec2f48243f44c7a260d52c49cd778288e4ee97566e0cb75b
 
 EXPOSE 8081
 EXPOSE 8080

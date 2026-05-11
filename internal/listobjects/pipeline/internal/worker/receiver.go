@@ -3,13 +3,13 @@ package worker
 import (
 	"context"
 	"iter"
-	"sync/atomic"
 )
 
 // Receiver is a pull-based stream of values. Recv blocks until the
 // next value is available, returning false when the stream is exhausted
 // or the context is cancelled. Close releases any resources held by
-// the receiver; it is safe to call multiple times.
+// the receiver; it is safe to call multiple times. A Receiver is not
+// safe for concurrent use.
 type Receiver[T any] interface {
 	Recv(context.Context) (T, bool)
 	Close()
@@ -62,19 +62,45 @@ func (r *MappingReceiver[T, U]) Close() {
 	r.inner.Close()
 }
 
-// SliceReceiver iterates over a fixed slice of values. It is safe for
-// concurrent use: Close may be called from any goroutine to stop iteration.
-type SliceReceiver[T any] struct {
-	inner  []T
-	pos    atomic.Int64
-	closed atomic.Bool
+// ValueReceiver yields a single value and then exhausts itself.
+// It is not safe for concurrent use.
+type ValueReceiver[T any] struct {
+	value  T
+	closed bool
 }
 
-// NewValueReceiver returns a Receiver that yields the given values in order.
-func NewValueReceiver[T any](values ...T) Receiver[T] {
-	return &SliceReceiver[T]{
-		inner: values,
+// NewValueReceiver returns a Receiver that yields value exactly once.
+func NewValueReceiver[T any](value T) *ValueReceiver[T] {
+	return &ValueReceiver[T]{
+		value: value,
 	}
+}
+
+// Recv returns the value on the first call, then (zero, false) on
+// subsequent calls.
+func (r *ValueReceiver[T]) Recv(ctx context.Context) (T, bool) {
+	var value T
+	if r.closed || ctx.Err() != nil {
+		return value, false
+	}
+	value = r.value
+	r.closed = true
+	return value, true
+}
+
+// Close marks the receiver as exhausted and releases the held value.
+func (r *ValueReceiver[T]) Close() {
+	r.closed = true
+	var zero T
+	r.value = zero
+}
+
+// SliceReceiver iterates over a fixed slice of values. It is NOT safe for
+// concurrent use.
+type SliceReceiver[T any] struct {
+	inner  []T
+	pos    int
+	closed bool
 }
 
 // NewSliceReceiver returns a SliceReceiver that yields elements from inner.
@@ -84,24 +110,22 @@ func NewSliceReceiver[T any](inner []T) *SliceReceiver[T] {
 	}
 }
 
-// Recv atomically claims the next position and returns the element at
-// that index. Concurrent callers each receive a distinct element.
+// Recv returns the next element from the slice, advancing the position
+// by one.
 func (r *SliceReceiver[T]) Recv(ctx context.Context) (T, bool) {
 	var value T
-	if ctx.Err() != nil {
+	if r.closed || r.pos >= len(r.inner) || ctx.Err() != nil {
 		return value, false
 	}
-	pos := r.pos.Add(1) - 1
-	if r.closed.Load() || pos >= int64(len(r.inner)) {
-		return value, false
-	}
-	value = r.inner[pos]
+	value = r.inner[r.pos]
+	r.pos++
 	return value, true
 }
 
 // Close marks the receiver as exhausted.
 func (r *SliceReceiver[T]) Close() {
-	r.closed.Store(true)
+	r.closed = true
+	r.inner = nil
 }
 
 // SeqReceiver adapts an [iter.Seq] into a [Receiver] using [iter.Pull].

@@ -167,6 +167,9 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 	wasDatastoreThrottled := result.ResolutionMetadata.DatastoreThrottled.Load()
 	grpc_ctxtags.Extract(ctx).Set("request.datastore_throttled", wasDatastoreThrottled)
 
+	wasWeightedGraphUsed := result.ResolutionMetadata.WasWeightedGraphUsed.Load()
+	grpc_ctxtags.Extract(ctx).Set("request.weighted_graph", wasWeightedGraphUsed)
+
 	if wasDispatchThrottled {
 		throttledRequestCounter.WithLabelValues(s.serviceName, methodName, throttleTypeDispatch).Inc()
 	}
@@ -310,6 +313,9 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 
 	wasDatastoreThrottled := resolutionMetadata.DatastoreThrottled.Load()
 	grpc_ctxtags.Extract(ctx).Set("request.datastore_throttled", wasDatastoreThrottled)
+
+	wasWeightedGraphUsed := resolutionMetadata.WasWeightedGraphUsed.Load()
+	grpc_ctxtags.Extract(ctx).Set("request.weighted_graph", wasWeightedGraphUsed)
 
 	if wasDispatchThrottled {
 		throttledRequestCounter.WithLabelValues(s.serviceName, methodName, throttleTypeDispatch).Inc()

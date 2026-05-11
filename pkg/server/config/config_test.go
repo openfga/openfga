@@ -569,6 +569,33 @@ func TestVerifyConfig(t *testing.T) {
 		})
 	})
 
+	t.Run("cache_ttl_jitter_percentage", func(t *testing.T) {
+		t.Run("valid_zero", func(t *testing.T) {
+			cfg := DefaultConfig()
+			cfg.CacheTTLJitterPercentage = 0
+			err := cfg.Verify()
+			require.NoError(t, err)
+		})
+		t.Run("valid_nonzero", func(t *testing.T) {
+			cfg := DefaultConfig()
+			cfg.CacheTTLJitterPercentage = 10
+			err := cfg.Verify()
+			require.NoError(t, err)
+		})
+		t.Run("valid_max", func(t *testing.T) {
+			cfg := DefaultConfig()
+			cfg.CacheTTLJitterPercentage = 100
+			err := cfg.Verify()
+			require.NoError(t, err)
+		})
+		t.Run("invalid_over_100", func(t *testing.T) {
+			cfg := DefaultConfig()
+			cfg.CacheTTLJitterPercentage = 101
+			err := cfg.Verify()
+			require.Error(t, err)
+		})
+	})
+
 	t.Run("prints_warning_when_log_level_is_none", func(t *testing.T) {
 		cfg := DefaultConfig()
 		cfg.Log.Level = "none"
