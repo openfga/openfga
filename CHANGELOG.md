@@ -9,6 +9,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ## [Unreleased]
 ### Fixed
 - Fixed experimental `weighted_graph_check` incorrectly falling back to the standard algorithm on deadline/cancellation/throttle-timeout errors; these are now returned directly. Also fixed `weighted_graph_check` emitting metrics under the wrong method label when used as the primary algorithm. [#3141](https://github.com/openfga/openfga/pull/3141)
+- Fixed `SQLTupleIterator.fetchBuffer` so the caller deadline is honored for the lifetime of the underlying `*sql.Rows` rather than cancelled on return, preventing partial reads in `ListObjects` and other consumers. [#3109](https://github.com/openfga/openfga/pull/3109)
 
 ## [1.16.0] - 2026-05-20
 ### Added

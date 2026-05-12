@@ -305,6 +305,7 @@ type Rows interface {
 // interface for iterating over tuples fetched from a SQL database.
 type SQLTupleIterator struct {
 	rows           Rows // GUARDED_BY(mu)
+	cancel         context.CancelFunc // GUARDED_BY(mu); cancels the deadline-bearing context used to issue the query, released in Stop after rows are closed
 	handleSQLError errorHandlerFn
 
 	// firstRow is used as a temporary storage place if head is called.
@@ -349,20 +350,32 @@ func NewSQLTupleIterator(rowGetter SQLIteratorRowGetter, errHandler errorHandler
 	}
 }
 
+// DetachCancelKeepDeadline strips parent cancellation (so a client cancel cannot poison a pooled DB connection, see PR #2508) while preserving any deadline (so a slow query cannot block an iterator forever, see issue #3098).
+func DetachCancelKeepDeadline(ctx context.Context) (context.Context, context.CancelFunc) {
+	deadline, ok := ctx.Deadline()
+	ctx = context.WithoutCancel(ctx)
+	if !ok {
+		return ctx, func() {}
+	}
+	return context.WithDeadline(ctx, deadline)
+}
+
 func (t *SQLTupleIterator) fetchBuffer(ctx context.Context) error {
 	ctx, span := tracer.Start(ctx, "sqlcommon.fetchBuffer", trace.WithAttributes())
 	defer span.End()
-	ctx = context.WithoutCancel(ctx)
+	queryCtx, cancel := DetachCancelKeepDeadline(ctx)
 	start := time.Now()
-	curRows, err := t.rowGetter.GetRows(ctx)
+	curRows, err := t.rowGetter.GetRows(queryCtx)
 	elapsed := time.Since(start)
 	if err != nil {
+		cancel()
 		storageErr := t.handleSQLError(err)
 		storage.ObserveIterQueryDuration(storage.SuccessLabel(storageErr), elapsed)
 		return storageErr
 	}
 	storage.ObserveIterQueryDuration(true, elapsed)
 	t.rows = curRows
+	t.cancel = cancel
 	return nil
 }
 
@@ -562,6 +575,11 @@ func (t *SQLTupleIterator) Stop() {
 	defer t.mu.Unlock()
 	if t.rows != nil {
 		_ = t.rows.Close()
+		t.rows = nil
+	}
+	if t.cancel != nil {
+		t.cancel()
+		t.cancel = nil
 	}
 }
 
