@@ -10,6 +10,9 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Changed
 - Report `allowed` result and `tuple_key` on Check and experimental `weighted_graph_check` resolution trace spans. [#3116](https://github.com/openfga/openfga/pull/3116)
 
+### Fixed
+- Fixed cache key collisions in experimental `weighted_graph_check` union resolution by moving result caching from the union node level to the individual edge level, preventing collisions across requests that share edges but differ in object or relation. [#3117](https://github.com/openfga/openfga/pull/3117)
+
 ### Security
 - Update toolchain Go version to 1.26.3 to address the Go standard library vulnerabilities documented in the [Go 1.26.3 release notes](https://go.dev/doc/devel/release#go1.26.3). [#3115](https://github.com/openfga/openfga/pull/3115)
 
