@@ -241,6 +241,7 @@ const (
 type TupleWriteOptions struct {
 	OnMissingDelete   OnMissingDelete
 	OnDuplicateInsert OnDuplicateInsert
+	CorrelationID     string
 }
 
 type TupleWriteOption func(*TupleWriteOptions)
@@ -254,6 +255,12 @@ func WithOnMissingDelete(onMissingDelete OnMissingDelete) TupleWriteOption {
 func WithOnDuplicateInsert(onDuplicateInsert OnDuplicateInsert) TupleWriteOption {
 	return func(opts *TupleWriteOptions) {
 		opts.OnDuplicateInsert = onDuplicateInsert
+	}
+}
+
+func WithCorrelationID(id string) TupleWriteOption {
+	return func(opts *TupleWriteOptions) {
+		opts.CorrelationID = id
 	}
 }
 
@@ -390,6 +397,7 @@ type AssertionsBackend interface {
 type ReadChangesFilter struct {
 	ObjectType    string
 	HorizonOffset time.Duration
+	CorrelationID string
 }
 
 // ChangelogBackend is an interface for interacting with and managing changelogs.

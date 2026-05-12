@@ -25,6 +25,7 @@ type WriteCommand struct {
 	logger                    logger.Logger
 	datastore                 storage.OpenFGADatastore
 	conditionContextByteLimit int
+	correlationID             string
 }
 
 type WriteCommandOption func(*WriteCommand)
@@ -38,6 +39,12 @@ func WithWriteCmdLogger(l logger.Logger) WriteCommandOption {
 func WithConditionContextByteLimit(limit int) WriteCommandOption {
 	return func(wc *WriteCommand) {
 		wc.conditionContextByteLimit = limit
+	}
+}
+
+func WithWriteCorrelationID(id string) WriteCommandOption {
+	return func(wc *WriteCommand) {
+		wc.correlationID = id
 	}
 }
 
@@ -93,13 +100,20 @@ func (c *WriteCommand) Execute(ctx context.Context, req *openfgav1.WriteRequest)
 		return nil, err
 	}
 
+	writeOpts := []storage.TupleWriteOption{
+		storage.WithOnMissingDelete(onEmptyDelete),
+		storage.WithOnDuplicateInsert(onDuplicateInsert),
+	}
+	if c.correlationID != "" {
+		writeOpts = append(writeOpts, storage.WithCorrelationID(c.correlationID))
+	}
+
 	err = c.datastore.Write(
 		ctx,
 		req.GetStoreId(),
 		req.GetDeletes().GetTupleKeys(),
 		req.GetWrites().GetTupleKeys(),
-		storage.WithOnMissingDelete(onEmptyDelete),
-		storage.WithOnDuplicateInsert(onDuplicateInsert),
+		writeOpts...,
 	)
 	if err != nil {
 		if errors.Is(err, storage.ErrTransactionalWriteFailed) {

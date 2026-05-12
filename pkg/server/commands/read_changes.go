@@ -108,6 +108,7 @@ func (q *ReadChangesQuery) Execute(ctx context.Context, req *openfgav1.ReadChang
 	filter := storage.ReadChangesFilter{
 		ObjectType:    req.GetType(),
 		HorizonOffset: q.horizonOffset,
+		CorrelationID: req.GetCorrelationId(),
 	}
 	changes, contUlid, err := q.backend.ReadChanges(ctx, req.GetStoreId(), filter, opts)
 	if err != nil {

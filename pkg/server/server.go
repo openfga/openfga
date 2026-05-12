@@ -48,6 +48,7 @@ import (
 const (
 	AuthorizationModelIDHeader = "Openfga-Authorization-Model-Id"
 	authorizationModelIDKey    = "authorization_model_id"
+	CorrelationIDHeader        = "X-Correlation-ID"
 
 	allowedLabel = "allowed"
 

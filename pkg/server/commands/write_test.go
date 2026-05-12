@@ -25,23 +25,35 @@ import (
 type writeOptionsMatcher struct {
 	expectedOnDuplicateInsert storage.OnDuplicateInsert
 	expectedOnMissingDelete   storage.OnMissingDelete
+	expectedCorrelationID     string
 }
 
 func (w *writeOptionsMatcher) Matches(x interface{}) bool {
 	opts, ok := x.([]storage.TupleWriteOption)
-	if !ok || len(opts) != 2 {
+	if !ok {
 		return false
 	}
 	dut := storage.NewTupleWriteOptions(opts...)
-	return dut.OnMissingDelete == w.expectedOnMissingDelete && dut.OnDuplicateInsert == w.expectedOnDuplicateInsert
+	return dut.OnMissingDelete == w.expectedOnMissingDelete &&
+		dut.OnDuplicateInsert == w.expectedOnDuplicateInsert &&
+		dut.CorrelationID == w.expectedCorrelationID
 }
 
 func (w *writeOptionsMatcher) String() string {
-	return fmt.Sprintf("is equal to %v %v", w.expectedOnDuplicateInsert, w.expectedOnDuplicateInsert)
+	return fmt.Sprintf("onDuplicateInsert=%v onMissingDelete=%v correlationID=%q",
+		w.expectedOnDuplicateInsert, w.expectedOnMissingDelete, w.expectedCorrelationID)
 }
 
 func NewWriteOptsMatcher(insertOpts storage.OnDuplicateInsert, deleteOpts storage.OnMissingDelete) gomock.Matcher {
 	return &writeOptionsMatcher{expectedOnDuplicateInsert: insertOpts, expectedOnMissingDelete: deleteOpts}
+}
+
+func NewWriteOptsMatcherWithCorrelation(insertOpts storage.OnDuplicateInsert, deleteOpts storage.OnMissingDelete, correlationID string) gomock.Matcher {
+	return &writeOptionsMatcher{
+		expectedOnDuplicateInsert: insertOpts,
+		expectedOnMissingDelete:   deleteOpts,
+		expectedCorrelationID:     correlationID,
+	}
 }
 
 func TestWriteCommand(t *testing.T) {
@@ -979,4 +991,69 @@ func TestWriteCommand(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestWriteCommandCorrelationID(t *testing.T) {
+	const (
+		storeID = "01JCC8Z5S039R3X661KQGTNAFG"
+		modelID = "01JCC8ZD4X84K2W0H0ZA5AQ947"
+	)
+
+	model := parser.MustTransformDSLToProto(`
+	model
+		schema 1.1
+	type user
+	type document
+		relations
+			define viewer: [user]`)
+
+	writes := &openfgav1.WriteRequestWrites{
+		TupleKeys: []*openfgav1.TupleKey{{
+			Object:   "document:1",
+			Relation: "viewer",
+			User:     "user:alice",
+		}},
+	}
+
+	t.Run("correlation_id_is_forwarded_to_storage", func(t *testing.T) {
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+		mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+		mockDatastore.EXPECT().MaxTuplesPerWrite().AnyTimes().Return(10)
+		mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, modelID).Return(model, nil)
+		mockDatastore.EXPECT().Write(
+			gomock.Any(), storeID, gomock.Any(), gomock.Any(),
+			NewWriteOptsMatcherWithCorrelation(storage.OnDuplicateInsertError, storage.OnMissingDeleteError, "req-abc-123"),
+		).Return(nil)
+
+		cmd := NewWriteCommand(mockDatastore, WithWriteCorrelationID("req-abc-123"))
+		resp, err := cmd.Execute(context.Background(), &openfgav1.WriteRequest{
+			StoreId:              storeID,
+			AuthorizationModelId: modelID,
+			Writes:               writes,
+		})
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+	})
+
+	t.Run("no_correlation_id_does_not_set_option", func(t *testing.T) {
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+		mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+		mockDatastore.EXPECT().MaxTuplesPerWrite().AnyTimes().Return(10)
+		mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, modelID).Return(model, nil)
+		mockDatastore.EXPECT().Write(
+			gomock.Any(), storeID, gomock.Any(), gomock.Any(),
+			NewWriteOptsMatcherWithCorrelation(storage.OnDuplicateInsertError, storage.OnMissingDeleteError, ""),
+		).Return(nil)
+
+		cmd := NewWriteCommand(mockDatastore)
+		resp, err := cmd.Execute(context.Background(), &openfgav1.WriteRequest{
+			StoreId:              storeID,
+			AuthorizationModelId: modelID,
+			Writes:               writes,
+		})
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+	})
 }

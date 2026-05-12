@@ -236,6 +236,7 @@ func (s *MemoryBackend) ReadChanges(ctx context.Context, store string, filter st
 
 	objectType := filter.ObjectType
 	horizonOffset := filter.HorizonOffset
+	correlationID := filter.CorrelationID
 
 	var allChanges []*tupleChangeRec
 	now := time.Now().UTC()
@@ -250,6 +251,9 @@ func (s *MemoryBackend) ReadChanges(ctx context.Context, store string, filter st
 				} else if options.SortDesc && changeRec.Ulid.Compare(*from) >= 0 {
 					continue
 				}
+			}
+			if correlationID != "" && changeRec.Change.GetCorrelationId() != correlationID {
+				continue
 			}
 			allChanges = append(allChanges, changeRec)
 		}
@@ -277,9 +281,9 @@ func (s *MemoryBackend) ReadChanges(ctx context.Context, store string, filter st
 	res := make([]*openfgav1.TupleChange, 0, to)
 
 	var last ulid.ULID
-	for _, change := range allChanges[:to] {
-		res = append(res, change.Change)
-		last = change.Ulid
+	for _, changeRec := range allChanges[:to] {
+		res = append(res, changeRec.Change)
+		last = changeRec.Ulid
 	}
 
 	return res, last.String(), nil
@@ -350,7 +354,10 @@ func (s *MemoryBackend) Write(ctx context.Context, store string, deletes storage
 
 	now := timestamppb.Now()
 
-	duplicateDeletes, _, err := sanitizeTuplesWriteDelete(s.tuples[store], deletes, writes, storage.NewTupleWriteOptions(opts...))
+	writeOpts := storage.NewTupleWriteOptions(opts...)
+	correlationID := writeOpts.CorrelationID
+
+	duplicateDeletes, _, err := sanitizeTuplesWriteDelete(s.tuples[store], deletes, writes, writeOpts)
 	if err != nil {
 		return err
 	}
@@ -371,9 +378,10 @@ Delete:
 					s.changes[store],
 					&tupleChangeRec{
 						Change: &openfgav1.TupleChange{
-							TupleKey:  tupleUtils.NewTupleKey(tk.GetObject(), tk.GetRelation(), tk.GetUser()), // Redact the condition info.
-							Operation: openfgav1.TupleOperation_TUPLE_OPERATION_DELETE,
-							Timestamp: now,
+							TupleKey:      tupleUtils.NewTupleKey(tk.GetObject(), tk.GetRelation(), tk.GetUser()), // Redact the condition info.
+							Operation:     openfgav1.TupleOperation_TUPLE_OPERATION_DELETE,
+							Timestamp:     now,
+							CorrelationId: correlationID,
 						},
 						Ulid: ulid.MustNew(ulid.Timestamp(now.AsTime()), entropy),
 					},
@@ -425,9 +433,10 @@ Write:
 
 		s.changes[store] = append(s.changes[store], &tupleChangeRec{
 			Change: &openfgav1.TupleChange{
-				TupleKey:  tk,
-				Operation: openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
-				Timestamp: now,
+				TupleKey:      tk,
+				Operation:     openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
+				Timestamp:     now,
+				CorrelationId: correlationID,
 			},
 			Ulid: ulid.MustNew(ulid.Timestamp(now.AsTime()), entropy),
 		})

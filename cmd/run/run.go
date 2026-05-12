@@ -758,6 +758,9 @@ func (s *ServerContext) runHTTPServer(ctx context.Context, config *serverconfig.
 			if strings.EqualFold(key, server.AuthorizationModelIDHeader) {
 				return strings.ToLower(key), true
 			}
+			if strings.EqualFold(key, server.CorrelationIDHeader) {
+				return strings.ToLower(key), true
+			}
 			// Use default behavior for other headers
 			return grpc_runtime.DefaultHeaderMatcher(key)
 		}),

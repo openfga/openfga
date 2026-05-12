@@ -13,9 +13,14 @@ var (
 	// Date is the date when the app was built.
 	Date = "unknown"
 
-	// MinimumSupportedDatastoreSchemaRevision refers to the minimum schema version that is required to run
-	// this specific build of OpenFGA. Refer to the `assets/migrations` artifacts for more information.
-	MinimumSupportedDatastoreSchemaRevision int64 = 4
+	// MinimumSupportedPostgresSchemaRevision is the minimum schema revision for Postgres.
+	MinimumSupportedPostgresSchemaRevision int64 = 7
+
+	// MinimumSupportedMySQLSchemaRevision is the minimum schema revision for MySQL.
+	MinimumSupportedMySQLSchemaRevision int64 = 8
+
+	// MinimumSupportedSQLiteSchemaRevision is the minimum schema revision for SQLite.
+	MinimumSupportedSQLiteSchemaRevision int64 = 6
 
 	ProjectName = "openfga"
 )

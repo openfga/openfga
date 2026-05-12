@@ -2,12 +2,15 @@ package server
 
 import (
 	"context"
+	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -33,6 +36,11 @@ func (s *Server) Write(ctx context.Context, req *openfgav1.WriteRequest) (*openf
 		}
 	}
 
+	correlationID := getCorrelationIDFromMetadata(ctx)
+	if correlationID != "" && !correlationIDPattern.MatchString(correlationID) {
+		return nil, status.Errorf(codes.InvalidArgument, "invalid X-Correlation-ID header value %q: must match %s", correlationID, correlationIDPatternStr)
+	}
+
 	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
 		Service: s.serviceName,
 		Method:  apimethod.Write.String(),
@@ -51,10 +59,14 @@ func (s *Server) Write(ctx context.Context, req *openfgav1.WriteRequest) (*openf
 		return nil, err
 	}
 
-	cmd := commands.NewWriteCommand(
-		s.datastore,
+	cmdOpts := []commands.WriteCommandOption{
 		commands.WithWriteCmdLogger(s.logger),
-	)
+	}
+	if correlationID != "" {
+		cmdOpts = append(cmdOpts, commands.WithWriteCorrelationID(correlationID))
+	}
+
+	cmd := commands.NewWriteCommand(s.datastore, cmdOpts...)
 	resp, err := cmd.Execute(ctx, &openfgav1.WriteRequest{
 		StoreId:              storeID,
 		AuthorizationModelId: typesys.GetAuthorizationModelID(), // the resolved model id
@@ -71,4 +83,22 @@ func (s *Server) Write(ctx context.Context, req *openfgav1.WriteRequest) (*openf
 	).Observe(float64(time.Since(start).Milliseconds()))
 
 	return resp, err
+}
+
+// correlationIDPatternStr is the pattern enforced by the proto on ReadChangesRequest.correlation_id,
+// kept in sync so stored values are always queryable via ReadChanges filters.
+const correlationIDPatternStr = `^[a-zA-Z0-9]([a-zA-Z0-9-]{0,34}[a-zA-Z0-9]|[a-zA-Z0-9])?$`
+
+var (
+	correlationIDPattern = regexp.MustCompile(correlationIDPatternStr)
+	correlationIDKey     = strings.ToLower(CorrelationIDHeader)
+)
+
+func getCorrelationIDFromMetadata(ctx context.Context) string {
+	if md, ok := metadata.FromIncomingContext(ctx); ok {
+		if values := md.Get(correlationIDKey); len(values) > 0 {
+			return strings.TrimSpace(values[0])
+		}
+	}
+	return ""
 }

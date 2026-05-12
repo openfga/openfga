@@ -32,6 +32,7 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
+	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
@@ -555,6 +556,7 @@ func executeInsertChanges(ctx context.Context, txn PgxExec, changeLogItems [][]i
 				"operation",
 				"ulid",
 				"inserted_at",
+				"correlation_id",
 			)
 
 		for _, item := range changeLogBatch {
@@ -1236,6 +1238,7 @@ func (s *Datastore) ReadChanges(ctx context.Context, store string, filter storag
 			"_user",
 			"operation",
 			"condition_name", "condition_context", "inserted_at",
+			"COALESCE(correlation_id, '')",
 		).
 		From("changelog").
 		Where(sq.Eq{"store": store}).
@@ -1244,6 +1247,9 @@ func (s *Datastore) ReadChanges(ctx context.Context, store string, filter storag
 
 	if objectTypeFilter != "" {
 		sb = sb.Where(sq.Eq{"object_type": objectTypeFilter})
+	}
+	if filter.CorrelationID != "" {
+		sb = sb.Where(sq.Eq{"correlation_id": filter.CorrelationID})
 	}
 	if options.Pagination.From != "" {
 		sb = sqlcommon.AddFromUlid(sb, options.Pagination.From, options.SortDesc)
@@ -1266,7 +1272,7 @@ func (s *Datastore) ReadChanges(ctx context.Context, store string, filter storag
 	var changes []*openfgav1.TupleChange
 	var ulid string
 	for rows.Next() {
-		var objectType, objectID, relation, user string
+		var objectType, objectID, relation, user, correlationID string
 		var operation int
 		var insertedAt time.Time
 		var conditionName sql.NullString
@@ -1282,6 +1288,7 @@ func (s *Datastore) ReadChanges(ctx context.Context, store string, filter storag
 			&conditionName,
 			&conditionContext,
 			&insertedAt,
+			&correlationID,
 		)
 		if err != nil {
 			return nil, "", HandleSQLError(err)
@@ -1305,9 +1312,10 @@ func (s *Datastore) ReadChanges(ctx context.Context, store string, filter storag
 		)
 
 		changes = append(changes, &openfgav1.TupleChange{
-			TupleKey:  tk,
-			Operation: openfgav1.TupleOperation(operation),
-			Timestamp: timestamppb.New(insertedAt.UTC()),
+			TupleKey:      tk,
+			Operation:     openfgav1.TupleOperation(operation),
+			Timestamp:     timestamppb.New(insertedAt.UTC()),
+			CorrelationId: correlationID,
 		})
 	}
 
@@ -1331,7 +1339,7 @@ func isDBReady(ctx context.Context, versionReady bool, db *pgxpool.Pool) (storag
 	defer func() {
 		_ = sqlDB.Close()
 	}()
-	return sqlcommon.IsVersionReady(ctx, versionReady, sqlDB)
+	return sqlcommon.IsVersionReady(ctx, versionReady, sqlDB, build.MinimumSupportedPostgresSchemaRevision)
 }
 
 // IsReady see [sqlcommon.IsReady].

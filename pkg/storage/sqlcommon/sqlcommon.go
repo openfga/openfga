@@ -21,7 +21,6 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
-	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
@@ -730,6 +729,7 @@ func GetDeleteWriteChangelogItems(
 			int32(openfgav1.TupleOperation_TUPLE_OPERATION_DELETE),
 			id,
 			sq.Expr("NOW()"),
+			writeData.Opts.CorrelationID,
 		})
 	}
 
@@ -799,6 +799,7 @@ func GetDeleteWriteChangelogItems(
 			int32(openfgav1.TupleOperation_TUPLE_OPERATION_WRITE),
 			id,
 			sq.Expr("NOW()"),
+			writeData.Opts.CorrelationID,
 		})
 	}
 	return deleteConditions, writeItems, changeLogItems, nil
@@ -946,6 +947,7 @@ func Write(
 				"operation",
 				"ulid",
 				"inserted_at",
+				"correlation_id",
 			)
 
 		for _, item := range changeLogBatch {
@@ -1117,9 +1119,9 @@ func ReadAuthorizationModel(
 	return ret, nil
 }
 
-// IsVersionReady checks if the database schema revision is at least the minimum supported revision.
+// IsVersionReady checks if the database schema revision is at least minRevision.
 // The passed in context should have a timeout.
-func IsVersionReady(ctx context.Context, skipVersionCheck bool, db *sql.DB) (storage.ReadinessStatus, error) {
+func IsVersionReady(ctx context.Context, skipVersionCheck bool, db *sql.DB, minRevision int64) (storage.ReadinessStatus, error) {
 	if skipVersionCheck {
 		return storage.ReadinessStatus{
 			IsReady: true,
@@ -1131,12 +1133,12 @@ func IsVersionReady(ctx context.Context, skipVersionCheck bool, db *sql.DB) (sto
 		return storage.ReadinessStatus{}, err
 	}
 
-	if revision < build.MinimumSupportedDatastoreSchemaRevision {
+	if revision < minRevision {
 		return storage.ReadinessStatus{
 			Message: "datastore requires migrations: at revision '" +
 				strconv.FormatInt(revision, 10) +
 				"', but requires '" +
-				strconv.FormatInt(build.MinimumSupportedDatastoreSchemaRevision, 10) +
+				strconv.FormatInt(minRevision, 10) +
 				"'. Run 'openfga migrate'.",
 			IsReady: false,
 		}, nil
@@ -1148,7 +1150,7 @@ func IsVersionReady(ctx context.Context, skipVersionCheck bool, db *sql.DB) (sto
 
 // IsReady returns true if connection to datastore is successful AND
 // (the datastore has the latest migration applied OR skipVersionCheck).
-func IsReady(ctx context.Context, skipVersionCheck bool, db *sql.DB) (storage.ReadinessStatus, error) {
+func IsReady(ctx context.Context, skipVersionCheck bool, db *sql.DB, minRevision int64) (storage.ReadinessStatus, error) {
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 
@@ -1157,7 +1159,7 @@ func IsReady(ctx context.Context, skipVersionCheck bool, db *sql.DB) (storage.Re
 	if pingErr := db.PingContext(ctx); pingErr != nil {
 		return storage.ReadinessStatus{}, pingErr
 	}
-	return IsVersionReady(ctx, skipVersionCheck, db)
+	return IsVersionReady(ctx, skipVersionCheck, db, minRevision)
 }
 
 func AddFromUlid(sb sq.SelectBuilder, fromUlid string, sortDescending bool) sq.SelectBuilder {

@@ -252,24 +252,29 @@ func TestServerPanicIfValidationsFail(t *testing.T) {
 }
 
 func TestServerNotReadyDueToDatastoreRevision(t *testing.T) {
-	// skipping sqlite here because the lowest supported schema revision is 4
-	engines := []string{"postgres", "mysql"}
+	engines := []struct {
+		name    string
+		minimum int64
+	}{
+		{"postgres", build.MinimumSupportedPostgresSchemaRevision},
+		{"mysql", build.MinimumSupportedMySQLSchemaRevision},
+	}
 
-	for _, engine := range engines {
-		t.Run(engine, func(t *testing.T) {
-			_, ds, uri := util.MustBootstrapDatastore(t, engine)
+	for _, tc := range engines {
+		t.Run(tc.name, func(t *testing.T) {
+			_, ds, uri := util.MustBootstrapDatastore(t, tc.name)
 
-			targetVersion := build.MinimumSupportedDatastoreSchemaRevision - 1
+			targetVersion := tc.minimum - 1
 
 			migrateCommand := migrate.NewMigrateCommand()
 
-			migrateCommand.SetArgs([]string{"--datastore-engine", engine, "--datastore-uri", uri, "--version", strconv.Itoa(int(targetVersion))})
+			migrateCommand.SetArgs([]string{"--datastore-engine", tc.name, "--datastore-uri", uri, "--version", strconv.Itoa(int(targetVersion))})
 
 			err := migrateCommand.Execute()
 			require.NoError(t, err)
 
 			status, _ := ds.IsReady(context.Background())
-			require.Contains(t, status.Message, fmt.Sprintf("datastore requires migrations: at revision '%d', but requires '%d'.", targetVersion, build.MinimumSupportedDatastoreSchemaRevision))
+			require.Contains(t, status.Message, fmt.Sprintf("datastore requires migrations: at revision '%d', but requires '%d'.", targetVersion, tc.minimum))
 			require.False(t, status.IsReady)
 		})
 	}

@@ -353,4 +353,35 @@ func TestReadChangesQuery(t *testing.T) {
 		require.Empty(t, resp.GetChanges())
 		require.Equal(t, reqToken, resp.GetContinuationToken())
 	})
+
+	t.Run("passes_correlation_id_filter_to_storage", func(t *testing.T) {
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+
+		storeID := ulid.Make().String()
+		correlationID := "req-abc-123"
+		horizonOffset := 4 * time.Minute
+
+		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+		mockDatastore.EXPECT().ReadChanges(
+			gomock.Any(),
+			storeID,
+			storage.ReadChangesFilter{
+				HorizonOffset: horizonOffset,
+				CorrelationID: correlationID,
+			},
+			storage.ReadChangesOptions{
+				Pagination: storage.PaginationOptions{
+					PageSize: storage.DefaultPageSize,
+				},
+			},
+		).Times(1)
+
+		cmd := NewReadChangesQuery(mockDatastore, WithReadChangeQueryHorizonOffset(int(horizonOffset.Minutes())))
+		_, err := cmd.Execute(context.Background(), &openfgav1.ReadChangesRequest{
+			StoreId:       storeID,
+			CorrelationId: correlationID,
+		})
+		require.NoError(t, err)
+	})
 }

@@ -30,7 +30,7 @@ require (
 	github.com/moby/moby/client v0.4.1
 	github.com/natefinch/wrap v0.2.0
 	github.com/oklog/ulid/v2 v2.1.1
-	github.com/openfga/api/proto v0.0.0-20260319214821-f153694bfc20
+	github.com/openfga/api/proto v0.0.0-20260511214119-407f4e10398b
 	github.com/openfga/language/pkg/go v0.2.1
 	github.com/pressly/goose/v3 v3.27.1
 	github.com/prometheus/client_golang v1.23.2

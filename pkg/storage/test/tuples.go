@@ -619,6 +619,111 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		_, _, err = datastore.ReadChanges(context.Background(), storeID, storage.ReadChangesFilter{ObjectType: "folder"}, opts)
 		require.ErrorIs(t, err, storage.ErrNotFound)
 	})
+
+	t.Run("correlation_id_stored_and_returned_on_write", func(t *testing.T) {
+		storeID := ulid.Make().String()
+
+		tk1 := tuple.NewTupleKey("document:1", "viewer", "user:alice")
+		tk2 := tuple.NewTupleKey("document:2", "viewer", "user:bob")
+
+		err := datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tk1, tk2}, storage.WithCorrelationID("req-abc"))
+		require.NoError(t, err)
+
+		opts := storage.ReadChangesOptions{
+			Pagination: storage.NewPaginationOptions(storage.DefaultPageSize, ""),
+		}
+		changes, _, err := datastore.ReadChanges(ctx, storeID, storage.ReadChangesFilter{}, opts)
+		require.NoError(t, err)
+		require.Len(t, changes, 2)
+		for _, c := range changes {
+			require.Equal(t, "req-abc", c.GetCorrelationId())
+		}
+	})
+
+	t.Run("correlation_id_empty_when_not_provided", func(t *testing.T) {
+		storeID := ulid.Make().String()
+
+		err := datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{
+			tuple.NewTupleKey("document:1", "viewer", "user:alice"),
+		})
+		require.NoError(t, err)
+
+		opts := storage.ReadChangesOptions{
+			Pagination: storage.NewPaginationOptions(storage.DefaultPageSize, ""),
+		}
+		changes, _, err := datastore.ReadChanges(ctx, storeID, storage.ReadChangesFilter{}, opts)
+		require.NoError(t, err)
+		require.Len(t, changes, 1)
+		require.Empty(t, changes[0].GetCorrelationId())
+	})
+
+	t.Run("correlation_id_stored_on_delete", func(t *testing.T) {
+		storeID := ulid.Make().String()
+
+		tk := tuple.NewTupleKey("document:1", "viewer", "user:alice")
+		err := datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tk})
+		require.NoError(t, err)
+
+		err = datastore.Write(ctx, storeID,
+			[]*openfgav1.TupleKeyWithoutCondition{{Object: "document:1", Relation: "viewer", User: "user:alice"}},
+			nil,
+			storage.WithCorrelationID("delete-req-xyz"),
+		)
+		require.NoError(t, err)
+
+		opts := storage.ReadChangesOptions{
+			Pagination: storage.NewPaginationOptions(storage.DefaultPageSize, ""),
+		}
+		changes, _, err := datastore.ReadChanges(ctx, storeID, storage.ReadChangesFilter{}, opts)
+		require.NoError(t, err)
+		require.Len(t, changes, 2)
+
+		writeChange := changes[0]
+		require.Equal(t, openfgav1.TupleOperation_TUPLE_OPERATION_WRITE, writeChange.GetOperation())
+		require.Empty(t, writeChange.GetCorrelationId())
+
+		deleteChange := changes[1]
+		require.Equal(t, openfgav1.TupleOperation_TUPLE_OPERATION_DELETE, deleteChange.GetOperation())
+		require.Equal(t, "delete-req-xyz", deleteChange.GetCorrelationId())
+	})
+
+	t.Run("read_changes_filter_by_correlation_id", func(t *testing.T) {
+		storeID := ulid.Make().String()
+
+		err := datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{
+			tuple.NewTupleKey("document:1", "viewer", "user:alice"),
+		}, storage.WithCorrelationID("req-A"))
+		require.NoError(t, err)
+
+		err = datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{
+			tuple.NewTupleKey("document:2", "viewer", "user:bob"),
+		}, storage.WithCorrelationID("req-B"))
+		require.NoError(t, err)
+
+		opts := storage.ReadChangesOptions{
+			Pagination: storage.NewPaginationOptions(storage.DefaultPageSize, ""),
+		}
+		changes, _, err := datastore.ReadChanges(ctx, storeID, storage.ReadChangesFilter{CorrelationID: "req-A"}, opts)
+		require.NoError(t, err)
+		require.Len(t, changes, 1)
+		require.Equal(t, "req-A", changes[0].GetCorrelationId())
+		require.Equal(t, "document:1", changes[0].GetTupleKey().GetObject())
+	})
+
+	t.Run("read_changes_filter_by_correlation_id_no_match_returns_not_found", func(t *testing.T) {
+		storeID := ulid.Make().String()
+
+		err := datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{
+			tuple.NewTupleKey("document:1", "viewer", "user:alice"),
+		}, storage.WithCorrelationID("req-A"))
+		require.NoError(t, err)
+
+		opts := storage.ReadChangesOptions{
+			Pagination: storage.NewPaginationOptions(storage.DefaultPageSize, ""),
+		}
+		_, _, err = datastore.ReadChanges(ctx, storeID, storage.ReadChangesFilter{CorrelationID: "req-NONEXISTENT"}, opts)
+		require.ErrorIs(t, err, storage.ErrNotFound)
+	})
 }
 
 func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore) {

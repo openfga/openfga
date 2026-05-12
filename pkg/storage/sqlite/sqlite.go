@@ -24,6 +24,7 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
+	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
@@ -491,6 +492,7 @@ func (s *Datastore) write(
 			openfgav1.TupleOperation_TUPLE_OPERATION_DELETE,
 			id,
 			sq.Expr("datetime('subsec')"),
+			opts.CorrelationID,
 		})
 	}
 
@@ -565,6 +567,7 @@ func (s *Datastore) write(
 			openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
 			id,
 			sq.Expr("datetime('subsec')"),
+			opts.CorrelationID,
 		})
 	}
 
@@ -661,6 +664,7 @@ func (s *Datastore) write(
 				"operation",
 				"ulid",
 				"inserted_at",
+				"correlation_id",
 			)
 
 		for _, item := range changeLogBatch {
@@ -1237,6 +1241,7 @@ func (s *Datastore) ReadChanges(ctx context.Context, store string, filter storag
 			"user_object_type", "user_object_id", "user_relation",
 			"operation",
 			"condition_name", "condition_context", "inserted_at",
+			"COALESCE(correlation_id, '')",
 		).
 		From("changelog").
 		Where(sq.Eq{"store": store}).
@@ -1245,6 +1250,9 @@ func (s *Datastore) ReadChanges(ctx context.Context, store string, filter storag
 
 	if objectTypeFilter != "" {
 		sb = sb.Where(sq.Eq{"object_type": objectTypeFilter})
+	}
+	if filter.CorrelationID != "" {
+		sb = sb.Where(sq.Eq{"correlation_id": filter.CorrelationID})
 	}
 	if options.Pagination.From != "" {
 		sb = sqlcommon.AddFromUlid(sb, options.Pagination.From, options.SortDesc)
@@ -1262,7 +1270,7 @@ func (s *Datastore) ReadChanges(ctx context.Context, store string, filter storag
 	var changes []*openfgav1.TupleChange
 	var ulid string
 	for rows.Next() {
-		var objectType, objectID, relation, userObjectType, userObjectID, userRelation string
+		var objectType, objectID, relation, userObjectType, userObjectID, userRelation, correlationID string
 		var operation int
 		var insertedAt time.Time
 		var conditionName sql.NullString
@@ -1280,6 +1288,7 @@ func (s *Datastore) ReadChanges(ctx context.Context, store string, filter storag
 			&conditionName,
 			&conditionContext,
 			&insertedAt,
+			&correlationID,
 		)
 		if err != nil {
 			return nil, "", HandleSQLError(err)
@@ -1303,9 +1312,10 @@ func (s *Datastore) ReadChanges(ctx context.Context, store string, filter storag
 		)
 
 		changes = append(changes, &openfgav1.TupleChange{
-			TupleKey:  tk,
-			Operation: openfgav1.TupleOperation(operation),
-			Timestamp: timestamppb.New(insertedAt.UTC()),
+			TupleKey:      tk,
+			Operation:     openfgav1.TupleOperation(operation),
+			Timestamp:     timestamppb.New(insertedAt.UTC()),
+			CorrelationId: correlationID,
 		})
 	}
 
@@ -1318,7 +1328,7 @@ func (s *Datastore) ReadChanges(ctx context.Context, store string, filter storag
 
 // IsReady see [sqlcommon.IsReady].
 func (s *Datastore) IsReady(ctx context.Context) (storage.ReadinessStatus, error) {
-	versionReady, err := sqlcommon.IsReady(ctx, s.versionReady, s.db)
+	versionReady, err := sqlcommon.IsReady(ctx, s.versionReady, s.db, build.MinimumSupportedSQLiteSchemaRevision)
 	if err != nil {
 		return versionReady, err
 	}
