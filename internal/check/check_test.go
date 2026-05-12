@@ -645,8 +645,8 @@ func TestResolveUnionEdges(t *testing.T) {
 
 // alwaysFalseNilErrStrategy simulates DefaultStrategy.execute returning ({false}, nil)
 // under the select race on context cancellation — the exact value that would be cached.
-// done, if non-nil, is called via defer just before the strategy returns, providing the
-// closest available synchronisation point to the cache-write decision in check.go.
+// If non-nil, done is called via defer just before the strategy returns, providing the
+// closest available synchronization point to the cache-write decision in check.go.
 type alwaysFalseNilErrStrategy struct {
 	done func()
 }
