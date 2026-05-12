@@ -206,7 +206,7 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, edges []
 		}
 		pool.Go(func() error {
 			res, err := r.ResolveEdge(ctx, req, edge, visited)
-			if err == nil {
+			if err == nil && ctx.Err() == nil {
 				entry := &ResponseCacheEntry{Res: res, LastModified: time.Now()}
 				r.cache.Set(id, entry, r.cacheTTL)
 			}
@@ -454,7 +454,7 @@ func (r *Resolver) ResolveRecursive(ctx context.Context, req *Request, edge *aut
 			res, err = nil, ErrPanicRequest
 		}
 
-		if err == nil {
+		if err == nil && ctx.Err() == nil {
 			entry := &ResponseCacheEntry{Res: res, LastModified: time.Now()}
 			r.cache.Set(cacheKey, entry, r.cacheTTL)
 		}
