@@ -137,7 +137,7 @@ go install github.com/openfga/openfga/cmd/openfga
 openfga run
 ```
 
-#### `go build`
+#### Build from source
 
 ```shell
 git clone https://github.com/openfga/openfga.git && cd openfga
@@ -148,6 +148,7 @@ make build
 To build directly with `go build`, use the same output path:
 
 ```shell
+mkdir -p ./dist
 go build -o ./dist/openfga ./cmd/openfga
 ./dist/openfga run
 ```
