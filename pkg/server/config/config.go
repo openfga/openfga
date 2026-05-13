@@ -559,10 +559,12 @@ func (cfg *Config) verifyDatastoreConfig() error {
 		if cfg.Datastore.URI != "" {
 			return errors.New("config 'datastore.uri' must be empty when 'datastore.engine' is 'memory'")
 		}
-	case "postgres", "mysql":
-		if cfg.Datastore.URI == "" {
+	case "postgres", "mysql", "sqlite":
+		if strings.TrimSpace(cfg.Datastore.URI) == "" {
 			return fmt.Errorf("config 'datastore.uri' must be set when 'datastore.engine' is '%s'", cfg.Datastore.Engine)
 		}
+	default:
+		return fmt.Errorf("config 'datastore.engine' must be one of ['memory', 'mysql', 'postgres', 'sqlite']")
 	}
 
 	return nil

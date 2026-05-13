@@ -14,16 +14,29 @@ func TestRunMigrationsRequiresDatastoreURI(t *testing.T) {
 	tests := []struct {
 		name        string
 		engine      string
+		uri         string
 		expectedErr string
 	}{
 		{
-			name:        "postgres",
+			name:        "postgres empty uri",
 			engine:      "postgres",
 			expectedErr: "missing datastore uri for postgres datastore engine",
 		},
 		{
-			name:        "mysql",
+			name:        "postgres whitespace uri",
+			engine:      "postgres",
+			uri:         " ",
+			expectedErr: "missing datastore uri for postgres datastore engine",
+		},
+		{
+			name:        "mysql empty uri",
 			engine:      "mysql",
+			expectedErr: "missing datastore uri for mysql datastore engine",
+		},
+		{
+			name:        "mysql whitespace uri",
+			engine:      "mysql",
+			uri:         " ",
 			expectedErr: "missing datastore uri for mysql datastore engine",
 		},
 	}

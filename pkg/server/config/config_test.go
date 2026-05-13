@@ -2,6 +2,7 @@ package config
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"os"
 	"testing"
@@ -64,20 +65,31 @@ func TestVerifyConfig(t *testing.T) {
 		require.EqualError(t, err, "config 'datastore.uri' must be empty when 'datastore.engine' is 'memory'")
 	})
 
-	t.Run("datastore_uri_required_for_postgres", func(t *testing.T) {
+	for _, engine := range []string{"postgres", "mysql", "sqlite"} {
+		t.Run("datastore_uri_required_for_"+engine, func(t *testing.T) {
+			cfg := DefaultConfig()
+			cfg.Datastore.Engine = engine
+
+			err := cfg.Verify()
+			require.EqualError(t, err, fmt.Sprintf("config 'datastore.uri' must be set when 'datastore.engine' is '%s'", engine))
+		})
+
+		t.Run("datastore_uri_whitespace_required_for_"+engine, func(t *testing.T) {
+			cfg := DefaultConfig()
+			cfg.Datastore.Engine = engine
+			cfg.Datastore.URI = " "
+
+			err := cfg.Verify()
+			require.EqualError(t, err, fmt.Sprintf("config 'datastore.uri' must be set when 'datastore.engine' is '%s'", engine))
+		})
+	}
+
+	t.Run("unsupported_datastore_engine", func(t *testing.T) {
 		cfg := DefaultConfig()
-		cfg.Datastore.Engine = "postgres"
+		cfg.Datastore.Engine = "unsupported"
 
 		err := cfg.Verify()
-		require.EqualError(t, err, "config 'datastore.uri' must be set when 'datastore.engine' is 'postgres'")
-	})
-
-	t.Run("datastore_uri_required_for_mysql", func(t *testing.T) {
-		cfg := DefaultConfig()
-		cfg.Datastore.Engine = "mysql"
-
-		err := cfg.Verify()
-		require.EqualError(t, err, "config 'datastore.uri' must be set when 'datastore.engine' is 'mysql'")
+		require.EqualError(t, err, "config 'datastore.engine' must be one of ['memory', 'mysql', 'postgres', 'sqlite']")
 	})
 
 	t.Run("failing_to_set_http_cert_path_will_not_allow_server_to_start", func(t *testing.T) {

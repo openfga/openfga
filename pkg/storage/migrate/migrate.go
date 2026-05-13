@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
@@ -54,7 +55,7 @@ func RunMigrations(cfg MigrationConfig) error {
 		log.Info("no migrations to run for `memory` datastore")
 		return nil
 	case "mysql":
-		if cfg.URI == "" {
+		if strings.TrimSpace(cfg.URI) == "" {
 			return fmt.Errorf("missing datastore uri for mysql datastore engine")
 		}
 
@@ -75,7 +76,7 @@ func RunMigrations(cfg MigrationConfig) error {
 		uri = dsn.FormatDSN()
 
 	case "postgres":
-		if cfg.URI == "" {
+		if strings.TrimSpace(cfg.URI) == "" {
 			return fmt.Errorf("missing datastore uri for postgres datastore engine")
 		}
 
