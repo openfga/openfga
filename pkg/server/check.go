@@ -75,7 +75,17 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 	if s.featureFlagClient.Boolean(serverconfig.ExperimentalWeightedGraphCheck, storeID) {
 		// TODO: This path is missing some of the metrics/tracing information reported below
 		res, _, err := s.v2Check(ctx, req, s.sharedDatastoreResources.CheckCache, s.sharedDatastoreResources.CacheController, s.authzModelGraphResolver)
-		return res, err
+
+		if err == nil || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+			return res, err
+		}
+		requestID, _ := grpc_ctxtags.Extract(ctx).Values()["request_id"].(string)
+		s.logger.WarnWithContext(ctx, "Weighted graph check failed, falling back to main Check",
+			zap.Error(err),
+			zap.String("store_id", storeID),
+			zap.String("model_id", req.GetAuthorizationModelId()),
+			zap.String("request_id", requestID),
+		)
 	}
 
 	typesys, err := s.resolveTypesystem(ctx, storeID, req.GetAuthorizationModelId())
