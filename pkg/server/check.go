@@ -79,7 +79,13 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		if err == nil || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
 			return res, err
 		}
-		s.logger.WarnWithContext(ctx, "Weighted graph check failed, falling back to main Check", zap.Error(err))
+		requestID, _ := grpc_ctxtags.Extract(ctx).Values()["request_id"].(string)
+		s.logger.WarnWithContext(ctx, "Weighted graph check failed, falling back to main Check",
+			zap.Error(err),
+			zap.String("store_id", storeID),
+			zap.String("model_id", req.GetAuthorizationModelId()),
+			zap.String("request_id", requestID),
+		)
 	}
 
 	typesys, err := s.resolveTypesystem(ctx, storeID, req.GetAuthorizationModelId())
