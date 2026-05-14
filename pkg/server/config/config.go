@@ -101,6 +101,9 @@ const (
 	DefaultPlannerEvictionThreshold = 0
 	DefaultPlannerCleanupInterval   = 0
 
+	DefaultDatastorePingTimeout             = 2 * time.Second
+	DefaultDatastorePingRetryMaxElapsedTime = 1 * time.Minute
+
 	ExperimentalCheckOptimizations       = "enable-check-optimizations"
 	ExperimentalListObjectsOptimizations = "enable-list-objects-optimizations"
 	ExperimentalAccessControlParams      = "enable-access-control"
@@ -159,6 +162,12 @@ type DatastoreConfig struct {
 
 	// ConnMaxLifetime is the maximum amount of time a connection to the datastore may be reused.
 	ConnMaxLifetime time.Duration
+
+	// PingTimeout is the maximum amount of time to wait for a successful ping to the datastore.
+	PingTimeout time.Duration
+
+	// PingRetryMaxElapsedTime is the maximum time to retry datastore ping attempts.
+	PingRetryMaxElapsedTime time.Duration
 
 	// Metrics is configuration for the Datastore metrics.
 	Metrics DatastoreMetricsConfig
@@ -544,6 +553,18 @@ func (cfg *Config) VerifyServerSettings() error {
 		return errors.New("datastore MinOpenConns must not be less than datastore MinIdleConns")
 	}
 
+	if cfg.Datastore.PingTimeout <= 0 {
+		return errors.New("datastore PingTimeout must be greater than 0")
+	}
+
+	if cfg.Datastore.PingRetryMaxElapsedTime <= 0 {
+		return errors.New("datastore PingRetryMaxElapsedTime must be greater than 0")
+	}
+
+	if cfg.Datastore.PingRetryMaxElapsedTime < cfg.Datastore.PingTimeout {
+		return errors.New("datastore PingRetryMaxElapsedTime must not be less than datastore PingTimeout")
+	}
+
 	return nil
 }
 
@@ -829,13 +850,15 @@ func DefaultConfig() *Config {
 		RequestDurationDatastoreQueryCountBuckets: []string{"50", "200"},
 		RequestDurationDispatchCountBuckets:       []string{"50", "200"},
 		Datastore: DatastoreConfig{
-			Engine:                 "memory",
-			MaxCacheSize:           DefaultMaxAuthorizationModelCacheSize,
-			MaxTypesystemCacheSize: DefaultMaxTypesystemCacheSize,
-			MinIdleConns:           0,
-			MaxIdleConns:           10,
-			MinOpenConns:           0,
-			MaxOpenConns:           30,
+			Engine:                  "memory",
+			MaxCacheSize:            DefaultMaxAuthorizationModelCacheSize,
+			MaxTypesystemCacheSize:  DefaultMaxTypesystemCacheSize,
+			MinIdleConns:            0,
+			MaxIdleConns:            10,
+			MinOpenConns:            0,
+			MaxOpenConns:            30,
+			PingTimeout:             DefaultDatastorePingTimeout,
+			PingRetryMaxElapsedTime: DefaultDatastorePingRetryMaxElapsedTime,
 		},
 		GRPC: GRPCConfig{
 			Addr:            "0.0.0.0:8081",

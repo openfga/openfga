@@ -489,6 +489,8 @@ func (s *ServerContext) datastoreConfig(config *serverconfig.Config) (storage.Op
 		sqlcommon.WithMinIdleConns(config.Datastore.MinIdleConns),
 		sqlcommon.WithConnMaxIdleTime(config.Datastore.ConnMaxIdleTime),
 		sqlcommon.WithConnMaxLifetime(config.Datastore.ConnMaxLifetime),
+		sqlcommon.WithPingTimeout(config.Datastore.PingTimeout),
+		sqlcommon.WithPingRetryMaxElapsedTime(config.Datastore.PingRetryMaxElapsedTime),
 	}
 
 	if config.Datastore.Metrics.Enabled {
