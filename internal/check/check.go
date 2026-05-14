@@ -5,6 +5,7 @@ import (
 	"errors"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -27,7 +28,7 @@ import (
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
-const cacheKeyDelimiter = "|"
+const cacheKeyDelimiter byte = '|'
 const cacheKeyPrefix = "c."
 
 var tracer = otel.Tracer("internal/check")
@@ -153,36 +154,50 @@ func buildEdgeCacheKey(modelID string, req *Request, edge *authzGraph.WeightedAu
 	keyBuilder := &strings.Builder{}
 	keyBuilder.WriteString(cacheKeyPrefix)
 	keyBuilder.WriteString(modelID)
-	keyBuilder.WriteString(cacheKeyDelimiter)
+	keyBuilder.WriteByte(cacheKeyDelimiter)
 	keyBuilder.WriteString(req.GetTupleKey().GetObject())
-	keyBuilder.WriteString(cacheKeyDelimiter)
+	keyBuilder.WriteByte(cacheKeyDelimiter)
 	keyBuilder.WriteString(req.GetTupleKey().GetUser())
-	keyBuilder.WriteString(cacheKeyDelimiter)
+	keyBuilder.WriteByte(cacheKeyDelimiter)
 	keyBuilder.WriteString(edge.GetRelationDefinition())
+	keyBuilder.WriteByte(cacheKeyDelimiter)
+	keyBuilder.WriteString(strconv.FormatInt(int64(edge.GetEdgeType()), 10))
+	keyBuilder.WriteByte(cacheKeyDelimiter)
+	keyBuilder.WriteString(edge.GetTo().GetUniqueLabel())
+	keyBuilder.WriteByte(cacheKeyDelimiter)
+	keyBuilder.WriteString(edge.GetTuplesetRelation())
+	keyBuilder.WriteByte(cacheKeyDelimiter)
 	keyBuilder.WriteString(req.GetInvariantCacheKey())
 	return keyBuilder.String()
 }
 
 func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, edges []*authzGraph.WeightedAuthorizationModelEdge, visited *sync.Map) (*Response, error) {
+	ctx, span := tracer.Start(ctx, "ResolveUnionEdges", trace.WithAttributes(
+		attribute.String("tuple_key", req.GetTupleString()),
+		attribute.Bool("allowed", false),
+	))
+	defer span.End()
+
 	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
 
 	out := make(chan ResponseMsg, len(edges))
 	var pool errgroup.Group
 	pool.SetLimit(r.concurrencyLimit)
 	defer func() {
+		cancel()
 		_ = pool.Wait()
 		close(out)
 	}()
 
-	relation := req.GetTupleKey().GetRelation()
-	objectType := tuple.GetType(req.GetTupleKey().GetObject())
-	objectRelation := tuple.ToObjectRelationString(objectType, relation)
 	ids := make([]string, 0, len(edges))
 	for _, edge := range edges {
 		id := buildEdgeCacheKey(r.model.GetModelID(), req, edge)
 		ids = append(ids, id)
 		if res, ok := r.isCached(req.GetConsistency(), id); ok {
+			span.AddEvent("cache_hit", trace.WithAttributes(
+				attribute.String("cache_key", id),
+				attribute.Bool("allowed", res.GetAllowed()),
+			))
 			concurrency.TrySendThroughChannel(ctx, ResponseMsg{ID: id, Res: res}, out)
 			if res.GetAllowed() {
 				break
@@ -191,9 +206,7 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, edges []
 		}
 		pool.Go(func() error {
 			res, err := r.ResolveEdge(ctx, req, edge, visited)
-			// we only need to cache the response for the edge if the edge does not belong to the request relation
-			// otherwise the subproblem should be sufficient
-			if err == nil && edge.GetRelationDefinition() != objectRelation {
+			if err == nil && ctx.Err() == nil {
 				entry := &ResponseCacheEntry{Res: res, LastModified: time.Now()}
 				r.cache.Set(id, entry, r.cacheTTL)
 			}
@@ -215,6 +228,7 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, edges []
 
 			if msg.Res.GetAllowed() {
 				// Short-circuit: In a union, if any branch returns true, we can immediately return.
+				span.SetAttributes(attribute.Bool("allowed", true))
 				return msg.Res, nil
 			}
 		}
@@ -228,18 +242,12 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, edges []
 }
 
 // reduce as a logical union operation (exit the moment we have a single true).
-func (r *Resolver) ResolveUnion(ctx context.Context, req *Request, node *authzGraph.WeightedAuthorizationModelNode, visited *sync.Map) (resp *Response, err error) {
-	if res, ok := r.isCached(req.GetConsistency(), req.GetCacheKey()); ok {
-		return res, nil
-	}
-
-	defer func() {
-		if err != nil {
-			return
-		}
-		entry := &ResponseCacheEntry{Res: resp, LastModified: time.Now()}
-		r.cache.Set(req.GetCacheKey(), entry, r.cacheTTL)
-	}()
+func (r *Resolver) ResolveUnion(ctx context.Context, req *Request, node *authzGraph.WeightedAuthorizationModelNode, visited *sync.Map) (*Response, error) {
+	ctx, span := tracer.Start(ctx, "ResolveUnion", trace.WithAttributes(
+		attribute.String("tuple_key", req.GetTupleString()),
+		attribute.Bool("cached", false),
+	))
+	defer span.End()
 
 	emptyCycle := visited == nil
 	if emptyCycle && node.GetNodeType() == authzGraph.SpecificTypeAndRelation && (node.GetRecursiveRelation() == node.GetUniqueLabel() || node.IsPartOfTupleCycle()) {
@@ -424,8 +432,19 @@ func (r *Resolver) ResolveRecursive(ctx context.Context, req *Request, edge *aut
 	}()
 
 	go func() {
+		cacheKey := buildEdgeCacheKey(r.model.GetModelID(), req, edge)
+
+		if res, ok := r.isCached(req.GetConsistency(), cacheKey); ok {
+			span := trace.SpanFromContext(ctx)
+			span.SetAttributes(attribute.Bool("cached", true))
+
+			concurrency.TrySendThroughChannel(ctx, ResponseMsg{Res: res}, out)
+			return
+		}
+
 		var err error
 		var res *Response
+
 		switch edge.GetEdgeType() {
 		case authzGraph.DirectEdge:
 			res, err = r.resolveRecursiveUserset(ctx, req, edge, visited, canApplyOptimization)
@@ -435,6 +454,10 @@ func (r *Resolver) ResolveRecursive(ctx context.Context, req *Request, edge *aut
 			res, err = nil, ErrPanicRequest
 		}
 
+		if err == nil && ctx.Err() == nil {
+			entry := &ResponseCacheEntry{Res: res, LastModified: time.Now()}
+			r.cache.Set(cacheKey, entry, r.cacheTTL)
+		}
 		concurrency.TrySendThroughChannel(ctx, ResponseMsg{Res: res, Err: err}, out)
 	}()
 
@@ -459,6 +482,12 @@ func (r *Resolver) ResolveRecursive(ctx context.Context, req *Request, edge *aut
 // reduce as a logical intersection operation (exit the moment we have a single false)
 // should panic if a single handler returns nil.
 func (r *Resolver) ResolveIntersection(ctx context.Context, req *Request, node *authzGraph.WeightedAuthorizationModelNode) (*Response, error) {
+	ctx, span := tracer.Start(ctx, "ResolveIntersection", trace.WithAttributes(
+		attribute.String("tuple_key", req.GetTupleString()),
+		attribute.Bool("allowed", false),
+	))
+	defer span.End()
+
 	edges, ok := r.model.GetEdgesFromNode(node)
 	if !ok {
 		return nil, ErrPanicRequest
@@ -513,12 +542,19 @@ func (r *Resolver) ResolveIntersection(ctx context.Context, req *Request, node *
 			}
 		}
 	}
+	span.SetAttributes(attribute.Bool("allowed", true))
 	return &Response{Allowed: true}, err
 }
 
 // reduce as a logical exclusion operation
 // if base is false, short circuit.
 func (r *Resolver) ResolveExclusion(ctx context.Context, req *Request, node *authzGraph.WeightedAuthorizationModelNode) (*Response, error) {
+	ctx, span := tracer.Start(ctx, "ResolveExclusion", trace.WithAttributes(
+		attribute.String("tuple_key", req.GetTupleString()),
+		attribute.Bool("allowed", false),
+	))
+	defer span.End()
+
 	edges, ok := r.model.GetEdgesFromNode(node)
 	if !ok {
 		return nil, ErrPanicRequest
@@ -592,6 +628,7 @@ func (r *Resolver) ResolveExclusion(ctx context.Context, req *Request, node *aut
 
 			// Short-circuit: If base is true and there's no subtract, the whole expression is true.
 			if msg.Res.GetAllowed() && subtract == nil {
+				span.SetAttributes(attribute.Bool("allowed", true))
 				return msg.Res, nil
 			}
 
@@ -616,6 +653,7 @@ func (r *Resolver) ResolveExclusion(ctx context.Context, req *Request, node *aut
 	}
 
 	// The only way to get here is if base was (Allowed: true) and subtract was (Allowed: false).
+	span.SetAttributes(attribute.Bool("allowed", true))
 	return &Response{Allowed: true}, nil
 }
 

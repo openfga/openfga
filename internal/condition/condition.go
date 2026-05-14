@@ -3,6 +3,7 @@ package condition
 import (
 	"context"
 	"fmt"
+	"maps"
 	"reflect"
 	"sync"
 	"time"
@@ -11,7 +12,6 @@ import (
 	"github.com/google/cel-go/common"
 	celtypes "github.com/google/cel-go/common/types"
 	"go.opentelemetry.io/otel"
-	"golang.org/x/exp/maps"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"

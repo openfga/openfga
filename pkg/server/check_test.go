@@ -211,6 +211,9 @@ func TestShadowV2Check(t *testing.T) {
 		require.Equal(t, uint64(5), fields["main_datastore_item_count"])
 		require.NotNil(t, fields["shadow_datastore_query_count"])
 		require.NotNil(t, fields["shadow_datastore_item_count"])
+		require.Equal(t, "document:1", fields["object"])
+		require.Equal(t, "viewer", fields["relation"])
+		require.Equal(t, "user:alice", fields["user"])
 	})
 
 	t.Run("logs_mismatch_when_results_disagree", func(t *testing.T) {
@@ -232,6 +235,9 @@ func TestShadowV2Check(t *testing.T) {
 		shadowTook, ok := fields["shadow_took"].(int64)
 		require.True(t, ok, "shadow_took should be int64 milliseconds")
 		require.GreaterOrEqual(t, shadowTook, int64(0))
+		require.Equal(t, "document:1", fields["object"])
+		require.Equal(t, "viewer", fields["relation"])
+		require.Equal(t, "user:alice", fields["user"])
 	})
 
 	t.Run("logs_error_on_invalid_store", func(t *testing.T) {
@@ -733,4 +739,38 @@ func TestV2CheckQueryCacheEnabled(t *testing.T) {
 
 		require.Empty(t, checkCache.setKeysWithPrefix("c."), "cache should have no subproblem entries when query cache is disabled")
 	})
+}
+
+func TestCheck_FallsBackToV1WhenWeightedGraphInvalid(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	// An intersection whose branches resolve to different terminal types (user vs bot).
+	// WriteAuthorizationModel accepts this because v1 validation doesn't enforce that all
+	// intersection branches reach the same terminal type, but the weighted graph builder
+	// returns ErrInvalidModel for it. Check must fall back to v1 instead of surfacing the error.
+	modelDSL := `
+		model
+			schema 1.1
+		type user
+		type bot
+		type document
+			relations
+				define user_access: [user]
+				define bot_access: [bot]
+				define viewer: user_access and bot_access
+	`
+
+	s, req := setupCheckServer(t, modelDSL,
+		[]*openfgav1.TupleKey{
+			tuple.NewTupleKey("document:1", "user_access", "user:alice"),
+		},
+		WithFeatureFlagClient(featureflags.NewDefaultClient([]string{serverconfig.ExperimentalWeightedGraphCheck})),
+	)
+
+	resp, err := s.Check(context.Background(), req)
+	require.NoError(t, err)
+	// v1 fallback: alice has user_access but not bot_access, so viewer (AND) is false.
+	require.False(t, resp.GetAllowed())
 }

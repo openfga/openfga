@@ -10,5 +10,6 @@ import (
 func TestMain(m *testing.M) {
 	code := m.Run()
 	storagefixtures.CleanupPostgresContainer()
+	storagefixtures.CleanupMysqlContainer()
 	os.Exit(code)
 }

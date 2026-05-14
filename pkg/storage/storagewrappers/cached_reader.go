@@ -95,6 +95,7 @@ func (c *CachedTupleReader) ReadUsersetTuples(
 
 	// Build cache key (includes conditions)
 	cacheKey := buildReadUsersetTuplesCacheKey(storeID, filter)
+	span.SetAttributes(attribute.String("cache_key", cacheKey))
 	objectType, _ := tuple.SplitObject(filter.Object)
 
 	// Build invalidation keys for this query
@@ -140,6 +141,7 @@ func (c *CachedTupleReader) Read(
 	}
 
 	cacheKey := buildReadCacheKey(storeID, filter)
+	span.SetAttributes(attribute.String("cache_key", cacheKey))
 	objectType, _ := tuple.SplitObject(filter.Object)
 	invalidEntityKeys := buildInvalidationKeys(storeID, filter.Object, filter.Relation)
 
@@ -181,6 +183,7 @@ func (c *CachedTupleReader) ReadStartingWithUser(
 	}
 
 	cacheKey := buildReadStartingWithUserCacheKey(storeID, filter)
+	span.SetAttributes(attribute.String("cache_key", cacheKey))
 	invalidEntityKeys := buildInvalidationKeysForUser(storeID, filter.UserFilter, filter.ObjectType)
 
 	// Track total cache operations (before cache check, like V1)

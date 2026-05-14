@@ -51,6 +51,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		attribute.KeyValue{Key: "user", Value: attribute.StringValue(tk.GetUser())},
 		attribute.KeyValue{Key: "consistency", Value: attribute.StringValue(req.GetConsistency().String())},
 	))
+	isShadowRunning := s.featureFlagClient.Boolean(serverconfig.ExperimentalShadowWeightedGraphCheck, req.GetStoreId())
 	defer span.End()
 
 	if !validator.RequestIsValidatedFromContext(ctx) {
@@ -74,7 +75,17 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 	if s.featureFlagClient.Boolean(serverconfig.ExperimentalWeightedGraphCheck, storeID) {
 		// TODO: This path is missing some of the metrics/tracing information reported below
 		res, _, err := s.v2Check(ctx, req, s.sharedDatastoreResources.CheckCache, s.sharedDatastoreResources.CacheController, s.authzModelGraphResolver)
-		return res, err
+
+		if err == nil || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+			return res, err
+		}
+		requestID, _ := grpc_ctxtags.Extract(ctx).Values()["request_id"].(string)
+		s.logger.WarnWithContext(ctx, "Weighted graph check failed, falling back to main Check",
+			zap.Error(err),
+			zap.String("store_id", storeID),
+			zap.String("model_id", req.GetAuthorizationModelId()),
+			zap.String("request_id", requestID),
+		)
 	}
 
 	typesys, err := s.resolveTypesystem(ctx, storeID, req.GetAuthorizationModelId())
@@ -199,7 +210,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		Allowed: resp.Allowed,
 	}
 
-	if s.featureFlagClient.Boolean(serverconfig.ExperimentalShadowWeightedGraphCheck, storeID) {
+	if isShadowRunning {
 		go s.shadowV2Check(ctx, req, res, endTime,
 			resp.GetResolutionMetadata().DatastoreQueryCount,
 			resp.GetResolutionMetadata().DatastoreItemCount)
@@ -213,10 +224,20 @@ func (s *Server) shadowV2Check(ctx context.Context, req *openfgav1.CheckRequest,
 	var res *openfgav1.CheckResponse
 	var shadowMetadata storagewrappers.Metadata
 	var err error
+	originalSpanCtx := trace.SpanContextFromContext(ctx)
 	recoveredErr := panics.Try(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), s.shadowCheckResolverTimeout)
+		newCtx, cancel := context.WithTimeout(context.Background(), s.shadowCheckResolverTimeout)
 		defer cancel()
-		res, shadowMetadata, err = s.v2Check(ctx, req, s.sharedDatastoreResources.ShadowCheckCache, s.sharedDatastoreResources.ShadowCacheController, s.shadowAuthzModelGraphResolver)
+		// Inject the original span context so shadow spans share the same trace ID.
+		newCtx = trace.ContextWithSpanContext(newCtx, originalSpanCtx)
+		newCtx, shadowSpan := tracer.Start(newCtx, "shadowV2Check", trace.WithAttributes(
+			attribute.String("store_id", req.GetStoreId()),
+		))
+		defer shadowSpan.End()
+		res, shadowMetadata, err = s.v2Check(newCtx, req, s.sharedDatastoreResources.ShadowCheckCache, s.sharedDatastoreResources.ShadowCacheController, s.shadowAuthzModelGraphResolver)
+		if err == nil {
+			shadowSpan.SetAttributes(attribute.Bool("matches", mainRes.GetAllowed() == res.GetAllowed()))
+		}
 	})
 	if recoveredErr != nil {
 		err = recoveredErr.AsError()
@@ -236,6 +257,9 @@ func (s *Server) shadowV2Check(ctx context.Context, req *openfgav1.CheckRequest,
 		zap.Bool("main_result", mainRes.GetAllowed()),
 		zap.Bool("shadow_result", res.GetAllowed()),
 		zap.String("store_id", req.GetStoreId()),
+		zap.String("object", req.GetTupleKey().GetObject()),
+		zap.String("relation", req.GetTupleKey().GetRelation()),
+		zap.String("user", req.GetTupleKey().GetUser()),
 		zap.Uint32("main_datastore_query_count", mainDatastoreQueryCount),
 		zap.Uint32("shadow_datastore_query_count", shadowMetadata.DatastoreQueryCount),
 		zap.Uint64("main_datastore_item_count", mainDatastoreItemCount),

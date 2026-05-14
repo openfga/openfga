@@ -1,6 +1,7 @@
 package testutils
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/containerd/errdefs"
+	"github.com/moby/moby/api/pkg/stdcopy"
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/network"
 	"github.com/moby/moby/client"
@@ -59,78 +61,53 @@ func (d *DockerClient) PullImage(ctx context.Context, imageName string) error {
 	return nil
 }
 
-// FindRunningContainer returns the inspection data of a running container
-// matching the given name and image, or nil/false if not found.
-func (d *DockerClient) FindRunningContainer(
-	ctx context.Context, containerName, imageName string,
-) (*container.InspectResponse, bool, error) {
-	containerListResult, err := d.client.ContainerList(ctx, client.ContainerListOptions{
-		Limit: 1,
-		Filters: make(client.Filters).
-			Add("name", "^"+containerName+"$").
-			Add("ancestor", imageName).
-			Add("status", "running"),
-	})
-	if err != nil {
-		return nil, false, fmt.Errorf("list containers: %w", err)
-	}
-
-	if len(containerListResult.Items) == 0 {
-		return nil, false, nil
-	}
-
-	inspectResult, err := d.client.ContainerInspect(ctx, containerListResult.Items[0].ID, client.ContainerInspectOptions{})
-	if err != nil {
-		return nil, false, fmt.Errorf("inspect %s container: %w", containerName, err)
-	}
-
-	return &inspectResult.Container, true, nil
-}
-
-// RunContainer starts a container, then returns its inspection data.
-// If Docker reports a conflict because a container with the same name already
-// exists, the existing container is reused and started instead.
+// RunContainer creates and starts a new container.
 func (d *DockerClient) RunContainer(
 	ctx context.Context, containerCfg *container.Config, hostCfg *container.HostConfig, containerName string,
 ) (*container.InspectResponse, error) {
-	_, err := d.client.ContainerCreate(ctx, client.ContainerCreateOptions{
+	createResult, err := d.client.ContainerCreate(ctx, client.ContainerCreateOptions{
 		Name:       containerName,
 		Config:     containerCfg,
 		HostConfig: hostCfg,
 	})
-	createdContainer := err == nil
-	if err != nil && !errdefs.IsConflict(err) {
+
+	if err != nil {
 		return nil, fmt.Errorf("create %s container: %w", containerName, err)
 	}
 
 	defer func() {
-		if err == nil || !createdContainer {
-			return
+		if err != nil {
+			cleanupCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+
+			_ = d.RemoveContainer(cleanupCtx, createResult.ID)
 		}
-
-		cleanupCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-
-		_ = d.RemoveContainer(cleanupCtx, containerName)
 	}()
 
-	_, err = d.client.ContainerStart(ctx, containerName, client.ContainerStartOptions{})
-	if err != nil {
+	if _, err = d.client.ContainerStart(ctx, createResult.ID, client.ContainerStartOptions{}); err != nil {
 		return nil, fmt.Errorf("start %s container: %w", containerName, err)
 	}
 
 	backoffPolicy := backoff.NewExponentialBackOff(
 		backoff.WithInitialInterval(100*time.Millisecond),
-		backoff.WithMaxElapsedTime(5*time.Second),
+		backoff.WithMaxElapsedTime(30*time.Second),
 	)
 
-	var cont container.InspectResponse
+	var cont *container.InspectResponse
 	err = backoff.Retry(func() error {
-		inspectResult, err := d.client.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
+		inspectResult, err := d.client.ContainerInspect(ctx, createResult.ID, client.ContainerInspectOptions{})
 		if err != nil {
+			if errdefs.IsNotFound(err) {
+				return err
+			}
+
 			return backoff.Permanent(fmt.Errorf("inspect %s container: %w", containerName, err))
 		}
-		cont = inspectResult.Container
+		cont = &inspectResult.Container
+
+		if cont.State == nil || !cont.State.Running {
+			return fmt.Errorf("container %s is not running yet", containerName)
+		}
 
 		if len(containerCfg.ExposedPorts) == 0 {
 			return nil
@@ -153,7 +130,7 @@ func (d *DockerClient) RunContainer(
 		return nil, fmt.Errorf("inspect %s container: %w", containerName, err)
 	}
 
-	return &cont, nil
+	return cont, nil
 }
 
 // RemoveContainer kills and removes a container.
@@ -172,6 +149,9 @@ func (d *DockerClient) RemoveContainer(ctx context.Context, containerID string) 
 
 // ExecCommand executes a command in the specified container and waits for it to complete.
 func (d *DockerClient) ExecCommand(ctx context.Context, containerID string, execConfig client.ExecCreateOptions) error {
+	execConfig.AttachStdout = true
+	execConfig.AttachStderr = true
+
 	exec, err := d.client.ExecCreate(ctx, containerID, execConfig)
 	if err != nil {
 		return fmt.Errorf("failed to create exec for command %v: %w", execConfig.Cmd, err)
@@ -183,7 +163,9 @@ func (d *DockerClient) ExecCommand(ctx context.Context, containerID string, exec
 	}
 	defer resp.Close()
 
-	if _, err := io.Copy(io.Discard, resp.Reader); err != nil {
+	var stdout, stderr bytes.Buffer
+	_, err = stdcopy.StdCopy(&stdout, &stderr, resp.Reader)
+	if err != nil {
 		return fmt.Errorf("failed to read exec output for command %v: %w", execConfig.Cmd, err)
 	}
 
@@ -193,7 +175,13 @@ func (d *DockerClient) ExecCommand(ctx context.Context, containerID string, exec
 	}
 
 	if inspect.ExitCode != 0 {
-		return fmt.Errorf("command %v completed with exit code %d", execConfig.Cmd, inspect.ExitCode)
+		return fmt.Errorf(
+			"command %v completed with exit code %d: stdout=%q stderr=%q",
+			execConfig.Cmd,
+			inspect.ExitCode,
+			stdout.String(),
+			stderr.String(),
+		)
 	}
 
 	return nil
