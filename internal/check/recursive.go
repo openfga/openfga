@@ -106,6 +106,11 @@ func (s *Recursive) execute(ctx context.Context, req *Request, edge *authzGraph.
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		case msg, ok := <-leftChan:
+			// select may choose a closed channel over ctx.Done(); re-check cancellation.
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
+
 			if !ok {
 				leftChan = nil
 				// if no ids from the left side were returned then return false without error
@@ -139,6 +144,11 @@ func (s *Recursive) execute(ctx context.Context, req *Request, edge *authzGraph.
 			}
 
 		case msg, ok := <-rightChan:
+			// select may choose a closed channel over ctx.Done(); re-check cancellation.
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
+
 			if !ok {
 				rightChan = nil
 				if len(idsFromObject) == 0 {
@@ -205,6 +215,11 @@ func (s *Recursive) recursiveMatch(ctx context.Context, req *Request, recursiveE
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		case msg, ok := <-responsesChan:
+			// select may choose a closed channel over ctx.Done(); re-check cancellation.
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
+
 			if !ok {
 				return &Response{Allowed: false}, err
 			}
