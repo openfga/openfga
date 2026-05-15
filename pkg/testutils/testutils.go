@@ -283,8 +283,9 @@ func MustDefaultConfigForParallelTests() *serverconfig.Config {
 	config.Datastore.ConnMaxIdleTime = 5 * time.Second
 	config.Datastore.ConnMaxLifetime = 10 * time.Second
 
-	// extend the timeout for the tests, coverage makes them slower
-	config.RequestTimeout = 10 * time.Second
+	// 30s gives recursive resolution (e.g. userset_recursive_combined_w3)
+	// enough headroom on resource-constrained CI runners.
+	config.RequestTimeout = 30 * time.Second
 
 	return config
 }

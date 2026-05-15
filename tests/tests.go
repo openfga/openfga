@@ -105,6 +105,10 @@ func BuildClientInterface(t *testing.T, engine string, experimentals []string) C
 	cfg.ListObjectsIteratorCache.Enabled = true
 	cfg.ContextPropagationToDatastore = true
 
+	cfg.MaxConcurrentReadsForListObjects = 25
+	cfg.MaxConcurrentReadsForCheck = 25
+	cfg.MaxConcurrentReadsForListUsers = 25
+
 	StartServer(t, cfg)
 
 	conn := testutils.CreateGrpcConnection(t, cfg.GRPC.Addr)
