@@ -105,9 +105,9 @@ func BuildClientInterface(t *testing.T, engine string, experimentals []string) C
 	cfg.ListObjectsIteratorCache.Enabled = true
 	cfg.ContextPropagationToDatastore = true
 
-	cfg.MaxConcurrentReadsForListObjects = 25
-	cfg.MaxConcurrentReadsForCheck = 25
-	cfg.MaxConcurrentReadsForListUsers = 25
+	cfg.MaxConcurrentReadsForListObjects = 10
+	cfg.MaxConcurrentReadsForCheck = 10
+	cfg.MaxConcurrentReadsForListUsers = 10
 
 	StartServer(t, cfg)
 
