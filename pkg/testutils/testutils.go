@@ -274,17 +274,18 @@ func MustDefaultConfig() *serverconfig.Config {
 }
 
 // MustDefaultConfigForParallelTests returns default server config suitable for parallel tests.
-// It limits the connection idle time and lifetime to prevent bad connections
+// It relaxes connection lifecycle settings to prevent pool churn under heavy parallel load
 // and extends the request timeout to accommodate slower test environments.
 func MustDefaultConfigForParallelTests() *serverconfig.Config {
 	config := MustDefaultConfig()
 
-	// limit IdleTime and Lifetime to prevent bad connections
-	config.Datastore.ConnMaxIdleTime = 5 * time.Second
-	config.Datastore.ConnMaxLifetime = 10 * time.Second
+	// Relaxed lifecycle prevents connection pool churn: ~268 parallel subtests
+	// cause aggressive recycling with short lifetimes, leading to TCP i/o timeouts
+	// when pgxpool tries to create many replacement connections simultaneously.
+	config.Datastore.ConnMaxIdleTime = 30 * time.Second
+	config.Datastore.ConnMaxLifetime = 60 * time.Second
+	config.Datastore.MaxIdleConns = config.Datastore.MaxOpenConns
 
-	// 30s gives recursive resolution (e.g. userset_recursive_combined_w3)
-	// enough headroom on resource-constrained CI runners.
 	config.RequestTimeout = 30 * time.Second
 
 	return config
