@@ -395,7 +395,7 @@ var _ CheckResolver = (*LocalChecker)(nil)
 func (c *LocalChecker) ResolveCheck(
 	ctx context.Context,
 	req *ResolveCheckRequest,
-) (*ResolveCheckResponse, error) {
+) (resp *ResolveCheckResponse, err error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
@@ -405,7 +405,12 @@ func (c *LocalChecker) ResolveCheck(
 		attribute.String("resolver_type", "LocalChecker"),
 		attribute.String("tuple_key", tuple.TupleKeyWithConditionToString(req.GetTupleKey())),
 	))
-	defer span.End()
+	defer func() {
+		if resp != nil {
+			span.SetAttributes(attribute.Bool("allowed", resp.GetAllowed()))
+		}
+		span.End()
+	}()
 
 	if req.GetRequestMetadata().Depth == c.maxResolutionDepth {
 		return nil, ErrResolutionDepthExceeded
@@ -457,7 +462,7 @@ func (c *LocalChecker) ResolveCheck(
 		}, nil
 	}
 
-	resp, err := c.CheckRewrite(ctx, req, rel.GetRewrite())(ctx)
+	resp, err = c.CheckRewrite(ctx, req, rel.GetRewrite())(ctx)
 	if err != nil {
 		telemetry.TraceError(span, err)
 		return nil, err
@@ -786,7 +791,9 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 // related to it.
 func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckRequest) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
-		ctx, span := tracer.Start(ctx, "checkDirect")
+		ctx, span := tracer.Start(ctx, "checkDirect", trace.WithAttributes(
+			attribute.String("tuple_key", tuple.TupleKeyWithConditionToString(req.GetTupleKey())),
+		))
 		defer span.End()
 
 		typesys, _ := typesystem.TypesystemFromContext(parentctx) // note: use of 'parentctx' not 'ctx' - this is important
@@ -834,7 +841,9 @@ func (c *LocalChecker) checkComputedUserset(_ context.Context, req *ResolveCheck
 	childRequest.TupleKey = rewrittenTupleKey
 
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
-		ctx, span := tracer.Start(ctx, "checkComputedUserset")
+		ctx, span := tracer.Start(ctx, "checkComputedUserset", trace.WithAttributes(
+			attribute.String("tuple_key", tuple.TupleKeyWithConditionToString(rewrittenTupleKey)),
+		))
 		defer span.End()
 		// No dispatch here, as we don't want to increase resolution depth.
 		return c.ResolveCheck(ctx, childRequest)
@@ -845,7 +854,9 @@ func (c *LocalChecker) checkComputedUserset(_ context.Context, req *ResolveCheck
 // of them evaluates the computed userset of the TTU rewrite rule for them.
 func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
-		ctx, span := tracer.Start(ctx, "checkTTU")
+		ctx, span := tracer.Start(ctx, "checkTTU", trace.WithAttributes(
+			attribute.String("tuple_key", tuple.TupleKeyWithConditionToString(req.GetTupleKey())),
+		))
 		defer span.End()
 
 		typesys, _ := typesystem.TypesystemFromContext(parentctx) // note: use of 'parentctx' not 'ctx' - this is important
@@ -1002,10 +1013,15 @@ func (c *LocalChecker) checkSetOperation(
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
 		var err error
 		var resp *ResolveCheckResponse
-		ctx, span := tracer.Start(ctx, reducerKey)
+		ctx, span := tracer.Start(ctx, reducerKey, trace.WithAttributes(
+			attribute.String("tuple_key", tuple.TupleKeyWithConditionToString(req.GetTupleKey())),
+		))
 		defer func() {
 			if err != nil {
 				telemetry.TraceError(span, err)
+			}
+			if resp != nil {
+				span.SetAttributes(attribute.Bool("allowed", resp.GetAllowed()))
 			}
 			span.End()
 		}()

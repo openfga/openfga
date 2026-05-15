@@ -84,6 +84,13 @@ func WithCachedDatastoreMethodName(method string) CachedDatastoreOpt {
 	}
 }
 
+// WithCachedDatastoreJitterPercentage sets the jitter percentage for cache TTLs.
+func WithCachedDatastoreJitterPercentage(pct uint32) CachedDatastoreOpt {
+	return func(b *CachedDatastore) {
+		b.jitterPercentage = pct
+	}
+}
+
 // CachedDatastore is a wrapper over a datastore that caches iterators in memory.
 type CachedDatastore struct {
 	storage.RelationshipTupleReader
@@ -92,6 +99,10 @@ type CachedDatastore struct {
 	cache         storage.InMemoryCache[any]
 	maxResultSize int
 	ttl           time.Duration
+
+	// jitterPercentage is the percentage of the base TTL added as random jitter
+	// to each cache entry's TTL to spread out expirations.
+	jitterPercentage uint32
 
 	// sf is used to prevent draining the same iterator
 	// across multiple requests.
@@ -391,6 +402,7 @@ func (c *CachedDatastore) newCachedIterator(
 		cache:             c.cache,
 		maxResultSize:     c.maxResultSize,
 		ttl:               c.ttl,
+		jitterPercentage:  c.jitterPercentage,
 		initializedAt:     time.Now(),
 		sf:                c.sf,
 		objectType:        objectType,
@@ -413,6 +425,7 @@ type cachedIterator struct {
 	invalidEntityKeys []string
 	cache             storage.InMemoryCache[any]
 	ttl               time.Duration
+	jitterPercentage  uint32
 	initializedAt     time.Time
 
 	objectID   string
@@ -642,7 +655,7 @@ func (c *cachedIterator) flush() {
 	c.records = nil
 
 	c.logger.Debug("cachedIterator flush and update cache for ", zap.String("cacheKey", c.cacheKey))
-	c.cache.Set(c.cacheKey, &storage.TupleIteratorCacheEntry{Tuples: records, LastModified: time.Now()}, c.ttl)
+	c.cache.Set(c.cacheKey, &storage.TupleIteratorCacheEntry{Tuples: records, LastModified: time.Now()}, storage.JitteredTTL(c.ttl, c.jitterPercentage))
 	for _, k := range c.invalidEntityKeys {
 		c.cache.Delete(k)
 	}

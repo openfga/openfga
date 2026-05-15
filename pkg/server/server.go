@@ -19,11 +19,13 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/sync/singleflight"
 
+	authzenv1 "github.com/openfga/api/proto/authzen/v1"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/authz"
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/internal/graph"
+	"github.com/openfga/openfga/internal/listobjects/pipeline"
 	"github.com/openfga/openfga/internal/modelgraph"
 	"github.com/openfga/openfga/internal/planner"
 	"github.com/openfga/openfga/internal/shared"
@@ -36,7 +38,6 @@ import (
 	"github.com/openfga/openfga/pkg/featureflags"
 	"github.com/openfga/openfga/pkg/gateway"
 	"github.com/openfga/openfga/pkg/logger"
-	"github.com/openfga/openfga/pkg/server/commands/reverseexpand/pipeline"
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
@@ -165,6 +166,7 @@ var (
 // a GRPC and HTTP server.
 type Server struct {
 	openfgav1.UnimplementedOpenFGAServiceServer
+	authzenv1.UnimplementedAuthZenServiceServer
 
 	logger                           logger.Logger
 	datastore                        storage.OpenFGADatastore
@@ -189,6 +191,7 @@ type Server struct {
 	maxAuthorizationModelCacheSize   int
 	maxTypesystemCacheSize           int
 	maxAuthorizationModelSizeInBytes int
+	authzenBaseURL                   string
 	experimentals                    []string
 	AccessControl                    serverconfig.AccessControlConfig
 	AuthnMethod                      string
@@ -199,7 +202,8 @@ type Server struct {
 	typesystemResolver     typesystem.TypesystemResolverFunc
 	typesystemResolverStop func()
 
-	authzModelGraphResolver *modelgraph.AuthorizationModelGraphResolver
+	authzModelGraphResolver       *modelgraph.AuthorizationModelGraphResolver
+	shadowAuthzModelGraphResolver *modelgraph.AuthorizationModelGraphResolver
 
 	// cacheSettings are given by the user
 	cacheSettings serverconfig.CacheSettings
@@ -449,6 +453,12 @@ func WithFeatureFlagClient(client featureflags.Client) OpenFGAServiceV1Option {
 	}
 }
 
+func WithAuthzenBaseURL(baseURL string) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.authzenBaseURL = baseURL
+	}
+}
+
 // WithAccessControlParams sets enabled, the storeID, and modelID for the access control feature.
 func WithAccessControlParams(enabled bool, storeID string, modelID string, authnMethod string) OpenFGAServiceV1Option {
 	return func(s *Server) {
@@ -542,6 +552,21 @@ func WithListObjectsIteratorCacheMaxResults(limit uint32) OpenFGAServiceV1Option
 func WithListObjectsIteratorCacheTTL(ttl time.Duration) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.cacheSettings.ListObjectsIteratorCacheTTL = ttl
+	}
+}
+
+// WithCacheTTLJitterPercentage sets the jitter percentage applied to cache TTLs.
+// A value of 10 means up to 10% of the base TTL is added as random jitter to each
+// cache entry, spreading out expirations and preventing thundering herd effects.
+// Values above 100 are capped to 100.
+func WithCacheTTLJitterPercentage(pct uint32) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		if pct > 100 {
+			s.logger.Warn("cacheTTLJitterPercentage exceeded 100, capping to 100",
+				zap.Uint32("requested", pct))
+			pct = 100
+		}
+		s.cacheSettings.CacheTTLJitterPercentage = pct
 	}
 }
 
@@ -927,6 +952,16 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 	if len(s.requestDurationByDispatchCountHistogramBuckets) == 0 {
 		return nil, fmt.Errorf("request duration by dispatch count buckets must not be empty")
 	}
+
+	if s.authzenBaseURL != "" {
+		normalizedAuthzenBaseURL, err := serverconfig.NormalizeAuthzenBaseURL(s.authzenBaseURL)
+		if err != nil {
+			return nil, fmt.Errorf("invalid AuthZEN base URL: %w", err)
+		}
+
+		s.authzenBaseURL = normalizedAuthzenBaseURL
+	}
+
 	if s.checkDispatchThrottlingEnabled && s.checkDispatchThrottlingMaxThreshold != 0 && s.checkDispatchThrottlingDefaultThreshold > s.checkDispatchThrottlingMaxThreshold {
 		return nil, fmt.Errorf("check default dispatch throttling threshold must be equal or smaller than max dispatch threshold for Check")
 	}
@@ -983,6 +1018,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 
 	// TODO: make the cache duration configurable (maybe)
 	s.authzModelGraphResolver = modelgraph.NewResolver(s.datastore, s.sharedDatastoreResources.CheckCache, 24*7*time.Hour)
+	s.shadowAuthzModelGraphResolver = modelgraph.NewResolver(s.datastore, s.sharedDatastoreResources.ShadowCheckCache, 24*7*time.Hour)
 
 	if s.IsAccessControlEnabled() {
 		s.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: s.AccessControl.StoreID, ModelID: s.AccessControl.ModelID}, s, s.logger)
@@ -1141,6 +1177,7 @@ func (s *Server) getCheckResolverOptions() ([]graph.CachedCheckResolverOpt, []gr
 			graph.WithExistingCache(s.sharedDatastoreResources.CheckCache),
 			graph.WithLogger(s.logger),
 			graph.WithCacheTTL(s.cacheSettings.CheckQueryCacheTTL),
+			graph.WithJitterPercentage(s.cacheSettings.CacheTTLJitterPercentage),
 		)
 	}
 

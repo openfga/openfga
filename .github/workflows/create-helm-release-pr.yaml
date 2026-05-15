@@ -1,0 +1,102 @@
+name: Create openfga/helm-charts Release PR
+
+on:
+  pull_request:
+    types:
+      - closed
+    branches:
+      - main
+    paths:
+      - 'CHANGELOG.md'
+
+permissions:
+  contents: read
+
+jobs:
+  create-helm-pr:
+    if: >
+      github.event.pull_request.merged == true &&
+      contains(github.event.pull_request.labels.*.name, 'release') &&
+      startsWith(github.event.pull_request.title, 'release: update changelog for release')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check if PR author is a maintainer
+        run: |
+          pr_author="${{ github.event.pull_request.user.login }}"
+          permission=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/collaborators/$pr_author/permission" | jq -r .permission)
+
+          if [[ "$permission" == "admin" || "$permission" == "write" ]]; then
+            echo "$pr_author is a maintainer. Continue with helm-charts PR creation."
+          else
+            echo "$pr_author is NOT a maintainer. Exiting..."
+            exit 1
+          fi
+
+      - name: Checkout openfga
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Extract version from CHANGELOG
+        id: version
+        run: |
+          tag=$(awk '
+            BEGIN { unreleased_found=0 }
+            /^## \[Unreleased\]/ { unreleased_found=1; next }
+            unreleased_found && /^## \[[0-9]+\.[0-9]+\.[0-9]+\]/ {
+              line = $0
+              n = split(line, arr, "[")
+              m = split(arr[2], ver, "]")
+              print ver[1]
+              exit
+            }
+          ' "CHANGELOG.md")
+          if [ -z "$tag" ]; then
+            echo "No version found in CHANGELOG. Exiting..."
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout helm-charts
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: openfga/helm-charts
+          token: ${{ secrets.GORELEASER_GITHUB_TOKEN }}
+          path: helm-charts
+
+      - name: Update Chart.yaml and create PR
+        env:
+          GH_TOKEN: ${{ secrets.GORELEASER_GITHUB_TOKEN }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          cd helm-charts
+
+          chart_file="charts/openfga/Chart.yaml"
+          helm_branch_name="release/openfga-v${TAG}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git checkout -b "$helm_branch_name"
+
+          current_version=$(grep '^version:' "$chart_file" | awk '{print $2}')
+          new_version=$(echo "$current_version" | awk -F. -v OFS=. '{$NF=$NF+1; print}')
+
+          sed -i "s/^version: .*/version: $new_version/" "$chart_file"
+          sed -i "s/^appVersion: .*/appVersion: \"v${TAG}\"/" "$chart_file"
+
+          echo "Updated Chart.yaml: version ${current_version} -> ${new_version}, appVersion -> v${TAG}"
+
+          git add "$chart_file"
+          git commit -m "chore: Update openfga to v${TAG}"
+          git push --set-upstream origin "$helm_branch_name"
+
+          helm_body=$(printf '## Description\nUpdate OpenFGA to `v%s`.\n\n- `appVersion`: `v%s`\n- `version`: `%s` -> `%s`' \
+            "$TAG" "$TAG" "$current_version" "$new_version")
+
+          gh pr create \
+            --repo openfga/helm-charts \
+            --base main \
+            --title "chore: Update openfga to \`v${TAG}\`" \
+            --body "$helm_body"

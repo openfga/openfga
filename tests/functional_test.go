@@ -30,7 +30,7 @@ import (
 
 // newOpenFGAServerAndClient starts an OpenFGA server, waits until its is healthy, and returns a grpc client to it.
 func newOpenFGAServerAndClient(t *testing.T) openfgav1.OpenFGAServiceClient {
-	cfg := config.MustDefaultConfig()
+	cfg := testutils.MustDefaultConfig()
 	cfg.Experimentals = append(cfg.Experimentals, "enable-check-optimizations", "enable-list-objects-optimizations")
 	cfg.Log.Level = "error"
 	cfg.Datastore.Engine = "memory"
@@ -101,7 +101,7 @@ func TestGRPCMaxMessageSize(t *testing.T) {
 
 // TODO make a unit test from this.
 func TestCheckWithQueryCacheEnabled(t *testing.T) {
-	cfg := config.MustDefaultConfig()
+	cfg := testutils.MustDefaultConfig()
 	cfg.CheckQueryCache.Enabled = true
 
 	StartServer(t, cfg)
@@ -347,7 +347,7 @@ func TestFunctionalGRPC(t *testing.T) {
 }
 
 func TestGRPCWithPresharedKey(t *testing.T) {
-	cfg := config.MustDefaultConfig()
+	cfg := testutils.MustDefaultConfig()
 	cfg.Authn.Method = "preshared"
 	cfg.Authn.AuthnPresharedKeyConfig = &config.AuthnPresharedKeyConfig{Keys: []string{"key1", "key2"}}
 

@@ -38,7 +38,8 @@ type RemoteOidcAuthenticator struct {
 }
 
 var (
-	jwkRefreshInterval = 48 * time.Hour
+	jwkRefreshInterval  = 48 * time.Hour
+	jwkRefreshRateLimit = 1 * time.Minute
 
 	errInvalidClaims = status.Error(codes.Code(openfgav1.AuthErrorCode_invalid_claims), "invalid claims")
 	fetchJWKs        = fetchJWK
@@ -185,8 +186,10 @@ func fetchJWK(oidc *RemoteOidcAuthenticator) error {
 
 func (oidc *RemoteOidcAuthenticator) GetKeys() (*keyfunc.JWKS, error) {
 	jwks, err := keyfunc.Get(oidc.JwksURI, keyfunc.Options{
-		Client:          oidc.httpClient,
-		RefreshInterval: jwkRefreshInterval,
+		Client:            oidc.httpClient,
+		RefreshInterval:   jwkRefreshInterval,
+		RefreshUnknownKID: true,
+		RefreshRateLimit:  jwkRefreshRateLimit,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("error fetching keys from %v: %w", oidc.JwksURI, err)

@@ -2,8 +2,21 @@
 package storage
 
 import (
+	"context"
+	"fmt"
 	"testing"
+	"time"
+
+	"github.com/pressly/goose/v3"
+
+	"github.com/openfga/openfga/assets"
+	"github.com/openfga/openfga/pkg/testutils"
 )
+
+func init() {
+	goose.SetLogger(goose.NopLogger())
+	goose.SetBaseFS(assets.EmbedMigrations)
+}
 
 // DatastoreTestContainer represents a runnable container for testing specific datastore engines.
 type DatastoreTestContainer interface {
@@ -56,12 +69,14 @@ func (m memoryTestContainer) GetSecondaryConnectionURI(includeCredentials bool) 
 // RunDatastoreTestContainer constructs and runs a specific DatastoreTestContainer for the provided
 // datastore engine. If applicable, it also runs all existing database migrations.
 // The resources used by the test engine will be cleaned up after the test has finished.
+//
+// NOTE: The caller is responsible for cleanup.
 func RunDatastoreTestContainer(t testing.TB, engine string) DatastoreTestContainer {
 	switch engine {
 	case "mysql":
-		return NewMySQLTestContainer().RunMySQLTestContainer(t)
+		return RunMysqlTestContainer(t)
 	case "postgres":
-		return NewPostgresTestContainer().RunPostgresTestContainer(t)
+		return RunPostgresTestContainer(t)
 	case "memory":
 		return memoryTestContainer{}
 	case "sqlite":
@@ -72,4 +87,36 @@ func RunDatastoreTestContainer(t testing.TB, engine string) DatastoreTestContain
 		t.Fatalf("unsupported datastore engine: %q", engine)
 		return nil
 	}
+}
+
+// cleanupDatastoreTestContainer removes the shared datastore test container used by the package.
+// Call it from TestMain after all package tests have completed.
+func cleanupDatastoreTestContainer(containerName string) error {
+	docker, err := testutils.NewDockerClient()
+	if err != nil {
+		return fmt.Errorf("docker client creation: %w", err)
+	}
+	defer docker.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	if err := docker.RemoveContainer(ctx, containerName); err != nil {
+		return fmt.Errorf("remove container %s: %w", containerName, err)
+	}
+
+	return nil
+}
+
+// latestMigrationVersion returns the latest goose migration version in migrationDir.
+func latestMigrationVersion(migrationDir string) (int64, error) {
+	migrations, err := goose.CollectMigrations(migrationDir, 0, goose.MaxVersion)
+	if err != nil {
+		return 0, err
+	}
+	if len(migrations) == 0 {
+		return 0, fmt.Errorf("no migrations found in %s", migrationDir)
+	}
+
+	return migrations[len(migrations)-1].Version, nil
 }

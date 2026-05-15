@@ -3,7 +3,7 @@ package check
 import (
 	"context"
 	"errors"
-	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -17,123 +17,13 @@ import (
 
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/internal/modelgraph"
+	"github.com/openfga/openfga/internal/planner"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
-func TestResolveUnionEdges(t *testing.T) {
-	t.Run("short_circuit_on_first_true", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		defer ctrl.Finish()
-
-		storeID := ulid.Make().String()
-		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
-
-		model := testutils.MustTransformDSLToProtoWithID(`
-            model
-              schema 1.1
-            type user
-            type group
-              relations
-                define member: [user] or admin
-                define admin: [user]
-        `)
-
-		mg, err := modelgraph.New(model)
-		require.NoError(t, err)
-
-		// First edge returns true - should short circuit
-		mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
-			DoAndReturn(func(_ context.Context, _ string, filter storage.ReadUserTupleFilter, _ storage.ReadUserTupleOptions) (*openfgav1.Tuple, error) {
-				if filter.Relation == "admin" {
-					return nil, storage.ErrNotFound
-				}
-				return &openfgav1.Tuple{Key: tuple.NewTupleKey("group:1", "member", "user:maria")}, nil
-			}).MaxTimes(2)
-
-		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
-
-		resolver := New(Config{
-			Model:            mg,
-			Datastore:        mockDatastore,
-			Cache:            mockCache,
-			ConcurrencyLimit: 10,
-		})
-
-		req, err := NewRequest(RequestParams{
-			StoreID:  storeID,
-			Model:    mg,
-			TupleKey: tuple.NewTupleKey("group:1", "member", "user:maria"),
-		})
-		require.NoError(t, err)
-
-		node, ok := mg.GetNodeByID("group#member")
-		require.True(t, ok)
-
-		edges, err := mg.FlattenNode(node, "user", false, false)
-		require.NoError(t, err)
-		require.True(t, ok)
-
-		res, err := resolver.ResolveUnionEdges(context.Background(), req, edges, nil)
-		require.NoError(t, err)
-		require.True(t, res.GetAllowed())
-	})
-
-	t.Run("all_edges_false", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		defer ctrl.Finish()
-
-		storeID := ulid.Make().String()
-		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
-
-		model := testutils.MustTransformDSLToProtoWithID(`
-            model
-              schema 1.1
-            type user
-            type group
-              relations
-                define member: [user] or admin
-                define admin: [user]
-        `)
-
-		mg, err := modelgraph.New(model)
-		require.NoError(t, err)
-
-		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
-
-		// Both edges return false (not found)
-		mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
-			Return(nil, storage.ErrNotFound).Times(2)
-
-		resolver := New(Config{
-			Model:            mg,
-			Datastore:        mockDatastore,
-			Cache:            mockCache,
-			ConcurrencyLimit: 10,
-		})
-
-		req, err := NewRequest(RequestParams{
-			StoreID:  storeID,
-			Model:    mg,
-			TupleKey: tuple.NewTupleKey("group:1", "member", "user:maria"),
-		})
-		require.NoError(t, err)
-
-		node, ok := mg.GetNodeByID("group#member")
-		require.True(t, ok)
-
-		edges, err := mg.FlattenNode(node, "user", false, false)
-		require.NoError(t, err)
-		require.True(t, ok)
-
-		res, err := resolver.ResolveUnionEdges(context.Background(), req, edges, nil)
-		require.NoError(t, err)
-		require.False(t, res.GetAllowed())
-	})
-
+func TestResolveUnion(t *testing.T) {
 	t.Run("cache_hit_on_union", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
@@ -155,11 +45,6 @@ func TestResolveUnionEdges(t *testing.T) {
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
-		cachedEntry := &ResponseCacheEntry{
-			Res:          &Response{Allowed: true},
-			LastModified: time.Now(),
-		}
-
 		resolver := New(Config{
 			Model:                     mg,
 			Datastore:                 mockDatastore,
@@ -175,16 +60,35 @@ func TestResolveUnionEdges(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		mockCache.EXPECT().Get(req.GetCacheKey()).Return(cachedEntry).Times(1)
-
 		node, ok := mg.GetNodeByID("group#member")
 		require.True(t, ok)
 
-		edges, err := mg.FlattenNode(node, "user", false, false)
-		require.NoError(t, err)
+		edges, ok := mg.GetEdgesFromNode(node)
 		require.True(t, ok)
 
-		res, err := resolver.ResolveUnionEdges(context.Background(), req, edges, nil)
+		union := edges[0].GetTo()
+		edges, ok = mg.GetEdgesFromNode(union)
+		require.True(t, ok)
+
+		cachedTrue := &ResponseCacheEntry{
+			Res:          &Response{Allowed: true},
+			LastModified: time.Now(),
+		}
+		firstCacheKey := buildEdgeCacheKey(model.GetId(), req, edges[0])
+		mockCache.EXPECT().Get(firstCacheKey).Return(cachedTrue).Times(1)
+
+		admin := edges[1].GetTo()
+		edges, ok = mg.GetEdgesFromNode(admin)
+		require.True(t, ok)
+
+		cachedFalse := &ResponseCacheEntry{
+			Res:          &Response{Allowed: false},
+			LastModified: time.Now(),
+		}
+		secondCacheKey := buildEdgeCacheKey(model.GetId(), req, edges[0])
+		mockCache.EXPECT().Get(secondCacheKey).Return(cachedFalse).MaxTimes(1)
+
+		res, err := resolver.ResolveUnion(context.Background(), req, node, nil)
 		require.NoError(t, err)
 		require.True(t, res.Allowed)
 	})
@@ -216,26 +120,6 @@ func TestResolveUnionEdges(t *testing.T) {
 			LastModified: time.Now(),
 		}
 
-		// First call checks union cache (miss), then checks edge caches
-		mockCache.EXPECT().Get(gomock.Any()).Return(nil).Times(1)
-		mockCache.EXPECT().Get(gomock.Any()).Return(cachedFalse).Times(1)
-		mockCache.EXPECT().Get(gomock.Any()).Return(nil).Times(1)
-		mockCache.EXPECT().Get(gomock.Any()).Return(nil).Times(1)
-
-		// Only two edges need to be evaluated (one was cached)
-		mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
-			Return(&openfgav1.Tuple{Key: tuple.NewTupleKey("group:1", "owner", "user:maria")}, nil).Times(2)
-
-		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
-
-		resolver := New(Config{
-			Model:                     mg,
-			Datastore:                 mockDatastore,
-			Cache:                     mockCache,
-			ConcurrencyLimit:          10,
-			LastCacheInvalidationTime: time.Now().Add(-time.Hour),
-		})
-
 		req, err := NewRequest(RequestParams{
 			StoreID:  storeID,
 			Model:    mg,
@@ -246,16 +130,44 @@ func TestResolveUnionEdges(t *testing.T) {
 		node, ok := mg.GetNodeByID("group#member")
 		require.True(t, ok)
 
-		edges, err := mg.FlattenNode(node, "user", false, false)
-		require.NoError(t, err)
-		require.True(t, ok)
+		// simulate an edge with a cached false result
+		mockCache.EXPECT().Get(gomock.Any()).Return(cachedFalse).Times(1)
 
-		res, err := resolver.ResolveUnionEdges(context.Background(), req, edges, nil)
+		// other two edges call cache, but get nothing
+		mockCache.EXPECT().Get(gomock.Any()).Return(nil).Times(2)
+
+		// only two edges will call to datastore because one was cached
+		mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+			DoAndReturn(
+				func(
+					_ context.Context,
+					_ string,
+					filter storage.ReadUserTupleFilter,
+					_ storage.ReadUserTupleOptions,
+				) (*openfgav1.Tuple, error) {
+					return &openfgav1.Tuple{Key: tuple.NewTupleKey(filter.Object, filter.Relation, filter.User)}, nil
+				}).Times(2)
+
+		// edges that complete before the union short-circuits will cache their results;
+		// edges cancelled by the short-circuit will not (ctx.Err() != nil guard).
+		mockCache.EXPECT().
+			Set(gomock.Any(), gomock.Any(), gomock.Any()).
+			MinTimes(1).MaxTimes(2)
+
+		resolver := New(Config{
+			Model:                     mg,
+			Datastore:                 mockDatastore,
+			Cache:                     mockCache,
+			ConcurrencyLimit:          10,
+			LastCacheInvalidationTime: time.Now().Add(-time.Hour),
+		})
+
+		res, err := resolver.ResolveUnion(context.Background(), req, node, nil)
 		require.NoError(t, err)
 		require.True(t, res.Allowed)
 	})
 
-	t.Run("error_on_one_edge_returns_error_when_all_fail", func(t *testing.T) {
+	t.Run("caches_all_edges", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
@@ -276,16 +188,171 @@ func TestResolveUnionEdges(t *testing.T) {
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
-		expectedErr := errors.New("database error")
 		mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
-			Return(nil, expectedErr).MinTimes(1).MaxTimes(2)
+			Return(nil, storage.ErrNotFound).Times(2)
 
-		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+		mockCache.EXPECT().Get(gomock.Any()).Return(nil).AnyTimes()
+		// Both edges (including the one whose relationDefinition matches objectRelation) must be cached.
+		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).Times(2)
+
+		resolver := New(Config{
+			Model:                     mg,
+			Datastore:                 mockDatastore,
+			Cache:                     mockCache,
+			ConcurrencyLimit:          10,
+			LastCacheInvalidationTime: time.Now().Add(-time.Hour),
+		})
+
+		req, err := NewRequest(RequestParams{
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("group:1", "member", "user:maria"),
+		})
+		require.NoError(t, err)
+
+		node, ok := mg.GetNodeByID("group#member")
+		require.True(t, ok)
+
+		res, err := resolver.ResolveUnion(context.Background(), req, node, nil)
+		require.NoError(t, err)
+		require.False(t, res.GetAllowed())
+	})
+}
+
+func TestResolveUnionEdges(t *testing.T) {
+	t.Run("short_circuit_on_first_true", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		storeID := ulid.Make().String()
+		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+
+		model := testutils.MustTransformDSLToProtoWithID(`
+            model
+              schema 1.1
+            type user
+            type group
+              relations
+                define member: [user] or admin
+                define admin: [user]
+        `)
+
+		mg, err := modelgraph.New(model)
+		require.NoError(t, err)
+
+		// First edge returns true - should short circuit
+		mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ string, filter storage.ReadUserTupleFilter, _ storage.ReadUserTupleOptions) (*openfgav1.Tuple, error) {
+				if filter.Relation == "admin" {
+					return nil, storage.ErrNotFound
+				}
+				return &openfgav1.Tuple{Key: tuple.NewTupleKey("group:1", "member", "user:maria")}, nil
+			}).MinTimes(1)
 
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
+			ConcurrencyLimit: 10,
+		})
+
+		req, err := NewRequest(RequestParams{
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("group:1", "member", "user:maria"),
+		})
+		require.NoError(t, err)
+
+		node, ok := mg.GetNodeByID("group#member")
+		require.True(t, ok)
+
+		edges, err := mg.FlattenNode(node, "user", false, false)
+		require.NoError(t, err)
+		require.True(t, ok)
+
+		res, err := resolver.ResolveUnionEdges(context.Background(), req, edges, nil)
+		require.NoError(t, err)
+		require.True(t, res.GetAllowed())
+	})
+
+	t.Run("all_edges_false", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		storeID := ulid.Make().String()
+		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+
+		model := testutils.MustTransformDSLToProtoWithID(`
+            model
+              schema 1.1
+            type user
+            type group
+              relations
+                define member: [user] or admin
+                define admin: [user]
+        `)
+
+		mg, err := modelgraph.New(model)
+		require.NoError(t, err)
+
+		// Both edges return false (not found)
+		mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+			Return(nil, storage.ErrNotFound).Times(2)
+
+		resolver := New(Config{
+			Model:            mg,
+			Datastore:        mockDatastore,
+			Cache:            storage.NewNoopCache(),
+			ConcurrencyLimit: 10,
+		})
+
+		req, err := NewRequest(RequestParams{
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("group:1", "member", "user:maria"),
+		})
+		require.NoError(t, err)
+
+		node, ok := mg.GetNodeByID("group#member")
+		require.True(t, ok)
+
+		edges, err := mg.FlattenNode(node, "user", false, false)
+		require.NoError(t, err)
+		require.True(t, ok)
+
+		res, err := resolver.ResolveUnionEdges(context.Background(), req, edges, nil)
+		require.NoError(t, err)
+		require.False(t, res.GetAllowed())
+	})
+
+	t.Run("error_on_one_edge_returns_error_when_all_fail", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		storeID := ulid.Make().String()
+		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+
+		model := testutils.MustTransformDSLToProtoWithID(`
+            model
+              schema 1.1
+            type user
+            type group
+              relations
+                define member: [user] or admin
+                define admin: [user]
+        `)
+
+		mg, err := modelgraph.New(model)
+		require.NoError(t, err)
+
+		expectedErr := errors.New("database error")
+		mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+			Return(nil, expectedErr).MinTimes(1).MaxTimes(2)
+
+		resolver := New(Config{
+			Model:            mg,
+			Datastore:        mockDatastore,
+			Cache:            storage.NewNoopCache(),
 			ConcurrencyLimit: 10,
 		})
 
@@ -333,14 +400,12 @@ func TestResolveUnionEdges(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 
 		mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
-			DoAndReturn(func(context.Context, string, storage.ReadUserTupleFilter, storage.ReadUserTupleOptions) (*openfgav1.Tuple, error) {
+			DoAndReturn(func(ctx context.Context, _ string, _ storage.ReadUserTupleFilter, _ storage.ReadUserTupleOptions) (*openfgav1.Tuple, error) {
 				cancel()
-				time.Sleep(10 * time.Millisecond)
-				return nil, storage.ErrNotFound
+				return nil, ctx.Err()
 			}).MaxTimes(2)
 
-		key := fmt.Sprintf("^c.%s|group:1|user:maria|group#admin.*$", storeID)
-		mockCache.EXPECT().Set(gomock.Regex(key), gomock.Any(), gomock.Any()).Times(1)
+		mockCache.EXPECT().Get(gomock.Any()).Return(nil).AnyTimes()
 
 		resolver := New(Config{
 			Model:            mg,
@@ -388,8 +453,6 @@ func TestResolveUnionEdges(t *testing.T) {
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
-		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).Times(1)
-
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
@@ -415,7 +478,6 @@ func TestResolveUnionEdges(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
             model
@@ -439,12 +501,10 @@ func TestResolveUnionEdges(t *testing.T) {
 				return nil, storage.ErrNotFound
 			}).MaxTimes(1)
 
-		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
-
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
 			ConcurrencyLimit: 10,
 		})
 
@@ -473,7 +533,6 @@ func TestResolveUnionEdges(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
             model
@@ -488,12 +547,10 @@ func TestResolveUnionEdges(t *testing.T) {
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
-		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
-
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
 			ConcurrencyLimit: 10,
 		})
 
@@ -515,6 +572,180 @@ func TestResolveUnionEdges(t *testing.T) {
 		require.NoError(t, err)
 		require.False(t, res.GetAllowed())
 	})
+
+	t.Run("cancelled_context_does_not_write_to_cache", func(t *testing.T) {
+		// Regression: goroutines must not write to cache when the context is cancelled,
+		// even when ResolveEdge returns ({false}, nil).
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		storeID := ulid.Make().String()
+		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
+		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+
+		mockCache.EXPECT().Get(gomock.Any()).Return(nil).AnyTimes()
+		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+
+		// MinTimes(1) confirms goroutines reached the datastore, so Times(0) on Set is not vacuous.
+		// The mocks ignore ctx, so the cancelled context doesn't prevent these calls.
+		mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+			Return(nil, storage.ErrNotFound).MinTimes(1)
+		mockDatastore.EXPECT().ReadUsersetTuples(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+			Return(storage.NewStaticTupleIterator(nil), nil).MinTimes(1)
+
+		model := testutils.MustTransformDSLToProtoWithID(`
+            model
+              schema 1.1
+            type user
+            type group
+              relations
+                define member: [user, group#member]
+        `)
+
+		mg, err := modelgraph.New(model)
+		require.NoError(t, err)
+
+		resolver := New(Config{
+			Model:                     mg,
+			Datastore:                 mockDatastore,
+			Cache:                     mockCache,
+			CacheTTL:                  10 * time.Second,
+			LastCacheInvalidationTime: time.Now().Add(-time.Hour),
+			ConcurrencyLimit:          10,
+			Planner:                   planner.New(&planner.Config{}),
+			// Inject a strategy that always returns ({false}, nil) unconditionally,
+			// directly simulating what DefaultStrategy.execute produces under the select race —
+			// ctx.Err() == nil is the only thing blocking the cache write.
+			Strategies: map[string]Strategy{
+				DefaultStrategyName:   &alwaysFalseNilErrStrategy{},
+				WeightTwoStrategyName: &alwaysFalseNilErrStrategy{},
+				RecursiveStrategyName: &alwaysFalseNilErrStrategy{},
+			},
+		})
+
+		req, reqErr := NewRequest(RequestParams{
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("group:1", "member", "user:maria"),
+		})
+		require.NoError(t, reqErr)
+
+		node, ok := mg.GetNodeByID("group#member")
+		require.True(t, ok)
+		edges, flatErr := mg.FlattenNode(node, "user", false, false)
+		require.NoError(t, flatErr)
+		require.NotEmpty(t, edges) // ensures goroutines are actually dispatched
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		_, _ = resolver.ResolveUnionEdges(ctx, req, edges, nil)
+	})
+}
+
+// alwaysFalseNilErrStrategy simulates DefaultStrategy.execute returning ({false}, nil)
+// under the select race on context cancellation — the exact value that would be cached.
+// If non-nil, done is called via defer just before the strategy returns, providing the
+// closest available synchronization point to the cache-write decision in check.go.
+type alwaysFalseNilErrStrategy struct {
+	done func()
+}
+
+func (s *alwaysFalseNilErrStrategy) Userset(_ context.Context, _ *Request, _ *authzGraph.WeightedAuthorizationModelEdge, _ storage.TupleKeyIterator, _ *sync.Map) (*Response, error) {
+	if s.done != nil {
+		defer s.done()
+	}
+	return &Response{Allowed: false}, nil
+}
+
+func (s *alwaysFalseNilErrStrategy) TTU(_ context.Context, _ *Request, _ *authzGraph.WeightedAuthorizationModelEdge, _ storage.TupleKeyIterator, _ *sync.Map) (*Response, error) {
+	if s.done != nil {
+		defer s.done()
+	}
+	return &Response{Allowed: false}, nil
+}
+
+func TestResolveRecursive(t *testing.T) {
+	t.Run("cancelled_context_does_not_write_to_cache", func(t *testing.T) {
+		// Same invariant as ResolveUnionEdges: the goroutine must not write to cache when
+		// context is cancelled, even when the strategy returns ({false}, nil).
+		// Unlike ResolveUnionEdges (which has pool.Wait()), ResolveRecursive spawns detached
+		// goroutines, so ctrl.Finish() must be called explicitly after goroutineDone.Wait().
+		//
+		// Limitation: goroutineDone fires when the strategy returns, but the cache-write
+		// decision (`if ctx.Err() == nil`) executes a few instructions later in check.go.
+		// This is not a true happens-before guarantee. The test is correct in practice because
+		// the context is pre-cancelled, making ctx.Err() != nil a deterministic constant that
+		// the guard always evaluates to false — cache.Set is never reached regardless of
+		// scheduling. A regression (guard removed) could go undetected if ctrl.Finish()
+		// races ahead of the now-unconditional cache.Set in the goroutine.
+		ctrl := gomock.NewController(t)
+
+		storeID := ulid.Make().String()
+		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
+		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+
+		mockCache.EXPECT().Get(gomock.Any()).Return(nil).AnyTimes()
+		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+
+		model := testutils.MustTransformDSLToProtoWithID(`
+            model
+              schema 1.1
+            type user
+            type group
+              relations
+                define member: [user] or member from parent
+                define parent: [group]
+        `)
+
+		mg, err := modelgraph.New(model)
+		require.NoError(t, err)
+
+		// MinTimes(1) confirms the recursive goroutine reached the datastore, making
+		// the Times(0) assertion on Set meaningful rather than vacuous.
+		mockDatastore.EXPECT().Read(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+			Return(storage.NewStaticTupleIterator(nil), nil).MinTimes(1)
+		mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+			Return(nil, storage.ErrNotFound).AnyTimes()
+
+		var goroutineDone sync.WaitGroup
+		goroutineDone.Add(1)
+		strategy := &alwaysFalseNilErrStrategy{done: goroutineDone.Done}
+
+		resolver := New(Config{
+			Model:                     mg,
+			Datastore:                 mockDatastore,
+			Cache:                     mockCache,
+			CacheTTL:                  10 * time.Second,
+			LastCacheInvalidationTime: time.Now().Add(-time.Hour),
+			ConcurrencyLimit:          10,
+			Planner:                   planner.New(&planner.Config{}),
+			Strategies: map[string]Strategy{
+				DefaultStrategyName:   strategy,
+				WeightTwoStrategyName: strategy,
+				RecursiveStrategyName: strategy,
+			},
+		})
+
+		req, reqErr := NewRequest(RequestParams{
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("group:1", "member", "user:maria"),
+		})
+		require.NoError(t, reqErr)
+
+		node, ok := mg.GetNodeByID("group#member")
+		require.True(t, ok)
+		recursiveEdge, canApply := mg.CanApplyRecursion(node, "user", true)
+		require.True(t, canApply)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		_, _ = resolver.ResolveRecursive(ctx, req, recursiveEdge, &sync.Map{}, false)
+		goroutineDone.Wait() // wait for the recursive goroutine to run past the cache-write point
+		ctrl.Finish()        // now validate Times(0)
+	})
 }
 
 func TestResolveIntersection(t *testing.T) {
@@ -524,7 +755,6 @@ func TestResolveIntersection(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 		mockPlanner := mocks.NewMockManager(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
@@ -544,7 +774,7 @@ func TestResolveIntersection(t *testing.T) {
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
 			Planner:          mockPlanner,
 			ConcurrencyLimit: 10,
 		})
@@ -573,8 +803,6 @@ func TestResolveIntersection(t *testing.T) {
 			Key: tuple.NewTupleKey("document:1", "owner", "user:maria"),
 		}, nil).Times(1)
 
-		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
-
 		node, ok := mg.GetNodeByID("document#viewer")
 		require.True(t, ok)
 
@@ -589,7 +817,6 @@ func TestResolveIntersection(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 		mockPlanner := mocks.NewMockManager(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
@@ -609,7 +836,7 @@ func TestResolveIntersection(t *testing.T) {
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
 			Planner:          mockPlanner,
 			ConcurrencyLimit: 10,
 		})
@@ -636,8 +863,6 @@ func TestResolveIntersection(t *testing.T) {
 			gomock.Any(),
 		).Return(nil, storage.ErrNotFound).Times(1)
 
-		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
-
 		node, ok := mg.GetNodeByID("document#viewer")
 		require.True(t, ok)
 
@@ -652,7 +877,6 @@ func TestResolveIntersection(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 		mockPlanner := mocks.NewMockManager(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
@@ -672,7 +896,7 @@ func TestResolveIntersection(t *testing.T) {
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
 			Planner:          mockPlanner,
 			ConcurrencyLimit: 10,
 		})
@@ -693,8 +917,6 @@ func TestResolveIntersection(t *testing.T) {
 			gomock.Any(),
 		).Return(nil, expectedErr).Times(2)
 
-		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
-
 		node, ok := mg.GetNodeByID("document#viewer")
 		require.True(t, ok)
 
@@ -710,8 +932,6 @@ func TestResolveIntersection(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
-		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
@@ -731,7 +951,7 @@ func TestResolveIntersection(t *testing.T) {
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
 			Planner:          mockPlanner,
 			ConcurrencyLimit: 10,
 		})
@@ -768,7 +988,6 @@ func TestResolveIntersection(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
             model
@@ -793,12 +1012,11 @@ func TestResolveIntersection(t *testing.T) {
 				}
 				return nil, storage.ErrNotFound
 			}).MaxTimes(2)
-		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
 			ConcurrencyLimit: 10,
 		})
 
@@ -823,7 +1041,6 @@ func TestResolveIntersection(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
             model
@@ -837,12 +1054,11 @@ func TestResolveIntersection(t *testing.T) {
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
-		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
 			ConcurrencyLimit: 10,
 		})
 
@@ -867,7 +1083,6 @@ func TestResolveIntersection(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
             model
@@ -882,12 +1097,10 @@ func TestResolveIntersection(t *testing.T) {
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
-		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
-
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
 			ConcurrencyLimit: 10,
 		})
 
@@ -914,7 +1127,6 @@ func TestResolveExclusion(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 		mockPlanner := mocks.NewMockManager(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
@@ -934,7 +1146,7 @@ func TestResolveExclusion(t *testing.T) {
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
 			Planner:          mockPlanner,
 			ConcurrencyLimit: 10,
 		})
@@ -958,8 +1170,6 @@ func TestResolveExclusion(t *testing.T) {
 			return nil, storage.ErrNotFound
 		}).Times(2)
 
-		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
-
 		edges, ok := mg.GetEdgesFromNodeId("document#viewer")
 		require.True(t, ok)
 
@@ -974,7 +1184,6 @@ func TestResolveExclusion(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 		mockPlanner := mocks.NewMockManager(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
@@ -994,7 +1203,7 @@ func TestResolveExclusion(t *testing.T) {
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
 			Planner:          mockPlanner,
 			ConcurrencyLimit: 10,
 		})
@@ -1013,8 +1222,6 @@ func TestResolveExclusion(t *testing.T) {
 			gomock.Any(),
 		).Return(nil, storage.ErrNotFound).Times(2)
 
-		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
-
 		edges, ok := mg.GetEdgesFromNodeId("document#viewer")
 		require.True(t, ok)
 
@@ -1029,7 +1236,6 @@ func TestResolveExclusion(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 		mockPlanner := mocks.NewMockManager(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
@@ -1049,7 +1255,7 @@ func TestResolveExclusion(t *testing.T) {
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
 			Planner:          mockPlanner,
 			ConcurrencyLimit: 10,
 		})
@@ -1073,8 +1279,6 @@ func TestResolveExclusion(t *testing.T) {
 			return &openfgav1.Tuple{Key: tuple.NewTupleKey("document:1", "banned", "user:maria")}, nil
 		}).Times(2)
 
-		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
-
 		edges, ok := mg.GetEdgesFromNodeId("document#viewer")
 		require.True(t, ok)
 
@@ -1089,7 +1293,6 @@ func TestResolveExclusion(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 		mockPlanner := mocks.NewMockManager(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
@@ -1109,7 +1312,7 @@ func TestResolveExclusion(t *testing.T) {
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
 			Planner:          mockPlanner,
 			ConcurrencyLimit: 10,
 		})
@@ -1134,8 +1337,6 @@ func TestResolveExclusion(t *testing.T) {
 			return nil, storage.ErrNotFound
 		}).Times(2)
 
-		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
-
 		edges, ok := mg.GetEdgesFromNodeId("document#viewer")
 		require.True(t, ok)
 
@@ -1151,7 +1352,6 @@ func TestResolveExclusion(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 		mockPlanner := mocks.NewMockManager(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
@@ -1171,7 +1371,7 @@ func TestResolveExclusion(t *testing.T) {
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
 			Planner:          mockPlanner,
 			ConcurrencyLimit: 10,
 		})
@@ -1196,8 +1396,6 @@ func TestResolveExclusion(t *testing.T) {
 			return &openfgav1.Tuple{Key: tuple.NewTupleKey("document:1", "banned", "user:maria")}, nil
 		}).Times(2)
 
-		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
-
 		edges, ok := mg.GetEdgesFromNodeId("document#viewer")
 		require.True(t, ok)
 
@@ -1213,7 +1411,6 @@ func TestResolveExclusion(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 		mockPlanner := mocks.NewMockManager(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
@@ -1233,7 +1430,7 @@ func TestResolveExclusion(t *testing.T) {
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
 			Planner:          mockPlanner,
 			ConcurrencyLimit: 10,
 		})
@@ -1260,8 +1457,6 @@ func TestResolveExclusion(t *testing.T) {
 			return &openfgav1.Tuple{Key: tuple.NewTupleKey("document:1", "banned", "user:maria")}, nil
 		}).Times(2)
 
-		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
-
 		edges, ok := mg.GetEdgesFromNodeId("document#viewer")
 		require.True(t, ok)
 
@@ -1277,7 +1472,6 @@ func TestResolveExclusion(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 		mockPlanner := mocks.NewMockManager(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
@@ -1298,7 +1492,7 @@ func TestResolveExclusion(t *testing.T) {
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
 			Planner:          mockPlanner,
 			ConcurrencyLimit: 10,
 		})
@@ -1317,8 +1511,6 @@ func TestResolveExclusion(t *testing.T) {
 			gomock.Any(),
 		).Return(&openfgav1.Tuple{Key: tuple.NewTupleKey("document:1", "editor", "user:maria")}, nil).Times(1)
 
-		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
-
 		edges, ok := mg.GetEdgesFromNodeId("document#viewer")
 		require.True(t, ok)
 
@@ -1333,7 +1525,6 @@ func TestResolveExclusion(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 		mockPlanner := mocks.NewMockManager(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
@@ -1353,7 +1544,7 @@ func TestResolveExclusion(t *testing.T) {
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
 			Planner:          mockPlanner,
 			ConcurrencyLimit: 10,
 		})
@@ -1364,8 +1555,6 @@ func TestResolveExclusion(t *testing.T) {
 			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:*"),
 		})
 		require.NoError(t, err)
-
-		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 
 		edges, ok := mg.GetEdgesFromNodeId("document#viewer")
 		require.True(t, ok)
@@ -1384,7 +1573,6 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 		model := testutils.MustTransformDSLToProtoWithID(`
    model
     schema 1.1
@@ -1411,12 +1599,11 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 			},
 			gomock.Any(),
 		).Return(expectedTuple, nil).Times(1)
-		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
 			ConcurrencyLimit: 10,
 		})
 
@@ -1441,7 +1628,6 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 		model := testutils.MustTransformDSLToProtoWithID(`
    model
     schema 1.1
@@ -1471,12 +1657,11 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 			},
 			gomock.Any(),
 		).Return(expectedTuple, nil).Times(1)
-		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
 			ConcurrencyLimit: 10,
 		})
 
@@ -1501,7 +1686,6 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 		model := testutils.MustTransformDSLToProtoWithID(`
 			   model
 			    schema 1.1
@@ -1532,12 +1716,10 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 				}
 			})
 
-		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
-
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
 			ConcurrencyLimit: 10,
 		})
 
@@ -1562,7 +1744,6 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 		model := testutils.MustTransformDSLToProtoWithID(`
 		   model
 		    schema 1.1
@@ -1592,12 +1773,11 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 			},
 			gomock.Any(),
 		).Return(expectedTuple, nil).Times(1)
-		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
 			ConcurrencyLimit: 10,
 		})
 
@@ -1622,7 +1802,6 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 		model := testutils.MustTransformDSLToProtoWithID(`
 		   model
 		    schema 1.1
@@ -1658,12 +1837,10 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 				}
 			})
 
-		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
-
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
 			ConcurrencyLimit: 10,
 		})
 
@@ -1688,7 +1865,6 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 		model := testutils.MustTransformDSLToProtoWithID(`
 		   model
 		    schema 1.1
@@ -1719,12 +1895,10 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 				}
 			})
 
-		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
-
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
 			ConcurrencyLimit: 10,
 		})
 
@@ -1749,7 +1923,6 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 		model := testutils.MustTransformDSLToProtoWithID(`
 		   model
 		    schema 1.1
@@ -1778,12 +1951,11 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 			},
 			gomock.Any(),
 		).Return(expectedTuple, nil).Times(1)
-		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
 			ConcurrencyLimit: 10,
 		})
 
@@ -1808,7 +1980,6 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 		model := testutils.MustTransformDSLToProtoWithID(`
 		   model
 		    schema 1.1
@@ -1826,7 +1997,7 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
 			ConcurrencyLimit: 10,
 		})
 
@@ -1851,7 +2022,6 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 		model := testutils.MustTransformDSLToProtoWithID(`
 		   model
 		    schema 1.1
@@ -1896,12 +2066,11 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 			},
 			gomock.Any(),
 		).Return(expectedTuple, nil).Times(1)
-		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
 			ConcurrencyLimit: 10,
 		})
 
@@ -1926,7 +2095,6 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 		model := testutils.MustTransformDSLToProtoWithID(`
 		   model
 		    schema 1.1
@@ -1977,12 +2145,10 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 				}
 			})
 
-		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
-
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
 			ConcurrencyLimit: 10,
 		})
 
@@ -2007,7 +2173,6 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 		model := testutils.MustTransformDSLToProtoWithID(`
 		   model
 		    schema 1.1
@@ -2051,12 +2216,10 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 				}
 			})
 
-		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
-
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
 			ConcurrencyLimit: 10,
 		})
 
@@ -2080,7 +2243,6 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 		model := testutils.MustTransformDSLToProtoWithID(`
 		   model
 		    schema 1.1
@@ -2115,12 +2277,10 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 				return nil, storage.ErrNotFound
 			})
 
-		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
-
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
 			ConcurrencyLimit: 10,
 		})
 
@@ -2144,7 +2304,6 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 		model := testutils.MustTransformDSLToProtoWithID(`
 		   model
 		    schema 1.1
@@ -2189,12 +2348,10 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 				}
 			})
 
-		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
-
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
 			ConcurrencyLimit: 10,
 		})
 
@@ -2231,11 +2388,35 @@ func TestIsCached(t *testing.T) {
 		require.Nil(t, res)
 	})
 
-	t.Run("returns_false_when_last_cache_invalidation_time_is_zero", func(t *testing.T) {
+	t.Run("returns_true_when_last_cache_invalidation_time_is_zero_and_entry_exists", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
 		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
+
+		expectedResponse := &Response{Allowed: true}
+		cacheEntry := &ResponseCacheEntry{
+			Res:          expectedResponse,
+			LastModified: time.Now(),
+		}
+		mockCache.EXPECT().Get("test-key").Return(cacheEntry).Times(1)
+
+		resolver := &Resolver{
+			cache:                     mockCache,
+			lastCacheInvalidationTime: time.Time{},
+		}
+
+		res, ok := resolver.isCached(openfgav1.ConsistencyPreference_MINIMIZE_LATENCY, "test-key")
+		require.True(t, ok)
+		require.Equal(t, expectedResponse, res)
+	})
+
+	t.Run("returns_false_when_last_cache_invalidation_time_is_zero_and_no_entry", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
+		mockCache.EXPECT().Get("test-key").Return(nil).Times(1)
 
 		resolver := &Resolver{
 			cache:                     mockCache,
@@ -2387,7 +2568,6 @@ func TestSpecificType(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
             model
@@ -2419,7 +2599,7 @@ func TestSpecificType(t *testing.T) {
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
 			ConcurrencyLimit: 10,
 		})
 
@@ -2444,7 +2624,6 @@ func TestSpecificType(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
 	               model
@@ -2472,7 +2651,7 @@ func TestSpecificType(t *testing.T) {
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
 			ConcurrencyLimit: 10,
 		})
 
@@ -2497,7 +2676,6 @@ func TestSpecificType(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
 	               model
@@ -2522,7 +2700,7 @@ func TestSpecificType(t *testing.T) {
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
 			ConcurrencyLimit: 10,
 		})
 
@@ -2548,7 +2726,6 @@ func TestSpecificType(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
 	               model
@@ -2584,7 +2761,7 @@ func TestSpecificType(t *testing.T) {
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
 			ConcurrencyLimit: 10,
 		})
 
@@ -2610,7 +2787,6 @@ func TestSpecificType(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
 	               model
@@ -2637,7 +2813,7 @@ func TestSpecificType(t *testing.T) {
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
 			ConcurrencyLimit: 10,
 		})
 
@@ -2663,7 +2839,6 @@ func TestSpecificType(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
 	               model
@@ -2699,7 +2874,7 @@ func TestSpecificType(t *testing.T) {
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
 			ConcurrencyLimit: 10,
 		})
 
@@ -2727,7 +2902,6 @@ func TestSpecificType(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
 	               model
@@ -2764,7 +2938,7 @@ func TestSpecificType(t *testing.T) {
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
 			ConcurrencyLimit: 10,
 		})
 
@@ -2792,7 +2966,6 @@ func TestSpecificType(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
 	               model
@@ -2827,7 +3000,7 @@ func TestSpecificType(t *testing.T) {
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
 			ConcurrencyLimit: 10,
 		})
 
@@ -2855,7 +3028,6 @@ func TestSpecificType(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
   model
@@ -2873,7 +3045,7 @@ func TestSpecificType(t *testing.T) {
 		resolver := New(Config{
 			Model:     mg,
 			Datastore: mockDatastore,
-			Cache:     mockCache,
+			Cache:     storage.NewNoopCache(),
 		})
 
 		contextualTuples := []*openfgav1.TupleKey{
@@ -2904,7 +3076,6 @@ func TestSpecificType(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
   model
@@ -2924,7 +3095,7 @@ func TestSpecificType(t *testing.T) {
 		resolver := New(Config{
 			Model:     mg,
 			Datastore: mockDatastore,
-			Cache:     mockCache,
+			Cache:     storage.NewNoopCache(),
 		})
 
 		expiredTime := time.Now().Add(-24 * time.Hour)
@@ -2965,7 +3136,6 @@ func TestSpecificTypeWildcard(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
    model
@@ -2998,7 +3168,7 @@ func TestSpecificTypeWildcard(t *testing.T) {
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
 			ConcurrencyLimit: 10,
 		})
 
@@ -3023,7 +3193,6 @@ func TestSpecificTypeWildcard(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
    model
@@ -3052,7 +3221,7 @@ func TestSpecificTypeWildcard(t *testing.T) {
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
 			ConcurrencyLimit: 10,
 		})
 
@@ -3077,7 +3246,6 @@ func TestSpecificTypeWildcard(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
    model
@@ -3102,7 +3270,7 @@ func TestSpecificTypeWildcard(t *testing.T) {
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
 			ConcurrencyLimit: 10,
 		})
 
@@ -3128,7 +3296,6 @@ func TestSpecificTypeWildcard(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
    model
@@ -3160,7 +3327,7 @@ func TestSpecificTypeWildcard(t *testing.T) {
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
 			ConcurrencyLimit: 10,
 		})
 
@@ -3186,7 +3353,6 @@ func TestSpecificTypeWildcard(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
    model
@@ -3213,7 +3379,7 @@ func TestSpecificTypeWildcard(t *testing.T) {
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
 			ConcurrencyLimit: 10,
 		})
 
@@ -3239,7 +3405,6 @@ func TestSpecificTypeWildcard(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
    model
@@ -3281,7 +3446,7 @@ func TestSpecificTypeWildcard(t *testing.T) {
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
 			ConcurrencyLimit: 10,
 		})
 
@@ -3309,7 +3474,6 @@ func TestSpecificTypeWildcard(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
    model
@@ -3357,7 +3521,7 @@ func TestSpecificTypeWildcard(t *testing.T) {
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
 			ConcurrencyLimit: 10,
 		})
 
@@ -3385,7 +3549,6 @@ func TestSpecificTypeWildcard(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
    model
@@ -3414,7 +3577,7 @@ func TestSpecificTypeWildcard(t *testing.T) {
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
 			ConcurrencyLimit: 10,
 		})
 
@@ -3440,7 +3603,6 @@ func TestSpecificTypeWildcard(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
   model
@@ -3457,7 +3619,7 @@ func TestSpecificTypeWildcard(t *testing.T) {
 		resolver := New(Config{
 			Model:     mg,
 			Datastore: mockDatastore,
-			Cache:     mockCache,
+			Cache:     storage.NewNoopCache(),
 		})
 
 		contextualTuples := []*openfgav1.TupleKey{
@@ -3488,7 +3650,6 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
@@ -3509,8 +3670,6 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 		mockSelector.EXPECT().Select(gomock.Any()).Return(DefaultPlan).AnyTimes()
 		mockSelector.EXPECT().UpdateStats(gomock.Any(), gomock.Any()).AnyTimes()
 
-		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
-
 		mockDatastore.EXPECT().ReadUsersetTuples(
 			gomock.Any(),
 			storeID,
@@ -3529,7 +3688,7 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
 			Planner:          mockPlanner,
 			ConcurrencyLimit: 10,
 		})
@@ -3564,7 +3723,6 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
@@ -3585,8 +3743,6 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 		mockSelector.EXPECT().Select(gomock.Any()).Return(DefaultPlan).AnyTimes()
 		mockSelector.EXPECT().UpdateStats(gomock.Any(), gomock.Any()).AnyTimes()
 
-		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
-
 		mockDatastore.EXPECT().ReadUsersetTuples(
 			gomock.Any(),
 			storeID,
@@ -3597,7 +3753,7 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
 			Planner:          mockPlanner,
 			ConcurrencyLimit: 10,
 		})
@@ -3629,7 +3785,6 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
@@ -3650,8 +3805,6 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 		mockSelector.EXPECT().Select(gomock.Any()).Return(DefaultPlan).AnyTimes()
 		mockSelector.EXPECT().UpdateStats(gomock.Any(), gomock.Any()).AnyTimes()
 
-		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
-
 		mockDatastore.EXPECT().ReadUsersetTuples(
 			gomock.Any(),
 			storeID,
@@ -3662,7 +3815,7 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
 			Planner:          mockPlanner,
 			ConcurrencyLimit: 10,
 		})
@@ -3691,7 +3844,6 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
@@ -3722,7 +3874,7 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
 			Planner:          mockPlanner,
 			ConcurrencyLimit: 10,
 		})
@@ -3749,7 +3901,6 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
@@ -3782,7 +3933,7 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
 			Planner:          mockPlanner,
 			ConcurrencyLimit: 10,
 		})
@@ -3809,7 +3960,6 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
@@ -3830,8 +3980,6 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 		mockSelector.EXPECT().Select(gomock.Any()).Return(DefaultPlan).AnyTimes()
 		mockSelector.EXPECT().UpdateStats(gomock.Any(), gomock.Any()).AnyTimes()
 
-		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
-
 		mockDatastore.EXPECT().ReadUsersetTuples(
 			gomock.Any(),
 			storeID,
@@ -3844,7 +3992,7 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
 			Planner:          mockPlanner,
 			ConcurrencyLimit: 10,
 		})
@@ -3876,7 +4024,6 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
@@ -3899,8 +4046,6 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 		mockPlanner.EXPECT().GetPlanSelector(gomock.Any()).Return(mockSelector).AnyTimes()
 		mockSelector.EXPECT().Select(gomock.Any()).Return(DefaultPlan).AnyTimes()
 		mockSelector.EXPECT().UpdateStats(gomock.Any(), gomock.Any()).AnyTimes()
-
-		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 
 		expiredTime := time.Now().Add(-24 * time.Hour)
 		mockDatastore.EXPECT().ReadUsersetTuples(
@@ -3928,7 +4073,7 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
 			Planner:          mockPlanner,
 			ConcurrencyLimit: 10,
 		})
@@ -3960,7 +4105,6 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
@@ -3983,8 +4127,6 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 		mockPlanner.EXPECT().GetPlanSelector(gomock.Any()).Return(mockSelector).AnyTimes()
 		mockSelector.EXPECT().Select(gomock.Any()).Return(DefaultPlan).AnyTimes()
 		mockSelector.EXPECT().UpdateStats(gomock.Any(), gomock.Any()).AnyTimes()
-
-		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 
 		futureTime := time.Now().Add(24 * time.Hour)
 		mockDatastore.EXPECT().ReadUsersetTuples(
@@ -4012,7 +4154,7 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
 			Planner:          mockPlanner,
 			ConcurrencyLimit: 10,
 		})
@@ -4047,7 +4189,6 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
@@ -4067,8 +4208,6 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 		mockPlanner.EXPECT().GetPlanSelector(gomock.Any()).Return(mockSelector).AnyTimes()
 		mockSelector.EXPECT().Select(gomock.Any()).Return(DefaultPlan).AnyTimes()
 		mockSelector.EXPECT().UpdateStats(gomock.Any(), gomock.Any()).AnyTimes()
-
-		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 
 		mockDatastore.EXPECT().ReadUsersetTuples(
 			gomock.Any(),
@@ -4094,7 +4233,7 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
 			Planner:          mockPlanner,
 			ConcurrencyLimit: 10,
 		})
@@ -4129,7 +4268,6 @@ func TestTTU(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
@@ -4151,8 +4289,6 @@ func TestTTU(t *testing.T) {
 		mockSelector.EXPECT().Select(gomock.Any()).Return(DefaultPlan).AnyTimes()
 		mockSelector.EXPECT().UpdateStats(gomock.Any(), gomock.Any()).AnyTimes()
 
-		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
-
 		mockDatastore.EXPECT().Read(
 			gomock.Any(),
 			storeID,
@@ -4170,7 +4306,7 @@ func TestTTU(t *testing.T) {
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
 			Planner:          mockPlanner,
 			ConcurrencyLimit: 10,
 		})
@@ -4205,7 +4341,6 @@ func TestTTU(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
@@ -4227,8 +4362,6 @@ func TestTTU(t *testing.T) {
 		mockSelector.EXPECT().Select(gomock.Any()).Return(DefaultPlan).AnyTimes()
 		mockSelector.EXPECT().UpdateStats(gomock.Any(), gomock.Any()).AnyTimes()
 
-		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
-
 		mockDatastore.EXPECT().Read(
 			gomock.Any(),
 			storeID,
@@ -4241,7 +4374,7 @@ func TestTTU(t *testing.T) {
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
 			Planner:          mockPlanner,
 			ConcurrencyLimit: 10,
 		})
@@ -4272,7 +4405,6 @@ func TestTTU(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
@@ -4304,7 +4436,7 @@ func TestTTU(t *testing.T) {
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
 			Planner:          mockPlanner,
 			ConcurrencyLimit: 10,
 		})
@@ -4333,7 +4465,6 @@ func TestTTU(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 		mockPlanner := mocks.NewMockManager(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
@@ -4361,7 +4492,7 @@ func TestTTU(t *testing.T) {
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
 			Planner:          mockPlanner,
 			ConcurrencyLimit: 10,
 		})
@@ -4388,7 +4519,6 @@ func TestTTU(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 		mockPlanner := mocks.NewMockManager(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
@@ -4418,7 +4548,7 @@ func TestTTU(t *testing.T) {
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
 			Planner:          mockPlanner,
 			ConcurrencyLimit: 10,
 		})
@@ -4445,7 +4575,6 @@ func TestTTU(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
@@ -4467,8 +4596,6 @@ func TestTTU(t *testing.T) {
 		mockSelector.EXPECT().Select(gomock.Any()).Return(DefaultPlan).AnyTimes()
 		mockSelector.EXPECT().UpdateStats(gomock.Any(), gomock.Any()).AnyTimes()
 
-		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
-
 		mockDatastore.EXPECT().Read(
 			gomock.Any(),
 			storeID,
@@ -4481,7 +4608,7 @@ func TestTTU(t *testing.T) {
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
 			Planner:          mockPlanner,
 			ConcurrencyLimit: 10,
 		})
@@ -4513,7 +4640,6 @@ func TestTTU(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
@@ -4561,7 +4687,7 @@ func TestTTU(t *testing.T) {
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
 			Planner:          mockPlanner,
 			ConcurrencyLimit: 10,
 		})
@@ -4593,7 +4719,6 @@ func TestTTU(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
@@ -4618,8 +4743,6 @@ func TestTTU(t *testing.T) {
 		mockSelector.EXPECT().Select(gomock.Any()).Return(DefaultPlan).AnyTimes()
 		mockSelector.EXPECT().UpdateStats(gomock.Any(), gomock.Any()).AnyTimes()
 
-		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
-
 		futureTime := time.Now().Add(24 * time.Hour)
 		mockDatastore.EXPECT().Read(
 			gomock.Any(),
@@ -4643,7 +4766,7 @@ func TestTTU(t *testing.T) {
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
 			Planner:          mockPlanner,
 			ConcurrencyLimit: 10,
 		})
@@ -4676,7 +4799,6 @@ func TestTTU(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
@@ -4700,8 +4822,6 @@ func TestTTU(t *testing.T) {
 		mockSelector.EXPECT().Select(gomock.Any()).Return(DefaultPlan).AnyTimes()
 		mockSelector.EXPECT().UpdateStats(gomock.Any(), gomock.Any()).AnyTimes()
 
-		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
-
 		mockDatastore.EXPECT().Read(
 			gomock.Any(),
 			storeID,
@@ -4718,7 +4838,7 @@ func TestTTU(t *testing.T) {
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
 			Planner:          mockPlanner,
 			ConcurrencyLimit: 10,
 		})
@@ -4755,7 +4875,6 @@ func TestResolveRecursiveCheck(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
@@ -4775,8 +4894,6 @@ func TestResolveRecursiveCheck(t *testing.T) {
 		mockPlanner.EXPECT().GetPlanSelector(gomock.Any()).Return(mockSelector).AnyTimes()
 		mockSelector.EXPECT().Select(gomock.Any()).Return(DefaultPlan).AnyTimes()
 		mockSelector.EXPECT().UpdateStats(gomock.Any(), gomock.Any()).AnyTimes()
-
-		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 
 		mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
 			AnyTimes(). // Allow any number of calls
@@ -4805,7 +4922,7 @@ func TestResolveRecursiveCheck(t *testing.T) {
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
 			Planner:          mockPlanner,
 			ConcurrencyLimit: 10,
 		})
@@ -4829,7 +4946,6 @@ func TestResolveRecursiveCheck(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
@@ -4855,8 +4971,6 @@ func TestResolveRecursiveCheck(t *testing.T) {
 		mockPlanner.EXPECT().GetPlanSelector(gomock.Any()).Return(mockSelector).AnyTimes()
 		mockSelector.EXPECT().Select(gomock.Any()).Return(weight2Plan).AnyTimes()
 		mockSelector.EXPECT().UpdateStats(gomock.Any(), gomock.Any()).AnyTimes()
-
-		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 
 		mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
 			AnyTimes(). // Allow any number of calls
@@ -4912,7 +5026,7 @@ func TestResolveRecursiveCheck(t *testing.T) {
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
 			Planner:          mockPlanner,
 			ConcurrencyLimit: 10,
 		})
@@ -4937,7 +5051,6 @@ func TestResolveRecursiveCheck(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
@@ -4963,8 +5076,6 @@ func TestResolveRecursiveCheck(t *testing.T) {
 		mockPlanner.EXPECT().GetPlanSelector(gomock.Any()).Return(mockSelector).AnyTimes()
 		mockSelector.EXPECT().Select(gomock.Any()).Return(weight2Plan).AnyTimes()
 		mockSelector.EXPECT().UpdateStats(gomock.Any(), gomock.Any()).AnyTimes()
-
-		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 
 		mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
 			AnyTimes(). // Allow any number of calls
@@ -5013,7 +5124,7 @@ func TestResolveRecursiveCheck(t *testing.T) {
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
 			Planner:          mockPlanner,
 			ConcurrencyLimit: 10,
 		})
@@ -5039,7 +5150,6 @@ func TestResolveRecursiveCheck(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
@@ -5058,8 +5168,6 @@ func TestResolveRecursiveCheck(t *testing.T) {
 		mockPlanner.EXPECT().GetPlanSelector(gomock.Any()).Return(mockSelector).AnyTimes()
 		mockSelector.EXPECT().Select(gomock.Any()).Return(DefaultPlan).AnyTimes()
 		mockSelector.EXPECT().UpdateStats(gomock.Any(), gomock.Any()).AnyTimes()
-
-		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 
 		mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
 			AnyTimes(). // Allow any number of calls
@@ -5086,7 +5194,7 @@ func TestResolveRecursiveCheck(t *testing.T) {
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
 			Planner:          mockPlanner,
 			ConcurrencyLimit: 10,
 		})
@@ -5110,7 +5218,6 @@ func TestResolveRecursiveCheck(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
@@ -5135,8 +5242,6 @@ func TestResolveRecursiveCheck(t *testing.T) {
 		mockPlanner.EXPECT().GetPlanSelector(gomock.Any()).Return(mockSelector).AnyTimes()
 		mockSelector.EXPECT().Select(gomock.Any()).Return(weight2Plan).AnyTimes()
 		mockSelector.EXPECT().UpdateStats(gomock.Any(), gomock.Any()).AnyTimes()
-
-		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 
 		mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
 			AnyTimes(). // Allow any number of calls
@@ -5191,7 +5296,7 @@ func TestResolveRecursiveCheck(t *testing.T) {
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
 			Planner:          mockPlanner,
 			ConcurrencyLimit: 10,
 		})
@@ -5216,7 +5321,6 @@ func TestResolveRecursiveCheck(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
@@ -5241,8 +5345,6 @@ func TestResolveRecursiveCheck(t *testing.T) {
 		mockPlanner.EXPECT().GetPlanSelector(gomock.Any()).Return(mockSelector).AnyTimes()
 		mockSelector.EXPECT().Select(gomock.Any()).Return(weight2Plan).AnyTimes()
 		mockSelector.EXPECT().UpdateStats(gomock.Any(), gomock.Any()).AnyTimes()
-
-		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 
 		mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
 			AnyTimes(). // Allow any number of calls
@@ -5291,7 +5393,7 @@ func TestResolveRecursiveCheck(t *testing.T) {
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
 			Planner:          mockPlanner,
 			ConcurrencyLimit: 10,
 		})
@@ -5317,7 +5419,6 @@ func TestResolveRecursiveCheck(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
@@ -5337,8 +5438,6 @@ func TestResolveRecursiveCheck(t *testing.T) {
 		mockPlanner.EXPECT().GetPlanSelector(gomock.Any()).Return(mockSelector).AnyTimes()
 		mockSelector.EXPECT().Select(gomock.Any()).Return(DefaultPlan).AnyTimes()
 		mockSelector.EXPECT().UpdateStats(gomock.Any(), gomock.Any()).AnyTimes()
-
-		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 
 		readStartingWithUserReader := []*openfgav1.Tuple{
 			{
@@ -5381,7 +5480,7 @@ func TestResolveRecursiveCheck(t *testing.T) {
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
 			Planner:          mockPlanner,
 			ConcurrencyLimit: 10,
 		})
@@ -5405,7 +5504,6 @@ func TestResolveRecursiveCheck(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
@@ -5424,8 +5522,6 @@ func TestResolveRecursiveCheck(t *testing.T) {
 		mockPlanner.EXPECT().GetPlanSelector(gomock.Any()).Return(mockSelector).AnyTimes()
 		mockSelector.EXPECT().Select(gomock.Any()).Return(DefaultPlan).AnyTimes()
 		mockSelector.EXPECT().UpdateStats(gomock.Any(), gomock.Any()).AnyTimes()
-
-		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 
 		mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
 			AnyTimes(). // Allow any number of calls
@@ -5455,7 +5551,7 @@ func TestResolveRecursiveCheck(t *testing.T) {
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
 			Planner:          mockPlanner,
 			ConcurrencyLimit: 10,
 		})
@@ -5479,7 +5575,6 @@ func TestResolveRecursiveCheck(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
@@ -5500,8 +5595,6 @@ func TestResolveRecursiveCheck(t *testing.T) {
 		mockPlanner.EXPECT().GetPlanSelector(gomock.Any()).Return(mockSelector).AnyTimes()
 		mockSelector.EXPECT().Select(gomock.Any()).Return(DefaultPlan).AnyTimes()
 		mockSelector.EXPECT().UpdateStats(gomock.Any(), gomock.Any()).AnyTimes()
-
-		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 
 		readStartingWithUserReader := []*openfgav1.Tuple{
 			{
@@ -5544,7 +5637,7 @@ func TestResolveRecursiveCheck(t *testing.T) {
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
 			Planner:          mockPlanner,
 			ConcurrencyLimit: 10,
 		})
@@ -5568,7 +5661,6 @@ func TestResolveRecursiveCheck(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
@@ -5588,8 +5680,6 @@ func TestResolveRecursiveCheck(t *testing.T) {
 		mockPlanner.EXPECT().GetPlanSelector(gomock.Any()).Return(mockSelector).AnyTimes()
 		mockSelector.EXPECT().Select(gomock.Any()).Return(DefaultPlan).AnyTimes()
 		mockSelector.EXPECT().UpdateStats(gomock.Any(), gomock.Any()).AnyTimes()
-
-		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 
 		mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
 			AnyTimes(). // Allow any number of calls
@@ -5619,7 +5709,7 @@ func TestResolveRecursiveCheck(t *testing.T) {
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
 			Planner:          mockPlanner,
 			ConcurrencyLimit: 10,
 		})
@@ -5637,6 +5727,142 @@ func TestResolveRecursiveCheck(t *testing.T) {
 		require.NoError(t, err)
 		require.True(t, res.GetAllowed())
 	})
+
+	t.Run("caches_recursive_edge_on_miss", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		storeID := ulid.Make().String()
+		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
+		mockPlanner := mocks.NewMockManager(ctrl)
+		mockSelector := mocks.NewMockSelector(ctrl)
+
+		model := testutils.MustTransformDSLToProtoWithID(`
+		   model
+			schema 1.1
+		   type user
+		   type document
+			relations
+			   define viewer: [user] or viewer from parent
+			   define parent: [document]
+	  	`)
+
+		mg, err := modelgraph.New(model)
+		require.NoError(t, err)
+
+		mockPlanner.EXPECT().GetPlanSelector(gomock.Any()).Return(mockSelector).AnyTimes()
+		mockSelector.EXPECT().Select(gomock.Any()).Return(DefaultPlan).AnyTimes()
+		mockSelector.EXPECT().UpdateStats(gomock.Any(), gomock.Any()).AnyTimes()
+
+		mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+			Return(nil, storage.ErrNotFound).AnyTimes()
+
+		mockDatastore.EXPECT().Read(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+			AnyTimes().
+			DoAndReturn(func(_ context.Context, _ string, filter storage.ReadFilter, _ storage.ReadOptions) (storage.TupleIterator, error) {
+				if filter.Object == "document:1" {
+					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:1", "parent", "document:2")}}), nil
+				}
+				return storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil
+			})
+
+		mockCache.EXPECT().Get(gomock.Any()).Return(nil).AnyTimes()
+		// ResolveRecursive must write its result to the cache after resolution.
+		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).MinTimes(1)
+
+		resolver := New(Config{
+			Model:                     mg,
+			Datastore:                 mockDatastore,
+			Cache:                     mockCache,
+			Planner:                   mockPlanner,
+			ConcurrencyLimit:          10,
+			LastCacheInvalidationTime: time.Now().Add(-time.Hour),
+		})
+
+		req, err := NewRequest(RequestParams{
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+		})
+		require.NoError(t, err)
+
+		resolver.strategies[DefaultStrategyName] = NewDefault(mg, resolver, 10)
+
+		res, err := resolver.ResolveCheck(context.Background(), req)
+		require.NoError(t, err)
+		require.False(t, res.GetAllowed())
+	})
+
+	t.Run("cache_hit_on_recursive_edge", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		storeID := ulid.Make().String()
+		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
+		mockPlanner := mocks.NewMockManager(ctrl)
+		mockSelector := mocks.NewMockSelector(ctrl)
+
+		model := testutils.MustTransformDSLToProtoWithID(`
+		   model
+			schema 1.1
+		   type user
+		   type document
+			relations
+			   define viewer: [user] or viewer from parent
+			   define parent: [document]
+	  	`)
+
+		mg, err := modelgraph.New(model)
+		require.NoError(t, err)
+
+		mockPlanner.EXPECT().GetPlanSelector(gomock.Any()).Return(mockSelector).AnyTimes()
+		mockSelector.EXPECT().Select(gomock.Any()).Return(DefaultPlan).AnyTimes()
+		mockSelector.EXPECT().UpdateStats(gomock.Any(), gomock.Any()).AnyTimes()
+
+		// Only the non-recursive direct [user] edge calls the datastore.
+		mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+			Return(nil, storage.ErrNotFound).AnyTimes()
+
+		req, err := NewRequest(RequestParams{
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+		})
+		require.NoError(t, err)
+
+		// Pre-populate the cache for the recursive edge.
+		node, ok := mg.GetNodeByID("document#viewer")
+		require.True(t, ok)
+		recursiveEdge, ok := mg.CanApplyRecursion(node, "", true)
+		require.True(t, ok)
+		recursiveKey := buildEdgeCacheKey(model.GetId(), req, recursiveEdge)
+
+		cachedTrue := &ResponseCacheEntry{
+			Res:          &Response{Allowed: true},
+			LastModified: time.Now(),
+		}
+		mockCache.EXPECT().Get(recursiveKey).Return(cachedTrue).Times(1)
+		mockCache.EXPECT().Get(gomock.Any()).Return(nil).AnyTimes()
+		// Non-recursive edges may still write to the cache.
+		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+
+		resolver := New(Config{
+			Model:                     mg,
+			Datastore:                 mockDatastore,
+			Cache:                     mockCache,
+			Planner:                   mockPlanner,
+			ConcurrencyLimit:          10,
+			LastCacheInvalidationTime: time.Now().Add(-time.Hour),
+		})
+
+		resolver.strategies[DefaultStrategyName] = NewDefault(mg, resolver, 10)
+
+		res, err := resolver.ResolveCheck(context.Background(), req)
+		require.NoError(t, err)
+		require.True(t, res.GetAllowed())
+	})
 }
 
 func TestResolveCheck(t *testing.T) {
@@ -5646,7 +5872,6 @@ func TestResolveCheck(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
@@ -5674,8 +5899,6 @@ func TestResolveCheck(t *testing.T) {
 		mockPlanner.EXPECT().GetPlanSelector(gomock.Any()).Return(mockSelector).AnyTimes()
 		mockSelector.EXPECT().Select(gomock.Any()).Return(weight2Plan).AnyTimes()
 		mockSelector.EXPECT().UpdateStats(gomock.Any(), gomock.Any()).AnyTimes()
-
-		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 
 		mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
 			AnyTimes(). // Allow any number of calls
@@ -5734,7 +5957,7 @@ func TestResolveCheck(t *testing.T) {
 		resolver := New(Config{
 			Model:            mg,
 			Datastore:        mockDatastore,
-			Cache:            mockCache,
+			Cache:            storage.NewNoopCache(),
 			Planner:          mockPlanner,
 			ConcurrencyLimit: 10,
 		})
@@ -5751,5 +5974,156 @@ func TestResolveCheck(t *testing.T) {
 
 		_, err = resolver.ResolveCheck(context.Background(), req)
 		require.Error(t, err)
+	})
+}
+
+func TestBuildEdgeCacheKey(t *testing.T) {
+	// buildEdgeCacheKey uses: modelID, object, user, relationDefinition, edgeType, to.UniqueLabel, tuplesetRelation, invariantCacheKey.
+	// All collision scenarios share the same relationDefinition across sibling edges (it's always set to the
+	// parent relation that generated the edge). The remaining fields must uniquely identify each edge.
+
+	storeID := ulid.Make().String()
+
+	buildKeys := func(t *testing.T, modelDSL, nodeID, userType, object, relation, user string) []string {
+		t.Helper()
+		model := testutils.MustTransformDSLToProtoWithID(modelDSL)
+		mg, err := modelgraph.New(model)
+		require.NoError(t, err)
+
+		req, err := NewRequest(RequestParams{
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey(object, relation, user),
+		})
+		require.NoError(t, err)
+
+		node, ok := mg.GetNodeByID(nodeID)
+		require.True(t, ok, "node %q not found", nodeID)
+
+		edges, err := mg.FlattenNode(node, userType, false, false)
+		require.NoError(t, err)
+
+		keys := make([]string, len(edges))
+		for i, edge := range edges {
+			keys[i] = buildEdgeCacheKey(mg.GetModelID(), req, edge)
+		}
+		return keys
+	}
+
+	assertAllDistinct := func(t *testing.T, keys []string) {
+		t.Helper()
+		seen := make(map[string]struct{}, len(keys))
+		for _, k := range keys {
+			_, exists := seen[k]
+			require.False(t, exists, "duplicate cache key %q", k)
+			seen[k] = struct{}{}
+		}
+	}
+
+	t.Run("direct_type_and_wildcard_via_computed_relation", func(t *testing.T) {
+		// define viewer: [user, user:*]  +  define can_access: viewer
+		// FlattenNode(can_access) yields two DirectEdges sharing relDef="document#viewer"
+		// but targeting different nodes ("user" vs "user:*").
+		keys := buildKeys(t, `
+			model
+			  schema 1.1
+			type user
+			type document
+			  relations
+			    define viewer: [user, user:*]
+			    define can_access: viewer
+		`, "document#can_access", "user", "document:1", "can_access", "user:alice")
+		require.Len(t, keys, 2)
+		assertAllDistinct(t, keys)
+	})
+
+	t.Run("intersection_branches_in_union_via_computed_relation", func(t *testing.T) {
+		// define viewer: (writer and admin) or (editor and contributor)  +  define can_access: viewer
+		// FlattenNode(can_access) yields two RewriteEdges sharing relDef="document#viewer"
+		// but targeting different intersection operator nodes (distinct ULIDs).
+		keys := buildKeys(t, `
+			model
+			  schema 1.1
+			type user
+			type document
+			  relations
+			    define writer: [user]
+			    define admin: [user]
+			    define editor: [user]
+			    define contributor: [user]
+			    define viewer: (writer and admin) or (editor and contributor)
+			    define can_access: viewer
+		`, "document#can_access", "user", "document:1", "can_access", "user:alice")
+		require.Len(t, keys, 2)
+		assertAllDistinct(t, keys)
+	})
+
+	t.Run("multiple_ttu_paths_to_different_targets", func(t *testing.T) {
+		// define viewer: viewer from org_parent or viewer from team_parent  +  define can_access: viewer
+		// FlattenNode(can_access) yields two TTUEdges sharing relDef="document#viewer"
+		// but targeting different nodes ("org#viewer" vs "team#viewer").
+		keys := buildKeys(t, `
+			model
+			  schema 1.1
+			type user
+			type org
+			  relations
+			    define viewer: [user]
+			type team
+			  relations
+			    define viewer: [user]
+			type document
+			  relations
+			    define org_parent: [org]
+			    define team_parent: [team]
+			    define viewer: viewer from org_parent or viewer from team_parent
+			    define can_access: viewer
+		`, "document#can_access", "user", "document:1", "can_access", "user:alice")
+		require.Len(t, keys, 2)
+		assertAllDistinct(t, keys)
+	})
+
+	t.Run("multiple_ttu_paths_to_same_target_via_different_tupleset", func(t *testing.T) {
+		// define viewer: admin from parent or admin from owner  (both parent and owner: [org])
+		// FlattenNode(can_access) yields two TTUEdges sharing relDef="document#viewer" AND
+		// the same to.UniqueLabel="org#admin", differing only in tuplesetRelation.
+		keys := buildKeys(t, `
+			model
+			  schema 1.1
+			type user
+			type org
+			  relations
+			    define admin: [user]
+			type document
+			  relations
+			    define parent: [org]
+			    define owner: [org]
+			    define viewer: admin from parent or admin from owner
+			    define can_access: viewer
+		`, "document#can_access", "user", "document:1", "can_access", "user:alice")
+		require.Len(t, keys, 2)
+		assertAllDistinct(t, keys)
+	})
+
+	t.Run("direct_edge_and_ttu_to_same_target", func(t *testing.T) {
+		// define viewer: [group#member] or member from parent  (parent: [group])
+		// FlattenNode(can_access) yields a DirectEdge and a TTUEdge, both targeting
+		// "group#member", sharing relDef="document#viewer" and to.UniqueLabel,
+		// differing only in tuplesetRelation ("" vs "document#parent").
+		keys := buildKeys(t, `
+			model
+			  schema 1.1
+			type user
+			type group
+			  relations
+			    define member: [user]
+			type document
+			  relations
+			    define parent: [group]
+			    define viewer: [group#member] or member from parent
+			    define can_access: viewer
+		`, "document#can_access", "user", "document:1", "can_access", "user:alice")
+		require.Len(t, keys, 2)
+		assertAllDistinct(t, keys)
 	})
 }

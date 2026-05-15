@@ -65,7 +65,10 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 
-	os.Exit(m.Run())
+	code := m.Run()
+	storagefixtures.CleanupPostgresContainer()
+	storagefixtures.CleanupMysqlContainer()
+	os.Exit(code)
 }
 
 func genCert(t *testing.T, template, parent *x509.Certificate, pub *rsa.PublicKey, priv *rsa.PrivateKey) (*x509.Certificate, []byte) {
@@ -1141,8 +1144,8 @@ func TestPlaygroundEnabled(t *testing.T) {
 	c := retryablehttp.NewClient()
 	t.Cleanup(c.HTTPClient.CloseIdleConnections)
 
-	playgroundPort := fmt.Sprintf(":%d", cfg.Playground.Port)
-	resp, err := c.Get(fmt.Sprintf("http://localhost%s/playground", playgroundPort))
+	playgroundAddr := cfg.Playground.PlaygroundAddr()
+	resp, err := c.Get(fmt.Sprintf("http://%s/playground", playgroundAddr))
 	require.NoError(t, err, "http playground endpoint not healthy")
 	t.Cleanup(func() {
 		err := resp.Body.Close()
@@ -1215,13 +1218,17 @@ func TestDefaultConfig(t *testing.T) {
 	require.True(t, val.Exists())
 	require.Equal(t, val.String(), cfg.HTTP.Addr)
 
+	val = res.Get("properties.authzen.properties.baseURL.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.String(), cfg.Authzen.BaseURL)
+
 	val = res.Get("properties.playground.properties.enabled.default")
 	require.True(t, val.Exists())
 	require.Equal(t, val.Bool(), cfg.Playground.Enabled)
 
 	val = res.Get("properties.playground.properties.port.default")
 	require.True(t, val.Exists())
-	require.EqualValues(t, val.Int(), cfg.Playground.Port)
+	require.EqualValues(t, val.Int(), cfg.Playground.Port) //nolint:staticcheck
 
 	val = res.Get("properties.profiler.properties.enabled.default")
 	require.True(t, val.Exists())
@@ -1492,6 +1499,10 @@ func TestDefaultConfig(t *testing.T) {
 	val = res.Get("properties.requestTimeout.default")
 	require.True(t, val.Exists())
 	require.Equal(t, val.String(), cfg.RequestTimeout.String())
+
+	val = res.Get("properties.shutdownTimeout.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.String(), cfg.ShutdownTimeout.String())
 }
 
 func TestRunCommandNoConfigDefaultValues(t *testing.T) {
@@ -1558,6 +1569,47 @@ requestDurationDispatchCountBuckets: [32,42]
 	require.Equal(t, 5*time.Second, cfg.CheckQueryCache.TTL)
 	require.Equal(t, []string{"33", "44"}, cfg.RequestDurationDatastoreQueryCountBuckets)
 	require.Equal(t, []string{"32", "42"}, cfg.RequestDurationDispatchCountBuckets)
+}
+
+func TestParseConfigCacheTTLJitterPercentageFromFlag(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+	util.PrepareTempConfigDir(t)
+
+	runCmd := NewRunCommand()
+	runCmd.RunE = func(cmd *cobra.Command, _ []string) error {
+		return nil
+	}
+
+	rootCmd := cmd.NewRootCommand()
+	rootCmd.AddCommand(runCmd)
+	rootCmd.SetArgs([]string{"run", "--cache-ttl-jitter-percentage", "17"})
+	require.NoError(t, rootCmd.Execute())
+
+	cfg, err := ReadConfig()
+	require.NoError(t, err)
+	require.Equal(t, uint32(17), cfg.CacheTTLJitterPercentage)
+}
+
+func TestParseConfigCacheTTLJitterPercentageFromEnv(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+	util.PrepareTempConfigDir(t)
+	t.Setenv("OPENFGA_CACHE_TTL_JITTER_PERCENTAGE", "18")
+
+	runCmd := NewRunCommand()
+	runCmd.RunE = func(cmd *cobra.Command, _ []string) error {
+		return nil
+	}
+
+	rootCmd := cmd.NewRootCommand()
+	rootCmd.AddCommand(runCmd)
+	rootCmd.SetArgs([]string{"run"})
+	require.NoError(t, rootCmd.Execute())
+
+	cfg, err := ReadConfig()
+	require.NoError(t, err)
+	require.Equal(t, uint32(18), cfg.CacheTTLJitterPercentage)
 }
 
 func TestRunCommandConfigIsMerged(t *testing.T) {

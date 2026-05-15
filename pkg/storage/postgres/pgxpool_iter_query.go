@@ -1,5 +1,7 @@
 package postgres
 
+//go:generate mockgen -source=pgxpool_iter_query.go --destination ../../../internal/mocks/mock_pgx_tx.go --package mocks
+
 import (
 	"context"
 
@@ -48,10 +50,12 @@ func NewPgxTxnGetRows(txn PgxQuery, sb SQLBuilder) (*PgxTxnIterQuery, error) {
 }
 
 // GetRows executes the txn query and returns the sqlcommon.Rows.
+// Raw driver errors are returned unchanged; error translation to storage-layer sentinels
+// is the responsibility of the caller (sqlcommon.SQLTupleIterator.fetchBuffer via handleSQLError).
 func (p *PgxTxnIterQuery) GetRows(ctx context.Context) (sqlcommon.Rows, error) {
 	rows, err := p.txn.Query(ctx, p.query, p.args...)
 	if err != nil {
-		return nil, HandleSQLError(err)
+		return nil, err
 	}
 	return &pgxRowsWrapper{rows: rows}, nil
 }

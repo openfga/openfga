@@ -11,8 +11,6 @@ import (
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
-var errInvalidTuple *tuple.InvalidTupleError
-
 type InvalidTupleError struct {
 	Cause error
 }
@@ -22,7 +20,11 @@ func (e *InvalidTupleError) Unwrap() error {
 }
 
 func (e *InvalidTupleError) Error() string {
-	return e.Unwrap().Error()
+	const msg = "invalid tuple"
+	if e.Cause == nil {
+		return msg
+	}
+	return msg + ": " + e.Cause.Error()
 }
 
 type InvalidRelationError struct {
@@ -34,7 +36,11 @@ func (e *InvalidRelationError) Unwrap() error {
 }
 
 func (e *InvalidRelationError) Error() string {
-	return e.Unwrap().Error()
+	const msg = "invalid relation"
+	if e.Cause == nil {
+		return msg
+	}
+	return msg + ": " + e.Cause.Error()
 }
 
 type ThrottledError struct {
@@ -46,7 +52,27 @@ func (e *ThrottledError) Unwrap() error {
 }
 
 func (e *ThrottledError) Error() string {
-	return e.Unwrap().Error()
+	const msg = "throttled"
+	if e.Cause == nil {
+		return msg
+	}
+	return msg + ": " + e.Cause.Error()
+}
+
+type InvalidContextError struct {
+	Cause error
+}
+
+func (e *InvalidContextError) Unwrap() error {
+	return e.Cause
+}
+
+func (e *InvalidContextError) Error() string {
+	const msg = "invalid context"
+	if e.Cause == nil {
+		return msg
+	}
+	return msg + ": " + e.Cause.Error()
 }
 
 // CheckCommandErrorToServerError converts internal errors thrown during the
@@ -66,14 +92,20 @@ func CheckCommandErrorToServerError(err error) error {
 		return serverErrors.ValidationError(err)
 	}
 
+	var invalidContext *InvalidContextError
+	if errors.As(err, &invalidContext) {
+		return serverErrors.ValidationError(err)
+	}
+
 	var invalidTupleDeprecate *InvalidTupleError
 	if errors.As(err, &invalidTupleDeprecate) {
 		tupleError := tuple.InvalidTupleError{Cause: err}
 		return serverErrors.HandleTupleValidateError(&tupleError)
 	}
 
-	if errors.Is(err, errInvalidTuple) {
-		return serverErrors.HandleTupleValidateError(err)
+	var errInvalidTuple *tuple.InvalidTupleError
+	if errors.As(err, &errInvalidTuple) {
+		return serverErrors.HandleTupleValidateError(errInvalidTuple)
 	}
 
 	if errors.Is(err, graph.ErrResolutionDepthExceeded) {

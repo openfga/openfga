@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/sourcegraph/conc/panics"
+	"go.opentelemetry.io/otel/attribute"
 	"golang.org/x/sync/errgroup"
 
 	authzGraph "github.com/openfga/language/pkg/go/graph"
@@ -43,7 +44,11 @@ func (s *DefaultStrategy) Userset(ctx context.Context, req *Request, edge *authz
 	ctx, span := tracer.Start(ctx, "default.Userset")
 	defer span.End()
 
-	return s.execute(ctx, req, edge, iter, s.userset, visited)
+	res, err := s.execute(ctx, req, edge, iter, s.userset, visited)
+	if err == nil && res != nil {
+		span.SetAttributes(attribute.Bool("allowed", res.Allowed))
+	}
+	return res, err
 }
 
 func (s *DefaultStrategy) userset(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator, out chan requestMsg) {
@@ -70,7 +75,11 @@ func (s *DefaultStrategy) TTU(ctx context.Context, req *Request, edge *authzGrap
 	ctx, span := tracer.Start(ctx, "default.TTU")
 	defer span.End()
 
-	return s.execute(ctx, req, edge, iter, s.ttu, visited)
+	res, err := s.execute(ctx, req, edge, iter, s.ttu, visited)
+	if err == nil && res != nil {
+		span.SetAttributes(attribute.Bool("allowed", res.Allowed))
+	}
+	return res, err
 }
 
 func (s *DefaultStrategy) ttu(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator, out chan requestMsg) {
@@ -114,6 +123,11 @@ func (s *DefaultStrategy) execute(ctx context.Context, req *Request, edge *authz
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		case outcome, ok := <-responsesChan:
+			// select may choose a closed channel over ctx.Done(); re-check cancellation.
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
+
 			if !ok {
 				return &Response{Allowed: false}, err
 			}

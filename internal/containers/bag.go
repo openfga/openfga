@@ -5,16 +5,18 @@ import (
 	"sync/atomic"
 )
 
-// node facilitates a basic link-list data type.
+// node is a singly linked list element used by [Bag].
 type node[T any] struct {
 	value T
 	next  *node[T]
 }
 
-// Bag is a type that holds values of T. Values can be added
-// to the Bag and enumerated. However values can not be indexed
-// or removed from the bag. The methods on Bag are thread safe.
-// A zero value Bag can be used without initialization.
+// Bag is a lock-free, append-only collection. Values can be added
+// concurrently via [Bag.Add] and drained via [Bag.Seq], but individual
+// elements cannot be indexed or removed.
+//
+// Bag uses an atomic linked list internally, so all methods are safe
+// for concurrent use. The zero value is ready to use.
 type Bag[T any] struct {
 	head atomic.Pointer[node[T]]
 }
@@ -50,9 +52,11 @@ func (b *Bag[T]) Add(v ...T) {
 	}
 }
 
-// Seq returns an iter.Seq[T] containing all of the values
-// currently in the Bag in LIFO order. All values will
-// be removed from the bag.
+// Seq atomically removes all values from the Bag and returns an
+// iterator that yields them in LIFO (most-recently-added-first) order.
+// The returned iterator is single-use: on early break it resumes from
+// the break point rather than restarting, and a fully consumed iterator
+// yields nothing on subsequent calls.
 func (b *Bag[T]) Seq() iter.Seq[T] {
 	head := b.head.Swap(nil)
 	return func(yield func(T) bool) {
@@ -63,4 +67,9 @@ func (b *Bag[T]) Seq() iter.Seq[T] {
 			head = head.next
 		}
 	}
+}
+
+// Clear removes all elements from the Bag.
+func (b *Bag[T]) Clear() {
+	b.head.Store(nil)
 }

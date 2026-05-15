@@ -112,6 +112,57 @@ func TestPostgresDatastore(t *testing.T) {
 	t.Run("WriteTuplesWithMaxTuplesPerWrite", test.WriteTuplesWithMaxTuplesPerWrite(dsCustom, context.Background()))
 }
 
+// TestWriteWithSimpleProtocol is a regression test for a bug where Write operations
+// failed with "invalid input syntax for type integer: TUPLE_OPERATION_WRITE" (SQLSTATE 22P02)
+// when the connection uses PostgreSQL's simple query protocol (e.g. behind PgBouncer in
+// transaction pooling mode). Setting DefaultQueryExecMode to SimpleProtocol forces pgx into
+// the same encoding path, reproducing the failure without a real PgBouncer instance.
+// See: https://github.com/openfga/openfga/issues/3011
+func TestWriteWithSimpleProtocol(t *testing.T) {
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
+
+	uri := testDatastore.GetConnectionURI(true)
+	cfg := sqlcommon.NewConfig()
+
+	// Build the pool config the same way New() does, then override the query
+	// execution mode to SimpleProtocol to mimic PgBouncer transaction-pooling mode.
+	poolCfg, err := parseConfig(uri, false, cfg)
+	require.NoError(t, err)
+	poolCfg.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeSimpleProtocol
+
+	primaryDB, err := pgxpool.NewWithConfig(context.Background(), poolCfg)
+	require.NoError(t, err)
+
+	ds, err := NewWithDB(primaryDB, nil, cfg)
+	require.NoError(t, err)
+	defer ds.Close()
+
+	ctx := context.Background()
+	storeID := ulid.Make().String()
+
+	writes := []*openfgav1.TupleKey{
+		{Object: "document:1", Relation: "viewer", User: "user:alice"},
+		{Object: "document:2", Relation: "editor", User: "user:bob"},
+	}
+
+	err = ds.Write(ctx, storeID, nil, writes)
+	require.NoError(t, err, "Write must succeed with SimpleProtocol (PgBouncer regression)")
+
+	deletes := []*openfgav1.TupleKeyWithoutCondition{
+		{Object: "document:1", Relation: "viewer", User: "user:alice"},
+	}
+	err = ds.Write(ctx, storeID, deletes, nil)
+	require.NoError(t, err, "Delete must succeed with SimpleProtocol (PgBouncer regression)")
+
+	tk, err := ds.ReadUserTuple(ctx, storeID, storage.ReadUserTupleFilter{
+		Object:   "document:2",
+		Relation: "editor",
+		User:     "user:bob",
+	}, storage.ReadUserTupleOptions{})
+	require.NoError(t, err)
+	require.Equal(t, "document:2", tk.GetKey().GetObject())
+}
+
 func TestPostgresDatastoreStartup(t *testing.T) {
 	primaryDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
 	primaryURI := primaryDatastore.GetConnectionURI(true)
@@ -549,17 +600,18 @@ func TestNewDB(t *testing.T) {
 		require.Error(t, err)
 	})
 	t.Run("cannot_ping_primary_uri", func(t *testing.T) {
-		uri :=
-			"postgres://abc:passwd@localhost:5346/dbname"
+		uri := "postgres://abc:passwd@localhost:5346/dbname"
 		cfg := sqlcommon.Config{
-			Username:        "override_user",
-			Password:        "override_passwd",
-			MinIdleConns:    10,
-			MaxOpenConns:    50,
-			MinOpenConns:    15,
-			ConnMaxLifetime: time.Minute * 20,
-			ConnMaxIdleTime: 1 * time.Minute,
-			Logger:          logger.NewNoopLogger(),
+			Username:                "override_user",
+			Password:                "override_passwd",
+			MinIdleConns:            10,
+			MaxOpenConns:            50,
+			MinOpenConns:            15,
+			ConnMaxLifetime:         time.Minute * 20,
+			ConnMaxIdleTime:         1 * time.Minute,
+			Logger:                  logger.NewNoopLogger(),
+			PingTimeout:             100 * time.Millisecond,
+			PingRetryMaxElapsedTime: 2 * time.Second,
 		}
 		_, err := New(uri, &cfg)
 		require.Error(t, err)
@@ -1615,6 +1667,11 @@ func TestHandleSQLError(t *testing.T) {
 		err := HandleSQLError(sql.ErrNoRows)
 		require.ErrorIs(t, err, storage.ErrNotFound)
 	})
+
+	t.Run("pgx.ErrNoRows_is_converted_to_storage.ErrNotFound_error", func(t *testing.T) {
+		err := HandleSQLError(pgx.ErrNoRows)
+		require.ErrorIs(t, err, storage.ErrNotFound)
+	})
 }
 
 // The following are tests for internal functions for related to write
@@ -1625,7 +1682,7 @@ func TestExecuteDeleteTuples(t *testing.T) {
 		deleteConditions := sq.Or{}
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
-		mockPgxExec := mocks.NewMockpgxExec(ctrl)
+		mockPgxExec := mocks.NewMockPgxExec(ctrl)
 		err := executeDeleteTuples(context.Background(), mockPgxExec, "123", deleteConditions, false)
 		require.NoError(t, err)
 	})
@@ -1638,7 +1695,7 @@ func TestExecuteDeleteTuples(t *testing.T) {
 		}
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
-		mockPgxExec := mocks.NewMockpgxExec(ctrl)
+		mockPgxExec := mocks.NewMockPgxExec(ctrl)
 		mockPgxExec.EXPECT().Exec(gomock.Any(), gomock.Any(), gomock.Any()).Return(pgconn.NewCommandTag(""), fmt.Errorf("error"))
 		err := executeDeleteTuples(context.Background(), mockPgxExec, "123", deleteConditions, false)
 		require.Error(t, err)
@@ -1652,7 +1709,7 @@ func TestExecuteDeleteTuples(t *testing.T) {
 		}
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
-		mockPgxExec := mocks.NewMockpgxExec(ctrl)
+		mockPgxExec := mocks.NewMockPgxExec(ctrl)
 		mockPgxExec.EXPECT().Exec(gomock.Any(), gomock.Any(), gomock.Any()).Return(pgconn.NewCommandTag(""), nil)
 		err := executeDeleteTuples(context.Background(), mockPgxExec, "123", deleteConditions, false)
 		require.ErrorIs(t, err, storage.ErrWriteConflictOnDelete)
@@ -1665,7 +1722,7 @@ func TestExecuteDeleteTuples(t *testing.T) {
 		}
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
-		mockPgxExec := mocks.NewMockpgxExec(ctrl)
+		mockPgxExec := mocks.NewMockPgxExec(ctrl)
 		mockPgxExec.EXPECT().Exec(gomock.Any(), gomock.Any(), gomock.Any()).Return(pgconn.NewCommandTag("DELETE 1"), nil)
 		err := executeDeleteTuples(context.Background(), mockPgxExec, "123", deleteConditions, false)
 		require.NoError(t, err)
@@ -1676,14 +1733,14 @@ func TestExecuteWriteTuples(t *testing.T) {
 	t.Run("empty_statement", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
-		mockPgxExec := mocks.NewMockpgxExec(ctrl)
+		mockPgxExec := mocks.NewMockPgxExec(ctrl)
 		err := executeWriteTuples(context.Background(), mockPgxExec, nil)
 		require.NoError(t, err)
 	})
 	t.Run("txn_exec_good", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
-		mockPgxExec := mocks.NewMockpgxExec(ctrl)
+		mockPgxExec := mocks.NewMockPgxExec(ctrl)
 		mockPgxExec.EXPECT().Exec(gomock.Any(), gomock.Any(), gomock.Any()).Return(pgconn.NewCommandTag("INSERT 1"), nil)
 
 		writeItems := [][]interface{}{}
@@ -1705,7 +1762,7 @@ func TestExecuteWriteTuples(t *testing.T) {
 	t.Run("txn_exec_collision_error", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
-		mockPgxExec := mocks.NewMockpgxExec(ctrl)
+		mockPgxExec := mocks.NewMockPgxExec(ctrl)
 		mockPgxExec.EXPECT().Exec(gomock.Any(), gomock.Any(), gomock.Any()).Return(pgconn.NewCommandTag(""), fmt.Errorf("duplicate key value"))
 
 		writeItems := [][]interface{}{}
@@ -1727,7 +1784,7 @@ func TestExecuteWriteTuples(t *testing.T) {
 	t.Run("txn_exec_no_collision_error", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
-		mockPgxExec := mocks.NewMockpgxExec(ctrl)
+		mockPgxExec := mocks.NewMockPgxExec(ctrl)
 		mockPgxExec.EXPECT().Exec(gomock.Any(), gomock.Any(), gomock.Any()).Return(pgconn.NewCommandTag(""), fmt.Errorf("error"))
 
 		writeItems := [][]interface{}{}
@@ -1752,14 +1809,14 @@ func TestExecuteInsertChanges(t *testing.T) {
 	t.Run("empty_statement", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
-		mockPgxExec := mocks.NewMockpgxExec(ctrl)
+		mockPgxExec := mocks.NewMockPgxExec(ctrl)
 		err := executeInsertChanges(context.Background(), mockPgxExec, nil)
 		require.NoError(t, err)
 	})
 	t.Run("txn_exec_good", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
-		mockPgxExec := mocks.NewMockpgxExec(ctrl)
+		mockPgxExec := mocks.NewMockPgxExec(ctrl)
 		mockPgxExec.EXPECT().Exec(gomock.Any(), gomock.Any(), gomock.Any()).Return(pgconn.NewCommandTag("INSERT 1"), nil)
 
 		writeItems := [][]interface{}{}
@@ -1782,7 +1839,7 @@ func TestExecuteInsertChanges(t *testing.T) {
 	t.Run("txn_exec_error", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
-		mockPgxExec := mocks.NewMockpgxExec(ctrl)
+		mockPgxExec := mocks.NewMockPgxExec(ctrl)
 		mockPgxExec.EXPECT().Exec(gomock.Any(), gomock.Any(), gomock.Any()).Return(pgconn.NewCommandTag(""), fmt.Errorf("error"))
 
 		writeItems := [][]interface{}{}

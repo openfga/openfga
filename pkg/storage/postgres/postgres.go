@@ -109,6 +109,10 @@ func parseConfig(uri string, override bool, cfg *sqlcommon.Config) (*pgxpool.Con
 		c.MaxConnIdleTime = cfg.ConnMaxIdleTime
 	}
 
+	if cfg.PingTimeout != 0 {
+		c.PingTimeout = cfg.PingTimeout
+	}
+
 	c.BeforeConnect = createBeforeConnect(cfg.Logger, &FSPassfileProvider{cfg.Logger, os.UserHomeDir, FileOpener})
 	return c, nil
 }
@@ -255,10 +259,10 @@ func New(uri string, cfg *sqlcommon.Config) (*Datastore, error) {
 }
 
 func configureDB(db *pgxpool.Pool, cfg *sqlcommon.Config, dbName string) (prometheus.Collector, error) {
-	policy := backoff.NewExponentialBackOff()
-	policy.MaxElapsedTime = 1 * time.Minute
+	policy := backoff.NewExponentialBackOff(backoff.WithMaxElapsedTime(cfg.PingRetryMaxElapsedTime))
 	attempt := 1
 	err := backoff.Retry(func() error {
+		// using context.Background() is safe here as pgx enforces the PingTimeout internally.
 		err := db.Ping(context.Background())
 		if err != nil {
 			cfg.Logger.Info("waiting for database", zap.Int("attempt", attempt))
@@ -1090,9 +1094,6 @@ func (s *Datastore) GetStore(ctx context.Context, id string) (*openfgav1.Store, 
 	var createdAt, updatedAt time.Time
 	err = row.Scan(&storeID, &name, &createdAt, &updatedAt)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, storage.ErrNotFound
-		}
 		return nil, HandleSQLError(err)
 	}
 
@@ -1367,9 +1368,6 @@ func (s *Datastore) ReadChanges(ctx context.Context, store string, filter storag
 }
 
 func isDBReady(ctx context.Context, versionReady bool, db *pgxpool.Pool) (storage.ReadinessStatus, error) {
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
-	defer cancel()
-
 	err := db.Ping(ctx)
 	if err != nil {
 		return storage.ReadinessStatus{}, err
@@ -1419,10 +1417,14 @@ func (s *Datastore) IsReady(ctx context.Context) (storage.ReadinessStatus, error
 	return multipleReadyStatus, nil
 }
 
-// HandleSQLError processes an SQL error and converts it into a more
-// specific error type based on the nature of the SQL error.
+// HandleSQLError translates a raw SQL/pgx error into a storage-layer sentinel error.
+// Callers can expect the following sentinels:
+//   - [storage.ErrNotFound] — when the query matched no rows (sql.ErrNoRows / pgx.ErrNoRows)
+//   - [storage.ErrInvalidWriteInput] — on a duplicate-key violation when a [openfgav1.TupleKey] is provided as args[0]
+//   - [storage.ErrCollision] — on a duplicate-key violation with no tuple key argument
+//   - a wrapped "sql error: ..." — for all other unexpected infrastructure errors
 func HandleSQLError(err error, args ...interface{}) error {
-	if errors.Is(err, sql.ErrNoRows) {
+	if errors.Is(err, sql.ErrNoRows) || errors.Is(err, pgx.ErrNoRows) {
 		return storage.ErrNotFound
 	}
 

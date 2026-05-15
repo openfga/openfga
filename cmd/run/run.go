@@ -2,6 +2,7 @@
 package run
 
 import (
+	"container/list"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -11,9 +12,12 @@ import (
 	"net"
 	"net/http"
 	"net/http/pprof"
+	"net/netip"
 	"os"
 	"os/signal"
-	goruntime "runtime"
+	"path/filepath"
+	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	sync "sync/atomic"
@@ -26,7 +30,7 @@ import (
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	grpcauth "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/auth"
 	grpc_recovery "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/recovery"
-	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
+	grpc_runtime "github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/cors"
@@ -47,6 +51,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/certwatcher"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
+	authzenv1 "github.com/openfga/api/proto/authzen/v1"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/assets"
@@ -82,6 +87,10 @@ import (
 const (
 	datastoreEngineFlag = "datastore-engine"
 	datastoreURIFlag    = "datastore-uri"
+
+	windows = "windows"
+	unix    = "unix"
+	tcp     = "tcp"
 )
 
 // grpcTLSCertPool is a package-level pinned certificate pool for verifying
@@ -127,7 +136,7 @@ func NewRunCommand() *cobra.Command {
 	defaultConfig := serverconfig.DefaultConfig()
 	flags := cmd.Flags()
 
-	flags.StringSlice("experimentals", defaultConfig.Experimentals, fmt.Sprintf("a comma-separated list of experimental features to enable. Allowed values: %s, %s, %s, %s", serverconfig.ExperimentalCheckOptimizations, serverconfig.ExperimentalListObjectsOptimizations, serverconfig.ExperimentalAccessControlParams, serverconfig.ExperimentalDatastoreThrottling))
+	flags.StringSlice("experimentals", defaultConfig.Experimentals, fmt.Sprintf("a comma-separated list of experimental features to enable. Allowed values: %s, %s, %s, %s, %s", serverconfig.ExperimentalCheckOptimizations, serverconfig.ExperimentalListObjectsOptimizations, serverconfig.ExperimentalAccessControlParams, serverconfig.ExperimentalDatastoreThrottling, serverconfig.ExperimentalAuthZen))
 
 	flags.Bool("access-control-enabled", defaultConfig.AccessControl.Enabled, "enable/disable the access control feature")
 
@@ -166,6 +175,8 @@ func NewRunCommand() *cobra.Command {
 	flags.StringSlice("http-cors-allowed-origins", defaultConfig.HTTP.CORSAllowedOrigins, "specifies the CORS allowed origins")
 
 	flags.StringSlice("http-cors-allowed-headers", defaultConfig.HTTP.CORSAllowedHeaders, "specifies the CORS allowed headers")
+
+	flags.String("authzen-base-url", defaultConfig.Authzen.BaseURL, "the canonical absolute base URL to publish in AuthZEN discovery metadata")
 
 	flags.String("authn-method", defaultConfig.Authn.Method, "the authentication method to use")
 
@@ -215,7 +226,9 @@ func NewRunCommand() *cobra.Command {
 
 	flags.Bool("playground-enabled", defaultConfig.Playground.Enabled, "enable/disable the OpenFGA Playground")
 
-	flags.Int("playground-port", defaultConfig.Playground.Port, "the port to serve the local OpenFGA Playground on")
+	flags.Int("playground-port", defaultConfig.Playground.Port, "the port to serve the local OpenFGA Playground on") //nolint:staticcheck
+
+	flags.String("playground-addr", defaultConfig.Playground.Addr, "the host:port address to serve the local OpenFGA Playground on")
 
 	flags.Bool("profiler-enabled", defaultConfig.Profiler.Enabled, "enable/disable pprof profiling")
 
@@ -309,6 +322,8 @@ func NewRunCommand() *cobra.Command {
 
 	flags.Duration("cache-controller-ttl", defaultConfig.CacheController.TTL, "if cache controller is enabled, this is the minimum time interval for Check requests to trigger cache invalidation. List Objects requests may trigger invalidation even sooner if list objects iterator cache is enabled.")
 
+	flags.Uint32("cache-ttl-jitter-percentage", defaultConfig.CacheTTLJitterPercentage, "a percentage (0-100) of the base TTL added as random jitter to each cache entry's TTL, spreading out expirations to prevent thundering herd effects. For example, a value of 10 with a base TTL of 10s means each entry gets a TTL between 10s and 11s. Default is 0 (no jitter).")
+
 	// Unfortunately UintSlice/IntSlice does not work well when used as environment variable, we need to stick with string slice and convert back to integer
 	flags.StringSlice("request-duration-datastore-query-count-buckets", defaultConfig.RequestDurationDatastoreQueryCountBuckets, "datastore query count buckets used in labelling request_duration_ms.")
 
@@ -353,6 +368,8 @@ func NewRunCommand() *cobra.Command {
 	flags.Duration("listUsers-datastore-throttle-duration", defaultConfig.ListUsersDatastoreThrottle.Duration, "defines the time for which the datastore request will be suspended for being throttled.")
 
 	flags.Duration("request-timeout", defaultConfig.RequestTimeout, "configures request timeout.  If both HTTP upstream timeout and request timeout are specified, request timeout will be used.")
+
+	flags.Duration("shutdown-timeout", defaultConfig.ShutdownTimeout, "configures how long the server waits for a graceful shutdown.")
 
 	flags.Duration("planner-eviction-threshold", defaultConfig.Planner.EvictionThreshold, "how long a planner key can be unused before being evicted")
 	flags.Duration("planner-cleanup-interval", defaultConfig.Planner.CleanupInterval, "how often the planner checks for stale keys")
@@ -420,7 +437,7 @@ func convertStringArrayToUintArray(stringArray []string) []uint {
 
 // telemetryConfig returns the function that must be called to shut down tracing.
 // The context provided to this function should be error-free, or shut down will be incomplete.
-func (s *ServerContext) telemetryConfig(config *serverconfig.Config) func() error {
+func (s *ServerContext) telemetryConfig(config *serverconfig.Config) func(context.Context) error {
 	if config.Trace.Enabled {
 		endpoint, schemeSecure := telemetry.ParseOTLPEndpoint(config.Trace.OTLP.Endpoint)
 		effectiveTLS := telemetry.ResolveOTLPSecurity(config.Trace.OTLP.TLS.Enabled, schemeSecure)
@@ -443,15 +460,13 @@ func (s *ServerContext) telemetryConfig(config *serverconfig.Config) func() erro
 		}
 
 		tp := telemetry.MustNewTracerProvider(options...)
-		return func() error {
+		return func(ctx context.Context) error {
 			// can take up to 5 seconds to complete (https://github.com/open-telemetry/opentelemetry-go/blob/aebcbfcbc2962957a578e9cb3e25dc834125e318/sdk/trace/batch_span_processor.go#L97)
-			ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
-			defer cancel()
 			return errors.Join(tp.ForceFlush(ctx), tp.Shutdown(ctx))
 		}
 	}
 	otel.SetTracerProvider(noop.NewTracerProvider())
-	return func() error {
+	return func(_ context.Context) error {
 		return nil
 	}
 }
@@ -474,6 +489,8 @@ func (s *ServerContext) datastoreConfig(config *serverconfig.Config) (storage.Op
 		sqlcommon.WithMinIdleConns(config.Datastore.MinIdleConns),
 		sqlcommon.WithConnMaxIdleTime(config.Datastore.ConnMaxIdleTime),
 		sqlcommon.WithConnMaxLifetime(config.Datastore.ConnMaxLifetime),
+		sqlcommon.WithPingTimeout(config.Datastore.PingTimeout),
+		sqlcommon.WithPingRetryMaxElapsedTime(config.Datastore.PingRetryMaxElapsedTime),
 	}
 
 	if config.Datastore.Metrics.Enabled {
@@ -651,52 +668,80 @@ func (s *ServerContext) buildServerOpts(ctx context.Context, config *serverconfi
 	return serverOpts, prometheusMetrics, nil
 }
 
-func (s *ServerContext) dialGrpc(config *serverconfig.Config) *grpc.ClientConn {
-	dialOpts := []grpc.DialOption{}
-	if config.Trace.Enabled {
-		dialOpts = append(dialOpts, grpc.WithStatsHandler(otelgrpc.NewClientHandler()))
-	}
-	if config.GRPC.TLS.Enabled {
-		// Resolve just the hostname portion of the gRPC address for use in
-		// peer certificate verification (InsecureSkipVerify suppresses Go's
-		// automatic hostname check, so we must do it ourselves).
-		grpcHost, _, err := net.SplitHostPort(config.GRPC.Addr)
-		if err != nil {
-			// Fall back to the raw address if it has no port component.
-			grpcHost = config.GRPC.Addr
+func (s *ServerContext) dialLocalGrpc(network, address string, config *serverconfig.Config) *grpc.ClientConn {
+	const loopback = "localhost"
+
+	var addr string
+
+	host := loopback
+
+	switch network {
+	case unix:
+		addr = "unix://" + address
+	default:
+		var port string
+		host, port, _ = net.SplitHostPort(address)
+		if host == "" {
+			host = loopback
 		}
 
-		creds := credentials.NewTLS(&tls.Config{
-			InsecureSkipVerify: true, //nolint:gosec // Hostname and cert are verified manually via VerifyPeerCertificate.
-			VerifyPeerCertificate: func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
-				if len(rawCerts) == 0 {
-					return errors.New("no peer certificates presented")
-				}
+		ipAddr, err := netip.ParseAddr(host)
+		if err == nil && ipAddr.IsUnspecified() {
+			host = loopback
+		}
+		addr = net.JoinHostPort(host, port)
+	}
 
-				peerCert, err := x509.ParseCertificate(rawCerts[0])
-				if err != nil {
-					return fmt.Errorf("failed to parse peer certificate: %w", err)
-				}
+	dialOpts := []grpc.DialOption{}
 
-				// Verify the leaf certificate against the global pinned pool
-				// and check the hostname in a single call. The pool is
-				// updated atomically by the watcher callback on cert rotation.
-				_, err = peerCert.Verify(x509.VerifyOptions{
-					Roots:   grpcTLSCertPool.Load(),
-					DNSName: grpcHost,
-				})
-				if err != nil {
-					return fmt.Errorf("peer certificate verification failed: %w", err)
-				}
-				return nil
-			},
-		})
+	if config.GRPC.TLS.Enabled {
+		var creds credentials.TransportCredentials
+
+		switch network {
+		case unix:
+			tlsConf := tls.Config{
+				// A secure connection is ensured through the filesystem permissions of the unix domain socket.
+				InsecureSkipVerify: true,
+			}
+			creds = credentials.NewTLS(&tlsConf)
+		default:
+			tlsConf := tls.Config{
+				InsecureSkipVerify: true, //nolint:gosec // Hostname and cert are verified manually via VerifyPeerCertificate.
+				VerifyPeerCertificate: func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
+					if len(rawCerts) == 0 {
+						return errors.New("no peer certificates presented")
+					}
+
+					peerCert, err := x509.ParseCertificate(rawCerts[0])
+					if err != nil {
+						return fmt.Errorf("failed to parse peer certificate: %w", err)
+					}
+
+					// Verify the leaf certificate against the global pinned pool
+					// and check the hostname in a single call. The pool is
+					// updated atomically by the watcher callback on cert rotation.
+					_, err = peerCert.Verify(x509.VerifyOptions{
+						Roots:   grpcTLSCertPool.Load(),
+						DNSName: host,
+					})
+					if err != nil {
+						return fmt.Errorf("peer certificate verification failed: %w", err)
+					}
+					return nil
+				},
+			}
+			creds = credentials.NewTLS(&tlsConf)
+		}
 		dialOpts = append(dialOpts, grpc.WithTransportCredentials(creds))
 	} else {
 		dialOpts = append(dialOpts, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	}
 
-	conn, err := grpc.NewClient(config.GRPC.Addr, dialOpts...)
+	if config.Trace.Enabled {
+		dialOpts = append(dialOpts, grpc.WithStatsHandler(otelgrpc.NewClientHandler()))
+	}
+
+	conn, err := grpc.NewClient(addr, dialOpts...)
 	if err != nil {
 		s.Logger.Fatal("failed to create gRPC client connection", zap.Error(err))
 	}
@@ -704,22 +749,33 @@ func (s *ServerContext) dialGrpc(config *serverconfig.Config) *grpc.ClientConn {
 }
 
 func (s *ServerContext) runHTTPServer(ctx context.Context, config *serverconfig.Config, grpcConn *grpc.ClientConn) (*http.Server, error) {
-	muxOpts := []runtime.ServeMuxOption{
-		runtime.WithForwardResponseOption(httpmiddleware.HTTPResponseModifier),
-		runtime.WithErrorHandler(func(c context.Context, sr *runtime.ServeMux, mm runtime.Marshaler, w http.ResponseWriter, r *http.Request, e error) {
+	muxOpts := []grpc_runtime.ServeMuxOption{
+		grpc_runtime.WithForwardResponseOption(httpmiddleware.HTTPResponseModifier),
+		grpc_runtime.WithErrorHandler(func(c context.Context, sr *grpc_runtime.ServeMux, mm grpc_runtime.Marshaler, w http.ResponseWriter, r *http.Request, e error) {
 			intCode := serverErrors.ConvertToEncodedErrorCode(status.Convert(e))
 			httpmiddleware.CustomHTTPErrorHandler(c, w, r, serverErrors.NewEncodedError(intCode, e.Error()))
 		}),
-		runtime.WithStreamErrorHandler(func(ctx context.Context, e error) *status.Status {
+		grpc_runtime.WithStreamErrorHandler(func(ctx context.Context, e error) *status.Status {
 			intCode := serverErrors.ConvertToEncodedErrorCode(status.Convert(e))
 			encodedErr := serverErrors.NewEncodedError(intCode, e.Error())
 			return status.Convert(encodedErr)
 		}),
-		runtime.WithHealthzEndpoint(healthv1pb.NewHealthClient(grpcConn)),
-		runtime.WithOutgoingHeaderMatcher(func(s string) (string, bool) { return s, true }),
+		grpc_runtime.WithHealthzEndpoint(healthv1pb.NewHealthClient(grpcConn)),
+		grpc_runtime.WithOutgoingHeaderMatcher(func(s string) (string, bool) { return s, true }),
+		grpc_runtime.WithIncomingHeaderMatcher(func(key string) (string, bool) {
+			// Forward Openfga-Authorization-Model-Id header to gRPC metadata for AuthZEN endpoints.
+			if strings.EqualFold(key, server.AuthorizationModelIDHeader) {
+				return strings.ToLower(key), true
+			}
+			// Use default behavior for other headers
+			return grpc_runtime.DefaultHeaderMatcher(key)
+		}),
 	}
-	mux := runtime.NewServeMux(muxOpts...)
+	mux := grpc_runtime.NewServeMux(muxOpts...)
 	if err := openfgav1.RegisterOpenFGAServiceHandler(ctx, mux, grpcConn); err != nil {
+		return nil, err
+	}
+	if err := authzenv1.RegisterAuthZenServiceHandler(ctx, mux, grpcConn); err != nil {
 		return nil, err
 	}
 	handler := http.Handler(mux)
@@ -781,12 +837,13 @@ func (s *ServerContext) runPlaygroundServer(config *serverconfig.Config) (*http.
 	}
 
 	authMethod := config.Authn.Method
-	if authMethod != "none" && authMethod != "preshared" {
-		return nil, errors.New("the playground only supports authn methods 'none' and 'preshared'")
+	if authMethod != "none" {
+		return nil, errors.New("the playground only supports authn method 'none'")
 	}
 
-	playgroundAddr := fmt.Sprintf(":%d", config.Playground.Port)
-	s.Logger.Info(fmt.Sprintf("🛝 starting openfga playground on http://localhost%s/playground", playgroundAddr))
+	playgroundAddr := config.Playground.PlaygroundAddr()
+	s.Logger.Info(fmt.Sprintf("🛝 starting openfga playground on http://%s/playground", playgroundAddr))
+	s.Logger.Warn("⚠️ Please note that the built-in Playground is deprecated and will be removed in a future release")
 
 	tmpl, err := template.ParseFS(assets.EmbedPlayground, "playground/index.html")
 	if err != nil {
@@ -853,13 +910,67 @@ func (s *ServerContext) runPlaygroundServer(config *serverconfig.Config) (*http.
 	return playground, nil
 }
 
+func (s *ServerContext) createUDS(cleanups *list.List) (net.Listener, error) {
+	// Path for Unix domain socket listener for the internal HTTP-to-gRPC proxy.
+	udsDir, err := os.MkdirTemp("", fmt.Sprintf("openfga-%d-*", os.Getpid()))
+	if err != nil {
+		return nil, err
+	}
+
+	cleanups.PushBack(cleanupFromPlainFunc(func() {
+		// This will be a noop if the directory has already been cleaned up.
+		if err := os.RemoveAll(udsDir); err != nil && !os.IsNotExist(err) {
+			s.Logger.Warn("failed to remove unix socket file", zap.Error(err))
+		}
+	}, "unix socket directory"))
+
+	udsPath := filepath.Join(udsDir, "grpc.sock")
+
+	udsListener, err := net.Listen(unix, udsPath)
+	if err != nil {
+		// Early deletion of the directory so that it does not live for the lifetime
+		// of the server unnecessarily.
+		_ = os.RemoveAll(udsDir)
+		return nil, err
+	}
+
+	wrappedListener := &addrOverrideListener{
+		Listener: udsListener,
+		addr:     &net.UnixAddr{Name: udsPath, Net: unix},
+	}
+	return wrappedListener, nil
+}
+
 // Run returns an error if the server was unable to start successfully.
 // If it started and terminated successfully, it returns a nil error.
 func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) error {
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, os.Kill, syscall.SIGTERM)
 	defer stop()
 
+	cleanups := list.New()
+	defer func() {
+		s.Logger.Info("attempting to shutdown gracefully...")
+
+		ctx, cancel := context.WithTimeout(context.Background(), config.ShutdownTimeout)
+		defer cancel()
+
+		for el := cleanups.Front(); el != nil; el = el.Next() {
+			clean, ok := el.Value.(cleanup)
+			if !ok {
+				s.Logger.Info("cleanup type casting failed during graceful shutdown", zap.Any("value", el.Value))
+				continue
+			}
+
+			if err := clean(ctx); err != nil {
+				s.Logger.Info("resource cleanup failed during graceful shutdown", zap.Error(err))
+			}
+		}
+
+		s.Logger.Info("graceful shutdown completed successfully")
+	}()
+
 	tracerProviderCloser := s.telemetryConfig(config)
+	cleanups.PushFront(cleanupWithMessage(tracerProviderCloser, "tracing"))
 
 	// Added temporarily to allow us to enable experimental features by default without allowing the user to disable them,
 	// eg for pipeline_list_objects.
@@ -867,6 +978,10 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 
 	if len(config.Experimentals) > 0 {
 		s.Logger.Info(fmt.Sprintf("🧪 experimental features enabled: %v", config.Experimentals))
+	}
+
+	if slices.Contains(config.Experimentals, serverconfig.ExperimentalAuthZen) && config.Authzen.BaseURL == "" {
+		s.Logger.Warn("AuthZEN experimental is enabled but 'authzen.baseURL' is not configured. The discovery endpoint (/.well-known/authzen-configuration/{store_id}) will not work. Set --authzen-base-url or OPENFGA_AUTHZEN_BASE_URL to fix this.")
 	}
 
 	datastore, continuationTokenSerializer, err := s.datastoreConfig(config)
@@ -878,6 +993,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	if err != nil {
 		return err
 	}
+	cleanups.PushFront(cleanupFromPlainFunc(authenticator.Close, "authenticator"))
 
 	serverOpts, prometheusMetrics, err := s.buildServerOpts(ctx, config, authenticator)
 	if prometheusMetrics != nil {
@@ -908,6 +1024,8 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 			}
 			s.Logger.Info("profiler shut down.")
 		}()
+
+		cleanups.PushFront(cleanupWithMessage(profilerServer.Shutdown, "profiler"))
 	}
 
 	var metricsServer *http.Server
@@ -926,10 +1044,13 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 			}
 			s.Logger.Info("metrics server shut down.")
 		}()
+
+		cleanups.PushFront(cleanupWithMessage(metricsServer.Shutdown, "prometheus metrics server"))
 	}
 
 	svr := server.MustNewServerWithOpts(
 		server.WithDatastore(datastore),
+		server.WithAuthzenBaseURL(config.Authzen.BaseURL),
 		server.WithContinuationTokenSerializer(continuationTokenSerializer),
 		server.WithAuthorizationModelCacheSize(config.Datastore.MaxCacheSize),
 		server.WithTypesystemCacheSize(config.Datastore.MaxTypesystemCacheSize),
@@ -977,6 +1098,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		server.WithListObjectsIteratorCacheEnabled(config.ListObjectsIteratorCache.Enabled),
 		server.WithListObjectsIteratorCacheMaxResults(config.ListObjectsIteratorCache.MaxResults),
 		server.WithListObjectsIteratorCacheTTL(config.ListObjectsIteratorCache.TTL),
+		server.WithCacheTTLJitterPercentage(config.CacheTTLJitterPercentage),
 		server.WithMaxChecksPerBatchCheck(config.MaxChecksPerBatchCheck),
 		server.WithMaxConcurrentChecksPerBatchCheck(config.MaxConcurrentChecksPerBatchCheck),
 		server.WithSharedIteratorEnabled(config.SharedIterator.Enabled),
@@ -993,23 +1115,27 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		server.WithContext(ctx),
 	)
 
+	cleanups.PushFront(cleanupFromPlainFunc(svr.Close, "server"))
+
 	s.Logger.Info(
 		"starting openfga service...",
 		zap.String("version", build.Version),
 		zap.String("date", build.Date),
 		zap.String("commit", build.Commit),
-		zap.String("go-version", goruntime.Version()),
+		zap.String("go-version", runtime.Version()),
 		zap.Any("config", config),
 	)
 
 	// nosemgrep: grpc-server-insecure-connection
 	grpcServer := grpc.NewServer(serverOpts...)
 	openfgav1.RegisterOpenFGAServiceServer(grpcServer, svr)
+	authzenv1.RegisterAuthZenServiceServer(grpcServer, svr)
 	healthServer := &health.Checker{TargetService: svr, TargetServiceName: openfgav1.OpenFGAService_ServiceDesc.ServiceName}
 	healthv1pb.RegisterHealthServer(grpcServer, healthServer)
 	reflection.Register(grpcServer)
+	cleanups.PushFront(cleanupGrpcServer(grpcServer))
 
-	lis, err := net.Listen("tcp", config.GRPC.Addr)
+	lis, err := net.Listen(tcp, config.GRPC.Addr)
 	if err != nil {
 		return fmt.Errorf("failed to listen: %w", err)
 	}
@@ -1026,15 +1152,47 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 
 	var httpServer *http.Server
 	if config.HTTP.Enabled {
-		runtime.DefaultContextTimeout = serverconfig.DefaultContextTimeout(config)
+		network, address := tcp, config.GRPC.Addr
 
-		grpcConn := s.dialGrpc(config)
-		defer grpcConn.Close()
+		if runtime.GOOS != windows {
+			listener, err := s.createUDS(cleanups)
+			if err != nil {
+				s.Logger.Warn("http server failed to establish unix socket to grpc server, falling back to tcp", zap.Error(err))
+				goto DIAL_SERVER
+			}
+
+			go func() {
+				// Serving the same gRPC server on a second listener (UDS) in addition to
+				// the TCP listener is intentional: the HTTP gateway's internal client uses
+				// UDS while external gRPC clients continue to use TCP.
+				if err := grpcServer.Serve(listener); err != nil {
+					if !errors.Is(err, grpc.ErrServerStopped) {
+						s.Logger.Fatal("failed to start internal gRPC server on unix socket", zap.Error(err))
+					}
+				}
+			}()
+
+			udsAddr := listener.Addr()
+			network = udsAddr.Network()
+			address = udsAddr.String()
+		}
+
+	DIAL_SERVER:
+
+		grpc_runtime.DefaultContextTimeout = serverconfig.DefaultContextTimeout(config)
+
+		grpcConn := s.dialLocalGrpc(network, address, config)
+
+		cleanups.PushFront(cleanupFromPlainFunc(func() {
+			_ = grpcConn.Close()
+		}, "internal grpc client connection"))
 
 		httpServer, err = s.runHTTPServer(ctx, config, grpcConn)
 		if err != nil {
 			return err
 		}
+
+		cleanups.PushFront(cleanupWithMessage(httpServer.Shutdown, "http server"))
 	}
 
 	var playground *http.Server
@@ -1043,52 +1201,43 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		if err != nil {
 			return err
 		}
+
+		cleanups.PushFront(cleanupWithMessage(playground.Shutdown, "playground"))
 	}
 
-	// wait for cancellation signal
+	// Wait for cancellation signal.
+	// After this, deferred functions handle resource cleanup.
 	<-ctx.Done()
-	s.Logger.Info("attempting to shutdown gracefully...")
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	if playground != nil {
-		if err := playground.Shutdown(ctx); err != nil {
-			s.Logger.Info("failed to shutdown the playground", zap.Error(err))
-		}
-	}
-
-	if httpServer != nil {
-		if err := httpServer.Shutdown(ctx); err != nil {
-			s.Logger.Info("failed to shutdown the http server", zap.Error(err))
-		}
-	}
-
-	if profilerServer != nil {
-		if err := profilerServer.Shutdown(ctx); err != nil {
-			s.Logger.Info("failed to shutdown the profiler", zap.Error(err))
-		}
-	}
-
-	if metricsServer != nil {
-		if err := metricsServer.Shutdown(ctx); err != nil {
-			s.Logger.Info("failed to shutdown the prometheus metrics server", zap.Error(err))
-		}
-	}
-
-	grpcServer.GracefulStop()
-
-	svr.Close()
-
-	authenticator.Close()
-
-	if err := tracerProviderCloser(); err != nil {
-		s.Logger.Error("failed to shutdown tracing", zap.Error(err))
-	}
-
-	s.Logger.Info("server exited. goodbye 👋")
 
 	return nil
+}
+
+// addrOverrideConn wraps a net.Conn to return a fixed remote address.
+// This is used for UDS connections where RemoteAddr() would otherwise be empty.
+type addrOverrideConn struct {
+	net.Conn
+	addr net.Addr
+}
+
+func (c *addrOverrideConn) RemoteAddr() net.Addr { return c.addr }
+
+// addrOverrideListener wraps a net.Listener so that accepted connections
+// report the given address as their RemoteAddr.
+type addrOverrideListener struct {
+	net.Listener
+	addr net.Addr
+}
+
+func (l *addrOverrideListener) Addr() net.Addr {
+	return l.addr
+}
+
+func (l *addrOverrideListener) Accept() (net.Conn, error) {
+	conn, err := l.Listener.Accept()
+	if err != nil {
+		return nil, err
+	}
+	return &addrOverrideConn{Conn: conn, addr: l.addr}, nil
 }
 
 func watchAndLoadCertificateWithCertWatcher(ctx context.Context, certPath, keyPath string, logger logger.Logger, callback func(tls.Certificate)) (func(*tls.ClientHelloInfo) (*tls.Certificate, error), error) {
