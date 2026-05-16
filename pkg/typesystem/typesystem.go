@@ -1385,6 +1385,9 @@ func (t *TypeSystem) validateTypeRestrictions(objectType string, relationName st
 		if related.GetRelationOrWildcard() != nil {
 			// The type of the relation cannot contain a userset or wildcard if the relation is a tupleset relation.
 			if ok, _ := t.IsTuplesetRelation(objectType, relationName); ok {
+				if relatedRelation != "" {
+					return InvalidTuplesetRelationTypeRestrictionError(objectType, relationName, relatedObjectType, relatedRelation)
+				}
 				return InvalidRelationTypeError(objectType, relationName, relatedObjectType, relatedRelation)
 			}
 
