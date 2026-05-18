@@ -108,11 +108,11 @@ func (r *Resolver) ResolveCheck(ctx context.Context, req *Request) (*Response, e
 	))
 	defer span.End()
 
-	defer func() {
+	defer func(ctx context.Context) {
 		if err := ctx.Err(); err != nil {
 			span.RecordError(err)
 		}
-	}()
+	}(ctx)
 
 	node, ok := r.model.GetNodeByID(tuple.ToObjectRelationString(req.GetObjectType(), req.GetTupleKey().GetRelation()))
 	if !ok {
@@ -205,11 +205,11 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, edges []
 	))
 	defer span.End()
 
-	defer func() {
+	defer func(ctx context.Context) {
 		if err := ctx.Err(); err != nil {
 			span.RecordError(err)
 		}
-	}()
+	}(ctx)
 
 	ctx, cancel := context.WithCancel(ctx)
 
@@ -320,11 +320,11 @@ func (r *Resolver) ResolveUnion(ctx context.Context, req *Request, node *authzGr
 	))
 	defer span.End()
 
-	defer func() {
+	defer func(ctx context.Context) {
 		if err := ctx.Err(); err != nil {
 			span.RecordError(err)
 		}
-	}()
+	}(ctx)
 
 	emptyCycle := visited == nil
 	if emptyCycle && node.GetNodeType() == authzGraph.SpecificTypeAndRelation && (node.GetRecursiveRelation() == node.GetUniqueLabel() || node.IsPartOfTupleCycle()) {
@@ -505,11 +505,11 @@ func (r *Resolver) ResolveRecursive(ctx context.Context, req *Request, edge *aut
 	))
 	defer span.End()
 
-	defer func() {
+	defer func(ctx context.Context) {
 		if err := ctx.Err(); err != nil {
 			span.RecordError(err)
 		}
-	}()
+	}(ctx)
 
 	nonRecursiveEdges, err := r.model.FlattenNode(edge.GetTo(), req.GetUserType(), req.IsTypedWildcard(), true)
 	if err != nil {
@@ -763,11 +763,11 @@ func (r *Resolver) ResolveEdge(ctx context.Context, req *Request, edge *authzGra
 	))
 	defer span.End()
 
-	defer func() {
+	defer func(ctx context.Context) {
 		if err := ctx.Err(); err != nil {
 			span.RecordError(err)
 		}
-	}()
+	}(ctx)
 
 	var visitedObjects *sync.Map
 	if edge.IsPartOfTupleCycle() || edge.GetRecursiveRelation() != "" {
