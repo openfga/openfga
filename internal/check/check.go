@@ -501,7 +501,7 @@ func (r *Resolver) ResolveRecursive(ctx context.Context, req *Request, edge *aut
 		attribute.String("edge.from", edge.GetFrom().GetUniqueLabel()),
 		attribute.String("tuple_key", req.GetTupleString()),
 		attribute.Bool("allowed", false),
-		attribute.Bool("canApplyOptimization", canApplyOptimization),
+		attribute.Bool("can_apply_optimization", canApplyOptimization),
 	))
 	defer span.End()
 
