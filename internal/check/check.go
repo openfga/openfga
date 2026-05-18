@@ -305,6 +305,7 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, edges []
 
 	if err != nil {
 		// we only return error in a union when all edges are exhausted and there is at least one edge with error
+		span.SetStatus(codes.Error, err.Error())
 		return nil, err
 	}
 
