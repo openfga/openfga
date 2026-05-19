@@ -2680,9 +2680,13 @@ func TestV2CheckWithIteratorCache_HigherConsistencyBypassesCache(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, checkResponse.GetAllowed())
 
-	require.Eventually(t, func() bool {
-		return len(cache.KeysWithPrefix("v2ic.")) > 0
-	}, 2*time.Second, 10*time.Millisecond, "default consistency should populate iterator cache")
+	// Wait for all background drain goroutines to complete before measuring cache state.
+	// The WaitGroup tracks every CachingIterator drain goroutine; cache.Set() is called
+	// before wg.Done() (LIFO defer ordering in drainInBackground), so when Wait() returns
+	// all cache entries from the default-consistency check are guaranteed to be written.
+	s.sharedDatastoreResources.WaitGroup.Wait()
+	require.NotEmpty(t, cache.KeysWithPrefix("v2ic."),
+		"default consistency should populate iterator cache")
 
 	// Record cache key count before HIGHER_CONSISTENCY checks.
 	keysCountBefore := len(cache.KeysWithPrefix("v2ic."))
