@@ -246,7 +246,7 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, edges []
 
 			if res.GetAllowed() {
 				expectedMessages -= len(evaluations)
-				clear(evaluations)
+				evaluations = nil
 				break
 			}
 
