@@ -68,16 +68,8 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		res, metadata, err := s.v2Check(ctx, req, s.sharedDatastoreResources.CheckCache, s.sharedDatastoreResources.CacheController, s.authzModelGraphResolver)
 
 		// v2Check can return errors that v1 Check wouldn't (e.g. ErrInvalidModel when the weighted graph
-		// can't represent the model). Fallback to v1 on non-context errors for backward compatibility.
-		// Context errors appear in two forms: raw (context.Canceled/DeadlineExceeded, from the model
-		// graph resolver hitting a cancelled datastore call) or server-mapped (ErrRequestCancelled/
-		// ErrRequestDeadlineExceeded, from CheckCommandErrorToServerError on the execute path).
-		// ErrThrottledTimeout is also not v2-specific (v1 handles it too), so don't fall back on it.
-		if err == nil ||
-			errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) ||
-			errors.Is(err, serverErrors.ErrRequestDeadlineExceeded) || errors.Is(err, serverErrors.ErrRequestCancelled) ||
-			errors.Is(err, serverErrors.ErrThrottledTimeout) {
-
+		// can't represent the model). Fallback to v1 on non-timeout errors for backward compatibility.
+		if err == nil || isV2TerminalError(err) {
 			tookMs := time.Since(startTime).Milliseconds()
 			queryCount := float64(metadata.DatastoreQueryCount)
 			itemCount := float64(metadata.DatastoreItemCount)
@@ -394,6 +386,17 @@ func (s *Server) v2Check(
 	}
 
 	return res, metadata, nil
+}
+
+// isV2TerminalError reports whether err should be returned directly from the v2Check path
+// rather than falling back to v1. Context errors appear in two forms: raw
+// (context.Canceled/DeadlineExceeded, from the model graph resolver) or server-mapped
+// (ErrRequestCancelled/ErrRequestDeadlineExceeded, from the execute path).
+// ErrThrottledTimeout is also included since it is not v2-specific.
+func isV2TerminalError(err error) bool {
+	return errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) ||
+		errors.Is(err, serverErrors.ErrRequestDeadlineExceeded) || errors.Is(err, serverErrors.ErrRequestCancelled) ||
+		errors.Is(err, serverErrors.ErrThrottledTimeout)
 }
 
 func (s *Server) getCheckResolverBuilder(storeID string) *graph.CheckResolverOrderedBuilder {
