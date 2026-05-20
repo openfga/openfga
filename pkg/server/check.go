@@ -128,11 +128,11 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 			zap.String("model_id", req.GetAuthorizationModelId()),
 			zap.String("request_id", requestID),
 		)
+
+		startTime = time.Now() // reset startTime to avoid counting v2Check duration in case of fallback when it's enabled
 	}
 
 	// v1 Check
-
-	startTime = time.Now() // reset startTime to avoid counting v2Check duration in case of fallback when it's enabled
 
 	checkResolver, checkResolverCloser, err := s.getCheckResolverBuilder(storeID).Build()
 	if err != nil {
