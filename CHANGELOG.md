@@ -8,7 +8,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 ### Changed
-- Adds `cancel-in-progress` to workflow steps triggered in the pull-request action to reduce wasted effort. [#3140](https://github.com/openfga/openfga/pull/3140)
+- Added workflow-level `concurrency.group` and `cancel-in-progress` for PR-related workflow runs to reduce wasted effort. [#3140](https://github.com/openfga/openfga/pull/3140)
 
 ## [1.16.0] - 2026-05-20
 ### Added
