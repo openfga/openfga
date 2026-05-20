@@ -31,7 +31,7 @@ func BuildCacheKey(vals ...string) string {
 		builder.WriteString(val)
 	}
 
-	return builder.Build()
+	return builder.String()
 }
 
 // MustNewStruct returns a new *structpb.Struct or panics
@@ -1335,7 +1335,7 @@ func TestCacheKeyCollisionPrevention(t *testing.T) {
 		var builder2 CacheKeyBuilder
 		GetReadUsersetTuplesCacheKeyPrefix(&builder2, store, "doc:1#viewer/group", "member")
 
-		require.NotEqual(t, builder1.Build(), builder2.Build())
+		require.NotEqual(t, builder1.String(), builder2.String())
 	})
 
 	t.Run("InvalidIteratorByObjectRelation_delimiter_in_object", func(t *testing.T) {
@@ -1357,7 +1357,7 @@ func TestCacheKeyCollisionPrevention(t *testing.T) {
 		var builder2 CacheKeyBuilder
 		GetReadCacheKey(&builder2, store, "doc:1#viewer@user:alice/extra")
 
-		require.NotEqual(t, builder1.Build(), builder2.Build())
+		require.NotEqual(t, builder1.String(), builder2.String())
 	})
 
 	t.Run("ReadStartingWithUser_delimiter_in_objectType", func(t *testing.T) {
@@ -1367,6 +1367,6 @@ func TestCacheKeyCollisionPrevention(t *testing.T) {
 		var builder2 CacheKeyBuilder
 		GetReadStartingWithUserCacheKeyPrefix(&builder2, store, "doc#viewer", "")
 
-		require.NotEqual(t, builder1.Build(), builder2.Build())
+		require.NotEqual(t, builder1.String(), builder2.String())
 	})
 }

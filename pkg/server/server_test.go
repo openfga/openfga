@@ -65,7 +65,7 @@ func init() {
 
 	var builder storage.CacheKeyBuilder
 	builder.WriteString(storagewrappers.V2IteratorCachePrefix)
-	testCachePrefix = builder.Build()
+	testCachePrefix = builder.String()
 }
 
 func ExampleNewServerWithOpts() {

@@ -312,7 +312,7 @@ func buildReadUsersetTuplesCacheKey(storeID string, filter storage.ReadUsersetTu
 	builder.Write(restrictions)
 	builder.Write(conditions)
 
-	return builder.Build()
+	return builder.String()
 }
 
 // buildReadCacheKey builds a cache key for Read.
@@ -330,7 +330,7 @@ func buildReadCacheKey(storeID string, filter storage.ReadFilter) string {
 	builder.WriteString(filter.User)
 	builder.Write(conditions)
 
-	return builder.Build()
+	return builder.String()
 }
 
 // buildReadStartingWithUserCacheKey builds a cache key for ReadStartingWithUser.
@@ -349,7 +349,7 @@ func buildReadStartingWithUserCacheKey(storeID string, filter storage.ReadStarti
 	builder.Write(users)
 	builder.Write(conditions)
 
-	return builder.Build()
+	return builder.String()
 }
 
 // buildUserFilterString creates a deterministic string from user filters.

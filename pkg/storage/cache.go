@@ -43,9 +43,9 @@ var (
 
 const (
 	SubproblemCachePrefix      = "sp."
-	iteratorCachePrefix        = "ic."
-	changelogCachePrefix       = "cc."
-	invalidIteratorCachePrefix = "iq."
+	IteratorCachePrefix        = "ic."
+	ChangelogCachePrefix       = "cc."
+	InvalidIteratorCachePrefix = "iq."
 	defaultMaxCacheSize        = 10000
 	oneYear                    = time.Hour * 24 * 365
 
@@ -211,7 +211,7 @@ func (c *ChangelogCacheEntry) CacheEntityType() string {
 }
 
 func GetChangelogCacheKey(storeID string) string {
-	return changelogCachePrefix + storeID
+	return ChangelogCachePrefix + storeID
 }
 
 type InvalidEntityCacheEntry struct {
@@ -223,20 +223,20 @@ func (i *InvalidEntityCacheEntry) CacheEntityType() string {
 }
 
 func GetInvalidIteratorCacheKey(storeID string) string {
-	return invalidIteratorCachePrefix + storeID
+	return InvalidIteratorCachePrefix + storeID
 }
 
 func GetInvalidIteratorByObjectRelationCacheKey(storeID, object, relation string) string {
 	var builder CacheKeyBuilder
 	builder.Grow(5) // grown by the number of elements to be written to the builder
 
-	builder.WriteString(invalidIteratorCachePrefix)
+	builder.WriteString(InvalidIteratorCachePrefix)
 	builder.WriteString("or")
 	builder.WriteString(storeID)
 	builder.WriteString(object)
 	builder.WriteString(relation)
 
-	return builder.Build()
+	return builder.String()
 }
 
 func GetInvalidIteratorByUserObjectTypeCacheKeys(storeID string, users []string, objectType string) []string {
@@ -246,13 +246,13 @@ func GetInvalidIteratorByUserObjectTypeCacheKeys(storeID string, users []string,
 		var builder CacheKeyBuilder
 		builder.Grow(5) // grown by the number of elements to be written to the builder
 
-		builder.WriteString(invalidIteratorCachePrefix)
+		builder.WriteString(InvalidIteratorCachePrefix)
 		builder.WriteString("otr")
 		builder.WriteString(storeID)
 		builder.WriteString(user)
 		builder.WriteString(objectType)
 
-		result[i] = builder.Build()
+		result[i] = builder.String()
 	}
 	return result
 }
@@ -269,7 +269,7 @@ func (t *TupleIteratorCacheEntry) CacheEntityType() string {
 func GetReadUsersetTuplesCacheKeyPrefix(builder *CacheKeyBuilder, store, object, relation string) {
 	builder.Grow(5) // grown by the number of elements to be written to the builder
 
-	builder.WriteString(iteratorCachePrefix)
+	builder.WriteString(IteratorCachePrefix)
 	builder.WriteString("rut")
 	builder.WriteString(store)
 	builder.WriteString(object)
@@ -279,7 +279,7 @@ func GetReadUsersetTuplesCacheKeyPrefix(builder *CacheKeyBuilder, store, object,
 func GetReadStartingWithUserCacheKeyPrefix(builder *CacheKeyBuilder, store, objectType, relation string) {
 	builder.Grow(5) // grown by the number of elements to be written to the builder
 
-	builder.WriteString(iteratorCachePrefix)
+	builder.WriteString(IteratorCachePrefix)
 	builder.WriteString("rtwu")
 	builder.WriteString(store)
 	builder.WriteString(objectType)
@@ -289,7 +289,7 @@ func GetReadStartingWithUserCacheKeyPrefix(builder *CacheKeyBuilder, store, obje
 func GetReadCacheKey(builder *CacheKeyBuilder, store, tuple string) {
 	builder.Grow(4) // grown by the number of elements to be written to the builder
 
-	builder.WriteString(iteratorCachePrefix)
+	builder.WriteString(IteratorCachePrefix)
 	builder.WriteString("r")
 	builder.WriteString(store)
 	builder.WriteString(tuple)
@@ -601,11 +601,11 @@ func (b *CacheKeyBuilder) WriteString(val string) (int, error) {
 	return b.Write(unsafe.Slice(unsafe.StringData(val), len(val)))
 }
 
-// Build hex-encodes each written value and separates them with '|'.
+// String hex-encodes each written value and separates them with '|'.
 // The output alphabet is [0-9A-F|], which makes it injection-proof: no crafted
 // input can produce a '|', so segments can never collide across boundaries.
 // Tradeoff: keys are 2x larger than raw concatenation, increasing cache memory usage.
-func (b *CacheKeyBuilder) Build() string {
+func (b *CacheKeyBuilder) String() string {
 	var count int
 	for _, buf := range b.buf {
 		count += len(buf)*2 + 1

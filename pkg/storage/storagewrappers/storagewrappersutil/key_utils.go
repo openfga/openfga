@@ -47,7 +47,7 @@ func ReadStartingWithUserKey(
 		builder.Write(hasher.Sum([]byte{}))
 	}
 
-	return builder.Build(), nil
+	return builder.String(), nil
 }
 
 func ReadUsersetTuplesKey(store string, filter storage.ReadUsersetTuplesFilter) string {
@@ -58,11 +58,11 @@ func ReadUsersetTuplesKey(store string, filter storage.ReadUsersetTuplesFilter) 
 
 	builder.Write(filterKey)
 
-	return builder.Build()
+	return builder.String()
 }
 
 func ReadKey(store string, tupleKey *openfgav1.TupleKey) string {
 	var builder storage.CacheKeyBuilder
 	storage.GetReadCacheKey(&builder, store, tuple.TupleKeyToString(tupleKey))
-	return builder.Build()
+	return builder.String()
 }
