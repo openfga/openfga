@@ -34,6 +34,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Fixed OIDC authentication rejecting valid tokens after issuer key rotation by enabling JWKS refresh on unknown `kid` (rate-limited to once per minute). [#3101](https://github.com/openfga/openfga/pull/3101)
 
 ## [1.15.0] - 2026-04-27
+
 ### Changed
 - Implemented edge pruning in the list objects pipeline algorithm. This introduces a measurable improvement to request latency for larger, more complex authorization models. [#3075](https://github.com/openfga/openfga/pull/3075)
 
