@@ -105,6 +105,9 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 
 			if err != nil {
 				telemetry.TraceError(span, err)
+				if _, ok := status.FromError(err); !ok {
+					err = commands.CheckCommandErrorToServerError(err)
+				}
 				return nil, err
 			}
 
