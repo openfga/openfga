@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/oklog/ulid/v2"
@@ -16,12 +15,23 @@ import (
 
 	"github.com/openfga/openfga/internal/telemetry"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/storage/cache/keys"
 )
 
 var tracer = otel.Tracer("internal/modelgraph")
 
-const CacheKeyPrefix = "wg|"
-const DELIMITER = "|"
+const CacheKeyPrefix = "WG"
+
+// CacheKey returns the cache key for a resolved weighted authorization model graph.
+func CacheKey(storeID, modelID string) keys.Key {
+	b := keys.GetBuilder()
+	defer b.Close()
+
+	b.EncodeString(CacheKeyPrefix)
+	b.EncodeString(storeID)
+	b.EncodeString(modelID)
+	return b.Key()
+}
 
 type AuthorizationModelGraphResolver struct {
 	datastore storage.AuthorizationModelReadBackend // these methods are already cached at a lower level
@@ -74,10 +84,7 @@ func (r *AuthorizationModelGraphResolver) Resolve(ctx context.Context, storeID, 
 		model = m
 		modelID = model.GetId()
 	}
-	var keyBuilder strings.Builder
-	keyBuilder.WriteString(CacheKeyPrefix)
-	keyBuilder.WriteString(modelID)
-	key := keyBuilder.String()
+	key := CacheKey(storeID, modelID)
 
 	if wg := r.cache.Get(key); wg != nil {
 		return wg.(*AuthorizationModelGraph), nil

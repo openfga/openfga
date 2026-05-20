@@ -5,8 +5,6 @@ import (
 	"errors"
 	"slices"
 	"sort"
-	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -26,11 +24,9 @@ import (
 	"github.com/openfga/openfga/internal/telemetry"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/storage/cache/keys"
 	"github.com/openfga/openfga/pkg/tuple"
 )
-
-const cacheKeyDelimiter byte = '|'
-const cacheKeyPrefix = "c."
 
 var tracer = otel.Tracer("internal/check")
 
@@ -158,7 +154,7 @@ func (r *Resolver) ResolveCheck(ctx context.Context, req *Request) (*Response, e
 	return res, nil
 }
 
-func (r *Resolver) isCached(consistency openfgav1.ConsistencyPreference, key string) (*Response, bool) {
+func (r *Resolver) isCached(consistency openfgav1.ConsistencyPreference, key keys.Key) (*Response, bool) {
 	if consistency == openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
 		return nil, false
 	}
@@ -176,25 +172,27 @@ func (r *Resolver) isCached(consistency openfgav1.ConsistencyPreference, key str
 	return res.Res, true
 }
 
-func buildEdgeCacheKey(modelID string, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge) string {
-	keyBuilder := &strings.Builder{}
-	keyBuilder.WriteString(cacheKeyPrefix)
-	keyBuilder.WriteString(modelID)
-	keyBuilder.WriteByte(cacheKeyDelimiter)
-	keyBuilder.WriteString(req.GetTupleKey().GetObject())
-	keyBuilder.WriteByte(cacheKeyDelimiter)
-	keyBuilder.WriteString(req.GetTupleKey().GetUser())
-	keyBuilder.WriteByte(cacheKeyDelimiter)
-	keyBuilder.WriteString(edge.GetRelationDefinition())
-	keyBuilder.WriteByte(cacheKeyDelimiter)
-	keyBuilder.WriteString(strconv.FormatInt(int64(edge.GetEdgeType()), 10))
-	keyBuilder.WriteByte(cacheKeyDelimiter)
-	keyBuilder.WriteString(edge.GetTo().GetUniqueLabel())
-	keyBuilder.WriteByte(cacheKeyDelimiter)
-	keyBuilder.WriteString(edge.GetTuplesetRelation())
-	keyBuilder.WriteByte(cacheKeyDelimiter)
-	keyBuilder.WriteString(req.GetInvariantCacheKey())
-	return keyBuilder.String()
+const PrefixEdgeCacheKey = "EDGE"
+
+// EdgeCacheKey builds a cache key that uniquely identifies a single edge
+// evaluation within a check resolution. It incorporates the invariant hash
+// so that requests with different contexts or contextual tuples never share
+// cached edge results.
+func EdgeCacheKey(req *Request, edge *authzGraph.WeightedAuthorizationModelEdge) keys.Key {
+	builder := keys.GetBuilder()
+	defer builder.Close()
+
+	builder.EncodeString(PrefixEdgeCacheKey)
+	builder.EncodeString(req.GetStoreID())
+	builder.EncodeString(req.GetAuthorizationModelID())
+	builder.EncodeString(req.GetTupleKey().GetObject())
+	builder.EncodeString(req.GetTupleKey().GetUser())
+	builder.EncodeString(edge.GetRelationDefinition())
+	builder.EncodeUint64(uint64(edge.GetEdgeType()))
+	builder.EncodeString(edge.GetTo().GetUniqueLabel())
+	builder.EncodeString(edge.GetTuplesetRelation())
+	builder.EncodeUint64(req.GetInvariantCacheKey())
+	return builder.Key()
 }
 
 func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, edges []*authzGraph.WeightedAuthorizationModelEdge, visited *sync.Map) (*Response, error) {
@@ -225,7 +223,7 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, edges []
 	}()
 
 	type pair struct {
-		id   string
+		id   keys.Key
 		edge *authzGraph.WeightedAuthorizationModelEdge
 	}
 
@@ -233,12 +231,18 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, edges []
 	evaluations := make([]pair, 0, len(edges))
 
 	for _, edge := range edges {
-		id := buildEdgeCacheKey(r.model.GetModelID(), req, edge)
+		id := EdgeCacheKey(req, edge)
+
 		expectedMessages++
 
 		if res, ok := r.isCached(req.GetConsistency(), id); ok {
 			span.AddEvent("cache_hit", trace.WithAttributes(
-				attribute.String("cache_key", id),
+				attribute.Int64("edge.type", int64(edge.GetEdgeType())),
+				attribute.String("edge.to", edge.GetTo().GetUniqueLabel()),
+				attribute.String("edge.from", edge.GetFrom().GetUniqueLabel()),
+				attribute.String("edge.relation_definition", edge.GetRelationDefinition()),
+				attribute.String("edge.recursive_relation", edge.GetRecursiveRelation()),
+				attribute.String("edge.tupleset_relation", edge.GetTuplesetRelation()),
 				attribute.Bool("allowed", res.GetAllowed()),
 			))
 
@@ -263,11 +267,6 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, edges []
 				entry := &ResponseCacheEntry{Res: res, LastModified: time.Now()}
 				r.cache.Set(evaluation.id, entry, r.cacheTTL)
 			}
-
-			span.AddEvent("edge_resolved", trace.WithAttributes(
-				attribute.String("cache_key", evaluation.id),
-				attribute.Bool("allowed", res.GetAllowed()),
-			))
 
 			if err != nil {
 				span.RecordError(err, trace.WithAttributes(
@@ -416,11 +415,15 @@ func (r *Resolver) resolveRecursiveUserset(ctx context.Context, req *Request, ed
 	planKey := createRecursiveUsersetPlanKey(req, edge.GetTo().GetUniqueLabel())
 	keyPlan := r.planner.GetPlanSelector(planKey)
 	strategy := keyPlan.Select(possibleStrategies)
+
 	span.SetAttributes(
-		attribute.String("plan_key", planKey),
+		attribute.Int64("edge.type", int64(edge.GetEdgeType())),
+		attribute.String("edge.to", edge.GetTo().GetUniqueLabel()),
+		attribute.String("edge.from", edge.GetFrom().GetUniqueLabel()),
 		attribute.String("strategy", strategy.Name),
 		attribute.Int("candidate_strategies", len(possibleStrategies)),
 	)
+
 	return r.executeStrategy(ctx, keyPlan, strategy, func() (*Response, error) {
 		return r.strategies[strategy.Name].Userset(ctx, req, edge, iter, visited)
 	})
@@ -485,11 +488,16 @@ func (r *Resolver) resolveRecursiveTTU(ctx context.Context, req *Request, edge *
 	planKey := createRecursiveTTUPlanKey(req, edge.GetRecursiveRelation())
 	keyPlan := r.planner.GetPlanSelector(planKey)
 	strategy := keyPlan.Select(possibleStrategies)
+
 	span.SetAttributes(
-		attribute.String("plan_key", planKey),
+		attribute.Int64("edge.type", int64(edge.GetEdgeType())),
+		attribute.String("edge.to", edge.GetTo().GetUniqueLabel()),
+		attribute.String("edge.from", edge.GetFrom().GetUniqueLabel()),
+		attribute.String("edge.recursive_relation", edge.GetRecursiveRelation()),
 		attribute.String("strategy", strategy.Name),
 		attribute.Int("candidate_strategies", len(possibleStrategies)),
 	)
+
 	return r.executeStrategy(ctx, keyPlan, strategy, func() (*Response, error) {
 		return r.strategies[strategy.Name].TTU(ctx, req, edge, iter, visited)
 	})
@@ -497,6 +505,7 @@ func (r *Resolver) resolveRecursiveTTU(ctx context.Context, req *Request, edge *
 
 func (r *Resolver) ResolveRecursive(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge, visited *sync.Map, canApplyOptimization bool) (*Response, error) {
 	ctx, span := tracer.Start(ctx, "ResolveRecursive", trace.WithAttributes(
+		attribute.Int64("edge.type", int64(edge.GetEdgeType())),
 		attribute.String("edge.to", edge.GetTo().GetUniqueLabel()),
 		attribute.String("edge.from", edge.GetFrom().GetUniqueLabel()),
 		attribute.String("tuple_key", req.GetTupleString()),
@@ -527,7 +536,7 @@ func (r *Resolver) ResolveRecursive(ctx context.Context, req *Request, edge *aut
 	}()
 
 	go func() {
-		cacheKey := buildEdgeCacheKey(r.model.GetModelID(), req, edge)
+		cacheKey := EdgeCacheKey(req, edge)
 
 		if res, ok := r.isCached(req.GetConsistency(), cacheKey); ok {
 			concurrency.TrySendThroughChannel(ctx, ResponseMsg{Res: res}, out)
@@ -1008,7 +1017,9 @@ func (r *Resolver) specificTypeAndRelation(ctx context.Context, req *Request, ed
 	keyPlan := r.planner.GetPlanSelector(usersetKey)
 	strategy := keyPlan.Select(possibleStrategies)
 	span.SetAttributes(
-		attribute.String("plan_key", usersetKey),
+		attribute.Int64("edge.type", int64(edge.GetEdgeType())),
+		attribute.String("edge.to", edge.GetTo().GetUniqueLabel()),
+		attribute.String("edge.from", edge.GetFrom().GetUniqueLabel()),
 		attribute.String("strategy", strategy.Name),
 		attribute.Int("candidate_strategies", len(possibleStrategies)),
 	)
@@ -1081,11 +1092,17 @@ func (r *Resolver) ttu(ctx context.Context, req *Request, edge *authzGraph.Weigh
 	planKey := createTTUPlanKey(req, tuplesetRelation, computedRelation)
 	keyPlan := r.planner.GetPlanSelector(planKey)
 	strategy := keyPlan.Select(possibleStrategies)
+
 	span.SetAttributes(
-		attribute.String("plan_key", planKey),
+		attribute.Int64("edge.type", int64(edge.GetEdgeType())),
+		attribute.String("edge.to", edge.GetTo().GetUniqueLabel()),
+		attribute.String("edge.from", edge.GetFrom().GetUniqueLabel()),
+		attribute.String("tupleset_relation", tuplesetRelation),
+		attribute.String("computed_relation", computedRelation),
 		attribute.String("strategy", strategy.Name),
 		attribute.Int("candidate_strategies", len(possibleStrategies)),
 	)
+
 	return r.executeStrategy(ctx, keyPlan, strategy, func() (*Response, error) {
 		return r.strategies[strategy.Name].TTU(ctx, req, edge, iter, visited)
 	})

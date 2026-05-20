@@ -16,6 +16,7 @@ import (
 
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/storage/cache/keys"
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
@@ -54,7 +55,7 @@ func TestCachedTupleReader_ReadUsersetTuples_CacheMiss(t *testing.T) {
 		{Key: tuple.NewTupleKey("document:1", "viewer", "user:alice")},
 	}
 
-	cacheKey := buildReadUsersetTuplesCacheKey(storeID, filter)
+	cacheKey := storage.ReadUsersetTuplesKey(storeID, filter)
 
 	// Cache miss
 	mockCache.EXPECT().Get(cacheKey).Return(nil).Times(1)
@@ -105,14 +106,14 @@ func TestCachedTupleReader_ReadUsersetTuples_CacheHit(t *testing.T) {
 		LastModified: time.Now(),
 	}
 
-	cacheKey := buildReadUsersetTuplesCacheKey(storeID, filter)
-	entityInvalidKey := storage.GetInvalidIteratorByObjectRelationCacheKey(storeID, "document:1", "viewer")
+	cacheKey := storage.ReadUsersetTuplesKey(storeID, filter)
+	entityInvalidKey := storage.InvalidIteratorByObjectRelationCacheKey(storeID, "document:1", "viewer")
 
 	// Cache hit
 	mockCache.EXPECT().Get(cacheKey).Return(cachedEntry).Times(1)
 
 	// Check invalidation keys
-	mockCache.EXPECT().Get(storage.GetInvalidIteratorCacheKey(storeID)).Return(nil).Times(1)
+	mockCache.EXPECT().Get(storage.InvalidIteratorCacheKey(storeID)).Return(nil).Times(1)
 	mockCache.EXPECT().Get(entityInvalidKey).Return(nil).Times(1)
 
 	// NO delegate call expected on cache hit
@@ -214,13 +215,13 @@ func TestCachedTupleReader_ReadUsersetTuples_StoreInvalidation(t *testing.T) {
 		{Key: tuple.NewTupleKey("document:1", "viewer", "user:alice")},
 	}
 
-	cacheKey := buildReadUsersetTuplesCacheKey(storeID, filter)
+	cacheKey := storage.ReadUsersetTuplesKey(storeID, filter)
 
 	// Cache hit
 	mockCache.EXPECT().Get(cacheKey).Return(cachedEntry).Times(1)
 
 	// Store invalidation check - returns invalidation entry that is newer
-	mockCache.EXPECT().Get(storage.GetInvalidIteratorCacheKey(storeID)).Return(invalidEntry).Times(1)
+	mockCache.EXPECT().Get(storage.InvalidIteratorCacheKey(storeID)).Return(invalidEntry).Times(1)
 
 	// Cache entry should be deleted
 	mockCache.EXPECT().Delete(cacheKey).Times(1)
@@ -274,14 +275,14 @@ func TestCachedTupleReader_ReadUsersetTuples_EntityInvalidation(t *testing.T) {
 		{Key: tuple.NewTupleKey("document:1", "viewer", "user:alice")},
 	}
 
-	cacheKey := buildReadUsersetTuplesCacheKey(storeID, filter)
-	entityInvalidKey := storage.GetInvalidIteratorByObjectRelationCacheKey(storeID, "document:1", "viewer")
+	cacheKey := storage.ReadUsersetTuplesKey(storeID, filter)
+	entityInvalidKey := storage.InvalidIteratorByObjectRelationCacheKey(storeID, "document:1", "viewer")
 
 	// Cache hit
 	mockCache.EXPECT().Get(cacheKey).Return(cachedEntry).Times(1)
 
 	// Store invalidation check - no store-level invalidation
-	mockCache.EXPECT().Get(storage.GetInvalidIteratorCacheKey(storeID)).Return(nil).Times(1)
+	mockCache.EXPECT().Get(storage.InvalidIteratorCacheKey(storeID)).Return(nil).Times(1)
 
 	// Entity invalidation check - entity was invalidated
 	mockCache.EXPECT().Get(entityInvalidKey).Return(invalidEntry).Times(1)
@@ -332,14 +333,14 @@ func TestCachedTupleReader_ReadUsersetTuples_InvalidationOlderThanCache(t *testi
 		LastModified: time.Now().Add(-time.Hour), // Invalidation is older than cache
 	}
 
-	cacheKey := buildReadUsersetTuplesCacheKey(storeID, filter)
-	entityInvalidKey := storage.GetInvalidIteratorByObjectRelationCacheKey(storeID, "document:1", "viewer")
+	cacheKey := storage.ReadUsersetTuplesKey(storeID, filter)
+	entityInvalidKey := storage.InvalidIteratorByObjectRelationCacheKey(storeID, "document:1", "viewer")
 
 	// Cache hit
 	mockCache.EXPECT().Get(cacheKey).Return(cachedEntry).Times(1)
 
 	// Store invalidation check - invalidation is older than cache
-	mockCache.EXPECT().Get(storage.GetInvalidIteratorCacheKey(storeID)).Return(invalidEntry).Times(1)
+	mockCache.EXPECT().Get(storage.InvalidIteratorCacheKey(storeID)).Return(invalidEntry).Times(1)
 
 	// Entity invalidation check
 	mockCache.EXPECT().Get(entityInvalidKey).Return(nil).Times(1)
@@ -379,7 +380,7 @@ func TestCachedTupleReader_ReadUsersetTuples_DelegateError(t *testing.T) {
 	opts := storage.ReadUsersetTuplesOptions{}
 
 	testErr := storage.ErrInvalidContinuationToken
-	cacheKey := buildReadUsersetTuplesCacheKey(storeID, filter)
+	cacheKey := storage.ReadUsersetTuplesKey(storeID, filter)
 
 	// Cache miss
 	mockCache.EXPECT().Get(cacheKey).Return(nil).Times(1)
@@ -424,7 +425,7 @@ func TestCachedTupleReader_Read_CacheMiss(t *testing.T) {
 		{Key: tuple.NewTupleKey("document:1", "parent", "folder:a")},
 	}
 
-	cacheKey := buildReadCacheKey(storeID, filter)
+	cacheKey := storage.ReadKey(storeID, filter)
 
 	// Cache miss
 	mockCache.EXPECT().Get(cacheKey).Return(nil).Times(1)
@@ -473,12 +474,12 @@ func TestCachedTupleReader_Read_CacheHit(t *testing.T) {
 		LastModified: time.Now(),
 	}
 
-	cacheKey := buildReadCacheKey(storeID, filter)
-	entityInvalidKey := storage.GetInvalidIteratorByObjectRelationCacheKey(storeID, "document:1", "parent")
+	cacheKey := storage.ReadKey(storeID, filter)
+	entityInvalidKey := storage.InvalidIteratorByObjectRelationCacheKey(storeID, "document:1", "parent")
 
 	// Cache hit
 	mockCache.EXPECT().Get(cacheKey).Return(cachedEntry).Times(1)
-	mockCache.EXPECT().Get(storage.GetInvalidIteratorCacheKey(storeID)).Return(nil).Times(1)
+	mockCache.EXPECT().Get(storage.InvalidIteratorCacheKey(storeID)).Return(nil).Times(1)
 	mockCache.EXPECT().Get(entityInvalidKey).Return(nil).Times(1)
 
 	iter, err := reader.Read(ctx, storeID, filter, opts)
@@ -575,14 +576,14 @@ func TestCachedTupleReader_Read_EntityInvalidation(t *testing.T) {
 		{Key: tuple.NewTupleKey("document:1", "parent", "folder:a")},
 	}
 
-	cacheKey := buildReadCacheKey(storeID, filter)
-	entityInvalidKey := storage.GetInvalidIteratorByObjectRelationCacheKey(storeID, "document:1", "parent")
+	cacheKey := storage.ReadKey(storeID, filter)
+	entityInvalidKey := storage.InvalidIteratorByObjectRelationCacheKey(storeID, "document:1", "parent")
 
 	// Cache hit
 	mockCache.EXPECT().Get(cacheKey).Return(cachedEntry).Times(1)
 
 	// Store invalidation check - no store-level invalidation
-	mockCache.EXPECT().Get(storage.GetInvalidIteratorCacheKey(storeID)).Return(nil).Times(1)
+	mockCache.EXPECT().Get(storage.InvalidIteratorCacheKey(storeID)).Return(nil).Times(1)
 
 	// Entity invalidation check - entity was invalidated
 	mockCache.EXPECT().Get(entityInvalidKey).Return(invalidEntry).Times(1)
@@ -635,7 +636,7 @@ func TestCachedTupleReader_ReadStartingWithUser_CacheMiss(t *testing.T) {
 		{Key: tuple.NewTupleKey("document:1", "viewer", "user:alice")},
 	}
 
-	cacheKey := buildReadStartingWithUserCacheKey(storeID, filter)
+	cacheKey := storage.ReadStartingWithUserKey(storeID, filter)
 
 	// Cache miss
 	mockCache.EXPECT().Get(cacheKey).Return(nil).Times(1)
@@ -685,12 +686,12 @@ func TestCachedTupleReader_ReadStartingWithUser_CacheHit(t *testing.T) {
 		LastModified: time.Now(),
 	}
 
-	cacheKey := buildReadStartingWithUserCacheKey(storeID, filter)
-	userInvalidKeys := storage.GetInvalidIteratorByUserObjectTypeCacheKeys(storeID, []string{"user:alice"}, "document")
+	cacheKey := storage.ReadStartingWithUserKey(storeID, filter)
+	userInvalidKeys := []keys.Key{storage.InvalidIteratorByUserObjectTypeCacheKey(storeID, "user:alice", "document")}
 
 	// Cache hit
 	mockCache.EXPECT().Get(cacheKey).Return(cachedEntry).Times(1)
-	mockCache.EXPECT().Get(storage.GetInvalidIteratorCacheKey(storeID)).Return(nil).Times(1)
+	mockCache.EXPECT().Get(storage.InvalidIteratorCacheKey(storeID)).Return(nil).Times(1)
 	mockCache.EXPECT().Get(userInvalidKeys[0]).Return(nil).Times(1)
 
 	iter, err := reader.ReadStartingWithUser(ctx, storeID, filter, opts)
@@ -745,14 +746,14 @@ func TestCachedTupleReader_ReadStartingWithUser_CacheHit_UsersetFilter(t *testin
 		LastModified: time.Now(),
 	}
 
-	cacheKey := buildReadStartingWithUserCacheKey(storeID, filter)
-	userInvalidKeys := storage.GetInvalidIteratorByUserObjectTypeCacheKeys(storeID, []string{"group:eng#member"}, "document")
+	cacheKey := storage.ReadStartingWithUserKey(storeID, filter)
+	userInvalidKeys := []keys.Key{storage.InvalidIteratorByUserObjectTypeCacheKey(storeID, "group:eng#member", "document")}
 
 	// Cache hit
 	mockCache.EXPECT().Get(cacheKey).Return(cachedEntry).Times(1)
 
 	// Check invalidation keys
-	mockCache.EXPECT().Get(storage.GetInvalidIteratorCacheKey(storeID)).Return(nil).Times(1)
+	mockCache.EXPECT().Get(storage.InvalidIteratorCacheKey(storeID)).Return(nil).Times(1)
 	mockCache.EXPECT().Get(userInvalidKeys[0]).Return(nil).Times(1)
 
 	iter, err := reader.ReadStartingWithUser(ctx, storeID, filter, opts)
@@ -850,14 +851,14 @@ func TestCachedTupleReader_ReadStartingWithUser_EntityInvalidation(t *testing.T)
 		{Key: tuple.NewTupleKey("document:1", "viewer", "user:alice")},
 	}
 
-	cacheKey := buildReadStartingWithUserCacheKey(storeID, filter)
-	userInvalidKeys := storage.GetInvalidIteratorByUserObjectTypeCacheKeys(storeID, []string{"user:alice"}, "document")
+	cacheKey := storage.ReadStartingWithUserKey(storeID, filter)
+	userInvalidKeys := []keys.Key{storage.InvalidIteratorByUserObjectTypeCacheKey(storeID, "user:alice", "document")}
 
 	// Cache hit
 	mockCache.EXPECT().Get(cacheKey).Return(cachedEntry).Times(1)
 
 	// Store invalidation check - no store-level invalidation
-	mockCache.EXPECT().Get(storage.GetInvalidIteratorCacheKey(storeID)).Return(nil).Times(1)
+	mockCache.EXPECT().Get(storage.InvalidIteratorCacheKey(storeID)).Return(nil).Times(1)
 
 	// User entity invalidation check - entity was invalidated
 	mockCache.EXPECT().Get(userInvalidKeys[0]).Return(invalidEntry).Times(1)
@@ -1021,9 +1022,9 @@ func TestCachedTupleReader_CacheKeyUniqueness(t *testing.T) {
 		Relation: "viewer",
 	}
 
-	key1 := buildReadUsersetTuplesCacheKey("store", filter1)
-	key2 := buildReadUsersetTuplesCacheKey("store", filter2)
-	key3 := buildReadUsersetTuplesCacheKey("store", filter3)
+	key1 := storage.ReadUsersetTuplesKey("store", filter1)
+	key2 := storage.ReadUsersetTuplesKey("store", filter2)
+	key3 := storage.ReadUsersetTuplesKey("store", filter3)
 
 	require.NotEqual(t, key1, key2, "Different relations should produce different keys")
 	require.NotEqual(t, key1, key3, "Different objects should produce different keys")
@@ -1041,8 +1042,8 @@ func TestCachedTupleReader_ConditionsInCacheKey(t *testing.T) {
 		Conditions: []string{"cond1"},
 	}
 
-	keyWithout := buildReadUsersetTuplesCacheKey("store", filterWithoutCond)
-	keyWith := buildReadUsersetTuplesCacheKey("store", filterWithCond)
+	keyWithout := storage.ReadUsersetTuplesKey("store", filterWithoutCond)
+	keyWith := storage.ReadUsersetTuplesKey("store", filterWithCond)
 
 	require.NotEqual(t, keyWithout, keyWith, "Conditions should affect cache key")
 }
@@ -1113,7 +1114,7 @@ func TestCachedTupleReader_CacheRoundTrip(t *testing.T) {
 	iter.Stop()
 
 	// Wait for background drain/flush to populate cache
-	cacheKey := buildReadUsersetTuplesCacheKey(storeID, filter)
+	cacheKey := storage.ReadUsersetTuplesKey(storeID, filter)
 	require.Eventually(t, func() bool {
 		return realCache.Get(cacheKey) != nil
 	}, 5*time.Second, 10*time.Millisecond, "Cache should be populated after Stop()")

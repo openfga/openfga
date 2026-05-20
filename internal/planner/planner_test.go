@@ -6,7 +6,15 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/openfga/openfga/pkg/storage/cache/keys"
 )
+
+func testPlanKey(s string) keys.Key {
+	var b keys.Builder
+	b.EncodeString(s)
+	return b.Key()
+}
 
 func TestPlanner_New(t *testing.T) {
 	p := New(&Config{})
@@ -34,7 +42,7 @@ func TestPlanner_SelectResolver(t *testing.T) {
 	// Test probabilistically over multiple runs instead of expecting deterministic behavior
 	counts := make(map[string]int)
 	for i := 0; i < 100; i++ {
-		key := fmt.Sprintf("test_key_%d", i)
+		key := testPlanKey(fmt.Sprintf("test_key_%d", i))
 		kp := p.GetPlanSelector(key)
 		choice := kp.Select(resolvers)
 		counts[choice.Name]++
@@ -54,7 +62,7 @@ func TestPlanner_SelectResolver(t *testing.T) {
 
 func TestProfiler_Update(t *testing.T) {
 	p := New(&Config{})
-	key := "test_convergence"
+	key := testPlanKey("test_convergence")
 	kp := p.GetPlanSelector(key)
 
 	resolvers := map[string]*PlanConfig{
@@ -99,7 +107,7 @@ func TestPlanner_EvictStaleKeys(t *testing.T) {
 	})
 
 	// Create multiple old keys
-	oldKeys := []string{"old_key1", "old_key2", "old_key3"}
+	oldKeys := []keys.Key{testPlanKey("old_key1"), testPlanKey("old_key2"), testPlanKey("old_key3")}
 	for _, key := range oldKeys {
 		kp := p.GetPlanSelector(key)
 		oldTime := time.Now().Add(-evictionThreshold - 10*time.Millisecond).UnixNano()
@@ -108,7 +116,8 @@ func TestPlanner_EvictStaleKeys(t *testing.T) {
 	}
 
 	// Create one fresh key
-	freshKp := p.GetPlanSelector("fresh_key")
+	freshKey := testPlanKey("fresh_key")
+	freshKp := p.GetPlanSelector(freshKey)
 	freshKpi := freshKp.(*keyPlan)
 	freshKpi.touch()
 
@@ -118,10 +127,10 @@ func TestPlanner_EvictStaleKeys(t *testing.T) {
 	// Check that all old keys were evicted
 	for _, key := range oldKeys {
 		_, exists := p.keys.Load(key)
-		require.False(t, exists, "old key %s should have been evicted", key)
+		require.False(t, exists, "old key %s should have been evicted", key.String())
 	}
 
 	// Check that fresh key still exists
-	_, exists := p.keys.Load("fresh_key")
+	_, exists := p.keys.Load(freshKey)
 	require.True(t, exists, "fresh key should not have been evicted")
 }

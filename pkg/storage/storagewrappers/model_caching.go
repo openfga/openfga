@@ -2,7 +2,6 @@ package storagewrappers
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"golang.org/x/sync/singleflight"
@@ -10,6 +9,7 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/storage/cache/keys"
 )
 
 const ttl = time.Hour * 168
@@ -47,9 +47,27 @@ func NewCachedOpenFGADatastore(inner storage.OpenFGADatastore, maxSize int) (*ca
 	}, nil
 }
 
+// ModelCacheKeyPrefix is the literal prefix every cached authorization model
+// entry written by cachedOpenFGADatastore uses.
+const ModelCacheKeyPrefix = "MODEL"
+
+// ModelCacheKey returns the canonical cache key the model-caching datastore
+// writes/reads for (storeID, modelID). Exported so callers and tests can
+// reference the same key the datastore writes without duplicating its
+// construction.
+func ModelCacheKey(storeID, modelID string) keys.Key {
+	b := keys.GetBuilder()
+	defer b.Close()
+
+	b.EncodeString(ModelCacheKeyPrefix)
+	b.EncodeString(storeID)
+	b.EncodeString(modelID)
+	return b.Key()
+}
+
 // ReadAuthorizationModel reads the model corresponding to store and model ID.
 func (c *cachedOpenFGADatastore) ReadAuthorizationModel(ctx context.Context, storeID, modelID string) (*openfgav1.AuthorizationModel, error) {
-	cacheKey := fmt.Sprintf("%s:%s", storeID, modelID)
+	cacheKey := ModelCacheKey(storeID, modelID)
 	cachedEntry := c.cache.Get(cacheKey)
 
 	if cachedEntry != nil {
