@@ -35,8 +35,10 @@ type propertiesProvider interface {
 // the context struct. Properties are namespaced with their source prefix using
 // underscore as separator (e.g., "subject_department") because OpenFGA does not
 // allow condition parameters with "." in their names.
-// Precedence (lowest to highest): subject.properties, resource.properties,
-// action.properties, request context (request context wins on conflicts).
+// Precedence: server-derived namespaced properties (subject_*, resource_*,
+// action_*) are authoritative and never overwritten by requestContext. Any
+// other requestContext keys pass through unchanged so callers can still supply
+// supplemental context (#3063).
 func mergePropertiesToContext(
 	requestContext *structpb.Struct,
 	subject propertiesProvider,
@@ -44,6 +46,14 @@ func mergePropertiesToContext(
 	action *authzenv1.Action,
 ) (*structpb.Struct, error) {
 	merged := make(map[string]any)
+
+	// Seed with the user-supplied context first so that server-derived
+	// namespaced properties below always win on key conflicts.
+	if requestContext != nil {
+		for k, v := range requestContext.AsMap() {
+			merged[k] = v
+		}
+	}
 
 	if subject != nil && subject.GetProperties() != nil {
 		for k, v := range subject.GetProperties().AsMap() {
@@ -60,12 +70,6 @@ func mergePropertiesToContext(
 	if action != nil && action.GetProperties() != nil {
 		for k, v := range action.GetProperties().AsMap() {
 			merged["action_"+k] = v
-		}
-	}
-
-	if requestContext != nil {
-		for k, v := range requestContext.AsMap() {
-			merged[k] = v
 		}
 	}
 
