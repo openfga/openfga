@@ -22,6 +22,7 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
+	"github.com/openfga/openfga/internal/telemetry"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
@@ -143,7 +144,13 @@ func (s *Datastore) Read(
 	ctx, span := startTrace(ctx, "Read")
 	defer span.End()
 
-	return s.read(ctx, store, filter, nil)
+	iter, err := s.read(ctx, store, filter, nil)
+	if err != nil {
+		telemetry.TraceStorageError(span, err)
+		return nil, err
+	}
+
+	return iter, nil
 }
 
 // ReadPage see [storage.RelationshipTupleReader].ReadPage.
@@ -153,11 +160,18 @@ func (s *Datastore) ReadPage(ctx context.Context, store string, filter storage.R
 
 	iter, err := s.read(ctx, store, filter, &options)
 	if err != nil {
+		telemetry.TraceStorageError(span, err)
 		return nil, "", err
 	}
 	defer iter.Stop()
 
-	return iter.ToArray(ctx, options.Pagination)
+	tuples, token, err := iter.ToArray(ctx, options.Pagination)
+	if err != nil {
+		telemetry.TraceStorageError(span, err)
+		return nil, "", err
+	}
+
+	return tuples, token, nil
 }
 
 func (s *Datastore) read(ctx context.Context, store string, filter storage.ReadFilter, options *storage.ReadPageOptions) (*sqlcommon.SQLTupleIterator, error) {
@@ -224,13 +238,19 @@ func (s *Datastore) Write(
 	ctx, span := startTrace(ctx, "Write")
 	defer span.End()
 
-	return sqlcommon.Write(ctx, s.dbInfo, s.db, store,
+	err := sqlcommon.Write(ctx, s.dbInfo, s.db, store,
 		sqlcommon.WriteData{
 			Deletes: deletes,
 			Writes:  writes,
 			Opts:    storage.NewTupleWriteOptions(opts...),
 			Now:     time.Now().UTC(),
 		})
+	if err != nil {
+		telemetry.TraceStorageError(span, err)
+		return err
+	}
+
+	return nil
 }
 
 // ReadUserTuple see [storage.RelationshipTupleReader].ReadUserTuple.
@@ -275,7 +295,9 @@ func (s *Datastore) ReadUserTuple(ctx context.Context, store string, filter stor
 			&conditionContext,
 		)
 	if err != nil {
-		return nil, HandleSQLError(err)
+		sqlErr := HandleSQLError(err)
+		telemetry.TraceStorageError(span, sqlErr)
+		return nil, sqlErr
 	}
 
 	if conditionName.String != "" {
@@ -284,6 +306,7 @@ func (s *Datastore) ReadUserTuple(ctx context.Context, store string, filter stor
 		if conditionContext != nil {
 			var conditionContextStruct structpb.Struct
 			if err := proto.Unmarshal(conditionContext, &conditionContextStruct); err != nil {
+				telemetry.TraceStorageError(span, err)
 				return nil, err
 			}
 			record.ConditionContext = &conditionContextStruct
@@ -398,7 +421,13 @@ func (s *Datastore) ReadAuthorizationModel(ctx context.Context, store string, mo
 	ctx, span := startTrace(ctx, "ReadAuthorizationModel")
 	defer span.End()
 
-	return sqlcommon.ReadAuthorizationModel(ctx, s.dbInfo, store, modelID)
+	model, err := sqlcommon.ReadAuthorizationModel(ctx, s.dbInfo, store, modelID)
+	if err != nil {
+		telemetry.TraceStorageError(span, err)
+		return nil, err
+	}
+
+	return model, nil
 }
 
 // ReadAuthorizationModels see [storage.AuthorizationModelReadBackend].ReadAuthorizationModels.
@@ -423,7 +452,9 @@ func (s *Datastore) ReadAuthorizationModels(ctx context.Context, store string, o
 
 	rows, err := sb.QueryContext(ctx)
 	if err != nil {
-		return nil, "", HandleSQLError(err)
+		sqlErr := HandleSQLError(err)
+		telemetry.TraceStorageError(span, sqlErr)
+		return nil, "", sqlErr
 	}
 	defer rows.Close()
 
@@ -433,14 +464,18 @@ func (s *Datastore) ReadAuthorizationModels(ctx context.Context, store string, o
 	for rows.Next() {
 		err = rows.Scan(&modelID)
 		if err != nil {
-			return nil, "", HandleSQLError(err)
+			sqlErr := HandleSQLError(err)
+			telemetry.TraceStorageError(span, sqlErr)
+			return nil, "", sqlErr
 		}
 
 		modelIDs = append(modelIDs, modelID)
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, "", HandleSQLError(err)
+		sqlErr := HandleSQLError(err)
+		telemetry.TraceStorageError(span, sqlErr)
+		return nil, "", sqlErr
 	}
 
 	var token string
@@ -457,6 +492,7 @@ func (s *Datastore) ReadAuthorizationModels(ctx context.Context, store string, o
 	for i := 0; i < numModelIDs; i++ {
 		model, err := s.ReadAuthorizationModel(ctx, store, modelIDs[i])
 		if err != nil {
+			telemetry.TraceStorageError(span, err)
 			return nil, "", err
 		}
 		models = append(models, model)
@@ -470,7 +506,13 @@ func (s *Datastore) FindLatestAuthorizationModel(ctx context.Context, store stri
 	ctx, span := startTrace(ctx, "FindLatestAuthorizationModel")
 	defer span.End()
 
-	return sqlcommon.FindLatestAuthorizationModel(ctx, s.dbInfo, store)
+	model, err := sqlcommon.FindLatestAuthorizationModel(ctx, s.dbInfo, store)
+	if err != nil {
+		telemetry.TraceStorageError(span, err)
+		return nil, err
+	}
+
+	return model, nil
 }
 
 // MaxTypesPerAuthorizationModel see [storage.TypeDefinitionWriteBackend].MaxTypesPerAuthorizationModel.
@@ -483,7 +525,13 @@ func (s *Datastore) WriteAuthorizationModel(ctx context.Context, store string, m
 	ctx, span := startTrace(ctx, "WriteAuthorizationModel")
 	defer span.End()
 
-	return sqlcommon.WriteAuthorizationModel(ctx, s.dbInfo, store, model)
+	err := sqlcommon.WriteAuthorizationModel(ctx, s.dbInfo, store, model)
+	if err != nil {
+		telemetry.TraceStorageError(span, err)
+		return err
+	}
+
+	return nil
 }
 
 // CreateStore adds a new store to storage.
@@ -496,7 +544,9 @@ func (s *Datastore) CreateStore(ctx context.Context, store *openfgav1.Store) (*o
 
 	txn, err := s.db.BeginTx(ctx, &sql.TxOptions{})
 	if err != nil {
-		return nil, HandleSQLError(err)
+		sqlErr := HandleSQLError(err)
+		telemetry.TraceStorageError(span, sqlErr)
+		return nil, sqlErr
 	}
 	defer func() {
 		_ = txn.Rollback()
@@ -509,7 +559,9 @@ func (s *Datastore) CreateStore(ctx context.Context, store *openfgav1.Store) (*o
 		RunWith(txn).
 		ExecContext(ctx)
 	if err != nil {
-		return nil, HandleSQLError(err)
+		sqlErr := HandleSQLError(err)
+		telemetry.TraceStorageError(span, sqlErr)
+		return nil, sqlErr
 	}
 
 	err = s.stbl.
@@ -520,12 +572,16 @@ func (s *Datastore) CreateStore(ctx context.Context, store *openfgav1.Store) (*o
 		QueryRowContext(ctx).
 		Scan(&id, &name, &createdAt, &updatedAt)
 	if err != nil {
-		return nil, HandleSQLError(err)
+		sqlErr := HandleSQLError(err)
+		telemetry.TraceStorageError(span, sqlErr)
+		return nil, sqlErr
 	}
 
 	err = txn.Commit()
 	if err != nil {
-		return nil, HandleSQLError(err)
+		sqlErr := HandleSQLError(err)
+		telemetry.TraceStorageError(span, sqlErr)
+		return nil, sqlErr
 	}
 
 	return &openfgav1.Store{
@@ -555,9 +611,12 @@ func (s *Datastore) GetStore(ctx context.Context, id string) (*openfgav1.Store, 
 	err := row.Scan(&storeID, &name, &createdAt, &updatedAt)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
+			telemetry.TraceStorageError(span, storage.ErrNotFound)
 			return nil, storage.ErrNotFound
 		}
-		return nil, HandleSQLError(err)
+		sqlErr := HandleSQLError(err)
+		telemetry.TraceStorageError(span, sqlErr)
+		return nil, sqlErr
 	}
 
 	return &openfgav1.Store{
@@ -601,7 +660,9 @@ func (s *Datastore) ListStores(ctx context.Context, options storage.ListStoresOp
 
 	rows, err := sb.QueryContext(ctx)
 	if err != nil {
-		return nil, "", HandleSQLError(err)
+		sqlErr := HandleSQLError(err)
+		telemetry.TraceStorageError(span, sqlErr)
+		return nil, "", sqlErr
 	}
 	defer rows.Close()
 
@@ -612,7 +673,9 @@ func (s *Datastore) ListStores(ctx context.Context, options storage.ListStoresOp
 		var createdAt, updatedAt time.Time
 		err := rows.Scan(&id, &name, &createdAt, &updatedAt)
 		if err != nil {
-			return nil, "", HandleSQLError(err)
+			sqlErr := HandleSQLError(err)
+			telemetry.TraceStorageError(span, sqlErr)
+			return nil, "", sqlErr
 		}
 
 		stores = append(stores, &openfgav1.Store{
@@ -624,7 +687,9 @@ func (s *Datastore) ListStores(ctx context.Context, options storage.ListStoresOp
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, "", HandleSQLError(err)
+		sqlErr := HandleSQLError(err)
+		telemetry.TraceStorageError(span, sqlErr)
+		return nil, "", sqlErr
 	}
 
 	if len(stores) > options.Pagination.PageSize {
@@ -645,7 +710,9 @@ func (s *Datastore) DeleteStore(ctx context.Context, id string) error {
 		Where(sq.Eq{"id": id}).
 		ExecContext(ctx)
 	if err != nil {
-		return HandleSQLError(err)
+		sqlErr := HandleSQLError(err)
+		telemetry.TraceStorageError(span, sqlErr)
+		return sqlErr
 	}
 
 	return nil
@@ -658,6 +725,7 @@ func (s *Datastore) WriteAssertions(ctx context.Context, store, modelID string, 
 
 	marshalledAssertions, err := proto.Marshal(&openfgav1.Assertions{Assertions: assertions})
 	if err != nil {
+		telemetry.TraceStorageError(span, err)
 		return err
 	}
 
@@ -668,7 +736,9 @@ func (s *Datastore) WriteAssertions(ctx context.Context, store, modelID string, 
 		Suffix("ON DUPLICATE KEY UPDATE assertions = ?", marshalledAssertions).
 		ExecContext(ctx)
 	if err != nil {
-		return HandleSQLError(err)
+		sqlErr := HandleSQLError(err)
+		telemetry.TraceStorageError(span, sqlErr)
+		return sqlErr
 	}
 
 	return nil
@@ -693,12 +763,15 @@ func (s *Datastore) ReadAssertions(ctx context.Context, store, modelID string) (
 		if errors.Is(err, sql.ErrNoRows) {
 			return []*openfgav1.Assertion{}, nil
 		}
-		return nil, HandleSQLError(err)
+		sqlErr := HandleSQLError(err)
+		telemetry.TraceStorageError(span, sqlErr)
+		return nil, sqlErr
 	}
 
 	var assertions openfgav1.Assertions
 	err = proto.Unmarshal(marshalledAssertions, &assertions)
 	if err != nil {
+		telemetry.TraceStorageError(span, err)
 		return nil, err
 	}
 
@@ -742,7 +815,9 @@ func (s *Datastore) ReadChanges(ctx context.Context, store string, filter storag
 
 	rows, err := sb.QueryContext(ctx)
 	if err != nil {
-		return nil, "", HandleSQLError(err)
+		sqlErr := HandleSQLError(err)
+		telemetry.TraceStorageError(span, sqlErr)
+		return nil, "", sqlErr
 	}
 	defer rows.Close()
 
@@ -767,13 +842,16 @@ func (s *Datastore) ReadChanges(ctx context.Context, store string, filter storag
 			&insertedAt,
 		)
 		if err != nil {
-			return nil, "", HandleSQLError(err)
+			sqlErr := HandleSQLError(err)
+			telemetry.TraceStorageError(span, sqlErr)
+			return nil, "", sqlErr
 		}
 
 		var conditionContextStruct structpb.Struct
 		if conditionName.String != "" {
 			if conditionContext != nil {
 				if err := proto.Unmarshal(conditionContext, &conditionContextStruct); err != nil {
+					telemetry.TraceStorageError(span, err)
 					return nil, "", err
 				}
 			}
@@ -792,6 +870,12 @@ func (s *Datastore) ReadChanges(ctx context.Context, store string, filter storag
 			Operation: openfgav1.TupleOperation(operation),
 			Timestamp: timestamppb.New(insertedAt.UTC()),
 		})
+	}
+
+	if err := rows.Err(); err != nil {
+		sqlErr := HandleSQLError(err)
+		telemetry.TraceStorageError(span, sqlErr)
+		return nil, "", sqlErr
 	}
 
 	if len(changes) == 0 {

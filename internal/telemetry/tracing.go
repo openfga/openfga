@@ -17,6 +17,8 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc"
+
+	"github.com/openfga/openfga/pkg/storage"
 )
 
 type TracerOption func(d *customTracer)
@@ -159,4 +161,14 @@ func TraceError(span trace.Span, err error) {
 	}
 	span.RecordError(err)
 	span.SetStatus(codes.Error, err.Error())
+}
+
+// TraceStorageError marks the span as having an error only for genuine storage failures.
+// Expected storage outcomes such as not found, collision, and invalid write input are skipped.
+func TraceStorageError(span trace.Span, err error) {
+	if storage.SuccessLabel(err) {
+		return
+	}
+
+	TraceError(span, err)
 }
