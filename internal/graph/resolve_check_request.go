@@ -38,8 +38,9 @@ type ResolveCheckRequest struct {
 	// the invariantCacheKey is computed once per request, and passed to sub-problems via copy in .clone()
 	invariantCacheKey string
 
-	objectType string
-	userType   string
+	objectType        string
+	userType          string
+	cachedTupleKeyStr string
 }
 
 type ResolveCheckRequestMetadata struct {
@@ -252,4 +253,13 @@ func (r *ResolveCheckRequest) GetUserType() string {
 		return ""
 	}
 	return r.userType
+}
+
+func (r *ResolveCheckRequest) GetTupleKeyString() string {
+	if r.cachedTupleKeyStr == "" {
+		if tk := r.GetTupleKey(); tk != nil {
+			r.cachedTupleKeyStr = tuple.TupleKeyToString(tk)
+		}
+	}
+	return r.cachedTupleKeyStr
 }
