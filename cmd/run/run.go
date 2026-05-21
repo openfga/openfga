@@ -248,6 +248,8 @@ func NewRunCommand() *cobra.Command {
 
 	flags.Float64("trace-sample-ratio", defaultConfig.Trace.SampleRatio, "the fraction of traces to sample. 1 means all, 0 means none.")
 
+	flags.String("trace-sampler", defaultConfig.Trace.Sampler, "the sampler to use for tracing. One of: always_on, always_off, traceidratio, parentbased_always_on, parentbased_always_off, parentbased_traceidratio")
+
 	flags.String("trace-service-name", defaultConfig.Trace.ServiceName, "the service name included in sampled traces.")
 
 	flags.String("trace-resource-attributes", defaultConfig.Trace.ResourceAttributes, "key-value pairs to be used as resource attributes")
@@ -442,7 +444,8 @@ func (s *ServerContext) telemetryConfig(config *serverconfig.Config) func(contex
 		endpoint, schemeSecure := telemetry.ParseOTLPEndpoint(config.Trace.OTLP.Endpoint)
 		effectiveTLS := telemetry.ResolveOTLPSecurity(config.Trace.OTLP.TLS.Enabled, schemeSecure)
 
-		s.Logger.Info(fmt.Sprintf("🕵 tracing enabled: sampling ratio is %v and sending traces to '%s', tls: %t", config.Trace.SampleRatio, endpoint, effectiveTLS))
+		resolvedSampler := telemetry.ResolveSampler(config.Trace.Sampler, config.Trace.SampleRatio)
+		s.Logger.Info(fmt.Sprintf("🕵 tracing enabled: sampler is '%s' (resolved to '%s'), sampling ratio is %v, sending traces to '%s', tls: %t", config.Trace.Sampler, resolvedSampler.Description(), config.Trace.SampleRatio, endpoint, effectiveTLS))
 
 		options := []telemetry.TracerOption{
 			telemetry.WithOTLPEndpoint(
@@ -452,6 +455,7 @@ func (s *ServerContext) telemetryConfig(config *serverconfig.Config) func(contex
 				semconv.ServiceNameKey.String(config.Trace.ServiceName),
 				semconv.ServiceVersionKey.String(build.Version),
 			),
+			telemetry.WithSampler(config.Trace.Sampler),
 			telemetry.WithSamplingRatio(config.Trace.SampleRatio),
 		}
 

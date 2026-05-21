@@ -1,6 +1,7 @@
 package telemetry
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -142,6 +143,82 @@ func TestParseOTLPEndpoint(t *testing.T) {
 			}
 			if secure != tt.expectedSecure {
 				t.Errorf("ParseOTLPEndpoint(%q) secure = %v, want %v", tt.input, secure, tt.expectedSecure)
+			}
+		})
+	}
+}
+
+func TestResolveSampler(t *testing.T) {
+	tests := []struct {
+		name            string
+		samplerName     string
+		ratio           float64
+		descriptionMust []string // substrings that must appear in Description()
+	}{
+		{
+			name:            "always_on",
+			samplerName:     "always_on",
+			ratio:           0.5,
+			descriptionMust: []string{"AlwaysOnSampler"},
+		},
+		{
+			name:            "always_off",
+			samplerName:     "always_off",
+			ratio:           0.5,
+			descriptionMust: []string{"AlwaysOffSampler"},
+		},
+		{
+			name:            "traceidratio",
+			samplerName:     "traceidratio",
+			ratio:           0.5,
+			descriptionMust: []string{"TraceIDRatioBased", "0.5"},
+		},
+		{
+			name:            "parentbased_always_on",
+			samplerName:     "parentbased_always_on",
+			ratio:           0.5,
+			descriptionMust: []string{"ParentBased", "AlwaysOnSampler"},
+		},
+		{
+			name:            "parentbased_always_off",
+			samplerName:     "parentbased_always_off",
+			ratio:           0.5,
+			descriptionMust: []string{"ParentBased", "AlwaysOffSampler"},
+		},
+		{
+			name:            "parentbased_traceidratio",
+			samplerName:     "parentbased_traceidratio",
+			ratio:           0.3,
+			descriptionMust: []string{"ParentBased", "TraceIDRatioBased", "0.3"},
+		},
+		{
+			name:            "uppercase_always_on",
+			samplerName:     "ALWAYS_ON",
+			ratio:           0.5,
+			descriptionMust: []string{"AlwaysOnSampler"},
+		},
+		{
+			name:            "mixed_case_parentbased",
+			samplerName:     "ParentBased_TraceIDRatio",
+			ratio:           0.5,
+			descriptionMust: []string{"TraceIDRatioBased", "0.5"},
+		},
+		{
+			name:            "unknown_falls_back_to_traceidratio",
+			samplerName:     "jaeger_remote",
+			ratio:           0.5,
+			descriptionMust: []string{"TraceIDRatioBased", "0.5"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sampler := ResolveSampler(tt.samplerName, tt.ratio)
+			desc := sampler.Description()
+			for _, must := range tt.descriptionMust {
+				if !strings.Contains(desc, must) {
+					t.Errorf("ResolveSampler(%q, %v).Description() = %q, want it to contain %q", tt.samplerName, tt.ratio, desc, must)
+				}
 			}
 		})
 	}
