@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -10,7 +11,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unsafe"
 
+	"github.com/cespare/xxhash/v2"
 	"github.com/oklog/ulid/v2"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
@@ -20,11 +23,12 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/concurrency"
+	"github.com/openfga/openfga/pkg/storage/cache"
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
 func BuildCacheKey(vals ...string) string {
-	var builder CacheKeyBuilder
+	var builder cache.KeyBuilder
 	builder.Grow(len(vals))
 
 	for _, val := range vals {
@@ -89,79 +93,74 @@ func (e *ErrorStringWriter) String() string {
 	return ""
 }
 
+type TestKeyBuilder struct {
+	cache.KeyBuilder
+}
+
+func (b *TestKeyBuilder) Sum64() uint64 {
+	var digest xxhash.Digest
+	digest.Write(b.Bytes())
+	return digest.Sum64()
+}
+
 var validWriter strings.Builder // A global string builder intended for reuse across tests
 
 func TestWriteValue(t *testing.T) {
+	basicStruct := MustNewStruct(map[string]any{
+		"key": "value",
+	})
+
+	basicNumber := float64(1111111111)
+	numberBytes := unsafe.Slice((*byte)(unsafe.Pointer(&basicNumber)), 8)
+
 	var cases = map[string]struct {
-		writer ResetableStringWriter
+		writer *TestKeyBuilder
 		value  *structpb.Value
-		output string
+		output []string
 		error  bool
 	}{
 		"list": {
-			writer: &validWriter,
+			writer: &TestKeyBuilder{},
 			value: structpb.NewListValue(&structpb.ListValue{
 				Values: []*structpb.Value{
 					structpb.NewStringValue("A"),
 					structpb.NewNullValue(),
 					structpb.NewBoolValue(true),
-					structpb.NewNumberValue(1111111111),
-					structpb.NewStructValue(MustNewStruct(map[string]any{
-						"key": "value",
-					})),
+					structpb.NewNumberValue(basicNumber),
+					structpb.NewStructValue(basicStruct),
 				},
 			}),
-			output: "1:A,null,true,1111111111,1'key:'5:value,",
-		},
-		"list_write_value_error": {
-			writer: &ErrorStringWriter{},
-			value: structpb.NewListValue(&structpb.ListValue{
-				Values: []*structpb.Value{
-					structpb.NewStringValue("A"),
-					structpb.NewNullValue(),
-					structpb.NewBoolValue(true),
-					structpb.NewNumberValue(1111111111),
-					structpb.NewStructValue(MustNewStruct(map[string]any{
-						"key": "value",
-					})),
-				},
-			}),
-			error: true,
-		},
-		"list_write_comma_error": {
-			writer: &ErrorStringWriter{
-				TriggerAt: 2,
+			output: []string{
+				hex.EncodeToString([]byte("A")),
+				hex.EncodeToString([]byte{0}),
+				hex.EncodeToString([]byte{1}),
+				hex.EncodeToString(numberBytes),
+				hex.EncodeToString([]byte("key")),
+				hex.EncodeToString([]byte("value")),
 			},
-			value: structpb.NewListValue(&structpb.ListValue{
-				Values: []*structpb.Value{
-					structpb.NewNullValue(),
-					structpb.NewNullValue(),
-				},
-			}),
-			error: true,
 		},
 		"nil": {
-			writer: &validWriter,
+			writer: &TestKeyBuilder{},
 			value:  nil,
-			error:  true,
+			output: []string{
+				"00",
+			},
 		},
 		"string_with_control_chars": {
-			writer: &validWriter,
+			writer: &TestKeyBuilder{},
 			value:  structpb.NewStringValue("hello\x00world"),
-			error:  true,
+			output: []string{
+				hex.EncodeToString([]byte("hello\x00world")),
+			},
 		},
 	}
 
 	for name, test := range cases {
 		t.Run(name, func(t *testing.T) {
-			test.writer.Reset()
-			err := writeValue(test.writer, test.value)
-			if test.error {
-				require.Error(t, err)
-			} else {
-				require.NoError(t, err)
-				require.Equal(t, test.output, test.writer.String())
-			}
+			writeValue(test.writer, test.value)
+			output := test.writer.String()
+			parts := strings.Split(output, string([]byte{cache.DefaultSeparator}))
+			require.Equal(t, test.output, parts)
 		})
 	}
 
@@ -180,9 +179,9 @@ func TestWriteValue(t *testing.T) {
 			},
 		})
 
-		var w1, w2 strings.Builder
-		require.NoError(t, writeValue(&w1, singleElement))
-		require.NoError(t, writeValue(&w2, twoElements))
+		var w1, w2 TestKeyBuilder
+		writeValue(&w1, singleElement)
+		writeValue(&w2, twoElements)
 		require.NotEqual(t, w1.String(), w2.String(),
 			"single string 'editor,viewer' and two strings 'editor','viewer' must serialize differently")
 	})
@@ -190,305 +189,123 @@ func TestWriteValue(t *testing.T) {
 
 func TestWriteStruct(t *testing.T) {
 	var cases = map[string]struct {
-		writer ResetableStringWriter
+		writer *TestKeyBuilder
 		value  *structpb.Struct
-		output string
-		error  bool
+		output []string
 	}{
 		"general": {
-			writer: &validWriter,
+			writer: &TestKeyBuilder{},
 			value: MustNewStruct(map[string]any{
 				"keyA": "valueA",
 				"keyB": "valueB",
 			}),
-			output: "2'keyA:'6:valueA,'keyB:'6:valueB,",
+			output: []string{
+				hex.EncodeToString([]byte("keyA")),
+				hex.EncodeToString([]byte("valueA")),
+				hex.EncodeToString([]byte("keyB")),
+				hex.EncodeToString([]byte("valueB")),
+			},
 		},
 		"incorrect_value": {
-			writer: &validWriter,
+			writer: &TestKeyBuilder{},
 			value: MustNewStruct(map[string]any{
 				// This value is crafted to appear as if it were 2 keys
 				"a": "x,'b:'y",
 			}),
 			// but our cache key should identify it correctly as 1 key
-			output: "1'a:'7:x,'b:'y,",
-		},
-		"fields_write_len_error": {
-			writer: &ErrorStringWriter{},
-			value: MustNewStruct(map[string]any{
-				"keyA": "valueA",
-				"keyB": "valueB",
-			}),
-			error: true,
-		},
-		"fields_write_quote_error": {
-			writer: &ErrorStringWriter{
-				TriggerAt: 2,
+			output: []string{
+				hex.EncodeToString([]byte("a")),
+				hex.EncodeToString([]byte("x,'b:'y")),
 			},
-			value: MustNewStruct(map[string]any{
-				"keyA": "valueA",
-				"keyB": "valueB",
-			}),
-			error: true,
-		},
-		"fields_write_key_error": {
-			writer: &ErrorStringWriter{
-				TriggerAt: 3,
-			},
-			value: MustNewStruct(map[string]any{
-				"keyA": "valueA",
-				"keyB": "valueB",
-			}),
-			error: true,
-		},
-		"fields_write_separator_error": {
-			writer: &ErrorStringWriter{
-				TriggerAt: 4,
-			},
-			value: MustNewStruct(map[string]any{
-				"keyA": "valueA",
-				"keyB": "valueB",
-			}),
-			error: true,
-		},
-		"fields_write_value_error": {
-			writer: &ErrorStringWriter{
-				TriggerAt: 5,
-			},
-			value: MustNewStruct(map[string]any{
-				"keyA": "valueA",
-				"keyB": "valueB",
-			}),
-			error: true,
-		},
-		"fields_write_comma_error": {
-			writer: &ErrorStringWriter{
-				TriggerAt: 6,
-			},
-			value: MustNewStruct(map[string]any{
-				"keyA": 1,
-				"keyB": 2,
-			}),
-			error: true,
 		},
 		"nil": {
-			writer: &validWriter,
+			writer: &TestKeyBuilder{},
 			value:  nil,
-			output: "",
-		},
-		"nil_error": {
-			writer: &ErrorStringWriter{},
-			value:  nil,
-			output: "",
+			output: []string{},
 		},
 		"key_with_control_chars": {
-			writer: &validWriter,
+			writer: &TestKeyBuilder{},
 			value: MustNewStruct(map[string]any{
 				"key\x00A": "value",
 			}),
-			error: true,
+			output: []string{
+				hex.EncodeToString([]byte("key\x00A")),
+				hex.EncodeToString([]byte("value")),
+			},
 		},
 	}
 
 	for name, test := range cases {
 		t.Run(name, func(t *testing.T) {
-			test.writer.Reset()
-			err := writeStruct(test.writer, test.value)
-			if test.error {
-				require.Error(t, err)
-			} else {
-				require.NoError(t, err)
-				require.Equal(t, test.output, test.writer.String())
-			}
+			writeStruct(test.writer, test.value)
+			output := test.writer.String()
+			parts := strings.Split(output, "|")
+			require.Equal(t, test.output, parts)
 		})
 	}
 }
 
 func TestWriteTuples(t *testing.T) {
+	var testBuilder TestKeyBuilder
+
+	basicStruct := MustNewStruct(map[string]any{
+		"key": "value",
+	})
+
+	writeStruct(&testBuilder, basicStruct)
+
+	structHash := testBuilder.Sum64()
+	structBytes := unsafe.Slice((*byte)(unsafe.Pointer(&structHash)), 8)
+
 	var cases = map[string]struct {
-		writer ResetableStringWriter
+		writer *TestKeyBuilder
 		tuples []*openfgav1.TupleKey
-		output string
-		error  bool
+		output []string
 	}{
 		"sans_condition": {
-			writer: &validWriter,
+			writer: &TestKeyBuilder{},
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:C", "relationC", "user:C"),
 				tuple.NewTupleKey("document:A", "relationA", "user:A"),
 				tuple.NewTupleKey("document:B", "relationB", "user:B"),
 			},
-			output: "/document:A#relationA@user:A,document:B#relationB@user:B,document:C#relationC@user:C",
-		},
-		"write_forward_slash_error": {
-			writer: &ErrorStringWriter{},
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("document:A", "relationA", "user:A"),
+			output: []string{
+				hex.EncodeToString(hash([]byte("document:A#relationA"), []byte("userA"))),
+				hex.EncodeToString(hash([]byte("document:B#relationB"), []byte("userB"))),
+				hex.EncodeToString(hash([]byte("document:C#relationC"), []byte("userC"))),
 			},
-			error: true,
-		},
-		"write_object_relation_error": {
-			writer: &ErrorStringWriter{
-				TriggerAt: 2,
-			},
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("document:A", "relationA", "user:A"),
-			},
-			error: true,
-		},
-		"write_user_error": {
-			writer: &ErrorStringWriter{
-				TriggerAt: 3,
-			},
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("document:A", "relationA", "user:A"),
-			},
-			error: true,
-		},
-		"write_comma_error": {
-			writer: &ErrorStringWriter{
-				TriggerAt: 4,
-			},
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("document:A", "relationA", "user:A"),
-				tuple.NewTupleKey("document:B", "relationB", "user:B"),
-			},
-			error: true,
 		},
 		"with_condition": {
-			writer: &validWriter,
+			writer: &TestKeyBuilder{},
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKeyWithCondition(
 					"document:A",
 					"relationA",
 					"user:A",
 					"B",
-					MustNewStruct(map[string]any{
-						"key": "value",
-					}),
+					basicStruct,
 				),
 				tuple.NewTupleKeyWithCondition(
 					"document:A",
 					"relationA",
 					"user:A",
 					"A",
-					MustNewStruct(map[string]any{
-						"key": "value",
-					}),
+					basicStruct,
 				),
 			},
-			output: "/document:A#relationA with A 1'key:'5:value,@user:A,document:A#relationA with B 1'key:'5:value,@user:A",
-		},
-		"with_condition_write_with_error": {
-			writer: &ErrorStringWriter{
-				TriggerAt: 3,
+			output: []string{
+				hex.EncodeToString(hash([]byte("document:A#relationA"), []byte("A"), structBytes, []byte("userA"))),
+				hex.EncodeToString(hash([]byte("document:A#relationA"), []byte("B"), structBytes, []byte("userA"))),
 			},
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKeyWithCondition(
-					"document:A",
-					"relationA",
-					"user:A",
-					"B",
-					MustNewStruct(map[string]any{
-						"key": "value",
-					}),
-				),
-				tuple.NewTupleKeyWithCondition(
-					"document:A",
-					"relationA",
-					"user:A",
-					"A",
-					MustNewStruct(map[string]any{
-						"key": "value",
-					}),
-				),
-			},
-			error: true,
-		},
-		"with_condition_write_space_error": {
-			writer: &ErrorStringWriter{
-				TriggerAt: 4,
-			},
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKeyWithCondition(
-					"document:A",
-					"relationA",
-					"user:A",
-					"B",
-					MustNewStruct(map[string]any{
-						"key": "value",
-					}),
-				),
-				tuple.NewTupleKeyWithCondition(
-					"document:A",
-					"relationA",
-					"user:A",
-					"A",
-					MustNewStruct(map[string]any{
-						"key": "value",
-					}),
-				),
-			},
-			error: true,
-		},
-		"with_condition_write_context_error": {
-			writer: &ErrorStringWriter{
-				TriggerAt: 5,
-			},
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKeyWithCondition(
-					"document:A",
-					"relationA",
-					"user:A",
-					"B",
-					MustNewStruct(map[string]any{
-						"key": "value",
-					}),
-				),
-				tuple.NewTupleKeyWithCondition(
-					"document:A",
-					"relationA",
-					"user:A",
-					"A",
-					MustNewStruct(map[string]any{
-						"key": "value",
-					}),
-				),
-			},
-			error: true,
-		},
-		"control_chars_in_object_and_relation": {
-			writer: &validWriter,
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("doc:\x00A", "view\x00er", "user:B"),
-			},
-			error: true,
-		},
-		"control_chars_in_user": {
-			writer: &validWriter,
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("document:A", "viewer", "user:\x00B"),
-			},
-			error: true,
-		},
-		"control_chars_in_condition_name": {
-			writer: &validWriter,
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKeyWithCondition("document:A", "viewer", "user:A", "cond\x00X", nil),
-			},
-			error: true,
 		},
 	}
 
 	for name, test := range cases {
 		t.Run(name, func(t *testing.T) {
-			test.writer.Reset()
-			err := writeTuples(test.writer, test.tuples...)
-			if test.error {
-				require.Error(t, err)
-			} else {
-				require.NoError(t, err)
-				require.Equal(t, test.output, test.writer.String())
-			}
+			writeTuples(test.writer, test.tuples...)
+			output := test.writer.String()
+			parts := strings.Split(output, "|")
+			require.Equal(t, test.output, parts)
 		})
 	}
 }
@@ -631,14 +448,7 @@ func TestInMemoryCache(t *testing.T) {
 }
 
 func MustGetCheckCacheKey(params *CheckCacheKeyParams) string {
-	w := &strings.Builder{}
-
-	err := WriteCheckCacheKey(w, params)
-	if err == nil {
-		return w.String()
-	}
-
-	panic(err)
+	return BuildCheckCacheKey(params)
 }
 
 func TestCheckCacheKeyDoNotOverlap(t *testing.T) {
@@ -874,52 +684,6 @@ func TestCheckCacheKeyConditionContextOrderAgnostic(t *testing.T) {
 	require.Equal(t, key1, key2)
 }
 
-func TestCheckCacheKeyRejectsControlCharactersInContext(t *testing.T) {
-	storeID := ulid.Make().String()
-	modelID := ulid.Make().String()
-
-	// The unicode chars below are backspaces — these should be rejected, not silently replaced.
-	struct2, err := structpb.NewStruct(map[string]interface{}{
-		"a": "y",
-		"b": "\u0008\u0008\u0008\u0008\u0008\u0008x",
-	})
-	require.NoError(t, err)
-
-	jonContextTwo := tuple.NewTupleKeyWithCondition(
-		"document:2",
-		"admin",
-		"user:jon",
-		"some_condition",
-		struct2,
-	)
-
-	tupleKey := tuple.NewTupleKey("document:x", "viewer", "user:jon")
-
-	var w strings.Builder
-	err = WriteCheckCacheKey(&w, &CheckCacheKeyParams{
-		StoreID:              storeID,
-		AuthorizationModelID: modelID,
-		TupleKey:             tupleKey,
-		ContextualTuples:     []*openfgav1.TupleKey{jonContextTwo},
-	})
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "invariant violation")
-}
-
-func TestWriteCheckCacheKeyRejectsControlCharsInTuple(t *testing.T) {
-	storeID := ulid.Make().String()
-	modelID := ulid.Make().String()
-
-	var w strings.Builder
-	err := WriteCheckCacheKey(&w, &CheckCacheKeyParams{
-		StoreID:              storeID,
-		AuthorizationModelID: modelID,
-		TupleKey:             tuple.NewTupleKey("document:\x00X", "viewer", "user:jon"),
-	})
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "invariant violation")
-}
-
 func TestCheckCacheKeyContextualTuplesConditionsOrderDoesNotMatter(t *testing.T) {
 	storeID := ulid.Make().String()
 	modelID := ulid.Make().String()
@@ -1017,10 +781,9 @@ func TestWriteInvariantCheckCacheKey(t *testing.T) {
 
 	var validWriter strings.Builder
 	var cases = map[string]struct {
-		writer ResetableStringWriter
+		writer *TestKeyBuilder
 		params *CheckCacheKeyParams
-		output string
-		error  bool
+		output []string
 	}{
 		"writes_cache_key": {
 			writer: &validWriter,
@@ -1049,7 +812,7 @@ func TestWriteInvariantCheckCacheKey(t *testing.T) {
 
 	for name, test := range cases {
 		t.Run(name, func(t *testing.T) {
-			err := WriteInvariantCheckCacheKey(test.writer, test.params)
+			BuildInvariantCacheKey(test.params)
 			if test.error {
 				require.Error(t, err)
 			} else {
@@ -1100,7 +863,7 @@ func TestWriteCheckCacheKey(t *testing.T) {
 	}
 	for name, test := range cases {
 		t.Run(name, func(t *testing.T) {
-			err := WriteCheckCacheKey(test.writer, test.params)
+			err := HashCheckCacheKey(test.writer, test.params)
 			if test.error {
 				require.Error(t, err)
 			} else {
@@ -1122,7 +885,7 @@ func BenchmarkWriteCheckCacheKey(b *testing.B) {
 	}
 
 	for n := 0; n < b.N; n++ {
-		err = WriteCheckCacheKey(writer, params)
+		err = HashCheckCacheKey(writer, params)
 		require.NoError(b, err)
 		writer.Reset()
 	}
@@ -1148,7 +911,7 @@ func BenchmarkInvariantCacheKeyWithContextualTuples(b *testing.B) {
 	}
 
 	for n := 0; n < b.N; n++ {
-		err = WriteInvariantCheckCacheKey(writer, params)
+		err = HashInvariantCheckCacheKey(writer, params)
 		require.NoError(b, err)
 		writer.Reset()
 	}
@@ -1178,7 +941,7 @@ func BenchmarkInvariantCacheKeyWithContext(b *testing.B) {
 	}
 
 	for n := 0; n < b.N; n++ {
-		err = WriteInvariantCheckCacheKey(writer, params)
+		err = HashInvariantCheckCacheKey(writer, params)
 		require.NoError(b, err)
 		writer.Reset()
 	}
@@ -1330,10 +1093,10 @@ func TestCacheKeyCollisionPrevention(t *testing.T) {
 
 	t.Run("ReadUsersetTuples_PoC_from_report", func(t *testing.T) {
 		var builder1 CacheKeyBuilder
-		GetReadUsersetTuplesCacheKeyPrefix(&builder1, store, "doc:1", "viewer")
+		ApplyReadUsersetTuplesCacheKeyPrefix(&builder1, store, "doc:1", "viewer")
 
 		var builder2 CacheKeyBuilder
-		GetReadUsersetTuplesCacheKeyPrefix(&builder2, store, "doc:1#viewer/group", "member")
+		ApplyReadUsersetTuplesCacheKeyPrefix(&builder2, store, "doc:1#viewer/group", "member")
 
 		require.NotEqual(t, builder1.String(), builder2.String())
 	})
@@ -1352,20 +1115,20 @@ func TestCacheKeyCollisionPrevention(t *testing.T) {
 
 	t.Run("ReadCacheKey_delimiter_in_tuple", func(t *testing.T) {
 		var builder1 CacheKeyBuilder
-		GetReadCacheKey(&builder1, store, "doc:1#viewer@user:alice")
+		ApplyReadCacheKey(&builder1, store, "doc:1#viewer@user:alice")
 
 		var builder2 CacheKeyBuilder
-		GetReadCacheKey(&builder2, store, "doc:1#viewer@user:alice/extra")
+		ApplyReadCacheKey(&builder2, store, "doc:1#viewer@user:alice/extra")
 
 		require.NotEqual(t, builder1.String(), builder2.String())
 	})
 
 	t.Run("ReadStartingWithUser_delimiter_in_objectType", func(t *testing.T) {
 		var builder1 CacheKeyBuilder
-		GetReadStartingWithUserCacheKeyPrefix(&builder1, store, "doc", "viewer")
+		ApplyReadStartingWithUserCacheKeyPrefix(&builder1, store, "doc", "viewer")
 
 		var builder2 CacheKeyBuilder
-		GetReadStartingWithUserCacheKeyPrefix(&builder2, store, "doc#viewer", "")
+		ApplyReadStartingWithUserCacheKeyPrefix(&builder2, store, "doc#viewer", "")
 
 		require.NotEqual(t, builder1.String(), builder2.String())
 	})

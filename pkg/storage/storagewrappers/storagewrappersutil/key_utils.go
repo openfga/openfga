@@ -1,11 +1,10 @@
 package storagewrappersutil
 
 import (
-	"github.com/cespare/xxhash/v2"
-
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/storage/cache"
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
@@ -19,9 +18,9 @@ const (
 func ReadStartingWithUserKey(
 	store string,
 	filter storage.ReadStartingWithUserFilter,
-) (string, error) {
-	var builder storage.CacheKeyBuilder
-	storage.GetReadStartingWithUserCacheKeyPrefix(&builder, store, filter.ObjectType, filter.Relation)
+) string {
+	var builder cache.KeyBuilder
+	storage.ApplyReadStartingWithUserCacheKeyPrefix(&builder, store, filter.ObjectType, filter.Relation)
 
 	size := len(filter.UserFilter)
 	if filter.ObjectIDs != nil {
@@ -39,30 +38,30 @@ func ReadStartingWithUserKey(
 	}
 
 	if filter.ObjectIDs != nil {
-		hasher := xxhash.New()
+		var hasher cache.KeyBuilder
+
 		for _, oid := range filter.ObjectIDs.Values() {
 			hasher.WriteString(oid)
-			hasher.Write([]byte{0})
 		}
-		builder.Write(hasher.Sum([]byte{}))
+		builder.WriteUint64(hasher.Sum64())
 	}
 
-	return builder.String(), nil
+	return builder.String()
 }
 
 func ReadUsersetTuplesKey(store string, filter storage.ReadUsersetTuplesFilter) string {
-	var builder storage.CacheKeyBuilder
-	storage.GetReadUsersetTuplesCacheKeyPrefix(&builder, store, filter.Object, filter.Relation)
+	var builder cache.KeyBuilder
+	storage.ApplyReadUsersetTuplesCacheKeyPrefix(&builder, store, filter.Object, filter.Relation)
 
 	filterKey := storage.BuildUserTypeRestrictionsHash(filter.AllowedUserTypeRestrictions)
 
-	builder.Write(filterKey)
+	builder.WriteUint64(filterKey)
 
 	return builder.String()
 }
 
 func ReadKey(store string, tupleKey *openfgav1.TupleKey) string {
-	var builder storage.CacheKeyBuilder
-	storage.GetReadCacheKey(&builder, store, tuple.TupleKeyToString(tupleKey))
+	var builder cache.KeyBuilder
+	storage.ApplyReadCacheKey(&builder, store, tuple.TupleKeyToString(tupleKey))
 	return builder.String()
 }

@@ -5,17 +5,15 @@ package storage
 import (
 	"errors"
 	"fmt"
-	"io"
+	"maps"
 	"math"
 	"math/rand"
+	"slices"
 	"sort"
-	"strconv"
 	"sync"
 	"time"
-	"unsafe"
 
 	"github.com/Yiling-J/theine-go"
-	"github.com/cespare/xxhash/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"google.golang.org/protobuf/types/known/structpb"
@@ -24,6 +22,7 @@ import (
 
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/internal/utils"
+	"github.com/openfga/openfga/pkg/storage/cache"
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
@@ -227,13 +226,16 @@ func GetInvalidIteratorCacheKey(storeID string) string {
 }
 
 func GetInvalidIteratorByObjectRelationCacheKey(storeID, object, relation string) string {
-	var builder CacheKeyBuilder
-	builder.Grow(5) // grown by the number of elements to be written to the builder
+	var builder cache.KeyBuilder
 
 	builder.WriteString(InvalidIteratorCachePrefix)
+	builder.Break()
 	builder.WriteString("or")
+	builder.Break()
 	builder.WriteString(storeID)
+	builder.Break()
 	builder.WriteString(object)
+	builder.Break()
 	builder.WriteString(relation)
 
 	return builder.String()
@@ -243,13 +245,16 @@ func GetInvalidIteratorByUserObjectTypeCacheKeys(storeID string, users []string,
 	result := make([]string, len(users))
 
 	for i, user := range users {
-		var builder CacheKeyBuilder
-		builder.Grow(5) // grown by the number of elements to be written to the builder
+		var builder cache.KeyBuilder
 
 		builder.WriteString(InvalidIteratorCachePrefix)
+		builder.Break()
 		builder.WriteString("otr")
+		builder.Break()
 		builder.WriteString(storeID)
+		builder.Break()
 		builder.WriteString(user)
+		builder.Break()
 		builder.WriteString(objectType)
 
 		result[i] = builder.String()
@@ -266,32 +271,37 @@ func (t *TupleIteratorCacheEntry) CacheEntityType() string {
 	return "tuple_iterator"
 }
 
-func GetReadUsersetTuplesCacheKeyPrefix(builder *CacheKeyBuilder, store, object, relation string) {
-	builder.Grow(5) // grown by the number of elements to be written to the builder
-
+func ApplyReadUsersetTuplesCacheKeyPrefix(builder cache.KeyWriter, store, object, relation string) {
 	builder.WriteString(IteratorCachePrefix)
+	builder.Break()
 	builder.WriteString("rut")
+	builder.Break()
 	builder.WriteString(store)
+	builder.Break()
 	builder.WriteString(object)
+	builder.Break()
 	builder.WriteString(relation)
 }
 
-func GetReadStartingWithUserCacheKeyPrefix(builder *CacheKeyBuilder, store, objectType, relation string) {
-	builder.Grow(5) // grown by the number of elements to be written to the builder
-
+func ApplyReadStartingWithUserCacheKeyPrefix(builder cache.KeyWriter, store, objectType, relation string) {
 	builder.WriteString(IteratorCachePrefix)
+	builder.Break()
 	builder.WriteString("rtwu")
+	builder.Break()
 	builder.WriteString(store)
+	builder.Break()
 	builder.WriteString(objectType)
+	builder.Break()
 	builder.WriteString(relation)
 }
 
-func GetReadCacheKey(builder *CacheKeyBuilder, store, tuple string) {
-	builder.Grow(4) // grown by the number of elements to be written to the builder
-
+func ApplyReadCacheKey(builder cache.KeyWriter, store, tuple string) {
 	builder.WriteString(IteratorCachePrefix)
+	builder.Break()
 	builder.WriteString("r")
+	builder.Break()
 	builder.WriteString(store)
+	builder.Break()
 	builder.WriteString(tuple)
 }
 
@@ -312,107 +322,67 @@ func validateNoForbiddenChars(s string) error {
 // writeValue writes value v to the writer w. An error
 // is returned only when the underlying writer returns
 // an error or an unexpected value kind is encountered.
-func writeValue(w io.StringWriter, v *structpb.Value) (err error) {
-	switch val := v.GetKind().(type) {
-	case *structpb.Value_BoolValue:
-		_, err = w.WriteString(strconv.FormatBool(val.BoolValue))
-	case *structpb.Value_NullValue:
-		_, err = w.WriteString("null")
-	case *structpb.Value_StringValue:
-		if err = validateNoForbiddenChars(val.StringValue); err != nil {
-			return
-		}
+func writeValue(w cache.KeyWriter, v *structpb.Value) {
+	type stack struct {
+		Value *structpb.Value
+		Next  *stack
+	}
 
-		numBytes := len(val.StringValue)
-		_, err = w.WriteString(strconv.Itoa(numBytes) + ":")
-		if err != nil {
-			return
-		}
+	// collect nested values for recursive processing
+	next := &stack{Value: v}
 
-		_, err = w.WriteString(val.StringValue)
-		if err != nil {
-			return
-		}
-	case *structpb.Value_NumberValue:
-		_, err = w.WriteString(strconv.FormatFloat(val.NumberValue, 'f', -1, 64)) // -1 precision ensures we represent the 64-bit value with the maximum precision needed to represent it, see strconv#FormatFloat for more info.
-	case *structpb.Value_ListValue:
-		values := val.ListValue.GetValues()
+	// use a scalar for loop to avoid stack overflow possibility
+	for next != nil {
+		current := next
+		next = next.Next
 
-		for n, vv := range values {
-			if err = writeValue(w, vv); err != nil {
-				return
+		switch val := current.Value.GetKind().(type) {
+		case *structpb.Value_BoolValue:
+			var b uint8
+			if val.BoolValue {
+				b = 1
 			}
-
-			if n < len(values)-1 {
-				if _, err = w.WriteString(","); err != nil {
-					return
+			w.WriteByte(b)
+		case *structpb.Value_NullValue:
+			w.WriteByte(0x00)
+		case *structpb.Value_StringValue:
+			w.WriteString(val.StringValue)
+		case *structpb.Value_NumberValue:
+			// get the 8 bytes that reprent the float64 value directly
+			// the value will retain the endianess of the architecture
+			bits := math.Float64bits(val.NumberValue)
+			w.WriteUint64(bits)
+		case *structpb.Value_ListValue:
+			values := val.ListValue.GetValues()
+			for _, vv := range values {
+				next = &stack{
+					Value: vv,
+					Next:  next,
 				}
 			}
+		case *structpb.Value_StructValue:
+			writeStruct(w, val.StructValue)
 		}
-	case *structpb.Value_StructValue:
-		err = writeStruct(w, val.StructValue)
-	default:
-		err = ErrUnexpectedStructValue
 	}
-	return
-}
-
-// keys accepts a map m and returns a slice of its keys.
-// When this project is updated to Go version 1.23 or greater,
-// `maps.Keys` should be preferred.
-func keys[T comparable, U any](m map[T]U) []T {
-	n := make([]T, len(m))
-	var i int
-	for k := range m {
-		n[i] = k
-		i++
-	}
-	return n
 }
 
 // writeStruct writes Struct value s to writer w. When s is nil, a
 // nil error is returned. An error is returned only when the underlying
 // writer returns an error. The struct fields are written in the sorted
 // order of their names. A comma separates fields.
-func writeStruct(w io.StringWriter, s *structpb.Struct) (err error) {
+func writeStruct(w cache.KeyWriter, s *structpb.Struct) {
 	if s == nil {
 		return
 	}
 
 	fields := s.GetFields()
-	keys := keys(fields)
+	keys := slices.Collect(maps.Keys(fields))
 	sort.Strings(keys)
 
-	// encode the length of the keys to ensure the correct number of keys are reflected
-	// e.g. "a": "x,'b:'y"
-	if _, err = w.WriteString(strconv.Itoa(len(keys))); err != nil {
-		return
-	}
-
 	for _, key := range keys {
-		if err = validateNoForbiddenChars(key); err != nil {
-			return
-		}
-		if _, err = w.WriteString("'"); err != nil {
-			return
-		}
-		if _, err = w.WriteString(key); err != nil {
-			return
-		}
-		// 'key:'value separator and quote
-		if _, err = w.WriteString(":'"); err != nil {
-			return
-		}
-
-		if err = writeValue(w, fields[key]); err != nil {
-			return
-		}
-
-		if _, err = w.WriteString(","); err != nil {
-			return
-		}
+		w.WriteString(key)
+		writeValue(w, fields[key])
 	}
-	return
 }
 
 // writeTuples writes the set of tuples to writer w in ascending sorted order.
@@ -420,7 +390,7 @@ func writeStruct(w io.StringWriter, s *structpb.Struct) (err error) {
 // Tuples are separated by commas, and when present, conditions are included
 // in the tuple string representation. Returns an error only when
 // the underlying writer returns an error.
-func writeTuples(w io.StringWriter, tuples ...*openfgav1.TupleKey) (err error) {
+func writeTuples(w cache.KeyWriter, tuples ...*openfgav1.TupleKey) {
 	sortedTuples := make(tuple.TupleKeys, len(tuples))
 
 	// copy tuples slice to avoid mutating the original slice during sorting.
@@ -429,66 +399,24 @@ func writeTuples(w io.StringWriter, tuples ...*openfgav1.TupleKey) (err error) {
 	// sort tuples for a deterministic write
 	sort.Sort(sortedTuples)
 
-	// prefix to avoid overlap with previous strings written
-	_, err = w.WriteString("/")
-	if err != nil {
-		return
-	}
-
-	for n, tupleKey := range sortedTuples {
+	for _, tupleKey := range sortedTuples {
 		objectRelation := tupleKey.GetObject() + "#" + tupleKey.GetRelation()
-		if err = validateNoForbiddenChars(objectRelation); err != nil {
-			return
-		}
-		_, err = w.WriteString(objectRelation)
-		if err != nil {
-			return
-		}
+		w.WriteString(objectRelation)
 
 		cond := tupleKey.GetCondition()
 		if cond != nil {
-			// " with " is separated by spaces as those are invalid in relation names
-			// and we need to ensure this cache key is unique
-			// resultant cache key format is "object:object_id#relation with {condition} {context}@user:user_id"
+			w.Break()
 			condName := cond.GetName()
-			if err = validateNoForbiddenChars(condName); err != nil {
-				return
-			}
-			_, err = w.WriteString(" with " + condName)
-			if err != nil {
-				return
-			}
-
-			// if the condition also has context, we need an additional separator
-			// which cannot be present in condition names
-			if cond.GetContext() != nil {
-				_, err = w.WriteString(" ")
-				if err != nil {
-					return
-				}
-			}
-
-			// now write context to hash. Is a noop if context is nil.
-			if err = writeStruct(w, cond.GetContext()); err != nil {
-				return
-			}
+			w.WriteString(condName)
+			w.Break()
+			writeStruct(w, cond.GetContext())
 		}
+
+		w.Break()
 
 		user := tupleKey.GetUser()
-		if err = validateNoForbiddenChars(user); err != nil {
-			return
-		}
-		if _, err = w.WriteString("@" + user); err != nil {
-			return
-		}
-
-		if n < len(tuples)-1 {
-			if _, err = w.WriteString(","); err != nil {
-				return
-			}
-		}
+		w.WriteString(user)
 	}
-	return
 }
 
 // JitteredTTL returns a TTL with random jitter added. The jitter is a random duration
@@ -530,108 +458,59 @@ type CheckCacheKeyParams struct {
 	Context              *structpb.Struct
 }
 
-// WriteCheckCacheKey converts the elements of a Check into a canonical cache key that can be
+// BuildCheckCacheKey converts the elements of a Check into a canonical cache key that can be
 // used for Check resolution cache key lookups in a stable way, and writes it to the provided writer.
 //
 // For one store and model ID, the same tuple provided with the same contextual tuples and context
 // should produce the same cache key. Contextual tuple order and context parameter order is ignored,
 // only the contents are compared.
-func WriteCheckCacheKey(w io.StringWriter, params *CheckCacheKeyParams) error {
+func BuildCheckCacheKey(params *CheckCacheKeyParams) string {
 	t := tuple.From(params.TupleKey)
 
 	tupleStr := t.String()
-	if err := validateNoForbiddenChars(tupleStr); err != nil {
-		return err
-	}
-	_, err := w.WriteString(tupleStr)
-	if err != nil {
-		return err
-	}
 
-	err = WriteInvariantCheckCacheKey(w, params)
-	if err != nil {
-		return err
-	}
+	var builder cache.KeyBuilder
 
-	return nil
+	builder.WriteString(tupleStr)
+	builder.WriteUint64(BuildInvariantCacheKeyHash(
+		params.AuthorizationModelID,
+		params.Context,
+		params.ContextualTuples...,
+	))
+
+	hash := builder.Sum64()
+
+	builder.Reset()
+	builder.WriteUint64(hash)
+	return builder.String()
 }
 
-func WriteInvariantCheckCacheKey(w io.StringWriter, params *CheckCacheKeyParams) error {
-	_, err := w.WriteString(params.AuthorizationModelID)
-	if err != nil {
-		return err
+func BuildInvariantCacheKeyHash(modelID string, ctx *structpb.Struct, contextualTuples ...*openfgav1.TupleKey) uint64 {
+	var builder cache.KeyBuilder
+	builder.WriteString(modelID)
+
+	// here, and for context below, avoid encoding if we don't need to
+	if len(contextualTuples) > 0 {
+		var tupleBuilder cache.KeyBuilder
+		writeTuples(&tupleBuilder, contextualTuples...)
+		builder.WriteUint64(tupleBuilder.Sum64())
 	}
 
-	// here, and for context below, avoid hashing if we don't need to
-	if len(params.ContextualTuples) > 0 {
-		if err = writeTuples(w, params.ContextualTuples...); err != nil {
-			return err
-		}
+	if ctx != nil {
+		var structBuilder cache.KeyBuilder
+		writeStruct(&structBuilder, ctx)
+		builder.WriteUint64(structBuilder.Sum64())
 	}
 
-	if params.Context != nil {
-		if err = writeStruct(w, params.Context); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-const hextable string = "0123456789ABCDEF"
-
-type CacheKeyBuilder struct {
-	buf [][]byte
-}
-
-func (b *CacheKeyBuilder) Grow(n int) {
-	if cap(b.buf) < n {
-		buf := make([][]byte, len(b.buf), n)
-		copy(buf, b.buf)
-		b.buf = buf
-	}
-}
-
-func (b *CacheKeyBuilder) Write(val []byte) (int, error) {
-	b.buf = append(b.buf, val)
-	return len(val), nil
-}
-
-func (b *CacheKeyBuilder) WriteString(val string) (int, error) {
-	return b.Write(unsafe.Slice(unsafe.StringData(val), len(val)))
-}
-
-// String hex-encodes each written value and separates them with '|'.
-// The output alphabet is [0-9A-F|], which makes it injection-proof: no crafted
-// input can produce a '|', so segments can never collide across boundaries.
-// Tradeoff: keys are 2x larger than raw concatenation, increasing cache memory usage.
-func (b *CacheKeyBuilder) String() string {
-	var count int
-	for _, buf := range b.buf {
-		count += len(buf)*2 + 1
-	}
-	hex := make([]byte, count)
-	var j int
-	for _, buf := range b.buf {
-		for i := range len(buf) {
-			hex[j] = hextable[buf[i]>>4]
-			j++
-			hex[j] = hextable[buf[i]&0x0F]
-			j++
-		}
-		hex[j] = '|'
-		j++
-	}
-	// unsafe.String: safe because hex is a local buffer never mutated after this point.
-	return unsafe.String(unsafe.SliceData(hex), len(hex))
+	return builder.Sum64()
 }
 
 // BuildUserTypeRestrictionsHash creates a deterministic xxhash digest from user type restrictions.
 // Each restriction is formatted as "type", "type:*", or "type#relation", then sorted and
 // hashed with null-byte separators. Returns the hash as a []byte.
-func BuildUserTypeRestrictionsHash(refs []*openfgav1.RelationReference) []byte {
+func BuildUserTypeRestrictionsHash(refs []*openfgav1.RelationReference) uint64 {
 	if len(refs) == 0 {
-		return []byte{}
+		return 0
 	}
 
 	parts := make([]string, 0, len(refs))
@@ -650,10 +529,9 @@ func BuildUserTypeRestrictionsHash(refs []*openfgav1.RelationReference) []byte {
 
 	sort.Strings(parts)
 
-	var hasher xxhash.Digest
+	var builder cache.KeyBuilder
 	for _, part := range parts {
-		hasher.WriteString(part)
-		hasher.Write([]byte{0})
+		builder.WriteString(part)
 	}
-	return hasher.Sum([]byte{})
+	return builder.Sum64()
 }

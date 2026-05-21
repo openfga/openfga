@@ -4,16 +4,14 @@ import (
 	"errors"
 	"slices"
 	"sort"
-	"strconv"
-	"strings"
 
-	"github.com/cespare/xxhash/v2"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/modelgraph"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/storage/cache"
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
@@ -32,10 +30,11 @@ type Request struct {
 	Consistency          openfgav1.ConsistencyPreference
 
 	cacheKey string
+
 	// Invariant parts of a check request are those that don't change in sub-problems
 	// AuthorizationModelID, Context, and ContextualTuples.
 	// the invariantCacheKey is computed once per request, and passed to sub-problems via copy in .clone()
-	invariantCacheKey string
+	invariantCacheKey []byte
 
 	objectType          string
 	userType            string
@@ -154,29 +153,21 @@ func NewRequest(p RequestParams) (*Request, error) {
 		userWildcard: tuple.IsTypedWildcard(p.TupleKey.GetUser()),
 	}
 
-	keyBuilder := &strings.Builder{}
-	// TODO: we really should refactor this method to not depend on storage package and improve the implementation overall
-	err := storage.WriteInvariantCheckCacheKey(keyBuilder, &storage.CheckCacheKeyParams{
-		StoreID:              p.StoreID,
-		AuthorizationModelID: modelID,
-		ContextualTuples:     p.ContextualTuples,
-		Context:              p.Context,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	hasher := xxhash.New()
-	_, _ = hasher.WriteString(keyBuilder.String())
-	r.invariantCacheKey = strconv.FormatUint(hasher.Sum64(), 10)
+	r.invariantCacheKey = storage.BuildInvariantCacheKeyHash(modelID, p.Context, p.ContextualTuples...)
 
 	tup := tuple.From(r.GetTupleKey())
-	hasher = xxhash.New()
-	_, _ = hasher.WriteString(r.GetInvariantCacheKey())
-	_, _ = hasher.WriteString(tup.String())
 
-	cacheKey := cacheKeyPrefix + strconv.FormatUint(hasher.Sum64(), 10)
-	r.cacheKey = cacheKey
+	var builder cache.KeyBuilder
+	builder.Grow(2)
+	builder.Write(r.GetInvariantCacheKey())
+	builder.WriteString(tup.String())
+	hash := builder.Hash()
+
+	builder.Reset()
+	builder.WriteString(cacheKeyPrefix)
+	builder.Write(hash)
+
+	r.cacheKey = builder.String()
 
 	r.buildContextualTupleMaps()
 
@@ -202,7 +193,8 @@ func (r *Request) buildContextualTupleMaps() {
 	r.ctxTuplesByObjectID = make(map[string][]*openfgav1.TupleKey, len(ctxTuples))
 
 	// Use string builder to avoid allocations
-	var keyBuilder strings.Builder
+	var builder cache.KeyBuilder
+	builder.Grow(3)
 
 	for _, t := range ctxTuples {
 		user := t.GetUser()
@@ -227,24 +219,20 @@ func (r *Request) buildContextualTupleMaps() {
 		}
 
 		// Build key for ctxTuplesByUserID: userId+relation+objectType
-		keyBuilder.Reset()
-		keyBuilder.WriteString(user)
-		keyBuilder.WriteByte(ctxTupleMapKeyDelimiter)
-		keyBuilder.WriteString(relation)
-		keyBuilder.WriteByte(ctxTupleMapKeyDelimiter)
-		keyBuilder.WriteString(objectType)
-		userKey := keyBuilder.String()
+		builder.Reset()
+		builder.WriteString(user)
+		builder.WriteString(relation)
+		builder.WriteString(objectType)
+		userKey := builder.String()
 
 		r.ctxTuplesByUserID[userKey] = insertSortedTuple(r.ctxTuplesByUserID[userKey], t, "object")
 
 		// Build key for ctxTuplesByObjectID: objectId+relation+userType
-		keyBuilder.Reset()
-		keyBuilder.WriteString(object)
-		keyBuilder.WriteByte(ctxTupleMapKeyDelimiter)
-		keyBuilder.WriteString(relation)
-		keyBuilder.WriteByte(ctxTupleMapKeyDelimiter)
-		keyBuilder.WriteString(userType)
-		objectKey := keyBuilder.String()
+		builder.Reset()
+		builder.WriteString(object)
+		builder.WriteString(relation)
+		builder.WriteString(userType)
+		objectKey := builder.String()
 
 		r.ctxTuplesByObjectID[objectKey] = insertSortedTuple(r.ctxTuplesByObjectID[objectKey], t, "user")
 	}
@@ -292,27 +280,25 @@ func insertSortedTuple(slice []*openfgav1.TupleKey, t *openfgav1.TupleKey, sortK
 
 // GetContextualTuplesByUserID returns the map of contextual tuples indexed by userId+relation+objectType.
 func (r *Request) GetContextualTuplesByUserID(userID, relation, objectType string) ([]*openfgav1.TupleKey, bool) {
-	var keyBuilder strings.Builder
-	keyBuilder.WriteString(userID)
-	keyBuilder.WriteByte(ctxTupleMapKeyDelimiter)
-	keyBuilder.WriteString(relation)
-	keyBuilder.WriteByte(ctxTupleMapKeyDelimiter)
-	keyBuilder.WriteString(objectType)
+	var builder cache.KeyBuilder
+	builder.Grow(3)
+	builder.WriteString(userID)
+	builder.WriteString(relation)
+	builder.WriteString(objectType)
 
-	entry, ok := r.ctxTuplesByUserID[keyBuilder.String()]
+	entry, ok := r.ctxTuplesByUserID[builder.String()]
 	return entry, ok
 }
 
 // GetContextualTuplesByObjectID returns the map of contextual tuples indexed by objectId+relation+userType.
 func (r *Request) GetContextualTuplesByObjectID(objectID, relation, userType string) ([]*openfgav1.TupleKey, bool) {
-	var keyBuilder strings.Builder
-	keyBuilder.WriteString(objectID)
-	keyBuilder.WriteByte(ctxTupleMapKeyDelimiter)
-	keyBuilder.WriteString(relation)
-	keyBuilder.WriteByte(ctxTupleMapKeyDelimiter)
-	keyBuilder.WriteString(userType)
+	var builder cache.KeyBuilder
+	builder.Grow(3)
+	builder.WriteString(objectID)
+	builder.WriteString(relation)
+	builder.WriteString(userType)
 
-	entry, ok := r.ctxTuplesByObjectID[keyBuilder.String()]
+	entry, ok := r.ctxTuplesByObjectID[builder.String()]
 	return entry, ok
 }
 
@@ -358,9 +344,9 @@ func (r *Request) GetConsistency() openfgav1.ConsistencyPreference {
 	return r.Consistency
 }
 
-func (r *Request) GetInvariantCacheKey() string {
+func (r *Request) GetInvariantCacheKey() []byte {
 	if r == nil {
-		return ""
+		return []byte{}
 	}
 	return r.invariantCacheKey
 }
@@ -410,12 +396,18 @@ func (r *Request) cloneWithTupleKey(tk *openfgav1.TupleKey) *Request {
 	req.userType = userType
 
 	tup := tuple.From(tk)
-	hasher := xxhash.New()
-	_, _ = hasher.WriteString(req.GetInvariantCacheKey())
-	_, _ = hasher.WriteString(tup.String())
 
-	cacheKey := cacheKeyPrefix + strconv.FormatUint(hasher.Sum64(), 10)
-	req.cacheKey = cacheKey
+	var builder cache.KeyBuilder
+	builder.Grow(2)
+	builder.Write(req.GetInvariantCacheKey())
+	builder.WriteString(tup.String())
+	hash := builder.Hash()
+
+	builder.Reset()
+	builder.WriteString(cacheKeyPrefix)
+	builder.Write(hash)
+
+	req.cacheKey = builder.String()
 	req.userWildcard = tuple.IsWildcard(tk.GetUser())
 
 	return req
