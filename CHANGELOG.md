@@ -10,6 +10,9 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Changed
 - Added workflow-level `concurrency.group` and `cancel-in-progress` for PR-related workflow runs to reduce wasted effort. [#3140](https://github.com/openfga/openfga/pull/3140)
 
+### Fixed
+- Fixed experimental `weighted_graph_check` incorrectly falling back to the standard algorithm on deadline/cancellation/throttle-timeout errors; these are now returned directly. Also fixed `weighted_graph_check` emitting metrics under the wrong method label when used as the primary algorithm. [#3141](https://github.com/openfga/openfga/pull/3141)
+
 ## [1.16.0] - 2026-05-20
 ### Added
 - Added datastore ping timeout (PingTimeout) and datastore ping retry timeout (PingRetryMaxElapsedTime) configurations. [#3113](https://github.com/openfga/openfga/pull/3113)
@@ -21,6 +24,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Fixed cache key collisions in experimental `weighted_graph_check` union resolution by moving result caching from the union node level to the individual edge level, preventing collisions across requests that share edges but differ in object or relation. [#3117](https://github.com/openfga/openfga/pull/3117)
 - Fixed a bug in experimental `weighted_graph_check` where in-flight goroutines cancelled by a union short-circuit or recursive resolution could cache a false result, causing subsequent requests to incorrectly return false without querying the datastore. [#3125](https://github.com/openfga/openfga/pull/3125)
 - Fixed experimental `weighted_graph_check` returning an error when v2Check fails; Check now falls back to the standard algorithm instead. [#3126](https://github.com/openfga/openfga/pull/3126)
+- Fixed OIDC authentication rejecting valid tokens after issuer key rotation by enabling JWKS refresh on unknown `kid` (rate-limited to once per minute). [#3101](https://github.com/openfga/openfga/pull/3101)
 
 ### Security
 - Update toolchain Go version to 1.26.3 to address the Go standard library vulnerabilities documented in the [Go 1.26.3 release notes](https://go.dev/doc/devel/release#go1.26.3). [#3115](https://github.com/openfga/openfga/pull/3115)
@@ -35,7 +39,6 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Fixed cache key collisions in experimental `weighted_graph_check` for edges in unions with multiple branches (direct types, wildcards, TTU paths, or intersections). [#3097](https://github.com/openfga/openfga/pull/3097)
 - Fixed a bug in the bounded tuple reader that would cause semaphore token leaks under context cancelation. [#3106](https://github.com/openfga/openfga/pull/3106)
 - Fixed a bug that could cause deadlocks in check by holding message streams open indefinitely upon error. [#3111](https://github.com/openfga/openfga/pull/3111)
-- Fixed OIDC authentication rejecting valid tokens after issuer key rotation by enabling JWKS refresh on unknown `kid` (rate-limited to once per minute). [#3101](https://github.com/openfga/openfga/pull/3101)
 
 ## [1.15.0] - 2026-04-27
 ### Changed

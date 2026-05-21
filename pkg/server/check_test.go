@@ -214,6 +214,9 @@ func TestShadowV2Check(t *testing.T) {
 		require.Equal(t, "document:1", fields["object"])
 		require.Equal(t, "viewer", fields["relation"])
 		require.Equal(t, "user:alice", fields["user"])
+		// zap.Any encodes nil proto messages as the string "<nil>" rather than omitting the key.
+		require.Equal(t, "<nil>", fields["context"], "context should be nil when not set on request")
+		require.Equal(t, "<nil>", fields["contextual_tuples"], "contextual_tuples should be nil when not set on request")
 	})
 
 	t.Run("logs_mismatch_when_results_disagree", func(t *testing.T) {
@@ -238,6 +241,31 @@ func TestShadowV2Check(t *testing.T) {
 		require.Equal(t, "document:1", fields["object"])
 		require.Equal(t, "viewer", fields["relation"])
 		require.Equal(t, "user:alice", fields["user"])
+	})
+
+	t.Run("logs_contextual_tuples_when_present", func(t *testing.T) {
+		logs.TakeAll()
+
+		reqWithCtxTuples := &openfgav1.CheckRequest{
+			StoreId:              req.GetStoreId(),
+			AuthorizationModelId: req.GetAuthorizationModelId(),
+			TupleKey:             req.GetTupleKey(),
+			ContextualTuples: &openfgav1.ContextualTupleKeys{
+				TupleKeys: []*openfgav1.TupleKey{
+					tuple.NewTupleKey("document:1", "viewer", "user:bob"),
+				},
+			},
+		}
+
+		mainRes := &openfgav1.CheckResponse{Allowed: true}
+		s.shadowV2Check(context.Background(), reqWithCtxTuples, mainRes, 10, 1, 1)
+
+		shadowLogs := logs.FilterMessage("shadow check")
+		require.Equal(t, 1, shadowLogs.Len())
+
+		fields := fieldMap(shadowLogs.All()[0].Context)
+		require.NotNil(t, fields["contextual_tuples"], "contextual_tuples should be logged when present")
+		require.Equal(t, "<nil>", fields["context"], "context should be nil when not set on request")
 	})
 
 	t.Run("logs_error_on_invalid_store", func(t *testing.T) {
@@ -474,15 +502,13 @@ func TestV2CheckMetadata(t *testing.T) {
 	})
 
 	t.Run("publishes_datastore_query_and_item_counts", func(t *testing.T) {
-		s, req := setupCheckServer(t, "", nil)
+		s, req := setupCheckServer(t, "", nil,
+			WithFeatureFlagClient(featureflags.NewDefaultClient([]string{serverconfig.ExperimentalWeightedGraphCheck})),
+		)
 
 		ctx := grpc_ctxtags.SetInContext(context.Background(), grpc_ctxtags.NewTags())
 
-		res, _, err := s.v2Check(ctx, req,
-			s.sharedDatastoreResources.CheckCache,
-			s.sharedDatastoreResources.CacheController,
-			s.authzModelGraphResolver,
-		)
+		res, err := s.Check(ctx, req)
 		require.NoError(t, err)
 		require.True(t, res.GetAllowed())
 
@@ -499,6 +525,10 @@ func TestV2CheckMetadata(t *testing.T) {
 		throttled, ok := tags["request.datastore_throttled"]
 		require.True(t, ok, "request.datastore_throttled should be set in context tags")
 		require.Equal(t, false, throttled, "throttling should be disabled by default")
+
+		// v2 does not track dispatch count, so the tag must be absent.
+		_, ok = tags[dispatchCountHistogramName]
+		require.False(t, ok, "dispatch_count should not be set for v2 path (no dispatcher)")
 	})
 
 	t.Run("throttling_enabled_when_flag_on_and_threshold_exceeded", func(t *testing.T) {
@@ -527,11 +557,7 @@ func TestV2CheckMetadata(t *testing.T) {
 
 		ctx := grpc_ctxtags.SetInContext(context.Background(), grpc_ctxtags.NewTags())
 
-		res, _, err := s.v2Check(ctx, req,
-			s.sharedDatastoreResources.CheckCache,
-			s.sharedDatastoreResources.CacheController,
-			s.authzModelGraphResolver,
-		)
+		res, err := s.Check(ctx, req)
 		require.NoError(t, err)
 		require.True(t, res.GetAllowed())
 
@@ -544,17 +570,14 @@ func TestV2CheckMetadata(t *testing.T) {
 
 	t.Run("throttling_disabled_when_flag_off", func(t *testing.T) {
 		s, req := setupCheckServer(t, "", nil,
-			WithFeatureFlagClient(featureflags.NewNoopFeatureFlagClient()),
+			// Enable v2 but NOT datastore throttling, to verify throttling is disabled.
+			WithFeatureFlagClient(featureflags.NewDefaultClient([]string{serverconfig.ExperimentalWeightedGraphCheck})),
 			WithCheckDatabaseThrottle(1, 1*time.Millisecond),
 		)
 
 		ctx := grpc_ctxtags.SetInContext(context.Background(), grpc_ctxtags.NewTags())
 
-		res, _, err := s.v2Check(ctx, req,
-			s.sharedDatastoreResources.CheckCache,
-			s.sharedDatastoreResources.CacheController,
-			s.authzModelGraphResolver,
-		)
+		res, err := s.Check(ctx, req)
 		require.NoError(t, err)
 		require.True(t, res.GetAllowed())
 
@@ -563,6 +586,35 @@ func TestV2CheckMetadata(t *testing.T) {
 		throttled, ok := tags["request.datastore_throttled"]
 		require.True(t, ok, "request.datastore_throttled should be set in context tags")
 		require.Equal(t, false, throttled, "throttling should be disabled when feature flag is false")
+	})
+
+	t.Run("cancelled_context_returns_error_not_fallback", func(t *testing.T) {
+		// When the caller's context is already cancelled, v2Check returns context.Canceled.
+		// Check must return that error immediately (not fall back to v1) and still emit metrics.
+		// The error surfaces as the gRPC-mapped ErrRequestCancelled, not the raw sentinel.
+		s, req := setupCheckServer(t, "", nil,
+			WithFeatureFlagClient(featureflags.NewDefaultClient([]string{serverconfig.ExperimentalWeightedGraphCheck})),
+		)
+
+		cancelledCtx, cancel := context.WithCancel(context.Background())
+		cancel() // cancel before the call
+		ctx := grpc_ctxtags.SetInContext(cancelledCtx, grpc_ctxtags.NewTags())
+
+		_, err := s.Check(ctx, req)
+		require.Error(t, err)
+		st, ok := status.FromError(err)
+		require.True(t, ok, "error should be a gRPC status error")
+		require.Equal(t, "Request Cancelled", st.Message())
+
+		tags := grpc_ctxtags.Extract(ctx).Values()
+		// Metrics must be set even for the error path.
+		_, ok = tags[datastoreQueryCountHistogramName]
+		require.True(t, ok, "datastore_query_count should be set even on cancelled context")
+		_, ok = tags["request.datastore_throttled"]
+		require.True(t, ok, "request.datastore_throttled should be set even on cancelled context")
+		// v1 dispatch tag must be absent — we didn't fall back.
+		_, ok = tags[dispatchCountHistogramName]
+		require.False(t, ok, "dispatch_count must not be set — cancelled context must not fall back to v1")
 	})
 }
 
@@ -769,8 +821,16 @@ func TestCheck_FallsBackToV1WhenWeightedGraphInvalid(t *testing.T) {
 		WithFeatureFlagClient(featureflags.NewDefaultClient([]string{serverconfig.ExperimentalWeightedGraphCheck})),
 	)
 
-	resp, err := s.Check(context.Background(), req)
+	ctx := grpc_ctxtags.SetInContext(context.Background(), grpc_ctxtags.NewTags())
+	resp, err := s.Check(ctx, req)
 	require.NoError(t, err)
 	// v1 fallback: alice has user_access but not bot_access, so viewer (AND) is false.
 	require.False(t, resp.GetAllowed())
+
+	tags := grpc_ctxtags.Extract(ctx).Values()
+	// dispatch_count is only set by the v1 metrics path, confirming fallback ran v1.
+	_, ok := tags[dispatchCountHistogramName]
+	require.True(t, ok, "dispatch_count should be set, confirming v1 metrics path ran")
+	_, ok = tags[datastoreQueryCountHistogramName]
+	require.True(t, ok, "datastore_query_count should be set")
 }
