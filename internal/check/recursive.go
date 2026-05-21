@@ -187,8 +187,11 @@ func (s *Recursive) recursiveMatch(ctx context.Context, req *Request, recursiveE
 	var pool errgroup.Group
 	pool.SetLimit(s.concurrencyLimit)
 
+	// Mark all IDs visited before starting goroutines to avoid redundant reads.
 	for id := range idsFromObject {
-		visited.Store(id, true)
+		visited.Store(id, struct{}{})
+	}
+	for id := range idsFromObject {
 		pool.Go(func() error {
 			s.recursiveMatchResolver(ctx, req, edge, recursiveType, &pool, idsFromUser, visited, id, responsesChan)
 			return nil
