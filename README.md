@@ -181,24 +181,21 @@ Disable it with:
 ./openfga run --playground-enabled=false
 ```
 
-Change port:
+Change address:
 
 ```shell
-./openfga run --playground-enabled --playground-port 3001
+./openfga run --playground-enabled --playground-addr 0.0.0.0:3001
 ```
 
-> [!TIP]
-> The `OPENFGA_HTTP_ADDR` environment variable can be used to configure the address at which the Playground expects the OpenFGA server to be.
->
-> For example:
+> [!IMPORTANT]
+> When running in Docker, the Playground binds to `127.0.0.1` by default, making it unreachable from outside the container.
+> Set `OPENFGA_PLAYGROUND_ADDR=0.0.0.0:3000` to bind to all interfaces:
 >
 > ```shell
 > docker run -e OPENFGA_PLAYGROUND_ENABLED=true \
-> -e OPENFGA_HTTP_ADDR=0.0.0.0:4000 \
-> -p 4000:4000 -p 3000:3000 openfga/openfga run
+> -e OPENFGA_PLAYGROUND_ADDR=0.0.0.0:3000 \
+> -p 8080:8080 -p 3000:3000 openfga/openfga run
 > ```
->
-> This starts OpenFGA on port 4000 and configures the Playground accordingly.
 
 ## Next Steps
 
