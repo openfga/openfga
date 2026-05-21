@@ -164,6 +164,9 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 		util.MustBindPFlag("log.timestampFormat", flags.Lookup("log-timestamp-format"))
 		util.MustBindEnv("log.timestampFormat", "OPENFGA_LOG_TIMESTAMP_FORMAT")
 
+		util.MustBindPFlag("log.traceContext", flags.Lookup("log-trace-context"))
+		util.MustBindEnv("log.traceContext", "OPENFGA_LOG_TRACE_CONTEXT")
+
 		util.MustBindPFlag("trace.enabled", flags.Lookup("trace-enabled"))
 		util.MustBindEnv("trace.enabled", "OPENFGA_TRACE_ENABLED")
 
