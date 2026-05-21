@@ -438,3 +438,68 @@ func TestDefaultTTU(t *testing.T) {
 		})
 	}
 }
+
+// TestDefaultExecuteCancelledContextRace is a probabilistic regression test for the race where
+// Go's select non-deterministically picks a closed responsesChan over ctx.Done() when both are
+// ready simultaneously. Without the ctx.Err() guard this would occasionally return
+// {Allowed:false, nil} instead of propagating the cancellation error.
+func TestDefaultExecuteCancelledContextRace(t *testing.T) {
+	t.Cleanup(func() { goleak.VerifyNone(t) })
+
+	model := testutils.MustTransformDSLToProtoWithID(`
+		  model
+		   schema 1.1
+
+		  type user
+		  type document
+		   relations
+			define member: [user]
+			define viewer: member from owner
+			define owner: [document]
+	`)
+
+	mg, err := modelgraph.New(model)
+	require.NoError(t, err)
+
+	edges, ok := mg.GetEdgesFromNodeId("document#viewer")
+	require.True(t, ok)
+
+	var ttuEdge *authzGraph.WeightedAuthorizationModelEdge
+	for _, edge := range edges {
+		if edge.GetEdgeType() == authzGraph.TTUEdge {
+			ttuEdge = edge
+			break
+		}
+	}
+	require.NotNil(t, ttuEdge)
+
+	storeID := ulid.Make().String()
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockResolver := NewMockCheckResolver(ctrl)
+	// Return not-allowed so the strategy keeps consuming; this keeps responsesChan active
+	// and widens the window where ctx.Done() and the channel close race.
+	mockResolver.EXPECT().ResolveUnion(gomock.Any(), gomock.Any(), gomock.Any(), nil).
+		MaxTimes(1).Return(&Response{Allowed: false}, nil)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // pre-cancel so both cases are ready immediately
+
+	iter := storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{
+		tuple.NewTupleKey("document:1", "owner", "document:2"),
+	})
+	strategy := NewDefault(mg, mockResolver, 2)
+
+	req, err := NewRequest(RequestParams{
+		StoreID:  storeID,
+		Model:    mg,
+		TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+	})
+	require.NoError(t, err)
+
+	res, err := strategy.TTU(ctx, req, ttuEdge, iter, nil)
+
+	require.ErrorIs(t, err, context.Canceled)
+	require.Nil(t, res)
+}

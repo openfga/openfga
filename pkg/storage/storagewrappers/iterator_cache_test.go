@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strconv"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -1202,10 +1201,17 @@ func TestBuildReadUsersetTuplesCacheKey_Basic(t *testing.T) {
 
 	key := buildReadUsersetTuplesCacheKey("store123", filter)
 
-	require.Contains(t, key, "v2ic.rut/")
-	require.Contains(t, key, "store123")
-	require.Contains(t, key, "document:1#viewer")
-	require.Contains(t, key, "group#member")
+	require.NotEmpty(t, key)
+
+	differentObject := filter
+	differentObject.Object = "document:2"
+	require.NotEqual(t, key, buildReadUsersetTuplesCacheKey("store123", differentObject))
+
+	differentRelation := filter
+	differentRelation.Relation = "editor"
+	require.NotEqual(t, key, buildReadUsersetTuplesCacheKey("store123", differentRelation))
+
+	require.NotEqual(t, key, buildReadUsersetTuplesCacheKey("store456", filter))
 }
 
 func TestBuildReadUsersetTuplesCacheKey_WithConditions(t *testing.T) {
@@ -1220,8 +1226,9 @@ func TestBuildReadUsersetTuplesCacheKey_WithConditions(t *testing.T) {
 
 	key := buildReadUsersetTuplesCacheKey("store123", filter)
 
-	require.Contains(t, key, "v2ic.rut/")
-	require.Contains(t, key, "/c:") // Conditions hash
+	withoutConditions := filter
+	withoutConditions.Conditions = nil
+	require.NotEqual(t, key, buildReadUsersetTuplesCacheKey("store123", withoutConditions))
 }
 
 func TestBuildReadUsersetTuplesCacheKey_Wildcard(t *testing.T) {
@@ -1235,7 +1242,14 @@ func TestBuildReadUsersetTuplesCacheKey_Wildcard(t *testing.T) {
 
 	key := buildReadUsersetTuplesCacheKey("store123", filter)
 
-	require.Contains(t, key, "user:*")
+	filterWithRelation := storage.ReadUsersetTuplesFilter{
+		Object:   "document:1",
+		Relation: "viewer",
+		AllowedUserTypeRestrictions: []*openfgav1.RelationReference{
+			{Type: "user", RelationOrWildcard: &openfgav1.RelationReference_Relation{Relation: "member"}},
+		},
+	}
+	require.NotEqual(t, key, buildReadUsersetTuplesCacheKey("store123", filterWithRelation))
 }
 
 func TestBuildReadCacheKey_Basic(t *testing.T) {
@@ -1247,10 +1261,15 @@ func TestBuildReadCacheKey_Basic(t *testing.T) {
 
 	key := buildReadCacheKey("store123", filter)
 
-	require.Contains(t, key, "v2ic.r/")
-	require.Contains(t, key, "store123")
-	require.Contains(t, key, "document:1#parent")
-	require.Contains(t, key, "folder:")
+	require.NotEmpty(t, key)
+
+	differentObject := filter
+	differentObject.Object = "document:2"
+	require.NotEqual(t, key, buildReadCacheKey("store123", differentObject))
+
+	differentUser := filter
+	differentUser.User = "group:"
+	require.NotEqual(t, key, buildReadCacheKey("store123", differentUser))
 }
 
 func TestBuildReadCacheKey_WithConditions(t *testing.T) {
@@ -1263,7 +1282,9 @@ func TestBuildReadCacheKey_WithConditions(t *testing.T) {
 
 	key := buildReadCacheKey("store123", filter)
 
-	require.Contains(t, key, "/c:")
+	withoutConditions := filter
+	withoutConditions.Conditions = nil
+	require.NotEqual(t, key, buildReadCacheKey("store123", withoutConditions))
 }
 
 func TestBuildReadStartingWithUserCacheKey_Basic(t *testing.T) {
@@ -1277,10 +1298,11 @@ func TestBuildReadStartingWithUserCacheKey_Basic(t *testing.T) {
 
 	key := buildReadStartingWithUserCacheKey("store123", filter)
 
-	require.Contains(t, key, "v2ic.rswu/")
-	require.Contains(t, key, "store123")
-	require.Contains(t, key, "document#viewer")
-	require.Contains(t, key, "user:alice")
+	require.NotEmpty(t, key)
+
+	differentType := filter
+	differentType.ObjectType = "folder"
+	require.NotEqual(t, key, buildReadStartingWithUserCacheKey("store123", differentType))
 }
 
 func TestBuildReadStartingWithUserCacheKey_MultipleUsers(t *testing.T) {
@@ -1295,8 +1317,15 @@ func TestBuildReadStartingWithUserCacheKey_MultipleUsers(t *testing.T) {
 
 	key := buildReadStartingWithUserCacheKey("store123", filter)
 
-	// Users should be sorted
-	require.Contains(t, key, "user:alice,user:bob")
+	filterReversed := storage.ReadStartingWithUserFilter{
+		ObjectType: "document",
+		Relation:   "viewer",
+		UserFilter: []*openfgav1.ObjectRelation{
+			{Object: "user:alice"},
+			{Object: "user:bob"},
+		},
+	}
+	require.Equal(t, key, buildReadStartingWithUserCacheKey("store123", filterReversed))
 }
 
 func TestBuildReadStartingWithUserCacheKey_WithRelation(t *testing.T) {
@@ -1310,7 +1339,53 @@ func TestBuildReadStartingWithUserCacheKey_WithRelation(t *testing.T) {
 
 	key := buildReadStartingWithUserCacheKey("store123", filter)
 
-	require.Contains(t, key, "group:eng#member")
+	filterWithoutRelation := storage.ReadStartingWithUserFilter{
+		ObjectType: "document",
+		Relation:   "viewer",
+		UserFilter: []*openfgav1.ObjectRelation{
+			{Object: "group:eng"},
+		},
+	}
+	require.NotEqual(t, key, buildReadStartingWithUserCacheKey("store123", filterWithoutRelation))
+}
+
+func TestBuildCacheKey_CollisionPrevention(t *testing.T) {
+	store := "01AAAAAAAAAAAAAAAAAAAAAAAA"
+
+	t.Run("ReadUsersetTuples_PoC_from_report", func(t *testing.T) {
+		q1 := buildReadUsersetTuplesCacheKey(store, storage.ReadUsersetTuplesFilter{
+			Object:   "doc:1",
+			Relation: "viewer",
+			AllowedUserTypeRestrictions: []*openfgav1.RelationReference{
+				{Type: "group", RelationOrWildcard: &openfgav1.RelationReference_Relation{Relation: "member"}},
+			},
+		})
+		q2 := buildReadUsersetTuplesCacheKey(store, storage.ReadUsersetTuplesFilter{
+			Object:   "doc:1#viewer/group",
+			Relation: "member",
+		})
+		require.NotEqual(t, q1, q2)
+	})
+
+	t.Run("Read_delimiter_in_object", func(t *testing.T) {
+		k1 := buildReadCacheKey(store, storage.ReadFilter{
+			Object: "doc:1", Relation: "viewer", User: "user:alice",
+		})
+		k2 := buildReadCacheKey(store, storage.ReadFilter{
+			Object: "doc:1#viewer", Relation: "", User: "user:alice",
+		})
+		require.NotEqual(t, k1, k2)
+	})
+
+	t.Run("ReadStartingWithUser_delimiter_in_objectType", func(t *testing.T) {
+		k1 := buildReadStartingWithUserCacheKey(store, storage.ReadStartingWithUserFilter{
+			ObjectType: "doc", Relation: "viewer",
+		})
+		k2 := buildReadStartingWithUserCacheKey(store, storage.ReadStartingWithUserFilter{
+			ObjectType: "doc#viewer", Relation: "",
+		})
+		require.NotEqual(t, k1, k2)
+	})
 }
 
 func TestCacheKey_Deterministic(t *testing.T) {
@@ -1333,37 +1408,37 @@ func TestCacheKey_Deterministic(t *testing.T) {
 	require.Equal(t, key2, key3)
 }
 
-func TestBuildUserTypeRestrictionsString(t *testing.T) {
+func TestBuildUserTypeRestrictionsHash(t *testing.T) {
 	tests := []struct {
 		name     string
 		refs     []*openfgav1.RelationReference
-		expected string
+		expected []byte
 	}{
 		{
 			name:     "empty",
 			refs:     nil,
-			expected: "",
+			expected: []byte{},
 		},
 		{
 			name: "single_type",
 			refs: []*openfgav1.RelationReference{
 				{Type: "user"},
 			},
-			expected: "user",
+			expected: []byte{0x65, 0x52, 0x5, 0xbe, 0xa9, 0x4f, 0x7d, 0xa7},
 		},
 		{
 			name: "wildcard",
 			refs: []*openfgav1.RelationReference{
 				{Type: "user", RelationOrWildcard: &openfgav1.RelationReference_Wildcard{}},
 			},
-			expected: "user:*",
+			expected: []byte{0x70, 0x6f, 0x67, 0xe2, 0x78, 0xda, 0x3b, 0x61},
 		},
 		{
 			name: "relation",
 			refs: []*openfgav1.RelationReference{
 				{Type: "group", RelationOrWildcard: &openfgav1.RelationReference_Relation{Relation: "member"}},
 			},
-			expected: "group#member",
+			expected: []byte{0x7c, 0x64, 0x23, 0xcb, 0xdb, 0x70, 0x37, 0xe3},
 		},
 		{
 			name: "multiple_sorted",
@@ -1371,13 +1446,13 @@ func TestBuildUserTypeRestrictionsString(t *testing.T) {
 				{Type: "user"},
 				{Type: "group", RelationOrWildcard: &openfgav1.RelationReference_Relation{Relation: "member"}},
 			},
-			expected: "group#member,user",
+			expected: []byte{0x81, 0xf1, 0x10, 0x2f, 0x7e, 0xb3, 0xb3, 0x66},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := buildUserTypeRestrictionsString(tt.refs)
+			result := storage.BuildUserTypeRestrictionsHash(tt.refs)
 			require.Equal(t, tt.expected, result)
 		})
 	}
@@ -1387,26 +1462,26 @@ func TestBuildUserFilterString(t *testing.T) {
 	tests := []struct {
 		name     string
 		filters  []*openfgav1.ObjectRelation
-		expected string
+		expected []byte
 	}{
 		{
 			name:     "empty",
 			filters:  nil,
-			expected: "",
+			expected: []byte{},
 		},
 		{
 			name: "single_object",
 			filters: []*openfgav1.ObjectRelation{
 				{Object: "user:alice"},
 			},
-			expected: "user:alice",
+			expected: []byte{0x18, 0x58, 0xad, 0x5a, 0x15, 0x29, 0x6c, 0x1b},
 		},
 		{
 			name: "with_relation",
 			filters: []*openfgav1.ObjectRelation{
 				{Object: "group:eng", Relation: "member"},
 			},
-			expected: "group:eng#member",
+			expected: []byte{0x42, 0x16, 0x92, 0xbb, 0x12, 0xdb, 0x48, 0x86},
 		},
 		{
 			name: "multiple_sorted",
@@ -1414,7 +1489,7 @@ func TestBuildUserFilterString(t *testing.T) {
 				{Object: "user:bob"},
 				{Object: "user:alice"},
 			},
-			expected: "user:alice,user:bob",
+			expected: []byte{0x85, 0xc9, 0xae, 0x69, 0xbe, 0xe4, 0xd7, 0xb3},
 		},
 	}
 
@@ -1426,30 +1501,26 @@ func TestBuildUserFilterString(t *testing.T) {
 	}
 }
 
-func TestAppendConditionsHash(t *testing.T) {
-	t.Run("empty_conditions", func(t *testing.T) {
-		var b strings.Builder
-		appendConditionsHash(&b, nil)
-		require.Empty(t, b.String())
+func TestGenerateConditionsHash(t *testing.T) {
+	t.Run("nil_conditions", func(t *testing.T) {
+		s := generateConditionsHash(nil)
+		require.Empty(t, s)
 	})
 
 	t.Run("empty_string_conditions", func(t *testing.T) {
-		var b strings.Builder
-		appendConditionsHash(&b, []string{""})
-		require.Empty(t, b.String())
+		s := generateConditionsHash([]string{""})
+		require.NotEmpty(t, s)
 	})
 
 	t.Run("with_conditions", func(t *testing.T) {
-		var b strings.Builder
-		appendConditionsHash(&b, []string{"cond1", "cond2"})
-		require.Contains(t, b.String(), "/c:")
+		s := generateConditionsHash([]string{"cond1", "cond2"})
+		require.NotEmpty(t, s)
 	})
 
 	t.Run("deterministic", func(t *testing.T) {
-		var b1, b2 strings.Builder
-		appendConditionsHash(&b1, []string{"cond2", "cond1"})
-		appendConditionsHash(&b2, []string{"cond1", "cond2"})
-		require.Equal(t, b1.String(), b2.String())
+		s1 := generateConditionsHash([]string{"cond2", "cond1"})
+		s2 := generateConditionsHash([]string{"cond1", "cond2"})
+		require.Equal(t, s1, s2)
 	})
 }
 

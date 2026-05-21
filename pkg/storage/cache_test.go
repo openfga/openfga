@@ -23,6 +23,17 @@ import (
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
+func BuildCacheKey(vals ...string) string {
+	var builder CacheKeyBuilder
+	builder.Grow(len(vals))
+
+	for _, val := range vals {
+		builder.WriteString(val)
+	}
+
+	return builder.Build()
+}
+
 // MustNewStruct returns a new *structpb.Struct or panics
 // on error. The new *structpb.Struct value is built from
 // the map m.
@@ -1290,5 +1301,72 @@ func TestJitteredTTL(t *testing.T) {
 			result = JitteredTTL(time.Duration(math.MaxInt64), 100)
 		})
 		require.Equal(t, time.Duration(math.MaxInt64), result)
+	})
+}
+
+func TestBuildCacheKey(t *testing.T) {
+	t.Run("different_segments_produce_different_keys", func(t *testing.T) {
+		require.NotEqual(t, BuildCacheKey("a", "bc"), BuildCacheKey("ab", "c"))
+		require.NotEqual(t, BuildCacheKey("a", "b"), BuildCacheKey("a", "b", ""))
+	})
+
+	t.Run("identical_inputs_produce_identical_keys", func(t *testing.T) {
+		first := BuildCacheKey("foo", "bar")
+		second := BuildCacheKey("foo", "bar")
+		require.Equal(t, first, second)
+	})
+
+	t.Run("empty_input", func(t *testing.T) {
+		require.Equal(t, "|", BuildCacheKey(""))
+	})
+
+	t.Run("no_args", func(t *testing.T) {
+		require.Empty(t, BuildCacheKey())
+	})
+}
+
+func TestCacheKeyCollisionPrevention(t *testing.T) {
+	store := "01AAAAAAAAAAAAAAAAAAAAAAAA"
+
+	t.Run("ReadUsersetTuples_PoC_from_report", func(t *testing.T) {
+		var builder1 CacheKeyBuilder
+		GetReadUsersetTuplesCacheKeyPrefix(&builder1, store, "doc:1", "viewer")
+
+		var builder2 CacheKeyBuilder
+		GetReadUsersetTuplesCacheKeyPrefix(&builder2, store, "doc:1#viewer/group", "member")
+
+		require.NotEqual(t, builder1.Build(), builder2.Build())
+	})
+
+	t.Run("InvalidIteratorByObjectRelation_delimiter_in_object", func(t *testing.T) {
+		k1 := GetInvalidIteratorByObjectRelationCacheKey(store, "doc:1", "viewer")
+		k2 := GetInvalidIteratorByObjectRelationCacheKey(store, "doc:1#viewer", "")
+		require.NotEqual(t, k1, k2)
+	})
+
+	t.Run("InvalidIteratorByUserObjectType_delimiter_in_user", func(t *testing.T) {
+		k1 := GetInvalidIteratorByUserObjectTypeCacheKeys(store, []string{"user:alice|group"}, "doc")
+		k2 := GetInvalidIteratorByUserObjectTypeCacheKeys(store, []string{"user:alice"}, "group|doc")
+		require.NotEqual(t, k1[0], k2[0])
+	})
+
+	t.Run("ReadCacheKey_delimiter_in_tuple", func(t *testing.T) {
+		var builder1 CacheKeyBuilder
+		GetReadCacheKey(&builder1, store, "doc:1#viewer@user:alice")
+
+		var builder2 CacheKeyBuilder
+		GetReadCacheKey(&builder2, store, "doc:1#viewer@user:alice/extra")
+
+		require.NotEqual(t, builder1.Build(), builder2.Build())
+	})
+
+	t.Run("ReadStartingWithUser_delimiter_in_objectType", func(t *testing.T) {
+		var builder1 CacheKeyBuilder
+		GetReadStartingWithUserCacheKeyPrefix(&builder1, store, "doc", "viewer")
+
+		var builder2 CacheKeyBuilder
+		GetReadStartingWithUserCacheKeyPrefix(&builder2, store, "doc#viewer", "")
+
+		require.NotEqual(t, builder1.Build(), builder2.Build())
 	})
 }

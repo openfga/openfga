@@ -123,6 +123,11 @@ func (s *DefaultStrategy) execute(ctx context.Context, req *Request, edge *authz
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		case outcome, ok := <-responsesChan:
+			// select may choose a closed channel over ctx.Done(); re-check cancellation.
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
+
 			if !ok {
 				return &Response{Allowed: false}, err
 			}
