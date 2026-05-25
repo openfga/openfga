@@ -23,6 +23,17 @@ import (
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
+func BuildCacheKey(vals ...string) string {
+	var builder CacheKeyBuilder
+	builder.Grow(len(vals))
+
+	for _, val := range vals {
+		builder.WriteString(val)
+	}
+
+	return builder.Build()
+}
+
 // MustNewStruct returns a new *structpb.Struct or panics
 // on error. The new *structpb.Struct value is built from
 // the map m.
@@ -1208,4 +1219,154 @@ func BenchmarkGetInvalidIteratorByUserObjectTypeCacheKeys(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		_ = GetInvalidIteratorByUserObjectTypeCacheKeys(storeID, users, objectType)
 	}
+}
+
+func TestJitteredTTL(t *testing.T) {
+	tests := []struct {
+		name             string
+		baseTTL          time.Duration
+		jitterPercentage uint32
+		expectedMin      time.Duration
+		expectedMax      time.Duration
+	}{
+		{
+			name:             "zero_jitter_returns_base_ttl",
+			baseTTL:          10 * time.Second,
+			jitterPercentage: 0,
+			expectedMin:      10 * time.Second,
+			expectedMax:      10 * time.Second,
+		},
+		{
+			name:             "zero_base_ttl_returns_zero",
+			baseTTL:          0,
+			jitterPercentage: 10,
+			expectedMin:      0,
+			expectedMax:      0,
+		},
+		{
+			name:             "negative_base_ttl_returns_base",
+			baseTTL:          -5 * time.Second,
+			jitterPercentage: 10,
+			expectedMin:      -5 * time.Second,
+			expectedMax:      -5 * time.Second,
+		},
+		{
+			name:             "ten_percent_jitter",
+			baseTTL:          10 * time.Second,
+			jitterPercentage: 10,
+			expectedMin:      10 * time.Second,
+			expectedMax:      11 * time.Second,
+		},
+		{
+			name:             "hundred_percent_jitter",
+			baseTTL:          10 * time.Second,
+			jitterPercentage: 100,
+			expectedMin:      10 * time.Second,
+			expectedMax:      20 * time.Second,
+		},
+		{
+			name:             "jitter_percentage_over_hundred_is_capped",
+			baseTTL:          10 * time.Second,
+			jitterPercentage: 150,
+			expectedMin:      10 * time.Second,
+			expectedMax:      20 * time.Second,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Run multiple times to verify the range
+			for i := 0; i < 100; i++ {
+				result := JitteredTTL(tt.baseTTL, tt.jitterPercentage)
+				require.GreaterOrEqual(t, result, tt.expectedMin, "result %v is less than minimum %v", result, tt.expectedMin)
+				require.LessOrEqual(t, result, tt.expectedMax, "result %v is greater than maximum %v", result, tt.expectedMax)
+			}
+		})
+	}
+
+	t.Run("produces_variation", func(t *testing.T) {
+		baseTTL := 10 * time.Second
+		jitterPct := uint32(50)
+		results := make(map[time.Duration]struct{})
+		for i := 0; i < 1000; i++ {
+			results[JitteredTTL(baseTTL, jitterPct)] = struct{}{}
+		}
+		// With 50% jitter on a 10s TTL (5s range), we should see multiple distinct values
+		require.Greater(t, len(results), 1, "expected variation in jittered TTL values")
+	})
+
+	t.Run("does_not_overflow_for_max_duration", func(t *testing.T) {
+		var result time.Duration
+		require.NotPanics(t, func() {
+			result = JitteredTTL(time.Duration(math.MaxInt64), 100)
+		})
+		require.Equal(t, time.Duration(math.MaxInt64), result)
+	})
+}
+
+func TestBuildCacheKey(t *testing.T) {
+	t.Run("different_segments_produce_different_keys", func(t *testing.T) {
+		require.NotEqual(t, BuildCacheKey("a", "bc"), BuildCacheKey("ab", "c"))
+		require.NotEqual(t, BuildCacheKey("a", "b"), BuildCacheKey("a", "b", ""))
+	})
+
+	t.Run("identical_inputs_produce_identical_keys", func(t *testing.T) {
+		first := BuildCacheKey("foo", "bar")
+		second := BuildCacheKey("foo", "bar")
+		require.Equal(t, first, second)
+	})
+
+	t.Run("empty_input", func(t *testing.T) {
+		require.Equal(t, "|", BuildCacheKey(""))
+	})
+
+	t.Run("no_args", func(t *testing.T) {
+		require.Empty(t, BuildCacheKey())
+	})
+}
+
+func TestCacheKeyCollisionPrevention(t *testing.T) {
+	store := "01AAAAAAAAAAAAAAAAAAAAAAAA"
+
+	t.Run("ReadUsersetTuples_PoC_from_report", func(t *testing.T) {
+		var builder1 CacheKeyBuilder
+		GetReadUsersetTuplesCacheKeyPrefix(&builder1, store, "doc:1", "viewer")
+
+		var builder2 CacheKeyBuilder
+		GetReadUsersetTuplesCacheKeyPrefix(&builder2, store, "doc:1#viewer/group", "member")
+
+		require.NotEqual(t, builder1.Build(), builder2.Build())
+	})
+
+	t.Run("InvalidIteratorByObjectRelation_delimiter_in_object", func(t *testing.T) {
+		k1 := GetInvalidIteratorByObjectRelationCacheKey(store, "doc:1", "viewer")
+		k2 := GetInvalidIteratorByObjectRelationCacheKey(store, "doc:1#viewer", "")
+		require.NotEqual(t, k1, k2)
+	})
+
+	t.Run("InvalidIteratorByUserObjectType_delimiter_in_user", func(t *testing.T) {
+		k1 := GetInvalidIteratorByUserObjectTypeCacheKeys(store, []string{"user:alice|group"}, "doc")
+		k2 := GetInvalidIteratorByUserObjectTypeCacheKeys(store, []string{"user:alice"}, "group|doc")
+		require.NotEqual(t, k1[0], k2[0])
+	})
+
+	t.Run("ReadCacheKey_delimiter_in_tuple", func(t *testing.T) {
+		var builder1 CacheKeyBuilder
+		GetReadCacheKey(&builder1, store, "doc:1#viewer@user:alice")
+
+		var builder2 CacheKeyBuilder
+		GetReadCacheKey(&builder2, store, "doc:1#viewer@user:alice/extra")
+
+		require.NotEqual(t, builder1.Build(), builder2.Build())
+	})
+
+	t.Run("ReadStartingWithUser_delimiter_in_objectType", func(t *testing.T) {
+		var builder1 CacheKeyBuilder
+		GetReadStartingWithUserCacheKeyPrefix(&builder1, store, "doc", "viewer")
+
+		var builder2 CacheKeyBuilder
+		GetReadStartingWithUserCacheKeyPrefix(&builder2, store, "doc#viewer", "")
+
+		require.NotEqual(t, builder1.Build(), builder2.Build())
+	})
 }

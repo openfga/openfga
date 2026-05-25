@@ -11,8 +11,6 @@ import (
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
-var errInvalidTuple *tuple.InvalidTupleError
-
 type InvalidTupleError struct {
 	Cause error
 }
@@ -105,8 +103,9 @@ func CheckCommandErrorToServerError(err error) error {
 		return serverErrors.HandleTupleValidateError(&tupleError)
 	}
 
-	if errors.Is(err, errInvalidTuple) {
-		return serverErrors.HandleTupleValidateError(err)
+	var errInvalidTuple *tuple.InvalidTupleError
+	if errors.As(err, &errInvalidTuple) {
+		return serverErrors.HandleTupleValidateError(errInvalidTuple)
 	}
 
 	if errors.Is(err, graph.ErrResolutionDepthExceeded) {

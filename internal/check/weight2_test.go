@@ -928,3 +928,68 @@ func TestWeight2TTU(t *testing.T) {
 		require.True(t, res.GetAllowed())
 	})
 }
+
+// TestWeight2ExecuteCancelledContextRace is a probabilistic regression test for the race where
+// Go's select non-deterministically picks a closed leftChan/rightChan over ctx.Done() when both
+// are ready simultaneously. Without the ctx.Err() guard this would occasionally return
+// {Allowed:false, nil} instead of propagating the cancellation error.
+func TestWeight2ExecuteCancelledContextRace(t *testing.T) {
+	t.Cleanup(func() { goleak.VerifyNone(t) })
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	storeID := ulid.Make().String()
+
+	mockDatastore := mocks.NewMockOpenFGADatastore(ctrl)
+	// Non-empty iterator so leftChan carries a value before closing,
+	// widening the window where ctx.Done() and the channel close are both ready.
+	// group#all is a union of "members" and "public" so bottomUp calls ReadStartingWithUser
+	// for each operand (members, public-direct, public-wildcard); allow up to 3 calls.
+	mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+		MaxTimes(3).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{
+		{Key: tuple.NewTupleKey("group:1", "members", "user:1")},
+	}), nil)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // pre-cancel so ctx.Done() and the ToChannel close race immediately
+
+	model := testutils.MustTransformDSLToProtoWithID(`
+		model
+			schema 1.1
+		type user
+		type group
+			relations
+				define members: [user]
+				define public: [user, user:*]
+				define all: members or public
+		type document
+			relations
+				define viewer: [group#all]
+	`)
+
+	mg, err := modelgraph.New(model)
+	require.NoError(t, err)
+
+	edges, ok := mg.GetEdgesFromNodeId("group#all")
+	require.True(t, ok)
+
+	iter := storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
+		User:     "group:1#all",
+		Relation: "viewer",
+		Object:   "document:1",
+	}})
+
+	strategy := NewWeight2(mg, mockDatastore)
+	req, err := NewRequest(RequestParams{
+		StoreID:  storeID,
+		Model:    mg,
+		TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:1"),
+	})
+	require.NoError(t, err)
+
+	res, err := strategy.Userset(ctx, req, edges[0], iter, nil)
+
+	require.ErrorIs(t, err, context.Canceled)
+	require.Nil(t, res)
+}

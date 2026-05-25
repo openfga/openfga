@@ -3,10 +3,10 @@ package storagewrappers
 import (
 	"context"
 	"sort"
-	"strings"
 	"sync"
 	"time"
 
+	"github.com/cespare/xxhash/v2"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -95,6 +95,7 @@ func (c *CachedTupleReader) ReadUsersetTuples(
 
 	// Build cache key (includes conditions)
 	cacheKey := buildReadUsersetTuplesCacheKey(storeID, filter)
+	span.SetAttributes(attribute.String("cache_key", cacheKey))
 	objectType, _ := tuple.SplitObject(filter.Object)
 
 	// Build invalidation keys for this query
@@ -140,6 +141,7 @@ func (c *CachedTupleReader) Read(
 	}
 
 	cacheKey := buildReadCacheKey(storeID, filter)
+	span.SetAttributes(attribute.String("cache_key", cacheKey))
 	objectType, _ := tuple.SplitObject(filter.Object)
 	invalidEntityKeys := buildInvalidationKeys(storeID, filter.Object, filter.Relation)
 
@@ -181,6 +183,7 @@ func (c *CachedTupleReader) ReadStartingWithUser(
 	}
 
 	cacheKey := buildReadStartingWithUserCacheKey(storeID, filter)
+	span.SetAttributes(attribute.String("cache_key", cacheKey))
 	invalidEntityKeys := buildInvalidationKeysForUser(storeID, filter.UserFilter, filter.ObjectType)
 
 	// Track total cache operations (before cache check, like V1)
@@ -294,105 +297,59 @@ func (c *CachedTupleReader) ReadPage(ctx context.Context, store string, filter s
 // ─────────────────────────────────────────────────────────────────────────────
 
 // buildReadUsersetTuplesCacheKey builds a cache key for ReadUsersetTuples.
-// Format: v2ic.rut/{storeID}/{object}#{relation}/{userTypeRestrictions}[/c:{conditionsHash}].
 func buildReadUsersetTuplesCacheKey(storeID string, filter storage.ReadUsersetTuplesFilter) string {
-	var b strings.Builder
-	b.Grow(128)
+	restrictions := storage.BuildUserTypeRestrictionsHash(filter.AllowedUserTypeRestrictions)
+	conditions := generateConditionsHash(filter.Conditions)
 
-	b.WriteString(v2IteratorCachePrefix)
-	b.WriteString("rut/") // "ReadUsersetTuples"
-	b.WriteString(storeID)
-	b.WriteByte('/')
-	b.WriteString(filter.Object) // e.g., "document:1"
-	b.WriteByte('#')
-	b.WriteString(filter.Relation) // e.g., "viewer"
-	b.WriteByte('/')
+	var builder storage.CacheKeyBuilder
+	builder.Grow(7) // grown by the number of elements to be written to the builder
 
-	// Build user type restrictions string
-	restrictions := buildUserTypeRestrictionsString(filter.AllowedUserTypeRestrictions)
-	b.WriteString(restrictions)
+	builder.WriteString(V2IteratorCachePrefix)
+	builder.WriteString("rut")
+	builder.WriteString(storeID)
+	builder.WriteString(filter.Object)
+	builder.WriteString(filter.Relation)
+	builder.Write(restrictions)
+	builder.Write(conditions)
 
-	// Add conditions hash
-	appendConditionsHash(&b, filter.Conditions)
-
-	return b.String()
+	return builder.Build()
 }
 
 // buildReadCacheKey builds a cache key for Read.
-// Format: v2ic.r/{storeID}/{object}#{relation}/{userPrefix}[/c:{conditionsHash}].
 func buildReadCacheKey(storeID string, filter storage.ReadFilter) string {
-	var b strings.Builder
-	b.Grow(128)
+	conditions := generateConditionsHash(filter.Conditions)
 
-	b.WriteString(v2IteratorCachePrefix)
-	b.WriteString("r/") // "Read"
-	b.WriteString(storeID)
-	b.WriteByte('/')
-	b.WriteString(filter.Object) // e.g., "document:1"
-	b.WriteByte('#')
-	b.WriteString(filter.Relation) // e.g., "parent"
-	b.WriteByte('/')
-	b.WriteString(filter.User) // e.g., "folder:" (type prefix)
+	var builder storage.CacheKeyBuilder
+	builder.Grow(7) // grown by the number of elements to be written to the builder
 
-	// Add conditions hash
-	appendConditionsHash(&b, filter.Conditions)
+	builder.WriteString(V2IteratorCachePrefix)
+	builder.WriteString("r")
+	builder.WriteString(storeID)
+	builder.WriteString(filter.Object)
+	builder.WriteString(filter.Relation)
+	builder.WriteString(filter.User)
+	builder.Write(conditions)
 
-	return b.String()
+	return builder.Build()
 }
 
 // buildReadStartingWithUserCacheKey builds a cache key for ReadStartingWithUser.
-// Format: v2ic.rswu/{storeID}/{objectType}#{relation}/{users}[/c:{conditionsHash}].
 func buildReadStartingWithUserCacheKey(storeID string, filter storage.ReadStartingWithUserFilter) string {
-	var b strings.Builder
-	b.Grow(128)
-
-	b.WriteString(v2IteratorCachePrefix)
-	b.WriteString("rswu/") // "ReadStartingWithUser"
-	b.WriteString(storeID)
-	b.WriteByte('/')
-	b.WriteString(filter.ObjectType) // e.g., "document"
-	b.WriteByte('#')
-	b.WriteString(filter.Relation) // e.g., "viewer"
-	b.WriteByte('/')
-
-	// Build user filter string
 	users := buildUserFilterString(filter.UserFilter)
-	b.WriteString(users)
+	conditions := generateConditionsHash(filter.Conditions)
 
-	// Add conditions hash
-	appendConditionsHash(&b, filter.Conditions)
+	var builder storage.CacheKeyBuilder
+	builder.Grow(7) // grown by the number of elements to be written to the builder
 
-	return b.String()
-}
+	builder.WriteString(V2IteratorCachePrefix)
+	builder.WriteString("rswu")
+	builder.WriteString(storeID)
+	builder.WriteString(filter.ObjectType)
+	builder.WriteString(filter.Relation)
+	builder.Write(users)
+	builder.Write(conditions)
 
-// buildUserTypeRestrictionsString creates a deterministic string from user type restrictions.
-// Examples:
-//   - [{Type:"user"}] -> "user"
-//   - [{Type:"user", Wildcard:true}] -> "user:*"
-//   - [{Type:"group", Relation:"member"}] -> "group#member"
-//   - Multiple: sorted and joined with ","
-func buildUserTypeRestrictionsString(refs []*openfgav1.RelationReference) string {
-	if len(refs) == 0 {
-		return ""
-	}
-
-	parts := make([]string, 0, len(refs))
-	for _, ref := range refs {
-		var part string
-		switch r := ref.GetRelationOrWildcard().(type) {
-		case *openfgav1.RelationReference_Relation:
-			part = ref.GetType() + "#" + r.Relation
-		case *openfgav1.RelationReference_Wildcard:
-			part = ref.GetType() + ":*"
-		default:
-			part = ref.GetType()
-		}
-		parts = append(parts, part)
-	}
-
-	// Sort for deterministic key
-	sort.Strings(parts)
-	return strings.Join(parts, ",")
+	return builder.Build()
 }
 
 // buildUserFilterString creates a deterministic string from user filters.
@@ -401,9 +358,9 @@ func buildUserTypeRestrictionsString(refs []*openfgav1.RelationReference) string
 //   - [{Object:"user:alice", Relation:"member"}] -> "user:alice#member"
 //   - [{Object:"user:*"}] -> "user:*"
 //   - Multiple: sorted and joined with ","
-func buildUserFilterString(filters []*openfgav1.ObjectRelation) string {
+func buildUserFilterString(filters []*openfgav1.ObjectRelation) []byte {
 	if len(filters) == 0 {
-		return ""
+		return []byte{}
 	}
 
 	parts := make([]string, 0, len(filters))
@@ -417,5 +374,11 @@ func buildUserFilterString(filters []*openfgav1.ObjectRelation) string {
 
 	// Sort for deterministic key
 	sort.Strings(parts)
-	return strings.Join(parts, ",")
+
+	var hasher xxhash.Digest
+	for _, c := range parts {
+		_, _ = hasher.WriteString(c)
+		_, _ = hasher.Write([]byte{0})
+	}
+	return hasher.Sum([]byte{})
 }

@@ -92,6 +92,11 @@ func (s *Weight2) execute(ctx context.Context, leftChan chan *iterator.Msg, righ
 
 		// Process an item from the left channel
 		case leftMsg, ok := <-leftChan:
+			// select may choose a closed channel over ctx.Done(); re-check cancellation.
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
+
 			if !ok {
 				leftChan = nil
 				if len(leftSeen) == 0 {
@@ -139,6 +144,11 @@ func (s *Weight2) execute(ctx context.Context, leftChan chan *iterator.Msg, righ
 
 		// Process an item from the right channel
 		case rightMsg, ok := <-rightChan:
+			// select may choose a closed channel over ctx.Done(); re-check cancellation.
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
+
 			if !ok {
 				rightChan = nil
 				if len(rightSeen) == 0 {
