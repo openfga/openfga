@@ -188,6 +188,8 @@ func (c *mockStoppedIterator[T]) Head(ctx context.Context) (T, error) {
 	return val, nil
 }
 
+func (c *mockStoppedIterator[T]) IsOrdered() bool { return true }
+
 func TestCombinedIterator(t *testing.T) {
 	t.Run("next", func(t *testing.T) {
 		expected := []*openfgav1.TupleKey{

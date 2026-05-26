@@ -761,3 +761,7 @@ func (s *sharedIterator) Stop() {
 		sharedIteratorCloneCount.Dec()
 	}
 }
+
+// IsOrdered temporarily assumes the underlying shared cursor yields items in sorted order.
+// This will be made conditional when sources add explicit ordering guarantees.
+func (s *sharedIterator) IsOrdered() bool { return true }

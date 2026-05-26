@@ -582,6 +582,10 @@ func (c *cachedIterator) Head(ctx context.Context) (*openfgav1.Tuple, error) {
 	return c.iter.Head(ctx)
 }
 
+// IsOrdered temporarily assumes the underlying datastore cursor yields items in sorted order.
+// This will be made conditional when sources add explicit ordering guarantees.
+func (c *cachedIterator) IsOrdered() bool { return true }
+
 // addToBuffer converts a proto tuple into a simpler storage.TupleRecord, removes
 // any already known fields and adds it to the buffer if not yet full.
 func (c *cachedIterator) addToBuffer(t *openfgav1.Tuple) bool {

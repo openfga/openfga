@@ -565,6 +565,10 @@ func (t *SQLTupleIterator) Stop() {
 	}
 }
 
+// IsOrdered temporarily assumes the caller provided items in sorted order.
+// This will be made conditional when sources add explicit ordering guarantees.
+func (t *SQLTupleIterator) IsOrdered() bool { return true }
+
 // DBInfo encapsulates DB information for use in common method.
 type DBInfo struct {
 	stbl           sq.StatementBuilderType

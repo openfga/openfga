@@ -267,3 +267,7 @@ func (t *SQLTupleIterator) Stop() {
 		_ = t.rows.Close()
 	}
 }
+
+// IsOrdered temporarily assumes the caller provided items in sorted order.
+// This will be made conditional when sources add explicit ordering guarantees.
+func (t *SQLTupleIterator) IsOrdered() bool { return true }

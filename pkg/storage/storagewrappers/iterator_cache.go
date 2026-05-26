@@ -228,6 +228,10 @@ func (c *CachingIterator) Head(ctx context.Context) (*openfgav1.Tuple, error) {
 	return c.inner.Head(ctx)
 }
 
+// IsOrdered temporarily assumes the underlying datastore cursor yields items in sorted order.
+// This will be made conditional when sources add explicit ordering guarantees.
+func (c *CachingIterator) IsOrdered() bool { return true }
+
 // Stop terminates iteration and triggers caching.
 // If not fully consumed, drains in background with singleflight deduplication.
 // Follows V1's pattern: always spawns goroutine to avoid blocking Stop() on I/O.
@@ -451,6 +455,10 @@ func (c *LockFreeCachedIterator) Head(ctx context.Context) (*openfgav1.Tuple, er
 func (c *LockFreeCachedIterator) Stop() {
 	c.stopped.Store(true)
 }
+
+// IsOrdered temporarily assumes the cached slice was populated from an ordered source.
+// This will be made conditional when sources add explicit ordering guarantees.
+func (c *LockFreeCachedIterator) IsOrdered() bool { return true }
 
 // reconstruct builds a full Tuple from minimal cached data.
 func (c *LockFreeCachedIterator) reconstruct(e *MinimalCacheEntry) *openfgav1.Tuple {

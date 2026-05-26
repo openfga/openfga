@@ -72,6 +72,8 @@ func (b *blockingIterator) Stop() {
 	}
 }
 
+func (b *blockingIterator) IsOrdered() bool { return true }
+
 // ─────────────────────────────────────────────────────────────────────────────
 // LockFreeCachedIterator Tests
 // ─────────────────────────────────────────────────────────────────────────────

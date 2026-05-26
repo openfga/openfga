@@ -74,6 +74,8 @@ func (m *mockPanicIterator[T]) Stop() {
 	panic(panicErr)
 }
 
+func (m *mockPanicIterator[T]) IsOrdered() bool { return true }
+
 // Head is a mock implementation of the Head method for the storage.Iterator interface.
 func (m *mockPanicIterator[T]) Head(ctx context.Context) (T, error) {
 	panic(panicErr)

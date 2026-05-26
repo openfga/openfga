@@ -82,6 +82,10 @@ func (s *staticIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
 // Stop does not do anything for staticIterator.
 func (s *staticIterator) Stop() {}
 
+// IsOrdered temporarily assumes the caller provided items in sorted order.
+// This will be made conditional when sources add explicit ordering guarantees.
+func (s *staticIterator) IsOrdered() bool { return true }
+
 // Head see [storage.Iterator].Next.
 func (s *staticIterator) Head(ctx context.Context) (*openfgav1.Tuple, error) {
 	if ctx.Err() != nil {

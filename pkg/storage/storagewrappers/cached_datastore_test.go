@@ -1516,3 +1516,5 @@ func (s *mockCalledTupleIterator) Stop() {
 	s.closeCalled++
 	s.iter.Stop()
 }
+
+func (s *mockCalledTupleIterator) IsOrdered() bool { return s.iter.IsOrdered() }
