@@ -1058,12 +1058,12 @@ func TestWeight2ExecuteConcatOrderingBug(t *testing.T) {
 	datastoreGated, gate, blocked := newGatedIterator[*openfgav1.TupleKey](
 		storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{
 			{Object: "document:1", Relation: "viewer", User: "group:2#members"},
-		}, false),
+		}),
 	)
 	rightIter := storage.WrapIterator(storage.UsersetKind, iterator.Concat[*openfgav1.TupleKey](
 		storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{
 			{Object: "document:1", Relation: "viewer", User: "group:9#members"},
-		}, false),
+		}),
 		datastoreGated,
 	))
 
@@ -1073,7 +1073,7 @@ func TestWeight2ExecuteConcatOrderingBug(t *testing.T) {
 		// meaning "group:9" is already in the right channel buffer. Only then send
 		// left so that execute processes right's contextual tuple first.
 		<-blocked
-		leftChan <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"group:1", "group:2"}, false)}
+		leftChan <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"group:1", "group:2"})}
 		close(leftChan)
 		// Ungate the datastore source; execute will process left entirely before
 		// returning to the outer select, so timing here doesn't affect correctness.
