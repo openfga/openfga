@@ -77,9 +77,10 @@ func (s *Weight2) execute(ctx context.Context, leftChan chan *iterator.Msg, righ
 	leftSeen := make(map[string]struct{})
 	rightSeen := make(map[string]struct{})
 
-	// Disable the ordering-based pruning optimization when the right iterator
-	// combines sources without preserving order (e.g. Concat of contextual tuples
-	// prepended before datastore results).
+	// Enable the ordering-based pruning optimization.
+	// leftChan is a raw channel (no IsOrdered()); it is always globally sorted by construction via resolveRewrite.
+	// rightChan is derived from rightIter (a storage.Iterator), so IsOrdered() can be checked —
+	// it may be unordered when contextual tuples are prepended before datastore results via iterator.Concat.
 	pruningEnabled := rightIter.IsOrdered()
 
 	// Convert right iterator to channel for uniform processing
