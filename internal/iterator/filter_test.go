@@ -236,6 +236,13 @@ func TestFilter_Uniqueness(t *testing.T) {
 	})
 }
 
+func TestFilterIsOrdered(t *testing.T) {
+	inner := storage.NewStaticIterator[string]([]string{"a"})
+	iter := NewFilteredIterator(inner, func(s string) (bool, error) { return true, nil })
+	defer iter.Stop()
+	require.True(t, iter.IsOrdered())
+}
+
 func TestFilter_MultipleFilters(t *testing.T) {
 	t.Run("both_filters_applied", func(t *testing.T) {
 		conditionFilter := func(tupleKey *openfgav1.TupleKey) (bool, error) {

@@ -565,6 +565,9 @@ func (t *SQLTupleIterator) Stop() {
 	}
 }
 
+// IsOrdered conservatively returns false until datastore methods expose ordering guarantees.
+func (t *SQLTupleIterator) IsOrdered() bool { return false }
+
 // DBInfo encapsulates DB information for use in common method.
 type DBInfo struct {
 	stbl           sq.StatementBuilderType

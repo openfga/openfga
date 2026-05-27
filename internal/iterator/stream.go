@@ -68,6 +68,10 @@ func (s *Stream) Stop() {
 	Drain(s.source)
 }
 
+// IsOrdered returns false because a Stream pulls successive iterators from a channel
+// with no ordering guarantee across source boundaries.
+func (s *Stream) IsOrdered() bool { return false }
+
 // SkipToTargetObject moves the buffer until the buffer's head object is >= target object.
 // If the buffer is drained and no more items, it will set to stop and buffer will be nil.
 func (s *Stream) SkipToTargetObject(ctx context.Context, target string) error {
