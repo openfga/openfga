@@ -56,9 +56,7 @@ func (c *cachedTupleIterator) Head(ctx context.Context) (*openfgav1.Tuple, error
 	return c.buildTuple(t), nil
 }
 
-// IsOrdered temporarily assumes the cached slice was populated from an ordered source.
-// This will be made conditional when sources add explicit ordering guarantees.
-func (c *cachedTupleIterator) IsOrdered() bool { return true }
+func (c *cachedTupleIterator) IsOrdered() bool { return c.iter.IsOrdered() }
 
 func (c *cachedTupleIterator) buildTuple(t *storage.TupleRecord) *openfgav1.Tuple {
 	objectType := t.ObjectType

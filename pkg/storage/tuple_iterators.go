@@ -28,8 +28,7 @@ type Iterator[T any] interface {
 	// Calling Head() continuously without calling Next() will yield the same result (the first one) over and over.
 	Head(ctx context.Context) (T, error)
 
-	// IsOrdered reports whether this iterator yields items in a guaranteed ascending order.
-	// Iterators that concatenate multiple sources without preserving relative ordering return false.
+	// IsOrdered reports whether this iterator yields items in a guaranteed non-descending order.
 	IsOrdered() bool
 }
 

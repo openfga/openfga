@@ -268,6 +268,5 @@ func (t *SQLTupleIterator) Stop() {
 	}
 }
 
-// IsOrdered temporarily assumes the caller provided items in sorted order.
-// This will be made conditional when sources add explicit ordering guarantees.
-func (t *SQLTupleIterator) IsOrdered() bool { return true }
+// IsOrdered conservatively returns false until datastore methods expose ordering guarantees.
+func (t *SQLTupleIterator) IsOrdered() bool { return false }

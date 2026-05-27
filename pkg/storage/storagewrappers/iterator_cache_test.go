@@ -89,7 +89,7 @@ func TestLockFreeCachedIterator_Next_Basic(t *testing.T) {
 		{ObjectID: "3", User: "user:charlie"},
 	}
 
-	iter := NewLockFreeCachedIterator(entries, "document", "viewer")
+	iter := NewLockFreeCachedIterator(entries, "document", "viewer", false)
 
 	ctx := context.Background()
 
@@ -120,7 +120,7 @@ func TestLockFreeCachedIterator_Next_Empty(t *testing.T) {
 		goleak.VerifyNone(t)
 	})
 
-	iter := NewLockFreeCachedIterator([]MinimalCacheEntry{}, "document", "viewer")
+	iter := NewLockFreeCachedIterator([]MinimalCacheEntry{}, "document", "viewer", false)
 
 	ctx := context.Background()
 	_, err := iter.Next(ctx)
@@ -142,7 +142,7 @@ func TestLockFreeCachedIterator_Next_WithCondition(t *testing.T) {
 		},
 	}
 
-	iter := NewLockFreeCachedIterator(entries, "document", "viewer")
+	iter := NewLockFreeCachedIterator(entries, "document", "viewer", false)
 
 	ctx := context.Background()
 	t1, err := iter.Next(ctx)
@@ -161,7 +161,7 @@ func TestLockFreeCachedIterator_Head_Basic(t *testing.T) {
 		{ObjectID: "2", User: "user:bob"},
 	}
 
-	iter := NewLockFreeCachedIterator(entries, "document", "viewer")
+	iter := NewLockFreeCachedIterator(entries, "document", "viewer", false)
 
 	ctx := context.Background()
 
@@ -195,7 +195,7 @@ func TestLockFreeCachedIterator_Head_AfterStop(t *testing.T) {
 		{ObjectID: "1", User: "user:alice"},
 	}
 
-	iter := NewLockFreeCachedIterator(entries, "document", "viewer")
+	iter := NewLockFreeCachedIterator(entries, "document", "viewer", false)
 
 	iter.Stop()
 
@@ -212,7 +212,7 @@ func TestLockFreeCachedIterator_Head_PastEnd(t *testing.T) {
 		{ObjectID: "1", User: "user:alice"},
 	}
 
-	iter := NewLockFreeCachedIterator(entries, "document", "viewer")
+	iter := NewLockFreeCachedIterator(entries, "document", "viewer", false)
 
 	ctx := context.Background()
 
@@ -238,7 +238,7 @@ func TestLockFreeCachedIterator_Concurrent_Next(t *testing.T) {
 		}
 	}
 
-	iter := NewLockFreeCachedIterator(entries, "document", "viewer")
+	iter := NewLockFreeCachedIterator(entries, "document", "viewer", false)
 
 	ctx := context.Background()
 	var wg sync.WaitGroup
@@ -280,7 +280,7 @@ func TestLockFreeCachedIterator_Concurrent_Stop(t *testing.T) {
 		entries[i] = MinimalCacheEntry{ObjectID: "1", User: "user:test"}
 	}
 
-	iter := NewLockFreeCachedIterator(entries, "document", "viewer")
+	iter := NewLockFreeCachedIterator(entries, "document", "viewer", false)
 
 	ctx := context.Background()
 	var wg sync.WaitGroup
@@ -318,7 +318,7 @@ func TestLockFreeCachedIterator_ContextCanceled(t *testing.T) {
 		{ObjectID: "1", User: "user:alice"},
 	}
 
-	iter := NewLockFreeCachedIterator(entries, "document", "viewer")
+	iter := NewLockFreeCachedIterator(entries, "document", "viewer", false)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -1613,7 +1613,7 @@ func BenchmarkCachingIterator_CacheHit(b *testing.B) {
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {
-		iter := NewLockFreeCachedIterator(entries, "document", "viewer")
+		iter := NewLockFreeCachedIterator(entries, "document", "viewer", false)
 
 		// Consume all entries
 		for {
@@ -1644,7 +1644,7 @@ func BenchmarkLockFreeCachedIterator_Next(b *testing.B) {
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {
-		iter := NewLockFreeCachedIterator(entries, "document", "viewer")
+		iter := NewLockFreeCachedIterator(entries, "document", "viewer", false)
 
 		// Consume all entries
 		for {
@@ -1677,7 +1677,7 @@ func BenchmarkLockFreeCachedIterator_VsStaticIterator(b *testing.B) {
 	b.Run("LockFreeCachedIterator", func(b *testing.B) {
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
-			iter := NewLockFreeCachedIterator(entries, "document", "viewer")
+			iter := NewLockFreeCachedIterator(entries, "document", "viewer", false)
 			for {
 				_, err := iter.Next(ctx)
 				if err != nil {

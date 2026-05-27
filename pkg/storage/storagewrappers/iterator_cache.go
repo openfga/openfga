@@ -89,6 +89,7 @@ type MinimalCacheEntry struct {
 type V2IteratorCacheEntry struct {
 	Entries      []MinimalCacheEntry
 	LastModified time.Time
+	Ordered      bool
 }
 
 // CacheEntityType implements storage.CacheItem for metrics.
@@ -228,9 +229,7 @@ func (c *CachingIterator) Head(ctx context.Context) (*openfgav1.Tuple, error) {
 	return c.inner.Head(ctx)
 }
 
-// IsOrdered temporarily assumes the underlying datastore cursor yields items in sorted order.
-// This will be made conditional when sources add explicit ordering guarantees.
-func (c *CachingIterator) IsOrdered() bool { return true }
+func (c *CachingIterator) IsOrdered() bool { return c.inner.IsOrdered() }
 
 // Stop terminates iteration and triggers caching.
 // If not fully consumed, drains in background with singleflight deduplication.
@@ -287,6 +286,7 @@ func (c *CachingIterator) flush() {
 	c.cache.Set(c.cacheKey, &V2IteratorCacheEntry{
 		Entries:      entries,
 		LastModified: c.createdAt,
+		Ordered:      c.inner.IsOrdered(),
 	}, c.ttl)
 
 	c.tuples = nil // Release for GC
@@ -399,17 +399,19 @@ type LockFreeCachedIterator struct {
 	stopped    atomic.Bool
 	objectType string
 	relation   string
+	ordered    bool
 }
 
 // Ensure LockFreeCachedIterator implements TupleIterator.
 var _ storage.TupleIterator = (*LockFreeCachedIterator)(nil)
 
 // NewLockFreeCachedIterator creates a lock-free iterator over cached entries.
-func NewLockFreeCachedIterator(entries []MinimalCacheEntry, objectType, relation string) *LockFreeCachedIterator {
+func NewLockFreeCachedIterator(entries []MinimalCacheEntry, objectType, relation string, ordered bool) *LockFreeCachedIterator {
 	return &LockFreeCachedIterator{
 		entries:    entries,
 		objectType: objectType,
 		relation:   relation,
+		ordered:    ordered,
 	}
 }
 
@@ -456,9 +458,7 @@ func (c *LockFreeCachedIterator) Stop() {
 	c.stopped.Store(true)
 }
 
-// IsOrdered temporarily assumes the cached slice was populated from an ordered source.
-// This will be made conditional when sources add explicit ordering guarantees.
-func (c *LockFreeCachedIterator) IsOrdered() bool { return true }
+func (c *LockFreeCachedIterator) IsOrdered() bool { return c.ordered }
 
 // reconstruct builds a full Tuple from minimal cached data.
 func (c *LockFreeCachedIterator) reconstruct(e *MinimalCacheEntry) *openfgav1.Tuple {

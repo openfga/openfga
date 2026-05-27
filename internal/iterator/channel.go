@@ -145,9 +145,9 @@ func (c *channelIterator) Stop() {
 	Drain(c.source)
 }
 
-// IsOrdered temporarily assumes the channel source yields items in sorted order.
-// This will be made conditional when sources add explicit ordering guarantees.
-func (c *channelIterator) IsOrdered() bool { return true }
+// IsOrdered returns false because iterators are exhausted as they are received
+// from the channel and does not guarantee global ordering across iterator boundaries.
+func (c *channelIterator) IsOrdered() bool { return false }
 
 func FromChannel(in chan *Msg) storage.Iterator[string] {
 	return &channelIterator{
