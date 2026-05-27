@@ -348,6 +348,7 @@ func TestCachingIteratorIsOrdered(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 	mockCache := mocks.NewMockInMemoryCache[any](ctrl)
+	mockCache.EXPECT().Get(gomock.Any()).Return(nil).AnyTimes()
 	mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 
 	sf := &singleflight.Group{}
@@ -355,8 +356,9 @@ func TestCachingIteratorIsOrdered(t *testing.T) {
 
 	inner := storage.NewStaticTupleIterator([]*openfgav1.Tuple{})
 	iter := newCachingIterator(inner, mockCache, "key", 100, time.Hour, 30*time.Second, sf, wg, "document", "viewer", "Read")
-	defer iter.Stop()
 	require.True(t, iter.IsOrdered())
+	iter.Stop()
+	wg.Wait()
 }
 
 func TestCachingIterator_Next_Basic(t *testing.T) {
