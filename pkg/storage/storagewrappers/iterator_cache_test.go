@@ -78,6 +78,16 @@ func (b *blockingIterator) IsOrdered() bool { return true }
 // LockFreeCachedIterator Tests
 // ─────────────────────────────────────────────────────────────────────────────
 
+func TestLockFreeCachedIteratorIsOrdered(t *testing.T) {
+	iter := NewLockFreeCachedIterator([]MinimalCacheEntry{}, "document", "viewer", true)
+	defer iter.Stop()
+	require.True(t, iter.IsOrdered())
+
+	iter2 := NewLockFreeCachedIterator([]MinimalCacheEntry{}, "document", "viewer", false)
+	defer iter2.Stop()
+	require.False(t, iter2.IsOrdered())
+}
+
 func TestLockFreeCachedIterator_Next_Basic(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
@@ -333,6 +343,21 @@ func TestLockFreeCachedIterator_ContextCanceled(t *testing.T) {
 // ─────────────────────────────────────────────────────────────────────────────
 // CachingIterator Tests
 // ─────────────────────────────────────────────────────────────────────────────
+
+func TestCachingIteratorIsOrdered(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	mockCache := mocks.NewMockInMemoryCache[any](ctrl)
+	mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+
+	sf := &singleflight.Group{}
+	wg := &sync.WaitGroup{}
+
+	inner := storage.NewStaticTupleIterator([]*openfgav1.Tuple{})
+	iter := newCachingIterator(inner, mockCache, "key", 100, time.Hour, 30*time.Second, sf, wg, "document", "viewer", "Read")
+	defer iter.Stop()
+	require.True(t, iter.IsOrdered())
+}
 
 func TestCachingIterator_Next_Basic(t *testing.T) {
 	t.Cleanup(func() {

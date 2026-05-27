@@ -1363,6 +1363,49 @@ func TestConditionsFilteredTupleKeyIterator(t *testing.T) {
 	})
 }
 
+func TestIsOrdered(t *testing.T) {
+	tk := tuple.NewTupleKey("document:1", "viewer", "user:alice")
+	tup := &openfgav1.Tuple{Key: tk}
+
+	t.Run("StaticIterator_true", func(t *testing.T) {
+		require.True(t, NewStaticIterator[string]([]string{"a"}).IsOrdered())
+		require.True(t, NewStaticTupleIterator([]*openfgav1.Tuple{tup}).IsOrdered())
+		require.True(t, NewStaticTupleKeyIterator([]*openfgav1.TupleKey{tk}).IsOrdered())
+	})
+
+	t.Run("combinedIterator_false", func(t *testing.T) {
+		iter := NewCombinedIterator(NewStaticTupleIterator([]*openfgav1.Tuple{tup}))
+		defer iter.Stop()
+		require.False(t, iter.IsOrdered())
+	})
+
+	t.Run("OrderedCombinedIterator_true", func(t *testing.T) {
+		iter := NewOrderedCombinedIterator(ObjectMapper(), NewStaticTupleIterator([]*openfgav1.Tuple{tup}))
+		defer iter.Stop()
+		require.True(t, iter.IsOrdered())
+	})
+
+	t.Run("tupleKeyIterator_forwards", func(t *testing.T) {
+		iter := NewTupleKeyIteratorFromTupleIterator(NewStaticTupleIterator([]*openfgav1.Tuple{tup}))
+		defer iter.Stop()
+		require.True(t, iter.IsOrdered())
+	})
+
+	t.Run("filteredTupleKeyIterator_forwards", func(t *testing.T) {
+		inner := NewStaticTupleKeyIterator([]*openfgav1.TupleKey{tk})
+		iter := NewFilteredTupleKeyIterator(inner, func(k *openfgav1.TupleKey) bool { return true })
+		defer iter.Stop()
+		require.True(t, iter.IsOrdered())
+	})
+
+	t.Run("ConditionsFilteredTupleKeyIterator_forwards", func(t *testing.T) {
+		inner := NewStaticTupleKeyIterator([]*openfgav1.TupleKey{tk})
+		iter := NewConditionsFilteredTupleKeyIterator(inner, func(k *openfgav1.TupleKey) (bool, error) { return true, nil })
+		defer iter.Stop()
+		require.True(t, iter.IsOrdered())
+	})
+}
+
 func TestIterIsDoneOrCancelled(t *testing.T) {
 	tests := []struct {
 		err      error

@@ -1848,6 +1848,22 @@ func TestNewSharedIteratorDatastore_iter(t *testing.T) {
 	})
 }
 
+func TestSharedIterator_IsOrdered(t *testing.T) {
+	t.Cleanup(func() { goleak.VerifyNone(t) })
+
+	tuples := []*openfgav1.Tuple{{Key: tuple.NewTupleKey("doc:1", "viewer", "user:a")}}
+	inner := storage.NewStaticTupleIterator(tuples)
+	shared := newSharedIterator(inner)
+	defer shared.Stop()
+
+	require.True(t, shared.IsOrdered())
+
+	clone := shared.clone()
+	require.NotNil(t, clone)
+	defer clone.Stop()
+	require.True(t, clone.IsOrdered())
+}
+
 func TestSharedIterator_ManyTuples(t *testing.T) {
 	ctx := context.Background()
 	t.Cleanup(func() {

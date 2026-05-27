@@ -2,6 +2,7 @@ package storagewrappers
 
 import (
 	"context"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -19,6 +20,14 @@ import (
 	"github.com/openfga/openfga/pkg/storage/memory"
 	"github.com/openfga/openfga/pkg/tuple"
 )
+
+func TestCountingTupleIteratorIsOrdered(t *testing.T) {
+	inner := storage.NewStaticTupleIterator([]*openfgav1.Tuple{})
+	var counter atomic.Uint64
+	iter := &countingTupleIterator{TupleIterator: inner, counter: &counter}
+	defer iter.Stop()
+	require.True(t, iter.IsOrdered())
+}
 
 func TestBoundedWrapper(t *testing.T) {
 	t.Cleanup(func() {
