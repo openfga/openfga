@@ -51,6 +51,15 @@ func (t *TestIterator[T]) Stop() {
 	t.pos = len(t.items)
 }
 
+func (t *TestIterator[T]) IsOrdered() bool { return true }
+
+func TestValidatingIteratorIsOrdered(t *testing.T) {
+	inner := storage.NewStaticIterator[int]([]int{1, 2, 3})
+	iter := Validate(inner, func(v int) (bool, error) { return true, nil })
+	defer iter.Stop()
+	require.True(t, iter.IsOrdered())
+}
+
 func TestValidatingIterator(t *testing.T) {
 	t.Run("Head returns ErrIteratorDone when base is empty", func(t *testing.T) {
 		v := Validate(&TestIterator[int]{}, func(_ int) (bool, error) { return true, nil })

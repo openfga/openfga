@@ -147,3 +147,7 @@ func (m *MergedIterator[T]) Head(ctx context.Context) (T, error) {
 	var zero T
 	return zero, ErrHeadNotSupportedMergedIterator
 }
+
+// IsOrdered returns true only if both source iterators are ordered; the merge-sort algorithm
+// produces sorted output only when both inputs are individually sorted.
+func (m *MergedIterator[T]) IsOrdered() bool { return m.iter1.IsOrdered() && m.iter2.IsOrdered() }

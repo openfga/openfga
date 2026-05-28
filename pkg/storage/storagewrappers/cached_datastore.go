@@ -582,6 +582,8 @@ func (c *cachedIterator) Head(ctx context.Context) (*openfgav1.Tuple, error) {
 	return c.iter.Head(ctx)
 }
 
+func (c *cachedIterator) IsOrdered() bool { return c.iter.IsOrdered() }
+
 // addToBuffer converts a proto tuple into a simpler storage.TupleRecord, removes
 // any already known fields and adds it to the buffer if not yet full.
 func (c *cachedIterator) addToBuffer(t *openfgav1.Tuple) bool {

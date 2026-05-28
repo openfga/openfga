@@ -276,3 +276,6 @@ func (t *SQLTupleIterator) Stop() {
 		t.cancel = nil
 	}
 }
+
+// IsOrdered conservatively returns false until datastore methods expose ordering guarantees.
+func (t *SQLTupleIterator) IsOrdered() bool { return false }

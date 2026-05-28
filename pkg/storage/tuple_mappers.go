@@ -69,6 +69,9 @@ func (n UsersetMapper) Head(ctx context.Context) (string, error) {
 	return MapUserset(tupleRes)
 }
 
+// IsOrdered forwards from the inner iterator; projecting a field from each tuple does not change element ordering.
+func (n UsersetMapper) IsOrdered() bool { return n.iter.IsOrdered() }
+
 func MapUserset(t *openfgav1.TupleKey) (string, error) {
 	usersetName, relation := tuple.SplitObjectRelation(t.GetUser())
 	if relation == "" && !tuple.IsWildcard(usersetName) {
@@ -107,6 +110,9 @@ func (n TTUMapper) Head(ctx context.Context) (string, error) {
 	return MapTTU(tupleRes)
 }
 
+// IsOrdered forwards from the inner iterator; projecting a field from each tuple does not change element ordering.
+func (n TTUMapper) IsOrdered() bool { return n.iter.IsOrdered() }
+
 func MapTTU(t *openfgav1.TupleKey) (string, error) {
 	return t.GetUser(), nil
 }
@@ -139,6 +145,9 @@ func (n ObjectIDMapper) Head(ctx context.Context) (string, error) {
 	}
 	return MapObjectID(tupleRes)
 }
+
+// IsOrdered forwards from the inner iterator; projecting a field from each tuple does not change element ordering.
+func (n ObjectIDMapper) IsOrdered() bool { return n.iter.IsOrdered() }
 
 func MapObjectID(t *openfgav1.TupleKey) (string, error) {
 	return t.GetObject(), nil

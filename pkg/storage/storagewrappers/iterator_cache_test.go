@@ -72,9 +72,21 @@ func (b *blockingIterator) Stop() {
 	}
 }
 
+func (b *blockingIterator) IsOrdered() bool { return true }
+
 // ─────────────────────────────────────────────────────────────────────────────
 // LockFreeCachedIterator Tests
 // ─────────────────────────────────────────────────────────────────────────────
+
+func TestLockFreeCachedIteratorIsOrdered(t *testing.T) {
+	iter := NewLockFreeCachedIterator([]MinimalCacheEntry{}, "document", "viewer", true)
+	defer iter.Stop()
+	require.True(t, iter.IsOrdered())
+
+	iter2 := NewLockFreeCachedIterator([]MinimalCacheEntry{}, "document", "viewer", false)
+	defer iter2.Stop()
+	require.False(t, iter2.IsOrdered())
+}
 
 func TestLockFreeCachedIterator_Next_Basic(t *testing.T) {
 	t.Cleanup(func() {
@@ -87,7 +99,7 @@ func TestLockFreeCachedIterator_Next_Basic(t *testing.T) {
 		{ObjectID: "3", User: "user:charlie"},
 	}
 
-	iter := NewLockFreeCachedIterator(entries, "document", "viewer")
+	iter := NewLockFreeCachedIterator(entries, "document", "viewer", false)
 
 	ctx := context.Background()
 
@@ -118,7 +130,7 @@ func TestLockFreeCachedIterator_Next_Empty(t *testing.T) {
 		goleak.VerifyNone(t)
 	})
 
-	iter := NewLockFreeCachedIterator([]MinimalCacheEntry{}, "document", "viewer")
+	iter := NewLockFreeCachedIterator([]MinimalCacheEntry{}, "document", "viewer", false)
 
 	ctx := context.Background()
 	_, err := iter.Next(ctx)
@@ -140,7 +152,7 @@ func TestLockFreeCachedIterator_Next_WithCondition(t *testing.T) {
 		},
 	}
 
-	iter := NewLockFreeCachedIterator(entries, "document", "viewer")
+	iter := NewLockFreeCachedIterator(entries, "document", "viewer", false)
 
 	ctx := context.Background()
 	t1, err := iter.Next(ctx)
@@ -159,7 +171,7 @@ func TestLockFreeCachedIterator_Head_Basic(t *testing.T) {
 		{ObjectID: "2", User: "user:bob"},
 	}
 
-	iter := NewLockFreeCachedIterator(entries, "document", "viewer")
+	iter := NewLockFreeCachedIterator(entries, "document", "viewer", false)
 
 	ctx := context.Background()
 
@@ -193,7 +205,7 @@ func TestLockFreeCachedIterator_Head_AfterStop(t *testing.T) {
 		{ObjectID: "1", User: "user:alice"},
 	}
 
-	iter := NewLockFreeCachedIterator(entries, "document", "viewer")
+	iter := NewLockFreeCachedIterator(entries, "document", "viewer", false)
 
 	iter.Stop()
 
@@ -210,7 +222,7 @@ func TestLockFreeCachedIterator_Head_PastEnd(t *testing.T) {
 		{ObjectID: "1", User: "user:alice"},
 	}
 
-	iter := NewLockFreeCachedIterator(entries, "document", "viewer")
+	iter := NewLockFreeCachedIterator(entries, "document", "viewer", false)
 
 	ctx := context.Background()
 
@@ -236,7 +248,7 @@ func TestLockFreeCachedIterator_Concurrent_Next(t *testing.T) {
 		}
 	}
 
-	iter := NewLockFreeCachedIterator(entries, "document", "viewer")
+	iter := NewLockFreeCachedIterator(entries, "document", "viewer", false)
 
 	ctx := context.Background()
 	var wg sync.WaitGroup
@@ -278,7 +290,7 @@ func TestLockFreeCachedIterator_Concurrent_Stop(t *testing.T) {
 		entries[i] = MinimalCacheEntry{ObjectID: "1", User: "user:test"}
 	}
 
-	iter := NewLockFreeCachedIterator(entries, "document", "viewer")
+	iter := NewLockFreeCachedIterator(entries, "document", "viewer", false)
 
 	ctx := context.Background()
 	var wg sync.WaitGroup
@@ -316,7 +328,7 @@ func TestLockFreeCachedIterator_ContextCanceled(t *testing.T) {
 		{ObjectID: "1", User: "user:alice"},
 	}
 
-	iter := NewLockFreeCachedIterator(entries, "document", "viewer")
+	iter := NewLockFreeCachedIterator(entries, "document", "viewer", false)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -331,6 +343,23 @@ func TestLockFreeCachedIterator_ContextCanceled(t *testing.T) {
 // ─────────────────────────────────────────────────────────────────────────────
 // CachingIterator Tests
 // ─────────────────────────────────────────────────────────────────────────────
+
+func TestCachingIteratorIsOrdered(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	mockCache := mocks.NewMockInMemoryCache[any](ctrl)
+	mockCache.EXPECT().Get(gomock.Any()).Return(nil).AnyTimes()
+	mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+
+	sf := &singleflight.Group{}
+	wg := &sync.WaitGroup{}
+
+	inner := storage.NewStaticTupleIterator([]*openfgav1.Tuple{})
+	iter := newCachingIterator(inner, mockCache, "key", 100, time.Hour, 30*time.Second, sf, wg, "document", "viewer", "Read")
+	require.True(t, iter.IsOrdered())
+	iter.Stop()
+	wg.Wait()
+}
 
 func TestCachingIterator_Next_Basic(t *testing.T) {
 	t.Cleanup(func() {
@@ -1611,7 +1640,7 @@ func BenchmarkCachingIterator_CacheHit(b *testing.B) {
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {
-		iter := NewLockFreeCachedIterator(entries, "document", "viewer")
+		iter := NewLockFreeCachedIterator(entries, "document", "viewer", false)
 
 		// Consume all entries
 		for {
@@ -1642,7 +1671,7 @@ func BenchmarkLockFreeCachedIterator_Next(b *testing.B) {
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {
-		iter := NewLockFreeCachedIterator(entries, "document", "viewer")
+		iter := NewLockFreeCachedIterator(entries, "document", "viewer", false)
 
 		// Consume all entries
 		for {
@@ -1675,7 +1704,7 @@ func BenchmarkLockFreeCachedIterator_VsStaticIterator(b *testing.B) {
 	b.Run("LockFreeCachedIterator", func(b *testing.B) {
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
-			iter := NewLockFreeCachedIterator(entries, "document", "viewer")
+			iter := NewLockFreeCachedIterator(entries, "document", "viewer", false)
 			for {
 				_, err := iter.Next(ctx)
 				if err != nil {
