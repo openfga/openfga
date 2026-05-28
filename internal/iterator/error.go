@@ -25,3 +25,6 @@ func (e *errorIterator[T]) Next(ctx context.Context) (T, error) {
 }
 
 func (e *errorIterator[T]) Stop() {}
+
+// IsOrdered returns true; an error iterator never yields any items, so ordering is vacuously satisfied.
+func (e *errorIterator[T]) IsOrdered() bool { return true }

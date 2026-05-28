@@ -118,7 +118,7 @@ func BenchmarkV1vsV2_CacheHit_Iteration(b *testing.B) {
 			b.ResetTimer()
 
 			for i := 0; i < b.N; i++ {
-				iter := NewLockFreeCachedIterator(entries, "document", "viewer")
+				iter := NewLockFreeCachedIterator(entries, "document", "viewer", false)
 
 				for {
 					_, err := iter.Next(ctx)
@@ -160,7 +160,7 @@ func BenchmarkV1vsV2_CacheHit_SingleNext(b *testing.B) {
 		b.ResetTimer()
 
 		for i := 0; i < b.N; i++ {
-			iter := NewLockFreeCachedIterator(entries, "document", "viewer")
+			iter := NewLockFreeCachedIterator(entries, "document", "viewer", false)
 			_, _ = iter.Next(ctx)
 		}
 	})
@@ -360,7 +360,7 @@ func BenchmarkV1vsV2_Concurrent_Next(b *testing.B) {
 			b.ResetTimer()
 
 			for i := 0; i < b.N; i++ {
-				iter := NewLockFreeCachedIterator(entries, "document", "viewer")
+				iter := NewLockFreeCachedIterator(entries, "document", "viewer", false)
 
 				var wg sync.WaitGroup
 				wg.Add(numGoroutines)
@@ -566,7 +566,7 @@ func BenchmarkV1vsV2_EndToEnd(b *testing.B) {
 
 			// Cache hit - iterate from cache
 			if cachedEntry != nil {
-				cachedIter := NewLockFreeCachedIterator(cachedEntry.Entries, "document", "viewer")
+				cachedIter := NewLockFreeCachedIterator(cachedEntry.Entries, "document", "viewer", false)
 				for {
 					_, err := cachedIter.Next(ctx)
 					if err != nil {

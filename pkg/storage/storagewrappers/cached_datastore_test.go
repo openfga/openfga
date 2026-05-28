@@ -909,6 +909,13 @@ func TestDatastoreIteratorError(t *testing.T) {
 	require.ErrorIs(t, err, storage.ErrNotFound)
 }
 
+func TestCachedIteratorIsOrdered(t *testing.T) {
+	inner := storage.NewStaticTupleIterator([]*openfgav1.Tuple{})
+	iter := &cachedIterator{iter: inner}
+	defer iter.Stop()
+	require.True(t, iter.IsOrdered())
+}
+
 func TestCachedIterator(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
@@ -1516,3 +1523,5 @@ func (s *mockCalledTupleIterator) Stop() {
 	s.closeCalled++
 	s.iter.Stop()
 }
+
+func (s *mockCalledTupleIterator) IsOrdered() bool { return s.iter.IsOrdered() }

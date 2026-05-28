@@ -12,6 +12,31 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 )
 
+func TestMergedIteratorIsOrdered(t *testing.T) {
+	compareFn := func(a, b string) int {
+		if a < b {
+			return -1
+		} else if a > b {
+			return 1
+		}
+		return 0
+	}
+
+	t.Run("both_ordered_true", func(t *testing.T) {
+		iter := Merge(storage.NewStaticIterator[string]([]string{"a"}), storage.NewStaticIterator[string]([]string{"b"}), compareFn)
+		defer iter.Stop()
+		require.True(t, iter.IsOrdered())
+	})
+
+	t.Run("one_unordered_false", func(t *testing.T) {
+		// Concat returns IsOrdered()=false, simulating an unordered right side
+		unordered := Concat(storage.NewStaticIterator[string]([]string{"a"}), storage.NewStaticIterator[string]([]string{"b"}))
+		iter := Merge(storage.NewStaticIterator[string]([]string{"a"}), unordered, compareFn)
+		defer iter.Stop()
+		require.False(t, iter.IsOrdered())
+	})
+}
+
 func TestMergedIterator(t *testing.T) {
 	compareFn := func(a, b string) int {
 		if a < b {

@@ -238,7 +238,7 @@ func (c *CachedTupleReader) tryGetFromCache(
 	}
 
 	v2IterCacheHits.WithLabelValues(operation).Inc()
-	return NewLockFreeCachedIterator(cached.Entries, objectType, relation)
+	return NewLockFreeCachedIterator(cached.Entries, objectType, relation, cached.Ordered)
 }
 
 // isStoreInvalidated returns whether the entire store's cache has been invalidated since lastModified.

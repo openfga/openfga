@@ -56,6 +56,8 @@ func (c *cachedTupleIterator) Head(ctx context.Context) (*openfgav1.Tuple, error
 	return c.buildTuple(t), nil
 }
 
+func (c *cachedTupleIterator) IsOrdered() bool { return c.iter.IsOrdered() }
+
 func (c *cachedTupleIterator) buildTuple(t *storage.TupleRecord) *openfgav1.Tuple {
 	objectType := t.ObjectType
 	objectID := t.ObjectID

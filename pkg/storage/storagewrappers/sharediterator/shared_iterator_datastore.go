@@ -761,3 +761,5 @@ func (s *sharedIterator) Stop() {
 		sharedIteratorCloneCount.Dec()
 	}
 }
+
+func (s *sharedIterator) IsOrdered() bool { return s.ir.IsOrdered() }
