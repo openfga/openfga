@@ -2,7 +2,6 @@ package keys
 
 import (
 	"encoding/binary"
-	"math/rand/v2"
 	"slices"
 	"unsafe"
 )
@@ -19,16 +18,6 @@ func init() {
 		hexTable[i] = uint16(alphabet[i&0x0F])<<8 | uint16(alphabet[i>>4])
 	}
 }
-
-// Seed is the per-process random seed applied to all Digest instances.
-// Randomizing prevents external observers from predicting or deliberately
-// colliding hash outputs (hash-flooding mitigation).
-//
-// Exported solely so tests can pin it to a known value for deterministic
-// hash output. Production code must not modify Seed: Digest.Reset re-reads
-// it on every call, so changing Seed at runtime invalidates the continuity
-// of any in-flight or already-emitted digests.
-var Seed = uint64(rand.Int64())
 
 // Type tags for the encoding. Each Write method prepends a tag so that
 // identical payloads of different types produce distinct byte sequences,
