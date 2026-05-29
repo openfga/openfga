@@ -604,14 +604,14 @@ func TestBuilder_TLV_Pair(t *testing.T) {
 	b.EncodePair(keys.String("k"), keys.String("v"))
 
 	raw := b.Bytes()
-	// tagPair=7, tagKey=8, <string "k">, tagValue=9, <string "v">
-	require.Equal(t, byte(7), raw[0], "tagPair")
-	require.Equal(t, byte(8), raw[1], "tagKey")
+	// tagPair=8, tagKey=9, <string "k">, tagValue=10, <string "v">
+	require.Equal(t, byte(8), raw[0], "tagPair")
+	require.Equal(t, byte(9), raw[1], "tagKey")
 	// string "k": tagString=4, len=1, 'k'
 	require.Equal(t, byte(4), raw[2])
 	require.Equal(t, byte(1), raw[3])
 	require.Equal(t, byte('k'), raw[4])
-	require.Equal(t, byte(9), raw[5], "tagValue")
+	require.Equal(t, byte(10), raw[5], "tagValue")
 	// string "v": tagString=4, len=1, 'v'
 	require.Equal(t, byte(4), raw[6])
 	require.Equal(t, byte(1), raw[7])
