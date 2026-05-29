@@ -99,7 +99,7 @@ func (pbvalue *PbValue) WriteTo(kb *Builder) {
 		}
 
 		if current.hasKey {
-			value = &Pair{Key: String(current.key), Value: value}
+			value = Pair{Key: String(current.key), Value: value}
 		}
 
 		if parent == nil {
@@ -117,7 +117,7 @@ func (pbvalue *PbValue) WriteTo(kb *Builder) {
 			}
 
 			if parent.hasKey {
-				value = &Pair{Key: String(parent.key), Value: value}
+				value = Pair{Key: String(parent.key), Value: value}
 			}
 
 			parent = parent.next
@@ -142,7 +142,7 @@ func (t *Tuple) WriteTo(kb *Builder) {
 		kb.EncodeString(condition.GetName())
 		// condition.GetContext() may be nil; structpb.NewStructValue wraps it
 		// as a Value whose StructValue is nil, and PbValue treats a nil-field
-		// struct as an empty Array. The nil tolerance is intentional.
+		// struct as an empty Map. The nil tolerance is intentional.
 		kb.Serialize((*PbValue)(structpb.NewStructValue(condition.GetContext())))
 	}
 }

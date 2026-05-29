@@ -184,11 +184,14 @@ func (kb *Builder) EncodeMap(m []Serializable) {
 	kb.data = append(kb.data, tagMap)
 	kb.data = binary.AppendUvarint(kb.data, uint64(len(m)))
 	for _, e := range m {
-		if p, ok := e.(Pair); ok {
+		switch p := e.(type) {
+		case Pair:
 			p.WriteTo(kb)
-			continue
+		case *Pair:
+			p.WriteTo(kb)
+		default:
+			kb.EncodePair(Unset{}, e)
 		}
-		kb.EncodePair(Unset{}, e)
 	}
 }
 

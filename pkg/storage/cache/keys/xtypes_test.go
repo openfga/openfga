@@ -276,6 +276,31 @@ func TestPbValue_Struct_UsesMapTag(t *testing.T) {
 		"struct and list must use different container tags")
 }
 
+func TestPbValue_Struct_MatchesEquivalentMapOfPairs(t *testing.T) {
+	// A PbValue struct must encode identically to a direct Map of Pair
+	// elements with the same keys/values. PbValue internally accumulates
+	// *Pair entries while walking the struct, so this guards against a
+	// regression where EncodeMap stops accepting *Pair (which would cause
+	// each field to be double-wrapped as Pair{Unset, *Pair{...}}).
+	structVal := pbStruct(map[string]*structpb.Value{
+		"a": structpb.NewStringValue("1"),
+		"b": structpb.NewNumberValue(2),
+	})
+
+	equivalent := keys.Map{
+		keys.Pair{Key: keys.String("a"), Value: keys.String("1")},
+		keys.Pair{Key: keys.String("b"), Value: keys.Uint64(math.Float64bits(2))},
+	}
+
+	sBuilder := &keys.Builder{}
+	sBuilder.Serialize(structVal)
+
+	mBuilder := &keys.Builder{}
+	mBuilder.Serialize(equivalent)
+
+	require.Equal(t, mBuilder.Key().Bytes(), sBuilder.Key().Bytes())
+}
+
 func TestPbValue_Struct_DiffersFromListOfSamePairs(t *testing.T) {
 	// A struct {"a":"1"} and a list [{"a":"1"}] (where the list element is a
 	// struct) have different nesting and must not collide, but more importantly

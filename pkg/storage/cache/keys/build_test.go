@@ -234,6 +234,24 @@ func TestBuilder_EncodeMap_MixedPairAndNonPair(t *testing.T) {
 	require.Equal(t, byte(0), raw[offset+5])
 }
 
+func TestBuilder_EncodeMap_PointerPairEncodesLikeValuePair(t *testing.T) {
+	// *Pair must encode identically to Pair so that callers that hand the
+	// builder either form (e.g., PbValue, which holds pointer pairs while
+	// it accumulates a struct) produce the same wire bytes as a direct
+	// EncodeMap with value pairs.
+	var valBuf Builder
+	valBuf.EncodeMap([]Serializable{
+		Pair{Key: String("k"), Value: Uint64(1)},
+	})
+
+	var ptrBuf Builder
+	ptrBuf.EncodeMap([]Serializable{
+		&Pair{Key: String("k"), Value: Uint64(1)},
+	})
+
+	require.Equal(t, valBuf.Bytes(), ptrBuf.Bytes())
+}
+
 // TestBuilder_MapArrayDisambiguation verifies that a Map and an Array
 // containing identical elements produce different TLV outputs.
 func TestBuilder_MapArrayDisambiguation(t *testing.T) {
