@@ -59,6 +59,7 @@ const (
 	tagString
 	tagBytes
 	tagArray
+	tagMap
 	tagPair
 	tagKey
 	tagValue
@@ -168,6 +169,20 @@ func (kb *Builder) EncodeArray(a []Serializable) {
 	kb.data = binary.AppendUvarint(kb.data, uint64(len(a)))
 	for _, e := range a {
 		e.WriteTo(kb)
+	}
+}
+
+// EncodeMap writes a as a tagged sequence, encoding the pair count
+// followed by each pair's own TLV representation.
+func (kb *Builder) EncodeMap(m []Serializable) {
+	kb.data = append(kb.data, tagMap)
+	kb.data = binary.AppendUvarint(kb.data, uint64(len(m)))
+	for _, e := range m {
+		if p, ok := e.(Pair); ok {
+			p.WriteTo(kb)
+			continue
+		}
+		kb.EncodePair(Unset{}, e)
 	}
 }
 

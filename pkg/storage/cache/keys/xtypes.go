@@ -23,13 +23,14 @@ func (pbvalue *PbValue) WriteTo(kb *Builder) {
 	type stack[T any] struct {
 		key    string
 		hasKey bool
+		isMap  bool
 		value  T
 		next   *stack[T]
 	}
 
 	next := &stack[*structpb.Value]{value: (*structpb.Value)(pbvalue)}
 
-	var parent *stack[Array]
+	var parent *stack[[]Serializable]
 
 	for next != nil {
 		current := next
@@ -60,8 +61,8 @@ func (pbvalue *PbValue) WriteTo(kb *Builder) {
 				break
 			}
 
-			a := make(Array, 0, len(values))
-			c := stack[Array]{key: current.key, hasKey: current.hasKey, value: a, next: parent}
+			a := make([]Serializable, 0, len(values))
+			c := stack[[]Serializable]{key: current.key, hasKey: current.hasKey, value: a, next: parent}
 			parent = &c
 
 			for i := len(values) - 1; i >= 0; i-- {
@@ -78,12 +79,12 @@ func (pbvalue *PbValue) WriteTo(kb *Builder) {
 			if len(keys) == 0 {
 				// See ListValue branch — empty structs are emitted as leaves
 				// so they don't shadow following siblings.
-				value = Array{}
+				value = Map{}
 				break
 			}
 
-			a := make(Array, 0, len(keys))
-			c := stack[Array]{key: current.key, hasKey: current.hasKey, value: a, next: parent}
+			a := make([]Serializable, 0, len(keys))
+			c := stack[[]Serializable]{key: current.key, hasKey: current.hasKey, isMap: true, value: a, next: parent}
 			parent = &c
 
 			for i := len(keys) - 1; i >= 0; i-- {
@@ -109,7 +110,12 @@ func (pbvalue *PbValue) WriteTo(kb *Builder) {
 		parent.value = append(parent.value, value)
 
 		for parent != nil && len(parent.value) == cap(parent.value) {
-			value = parent.value
+			if parent.isMap {
+				value = Map(parent.value)
+			} else {
+				value = Array(parent.value)
+			}
+
 			if parent.hasKey {
 				value = &Pair{Key: String(parent.key), Value: value}
 			}

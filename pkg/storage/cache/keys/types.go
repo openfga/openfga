@@ -55,6 +55,12 @@ func (a Array) WriteTo(kb *Builder) {
 	kb.EncodeArray(a)
 }
 
+type Map []Serializable
+
+func (m Map) WriteTo(kb *Builder) {
+	kb.EncodeMap(m)
+}
+
 type Pair struct {
 	Key   Serializable
 	Value Serializable
