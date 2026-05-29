@@ -55,6 +55,12 @@ func (a Array) WriteTo(kb *Builder) {
 	kb.EncodeArray(a)
 }
 
+// Map is an ordered collection of key-value pairs that serializes with the
+// tagMap framing. Elements that implement Pair are encoded directly; all
+// other elements are wrapped as Pair{Key: Unset{}, Value: element}. Use
+// Map (rather than Array of Pairs) when the source data is a dictionary
+// or struct-like object whose entries must be distinguishable from a
+// positional sequence.
 type Map []Serializable
 
 func (m Map) WriteTo(kb *Builder) {

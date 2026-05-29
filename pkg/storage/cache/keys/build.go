@@ -42,9 +42,11 @@ var Seed = uint64(rand.Int64())
 //     payload follows.
 //   - Fixed-size payloads (tagByte: 1B, tagBool: 1B, tagUint64: 8B): tag +
 //     payload. The length is implied by the tag, so it is omitted.
-//   - Variable-size payloads (tagString, tagBytes, tagArray): tag + uvarint
-//     length + payload. The length disambiguates the payload boundary so
-//     adjacent fields cannot smear into one another.
+//   - Variable-size payloads (tagString, tagBytes, tagArray, tagMap): tag +
+//     uvarint length + payload. The length disambiguates the payload boundary
+//     so adjacent fields cannot smear into one another. tagMap and tagArray
+//     share the same framing but use distinct tags so that a dictionary and a
+//     positional sequence of identical elements never collide.
 //
 // The Builder is a one-way digest input — nothing parses these bytes back —
 // so the encoding optimizes for compactness rather than self-description.
@@ -172,8 +174,12 @@ func (kb *Builder) EncodeArray(a []Serializable) {
 	}
 }
 
-// EncodeMap writes a as a tagged sequence, encoding the pair count
-// followed by each pair's own TLV representation.
+// EncodeMap writes m as a tagged map (tagMap + uvarint count + pairs).
+// Each element is expected to be a Pair; non-Pair elements are wrapped
+// as Pair{Key: Unset{}, Value: element} so the output always contains
+// well-formed key-value entries. The tagMap framing distinguishes maps
+// from arrays, preventing collision between a dictionary and a
+// positional sequence that happen to contain the same values.
 func (kb *Builder) EncodeMap(m []Serializable) {
 	kb.data = append(kb.data, tagMap)
 	kb.data = binary.AppendUvarint(kb.data, uint64(len(m)))

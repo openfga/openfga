@@ -144,6 +144,113 @@ func TestBuilder_EncodeArray_Nil(t *testing.T) {
 	require.Equal(t, []byte{tagArray, 0}, raw)
 }
 
+func TestBuilder_EncodeMap_TLV(t *testing.T) {
+	var b Builder
+	b.EncodeMap([]Serializable{Pair{Key: String("k1"), Value: Uint64(1)}, Pair{Key: String("k2"), Value: Bool(true)}})
+
+	raw := b.Bytes()
+	require.Equal(t, tagMap, raw[0])
+	require.Equal(t, byte(2), raw[1]) // 2 pairs
+
+	// First pair: tagPair, tagKey, tagString "k1", tagValue, tagUint64 1
+	require.Equal(t, tagPair, raw[2])
+	require.Equal(t, tagKey, raw[3])
+	require.Equal(t, tagString, raw[4])
+	require.Equal(t, byte(2), raw[5]) // len("k1")
+	require.Equal(t, []byte("k1"), raw[6:8])
+	require.Equal(t, tagValue, raw[8])
+	require.Equal(t, tagUint64, raw[9])
+	val := binary.LittleEndian.Uint64(raw[10:18])
+	require.Equal(t, uint64(1), val)
+
+	// Second pair starts at offset 18
+	require.Equal(t, tagPair, raw[18])
+	require.Equal(t, tagKey, raw[19])
+	require.Equal(t, tagString, raw[20])
+	require.Equal(t, byte(2), raw[21])
+	require.Equal(t, []byte("k2"), raw[22:24])
+	require.Equal(t, tagValue, raw[24])
+	require.Equal(t, tagBool, raw[25])
+	require.Equal(t, byte(1), raw[26])
+}
+
+func TestBuilder_EncodeMap_Empty(t *testing.T) {
+	var b Builder
+	b.EncodeMap([]Serializable{})
+
+	raw := b.Bytes()
+	require.Equal(t, []byte{tagMap, 0}, raw)
+}
+
+func TestBuilder_EncodeMap_Nil(t *testing.T) {
+	var b Builder
+	b.EncodeMap(nil)
+
+	raw := b.Bytes()
+	require.Equal(t, []byte{tagMap, 0}, raw)
+}
+
+func TestBuilder_EncodeMap_NonPairWrapsWithUnsetKey(t *testing.T) {
+	// Non-Pair elements should be wrapped as Pair{Unset{}, element}
+	var b Builder
+	b.EncodeMap([]Serializable{String("value_only")})
+
+	raw := b.Bytes()
+	require.Equal(t, tagMap, raw[0])
+	require.Equal(t, byte(1), raw[1])
+	// Wrapped pair: tagPair, tagKey, tagUnset, tagValue, tagString "value_only"
+	require.Equal(t, tagPair, raw[2])
+	require.Equal(t, tagKey, raw[3])
+	require.Equal(t, tagUnset, raw[4])
+	require.Equal(t, tagValue, raw[5])
+	require.Equal(t, tagString, raw[6])
+	require.Equal(t, byte(10), raw[7]) // len("value_only")
+	require.Equal(t, []byte("value_only"), raw[8:18])
+}
+
+func TestBuilder_EncodeMap_MixedPairAndNonPair(t *testing.T) {
+	var b Builder
+	b.EncodeMap([]Serializable{
+		Pair{Key: String("a"), Value: Uint64(1)},
+		Bool(false), // non-Pair, should be wrapped
+	})
+
+	raw := b.Bytes()
+	require.Equal(t, tagMap, raw[0])
+	require.Equal(t, byte(2), raw[1])
+
+	// First element: normal pair
+	require.Equal(t, tagPair, raw[2])
+	require.Equal(t, tagKey, raw[3])
+
+	// Find the second pair by scanning past the first
+	// First pair: tagPair(1) + tagKey(1) + tagString(1) + len(1) + "a"(1) + tagValue(1) + tagUint64(1) + 8 bytes = 15
+	offset := 2 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 8 // second pair starts here
+	require.Equal(t, tagPair, raw[offset])
+	require.Equal(t, tagKey, raw[offset+1])
+	require.Equal(t, tagUnset, raw[offset+2]) // wrapped with Unset key
+	require.Equal(t, tagValue, raw[offset+3])
+	require.Equal(t, tagBool, raw[offset+4])
+	require.Equal(t, byte(0), raw[offset+5])
+}
+
+// TestBuilder_MapArrayDisambiguation verifies that a Map and an Array
+// containing identical elements produce different TLV outputs.
+func TestBuilder_MapArrayDisambiguation(t *testing.T) {
+	elems := []Serializable{Pair{Key: String("k"), Value: Uint64(1)}}
+
+	var mapBuf Builder
+	mapBuf.EncodeMap(elems)
+
+	var arrBuf Builder
+	arrBuf.EncodeArray(elems)
+
+	require.NotEqual(t, mapBuf.Bytes(), arrBuf.Bytes())
+	// Specifically, they should differ in the tag byte
+	require.Equal(t, tagMap, mapBuf.Bytes()[0])
+	require.Equal(t, tagArray, arrBuf.Bytes()[0])
+}
+
 func TestBuilder_EncodePair_TLV(t *testing.T) {
 	var b Builder
 	b.EncodePair(String("key"), Uint64(42))
@@ -548,6 +655,20 @@ func BenchmarkBuilderEncodeArray(b *testing.B) {
 	for b.Loop() {
 		kb.Reset()
 		kb.EncodeArray(elems)
+	}
+}
+
+func BenchmarkBuilderEncodeMap(b *testing.B) {
+	var kb Builder
+	elems := []Serializable{
+		Pair{Key: String("name"), Value: String("alice")},
+		Pair{Key: String("age"), Value: Uint64(30)},
+		Pair{Key: String("active"), Value: Bool(true)},
+	}
+	b.ReportAllocs()
+	for b.Loop() {
+		kb.Reset()
+		kb.EncodeMap(elems)
 	}
 }
 

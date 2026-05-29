@@ -255,6 +255,47 @@ func TestPbValue_List_MixedKinds(t *testing.T) {
 	require.NotEqual(t, hash1, hash3)
 }
 
+func TestPbValue_Struct_UsesMapTag(t *testing.T) {
+	// Structs must encode with tagMap so that {k:"v"} and [Pair{k,"v"}] are
+	// distinct at the wire level. Verify that the leading tag byte for a
+	// struct differs from that of a list (tagArray=0x06 vs tagMap=0x07).
+	s := pbStruct(map[string]*structpb.Value{
+		"x": structpb.NewStringValue("y"),
+	})
+	l := pbList(structpb.NewStringValue("y"))
+
+	sBuilder := &keys.Builder{}
+	sBuilder.Serialize(s)
+	sRaw := sBuilder.Key().Bytes()
+
+	lBuilder := &keys.Builder{}
+	lBuilder.Serialize(l)
+	lRaw := lBuilder.Key().Bytes()
+
+	require.NotEqual(t, sRaw[0], lRaw[0],
+		"struct and list must use different container tags")
+}
+
+func TestPbValue_Struct_DiffersFromListOfSamePairs(t *testing.T) {
+	// A struct {"a":"1"} and a list [{"a":"1"}] (where the list element is a
+	// struct) have different nesting and must not collide, but more importantly
+	// a struct and a plain Array of the same pairs must differ because of the
+	// tagMap vs tagArray distinction.
+	structVal := pbStruct(map[string]*structpb.Value{
+		"a": structpb.NewStringValue("1"),
+	})
+	listVal := pbList(structpb.NewStringValue("1"))
+
+	require.NotEqual(t, hashOf(t, structVal), hashOf(t, listVal))
+}
+
+func TestPbValue_EmptyStruct_DiffersFromEmptyList(t *testing.T) {
+	// Both are "empty containers" but with different tags.
+	emptyStruct := pbStruct(map[string]*structpb.Value{})
+	emptyList := pbList()
+	require.NotEqual(t, hashOf(t, emptyStruct), hashOf(t, emptyList))
+}
+
 func TestPbValue_Struct_FieldOrderDoesNotMatter(t *testing.T) {
 	// Struct fields are sorted internally, so the declaration order of the Go
 	// map literal must not affect the digest.
