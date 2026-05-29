@@ -521,7 +521,7 @@
                     }
                 },
                 "sampler": {
-                    "description": "The sampler to use for tracing. Controls how sampling decisions are made.",
+                    "description": "The sampler to use for tracing. Controls how sampling decisions are made. Defaults to 'traceidratio' for backward compatibility (note: the OpenTelemetry spec default is 'parentbased_always_on'). Unrecognized values produce a warning (when tracing is enabled) and fall back to 'traceidratio'.",
                     "type": "string",
                     "enum": ["always_on", "always_off", "traceidratio", "parentbased_always_on", "parentbased_always_off", "parentbased_traceidratio"],
                     "default": "traceidratio",
