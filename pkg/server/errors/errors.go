@@ -33,6 +33,8 @@ var (
 
 	// ErrTransactionThrottled can apply when a limit is hit at the database level.
 	ErrTransactionThrottled = status.Error(codes.ResourceExhausted, "transaction was throttled by the datastore")
+
+	ErrNil = errors.New("nil")
 )
 
 type InternalError struct {
@@ -63,6 +65,10 @@ func (e InternalError) GRPCStatus() *status.Status {
 func NewInternalError(public string, internal error) InternalError {
 	if public == "" {
 		public = InternalServerErrorMsg
+	}
+
+	if internal == nil {
+		internal = ErrNil
 	}
 
 	return InternalError{

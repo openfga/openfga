@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"sync"
@@ -14,6 +15,7 @@ import (
 	weightedGraph "github.com/openfga/language/pkg/go/graph"
 
 	"github.com/openfga/openfga/internal/concurrency"
+	"github.com/openfga/openfga/internal/containers/mpsc"
 )
 
 var tracer = otel.Tracer("openfga/internal/listobjects/pipeline/internal/worker")
@@ -151,7 +153,7 @@ type Core struct {
 	MediumFunc  func(*Edge, int) Medium
 	MsgFunc     func(*Message, *Edge)
 	Label       string
-	Errors      chan<- error
+	Errors      *mpsc.Accumulator[error]
 	Interpreter Interpreter
 	ChunkSize   int
 	NumProcs    int
@@ -176,14 +178,10 @@ func (c *Core) instrument(span trace.Span) {
 	span.SetAttributes(attrs...)
 }
 
-// error sends a non-nil *err to the shared error channel. If the channel
-// is full, the error is silently dropped to avoid blocking the caller.
+// error sends a non-nil *err to the shared error accumulator.
 func (c *Core) error(err *error) {
 	if err != nil && *err != nil {
-		select {
-		case c.Errors <- *err:
-		default:
-		}
+		c.Errors.Send(*err)
 	}
 }
 
@@ -265,8 +263,10 @@ func (c *Core) ProcessSender(ctx context.Context, index int, processor MessagePr
 			for msg = range input {
 				if processor != nil {
 					if e := processor.ProcessMessage(ctx, index, msg); e != nil {
-						errCount.Add(1)
-						c.error(&e)
+						if !errors.Is(e, context.Canceled) && !errors.Is(e, context.DeadlineExceeded) {
+							errCount.Add(1)
+							c.error(&e)
+						}
 					}
 				}
 				msg.Done()

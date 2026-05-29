@@ -2,11 +2,11 @@ package graph
 
 import (
 	"errors"
+	"maps"
 	"strings"
 	"sync/atomic"
 	"time"
 
-	"golang.org/x/exp/maps"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/structpb"
 

@@ -80,3 +80,6 @@ func (v *validatingIterator[T]) Next(ctx context.Context) (T, error) {
 func (v *validatingIterator[T]) Stop() {
 	v.base.Stop()
 }
+
+// IsOrdered forwards from the inner iterator; validation can only skip items, never reorder them.
+func (v *validatingIterator[T]) IsOrdered() bool { return v.base.IsOrdered() }

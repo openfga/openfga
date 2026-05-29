@@ -6,12 +6,16 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
+	"math/rand"
 	"sort"
 	"strconv"
 	"sync"
 	"time"
+	"unsafe"
 
 	"github.com/Yiling-J/theine-go"
+	"github.com/cespare/xxhash/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"google.golang.org/protobuf/types/known/structpb"
@@ -223,17 +227,34 @@ func GetInvalidIteratorCacheKey(storeID string) string {
 }
 
 func GetInvalidIteratorByObjectRelationCacheKey(storeID, object, relation string) string {
-	return invalidIteratorCachePrefix + storeID + "-or/" + object + "#" + relation
+	var builder CacheKeyBuilder
+	builder.Grow(5) // grown by the number of elements to be written to the builder
+
+	builder.WriteString(invalidIteratorCachePrefix)
+	builder.WriteString("or")
+	builder.WriteString(storeID)
+	builder.WriteString(object)
+	builder.WriteString(relation)
+
+	return builder.Build()
 }
 
 func GetInvalidIteratorByUserObjectTypeCacheKeys(storeID string, users []string, objectType string) []string {
-	res := make([]string, len(users))
-	var i int
-	for _, user := range users {
-		res[i] = invalidIteratorCachePrefix + storeID + "-otr/" + user + "|" + objectType
-		i++
+	result := make([]string, len(users))
+
+	for i, user := range users {
+		var builder CacheKeyBuilder
+		builder.Grow(5) // grown by the number of elements to be written to the builder
+
+		builder.WriteString(invalidIteratorCachePrefix)
+		builder.WriteString("otr")
+		builder.WriteString(storeID)
+		builder.WriteString(user)
+		builder.WriteString(objectType)
+
+		result[i] = builder.Build()
 	}
-	return res
+	return result
 }
 
 type TupleIteratorCacheEntry struct {
@@ -245,16 +266,33 @@ func (t *TupleIteratorCacheEntry) CacheEntityType() string {
 	return "tuple_iterator"
 }
 
-func GetReadUsersetTuplesCacheKeyPrefix(store, object, relation string) string {
-	return iteratorCachePrefix + "rut/" + store + "/" + object + "#" + relation
+func GetReadUsersetTuplesCacheKeyPrefix(builder *CacheKeyBuilder, store, object, relation string) {
+	builder.Grow(5) // grown by the number of elements to be written to the builder
+
+	builder.WriteString(iteratorCachePrefix)
+	builder.WriteString("rut")
+	builder.WriteString(store)
+	builder.WriteString(object)
+	builder.WriteString(relation)
 }
 
-func GetReadStartingWithUserCacheKeyPrefix(store, objectType, relation string) string {
-	return iteratorCachePrefix + "rtwu/" + store + "/" + objectType + "#" + relation
+func GetReadStartingWithUserCacheKeyPrefix(builder *CacheKeyBuilder, store, objectType, relation string) {
+	builder.Grow(5) // grown by the number of elements to be written to the builder
+
+	builder.WriteString(iteratorCachePrefix)
+	builder.WriteString("rtwu")
+	builder.WriteString(store)
+	builder.WriteString(objectType)
+	builder.WriteString(relation)
 }
 
-func GetReadCacheKey(store, tuple string) string {
-	return iteratorCachePrefix + "r/" + store + "/" + tuple
+func GetReadCacheKey(builder *CacheKeyBuilder, store, tuple string) {
+	builder.Grow(4) // grown by the number of elements to be written to the builder
+
+	builder.WriteString(iteratorCachePrefix)
+	builder.WriteString("r")
+	builder.WriteString(store)
+	builder.WriteString(tuple)
 }
 
 // ErrUnexpectedStructValue is an error used to indicate that
@@ -453,6 +491,36 @@ func writeTuples(w io.StringWriter, tuples ...*openfgav1.TupleKey) (err error) {
 	return
 }
 
+// JitteredTTL returns a TTL with random jitter added. The jitter is a random duration
+// in the range [0, baseTTL * jitterPercentage / 100]. Values above 100 are treated as
+// 100. If jitterPercentage is 0 the base TTL is returned unchanged.
+func JitteredTTL(baseTTL time.Duration, jitterPercentage uint32) time.Duration {
+	if baseTTL <= 0 || jitterPercentage == 0 {
+		return baseTTL
+	}
+
+	if jitterPercentage > 100 {
+		jitterPercentage = 100
+	}
+
+	quotient := baseTTL / 100
+	remainder := baseTTL % 100
+	maxJitter := quotient*time.Duration(jitterPercentage) + remainder*time.Duration(jitterPercentage)/100
+
+	var jitter time.Duration
+	if maxJitter == time.Duration(math.MaxInt64) {
+		jitter = time.Duration(rand.Int63())
+	} else {
+		jitter = time.Duration(rand.Int63n(int64(maxJitter) + 1))
+	}
+
+	if jitter > time.Duration(math.MaxInt64)-baseTTL {
+		return time.Duration(math.MaxInt64)
+	}
+
+	return baseTTL + jitter
+}
+
 // CheckCacheKeyParams is all the necessary pieces to create a unique-per-check cache key.
 type CheckCacheKeyParams struct {
 	StoreID              string
@@ -508,4 +576,84 @@ func WriteInvariantCheckCacheKey(w io.StringWriter, params *CheckCacheKeyParams)
 	}
 
 	return nil
+}
+
+const hextable string = "0123456789ABCDEF"
+
+type CacheKeyBuilder struct {
+	buf [][]byte
+}
+
+func (b *CacheKeyBuilder) Grow(n int) {
+	if cap(b.buf) < n {
+		buf := make([][]byte, len(b.buf), n)
+		copy(buf, b.buf)
+		b.buf = buf
+	}
+}
+
+func (b *CacheKeyBuilder) Write(val []byte) (int, error) {
+	b.buf = append(b.buf, val)
+	return len(val), nil
+}
+
+func (b *CacheKeyBuilder) WriteString(val string) (int, error) {
+	return b.Write(unsafe.Slice(unsafe.StringData(val), len(val)))
+}
+
+// Build hex-encodes each written value and separates them with '|'.
+// The output alphabet is [0-9A-F|], which makes it injection-proof: no crafted
+// input can produce a '|', so segments can never collide across boundaries.
+// Tradeoff: keys are 2x larger than raw concatenation, increasing cache memory usage.
+func (b *CacheKeyBuilder) Build() string {
+	var count int
+	for _, buf := range b.buf {
+		count += len(buf)*2 + 1
+	}
+	hex := make([]byte, count)
+	var j int
+	for _, buf := range b.buf {
+		for i := range len(buf) {
+			hex[j] = hextable[buf[i]>>4]
+			j++
+			hex[j] = hextable[buf[i]&0x0F]
+			j++
+		}
+		hex[j] = '|'
+		j++
+	}
+	// unsafe.String: safe because hex is a local buffer never mutated after this point.
+	return unsafe.String(unsafe.SliceData(hex), len(hex))
+}
+
+// BuildUserTypeRestrictionsHash creates a deterministic xxhash digest from user type restrictions.
+// Each restriction is formatted as "type", "type:*", or "type#relation", then sorted and
+// hashed with null-byte separators. Returns the hash as a []byte.
+func BuildUserTypeRestrictionsHash(refs []*openfgav1.RelationReference) []byte {
+	if len(refs) == 0 {
+		return []byte{}
+	}
+
+	parts := make([]string, 0, len(refs))
+	for _, ref := range refs {
+		var part string
+		switch r := ref.GetRelationOrWildcard().(type) {
+		case *openfgav1.RelationReference_Relation:
+			part = ref.GetType() + "#" + r.Relation
+		case *openfgav1.RelationReference_Wildcard:
+			part = ref.GetType() + ":*"
+		default:
+			part = ref.GetType()
+		}
+		parts = append(parts, part)
+	}
+
+	sort.Strings(parts)
+
+	var hasher xxhash.Digest
+	for _, part := range parts {
+		hasher.WriteString(part)
+		hasher.Write([]byte{0})
+	}
+	return hasher.Sum([]byte{})
 }

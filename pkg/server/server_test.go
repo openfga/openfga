@@ -19,6 +19,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zaptest/observer"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -33,6 +35,7 @@ import (
 	"github.com/openfga/openfga/internal/graph"
 	mockstorage "github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/featureflags"
+	"github.com/openfga/openfga/pkg/logger"
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/server/test"
@@ -50,6 +53,8 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
+var testCachePrefix string
+
 func init() {
 	_, filename, _, _ := runtime.Caller(0)
 	dir := path.Join(path.Dir(filename), "..", "..")
@@ -57,6 +62,10 @@ func init() {
 	if err != nil {
 		panic(err)
 	}
+
+	var builder storage.CacheKeyBuilder
+	builder.WriteString(storagewrappers.V2IteratorCachePrefix)
+	testCachePrefix = builder.Build()
 }
 
 func ExampleNewServerWithOpts() {
@@ -2151,6 +2160,40 @@ func TestServerListObjectsCache(t *testing.T) {
 	})
 }
 
+func TestWithCacheTTLJitterPercentage(t *testing.T) {
+	t.Run("keeps values within range without warning", func(t *testing.T) {
+		core, logs := observer.New(zap.WarnLevel)
+		testLogger := &logger.ZapLogger{Logger: zap.New(core)}
+
+		s := MustNewServerWithOpts(
+			WithDatastore(memory.New()),
+			WithLogger(testLogger),
+			WithCacheTTLJitterPercentage(10),
+		)
+		t.Cleanup(s.Close)
+
+		require.EqualValues(t, 10, s.cacheSettings.CacheTTLJitterPercentage)
+		require.Zero(t, logs.Len())
+	})
+
+	t.Run("caps values above 100 and logs the requested value", func(t *testing.T) {
+		core, logs := observer.New(zap.WarnLevel)
+		testLogger := &logger.ZapLogger{Logger: zap.New(core)}
+
+		s := MustNewServerWithOpts(
+			WithDatastore(memory.New()),
+			WithLogger(testLogger),
+			WithCacheTTLJitterPercentage(101),
+		)
+		t.Cleanup(s.Close)
+
+		require.EqualValues(t, 100, s.cacheSettings.CacheTTLJitterPercentage)
+		require.Equal(t, 1, logs.Len())
+		require.Equal(t, "cacheTTLJitterPercentage exceeded 100, capping to 100", logs.All()[0].Message)
+		require.EqualValues(t, 101, logs.All()[0].ContextMap()["requested"])
+	})
+}
+
 func TestCheckWithCachedControllerEnabled(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
@@ -2461,10 +2504,10 @@ func TestV2CheckWithIteratorCache(t *testing.T) {
 
 	initialHits := cache.Hits()
 
-	// Verify iterator cache entries were created (v2ic. prefix) by waiting for
+	// Verify iterator cache entries were created (hex-encoded v2ic. prefix) by waiting for
 	// background cache population with a bounded timeout.
 	require.Eventually(t, func() bool {
-		return len(cache.KeysWithPrefix("v2ic.")) > 0
+		return len(cache.KeysWithPrefix(testCachePrefix)) > 0
 	}, 2*time.Second, 10*time.Millisecond, "V2 iterator cache should have entries after first check")
 
 	// Second check with different user but same userset traversal
@@ -2546,7 +2589,7 @@ func TestV2CheckWithIteratorCache_Invalidation(t *testing.T) {
 
 	// Wait for the iterator cache to be populated.
 	require.Eventually(t, func() bool {
-		return len(cache.KeysWithPrefix("v2ic.")) > 0
+		return len(cache.KeysWithPrefix(testCachePrefix)) > 0
 	}, 2*time.Second, 10*time.Millisecond)
 
 	// Write a DIFFERENT group membership on the same (document:1, viewer).
@@ -2566,37 +2609,18 @@ func TestV2CheckWithIteratorCache_Invalidation(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// Delete the stale store-level invalidation marker so we can detect
-	// when the cache controller writes a fresh one after seeing the new writes.
-	cache.Delete(storage.GetInvalidIteratorCacheKey(storeID))
-
-	// WORKAROUND: Ideally, this test should disable the query cache; however,
-	// ExperimentalWeightedGraphCheck currently does not have an option to
-	// disable that. Instead, trigger cache controller invalidation through
-	// Check requests on a dummy user for the same object-relation used above
-	// until the new invalidation marker is written.
+	// Each Check triggers the cache controller which reads the changelog
+	// asynchronously. With a ~0 TTL, repeated checks will eventually detect
+	// the new write, write invalidation markers, evict the stale iterator
+	// entry, and hit the database to get fresh results including bob's group.
 	require.Eventually(t, func() bool {
 		resp, err := s.Check(ctx, &openfgav1.CheckRequest{
 			StoreId:              storeID,
-			TupleKey:             tuple.NewCheckRequestTupleKey("document:1", "viewer", "user:dummy"),
+			TupleKey:             tuple.NewCheckRequestTupleKey("document:1", "viewer", "user:bob"),
 			AuthorizationModelId: modelID,
 		})
-		require.NoError(t, err)
-		require.False(t, resp.GetAllowed()) // user doesn't exist
-		return cache.Get(storage.GetInvalidIteratorCacheKey(storeID)) != nil
+		return err == nil && resp.GetAllowed()
 	}, 2*time.Second, 10*time.Millisecond)
-
-	// Now perform the check for bob. If the iterator cache was properly
-	// invalidated, this should return true since bob is a viewer via
-	// group:product. If cache was not invalidated, this would return false
-	// since the stale iterator cache entry only contains group:eng#member.
-	resp, err := s.Check(ctx, &openfgav1.CheckRequest{
-		StoreId:              storeID,
-		TupleKey:             tuple.NewCheckRequestTupleKey("document:1", "viewer", "user:bob"),
-		AuthorizationModelId: modelID,
-	})
-	require.NoError(t, err)
-	require.True(t, resp.GetAllowed())
 }
 
 // TestV2CheckWithIteratorCache_HigherConsistencyBypassesCache tests that
@@ -2663,11 +2687,11 @@ func TestV2CheckWithIteratorCache_HigherConsistencyBypassesCache(t *testing.T) {
 	require.True(t, checkResponse.GetAllowed())
 
 	require.Eventually(t, func() bool {
-		return len(cache.KeysWithPrefix("v2ic.")) > 0
+		return len(cache.KeysWithPrefix(testCachePrefix)) > 0
 	}, 2*time.Second, 10*time.Millisecond, "default consistency should populate iterator cache")
 
 	// Record cache key count before HIGHER_CONSISTENCY checks.
-	keysCountBefore := len(cache.KeysWithPrefix("v2ic."))
+	keysCountBefore := len(cache.KeysWithPrefix(testCachePrefix))
 
 	// Now make HIGHER_CONSISTENCY requests for a different document/user
 	// to ensure any new cache entries would be distinct from existing ones.
@@ -2683,7 +2707,7 @@ func TestV2CheckWithIteratorCache_HigherConsistencyBypassesCache(t *testing.T) {
 	}
 
 	// HIGHER_CONSISTENCY should not have added any new iterator cache entries.
-	keysCountAfter := len(cache.KeysWithPrefix("v2ic."))
+	keysCountAfter := len(cache.KeysWithPrefix(testCachePrefix))
 	require.Equal(t, keysCountBefore, keysCountAfter, "HIGHER_CONSISTENCY should not populate iterator cache")
 }
 
@@ -2766,15 +2790,26 @@ func TestV2CheckWithIteratorCache_Conditions(t *testing.T) {
 	require.True(t, checkResponse.GetAllowed())
 
 	// Wait for iterator cache to be populated and verify entries exist
-	// with condition hash segments (/c:) in the cache keys.
+	// with a non-empty condition hash segment. In the hex-encoded key format,
+	// condition hashes appear as the last pipe-delimited segment before the
+	// trailing '|'. A non-empty hash means the segment between the last two
+	// '|' chars has length > 0.
 	require.Eventually(t, func() bool {
-		v2CacheKeys := cache.KeysWithPrefix("v2ic.")
+		v2CacheKeys := cache.KeysWithPrefix(testCachePrefix)
 		if len(v2CacheKeys) == 0 {
 			return false
 		}
 		for _, key := range v2CacheKeys {
-			if strings.Contains(key, "/c:") {
-				return true
+			// The conditions hash is the last segment. With 7 segments there are
+			// 7 '|' delimiters. A non-empty last segment means conditions were hashed.
+			segments := strings.Split(key, "|")
+			// segments has len == numWritten+1 because of trailing '|'
+			if len(segments) >= 8 {
+				// second-to-last segment (last real data segment) is the conditions hash
+				condSeg := segments[len(segments)-2]
+				if len(condSeg) > 0 {
+					return true
+				}
 			}
 		}
 		return false

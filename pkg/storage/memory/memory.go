@@ -82,6 +82,9 @@ func (s *staticIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
 // Stop does not do anything for staticIterator.
 func (s *staticIterator) Stop() {}
 
+// IsOrdered conservatively returns false until datastore methods expose ordering guarantees.
+func (s *staticIterator) IsOrdered() bool { return false }
+
 // Head see [storage.Iterator].Next.
 func (s *staticIterator) Head(ctx context.Context) (*openfgav1.Tuple, error) {
 	if ctx.Err() != nil {

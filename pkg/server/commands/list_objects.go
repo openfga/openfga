@@ -520,6 +520,8 @@ func (q *ListObjectsQuery) Execute(
 	targetObjectType := req.GetType()
 	targetRelation := req.GetRelation()
 
+	subjectType, subjectIdentifier, subjectRelation := tuple.ToUserParts(req.GetUser())
+
 	typesys, ok := typesystem.TypesystemFromContext(ctx)
 	if !ok {
 		return nil, fmt.Errorf("%w: typesystem missing in context", openfgaErrors.ErrUnknown)
@@ -564,7 +566,7 @@ func (q *ListObjectsQuery) Execute(
 
 	wgraph := typesys.GetWeightedGraph()
 
-	if wgraph != nil && q.pipelineEnabled {
+	if wgraph != nil && subjectRelation == "" && subjectIdentifier != "*" && q.pipelineEnabled {
 		ds := storagewrappers.NewRequestStorageWrapperWithCache(
 			q.datastore,
 			req.GetContextualTuples().GetTupleKeys(),
@@ -584,51 +586,57 @@ func (q *ListObjectsQuery) Execute(
 
 		validator := pipeline.NewValidator(timeoutCtx, typesys, req.GetContext())
 
-		reader := pipeline.NewReader(
+		reader := pipeline.NewValidatingStore(
 			ds,
 			req.GetStoreId(),
-			pipeline.WithReaderConsistency(req.GetConsistency()),
-			pipeline.WithReaderValidator(validator),
+			pipeline.WithStoreConsistency(req.GetConsistency()),
+			pipeline.WithStoreValidator(validator),
 		)
 
-		spec := pipeline.Spec{
-			ObjectType: targetObjectType,
-			Relation:   targetRelation,
-			User:       req.GetUser(),
+		builder, err := pipeline.NewBuilder(reader, pipeline.WithConfig(q.pipelineConfig))
+		if err != nil {
+			return nil, serverErrors.HandleError("", err)
 		}
 
-		seq, err := pipeline.New(
-			wgraph,
-			reader,
-			pipeline.WithConfig(q.pipelineConfig),
-		).Expand(timeoutCtx, spec)
-
-		if err != nil {
-			return nil, serverErrors.ValidationError(err)
+		spec := pipeline.Spec{
+			ObjectType:     targetObjectType,
+			ObjectRelation: targetRelation,
+			SubjectType:    subjectType,
+			SubjectID:      subjectIdentifier,
 		}
 
 		var res ListObjectsResponse
 
-		for object := range seq {
-			if timeoutCtx.Err() != nil {
+		res.ResolutionMetadata.WasWeightedGraphUsed.Store(true)
+
+		p, err := builder.Build(timeoutCtx, wgraph, spec)
+		if err != nil {
+			if errors.Is(err, pipeline.ErrUnreachable) {
+				return &res, nil
+			}
+			return nil, serverErrors.HandleError("", err)
+		}
+		defer p.Close()
+
+		for {
+			value, ok := p.Recv(timeoutCtx)
+			if !ok {
 				break
 			}
 
-			value, err := object.Object()
-
-			// If the error is from a context cancelation, the current
-			// behavior for ListObjects is to not report it.
-			if err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
-				return nil, serverErrors.HandleError("", err)
-			}
-
-			if err == nil {
-				res.Objects = append(res.Objects, value)
-			}
+			res.Objects = append(res.Objects, value)
 
 			// Check if we've reached the max results limit
 			if maxResults > 0 && uint32(len(res.Objects)) >= maxResults {
 				break
+			}
+		}
+		p.Close() // ensure that the pipeline is closed after any early loop exits
+
+		if err := p.Err(); err != nil {
+			// current list objects behavior is to elide context cancelation errors
+			if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+				return nil, serverErrors.HandleError("", err)
 			}
 		}
 
@@ -639,7 +647,7 @@ func (q *ListObjectsQuery) Execute(
 		return &res, nil
 	}
 
-	// --------- OLD STUFF -----------
+	// --------- OLD ALGORITHM FALLBACK -----------
 	resultsChan := make(chan ListObjectsResult, 1)
 	if maxResults > 0 {
 		resultsChan = make(chan ListObjectsResult, maxResults)
@@ -698,6 +706,8 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 	targetObjectType := req.GetType()
 	targetRelation := req.GetRelation()
 
+	subjectType, subjectIdentifier, subjectRelation := tuple.ToUserParts(req.GetUser())
+
 	typesys, ok := typesystem.TypesystemFromContext(ctx)
 	if !ok {
 		return nil, fmt.Errorf("%w: typesystem missing in context", openfgaErrors.ErrUnknown)
@@ -732,7 +742,7 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 
 	wgraph := typesys.GetWeightedGraph()
 
-	if wgraph != nil && q.pipelineEnabled {
+	if wgraph != nil && subjectRelation == "" && subjectIdentifier != "*" && q.pipelineEnabled {
 		ds := storagewrappers.NewRequestStorageWrapperWithCache(
 			q.datastore,
 			req.GetContextualTuples().GetTupleKeys(),
@@ -750,63 +760,69 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 			},
 		)
 
+		resolutionMetadata.WasWeightedGraphUsed.Store(true)
+
 		validator := pipeline.NewValidator(timeoutCtx, typesys, req.GetContext())
 
-		reader := pipeline.NewReader(
+		reader := pipeline.NewValidatingStore(
 			ds,
 			req.GetStoreId(),
-			pipeline.WithReaderConsistency(req.GetConsistency()),
-			pipeline.WithReaderValidator(validator),
+			pipeline.WithStoreConsistency(req.GetConsistency()),
+			pipeline.WithStoreValidator(validator),
 		)
 
-		spec := pipeline.Spec{
-			ObjectType: targetObjectType,
-			Relation:   targetRelation,
-			User:       req.GetUser(),
-		}
-
-		seq, err := pipeline.New(
-			wgraph,
-			reader,
-			pipeline.WithConfig(q.pipelineConfig),
-		).Expand(timeoutCtx, spec)
-
+		builder, err := pipeline.NewBuilder(reader, pipeline.WithConfig(q.pipelineConfig))
 		if err != nil {
-			return nil, serverErrors.ValidationError(err)
+			return nil, serverErrors.HandleError("", err)
 		}
+
+		spec := pipeline.Spec{
+			ObjectType:     targetObjectType,
+			ObjectRelation: targetRelation,
+			SubjectType:    subjectType,
+			SubjectID:      subjectIdentifier,
+		}
+
+		p, err := builder.Build(timeoutCtx, wgraph, spec)
+		if err != nil {
+			if errors.Is(err, pipeline.ErrUnreachable) {
+				return &resolutionMetadata, nil
+			}
+			return nil, serverErrors.HandleError("", err)
+		}
+		defer p.Close()
 
 		var listObjectsCount uint32 = 0
 
-		for object := range seq {
-			if timeoutCtx.Err() != nil {
+		var errRx error
+
+		for {
+			value, ok := p.Recv(timeoutCtx)
+			if !ok {
+				errRx = p.Err()
 				break
 			}
 
-			value, err := object.Object()
-
-			// If the error is from a context cancelation, the current
-			// behavior for ListObjects is to not report it.
-			if err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
-				if errors.Is(err, condition.ErrEvaluationFailed) {
-					return nil, serverErrors.ValidationError(err)
-				}
-				return nil, serverErrors.HandleError("", err)
+			if errRx = srv.Send(&openfgav1.StreamedListObjectsResponse{Object: value}); errRx != nil {
+				break
 			}
 
-			if err == nil {
-				if err := srv.Send(&openfgav1.StreamedListObjectsResponse{
-					Object: value,
-				}); err != nil {
-					return nil, serverErrors.HandleError("", err)
-				}
-
-				listObjectsCount++
-			}
+			listObjectsCount++
 
 			// Check if we've reached the max results limit
 			if maxResults > 0 && listObjectsCount >= maxResults {
 				break
 			}
+		}
+		p.Close() // ensure that the pipeline is closed after any early loop exits
+
+		if errRx != nil && !errors.Is(errRx, context.Canceled) && !errors.Is(errRx, context.DeadlineExceeded) {
+			if errors.Is(errRx, condition.ErrEvaluationFailed) {
+				err = serverErrors.ValidationError(errRx)
+			} else {
+				err = serverErrors.HandleError("", errRx)
+			}
+			return nil, err
 		}
 
 		dsMeta := ds.GetMetadata()
@@ -815,6 +831,8 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 		resolutionMetadata.DatastoreItemCount.Add(dsMeta.DatastoreItemCount)
 		return &resolutionMetadata, nil
 	}
+
+	// --------- OLD ALGORITHM FALLBACK -----------
 
 	// make a buffered channel so that writer goroutines aren't blocked when attempting to send a result
 	resultsChan := make(chan ListObjectsResult, streamedBufferSize)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync"
 
+	"go.opentelemetry.io/otel/attribute"
 	"golang.org/x/sync/errgroup"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -53,7 +54,11 @@ func (s *Recursive) Userset(ctx context.Context, req *Request, edge *authzGraph.
 		return nil, err
 	}
 
-	return s.execute(ctx, req, edge, RecursiveTypeUserset, leftChan, storage.WrapIterator(storage.UsersetKind, rightIter))
+	res, err := s.execute(ctx, req, edge, RecursiveTypeUserset, leftChan, storage.WrapIterator(storage.UsersetKind, rightIter))
+	if err == nil && res != nil {
+		span.SetAttributes(attribute.Bool("allowed", res.Allowed))
+	}
+	return res, err
 }
 
 // recursiveTTU solves a union relation of the form "{operand1} OR ... {operandN} OR {recursive TTU}"
@@ -73,7 +78,11 @@ func (s *Recursive) TTU(ctx context.Context, req *Request, edge *authzGraph.Weig
 		return nil, err
 	}
 
-	return s.execute(ctx, req, edge, RecursiveTypeTTU, leftChan, storage.WrapIterator(storage.TTUKind, rightIter))
+	res, err := s.execute(ctx, req, edge, RecursiveTypeTTU, leftChan, storage.WrapIterator(storage.TTUKind, rightIter))
+	if err == nil && res != nil {
+		span.SetAttributes(attribute.Bool("allowed", res.Allowed))
+	}
+	return res, err
 }
 
 func (s *Recursive) execute(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge, recursiveType RecursiveType, leftChan chan *iterator.Msg, rightIter storage.TupleMapper) (*Response, error) {
@@ -97,6 +106,11 @@ func (s *Recursive) execute(ctx context.Context, req *Request, edge *authzGraph.
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		case msg, ok := <-leftChan:
+			// select may choose a closed channel over ctx.Done(); re-check cancellation.
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
+
 			if !ok {
 				leftChan = nil
 				// if no ids from the left side were returned then return false without error
@@ -130,6 +144,11 @@ func (s *Recursive) execute(ctx context.Context, req *Request, edge *authzGraph.
 			}
 
 		case msg, ok := <-rightChan:
+			// select may choose a closed channel over ctx.Done(); re-check cancellation.
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
+
 			if !ok {
 				rightChan = nil
 				if len(idsFromObject) == 0 {
@@ -196,6 +215,11 @@ func (s *Recursive) recursiveMatch(ctx context.Context, req *Request, recursiveE
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		case msg, ok := <-responsesChan:
+			// select may choose a closed channel over ctx.Done(); re-check cancellation.
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
+
 			if !ok {
 				return &Response{Allowed: false}, err
 			}

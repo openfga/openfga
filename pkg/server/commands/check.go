@@ -29,7 +29,8 @@ type CheckQueryV2 struct {
 	datastore                 storage.RelationshipTupleReader
 	datastoreOp               storagewrappers.Operation
 	cache                     storage.InMemoryCache[any]
-	cacheTTL                  time.Duration
+	queryCacheEnabled         bool
+	queryCacheTTL             time.Duration
 	lastCacheInvalidationTime time.Time
 	planner                   planner.Manager
 	concurrencyLimit          int
@@ -65,9 +66,15 @@ func WithCheckQueryV2Cache(c storage.InMemoryCache[any]) CheckQueryV2Option {
 	}
 }
 
-func WithCheckQueryV2CacheTTL(ttl time.Duration) CheckQueryV2Option {
+func WithCheckQueryV2QueryCacheEnabled(enabled bool) CheckQueryV2Option {
 	return func(cmd *CheckQueryV2) {
-		cmd.cacheTTL = ttl
+		cmd.queryCacheEnabled = enabled
+	}
+}
+
+func WithCheckQueryV2QueryCacheTTL(ttl time.Duration) CheckQueryV2Option {
+	return func(cmd *CheckQueryV2) {
+		cmd.queryCacheTTL = ttl
 	}
 }
 
@@ -173,11 +180,16 @@ func (q *CheckQueryV2) Execute(ctx context.Context, req *openfgav1.CheckRequest)
 		)
 	}
 
+	queryCache := storage.InMemoryCache[any](storage.NewNoopCache())
+	if q.queryCacheEnabled {
+		queryCache = q.cache
+	}
+
 	resolver := check.New(check.Config{
 		Model:                     q.model,
 		Datastore:                 datastore,
-		Cache:                     q.cache,
-		CacheTTL:                  q.cacheTTL,
+		Cache:                     queryCache,
+		CacheTTL:                  q.queryCacheTTL,
 		LastCacheInvalidationTime: q.lastCacheInvalidationTime,
 		Planner:                   q.planner,
 		ConcurrencyLimit:          q.concurrencyLimit,

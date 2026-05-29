@@ -29,6 +29,11 @@ type Sender interface {
 
 // Listener is the write end of a [Medium]. A worker writes to its listeners
 // to deliver messages to downstream workers.
+//
+// Send transfers ownership of the message to the listener on success
+// (returns true): the listener is responsible for eventually calling
+// [Message.Done]. On failure (returns false), ownership remains with the
+// caller, who must call [Message.Done] itself to release pooled resources.
 type Listener interface {
 	Close()
 	Key() *Edge
@@ -53,6 +58,52 @@ func NewStandardMedium(edge *Edge, capacity int) Medium {
 func NewCyclicalMedium(edge *Edge, capacity int) Medium {
 	return NewQueueMedium(edge, capacity)
 }
+
+// NoopMedium is a [Medium] that discards all sends and never produces
+// values. It is used to satisfy listener slots for edges that are
+// unreachable in the current query.
+type NoopMedium struct {
+	key   *Edge
+	label string
+}
+
+// String returns a label of the form "source->destination".
+func (m *NoopMedium) String() string {
+	return m.label
+}
+
+// NewNoopMedium returns a NoopMedium for the given edge.
+func NewNoopMedium(edge *Edge) *NoopMedium {
+	src, dst := EdgeLabels(edge)
+	return &NoopMedium{
+		key:   edge,
+		label: src + "->" + dst,
+	}
+}
+
+// Key returns the edge associated with this medium.
+func (m *NoopMedium) Key() *Edge {
+	return m.key
+}
+
+// Recv always returns (nil, false).
+func (m *NoopMedium) Recv(_ context.Context) (*Message, bool) {
+	return nil, false
+}
+
+// Send returns false without consuming the message when the context
+// has been canceled. Otherwise, the message is marked as done and
+// discarded, and Send returns true.
+func (m *NoopMedium) Send(ctx context.Context, msg *Message) bool {
+	if ctx.Err() != nil {
+		return false
+	}
+	msg.Done()
+	return true
+}
+
+// Close is a no-op.
+func (m *NoopMedium) Close() {}
 
 // QueueMedium is a [Medium] backed by an [mpmc.Queue]. Like all
 // [Medium] variants, it is multiple-producer, single-consumer.

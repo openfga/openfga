@@ -20,6 +20,15 @@ type CacheSettings struct {
 	SharedIteratorEnabled              bool
 	SharedIteratorLimit                uint32
 	SharedIteratorTTL                  time.Duration
+
+	// CacheTTLJitterPercentage is a percentage (0-100) of the base TTL that is used
+	// as the upper bound for a random jitter added to each cache entry's TTL.
+	// This spreads out cache expirations to prevent thundering herd effects
+	// where many entries expire and refresh simultaneously.
+	// For example, a value of 10 with a base TTL of 10s means each entry
+	// gets a TTL between 10s and 11s.
+	// A value of 0 disables jitter (default, for backward compatibility).
+	CacheTTLJitterPercentage uint32
 }
 
 func NewDefaultCacheSettings() CacheSettings {
@@ -39,6 +48,7 @@ func NewDefaultCacheSettings() CacheSettings {
 		SharedIteratorEnabled:              DefaultSharedIteratorEnabled,
 		SharedIteratorLimit:                DefaultSharedIteratorLimit,
 		SharedIteratorTTL:                  DefaultSharedIteratorTTL,
+		CacheTTLJitterPercentage:           DefaultCacheTTLJitterPercentage,
 	}
 }
 

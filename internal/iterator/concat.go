@@ -83,3 +83,7 @@ func (c *concatIterator[T]) Head(_ context.Context) (T, error) {
 	var zero T
 	return zero, fmt.Errorf("head() not supported on concat iterator")
 }
+
+// IsOrdered returns false because iter1 is fully exhausted before iter2 starts, so there is
+// no ordering guarantee across the source boundary.
+func (c *concatIterator[T]) IsOrdered() bool { return false }

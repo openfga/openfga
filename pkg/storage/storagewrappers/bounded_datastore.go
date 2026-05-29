@@ -210,6 +210,7 @@ func (b *BoundedTupleReader) bound(ctx context.Context, op string) error {
 		b.throttled.Store(true)
 		select {
 		case <-ctx.Done():
+			b.done()
 			return ctx.Err()
 		case <-time.After(b.throttleTime):
 			break

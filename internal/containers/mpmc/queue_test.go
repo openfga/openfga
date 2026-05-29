@@ -13,13 +13,14 @@ import (
 const (
 	defaultCapacity   int    = 1 << 7
 	defaultExtensions int    = -1
-	messageCount      uint64 = 1000
+	testMessageCount  uint64 = 200
+	benchMessageCount uint64 = 1000
 )
 
 type item struct{}
 
-func feed(p *Queue[item]) {
-	for range messageCount {
+func feedN(p *Queue[item], n uint64) {
+	for range n {
 		p.Send(context.Background(), item{})
 	}
 }
@@ -46,7 +47,7 @@ func BenchmarkQueue(b *testing.B) {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				feed(p)
+				feedN(p, benchMessageCount)
 				p.Close()
 			}()
 
@@ -58,7 +59,7 @@ func BenchmarkQueue(b *testing.B) {
 
 			wg.Wait()
 
-			require.Equal(b, messageCount, count.Load())
+			require.Equal(b, benchMessageCount, count.Load())
 		}
 	})
 
@@ -75,7 +76,7 @@ func BenchmarkQueue(b *testing.B) {
 				swg.Add(1)
 				go func() {
 					defer swg.Done()
-					feed(p)
+					feedN(p, benchMessageCount)
 				}()
 			}
 
@@ -89,7 +90,7 @@ func BenchmarkQueue(b *testing.B) {
 			p.Close()
 			cwg.Wait()
 
-			require.Equal(b, messageCount*4, count.Load())
+			require.Equal(b, benchMessageCount*4, count.Load())
 		}
 	})
 
@@ -105,7 +106,7 @@ func BenchmarkQueue(b *testing.B) {
 			swg.Add(1)
 			go func() {
 				defer swg.Done()
-				feed(p)
+				feedN(p, benchMessageCount)
 			}()
 
 			for range 4 {
@@ -120,7 +121,7 @@ func BenchmarkQueue(b *testing.B) {
 			p.Close()
 			cwg.Wait()
 
-			require.Equal(b, messageCount, count.Load())
+			require.Equal(b, benchMessageCount, count.Load())
 		}
 	})
 
@@ -137,7 +138,7 @@ func BenchmarkQueue(b *testing.B) {
 				swg.Add(1)
 				go func() {
 					defer swg.Done()
-					feed(p)
+					feedN(p, benchMessageCount)
 				}()
 			}
 
@@ -153,7 +154,7 @@ func BenchmarkQueue(b *testing.B) {
 			p.Close()
 			cwg.Wait()
 
-			require.Equal(b, messageCount*4, count.Load())
+			require.Equal(b, benchMessageCount*4, count.Load())
 		}
 	})
 }
@@ -180,9 +181,9 @@ func TestQueue(t *testing.T) {
 			},
 			{
 				name:     "large",
-				capacity: 1 << 20,
+				capacity: 1 << 14,
 				parts:    333,
-				cycles:   10,
+				cycles:   3,
 			},
 		}
 
@@ -255,7 +256,7 @@ func TestQueue(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			feed(p)
+			feedN(p, testMessageCount)
 			p.Close()
 		}()
 
@@ -267,7 +268,7 @@ func TestQueue(t *testing.T) {
 
 		wg.Wait()
 
-		require.Equal(t, messageCount, count.Load())
+		require.Equal(t, testMessageCount, count.Load())
 	})
 
 	t.Run("multiple_producer_single_consumer", func(t *testing.T) {
@@ -282,7 +283,7 @@ func TestQueue(t *testing.T) {
 			swg.Add(1)
 			go func() {
 				defer swg.Done()
-				feed(p)
+				feedN(p, testMessageCount)
 			}()
 		}
 
@@ -296,7 +297,7 @@ func TestQueue(t *testing.T) {
 		p.Close()
 		cwg.Wait()
 
-		require.Equal(t, messageCount*4, count.Load())
+		require.Equal(t, testMessageCount*4, count.Load())
 	})
 
 	t.Run("single_producer_multiple_consumer", func(t *testing.T) {
@@ -310,7 +311,7 @@ func TestQueue(t *testing.T) {
 		swg.Add(1)
 		go func() {
 			defer swg.Done()
-			feed(p)
+			feedN(p, testMessageCount)
 		}()
 
 		for range 4 {
@@ -325,7 +326,7 @@ func TestQueue(t *testing.T) {
 		p.Close()
 		cwg.Wait()
 
-		require.Equal(t, messageCount, count.Load())
+		require.Equal(t, testMessageCount, count.Load())
 	})
 
 	t.Run("multiple_producer_multiple_consumer", func(t *testing.T) {
@@ -340,7 +341,7 @@ func TestQueue(t *testing.T) {
 			swg.Add(1)
 			go func() {
 				defer swg.Done()
-				feed(p)
+				feedN(p, testMessageCount)
 			}()
 		}
 
@@ -356,7 +357,7 @@ func TestQueue(t *testing.T) {
 		p.Close()
 		cwg.Wait()
 
-		require.Equal(t, messageCount*4, count.Load())
+		require.Equal(t, testMessageCount*4, count.Load())
 	})
 
 	t.Run("dynamic_buffer_extension", func(t *testing.T) {

@@ -8,6 +8,54 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+## [1.16.1] - 2026-05-28
+### Changed
+- Added workflow-level `concurrency.group` and `cancel-in-progress` for PR-related workflow runs to reduce wasted effort. [#3140](https://github.com/openfga/openfga/pull/3140)
+
+### Fixed
+- Fixed experimental `weighted_graph_check` incorrectly falling back to the standard algorithm on deadline/cancellation/throttle-timeout errors; these are now returned directly. Also fixed `weighted_graph_check` emitting metrics under the wrong method label when used as the primary algorithm. [#3141](https://github.com/openfga/openfga/pull/3141)
+- Fixed a bug in experimental `weighted_graph_check` where the `weight2` strategy could return false denies when contextual tuples were present, because their concatenation with datastore results violated the sort assumption of the pruning optimization. [#3145](https://github.com/openfga/openfga/pull/3145)
+
+### Security
+- Update grpc-health-probe to `v0.4.50` to address multiple CVEs in the go std lib. [#3146](https://github.com/openfga/openfga/pull/3146)
+
+## [1.16.0] - 2026-05-20
+### Added
+- Added datastore ping timeout (PingTimeout) and datastore ping retry timeout (PingRetryMaxElapsedTime) configurations. [#3113](https://github.com/openfga/openfga/pull/3113)
+
+### Changed
+- Report `allowed` result and `tuple_key` on Check and experimental `weighted_graph_check` resolution trace spans. [#3116](https://github.com/openfga/openfga/pull/3116)
+
+### Fixed
+- Fixed cache key collisions in experimental `weighted_graph_check` union resolution by moving result caching from the union node level to the individual edge level, preventing collisions across requests that share edges but differ in object or relation. [#3117](https://github.com/openfga/openfga/pull/3117)
+- Fixed a bug in experimental `weighted_graph_check` where in-flight goroutines cancelled by a union short-circuit or recursive resolution could cache a false result, causing subsequent requests to incorrectly return false without querying the datastore. [#3125](https://github.com/openfga/openfga/pull/3125)
+- Fixed experimental `weighted_graph_check` returning an error when v2Check fails; Check now falls back to the standard algorithm instead. [#3126](https://github.com/openfga/openfga/pull/3126)
+- Fixed OIDC authentication rejecting valid tokens after issuer key rotation by enabling JWKS refresh on unknown `kid` (rate-limited to once per minute). [#3101](https://github.com/openfga/openfga/pull/3101)
+
+### Security
+- Update toolchain Go version to 1.26.3 to address the Go standard library vulnerabilities documented in the [Go 1.26.3 release notes](https://go.dev/doc/devel/release#go1.26.3). [#3115](https://github.com/openfga/openfga/pull/3115)
+
+## [1.15.1] - 2026-05-06
+### Changed
+- Reuse a single MySQL container across tests by replacing the test fixture implementation, improving test performance and reducing resource usage. [#3042](https://github.com/openfga/openfga/pull/3042)
+
+### Fixed
+- Fixed a potential panic within command error handling. [#3091](https://github.com/openfga/openfga/pull/3091)
+- Fixed a bug that propagated expected errors from list objects when a path short-circuits. [#3096](https://github.com/openfga/openfga/pull/3096)
+- Fixed cache key collisions in experimental `weighted_graph_check` for edges in unions with multiple branches (direct types, wildcards, TTU paths, or intersections). [#3097](https://github.com/openfga/openfga/pull/3097)
+- Fixed a bug in the bounded tuple reader that would cause semaphore token leaks under context cancelation. [#3106](https://github.com/openfga/openfga/pull/3106)
+- Fixed a bug that could cause deadlocks in check by holding message streams open indefinitely upon error. [#3111](https://github.com/openfga/openfga/pull/3111)
+
+## [1.15.0] - 2026-04-27
+### Changed
+- Implemented edge pruning in the list objects pipeline algorithm. This introduces a measurable improvement to request latency for larger, more complex authorization models. [#3075](https://github.com/openfga/openfga/pull/3075)
+
+### Fixed
+- Fixed experimental `weighted_graph_check` query cache being skipped when the cache controller returns a zero invalidation time (e.g., on cold start or when disabled), despite the cache controller documenting that zero time should allow cache use. [#3086](https://github.com/openfga/openfga/pull/3086)
+
+### Security
+- Update toolchain Go version to 1.26.2 to address the Go standard library vulnerabilities documented in the [Go 1.26.2 release notes](https://go.dev/doc/devel/release#go1.26.2). [#3084](https://github.com/openfga/openfga/pull/3084)
+
 ## [1.14.2] - 2026-04-14
 ### Fixed
 - Use delimiter in contextual tuple key in experimental `weighted_graph_check`, and add validation in v2Check. Thanks to [@0xmrma](https://github.com/0xmrma) for reporting this bug. [#3064](https://github.com/openfga/openfga/pull/3064)
@@ -15,10 +63,12 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ## [1.14.1] - 2026-04-10
 ### Added
 - Added configuration for the server shutdown timeout. [#2976](https://github.com/openfga/openfga/pull/2976)
+- Add jitter to internal cache TTLs to spread expirations and reduce thundering herd effects. [#3033](https://github.com/openfga/openfga/pull/3033)
 
 ### Changed
 - Made some minor changes in ListObjects to reduce heap allocations. Results in minor latency reduction. [#3043](https://github.com/openfga/openfga/pull/3043)
 - Improve cache key generation performance by removing `fmt` usage and extend control-character sanitization to all cache key inputs (tuples, conditions, context). [#3006](https://github.com/openfga/openfga/pull/3006)
+- Reuse a single PostgreSQL container across tests by replacing the test fixture implementation, improving test performance and reducing resource usage. [#3018](https://github.com/openfga/openfga/pull/3018)
 
 ### Fixed
 - Fixed AuthZEN discovery metadata to publish endpoint URLs from the configured `authzen.baseURL` instead of request-supplied host headers, preventing host-header poisoning of `/.well-known/authzen-configuration/{store_id}`. Thanks to [@Jvr2022](https://github.com/Jvr2022) for reporting this. [#3057](https://github.com/openfga/openfga/pull/3057)
@@ -91,6 +141,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ### Changed
 - Migrate `grpc.DialContext` to `grpc.NewClient` for grpc-gateway client [#2714](https://github.com/openfga/openfga/pull/2714)
+- HTTP server now communicates with gRPC server internally over UDS instead of TCP socket. When running container image using the `--read-only` option, the `--tmpfs /tmp` option must be set to make use of this functionality. When a UDS cannot be established, the client automatically falls back to TCP. [#2937](https://github.com/openfga/openfga/pull/2937)
 
 ### Security
 - Bump [`grpc-health-probe`](https://github.com/grpc-ecosystem/grpc-health-probe) to [v0.4.45](https://github.com/grpc-ecosystem/grpc-health-probe/releases/tag/v0.4.45) to address nvd.nist.gov/vuln/detail/CVE-2025-68121 affecting `grpc_health_probe`.
@@ -1605,7 +1656,11 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
 - Memory storage adapter implementation
 - Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.14.2...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.16.1...HEAD
+[1.16.1]: https://github.com/openfga/openfga/compare/v1.16.0...v1.16.1
+[1.16.0]: https://github.com/openfga/openfga/compare/v1.15.1...v1.16.0
+[1.15.1]: https://github.com/openfga/openfga/compare/v1.15.0...v1.15.1
+[1.15.0]: https://github.com/openfga/openfga/compare/v1.14.2...v1.15.0
 [1.14.2]: https://github.com/openfga/openfga/compare/v1.14.1...v1.14.2
 [1.14.1]: https://github.com/openfga/openfga/compare/v1.14.0...v1.14.1
 [1.14.0]: https://github.com/openfga/openfga/compare/v1.13.1...v1.14.0

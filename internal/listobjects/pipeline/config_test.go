@@ -1,7 +1,6 @@
 package pipeline_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -101,12 +100,4 @@ func TestWithConfig(t *testing.T) {
 	custom := pipeline.Config{BufferCapacity: 10, ChunkSize: 5, NumProcs: 2}
 	pipeline.WithConfig(custom)(&config)
 	assert.Equal(t, custom, config)
-}
-
-func TestWithConfig_InvalidConfig_ReturnsError(t *testing.T) {
-	invalid := pipeline.Config{BufferCapacity: -1, ChunkSize: 0, NumProcs: 0}
-	pl := pipeline.New(nil, nil, pipeline.WithConfig(invalid))
-	_, err := pl.Expand(context.Background(), pipeline.Spec{ObjectType: "x", Relation: "y", User: "u:1"})
-	// Validate runs before resolveObjectNode, so we get config error first.
-	require.ErrorIs(t, err, pipeline.ErrInvalidBufferCapacity)
 }

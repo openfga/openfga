@@ -96,10 +96,15 @@ const (
 	DefaultSharedIteratorMaxAdmissionTime = 10 * time.Second
 	DefaultSharedIteratorMaxIdleTime      = 1 * time.Second
 
+	DefaultCacheTTLJitterPercentage = 0
+
 	DefaultPlannerEvictionThreshold = 0
 
 	DefaultTraceSampler           = "traceidratio"
 	DefaultPlannerCleanupInterval = 0
+
+	DefaultDatastorePingTimeout             = 2 * time.Second
+	DefaultDatastorePingRetryMaxElapsedTime = 1 * time.Minute
 
 	ExperimentalCheckOptimizations       = "enable-check-optimizations"
 	ExperimentalListObjectsOptimizations = "enable-list-objects-optimizations"
@@ -159,6 +164,12 @@ type DatastoreConfig struct {
 
 	// ConnMaxLifetime is the maximum amount of time a connection to the datastore may be reused.
 	ConnMaxLifetime time.Duration
+
+	// PingTimeout is the maximum amount of time to wait for a successful ping to the datastore.
+	PingTimeout time.Duration
+
+	// PingRetryMaxElapsedTime is the maximum time to retry datastore ping attempts.
+	PingRetryMaxElapsedTime time.Duration
 
 	// Metrics is configuration for the Datastore metrics.
 	Metrics DatastoreMetricsConfig
@@ -460,6 +471,7 @@ type Config struct {
 	CheckIteratorCache            IteratorCacheConfig
 	CheckQueryCache               CheckQueryCache
 	CacheController               CacheControllerConfig
+	CacheTTLJitterPercentage      uint32
 	CheckDispatchThrottling       DispatchThrottlingConfig
 	ListObjectsDispatchThrottling DispatchThrottlingConfig
 	ListUsersDispatchThrottling   DispatchThrottlingConfig
@@ -542,6 +554,18 @@ func (cfg *Config) VerifyServerSettings() error {
 
 	if cfg.Datastore.MinOpenConns < cfg.Datastore.MinIdleConns {
 		return errors.New("datastore MinOpenConns must not be less than datastore MinIdleConns")
+	}
+
+	if cfg.Datastore.PingTimeout <= 0 {
+		return errors.New("datastore PingTimeout must be greater than 0")
+	}
+
+	if cfg.Datastore.PingRetryMaxElapsedTime <= 0 {
+		return errors.New("datastore PingRetryMaxElapsedTime must be greater than 0")
+	}
+
+	if cfg.Datastore.PingRetryMaxElapsedTime < cfg.Datastore.PingTimeout {
+		return errors.New("datastore PingRetryMaxElapsedTime must not be less than datastore PingTimeout")
 	}
 
 	return nil
@@ -757,6 +781,9 @@ func (cfg *Config) verifyCacheConfig() error {
 	if cfg.CacheController.Enabled && cfg.CacheController.TTL <= 0 {
 		return errors.New("'cacheController.ttl' must be greater than zero")
 	}
+	if cfg.CacheTTLJitterPercentage > 100 {
+		return errors.New("'cacheTTLJitterPercentage' must be between 0 and 100")
+	}
 	return nil
 }
 
@@ -840,13 +867,15 @@ func DefaultConfig() *Config {
 		RequestDurationDatastoreQueryCountBuckets: []string{"50", "200"},
 		RequestDurationDispatchCountBuckets:       []string{"50", "200"},
 		Datastore: DatastoreConfig{
-			Engine:                 "memory",
-			MaxCacheSize:           DefaultMaxAuthorizationModelCacheSize,
-			MaxTypesystemCacheSize: DefaultMaxTypesystemCacheSize,
-			MinIdleConns:           0,
-			MaxIdleConns:           10,
-			MinOpenConns:           0,
-			MaxOpenConns:           30,
+			Engine:                  "memory",
+			MaxCacheSize:            DefaultMaxAuthorizationModelCacheSize,
+			MaxTypesystemCacheSize:  DefaultMaxTypesystemCacheSize,
+			MinIdleConns:            0,
+			MaxIdleConns:            10,
+			MinOpenConns:            0,
+			MaxOpenConns:            30,
+			PingTimeout:             DefaultDatastorePingTimeout,
+			PingRetryMaxElapsedTime: DefaultDatastorePingRetryMaxElapsedTime,
 		},
 		GRPC: GRPCConfig{
 			Addr:            "0.0.0.0:8081",
@@ -920,6 +949,7 @@ func DefaultConfig() *Config {
 			Enabled: DefaultCacheControllerConfigEnabled,
 			TTL:     DefaultCacheControllerConfigTTL,
 		},
+		CacheTTLJitterPercentage: DefaultCacheTTLJitterPercentage,
 		CheckDispatchThrottling: DispatchThrottlingConfig{
 			Enabled:      DefaultCheckDispatchThrottlingEnabled,
 			Frequency:    DefaultCheckDispatchThrottlingFrequency,

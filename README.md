@@ -91,6 +91,13 @@ docker pull openfga/openfga
 docker run -p 8080:8080 -p 3000:3000 openfga/openfga run
 ```
 
+> [!NOTE]
+> When the HTTP server is enabled, it will attempt to establish an internal client connection to the gRPC server via unix domain socket.
+> When it is not possible to establish a UDS, the client connection automatically falls back to using a TCP socket.
+>
+> If running the Docker image using the `--read-only` option, the `--tmpfs` option must also be set in order to enabled use of the unix domain socket.
+> For example `--tmpfs /tmp`
+
 ### Docker Compose
 
 [`docker-compose.yaml`](./docker-compose.yaml) provides an example of how to launch OpenFGA with Postgres using `docker compose`.

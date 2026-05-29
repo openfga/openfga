@@ -4,11 +4,11 @@ import (
 	"context"
 	"errors"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
+	"unsafe"
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/prometheus/client_golang/prometheus"
@@ -27,7 +27,7 @@ import (
 // ─────────────────────────────────────────────────────────────────────────────
 
 const (
-	v2IteratorCachePrefix = "v2ic."
+	V2IteratorCachePrefix = "v2ic."
 	maxCachedElements     = 1000
 	// InitialBufferCapacity is the default initial capacity for tuple buffers.
 	// Most queries return fewer than 100 tuples, so this avoids over-allocation
@@ -89,6 +89,7 @@ type MinimalCacheEntry struct {
 type V2IteratorCacheEntry struct {
 	Entries      []MinimalCacheEntry
 	LastModified time.Time
+	Ordered      bool
 }
 
 // CacheEntityType implements storage.CacheItem for metrics.
@@ -228,6 +229,8 @@ func (c *CachingIterator) Head(ctx context.Context) (*openfgav1.Tuple, error) {
 	return c.inner.Head(ctx)
 }
 
+func (c *CachingIterator) IsOrdered() bool { return c.inner.IsOrdered() }
+
 // Stop terminates iteration and triggers caching.
 // If not fully consumed, drains in background with singleflight deduplication.
 // Follows V1's pattern: always spawns goroutine to avoid blocking Stop() on I/O.
@@ -283,6 +286,7 @@ func (c *CachingIterator) flush() {
 	c.cache.Set(c.cacheKey, &V2IteratorCacheEntry{
 		Entries:      entries,
 		LastModified: c.createdAt,
+		Ordered:      c.inner.IsOrdered(),
 	}, c.ttl)
 
 	c.tuples = nil // Release for GC
@@ -395,17 +399,19 @@ type LockFreeCachedIterator struct {
 	stopped    atomic.Bool
 	objectType string
 	relation   string
+	ordered    bool
 }
 
 // Ensure LockFreeCachedIterator implements TupleIterator.
 var _ storage.TupleIterator = (*LockFreeCachedIterator)(nil)
 
 // NewLockFreeCachedIterator creates a lock-free iterator over cached entries.
-func NewLockFreeCachedIterator(entries []MinimalCacheEntry, objectType, relation string) *LockFreeCachedIterator {
+func NewLockFreeCachedIterator(entries []MinimalCacheEntry, objectType, relation string, ordered bool) *LockFreeCachedIterator {
 	return &LockFreeCachedIterator{
 		entries:    entries,
 		objectType: objectType,
 		relation:   relation,
+		ordered:    ordered,
 	}
 }
 
@@ -452,6 +458,8 @@ func (c *LockFreeCachedIterator) Stop() {
 	c.stopped.Store(true)
 }
 
+func (c *LockFreeCachedIterator) IsOrdered() bool { return c.ordered }
+
 // reconstruct builds a full Tuple from minimal cached data.
 func (c *LockFreeCachedIterator) reconstruct(e *MinimalCacheEntry) *openfgav1.Tuple {
 	tk := &openfgav1.TupleKey{
@@ -474,34 +482,34 @@ func (c *LockFreeCachedIterator) reconstruct(e *MinimalCacheEntry) *openfgav1.Tu
 // Cache Key Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-// appendConditionsHash adds a hash of condition names to the key builder.
-func appendConditionsHash(b *strings.Builder, conditions []string) {
-	if len(conditions) == 0 {
-		return
+// generateConditionsHash returns an ordered string concatenation of condition names to the key builder.
+func generateConditionsHash(conditions []string) []byte {
+	var count int
+	for _, s := range conditions {
+		count += len(s) + 1
 	}
 
-	// Filter out empty/NoCond
-	filtered := make([]string, 0, len(conditions))
-	for _, c := range conditions {
+	if count == 0 {
+		return []byte{}
+	}
+
+	sorted := make([]string, len(conditions))
+	copy(sorted, conditions)
+
+	// sort ensures a stable hash digest
+	sort.Strings(sorted)
+
+	filtered := make([]byte, count)
+	var w int
+	for _, c := range sorted {
 		if c != "" {
-			filtered = append(filtered, c)
+			w += copy(filtered[w:], unsafe.Slice(unsafe.StringData(c), len(c)))
 		}
+		filtered[w] = 0x00
+		w++
 	}
 
-	if len(filtered) == 0 {
-		return
-	}
-
-	// Sort for deterministic hash
-	sort.Strings(filtered)
-
-	// Hash condition names
-	hasher := xxhash.New()
-	for _, c := range filtered {
-		_, _ = hasher.WriteString(c)
-		_, _ = hasher.WriteString("|") // Separator to avoid collisions
-	}
-
-	b.WriteString("/c:")
-	b.WriteString(strconv.FormatUint(hasher.Sum64(), 10))
+	var hasher xxhash.Digest
+	hasher.Write(filtered)
+	return hasher.Sum([]byte{})
 }
