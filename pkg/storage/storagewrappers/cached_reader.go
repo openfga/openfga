@@ -284,7 +284,7 @@ func buildInvalidationKey(storeID, object, relation string) keys.Key {
 }
 
 func buildInvalidationKeysForUser(storeID string, userFilters []*openfgav1.ObjectRelation, objectType string) []keys.Key {
-	keys := make([]keys.Key, 0, len(userFilters))
+	ks := make([]keys.Key, 0, len(userFilters))
 	for _, f := range userFilters {
 		var user string
 		if rel := f.GetRelation(); rel != "" {
@@ -292,9 +292,9 @@ func buildInvalidationKeysForUser(storeID string, userFilters []*openfgav1.Objec
 		} else {
 			user = f.GetObject()
 		}
-		keys = append(keys, storage.InvalidIteratorByUserObjectTypeCacheKey(storeID, user, objectType))
+		ks = append(ks, storage.InvalidIteratorByUserObjectTypeCacheKey(storeID, user, objectType))
 	}
-	return keys
+	return ks
 }
 
 // Delegate methods that don't need caching.
