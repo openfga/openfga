@@ -36,7 +36,6 @@ import (
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/server/test"
 	"github.com/openfga/openfga/pkg/storage"
-	"github.com/openfga/openfga/pkg/storage/cache/keys"
 	"github.com/openfga/openfga/pkg/storage/memory"
 	"github.com/openfga/openfga/pkg/storage/mysql"
 	"github.com/openfga/openfga/pkg/storage/postgres"
@@ -50,13 +49,9 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
-// testCachePrefix is the hex-encoded TLV prefix that every iterator cache key
+// testCachePrefix is the prefix that every iterator cache key
 // starts with. It's used as a counter for "any iterator cache entries exist".
-var testCachePrefix = func() string {
-	var b keys.Builder
-	b.EncodeString(storage.PrefixIteratorCache)
-	return b.Key().String()
-}()
+var testCachePrefix = storage.PrefixIteratorCache
 
 func ExampleNewServerWithOpts() {
 	datastore := memory.New() // other supported datastores include Postgres, MySQL and SQLite

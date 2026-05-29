@@ -84,6 +84,10 @@ func (m *MapCache) Size() int {
 // KeysWithPrefix returns all keys whose hex-encoded representation starts
 // with the given prefix string.
 func (m *MapCache) KeysWithPrefix(prefix string) []keys.Key {
+	var kb keys.Builder
+	kb.EncodeString(prefix)
+	prefix = kb.Key().String()
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	var result []keys.Key
