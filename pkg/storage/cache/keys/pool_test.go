@@ -5,6 +5,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -126,7 +127,7 @@ func TestPooledBuilder_ConcurrentGetAndClose(t *testing.T) {
 				b := GetBuilder()
 				b.EncodeString(fmt.Sprintf("goroutine-%d", j))
 				key := b.Key()
-				require.NotEmpty(t, key.String())
+				assert.NotEmpty(t, key.String())
 				b.Close()
 			}
 		}()
@@ -145,8 +146,8 @@ func TestPooledDigest_ConcurrentGetAndClose(t *testing.T) {
 			defer wg.Done()
 			for j := range iterations {
 				d := GetDigest()
-				_, _ = d.Write([]byte(fmt.Sprintf("data-%d", j)))
-				require.NotZero(t, d.Sum64())
+				_, _ = fmt.Fprintf(d, "data-%d", j)
+				assert.NotZero(t, d.Sum64())
 				d.Close()
 			}
 		}()
