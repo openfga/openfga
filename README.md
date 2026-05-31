@@ -68,7 +68,7 @@ It helps developers easily model and enforce fine-grained access control in thei
 Run OpenFGA with in-memory storage (⚠️ **not for production**):
 
 ```shell
-docker run -p 8080:8080 -p 3000:3000 openfga/openfga run
+docker run -p 8080:8080 -p 127.0.0.1:3000:3000 openfga/openfga run
 ```
 
 Once running, create a store:
@@ -88,7 +88,7 @@ in-memory datastore by running the following commands:
 
 ```shell
 docker pull openfga/openfga
-docker run -p 8080:8080 -p 3000:3000 openfga/openfga run
+docker run -p 8080:8080 -p 127.0.0.1:3000:3000 openfga/openfga run
 ```
 
 > [!NOTE]
@@ -184,7 +184,7 @@ Disable it with:
 Change address:
 
 ```shell
-./openfga run --playground-enabled --playground-addr 0.0.0.0:3001
+./openfga run --playground-enabled --playground-addr 192.168.1.1:3001
 ```
 
 > [!IMPORTANT]
@@ -194,7 +194,7 @@ Change address:
 > ```shell
 > docker run -e OPENFGA_PLAYGROUND_ENABLED=true \
 > -e OPENFGA_PLAYGROUND_ADDR=0.0.0.0:3000 \
-> -p 8080:8080 -p 3000:3000 openfga/openfga run
+> -p 8080:8080 -p 127.0.0.1:3000:3000 openfga/openfga run
 > ```
 
 ## Next Steps

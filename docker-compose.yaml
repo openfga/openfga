@@ -47,7 +47,7 @@ services:
     ports:
       - "8080:8080" #http
       - "8081:8081" #grpc
-      - "3000:3000" #playground
+      - "127.0.0.1:3000:3000" #playground
       - "2112:2112" #prometheus metrics
     healthcheck:
       test:
