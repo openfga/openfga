@@ -443,7 +443,7 @@ func TestReadStartingWithUserKey(t *testing.T) {
 // semantically different condition filters. The empty string is the
 // "unconditioned" sentinel (language NoCond), and the datastore treats
 // Conditions=[""] as the filter "match only rows with no condition"
-// (COALESCE(condition_name,'') IN (...)). That is a different query from
+// (COALESCE(condition_name,”) IN (...)). That is a different query from
 // Conditions=nil ("match any condition"), so the cache keys must differ.
 // Likewise ["foo", ""] (foo OR unconditioned) must differ from ["foo"].
 func TestEmptyConditionIsDistinct(t *testing.T) {
