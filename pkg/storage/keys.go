@@ -70,10 +70,12 @@ func copyConditions(a keys.Array, conditions []string) int {
 			break
 		}
 
-		if c != "" {
-			a[w] = keys.String(c)
-			w++
-		}
+		// The empty string is the "unconditioned" sentinel (language NoCond)
+		// and is a meaningful filter value: the datastore treats it as "match
+		// only rows with no condition". It must be encoded, not dropped, so
+		// that Conditions=[""] does not collide with Conditions=nil.
+		a[w] = keys.String(c)
+		w++
 	}
 	return w
 }

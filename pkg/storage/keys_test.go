@@ -411,30 +411,84 @@ func TestReadStartingWithUserKey(t *testing.T) {
 		)
 	})
 
-	t.Run("empty_conditions_equal_no_conditions", func(t *testing.T) {
-		// copyConditions filters out empty strings; a slice containing only
-		// empty strings should be equivalent to no conditions at all.
+	t.Run("empty_condition_differs_from_no_conditions", func(t *testing.T) {
+		// The empty string is the "unconditioned" sentinel (language NoCond),
+		// and the datastore treats Conditions=[""] as "match only rows with no
+		// condition" — a different query from Conditions=nil ("match any").
+		// The keys must therefore differ.
 		noConds := base
 		emptyConds := base
 		emptyConds.Conditions = []string{""}
-		require.Equal(t,
+		require.NotEqual(t,
 			ReadStartingWithUserKey(store, noConds),
 			ReadStartingWithUserKey(store, emptyConds),
 		)
 	})
 
-	t.Run("trailing_empty_condition_collapses_to_real_only", func(t *testing.T) {
-		// ["foo", ""] should hash the same as ["foo"] because empty
-		// conditions are filtered. This locks in the documented behavior so
-		// any future change is intentional.
+	t.Run("trailing_empty_condition_differs_from_real_only", func(t *testing.T) {
+		// ["foo", ""] (foo OR unconditioned) selects a different tuple set
+		// than ["foo"], so the keys must differ.
 		realOnly := base
 		realOnly.Conditions = []string{"foo"}
 		withTrailingEmpty := base
 		withTrailingEmpty.Conditions = []string{"foo", ""}
-		require.Equal(t,
+		require.NotEqual(t,
 			ReadStartingWithUserKey(store, realOnly),
 			ReadStartingWithUserKey(store, withTrailingEmpty),
 		)
+	})
+}
+
+// TestEmptyConditionIsDistinct guards against cache-key collisions between
+// semantically different condition filters. The empty string is the
+// "unconditioned" sentinel (language NoCond), and the datastore treats
+// Conditions=[""] as the filter "match only rows with no condition"
+// (COALESCE(condition_name,'') IN (...)). That is a different query from
+// Conditions=nil ("match any condition"), so the cache keys must differ.
+// Likewise ["foo", ""] (foo OR unconditioned) must differ from ["foo"].
+func TestEmptyConditionIsDistinct(t *testing.T) {
+	store := ulid.Make().String()
+
+	t.Run("read_key", func(t *testing.T) {
+		base := ReadFilter{Object: "document:1", Relation: "viewer", User: "user:alice"}
+
+		emptyOnly := base
+		emptyOnly.Conditions = []string{""}
+		require.NotEqual(t, ReadKey(store, base), ReadKey(store, emptyOnly))
+
+		realOnly := base
+		realOnly.Conditions = []string{"foo"}
+		withEmpty := base
+		withEmpty.Conditions = []string{"foo", ""}
+		require.NotEqual(t, ReadKey(store, realOnly), ReadKey(store, withEmpty))
+	})
+
+	t.Run("read_userset_tuples_key", func(t *testing.T) {
+		base := ReadUsersetTuplesFilter{Object: "document:1", Relation: "viewer"}
+
+		emptyOnly := base
+		emptyOnly.Conditions = []string{""}
+		require.NotEqual(t, ReadUsersetTuplesKey(store, base), ReadUsersetTuplesKey(store, emptyOnly))
+
+		realOnly := base
+		realOnly.Conditions = []string{"foo"}
+		withEmpty := base
+		withEmpty.Conditions = []string{"foo", ""}
+		require.NotEqual(t, ReadUsersetTuplesKey(store, realOnly), ReadUsersetTuplesKey(store, withEmpty))
+	})
+
+	t.Run("read_starting_with_user_key", func(t *testing.T) {
+		base := ReadStartingWithUserFilter{ObjectType: "document", Relation: "viewer"}
+
+		emptyOnly := base
+		emptyOnly.Conditions = []string{""}
+		require.NotEqual(t, ReadStartingWithUserKey(store, base), ReadStartingWithUserKey(store, emptyOnly))
+
+		realOnly := base
+		realOnly.Conditions = []string{"foo"}
+		withEmpty := base
+		withEmpty.Conditions = []string{"foo", ""}
+		require.NotEqual(t, ReadStartingWithUserKey(store, realOnly), ReadStartingWithUserKey(store, withEmpty))
 	})
 }
 
