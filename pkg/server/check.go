@@ -18,6 +18,7 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/cachecontroller"
+	"github.com/openfga/openfga/internal/check"
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/modelgraph"
 	"github.com/openfga/openfga/internal/telemetry"
@@ -29,6 +30,7 @@ import (
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
+	"github.com/openfga/openfga/pkg/tuple"
 )
 
 func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openfgav1.CheckResponse, error) {
@@ -392,14 +394,29 @@ func (s *Server) v2Check(
 }
 
 // isV2TerminalError reports whether err should be returned directly from the v2Check path
-// rather than falling back to v1. Context errors appear in two forms: raw
-// (context.Canceled/DeadlineExceeded, from the model graph resolver) or server-mapped
-// (ErrRequestCancelled/ErrRequestDeadlineExceeded, from the execute path).
-// ErrThrottledTimeout is also included since it is not v2-specific.
+// rather than falling back to v1. Two categories qualify:
+//
+//   - Context/timeout/throttle errors, where a v1 retry is pointless or harmful. Context
+//     errors appear in two forms: raw (context.Canceled/DeadlineExceeded, from the model
+//     graph resolver) or server-mapped (ErrRequestCancelled/ErrRequestDeadlineExceeded, from
+//     the execute path). ErrThrottledTimeout and ErrTransactionThrottled are included since
+//     they are not v2-specific, and retrying on v1 would only add load to an already-throttled
+//     datastore.
+//   - Deterministic request-validation failures (ErrValidation, ErrInvalidUser, and
+//     ErrValidation wrapped in *tuple.InvalidTupleError from contextual-tuple validation),
+//     which v1 rejects identically — so the fallback is wasted work and log noise.
 func isV2TerminalError(err error) bool {
+	// Contextual-tuple validation wraps ErrValidation in *tuple.InvalidTupleError, which has no
+	// Unwrap, so errors.Is can't reach the sentinel. Match the type directly; any such
+	// request-construction failure is deterministic and v1 rejects it identically.
+	var invalidTuple *tuple.InvalidTupleError
+	if errors.As(err, &invalidTuple) {
+		return true
+	}
 	return errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) ||
 		errors.Is(err, serverErrors.ErrRequestDeadlineExceeded) || errors.Is(err, serverErrors.ErrRequestCancelled) ||
-		errors.Is(err, serverErrors.ErrThrottledTimeout)
+		errors.Is(err, serverErrors.ErrThrottledTimeout) || errors.Is(err, serverErrors.ErrTransactionThrottled) ||
+		errors.Is(err, check.ErrValidation) || errors.Is(err, check.ErrInvalidUser)
 }
 
 func (s *Server) getCheckResolverBuilder(storeID string) *graph.CheckResolverOrderedBuilder {
