@@ -8,6 +8,13 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+## [1.17.0] - 2026-06-02
+### Added
+- Added a configurable trace sampler via `trace.sampler` (`OPENFGA_TRACE_SAMPLER` / `OTEL_TRACES_SAMPLER`), supporting the standard OpenTelemetry strategies `always_on`, `always_off`, `traceidratio`, `parentbased_always_on`, `parentbased_always_off`, and `parentbased_traceidratio`. This lets OpenFGA honor upstream parent sampling decisions when running as a downstream service. Defaults to `traceidratio` to preserve existing behavior. [#3072](https://github.com/openfga/openfga/pull/3072) Thanks [@armujahid](https://github.com/armujahid)!
+
+### Changed
+- Redesigned cache key generation to use TLV (type-length-value) binary encoding, eliminating collision risk from string concatenation and adding per-process hash seeding to prevent hash-flooding attacks. [#3148](https://github.com/openfga/openfga/pull/3148)
+
 ## [1.16.1] - 2026-05-28
 ### Changed
 - Added workflow-level `concurrency.group` and `cancel-in-progress` for PR-related workflow runs to reduce wasted effort. [#3140](https://github.com/openfga/openfga/pull/3140)
@@ -1657,7 +1664,8 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
 - Memory storage adapter implementation
 - Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.16.1...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.17.0...HEAD
+[1.17.0]: https://github.com/openfga/openfga/compare/v1.16.1...v1.17.0
 [1.16.1]: https://github.com/openfga/openfga/compare/v1.16.0...v1.16.1
 [1.16.0]: https://github.com/openfga/openfga/compare/v1.15.1...v1.16.0
 [1.15.1]: https://github.com/openfga/openfga/compare/v1.15.0...v1.15.1

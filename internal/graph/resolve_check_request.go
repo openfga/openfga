@@ -3,7 +3,6 @@ package graph
 import (
 	"errors"
 	"maps"
-	"strings"
 	"sync/atomic"
 	"time"
 
@@ -33,10 +32,10 @@ type ResolveCheckRequest struct {
 	// during recursive dispatch calls (e.g., when default strategy calls checkTTU multiple times).
 	SelectedStrategy string
 
-	// Invariant parts of a check request are those that don't change in sub-problems
-	// AuthorizationModelID, StoreID, Context, and ContextualTuples.
-	// the invariantCacheKey is computed once per request, and passed to sub-problems via copy in .clone()
-	invariantCacheKey string
+	// invariantCacheKey encodes the request parts that are constant across
+	// sub-problems (storeID, modelID, context, contextual tuples). Computed
+	// once and propagated to clones.
+	invariantCacheKey uint64
 
 	objectType string
 	userType   string
@@ -112,18 +111,7 @@ func NewResolveCheckRequest(
 		userType:   userType,
 	}
 
-	keyBuilder := &strings.Builder{}
-	err := storage.WriteInvariantCheckCacheKey(keyBuilder, &storage.CheckCacheKeyParams{
-		StoreID:              params.StoreID,
-		AuthorizationModelID: params.AuthorizationModelID,
-		ContextualTuples:     params.ContextualTuples,
-		Context:              params.Context,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	r.invariantCacheKey = keyBuilder.String()
+	r.invariantCacheKey = storage.InvariantCacheKey(params.StoreID, params.AuthorizationModelID, params.Context, params.ContextualTuples...)
 
 	return r, nil
 }
@@ -226,9 +214,9 @@ func (r *ResolveCheckRequest) GetLastCacheInvalidationTime() time.Time {
 	return r.LastCacheInvalidationTime
 }
 
-func (r *ResolveCheckRequest) GetInvariantCacheKey() string {
+func (r *ResolveCheckRequest) GetInvariantCacheKey() uint64 {
 	if r == nil {
-		return ""
+		return 0
 	}
 	return r.invariantCacheKey
 }
