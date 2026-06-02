@@ -41,7 +41,7 @@ func TestStringContinuationTokenSerializer(t *testing.T) {
 		ulid, objType, err := s.Deserialize(string(token))
 		require.NoError(t, err)
 		require.Equal(t, "01JTEST", ulid)
-		require.Equal(t, "", objType)
+		require.Empty(t, objType)
 	})
 
 	t.Run("serialize_empty_ulid_errors", func(t *testing.T) {
