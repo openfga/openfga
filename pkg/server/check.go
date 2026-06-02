@@ -18,7 +18,6 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/cachecontroller"
-	"github.com/openfga/openfga/internal/check"
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/modelgraph"
 	"github.com/openfga/openfga/internal/telemetry"
@@ -30,7 +29,6 @@ import (
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
-	"github.com/openfga/openfga/pkg/tuple"
 )
 
 func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openfgav1.CheckResponse, error) {
@@ -403,20 +401,26 @@ func (s *Server) v2Check(
 //     they are not v2-specific, and retrying on v1 would only add load to an already-throttled
 //     datastore.
 //   - Deterministic request-validation failures (ErrValidation, ErrInvalidUser, and
-//     ErrValidation wrapped in *tuple.InvalidTupleError from contextual-tuple validation),
-//     which v1 rejects identically — so the fallback is wasted work and log noise.
+//     contextual-tuple validation failures), which v1 rejects identically — the fallback is
+//     wasted work and log noise.
+//
+// v2Check wraps most non-context errors via commands.CheckCommandErrorToServerError, which
+// produces gRPC status.Error values. errors.Is/As against the original sentinels/types no
+// longer matches after that conversion, so request-validation cases must be classified by
+// the resulting gRPC code instead.
 func isV2TerminalError(err error) bool {
-	// Contextual-tuple validation wraps ErrValidation in *tuple.InvalidTupleError, which has no
-	// Unwrap, so errors.Is can't reach the sentinel. Match the type directly; any such
-	// request-construction failure is deterministic and v1 rejects it identically.
-	var invalidTuple *tuple.InvalidTupleError
-	if errors.As(err, &invalidTuple) {
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) ||
+		errors.Is(err, serverErrors.ErrRequestDeadlineExceeded) || errors.Is(err, serverErrors.ErrRequestCancelled) ||
+		errors.Is(err, serverErrors.ErrThrottledTimeout) || errors.Is(err, serverErrors.ErrTransactionThrottled) {
 		return true
 	}
-	return errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) ||
-		errors.Is(err, serverErrors.ErrRequestDeadlineExceeded) || errors.Is(err, serverErrors.ErrRequestCancelled) ||
-		errors.Is(err, serverErrors.ErrThrottledTimeout) || errors.Is(err, serverErrors.ErrTransactionThrottled) ||
-		errors.Is(err, check.ErrValidation) || errors.Is(err, check.ErrInvalidUser)
+	if st, ok := status.FromError(err); ok {
+		switch openfgav1.ErrorCode(st.Code()) {
+		case openfgav1.ErrorCode_validation_error, openfgav1.ErrorCode_invalid_tuple:
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Server) getCheckResolverBuilder(storeID string) *graph.CheckResolverOrderedBuilder {
