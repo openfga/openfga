@@ -20,21 +20,22 @@ func (pbvalue *PbValue) WriteTo(kb *Builder) {
 		return
 	}
 
-	type stack[T any] struct {
+	type item[T any] struct {
 		key    string
 		hasKey bool
 		isMap  bool
 		value  T
-		next   *stack[T]
 	}
 
-	next := &stack[*structpb.Value]{value: (*structpb.Value)(pbvalue)}
+	values := make([]item[*structpb.Value], 0, 10)
+	parents := make([]item[[]Serializable], 0, 10)
 
-	var parent *stack[[]Serializable]
+	values = append(values, item[*structpb.Value]{value: (*structpb.Value)(pbvalue)})
 
-	for next != nil {
-		current := next
-		next = next.next
+	for len(values) > 0 {
+		pos := len(values) - 1
+		current := values[pos]
+		values = values[:pos]
 
 		var value Serializable
 
@@ -51,8 +52,8 @@ func (pbvalue *PbValue) WriteTo(kb *Builder) {
 		case nil:
 			value = Unset{}
 		case *structpb.Value_ListValue:
-			values := val.ListValue.GetValues()
-			if len(values) == 0 {
+			vals := val.ListValue.GetValues()
+			if len(vals) == 0 {
 				// Empty containers must NOT be pushed onto the parent stack:
 				// a cap=0 parent would silently swallow the next sibling leaf
 				// (len < cap is false, so the append is skipped). Treat the
@@ -61,15 +62,14 @@ func (pbvalue *PbValue) WriteTo(kb *Builder) {
 				break
 			}
 
-			a := make([]Serializable, 0, len(values))
-			c := stack[[]Serializable]{key: current.key, hasKey: current.hasKey, value: a, next: parent}
-			parent = &c
+			a := make([]Serializable, 0, len(vals))
+			c := item[[]Serializable]{key: current.key, hasKey: current.hasKey, value: a}
+			parents = append(parents, c)
 
-			for i := len(values) - 1; i >= 0; i-- {
-				next = &stack[*structpb.Value]{
-					value: values[i],
-					next:  next,
-				}
+			for i := len(vals) - 1; i >= 0; i-- {
+				values = append(values, item[*structpb.Value]{
+					value: vals[i],
+				})
 			}
 			continue
 		case *structpb.Value_StructValue:
@@ -84,16 +84,15 @@ func (pbvalue *PbValue) WriteTo(kb *Builder) {
 			}
 
 			a := make([]Serializable, 0, len(keys))
-			c := stack[[]Serializable]{key: current.key, hasKey: current.hasKey, isMap: true, value: a, next: parent}
-			parent = &c
+			c := item[[]Serializable]{key: current.key, hasKey: current.hasKey, isMap: true, value: a}
+			parents = append(parents, c)
 
 			for i := len(keys) - 1; i >= 0; i-- {
-				next = &stack[*structpb.Value]{
+				values = append(values, item[*structpb.Value]{
 					key:    keys[i],
 					hasKey: true,
 					value:  fields[keys[i]],
-					next:   next,
-				}
+				})
 			}
 			continue
 		}
@@ -102,14 +101,22 @@ func (pbvalue *PbValue) WriteTo(kb *Builder) {
 			value = Pair{Key: String(current.key), Value: value}
 		}
 
-		if parent == nil {
+		if len(parents) == 0 {
 			kb.Serialize(value)
 			continue
 		}
 
-		parent.value = append(parent.value, value)
+		for len(parents) > 0 {
+			pos = len(parents) - 1
+			parents[pos].value = append(parents[pos].value, value)
 
-		for parent != nil && len(parent.value) == cap(parent.value) {
+			if len(parents[pos].value) < cap(parents[pos].value) {
+				break
+			}
+
+			parent := parents[pos]
+			parents = parents[:pos]
+
 			if parent.isMap {
 				value = Map(parent.value)
 			} else {
@@ -119,14 +126,10 @@ func (pbvalue *PbValue) WriteTo(kb *Builder) {
 			if parent.hasKey {
 				value = Pair{Key: String(parent.key), Value: value}
 			}
+		}
 
-			parent = parent.next
-
-			if parent != nil {
-				parent.value = append(parent.value, value)
-			} else {
-				kb.Serialize(value)
-			}
+		if len(parents) == 0 {
+			kb.Serialize(value)
 		}
 	}
 }
