@@ -288,8 +288,8 @@ func TestPbValue_Struct_MatchesEquivalentMapOfPairs(t *testing.T) {
 	})
 
 	equivalent := keys.Map{
-		keys.Pair{Key: keys.String("a"), Value: keys.String("1")},
-		keys.Pair{Key: keys.String("b"), Value: keys.Uint64(math.Float64bits(2))},
+		{Key: keys.String("a"), Value: keys.String("1")},
+		{Key: keys.String("b"), Value: keys.Uint64(math.Float64bits(2))},
 	}
 
 	sBuilder := &keys.Builder{}

@@ -55,18 +55,30 @@ func (a Array) WriteTo(kb *Builder) {
 	kb.EncodeArray(a)
 }
 
-// Map is an ordered collection of key-value pairs that serializes with the
-// tagMap framing. Elements that implement Pair are encoded directly; all
-// other elements are wrapped as Pair{Key: Unset{}, Value: element}. Use
-// Map (rather than Array of Pairs) when the source data is a dictionary
+// MapEntry is one entry inside a Map. Map entries use a flat key/value
+// layout inside tagMap framing — no per-entry tagPair/tagKey/tagValue
+// markers — so MapEntry is a plain value struct rather than a
+// Serializable.
+type MapEntry struct {
+	Key   Serializable
+	Value Serializable
+}
+
+// Map is an ordered collection of key-value entries that serializes with
+// the tagMap framing (tagMap + entry count + alternating key/value TLVs).
+// Use Map (rather than Array of Pairs) when the source data is a dictionary
 // or struct-like object whose entries must be distinguishable from a
 // positional sequence.
-type Map []Serializable
+type Map []MapEntry
 
 func (m Map) WriteTo(kb *Builder) {
 	kb.EncodeMap(m)
 }
 
+// Pair encodes a standalone key/value with tagPair/tagKey/tagValue
+// framing. It is used when a pair must appear outside a Map (for example,
+// as an element of an Array or as a top-level value) and the pair
+// boundary must remain unambiguous. Inside a Map, use MapEntry instead.
 type Pair struct {
 	Key   Serializable
 	Value Serializable

@@ -1,7 +1,6 @@
 package keys
 
 import (
-	"maps"
 	"math"
 	"slices"
 
@@ -20,116 +19,62 @@ func (pbvalue *PbValue) WriteTo(kb *Builder) {
 		return
 	}
 
-	type item[T any] struct {
+	// Streaming walk: each frame is a structpb.Value still to be emitted.
+	// Container frames write their header (tagArray/tagMap + count) when
+	// popped, then push their children in reverse so the next iteration
+	// pops them in order. Map-entry keys are encoded inline with the value
+	// (flat layout — no per-entry tagPair framing).
+	type frame struct {
 		key    string
 		hasKey bool
-		isMap  bool
-		value  T
+		value  *structpb.Value
 	}
 
-	values := make([]item[*structpb.Value], 0, 10)
-	parents := make([]item[[]Serializable], 0, 10)
+	var stack []frame
+	stack = append(stack, frame{value: (*structpb.Value)(pbvalue)})
 
-	values = append(values, item[*structpb.Value]{value: (*structpb.Value)(pbvalue)})
+	for len(stack) > 0 {
+		pos := len(stack) - 1
+		current := stack[pos]
+		stack = stack[:pos]
 
-	for len(values) > 0 {
-		pos := len(values) - 1
-		current := values[pos]
-		values = values[:pos]
-
-		var value Serializable
+		if current.hasKey {
+			kb.EncodeString(current.key)
+		}
 
 		switch val := current.value.GetKind().(type) {
 		case *structpb.Value_BoolValue:
-			value = Bool(val.BoolValue)
+			kb.EncodeBool(val.BoolValue)
 		case *structpb.Value_NullValue:
-			value = Null{}
+			kb.EncodeNull()
 		case *structpb.Value_StringValue:
-			value = String(val.StringValue)
+			kb.EncodeString(val.StringValue)
 		case *structpb.Value_NumberValue:
-			bits := math.Float64bits(val.NumberValue)
-			value = Uint64(bits)
+			kb.EncodeUint64(math.Float64bits(val.NumberValue))
 		case nil:
-			value = Unset{}
+			kb.EncodeUnset()
 		case *structpb.Value_ListValue:
 			vals := val.ListValue.GetValues()
-			if len(vals) == 0 {
-				// Empty containers must NOT be pushed onto the parent stack:
-				// a cap=0 parent would silently swallow the next sibling leaf
-				// (len < cap is false, so the append is skipped). Treat the
-				// empty Array as a leaf value and fall through.
-				value = Array{}
-				break
-			}
-
-			a := make([]Serializable, 0, len(vals))
-			c := item[[]Serializable]{key: current.key, hasKey: current.hasKey, value: a}
-			parents = append(parents, c)
-
+			kb.EncodeArrayHeader(len(vals))
 			for i := len(vals) - 1; i >= 0; i-- {
-				values = append(values, item[*structpb.Value]{
-					value: vals[i],
-				})
+				stack = append(stack, frame{value: vals[i]})
 			}
-			continue
 		case *structpb.Value_StructValue:
 			fields := val.StructValue.GetFields()
-			keys := slices.Sorted(maps.Keys(fields))
-
-			if len(keys) == 0 {
-				// See ListValue branch — empty structs are emitted as leaves
-				// so they don't shadow following siblings.
-				value = Map{}
-				break
+			keys := make([]string, 0, len(fields))
+			for k := range fields {
+				keys = append(keys, k)
 			}
+			slices.Sort(keys)
 
-			a := make([]Serializable, 0, len(keys))
-			c := item[[]Serializable]{key: current.key, hasKey: current.hasKey, isMap: true, value: a}
-			parents = append(parents, c)
-
+			kb.EncodeMapHeader(len(keys))
 			for i := len(keys) - 1; i >= 0; i-- {
-				values = append(values, item[*structpb.Value]{
+				stack = append(stack, frame{
 					key:    keys[i],
 					hasKey: true,
 					value:  fields[keys[i]],
 				})
 			}
-			continue
-		}
-
-		if current.hasKey {
-			value = Pair{Key: String(current.key), Value: value}
-		}
-
-		if len(parents) == 0 {
-			kb.Serialize(value)
-			continue
-		}
-
-		for len(parents) > 0 {
-			pos = len(parents) - 1
-			parents[pos].value = append(parents[pos].value, value)
-
-			if len(parents[pos].value) < cap(parents[pos].value) {
-				break
-			}
-
-			parent := parents[pos]
-			parents = parents[:pos]
-
-			if parent.isMap {
-				value = Map(parent.value)
-			} else {
-				value = Array(parent.value)
-			}
-
-			if parent.hasKey {
-				value = Pair{Key: String(parent.key), Value: value}
-			}
-		}
-
-		if len(parents) == 0 {
-			kb.Serialize(value)
 		}
 	}
 }

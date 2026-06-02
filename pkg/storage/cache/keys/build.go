@@ -153,35 +153,47 @@ func (kb *Builder) EncodeUint64(i uint64) {
 	kb.data = binary.LittleEndian.AppendUint64(append(kb.data, tagUint64), i)
 }
 
-// EncodeArray writes a as a tagged sequence, encoding the element count
-// followed by each element's own TLV representation.
+// EncodeArray writes a as a tagged sequence (tag + element count + each
+// element's own TLV representation).
 func (kb *Builder) EncodeArray(a []Serializable) {
-	kb.data = append(kb.data, tagArray)
-	kb.data = binary.AppendUvarint(kb.data, uint64(len(a)))
+	kb.EncodeArrayHeader(len(a))
 	for _, e := range a {
 		e.WriteTo(kb)
 	}
 }
 
-// EncodeMap writes m as a tagged map (tagMap + uvarint count + pairs).
-// Each element is expected to be a Pair; non-Pair elements are wrapped
-// as Pair{Key: Unset{}, Value: element} so the output always contains
-// well-formed key-value entries. The tagMap framing distinguishes maps
-// from arrays, preventing collision between a dictionary and a
-// positional sequence that happen to contain the same values.
-func (kb *Builder) EncodeMap(m []Serializable) {
-	kb.data = append(kb.data, tagMap)
-	kb.data = binary.AppendUvarint(kb.data, uint64(len(m)))
-	for _, e := range m {
-		switch p := e.(type) {
-		case Pair:
-			p.WriteTo(kb)
-		case *Pair:
-			p.WriteTo(kb)
-		default:
-			kb.EncodePair(Unset{}, e)
-		}
+// EncodeArrayHeader writes the tagArray framing (tag + element count) only.
+// The caller must then write exactly n element encodings into the Builder.
+// Mismatched counts produce an unparseable key — this is a discipline
+// contract, not a checked invariant. Prefer EncodeArray when a
+// []Serializable is already in hand; use the header when streaming
+// elements directly to avoid materializing the slice.
+func (kb *Builder) EncodeArrayHeader(n int) {
+	kb.data = append(kb.data, tagArray)
+	kb.data = binary.AppendUvarint(kb.data, uint64(n))
+}
+
+// EncodeMap writes entries as a tagged map (tag + entry count + flat
+// key/value TLVs). The tagMap framing distinguishes maps from arrays,
+// preventing collision between a dictionary and a positional sequence that
+// happen to contain the same values. Use Pair only as a standalone
+// Serializable; map entries are unframed inside tagMap.
+func (kb *Builder) EncodeMap(entries []MapEntry) {
+	kb.EncodeMapHeader(len(entries))
+	for _, e := range entries {
+		e.Key.WriteTo(kb)
+		e.Value.WriteTo(kb)
 	}
+}
+
+// EncodeMapHeader writes the tagMap framing (tag + entry count) only. The
+// caller must then write exactly 2*n TLVs into the Builder, alternating
+// key and value (flat layout — no per-entry tagPair framing inside tagMap).
+// Mismatched counts or interleaving produce an unparseable key — this is
+// a discipline contract, not a checked invariant.
+func (kb *Builder) EncodeMapHeader(n int) {
+	kb.data = append(kb.data, tagMap)
+	kb.data = binary.AppendUvarint(kb.data, uint64(n))
 }
 
 // EncodePair writes a key-value pair with structural markers separating

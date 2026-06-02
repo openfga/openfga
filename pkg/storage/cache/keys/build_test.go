@@ -146,37 +146,33 @@ func TestBuilder_EncodeArray_Nil(t *testing.T) {
 
 func TestBuilder_EncodeMap_TLV(t *testing.T) {
 	var b Builder
-	b.EncodeMap([]Serializable{Pair{Key: String("k1"), Value: Uint64(1)}, Pair{Key: String("k2"), Value: Bool(true)}})
+	b.EncodeMap([]MapEntry{
+		{Key: String("k1"), Value: Uint64(1)},
+		{Key: String("k2"), Value: Bool(true)},
+	})
 
 	raw := b.Bytes()
 	require.Equal(t, tagMap, raw[0])
-	require.Equal(t, byte(2), raw[1]) // 2 pairs
+	require.Equal(t, byte(2), raw[1]) // 2 entries
 
-	// First pair: tagPair, tagKey, tagString "k1", tagValue, tagUint64 1
-	require.Equal(t, tagPair, raw[2])
-	require.Equal(t, tagKey, raw[3])
-	require.Equal(t, tagString, raw[4])
-	require.Equal(t, byte(2), raw[5]) // len("k1")
-	require.Equal(t, []byte("k1"), raw[6:8])
-	require.Equal(t, tagValue, raw[8])
-	require.Equal(t, tagUint64, raw[9])
-	val := binary.LittleEndian.Uint64(raw[10:18])
+	// Flat layout: tagString "k1", tagUint64 1, tagString "k2", tagBool 1
+	require.Equal(t, tagString, raw[2])
+	require.Equal(t, byte(2), raw[3]) // len("k1")
+	require.Equal(t, []byte("k1"), raw[4:6])
+	require.Equal(t, tagUint64, raw[6])
+	val := binary.LittleEndian.Uint64(raw[7:15])
 	require.Equal(t, uint64(1), val)
 
-	// Second pair starts at offset 18
-	require.Equal(t, tagPair, raw[18])
-	require.Equal(t, tagKey, raw[19])
-	require.Equal(t, tagString, raw[20])
-	require.Equal(t, byte(2), raw[21])
-	require.Equal(t, []byte("k2"), raw[22:24])
-	require.Equal(t, tagValue, raw[24])
-	require.Equal(t, tagBool, raw[25])
-	require.Equal(t, byte(1), raw[26])
+	require.Equal(t, tagString, raw[15])
+	require.Equal(t, byte(2), raw[16]) // len("k2")
+	require.Equal(t, []byte("k2"), raw[17:19])
+	require.Equal(t, tagBool, raw[19])
+	require.Equal(t, byte(1), raw[20])
 }
 
 func TestBuilder_EncodeMap_Empty(t *testing.T) {
 	var b Builder
-	b.EncodeMap([]Serializable{})
+	b.EncodeMap([]MapEntry{})
 
 	raw := b.Bytes()
 	require.Equal(t, []byte{tagMap, 0}, raw)
@@ -190,78 +186,14 @@ func TestBuilder_EncodeMap_Nil(t *testing.T) {
 	require.Equal(t, []byte{tagMap, 0}, raw)
 }
 
-func TestBuilder_EncodeMap_NonPairWrapsWithUnsetKey(t *testing.T) {
-	// Non-Pair elements should be wrapped as Pair{Unset{}, element}
-	var b Builder
-	b.EncodeMap([]Serializable{String("value_only")})
-
-	raw := b.Bytes()
-	require.Equal(t, tagMap, raw[0])
-	require.Equal(t, byte(1), raw[1])
-	// Wrapped pair: tagPair, tagKey, tagUnset, tagValue, tagString "value_only"
-	require.Equal(t, tagPair, raw[2])
-	require.Equal(t, tagKey, raw[3])
-	require.Equal(t, tagUnset, raw[4])
-	require.Equal(t, tagValue, raw[5])
-	require.Equal(t, tagString, raw[6])
-	require.Equal(t, byte(10), raw[7]) // len("value_only")
-	require.Equal(t, []byte("value_only"), raw[8:18])
-}
-
-func TestBuilder_EncodeMap_MixedPairAndNonPair(t *testing.T) {
-	var b Builder
-	b.EncodeMap([]Serializable{
-		Pair{Key: String("a"), Value: Uint64(1)},
-		Bool(false), // non-Pair, should be wrapped
-	})
-
-	raw := b.Bytes()
-	require.Equal(t, tagMap, raw[0])
-	require.Equal(t, byte(2), raw[1])
-
-	// First element: normal pair
-	require.Equal(t, tagPair, raw[2])
-	require.Equal(t, tagKey, raw[3])
-
-	// Find the second pair by scanning past the first
-	// First pair: tagPair(1) + tagKey(1) + tagString(1) + len(1) + "a"(1) + tagValue(1) + tagUint64(1) + 8 bytes = 15
-	offset := 2 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 8 // second pair starts here
-	require.Equal(t, tagPair, raw[offset])
-	require.Equal(t, tagKey, raw[offset+1])
-	require.Equal(t, tagUnset, raw[offset+2]) // wrapped with Unset key
-	require.Equal(t, tagValue, raw[offset+3])
-	require.Equal(t, tagBool, raw[offset+4])
-	require.Equal(t, byte(0), raw[offset+5])
-}
-
-func TestBuilder_EncodeMap_PointerPairEncodesLikeValuePair(t *testing.T) {
-	// *Pair must encode identically to Pair so that callers that hand the
-	// builder either form (e.g., PbValue, which holds pointer pairs while
-	// it accumulates a struct) produce the same wire bytes as a direct
-	// EncodeMap with value pairs.
-	var valBuf Builder
-	valBuf.EncodeMap([]Serializable{
-		Pair{Key: String("k"), Value: Uint64(1)},
-	})
-
-	var ptrBuf Builder
-	ptrBuf.EncodeMap([]Serializable{
-		&Pair{Key: String("k"), Value: Uint64(1)},
-	})
-
-	require.Equal(t, valBuf.Bytes(), ptrBuf.Bytes())
-}
-
 // TestBuilder_MapArrayDisambiguation verifies that a Map and an Array
-// containing identical elements produce different TLV outputs.
+// containing the same scalar values produce different TLV outputs.
 func TestBuilder_MapArrayDisambiguation(t *testing.T) {
-	elems := []Serializable{Pair{Key: String("k"), Value: Uint64(1)}}
-
 	var mapBuf Builder
-	mapBuf.EncodeMap(elems)
+	mapBuf.EncodeMap([]MapEntry{{Key: String("k"), Value: Uint64(1)}})
 
 	var arrBuf Builder
-	arrBuf.EncodeArray(elems)
+	arrBuf.EncodeArray([]Serializable{String("k"), Uint64(1)})
 
 	require.NotEqual(t, mapBuf.Bytes(), arrBuf.Bytes())
 	// Specifically, they should differ in the tag byte
@@ -678,10 +610,10 @@ func BenchmarkBuilderEncodeArray(b *testing.B) {
 
 func BenchmarkBuilderEncodeMap(b *testing.B) {
 	var kb Builder
-	elems := []Serializable{
-		Pair{Key: String("name"), Value: String("alice")},
-		Pair{Key: String("age"), Value: Uint64(30)},
-		Pair{Key: String("active"), Value: Bool(true)},
+	elems := []MapEntry{
+		{Key: String("name"), Value: String("alice")},
+		{Key: String("age"), Value: Uint64(30)},
+		{Key: String("active"), Value: Bool(true)},
 	}
 	b.ReportAllocs()
 	for b.Loop() {
