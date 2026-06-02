@@ -299,11 +299,26 @@ jobs:
         uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: ./cache/benchmark-data.json
-          key: ${{ steps.get-main-branch-sha.outputs.sha }}-${{ runner.os }}-${{ steps.system-info.outputs.cpu-model }}-go-benchmark
+          # Key ordering (OS-CPU-SHA) identical to main.yaml's saved key. restore-keys
+          # falls back to the most recent same-hardware baseline from any prior
+          # main commit when the exact main-SHA baseline is missing (timing race,
+          # failed main run, eviction) — never comparing across different CPUs.
+          key: ${{ runner.os }}-${{ steps.system-info.outputs.cpu-model }}-${{ steps.get-main-branch-sha.outputs.sha }}-go-benchmark
+          restore-keys: |
+            ${{ runner.os }}-${{ steps.system-info.outputs.cpu-model }}-
+
+      # A fallback (restore-keys) hit sets cache-hit=false but populates
+      # cache-matched-key, so branch on cache-matched-key to cover exact AND
+      # fallback baselines. Empty cache-matched-key means no same-hardware
+      # baseline exists at all.
+      - name: Note fallback baseline used
+        if: steps.cache.outputs.cache-hit != 'true' && steps.cache.outputs.cache-matched-key != '' && (steps.changes.outputs.perf == 'true' || github.event_name == 'merge_group')
+        run: |
+          echo "::notice title=Benchmark baseline is not exact::No baseline for the exact main commit; comparing against the most recent same-hardware baseline ('${{ steps.cache.outputs.cache-matched-key }}')."
 
       - name: Compare benchmarks with Main
         uses: benchmark-action/github-action-benchmark@a60cea5bc7b49e15c1f58f411161f99e0df48372 # v1.22.0
-        if: steps.cache.outputs.cache-hit == 'true' && (steps.changes.outputs.perf == 'true' || github.event_name == 'merge_group')
+        if: steps.cache.outputs.cache-matched-key != '' && (steps.changes.outputs.perf == 'true' || github.event_name == 'merge_group')
         with:
           # What benchmark tool the output.txt came from
           tool: 'go'
@@ -321,7 +336,7 @@ jobs:
 
       - name: Run benchmarks but don't compare to Main branch
         uses: benchmark-action/github-action-benchmark@a60cea5bc7b49e15c1f58f411161f99e0df48372 # v1.22.0
-        if: steps.cache.outputs.cache-hit != 'true' && (steps.changes.outputs.perf == 'true' || github.event_name == 'merge_group')
+        if: steps.cache.outputs.cache-matched-key == '' && (steps.changes.outputs.perf == 'true' || github.event_name == 'merge_group')
         with:
           # What benchmark tool the output.txt came from
           tool: 'go'
@@ -332,3 +347,15 @@ jobs:
           external-data-json-path: ./cache/benchmark-data.json
           # Enable Job Summary for PRs
           summary-always: true
+
+      # When no same-hardware baseline exists at all, benchmarks ran but nothing
+      # was compared. Surface this loudly (annotation + job summary) so a green
+      # check is never mistaken for "no regression". Job intentionally stays green.
+      - name: Warn that regression check was skipped
+        if: steps.cache.outputs.cache-matched-key == '' && (steps.changes.outputs.perf == 'true' || github.event_name == 'merge_group')
+        run: |
+          echo "::warning title=Benchmark regression check skipped::No same-hardware baseline found for OS='${{ runner.os }}' CPU='${{ steps.system-info.outputs.cpu-model }}'. Benchmarks ran but were NOT compared against main."
+          {
+            echo "### ⚠️ Benchmark regression check skipped"
+            echo "No same-hardware baseline was available to compare against. Benchmarks ran but no regression check was performed."
+          } >> "$GITHUB_STEP_SUMMARY"
