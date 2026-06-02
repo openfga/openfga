@@ -23,12 +23,14 @@ import (
 	"github.com/openfga/openfga/internal/telemetry"
 	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/internal/utils/apimethod"
+	"github.com/openfga/openfga/pkg/middleware/requestid"
 	"github.com/openfga/openfga/pkg/middleware/validator"
 	"github.com/openfga/openfga/pkg/server/commands"
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
+	"github.com/openfga/openfga/pkg/tuple"
 )
 
 func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openfgav1.CheckResponse, error) {
@@ -113,10 +115,24 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 
 			checkResultCounter.With(prometheus.Labels{allowedLabel: strconv.FormatBool(res.GetAllowed())}).Inc()
 			span.SetAttributes(attribute.Bool("allowed", res.GetAllowed()))
+
+			// When the request user is a userset (object#relation), the weighted-graph algorithm
+			// now requires the userset to exist in the datastore and returns FALSE
+			// where the legacy algorithm inferred TRUE from the schema alone. A userset-user check returning FALSE
+			// is therefore treated as a potential customer-visible inconsistency.
+			if !res.GetAllowed() && tuple.IsObjectRelation(req.GetTupleKey().GetUser()) {
+				requestID := requestid.InitRequestID(ctx)
+				s.logger.InfoWithContext(ctx, "v2Check resolution breaking change: userset request returned false",
+					zap.String("store_id", storeID),
+					zap.String("model_id", req.GetAuthorizationModelId()),
+					zap.String("request_id", requestID),
+				)
+			}
+
 			return res, nil
 		}
 
-		requestID, _ := grpc_ctxtags.Extract(ctx).Values()["request_id"].(string)
+		requestID := requestid.InitRequestID(ctx)
 		s.logger.WarnWithContext(ctx, "Weighted graph check failed, falling back to main Check",
 			zap.Error(err),
 			zap.String("store_id", storeID),
