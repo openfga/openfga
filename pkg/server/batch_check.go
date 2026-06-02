@@ -59,7 +59,9 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 	req.AuthorizationModelId = typesys.GetAuthorizationModelID() // the resolved model id
 
 	var checkQueryV2 *commands.CheckQueryV2
-	if s.featureFlagClient.Boolean(config.ExperimentalWeightedGraphCheck, storeID) {
+	var v2GraphResolveFailed bool
+	v2Enabled := s.featureFlagClient.Boolean(config.ExperimentalWeightedGraphCheck, storeID)
+	if v2Enabled {
 		mg, mgErr := s.authzModelGraphResolver.Resolve(ctx, storeID, req.GetAuthorizationModelId())
 		if mgErr == nil {
 			cacheInvalidationTime := time.Time{}
@@ -89,7 +91,8 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 		} else if commands.IsV2CheckTerminalError(mgErr) {
 			return nil, mgErr
 		} else {
-			s.logger.WarnWithContext(ctx, "Weighted graph model resolution failed for batch check, falling back to v1",
+			v2GraphResolveFailed = true
+			s.logger.WarnWithContext(ctx, "Weighted graph model resolution failed for batch check, falling back to main Check",
 				zap.Error(mgErr),
 				zap.String("store_id", storeID),
 				zap.String("model_id", req.GetAuthorizationModelId()),
@@ -185,12 +188,17 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 	span.SetAttributes(attribute.Int(duplicateChecks, metadata.DuplicateCheckCount))
 	grpc_ctxtags.Extract(ctx).Set(duplicateChecks, metadata.DuplicateCheckCount)
 
-	span.SetAttributes(
-		attribute.Int("v2_check_count", int(metadata.V2CheckCount)),
-		attribute.Int("v2_fallback_count", int(metadata.V2FallbackCount)),
-	)
-	grpc_ctxtags.Extract(ctx).Set("v2_check_count", metadata.V2CheckCount)
-	grpc_ctxtags.Extract(ctx).Set("v2_fallback_count", metadata.V2FallbackCount)
+	if v2Enabled {
+		if v2GraphResolveFailed {
+			metadata.V2FallbackCount = uint32(len(req.GetChecks()))
+		}
+		span.SetAttributes(
+			attribute.Int("v2_check_count", int(metadata.V2CheckCount)),
+			attribute.Int("v2_fallback_count", int(metadata.V2FallbackCount)),
+		)
+		grpc_ctxtags.Extract(ctx).Set("v2_check_count", metadata.V2CheckCount)
+		grpc_ctxtags.Extract(ctx).Set("v2_fallback_count", metadata.V2FallbackCount)
+	}
 
 	batchResult := map[string]*openfgav1.BatchCheckSingleResult{}
 	for correlationID, outcome := range result {

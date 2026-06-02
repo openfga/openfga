@@ -404,6 +404,80 @@ func TestBatchCheckV2UsedWhenFlagEnabled(t *testing.T) {
 	require.EqualValues(t, uint32(0), v2Fallback)
 }
 
+// TestBatchCheckV2FallbackCountWhenGraphParseFails verifies that when ExperimentalWeightedGraphCheck
+// is enabled but the model fails weighted graph construction (ErrInvalidModel), the v2_fallback_count
+// tag equals the number of checks in the batch (all fell back to v1).
+func TestBatchCheckV2FallbackCountWhenGraphParseFails(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	// An intersection whose branches resolve to different terminal types triggers ErrInvalidModel
+	// in the weighted graph builder, causing a batch-level fallback to v1.
+	modelDSL := `
+		model
+			schema 1.1
+		type user
+		type bot
+		type document
+			relations
+				define user_access: [user]
+				define bot_access: [bot]
+				define viewer: user_access and bot_access
+	`
+
+	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
+
+	s := MustNewServerWithOpts(
+		WithDatastore(ds),
+		WithFeatureFlagClient(featureflags.NewDefaultClient([]string{config.ExperimentalWeightedGraphCheck})),
+	)
+	t.Cleanup(s.Close)
+
+	ctx := context.Background()
+
+	createStoreResp, err := s.CreateStore(ctx, &openfgav1.CreateStoreRequest{Name: "test"})
+	require.NoError(t, err)
+	storeID := createStoreResp.GetId()
+
+	model := testutils.MustTransformDSLToProtoWithID(modelDSL)
+	writeModelResp, err := s.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
+		StoreId:         storeID,
+		SchemaVersion:   model.GetSchemaVersion(),
+		TypeDefinitions: model.GetTypeDefinitions(),
+	})
+	require.NoError(t, err)
+	modelID := writeModelResp.GetAuthorizationModelId()
+
+	ctx = grpc_ctxtags.SetInContext(ctx, grpc_ctxtags.NewTags())
+
+	_, err = s.BatchCheck(ctx, &openfgav1.BatchCheckRequest{
+		StoreId:              storeID,
+		AuthorizationModelId: modelID,
+		Checks: []*openfgav1.BatchCheckItem{
+			{
+				TupleKey:      &openfgav1.CheckRequestTupleKey{Object: "document:1", Relation: "viewer", User: "user:alice"},
+				CorrelationId: "id1",
+			},
+			{
+				TupleKey:      &openfgav1.CheckRequestTupleKey{Object: "document:1", Relation: "viewer", User: "user:bob"},
+				CorrelationId: "id2",
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	tags := grpc_ctxtags.Extract(ctx).Values()
+
+	v2Count, ok := tags["v2_check_count"]
+	require.True(t, ok, "v2_check_count should be set in context tags")
+	require.EqualValues(t, uint32(0), v2Count)
+
+	v2Fallback, ok := tags["v2_fallback_count"]
+	require.True(t, ok, "v2_fallback_count should be set in context tags")
+	require.EqualValues(t, uint32(2), v2Fallback)
+}
+
 // transformCheckResultToProto takes ~100-200ns per BatchCheckOutcome, or .0001 - .0002ms per.
 // At smaller batch sizes that's fine, but if sizes increase into the thousands the
 // transform might be better in its own concurrent routine rather than as post-processing.
