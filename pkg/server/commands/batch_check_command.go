@@ -7,7 +7,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"go.uber.org/zap"
 
 	"github.com/openfga/openfga/internal/cachecontroller"
 	"github.com/openfga/openfga/internal/concurrency"
@@ -32,6 +34,7 @@ type BatchCheckQuery struct {
 	datastoreThrottlingEnabled bool
 	datastoreThrottleThreshold int
 	datastoreThrottleDuration  time.Duration
+	checkQueryV2               *CheckQueryV2 // when provided, v2Check will be used instead of v1
 }
 
 type BatchCheckCommandParams struct {
@@ -42,8 +45,11 @@ type BatchCheckCommandParams struct {
 }
 
 type BatchCheckOutcome struct {
-	CheckResponse *graph.ResolveCheckResponse
-	Err           error
+	Allowed             bool
+	DatastoreQueryCount uint32
+	DatastoreItemCount  uint64
+	Duration            time.Duration
+	Err                 error
 }
 
 type BatchCheckMetadata struct {
@@ -53,6 +59,8 @@ type BatchCheckMetadata struct {
 	DatastoreItemCount     uint64
 	DatastoreThrottleCount uint32
 	DuplicateCheckCount    int
+	V2CheckCount           uint32
+	V2FallbackCount        uint32
 }
 
 type BatchCheckValidationError struct {
@@ -102,6 +110,12 @@ func WithBatchCheckDatastoreThrottler(enabled bool, threshold int, duration time
 		bq.datastoreThrottlingEnabled = enabled
 		bq.datastoreThrottleThreshold = threshold
 		bq.datastoreThrottleDuration = duration
+	}
+}
+
+func WithBatchCheckV2Query(q *CheckQueryV2) BatchCheckQueryOption {
+	return func(bq *BatchCheckQuery) {
+		bq.checkQueryV2 = q
 	}
 }
 
@@ -164,6 +178,8 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 	var dispatchThrottleCount atomic.Uint32
 	var totalItemCount atomic.Uint64
 	var datastoreThrottleCount atomic.Uint32
+	var v2CheckCount atomic.Uint32
+	var v2FallbackCount atomic.Uint32
 
 	pool := concurrency.NewPool(ctx, int(bq.maxConcurrentChecks))
 	for key, item := range cacheKeyMap {
@@ -176,6 +192,44 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 				})
 				return nil
 			default:
+			}
+
+			if bq.checkQueryV2 != nil {
+				v2Params := &CheckQueryV2Params{
+					StoreID:          params.StoreID,
+					TupleKey:         check.GetTupleKey(),
+					ContextualTuples: check.GetContextualTuples().GetTupleKeys(),
+					Context:          check.GetContext(),
+					Consistency:      params.Consistency,
+				}
+
+				v2Start := time.Now()
+				v2Res, v2Meta, v2Err := bq.checkQueryV2.Execute(ctx, v2Params)
+				if v2Err == nil || IsV2CheckTerminalError(v2Err) {
+					resultMap.Store(key, &BatchCheckOutcome{
+						Allowed:             v2Res.GetAllowed(),
+						DatastoreQueryCount: v2Meta.DatastoreQueryCount,
+						DatastoreItemCount:  v2Meta.DatastoreItemCount,
+						Duration:            time.Since(v2Start),
+						Err:                 v2Err,
+					})
+					totalQueryCount.Add(v2Meta.DatastoreQueryCount)
+					totalItemCount.Add(v2Meta.DatastoreItemCount)
+					if v2Meta.WasThrottled {
+						datastoreThrottleCount.Add(1)
+					}
+					v2CheckCount.Add(1)
+					return nil
+				}
+
+				requestID, _ := grpc_ctxtags.Extract(ctx).Values()["request_id"].(string)
+				bq.logger.Warn("v2 check failed for batch item, falling back to v1",
+					zap.Error(v2Err),
+					zap.String("store_id", params.StoreID),
+					zap.String("model_id", bq.typesys.GetAuthorizationModelID()),
+					zap.String("request_id", requestID),
+				)
+				v2FallbackCount.Add(1)
 			}
 
 			checkQuery := NewCheckCommand(
@@ -202,8 +256,11 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 			response, metadata, err := checkQuery.Execute(ctx, checkParams)
 
 			resultMap.Store(key, &BatchCheckOutcome{
-				CheckResponse: response,
-				Err:           err,
+				Allowed:             response.GetAllowed(),
+				DatastoreQueryCount: response.GetResolutionMetadata().DatastoreQueryCount,
+				DatastoreItemCount:  response.GetResolutionMetadata().DatastoreItemCount,
+				Duration:            response.GetResolutionMetadata().Duration,
+				Err:                 err,
 			})
 
 			if metadata != nil {
@@ -246,6 +303,8 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 		DatastoreThrottleCount: datastoreThrottleCount.Load(),
 		DispatchCount:          totalDispatchCount.Load(),
 		DuplicateCheckCount:    len(params.Checks) - len(cacheKeyMap),
+		V2CheckCount:           v2CheckCount.Load(),
+		V2FallbackCount:        v2FallbackCount.Load(),
 	}, nil
 }
 

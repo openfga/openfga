@@ -69,7 +69,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 
 		// v2Check can return errors that v1 Check wouldn't (e.g. ErrInvalidModel when the weighted graph
 		// can't represent the model). Fallback to v1 on non-timeout errors for backward compatibility.
-		if err == nil || isV2TerminalError(err) {
+		if err == nil || commands.IsV2CheckTerminalError(err) {
 			tookMs := time.Since(startTime).Milliseconds()
 			queryCount := float64(metadata.DatastoreQueryCount)
 			itemCount := float64(metadata.DatastoreItemCount)
@@ -379,7 +379,13 @@ func (s *Server) v2Check(
 		commands.WithCheckQueryV2SharedResources(s.sharedDatastoreResources),
 	)
 
-	res, metadata, err := q.Execute(ctx, req)
+	res, metadata, err := q.Execute(ctx, &commands.CheckQueryV2Params{
+		StoreID:          req.GetStoreId(),
+		TupleKey:         req.GetTupleKey(),
+		ContextualTuples: req.GetContextualTuples().GetTupleKeys(),
+		Context:          req.GetContext(),
+		Consistency:      req.GetConsistency(),
+	})
 
 	span.SetAttributes(attribute.Bool("allowed", res.GetAllowed()))
 
@@ -389,17 +395,6 @@ func (s *Server) v2Check(
 	}
 
 	return res, metadata, nil
-}
-
-// isV2TerminalError reports whether err should be returned directly from the v2Check path
-// rather than falling back to v1. Context errors appear in two forms: raw
-// (context.Canceled/DeadlineExceeded, from the model graph resolver) or server-mapped
-// (ErrRequestCancelled/ErrRequestDeadlineExceeded, from the execute path).
-// ErrThrottledTimeout is also included since it is not v2-specific.
-func isV2TerminalError(err error) bool {
-	return errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) ||
-		errors.Is(err, serverErrors.ErrRequestDeadlineExceeded) || errors.Is(err, serverErrors.ErrRequestCancelled) ||
-		errors.Is(err, serverErrors.ErrThrottledTimeout)
 }
 
 func (s *Server) getCheckResolverBuilder(storeID string) *graph.CheckResolverOrderedBuilder {
