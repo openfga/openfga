@@ -314,7 +314,7 @@ jobs:
       - name: Note fallback baseline used
         if: steps.cache.outputs.cache-hit != 'true' && steps.cache.outputs.cache-matched-key != '' && (steps.changes.outputs.perf == 'true' || github.event_name == 'merge_group')
         run: |
-          echo "::notice title=Benchmark baseline is not exact::No baseline for the exact main commit; comparing against the most recent same-hardware baseline (${{ steps.cache.outputs.cache-matched-key }})."
+          echo "::notice title=Benchmark baseline is not exact::No baseline for the exact main commit; comparing against the most recent same-hardware baseline ('${{ steps.cache.outputs.cache-matched-key }}')."
 
       - name: Compare benchmarks with Main
         uses: benchmark-action/github-action-benchmark@a60cea5bc7b49e15c1f58f411161f99e0df48372 # v1.22.0
