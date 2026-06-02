@@ -299,7 +299,7 @@ jobs:
         uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: ./cache/benchmark-data.json
-          # Key ordering (OS-CPU-SHA) mirrors main.yaml's save key. restore-keys
+          # Key ordering (OS-CPU-SHA) identical to main.yaml's saved key. restore-keys
           # falls back to the most recent same-hardware baseline from any prior
           # main commit when the exact main-SHA baseline is missing (timing race,
           # failed main run, eviction) — never comparing across different CPUs.
