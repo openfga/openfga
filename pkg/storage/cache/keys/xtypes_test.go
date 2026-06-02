@@ -43,10 +43,10 @@ func pbStruct(fields map[string]*structpb.Value) *keys.PbValue {
 // PbValue.WriteTo
 // -----------------------------------------------------------------------------
 
-func TestPbValue_Nil_IsNoOp(t *testing.T) {
+func TestPbValue_Nil_IsUnset(t *testing.T) {
 	var v *keys.PbValue
-	require.Equal(t, emptyHash(t), hashOf(t, v),
-		"writing a nil PbValue must not change the Builder state")
+	require.Equal(t, hashOf(t, keys.Unset{}), hashOf(t, v),
+		"writing a nil PbValue will write an Unset tag")
 }
 
 func TestPbValue_Deterministic(t *testing.T) {

@@ -16,6 +16,7 @@ type PbValue structpb.Value
 
 func (pbvalue *PbValue) WriteTo(kb *Builder) {
 	if pbvalue == nil {
+		kb.EncodeUnset()
 		return
 	}
 
