@@ -10,6 +10,9 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Added
 - Added a configurable trace sampler via `trace.sampler` (`OPENFGA_TRACE_SAMPLER` / `OTEL_TRACES_SAMPLER`), supporting the standard OpenTelemetry strategies `always_on`, `always_off`, `traceidratio`, `parentbased_always_on`, `parentbased_always_off`, and `parentbased_traceidratio`. This lets OpenFGA honor upstream parent sampling decisions when running as a downstream service. Defaults to `traceidratio` to preserve existing behavior. [#3072](https://github.com/openfga/openfga/pull/3072)
 
+### Fixed
+- Fixed experimental `weighted_graph_check` falling back to the standard algorithm on errors that v1 would reject identically or that should not be retried. `ErrTransactionThrottled`, `check.ErrValidation`, `check.ErrInvalidUser`, and `*tuple.InvalidTupleError` (from contextual-tuple validation) are now returned directly instead of triggering a v1 retry. [#3150](https://github.com/openfga/openfga/pull/3150)
+
 ## [1.16.1] - 2026-05-28
 ### Changed
 - Added workflow-level `concurrency.group` and `cancel-in-progress` for PR-related workflow runs to reduce wasted effort. [#3140](https://github.com/openfga/openfga/pull/3140)
