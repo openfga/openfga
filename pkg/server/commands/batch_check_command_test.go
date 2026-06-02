@@ -657,8 +657,8 @@ func TestBatchCheckCommandV2(t *testing.T) {
 					CorrelationId: "normal",
 				},
 				{
-					// Userset check against an exclusion relation — v2 returns ErrUsersetInvalidRequest,
-					// falls back to v1 which incorrectly evaluates to true.
+					// Userset check against an exclusion relation — v2 returns ErrUsersetInvalidRequest
+					// (non-terminal), which should trigger per-item fallback to v1 for this item only.
 					TupleKey:      &openfgav1.CheckRequestTupleKey{Object: "document:1", Relation: "viewer", User: "document:2#owner"},
 					CorrelationId: "userset",
 				},

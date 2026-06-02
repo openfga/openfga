@@ -223,6 +223,9 @@ func (q *CheckQueryV2) Execute(ctx context.Context, params *CheckQueryV2Params) 
 }
 
 func validateCheckQueryV2Params(params *CheckQueryV2Params) error {
+	if params == nil {
+		return fmt.Errorf("params must not be nil")
+	}
 	tk := params.TupleKey
 	if utils.ContainsForbiddenChars(tk.GetObject()) ||
 		utils.ContainsForbiddenChars(tk.GetRelation()) ||

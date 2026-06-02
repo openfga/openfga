@@ -387,12 +387,12 @@ func (s *Server) v2Check(
 		Consistency:      req.GetConsistency(),
 	})
 
-	span.SetAttributes(attribute.Bool("allowed", res.GetAllowed()))
-
 	if err != nil {
 		telemetry.TraceError(span, err)
 		return nil, metadata, commands.CheckCommandErrorToServerError(err)
 	}
+
+	span.SetAttributes(attribute.Bool("allowed", res.GetAllowed()))
 
 	return res, metadata, nil
 }

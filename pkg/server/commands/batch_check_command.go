@@ -8,8 +8,9 @@ import (
 	"time"
 
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"go.uber.org/zap"
+
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/cachecontroller"
 	"github.com/openfga/openfga/internal/concurrency"
