@@ -1354,6 +1354,74 @@ func TestCachedIterator(t *testing.T) {
 		require.Nil(t, iter.records)
 	})
 
+	t.Run("cache_entry_last_modified_uses_query_start_time", func(t *testing.T) {
+		// The race this tests: iterator starts at t0, the pre-write invalidation check
+		// passes (no invalidation entry exists yet), then a write is recorded at t1
+		// between the guard and flush, then flush writes the entry. With old code
+		// LastModified = time.Now() ≈ t2 > t1, so findInCache considers the entry
+		// fresh and returns stale data. With the fix, LastModified = initializedAt = t0
+		// < t1, so findInCache correctly rejects it.
+		maxCacheSize := 10
+		cacheKey := testCacheKey("cache-key")
+		ttl := 5 * time.Hour
+		store := ulid.Make().String()
+		invalidEntityKey := storage.InvalidIteratorByObjectRelationCacheKey(store, "document:1", "viewer")
+
+		cache, err := storage.NewInMemoryLRUCache([]storage.InMemoryLRUCacheOpt[any]{
+			storage.WithMaxCacheSize[any](int64(100)),
+		}...)
+		require.NoError(t, err)
+		defer cache.Stop()
+
+		t0 := time.Now().Add(-2 * time.Second)
+
+		iter := &cachedIterator{
+			ctx:               ctx,
+			iter:              storage.NewStaticTupleIterator(tuples),
+			store:             store,
+			operation:         "operation",
+			tuples:            make([]*openfgav1.Tuple, 0, maxCacheSize),
+			cacheKey:          cacheKey,
+			invalidStoreKey:   storage.InvalidIteratorCacheKey(store),
+			invalidEntityKeys: []keys.Key{invalidEntityKey},
+			cache:             cache,
+			maxResultSize:     maxCacheSize,
+			ttl:               ttl,
+			initializedAt:     t0,
+			sf:                &singleflight.Group{},
+			wg:                &sync.WaitGroup{},
+			logger:            logger.NewNoopLogger(),
+		}
+
+		// Fully drain so flush() will be called (iterator already consumed).
+		for {
+			_, err := iter.Next(ctx)
+			if errors.Is(err, storage.ErrIteratorDone) {
+				break
+			}
+			require.NoError(t, err)
+		}
+
+		// No invalidation entry in cache when Stop runs, so the pre-write guard passes.
+		iter.Stop()
+		iter.wg.Wait()
+
+		// Confirm the entry was flushed with LastModified = t0 (initializedAt), not time.Now().
+		raw := cache.Get(cacheKey)
+		require.NotNil(t, raw, "expected cache entry to be written")
+		entry := raw.(*storage.TupleIteratorCacheEntry)
+		require.Equal(t, t0, entry.LastModified)
+
+		// Simulate a write that raced between the pre-write guard and the flush.
+		// t1 is after t0 (query start) but before the flush completed.
+		t1 := time.Now().Add(-1 * time.Second)
+		cache.Set(invalidEntityKey, &storage.InvalidEntityCacheEntry{LastModified: t1}, ttl)
+
+		// findInCache must reject the entry: entry.LastModified (t0) < write (t1).
+		_, ok := findInCache(cache, cacheKey, storage.InvalidIteratorCacheKey(store), []keys.Key{invalidEntityKey})
+		require.False(t, ok, "stale cache entry should be invalidated because write occurred after query start")
+	})
+
 	t.Run("prevent_draining_if_queried_before_invalidation_time", func(t *testing.T) {
 		maxCacheSize := 10
 		cacheKey := testCacheKey("cache-key")
