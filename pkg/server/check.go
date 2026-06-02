@@ -405,7 +405,7 @@ func (s *Server) v2Check(
 //     wasted work and log noise.
 //
 // v2Check wraps most non-context errors via commands.CheckCommandErrorToServerError, which
-// produces gRPC status.Error values. errors.Is/As against the original sentinels/types no
+// produces gRPC status.Error values. Errors.Is/As against the original sentinels/types no
 // longer matches after that conversion, so request-validation cases must be classified by
 // the resulting gRPC code instead.
 func isV2TerminalError(err error) bool {
