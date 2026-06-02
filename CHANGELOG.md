@@ -8,6 +8,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 ### Changed
+- Update PR workflow benchmark comparison to be less flakey. [#3153](https://github.com/openfga/openfga/pull/3153)
 - Extended experimental `weighted_graph_check` to `BatchCheck`: when the flag is enabled, each item in the batch is evaluated using the weighted graph algorithm, with per-item fallback to the standard algorithm on non-terminal errors. [#3154](https://github.com/openfga/openfga/pull/3154)
 
 ## [1.17.0] - 2026-06-02
