@@ -354,7 +354,7 @@ jobs:
       - name: Warn that regression check was skipped
         if: steps.cache.outputs.cache-matched-key == '' && (steps.changes.outputs.perf == 'true' || github.event_name == 'merge_group')
         run: |
-          echo "::warning title=Benchmark regression check skipped::No same-hardware baseline found for OS=${{ runner.os }} CPU=${{ steps.system-info.outputs.cpu-model }}. Benchmarks ran but were NOT compared against main."
+          echo "::warning title=Benchmark regression check skipped::No same-hardware baseline found for OS='${{ runner.os }}' CPU='${{ steps.system-info.outputs.cpu-model }}'. Benchmarks ran but were NOT compared against main."
           {
             echo "### ⚠️ Benchmark regression check skipped"
             echo "No same-hardware baseline was available to compare against. Benchmarks ran but no regression check was performed."
