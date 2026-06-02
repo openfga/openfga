@@ -2,10 +2,8 @@ package graph
 
 import (
 	"context"
-	"strconv"
 	"time"
 
-	"github.com/cespare/xxhash/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.opentelemetry.io/otel/attribute"
@@ -18,7 +16,6 @@ import (
 	"github.com/openfga/openfga/internal/telemetry"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
-	"github.com/openfga/openfga/pkg/tuple"
 )
 
 const (
@@ -164,7 +161,14 @@ func (c *CachedCheckResolver) ResolveCheck(
 ) (*ResolveCheckResponse, error) {
 	span := trace.SpanFromContext(ctx)
 
-	cacheKey := BuildCacheKey(*req)
+	tk := req.GetTupleKey()
+	cacheKey := storage.CheckCacheKey(
+		req.GetStoreID(),
+		tk.GetObject(),
+		tk.GetRelation(),
+		tk.GetUser(),
+		req.GetInvariantCacheKey(),
+	)
 
 	tryCache := req.Consistency != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY
 
@@ -219,16 +223,4 @@ func (c *CachedCheckResolver) ResolveCheck(
 
 	c.cache.Set(cacheKey, &CheckResponseCacheEntry{LastModified: time.Now(), CheckResponse: clonedResp}, storage.JitteredTTL(c.cacheTTL, c.jitterPercentage))
 	return resp, nil
-}
-
-func BuildCacheKey(req ResolveCheckRequest) string {
-	tup := tuple.From(req.GetTupleKey())
-	cacheKeyString := tup.String() + req.GetInvariantCacheKey()
-
-	hasher := xxhash.New()
-
-	// Digest.WriteString returns int and a nil error, ignoring
-	_, _ = hasher.WriteString(cacheKeyString)
-
-	return strconv.FormatUint(hasher.Sum64(), 10)
 }

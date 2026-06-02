@@ -18,6 +18,7 @@ import (
 
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/storage/cache/keys"
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
@@ -78,7 +79,7 @@ func (b *blockingIterator) IsOrdered() bool { return true }
 // LockFreeCachedIterator Tests
 // ─────────────────────────────────────────────────────────────────────────────
 
-func TestLockFreeCachedIteratorIsOrdered(t *testing.T) {
+func TestLockFreeCachedIterator_IsOrdered(t *testing.T) {
 	iter := NewLockFreeCachedIterator([]MinimalCacheEntry{}, "document", "viewer", true)
 	defer iter.Stop()
 	require.True(t, iter.IsOrdered())
@@ -344,7 +345,7 @@ func TestLockFreeCachedIterator_ContextCanceled(t *testing.T) {
 // CachingIterator Tests
 // ─────────────────────────────────────────────────────────────────────────────
 
-func TestCachingIteratorIsOrdered(t *testing.T) {
+func TestCachingIterator_IsOrdered(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 	mockCache := mocks.NewMockInMemoryCache[any](ctrl)
@@ -355,7 +356,7 @@ func TestCachingIteratorIsOrdered(t *testing.T) {
 	wg := &sync.WaitGroup{}
 
 	inner := storage.NewStaticTupleIterator([]*openfgav1.Tuple{})
-	iter := newCachingIterator(inner, mockCache, "key", 100, time.Hour, 30*time.Second, sf, wg, "document", "viewer", "Read")
+	iter := newCachingIterator(inner, mockCache, testCacheKey("key"), 100, time.Hour, 30*time.Second, sf, wg, "document", "viewer", "Read")
 	require.True(t, iter.IsOrdered())
 	iter.Stop()
 	wg.Wait()
@@ -384,12 +385,12 @@ func TestCachingIterator_Next_Basic(t *testing.T) {
 	innerIter := storage.NewStaticTupleIterator(tuples)
 
 	// Expect cache.Get to check if already cached (optimization 1), return nil (not cached)
-	mockCache.EXPECT().Get("test-key").Return(nil).Times(1)
+	mockCache.EXPECT().Get(testCacheKey("test-key")).Return(nil).Times(1)
 	// Expect cache.Set when Stop() is called after iterator is exhausted
 	mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).Times(1)
 
 	iter := newCachingIterator(
-		innerIter, mockCache, "test-key", 1000, time.Hour, 30*time.Second,
+		innerIter, mockCache, testCacheKey("test-key"), 1000, time.Hour, 30*time.Second,
 		sf, wg, "document", "viewer", "ReadUsersetTuples",
 	)
 
@@ -435,7 +436,7 @@ func TestCachingIterator_Next_NonIteratorDoneError_NilsTuples(t *testing.T) {
 	})
 
 	iter := newCachingIterator(
-		innerIter, mockCache, "test-key", 1000, time.Hour, 30*time.Second,
+		innerIter, mockCache, testCacheKey("test-key"), 1000, time.Hour, 30*time.Second,
 		sf, wg, "document", "viewer", "ReadUsersetTuples",
 	)
 
@@ -481,7 +482,7 @@ func TestCachingIterator_Head_DelegatesToInner(t *testing.T) {
 	innerIter := storage.NewStaticTupleIterator(tuples)
 
 	iter := newCachingIterator(
-		innerIter, mockCache, "test-key", 1000, time.Hour, 30*time.Second,
+		innerIter, mockCache, testCacheKey("test-key"), 1000, time.Hour, 30*time.Second,
 		sf, wg, "document", "viewer", "ReadUsersetTuples",
 	)
 
@@ -527,7 +528,7 @@ func TestCachingIterator_Head_AfterStop(t *testing.T) {
 	innerIter := storage.NewStaticTupleIterator(tuples)
 
 	iter := newCachingIterator(
-		innerIter, mockCache, "test-key", 1000, time.Hour, 30*time.Second,
+		innerIter, mockCache, testCacheKey("test-key"), 1000, time.Hour, 30*time.Second,
 		sf, wg, "document", "viewer", "ReadUsersetTuples",
 	)
 
@@ -539,7 +540,7 @@ func TestCachingIterator_Head_AfterStop(t *testing.T) {
 	require.ErrorIs(t, err, storage.ErrIteratorDone)
 }
 
-func TestCachingIterator_State_Abandoned_OnMaxSize(t *testing.T) {
+func TestCachingIterator_ExceedsMaxSize_AbandonsCaching(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
@@ -566,7 +567,7 @@ func TestCachingIterator_State_Abandoned_OnMaxSize(t *testing.T) {
 	// No cache.Set expected because we exceed maxSize
 
 	iter := newCachingIterator(
-		innerIter, mockCache, "test-key", maxSize, time.Hour, 30*time.Second,
+		innerIter, mockCache, testCacheKey("test-key"), maxSize, time.Hour, 30*time.Second,
 		sf, wg, "document", "viewer", "ReadUsersetTuples",
 	)
 
@@ -580,7 +581,7 @@ func TestCachingIterator_State_Abandoned_OnMaxSize(t *testing.T) {
 	require.Nil(t, iter.tuples)
 }
 
-func TestCachingIterator_CustomMaxSizeAbandoned(t *testing.T) {
+func TestCachingIterator_ConfigurableMaxSize_AbandonsCaching(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
@@ -605,7 +606,7 @@ func TestCachingIterator_CustomMaxSizeAbandoned(t *testing.T) {
 	innerIter := storage.NewStaticTupleIterator(tuples)
 
 	iter := newCachingIterator(
-		innerIter, mockCache, "test-key", customMaxSize, time.Hour, 30*time.Second,
+		innerIter, mockCache, testCacheKey("test-key"), customMaxSize, time.Hour, 30*time.Second,
 		sf, wg, "document", "viewer", "ReadUsersetTuples",
 	)
 
@@ -632,7 +633,7 @@ func TestCachingIterator_PopulatesCache(t *testing.T) {
 	ctx := context.Background()
 	sf := &singleflight.Group{}
 	wg := &sync.WaitGroup{}
-	cacheKey := "test-key"
+	cacheKey := testCacheKey("test-key")
 	ttl := time.Hour
 
 	tuples := []*openfgav1.Tuple{
@@ -646,7 +647,7 @@ func TestCachingIterator_PopulatesCache(t *testing.T) {
 	// Capture the cache entry
 	var capturedEntry *V2IteratorCacheEntry
 	mockCache.EXPECT().Set(cacheKey, gomock.Any(), ttl).DoAndReturn(
-		func(key string, value interface{}, duration time.Duration) {
+		func(_ keys.Key, value interface{}, _ time.Duration) {
 			capturedEntry = value.(*V2IteratorCacheEntry)
 		},
 	)
@@ -696,7 +697,7 @@ func TestCachingIterator_InnerError(t *testing.T) {
 	// No cache.Set expected on empty iteration
 
 	iter := newCachingIterator(
-		innerIter, mockCache, "test-key", 1000, time.Hour, 30*time.Second,
+		innerIter, mockCache, testCacheKey("test-key"), 1000, time.Hour, 30*time.Second,
 		sf, wg, "document", "viewer", "ReadUsersetTuples",
 	)
 
@@ -727,11 +728,11 @@ func TestCachingIterator_Stop_Idempotent(t *testing.T) {
 	innerIter := storage.NewStaticTupleIterator(tuples)
 
 	// Expect cache operations
-	mockCache.EXPECT().Get("test-key").Return(nil).AnyTimes()
+	mockCache.EXPECT().Get(testCacheKey("test-key")).Return(nil).AnyTimes()
 	mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 
 	iter := newCachingIterator(
-		innerIter, mockCache, "test-key", 1000, time.Hour, 30*time.Second,
+		innerIter, mockCache, testCacheKey("test-key"), 1000, time.Hour, 30*time.Second,
 		sf, wg, "document", "viewer", "ReadUsersetTuples",
 	)
 
@@ -771,7 +772,7 @@ func TestCachingIterator_Flush_EmptyAndNil(t *testing.T) {
 	t.Run("flush_with_nil_tuples_does_not_panic", func(t *testing.T) {
 		iter := newCachingIterator(
 			storage.NewStaticTupleIterator([]*openfgav1.Tuple{}),
-			mockCache, "test-key", 1000, time.Hour, 30*time.Second,
+			mockCache, testCacheKey("test-key"), 1000, time.Hour, 30*time.Second,
 			sf, wg, "document", "viewer", "ReadUsersetTuples",
 		)
 
@@ -786,7 +787,7 @@ func TestCachingIterator_Flush_EmptyAndNil(t *testing.T) {
 	t.Run("flush_with_empty_tuples_does_not_cache", func(t *testing.T) {
 		iter := newCachingIterator(
 			storage.NewStaticTupleIterator([]*openfgav1.Tuple{}),
-			mockCache, "test-key", 1000, time.Hour, 30*time.Second,
+			mockCache, testCacheKey("test-key"), 1000, time.Hour, 30*time.Second,
 			sf, wg, "document", "viewer", "ReadUsersetTuples",
 		)
 
@@ -827,7 +828,7 @@ func TestCachingIterator_WaitGroup_AddInConstructor(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		innerIter := storage.NewStaticTupleIterator(tuples)
 		iterators[i] = newCachingIterator(
-			innerIter, mockCache, "test-key-"+strconv.Itoa(i), 1000, time.Hour, 30*time.Second,
+			innerIter, mockCache, testCacheKey("test-key-"+strconv.Itoa(i)), 1000, time.Hour, 30*time.Second,
 			sf, wg, "document", "viewer", "ReadUsersetTuples",
 		)
 	}
@@ -879,7 +880,7 @@ func TestCachingIterator_WaitGroup_DoneCalledOnNilTuples(t *testing.T) {
 	innerIter := storage.NewStaticTupleIterator(tuples)
 
 	iter := newCachingIterator(
-		innerIter, mockCache, "test-key", maxSize, time.Hour, 30*time.Second,
+		innerIter, mockCache, testCacheKey("test-key"), maxSize, time.Hour, 30*time.Second,
 		sf, wg, "document", "viewer", "ReadUsersetTuples",
 	)
 
@@ -937,7 +938,7 @@ func TestCachingIterator_ConcurrentNextAndStop(t *testing.T) {
 	for i := 0; i < 100; i++ {
 		innerIter := storage.NewStaticTupleIterator(tuples)
 		iter := newCachingIterator(
-			innerIter, mockCache, fmt.Sprintf("test-key-%d", i), 1000, time.Hour, 30*time.Second,
+			innerIter, mockCache, testCacheKey(fmt.Sprintf("test-key-%d", i)), 1000, time.Hour, 30*time.Second,
 			sf, wg, "document", "viewer", "ReadUsersetTuples",
 		)
 
@@ -1003,12 +1004,12 @@ func TestCachingIterator_BackgroundDrainIgnoresRequestContextCancellation(t *tes
 	innerIter := storage.NewStaticTupleIterator(tuples)
 
 	// Expect cache.Get to check if already cached (optimization 1), return nil (not cached)
-	mockCache.EXPECT().Get("test-key").Return(nil).Times(1)
+	mockCache.EXPECT().Get(testCacheKey("test-key")).Return(nil).Times(1)
 	// Expect cache.Set because background drain uses context.Background() and should complete
 	mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).Times(1)
 
 	iter := newCachingIterator(
-		innerIter, mockCache, "test-key", 1000, time.Hour, 30*time.Second,
+		innerIter, mockCache, testCacheKey("test-key"), 1000, time.Hour, 30*time.Second,
 		sf, wg, "document", "viewer", "ReadUsersetTuples",
 	)
 
@@ -1053,12 +1054,12 @@ func TestCachingIterator_BackgroundDrainCompletes_DoesCache(t *testing.T) {
 	innerIter := storage.NewStaticTupleIterator(tuples)
 
 	// Expect cache.Get to check if already cached (optimization 1), return nil (not cached)
-	mockCache.EXPECT().Get("test-key").Return(nil).Times(1)
+	mockCache.EXPECT().Get(testCacheKey("test-key")).Return(nil).Times(1)
 	// Expect cache.Set because drain will complete successfully
 	mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).Times(1)
 
 	iter := newCachingIterator(
-		innerIter, mockCache, "test-key", 1000, time.Hour, 30*time.Second,
+		innerIter, mockCache, testCacheKey("test-key"), 1000, time.Hour, 30*time.Second,
 		sf, wg, "document", "viewer", "ReadUsersetTuples",
 	)
 
@@ -1089,7 +1090,7 @@ func TestCachingIterator_DrainTimeout_AbandonsCaching(t *testing.T) {
 
 	mockCache := mocks.NewMockInMemoryCache[any](mockController)
 	// cache.Get returns nil (not cached) — needed for optimization 1 check
-	mockCache.EXPECT().Get("test-key").Return(nil).Times(1)
+	mockCache.EXPECT().Get(testCacheKey("test-key")).Return(nil).Times(1)
 	// No Set expected — drain should abandon due to timeout
 
 	sf := &singleflight.Group{}
@@ -1106,7 +1107,7 @@ func TestCachingIterator_DrainTimeout_AbandonsCaching(t *testing.T) {
 	}
 
 	iter := newCachingIterator(
-		blockIter, mockCache, "test-key", 1000,
+		blockIter, mockCache, testCacheKey("test-key"), 1000,
 		time.Hour,
 		1*time.Nanosecond, // Very short drain timeout to trigger context expiry
 		sf, wg, "document", "viewer", "ReadUsersetTuples",
@@ -1137,7 +1138,7 @@ func TestCachingIterator_DrainError_AbandonsCaching(t *testing.T) {
 	defer mockController.Finish()
 
 	mockCache := mocks.NewMockInMemoryCache[any](mockController)
-	mockCache.EXPECT().Get("test-key").Return(nil).Times(1)
+	mockCache.EXPECT().Get(testCacheKey("test-key")).Return(nil).Times(1)
 	// No Set expected — drain encounters error and abandons
 
 	sf := &singleflight.Group{}
@@ -1150,7 +1151,7 @@ func TestCachingIterator_DrainError_AbandonsCaching(t *testing.T) {
 	})
 
 	iter := newCachingIterator(
-		innerIter, mockCache, "test-key", 1000, time.Hour, 30*time.Second,
+		innerIter, mockCache, testCacheKey("test-key"), 1000, time.Hour, 30*time.Second,
 		sf, wg, "document", "viewer", "ReadUsersetTuples",
 	)
 
@@ -1179,7 +1180,7 @@ func TestCachingIterator_DrainExceedsMaxSize_AbandonsCaching(t *testing.T) {
 	defer mockController.Finish()
 
 	mockCache := mocks.NewMockInMemoryCache[any](mockController)
-	mockCache.EXPECT().Get("test-key").Return(nil).Times(1)
+	mockCache.EXPECT().Get(testCacheKey("test-key")).Return(nil).Times(1)
 	// No Set expected — max size exceeded during drain
 
 	sf := &singleflight.Group{}
@@ -1194,7 +1195,7 @@ func TestCachingIterator_DrainExceedsMaxSize_AbandonsCaching(t *testing.T) {
 	innerIter := storage.NewStaticTupleIterator(tuples)
 
 	iter := newCachingIterator(
-		innerIter, mockCache, "test-key", maxSize, time.Hour, 30*time.Second,
+		innerIter, mockCache, testCacheKey("test-key"), maxSize, time.Hour, 30*time.Second,
 		sf, wg, "document", "viewer", "ReadUsersetTuples",
 	)
 
@@ -1213,344 +1214,6 @@ func TestCachingIterator_DrainExceedsMaxSize_AbandonsCaching(t *testing.T) {
 	iter.Stop()
 
 	wg.Wait()
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Cache Key Tests
-// ─────────────────────────────────────────────────────────────────────────────
-
-func TestBuildReadUsersetTuplesCacheKey_Basic(t *testing.T) {
-	filter := storage.ReadUsersetTuplesFilter{
-		Object:   "document:1",
-		Relation: "viewer",
-		AllowedUserTypeRestrictions: []*openfgav1.RelationReference{
-			{Type: "group", RelationOrWildcard: &openfgav1.RelationReference_Relation{Relation: "member"}},
-		},
-	}
-
-	key := buildReadUsersetTuplesCacheKey("store123", filter)
-
-	require.NotEmpty(t, key)
-
-	differentObject := filter
-	differentObject.Object = "document:2"
-	require.NotEqual(t, key, buildReadUsersetTuplesCacheKey("store123", differentObject))
-
-	differentRelation := filter
-	differentRelation.Relation = "editor"
-	require.NotEqual(t, key, buildReadUsersetTuplesCacheKey("store123", differentRelation))
-
-	require.NotEqual(t, key, buildReadUsersetTuplesCacheKey("store456", filter))
-}
-
-func TestBuildReadUsersetTuplesCacheKey_WithConditions(t *testing.T) {
-	filter := storage.ReadUsersetTuplesFilter{
-		Object:     "document:1",
-		Relation:   "viewer",
-		Conditions: []string{"cond1", "cond2"},
-		AllowedUserTypeRestrictions: []*openfgav1.RelationReference{
-			{Type: "user"},
-		},
-	}
-
-	key := buildReadUsersetTuplesCacheKey("store123", filter)
-
-	withoutConditions := filter
-	withoutConditions.Conditions = nil
-	require.NotEqual(t, key, buildReadUsersetTuplesCacheKey("store123", withoutConditions))
-}
-
-func TestBuildReadUsersetTuplesCacheKey_Wildcard(t *testing.T) {
-	filter := storage.ReadUsersetTuplesFilter{
-		Object:   "document:1",
-		Relation: "viewer",
-		AllowedUserTypeRestrictions: []*openfgav1.RelationReference{
-			{Type: "user", RelationOrWildcard: &openfgav1.RelationReference_Wildcard{}},
-		},
-	}
-
-	key := buildReadUsersetTuplesCacheKey("store123", filter)
-
-	filterWithRelation := storage.ReadUsersetTuplesFilter{
-		Object:   "document:1",
-		Relation: "viewer",
-		AllowedUserTypeRestrictions: []*openfgav1.RelationReference{
-			{Type: "user", RelationOrWildcard: &openfgav1.RelationReference_Relation{Relation: "member"}},
-		},
-	}
-	require.NotEqual(t, key, buildReadUsersetTuplesCacheKey("store123", filterWithRelation))
-}
-
-func TestBuildReadCacheKey_Basic(t *testing.T) {
-	filter := storage.ReadFilter{
-		Object:   "document:1",
-		Relation: "parent",
-		User:     "folder:",
-	}
-
-	key := buildReadCacheKey("store123", filter)
-
-	require.NotEmpty(t, key)
-
-	differentObject := filter
-	differentObject.Object = "document:2"
-	require.NotEqual(t, key, buildReadCacheKey("store123", differentObject))
-
-	differentUser := filter
-	differentUser.User = "group:"
-	require.NotEqual(t, key, buildReadCacheKey("store123", differentUser))
-}
-
-func TestBuildReadCacheKey_WithConditions(t *testing.T) {
-	filter := storage.ReadFilter{
-		Object:     "document:1",
-		Relation:   "parent",
-		User:       "folder:",
-		Conditions: []string{"cond1"},
-	}
-
-	key := buildReadCacheKey("store123", filter)
-
-	withoutConditions := filter
-	withoutConditions.Conditions = nil
-	require.NotEqual(t, key, buildReadCacheKey("store123", withoutConditions))
-}
-
-func TestBuildReadStartingWithUserCacheKey_Basic(t *testing.T) {
-	filter := storage.ReadStartingWithUserFilter{
-		ObjectType: "document",
-		Relation:   "viewer",
-		UserFilter: []*openfgav1.ObjectRelation{
-			{Object: "user:alice"},
-		},
-	}
-
-	key := buildReadStartingWithUserCacheKey("store123", filter)
-
-	require.NotEmpty(t, key)
-
-	differentType := filter
-	differentType.ObjectType = "folder"
-	require.NotEqual(t, key, buildReadStartingWithUserCacheKey("store123", differentType))
-}
-
-func TestBuildReadStartingWithUserCacheKey_MultipleUsers(t *testing.T) {
-	filter := storage.ReadStartingWithUserFilter{
-		ObjectType: "document",
-		Relation:   "viewer",
-		UserFilter: []*openfgav1.ObjectRelation{
-			{Object: "user:bob"},
-			{Object: "user:alice"},
-		},
-	}
-
-	key := buildReadStartingWithUserCacheKey("store123", filter)
-
-	filterReversed := storage.ReadStartingWithUserFilter{
-		ObjectType: "document",
-		Relation:   "viewer",
-		UserFilter: []*openfgav1.ObjectRelation{
-			{Object: "user:alice"},
-			{Object: "user:bob"},
-		},
-	}
-	require.Equal(t, key, buildReadStartingWithUserCacheKey("store123", filterReversed))
-}
-
-func TestBuildReadStartingWithUserCacheKey_WithRelation(t *testing.T) {
-	filter := storage.ReadStartingWithUserFilter{
-		ObjectType: "document",
-		Relation:   "viewer",
-		UserFilter: []*openfgav1.ObjectRelation{
-			{Object: "group:eng", Relation: "member"},
-		},
-	}
-
-	key := buildReadStartingWithUserCacheKey("store123", filter)
-
-	filterWithoutRelation := storage.ReadStartingWithUserFilter{
-		ObjectType: "document",
-		Relation:   "viewer",
-		UserFilter: []*openfgav1.ObjectRelation{
-			{Object: "group:eng"},
-		},
-	}
-	require.NotEqual(t, key, buildReadStartingWithUserCacheKey("store123", filterWithoutRelation))
-}
-
-func TestBuildCacheKey_CollisionPrevention(t *testing.T) {
-	store := "01AAAAAAAAAAAAAAAAAAAAAAAA"
-
-	t.Run("ReadUsersetTuples_PoC_from_report", func(t *testing.T) {
-		q1 := buildReadUsersetTuplesCacheKey(store, storage.ReadUsersetTuplesFilter{
-			Object:   "doc:1",
-			Relation: "viewer",
-			AllowedUserTypeRestrictions: []*openfgav1.RelationReference{
-				{Type: "group", RelationOrWildcard: &openfgav1.RelationReference_Relation{Relation: "member"}},
-			},
-		})
-		q2 := buildReadUsersetTuplesCacheKey(store, storage.ReadUsersetTuplesFilter{
-			Object:   "doc:1#viewer/group",
-			Relation: "member",
-		})
-		require.NotEqual(t, q1, q2)
-	})
-
-	t.Run("Read_delimiter_in_object", func(t *testing.T) {
-		k1 := buildReadCacheKey(store, storage.ReadFilter{
-			Object: "doc:1", Relation: "viewer", User: "user:alice",
-		})
-		k2 := buildReadCacheKey(store, storage.ReadFilter{
-			Object: "doc:1#viewer", Relation: "", User: "user:alice",
-		})
-		require.NotEqual(t, k1, k2)
-	})
-
-	t.Run("ReadStartingWithUser_delimiter_in_objectType", func(t *testing.T) {
-		k1 := buildReadStartingWithUserCacheKey(store, storage.ReadStartingWithUserFilter{
-			ObjectType: "doc", Relation: "viewer",
-		})
-		k2 := buildReadStartingWithUserCacheKey(store, storage.ReadStartingWithUserFilter{
-			ObjectType: "doc#viewer", Relation: "",
-		})
-		require.NotEqual(t, k1, k2)
-	})
-}
-
-func TestCacheKey_Deterministic(t *testing.T) {
-	filter := storage.ReadUsersetTuplesFilter{
-		Object:     "document:1",
-		Relation:   "viewer",
-		Conditions: []string{"cond2", "cond1"}, // Unsorted
-		AllowedUserTypeRestrictions: []*openfgav1.RelationReference{
-			{Type: "group", RelationOrWildcard: &openfgav1.RelationReference_Relation{Relation: "member"}},
-			{Type: "user"},
-		},
-	}
-
-	// Generate key multiple times
-	key1 := buildReadUsersetTuplesCacheKey("store123", filter)
-	key2 := buildReadUsersetTuplesCacheKey("store123", filter)
-	key3 := buildReadUsersetTuplesCacheKey("store123", filter)
-
-	require.Equal(t, key1, key2)
-	require.Equal(t, key2, key3)
-}
-
-func TestBuildUserTypeRestrictionsHash(t *testing.T) {
-	tests := []struct {
-		name     string
-		refs     []*openfgav1.RelationReference
-		expected []byte
-	}{
-		{
-			name:     "empty",
-			refs:     nil,
-			expected: []byte{},
-		},
-		{
-			name: "single_type",
-			refs: []*openfgav1.RelationReference{
-				{Type: "user"},
-			},
-			expected: []byte{0x65, 0x52, 0x5, 0xbe, 0xa9, 0x4f, 0x7d, 0xa7},
-		},
-		{
-			name: "wildcard",
-			refs: []*openfgav1.RelationReference{
-				{Type: "user", RelationOrWildcard: &openfgav1.RelationReference_Wildcard{}},
-			},
-			expected: []byte{0x70, 0x6f, 0x67, 0xe2, 0x78, 0xda, 0x3b, 0x61},
-		},
-		{
-			name: "relation",
-			refs: []*openfgav1.RelationReference{
-				{Type: "group", RelationOrWildcard: &openfgav1.RelationReference_Relation{Relation: "member"}},
-			},
-			expected: []byte{0x7c, 0x64, 0x23, 0xcb, 0xdb, 0x70, 0x37, 0xe3},
-		},
-		{
-			name: "multiple_sorted",
-			refs: []*openfgav1.RelationReference{
-				{Type: "user"},
-				{Type: "group", RelationOrWildcard: &openfgav1.RelationReference_Relation{Relation: "member"}},
-			},
-			expected: []byte{0x81, 0xf1, 0x10, 0x2f, 0x7e, 0xb3, 0xb3, 0x66},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := storage.BuildUserTypeRestrictionsHash(tt.refs)
-			require.Equal(t, tt.expected, result)
-		})
-	}
-}
-
-func TestBuildUserFilterString(t *testing.T) {
-	tests := []struct {
-		name     string
-		filters  []*openfgav1.ObjectRelation
-		expected []byte
-	}{
-		{
-			name:     "empty",
-			filters:  nil,
-			expected: []byte{},
-		},
-		{
-			name: "single_object",
-			filters: []*openfgav1.ObjectRelation{
-				{Object: "user:alice"},
-			},
-			expected: []byte{0x18, 0x58, 0xad, 0x5a, 0x15, 0x29, 0x6c, 0x1b},
-		},
-		{
-			name: "with_relation",
-			filters: []*openfgav1.ObjectRelation{
-				{Object: "group:eng", Relation: "member"},
-			},
-			expected: []byte{0x42, 0x16, 0x92, 0xbb, 0x12, 0xdb, 0x48, 0x86},
-		},
-		{
-			name: "multiple_sorted",
-			filters: []*openfgav1.ObjectRelation{
-				{Object: "user:bob"},
-				{Object: "user:alice"},
-			},
-			expected: []byte{0x85, 0xc9, 0xae, 0x69, 0xbe, 0xe4, 0xd7, 0xb3},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := buildUserFilterString(tt.filters)
-			require.Equal(t, tt.expected, result)
-		})
-	}
-}
-
-func TestGenerateConditionsHash(t *testing.T) {
-	t.Run("nil_conditions", func(t *testing.T) {
-		s := generateConditionsHash(nil)
-		require.Empty(t, s)
-	})
-
-	t.Run("empty_string_conditions", func(t *testing.T) {
-		s := generateConditionsHash([]string{""})
-		require.NotEmpty(t, s)
-	})
-
-	t.Run("with_conditions", func(t *testing.T) {
-		s := generateConditionsHash([]string{"cond1", "cond2"})
-		require.NotEmpty(t, s)
-	})
-
-	t.Run("deterministic", func(t *testing.T) {
-		s1 := generateConditionsHash([]string{"cond2", "cond1"})
-		s2 := generateConditionsHash([]string{"cond1", "cond2"})
-		require.Equal(t, s1, s2)
-	})
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1608,7 +1271,7 @@ func BenchmarkCachingIterator_CacheMiss(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		innerIter := storage.NewStaticTupleIterator(tuples)
 		iter := newCachingIterator(
-			innerIter, mockCache, "test-key", 1000, time.Hour, 30*time.Second,
+			innerIter, mockCache, testCacheKey("test-key"), 1000, time.Hour, 30*time.Second,
 			sf, wg, "document", "viewer", "benchmark",
 		)
 
@@ -1780,7 +1443,7 @@ func BenchmarkCacheKeyGeneration(b *testing.B) {
 		b.ResetTimer()
 
 		for i := 0; i < b.N; i++ {
-			_ = buildReadUsersetTuplesCacheKey("store123", filter)
+			_ = storage.ReadUsersetTuplesKey("store123", filter)
 		}
 	})
 
@@ -1796,7 +1459,7 @@ func BenchmarkCacheKeyGeneration(b *testing.B) {
 		b.ResetTimer()
 
 		for i := 0; i < b.N; i++ {
-			_ = buildReadCacheKey("store123", filter)
+			_ = storage.ReadKey("store123", filter)
 		}
 	})
 
@@ -1815,7 +1478,7 @@ func BenchmarkCacheKeyGeneration(b *testing.B) {
 		b.ResetTimer()
 
 		for i := 0; i < b.N; i++ {
-			_ = buildReadStartingWithUserCacheKey("store123", filter)
+			_ = storage.ReadStartingWithUserKey("store123", filter)
 		}
 	})
 }

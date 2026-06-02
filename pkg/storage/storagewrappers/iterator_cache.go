@@ -3,14 +3,11 @@ package storagewrappers
 import (
 	"context"
 	"errors"
-	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
-	"unsafe"
 
-	"github.com/cespare/xxhash/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"golang.org/x/sync/singleflight"
@@ -20,6 +17,7 @@ import (
 
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/storage/cache/keys"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -27,8 +25,7 @@ import (
 // ─────────────────────────────────────────────────────────────────────────────
 
 const (
-	V2IteratorCachePrefix = "v2ic."
-	maxCachedElements     = 1000
+	maxCachedElements = 1000
 	// InitialBufferCapacity is the default initial capacity for tuple buffers.
 	// Most queries return fewer than 100 tuples, so this avoids over-allocation
 	// while still providing reasonable capacity to minimize slice growth.
@@ -125,7 +122,7 @@ type CachingIterator struct {
 
 	// Cache config
 	cache    storage.InMemoryCache[any]
-	cacheKey string
+	cacheKey keys.Key
 	maxSize  int
 	ttl      time.Duration
 
@@ -152,7 +149,7 @@ var _ storage.TupleIterator = (*CachingIterator)(nil)
 func newCachingIterator(
 	inner storage.TupleIterator,
 	cache storage.InMemoryCache[any],
-	cacheKey string,
+	cacheKey keys.Key,
 	maxSize int,
 	ttl time.Duration,
 	drainTimeout time.Duration,
@@ -334,7 +331,7 @@ func (c *CachingIterator) drainInBackground() {
 
 	// Optimization 3: Use singleflight only for actual draining.
 	// This prevents multiple goroutines from draining the same iterator key concurrently.
-	_, _, _ = c.sf.Do(c.cacheKey, func() (interface{}, error) {
+	_, _, _ = c.sf.Do(c.cacheKey.String(), func() (interface{}, error) {
 		for {
 			// Check for timeout before each iteration
 			if drainCtx.Err() != nil {
@@ -476,40 +473,4 @@ func (c *LockFreeCachedIterator) reconstruct(e *MinimalCacheEntry) *openfgav1.Tu
 	}
 
 	return &openfgav1.Tuple{Key: tk}
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Cache Key Helpers
-// ─────────────────────────────────────────────────────────────────────────────
-
-// generateConditionsHash returns an ordered string concatenation of condition names to the key builder.
-func generateConditionsHash(conditions []string) []byte {
-	var count int
-	for _, s := range conditions {
-		count += len(s) + 1
-	}
-
-	if count == 0 {
-		return []byte{}
-	}
-
-	sorted := make([]string, len(conditions))
-	copy(sorted, conditions)
-
-	// sort ensures a stable hash digest
-	sort.Strings(sorted)
-
-	filtered := make([]byte, count)
-	var w int
-	for _, c := range sorted {
-		if c != "" {
-			w += copy(filtered[w:], unsafe.Slice(unsafe.StringData(c), len(c)))
-		}
-		filtered[w] = 0x00
-		w++
-	}
-
-	var hasher xxhash.Digest
-	hasher.Write(filtered)
-	return hasher.Sum([]byte{})
 }

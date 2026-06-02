@@ -10,6 +10,9 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Added
 - Added a configurable trace sampler via `trace.sampler` (`OPENFGA_TRACE_SAMPLER` / `OTEL_TRACES_SAMPLER`), supporting the standard OpenTelemetry strategies `always_on`, `always_off`, `traceidratio`, `parentbased_always_on`, `parentbased_always_off`, and `parentbased_traceidratio`. This lets OpenFGA honor upstream parent sampling decisions when running as a downstream service. Defaults to `traceidratio` to preserve existing behavior. [#3072](https://github.com/openfga/openfga/pull/3072)
 
+### Changed
+- Redesigned cache key generation to use TLV (type-length-value) binary encoding, eliminating collision risk from string concatenation and adding per-process hash seeding to prevent hash-flooding attacks. [#3148](https://github.com/openfga/openfga/pull/3148)
+
 ## [1.16.1] - 2026-05-28
 ### Changed
 - Added workflow-level `concurrency.group` and `cancel-in-progress` for PR-related workflow runs to reduce wasted effort. [#3140](https://github.com/openfga/openfga/pull/3140)

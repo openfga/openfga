@@ -14,6 +14,7 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/storage/cache/keys"
 )
 
 // TODO there is a duplicate cache of models elsewhere: https://github.com/openfga/openfga/issues/1045
@@ -60,7 +61,7 @@ func MemoizedTypesystemResolverFunc(datastore storage.AuthorizationModelReadBack
 		}
 
 		var model *openfgav1.AuthorizationModel
-		var key string
+
 		if modelID == "" {
 			v, err, _ := lookupGroup.Do("FindLatestAuthorizationModel:"+storeID, func() (interface{}, error) {
 				return datastore.FindLatestAuthorizationModel(ctx, storeID)
@@ -77,7 +78,13 @@ func MemoizedTypesystemResolverFunc(datastore storage.AuthorizationModelReadBack
 			modelID = model.GetId()
 		}
 
-		key = fmt.Sprintf("%s/%s", storeID, modelID)
+		kb := keys.GetBuilder()
+		kb.EncodeString("TS")
+		kb.EncodeString(storeID)
+		kb.EncodeString(modelID)
+		key := kb.Key()
+		kb.Close()
+
 		item := cache.Get(key)
 		if item != nil {
 			return item, nil

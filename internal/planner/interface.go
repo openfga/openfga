@@ -1,6 +1,10 @@
 package planner
 
-import "time"
+import (
+	"time"
+
+	"github.com/openfga/openfga/pkg/storage/cache/keys"
+)
 
 // Selector defines the interface for managing strategy selection and stats for a single key.
 type Selector interface {
@@ -10,6 +14,6 @@ type Selector interface {
 
 // Manager defines the interface for creating and managing plans for different keys.
 type Manager interface {
-	GetPlanSelector(key string) Selector
+	GetPlanSelector(key keys.Key) Selector
 	Stop()
 }

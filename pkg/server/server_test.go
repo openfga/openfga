@@ -5,11 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"os"
-	"path"
-	"runtime"
 	"strconv"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -53,20 +49,9 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
-var testCachePrefix string
-
-func init() {
-	_, filename, _, _ := runtime.Caller(0)
-	dir := path.Join(path.Dir(filename), "..", "..")
-	err := os.Chdir(dir)
-	if err != nil {
-		panic(err)
-	}
-
-	var builder storage.CacheKeyBuilder
-	builder.WriteString(storagewrappers.V2IteratorCachePrefix)
-	testCachePrefix = builder.Build()
-}
+// testCachePrefix is the prefix that every iterator cache key
+// starts with. It's used as a counter for "any iterator cache entries exist".
+var testCachePrefix = storage.PrefixIteratorCache
 
 func ExampleNewServerWithOpts() {
 	datastore := memory.New() // other supported datastores include Postgres, MySQL and SQLite
@@ -2690,8 +2675,13 @@ func TestV2CheckWithIteratorCache_HigherConsistencyBypassesCache(t *testing.T) {
 		return len(cache.KeysWithPrefix(testCachePrefix)) > 0
 	}, 2*time.Second, 10*time.Millisecond, "default consistency should populate iterator cache")
 
-	// Record cache key count before HIGHER_CONSISTENCY checks.
-	keysCountBefore := len(cache.KeysWithPrefix(testCachePrefix))
+	// Wait for background cache population to fully settle before measuring.
+	var keysCountBefore int
+	require.Eventually(t, func() bool {
+		prev := keysCountBefore
+		keysCountBefore = len(cache.KeysWithPrefix(testCachePrefix))
+		return keysCountBefore == prev && keysCountBefore > 0
+	}, 2*time.Second, 50*time.Millisecond, "iterator cache should stabilize")
 
 	// Now make HIGHER_CONSISTENCY requests for a different document/user
 	// to ensure any new cache entries would be distinct from existing ones.
@@ -2789,29 +2779,10 @@ func TestV2CheckWithIteratorCache_Conditions(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, checkResponse.GetAllowed())
 
-	// Wait for iterator cache to be populated and verify entries exist
-	// with a non-empty condition hash segment. In the hex-encoded key format,
-	// condition hashes appear as the last pipe-delimited segment before the
-	// trailing '|'. A non-empty hash means the segment between the last two
-	// '|' chars has length > 0.
+	// Wait for iterator cache to be populated. Conditions are included in the
+	// hashed cache key (verified by unit tests in keys_test.go) — here we confirm
+	// the conditioned model triggers iterator cache entries at all.
 	require.Eventually(t, func() bool {
-		v2CacheKeys := cache.KeysWithPrefix(testCachePrefix)
-		if len(v2CacheKeys) == 0 {
-			return false
-		}
-		for _, key := range v2CacheKeys {
-			// The conditions hash is the last segment. With 7 segments there are
-			// 7 '|' delimiters. A non-empty last segment means conditions were hashed.
-			segments := strings.Split(key, "|")
-			// segments has len == numWritten+1 because of trailing '|'
-			if len(segments) >= 8 {
-				// second-to-last segment (last real data segment) is the conditions hash
-				condSeg := segments[len(segments)-2]
-				if len(condSeg) > 0 {
-					return true
-				}
-			}
-		}
-		return false
-	}, 2*time.Second, 10*time.Millisecond, "iterator cache should contain entries with condition hash")
+		return len(cache.KeysWithPrefix(testCachePrefix)) > 0
+	}, 2*time.Second, 10*time.Millisecond, "iterator cache should contain entries for conditioned model")
 }

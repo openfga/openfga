@@ -1,13 +1,16 @@
 package test
 
 import (
+	"strings"
 	"sync"
 	"time"
+
+	"github.com/openfga/openfga/pkg/storage/cache/keys"
 )
 
 type MapCache struct {
 	mu    sync.Mutex
-	m     map[string]any
+	m     map[keys.Key]any
 	calls int
 	hits  int
 	size  int
@@ -15,11 +18,11 @@ type MapCache struct {
 
 func NewMapCache() *MapCache {
 	return &MapCache{
-		m: make(map[string]any),
+		m: make(map[keys.Key]any),
 	}
 }
 
-func (m *MapCache) Get(key string) any {
+func (m *MapCache) Get(key keys.Key) any {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -45,7 +48,7 @@ func (m *MapCache) Hits() int {
 	return m.hits
 }
 
-func (m *MapCache) Set(key string, value any, _ time.Duration) {
+func (m *MapCache) Set(key keys.Key, value any, _ time.Duration) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -57,7 +60,7 @@ func (m *MapCache) Set(key string, value any, _ time.Duration) {
 	}
 }
 
-func (m *MapCache) Delete(key string) {
+func (m *MapCache) Delete(key keys.Key) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -78,15 +81,20 @@ func (m *MapCache) Size() int {
 	return m.size
 }
 
-// KeysWithPrefix returns all keys in the cache that start with the given prefix.
-func (m *MapCache) KeysWithPrefix(prefix string) []string {
+// KeysWithPrefix returns all keys whose hex-encoded representation starts
+// with the given prefix string.
+func (m *MapCache) KeysWithPrefix(prefix string) []keys.Key {
+	var kb keys.Builder
+	kb.EncodeString(prefix)
+	prefix = kb.Key().String()
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	var keys []string
+	var result []keys.Key
 	for k := range m.m {
-		if len(k) >= len(prefix) && k[:len(prefix)] == prefix {
-			keys = append(keys, k)
+		if strings.HasPrefix(k.String(), prefix) {
+			result = append(result, k)
 		}
 	}
-	return keys
+	return result
 }

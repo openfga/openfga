@@ -2,7 +2,6 @@ package storagewrappers
 
 import (
 	"context"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -23,8 +22,7 @@ import (
 
 func TestCountingTupleIteratorIsOrdered(t *testing.T) {
 	inner := storage.NewStaticTupleIterator([]*openfgav1.Tuple{})
-	var counter atomic.Uint64
-	iter := &countingTupleIterator{TupleIterator: inner, counter: &counter}
+	iter := &countingTupleIterator{TupleIterator: inner}
 	defer iter.Stop()
 	require.True(t, iter.IsOrdered())
 }
