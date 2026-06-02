@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Try to keep listed changes to a concise bulleted list of simple explanations of changes. Aim for the amount of information needed so that readers can understand where they would look in the codebase to investigate the changes' implementation, or where they would look in the documentation to understand how to make use of the change in practice - better yet, link directly to the docs and provide detailed information there. Only elaborate if doing so is required to avoid breaking changes or experimental features from ruining someone's day.
 
 ## [Unreleased]
+### Fixed
+- Fixed `ReadChanges` pagination erroring past the first page when an object type name contains `|`, and tightened `Deserialize` to reject tokens with an empty ULID segment rather than silently restarting pagination from the beginning. [#3152](https://github.com/openfga/openfga/pull/3152)
 
 ## [1.17.0] - 2026-06-02
 ### Added
@@ -14,9 +16,6 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ### Changed
 - Redesigned cache key generation to use TLV (type-length-value) binary encoding, eliminating collision risk from string concatenation and adding per-process hash seeding to prevent hash-flooding attacks. [#3148](https://github.com/openfga/openfga/pull/3148)
-
-### Fixed
-- Fixed `ReadChanges` pagination erroring past the first page when an object type name contains `|`, and tightened `Deserialize` to reject tokens with an empty ULID segment rather than silently restarting pagination from the beginning. [#3152](https://github.com/openfga/openfga/pull/3152)
 
 ## [1.16.1] - 2026-05-28
 ### Changed
