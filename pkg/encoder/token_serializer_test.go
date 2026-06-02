@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/openfga/openfga/pkg/storage"
 )
 
 func TestStringContinuationTokenSerializer(t *testing.T) {
@@ -49,6 +51,11 @@ func TestStringContinuationTokenSerializer(t *testing.T) {
 
 	t.Run("deserialize_no_delimiter_errors", func(t *testing.T) {
 		_, _, err := s.Deserialize("nopipe")
-		require.Error(t, err)
+		require.ErrorIs(t, err, storage.ErrInvalidContinuationToken)
+	})
+
+	t.Run("deserialize_empty_ulid_errors", func(t *testing.T) {
+		_, _, err := s.Deserialize("|document")
+		require.ErrorIs(t, err, storage.ErrInvalidContinuationToken)
 	})
 }

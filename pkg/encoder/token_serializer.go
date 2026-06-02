@@ -41,5 +41,8 @@ func (ts *StringContinuationTokenSerializer) Deserialize(continuationToken strin
 		return "", "", storage.ErrInvalidContinuationToken
 	}
 	tokenParts := strings.SplitN(continuationToken, "|", 2)
+	if tokenParts[0] == "" {
+		return "", "", storage.ErrInvalidContinuationToken
+	}
 	return tokenParts[0], tokenParts[1], nil
 }
