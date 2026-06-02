@@ -660,8 +660,5 @@ func (c *cachedIterator) flush() {
 	c.records = nil
 
 	c.cache.Set(c.cacheKey, &storage.TupleIteratorCacheEntry{Tuples: records, LastModified: c.initializedAt}, storage.JitteredTTL(c.ttl, c.jitterPercentage))
-	for _, k := range c.invalidEntityKeys {
-		c.cache.Delete(k)
-	}
 	tuplesCacheSizeHistogram.WithLabelValues(c.operation, c.method).Observe(float64(len(records)))
 }

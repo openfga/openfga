@@ -229,8 +229,6 @@ func TestReadStartingWithUser(t *testing.T) {
 					t.Fatalf("mismatch (-want +got):\n%s", diff)
 				}
 			}),
-			mockCache.EXPECT().Delete(invalidEntityKeys[0]),
-			mockCache.EXPECT().Delete(invalidEntityKeys[1]),
 		)
 
 		iter, err := ds.ReadStartingWithUser(ctx, storeID, filter, options)
@@ -352,8 +350,6 @@ func TestReadStartingWithUser(t *testing.T) {
 			mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), ttl).DoAndReturn(func(_ keys.Key, entry *storage.TupleIteratorCacheEntry, _ time.Duration) {
 				require.Empty(t, entry.Tuples)
 			}),
-			mockCache.EXPECT().Delete(invalidEntityKeys[0]),
-			mockCache.EXPECT().Delete(invalidEntityKeys[1]),
 		)
 
 		iter, err := ds.ReadStartingWithUser(ctx, storeID, filter, options)
@@ -493,7 +489,6 @@ func TestReadUsersetTuples(t *testing.T) {
 					t.Fatalf("mismatch (-want +got):\n%s", diff)
 				}
 			}),
-			mockCache.EXPECT().Delete(invalidEntityKey),
 		)
 
 		iter, err := ds.ReadUsersetTuples(ctx, storeID, filter, options)
@@ -567,7 +562,6 @@ func TestReadUsersetTuples(t *testing.T) {
 			mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), ttl).DoAndReturn(func(_ keys.Key, entry *storage.TupleIteratorCacheEntry, _ time.Duration) {
 				require.Empty(t, entry.Tuples)
 			}),
-			mockCache.EXPECT().Delete(invalidEntityKey),
 		)
 
 		iter, err := ds.ReadUsersetTuples(ctx, storeID, filter, options)
@@ -701,7 +695,6 @@ func TestRead(t *testing.T) {
 					t.Fatalf("mismatch (-want +got):\n%s", diff)
 				}
 			}),
-			mockCache.EXPECT().Delete(invalidEntityKey),
 		)
 
 		iter, err := ds.Read(ctx, storeID, filter, storage.ReadOptions{})
@@ -775,7 +768,6 @@ func TestRead(t *testing.T) {
 			mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), ttl).DoAndReturn(func(_ keys.Key, entry *storage.TupleIteratorCacheEntry, _ time.Duration) {
 				require.Empty(t, entry.Tuples)
 			}),
-			mockCache.EXPECT().Delete(invalidEntityKey),
 		)
 
 		iter, err := ds.Read(ctx, storeID, filter, storage.ReadOptions{})
