@@ -37,12 +37,9 @@ func (ts *StringContinuationTokenSerializer) Serialize(ulid string, objType stri
 
 // Deserialize deserializes the continuation token from a string, as ulid & type concatenated by a pipe.
 func (ts *StringContinuationTokenSerializer) Deserialize(continuationToken string) (ulid string, objType string, err error) {
-	if !strings.Contains(continuationToken, "|") {
+	ulid, objType, found := strings.Cut(continuationToken, "|")
+	if !found || ulid == "" {
 		return "", "", storage.ErrInvalidContinuationToken
 	}
-	tokenParts := strings.SplitN(continuationToken, "|", 2)
-	if tokenParts[0] == "" {
-		return "", "", storage.ErrInvalidContinuationToken
-	}
-	return tokenParts[0], tokenParts[1], nil
+	return ulid, objType, nil
 }
