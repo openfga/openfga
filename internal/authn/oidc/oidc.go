@@ -51,10 +51,18 @@ var _ authn.OIDCAuthenticator = (*RemoteOidcAuthenticator)(nil)
 func NewRemoteOidcAuthenticator(mainIssuer string, issuerAliases []string, audiences []string, subjects []string, clientIDClaims []string) (*RemoteOidcAuthenticator, error) {
 	client := retryablehttp.NewClient()
 	client.Logger = nil
+
+	normalizedAudiences := make([]string, 0, len(audiences))
+	for _, aud := range audiences {
+		if trimmed := strings.TrimSpace(aud); trimmed != "" {
+			normalizedAudiences = append(normalizedAudiences, trimmed)
+		}
+	}
+
 	oidc := &RemoteOidcAuthenticator{
 		MainIssuer:     mainIssuer,
 		IssuerAliases:  issuerAliases,
-		Audiences:      audiences,
+		Audiences:      normalizedAudiences,
 		Subjects:       subjects,
 		httpClient:     client.StandardClient(),
 		ClientIDClaims: clientIDClaims,
@@ -88,16 +96,8 @@ func (oidc *RemoteOidcAuthenticator) Authenticate(requestContext context.Context
 		jwt.WithExpirationRequired(),
 	}
 
-	audiences := make([]string, 0, len(oidc.Audiences))
-	for _, aud := range oidc.Audiences {
-		if trimmed := strings.TrimSpace(aud); trimmed != "" {
-			audiences = append(audiences, trimmed)
-		}
-	}
-	if len(audiences) > 0 {
-		// WithAudience matches if the token's `aud` claim contains ANY of the
-		// configured audiences (not all of them).
-		options = append(options, jwt.WithAudience(audiences...))
+	if len(oidc.Audiences) > 0 {
+		options = append(options, jwt.WithAudience(oidc.Audiences...))
 	}
 
 	jwtParser := jwt.NewParser(options...)
