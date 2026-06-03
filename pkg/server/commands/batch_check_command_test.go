@@ -446,10 +446,8 @@ func TestGenerateCacheKeyFromCheck(t *testing.T) {
 			Context:  ctx,
 		}
 
-		key1, err := generateCacheKeyFromCheck(baseCheck, storeID, authModelID)
-		require.NoError(t, err)
-		key2, err := generateCacheKeyFromCheck(checkWithContext, storeID, authModelID)
-		require.NoError(t, err)
+		key1 := generateCacheKeyFromCheck(baseCheck, storeID, authModelID)
+		key2 := generateCacheKeyFromCheck(checkWithContext, storeID, authModelID)
 		require.NotEqual(t, key1, key2)
 	})
 
@@ -476,10 +474,8 @@ func TestGenerateCacheKeyFromCheck(t *testing.T) {
 			Context:  twoElements,
 		}
 
-		key1, err := generateCacheKeyFromCheck(check1, storeID, authModelID)
-		require.NoError(t, err)
-		key2, err := generateCacheKeyFromCheck(check2, storeID, authModelID)
-		require.NoError(t, err)
+		key1 := generateCacheKeyFromCheck(check1, storeID, authModelID)
+		key2 := generateCacheKeyFromCheck(check2, storeID, authModelID)
 		require.NotEqual(t, key1, key2, "single string 'editor,viewer' and two strings 'editor','viewer' must produce different cache keys")
 	})
 }
