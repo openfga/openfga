@@ -17,6 +17,9 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Changed
 - Redesigned cache key generation to use TLV (type-length-value) binary encoding, eliminating collision risk from string concatenation and adding per-process hash seeding to prevent hash-flooding attacks. [#3148](https://github.com/openfga/openfga/pull/3148)
 
+### Fixed
+- Fixed experimental `weighted_graph_check` falling back to the standard algorithm on errors that v1 would reject identically or that should not be retried. `ErrTransactionThrottled`, `check.ErrValidation`, `check.ErrInvalidUser`, and `*tuple.InvalidTupleError` (from contextual-tuple validation) are now returned directly instead of triggering a v1 retry. [#3150](https://github.com/openfga/openfga/pull/3150)
+
 ## [1.16.1] - 2026-05-28
 ### Changed
 - Added workflow-level `concurrency.group` and `cancel-in-progress` for PR-related workflow runs to reduce wasted effort. [#3140](https://github.com/openfga/openfga/pull/3140)
