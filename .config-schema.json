@@ -890,8 +890,8 @@
                     "x-env-variable": "OPENFGA_AUTHN_OIDC_ISSUER"
                 },
                 "audience": {
-                    "description": "one or more OIDC audiences that will be accepted as valid when verifying the `aud` field of the JWTs. A token is accepted if its `aud` matches any of the configured audiences.",
-                    "type": "array",
+                    "description": "one or more OIDC audiences that will be accepted as valid when verifying the `aud` field of the JWTs. A token is accepted if its `aud` matches any of the configured audiences. Accepts either a single string or a list of strings.",
+                    "type": ["string", "array"],
                     "items": {
                         "type": "string"
                     },
