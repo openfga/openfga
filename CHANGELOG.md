@@ -10,6 +10,9 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Changed
 - Update PR workflow benchmark comparison to be less flakey. [#3153](https://github.com/openfga/openfga/pull/3153)
 
+### Fixed
+- Fixed a race where an iterator cache entry flushed concurrently with a write could survive cache controller invalidation checks, causing stale tuples to be returned to subsequent requests. [#3155](https://github.com/openfga/openfga/pull/3155) Thanks to [@0xmrma](https://github.com/0xmrma) for reporting this bug.
+
 ## [1.17.0] - 2026-06-02
 ### Added
 - Added a configurable trace sampler via `trace.sampler` (`OPENFGA_TRACE_SAMPLER` / `OTEL_TRACES_SAMPLER`), supporting the standard OpenTelemetry strategies `always_on`, `always_off`, `traceidratio`, `parentbased_always_on`, `parentbased_always_off`, and `parentbased_traceidratio`. This lets OpenFGA honor upstream parent sampling decisions when running as a downstream service. Defaults to `traceidratio` to preserve existing behavior. [#3072](https://github.com/openfga/openfga/pull/3072) Thanks [@armujahid](https://github.com/armujahid)!
