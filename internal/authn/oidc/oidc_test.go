@@ -43,7 +43,7 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 					jwkKid:         "kid_1",
 					jwtKid:         "kid_1",
 					issuerURL:      "right_issuer",
-					audience:       "right_audience",
+					audiences:      []string{"right_audience"},
 					issuerAliases:  nil,
 					subjects:       []string{"openfga client"},
 					clientIDClaims: []string{"azp"},
@@ -65,7 +65,7 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 					jwkKid:         "kid_1",
 					jwtKid:         "kid_1",
 					issuerURL:      "right_issuer",
-					audience:       "right_audience",
+					audiences:      []string{"right_audience"},
 					issuerAliases:  nil,
 					subjects:       []string{"openfga client"},
 					clientIDClaims: []string{"azp"},
@@ -86,7 +86,7 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 					jwkKid:         "kid_1",
 					jwtKid:         "kid_1",
 					issuerURL:      "right_issuer",
-					audience:       "right_audience",
+					audiences:      []string{"right_audience"},
 					issuerAliases:  nil,
 					subjects:       []string{"openfga client"},
 					clientIDClaims: []string{"azp"},
@@ -109,7 +109,7 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 					jwkKid:         "kid_1",
 					jwtKid:         "kid_2",
 					issuerURL:      "",
-					audience:       "",
+					audiences:      nil,
 					issuerAliases:  nil,
 					subjects:       []string{"openfga client"},
 					clientIDClaims: []string{"azp"},
@@ -129,7 +129,7 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 					jwkKid:         "kid_1",
 					jwtKid:         "kid_1",
 					issuerURL:      "",
-					audience:       "",
+					audiences:      nil,
 					issuerAliases:  nil,
 					subjects:       []string{"openfga client"},
 					clientIDClaims: []string{"azp"},
@@ -148,7 +148,7 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 					jwkKid:         "kid_1",
 					jwtKid:         "kid_1",
 					issuerURL:      "right_issuer",
-					audience:       "",
+					audiences:      nil,
 					issuerAliases:  nil,
 					subjects:       []string{"openfga client"},
 					clientIDClaims: []string{"azp"},
@@ -168,7 +168,28 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 					jwkKid:         "kid_1",
 					jwtKid:         "kid_1",
 					issuerURL:      "right_issuer",
-					audience:       "right_audience",
+					audiences:      []string{"right_audience"},
+					issuerAliases:  nil,
+					subjects:       []string{"openfga client"},
+					clientIDClaims: []string{"azp"},
+					jwtClaims: jwt.MapClaims{
+						"iss": "right_issuer",
+						"aud": "wrong_audience",
+						"exp": time.Now().Add(10 * time.Minute).Unix(),
+					},
+					privateKeyOverride: nil,
+				})
+			},
+			expectedError: "invalid claims",
+		},
+		{
+			testDescription: "when_token's_audience_matches_none_of_the_multiple_audiences_configured,_MUST_return_'invalid_audience'_error",
+			testSetup: func() (*RemoteOidcAuthenticator, context.Context, Config, error) {
+				return quickConfigSetup(Config{
+					jwkKid:         "kid_1",
+					jwtKid:         "kid_1",
+					issuerURL:      "right_issuer",
+					audiences:      []string{"right_audience", "other_audience"},
 					issuerAliases:  nil,
 					subjects:       []string{"openfga client"},
 					clientIDClaims: []string{"azp"},
@@ -189,7 +210,7 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 					jwkKid:         "kid_1",
 					jwtKid:         "kid_1",
 					issuerURL:      "right_issuer",
-					audience:       "right_audience",
+					audiences:      []string{"right_audience"},
 					issuerAliases:  nil,
 					subjects:       []string{"openfga client"},
 					clientIDClaims: []string{"azp"},
@@ -211,7 +232,7 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 					jwkKid:         "kid_1",
 					jwtKid:         "kid_1",
 					issuerURL:      "right_issuer",
-					audience:       "right_audience",
+					audiences:      []string{"right_audience"},
 					issuerAliases:  nil,
 					subjects:       []string{"valid-sub-1", "valid-sub-2"},
 					clientIDClaims: []string{"azp"},
@@ -257,7 +278,7 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 					jwkKid:         "kid_2",
 					jwtKid:         "kid_2",
 					issuerURL:      "right_issuer",
-					audience:       "",
+					audiences:      nil,
 					issuerAliases:  nil,
 					subjects:       nil,
 					clientIDClaims: []string{"custom_claim", "custom_claim_2"},
@@ -280,7 +301,53 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 					jwkKid:         "kid_2",
 					jwtKid:         "kid_2",
 					issuerURL:      "right_issuer",
-					audience:       "right_audience",
+					audiences:      []string{"right_audience"},
+					issuerAliases:  nil,
+					subjects:       []string{"openfga client"},
+					clientIDClaims: azpClientIDClaims,
+					jwtClaims: jwt.MapClaims{
+						"iss":   "right_issuer",
+						"aud":   "right_audience",
+						"sub":   "openfga client",
+						"azp":   clientID,
+						"scope": scopes,
+						"exp":   time.Now().Add(10 * time.Minute).Unix(),
+					},
+					privateKeyOverride: nil,
+				})
+			},
+		},
+		{
+			testDescription: "when_a_configured_audience_has_surrounding_whitespace,_it_is_trimmed_and_a_matching_token_MUST_be_accepted",
+			testSetup: func() (*RemoteOidcAuthenticator, context.Context, Config, error) {
+				return quickConfigSetup(Config{
+					jwkKid:         "kid_2",
+					jwtKid:         "kid_2",
+					issuerURL:      "right_issuer",
+					audiences:      []string{"  right_audience  ", ""},
+					issuerAliases:  nil,
+					subjects:       []string{"openfga client"},
+					clientIDClaims: azpClientIDClaims,
+					jwtClaims: jwt.MapClaims{
+						"iss":   "right_issuer",
+						"aud":   "right_audience",
+						"sub":   "openfga client",
+						"azp":   clientID,
+						"scope": scopes,
+						"exp":   time.Now().Add(10 * time.Minute).Unix(),
+					},
+					privateKeyOverride: nil,
+				})
+			},
+		},
+		{
+			testDescription: "when_multiple_audiences_are_configured,_a_token_matching_any_one_of_them_MUST_be_accepted",
+			testSetup: func() (*RemoteOidcAuthenticator, context.Context, Config, error) {
+				return quickConfigSetup(Config{
+					jwkKid:         "kid_2",
+					jwtKid:         "kid_2",
+					issuerURL:      "right_issuer",
+					audiences:      []string{"other_audience", "right_audience"},
 					issuerAliases:  nil,
 					subjects:       []string{"openfga client"},
 					clientIDClaims: azpClientIDClaims,
@@ -303,7 +370,7 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 					jwkKid:         "kid_2",
 					jwtKid:         "kid_2",
 					issuerURL:      "right_issuer",
-					audience:       "right_audience",
+					audiences:      []string{"right_audience"},
 					issuerAliases:  []string{"issuer_alias"},
 					subjects:       []string{"openfga client"},
 					clientIDClaims: customClientIDClaims,
@@ -326,7 +393,7 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 					jwkKid:         "kid_2",
 					jwtKid:         "kid_2",
 					issuerURL:      "right_issuer",
-					audience:       "right_audience",
+					audiences:      []string{"right_audience"},
 					issuerAliases:  []string{"issuer_alias"},
 					subjects:       []string{"openfga client"},
 					clientIDClaims: azpClientIDClaims,
@@ -349,7 +416,7 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 					jwkKid:         "kid_2",
 					jwtKid:         "kid_2",
 					issuerURL:      "right_issuer",
-					audience:       "right_audience",
+					audiences:      []string{"right_audience"},
 					issuerAliases:  nil,
 					subjects:       nil,
 					clientIDClaims: azpClientIDClaims,
@@ -372,7 +439,7 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 					jwkKid:         "kid_2",
 					jwtKid:         "kid_2",
 					issuerURL:      "right_issuer",
-					audience:       "right_audience",
+					audiences:      []string{"right_audience"},
 					issuerAliases:  nil,
 					subjects:       nil,
 					clientIDClaims: nil,
@@ -395,7 +462,7 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 					jwkKid:         "kid_2",
 					jwtKid:         "kid_2",
 					issuerURL:      "right_issuer",
-					audience:       "right_audience",
+					audiences:      []string{"right_audience"},
 					issuerAliases:  nil,
 					subjects:       nil,
 					clientIDClaims: nil,
@@ -418,7 +485,7 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 					jwkKid:         "kid_2",
 					jwtKid:         "kid_2",
 					issuerURL:      "right_issuer",
-					audience:       "right_audience",
+					audiences:      []string{"right_audience"},
 					issuerAliases:  nil,
 					subjects:       nil,
 					clientIDClaims: []string{"custom_claim", "custom_claim_2"},
@@ -473,7 +540,7 @@ type Config struct {
 	jwkKid             string
 	jwtKid             string
 	issuerURL          string
-	audience           string
+	audiences          []string
 	issuerAliases      []string
 	subjects           []string
 	clientIDClaims     []string
@@ -492,7 +559,7 @@ func quickConfigSetup(c Config) (*RemoteOidcAuthenticator, context.Context, Conf
 	fetchJWKs = fetchKeysMock(publicKey, c.jwkKid)
 
 	// Initialize RemoteOidcAuthenticator
-	oidc, err := NewRemoteOidcAuthenticator(c.issuerURL, c.issuerAliases, c.audience, c.subjects, c.clientIDClaims)
+	oidc, err := NewRemoteOidcAuthenticator(c.issuerURL, c.issuerAliases, c.audiences, c.subjects, c.clientIDClaims)
 	if err != nil {
 		return nil, nil, c, err
 	}
@@ -560,7 +627,7 @@ func TestRemoteOidcAuthenticator_RefreshUnknownKID(t *testing.T) {
 	server := newJWKSTestServer(map[string]*rsa.PublicKey{"kid_1": pubKey1})
 	defer server.close()
 
-	oidc, err := NewRemoteOidcAuthenticator(server.server.URL, nil, "aud", nil, nil)
+	oidc, err := NewRemoteOidcAuthenticator(server.server.URL, nil, []string{"aud"}, nil, nil)
 	require.NoError(t, err)
 	defer oidc.Close()
 
@@ -613,7 +680,7 @@ func TestRemoteOidcAuthenticator_RefreshRateLimit(t *testing.T) {
 	server := newJWKSTestServer(map[string]*rsa.PublicKey{"kid_1": pubKey1})
 	defer server.close()
 
-	oidc, err := NewRemoteOidcAuthenticator(server.server.URL, nil, "aud", nil, nil)
+	oidc, err := NewRemoteOidcAuthenticator(server.server.URL, nil, []string{"aud"}, nil, nil)
 	require.NoError(t, err)
 	defer oidc.Close()
 

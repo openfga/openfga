@@ -557,8 +557,8 @@ func TestBuildServerWithOIDCAuthentication(t *testing.T) {
 	cfg := testutils.MustDefaultConfigWithRandomPorts()
 	cfg.Authn.Method = "oidc"
 	cfg.Authn.AuthnOIDCConfig = &serverconfig.AuthnOIDCConfig{
-		Audience: "openfga.dev",
-		Issuer:   localOIDCServerURL,
+		Audiences: []string{"openfga.dev"},
+		Issuer:    localOIDCServerURL,
 	}
 
 	oidcServerPortReleaser()
@@ -633,7 +633,7 @@ func TestBuildServerWithOIDCAuthenticationAlias(t *testing.T) {
 	cfg := testutils.MustDefaultConfigWithRandomPorts()
 	cfg.Authn.Method = "oidc"
 	cfg.Authn.AuthnOIDCConfig = &serverconfig.AuthnOIDCConfig{
-		Audience:      "openfga.dev",
+		Audiences:     []string{"openfga.dev"},
 		Issuer:        oidcServerURL1,
 		IssuerAliases: []string{oidcServerURL2},
 	}
@@ -1573,6 +1573,26 @@ requestDurationDispatchCountBuckets: [32,42]
 	require.Equal(t, 5*time.Second, cfg.CheckQueryCache.TTL)
 	require.Equal(t, []string{"33", "44"}, cfg.RequestDurationDatastoreQueryCountBuckets)
 	require.Equal(t, []string{"32", "42"}, cfg.RequestDurationDispatchCountBuckets)
+}
+
+// TestParseConfigOIDCAudienceScalarIsBackwardCompatible verifies that the OIDC
+// audience config, which changed from a single string to a list of strings,
+// still accepts the old scalar form and coerces it into a one-element slice.
+func TestParseConfigOIDCAudienceScalarIsBackwardCompatible(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+	util.PrepareTempConfigFile(t, "authn:\n    oidc:\n        audience: openfga.dev\n")
+
+	runCmd := NewRunCommand()
+	runCmd.RunE = func(cmd *cobra.Command, _ []string) error { return nil }
+	rootCmd := cmd.NewRootCommand()
+	rootCmd.AddCommand(runCmd)
+	rootCmd.SetArgs([]string{"run"})
+	require.NoError(t, rootCmd.Execute())
+
+	cfg, err := ReadConfig()
+	require.NoError(t, err)
+	require.Equal(t, []string{"openfga.dev"}, cfg.Authn.Audiences)
 }
 
 func TestParseConfigCacheTTLJitterPercentageFromFlag(t *testing.T) {
