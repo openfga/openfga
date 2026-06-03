@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -247,12 +248,34 @@ func validateCheckQueryV2Params(params *CheckQueryV2Params) error {
 	return nil
 }
 
-// IsV2CheckTerminalError reports whether err from CheckQueryV2.Execute should be returned directly
-// rather than falling back to v1 Check. Context errors appear in two forms: raw
-// (context.Canceled/DeadlineExceeded) or server-mapped
-// (ErrRequestCancelled/ErrRequestDeadlineExceeded).
+// IsV2CheckTerminalError reports whether err should be returned directly from the v2Check path
+// rather than falling back to v1. Two categories qualify:
+//
+//   - Context/timeout/throttle errors, where a v1 retry is pointless or harmful. Context
+//     errors appear in two forms: raw (context.Canceled/DeadlineExceeded, from the model
+//     graph resolver) or server-mapped (ErrRequestCancelled/ErrRequestDeadlineExceeded, from
+//     the execute path). ErrThrottledTimeout and ErrTransactionThrottled are included since
+//     they are not v2-specific, and retrying on v1 would only add load to an already-throttled
+//     datastore.
+//   - Deterministic request-validation failures (ErrValidation, ErrInvalidUser, and
+//     contextual-tuple validation failures), which v1 rejects identically — the fallback is
+//     wasted work and log noise.
+//
+// v2Check wraps most non-context errors via commands.CheckCommandErrorToServerError, which
+// produces gRPC status.Error values. Errors.Is/As against the original sentinels/types no
+// longer matches after that conversion, so request-validation cases must be classified by
+// the resulting gRPC code instead.
 func IsV2CheckTerminalError(err error) bool {
-	return errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) ||
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) ||
 		errors.Is(err, serverErrors.ErrRequestDeadlineExceeded) || errors.Is(err, serverErrors.ErrRequestCancelled) ||
-		errors.Is(err, serverErrors.ErrThrottledTimeout)
+		errors.Is(err, serverErrors.ErrThrottledTimeout) || errors.Is(err, serverErrors.ErrTransactionThrottled) {
+		return true
+	}
+	if st, ok := status.FromError(err); ok {
+		switch openfgav1.ErrorCode(st.Code()) {
+		case openfgav1.ErrorCode_validation_error, openfgav1.ErrorCode_invalid_tuple:
+			return true
+		}
+	}
+	return false
 }
