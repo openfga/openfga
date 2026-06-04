@@ -1,10 +1,10 @@
 package check
 
 import (
-	"strings"
 	"time"
 
 	"github.com/openfga/openfga/internal/planner"
+	"github.com/openfga/openfga/pkg/storage/cache/keys"
 )
 
 const DefaultStrategyName = "default"
@@ -78,64 +78,61 @@ var RecursivePlan = &planner.PlanConfig{
 	Beta:  2.0,
 }
 
-func createUsersetPlanKey(req *Request, userset string) string {
-	var b strings.Builder
-	b.WriteString("v2|")
-	b.WriteString("userset|")
-	b.WriteString(req.GetAuthorizationModelID())
-	b.WriteByte(cacheKeyDelimiter)
-	b.WriteString(req.GetObjectType())
-	b.WriteByte(cacheKeyDelimiter)
-	b.WriteString(req.GetTupleKey().GetRelation())
-	b.WriteByte(cacheKeyDelimiter)
-	b.WriteString(req.GetUserType())
-	b.WriteByte(cacheKeyDelimiter)
-	b.WriteString(userset)
-	return b.String()
+func createUsersetPlanKey(req *Request, userset string) keys.Key {
+	builder := keys.GetBuilder()
+	defer builder.Close()
+
+	builder.EncodeString("V2")
+	builder.EncodeString("USERSET")
+	builder.EncodeString(req.GetStoreID())
+	builder.EncodeString(req.GetAuthorizationModelID())
+	builder.EncodeString(req.GetObjectType())
+	builder.EncodeString(req.GetTupleKey().GetRelation())
+	builder.EncodeString(req.GetUserType())
+	builder.EncodeString(userset)
+	return builder.Key()
 }
 
-func createRecursiveUsersetPlanKey(req *Request, userset string) string {
-	var b strings.Builder
-	b.WriteString("v2|")
-	b.WriteString("userset|")
-	b.WriteString(req.GetAuthorizationModelID())
-	b.WriteByte(cacheKeyDelimiter)
-	b.WriteString(userset)
-	b.WriteByte(cacheKeyDelimiter)
-	b.WriteString(req.GetUserType())
-	b.WriteByte(cacheKeyDelimiter)
-	b.WriteString("infinite")
-	return b.String()
+func createRecursiveUsersetPlanKey(req *Request, userset string) keys.Key {
+	builder := keys.GetBuilder()
+	defer builder.Close()
+
+	builder.EncodeString("V2")
+	builder.EncodeString("USERSET")
+	builder.EncodeString(req.GetStoreID())
+	builder.EncodeString(req.GetAuthorizationModelID())
+	builder.EncodeString(userset)
+	builder.EncodeString(req.GetUserType())
+	builder.EncodeString("INFINITE")
+	return builder.Key()
 }
 
-func createRecursiveTTUPlanKey(req *Request, tuplesetRelation string) string {
-	var b strings.Builder
-	b.WriteString("v2|")
-	b.WriteString("ttu|")
-	b.WriteString(req.GetAuthorizationModelID())
-	b.WriteByte(cacheKeyDelimiter)
-	b.WriteString(tuplesetRelation)
-	b.WriteByte(cacheKeyDelimiter)
-	b.WriteString(req.GetUserType())
-	b.WriteByte(cacheKeyDelimiter)
-	b.WriteString("infinite")
-	return b.String()
+func createRecursiveTTUPlanKey(req *Request, tuplesetRelation string) keys.Key {
+	builder := keys.GetBuilder()
+	defer builder.Close()
+
+	builder.EncodeString("V2")
+	builder.EncodeString("TTU")
+	builder.EncodeString(req.GetStoreID())
+	builder.EncodeString(req.GetAuthorizationModelID())
+	builder.EncodeString(tuplesetRelation)
+	builder.EncodeString(req.GetUserType())
+	builder.EncodeString("INFINITE")
+	return builder.Key()
 }
 
-func createTTUPlanKey(req *Request, tuplesetRelation, computedRelation string) string {
-	var b strings.Builder
-	b.WriteString("v2|")
-	b.WriteString("ttu|")
-	b.WriteString(req.GetAuthorizationModelID())
-	b.WriteByte(cacheKeyDelimiter)
-	b.WriteString(req.GetObjectType())
-	b.WriteByte(cacheKeyDelimiter)
-	b.WriteString(req.GetTupleKey().GetRelation())
-	b.WriteByte(cacheKeyDelimiter)
-	b.WriteString(req.GetUserType())
-	b.WriteByte(cacheKeyDelimiter)
-	b.WriteString(tuplesetRelation)
-	b.WriteByte(cacheKeyDelimiter)
-	b.WriteString(computedRelation)
-	return b.String()
+func createTTUPlanKey(req *Request, tuplesetRelation, computedRelation string) keys.Key {
+	builder := keys.GetBuilder()
+	defer builder.Close()
+
+	builder.EncodeString("V2")
+	builder.EncodeString("TTU")
+	builder.EncodeString(req.GetStoreID())
+	builder.EncodeString(req.GetAuthorizationModelID())
+	builder.EncodeString(req.GetObjectType())
+	builder.EncodeString(req.GetTupleKey().GetRelation())
+	builder.EncodeString(req.GetUserType())
+	builder.EncodeString(tuplesetRelation)
+	builder.EncodeString(computedRelation)
+	return builder.Key()
 }
