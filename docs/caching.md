@@ -8,11 +8,20 @@ OpenFGA implements several complementary types of caching:
 2. [**Check Iterator Cache**](#check-iterator-cache): Caches database query results (iterators) to reduce database load during Check operations.
 3. [**List Objects Iterator Cache**](#list-objects-iterator-cache): Same as Check Iterator Cache, but used for List Objects requests.
 4. [**Cache Controller**](#cache-controller): Periodically invalidates cache entries in the background based on recent writes to the store.
+5. [**Authorization Model & Typesystem Cache**](#authorization-model--typesystem-cache): Always-on caches for authorization models and their compiled typesystems.
 
 **NOTE:**
 
-- For any request, if the `HIGHER_CONSISTENCY` consistency preference is specified, caching is bypassed entirely.
+- For any request, if the `HIGHER_CONSISTENCY` consistency preference is specified, caching is bypassed entirely (except for the authorization model and typesystem caches, which are always active).
 - The cache is in-memory, so different replicas of the service do not share their caches. Therefore, its effectiveness depends on the probability of repeated/similar requests hitting the same replica, which may depend on the model, tuple distribution, number of replicas, and the load balancing algorithm used.
+
+**Cache instances:** There are three independent in-memory cache instances:
+
+- **Shared check cache**: backs the query cache, iterator caches, and cache controller. Sized by `OPENFGA_CHECK_CACHE_LIMIT`. This is the cache referenced by the caching flags in the sections below.
+- **Authorization model cache**: caches validated authorization models. Always on; TTL 7 days; sized by `OPENFGA_DATASTORE_MAX_CACHE_SIZE`.
+- **Typesystem cache**: caches compiled typesystems derived from authorization models. Always on; TTL 7 days; sized by `OPENFGA_DATASTORE_MAX_TYPESYSTEM_CACHE_SIZE`.
+
+The model and typesystem caches use long TTLs because authorization models are **immutable**: a model update always produces a new model ID, which maps to a new cache key, so existing entries never go stale.
 
 ## Understanding Cache Types
 
@@ -20,9 +29,11 @@ OpenFGA implements several complementary types of caching:
 
 - **What it caches**: Authorization decisions (allow/deny) for the overall Check request as well as for any intermediate ("sub-problem") Checks.
 - **Benefits**: Eliminates computation for repeated identical Checks or different Checks that share common relationship evaluations.
-- **Cache key**: `hash("{object}#{relation}@{user} sp.{storeID}/{modelID}[/{contextual_tuples_comma_separated}][{request_context_parameters}]")`
-  - E.g., `hash('document:1#can_view@user:anne sp.01KJ88987NFMQYBNHPZPDCJS60/01KJ88987ZHECAKE9DPG5YTMVM/document:1#viewer@user:anne,organization:acme#member@user:anne'dummy_context_parameter:'dummy_value,'user_ip:'192.168.0.1,')` = `17904216596666502988`
-  - Essentially, "does `<user>` have `<relation>` with `<object>` for `<storeID>` & `<modelID>` given these contextual tuples and these context parameters provided in the request?"
+- **Cache key**: `SP + storeID + object + relation + user + invariantHash`
+  - `invariantHash` is a hash of `(storeID, modelID, contextual tuples, context parameters)` - the parts of a Check request that don't vary across sub-problems but do influence results.
+  - `storeID` appears in both the key itself and inside `invariantHash` as defense-in-depth: cache correctness does not depend on store IDs being globally unique across database restores or environment imports.
+  - The actual stored key is an opaque binary sequence (TLV-encoded, hex-rendered) - not a human-readable string.
+  - Essentially, "does `<user>` have `<relation>` with `<object>` for `<storeID>` & `<modelID>` given these contextual tuples and these context parameters?"
   - Note: this takes contextual tuples & context parameters into account (since they may have influenced the allow/deny decision).
 
 #### Example
@@ -51,18 +62,28 @@ Note: Iterator cache entries only cache DB results. Therefore, they do not take 
 
 Specifically, there are 3 types of iterator cache entries:
 
-1. Read (`ic.r/`)
+1. Read (`IC + "READ"`)
    - **What it caches**: Direct tuple lookups for a specific object and relation, optionally filtered by user.
-   - **Cache key**: `ic.r/{storeID}/{object}#{relation}@{user}`
-     - E.g., `ic.r/01KFB9MX3X2BK3EP2CBJVX8JDC/plan:enterprise#subscriber@`
-2. Read Starting With User (`ic.rtwu/`)
+   - **Cache key**: `IC + "READ" + storeID + object + relation + user + hash(conditions)`
+     - E.g., the logical key for "all subscriber tuples on plan:enterprise" is `IC / READ / <storeID> / plan:enterprise / subscriber / (no user filter) / hash(no conditions)`
+2. Read Starting With User (`IC + "RSWU"`)
    - **What it caches**: Reverse lookups that find all tuples where a specific user appears as the subject.
-   - **Cache key**: `ic.rtwu/{storeID}/{objectType}#{relation}[/{user}]...[/{objectIDs_hash}]`
-     - E.g., `ic.rtwu/01KFB9MX3X2BK3EP2CBJVX8JDC/organization#member/user:charles`
-3. Read Userset Tuples (`ic.rut/`)
+   - **Cache key**: `IC + "RSWU" + storeID + objectType + relation + hash(userFilter, objectIDs, conditions)`
+     - E.g., the logical key for "all organization#member tuples for user:charles" is `IC / RSWU / <storeID> / organization / member / hash(user:charles)`
+3. Read Userset Tuples (`IC + "RUT"`)
    - **What it caches**: Tuples where the user field is a userset (e.g., `organization:acme#member`), used when resolving relations that directly accept usersets as assignable types.
-   - **Cache key**: `ic.rut/{storeID}/{object}#{relation}[/{type}:*][/{type}#{relation}]...`
-     - E.g., `ic.rut/01KFY3X47P8033H79SJ2TWJJNQ/document:report#viewer/organization#member`
+   - **Cache key**: `IC + "RUT" + storeID + object + relation + hash(allowedUserTypeRestrictions, conditions)`
+     - E.g., the logical key for "all viewer tuples on document:report that are of type organization#member" is `IC / RUT / <storeID> / document:report / viewer / hash(organization#member)`
+
+The actual stored key for all three types is an opaque TLV-encoded binary sequence (hex-rendered), not a human-readable string.
+
+#### Why these key fields?
+
+Iterator keys include only the fields that determine what the database query returns:
+
+- `storeID`, `object`/`objectType`, `relation`, and `user` are structural fields - they appear in the clear because the invalidation logic needs to reconstruct them from a tuple write without knowing what queries were previously run.
+- Variable-length filter components (conditions, user-type restrictions, object-IDs) are folded into a hashed suffix. They narrow the query further but are not needed by the invalidation path.
+- Contextual tuples and request context are intentionally excluded - they are request-time parameters not stored in the DB, so DB results are the same regardless of those inputs.
 
 #### Configuration
 
@@ -77,15 +98,24 @@ Specifically, there are 3 types of iterator cache entries:
 
 Consider the [Entitlements sample store](https://github.com/openfga/sample-stores/tree/79fa8c1710f12d3f0befaba77f15463bb5a97860/stores/entitlements) and OpenFGA running with check iterator cache enabled. Given the query "does user `user:charles` have relationship `can_access` with `feature:draft_prs`?", the following cache entries (simplified) are set:
 
-1. Key: (`ic.r/`) What users have relationship `associated_plan` with object `feature:draft_prs`? Value: `[plan:enterprise, plan:team]`.
-2. Key: (`ic.r/`) What users have relationship `subscriber` with object `plan:enterprise`? Value: `[organization:cups]`.
-3. Key: (`ic.rtwu/`) What are the tuples where user `user:charles` has relationship `member` with objects of type `organization`? Value: `[organization:cups#member@user:charles]`.
+1. Key: (`IC/READ`) What users have relationship `associated_plan` with object `feature:draft_prs`? Value: `[plan:enterprise, plan:team]`.
+2. Key: (`IC/READ`) What users have relationship `subscriber` with object `plan:enterprise`? Value: `[organization:cups]`.
+3. Key: (`IC/RSWU`) What are the tuples where user `user:charles` has relationship `member` with objects of type `organization`? Value: `[organization:cups#member@user:charles]`.
 
 ### List Objects Iterator Cache
 
 Same as the Check Iterator Cache (i.e., they share the same cache entries), but used in List Objects.
 
 Note: If this is enabled along with the [cache controller](#cache-controller), the cache controller will trigger invalidation on every List Objects request.
+
+#### Interaction between Check and List Objects iterator cache config
+
+Because Check and List Objects share the same underlying cache entries (the cache key has no API-name component), the TTL and `maxResults` of a given entry are fixed by whichever request **first populates** it:
+
+- The first writer's configured TTL is stamped on the entry at write time and does not change on subsequent reads. When the entry expires, the next request to populate it (Check or List Objects) stamps its own TTL.
+- `maxResults` is a write-time cutoff: if the result set exceeds the writing request's `maxResults`, the result is **not cached at all**. Once cached, the stored tuple count is fixed; readers use the entry as-is regardless of their own `maxResults` setting.
+
+The practical implication: if Check and List Objects iterator cache TTLs or `maxResults` are configured to very different values, the effective TTL/limit for a given cache entry depends non-deterministically on which API happened to populate it first.
 
 #### Configuration
 
@@ -111,15 +141,25 @@ Invalidation runs asynchronously (eventually consistent) and is triggered on:
 - Any List Objects request if List Objects iterator cache is enabled, **irrespective** of cache controller TTL.
 - Only one invalidation can be running at a time.
 
-When the cache controller runs invalidation, it queries the database's changelog table for the most recent writes and saves the time of the most recent write. Then, it sets a cache entry of type `changelog` with key `cc.<storeID>` which contains the time of the latest write to the store. Now, invalidation is handled differently for query vs. iterator cache entries:
+When the cache controller runs invalidation, it queries the database's changelog table for the most recent writes and saves the time of the most recent write. Then, it sets a cache entry of type `changelog` with key `CC + storeID` which contains the time of the latest write to the store. Now, invalidation is handled differently for query vs. iterator cache entries:
 
 - **Query Cache**: Whenever Check finds a query cache entry, it will compare it to the time in the `changelog` cache entry (i.e., the time of the last write to the store). The query cache entry is only used if it was set after the latest write. If it was set before the latest write, it can no longer be trusted and is considered invalid, forcing Check to recompute the result from the datastore. I.e., any write to the store will invalidate all previous Check query cache entries.
 - **Iterator Cache**: Invalidation will look at X latest store changes (currently 50) from the changelog and invalidate only the relevant iterator cache entries for each of those changes that are within the Check iterator cache TTL from now. For any changes outside of this window, any iterator cache entry that was set before would have expired by now. Three cases:
       1. If none of these changes are within the Check iterator cache TTL, no invalidation is necessary.
-      2. If all of these changes are within the Check iterator cache TTL, all iterator cache entries are invalidated. This is done by setting a new cache entry of type `invalid_entity` with key `iq.<storeID>`; iterator cache entries are only used if they were set after the time this `invalid_entity` cache entry was set.
-      3. If only some of these changes are within the Check iterator cache TTL, only the iterator cache entries affected by those changes are invalidated. This is done by setting two cache entries of type `invalid_entity` - one with key `iq.<storeID>-or/<object>#<relation>` (for object-relation DB iterators) and one with key `iq.<storeID>-otr/<user>|<objectType>` (for user-objectType DB iterators); when the code needs to go to the datastore, it will only use the iterator cache if the associated `invalid_entity` cache keys are not set.
+      2. If all of these changes are within the Check iterator cache TTL, all iterator cache entries are invalidated. This is done by setting a new cache entry of type `invalid_entity` with key `IQ + storeID`; iterator cache entries are only used if they were set after the time this `invalid_entity` cache entry was set.
+      3. If only some of these changes are within the Check iterator cache TTL, only the iterator cache entries affected by those changes are invalidated. This is done by setting two cache entries of type `invalid_entity` per changed tuple - one with key `IQ + "OR" + storeID + object + relation` (for object-relation DB iterators) and one with key `IQ + "UOT" + storeID + user + objectType` (for user-objectType DB iterators); when the code needs to go to the datastore, it will only use the iterator cache if the associated `invalid_entity` cache keys are not set.
 
 Note: since invalidation is done by setting new cache entries which are checked before using a regular cache entry, the metrics for the number of items in the cache and the number of cache removals may be inflated.
+
+### How iterator invalidation keys map to iterator cache entries
+
+A tuple write `(user, object, relation)` affects exactly two shapes of DB query:
+
+1. **Queries that scan by object+relation** - `IC/READ` and `IC/RUT` entries both include `object` and `relation` in the clear in their key. The invalidation writes a marker at `IQ + "OR" + storeID + object + relation`. On read, both `IC/READ` and `IC/RUT` entries for that object+relation check this same marker and are discarded if their `LastModified` predates it.
+
+2. **Queries that scan by user+objectType** - `IC/RSWU` entries include `objectType` and `relation` in their key, but the invalidation key is `IQ + "UOT" + storeID + user + objectType` - **relation is intentionally omitted**. A write to any `(user, objectType)` combination must conservatively invalidate all RSWU entries for that user and object type, regardless of relation, because a single change could affect multiple relation-scoped reverse lookups. Dropping the relation ensures one invalidation marker covers all of them.
+
+Invalidation never deletes iterator entries; it writes timestamp markers. An iterator cache entry is discarded on read if its `LastModified` predates the relevant marker's `LastModified`. This means entries populated *after* a write are unaffected by that write's marker - they correctly reflect the post-write state.
 
 ### Configuration
 
@@ -170,6 +210,55 @@ Because invalidation is triggered asynchronously by Check and List Objects reque
 For example, if we look at the previous example, if Check 3 had occurred at t=100s, it would have still returned a stale result since it triggers invalidation asynchronously but returns immediately. The next Check, however, would see the results of the invalidation and compute a fresh result.
 
 Note that *any* Check request (if the cache controller TTL has passed since the last invalidation) or List Objects request (if list objects iterator cache is enabled) will trigger invalidation for the entire store, so this issue only occurs with very infrequent requests.
+
+#### Stale Query Cache Entry via Stale Iterator Cache
+
+When the cache controller, iterator cache, and query cache are all enabled, there is an additional staleness window that can arise from the interaction of the three:
+
+1. A Check request runs, reads tuples from the database, and populates iterator cache entries.
+2. A tuple write/delete occurs, making those iterator entries stale. The cache controller has not yet run invalidation.
+3. A subsequent Check request reads the still-present stale iterator entries, computes a stale result, and stores it in the query cache - stamped with the current time, which is *after* the write in step 2.
+4. When the cache controller finally runs, it invalidates cache entries whose `LastModified` predates the write time. The query cache entry from step 3 was stamped *after* the write, so it passes validation and is **not** invalidated. It continues to be served until either a new write to the store advances the invalidation threshold past step 3's timestamp, or the query cache TTL expires.
+
+This is an inherent limitation of timestamp-based invalidation: query cache validity is checked against the last write time only, with no visibility into whether the iterator entries used to compute the result were themselves stale.
+
+**Mitigations:**
+- Enable the cache controller with only one of the query or iterator cache (not both). The scenario requires all three to be active simultaneously.
+- If using all three, keep the query cache TTL bounded to limit how long the stale entry can persist.
+- `HIGHER_CONSISTENCY` requests bypass all caches entirely and are not affected.
+
+## Authorization Model & Typesystem Cache
+
+These two caches are always active and are independent of the caching flags described above.
+
+### Authorization Model Cache
+
+- **What it caches**: Validated `AuthorizationModel` objects, loaded once per `(storeID, modelID)` pair.
+- **Cache key**: `MODEL + storeID + modelID`
+- **TTL**: 7 days
+- **Why a long TTL**: Authorization models are immutable - creating a new model always produces a new model ID, so existing entries can never go stale.
+- **Size config**: `OPENFGA_DATASTORE_MAX_CACHE_SIZE` / `--datastore-max-cache-size` (default `100000`)
+
+### Typesystem Cache
+
+- **What it caches**: Compiled `TypeSystem` objects derived from each authorization model, loaded and validated once per `(storeID, modelID)` pair. A `singleflight` group ensures concurrent requests for the same model only trigger one compilation.
+- **Cache key**: `TS + storeID + modelID`
+- **TTL**: 7 days (same rationale as model cache - models are immutable)
+- **Size config**: `OPENFGA_DATASTORE_MAX_TYPESYSTEM_CACHE_SIZE` / `--datastore-max-typesystem-cache-size` (default `100000`)
+
+## TTL Jitter
+
+OpenFGA supports adding random jitter to the TTL of query and iterator cache entries. When enabled, each entry's effective TTL is `TTL + random(0, TTL × jitterPercentage / 100)`. For example, with a base TTL of `10s` and jitter of `10%`, each entry expires somewhere between `10s` and `11s`.
+
+**Why:** without jitter, all cache entries populated at roughly the same time expire at roughly the same time, causing a burst of simultaneous DB queries (thundering herd). Jitter spreads out expirations to smooth the repopulation load.
+
+**Configuration:**
+
+| Config File | Env Var | Flag Name | Type | Description | Default Value |
+|-------------|---------|-----------|------|-------------|---------------|
+| `cacheTTLJitterPercentage` | <div id="OPENFGA_CACHE_TTL_JITTER_PERCENTAGE"><code>OPENFGA_CACHE_TTL_JITTER_PERCENTAGE</code></div> | `cache-ttl-jitter-percentage` | integer (0–100) | percentage of the base TTL added as random jitter to each cache entry's TTL at write time | `0` (disabled) |
+
+Note: jitter applies to the query cache and iterator caches only. The authorization model and typesystem caches use a fixed 7-day TTL.
 
 ## Observability
 
