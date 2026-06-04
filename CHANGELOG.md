@@ -10,6 +10,13 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Changed
 - Update PR workflow benchmark comparison to be less flakey. [#3153](https://github.com/openfga/openfga/pull/3153)
 
+### Fixed
+- Fixed experimental `weighted_graph_check` falling back to the standard algorithm on errors that v1 would reject identically or that should not be retried. `ErrTransactionThrottled`, `check.ErrValidation`, `check.ErrInvalidUser`, and `*tuple.InvalidTupleError` (from contextual-tuple validation) are now returned directly instead of triggering a v1 retry. [#3150](https://github.com/openfga/openfga/pull/3150)
+- Fixed a race where an iterator cache entry flushed concurrently with a write could survive cache controller invalidation checks, causing stale tuples to be returned to subsequent requests. [#3155](https://github.com/openfga/openfga/pull/3155) Thanks to [@0xmrma](https://github.com/0xmrma) for reporting this bug.
+
+### Security
+- Update toolchain Go version to 1.26.4 to address the Go standard library vulnerabilities documented in the [Go 1.26.4 release notes](https://go.dev/doc/devel/release#go1.26.4). [#3159](https://github.com/openfga/openfga/pull/3159)
+
 ## [1.17.0] - 2026-06-02
 ### Added
 - Added a configurable trace sampler via `trace.sampler` (`OPENFGA_TRACE_SAMPLER` / `OTEL_TRACES_SAMPLER`), supporting the standard OpenTelemetry strategies `always_on`, `always_off`, `traceidratio`, `parentbased_always_on`, `parentbased_always_off`, and `parentbased_traceidratio`. This lets OpenFGA honor upstream parent sampling decisions when running as a downstream service. Defaults to `traceidratio` to preserve existing behavior. [#3072](https://github.com/openfga/openfga/pull/3072) Thanks [@armujahid](https://github.com/armujahid)!
