@@ -425,7 +425,11 @@ type cachedIterator struct {
 	cache             storage.InMemoryCache[any]
 	ttl               time.Duration
 	jitterPercentage  uint32
-	initializedAt     time.Time
+	// initializedAt records when the DB query was initiated. It is used as a
+	// pre-write guard against stale results and as LastModified when flushing
+	// to cache, so that invalidation entries written after the query start are
+	// correctly detected as newer by future findInCache callers.
+	initializedAt time.Time
 
 	objectID   string
 	objectType string
@@ -655,9 +659,6 @@ func (c *cachedIterator) flush() {
 	c.tuples = nil
 	c.records = nil
 
-	c.cache.Set(c.cacheKey, &storage.TupleIteratorCacheEntry{Tuples: records, LastModified: time.Now()}, storage.JitteredTTL(c.ttl, c.jitterPercentage))
-	for _, k := range c.invalidEntityKeys {
-		c.cache.Delete(k)
-	}
+	c.cache.Set(c.cacheKey, &storage.TupleIteratorCacheEntry{Tuples: records, LastModified: c.initializedAt}, storage.JitteredTTL(c.ttl, c.jitterPercentage))
 	tuplesCacheSizeHistogram.WithLabelValues(c.operation, c.method).Observe(float64(len(records)))
 }
