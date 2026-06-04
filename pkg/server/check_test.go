@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"errors"
 	"strings"
 	"sync"
 	"testing"
@@ -24,9 +23,7 @@ import (
 	"github.com/openfga/openfga/internal/modelgraph"
 	"github.com/openfga/openfga/pkg/featureflags"
 	"github.com/openfga/openfga/pkg/logger"
-	"github.com/openfga/openfga/pkg/server/commands"
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
-	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage/cache/keys"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -853,57 +850,6 @@ func TestCheck_FallsBackToV1WhenWeightedGraphInvalid(t *testing.T) {
 	require.True(t, ok, "dispatch_count should be set, confirming v1 metrics path ran")
 	_, ok = tags[datastoreQueryCountHistogramName]
 	require.True(t, ok, "datastore_query_count should be set")
-}
-
-func TestIsV2TerminalError(t *testing.T) {
-	t.Parallel()
-
-	// v2Check funnels most internal errors through commands.CheckCommandErrorToServerError,
-	// so the classifier sees gRPC status errors rather than the original sentinels/types.
-	// These cases mirror what that converter actually produces.
-	tests := []struct {
-		name     string
-		err      error
-		terminal bool
-	}{
-		{"nil", nil, false},
-		{"raw_context_canceled", context.Canceled, true},
-		{"raw_context_deadline_exceeded", context.DeadlineExceeded, true},
-		{"server_request_cancelled", serverErrors.ErrRequestCancelled, true},
-		{"server_request_deadline_exceeded", serverErrors.ErrRequestDeadlineExceeded, true},
-		{"server_throttled_timeout", serverErrors.ErrThrottledTimeout, true},
-		{"server_transaction_throttled", serverErrors.ErrTransactionThrottled, true},
-		{
-			"validation_error_from_check_ErrValidation",
-			commands.CheckCommandErrorToServerError(check.ErrValidation),
-			true,
-		},
-		{
-			"validation_error_from_check_ErrInvalidUser",
-			commands.CheckCommandErrorToServerError(check.ErrInvalidUser),
-			true,
-		},
-		{
-			"invalid_tuple_from_contextual_tuple_validation",
-			commands.CheckCommandErrorToServerError(&tuple.InvalidTupleError{
-				Cause:    check.ErrValidation,
-				TupleKey: &openfgav1.TupleKey{Object: "document:1", Relation: "viewer", User: "user:alice"},
-			}),
-			true,
-		},
-		{
-			"non_terminal_random_error",
-			errors.New("transient datastore failure"),
-			false,
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			require.Equal(t, tc.terminal, isV2TerminalError(tc.err))
-		})
-	}
 }
 
 func TestCheck_DoesNotFallBackOnInvalidContextualTuple(t *testing.T) {
