@@ -541,7 +541,7 @@ func breakingChangeReason(ctx context.Context, s *Server, req *openfgav1.CheckRe
 // rewriteContainsComputedUserset reports whether any ComputedUserset leaf in the rewrite
 // tree references the given relation name.
 func rewriteContainsComputedUserset(rewrite *openfgav1.Userset, relation string) bool {
-	result, _ := typesystem.WalkUsersetRewrite(rewrite, func(r *openfgav1.Userset) any {
+	result, _ := typesystem.WalkUsersetRewrite(rewrite, func(r *openfgav1.Userset) interface{} {
 		if cu, ok := r.GetUserset().(*openfgav1.Userset_ComputedUserset); ok {
 			if cu.ComputedUserset.GetRelation() == relation {
 				return true
@@ -549,15 +549,14 @@ func rewriteContainsComputedUserset(rewrite *openfgav1.Userset, relation string)
 		}
 		return nil
 	})
-	v, _ := result.(bool)
-	return v
+	return result != nil && result.(bool)
 }
 
 // rewriteContainsTTUForUser reports whether the target's rewrite contains a TupleToUserset
 // whose computed relation equals the user's relation, where the tupleset relation on the
 // target object type is directly related to the user's object type.
 func rewriteContainsTTUForUser(ts *typesystem.TypeSystem, targetObjectType string, rewrite *openfgav1.Userset, userObjectType, userRelation string) bool {
-	result, _ := typesystem.WalkUsersetRewrite(rewrite, func(r *openfgav1.Userset) any {
+	result, _ := typesystem.WalkUsersetRewrite(rewrite, func(r *openfgav1.Userset) interface{} {
 		ttu, ok := r.GetUserset().(*openfgav1.Userset_TupleToUserset)
 		if !ok {
 			return nil
@@ -577,8 +576,7 @@ func rewriteContainsTTUForUser(ts *typesystem.TypeSystem, targetObjectType strin
 		}
 		return nil
 	})
-	v, _ := result.(bool)
-	return v
+	return result != nil && result.(bool)
 }
 
 // usersetAliasesTargetRelation reports whether the target relation has a directly-assignable
