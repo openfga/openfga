@@ -7,8 +7,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/oklog/ulid/v2"
-
 	"github.com/openfga/openfga/pkg/storage"
 )
 
@@ -38,13 +36,10 @@ func (ts *StringContinuationTokenSerializer) Serialize(ulid string, objType stri
 }
 
 // Deserialize deserializes the continuation token from a string, as ulid & type concatenated by a pipe.
-func (ts *StringContinuationTokenSerializer) Deserialize(continuationToken string) (ulidPart string, objType string, err error) {
-	ulidPart, objType, found := strings.Cut(continuationToken, "|")
-	if !found || ulidPart == "" {
+func (ts *StringContinuationTokenSerializer) Deserialize(continuationToken string) (ulid string, objType string, err error) {
+	ulid, objType, found := strings.Cut(continuationToken, "|")
+	if !found || ulid == "" {
 		return "", "", storage.ErrInvalidContinuationToken
 	}
-	if _, err := ulid.ParseStrict(ulidPart); err != nil {
-		return "", "", storage.ErrInvalidContinuationToken
-	}
-	return ulidPart, objType, nil
+	return ulid, objType, nil
 }
