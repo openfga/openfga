@@ -125,7 +125,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 					if requestID == "" {
 						requestID = requestid.InitRequestID(ctx)
 					}
-					s.logger.InfoWithContext(ctx, "potential v2Check resolution breaking change: userset request returned false",
+					s.logger.WarnWithContext(ctx, "potential v2Check resolution breaking change: userset request returned false",
 						zap.String("store_id", storeID),
 						zap.String("model_id", req.GetAuthorizationModelId()),
 						zap.String("request_id", requestID),
