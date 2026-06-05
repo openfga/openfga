@@ -974,6 +974,18 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		return nil, fmt.Errorf("ListUsers default dispatch throttling threshold must be equal or smaller than max dispatch threshold for ListUsers")
 	}
 
+	if s.maxConcurrentReadsForListUsers == 0 {
+		return nil, fmt.Errorf("config 'maxConcurrentReadsForListUsers' cannot be 0")
+	}
+
+	if s.listObjectsDeadline < 0 {
+		return nil, fmt.Errorf("listObjectsDeadline must be non-negative time duration")
+	}
+
+	if s.listUsersDeadline < 0 {
+		return nil, fmt.Errorf("listUsersDeadline must be non-negative time duration")
+	}
+
 	if s.featureFlagClient == nil {
 		s.featureFlagClient = featureflags.NewDefaultClient(s.experimentals)
 	}
