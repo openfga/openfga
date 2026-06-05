@@ -17,7 +17,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ### Security
 - Update toolchain Go version to 1.26.4 to address the Go standard library vulnerabilities documented in the [Go 1.26.4 release notes](https://go.dev/doc/devel/release#go1.26.4). [#3159](https://github.com/openfga/openfga/pull/3159)
-- Update grpc-health-probe to `v0.4.52`, rebuilt with Go 1.26.4, so released images no longer ship the Go standard library vulnerabilities fixed in the [Go 1.26.4 release notes](https://go.dev/doc/devel/release#go1.26.4).
+- Update grpc-health-probe to `v0.4.52`, rebuilt with Go 1.26.4, so released images no longer ship the Go standard library vulnerabilities fixed in the [Go 1.26.4 release notes](https://go.dev/doc/devel/release#go1.26.4). [#3164](https://github.com/openfga/openfga/pull/3164)
 
 ## [1.17.0] - 2026-06-02
 ### Added
