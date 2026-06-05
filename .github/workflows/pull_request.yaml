@@ -185,6 +185,7 @@ jobs:
           go-version-file: './go.mod'
           cache-dependency-path: './go.sum'
           check-latest: true
+          cache: false
 
       - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
         if: steps.changes.outputs.release == 'true' || github.event_name == 'merge_group'
@@ -248,6 +249,7 @@ jobs:
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           fetch-depth: 0 # to be able to retrieve the last commit in main
+          persist-credentials: false
 
       - name: Check for performance-sensitive changes
         id: changes
