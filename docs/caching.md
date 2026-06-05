@@ -31,7 +31,7 @@ The model and typesystem caches use long TTLs because authorization models are *
 - **Benefits**: Eliminates computation for repeated identical Checks or different Checks that share common relationship evaluations.
 - **Cache key**: `SP + storeID + object + relation + user + invariantHash`
   - `invariantHash` is a hash of `(storeID, modelID, contextual tuples, context parameters)` - the parts of a Check request that don't vary across sub-problems but do influence results.
-  - `storeID` appears in both the key itself and inside `invariantHash` as defense-in-depth: cache correctness does not depend on store IDs being globally unique across database restores or environment imports.
+  - `storeID` appears in both the key itself and inside `invariantHash` as defense-in-depth: cache correctness does not depend on model IDs being globally unique across database restores or environment imports.
   - The actual stored key is an opaque binary sequence (TLV-encoded, hex-rendered) - not a human-readable string.
   - Essentially, "does `<user>` have `<relation>` with `<object>` for `<storeID>` & `<modelID>` given these contextual tuples and these context parameters?"
   - Note: this takes contextual tuples & context parameters into account (since they may have influenced the allow/deny decision).
