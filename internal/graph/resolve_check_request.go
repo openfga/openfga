@@ -37,8 +37,9 @@ type ResolveCheckRequest struct {
 	// once and propagated to clones.
 	invariantCacheKey uint64
 
-	objectType string
-	userType   string
+	objectType        string
+	userType          string
+	cachedTupleKeyStr string
 }
 
 type ResolveCheckRequestMetadata struct {
@@ -240,4 +241,13 @@ func (r *ResolveCheckRequest) GetUserType() string {
 		return ""
 	}
 	return r.userType
+}
+
+func (r *ResolveCheckRequest) GetTupleKeyString() string {
+	if r.cachedTupleKeyStr == "" {
+		if tk := r.GetTupleKey(); tk != nil {
+			r.cachedTupleKeyStr = tuple.TupleKeyToString(tk)
+		}
+	}
+	return r.cachedTupleKeyStr
 }
