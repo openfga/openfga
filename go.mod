@@ -51,11 +51,11 @@ require (
 	go.uber.org/goleak v1.3.0
 	go.uber.org/mock v0.6.0
 	go.uber.org/zap v1.28.0
-	golang.org/x/sync v0.20.0
+	golang.org/x/sync v0.21.0
 	gonum.org/v1/gonum v0.17.0
 	google.golang.org/grpc v1.81.1
 	google.golang.org/protobuf v1.36.11
-	modernc.org/sqlite v1.51.0
+	modernc.org/sqlite v1.52.0
 	sigs.k8s.io/controller-runtime v0.23.3
 	sigs.k8s.io/yaml v1.6.0
 )
