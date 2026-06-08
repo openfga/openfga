@@ -24,13 +24,13 @@ func TestNewPresharedKeyAuthenticator(t *testing.T) {
 	t.Run("accepts_single_key", func(t *testing.T) {
 		pka, err := NewPresharedKeyAuthenticator([]string{"key1"})
 		require.NoError(t, err)
-		require.Len(t, pka.ValidKeys, 1)
+		require.Len(t, pka.validKeyHashes, 1)
 	})
 
 	t.Run("accepts_multiple_keys", func(t *testing.T) {
 		pka, err := NewPresharedKeyAuthenticator([]string{"key1", "key2", "key3"})
 		require.NoError(t, err)
-		require.Len(t, pka.ValidKeys, 3)
+		require.Len(t, pka.validKeyHashes, 3)
 	})
 }
 
@@ -62,8 +62,7 @@ func TestAuthenticate(t *testing.T) {
 
 	t.Run("empty_token", func(t *testing.T) {
 		_, err := pka.Authenticate(ctxWithBearer(""))
-		// AuthFromMD treats empty bearer as missing.
-		require.Error(t, err)
+		require.ErrorIs(t, err, authn.ErrUnauthenticated)
 	})
 
 	t.Run("prefix_of_valid_key_rejected", func(t *testing.T) {
