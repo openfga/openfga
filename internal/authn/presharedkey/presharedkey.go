@@ -2,6 +2,7 @@ package presharedkey
 
 import (
 	"context"
+	"crypto/subtle"
 	"errors"
 
 	grpcauth "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/auth"
@@ -11,7 +12,7 @@ import (
 )
 
 type PresharedKeyAuthenticator struct {
-	ValidKeys map[string]struct{}
+	ValidKeys [][]byte
 }
 
 var _ authn.Authenticator = (*PresharedKeyAuthenticator)(nil)
@@ -20,9 +21,9 @@ func NewPresharedKeyAuthenticator(validKeys []string) (*PresharedKeyAuthenticato
 	if len(validKeys) < 1 {
 		return nil, errors.New("invalid auth configuration, please specify at least one key")
 	}
-	vKeys := make(map[string]struct{})
+	vKeys := make([][]byte, 0, len(validKeys))
 	for _, k := range validKeys {
-		vKeys[k] = struct{}{}
+		vKeys = append(vKeys, []byte(k))
 	}
 
 	return &PresharedKeyAuthenticator{ValidKeys: vKeys}, nil
@@ -34,7 +35,15 @@ func (pka *PresharedKeyAuthenticator) Authenticate(ctx context.Context) (*authcl
 		return nil, authn.ErrMissingBearerToken
 	}
 
-	if _, found := pka.ValidKeys[authHeader]; found {
+	// Compare against every configured key without early-return so total
+	// time depends only on the number of configured keys, not on which
+	// (if any) matched.
+	token := []byte(authHeader)
+	var matched int
+	for _, k := range pka.ValidKeys {
+		matched |= subtle.ConstantTimeCompare(token, k)
+	}
+	if matched == 1 {
 		return &authclaims.AuthClaims{
 			Subject: "", // no user information in this auth method
 		}, nil
