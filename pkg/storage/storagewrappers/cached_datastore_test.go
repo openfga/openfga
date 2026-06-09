@@ -229,8 +229,6 @@ func TestReadStartingWithUser(t *testing.T) {
 					t.Fatalf("mismatch (-want +got):\n%s", diff)
 				}
 			}),
-			mockCache.EXPECT().Delete(invalidEntityKeys[0]),
-			mockCache.EXPECT().Delete(invalidEntityKeys[1]),
 		)
 
 		iter, err := ds.ReadStartingWithUser(ctx, storeID, filter, options)
@@ -352,8 +350,6 @@ func TestReadStartingWithUser(t *testing.T) {
 			mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), ttl).DoAndReturn(func(_ keys.Key, entry *storage.TupleIteratorCacheEntry, _ time.Duration) {
 				require.Empty(t, entry.Tuples)
 			}),
-			mockCache.EXPECT().Delete(invalidEntityKeys[0]),
-			mockCache.EXPECT().Delete(invalidEntityKeys[1]),
 		)
 
 		iter, err := ds.ReadStartingWithUser(ctx, storeID, filter, options)
@@ -493,7 +489,6 @@ func TestReadUsersetTuples(t *testing.T) {
 					t.Fatalf("mismatch (-want +got):\n%s", diff)
 				}
 			}),
-			mockCache.EXPECT().Delete(invalidEntityKey),
 		)
 
 		iter, err := ds.ReadUsersetTuples(ctx, storeID, filter, options)
@@ -567,7 +562,6 @@ func TestReadUsersetTuples(t *testing.T) {
 			mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), ttl).DoAndReturn(func(_ keys.Key, entry *storage.TupleIteratorCacheEntry, _ time.Duration) {
 				require.Empty(t, entry.Tuples)
 			}),
-			mockCache.EXPECT().Delete(invalidEntityKey),
 		)
 
 		iter, err := ds.ReadUsersetTuples(ctx, storeID, filter, options)
@@ -701,7 +695,6 @@ func TestRead(t *testing.T) {
 					t.Fatalf("mismatch (-want +got):\n%s", diff)
 				}
 			}),
-			mockCache.EXPECT().Delete(invalidEntityKey),
 		)
 
 		iter, err := ds.Read(ctx, storeID, filter, storage.ReadOptions{})
@@ -775,7 +768,6 @@ func TestRead(t *testing.T) {
 			mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), ttl).DoAndReturn(func(_ keys.Key, entry *storage.TupleIteratorCacheEntry, _ time.Duration) {
 				require.Empty(t, entry.Tuples)
 			}),
-			mockCache.EXPECT().Delete(invalidEntityKey),
 		)
 
 		iter, err := ds.Read(ctx, storeID, filter, storage.ReadOptions{})
@@ -1354,6 +1346,80 @@ func TestCachedIterator(t *testing.T) {
 		require.Nil(t, iter.records)
 	})
 
+	t.Run("cache_entry_last_modified_uses_query_start_time", func(t *testing.T) {
+		// The race: iterator starts at t0, the pre-write guard passes (no invalidation
+		// entry yet), then a write is recorded at t1 between the guard and flush().
+		// With the fix, LastModified = initializedAt = t0 < t1, so findInCache rejects
+		// the stale entry. We exercise the real race by injecting the invalidation entry
+		// inside the cache's Set call, before it returns to flush().
+		maxCacheSize := 10
+		cacheKey := testCacheKey("cache-key")
+		ttl := 5 * time.Hour
+		store := ulid.Make().String()
+		invalidEntityKey := storage.InvalidIteratorByObjectRelationCacheKey(store, "document:1", "viewer")
+
+		inner, err := storage.NewInMemoryLRUCache([]storage.InMemoryLRUCacheOpt[any]{
+			storage.WithMaxCacheSize[any](int64(100)),
+		}...)
+		require.NoError(t, err)
+		defer inner.Stop()
+
+		t0 := time.Now().Add(-2 * time.Second)
+		t1 := time.Now().Add(-1 * time.Second) // write between guard and flush
+
+		// interceptingCache injects the invalidation entry when flush() calls Set for
+		// the tuple cache key, simulating a concurrent write that races the flush.
+		intercepting := &interceptingCache{
+			InMemoryCache: inner,
+			onSet: func(k keys.Key) {
+				if k == cacheKey {
+					inner.Set(invalidEntityKey, &storage.InvalidEntityCacheEntry{LastModified: t1}, ttl)
+				}
+			},
+		}
+
+		iter := &cachedIterator{
+			ctx:               ctx,
+			iter:              storage.NewStaticTupleIterator(tuples),
+			store:             store,
+			operation:         "operation",
+			tuples:            make([]*openfgav1.Tuple, 0, maxCacheSize),
+			cacheKey:          cacheKey,
+			invalidStoreKey:   storage.InvalidIteratorCacheKey(store),
+			invalidEntityKeys: []keys.Key{invalidEntityKey},
+			cache:             intercepting,
+			maxResultSize:     maxCacheSize,
+			ttl:               ttl,
+			initializedAt:     t0,
+			sf:                &singleflight.Group{},
+			wg:                &sync.WaitGroup{},
+			logger:            logger.NewNoopLogger(),
+		}
+
+		// Fully drain so flush() is called in the foreground (iterator already consumed).
+		for {
+			_, err := iter.Next(ctx)
+			if errors.Is(err, storage.ErrIteratorDone) {
+				break
+			}
+			require.NoError(t, err)
+		}
+
+		// No invalidation entry in cache yet, so the pre-write guard passes.
+		iter.Stop()
+		iter.wg.Wait()
+
+		// The cache entry must have been written with LastModified = t0 (initializedAt).
+		raw := inner.Get(cacheKey)
+		require.NotNil(t, raw, "expected cache entry to be written")
+		entry := raw.(*storage.TupleIteratorCacheEntry)
+		require.Equal(t, t0, entry.LastModified)
+
+		// findInCache must reject it: entry.LastModified (t0) < invalidation (t1).
+		_, ok := findInCache(intercepting, cacheKey, storage.InvalidIteratorCacheKey(store), []keys.Key{invalidEntityKey})
+		require.False(t, ok, "stale cache entry should be invalidated because write occurred after query start")
+	})
+
 	t.Run("prevent_draining_if_queried_before_invalidation_time", func(t *testing.T) {
 		maxCacheSize := 10
 		cacheKey := testCacheKey("cache-key")
@@ -1531,6 +1597,18 @@ func (s *mockCalledTupleIterator) Stop() {
 }
 
 func (s *mockCalledTupleIterator) IsOrdered() bool { return s.iter.IsOrdered() }
+
+// interceptingCache wraps an InMemoryCache and calls onSet before each Set,
+// allowing tests to inject side effects that race with a cache write.
+type interceptingCache struct {
+	storage.InMemoryCache[any]
+	onSet func(keys.Key)
+}
+
+func (c *interceptingCache) Set(k keys.Key, v any, ttl time.Duration) {
+	c.onSet(k)
+	c.InMemoryCache.Set(k, v, ttl)
+}
 
 // invalidIteratorByUserObjectTypeKeys is a test helper that returns one
 // invalidation cache key per user, mirroring the production fan-out previously
