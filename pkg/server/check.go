@@ -69,7 +69,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 
 		// v2Check can return errors that v1 Check wouldn't (e.g. ErrInvalidModel when the weighted graph
 		// can't represent the model). Fallback to v1 on non-timeout errors for backward compatibility.
-		if err == nil || isV2TerminalError(err) {
+		if err == nil || commands.IsV2CheckTerminalError(err) {
 			tookMs := time.Since(startTime).Milliseconds()
 			queryCount := float64(metadata.DatastoreQueryCount)
 			itemCount := float64(metadata.DatastoreItemCount)
@@ -379,48 +379,22 @@ func (s *Server) v2Check(
 		commands.WithCheckQueryV2SharedResources(s.sharedDatastoreResources),
 	)
 
-	res, metadata, err := q.Execute(ctx, req)
-
-	span.SetAttributes(attribute.Bool("allowed", res.GetAllowed()))
+	res, metadata, err := q.Execute(ctx, &commands.CheckQueryV2Params{
+		StoreID:          req.GetStoreId(),
+		TupleKey:         req.GetTupleKey(),
+		ContextualTuples: req.GetContextualTuples().GetTupleKeys(),
+		Context:          req.GetContext(),
+		Consistency:      req.GetConsistency(),
+	})
 
 	if err != nil {
 		telemetry.TraceError(span, err)
 		return nil, metadata, commands.CheckCommandErrorToServerError(err)
 	}
 
-	return res, metadata, nil
-}
+	span.SetAttributes(attribute.Bool("allowed", res.GetAllowed()))
 
-// isV2TerminalError reports whether err should be returned directly from the v2Check path
-// rather than falling back to v1. Two categories qualify:
-//
-//   - Context/timeout/throttle errors, where a v1 retry is pointless or harmful. Context
-//     errors appear in two forms: raw (context.Canceled/DeadlineExceeded, from the model
-//     graph resolver) or server-mapped (ErrRequestCancelled/ErrRequestDeadlineExceeded, from
-//     the execute path). ErrThrottledTimeout and ErrTransactionThrottled are included since
-//     they are not v2-specific, and retrying on v1 would only add load to an already-throttled
-//     datastore.
-//   - Deterministic request-validation failures (ErrValidation, ErrInvalidUser, and
-//     contextual-tuple validation failures), which v1 rejects identically — the fallback is
-//     wasted work and log noise.
-//
-// v2Check wraps most non-context errors via commands.CheckCommandErrorToServerError, which
-// produces gRPC status.Error values. Errors.Is/As against the original sentinels/types no
-// longer matches after that conversion, so request-validation cases must be classified by
-// the resulting gRPC code instead.
-func isV2TerminalError(err error) bool {
-	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) ||
-		errors.Is(err, serverErrors.ErrRequestDeadlineExceeded) || errors.Is(err, serverErrors.ErrRequestCancelled) ||
-		errors.Is(err, serverErrors.ErrThrottledTimeout) || errors.Is(err, serverErrors.ErrTransactionThrottled) {
-		return true
-	}
-	if st, ok := status.FromError(err); ok {
-		switch openfgav1.ErrorCode(st.Code()) {
-		case openfgav1.ErrorCode_validation_error, openfgav1.ErrorCode_invalid_tuple:
-			return true
-		}
-	}
-	return false
+	return res, metadata, nil
 }
 
 func (s *Server) getCheckResolverBuilder(storeID string) *graph.CheckResolverOrderedBuilder {

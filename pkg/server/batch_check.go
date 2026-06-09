@@ -3,10 +3,12 @@ package server
 import (
 	"context"
 	"errors"
+	"time"
 
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -15,6 +17,7 @@ import (
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/telemetry"
+	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/internal/utils/apimethod"
 	"github.com/openfga/openfga/pkg/middleware/validator"
 	"github.com/openfga/openfga/pkg/server/commands"
@@ -23,6 +26,8 @@ import (
 )
 
 func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckRequest) (*openfgav1.BatchCheckResponse, error) {
+	startTime := time.Now()
+
 	ctx, span := tracer.Start(ctx, apimethod.BatchCheck.String(), trace.WithAttributes(
 		attribute.KeyValue{Key: "store_id", Value: attribute.StringValue(req.GetStoreId())},
 		attribute.KeyValue{Key: "batch_size", Value: attribute.IntValue(len(req.GetChecks()))},
@@ -53,6 +58,48 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 	}
 	req.AuthorizationModelId = typesys.GetAuthorizationModelID() // the resolved model id
 
+	var checkQueryV2 *commands.CheckQueryV2
+	var v2GraphResolveFailed bool
+	v2Enabled := s.featureFlagClient.Boolean(config.ExperimentalWeightedGraphCheck, storeID)
+	if v2Enabled {
+		mg, mgErr := s.authzModelGraphResolver.Resolve(ctx, storeID, req.GetAuthorizationModelId())
+		if mgErr == nil {
+			cacheInvalidationTime := time.Time{}
+			if req.GetConsistency() != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
+				cacheInvalidationTime = s.sharedDatastoreResources.CacheController.DetermineInvalidationTime(ctx, storeID)
+			}
+
+			checkQueryV2 = commands.NewCheckQuery(
+				commands.WithCheckQueryV2Logger(s.logger),
+				commands.WithCheckQueryV2Datastore(s.datastore),
+				commands.WithCheckQueryV2MaxConcurrentReads(s.maxConcurrentReadsForCheck),
+				commands.WithCheckQueryV2DatastoreThrottling(
+					s.featureFlagClient.Boolean(config.ExperimentalDatastoreThrottling, storeID),
+					s.checkDatastoreThrottleThreshold,
+					s.checkDatastoreThrottleDuration,
+				),
+				commands.WithCheckQueryV2Model(mg),
+				commands.WithCheckQueryV2Cache(s.sharedDatastoreResources.CheckCache),
+				commands.WithCheckQueryV2QueryCacheEnabled(s.cacheSettings.ShouldCacheCheckQueries()),
+				commands.WithCheckQueryV2QueryCacheTTL(s.cacheSettings.CheckQueryCacheTTL),
+				commands.WithCheckQueryV2Planner(s.planner),
+				commands.WithCheckQueryV2LastCacheInvalidationTime(cacheInvalidationTime),
+				commands.WithCheckQueryV2ConcurrencyLimit(int(s.resolveNodeBreadthLimit)),
+				commands.WithCheckQueryV2UpstreamTimeout(s.requestTimeout),
+				commands.WithCheckQueryV2SharedResources(s.sharedDatastoreResources),
+			)
+		} else if commands.IsV2CheckTerminalError(mgErr) {
+			return nil, mgErr
+		} else {
+			v2GraphResolveFailed = true
+			s.logger.WarnWithContext(ctx, "Weighted graph model resolution failed for batch check, falling back to main Check",
+				zap.Error(mgErr),
+				zap.String("store_id", storeID),
+				zap.String("model_id", req.GetAuthorizationModelId()),
+			)
+		}
+	}
+
 	builder := s.getCheckResolverBuilder(req.GetStoreId())
 	checkResolver, checkResolverCloser, err := builder.Build()
 	if err != nil {
@@ -73,6 +120,7 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 			s.checkDatastoreThrottleThreshold,
 			s.checkDatastoreThrottleDuration,
 		),
+		commands.WithBatchCheckV2Query(checkQueryV2),
 	)
 
 	result, metadata, err := cmd.Execute(ctx, &commands.BatchCheckCommandParams{
@@ -127,14 +175,35 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 		methodName,
 	).Observe(datastoreItemCount)
 
+	tookMs := time.Since(startTime).Milliseconds()
+	requestDurationHistogram.WithLabelValues(
+		s.serviceName,
+		methodName,
+		utils.Bucketize(uint(queryCount), s.requestDurationByQueryHistogramBuckets),
+		utils.Bucketize(uint(metadata.DispatchCount), s.requestDurationByDispatchCountHistogramBuckets),
+		req.GetConsistency().String(),
+	).Observe(float64(tookMs))
+
 	duplicateChecks := "duplicate_checks"
 	span.SetAttributes(attribute.Int(duplicateChecks, metadata.DuplicateCheckCount))
 	grpc_ctxtags.Extract(ctx).Set(duplicateChecks, metadata.DuplicateCheckCount)
 
+	if v2Enabled {
+		if v2GraphResolveFailed {
+			metadata.V2FallbackCount = uint32(len(req.GetChecks()))
+		}
+		span.SetAttributes(
+			attribute.Int("v2_check_count", int(metadata.V2CheckCount)),
+			attribute.Int("v2_fallback_count", int(metadata.V2FallbackCount)),
+		)
+		grpc_ctxtags.Extract(ctx).Set("v2_check_count", metadata.V2CheckCount)
+		grpc_ctxtags.Extract(ctx).Set("v2_fallback_count", metadata.V2FallbackCount)
+	}
+
 	batchResult := map[string]*openfgav1.BatchCheckSingleResult{}
 	for correlationID, outcome := range result {
 		batchResult[string(correlationID)] = transformCheckResultToProto(outcome)
-		s.emitCheckDurationMetric(outcome.CheckResponse.GetResolutionMetadata(), methodName)
+		s.emitCheckDurationMetric(graph.ResolveCheckResponseMetadata{DatastoreQueryCount: outcome.DatastoreQueryCount, Duration: outcome.Duration}, methodName)
 	}
 
 	grpc_ctxtags.Extract(ctx).Set(datastoreQueryCountHistogramName, metadata.DatastoreQueryCount)
@@ -154,7 +223,7 @@ func transformCheckResultToProto(outcome *commands.BatchCheckOutcome) *openfgav1
 		}
 	} else {
 		singleResult.CheckResult = &openfgav1.BatchCheckSingleResult_Allowed{
-			Allowed: outcome.CheckResponse.Allowed,
+			Allowed: outcome.Allowed,
 		}
 	}
 

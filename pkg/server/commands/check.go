@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"time"
 
+	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/structpb"
+
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/check"
@@ -22,6 +25,15 @@ import (
 
 // V2CheckMethodName is used to differentiate v2Check from base Check for metric reporting when both are running.
 const V2CheckMethodName = "v2Check"
+
+// CheckQueryV2Params holds the per-request parameters for CheckQueryV2.Execute.
+type CheckQueryV2Params struct {
+	StoreID          string
+	TupleKey         *openfgav1.CheckRequestTupleKey
+	ContextualTuples []*openfgav1.TupleKey
+	Context          *structpb.Struct
+	Consistency      openfgav1.ConsistencyPreference
+}
 
 type CheckQueryV2 struct {
 	logger                    logger.Logger
@@ -141,8 +153,8 @@ func NewCheckQuery(opts ...CheckQueryV2Option) *CheckQueryV2 {
 	return q
 }
 
-func (q *CheckQueryV2) Execute(ctx context.Context, req *openfgav1.CheckRequest) (*openfgav1.CheckResponse, storagewrappers.Metadata, error) {
-	err := validateRequest(req)
+func (q *CheckQueryV2) Execute(ctx context.Context, params *CheckQueryV2Params) (*openfgav1.CheckResponse, storagewrappers.Metadata, error) {
+	err := validateCheckQueryV2Params(params)
 	if err != nil {
 		return nil, storagewrappers.Metadata{}, serverErrors.ValidationError(err)
 	}
@@ -151,12 +163,12 @@ func (q *CheckQueryV2) Execute(ctx context.Context, req *openfgav1.CheckRequest)
 	var datastore storage.RelationshipTupleReader = boundedDS
 
 	r, err := check.NewRequest(check.RequestParams{
-		StoreID:          req.GetStoreId(),
+		StoreID:          params.StoreID,
 		Model:            q.model,
-		TupleKey:         tuple.ConvertCheckRequestTupleKeyToTupleKey(req.GetTupleKey()),
-		ContextualTuples: req.GetContextualTuples().GetTupleKeys(),
-		Context:          req.GetContext(),
-		Consistency:      req.GetConsistency(),
+		TupleKey:         tuple.ConvertCheckRequestTupleKeyToTupleKey(params.TupleKey),
+		ContextualTuples: params.ContextualTuples,
+		Context:          params.Context,
+		Consistency:      params.Consistency,
 	})
 
 	if err != nil {
@@ -211,15 +223,18 @@ func (q *CheckQueryV2) Execute(ctx context.Context, req *openfgav1.CheckRequest)
 	}, metadata, nil
 }
 
-func validateRequest(req *openfgav1.CheckRequest) error {
-	tk := req.GetTupleKey()
+func validateCheckQueryV2Params(params *CheckQueryV2Params) error {
+	if params == nil {
+		return fmt.Errorf("params must not be nil")
+	}
+	tk := params.TupleKey
 	if utils.ContainsForbiddenChars(tk.GetObject()) ||
 		utils.ContainsForbiddenChars(tk.GetRelation()) ||
 		utils.ContainsForbiddenChars(tk.GetUser()) {
 		return fmt.Errorf("request tuple_key contains forbidden characters")
 	}
 
-	for _, ct := range req.GetContextualTuples().GetTupleKeys() {
+	for _, ct := range params.ContextualTuples {
 		if utils.ContainsForbiddenChars(ct.GetObject()) ||
 			utils.ContainsForbiddenChars(ct.GetRelation()) ||
 			utils.ContainsForbiddenChars(ct.GetUser()) {
@@ -231,4 +246,36 @@ func validateRequest(req *openfgav1.CheckRequest) error {
 	}
 
 	return nil
+}
+
+// IsV2CheckTerminalError reports whether err should be returned directly from the v2Check path
+// rather than falling back to v1. Two categories qualify:
+//
+//   - Context/timeout/throttle errors, where a v1 retry is pointless or harmful. Context
+//     errors appear in two forms: raw (context.Canceled/DeadlineExceeded, from the model
+//     graph resolver) or server-mapped (ErrRequestCancelled/ErrRequestDeadlineExceeded, from
+//     the execute path). ErrThrottledTimeout and ErrTransactionThrottled are included since
+//     they are not v2-specific, and retrying on v1 would only add load to an already-throttled
+//     datastore.
+//   - Deterministic request-validation failures (ErrValidation, ErrInvalidUser, and
+//     contextual-tuple validation failures), which v1 rejects identically — the fallback is
+//     wasted work and log noise.
+//
+// v2Check wraps most non-context errors via commands.CheckCommandErrorToServerError, which
+// produces gRPC status.Error values. Errors.Is/As against the original sentinels/types no
+// longer matches after that conversion, so request-validation cases must be classified by
+// the resulting gRPC code instead.
+func IsV2CheckTerminalError(err error) bool {
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) ||
+		errors.Is(err, serverErrors.ErrRequestDeadlineExceeded) || errors.Is(err, serverErrors.ErrRequestCancelled) ||
+		errors.Is(err, serverErrors.ErrThrottledTimeout) || errors.Is(err, serverErrors.ErrTransactionThrottled) {
+		return true
+	}
+	if st, ok := status.FromError(err); ok {
+		switch openfgav1.ErrorCode(st.Code()) {
+		case openfgav1.ErrorCode_validation_error, openfgav1.ErrorCode_invalid_tuple:
+			return true
+		}
+	}
+	return false
 }
