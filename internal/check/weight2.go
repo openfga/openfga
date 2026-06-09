@@ -77,6 +77,12 @@ func (s *Weight2) execute(ctx context.Context, leftChan chan *iterator.Msg, righ
 	leftSeen := make(map[string]struct{})
 	rightSeen := make(map[string]struct{})
 
+	// Enable the ordering-based pruning optimization.
+	// leftChan is a raw channel (no IsOrdered()); it is always globally sorted by construction via resolveRewrite.
+	// rightChan is derived from rightIter (a storage.Iterator), so IsOrdered() can be checked —
+	// it may be unordered when contextual tuples are prepended before datastore results via iterator.Concat.
+	pruningEnabled := rightIter.IsOrdered()
+
 	// Convert right iterator to channel for uniform processing
 	rightChan := iterator.ToChannel[string](ctx, rightIter, IteratorMinBatchThreshold)
 
@@ -135,7 +141,7 @@ func (s *Weight2) execute(ctx context.Context, leftChan chan *iterator.Msg, righ
 					// if there is not right value yet, then we should always store it
 					// if the value is greater than the last right value, then we should store it
 					// otherwise do not store it, it will never match.
-					if lastLeftVal == "" || lastRightVal == "" || t > lastRightVal {
+					if !pruningEnabled || lastLeftVal == "" || lastRightVal == "" || t > lastRightVal {
 						lastLeftVal = t
 						leftSeen[t] = struct{}{}
 					}
@@ -173,7 +179,7 @@ func (s *Weight2) execute(ctx context.Context, leftChan chan *iterator.Msg, righ
 			// if there is not left value yet, then we should always store it
 			// if the value is greater than the last left value, then we should store it
 			// otherwise do not store it, it will never match.
-			if lastLeftVal == "" || lastRightVal == "" || rightMsg.Value > lastLeftVal {
+			if !pruningEnabled || lastLeftVal == "" || lastRightVal == "" || rightMsg.Value > lastLeftVal {
 				lastRightVal = rightMsg.Value
 				rightSeen[rightMsg.Value] = struct{}{}
 			}

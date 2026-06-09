@@ -14,6 +14,7 @@ import (
 	time "time"
 
 	planner "github.com/openfga/openfga/internal/planner"
+	keys "github.com/openfga/openfga/pkg/storage/cache/keys"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -42,7 +43,7 @@ func (m *MockManager) EXPECT() *MockManagerMockRecorder {
 }
 
 // GetPlanSelector mocks base method.
-func (m *MockManager) GetPlanSelector(key string) planner.Selector {
+func (m *MockManager) GetPlanSelector(key keys.Key) planner.Selector {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetPlanSelector", key)
 	ret0, _ := ret[0].(planner.Selector)

@@ -299,6 +299,11 @@ func TestIteratorStream(t *testing.T) {
 	})
 }
 
+func TestStreamIsOrdered(t *testing.T) {
+	s := NewStream(0, make(chan *Msg))
+	require.False(t, s.IsOrdered())
+}
+
 func TestNextItemInSliceStreams(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)

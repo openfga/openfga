@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"sync"
 	"testing"
@@ -19,10 +20,14 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/cmd/util"
+	"github.com/openfga/openfga/internal/check"
 	"github.com/openfga/openfga/internal/modelgraph"
 	"github.com/openfga/openfga/pkg/featureflags"
 	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/pkg/server/commands"
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
+	serverErrors "github.com/openfga/openfga/pkg/server/errors"
+	"github.com/openfga/openfga/pkg/storage/cache/keys"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 )
@@ -214,6 +219,9 @@ func TestShadowV2Check(t *testing.T) {
 		require.Equal(t, "document:1", fields["object"])
 		require.Equal(t, "viewer", fields["relation"])
 		require.Equal(t, "user:alice", fields["user"])
+		// zap.Any encodes nil proto messages as the string "<nil>" rather than omitting the key.
+		require.Equal(t, "<nil>", fields["context"], "context should be nil when not set on request")
+		require.Equal(t, "<nil>", fields["contextual_tuples"], "contextual_tuples should be nil when not set on request")
 	})
 
 	t.Run("logs_mismatch_when_results_disagree", func(t *testing.T) {
@@ -238,6 +246,31 @@ func TestShadowV2Check(t *testing.T) {
 		require.Equal(t, "document:1", fields["object"])
 		require.Equal(t, "viewer", fields["relation"])
 		require.Equal(t, "user:alice", fields["user"])
+	})
+
+	t.Run("logs_contextual_tuples_when_present", func(t *testing.T) {
+		logs.TakeAll()
+
+		reqWithCtxTuples := &openfgav1.CheckRequest{
+			StoreId:              req.GetStoreId(),
+			AuthorizationModelId: req.GetAuthorizationModelId(),
+			TupleKey:             req.GetTupleKey(),
+			ContextualTuples: &openfgav1.ContextualTupleKeys{
+				TupleKeys: []*openfgav1.TupleKey{
+					tuple.NewTupleKey("document:1", "viewer", "user:bob"),
+				},
+			},
+		}
+
+		mainRes := &openfgav1.CheckResponse{Allowed: true}
+		s.shadowV2Check(context.Background(), reqWithCtxTuples, mainRes, 10, 1, 1)
+
+		shadowLogs := logs.FilterMessage("shadow check")
+		require.Equal(t, 1, shadowLogs.Len())
+
+		fields := fieldMap(shadowLogs.All()[0].Context)
+		require.NotNil(t, fields["contextual_tuples"], "contextual_tuples should be logged when present")
+		require.Equal(t, "<nil>", fields["context"], "context should be nil when not set on request")
 	})
 
 	t.Run("logs_error_on_invalid_store", func(t *testing.T) {
@@ -316,34 +349,49 @@ func fieldMap(fields []zap.Field) map[string]interface{} {
 // so tests can assert which cache received entries.
 type recordingCache struct {
 	mu      sync.Mutex
-	entries map[string]any
+	entries map[keys.Key]any
 	getKeys []string
 	setKeys []string
 	delKeys []string
 }
 
-func newRecordingCache() *recordingCache {
-	return &recordingCache{entries: make(map[string]any)}
+// subproblemCachePrefix is the hex-encoded TLV prefix every per-edge subproblem
+// cache key starts with. ModelGraphCachePrefix is the equivalent for entries
+// the authorization-model-graph resolver writes. Tests use them to partition
+// recorded cache keys by what they cache.
+var (
+	subproblemCachePrefix = tlvHexPrefix(check.PrefixEdgeCacheKey)
+	modelGraphCachePrefix = tlvHexPrefix(modelgraph.CacheKeyPrefix)
+)
+
+func tlvHexPrefix(s string) string {
+	var b keys.Builder
+	b.EncodeString(s)
+	return b.Key().String()
 }
 
-func (c *recordingCache) Get(key string) any {
+func newRecordingCache() *recordingCache {
+	return &recordingCache{entries: make(map[keys.Key]any)}
+}
+
+func (c *recordingCache) Get(key keys.Key) any {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.getKeys = append(c.getKeys, key)
+	c.getKeys = append(c.getKeys, key.String())
 	return c.entries[key]
 }
 
-func (c *recordingCache) Set(key string, value any, _ time.Duration) {
+func (c *recordingCache) Set(key keys.Key, value any, _ time.Duration) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.setKeys = append(c.setKeys, key)
+	c.setKeys = append(c.setKeys, key.String())
 	c.entries[key] = value
 }
 
-func (c *recordingCache) Delete(key string) {
+func (c *recordingCache) Delete(key keys.Key) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.delKeys = append(c.delKeys, key)
+	c.delKeys = append(c.delKeys, key.String())
 	delete(c.entries, key)
 }
 
@@ -352,25 +400,25 @@ func (c *recordingCache) Stop() {}
 func (c *recordingCache) getKeysWithPrefix(prefix string) []string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	var keys []string
+	var result []string
 	for _, k := range c.getKeys {
 		if strings.HasPrefix(k, prefix) {
-			keys = append(keys, k)
+			result = append(result, k)
 		}
 	}
-	return keys
+	return result
 }
 
 func (c *recordingCache) setKeysWithPrefix(prefix string) []string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	var keys []string
+	var result []string
 	for _, k := range c.setKeys {
 		if strings.HasPrefix(k, prefix) {
-			keys = append(keys, k)
+			result = append(result, k)
 		}
 	}
-	return keys
+	return result
 }
 
 func (c *recordingCache) resetTracking() {
@@ -423,12 +471,12 @@ func TestV2CheckCacheSeparation(t *testing.T) {
 		require.NoError(t, err)
 
 		// Shadow mode should route model graph and subproblem entries to the shadow cache.
-		require.NotEmpty(t, shadowCache.setKeysWithPrefix("wg|"), "shadow cache should have model graph entries")
-		require.NotEmpty(t, shadowCache.setKeysWithPrefix("c."), "shadow cache should have subproblem cache entries")
+		require.NotEmpty(t, shadowCache.setKeysWithPrefix(modelGraphCachePrefix), "shadow cache should have model graph entries")
+		require.NotEmpty(t, shadowCache.setKeysWithPrefix(subproblemCachePrefix), "shadow cache should have subproblem cache entries")
 
 		// Main cache should remain empty.
-		require.Empty(t, checkCache.setKeysWithPrefix("wg|"), "main check cache should not have model graph entries")
-		require.Empty(t, checkCache.setKeysWithPrefix("c."), "main check cache should not have subproblem cache entries")
+		require.Empty(t, checkCache.setKeysWithPrefix(modelGraphCachePrefix), "main check cache should not have model graph entries")
+		require.Empty(t, checkCache.setKeysWithPrefix(subproblemCachePrefix), "main check cache should not have subproblem cache entries")
 	})
 
 	t.Run("non_shadow_mode_uses_main_cache", func(t *testing.T) {
@@ -449,12 +497,12 @@ func TestV2CheckCacheSeparation(t *testing.T) {
 		require.NoError(t, err)
 
 		// Non-shadow mode should route model graph and subproblem entries to the main cache.
-		require.NotEmpty(t, checkCache.setKeysWithPrefix("wg|"), "main check cache should have model graph entries")
-		require.NotEmpty(t, checkCache.setKeysWithPrefix("c."), "main check cache should have subproblem cache entries")
+		require.NotEmpty(t, checkCache.setKeysWithPrefix(modelGraphCachePrefix), "main check cache should have model graph entries")
+		require.NotEmpty(t, checkCache.setKeysWithPrefix(subproblemCachePrefix), "main check cache should have subproblem cache entries")
 
 		// Shadow cache should remain empty.
-		require.Empty(t, shadowCache.setKeysWithPrefix("wg|"), "shadow cache should not have model graph entries")
-		require.Empty(t, shadowCache.setKeysWithPrefix("c."), "shadow cache should not have subproblem cache entries")
+		require.Empty(t, shadowCache.setKeysWithPrefix(modelGraphCachePrefix), "shadow cache should not have model graph entries")
+		require.Empty(t, shadowCache.setKeysWithPrefix(subproblemCachePrefix), "shadow cache should not have subproblem cache entries")
 	})
 
 	t.Run("cache_controller_instances_are_separate", func(t *testing.T) {
@@ -474,15 +522,13 @@ func TestV2CheckMetadata(t *testing.T) {
 	})
 
 	t.Run("publishes_datastore_query_and_item_counts", func(t *testing.T) {
-		s, req := setupCheckServer(t, "", nil)
+		s, req := setupCheckServer(t, "", nil,
+			WithFeatureFlagClient(featureflags.NewDefaultClient([]string{serverconfig.ExperimentalWeightedGraphCheck})),
+		)
 
 		ctx := grpc_ctxtags.SetInContext(context.Background(), grpc_ctxtags.NewTags())
 
-		res, _, err := s.v2Check(ctx, req,
-			s.sharedDatastoreResources.CheckCache,
-			s.sharedDatastoreResources.CacheController,
-			s.authzModelGraphResolver,
-		)
+		res, err := s.Check(ctx, req)
 		require.NoError(t, err)
 		require.True(t, res.GetAllowed())
 
@@ -499,6 +545,10 @@ func TestV2CheckMetadata(t *testing.T) {
 		throttled, ok := tags["request.datastore_throttled"]
 		require.True(t, ok, "request.datastore_throttled should be set in context tags")
 		require.Equal(t, false, throttled, "throttling should be disabled by default")
+
+		// v2 does not track dispatch count, so the tag must be absent.
+		_, ok = tags[dispatchCountHistogramName]
+		require.False(t, ok, "dispatch_count should not be set for v2 path (no dispatcher)")
 	})
 
 	t.Run("throttling_enabled_when_flag_on_and_threshold_exceeded", func(t *testing.T) {
@@ -527,11 +577,7 @@ func TestV2CheckMetadata(t *testing.T) {
 
 		ctx := grpc_ctxtags.SetInContext(context.Background(), grpc_ctxtags.NewTags())
 
-		res, _, err := s.v2Check(ctx, req,
-			s.sharedDatastoreResources.CheckCache,
-			s.sharedDatastoreResources.CacheController,
-			s.authzModelGraphResolver,
-		)
+		res, err := s.Check(ctx, req)
 		require.NoError(t, err)
 		require.True(t, res.GetAllowed())
 
@@ -544,17 +590,14 @@ func TestV2CheckMetadata(t *testing.T) {
 
 	t.Run("throttling_disabled_when_flag_off", func(t *testing.T) {
 		s, req := setupCheckServer(t, "", nil,
-			WithFeatureFlagClient(featureflags.NewNoopFeatureFlagClient()),
+			// Enable v2 but NOT datastore throttling, to verify throttling is disabled.
+			WithFeatureFlagClient(featureflags.NewDefaultClient([]string{serverconfig.ExperimentalWeightedGraphCheck})),
 			WithCheckDatabaseThrottle(1, 1*time.Millisecond),
 		)
 
 		ctx := grpc_ctxtags.SetInContext(context.Background(), grpc_ctxtags.NewTags())
 
-		res, _, err := s.v2Check(ctx, req,
-			s.sharedDatastoreResources.CheckCache,
-			s.sharedDatastoreResources.CacheController,
-			s.authzModelGraphResolver,
-		)
+		res, err := s.Check(ctx, req)
 		require.NoError(t, err)
 		require.True(t, res.GetAllowed())
 
@@ -563,6 +606,35 @@ func TestV2CheckMetadata(t *testing.T) {
 		throttled, ok := tags["request.datastore_throttled"]
 		require.True(t, ok, "request.datastore_throttled should be set in context tags")
 		require.Equal(t, false, throttled, "throttling should be disabled when feature flag is false")
+	})
+
+	t.Run("cancelled_context_returns_error_not_fallback", func(t *testing.T) {
+		// When the caller's context is already cancelled, v2Check returns context.Canceled.
+		// Check must return that error immediately (not fall back to v1) and still emit metrics.
+		// The error surfaces as the gRPC-mapped ErrRequestCancelled, not the raw sentinel.
+		s, req := setupCheckServer(t, "", nil,
+			WithFeatureFlagClient(featureflags.NewDefaultClient([]string{serverconfig.ExperimentalWeightedGraphCheck})),
+		)
+
+		cancelledCtx, cancel := context.WithCancel(context.Background())
+		cancel() // cancel before the call
+		ctx := grpc_ctxtags.SetInContext(cancelledCtx, grpc_ctxtags.NewTags())
+
+		_, err := s.Check(ctx, req)
+		require.Error(t, err)
+		st, ok := status.FromError(err)
+		require.True(t, ok, "error should be a gRPC status error")
+		require.Equal(t, "Request Cancelled", st.Message())
+
+		tags := grpc_ctxtags.Extract(ctx).Values()
+		// Metrics must be set even for the error path.
+		_, ok = tags[datastoreQueryCountHistogramName]
+		require.True(t, ok, "datastore_query_count should be set even on cancelled context")
+		_, ok = tags["request.datastore_throttled"]
+		require.True(t, ok, "request.datastore_throttled should be set even on cancelled context")
+		// v1 dispatch tag must be absent — we didn't fall back.
+		_, ok = tags[dispatchCountHistogramName]
+		require.False(t, ok, "dispatch_count must not be set — cancelled context must not fall back to v1")
 	})
 }
 
@@ -698,7 +770,7 @@ func TestV2CheckQueryCacheEnabled(t *testing.T) {
 		require.NoError(t, err)
 		require.True(t, res.GetAllowed())
 
-		require.NotEmpty(t, checkCache.setKeysWithPrefix("c."), "cache should have subproblem entries written when query cache is enabled")
+		require.NotEmpty(t, checkCache.setKeysWithPrefix(subproblemCachePrefix), "cache should have subproblem entries written when query cache is enabled")
 
 		// Reset tracking so the second call's Get activity is isolated.
 		checkCache.resetTracking()
@@ -711,9 +783,9 @@ func TestV2CheckQueryCacheEnabled(t *testing.T) {
 		)
 		require.NoError(t, err)
 		require.True(t, res.GetAllowed())
-		require.NotEmpty(t, checkCache.getKeysWithPrefix("c."),
+		require.NotEmpty(t, checkCache.getKeysWithPrefix(subproblemCachePrefix),
 			"second check should read subproblem entries from cache")
-		require.Empty(t, checkCache.setKeysWithPrefix("c."),
+		require.Empty(t, checkCache.setKeysWithPrefix(subproblemCachePrefix),
 			"second check should not write new subproblem entries (cache should be hit)")
 	})
 
@@ -737,7 +809,7 @@ func TestV2CheckQueryCacheEnabled(t *testing.T) {
 		require.NoError(t, err)
 		require.True(t, res.GetAllowed())
 
-		require.Empty(t, checkCache.setKeysWithPrefix("c."), "cache should have no subproblem entries when query cache is disabled")
+		require.Empty(t, checkCache.setKeysWithPrefix(subproblemCachePrefix), "cache should have no subproblem entries when query cache is disabled")
 	})
 }
 
@@ -769,8 +841,101 @@ func TestCheck_FallsBackToV1WhenWeightedGraphInvalid(t *testing.T) {
 		WithFeatureFlagClient(featureflags.NewDefaultClient([]string{serverconfig.ExperimentalWeightedGraphCheck})),
 	)
 
-	resp, err := s.Check(context.Background(), req)
+	ctx := grpc_ctxtags.SetInContext(context.Background(), grpc_ctxtags.NewTags())
+	resp, err := s.Check(ctx, req)
 	require.NoError(t, err)
 	// v1 fallback: alice has user_access but not bot_access, so viewer (AND) is false.
 	require.False(t, resp.GetAllowed())
+
+	tags := grpc_ctxtags.Extract(ctx).Values()
+	// dispatch_count is only set by the v1 metrics path, confirming fallback ran v1.
+	_, ok := tags[dispatchCountHistogramName]
+	require.True(t, ok, "dispatch_count should be set, confirming v1 metrics path ran")
+	_, ok = tags[datastoreQueryCountHistogramName]
+	require.True(t, ok, "datastore_query_count should be set")
+}
+
+func TestIsV2TerminalError(t *testing.T) {
+	t.Parallel()
+
+	// v2Check funnels most internal errors through commands.CheckCommandErrorToServerError,
+	// so the classifier sees gRPC status errors rather than the original sentinels/types.
+	// These cases mirror what that converter actually produces.
+	tests := []struct {
+		name     string
+		err      error
+		terminal bool
+	}{
+		{"nil", nil, false},
+		{"raw_context_canceled", context.Canceled, true},
+		{"raw_context_deadline_exceeded", context.DeadlineExceeded, true},
+		{"server_request_cancelled", serverErrors.ErrRequestCancelled, true},
+		{"server_request_deadline_exceeded", serverErrors.ErrRequestDeadlineExceeded, true},
+		{"server_throttled_timeout", serverErrors.ErrThrottledTimeout, true},
+		{"server_transaction_throttled", serverErrors.ErrTransactionThrottled, true},
+		{
+			"validation_error_from_check_ErrValidation",
+			commands.CheckCommandErrorToServerError(check.ErrValidation),
+			true,
+		},
+		{
+			"validation_error_from_check_ErrInvalidUser",
+			commands.CheckCommandErrorToServerError(check.ErrInvalidUser),
+			true,
+		},
+		{
+			"invalid_tuple_from_contextual_tuple_validation",
+			commands.CheckCommandErrorToServerError(&tuple.InvalidTupleError{
+				Cause:    check.ErrValidation,
+				TupleKey: &openfgav1.TupleKey{Object: "document:1", Relation: "viewer", User: "user:alice"},
+			}),
+			true,
+		},
+		{
+			"non_terminal_random_error",
+			errors.New("transient datastore failure"),
+			false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tc.terminal, isV2TerminalError(tc.err))
+		})
+	}
+}
+
+func TestCheck_DoesNotFallBackOnInvalidContextualTuple(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	// A contextual tuple with a relation that doesn't exist on the model is rejected by v2's
+	// request-validation step. v1 would reject it identically, so we must not fall back.
+	s, baseReq := setupCheckServer(t, "", nil,
+		WithFeatureFlagClient(featureflags.NewDefaultClient([]string{serverconfig.ExperimentalWeightedGraphCheck})),
+	)
+
+	req := &openfgav1.CheckRequest{
+		StoreId:              baseReq.GetStoreId(),
+		AuthorizationModelId: baseReq.GetAuthorizationModelId(),
+		TupleKey:             baseReq.GetTupleKey(),
+		ContextualTuples: &openfgav1.ContextualTupleKeys{
+			TupleKeys: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "no_such_relation", "user:bob"),
+			},
+		},
+	}
+
+	ctx := grpc_ctxtags.SetInContext(context.Background(), grpc_ctxtags.NewTags())
+	_, err := s.Check(ctx, req)
+	require.Error(t, err)
+
+	tags := grpc_ctxtags.Extract(ctx).Values()
+	// v2 metrics must be present; v1 dispatch_count must be absent (no fallback).
+	_, ok := tags[datastoreQueryCountHistogramName]
+	require.True(t, ok, "datastore_query_count should be set on v2 terminal error")
+	_, ok = tags[dispatchCountHistogramName]
+	require.False(t, ok, "dispatch_count must not be set — invalid contextual tuple must not fall back to v1")
 }

@@ -15,6 +15,7 @@ import (
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/storage/cache/keys"
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
@@ -118,7 +119,7 @@ func BenchmarkV1vsV2_CacheHit_Iteration(b *testing.B) {
 			b.ResetTimer()
 
 			for i := 0; i < b.N; i++ {
-				iter := NewLockFreeCachedIterator(entries, "document", "viewer")
+				iter := NewLockFreeCachedIterator(entries, "document", "viewer", false)
 
 				for {
 					_, err := iter.Next(ctx)
@@ -160,7 +161,7 @@ func BenchmarkV1vsV2_CacheHit_SingleNext(b *testing.B) {
 		b.ResetTimer()
 
 		for i := 0; i < b.N; i++ {
-			iter := NewLockFreeCachedIterator(entries, "document", "viewer")
+			iter := NewLockFreeCachedIterator(entries, "document", "viewer", false)
 			_, _ = iter.Next(ctx)
 		}
 	})
@@ -202,7 +203,7 @@ func BenchmarkV1vsV2_CacheMiss_Collection(b *testing.B) {
 					store:         "store123",
 					operation:     "ReadUsersetTuples",
 					tuples:        make([]*openfgav1.Tuple, 0, size),
-					cacheKey:      "test-key",
+					cacheKey:      testCacheKey("test-key"),
 					cache:         mockCache,
 					maxResultSize: size + 100,
 					ttl:           time.Hour,
@@ -240,7 +241,7 @@ func BenchmarkV1vsV2_CacheMiss_Collection(b *testing.B) {
 				innerIter := storage.NewStaticTupleIterator(tuples)
 
 				iter := newCachingIterator(
-					innerIter, mockCache, "test-key", size+100, time.Hour, 30*time.Second,
+					innerIter, mockCache, testCacheKey("test-key"), size+100, time.Hour, 30*time.Second,
 					sf, wg, "document", "viewer", "ReadUsersetTuples",
 				)
 
@@ -360,7 +361,7 @@ func BenchmarkV1vsV2_Concurrent_Next(b *testing.B) {
 			b.ResetTimer()
 
 			for i := 0; i < b.N; i++ {
-				iter := NewLockFreeCachedIterator(entries, "document", "viewer")
+				iter := NewLockFreeCachedIterator(entries, "document", "viewer", false)
 
 				var wg sync.WaitGroup
 				wg.Add(numGoroutines)
@@ -458,7 +459,7 @@ func BenchmarkV1vsV2_EndToEnd(b *testing.B) {
 
 		var cachedRecords []*storage.TupleRecord
 		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-			func(_ string, value any, _ time.Duration) {
+			func(_ keys.Key, value any, _ time.Duration) {
 				entry := value.(*storage.TupleIteratorCacheEntry)
 				cachedRecords = entry.Tuples
 			},
@@ -483,7 +484,7 @@ func BenchmarkV1vsV2_EndToEnd(b *testing.B) {
 				store:         "store123",
 				operation:     "ReadUsersetTuples",
 				tuples:        make([]*openfgav1.Tuple, 0, size),
-				cacheKey:      "test-key",
+				cacheKey:      testCacheKey("test-key"),
 				cache:         mockCache,
 				maxResultSize: size + 100,
 				ttl:           time.Hour,
@@ -529,12 +530,12 @@ func BenchmarkV1vsV2_EndToEnd(b *testing.B) {
 
 		var cachedEntry *V2IteratorCacheEntry
 		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-			func(_ string, value any, _ time.Duration) {
+			func(_ keys.Key, value any, _ time.Duration) {
 				cachedEntry = value.(*V2IteratorCacheEntry)
 			},
 		).AnyTimes()
 		mockCache.EXPECT().Get(gomock.Any()).DoAndReturn(
-			func(_ string) any {
+			func(_ keys.Key) any {
 				return cachedEntry
 			},
 		).AnyTimes()
@@ -551,7 +552,7 @@ func BenchmarkV1vsV2_EndToEnd(b *testing.B) {
 			// Cache miss - populate cache
 			innerIter := storage.NewStaticTupleIterator(tuples)
 			cachingIter := newCachingIterator(
-				innerIter, mockCache, "test-key", size+100, time.Hour, 30*time.Second,
+				innerIter, mockCache, testCacheKey("test-key"), size+100, time.Hour, 30*time.Second,
 				sf, wg, "document", "viewer", "ReadUsersetTuples",
 			)
 
@@ -566,7 +567,7 @@ func BenchmarkV1vsV2_EndToEnd(b *testing.B) {
 
 			// Cache hit - iterate from cache
 			if cachedEntry != nil {
-				cachedIter := NewLockFreeCachedIterator(cachedEntry.Entries, "document", "viewer")
+				cachedIter := NewLockFreeCachedIterator(cachedEntry.Entries, "document", "viewer", false)
 				for {
 					_, err := cachedIter.Next(ctx)
 					if err != nil {

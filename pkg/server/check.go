@@ -34,13 +34,6 @@ import (
 func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openfgav1.CheckResponse, error) {
 	const methodName = "check"
 
-	builder := s.getCheckResolverBuilder(req.GetStoreId())
-	checkResolver, checkResolverCloser, err := builder.Build()
-	if err != nil {
-		return nil, err
-	}
-	defer checkResolverCloser()
-
 	startTime := time.Now()
 
 	tk := req.GetTupleKey()
@@ -51,7 +44,6 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		attribute.KeyValue{Key: "user", Value: attribute.StringValue(tk.GetUser())},
 		attribute.KeyValue{Key: "consistency", Value: attribute.StringValue(req.GetConsistency().String())},
 	))
-	isShadowRunning := s.featureFlagClient.Boolean(serverconfig.ExperimentalShadowWeightedGraphCheck, req.GetStoreId())
 	defer span.End()
 
 	if !validator.RequestIsValidatedFromContext(ctx) {
@@ -65,7 +57,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		Method:  apimethod.Check.String(),
 	})
 
-	err = s.checkAuthz(ctx, req.GetStoreId(), apimethod.Check)
+	err := s.checkAuthz(ctx, req.GetStoreId(), apimethod.Check)
 	if err != nil {
 		return nil, err
 	}
@@ -73,12 +65,57 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 	storeID := req.GetStoreId()
 
 	if s.featureFlagClient.Boolean(serverconfig.ExperimentalWeightedGraphCheck, storeID) {
-		// TODO: This path is missing some of the metrics/tracing information reported below
-		res, _, err := s.v2Check(ctx, req, s.sharedDatastoreResources.CheckCache, s.sharedDatastoreResources.CacheController, s.authzModelGraphResolver)
+		res, metadata, err := s.v2Check(ctx, req, s.sharedDatastoreResources.CheckCache, s.sharedDatastoreResources.CacheController, s.authzModelGraphResolver)
 
-		if err == nil || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
-			return res, err
+		// v2Check can return errors that v1 Check wouldn't (e.g. ErrInvalidModel when the weighted graph
+		// can't represent the model). Fallback to v1 on non-timeout errors for backward compatibility.
+		if err == nil || isV2TerminalError(err) {
+			tookMs := time.Since(startTime).Milliseconds()
+			queryCount := float64(metadata.DatastoreQueryCount)
+			itemCount := float64(metadata.DatastoreItemCount)
+
+			grpc_ctxtags.Extract(ctx).Set(datastoreQueryCountHistogramName, queryCount)
+			span.SetAttributes(attribute.Float64(datastoreQueryCountHistogramName, queryCount))
+			datastoreQueryCountHistogram.WithLabelValues(s.serviceName, methodName).Observe(queryCount)
+
+			grpc_ctxtags.Extract(ctx).Set(datastoreItemCountHistogramName, itemCount)
+			span.SetAttributes(attribute.Float64(datastoreItemCountHistogramName, itemCount))
+			datastoreItemCountHistogram.WithLabelValues(s.serviceName, methodName).Observe(itemCount)
+
+			requestDurationHistogram.WithLabelValues(
+				s.serviceName,
+				methodName,
+				utils.Bucketize(uint(queryCount), s.requestDurationByQueryHistogramBuckets),
+				utils.Bucketize(0, s.requestDurationByDispatchCountHistogramBuckets),
+				req.GetConsistency().String(),
+			).Observe(float64(tookMs))
+
+			if s.authorizer.AccessControlStoreID() == req.GetStoreId() {
+				accessControlStoreCheckDurationHistogram.WithLabelValues(
+					utils.Bucketize(uint(queryCount), s.requestDurationByQueryHistogramBuckets),
+					utils.Bucketize(0, s.requestDurationByDispatchCountHistogramBuckets),
+					req.GetConsistency().String(),
+				).Observe(float64(tookMs))
+			}
+
+			if metadata.WasThrottled {
+				throttledRequestCounter.WithLabelValues(s.serviceName, methodName, throttleTypeDatastore).Inc()
+			}
+			grpc_ctxtags.Extract(ctx).Set("request.datastore_throttled", metadata.WasThrottled)
+
+			if err != nil {
+				telemetry.TraceError(span, err)
+				if _, ok := status.FromError(err); !ok {
+					err = commands.CheckCommandErrorToServerError(err)
+				}
+				return nil, err
+			}
+
+			checkResultCounter.With(prometheus.Labels{allowedLabel: strconv.FormatBool(res.GetAllowed())}).Inc()
+			span.SetAttributes(attribute.Bool("allowed", res.GetAllowed()))
+			return res, nil
 		}
+
 		requestID, _ := grpc_ctxtags.Extract(ctx).Values()["request_id"].(string)
 		s.logger.WarnWithContext(ctx, "Weighted graph check failed, falling back to main Check",
 			zap.Error(err),
@@ -86,7 +123,17 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 			zap.String("model_id", req.GetAuthorizationModelId()),
 			zap.String("request_id", requestID),
 		)
+
+		startTime = time.Now() // reset startTime to avoid counting v2Check duration in case of fallback when it's enabled
 	}
+
+	// v1 Check
+
+	checkResolver, checkResolverCloser, err := s.getCheckResolverBuilder(storeID).Build()
+	if err != nil {
+		return nil, err
+	}
+	defer checkResolverCloser()
 
 	typesys, err := s.resolveTypesystem(ctx, storeID, req.GetAuthorizationModelId())
 	if err != nil {
@@ -116,7 +163,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		Consistency:      req.GetConsistency(),
 	})
 
-	endTime := time.Since(startTime).Milliseconds()
+	tookMs := time.Since(startTime).Milliseconds()
 
 	var (
 		dispatchThrottled  bool
@@ -143,19 +190,13 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 
 		grpc_ctxtags.Extract(ctx).Set(datastoreQueryCountHistogramName, queryCount)
 		span.SetAttributes(attribute.Float64(datastoreQueryCountHistogramName, queryCount))
-		datastoreQueryCountHistogram.WithLabelValues(
-			s.serviceName,
-			methodName,
-		).Observe(queryCount)
+		datastoreQueryCountHistogram.WithLabelValues(s.serviceName, methodName).Observe(queryCount)
 
 		datastoreItemCount := float64(resp.GetResolutionMetadata().DatastoreItemCount)
 
 		grpc_ctxtags.Extract(ctx).Set(datastoreItemCountHistogramName, datastoreItemCount)
 		span.SetAttributes(attribute.Float64(datastoreItemCountHistogramName, datastoreItemCount))
-		datastoreItemCountHistogram.WithLabelValues(
-			s.serviceName,
-			methodName,
-		).Observe(datastoreItemCount)
+		datastoreItemCountHistogram.WithLabelValues(s.serviceName, methodName).Observe(datastoreItemCount)
 
 		requestDurationHistogram.WithLabelValues(
 			s.serviceName,
@@ -163,14 +204,14 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 			utils.Bucketize(uint(queryCount), s.requestDurationByQueryHistogramBuckets),
 			utils.Bucketize(uint(rawDispatchCount), s.requestDurationByDispatchCountHistogramBuckets),
 			req.GetConsistency().String(),
-		).Observe(float64(endTime))
+		).Observe(float64(tookMs))
 
 		if s.authorizer.AccessControlStoreID() == req.GetStoreId() {
 			accessControlStoreCheckDurationHistogram.WithLabelValues(
 				utils.Bucketize(uint(queryCount), s.requestDurationByQueryHistogramBuckets),
 				utils.Bucketize(uint(rawDispatchCount), s.requestDurationByDispatchCountHistogramBuckets),
 				req.GetConsistency().String(),
-			).Observe(float64(endTime))
+			).Observe(float64(tookMs))
 		}
 
 		if dispatchThrottled {
@@ -210,8 +251,8 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		Allowed: resp.Allowed,
 	}
 
-	if isShadowRunning {
-		go s.shadowV2Check(ctx, req, res, endTime,
+	if s.featureFlagClient.Boolean(serverconfig.ExperimentalShadowWeightedGraphCheck, req.GetStoreId()) {
+		go s.shadowV2Check(ctx, req, res, tookMs,
 			resp.GetResolutionMetadata().DatastoreQueryCount,
 			resp.GetResolutionMetadata().DatastoreItemCount)
 	}
@@ -235,6 +276,23 @@ func (s *Server) shadowV2Check(ctx context.Context, req *openfgav1.CheckRequest,
 		))
 		defer shadowSpan.End()
 		res, shadowMetadata, err = s.v2Check(newCtx, req, s.sharedDatastoreResources.ShadowCheckCache, s.sharedDatastoreResources.ShadowCacheController, s.shadowAuthzModelGraphResolver)
+
+		shadowQueryCount := float64(shadowMetadata.DatastoreQueryCount)
+		shadowItemCount := float64(shadowMetadata.DatastoreItemCount)
+
+		grpc_ctxtags.Extract(newCtx).Set(datastoreQueryCountHistogramName, shadowQueryCount)
+		shadowSpan.SetAttributes(attribute.Float64(datastoreQueryCountHistogramName, shadowQueryCount))
+		datastoreQueryCountHistogram.WithLabelValues(s.serviceName, commands.V2CheckMethodName).Observe(shadowQueryCount)
+
+		grpc_ctxtags.Extract(newCtx).Set(datastoreItemCountHistogramName, shadowItemCount)
+		shadowSpan.SetAttributes(attribute.Float64(datastoreItemCountHistogramName, shadowItemCount))
+		datastoreItemCountHistogram.WithLabelValues(s.serviceName, commands.V2CheckMethodName).Observe(shadowItemCount)
+
+		if shadowMetadata.WasThrottled {
+			throttledRequestCounter.WithLabelValues(s.serviceName, commands.V2CheckMethodName, throttleTypeDatastore).Inc()
+		}
+		grpc_ctxtags.Extract(newCtx).Set("request.datastore_throttled", shadowMetadata.WasThrottled)
+
 		if err == nil {
 			shadowSpan.SetAttributes(attribute.Bool("matches", mainRes.GetAllowed() == res.GetAllowed()))
 		}
@@ -260,6 +318,8 @@ func (s *Server) shadowV2Check(ctx context.Context, req *openfgav1.CheckRequest,
 		zap.String("object", req.GetTupleKey().GetObject()),
 		zap.String("relation", req.GetTupleKey().GetRelation()),
 		zap.String("user", req.GetTupleKey().GetUser()),
+		zap.Any("context", req.GetContext()),
+		zap.Any("contextual_tuples", req.GetContextualTuples()),
 		zap.Uint32("main_datastore_query_count", mainDatastoreQueryCount),
 		zap.Uint32("shadow_datastore_query_count", shadowMetadata.DatastoreQueryCount),
 		zap.Uint64("main_datastore_item_count", mainDatastoreItemCount),
@@ -323,29 +383,44 @@ func (s *Server) v2Check(
 
 	span.SetAttributes(attribute.Bool("allowed", res.GetAllowed()))
 
-	// Publish metrics from datastore metadata.
-	queryCount := float64(metadata.DatastoreQueryCount)
-	itemCount := float64(metadata.DatastoreItemCount)
-
-	grpc_ctxtags.Extract(ctx).Set(datastoreQueryCountHistogramName, queryCount)
-	span.SetAttributes(attribute.Float64(datastoreQueryCountHistogramName, queryCount))
-	datastoreQueryCountHistogram.WithLabelValues(s.serviceName, commands.V2CheckMethodName).Observe(queryCount)
-
-	grpc_ctxtags.Extract(ctx).Set(datastoreItemCountHistogramName, itemCount)
-	span.SetAttributes(attribute.Float64(datastoreItemCountHistogramName, itemCount))
-	datastoreItemCountHistogram.WithLabelValues(s.serviceName, commands.V2CheckMethodName).Observe(itemCount)
-
-	if metadata.WasThrottled {
-		throttledRequestCounter.WithLabelValues(s.serviceName, commands.V2CheckMethodName, throttleTypeDatastore).Inc()
-	}
-	grpc_ctxtags.Extract(ctx).Set("request.datastore_throttled", metadata.WasThrottled)
-
 	if err != nil {
 		telemetry.TraceError(span, err)
 		return nil, metadata, commands.CheckCommandErrorToServerError(err)
 	}
 
 	return res, metadata, nil
+}
+
+// isV2TerminalError reports whether err should be returned directly from the v2Check path
+// rather than falling back to v1. Two categories qualify:
+//
+//   - Context/timeout/throttle errors, where a v1 retry is pointless or harmful. Context
+//     errors appear in two forms: raw (context.Canceled/DeadlineExceeded, from the model
+//     graph resolver) or server-mapped (ErrRequestCancelled/ErrRequestDeadlineExceeded, from
+//     the execute path). ErrThrottledTimeout and ErrTransactionThrottled are included since
+//     they are not v2-specific, and retrying on v1 would only add load to an already-throttled
+//     datastore.
+//   - Deterministic request-validation failures (ErrValidation, ErrInvalidUser, and
+//     contextual-tuple validation failures), which v1 rejects identically — the fallback is
+//     wasted work and log noise.
+//
+// v2Check wraps most non-context errors via commands.CheckCommandErrorToServerError, which
+// produces gRPC status.Error values. Errors.Is/As against the original sentinels/types no
+// longer matches after that conversion, so request-validation cases must be classified by
+// the resulting gRPC code instead.
+func isV2TerminalError(err error) bool {
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) ||
+		errors.Is(err, serverErrors.ErrRequestDeadlineExceeded) || errors.Is(err, serverErrors.ErrRequestCancelled) ||
+		errors.Is(err, serverErrors.ErrThrottledTimeout) || errors.Is(err, serverErrors.ErrTransactionThrottled) {
+		return true
+	}
+	if st, ok := status.FromError(err); ok {
+		switch openfgav1.ErrorCode(st.Code()) {
+		case openfgav1.ErrorCode_validation_error, openfgav1.ErrorCode_invalid_tuple:
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Server) getCheckResolverBuilder(storeID string) *graph.CheckResolverOrderedBuilder {

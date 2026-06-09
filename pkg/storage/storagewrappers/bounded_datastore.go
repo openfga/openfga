@@ -14,7 +14,6 @@ import (
 
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/pkg/storage"
-	"github.com/openfga/openfga/pkg/storage/storagewrappers/storagewrappersutil"
 )
 
 const timeWaitingAttribute = "datastore_time_waiting"
@@ -114,7 +113,7 @@ func (b *BoundedTupleReader) ReadUserTuple(
 	filter storage.ReadUserTupleFilter,
 	options storage.ReadUserTupleOptions,
 ) (*openfgav1.Tuple, error) {
-	err := b.bound(ctx, storagewrappersutil.OperationReadUserTuple)
+	err := b.bound(ctx, storage.OperationReadUserTuple)
 	if err != nil {
 		return nil, err
 	}
@@ -130,7 +129,7 @@ func (b *BoundedTupleReader) ReadUserTuple(
 
 // Read the set of tuples associated with `store` and `TupleKey`, which may be nil or partially filled.
 func (b *BoundedTupleReader) Read(ctx context.Context, store string, filter storage.ReadFilter, options storage.ReadOptions) (storage.TupleIterator, error) {
-	err := b.bound(ctx, storagewrappersutil.OperationRead)
+	err := b.bound(ctx, storage.OperationRead)
 	if err != nil {
 		return nil, err
 	}
@@ -150,7 +149,7 @@ func (b *BoundedTupleReader) ReadUsersetTuples(
 	filter storage.ReadUsersetTuplesFilter,
 	options storage.ReadUsersetTuplesOptions,
 ) (storage.TupleIterator, error) {
-	err := b.bound(ctx, storagewrappersutil.OperationReadUsersetTuples)
+	err := b.bound(ctx, storage.OperationReadUsersetTuples)
 	if err != nil {
 		return nil, err
 	}
@@ -171,7 +170,7 @@ func (b *BoundedTupleReader) ReadStartingWithUser(
 	filter storage.ReadStartingWithUserFilter,
 	options storage.ReadStartingWithUserOptions,
 ) (storage.TupleIterator, error) {
-	err := b.bound(ctx, storagewrappersutil.OperationReadStartingWithUser)
+	err := b.bound(ctx, storage.OperationReadStartingWithUser)
 	if err != nil {
 		return nil, err
 	}

@@ -208,6 +208,14 @@ func TestToChannelWithContextCancellation(t *testing.T) {
 	}
 }
 
+func TestChannelIteratorIsOrdered(t *testing.T) {
+	ch := make(chan *Msg)
+	close(ch)
+	iter := FromChannel(ch)
+	defer iter.Stop()
+	require.False(t, iter.IsOrdered())
+}
+
 func TestChannelIterator(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
