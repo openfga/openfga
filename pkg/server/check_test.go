@@ -939,3 +939,129 @@ func TestCheck_DoesNotFallBackOnInvalidContextualTuple(t *testing.T) {
 	_, ok = tags[dispatchCountHistogramName]
 	require.False(t, ok, "dispatch_count must not be set — invalid contextual tuple must not fall back to v1")
 }
+
+func TestBreakingChangeReason(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	tests := []struct {
+		name           string
+		modelDSL       string
+		seedTuple      *openfgav1.TupleKey
+		object         string
+		relation       string
+		user           string
+		expectedReason string
+	}{
+		{
+			name: "alias_userset",
+			modelDSL: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define reader: [user]
+						define allowed: reader
+						define viewer: [user, document#allowed]
+			`,
+			seedTuple: tuple.NewTupleKey("document:seed", "reader", "user:seed"),
+			object:    "document:d1",
+			relation:  "viewer",
+			user:      "document:3#reader",
+		},
+		{
+			name: "self_referential_userset",
+			modelDSL: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define viewer: [user]
+			`,
+			seedTuple: tuple.NewTupleKey("document:seed", "viewer", "user:seed"),
+			object:    "document:d1",
+			relation:  "viewer",
+			user:      "document:d1#viewer",
+		},
+		{
+			name: "computed_userset_self_object",
+			modelDSL: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define editor: [user]
+						define writer: [user]
+						define viewer: editor or writer
+			`,
+			seedTuple: tuple.NewTupleKey("document:seed", "editor", "user:seed"),
+			object:    "document:d1",
+			relation:  "viewer",
+			user:      "document:d1#writer",
+		},
+		{
+			name: "ttu_userset",
+			modelDSL: `
+				model
+					schema 1.1
+				type user
+				type folder
+					relations
+						define viewer: [user]
+				type document
+					relations
+						define parent: [folder]
+						define viewer: viewer from parent
+			`,
+			seedTuple: tuple.NewTupleKey("document:seed", "parent", "folder:seed"),
+			object:    "document:d1",
+			relation:  "viewer",
+			user:      "folder:f2#viewer",
+		},
+		{
+			name: "no_match_direct_userset_assignable",
+			modelDSL: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user]
+				type document
+					relations
+						define viewer: [user, group#member]
+			`,
+			seedTuple: tuple.NewTupleKey("document:seed", "viewer", "user:seed"),
+			object:    "document:d1",
+			relation:  "viewer",
+			user:      "group:g1#member",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			s, baseReq := setupCheckServer(t, tc.modelDSL, []*openfgav1.TupleKey{tc.seedTuple})
+
+			req := &openfgav1.CheckRequest{
+				StoreId:              baseReq.GetStoreId(),
+				AuthorizationModelId: baseReq.GetAuthorizationModelId(),
+				TupleKey: &openfgav1.CheckRequestTupleKey{
+					Object:   tc.object,
+					Relation: tc.relation,
+					User:     tc.user,
+				},
+			}
+
+			got := breakingChangeReason(context.Background(), s, req, req.GetStoreId())
+			if tc.name == "no_match_direct_userset_assignable" {
+				require.Empty(t, got, "expected no breaking change reason for assignable but non-matching userset")
+				return
+			}
+			require.Equal(t, tc.name, got)
+		})
+	}
+}

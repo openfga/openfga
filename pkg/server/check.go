@@ -23,12 +23,15 @@ import (
 	"github.com/openfga/openfga/internal/telemetry"
 	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/internal/utils/apimethod"
+	"github.com/openfga/openfga/pkg/middleware/requestid"
 	"github.com/openfga/openfga/pkg/middleware/validator"
 	"github.com/openfga/openfga/pkg/server/commands"
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
+	"github.com/openfga/openfga/pkg/tuple"
+	"github.com/openfga/openfga/pkg/typesystem"
 )
 
 func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openfgav1.CheckResponse, error) {
@@ -113,10 +116,31 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 
 			checkResultCounter.With(prometheus.Labels{allowedLabel: strconv.FormatBool(res.GetAllowed())}).Inc()
 			span.SetAttributes(attribute.Bool("allowed", res.GetAllowed()))
+
+			// Flag potential v2Check resolution breaking changes for userset requests.
+			// See breakingChangeReason for the scenarios we detect.
+			if !res.GetAllowed() && tuple.IsObjectRelation(req.GetTupleKey().GetUser()) {
+				if reason := breakingChangeReason(ctx, s, req, storeID); reason != "" {
+					requestID, _ := grpc_ctxtags.Extract(ctx).Values()["request_id"].(string)
+					if requestID == "" {
+						requestID = requestid.InitRequestID(ctx)
+					}
+					s.logger.WarnWithContext(ctx, "potential v2Check resolution breaking change: userset request returned false",
+						zap.String("store_id", storeID),
+						zap.String("model_id", req.GetAuthorizationModelId()),
+						zap.String("request_id", requestID),
+						zap.String("reason", reason),
+					)
+				}
+			}
+
 			return res, nil
 		}
 
 		requestID, _ := grpc_ctxtags.Extract(ctx).Values()["request_id"].(string)
+		if requestID == "" {
+			requestID = requestid.InitRequestID(ctx)
+		}
 		s.logger.WarnWithContext(ctx, "Weighted graph check failed, falling back to main Check",
 			zap.Error(err),
 			zap.String("store_id", storeID),
@@ -417,6 +441,163 @@ func isV2TerminalError(err error) bool {
 	if st, ok := status.FromError(err); ok {
 		switch openfgav1.ErrorCode(st.Code()) {
 		case openfgav1.ErrorCode_validation_error, openfgav1.ErrorCode_invalid_tuple:
+			return true
+		}
+	}
+	return false
+}
+
+// breakingChangeReason returns a non-empty reason string when the request shape matches a
+// known v1→v2 Check divergence for userset users. Caller has already verified that the
+// user is a userset (object#relation) and that v2Check returned FALSE.
+//
+// Reasons:
+//
+//   - "alias_userset": the target relation directly accepts T#R' where R' resolves via
+//     computed_userset to the user's relation R, and R is not itself directly assignable
+//     on the target. e.g.
+//     model
+//     type user
+//     type document
+//     relations
+//     define reader: [user]
+//     define allowed: reader
+//     define viewer: [user, document#allowed]
+//     With the query `document:d1, viewer, document3#reader`; v1 follows the allowed→reader
+//     alias from a stored `allowed` tuple, v2 does not.
+//
+//   - "self_referential_userset": v1 unconditionally returned TRUE for this shape
+//     regardless of whether any data existed; v2 evaluates against the schema and
+//     storage and correctly returns FALSE. e.g.
+//     model
+//     type user
+//     type document
+//     relations
+//     define viewer: [user]
+//     `document:d1, viewer, document:d1#viewer` v1 returned TRUE, v2 returns FALSE.
+//
+//   - "computed_userset_self_object": user's object equals the target object, and the user's
+//     relation appears as a ComputedUserset leaf in the target relation's rewrite tree.
+//     e.g.
+//     model
+//     type user
+//     type document
+//     relations
+//     define viewer: editor or writer
+//     define editor: [user]
+//     define writer: [user]
+//     `document:d1, viewer, document:d1#writer` v1 returned TRUE, v2 returns FALSE.`
+//
+//   - "ttu_userset": target relation's rewrite contains a TupleToUserset whose computed
+//     relation equals the user's relation, AND the user's object type is directly-related
+//     to the tupleset relation. e.g. document.viewer = viewer from parent; query
+//     viewer@folder:f2#viewer on document:d1. v1 returned TRUE from schema reachability
+//     plus a parent tuple; v2 requires the userset to be explicit. e.g.
+//     model
+//     type user
+//     type folder
+//     relations
+//     define viewer: [user]
+//     type document
+//     relations
+//     define parent: [folder]
+//     define viewer: viewer from parent
+//     With the query `document:d1, viewer, folder:f2#viewer` and the tuple `document:d1, parent, folder:f2`;
+//     v1 returned TRUE, v2 returns FALSE.
+//
+// All schema-shape filters are necessary conditions only — they may over-report when no
+// matching tuple is actually stored, but never miss a real divergence.
+func breakingChangeReason(ctx context.Context, s *Server, req *openfgav1.CheckRequest, storeID string) string {
+	tk := req.GetTupleKey()
+	if tk.GetUser() == tk.GetObject()+"#"+tk.GetRelation() {
+		return "self_referential_userset"
+	}
+	userObject, userRelation := tuple.SplitObjectRelation(tk.GetUser())
+	userObjectType := tuple.GetType(userObject)
+	targetObjectType := tuple.GetType(tk.GetObject())
+	targetRelation := tk.GetRelation()
+
+	typesys, err := s.resolveTypesystem(ctx, storeID, req.GetAuthorizationModelId())
+	if err != nil {
+		return ""
+	}
+	if usersetAliasesTargetRelation(typesys, targetObjectType, targetRelation, userObjectType, userRelation) {
+		return "alias_userset"
+	}
+	rel, err := typesys.GetRelation(targetObjectType, targetRelation)
+	if err != nil {
+		return ""
+	}
+	rewrite := rel.GetRewrite()
+	if userObject == tk.GetObject() && rewriteContainsComputedUserset(rewrite, userRelation) {
+		return "computed_userset_self_object"
+	}
+	if rewriteContainsTTUForUser(typesys, targetObjectType, rewrite, userObjectType, userRelation) {
+		return "ttu_userset"
+	}
+	return ""
+}
+
+// rewriteContainsComputedUserset reports whether any ComputedUserset leaf in the rewrite
+// tree references the given relation name.
+func rewriteContainsComputedUserset(rewrite *openfgav1.Userset, relation string) bool {
+	result, _ := typesystem.WalkUsersetRewrite(rewrite, func(r *openfgav1.Userset) interface{} {
+		if cu, ok := r.GetUserset().(*openfgav1.Userset_ComputedUserset); ok {
+			if cu.ComputedUserset.GetRelation() == relation {
+				return true
+			}
+		}
+		return nil
+	})
+	return result != nil && result.(bool)
+}
+
+// rewriteContainsTTUForUser reports whether the target's rewrite contains a TupleToUserset
+// whose computed relation equals the user's relation, where the tupleset relation on the
+// target object type is directly related to the user's object type.
+func rewriteContainsTTUForUser(ts *typesystem.TypeSystem, targetObjectType string, rewrite *openfgav1.Userset, userObjectType, userRelation string) bool {
+	result, _ := typesystem.WalkUsersetRewrite(rewrite, func(r *openfgav1.Userset) interface{} {
+		ttu, ok := r.GetUserset().(*openfgav1.Userset_TupleToUserset)
+		if !ok {
+			return nil
+		}
+		if ttu.TupleToUserset.GetComputedUserset().GetRelation() != userRelation {
+			return nil
+		}
+		tuplesetRel := ttu.TupleToUserset.GetTupleset().GetRelation()
+		directlyRelated, err := ts.GetDirectlyRelatedUserTypes(targetObjectType, tuplesetRel)
+		if err != nil {
+			return nil
+		}
+		for _, dr := range directlyRelated {
+			if dr.GetType() == userObjectType {
+				return true
+			}
+		}
+		return nil
+	})
+	return result != nil && result.(bool)
+}
+
+// usersetAliasesTargetRelation reports whether the target relation has a directly-assignable
+// userset T#R' where R' resolves (via computed_userset chains) to the request's user relation R,
+// while R itself is NOT directly assignable on the target.
+func usersetAliasesTargetRelation(ts *typesystem.TypeSystem, targetObjectType, targetRelation, userObjectType, userRelation string) bool {
+	usersets, err := ts.DirectlyRelatedUsersets(targetObjectType, targetRelation)
+	if err != nil {
+		return false
+	}
+	for _, ref := range usersets {
+		if ref.GetType() == userObjectType && ref.GetRelation() == userRelation {
+			return false
+		}
+	}
+	for _, ref := range usersets {
+		if ref.GetType() != userObjectType {
+			continue
+		}
+		resolved, err := ts.ResolveComputedRelation(ref.GetType(), ref.GetRelation())
+		if err == nil && resolved == userRelation {
 			return true
 		}
 	}
