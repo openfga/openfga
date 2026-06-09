@@ -27,7 +27,7 @@ import (
 type RemoteOidcAuthenticator struct {
 	MainIssuer     string
 	IssuerAliases  []string
-	Audience       string
+	Audiences      []string
 	Subjects       []string
 	ClientIDClaims []string
 
@@ -48,13 +48,21 @@ var (
 var _ authn.Authenticator = (*RemoteOidcAuthenticator)(nil)
 var _ authn.OIDCAuthenticator = (*RemoteOidcAuthenticator)(nil)
 
-func NewRemoteOidcAuthenticator(mainIssuer string, issuerAliases []string, audience string, subjects []string, clientIDClaims []string) (*RemoteOidcAuthenticator, error) {
+func NewRemoteOidcAuthenticator(mainIssuer string, issuerAliases []string, audiences []string, subjects []string, clientIDClaims []string) (*RemoteOidcAuthenticator, error) {
 	client := retryablehttp.NewClient()
 	client.Logger = nil
+
+	normalizedAudiences := make([]string, 0, len(audiences))
+	for _, aud := range audiences {
+		if trimmed := strings.TrimSpace(aud); trimmed != "" {
+			normalizedAudiences = append(normalizedAudiences, trimmed)
+		}
+	}
+
 	oidc := &RemoteOidcAuthenticator{
 		MainIssuer:     mainIssuer,
 		IssuerAliases:  issuerAliases,
-		Audience:       audience,
+		Audiences:      normalizedAudiences,
 		Subjects:       subjects,
 		httpClient:     client.StandardClient(),
 		ClientIDClaims: clientIDClaims,
@@ -88,8 +96,8 @@ func (oidc *RemoteOidcAuthenticator) Authenticate(requestContext context.Context
 		jwt.WithExpirationRequired(),
 	}
 
-	if strings.TrimSpace(oidc.Audience) != "" {
-		options = append(options, jwt.WithAudience(oidc.Audience))
+	if len(oidc.Audiences) > 0 {
+		options = append(options, jwt.WithAudience(oidc.Audiences...))
 	}
 
 	jwtParser := jwt.NewParser(options...)

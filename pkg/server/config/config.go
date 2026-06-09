@@ -224,7 +224,7 @@ type AuthnOIDCConfig struct {
 	Issuer         string
 	IssuerAliases  []string
 	Subjects       []string
-	Audience       string
+	Audiences      []string `mapstructure:"audience"`
 	ClientIDClaims []string
 }
 
