@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"os"
 	"strconv"
 	"time"
 
@@ -41,13 +43,15 @@ const (
 )
 
 // NewLoggingInterceptor creates a new logging interceptor for gRPC unary server requests.
-func NewLoggingInterceptor(logger logger.Logger) grpc.UnaryServerInterceptor {
-	return interceptors.UnaryServerInterceptor(reportable(logger))
+// The traceContext parameter controls cloud-specific trace fields in log output (e.g. "gcp").
+func NewLoggingInterceptor(logger logger.Logger, traceContext string) grpc.UnaryServerInterceptor {
+	return interceptors.UnaryServerInterceptor(reportable(logger, traceContext))
 }
 
 // NewStreamingLoggingInterceptor creates a new streaming logging interceptor for gRPC stream server requests.
-func NewStreamingLoggingInterceptor(logger logger.Logger) grpc.StreamServerInterceptor {
-	return interceptors.StreamServerInterceptor(reportable(logger))
+// The traceContext parameter controls cloud-specific trace fields in log output (e.g. "gcp").
+func NewStreamingLoggingInterceptor(logger logger.Logger, traceContext string) grpc.StreamServerInterceptor {
+	return interceptors.StreamServerInterceptor(reportable(logger, traceContext))
 }
 
 type reporter struct {
@@ -133,7 +137,10 @@ func userAgentFromContext(ctx context.Context) (string, bool) {
 	return "", false
 }
 
-func reportable(l logger.Logger) interceptors.CommonReportableFunc {
+func reportable(l logger.Logger, traceContext string) interceptors.CommonReportableFunc {
+	// Build the trace field function once at init, not per request.
+	traceFieldsFn := traceContextFieldsFn(traceContext)
+
 	return func(ctx context.Context, c interceptors.CallMeta) (interceptors.Reporter, context.Context) {
 		fields := []zap.Field{
 			zap.String(grpcServiceKey, c.Service),
@@ -144,6 +151,7 @@ func reportable(l logger.Logger) interceptors.CommonReportableFunc {
 		spanCtx := trace.SpanContextFromContext(ctx)
 		if spanCtx.HasTraceID() {
 			fields = append(fields, zap.String(traceIDKey, spanCtx.TraceID().String()))
+			fields = append(fields, traceFieldsFn(spanCtx)...)
 		}
 
 		if userAgent, ok := userAgentFromContext(ctx); ok {
@@ -158,4 +166,36 @@ func reportable(l logger.Logger) interceptors.CommonReportableFunc {
 			serviceName:    c.Service,
 		}, ctx
 	}
+}
+
+// traceContextFieldsFn returns a function that produces cloud-specific trace
+// fields for each request's span context. The returned function captures any
+// env vars or config at init time so they are not read per request.
+func traceContextFieldsFn(traceContext string) func(trace.SpanContext) []zap.Field {
+	switch traceContext {
+	case "gcp":
+		gcpProject := os.Getenv("GOOGLE_CLOUD_PROJECT")
+		return func(spanCtx trace.SpanContext) []zap.Field {
+			return gcpTraceFields(spanCtx, gcpProject)
+		}
+	default:
+		return func(trace.SpanContext) []zap.Field { return nil }
+	}
+}
+
+// gcpTraceFields returns GCP Cloud Logging trace correlation fields.
+// Cloud Run's log agent promotes these JSON fields to top-level LogEntry
+// fields, enabling log-trace correlation in Cloud Logging.
+// See https://cloud.google.com/run/docs/logging#writing_structured_logs
+func gcpTraceFields(spanCtx trace.SpanContext, gcpProject string) []zap.Field {
+	var fields []zap.Field
+	if gcpProject != "" {
+		fields = append(fields, zap.String("logging.googleapis.com/trace",
+			fmt.Sprintf("projects/%s/traces/%s", gcpProject, spanCtx.TraceID().String())))
+	}
+	if spanCtx.HasSpanID() {
+		fields = append(fields, zap.String("logging.googleapis.com/spanId", spanCtx.SpanID().String()))
+	}
+	fields = append(fields, zap.Bool("logging.googleapis.com/trace_sampled", spanCtx.IsSampled()))
+	return fields
 }
