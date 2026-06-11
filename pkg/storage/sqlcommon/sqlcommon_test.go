@@ -282,3 +282,49 @@ func TestFetchBufferMetric(t *testing.T) {
 		require.GreaterOrEqual(t, sqlIterQuerySampleCount(t, "true"), before+1)
 	})
 }
+
+// blockingRowGetter blocks in GetRows until its context is done, emulating a hanging query.
+type blockingRowGetter struct{}
+
+func (blockingRowGetter) GetRows(ctx context.Context) (Rows, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+// TestFetchBufferRespectsDeadline is a regression test for issue #3098: fetchBuffer strips parent cancellation but must still honor the caller's deadline.
+func TestFetchBufferRespectsDeadline(t *testing.T) {
+	iter := NewSQLTupleIterator(blockingRowGetter{}, identityErrHandler)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	errCh := make(chan error, 1)
+	go func() { errCh <- iter.fetchBuffer(ctx) }()
+
+	var err error
+	require.Eventually(t, func() bool {
+		select {
+		case err = <-errCh:
+			return true
+		default:
+			return false
+		}
+	}, 5*time.Second, 10*time.Millisecond, "fetchBuffer did not return after its deadline elapsed")
+
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+}
+
+// TestStopReleasesQueryContext is a regression test ensuring Stop releases the deadline-bearing query context (carried forward across the iterator's lifetime so that lazy *sql.Rows reads remain valid until Stop is called).
+func TestStopReleasesQueryContext(t *testing.T) {
+	iter := NewSQLTupleIterator(&stubRowGetter{rows: &stubRows{}}, identityErrHandler)
+
+	ctx, cancelParent := context.WithTimeout(context.Background(), time.Hour)
+	defer cancelParent()
+
+	require.NoError(t, iter.fetchBuffer(ctx))
+	require.NotNil(t, iter.cancel, "fetchBuffer must record the per-query cancel for Stop to release")
+
+	iter.Stop()
+	require.Nil(t, iter.cancel, "Stop must clear the per-query cancel after invoking it")
+	require.Nil(t, iter.rows, "Stop must clear the rows handle after closing it")
+}
