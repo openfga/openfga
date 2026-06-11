@@ -997,7 +997,7 @@ func (s *Datastore) WriteAuthorizationModel(ctx context.Context, store string, m
 		return nil
 	}
 
-	pbdata, err := proto.MarshalOptions{Deterministic: true}.Marshal(model)
+	pbdata, err := sqlcommon.DeterministicMarshalOpts.Marshal(model)
 	if err != nil {
 		return err
 	}

@@ -31,6 +31,10 @@ import (
 
 var tracer = otel.Tracer("pkg/storage/sqlcommon")
 
+// DeterministicMarshalOpts marshals proto messages with stable map-key ordering.
+// Use this instead of proto.Marshal for any value written to persistent storage.
+var DeterministicMarshalOpts = proto.MarshalOptions{Deterministic: true}
+
 // Config defines the configuration parameters
 // for setting up and managing a sql connection.
 type Config struct {
@@ -1010,7 +1014,7 @@ func WriteAuthorizationModel(
 		return nil
 	}
 
-	pbdata, err := proto.MarshalOptions{Deterministic: true}.Marshal(model)
+	pbdata, err := DeterministicMarshalOpts.Marshal(model)
 	if err != nil {
 		return err
 	}
