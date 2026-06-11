@@ -1010,7 +1010,7 @@ func WriteAuthorizationModel(
 		return nil
 	}
 
-	pbdata, err := proto.Marshal(model)
+	pbdata, err := proto.MarshalOptions{Deterministic: true}.Marshal(model)
 	if err != nil {
 		return err
 	}
