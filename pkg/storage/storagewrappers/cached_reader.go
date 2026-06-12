@@ -126,6 +126,7 @@ func (c *CachedTupleReader) ReadUsersetTuples(
 	return newCachingIterator(
 		dbIter, c.cache, cacheKey, c.maxSize, c.ttl, c.drainTimeout,
 		c.sf, c.wg, objectType, filter.Relation, "ReadUsersetTuples",
+		func(e MinimalCacheEntry) string { return e.User },
 	), nil
 }
 
@@ -175,6 +176,7 @@ func (c *CachedTupleReader) Read(
 	return newCachingIterator(
 		dbIter, c.cache, cacheKey, c.maxSize, c.ttl, c.drainTimeout,
 		c.sf, c.wg, objectType, filter.Relation, "Read",
+		func(e MinimalCacheEntry) string { return e.User },
 	), nil
 }
 
@@ -223,6 +225,7 @@ func (c *CachedTupleReader) ReadStartingWithUser(
 	return newCachingIterator(
 		dbIter, c.cache, cacheKey, c.maxSize, c.ttl, c.drainTimeout,
 		c.sf, c.wg, filter.ObjectType, filter.Relation, "ReadStartingWithUser",
+		func(e MinimalCacheEntry) string { return e.ObjectID },
 	), nil
 }
 

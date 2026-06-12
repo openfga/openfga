@@ -899,7 +899,7 @@ func (r *Resolver) specificTypeWildcard(ctx context.Context, req *Request, edge 
 	if ctxTuples, ok := req.GetContextualTuplesByObjectID(req.GetTupleKey().GetObject(), relation, req.GetUserType()); ok {
 		for _, ct := range ctxTuples {
 			if tuple.IsTypedWildcard(ct.GetUser()) {
-				iter = storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{ct})
+				iter = storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{ct}, false)
 				break
 			}
 		}
@@ -975,12 +975,18 @@ func (r *Resolver) specificTypeAndRelation(ctx context.Context, req *Request, ed
 		Type:               userObjectType,
 		RelationOrWildcard: &openfgav1.RelationReference_Relation{Relation: userRelation},
 	}}
+	w, _ := edge.GetWeight(req.GetUserType())
+	_, hasCtxTuples := req.GetContextualTuplesByObjectID(req.GetTupleKey().GetObject(), relation, edge.GetTo().GetUniqueLabel())
+	// Sort when weight=2 (weight2 strategy requires sorted results for pruning optimization),
+	// no ctx tuples (Concat breaks IsOrdered), and user is a concrete ID (not a userset).
+	sortResults := !tuple.IsObjectRelation(req.GetTupleKey().GetUser()) && w == 2 && !hasCtxTuples
 	tIter, err := r.datastore.ReadUsersetTuples(ctx, req.GetStoreID(), storage.ReadUsersetTuplesFilter{
 		Object:                      req.GetTupleKey().GetObject(),
 		Relation:                    relation,
 		AllowedUserTypeRestrictions: allowedTypes,
 		Conditions:                  edge.GetConditions(),
 	}, storage.ReadUsersetTuplesOptions{
+		WithResultsSortedAscending: sortResults,
 		Consistency: storage.ConsistencyOptions{
 			Preference: req.GetConsistency(),
 		},
@@ -1009,7 +1015,7 @@ func (r *Resolver) specificTypeAndRelation(ctx context.Context, req *Request, ed
 		DefaultStrategyName: DefaultPlan,
 	}
 
-	if w, _ := edge.GetWeight(req.GetUserType()); w == 2 {
+	if w == 2 {
 		possibleStrategies[WeightTwoStrategyName] = weight2Plan
 	}
 
@@ -1050,6 +1056,11 @@ func (r *Resolver) ttu(ctx context.Context, req *Request, edge *authzGraph.Weigh
 	}
 
 	userFilter := subjectType + ":"
+	w, _ := edge.GetWeight(req.GetUserType())
+	_, hasCtxTuples := req.GetContextualTuplesByObjectID(req.GetTupleKey().GetObject(), tuplesetRelation, subjectType)
+	// Sort when weight=2 (weight2 strategy requires sorted results for pruning optimization),
+	// no ctx tuples (Concat breaks IsOrdered), and user is a concrete ID (not a userset).
+	sortResults := !tuple.IsObjectRelation(req.GetTupleKey().GetUser()) && w == 2 && !hasCtxTuples
 	tIter, err := r.datastore.Read(
 		ctx,
 		req.GetStoreID(),
@@ -1059,7 +1070,10 @@ func (r *Resolver) ttu(ctx context.Context, req *Request, edge *authzGraph.Weigh
 			User:       userFilter,
 			Conditions: tuplesetEdge.GetConditions(),
 		},
-		storage.ReadOptions{Consistency: storage.ConsistencyOptions{Preference: req.GetConsistency()}},
+		storage.ReadOptions{
+			WithResultsSortedAscending: sortResults,
+			Consistency:                storage.ConsistencyOptions{Preference: req.GetConsistency()},
+		},
 	)
 	if err != nil {
 		return nil, err
@@ -1085,7 +1099,7 @@ func (r *Resolver) ttu(ctx context.Context, req *Request, edge *authzGraph.Weigh
 		DefaultStrategyName: DefaultPlan,
 	}
 
-	if w, _ := edge.GetWeight(req.GetUserType()); w == 2 {
+	if w == 2 {
 		possibleStrategies[WeightTwoStrategyName] = weight2Plan
 	}
 
@@ -1117,7 +1131,7 @@ func (r *Resolver) buildIterator(ctx context.Context, req *Request, iter storage
 
 	// STEP 2: Merge contextual tuples (these are request-specific and not cached)
 	if ctxTuples, ok := req.GetContextualTuplesByObjectID(req.GetTupleKey().GetObject(), relation, userType); ok {
-		tupleKeyIter = iterator.Concat(storage.NewStaticTupleKeyIterator(ctxTuples), tupleKeyIter)
+		tupleKeyIter = iterator.Concat(storage.NewStaticTupleKeyIterator(ctxTuples, true), tupleKeyIter)
 	}
 
 	// STEP 3: Build filter chain

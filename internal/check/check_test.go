@@ -506,7 +506,7 @@ func TestResolveUnionEdges(t *testing.T) {
 		mockDatastore.EXPECT().ReadUsersetTuples(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
 			DoAndReturn(func(_ context.Context, _ string, filter storage.ReadUsersetTuplesFilter, _ storage.ReadUsersetTuplesOptions) (storage.TupleIterator, error) {
 				if filter.Relation == "member" {
-					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("group:1", "member", "user:*")}}), nil
+					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("group:1", "member", "user:*")}}, false), nil
 				}
 				return nil, storage.ErrNotFound
 			}).MaxTimes(1)
@@ -601,7 +601,7 @@ func TestResolveUnionEdges(t *testing.T) {
 		mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
 			Return(nil, storage.ErrNotFound).MinTimes(1)
 		mockDatastore.EXPECT().ReadUsersetTuples(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
-			Return(storage.NewStaticTupleIterator(nil), nil).MinTimes(1)
+			Return(storage.NewStaticTupleIterator(nil, false), nil).MinTimes(1)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
             model
@@ -714,7 +714,7 @@ func TestResolveRecursive(t *testing.T) {
 		// MinTimes(1) confirms the recursive goroutine reached the datastore, making
 		// the Times(0) assertion on Set meaningful rather than vacuous.
 		mockDatastore.EXPECT().Read(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
-			Return(storage.NewStaticTupleIterator(nil), nil).MinTimes(1)
+			Return(storage.NewStaticTupleIterator(nil, false), nil).MinTimes(1)
 		mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
 			Return(nil, storage.ErrNotFound).AnyTimes()
 
@@ -1015,10 +1015,10 @@ func TestResolveIntersection(t *testing.T) {
 		mockDatastore.EXPECT().ReadUsersetTuples(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
 			DoAndReturn(func(_ context.Context, _ string, filter storage.ReadUsersetTuplesFilter, _ storage.ReadUsersetTuplesOptions) (storage.TupleIterator, error) {
 				if filter.Relation == "member" {
-					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("group:1", "member", "user:*")}}), nil
+					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("group:1", "member", "user:*")}}, false), nil
 				}
 				if filter.Relation == "admin" {
-					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("group:1", "admin", "user:*")}}), nil
+					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("group:1", "admin", "user:*")}}, false), nil
 				}
 				return nil, storage.ErrNotFound
 			}).MaxTimes(2)
@@ -2064,7 +2064,7 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 				Conditions: []string{authzGraph.NoCond},
 			},
 			gomock.Any(),
-		).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:1", "member", "document:3#viewer")}}), nil).Times(1)
+		).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:1", "member", "document:3#viewer")}}, false), nil).Times(1)
 
 		mockDatastore.EXPECT().ReadUserTuple(
 			gomock.Any(),
@@ -2131,11 +2131,11 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 				// Manually check the relation and return the right data
 				switch filter.Object {
 				case "document:1":
-					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:1", "member", "document:3#viewer")}}), nil
+					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:1", "member", "document:3#viewer")}}, false), nil
 				case "document:3":
-					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:3", "viewer", "document:4#principal")}}), nil
+					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:3", "viewer", "document:4#principal")}}, false), nil
 				default:
-					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil
+					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{}, false), nil
 				}
 			})
 
@@ -2206,11 +2206,11 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 				// Manually check the relation and return the right data
 				switch filter.Object {
 				case "document:1":
-					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:1", "viewer", "document:3#viewer")}}), nil
+					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:1", "viewer", "document:3#viewer")}}, false), nil
 				case "document:3":
-					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:3", "viewer", "document:2#viewer")}}), nil
+					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:3", "viewer", "document:2#viewer")}}, false), nil
 				default:
-					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil
+					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{}, false), nil
 				}
 			})
 
@@ -2272,11 +2272,11 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 				// Manually check the relation and return the right data
 				switch filter.Object {
 				case "document:1":
-					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:1", "viewer", "document:3#viewer")}}), nil
+					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:1", "viewer", "document:3#viewer")}}, false), nil
 				case "document:3":
-					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:3", "viewer", "document:1#viewer")}}), nil
+					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:3", "viewer", "document:1#viewer")}}, false), nil
 				default:
-					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil
+					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{}, false), nil
 				}
 			})
 
@@ -2338,11 +2338,11 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 				// Manually check the relation and return the right data
 				switch filter.Object {
 				case "document:1":
-					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:1", "viewer", "document:2#member")}}), nil
+					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:1", "viewer", "document:2#member")}}, false), nil
 				case "document:2":
-					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:2", "member", "document:3#viewer")}}), nil
+					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:2", "member", "document:3#viewer")}}, false), nil
 				default:
-					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil
+					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{}, false), nil
 				}
 			})
 
@@ -3173,7 +3173,7 @@ func TestSpecificTypeWildcard(t *testing.T) {
 				Conditions:                  []string{authzGraph.NoCond},
 			},
 			gomock.Any(),
-		).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{expectedTuple}), nil).Times(1)
+		).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{expectedTuple}, false), nil).Times(1)
 
 		resolver := New(Config{
 			Model:            mg,
@@ -3226,7 +3226,7 @@ func TestSpecificTypeWildcard(t *testing.T) {
 				Conditions:                  []string{authzGraph.NoCond},
 			},
 			gomock.Any(),
-		).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil).Times(1)
+		).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{}, false), nil).Times(1)
 
 		resolver := New(Config{
 			Model:            mg,
@@ -3332,7 +3332,7 @@ func TestSpecificTypeWildcard(t *testing.T) {
 					Preference: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
 				},
 			},
-		).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{expectedTuple}), nil).Times(1)
+		).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{expectedTuple}, false), nil).Times(1)
 
 		resolver := New(Config{
 			Model:            mg,
@@ -3451,7 +3451,7 @@ func TestSpecificTypeWildcard(t *testing.T) {
 				Conditions:                  []string{"non_expired"},
 			},
 			gomock.Any(),
-		).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: expectedTuple}}), nil).Times(1)
+		).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: expectedTuple}}, false), nil).Times(1)
 
 		resolver := New(Config{
 			Model:            mg,
@@ -3526,7 +3526,7 @@ func TestSpecificTypeWildcard(t *testing.T) {
 				Conditions:                  []string{"non_expired"},
 			},
 			gomock.Any(),
-		).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{expectedTuple}), nil).Times(1)
+		).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{expectedTuple}, false), nil).Times(1)
 
 		resolver := New(Config{
 			Model:            mg,
@@ -3693,7 +3693,7 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 				Conditions: []string{authzGraph.NoCond},
 			},
 			gomock.Any(),
-		).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:1", "viewer", "document:2#owner")}}), nil).Times(1)
+		).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:1", "viewer", "document:2#owner")}}, false), nil).Times(1)
 
 		resolver := New(Config{
 			Model:            mg,
@@ -3758,7 +3758,7 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 			storeID,
 			gomock.Any(),
 			gomock.Any(),
-		).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:1", "viewer", "document:2#owner")}}), nil).Times(1)
+		).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:1", "viewer", "document:2#owner")}}, false), nil).Times(1)
 
 		resolver := New(Config{
 			Model:            mg,
@@ -3820,7 +3820,7 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 			storeID,
 			gomock.Any(),
 			gomock.Any(),
-		).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil).Times(1)
+		).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{}, false), nil).Times(1)
 
 		resolver := New(Config{
 			Model:            mg,
@@ -3995,9 +3995,10 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 			storeID,
 			gomock.Any(),
 			storage.ReadUsersetTuplesOptions{
-				Consistency: storage.ConsistencyOptions{Preference: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY},
+				WithResultsSortedAscending: true,
+				Consistency:                storage.ConsistencyOptions{Preference: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY},
 			},
-		).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:1", "viewer", "document:2#owner")}}), nil).Times(1)
+		).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:1", "viewer", "document:2#owner")}}, false), nil).Times(1)
 
 		resolver := New(Config{
 			Model:            mg,
@@ -4078,7 +4079,7 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 				"document:2#owner",
 				"validTime",
 				testutils.MustNewStruct(t, map[string]interface{}{"expiration": expiredTime.Format(time.RFC3339)})),
-		}}), nil).Times(1)
+		}}, false), nil).Times(1)
 
 		resolver := New(Config{
 			Model:            mg,
@@ -4159,7 +4160,7 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 				"document:2#owner",
 				"validTime",
 				testutils.MustNewStruct(t, map[string]interface{}{"expiration": futureTime.Format(time.RFC3339)})),
-		}}), nil).Times(1)
+		}}, false), nil).Times(1)
 
 		resolver := New(Config{
 			Model:            mg,
@@ -4232,7 +4233,7 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 				Conditions: []string{authzGraph.NoCond},
 			},
 			gomock.Any(),
-		).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil).MaxTimes(1)
+		).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{}, false), nil).MaxTimes(1)
 
 		mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
 			AnyTimes(). // Allow any number of calls
@@ -4308,10 +4309,13 @@ func TestTTU(t *testing.T) {
 				User:       "document:",
 				Conditions: []string{authzGraph.NoCond},
 			},
-			storage.ReadOptions{Consistency: storage.ConsistencyOptions{Preference: openfgav1.ConsistencyPreference_UNSPECIFIED}},
+			storage.ReadOptions{
+				WithResultsSortedAscending: true,
+				Consistency:                storage.ConsistencyOptions{Preference: openfgav1.ConsistencyPreference_UNSPECIFIED},
+			},
 		).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{{
 			Key: tuple.NewTupleKey("document:1", "parent", "document:2"),
-		}}), nil).Times(1)
+		}}, false), nil).Times(1)
 
 		resolver := New(Config{
 			Model:            mg,
@@ -4379,7 +4383,7 @@ func TestTTU(t *testing.T) {
 			gomock.Any(),
 		).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{{
 			Key: tuple.NewTupleKey("document:1", "parent", "document:2"),
-		}}), nil).Times(1)
+		}}, false), nil).Times(1)
 
 		resolver := New(Config{
 			Model:            mg,
@@ -4441,7 +4445,7 @@ func TestTTU(t *testing.T) {
 			storeID,
 			gomock.Any(),
 			gomock.Any(),
-		).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil).Times(1)
+		).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{}, false), nil).Times(1)
 
 		resolver := New(Config{
 			Model:            mg,
@@ -4610,10 +4614,13 @@ func TestTTU(t *testing.T) {
 			gomock.Any(),
 			storeID,
 			gomock.Any(),
-			storage.ReadOptions{Consistency: storage.ConsistencyOptions{Preference: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY}},
+			storage.ReadOptions{
+				WithResultsSortedAscending: true,
+				Consistency:                storage.ConsistencyOptions{Preference: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY},
+			},
 		).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{{
 			Key: tuple.NewTupleKey("document:1", "parent", "document:2"),
-		}}), nil).Times(1)
+		}}, false), nil).Times(1)
 
 		resolver := New(Config{
 			Model:            mg,
@@ -4692,7 +4699,7 @@ func TestTTU(t *testing.T) {
 					}),
 				},
 			},
-		}}), nil).Times(1)
+		}}, false), nil).Times(1)
 
 		resolver := New(Config{
 			Model:            mg,
@@ -4771,7 +4778,7 @@ func TestTTU(t *testing.T) {
 					}),
 				},
 			},
-		}}), nil).Times(1)
+		}}, false), nil).Times(1)
 
 		resolver := New(Config{
 			Model:            mg,
@@ -4837,7 +4844,7 @@ func TestTTU(t *testing.T) {
 			storeID,
 			gomock.Any(),
 			gomock.Any(),
-		).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil).AnyTimes()
+		).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{}, false), nil).AnyTimes()
 
 		mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
 			AnyTimes(). // Allow any number of calls
@@ -4917,15 +4924,15 @@ func TestResolveRecursiveCheck(t *testing.T) {
 				// Manually check the relation and return the right data
 				switch filter.Object {
 				case "document:1":
-					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:1", "parent", "document:x")}}), nil
+					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:1", "parent", "document:x")}}, false), nil
 				case "document:2":
-					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:2", "parent", "document:1")}}), nil
+					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:2", "parent", "document:1")}}, false), nil
 				case "document:3":
-					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:3", "parent", "document:2")}}), nil
+					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:3", "parent", "document:2")}}, false), nil
 				case "document:4":
-					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:4", "parent", "document:3")}}), nil
+					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:4", "parent", "document:3")}}, false), nil
 				default:
-					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil
+					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{}, false), nil
 				}
 			})
 
@@ -5003,7 +5010,7 @@ func TestResolveRecursiveCheck(t *testing.T) {
 				// Manually check the relation and return the right data
 				switch filter.Relation {
 				case "reader":
-					return storage.NewStaticTupleIterator(readStartingWithUserReader), nil
+					return storage.NewStaticTupleIterator(readStartingWithUserReader, false), nil
 				default:
 					return nil, storage.ErrNotFound
 				}
@@ -5012,7 +5019,7 @@ func TestResolveRecursiveCheck(t *testing.T) {
 		mockDatastore.EXPECT().ReadUsersetTuples(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
 			AnyTimes(). // Allow any number of calls
 			DoAndReturn(func(ctx context.Context, sID string, filter storage.ReadUsersetTuplesFilter, opts storage.ReadUsersetTuplesOptions) (storage.TupleIterator, error) {
-				return storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil
+				return storage.NewStaticTupleIterator([]*openfgav1.Tuple{}, false), nil
 			})
 
 		mockDatastore.EXPECT().Read(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
@@ -5021,15 +5028,15 @@ func TestResolveRecursiveCheck(t *testing.T) {
 				// Manually check the relation and return the right data
 				switch filter.Object {
 				case "document:1":
-					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:1", "parent", "group:g1")}}), nil
+					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:1", "parent", "group:g1")}}, false), nil
 				case "document:2":
-					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:2", "parent", "document:1")}}), nil
+					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:2", "parent", "document:1")}}, false), nil
 				case "document:3":
-					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:3", "parent", "document:2")}}), nil
+					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:3", "parent", "document:2")}}, false), nil
 				case "document:4":
-					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:4", "parent", "document:3")}}), nil
+					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:4", "parent", "document:3")}}, false), nil
 				default:
-					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil
+					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{}, false), nil
 				}
 			})
 
@@ -5104,13 +5111,13 @@ func TestResolveRecursiveCheck(t *testing.T) {
 			AnyTimes(). // Allow any number of calls
 			DoAndReturn(func(ctx context.Context, sID string, filter storage.ReadStartingWithUserFilter, opts storage.ReadStartingWithUserOptions) (storage.TupleIterator, error) {
 				// Manually check the relation and return the right data
-				return storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil
+				return storage.NewStaticTupleIterator([]*openfgav1.Tuple{}, false), nil
 			})
 
 		mockDatastore.EXPECT().ReadUsersetTuples(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
 			AnyTimes(). // Allow any number of calls
 			DoAndReturn(func(ctx context.Context, sID string, filter storage.ReadUsersetTuplesFilter, opts storage.ReadUsersetTuplesOptions) (storage.TupleIterator, error) {
-				return storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil
+				return storage.NewStaticTupleIterator([]*openfgav1.Tuple{}, false), nil
 			})
 
 		mockDatastore.EXPECT().Read(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
@@ -5119,15 +5126,15 @@ func TestResolveRecursiveCheck(t *testing.T) {
 				// Manually check the relation and return the right data
 				switch filter.Object {
 				case "document:1":
-					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:1", "parent", "group:g1")}}), nil
+					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:1", "parent", "group:g1")}}, false), nil
 				case "document:2":
-					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:2", "parent", "document:1")}}), nil
+					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:2", "parent", "document:1")}}, false), nil
 				case "document:3":
-					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:3", "parent", "document:2")}}), nil
+					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:3", "parent", "document:2")}}, false), nil
 				case "document:4":
-					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:4", "parent", "document:3")}}), nil
+					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:4", "parent", "document:3")}}, false), nil
 				default:
-					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil
+					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{}, false), nil
 				}
 			})
 
@@ -5189,15 +5196,15 @@ func TestResolveRecursiveCheck(t *testing.T) {
 			AnyTimes().DoAndReturn(func(ctx context.Context, sID string, filter storage.ReadUsersetTuplesFilter, opts storage.ReadUsersetTuplesOptions) (storage.TupleIterator, error) {
 			switch filter.Object {
 			case "document:1":
-				return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:1", "viewer", "document:x#viewer")}}), nil
+				return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:1", "viewer", "document:x#viewer")}}, false), nil
 			case "document:2":
-				return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:2", "viewer", "document:1#viewer")}}), nil
+				return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:2", "viewer", "document:1#viewer")}}, false), nil
 			case "document:3":
-				return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:3", "viewer", "document:2#viewer")}}), nil
+				return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:3", "viewer", "document:2#viewer")}}, false), nil
 			case "document:4":
-				return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:4", "viewer", "document:3#viewer")}}), nil
+				return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:4", "viewer", "document:3#viewer")}}, false), nil
 			default:
-				return storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil
+				return storage.NewStaticTupleIterator([]*openfgav1.Tuple{}, false), nil
 			}
 		})
 
@@ -5274,9 +5281,9 @@ func TestResolveRecursiveCheck(t *testing.T) {
 				// Manually check the relation and return the right data
 				switch filter.Relation {
 				case "reader":
-					return storage.NewStaticTupleIterator(readStartingWithUserReader), nil
+					return storage.NewStaticTupleIterator(readStartingWithUserReader, false), nil
 				default:
-					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil
+					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{}, false), nil
 				}
 			})
 
@@ -5285,22 +5292,22 @@ func TestResolveRecursiveCheck(t *testing.T) {
 			switch filter.Object {
 			case "document:1":
 				if filter.AllowedUserTypeRestrictions[0].GetType() == "group" {
-					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:1", "viewer", "group:g1#viewer")}}), nil
+					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:1", "viewer", "group:g1#viewer")}}, false), nil
 				}
 			case "document:2":
 				if filter.AllowedUserTypeRestrictions[0].GetType() == "document" {
-					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:2", "viewer", "document:1#viewer")}}), nil
+					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:2", "viewer", "document:1#viewer")}}, false), nil
 				}
 			case "document:3":
 				if filter.AllowedUserTypeRestrictions[0].GetType() == "document" {
-					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:3", "viewer", "document:2#viewer")}}), nil
+					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:3", "viewer", "document:2#viewer")}}, false), nil
 				}
 			case "document:4":
 				if filter.AllowedUserTypeRestrictions[0].GetType() == "document" {
-					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:4", "viewer", "document:3#viewer")}}), nil
+					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:4", "viewer", "document:3#viewer")}}, false), nil
 				}
 			}
-			return storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil
+			return storage.NewStaticTupleIterator([]*openfgav1.Tuple{}, false), nil
 		})
 
 		resolver := New(Config{
@@ -5374,7 +5381,7 @@ func TestResolveRecursiveCheck(t *testing.T) {
 			AnyTimes(). // Allow any number of calls
 			DoAndReturn(func(ctx context.Context, sID string, filter storage.ReadStartingWithUserFilter, opts storage.ReadStartingWithUserOptions) (storage.TupleIterator, error) {
 				// Manually check the relation and return the right data
-				return storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil
+				return storage.NewStaticTupleIterator([]*openfgav1.Tuple{}, false), nil
 			})
 
 		mockDatastore.EXPECT().ReadUsersetTuples(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
@@ -5382,22 +5389,22 @@ func TestResolveRecursiveCheck(t *testing.T) {
 			switch filter.Object {
 			case "document:1":
 				if filter.AllowedUserTypeRestrictions[0].GetType() == "group" {
-					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:1", "viewer", "group:g1#viewer")}}), nil
+					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:1", "viewer", "group:g1#viewer")}}, false), nil
 				}
 			case "document:2":
 				if filter.AllowedUserTypeRestrictions[0].GetType() == "document" {
-					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:2", "viewer", "document:1#viewer")}}), nil
+					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:2", "viewer", "document:1#viewer")}}, false), nil
 				}
 			case "document:3":
 				if filter.AllowedUserTypeRestrictions[0].GetType() == "document" {
-					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:3", "viewer", "document:2#viewer")}}), nil
+					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:3", "viewer", "document:2#viewer")}}, false), nil
 				}
 			case "document:4":
 				if filter.AllowedUserTypeRestrictions[0].GetType() == "document" {
-					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:4", "viewer", "document:3#viewer")}}), nil
+					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:4", "viewer", "document:3#viewer")}}, false), nil
 				}
 			}
-			return storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil
+			return storage.NewStaticTupleIterator([]*openfgav1.Tuple{}, false), nil
 		})
 
 		resolver := New(Config{
@@ -5460,9 +5467,9 @@ func TestResolveRecursiveCheck(t *testing.T) {
 				// Manually check the relation and return the right data
 				switch filter.Relation {
 				case "viewer":
-					return storage.NewStaticTupleIterator(readStartingWithUserReader), nil
+					return storage.NewStaticTupleIterator(readStartingWithUserReader, false), nil
 				default:
-					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil
+					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{}, false), nil
 				}
 			})
 
@@ -5470,9 +5477,9 @@ func TestResolveRecursiveCheck(t *testing.T) {
 			AnyTimes(). // Allow any number of calls
 			DoAndReturn(func(ctx context.Context, sID string, filter storage.ReadUsersetTuplesFilter, opts storage.ReadUsersetTuplesOptions) (storage.TupleIterator, error) {
 				if filter.Object == "group:g1" && filter.Relation == "viewer" {
-					return storage.NewStaticTupleIterator(readStartingWithUserReader), nil
+					return storage.NewStaticTupleIterator(readStartingWithUserReader, false), nil
 				}
-				return storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil
+				return storage.NewStaticTupleIterator([]*openfgav1.Tuple{}, false), nil
 			})
 
 		mockDatastore.EXPECT().Read(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
@@ -5481,9 +5488,9 @@ func TestResolveRecursiveCheck(t *testing.T) {
 				// Manually check the relation and return the right data
 				switch filter.Object {
 				case "group:g2":
-					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("group:g2", "parent", "group:g1")}}), nil
+					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("group:g2", "parent", "group:g1")}}, false), nil
 				default:
-					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil
+					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{}, false), nil
 				}
 			})
 
@@ -5544,17 +5551,17 @@ func TestResolveRecursiveCheck(t *testing.T) {
 			switch filter.Object {
 			case "document:1":
 				if len(filter.AllowedUserTypeRestrictions) > 0 {
-					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:1", "viewer", "user:*")}}), nil
+					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:1", "viewer", "user:*")}}, false), nil
 				}
-				return storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil
+				return storage.NewStaticTupleIterator([]*openfgav1.Tuple{}, false), nil
 			case "document:2":
-				return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:2", "viewer", "document:1#viewer")}}), nil
+				return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:2", "viewer", "document:1#viewer")}}, false), nil
 			case "document:3":
-				return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:3", "viewer", "document:2#viewer")}}), nil
+				return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:3", "viewer", "document:2#viewer")}}, false), nil
 			case "document:4":
-				return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:4", "viewer", "document:3#viewer")}}), nil
+				return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:4", "viewer", "document:3#viewer")}}, false), nil
 			default:
-				return storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil
+				return storage.NewStaticTupleIterator([]*openfgav1.Tuple{}, false), nil
 			}
 		})
 
@@ -5617,9 +5624,9 @@ func TestResolveRecursiveCheck(t *testing.T) {
 				// Manually check the relation and return the right data
 				switch filter.Relation {
 				case "viewer":
-					return storage.NewStaticTupleIterator(readStartingWithUserReader), nil
+					return storage.NewStaticTupleIterator(readStartingWithUserReader, false), nil
 				default:
-					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil
+					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{}, false), nil
 				}
 			})
 
@@ -5627,9 +5634,9 @@ func TestResolveRecursiveCheck(t *testing.T) {
 			AnyTimes(). // Allow any number of calls
 			DoAndReturn(func(ctx context.Context, sID string, filter storage.ReadUsersetTuplesFilter, opts storage.ReadUsersetTuplesOptions) (storage.TupleIterator, error) {
 				if filter.Object == "group:g1" && filter.Relation == "viewer" {
-					return storage.NewStaticTupleIterator(readStartingWithUserReader), nil
+					return storage.NewStaticTupleIterator(readStartingWithUserReader, false), nil
 				}
-				return storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil
+				return storage.NewStaticTupleIterator([]*openfgav1.Tuple{}, false), nil
 			})
 
 		mockDatastore.EXPECT().Read(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
@@ -5638,9 +5645,9 @@ func TestResolveRecursiveCheck(t *testing.T) {
 				// Manually check the relation and return the right data
 				switch filter.Object {
 				case "group:g2":
-					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("group:g2", "parent", "group:g1")}}), nil
+					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("group:g2", "parent", "group:g1")}}, false), nil
 				default:
-					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil
+					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{}, false), nil
 				}
 			})
 
@@ -5702,17 +5709,17 @@ func TestResolveRecursiveCheck(t *testing.T) {
 			switch filter.Object {
 			case "document:1":
 				if len(filter.AllowedUserTypeRestrictions) > 0 {
-					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:1", "viewer", "user:*")}}), nil
+					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:1", "viewer", "user:*")}}, false), nil
 				}
-				return storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil
+				return storage.NewStaticTupleIterator([]*openfgav1.Tuple{}, false), nil
 			case "document:2":
-				return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:2", "viewer", "document:1#viewer")}}), nil
+				return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:2", "viewer", "document:1#viewer")}}, false), nil
 			case "document:3":
-				return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:3", "viewer", "document:2#viewer")}}), nil
+				return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:3", "viewer", "document:2#viewer")}}, false), nil
 			case "document:4":
-				return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:4", "viewer", "document:3#viewer")}}), nil
+				return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:4", "viewer", "document:3#viewer")}}, false), nil
 			default:
-				return storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil
+				return storage.NewStaticTupleIterator([]*openfgav1.Tuple{}, false), nil
 			}
 		})
 
@@ -5772,9 +5779,9 @@ func TestResolveRecursiveCheck(t *testing.T) {
 			AnyTimes().
 			DoAndReturn(func(_ context.Context, _ string, filter storage.ReadFilter, _ storage.ReadOptions) (storage.TupleIterator, error) {
 				if filter.Object == "document:1" {
-					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:1", "parent", "document:2")}}), nil
+					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:1", "parent", "document:2")}}, false), nil
 				}
-				return storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil
+				return storage.NewStaticTupleIterator([]*openfgav1.Tuple{}, false), nil
 			})
 
 		mockCache.EXPECT().Get(gomock.Any()).Return(nil).AnyTimes()
@@ -5953,7 +5960,7 @@ func TestResolveCheck(t *testing.T) {
 				// Manually check the relation and return the right data
 				switch filter.ObjectType {
 				case "group":
-					return storage.NewStaticTupleIterator(readStartingWithUserReader), nil
+					return storage.NewStaticTupleIterator(readStartingWithUserReader, false), nil
 				default:
 					return nil, storage.ErrNotFound
 				}
@@ -5962,7 +5969,7 @@ func TestResolveCheck(t *testing.T) {
 		mockDatastore.EXPECT().ReadUsersetTuples(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
 			AnyTimes(). // Allow any number of calls
 			DoAndReturn(func(ctx context.Context, sID string, filter storage.ReadUsersetTuplesFilter, opts storage.ReadUsersetTuplesOptions) (storage.TupleIterator, error) {
-				return storage.NewStaticTupleIterator(readTuples), nil
+				return storage.NewStaticTupleIterator(readTuples, false), nil
 			})
 
 		resolver := New(Config{

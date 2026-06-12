@@ -256,7 +256,7 @@ func identityErrHandler(err error, _ ...interface{}) error { return err }
 
 func TestFetchBufferMetric(t *testing.T) {
 	t.Run("success_records_true_label", func(t *testing.T) {
-		iter := NewSQLTupleIterator(&stubRowGetter{rows: &stubRows{}}, identityErrHandler)
+		iter := NewSQLTupleIterator(&stubRowGetter{rows: &stubRows{}}, identityErrHandler, false)
 		before := sqlIterQuerySampleCount(t, "true")
 		err := iter.fetchBuffer(context.Background())
 		require.NoError(t, err)
@@ -265,7 +265,7 @@ func TestFetchBufferMetric(t *testing.T) {
 
 	t.Run("infrastructure_error_records_false_label", func(t *testing.T) {
 		dbErr := errors.New("connection reset")
-		iter := NewSQLTupleIterator(&stubRowGetter{err: dbErr}, identityErrHandler)
+		iter := NewSQLTupleIterator(&stubRowGetter{err: dbErr}, identityErrHandler, false)
 		before := sqlIterQuerySampleCount(t, "false")
 		err := iter.fetchBuffer(context.Background())
 		require.Error(t, err)
@@ -275,7 +275,7 @@ func TestFetchBufferMetric(t *testing.T) {
 	t.Run("not_found_error_records_true_label", func(t *testing.T) {
 		// errHandler translates the raw error to the storage sentinel, as real backends do.
 		notFoundHandler := func(err error, _ ...interface{}) error { return storage.ErrNotFound }
-		iter := NewSQLTupleIterator(&stubRowGetter{err: errors.New("no rows")}, notFoundHandler)
+		iter := NewSQLTupleIterator(&stubRowGetter{err: errors.New("no rows")}, notFoundHandler, false)
 		before := sqlIterQuerySampleCount(t, "true")
 		err := iter.fetchBuffer(context.Background())
 		require.ErrorIs(t, err, storage.ErrNotFound)

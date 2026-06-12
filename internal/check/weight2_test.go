@@ -38,35 +38,38 @@ func TestWeight2Userset(t *testing.T) {
 			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:1"}},
 			Conditions: []string{""},
 		}, storage.ReadStartingWithUserOptions{
+			WithResultsSortedAscending: true,
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
 			},
 		},
 		).MaxTimes(1).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{
 			{Key: tuple.NewTupleKey("group:1", "members", "user:1")},
-		}), nil)
+		}, false), nil)
 		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
 			ObjectType: "group",
 			Relation:   "public",
 			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:1"}},
 			Conditions: []string{""},
 		}, storage.ReadStartingWithUserOptions{
+			WithResultsSortedAscending: true,
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
 			},
 		},
-		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil), nil)
+		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil, false), nil)
 		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
 			ObjectType: "group",
 			Relation:   "public",
 			UserFilter: []*openfgav1.ObjectRelation{{Object: tuple.TypedPublicWildcard("user")}},
 			Conditions: []string{""},
 		}, storage.ReadStartingWithUserOptions{
+			WithResultsSortedAscending: true,
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
 			},
 		},
-		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil), nil)
+		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil, false), nil)
 
 		ctx := context.Background()
 
@@ -94,7 +97,7 @@ func TestWeight2Userset(t *testing.T) {
 			User:     "group:1#all",
 			Relation: "viewer",
 			Object:   "document:1",
-		}})
+		}}, false)
 
 		strategy := NewWeight2(mg, mockDatastore)
 		req, err := NewRequest(RequestParams{
@@ -123,35 +126,38 @@ func TestWeight2Userset(t *testing.T) {
 			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:1"}},
 			Conditions: []string{""},
 		}, storage.ReadStartingWithUserOptions{
+			WithResultsSortedAscending: true,
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
 			},
 		},
 		).MaxTimes(1).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{
 			{Key: tuple.NewTupleKey("group:1", "members", "user:1")},
-		}), nil)
+		}, false), nil)
 		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
 			ObjectType: "group",
 			Relation:   "public",
 			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:1"}},
 			Conditions: []string{""},
 		}, storage.ReadStartingWithUserOptions{
+			WithResultsSortedAscending: true,
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
 			},
 		},
-		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil), nil)
+		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil, false), nil)
 		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
 			ObjectType: "group",
 			Relation:   "public",
 			UserFilter: []*openfgav1.ObjectRelation{{Object: tuple.TypedPublicWildcard("user")}},
 			Conditions: []string{""},
 		}, storage.ReadStartingWithUserOptions{
+			WithResultsSortedAscending: true,
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
 			},
 		},
-		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil), nil)
+		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil, false), nil)
 
 		ctx := context.Background()
 		model := testutils.MustTransformDSLToProtoWithID(`
@@ -178,7 +184,7 @@ func TestWeight2Userset(t *testing.T) {
 			User:     "group:1#all",
 			Relation: "viewer",
 			Object:   "document:1",
-		}})
+		}}, false)
 		strategy := NewWeight2(mg, mockDatastore)
 		req, err := NewRequest(RequestParams{
 			StoreID:  storeID,
@@ -206,35 +212,38 @@ func TestWeight2Userset(t *testing.T) {
 			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:1"}},
 			Conditions: []string{""},
 		}, storage.ReadStartingWithUserOptions{
+			WithResultsSortedAscending: true,
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
 			},
 		},
-		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil), nil)
+		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil, false), nil)
 		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
 			ObjectType: "group",
 			Relation:   "public",
 			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:1"}},
 			Conditions: []string{""},
 		}, storage.ReadStartingWithUserOptions{
+			WithResultsSortedAscending: true,
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
 			},
 		},
-		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil), nil)
+		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil, false), nil)
 		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
 			ObjectType: "group",
 			Relation:   "public",
 			UserFilter: []*openfgav1.ObjectRelation{{Object: tuple.TypedPublicWildcard("user")}},
 			Conditions: []string{""},
 		}, storage.ReadStartingWithUserOptions{
+			WithResultsSortedAscending: true,
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
 			},
 		},
 		).MaxTimes(1).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{
 			{Key: tuple.NewTupleKey("group:1", "public", "user:*")},
-		}), nil)
+		}, false), nil)
 
 		ctx := context.Background()
 
@@ -262,7 +271,7 @@ func TestWeight2Userset(t *testing.T) {
 			User:     "group:1#all",
 			Relation: "viewer",
 			Object:   "document:1",
-		}})
+		}}, false)
 		strategy := NewWeight2(mg, mockDatastore)
 		req, err := NewRequest(RequestParams{
 			StoreID:  storeID,
@@ -289,35 +298,38 @@ func TestWeight2Userset(t *testing.T) {
 			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:1"}},
 			Conditions: []string{""},
 		}, storage.ReadStartingWithUserOptions{
+			WithResultsSortedAscending: true,
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
 			},
 		},
-		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil), nil)
+		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil, false), nil)
 		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
 			ObjectType: "group",
 			Relation:   "public",
 			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:1"}},
 			Conditions: []string{""},
 		}, storage.ReadStartingWithUserOptions{
+			WithResultsSortedAscending: true,
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
 			},
 		},
-		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil), nil)
+		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil, false), nil)
 		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
 			ObjectType: "group",
 			Relation:   "public",
 			UserFilter: []*openfgav1.ObjectRelation{{Object: tuple.TypedPublicWildcard("user")}},
 			Conditions: []string{""},
 		}, storage.ReadStartingWithUserOptions{
+			WithResultsSortedAscending: true,
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
 			},
 		},
 		).MaxTimes(1).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{
 			{Key: tuple.NewTupleKey("group:1", "public", "user:*")},
-		}), nil)
+		}, false), nil)
 
 		ctx := context.Background()
 
@@ -345,7 +357,7 @@ func TestWeight2Userset(t *testing.T) {
 			User:     "group:2#all",
 			Relation: "viewer",
 			Object:   "document:1",
-		}})
+		}}, false)
 
 		strategy := NewWeight2(mg, mockDatastore)
 		req, err := NewRequest(RequestParams{
@@ -416,11 +428,11 @@ func TestWeight2Userset(t *testing.T) {
 				// Manually check the relation and return the right data
 				switch filter.Relation {
 				case "members":
-					return storage.NewStaticTupleIterator(readStartingWithUserMembers), nil
+					return storage.NewStaticTupleIterator(readStartingWithUserMembers, false), nil
 				case "public_restricted":
-					return storage.NewStaticTupleIterator(readStartingWithUserPublic), nil
+					return storage.NewStaticTupleIterator(readStartingWithUserPublic, false), nil
 				case "restricted":
-					return storage.NewStaticTupleIterator(readStartingWithUserRestricted), nil
+					return storage.NewStaticTupleIterator(readStartingWithUserRestricted, false), nil
 				default:
 					return nil, fmt.Errorf("unexpected relation %s", filter.Relation)
 				}
@@ -456,7 +468,7 @@ func TestWeight2Userset(t *testing.T) {
 			User:     "group:2#all",
 			Relation: "viewer",
 			Object:   "document:1",
-		}})
+		}}, false)
 
 		strategy := NewWeight2(mg, mockDatastore)
 		req, err := NewRequest(RequestParams{
@@ -491,35 +503,38 @@ func TestWeight2TTU(t *testing.T) {
 			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:1"}},
 			Conditions: []string{""},
 		}, storage.ReadStartingWithUserOptions{
+			WithResultsSortedAscending: true,
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
 			},
 		},
 		).MaxTimes(1).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{
 			{Key: tuple.NewTupleKey("group:1", "members", "user:1")},
-		}), nil)
+		}, false), nil)
 		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
 			ObjectType: "group",
 			Relation:   "public",
 			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:1"}},
 			Conditions: []string{""},
 		}, storage.ReadStartingWithUserOptions{
+			WithResultsSortedAscending: true,
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
 			},
 		},
-		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil), nil)
+		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil, false), nil)
 		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
 			ObjectType: "group",
 			Relation:   "public",
 			UserFilter: []*openfgav1.ObjectRelation{{Object: tuple.TypedPublicWildcard("user")}},
 			Conditions: []string{""},
 		}, storage.ReadStartingWithUserOptions{
+			WithResultsSortedAscending: true,
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
 			},
 		},
-		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil), nil)
+		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil, false), nil)
 
 		ctx := context.Background()
 
@@ -548,7 +563,7 @@ func TestWeight2TTU(t *testing.T) {
 			User:     "group:1",
 			Relation: "parent",
 			Object:   "document:1",
-		}})
+		}}, false)
 		strategy := NewWeight2(mg, mockDatastore)
 		req, err := NewRequest(RequestParams{
 			StoreID:  storeID,
@@ -576,35 +591,38 @@ func TestWeight2TTU(t *testing.T) {
 			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:1"}},
 			Conditions: []string{""},
 		}, storage.ReadStartingWithUserOptions{
+			WithResultsSortedAscending: true,
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
 			},
 		},
-		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil), nil)
+		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil, false), nil)
 		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
 			ObjectType: "group",
 			Relation:   "public",
 			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:1"}},
 			Conditions: []string{""},
 		}, storage.ReadStartingWithUserOptions{
+			WithResultsSortedAscending: true,
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
 			},
 		},
-		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil), nil)
+		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil, false), nil)
 		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
 			ObjectType: "group",
 			Relation:   "public",
 			UserFilter: []*openfgav1.ObjectRelation{{Object: tuple.TypedPublicWildcard("user")}},
 			Conditions: []string{""},
 		}, storage.ReadStartingWithUserOptions{
+			WithResultsSortedAscending: true,
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
 			},
 		},
 		).MaxTimes(1).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{
 			{Key: tuple.NewTupleKey("group:1", "public", "user:*")},
-		}), nil)
+		}, false), nil)
 
 		ctx := context.Background()
 
@@ -633,7 +651,7 @@ func TestWeight2TTU(t *testing.T) {
 			User:     "group:1",
 			Relation: "parent",
 			Object:   "document:1",
-		}})
+		}}, false)
 		strategy := NewWeight2(mg, mockDatastore)
 		req, err := NewRequest(RequestParams{
 			StoreID:  storeID,
@@ -661,35 +679,38 @@ func TestWeight2TTU(t *testing.T) {
 			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:1"}},
 			Conditions: []string{""},
 		}, storage.ReadStartingWithUserOptions{
+			WithResultsSortedAscending: true,
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
 			},
 		},
 		).MaxTimes(1).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{
 			{Key: tuple.NewTupleKey("group:1", "members", "user:1")},
-		}), nil)
+		}, false), nil)
 		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
 			ObjectType: "group",
 			Relation:   "public",
 			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:1"}},
 			Conditions: []string{""},
 		}, storage.ReadStartingWithUserOptions{
+			WithResultsSortedAscending: true,
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
 			},
 		},
-		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil), nil)
+		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil, false), nil)
 		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
 			ObjectType: "group",
 			Relation:   "public",
 			UserFilter: []*openfgav1.ObjectRelation{{Object: tuple.TypedPublicWildcard("user")}},
 			Conditions: []string{""},
 		}, storage.ReadStartingWithUserOptions{
+			WithResultsSortedAscending: true,
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
 			},
 		},
-		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil), nil)
+		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil, false), nil)
 
 		ctx := context.Background()
 
@@ -718,7 +739,7 @@ func TestWeight2TTU(t *testing.T) {
 			User:     "group:2",
 			Relation: "parent",
 			Object:   "document:1",
-		}})
+		}}, false)
 		strategy := NewWeight2(mg, mockDatastore)
 		req, err := NewRequest(RequestParams{
 			StoreID:  storeID,
@@ -746,35 +767,38 @@ func TestWeight2TTU(t *testing.T) {
 			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:1"}},
 			Conditions: []string{""},
 		}, storage.ReadStartingWithUserOptions{
+			WithResultsSortedAscending: true,
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
 			},
 		},
-		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil), nil)
+		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil, false), nil)
 		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
 			ObjectType: "group",
 			Relation:   "public",
 			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:1"}},
 			Conditions: []string{""},
 		}, storage.ReadStartingWithUserOptions{
+			WithResultsSortedAscending: true,
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
 			},
 		},
-		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil), nil)
+		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil, false), nil)
 		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
 			ObjectType: "group",
 			Relation:   "public",
 			UserFilter: []*openfgav1.ObjectRelation{{Object: tuple.TypedPublicWildcard("user")}},
 			Conditions: []string{""},
 		}, storage.ReadStartingWithUserOptions{
+			WithResultsSortedAscending: true,
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
 			},
 		},
 		).MaxTimes(1).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{
 			{Key: tuple.NewTupleKey("group:1", "public", "user:*")},
-		}), nil)
+		}, false), nil)
 
 		ctx := context.Background()
 
@@ -803,7 +827,7 @@ func TestWeight2TTU(t *testing.T) {
 			User:     "group:2",
 			Relation: "parent",
 			Object:   "document:1",
-		}})
+		}}, false)
 		strategy := NewWeight2(mg, mockDatastore)
 		req, err := NewRequest(RequestParams{
 			StoreID:  storeID,
@@ -873,11 +897,11 @@ func TestWeight2TTU(t *testing.T) {
 				// Manually check the relation and return the right data
 				switch filter.Relation {
 				case "members":
-					return storage.NewStaticTupleIterator(readStartingWithUserMembers), nil
+					return storage.NewStaticTupleIterator(readStartingWithUserMembers, false), nil
 				case "public_restricted":
-					return storage.NewStaticTupleIterator(readStartingWithUserPublic), nil
+					return storage.NewStaticTupleIterator(readStartingWithUserPublic, false), nil
 				case "restricted":
-					return storage.NewStaticTupleIterator(readStartingWithUserRestricted), nil
+					return storage.NewStaticTupleIterator(readStartingWithUserRestricted, false), nil
 				default:
 					return nil, fmt.Errorf("unexpected relation %s", filter.Relation)
 				}
@@ -914,7 +938,7 @@ func TestWeight2TTU(t *testing.T) {
 			User:     "group:2",
 			Relation: "viewer",
 			Object:   "document:1",
-		}})
+		}}, false)
 
 		strategy := NewWeight2(mg, mockDatastore)
 		req, err := NewRequest(RequestParams{
@@ -951,7 +975,7 @@ func TestWeight2ExecuteCancelledContextRace(t *testing.T) {
 	mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
 		MaxTimes(3).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{
 		{Key: tuple.NewTupleKey("group:1", "members", "user:1")},
-	}), nil)
+	}, false), nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // pre-cancel so ctx.Done() and the ToChannel close race immediately
@@ -980,7 +1004,7 @@ func TestWeight2ExecuteCancelledContextRace(t *testing.T) {
 		User:     "group:1#all",
 		Relation: "viewer",
 		Object:   "document:1",
-	}})
+	}}, false)
 
 	strategy := NewWeight2(mg, mockDatastore)
 	req, err := NewRequest(RequestParams{
@@ -1058,12 +1082,12 @@ func TestWeight2ExecuteConcatOrderingBug(t *testing.T) {
 	datastoreGated, gate, blocked := newGatedIterator[*openfgav1.TupleKey](
 		storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{
 			{Object: "document:1", Relation: "viewer", User: "group:2#members"},
-		}),
+		}, false),
 	)
 	rightIter := storage.WrapIterator(storage.UsersetKind, iterator.Concat[*openfgav1.TupleKey](
 		storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{
 			{Object: "document:1", Relation: "viewer", User: "group:9#members"},
-		}),
+		}, false),
 		datastoreGated,
 	))
 
@@ -1073,7 +1097,7 @@ func TestWeight2ExecuteConcatOrderingBug(t *testing.T) {
 		// meaning "group:9" is already in the right channel buffer. Only then send
 		// left so that execute processes right's contextual tuple first.
 		<-blocked
-		leftChan <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"group:1", "group:2"})}
+		leftChan <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"group:1", "group:2"}, false)}
 		close(leftChan)
 		// Ungate the datastore source; execute will process left entirely before
 		// returning to the outer select, so timing here doesn't affect correctness.

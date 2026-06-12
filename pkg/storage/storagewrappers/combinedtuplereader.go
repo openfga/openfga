@@ -69,11 +69,20 @@ func (c *CombinedTupleReader) Read(
 	options storage.ReadOptions,
 ) (storage.TupleIterator, error) {
 	filteredTuples := filterTuples(c.contextualTuplesOrderedByObjectID, filter.Object, filter.Relation, []string{})
-	iter1 := storage.NewStaticTupleIterator(filteredTuples)
+	if options.WithResultsSortedAscending {
+		slices.SortFunc(filteredTuples, func(a, b *openfgav1.Tuple) int {
+			return strings.Compare(a.GetKey().GetUser(), b.GetKey().GetUser())
+		})
+	}
+	iter1 := storage.NewStaticTupleIterator(filteredTuples, options.WithResultsSortedAscending)
 
 	iter2, err := c.RelationshipTupleReader.Read(ctx, storeID, filter, options)
 	if err != nil {
 		return nil, err
+	}
+
+	if options.WithResultsSortedAscending {
+		return storage.NewOrderedCombinedIterator(storage.UserMapper(), iter1, iter2), nil
 	}
 
 	return storage.NewCombinedIterator(iter1, iter2), nil
@@ -145,11 +154,20 @@ func (c *CombinedTupleReader) ReadUsersetTuples(
 		}
 	}
 
-	iter1 := storage.NewStaticTupleIterator(usersetTuples)
+	if options.WithResultsSortedAscending {
+		slices.SortFunc(usersetTuples, func(a, b *openfgav1.Tuple) int {
+			return strings.Compare(a.GetKey().GetUser(), b.GetKey().GetUser())
+		})
+	}
+	iter1 := storage.NewStaticTupleIterator(usersetTuples, options.WithResultsSortedAscending)
 
 	iter2, err := c.RelationshipTupleReader.ReadUsersetTuples(ctx, store, filter, options)
 	if err != nil {
 		return nil, err
+	}
+
+	if options.WithResultsSortedAscending {
+		return storage.NewOrderedCombinedIterator(storage.UserMapper(), iter1, iter2), nil
 	}
 
 	return storage.NewCombinedIterator(iter1, iter2), nil
@@ -179,7 +197,12 @@ func (c *CombinedTupleReader) ReadStartingWithUser(
 		filteredTuples = append(filteredTuples, t)
 	}
 
-	iter1 := storage.NewStaticTupleIterator(filteredTuples)
+	if options.WithResultsSortedAscending {
+		slices.SortFunc(filteredTuples, func(a, b *openfgav1.Tuple) int {
+			return strings.Compare(a.GetKey().GetObject(), b.GetKey().GetObject())
+		})
+	}
+	iter1 := storage.NewStaticTupleIterator(filteredTuples, options.WithResultsSortedAscending)
 
 	iter2, err := c.RelationshipTupleReader.ReadStartingWithUser(ctx, store, filter, options)
 	if err != nil {

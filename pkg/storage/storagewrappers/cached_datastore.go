@@ -369,7 +369,7 @@ func (c *CachedDatastore) newCachedIterator(
 		tuplesCacheHitCounter.WithLabelValues(operation, c.method).Inc()
 		span.SetAttributes(attribute.Bool("cached", true))
 
-		staticIter := storage.NewStaticIterator[*storage.TupleRecord](cacheEntry.Tuples)
+		staticIter := storage.NewStaticIterator[*storage.TupleRecord](cacheEntry.Tuples, false)
 		currentIteratorCacheCount.WithLabelValues("true").Inc()
 
 		return &cachedTupleIterator{

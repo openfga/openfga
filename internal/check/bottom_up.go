@@ -176,6 +176,7 @@ func (s *bottomUp) specificType(ctx context.Context, req *Request, edge *authzGr
 	defer span.End()
 
 	opts := storage.ReadStartingWithUserOptions{
+		WithResultsSortedAscending: true,
 		Consistency: storage.ConsistencyOptions{
 			Preference: req.GetConsistency(),
 		},
@@ -213,6 +214,7 @@ func (s *bottomUp) specificTypeWildcard(ctx context.Context, req *Request, edge 
 	defer span.End()
 
 	opts := storage.ReadStartingWithUserOptions{
+		WithResultsSortedAscending: true,
 		Consistency: storage.ConsistencyOptions{
 			Preference: req.GetConsistency(),
 		},
@@ -253,7 +255,7 @@ func (s *bottomUp) buildIterator(ctx context.Context, req *Request, edge *authzG
 	// deduplication is only happening on the merged iterator and contextual tuples will always overwrite the base iterator
 	iter := storage.NewTupleKeyIteratorFromTupleIterator(i)
 	if ctxTuples, ok := req.GetContextualTuplesByUserID(userID, relation, objectType); ok {
-		iter = iterator.Merge(iter, storage.NewStaticTupleKeyIterator(ctxTuples), func(a, b *openfgav1.TupleKey) int {
+		iter = iterator.Merge(iter, storage.NewStaticTupleKeyIterator(ctxTuples, true), func(a, b *openfgav1.TupleKey) int {
 			if a.GetObject() < b.GetObject() {
 				return -1
 			}
@@ -293,7 +295,7 @@ func (b *batcher) add(val string) {
 
 func (b *batcher) flush(stopped bool) {
 	if len(b.items) > 0 {
-		concurrency.TrySendThroughChannel(b.ctx, &iterator.Msg{Iter: storage.NewStaticIterator[string](b.items)}, b.out)
+		concurrency.TrySendThroughChannel(b.ctx, &iterator.Msg{Iter: storage.NewStaticIterator[string](b.items, true)}, b.out)
 		// Get a new buffer from the pool for the next batch.
 		// We cannot reuse the current one because ownership of the slice has been passed to the iterator.
 		if stopped {

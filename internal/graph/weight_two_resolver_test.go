@@ -67,7 +67,7 @@ func TestFastPathDirect(t *testing.T) {
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
 			}},
-		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil), nil)
+		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil, false), nil)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
 			model
@@ -243,28 +243,28 @@ func TestFastPathUnion(t *testing.T) {
 		ctx := context.Background()
 
 		producer1 := make(chan *iterator.Msg, 3)
-		producer1 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:1"})}
-		producer1 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:5"})}
-		producer1 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:6"})}
+		producer1 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:1"}, false)}
+		producer1 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:5"}, false)}
+		producer1 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:6"}, false)}
 		close(producer1)
 		producers = append(producers, iterator.NewStream(0, producer1))
 
 		producer2 := make(chan *iterator.Msg, 1)
-		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:2"})}
+		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:2"}, false)}
 		close(producer2)
 		producers = append(producers, iterator.NewStream(0, producer2))
 
 		producer3 := make(chan *iterator.Msg, 4)
-		producer3 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:0"})}
-		producer3 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:3"})}
-		producer3 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:8"})}
-		producer3 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:9"})}
+		producer3 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:0"}, false)}
+		producer3 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:3"}, false)}
+		producer3 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:8"}, false)}
+		producer3 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:9"}, false)}
 		close(producer3)
 		producers = append(producers, iterator.NewStream(0, producer3))
 
 		producer4 := make(chan *iterator.Msg, 2)
-		producer4 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:4"})}
-		producer4 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:8"})}
+		producer4 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:4"}, false)}
+		producer4 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:8"}, false)}
 		close(producer4)
 		producers = append(producers, iterator.NewStream(0, producer4))
 
@@ -346,7 +346,7 @@ func TestFastPathUnion(t *testing.T) {
 
 				for _, objs := range tt.objects {
 					producer := make(chan *iterator.Msg, 1)
-					producer <- &iterator.Msg{Iter: storage.NewStaticIterator[string](objs)}
+					producer <- &iterator.Msg{Iter: storage.NewStaticIterator[string](objs, false)}
 					close(producer)
 					producers = append(producers, iterator.NewStream(0, producer))
 				}
@@ -392,7 +392,7 @@ func TestFastPathUnion(t *testing.T) {
 			for j := 0; j < numItems; j++ {
 				keys = append(keys, "obj:"+strconv.Itoa(j))
 			}
-			producer <- &iterator.Msg{Iter: storage.NewStaticIterator[string](keys)}
+			producer <- &iterator.Msg{Iter: storage.NewStaticIterator[string](keys, false)}
 			close(producer)
 			producers = append(producers, iterator.NewStream(0, producer))
 		}
@@ -437,7 +437,7 @@ func TestFastPathUnion(t *testing.T) {
 		producers = append(producers, iterator.NewStream(0, producer1))
 
 		producer2 := make(chan *iterator.Msg, 1)
-		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:2"})}
+		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:2"}, false)}
 		close(producer2)
 		producers = append(producers, iterator.NewStream(0, producer2))
 
@@ -470,7 +470,7 @@ func TestFastPathUnion(t *testing.T) {
 		producers = append(producers, iterator.NewStream(0, producer1))
 
 		producer2 := make(chan *iterator.Msg, 1)
-		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:0"})}
+		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:0"}, false)}
 		close(producer2)
 		producers = append(producers, iterator.NewStream(0, producer2))
 
@@ -560,31 +560,31 @@ func TestFastPathIntersection(t *testing.T) {
 		ctx := context.Background()
 
 		producer1 := make(chan *iterator.Msg, 3)
-		producer1 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:1"})}
-		producer1 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:5"})}
-		producer1 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:6"})}
+		producer1 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:1"}, false)}
+		producer1 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:5"}, false)}
+		producer1 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:6"}, false)}
 		close(producer1)
 		producers = append(producers, iterator.NewStream(0, producer1))
 
 		producer2 := make(chan *iterator.Msg, 2)
-		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:1"})}
-		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:2"})}
+		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:1"}, false)}
+		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:2"}, false)}
 		close(producer2)
 		producers = append(producers, iterator.NewStream(0, producer2))
 
 		producer3 := make(chan *iterator.Msg, 6)
-		producer3 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:0"})}
-		producer3 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:1"})}
-		producer3 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:2"})}
-		producer3 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:3"})}
-		producer3 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:8"})}
-		producer3 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:9"})}
+		producer3 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:0"}, false)}
+		producer3 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:1"}, false)}
+		producer3 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:2"}, false)}
+		producer3 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:3"}, false)}
+		producer3 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:8"}, false)}
+		producer3 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:9"}, false)}
 		close(producer3)
 		producers = append(producers, iterator.NewStream(0, producer3))
 
 		producer4 := make(chan *iterator.Msg, 2)
-		producer4 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:1"})}
-		producer4 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:4"})}
+		producer4 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:1"}, false)}
+		producer4 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:4"}, false)}
 		close(producer4)
 		producers = append(producers, iterator.NewStream(0, producer4))
 
@@ -667,7 +667,7 @@ func TestFastPathIntersection(t *testing.T) {
 
 				for _, objs := range tt.objects {
 					producer := make(chan *iterator.Msg, 1)
-					producer <- &iterator.Msg{Iter: storage.NewStaticIterator[string](objs)}
+					producer <- &iterator.Msg{Iter: storage.NewStaticIterator[string](objs, false)}
 					close(producer)
 					producers = append(producers, iterator.NewStream(0, producer))
 				}
@@ -713,7 +713,7 @@ func TestFastPathIntersection(t *testing.T) {
 			for j := 0; j < numItems; j++ {
 				keys = append(keys, "obj:"+strconv.Itoa(j))
 			}
-			producer <- &iterator.Msg{Iter: storage.NewStaticIterator[string](keys)}
+			producer <- &iterator.Msg{Iter: storage.NewStaticIterator[string](keys, false)}
 			close(producer)
 			producers = append(producers, iterator.NewStream(0, producer))
 		}
@@ -758,7 +758,7 @@ func TestFastPathIntersection(t *testing.T) {
 		producers = append(producers, iterator.NewStream(0, producer1))
 
 		producer2 := make(chan *iterator.Msg, 1)
-		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:2"})}
+		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:2"}, false)}
 		close(producer2)
 		producers = append(producers, iterator.NewStream(0, producer2))
 
@@ -791,7 +791,7 @@ func TestFastPathIntersection(t *testing.T) {
 		producers = append(producers, iterator.NewStream(0, producer1))
 
 		producer2 := make(chan *iterator.Msg, 1)
-		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:0"})}
+		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:0"}, false)}
 		close(producer2)
 		producers = append(producers, iterator.NewStream(0, producer2))
 
@@ -826,7 +826,7 @@ func TestFastPathIntersection(t *testing.T) {
 		producers = append(producers, iterator.NewStream(0, producer1))
 
 		producer2 := make(chan *iterator.Msg, 1)
-		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:2"})}
+		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:2"}, false)}
 		close(producer2)
 		producers = append(producers, iterator.NewStream(0, producer2))
 
@@ -865,7 +865,7 @@ func TestFastPathIntersection(t *testing.T) {
 		producers = append(producers, iterator.NewStream(0, producer1))
 
 		producer2 := make(chan *iterator.Msg, 1)
-		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:2"})}
+		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:2"}, false)}
 		close(producer2)
 		producers = append(producers, iterator.NewStream(0, producer2))
 
@@ -963,20 +963,20 @@ func TestFastPathDifference(t *testing.T) {
 		ctx := context.Background()
 
 		producer1 := make(chan *iterator.Msg, 6)
-		producer1 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:1"})}
-		producer1 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:2"})}
-		producer1 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:3"})}
-		producer1 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:6"})}
-		producer1 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:8"})}
-		producer1 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:9"})}
+		producer1 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:1"}, false)}
+		producer1 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:2"}, false)}
+		producer1 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:3"}, false)}
+		producer1 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:6"}, false)}
+		producer1 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:8"}, false)}
+		producer1 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:9"}, false)}
 		close(producer1)
 		producers = append(producers, iterator.NewStream(BaseIndex, producer1))
 
 		producer2 := make(chan *iterator.Msg, 6)
-		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:0"})}
-		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:1"})}
-		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:5"})}
-		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:6"})}
+		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:0"}, false)}
+		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:1"}, false)}
+		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:5"}, false)}
+		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:6"}, false)}
 		close(producer2)
 		producers = append(producers, iterator.NewStream(DifferenceIndex, producer2))
 
@@ -1077,7 +1077,7 @@ func TestFastPathDifference(t *testing.T) {
 
 				for idx, objs := range tt.objects {
 					producer := make(chan *iterator.Msg, 1)
-					producer <- &iterator.Msg{Iter: storage.NewStaticIterator[string](objs)}
+					producer <- &iterator.Msg{Iter: storage.NewStaticIterator[string](objs, false)}
 					close(producer)
 					producers = append(producers, iterator.NewStream(idx, producer))
 				}
@@ -1120,7 +1120,7 @@ func TestFastPathDifference(t *testing.T) {
 		producers = append(producers, iterator.NewStream(0, producer1))
 
 		producer2 := make(chan *iterator.Msg, 1)
-		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:2"})}
+		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:2"}, false)}
 		close(producer2)
 		producers = append(producers, iterator.NewStream(0, producer2))
 
@@ -1153,7 +1153,7 @@ func TestFastPathDifference(t *testing.T) {
 
 		for idx, objs := range objects {
 			producer := make(chan *iterator.Msg, 1)
-			producer <- &iterator.Msg{Iter: storage.NewStaticIterator[string](objs)}
+			producer <- &iterator.Msg{Iter: storage.NewStaticIterator[string](objs, false)}
 			close(producer)
 			producers = append(producers, iterator.NewStream(idx, producer))
 		}
@@ -1201,7 +1201,7 @@ func TestFastPathDifference(t *testing.T) {
 		close(producer1)
 		producers = append(producers, iterator.NewStream(0, producer1))
 		producer2 := make(chan *iterator.Msg, 1)
-		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:1"})}
+		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:1"}, false)}
 		close(producer2)
 		producers = append(producers, iterator.NewStream(0, producer2))
 		pool := concurrency.NewPool(ctx, 1)
@@ -1233,7 +1233,7 @@ func TestFastPathDifference(t *testing.T) {
 		close(producer1)
 		producers = append(producers, iterator.NewStream(0, producer1))
 		producer2 := make(chan *iterator.Msg, 1)
-		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:2"})}
+		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:2"}, false)}
 		close(producer2)
 		producers = append(producers, iterator.NewStream(0, producer2))
 		pool := concurrency.NewPool(ctx, 1)
@@ -1257,7 +1257,7 @@ func TestFastPathDifference(t *testing.T) {
 		res := make(chan *iterator.Msg)
 		producers := make([]*iterator.Stream, 0)
 		producer1 := make(chan *iterator.Msg, 1)
-		producer1 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:2"})}
+		producer1 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:2"}, false)}
 		close(producer1)
 		producers = append(producers, iterator.NewStream(0, producer1))
 		iter1 := mocks.NewMockIterator[string](ctrl)
@@ -1330,7 +1330,7 @@ func TestCheckUsersetFastPathV2(t *testing.T) {
 		},
 		).MaxTimes(1).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{
 			{Key: tuple.NewTupleKey("group:1", "members", "user:1")},
-		}), nil)
+		}, false), nil)
 		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
 			ObjectType: "group",
 			Relation:   "public",
@@ -1345,7 +1345,7 @@ func TestCheckUsersetFastPathV2(t *testing.T) {
 			},
 			WithResultsSortedAscending: true,
 		},
-		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil), nil)
+		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil, false), nil)
 		checker := NewLocalChecker()
 		ctx := context.Background()
 
@@ -1372,7 +1372,7 @@ func TestCheckUsersetFastPathV2(t *testing.T) {
 			User:     "group:1#all",
 			Relation: "viewer",
 			Object:   "document:1",
-		}})
+		}}, false)
 		val, err := checker.weight2Userset(ctx, &ResolveCheckRequest{
 			StoreID:              storeID,
 			AuthorizationModelID: ts.GetAuthorizationModelID(),
@@ -1405,7 +1405,7 @@ func TestCheckUsersetFastPathV2(t *testing.T) {
 		},
 		).MaxTimes(1).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{
 			{Key: tuple.NewTupleKey("group:1", "members", "user:1")},
-		}), nil)
+		}, false), nil)
 		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
 			ObjectType: "group",
 			Relation:   "public",
@@ -1420,7 +1420,7 @@ func TestCheckUsersetFastPathV2(t *testing.T) {
 			},
 			WithResultsSortedAscending: true,
 		},
-		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil), nil)
+		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil, false), nil)
 		checker := NewLocalChecker()
 		ctx := context.Background()
 		model := testutils.MustTransformDSLToProtoWithID(`
@@ -1446,7 +1446,7 @@ func TestCheckUsersetFastPathV2(t *testing.T) {
 			User:     "group:1#all",
 			Relation: "viewer",
 			Object:   "document:1",
-		}})
+		}}, false)
 		val, err := checker.weight2Userset(ctx, &ResolveCheckRequest{
 			StoreID:              storeID,
 			AuthorizationModelID: ts.GetAuthorizationModelID(),
@@ -1477,7 +1477,7 @@ func TestCheckUsersetFastPathV2(t *testing.T) {
 			},
 			WithResultsSortedAscending: true,
 		},
-		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil), nil)
+		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil, false), nil)
 		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
 			ObjectType: "group",
 			Relation:   "public",
@@ -1494,7 +1494,7 @@ func TestCheckUsersetFastPathV2(t *testing.T) {
 		},
 		).MaxTimes(1).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{
 			{Key: tuple.NewTupleKey("group:1", "public", "user:*")},
-		}), nil)
+		}, false), nil)
 		checker := NewLocalChecker()
 		ctx := context.Background()
 
@@ -1521,7 +1521,7 @@ func TestCheckUsersetFastPathV2(t *testing.T) {
 			User:     "group:1#all",
 			Relation: "viewer",
 			Object:   "document:1",
-		}})
+		}}, false)
 		val, err := checker.weight2Userset(ctx, &ResolveCheckRequest{
 			StoreID:              storeID,
 			AuthorizationModelID: ts.GetAuthorizationModelID(),
@@ -1552,7 +1552,7 @@ func TestCheckUsersetFastPathV2(t *testing.T) {
 			},
 			WithResultsSortedAscending: true,
 		},
-		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil), nil)
+		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil, false), nil)
 		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
 			ObjectType: "group",
 			Relation:   "public",
@@ -1569,7 +1569,7 @@ func TestCheckUsersetFastPathV2(t *testing.T) {
 		},
 		).MaxTimes(1).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{
 			{Key: tuple.NewTupleKey("group:1", "public", "user:*")},
-		}), nil)
+		}, false), nil)
 		checker := NewLocalChecker()
 		ctx := context.Background()
 
@@ -1596,7 +1596,7 @@ func TestCheckUsersetFastPathV2(t *testing.T) {
 			User:     "group:2#all",
 			Relation: "viewer",
 			Object:   "document:1",
-		}})
+		}}, false)
 		val, err := checker.weight2Userset(ctx, &ResolveCheckRequest{
 			StoreID:              storeID,
 			AuthorizationModelID: ts.GetAuthorizationModelID(),
@@ -1647,7 +1647,7 @@ func TestCheckUsersetFastPathV2(t *testing.T) {
 			tuple.NewTupleKey("folder:target", "target", "group:1#intersect"),
 		}
 
-		usersetIterator := storage.NewStaticTupleKeyIterator(usersetTuples)
+		usersetIterator := storage.NewStaticTupleKeyIterator(usersetTuples, false)
 
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
@@ -1663,7 +1663,7 @@ func TestCheckUsersetFastPathV2(t *testing.T) {
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
 			}},
 		).Times(1).
-			Return(storage.NewStaticTupleIterator(nil), nil)
+			Return(storage.NewStaticTupleIterator(nil, false), nil)
 		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
 			ObjectType: "group",
 			Relation:   "member2",
@@ -1675,7 +1675,7 @@ func TestCheckUsersetFastPathV2(t *testing.T) {
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
 			}},
 		).Times(1).
-			Return(storage.NewStaticTupleIterator(testutils.ConvertTuplesKeysToTuples(dbTuples)), nil)
+			Return(storage.NewStaticTupleIterator(testutils.ConvertTuplesKeysToTuples(dbTuples), false), nil)
 
 		ctx := setRequestContext(context.Background(), ts, mockDatastore, contextualTuples)
 
@@ -1716,7 +1716,7 @@ func TestCheckTTUFastPathV2(t *testing.T) {
 		},
 		).MaxTimes(1).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{
 			{Key: tuple.NewTupleKey("group:1", "members", "user:1")},
-		}), nil)
+		}, false), nil)
 		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
 			ObjectType: "group",
 			Relation:   "public",
@@ -1731,7 +1731,7 @@ func TestCheckTTUFastPathV2(t *testing.T) {
 			},
 			WithResultsSortedAscending: true,
 		},
-		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil), nil)
+		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil, false), nil)
 		checker := NewLocalChecker()
 		ctx := context.Background()
 
@@ -1759,7 +1759,7 @@ func TestCheckTTUFastPathV2(t *testing.T) {
 			User:     "group:1",
 			Relation: "parent",
 			Object:   "document:1",
-		}})
+		}}, false)
 		val, err := checker.weight2TTU(ctx, &ResolveCheckRequest{
 			StoreID:              storeID,
 			AuthorizationModelID: ts.GetAuthorizationModelID(),
@@ -1788,7 +1788,7 @@ func TestCheckTTUFastPathV2(t *testing.T) {
 			},
 			WithResultsSortedAscending: true,
 		},
-		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil), nil)
+		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil, false), nil)
 		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
 			ObjectType: "group",
 			Relation:   "public",
@@ -1805,7 +1805,7 @@ func TestCheckTTUFastPathV2(t *testing.T) {
 		},
 		).MaxTimes(1).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{
 			{Key: tuple.NewTupleKey("group:1", "public", "user:*")},
-		}), nil)
+		}, false), nil)
 
 		checker := NewLocalChecker()
 		ctx := context.Background()
@@ -1834,7 +1834,7 @@ func TestCheckTTUFastPathV2(t *testing.T) {
 			User:     "group:1",
 			Relation: "parent",
 			Object:   "document:1",
-		}})
+		}}, false)
 		val, err := checker.weight2TTU(ctx, &ResolveCheckRequest{
 			StoreID:              storeID,
 			AuthorizationModelID: ts.GetAuthorizationModelID(),
@@ -1865,7 +1865,7 @@ func TestCheckTTUFastPathV2(t *testing.T) {
 		},
 		).MaxTimes(1).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{
 			{Key: tuple.NewTupleKey("group:1", "members", "user:1")},
-		}), nil)
+		}, false), nil)
 		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
 			ObjectType: "group",
 			Relation:   "public",
@@ -1880,7 +1880,7 @@ func TestCheckTTUFastPathV2(t *testing.T) {
 			},
 			WithResultsSortedAscending: true,
 		},
-		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil), nil)
+		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil, false), nil)
 		checker := NewLocalChecker()
 		ctx := context.Background()
 
@@ -1908,7 +1908,7 @@ func TestCheckTTUFastPathV2(t *testing.T) {
 			User:     "group:2",
 			Relation: "parent",
 			Object:   "document:1",
-		}})
+		}}, false)
 		val, err := checker.weight2TTU(ctx, &ResolveCheckRequest{
 			StoreID:              storeID,
 			AuthorizationModelID: ts.GetAuthorizationModelID(),
@@ -1937,7 +1937,7 @@ func TestCheckTTUFastPathV2(t *testing.T) {
 			},
 			WithResultsSortedAscending: true,
 		},
-		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil), nil)
+		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil, false), nil)
 		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
 			ObjectType: "group",
 			Relation:   "public",
@@ -1954,7 +1954,7 @@ func TestCheckTTUFastPathV2(t *testing.T) {
 		},
 		).MaxTimes(1).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{
 			{Key: tuple.NewTupleKey("group:1", "public", "user:*")},
-		}), nil)
+		}, false), nil)
 
 		checker := NewLocalChecker()
 		ctx := context.Background()
@@ -1983,7 +1983,7 @@ func TestCheckTTUFastPathV2(t *testing.T) {
 			User:     "group:2",
 			Relation: "parent",
 			Object:   "document:1",
-		}})
+		}}, false)
 		val, err := checker.weight2TTU(ctx, &ResolveCheckRequest{
 			StoreID:              storeID,
 			AuthorizationModelID: ts.GetAuthorizationModelID(),
@@ -2030,7 +2030,7 @@ func TestCheckTTUFastPathV2(t *testing.T) {
 		tuplesets := []*openfgav1.TupleKey{
 			tuple.NewTupleKey("folder:target", "parent", "group:1"),
 		}
-		rightHandSideIterator := storage.NewStaticTupleKeyIterator(tuplesets)
+		rightHandSideIterator := storage.NewStaticTupleKeyIterator(tuplesets, false)
 
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
@@ -2046,7 +2046,7 @@ func TestCheckTTUFastPathV2(t *testing.T) {
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
 			}},
 		).Times(1).
-			Return(storage.NewStaticTupleIterator(nil), nil)
+			Return(storage.NewStaticTupleIterator(nil, false), nil)
 		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
 			ObjectType: "group",
 			Relation:   "member2",
@@ -2058,7 +2058,7 @@ func TestCheckTTUFastPathV2(t *testing.T) {
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
 			}},
 		).Times(1).
-			Return(storage.NewStaticTupleIterator(testutils.ConvertTuplesKeysToTuples(dbTuples)), nil)
+			Return(storage.NewStaticTupleIterator(testutils.ConvertTuplesKeysToTuples(dbTuples), false), nil)
 
 		ctx := setRequestContext(context.Background(), ts, mockDatastore, contextualTuples)
 

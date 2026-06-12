@@ -307,7 +307,7 @@ func (s *Recursive) buildTupleMapperForID(ctx context.Context, req *Request, edg
 		}
 
 		if ctxTuples, ok := req.GetContextualTuplesByObjectID(id, relation, subjectType); ok {
-			ctxIter = storage.NewStaticTupleKeyIterator(ctxTuples)
+			ctxIter = storage.NewStaticTupleKeyIterator(ctxTuples, true)
 		}
 
 		kind = storage.TTUKind
@@ -332,7 +332,7 @@ func (s *Recursive) buildTupleMapperForID(ctx context.Context, req *Request, edg
 		}
 
 		if ctxTuples, ok := req.GetContextualTuplesByObjectID(id, userRelation, edge.GetTo().GetUniqueLabel()); ok {
-			ctxIter = storage.NewStaticTupleKeyIterator(ctxTuples)
+			ctxIter = storage.NewStaticTupleKeyIterator(ctxTuples, true)
 		}
 
 		kind = storage.UsersetKind

@@ -21,7 +21,7 @@ import (
 )
 
 func TestCountingTupleIteratorIsOrdered(t *testing.T) {
-	inner := storage.NewStaticTupleIterator([]*openfgav1.Tuple{})
+	inner := storage.NewStaticTupleIterator([]*openfgav1.Tuple{}, true)
 	iter := &countingTupleIterator{TupleIterator: inner}
 	defer iter.Stop()
 	require.True(t, iter.IsOrdered())

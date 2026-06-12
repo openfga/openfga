@@ -292,7 +292,7 @@ func addNextItemInSliceStreamsToBatch(ctx context.Context, streamSlices []*itera
 		batch = append(batch, item)
 	}
 	if len(batch) > IteratorMinBatchThreshold {
-		concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Iter: storage.NewStaticIterator[string](batch)}, outChan)
+		concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Iter: storage.NewStaticIterator[string](batch, false)}, outChan)
 		batch = make([]string, 0)
 	}
 	return batch, nil
@@ -304,7 +304,7 @@ func fastPathUnion(ctx context.Context, streams *iterator.Streams, outChan chan<
 	defer func() {
 		// flush
 		if len(batch) > 0 {
-			concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Iter: storage.NewStaticIterator[string](batch)}, outChan)
+			concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Iter: storage.NewStaticIterator[string](batch, false)}, outChan)
 		}
 		close(outChan)
 		streams.Stop()
@@ -376,7 +376,7 @@ func fastPathIntersection(ctx context.Context, streams *iterator.Streams, outCha
 	defer func() {
 		// flush
 		if len(batch) > 0 {
-			concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Iter: storage.NewStaticIterator[string](batch)}, outChan)
+			concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Iter: storage.NewStaticIterator[string](batch, false)}, outChan)
 		}
 		close(outChan)
 		streams.Stop()
@@ -466,7 +466,7 @@ func fastPathDifference(ctx context.Context, streams *iterator.Streams, outChan 
 	defer func() {
 		// flush
 		if len(batch) > 0 {
-			concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Iter: storage.NewStaticIterator[string](batch)}, outChan)
+			concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Iter: storage.NewStaticIterator[string](batch, false)}, outChan)
 		}
 		close(outChan)
 		streams.Stop()
@@ -567,7 +567,7 @@ func fastPathDifference(ctx context.Context, streams *iterator.Streams, outChan 
 			}
 			batch = append(batch, items...)
 			if len(batch) > IteratorMinBatchThreshold {
-				concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Iter: storage.NewStaticIterator[string](batch)}, outChan)
+				concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Iter: storage.NewStaticIterator[string](batch, false)}, outChan)
 				batch = make([]string, 0)
 			}
 			iterStreams, err = streams.CleanDone(ctx)

@@ -2007,7 +2007,7 @@ func TestCheckTTU(t *testing.T) {
 		mockDatastore.EXPECT().
 			Read(gomock.Any(), storeID, storage.ReadFilter{Object: "group:1", Relation: "parent", User: ""}, gomock.Any()).
 			Times(1).
-			Return(storage.NewStaticTupleIterator(nil), nil)
+			Return(storage.NewStaticTupleIterator(nil, false), nil)
 
 		// act
 		res, err := checker.checkTTU(ctx, req, ttuRewrite)(ctx)
@@ -2496,7 +2496,7 @@ func TestCheckPublicAssignable(t *testing.T) {
 
 			storeID := ulid.Make().String()
 			ds := mocks.NewMockRelationshipTupleReader(ctrl)
-			ds.EXPECT().ReadUsersetTuples(gomock.Any(), storeID, gomock.Any(), gomock.Any()).Times(1).Return(storage.NewStaticTupleIterator(tt.readUsersetTuples), tt.readUsersetTuplesError)
+			ds.EXPECT().ReadUsersetTuples(gomock.Any(), storeID, gomock.Any(), gomock.Any()).Times(1).Return(storage.NewStaticTupleIterator(tt.readUsersetTuples, false), tt.readUsersetTuplesError)
 
 			ts, err := typesystem.New(tt.model)
 			require.NoError(t, err)
@@ -2664,7 +2664,7 @@ func TestStreamedLookupUsersetFromIterator(t *testing.T) {
 					Object:                      "group:1",
 					Relation:                    "member",
 					AllowedUserTypeRestrictions: restrictions,
-				}, gomock.Any()).Times(1).Return(storage.NewStaticTupleIterator(tt.readUsersetTuples), tt.readUsersetTuplesError)
+				}, gomock.Any()).Times(1).Return(storage.NewStaticTupleIterator(tt.readUsersetTuples, false), tt.readUsersetTuplesError)
 			}
 
 			req := &ResolveCheckRequest{

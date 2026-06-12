@@ -130,23 +130,13 @@ func NewCombinedIterator[T any](iters ...Iterator[T]) Iterator[T] {
 }
 
 // NewStaticTupleIterator returns a [TupleIterator] that iterates over the provided slice.
-func NewStaticTupleIterator(tuples []*openfgav1.Tuple) TupleIterator {
-	iter := &StaticIterator[*openfgav1.Tuple]{
-		items: tuples,
-		mu:    &sync.Mutex{},
-	}
-
-	return iter
+func NewStaticTupleIterator(tuples []*openfgav1.Tuple, ordered bool) TupleIterator {
+	return NewStaticIterator(tuples, ordered)
 }
 
 // NewStaticTupleKeyIterator returns a [TupleKeyIterator] that iterates over the provided slice.
-func NewStaticTupleKeyIterator(tupleKeys []*openfgav1.TupleKey) TupleKeyIterator {
-	iter := &StaticIterator[*openfgav1.TupleKey]{
-		items: tupleKeys,
-		mu:    &sync.Mutex{},
-	}
-
-	return iter
+func NewStaticTupleKeyIterator(tupleKeys []*openfgav1.TupleKey, ordered bool) TupleKeyIterator {
+	return NewStaticIterator(tupleKeys, ordered)
 }
 
 type tupleKeyIterator struct {
@@ -191,8 +181,9 @@ func NewTupleKeyIteratorFromTupleIterator(iter TupleIterator) TupleKeyIterator {
 }
 
 type StaticIterator[T any] struct {
-	items []T // GUARDED_BY(mu)
-	mu    *sync.Mutex
+	items   []T // GUARDED_BY(mu)
+	mu      *sync.Mutex
+	ordered bool
 }
 
 var _ Iterator[any] = (*StaticIterator[any])(nil)
@@ -243,12 +234,10 @@ func (s *StaticIterator[T]) Head(ctx context.Context) (T, error) {
 	return s.items[0], nil
 }
 
-// IsOrdered temporarily assumes the caller provided items in sorted order.
-// This will be made conditional when sources add explicit ordering guarantees.
-func (s *StaticIterator[T]) IsOrdered() bool { return true }
+func (s *StaticIterator[T]) IsOrdered() bool { return s.ordered }
 
-func NewStaticIterator[T any](items []T) Iterator[T] {
-	return &StaticIterator[T]{items: items, mu: &sync.Mutex{}}
+func NewStaticIterator[T any](items []T, ordered bool) Iterator[T] {
+	return &StaticIterator[T]{items: items, mu: &sync.Mutex{}, ordered: ordered}
 }
 
 // TupleKeyFilterFunc is a filter function that is used to filter out

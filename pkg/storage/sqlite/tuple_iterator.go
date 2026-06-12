@@ -31,19 +31,21 @@ type SQLTupleIterator struct {
 	// will use this item instead. Otherwise, the first item will be lost.
 	firstRow *storage.TupleRecord // GUARDED_BY(mu)
 	mu       sync.Mutex
+	ordered  bool
 }
 
 // Ensures that SQLTupleIterator implements the TupleIterator interface.
 var _ storage.TupleIterator = (*SQLTupleIterator)(nil)
 
 // NewSQLTupleIterator returns a SQL tuple iterator.
-func NewSQLTupleIterator(sb sq.SelectBuilder, errHandler errorHandlerFn) *SQLTupleIterator {
+func NewSQLTupleIterator(sb sq.SelectBuilder, errHandler errorHandlerFn, ordered bool) *SQLTupleIterator {
 	return &SQLTupleIterator{
 		sb:             sb,
 		rows:           nil,
 		handleSQLError: errHandler,
 		firstRow:       nil,
 		mu:             sync.Mutex{},
+		ordered:        ordered,
 	}
 }
 
@@ -268,5 +270,4 @@ func (t *SQLTupleIterator) Stop() {
 	}
 }
 
-// IsOrdered conservatively returns false until datastore methods expose ordering guarantees.
-func (t *SQLTupleIterator) IsOrdered() bool { return false }
+func (t *SQLTupleIterator) IsOrdered() bool { return t.ordered }
