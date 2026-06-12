@@ -152,12 +152,16 @@ func (s *Datastore) Read(
 	ctx context.Context,
 	store string,
 	filter storage.ReadFilter,
-	_ storage.ReadOptions,
+	options storage.ReadOptions,
 ) (storage.TupleIterator, error) {
-	ctx, span := startTrace(ctx, "Read")
+	_, span := startTrace(ctx, "Read")
 	defer span.End()
 
-	return s.read(ctx, store, filter, nil)
+	sb := s.buildTupleQuery(store, filter)
+	if options.WithResultsSortedAscending {
+		sb = sb.OrderBy("user_object_type", "user_object_id", "user_relation")
+	}
+	return NewSQLTupleIterator(sb, HandleSQLError, options.WithResultsSortedAscending), nil
 }
 
 // ReadPage see [storage.RelationshipTupleReader].ReadPage.
@@ -165,19 +169,19 @@ func (s *Datastore) ReadPage(ctx context.Context, store string, filter storage.R
 	ctx, span := startTrace(ctx, "ReadPage")
 	defer span.End()
 
-	iter, err := s.read(ctx, store, filter, &options)
-	if err != nil {
-		return nil, "", err
+	sb := s.buildTupleQuery(store, filter).OrderBy("ulid")
+	if options.Pagination.From != "" {
+		sb = sb.Where(sq.GtOrEq{"ulid": options.Pagination.From})
 	}
+	if options.Pagination.PageSize != 0 {
+		sb = sb.Limit(uint64(options.Pagination.PageSize + 1)) // + 1 is used to determine whether to return a continuation token.
+	}
+	iter := NewSQLTupleIterator(sb, HandleSQLError, false)
 	defer iter.Stop()
-
 	return iter.ToArray(ctx, options.Pagination)
 }
 
-func (s *Datastore) read(ctx context.Context, store string, filter storage.ReadFilter, options *storage.ReadPageOptions) (*SQLTupleIterator, error) {
-	_, span := startTrace(ctx, "read")
-	defer span.End()
-
+func (s *Datastore) buildTupleQuery(store string, filter storage.ReadFilter) sq.SelectBuilder {
 	sb := s.stbl.
 		Select(
 			"store", "object_type", "object_id", "relation",
@@ -186,9 +190,6 @@ func (s *Datastore) read(ctx context.Context, store string, filter storage.ReadF
 		).
 		From("tuple").
 		Where(sq.Eq{"store": store})
-	if options != nil {
-		sb = sb.OrderBy("ulid")
-	}
 
 	objectType, objectID := tupleUtils.SplitObject(filter.Object)
 	if objectType != "" {
@@ -203,38 +204,22 @@ func (s *Datastore) read(ctx context.Context, store string, filter storage.ReadF
 	if filter.User != "" {
 		userObjectType, userObjectID, userRelation := tupleUtils.ToUserParts(filter.User)
 		if userObjectType != "" {
-			sb = sb.Where(sq.Eq{
-				"user_object_type": userObjectType,
-			})
+			sb = sb.Where(sq.Eq{"user_object_type": userObjectType})
 		}
 		if userObjectID != "" {
-			sb = sb.Where(sq.Eq{
-				"user_object_id": userObjectID,
-			})
+			sb = sb.Where(sq.Eq{"user_object_id": userObjectID})
 		}
 		if userRelation != "" {
-			sb = sb.Where(sq.Eq{
-				"user_relation": userRelation,
-			})
+			sb = sb.Where(sq.Eq{"user_relation": userRelation})
 		}
 	}
-
 	if len(filter.Conditions) > 0 {
 		// Use COALESCE to treat NULL and '' as the same value (empty string).
 		// This allows filtering for "no condition" (e.g., filter.Conditions = [""])
 		// to correctly match rows where condition_name is either '' OR NULL.
 		sb = sb.Where(sq.Eq{"COALESCE(condition_name, '')": filter.Conditions})
 	}
-
-	if options != nil && options.Pagination.From != "" {
-		token := options.Pagination.From
-		sb = sb.Where(sq.GtOrEq{"ulid": token})
-	}
-	if options != nil && options.Pagination.PageSize != 0 {
-		sb = sb.Limit(uint64(options.Pagination.PageSize + 1)) // + 1 is used to determine whether to return a continuation token.
-	}
-
-	return NewSQLTupleIterator(sb, HandleSQLError), nil
+	return sb
 }
 
 // Write see [storage.RelationshipTupleWriter].Write.
@@ -369,7 +354,7 @@ func (s *Datastore) selectExistingRowsForWrite(ctx context.Context, store string
 		Where(sq.Expr("(object_type, object_id, relation, user_object_type, user_object_id, user_relation, user_type) IN "+inExpr, args...)).
 		RunWith(txn) // make sure to run in the same transaction
 
-	iter := NewSQLTupleIterator(selectBuilder, HandleSQLError)
+	iter := NewSQLTupleIterator(selectBuilder, HandleSQLError, false)
 	defer iter.Stop()
 
 	items, _, err := iter.ToArray(ctx, storage.PaginationOptions{PageSize: len(keys)})
@@ -753,7 +738,7 @@ func (s *Datastore) ReadUsersetTuples(
 	ctx context.Context,
 	store string,
 	filter storage.ReadUsersetTuplesFilter,
-	_ storage.ReadUsersetTuplesOptions,
+	options storage.ReadUsersetTuplesOptions,
 ) (storage.TupleIterator, error) {
 	_, span := startTrace(ctx, "ReadUsersetTuples")
 	defer span.End()
@@ -800,8 +785,11 @@ func (s *Datastore) ReadUsersetTuples(
 	if len(filter.Conditions) > 0 {
 		sb = sb.Where(sq.Eq{"COALESCE(condition_name, '')": filter.Conditions})
 	}
+	if options.WithResultsSortedAscending {
+		sb = sb.OrderBy("user_object_type", "user_object_id", "user_relation")
+	}
 
-	return NewSQLTupleIterator(sb, HandleSQLError), nil
+	return NewSQLTupleIterator(sb, HandleSQLError, options.WithResultsSortedAscending), nil
 }
 
 // ReadStartingWithUser see [storage.RelationshipTupleReader].ReadStartingWithUser.
@@ -809,7 +797,7 @@ func (s *Datastore) ReadStartingWithUser(
 	ctx context.Context,
 	store string,
 	filter storage.ReadStartingWithUserFilter,
-	_ storage.ReadStartingWithUserOptions,
+	options storage.ReadStartingWithUserOptions,
 ) (storage.TupleIterator, error) {
 	_, span := startTrace(ctx, "ReadStartingWithUser")
 	defer span.End()
@@ -839,7 +827,11 @@ func (s *Datastore) ReadStartingWithUser(
 			"object_type": filter.ObjectType,
 			"relation":    filter.Relation,
 		}).
-		Where(targetUsersArg).OrderBy("object_id")
+		Where(targetUsersArg)
+
+	if options.WithResultsSortedAscending {
+		builder = builder.OrderBy("object_id")
+	}
 
 	if filter.ObjectIDs != nil && filter.ObjectIDs.Size() > 0 {
 		builder = builder.Where(sq.Eq{"object_id": filter.ObjectIDs.Values()})
@@ -849,7 +841,7 @@ func (s *Datastore) ReadStartingWithUser(
 		builder = builder.Where(sq.Eq{"COALESCE(condition_name, '')": filter.Conditions})
 	}
 
-	return NewSQLTupleIterator(builder, HandleSQLError), nil
+	return NewSQLTupleIterator(builder, HandleSQLError, options.WithResultsSortedAscending), nil
 }
 
 // MaxTuplesPerWrite see [storage.RelationshipTupleWriter].MaxTuplesPerWrite.

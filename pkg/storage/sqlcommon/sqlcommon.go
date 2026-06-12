@@ -315,6 +315,7 @@ type SQLTupleIterator struct {
 	mu       sync.Mutex
 
 	rowGetter SQLIteratorRowGetter
+	ordered   bool
 }
 
 // Ensures that SQLTupleIterator implements the TupleIterator interface.
@@ -339,13 +340,14 @@ func SQLIteratorColumns() []string {
 }
 
 // NewSQLTupleIterator returns a SQL tuple iterator.
-func NewSQLTupleIterator(rowGetter SQLIteratorRowGetter, errHandler errorHandlerFn) *SQLTupleIterator {
+func NewSQLTupleIterator(rowGetter SQLIteratorRowGetter, errHandler errorHandlerFn, ordered bool) *SQLTupleIterator {
 	return &SQLTupleIterator{
 		rows:           nil,
 		handleSQLError: errHandler,
 		firstRow:       nil,
 		mu:             sync.Mutex{},
 		rowGetter:      rowGetter,
+		ordered:        ordered,
 	}
 }
 
@@ -565,8 +567,7 @@ func (t *SQLTupleIterator) Stop() {
 	}
 }
 
-// IsOrdered conservatively returns false until datastore methods expose ordering guarantees.
-func (t *SQLTupleIterator) IsOrdered() bool { return false }
+func (t *SQLTupleIterator) IsOrdered() bool { return t.ordered }
 
 // DBInfo encapsulates DB information for use in common method.
 type DBInfo struct {
@@ -686,7 +687,7 @@ func selectExistingRowsForWrite(ctx context.Context, dbInfo *DBInfo, store strin
 		Suffix("FOR UPDATE").
 		RunWith(txn) // make sure to run in the same transaction
 
-	iter := NewSQLTupleIterator(NewSBIteratorQuery(selectBuilder), dbInfo.HandleSQLError)
+	iter := NewSQLTupleIterator(NewSBIteratorQuery(selectBuilder), dbInfo.HandleSQLError, false)
 	defer iter.Stop()
 
 	items, _, err := iter.ToArray(ctx, storage.PaginationOptions{PageSize: len(keys)})

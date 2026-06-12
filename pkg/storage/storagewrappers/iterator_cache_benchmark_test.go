@@ -95,7 +95,7 @@ func BenchmarkV1vsV2_CacheHit_Iteration(b *testing.B) {
 			b.ResetTimer()
 
 			for i := 0; i < b.N; i++ {
-				staticIter := storage.NewStaticIterator[*storage.TupleRecord](records)
+				staticIter := storage.NewStaticIterator[*storage.TupleRecord](records, false)
 				iter := &cachedTupleIterator{
 					objectType: "document",
 					relation:   "viewer",
@@ -144,7 +144,7 @@ func BenchmarkV1vsV2_CacheHit_SingleNext(b *testing.B) {
 		b.ResetTimer()
 
 		for i := 0; i < b.N; i++ {
-			staticIter := storage.NewStaticIterator[*storage.TupleRecord](records)
+			staticIter := storage.NewStaticIterator[*storage.TupleRecord](records, false)
 			iter := &cachedTupleIterator{
 				objectType: "document",
 				relation:   "viewer",
@@ -194,7 +194,7 @@ func BenchmarkV1vsV2_CacheMiss_Collection(b *testing.B) {
 			b.ResetTimer()
 
 			for i := 0; i < b.N; i++ {
-				innerIter := storage.NewStaticTupleIterator(tuples)
+				innerIter := storage.NewStaticTupleIterator(tuples, false)
 
 				// Simulate cache miss path
 				iter := &cachedIterator{
@@ -238,11 +238,11 @@ func BenchmarkV1vsV2_CacheMiss_Collection(b *testing.B) {
 			b.ResetTimer()
 
 			for i := 0; i < b.N; i++ {
-				innerIter := storage.NewStaticTupleIterator(tuples)
+				innerIter := storage.NewStaticTupleIterator(tuples, false)
 
 				iter := newCachingIterator(
 					innerIter, mockCache, testCacheKey("test-key"), size+100, time.Hour, 30*time.Second,
-					sf, wg, "document", "viewer", "ReadUsersetTuples",
+					sf, wg, "document", "viewer", "ReadUsersetTuples", nil,
 				)
 
 				for {
@@ -327,7 +327,7 @@ func BenchmarkV1vsV2_Concurrent_Next(b *testing.B) {
 			b.ResetTimer()
 
 			for i := 0; i < b.N; i++ {
-				staticIter := storage.NewStaticIterator[*storage.TupleRecord](records)
+				staticIter := storage.NewStaticIterator[*storage.TupleRecord](records, false)
 				iter := &cachedTupleIterator{
 					objectType: "document",
 					relation:   "viewer",
@@ -477,7 +477,7 @@ func BenchmarkV1vsV2_EndToEnd(b *testing.B) {
 
 		for i := 0; i < b.N; i++ {
 			// Cache miss - collect tuples via cachedIterator
-			innerIter := storage.NewStaticTupleIterator(tuples)
+			innerIter := storage.NewStaticTupleIterator(tuples, false)
 			iter := &cachedIterator{
 				ctx:           ctx,
 				iter:          innerIter,
@@ -506,7 +506,7 @@ func BenchmarkV1vsV2_EndToEnd(b *testing.B) {
 
 			// Cache hit - iterate from cached TupleRecords
 			if cachedRecords != nil {
-				staticIter := storage.NewStaticIterator[*storage.TupleRecord](cachedRecords)
+				staticIter := storage.NewStaticIterator[*storage.TupleRecord](cachedRecords, false)
 				cachedIter := &cachedTupleIterator{
 					objectType: "document",
 					relation:   "viewer",
@@ -550,10 +550,10 @@ func BenchmarkV1vsV2_EndToEnd(b *testing.B) {
 
 		for i := 0; i < b.N; i++ {
 			// Cache miss - populate cache
-			innerIter := storage.NewStaticTupleIterator(tuples)
+			innerIter := storage.NewStaticTupleIterator(tuples, false)
 			cachingIter := newCachingIterator(
 				innerIter, mockCache, testCacheKey("test-key"), size+100, time.Hour, 30*time.Second,
-				sf, wg, "document", "viewer", "ReadUsersetTuples",
+				sf, wg, "document", "viewer", "ReadUsersetTuples", nil,
 			)
 
 			for {

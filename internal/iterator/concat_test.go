@@ -185,7 +185,7 @@ func TestConcat(t *testing.T) {
 }
 
 func TestConcatIsOrdered(t *testing.T) {
-	iter := Concat(storage.NewStaticIterator[string]([]string{"a"}), storage.NewStaticIterator[string]([]string{"b"}))
+	iter := Concat(storage.NewStaticIterator[string]([]string{"a"}, false), storage.NewStaticIterator[string]([]string{"b"}, false))
 	defer iter.Stop()
 	require.False(t, iter.IsOrdered())
 }

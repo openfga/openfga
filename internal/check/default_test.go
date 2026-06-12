@@ -207,7 +207,7 @@ func TestDefaultUserset(t *testing.T) {
 			mockResolver := NewMockCheckResolver(ctrl)
 			tt.setupMock(mockResolver)
 
-			iter := storage.NewStaticTupleKeyIterator(tt.tuples)
+			iter := storage.NewStaticTupleKeyIterator(tt.tuples, false)
 			strategy := NewDefault(mg, mockResolver, 2)
 
 			req, err := NewRequest(RequestParams{
@@ -416,7 +416,7 @@ func TestDefaultTTU(t *testing.T) {
 			mockResolver := NewMockCheckResolver(ctrl)
 			tt.setupMock(mockResolver)
 
-			iter := storage.NewStaticTupleKeyIterator(tt.tuples)
+			iter := storage.NewStaticTupleKeyIterator(tt.tuples, false)
 			strategy := NewDefault(mg, mockResolver, 2)
 
 			req, err := NewRequest(RequestParams{
@@ -488,7 +488,7 @@ func TestDefaultExecuteCancelledContextRace(t *testing.T) {
 
 	iter := storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{
 		tuple.NewTupleKey("document:1", "owner", "document:2"),
-	})
+	}, false)
 	strategy := NewDefault(mg, mockResolver, 2)
 
 	req, err := NewRequest(RequestParams{

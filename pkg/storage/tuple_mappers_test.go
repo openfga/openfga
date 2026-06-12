@@ -32,7 +32,7 @@ func TestUsersetTupleMapper(t *testing.T) {
 		tuple.NewTupleKey("group:fga", "member", "group:2"),
 	}
 
-	innerIter := NewStaticTupleKeyIterator(tks)
+	innerIter := NewStaticTupleKeyIterator(tks, false)
 
 	mapper := WrapIterator(UsersetKind, innerIter)
 	require.NotNil(t, mapper)
@@ -67,7 +67,7 @@ func TestTTUTupleMapper(t *testing.T) {
 		tuple.NewTupleKey("group:fga", "member", "group:2#member"),
 	}
 
-	innerIter := NewStaticTupleKeyIterator(tks)
+	innerIter := NewStaticTupleKeyIterator(tks, false)
 
 	mapper := WrapIterator(TTUKind, innerIter)
 	require.NotNil(t, mapper)
@@ -88,20 +88,20 @@ func TestTTUTupleMapper(t *testing.T) {
 
 func TestMapperIsOrdered(t *testing.T) {
 	tks := []*openfgav1.TupleKey{tuple.NewTupleKey("group:eng", "member", "user:alice#member")}
-	inner := NewStaticTupleKeyIterator(tks)
+	inner := NewStaticTupleKeyIterator(tks, true)
 
 	t.Run("UsersetMapper_forwards", func(t *testing.T) {
 		m := WrapIterator(UsersetKind, inner)
 		require.True(t, m.IsOrdered())
 	})
 
-	inner2 := NewStaticTupleKeyIterator(tks)
+	inner2 := NewStaticTupleKeyIterator(tks, true)
 	t.Run("TTUMapper_forwards", func(t *testing.T) {
 		m := WrapIterator(TTUKind, inner2)
 		require.True(t, m.IsOrdered())
 	})
 
-	inner3 := NewStaticTupleKeyIterator(tks)
+	inner3 := NewStaticTupleKeyIterator(tks, true)
 	t.Run("ObjectIDMapper_forwards", func(t *testing.T) {
 		m := WrapIterator(ObjectIDKind, inner3)
 		require.True(t, m.IsOrdered())
@@ -116,7 +116,7 @@ func TestObjectIDTupleMapper(t *testing.T) {
 		tuple.NewTupleKey("group:fga", "member", "group:2#member"),
 	}
 
-	innerIter := NewStaticTupleKeyIterator(tks)
+	innerIter := NewStaticTupleKeyIterator(tks, false)
 
 	mapper := WrapIterator(ObjectIDKind, innerIter)
 	require.NotNil(t, mapper)

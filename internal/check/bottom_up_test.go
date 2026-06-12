@@ -41,10 +41,11 @@ func TestBottomUpSpecificType(t *testing.T) {
 			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:1"}},
 			Conditions: []string{""},
 		}, storage.ReadStartingWithUserOptions{
+			WithResultsSortedAscending: true,
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
 			}},
-		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil), nil)
+		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil, false), nil)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
 			model
@@ -95,10 +96,11 @@ func TestBottomUpSpecificType(t *testing.T) {
 			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:1"}},
 			Conditions: []string{""},
 		}, storage.ReadStartingWithUserOptions{
+			WithResultsSortedAscending: true,
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
 			}},
-		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil), nil)
+		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil, false), nil)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
 			model
@@ -150,10 +152,11 @@ func TestBottomUpSpecificType(t *testing.T) {
 			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:1"}},
 			Conditions: []string{""},
 		}, storage.ReadStartingWithUserOptions{
+			WithResultsSortedAscending: true,
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
 			}},
-		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil), nil)
+		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil, false), nil)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
 			model
@@ -207,10 +210,11 @@ func TestBottomUpSpecificType(t *testing.T) {
 			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:1"}},
 			Conditions: []string{"xcond", ""},
 		}, storage.ReadStartingWithUserOptions{
+			WithResultsSortedAscending: true,
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
 			}},
-		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil), nil)
+		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil, false), nil)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
 			model
@@ -266,6 +270,7 @@ func TestBottomUpSpecificType(t *testing.T) {
 			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:1"}},
 			Conditions: []string{""},
 		}, storage.ReadStartingWithUserOptions{
+			WithResultsSortedAscending: true,
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
 			}},
@@ -319,10 +324,11 @@ func TestBottomUpSpecificTypeWildcard(t *testing.T) {
 			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:*"}},
 			Conditions: []string{""},
 		}, storage.ReadStartingWithUserOptions{
+			WithResultsSortedAscending: true,
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
 			}},
-		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil), nil)
+		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil, false), nil)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
 			model
@@ -373,10 +379,11 @@ func TestBottomUpSpecificTypeWildcard(t *testing.T) {
 			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:*"}},
 			Conditions: []string{""},
 		}, storage.ReadStartingWithUserOptions{
+			WithResultsSortedAscending: true,
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
 			}},
-		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil), nil)
+		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil, false), nil)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
 			model
@@ -427,10 +434,11 @@ func TestBottomUpSpecificTypeWildcard(t *testing.T) {
 			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:*"}},
 			Conditions: []string{""},
 		}, storage.ReadStartingWithUserOptions{
+			WithResultsSortedAscending: true,
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
 			}},
-		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil), nil)
+		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil, false), nil)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
 			model
@@ -483,10 +491,11 @@ func TestBottomUpSpecificTypeWildcard(t *testing.T) {
 			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:*"}},
 			Conditions: []string{"xcond"},
 		}, storage.ReadStartingWithUserOptions{
+			WithResultsSortedAscending: true,
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
 			}},
-		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil), nil)
+		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil, false), nil)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
 			model
@@ -542,6 +551,7 @@ func TestBottomUpSpecificTypeWildcard(t *testing.T) {
 			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:*"}},
 			Conditions: []string{""},
 		}, storage.ReadStartingWithUserOptions{
+			WithResultsSortedAscending: true,
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
 			}},
@@ -652,28 +662,28 @@ func TestBottomUpResolveUnion(t *testing.T) {
 		ctx := context.Background()
 
 		producer1 := make(chan *iterator.Msg, 3)
-		producer1 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:1"})}
-		producer1 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:5"})}
-		producer1 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:6"})}
+		producer1 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:1"}, false)}
+		producer1 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:5"}, false)}
+		producer1 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:6"}, false)}
 		close(producer1)
 		producers = append(producers, iterator.FromChannel(producer1))
 
 		producer2 := make(chan *iterator.Msg, 1)
-		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:2"})}
+		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:2"}, false)}
 		close(producer2)
 		producers = append(producers, iterator.FromChannel(producer2))
 
 		producer3 := make(chan *iterator.Msg, 4)
-		producer3 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:0"})}
-		producer3 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:3"})}
-		producer3 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:8"})}
-		producer3 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:9"})}
+		producer3 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:0"}, false)}
+		producer3 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:3"}, false)}
+		producer3 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:8"}, false)}
+		producer3 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:9"}, false)}
 		close(producer3)
 		producers = append(producers, iterator.FromChannel(producer3))
 
 		producer4 := make(chan *iterator.Msg, 2)
-		producer4 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:4"})}
-		producer4 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:8"})}
+		producer4 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:4"}, false)}
+		producer4 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:8"}, false)}
 		close(producer4)
 		producers = append(producers, iterator.FromChannel(producer4))
 
@@ -755,7 +765,7 @@ func TestBottomUpResolveUnion(t *testing.T) {
 
 				for _, objs := range tt.objects {
 					producer := make(chan *iterator.Msg, 1)
-					producer <- &iterator.Msg{Iter: storage.NewStaticIterator[string](objs)}
+					producer <- &iterator.Msg{Iter: storage.NewStaticIterator[string](objs, false)}
 					close(producer)
 					producers = append(producers, iterator.FromChannel(producer))
 				}
@@ -801,7 +811,7 @@ func TestBottomUpResolveUnion(t *testing.T) {
 			for j := 0; j < numItems; j++ {
 				keys = append(keys, "obj:"+strconv.Itoa(j))
 			}
-			producer <- &iterator.Msg{Iter: storage.NewStaticIterator[string](keys)}
+			producer <- &iterator.Msg{Iter: storage.NewStaticIterator[string](keys, false)}
 			close(producer)
 			producers = append(producers, iterator.FromChannel(producer))
 		}
@@ -846,7 +856,7 @@ func TestBottomUpResolveUnion(t *testing.T) {
 		producers = append(producers, iterator.FromChannel(producer1))
 
 		producer2 := make(chan *iterator.Msg, 1)
-		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:2"})}
+		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:2"}, false)}
 		close(producer2)
 		producers = append(producers, iterator.FromChannel(producer2))
 
@@ -882,7 +892,7 @@ func TestBottomUpResolveUnion(t *testing.T) {
 		producers = append(producers, iterator.FromChannel(producer1))
 
 		producer2 := make(chan *iterator.Msg, 1)
-		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:0"})}
+		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:0"}, false)}
 		close(producer2)
 		producers = append(producers, iterator.FromChannel(producer2))
 
@@ -973,31 +983,31 @@ func TestBottomUpResolveIntersection(t *testing.T) {
 		ctx := context.Background()
 
 		producer1 := make(chan *iterator.Msg, 3)
-		producer1 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:1"})}
-		producer1 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:5"})}
-		producer1 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:6"})}
+		producer1 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:1"}, false)}
+		producer1 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:5"}, false)}
+		producer1 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:6"}, false)}
 		close(producer1)
 		producers = append(producers, iterator.FromChannel(producer1))
 
 		producer2 := make(chan *iterator.Msg, 2)
-		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:1"})}
-		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:2"})}
+		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:1"}, false)}
+		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:2"}, false)}
 		close(producer2)
 		producers = append(producers, iterator.FromChannel(producer2))
 
 		producer3 := make(chan *iterator.Msg, 6)
-		producer3 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:0"})}
-		producer3 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:1"})}
-		producer3 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:2"})}
-		producer3 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:3"})}
-		producer3 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:8"})}
-		producer3 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:9"})}
+		producer3 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:0"}, false)}
+		producer3 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:1"}, false)}
+		producer3 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:2"}, false)}
+		producer3 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:3"}, false)}
+		producer3 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:8"}, false)}
+		producer3 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:9"}, false)}
 		close(producer3)
 		producers = append(producers, iterator.FromChannel(producer3))
 
 		producer4 := make(chan *iterator.Msg, 2)
-		producer4 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:1"})}
-		producer4 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:4"})}
+		producer4 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:1"}, false)}
+		producer4 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:4"}, false)}
 		close(producer4)
 		producers = append(producers, iterator.FromChannel(producer4))
 
@@ -1080,7 +1090,7 @@ func TestBottomUpResolveIntersection(t *testing.T) {
 
 				for _, objs := range tt.objects {
 					producer := make(chan *iterator.Msg, 1)
-					producer <- &iterator.Msg{Iter: storage.NewStaticIterator[string](objs)}
+					producer <- &iterator.Msg{Iter: storage.NewStaticIterator[string](objs, false)}
 					close(producer)
 					producers = append(producers, iterator.FromChannel(producer))
 				}
@@ -1126,7 +1136,7 @@ func TestBottomUpResolveIntersection(t *testing.T) {
 			for j := 0; j < numItems; j++ {
 				keys = append(keys, "obj:"+strconv.Itoa(j))
 			}
-			producer <- &iterator.Msg{Iter: storage.NewStaticIterator[string](keys)}
+			producer <- &iterator.Msg{Iter: storage.NewStaticIterator[string](keys, false)}
 			close(producer)
 			producers = append(producers, iterator.FromChannel(producer))
 		}
@@ -1171,7 +1181,7 @@ func TestBottomUpResolveIntersection(t *testing.T) {
 		producers = append(producers, iterator.FromChannel(producer1))
 
 		producer2 := make(chan *iterator.Msg, 1)
-		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:2"})}
+		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:2"}, false)}
 		close(producer2)
 		producers = append(producers, iterator.NewStream(0, producer2))
 
@@ -1204,7 +1214,7 @@ func TestBottomUpResolveIntersection(t *testing.T) {
 		producers = append(producers, iterator.FromChannel(producer1))
 
 		producer2 := make(chan *iterator.Msg, 1)
-		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:0"})}
+		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:0"}, false)}
 		close(producer2)
 		producers = append(producers, iterator.FromChannel(producer2))
 
@@ -1242,7 +1252,7 @@ func TestBottomUpResolveIntersection(t *testing.T) {
 		producers = append(producers, iterator.FromChannel(producer1))
 
 		producer2 := make(chan *iterator.Msg, 1)
-		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:2"})}
+		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:2"}, false)}
 		close(producer2)
 		producers = append(producers, iterator.FromChannel(producer2))
 
@@ -1279,7 +1289,7 @@ func TestBottomUpResolveIntersection(t *testing.T) {
 		producers = append(producers, iterator.FromChannel(producer1))
 
 		producer2 := make(chan *iterator.Msg, 1)
-		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:2"})}
+		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:2"}, false)}
 		close(producer2)
 		producers = append(producers, iterator.FromChannel(producer2))
 
@@ -1377,20 +1387,20 @@ func TestBottomUpResolveDifference(t *testing.T) {
 		ctx := context.Background()
 
 		producer1 := make(chan *iterator.Msg, 6)
-		producer1 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:1"})}
-		producer1 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:2"})}
-		producer1 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:3"})}
-		producer1 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:6"})}
-		producer1 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:8"})}
-		producer1 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:9"})}
+		producer1 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:1"}, false)}
+		producer1 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:2"}, false)}
+		producer1 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:3"}, false)}
+		producer1 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:6"}, false)}
+		producer1 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:8"}, false)}
+		producer1 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:9"}, false)}
 		close(producer1)
 		producers = append(producers, iterator.FromChannel(producer1))
 
 		producer2 := make(chan *iterator.Msg, 6)
-		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:0"})}
-		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:1"})}
-		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:5"})}
-		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:6"})}
+		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:0"}, false)}
+		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:1"}, false)}
+		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:5"}, false)}
+		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:6"}, false)}
 		close(producer2)
 		producers = append(producers, iterator.FromChannel(producer2))
 
@@ -1491,7 +1501,7 @@ func TestBottomUpResolveDifference(t *testing.T) {
 
 				for _, objs := range tt.objects {
 					producer := make(chan *iterator.Msg, 1)
-					producer <- &iterator.Msg{Iter: storage.NewStaticIterator[string](objs)}
+					producer <- &iterator.Msg{Iter: storage.NewStaticIterator[string](objs, false)}
 					close(producer)
 					producers = append(producers, iterator.FromChannel(producer))
 				}
@@ -1534,7 +1544,7 @@ func TestBottomUpResolveDifference(t *testing.T) {
 		producers = append(producers, iterator.FromChannel(producer1))
 
 		producer2 := make(chan *iterator.Msg, 1)
-		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:2"})}
+		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:2"}, false)}
 		close(producer2)
 		producers = append(producers, iterator.NewStream(0, producer2))
 
@@ -1567,7 +1577,7 @@ func TestBottomUpResolveDifference(t *testing.T) {
 
 		for _, objs := range objects {
 			producer := make(chan *iterator.Msg, 1)
-			producer <- &iterator.Msg{Iter: storage.NewStaticIterator[string](objs)}
+			producer <- &iterator.Msg{Iter: storage.NewStaticIterator[string](objs, false)}
 			close(producer)
 			producers = append(producers, iterator.FromChannel(producer))
 		}
@@ -1615,7 +1625,7 @@ func TestBottomUpResolveDifference(t *testing.T) {
 		close(producer1)
 		producers = append(producers, iterator.FromChannel(producer1))
 		producer2 := make(chan *iterator.Msg, 1)
-		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:1"})}
+		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:1"}, false)}
 		close(producer2)
 		producers = append(producers, iterator.FromChannel(producer2))
 		pool := concurrency.NewPool(ctx, 1)
@@ -1648,7 +1658,7 @@ func TestBottomUpResolveDifference(t *testing.T) {
 		close(producer1)
 		producers = append(producers, iterator.FromChannel(producer1))
 		producer2 := make(chan *iterator.Msg, 1)
-		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:2"})}
+		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:2"}, false)}
 		close(producer2)
 		producers = append(producers, iterator.FromChannel(producer2))
 		pool := concurrency.NewPool(ctx, 1)
@@ -1675,7 +1685,7 @@ func TestBottomUpResolveDifference(t *testing.T) {
 		res := make(chan *iterator.Msg)
 		producers := make([]storage.Iterator[string], 0)
 		producer1 := make(chan *iterator.Msg, 1)
-		producer1 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:2"})}
+		producer1 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:2"}, false)}
 		close(producer1)
 		producers = append(producers, iterator.FromChannel(producer1))
 		iter1 := mocks.NewMockIterator[string](ctrl)
@@ -1735,11 +1745,11 @@ func TestBottomUpResolveRewrite(t *testing.T) {
 				// Manually check the relation and return the right data
 				switch filter.Relation {
 				case "viewer":
-					return storage.NewStaticTupleIterator(readStartingWithUserViewer), nil
+					return storage.NewStaticTupleIterator(readStartingWithUserViewer, false), nil
 				case "editor":
-					return storage.NewStaticTupleIterator(readStartingWithUserEditor), nil
+					return storage.NewStaticTupleIterator(readStartingWithUserEditor, false), nil
 				case "commenter":
-					return storage.NewStaticTupleIterator(readStartingWithUserCommenter), nil
+					return storage.NewStaticTupleIterator(readStartingWithUserCommenter, false), nil
 				default:
 					return nil, fmt.Errorf("unexpected relation %s", filter.Relation)
 				}
@@ -1852,11 +1862,11 @@ func TestBottomUpResolveRewrite(t *testing.T) {
 				// Manually check the relation and return the right data
 				switch filter.Relation {
 				case "viewer":
-					return storage.NewStaticTupleIterator(readStartingWithUserViewer), nil
+					return storage.NewStaticTupleIterator(readStartingWithUserViewer, false), nil
 				case "editor":
-					return storage.NewStaticTupleIterator(readStartingWithUserEditor), nil
+					return storage.NewStaticTupleIterator(readStartingWithUserEditor, false), nil
 				case "commenter":
-					return storage.NewStaticTupleIterator(readStartingWithUserCommenter), nil
+					return storage.NewStaticTupleIterator(readStartingWithUserCommenter, false), nil
 				default:
 					return nil, fmt.Errorf("unexpected relation %s", filter.Relation)
 				}
@@ -1963,11 +1973,11 @@ func TestBottomUpResolveRewrite(t *testing.T) {
 				// Manually check the relation and return the right data
 				switch filter.Relation {
 				case "viewer":
-					return storage.NewStaticTupleIterator(readStartingWithUserViewer), nil
+					return storage.NewStaticTupleIterator(readStartingWithUserViewer, false), nil
 				case "banned":
-					return storage.NewStaticTupleIterator(readStartingWithUserBanned), nil
+					return storage.NewStaticTupleIterator(readStartingWithUserBanned, false), nil
 				case "editor":
-					return storage.NewStaticTupleIterator(readStartingWithUserEditor), nil
+					return storage.NewStaticTupleIterator(readStartingWithUserEditor, false), nil
 				default:
 					return nil, fmt.Errorf("unexpected relation %s", filter.Relation)
 				}
@@ -2080,13 +2090,13 @@ func TestBottomUpResolveRewrite(t *testing.T) {
 				// Manually check the relation and return the right data
 				switch filter.Relation {
 				case "viewer":
-					return storage.NewStaticTupleIterator(readStartingWithUserViewer), nil
+					return storage.NewStaticTupleIterator(readStartingWithUserViewer, false), nil
 				case "analyzer":
-					return storage.NewStaticTupleIterator(readStartingWithUserAnalyzer), nil
+					return storage.NewStaticTupleIterator(readStartingWithUserAnalyzer, false), nil
 				case "editor":
-					return storage.NewStaticTupleIterator(readStartingWithUserEditor), nil
+					return storage.NewStaticTupleIterator(readStartingWithUserEditor, false), nil
 				case "commenter":
-					return storage.NewStaticTupleIterator(readStartingWithUserCommenter), nil
+					return storage.NewStaticTupleIterator(readStartingWithUserCommenter, false), nil
 				default:
 					return nil, fmt.Errorf("unexpected relation %s", filter.Relation)
 				}
@@ -2173,10 +2183,11 @@ func TestBottomUpResolveRewriteForWildcardRequests(t *testing.T) {
 			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:*"}},
 			Conditions: []string{""},
 		}, storage.ReadStartingWithUserOptions{
+			WithResultsSortedAscending: true,
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
 			}},
-		).MaxTimes(1).Return(storage.NewStaticTupleIterator(readStartingWithUserViewer), nil)
+		).MaxTimes(1).Return(storage.NewStaticTupleIterator(readStartingWithUserViewer, false), nil)
 
 		// Create a model with a union operator
 		model := testutils.MustTransformDSLToProtoWithID(`
@@ -2309,9 +2320,9 @@ func TestBottomUpResolveRewriteForWildcardRequests(t *testing.T) {
 				// Manually check the relation and return the right data
 				switch filter.Relation {
 				case "viewer":
-					return storage.NewStaticTupleIterator(readStartingWithUserViewer), nil
+					return storage.NewStaticTupleIterator(readStartingWithUserViewer, false), nil
 				case "editor":
-					return storage.NewStaticTupleIterator(readStartingWithUserEditor), nil
+					return storage.NewStaticTupleIterator(readStartingWithUserEditor, false), nil
 				default:
 					return nil, fmt.Errorf("unexpected relation %s", filter.Relation)
 				}
@@ -2541,7 +2552,7 @@ func TestBottomUp_SetOperationSetup_StopsIteratorsOnError(t *testing.T) {
 			DoAndReturn(func(ctx context.Context, sID string, filter storage.ReadStartingWithUserFilter, opts storage.ReadStartingWithUserOptions) (storage.TupleIterator, error) {
 				switch filter.Relation {
 				case "member":
-					return storage.NewStaticTupleIterator(tuples), nil
+					return storage.NewStaticTupleIterator(tuples, false), nil
 				case "editor":
 					return nil, errors.New("datastore error")
 				default:
@@ -2600,7 +2611,7 @@ func TestBottomUp_SetOperationSetup_StopsIteratorsOnError(t *testing.T) {
 			DoAndReturn(func(ctx context.Context, sID string, filter storage.ReadStartingWithUserFilter, opts storage.ReadStartingWithUserOptions) (storage.TupleIterator, error) {
 				switch filter.Relation {
 				case "member":
-					return storage.NewStaticTupleIterator(tuples), nil
+					return storage.NewStaticTupleIterator(tuples, false), nil
 				case "editor":
 					return nil, errors.New("datastore error")
 				default:

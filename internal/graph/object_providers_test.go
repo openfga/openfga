@@ -82,7 +82,7 @@ func TestRecursiveTTUObjectProvider(t *testing.T) {
 
 			t.Run("when_empty_iterator", func(t *testing.T) {
 				mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
-					Times(1).Return(storage.NewStaticTupleIterator(nil), nil)
+					Times(1).Return(storage.NewStaticTupleIterator(nil, false), nil)
 
 				c := newRecursiveTTUObjectProvider(ts, ttu)
 				t.Cleanup(c.End)
@@ -107,7 +107,7 @@ func TestRecursiveTTUObjectProvider(t *testing.T) {
 						{Key: tuple.NewTupleKey("document:1", "admin", "user:XYZ")},
 						{Key: tuple.NewTupleKey("document:2", "admin", "user:XYZ")},
 						{Key: tuple.NewTupleKey("document:3", "admin", "user:XYZ")},
-					}), nil)
+					}, false), nil)
 
 				c := newRecursiveTTUObjectProvider(ts, ttu)
 				t.Cleanup(c.End)
@@ -176,7 +176,7 @@ func TestRecursiveTTUObjectProvider(t *testing.T) {
 					MaxTimes(1).
 					Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{
 						{Key: tuple.NewTupleKey("document:1", "admin", "user:XYZ")},
-					}), nil)
+					}, false), nil)
 
 				c := newRecursiveTTUObjectProvider(ts, ttu)
 				t.Cleanup(c.End)
@@ -237,7 +237,7 @@ func TestRecursiveUsersetObjectProvider(t *testing.T) {
 
 			t.Run("when_empty_iterator", func(t *testing.T) {
 				mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
-					Times(1).Return(storage.NewStaticTupleIterator(nil), nil)
+					Times(1).Return(storage.NewStaticTupleIterator(nil, false), nil)
 
 				c := newRecursiveUsersetObjectProvider(ts)
 				t.Cleanup(c.End)
@@ -262,7 +262,7 @@ func TestRecursiveUsersetObjectProvider(t *testing.T) {
 						{Key: tuple.NewTupleKey("document:1", "admin", "user:XYZ")},
 						{Key: tuple.NewTupleKey("document:2", "admin", "user:XYZ")},
 						{Key: tuple.NewTupleKey("document:3", "admin", "user:XYZ")},
-					}), nil)
+					}, false), nil)
 
 				c := newRecursiveUsersetObjectProvider(ts)
 				t.Cleanup(c.End)
@@ -331,7 +331,7 @@ func TestRecursiveUsersetObjectProvider(t *testing.T) {
 					MaxTimes(1).
 					Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{
 						{Key: tuple.NewTupleKey("document:1", "parent", "user:XYZ")},
-					}), nil)
+					}, false), nil)
 
 				c := newRecursiveUsersetObjectProvider(ts)
 
@@ -372,16 +372,16 @@ func TestIteratorToUserset(t *testing.T) {
 		chans := make([]<-chan *iterator.Msg, 0, 3)
 		iterChan1 := make(chan *iterator.Msg, 2)
 		iterChan1 <- &iterator.Msg{Iter: mocks.NewErrorIterator[string]([]string{"1"})}
-		iterChan1 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"2"})}
+		iterChan1 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"2"}, false)}
 		close(iterChan1)
 		chans = append(chans, iterChan1)
 		iterChan2 := make(chan *iterator.Msg, 2)
-		iterChan2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"3", "4"})}
-		iterChan2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"5", "6"})}
+		iterChan2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"3", "4"}, false)}
+		iterChan2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"5", "6"}, false)}
 		close(iterChan2)
 		chans = append(chans, iterChan2)
 		iterChan3 := make(chan *iterator.Msg, 1)
-		iterChan3 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"7"})}
+		iterChan3 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"7"}, false)}
 		close(iterChan3)
 		chans = append(chans, iterChan3)
 
@@ -415,7 +415,7 @@ func TestIteratorToUserset(t *testing.T) {
 		chans := make([]<-chan *iterator.Msg, 0, 5)
 		for i := 1; i <= 5; i++ {
 			iterChan := make(chan *iterator.Msg, 1)
-			iterChan <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{strconv.Itoa(i)})}
+			iterChan <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{strconv.Itoa(i)}, false)}
 			close(iterChan)
 			chans = append(chans, iterChan)
 		}

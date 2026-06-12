@@ -338,11 +338,19 @@ func (s *Datastore) Read(
 	filter storage.ReadFilter,
 	options storage.ReadOptions,
 ) (storage.TupleIterator, error) {
-	ctx, span := startTrace(ctx, "Read")
+	_, span := startTrace(ctx, "Read")
 	defer span.End()
 
-	readPool := s.getPgxPool(options.Consistency.Preference)
-	return s.read(ctx, store, filter, nil, readPool)
+	sb := s.buildTupleQuery(store, filter)
+	if options.WithResultsSortedAscending {
+		sb = sb.OrderBy("_user collate \"C\"")
+	}
+	db := s.getPgxPool(options.Consistency.Preference)
+	poolGetRows, err := NewPgxTxnGetRows(db, sb)
+	if err != nil {
+		return nil, HandleSQLError(err)
+	}
+	return sqlcommon.NewSQLTupleIterator(poolGetRows, HandleSQLError, options.WithResultsSortedAscending), nil
 }
 
 // ReadPage see [storage.RelationshipTupleReader].ReadPage.
@@ -350,20 +358,24 @@ func (s *Datastore) ReadPage(ctx context.Context, store string, filter storage.R
 	ctx, span := startTrace(ctx, "ReadPage")
 	defer span.End()
 
-	readPool := s.getPgxPool(options.Consistency.Preference)
-	iter, err := s.read(ctx, store, filter, &options, readPool)
-	if err != nil {
-		return nil, "", err
+	sb := s.buildTupleQuery(store, filter).OrderBy("ulid")
+	if options.Pagination.From != "" {
+		sb = sb.Where(sq.GtOrEq{"ulid": options.Pagination.From})
 	}
+	if options.Pagination.PageSize != 0 {
+		sb = sb.Limit(uint64(options.Pagination.PageSize + 1)) // + 1 is used to determine whether to return a continuation token.
+	}
+	db := s.getPgxPool(options.Consistency.Preference)
+	poolGetRows, err := NewPgxTxnGetRows(db, sb)
+	if err != nil {
+		return nil, "", HandleSQLError(err)
+	}
+	iter := sqlcommon.NewSQLTupleIterator(poolGetRows, HandleSQLError, false)
 	defer iter.Stop()
-
 	return iter.ToArray(ctx, options.Pagination)
 }
 
-func (s *Datastore) read(ctx context.Context, store string, filter storage.ReadFilter, options *storage.ReadPageOptions, db *pgxpool.Pool) (*sqlcommon.SQLTupleIterator, error) {
-	_, span := startTrace(ctx, "read")
-	defer span.End()
-
+func (s *Datastore) buildTupleQuery(store string, filter storage.ReadFilter) sq.SelectBuilder {
 	sb := sq.StatementBuilder.PlaceholderFormat(sq.Dollar).
 		Select(
 			"store", "object_type", "object_id", "relation",
@@ -372,9 +384,6 @@ func (s *Datastore) read(ctx context.Context, store string, filter storage.ReadF
 		).
 		From("tuple").
 		Where(sq.Eq{"store": store})
-	if options != nil {
-		sb = sb.OrderBy("ulid")
-	}
 
 	objectType, objectID := tupleUtils.SplitObject(filter.Object)
 	if objectType != "" {
@@ -394,27 +403,13 @@ func (s *Datastore) read(ctx context.Context, store string, filter storage.ReadF
 			sb = sb.Where(sq.Like{"_user": userType + ":%"})
 		}
 	}
-
 	if len(filter.Conditions) > 0 {
 		// Use COALESCE to treat NULL and '' as the same value (empty string).
 		// This allows filtering for "no condition" (e.g., filter.Conditions = [""])
 		// to correctly match rows where condition_name is either '' OR NULL.
 		sb = sb.Where(sq.Eq{"COALESCE(condition_name, '')": filter.Conditions})
 	}
-
-	if options != nil && options.Pagination.From != "" {
-		sb = sb.Where(sq.GtOrEq{"ulid": options.Pagination.From})
-	}
-	if options != nil && options.Pagination.PageSize != 0 {
-		sb = sb.Limit(uint64(options.Pagination.PageSize + 1)) // + 1 is used to determine whether to return a continuation token.
-	}
-
-	poolGetRows, err := NewPgxTxnGetRows(db, sb)
-	if err != nil {
-		return nil, HandleSQLError(err)
-	}
-
-	return sqlcommon.NewSQLTupleIterator(poolGetRows, HandleSQLError), nil
+	return sb
 }
 
 // Write see [storage.RelationshipTupleWriter].Write.
@@ -765,13 +760,16 @@ func (s *Datastore) ReadUsersetTuples(
 	if len(filter.Conditions) > 0 {
 		sb = sb.Where(sq.Eq{"COALESCE(condition_name, '')": filter.Conditions})
 	}
+	if options.WithResultsSortedAscending {
+		sb = sb.OrderBy("_user collate \"C\"")
+	}
 
 	poolGetRows, err := NewPgxTxnGetRows(db, sb)
 	if err != nil {
 		return nil, HandleSQLError(err)
 	}
 
-	return sqlcommon.NewSQLTupleIterator(poolGetRows, HandleSQLError), nil
+	return sqlcommon.NewSQLTupleIterator(poolGetRows, HandleSQLError, options.WithResultsSortedAscending), nil
 }
 
 // ReadStartingWithUser see [storage.RelationshipTupleReader].ReadStartingWithUser.
@@ -807,7 +805,11 @@ func (s *Datastore) ReadStartingWithUser(
 			"object_type": filter.ObjectType,
 			"relation":    filter.Relation,
 			"_user":       targetUsersArg,
-		}).OrderBy("object_id collate \"C\"")
+		})
+
+	if options.WithResultsSortedAscending {
+		builder = builder.OrderBy("object_id collate \"C\"")
+	}
 
 	if filter.ObjectIDs != nil && filter.ObjectIDs.Size() > 0 {
 		builder = builder.Where(sq.Eq{"object_id": filter.ObjectIDs.Values()})
@@ -819,7 +821,7 @@ func (s *Datastore) ReadStartingWithUser(
 	if err != nil {
 		return nil, HandleSQLError(err)
 	}
-	return sqlcommon.NewSQLTupleIterator(poolGetRows, HandleSQLError), nil
+	return sqlcommon.NewSQLTupleIterator(poolGetRows, HandleSQLError, options.WithResultsSortedAscending), nil
 }
 
 // MaxTuplesPerWrite see [storage.RelationshipTupleWriter].MaxTuplesPerWrite.
@@ -1414,7 +1416,7 @@ func selectExistingRowsForWrite(ctx context.Context, stbl sq.StatementBuilderTyp
 		return HandleSQLError(err)
 	}
 
-	iter := sqlcommon.NewSQLTupleIterator(poolGetRows, HandleSQLError)
+	iter := sqlcommon.NewSQLTupleIterator(poolGetRows, HandleSQLError, false)
 	defer iter.Stop()
 
 	items, _, err := iter.ToArray(ctx, storage.PaginationOptions{PageSize: len(keys)})

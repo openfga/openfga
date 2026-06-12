@@ -121,7 +121,7 @@ func Test_combinedTupleReader_Read(t *testing.T) {
 					Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{
 						testTuples["group:1#member@user:13"],
 						testTuples["group:2#member@user:22"],
-					}), nil)
+					}, false), nil)
 			},
 		},
 		{
@@ -150,7 +150,7 @@ func Test_combinedTupleReader_Read(t *testing.T) {
 					Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{
 						testTuples["group:1#member@user:13"],
 						testTuples["group:2#member@user:22"],
-					}), nil)
+					}, false), nil)
 			},
 		},
 		{
@@ -180,7 +180,7 @@ func Test_combinedTupleReader_Read(t *testing.T) {
 			setup: func() {
 				mockRelationshipTupleReader.EXPECT().
 					Read(gomock.Any(), "1", storage.ReadFilter{Relation: "member", Object: "group:1"}, gomock.Any()).
-					Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil)
+					Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{}, false), nil)
 			},
 		},
 		{
@@ -319,7 +319,7 @@ func Test_combinedTupleReader_ReadStartingWithUser(t *testing.T) {
 			setups: func() {
 				mockRelationshipTupleReader.EXPECT().
 					ReadStartingWithUser(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-					Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{testTuples["group:3#member@user:11"]}), nil)
+					Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{testTuples["group:3#member@user:11"]}, false), nil)
 			},
 			want: []*openfgav1.Tuple{
 				testTuples["group:1#member@user:11"],
@@ -357,7 +357,7 @@ func Test_combinedTupleReader_ReadStartingWithUser(t *testing.T) {
 					ReadStartingWithUser(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 					Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{
 						{Key: tuple.NewTupleKey("document:2", "viewer", "user:maria")},
-						{Key: tuple.NewTupleKey("document:4", "viewer", "user:maria")}}), nil)
+						{Key: tuple.NewTupleKey("document:4", "viewer", "user:maria")}}, false), nil)
 			},
 			want: []*openfgav1.Tuple{
 				{Key: tuple.NewTupleKey("document:1", "viewer", "user:maria")},
@@ -389,7 +389,7 @@ func Test_combinedTupleReader_ReadStartingWithUser(t *testing.T) {
 			setups: func() {
 				mockRelationshipTupleReader.EXPECT().
 					ReadStartingWithUser(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-					Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{testTuples["group:3#member@user:11"]}), nil)
+					Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{testTuples["group:3#member@user:11"]}, false), nil)
 			},
 			want: []*openfgav1.Tuple{
 				testTuples["group:3#member@user:11"],
@@ -425,7 +425,7 @@ func Test_combinedTupleReader_ReadStartingWithUser(t *testing.T) {
 			setups: func() {
 				mockRelationshipTupleReader.EXPECT().
 					ReadStartingWithUser(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-					Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil)
+					Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{}, false), nil)
 			},
 			want: []*openfgav1.Tuple{
 				testTuples["group:1#member@user:11"],
@@ -461,7 +461,7 @@ func Test_combinedTupleReader_ReadStartingWithUser(t *testing.T) {
 			setups: func() {
 				mockRelationshipTupleReader.EXPECT().
 					ReadStartingWithUser(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-					Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil)
+					Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{}, false), nil)
 			},
 			want:    []*openfgav1.Tuple{},
 			wantErr: nil,
@@ -496,7 +496,7 @@ func Test_combinedTupleReader_ReadStartingWithUser(t *testing.T) {
 			setups: func() {
 				mockRelationshipTupleReader.EXPECT().
 					ReadStartingWithUser(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-					Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil)
+					Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{}, false), nil)
 			},
 			want:    []*openfgav1.Tuple{},
 			wantErr: nil,
@@ -705,7 +705,7 @@ func Test_combinedTupleReader_ReadUsersetTuples(t *testing.T) {
 				mockRelationshipTupleReader.
 					EXPECT().
 					ReadUsersetTuples(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-					Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{testTuples["group:1#member@user:12"]}), nil)
+					Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{testTuples["group:1#member@user:12"]}, false), nil)
 			},
 			want: []*openfgav1.Tuple{
 				testTuples["group:1#member@user:12"],
@@ -736,7 +736,7 @@ func Test_combinedTupleReader_ReadUsersetTuples(t *testing.T) {
 				mockRelationshipTupleReader.
 					EXPECT().
 					ReadUsersetTuples(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-					Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{testTuples["group:1#member@user:12"]}), nil)
+					Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{testTuples["group:1#member@user:12"]}, false), nil)
 			},
 			want: []*openfgav1.Tuple{
 				testTuples["folder:backlog#viewer@group:1#member"],
@@ -797,7 +797,7 @@ func Test_combinedTupleReader_ReadUsersetTuples(t *testing.T) {
 				mockRelationshipTupleReader.
 					EXPECT().
 					ReadUsersetTuples(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-					Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil)
+					Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{}, false), nil)
 			},
 			want:    []*openfgav1.Tuple{},
 			wantErr: nil,
@@ -826,7 +826,7 @@ func Test_combinedTupleReader_ReadUsersetTuples(t *testing.T) {
 				mockRelationshipTupleReader.
 					EXPECT().
 					ReadUsersetTuples(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-					Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil)
+					Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{}, false), nil)
 			},
 			want:    []*openfgav1.Tuple{},
 			wantErr: nil,
@@ -855,7 +855,7 @@ func Test_combinedTupleReader_ReadUsersetTuples(t *testing.T) {
 				mockRelationshipTupleReader.
 					EXPECT().
 					ReadUsersetTuples(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-					Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil)
+					Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{}, false), nil)
 			},
 			want: []*openfgav1.Tuple{
 				testTuples["folder:backlog#viewer@group:*"],
@@ -886,7 +886,7 @@ func Test_combinedTupleReader_ReadUsersetTuples(t *testing.T) {
 				mockRelationshipTupleReader.
 					EXPECT().
 					ReadUsersetTuples(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-					Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil)
+					Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{}, false), nil)
 			},
 			want:    []*openfgav1.Tuple{},
 			wantErr: nil,
@@ -915,7 +915,7 @@ func Test_combinedTupleReader_ReadUsersetTuples(t *testing.T) {
 				mockRelationshipTupleReader.
 					EXPECT().
 					ReadUsersetTuples(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-					Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil)
+					Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{}, false), nil)
 			},
 			want:    []*openfgav1.Tuple{},
 			wantErr: nil,
@@ -944,7 +944,7 @@ func Test_combinedTupleReader_ReadUsersetTuples(t *testing.T) {
 				mockRelationshipTupleReader.
 					EXPECT().
 					ReadUsersetTuples(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-					Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil)
+					Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{}, false), nil)
 			},
 			want:    []*openfgav1.Tuple{},
 			wantErr: nil,
@@ -974,7 +974,7 @@ func Test_combinedTupleReader_ReadUsersetTuples(t *testing.T) {
 				mockRelationshipTupleReader.
 					EXPECT().
 					ReadUsersetTuples(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-					Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil)
+					Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{}, false), nil)
 			},
 			want: []*openfgav1.Tuple{
 				testTuples["folder:backlog#viewer@group:1#member"],
@@ -1005,7 +1005,7 @@ func Test_combinedTupleReader_ReadUsersetTuples(t *testing.T) {
 				mockRelationshipTupleReader.
 					EXPECT().
 					ReadUsersetTuples(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-					Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil)
+					Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{}, false), nil)
 			},
 			want:    []*openfgav1.Tuple{},
 			wantErr: nil,

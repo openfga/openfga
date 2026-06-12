@@ -28,6 +28,7 @@ type staticIterator struct {
 	records           []*storage.TupleRecord
 	continuationToken string
 	mu                sync.Mutex
+	ordered           bool
 }
 
 // match returns true if all the fields in t [*storage.TupleRecord] are equal to
@@ -82,8 +83,7 @@ func (s *staticIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
 // Stop does not do anything for staticIterator.
 func (s *staticIterator) Stop() {}
 
-// IsOrdered conservatively returns false until datastore methods expose ordering guarantees.
-func (s *staticIterator) IsOrdered() bool { return false }
+func (s *staticIterator) IsOrdered() bool { return s.ordered }
 
 // Head see [storage.Iterator].Next.
 func (s *staticIterator) Head(ctx context.Context) (*openfgav1.Tuple, error) {
@@ -200,11 +200,21 @@ func WithMaxTypesPerAuthorizationModel(n int) StorageOption {
 func (s *MemoryBackend) Close() {}
 
 // Read see [storage.RelationshipTupleReader].Read.
-func (s *MemoryBackend) Read(ctx context.Context, store string, filter storage.ReadFilter, _ storage.ReadOptions) (storage.TupleIterator, error) {
+func (s *MemoryBackend) Read(ctx context.Context, store string, filter storage.ReadFilter, options storage.ReadOptions) (storage.TupleIterator, error) {
 	ctx, span := tracer.Start(ctx, "memory.Read")
 	defer span.End()
 
-	return s.read(ctx, store, filter, nil)
+	iter, err := s.read(ctx, store, filter, nil)
+	if err != nil {
+		return nil, err
+	}
+	if options.WithResultsSortedAscending {
+		sort.Slice(iter.records, func(i, j int) bool {
+			return iter.records[i].User < iter.records[j].User
+		})
+		iter.ordered = true
+	}
+	return iter, nil
 }
 
 // ReadPage see [storage.RelationshipTupleReader].ReadPage.
@@ -510,7 +520,7 @@ func (s *MemoryBackend) ReadUsersetTuples(
 	ctx context.Context,
 	store string,
 	filter storage.ReadUsersetTuplesFilter,
-	_ storage.ReadUsersetTuplesOptions,
+	options storage.ReadUsersetTuplesOptions,
 ) (storage.TupleIterator, error) {
 	_, span := tracer.Start(ctx, "memory.ReadUsersetTuples")
 	defer span.End()
@@ -545,7 +555,12 @@ func (s *MemoryBackend) ReadUsersetTuples(
 		}
 	}
 
-	return &staticIterator{records: matches}, nil
+	if options.WithResultsSortedAscending {
+		sort.Slice(matches, func(i, j int) bool {
+			return matches[i].User < matches[j].User
+		})
+	}
+	return &staticIterator{records: matches, ordered: options.WithResultsSortedAscending}, nil
 }
 
 // ReadStartingWithUser see [storage.RelationshipTupleReader].ReadStartingWithUser.
@@ -592,11 +607,13 @@ func (s *MemoryBackend) ReadStartingWithUser(
 			matches = append(matches, t)
 		}
 	}
-	sort.Slice(matches, func(i, j int) bool {
-		return matches[i].ObjectID < matches[j].ObjectID
-	})
+	if options.WithResultsSortedAscending {
+		sort.Slice(matches, func(i, j int) bool {
+			return matches[i].ObjectID < matches[j].ObjectID
+		})
+	}
 
-	return &staticIterator{records: matches}, nil
+	return &staticIterator{records: matches, ordered: options.WithResultsSortedAscending}, nil
 }
 
 func findAuthorizationModelByID(

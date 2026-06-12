@@ -28,7 +28,7 @@ func TestStaticTupleKeyIterator(t *testing.T) {
 			tuple.NewTupleKey("document:doc2", "editor", "bob"),
 		}
 
-		iter := NewStaticTupleKeyIterator(expected)
+		iter := NewStaticTupleKeyIterator(expected, false)
 		defer iter.Stop()
 
 		var actual []*openfgav1.TupleKey
@@ -48,7 +48,7 @@ func TestStaticTupleKeyIterator(t *testing.T) {
 	})
 	t.Run("head_empty", func(t *testing.T) {
 		var expected []*openfgav1.TupleKey
-		iter := NewStaticTupleKeyIterator(expected)
+		iter := NewStaticTupleKeyIterator(expected, false)
 		defer iter.Stop()
 
 		tk, err := iter.Head(context.Background())
@@ -60,7 +60,7 @@ func TestStaticTupleKeyIterator(t *testing.T) {
 			tuple.NewTupleKey("document:doc1", "viewer", "bill"),
 			tuple.NewTupleKey("document:doc2", "editor", "bob"),
 		}
-		iter := NewStaticTupleKeyIterator(expected)
+		iter := NewStaticTupleKeyIterator(expected, false)
 		defer iter.Stop()
 
 		tk, err := iter.Head(context.Background())
@@ -87,7 +87,7 @@ func TestStaticTupleIterator(t *testing.T) {
 			},
 		}
 
-		iter := NewStaticTupleIterator(expected)
+		iter := NewStaticTupleIterator(expected, false)
 		defer iter.Stop()
 
 		var actual []*openfgav1.Tuple
@@ -107,7 +107,7 @@ func TestStaticTupleIterator(t *testing.T) {
 	})
 	t.Run("head_empty", func(t *testing.T) {
 		var expected []*openfgav1.Tuple
-		iter := NewStaticTupleIterator(expected)
+		iter := NewStaticTupleIterator(expected, false)
 		defer iter.Stop()
 
 		tk, err := iter.Head(context.Background())
@@ -125,7 +125,7 @@ func TestStaticTupleIterator(t *testing.T) {
 				Timestamp: timestamppb.New(time.Now()),
 			},
 		}
-		iter := NewStaticTupleIterator(expected)
+		iter := NewStaticTupleIterator(expected, false)
 		defer iter.Stop()
 		tk, err := iter.Head(context.Background())
 		require.NoError(t, err)
@@ -144,7 +144,7 @@ func TestStaticTupleIterator(t *testing.T) {
 				Timestamp: timestamppb.New(time.Now()),
 			}
 		}
-		iter := NewStaticTupleIterator(tks)
+		iter := NewStaticTupleIterator(tks, false)
 		defer iter.Stop()
 
 		var wg errgroup.Group
@@ -197,8 +197,8 @@ func TestCombinedIterator(t *testing.T) {
 			tuple.NewTupleKey("document:doc2", "editor", "bob"),
 		}
 
-		iter1 := NewStaticTupleKeyIterator([]*openfgav1.TupleKey{expected[0]})
-		iter2 := NewStaticTupleKeyIterator([]*openfgav1.TupleKey{expected[1]})
+		iter1 := NewStaticTupleKeyIterator([]*openfgav1.TupleKey{expected[0]}, false)
+		iter2 := NewStaticTupleKeyIterator([]*openfgav1.TupleKey{expected[1]}, false)
 		iter := NewCombinedIterator(iter1, iter2)
 		defer iter.Stop()
 
@@ -228,8 +228,8 @@ func TestCombinedIterator(t *testing.T) {
 		require.ErrorIs(t, err, ErrIteratorDone)
 	})
 	t.Run("head_empty_slices", func(t *testing.T) {
-		iter1 := NewStaticTupleKeyIterator([]*openfgav1.TupleKey{})
-		iter2 := NewStaticTupleKeyIterator([]*openfgav1.TupleKey{})
+		iter1 := NewStaticTupleKeyIterator([]*openfgav1.TupleKey{}, false)
+		iter2 := NewStaticTupleKeyIterator([]*openfgav1.TupleKey{}, false)
 		iter := NewCombinedIterator(iter1, iter2)
 		defer iter.Stop()
 		tk, err := iter.Head(context.Background())
@@ -257,8 +257,8 @@ func TestCombinedIterator(t *testing.T) {
 			tuple.NewTupleKey("document:doc2", "editor", "charles"),
 		}
 
-		iter1 := NewStaticTupleKeyIterator([]*openfgav1.TupleKey{expected[0]})
-		iter2 := NewStaticTupleKeyIterator([]*openfgav1.TupleKey{expected[1], expected[2]})
+		iter1 := NewStaticTupleKeyIterator([]*openfgav1.TupleKey{expected[0]}, false)
+		iter2 := NewStaticTupleKeyIterator([]*openfgav1.TupleKey{expected[1], expected[2]}, false)
 		iter := NewCombinedIterator(iter1, iter2)
 		defer iter.Stop()
 
@@ -289,8 +289,8 @@ func TestCombinedIterator(t *testing.T) {
 			tuple.NewTupleKey("document:doc2", "editor", "charles"),
 		}
 
-		iter1 := NewStaticTupleKeyIterator([]*openfgav1.TupleKey{tks[0]})
-		iter2 := NewStaticTupleKeyIterator([]*openfgav1.TupleKey{tks[1], tks[2]})
+		iter1 := NewStaticTupleKeyIterator([]*openfgav1.TupleKey{tks[0]}, false)
+		iter2 := NewStaticTupleKeyIterator([]*openfgav1.TupleKey{tks[1], tks[2]}, false)
 		iter := NewCombinedIterator(iter1, iter2)
 		defer iter.Stop()
 		ctx, cancel := context.WithCancel(context.Background())
@@ -602,7 +602,7 @@ func TestOrderedCombinedIterator(t *testing.T) {
 	t.Run("Stop", func(t *testing.T) {
 		iter1 := NewStaticTupleIterator([]*openfgav1.Tuple{
 			{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
-		})
+		}, false)
 		iter := NewOrderedCombinedIterator(UserMapper(), iter1, nil)
 		iter.Stop()
 		require.Len(t, iter.pending, 1)
@@ -619,7 +619,7 @@ func TestOrderedCombinedIterator(t *testing.T) {
 
 						var iters []TupleIterator
 						for _, curIter := range tc.iter {
-							iters = append(iters, NewStaticTupleIterator(curIter))
+							iters = append(iters, NewStaticTupleIterator(curIter, false))
 						}
 						iter := NewOrderedCombinedIterator(mapper, iters...)
 						t.Cleanup(func() {
@@ -652,8 +652,8 @@ func TestOrderedCombinedIterator(t *testing.T) {
 			iter1 := NewStaticTupleIterator([]*openfgav1.Tuple{
 				{Key: tuple.NewTupleKey("document:1", "2", "user:b")},
 				{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
-			})
-			iter2 := NewStaticTupleIterator([]*openfgav1.Tuple{})
+			}, false)
+			iter2 := NewStaticTupleIterator([]*openfgav1.Tuple{}, false)
 
 			iter := NewOrderedCombinedIterator(UserMapper(), iter1, iter2)
 			t.Cleanup(iter.Stop)
@@ -670,11 +670,11 @@ func TestOrderedCombinedIterator(t *testing.T) {
 			iter1 := NewStaticTupleIterator([]*openfgav1.Tuple{
 				{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
 				{Key: tuple.NewTupleKey("document:1", "2", "user:b")},
-			})
+			}, false)
 			iter2 := NewStaticTupleIterator([]*openfgav1.Tuple{
 				{Key: tuple.NewTupleKey("document:1", "2", "user:c")},
 				{Key: tuple.NewTupleKey("document:1", "2", "user:d")},
-			})
+			}, false)
 			expected := &openfgav1.Tuple{
 				Key: tuple.NewTupleKey("document:1", "2", "user:a"),
 			}
@@ -700,7 +700,7 @@ func TestOrderedCombinedIterator(t *testing.T) {
 
 							var iters []TupleIterator
 							for _, curIter := range tc.iter {
-								iters = append(iters, NewStaticTupleIterator(curIter))
+								iters = append(iters, NewStaticTupleIterator(curIter, false))
 							}
 							iter := NewOrderedCombinedIterator(mapper, iters...)
 							t.Cleanup(iter.Stop)
@@ -740,7 +740,7 @@ func TestOrderedCombinedIterator(t *testing.T) {
 
 							var iters []TupleIterator
 							for _, curIter := range tc.iter {
-								iters = append(iters, NewStaticTupleIterator(curIter))
+								iters = append(iters, NewStaticTupleIterator(curIter, false))
 							}
 							iter := NewOrderedCombinedIterator(mapper, iters...)
 							t.Cleanup(iter.Stop)
@@ -811,7 +811,7 @@ func TestTupleKeyIteratorFromTupleIterator(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			staticTupleIterator := NewStaticTupleIterator(expected)
+			staticTupleIterator := NewStaticTupleIterator(expected, false)
 			defer staticTupleIterator.Stop()
 			iter := NewTupleKeyIteratorFromTupleIterator(staticTupleIterator)
 			defer iter.Stop()
@@ -860,7 +860,7 @@ func TestFilteredTupleKeyIterator(t *testing.T) {
 			tuple.NewTupleKey("document:doc2", "editor", "user:charlie"),
 		}
 		iter := NewFilteredTupleKeyIterator(
-			NewStaticTupleKeyIterator(tuples),
+			NewStaticTupleKeyIterator(tuples, false),
 			func(tk *openfgav1.TupleKey) bool {
 				return tk.GetRelation() == "editor"
 			},
@@ -893,7 +893,7 @@ func TestFilteredTupleKeyIterator(t *testing.T) {
 			var tuples []*openfgav1.TupleKey
 
 			iter := NewFilteredTupleKeyIterator(
-				NewStaticTupleKeyIterator(tuples),
+				NewStaticTupleKeyIterator(tuples, false),
 				func(tk *openfgav1.TupleKey) bool {
 					return tk.GetRelation() == "editor"
 				},
@@ -949,7 +949,7 @@ func TestFilteredTupleKeyIterator(t *testing.T) {
 					}
 
 					iter := NewFilteredTupleKeyIterator(
-						NewStaticTupleKeyIterator(tuples),
+						NewStaticTupleKeyIterator(tuples, false),
 						func(tk *openfgav1.TupleKey) bool {
 							return tk.GetRelation() == "editor"
 						},
@@ -993,7 +993,7 @@ func TestFilteredTupleKeyIterator(t *testing.T) {
 			tuples[i] = tuple.NewTupleKey("document:doc"+strconv.Itoa(i), "viewer", "user:jon")
 		}
 		iter := NewFilteredTupleKeyIterator(
-			NewStaticTupleKeyIterator(tuples),
+			NewStaticTupleKeyIterator(tuples, false),
 			func(tk *openfgav1.TupleKey) bool {
 				return true
 			},
@@ -1056,7 +1056,7 @@ func TestConditionsFilteredTupleKeyIterator(t *testing.T) {
 					tuple.NewTupleKeyWithCondition("document:doc1", "editor", "user:elbuo", "condition2", nil),
 					tuple.NewTupleKeyWithCondition("document:doc1", "editor", "user:maria", "condition1", nil),
 				}
-				iter := NewConditionsFilteredTupleKeyIterator(NewStaticTupleKeyIterator(tuples), filter)
+				iter := NewConditionsFilteredTupleKeyIterator(NewStaticTupleKeyIterator(tuples, false), filter)
 				t.Cleanup(iter.Stop)
 
 				var actual []*openfgav1.TupleKey
@@ -1128,7 +1128,7 @@ func TestConditionsFilteredTupleKeyIterator(t *testing.T) {
 					tuple.NewTupleKeyWithCondition("document:doc1", "editor", "user:elbuo", "condition3", nil),
 					tuple.NewTupleKeyWithCondition("document:doc1", "editor", "user:maria", "condition1", nil),
 				}
-				iter := NewConditionsFilteredTupleKeyIterator(NewStaticTupleKeyIterator(tuples), filter)
+				iter := NewConditionsFilteredTupleKeyIterator(NewStaticTupleKeyIterator(tuples, false), filter)
 				t.Cleanup(iter.Stop)
 				var actual []*openfgav1.TupleKey
 				var actualHead []*openfgav1.TupleKey
@@ -1190,7 +1190,7 @@ func TestConditionsFilteredTupleKeyIterator(t *testing.T) {
 					tuple.NewTupleKeyWithCondition("document:doc1", "editor", "user:elbuo", "condition2", nil),
 					tuple.NewTupleKeyWithCondition("document:doc1", "editor", "user:maria", "condition3", nil),
 				}
-				iter := NewConditionsFilteredTupleKeyIterator(NewStaticTupleKeyIterator(tuples), filter)
+				iter := NewConditionsFilteredTupleKeyIterator(NewStaticTupleKeyIterator(tuples, false), filter)
 				t.Cleanup(iter.Stop)
 				var actual []*openfgav1.TupleKey
 				var actualHead []*openfgav1.TupleKey
@@ -1248,7 +1248,7 @@ func TestConditionsFilteredTupleKeyIterator(t *testing.T) {
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				var tuples []*openfgav1.TupleKey
-				iter := NewConditionsFilteredTupleKeyIterator(NewStaticTupleKeyIterator(tuples), filter)
+				iter := NewConditionsFilteredTupleKeyIterator(NewStaticTupleKeyIterator(tuples, false), filter)
 				t.Cleanup(iter.Stop)
 				var actual []*openfgav1.TupleKey
 				var actualHead []*openfgav1.TupleKey
@@ -1309,7 +1309,7 @@ func TestConditionsFilteredTupleKeyIterator(t *testing.T) {
 					tuple.NewTupleKeyWithCondition("document:doc1", "editor", "user:elbuo", "condition4", nil),
 					tuple.NewTupleKeyWithCondition("document:doc1", "editor", "user:maria", "condition5", nil),
 				}
-				iter := NewConditionsFilteredTupleKeyIterator(NewStaticTupleKeyIterator(tuples), filter)
+				iter := NewConditionsFilteredTupleKeyIterator(NewStaticTupleKeyIterator(tuples, false), filter)
 				t.Cleanup(iter.Stop)
 				if tt.mixed {
 					tk, err := iter.Head(context.Background())
@@ -1343,7 +1343,7 @@ func TestConditionsFilteredTupleKeyIterator(t *testing.T) {
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				var tuples []*openfgav1.TupleKey
-				iter := NewConditionsFilteredTupleKeyIterator(NewStaticTupleKeyIterator(tuples), filter)
+				iter := NewConditionsFilteredTupleKeyIterator(NewStaticTupleKeyIterator(tuples, false), filter)
 				t.Cleanup(iter.Stop)
 
 				ctx, cancel := context.WithCancel(context.Background())
@@ -1368,38 +1368,38 @@ func TestIsOrdered(t *testing.T) {
 	tup := &openfgav1.Tuple{Key: tk}
 
 	t.Run("StaticIterator_true", func(t *testing.T) {
-		require.True(t, NewStaticIterator[string]([]string{"a"}).IsOrdered())
-		require.True(t, NewStaticTupleIterator([]*openfgav1.Tuple{tup}).IsOrdered())
-		require.True(t, NewStaticTupleKeyIterator([]*openfgav1.TupleKey{tk}).IsOrdered())
+		require.True(t, NewStaticIterator[string]([]string{"a"}, true).IsOrdered())
+		require.True(t, NewStaticTupleIterator([]*openfgav1.Tuple{tup}, true).IsOrdered())
+		require.True(t, NewStaticTupleKeyIterator([]*openfgav1.TupleKey{tk}, true).IsOrdered())
 	})
 
 	t.Run("combinedIterator_false", func(t *testing.T) {
-		iter := NewCombinedIterator(NewStaticTupleIterator([]*openfgav1.Tuple{tup}))
+		iter := NewCombinedIterator(NewStaticTupleIterator([]*openfgav1.Tuple{tup}, true))
 		defer iter.Stop()
 		require.False(t, iter.IsOrdered())
 	})
 
 	t.Run("OrderedCombinedIterator_true", func(t *testing.T) {
-		iter := NewOrderedCombinedIterator(ObjectMapper(), NewStaticTupleIterator([]*openfgav1.Tuple{tup}))
+		iter := NewOrderedCombinedIterator(ObjectMapper(), NewStaticTupleIterator([]*openfgav1.Tuple{tup}, true))
 		defer iter.Stop()
 		require.True(t, iter.IsOrdered())
 	})
 
 	t.Run("tupleKeyIterator_forwards", func(t *testing.T) {
-		iter := NewTupleKeyIteratorFromTupleIterator(NewStaticTupleIterator([]*openfgav1.Tuple{tup}))
+		iter := NewTupleKeyIteratorFromTupleIterator(NewStaticTupleIterator([]*openfgav1.Tuple{tup}, true))
 		defer iter.Stop()
 		require.True(t, iter.IsOrdered())
 	})
 
 	t.Run("filteredTupleKeyIterator_forwards", func(t *testing.T) {
-		inner := NewStaticTupleKeyIterator([]*openfgav1.TupleKey{tk})
+		inner := NewStaticTupleKeyIterator([]*openfgav1.TupleKey{tk}, true)
 		iter := NewFilteredTupleKeyIterator(inner, func(k *openfgav1.TupleKey) bool { return true })
 		defer iter.Stop()
 		require.True(t, iter.IsOrdered())
 	})
 
 	t.Run("ConditionsFilteredTupleKeyIterator_forwards", func(t *testing.T) {
-		inner := NewStaticTupleKeyIterator([]*openfgav1.TupleKey{tk})
+		inner := NewStaticTupleKeyIterator([]*openfgav1.TupleKey{tk}, true)
 		iter := NewConditionsFilteredTupleKeyIterator(inner, func(k *openfgav1.TupleKey) (bool, error) { return true, nil })
 		defer iter.Stop()
 		require.True(t, iter.IsOrdered())
