@@ -27,6 +27,9 @@ type Iterator[T any] interface {
 	// It's possible for this method to advance the iterator internally, but a subsequent call to Next will not miss any results.
 	// Calling Head() continuously without calling Next() will yield the same result (the first one) over and over.
 	Head(ctx context.Context) (T, error)
+
+	// IsOrdered reports whether this iterator yields items in a guaranteed non-descending order.
+	IsOrdered() bool
 }
 
 type TupleIterator = Iterator[*openfgav1.Tuple]
@@ -109,6 +112,10 @@ func (c *combinedIterator[T]) Head(ctx context.Context) (T, error) {
 	return val, nil
 }
 
+// IsOrdered returns false because sources are exhausted sequentially, so there is no ordering
+// guarantee across the source boundary.
+func (c *combinedIterator[T]) IsOrdered() bool { return false }
+
 // NewCombinedIterator is a thread-safe iterator that takes generic iterators of a given type T
 // and combines them into a single iterator that yields all the
 // values from all iterators. Duplicates can be returned.
@@ -174,6 +181,9 @@ func (t *tupleKeyIterator) Head(ctx context.Context) (*openfgav1.TupleKey, error
 	return tuple.GetKey(), nil
 }
 
+// IsOrdered forwards from the inner iterator; stripping the Tuple wrapper does not change the element ordering.
+func (t *tupleKeyIterator) IsOrdered() bool { return t.iter.IsOrdered() }
+
 // NewTupleKeyIteratorFromTupleIterator takes a [TupleIterator] and yields
 // all the [*openfgav1.TupleKey](s) from it as a [TupleKeyIterator].
 func NewTupleKeyIteratorFromTupleIterator(iter TupleIterator) TupleKeyIterator {
@@ -232,6 +242,10 @@ func (s *StaticIterator[T]) Head(ctx context.Context) (T, error) {
 
 	return s.items[0], nil
 }
+
+// IsOrdered temporarily assumes the caller provided items in sorted order.
+// This will be made conditional when sources add explicit ordering guarantees.
+func (s *StaticIterator[T]) IsOrdered() bool { return true }
 
 func NewStaticIterator[T any](items []T) Iterator[T] {
 	return &StaticIterator[T]{items: items, mu: &sync.Mutex{}}
@@ -292,6 +306,9 @@ func (f *filteredTupleKeyIterator) Head(ctx context.Context) (*openfgav1.TupleKe
 		}
 	}
 }
+
+// IsOrdered forwards from the inner iterator; filtering can only skip items, never reorder them.
+func (f *filteredTupleKeyIterator) IsOrdered() bool { return f.iter.IsOrdered() }
 
 // NewFilteredTupleKeyIterator returns a [TupleKeyIterator] that filters out all
 // [*openfgav1.Tuple](s) that don't meet the conditions of the provided [TupleKeyFilterFunc].
@@ -399,6 +416,9 @@ func (f *ConditionsFilteredTupleKeyIterator) Head(ctx context.Context) (*openfga
 	}
 }
 
+// IsOrdered forwards from the inner iterator; filtering can only skip items, never reorder them.
+func (f *ConditionsFilteredTupleKeyIterator) IsOrdered() bool { return f.iter.IsOrdered() }
+
 // NewConditionsFilteredTupleKeyIterator returns a [TupleKeyIterator] that filters out all
 // [*openfgav1.Tuple](s) that don't meet the conditions of the provided [TupleKeyFilterFunc].
 func NewConditionsFilteredTupleKeyIterator(iter TupleKeyIterator, filter TupleKeyConditionFilterFunc) TupleKeyIterator {
@@ -416,6 +436,7 @@ type OrderedCombinedIterator struct {
 	pending     []TupleIterator  // GUARDED_BY(mu)
 	lastHead    *openfgav1.Tuple // GUARDED_BY(mu)
 	lastYielded *openfgav1.Tuple // GUARDED_BY(mu)
+	ordered     bool
 }
 
 var _ TupleIterator = (*OrderedCombinedIterator)(nil)
@@ -425,12 +446,16 @@ var _ TupleIterator = (*OrderedCombinedIterator)(nil)
 // Iterators can yield the same value (as defined by mapper) multiple times, but it will only be returned once.
 func NewOrderedCombinedIterator(mapper TupleMapperFunc, sortedIters ...TupleIterator) *OrderedCombinedIterator {
 	pending := make([]TupleIterator, 0, len(sortedIters))
+	ordered := true
 	for _, sortedIter := range sortedIters {
 		if sortedIter != nil {
 			pending = append(pending, sortedIter)
+			if !sortedIter.IsOrdered() {
+				ordered = false
+			}
 		}
 	}
-	return &OrderedCombinedIterator{pending: pending, once: &sync.Once{}, mu: &sync.Mutex{}, mapper: mapper}
+	return &OrderedCombinedIterator{pending: pending, once: &sync.Once{}, mu: &sync.Mutex{}, mapper: mapper, ordered: ordered}
 }
 
 func (c *OrderedCombinedIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
@@ -548,6 +573,10 @@ func (c *OrderedCombinedIterator) Stop() {
 		}
 	})
 }
+
+// IsOrdered returns true only if all source iterators are ordered; the merge-sort algorithm
+// produces sorted output only when every input is individually sorted.
+func (c *OrderedCombinedIterator) IsOrdered() bool { return c.ordered }
 
 // IterIsDoneOrCancelled is true if the error is due to done or cancelled or deadline exceeded.
 func IterIsDoneOrCancelled(err error) bool {

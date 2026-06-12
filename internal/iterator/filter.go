@@ -81,6 +81,9 @@ func (f *filter[T]) Head(_ context.Context) (T, error) {
 	return zero, ErrHeadNotSupportedFilterIterator
 }
 
+// IsOrdered forwards from the inner iterator; filtering can only skip items, never reorder them.
+func (f *filter[T]) IsOrdered() bool { return f.iter.IsOrdered() }
+
 func NewFilteredIterator[T any](iter storage.Iterator[T], filters ...FilterFunc[T]) storage.Iterator[T] {
 	if len(filters) == 0 {
 		return iter

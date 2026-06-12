@@ -154,7 +154,7 @@ func (c *InMemoryCacheController) DetermineInvalidationTime(
 	cacheTotalCounter.Inc()
 
 	// Changelog cache entry holds the last modified time for the store.
-	cacheKey := storage.GetChangelogCacheKey(storeID)
+	cacheKey := storage.ChangelogCacheKey(storeID)
 	cacheResp := c.cache.Get(cacheKey)
 
 	c.logger.Debug("InMemoryCacheController DetermineInvalidationTime cache attempt",
@@ -244,7 +244,7 @@ func (c *InMemoryCacheController) findChangesAndInvalidateIfNecessary(parentCtx 
 	link := trace.LinkFromContext(ctx)
 	trace.SpanFromContext(parentCtx).AddLink(link)
 
-	changelogCacheKey := storage.GetChangelogCacheKey(storeID)
+	changelogCacheKey := storage.ChangelogCacheKey(storeID)
 	lastCacheRecord := c.cache.Get(changelogCacheKey)
 	lastChangeTimeCached := time.Time{}
 
@@ -255,7 +255,7 @@ func (c *InMemoryCacheController) findChangesAndInvalidateIfNecessary(parentCtx 
 			// be the beginning of time which imply the need to invalidate all records.
 			lastChangeTimeCached = decodedRecord.LastModified
 		} else {
-			c.logger.Error("Unable to cast lastCacheRecord properly", zap.String("changelogCacheKey", changelogCacheKey))
+			c.logger.Error("Unable to cast lastCacheRecord properly", zap.String("changelogCacheKey", changelogCacheKey.String()))
 		}
 	}
 
@@ -359,17 +359,17 @@ func (c *InMemoryCacheController) findChangesAndInvalidateIfNecessary(parentCtx 
 // invalidateIteratorCache writes a new key to the cache with a very long TTL.
 // An alternative implementation could delete invalid keys, but this approach is faster (see storagewrappers.findInCache).
 func (c *InMemoryCacheController) invalidateIteratorCache(storeID string) {
-	c.cache.Set(storage.GetInvalidIteratorCacheKey(storeID), &storage.InvalidEntityCacheEntry{LastModified: time.Now()}, math.MaxInt)
+	c.cache.Set(storage.InvalidIteratorCacheKey(storeID), &storage.InvalidEntityCacheEntry{LastModified: time.Now()}, math.MaxInt)
 }
 
 // invalidateIteratorCacheByObjectRelation writes a new key to the cache.
 // An alternative implementation could delete invalid keys, but this approach is faster (see storagewrappers.findInCache).
 func (c *InMemoryCacheController) invalidateIteratorCacheByObjectRelation(storeID, object, relation string, ts time.Time) {
-	c.cache.Set(storage.GetInvalidIteratorByObjectRelationCacheKey(storeID, object, relation), &storage.InvalidEntityCacheEntry{LastModified: ts}, c.iteratorCacheTTL)
+	c.cache.Set(storage.InvalidIteratorByObjectRelationCacheKey(storeID, object, relation), &storage.InvalidEntityCacheEntry{LastModified: ts}, c.iteratorCacheTTL)
 }
 
 // invalidateIteratorCacheByUserAndObjectType writes a new key to the cache.
 // An alternative implementation could delete invalid keys, but this approach is faster (see storagewrappers.findInCache).
 func (c *InMemoryCacheController) invalidateIteratorCacheByUserAndObjectType(storeID, user, objectType string, ts time.Time) {
-	c.cache.Set(storage.GetInvalidIteratorByUserObjectTypeCacheKeys(storeID, []string{user}, objectType)[0], &storage.InvalidEntityCacheEntry{LastModified: ts}, c.iteratorCacheTTL)
+	c.cache.Set(storage.InvalidIteratorByUserObjectTypeCacheKey(storeID, user, objectType), &storage.InvalidEntityCacheEntry{LastModified: ts}, c.iteratorCacheTTL)
 }

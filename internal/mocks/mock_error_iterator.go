@@ -60,6 +60,8 @@ func (s *errorIterator[T]) Head(ctx context.Context) (T, error) {
 
 func (s *errorIterator[T]) Stop() {}
 
+func (s *errorIterator[T]) IsOrdered() bool { return true }
+
 var _ storage.TupleIterator = (*errorIterator[*openfgav1.Tuple])(nil)
 
 // NewErrorTupleIterator mocks case where Next will return error after the first Next()

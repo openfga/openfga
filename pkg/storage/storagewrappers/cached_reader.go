@@ -2,8 +2,6 @@ package storagewrappers
 
 import (
 	"context"
-	"sort"
-	"strings"
 	"sync"
 	"time"
 
@@ -15,6 +13,7 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/storage/cache/keys"
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
@@ -94,18 +93,24 @@ func (c *CachedTupleReader) ReadUsersetTuples(
 	}
 
 	// Build cache key (includes conditions)
-	cacheKey := buildReadUsersetTuplesCacheKey(storeID, filter)
-	span.SetAttributes(attribute.String("cache_key", cacheKey))
+	cacheKey := storage.ReadUsersetTuplesKey(storeID, filter)
+
+	span.SetAttributes(
+		attribute.String("object", filter.Object),
+		attribute.String("relation", filter.Relation),
+		attribute.StringSlice("conditions", filter.Conditions),
+		attribute.Int("type_restriction_count", len(filter.AllowedUserTypeRestrictions)),
+	)
+
 	objectType, _ := tuple.SplitObject(filter.Object)
 
-	// Build invalidation keys for this query
-	invalidEntityKeys := buildInvalidationKeys(storeID, filter.Object, filter.Relation)
+	invalidEntityKey := buildInvalidationKey(storeID, filter.Object, filter.Relation)
 
 	// Track total cache operations (before cache check, like V1)
 	v2IterCacheTotal.WithLabelValues("ReadUsersetTuples").Inc()
 
 	// CHECK CACHE FIRST - before any database call
-	if iter := c.tryGetFromCache(cacheKey, storeID, objectType, filter.Relation, "ReadUsersetTuples", invalidEntityKeys); iter != nil {
+	if iter := c.tryGetFromCache(cacheKey, storeID, objectType, filter.Relation, "ReadUsersetTuples", []keys.Key{invalidEntityKey}); iter != nil {
 		span.SetAttributes(attribute.Bool("cached", true))
 		return iter, nil
 	}
@@ -140,15 +145,22 @@ func (c *CachedTupleReader) Read(
 		return c.delegate.Read(ctx, storeID, filter, opts)
 	}
 
-	cacheKey := buildReadCacheKey(storeID, filter)
-	span.SetAttributes(attribute.String("cache_key", cacheKey))
+	cacheKey := storage.ReadKey(storeID, filter)
+
+	span.SetAttributes(
+		attribute.String("object", filter.Object),
+		attribute.String("relation", filter.Relation),
+		attribute.String("user", filter.User),
+		attribute.StringSlice("conditions", filter.Conditions),
+	)
+
 	objectType, _ := tuple.SplitObject(filter.Object)
-	invalidEntityKeys := buildInvalidationKeys(storeID, filter.Object, filter.Relation)
+	invalidEntityKey := buildInvalidationKey(storeID, filter.Object, filter.Relation)
 
 	// Track total cache operations (before cache check, like V1)
 	v2IterCacheTotal.WithLabelValues("Read").Inc()
 
-	if iter := c.tryGetFromCache(cacheKey, storeID, objectType, filter.Relation, "Read", invalidEntityKeys); iter != nil {
+	if iter := c.tryGetFromCache(cacheKey, storeID, objectType, filter.Relation, "Read", []keys.Key{invalidEntityKey}); iter != nil {
 		span.SetAttributes(attribute.Bool("cached", true))
 		return iter, nil
 	}
@@ -182,8 +194,15 @@ func (c *CachedTupleReader) ReadStartingWithUser(
 		return c.delegate.ReadStartingWithUser(ctx, storeID, filter, opts)
 	}
 
-	cacheKey := buildReadStartingWithUserCacheKey(storeID, filter)
-	span.SetAttributes(attribute.String("cache_key", cacheKey))
+	cacheKey := storage.ReadStartingWithUserKey(storeID, filter)
+
+	span.SetAttributes(
+		attribute.String("object_type", filter.ObjectType),
+		attribute.String("relation", filter.Relation),
+		attribute.StringSlice("conditions", filter.Conditions),
+		attribute.Int("user_filter_count", len(filter.UserFilter)),
+	)
+
 	invalidEntityKeys := buildInvalidationKeysForUser(storeID, filter.UserFilter, filter.ObjectType)
 
 	// Track total cache operations (before cache check, like V1)
@@ -210,8 +229,8 @@ func (c *CachedTupleReader) ReadStartingWithUser(
 // tryGetFromCache checks for cache hit with invalidation support.
 // Returns LockFreeCachedIterator if found and not invalidated.
 func (c *CachedTupleReader) tryGetFromCache(
-	cacheKey, storeID, objectType, relation, operation string,
-	invalidEntityKeys []string,
+	cacheKey keys.Key, storeID, objectType, relation, operation string,
+	invalidEntityKeys []keys.Key,
 ) storage.TupleIterator {
 	entry := c.cache.Get(cacheKey)
 	if entry == nil {
@@ -238,17 +257,17 @@ func (c *CachedTupleReader) tryGetFromCache(
 	}
 
 	v2IterCacheHits.WithLabelValues(operation).Inc()
-	return NewLockFreeCachedIterator(cached.Entries, objectType, relation)
+	return NewLockFreeCachedIterator(cached.Entries, objectType, relation, cached.Ordered)
 }
 
 // isStoreInvalidated returns whether the entire store's cache has been invalidated since lastModified.
 func (c *CachedTupleReader) isStoreInvalidated(storeID string, lastModified time.Time) bool {
-	return c.isCacheEntryInvalidated(storage.GetInvalidIteratorCacheKey(storeID), lastModified)
+	return c.isCacheEntryInvalidated(storage.InvalidIteratorCacheKey(storeID), lastModified)
 }
 
 // isCacheEntryInvalidated returns whether an invalidation cache entry at invalidKey was
 // written after a cache entry's lastModified time, indicating the cache entry is stale.
-func (c *CachedTupleReader) isCacheEntryInvalidated(invalidKey string, lastModified time.Time) bool {
+func (c *CachedTupleReader) isCacheEntryInvalidated(invalidKey keys.Key, lastModified time.Time) bool {
 	entry := c.cache.Get(invalidKey)
 	if entry == nil {
 		return false
@@ -260,24 +279,22 @@ func (c *CachedTupleReader) isCacheEntryInvalidated(invalidKey string, lastModif
 	return invalidEntry.LastModified.After(lastModified)
 }
 
-// buildInvalidationKeys returns cache keys to check for invalidation.
-// Uses the full object (e.g., "document:1") and relation to match invalidation records.
-func buildInvalidationKeys(storeID, object, relation string) []string {
-	return []string{
-		storage.GetInvalidIteratorByObjectRelationCacheKey(storeID, object, relation),
-	}
+func buildInvalidationKey(storeID, object, relation string) keys.Key {
+	return storage.InvalidIteratorByObjectRelationCacheKey(storeID, object, relation)
 }
 
-func buildInvalidationKeysForUser(storeID string, userFilters []*openfgav1.ObjectRelation, objectType string) []string {
-	users := make([]string, len(userFilters))
-	for i, f := range userFilters {
+func buildInvalidationKeysForUser(storeID string, userFilters []*openfgav1.ObjectRelation, objectType string) []keys.Key {
+	ks := make([]keys.Key, 0, len(userFilters))
+	for _, f := range userFilters {
+		var user string
 		if rel := f.GetRelation(); rel != "" {
-			users[i] = f.GetObject() + "#" + rel
+			user = f.GetObject() + "#" + rel
 		} else {
-			users[i] = f.GetObject()
+			user = f.GetObject()
 		}
+		ks = append(ks, storage.InvalidIteratorByUserObjectTypeCacheKey(storeID, user, objectType))
 	}
-	return storage.GetInvalidIteratorByUserObjectTypeCacheKeys(storeID, users, objectType)
+	return ks
 }
 
 // Delegate methods that don't need caching.
@@ -290,135 +307,4 @@ func (c *CachedTupleReader) ReadUserTuple(ctx context.Context, store string, fil
 // ReadPage reads a page of tuples (no caching needed).
 func (c *CachedTupleReader) ReadPage(ctx context.Context, store string, filter storage.ReadFilter, opts storage.ReadPageOptions) ([]*openfgav1.Tuple, string, error) {
 	return c.delegate.ReadPage(ctx, store, filter, opts)
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Cache Key Generation
-// ─────────────────────────────────────────────────────────────────────────────
-
-// buildReadUsersetTuplesCacheKey builds a cache key for ReadUsersetTuples.
-// Format: v2ic.rut/{storeID}/{object}#{relation}/{userTypeRestrictions}[/c:{conditionsHash}].
-func buildReadUsersetTuplesCacheKey(storeID string, filter storage.ReadUsersetTuplesFilter) string {
-	var b strings.Builder
-	b.Grow(128)
-
-	b.WriteString(v2IteratorCachePrefix)
-	b.WriteString("rut/") // "ReadUsersetTuples"
-	b.WriteString(storeID)
-	b.WriteByte('/')
-	b.WriteString(filter.Object) // e.g., "document:1"
-	b.WriteByte('#')
-	b.WriteString(filter.Relation) // e.g., "viewer"
-	b.WriteByte('/')
-
-	// Build user type restrictions string
-	restrictions := buildUserTypeRestrictionsString(filter.AllowedUserTypeRestrictions)
-	b.WriteString(restrictions)
-
-	// Add conditions hash
-	appendConditionsHash(&b, filter.Conditions)
-
-	return b.String()
-}
-
-// buildReadCacheKey builds a cache key for Read.
-// Format: v2ic.r/{storeID}/{object}#{relation}/{userPrefix}[/c:{conditionsHash}].
-func buildReadCacheKey(storeID string, filter storage.ReadFilter) string {
-	var b strings.Builder
-	b.Grow(128)
-
-	b.WriteString(v2IteratorCachePrefix)
-	b.WriteString("r/") // "Read"
-	b.WriteString(storeID)
-	b.WriteByte('/')
-	b.WriteString(filter.Object) // e.g., "document:1"
-	b.WriteByte('#')
-	b.WriteString(filter.Relation) // e.g., "parent"
-	b.WriteByte('/')
-	b.WriteString(filter.User) // e.g., "folder:" (type prefix)
-
-	// Add conditions hash
-	appendConditionsHash(&b, filter.Conditions)
-
-	return b.String()
-}
-
-// buildReadStartingWithUserCacheKey builds a cache key for ReadStartingWithUser.
-// Format: v2ic.rswu/{storeID}/{objectType}#{relation}/{users}[/c:{conditionsHash}].
-func buildReadStartingWithUserCacheKey(storeID string, filter storage.ReadStartingWithUserFilter) string {
-	var b strings.Builder
-	b.Grow(128)
-
-	b.WriteString(v2IteratorCachePrefix)
-	b.WriteString("rswu/") // "ReadStartingWithUser"
-	b.WriteString(storeID)
-	b.WriteByte('/')
-	b.WriteString(filter.ObjectType) // e.g., "document"
-	b.WriteByte('#')
-	b.WriteString(filter.Relation) // e.g., "viewer"
-	b.WriteByte('/')
-
-	// Build user filter string
-	users := buildUserFilterString(filter.UserFilter)
-	b.WriteString(users)
-
-	// Add conditions hash
-	appendConditionsHash(&b, filter.Conditions)
-
-	return b.String()
-}
-
-// buildUserTypeRestrictionsString creates a deterministic string from user type restrictions.
-// Examples:
-//   - [{Type:"user"}] -> "user"
-//   - [{Type:"user", Wildcard:true}] -> "user:*"
-//   - [{Type:"group", Relation:"member"}] -> "group#member"
-//   - Multiple: sorted and joined with ","
-func buildUserTypeRestrictionsString(refs []*openfgav1.RelationReference) string {
-	if len(refs) == 0 {
-		return ""
-	}
-
-	parts := make([]string, 0, len(refs))
-	for _, ref := range refs {
-		var part string
-		switch r := ref.GetRelationOrWildcard().(type) {
-		case *openfgav1.RelationReference_Relation:
-			part = ref.GetType() + "#" + r.Relation
-		case *openfgav1.RelationReference_Wildcard:
-			part = ref.GetType() + ":*"
-		default:
-			part = ref.GetType()
-		}
-		parts = append(parts, part)
-	}
-
-	// Sort for deterministic key
-	sort.Strings(parts)
-	return strings.Join(parts, ",")
-}
-
-// buildUserFilterString creates a deterministic string from user filters.
-// Examples:
-//   - [{Object:"user:alice"}] -> "user:alice"
-//   - [{Object:"user:alice", Relation:"member"}] -> "user:alice#member"
-//   - [{Object:"user:*"}] -> "user:*"
-//   - Multiple: sorted and joined with ","
-func buildUserFilterString(filters []*openfgav1.ObjectRelation) string {
-	if len(filters) == 0 {
-		return ""
-	}
-
-	parts := make([]string, 0, len(filters))
-	for _, f := range filters {
-		part := f.GetObject()
-		if rel := f.GetRelation(); rel != "" {
-			part += "#" + rel
-		}
-		parts = append(parts, part)
-	}
-
-	// Sort for deterministic key
-	sort.Strings(parts)
-	return strings.Join(parts, ",")
 }

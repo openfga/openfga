@@ -7,9 +7,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/cespare/xxhash/v2"
-	"go.uber.org/zap"
-
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/cachecontroller"
@@ -19,6 +16,7 @@ import (
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/server/config"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/storage/cache/keys"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
@@ -66,7 +64,6 @@ func (e BatchCheckValidationError) Error() string {
 }
 
 type CorrelationID string
-type CacheKey string
 
 type checkAndCorrelationIDs struct {
 	Check          *openfgav1.BatchCheckItem
@@ -147,13 +144,9 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 
 	// Before processing the batch, deduplicate the checks based on their unique cache key
 	// After all routines have finished, we will map each individual check response to all associated CorrelationIDs
-	cacheKeyMap := make(map[CacheKey]*checkAndCorrelationIDs)
+	cacheKeyMap := make(map[keys.Key]*checkAndCorrelationIDs)
 	for _, check := range params.Checks {
-		key, err := generateCacheKeyFromCheck(check, params.StoreID, bq.typesys.GetAuthorizationModelID())
-		if err != nil {
-			bq.logger.Error("batch check cache key computation failed with error", zap.Error(err))
-			return nil, nil, err
-		}
+		key := generateCacheKeyFromCheck(check, params.StoreID, bq.typesys.GetAuthorizationModelID())
 
 		if item, ok := cacheKeyMap[key]; ok {
 			item.CorrelationIDs = append(item.CorrelationIDs, CorrelationID(check.GetCorrelationId()))
@@ -279,26 +272,19 @@ func validateCorrelationIDs(checks []*openfgav1.BatchCheckItem) error {
 	return nil
 }
 
-func generateCacheKeyFromCheck(check *openfgav1.BatchCheckItem, storeID string, authModelID string) (CacheKey, error) {
-	tupleKey := check.GetTupleKey()
-	cacheKeyParams := &storage.CheckCacheKeyParams{
-		StoreID:              storeID,
-		AuthorizationModelID: authModelID,
-		TupleKey: &openfgav1.TupleKey{
-			User:     tupleKey.GetUser(),
-			Relation: tupleKey.GetRelation(),
-			Object:   tupleKey.GetObject(),
-		},
-		ContextualTuples: check.GetContextualTuples().GetTupleKeys(),
-		Context:          check.GetContext(),
-	}
-
-	hasher := xxhash.New()
-	err := storage.WriteCheckCacheKey(hasher, cacheKeyParams)
-	if err != nil {
-		return "", err
-	}
-
-	keyStr := strconv.FormatUint(hasher.Sum64(), 10)
-	return CacheKey(keyStr), nil
+func generateCacheKeyFromCheck(check *openfgav1.BatchCheckItem, storeID, authModelID string) keys.Key {
+	checkTupleKey := check.GetTupleKey()
+	key := storage.CheckCacheKey(
+		storeID,
+		checkTupleKey.GetObject(),
+		checkTupleKey.GetRelation(),
+		checkTupleKey.GetUser(),
+		storage.InvariantCacheKey(
+			storeID,
+			authModelID,
+			check.GetContext(),
+			check.GetContextualTuples().GetTupleKeys()...,
+		),
+	)
+	return key
 }

@@ -86,6 +86,28 @@ func TestTTUTupleMapper(t *testing.T) {
 	})
 }
 
+func TestMapperIsOrdered(t *testing.T) {
+	tks := []*openfgav1.TupleKey{tuple.NewTupleKey("group:eng", "member", "user:alice#member")}
+	inner := NewStaticTupleKeyIterator(tks)
+
+	t.Run("UsersetMapper_forwards", func(t *testing.T) {
+		m := WrapIterator(UsersetKind, inner)
+		require.True(t, m.IsOrdered())
+	})
+
+	inner2 := NewStaticTupleKeyIterator(tks)
+	t.Run("TTUMapper_forwards", func(t *testing.T) {
+		m := WrapIterator(TTUKind, inner2)
+		require.True(t, m.IsOrdered())
+	})
+
+	inner3 := NewStaticTupleKeyIterator(tks)
+	t.Run("ObjectIDMapper_forwards", func(t *testing.T) {
+		m := WrapIterator(ObjectIDKind, inner3)
+		require.True(t, m.IsOrdered())
+	})
+}
+
 func TestObjectIDTupleMapper(t *testing.T) {
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()

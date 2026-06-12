@@ -184,6 +184,12 @@ func TestConcat(t *testing.T) {
 	}
 }
 
+func TestConcatIsOrdered(t *testing.T) {
+	iter := Concat(storage.NewStaticIterator[string]([]string{"a"}), storage.NewStaticIterator[string]([]string{"b"}))
+	defer iter.Stop()
+	require.False(t, iter.IsOrdered())
+}
+
 func TestConcatStop(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
