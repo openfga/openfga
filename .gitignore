@@ -2,7 +2,7 @@ bin
 .idea
 .vscode
 dist/
-.claude/
+.claude/settings.local.json
 
 openfga
 !openfga/
