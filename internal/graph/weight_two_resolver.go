@@ -298,6 +298,7 @@ func addNextItemInSliceStreamsToBatch(ctx context.Context, streamSlices []*itera
 	return batch, nil
 }
 
+// Requires each stream to yield object IDs in ascending order (use WithResultsSortedAscending on reads); the merge produces incorrect results otherwise.
 func fastPathUnion(ctx context.Context, streams *iterator.Streams, outChan chan<- *iterator.Msg) {
 	batch := make([]string, 0)
 
@@ -370,6 +371,7 @@ func fastPathUnion(ctx context.Context, streams *iterator.Streams, outChan chan<
 	}
 }
 
+// Requires each stream to yield object IDs in ascending order (use WithResultsSortedAscending on reads); the merge produces incorrect results otherwise.
 func fastPathIntersection(ctx context.Context, streams *iterator.Streams, outChan chan<- *iterator.Msg) {
 	batch := make([]string, 0)
 
@@ -460,6 +462,7 @@ func fastPathIntersection(ctx context.Context, streams *iterator.Streams, outCha
 	}
 }
 
+// Requires each stream to yield object IDs in ascending order (use WithResultsSortedAscending on reads); the merge produces incorrect results otherwise.
 func fastPathDifference(ctx context.Context, streams *iterator.Streams, outChan chan<- *iterator.Msg) {
 	batch := make([]string, 0)
 
