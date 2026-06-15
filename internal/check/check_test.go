@@ -3998,7 +3998,7 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 				WithResultsSortedAscending: true,
 				Consistency:                storage.ConsistencyOptions{Preference: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY},
 			},
-		).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:1", "viewer", "document:2#owner")}}, false), nil).Times(1)
+		).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:1", "viewer", "document:2#owner")}}, true), nil).Times(1)
 
 		resolver := New(Config{
 			Model:            mg,
@@ -4315,7 +4315,7 @@ func TestTTU(t *testing.T) {
 			},
 		).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{{
 			Key: tuple.NewTupleKey("document:1", "parent", "document:2"),
-		}}, false), nil).Times(1)
+		}}, true), nil).Times(1)
 
 		resolver := New(Config{
 			Model:            mg,
@@ -4620,7 +4620,7 @@ func TestTTU(t *testing.T) {
 			},
 		).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{{
 			Key: tuple.NewTupleKey("document:1", "parent", "document:2"),
-		}}, false), nil).Times(1)
+		}}, true), nil).Times(1)
 
 		resolver := New(Config{
 			Model:            mg,

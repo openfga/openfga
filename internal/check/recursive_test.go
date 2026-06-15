@@ -175,7 +175,7 @@ func TestRecursiveTTU(t *testing.T) {
 				WithResultsSortedAscending: true,
 				Consistency:                storage.ConsistencyOptions{Preference: openfgav1.ConsistencyPreference_UNSPECIFIED},
 			},
-			).MaxTimes(1).Return(storage.NewStaticTupleIterator(tt.readStartingWithUserTuples, false), tt.readStartingWithUserTuplesError)
+			).MaxTimes(1).Return(storage.NewStaticTupleIterator(tt.readStartingWithUserTuples, true), tt.readStartingWithUserTuplesError)
 
 			for _, tuples := range tt.readTuples[1:] {
 				mockDatastore.EXPECT().Read(gomock.Any(), storeID, gomock.Any(), gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tuples, false), tt.readTuplesError)
