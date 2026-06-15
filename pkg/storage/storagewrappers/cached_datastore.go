@@ -369,6 +369,8 @@ func (c *CachedDatastore) newCachedIterator(
 		tuplesCacheHitCounter.WithLabelValues(operation, c.method).Inc()
 		span.SetAttributes(attribute.Bool("cached", true))
 
+		// TupleIteratorCacheEntry does not store the ordered flag, so IsOrdered() will always return false on cache hits.
+		// This is acceptable because CachedDatastore is currently not used by any code paths that check IsOrdered().
 		staticIter := storage.NewStaticIterator[*storage.TupleRecord](cacheEntry.Tuples, false)
 		currentIteratorCacheCount.WithLabelValues("true").Inc()
 
