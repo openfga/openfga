@@ -91,12 +91,12 @@ func IteratorReadStartingFromUser(ctx context.Context,
 	req resolveCheckRequest,
 	objectRel string,
 	objectIDs storage.SortedSet,
-	sortContextualTuples bool) (storage.TupleKeyIterator, error) {
+	sortResults bool) (storage.TupleKeyIterator, error) {
 	storeID := req.GetStoreID()
 	reqTupleKey := req.GetTupleKey()
 
 	opts := storage.ReadStartingWithUserOptions{
-		WithResultsSortedAscending: sortContextualTuples,
+		WithResultsSortedAscending: sortResults,
 		Consistency: storage.ConsistencyOptions{
 			Preference: req.GetConsistency(),
 		},
