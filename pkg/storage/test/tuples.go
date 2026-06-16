@@ -1302,7 +1302,6 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		require.ErrorIs(t, err, storage.ErrNotFound)
 	})
 
-
 	t.Run("tuples_with_nil_condition", func(t *testing.T) {
 		// This test ensures we don't normalize nil conditions to an empty value.
 		storeID := ulid.Make().String()
