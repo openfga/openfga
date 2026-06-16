@@ -9,18 +9,23 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ## [Unreleased]
 
 ## [1.18.0] - 2026-06-16
+### Fixed
+- Use `crypto/subtle.ConstantTimeCompare` for preshared key authentication to close a timing side-channel where the prior map lookup could reveal information about valid key bytes. [#3168](https://github.com/openfga/openfga/pull/3168) Thanks to [@geo-chen](https://github.com/geo-chen) for reporting this.
+- Enforce that `authn.oidc.issuer` and `authn.oidc.audience` are both set when `authn.method` is `oidc`. Previously, omitting `--authn-oidc-audience` caused the JWT `aud` claim to be silently skipped during token validation, allowing any validly-signed token from the trusted issuer to be accepted regardless of its intended audience. OpenFGA will now refuse to start if either value is missing.
+
+### Security
+- Fixed identifier comparison on the MySQL backend to be case-sensitive, matching Postgres and SQLite. Ships schema migrations 008, which require a maintenance window — see the [operator runbook](assets/migrations/mysql/collation_migrations.md) before upgrading.
+
+## [1.17.1] - 2026-06-05
 ### Changed
 - Update PR workflow benchmark comparison to be less flakey. [#3153](https://github.com/openfga/openfga/pull/3153)
 
 ### Fixed
-- Use `crypto/subtle.ConstantTimeCompare` for preshared key authentication to close a timing side-channel where the prior map lookup could reveal information about valid key bytes. [#3168](https://github.com/openfga/openfga/pull/3168) Thanks to [@geo-chen](https://github.com/geo-chen) for reporting this.
-- Enforce that `authn.oidc.issuer` and `authn.oidc.audience` are both set when `authn.method` is `oidc`. Previously, omitting `--authn-oidc-audience` caused the JWT `aud` claim to be silently skipped during token validation, allowing any validly-signed token from the trusted issuer to be accepted regardless of its intended audience. OpenFGA will now refuse to start if either value is missing.
 - Fixed experimental `weighted_graph_check` falling back to the standard algorithm on errors that v1 would reject identically or that should not be retried. `ErrTransactionThrottled`, `check.ErrValidation`, `check.ErrInvalidUser`, and `*tuple.InvalidTupleError` (from contextual-tuple validation) are now returned directly instead of triggering a v1 retry. [#3150](https://github.com/openfga/openfga/pull/3150)
 - Fixed a race where an iterator cache entry flushed concurrently with a write could survive cache controller invalidation checks, causing stale tuples to be returned to subsequent requests. [#3155](https://github.com/openfga/openfga/pull/3155) Thanks to [@0xmrma](https://github.com/0xmrma) for reporting this bug.
 - Fixed `ReadChanges` pagination erroring past the first page when an object type name contains `|`, and tightened `Deserialize` to reject tokens with an empty ULID segment rather than silently restarting pagination from the beginning. [#3152](https://github.com/openfga/openfga/pull/3152)
 
 ### Security
-- Fixed identifier comparison on the MySQL backend to be case-sensitive, matching Postgres and SQLite. Ships schema migrations 008, which require a maintenance window — see the [operator runbook](assets/migrations/mysql/collation_migrations.md) before upgrading.
 - Update toolchain Go version to 1.26.4 to address the Go standard library vulnerabilities documented in the [Go 1.26.4 release notes](https://go.dev/doc/devel/release#go1.26.4). [#3159](https://github.com/openfga/openfga/pull/3159)
 - Update grpc-health-probe to `v0.4.52`, rebuilt with Go 1.26.4, so released images no longer ship the Go standard library vulnerabilities fixed in the [Go 1.26.4 release notes](https://go.dev/doc/devel/release#go1.26.4). [#3164](https://github.com/openfga/openfga/pull/3164) Thanks [@Keralin](https://github.com/Keralin)!
 
@@ -1680,7 +1685,8 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
 - Early support for preshared key or OIDC authentication methods
 
 [Unreleased]: https://github.com/openfga/openfga/compare/v1.18.0...HEAD
-[1.18.0]: https://github.com/openfga/openfga/compare/v1.17.0...v1.18.0
+[1.18.0]: https://github.com/openfga/openfga/compare/v1.17.1...v1.18.0
+[1.17.1]: https://github.com/openfga/openfga/compare/v1.17.0...v1.17.1
 [1.17.0]: https://github.com/openfga/openfga/compare/v1.16.1...v1.17.0
 [1.16.1]: https://github.com/openfga/openfga/compare/v1.16.0...v1.16.1
 [1.16.0]: https://github.com/openfga/openfga/compare/v1.15.1...v1.16.0
