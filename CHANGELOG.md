@@ -12,8 +12,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ### Fixed
 - Use `crypto/subtle.ConstantTimeCompare` for preshared key authentication to close a timing side-channel where the prior map lookup could reveal information about valid key bytes. [#3168](https://github.com/openfga/openfga/pull/3168) Thanks to [@geo-chen](https://github.com/geo-chen) for reporting this.
-
-## [1.17.1] - 2026-06-05
+- Enforce that `authn.oidc.issuer` and `authn.oidc.audience` are both set when `authn.method` is `oidc`. Previously, omitting `--authn-oidc-audience` caused the JWT `aud` claim to be silently skipped during token validation, allowing any validly-signed token from the trusted issuer to be accepted regardless of its intended audience. OpenFGA will now refuse to start if either value is missing.
 ### Changed
 - Update PR workflow benchmark comparison to be less flakey. [#3153](https://github.com/openfga/openfga/pull/3153)
 

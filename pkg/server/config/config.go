@@ -620,6 +620,16 @@ func (cfg *Config) VerifyBinarySettings() error {
 		}
 	}
 
+	if cfg.Authn.Method == "oidc" {
+		// both are StringOrURI values (RFC 7519 §4.1.1, §4.1.3); whitespace is valid, so only reject strictly empty
+		if cfg.Authn.Issuer == "" {
+			return errors.New("'authn.oidc.issuer' config must be set when authn method is 'oidc'")
+		}
+		if cfg.Authn.Audience == "" {
+			return errors.New("'authn.oidc.audience' config must be set when authn method is 'oidc'")
+		}
+	}
+
 	if cfg.HTTP.TLS.Enabled {
 		if cfg.HTTP.TLS.CertPath == "" || cfg.HTTP.TLS.KeyPath == "" {
 			return errors.New("'http.tls.cert' and 'http.tls.key' configs must be set")
