@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Try to keep listed changes to a concise bulleted list of simple explanations of changes. Aim for the amount of information needed so that readers can understand where they would look in the codebase to investigate the changes' implementation, or where they would look in the documentation to understand how to make use of the change in practice - better yet, link directly to the docs and provide detailed information there. Only elaborate if doing so is required to avoid breaking changes or experimental features from ruining someone's day.
 
 ## [Unreleased]
+### Security
+- Fixed identifier comparison on the MySQL backend to be case-sensitive, matching Postgres and SQLite. Ships schema migrations 008, which require a maintenance window — see the [operator runbook](assets/migrations/mysql/collation_migrations.md) before upgrading.
+
 ### Fixed
 - Use `crypto/subtle.ConstantTimeCompare` for preshared key authentication to close a timing side-channel where the prior map lookup could reveal information about valid key bytes. [#3168](https://github.com/openfga/openfga/pull/3168) Thanks to [@geo-chen](https://github.com/geo-chen) for reporting this.
 
