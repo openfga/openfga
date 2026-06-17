@@ -120,11 +120,9 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 			// Flag potential v2Check resolution breaking changes for userset requests.
 			// See breakingChangeReason for the scenarios we detect.
 			if !res.GetAllowed() && tuple.IsObjectRelation(req.GetTupleKey().GetUser()) {
-				if reason := breakingChangeReason(ctx, s, req, storeID); reason != "" {
-					requestID, _ := grpc_ctxtags.Extract(ctx).Values()["request_id"].(string)
-					if requestID == "" {
-						requestID = requestid.InitRequestID(ctx)
-					}
+				typesys, err := s.resolveTypesystem(ctx, storeID, req.GetAuthorizationModelId())
+				if reason := breakingChangeReason(ctx, typesys, req, storeID); reason != "" && err == nil {
+					requestID := getRequestIDFromContext(ctx)
 					s.logger.WarnWithContext(ctx, "potential v2Check resolution breaking change: userset request returned false",
 						zap.String("store_id", storeID),
 						zap.String("model_id", req.GetAuthorizationModelId()),
@@ -137,10 +135,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 			return res, nil
 		}
 
-		requestID, _ := grpc_ctxtags.Extract(ctx).Values()["request_id"].(string)
-		if requestID == "" {
-			requestID = requestid.InitRequestID(ctx)
-		}
+		requestID := getRequestIDFromContext(ctx)
 		s.logger.WarnWithContext(ctx, "Weighted graph check failed, falling back to main Check",
 			zap.Error(err),
 			zap.String("store_id", storeID),
@@ -447,6 +442,21 @@ func isV2TerminalError(err error) bool {
 	return false
 }
 
+func getRequestIDFromContext(ctx context.Context) string {
+	requestID, _ := grpc_ctxtags.Extract(ctx).Values()["request_id"].(string)
+	if requestID == "" {
+		requestID = requestid.InitRequestID(ctx)
+	}
+	return requestID
+}
+
+const (
+	reasonSelfReferentialUserset = "self_referential_userset"
+	reasonAliasUserset           = "alias_userset"
+	reasonComputedUsersetSelfObj = "computed_userset_self_object"
+	reasonTTUUserset             = "ttu_userset"
+)
+
 // breakingChangeReason returns a non-empty reason string when the request shape matches a
 // known v1→v2 Check divergence for userset users. Caller has already verified that the
 // user is a userset (object#relation) and that v2Check returned FALSE.
@@ -507,22 +517,18 @@ func isV2TerminalError(err error) bool {
 //
 // All schema-shape filters are necessary conditions only — they may over-report when no
 // matching tuple is actually stored, but never miss a real divergence.
-func breakingChangeReason(ctx context.Context, s *Server, req *openfgav1.CheckRequest, storeID string) string {
+func breakingChangeReason(ctx context.Context, typesys *typesystem.TypeSystem, req *openfgav1.CheckRequest, storeID string) string {
 	tk := req.GetTupleKey()
 	if tk.GetUser() == tk.GetObject()+"#"+tk.GetRelation() {
-		return "self_referential_userset"
+		return reasonSelfReferentialUserset
 	}
 	userObject, userRelation := tuple.SplitObjectRelation(tk.GetUser())
 	userObjectType := tuple.GetType(userObject)
 	targetObjectType := tuple.GetType(tk.GetObject())
 	targetRelation := tk.GetRelation()
 
-	typesys, err := s.resolveTypesystem(ctx, storeID, req.GetAuthorizationModelId())
-	if err != nil {
-		return ""
-	}
 	if usersetAliasesTargetRelation(typesys, targetObjectType, targetRelation, userObjectType, userRelation) {
-		return "alias_userset"
+		return reasonAliasUserset
 	}
 	rel, err := typesys.GetRelation(targetObjectType, targetRelation)
 	if err != nil {
@@ -530,10 +536,10 @@ func breakingChangeReason(ctx context.Context, s *Server, req *openfgav1.CheckRe
 	}
 	rewrite := rel.GetRewrite()
 	if userObject == tk.GetObject() && rewriteContainsComputedUserset(rewrite, userRelation) {
-		return "computed_userset_self_object"
+		return reasonComputedUsersetSelfObj
 	}
 	if rewriteContainsTTUForUser(typesys, targetObjectType, rewrite, userObjectType, userRelation) {
-		return "ttu_userset"
+		return reasonTTUUserset
 	}
 	return ""
 }
@@ -542,10 +548,8 @@ func breakingChangeReason(ctx context.Context, s *Server, req *openfgav1.CheckRe
 // tree references the given relation name.
 func rewriteContainsComputedUserset(rewrite *openfgav1.Userset, relation string) bool {
 	result, _ := typesystem.WalkUsersetRewrite(rewrite, func(r *openfgav1.Userset) interface{} {
-		if cu, ok := r.GetUserset().(*openfgav1.Userset_ComputedUserset); ok {
-			if cu.ComputedUserset.GetRelation() == relation {
-				return true
-			}
+		if cu, ok := r.GetUserset().(*openfgav1.Userset_ComputedUserset); ok && cu.ComputedUserset.GetRelation() == relation {
+			return true
 		}
 		return nil
 	})
@@ -557,21 +561,14 @@ func rewriteContainsComputedUserset(rewrite *openfgav1.Userset, relation string)
 // target object type is directly related to the user's object type.
 func rewriteContainsTTUForUser(ts *typesystem.TypeSystem, targetObjectType string, rewrite *openfgav1.Userset, userObjectType, userRelation string) bool {
 	result, _ := typesystem.WalkUsersetRewrite(rewrite, func(r *openfgav1.Userset) interface{} {
-		ttu, ok := r.GetUserset().(*openfgav1.Userset_TupleToUserset)
-		if !ok {
-			return nil
-		}
-		if ttu.TupleToUserset.GetComputedUserset().GetRelation() != userRelation {
-			return nil
-		}
-		tuplesetRel := ttu.TupleToUserset.GetTupleset().GetRelation()
-		directlyRelated, err := ts.GetDirectlyRelatedUserTypes(targetObjectType, tuplesetRel)
-		if err != nil {
-			return nil
-		}
-		for _, dr := range directlyRelated {
-			if dr.GetType() == userObjectType {
-				return true
+		if ttu, ok := r.GetUserset().(*openfgav1.Userset_TupleToUserset); ok && ttu.TupleToUserset.GetComputedUserset().GetRelation() == userRelation {
+			tuplesetRel := ttu.TupleToUserset.GetTupleset().GetRelation()
+			if directlyRelated, err := ts.GetDirectlyRelatedUserTypes(targetObjectType, tuplesetRel); err == nil {
+				for _, dr := range directlyRelated {
+					if dr.GetType() == userObjectType {
+						return true
+					}
+				}
 			}
 		}
 		return nil
@@ -587,21 +584,19 @@ func usersetAliasesTargetRelation(ts *typesystem.TypeSystem, targetObjectType, t
 	if err != nil {
 		return false
 	}
-	for _, ref := range usersets {
-		if ref.GetType() == userObjectType && ref.GetRelation() == userRelation {
-			return false
-		}
-	}
+	foundAlias := false
 	for _, ref := range usersets {
 		if ref.GetType() != userObjectType {
 			continue
 		}
-		resolved, err := ts.ResolveComputedRelation(ref.GetType(), ref.GetRelation())
-		if err == nil && resolved == userRelation {
-			return true
+		if ref.GetRelation() == userRelation {
+			return false
+		}
+		if resolved, err := ts.ResolveComputedRelation(ref.GetType(), ref.GetRelation()); err == nil && resolved == userRelation {
+			foundAlias = true
 		}
 	}
-	return false
+	return foundAlias
 }
 
 func (s *Server) getCheckResolverBuilder(storeID string) *graph.CheckResolverOrderedBuilder {

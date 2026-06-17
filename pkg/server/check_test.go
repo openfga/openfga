@@ -946,13 +946,12 @@ func TestBreakingChangeReason(t *testing.T) {
 	})
 
 	tests := []struct {
-		name           string
-		modelDSL       string
-		seedTuple      *openfgav1.TupleKey
-		object         string
-		relation       string
-		user           string
-		expectedReason string
+		name      string
+		modelDSL  string
+		seedTuple *openfgav1.TupleKey
+		object    string
+		relation  string
+		user      string
 	}{
 		{
 			name: "alias_userset",
@@ -1040,6 +1039,73 @@ func TestBreakingChangeReason(t *testing.T) {
 			relation:  "viewer",
 			user:      "group:g1#member",
 		},
+		{
+			// User is a plain object (no #relation), so none of the userset-shape
+			// reasons should fire. Mirrors the IsObjectRelation gate at the caller.
+			name: "no_match_user_is_not_userset",
+			modelDSL: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define viewer: [user]
+			`,
+			seedTuple: tuple.NewTupleKey("document:seed", "viewer", "user:seed"),
+			object:    "document:d1",
+			relation:  "viewer",
+			user:      "user:bob",
+		},
+		{
+			// computed_userset shape exists in the rewrite, but the user's object
+			// differs from the target object — so computed_userset_self_object must NOT fire.
+			name: "no_match_computed_userset_different_object",
+			modelDSL: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define editor: [user]
+						define writer: [user]
+						define viewer: editor or writer
+			`,
+			seedTuple: tuple.NewTupleKey("document:seed", "editor", "user:seed"),
+			object:    "document:d1",
+			relation:  "viewer",
+			user:      "document:d2#writer",
+		},
+		{
+			// TTU shape exists (viewer from parent) and the computed relation matches
+			// the user's relation, but the user's object type (user) is not in the
+			// tupleset's directly-related types (parent: [folder]) — so ttu_userset must NOT fire.
+			name: "no_match_ttu_user_object_type_not_in_tupleset",
+			modelDSL: `
+				model
+					schema 1.1
+				type user
+					relations
+						define viewer: [user]
+				type folder
+					relations
+						define viewer: [user]
+				type document
+					relations
+						define parent: [folder]
+						define viewer: viewer from parent
+			`,
+			seedTuple: tuple.NewTupleKey("document:seed", "parent", "folder:seed"),
+			object:    "document:d1",
+			relation:  "viewer",
+			user:      "user:u1#viewer",
+		},
+	}
+
+	negativeCases := map[string]bool{
+		"no_match_direct_userset_assignable":            true,
+		"no_match_user_is_not_userset":                  true,
+		"no_match_computed_userset_different_object":    true,
+		"no_match_ttu_user_object_type_not_in_tupleset": true,
 	}
 
 	for _, tc := range tests {
@@ -1056,9 +1122,12 @@ func TestBreakingChangeReason(t *testing.T) {
 				},
 			}
 
-			got := breakingChangeReason(context.Background(), s, req, req.GetStoreId())
-			if tc.name == "no_match_direct_userset_assignable" {
-				require.Empty(t, got, "expected no breaking change reason for assignable but non-matching userset")
+			ctx := context.Background()
+			typesys, err := s.resolveTypesystem(ctx, baseReq.GetStoreId(), req.GetAuthorizationModelId())
+			require.NoError(t, err)
+			got := breakingChangeReason(ctx, typesys, req, req.GetStoreId())
+			if negativeCases[tc.name] {
+				require.Empty(t, got, "expected no breaking change reason")
 				return
 			}
 			require.Equal(t, tc.name, got)
