@@ -1721,7 +1721,7 @@ func ReadStartingWithUserTest(t *testing.T, datastore storage.OpenFGADatastore) 
 				},
 			},
 			storage.ReadStartingWithUserOptions{
-				WithResultsSortedAscending: true,
+				SortAsc: true,
 			},
 		)
 		require.NoError(t, err)
@@ -1768,7 +1768,7 @@ func ReadStartingWithUserTest(t *testing.T, datastore storage.OpenFGADatastore) 
 				},
 			},
 			storage.ReadStartingWithUserOptions{
-				WithResultsSortedAscending: true,
+				SortAsc: true,
 			},
 		)
 		require.NoError(t, err)
@@ -1818,7 +1818,7 @@ func ReadStartingWithUserTest(t *testing.T, datastore storage.OpenFGADatastore) 
 				},
 			},
 			storage.ReadStartingWithUserOptions{
-				WithResultsSortedAscending: true,
+				SortAsc: true,
 			},
 		)
 		require.NoError(t, err)
@@ -1874,7 +1874,7 @@ func ReadStartingWithUserTest(t *testing.T, datastore storage.OpenFGADatastore) 
 				ObjectIDs: objectIDs,
 			},
 			storage.ReadStartingWithUserOptions{
-				WithResultsSortedAscending: true,
+				SortAsc: true,
 			},
 		)
 		require.NoError(t, err)
@@ -2059,7 +2059,7 @@ func ReadAndReadPageTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	t.Run("enforce_order_of_tuples", func(t *testing.T) {
 		sid := ulid.Make().String()
 
-		// Written in reverse order; WithResultsSortedAscending must return ascending by user.
+		// Written in reverse order; SortAsc must return ascending by user.
 		tks := []*openfgav1.TupleKey{
 			tuple.NewTupleKey("document:1", "viewer", "user:charlie"),
 			tuple.NewTupleKey("document:1", "viewer", "user:bob"),
@@ -2071,7 +2071,7 @@ func ReadAndReadPageTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		tupleIterator, err := datastore.Read(ctx, sid, storage.ReadFilter{
 			Object:   "document:1",
 			Relation: "viewer",
-		}, storage.ReadOptions{WithResultsSortedAscending: true})
+		}, storage.ReadOptions{SortAsc: true})
 		require.NoError(t, err)
 		defer tupleIterator.Stop()
 
@@ -2100,7 +2100,7 @@ func ReadAndReadPageTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		tupleIterator, err := datastore.Read(ctx, sid, storage.ReadFilter{
 			Object:   "document:1",
 			Relation: "viewer",
-		}, storage.ReadOptions{WithResultsSortedAscending: true})
+		}, storage.ReadOptions{SortAsc: true})
 		require.NoError(t, err)
 		defer tupleIterator.Stop()
 
@@ -2434,7 +2434,7 @@ func ReadUsersetTuplesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	t.Run("enforce_order_of_tuples", func(t *testing.T) {
 		storeID := ulid.Make().String()
 
-		// Written in reverse order; WithResultsSortedAscending must return ascending by user.
+		// Written in reverse order; SortAsc must return ascending by user.
 		tks := []*openfgav1.TupleKey{
 			tuple.NewTupleKey("document:1", "viewer", "group:c#member"),
 			tuple.NewTupleKey("document:1", "viewer", "group:b#member"),
@@ -2450,7 +2450,7 @@ func ReadUsersetTuplesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 			AllowedUserTypeRestrictions: []*openfgav1.RelationReference{
 				typesystem.DirectRelationReference("group", "member"),
 			},
-		}, storage.ReadUsersetTuplesOptions{WithResultsSortedAscending: true})
+		}, storage.ReadUsersetTuplesOptions{SortAsc: true})
 		require.NoError(t, err)
 		defer gotTuples.Stop()
 
@@ -2484,7 +2484,7 @@ func ReadUsersetTuplesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 			AllowedUserTypeRestrictions: []*openfgav1.RelationReference{
 				typesystem.DirectRelationReference("group", "member"),
 			},
-		}, storage.ReadUsersetTuplesOptions{WithResultsSortedAscending: true})
+		}, storage.ReadUsersetTuplesOptions{SortAsc: true})
 		require.NoError(t, err)
 		defer gotTuples.Stop()
 

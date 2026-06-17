@@ -208,7 +208,7 @@ func (s *MemoryBackend) Read(ctx context.Context, store string, filter storage.R
 	if err != nil {
 		return nil, err
 	}
-	if options.WithResultsSortedAscending {
+	if options.SortAsc {
 		sort.Slice(iter.records, func(i, j int) bool {
 			return iter.records[i].User < iter.records[j].User
 		})
@@ -555,12 +555,12 @@ func (s *MemoryBackend) ReadUsersetTuples(
 		}
 	}
 
-	if options.WithResultsSortedAscending {
+	if options.SortAsc {
 		sort.Slice(matches, func(i, j int) bool {
 			return matches[i].User < matches[j].User
 		})
 	}
-	return &staticIterator{records: matches, ordered: options.WithResultsSortedAscending}, nil
+	return &staticIterator{records: matches, ordered: options.SortAsc}, nil
 }
 
 // ReadStartingWithUser see [storage.RelationshipTupleReader].ReadStartingWithUser.
@@ -607,13 +607,13 @@ func (s *MemoryBackend) ReadStartingWithUser(
 			matches = append(matches, t)
 		}
 	}
-	if options.WithResultsSortedAscending {
+	if options.SortAsc {
 		sort.Slice(matches, func(i, j int) bool {
 			return matches[i].ObjectID < matches[j].ObjectID
 		})
 	}
 
-	return &staticIterator{records: matches, ordered: options.WithResultsSortedAscending}, nil
+	return &staticIterator{records: matches, ordered: options.SortAsc}, nil
 }
 
 func findAuthorizationModelByID(

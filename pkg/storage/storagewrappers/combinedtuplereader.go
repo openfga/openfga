@@ -69,19 +69,22 @@ func (c *CombinedTupleReader) Read(
 	options storage.ReadOptions,
 ) (storage.TupleIterator, error) {
 	filteredTuples := filterTuples(c.contextualTuplesOrderedByObjectID, filter.Object, filter.Relation, []string{})
-	if options.WithResultsSortedAscending {
+	var iter1 storage.TupleIterator
+	if options.SortAsc {
 		slices.SortFunc(filteredTuples, func(a, b *openfgav1.Tuple) int {
 			return strings.Compare(a.GetKey().GetUser(), b.GetKey().GetUser())
 		})
+		iter1 = storage.NewOrderedStaticTupleIterator(filteredTuples)
+	} else {
+		iter1 = storage.NewUnorderedStaticTupleIterator(filteredTuples)
 	}
-	iter1 := storage.NewStaticTupleIterator(filteredTuples, options.WithResultsSortedAscending)
 
 	iter2, err := c.RelationshipTupleReader.Read(ctx, storeID, filter, options)
 	if err != nil {
 		return nil, err
 	}
 
-	if options.WithResultsSortedAscending {
+	if options.SortAsc {
 		return storage.NewOrderedCombinedIterator(storage.UserMapper(), iter1, iter2), nil
 	}
 
@@ -154,19 +157,22 @@ func (c *CombinedTupleReader) ReadUsersetTuples(
 		}
 	}
 
-	if options.WithResultsSortedAscending {
+	var iter1 storage.TupleIterator
+	if options.SortAsc {
 		slices.SortFunc(usersetTuples, func(a, b *openfgav1.Tuple) int {
 			return strings.Compare(a.GetKey().GetUser(), b.GetKey().GetUser())
 		})
+		iter1 = storage.NewOrderedStaticTupleIterator(usersetTuples)
+	} else {
+		iter1 = storage.NewUnorderedStaticTupleIterator(usersetTuples)
 	}
-	iter1 := storage.NewStaticTupleIterator(usersetTuples, options.WithResultsSortedAscending)
 
 	iter2, err := c.RelationshipTupleReader.ReadUsersetTuples(ctx, store, filter, options)
 	if err != nil {
 		return nil, err
 	}
 
-	if options.WithResultsSortedAscending {
+	if options.SortAsc {
 		return storage.NewOrderedCombinedIterator(storage.UserMapper(), iter1, iter2), nil
 	}
 
@@ -197,19 +203,22 @@ func (c *CombinedTupleReader) ReadStartingWithUser(
 		filteredTuples = append(filteredTuples, t)
 	}
 
-	if options.WithResultsSortedAscending {
+	var iter1 storage.TupleIterator
+	if options.SortAsc {
 		slices.SortFunc(filteredTuples, func(a, b *openfgav1.Tuple) int {
 			return strings.Compare(a.GetKey().GetObject(), b.GetKey().GetObject())
 		})
+		iter1 = storage.NewOrderedStaticTupleIterator(filteredTuples)
+	} else {
+		iter1 = storage.NewUnorderedStaticTupleIterator(filteredTuples)
 	}
-	iter1 := storage.NewStaticTupleIterator(filteredTuples, options.WithResultsSortedAscending)
 
 	iter2, err := c.RelationshipTupleReader.ReadStartingWithUser(ctx, store, filter, options)
 	if err != nil {
 		return nil, err
 	}
 
-	if options.WithResultsSortedAscending {
+	if options.SortAsc {
 		// Note that both iter1 and iter2 return sorted by object ID
 		return storage.NewOrderedCombinedIterator(storage.ObjectMapper(), iter1, iter2), nil
 	}

@@ -50,7 +50,7 @@ func TestReverseExpandResultChannelClosed(t *testing.T) {
 	mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), store, gomock.Any(), gomock.Any()).
 		Times(1).
 		DoAndReturn(func(_ context.Context, _ string, _ storage.ReadStartingWithUserFilter, _ storage.ReadStartingWithUserOptions) (storage.TupleIterator, error) {
-			iterator := storage.NewStaticTupleIterator(tuples, false)
+			iterator := storage.NewUnorderedStaticTupleIterator(tuples)
 			return iterator, nil
 		})
 
@@ -122,7 +122,7 @@ func TestReverseExpandRespectsContextCancellation(t *testing.T) {
 		Times(1).
 		DoAndReturn(func(_ context.Context, _ string, _ storage.ReadStartingWithUserFilter, _ storage.ReadStartingWithUserOptions) (storage.TupleIterator, error) {
 			// simulate many goroutines trying to write to the results channel
-			iterator := storage.NewStaticTupleIterator(tuples, false)
+			iterator := storage.NewUnorderedStaticTupleIterator(tuples)
 			return iterator, nil
 		})
 	ctx, cancelFunc := context.WithCancel(context.Background())
@@ -398,9 +398,9 @@ func TestReverseExpandIgnoresInvalidTuples(t *testing.T) {
 		}, gomock.Any()).
 			Times(1).
 			DoAndReturn(func(_ context.Context, _ string, _ storage.ReadStartingWithUserFilter, _ storage.ReadStartingWithUserOptions) (storage.TupleIterator, error) {
-				return storage.NewStaticTupleIterator([]*openfgav1.Tuple{
+				return storage.NewUnorderedStaticTupleIterator([]*openfgav1.Tuple{
 					{Key: tuple.NewTupleKey("group:fga", "member", "user:anne")},
-				}, false), nil
+				}), nil
 			}),
 
 		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
@@ -410,10 +410,10 @@ func TestReverseExpandIgnoresInvalidTuples(t *testing.T) {
 		}, gomock.Any()).
 			Times(1).
 			DoAndReturn(func(_ context.Context, _ string, _ storage.ReadStartingWithUserFilter, _ storage.ReadStartingWithUserOptions) (storage.TupleIterator, error) {
-				return storage.NewStaticTupleIterator([]*openfgav1.Tuple{
+				return storage.NewUnorderedStaticTupleIterator([]*openfgav1.Tuple{
 					// NOTE this tuple is invalid
 					{Key: tuple.NewTupleKey("group:eng", "member", "fail:fga#member")},
-				}, false), nil
+				}), nil
 			}),
 	},
 	)
@@ -831,7 +831,7 @@ func TestReverseExpandHonorsConsistency(t *testing.T) {
 	mockDatastore.EXPECT().
 		ReadStartingWithUser(gomock.Any(), store, gomock.Any(), unspecifiedConsistency).
 		Times(1).
-		Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{}, false), nil)
+		Return(storage.NewUnorderedStaticTupleIterator([]*openfgav1.Tuple{}), nil)
 
 	request := &ReverseExpandRequest{
 		StoreID:    store,
@@ -861,7 +861,7 @@ func TestReverseExpandHonorsConsistency(t *testing.T) {
 	mockDatastore.EXPECT().
 		ReadStartingWithUser(gomock.Any(), store, gomock.Any(), highConsistency).
 		Times(1).
-		Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{}, false), nil)
+		Return(storage.NewUnorderedStaticTupleIterator([]*openfgav1.Tuple{}), nil)
 
 	resultChanTwo := make(chan *ReverseExpandResult)
 	err = reverseExpandQuery.Execute(ctx, request, resultChanTwo, NewResolutionMetadata())

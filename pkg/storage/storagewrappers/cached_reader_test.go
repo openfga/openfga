@@ -61,7 +61,7 @@ func TestCachedTupleReader_ReadUsersetTuples_CacheMiss(t *testing.T) {
 	mockCache.EXPECT().Get(cacheKey).Return(nil).Times(1)
 
 	// Delegate to datastore (use gomock.Any() for ctx since tracing adds values)
-	mockDatastore.EXPECT().ReadUsersetTuples(gomock.Any(), storeID, filter, opts).Return(storage.NewStaticTupleIterator(tuples, false), nil).Times(1)
+	mockDatastore.EXPECT().ReadUsersetTuples(gomock.Any(), storeID, filter, opts).Return(storage.NewUnorderedStaticTupleIterator(tuples), nil).Times(1)
 
 	iter, err := reader.ReadUsersetTuples(ctx, storeID, filter, opts)
 	require.NoError(t, err)
@@ -165,7 +165,7 @@ func TestCachedTupleReader_ReadUsersetTuples_HigherConsistency(t *testing.T) {
 		},
 	}
 
-	staticIter := storage.NewStaticTupleIterator([]*openfgav1.Tuple{}, false)
+	staticIter := storage.NewUnorderedStaticTupleIterator([]*openfgav1.Tuple{})
 
 	// NO cache.Get expected - bypasses cache entirely
 
@@ -227,7 +227,7 @@ func TestCachedTupleReader_ReadUsersetTuples_StoreInvalidation(t *testing.T) {
 	mockCache.EXPECT().Delete(cacheKey).Times(1)
 
 	// Fallback to datastore (use gomock.Any() for ctx since tracing adds values)
-	mockDatastore.EXPECT().ReadUsersetTuples(gomock.Any(), storeID, filter, opts).Return(storage.NewStaticTupleIterator(tuples, false), nil).Times(1)
+	mockDatastore.EXPECT().ReadUsersetTuples(gomock.Any(), storeID, filter, opts).Return(storage.NewUnorderedStaticTupleIterator(tuples), nil).Times(1)
 
 	iter, err := reader.ReadUsersetTuples(ctx, storeID, filter, opts)
 	require.NoError(t, err)
@@ -291,7 +291,7 @@ func TestCachedTupleReader_ReadUsersetTuples_EntityInvalidation(t *testing.T) {
 	mockCache.EXPECT().Delete(cacheKey).Times(1)
 
 	// Fallback to datastore (use gomock.Any() for ctx since tracing adds values)
-	mockDatastore.EXPECT().ReadUsersetTuples(gomock.Any(), storeID, filter, opts).Return(storage.NewStaticTupleIterator(tuples, false), nil).Times(1)
+	mockDatastore.EXPECT().ReadUsersetTuples(gomock.Any(), storeID, filter, opts).Return(storage.NewUnorderedStaticTupleIterator(tuples), nil).Times(1)
 
 	iter, err := reader.ReadUsersetTuples(ctx, storeID, filter, opts)
 	require.NoError(t, err)
@@ -431,7 +431,7 @@ func TestCachedTupleReader_Read_CacheMiss(t *testing.T) {
 	mockCache.EXPECT().Get(cacheKey).Return(nil).Times(1)
 
 	// Delegate to datastore (use gomock.Any() for ctx since tracing adds values)
-	mockDatastore.EXPECT().Read(gomock.Any(), storeID, filter, opts).Return(storage.NewStaticTupleIterator(tuples, false), nil).Times(1)
+	mockDatastore.EXPECT().Read(gomock.Any(), storeID, filter, opts).Return(storage.NewUnorderedStaticTupleIterator(tuples), nil).Times(1)
 
 	iter, err := reader.Read(ctx, storeID, filter, opts)
 	require.NoError(t, err)
@@ -529,7 +529,7 @@ func TestCachedTupleReader_Read_HigherConsistency(t *testing.T) {
 		},
 	}
 
-	staticIter := storage.NewStaticTupleIterator([]*openfgav1.Tuple{}, false)
+	staticIter := storage.NewUnorderedStaticTupleIterator([]*openfgav1.Tuple{})
 
 	mockDatastore.EXPECT().Read(gomock.Any(), storeID, filter, opts).Return(staticIter, nil).Times(1)
 
@@ -592,7 +592,7 @@ func TestCachedTupleReader_Read_EntityInvalidation(t *testing.T) {
 	mockCache.EXPECT().Delete(cacheKey).Times(1)
 
 	// Fallback to datastore
-	mockDatastore.EXPECT().Read(gomock.Any(), storeID, filter, opts).Return(storage.NewStaticTupleIterator(tuples, false), nil).Times(1)
+	mockDatastore.EXPECT().Read(gomock.Any(), storeID, filter, opts).Return(storage.NewUnorderedStaticTupleIterator(tuples), nil).Times(1)
 
 	iter, err := reader.Read(ctx, storeID, filter, opts)
 	require.NoError(t, err)
@@ -642,7 +642,7 @@ func TestCachedTupleReader_ReadStartingWithUser_CacheMiss(t *testing.T) {
 	mockCache.EXPECT().Get(cacheKey).Return(nil).Times(1)
 
 	// Delegate to datastore (use gomock.Any() for ctx since tracing adds values)
-	mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, filter, opts).Return(storage.NewStaticTupleIterator(tuples, false), nil).Times(1)
+	mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, filter, opts).Return(storage.NewUnorderedStaticTupleIterator(tuples), nil).Times(1)
 
 	iter, err := reader.ReadStartingWithUser(ctx, storeID, filter, opts)
 	require.NoError(t, err)
@@ -802,7 +802,7 @@ func TestCachedTupleReader_ReadStartingWithUser_HigherConsistency(t *testing.T) 
 		},
 	}
 
-	staticIter := storage.NewStaticTupleIterator([]*openfgav1.Tuple{}, false)
+	staticIter := storage.NewUnorderedStaticTupleIterator([]*openfgav1.Tuple{})
 
 	mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, filter, opts).Return(staticIter, nil).Times(1)
 
@@ -867,7 +867,7 @@ func TestCachedTupleReader_ReadStartingWithUser_EntityInvalidation(t *testing.T)
 	mockCache.EXPECT().Delete(cacheKey).Times(1)
 
 	// Fallback to datastore
-	mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, filter, opts).Return(storage.NewStaticTupleIterator(tuples, false), nil).Times(1)
+	mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, filter, opts).Return(storage.NewUnorderedStaticTupleIterator(tuples), nil).Times(1)
 
 	iter, err := reader.ReadStartingWithUser(ctx, storeID, filter, opts)
 	require.NoError(t, err)
@@ -1090,7 +1090,7 @@ func TestCachedTupleReader_CacheRoundTrip(t *testing.T) {
 
 	// Datastore should only be called ONCE (the cache miss). Second call uses cache.
 	mockDatastore.EXPECT().ReadUsersetTuples(gomock.Any(), storeID, filter, opts).
-		Return(storage.NewStaticTupleIterator(tuples, false), nil).Times(1)
+		Return(storage.NewUnorderedStaticTupleIterator(tuples), nil).Times(1)
 
 	// --- First call: cache miss ---
 	iter, err := reader.ReadUsersetTuples(ctx, storeID, filter, opts)

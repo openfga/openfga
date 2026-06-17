@@ -158,10 +158,10 @@ func (s *Datastore) Read(
 	defer span.End()
 
 	sb := s.buildTupleQuery(store, filter)
-	if options.WithResultsSortedAscending {
+	if options.SortAsc {
 		sb = sb.OrderBy("user_object_type", "user_object_id", "user_relation")
 	}
-	return NewSQLTupleIterator(sb, HandleSQLError, options.WithResultsSortedAscending), nil
+	return NewSQLTupleIterator(sb, HandleSQLError, options.SortAsc), nil
 }
 
 // ReadPage see [storage.RelationshipTupleReader].ReadPage.
@@ -785,11 +785,11 @@ func (s *Datastore) ReadUsersetTuples(
 	if len(filter.Conditions) > 0 {
 		sb = sb.Where(sq.Eq{"COALESCE(condition_name, '')": filter.Conditions})
 	}
-	if options.WithResultsSortedAscending {
+	if options.SortAsc {
 		sb = sb.OrderBy("user_object_type", "user_object_id", "user_relation")
 	}
 
-	return NewSQLTupleIterator(sb, HandleSQLError, options.WithResultsSortedAscending), nil
+	return NewSQLTupleIterator(sb, HandleSQLError, options.SortAsc), nil
 }
 
 // ReadStartingWithUser see [storage.RelationshipTupleReader].ReadStartingWithUser.
@@ -829,7 +829,7 @@ func (s *Datastore) ReadStartingWithUser(
 		}).
 		Where(targetUsersArg)
 
-	if options.WithResultsSortedAscending {
+	if options.SortAsc {
 		builder = builder.OrderBy("object_id")
 	}
 
@@ -841,7 +841,7 @@ func (s *Datastore) ReadStartingWithUser(
 		builder = builder.Where(sq.Eq{"COALESCE(condition_name, '')": filter.Conditions})
 	}
 
-	return NewSQLTupleIterator(builder, HandleSQLError, options.WithResultsSortedAscending), nil
+	return NewSQLTupleIterator(builder, HandleSQLError, options.SortAsc), nil
 }
 
 // MaxTuplesPerWrite see [storage.RelationshipTupleWriter].MaxTuplesPerWrite.

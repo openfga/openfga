@@ -1153,7 +1153,7 @@ func TestShortestPathToSolutionWins(t *testing.T) {
 		DoAndReturn(
 			func(_ context.Context, _ string, _ storage.ReadUsersetTuplesFilter, _ storage.ReadUsersetTuplesOptions) (storage.TupleIterator, error) {
 				time.Sleep(100 * time.Millisecond)
-				return storage.NewStaticTupleIterator([]*openfgav1.Tuple{returnedTuple}, false), nil
+				return storage.NewUnorderedStaticTupleIterator([]*openfgav1.Tuple{returnedTuple}), nil
 			})
 
 	s := MustNewServerWithOpts(

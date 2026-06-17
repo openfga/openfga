@@ -172,13 +172,13 @@ func TestRecursiveTTU(t *testing.T) {
 				UserFilter: []*openfgav1.ObjectRelation{{Object: "user:maria"}},
 				Conditions: []string{""},
 			}, storage.ReadStartingWithUserOptions{
-				WithResultsSortedAscending: true,
-				Consistency:                storage.ConsistencyOptions{Preference: openfgav1.ConsistencyPreference_UNSPECIFIED},
+				SortAsc:     true,
+				Consistency: storage.ConsistencyOptions{Preference: openfgav1.ConsistencyPreference_UNSPECIFIED},
 			},
-			).MaxTimes(1).Return(storage.NewStaticTupleIterator(tt.readStartingWithUserTuples, true), tt.readStartingWithUserTuplesError)
+			).MaxTimes(1).Return(storage.NewOrderedStaticTupleIterator(tt.readStartingWithUserTuples), tt.readStartingWithUserTuplesError)
 
 			for _, tuples := range tt.readTuples[1:] {
-				mockDatastore.EXPECT().Read(gomock.Any(), storeID, gomock.Any(), gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tuples, false), tt.readTuplesError)
+				mockDatastore.EXPECT().Read(gomock.Any(), storeID, gomock.Any(), gomock.Any()).MaxTimes(1).Return(storage.NewUnorderedStaticTupleIterator(tuples), tt.readTuplesError)
 			}
 
 			ctx := context.Background()
@@ -201,7 +201,7 @@ func TestRecursiveTTU(t *testing.T) {
 
 			strategy := NewRecursive(mg, mockDatastore, 5)
 
-			result, err := strategy.TTU(ctx, req, recursiveEdge, storage.NewStaticTupleKeyIterator(tupleKeys, false), nil)
+			result, err := strategy.TTU(ctx, req, recursiveEdge, storage.NewUnorderedStaticTupleKeyIterator(tupleKeys), nil)
 			require.Equal(t, tt.expectedError, err)
 			if tt.expected != nil {
 				require.Equal(t, tt.expected.GetAllowed(), result.GetAllowed())
@@ -392,45 +392,45 @@ type group
 					Relation:   "rel4",
 					UserFilter: []*openfgav1.ObjectRelation{{Object: "user:maria"}},
 					Conditions: []string{""},
-				}, gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tt.readStartingWithUserTuplesRel4, false), tt.readStartingWithUserTuplesError)
+				}, gomock.Any()).MaxTimes(1).Return(storage.NewUnorderedStaticTupleIterator(tt.readStartingWithUserTuplesRel4), tt.readStartingWithUserTuplesError)
 
 				mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
 					ObjectType: "group",
 					Relation:   "rel7",
 					UserFilter: []*openfgav1.ObjectRelation{{Object: "user:maria"}},
 					Conditions: []string{""},
-				}, gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tt.readStartingWithUserTuplesRel7, false), tt.readStartingWithUserTuplesError)
+				}, gomock.Any()).MaxTimes(1).Return(storage.NewUnorderedStaticTupleIterator(tt.readStartingWithUserTuplesRel7), tt.readStartingWithUserTuplesError)
 
 				mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
 					ObjectType: "group",
 					Relation:   "rel8",
 					UserFilter: []*openfgav1.ObjectRelation{{Object: "user:maria"}},
 					Conditions: []string{""},
-				}, gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tt.readStartingWithUserTuplesRel8, false), tt.readStartingWithUserTuplesError)
+				}, gomock.Any()).MaxTimes(1).Return(storage.NewUnorderedStaticTupleIterator(tt.readStartingWithUserTuplesRel8), tt.readStartingWithUserTuplesError)
 
 				mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
 					ObjectType: "group",
 					Relation:   "rel5",
 					UserFilter: []*openfgav1.ObjectRelation{{Object: "user:maria"}},
 					Conditions: []string{""},
-				}, gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tt.readStartingWithUserTuplesRel5, false), tt.readStartingWithUserTuplesError)
+				}, gomock.Any()).MaxTimes(1).Return(storage.NewUnorderedStaticTupleIterator(tt.readStartingWithUserTuplesRel5), tt.readStartingWithUserTuplesError)
 
 				mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
 					ObjectType: "group",
 					Relation:   "rel6",
 					UserFilter: []*openfgav1.ObjectRelation{{Object: "user:maria"}},
 					Conditions: []string{""},
-				}, gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tt.readStartingWithUserTuplesRel6, false), tt.readStartingWithUserTuplesError)
+				}, gomock.Any()).MaxTimes(1).Return(storage.NewUnorderedStaticTupleIterator(tt.readStartingWithUserTuplesRel6), tt.readStartingWithUserTuplesError)
 
 				mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
 					ObjectType: "group",
 					Relation:   "member",
 					UserFilter: []*openfgav1.ObjectRelation{{Object: "user:maria"}},
 					Conditions: []string{""},
-				}, gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tt.readStartingWithUserTuplesMember, false), tt.readStartingWithUserTuplesError)
+				}, gomock.Any()).MaxTimes(1).Return(storage.NewUnorderedStaticTupleIterator(tt.readStartingWithUserTuplesMember), tt.readStartingWithUserTuplesError)
 
 				for _, tuples := range tt.readTuples[1:] {
-					mockDatastore.EXPECT().Read(gomock.Any(), storeID, gomock.Any(), gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tuples, false), tt.readTuplesError)
+					mockDatastore.EXPECT().Read(gomock.Any(), storeID, gomock.Any(), gomock.Any()).MaxTimes(1).Return(storage.NewUnorderedStaticTupleIterator(tuples), tt.readTuplesError)
 				}
 
 				ctx := context.Background()
@@ -452,7 +452,7 @@ type group
 				}
 
 				strategy := NewRecursive(mg, mockDatastore, 5)
-				result, err := strategy.TTU(ctx, req, recursiveEdge, storage.NewStaticTupleKeyIterator(tupleKeys, false), nil)
+				result, err := strategy.TTU(ctx, req, recursiveEdge, storage.NewUnorderedStaticTupleKeyIterator(tupleKeys), nil)
 				require.Equal(t, tt.expectedError, err)
 				require.Equal(t, tt.expected.GetAllowed(), result.GetAllowed())
 			})
@@ -587,10 +587,10 @@ func TestRecursiveUserset(t *testing.T) {
 				Relation:   "member",
 				UserFilter: []*openfgav1.ObjectRelation{{Object: "user:maria"}},
 				Conditions: []string{""},
-			}, gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tt.readStartingWithUserTuples, false), tt.readStartingWithUserTuplesError)
+			}, gomock.Any()).MaxTimes(1).Return(storage.NewUnorderedStaticTupleIterator(tt.readStartingWithUserTuples), tt.readStartingWithUserTuplesError)
 
 			for _, tuples := range tt.readUsersetTuples[1:] {
-				mockDatastore.EXPECT().ReadUsersetTuples(gomock.Any(), storeID, gomock.Any(), gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tuples, false), tt.readUsersetTuplesError)
+				mockDatastore.EXPECT().ReadUsersetTuples(gomock.Any(), storeID, gomock.Any(), gomock.Any()).MaxTimes(1).Return(storage.NewUnorderedStaticTupleIterator(tuples), tt.readUsersetTuplesError)
 			}
 			model := testutils.MustTransformDSLToProtoWithID(`
 						model
@@ -631,7 +631,7 @@ func TestRecursiveUserset(t *testing.T) {
 			}
 
 			strategy := NewRecursive(mg, mockDatastore, 5)
-			result, err := strategy.Userset(ctx, req, recursiveEdge, storage.NewStaticTupleKeyIterator(tupleKeys, false), nil)
+			result, err := strategy.Userset(ctx, req, recursiveEdge, storage.NewUnorderedStaticTupleKeyIterator(tupleKeys), nil)
 			require.Equal(t, tt.expectedError, err)
 			if tt.expected != nil {
 				require.Equal(t, tt.expected.GetAllowed(), result.GetAllowed())
@@ -793,24 +793,24 @@ func TestRecursiveUserset(t *testing.T) {
 						// Manually check the relation and return the right data
 						switch filter.Relation {
 						case "rel4":
-							return storage.NewStaticTupleIterator(tt.readStartingWithUserTuplesRel4, false), tt.readStartingWithUserTuplesError
+							return storage.NewUnorderedStaticTupleIterator(tt.readStartingWithUserTuplesRel4), tt.readStartingWithUserTuplesError
 						case "rel7":
-							return storage.NewStaticTupleIterator(tt.readStartingWithUserTuplesRel7, false), tt.readStartingWithUserTuplesError
+							return storage.NewUnorderedStaticTupleIterator(tt.readStartingWithUserTuplesRel7), tt.readStartingWithUserTuplesError
 						case "rel8":
-							return storage.NewStaticTupleIterator(tt.readStartingWithUserTuplesRel8, false), tt.readStartingWithUserTuplesError
+							return storage.NewUnorderedStaticTupleIterator(tt.readStartingWithUserTuplesRel8), tt.readStartingWithUserTuplesError
 						case "rel5":
-							return storage.NewStaticTupleIterator(tt.readStartingWithUserTuplesRel5, false), tt.readStartingWithUserTuplesError
+							return storage.NewUnorderedStaticTupleIterator(tt.readStartingWithUserTuplesRel5), tt.readStartingWithUserTuplesError
 						case "rel6":
-							return storage.NewStaticTupleIterator(tt.readStartingWithUserTuplesRel6, false), tt.readStartingWithUserTuplesError
+							return storage.NewUnorderedStaticTupleIterator(tt.readStartingWithUserTuplesRel6), tt.readStartingWithUserTuplesError
 						case "member":
-							return storage.NewStaticTupleIterator(tt.readStartingWithUserTuplesMember, false), tt.readStartingWithUserTuplesError
+							return storage.NewUnorderedStaticTupleIterator(tt.readStartingWithUserTuplesMember), tt.readStartingWithUserTuplesError
 						default:
 							return nil, fmt.Errorf("unexpected relation %s", filter.Relation)
 						}
 					})
 
 				for _, tuples := range tt.readUsersetTuples[1:] {
-					mockDatastore.EXPECT().ReadUsersetTuples(gomock.Any(), storeID, gomock.Any(), gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tuples, false), tt.readUsersetTuplesError)
+					mockDatastore.EXPECT().ReadUsersetTuples(gomock.Any(), storeID, gomock.Any(), gomock.Any()).MaxTimes(1).Return(storage.NewUnorderedStaticTupleIterator(tuples), tt.readUsersetTuplesError)
 				}
 				model := testutils.MustTransformDSLToProtoWithID(`
 		model
@@ -859,7 +859,7 @@ func TestRecursiveUserset(t *testing.T) {
 				}
 
 				strategy := NewRecursive(mg, mockDatastore, 5)
-				result, err := strategy.Userset(ctx, req, recursiveEdge, storage.NewStaticTupleKeyIterator(tupleKeys, false), nil)
+				result, err := strategy.Userset(ctx, req, recursiveEdge, storage.NewUnorderedStaticTupleKeyIterator(tupleKeys), nil)
 				require.Equal(t, tt.expectedError, err)
 				require.Equal(t, tt.expected.GetAllowed(), result.GetAllowed())
 			})
@@ -1042,7 +1042,7 @@ func TestRecursiveMatch(t *testing.T) {
 
 			mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
 			for _, mock := range tt.readMocks {
-				mockDatastore.EXPECT().Read(gomock.Any(), storeID, gomock.Any(), gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(mock, false), nil)
+				mockDatastore.EXPECT().Read(gomock.Any(), storeID, gomock.Any(), gomock.Any()).MaxTimes(1).Return(storage.NewUnorderedStaticTupleIterator(mock), nil)
 			}
 
 			model := testutils.MustTransformDSLToProtoWithID(`
@@ -1092,9 +1092,9 @@ func TestRecursiveMatch(t *testing.T) {
 		mockDatastore.EXPECT().Read(gomock.Any(), storeID, gomock.Any(), gomock.Any()).MaxTimes(1).DoAndReturn(
 			func(ctx context.Context, store string, filter storage.ReadFilter, options storage.ReadOptions) (storage.TupleIterator, error) {
 				cancel()
-				return storage.NewStaticTupleIterator([]*openfgav1.Tuple{
+				return storage.NewUnorderedStaticTupleIterator([]*openfgav1.Tuple{
 					{Key: tuple.NewTupleKey("group:1", "parent", "group:2")},
-				}, false), nil
+				}), nil
 			},
 		)
 
@@ -1246,13 +1246,13 @@ func TestRecursiveTTUWithTupleCycles(t *testing.T) {
 				// Manually check the relation and return the right data
 				switch filter.Relation {
 				case "activator":
-					return storage.NewStaticTupleIterator(readStartingWithUserActivator, false), nil
+					return storage.NewUnorderedStaticTupleIterator(readStartingWithUserActivator), nil
 				case "admin":
-					return storage.NewStaticTupleIterator(readStartingWithUserAdmin, false), nil
+					return storage.NewUnorderedStaticTupleIterator(readStartingWithUserAdmin), nil
 				case "public_restricted":
-					return storage.NewStaticTupleIterator(readStartingWithUserPublic, false), nil
+					return storage.NewUnorderedStaticTupleIterator(readStartingWithUserPublic), nil
 				case "restricted":
-					return storage.NewStaticTupleIterator(readStartingWithUserRestricted, false), nil
+					return storage.NewUnorderedStaticTupleIterator(readStartingWithUserRestricted), nil
 				default:
 					return nil, fmt.Errorf("unexpected relation %s", filter.Relation)
 				}
@@ -1264,15 +1264,15 @@ func TestRecursiveTTUWithTupleCycles(t *testing.T) {
 				// Manually check the relation and return the right data
 				switch filter.Object {
 				case "group:1":
-					return storage.NewStaticTupleIterator(readGroup1Parent, false), nil
+					return storage.NewUnorderedStaticTupleIterator(readGroup1Parent), nil
 				case "group:3":
-					return storage.NewStaticTupleIterator(readGroup3Parent, false), nil
+					return storage.NewUnorderedStaticTupleIterator(readGroup3Parent), nil
 				case "group:5":
-					return storage.NewStaticTupleIterator(readGroup5Parent, false), nil
+					return storage.NewUnorderedStaticTupleIterator(readGroup5Parent), nil
 				case "group:4":
-					return storage.NewStaticTupleIterator(readGroup4Parent, false), nil
+					return storage.NewUnorderedStaticTupleIterator(readGroup4Parent), nil
 				default:
-					return storage.NewStaticTupleIterator(readEmpty, false), nil
+					return storage.NewUnorderedStaticTupleIterator(readEmpty), nil
 				}
 			})
 		ctx := context.Background()
@@ -1296,7 +1296,7 @@ func TestRecursiveTTUWithTupleCycles(t *testing.T) {
 		require.NoError(t, err)
 
 		strategy := NewRecursive(mg, mockDatastore, 5)
-		result, err := strategy.TTU(ctx, req, recursiveEdge, storage.NewStaticTupleKeyIterator(initialTks, false), nil)
+		result, err := strategy.TTU(ctx, req, recursiveEdge, storage.NewUnorderedStaticTupleKeyIterator(initialTks), nil)
 		require.NoError(t, err)
 		require.True(t, result.GetAllowed())
 	})
@@ -1412,13 +1412,13 @@ func TestRecursiveUsersetWithTupleCycles(t *testing.T) {
 				// Manually check the relation and return the right data
 				switch filter.Relation {
 				case "activator":
-					return storage.NewStaticTupleIterator(readStartingWithUserActivator, false), nil
+					return storage.NewUnorderedStaticTupleIterator(readStartingWithUserActivator), nil
 				case "admin":
-					return storage.NewStaticTupleIterator(readStartingWithUserAdmin, false), nil
+					return storage.NewUnorderedStaticTupleIterator(readStartingWithUserAdmin), nil
 				case "public_restricted":
-					return storage.NewStaticTupleIterator(readStartingWithUserPublic, false), nil
+					return storage.NewUnorderedStaticTupleIterator(readStartingWithUserPublic), nil
 				case "restricted":
-					return storage.NewStaticTupleIterator(readStartingWithUserRestricted, false), nil
+					return storage.NewUnorderedStaticTupleIterator(readStartingWithUserRestricted), nil
 				default:
 					return nil, fmt.Errorf("unexpected relation %s", filter.Relation)
 				}
@@ -1430,15 +1430,15 @@ func TestRecursiveUsersetWithTupleCycles(t *testing.T) {
 				// Manually check the relation and return the right data
 				switch filter.Object {
 				case "group:1":
-					return storage.NewStaticTupleIterator(readGroup1Parent, false), nil
+					return storage.NewUnorderedStaticTupleIterator(readGroup1Parent), nil
 				case "group:3":
-					return storage.NewStaticTupleIterator(readGroup3Parent, false), nil
+					return storage.NewUnorderedStaticTupleIterator(readGroup3Parent), nil
 				case "group:5":
-					return storage.NewStaticTupleIterator(readGroup5Parent, false), nil
+					return storage.NewUnorderedStaticTupleIterator(readGroup5Parent), nil
 				case "group:4":
-					return storage.NewStaticTupleIterator(readGroup4Parent, false), nil
+					return storage.NewUnorderedStaticTupleIterator(readGroup4Parent), nil
 				default:
-					return storage.NewStaticTupleIterator(readEmpty, false), nil
+					return storage.NewUnorderedStaticTupleIterator(readEmpty), nil
 				}
 			})
 		ctx := context.Background()
@@ -1462,7 +1462,7 @@ func TestRecursiveUsersetWithTupleCycles(t *testing.T) {
 		require.NoError(t, err)
 
 		strategy := NewRecursive(mg, mockDatastore, 5)
-		result, err := strategy.Userset(ctx, req, recursiveEdge, storage.NewStaticTupleKeyIterator(initialTks, false), nil)
+		result, err := strategy.Userset(ctx, req, recursiveEdge, storage.NewUnorderedStaticTupleKeyIterator(initialTks), nil)
 		require.NoError(t, err)
 		require.True(t, result.GetAllowed())
 	})
@@ -1501,9 +1501,9 @@ func TestRecursiveExecuteCancelledContextRace(t *testing.T) {
 	// Non-empty iterator so leftChan carries a value before closing,
 	// widening the window where ctx.Done() and the channel close are both ready.
 	mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
-		MaxTimes(1).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{
+		MaxTimes(1).Return(storage.NewUnorderedStaticTupleIterator([]*openfgav1.Tuple{
 		{Key: tuple.NewTupleKey("group:2", "member", "user:maria")},
-	}, false), nil)
+	}), nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // pre-cancel so ctx.Done() and the ToChannel close race immediately
@@ -1516,9 +1516,9 @@ func TestRecursiveExecuteCancelledContextRace(t *testing.T) {
 	require.NoError(t, err)
 
 	strategy := NewRecursive(mg, mockDatastore, 5)
-	res, err := strategy.TTU(ctx, req, recursiveEdge, storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{
+	res, err := strategy.TTU(ctx, req, recursiveEdge, storage.NewUnorderedStaticTupleKeyIterator([]*openfgav1.TupleKey{
 		tuple.NewTupleKey("group:1", "parent", "group:2"),
-	}, false), nil)
+	}), nil)
 
 	require.ErrorIs(t, err, context.Canceled)
 	require.Nil(t, res)
@@ -1619,11 +1619,11 @@ func TestRecursiveTTUWithContextualTuples(t *testing.T) {
 
 			mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
 			mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
-				MaxTimes(1).Return(storage.NewStaticTupleIterator(tt.readStartingWithUserTuples, false), nil)
+				MaxTimes(1).Return(storage.NewUnorderedStaticTupleIterator(tt.readStartingWithUserTuples), nil)
 
 			for _, tuples := range tt.readTuples[1:] {
 				mockDatastore.EXPECT().Read(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
-					MaxTimes(1).Return(storage.NewStaticTupleIterator(tuples, false), nil)
+					MaxTimes(1).Return(storage.NewUnorderedStaticTupleIterator(tuples), nil)
 			}
 
 			ctx := context.Background()
@@ -1646,7 +1646,7 @@ func TestRecursiveTTUWithContextualTuples(t *testing.T) {
 			}
 
 			strategy := NewRecursive(mg, mockDatastore, 5)
-			result, err := strategy.TTU(ctx, req, recursiveEdge, storage.NewStaticTupleKeyIterator(tupleKeys, false), nil)
+			result, err := strategy.TTU(ctx, req, recursiveEdge, storage.NewUnorderedStaticTupleKeyIterator(tupleKeys), nil)
 			require.NoError(t, err)
 			require.Equal(t, tt.expected.GetAllowed(), result.GetAllowed())
 		})
@@ -1729,11 +1729,11 @@ func TestRecursiveUsersetWithContextualTuples(t *testing.T) {
 			mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
 
 			mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
-				MaxTimes(1).Return(storage.NewStaticTupleIterator(tt.readStartingWithUserTuples, false), nil)
+				MaxTimes(1).Return(storage.NewUnorderedStaticTupleIterator(tt.readStartingWithUserTuples), nil)
 
 			for _, tuples := range tt.readUsersetTuples[1:] {
 				mockDatastore.EXPECT().ReadUsersetTuples(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
-					MaxTimes(1).Return(storage.NewStaticTupleIterator(tuples, false), nil)
+					MaxTimes(1).Return(storage.NewUnorderedStaticTupleIterator(tuples), nil)
 			}
 
 			model := testutils.MustTransformDSLToProtoWithID(`
@@ -1775,7 +1775,7 @@ func TestRecursiveUsersetWithContextualTuples(t *testing.T) {
 			}
 
 			strategy := NewRecursive(mg, mockDatastore, 5)
-			result, err := strategy.Userset(ctx, req, recursiveEdge, storage.NewStaticTupleKeyIterator(tupleKeys, false), nil)
+			result, err := strategy.Userset(ctx, req, recursiveEdge, storage.NewUnorderedStaticTupleKeyIterator(tupleKeys), nil)
 			require.NoError(t, err)
 			require.Equal(t, tt.expected.GetAllowed(), result.GetAllowed())
 		})

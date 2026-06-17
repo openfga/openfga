@@ -54,7 +54,7 @@ func (t *TestIterator[T]) Stop() {
 func (t *TestIterator[T]) IsOrdered() bool { return true }
 
 func TestValidatingIteratorIsOrdered(t *testing.T) {
-	inner := storage.NewStaticIterator[int]([]int{1, 2, 3}, true)
+	inner := storage.NewOrderedStaticIterator[int]([]int{1, 2, 3})
 	iter := Validate(inner, func(v int) (bool, error) { return true, nil })
 	defer iter.Stop()
 	require.True(t, iter.IsOrdered())

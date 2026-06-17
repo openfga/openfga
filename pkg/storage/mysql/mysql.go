@@ -144,7 +144,7 @@ func (s *Datastore) Read(
 	defer span.End()
 
 	sb := s.buildTupleQuery(store, filter)
-	if options.WithResultsSortedAscending {
+	if options.SortAsc {
 		// COLLATE utf8mb4_bin forces bytewise ordering to match Go's string comparison (<).
 		// Without it, MySQL's default collation (typically case-insensitive) may produce a
 		// different sort order, breaking the weight2 pruning algorithm.
@@ -152,7 +152,7 @@ func (s *Datastore) Read(
 		// use an index to satisfy this sort and will sort in memory.
 		sb = sb.OrderBy("_user COLLATE utf8mb4_bin")
 	}
-	return sqlcommon.NewSQLTupleIterator(sqlcommon.NewSBIteratorQuery(sb), HandleSQLError, options.WithResultsSortedAscending), nil
+	return sqlcommon.NewSQLTupleIterator(sqlcommon.NewSBIteratorQuery(sb), HandleSQLError, options.SortAsc), nil
 }
 
 // ReadPage see [storage.RelationshipTupleReader].ReadPage.
@@ -338,12 +338,12 @@ func (s *Datastore) ReadUsersetTuples(
 	if len(filter.Conditions) > 0 {
 		sb = sb.Where(sq.Eq{"COALESCE(condition_name, '')": filter.Conditions})
 	}
-	if options.WithResultsSortedAscending {
+	if options.SortAsc {
 		// See comment in Read for why COLLATE utf8mb4_bin is required here.
 		sb = sb.OrderBy("_user COLLATE utf8mb4_bin")
 	}
 
-	return sqlcommon.NewSQLTupleIterator(sqlcommon.NewSBIteratorQuery(sb), HandleSQLError, options.WithResultsSortedAscending), nil
+	return sqlcommon.NewSQLTupleIterator(sqlcommon.NewSBIteratorQuery(sb), HandleSQLError, options.SortAsc), nil
 }
 
 // ReadStartingWithUser see [storage.RelationshipTupleReader].ReadStartingWithUser.
@@ -379,7 +379,7 @@ func (s *Datastore) ReadStartingWithUser(
 			"_user":       targetUsersArg,
 		})
 
-	if options.WithResultsSortedAscending {
+	if options.SortAsc {
 		builder = builder.OrderBy("object_id")
 	}
 
@@ -389,7 +389,7 @@ func (s *Datastore) ReadStartingWithUser(
 	if len(filter.Conditions) > 0 {
 		builder = builder.Where(sq.Eq{"COALESCE(condition_name, '')": filter.Conditions})
 	}
-	return sqlcommon.NewSQLTupleIterator(sqlcommon.NewSBIteratorQuery(builder), HandleSQLError, options.WithResultsSortedAscending), nil
+	return sqlcommon.NewSQLTupleIterator(sqlcommon.NewSBIteratorQuery(builder), HandleSQLError, options.SortAsc), nil
 }
 
 // MaxTuplesPerWrite see [storage.RelationshipTupleWriter].MaxTuplesPerWrite.

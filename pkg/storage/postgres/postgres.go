@@ -342,7 +342,7 @@ func (s *Datastore) Read(
 	defer span.End()
 
 	sb := s.buildTupleQuery(store, filter)
-	if options.WithResultsSortedAscending {
+	if options.SortAsc {
 		sb = sb.OrderBy("_user collate \"C\"")
 	}
 	db := s.getPgxPool(options.Consistency.Preference)
@@ -350,7 +350,7 @@ func (s *Datastore) Read(
 	if err != nil {
 		return nil, HandleSQLError(err)
 	}
-	return sqlcommon.NewSQLTupleIterator(poolGetRows, HandleSQLError, options.WithResultsSortedAscending), nil
+	return sqlcommon.NewSQLTupleIterator(poolGetRows, HandleSQLError, options.SortAsc), nil
 }
 
 // ReadPage see [storage.RelationshipTupleReader].ReadPage.
@@ -760,7 +760,7 @@ func (s *Datastore) ReadUsersetTuples(
 	if len(filter.Conditions) > 0 {
 		sb = sb.Where(sq.Eq{"COALESCE(condition_name, '')": filter.Conditions})
 	}
-	if options.WithResultsSortedAscending {
+	if options.SortAsc {
 		sb = sb.OrderBy("_user collate \"C\"")
 	}
 
@@ -769,7 +769,7 @@ func (s *Datastore) ReadUsersetTuples(
 		return nil, HandleSQLError(err)
 	}
 
-	return sqlcommon.NewSQLTupleIterator(poolGetRows, HandleSQLError, options.WithResultsSortedAscending), nil
+	return sqlcommon.NewSQLTupleIterator(poolGetRows, HandleSQLError, options.SortAsc), nil
 }
 
 // ReadStartingWithUser see [storage.RelationshipTupleReader].ReadStartingWithUser.
@@ -807,7 +807,7 @@ func (s *Datastore) ReadStartingWithUser(
 			"_user":       targetUsersArg,
 		})
 
-	if options.WithResultsSortedAscending {
+	if options.SortAsc {
 		builder = builder.OrderBy("object_id collate \"C\"")
 	}
 
@@ -821,7 +821,7 @@ func (s *Datastore) ReadStartingWithUser(
 	if err != nil {
 		return nil, HandleSQLError(err)
 	}
-	return sqlcommon.NewSQLTupleIterator(poolGetRows, HandleSQLError, options.WithResultsSortedAscending), nil
+	return sqlcommon.NewSQLTupleIterator(poolGetRows, HandleSQLError, options.SortAsc), nil
 }
 
 // MaxTuplesPerWrite see [storage.RelationshipTupleWriter].MaxTuplesPerWrite.

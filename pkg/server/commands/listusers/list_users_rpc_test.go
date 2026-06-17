@@ -3024,7 +3024,7 @@ func TestListUsersReadFails_NoLeaks(t *testing.T) {
 		}),
 		mockDatastore.EXPECT().Read(gomock.Any(), store, gomock.Any(), gomock.Any()).
 			DoAndReturn(func(_ context.Context, _ string, _ storage.ReadFilter, _ storage.ReadOptions) (storage.TupleIterator, error) {
-				return storage.NewStaticTupleIterator([]*openfgav1.Tuple{}, false), nil
+				return storage.NewUnorderedStaticTupleIterator([]*openfgav1.Tuple{}), nil
 			}),
 	)
 
@@ -3078,7 +3078,7 @@ func TestListUsersReadFails_NoLeaks_TTU(t *testing.T) {
 			Object:   "folder:1",
 			Relation: "viewer",
 		}, gomock.Any()).DoAndReturn(func(_ context.Context, _ string, _ storage.ReadFilter, _ storage.ReadOptions) (storage.TupleIterator, error) {
-			return storage.NewStaticTupleIterator([]*openfgav1.Tuple{}, false), nil
+			return storage.NewUnorderedStaticTupleIterator([]*openfgav1.Tuple{}), nil
 		}),
 	)
 

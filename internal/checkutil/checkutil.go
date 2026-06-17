@@ -96,7 +96,7 @@ func IteratorReadStartingFromUser(ctx context.Context,
 	reqTupleKey := req.GetTupleKey()
 
 	opts := storage.ReadStartingWithUserOptions{
-		WithResultsSortedAscending: sortResults,
+		SortAsc: sortResults,
 		Consistency: storage.ConsistencyOptions{
 			Preference: req.GetConsistency(),
 		},

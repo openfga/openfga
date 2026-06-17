@@ -129,14 +129,24 @@ func NewCombinedIterator[T any](iters ...Iterator[T]) Iterator[T] {
 	return &combinedIterator[T]{pending: pending, once: &sync.Once{}, mu: &sync.Mutex{}}
 }
 
-// NewStaticTupleIterator returns a [TupleIterator] that iterates over the provided slice.
-func NewStaticTupleIterator(tuples []*openfgav1.Tuple, ordered bool) TupleIterator {
-	return NewStaticIterator(tuples, ordered)
+// NewOrderedStaticTupleIterator returns a [TupleIterator] over the provided slice that reports IsOrdered()==true.
+func NewOrderedStaticTupleIterator(tuples []*openfgav1.Tuple) TupleIterator {
+	return NewOrderedStaticIterator(tuples)
 }
 
-// NewStaticTupleKeyIterator returns a [TupleKeyIterator] that iterates over the provided slice.
-func NewStaticTupleKeyIterator(tupleKeys []*openfgav1.TupleKey, ordered bool) TupleKeyIterator {
-	return NewStaticIterator(tupleKeys, ordered)
+// NewUnorderedStaticTupleIterator returns a [TupleIterator] over the provided slice that reports IsOrdered()==false.
+func NewUnorderedStaticTupleIterator(tuples []*openfgav1.Tuple) TupleIterator {
+	return NewUnorderedStaticIterator(tuples)
+}
+
+// NewOrderedStaticTupleKeyIterator returns a [TupleKeyIterator] over the provided slice that reports IsOrdered()==true.
+func NewOrderedStaticTupleKeyIterator(tupleKeys []*openfgav1.TupleKey) TupleKeyIterator {
+	return NewOrderedStaticIterator(tupleKeys)
+}
+
+// NewUnorderedStaticTupleKeyIterator returns a [TupleKeyIterator] over the provided slice that reports IsOrdered()==false.
+func NewUnorderedStaticTupleKeyIterator(tupleKeys []*openfgav1.TupleKey) TupleKeyIterator {
+	return NewUnorderedStaticIterator(tupleKeys)
 }
 
 type tupleKeyIterator struct {
@@ -181,9 +191,8 @@ func NewTupleKeyIteratorFromTupleIterator(iter TupleIterator) TupleKeyIterator {
 }
 
 type StaticIterator[T any] struct {
-	items   []T // GUARDED_BY(mu)
-	mu      *sync.Mutex
-	ordered bool
+	items []T // GUARDED_BY(mu)
+	mu    sync.Mutex
 }
 
 var _ Iterator[any] = (*StaticIterator[any])(nil)
@@ -234,10 +243,22 @@ func (s *StaticIterator[T]) Head(ctx context.Context) (T, error) {
 	return s.items[0], nil
 }
 
-func (s *StaticIterator[T]) IsOrdered() bool { return s.ordered }
+func (s *StaticIterator[T]) IsOrdered() bool { return false }
 
-func NewStaticIterator[T any](items []T, ordered bool) Iterator[T] {
-	return &StaticIterator[T]{items: items, mu: &sync.Mutex{}, ordered: ordered}
+type orderedStaticIterator[T any] struct {
+	StaticIterator[T]
+}
+
+func (o *orderedStaticIterator[T]) IsOrdered() bool { return true }
+
+// NewOrderedStaticIterator returns an [Iterator] over items that reports IsOrdered()==true.
+func NewOrderedStaticIterator[T any](items []T) Iterator[T] {
+	return &orderedStaticIterator[T]{StaticIterator[T]{items: items}}
+}
+
+// NewUnorderedStaticIterator returns an [Iterator] over items that reports IsOrdered()==false.
+func NewUnorderedStaticIterator[T any](items []T) Iterator[T] {
+	return &StaticIterator[T]{items: items}
 }
 
 // TupleKeyFilterFunc is a filter function that is used to filter out

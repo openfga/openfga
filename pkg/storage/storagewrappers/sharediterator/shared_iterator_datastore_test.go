@@ -62,7 +62,7 @@ func BenchmarkSharedIteratorWithStaticIterator(b *testing.B) {
 	}
 
 	// Create a static iterator as the internal iterator
-	staticIter := storage.NewStaticTupleIterator(tuples, false)
+	staticIter := storage.NewUnorderedStaticTupleIterator(tuples)
 
 	// Create shared iterator with cleanup function
 	sharedIter := newSharedIterator(staticIter)
@@ -115,7 +115,7 @@ func BenchmarkSharedIteratorConcurrentAccess(b *testing.B) {
 	}
 
 	// Create a static iterator as the internal iterator
-	staticIter := storage.NewStaticTupleIterator(tuples, false)
+	staticIter := storage.NewUnorderedStaticTupleIterator(tuples)
 
 	// Create shared iterator with cleanup function
 	sharedIter := newSharedIterator(staticIter)
@@ -166,7 +166,7 @@ func BenchmarkSharedIteratorVsDirectAccess(b *testing.B) {
 	}
 
 	b.Run("SharedIterator", func(b *testing.B) {
-		staticIter := storage.NewStaticTupleIterator(tuples, false)
+		staticIter := storage.NewUnorderedStaticTupleIterator(tuples)
 		sharedIter := newSharedIterator(staticIter)
 		defer sharedIter.Stop()
 
@@ -196,7 +196,7 @@ func BenchmarkSharedIteratorVsDirectAccess(b *testing.B) {
 		b.ResetTimer()
 
 		for i := 0; i < b.N; i++ {
-			staticIter := storage.NewStaticTupleIterator(tuples, false)
+			staticIter := storage.NewUnorderedStaticTupleIterator(tuples)
 
 			for {
 				_, err := staticIter.Next(ctx)
@@ -256,7 +256,7 @@ func BenchmarkIteratorDatastoreReadLatencyWithDifferentLoads(b *testing.B) {
 				DoAndReturn(func(_ context.Context, _ string, _ storage.ReadFilter, _ storage.ReadOptions) (storage.TupleIterator, error) {
 					time.Sleep(5 * time.Millisecond)
 					dbCalls.Add(1)
-					return storage.NewStaticTupleIterator(tuples, false), nil
+					return storage.NewUnorderedStaticTupleIterator(tuples), nil
 				}).AnyTimes()
 
 			for b.Loop() {
@@ -429,7 +429,7 @@ func TestSharedIteratorDatastore_Read(t *testing.T) {
 
 		mockDatastore.EXPECT().
 			Read(gomock.Any(), storeID, filter, storage.ReadOptions{}).
-			Return(storage.NewStaticTupleIterator(tuples, false), nil)
+			Return(storage.NewUnorderedStaticTupleIterator(tuples), nil)
 		iter, err := ds.Read(ctx, storeID, filter, storage.ReadOptions{})
 		require.NoError(t, err)
 		helperValidateSingleClient(ctx, t, &internalStorage.read, iter, tuples)
@@ -447,7 +447,7 @@ func TestSharedIteratorDatastore_Read(t *testing.T) {
 		const numClient = 3
 		mockDatastore.EXPECT().
 			Read(gomock.Any(), storeID, filter, storage.ReadOptions{}).
-			Return(storage.NewStaticTupleIterator(tuples, false), nil)
+			Return(storage.NewUnorderedStaticTupleIterator(tuples), nil)
 
 		iterInfos := make([]testIteratorInfo, numClient)
 		wg := sync.WaitGroup{}
@@ -501,7 +501,7 @@ func TestSharedIteratorDatastore_Read(t *testing.T) {
 
 		mockDatastore.EXPECT().
 			Read(gomock.Any(), storeID, filter, storage.ReadOptions{}).
-			Return(storage.NewStaticTupleIterator(tuples, false), nil)
+			Return(storage.NewUnorderedStaticTupleIterator(tuples), nil)
 		iter, err := dsLimit.Read(ctx, storeID, filter, storage.ReadOptions{})
 		require.NoError(t, err)
 		// this should not come from the map
@@ -526,7 +526,7 @@ func TestSharedIteratorDatastore_Read(t *testing.T) {
 				storage.ReadOptions{
 					Consistency: storage.ConsistencyOptions{
 						Preference: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY}}).
-			Return(storage.NewStaticTupleIterator(tuples, false), nil)
+			Return(storage.NewUnorderedStaticTupleIterator(tuples), nil)
 		iter, err := ds.Read(ctx, storeID, filter, storage.ReadOptions{Consistency: storage.ConsistencyOptions{
 			Preference: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY}})
 		require.NoError(t, err)
@@ -558,7 +558,7 @@ func TestSharedIteratorDatastore_Read(t *testing.T) {
 				store string,
 				filter storage.ReadFilter,
 				options storage.ReadOptions) (storage.TupleIterator, error) {
-				return storage.NewStaticTupleIterator(tuples, false), nil
+				return storage.NewUnorderedStaticTupleIterator(tuples), nil
 			}).MaxTimes(numClient)
 		p := pool.New().WithErrors()
 
@@ -711,7 +711,7 @@ func TestSharedIteratorDatastore_ReadUsersetTuples(t *testing.T) {
 		ds := NewSharedIteratorDatastore(mockDatastore, internalStorage)
 		mockDatastore.EXPECT().
 			ReadUsersetTuples(gomock.Any(), storeID, filter, options).
-			Return(storage.NewStaticTupleIterator(tuples, false), nil)
+			Return(storage.NewUnorderedStaticTupleIterator(tuples), nil)
 		iter, err := ds.ReadUsersetTuples(ctx, storeID, filter, options)
 		require.NoError(t, err)
 		helperValidateSingleClient(ctx, t, &internalStorage.rut, iter, tuples)
@@ -727,7 +727,7 @@ func TestSharedIteratorDatastore_ReadUsersetTuples(t *testing.T) {
 		const numClient = 3
 		mockDatastore.EXPECT().
 			ReadUsersetTuples(gomock.Any(), storeID, filter, options).
-			Return(storage.NewStaticTupleIterator(tuples, false), nil)
+			Return(storage.NewUnorderedStaticTupleIterator(tuples), nil)
 
 		iterInfos := make([]testIteratorInfo, numClient)
 		wg := sync.WaitGroup{}
@@ -781,7 +781,7 @@ func TestSharedIteratorDatastore_ReadUsersetTuples(t *testing.T) {
 
 		mockDatastore.EXPECT().
 			ReadUsersetTuples(gomock.Any(), storeID, filter, options).
-			Return(storage.NewStaticTupleIterator(tuples, false), nil)
+			Return(storage.NewUnorderedStaticTupleIterator(tuples), nil)
 		iter, err := dsLimit.ReadUsersetTuples(ctx, storeID, filter, options)
 		require.NoError(t, err)
 		// this should not come from the map
@@ -804,7 +804,7 @@ func TestSharedIteratorDatastore_ReadUsersetTuples(t *testing.T) {
 				storage.ReadUsersetTuplesOptions{
 					Consistency: storage.ConsistencyOptions{
 						Preference: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY}}).
-			Return(storage.NewStaticTupleIterator(tuples, false), nil)
+			Return(storage.NewUnorderedStaticTupleIterator(tuples), nil)
 		iter, err := ds.ReadUsersetTuples(ctx, storeID, filter, storage.ReadUsersetTuplesOptions{Consistency: storage.ConsistencyOptions{
 			Preference: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY}})
 		require.NoError(t, err)
@@ -834,7 +834,7 @@ func TestSharedIteratorDatastore_ReadUsersetTuples(t *testing.T) {
 				store string,
 				filter storage.ReadUsersetTuplesFilter,
 				options storage.ReadUsersetTuplesOptions) (storage.TupleIterator, error) {
-				return storage.NewStaticTupleIterator(tuples, false), nil
+				return storage.NewUnorderedStaticTupleIterator(tuples), nil
 			}).MaxTimes(numClient)
 		p := pool.New().WithErrors()
 
@@ -987,7 +987,7 @@ func TestSharedIteratorDatastore_ReadStartingWithUser(t *testing.T) {
 		ds := NewSharedIteratorDatastore(mockDatastore, internalStorage)
 		mockDatastore.EXPECT().
 			ReadStartingWithUser(gomock.Any(), storeID, filter, options).
-			Return(storage.NewStaticTupleIterator(tuples, false), nil)
+			Return(storage.NewUnorderedStaticTupleIterator(tuples), nil)
 		iter, err := ds.ReadStartingWithUser(ctx, storeID, filter, options)
 		require.NoError(t, err)
 		helperValidateSingleClient(ctx, t, &internalStorage.rswu, iter, tuples)
@@ -1003,7 +1003,7 @@ func TestSharedIteratorDatastore_ReadStartingWithUser(t *testing.T) {
 		const numClient = 3
 		mockDatastore.EXPECT().
 			ReadStartingWithUser(gomock.Any(), storeID, filter, options).
-			Return(storage.NewStaticTupleIterator(tuples, false), nil)
+			Return(storage.NewUnorderedStaticTupleIterator(tuples), nil)
 
 		iterInfos := make([]testIteratorInfo, numClient)
 		wg := sync.WaitGroup{}
@@ -1056,7 +1056,7 @@ func TestSharedIteratorDatastore_ReadStartingWithUser(t *testing.T) {
 
 		mockDatastore.EXPECT().
 			ReadStartingWithUser(gomock.Any(), storeID, filter, options).
-			Return(storage.NewStaticTupleIterator(tuples, false), nil)
+			Return(storage.NewUnorderedStaticTupleIterator(tuples), nil)
 		iter, err := dsLimit.ReadStartingWithUser(ctx, storeID, filter, options)
 		require.NoError(t, err)
 		// this should not come from the map
@@ -1079,7 +1079,7 @@ func TestSharedIteratorDatastore_ReadStartingWithUser(t *testing.T) {
 				storage.ReadStartingWithUserOptions{
 					Consistency: storage.ConsistencyOptions{
 						Preference: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY}}).
-			Return(storage.NewStaticTupleIterator(tuples, false), nil)
+			Return(storage.NewUnorderedStaticTupleIterator(tuples), nil)
 		iter, err := ds.ReadStartingWithUser(ctx, storeID, filter, storage.ReadStartingWithUserOptions{Consistency: storage.ConsistencyOptions{
 			Preference: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY}})
 		require.NoError(t, err)
@@ -1100,7 +1100,7 @@ func TestSharedIteratorDatastore_ReadStartingWithUser(t *testing.T) {
 		ds := NewSharedIteratorDatastore(mockDatastore, internalStorage)
 		mockDatastore.EXPECT().
 			ReadStartingWithUser(gomock.Any(), storeID, filter, options).
-			Return(storage.NewStaticTupleIterator(tuples, false), nil)
+			Return(storage.NewUnorderedStaticTupleIterator(tuples), nil)
 		iter1, err := ds.ReadStartingWithUser(ctx, storeID, filter, options)
 		require.NoError(t, err)
 
@@ -1140,7 +1140,7 @@ func TestSharedIteratorDatastore_ReadStartingWithUser(t *testing.T) {
 				store string,
 				filter storage.ReadStartingWithUserFilter,
 				options storage.ReadStartingWithUserOptions) (storage.TupleIterator, error) {
-				return storage.NewStaticTupleIterator(tuples, false), nil
+				return storage.NewUnorderedStaticTupleIterator(tuples), nil
 			}).MaxTimes(numClient)
 		p := pool.New().WithErrors()
 
@@ -1852,7 +1852,7 @@ func TestSharedIterator_IsOrdered(t *testing.T) {
 	t.Cleanup(func() { goleak.VerifyNone(t) })
 
 	tuples := []*openfgav1.Tuple{{Key: tuple.NewTupleKey("doc:1", "viewer", "user:a")}}
-	inner := storage.NewStaticTupleIterator(tuples, true)
+	inner := storage.NewOrderedStaticTupleIterator(tuples)
 	shared := newSharedIterator(inner)
 	defer shared.Stop()
 
@@ -1899,7 +1899,7 @@ func TestSharedIterator_ManyTuples(t *testing.T) {
 
 		mockDatastore.EXPECT().
 			Read(gomock.Any(), storeID, filter, storage.ReadOptions{}).
-			Return(storage.NewStaticTupleIterator(tuples, false), nil)
+			Return(storage.NewUnorderedStaticTupleIterator(tuples), nil)
 
 		iter, err := ds.Read(ctx, storeID, filter, storage.ReadOptions{})
 		require.NoError(t, err)

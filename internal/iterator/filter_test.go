@@ -34,7 +34,7 @@ func TestFilter_Conditions(t *testing.T) {
 			tuple.NewTupleKeyWithCondition("document:doc1", "editor", "user:maria", "condition1", nil),
 		}
 		iter := NewFilteredIterator(
-			storage.NewStaticTupleKeyIterator(tuples, false),
+			storage.NewUnorderedStaticTupleKeyIterator(tuples),
 			conditionFilter,
 		)
 		defer iter.Stop()
@@ -63,7 +63,7 @@ func TestFilter_Conditions(t *testing.T) {
 		}
 
 		iter := NewFilteredIterator(
-			storage.NewStaticTupleKeyIterator(tuples, false),
+			storage.NewUnorderedStaticTupleKeyIterator(tuples),
 			conditionFilter,
 		)
 		defer iter.Stop()
@@ -91,7 +91,7 @@ func TestFilter_Conditions(t *testing.T) {
 			tuple.NewTupleKeyWithCondition("document:doc1", "editor", "user:maria", "condition3", nil),
 		}
 		iter := NewFilteredIterator(
-			storage.NewStaticTupleKeyIterator(tuples, false),
+			storage.NewUnorderedStaticTupleKeyIterator(tuples),
 			conditionFilter,
 		)
 		defer iter.Stop()
@@ -115,7 +115,7 @@ func TestFilter_Conditions(t *testing.T) {
 	t.Run("empty_list", func(t *testing.T) {
 		var tuples []*openfgav1.TupleKey
 		iter := NewFilteredIterator(
-			storage.NewStaticTupleKeyIterator(tuples, false),
+			storage.NewUnorderedStaticTupleKeyIterator(tuples),
 			conditionFilter,
 		)
 		defer iter.Stop()
@@ -132,7 +132,7 @@ func TestFilter_Conditions(t *testing.T) {
 			tuple.NewTupleKeyWithCondition("document:doc1", "editor", "user:maria", "condition5", nil),
 		}
 		iter := NewFilteredIterator(
-			storage.NewStaticTupleKeyIterator(tuples, false),
+			storage.NewUnorderedStaticTupleKeyIterator(tuples),
 			conditionFilter,
 		)
 		defer iter.Stop()
@@ -145,7 +145,7 @@ func TestFilter_Conditions(t *testing.T) {
 	t.Run("ctx_timeout", func(t *testing.T) {
 		var tuples []*openfgav1.TupleKey
 		iter := NewFilteredIterator(
-			storage.NewStaticTupleKeyIterator(tuples, false),
+			storage.NewUnorderedStaticTupleKeyIterator(tuples),
 			conditionFilter,
 		)
 		defer iter.Stop()
@@ -178,7 +178,7 @@ func TestFilter_Uniqueness(t *testing.T) {
 			tuple.NewTupleKey("document:doc1", "viewer", "user:jon"), // duplicate
 		}
 		iter := NewFilteredIterator(
-			storage.NewStaticTupleKeyIterator(tuples, false),
+			storage.NewUnorderedStaticTupleKeyIterator(tuples),
 			uniqueFilter,
 		)
 		defer iter.Stop()
@@ -215,7 +215,7 @@ func TestFilter_Uniqueness(t *testing.T) {
 			tuple.NewTupleKey("document:doc3", "viewer", "user:maria"),
 		}
 		iter := NewFilteredIterator(
-			storage.NewStaticTupleKeyIterator(tuples, false),
+			storage.NewUnorderedStaticTupleKeyIterator(tuples),
 			uniqueFilter,
 		)
 		defer iter.Stop()
@@ -237,7 +237,7 @@ func TestFilter_Uniqueness(t *testing.T) {
 }
 
 func TestFilterIsOrdered(t *testing.T) {
-	inner := storage.NewStaticIterator[string]([]string{"a"}, true)
+	inner := storage.NewOrderedStaticIterator[string]([]string{"a"})
 	iter := NewFilteredIterator(inner, func(s string) (bool, error) { return true, nil })
 	defer iter.Stop()
 	require.True(t, iter.IsOrdered())
@@ -263,7 +263,7 @@ func TestFilter_MultipleFilters(t *testing.T) {
 			tuple.NewTupleKeyWithCondition("document:doc3", "viewer", "user:maria", "condition1", nil),
 		}
 		iter := NewFilteredIterator(
-			storage.NewStaticTupleKeyIterator(tuples, false),
+			storage.NewUnorderedStaticTupleKeyIterator(tuples),
 			conditionFilter,
 			uniqueFilter,
 		)

@@ -219,7 +219,7 @@ func TestReadStartingWithUser(t *testing.T) {
 			mockCache.EXPECT().Get(cacheKey).Return(nil),
 			mockDatastore.EXPECT().
 				ReadStartingWithUser(gomock.Any(), storeID, filter, options).
-				Return(storage.NewStaticTupleIterator(tuples, false), nil),
+				Return(storage.NewUnorderedStaticTupleIterator(tuples), nil),
 			mockCache.EXPECT().Get(cacheKey).Return(nil),                                 // find while stopping
 			mockCache.EXPECT().Get(storage.InvalidIteratorCacheKey(storeID)).Return(nil), // check if store invalidated before writing
 			mockCache.EXPECT().Get(invalidEntityKeys[0]).Return(nil),                     // check if entity invalidated before writing
@@ -342,7 +342,7 @@ func TestReadStartingWithUser(t *testing.T) {
 			mockCache.EXPECT().Get(cacheKey),
 			mockDatastore.EXPECT().
 				ReadStartingWithUser(gomock.Any(), storeID, filter, options).
-				Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{}, false), nil),
+				Return(storage.NewUnorderedStaticTupleIterator([]*openfgav1.Tuple{}), nil),
 			mockCache.EXPECT().Get(cacheKey).Return(nil),                                 // find while stopping
 			mockCache.EXPECT().Get(storage.InvalidIteratorCacheKey(storeID)).Return(nil), // check if store invalidated before writing
 			mockCache.EXPECT().Get(invalidEntityKeys[0]).Return(nil),                     // check if entity invalidated before writing
@@ -388,7 +388,7 @@ func TestReadStartingWithUser(t *testing.T) {
 		gomock.InOrder(
 			mockDatastore.EXPECT().
 				ReadStartingWithUser(gomock.Any(), storeID, filter, opts).
-				Return(storage.NewStaticTupleIterator(tuples, false), nil),
+				Return(storage.NewUnorderedStaticTupleIterator(tuples), nil),
 		)
 
 		iter, err := ds.ReadStartingWithUser(ctx, storeID, filter, opts)
@@ -480,7 +480,7 @@ func TestReadUsersetTuples(t *testing.T) {
 			mockCache.EXPECT().Get(gomock.Any()),
 			mockDatastore.EXPECT().
 				ReadUsersetTuples(gomock.Any(), storeID, filter, options).
-				Return(storage.NewStaticTupleIterator(tuples, false), nil),
+				Return(storage.NewUnorderedStaticTupleIterator(tuples), nil),
 			mockCache.EXPECT().Get(cacheKey).Return(nil),                                 // find while stopping
 			mockCache.EXPECT().Get(storage.InvalidIteratorCacheKey(storeID)).Return(nil), // check if store invalidated before writing
 			mockCache.EXPECT().Get(invalidEntityKey).Return(nil),                         // check if entity invalidated before writing
@@ -555,7 +555,7 @@ func TestReadUsersetTuples(t *testing.T) {
 			mockCache.EXPECT().Get(cacheKey).Return(nil),
 			mockDatastore.EXPECT().
 				ReadUsersetTuples(gomock.Any(), storeID, filter, options).
-				Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{}, false), nil),
+				Return(storage.NewUnorderedStaticTupleIterator([]*openfgav1.Tuple{}), nil),
 			mockCache.EXPECT().Get(cacheKey).Return(nil),
 			mockCache.EXPECT().Get(storage.InvalidIteratorCacheKey(storeID)).Return(nil),
 			mockCache.EXPECT().Get(invalidEntityKey).Return(nil),
@@ -600,7 +600,7 @@ func TestReadUsersetTuples(t *testing.T) {
 		gomock.InOrder(
 			mockDatastore.EXPECT().
 				ReadUsersetTuples(gomock.Any(), storeID, filter, opts).
-				Return(storage.NewStaticTupleIterator(tuples, false), nil),
+				Return(storage.NewUnorderedStaticTupleIterator(tuples), nil),
 		)
 
 		iter, err := ds.ReadUsersetTuples(ctx, storeID, filter, opts)
@@ -686,7 +686,7 @@ func TestRead(t *testing.T) {
 			mockCache.EXPECT().Get(cacheKey).Return(nil),
 			mockDatastore.EXPECT().
 				Read(gomock.Any(), storeID, filter, storage.ReadOptions{}).
-				Return(storage.NewStaticTupleIterator(tuples, false), nil),
+				Return(storage.NewUnorderedStaticTupleIterator(tuples), nil),
 			mockCache.EXPECT().Get(cacheKey).Return(nil),
 			mockCache.EXPECT().Get(storage.InvalidIteratorCacheKey(storeID)).Return(nil),
 			mockCache.EXPECT().Get(invalidEntityKey).Return(nil),
@@ -761,7 +761,7 @@ func TestRead(t *testing.T) {
 			mockCache.EXPECT().Get(cacheKey),
 			mockDatastore.EXPECT().
 				Read(gomock.Any(), storeID, filter, storage.ReadOptions{}).
-				Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{}, false), nil),
+				Return(storage.NewUnorderedStaticTupleIterator([]*openfgav1.Tuple{}), nil),
 			mockCache.EXPECT().Get(cacheKey),
 			mockCache.EXPECT().Get(storage.InvalidIteratorCacheKey(storeID)).Return(nil),
 			mockCache.EXPECT().Get(invalidEntityKey).Return(nil),
@@ -806,7 +806,7 @@ func TestRead(t *testing.T) {
 		gomock.InOrder(
 			mockDatastore.EXPECT().
 				Read(gomock.Any(), storeID, filter, opts).
-				Return(storage.NewStaticTupleIterator(tuples, false), nil),
+				Return(storage.NewUnorderedStaticTupleIterator(tuples), nil),
 		)
 
 		iter, err := ds.Read(ctx, storeID, filter, opts)
@@ -843,7 +843,7 @@ func TestRead(t *testing.T) {
 		gomock.InOrder(
 			mockDatastore.EXPECT().
 				Read(gomock.Any(), storeID, invalidObjectFilter, storage.ReadOptions{}).
-				Return(storage.NewStaticTupleIterator(tuples, false), nil),
+				Return(storage.NewUnorderedStaticTupleIterator(tuples), nil),
 		)
 
 		iter, err := ds.Read(ctx, storeID, invalidObjectFilter, storage.ReadOptions{})
@@ -908,7 +908,7 @@ func TestDatastoreIteratorError(t *testing.T) {
 }
 
 func TestCachedIterator_IsOrdered(t *testing.T) {
-	inner := storage.NewStaticTupleIterator([]*openfgav1.Tuple{}, true)
+	inner := storage.NewOrderedStaticTupleIterator([]*openfgav1.Tuple{})
 	iter := &cachedIterator{iter: inner}
 	defer iter.Stop()
 	require.True(t, iter.IsOrdered())
@@ -1010,7 +1010,7 @@ func TestCachedIterator(t *testing.T) {
 
 		iter := &cachedIterator{
 			ctx:               ctx,
-			iter:              storage.NewStaticTupleIterator(tuples, false),
+			iter:              storage.NewUnorderedStaticTupleIterator(tuples),
 			operation:         "operation",
 			tuples:            make([]*openfgav1.Tuple, 0, maxCacheSize),
 			cacheKey:          cacheKey,
@@ -1045,7 +1045,7 @@ func TestCachedIterator(t *testing.T) {
 
 		iter := &cachedIterator{
 			ctx:               ctx,
-			iter:              storage.NewStaticTupleIterator(tuples, false),
+			iter:              storage.NewUnorderedStaticTupleIterator(tuples),
 			operation:         "operation",
 			tuples:            make([]*openfgav1.Tuple, 0, maxCacheSize),
 			cacheKey:          cacheKey,
@@ -1140,7 +1140,7 @@ func TestCachedIterator(t *testing.T) {
 
 		iter := &cachedIterator{
 			ctx:               ctx,
-			iter:              storage.NewStaticTupleIterator(tuples, false),
+			iter:              storage.NewUnorderedStaticTupleIterator(tuples),
 			operation:         "operation",
 			tuples:            make([]*openfgav1.Tuple, 0, maxCacheSize),
 			cacheKey:          cacheKey,
@@ -1203,7 +1203,7 @@ func TestCachedIterator(t *testing.T) {
 
 		iter := &cachedIterator{
 			ctx:               ctx,
-			iter:              storage.NewStaticTupleIterator(tuples, false),
+			iter:              storage.NewUnorderedStaticTupleIterator(tuples),
 			operation:         "operation",
 			tuples:            make([]*openfgav1.Tuple, 0, maxCacheSize),
 			cacheKey:          cacheKey,
@@ -1247,7 +1247,7 @@ func TestCachedIterator(t *testing.T) {
 
 		iter := &cachedIterator{
 			ctx:               ctx,
-			iter:              storage.NewStaticTupleIterator(tuples, false),
+			iter:              storage.NewUnorderedStaticTupleIterator(tuples),
 			operation:         "operation",
 			tuples:            make([]*openfgav1.Tuple, 0, maxCacheSize),
 			cacheKey:          cacheKey,
@@ -1306,7 +1306,7 @@ func TestCachedIterator(t *testing.T) {
 		var wg sync.WaitGroup
 
 		mockedIter := &mockCalledTupleIterator{
-			iter: storage.NewStaticTupleIterator(tuples, false),
+			iter: storage.NewUnorderedStaticTupleIterator(tuples),
 		}
 
 		iter := &cachedIterator{
@@ -1380,7 +1380,7 @@ func TestCachedIterator(t *testing.T) {
 
 		iter := &cachedIterator{
 			ctx:               ctx,
-			iter:              storage.NewStaticTupleIterator(tuples, false),
+			iter:              storage.NewUnorderedStaticTupleIterator(tuples),
 			store:             store,
 			operation:         "operation",
 			tuples:            make([]*openfgav1.Tuple, 0, maxCacheSize),
@@ -1440,7 +1440,7 @@ func TestCachedIterator(t *testing.T) {
 		var wg sync.WaitGroup
 
 		mockedIter := &mockCalledTupleIterator{
-			iter: storage.NewStaticTupleIterator(tuples, false),
+			iter: storage.NewUnorderedStaticTupleIterator(tuples),
 		}
 
 		iter := &cachedIterator{
@@ -1502,7 +1502,7 @@ func TestCachedIterator(t *testing.T) {
 			var wg sync.WaitGroup
 
 			mockedIter1 := &mockCalledTupleIterator{
-				iter: storage.NewStaticTupleIterator(tuples, false),
+				iter: storage.NewUnorderedStaticTupleIterator(tuples),
 			}
 
 			iter1 := &cachedIterator{
@@ -1526,7 +1526,7 @@ func TestCachedIterator(t *testing.T) {
 			}
 
 			mockedIter2 := &mockCalledTupleIterator{
-				iter: storage.NewStaticTupleIterator(tuples, false),
+				iter: storage.NewUnorderedStaticTupleIterator(tuples),
 			}
 
 			iter2 := &cachedIterator{

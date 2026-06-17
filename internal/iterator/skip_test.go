@@ -79,7 +79,7 @@ func TestSkipTo(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := context.Background()
-			iter := storage.NewStaticIterator(tt.values, false)
+			iter := storage.NewUnorderedStaticIterator(tt.values)
 			defer iter.Stop()
 
 			err := SkipTo(ctx, iter, tt.target)
@@ -150,7 +150,7 @@ func TestSkipToContextCancellation(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
 
-		iter := storage.NewStaticIterator([]string{"a", "b", "c"}, false)
+		iter := storage.NewUnorderedStaticIterator([]string{"a", "b", "c"})
 		defer iter.Stop()
 
 		err := SkipTo(ctx, iter, "z")
@@ -210,7 +210,7 @@ func TestSkipToWithLexicographicOrdering(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := context.Background()
-			iter := storage.NewStaticIterator(tt.values, false)
+			iter := storage.NewUnorderedStaticIterator(tt.values)
 			defer iter.Stop()
 
 			err := SkipTo(ctx, iter, tt.target)

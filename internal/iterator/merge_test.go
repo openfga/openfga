@@ -23,15 +23,15 @@ func TestMergedIteratorIsOrdered(t *testing.T) {
 	}
 
 	t.Run("both_ordered_true", func(t *testing.T) {
-		iter := Merge(storage.NewStaticIterator[string]([]string{"a"}, true), storage.NewStaticIterator[string]([]string{"b"}, true), compareFn)
+		iter := Merge(storage.NewOrderedStaticIterator[string]([]string{"a"}), storage.NewOrderedStaticIterator[string]([]string{"b"}), compareFn)
 		defer iter.Stop()
 		require.True(t, iter.IsOrdered())
 	})
 
 	t.Run("one_unordered_false", func(t *testing.T) {
 		// Concat returns IsOrdered()=false, simulating an unordered right side
-		unordered := Concat(storage.NewStaticIterator[string]([]string{"a"}, false), storage.NewStaticIterator[string]([]string{"b"}, false))
-		iter := Merge(storage.NewStaticIterator[string]([]string{"a"}, false), unordered, compareFn)
+		unordered := Concat(storage.NewUnorderedStaticIterator[string]([]string{"a"}), storage.NewUnorderedStaticIterator[string]([]string{"b"}))
+		iter := Merge(storage.NewUnorderedStaticIterator[string]([]string{"a"}), unordered, compareFn)
 		defer iter.Stop()
 		require.False(t, iter.IsOrdered())
 	})
@@ -48,8 +48,8 @@ func TestMergedIterator(t *testing.T) {
 	}
 
 	t.Run("both_iterators_empty", func(t *testing.T) {
-		iter1 := storage.NewStaticIterator[string]([]string{}, false)
-		iter2 := storage.NewStaticIterator[string]([]string{}, false)
+		iter1 := storage.NewUnorderedStaticIterator[string]([]string{})
+		iter2 := storage.NewUnorderedStaticIterator[string]([]string{})
 
 		merged := Merge(iter1, iter2, compareFn)
 
@@ -58,8 +58,8 @@ func TestMergedIterator(t *testing.T) {
 	})
 
 	t.Run("first_iterator_empty", func(t *testing.T) {
-		iter1 := storage.NewStaticIterator[string]([]string{}, false)
-		iter2 := storage.NewStaticIterator[string]([]string{"obj:1", "obj:2"}, false)
+		iter1 := storage.NewUnorderedStaticIterator[string]([]string{})
+		iter2 := storage.NewUnorderedStaticIterator[string]([]string{"obj:1", "obj:2"})
 
 		merged := Merge(iter1, iter2, compareFn)
 
@@ -76,8 +76,8 @@ func TestMergedIterator(t *testing.T) {
 	})
 
 	t.Run("second_iterator_empty", func(t *testing.T) {
-		iter1 := storage.NewStaticIterator[string]([]string{"obj:1", "obj:2"}, false)
-		iter2 := storage.NewStaticIterator[string]([]string{}, false)
+		iter1 := storage.NewUnorderedStaticIterator[string]([]string{"obj:1", "obj:2"})
+		iter2 := storage.NewUnorderedStaticIterator[string]([]string{})
 
 		merged := Merge(iter1, iter2, compareFn)
 
@@ -94,8 +94,8 @@ func TestMergedIterator(t *testing.T) {
 	})
 
 	t.Run("merge_sorted_iterators", func(t *testing.T) {
-		iter1 := storage.NewStaticIterator[string]([]string{"obj:1", "obj:3", "obj:5"}, false)
-		iter2 := storage.NewStaticIterator[string]([]string{"obj:2", "obj:4", "obj:6"}, false)
+		iter1 := storage.NewUnorderedStaticIterator[string]([]string{"obj:1", "obj:3", "obj:5"})
+		iter2 := storage.NewUnorderedStaticIterator[string]([]string{"obj:2", "obj:4", "obj:6"})
 
 		merged := Merge(iter1, iter2, compareFn)
 
@@ -111,8 +111,8 @@ func TestMergedIterator(t *testing.T) {
 	})
 
 	t.Run("skip_duplicates", func(t *testing.T) {
-		iter1 := storage.NewStaticIterator[string]([]string{"obj:1", "obj:2", "obj:3", "obj:5"}, false)
-		iter2 := storage.NewStaticIterator[string]([]string{"obj:2", "obj:3", "obj:4"}, false)
+		iter1 := storage.NewUnorderedStaticIterator[string]([]string{"obj:1", "obj:2", "obj:3", "obj:5"})
+		iter2 := storage.NewUnorderedStaticIterator[string]([]string{"obj:2", "obj:3", "obj:4"})
 
 		merged := Merge(iter1, iter2, compareFn)
 
@@ -128,8 +128,8 @@ func TestMergedIterator(t *testing.T) {
 	})
 
 	t.Run("all_duplicates", func(t *testing.T) {
-		iter1 := storage.NewStaticIterator[string]([]string{"obj:1", "obj:2", "obj:3"}, false)
-		iter2 := storage.NewStaticIterator[string]([]string{"obj:1", "obj:2", "obj:3"}, false)
+		iter1 := storage.NewUnorderedStaticIterator[string]([]string{"obj:1", "obj:2", "obj:3"})
+		iter2 := storage.NewUnorderedStaticIterator[string]([]string{"obj:1", "obj:2", "obj:3"})
 
 		merged := Merge(iter1, iter2, compareFn)
 
@@ -151,7 +151,7 @@ func TestMergedIterator(t *testing.T) {
 		iter1 := mocks.NewMockIterator[string](ctrl)
 		iter1.EXPECT().Next(gomock.Any()).Return("", errors.New("init error"))
 
-		iter2 := storage.NewStaticIterator[string]([]string{"obj:1"}, false)
+		iter2 := storage.NewUnorderedStaticIterator[string]([]string{"obj:1"})
 
 		merged := Merge(iter1, iter2, compareFn)
 
@@ -164,7 +164,7 @@ func TestMergedIterator(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
-		iter1 := storage.NewStaticIterator[string]([]string{"obj:1"}, false)
+		iter1 := storage.NewUnorderedStaticIterator[string]([]string{"obj:1"})
 
 		iter2 := mocks.NewMockIterator[string](ctrl)
 		iter2.EXPECT().Next(gomock.Any()).Return("", errors.New("init error"))
@@ -184,7 +184,7 @@ func TestMergedIterator(t *testing.T) {
 		iter1.EXPECT().Next(gomock.Any()).Return("obj:1", nil)
 		iter1.EXPECT().Next(gomock.Any()).Return("", errors.New("iteration error"))
 
-		iter2 := storage.NewStaticIterator[string]([]string{"obj:2"}, false)
+		iter2 := storage.NewUnorderedStaticIterator[string]([]string{"obj:2"})
 
 		merged := Merge(iter1, iter2, compareFn)
 
@@ -197,7 +197,7 @@ func TestMergedIterator(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
-		iter1 := storage.NewStaticIterator[string]([]string{"obj:2"}, false)
+		iter1 := storage.NewUnorderedStaticIterator[string]([]string{"obj:2"})
 
 		iter2 := mocks.NewMockIterator[string](ctrl)
 		iter2.EXPECT().Next(gomock.Any()).Return("obj:1", nil)
@@ -214,8 +214,8 @@ func TestMergedIterator(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
 
-		iter1 := storage.NewStaticIterator[string]([]string{"obj:1"}, false)
-		iter2 := storage.NewStaticIterator[string]([]string{"obj:2"}, false)
+		iter1 := storage.NewUnorderedStaticIterator[string]([]string{"obj:1"})
+		iter2 := storage.NewUnorderedStaticIterator[string]([]string{"obj:2"})
 
 		merged := Merge(iter1, iter2, compareFn)
 

@@ -105,7 +105,7 @@ func TestDefaultUserset(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			iter := storage.NewConditionsFilteredTupleKeyIterator(storage.NewStaticTupleKeyIterator(tt.tuples, false), filter)
+			iter := storage.NewConditionsFilteredTupleKeyIterator(storage.NewUnorderedStaticTupleKeyIterator(tt.tuples), filter)
 			checker := NewLocalChecker()
 			defer checker.Close()
 
@@ -218,7 +218,7 @@ func TestDefaultTTU(t *testing.T) {
 			t.Parallel()
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
-			iter := storage.NewConditionsFilteredTupleKeyIterator(storage.NewStaticTupleKeyIterator(tt.tuples, false), filter)
+			iter := storage.NewConditionsFilteredTupleKeyIterator(storage.NewUnorderedStaticTupleKeyIterator(tt.tuples), filter)
 			checker := NewLocalChecker()
 			defer checker.Close()
 			mockResolver := NewMockCheckResolver(ctrl)
@@ -359,7 +359,7 @@ func TestProduceUsersetDispatches(t *testing.T) {
 			t.Parallel()
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
-			iter := storage.NewConditionsFilteredTupleKeyIterator(storage.NewStaticTupleKeyIterator(tt.tuples, false), filter)
+			iter := storage.NewConditionsFilteredTupleKeyIterator(storage.NewUnorderedStaticTupleKeyIterator(tt.tuples), filter)
 			checker := NewLocalChecker()
 			defer checker.Close()
 			mockResolver := NewMockCheckResolver(ctrl)
@@ -523,7 +523,7 @@ func TestProduceTTUDispatches(t *testing.T) {
 			t.Parallel()
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
-			iter := storage.NewConditionsFilteredTupleKeyIterator(storage.NewStaticTupleKeyIterator(tt.tuples, false), filter)
+			iter := storage.NewConditionsFilteredTupleKeyIterator(storage.NewUnorderedStaticTupleKeyIterator(tt.tuples), filter)
 			checker := NewLocalChecker()
 			defer checker.Close()
 			mockResolver := NewMockCheckResolver(ctrl)

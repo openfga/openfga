@@ -110,7 +110,7 @@ func TestReaderRead(t *testing.T) {
 
 		store.EXPECT().
 			ReadStartingWithUser(gomock.Any(), "store-1", gomock.Any(), gomock.Any()).
-			Return(storage.NewStaticTupleIterator(tuples, false), nil)
+			Return(storage.NewUnorderedStaticTupleIterator(tuples), nil)
 
 		reader := pipeline.NewValidatingStore(store, "store-1")
 
@@ -177,7 +177,7 @@ func TestReaderRead(t *testing.T) {
 
 		store.EXPECT().
 			ReadStartingWithUser(gomock.Any(), "store-1", gomock.Any(), gomock.Any()).
-			Return(storage.NewStaticTupleIterator(nil, false), nil)
+			Return(storage.NewUnorderedStaticTupleIterator(nil), nil)
 
 		reader := pipeline.NewValidatingStore(store, "store-1")
 
@@ -217,7 +217,7 @@ func TestReaderRead(t *testing.T) {
 
 		store.EXPECT().
 			ReadStartingWithUser(gomock.Any(), "store-1", gomock.Any(), gomock.Any()).
-			Return(storage.NewStaticTupleIterator(tuples, false), nil)
+			Return(storage.NewUnorderedStaticTupleIterator(tuples), nil)
 
 		// Only allow odd-numbered documents.
 		validator := func(tk *openfgav1.TupleKey) (bool, error) {
@@ -262,7 +262,7 @@ func TestReaderRead(t *testing.T) {
 
 		store.EXPECT().
 			ReadStartingWithUser(gomock.Any(), "store-1", gomock.Any(), gomock.Any()).
-			Return(storage.NewStaticTupleIterator(tuples, false), nil)
+			Return(storage.NewUnorderedStaticTupleIterator(tuples), nil)
 
 		reader := pipeline.NewValidatingStore(store, "store-1")
 
@@ -310,7 +310,7 @@ func TestReaderRead(t *testing.T) {
 				}),
 				gomock.Any(),
 			).
-			Return(storage.NewStaticTupleIterator(nil, false), nil)
+			Return(storage.NewUnorderedStaticTupleIterator(nil), nil)
 
 		reader := pipeline.NewValidatingStore(store, "store-1")
 
@@ -343,7 +343,7 @@ func TestReaderRead(t *testing.T) {
 					return opts.Consistency.Preference == openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY
 				}),
 			).
-			Return(storage.NewStaticTupleIterator(nil, false), nil)
+			Return(storage.NewUnorderedStaticTupleIterator(nil), nil)
 
 		reader := pipeline.NewValidatingStore(store, "store-1",
 			pipeline.WithStoreConsistency(openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY),
@@ -383,7 +383,7 @@ func TestReaderRead(t *testing.T) {
 				}),
 				gomock.Any(),
 			).
-			Return(storage.NewStaticTupleIterator(nil, false), nil)
+			Return(storage.NewUnorderedStaticTupleIterator(nil), nil)
 
 		reader := pipeline.NewValidatingStore(store, "store-1")
 
@@ -417,7 +417,7 @@ func TestReaderRead(t *testing.T) {
 				}),
 				gomock.Any(),
 			).
-			Return(storage.NewStaticTupleIterator(nil, false), nil)
+			Return(storage.NewUnorderedStaticTupleIterator(nil), nil)
 
 		reader := pipeline.NewValidatingStore(store, "store-1")
 
@@ -449,7 +449,7 @@ func TestReaderRead(t *testing.T) {
 
 		store.EXPECT().
 			ReadStartingWithUser(gomock.Any(), "store-1", gomock.Any(), gomock.Any()).
-			Return(storage.NewStaticTupleIterator(tuples, false), nil)
+			Return(storage.NewUnorderedStaticTupleIterator(tuples), nil)
 
 		reader := pipeline.NewValidatingStore(store, "store-1")
 

@@ -113,8 +113,8 @@ type ConsistencyOptions struct {
 // ReadOptions represents the options that can
 // be used with the Read method.
 type ReadOptions struct {
-	Consistency                ConsistencyOptions
-	WithResultsSortedAscending bool
+	Consistency ConsistencyOptions
+	SortAsc     bool
 }
 
 // ReadUserTupleOptions represents the options that can
@@ -126,15 +126,15 @@ type ReadUserTupleOptions struct {
 // ReadUsersetTuplesOptions represents the options that can
 // be used with the ReadUsersetTuples method.
 type ReadUsersetTuplesOptions struct {
-	Consistency                ConsistencyOptions
-	WithResultsSortedAscending bool
+	Consistency ConsistencyOptions
+	SortAsc     bool
 }
 
 // ReadStartingWithUserOptions represents the options that can
 // be used with the ReadStartingWithUser method.
 type ReadStartingWithUserOptions struct {
-	Consistency                ConsistencyOptions
-	WithResultsSortedAscending bool
+	Consistency ConsistencyOptions
+	SortAsc     bool
 }
 
 // Writes is a typesafe alias for Write arguments.
@@ -158,7 +158,7 @@ type RelationshipTupleReader interface {
 	// or `User` (or both), must be specified in this case.
 	//
 	// The caller must be careful to close the [TupleIterator], either by consuming the entire iterator or by closing it.
-	// If ReadOptions.WithResultsSortedAscending is set, results are sorted by user ascending; otherwise the order is unspecified.
+	// If ReadOptions.SortAsc is set, results are sorted by user ascending; otherwise the order is unspecified.
 	Read(ctx context.Context, store string, filter ReadFilter, options ReadOptions) (TupleIterator, error)
 
 	// ReadPage functions similarly to Read but includes support for pagination. It takes
@@ -184,7 +184,7 @@ type RelationshipTupleReader interface {
 	//	object=document:1, relation=viewer, allowedTypesForUser=[group#member]
 	// this method would return the tuple (document:doc1, viewer, group:eng#member)
 	// If allowedTypesForUser is empty, both tuples would be returned.
-	// If ReadUsersetTuplesOptions.WithResultsSortedAscending is set, results are sorted by user ascending; otherwise the order is unspecified.
+	// If ReadUsersetTuplesOptions.SortAsc is set, results are sorted by user ascending; otherwise the order is unspecified.
 	ReadUsersetTuples(
 		ctx context.Context,
 		store string,
@@ -204,7 +204,7 @@ type RelationshipTupleReader interface {
 	// ReadStartingWithUser for ['user:jon', 'group:eng#member'] filtered by 'document#viewer'
 	// and 'document:doc1, document:doc2' would
 	// return ['document:doc1#viewer@user:jon', 'document:doc2#viewer@group:eng#member'].
-	// If ReadStartingWithUserOptions.WithResultsSortedAscending is set, results are sorted by object ID ascending; otherwise the order is unspecified.
+	// If ReadStartingWithUserOptions.SortAsc is set, results are sorted by object ID ascending; otherwise the order is unspecified.
 	ReadStartingWithUser(
 		ctx context.Context,
 		store string,

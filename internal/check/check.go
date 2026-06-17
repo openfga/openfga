@@ -899,7 +899,7 @@ func (r *Resolver) specificTypeWildcard(ctx context.Context, req *Request, edge 
 	if ctxTuples, ok := req.GetContextualTuplesByObjectID(req.GetTupleKey().GetObject(), relation, req.GetUserType()); ok {
 		for _, ct := range ctxTuples {
 			if tuple.IsTypedWildcard(ct.GetUser()) {
-				iter = storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{ct}, false)
+				iter = storage.NewUnorderedStaticTupleKeyIterator([]*openfgav1.TupleKey{ct})
 				break
 			}
 		}
@@ -986,7 +986,7 @@ func (r *Resolver) specificTypeAndRelation(ctx context.Context, req *Request, ed
 		AllowedUserTypeRestrictions: allowedTypes,
 		Conditions:                  edge.GetConditions(),
 	}, storage.ReadUsersetTuplesOptions{
-		WithResultsSortedAscending: sortResults,
+		SortAsc: sortResults,
 		Consistency: storage.ConsistencyOptions{
 			Preference: req.GetConsistency(),
 		},
@@ -1071,8 +1071,8 @@ func (r *Resolver) ttu(ctx context.Context, req *Request, edge *authzGraph.Weigh
 			Conditions: tuplesetEdge.GetConditions(),
 		},
 		storage.ReadOptions{
-			WithResultsSortedAscending: sortResults,
-			Consistency:                storage.ConsistencyOptions{Preference: req.GetConsistency()},
+			SortAsc:     sortResults,
+			Consistency: storage.ConsistencyOptions{Preference: req.GetConsistency()},
 		},
 	)
 	if err != nil {
@@ -1131,7 +1131,7 @@ func (r *Resolver) buildIterator(ctx context.Context, req *Request, iter storage
 
 	// STEP 2: Merge contextual tuples (these are request-specific and not cached)
 	if ctxTuples, ok := req.GetContextualTuplesByObjectID(req.GetTupleKey().GetObject(), relation, userType); ok {
-		tupleKeyIter = iterator.Concat(storage.NewStaticTupleKeyIterator(ctxTuples, true), tupleKeyIter)
+		tupleKeyIter = iterator.Concat(storage.NewOrderedStaticTupleKeyIterator(ctxTuples), tupleKeyIter)
 	}
 
 	// STEP 3: Build filter chain

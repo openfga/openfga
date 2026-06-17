@@ -292,20 +292,20 @@ func addNextItemInSliceStreamsToBatch(ctx context.Context, streamSlices []*itera
 		batch = append(batch, item)
 	}
 	if len(batch) > IteratorMinBatchThreshold {
-		concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Iter: storage.NewStaticIterator[string](batch, true)}, outChan)
+		concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Iter: storage.NewOrderedStaticIterator[string](batch)}, outChan)
 		batch = make([]string, 0)
 	}
 	return batch, nil
 }
 
-// Requires each stream to yield object IDs in ascending order (use WithResultsSortedAscending on reads); the merge produces incorrect results otherwise.
+// Requires each stream to yield object IDs in ascending order (use SortAsc on reads); the merge produces incorrect results otherwise.
 func fastPathUnion(ctx context.Context, streams *iterator.Streams, outChan chan<- *iterator.Msg) {
 	batch := make([]string, 0)
 
 	defer func() {
 		// flush
 		if len(batch) > 0 {
-			concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Iter: storage.NewStaticIterator[string](batch, true)}, outChan)
+			concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Iter: storage.NewOrderedStaticIterator[string](batch)}, outChan)
 		}
 		close(outChan)
 		streams.Stop()
@@ -371,14 +371,14 @@ func fastPathUnion(ctx context.Context, streams *iterator.Streams, outChan chan<
 	}
 }
 
-// Requires each stream to yield object IDs in ascending order (use WithResultsSortedAscending on reads); the merge produces incorrect results otherwise.
+// Requires each stream to yield object IDs in ascending order (use SortAsc on reads); the merge produces incorrect results otherwise.
 func fastPathIntersection(ctx context.Context, streams *iterator.Streams, outChan chan<- *iterator.Msg) {
 	batch := make([]string, 0)
 
 	defer func() {
 		// flush
 		if len(batch) > 0 {
-			concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Iter: storage.NewStaticIterator[string](batch, true)}, outChan)
+			concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Iter: storage.NewOrderedStaticIterator[string](batch)}, outChan)
 		}
 		close(outChan)
 		streams.Stop()
@@ -462,14 +462,14 @@ func fastPathIntersection(ctx context.Context, streams *iterator.Streams, outCha
 	}
 }
 
-// Requires each stream to yield object IDs in ascending order (use WithResultsSortedAscending on reads); the merge produces incorrect results otherwise.
+// Requires each stream to yield object IDs in ascending order (use SortAsc on reads); the merge produces incorrect results otherwise.
 func fastPathDifference(ctx context.Context, streams *iterator.Streams, outChan chan<- *iterator.Msg) {
 	batch := make([]string, 0)
 
 	defer func() {
 		// flush
 		if len(batch) > 0 {
-			concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Iter: storage.NewStaticIterator[string](batch, true)}, outChan)
+			concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Iter: storage.NewOrderedStaticIterator[string](batch)}, outChan)
 		}
 		close(outChan)
 		streams.Stop()
@@ -570,7 +570,7 @@ func fastPathDifference(ctx context.Context, streams *iterator.Streams, outChan 
 			}
 			batch = append(batch, items...)
 			if len(batch) > IteratorMinBatchThreshold {
-				concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Iter: storage.NewStaticIterator[string](batch, true)}, outChan)
+				concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Iter: storage.NewOrderedStaticIterator[string](batch)}, outChan)
 				batch = make([]string, 0)
 			}
 			iterStreams, err = streams.CleanDone(ctx)

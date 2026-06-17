@@ -20,7 +20,7 @@ import (
 )
 
 func TestCachedTupleIteratorIsOrdered(t *testing.T) {
-	inner := storage.NewStaticIterator[*storage.TupleRecord](nil, true)
+	inner := storage.NewOrderedStaticIterator[*storage.TupleRecord](nil)
 	iter := &cachedTupleIterator{objectType: "document", relation: "viewer", iter: inner}
 	defer iter.Stop()
 	require.True(t, iter.IsOrdered())
@@ -49,7 +49,7 @@ func TestCachedTupleIterator(t *testing.T) {
 				ConditionName:  "cond",
 			},
 		}
-		staticIter := storage.NewStaticIterator[*storage.TupleRecord](cachedTuples, false)
+		staticIter := storage.NewUnorderedStaticIterator[*storage.TupleRecord](cachedTuples)
 		iter := &cachedTupleIterator{
 			objectType: "document",
 			objectID:   "1",
@@ -97,7 +97,7 @@ func TestCachedTupleIterator(t *testing.T) {
 				ConditionName:  "cond",
 			},
 		}
-		staticIter := storage.NewStaticIterator[*storage.TupleRecord](cachedTuples, false)
+		staticIter := storage.NewUnorderedStaticIterator[*storage.TupleRecord](cachedTuples)
 		iter := &cachedTupleIterator{
 			objectType: "document",
 			objectID:   "",
@@ -177,7 +177,7 @@ func TestCachedTupleIterator(t *testing.T) {
 				ConditionName:  "cond",
 			},
 		}
-		staticIter := storage.NewStaticIterator[*storage.TupleRecord](cachedTuples, false)
+		staticIter := storage.NewUnorderedStaticIterator[*storage.TupleRecord](cachedTuples)
 		iter := &cachedTupleIterator{
 			objectType: "document",
 			objectID:   "1",
@@ -211,7 +211,7 @@ func TestCachedTupleIterator(t *testing.T) {
 				ConditionName:  "cond",
 			},
 		}
-		staticIter := storage.NewStaticIterator[*storage.TupleRecord](cachedTuples, false)
+		staticIter := storage.NewUnorderedStaticIterator[*storage.TupleRecord](cachedTuples)
 		iter := &cachedTupleIterator{
 			objectType: "document",
 			objectID:   "",

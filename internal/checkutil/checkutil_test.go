@@ -300,7 +300,7 @@ func TestIteratorReadStartingFromUser(t *testing.T) {
 				ObjectIDs:  objectIDs,
 			}
 			expectedOpts := storage.ReadStartingWithUserOptions{
-				WithResultsSortedAscending: true,
+				SortAsc: true,
 				Consistency: storage.ConsistencyOptions{
 					Preference: req.GetConsistency(),
 				},

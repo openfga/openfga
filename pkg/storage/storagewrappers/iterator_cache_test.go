@@ -355,7 +355,7 @@ func TestCachingIterator_IsOrdered(t *testing.T) {
 	sf := &singleflight.Group{}
 	wg := &sync.WaitGroup{}
 
-	inner := storage.NewStaticTupleIterator([]*openfgav1.Tuple{}, true)
+	inner := storage.NewOrderedStaticTupleIterator([]*openfgav1.Tuple{})
 	iter := newCachingIterator(inner, mockCache, testCacheKey("key"), 100, time.Hour, 30*time.Second, sf, wg, "document", "viewer", "Read", nil)
 	require.True(t, iter.IsOrdered())
 	iter.Stop()
@@ -382,7 +382,7 @@ func TestCachingIterator_Next_Basic(t *testing.T) {
 	}
 
 	// Use static iterator
-	innerIter := storage.NewStaticTupleIterator(tuples, false)
+	innerIter := storage.NewUnorderedStaticTupleIterator(tuples)
 
 	// Expect cache.Get to check if already cached (optimization 1), return nil (not cached)
 	mockCache.EXPECT().Get(testCacheKey("test-key")).Return(nil).Times(1)
@@ -479,7 +479,7 @@ func TestCachingIterator_Head_DelegatesToInner(t *testing.T) {
 		{Key: tuple.NewTupleKey("document:2", "viewer", "user:bob")},
 	}
 
-	innerIter := storage.NewStaticTupleIterator(tuples, false)
+	innerIter := storage.NewUnorderedStaticTupleIterator(tuples)
 
 	iter := newCachingIterator(
 		innerIter, mockCache, testCacheKey("test-key"), 1000, time.Hour, 30*time.Second,
@@ -525,7 +525,7 @@ func TestCachingIterator_Head_AfterStop(t *testing.T) {
 		{Key: tuple.NewTupleKey("document:1", "viewer", "user:alice")},
 	}
 
-	innerIter := storage.NewStaticTupleIterator(tuples, false)
+	innerIter := storage.NewUnorderedStaticTupleIterator(tuples)
 
 	iter := newCachingIterator(
 		innerIter, mockCache, testCacheKey("test-key"), 1000, time.Hour, 30*time.Second,
@@ -562,7 +562,7 @@ func TestCachingIterator_ExceedsMaxSize_AbandonsCaching(t *testing.T) {
 		tuples[i] = &openfgav1.Tuple{Key: tuple.NewTupleKey("document:"+string(rune('1'+i)), "viewer", "user:test")}
 	}
 
-	innerIter := storage.NewStaticTupleIterator(tuples, false)
+	innerIter := storage.NewUnorderedStaticTupleIterator(tuples)
 
 	// No cache.Set expected because we exceed maxSize
 
@@ -603,7 +603,7 @@ func TestCachingIterator_ConfigurableMaxSize_AbandonsCaching(t *testing.T) {
 		tuples[i] = &openfgav1.Tuple{Key: tuple.NewTupleKey("document:"+string(rune('1'+i)), "viewer", "user:test")}
 	}
 
-	innerIter := storage.NewStaticTupleIterator(tuples, false)
+	innerIter := storage.NewUnorderedStaticTupleIterator(tuples)
 
 	iter := newCachingIterator(
 		innerIter, mockCache, testCacheKey("test-key"), customMaxSize, time.Hour, 30*time.Second,
@@ -640,7 +640,7 @@ func TestCachingIterator_PopulatesCache(t *testing.T) {
 		{Key: tuple.NewTupleKey("document:1", "viewer", "user:alice")},
 	}
 
-	innerIter := storage.NewStaticTupleIterator(tuples, false)
+	innerIter := storage.NewUnorderedStaticTupleIterator(tuples)
 
 	// Expect cache.Get to check if already cached (optimization 1), return nil (not cached)
 	mockCache.EXPECT().Get(cacheKey).Return(nil).Times(1)
@@ -692,7 +692,7 @@ func TestCachingIterator_InnerError(t *testing.T) {
 	wg := &sync.WaitGroup{}
 
 	// Empty iterator returns ErrIteratorDone immediately
-	innerIter := storage.NewStaticTupleIterator([]*openfgav1.Tuple{}, false)
+	innerIter := storage.NewUnorderedStaticTupleIterator([]*openfgav1.Tuple{})
 
 	// No cache.Set expected on empty iteration
 
@@ -725,7 +725,7 @@ func TestCachingIterator_Stop_Idempotent(t *testing.T) {
 		{Key: tuple.NewTupleKey("document:1", "viewer", "user:alice")},
 	}
 
-	innerIter := storage.NewStaticTupleIterator(tuples, false)
+	innerIter := storage.NewUnorderedStaticTupleIterator(tuples)
 
 	// Expect cache operations
 	mockCache.EXPECT().Get(testCacheKey("test-key")).Return(nil).AnyTimes()
@@ -771,7 +771,7 @@ func TestCachingIterator_Flush_EmptyAndNil(t *testing.T) {
 
 	t.Run("flush_with_nil_tuples_does_not_panic", func(t *testing.T) {
 		iter := newCachingIterator(
-			storage.NewStaticTupleIterator([]*openfgav1.Tuple{}, false),
+			storage.NewUnorderedStaticTupleIterator([]*openfgav1.Tuple{}),
 			mockCache, testCacheKey("test-key"), 1000, time.Hour, 30*time.Second,
 			sf, wg, "document", "viewer", "ReadUsersetTuples", nil,
 		)
@@ -786,7 +786,7 @@ func TestCachingIterator_Flush_EmptyAndNil(t *testing.T) {
 
 	t.Run("flush_with_empty_tuples_does_not_cache", func(t *testing.T) {
 		iter := newCachingIterator(
-			storage.NewStaticTupleIterator([]*openfgav1.Tuple{}, false),
+			storage.NewUnorderedStaticTupleIterator([]*openfgav1.Tuple{}),
 			mockCache, testCacheKey("test-key"), 1000, time.Hour, 30*time.Second,
 			sf, wg, "document", "viewer", "ReadUsersetTuples", nil,
 		)
@@ -826,7 +826,7 @@ func TestCachingIterator_WaitGroup_AddInConstructor(t *testing.T) {
 	// is properly incremented at construction time (not at Stop time)
 	iterators := make([]*CachingIterator, 10)
 	for i := 0; i < 10; i++ {
-		innerIter := storage.NewStaticTupleIterator(tuples, false)
+		innerIter := storage.NewUnorderedStaticTupleIterator(tuples)
 		iterators[i] = newCachingIterator(
 			innerIter, mockCache, testCacheKey("test-key-"+strconv.Itoa(i)), 1000, time.Hour, 30*time.Second,
 			sf, wg, "document", "viewer", "ReadUsersetTuples", nil,
@@ -877,7 +877,7 @@ func TestCachingIterator_WaitGroup_DoneCalledOnNilTuples(t *testing.T) {
 		tuples[i] = &openfgav1.Tuple{Key: tuple.NewTupleKey("document:"+strconv.Itoa(i), "viewer", "user:test")}
 	}
 
-	innerIter := storage.NewStaticTupleIterator(tuples, false)
+	innerIter := storage.NewUnorderedStaticTupleIterator(tuples)
 
 	iter := newCachingIterator(
 		innerIter, mockCache, testCacheKey("test-key"), maxSize, time.Hour, 30*time.Second,
@@ -936,7 +936,7 @@ func TestCachingIterator_ConcurrentNextAndStop(t *testing.T) {
 
 	// Run multiple iterations to increase chance of detecting race
 	for i := 0; i < 100; i++ {
-		innerIter := storage.NewStaticTupleIterator(tuples, false)
+		innerIter := storage.NewUnorderedStaticTupleIterator(tuples)
 		iter := newCachingIterator(
 			innerIter, mockCache, testCacheKey(fmt.Sprintf("test-key-%d", i)), 1000, time.Hour, 30*time.Second,
 			sf, wg, "document", "viewer", "ReadUsersetTuples", nil,
@@ -1001,7 +1001,7 @@ func TestCachingIterator_BackgroundDrainIgnoresRequestContextCancellation(t *tes
 		tuples[i] = &openfgav1.Tuple{Key: tuple.NewTupleKey("document:"+string(rune('1'+i)), "viewer", "user:test")}
 	}
 
-	innerIter := storage.NewStaticTupleIterator(tuples, false)
+	innerIter := storage.NewUnorderedStaticTupleIterator(tuples)
 
 	// Expect cache.Get to check if already cached (optimization 1), return nil (not cached)
 	mockCache.EXPECT().Get(testCacheKey("test-key")).Return(nil).Times(1)
@@ -1051,7 +1051,7 @@ func TestCachingIterator_BackgroundDrainCompletes_DoesCache(t *testing.T) {
 		tuples[i] = &openfgav1.Tuple{Key: tuple.NewTupleKey("document:"+string(rune('1'+i)), "viewer", "user:test")}
 	}
 
-	innerIter := storage.NewStaticTupleIterator(tuples, false)
+	innerIter := storage.NewUnorderedStaticTupleIterator(tuples)
 
 	// Expect cache.Get to check if already cached (optimization 1), return nil (not cached)
 	mockCache.EXPECT().Get(testCacheKey("test-key")).Return(nil).Times(1)
@@ -1192,7 +1192,7 @@ func TestCachingIterator_DrainExceedsMaxSize_AbandonsCaching(t *testing.T) {
 		tuples[i] = &openfgav1.Tuple{Key: tuple.NewTupleKey("document:"+strconv.Itoa(i), "viewer", "user:test")}
 	}
 
-	innerIter := storage.NewStaticTupleIterator(tuples, false)
+	innerIter := storage.NewUnorderedStaticTupleIterator(tuples)
 
 	iter := newCachingIterator(
 		innerIter, mockCache, testCacheKey("test-key"), maxSize, time.Hour, 30*time.Second,
@@ -1269,7 +1269,7 @@ func BenchmarkCachingIterator_CacheMiss(b *testing.B) {
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {
-		innerIter := storage.NewStaticTupleIterator(tuples, false)
+		innerIter := storage.NewUnorderedStaticTupleIterator(tuples)
 		iter := newCachingIterator(
 			innerIter, mockCache, testCacheKey("test-key"), 1000, time.Hour, 30*time.Second,
 			sf, wg, "document", "viewer", "benchmark", nil,
@@ -1380,7 +1380,7 @@ func BenchmarkLockFreeCachedIterator_VsStaticIterator(b *testing.B) {
 	b.Run("StaticTupleIterator", func(b *testing.B) {
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
-			iter := storage.NewStaticTupleIterator(tuples, false)
+			iter := storage.NewUnorderedStaticTupleIterator(tuples)
 			for {
 				_, err := iter.Next(ctx)
 				if err != nil {

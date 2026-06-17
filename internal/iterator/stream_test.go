@@ -21,7 +21,7 @@ func TestIteratorStream(t *testing.T) {
 	t.Run("fetchSource", func(t *testing.T) {
 		t.Run("no_nil_buffer_should_not_fetch", func(t *testing.T) {
 			stream := &Stream{
-				buffer: storage.NewStaticIterator[string]([]string{"obj:0", "obj:1", "obj:2", "obj:3"}, false)}
+				buffer: storage.NewUnorderedStaticIterator[string]([]string{"obj:0", "obj:1", "obj:2", "obj:3"})}
 			err := stream.fetchSource(context.Background())
 			// notice there is no error even when there is no source
 			require.NoError(t, err)
@@ -43,7 +43,7 @@ func TestIteratorStream(t *testing.T) {
 		t.Run("fetch_from_source", func(t *testing.T) {
 			c := make(chan *Msg, 1)
 			stream := NewStream(0, c)
-			c <- &Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:1"}, false)}
+			c <- &Msg{Iter: storage.NewUnorderedStaticIterator[string]([]string{"obj:1"})}
 			err := stream.fetchSource(context.Background())
 			require.NoError(t, err)
 			require.False(t, stream.sourceIsClosed)
@@ -72,7 +72,7 @@ func TestIteratorStream(t *testing.T) {
 		t.Run("non_empty_buffer_not_done", func(t *testing.T) {
 			dut := Stream{
 				sourceIsClosed: false,
-				buffer:         storage.NewStaticIterator[string]([]string{}, false),
+				buffer:         storage.NewUnorderedStaticIterator[string]([]string{}),
 			}
 			require.False(t, dut.isDone())
 		})
@@ -93,7 +93,7 @@ func TestIteratorStream(t *testing.T) {
 		t.Run("non_empty_buffer_but_done", func(t *testing.T) {
 			dut := Stream{
 				sourceIsClosed: true,
-				buffer:         storage.NewStaticIterator[string]([]string{}, false),
+				buffer:         storage.NewUnorderedStaticIterator[string]([]string{}),
 			}
 			require.False(t, dut.isDone())
 		})
@@ -113,7 +113,7 @@ func TestIteratorStream(t *testing.T) {
 		})
 		t.Run("empty_buffer", func(t *testing.T) {
 			dut := &Stream{
-				buffer: storage.NewStaticIterator[string]([]string{}, false),
+				buffer: storage.NewUnorderedStaticIterator[string]([]string{}),
 			}
 			item, err := dut.Head(context.Background())
 			require.ErrorIs(t, err, storage.ErrIteratorDone)
@@ -123,7 +123,7 @@ func TestIteratorStream(t *testing.T) {
 		t.Run("non_empty_buffer", func(t *testing.T) {
 			item := "obj:1"
 			dut := &Stream{
-				buffer: storage.NewStaticIterator[string]([]string{item}, false),
+				buffer: storage.NewUnorderedStaticIterator[string]([]string{item}),
 			}
 			res, err := dut.Head(context.Background())
 			require.NoError(t, err)
@@ -142,7 +142,7 @@ func TestIteratorStream(t *testing.T) {
 		})
 		t.Run("empty_buffer", func(t *testing.T) {
 			dut := &Stream{
-				buffer: storage.NewStaticIterator[string]([]string{}, false),
+				buffer: storage.NewUnorderedStaticIterator[string]([]string{}),
 			}
 			item, err := dut.Next(context.Background())
 			require.ErrorIs(t, err, storage.ErrIteratorDone)
@@ -152,7 +152,7 @@ func TestIteratorStream(t *testing.T) {
 		t.Run("non_empty_buffer", func(t *testing.T) {
 			item := "obj:1"
 			dut := &Stream{
-				buffer: storage.NewStaticIterator[string]([]string{item}, false),
+				buffer: storage.NewUnorderedStaticIterator[string]([]string{item}),
 			}
 			item, err := dut.Next(context.Background())
 			require.NoError(t, err)
@@ -167,7 +167,7 @@ func TestIteratorStream(t *testing.T) {
 	t.Run("Drain", func(t *testing.T) {
 		t.Run("empty", func(t *testing.T) {
 			dut := Stream{
-				buffer: storage.NewStaticIterator[string]([]string{}, false),
+				buffer: storage.NewUnorderedStaticIterator[string]([]string{}),
 			}
 			items, err := dut.Drain(context.Background())
 			require.NoError(t, err)
@@ -175,7 +175,7 @@ func TestIteratorStream(t *testing.T) {
 		})
 		t.Run("nonEmpty", func(t *testing.T) {
 			dut := Stream{
-				buffer: storage.NewStaticIterator[string]([]string{"obj:1", "obj:2"}, false),
+				buffer: storage.NewUnorderedStaticIterator[string]([]string{"obj:1", "obj:2"}),
 			}
 			items, err := dut.Drain(context.Background())
 			require.NoError(t, err)
@@ -199,14 +199,14 @@ func TestIteratorStream(t *testing.T) {
 	t.Run("SkipToTargetObject", func(t *testing.T) {
 		t.Run("bad_target", func(t *testing.T) {
 			dut := Stream{
-				buffer: storage.NewStaticIterator[string]([]string{}, false),
+				buffer: storage.NewUnorderedStaticIterator[string]([]string{}),
 			}
 			err := dut.SkipToTargetObject(context.Background(), "bad_target")
 			require.Error(t, err)
 		})
 		t.Run("empty", func(t *testing.T) {
 			dut := Stream{
-				buffer: storage.NewStaticIterator[string]([]string{}, false),
+				buffer: storage.NewUnorderedStaticIterator[string]([]string{}),
 			}
 			err := dut.SkipToTargetObject(context.Background(), "obj:2")
 			require.NoError(t, err)
@@ -236,7 +236,7 @@ func TestIteratorStream(t *testing.T) {
 			ctx := context.Background()
 
 			dut := Stream{
-				buffer: storage.NewStaticIterator[string]([]string{"obj:0", "obj:1", "obj:2", "obj:3"}, false),
+				buffer: storage.NewUnorderedStaticIterator[string]([]string{"obj:0", "obj:1", "obj:2", "obj:3"}),
 			}
 			err := dut.SkipToTargetObject(ctx, "obj:4")
 			require.NoError(t, err)
@@ -247,7 +247,7 @@ func TestIteratorStream(t *testing.T) {
 			ctx := context.Background()
 
 			dut := Stream{
-				buffer: storage.NewStaticIterator[string]([]string{"obj:0", "obj:1", "obj:2", "obj:3"}, false),
+				buffer: storage.NewUnorderedStaticIterator[string]([]string{"obj:0", "obj:1", "obj:2", "obj:3"}),
 			}
 			err := dut.SkipToTargetObject(ctx, "obj:2")
 			require.NoError(t, err)
@@ -265,7 +265,7 @@ func TestIteratorStream(t *testing.T) {
 			ctx := context.Background()
 
 			dut := Stream{
-				buffer: storage.NewStaticIterator[string]([]string{"obj:0", "obj:1", "obj:3", "obj:4"}, false),
+				buffer: storage.NewUnorderedStaticIterator[string]([]string{"obj:0", "obj:1", "obj:3", "obj:4"}),
 			}
 			err := dut.SkipToTargetObject(ctx, "obj:2")
 			require.NoError(t, err)
@@ -280,13 +280,13 @@ func TestIteratorStream(t *testing.T) {
 		})
 	})
 	t.Run("Stop", func(t *testing.T) {
-		sourceIter := storage.NewStaticIterator[string]([]string{"obj:10", "obj:11"}, false)
+		sourceIter := storage.NewUnorderedStaticIterator[string]([]string{"obj:10", "obj:11"})
 
 		c := make(chan *Msg, 1)
 		c <- &Msg{Iter: sourceIter}
 		close(c)
 
-		buf := storage.NewStaticIterator[string]([]string{"obj:0", "obj:1", "obj:3"}, false)
+		buf := storage.NewUnorderedStaticIterator[string]([]string{"obj:0", "obj:1", "obj:3"})
 
 		dut := &Stream{
 			buffer: buf,
@@ -309,16 +309,16 @@ func TestNextItemInSliceStreams(t *testing.T) {
 		goleak.VerifyNone(t)
 	})
 	t.Run("error_on_empty", func(t *testing.T) {
-		stream1 := &Stream{buffer: storage.NewStaticIterator[string]([]string{}, false)}
-		stream2 := &Stream{buffer: storage.NewStaticIterator[string]([]string{"obj:0"}, false)}
+		stream1 := &Stream{buffer: storage.NewUnorderedStaticIterator[string]([]string{})}
+		stream2 := &Stream{buffer: storage.NewUnorderedStaticIterator[string]([]string{"obj:0"})}
 		item, err := NextItemInSliceStreams(context.Background(), []*Stream{stream1, stream2}, []int{0, 1})
 		require.ErrorIs(t, err, storage.ErrIteratorDone)
 		require.Empty(t, item)
 	})
 	t.Run("skip_item", func(t *testing.T) {
-		stream1 := &Stream{buffer: storage.NewStaticIterator[string]([]string{"obj:3"}, false)}
-		stream2 := &Stream{buffer: storage.NewStaticIterator[string]([]string{"obj:0", "obj:1"}, false)}
-		stream3 := &Stream{buffer: storage.NewStaticIterator[string]([]string{"obj:0", "obj:2"}, false)}
+		stream1 := &Stream{buffer: storage.NewUnorderedStaticIterator[string]([]string{"obj:3"})}
+		stream2 := &Stream{buffer: storage.NewUnorderedStaticIterator[string]([]string{"obj:0", "obj:1"})}
+		stream3 := &Stream{buffer: storage.NewUnorderedStaticIterator[string]([]string{"obj:0", "obj:2"})}
 		item, err := NextItemInSliceStreams(context.Background(), []*Stream{stream1, stream2, stream3}, []int{1, 2})
 		require.NoError(t, err)
 		require.Equal(t, "obj:0", item)
@@ -367,7 +367,7 @@ func TestIteratorStreams(t *testing.T) {
 					close(c)
 				} else {
 					expectedLen++
-					c <- &Msg{Iter: storage.NewStaticIterator[string]([]string{}, false)}
+					c <- &Msg{Iter: storage.NewUnorderedStaticIterator[string]([]string{})}
 				}
 				streams = append(streams, producer)
 			}
@@ -393,7 +393,7 @@ func TestIteratorStreams(t *testing.T) {
 	t.Run("Stop", func(t *testing.T) {
 		streams := make([]*Stream, 3)
 		for i := 0; i < 3; i++ {
-			buf := storage.NewStaticIterator[string]([]string{"obj:0", "obj:1", "obj:3"}, false)
+			buf := storage.NewUnorderedStaticIterator[string]([]string{"obj:0", "obj:1", "obj:3"})
 			c := make(chan *Msg, 1)
 			close(c)
 			streams[i] = &Stream{
