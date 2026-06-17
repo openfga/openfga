@@ -974,7 +974,7 @@ func (s *Datastore) WriteAuthorizationModel(ctx context.Context, store string, m
 
 	pbdata, err := sqlcommon.DeterministicMarshalOpts.Marshal(model)
 	if err != nil {
-		return err
+		return fmt.Errorf("marshal authorization model: %w", err)
 	}
 
 	stmt, args, err := sq.StatementBuilder.PlaceholderFormat(sq.Dollar).
