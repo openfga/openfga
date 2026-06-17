@@ -3,7 +3,6 @@ package storagewrappers
 import (
 	"context"
 	"errors"
-	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -141,10 +140,6 @@ type CachingIterator struct {
 	objectType string
 	relation   string
 	operation  string
-
-	// sortKey extracts the field to sort by at flush time.
-	// Read/ReadUsersetTuples sort by User; ReadStartingWithUser sorts by ObjectID.
-	sortKey func(MinimalCacheEntry) string
 }
 
 // Ensure CachingIterator implements TupleIterator.
@@ -161,7 +156,6 @@ func newCachingIterator(
 	sf *singleflight.Group,
 	wg *sync.WaitGroup,
 	objectType, relation, operation string,
-	sortKey func(MinimalCacheEntry) string,
 ) *CachingIterator {
 	// Cap initial capacity to avoid over-allocation for large maxSize values.
 	// Most queries return few tuples, so initialBufferCapacity is usually sufficient.
@@ -187,7 +181,6 @@ func newCachingIterator(
 		objectType:   objectType,
 		relation:     relation,
 		operation:    operation,
-		sortKey:      sortKey,
 	}
 }
 
@@ -285,21 +278,12 @@ func (c *CachingIterator) flush() {
 		}
 	}
 
-	// Sort at flush time so cache hits are pre-sorted for v2Check merge algorithms.
-	// Read/ReadUsersetTuples sort by User; ReadStartingWithUser sorts by ObjectID.
-	// Skip if the inner iterator is already ordered — no redundant work needed.
-	if c.sortKey != nil && !c.inner.IsOrdered() {
-		sort.Slice(entries, func(i, j int) bool {
-			return c.sortKey(entries[i]) < c.sortKey(entries[j])
-		})
-	}
-
 	v2IterCacheSize.WithLabelValues(c.operation).Observe(float64(len(entries)))
 
 	c.cache.Set(c.cacheKey, &V2IteratorCacheEntry{
 		Entries:      entries,
 		LastModified: c.createdAt,
-		Ordered:      c.sortKey != nil || c.inner.IsOrdered(),
+		Ordered:      c.inner.IsOrdered(),
 	}, c.ttl)
 
 	c.tuples = nil // Release for GC

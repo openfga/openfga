@@ -1144,3 +1144,225 @@ func TestCachedTupleReader_CacheRoundTrip(t *testing.T) {
 
 	iter2.Stop()
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Monotonic upgrade: SortAsc hit-check matrix
+// ─────────────────────────────────────────────────────────────────────────────
+
+// TestCachedTupleReader_MonotonicUpgrade_HaveUnsorted_WantSorted treats the entry as a
+// miss and re-queries the delegate, so the sorted result can be stored.
+func TestCachedTupleReader_MonotonicUpgrade_HaveUnsorted_WantSorted(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockCache := mocks.NewMockInMemoryCache[any](ctrl)
+	mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+
+	ctx := context.Background()
+	storeID := ulid.Make().String()
+	sf := &singleflight.Group{}
+	wg := &sync.WaitGroup{}
+
+	reader := NewCachedTupleReader(ctx, mockDatastore, mockCache, 1000, time.Hour, sf, wg, 30*time.Second)
+
+	filter := storage.ReadUsersetTuplesFilter{
+		Object:                      "document:1",
+		Relation:                    "viewer",
+		AllowedUserTypeRestrictions: []*openfgav1.RelationReference{{Type: "user"}},
+	}
+	opts := storage.ReadUsersetTuplesOptions{SortAsc: true}
+
+	// Cached entry is unsorted (Ordered=false)
+	unsortedEntry := &V2IteratorCacheEntry{
+		Entries:      []MinimalCacheEntry{{ObjectID: "1", User: "user:bob"}, {ObjectID: "1", User: "user:alice"}},
+		LastModified: time.Now(),
+		Ordered:      false,
+	}
+
+	cacheKey := storage.ReadUsersetTuplesKey(storeID, filter)
+	entityInvalidKey := storage.InvalidIteratorByObjectRelationCacheKey(storeID, "document:1", "viewer")
+
+	mockCache.EXPECT().Get(cacheKey).Return(unsortedEntry).Times(1)
+	mockCache.EXPECT().Get(storage.InvalidIteratorCacheKey(storeID)).Return(nil).Times(1)
+	mockCache.EXPECT().Get(entityInvalidKey).Return(nil).Times(1)
+	// Background goroutine (drainInBackground optimization 1) checks cache once more
+	mockCache.EXPECT().Get(cacheKey).Return(nil).Times(1)
+	mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).Times(1)
+
+	// Delegate MUST be called because the cache entry is unsorted but SortAsc=true
+	tuples := []*openfgav1.Tuple{
+		{Key: tuple.NewTupleKey("document:1", "viewer", "user:alice")},
+		{Key: tuple.NewTupleKey("document:1", "viewer", "user:bob")},
+	}
+	mockDatastore.EXPECT().ReadUsersetTuples(gomock.Any(), storeID, filter, opts).Return(
+		storage.NewOrderedStaticTupleIterator(tuples), nil,
+	).Times(1)
+
+	iter, err := reader.ReadUsersetTuples(ctx, storeID, filter, opts)
+	require.NoError(t, err)
+
+	// Should be a CachingIterator (cache miss path), not LockFreeCachedIterator
+	_, ok := iter.(*CachingIterator)
+	require.True(t, ok, "Expected CachingIterator: have-unsorted + want-sorted must be a miss")
+
+	// Drain so background goroutine detects exhaustion and flushes cleanly
+	for {
+		_, err := iter.Next(ctx)
+		if err != nil {
+			break
+		}
+	}
+	iter.Stop()
+	wg.Wait()
+}
+
+// TestCachedTupleReader_MonotonicUpgrade_HaveSorted_WantUnsorted is a cache hit:
+// a sorted entry satisfies unsorted requests; the delegate is NOT called.
+func TestCachedTupleReader_MonotonicUpgrade_HaveSorted_WantUnsorted(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockCache := mocks.NewMockInMemoryCache[any](ctrl)
+	mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+
+	ctx := context.Background()
+	storeID := ulid.Make().String()
+	sf := &singleflight.Group{}
+	wg := &sync.WaitGroup{}
+
+	reader := NewCachedTupleReader(ctx, mockDatastore, mockCache, 1000, time.Hour, sf, wg, 30*time.Second)
+
+	filter := storage.ReadUsersetTuplesFilter{
+		Object:                      "document:1",
+		Relation:                    "viewer",
+		AllowedUserTypeRestrictions: []*openfgav1.RelationReference{{Type: "user"}},
+	}
+	opts := storage.ReadUsersetTuplesOptions{SortAsc: false} // unsorted request
+
+	// Cached entry is sorted (Ordered=true)
+	sortedEntry := &V2IteratorCacheEntry{
+		Entries:      []MinimalCacheEntry{{ObjectID: "1", User: "user:alice"}, {ObjectID: "1", User: "user:bob"}},
+		LastModified: time.Now(),
+		Ordered:      true,
+	}
+
+	cacheKey := storage.ReadUsersetTuplesKey(storeID, filter)
+	entityInvalidKey := storage.InvalidIteratorByObjectRelationCacheKey(storeID, "document:1", "viewer")
+
+	mockCache.EXPECT().Get(cacheKey).Return(sortedEntry).Times(1)
+	mockCache.EXPECT().Get(storage.InvalidIteratorCacheKey(storeID)).Return(nil).Times(1)
+	mockCache.EXPECT().Get(entityInvalidKey).Return(nil).Times(1)
+	// NO delegate call expected — sorted entry satisfies unsorted request
+
+	iter, err := reader.ReadUsersetTuples(ctx, storeID, filter, opts)
+	require.NoError(t, err)
+
+	_, ok := iter.(*LockFreeCachedIterator)
+	require.True(t, ok, "Expected LockFreeCachedIterator: have-sorted + want-unsorted must be a hit")
+	require.True(t, iter.IsOrdered(), "Iterator should report ordered=true (the cached entry is sorted)")
+	iter.Stop()
+}
+
+// TestCachedTupleReader_MonotonicUpgrade_HaveUnsorted_WantUnsorted is a plain cache hit.
+func TestCachedTupleReader_MonotonicUpgrade_HaveUnsorted_WantUnsorted(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockCache := mocks.NewMockInMemoryCache[any](ctrl)
+	mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+
+	ctx := context.Background()
+	storeID := ulid.Make().String()
+	sf := &singleflight.Group{}
+	wg := &sync.WaitGroup{}
+
+	reader := NewCachedTupleReader(ctx, mockDatastore, mockCache, 1000, time.Hour, sf, wg, 30*time.Second)
+
+	filter := storage.ReadUsersetTuplesFilter{
+		Object:                      "document:1",
+		Relation:                    "viewer",
+		AllowedUserTypeRestrictions: []*openfgav1.RelationReference{{Type: "user"}},
+	}
+	opts := storage.ReadUsersetTuplesOptions{SortAsc: false}
+
+	unsortedEntry := &V2IteratorCacheEntry{
+		Entries:      []MinimalCacheEntry{{ObjectID: "1", User: "user:bob"}, {ObjectID: "1", User: "user:alice"}},
+		LastModified: time.Now(),
+		Ordered:      false,
+	}
+
+	cacheKey := storage.ReadUsersetTuplesKey(storeID, filter)
+	entityInvalidKey := storage.InvalidIteratorByObjectRelationCacheKey(storeID, "document:1", "viewer")
+
+	mockCache.EXPECT().Get(cacheKey).Return(unsortedEntry).Times(1)
+	mockCache.EXPECT().Get(storage.InvalidIteratorCacheKey(storeID)).Return(nil).Times(1)
+	mockCache.EXPECT().Get(entityInvalidKey).Return(nil).Times(1)
+
+	iter, err := reader.ReadUsersetTuples(ctx, storeID, filter, opts)
+	require.NoError(t, err)
+
+	_, ok := iter.(*LockFreeCachedIterator)
+	require.True(t, ok, "Expected LockFreeCachedIterator: have-unsorted + want-unsorted must be a hit")
+	require.False(t, iter.IsOrdered())
+	iter.Stop()
+}
+
+// TestCachedTupleReader_MonotonicUpgrade_HaveSorted_WantSorted is a plain cache hit.
+func TestCachedTupleReader_MonotonicUpgrade_HaveSorted_WantSorted(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockCache := mocks.NewMockInMemoryCache[any](ctrl)
+	mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+
+	ctx := context.Background()
+	storeID := ulid.Make().String()
+	sf := &singleflight.Group{}
+	wg := &sync.WaitGroup{}
+
+	reader := NewCachedTupleReader(ctx, mockDatastore, mockCache, 1000, time.Hour, sf, wg, 30*time.Second)
+
+	filter := storage.ReadUsersetTuplesFilter{
+		Object:                      "document:1",
+		Relation:                    "viewer",
+		AllowedUserTypeRestrictions: []*openfgav1.RelationReference{{Type: "user"}},
+	}
+	opts := storage.ReadUsersetTuplesOptions{SortAsc: true}
+
+	sortedEntry := &V2IteratorCacheEntry{
+		Entries:      []MinimalCacheEntry{{ObjectID: "1", User: "user:alice"}, {ObjectID: "1", User: "user:bob"}},
+		LastModified: time.Now(),
+		Ordered:      true,
+	}
+
+	cacheKey := storage.ReadUsersetTuplesKey(storeID, filter)
+	entityInvalidKey := storage.InvalidIteratorByObjectRelationCacheKey(storeID, "document:1", "viewer")
+
+	mockCache.EXPECT().Get(cacheKey).Return(sortedEntry).Times(1)
+	mockCache.EXPECT().Get(storage.InvalidIteratorCacheKey(storeID)).Return(nil).Times(1)
+	mockCache.EXPECT().Get(entityInvalidKey).Return(nil).Times(1)
+
+	iter, err := reader.ReadUsersetTuples(ctx, storeID, filter, opts)
+	require.NoError(t, err)
+
+	_, ok := iter.(*LockFreeCachedIterator)
+	require.True(t, ok, "Expected LockFreeCachedIterator: have-sorted + want-sorted must be a hit")
+	require.True(t, iter.IsOrdered())
+	iter.Stop()
+}

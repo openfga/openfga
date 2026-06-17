@@ -110,7 +110,7 @@ func (c *CachedTupleReader) ReadUsersetTuples(
 	v2IterCacheTotal.WithLabelValues("ReadUsersetTuples").Inc()
 
 	// CHECK CACHE FIRST - before any database call
-	if iter := c.tryGetFromCache(cacheKey, storeID, objectType, filter.Relation, "ReadUsersetTuples", []keys.Key{invalidEntityKey}); iter != nil {
+	if iter := c.tryGetFromCache(cacheKey, storeID, objectType, filter.Relation, "ReadUsersetTuples", []keys.Key{invalidEntityKey}, opts.SortAsc); iter != nil {
 		span.SetAttributes(attribute.Bool("cached", true))
 		return iter, nil
 	}
@@ -126,7 +126,6 @@ func (c *CachedTupleReader) ReadUsersetTuples(
 	return newCachingIterator(
 		dbIter, c.cache, cacheKey, c.maxSize, c.ttl, c.drainTimeout,
 		c.sf, c.wg, objectType, filter.Relation, "ReadUsersetTuples",
-		func(e MinimalCacheEntry) string { return e.User },
 	), nil
 }
 
@@ -161,7 +160,7 @@ func (c *CachedTupleReader) Read(
 	// Track total cache operations (before cache check, like V1)
 	v2IterCacheTotal.WithLabelValues("Read").Inc()
 
-	if iter := c.tryGetFromCache(cacheKey, storeID, objectType, filter.Relation, "Read", []keys.Key{invalidEntityKey}); iter != nil {
+	if iter := c.tryGetFromCache(cacheKey, storeID, objectType, filter.Relation, "Read", []keys.Key{invalidEntityKey}, opts.SortAsc); iter != nil {
 		span.SetAttributes(attribute.Bool("cached", true))
 		return iter, nil
 	}
@@ -176,7 +175,6 @@ func (c *CachedTupleReader) Read(
 	return newCachingIterator(
 		dbIter, c.cache, cacheKey, c.maxSize, c.ttl, c.drainTimeout,
 		c.sf, c.wg, objectType, filter.Relation, "Read",
-		func(e MinimalCacheEntry) string { return e.User },
 	), nil
 }
 
@@ -210,7 +208,7 @@ func (c *CachedTupleReader) ReadStartingWithUser(
 	// Track total cache operations (before cache check, like V1)
 	v2IterCacheTotal.WithLabelValues("ReadStartingWithUser").Inc()
 
-	if iter := c.tryGetFromCache(cacheKey, storeID, filter.ObjectType, filter.Relation, "ReadStartingWithUser", invalidEntityKeys); iter != nil {
+	if iter := c.tryGetFromCache(cacheKey, storeID, filter.ObjectType, filter.Relation, "ReadStartingWithUser", invalidEntityKeys, opts.SortAsc); iter != nil {
 		span.SetAttributes(attribute.Bool("cached", true))
 		return iter, nil
 	}
@@ -225,15 +223,17 @@ func (c *CachedTupleReader) ReadStartingWithUser(
 	return newCachingIterator(
 		dbIter, c.cache, cacheKey, c.maxSize, c.ttl, c.drainTimeout,
 		c.sf, c.wg, filter.ObjectType, filter.Relation, "ReadStartingWithUser",
-		func(e MinimalCacheEntry) string { return e.ObjectID },
 	), nil
 }
 
 // tryGetFromCache checks for cache hit with invalidation support.
-// Returns LockFreeCachedIterator if found and not invalidated.
+// Returns LockFreeCachedIterator if found, not invalidated, and ordered-compatible.
+// Monotonic upgrade: a sorted entry satisfies unsorted requests, but an unsorted entry
+// does not satisfy a sorted request (returns nil so the caller re-queries and upgrades).
 func (c *CachedTupleReader) tryGetFromCache(
 	cacheKey keys.Key, storeID, objectType, relation, operation string,
 	invalidEntityKeys []keys.Key,
+	wantSorted bool,
 ) storage.TupleIterator {
 	entry := c.cache.Get(cacheKey)
 	if entry == nil {
@@ -257,6 +257,14 @@ func (c *CachedTupleReader) tryGetFromCache(
 			c.cache.Delete(cacheKey)
 			return nil
 		}
+	}
+
+	// Monotonic upgrade: if the caller wants sorted results but the cached entry is
+	// unsorted, treat as a miss. Do NOT delete — the existing unsorted entry remains
+	// valid for unsorted requests. The re-query will store a sorted entry via cache.Set,
+	// upgrading the entry once and satisfying both sorted and unsorted callers thereafter.
+	if wantSorted && !cached.Ordered {
+		return nil
 	}
 
 	v2IterCacheHits.WithLabelValues(operation).Inc()
