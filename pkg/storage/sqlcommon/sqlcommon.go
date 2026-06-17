@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"sort"
 	"strconv"
 	"strings"
@@ -1017,7 +1016,7 @@ func WriteAuthorizationModel(
 
 	pbdata, err := DeterministicMarshalOpts.Marshal(model)
 	if err != nil {
-		return fmt.Errorf("marshal authorization model: %w", err)
+		return err
 	}
 
 	_, err = dbInfo.stbl.
