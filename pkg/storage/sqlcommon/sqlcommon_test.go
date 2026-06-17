@@ -283,6 +283,10 @@ func TestFetchBufferMetric(t *testing.T) {
 	})
 }
 
+// TestDeterministicMarshalOpts verifies that DeterministicMarshalOpts produces
+// identical bytes across repeated marshals of the same authorization model,
+// including models with map-keyed relations where plain proto.Marshal is
+// non-deterministic.
 func TestDeterministicMarshalOpts(t *testing.T) {
 	t.Parallel()
 
