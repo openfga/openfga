@@ -121,7 +121,8 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 			// See breakingChangeReason for the scenarios we detect.
 			if !res.GetAllowed() && tuple.IsObjectRelation(req.GetTupleKey().GetUser()) {
 				typesys, err := s.resolveTypesystem(ctx, storeID, req.GetAuthorizationModelId())
-				if reason := breakingChangeReason(ctx, typesys, req, storeID); reason != "" && err == nil {
+				tk := req.GetTupleKey()
+				if reason := breakingChangeReason(typesys, tk); reason != "" && err == nil {
 					requestID := getRequestIDFromContext(ctx)
 					s.logger.WarnWithContext(ctx, "potential v2Check resolution breaking change: userset request returned false",
 						zap.String("store_id", storeID),
@@ -517,8 +518,7 @@ const (
 //
 // All schema-shape filters are necessary conditions only — they may over-report when no
 // matching tuple is actually stored, but never miss a real divergence.
-func breakingChangeReason(ctx context.Context, typesys *typesystem.TypeSystem, req *openfgav1.CheckRequest, storeID string) string {
-	tk := req.GetTupleKey()
+func breakingChangeReason(typesys *typesystem.TypeSystem, tk *openfgav1.CheckRequestTupleKey) string {
 	if tk.GetUser() == tk.GetObject()+"#"+tk.GetRelation() {
 		return reasonSelfReferentialUserset
 	}

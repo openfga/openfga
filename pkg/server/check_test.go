@@ -1161,13 +1161,13 @@ func TestBreakingChangeReason(t *testing.T) {
 	}
 
 	negativeCases := map[string]bool{
-		"no_match_direct_userset_assignable":               true,
-		"no_match_user_is_not_userset":                     true,
-		"no_match_computed_userset_different_object":       true,
-		"no_match_ttu_user_object_type_not_in_tupleset":    true,
-		"no_match_self_referential_different_object":       true,
+		"no_match_direct_userset_assignable":                true,
+		"no_match_user_is_not_userset":                      true,
+		"no_match_computed_userset_different_object":        true,
+		"no_match_ttu_user_object_type_not_in_tupleset":     true,
+		"no_match_self_referential_different_object":        true,
 		"no_match_computed_userset_relation_not_in_rewrite": true,
-		"no_match_ttu_user_relation_mismatch":              true,
+		"no_match_ttu_user_relation_mismatch":               true,
 	}
 
 	for _, tc := range tests {
@@ -1184,10 +1184,10 @@ func TestBreakingChangeReason(t *testing.T) {
 				},
 			}
 
-			ctx := context.Background()
-			typesys, err := s.resolveTypesystem(ctx, baseReq.GetStoreId(), req.GetAuthorizationModelId())
+			typesys, err := s.resolveTypesystem(context.Background(), baseReq.GetStoreId(), req.GetAuthorizationModelId())
 			require.NoError(t, err)
-			got := breakingChangeReason(ctx, typesys, req, req.GetStoreId())
+			tk := req.GetTupleKey()
+			got := breakingChangeReason(typesys, tk)
 			if negativeCases[tc.name] {
 				require.Empty(t, got, "expected no breaking change reason")
 				return
