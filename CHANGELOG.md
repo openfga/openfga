@@ -10,8 +10,13 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Changed
 - Added opt-in `WithResultsSortedAscending` to `ReadOptions` and `ReadUsersetTuplesOptions`, and made `ReadStartingWithUser` honour its existing flag (previously it sorted unconditionally). All iterator types now accurately report `IsOrdered()`. The experimental `weighted_graph_check` `weight2` pruning optimization can now fire when results are sorted. [#3173](https://github.com/openfga/openfga/pull/3173)
 
+## [1.18.0] - 2026-06-16
 ### Fixed
 - Use `crypto/subtle.ConstantTimeCompare` for preshared key authentication to close a timing side-channel where the prior map lookup could reveal information about valid key bytes. [#3168](https://github.com/openfga/openfga/pull/3168) Thanks to [@geo-chen](https://github.com/geo-chen) for reporting this.
+- Enforce that `authn.oidc.issuer` and `authn.oidc.audience` are both set when `authn.method` is `oidc`. Previously, omitting `--authn-oidc-audience` caused the JWT `aud` claim to be silently skipped during token validation, allowing any validly-signed token from the trusted issuer to be accepted regardless of its intended audience. OpenFGA will now refuse to start if either value is missing. Thank you https://github.com/0xVijay for bringing this to our attention.
+
+### Security
+- Fixed identifier comparison on the MySQL backend to be case-sensitive, matching Postgres and SQLite. Ships schema migrations 008, which require a maintenance window — see the [operator runbook](assets/migrations/mysql/collation_migrations.md) before upgrading.
 
 ## [1.17.1] - 2026-06-05
 ### Changed
@@ -1681,7 +1686,8 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
 - Memory storage adapter implementation
 - Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.17.1...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.18.0...HEAD
+[1.18.0]: https://github.com/openfga/openfga/compare/v1.17.1...v1.18.0
 [1.17.1]: https://github.com/openfga/openfga/compare/v1.17.0...v1.17.1
 [1.17.0]: https://github.com/openfga/openfga/compare/v1.16.1...v1.17.0
 [1.16.1]: https://github.com/openfga/openfga/compare/v1.16.0...v1.16.1
