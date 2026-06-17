@@ -576,9 +576,10 @@ func rewriteContainsTTUForUser(ts *typesystem.TypeSystem, targetObjectType strin
 	return result != nil && result.(bool)
 }
 
-// usersetAliasesTargetRelation reports whether the target relation has a directly-assignable
-// userset T#R' where R' resolves (via computed_userset chains) to the request's user relation R,
-// while R itself is NOT directly assignable on the target.
+// usersetAliasesTargetRelation reports whether the target's directly-related usersets
+// include some T#R' (where T = user's object type) that is a computed_userset alias for
+// the user's relation R. Excludes the trivial case where T#R is itself directly assignable
+// (since v1 and v2 agree on direct matches).
 func usersetAliasesTargetRelation(ts *typesystem.TypeSystem, targetObjectType, targetRelation, userObjectType, userRelation string) bool {
 	usersets, err := ts.DirectlyRelatedUsersets(targetObjectType, targetRelation)
 	if err != nil {

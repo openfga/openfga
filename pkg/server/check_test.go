@@ -968,7 +968,7 @@ func TestBreakingChangeReason(t *testing.T) {
 			seedTuple: tuple.NewTupleKey("document:seed", "reader", "user:seed"),
 			object:    "document:d1",
 			relation:  "viewer",
-			user:      "document:3#reader",
+			user:      "document:d3#reader",
 		},
 		{
 			name: "self_referential_userset",
@@ -1099,13 +1099,75 @@ func TestBreakingChangeReason(t *testing.T) {
 			relation:  "viewer",
 			user:      "user:u1#viewer",
 		},
+		{
+			// self_referential_userset is an exact (object, relation) match shape.
+			// User's object differs from target's object, so it must NOT fire.
+			name: "no_match_self_referential_different_object",
+			modelDSL: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define viewer: [user, document#viewer]
+			`,
+			seedTuple: tuple.NewTupleKey("document:seed", "viewer", "user:seed"),
+			object:    "document:d1",
+			relation:  "viewer",
+			user:      "document:d2#viewer",
+		},
+		{
+			// Same object as target, but user's relation is not a ComputedUserset leaf
+			// in the rewrite. computed_userset_self_object must NOT fire.
+			name: "no_match_computed_userset_relation_not_in_rewrite",
+			modelDSL: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define editor: [user]
+						define writer: [user]
+						define other: [user]
+						define viewer: editor or writer
+			`,
+			seedTuple: tuple.NewTupleKey("document:seed", "editor", "user:seed"),
+			object:    "document:d1",
+			relation:  "viewer",
+			user:      "document:d1#other",
+		},
+		{
+			// TTU exists (viewer from parent) but the user's relation does not match
+			// the TTU's computed relation. ttu_userset must NOT fire.
+			name: "no_match_ttu_user_relation_mismatch",
+			modelDSL: `
+				model
+					schema 1.1
+				type user
+				type folder
+					relations
+						define viewer: [user]
+						define editor: [user]
+				type document
+					relations
+						define parent: [folder]
+						define viewer: viewer from parent
+			`,
+			seedTuple: tuple.NewTupleKey("document:seed", "parent", "folder:seed"),
+			object:    "document:d1",
+			relation:  "viewer",
+			user:      "folder:f2#editor",
+		},
 	}
 
 	negativeCases := map[string]bool{
-		"no_match_direct_userset_assignable":            true,
-		"no_match_user_is_not_userset":                  true,
-		"no_match_computed_userset_different_object":    true,
-		"no_match_ttu_user_object_type_not_in_tupleset": true,
+		"no_match_direct_userset_assignable":               true,
+		"no_match_user_is_not_userset":                     true,
+		"no_match_computed_userset_different_object":       true,
+		"no_match_ttu_user_object_type_not_in_tupleset":    true,
+		"no_match_self_referential_different_object":       true,
+		"no_match_computed_userset_relation_not_in_rewrite": true,
+		"no_match_ttu_user_relation_mismatch":              true,
 	}
 
 	for _, tc := range tests {
