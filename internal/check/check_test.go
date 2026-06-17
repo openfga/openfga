@@ -4313,7 +4313,7 @@ func TestTTU(t *testing.T) {
 				SortAsc:     true,
 				Consistency: storage.ConsistencyOptions{Preference: openfgav1.ConsistencyPreference_UNSPECIFIED},
 			},
-		).Return(storage.NewUnorderedStaticTupleIterator([]*openfgav1.Tuple{{
+		).Return(storage.NewOrderedStaticTupleIterator([]*openfgav1.Tuple{{
 			Key: tuple.NewTupleKey("document:1", "parent", "document:2"),
 		}}), nil).Times(1)
 
@@ -4618,7 +4618,7 @@ func TestTTU(t *testing.T) {
 				SortAsc:     true,
 				Consistency: storage.ConsistencyOptions{Preference: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY},
 			},
-		).Return(storage.NewUnorderedStaticTupleIterator([]*openfgav1.Tuple{{
+		).Return(storage.NewOrderedStaticTupleIterator([]*openfgav1.Tuple{{
 			Key: tuple.NewTupleKey("document:1", "parent", "document:2"),
 		}}), nil).Times(1)
 
