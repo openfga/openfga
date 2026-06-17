@@ -1,7 +1,6 @@
 ## Operator runbook
 
-<!-- TODO: update with correct release version -->
-The vX.Y.Z release ships the 008 goose migration that converts identifier columns to the `utf8mb4_bin` collation so that case-distinct OpenFGA identities (e.g. `user:Alice` vs `user:alice`) are stored and compared as distinct values:
+The v1.18.0 release ships the 008 goose migration that converts identifier columns to the `utf8mb4_bin` collation so that case-distinct OpenFGA identities (e.g. `user:Alice` vs `user:alice`) are stored and compared as distinct values:
 
 - `008_collate_identifiers.sql` 
    — `tuple` (`object_type`, `relation`, `_user`, `condition_name`)
