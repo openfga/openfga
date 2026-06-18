@@ -45,8 +45,6 @@ type BatchCheckMetadata struct {
 	DatastoreItemCount     uint64
 	DatastoreThrottleCount uint32
 	DuplicateCheckCount    int
-	PrimaryCheckerCount    uint32
-	FallbackCount          uint32
 }
 
 type BatchCheckValidationError struct {
@@ -137,8 +135,6 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 	var dispatchThrottleCount atomic.Uint32
 	var totalItemCount atomic.Uint64
 	var datastoreThrottleCount atomic.Uint32
-	var primaryCheckerCount atomic.Uint32
-	var fallbackCount atomic.Uint32
 
 	pool := concurrency.NewPool(ctx, int(bq.maxConcurrentChecks))
 	for key, item := range cacheKeyMap {
@@ -181,11 +177,6 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 			if res.WasThrottled {
 				datastoreThrottleCount.Add(1)
 			}
-			if res.UsedFallback {
-				fallbackCount.Add(1)
-			} else {
-				primaryCheckerCount.Add(1)
-			}
 			return nil
 		})
 	}
@@ -212,8 +203,6 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 		DatastoreThrottleCount: datastoreThrottleCount.Load(),
 		DispatchCount:          totalDispatchCount.Load(),
 		DuplicateCheckCount:    len(params.Checks) - len(cacheKeyMap),
-		PrimaryCheckerCount:    primaryCheckerCount.Load(),
-		FallbackCount:          fallbackCount.Load(),
 	}, nil
 }
 

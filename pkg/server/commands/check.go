@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
@@ -37,8 +38,6 @@ type CheckResult struct {
 	DispatchThrottled   bool   // v1 only; always false for v2
 	DispatchCount       uint32 // v1 only; always 0 for v2
 	CycleDetected       bool   // v1 only; always false for v2
-	// UsedFallback is true when the primary path failed (non-terminally) and the fallback was used instead.
-	UsedFallback bool
 }
 
 // Checker runs a single authorization check.
@@ -64,6 +63,9 @@ type CheckQueryV2 struct {
 
 	// fallback is called when Execute returns a non-terminal error. Optional.
 	fallback Checker
+
+	primaryCount  atomic.Uint32
+	fallbackCount atomic.Uint32
 }
 
 type CheckQueryV2Option func(*CheckQueryV2)
@@ -176,7 +178,7 @@ func NewCheckQuery(opts ...CheckQueryV2Option) *CheckQueryV2 {
 }
 
 // Execute implements Checker. When CheckQueryV2.fallback is set, it calls it on non-terminal
-// errors, tagging the result with UsedFallback.
+// errors and increments FallbackCount; otherwise increments PrimaryCount.
 func (q *CheckQueryV2) Execute(ctx context.Context, params *CheckCommandParams) (*CheckResult, error) {
 	if err := validateCheckCommandParams(params); err != nil {
 		return nil, serverErrors.ValidationError(err)
@@ -184,6 +186,7 @@ func (q *CheckQueryV2) Execute(ctx context.Context, params *CheckCommandParams) 
 
 	res, err := q.resolve(ctx, params)
 	if err == nil || IsV2CheckTerminalError(err) || q.fallback == nil {
+		q.primaryCount.Add(1)
 		return res, err
 	}
 
@@ -199,7 +202,7 @@ func (q *CheckQueryV2) Execute(ctx context.Context, params *CheckCommandParams) 
 	if fallbackRes == nil {
 		fallbackRes = &CheckResult{}
 	}
-	fallbackRes.UsedFallback = true
+	q.fallbackCount.Add(1)
 	return fallbackRes, err
 }
 
@@ -282,6 +285,12 @@ func (q *CheckQueryV2) resolve(ctx context.Context, params *CheckCommandParams) 
 		WasThrottled:        md.WasThrottled,
 	}, nil
 }
+
+// PrimaryCount returns the number of times Execute resolved via the primary (v2) path.
+func (q *CheckQueryV2) PrimaryCount() uint32 { return q.primaryCount.Load() }
+
+// FallbackCount returns the number of times Execute fell back to the configured fallback checker.
+func (q *CheckQueryV2) FallbackCount() uint32 { return q.fallbackCount.Load() }
 
 func validateCheckCommandParams(params *CheckCommandParams) error {
 	if params == nil {

@@ -514,7 +514,7 @@ func TestBatchCheckCommandV2(t *testing.T) {
 		return items
 	}
 
-	t.Run("v1_checker_all_items_use_primary", func(t *testing.T) {
+	t.Run("v1_checker_processes_all_items", func(t *testing.T) {
 		mockCheckResolver := graph.NewMockCheckResolver(mockController)
 		cmd := NewBatchCheckCommand(NewCheckCommand(ds, mockCheckResolver, ts))
 
@@ -524,7 +524,7 @@ func TestBatchCheckCommandV2(t *testing.T) {
 				return &graph.ResolveCheckResponse{Allowed: true}, nil
 			})
 
-		result, meta, err := cmd.Execute(context.Background(), &BatchCheckCommandParams{
+		result, _, err := cmd.Execute(context.Background(), &BatchCheckCommandParams{
 			AuthorizationModelID: ts.GetAuthorizationModelID(),
 			Checks:               basicChecks(2),
 			StoreID:              storeID,
@@ -532,8 +532,6 @@ func TestBatchCheckCommandV2(t *testing.T) {
 
 		require.NoError(t, err)
 		require.Len(t, result, 2)
-		require.EqualValues(t, 2, meta.PrimaryCheckerCount)
-		require.EqualValues(t, 0, meta.FallbackCount)
 		for _, outcome := range result {
 			require.NoError(t, outcome.Err)
 			require.True(t, outcome.Allowed)
@@ -557,7 +555,7 @@ func TestBatchCheckCommandV2(t *testing.T) {
 
 		cmd := NewBatchCheckCommand(v2Query)
 
-		result, meta, err := cmd.Execute(context.Background(), &BatchCheckCommandParams{
+		result, _, err := cmd.Execute(context.Background(), &BatchCheckCommandParams{
 			AuthorizationModelID: ts.GetAuthorizationModelID(),
 			Checks:               basicChecks(2),
 			StoreID:              storeID,
@@ -565,8 +563,8 @@ func TestBatchCheckCommandV2(t *testing.T) {
 
 		require.NoError(t, err)
 		require.Len(t, result, 2)
-		require.EqualValues(t, 2, meta.PrimaryCheckerCount)
-		require.EqualValues(t, 0, meta.FallbackCount)
+		require.EqualValues(t, 2, v2Query.PrimaryCount())
+		require.EqualValues(t, 0, v2Query.FallbackCount())
 		for _, outcome := range result {
 			require.NoError(t, outcome.Err)
 			require.False(t, outcome.Allowed) // no tuples, so not allowed
@@ -592,7 +590,7 @@ func TestBatchCheckCommandV2(t *testing.T) {
 
 		cmd := NewBatchCheckCommand(v2QueryNoModel)
 
-		result, meta, err := cmd.Execute(context.Background(), &BatchCheckCommandParams{
+		result, _, err := cmd.Execute(context.Background(), &BatchCheckCommandParams{
 			AuthorizationModelID: ts.GetAuthorizationModelID(),
 			Checks:               basicChecks(1),
 			StoreID:              storeID,
@@ -600,8 +598,8 @@ func TestBatchCheckCommandV2(t *testing.T) {
 
 		require.NoError(t, err)
 		require.Len(t, result, 1)
-		require.EqualValues(t, 0, meta.PrimaryCheckerCount)
-		require.EqualValues(t, 1, meta.FallbackCount)
+		require.EqualValues(t, 0, v2QueryNoModel.PrimaryCount())
+		require.EqualValues(t, 1, v2QueryNoModel.FallbackCount())
 		for _, outcome := range result {
 			require.NoError(t, outcome.Err)
 			require.True(t, outcome.Allowed)
@@ -651,7 +649,7 @@ func TestBatchCheckCommandV2(t *testing.T) {
 
 		cmd := NewBatchCheckCommand(v2Query)
 
-		result, meta, err := cmd.Execute(ctx, &BatchCheckCommandParams{
+		result, _, err := cmd.Execute(ctx, &BatchCheckCommandParams{
 			AuthorizationModelID: exclusionTS.GetAuthorizationModelID(),
 			StoreID:              storeID,
 			Checks: []*openfgav1.BatchCheckItem{
@@ -672,8 +670,8 @@ func TestBatchCheckCommandV2(t *testing.T) {
 		require.NoError(t, err)
 		require.True(t, result["normal"].Allowed)
 		require.True(t, result["userset"].Allowed) // v1 fallback incorrectly returns true
-		require.EqualValues(t, 1, meta.PrimaryCheckerCount)
-		require.EqualValues(t, 1, meta.FallbackCount)
+		require.EqualValues(t, 1, v2Query.PrimaryCount())
+		require.EqualValues(t, 1, v2Query.FallbackCount())
 	})
 }
 
