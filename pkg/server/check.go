@@ -123,7 +123,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 				if typesys, err := s.resolveTypesystem(ctx, storeID, req.GetAuthorizationModelId()); err == nil {
 					tk := req.GetTupleKey()
 					if reason := breakingChangeReason(typesys, tk); reason != "" {
-						requestID := getRequestIDFromContext(ctx)
+						requestID := requestid.GetRequestIDFromContext(ctx)
 						s.logger.WarnWithContext(ctx, "potential v2Check resolution breaking change: userset request returned false",
 							zap.String("store_id", storeID),
 							zap.String("model_id", req.GetAuthorizationModelId()),
@@ -137,7 +137,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 			return res, nil
 		}
 
-		requestID := getRequestIDFromContext(ctx)
+		requestID := requestid.GetRequestIDFromContext(ctx)
 		s.logger.WarnWithContext(ctx, "Weighted graph check failed, falling back to main Check",
 			zap.Error(err),
 			zap.String("store_id", storeID),
@@ -442,14 +442,6 @@ func isV2TerminalError(err error) bool {
 		}
 	}
 	return false
-}
-
-func getRequestIDFromContext(ctx context.Context) string {
-	requestID, _ := grpc_ctxtags.Extract(ctx).Values()["request_id"].(string)
-	if requestID == "" {
-		requestID = requestid.InitRequestID(ctx)
-	}
-	return requestID
 }
 
 const (
