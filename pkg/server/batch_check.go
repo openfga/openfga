@@ -196,6 +196,7 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 
 	if v2Enabled {
 		if v2GraphResolveFailed {
+			metadata.PrimaryCheckerCount = 0
 			metadata.FallbackCount = uint32(len(req.GetChecks()))
 		}
 		span.SetAttributes(
