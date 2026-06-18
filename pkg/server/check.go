@@ -120,16 +120,17 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 			// Flag potential v2Check resolution breaking changes for userset requests.
 			// See breakingChangeReason for the scenarios we detect.
 			if !res.GetAllowed() && tuple.IsObjectRelation(req.GetTupleKey().GetUser()) {
-				typesys, err := s.resolveTypesystem(ctx, storeID, req.GetAuthorizationModelId())
-				tk := req.GetTupleKey()
-				if reason := breakingChangeReason(typesys, tk); reason != "" && err == nil {
-					requestID := getRequestIDFromContext(ctx)
-					s.logger.WarnWithContext(ctx, "potential v2Check resolution breaking change: userset request returned false",
-						zap.String("store_id", storeID),
-						zap.String("model_id", req.GetAuthorizationModelId()),
-						zap.String("request_id", requestID),
-						zap.String("reason", reason),
-					)
+				if typesys, err := s.resolveTypesystem(ctx, storeID, req.GetAuthorizationModelId()); err == nil {
+					tk := req.GetTupleKey()
+					if reason := breakingChangeReason(typesys, tk); reason != "" {
+						requestID := getRequestIDFromContext(ctx)
+						s.logger.WarnWithContext(ctx, "potential v2Check resolution breaking change: userset request returned false",
+							zap.String("store_id", storeID),
+							zap.String("model_id", req.GetAuthorizationModelId()),
+							zap.String("request_id", requestID),
+							zap.String("reason", reason),
+						)
+					}
 				}
 			}
 
