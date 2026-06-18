@@ -4,7 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync/atomic"
 	"time"
+
+	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
+	"go.uber.org/zap"
+	"google.golang.org/grpc/status"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
@@ -23,6 +28,23 @@ import (
 // V2CheckMethodName is used to differentiate v2Check from base Check for metric reporting when both are running.
 const V2CheckMethodName = "v2Check"
 
+// CheckResult is the transport-agnostic outcome of a single Check, normalized across the v1 and v2 implementations.
+type CheckResult struct {
+	Allowed             bool
+	DatastoreQueryCount uint32
+	DatastoreItemCount  uint64
+	Duration            time.Duration
+	WasThrottled        bool
+	DispatchThrottled   bool   // v1 only; always false for v2
+	DispatchCount       uint32 // v1 only; always 0 for v2
+	CycleDetected       bool   // v1 only; always false for v2
+}
+
+// Checker runs a single authorization check.
+type Checker interface {
+	Execute(ctx context.Context, params *CheckCommandParams) (*CheckResult, error)
+}
+
 type CheckQueryV2 struct {
 	logger                    logger.Logger
 	model                     *modelgraph.AuthorizationModelGraph
@@ -38,6 +60,11 @@ type CheckQueryV2 struct {
 
 	// Shared resources for iterator cache (singleflight, waitgroup)
 	sharedResources *shared.SharedDatastoreResources
+
+	// fallback is called when Execute returns a non-terminal error. Optional.
+	fallback Checker
+
+	fallbackCount atomic.Uint32
 }
 
 type CheckQueryV2Option func(*CheckQueryV2)
@@ -125,6 +152,14 @@ func WithCheckQueryV2SharedResources(r *shared.SharedDatastoreResources) CheckQu
 	}
 }
 
+// WithCheckQueryV2Fallback sets a Checker to call when Execute encounters a
+// non-terminal error. When set, CheckQueryV2 satisfies Checker with per-item fallback.
+func WithCheckQueryV2Fallback(f Checker) CheckQueryV2Option {
+	return func(cmd *CheckQueryV2) {
+		cmd.fallback = f
+	}
+}
+
 func NewCheckQuery(opts ...CheckQueryV2Option) *CheckQueryV2 {
 	q := &CheckQueryV2{
 		logger: logger.NewNoopLogger(),
@@ -141,26 +176,55 @@ func NewCheckQuery(opts ...CheckQueryV2Option) *CheckQueryV2 {
 	return q
 }
 
-func (q *CheckQueryV2) Execute(ctx context.Context, req *openfgav1.CheckRequest) (*openfgav1.CheckResponse, storagewrappers.Metadata, error) {
-	err := validateRequest(req)
-	if err != nil {
-		return nil, storagewrappers.Metadata{}, serverErrors.ValidationError(err)
+// Execute implements Checker. When CheckQueryV2.fallback is set, it calls it on non-terminal
+// errors and increments FallbackCount.
+func (q *CheckQueryV2) Execute(ctx context.Context, params *CheckCommandParams) (*CheckResult, error) {
+	if err := validateCheckCommandParams(params); err != nil {
+		return nil, serverErrors.ValidationError(err)
 	}
 
-	boundedDS := storagewrappers.NewBoundedTupleReader(q.datastore, &q.datastoreOp) // Datastore throttling and concurrency limiting
+	res, err := q.resolve(ctx, params)
+	if err == nil || IsV2CheckTerminalError(err) || q.fallback == nil {
+		return res, err
+	}
+
+	requestID, _ := grpc_ctxtags.Extract(ctx).Values()["request_id"].(string)
+	q.logger.Warn("Weighted graph check failed, falling back",
+		zap.Error(err),
+		zap.String("store_id", params.StoreID),
+		zap.String("model_id", q.model.GetModelID()),
+		zap.String("request_id", requestID),
+	)
+
+	fallbackRes, err := q.fallback.Execute(ctx, params)
+	if fallbackRes == nil {
+		fallbackRes = &CheckResult{}
+	}
+	q.fallbackCount.Add(1)
+	return fallbackRes, err
+}
+
+func (q *CheckQueryV2) resolve(ctx context.Context, params *CheckCommandParams) (*CheckResult, error) {
+	start := time.Now()
+	boundedDS := storagewrappers.NewBoundedTupleReader(q.datastore, &q.datastoreOp)
 	var datastore storage.RelationshipTupleReader = boundedDS
 
 	r, err := check.NewRequest(check.RequestParams{
-		StoreID:          req.GetStoreId(),
+		StoreID:          params.StoreID,
 		Model:            q.model,
-		TupleKey:         tuple.ConvertCheckRequestTupleKeyToTupleKey(req.GetTupleKey()),
-		ContextualTuples: req.GetContextualTuples().GetTupleKeys(),
-		Context:          req.GetContext(),
-		Consistency:      req.GetConsistency(),
+		TupleKey:         tuple.ConvertCheckRequestTupleKeyToTupleKey(params.TupleKey),
+		ContextualTuples: params.ContextualTuples.GetTupleKeys(),
+		Context:          params.Context,
+		Consistency:      params.Consistency,
 	})
-
 	if err != nil {
-		return nil, boundedDS.GetMetadata(), err
+		md := boundedDS.GetMetadata()
+		return &CheckResult{
+			DatastoreQueryCount: md.DatastoreQueryCount,
+			DatastoreItemCount:  md.DatastoreItemCount,
+			Duration:            time.Since(start),
+			WasThrottled:        md.WasThrottled,
+		}, err
 	}
 
 	// Wrap datastore with iterator cache using SHARED resources to prevent cache stampedes.
@@ -198,28 +262,42 @@ func (q *CheckQueryV2) Execute(ctx context.Context, req *openfgav1.CheckRequest)
 	})
 
 	res, err := resolver.ResolveCheck(ctx, r)
-	metadata := boundedDS.GetMetadata()
+	md := boundedDS.GetMetadata()
 	if err != nil {
-		if metadata.WasThrottled && errors.Is(err, context.DeadlineExceeded) {
+		if md.WasThrottled && errors.Is(err, context.DeadlineExceeded) {
 			err = &ThrottledError{Cause: err}
 		}
-		return nil, metadata, err
+		return &CheckResult{
+			DatastoreQueryCount: md.DatastoreQueryCount,
+			DatastoreItemCount:  md.DatastoreItemCount,
+			Duration:            time.Since(start),
+			WasThrottled:        md.WasThrottled,
+		}, err
 	}
 
-	return &openfgav1.CheckResponse{
-		Allowed: res.GetAllowed(),
-	}, metadata, nil
+	return &CheckResult{
+		Allowed:             res.GetAllowed(),
+		DatastoreQueryCount: md.DatastoreQueryCount,
+		DatastoreItemCount:  md.DatastoreItemCount,
+		Duration:            time.Since(start),
+		WasThrottled:        md.WasThrottled,
+	}, nil
 }
 
-func validateRequest(req *openfgav1.CheckRequest) error {
-	tk := req.GetTupleKey()
+// FallbackCount returns the number of times Execute fell back to the configured fallback checker.
+func (q *CheckQueryV2) FallbackCount() int { return int(q.fallbackCount.Load()) }
+
+func validateCheckCommandParams(params *CheckCommandParams) error {
+	if params == nil {
+		return fmt.Errorf("params must not be nil")
+	}
+	tk := params.TupleKey
 	if utils.ContainsForbiddenChars(tk.GetObject()) ||
 		utils.ContainsForbiddenChars(tk.GetRelation()) ||
 		utils.ContainsForbiddenChars(tk.GetUser()) {
 		return fmt.Errorf("request tuple_key contains forbidden characters")
 	}
-
-	for _, ct := range req.GetContextualTuples().GetTupleKeys() {
+	for _, ct := range params.ContextualTuples.GetTupleKeys() {
 		if utils.ContainsForbiddenChars(ct.GetObject()) ||
 			utils.ContainsForbiddenChars(ct.GetRelation()) ||
 			utils.ContainsForbiddenChars(ct.GetUser()) {
@@ -229,6 +307,37 @@ func validateRequest(req *openfgav1.CheckRequest) error {
 			}
 		}
 	}
-
 	return nil
+}
+
+// IsV2CheckTerminalError reports whether err should be returned directly from the v2Check path
+// rather than falling back to v1. Two categories qualify:
+//
+//   - Context/timeout/throttle errors, where a v1 retry is pointless or harmful. Context
+//     errors appear in two forms: raw (context.Canceled/DeadlineExceeded, from the model
+//     graph resolver) or server-mapped (ErrRequestCancelled/ErrRequestDeadlineExceeded, from
+//     the execute path). ErrThrottledTimeout and ErrTransactionThrottled are included since
+//     they are not v2-specific, and retrying on v1 would only add load to an already-throttled
+//     datastore.
+//   - Deterministic request-validation failures (ErrValidation, ErrInvalidUser, and
+//     contextual-tuple validation failures), which v1 rejects identically — the fallback is
+//     wasted work and log noise.
+//
+// v2Check wraps most non-context errors via commands.CheckCommandErrorToServerError, which
+// produces gRPC status.Error values. Errors.Is/As against the original sentinels/types no
+// longer matches after that conversion, so request-validation cases must be classified by
+// the resulting gRPC code instead.
+func IsV2CheckTerminalError(err error) bool {
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) ||
+		errors.Is(err, serverErrors.ErrRequestDeadlineExceeded) || errors.Is(err, serverErrors.ErrRequestCancelled) ||
+		errors.Is(err, serverErrors.ErrThrottledTimeout) || errors.Is(err, serverErrors.ErrTransactionThrottled) {
+		return true
+	}
+	if st, ok := status.FromError(err); ok {
+		switch openfgav1.ErrorCode(st.Code()) {
+		case openfgav1.ErrorCode_validation_error, openfgav1.ErrorCode_invalid_tuple:
+			return true
+		}
+	}
+	return false
 }

@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"errors"
 	"strings"
 	"sync"
 	"testing"
@@ -24,9 +23,7 @@ import (
 	"github.com/openfga/openfga/internal/modelgraph"
 	"github.com/openfga/openfga/pkg/featureflags"
 	"github.com/openfga/openfga/pkg/logger"
-	"github.com/openfga/openfga/pkg/server/commands"
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
-	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage/cache/keys"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -463,7 +460,7 @@ func TestV2CheckCacheSeparation(t *testing.T) {
 		s.authzModelGraphResolver = modelgraph.NewResolver(s.datastore, checkCache, 24*7*time.Hour)
 		s.shadowAuthzModelGraphResolver = modelgraph.NewResolver(s.datastore, shadowCache, 24*7*time.Hour)
 
-		_, _, err := s.v2Check(ctx, req,
+		_, err := s.v2Check(ctx, req,
 			s.sharedDatastoreResources.ShadowCheckCache,
 			s.sharedDatastoreResources.ShadowCacheController,
 			s.shadowAuthzModelGraphResolver,
@@ -489,7 +486,7 @@ func TestV2CheckCacheSeparation(t *testing.T) {
 		s.authzModelGraphResolver = modelgraph.NewResolver(s.datastore, checkCache, 24*7*time.Hour)
 		s.shadowAuthzModelGraphResolver = modelgraph.NewResolver(s.datastore, shadowCache, 24*7*time.Hour)
 
-		_, _, err := s.v2Check(ctx, req,
+		_, err := s.v2Check(ctx, req,
 			s.sharedDatastoreResources.CheckCache,
 			s.sharedDatastoreResources.CacheController,
 			s.authzModelGraphResolver,
@@ -659,7 +656,7 @@ func TestV2Check_SanitizeRequest(t *testing.T) {
 
 	doV2Check := func(t *testing.T, req *openfgav1.CheckRequest) error {
 		t.Helper()
-		_, _, err := s.v2Check(ctx, req,
+		_, err := s.v2Check(ctx, req,
 			s.sharedDatastoreResources.CheckCache,
 			s.sharedDatastoreResources.CacheController,
 			s.authzModelGraphResolver,
@@ -762,13 +759,13 @@ func TestV2CheckQueryCacheEnabled(t *testing.T) {
 		s.authzModelGraphResolver = modelgraph.NewResolver(s.datastore, checkCache, 24*7*time.Hour)
 
 		ctx := context.Background()
-		res, _, err := s.v2Check(ctx, req,
+		res, err := s.v2Check(ctx, req,
 			s.sharedDatastoreResources.CheckCache,
 			s.sharedDatastoreResources.CacheController,
 			s.authzModelGraphResolver,
 		)
 		require.NoError(t, err)
-		require.True(t, res.GetAllowed())
+		require.True(t, res.Allowed)
 
 		require.NotEmpty(t, checkCache.setKeysWithPrefix(subproblemCachePrefix), "cache should have subproblem entries written when query cache is enabled")
 
@@ -776,13 +773,13 @@ func TestV2CheckQueryCacheEnabled(t *testing.T) {
 		checkCache.resetTracking()
 
 		// Call v2Check again with the same request to verify cached entries are retrieved.
-		res, _, err = s.v2Check(ctx, req,
+		res, err = s.v2Check(ctx, req,
 			s.sharedDatastoreResources.CheckCache,
 			s.sharedDatastoreResources.CacheController,
 			s.authzModelGraphResolver,
 		)
 		require.NoError(t, err)
-		require.True(t, res.GetAllowed())
+		require.True(t, res.Allowed)
 		require.NotEmpty(t, checkCache.getKeysWithPrefix(subproblemCachePrefix),
 			"second check should read subproblem entries from cache")
 		require.Empty(t, checkCache.setKeysWithPrefix(subproblemCachePrefix),
@@ -801,13 +798,13 @@ func TestV2CheckQueryCacheEnabled(t *testing.T) {
 		s.authzModelGraphResolver = modelgraph.NewResolver(s.datastore, checkCache, 24*7*time.Hour)
 
 		ctx := context.Background()
-		res, _, err := s.v2Check(ctx, req,
+		res, err := s.v2Check(ctx, req,
 			s.sharedDatastoreResources.CheckCache,
 			s.sharedDatastoreResources.CacheController,
 			s.authzModelGraphResolver,
 		)
 		require.NoError(t, err)
-		require.True(t, res.GetAllowed())
+		require.True(t, res.Allowed)
 
 		require.Empty(t, checkCache.setKeysWithPrefix(subproblemCachePrefix), "cache should have no subproblem entries when query cache is disabled")
 	})
@@ -853,57 +850,6 @@ func TestCheck_FallsBackToV1WhenWeightedGraphInvalid(t *testing.T) {
 	require.True(t, ok, "dispatch_count should be set, confirming v1 metrics path ran")
 	_, ok = tags[datastoreQueryCountHistogramName]
 	require.True(t, ok, "datastore_query_count should be set")
-}
-
-func TestIsV2TerminalError(t *testing.T) {
-	t.Parallel()
-
-	// v2Check funnels most internal errors through commands.CheckCommandErrorToServerError,
-	// so the classifier sees gRPC status errors rather than the original sentinels/types.
-	// These cases mirror what that converter actually produces.
-	tests := []struct {
-		name     string
-		err      error
-		terminal bool
-	}{
-		{"nil", nil, false},
-		{"raw_context_canceled", context.Canceled, true},
-		{"raw_context_deadline_exceeded", context.DeadlineExceeded, true},
-		{"server_request_cancelled", serverErrors.ErrRequestCancelled, true},
-		{"server_request_deadline_exceeded", serverErrors.ErrRequestDeadlineExceeded, true},
-		{"server_throttled_timeout", serverErrors.ErrThrottledTimeout, true},
-		{"server_transaction_throttled", serverErrors.ErrTransactionThrottled, true},
-		{
-			"validation_error_from_check_ErrValidation",
-			commands.CheckCommandErrorToServerError(check.ErrValidation),
-			true,
-		},
-		{
-			"validation_error_from_check_ErrInvalidUser",
-			commands.CheckCommandErrorToServerError(check.ErrInvalidUser),
-			true,
-		},
-		{
-			"invalid_tuple_from_contextual_tuple_validation",
-			commands.CheckCommandErrorToServerError(&tuple.InvalidTupleError{
-				Cause:    check.ErrValidation,
-				TupleKey: &openfgav1.TupleKey{Object: "document:1", Relation: "viewer", User: "user:alice"},
-			}),
-			true,
-		},
-		{
-			"non_terminal_random_error",
-			errors.New("transient datastore failure"),
-			false,
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			require.Equal(t, tc.terminal, isV2TerminalError(tc.err))
-		})
-	}
 }
 
 func TestCheck_DoesNotFallBackOnInvalidContextualTuple(t *testing.T) {

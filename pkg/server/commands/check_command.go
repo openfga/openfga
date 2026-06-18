@@ -99,10 +99,10 @@ func NewCheckCommand(datastore storage.RelationshipTupleReader, checkResolver gr
 	return cmd
 }
 
-func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*graph.ResolveCheckResponse, *graph.ResolveCheckRequestMetadata, error) {
+func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*CheckResult, error) {
 	err := validateCheckRequest(c.typesys, params.TupleKey, params.ContextualTuples, params.Context)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	cacheInvalidationTime := time.Time{}
@@ -122,9 +122,8 @@ func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*
 			AuthorizationModelID:      c.typesys.GetAuthorizationModelID(),
 		},
 	)
-
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	datastoreWithTupleCache := storagewrappers.NewRequestStorageWrapperWithCache(
@@ -149,37 +148,39 @@ func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*
 
 	startTime := time.Now()
 	resp, err := c.checkResolver.ResolveCheck(ctx, resolveCheckRequest)
-	endTime := time.Since(startTime)
+	duration := time.Since(startTime)
 
 	// ResolveCheck might fail half way throughout (e.g. due to a timeout) and return a nil response.
-	// Partial resolution metadata is still useful for obsevability.
-	// From here on, we can assume that request metadata and response are not nil even if
-	// there is an error present.
+	// Partial resolution metadata is still useful for observability.
 	if resp == nil {
-		resp = &graph.ResolveCheckResponse{
-			Allowed:            false,
-			ResolutionMetadata: graph.ResolveCheckResponseMetadata{},
-		}
+		resp = &graph.ResolveCheckResponse{}
 	}
 
-	resp.ResolutionMetadata.Duration = endTime
 	dsMeta := datastoreWithTupleCache.GetMetadata()
-	resp.ResolutionMetadata.DatastoreQueryCount = dsMeta.DatastoreQueryCount
-	resp.ResolutionMetadata.DatastoreItemCount = dsMeta.DatastoreItemCount
+	md := resolveCheckRequest.GetRequestMetadata()
+	md.DatastoreThrottled.Store(dsMeta.WasThrottled)
 
-	resolveCheckRequest.GetRequestMetadata().DatastoreThrottled.Store(dsMeta.WasThrottled)
+	res := &CheckResult{
+		Allowed:             resp.GetAllowed(),
+		CycleDetected:       resp.GetCycleDetected(),
+		DatastoreQueryCount: dsMeta.DatastoreQueryCount,
+		DatastoreItemCount:  dsMeta.DatastoreItemCount,
+		Duration:            duration,
+		WasThrottled:        dsMeta.WasThrottled,
+		DispatchThrottled:   md.DispatchThrottled.Load(),
+		DispatchCount:       md.DispatchCounter.Load(),
+	}
 
 	if err != nil {
 		// There are currently two possible throttling mechanisms, we need to know if either was triggered here.
-		wasThrottled := dsMeta.WasThrottled || resolveCheckRequest.GetRequestMetadata().DispatchThrottled.Load()
+		wasThrottled := dsMeta.WasThrottled || md.DispatchThrottled.Load()
 		if errors.Is(err, context.DeadlineExceeded) && wasThrottled {
-			return resp, resolveCheckRequest.GetRequestMetadata(), &ThrottledError{Cause: err}
+			return res, &ThrottledError{Cause: err}
 		}
-
-		return resp, resolveCheckRequest.GetRequestMetadata(), err
+		return res, err
 	}
 
-	return resp, resolveCheckRequest.GetRequestMetadata(), nil
+	return res, nil
 }
 
 func validateCheckRequest(
