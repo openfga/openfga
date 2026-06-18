@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+	"slices"
 	"strconv"
 	"time"
 
@@ -508,7 +509,7 @@ func rewriteContainsComputedUserset(rewrite *openfgav1.Userset, relation string)
 		}
 		return nil
 	})
-	return result != nil && result.(bool)
+	return result != nil
 }
 
 // rewriteContainsTTUForUser reports whether the target's rewrite contains a TupleToUserset
@@ -516,19 +517,22 @@ func rewriteContainsComputedUserset(rewrite *openfgav1.Userset, relation string)
 // target object type is directly related to the user's object type.
 func rewriteContainsTTUForUser(ts *typesystem.TypeSystem, targetObjectType string, rewrite *openfgav1.Userset, userObjectType, userRelation string) bool {
 	result, _ := typesystem.WalkUsersetRewrite(rewrite, func(r *openfgav1.Userset) interface{} {
-		if ttu, ok := r.GetUserset().(*openfgav1.Userset_TupleToUserset); ok && ttu.TupleToUserset.GetComputedUserset().GetRelation() == userRelation {
-			tuplesetRel := ttu.TupleToUserset.GetTupleset().GetRelation()
-			if directlyRelated, err := ts.GetDirectlyRelatedUserTypes(targetObjectType, tuplesetRel); err == nil {
-				for _, dr := range directlyRelated {
-					if dr.GetType() == userObjectType {
-						return true
-					}
-				}
-			}
+		ttu, ok := r.GetUserset().(*openfgav1.Userset_TupleToUserset)
+		if !ok || ttu.TupleToUserset.GetComputedUserset().GetRelation() != userRelation {
+			return nil
+		}
+		tuplesetRel := ttu.TupleToUserset.GetTupleset().GetRelation()
+		// Loose type-only match (ignores relation/wildcard) is intentional: this is an
+		// over-reporting necessary-condition filter. Do not swap in IsDirectlyRelated.
+		directlyRelated, err := ts.GetDirectlyRelatedUserTypes(targetObjectType, tuplesetRel)
+		if err == nil && slices.ContainsFunc(directlyRelated, func(dr *openfgav1.RelationReference) bool {
+			return dr.GetType() == userObjectType
+		}) {
+			return true
 		}
 		return nil
 	})
-	return result != nil && result.(bool)
+	return result != nil
 }
 
 // usersetAliasesTargetRelation reports whether the target's directly-related usersets
