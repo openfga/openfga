@@ -534,8 +534,8 @@ func TestBatchCheckCommandV2(t *testing.T) {
 
 		require.NoError(t, err)
 		require.Len(t, result, 2)
-		require.EqualValues(t, 0, meta.V2CheckCount)
-		require.EqualValues(t, 0, meta.V2FallbackCount)
+		require.EqualValues(t, 0, meta.PrimaryCheckerCount)
+		require.EqualValues(t, 0, meta.FallbackCount)
 		for _, outcome := range result {
 			require.NoError(t, outcome.Err)
 			require.True(t, outcome.Allowed)
@@ -549,13 +549,15 @@ func TestBatchCheckCommandV2(t *testing.T) {
 		realMG, err := modelgraph.New(model)
 		require.NoError(t, err)
 
+		v1Fallback := NewCheckCommand(realDS, mockCheckResolver, ts)
 		v2Query := NewCheckQuery(
 			WithCheckQueryV2Datastore(realDS),
 			WithCheckQueryV2Model(realMG),
 			WithCheckQueryV2ConcurrencyLimit(config.DefaultResolveNodeBreadthLimit),
+			WithCheckQueryV2Fallback(v1Fallback),
 		)
 
-		cmd := NewBatchCheckCommand(realDS, mockCheckResolver, ts, WithBatchCheckV2Query(v2Query))
+		cmd := NewBatchCheckCommand(realDS, mockCheckResolver, ts, WithBatchChecker(v2Query))
 
 		result, meta, err := cmd.Execute(context.Background(), &BatchCheckCommandParams{
 			AuthorizationModelID: ts.GetAuthorizationModelID(),
@@ -565,8 +567,8 @@ func TestBatchCheckCommandV2(t *testing.T) {
 
 		require.NoError(t, err)
 		require.Len(t, result, 2)
-		require.EqualValues(t, 2, meta.V2CheckCount)
-		require.EqualValues(t, 0, meta.V2FallbackCount)
+		require.EqualValues(t, 2, meta.PrimaryCheckerCount)
+		require.EqualValues(t, 0, meta.FallbackCount)
 		for _, outcome := range result {
 			require.NoError(t, outcome.Err)
 			require.False(t, outcome.Allowed) // no tuples, so not allowed
@@ -578,17 +580,19 @@ func TestBatchCheckCommandV2(t *testing.T) {
 
 		// v2 query with nil model: Execute will return a non-terminal error (ErrMissingAuthZModelID)
 		// from check.NewRequest. This triggers per-item fallback to v1.
-		v2QueryNoModel := NewCheckQuery(
-			WithCheckQueryV2Datastore(ds),
-			WithCheckQueryV2ConcurrencyLimit(config.DefaultResolveNodeBreadthLimit),
-			// Model intentionally omitted
-		)
-
 		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).
 			Times(1).
 			Return(&graph.ResolveCheckResponse{Allowed: true}, nil)
 
-		cmd := NewBatchCheckCommand(ds, mockCheckResolver, ts, WithBatchCheckV2Query(v2QueryNoModel))
+		v1Fallback := NewCheckCommand(ds, mockCheckResolver, ts)
+		v2QueryNoModel := NewCheckQuery(
+			WithCheckQueryV2Datastore(ds),
+			WithCheckQueryV2ConcurrencyLimit(config.DefaultResolveNodeBreadthLimit),
+			// Model intentionally omitted
+			WithCheckQueryV2Fallback(v1Fallback),
+		)
+
+		cmd := NewBatchCheckCommand(ds, mockCheckResolver, ts, WithBatchChecker(v2QueryNoModel))
 
 		result, meta, err := cmd.Execute(context.Background(), &BatchCheckCommandParams{
 			AuthorizationModelID: ts.GetAuthorizationModelID(),
@@ -598,8 +602,8 @@ func TestBatchCheckCommandV2(t *testing.T) {
 
 		require.NoError(t, err)
 		require.Len(t, result, 1)
-		require.EqualValues(t, 0, meta.V2CheckCount)
-		require.EqualValues(t, 1, meta.V2FallbackCount)
+		require.EqualValues(t, 0, meta.PrimaryCheckerCount)
+		require.EqualValues(t, 1, meta.FallbackCount)
 		for _, outcome := range result {
 			require.NoError(t, outcome.Err)
 			require.True(t, outcome.Allowed)
@@ -635,17 +639,19 @@ func TestBatchCheckCommandV2(t *testing.T) {
 			{Object: "document:1", Relation: "viewer", User: "document:2#owner"},
 		}))
 
-		v2Query := NewCheckQuery(
-			WithCheckQueryV2Datastore(realDS),
-			WithCheckQueryV2Model(exclusionMG),
-			WithCheckQueryV2ConcurrencyLimit(config.DefaultResolveNodeBreadthLimit),
-		)
-
 		checkResolver, checkResolverCloser, err := graph.NewOrderedCheckResolvers().Build()
 		require.NoError(t, err)
 		t.Cleanup(checkResolverCloser)
 
-		cmd := NewBatchCheckCommand(realDS, checkResolver, exclusionTS, WithBatchCheckV2Query(v2Query))
+		v1Fallback := NewCheckCommand(realDS, checkResolver, exclusionTS)
+		v2Query := NewCheckQuery(
+			WithCheckQueryV2Datastore(realDS),
+			WithCheckQueryV2Model(exclusionMG),
+			WithCheckQueryV2ConcurrencyLimit(config.DefaultResolveNodeBreadthLimit),
+			WithCheckQueryV2Fallback(v1Fallback),
+		)
+
+		cmd := NewBatchCheckCommand(realDS, checkResolver, exclusionTS, WithBatchChecker(v2Query))
 
 		result, meta, err := cmd.Execute(ctx, &BatchCheckCommandParams{
 			AuthorizationModelID: exclusionTS.GetAuthorizationModelID(),
@@ -668,8 +674,8 @@ func TestBatchCheckCommandV2(t *testing.T) {
 		require.NoError(t, err)
 		require.True(t, result["normal"].Allowed)
 		require.True(t, result["userset"].Allowed) // v1 fallback incorrectly returns true
-		require.EqualValues(t, 1, meta.V2CheckCount)
-		require.EqualValues(t, 1, meta.V2FallbackCount)
+		require.EqualValues(t, 1, meta.PrimaryCheckerCount)
+		require.EqualValues(t, 1, meta.FallbackCount)
 	})
 }
 

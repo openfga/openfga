@@ -7,9 +7,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
-	"go.uber.org/zap"
-
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/cachecontroller"
@@ -35,7 +32,8 @@ type BatchCheckQuery struct {
 	datastoreThrottlingEnabled bool
 	datastoreThrottleThreshold int
 	datastoreThrottleDuration  time.Duration
-	checkQueryV2               *CheckQueryV2 // when provided, v2Check will be used instead of v1
+	// checker computes the response for each item in the batch. Defaults to v1 CheckQuery when nil.
+	checker Checker
 }
 
 type BatchCheckCommandParams struct {
@@ -60,8 +58,8 @@ type BatchCheckMetadata struct {
 	DatastoreItemCount     uint64
 	DatastoreThrottleCount uint32
 	DuplicateCheckCount    int
-	V2CheckCount           uint32
-	V2FallbackCount        uint32
+	PrimaryCheckerCount    uint32
+	FallbackCount          uint32
 }
 
 type BatchCheckValidationError struct {
@@ -114,9 +112,9 @@ func WithBatchCheckDatastoreThrottler(enabled bool, threshold int, duration time
 	}
 }
 
-func WithBatchCheckV2Query(q *CheckQueryV2) BatchCheckQueryOption {
+func WithBatchChecker(c Checker) BatchCheckQueryOption {
 	return func(bq *BatchCheckQuery) {
-		bq.checkQueryV2 = q
+		bq.checker = c
 	}
 }
 
@@ -173,14 +171,30 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 		}
 	}
 
+	checker := bq.checker
+	if checker == nil {
+		checker = NewCheckCommand(
+			bq.datastore,
+			bq.checkResolver,
+			bq.typesys,
+			WithCheckCommandLogger(bq.logger),
+			WithCheckCommandCache(bq.sharedCheckResources, bq.cacheSettings),
+			WithCheckDatastoreThrottler(
+				bq.datastoreThrottlingEnabled,
+				bq.datastoreThrottleThreshold,
+				bq.datastoreThrottleDuration,
+			),
+		)
+	}
+
 	var resultMap = new(sync.Map)
 	var totalQueryCount atomic.Uint32
 	var totalDispatchCount atomic.Uint32
 	var dispatchThrottleCount atomic.Uint32
 	var totalItemCount atomic.Uint64
 	var datastoreThrottleCount atomic.Uint32
-	var v2CheckCount atomic.Uint32
-	var v2FallbackCount atomic.Uint32
+	var primaryCheckerCount atomic.Uint32
+	var fallbackCount atomic.Uint32
 
 	pool := concurrency.NewPool(ctx, int(bq.maxConcurrentChecks))
 	for key, item := range cacheKeyMap {
@@ -195,57 +209,6 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 			default:
 			}
 
-			if bq.checkQueryV2 != nil {
-				v2Params := &CheckQueryV2Params{
-					StoreID:          params.StoreID,
-					TupleKey:         check.GetTupleKey(),
-					ContextualTuples: check.GetContextualTuples().GetTupleKeys(),
-					Context:          check.GetContext(),
-					Consistency:      params.Consistency,
-				}
-
-				v2Start := time.Now()
-				v2Res, v2Meta, v2Err := bq.checkQueryV2.Execute(ctx, v2Params)
-				if v2Err == nil || IsV2CheckTerminalError(v2Err) {
-					resultMap.Store(key, &BatchCheckOutcome{
-						Allowed:             v2Res.GetAllowed(),
-						DatastoreQueryCount: v2Meta.DatastoreQueryCount,
-						DatastoreItemCount:  v2Meta.DatastoreItemCount,
-						Duration:            time.Since(v2Start),
-						Err:                 v2Err,
-					})
-					totalQueryCount.Add(v2Meta.DatastoreQueryCount)
-					totalItemCount.Add(v2Meta.DatastoreItemCount)
-					if v2Meta.WasThrottled {
-						datastoreThrottleCount.Add(1)
-					}
-					v2CheckCount.Add(1)
-					return nil
-				}
-
-				requestID, _ := grpc_ctxtags.Extract(ctx).Values()["request_id"].(string)
-				bq.logger.Warn("v2 check failed for batch item, falling back to v1",
-					zap.Error(v2Err),
-					zap.String("store_id", params.StoreID),
-					zap.String("model_id", bq.typesys.GetAuthorizationModelID()),
-					zap.String("request_id", requestID),
-				)
-				v2FallbackCount.Add(1)
-			}
-
-			checkQuery := NewCheckCommand(
-				bq.datastore,
-				bq.checkResolver,
-				bq.typesys,
-				WithCheckCommandLogger(bq.logger),
-				WithCheckCommandCache(bq.sharedCheckResources, bq.cacheSettings),
-				WithCheckDatastoreThrottler(
-					bq.datastoreThrottlingEnabled,
-					bq.datastoreThrottleThreshold,
-					bq.datastoreThrottleDuration,
-				),
-			)
-
 			checkParams := &CheckCommandParams{
 				StoreID:          params.StoreID,
 				TupleKey:         check.GetTupleKey(),
@@ -254,30 +217,31 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 				Consistency:      params.Consistency,
 			}
 
-			response, metadata, err := checkQuery.Execute(ctx, checkParams)
-
+			res, err := checker.Execute(ctx, checkParams)
+			if res == nil {
+				res = &CheckResult{}
+			}
 			resultMap.Store(key, &BatchCheckOutcome{
-				Allowed:             response.GetAllowed(),
-				DatastoreQueryCount: response.GetResolutionMetadata().DatastoreQueryCount,
-				DatastoreItemCount:  response.GetResolutionMetadata().DatastoreItemCount,
-				Duration:            response.GetResolutionMetadata().Duration,
+				Allowed:             res.Allowed,
+				DatastoreQueryCount: res.DatastoreQueryCount,
+				DatastoreItemCount:  res.DatastoreItemCount,
+				Duration:            res.Duration,
 				Err:                 err,
 			})
-
-			if metadata != nil {
-				if metadata.DispatchThrottled.Load() {
-					dispatchThrottleCount.Add(1)
-				}
-				totalDispatchCount.Add(metadata.DispatchCounter.Load())
-
-				if metadata.DatastoreThrottled.Load() {
-					datastoreThrottleCount.Add(1)
-				}
+			totalDispatchCount.Add(res.DispatchCount)
+			if res.DispatchThrottled {
+				dispatchThrottleCount.Add(1)
 			}
-
-			totalQueryCount.Add(response.GetResolutionMetadata().DatastoreQueryCount)
-			totalItemCount.Add(response.GetResolutionMetadata().DatastoreItemCount)
-
+			totalQueryCount.Add(res.DatastoreQueryCount)
+			totalItemCount.Add(res.DatastoreItemCount)
+			if res.WasThrottled {
+				datastoreThrottleCount.Add(1)
+			}
+			if res.UsedFallback {
+				fallbackCount.Add(1)
+			} else {
+				primaryCheckerCount.Add(1)
+			}
 			return nil
 		})
 	}
@@ -304,8 +268,8 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 		DatastoreThrottleCount: datastoreThrottleCount.Load(),
 		DispatchCount:          totalDispatchCount.Load(),
 		DuplicateCheckCount:    len(params.Checks) - len(cacheKeyMap),
-		V2CheckCount:           v2CheckCount.Load(),
-		V2FallbackCount:        v2FallbackCount.Load(),
+		PrimaryCheckerCount:    primaryCheckerCount.Load(),
+		FallbackCount:          fallbackCount.Load(),
 	}, nil
 }
 

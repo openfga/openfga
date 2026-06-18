@@ -6,8 +6,9 @@ import (
 	"fmt"
 	"time"
 
+	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
+	"go.uber.org/zap"
 	"google.golang.org/grpc/status"
-	"google.golang.org/protobuf/types/known/structpb"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
@@ -26,13 +27,23 @@ import (
 // V2CheckMethodName is used to differentiate v2Check from base Check for metric reporting when both are running.
 const V2CheckMethodName = "v2Check"
 
-// CheckQueryV2Params holds the per-request parameters for CheckQueryV2.Execute.
-type CheckQueryV2Params struct {
-	StoreID          string
-	TupleKey         *openfgav1.CheckRequestTupleKey
-	ContextualTuples []*openfgav1.TupleKey
-	Context          *structpb.Struct
-	Consistency      openfgav1.ConsistencyPreference
+// CheckResult is the transport-agnostic outcome of a single Check, normalized across the v1 and v2 implementations.
+type CheckResult struct {
+	Allowed             bool
+	DatastoreQueryCount uint32
+	DatastoreItemCount  uint64
+	Duration            time.Duration
+	WasThrottled        bool
+	DispatchThrottled   bool   // v1 only; always false for v2
+	DispatchCount       uint32 // v1 only; always 0 for v2
+	CycleDetected       bool   // v1 only; always false for v2
+	// UsedFallback is true when the primary path failed (non-terminally) and the fallback was used instead.
+	UsedFallback bool
+}
+
+// Checker runs a single authorization check.
+type Checker interface {
+	Execute(ctx context.Context, params *CheckCommandParams) (*CheckResult, error)
 }
 
 type CheckQueryV2 struct {
@@ -50,6 +61,9 @@ type CheckQueryV2 struct {
 
 	// Shared resources for iterator cache (singleflight, waitgroup)
 	sharedResources *shared.SharedDatastoreResources
+
+	// fallback is called when Execute returns a non-terminal error. Optional.
+	fallback Checker
 }
 
 type CheckQueryV2Option func(*CheckQueryV2)
@@ -137,6 +151,14 @@ func WithCheckQueryV2SharedResources(r *shared.SharedDatastoreResources) CheckQu
 	}
 }
 
+// WithCheckQueryV2Fallback sets a Checker to call when Execute encounters a
+// non-terminal error. When set, CheckQueryV2 satisfies Checker with per-item fallback.
+func WithCheckQueryV2Fallback(f Checker) CheckQueryV2Option {
+	return func(cmd *CheckQueryV2) {
+		cmd.fallback = f
+	}
+}
+
 func NewCheckQuery(opts ...CheckQueryV2Option) *CheckQueryV2 {
 	q := &CheckQueryV2{
 		logger: logger.NewNoopLogger(),
@@ -153,26 +175,55 @@ func NewCheckQuery(opts ...CheckQueryV2Option) *CheckQueryV2 {
 	return q
 }
 
-func (q *CheckQueryV2) Execute(ctx context.Context, params *CheckQueryV2Params) (*openfgav1.CheckResponse, storagewrappers.Metadata, error) {
-	err := validateCheckQueryV2Params(params)
-	if err != nil {
-		return nil, storagewrappers.Metadata{}, serverErrors.ValidationError(err)
+// Execute implements Checker. When CheckQueryV2.fallback is set, it calls it on non-terminal
+// errors, tagging the result with UsedFallback.
+func (q *CheckQueryV2) Execute(ctx context.Context, params *CheckCommandParams) (*CheckResult, error) {
+	if err := validateCheckCommandParams(params); err != nil {
+		return nil, serverErrors.ValidationError(err)
 	}
 
-	boundedDS := storagewrappers.NewBoundedTupleReader(q.datastore, &q.datastoreOp) // Datastore throttling and concurrency limiting
+	res, err := q.resolve(ctx, params)
+	if err == nil || IsV2CheckTerminalError(err) || q.fallback == nil {
+		return res, err
+	}
+
+	requestID, _ := grpc_ctxtags.Extract(ctx).Values()["request_id"].(string)
+	q.logger.Warn("Weighted graph check failed, falling back",
+		zap.Error(err),
+		zap.String("store_id", params.StoreID),
+		zap.String("model_id", q.model.GetModelID()),
+		zap.String("request_id", requestID),
+	)
+
+	fallbackRes, err := q.fallback.Execute(ctx, params)
+	if fallbackRes == nil {
+		fallbackRes = &CheckResult{}
+	}
+	fallbackRes.UsedFallback = true
+	return fallbackRes, err
+}
+
+func (q *CheckQueryV2) resolve(ctx context.Context, params *CheckCommandParams) (*CheckResult, error) {
+	start := time.Now()
+	boundedDS := storagewrappers.NewBoundedTupleReader(q.datastore, &q.datastoreOp)
 	var datastore storage.RelationshipTupleReader = boundedDS
 
 	r, err := check.NewRequest(check.RequestParams{
 		StoreID:          params.StoreID,
 		Model:            q.model,
 		TupleKey:         tuple.ConvertCheckRequestTupleKeyToTupleKey(params.TupleKey),
-		ContextualTuples: params.ContextualTuples,
+		ContextualTuples: params.ContextualTuples.GetTupleKeys(),
 		Context:          params.Context,
 		Consistency:      params.Consistency,
 	})
-
 	if err != nil {
-		return nil, boundedDS.GetMetadata(), err
+		md := boundedDS.GetMetadata()
+		return &CheckResult{
+			DatastoreQueryCount: md.DatastoreQueryCount,
+			DatastoreItemCount:  md.DatastoreItemCount,
+			Duration:            time.Since(start),
+			WasThrottled:        md.WasThrottled,
+		}, err
 	}
 
 	// Wrap datastore with iterator cache using SHARED resources to prevent cache stampedes.
@@ -210,20 +261,29 @@ func (q *CheckQueryV2) Execute(ctx context.Context, params *CheckQueryV2Params) 
 	})
 
 	res, err := resolver.ResolveCheck(ctx, r)
-	metadata := boundedDS.GetMetadata()
+	md := boundedDS.GetMetadata()
 	if err != nil {
-		if metadata.WasThrottled && errors.Is(err, context.DeadlineExceeded) {
+		if md.WasThrottled && errors.Is(err, context.DeadlineExceeded) {
 			err = &ThrottledError{Cause: err}
 		}
-		return nil, metadata, err
+		return &CheckResult{
+			DatastoreQueryCount: md.DatastoreQueryCount,
+			DatastoreItemCount:  md.DatastoreItemCount,
+			Duration:            time.Since(start),
+			WasThrottled:        md.WasThrottled,
+		}, err
 	}
 
-	return &openfgav1.CheckResponse{
-		Allowed: res.GetAllowed(),
-	}, metadata, nil
+	return &CheckResult{
+		Allowed:             res.GetAllowed(),
+		DatastoreQueryCount: md.DatastoreQueryCount,
+		DatastoreItemCount:  md.DatastoreItemCount,
+		Duration:            time.Since(start),
+		WasThrottled:        md.WasThrottled,
+	}, nil
 }
 
-func validateCheckQueryV2Params(params *CheckQueryV2Params) error {
+func validateCheckCommandParams(params *CheckCommandParams) error {
 	if params == nil {
 		return fmt.Errorf("params must not be nil")
 	}
@@ -233,8 +293,7 @@ func validateCheckQueryV2Params(params *CheckQueryV2Params) error {
 		utils.ContainsForbiddenChars(tk.GetUser()) {
 		return fmt.Errorf("request tuple_key contains forbidden characters")
 	}
-
-	for _, ct := range params.ContextualTuples {
+	for _, ct := range params.ContextualTuples.GetTupleKeys() {
 		if utils.ContainsForbiddenChars(ct.GetObject()) ||
 			utils.ContainsForbiddenChars(ct.GetRelation()) ||
 			utils.ContainsForbiddenChars(ct.GetUser()) {
@@ -244,7 +303,6 @@ func validateCheckQueryV2Params(params *CheckQueryV2Params) error {
 			}
 		}
 	}
-
 	return nil
 }
 

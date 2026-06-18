@@ -58,7 +58,14 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 	}
 	req.AuthorizationModelId = typesys.GetAuthorizationModelID() // the resolved model id
 
-	var checkQueryV2 *commands.CheckQueryV2
+	builder := s.getCheckResolverBuilder(req.GetStoreId())
+	checkResolver, checkResolverCloser, err := builder.Build()
+	if err != nil {
+		return nil, err
+	}
+	defer checkResolverCloser()
+
+	var checker commands.Checker
 	var v2GraphResolveFailed bool
 	v2Enabled := s.featureFlagClient.Boolean(config.ExperimentalWeightedGraphCheck, storeID)
 	if v2Enabled {
@@ -69,7 +76,21 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 				cacheInvalidationTime = s.sharedDatastoreResources.CacheController.DetermineInvalidationTime(ctx, storeID)
 			}
 
-			checkQueryV2 = commands.NewCheckQuery(
+			v1Fallback := commands.NewCheckCommand(
+				s.datastore,
+				checkResolver,
+				typesys,
+				commands.WithCheckCommandLogger(s.logger),
+				commands.WithCheckCommandMaxConcurrentReads(s.maxConcurrentReadsForCheck),
+				commands.WithCheckCommandCache(s.sharedDatastoreResources, s.cacheSettings),
+				commands.WithCheckDatastoreThrottler(
+					s.featureFlagClient.Boolean(config.ExperimentalDatastoreThrottling, storeID),
+					s.checkDatastoreThrottleThreshold,
+					s.checkDatastoreThrottleDuration,
+				),
+			)
+
+			checker = commands.NewCheckQuery(
 				commands.WithCheckQueryV2Logger(s.logger),
 				commands.WithCheckQueryV2Datastore(s.datastore),
 				commands.WithCheckQueryV2MaxConcurrentReads(s.maxConcurrentReadsForCheck),
@@ -87,6 +108,7 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 				commands.WithCheckQueryV2ConcurrencyLimit(int(s.resolveNodeBreadthLimit)),
 				commands.WithCheckQueryV2UpstreamTimeout(s.requestTimeout),
 				commands.WithCheckQueryV2SharedResources(s.sharedDatastoreResources),
+				commands.WithCheckQueryV2Fallback(v1Fallback),
 			)
 		} else if commands.IsV2CheckTerminalError(mgErr) {
 			return nil, mgErr
@@ -99,13 +121,6 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 			)
 		}
 	}
-
-	builder := s.getCheckResolverBuilder(req.GetStoreId())
-	checkResolver, checkResolverCloser, err := builder.Build()
-	if err != nil {
-		return nil, err
-	}
-	defer checkResolverCloser()
 
 	cmd := commands.NewBatchCheckCommand(
 		s.datastore,
@@ -120,7 +135,7 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 			s.checkDatastoreThrottleThreshold,
 			s.checkDatastoreThrottleDuration,
 		),
-		commands.WithBatchCheckV2Query(checkQueryV2),
+		commands.WithBatchChecker(checker),
 	)
 
 	result, metadata, err := cmd.Execute(ctx, &commands.BatchCheckCommandParams{
@@ -190,14 +205,14 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 
 	if v2Enabled {
 		if v2GraphResolveFailed {
-			metadata.V2FallbackCount = uint32(len(req.GetChecks()))
+			metadata.FallbackCount = uint32(len(req.GetChecks()))
 		}
 		span.SetAttributes(
-			attribute.Int("v2_check_count", int(metadata.V2CheckCount)),
-			attribute.Int("v2_fallback_count", int(metadata.V2FallbackCount)),
+			attribute.Int("v2_check_count", int(metadata.PrimaryCheckerCount)),
+			attribute.Int("v2_fallback_count", int(metadata.FallbackCount)),
 		)
-		grpc_ctxtags.Extract(ctx).Set("v2_check_count", metadata.V2CheckCount)
-		grpc_ctxtags.Extract(ctx).Set("v2_fallback_count", metadata.V2FallbackCount)
+		grpc_ctxtags.Extract(ctx).Set("v2_check_count", metadata.PrimaryCheckerCount)
+		grpc_ctxtags.Extract(ctx).Set("v2_fallback_count", metadata.FallbackCount)
 	}
 
 	batchResult := map[string]*openfgav1.BatchCheckSingleResult{}

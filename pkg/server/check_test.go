@@ -460,7 +460,7 @@ func TestV2CheckCacheSeparation(t *testing.T) {
 		s.authzModelGraphResolver = modelgraph.NewResolver(s.datastore, checkCache, 24*7*time.Hour)
 		s.shadowAuthzModelGraphResolver = modelgraph.NewResolver(s.datastore, shadowCache, 24*7*time.Hour)
 
-		_, _, err := s.v2Check(ctx, req,
+		_, err := s.v2Check(ctx, req,
 			s.sharedDatastoreResources.ShadowCheckCache,
 			s.sharedDatastoreResources.ShadowCacheController,
 			s.shadowAuthzModelGraphResolver,
@@ -486,7 +486,7 @@ func TestV2CheckCacheSeparation(t *testing.T) {
 		s.authzModelGraphResolver = modelgraph.NewResolver(s.datastore, checkCache, 24*7*time.Hour)
 		s.shadowAuthzModelGraphResolver = modelgraph.NewResolver(s.datastore, shadowCache, 24*7*time.Hour)
 
-		_, _, err := s.v2Check(ctx, req,
+		_, err := s.v2Check(ctx, req,
 			s.sharedDatastoreResources.CheckCache,
 			s.sharedDatastoreResources.CacheController,
 			s.authzModelGraphResolver,
@@ -527,7 +527,7 @@ func TestV2CheckMetadata(t *testing.T) {
 
 		res, err := s.Check(ctx, req)
 		require.NoError(t, err)
-		require.True(t, res.GetAllowed())
+		require.True(t, res.Allowed)
 
 		tags := grpc_ctxtags.Extract(ctx).Values()
 
@@ -576,7 +576,7 @@ func TestV2CheckMetadata(t *testing.T) {
 
 		res, err := s.Check(ctx, req)
 		require.NoError(t, err)
-		require.True(t, res.GetAllowed())
+		require.True(t, res.Allowed)
 
 		tags := grpc_ctxtags.Extract(ctx).Values()
 
@@ -596,7 +596,7 @@ func TestV2CheckMetadata(t *testing.T) {
 
 		res, err := s.Check(ctx, req)
 		require.NoError(t, err)
-		require.True(t, res.GetAllowed())
+		require.True(t, res.Allowed)
 
 		tags := grpc_ctxtags.Extract(ctx).Values()
 
@@ -656,7 +656,7 @@ func TestV2Check_SanitizeRequest(t *testing.T) {
 
 	doV2Check := func(t *testing.T, req *openfgav1.CheckRequest) error {
 		t.Helper()
-		_, _, err := s.v2Check(ctx, req,
+		_, err := s.v2Check(ctx, req,
 			s.sharedDatastoreResources.CheckCache,
 			s.sharedDatastoreResources.CacheController,
 			s.authzModelGraphResolver,
@@ -759,13 +759,13 @@ func TestV2CheckQueryCacheEnabled(t *testing.T) {
 		s.authzModelGraphResolver = modelgraph.NewResolver(s.datastore, checkCache, 24*7*time.Hour)
 
 		ctx := context.Background()
-		res, _, err := s.v2Check(ctx, req,
+		res, err := s.v2Check(ctx, req,
 			s.sharedDatastoreResources.CheckCache,
 			s.sharedDatastoreResources.CacheController,
 			s.authzModelGraphResolver,
 		)
 		require.NoError(t, err)
-		require.True(t, res.GetAllowed())
+		require.True(t, res.Allowed)
 
 		require.NotEmpty(t, checkCache.setKeysWithPrefix(subproblemCachePrefix), "cache should have subproblem entries written when query cache is enabled")
 
@@ -773,13 +773,13 @@ func TestV2CheckQueryCacheEnabled(t *testing.T) {
 		checkCache.resetTracking()
 
 		// Call v2Check again with the same request to verify cached entries are retrieved.
-		res, _, err = s.v2Check(ctx, req,
+		res, err = s.v2Check(ctx, req,
 			s.sharedDatastoreResources.CheckCache,
 			s.sharedDatastoreResources.CacheController,
 			s.authzModelGraphResolver,
 		)
 		require.NoError(t, err)
-		require.True(t, res.GetAllowed())
+		require.True(t, res.Allowed)
 		require.NotEmpty(t, checkCache.getKeysWithPrefix(subproblemCachePrefix),
 			"second check should read subproblem entries from cache")
 		require.Empty(t, checkCache.setKeysWithPrefix(subproblemCachePrefix),
@@ -798,13 +798,13 @@ func TestV2CheckQueryCacheEnabled(t *testing.T) {
 		s.authzModelGraphResolver = modelgraph.NewResolver(s.datastore, checkCache, 24*7*time.Hour)
 
 		ctx := context.Background()
-		res, _, err := s.v2Check(ctx, req,
+		res, err := s.v2Check(ctx, req,
 			s.sharedDatastoreResources.CheckCache,
 			s.sharedDatastoreResources.CacheController,
 			s.authzModelGraphResolver,
 		)
 		require.NoError(t, err)
-		require.True(t, res.GetAllowed())
+		require.True(t, res.Allowed)
 
 		require.Empty(t, checkCache.setKeysWithPrefix(subproblemCachePrefix), "cache should have no subproblem entries when query cache is disabled")
 	})
