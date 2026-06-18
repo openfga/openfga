@@ -195,16 +195,16 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 	grpc_ctxtags.Extract(ctx).Set(duplicateChecks, metadata.DuplicateCheckCount)
 
 	if v2Enabled {
-		var v2CheckCount, v2FallbackCount uint32
+		var v2CheckCount, v2FallbackCount int
 		if v2GraphResolveFailed {
-			v2FallbackCount = uint32(len(req.GetChecks()))
+			v2FallbackCount = len(req.GetChecks())
 		} else if q, ok := checker.(*commands.CheckQueryV2); ok {
-			v2CheckCount = q.PrimaryCount()
 			v2FallbackCount = q.FallbackCount()
+			v2CheckCount = len(req.GetChecks()) - metadata.DuplicateCheckCount - v2FallbackCount
 		}
 		span.SetAttributes(
-			attribute.Int("v2_check_count", int(v2CheckCount)),
-			attribute.Int("v2_fallback_count", int(v2FallbackCount)),
+			attribute.Int("v2_check_count", v2CheckCount),
+			attribute.Int("v2_fallback_count", v2FallbackCount),
 		)
 		grpc_ctxtags.Extract(ctx).Set("v2_check_count", v2CheckCount)
 		grpc_ctxtags.Extract(ctx).Set("v2_fallback_count", v2FallbackCount)

@@ -64,7 +64,6 @@ type CheckQueryV2 struct {
 	// fallback is called when Execute returns a non-terminal error. Optional.
 	fallback Checker
 
-	primaryCount  atomic.Uint32
 	fallbackCount atomic.Uint32
 }
 
@@ -178,7 +177,7 @@ func NewCheckQuery(opts ...CheckQueryV2Option) *CheckQueryV2 {
 }
 
 // Execute implements Checker. When CheckQueryV2.fallback is set, it calls it on non-terminal
-// errors and increments FallbackCount; otherwise increments PrimaryCount.
+// errors and increments FallbackCount.
 func (q *CheckQueryV2) Execute(ctx context.Context, params *CheckCommandParams) (*CheckResult, error) {
 	if err := validateCheckCommandParams(params); err != nil {
 		return nil, serverErrors.ValidationError(err)
@@ -186,7 +185,6 @@ func (q *CheckQueryV2) Execute(ctx context.Context, params *CheckCommandParams) 
 
 	res, err := q.resolve(ctx, params)
 	if err == nil || IsV2CheckTerminalError(err) || q.fallback == nil {
-		q.primaryCount.Add(1)
 		return res, err
 	}
 
@@ -286,11 +284,8 @@ func (q *CheckQueryV2) resolve(ctx context.Context, params *CheckCommandParams) 
 	}, nil
 }
 
-// PrimaryCount returns the number of times Execute resolved via the primary (v2) path.
-func (q *CheckQueryV2) PrimaryCount() uint32 { return q.primaryCount.Load() }
-
 // FallbackCount returns the number of times Execute fell back to the configured fallback checker.
-func (q *CheckQueryV2) FallbackCount() uint32 { return q.fallbackCount.Load() }
+func (q *CheckQueryV2) FallbackCount() int { return int(q.fallbackCount.Load()) }
 
 func validateCheckCommandParams(params *CheckCommandParams) error {
 	if params == nil {
