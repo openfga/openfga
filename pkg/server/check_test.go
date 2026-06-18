@@ -527,7 +527,7 @@ func TestV2CheckMetadata(t *testing.T) {
 
 		res, err := s.Check(ctx, req)
 		require.NoError(t, err)
-		require.True(t, res.Allowed)
+		require.True(t, res.GetAllowed())
 
 		tags := grpc_ctxtags.Extract(ctx).Values()
 
@@ -576,7 +576,7 @@ func TestV2CheckMetadata(t *testing.T) {
 
 		res, err := s.Check(ctx, req)
 		require.NoError(t, err)
-		require.True(t, res.Allowed)
+		require.True(t, res.GetAllowed())
 
 		tags := grpc_ctxtags.Extract(ctx).Values()
 
@@ -596,7 +596,7 @@ func TestV2CheckMetadata(t *testing.T) {
 
 		res, err := s.Check(ctx, req)
 		require.NoError(t, err)
-		require.True(t, res.Allowed)
+		require.True(t, res.GetAllowed())
 
 		tags := grpc_ctxtags.Extract(ctx).Values()
 
