@@ -563,7 +563,7 @@ func TestBatchCheckCommandV2(t *testing.T) {
 
 		require.NoError(t, err)
 		require.Len(t, result, 2)
-		require.EqualValues(t, 0, v2Query.FallbackCount())
+		require.Equal(t, 0, v2Query.FallbackCount())
 		for _, outcome := range result {
 			require.NoError(t, outcome.Err)
 			require.False(t, outcome.Allowed) // no tuples, so not allowed
@@ -597,7 +597,7 @@ func TestBatchCheckCommandV2(t *testing.T) {
 
 		require.NoError(t, err)
 		require.Len(t, result, 1)
-		require.EqualValues(t, 1, v2QueryNoModel.FallbackCount())
+		require.Equal(t, 1, v2QueryNoModel.FallbackCount())
 		for _, outcome := range result {
 			require.NoError(t, outcome.Err)
 			require.True(t, outcome.Allowed)
@@ -668,7 +668,7 @@ func TestBatchCheckCommandV2(t *testing.T) {
 		require.NoError(t, err)
 		require.True(t, result["normal"].Allowed)
 		require.True(t, result["userset"].Allowed) // v1 fallback incorrectly returns true
-		require.EqualValues(t, 1, v2Query.FallbackCount())
+		require.Equal(t, 1, v2Query.FallbackCount())
 	})
 }
 
