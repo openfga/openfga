@@ -11,10 +11,10 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ## [1.18.0] - 2026-06-16
 ### Fixed
 - Use `crypto/subtle.ConstantTimeCompare` for preshared key authentication to close a timing side-channel where the prior map lookup could reveal information about valid key bytes. [#3168](https://github.com/openfga/openfga/pull/3168) Thanks to [@geo-chen](https://github.com/geo-chen) for reporting this.
-- Enforce that `authn.oidc.issuer` and `authn.oidc.audience` are both set when `authn.method` is `oidc`. Previously, omitting `--authn-oidc-audience` caused the JWT `aud` claim to be silently skipped during token validation, allowing any validly-signed token from the trusted issuer to be accepted regardless of its intended audience. OpenFGA will now refuse to start if either value is missing. Thank you https://github.com/0xVijay for bringing this to our attention.
 
 ### Security
-- Fixed identifier comparison on the MySQL backend to be case-sensitive, matching Postgres and SQLite. Ships schema migrations 008, which require a maintenance window — see the [operator runbook](assets/migrations/mysql/collation_migrations.md) before upgrading.
+- Fixed identifier comparison on the MySQL backend to be case-sensitive, matching Postgres and SQLite. Ships schema migrations 008, which require a maintenance window — see the [operator runbook](assets/migrations/mysql/collation_migrations.md) before upgrading. Resolves [CVE-2026-55170](https://github.com/openfga/openfga/security/advisories/GHSA-cf98-j28v-49v6). Thank you [@sahajamoth](https://github.com/sahajamoth) for bringing this to our attention.
+- Enforce that `authn.oidc.issuer` and `authn.oidc.audience` are both set when `authn.method` is `oidc`. Previously, omitting `--authn-oidc-audience` caused the JWT `aud` claim to be silently skipped during token validation, allowing any validly-signed token from the trusted issuer to be accepted regardless of its intended audience. OpenFGA will now refuse to start if either value is missing. Resolves [CVE-2026-55689](https://github.com/openfga/openfga/security/advisories/GHSA-hcxc-wf8j-23hv). Thank you [@0xVijay](https://github.com/0xVijay) for bringing this to our attention.
 
 ## [1.17.1] - 2026-06-05
 ### Changed
