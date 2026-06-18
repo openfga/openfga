@@ -19,6 +19,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ## [1.17.1] - 2026-06-05
 ### Changed
 - Update PR workflow benchmark comparison to be less flakey. [#3153](https://github.com/openfga/openfga/pull/3153)
+- Extended experimental `weighted_graph_check` to `BatchCheck`: when the flag is enabled, each item in the batch is evaluated using the weighted graph algorithm, with per-item fallback to the standard algorithm on non-terminal errors. [#3154](https://github.com/openfga/openfga/pull/3154)
 
 ### Fixed
 - Fixed experimental `weighted_graph_check` falling back to the standard algorithm on errors that v1 would reject identically or that should not be retried. `ErrTransactionThrottled`, `check.ErrValidation`, `check.ErrInvalidUser`, and `*tuple.InvalidTupleError` (from contextual-tuple validation) are now returned directly instead of triggering a v1 retry. [#3150](https://github.com/openfga/openfga/pull/3150)
