@@ -44,7 +44,7 @@ func TestBatchCheckCommand(t *testing.T) {
 
 	t.Run("calls_check_once_for_each_tuple_in_batch", func(t *testing.T) {
 		mockCheckResolver := graph.NewMockCheckResolver(mockController)
-		cmd := NewBatchCheckCommand(ds, mockCheckResolver, ts)
+		cmd := NewBatchCheckCommand(NewCheckCommand(ds, mockCheckResolver, ts))
 		numChecks := int(maxChecks)
 		checks := make([]*openfgav1.BatchCheckItem, numChecks)
 		for i := 0; i < numChecks; i++ {
@@ -84,7 +84,7 @@ func TestBatchCheckCommand(t *testing.T) {
 
 	t.Run("returns_a_result_for_each_correlation_id", func(t *testing.T) {
 		mockCheckResolver := graph.NewMockCheckResolver(mockController)
-		cmd := NewBatchCheckCommand(ds, mockCheckResolver, ts)
+		cmd := NewBatchCheckCommand(NewCheckCommand(ds, mockCheckResolver, ts))
 		numChecks := 10
 		checks := make([]*openfgav1.BatchCheckItem, numChecks)
 		var ids []string
@@ -128,9 +128,7 @@ func TestBatchCheckCommand(t *testing.T) {
 	t.Run("fails_with_validation_error_if_too_many_tuples", func(t *testing.T) {
 		mockCheckResolver := graph.NewMockCheckResolver(mockController)
 		cmd := NewBatchCheckCommand(
-			ds,
-			mockCheckResolver,
-			ts,
+			NewCheckCommand(ds, mockCheckResolver, ts),
 			WithBatchCheckMaxChecksPerBatch(maxChecks),
 		)
 		numChecks := int(maxChecks) + 1
@@ -160,7 +158,7 @@ func TestBatchCheckCommand(t *testing.T) {
 
 	t.Run("fails_with_validation_error_if_no_tuples", func(t *testing.T) {
 		mockCheckResolver := graph.NewMockCheckResolver(mockController)
-		cmd := NewBatchCheckCommand(ds, mockCheckResolver, ts)
+		cmd := NewBatchCheckCommand(NewCheckCommand(ds, mockCheckResolver, ts))
 		params := &BatchCheckCommandParams{
 			AuthorizationModelID: ts.GetAuthorizationModelID(),
 			Checks:               []*openfgav1.BatchCheckItem{},
@@ -175,7 +173,7 @@ func TestBatchCheckCommand(t *testing.T) {
 
 	t.Run("fails_with_validation_error_if_duplicated_correlation_ids", func(t *testing.T) {
 		mockCheckResolver := graph.NewMockCheckResolver(mockController)
-		cmd := NewBatchCheckCommand(ds, mockCheckResolver, ts)
+		cmd := NewBatchCheckCommand(NewCheckCommand(ds, mockCheckResolver, ts))
 		numChecks := 2
 		checks := make([]*openfgav1.BatchCheckItem, numChecks)
 		for i := 0; i < numChecks; i++ {
@@ -204,7 +202,7 @@ func TestBatchCheckCommand(t *testing.T) {
 
 	t.Run("fails_with_validation_error_if_empty_correlation_id", func(t *testing.T) {
 		mockCheckResolver := graph.NewMockCheckResolver(mockController)
-		cmd := NewBatchCheckCommand(ds, mockCheckResolver, ts)
+		cmd := NewBatchCheckCommand(NewCheckCommand(ds, mockCheckResolver, ts))
 		numChecks := 3
 		checks := make([]*openfgav1.BatchCheckItem, numChecks)
 		for i := 0; i < numChecks; i++ {
@@ -233,7 +231,7 @@ func TestBatchCheckCommand(t *testing.T) {
 
 	t.Run("returns_errors_per_check_if_context_cancelled", func(t *testing.T) {
 		mockCheckResolver := graph.NewMockCheckResolver(mockController)
-		cmd := NewBatchCheckCommand(ds, mockCheckResolver, ts)
+		cmd := NewBatchCheckCommand(NewCheckCommand(ds, mockCheckResolver, ts))
 		numChecks := 3
 		checks := make([]*openfgav1.BatchCheckItem, numChecks)
 		for i := 0; i < numChecks; i++ {
@@ -277,7 +275,7 @@ func TestBatchCheckCommand(t *testing.T) {
 
 	t.Run("uses_command_cache_to_resolve_dupe_checks", func(t *testing.T) {
 		mockCheckResolver := graph.NewMockCheckResolver(mockController)
-		cmd := NewBatchCheckCommand(ds, mockCheckResolver, ts)
+		cmd := NewBatchCheckCommand(NewCheckCommand(ds, mockCheckResolver, ts))
 
 		justinTuple := &openfgav1.CheckRequestTupleKey{
 			Object:   "doc:doc1",
@@ -323,7 +321,7 @@ func TestBatchCheckCommand(t *testing.T) {
 
 	t.Run("handles_check_failures_gracefully", func(t *testing.T) {
 		mockCheckResolver := graph.NewMockCheckResolver(mockController)
-		cmd := NewBatchCheckCommand(ds, mockCheckResolver, ts)
+		cmd := NewBatchCheckCommand(NewCheckCommand(ds, mockCheckResolver, ts))
 
 		justinTuple := &openfgav1.CheckRequestTupleKey{
 			Object:   "doc:doc1",
@@ -354,7 +352,7 @@ func TestBatchCheckCommand(t *testing.T) {
 
 	t.Run("tracks_dispatch_throttled_in_metadata", func(t *testing.T) {
 		mockCheckResolver := graph.NewMockCheckResolver(mockController)
-		cmd := NewBatchCheckCommand(ds, mockCheckResolver, ts)
+		cmd := NewBatchCheckCommand(NewCheckCommand(ds, mockCheckResolver, ts))
 
 		checks := []*openfgav1.BatchCheckItem{
 			{
@@ -516,9 +514,9 @@ func TestBatchCheckCommandV2(t *testing.T) {
 		return items
 	}
 
-	t.Run("v2_nil_uses_v1_path", func(t *testing.T) {
+	t.Run("v1_checker_all_items_use_primary", func(t *testing.T) {
 		mockCheckResolver := graph.NewMockCheckResolver(mockController)
-		cmd := NewBatchCheckCommand(ds, mockCheckResolver, ts)
+		cmd := NewBatchCheckCommand(NewCheckCommand(ds, mockCheckResolver, ts))
 
 		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).
 			Times(2).
@@ -534,7 +532,7 @@ func TestBatchCheckCommandV2(t *testing.T) {
 
 		require.NoError(t, err)
 		require.Len(t, result, 2)
-		require.EqualValues(t, 0, meta.PrimaryCheckerCount)
+		require.EqualValues(t, 2, meta.PrimaryCheckerCount)
 		require.EqualValues(t, 0, meta.FallbackCount)
 		for _, outcome := range result {
 			require.NoError(t, outcome.Err)
@@ -557,7 +555,7 @@ func TestBatchCheckCommandV2(t *testing.T) {
 			WithCheckQueryV2Fallback(v1Fallback),
 		)
 
-		cmd := NewBatchCheckCommand(realDS, mockCheckResolver, ts, WithBatchChecker(v2Query))
+		cmd := NewBatchCheckCommand(v2Query)
 
 		result, meta, err := cmd.Execute(context.Background(), &BatchCheckCommandParams{
 			AuthorizationModelID: ts.GetAuthorizationModelID(),
@@ -592,7 +590,7 @@ func TestBatchCheckCommandV2(t *testing.T) {
 			WithCheckQueryV2Fallback(v1Fallback),
 		)
 
-		cmd := NewBatchCheckCommand(ds, mockCheckResolver, ts, WithBatchChecker(v2QueryNoModel))
+		cmd := NewBatchCheckCommand(v2QueryNoModel)
 
 		result, meta, err := cmd.Execute(context.Background(), &BatchCheckCommandParams{
 			AuthorizationModelID: ts.GetAuthorizationModelID(),
@@ -651,7 +649,7 @@ func TestBatchCheckCommandV2(t *testing.T) {
 			WithCheckQueryV2Fallback(v1Fallback),
 		)
 
-		cmd := NewBatchCheckCommand(realDS, checkResolver, exclusionTS, WithBatchChecker(v2Query))
+		cmd := NewBatchCheckCommand(v2Query)
 
 		result, meta, err := cmd.Execute(ctx, &BatchCheckCommandParams{
 			AuthorizationModelID: exclusionTS.GetAuthorizationModelID(),
@@ -697,9 +695,7 @@ func BenchmarkBatchCheckCommand(b *testing.B) {
 
 	maxChecks := config.DefaultMaxChecksPerBatchCheck
 	cmd := NewBatchCheckCommand(
-		ds,
-		checkResolver,
-		ts,
+		NewCheckCommand(ds, checkResolver, ts),
 		WithBatchCheckMaxChecksPerBatch(uint32(maxChecks)),
 	)
 

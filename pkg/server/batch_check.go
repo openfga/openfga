@@ -65,7 +65,21 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 	}
 	defer checkResolverCloser()
 
-	var checker commands.Checker
+	v1Checker := commands.NewCheckCommand(
+		s.datastore,
+		checkResolver,
+		typesys,
+		commands.WithCheckCommandLogger(s.logger),
+		commands.WithCheckCommandMaxConcurrentReads(s.maxConcurrentReadsForCheck),
+		commands.WithCheckCommandCache(s.sharedDatastoreResources, s.cacheSettings),
+		commands.WithCheckDatastoreThrottler(
+			s.featureFlagClient.Boolean(config.ExperimentalDatastoreThrottling, storeID),
+			s.checkDatastoreThrottleThreshold,
+			s.checkDatastoreThrottleDuration,
+		),
+	)
+
+	var checker commands.Checker = v1Checker
 	var v2GraphResolveFailed bool
 	v2Enabled := s.featureFlagClient.Boolean(config.ExperimentalWeightedGraphCheck, storeID)
 	if v2Enabled {
@@ -75,20 +89,6 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 			if req.GetConsistency() != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
 				cacheInvalidationTime = s.sharedDatastoreResources.CacheController.DetermineInvalidationTime(ctx, storeID)
 			}
-
-			v1Fallback := commands.NewCheckCommand(
-				s.datastore,
-				checkResolver,
-				typesys,
-				commands.WithCheckCommandLogger(s.logger),
-				commands.WithCheckCommandMaxConcurrentReads(s.maxConcurrentReadsForCheck),
-				commands.WithCheckCommandCache(s.sharedDatastoreResources, s.cacheSettings),
-				commands.WithCheckDatastoreThrottler(
-					s.featureFlagClient.Boolean(config.ExperimentalDatastoreThrottling, storeID),
-					s.checkDatastoreThrottleThreshold,
-					s.checkDatastoreThrottleDuration,
-				),
-			)
 
 			checker = commands.NewCheckQuery(
 				commands.WithCheckQueryV2Logger(s.logger),
@@ -108,7 +108,7 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 				commands.WithCheckQueryV2ConcurrencyLimit(int(s.resolveNodeBreadthLimit)),
 				commands.WithCheckQueryV2UpstreamTimeout(s.requestTimeout),
 				commands.WithCheckQueryV2SharedResources(s.sharedDatastoreResources),
-				commands.WithCheckQueryV2Fallback(v1Fallback),
+				commands.WithCheckQueryV2Fallback(v1Checker),
 			)
 		} else if commands.IsV2CheckTerminalError(mgErr) {
 			return nil, mgErr
@@ -123,19 +123,10 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 	}
 
 	cmd := commands.NewBatchCheckCommand(
-		s.datastore,
-		checkResolver,
-		typesys,
-		commands.WithBatchCheckCacheOptions(s.sharedDatastoreResources, s.cacheSettings),
+		checker,
 		commands.WithBatchCheckCommandLogger(s.logger),
 		commands.WithBatchCheckMaxChecksPerBatch(s.maxChecksPerBatchCheck),
 		commands.WithBatchCheckMaxConcurrentChecks(s.maxConcurrentChecksPerBatch),
-		commands.WithBatchCheckDatastoreThrottler(
-			s.featureFlagClient.Boolean(config.ExperimentalDatastoreThrottling, storeID),
-			s.checkDatastoreThrottleThreshold,
-			s.checkDatastoreThrottleDuration,
-		),
-		commands.WithBatchChecker(checker),
 	)
 
 	result, metadata, err := cmd.Execute(ctx, &commands.BatchCheckCommandParams{
