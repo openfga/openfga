@@ -149,7 +149,9 @@ jobs:
     with:
       base64-subjects-as-file: "${{ needs.goreleaser.outputs.subjects-as-file }}"
       provenance-name: "openfga.intoto.jsonl"
-      upload-assets: true # upload to a new release
+      upload-assets: true # upload to the draft release created by goreleaser
+      upload-tag-name: ${{ github.ref_name }}
+      draft-release: true
 
   image-provenance:
     needs: [ goreleaser ]
@@ -167,8 +169,14 @@ jobs:
       registry-username: ${{ secrets.DOCKERHUB_USERNAME }}
       registry-password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+  undraft-release:
+    needs: [ binary-provenance, image-provenance ]
+    permissions:
+      contents: write
+    uses: openfga/.github/.github/workflows/undraft-release.yml@15d8dd0e50827f4233abbbc3c394413940ba8db4 # pin@main
+
   verification-with-slsa-verifier:
-    needs: [ goreleaser, binary-provenance ]
+    needs: [ undraft-release, binary-provenance ]
     runs-on: ubuntu-latest
     permissions: read-all
     steps:
