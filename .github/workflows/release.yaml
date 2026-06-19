@@ -151,7 +151,7 @@ jobs:
       provenance-name: "openfga.intoto.jsonl"
       upload-assets: true # upload to the draft release created by goreleaser
       upload-tag-name: ${{ github.ref_name }}
-      draft-release: true
+      draft-release: "true"
 
   image-provenance:
     needs: [ goreleaser ]
