@@ -12,7 +12,6 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ### Changed
 - Extended experimental `weighted_graph_check` to `BatchCheck`: when the flag is enabled, each item in the batch is evaluated using the weighted graph algorithm, with per-item fallback to the standard algorithm on non-terminal errors. [#3154](https://github.com/openfga/openfga/pull/3154)
-- Release flow now creates the GitHub release as a draft, attaches SLSA provenance, and publishes only after provenance jobs succeed. This avoids public releases with missing provenance and enables GitHub immutable releases. [#3178](https://github.com/openfga/openfga/pull/3178)
 
 ## [1.18.0] - 2026-06-16
 ### Fixed
