@@ -159,6 +159,7 @@ jobs:
   release-provenance:
     needs: [ binary-provenance ]
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: write # To add the provenance asset to the draft release.
     steps:
