@@ -393,14 +393,14 @@ func BenchmarkCheck(b *testing.B, ds storage.OpenFGADatastore) {
 
 		b.Run(name, func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
-				response, _, err := checkQuery.Execute(ctx, &commands.CheckCommandParams{
+				response, err := checkQuery.Execute(ctx, &commands.CheckCommandParams{
 					StoreID:  storeID,
 					TupleKey: bm.tupleKeyToCheck,
 					Context:  bm.contextGenerator(),
 				})
 
 				require.NoError(b, err)
-				require.Equal(b, bm.expected, response.GetAllowed())
+				require.Equal(b, bm.expected, response.Allowed)
 			}
 		})
 	}
@@ -485,13 +485,13 @@ func benchmarkCheckWithBypassUsersetReads(b *testing.B, ds storage.OpenFGADatast
 
 	b.Run("benchmark_with_bypass_userset_read", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			response, _, err := checkQuery.Execute(context.Background(), &commands.CheckCommandParams{
+			response, err := checkQuery.Execute(context.Background(), &commands.CheckCommandParams{
 				StoreID:  storeID,
 				TupleKey: tuple.NewCheckRequestTupleKey("document:budget", "viewer", "user:anne"),
 			})
 
 			require.NoError(b, err)
-			require.False(b, response.GetAllowed())
+			require.False(b, response.Allowed)
 		}
 	})
 }
