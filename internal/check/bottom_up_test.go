@@ -45,7 +45,7 @@ func TestBottomUpSpecificType(t *testing.T) {
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
 			}},
-		).MaxTimes(1).Return(storage.NewUnorderedStaticTupleIterator(nil), nil)
+		).MaxTimes(1).Return(storage.NewOrderedStaticTupleIterator(nil), nil)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
 			model
@@ -100,7 +100,7 @@ func TestBottomUpSpecificType(t *testing.T) {
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
 			}},
-		).MaxTimes(1).Return(storage.NewUnorderedStaticTupleIterator(nil), nil)
+		).MaxTimes(1).Return(storage.NewOrderedStaticTupleIterator(nil), nil)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
 			model
@@ -156,7 +156,7 @@ func TestBottomUpSpecificType(t *testing.T) {
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
 			}},
-		).MaxTimes(1).Return(storage.NewUnorderedStaticTupleIterator(nil), nil)
+		).MaxTimes(1).Return(storage.NewOrderedStaticTupleIterator(nil), nil)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
 			model
@@ -214,7 +214,7 @@ func TestBottomUpSpecificType(t *testing.T) {
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
 			}},
-		).MaxTimes(1).Return(storage.NewUnorderedStaticTupleIterator(nil), nil)
+		).MaxTimes(1).Return(storage.NewOrderedStaticTupleIterator(nil), nil)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
 			model
@@ -328,7 +328,7 @@ func TestBottomUpSpecificTypeWildcard(t *testing.T) {
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
 			}},
-		).MaxTimes(1).Return(storage.NewUnorderedStaticTupleIterator(nil), nil)
+		).MaxTimes(1).Return(storage.NewOrderedStaticTupleIterator(nil), nil)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
 			model
@@ -383,7 +383,7 @@ func TestBottomUpSpecificTypeWildcard(t *testing.T) {
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
 			}},
-		).MaxTimes(1).Return(storage.NewUnorderedStaticTupleIterator(nil), nil)
+		).MaxTimes(1).Return(storage.NewOrderedStaticTupleIterator(nil), nil)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
 			model
@@ -438,7 +438,7 @@ func TestBottomUpSpecificTypeWildcard(t *testing.T) {
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
 			}},
-		).MaxTimes(1).Return(storage.NewUnorderedStaticTupleIterator(nil), nil)
+		).MaxTimes(1).Return(storage.NewOrderedStaticTupleIterator(nil), nil)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
 			model
@@ -495,7 +495,7 @@ func TestBottomUpSpecificTypeWildcard(t *testing.T) {
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
 			}},
-		).MaxTimes(1).Return(storage.NewUnorderedStaticTupleIterator(nil), nil)
+		).MaxTimes(1).Return(storage.NewOrderedStaticTupleIterator(nil), nil)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
 			model
