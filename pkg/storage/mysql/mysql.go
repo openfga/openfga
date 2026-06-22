@@ -145,11 +145,6 @@ func (s *Datastore) Read(
 
 	sb := s.buildTupleQuery(store, filter)
 	if options.SortAsc {
-		// COLLATE utf8mb4_bin forces bytewise ordering to match Go's string comparison (<).
-		// Without it, MySQL's default collation (typically case-insensitive) may produce a
-		// different sort order, breaking the weight2 pruning algorithm.
-		// Note: because _user is not defined as utf8mb4_bin at the column level, MySQL cannot
-		// use an index to satisfy this sort and will sort in memory.
 		sb = sb.OrderBy("_user COLLATE utf8mb4_bin")
 	}
 	return sqlcommon.NewSQLTupleIterator(sqlcommon.NewSBIteratorQuery(sb), HandleSQLError, options.SortAsc), nil
