@@ -334,7 +334,6 @@ func (s *Datastore) ReadUsersetTuples(
 		sb = sb.Where(sq.Eq{"COALESCE(condition_name, '')": filter.Conditions})
 	}
 	if options.SortAsc {
-		// See comment in Read for why COLLATE utf8mb4_bin is required here.
 		sb = sb.OrderBy("_user COLLATE utf8mb4_bin")
 	}
 
