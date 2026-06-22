@@ -145,7 +145,7 @@ func (s *Datastore) Read(
 
 	sb := s.buildTupleQuery(store, filter)
 	if options.SortAsc {
-		sb = sb.OrderBy("_user COLLATE utf8mb4_bin")
+		sb = sb.OrderBy("_user")
 	}
 	return sqlcommon.NewSQLTupleIterator(sqlcommon.NewSBIteratorQuery(sb), HandleSQLError, options.SortAsc), nil
 }
@@ -334,7 +334,7 @@ func (s *Datastore) ReadUsersetTuples(
 		sb = sb.Where(sq.Eq{"COALESCE(condition_name, '')": filter.Conditions})
 	}
 	if options.SortAsc {
-		sb = sb.OrderBy("_user COLLATE utf8mb4_bin")
+		sb = sb.OrderBy("_user")
 	}
 
 	return sqlcommon.NewSQLTupleIterator(sqlcommon.NewSBIteratorQuery(sb), HandleSQLError, options.SortAsc), nil
