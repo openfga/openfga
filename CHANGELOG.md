@@ -12,11 +12,11 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ### Changed
 - Extended experimental `weighted_graph_check` to `BatchCheck`: when the flag is enabled, each item in the batch is evaluated using the weighted graph algorithm, with per-item fallback to the standard algorithm on non-terminal errors. [#3154](https://github.com/openfga/openfga/pull/3154)
+- Use `proto.MarshalOptions{Deterministic: true}` when serializing authorization models to the `serialized_protobuf` column, ensuring consistent stored bytes within a given OpenFGA version for models with map-keyed type definitions. [#3171](https://github.com/openfga/openfga/pull/3171)
 
 ## [1.18.0] - 2026-06-16
 ### Fixed
 - Use `crypto/subtle.ConstantTimeCompare` for preshared key authentication to close a timing side-channel where the prior map lookup could reveal information about valid key bytes. [#3168](https://github.com/openfga/openfga/pull/3168) Thanks to [@geo-chen](https://github.com/geo-chen) for reporting this.
-- Use `proto.MarshalOptions{Deterministic: true}` when serializing authorization models to the `serialized_protobuf` column, ensuring consistent stored bytes within a given OpenFGA version for models with map-keyed type definitions. [#3171](https://github.com/openfga/openfga/pull/3171)
 
 ### Security
 - Fixed identifier comparison on the MySQL backend to be case-sensitive, matching Postgres and SQLite. Ships schema migrations 008, which require a maintenance window — see the [operator runbook](assets/migrations/mysql/collation_migrations.md) before upgrading. Resolves [CVE-2026-55170](https://github.com/openfga/openfga/security/advisories/GHSA-cf98-j28v-49v6). Thank you [@sahajamoth](https://github.com/sahajamoth) for bringing this to our attention.
