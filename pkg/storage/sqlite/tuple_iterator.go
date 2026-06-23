@@ -15,6 +15,7 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/storage/sqlcommon"
 )
 
 type errorHandlerFn func(error, ...interface{}) error
@@ -23,6 +24,7 @@ type errorHandlerFn func(error, ...interface{}) error
 // interface for iterating over tuples fetched from a SQL database.
 type SQLTupleIterator struct {
 	rows           *sql.Rows // GUARDED_BY(mu)
+	cancel         context.CancelFunc // GUARDED_BY(mu); cancels the deadline-bearing context used to issue the query, released in Stop after rows are closed
 	sb             sq.SelectBuilder
 	handleSQLError errorHandlerFn
 	// firstRow is used as a temporary storage place if head is called.
@@ -50,17 +52,19 @@ func NewSQLTupleIterator(sb sq.SelectBuilder, errHandler errorHandlerFn) *SQLTup
 func (t *SQLTupleIterator) fetchBuffer(ctx context.Context) error {
 	ctx, span := tracer.Start(ctx, "sqlite.fetchBuffer", trace.WithAttributes())
 	defer span.End()
-	ctx = context.WithoutCancel(ctx)
+	queryCtx, cancel := sqlcommon.DetachCancelKeepDeadline(ctx)
 	start := time.Now()
-	rows, err := t.sb.QueryContext(ctx)
+	rows, err := t.sb.QueryContext(queryCtx)
 	elapsed := time.Since(start)
 	if err != nil {
+		cancel()
 		storageErr := t.handleSQLError(err)
 		storage.ObserveIterQueryDuration(storage.SuccessLabel(storageErr), elapsed)
 		return storageErr
 	}
 	storage.ObserveIterQueryDuration(true, elapsed)
 	t.rows = rows
+	t.cancel = cancel
 	return nil
 }
 
@@ -265,6 +269,11 @@ func (t *SQLTupleIterator) Stop() {
 	defer t.mu.Unlock()
 	if t.rows != nil {
 		_ = t.rows.Close()
+		t.rows = nil
+	}
+	if t.cancel != nil {
+		t.cancel()
+		t.cancel = nil
 	}
 }
 
