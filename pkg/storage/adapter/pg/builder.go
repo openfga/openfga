@@ -28,8 +28,18 @@ type executor struct {
 
 // Query runs the rendered SQL against the pool. The $N placeholders the ansi builder
 // emits are PostgreSQL's native ordinal form, so args bind in order.
+//
+// It runs under pgx's QueryExecModeExec, which still uses the extended protocol but infers
+// each parameter's PostgreSQL type from the Go argument's type rather than from a server
+// describe. The builder emits untyped literals — most notably the bare "SELECT $1" the
+// check planner uses as an existence marker — for which the server has no column context to
+// infer a type and so describes the parameter as text; pgx then cannot encode a Go int into
+// text. Inferring the type from the Go value side-steps that: an int is sent as an integer,
+// a string as text, []byte as bytea. The mode is passed per query so it holds regardless of
+// how the caller configured the pool.
 func (e *executor) Query(ctx context.Context, query string, args []any) (adapter.Rows, error) {
-	rows, err := e.pool.Query(ctx, query, args...)
+	queryArgs := append([]any{pgx.QueryExecModeExec}, args...)
+	rows, err := e.pool.Query(ctx, query, queryArgs...)
 	if err != nil {
 		return nil, err
 	}
