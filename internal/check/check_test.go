@@ -3,6 +3,7 @@ package check
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -16,10 +17,18 @@ import (
 
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/internal/modelgraph"
+	"github.com/openfga/openfga/internal/planner"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/storage/cache/keys"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 )
+
+var testKey = func() keys.Key {
+	var b keys.Builder
+	b.EncodeString("test-key")
+	return b.Key()
+}()
 
 func TestResolveUnion(t *testing.T) {
 	t.Run("cache_hit_on_union", func(t *testing.T) {
@@ -72,7 +81,8 @@ func TestResolveUnion(t *testing.T) {
 			Res:          &Response{Allowed: true},
 			LastModified: time.Now(),
 		}
-		firstCacheKey := buildEdgeCacheKey(model.GetId(), req, edges[0])
+		firstCacheKey := EdgeCacheKey(req, edges[0])
+
 		mockCache.EXPECT().Get(firstCacheKey).Return(cachedTrue).Times(1)
 
 		admin := edges[1].GetTo()
@@ -83,7 +93,9 @@ func TestResolveUnion(t *testing.T) {
 			Res:          &Response{Allowed: false},
 			LastModified: time.Now(),
 		}
-		secondCacheKey := buildEdgeCacheKey(model.GetId(), req, edges[0])
+
+		secondCacheKey := EdgeCacheKey(req, edges[0])
+
 		mockCache.EXPECT().Get(secondCacheKey).Return(cachedFalse).MaxTimes(1)
 
 		res, err := resolver.ResolveUnion(context.Background(), req, node, nil)
@@ -146,10 +158,11 @@ func TestResolveUnion(t *testing.T) {
 					return &openfgav1.Tuple{Key: tuple.NewTupleKey(filter.Object, filter.Relation, filter.User)}, nil
 				}).Times(2)
 
-		// each edge sets the results of its resolution
+		// edges that complete before the union short-circuits will cache their results;
+		// edges cancelled by the short-circuit will not (ctx.Err() != nil guard).
 		mockCache.EXPECT().
 			Set(gomock.Any(), gomock.Any(), gomock.Any()).
-			Times(2)
+			MinTimes(1).MaxTimes(2)
 
 		resolver := New(Config{
 			Model:                     mg,
@@ -568,6 +581,180 @@ func TestResolveUnionEdges(t *testing.T) {
 		res, err := resolver.ResolveUnionEdges(context.Background(), req, edges, nil)
 		require.NoError(t, err)
 		require.False(t, res.GetAllowed())
+	})
+
+	t.Run("cancelled_context_does_not_write_to_cache", func(t *testing.T) {
+		// Regression: goroutines must not write to cache when the context is cancelled,
+		// even when ResolveEdge returns ({false}, nil).
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		storeID := ulid.Make().String()
+		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
+		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+
+		mockCache.EXPECT().Get(gomock.Any()).Return(nil).AnyTimes()
+		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+
+		// MinTimes(1) confirms goroutines reached the datastore, so Times(0) on Set is not vacuous.
+		// The mocks ignore ctx, so the cancelled context doesn't prevent these calls.
+		mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+			Return(nil, storage.ErrNotFound).MinTimes(1)
+		mockDatastore.EXPECT().ReadUsersetTuples(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+			Return(storage.NewStaticTupleIterator(nil), nil).MinTimes(1)
+
+		model := testutils.MustTransformDSLToProtoWithID(`
+            model
+              schema 1.1
+            type user
+            type group
+              relations
+                define member: [user, group#member]
+        `)
+
+		mg, err := modelgraph.New(model)
+		require.NoError(t, err)
+
+		resolver := New(Config{
+			Model:                     mg,
+			Datastore:                 mockDatastore,
+			Cache:                     mockCache,
+			CacheTTL:                  10 * time.Second,
+			LastCacheInvalidationTime: time.Now().Add(-time.Hour),
+			ConcurrencyLimit:          10,
+			Planner:                   planner.New(&planner.Config{}),
+			// Inject a strategy that always returns ({false}, nil) unconditionally,
+			// directly simulating what DefaultStrategy.execute produces under the select race —
+			// ctx.Err() == nil is the only thing blocking the cache write.
+			Strategies: map[string]Strategy{
+				DefaultStrategyName:   &alwaysFalseNilErrStrategy{},
+				WeightTwoStrategyName: &alwaysFalseNilErrStrategy{},
+				RecursiveStrategyName: &alwaysFalseNilErrStrategy{},
+			},
+		})
+
+		req, reqErr := NewRequest(RequestParams{
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("group:1", "member", "user:maria"),
+		})
+		require.NoError(t, reqErr)
+
+		node, ok := mg.GetNodeByID("group#member")
+		require.True(t, ok)
+		edges, flatErr := mg.FlattenNode(node, "user", false, false)
+		require.NoError(t, flatErr)
+		require.NotEmpty(t, edges) // ensures goroutines are actually dispatched
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		_, _ = resolver.ResolveUnionEdges(ctx, req, edges, nil)
+	})
+}
+
+// alwaysFalseNilErrStrategy simulates DefaultStrategy.execute returning ({false}, nil)
+// under the select race on context cancellation — the exact value that would be cached.
+// If non-nil, done is called via defer just before the strategy returns, providing the
+// closest available synchronization point to the cache-write decision in check.go.
+type alwaysFalseNilErrStrategy struct {
+	done func()
+}
+
+func (s *alwaysFalseNilErrStrategy) Userset(_ context.Context, _ *Request, _ *authzGraph.WeightedAuthorizationModelEdge, _ storage.TupleKeyIterator, _ *sync.Map) (*Response, error) {
+	if s.done != nil {
+		defer s.done()
+	}
+	return &Response{Allowed: false}, nil
+}
+
+func (s *alwaysFalseNilErrStrategy) TTU(_ context.Context, _ *Request, _ *authzGraph.WeightedAuthorizationModelEdge, _ storage.TupleKeyIterator, _ *sync.Map) (*Response, error) {
+	if s.done != nil {
+		defer s.done()
+	}
+	return &Response{Allowed: false}, nil
+}
+
+func TestResolveRecursive(t *testing.T) {
+	t.Run("cancelled_context_does_not_write_to_cache", func(t *testing.T) {
+		// Same invariant as ResolveUnionEdges: the goroutine must not write to cache when
+		// context is cancelled, even when the strategy returns ({false}, nil).
+		// Unlike ResolveUnionEdges (which has pool.Wait()), ResolveRecursive spawns detached
+		// goroutines, so ctrl.Finish() must be called explicitly after goroutineDone.Wait().
+		//
+		// Limitation: goroutineDone fires when the strategy returns, but the cache-write
+		// decision (`if ctx.Err() == nil`) executes a few instructions later in check.go.
+		// This is not a true happens-before guarantee. The test is correct in practice because
+		// the context is pre-cancelled, making ctx.Err() != nil a deterministic constant that
+		// the guard always evaluates to false — cache.Set is never reached regardless of
+		// scheduling. A regression (guard removed) could go undetected if ctrl.Finish()
+		// races ahead of the now-unconditional cache.Set in the goroutine.
+		ctrl := gomock.NewController(t)
+
+		storeID := ulid.Make().String()
+		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
+		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+
+		mockCache.EXPECT().Get(gomock.Any()).Return(nil).AnyTimes()
+		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+
+		model := testutils.MustTransformDSLToProtoWithID(`
+            model
+              schema 1.1
+            type user
+            type group
+              relations
+                define member: [user] or member from parent
+                define parent: [group]
+        `)
+
+		mg, err := modelgraph.New(model)
+		require.NoError(t, err)
+
+		// MinTimes(1) confirms the recursive goroutine reached the datastore, making
+		// the Times(0) assertion on Set meaningful rather than vacuous.
+		mockDatastore.EXPECT().Read(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+			Return(storage.NewStaticTupleIterator(nil), nil).MinTimes(1)
+		mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+			Return(nil, storage.ErrNotFound).AnyTimes()
+
+		var goroutineDone sync.WaitGroup
+		goroutineDone.Add(1)
+		strategy := &alwaysFalseNilErrStrategy{done: goroutineDone.Done}
+
+		resolver := New(Config{
+			Model:                     mg,
+			Datastore:                 mockDatastore,
+			Cache:                     mockCache,
+			CacheTTL:                  10 * time.Second,
+			LastCacheInvalidationTime: time.Now().Add(-time.Hour),
+			ConcurrencyLimit:          10,
+			Planner:                   planner.New(&planner.Config{}),
+			Strategies: map[string]Strategy{
+				DefaultStrategyName:   strategy,
+				WeightTwoStrategyName: strategy,
+				RecursiveStrategyName: strategy,
+			},
+		})
+
+		req, reqErr := NewRequest(RequestParams{
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("group:1", "member", "user:maria"),
+		})
+		require.NoError(t, reqErr)
+
+		node, ok := mg.GetNodeByID("group#member")
+		require.True(t, ok)
+		recursiveEdge, canApply := mg.CanApplyRecursion(node, "user", true)
+		require.True(t, canApply)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		_, _ = resolver.ResolveRecursive(ctx, req, recursiveEdge, &sync.Map{}, false)
+		goroutineDone.Wait() // wait for the recursive goroutine to run past the cache-write point
+		ctrl.Finish()        // now validate Times(0)
 	})
 }
 
@@ -2206,7 +2393,7 @@ func TestIsCached(t *testing.T) {
 			lastCacheInvalidationTime: time.Now().Add(-time.Hour),
 		}
 
-		res, ok := resolver.isCached(openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY, "test-key")
+		res, ok := resolver.isCached(openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY, testKey)
 		require.False(t, ok)
 		require.Nil(t, res)
 	})
@@ -2222,14 +2409,14 @@ func TestIsCached(t *testing.T) {
 			Res:          expectedResponse,
 			LastModified: time.Now(),
 		}
-		mockCache.EXPECT().Get("test-key").Return(cacheEntry).Times(1)
+		mockCache.EXPECT().Get(testKey).Return(cacheEntry).Times(1)
 
 		resolver := &Resolver{
 			cache:                     mockCache,
 			lastCacheInvalidationTime: time.Time{},
 		}
 
-		res, ok := resolver.isCached(openfgav1.ConsistencyPreference_MINIMIZE_LATENCY, "test-key")
+		res, ok := resolver.isCached(openfgav1.ConsistencyPreference_MINIMIZE_LATENCY, testKey)
 		require.True(t, ok)
 		require.Equal(t, expectedResponse, res)
 	})
@@ -2239,14 +2426,14 @@ func TestIsCached(t *testing.T) {
 		defer ctrl.Finish()
 
 		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
-		mockCache.EXPECT().Get("test-key").Return(nil).Times(1)
+		mockCache.EXPECT().Get(testKey).Return(nil).Times(1)
 
 		resolver := &Resolver{
 			cache:                     mockCache,
 			lastCacheInvalidationTime: time.Time{},
 		}
 
-		res, ok := resolver.isCached(openfgav1.ConsistencyPreference_MINIMIZE_LATENCY, "test-key")
+		res, ok := resolver.isCached(openfgav1.ConsistencyPreference_MINIMIZE_LATENCY, testKey)
 		require.False(t, ok)
 		require.Nil(t, res)
 	})
@@ -2256,14 +2443,14 @@ func TestIsCached(t *testing.T) {
 		defer ctrl.Finish()
 
 		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
-		mockCache.EXPECT().Get("test-key").Return(nil).Times(1)
+		mockCache.EXPECT().Get(testKey).Return(nil).Times(1)
 
 		resolver := &Resolver{
 			cache:                     mockCache,
 			lastCacheInvalidationTime: time.Now().Add(-time.Hour),
 		}
 
-		res, ok := resolver.isCached(openfgav1.ConsistencyPreference_MINIMIZE_LATENCY, "test-key")
+		res, ok := resolver.isCached(openfgav1.ConsistencyPreference_MINIMIZE_LATENCY, testKey)
 		require.False(t, ok)
 		require.Nil(t, res)
 	})
@@ -2273,14 +2460,14 @@ func TestIsCached(t *testing.T) {
 		defer ctrl.Finish()
 
 		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
-		mockCache.EXPECT().Get("test-key").Return("wrong-type").Times(1)
+		mockCache.EXPECT().Get(testKey).Return("wrong-type").Times(1)
 
 		resolver := &Resolver{
 			cache:                     mockCache,
 			lastCacheInvalidationTime: time.Now().Add(-time.Hour),
 		}
 
-		res, ok := resolver.isCached(openfgav1.ConsistencyPreference_MINIMIZE_LATENCY, "test-key")
+		res, ok := resolver.isCached(openfgav1.ConsistencyPreference_MINIMIZE_LATENCY, testKey)
 		require.False(t, ok)
 		require.Nil(t, res)
 	})
@@ -2297,14 +2484,14 @@ func TestIsCached(t *testing.T) {
 			LastModified: invalidationTime.Add(-time.Hour),
 		}
 
-		mockCache.EXPECT().Get("test-key").Return(cacheEntry).Times(1)
+		mockCache.EXPECT().Get(testKey).Return(cacheEntry).Times(1)
 
 		resolver := &Resolver{
 			cache:                     mockCache,
 			lastCacheInvalidationTime: invalidationTime,
 		}
 
-		res, ok := resolver.isCached(openfgav1.ConsistencyPreference_MINIMIZE_LATENCY, "test-key")
+		res, ok := resolver.isCached(openfgav1.ConsistencyPreference_MINIMIZE_LATENCY, testKey)
 		require.False(t, ok)
 		require.Nil(t, res)
 	})
@@ -2322,14 +2509,14 @@ func TestIsCached(t *testing.T) {
 			LastModified: time.Now(),
 		}
 
-		mockCache.EXPECT().Get("test-key").Return(cacheEntry).Times(1)
+		mockCache.EXPECT().Get(testKey).Return(cacheEntry).Times(1)
 
 		resolver := &Resolver{
 			cache:                     mockCache,
 			lastCacheInvalidationTime: invalidationTime,
 		}
 
-		res, ok := resolver.isCached(openfgav1.ConsistencyPreference_MINIMIZE_LATENCY, "test-key")
+		res, ok := resolver.isCached(openfgav1.ConsistencyPreference_MINIMIZE_LATENCY, testKey)
 		require.True(t, ok)
 		require.Equal(t, expectedResponse, res)
 	})
@@ -2347,14 +2534,14 @@ func TestIsCached(t *testing.T) {
 			LastModified: invalidationTime.Add(time.Nanosecond),
 		}
 
-		mockCache.EXPECT().Get("test-key").Return(cacheEntry).Times(1)
+		mockCache.EXPECT().Get(testKey).Return(cacheEntry).Times(1)
 
 		resolver := &Resolver{
 			cache:                     mockCache,
 			lastCacheInvalidationTime: invalidationTime,
 		}
 
-		res, ok := resolver.isCached(openfgav1.ConsistencyPreference_MINIMIZE_LATENCY, "test-key")
+		res, ok := resolver.isCached(openfgav1.ConsistencyPreference_MINIMIZE_LATENCY, testKey)
 		require.True(t, ok)
 		require.Equal(t, expectedResponse, res)
 	})
@@ -2371,14 +2558,14 @@ func TestIsCached(t *testing.T) {
 			LastModified: time.Now(),
 		}
 
-		mockCache.EXPECT().Get("test-key").Return(cacheEntry).Times(1)
+		mockCache.EXPECT().Get(testKey).Return(cacheEntry).Times(1)
 
 		resolver := &Resolver{
 			cache:                     mockCache,
 			lastCacheInvalidationTime: time.Now().Add(-time.Hour),
 		}
 
-		res, ok := resolver.isCached(openfgav1.ConsistencyPreference_UNSPECIFIED, "test-key")
+		res, ok := resolver.isCached(openfgav1.ConsistencyPreference_UNSPECIFIED, testKey)
 		require.True(t, ok)
 		require.Equal(t, expectedResponse, res)
 	})
@@ -5660,7 +5847,8 @@ func TestResolveRecursiveCheck(t *testing.T) {
 		require.True(t, ok)
 		recursiveEdge, ok := mg.CanApplyRecursion(node, "", true)
 		require.True(t, ok)
-		recursiveKey := buildEdgeCacheKey(model.GetId(), req, recursiveEdge)
+
+		recursiveKey := EdgeCacheKey(req, recursiveEdge)
 
 		cachedTrue := &ResponseCacheEntry{
 			Res:          &Response{Allowed: true},
@@ -5800,14 +5988,14 @@ func TestResolveCheck(t *testing.T) {
 	})
 }
 
-func TestBuildEdgeCacheKey(t *testing.T) {
-	// buildEdgeCacheKey uses: modelID, object, user, relationDefinition, edgeType, to.UniqueLabel, tuplesetRelation, invariantCacheKey.
+func TestEdgeCacheKey_CollisionFreedom(t *testing.T) {
+	// EdgeCacheKey uses: storeID, modelID, object, user, relationDefinition, edgeType, to.UniqueLabel, tuplesetRelation, invariantCacheKey.
 	// All collision scenarios share the same relationDefinition across sibling edges (it's always set to the
 	// parent relation that generated the edge). The remaining fields must uniquely identify each edge.
 
 	storeID := ulid.Make().String()
 
-	buildKeys := func(t *testing.T, modelDSL, nodeID, userType, object, relation, user string) []string {
+	buildKeys := func(t *testing.T, modelDSL, nodeID, userType, object, relation, user string) []keys.Key {
 		t.Helper()
 		model := testutils.MustTransformDSLToProtoWithID(modelDSL)
 		mg, err := modelgraph.New(model)
@@ -5826,19 +6014,19 @@ func TestBuildEdgeCacheKey(t *testing.T) {
 		edges, err := mg.FlattenNode(node, userType, false, false)
 		require.NoError(t, err)
 
-		keys := make([]string, len(edges))
+		cacheKeys := make([]keys.Key, len(edges))
 		for i, edge := range edges {
-			keys[i] = buildEdgeCacheKey(mg.GetModelID(), req, edge)
+			cacheKeys[i] = EdgeCacheKey(req, edge)
 		}
-		return keys
+		return cacheKeys
 	}
 
-	assertAllDistinct := func(t *testing.T, keys []string) {
+	assertAllDistinct := func(t *testing.T, cacheKeys []keys.Key) {
 		t.Helper()
-		seen := make(map[string]struct{}, len(keys))
-		for _, k := range keys {
+		seen := make(map[keys.Key]struct{}, len(cacheKeys))
+		for _, k := range cacheKeys {
 			_, exists := seen[k]
-			require.False(t, exists, "duplicate cache key %q", k)
+			require.False(t, exists, "duplicate cache key %q", k.String())
 			seen[k] = struct{}{}
 		}
 	}

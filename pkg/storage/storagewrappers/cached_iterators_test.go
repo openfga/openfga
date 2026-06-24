@@ -19,6 +19,13 @@ import (
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
+func TestCachedTupleIteratorIsOrdered(t *testing.T) {
+	inner := storage.NewStaticIterator[*storage.TupleRecord](nil)
+	iter := &cachedTupleIterator{objectType: "document", relation: "viewer", iter: inner}
+	defer iter.Stop()
+	require.True(t, iter.IsOrdered())
+}
+
 func TestCachedTupleIterator(t *testing.T) {
 	ctx := context.Background()
 

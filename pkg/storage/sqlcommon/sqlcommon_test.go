@@ -13,9 +13,84 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
+	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/pkg/server/config"
 	"github.com/openfga/openfga/pkg/storage"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 )
+
+func TestNewConfig(t *testing.T) {
+	t.Parallel()
+
+	t.Run("with defaults", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := NewConfig()
+
+		require.NotNil(t, cfg.Logger)
+		assert.Equal(t, storage.DefaultMaxTuplesPerWrite, cfg.MaxTuplesPerWriteField)
+		assert.Equal(t, storage.DefaultMaxTypesPerAuthorizationModel, cfg.MaxTypesPerModelField)
+		assert.Equal(t, config.DefaultDatastorePingTimeout, cfg.PingTimeout)
+		assert.Equal(t, config.DefaultDatastorePingRetryMaxElapsedTime, cfg.PingRetryMaxElapsedTime)
+
+		// Assert that all other fields are zero values.
+		assert.Empty(t, cfg.SecondaryURI)
+		assert.Empty(t, cfg.Username)
+		assert.Empty(t, cfg.Password)
+		assert.Empty(t, cfg.SecondaryUsername)
+		assert.Empty(t, cfg.SecondaryPassword)
+		assert.Zero(t, cfg.MaxOpenConns)
+		assert.Zero(t, cfg.MinOpenConns)
+		assert.Zero(t, cfg.MaxIdleConns)
+		assert.Zero(t, cfg.MinIdleConns)
+		assert.Zero(t, cfg.ConnMaxIdleTime)
+		assert.Zero(t, cfg.ConnMaxLifetime)
+		assert.False(t, cfg.ExportMetrics)
+	})
+
+	t.Run("with all options", func(t *testing.T) {
+		t.Parallel()
+
+		expectedLogger := logger.NewNoopLogger()
+		cfg := NewConfig(
+			WithSecondaryURI("postgres://secondary"),
+			WithUsername("primary-user"),
+			WithPassword("primary-password"),
+			WithSecondaryUsername("secondary-user"),
+			WithSecondaryPassword("secondary-password"),
+			WithLogger(expectedLogger),
+			WithMaxTuplesPerWrite(100),
+			WithMaxTypesPerAuthorizationModel(200),
+			WithMaxOpenConns(10),
+			WithMinOpenConns(2),
+			WithMaxIdleConns(8),
+			WithMinIdleConns(1),
+			WithConnMaxIdleTime(3*time.Minute),
+			WithConnMaxLifetime(4*time.Minute),
+			WithPingTimeout(5*time.Second),
+			WithPingRetryMaxElapsedTime(6*time.Second),
+			WithMetrics(),
+		)
+
+		assert.Equal(t, "postgres://secondary", cfg.SecondaryURI)
+		assert.Equal(t, "primary-user", cfg.Username)
+		assert.Equal(t, "primary-password", cfg.Password)
+		assert.Equal(t, "secondary-user", cfg.SecondaryUsername)
+		assert.Equal(t, "secondary-password", cfg.SecondaryPassword)
+		assert.Same(t, expectedLogger, cfg.Logger)
+		assert.Equal(t, 100, cfg.MaxTuplesPerWriteField)
+		assert.Equal(t, 200, cfg.MaxTypesPerModelField)
+		assert.Equal(t, 10, cfg.MaxOpenConns)
+		assert.Equal(t, 2, cfg.MinOpenConns)
+		assert.Equal(t, 8, cfg.MaxIdleConns)
+		assert.Equal(t, 1, cfg.MinIdleConns)
+		assert.Equal(t, 3*time.Minute, cfg.ConnMaxIdleTime)
+		assert.Equal(t, 4*time.Minute, cfg.ConnMaxLifetime)
+		assert.Equal(t, 5*time.Second, cfg.PingTimeout)
+		assert.Equal(t, 6*time.Second, cfg.PingRetryMaxElapsedTime)
+		assert.True(t, cfg.ExportMetrics)
+	})
+}
 
 // changelogOperationIndex is the index of the "operation" field within each
 // changeLogItems row produced by GetDeleteWriteChangelogItems.

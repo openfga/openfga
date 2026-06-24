@@ -35,6 +35,7 @@ func TestMigrateCommandRollbacks(t *testing.T) {
 					URI:           uri,
 					TargetVersion: uint(version),
 					Timeout:       5 * time.Second,
+					PingTimeout:   1 * time.Second,
 					Verbose:       true,
 				})
 				require.NoError(t, err)

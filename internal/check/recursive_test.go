@@ -1467,6 +1467,62 @@ func TestRecursiveUsersetWithTupleCycles(t *testing.T) {
 	})
 }
 
+// TestRecursiveExecuteCancelledContextRace is a probabilistic regression test for the race where
+// Go's select non-deterministically picks a closed leftChan/rightChan over ctx.Done() when both
+// are ready simultaneously. Without the ctx.Err() guard this would occasionally return
+// {Allowed:false, nil} instead of propagating the cancellation error.
+func TestRecursiveExecuteCancelledContextRace(t *testing.T) {
+	t.Cleanup(func() { goleak.VerifyNone(t) })
+
+	model := testutils.MustTransformDSLToProtoWithID(`
+		model
+			schema 1.1
+		type user
+		type group
+			relations
+				define member: [user] or member from parent
+				define parent: [group]
+	`)
+
+	mg, err := modelgraph.New(model)
+	require.NoError(t, err)
+
+	node, ok := mg.GetNodeByID("group#member")
+	require.True(t, ok)
+	recursiveEdge, ok := mg.CanApplyRecursion(node, "user", true)
+	require.True(t, ok)
+
+	storeID := ulid.Make().String()
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+	// Non-empty iterator so leftChan carries a value before closing,
+	// widening the window where ctx.Done() and the channel close are both ready.
+	mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+		MaxTimes(1).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{
+		{Key: tuple.NewTupleKey("group:2", "member", "user:maria")},
+	}), nil)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // pre-cancel so ctx.Done() and the ToChannel close race immediately
+
+	req, err := NewRequest(RequestParams{
+		StoreID:  storeID,
+		Model:    mg,
+		TupleKey: tuple.NewTupleKey("group:1", "member", "user:maria"),
+	})
+	require.NoError(t, err)
+
+	strategy := NewRecursive(mg, mockDatastore, 5)
+	res, err := strategy.TTU(ctx, req, recursiveEdge, storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{
+		tuple.NewTupleKey("group:1", "parent", "group:2"),
+	}), nil)
+
+	require.ErrorIs(t, err, context.Canceled)
+	require.Nil(t, res)
+}
+
 func TestRecursiveTTUWithContextualTuples(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)

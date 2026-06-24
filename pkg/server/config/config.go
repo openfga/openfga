@@ -99,7 +99,12 @@ const (
 	DefaultCacheTTLJitterPercentage = 0
 
 	DefaultPlannerEvictionThreshold = 0
-	DefaultPlannerCleanupInterval   = 0
+
+	DefaultTraceSampler           = "traceidratio"
+	DefaultPlannerCleanupInterval = 0
+
+	DefaultDatastorePingTimeout             = 2 * time.Second
+	DefaultDatastorePingRetryMaxElapsedTime = 1 * time.Minute
 
 	ExperimentalCheckOptimizations       = "enable-check-optimizations"
 	ExperimentalListObjectsOptimizations = "enable-list-objects-optimizations"
@@ -159,6 +164,12 @@ type DatastoreConfig struct {
 
 	// ConnMaxLifetime is the maximum amount of time a connection to the datastore may be reused.
 	ConnMaxLifetime time.Duration
+
+	// PingTimeout is the maximum amount of time to wait for a successful ping to the datastore.
+	PingTimeout time.Duration
+
+	// PingRetryMaxElapsedTime is the maximum time to retry datastore ping attempts.
+	PingRetryMaxElapsedTime time.Duration
 
 	// Metrics is configuration for the Datastore metrics.
 	Metrics DatastoreMetricsConfig
@@ -239,6 +250,7 @@ type LogConfig struct {
 type TraceConfig struct {
 	Enabled            bool
 	OTLP               OTLPTraceConfig `mapstructure:"otlp"`
+	Sampler            string
 	SampleRatio        float64
 	ServiceName        string
 	ResourceAttributes string
@@ -544,6 +556,18 @@ func (cfg *Config) VerifyServerSettings() error {
 		return errors.New("datastore MinOpenConns must not be less than datastore MinIdleConns")
 	}
 
+	if cfg.Datastore.PingTimeout <= 0 {
+		return errors.New("datastore PingTimeout must be greater than 0")
+	}
+
+	if cfg.Datastore.PingRetryMaxElapsedTime <= 0 {
+		return errors.New("datastore PingRetryMaxElapsedTime must be greater than 0")
+	}
+
+	if cfg.Datastore.PingRetryMaxElapsedTime < cfg.Datastore.PingTimeout {
+		return errors.New("datastore PingRetryMaxElapsedTime must not be less than datastore PingTimeout")
+	}
+
 	return nil
 }
 
@@ -572,6 +596,20 @@ func (cfg *Config) VerifyBinarySettings() error {
 		return fmt.Errorf("config 'log.TimestampFormat' must be one of ['Unix', 'ISO8601']")
 	}
 
+	if cfg.Trace.Enabled {
+		supportedSamplers := map[string]bool{
+			"always_on":                true,
+			"always_off":               true,
+			"traceidratio":             true,
+			"parentbased_always_on":    true,
+			"parentbased_always_off":   true,
+			"parentbased_traceidratio": true,
+		}
+		if !supportedSamplers[strings.ToLower(cfg.Trace.Sampler)] {
+			fmt.Printf("WARNING: unrecognized trace sampler '%s', falling back to 'traceidratio'. Supported values: always_on, always_off, traceidratio, parentbased_always_on, parentbased_always_off, parentbased_traceidratio\n", cfg.Trace.Sampler)
+		}
+	}
+
 	if cfg.Playground.Enabled {
 		if !cfg.HTTP.Enabled {
 			return errors.New("the HTTP server must be enabled to run the openfga playground")
@@ -579,6 +617,16 @@ func (cfg *Config) VerifyBinarySettings() error {
 
 		if cfg.Authn.Method != "none" {
 			return errors.New("the playground only supports authn method 'none'")
+		}
+	}
+
+	if cfg.Authn.Method == "oidc" {
+		// both are StringOrURI values (RFC 7519 §4.1.1, §4.1.3); whitespace is valid, so only reject strictly empty
+		if cfg.Authn.Issuer == "" {
+			return errors.New("'authn.oidc.issuer' config must be set when authn method is 'oidc'")
+		}
+		if cfg.Authn.Audience == "" {
+			return errors.New("'authn.oidc.audience' config must be set when authn method is 'oidc'")
 		}
 	}
 
@@ -829,13 +877,15 @@ func DefaultConfig() *Config {
 		RequestDurationDatastoreQueryCountBuckets: []string{"50", "200"},
 		RequestDurationDispatchCountBuckets:       []string{"50", "200"},
 		Datastore: DatastoreConfig{
-			Engine:                 "memory",
-			MaxCacheSize:           DefaultMaxAuthorizationModelCacheSize,
-			MaxTypesystemCacheSize: DefaultMaxTypesystemCacheSize,
-			MinIdleConns:           0,
-			MaxIdleConns:           10,
-			MinOpenConns:           0,
-			MaxOpenConns:           30,
+			Engine:                  "memory",
+			MaxCacheSize:            DefaultMaxAuthorizationModelCacheSize,
+			MaxTypesystemCacheSize:  DefaultMaxTypesystemCacheSize,
+			MinIdleConns:            0,
+			MaxIdleConns:            10,
+			MinOpenConns:            0,
+			MaxOpenConns:            30,
+			PingTimeout:             DefaultDatastorePingTimeout,
+			PingRetryMaxElapsedTime: DefaultDatastorePingRetryMaxElapsedTime,
 		},
 		GRPC: GRPCConfig{
 			Addr:            "0.0.0.0:8081",
@@ -871,6 +921,7 @@ func DefaultConfig() *Config {
 					Enabled: false,
 				},
 			},
+			Sampler:            DefaultTraceSampler,
 			SampleRatio:        0.2,
 			ServiceName:        "openfga",
 			ResourceAttributes: "",

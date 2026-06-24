@@ -38,16 +38,30 @@ type RemoteOidcAuthenticator struct {
 }
 
 var (
-	jwkRefreshInterval = 48 * time.Hour
+	jwkRefreshInterval  = 48 * time.Hour
+	jwkRefreshRateLimit = 1 * time.Minute
 
 	errInvalidClaims = status.Error(codes.Code(openfgav1.AuthErrorCode_invalid_claims), "invalid claims")
 	fetchJWKs        = fetchJWK
+)
+
+var (
+	ErrMissingIssuer   = errors.New("oidc: issuer must be set")
+	ErrMissingAudience = errors.New("oidc: audience must be set")
 )
 
 var _ authn.Authenticator = (*RemoteOidcAuthenticator)(nil)
 var _ authn.OIDCAuthenticator = (*RemoteOidcAuthenticator)(nil)
 
 func NewRemoteOidcAuthenticator(mainIssuer string, issuerAliases []string, audience string, subjects []string, clientIDClaims []string) (*RemoteOidcAuthenticator, error) {
+	// both issuer and audience are StringOrURI values (RFC 7519 §4.1.1, §4.1.3); whitespace is valid, so only reject strictly empty
+	if mainIssuer == "" {
+		return nil, ErrMissingIssuer
+	}
+	if audience == "" {
+		return nil, ErrMissingAudience
+	}
+
 	client := retryablehttp.NewClient()
 	client.Logger = nil
 	oidc := &RemoteOidcAuthenticator{
@@ -87,9 +101,8 @@ func (oidc *RemoteOidcAuthenticator) Authenticate(requestContext context.Context
 		jwt.WithExpirationRequired(),
 	}
 
-	if strings.TrimSpace(oidc.Audience) != "" {
-		options = append(options, jwt.WithAudience(oidc.Audience))
-	}
+	// constructor enforces non-empty Audience; unconditional to make the invariant explicit
+	options = append(options, jwt.WithAudience(oidc.Audience))
 
 	jwtParser := jwt.NewParser(options...)
 
@@ -185,8 +198,10 @@ func fetchJWK(oidc *RemoteOidcAuthenticator) error {
 
 func (oidc *RemoteOidcAuthenticator) GetKeys() (*keyfunc.JWKS, error) {
 	jwks, err := keyfunc.Get(oidc.JwksURI, keyfunc.Options{
-		Client:          oidc.httpClient,
-		RefreshInterval: jwkRefreshInterval,
+		Client:            oidc.httpClient,
+		RefreshInterval:   jwkRefreshInterval,
+		RefreshUnknownKID: true,
+		RefreshRateLimit:  jwkRefreshRateLimit,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("error fetching keys from %v: %w", oidc.JwksURI, err)

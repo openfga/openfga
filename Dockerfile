@@ -1,6 +1,6 @@
-FROM ghcr.io/grpc-ecosystem/grpc-health-probe:v0.4.48@sha256:b615f8b80a6796490b91bfe0f7f4d59cf73767d4921968495cb8b4024090e151 AS grpc_health_probe
+FROM ghcr.io/grpc-ecosystem/grpc-health-probe:v0.4.52@sha256:0303b506a288d544ed99fef17a55c8c5ce872f498f643c396b532b3595089ac9 AS grpc_health_probe
 # Please manually update the Dockerfile.goreleaser whenever the grpc health probe is updated
-FROM cgr.dev/chainguard/go:1.26.3@sha256:e476979fab066f2ac354111fac6002542d6411b4ae7120b13cc229cac0fa0820 AS builder
+FROM cgr.dev/chainguard/go:1.26.4@sha256:e100be9286b2fb0d161e375426aded92c39ffeb716fdddce4d4ca7e7f00a045c AS builder
 
 WORKDIR /app
 

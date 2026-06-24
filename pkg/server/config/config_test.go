@@ -940,6 +940,56 @@ func TestVerifyServerSettings(t *testing.T) {
 			require.NoError(t, err)
 		})
 	})
+
+	t.Run("verify_ping_settings", func(t *testing.T) {
+		t.Run("negative_ping_timeout_duration", func(t *testing.T) {
+			cfg := DefaultConfig()
+			cfg.Datastore.PingTimeout = -2 * time.Second
+
+			err := cfg.VerifyServerSettings()
+			require.EqualError(t, err, "datastore PingTimeout must be greater than 0")
+		})
+
+		t.Run("zero_ping_timeout_duration", func(t *testing.T) {
+			cfg := DefaultConfig()
+			cfg.Datastore.PingTimeout = 0
+
+			err := cfg.VerifyServerSettings()
+			require.EqualError(t, err, "datastore PingTimeout must be greater than 0")
+		})
+
+		t.Run("negative_ping_retry_max_elapsed_time_duration", func(t *testing.T) {
+			cfg := DefaultConfig()
+			cfg.Datastore.PingRetryMaxElapsedTime = -2 * time.Second
+
+			err := cfg.VerifyServerSettings()
+			require.EqualError(t, err, "datastore PingRetryMaxElapsedTime must be greater than 0")
+		})
+
+		t.Run("zero_ping_retry_max_elapsed_time_duration", func(t *testing.T) {
+			cfg := DefaultConfig()
+			cfg.Datastore.PingRetryMaxElapsedTime = 0
+
+			err := cfg.VerifyServerSettings()
+			require.EqualError(t, err, "datastore PingRetryMaxElapsedTime must be greater than 0")
+		})
+
+		t.Run("error_when_ping_retry_max_elapsed_time_less_than_ping_timeout", func(t *testing.T) {
+			cfg := DefaultConfig()
+			cfg.Datastore.PingRetryMaxElapsedTime = 5 * time.Second
+			cfg.Datastore.PingTimeout = 10 * time.Second
+			err := cfg.VerifyServerSettings()
+			require.EqualError(t, err, "datastore PingRetryMaxElapsedTime must not be less than datastore PingTimeout")
+		})
+
+		t.Run("no_error_when_ping_retry_max_elapsed_time_equal_to_ping_timeout", func(t *testing.T) {
+			cfg := DefaultConfig()
+			cfg.Datastore.PingRetryMaxElapsedTime = 10 * time.Second
+			cfg.Datastore.PingTimeout = 10 * time.Second
+			err := cfg.VerifyServerSettings()
+			require.NoError(t, err)
+		})
+	})
 }
 
 func TestVerifyBinarySettings(t *testing.T) {
@@ -1136,6 +1186,97 @@ func TestVerifyBinarySettings(t *testing.T) {
 
 		io.Copy(&buf, r)
 		require.Contains(t, buf.String(), "WARNING: Logging is not enabled. It is highly recommended to enable logging in production environments to avoid masking attacker operations.")
+	})
+
+	t.Run("oidc_method_requires_issuer", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Authn.Method = "oidc"
+		cfg.Authn.Audience = "some-audience"
+		cfg.Authn.Issuer = ""
+
+		err := cfg.VerifyBinarySettings()
+		require.EqualError(t, err, "'authn.oidc.issuer' config must be set when authn method is 'oidc'")
+	})
+
+	t.Run("oidc_method_requires_audience", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Authn.Method = "oidc"
+		cfg.Authn.Issuer = "https://issuer.example.com"
+		cfg.Authn.Audience = ""
+
+		err := cfg.VerifyBinarySettings()
+		require.EqualError(t, err, "'authn.oidc.audience' config must be set when authn method is 'oidc'")
+	})
+
+	t.Run("oidc_method_with_issuer_and_audience_passes", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Authn.Method = "oidc"
+		cfg.Authn.Issuer = "https://issuer.example.com"
+		cfg.Authn.Audience = "some-audience"
+
+		err := cfg.VerifyBinarySettings()
+		require.NoError(t, err)
+	})
+
+	// whitespace is a valid StringOrURI per RFC 7519 §4.1.1 and §4.1.3; whitespace-only issuer and audience must be accepted
+	t.Run("oidc_method_whitespace_issuer_is_valid", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Authn.Method = "oidc"
+		cfg.Authn.Issuer = "   "
+		cfg.Authn.Audience = "some-audience"
+
+		err := cfg.VerifyBinarySettings()
+		require.NoError(t, err)
+	})
+
+	t.Run("oidc_method_whitespace_audience_is_valid", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Authn.Method = "oidc"
+		cfg.Authn.Issuer = "https://issuer.example.com"
+		cfg.Authn.Audience = "   "
+
+		err := cfg.VerifyBinarySettings()
+		require.NoError(t, err)
+	})
+}
+
+func TestVerifyBinarySettings_TraceSampler(t *testing.T) {
+	validSamplers := []string{
+		"always_on", "always_off", "traceidratio",
+		"parentbased_always_on", "parentbased_always_off", "parentbased_traceidratio",
+	}
+	for _, sampler := range validSamplers {
+		t.Run("valid_"+sampler, func(t *testing.T) {
+			cfg := DefaultConfig()
+			cfg.Trace.Enabled = true
+			cfg.Trace.Sampler = sampler
+			err := cfg.VerifyBinarySettings()
+			require.NoError(t, err)
+		})
+	}
+
+	t.Run("uppercase_sampler_accepted", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Trace.Enabled = true
+		cfg.Trace.Sampler = "ALWAYS_ON"
+		err := cfg.VerifyBinarySettings()
+		require.NoError(t, err)
+	})
+
+	t.Run("unrecognized_sampler_does_not_error", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Trace.Enabled = true
+		cfg.Trace.Sampler = "jaeger_remote"
+		err := cfg.VerifyBinarySettings()
+		require.NoError(t, err)
+	})
+
+	t.Run("tracing_disabled_skips_sampler_validation", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Trace.Enabled = false
+		cfg.Trace.Sampler = "totally_invalid"
+		err := cfg.VerifyBinarySettings()
+		require.NoError(t, err)
 	})
 }
 

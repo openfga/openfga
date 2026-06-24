@@ -3,14 +3,11 @@ package storagewrappers
 import (
 	"context"
 	"errors"
-	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/cespare/xxhash/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"golang.org/x/sync/singleflight"
@@ -20,6 +17,7 @@ import (
 
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/storage/cache/keys"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -27,8 +25,7 @@ import (
 // ─────────────────────────────────────────────────────────────────────────────
 
 const (
-	v2IteratorCachePrefix = "v2ic."
-	maxCachedElements     = 1000
+	maxCachedElements = 1000
 	// InitialBufferCapacity is the default initial capacity for tuple buffers.
 	// Most queries return fewer than 100 tuples, so this avoids over-allocation
 	// while still providing reasonable capacity to minimize slice growth.
@@ -89,6 +86,7 @@ type MinimalCacheEntry struct {
 type V2IteratorCacheEntry struct {
 	Entries      []MinimalCacheEntry
 	LastModified time.Time
+	Ordered      bool
 }
 
 // CacheEntityType implements storage.CacheItem for metrics.
@@ -124,7 +122,7 @@ type CachingIterator struct {
 
 	// Cache config
 	cache    storage.InMemoryCache[any]
-	cacheKey string
+	cacheKey keys.Key
 	maxSize  int
 	ttl      time.Duration
 
@@ -151,7 +149,7 @@ var _ storage.TupleIterator = (*CachingIterator)(nil)
 func newCachingIterator(
 	inner storage.TupleIterator,
 	cache storage.InMemoryCache[any],
-	cacheKey string,
+	cacheKey keys.Key,
 	maxSize int,
 	ttl time.Duration,
 	drainTimeout time.Duration,
@@ -228,6 +226,8 @@ func (c *CachingIterator) Head(ctx context.Context) (*openfgav1.Tuple, error) {
 	return c.inner.Head(ctx)
 }
 
+func (c *CachingIterator) IsOrdered() bool { return c.inner.IsOrdered() }
+
 // Stop terminates iteration and triggers caching.
 // If not fully consumed, drains in background with singleflight deduplication.
 // Follows V1's pattern: always spawns goroutine to avoid blocking Stop() on I/O.
@@ -283,6 +283,7 @@ func (c *CachingIterator) flush() {
 	c.cache.Set(c.cacheKey, &V2IteratorCacheEntry{
 		Entries:      entries,
 		LastModified: c.createdAt,
+		Ordered:      c.inner.IsOrdered(),
 	}, c.ttl)
 
 	c.tuples = nil // Release for GC
@@ -330,7 +331,7 @@ func (c *CachingIterator) drainInBackground() {
 
 	// Optimization 3: Use singleflight only for actual draining.
 	// This prevents multiple goroutines from draining the same iterator key concurrently.
-	_, _, _ = c.sf.Do(c.cacheKey, func() (interface{}, error) {
+	_, _, _ = c.sf.Do(c.cacheKey.String(), func() (interface{}, error) {
 		for {
 			// Check for timeout before each iteration
 			if drainCtx.Err() != nil {
@@ -395,17 +396,19 @@ type LockFreeCachedIterator struct {
 	stopped    atomic.Bool
 	objectType string
 	relation   string
+	ordered    bool
 }
 
 // Ensure LockFreeCachedIterator implements TupleIterator.
 var _ storage.TupleIterator = (*LockFreeCachedIterator)(nil)
 
 // NewLockFreeCachedIterator creates a lock-free iterator over cached entries.
-func NewLockFreeCachedIterator(entries []MinimalCacheEntry, objectType, relation string) *LockFreeCachedIterator {
+func NewLockFreeCachedIterator(entries []MinimalCacheEntry, objectType, relation string, ordered bool) *LockFreeCachedIterator {
 	return &LockFreeCachedIterator{
 		entries:    entries,
 		objectType: objectType,
 		relation:   relation,
+		ordered:    ordered,
 	}
 }
 
@@ -452,6 +455,8 @@ func (c *LockFreeCachedIterator) Stop() {
 	c.stopped.Store(true)
 }
 
+func (c *LockFreeCachedIterator) IsOrdered() bool { return c.ordered }
+
 // reconstruct builds a full Tuple from minimal cached data.
 func (c *LockFreeCachedIterator) reconstruct(e *MinimalCacheEntry) *openfgav1.Tuple {
 	tk := &openfgav1.TupleKey{
@@ -468,40 +473,4 @@ func (c *LockFreeCachedIterator) reconstruct(e *MinimalCacheEntry) *openfgav1.Tu
 	}
 
 	return &openfgav1.Tuple{Key: tk}
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Cache Key Helpers
-// ─────────────────────────────────────────────────────────────────────────────
-
-// appendConditionsHash adds a hash of condition names to the key builder.
-func appendConditionsHash(b *strings.Builder, conditions []string) {
-	if len(conditions) == 0 {
-		return
-	}
-
-	// Filter out empty/NoCond
-	filtered := make([]string, 0, len(conditions))
-	for _, c := range conditions {
-		if c != "" {
-			filtered = append(filtered, c)
-		}
-	}
-
-	if len(filtered) == 0 {
-		return
-	}
-
-	// Sort for deterministic hash
-	sort.Strings(filtered)
-
-	// Hash condition names
-	hasher := xxhash.New()
-	for _, c := range filtered {
-		_, _ = hasher.WriteString(c)
-		_, _ = hasher.WriteString("|") // Separator to avoid collisions
-	}
-
-	b.WriteString("/c:")
-	b.WriteString(strconv.FormatUint(hasher.Sum64(), 10))
 }

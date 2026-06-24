@@ -13,6 +13,7 @@ import (
 	reflect "reflect"
 	time "time"
 
+	keys "github.com/openfga/openfga/pkg/storage/cache/keys"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -79,7 +80,7 @@ func (m *MockInMemoryCache[T]) EXPECT() *MockInMemoryCacheMockRecorder[T] {
 }
 
 // Delete mocks base method.
-func (m *MockInMemoryCache[T]) Delete(key string) {
+func (m *MockInMemoryCache[T]) Delete(key keys.Key) {
 	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "Delete", key)
 }
@@ -91,7 +92,7 @@ func (mr *MockInMemoryCacheMockRecorder[T]) Delete(key any) *gomock.Call {
 }
 
 // Get mocks base method.
-func (m *MockInMemoryCache[T]) Get(key string) T {
+func (m *MockInMemoryCache[T]) Get(key keys.Key) T {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Get", key)
 	ret0, _ := ret[0].(T)
@@ -105,7 +106,7 @@ func (mr *MockInMemoryCacheMockRecorder[T]) Get(key any) *gomock.Call {
 }
 
 // Set mocks base method.
-func (m *MockInMemoryCache[T]) Set(key string, value T, ttl time.Duration) {
+func (m *MockInMemoryCache[T]) Set(key keys.Key, value T, ttl time.Duration) {
 	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "Set", key, value, ttl)
 }

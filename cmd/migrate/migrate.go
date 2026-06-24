@@ -2,8 +2,6 @@
 package migrate
 
 import (
-	"time"
-
 	_ "github.com/jackc/pgx/v5/stdlib" // PostgreSQL driver.
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -43,7 +41,7 @@ func NewMigrateCommand() *cobra.Command {
 	flags.String(datastoreUsernameFlag, "", "(optional) overwrite the username in the connection string")
 	flags.String(datastorePasswordFlag, "", "(optional) overwrite the password in the connection string")
 	flags.Uint(versionFlag, 0, "the version to migrate to (if omitted the latest schema will be used)")
-	flags.Duration(timeoutFlag, 1*time.Minute, "a timeout for the time it takes the migrate process to connect to the database")
+	flags.Duration(timeoutFlag, config.DefaultDatastorePingRetryMaxElapsedTime, "a timeout for the time it takes the migrate process to connect to the database")
 	flags.Bool(verboseMigrationFlag, false, "enable verbose migration logs (default false)")
 	flags.String(logFormatFlag, defaultConfig.Log.Format, "the log format to output logs in")
 	flags.String(logLevelFlag, defaultConfig.Log.Level, "the log level to use")
@@ -75,6 +73,7 @@ func runMigration(_ *cobra.Command, _ []string) error {
 		URI:           uri,
 		TargetVersion: targetVersion,
 		Timeout:       timeout,
+		PingTimeout:   config.DefaultDatastorePingTimeout,
 		Verbose:       verbose,
 		Username:      username,
 		Password:      password,

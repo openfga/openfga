@@ -24,6 +24,7 @@ import (
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/pkg/server/config"
 	"github.com/openfga/openfga/pkg/storage"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 )
@@ -42,12 +43,14 @@ type Config struct {
 	MaxTuplesPerWriteField int
 	MaxTypesPerModelField  int
 
-	MaxOpenConns    int
-	MinOpenConns    int
-	MaxIdleConns    int
-	MinIdleConns    int
-	ConnMaxIdleTime time.Duration
-	ConnMaxLifetime time.Duration
+	MaxOpenConns            int
+	MinOpenConns            int
+	MaxIdleConns            int
+	MinIdleConns            int
+	ConnMaxIdleTime         time.Duration
+	ConnMaxLifetime         time.Duration
+	PingTimeout             time.Duration
+	PingRetryMaxElapsedTime time.Duration
 
 	ExportMetrics bool
 }
@@ -166,6 +169,22 @@ func WithConnMaxLifetime(d time.Duration) DatastoreOption {
 	}
 }
 
+// WithPingTimeout returns a DatastoreOption that sets
+// the maximum timeout for ping operations in the Config.
+func WithPingTimeout(d time.Duration) DatastoreOption {
+	return func(cfg *Config) {
+		cfg.PingTimeout = d
+	}
+}
+
+// WithPingRetryMaxElapsedTime returns a DatastoreOption that sets
+// the maximum elapsed time for ping retries in the Config.
+func WithPingRetryMaxElapsedTime(d time.Duration) DatastoreOption {
+	return func(cfg *Config) {
+		cfg.PingRetryMaxElapsedTime = d
+	}
+}
+
 // WithMetrics returns a DatastoreOption that
 // enables the export of metrics in the Config.
 func WithMetrics() DatastoreOption {
@@ -193,6 +212,14 @@ func NewConfig(opts ...DatastoreOption) *Config {
 
 	if cfg.MaxTypesPerModelField == 0 {
 		cfg.MaxTypesPerModelField = storage.DefaultMaxTypesPerAuthorizationModel
+	}
+
+	if cfg.PingTimeout == 0 {
+		cfg.PingTimeout = config.DefaultDatastorePingTimeout
+	}
+
+	if cfg.PingRetryMaxElapsedTime == 0 {
+		cfg.PingRetryMaxElapsedTime = config.DefaultDatastorePingRetryMaxElapsedTime
 	}
 
 	return cfg
@@ -537,6 +564,9 @@ func (t *SQLTupleIterator) Stop() {
 		_ = t.rows.Close()
 	}
 }
+
+// IsOrdered conservatively returns false until datastore methods expose ordering guarantees.
+func (t *SQLTupleIterator) IsOrdered() bool { return false }
 
 // DBInfo encapsulates DB information for use in common method.
 type DBInfo struct {

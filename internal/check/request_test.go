@@ -130,7 +130,6 @@ func TestNewRequest(t *testing.T) {
 		})
 		require.NoError(t, err)
 		require.NotEmpty(t, req.GetCacheKey())
-		require.Contains(t, req.GetCacheKey(), cacheKeyPrefix)
 	})
 
 	t.Run("generates_invariant_cache_key", func(t *testing.T) {
@@ -233,6 +232,21 @@ func TestCloneWithTupleKey(t *testing.T) {
 		newTupleKey := tuple.NewTupleKey("document:1", "viewer", "group:eng#member")
 		clonedReq := originalReq.cloneWithTupleKey(newTupleKey)
 		require.Equal(t, "group#member", clonedReq.GetUserType())
+	})
+
+	t.Run("produces_distinct_cache_key", func(t *testing.T) {
+		originalReq, err := NewRequest(RequestParams{
+			StoreID:  ulid.Make().String(),
+			Model:    createTestModel(t),
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:alice"),
+		})
+		require.NoError(t, err)
+
+		newTupleKey := tuple.NewTupleKey("document:2", "editor", "user:bob")
+		clonedReq := originalReq.cloneWithTupleKey(newTupleKey)
+
+		require.NotEqual(t, originalReq.GetCacheKey(), clonedReq.GetCacheKey(),
+			"cloned request with different tuple key must have a distinct cache key")
 	})
 
 	t.Run("shares_contextual_tuple_maps", func(t *testing.T) {
@@ -700,5 +714,59 @@ func TestContextualTuplesValidation(t *testing.T) {
 		})
 		require.NoError(t, err)
 		require.NotNil(t, req)
+	})
+}
+
+func TestPlanKeyBuilders_CollisionFreedom(t *testing.T) {
+	storeID := ulid.Make().String()
+	mg := createTestModel(t)
+
+	req, err := NewRequest(RequestParams{
+		StoreID:  storeID,
+		Model:    mg,
+		TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:alice"),
+	})
+	require.NoError(t, err)
+
+	t.Run("different_usersets_produce_different_keys", func(t *testing.T) {
+		k1 := createUsersetPlanKey(req, "group#member")
+		k2 := createUsersetPlanKey(req, "team#member")
+		require.NotEqual(t, k1, k2)
+	})
+
+	t.Run("different_tupleset_relations_produce_different_keys", func(t *testing.T) {
+		k1 := createTTUPlanKey(req, "parent", "viewer")
+		k2 := createTTUPlanKey(req, "owner", "viewer")
+		require.NotEqual(t, k1, k2)
+	})
+
+	t.Run("different_computed_relations_produce_different_keys", func(t *testing.T) {
+		k1 := createTTUPlanKey(req, "parent", "viewer")
+		k2 := createTTUPlanKey(req, "parent", "editor")
+		require.NotEqual(t, k1, k2)
+	})
+
+	t.Run("userset_vs_recursive_userset_differ", func(t *testing.T) {
+		k1 := createUsersetPlanKey(req, "group#member")
+		k2 := createRecursiveUsersetPlanKey(req, "group#member")
+		require.NotEqual(t, k1, k2)
+	})
+
+	t.Run("ttu_vs_recursive_ttu_differ", func(t *testing.T) {
+		k1 := createTTUPlanKey(req, "parent", "viewer")
+		k2 := createRecursiveTTUPlanKey(req, "parent")
+		require.NotEqual(t, k1, k2)
+	})
+
+	t.Run("userset_key_vs_ttu_key_differ", func(t *testing.T) {
+		k1 := createUsersetPlanKey(req, "parent")
+		k2 := createTTUPlanKey(req, "parent", "viewer")
+		require.NotEqual(t, k1, k2)
+	})
+
+	t.Run("recursive_userset_vs_recursive_ttu_differ", func(t *testing.T) {
+		k1 := createRecursiveUsersetPlanKey(req, "parent")
+		k2 := createRecursiveTTUPlanKey(req, "parent")
+		require.NotEqual(t, k1, k2)
 	})
 }
