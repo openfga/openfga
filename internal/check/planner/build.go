@@ -1,6 +1,8 @@
 package planner
 
 import (
+	"slices"
+
 	"github.com/openfga/openfga/pkg/storage/adapter"
 )
 
@@ -121,14 +123,49 @@ func childHaving(b adapter.Builder, t adapter.Tuple, children []Node) []adapter.
 	return preds
 }
 
+// relationFilter bounds the scan to the relations the plan's leaves actually reference,
+// rendering as an equality for a single relation or an IN list for several. The HAVING
+// atoms already test t.relation per leaf, so this predicate changes no result, because a
+// row for an unreferenced relation contributes NULL to every count atom regardless. It
+// exists only to prune the scan: relation is a stored column, so a composite index keyed
+// on the store, object, and relation columns can use it to narrow the range, whereas the
+// SUBSTRING- and POSITION-wrapped subject predicates are non-sargable.
+//
+// The relation set is taken from every leaf, including the subtract side of an exclusion,
+// since collectLeaves returns those, so a subtract leaf's relation is never dropped here,
+// which would otherwise force its count to zero and silently disable the exclusion.
+func relationFilter(b adapter.Builder, t adapter.Tuple, root Node) adapter.Predicate {
+	seen := make(map[string]struct{})
+	var relations []string
+	for _, leaf := range collectLeaves(root) {
+		if _, ok := seen[leaf.Relation]; ok {
+			continue
+		}
+		seen[leaf.Relation] = struct{}{}
+		relations = append(relations, leaf.Relation)
+	}
+	// Sorted for deterministic SQL regardless of leaf traversal order.
+	slices.Sort(relations)
+
+	if len(relations) == 1 {
+		return t.ObjectRelation().Eq(b.Lit(relations[0]))
+	}
+	lits := make([]adapter.Expression, len(relations))
+	for i, r := range relations {
+		lits[i] = b.Lit(r)
+	}
+	return t.ObjectRelation().In(lits...)
+}
+
 // buildHavingQuery compiles a condition-free plan into one boolean query: the database
 // folds the whole set algebra in HAVING, returning a single row when the Check is granted
 // and no rows otherwise.
 func buildHavingQuery(b adapter.Builder, bnd bound, root Node) adapter.Query {
 	t := b.Tuple("t")
+	where := append(sharedWherePredicates(b, t, bnd), relationFilter(b, t, root))
 	return b.Select(b.Lit(1)).
 		From(t).
-		Where(sharedWherePredicates(b, t, bnd)...).
+		Where(where...).
 		Having(combineHaving(b, t, root))
 }
 

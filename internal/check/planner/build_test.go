@@ -47,11 +47,13 @@ func TestBuildHavingQuery_Union(t *testing.T) {
 	sql, args := buildSQL(t, buildHavingQuery(adaptertest.New(nil), testBound, root))
 
 	// The shared WHERE binds the store, object, subject type/relation, then the subject id
-	// superset (exact id + wildcard). Each leaf then contributes a COUNT(CASE WHEN <match>
-	// THEN 1 END) atom whose args are: the relation, the subject id pair, the unconditioned
-	// sentinel, the CASE THEN value (1), and the >= 1 threshold.
+	// superset (exact id + wildcard), then the relation filter pruning the scan to the
+	// referenced relations (sorted: editor, viewer). Each leaf then contributes a
+	// COUNT(CASE WHEN <match> THEN 1 END) atom whose args are: the relation, the subject id
+	// pair, the unconditioned sentinel, the CASE THEN value (1), and the >= 1 threshold.
 	require.Equal(t, []any{
 		1, "store1", "document", "1", "user", "", "alice", "*", // SELECT 1 + shared WHERE
+		"editor", "viewer", // relation filter (sorted)
 		"viewer", "alice", "*", "", 1, 1, // viewer atom
 		"editor", "alice", "*", "", 1, 1, // editor atom
 	}, args)
