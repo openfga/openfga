@@ -9,6 +9,8 @@
 package adaptertest
 
 import (
+	"context"
+
 	"github.com/openfga/openfga/pkg/storage/adapter"
 	"github.com/openfga/openfga/pkg/storage/adapter/internal/ansi"
 )
@@ -17,6 +19,35 @@ import (
 // SQL text and ordinal bind arguments and returns a result cursor. Implement it in a
 // test to feed canned rows back to the query under test.
 type Executor = ansi.Executor
+
+type emptyRows struct{}
+
+func (r emptyRows) Next() bool {
+	return false
+}
+
+func (r emptyRows) Scan(dest ...any) error {
+	return nil
+}
+
+func (r emptyRows) Close() error {
+	return nil
+}
+
+func (r emptyRows) Err() error {
+	return nil
+}
+
+type Recorder struct {
+	SQL        string
+	Parameters []any
+}
+
+func (r *Recorder) Query(_ context.Context, sql string, args []any) (adapter.Rows, error) {
+	r.SQL = sql
+	r.Parameters = args
+	return emptyRows{}, nil
+}
 
 // New returns a Builder that renders standard ANSI SQL and runs statements through exec.
 // Pass a nil exec for a render-only builder: its queries never execute, but each can be
