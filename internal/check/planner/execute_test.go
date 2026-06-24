@@ -10,6 +10,7 @@ import (
 
 	"github.com/openfga/openfga/pkg/storage/adapter"
 	"github.com/openfga/openfga/pkg/storage/adapter/adaptertest"
+	"github.com/openfga/openfga/pkg/storage/cache/keys"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
@@ -262,4 +263,32 @@ type evalFunc func(name string, context []byte) (bool, error)
 
 func (f evalFunc) Eval(_ context.Context, name string, context []byte) (bool, error) {
 	return f(name, context)
+}
+
+// TestEvalCondition_CacheKeyNoCollision guards against the old key scheme that joined
+// name and context with a single null byte: (name "a", ctx "\x00b") and (name "a\x00",
+// ctx "b") concatenated to the same "a\x00\x00b" string, so the second pair wrongly
+// reused the first's cached result. The tagged, length-prefixed key keeps them distinct,
+// so each pair triggers its own Eval.
+func TestEvalCondition_CacheKeyNoCollision(t *testing.T) {
+	var calls int
+	eval := evalFunc(func(string, []byte) (bool, error) {
+		calls++
+		return true, nil
+	})
+	leaf := &QueryNode{Label: "document#viewer"}
+	cache := make(map[keys.Key]bool)
+
+	_, err := evalCondition(context.Background(), eval, leaf, gatherRow{condName: "a", condCtx: []byte("\x00b")}, cache)
+	require.NoError(t, err)
+	_, err = evalCondition(context.Background(), eval, leaf, gatherRow{condName: "a\x00", condCtx: []byte("b")}, cache)
+	require.NoError(t, err)
+
+	require.Equal(t, 2, calls, "distinct (name, context) pairs must not share a cache entry")
+	require.Len(t, cache, 2)
+
+	// A repeat of the first pair is served from the cache, not re-evaluated.
+	_, err = evalCondition(context.Background(), eval, leaf, gatherRow{condName: "a", condCtx: []byte("\x00b")}, cache)
+	require.NoError(t, err)
+	require.Equal(t, 2, calls, "an identical pair must reuse its cached result")
 }

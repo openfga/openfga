@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"fmt"
 	"slices"
+
+	"github.com/openfga/openfga/pkg/storage/cache/keys"
 )
 
 // ConditionEvaluator decides whether an ABAC condition attached to a matched tuple is
@@ -90,7 +92,7 @@ func (p *Plan) executeGather(ctx context.Context, eval ConditionEvaluator) (bool
 	}
 
 	satisfied := make(map[*QueryNode]bool, len(p.unit.leaves))
-	condCache := make(map[string]bool)
+	condCache := make(map[keys.Key]bool)
 	for _, leaf := range p.unit.leaves {
 		ok, err := leafSatisfied(ctx, leaf, gathered, eval, condCache)
 		if err != nil {
@@ -105,7 +107,7 @@ func (p *Plan) executeGather(ctx context.Context, eval ConditionEvaluator) (bool
 // leafSatisfied reports whether any gathered row grants leaf: the row must match the
 // leaf's relation and subject, and either be unconditioned (when the leaf accepts
 // unconditioned tuples) or carry an accepted condition whose CEL evaluation passes.
-func leafSatisfied(ctx context.Context, leaf *QueryNode, rows []gatherRow, eval ConditionEvaluator, cache map[string]bool) (bool, error) {
+func leafSatisfied(ctx context.Context, leaf *QueryNode, rows []gatherRow, eval ConditionEvaluator, cache map[keys.Key]bool) (bool, error) {
 	for _, r := range rows {
 		if r.relation != leaf.Relation {
 			continue
@@ -155,11 +157,15 @@ func leafAcceptsCondition(leaf *QueryNode, name string) bool {
 
 // evalCondition evaluates a conditioned row's CEL, caching by (name, context) so a
 // condition shared across leaves or rows is evaluated once.
-func evalCondition(ctx context.Context, eval ConditionEvaluator, leaf *QueryNode, r gatherRow, cache map[string]bool) (bool, error) {
+func evalCondition(ctx context.Context, eval ConditionEvaluator, leaf *QueryNode, r gatherRow, cache map[keys.Key]bool) (bool, error) {
 	if eval == nil {
 		return false, fmt.Errorf("planner: tuple for %q carries condition %q but no evaluator was provided", leaf.Label, r.condName)
 	}
-	key := r.condName + "\x00" + string(r.condCtx)
+	builder := keys.GetBuilder()
+	defer builder.Close()
+	builder.EncodeString(r.condName)
+	builder.EncodeBytes(r.condCtx)
+	key := builder.Key()
 	if got, ok := cache[key]; ok {
 		return got, nil
 	}
