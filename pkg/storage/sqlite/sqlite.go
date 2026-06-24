@@ -26,6 +26,7 @@ import (
 
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/storage/adapter"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 )
@@ -137,6 +138,12 @@ func NewWithDB(db *sql.DB, cfg *sqlcommon.Config) (*Datastore, error) {
 		maxTypesPerModelField:  cfg.MaxTypesPerModelField,
 		versionReady:           false,
 	}, nil
+}
+
+// Builder see [storage.RelationshipTupleReader].Builder. SQLite does not yet have an adapter
+// Builder implementation, so this returns nil.
+func (s *Datastore) Builder(_ openfgav1.ConsistencyPreference) adapter.Builder {
+	return nil
 }
 
 // Close see [storage.OpenFGADatastore].Close.

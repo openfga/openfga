@@ -13,6 +13,7 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/storage/adapter"
 	"github.com/openfga/openfga/pkg/storage/cache/keys"
 	"github.com/openfga/openfga/pkg/tuple"
 )
@@ -73,6 +74,11 @@ func NewCachedTupleReader(
 		sf:           sf,
 		wg:           wg,
 	}
+}
+
+// Builder see [storage.RelationshipTupleReader].Builder. It delegates to the wrapped reader.
+func (c *CachedTupleReader) Builder(consistency openfgav1.ConsistencyPreference) adapter.Builder {
+	return c.delegate.Builder(consistency)
 }
 
 // ReadUsersetTuples reads userset tuples with caching.

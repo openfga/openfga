@@ -5,6 +5,7 @@ import (
 	"time"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/openfga/openfga/pkg/storage/adapter"
 )
 
 type ctxKey string
@@ -150,6 +151,11 @@ type TupleBackend interface {
 // RelationshipTupleReader is an interface that defines the set of
 // methods required to read relationship tuples from a data store.
 type RelationshipTupleReader interface {
+	// Builder returns an implementation of an adapter Builder for the given consistency
+	// preference, allowing the backend to route the query to the appropriate connection
+	// (e.g. a read replica vs. the primary).
+	Builder(consistency openfgav1.ConsistencyPreference) adapter.Builder
+
 	// Read the set of tuples associated with `store` and `tupleKey`, which may be nil or partially filled. If nil,
 	// Read will return an iterator over all the tuples in the given `store`. If the `tupleKey` is partially filled,
 	// it will return an iterator over those tuples which match the `tupleKey`. Note that at least one of `Object`

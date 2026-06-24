@@ -24,6 +24,8 @@ import (
 
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/storage/adapter"
+	mysqladapter "github.com/openfga/openfga/pkg/storage/adapter/mysql"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 )
@@ -123,6 +125,12 @@ func NewWithDB(db *sql.DB, cfg *sqlcommon.Config) (*Datastore, error) {
 		maxTypesPerModelField:  cfg.MaxTypesPerModelField,
 		versionReady:           false,
 	}, nil
+}
+
+// Builder see [storage.RelationshipTupleReader].Builder. MySQL uses a single connection pool, so
+// the consistency preference does not influence which connection is used.
+func (s *Datastore) Builder(_ openfgav1.ConsistencyPreference) adapter.Builder {
+	return mysqladapter.New(s.db)
 }
 
 // Close see [storage.OpenFGADatastore].Close.
