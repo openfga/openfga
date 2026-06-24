@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+	"slices"
 	"strconv"
 	"time"
 
@@ -23,12 +24,14 @@ import (
 	"github.com/openfga/openfga/internal/telemetry"
 	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/internal/utils/apimethod"
+	"github.com/openfga/openfga/pkg/middleware/requestid"
 	"github.com/openfga/openfga/pkg/middleware/validator"
 	"github.com/openfga/openfga/pkg/server/commands"
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
-	"github.com/openfga/openfga/pkg/storage/storagewrappers"
+	"github.com/openfga/openfga/pkg/tuple"
+	"github.com/openfga/openfga/pkg/typesystem"
 )
 
 func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openfgav1.CheckResponse, error) {
@@ -65,43 +68,46 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 	storeID := req.GetStoreId()
 
 	if s.featureFlagClient.Boolean(serverconfig.ExperimentalWeightedGraphCheck, storeID) {
-		res, metadata, err := s.v2Check(ctx, req, s.sharedDatastoreResources.CheckCache, s.sharedDatastoreResources.CacheController, s.authzModelGraphResolver)
+		res, err := s.v2Check(ctx, req, s.sharedDatastoreResources.CheckCache, s.sharedDatastoreResources.CacheController, s.authzModelGraphResolver)
 
 		// v2Check can return errors that v1 Check wouldn't (e.g. ErrInvalidModel when the weighted graph
 		// can't represent the model). Fallback to v1 on non-timeout errors for backward compatibility.
-		if err == nil || isV2TerminalError(err) {
+		if err == nil || commands.IsV2CheckTerminalError(err) {
 			tookMs := time.Since(startTime).Milliseconds()
-			queryCount := float64(metadata.DatastoreQueryCount)
-			itemCount := float64(metadata.DatastoreItemCount)
 
-			grpc_ctxtags.Extract(ctx).Set(datastoreQueryCountHistogramName, queryCount)
-			span.SetAttributes(attribute.Float64(datastoreQueryCountHistogramName, queryCount))
-			datastoreQueryCountHistogram.WithLabelValues(s.serviceName, methodName).Observe(queryCount)
+			if res != nil {
+				queryCount := float64(res.DatastoreQueryCount)
+				itemCount := float64(res.DatastoreItemCount)
 
-			grpc_ctxtags.Extract(ctx).Set(datastoreItemCountHistogramName, itemCount)
-			span.SetAttributes(attribute.Float64(datastoreItemCountHistogramName, itemCount))
-			datastoreItemCountHistogram.WithLabelValues(s.serviceName, methodName).Observe(itemCount)
+				grpc_ctxtags.Extract(ctx).Set(datastoreQueryCountHistogramName, queryCount)
+				span.SetAttributes(attribute.Float64(datastoreQueryCountHistogramName, queryCount))
+				datastoreQueryCountHistogram.WithLabelValues(s.serviceName, methodName).Observe(queryCount)
 
-			requestDurationHistogram.WithLabelValues(
-				s.serviceName,
-				methodName,
-				utils.Bucketize(uint(queryCount), s.requestDurationByQueryHistogramBuckets),
-				utils.Bucketize(0, s.requestDurationByDispatchCountHistogramBuckets),
-				req.GetConsistency().String(),
-			).Observe(float64(tookMs))
+				grpc_ctxtags.Extract(ctx).Set(datastoreItemCountHistogramName, itemCount)
+				span.SetAttributes(attribute.Float64(datastoreItemCountHistogramName, itemCount))
+				datastoreItemCountHistogram.WithLabelValues(s.serviceName, methodName).Observe(itemCount)
 
-			if s.authorizer.AccessControlStoreID() == req.GetStoreId() {
-				accessControlStoreCheckDurationHistogram.WithLabelValues(
+				requestDurationHistogram.WithLabelValues(
+					s.serviceName,
+					methodName,
 					utils.Bucketize(uint(queryCount), s.requestDurationByQueryHistogramBuckets),
 					utils.Bucketize(0, s.requestDurationByDispatchCountHistogramBuckets),
 					req.GetConsistency().String(),
 				).Observe(float64(tookMs))
-			}
 
-			if metadata.WasThrottled {
-				throttledRequestCounter.WithLabelValues(s.serviceName, methodName, throttleTypeDatastore).Inc()
+				if s.authorizer.AccessControlStoreID() == req.GetStoreId() {
+					accessControlStoreCheckDurationHistogram.WithLabelValues(
+						utils.Bucketize(uint(queryCount), s.requestDurationByQueryHistogramBuckets),
+						utils.Bucketize(0, s.requestDurationByDispatchCountHistogramBuckets),
+						req.GetConsistency().String(),
+					).Observe(float64(tookMs))
+				}
+
+				if res.WasThrottled {
+					throttledRequestCounter.WithLabelValues(s.serviceName, methodName, throttleTypeDatastore).Inc()
+				}
+				grpc_ctxtags.Extract(ctx).Set("request.datastore_throttled", res.WasThrottled)
 			}
-			grpc_ctxtags.Extract(ctx).Set("request.datastore_throttled", metadata.WasThrottled)
 
 			if err != nil {
 				telemetry.TraceError(span, err)
@@ -111,13 +117,31 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 				return nil, err
 			}
 
-			checkResultCounter.With(prometheus.Labels{allowedLabel: strconv.FormatBool(res.GetAllowed())}).Inc()
-			span.SetAttributes(attribute.Bool("allowed", res.GetAllowed()))
-			return res, nil
+			checkResultCounter.With(prometheus.Labels{allowedLabel: strconv.FormatBool(res.Allowed)}).Inc()
+			span.SetAttributes(attribute.Bool("allowed", res.Allowed))
+
+			// Flag potential v2Check resolution breaking changes for userset requests.
+			// See breakingChangeReason for the scenarios we detect.
+			if !res.Allowed && tuple.IsObjectRelation(req.GetTupleKey().GetUser()) {
+				if typesys, err := s.resolveTypesystem(ctx, storeID, req.GetAuthorizationModelId()); err == nil {
+					tk := req.GetTupleKey()
+					if reason := breakingChangeReason(typesys, tk); reason != "" {
+						requestID := requestid.GetRequestIDFromContext(ctx)
+						s.logger.WarnWithContext(ctx, "potential v2Check resolution breaking change: userset request returned false",
+							zap.String("store_id", storeID),
+							zap.String("model_id", req.GetAuthorizationModelId()),
+							zap.String("request_id", requestID),
+							zap.String("reason", reason),
+						)
+					}
+				}
+			}
+
+			return &openfgav1.CheckResponse{Allowed: res.Allowed}, nil
 		}
 
-		requestID, _ := grpc_ctxtags.Extract(ctx).Values()["request_id"].(string)
-		s.logger.WarnWithContext(ctx, "Weighted graph check failed, falling back to main Check",
+		requestID := requestid.GetRequestIDFromContext(ctx)
+		s.logger.WarnWithContext(ctx, "Weighted graph check failed, falling back",
 			zap.Error(err),
 			zap.String("store_id", storeID),
 			zap.String("model_id", req.GetAuthorizationModelId()),
@@ -155,7 +179,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		),
 	)
 
-	resp, checkRequestMetadata, err := checkQuery.Execute(ctx, &commands.CheckCommandParams{
+	resp, err := checkQuery.Execute(ctx, &commands.CheckCommandParams{
 		StoreID:          storeID,
 		TupleKey:         req.GetTupleKey(),
 		ContextualTuples: req.GetContextualTuples(),
@@ -165,17 +189,8 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 
 	tookMs := time.Since(startTime).Milliseconds()
 
-	var (
-		dispatchThrottled  bool
-		datastoreThrottled bool
-		rawDispatchCount   uint32
-	)
-
-	if checkRequestMetadata != nil {
-		dispatchThrottled = checkRequestMetadata.DispatchThrottled.Load()
-		datastoreThrottled = checkRequestMetadata.DatastoreThrottled.Load()
-		rawDispatchCount = checkRequestMetadata.DispatchCounter.Load()
-		dispatchCount := float64(rawDispatchCount)
+	if resp != nil {
+		dispatchCount := float64(resp.DispatchCount)
 
 		grpc_ctxtags.Extract(ctx).Set(dispatchCountHistogramName, dispatchCount)
 		span.SetAttributes(attribute.Float64(dispatchCountHistogramName, dispatchCount))
@@ -183,16 +198,14 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 			s.serviceName,
 			methodName,
 		).Observe(dispatchCount)
-	}
 
-	if resp != nil {
-		queryCount := float64(resp.GetResolutionMetadata().DatastoreQueryCount)
+		queryCount := float64(resp.DatastoreQueryCount)
 
 		grpc_ctxtags.Extract(ctx).Set(datastoreQueryCountHistogramName, queryCount)
 		span.SetAttributes(attribute.Float64(datastoreQueryCountHistogramName, queryCount))
 		datastoreQueryCountHistogram.WithLabelValues(s.serviceName, methodName).Observe(queryCount)
 
-		datastoreItemCount := float64(resp.GetResolutionMetadata().DatastoreItemCount)
+		datastoreItemCount := float64(resp.DatastoreItemCount)
 
 		grpc_ctxtags.Extract(ctx).Set(datastoreItemCountHistogramName, datastoreItemCount)
 		span.SetAttributes(attribute.Float64(datastoreItemCountHistogramName, datastoreItemCount))
@@ -202,37 +215,37 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 			s.serviceName,
 			methodName,
 			utils.Bucketize(uint(queryCount), s.requestDurationByQueryHistogramBuckets),
-			utils.Bucketize(uint(rawDispatchCount), s.requestDurationByDispatchCountHistogramBuckets),
+			utils.Bucketize(uint(resp.DispatchCount), s.requestDurationByDispatchCountHistogramBuckets),
 			req.GetConsistency().String(),
 		).Observe(float64(tookMs))
 
 		if s.authorizer.AccessControlStoreID() == req.GetStoreId() {
 			accessControlStoreCheckDurationHistogram.WithLabelValues(
 				utils.Bucketize(uint(queryCount), s.requestDurationByQueryHistogramBuckets),
-				utils.Bucketize(uint(rawDispatchCount), s.requestDurationByDispatchCountHistogramBuckets),
+				utils.Bucketize(uint(resp.DispatchCount), s.requestDurationByDispatchCountHistogramBuckets),
 				req.GetConsistency().String(),
 			).Observe(float64(tookMs))
 		}
 
-		if dispatchThrottled {
+		if resp.DispatchThrottled {
 			throttledRequestCounter.WithLabelValues(s.serviceName, methodName, throttleTypeDispatch).Inc()
 		}
-		grpc_ctxtags.Extract(ctx).Set("request.dispatch_throttled", dispatchThrottled)
+		grpc_ctxtags.Extract(ctx).Set("request.dispatch_throttled", resp.DispatchThrottled)
 
-		if datastoreThrottled {
+		if resp.WasThrottled {
 			throttledRequestCounter.WithLabelValues(s.serviceName, methodName, throttleTypeDatastore).Inc()
 		}
-		grpc_ctxtags.Extract(ctx).Set("request.datastore_throttled", datastoreThrottled)
+		grpc_ctxtags.Extract(ctx).Set("request.datastore_throttled", resp.WasThrottled)
 	}
 
 	if err != nil {
 		telemetry.TraceError(span, err)
 		finalErr := commands.CheckCommandErrorToServerError(err)
-		if errors.Is(finalErr, serverErrors.ErrThrottledTimeout) {
-			if dispatchThrottled {
+		if errors.Is(finalErr, serverErrors.ErrThrottledTimeout) && resp != nil {
+			if resp.DispatchThrottled {
 				throttledRequestCounter.WithLabelValues(s.serviceName, methodName, throttleTypeDispatch).Inc()
 			}
-			if datastoreThrottled {
+			if resp.WasThrottled {
 				throttledRequestCounter.WithLabelValues(s.serviceName, methodName, throttleTypeDatastore).Inc()
 			}
 		}
@@ -241,11 +254,11 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		return nil, finalErr
 	}
 
-	checkResultCounter.With(prometheus.Labels{allowedLabel: strconv.FormatBool(resp.GetAllowed())}).Inc()
+	checkResultCounter.With(prometheus.Labels{allowedLabel: strconv.FormatBool(resp.Allowed)}).Inc()
 
 	span.SetAttributes(
-		attribute.Bool("cycle_detected", resp.GetCycleDetected()),
-		attribute.Bool("allowed", resp.GetAllowed()))
+		attribute.Bool("cycle_detected", resp.CycleDetected),
+		attribute.Bool("allowed", resp.Allowed))
 
 	res := &openfgav1.CheckResponse{
 		Allowed: resp.Allowed,
@@ -253,8 +266,8 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 
 	if s.featureFlagClient.Boolean(serverconfig.ExperimentalShadowWeightedGraphCheck, req.GetStoreId()) {
 		go s.shadowV2Check(ctx, req, res, tookMs,
-			resp.GetResolutionMetadata().DatastoreQueryCount,
-			resp.GetResolutionMetadata().DatastoreItemCount)
+			resp.DatastoreQueryCount,
+			resp.DatastoreItemCount)
 	}
 
 	return res, nil
@@ -262,8 +275,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 
 func (s *Server) shadowV2Check(ctx context.Context, req *openfgav1.CheckRequest, mainRes *openfgav1.CheckResponse, mainTook int64, mainDatastoreQueryCount uint32, mainDatastoreItemCount uint64) {
 	start := time.Now()
-	var res *openfgav1.CheckResponse
-	var shadowMetadata storagewrappers.Metadata
+	var res *commands.CheckResult
 	var err error
 	originalSpanCtx := trace.SpanContextFromContext(ctx)
 	recoveredErr := panics.Try(func() {
@@ -275,26 +287,25 @@ func (s *Server) shadowV2Check(ctx context.Context, req *openfgav1.CheckRequest,
 			attribute.String("store_id", req.GetStoreId()),
 		))
 		defer shadowSpan.End()
-		res, shadowMetadata, err = s.v2Check(newCtx, req, s.sharedDatastoreResources.ShadowCheckCache, s.sharedDatastoreResources.ShadowCacheController, s.shadowAuthzModelGraphResolver)
+		res, err = s.v2Check(newCtx, req, s.sharedDatastoreResources.ShadowCheckCache, s.sharedDatastoreResources.ShadowCacheController, s.shadowAuthzModelGraphResolver)
 
-		shadowQueryCount := float64(shadowMetadata.DatastoreQueryCount)
-		shadowItemCount := float64(shadowMetadata.DatastoreItemCount)
+		if res != nil {
+			shadowQueryCount := float64(res.DatastoreQueryCount)
+			shadowItemCount := float64(res.DatastoreItemCount)
 
-		grpc_ctxtags.Extract(newCtx).Set(datastoreQueryCountHistogramName, shadowQueryCount)
-		shadowSpan.SetAttributes(attribute.Float64(datastoreQueryCountHistogramName, shadowQueryCount))
-		datastoreQueryCountHistogram.WithLabelValues(s.serviceName, commands.V2CheckMethodName).Observe(shadowQueryCount)
+			grpc_ctxtags.Extract(newCtx).Set(datastoreQueryCountHistogramName, shadowQueryCount)
+			shadowSpan.SetAttributes(attribute.Float64(datastoreQueryCountHistogramName, shadowQueryCount))
+			datastoreQueryCountHistogram.WithLabelValues(s.serviceName, commands.V2CheckMethodName).Observe(shadowQueryCount)
 
-		grpc_ctxtags.Extract(newCtx).Set(datastoreItemCountHistogramName, shadowItemCount)
-		shadowSpan.SetAttributes(attribute.Float64(datastoreItemCountHistogramName, shadowItemCount))
-		datastoreItemCountHistogram.WithLabelValues(s.serviceName, commands.V2CheckMethodName).Observe(shadowItemCount)
+			grpc_ctxtags.Extract(newCtx).Set(datastoreItemCountHistogramName, shadowItemCount)
+			shadowSpan.SetAttributes(attribute.Float64(datastoreItemCountHistogramName, shadowItemCount))
+			datastoreItemCountHistogram.WithLabelValues(s.serviceName, commands.V2CheckMethodName).Observe(shadowItemCount)
 
-		if shadowMetadata.WasThrottled {
-			throttledRequestCounter.WithLabelValues(s.serviceName, commands.V2CheckMethodName, throttleTypeDatastore).Inc()
-		}
-		grpc_ctxtags.Extract(newCtx).Set("request.datastore_throttled", shadowMetadata.WasThrottled)
-
-		if err == nil {
-			shadowSpan.SetAttributes(attribute.Bool("matches", mainRes.GetAllowed() == res.GetAllowed()))
+			if res.WasThrottled {
+				throttledRequestCounter.WithLabelValues(s.serviceName, commands.V2CheckMethodName, throttleTypeDatastore).Inc()
+			}
+			grpc_ctxtags.Extract(newCtx).Set("request.datastore_throttled", res.WasThrottled)
+			shadowSpan.SetAttributes(attribute.Bool("matches", mainRes.GetAllowed() == res.Allowed))
 		}
 	})
 	if recoveredErr != nil {
@@ -309,11 +320,11 @@ func (s *Server) shadowV2Check(ctx context.Context, req *openfgav1.CheckRequest,
 		return
 	}
 	s.logger.InfoWithContext(ctx, "shadow check",
-		zap.Bool("matches", mainRes.GetAllowed() == res.GetAllowed()),
+		zap.Bool("matches", mainRes.GetAllowed() == res.Allowed),
 		zap.Int64("main_took", mainTook),
 		zap.Int64("shadow_took", time.Since(start).Milliseconds()),
 		zap.Bool("main_result", mainRes.GetAllowed()),
-		zap.Bool("shadow_result", res.GetAllowed()),
+		zap.Bool("shadow_result", res.Allowed),
 		zap.String("store_id", req.GetStoreId()),
 		zap.String("object", req.GetTupleKey().GetObject()),
 		zap.String("relation", req.GetTupleKey().GetRelation()),
@@ -321,9 +332,9 @@ func (s *Server) shadowV2Check(ctx context.Context, req *openfgav1.CheckRequest,
 		zap.Any("context", req.GetContext()),
 		zap.Any("contextual_tuples", req.GetContextualTuples()),
 		zap.Uint32("main_datastore_query_count", mainDatastoreQueryCount),
-		zap.Uint32("shadow_datastore_query_count", shadowMetadata.DatastoreQueryCount),
+		zap.Uint32("shadow_datastore_query_count", res.DatastoreQueryCount),
 		zap.Uint64("main_datastore_item_count", mainDatastoreItemCount),
-		zap.Uint64("shadow_datastore_item_count", shadowMetadata.DatastoreItemCount),
+		zap.Uint64("shadow_datastore_item_count", res.DatastoreItemCount),
 	)
 }
 
@@ -333,7 +344,7 @@ func (s *Server) v2Check(
 	cache storage.InMemoryCache[any],
 	cacheController cachecontroller.CacheController,
 	modelGraphResolver *modelgraph.AuthorizationModelGraphResolver,
-) (*openfgav1.CheckResponse, storagewrappers.Metadata, error) {
+) (*commands.CheckResult, error) {
 	storeID := req.GetStoreId()
 	tk := req.GetTupleKey()
 
@@ -356,7 +367,7 @@ func (s *Server) v2Check(
 
 	mg, err := modelGraphResolver.Resolve(ctx, storeID, req.GetAuthorizationModelId())
 	if err != nil {
-		return nil, storagewrappers.Metadata{}, err
+		return nil, err
 	}
 
 	q := commands.NewCheckQuery(
@@ -379,48 +390,173 @@ func (s *Server) v2Check(
 		commands.WithCheckQueryV2SharedResources(s.sharedDatastoreResources),
 	)
 
-	res, metadata, err := q.Execute(ctx, req)
-
-	span.SetAttributes(attribute.Bool("allowed", res.GetAllowed()))
+	res, err := q.Execute(ctx, &commands.CheckCommandParams{
+		StoreID:          req.GetStoreId(),
+		TupleKey:         req.GetTupleKey(),
+		ContextualTuples: req.GetContextualTuples(),
+		Context:          req.GetContext(),
+		Consistency:      req.GetConsistency(),
+	})
 
 	if err != nil {
 		telemetry.TraceError(span, err)
-		return nil, metadata, commands.CheckCommandErrorToServerError(err)
+		return res, commands.CheckCommandErrorToServerError(err)
 	}
 
-	return res, metadata, nil
+	span.SetAttributes(attribute.Bool("allowed", res.Allowed))
+	return res, nil
 }
 
-// isV2TerminalError reports whether err should be returned directly from the v2Check path
-// rather than falling back to v1. Two categories qualify:
+const (
+	reasonSelfReferentialUserset = "self_referential_userset"
+	reasonAliasUserset           = "alias_userset"
+	reasonComputedUsersetSelfObj = "computed_userset_self_object"
+	reasonTTUUserset             = "ttu_userset"
+)
+
+// breakingChangeReason returns a non-empty reason string when the request shape matches a
+// known v1→v2 Check divergence for userset users. Caller has already verified that the
+// user is a userset (object#relation) and that v2Check returned FALSE.
 //
-//   - Context/timeout/throttle errors, where a v1 retry is pointless or harmful. Context
-//     errors appear in two forms: raw (context.Canceled/DeadlineExceeded, from the model
-//     graph resolver) or server-mapped (ErrRequestCancelled/ErrRequestDeadlineExceeded, from
-//     the execute path). ErrThrottledTimeout and ErrTransactionThrottled are included since
-//     they are not v2-specific, and retrying on v1 would only add load to an already-throttled
-//     datastore.
-//   - Deterministic request-validation failures (ErrValidation, ErrInvalidUser, and
-//     contextual-tuple validation failures), which v1 rejects identically — the fallback is
-//     wasted work and log noise.
+// Reasons:
 //
-// v2Check wraps most non-context errors via commands.CheckCommandErrorToServerError, which
-// produces gRPC status.Error values. Errors.Is/As against the original sentinels/types no
-// longer matches after that conversion, so request-validation cases must be classified by
-// the resulting gRPC code instead.
-func isV2TerminalError(err error) bool {
-	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) ||
-		errors.Is(err, serverErrors.ErrRequestDeadlineExceeded) || errors.Is(err, serverErrors.ErrRequestCancelled) ||
-		errors.Is(err, serverErrors.ErrThrottledTimeout) || errors.Is(err, serverErrors.ErrTransactionThrottled) {
-		return true
+//   - "alias_userset": the target relation directly accepts T#R' where R' resolves via
+//     computed_userset to the user's relation R, and R is not itself directly assignable
+//     on the target. e.g.
+//     model
+//     type user
+//     type document
+//     relations
+//     define reader: [user]
+//     define allowed: reader
+//     define viewer: [user, document#allowed]
+//     With the query `document:d1, viewer, document3#reader`; v1 follows the allowed→reader
+//     alias from a stored `allowed` tuple, v2 does not.
+//
+//   - "self_referential_userset": v1 unconditionally returned TRUE for this shape
+//     regardless of whether any data existed; v2 evaluates against the schema and
+//     storage and correctly returns FALSE. e.g.
+//     model
+//     type user
+//     type document
+//     relations
+//     define viewer: [user]
+//     `document:d1, viewer, document:d1#viewer` v1 returned TRUE, v2 returns FALSE.
+//
+//   - "computed_userset_self_object": user's object equals the target object, and the user's
+//     relation appears as a ComputedUserset leaf in the target relation's rewrite tree.
+//     e.g.
+//     model
+//     type user
+//     type document
+//     relations
+//     define viewer: editor or writer
+//     define editor: [user]
+//     define writer: [user]
+//     `document:d1, viewer, document:d1#writer` v1 returned TRUE, v2 returns FALSE.`
+//
+//   - "ttu_userset": target relation's rewrite contains a TupleToUserset whose computed
+//     relation equals the user's relation, AND the user's object type is directly-related
+//     to the tupleset relation. e.g. document.viewer = viewer from parent; query
+//     viewer@folder:f2#viewer on document:d1. v1 returned TRUE from schema reachability
+//     plus a parent tuple; v2 requires the userset to be explicit. e.g.
+//     model
+//     type user
+//     type folder
+//     relations
+//     define viewer: [user]
+//     type document
+//     relations
+//     define parent: [folder]
+//     define viewer: viewer from parent
+//     With the query `document:d1, viewer, folder:f2#viewer` and the tuple `document:d1, parent, folder:f2`;
+//     v1 returned TRUE, v2 returns FALSE.
+//
+// All schema-shape filters are necessary conditions only — they may over-report when no
+// matching tuple is actually stored, but never miss a real divergence.
+func breakingChangeReason(typesys *typesystem.TypeSystem, tk *openfgav1.CheckRequestTupleKey) string {
+	if tk.GetUser() == tk.GetObject()+"#"+tk.GetRelation() {
+		return reasonSelfReferentialUserset
 	}
-	if st, ok := status.FromError(err); ok {
-		switch openfgav1.ErrorCode(st.Code()) {
-		case openfgav1.ErrorCode_validation_error, openfgav1.ErrorCode_invalid_tuple:
+	userObject, userRelation := tuple.SplitObjectRelation(tk.GetUser())
+	userObjectType := tuple.GetType(userObject)
+	targetObjectType := tuple.GetType(tk.GetObject())
+	targetRelation := tk.GetRelation()
+
+	if usersetAliasesTargetRelation(typesys, targetObjectType, targetRelation, userObjectType, userRelation) {
+		return reasonAliasUserset
+	}
+	rel, err := typesys.GetRelation(targetObjectType, targetRelation)
+	if err != nil {
+		return ""
+	}
+	rewrite := rel.GetRewrite()
+	if userObject == tk.GetObject() && rewriteContainsComputedUserset(rewrite, userRelation) {
+		return reasonComputedUsersetSelfObj
+	}
+	if rewriteContainsTTUForUser(typesys, targetObjectType, rewrite, userObjectType, userRelation) {
+		return reasonTTUUserset
+	}
+	return ""
+}
+
+// rewriteContainsComputedUserset reports whether any ComputedUserset leaf in the rewrite
+// tree references the given relation name.
+func rewriteContainsComputedUserset(rewrite *openfgav1.Userset, relation string) bool {
+	result, _ := typesystem.WalkUsersetRewrite(rewrite, func(r *openfgav1.Userset) interface{} {
+		if cu, ok := r.GetUserset().(*openfgav1.Userset_ComputedUserset); ok && cu.ComputedUserset.GetRelation() == relation {
 			return true
 		}
+		return nil
+	})
+	return result != nil
+}
+
+// rewriteContainsTTUForUser reports whether the target's rewrite contains a TupleToUserset
+// whose computed relation equals the user's relation, where the tupleset relation on the
+// target object type is directly related to the user's object type.
+func rewriteContainsTTUForUser(ts *typesystem.TypeSystem, targetObjectType string, rewrite *openfgav1.Userset, userObjectType, userRelation string) bool {
+	result, _ := typesystem.WalkUsersetRewrite(rewrite, func(r *openfgav1.Userset) interface{} {
+		ttu, ok := r.GetUserset().(*openfgav1.Userset_TupleToUserset)
+		if !ok || ttu.TupleToUserset.GetComputedUserset().GetRelation() != userRelation {
+			return nil
+		}
+		tuplesetRel := ttu.TupleToUserset.GetTupleset().GetRelation()
+		// Loose type-only match (ignores relation/wildcard) is intentional: this is an
+		// over-reporting necessary-condition filter. Do not swap in IsDirectlyRelated.
+		directlyRelated, err := ts.GetDirectlyRelatedUserTypes(targetObjectType, tuplesetRel)
+		if err == nil && slices.ContainsFunc(directlyRelated, func(dr *openfgav1.RelationReference) bool {
+			return dr.GetType() == userObjectType
+		}) {
+			return true
+		}
+		return nil
+	})
+	return result != nil
+}
+
+// usersetAliasesTargetRelation reports whether the target's directly-related usersets
+// include some T#R' (where T = user's object type) that is a computed_userset alias for
+// the user's relation R. Excludes the trivial case where T#R is itself directly assignable
+// (since v1 and v2 agree on direct matches).
+func usersetAliasesTargetRelation(ts *typesystem.TypeSystem, targetObjectType, targetRelation, userObjectType, userRelation string) bool {
+	usersets, err := ts.DirectlyRelatedUsersets(targetObjectType, targetRelation)
+	if err != nil {
+		return false
 	}
-	return false
+	foundAlias := false
+	for _, ref := range usersets {
+		if ref.GetType() != userObjectType {
+			continue
+		}
+		if ref.GetRelation() == userRelation {
+			return false
+		}
+		if resolved, err := ts.ResolveComputedRelation(ref.GetType(), ref.GetRelation()); err == nil && resolved == userRelation {
+			foundAlias = true
+		}
+	}
+	return foundAlias
 }
 
 func (s *Server) getCheckResolverBuilder(storeID string) *graph.CheckResolverOrderedBuilder {

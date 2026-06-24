@@ -142,14 +142,40 @@ jobs:
     permissions:
       actions: read # To read the workflow path.
       id-token: write # To sign the provenance.
-      contents: write # To add assets to a release.
+      contents: write # https://github.com/slsa-framework/slsa-github-generator/issues/2044
 
     # Note: this _must_ be referenced by tag. See: https://github.com/slsa-framework/slsa-verifier/issues/12
     uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.1.0
     with:
       base64-subjects-as-file: "${{ needs.goreleaser.outputs.subjects-as-file }}"
       provenance-name: "openfga.intoto.jsonl"
-      upload-assets: true # upload to a new release
+      # Don't let the generator attach the provenance:
+      # - it uses softprops/action-gh-release@v2.2.1, whose paginated draft lookup
+      #   creates a duplicate draft once a repo has >100 releases (2 pages)
+      # - the provenance is still published as a workflow artifact, so the
+      #   release-provenance job attaches it via `gh release upload` (by tag)
+      upload-assets: false
+
+  release-provenance:
+    needs: [ binary-provenance ]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write # To add the provenance asset to the draft release.
+    steps:
+      - name: Download the provenance
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        with:
+          name: ${{ needs.binary-provenance.outputs.provenance-name }}
+
+      - name: Attach provenance to the draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PROVENANCE: ${{ needs.binary-provenance.outputs.provenance-name }}
+        run: |
+          set -euo pipefail
+          gh release upload "$GITHUB_REF_NAME" "$PROVENANCE" \
+            --repo "$GITHUB_REPOSITORY" --clobber
 
   image-provenance:
     needs: [ goreleaser ]
@@ -167,8 +193,14 @@ jobs:
       registry-username: ${{ secrets.DOCKERHUB_USERNAME }}
       registry-password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+  undraft-release:
+    needs: [ release-provenance, image-provenance ]
+    permissions:
+      contents: write
+    uses: openfga/.github/.github/workflows/undraft-release.yml@15d8dd0e50827f4233abbbc3c394413940ba8db4 # pin@main
+
   verification-with-slsa-verifier:
-    needs: [ goreleaser, binary-provenance ]
+    needs: [ undraft-release, binary-provenance ]
     runs-on: ubuntu-latest
     permissions: read-all
     steps:
