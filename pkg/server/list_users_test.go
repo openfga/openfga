@@ -924,6 +924,28 @@ func TestListUsersBreakingChangeReason(t *testing.T) {
 			filter:    &openfgav1.UserTypeFilter{Type: "document", Relation: "editor"},
 			want:      "",
 		},
+		{
+			// Self-reference shape requires (filter.type, filter.relation) ==
+			// (object.type, relation). Same relation name but different type
+			// → must NOT fire.
+			name: "no_match_self_referential_different_type",
+			modelDSL: `
+				model
+					schema 1.1
+				type user
+				type folder
+					relations
+						define viewer: [user]
+				type document
+					relations
+						define viewer: [user, folder#viewer]
+			`,
+			seedTuple: tuple.NewTupleKey("document:seed", "viewer", "user:seed"),
+			object:    &openfgav1.Object{Type: "document", Id: "d1"},
+			relation:  "viewer",
+			filter:    &openfgav1.UserTypeFilter{Type: "folder", Relation: "viewer"},
+			want:      "",
+		},
 	}
 
 	for _, tc := range tests {
@@ -935,6 +957,119 @@ func TestListUsersBreakingChangeReason(t *testing.T) {
 
 			got := v2breaking.ListUsersReason(typesys, tc.object, tc.relation, tc.filter)
 			require.Equal(t, tc.want, got)
+		})
+	}
+}
+
+// TestListUsersResponseConfirmsReason covers the response-side filter that
+// suppresses false-positive logs on response-conditional reasons. Exclusion
+// shapes are not exercised here — they are not gated on the response.
+func TestListUsersResponseConfirmsReason(t *testing.T) {
+	obj := &openfgav1.Object{Type: "document", Id: "d1"}
+	usersetUser := func(typ, id, relation string) *openfgav1.User {
+		return &openfgav1.User{User: &openfgav1.User_Userset{Userset: &openfgav1.UsersetUser{Type: typ, Id: id, Relation: relation}}}
+	}
+	plainUser := func(typ, id string) *openfgav1.User {
+		return &openfgav1.User{User: &openfgav1.User_Object{Object: &openfgav1.Object{Type: typ, Id: id}}}
+	}
+
+	tests := []struct {
+		name     string
+		reason   string
+		filter   *openfgav1.UserTypeFilter
+		users    []*openfgav1.User
+		expected bool
+	}{
+		{
+			name:     "self_referential_userset_confirmed",
+			reason:   v2breaking.ReasonSelfReferentialUserset,
+			filter:   &openfgav1.UserTypeFilter{Type: "document", Relation: "viewer"},
+			users:    []*openfgav1.User{usersetUser("document", "d1", "viewer")},
+			expected: true,
+		},
+		{
+			name:     "self_referential_userset_not_present",
+			reason:   v2breaking.ReasonSelfReferentialUserset,
+			filter:   &openfgav1.UserTypeFilter{Type: "document", Relation: "viewer"},
+			users:    []*openfgav1.User{plainUser("user", "alice")},
+			expected: false,
+		},
+		{
+			name:     "computed_userset_self_object_confirmed",
+			reason:   v2breaking.ReasonComputedUsersetSelfObj,
+			filter:   &openfgav1.UserTypeFilter{Type: "document", Relation: "writer"},
+			users:    []*openfgav1.User{usersetUser("document", "d1", "writer")},
+			expected: true,
+		},
+		{
+			name:     "computed_userset_self_object_not_present",
+			reason:   v2breaking.ReasonComputedUsersetSelfObj,
+			filter:   &openfgav1.UserTypeFilter{Type: "document", Relation: "writer"},
+			users:    []*openfgav1.User{usersetUser("document", "d2", "writer")},
+			expected: false,
+		},
+		{
+			name:     "alias_userset_confirmed",
+			reason:   v2breaking.ReasonAliasUserset,
+			filter:   &openfgav1.UserTypeFilter{Type: "document", Relation: "reader"},
+			users:    []*openfgav1.User{usersetUser("document", "d1", "allowed")},
+			expected: true,
+		},
+		{
+			name:     "alias_userset_not_present_only_filter_relation",
+			reason:   v2breaking.ReasonAliasUserset,
+			filter:   &openfgav1.UserTypeFilter{Type: "document", Relation: "reader"},
+			users:    []*openfgav1.User{usersetUser("document", "d1", "reader")},
+			expected: false,
+		},
+		{
+			name:     "ttu_userset_confirmed",
+			reason:   v2breaking.ReasonTTUUserset,
+			filter:   &openfgav1.UserTypeFilter{Type: "folder", Relation: "viewer"},
+			users:    []*openfgav1.User{usersetUser("folder", "f1", "viewer")},
+			expected: true,
+		},
+		{
+			name:     "ttu_userset_not_present",
+			reason:   v2breaking.ReasonTTUUserset,
+			filter:   &openfgav1.UserTypeFilter{Type: "folder", Relation: "viewer"},
+			users:    []*openfgav1.User{plainUser("user", "alice")},
+			expected: false,
+		},
+		{
+			name:     "userset_with_exclusion_non_empty_response",
+			reason:   v2breaking.ReasonUsersetWithExclusion,
+			filter:   &openfgav1.UserTypeFilter{Type: "document", Relation: "owner"},
+			users:    []*openfgav1.User{usersetUser("document", "d2", "owner")},
+			expected: true,
+		},
+		{
+			name:     "userset_with_exclusion_empty_response",
+			reason:   v2breaking.ReasonUsersetWithExclusion,
+			filter:   &openfgav1.UserTypeFilter{Type: "document", Relation: "owner"},
+			users:    nil,
+			expected: false,
+		},
+		{
+			name:     "wildcard_with_exclusion_non_empty_response",
+			reason:   v2breaking.ReasonWildcardWithExclusion,
+			filter:   &openfgav1.UserTypeFilter{Type: "user"},
+			users:    []*openfgav1.User{plainUser("user", "alice")},
+			expected: true,
+		},
+		{
+			name:     "wildcard_with_exclusion_empty_response",
+			reason:   v2breaking.ReasonWildcardWithExclusion,
+			filter:   &openfgav1.UserTypeFilter{Type: "user"},
+			users:    nil,
+			expected: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := v2breaking.ListUsersResponseConfirmsReason(tc.reason, obj, "viewer", tc.filter, tc.users)
+			require.Equal(t, tc.expected, got)
 		})
 	}
 }

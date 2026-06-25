@@ -69,15 +69,19 @@ func (s *Server) Expand(ctx context.Context, req *openfgav1.ExpandRequest) (*ope
 	}
 
 	// Flag potential v2 (weighted-graph) resolution breaking changes for this
-	// request shape. The predicates are schema-shape filters only, so this can
-	// over-report. See v2breaking.ExpandReason for the catalogue.
-	if reason := v2breaking.ExpandReason(typesys, tuple.GetType(tk.GetObject()), tk.GetRelation()); reason != "" {
-		s.logger.WarnWithContext(ctx, "potential v2 Expand resolution breaking change",
-			zap.String("store_id", storeID),
-			zap.String("model_id", req.GetAuthorizationModelId()),
-			zap.String("request_id", requestid.GetRequestIDFromContext(ctx)),
-			zap.String("reason", reason),
-		)
+	// request shape. Shape predicates may over-report; we additionally confirm
+	// the response tree shows v1 actually walked the divergent path.
+	// See v2breaking.ExpandReason / ExpandResponseConfirmsReason.
+	targetObjectType := tuple.GetType(tk.GetObject())
+	if reason := v2breaking.ExpandReason(typesys, targetObjectType, tk.GetRelation()); reason != "" {
+		if v2breaking.ExpandResponseConfirmsReason(reason, typesys, targetObjectType, tk.GetRelation(), resp.GetTree()) {
+			s.logger.WarnWithContext(ctx, "potential v2 Expand resolution breaking change",
+				zap.String("store_id", storeID),
+				zap.String("model_id", req.GetAuthorizationModelId()),
+				zap.String("request_id", requestid.GetRequestIDFromContext(ctx)),
+				zap.String("reason", reason),
+			)
+		}
 	}
 
 	return resp, nil

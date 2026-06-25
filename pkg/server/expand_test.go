@@ -13,6 +13,7 @@ import (
 	"github.com/openfga/openfga/pkg/server/commands/v2breaking"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
+	"github.com/openfga/openfga/pkg/typesystem"
 )
 
 // setupExpandServer mirrors setupCheckServer in check_test.go but for the
@@ -233,6 +234,126 @@ func TestExpandBreakingChangeReason(t *testing.T) {
 
 			got := v2breaking.ExpandReason(typesys, tc.objectType, tc.relation)
 			require.Equal(t, tc.want, got)
+		})
+	}
+}
+
+// TestExpandResponseConfirmsReason covers the response-side filter for Expand.
+// Exclusion shapes confirm on any non-empty leaf; alias_userset confirms only
+// when a leaf contains an aliased directly-related userset.
+func TestExpandResponseConfirmsReason(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	leafUsersNode := func(users ...string) *openfgav1.UsersetTree_Node {
+		return &openfgav1.UsersetTree_Node{
+			Value: &openfgav1.UsersetTree_Node_Leaf{
+				Leaf: &openfgav1.UsersetTree_Leaf{
+					Value: &openfgav1.UsersetTree_Leaf_Users{
+						Users: &openfgav1.UsersetTree_Users{Users: users},
+					},
+				},
+			},
+		}
+	}
+	emptyLeaf := leafUsersNode()
+	unionNode := func(children ...*openfgav1.UsersetTree_Node) *openfgav1.UsersetTree_Node {
+		return &openfgav1.UsersetTree_Node{
+			Value: &openfgav1.UsersetTree_Node_Union{
+				Union: &openfgav1.UsersetTree_Nodes{Nodes: children},
+			},
+		}
+	}
+
+	aliasModel := `
+		model
+			schema 1.1
+		type user
+		type document
+			relations
+				define reader: [user]
+				define allowed: reader
+				define viewer: [user, document#allowed]
+	`
+	s, baseReq := setupExpandServer(t,
+		aliasModel,
+		[]*openfgav1.TupleKey{tuple.NewTupleKey("document:seed", "reader", "user:seed")},
+	)
+	aliasTS, err := s.resolveTypesystem(context.Background(), baseReq.GetStoreId(), baseReq.GetAuthorizationModelId())
+	require.NoError(t, err)
+
+	tests := []struct {
+		name             string
+		reason           string
+		targetObjectType string
+		targetRelation   string
+		typesys          *typesystem.TypeSystem
+		tree             *openfgav1.UsersetTree
+		expected         bool
+	}{
+		{
+			name:             "userset_with_exclusion_non_empty_leaf",
+			reason:           v2breaking.ReasonUsersetWithExclusion,
+			targetObjectType: "document",
+			targetRelation:   "viewer",
+			tree:             &openfgav1.UsersetTree{Root: leafUsersNode("user:alice")},
+			expected:         true,
+		},
+		{
+			name:             "userset_with_exclusion_empty_tree",
+			reason:           v2breaking.ReasonUsersetWithExclusion,
+			targetObjectType: "document",
+			targetRelation:   "viewer",
+			tree:             &openfgav1.UsersetTree{Root: emptyLeaf},
+			expected:         false,
+		},
+		{
+			name:             "wildcard_with_exclusion_non_empty_leaf",
+			reason:           v2breaking.ReasonWildcardWithExclusion,
+			targetObjectType: "document",
+			targetRelation:   "viewer",
+			tree:             &openfgav1.UsersetTree{Root: leafUsersNode("user:*")},
+			expected:         true,
+		},
+		{
+			name:             "wildcard_with_exclusion_empty_tree",
+			reason:           v2breaking.ReasonWildcardWithExclusion,
+			targetObjectType: "document",
+			targetRelation:   "viewer",
+			tree:             &openfgav1.UsersetTree{Root: emptyLeaf},
+			expected:         false,
+		},
+		{
+			// document#allowed is a directly-related userset on `viewer` and
+			// `allowed`'s rewrite is ComputedUserset(reader) → aliased.
+			name:             "alias_userset_aliased_leaf_present",
+			reason:           v2breaking.ReasonAliasUserset,
+			targetObjectType: "document",
+			targetRelation:   "viewer",
+			typesys:          aliasTS,
+			tree: &openfgav1.UsersetTree{Root: unionNode(
+				leafUsersNode("user:alice"),
+				leafUsersNode("document:d2#allowed"),
+			)},
+			expected: true,
+		},
+		{
+			// Tree has users but no aliased userset — only direct users.
+			name:             "alias_userset_no_aliased_leaf",
+			reason:           v2breaking.ReasonAliasUserset,
+			targetObjectType: "document",
+			targetRelation:   "viewer",
+			typesys:          aliasTS,
+			tree:             &openfgav1.UsersetTree{Root: leafUsersNode("user:alice")},
+			expected:         false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := v2breaking.ExpandResponseConfirmsReason(tc.reason, tc.typesys, tc.targetObjectType, tc.targetRelation, tc.tree)
+			require.Equal(t, tc.expected, got)
 		})
 	}
 }

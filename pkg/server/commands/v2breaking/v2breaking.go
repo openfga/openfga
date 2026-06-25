@@ -93,8 +93,8 @@ func CheckReason(typesys *typesystem.TypeSystem, tk *openfgav1.CheckRequestTuple
 // which tuples Expand reads from storage. The Expand tree is identical under
 // v1 and v2 for those shapes, so they are deliberately not flagged here.
 //
-// Priority order if multiple shapes match: exclusion shapes first (v2 errors,
-// most severe), then alias.
+// Exclusion shapes are checked before alias since they are the more severe
+// divergence (v2 returns a request-time error).
 func ExpandReason(typesys *typesystem.TypeSystem, targetObjectType, targetRelation string) string {
 	rel, err := typesys.GetRelation(targetObjectType, targetRelation)
 	if err != nil {
@@ -133,6 +133,31 @@ func anyTypeWildcardReachableUnderDifferenceBase(ts *typesystem.TypeSystem, targ
 // relation's directly-related usersets is itself a computed_userset alias for
 // another relation. v1 follows that alias when expanding stored userset tuples;
 // v2 does not.
+// isAliasedDirectlyRelatedUserset reports whether (userObjectType, userRelation)
+// is a directly-related userset on (targetObjectType, targetRelation) whose
+// rewrite is a ComputedUserset alias (i.e. R' on T where `define R' = R`).
+// Used to confirm that an Expand response leaf contains an aliased userset
+// that v2 would not surface.
+func isAliasedDirectlyRelatedUserset(ts *typesystem.TypeSystem, targetObjectType, targetRelation, userObjectType, userRelation string) bool {
+	usersets, err := ts.DirectlyRelatedUsersets(targetObjectType, targetRelation)
+	if err != nil {
+		return false
+	}
+	for _, ref := range usersets {
+		if ref.GetType() != userObjectType || ref.GetRelation() != userRelation {
+			continue
+		}
+		rel, err := ts.GetRelation(ref.GetType(), ref.GetRelation())
+		if err != nil {
+			continue
+		}
+		if _, ok := rel.GetRewrite().GetUserset().(*openfgav1.Userset_ComputedUserset); ok {
+			return true
+		}
+	}
+	return false
+}
+
 func relationHasAliasedDirectlyRelatedUserset(ts *typesystem.TypeSystem, targetObjectType, targetRelation string) bool {
 	usersets, err := ts.DirectlyRelatedUsersets(targetObjectType, targetRelation)
 	if err != nil {
@@ -202,6 +227,190 @@ func ListUsersReason(typesys *typesystem.TypeSystem, object *openfgav1.Object, r
 		return ReasonWildcardWithExclusion
 	}
 	return ""
+}
+
+// ListUsersResponseConfirmsReason reports whether the ListUsers response is
+// consistent with v1 having actually traversed the divergent path for the
+// given reason. It is used to suppress false-positive logs on shape-matched
+// requests whose responses didn't observably exercise the v1 behavior.
+//
+// For the four per-user-shape reasons, this looks for the specific user that
+// v1 surfaces via the divergent path. For the exclusion-shape reasons, v2
+// would reject the request at request time — so any non-empty v1 response on
+// a Difference-containing relation means v1 actually walked the exclusion
+// path to produce it.
+//
+// Returns true for unknown reasons, so the caller's logic stays simple.
+func ListUsersResponseConfirmsReason(reason string, object *openfgav1.Object, relation string, filter *openfgav1.UserTypeFilter, users []*openfgav1.User) bool {
+	switch reason {
+	case ReasonSelfReferentialUserset:
+		// v1 synthesizes <object>#<relation> as a user of itself.
+		return responseContainsUserset(users, object.GetType(), object.GetId(), relation)
+	case ReasonComputedUsersetSelfObj:
+		// v1 synthesizes <object>#<filter.relation> when filter.relation
+		// appears as a ComputedUserset leaf on the target.
+		return responseContainsUserset(users, object.GetType(), object.GetId(), filter.GetRelation())
+	case ReasonAliasUserset:
+		// v1 surfaces a userset of type filter.type whose relation is some R'
+		// that aliases (via computed_userset) to filter.relation. The exact
+		// alias relation depends on the model; we accept any userset of the
+		// filter's type whose relation is not the filter's relation as a
+		// necessary-condition signal.
+		return responseContainsAliasUserset(users, filter.GetType(), filter.GetRelation())
+	case ReasonTTUUserset:
+		// v1 surfaces a userset of (filter.type, filter.relation) via the TTU
+		// edge. We can only confirm that *some* userset of that shape came
+		// back, not that it came specifically via the TTU.
+		return responseContainsUsersetOfType(users, filter.GetType(), filter.GetRelation())
+	case ReasonUsersetWithExclusion, ReasonWildcardWithExclusion:
+		// v2 would reject the request at request time. Any non-empty v1
+		// response means v1 actually walked the Difference-containing rewrite
+		// to produce a result that v2 would never have returned.
+		return len(users) > 0
+	}
+	return true
+}
+
+func responseContainsUserset(users []*openfgav1.User, typ, id, relation string) bool {
+	for _, u := range users {
+		us := u.GetUserset()
+		if us == nil {
+			continue
+		}
+		if us.GetType() == typ && us.GetId() == id && us.GetRelation() == relation {
+			return true
+		}
+	}
+	return false
+}
+
+func responseContainsUsersetOfType(users []*openfgav1.User, typ, relation string) bool {
+	for _, u := range users {
+		us := u.GetUserset()
+		if us == nil {
+			continue
+		}
+		if us.GetType() == typ && us.GetRelation() == relation {
+			return true
+		}
+	}
+	return false
+}
+
+func responseContainsAliasUserset(users []*openfgav1.User, filterType, filterRelation string) bool {
+	for _, u := range users {
+		us := u.GetUserset()
+		if us == nil {
+			continue
+		}
+		if us.GetType() == filterType && us.GetRelation() != "" && us.GetRelation() != filterRelation {
+			return true
+		}
+	}
+	return false
+}
+
+// ExpandResponseConfirmsReason reports whether the Expand response tree is
+// consistent with v1 having actually traversed the divergent path for the
+// given reason. It mirrors ListUsersResponseConfirmsReason: shape predicates
+// fire on schema alone (which may over-report), and this function suppresses
+// the log when the response shows the v1 path wasn't actually exercised.
+//
+// For the exclusion shapes, any non-empty leaf in the tree means v1 walked
+// the Difference-containing rewrite to produce a result that v2 would have
+// rejected at request time. For alias_userset, we confirm that v1 surfaced
+// an aliased directly-related userset (T#R' where R' resolves via
+// ComputedUserset to the queried relation) — that exact userset will not
+// appear in a v2 expansion of the same call.
+//
+// Returns true for unknown reasons, so the caller's logic stays simple.
+func ExpandResponseConfirmsReason(reason string, typesys *typesystem.TypeSystem, targetObjectType, targetRelation string, tree *openfgav1.UsersetTree) bool {
+	switch reason {
+	case ReasonUsersetWithExclusion, ReasonWildcardWithExclusion:
+		return treeHasAnyLeafUser(tree.GetRoot())
+	case ReasonAliasUserset:
+		return treeHasAliasedUserset(typesys, targetObjectType, targetRelation, tree.GetRoot())
+	}
+	return true
+}
+
+func treeHasAnyLeafUser(node *openfgav1.UsersetTree_Node) bool {
+	if node == nil {
+		return false
+	}
+	if leaf := node.GetLeaf(); leaf != nil {
+		if users := leaf.GetUsers(); users != nil && len(users.GetUsers()) > 0 {
+			return true
+		}
+		return false
+	}
+	if union := node.GetUnion(); union != nil {
+		for _, child := range union.GetNodes() {
+			if treeHasAnyLeafUser(child) {
+				return true
+			}
+		}
+	}
+	if inter := node.GetIntersection(); inter != nil {
+		for _, child := range inter.GetNodes() {
+			if treeHasAnyLeafUser(child) {
+				return true
+			}
+		}
+	}
+	if diff := node.GetDifference(); diff != nil {
+		if treeHasAnyLeafUser(diff.GetBase()) {
+			return true
+		}
+		if treeHasAnyLeafUser(diff.GetSubtract()) {
+			return true
+		}
+	}
+	return false
+}
+
+func treeHasAliasedUserset(typesys *typesystem.TypeSystem, targetObjectType, targetRelation string, node *openfgav1.UsersetTree_Node) bool {
+	if node == nil {
+		return false
+	}
+	if leaf := node.GetLeaf(); leaf != nil {
+		if users := leaf.GetUsers(); users != nil {
+			for _, u := range users.GetUsers() {
+				userObject, userRelation := tuple.SplitObjectRelation(u)
+				if userRelation == "" {
+					continue
+				}
+				userObjectType := tuple.GetType(userObject)
+				if isAliasedDirectlyRelatedUserset(typesys, targetObjectType, targetRelation, userObjectType, userRelation) {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	if union := node.GetUnion(); union != nil {
+		for _, child := range union.GetNodes() {
+			if treeHasAliasedUserset(typesys, targetObjectType, targetRelation, child) {
+				return true
+			}
+		}
+	}
+	if inter := node.GetIntersection(); inter != nil {
+		for _, child := range inter.GetNodes() {
+			if treeHasAliasedUserset(typesys, targetObjectType, targetRelation, child) {
+				return true
+			}
+		}
+	}
+	if diff := node.GetDifference(); diff != nil {
+		if treeHasAliasedUserset(typesys, targetObjectType, targetRelation, diff.GetBase()) {
+			return true
+		}
+		if treeHasAliasedUserset(typesys, targetObjectType, targetRelation, diff.GetSubtract()) {
+			return true
+		}
+	}
+	return false
 }
 
 // rewriteContainsComputedUserset reports whether any ComputedUserset leaf in

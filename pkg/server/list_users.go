@@ -160,11 +160,15 @@ func (s *Server) ListUsers(
 	}
 
 	// Flag potential v2 (weighted-graph) resolution breaking changes for this
-	// request shape. The predicates are schema-shape filters only, so this can
-	// over-report. See v2breaking.ListUsersReason for the catalogue.
+	// request shape. Shape predicates may over-report; for the response-
+	// conditional reasons we additionally confirm the v1-only user actually
+	// came back. See v2breaking.ListUsersReason / ListUsersResponseConfirmsReason.
 	for _, filter := range req.GetUserFilters() {
 		reason := v2breaking.ListUsersReason(typesys, req.GetObject(), req.GetRelation(), filter)
 		if reason == "" {
+			continue
+		}
+		if !v2breaking.ListUsersResponseConfirmsReason(reason, req.GetObject(), req.GetRelation(), filter, resp.GetUsers()) {
 			continue
 		}
 		s.logger.WarnWithContext(ctx, "potential v2 ListUsers resolution breaking change",
