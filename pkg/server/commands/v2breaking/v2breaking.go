@@ -508,7 +508,7 @@ func walkForWildcardUnderDifference(ts *typesystem.TypeSystem, objectType, relat
 
 // branchAcceptsWildcard walks a Difference's base branch and reports whether
 // userObjectType:* is reachable as a directly-related type of some leaf
-// relation. visited prevents infinite recursion through computed/TTU cycles.
+// relation. Visited prevents infinite recursion through computed/TTU cycles.
 func branchAcceptsWildcard(ts *typesystem.TypeSystem, objectType, relation string, rewrite *openfgav1.Userset, userObjectType string, visited map[string]struct{}) bool {
 	if rewrite == nil {
 		return false
