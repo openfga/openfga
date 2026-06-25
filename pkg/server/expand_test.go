@@ -20,7 +20,7 @@ import (
 // store and model IDs populated. Callers fill in the tuple key. Defaults
 // (when modelDSL == "" / tuples == nil) match a simple `viewer: [user]`
 // model with `document:1#viewer @ user:alice`.
-func setupExpandServer(t *testing.T, modelDSL string, tuples []*openfgav1.TupleKey, opts ...OpenFGAServiceV1Option) (*Server, *openfgav1.ExpandRequest) {
+func setupExpandServer(t *testing.T, modelDSL string, tuples []*openfgav1.TupleKey) (*Server, *openfgav1.ExpandRequest) {
 	t.Helper()
 
 	if modelDSL == "" {
@@ -42,10 +42,7 @@ func setupExpandServer(t *testing.T, modelDSL string, tuples []*openfgav1.TupleK
 
 	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
 
-	defaultOpts := []OpenFGAServiceV1Option{WithDatastore(ds)}
-	defaultOpts = append(defaultOpts, opts...)
-
-	s := MustNewServerWithOpts(defaultOpts...)
+	s := MustNewServerWithOpts(WithDatastore(ds))
 	t.Cleanup(s.Close)
 
 	ctx := context.Background()
@@ -79,8 +76,9 @@ func setupExpandServer(t *testing.T, modelDSL string, tuples []*openfgav1.TupleK
 // TestExpandBreakingChangeReason mirrors check_test.go's TestBreakingChangeReason
 // but exercises v2breaking.ExpandReason. Expand has no user input, so detection
 // is purely against the target relation's rewrite (and its directly-related
-// usersets, for the alias shape). Self-reference is intentionally absent from
-// the catalogue — Expand is already v2-aligned for that case.
+// usersets, for the alias shape). See ExpandReason's doc comment for why the
+// Check-side shapes (self_referential_userset, computed_userset_self_object,
+// ttu_userset) are not in the catalogue.
 func TestExpandBreakingChangeReason(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
@@ -110,42 +108,6 @@ func TestExpandBreakingChangeReason(t *testing.T) {
 			objectType: "document",
 			relation:   "viewer",
 			want:       v2breaking.ReasonAliasUserset,
-		},
-		{
-			name: "computed_userset_self_object",
-			modelDSL: `
-				model
-					schema 1.1
-				type user
-				type document
-					relations
-						define editor: [user]
-						define writer: [user]
-						define viewer: editor or writer
-			`,
-			seedTuple:  tuple.NewTupleKey("document:seed", "editor", "user:seed"),
-			objectType: "document",
-			relation:   "viewer",
-			want:       v2breaking.ReasonComputedUsersetSelfObj,
-		},
-		{
-			name: "ttu_userset",
-			modelDSL: `
-				model
-					schema 1.1
-				type user
-				type folder
-					relations
-						define viewer: [user]
-				type document
-					relations
-						define parent: [folder]
-						define viewer: viewer from parent
-			`,
-			seedTuple:  tuple.NewTupleKey("document:seed", "parent", "folder:seed"),
-			objectType: "document",
-			relation:   "viewer",
-			want:       v2breaking.ReasonTTUUserset,
 		},
 		{
 			name: "userset_with_exclusion",
@@ -182,8 +144,8 @@ func TestExpandBreakingChangeReason(t *testing.T) {
 			want:       v2breaking.ReasonWildcardWithExclusion,
 		},
 		{
-			// Direct-assignment relation has no Difference, no ComputedUserset,
-			// no TTU, no aliased directly-related userset → no shape matches.
+			// Direct-assignment relation has no Difference and no aliased
+			// directly-related userset → no shape matches.
 			name: "no_match_direct_assignment",
 			modelDSL: `
 				model
@@ -259,24 +221,6 @@ func TestExpandBreakingChangeReason(t *testing.T) {
 			objectType: "document",
 			relation:   "viewer",
 			want:       v2breaking.ReasonUsersetWithExclusion,
-		},
-		{
-			// Self-reference is intentionally NOT in ExpandReason's catalogue.
-			// A relation with `define viewer: [user]` queried as document#viewer
-			// should not fire any reason.
-			name: "no_match_self_reference_excluded",
-			modelDSL: `
-				model
-					schema 1.1
-				type user
-				type document
-					relations
-						define viewer: [user]
-			`,
-			seedTuple:  tuple.NewTupleKey("document:seed", "viewer", "user:seed"),
-			objectType: "document",
-			relation:   "viewer",
-			want:       "",
 		},
 	}
 

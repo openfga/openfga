@@ -126,7 +126,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 					tk := req.GetTupleKey()
 					if reason := v2breaking.CheckReason(typesys, tk); reason != "" {
 						requestID := requestid.GetRequestIDFromContext(ctx)
-						s.logger.WarnWithContext(ctx, "potential v2Check resolution breaking change",
+						s.logger.WarnWithContext(ctx, "potential v2 Check resolution breaking change",
 							zap.String("store_id", storeID),
 							zap.String("model_id", req.GetAuthorizationModelId()),
 							zap.String("request_id", requestID),

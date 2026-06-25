@@ -162,15 +162,17 @@ func (s *Server) ListUsers(
 	// Flag potential v2 (weighted-graph) resolution breaking changes for this
 	// request shape. The predicates are schema-shape filters only, so this can
 	// over-report. See v2breaking.ListUsersReason for the catalogue.
-	if len(req.GetUserFilters()) > 0 {
-		if reason := v2breaking.ListUsersReason(typesys, req.GetObject(), req.GetRelation(), req.GetUserFilters()[0]); reason != "" {
-			s.logger.WarnWithContext(ctx, "potential v2 ListUsers resolution breaking change",
-				zap.String("store_id", storeID),
-				zap.String("model_id", req.GetAuthorizationModelId()),
-				zap.String("request_id", requestid.GetRequestIDFromContext(ctx)),
-				zap.String("reason", reason),
-			)
+	for _, filter := range req.GetUserFilters() {
+		reason := v2breaking.ListUsersReason(typesys, req.GetObject(), req.GetRelation(), filter)
+		if reason == "" {
+			continue
 		}
+		s.logger.WarnWithContext(ctx, "potential v2 ListUsers resolution breaking change",
+			zap.String("store_id", storeID),
+			zap.String("model_id", req.GetAuthorizationModelId()),
+			zap.String("request_id", requestid.GetRequestIDFromContext(ctx)),
+			zap.String("reason", reason),
+		)
 	}
 
 	return &openfgav1.ListUsersResponse{

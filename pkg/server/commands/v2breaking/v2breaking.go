@@ -59,7 +59,7 @@ func CheckReason(typesys *typesystem.TypeSystem, tk *openfgav1.CheckRequestTuple
 	targetObjectType := tuple.GetType(tk.GetObject())
 	targetRelation := tk.GetRelation()
 
-	if UsersetAliasesTargetRelation(typesys, targetObjectType, targetRelation, userObjectType, userRelation) {
+	if usersetAliasesTargetRelation(typesys, targetObjectType, targetRelation, userObjectType, userRelation) {
 		return ReasonAliasUserset
 	}
 	rel, err := typesys.GetRelation(targetObjectType, targetRelation)
@@ -67,10 +67,10 @@ func CheckReason(typesys *typesystem.TypeSystem, tk *openfgav1.CheckRequestTuple
 		return ""
 	}
 	rewrite := rel.GetRewrite()
-	if userObject == tk.GetObject() && RewriteContainsComputedUserset(rewrite, userRelation) {
+	if userObject == tk.GetObject() && rewriteContainsComputedUserset(rewrite, userRelation) {
 		return ReasonComputedUsersetSelfObj
 	}
-	if RewriteContainsTTUForUser(typesys, targetObjectType, rewrite, userObjectType, userRelation) {
+	if rewriteContainsTTUForUser(typesys, targetObjectType, rewrite, userObjectType, userRelation) {
 		return ReasonTTUUserset
 	}
 	return ""
@@ -81,12 +81,20 @@ func CheckReason(typesys *typesystem.TypeSystem, tk *openfgav1.CheckRequestTuple
 // Expand has no user input — only (object, relation) — so detection is purely
 // schema-shape against the target relation's rewrite.
 //
-// Self-reference is intentionally excluded: Expand is already v2-aligned for
-// that case (it returns an empty Leaf_Users; v1's TRUE comes from a Check-side
-// shortcut not encoded in the tree).
+// ExpandReason only covers shapes that produce a structurally different tree
+// under v2: the two exclusion shapes (which v2 rejects at request time and
+// therefore surface as user-visible errors) and `alias_userset` (where v1
+// follows a `T#R' → R` alias from a stored userset tuple when materializing
+// the Leaf, and v2 does not).
+//
+// The Check-side shortcuts for `computed_userset_self_object`, `ttu_userset`,
+// and `self_referential_userset` are boolean evaluation rules — they affect
+// Check's TRUE/FALSE answer, but they never materialize a tuple or change
+// which tuples Expand reads from storage. The Expand tree is identical under
+// v1 and v2 for those shapes, so they are deliberately not flagged here.
 //
 // Priority order if multiple shapes match: exclusion shapes first (v2 errors,
-// most severe), then alias, then TTU, then ComputedUserset.
+// most severe), then alias.
 func ExpandReason(typesys *typesystem.TypeSystem, targetObjectType, targetRelation string) string {
 	rel, err := typesys.GetRelation(targetObjectType, targetRelation)
 	if err != nil {
@@ -105,14 +113,6 @@ func ExpandReason(typesys *typesystem.TypeSystem, targetObjectType, targetRelati
 		return ReasonAliasUserset
 	}
 
-	if rewriteContainsAnyTTU(rewrite) {
-		return ReasonTTUUserset
-	}
-
-	if rewriteContainsAnyComputedUserset(rewrite) {
-		return ReasonComputedUsersetSelfObj
-	}
-
 	return ""
 }
 
@@ -127,30 +127,6 @@ func anyTypeWildcardReachableUnderDifferenceBase(ts *typesystem.TypeSystem, targ
 		}
 	}
 	return false
-}
-
-// rewriteContainsAnyTTU reports whether the rewrite contains any TupleToUserset
-// node, regardless of the computed relation.
-func rewriteContainsAnyTTU(rewrite *openfgav1.Userset) bool {
-	result, _ := typesystem.WalkUsersetRewrite(rewrite, func(r *openfgav1.Userset) interface{} {
-		if _, ok := r.GetUserset().(*openfgav1.Userset_TupleToUserset); ok {
-			return true
-		}
-		return nil
-	})
-	return result != nil
-}
-
-// rewriteContainsAnyComputedUserset reports whether the rewrite contains any
-// ComputedUserset node, regardless of the referenced relation.
-func rewriteContainsAnyComputedUserset(rewrite *openfgav1.Userset) bool {
-	result, _ := typesystem.WalkUsersetRewrite(rewrite, func(r *openfgav1.Userset) interface{} {
-		if _, ok := r.GetUserset().(*openfgav1.Userset_ComputedUserset); ok {
-			return true
-		}
-		return nil
-	})
-	return result != nil
 }
 
 // relationHasAliasedDirectlyRelatedUserset reports whether any of the target
@@ -197,7 +173,7 @@ func ListUsersReason(typesys *typesystem.TypeSystem, object *openfgav1.Object, r
 		if targetObjectType == filterType && relation == filterRelation {
 			return ReasonSelfReferentialUserset
 		}
-		if UsersetAliasesTargetRelation(typesys, targetObjectType, relation, filterType, filterRelation) {
+		if usersetAliasesTargetRelation(typesys, targetObjectType, relation, filterType, filterRelation) {
 			return ReasonAliasUserset
 		}
 	}
@@ -209,10 +185,10 @@ func ListUsersReason(typesys *typesystem.TypeSystem, object *openfgav1.Object, r
 	rewrite := rel.GetRewrite()
 
 	if filterRelation != "" {
-		if targetObjectType == filterType && RewriteContainsComputedUserset(rewrite, filterRelation) {
+		if targetObjectType == filterType && rewriteContainsComputedUserset(rewrite, filterRelation) {
 			return ReasonComputedUsersetSelfObj
 		}
-		if RewriteContainsTTUForUser(typesys, targetObjectType, rewrite, filterType, filterRelation) {
+		if rewriteContainsTTUForUser(typesys, targetObjectType, rewrite, filterType, filterRelation) {
 			return ReasonTTUUserset
 		}
 		if rewriteContainsDifference(rewrite) {
@@ -228,9 +204,9 @@ func ListUsersReason(typesys *typesystem.TypeSystem, object *openfgav1.Object, r
 	return ""
 }
 
-// RewriteContainsComputedUserset reports whether any ComputedUserset leaf in
+// rewriteContainsComputedUserset reports whether any ComputedUserset leaf in
 // the rewrite tree references the given relation name.
-func RewriteContainsComputedUserset(rewrite *openfgav1.Userset, relation string) bool {
+func rewriteContainsComputedUserset(rewrite *openfgav1.Userset, relation string) bool {
 	result, _ := typesystem.WalkUsersetRewrite(rewrite, func(r *openfgav1.Userset) interface{} {
 		if cu, ok := r.GetUserset().(*openfgav1.Userset_ComputedUserset); ok && cu.ComputedUserset.GetRelation() == relation {
 			return true
@@ -240,11 +216,11 @@ func RewriteContainsComputedUserset(rewrite *openfgav1.Userset, relation string)
 	return result != nil
 }
 
-// RewriteContainsTTUForUser reports whether the target's rewrite contains a
+// rewriteContainsTTUForUser reports whether the target's rewrite contains a
 // TupleToUserset whose computed relation equals userRelation, where the
 // tupleset relation on the target object type is directly related to
 // userObjectType.
-func RewriteContainsTTUForUser(ts *typesystem.TypeSystem, targetObjectType string, rewrite *openfgav1.Userset, userObjectType, userRelation string) bool {
+func rewriteContainsTTUForUser(ts *typesystem.TypeSystem, targetObjectType string, rewrite *openfgav1.Userset, userObjectType, userRelation string) bool {
 	result, _ := typesystem.WalkUsersetRewrite(rewrite, func(r *openfgav1.Userset) interface{} {
 		ttu, ok := r.GetUserset().(*openfgav1.Userset_TupleToUserset)
 		if !ok || ttu.TupleToUserset.GetComputedUserset().GetRelation() != userRelation {
@@ -265,11 +241,11 @@ func RewriteContainsTTUForUser(ts *typesystem.TypeSystem, targetObjectType strin
 	return result != nil
 }
 
-// UsersetAliasesTargetRelation reports whether the target's directly-related
+// usersetAliasesTargetRelation reports whether the target's directly-related
 // usersets include some T#R' (where T = userObjectType) that is a
 // computed_userset alias for userRelation. Excludes the trivial case where
 // T#R is itself directly assignable (since v1 and v2 agree on direct matches).
-func UsersetAliasesTargetRelation(ts *typesystem.TypeSystem, targetObjectType, targetRelation, userObjectType, userRelation string) bool {
+func usersetAliasesTargetRelation(ts *typesystem.TypeSystem, targetObjectType, targetRelation, userObjectType, userRelation string) bool {
 	usersets, err := ts.DirectlyRelatedUsersets(targetObjectType, targetRelation)
 	if err != nil {
 		return false

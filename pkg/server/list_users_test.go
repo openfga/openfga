@@ -644,7 +644,7 @@ func TestListUsers_WithListUsersDatabaseThrottle(t *testing.T) {
 // store and model IDs populated. Callers fill in object, relation, and user
 // filters. Defaults (when modelDSL == "" / tuples == nil) match a simple
 // `viewer: [user]` model with `document:1#viewer @ user:alice`.
-func setupListUsersServer(t *testing.T, modelDSL string, tuples []*openfgav1.TupleKey, opts ...OpenFGAServiceV1Option) (*Server, *openfgav1.ListUsersRequest) {
+func setupListUsersServer(t *testing.T, modelDSL string, tuples []*openfgav1.TupleKey) (*Server, *openfgav1.ListUsersRequest) {
 	t.Helper()
 
 	if modelDSL == "" {
@@ -666,10 +666,7 @@ func setupListUsersServer(t *testing.T, modelDSL string, tuples []*openfgav1.Tup
 
 	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
 
-	defaultOpts := []OpenFGAServiceV1Option{WithDatastore(ds)}
-	defaultOpts = append(defaultOpts, opts...)
-
-	s := MustNewServerWithOpts(defaultOpts...)
+	s := MustNewServerWithOpts(WithDatastore(ds))
 	t.Cleanup(s.Close)
 
 	ctx := context.Background()
