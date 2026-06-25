@@ -168,7 +168,7 @@ func (s *Server) ListUsers(
 		if reason == "" {
 			continue
 		}
-		if !v2breaking.ListUsersResponseConfirmsReason(reason, req.GetObject(), req.GetRelation(), filter, resp.GetUsers()) {
+		if !v2breaking.ListUsersResponseConfirmsReason(reason, typesys, req.GetObject(), req.GetRelation(), filter, resp.GetUsers()) {
 			continue
 		}
 		s.logger.WarnWithContext(ctx, "potential v2 ListUsers resolution breaking change",

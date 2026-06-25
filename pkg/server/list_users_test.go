@@ -965,6 +965,10 @@ func TestListUsersBreakingChangeReason(t *testing.T) {
 // suppresses false-positive logs on response-conditional reasons. Exclusion
 // shapes are not exercised here — they are not gated on the response.
 func TestListUsersResponseConfirmsReason(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
 	obj := &openfgav1.Object{Type: "document", Id: "d1"}
 	usersetUser := func(typ, id, relation string) *openfgav1.User {
 		return &openfgav1.User{User: &openfgav1.User_Userset{Userset: &openfgav1.UsersetUser{Type: typ, Id: id, Relation: relation}}}
@@ -973,9 +977,26 @@ func TestListUsersResponseConfirmsReason(t *testing.T) {
 		return &openfgav1.User{User: &openfgav1.User_Object{Object: &openfgav1.Object{Type: typ, Id: id}}}
 	}
 
+	// aliasTS is a typesystem where document#viewer accepts document#allowed
+	// (which itself aliases via ComputedUserset to `reader`). Used for the
+	// alias_userset cases — the only reason that consults the typesystem.
+	s, baseReq := setupListUsersServer(t, `
+		model
+			schema 1.1
+		type user
+		type document
+			relations
+				define reader: [user]
+				define allowed: reader
+				define viewer: [user, document#allowed]
+	`, []*openfgav1.TupleKey{tuple.NewTupleKey("document:seed", "reader", "user:seed")})
+	aliasTS, err := s.resolveTypesystem(context.Background(), baseReq.GetStoreId(), baseReq.GetAuthorizationModelId())
+	require.NoError(t, err)
+
 	tests := []struct {
 		name     string
 		reason   string
+		typesys  *typesystem.TypeSystem
 		filter   *openfgav1.UserTypeFilter
 		users    []*openfgav1.User
 		expected bool
@@ -1009,17 +1030,35 @@ func TestListUsersResponseConfirmsReason(t *testing.T) {
 			expected: false,
 		},
 		{
+			// document#allowed is a directly-related userset on viewer and
+			// `allowed`'s rewrite is ComputedUserset(reader) → aliased.
 			name:     "alias_userset_confirmed",
 			reason:   v2breaking.ReasonAliasUserset,
+			typesys:  aliasTS,
 			filter:   &openfgav1.UserTypeFilter{Type: "document", Relation: "reader"},
-			users:    []*openfgav1.User{usersetUser("document", "d1", "allowed")},
+			users:    []*openfgav1.User{usersetUser("document", "d2", "allowed")},
 			expected: true,
 		},
 		{
+			// document#reader IS the filter's relation, not the alias — it is
+			// not a directly-related userset on viewer (only user and
+			// document#allowed are). Must NOT confirm.
 			name:     "alias_userset_not_present_only_filter_relation",
 			reason:   v2breaking.ReasonAliasUserset,
+			typesys:  aliasTS,
 			filter:   &openfgav1.UserTypeFilter{Type: "document", Relation: "reader"},
-			users:    []*openfgav1.User{usersetUser("document", "d1", "reader")},
+			users:    []*openfgav1.User{usersetUser("document", "d2", "reader")},
+			expected: false,
+		},
+		{
+			// Userset of an unrelated relation (`other`) — not a directly-
+			// related userset on viewer. The old loose check would have
+			// confirmed this; the tightened check correctly rejects it.
+			name:     "alias_userset_unrelated_userset",
+			reason:   v2breaking.ReasonAliasUserset,
+			typesys:  aliasTS,
+			filter:   &openfgav1.UserTypeFilter{Type: "document", Relation: "reader"},
+			users:    []*openfgav1.User{usersetUser("document", "d2", "other")},
 			expected: false,
 		},
 		{
@@ -1068,7 +1107,7 @@ func TestListUsersResponseConfirmsReason(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := v2breaking.ListUsersResponseConfirmsReason(tc.reason, obj, "viewer", tc.filter, tc.users)
+			got := v2breaking.ListUsersResponseConfirmsReason(tc.reason, tc.typesys, obj, "viewer", tc.filter, tc.users)
 			require.Equal(t, tc.expected, got)
 		})
 	}

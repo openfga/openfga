@@ -20,12 +20,12 @@ import (
 // Reason constants are stable strings emitted in logs/metrics. Do not rename
 // without coordinating with downstream dashboards.
 const (
-	ReasonSelfReferentialUserset  = "self_referential_userset"
-	ReasonAliasUserset            = "alias_userset"
-	ReasonComputedUsersetSelfObj  = "computed_userset_self_object"
-	ReasonTTUUserset              = "ttu_userset"
-	ReasonUsersetWithExclusion    = "userset_with_exclusion"
-	ReasonWildcardWithExclusion   = "wildcard_with_exclusion"
+	ReasonSelfReferentialUserset = "self_referential_userset"
+	ReasonAliasUserset           = "alias_userset"
+	ReasonComputedUsersetSelfObj = "computed_userset_self_object"
+	ReasonTTUUserset             = "ttu_userset"
+	ReasonUsersetWithExclusion   = "userset_with_exclusion"
+	ReasonWildcardWithExclusion  = "wildcard_with_exclusion"
 )
 
 // CheckReason returns a non-empty reason string when the Check request shape
@@ -109,7 +109,7 @@ func ExpandReason(typesys *typesystem.TypeSystem, targetObjectType, targetRelati
 		return ReasonUsersetWithExclusion
 	}
 
-	if relationHasAliasedDirectlyRelatedUserset(typesys, targetObjectType, targetRelation) {
+	if isAliasedDirectlyRelatedUserset(typesys, targetObjectType, targetRelation, "", "") {
 		return ReasonAliasUserset
 	}
 
@@ -129,41 +129,22 @@ func anyTypeWildcardReachableUnderDifferenceBase(ts *typesystem.TypeSystem, targ
 	return false
 }
 
-// relationHasAliasedDirectlyRelatedUserset reports whether any of the target
-// relation's directly-related usersets is itself a computed_userset alias for
-// another relation. v1 follows that alias when expanding stored userset tuples;
-// v2 does not.
 // isAliasedDirectlyRelatedUserset reports whether (userObjectType, userRelation)
 // is a directly-related userset on (targetObjectType, targetRelation) whose
-// rewrite is a ComputedUserset alias (i.e. R' on T where `define R' = R`).
-// Used to confirm that an Expand response leaf contains an aliased userset
-// that v2 would not surface.
+// rewrite is a ComputedUserset alias (i.e. `define R' = R` on T). When both
+// userObjectType and userRelation are empty the function returns true if ANY
+// directly-related userset on the target is so aliased — the schema-shape
+// check used by ExpandReason.
 func isAliasedDirectlyRelatedUserset(ts *typesystem.TypeSystem, targetObjectType, targetRelation, userObjectType, userRelation string) bool {
 	usersets, err := ts.DirectlyRelatedUsersets(targetObjectType, targetRelation)
 	if err != nil {
 		return false
 	}
+	matchAny := userObjectType == "" && userRelation == ""
 	for _, ref := range usersets {
-		if ref.GetType() != userObjectType || ref.GetRelation() != userRelation {
+		if !matchAny && (ref.GetType() != userObjectType || ref.GetRelation() != userRelation) {
 			continue
 		}
-		rel, err := ts.GetRelation(ref.GetType(), ref.GetRelation())
-		if err != nil {
-			continue
-		}
-		if _, ok := rel.GetRewrite().GetUserset().(*openfgav1.Userset_ComputedUserset); ok {
-			return true
-		}
-	}
-	return false
-}
-
-func relationHasAliasedDirectlyRelatedUserset(ts *typesystem.TypeSystem, targetObjectType, targetRelation string) bool {
-	usersets, err := ts.DirectlyRelatedUsersets(targetObjectType, targetRelation)
-	if err != nil {
-		return false
-	}
-	for _, ref := range usersets {
 		rel, err := ts.GetRelation(ref.GetType(), ref.GetRelation())
 		if err != nil {
 			continue
@@ -241,7 +222,7 @@ func ListUsersReason(typesys *typesystem.TypeSystem, object *openfgav1.Object, r
 // path to produce it.
 //
 // Returns true for unknown reasons, so the caller's logic stays simple.
-func ListUsersResponseConfirmsReason(reason string, object *openfgav1.Object, relation string, filter *openfgav1.UserTypeFilter, users []*openfgav1.User) bool {
+func ListUsersResponseConfirmsReason(reason string, typesys *typesystem.TypeSystem, object *openfgav1.Object, relation string, filter *openfgav1.UserTypeFilter, users []*openfgav1.User) bool {
 	switch reason {
 	case ReasonSelfReferentialUserset:
 		// v1 synthesizes <object>#<relation> as a user of itself.
@@ -251,12 +232,19 @@ func ListUsersResponseConfirmsReason(reason string, object *openfgav1.Object, re
 		// appears as a ComputedUserset leaf on the target.
 		return responseContainsUserset(users, object.GetType(), object.GetId(), filter.GetRelation())
 	case ReasonAliasUserset:
-		// v1 surfaces a userset of type filter.type whose relation is some R'
-		// that aliases (via computed_userset) to filter.relation. The exact
-		// alias relation depends on the model; we accept any userset of the
-		// filter's type whose relation is not the filter's relation as a
-		// necessary-condition signal.
-		return responseContainsAliasUserset(users, filter.GetType(), filter.GetRelation())
+		// v1 surfaces a userset (T#R') where (T, R') is a directly-related
+		// userset on the target whose rewrite aliases (via ComputedUserset)
+		// to the filter's relation.
+		for _, u := range users {
+			us := u.GetUserset()
+			if us == nil {
+				continue
+			}
+			if isAliasedDirectlyRelatedUserset(typesys, object.GetType(), relation, us.GetType(), us.GetRelation()) {
+				return true
+			}
+		}
+		return false
 	case ReasonTTUUserset:
 		// v1 surfaces a userset of (filter.type, filter.relation) via the TTU
 		// edge. We can only confirm that *some* userset of that shape came
@@ -291,19 +279,6 @@ func responseContainsUsersetOfType(users []*openfgav1.User, typ, relation string
 			continue
 		}
 		if us.GetType() == typ && us.GetRelation() == relation {
-			return true
-		}
-	}
-	return false
-}
-
-func responseContainsAliasUserset(users []*openfgav1.User, filterType, filterRelation string) bool {
-	for _, u := range users {
-		us := u.GetUserset()
-		if us == nil {
-			continue
-		}
-		if us.GetType() == filterType && us.GetRelation() != "" && us.GetRelation() != filterRelation {
 			return true
 		}
 	}
