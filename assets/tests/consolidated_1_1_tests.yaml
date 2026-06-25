@@ -7060,6 +7060,142 @@ tests:
               relation: can_view
             expectation:
               - user:*
+  - name: exclusion_under_wildcard_in_intersection
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type document
+            relations
+              define banned: [user]
+              define org_member: [user:*, user]
+              define active: [user]
+              define viewer: (org_member but not banned) and active
+        tuples:
+          - user: user:*
+            relation: org_member
+            object: document:1
+          - user: user:eve
+            relation: banned
+            object: document:1
+          - user: user:alice
+            relation: active
+            object: document:1
+          - user: user:eve
+            relation: active
+            object: document:1
+        checkAssertions:
+          - tuple:
+              user: user:alice
+              relation: viewer
+              object: document:1
+            expectation: true
+          - tuple:
+              user: user:eve
+              relation: viewer
+              object: document:1
+            expectation: false
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+              - user:alice
+  - name: exclusion_under_wildcard_in_intersection_only_wildcard
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type document
+            relations
+              define banned: [user]
+              define org_member: [user:*, user]
+              define active: [user:*, user]
+              define viewer: (org_member but not banned) and active
+        tuples:
+          - user: user:*
+            relation: org_member
+            object: document:1
+          - user: user:eve
+            relation: banned
+            object: document:1
+          - user: user:*
+            relation: active
+            object: document:1
+        checkAssertions:
+          - tuple:
+              user: user:eve
+              relation: viewer
+              object: document:1
+            expectation: false
+          - tuple:
+              user: user:alice
+              relation: viewer
+              object: document:1
+            expectation: true
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+              - user:*
+  - name: exclusion_under_wildcard_in_three_operand_intersection
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type document
+            relations
+              define banned: [user]
+              define org_member: [user:*, user]
+              define active: [user]
+              define verified: [user]
+              define viewer: (org_member but not banned) and active and verified
+        tuples:
+          - user: user:*
+            relation: org_member
+            object: document:1
+          - user: user:eve
+            relation: banned
+            object: document:1
+          - user: user:alice
+            relation: active
+            object: document:1
+          - user: user:eve
+            relation: active
+            object: document:1
+          - user: user:alice
+            relation: verified
+            object: document:1
+          - user: user:eve
+            relation: verified
+            object: document:1
+        checkAssertions:
+          - tuple:
+              user: user:alice
+              relation: viewer
+              object: document:1
+            expectation: true
+          - tuple:
+              user: user:eve
+              relation: viewer
+              object: document:1
+            expectation: false
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+              - user:alice
   - name: relation_with_userset_involving_exclusion
     stages:
       - model: |
