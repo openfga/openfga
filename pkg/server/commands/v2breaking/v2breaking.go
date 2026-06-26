@@ -81,20 +81,34 @@ func CheckReason(typesys *typesystem.TypeSystem, tk *openfgav1.CheckRequestTuple
 // Expand has no user input — only (object, relation) — so detection is purely
 // schema-shape against the target relation's rewrite.
 //
-// ExpandReason only covers shapes that produce a structurally different tree
-// under v2: the two exclusion shapes (which v2 rejects at request time and
-// therefore surface as user-visible errors) and `alias_userset` (where v1
-// follows a `T#R' → R` alias from a stored userset tuple when materializing
-// the Leaf, and v2 does not).
+// ExpandReason covers the shapes whose v1 Expand tree exposes a divergence
+// from v2:
 //
-// The Check-side shortcuts for `computed_userset_self_object`, `ttu_userset`,
-// and `self_referential_userset` are boolean evaluation rules — they affect
-// Check's TRUE/FALSE answer, but they never materialize a tuple or change
-// which tuples Expand reads from storage. The Expand tree is identical under
-// v1 and v2 for those shapes, so they are deliberately not flagged here.
+//   - The two exclusion shapes (userset_with_exclusion, wildcard_with_exclusion):
+//     v2 rejects the request at request time, so any v1 Expand response on a
+//     Difference-containing rewrite is itself the divergence signal.
 //
-// Exclusion shapes are checked before alias since they are the more severe
-// divergence (v2 returns a request-time error).
+//   - alias_userset: v1 follows `T#R' → R` aliases when materializing leaves,
+//     surfacing aliased usersets that v2's strict storage-validation path
+//     would not.
+//
+//   - computed_userset_self_object: the rewrite contains a ComputedUserset
+//     leaf referring to a sibling relation. v1 Expand emits this leaf as a
+//     direct member of the target relation (e.g. `viewer: editor or writer`
+//     produces a Union with `document:d1#writer` as a leaf), which is
+//     exactly the v1 inference v2's strict resolution would not surface.
+//
+//   - ttu_userset: the rewrite contains a TupleToUserset. v1 Expand emits a
+//     TTU leaf naming the tupleset relation (e.g. `viewer: viewer from
+//     parent` produces a leaf referencing `document:d1#parent`) even when no
+//     parent tuples exist in storage — surfacing structural detail that v2's
+//     strict resolution would not.
+//
+// `self_referential_userset` remains a Check-only boolean shortcut — it
+// doesn't change Expand's emitted tree.
+//
+// Exclusion shapes are checked before the others since they are the more
+// severe divergence (v2 returns a request-time error).
 func ExpandReason(typesys *typesystem.TypeSystem, targetObjectType, targetRelation string) string {
 	rel, err := typesys.GetRelation(targetObjectType, targetRelation)
 	if err != nil {
@@ -113,7 +127,43 @@ func ExpandReason(typesys *typesystem.TypeSystem, targetObjectType, targetRelati
 		return ReasonAliasUserset
 	}
 
+	if rewriteContainsAnyComputedUserset(rewrite) {
+		return ReasonComputedUsersetSelfObj
+	}
+
+	if rewriteContainsAnyTTU(rewrite) {
+		return ReasonTTUUserset
+	}
+
 	return ""
+}
+
+// rewriteContainsAnyComputedUserset reports whether the rewrite tree contains
+// any ComputedUserset leaf. Used by ExpandReason to detect the
+// computed_userset_self_object shape on Expand — where the v1 tree surfaces
+// the sibling-relation reference as a member of the target.
+func rewriteContainsAnyComputedUserset(rewrite *openfgav1.Userset) bool {
+	result, _ := typesystem.WalkUsersetRewrite(rewrite, func(r *openfgav1.Userset) interface{} {
+		if _, ok := r.GetUserset().(*openfgav1.Userset_ComputedUserset); ok {
+			return true
+		}
+		return nil
+	})
+	return result != nil
+}
+
+// rewriteContainsAnyTTU reports whether the rewrite tree contains any
+// TupleToUserset node. Used by ExpandReason to detect the ttu_userset shape
+// on Expand — where v1 surfaces a TTU leaf naming the tupleset relation in
+// the tree even when no parent tuples exist.
+func rewriteContainsAnyTTU(rewrite *openfgav1.Userset) bool {
+	result, _ := typesystem.WalkUsersetRewrite(rewrite, func(r *openfgav1.Userset) interface{} {
+		if _, ok := r.GetUserset().(*openfgav1.Userset_TupleToUserset); ok {
+			return true
+		}
+		return nil
+	})
+	return result != nil
 }
 
 // anyTypeWildcardReachableUnderDifferenceBase walks every type defined in the
@@ -232,19 +282,11 @@ func ListUsersResponseConfirmsReason(reason string, typesys *typesystem.TypeSyst
 		// appears as a ComputedUserset leaf on the target.
 		return responseContainsUserset(users, object.GetType(), object.GetId(), filter.GetRelation())
 	case ReasonAliasUserset:
-		// v1 surfaces a userset (T#R') where (T, R') is a directly-related
-		// userset on the target whose rewrite aliases (via ComputedUserset)
-		// to the filter's relation.
-		for _, u := range users {
-			us := u.GetUserset()
-			if us == nil {
-				continue
-			}
-			if isAliasedDirectlyRelatedUserset(typesys, object.GetType(), relation, us.GetType(), us.GetRelation()) {
-				return true
-			}
-		}
-		return false
+		// v1 surfaces a userset of the filter shape because it walked
+		// (T#R' alias) → filter.relation. ListUsers normalizes results to
+		// the filter's (type, relation), so any matching userset confirms
+		// the alias path was traversed.
+		return responseContainsUsersetOfType(users, filter.GetType(), filter.GetRelation())
 	case ReasonTTUUserset:
 		// v1 surfaces a userset of (filter.type, filter.relation) via the TTU
 		// edge. We can only confirm that *some* userset of that shape came
@@ -291,57 +333,24 @@ func responseContainsUsersetOfType(users []*openfgav1.User, typ, relation string
 // fire on schema alone (which may over-report), and this function suppresses
 // the log when the response shows the v1 path wasn't actually exercised.
 //
-// For the exclusion shapes, any non-empty leaf in the tree means v1 walked
-// the Difference-containing rewrite to produce a result that v2 would have
-// rejected at request time. For alias_userset, we confirm that v1 surfaced
-// an aliased directly-related userset (T#R' where R' resolves via
-// ComputedUserset to the queried relation) — that exact userset will not
-// appear in a v2 expansion of the same call.
+// For the exclusion shapes, v2 would reject the request at request time, so
+// any successful response means v1 actually walked the divergent path.
+// For alias_userset, we confirm that v1 surfaced an aliased directly-related
+// userset (T#R' where R' resolves via ComputedUserset to the queried
+// relation) — that exact userset will not appear in a v2 expansion of the
+// same call.
 //
 // Returns true for unknown reasons, so the caller's logic stays simple.
 func ExpandResponseConfirmsReason(reason string, typesys *typesystem.TypeSystem, targetObjectType, targetRelation string, tree *openfgav1.UsersetTree) bool {
 	switch reason {
-	case ReasonUsersetWithExclusion, ReasonWildcardWithExclusion:
-		return treeHasAnyLeafUser(tree.GetRoot())
+	case ReasonUsersetWithExclusion, ReasonWildcardWithExclusion, ReasonComputedUsersetSelfObj, ReasonTTUUserset:
+		// v2 has not yet been ported to Expand, so any response on a shape
+		// known to diverge means the client is observing v1 behavior.
+		return tree.GetRoot() != nil
 	case ReasonAliasUserset:
 		return treeHasAliasedUserset(typesys, targetObjectType, targetRelation, tree.GetRoot())
 	}
 	return true
-}
-
-func treeHasAnyLeafUser(node *openfgav1.UsersetTree_Node) bool {
-	if node == nil {
-		return false
-	}
-	if leaf := node.GetLeaf(); leaf != nil {
-		if users := leaf.GetUsers(); users != nil && len(users.GetUsers()) > 0 {
-			return true
-		}
-		return false
-	}
-	if union := node.GetUnion(); union != nil {
-		for _, child := range union.GetNodes() {
-			if treeHasAnyLeafUser(child) {
-				return true
-			}
-		}
-	}
-	if inter := node.GetIntersection(); inter != nil {
-		for _, child := range inter.GetNodes() {
-			if treeHasAnyLeafUser(child) {
-				return true
-			}
-		}
-	}
-	if diff := node.GetDifference(); diff != nil {
-		if treeHasAnyLeafUser(diff.GetBase()) {
-			return true
-		}
-		if treeHasAnyLeafUser(diff.GetSubtract()) {
-			return true
-		}
-	}
-	return false
 }
 
 func treeHasAliasedUserset(typesys *typesystem.TypeSystem, targetObjectType, targetRelation string, node *openfgav1.UsersetTree_Node) bool {
