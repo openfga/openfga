@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -282,7 +281,7 @@ func TestExpandBreakingChangeLog(t *testing.T) {
 
 			s, baseReq := setupExpandServer(t, tc.modelDSL, tc.tuples, WithLogger(testLogger))
 
-			res, err := s.Expand(context.Background(), &openfgav1.ExpandRequest{
+			_, err := s.Expand(context.Background(), &openfgav1.ExpandRequest{
 				StoreId:              baseReq.GetStoreId(),
 				AuthorizationModelId: baseReq.GetAuthorizationModelId(),
 				TupleKey: &openfgav1.ExpandRequestTupleKey{
@@ -290,7 +289,6 @@ func TestExpandBreakingChangeLog(t *testing.T) {
 					Relation: tc.relation,
 				},
 			})
-			fmt.Printf("%s", res)
 			require.NoError(t, err)
 
 			breakingLogs := logs.FilterMessage(logMessage)

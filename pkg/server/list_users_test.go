@@ -978,14 +978,13 @@ func TestListUsersBreakingChangeLog(t *testing.T) {
 
 			s, baseReq := setupListUsersServer(t, tc.modelDSL, tc.tuples, WithLogger(testLogger))
 
-			res, err := s.ListUsers(context.Background(), &openfgav1.ListUsersRequest{
+			_, err := s.ListUsers(context.Background(), &openfgav1.ListUsersRequest{
 				StoreId:              baseReq.GetStoreId(),
 				AuthorizationModelId: baseReq.GetAuthorizationModelId(),
 				Object:               tc.object,
 				Relation:             tc.relation,
 				UserFilters:          []*openfgav1.UserTypeFilter{tc.filter},
 			})
-			fmt.Printf("%s", res)
 			require.NoError(t, err)
 
 			breakingLogs := logs.FilterMessage(logMessage)
