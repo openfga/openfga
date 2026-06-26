@@ -645,6 +645,11 @@ func (l *listUsersQuery) expandIntersection(
 	}
 
 	for key, count := range foundUsersCountMap {
+		// A user may have already been explicitly excluded by an operand, and cannot satisfy the intersection
+		// e.g. the banned relation here: `(member but not banned) and active`
+		if _, excluded := excludedUsersMap[key]; excluded {
+			continue
+		}
 		// Compare the number of times the specific user was returned for
 		// all intersection operands plus the number of wildcards.
 		// If this summed value equals the number of operands, the user satisfies
