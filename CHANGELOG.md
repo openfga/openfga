@@ -8,6 +8,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 ### Added
+- Added metrics in experimental `weighted_graph_check` for weighted graph edge result caching.
 - Added diagnostic logging in experimental `weighted_graph_check` when v2 Check resolution might produce a different result than v1 for the same query. These logs surface authorization models that may be affected by a future v1 deprecation, and no operator action is required. [#3149](https://github.com/openfga/openfga/pull/3149)
 
 ### Changed
