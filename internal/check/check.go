@@ -8,6 +8,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -17,6 +19,7 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	authzGraph "github.com/openfga/language/pkg/go/graph"
 
+	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/iterator"
 	"github.com/openfga/openfga/internal/modelgraph"
@@ -29,6 +32,26 @@ import (
 )
 
 var tracer = otel.Tracer("internal/check")
+
+var (
+	checkV2CacheTotalCounter = promauto.NewCounter(prometheus.CounterOpts{
+		Namespace: build.ProjectName,
+		Name:      "check_edge_cache_lookups_total",
+		Help:      "The total number of edge cache lookups attempted by v2 check (excluding HIGHER_CONSISTENCY requests).",
+	})
+
+	checkV2CacheHitCounter = promauto.NewCounter(prometheus.CounterOpts{
+		Namespace: build.ProjectName,
+		Name:      "check_edge_cache_hits_total",
+		Help:      "The total number of valid edge cache hits in v2 check.",
+	})
+
+	checkV2CacheInvalidHitCounter = promauto.NewCounter(prometheus.CounterOpts{
+		Namespace: build.ProjectName,
+		Name:      "check_edge_cache_invalid_hits_total",
+		Help:      "The total number of edge cache hits in v2 check that were discarded because they were invalidated.",
+	})
+)
 
 var ErrValidation = errors.New("object relation does not exist")
 var ErrUsersetInvalidRequest = errors.New("userset request cannot be resolved when exclusion operation is involved")
@@ -158,6 +181,7 @@ func (r *Resolver) isCached(consistency openfgav1.ConsistencyPreference, key key
 	if consistency == openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
 		return nil, false
 	}
+	checkV2CacheTotalCounter.Inc()
 	v := r.cache.Get(key)
 	if v == nil {
 		return nil, false
@@ -167,8 +191,10 @@ func (r *Resolver) isCached(consistency openfgav1.ConsistencyPreference, key key
 		return nil, false
 	}
 	if !res.LastModified.After(r.lastCacheInvalidationTime) {
+		checkV2CacheInvalidHitCounter.Inc()
 		return nil, false
 	}
+	checkV2CacheHitCounter.Inc()
 	return res.Res, true
 }
 
