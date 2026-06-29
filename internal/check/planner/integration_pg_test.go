@@ -468,6 +468,21 @@ func condGrant(relation, condition string, ctx map[string]any, t *testing.T) *op
 		testutils.MustNewStruct(t, ctx))
 }
 
+// condLink builds a conditioned hop-1 link tuple on the shared document object — the LEFT side
+// of a weight-2 traversal; the object argument is the linked intermediate (e.g. "folder:f1" for
+// a TTU tupleset, or "group:g1#member" for a userset). The condition's parameters come from the
+// case's requestContext, so the stored tuple context is nil.
+func condLink(relation, object, condition string) *openfgav1.TupleKey {
+	return tuple.NewTupleKeyWithCondition("document:"+objectID, relation, object, condition, nil)
+}
+
+// condHop2 builds a conditioned hop-2 tuple on an intermediate object — the RIGHT side of a
+// weight-2 traversal — granting user:alice the inner relation under the given condition. Like
+// condLink, parameters come from the case's requestContext.
+func condHop2(object, relation, condition string) *openfgav1.TupleKey {
+	return tuple.NewTupleKeyWithCondition(object, relation, "user:alice", condition, nil)
+}
+
 // TestPlannerIntegrationPostgres_NestedConditioned drives the conditioned nested tree end to
 // end. It is the integration analogue of TestPlanSQL_NestedSetOperationsWithConditionsGather:
 // Postgres only scans the candidate tuples, and the planner folds the set algebra in process
@@ -975,6 +990,518 @@ func TestPlannerIntegrationPostgres_WeightTwoComplexBothLevels(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			require.Equal(t, tc.expected, env.run(t, tc))
 		})
+	}
+}
+
+// The next four fixtures extend weight-2 coverage to conditioned traversals that combine a TTU
+// hop and a userset hop in the same set-operation tree, placing ABAC conditions on the LEFT
+// (the hop-1 edge), the RIGHT (the hop-2 relation on the intermediate type), and BOTH. They are
+// the integration analogues of the conditioned weight-2 unit tests, proving the join SQL the
+// planner emits returns correct decisions when a real database runs it.
+
+// weightTwoCondLeftModel conditions only the hop-1 edges: the TTU's tupleset edge
+// (`parent: [folder with cond_parent]`) and the userset edge
+// (`from_members: [group#member with cond_members]`). The hop-2 relations (folder#admin,
+// group#member) are unconditioned. The outer relation intersects the two hops.
+const weightTwoCondLeftModel = `
+	model
+		schema 1.1
+	type user
+	type folder
+		relations
+			define admin: [user]
+	type group
+		relations
+			define member: [user]
+	type document
+		relations
+			define parent: [folder with cond_parent]
+			define from_folder: admin from parent
+			define from_members: [group#member with cond_members]
+			define viewer: from_folder and from_members
+	condition cond_parent(p_parent: int) {
+		p_parent > 0
+	}
+	condition cond_members(p_members: string) {
+		p_members == "active"
+	}`
+
+// weightTwoCondRightModel conditions only the hop-2 relations on the intermediate types
+// (folder#admin, group#member); the hop-1 edges are unconditioned. The outer relation unions
+// the two hops so each side's hop-2 condition can be proven in isolation.
+const weightTwoCondRightModel = `
+	model
+		schema 1.1
+	type user
+	type folder
+		relations
+			define admin: [user with cond_admin]
+	type group
+		relations
+			define member: [user with cond_member]
+	type document
+		relations
+			define parent: [folder]
+			define from_folder: admin from parent
+			define from_members: [group#member]
+			define viewer: from_folder or from_members
+	condition cond_admin(p_admin: int) {
+		p_admin > 0
+	}
+	condition cond_member(p_member: string) {
+		p_member == "active"
+	}`
+
+// weightTwoCondBothModel conditions BOTH the hop-1 edge and the hop-2 relation of each
+// traversal: the TTU carries cond_parent on parent and cond_admin on folder#admin; the userset
+// carries cond_members on the link and cond_member on group#member. The outer relation
+// intersects the two hops, so a single failed condition anywhere denies.
+const weightTwoCondBothModel = `
+	model
+		schema 1.1
+	type user
+	type folder
+		relations
+			define admin: [user with cond_admin]
+	type group
+		relations
+			define member: [user with cond_member]
+	type document
+		relations
+			define parent: [folder with cond_parent]
+			define from_folder: admin from parent
+			define from_members: [group#member with cond_members]
+			define viewer: from_folder and from_members
+	condition cond_parent(p_parent: int) {
+		p_parent > 0
+	}
+	condition cond_members(p_members: string) {
+		p_members == "active"
+	}
+	condition cond_admin(p_admin: int) {
+		p_admin > 0
+	}
+	condition cond_member(p_member: string) {
+		p_member == "active"
+	}`
+
+// complexWeightTwoMixedModel is the combined fixture: it mixes a TTU hop and a userset hop
+// across all three set operators, with conditions on the left, the right, and both, plus a
+// hop-2 intersection (grant = admin AND editor, exercising the per-object fold) and an
+// exclusion arm. Shaped:
+//
+//	viewer = ((from_folder AND from_org) AND from_members) BUT NOT from_blocked
+//	  from_folder  = grant from parent          (TTU, hop-1 cond_parent + hop-2 cond_admin on admin)
+//	  from_org      = owner from org             (TTU, unconditioned control)
+//	  from_members  = [group#member with cond]   (userset, hop-1 cond_members + hop-2 cond_member)
+//	  from_blocked  = editor from blocked        (TTU exclusion arm, unconditioned)
+const complexWeightTwoMixedModel = `
+	model
+		schema 1.1
+	type user
+	type folder
+		relations
+			define admin: [user with cond_admin]
+			define editor: [user]
+			define grant: admin and editor
+	type org
+		relations
+			define owner: [user]
+	type group
+		relations
+			define member: [user with cond_member]
+	type document
+		relations
+			define parent: [folder with cond_parent]
+			define org: [org]
+			define blocked: [folder]
+			define from_folder: grant from parent
+			define from_org: owner from org
+			define from_members: [group#member with cond_members]
+			define from_blocked: editor from blocked
+			define privileged: (from_folder and from_org) and from_members
+			define viewer: privileged but not from_blocked
+	condition cond_parent(p_parent: int) {
+		p_parent > 0
+	}
+	condition cond_admin(p_admin: int) {
+		p_admin > 0
+	}
+	condition cond_members(p_members: string) {
+		p_members == "active"
+	}
+	condition cond_member(p_member: string) {
+		p_member == "active"
+	}`
+
+// TestPlannerIntegrationPostgres_WeightTwoCondLeft drives the LEFT-side conditioned model: each
+// hop-1 edge (the TTU tupleset and the userset link) carries a condition, while the hop-2
+// relations are unconditioned. Postgres takes the gather (self-join) path and the hop-1
+// condition gates the whole intermediate object, so a failed condition on either edge denies
+// the intersection.
+func TestPlannerIntegrationPostgres_WeightTwoCondLeft(t *testing.T) {
+	env := setupPgEnv(t)
+	for _, tc := range weightTwoCondLeftCases(t) {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.expected, env.run(t, tc))
+		})
+	}
+}
+
+// TestPlannerIntegrationPostgres_WeightTwoCondRight drives the RIGHT-side conditioned model:
+// the hop-2 relations on the intermediate types carry conditions, the hop-1 edges do not. The
+// outer union lets each side's hop-2 condition be proven independently.
+func TestPlannerIntegrationPostgres_WeightTwoCondRight(t *testing.T) {
+	env := setupPgEnv(t)
+	for _, tc := range weightTwoCondRightCases(t) {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.expected, env.run(t, tc))
+		})
+	}
+}
+
+// TestPlannerIntegrationPostgres_WeightTwoCondBoth drives the BOTH-sides conditioned model:
+// every traversal carries a condition on its hop-1 edge and another on its hop-2 relation, and
+// the outer intersection denies if any single condition fails.
+func TestPlannerIntegrationPostgres_WeightTwoCondBoth(t *testing.T) {
+	env := setupPgEnv(t)
+	for _, tc := range weightTwoCondBothCases(t) {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.expected, env.run(t, tc))
+		})
+	}
+}
+
+// TestPlannerIntegrationPostgres_WeightTwoComplexMixed drives the combined fixture: TTU and
+// userset hops mixed across union/intersection/exclusion, with conditions on the left, the
+// right, and both, plus a hop-2 intersection that must be satisfied by a single folder.
+func TestPlannerIntegrationPostgres_WeightTwoComplexMixed(t *testing.T) {
+	env := setupPgEnv(t)
+	for _, tc := range complexWeightTwoMixedCases(t) {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.expected, env.run(t, tc))
+		})
+	}
+}
+
+// weightTwoCondLeftCases returns the shared case table for the LEFT-side conditioned model,
+// reused by both the Postgres and MySQL suites.
+func weightTwoCondLeftCases(t *testing.T) []plannerCase {
+	t.Helper()
+
+	// Both hop-1 links are conditioned; the hop-2 grants (folder#admin, group#member) are not.
+	links := func() []*openfgav1.TupleKey {
+		return []*openfgav1.TupleKey{
+			condLink("parent", "folder:f1", "cond_parent"),
+			condLink("from_members", "group:g1#member", "cond_members"),
+			tuple.NewTupleKey("folder:f1", "admin", "user:alice"),
+			tuple.NewTupleKey("group:g1", "member", "user:alice"),
+		}
+	}
+
+	return []plannerCase{
+		{
+			// Both hop-1 conditions pass and both hop-2 grants exist → intersection granted.
+			name:           "both_left_conditions_pass_grants",
+			model:          weightTwoCondLeftModel,
+			objectType:     "document",
+			relation:       "viewer",
+			subject:        "user:alice",
+			tuples:         links(),
+			requestContext: map[string]any{"p_parent": 1, "p_members": "active"},
+			expected:       true,
+		},
+		{
+			// The TTU tupleset condition (cond_parent) fails → the folder hop is gated out → the
+			// intersection denies. This is the novel conditioned-TTU-edge path.
+			name:           "ttu_left_condition_fails_denies",
+			model:          weightTwoCondLeftModel,
+			objectType:     "document",
+			relation:       "viewer",
+			subject:        "user:alice",
+			tuples:         links(),
+			requestContext: map[string]any{"p_parent": -1, "p_members": "active"},
+			expected:       false,
+		},
+		{
+			// The userset link condition (cond_members) fails → the group hop is gated out → denied.
+			name:           "userset_left_condition_fails_denies",
+			model:          weightTwoCondLeftModel,
+			objectType:     "document",
+			relation:       "viewer",
+			subject:        "user:alice",
+			tuples:         links(),
+			requestContext: map[string]any{"p_parent": 1, "p_members": "inactive"},
+			expected:       false,
+		},
+	}
+}
+
+// weightTwoCondRightCases returns the shared case table for the RIGHT-side conditioned model.
+func weightTwoCondRightCases(t *testing.T) []plannerCase {
+	t.Helper()
+
+	// Unconditioned hop-1 links; the hop-2 grants carry the conditions.
+	ttuLink := func() *openfgav1.TupleKey {
+		return tuple.NewTupleKey("document:"+objectID, "parent", "folder:f1")
+	}
+	usersetLink := func() *openfgav1.TupleKey {
+		return tuple.NewTupleKey("document:"+objectID, "from_members", "group:g1#member")
+	}
+
+	return []plannerCase{
+		{
+			// TTU side: folder#admin condition passes → union granted via the folder hop.
+			name:       "ttu_right_condition_passes_grants",
+			model:      weightTwoCondRightModel,
+			objectType: "document",
+			relation:   "viewer",
+			subject:    "user:alice",
+			tuples: []*openfgav1.TupleKey{
+				ttuLink(),
+				condHop2("folder:f1", "admin", "cond_admin"),
+			},
+			requestContext: map[string]any{"p_admin": 1, "p_member": "active"},
+			expected:       true,
+		},
+		{
+			// Userset side: group#member condition passes → union granted via the group hop.
+			name:       "userset_right_condition_passes_grants",
+			model:      weightTwoCondRightModel,
+			objectType: "document",
+			relation:   "viewer",
+			subject:    "user:alice",
+			tuples: []*openfgav1.TupleKey{
+				usersetLink(),
+				condHop2("group:g1", "member", "cond_member"),
+			},
+			requestContext: map[string]any{"p_admin": 1, "p_member": "active"},
+			expected:       true,
+		},
+		{
+			// Both hops are wired but both hop-2 conditions fail → union denies.
+			name:       "both_right_conditions_fail_denies",
+			model:      weightTwoCondRightModel,
+			objectType: "document",
+			relation:   "viewer",
+			subject:    "user:alice",
+			tuples: []*openfgav1.TupleKey{
+				ttuLink(),
+				usersetLink(),
+				condHop2("folder:f1", "admin", "cond_admin"),
+				condHop2("group:g1", "member", "cond_member"),
+			},
+			requestContext: map[string]any{"p_admin": -1, "p_member": "inactive"},
+			expected:       false,
+		},
+	}
+}
+
+// weightTwoCondBothCases returns the shared case table for the BOTH-sides conditioned model.
+func weightTwoCondBothCases(t *testing.T) []plannerCase {
+	t.Helper()
+
+	// Every hop-1 link and hop-2 grant is conditioned.
+	links := func() []*openfgav1.TupleKey {
+		return []*openfgav1.TupleKey{
+			condLink("parent", "folder:f1", "cond_parent"),
+			condLink("from_members", "group:g1#member", "cond_members"),
+			condHop2("folder:f1", "admin", "cond_admin"),
+			condHop2("group:g1", "member", "cond_member"),
+		}
+	}
+
+	return []plannerCase{
+		{
+			// All four conditions pass → intersection granted.
+			name:       "all_conditions_pass_grants",
+			model:      weightTwoCondBothModel,
+			objectType: "document",
+			relation:   "viewer",
+			subject:    "user:alice",
+			tuples:     links(),
+			requestContext: map[string]any{
+				"p_parent": 1, "p_members": "active", "p_admin": 1, "p_member": "active",
+			},
+			expected: true,
+		},
+		{
+			// Left passes everywhere but the TTU's hop-2 condition (cond_admin) fails → denied.
+			name:       "left_passes_right_fails_denies",
+			model:      weightTwoCondBothModel,
+			objectType: "document",
+			relation:   "viewer",
+			subject:    "user:alice",
+			tuples:     links(),
+			requestContext: map[string]any{
+				"p_parent": 1, "p_members": "active", "p_admin": -1, "p_member": "active",
+			},
+			expected: false,
+		},
+		{
+			// Right passes everywhere but the userset's hop-1 condition (cond_members) fails → denied.
+			name:       "right_passes_left_fails_denies",
+			model:      weightTwoCondBothModel,
+			objectType: "document",
+			relation:   "viewer",
+			subject:    "user:alice",
+			tuples:     links(),
+			requestContext: map[string]any{
+				"p_parent": 1, "p_members": "inactive", "p_admin": 1, "p_member": "active",
+			},
+			expected: false,
+		},
+	}
+}
+
+// complexWeightTwoMixedCases returns the shared case table for the combined mixed fixture.
+func complexWeightTwoMixedCases(t *testing.T) []plannerCase {
+	t.Helper()
+
+	// Fixed links: parent (conditioned TTU), org (unconditioned TTU), members (conditioned
+	// userset), blocked (unconditioned TTU exclusion arm).
+	baseLinks := func() []*openfgav1.TupleKey {
+		return []*openfgav1.TupleKey{
+			condLink("parent", "folder:f1", "cond_parent"),
+			tuple.NewTupleKey("document:"+objectID, "org", "org:o1"),
+			condLink("from_members", "group:g1#member", "cond_members"),
+			tuple.NewTupleKey("document:"+objectID, "blocked", "folder:b1"),
+		}
+	}
+	with := func(extra ...*openfgav1.TupleKey) []*openfgav1.TupleKey {
+		return append(baseLinks(), extra...)
+	}
+	// allPass satisfies every condition in the model.
+	allPass := map[string]any{
+		"p_parent": 1, "p_admin": 1, "p_members": "active", "p_member": "active",
+	}
+
+	return []plannerCase{
+		{
+			// from_folder (admin AND editor on f1, conditions pass), from_org (owner on o1),
+			// from_members (member on g1, conditions pass), not blocked → granted.
+			name:       "all_hops_and_conditions_pass_grants",
+			model:      complexWeightTwoMixedModel,
+			objectType: "document",
+			relation:   "viewer",
+			subject:    "user:alice",
+			tuples: with(
+				condHop2("folder:f1", "admin", "cond_admin"),
+				tuple.NewTupleKey("folder:f1", "editor", "user:alice"),
+				tuple.NewTupleKey("org:o1", "owner", "user:alice"),
+				condHop2("group:g1", "member", "cond_member"),
+			),
+			requestContext: allPass,
+			expected:       true,
+		},
+		{
+			// The TTU tupleset condition (cond_parent) fails → the folder hop is gated out →
+			// from_folder false → outer intersection denies.
+			name:       "ttu_left_condition_fails_denies",
+			model:      complexWeightTwoMixedModel,
+			objectType: "document",
+			relation:   "viewer",
+			subject:    "user:alice",
+			tuples: with(
+				condHop2("folder:f1", "admin", "cond_admin"),
+				tuple.NewTupleKey("folder:f1", "editor", "user:alice"),
+				tuple.NewTupleKey("org:o1", "owner", "user:alice"),
+				condHop2("group:g1", "member", "cond_member"),
+			),
+			requestContext: map[string]any{
+				"p_parent": -1, "p_admin": 1, "p_members": "active", "p_member": "active",
+			},
+			expected: false,
+		},
+		{
+			// folder#admin's hop-2 condition (cond_admin) fails → grant (admin AND editor) not
+			// satisfied on f1 → from_folder false → denied.
+			name:       "ttu_right_condition_fails_denies",
+			model:      complexWeightTwoMixedModel,
+			objectType: "document",
+			relation:   "viewer",
+			subject:    "user:alice",
+			tuples: with(
+				condHop2("folder:f1", "admin", "cond_admin"),
+				tuple.NewTupleKey("folder:f1", "editor", "user:alice"),
+				tuple.NewTupleKey("org:o1", "owner", "user:alice"),
+				condHop2("group:g1", "member", "cond_member"),
+			),
+			requestContext: map[string]any{
+				"p_parent": 1, "p_admin": -1, "p_members": "active", "p_member": "active",
+			},
+			expected: false,
+		},
+		{
+			// Hop-2 intersection (grant = admin AND editor) split across two parent folders: f1
+			// has admin, f2 has editor. No single folder satisfies grant → from_folder false →
+			// denied. The per-object-fold correctness case under conditions.
+			name:       "hop2_intersection_split_objects_denies",
+			model:      complexWeightTwoMixedModel,
+			objectType: "document",
+			relation:   "viewer",
+			subject:    "user:alice",
+			tuples: append(with(
+				condHop2("folder:f1", "admin", "cond_admin"),
+				tuple.NewTupleKey("folder:f2", "editor", "user:alice"),
+				tuple.NewTupleKey("org:o1", "owner", "user:alice"),
+				condHop2("group:g1", "member", "cond_member"),
+			), condLink("parent", "folder:f2", "cond_parent")),
+			requestContext: allPass,
+			expected:       false,
+		},
+		{
+			// The userset hop's hop-2 condition (cond_member) fails → from_members false →
+			// outer intersection denies even though the folder and org hops hold.
+			name:       "userset_right_condition_fails_denies",
+			model:      complexWeightTwoMixedModel,
+			objectType: "document",
+			relation:   "viewer",
+			subject:    "user:alice",
+			tuples: with(
+				condHop2("folder:f1", "admin", "cond_admin"),
+				tuple.NewTupleKey("folder:f1", "editor", "user:alice"),
+				tuple.NewTupleKey("org:o1", "owner", "user:alice"),
+				condHop2("group:g1", "member", "cond_member"),
+			),
+			requestContext: map[string]any{
+				"p_parent": 1, "p_admin": 1, "p_members": "active", "p_member": "inactive",
+			},
+			expected: false,
+		},
+		{
+			// from_org fails: no owner on o1 → outer intersection denies (unconditioned control arm).
+			name:       "outer_intersection_missing_org_denies",
+			model:      complexWeightTwoMixedModel,
+			objectType: "document",
+			relation:   "viewer",
+			subject:    "user:alice",
+			tuples: with(
+				condHop2("folder:f1", "admin", "cond_admin"),
+				tuple.NewTupleKey("folder:f1", "editor", "user:alice"),
+				condHop2("group:g1", "member", "cond_member"),
+			),
+			requestContext: allPass,
+			expected:       false,
+		},
+		{
+			// privileged holds, but the subject is editor on the blocked folder b1, so
+			// from_blocked grants and the exclusion denies.
+			name:       "privileged_but_blocked_denies",
+			model:      complexWeightTwoMixedModel,
+			objectType: "document",
+			relation:   "viewer",
+			subject:    "user:alice",
+			tuples: with(
+				condHop2("folder:f1", "admin", "cond_admin"),
+				tuple.NewTupleKey("folder:f1", "editor", "user:alice"),
+				tuple.NewTupleKey("org:o1", "owner", "user:alice"),
+				condHop2("group:g1", "member", "cond_member"),
+				tuple.NewTupleKey("folder:b1", "editor", "user:alice"),
+			),
+			requestContext: allPass,
+			expected:       false,
+		},
 	}
 }
 

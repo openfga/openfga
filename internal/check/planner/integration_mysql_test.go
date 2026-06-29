@@ -746,6 +746,56 @@ func TestPlannerIntegrationMySQL_WeightTwoComplexBothLevels(t *testing.T) {
 	}
 }
 
+// The next four tests are the MySQL analogues of the conditioned weight-2 suite that combines a
+// TTU hop and a userset hop with conditions on the left (hop-1 edge), right (hop-2 relation),
+// and both. The fixtures and case tables are declared in integration_pg_test.go and reused
+// verbatim, so both engines walk the same scenarios and must agree.
+
+// TestPlannerIntegrationMySQL_WeightTwoCondLeft drives the LEFT-side conditioned model against
+// MySQL: each hop-1 edge carries a condition, the hop-2 relations do not.
+func TestPlannerIntegrationMySQL_WeightTwoCondLeft(t *testing.T) {
+	env := setupMysqlEnv(t)
+	for _, tc := range weightTwoCondLeftCases(t) {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.expected, env.run(t, tc))
+		})
+	}
+}
+
+// TestPlannerIntegrationMySQL_WeightTwoCondRight drives the RIGHT-side conditioned model against
+// MySQL: the hop-2 relations carry conditions, the hop-1 edges do not.
+func TestPlannerIntegrationMySQL_WeightTwoCondRight(t *testing.T) {
+	env := setupMysqlEnv(t)
+	for _, tc := range weightTwoCondRightCases(t) {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.expected, env.run(t, tc))
+		})
+	}
+}
+
+// TestPlannerIntegrationMySQL_WeightTwoCondBoth drives the BOTH-sides conditioned model against
+// MySQL: every traversal carries a condition on its hop-1 edge and its hop-2 relation.
+func TestPlannerIntegrationMySQL_WeightTwoCondBoth(t *testing.T) {
+	env := setupMysqlEnv(t)
+	for _, tc := range weightTwoCondBothCases(t) {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.expected, env.run(t, tc))
+		})
+	}
+}
+
+// TestPlannerIntegrationMySQL_WeightTwoComplexMixed drives the combined mixed fixture against
+// MySQL: TTU and userset hops across union/intersection/exclusion with conditions on left,
+// right, and both, plus a hop-2 intersection requiring a single folder.
+func TestPlannerIntegrationMySQL_WeightTwoComplexMixed(t *testing.T) {
+	env := setupMysqlEnv(t)
+	for _, tc := range complexWeightTwoMixedCases(t) {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.expected, env.run(t, tc))
+		})
+	}
+}
+
 // TestPlannerIntegrationMySQL_Conditioned covers the gather path: the plan mentions an ABAC
 // condition, so MySQL only scans candidate tuples and the planner folds the set algebra in
 // process after evaluating CEL. The request context drives the condition result.
