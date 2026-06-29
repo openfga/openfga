@@ -1246,6 +1246,10 @@ func TestDefaultConfig(t *testing.T) {
 	require.True(t, val.Exists())
 	require.Equal(t, val.String(), cfg.Log.Format)
 
+	val = res.Get("properties.log.properties.requestCompleteLevel.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.String(), cfg.Log.RequestCompleteLevel)
+
 	val = res.Get("properties.maxTuplesPerWrite.default")
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), cfg.MaxTuplesPerWrite)
