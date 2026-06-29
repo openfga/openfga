@@ -37,7 +37,7 @@ func setupExpandServer(t *testing.T, modelDSL string, tuples []*openfgav1.TupleK
 		`
 	}
 
-	if len(tuples) == 0 {
+	if tuples == nil {
 		tuples = []*openfgav1.TupleKey{
 			tuple.NewTupleKey("document:1", "viewer", "user:alice"),
 		}
@@ -64,12 +64,14 @@ func setupExpandServer(t *testing.T, modelDSL string, tuples []*openfgav1.TupleK
 	require.NoError(t, err)
 	modelID := writeModelResp.GetAuthorizationModelId()
 
-	_, err = s.Write(ctx, &openfgav1.WriteRequest{
-		StoreId:              storeID,
-		AuthorizationModelId: modelID,
-		Writes:               &openfgav1.WriteRequestWrites{TupleKeys: tuples},
-	})
-	require.NoError(t, err)
+	if len(tuples) > 0 {
+		_, err = s.Write(ctx, &openfgav1.WriteRequest{
+			StoreId:              storeID,
+			AuthorizationModelId: modelID,
+			Writes:               &openfgav1.WriteRequestWrites{TupleKeys: tuples},
+		})
+		require.NoError(t, err)
+	}
 
 	return s, &openfgav1.ExpandRequest{
 		StoreId:              storeID,
@@ -194,6 +196,29 @@ func TestExpandBreakingChangeLog(t *testing.T) {
 			`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:d1", "public", "user:*"),
+			},
+			object:     "document:d1",
+			relation:   "viewer",
+			wantReason: v2breaking.ReasonWildcardWithExclusion,
+		},
+		{
+			// Regression: the Difference's base is a Union whose `This` child
+			// is the leaf that accepts user:*. branchAcceptsWildcard must not
+			// short-circuit on (document, viewer) when recursing into the
+			// structural Union children, otherwise this case is missed.
+			name: "wildcard_with_exclusion_union_base",
+			modelDSL: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define editor: [user]
+						define blocked: [user]
+						define viewer: ([user:*] or editor) but not blocked
+			`,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:d1", "viewer", "user:*"),
 			},
 			object:     "document:d1",
 			relation:   "viewer",

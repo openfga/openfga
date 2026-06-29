@@ -517,26 +517,30 @@ func walkForWildcardUnderDifference(ts *typesystem.TypeSystem, objectType, relat
 
 // branchAcceptsWildcard walks a Difference's base branch and reports whether
 // userObjectType:* is reachable as a directly-related type of some leaf
-// relation. Visited prevents infinite recursion through computed/TTU cycles.
+// relation. visited prevents infinite recursion through computed/TTU cycles
+// and is only updated when crossing a relation edge (ComputedUserset / TTU),
+// not on structural nodes — otherwise Union/Intersection/Difference children
+// that share the parent's (objectType, relation) would short-circuit before
+// being evaluated.
 func branchAcceptsWildcard(ts *typesystem.TypeSystem, objectType, relation string, rewrite *openfgav1.Userset, userObjectType string, visited map[string]struct{}) bool {
 	if rewrite == nil {
 		return false
 	}
-	key := objectType + "#" + relation
-	if _, ok := visited[key]; ok {
-		return false
-	}
-	visited[key] = struct{}{}
 
 	switch v := rewrite.GetUserset().(type) {
 	case *openfgav1.Userset_This:
 		return relationAcceptsWildcardForType(ts, objectType, relation, userObjectType)
 	case *openfgav1.Userset_ComputedUserset:
 		nextRel := v.ComputedUserset.GetRelation()
+		key := objectType + "#" + nextRel
+		if _, ok := visited[key]; ok {
+			return false
+		}
 		r, err := ts.GetRelation(objectType, nextRel)
 		if err != nil {
 			return false
 		}
+		visited[key] = struct{}{}
 		return branchAcceptsWildcard(ts, objectType, nextRel, r.GetRewrite(), userObjectType, visited)
 	case *openfgav1.Userset_TupleToUserset:
 		tuplesetRel := v.TupleToUserset.GetTupleset().GetRelation()
@@ -546,10 +550,15 @@ func branchAcceptsWildcard(ts *typesystem.TypeSystem, objectType, relation strin
 			return false
 		}
 		for _, dr := range directlyRelated {
+			key := dr.GetType() + "#" + computedRel
+			if _, ok := visited[key]; ok {
+				continue
+			}
 			r, err := ts.GetRelation(dr.GetType(), computedRel)
 			if err != nil {
 				continue
 			}
+			visited[key] = struct{}{}
 			if branchAcceptsWildcard(ts, dr.GetType(), computedRel, r.GetRewrite(), userObjectType, visited) {
 				return true
 			}

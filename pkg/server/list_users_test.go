@@ -661,7 +661,7 @@ func setupListUsersServer(t *testing.T, modelDSL string, tuples []*openfgav1.Tup
 		`
 	}
 
-	if len(tuples) == 0 {
+	if tuples == nil {
 		tuples = []*openfgav1.TupleKey{
 			tuple.NewTupleKey("document:1", "viewer", "user:alice"),
 		}
@@ -688,12 +688,14 @@ func setupListUsersServer(t *testing.T, modelDSL string, tuples []*openfgav1.Tup
 	require.NoError(t, err)
 	modelID := writeModelResp.GetAuthorizationModelId()
 
-	_, err = s.Write(ctx, &openfgav1.WriteRequest{
-		StoreId:              storeID,
-		AuthorizationModelId: modelID,
-		Writes:               &openfgav1.WriteRequestWrites{TupleKeys: tuples},
-	})
-	require.NoError(t, err)
+	if len(tuples) > 0 {
+		_, err = s.Write(ctx, &openfgav1.WriteRequest{
+			StoreId:              storeID,
+			AuthorizationModelId: modelID,
+			Writes:               &openfgav1.WriteRequestWrites{TupleKeys: tuples},
+		})
+		require.NoError(t, err)
+	}
 
 	return s, &openfgav1.ListUsersRequest{
 		StoreId:              storeID,
