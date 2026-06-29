@@ -23,6 +23,7 @@ import (
 	"github.com/openfga/openfga/internal/modelgraph"
 	"github.com/openfga/openfga/pkg/featureflags"
 	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/pkg/server/commands/v2breaking"
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	"github.com/openfga/openfga/pkg/storage/cache/keys"
 	"github.com/openfga/openfga/pkg/testutils"
@@ -1133,7 +1134,7 @@ func TestBreakingChangeReason(t *testing.T) {
 			typesys, err := s.resolveTypesystem(context.Background(), baseReq.GetStoreId(), req.GetAuthorizationModelId())
 			require.NoError(t, err)
 			tk := req.GetTupleKey()
-			got := breakingChangeReason(typesys, tk)
+			got := v2breaking.CheckReason(typesys, tk)
 			if negativeCases[tc.name] {
 				require.Empty(t, got, "expected no breaking change reason")
 				return
