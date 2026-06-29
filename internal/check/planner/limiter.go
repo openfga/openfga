@@ -60,6 +60,11 @@ func (l *limiter) run(fn func() error) error {
 	return nil
 }
 
+// stop cancels the shared context, terminating in-flight tasks and the queries they run. It
+// is how an executor short-circuits sibling work once a result is determined. Safe to call
+// more than once; wait still reaps every scheduled goroutine afterward.
+func (l *limiter) stop() { l.cancel() }
+
 // wait blocks until all concurrently scheduled tasks complete and returns the first error
 // reported by a concurrent task (nil if none). It must be called exactly once, after all
 // scheduling is done, and releases the shared context. It does not observe inline errors —

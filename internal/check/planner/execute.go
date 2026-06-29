@@ -199,45 +199,130 @@ func evalNamedCondition(ctx context.Context, eval ConditionEvaluator, name strin
 	return ok, nil
 }
 
-// executeMulti runs the plan's leaf queries under the shared limiter, collects each leaf's
-// boolean result, then folds the operator tree over them. It is the execution form for any
-// plan containing a weight-2 join: weight-1 leaves and weight-2 joins each run as their own
-// query, concurrently up to the limit and inline beyond it.
+// leafOutcome is one leaf query's result, delivered over the outcomes channel: its fold-key
+// node, its boolean grant, and any error. Errors and successes both flow through the channel
+// (not the errgroup) so executeMulti can fold incrementally and short-circuit.
+type leafOutcome struct {
+	node Node
+	ok   bool
+	err  error
+}
+
+// executeMulti runs the plan's leaf queries under the shared limiter, folding the operator
+// tree incrementally so it returns — and terminates the remaining queries — as soon as the
+// result is determined. It is the execution form for any plan containing a weight-2 join:
+// weight-1 leaves and weight-2 joins each run as their own query, concurrently up to the limit
+// and inline beyond it.
+//
+// Short-circuiting works at every level of the tree, not just the root: once a sub-operation
+// settles (e.g. a union yields true, or an intersection yields false), the queries feeding
+// only that sub-operation are cancelled immediately, even while the root is still undecided.
+// The bound is preserved (lim.run never blocks) and no goroutine outlives Execute: on return,
+// the shared context is cancelled and every scheduled goroutine is reaped via lim.wait.
 func (p *Plan) executeMulti(ctx context.Context, eval ConditionEvaluator, lim *limiter) (bool, error) {
-	results := make([]bool, len(p.unit.multi))
-	var inlineErr error
-	for i, lq := range p.unit.multi {
-		// run schedules the leaf concurrently when a slot is free, else runs it inline; an
-		// inline error returns here, so stop scheduling and let it take precedence. Errors
-		// from leaves that ran concurrently surface from lim.wait below.
-		if err := lim.run(func() error {
-			ok, err := p.runLeaf(ctx, eval, lq, lim)
-			if err != nil {
-				return err
-			}
-			results[i] = ok
-			return nil
-		}); err != nil {
-			inlineErr = err
-			break
-		}
-	}
-	// Always drain in-flight goroutines before returning. An inline error already canceled
-	// the shared context, so wait's error is typically that cancellation; the inline error is
-	// the true cause and takes precedence.
-	waitErr := lim.wait()
-	if inlineErr != nil {
-		return false, inlineErr
-	}
-	if waitErr != nil {
-		return false, waitErr
+	multi := p.unit.multi
+	outcomes := make(chan leafOutcome, len(multi)) // buffered: unread sends never block
+
+	// units is the set of fold-key nodes (one query each); decide and pendingNeeded must treat
+	// them opaquely rather than recursing into a merged weight-1 region's leaves.
+	units := make(map[Node]struct{}, len(multi))
+	for _, lq := range multi {
+		units[lq.node] = struct{}{}
 	}
 
-	satisfied := make(map[Node]bool, len(p.unit.multi))
-	for i, lq := range p.unit.multi {
-		satisfied[lq.node] = results[i]
+	satisfied := make(map[Node]bool, len(multi))
+	cancels := make(map[Node]context.CancelFunc, len(multi)) // per-unit cancel
+	cancelled := make(map[Node]struct{})                     // units we cancelled on purpose
+	var firstErr error
+	decided, scheduled, collected := false, 0, 0
+	var result bool
+
+	// cancelDeadUnits cancels every scheduled-but-unfinished unit that can no longer affect the
+	// result, so a settled sub-operation stops its queries even while the root is undecided.
+	cancelDeadUnits := func() {
+		need := make(map[Node]struct{})
+		pendingNeeded(p.unit.multiRoot, satisfied, units, need)
+		for node, cancel := range cancels {
+			if _, live := need[node]; live {
+				continue
+			}
+			if _, done := satisfied[node]; done {
+				continue
+			}
+			if _, already := cancelled[node]; already {
+				continue
+			}
+			cancelled[node] = struct{}{}
+			cancel() // terminates that unit's in-flight query
+		}
 	}
-	return fold(p.unit.multiRoot, satisfied), nil
+
+	consume := func(o leafOutcome) {
+		collected++
+		if _, deliberate := cancelled[o.node]; deliberate {
+			return // we cancelled this unit; its ctx.Err() is not a real error or result
+		}
+		if o.err != nil {
+			if firstErr == nil {
+				firstErr = o.err // first error; swallowed if a decision is later reached
+			}
+			return
+		}
+		satisfied[o.node] = o.ok
+		if v, ok := decide(p.unit.multiRoot, satisfied, units); ok {
+			decided, result = true, v
+		} else {
+			cancelDeadUnits() // settle sub-operations: cancel units no longer needed
+		}
+	}
+
+	drainReady := func() { // consume finished leaves without blocking
+		for !decided {
+			select {
+			case o := <-outcomes:
+				consume(o)
+			default:
+				return
+			}
+		}
+	}
+
+	// Schedule leaves until all are scheduled or the outcome is decided. Draining ready
+	// outcomes before each schedule lets an already-finished decisive leaf stop us before we
+	// start (and possibly run inline) more work.
+	for i := 0; i < len(multi) && !decided; i++ {
+		drainReady()
+		if decided {
+			break
+		}
+		lq := multi[i]
+		leafCtx, cancel := context.WithCancel(ctx)
+		cancels[lq.node] = cancel
+		_ = lim.run(func() error {
+			ok, err := p.runLeaf(leafCtx, eval, lq, lim)
+			outcomes <- leafOutcome{node: lq.node, ok: ok, err: err}
+			return nil // outcomes flow through the channel, not the errgroup
+		})
+		scheduled++
+	}
+
+	// Block for the rest until decided or every scheduled leaf has reported.
+	for !decided && collected < scheduled {
+		consume(<-outcomes)
+	}
+
+	// Terminate any remaining in-flight queries and reap, so no goroutine outlives Execute.
+	lim.stop()
+	_ = lim.wait()
+
+	switch {
+	case decided:
+		return result, nil // a definitive result swallows any leaf error
+	case firstErr != nil:
+		return false, firstErr // undecided only because an errored leaf left the fold unknown
+	default:
+		return fold(p.unit.multiRoot, satisfied), nil // all leaves known: fully determined
+	}
 }
 
 // runLeaf resolves a single leaf query according to its kind: a boolean existence check, a
@@ -516,5 +601,112 @@ func fold(n Node, satisfied map[Node]bool) bool {
 		}
 	default:
 		return false
+	}
+}
+
+// decide is the three-valued companion to fold: it folds the operator tree from the unit
+// results known so far and reports (value, true) when the outcome is already determined
+// regardless of the still-unknown units, or (_, false) when more results are needed. A node
+// present in satisfied returns its value directly; a unit absent from satisfied is unknown.
+//
+// The units argument is the set of fold-key nodes — one query each — which decide must treat
+// opaquely: a merged weight-1 region is itself a *CombineNode unit whose children are never
+// reported individually, so decide must not recurse into it (fold avoids this only because every
+// unit is already in satisfied by fold-time). Recursion descends only through the structural
+// operators that are not units. With every unit known, decide agrees with fold, so
+// short-circuiting can only return sooner — never disagree.
+func decide(n Node, satisfied map[Node]bool, units map[Node]struct{}) (val bool, known bool) {
+	if v, ok := satisfied[n]; ok {
+		return v, true
+	}
+	if _, isUnit := units[n]; isUnit {
+		// An unreported unit (leaf or merged-region root): its value is not yet known.
+		return false, false
+	}
+	node, ok := n.(*CombineNode)
+	if !ok {
+		return false, false
+	}
+	switch node.Op {
+	case CombineUnion:
+		// Any known-true child decides true; otherwise true only once every child is known false.
+		allKnown := true
+		for _, c := range node.Children {
+			v, k := decide(c, satisfied, units)
+			if k && v {
+				return true, true
+			}
+			if !k {
+				allKnown = false
+			}
+		}
+		if allKnown {
+			return false, true // empty or all-false union
+		}
+		return false, false
+	case CombineIntersect:
+		if len(node.Children) == 0 {
+			return false, true // empty intersection is false, matching fold
+		}
+		// Any known-false child decides false; otherwise true only once every child is known true.
+		allKnown := true
+		for _, c := range node.Children {
+			v, k := decide(c, satisfied, units)
+			if k && !v {
+				return false, true
+			}
+			if !k {
+				allKnown = false
+			}
+		}
+		if allKnown {
+			return true, true
+		}
+		return false, false
+	case CombineExcept:
+		// base BUT NOT subtract; built with exactly two children.
+		if len(node.Children) != 2 {
+			return false, true // malformed, matching fold's false
+		}
+		baseV, baseK := decide(node.Children[0], satisfied, units)
+		if baseK && !baseV {
+			return false, true // base false decides false regardless of subtract
+		}
+		subV, subK := decide(node.Children[1], satisfied, units)
+		if subK && subV {
+			return false, true // subtract true decides false regardless of base
+		}
+		if baseK && subK {
+			return baseV && !subV, true
+		}
+		return false, false
+	default:
+		return false, true
+	}
+}
+
+// pendingNeeded adds to need every still-unknown fold-key node (a leaf, or a merged weight-1
+// region root) whose value can still change the overall result, given what is known. A subtree
+// that decide already settles contributes nothing — its unknown leaves are dead and may be
+// cancelled — and the children of an already-settled operator are pruned entirely. This is the
+// liveness companion to decide that lets executeMulti cancel a settled sub-operation's queries
+// even while the root is undecided.
+func pendingNeeded(n Node, satisfied map[Node]bool, units map[Node]struct{}, need map[Node]struct{}) {
+	if _, ok := satisfied[n]; ok {
+		return // this node's value is known; nothing under it is pending
+	}
+	if _, isUnit := units[n]; isUnit {
+		need[n] = struct{}{} // an unreported unit that is still live
+		return
+	}
+	node, ok := n.(*CombineNode)
+	if !ok {
+		return
+	}
+	if _, done := decide(node, satisfied, units); done {
+		return // operator already settled: none of its unknown children matter
+	}
+	for _, c := range node.Children {
+		pendingNeeded(c, satisfied, units, need)
 	}
 }
