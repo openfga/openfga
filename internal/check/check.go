@@ -36,19 +36,19 @@ var tracer = otel.Tracer("internal/check")
 var (
 	checkV2CacheTotalCounter = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: build.ProjectName,
-		Name:      "check_v2_edge_cache_total_count",
+		Name:      "check_edge_cache_lookups_total",
 		Help:      "The total number of edge cache lookups attempted by v2 check (excluding HIGHER_CONSISTENCY requests).",
 	})
 
 	checkV2CacheHitCounter = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: build.ProjectName,
-		Name:      "check_v2_edge_cache_hit_count",
+		Name:      "check_edge_cache_hits_total",
 		Help:      "The total number of valid edge cache hits in v2 check.",
 	})
 
 	checkV2CacheInvalidHitCounter = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: build.ProjectName,
-		Name:      "check_v2_edge_cache_invalid_hit_count",
+		Name:      "check_edge_cache_invalid_hits_total",
 		Help:      "The total number of edge cache hits in v2 check that were discarded because they were invalidated.",
 	})
 )
