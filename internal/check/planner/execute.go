@@ -6,11 +6,25 @@ import (
 	"fmt"
 	"slices"
 
-	"golang.org/x/sync/errgroup"
-
 	"github.com/openfga/openfga/pkg/storage/adapter"
 	"github.com/openfga/openfga/pkg/storage/cache/keys"
 )
+
+// ExecuteOption configures a Plan.Execute call.
+type ExecuteOption func(*executeOptions)
+
+// executeOptions holds the resolved configuration for a Plan.Execute call.
+type executeOptions struct {
+	concurrencyLimit int
+}
+
+// WithConcurrencyLimit bounds the number of extra goroutines the execution may spawn. When
+// the limit is reached, pending work runs inline on the current goroutine rather than
+// blocking, so the bound can never deadlock — including when a leaf's execution itself fans
+// out into more sub-plan executions. A limit <= 0 means unbounded.
+func WithConcurrencyLimit(limit int) ExecuteOption {
+	return func(o *executeOptions) { o.concurrencyLimit = limit }
+}
 
 // ConditionEvaluator decides whether an ABAC condition attached to a matched tuple is
 // satisfied for the current request. Name is the stored condition name (empty for an
@@ -29,7 +43,12 @@ type ConditionEvaluator interface {
 // ABAC condition gathers its candidate tuples in one scan; Execute then evaluates each
 // matched condition with eval and folds the union / intersection / exclusion over the
 // per-leaf results.
-func (p *Plan) Execute(ctx context.Context, eval ConditionEvaluator) (bool, error) {
+func (p *Plan) Execute(ctx context.Context, eval ConditionEvaluator, opts ...ExecuteOption) (bool, error) {
+	options := executeOptions{concurrencyLimit: defaultConcurrencyLimit}
+	for _, opt := range opts {
+		opt(&options)
+	}
+
 	switch p.unit.kind {
 	case unitFalse:
 		// Unreachable subject type: trivially false, no query to run.
@@ -52,7 +71,11 @@ func (p *Plan) Execute(ctx context.Context, eval ConditionEvaluator) (bool, erro
 		return p.executeGather(ctx, eval)
 
 	case unitMulti:
-		return p.executeMulti(ctx, eval)
+		// One limiter is shared across the whole multi-query execution (and any sub-plan
+		// fan-out it later drives), so the limit bounds total extra goroutines rather than
+		// being reset per fan-out.
+		lim, lctx := newLimiter(ctx, options.concurrencyLimit)
+		return p.executeMulti(lctx, eval, lim)
 
 	default:
 		return false, fmt.Errorf("planner: unknown unit kind %d", p.unit.kind)
@@ -176,24 +199,38 @@ func evalNamedCondition(ctx context.Context, eval ConditionEvaluator, name strin
 	return ok, nil
 }
 
-// executeMulti runs every leaf query in parallel, collects each leaf's boolean result, then
-// folds the operator tree over them. It is the execution form for any plan containing a
-// weight-2 join: weight-1 leaves and weight-2 joins each run as their own query.
-func (p *Plan) executeMulti(ctx context.Context, eval ConditionEvaluator) (bool, error) {
+// executeMulti runs the plan's leaf queries under the shared limiter, collects each leaf's
+// boolean result, then folds the operator tree over them. It is the execution form for any
+// plan containing a weight-2 join: weight-1 leaves and weight-2 joins each run as their own
+// query, concurrently up to the limit and inline beyond it.
+func (p *Plan) executeMulti(ctx context.Context, eval ConditionEvaluator, lim *limiter) (bool, error) {
 	results := make([]bool, len(p.unit.multi))
-	g, gctx := errgroup.WithContext(ctx)
+	var inlineErr error
 	for i, lq := range p.unit.multi {
-		g.Go(func() error {
-			ok, err := p.runLeaf(gctx, eval, lq)
+		// run schedules the leaf concurrently when a slot is free, else runs it inline; an
+		// inline error returns here, so stop scheduling and let it take precedence. Errors
+		// from leaves that ran concurrently surface from lim.wait below.
+		if err := lim.run(func() error {
+			ok, err := p.runLeaf(ctx, eval, lq, lim)
 			if err != nil {
 				return err
 			}
 			results[i] = ok
 			return nil
-		})
+		}); err != nil {
+			inlineErr = err
+			break
+		}
 	}
-	if err := g.Wait(); err != nil {
-		return false, err
+	// Always drain in-flight goroutines before returning. An inline error already canceled
+	// the shared context, so wait's error is typically that cancellation; the inline error is
+	// the true cause and takes precedence.
+	waitErr := lim.wait()
+	if inlineErr != nil {
+		return false, inlineErr
+	}
+	if waitErr != nil {
+		return false, waitErr
 	}
 
 	satisfied := make(map[Node]bool, len(p.unit.multi))
@@ -204,8 +241,10 @@ func (p *Plan) executeMulti(ctx context.Context, eval ConditionEvaluator) (bool,
 }
 
 // runLeaf resolves a single leaf query according to its kind: a boolean existence check, a
-// single-leaf gather with CEL, or a self-join gather with CEL across the hops.
-func (p *Plan) runLeaf(ctx context.Context, eval ConditionEvaluator, lq leafQuery) (bool, error) {
+// single-leaf gather with CEL, or a self-join gather with CEL across the hops. The shared
+// limiter is threaded in (currently unused) so a future leaf that fans out into sub-plan
+// executions resolves them under the same deadlock-free bound rather than a fresh one.
+func (p *Plan) runLeaf(ctx context.Context, eval ConditionEvaluator, lq leafQuery, _ *limiter) (bool, error) {
 	switch lq.kind {
 	case leafBool:
 		return rowExists(ctx, lq.query)
