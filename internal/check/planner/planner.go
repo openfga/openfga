@@ -2,6 +2,7 @@ package planner
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/openfga/language/pkg/go/graph"
 
@@ -52,9 +53,10 @@ func (p *Planner) Plan(g *graph.WeightedAuthorizationModelGraph, store, objectTy
 	}
 
 	// The node's aggregate weight to the subject type is the max over every
-	// contributing path, so a weight of 1 guarantees the whole relevant subgraph is
-	// weight-1; anything higher means at least one path needs a hop or recursion we do
-	// not yet support. (The walk re-checks per edge defensively.)
+	// contributing path, so a weight of 1 or 2 guarantees the whole relevant subgraph
+	// resolves within a single hop; anything higher means at least one path needs more
+	// hops or recursion we do not yet support. (The walk re-checks per edge defensively,
+	// dispatching each weight-2 edge to its own self-join.)
 	weight, reachable := w.weightTo(entry)
 	if !reachable {
 		// The relation cannot reach the subject type at all: the Check is trivially
@@ -67,7 +69,7 @@ func (p *Planner) Plan(g *graph.WeightedAuthorizationModelGraph, store, objectTy
 			SubjectRelation: subjectRelation,
 		}, nil
 	}
-	if weight != 1 {
+	if weight < 1 || weight > 2 {
 		return nil, ErrUnsupportedWeight
 	}
 
@@ -102,11 +104,59 @@ func (p *Planner) compile(bnd bound, root Node) unit {
 	if cn, ok := root.(*CombineNode); ok && len(cn.Children) == 0 {
 		return unit{kind: unitFalse}
 	}
+	// A tree with any weight-2 hop cannot fold into one statement: each weight-1 leaf and
+	// each weight-2 join becomes its own query, run in parallel, and the executor folds the
+	// operator tree over their booleans.
+	if containsJoinNode(root) {
+		return p.compileMulti(bnd, root)
+	}
 	if root.ConditionFree() {
 		return unit{kind: unitHaving, query: buildHavingQuery(p.builder, bnd, root)}
 	}
 	leaves := collectLeaves(root)
 	return unit{kind: unitGather, query: buildGatherQuery(p.builder, bnd, leaves), leaves: leaves}
+}
+
+// compileMulti builds the per-leaf queries for a tree that contains at least one weight-2
+// join: one boolean (or gather, when conditioned) query per QueryNode leaf and per JoinNode.
+// The leaf nodes themselves are the fold keys, so the executor maps each query's result back
+// to its node and reduces the tree.
+func (p *Planner) compileMulti(bnd bound, root Node) unit {
+	var leaves []leafQuery
+	var build func(n Node)
+	build = func(n Node) {
+		switch node := n.(type) {
+		case *QueryNode:
+			leaves = append(leaves, leafQuery{
+				node:  node,
+				query: buildLeafQuery(p.builder, bnd, node),
+				kind:  leafKindFor(node),
+			})
+		case *JoinNode:
+			leaves = append(leaves, leafQuery{
+				node:  node,
+				query: buildJoinNodeQuery(p.builder, bnd, node),
+				kind:  joinLeafKindFor(node),
+			})
+		case *CombineNode:
+			for _, c := range node.Children {
+				build(c)
+			}
+		}
+	}
+	build(root)
+	return unit{kind: unitMulti, multi: leaves, multiRoot: root}
+}
+
+// containsJoinNode reports whether the plan tree has any weight-2 join leaf.
+func containsJoinNode(n Node) bool {
+	switch node := n.(type) {
+	case *JoinNode:
+		return true
+	case *CombineNode:
+		return slices.ContainsFunc(node.Children, containsJoinNode)
+	}
+	return false
 }
 
 // walker carries the immutable Check context threaded through the recursive traversal.
@@ -219,7 +269,7 @@ func (w *walker) walkExclusion(node *graph.WeightedAuthorizationModelNode, relat
 		// The base cannot reach the subject type, so nothing is granted: false.
 		return &CombineNode{Op: CombineUnion}, nil
 	}
-	if baseWeight != 1 {
+	if baseWeight < 1 || baseWeight > 2 {
 		return nil, ErrUnsupportedWeight
 	}
 	base, err := w.walkEdge(edges[0], relation)
@@ -232,7 +282,7 @@ func (w *walker) walkExclusion(node *graph.WeightedAuthorizationModelNode, relat
 		// The subtract cannot contain a relevant subject; exclusion reduces to base.
 		return base, nil
 	}
-	if subWeight != 1 {
+	if subWeight < 1 || subWeight > 2 {
 		return nil, ErrUnsupportedWeight
 	}
 	subtract, err := w.walkEdge(edges[1], relation)
@@ -266,8 +316,9 @@ func (w *walker) walkEdges(node *graph.WeightedAuthorizationModelNode, relation 
 	return &CombineNode{Op: CombineUnion, Children: children}, nil
 }
 
-// relevantEdges returns node's outgoing edges that have a weight-1 path to the subject
-// type, erroring if any relevant edge has weight greater than one.
+// relevantEdges returns node's outgoing edges that have a weight-1 or weight-2 path to the
+// subject type, erroring if any relevant edge has weight greater than two. The per-edge
+// shape (weight-1 leaf vs weight-2 self-join) is decided later in walkEdge.
 func (w *walker) relevantEdges(node *graph.WeightedAuthorizationModelNode) ([]*graph.WeightedAuthorizationModelEdge, error) {
 	edges, ok := w.graph.GetEdgesFromNode(node)
 	if !ok {
@@ -279,7 +330,7 @@ func (w *walker) relevantEdges(node *graph.WeightedAuthorizationModelNode) ([]*g
 		if !ok {
 			continue
 		}
-		if weight != 1 {
+		if weight < 1 || weight > 2 {
 			return nil, ErrUnsupportedWeight
 		}
 		relevant = append(relevant, edge)
@@ -321,24 +372,154 @@ func (w *walker) leave(node *graph.WeightedAuthorizationModelNode) {
 // re-derives the relation from that node, so computed (`viewer: editor`) and rewrite
 // edges to a sibling relation both switch correctly.
 func (w *walker) walkEdge(edge *graph.WeightedAuthorizationModelEdge, relation string) (Node, error) {
+	weight, _ := w.edgeWeight(edge)
+
 	switch edge.GetEdgeType() {
-	case graph.DirectEdge, graph.RewriteEdge, graph.ComputedEdge, graph.DirectLogicalEdge, graph.TTULogicalEdge:
-		// Direct edges reach the terminal type or a relation reference; rewrite/computed
-		// edges reach an operator or sibling relation; logical edges reach a grouping
-		// wrapper. In every weight-1 case the target node dictates how to proceed (and a
-		// relation node re-derives the in-effect relation), so defer to walk. The edge's
-		// conditions travel with it: they are recorded only if the target is a terminal
-		// leaf, and ignored for operator / relation / grouping targets (which carry the
-		// unconditioned sentinel and reach their own leaves through further edges).
+	case graph.DirectEdge:
+		// A weight-1 direct edge reaches the terminal subject type (a stored `this` grant);
+		// a weight-2 one reaches an intermediate userset (`[group#member]`) that needs a
+		// hop. The terminal type vs relation target distinguishes them, but weight is the
+		// authoritative signal.
+		if weight == 2 {
+			return w.walkUsersetEdge(edge, relation)
+		}
+		return w.walk(edge.GetTo(), relation, edge.GetConditions())
+
+	case graph.RewriteEdge, graph.ComputedEdge, graph.DirectLogicalEdge:
+		// Rewrite/computed edges reach an operator or sibling relation; the direct logical
+		// edge reaches a grouping wrapper. These are structural weight-1 hops within the
+		// same object; the target node dictates how to proceed (and a relation node
+		// re-derives the in-effect relation), so defer to walk. The edge's conditions
+		// travel with it, recorded only at a terminal leaf.
 		return w.walk(edge.GetTo(), relation, edge.GetConditions())
 
 	case graph.TTUEdge:
-		// Tuple-to-userset is always a hop (weight >= 2); unsupported this iteration.
-		return nil, ErrUnsupportedWeight
+		// A tuple-to-userset edge is always a hop. Weight 2 resolves as a self-join; deeper
+		// (or recursive, infinite-weight) TTUs are unsupported this iteration.
+		if weight != 2 {
+			return nil, ErrUnsupportedWeight
+		}
+		return w.walkTTUEdge(edge, relation)
+
+	case graph.TTULogicalEdge:
+		// A logical TTU grouping wraps several same-tupleset TTU edges (one per parent
+		// type). Each child resolves to its own self-join; walk the grouping node, which
+		// fans out over them under a union.
+		if weight != 2 {
+			return nil, ErrUnsupportedWeight
+		}
+		return w.walk(edge.GetTo(), relation, edge.GetConditions())
 
 	default:
 		return nil, fmt.Errorf("planner: unsupported edge type %d", edge.GetEdgeType())
 	}
+}
+
+// walkTTUEdge builds the JoinNode for a weight-2 tuple-to-userset edge such as
+// `viewer: admin from parent`. The edge's tupleset relation ("document#parent") is the
+// hop-1 relation on the bound object; the target node label ("folder#admin") gives the
+// intermediate type and the inner relation to resolve on it. Recursive or tuple-cycle TTUs
+// are rejected.
+func (w *walker) walkTTUEdge(edge *graph.WeightedAuthorizationModelEdge, relation string) (Node, error) {
+	if edge.GetRecursiveRelation() != "" || edge.IsPartOfTupleCycle() {
+		return nil, ErrUnsupportedWeight
+	}
+
+	// The tupleset relation is stored as "objectType#relation"; the relation is the hop-1
+	// relation on the bound object (e.g. "parent").
+	_, hop1Relation := tuple.SplitObjectRelation(edge.GetTuplesetRelation())
+
+	to := edge.GetTo()
+	intermediateType, innerRelation := tuple.SplitObjectRelation(to.GetUniqueLabel())
+
+	hop2, err := w.hop2Subtree(to, innerRelation, intermediateType)
+	if err != nil {
+		return nil, err
+	}
+
+	return &JoinNode{
+		Hop1Relation:        hop1Relation,
+		Hop1Conditions:      normalizeConditions(edge.GetConditions()),
+		Hop1SubjectRelation: "", // a TTU's hop-1 tuples name an intermediate object, not a userset
+		IsTTU:               true,
+		IntermediateType:    intermediateType,
+		Hop2:                hop2,
+		Weight:              2,
+		Label:               tuple.ToObjectRelationString(w.objectType, relation) + "→" + to.GetUniqueLabel(),
+	}, nil
+}
+
+// walkUsersetEdge builds the JoinNode for a weight-2 userset edge such as
+// `viewer: [group#member]`. The hop-1 relation is the relation being checked on the bound
+// object (its tuples name `group:..#member` usersets); the target node label ("group#member")
+// gives the intermediate type and the inner relation. Recursive or tuple-cycle usersets are
+// rejected.
+func (w *walker) walkUsersetEdge(edge *graph.WeightedAuthorizationModelEdge, relation string) (Node, error) {
+	if edge.GetRecursiveRelation() != "" || edge.IsPartOfTupleCycle() {
+		return nil, ErrUnsupportedWeight
+	}
+
+	to := edge.GetTo()
+	intermediateType, innerRelation := tuple.SplitObjectRelation(to.GetUniqueLabel())
+
+	hop2, err := w.hop2Subtree(to, innerRelation, intermediateType)
+	if err != nil {
+		return nil, err
+	}
+
+	return &JoinNode{
+		Hop1Relation:        relation,
+		Hop1Conditions:      normalizeConditions(edge.GetConditions()),
+		Hop1SubjectRelation: innerRelation, // hop-1 tuples name the `intermediateType#innerRelation` userset
+		IsTTU:               false,
+		IntermediateType:    intermediateType,
+		Hop2:                hop2,
+		Weight:              2,
+		Label:               tuple.ToObjectRelationString(w.objectType, relation) + "→" + to.GetUniqueLabel(),
+	}, nil
+}
+
+// hop2Subtree resolves the inner (hop-2) relation on the intermediate type to the weight-1
+// plan subtree that grants the bound subject. It reuses the main traversal on a sub-walker
+// bound to the intermediate type with an unbound object id, so the subtree mirrors what the
+// planner would build for that relation as a top-level Check — a QueryNode, or a CombineNode
+// of QueryNodes for set operations. The sub-walk's own weight gates reject any further hop
+// (which would make the overall path weight 3+), so the result is necessarily weight-1; this
+// only additionally guards that no JoinNode slipped in, since a JoinNode cannot be folded
+// per intermediate object by the self-join's HAVING.
+func (w *walker) hop2Subtree(to *graph.WeightedAuthorizationModelNode, innerRelation, intermediateType string) (Node, error) {
+	sub := &walker{
+		planner:         w.planner,
+		graph:           w.graph,
+		store:           w.store,
+		objectType:      intermediateType,
+		objectID:        "", // unbound: hop-2 objects are discovered by the self-join, not fixed
+		subjectType:     w.subjectType,
+		subjectID:       w.subjectID,
+		subjectRelation: w.subjectRelation,
+		wildcardKey:     w.wildcardKey,
+		visited:         make(map[string]struct{}),
+	}
+	root, err := sub.walk(to, innerRelation, nil)
+	if err != nil {
+		return nil, err
+	}
+	if containsJoinNode(root) {
+		// A weight-2 hop inside the hop-2 subtree means an overall weight of 3+, which the
+		// sub-walk's gates already reject; this is a defensive backstop.
+		return nil, ErrUnsupportedWeight
+	}
+	return root, nil
+}
+
+// normalizeConditions returns the edge's conditions, substituting the unconditioned
+// sentinel [""] for an empty slice so a JoinNode's hop always carries an explicit condition
+// set (matching how QueryNode leaves are built from terminal edges).
+func normalizeConditions(conds []string) []string {
+	if len(conds) == 0 {
+		return []string{""}
+	}
+	return conds
 }
 
 // weightTo returns a node's weight to the subject type, preferring the concrete type

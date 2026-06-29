@@ -329,6 +329,155 @@ func TestPlanSQL_NestedSetOperationsWithConditionsGather(t *testing.T) {
 	}, args)
 }
 
+// recordLeafSQL plans objectType#viewer (a weight-2 plan), executes every leaf query
+// through a Recorder-backed builder, and returns the SQL and bind args for the leaf at
+// index i in compile order. The condition evaluator always denies; it only matters that one
+// is supplied so a conditioned leaf can run.
+func recordLeafSQL(t *testing.T, model, objectType, user string, i int) (string, []any) {
+	t.Helper()
+	ts, err := typesystem.New(testutils.MustTransformDSLToProtoWithID(model))
+	require.NoError(t, err)
+	g := ts.GetWeightedGraph()
+	require.NotNil(t, g)
+
+	rec := &adaptertest.Recorder{}
+	p, err := New(adaptertest.New(rec)).Plan(g, "store1", objectType, "1", "viewer", user)
+	require.NoError(t, err)
+	require.Equal(t, unitMulti, p.unit.kind)
+	require.Greater(t, len(p.unit.multi), i)
+
+	_, err = p.unit.multi[i].query.Execute(context.Background())
+	require.NoError(t, err)
+	return rec.SQL, rec.Parameters
+}
+
+// t1/t2 are the decoded subject expressions for the self-join aliases the planner uses, the
+// two-alias analogues of the single-alias subjType/subjID/subjRel vars above.
+func decodedSubjType(alias string) string {
+	return "SUBSTRING(" + alias + "._user FROM 1 FOR POSITION(':' IN " + alias + "._user) - 1)"
+}
+
+func decodedSubjID(alias string) string {
+	rest := "SUBSTRING(" + alias + "._user FROM POSITION(':' IN " + alias + "._user) + 1)"
+	return "CASE WHEN POSITION('#' IN " + rest + ") = 0 THEN " + rest +
+		" ELSE SUBSTRING(" + rest + " FROM 1 FOR POSITION('#' IN " + rest + ") - 1) END"
+}
+
+func decodedSubjRel(alias string) string {
+	return "CASE WHEN POSITION('#' IN " + alias + "._user) = 0 THEN '' ELSE SUBSTRING(" + alias +
+		"._user FROM POSITION('#' IN " + alias + "._user) + 1) END"
+}
+
+// countAtomAlias is countAtom for an arbitrary tuple alias: the per-leaf HAVING atom the
+// hop-2 fold of a weight-2 boolean self-join emits over the t2 alias. Its bind args are
+// relation, subject_id, "*", "" (unconditioned sentinel), 1 (CASE result), 1 (threshold).
+func countAtomAlias(alias string) string {
+	id := decodedSubjID(alias)
+	return "COUNT(CASE WHEN ((" + alias + ".relation = ? AND (" + id + " = ? OR " + id + " = ?)) " +
+		"AND (" + alias + ".condition_name IS NULL OR " + alias + ".condition_name = ?)) THEN ? END) >= ?"
+}
+
+func TestPlanSQL_WeightTwoTTUJoin(t *testing.T) {
+	// viewer: admin from parent compiles to one boolean self-join: t1 names the bound
+	// document's parent folders, t2 grants the subject admin on those folders, joined on
+	// t1.subject_id = t2.object_id. Both hops require unconditioned tuples.
+	model := `
+		model
+			schema 1.1
+		type user
+		type folder
+			relations
+				define admin: [user]
+		type document
+			relations
+				define parent: [folder]
+				define viewer: admin from parent`
+
+	sql, args := recordLeafSQL(t, model, "document", "user:alice", 0)
+
+	// t1 names the parent folders (unconditioned); t2 holds the subject's grants on those
+	// folders, pruned to the hop-2 relations and bound subject. The hop-2 set algebra (here a
+	// single leaf) folds in HAVING, grouped per intermediate object (GROUP BY t2.object_id),
+	// so a qualifying folder yields a row.
+	t1Uncond := "(t1.condition_name IS NULL OR t1.condition_name = ?)"
+	want := "SELECT ? FROM tuple t1 INNER JOIN tuple t2 ON " + decodedSubjID("t1") + " = t2.object_id" +
+		" WHERE t1.store = ? AND t1.object_type = ? AND t1.object_id = ? AND t1.relation = ?" +
+		" AND " + decodedSubjType("t1") + " = ? AND " + decodedSubjRel("t1") + " = ? AND " + t1Uncond +
+		" AND t2.store = ? AND t2.object_type = ?" +
+		" AND " + decodedSubjType("t2") + " = ? AND " + decodedSubjRel("t2") + " = ? AND " + decodedSubjID("t2") + " IN (?, ?)" +
+		" AND t2.relation = ?" +
+		" GROUP BY t2.object_id HAVING " + countAtomAlias("t2")
+	require.Equal(t, want, sql)
+	require.Equal(t, []any{
+		1,                         // SELECT 1
+		"store1", "document", "1", // t1 store/object
+		"parent",     // t1 hop-1 relation
+		"folder", "", // t1 subject type/relation (intermediate object)
+		"",                 // t1 unconditioned sentinel
+		"store1", "folder", // t2 store/type
+		"user", "", "alice", "*", // t2 subject type/relation/id (+ wildcard)
+		"admin",                         // t2 relation prune
+		"admin", "alice", "*", "", 1, 1, // hop-2 HAVING count atom
+	}, args)
+}
+
+func TestPlanSQL_WeightTwoUsersetJoin(t *testing.T) {
+	// viewer: [group#member] compiles to a boolean self-join whose t1 subject side is the
+	// `member` userset (subject_relation = "member"), not an object.
+	sql, args := recordLeafSQL(t, usersetModel, "document", "user:alice", 0)
+
+	require.Contains(t, sql, "INNER JOIN tuple t2")
+	require.Contains(t, sql, "GROUP BY t2.object_id HAVING")
+	require.Equal(t, []any{
+		1,
+		"store1", "document", "1",
+		"viewer",          // t1 hop-1 relation (the relation being checked)
+		"group", "member", // t1 subject is the group#member userset
+		"", // t1 unconditioned sentinel
+		"store1", "group",
+		"user", "", "alice", "*",
+		"member",                         // t2 relation prune
+		"member", "alice", "*", "", 1, 1, // hop-2 HAVING count atom
+	}, args)
+}
+
+func TestPlanSQL_WeightTwoConditionedGather(t *testing.T) {
+	// A condition on the hop-1 edge switches the self-join to a gather: the projection
+	// carries both hops' condition columns plus the hop-2 grant the executor attributes.
+	model := `
+		model
+			schema 1.1
+		type user
+		type group
+			relations
+				define member: [user]
+		type document
+			relations
+				define viewer: [group#member with cond]
+		condition cond(x: int) {
+			x > 0
+		}`
+
+	sql, args := recordLeafSQL(t, model, "document", "user:alice", 0)
+
+	// The conditioned gather projects the intermediate object id (the group key) first so the
+	// executor can group rows per intermediate object, then both hops' condition columns and
+	// the hop-2 grant it attributes to a leaf.
+	require.True(t, strings.HasPrefix(sql, "SELECT t2.object_id, t1.condition_name, t1.condition_context, t2.relation,"),
+		"conditioned join must project the group key then both hops' condition columns, got: %s", sql)
+	// The hop-1 condition membership is the named condition (not the unconditioned form).
+	require.Contains(t, sql, "t1.condition_name = ?")
+	require.Equal(t, []any{
+		"store1", "document", "1",
+		"viewer",
+		"group", "member",
+		"cond", // t1 hop-1 condition membership
+		"store1", "group",
+		"user", "", "alice", "*",
+		"member", "", // t2 hop-2 leaf disjunct: relation + unconditioned membership
+	}, args)
+}
+
 func TestPlanSQL_UnreachableSubjectRunsNoQuery(t *testing.T) {
 	// employee never grants document#viewer: the plan is trivially false and must issue
 	// no query at all, so the Recorder captures nothing.

@@ -408,6 +408,344 @@ func TestPlannerIntegrationMySQL_NestedConditioned(t *testing.T) {
 	}
 }
 
+// TestPlannerIntegrationMySQL_WeightTwo drives weight-2 resolution paths — a single
+// tuple-to-userset or userset hop — end to end against MySQL, proving the emitted self-join
+// SQL returns the decision the two-hop relationship dictates when MySQL runs it.
+func TestPlannerIntegrationMySQL_WeightTwo(t *testing.T) {
+	env := setupMysqlEnv(t)
+
+	const ttuModel = `
+		model
+			schema 1.1
+		type user
+		type folder
+			relations
+				define admin: [user]
+		type document
+			relations
+				define parent: [folder]
+				define viewer: admin from parent`
+
+	const usersetModel = `
+		model
+			schema 1.1
+		type user
+		type group
+			relations
+				define member: [user]
+		type document
+			relations
+				define viewer: [group#member]`
+
+	cases := []plannerCase{
+		{
+			name:       "ttu_grant",
+			model:      ttuModel,
+			objectType: "document",
+			relation:   "viewer",
+			subject:    "user:alice",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:"+objectID, "parent", "folder:f1"),
+				tuple.NewTupleKey("folder:f1", "admin", "user:alice"),
+			},
+			expected: true,
+		},
+		{
+			name:       "ttu_deny_no_inner_grant",
+			model:      ttuModel,
+			objectType: "document",
+			relation:   "viewer",
+			subject:    "user:alice",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:"+objectID, "parent", "folder:f1"),
+			},
+			expected: false,
+		},
+		{
+			name:       "userset_grant",
+			model:      usersetModel,
+			objectType: "document",
+			relation:   "viewer",
+			subject:    "user:alice",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:"+objectID, "viewer", "group:g1#member"),
+				tuple.NewTupleKey("group:g1", "member", "user:alice"),
+			},
+			expected: true,
+		},
+		{
+			name:       "userset_deny_not_member",
+			model:      usersetModel,
+			objectType: "document",
+			relation:   "viewer",
+			subject:    "user:alice",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:"+objectID, "viewer", "group:g1#member"),
+				tuple.NewTupleKey("group:g1", "member", "user:bob"),
+			},
+			expected: false,
+		},
+		{
+			name: "mixed_weight_union_grant_via_hop",
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user]
+				type document
+					relations
+						define viewer: [user, group#member]`,
+			objectType: "document",
+			relation:   "viewer",
+			subject:    "user:alice",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:"+objectID, "viewer", "group:g1#member"),
+				tuple.NewTupleKey("group:g1", "member", "user:alice"),
+			},
+			expected: true,
+		},
+		{
+			// Hop-2 intersection satisfied by one folder holding both grants → granted.
+			name: "ttu_hop2_intersection_same_object_grants",
+			model: `
+				model
+					schema 1.1
+				type user
+				type folder
+					relations
+						define admin: [user]
+						define editor: [user]
+						define grant: admin and editor
+				type document
+					relations
+						define parent: [folder]
+						define viewer: grant from parent`,
+			objectType: "document",
+			relation:   "viewer",
+			subject:    "user:alice",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:"+objectID, "parent", "folder:f1"),
+				tuple.NewTupleKey("folder:f1", "admin", "user:alice"),
+				tuple.NewTupleKey("folder:f1", "editor", "user:alice"),
+			},
+			expected: true,
+		},
+		{
+			// Hop-2 intersection operands split across two parent folders → denied.
+			name: "ttu_hop2_intersection_split_objects_denies",
+			model: `
+				model
+					schema 1.1
+				type user
+				type folder
+					relations
+						define admin: [user]
+						define editor: [user]
+						define grant: admin and editor
+				type document
+					relations
+						define parent: [folder]
+						define viewer: grant from parent`,
+			objectType: "document",
+			relation:   "viewer",
+			subject:    "user:alice",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:"+objectID, "parent", "folder:f1"),
+				tuple.NewTupleKey("document:"+objectID, "parent", "folder:f2"),
+				tuple.NewTupleKey("folder:f1", "admin", "user:alice"),
+				tuple.NewTupleKey("folder:f2", "editor", "user:alice"),
+			},
+			expected: false,
+		},
+		{
+			// Hop-2 exclusion: admin and not banned on the parent folder → granted.
+			name: "ttu_hop2_exclusion_grants",
+			model: `
+				model
+					schema 1.1
+				type user
+				type folder
+					relations
+						define admin: [user]
+						define banned: [user]
+						define grant: admin but not banned
+				type document
+					relations
+						define parent: [folder]
+						define viewer: grant from parent`,
+			objectType: "document",
+			relation:   "viewer",
+			subject:    "user:alice",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:"+objectID, "parent", "folder:f1"),
+				tuple.NewTupleKey("folder:f1", "admin", "user:alice"),
+			},
+			expected: true,
+		},
+		{
+			// Same exclusion, subject banned on that folder → denied.
+			name: "ttu_hop2_exclusion_banned_denies",
+			model: `
+				model
+					schema 1.1
+				type user
+				type folder
+					relations
+						define admin: [user]
+						define banned: [user]
+						define grant: admin but not banned
+				type document
+					relations
+						define parent: [folder]
+						define viewer: grant from parent`,
+			objectType: "document",
+			relation:   "viewer",
+			subject:    "user:alice",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:"+objectID, "parent", "folder:f1"),
+				tuple.NewTupleKey("folder:f1", "admin", "user:alice"),
+				tuple.NewTupleKey("folder:f1", "banned", "user:alice"),
+			},
+			expected: false,
+		},
+		{
+			name: "userset_conditioned_hop_grants",
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user]
+				type document
+					relations
+						define viewer: [group#member with non_negative]
+				condition non_negative(x: int) {
+					x >= 0
+				}`,
+			objectType: "document",
+			relation:   "viewer",
+			subject:    "user:alice",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKeyWithCondition("document:"+objectID, "viewer", "group:g1#member", "non_negative", nil),
+				tuple.NewTupleKey("group:g1", "member", "user:alice"),
+			},
+			requestContext: map[string]any{"x": 1},
+			expected:       true,
+		},
+		{
+			name: "userset_conditioned_hop_denies",
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user]
+				type document
+					relations
+						define viewer: [group#member with non_negative]
+				condition non_negative(x: int) {
+					x >= 0
+				}`,
+			objectType: "document",
+			relation:   "viewer",
+			subject:    "user:alice",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKeyWithCondition("document:"+objectID, "viewer", "group:g1#member", "non_negative", nil),
+				tuple.NewTupleKey("group:g1", "member", "user:alice"),
+			},
+			requestContext: map[string]any{"x": -1},
+			expected:       false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.expected, env.run(t, tc))
+		})
+	}
+}
+
+// TestPlannerIntegrationMySQL_WeightTwoComplexBothLevels is the MySQL analogue of the
+// Postgres complex-both-levels test: set operations across three weight-2 hops
+// ((from_folder AND from_org) BUT NOT from_blocked) with a hop-2 intersection inside
+// from_folder (admin AND editor on the same folder), run end to end against MySQL.
+func TestPlannerIntegrationMySQL_WeightTwoComplexBothLevels(t *testing.T) {
+	env := setupMysqlEnv(t)
+
+	links := []*openfgav1.TupleKey{
+		tuple.NewTupleKey("document:"+objectID, "parent", "folder:f1"),
+		tuple.NewTupleKey("document:"+objectID, "org", "org:o1"),
+		tuple.NewTupleKey("document:"+objectID, "blocked", "folder:b1"),
+	}
+	with := func(extra ...*openfgav1.TupleKey) []*openfgav1.TupleKey {
+		return append(append([]*openfgav1.TupleKey{}, links...), extra...)
+	}
+
+	cases := []plannerCase{
+		{
+			name:       "all_satisfied_not_blocked_grants",
+			model:      complexWeightTwoModel,
+			objectType: "document",
+			relation:   "viewer",
+			subject:    "user:alice",
+			tuples: with(
+				tuple.NewTupleKey("folder:f1", "admin", "user:alice"),
+				tuple.NewTupleKey("folder:f1", "editor", "user:alice"),
+				tuple.NewTupleKey("org:o1", "owner", "user:alice"),
+			),
+			expected: true,
+		},
+		{
+			name:       "hop2_intersection_incomplete_denies",
+			model:      complexWeightTwoModel,
+			objectType: "document",
+			relation:   "viewer",
+			subject:    "user:alice",
+			tuples: with(
+				tuple.NewTupleKey("folder:f1", "admin", "user:alice"),
+				tuple.NewTupleKey("org:o1", "owner", "user:alice"),
+			),
+			expected: false,
+		},
+		{
+			name:       "outer_intersection_missing_org_denies",
+			model:      complexWeightTwoModel,
+			objectType: "document",
+			relation:   "viewer",
+			subject:    "user:alice",
+			tuples: with(
+				tuple.NewTupleKey("folder:f1", "admin", "user:alice"),
+				tuple.NewTupleKey("folder:f1", "editor", "user:alice"),
+			),
+			expected: false,
+		},
+		{
+			name:       "privileged_but_blocked_denies",
+			model:      complexWeightTwoModel,
+			objectType: "document",
+			relation:   "viewer",
+			subject:    "user:alice",
+			tuples: with(
+				tuple.NewTupleKey("folder:f1", "admin", "user:alice"),
+				tuple.NewTupleKey("folder:f1", "editor", "user:alice"),
+				tuple.NewTupleKey("org:o1", "owner", "user:alice"),
+				tuple.NewTupleKey("folder:b1", "editor", "user:alice"),
+			),
+			expected: false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.expected, env.run(t, tc))
+		})
+	}
+}
+
 // TestPlannerIntegrationMySQL_Conditioned covers the gather path: the plan mentions an ABAC
 // condition, so MySQL only scans candidate tuples and the planner folds the set algebra in
 // process after evaluating CEL. The request context drives the condition result.

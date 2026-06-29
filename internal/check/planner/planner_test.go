@@ -167,24 +167,41 @@ func TestPlan_UnreachableSubjectType(t *testing.T) {
 	require.Empty(t, cn.Children)
 }
 
-func TestPlan_UnsupportedWeight(t *testing.T) {
-	t.Run("tuple_to_userset", func(t *testing.T) {
+func TestPlan_WeightTwoShapes(t *testing.T) {
+	t.Run("ttu", func(t *testing.T) {
+		// viewer: admin from parent — a single tuple-to-userset hop. The bound object's
+		// `parent` tuples name a folder; the folder's `admin` relation grants the subject.
 		model := `
 			model
 				schema 1.1
 			type user
 			type folder
 				relations
-					define viewer: [user]
+					define admin: [user]
 			type document
 				relations
 					define parent: [folder]
-					define viewer: viewer from parent`
-		_, err := plan(t, model, "document", "viewer", "user:alice")
-		require.ErrorIs(t, err, ErrUnsupportedWeight)
+					define viewer: admin from parent`
+		p, err := plan(t, model, "document", "viewer", "user:alice")
+		require.NoError(t, err)
+
+		join, ok := p.Root.(*JoinNode)
+		require.True(t, ok, "expected a JoinNode, got %T", p.Root)
+		require.True(t, join.IsTTU)
+		require.Equal(t, 2, join.Weight)
+		require.Equal(t, "parent", join.Hop1Relation)
+		require.Empty(t, join.Hop1SubjectRelation, "a TTU hop-1 tuple names an object, not a userset")
+		require.Equal(t, "folder", join.IntermediateType)
+		hop2Leaf, ok := join.Hop2.(*QueryNode)
+		require.True(t, ok, "expected hop-2 to be a single QueryNode, got %T", join.Hop2)
+		require.Equal(t, "admin", hop2Leaf.Relation)
+		require.Equal(t, unitMulti, p.unit.kind)
+		require.Len(t, p.unit.multi, 1)
 	})
 
 	t.Run("userset", func(t *testing.T) {
+		// viewer: [group#member] — a single userset hop. The bound object's `viewer` tuples
+		// name a group userset; the group's `member` relation grants the subject.
 		model := `
 			model
 				schema 1.1
@@ -195,6 +212,181 @@ func TestPlan_UnsupportedWeight(t *testing.T) {
 			type document
 				relations
 					define viewer: [group#member]`
+		p, err := plan(t, model, "document", "viewer", "user:alice")
+		require.NoError(t, err)
+
+		join, ok := p.Root.(*JoinNode)
+		require.True(t, ok, "expected a JoinNode, got %T", p.Root)
+		require.False(t, join.IsTTU)
+		require.Equal(t, "viewer", join.Hop1Relation)
+		require.Equal(t, "member", join.Hop1SubjectRelation)
+		require.Equal(t, "group", join.IntermediateType)
+		hop2Leaf, ok := join.Hop2.(*QueryNode)
+		require.True(t, ok, "expected hop-2 to be a single QueryNode, got %T", join.Hop2)
+		require.Equal(t, "member", hop2Leaf.Relation)
+	})
+
+	t.Run("mixed_weight_one_and_two_union", func(t *testing.T) {
+		// viewer: [user, group#member] — a weight-1 direct grant unioned with a weight-2
+		// userset hop. Each compiles to its own query under the union.
+		model := `
+			model
+				schema 1.1
+			type user
+			type group
+				relations
+					define member: [user]
+			type document
+				relations
+					define viewer: [user, group#member]`
+		p, err := plan(t, model, "document", "viewer", "user:alice")
+		require.NoError(t, err)
+
+		cn, ok := p.Root.(*CombineNode)
+		require.True(t, ok, "expected a CombineNode, got %T", p.Root)
+		require.Equal(t, CombineUnion, cn.Op)
+		require.Len(t, cn.Children, 2)
+		require.IsType(t, &QueryNode{}, cn.Children[0])
+		require.IsType(t, &JoinNode{}, cn.Children[1])
+		require.Equal(t, unitMulti, p.unit.kind)
+		require.Len(t, p.unit.multi, 2)
+	})
+
+	t.Run("ttu_multiple_intermediate_types", func(t *testing.T) {
+		// parent: [folder, org] — admin from parent fans out to one JoinNode per parent
+		// type, under a union, so each query stays single-type.
+		model := `
+			model
+				schema 1.1
+			type user
+			type folder
+				relations
+					define admin: [user]
+			type org
+				relations
+					define admin: [user]
+			type document
+				relations
+					define parent: [folder, org]
+					define viewer: admin from parent`
+		p, err := plan(t, model, "document", "viewer", "user:alice")
+		require.NoError(t, err)
+
+		cn, ok := p.Root.(*CombineNode)
+		require.True(t, ok, "expected a CombineNode, got %T", p.Root)
+		require.Equal(t, CombineUnion, cn.Op)
+		require.Len(t, cn.Children, 2)
+		types := []string{}
+		for _, c := range cn.Children {
+			j, ok := c.(*JoinNode)
+			require.True(t, ok, "expected a JoinNode, got %T", c)
+			types = append(types, j.IntermediateType)
+		}
+		require.ElementsMatch(t, []string{"folder", "org"}, types)
+	})
+
+	t.Run("hop2_union", func(t *testing.T) {
+		// admin: [user] or owner — the hop-2 subtree is a union of direct leaves, kept whole
+		// on the JoinNode and folded per intermediate object.
+		model := `
+			model
+				schema 1.1
+			type user
+			type folder
+				relations
+					define owner: [user]
+					define admin: [user] or owner
+			type document
+				relations
+					define parent: [folder]
+					define viewer: admin from parent`
+		p, err := plan(t, model, "document", "viewer", "user:alice")
+		require.NoError(t, err)
+
+		join, ok := p.Root.(*JoinNode)
+		require.True(t, ok, "expected a JoinNode, got %T", p.Root)
+		cn, ok := join.Hop2.(*CombineNode)
+		require.True(t, ok, "expected hop-2 to be a CombineNode, got %T", join.Hop2)
+		require.Equal(t, CombineUnion, cn.Op)
+		rels := []string{}
+		for _, leaf := range collectLeaves(cn) {
+			rels = append(rels, leaf.Relation)
+		}
+		require.ElementsMatch(t, []string{"admin", "owner"}, rels)
+	})
+
+	t.Run("hop2_intersection", func(t *testing.T) {
+		// admin: a and b — the hop-2 subtree is an intersection, preserved whole so it folds
+		// per intermediate object (one folder must have both a and b).
+		model := `
+			model
+				schema 1.1
+			type user
+			type folder
+				relations
+					define a: [user]
+					define b: [user]
+					define admin: a and b
+			type document
+				relations
+					define parent: [folder]
+					define viewer: admin from parent`
+		p, err := plan(t, model, "document", "viewer", "user:alice")
+		require.NoError(t, err)
+
+		join, ok := p.Root.(*JoinNode)
+		require.True(t, ok, "expected a JoinNode, got %T", p.Root)
+		cn, ok := join.Hop2.(*CombineNode)
+		require.True(t, ok, "expected hop-2 to be a CombineNode, got %T", join.Hop2)
+		require.Equal(t, CombineIntersect, cn.Op)
+		require.Len(t, cn.Children, 2)
+	})
+
+	t.Run("hop2_exclusion", func(t *testing.T) {
+		// admin: a but not banned — the hop-2 subtree is an exclusion, folded per object.
+		model := `
+			model
+				schema 1.1
+			type user
+			type folder
+				relations
+					define a: [user]
+					define banned: [user]
+					define admin: a but not banned
+			type document
+				relations
+					define parent: [folder]
+					define viewer: admin from parent`
+		p, err := plan(t, model, "document", "viewer", "user:alice")
+		require.NoError(t, err)
+
+		join, ok := p.Root.(*JoinNode)
+		require.True(t, ok, "expected a JoinNode, got %T", p.Root)
+		cn, ok := join.Hop2.(*CombineNode)
+		require.True(t, ok, "expected hop-2 to be a CombineNode, got %T", join.Hop2)
+		require.Equal(t, CombineExcept, cn.Op)
+		require.Len(t, cn.Children, 2)
+	})
+}
+
+func TestPlan_UnsupportedWeight(t *testing.T) {
+	t.Run("weight_three_ttu", func(t *testing.T) {
+		// viewer: admin from parent, where admin is itself a userset hop — the path needs
+		// two hops (weight 3), which exceeds this iteration.
+		model := `
+			model
+				schema 1.1
+			type user
+			type group
+				relations
+					define member: [user]
+			type folder
+				relations
+					define admin: [group#member]
+			type document
+				relations
+					define parent: [folder]
+					define viewer: admin from parent`
 		_, err := plan(t, model, "document", "viewer", "user:alice")
 		require.ErrorIs(t, err, ErrUnsupportedWeight)
 	})
@@ -208,6 +400,20 @@ func TestPlan_UnsupportedWeight(t *testing.T) {
 				relations
 					define member: [user, group#member]`
 		_, err := plan(t, model, "group", "member", "user:alice")
+		require.ErrorIs(t, err, ErrUnsupportedWeight)
+	})
+
+	t.Run("recursive_ttu", func(t *testing.T) {
+		// viewer reaches itself through parent (a tuple cycle): infinite weight.
+		model := `
+			model
+				schema 1.1
+			type user
+			type document
+				relations
+					define parent: [document]
+					define viewer: [user] or viewer from parent`
+		_, err := plan(t, model, "document", "viewer", "user:alice")
 		require.ErrorIs(t, err, ErrUnsupportedWeight)
 	})
 }

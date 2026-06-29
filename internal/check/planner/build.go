@@ -44,6 +44,23 @@ func sharedWherePredicates(b adapter.Builder, t adapter.Tuple, bnd bound) []adap
 	}
 }
 
+// subjectBound is the subject portion of sharedWherePredicates for an arbitrary tuple
+// alias: the bound subject's type and relation, and a superset bound on its id (the exact
+// id, plus the public-access wildcard for a non-userset subject). It is reused on the
+// hop-2 side of a weight-2 self-join, where the object columns differ from the bound object
+// but the subject is still the Check subject.
+func subjectBound(b adapter.Builder, t adapter.Tuple, bnd bound) []adapter.Predicate {
+	subjectIDs := []adapter.Expression{b.Lit(bnd.subjectID)}
+	if bnd.subjectRelation == "" {
+		subjectIDs = append(subjectIDs, b.Lit(wildcardID))
+	}
+	return []adapter.Predicate{
+		t.SubjectType().Eq(b.Lit(bnd.subjectType)),
+		t.SubjectRelation().Eq(b.Lit(bnd.subjectRelation)),
+		t.SubjectID().In(subjectIDs...),
+	}
+}
+
 // unconditionedPred matches a tuple that carries no ABAC condition. An unconditioned
 // tuple stores the condition name as NULL or the empty string, so both are admitted (this
 // mirrors the executor's row scan, which treats an empty / NULL name as an unconditioned
@@ -215,5 +232,142 @@ func buildGatherQuery(b adapter.Builder, bnd bound, leaves []*QueryNode) adapter
 	where := append(sharedWherePredicates(b, t, bnd), operandMatch)
 	return b.Select(t.ObjectRelation(), t.SubjectID(), t.Condition(), t.ConditionContext()).
 		From(t).
+		Where(where...)
+}
+
+// leafKindFor selects how a standalone weight-1 leaf resolves: a boolean existence query
+// when condition-free, or a single-tuple gather for in-process CEL when conditioned.
+func leafKindFor(leaf *QueryNode) leafKind {
+	if leaf.ConditionFree() {
+		return leafBool
+	}
+	return leafGather
+}
+
+// buildLeafQuery compiles a standalone weight-1 leaf to the query its kind needs: a boolean
+// existence query, or the existing single-leaf gather scan for the conditioned case.
+func buildLeafQuery(b adapter.Builder, bnd bound, leaf *QueryNode) adapter.Query {
+	if leaf.ConditionFree() {
+		return buildLeafBoolQuery(b, bnd, leaf)
+	}
+	return buildGatherQuery(b, bnd, []*QueryNode{leaf})
+}
+
+// joinLeafKindFor selects how a weight-2 join resolves: a boolean self-join when both hops
+// are condition-free, or a self-join gather for in-process CEL when either hop is
+// conditioned.
+func joinLeafKindFor(j *JoinNode) leafKind {
+	if j.ConditionFree() {
+		return leafBool
+	}
+	return leafJoinGather
+}
+
+// buildJoinNodeQuery compiles a weight-2 join to the query its kind needs: a boolean
+// self-join when condition-free, or a self-join gather when either hop is conditioned.
+func buildJoinNodeQuery(b adapter.Builder, bnd bound, j *JoinNode) adapter.Query {
+	if j.ConditionFree() {
+		return buildJoinBoolQuery(b, bnd, j)
+	}
+	return buildJoinGatherQuery(b, bnd, j)
+}
+
+// buildLeafBoolQuery compiles a single weight-1 leaf into its own boolean existence query,
+// used when a plan mixes weight-1 leaves with weight-2 joins and so cannot fold the whole
+// tree into one statement. It returns a row iff a stored tuple grants the leaf, mirroring
+// one leafCountAtom but as a standalone scan.
+func buildLeafBoolQuery(b adapter.Builder, bnd bound, leaf *QueryNode) adapter.Query {
+	t := b.Tuple("t")
+	match := t.ObjectRelation().Eq(b.Lit(leaf.Relation)).
+		And(leafSubjectMatch(b, t, leaf)).
+		And(conditionMembership(b, t, leaf.Conditions))
+	where := append(sharedWherePredicates(b, t, bnd), match)
+	return b.Select(b.Lit(1)).From(t).Where(where...)
+}
+
+// hop1Predicates are the t1 (bound-object) side of a weight-2 self-join: the store, the
+// bound object, the hop-1 relation, and the intermediate the hop lands on (its type and the
+// hop-1 subject relation — "" for a TTU object, the inner relation for a userset). The
+// hop-1 subject id is deliberately unbound: it is the intermediate object, joined to t2.
+func hop1Predicates(b adapter.Builder, t1 adapter.Tuple, bnd bound, j *JoinNode) []adapter.Predicate {
+	return []adapter.Predicate{
+		t1.Store().Eq(b.Lit(bnd.store)),
+		t1.ObjectType().Eq(b.Lit(bnd.objectType)),
+		t1.ObjectID().Eq(b.Lit(bnd.objectID)),
+		t1.ObjectRelation().Eq(b.Lit(j.Hop1Relation)),
+		t1.SubjectType().Eq(b.Lit(j.IntermediateType)),
+		t1.SubjectRelation().Eq(b.Lit(j.Hop1SubjectRelation)),
+	}
+}
+
+// hop2BasePredicates are the t2 (intermediate-object) side of a weight-2 self-join common to
+// both shapes: the store, the intermediate type, and the bound subject. The per-relation and
+// per-condition filtering differs by shape (a relation prune for the boolean fold, a per-leaf
+// disjunct for the gather), so the caller appends it. The join (built by the caller) ties
+// t2.object_id to t1.subject_id.
+func hop2BasePredicates(b adapter.Builder, t2 adapter.Tuple, bnd bound, j *JoinNode) []adapter.Predicate {
+	preds := []adapter.Predicate{
+		t2.Store().Eq(b.Lit(bnd.store)),
+		t2.ObjectType().Eq(b.Lit(j.IntermediateType)),
+	}
+	return append(preds, subjectBound(b, t2, bnd)...)
+}
+
+// buildJoinBoolQuery compiles a condition-free weight-2 hop into one self-join existence
+// query: t1 names the intermediate objects reachable from the bound object via the hop-1
+// relation, and t2 holds the bound subject's grants on those objects. The hop-2 set algebra
+// folds in HAVING over the per-leaf count atoms, exactly as a top-level weight-1 relation
+// would (combineHaving), but GROUP BY t2.object_id evaluates it per intermediate object: a
+// hop-2 intersection requires one object that satisfies every operand, not operands spread
+// across different objects. Any qualifying group yields a row, so the hop resolves iff the
+// query returns a row. Both hops require unconditioned tuples.
+func buildJoinBoolQuery(b adapter.Builder, bnd bound, j *JoinNode) adapter.Query {
+	t1 := b.Tuple("t1")
+	t2 := b.Tuple("t2")
+
+	where := hop1Predicates(b, t1, bnd, j)
+	where = append(where, unconditionedPred(b, t1))
+	where = append(where, hop2BasePredicates(b, t2, bnd, j)...)
+	where = append(where, relationFilter(b, t2, j.Hop2))
+
+	join := b.Join(adapter.InnerJoin, t2).On(t1.SubjectID().Eq(t2.ObjectID()))
+	return b.Select(b.Lit(1)).
+		From(t1).
+		JoinClause(join).
+		Where(where...).
+		GroupBy(t2.ObjectID()).
+		Having(combineHaving(b, t2, j.Hop2))
+}
+
+// buildJoinGatherQuery compiles a conditioned weight-2 hop into one self-join scan that
+// gathers the joined rows for in-process CEL. The unconditioned side still prunes in SQL (its
+// membership predicate stays in WHERE), so only joined rows survive; the executor groups the
+// rows by intermediate object and folds the hop-2 subtree per object after evaluating CEL.
+// The projection is, in order: the intermediate object id (the group key), the hop-1
+// condition name and context, then the hop-2 relation, subject id, condition name, and
+// context the executor attributes to a hop-2 leaf.
+func buildJoinGatherQuery(b adapter.Builder, bnd bound, j *JoinNode) adapter.Query {
+	t1 := b.Tuple("t1")
+	t2 := b.Tuple("t2")
+
+	leaves := collectLeaves(j.Hop2)
+	disjuncts := make([]adapter.Predicate, len(leaves))
+	for i, leaf := range leaves {
+		disjuncts[i] = leafDisjunct(b, t2, leaf)
+	}
+
+	where := hop1Predicates(b, t1, bnd, j)
+	where = append(where, conditionMembership(b, t1, j.Hop1Conditions))
+	where = append(where, hop2BasePredicates(b, t2, bnd, j)...)
+	where = append(where, disjuncts[0].Or(disjuncts[1:]...))
+
+	join := b.Join(adapter.InnerJoin, t2).On(t1.SubjectID().Eq(t2.ObjectID()))
+	return b.Select(
+		t2.ObjectID(),
+		t1.Condition(), t1.ConditionContext(),
+		t2.ObjectRelation(), t2.SubjectID(), t2.Condition(), t2.ConditionContext(),
+	).
+		From(t1).
+		JoinClause(join).
 		Where(where...)
 }

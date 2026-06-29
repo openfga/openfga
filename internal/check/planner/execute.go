@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"slices"
 
+	"golang.org/x/sync/errgroup"
+
+	"github.com/openfga/openfga/pkg/storage/adapter"
 	"github.com/openfga/openfga/pkg/storage/cache/keys"
 )
 
@@ -48,6 +51,9 @@ func (p *Plan) Execute(ctx context.Context, eval ConditionEvaluator) (bool, erro
 	case unitGather:
 		return p.executeGather(ctx, eval)
 
+	case unitMulti:
+		return p.executeMulti(ctx, eval)
+
 	default:
 		return false, fmt.Errorf("planner: unknown unit kind %d", p.unit.kind)
 	}
@@ -66,32 +72,12 @@ type gatherRow struct {
 // (evaluating CEL on conditioned rows), then folds the operator tree over per-leaf
 // satisfaction.
 func (p *Plan) executeGather(ctx context.Context, eval ConditionEvaluator) (bool, error) {
-	rows, err := p.unit.query.Execute(ctx)
+	gathered, err := scanGather(ctx, p.unit.query)
 	if err != nil {
-		return false, fmt.Errorf("planner: executing check query: %w", err)
-	}
-	defer rows.Close()
-
-	gathered := make([]gatherRow, 0)
-	for rows.Next() {
-		var relation, subjectID sql.NullString
-		var name sql.NullString
-		var condCtx []byte
-		if err := rows.Scan(&relation, &subjectID, &name, &condCtx); err != nil {
-			return false, fmt.Errorf("planner: scanning check query: %w", err)
-		}
-		gathered = append(gathered, gatherRow{
-			relation:  relation.String,
-			subjectID: subjectID.String,
-			condName:  name.String,
-			condCtx:   condCtx,
-		})
-	}
-	if err := rows.Err(); err != nil {
-		return false, fmt.Errorf("planner: iterating check query: %w", err)
+		return false, err
 	}
 
-	satisfied := make(map[*QueryNode]bool, len(p.unit.leaves))
+	satisfied := make(map[Node]bool, len(p.unit.leaves))
 	condCache := make(map[keys.Key]bool)
 	for _, leaf := range p.unit.leaves {
 		ok, err := leafSatisfied(ctx, leaf, gathered, eval, condCache)
@@ -161,20 +147,245 @@ func evalCondition(ctx context.Context, eval ConditionEvaluator, leaf *QueryNode
 	if eval == nil {
 		return false, fmt.Errorf("planner: tuple for %q carries condition %q but no evaluator was provided", leaf.Label, r.condName)
 	}
+	return evalNamedCondition(ctx, eval, r.condName, r.condCtx, cache)
+}
+
+// evalNamedCondition evaluates a condition by name and encoded context, caching by
+// (name, context) so a condition shared across rows is evaluated once. An empty name is an
+// unconditioned tuple, which always passes.
+func evalNamedCondition(ctx context.Context, eval ConditionEvaluator, name string, condCtx []byte, cache map[keys.Key]bool) (bool, error) {
+	if name == "" {
+		return true, nil
+	}
+	if eval == nil {
+		return false, fmt.Errorf("planner: tuple carries condition %q but no evaluator was provided", name)
+	}
 	builder := keys.GetBuilder()
 	defer builder.Close()
-	builder.EncodeString(r.condName)
-	builder.EncodeBytes(r.condCtx)
+	builder.EncodeString(name)
+	builder.EncodeBytes(condCtx)
 	key := builder.Key()
 	if got, ok := cache[key]; ok {
 		return got, nil
 	}
-	ok, err := eval.Eval(ctx, r.condName, r.condCtx)
+	ok, err := eval.Eval(ctx, name, condCtx)
 	if err != nil {
-		return false, fmt.Errorf("planner: evaluating condition %q for %q: %w", r.condName, leaf.Label, err)
+		return false, fmt.Errorf("planner: evaluating condition %q: %w", name, err)
 	}
 	cache[key] = ok
 	return ok, nil
+}
+
+// executeMulti runs every leaf query in parallel, collects each leaf's boolean result, then
+// folds the operator tree over them. It is the execution form for any plan containing a
+// weight-2 join: weight-1 leaves and weight-2 joins each run as their own query.
+func (p *Plan) executeMulti(ctx context.Context, eval ConditionEvaluator) (bool, error) {
+	results := make([]bool, len(p.unit.multi))
+	g, gctx := errgroup.WithContext(ctx)
+	for i, lq := range p.unit.multi {
+		g.Go(func() error {
+			ok, err := p.runLeaf(gctx, eval, lq)
+			if err != nil {
+				return err
+			}
+			results[i] = ok
+			return nil
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return false, err
+	}
+
+	satisfied := make(map[Node]bool, len(p.unit.multi))
+	for i, lq := range p.unit.multi {
+		satisfied[lq.node] = results[i]
+	}
+	return fold(p.unit.multiRoot, satisfied), nil
+}
+
+// runLeaf resolves a single leaf query according to its kind: a boolean existence check, a
+// single-leaf gather with CEL, or a self-join gather with CEL across the hops.
+func (p *Plan) runLeaf(ctx context.Context, eval ConditionEvaluator, lq leafQuery) (bool, error) {
+	switch lq.kind {
+	case leafBool:
+		return rowExists(ctx, lq.query)
+	case leafGather:
+		leaf, ok := lq.node.(*QueryNode)
+		if !ok {
+			return false, fmt.Errorf("planner: gather leaf is %T, want *QueryNode", lq.node)
+		}
+		return p.executeLeafGather(ctx, eval, leaf, lq.query)
+	case leafJoinGather:
+		join, ok := lq.node.(*JoinNode)
+		if !ok {
+			return false, fmt.Errorf("planner: join-gather leaf is %T, want *JoinNode", lq.node)
+		}
+		return executeJoinGather(ctx, eval, join, lq.query)
+	default:
+		return false, fmt.Errorf("planner: unknown leaf kind %d", lq.kind)
+	}
+}
+
+// rowExists runs a boolean existence query and reports whether it returned a row.
+func rowExists(ctx context.Context, query adapter.Query) (bool, error) {
+	rows, err := query.Execute(ctx)
+	if err != nil {
+		return false, fmt.Errorf("planner: executing leaf query: %w", err)
+	}
+	defer rows.Close()
+	granted := rows.Next()
+	if err := rows.Err(); err != nil {
+		return false, fmt.Errorf("planner: iterating leaf query: %w", err)
+	}
+	return granted, nil
+}
+
+// executeLeafGather runs a conditioned weight-1 leaf's single-leaf gather scan and reports
+// whether any gathered row satisfies it, evaluating CEL on conditioned rows.
+func (p *Plan) executeLeafGather(ctx context.Context, eval ConditionEvaluator, leaf *QueryNode, query adapter.Query) (bool, error) {
+	gathered, err := scanGather(ctx, query)
+	if err != nil {
+		return false, err
+	}
+	return leafSatisfied(ctx, leaf, gathered, eval, make(map[keys.Key]bool))
+}
+
+// scanGather runs a gather scan and reads its rows into gatherRow values, in the column
+// order buildGatherQuery projects: relation, subject id, condition name, condition context.
+func scanGather(ctx context.Context, query adapter.Query) ([]gatherRow, error) {
+	rows, err := query.Execute(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("planner: executing check query: %w", err)
+	}
+	defer rows.Close()
+
+	gathered := make([]gatherRow, 0)
+	for rows.Next() {
+		var relation, subjectID, name sql.NullString
+		var condCtx []byte
+		if err := rows.Scan(&relation, &subjectID, &name, &condCtx); err != nil {
+			return nil, fmt.Errorf("planner: scanning check query: %w", err)
+		}
+		gathered = append(gathered, gatherRow{
+			relation:  relation.String,
+			subjectID: subjectID.String,
+			condName:  name.String,
+			condCtx:   condCtx,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("planner: iterating check query: %w", err)
+	}
+	return gathered, nil
+}
+
+// executeJoinGather runs a conditioned weight-2 self-join scan and reports whether any
+// intermediate object satisfies the hop. The scan returns every joined (hop-1, hop-2) tuple
+// pair that survived the SQL prune; the executor groups them by intermediate object and, for
+// each object, folds the hop-2 subtree over the rows whose hop-1 and hop-2 conditions pass
+// CEL. The hop resolves iff some intermediate object's fold is true — so a hop-2
+// intersection is satisfied only when a single object carries every operand.
+func executeJoinGather(ctx context.Context, eval ConditionEvaluator, join *JoinNode, query adapter.Query) (bool, error) {
+	rows, err := query.Execute(ctx)
+	if err != nil {
+		return false, fmt.Errorf("planner: executing join query: %w", err)
+	}
+	defer rows.Close()
+
+	// Group the gather rows by intermediate object, keeping insertion order so the fold is
+	// deterministic. Each object's rows are the hop-2 candidate tuples for that object.
+	order := make([]string, 0)
+	byObject := make(map[string][]gatherRow)
+	hop1Pass := make(map[string]bool) // intermediate id → hop-1 condition satisfied for this object
+	cache := make(map[keys.Key]bool)
+
+	for rows.Next() {
+		var intermediateID, hop1Cond, hop2Rel, subjectID, hop2Cond sql.NullString
+		var hop1CondCtx, hop2CondCtx []byte
+		if err := rows.Scan(&intermediateID, &hop1Cond, &hop1CondCtx, &hop2Rel, &subjectID, &hop2Cond, &hop2CondCtx); err != nil {
+			return false, fmt.Errorf("planner: scanning join query: %w", err)
+		}
+		id := intermediateID.String
+		if _, seen := byObject[id]; !seen {
+			order = append(order, id)
+		}
+
+		// The hop-1 condition is a property of the (bound object → intermediate object) link,
+		// so it gates the whole object. Evaluate it once per object; a failing link removes the
+		// object from consideration entirely.
+		if !hop1Pass[id] {
+			ok, err := evalNamedCondition(ctx, eval, hop1Cond.String, hop1CondCtx, cache)
+			if err != nil {
+				return false, err
+			}
+			if ok {
+				hop1Pass[id] = true
+			} else {
+				continue
+			}
+		}
+
+		// Evaluate the hop-2 condition; only rows whose grant actually holds contribute to the
+		// object's hop-2 fold.
+		hop2OK, err := evalNamedCondition(ctx, eval, hop2Cond.String, hop2CondCtx, cache)
+		if err != nil {
+			return false, err
+		}
+		if !hop2OK {
+			continue
+		}
+		byObject[id] = append(byObject[id], gatherRow{
+			relation:  hop2Rel.String,
+			subjectID: subjectID.String,
+			condName:  hop2Cond.String,
+			condCtx:   hop2CondCtx,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return false, fmt.Errorf("planner: iterating join query: %w", err)
+	}
+
+	leaves := collectLeaves(join.Hop2)
+	for _, id := range order {
+		if !hop1Pass[id] {
+			continue
+		}
+		if hop2SubtreeSatisfied(join.Hop2, leaves, byObject[id]) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// hop2SubtreeSatisfied folds the hop-2 subtree for one intermediate object: it marks which
+// leaves a granting row satisfies (the rows are already CEL-passed and condition-accepting),
+// then folds the operator tree. This is the in-process analogue of buildJoinBoolQuery's
+// per-object HAVING fold.
+func hop2SubtreeSatisfied(hop2 Node, leaves []*QueryNode, rows []gatherRow) bool {
+	satisfied := make(map[Node]bool, len(leaves))
+	for _, leaf := range leaves {
+		satisfied[leaf] = leafMatchedByRow(leaf, rows)
+	}
+	return fold(hop2, satisfied)
+}
+
+// leafMatchedByRow reports whether any of an object's granting rows is attributable to the
+// leaf: same relation, a condition the leaf accepts, and a matching subject. CEL was already
+// applied when the rows were gathered, so a matching row is a genuine grant; the condition
+// check still distinguishes two leaves that share a relation under different conditions.
+func leafMatchedByRow(leaf *QueryNode, rows []gatherRow) bool {
+	for _, r := range rows {
+		if r.relation != leaf.Relation {
+			continue
+		}
+		if !leafAcceptsCondition(leaf, r.condName) {
+			continue
+		}
+		if leafMatchesSubject(leaf, r.subjectID) {
+			return true
+		}
+	}
+	return false
 }
 
 // collectLeaves returns every QueryNode in the tree (pre-order).
@@ -193,10 +404,13 @@ func collectLeaves(n Node) []*QueryNode {
 	}
 }
 
-// fold reduces the plan tree to a boolean using the per-leaf satisfaction results.
-func fold(n Node, satisfied map[*QueryNode]bool) bool {
+// fold reduces the plan tree to a boolean using the per-leaf satisfaction results, keyed by
+// leaf Node (a QueryNode or a JoinNode).
+func fold(n Node, satisfied map[Node]bool) bool {
 	switch node := n.(type) {
 	case *QueryNode:
+		return satisfied[node]
+	case *JoinNode:
 		return satisfied[node]
 	case *CombineNode:
 		switch node.Op {
