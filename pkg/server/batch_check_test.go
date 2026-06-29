@@ -201,7 +201,7 @@ func TestBatchCheckFailsIfTooManyChecks(t *testing.T) {
 	require.NoError(t, err)
 
 	checks := make([]*openfgav1.BatchCheckItem, numChecks)
-	for i := 0; i < numChecks; i++ {
+	for i := range numChecks {
 		checks[i] = &openfgav1.BatchCheckItem{
 			TupleKey: &openfgav1.CheckRequestTupleKey{
 				Object:   "doc:doc1",

@@ -1330,13 +1330,10 @@ func TestCachedIterator(t *testing.T) {
 			logger:            logger.NewNoopLogger(),
 		}
 
-		wg.Add(1)
-
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 
 			iter.Stop()
-		}()
+		})
 
 		wg.Wait()
 		iter.wg.Wait()
@@ -1465,13 +1462,10 @@ func TestCachedIterator(t *testing.T) {
 			logger:            logger.NewNoopLogger(),
 		}
 
-		wg.Add(1)
-
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 
 			iter.Stop()
-		}()
+		})
 
 		wg.Wait()
 		iter.wg.Wait()
@@ -1486,7 +1480,7 @@ func TestCachedIterator(t *testing.T) {
 		cacheKey := testCacheKey("cache-key")
 		ttl := 5 * time.Hour
 		store := ulid.Make().String()
-		for i := 0; i < 100; i++ {
+		for range 100 {
 			mockController := gomock.NewController(t)
 			defer mockController.Finish()
 

@@ -1176,7 +1176,7 @@ func TestBuildRecursiveMapper(t *testing.T) {
 		res, err := buildRecursiveMapper(ctx, &ResolveCheckRequest{
 			StoreID:     storeID,
 			TupleKey:    tuple.NewTupleKey("document:1", "viewer", "user:maria"),
-			Context:     testutils.MustNewStruct(t, map[string]interface{}{"x": "2"}),
+			Context:     testutils.MustNewStruct(t, map[string]any{"x": "2"}),
 			Consistency: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
 		}, mapping)
 		require.NoError(t, err)
@@ -1198,7 +1198,7 @@ func TestBuildRecursiveMapper(t *testing.T) {
 		res, err := buildRecursiveMapper(ctx, &ResolveCheckRequest{
 			StoreID:     storeID,
 			TupleKey:    tuple.NewTupleKey("document:1", "viewer", "user:maria"),
-			Context:     testutils.MustNewStruct(t, map[string]interface{}{"x": "2"}),
+			Context:     testutils.MustNewStruct(t, map[string]any{"x": "2"}),
 			Consistency: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
 		}, mapping)
 		require.NoError(t, err)

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"maps"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -668,7 +669,7 @@ func TestRemoteOidcAuthenticator_RefreshRateLimit(t *testing.T) {
 	hitsBeforeBurst := server.hits()
 
 	// Burst several JWTs with distinct unknown kids in quick succession.
-	for i := 0; i < burst; i++ {
+	for i := range burst {
 		token := generateJWT(privKey, fmt.Sprintf("unknown_kid_%d", i), jwt.MapClaims{
 			"iss": server.server.URL,
 			"aud": "aud",
@@ -715,9 +716,7 @@ type jwksTestServer struct {
 
 func newJWKSTestServer(initial map[string]*rsa.PublicKey) *jwksTestServer {
 	j := &jwksTestServer{keys: make(map[string]*rsa.PublicKey)}
-	for k, v := range initial {
-		j.keys[k] = v
-	}
+	maps.Copy(j.keys, initial)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/jwks", func(w http.ResponseWriter, _ *http.Request) {

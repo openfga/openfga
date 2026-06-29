@@ -26,7 +26,7 @@ func TestBuildTupleKeyConditionFilter(t *testing.T) {
 		name         string
 		tupleKey     *openfgav1.TupleKey
 		model        *openfgav1.AuthorizationModel
-		context      map[string]interface{}
+		context      map[string]any
 		conditionMet bool
 		expectedErr  error
 	}{
@@ -42,7 +42,7 @@ func TestBuildTupleKeyConditionFilter(t *testing.T) {
 				type document
 					relations
 						define can_view: [user]`),
-			context:      map[string]interface{}{},
+			context:      map[string]any{},
 			conditionMet: true,
 			expectedErr:  nil,
 		},
@@ -58,7 +58,7 @@ func TestBuildTupleKeyConditionFilter(t *testing.T) {
 				type document
 					relations
 						define can_view: [user]`),
-			context:      map[string]interface{}{},
+			context:      map[string]any{},
 			conditionMet: false,
 			expectedErr:  condition.NewEvaluationError("correct_ip", fmt.Errorf("condition was not found")),
 		},
@@ -79,7 +79,7 @@ func TestBuildTupleKeyConditionFilter(t *testing.T) {
 					x == 1
 				}
 `),
-			context:      map[string]interface{}{"x": 1},
+			context:      map[string]any{"x": 1},
 			conditionMet: true,
 			expectedErr:  nil,
 		},
@@ -100,7 +100,7 @@ func TestBuildTupleKeyConditionFilter(t *testing.T) {
 					x == 1
 				}
 `),
-			context:      map[string]interface{}{"x": 15},
+			context:      map[string]any{"x": 15},
 			conditionMet: false,
 			expectedErr:  nil,
 		},
@@ -121,7 +121,7 @@ func TestBuildTupleKeyConditionFilter(t *testing.T) {
 					x == 1 && y == 0
 				}
 `),
-			context:      map[string]interface{}{"x": 5},
+			context:      map[string]any{"x": 5},
 			conditionMet: false,
 			expectedErr: condition.NewEvaluationError("x_y",
 				fmt.Errorf("tuple 'document:1#can_view@user:maria' is missing context parameters '[y]'")),

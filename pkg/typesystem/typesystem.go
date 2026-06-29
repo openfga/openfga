@@ -830,7 +830,7 @@ func (t *TypeSystem) relationInvolves(objectType, relation string, visited map[s
 
 	rewrite := rel.GetRewrite()
 
-	result, err := WalkUsersetRewrite(rewrite, func(r *openfgav1.Userset) interface{} {
+	result, err := WalkUsersetRewrite(rewrite, func(r *openfgav1.Userset) any {
 		switch rw := r.GetUserset().(type) {
 		case *openfgav1.Userset_ComputedUserset:
 			rewrittenRelation := rw.ComputedUserset.GetRelation()
@@ -1299,7 +1299,7 @@ func (t *TypeSystem) isUsersetRewriteValid(objectType, relation string, rewrite 
 
 		// Tupleset relations must only be direct relationships, no rewrites are allowed on them.
 		tuplesetRewrite := tuplesetRelation.GetRewrite()
-		if reflect.TypeOf(tuplesetRewrite.GetUserset()) != reflect.TypeOf(&openfgav1.Userset_This{}) {
+		if reflect.TypeOf(tuplesetRewrite.GetUserset()) != reflect.TypeFor[*openfgav1.Userset_This]() {
 			return fmt.Errorf("the '%s#%s' relation is referenced in at least one tupleset and thus must be a direct relation", objectType, tupleset)
 		}
 
@@ -1431,7 +1431,7 @@ func (t *TypeSystem) IsDirectlyAssignable(relation *openfgav1.Relation) bool {
 // RewriteContainsSelf returns true if the provided userset rewrite
 // is defined by one or more self referencing definitions.
 func RewriteContainsSelf(rewrite *openfgav1.Userset) bool {
-	result, err := WalkUsersetRewrite(rewrite, func(r *openfgav1.Userset) interface{} {
+	result, err := WalkUsersetRewrite(rewrite, func(r *openfgav1.Userset) any {
 		if _, ok := r.GetUserset().(*openfgav1.Userset_This); ok {
 			return true
 		}
@@ -1626,11 +1626,11 @@ func flattenUserset(relationDef *openfgav1.Userset) []*openfgav1.TupleToUserset 
 // WalkUsersetRewriteHandler is a userset rewrite handler that is applied to a node in a userset rewrite
 // tree. Implementations of the WalkUsersetRewriteHandler should return a non-nil value when the traversal
 // over the rewrite tree should terminate and nil if traversal should proceed to other nodes in the tree.
-type WalkUsersetRewriteHandler func(rewrite *openfgav1.Userset) interface{}
+type WalkUsersetRewriteHandler func(rewrite *openfgav1.Userset) any
 
 // WalkUsersetRewrite recursively walks the provided userset rewrite and invokes the provided WalkUsersetRewriteHandler
 // to each node in the userset rewrite tree until the first non-nil response is encountered.
-func WalkUsersetRewrite(rewrite *openfgav1.Userset, handler WalkUsersetRewriteHandler) (interface{}, error) {
+func WalkUsersetRewrite(rewrite *openfgav1.Userset, handler WalkUsersetRewriteHandler) (any, error) {
 	var children []*openfgav1.Userset
 
 	if result := handler(rewrite); result != nil {

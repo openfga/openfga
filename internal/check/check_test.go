@@ -2872,7 +2872,7 @@ func TestSpecificType(t *testing.T) {
 			"viewer",
 			"user:maria",
 			"non_expired",
-			testutils.MustNewStruct(t, map[string]interface{}{"expiration": expiredTime.Format(time.RFC3339)}))
+			testutils.MustNewStruct(t, map[string]any{"expiration": expiredTime.Format(time.RFC3339)}))
 
 		mockDatastore.EXPECT().ReadUserTuple(
 			gomock.Any(),
@@ -2892,7 +2892,7 @@ func TestSpecificType(t *testing.T) {
 			StoreID:  storeID,
 			Model:    mg,
 			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:maria"),
-			Context: testutils.MustNewStruct(t, map[string]interface{}{
+			Context: testutils.MustNewStruct(t, map[string]any{
 				"current_time": time.Now().Format(time.RFC3339),
 			}),
 		})
@@ -2936,7 +2936,7 @@ func TestSpecificType(t *testing.T) {
 			"viewer",
 			"user:maria",
 			"non_expired",
-			testutils.MustNewStruct(t, map[string]interface{}{"expiration": futureTime.Format(time.RFC3339)}))
+			testutils.MustNewStruct(t, map[string]any{"expiration": futureTime.Format(time.RFC3339)}))
 
 		mockDatastore.EXPECT().ReadUserTuple(
 			gomock.Any(),
@@ -2956,7 +2956,7 @@ func TestSpecificType(t *testing.T) {
 			StoreID:  storeID,
 			Model:    mg,
 			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:maria"),
-			Context: testutils.MustNewStruct(t, map[string]interface{}{
+			Context: testutils.MustNewStruct(t, map[string]any{
 				"current_time": time.Now().Format(time.RFC3339),
 			}),
 		})
@@ -2998,7 +2998,7 @@ func TestSpecificType(t *testing.T) {
 			"viewer",
 			"user:maria",
 			"non_expired",
-			testutils.MustNewStruct(t, map[string]interface{}{"expiration": "invalid-timestamp"}))
+			testutils.MustNewStruct(t, map[string]any{"expiration": "invalid-timestamp"}))
 
 		mockDatastore.EXPECT().ReadUserTuple(
 			gomock.Any(),
@@ -3018,7 +3018,7 @@ func TestSpecificType(t *testing.T) {
 			StoreID:  storeID,
 			Model:    mg,
 			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:maria"),
-			Context: testutils.MustNewStruct(t, map[string]interface{}{
+			Context: testutils.MustNewStruct(t, map[string]any{
 				"current_time": time.Now().Format(time.RFC3339),
 			}),
 		})
@@ -3439,7 +3439,7 @@ func TestSpecificTypeWildcard(t *testing.T) {
 			"viewer",
 			"user:*",
 			"non_expired",
-			testutils.MustNewStruct(t, map[string]interface{}{"expiration": expiredTime.Format(time.RFC3339)}))
+			testutils.MustNewStruct(t, map[string]any{"expiration": expiredTime.Format(time.RFC3339)}))
 
 		mockDatastore.EXPECT().ReadUsersetTuples(
 			gomock.Any(),
@@ -3464,7 +3464,7 @@ func TestSpecificTypeWildcard(t *testing.T) {
 			StoreID:  storeID,
 			Model:    mg,
 			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:maria"),
-			Context: testutils.MustNewStruct(t, map[string]interface{}{
+			Context: testutils.MustNewStruct(t, map[string]any{
 				"current_time": time.Now().Format(time.RFC3339),
 			}),
 		})
@@ -3509,7 +3509,7 @@ func TestSpecificTypeWildcard(t *testing.T) {
 				User:     "user:*",
 				Condition: &openfgav1.RelationshipCondition{
 					Name: "non_expired",
-					Context: testutils.MustNewStruct(t, map[string]interface{}{
+					Context: testutils.MustNewStruct(t, map[string]any{
 						"expiration": futureTime.Format(time.RFC3339),
 					}),
 				},
@@ -3539,7 +3539,7 @@ func TestSpecificTypeWildcard(t *testing.T) {
 			StoreID:  storeID,
 			Model:    mg,
 			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:maria"),
-			Context: testutils.MustNewStruct(t, map[string]interface{}{
+			Context: testutils.MustNewStruct(t, map[string]any{
 				"current_time": time.Now().Format(time.RFC3339),
 			}),
 		})
@@ -4077,7 +4077,7 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 				"viewer",
 				"document:2#owner",
 				"validTime",
-				testutils.MustNewStruct(t, map[string]interface{}{"expiration": expiredTime.Format(time.RFC3339)})),
+				testutils.MustNewStruct(t, map[string]any{"expiration": expiredTime.Format(time.RFC3339)})),
 		}}), nil).Times(1)
 
 		resolver := New(Config{
@@ -4092,7 +4092,7 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 			StoreID:  storeID,
 			Model:    mg,
 			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:maria"),
-			Context: testutils.MustNewStruct(t, map[string]interface{}{
+			Context: testutils.MustNewStruct(t, map[string]any{
 				"current_time": time.Now().Format(time.RFC3339),
 			}),
 		})
@@ -4158,7 +4158,7 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 				"viewer",
 				"document:2#owner",
 				"validTime",
-				testutils.MustNewStruct(t, map[string]interface{}{"expiration": futureTime.Format(time.RFC3339)})),
+				testutils.MustNewStruct(t, map[string]any{"expiration": futureTime.Format(time.RFC3339)})),
 		}}), nil).Times(1)
 
 		resolver := New(Config{
@@ -4173,7 +4173,7 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 			StoreID:  storeID,
 			Model:    mg,
 			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:maria"),
-			Context: testutils.MustNewStruct(t, map[string]interface{}{
+			Context: testutils.MustNewStruct(t, map[string]any{
 				"current_time": time.Now().Format(time.RFC3339),
 			}),
 		})
@@ -4687,7 +4687,7 @@ func TestTTU(t *testing.T) {
 				User:     "document:2",
 				Condition: &openfgav1.RelationshipCondition{
 					Name: "non_expired",
-					Context: testutils.MustNewStruct(t, map[string]interface{}{
+					Context: testutils.MustNewStruct(t, map[string]any{
 						"expiration": expiredTime.Format(time.RFC3339),
 					}),
 				},
@@ -4706,7 +4706,7 @@ func TestTTU(t *testing.T) {
 			StoreID:  storeID,
 			Model:    mg,
 			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:maria"),
-			Context: testutils.MustNewStruct(t, map[string]interface{}{
+			Context: testutils.MustNewStruct(t, map[string]any{
 				"current_time": time.Now().Format(time.RFC3339),
 			}),
 		})
@@ -4766,7 +4766,7 @@ func TestTTU(t *testing.T) {
 				User:     "document:2",
 				Condition: &openfgav1.RelationshipCondition{
 					Name: "non_expired",
-					Context: testutils.MustNewStruct(t, map[string]interface{}{
+					Context: testutils.MustNewStruct(t, map[string]any{
 						"expiration": futureTime.Format(time.RFC3339),
 					}),
 				},
@@ -4785,7 +4785,7 @@ func TestTTU(t *testing.T) {
 			StoreID:  storeID,
 			Model:    mg,
 			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:maria"),
-			Context: testutils.MustNewStruct(t, map[string]interface{}{
+			Context: testutils.MustNewStruct(t, map[string]any{
 				"current_time": time.Now().Format(time.RFC3339),
 			}),
 		})
@@ -5929,7 +5929,7 @@ func TestResolveCheck(t *testing.T) {
 					User:     "user:u1",
 					Condition: &openfgav1.RelationshipCondition{
 						Name: "xcond",
-						Context: testutils.MustNewStruct(t, map[string]interface{}{
+						Context: testutils.MustNewStruct(t, map[string]any{
 							"x": "1",
 						}),
 					},
