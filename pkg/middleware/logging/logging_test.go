@@ -40,17 +40,68 @@ type outputCapture struct {
 }
 
 func TestNewLoggingInterceptor_concrete(t *testing.T) {
+	t.Run("default_info_level", func(t *testing.T) {
+		output := captureCheckLog(t, "info", zap.InfoLevel)
+		assert.Equal(t, "info", output.Level)
+	})
+
+	t.Run("debug_level_quietens_completion_log", func(t *testing.T) {
+		output := captureCheckLogOutput(t, "debug", zap.InfoLevel)
+		assert.Empty(t, output.String())
+	})
+
+	t.Run("warn_level", func(t *testing.T) {
+		output := captureCheckLog(t, "warn", zap.WarnLevel)
+		assert.Equal(t, "warn", output.Level)
+	})
+
+	t.Run("error_level", func(t *testing.T) {
+		output := captureCheckLog(t, "error", zap.ErrorLevel)
+		assert.Equal(t, "error", output.Level)
+	})
+
+	output := captureCheckLog(t, "info", zap.InfoLevel)
+	assert.Equal(t, "info", output.Level)
+	assert.NotEmpty(t, output.TS)
+	assert.Equal(t, "grpc_req_complete", output.Msg)
+	assert.Equal(t, "openfga.v1.OpenFGAService", output.GrpcService)
+	assert.Equal(t, "Check", output.GrpcMethod)
+	assert.Equal(t, "unary", output.GrpcType)
+	assert.NotEmpty(t, output.UserAgent)
+	assert.NotEmpty(t, output.RawRequest)
+	assert.NotEmpty(t, output.RawResponse)
+	assert.NotEmpty(t, output.QueryDurationMs)
+	assert.NotEmpty(t, output.PeerAddress)
+	assert.NotEmpty(t, output.RequestID)
+	assert.Equal(t, 0, output.GrpcCode)
+}
+
+// captureCheckLog runs a single Check RPC through the logging interceptor configured with the
+// given requestCompleteLevel and returns the decoded grpc_req_complete log line.
+func captureCheckLog(t *testing.T, requestCompleteLevel string, enabledLevel zapcore.Level) outputCapture {
+	t.Helper()
+	gotBuffer := captureCheckLogOutput(t, requestCompleteLevel, enabledLevel)
+
+	var output outputCapture
+	err := json.NewDecoder(gotBuffer).Decode(&output)
+	require.NoError(t, err)
+
+	return output
+}
+
+func captureCheckLogOutput(t *testing.T, requestCompleteLevel string, enabledLevel zapcore.Level) *bytes.Buffer {
+	t.Helper()
 	gotBuffer := new(bytes.Buffer)
 
 	core := zapcore.NewCore(
 		zapcore.NewJSONEncoder(zap.NewProductionEncoderConfig()),
 		zapcore.AddSync(gotBuffer),
-		zap.InfoLevel,
+		enabledLevel,
 	)
 	argLogger := &logger.ZapLogger{Logger: zap.New(core)}
 
 	serverOpts := []grpc.ServerOption{
-		grpc.ChainUnaryInterceptor(grpc_ctxtags.UnaryServerInterceptor(), requestid.NewUnaryInterceptor(), NewLoggingInterceptor(argLogger)),
+		grpc.ChainUnaryInterceptor(grpc_ctxtags.UnaryServerInterceptor(), requestid.NewUnaryInterceptor(), NewLoggingInterceptor(argLogger, requestCompleteLevel)),
 	}
 
 	listner := bufconn.Listen(1024 * 1024)
@@ -84,26 +135,10 @@ func TestNewLoggingInterceptor_concrete(t *testing.T) {
 	_, err = client.Check(context.Background(), &openfgav1.CheckRequest{})
 	require.NoError(t, err)
 
-	var output outputCapture
-	err = json.NewDecoder(gotBuffer).Decode(&output)
-	require.NoError(t, err)
-
-	assert.Equal(t, "info", output.Level)
-	assert.NotEmpty(t, output.TS)
-	assert.Equal(t, "grpc_req_complete", output.Msg)
-	assert.Equal(t, "openfga.v1.OpenFGAService", output.GrpcService)
-	assert.Equal(t, "Check", output.GrpcMethod)
-	assert.Equal(t, "unary", output.GrpcType)
-	assert.NotEmpty(t, output.UserAgent)
-	assert.NotEmpty(t, output.RawRequest)
-	assert.NotEmpty(t, output.RawResponse)
-	assert.NotEmpty(t, output.QueryDurationMs)
-	assert.NotEmpty(t, output.PeerAddress)
-	assert.NotEmpty(t, output.RequestID)
-	assert.Equal(t, 0, output.GrpcCode)
-
 	srv.Stop()
 	wg.Wait()
+
+	return gotBuffer
 }
 
 type fgaServer struct {
