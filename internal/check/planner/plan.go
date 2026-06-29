@@ -218,13 +218,20 @@ const (
 	leafJoinGather
 )
 
-// leafQuery pairs a leaf plan node with its compiled query and the kind that tells the
-// executor how to resolve it. The node is the fold key: the executor records each leaf's
-// boolean result against its node, then folds the operator tree.
+// leafQuery pairs a plan node with its compiled query and the kind that tells the executor how
+// to resolve it. The node is the fold key: the executor records each unit's boolean result
+// against its node, then folds the operator tree (multiRoot) over those results.
+//
+// A unit is one of: a single weight-1 leaf, a single weight-2 JoinNode, or — when weight-1
+// siblings were merged — a whole weight-1 region (a CombineNode root). For a merged region that
+// carries a condition, subLeaves are the region's leaves: the executor gathers the region's rows
+// in one scan, attributes them to these leaves, then folds the region subtree (node) over them.
+// It is nil for a boolean unit (condition-free region or JoinNode) and for a lone leaf.
 type leafQuery struct {
-	node  Node
-	query adapter.Query
-	kind  leafKind
+	node      Node
+	query     adapter.Query
+	kind      leafKind
+	subLeaves []*QueryNode
 }
 
 // unit is the compiled execution form of a Plan: the query to run (if any) and, for the

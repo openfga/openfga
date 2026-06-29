@@ -210,6 +210,11 @@ func (p *Plan) runLeaf(ctx context.Context, eval ConditionEvaluator, lq leafQuer
 	case leafBool:
 		return rowExists(ctx, lq.query)
 	case leafGather:
+		if lq.subLeaves != nil {
+			// A merged conditioned weight-1 region: gather its rows once, attribute them to the
+			// region's leaves, then fold the region subtree.
+			return p.executeRegionGather(ctx, eval, lq)
+		}
 		leaf, ok := lq.node.(*QueryNode)
 		if !ok {
 			return false, fmt.Errorf("planner: gather leaf is %T, want *QueryNode", lq.node)
@@ -248,6 +253,28 @@ func (p *Plan) executeLeafGather(ctx context.Context, eval ConditionEvaluator, l
 		return false, err
 	}
 	return leafSatisfied(ctx, leaf, gathered, eval, make(map[keys.Key]bool))
+}
+
+// executeRegionGather runs a merged conditioned weight-1 region's single gather scan, attributes
+// the rows to each of the region's leaves (evaluating CEL on conditioned rows), then folds the
+// region subtree (lq.node) over the per-leaf results. It is the in-process analogue of a
+// top-level unitGather, but for a region nested beside weight-2 joins in a unitMulti plan.
+func (p *Plan) executeRegionGather(ctx context.Context, eval ConditionEvaluator, lq leafQuery) (bool, error) {
+	gathered, err := scanGather(ctx, lq.query)
+	if err != nil {
+		return false, err
+	}
+
+	satisfied := make(map[Node]bool, len(lq.subLeaves))
+	condCache := make(map[keys.Key]bool)
+	for _, leaf := range lq.subLeaves {
+		ok, err := leafSatisfied(ctx, leaf, gathered, eval, condCache)
+		if err != nil {
+			return false, err
+		}
+		satisfied[leaf] = ok
+	}
+	return fold(lq.node, satisfied), nil
 }
 
 // scanGather runs a gather scan and reads its rows into gatherRow values, in the column
@@ -404,9 +431,16 @@ func collectLeaves(n Node) []*QueryNode {
 	}
 }
 
-// fold reduces the plan tree to a boolean using the per-leaf satisfaction results, keyed by
-// leaf Node (a QueryNode or a JoinNode).
+// fold reduces the plan tree to a boolean using the satisfaction results, keyed by Node. A key
+// may be a leaf (QueryNode or JoinNode) or, in a unitMulti plan, the root of a merged weight-1
+// region whose boolean was computed by a single query: when the node itself has a precomputed
+// result, fold returns it directly rather than recursing, since the region's children were never
+// queried individually. This is what lets executeMulti fold the rewritten tree (multiRoot) whose
+// leaves are the compiled units.
 func fold(n Node, satisfied map[Node]bool) bool {
+	if v, ok := satisfied[n]; ok {
+		return v
+	}
 	switch node := n.(type) {
 	case *QueryNode:
 		return satisfied[node]

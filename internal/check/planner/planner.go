@@ -117,21 +117,27 @@ func (p *Planner) compile(bnd bound, root Node) unit {
 	return unit{kind: unitGather, query: buildGatherQuery(p.builder, bnd, leaves), leaves: leaves}
 }
 
-// compileMulti builds the per-leaf queries for a tree that contains at least one weight-2
-// join: one boolean (or gather, when conditioned) query per QueryNode leaf and per JoinNode.
-// The leaf nodes themselves are the fold keys, so the executor maps each query's result back
-// to its node and reduces the tree.
+// compileMulti builds the per-unit queries for a tree that contains at least one weight-2 join.
+// A weight-2 join cannot fold into the same statement as anything else, so each JoinNode is its
+// own query — but the weight-1 leaves around the joins can. This method first rewrites the tree
+// (rewriteForMulti) so that every maximal weight-1 region is collapsed into a single node, then
+// emits one query per leaf of the rewritten tree: one boolean/gather query for each merged
+// weight-1 region (folding its whole set algebra, via buildHavingQuery / buildGatherQuery), and
+// one self-join query per JoinNode. The executor folds the rewritten tree (multiRoot) over the
+// per-unit booleans, so the rewritten node objects are the fold keys.
 func (p *Planner) compileMulti(bnd bound, root Node) unit {
+	rewritten := rewriteForMulti(root)
+
 	var leaves []leafQuery
 	var build func(n Node)
 	build = func(n Node) {
+		// A node free of any weight-2 hop is a merged weight-1 unit: one query folds its whole
+		// (possibly nested) set algebra, exactly as a top-level weight-1 relation would.
+		if !containsJoinNode(n) {
+			leaves = append(leaves, p.compileWeightOneUnit(bnd, n))
+			return
+		}
 		switch node := n.(type) {
-		case *QueryNode:
-			leaves = append(leaves, leafQuery{
-				node:  node,
-				query: buildLeafQuery(p.builder, bnd, node),
-				kind:  leafKindFor(node),
-			})
 		case *JoinNode:
 			leaves = append(leaves, leafQuery{
 				node:  node,
@@ -139,13 +145,84 @@ func (p *Planner) compileMulti(bnd bound, root Node) unit {
 				kind:  joinLeafKindFor(node),
 			})
 		case *CombineNode:
+			// A mixed node: recurse into the rewritten children, each of which is either a
+			// merged weight-1 unit or a join-bearing subtree.
 			for _, c := range node.Children {
 				build(c)
 			}
 		}
 	}
-	build(root)
-	return unit{kind: unitMulti, multi: leaves, multiRoot: root}
+	build(rewritten)
+	return unit{kind: unitMulti, multi: leaves, multiRoot: rewritten}
+}
+
+// compileWeightOneUnit compiles a maximal weight-1 region (a QueryNode, or a CombineNode tree
+// containing no JoinNode) into a single query. A lone QueryNode keeps the existing standalone
+// leaf query (a plain existence scan, or a single-leaf gather when conditioned). A region with
+// set operators folds them into one query: a boolean HAVING query that decides the algebra in
+// the database when condition-free, or a gather scan over the region's leaves for in-process CEL
+// and folding when any leaf is conditioned. The region root is the fold key; for either gather
+// case its leaves are recorded so the executor can attribute rows and fold the region subtree.
+func (p *Planner) compileWeightOneUnit(bnd bound, n Node) leafQuery {
+	if leaf, ok := n.(*QueryNode); ok {
+		// A lone leaf keeps the existing standalone query and resolution (leafBool, or the
+		// single-leaf leafGather path); no subtree fold is needed.
+		return leafQuery{node: leaf, query: buildLeafQuery(p.builder, bnd, leaf), kind: leafKindFor(leaf)}
+	}
+	if n.ConditionFree() {
+		return leafQuery{node: n, query: buildHavingQuery(p.builder, bnd, n), kind: leafBool}
+	}
+	subLeaves := collectLeaves(n)
+	return leafQuery{
+		node:      n,
+		query:     buildGatherQuery(p.builder, bnd, subLeaves),
+		kind:      leafGather,
+		subLeaves: subLeaves,
+	}
+}
+
+// rewriteForMulti returns a tree equivalent to n in which every maximal weight-1 region is
+// collapsed to a single node, so compileMulti can emit one query per region instead of one per
+// leaf. Nodes free of any weight-2 hop are returned as-is (they are already a single unit);
+// JoinNodes are preserved. A mixed CombineNode keeps each join-bearing child separate (rewritten
+// recursively) and batches all of its weight-1 children into one new CombineNode of the same
+// operator. Union and intersection are commutative, so gathering all weight-1 children (not just
+// adjacent ones) is sound; exclusion is positional with exactly two children, so it is never
+// batched — both sides are rewritten in place, preserving the invariant fold and combineHaving
+// rely on.
+func rewriteForMulti(n Node) Node {
+	cn, ok := n.(*CombineNode)
+	if !ok || !containsJoinNode(cn) {
+		return n
+	}
+
+	if cn.Op == CombineExcept {
+		return &CombineNode{Op: CombineExcept, Children: []Node{
+			rewriteForMulti(cn.Children[0]),
+			rewriteForMulti(cn.Children[1]),
+		}}
+	}
+
+	var weightOne, mixed []Node
+	for _, c := range cn.Children {
+		if containsJoinNode(c) {
+			mixed = append(mixed, rewriteForMulti(c))
+		} else {
+			weightOne = append(weightOne, c)
+		}
+	}
+
+	var children []Node
+	switch len(weightOne) {
+	case 0:
+		// nothing to merge
+	case 1:
+		children = append(children, weightOne[0])
+	default:
+		children = append(children, &CombineNode{Op: cn.Op, Children: weightOne})
+	}
+	children = append(children, mixed...)
+	return &CombineNode{Op: cn.Op, Children: children}
 }
 
 // containsJoinNode reports whether the plan tree has any weight-2 join leaf.

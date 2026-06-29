@@ -511,3 +511,116 @@ func TestExecuteW2_ComplexBothLevels(t *testing.T) {
 		})
 	}
 }
+
+// mergedW2Model places two weight-1 leaves (direct_viewer, direct_owner) in the same union as a
+// weight-2 userset hop, so the two leaves merge into one query (a HAVING fold) while the hop
+// stays its own self-join. It proves the merged region resolves correctly beside a join, and in
+// particular that neither merged operand is lost when the original union is rewritten.
+//
+//	viewer = (direct_viewer OR direct_owner OR from_group)
+const mergedW2Model = `
+	model
+		schema 1.1
+	type user
+	type group
+		relations
+			define member: [user]
+	type document
+		relations
+			define direct_viewer: [user]
+			define direct_owner: [user]
+			define from_group: [group#member]
+			define viewer: direct_viewer or direct_owner or from_group`
+
+// TestExecuteW2_MergedRegionUnion exercises the weight-1 sibling-merge optimization end to end
+// against the fake executor: the merged (direct_viewer OR direct_owner) region is one boolean
+// query, the from_group hop another, and the outer union folds the two. It walks each operand
+// granting alone so a dropped operand in the rewrite would surface as a wrong decision.
+func TestExecuteW2_MergedRegionUnion(t *testing.T) {
+	// grants routes the boolean responses by the relation each query binds: the merged region's
+	// HAVING query binds direct_viewer and direct_owner; the hop binds the userset relation.
+	cases := []struct {
+		name     string
+		grants   map[string]bool
+		expected bool
+	}{
+		{name: "grant_via_direct_viewer", grants: map[string]bool{"direct_viewer": true}, expected: true},
+		{name: "grant_via_direct_owner", grants: map[string]bool{"direct_owner": true}, expected: true},
+		{name: "grant_via_hop", grants: map[string]bool{"member": true}, expected: true},
+		{name: "deny_when_none_grant", grants: map[string]bool{}, expected: false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			exec := w2Executor{boolRow: hopGranted(tc.grants)}
+			p := w2PlanFor(t, exec, mergedW2Model)
+			require.Len(t, p.unit.multi, 2, "merged weight-1 region + one hop")
+			got, err := p.Execute(context.Background(), nil)
+			require.NoError(t, err)
+			require.Equal(t, tc.expected, got)
+		})
+	}
+}
+
+// TestExecuteW2_MergedRegionConditioned exercises a conditioned merged region beside a join: the
+// region compiles to one gather scan whose rows the executor attributes to its leaves and folds,
+// rather than one query per conditioned leaf. Here direct_viewer and direct_owner both carry a
+// condition and union with a weight-2 hop.
+func TestExecuteW2_MergedRegionConditioned(t *testing.T) {
+	model := `
+		model
+			schema 1.1
+		type user
+		type group
+			relations
+				define member: [user]
+		type document
+			relations
+				define direct_viewer: [user with cond]
+				define direct_owner: [user with cond]
+				define from_group: [group#member]
+				define viewer: direct_viewer or direct_owner or from_group
+		condition cond(x: int) {
+			x > 0
+		}`
+
+	t.Run("region_grants_when_condition_passes", func(t *testing.T) {
+		// The region's gather returns a direct_owner row; the hop finds nothing. CEL passes.
+		exec := w2Executor{
+			gatherRows: func(string, []any) []gRow {
+				return []gRow{{relation: "direct_owner", subjectID: "alice", condName: "cond", condCtx: []byte("c")}}
+			},
+			boolRow: func(string, []any) bool { return false },
+		}
+		p := w2PlanFor(t, exec, model)
+		require.Len(t, p.unit.multi, 2)
+		got, err := p.Execute(context.Background(), evalFunc(func(string, []byte) (bool, error) { return true, nil }))
+		require.NoError(t, err)
+		require.True(t, got)
+	})
+
+	t.Run("region_denies_when_condition_fails", func(t *testing.T) {
+		exec := w2Executor{
+			gatherRows: func(string, []any) []gRow {
+				return []gRow{{relation: "direct_owner", subjectID: "alice", condName: "cond", condCtx: []byte("c")}}
+			},
+			boolRow: func(string, []any) bool { return false },
+		}
+		p := w2PlanFor(t, exec, model)
+		got, err := p.Execute(context.Background(), evalFunc(func(string, []byte) (bool, error) { return false, nil }))
+		require.NoError(t, err)
+		require.False(t, got)
+	})
+
+	t.Run("grant_via_hop_when_region_empty", func(t *testing.T) {
+		// The region gathers no rows, but the hop grants → union holds.
+		exec := w2Executor{
+			gatherRows: func(string, []any) []gRow { return nil },
+			boolRow:    func(string, []any) bool { return true },
+		}
+		p := w2PlanFor(t, exec, model)
+		got, err := p.Execute(context.Background(), evalFunc(func(string, []byte) (bool, error) { return true, nil }))
+		require.NoError(t, err)
+		require.True(t, got)
+	})
+}
