@@ -624,3 +624,77 @@ func TestExecuteW2_MergedRegionConditioned(t *testing.T) {
 		require.True(t, got)
 	})
 }
+
+// mergedExclusionModel is `(([user] or editor) and owner from parent) but not (blocked and old)`.
+// It produces three compiled units in the unitMulti plan: a merged weight-1 UNION region
+// ([user] OR editor), one weight-2 TTU self-join (owner from parent), and a merged weight-1
+// INTERSECT region (blocked AND old). The outer fold is positive BUT NOT negative, where
+// positive = (union AND ttu) and negative = the merged intersect.
+const mergedExclusionModel = `
+	model
+		schema 1.1
+	type user
+	type folder
+		relations
+			define owner: [user]
+	type document
+		relations
+			define parent: [folder]
+			define editor: [user]
+			define blocked: [user]
+			define old: [user]
+			define direct_or_editor: [user] or editor
+			define owner_from_parent: owner from parent
+			define positive: direct_or_editor and owner_from_parent
+			define negative: blocked and old
+			define viewer: positive but not negative`
+
+// TestExecuteW2_MergedExclusion proves the three-unit plan folds correctly across the full truth
+// table of its units. Each unit is the boolean a single query returns: the merged UNION region
+// (positiveUnion), the TTU self-join (ttu), and the merged INTERSECT region (negative). The DB
+// decides each region's internal algebra, so the unit booleans are supplied directly; this test
+// asserts the in-process fold positive=(union AND ttu), result=positive AND NOT negative.
+func TestExecuteW2_MergedExclusion(t *testing.T) {
+	// route maps a rendered query to the unit it belongs to: the TTU is the only self-join
+	// (INNER JOIN); the negative region binds blocked/old; everything else is the positive union.
+	route := func(positiveUnion, ttu, negative bool) func(sql string, args []any) bool {
+		return func(sql string, args []any) bool {
+			if strings.Contains(sql, "INNER JOIN") {
+				return ttu
+			}
+			for _, a := range args {
+				if s, ok := a.(string); ok && (s == "blocked" || s == "old") {
+					return negative
+				}
+			}
+			return positiveUnion
+		}
+	}
+
+	cases := []struct {
+		name                         string
+		positiveUnion, ttu, negative bool
+		expected                     bool
+	}{
+		// positive = union AND ttu; result = positive AND NOT negative.
+		{"all_false_denies", false, false, false, false},
+		{"union_only_denies", true, false, false, false},
+		{"ttu_only_denies", false, true, false, false},
+		{"positive_satisfied_not_negated_grants", true, true, false, true},
+		{"positive_satisfied_but_negated_denies", true, true, true, false},
+		{"negative_only_denies", false, false, true, false},
+		{"union_and_negative_denies", true, false, true, false},
+		{"ttu_and_negative_denies", false, true, true, false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			exec := w2Executor{boolRow: route(tc.positiveUnion, tc.ttu, tc.negative)}
+			p := w2PlanFor(t, exec, mergedExclusionModel)
+			require.Len(t, p.unit.multi, 3, "merged union + TTU + merged intersect")
+			got, err := p.Execute(context.Background(), nil)
+			require.NoError(t, err)
+			require.Equal(t, tc.expected, got)
+		})
+	}
+}

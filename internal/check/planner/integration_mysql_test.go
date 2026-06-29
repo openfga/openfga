@@ -796,6 +796,19 @@ func TestPlannerIntegrationMySQL_WeightTwoComplexMixed(t *testing.T) {
 	}
 }
 
+// TestPlannerIntegrationMySQL_MergedExclusion drives the merged-region exclusion model end to
+// end against MySQL — the analogue of the Postgres test — proving the three compiled units
+// (merged union, TTU self-join, merged intersect) fold to the correct decision across the
+// model's truth table. Model and cases are shared from integration_pg_test.go.
+func TestPlannerIntegrationMySQL_MergedExclusion(t *testing.T) {
+	env := setupMysqlEnv(t)
+	for _, tc := range mergedExclusionCases(t) {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.expected, env.run(t, tc))
+		})
+	}
+}
+
 // TestPlannerIntegrationMySQL_Conditioned covers the gather path: the plan mentions an ABAC
 // condition, so MySQL only scans candidate tuples and the planner folds the set algebra in
 // process after evaluating CEL. The request context drives the condition result.

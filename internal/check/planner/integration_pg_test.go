@@ -1505,6 +1505,87 @@ func complexWeightTwoMixedCases(t *testing.T) []plannerCase {
 	}
 }
 
+// mergedExclusionCases walks the truth table of the mergedExclusionModel (declared in
+// execute_weight2_test.go, same package and build set):
+//
+//	viewer = (([user] or editor) and owner from parent) but not (blocked and old)
+//
+// The plan compiles to three units in the unitMulti path — a merged UNION region
+// ([user] OR editor), the weight-2 TTU self-join (owner from parent), and a merged INTERSECT
+// region (blocked AND old) — folded in process as positive=(union AND ttu),
+// result=positive AND NOT negative. These cases prove the merged regions return the correct
+// decision when a real database runs their HAVING queries beside the TTU self-join.
+//
+// The tuples are assembled from independent toggles so each case reads as the exact state it
+// seeds: positive is granted only when the parent's owner holds and at least one of
+// direct/editor holds, and the result flips to deny whenever both blocked and old hold. Reused
+// by both the Postgres and MySQL suites.
+func mergedExclusionCases(t *testing.T) []plannerCase {
+	t.Helper()
+
+	// parentLink ties document:1 to folder:f1; ownerGrant makes alice owner of that folder, so
+	// owner_from_parent (the TTU hop) holds only when both are present.
+	parentLink := tuple.NewTupleKey("document:"+objectID, "parent", "folder:f1")
+	ownerGrant := tuple.NewTupleKey("folder:f1", "owner", "user:alice")
+	direct := grant("direct_or_editor") // the [user] arm of the union (document#direct_or_editor)
+	editor := grant("editor")
+	blocked := grant("blocked")
+	old := grant("old")
+
+	tk := func(keys ...*openfgav1.TupleKey) []*openfgav1.TupleKey {
+		return append([]*openfgav1.TupleKey{}, keys...)
+	}
+	mk := func(name string, expected bool, keys ...*openfgav1.TupleKey) plannerCase {
+		return plannerCase{
+			name:       name,
+			model:      mergedExclusionModel,
+			objectType: "document",
+			relation:   "viewer",
+			subject:    "user:alice",
+			tuples:     tk(keys...),
+			expected:   expected,
+		}
+	}
+
+	return []plannerCase{
+		// positive never holds without the TTU owner hop, regardless of the union.
+		mk("nothing_denies", false),
+		mk("union_direct_without_owner_denies", false, direct),
+		mk("union_editor_without_owner_denies", false, editor),
+		mk("owner_without_union_denies", false, parentLink, ownerGrant),
+		mk("parent_without_owner_grant_denies", false, parentLink, direct),
+		mk("owner_grant_without_parent_link_denies", false, ownerGrant, direct),
+
+		// positive holds (owner-from-parent AND a union arm) and negative does not → grant.
+		mk("positive_via_direct_grants", true, parentLink, ownerGrant, direct),
+		mk("positive_via_editor_grants", true, parentLink, ownerGrant, editor),
+		mk("positive_via_both_union_arms_grants", true, parentLink, ownerGrant, direct, editor),
+
+		// negative (blocked AND old) requires BOTH; one alone does not negate.
+		mk("positive_with_blocked_only_grants", true, parentLink, ownerGrant, direct, blocked),
+		mk("positive_with_old_only_grants", true, parentLink, ownerGrant, editor, old),
+
+		// negative fully holds → exclusion denies even though positive is satisfied.
+		mk("positive_but_blocked_and_old_denies", false, parentLink, ownerGrant, direct, blocked, old),
+		mk("positive_editor_but_blocked_and_old_denies", false, parentLink, ownerGrant, editor, blocked, old),
+
+		// negative holds but positive does not → still deny (nothing to negate from).
+		mk("negative_only_denies", false, blocked, old),
+	}
+}
+
+// TestPlannerIntegrationPostgres_MergedExclusion drives the merged-region exclusion model end to
+// end against Postgres, proving the three compiled units (merged union, TTU self-join, merged
+// intersect) fold to the correct decision across the model's truth table.
+func TestPlannerIntegrationPostgres_MergedExclusion(t *testing.T) {
+	env := setupPgEnv(t)
+	for _, tc := range mergedExclusionCases(t) {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.expected, env.run(t, tc))
+		})
+	}
+}
+
 // TestPlannerIntegrationPostgres_Conditioned covers the gather path: the plan mentions an
 // ABAC condition, so Postgres only scans candidate tuples and the planner folds the set
 // algebra in process after evaluating CEL. The request context drives the condition result.
