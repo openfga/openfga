@@ -332,7 +332,7 @@ func TestMySQLDatastore_ReadPageWithUserFiltering(t *testing.T) {
 
 	// Create multiple tuples with same user type for pagination testing
 	var tuples []*openfgav1.TupleKey
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		tuples = append(tuples, &openfgav1.TupleKey{
 			Object:   "doc:group1",
 			Relation: "viewer",

@@ -13,7 +13,7 @@ import (
 
 // PgxQuery interface allows Query that returns pgx.Rows.
 type PgxQuery interface {
-	Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error)
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
 }
 
 // PgxExec interface allows pgx Exec functionality.
@@ -24,14 +24,14 @@ type PgxExec interface {
 // SQLBuilder represents any SQL statement builder that can generate
 // SQL strings with parameterized arguments.
 type SQLBuilder interface {
-	ToSql() (string, []interface{}, error)
+	ToSql() (string, []any, error)
 }
 
 // PgxTxnIterQuery is a helper to run queries using pgxpool when used in sqlcommon iterator.
 type PgxTxnIterQuery struct {
 	txn   PgxQuery
 	query string
-	args  []interface{}
+	args  []any
 }
 
 var _ sqlcommon.SQLIteratorRowGetter = (*PgxTxnIterQuery)(nil)

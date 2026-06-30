@@ -269,7 +269,7 @@ func TestInMemoryCacheController_DetermineInvalidationTime(t *testing.T) {
 
 func generateChanges(object, relation, user string, count int) []*openfgav1.TupleChange {
 	changes := make([]*openfgav1.TupleChange, 0, count)
-	for i := 0; i < count; i++ {
+	for range count {
 		changes = append(changes, &openfgav1.TupleChange{
 			TupleKey: &openfgav1.TupleKey{
 				User:     user,

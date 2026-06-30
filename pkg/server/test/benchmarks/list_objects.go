@@ -47,7 +47,7 @@ func setupListObjectsBenchmark(b *testing.B, ds storage.OpenFGADatastore, storeI
 	require.NoError(b, err)
 
 	numberObjectsAccesible := 0
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		var tuples []*openfgav1.TupleKey
 
 		for j := 0; j < ds.MaxTuplesPerWrite(); j++ {

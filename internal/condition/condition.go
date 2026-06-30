@@ -264,7 +264,7 @@ func (e *EvaluableCondition) Evaluate(
 		}, nil
 	}
 
-	conditionMetVal, err := out.ConvertToNative(reflect.TypeOf(false))
+	conditionMetVal, err := out.ConvertToNative(reflect.TypeFor[bool]())
 	if err != nil {
 		return emptyEvaluationResult, NewEvaluationError(
 			e.Name,

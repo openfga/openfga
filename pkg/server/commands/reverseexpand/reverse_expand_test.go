@@ -112,7 +112,7 @@ func TestReverseExpandRespectsContextCancellation(t *testing.T) {
 	defer mockController.Finish()
 
 	var tuples []*openfgav1.Tuple
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		obj := fmt.Sprintf("document:%s", strconv.Itoa(i))
 		tuples = append(tuples, &openfgav1.Tuple{Key: tuple.NewTupleKey(obj, "viewer", "user:maria")})
 	}
@@ -251,7 +251,7 @@ func TestReverseExpandErrorInTuples(t *testing.T) {
 	defer mockController.Finish()
 
 	var tuples []*openfgav1.Tuple
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		obj := fmt.Sprintf("document:%s", strconv.Itoa(i))
 		tuples = append(tuples, &openfgav1.Tuple{Key: tuple.NewTupleKey(obj, "viewer", "user:maria")})
 	}
@@ -323,7 +323,7 @@ func TestReverseExpandSendsAllErrorsThroughChannel(t *testing.T) {
 
 	mockDatastore := mocks.NewMockSlowDataStorage(memory.New(), 1*time.Second)
 
-	for i := 0; i < 50; i++ {
+	for range 50 {
 		ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(1*time.Nanosecond))
 		t.Cleanup(cancel)
 

@@ -727,7 +727,7 @@ func TestThreeProngThroughVariousLayers(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
 			tupleKeys := []*openfgav1.CheckRequestTupleKey{
 				tuple.NewCheckRequestTupleKey("module:a", "viewer", "user:anne"),
@@ -917,7 +917,7 @@ func TestReleasesConnections(t *testing.T) {
 
 	t.Run("list_objects", func(t *testing.T) {
 		tuples := make([]*openfgav1.TupleKey, 0, numTuples)
-		for i := 0; i < numTuples; i++ {
+		for i := range numTuples {
 			tk := tuple.NewTupleKey(fmt.Sprintf("document:%d", i), "editor", "user:jon")
 
 			tuples = append(tuples, tk)
@@ -953,7 +953,7 @@ func TestReleasesConnections(t *testing.T) {
 
 	t.Run("list_users", func(t *testing.T) {
 		tuples := make([]*openfgav1.TupleKey, 0, numTuples)
-		for i := 0; i < numTuples; i++ {
+		for i := range numTuples {
 			tk := tuple.NewTupleKey("document:1", "editor", fmt.Sprintf("user:%d", i))
 
 			tuples = append(tuples, tk)

@@ -503,7 +503,7 @@ func breakingChangeReason(typesys *typesystem.TypeSystem, tk *openfgav1.CheckReq
 // rewriteContainsComputedUserset reports whether any ComputedUserset leaf in the rewrite
 // tree references the given relation name.
 func rewriteContainsComputedUserset(rewrite *openfgav1.Userset, relation string) bool {
-	result, _ := typesystem.WalkUsersetRewrite(rewrite, func(r *openfgav1.Userset) interface{} {
+	result, _ := typesystem.WalkUsersetRewrite(rewrite, func(r *openfgav1.Userset) any {
 		if cu, ok := r.GetUserset().(*openfgav1.Userset_ComputedUserset); ok && cu.ComputedUserset.GetRelation() == relation {
 			return true
 		}
@@ -516,7 +516,7 @@ func rewriteContainsComputedUserset(rewrite *openfgav1.Userset, relation string)
 // whose computed relation equals the user's relation, where the tupleset relation on the
 // target object type is directly related to the user's object type.
 func rewriteContainsTTUForUser(ts *typesystem.TypeSystem, targetObjectType string, rewrite *openfgav1.Userset, userObjectType, userRelation string) bool {
-	result, _ := typesystem.WalkUsersetRewrite(rewrite, func(r *openfgav1.Userset) interface{} {
+	result, _ := typesystem.WalkUsersetRewrite(rewrite, func(r *openfgav1.Userset) any {
 		ttu, ok := r.GetUserset().(*openfgav1.Userset_TupleToUserset)
 		if !ok || ttu.TupleToUserset.GetComputedUserset().GetRelation() != userRelation {
 			return nil

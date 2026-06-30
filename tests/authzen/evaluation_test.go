@@ -56,7 +56,7 @@ func TestEvaluation(t *testing.T) {
 		})
 
 		// Test within office hours
-		ctx := testutils.MustNewStruct(t, map[string]interface{}{"current_hour": 10})
+		ctx := testutils.MustNewStruct(t, map[string]any{"current_hour": 10})
 		resp, err := tc.authzenClient.Evaluation(context.Background(), &authzenv1.EvaluationRequest{
 			StoreId:  tc.storeID,
 			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
@@ -68,7 +68,7 @@ func TestEvaluation(t *testing.T) {
 		require.True(t, resp.GetDecision())
 
 		// Test outside office hours
-		ctx = testutils.MustNewStruct(t, map[string]interface{}{"current_hour": 22})
+		ctx = testutils.MustNewStruct(t, map[string]any{"current_hour": 22})
 		resp, err = tc.authzenClient.Evaluation(context.Background(), &authzenv1.EvaluationRequest{
 			StoreId:  tc.storeID,
 			Subject:  &authzenv1.Subject{Type: "user", Id: "alice"},
@@ -104,15 +104,15 @@ func TestEvaluation(t *testing.T) {
 			Subject: &authzenv1.Subject{
 				Type:       "user",
 				Id:         "alice",
-				Properties: testutils.MustNewStruct(t, map[string]interface{}{"department": "engineering"}),
+				Properties: testutils.MustNewStruct(t, map[string]any{"department": "engineering"}),
 			},
 			Resource: &authzenv1.Resource{
 				Type:       "document",
 				Id:         "doc1",
-				Properties: testutils.MustNewStruct(t, map[string]interface{}{"department": "engineering"}),
+				Properties: testutils.MustNewStruct(t, map[string]any{"department": "engineering"}),
 			},
 			Action: &authzenv1.Action{Name: "reader"},
-			Context: testutils.MustNewStruct(t, map[string]interface{}{
+			Context: testutils.MustNewStruct(t, map[string]any{
 				"subject_department":  "engineering",
 				"resource_department": "engineering",
 			}),
@@ -126,15 +126,15 @@ func TestEvaluation(t *testing.T) {
 			Subject: &authzenv1.Subject{
 				Type:       "user",
 				Id:         "alice",
-				Properties: testutils.MustNewStruct(t, map[string]interface{}{"department": "engineering"}),
+				Properties: testutils.MustNewStruct(t, map[string]any{"department": "engineering"}),
 			},
 			Resource: &authzenv1.Resource{
 				Type:       "document",
 				Id:         "doc1",
-				Properties: testutils.MustNewStruct(t, map[string]interface{}{"department": "sales"}),
+				Properties: testutils.MustNewStruct(t, map[string]any{"department": "sales"}),
 			},
 			Action: &authzenv1.Action{Name: "reader"},
-			Context: testutils.MustNewStruct(t, map[string]interface{}{
+			Context: testutils.MustNewStruct(t, map[string]any{
 				"subject_department":  "engineering",
 				"resource_department": "sales",
 			}),
@@ -341,7 +341,7 @@ func TestEvaluation(t *testing.T) {
 		})
 
 		// Alice is an admin - should have access regardless of level
-		ctx := testutils.MustNewStruct(t, map[string]interface{}{
+		ctx := testutils.MustNewStruct(t, map[string]any{
 			"user_level":     1,
 			"required_level": 5,
 			"is_admin":       true,
@@ -357,7 +357,7 @@ func TestEvaluation(t *testing.T) {
 		require.True(t, resp.GetDecision())
 
 		// Bob has sufficient level
-		ctx = testutils.MustNewStruct(t, map[string]interface{}{
+		ctx = testutils.MustNewStruct(t, map[string]any{
 			"user_level":     7,
 			"required_level": 5,
 			"is_admin":       false,
@@ -373,7 +373,7 @@ func TestEvaluation(t *testing.T) {
 		require.True(t, resp.GetDecision())
 
 		// Bob with insufficient level
-		ctx = testutils.MustNewStruct(t, map[string]interface{}{
+		ctx = testutils.MustNewStruct(t, map[string]any{
 			"user_level":     3,
 			"required_level": 5,
 			"is_admin":       false,
@@ -415,12 +415,12 @@ func TestEvaluation(t *testing.T) {
 			Subject: &authzenv1.Subject{
 				Type:       "user",
 				Id:         "alice",
-				Properties: testutils.MustNewStruct(t, map[string]interface{}{"department": "engineering"}),
+				Properties: testutils.MustNewStruct(t, map[string]any{"department": "engineering"}),
 			},
 			Resource: &authzenv1.Resource{
 				Type:       "document",
 				Id:         "doc1",
-				Properties: testutils.MustNewStruct(t, map[string]interface{}{"department": "engineering"}),
+				Properties: testutils.MustNewStruct(t, map[string]any{"department": "engineering"}),
 			},
 			Action: &authzenv1.Action{Name: "reader"},
 		})
@@ -433,12 +433,12 @@ func TestEvaluation(t *testing.T) {
 			Subject: &authzenv1.Subject{
 				Type:       "user",
 				Id:         "alice",
-				Properties: testutils.MustNewStruct(t, map[string]interface{}{"department": "engineering"}),
+				Properties: testutils.MustNewStruct(t, map[string]any{"department": "engineering"}),
 			},
 			Resource: &authzenv1.Resource{
 				Type:       "document",
 				Id:         "doc1",
-				Properties: testutils.MustNewStruct(t, map[string]interface{}{"department": "sales"}),
+				Properties: testutils.MustNewStruct(t, map[string]any{"department": "sales"}),
 			},
 			Action: &authzenv1.Action{Name: "reader"},
 		})
@@ -471,11 +471,11 @@ func TestEvaluation(t *testing.T) {
 			Subject: &authzenv1.Subject{
 				Type:       "user",
 				Id:         "alice",
-				Properties: testutils.MustNewStruct(t, map[string]interface{}{"level": 1}),
+				Properties: testutils.MustNewStruct(t, map[string]any{"level": 1}),
 			},
 			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
 			Action:   &authzenv1.Action{Name: "reader"},
-			Context:  testutils.MustNewStruct(t, map[string]interface{}{"subject_level": 10}),
+			Context:  testutils.MustNewStruct(t, map[string]any{"subject_level": 10}),
 		})
 		require.NoError(t, err)
 		require.True(t, resp.GetDecision(), "Expected permit because context overrides properties")
@@ -486,7 +486,7 @@ func TestEvaluation(t *testing.T) {
 			Subject: &authzenv1.Subject{
 				Type:       "user",
 				Id:         "alice",
-				Properties: testutils.MustNewStruct(t, map[string]interface{}{"level": 1}),
+				Properties: testutils.MustNewStruct(t, map[string]any{"level": 1}),
 			},
 			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
 			Action:   &authzenv1.Action{Name: "reader"},
@@ -521,7 +521,7 @@ func TestEvaluation(t *testing.T) {
 			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
 			Action: &authzenv1.Action{
 				Name:       "reader",
-				Properties: testutils.MustNewStruct(t, map[string]interface{}{"method": "GET"}),
+				Properties: testutils.MustNewStruct(t, map[string]any{"method": "GET"}),
 			},
 		})
 		require.NoError(t, err)
@@ -534,7 +534,7 @@ func TestEvaluation(t *testing.T) {
 			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
 			Action: &authzenv1.Action{
 				Name:       "reader",
-				Properties: testutils.MustNewStruct(t, map[string]interface{}{"method": "POST"}),
+				Properties: testutils.MustNewStruct(t, map[string]any{"method": "POST"}),
 			},
 		})
 		require.NoError(t, err)
@@ -566,7 +566,7 @@ func TestEvaluation(t *testing.T) {
 			Subject: &authzenv1.Subject{
 				Type:       "user",
 				Id:         "alice",
-				Properties: testutils.MustNewStruct(t, map[string]interface{}{"roles": []interface{}{"admin", "viewer"}}),
+				Properties: testutils.MustNewStruct(t, map[string]any{"roles": []any{"admin", "viewer"}}),
 			},
 			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
 			Action:   &authzenv1.Action{Name: "reader"},
@@ -580,7 +580,7 @@ func TestEvaluation(t *testing.T) {
 			Subject: &authzenv1.Subject{
 				Type:       "user",
 				Id:         "alice",
-				Properties: testutils.MustNewStruct(t, map[string]interface{}{"roles": []interface{}{"editor"}}),
+				Properties: testutils.MustNewStruct(t, map[string]any{"roles": []any{"editor"}}),
 			},
 			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
 			Action:   &authzenv1.Action{Name: "reader"},
@@ -594,7 +594,7 @@ func TestEvaluation(t *testing.T) {
 			Subject: &authzenv1.Subject{
 				Type:       "user",
 				Id:         "alice",
-				Properties: testutils.MustNewStruct(t, map[string]interface{}{"roles": []interface{}{"viewer", "guest"}}),
+				Properties: testutils.MustNewStruct(t, map[string]any{"roles": []any{"viewer", "guest"}}),
 			},
 			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
 			Action:   &authzenv1.Action{Name: "reader"},
@@ -628,8 +628,8 @@ func TestEvaluation(t *testing.T) {
 			Subject: &authzenv1.Subject{
 				Type: "user",
 				Id:   "alice",
-				Properties: testutils.MustNewStruct(t, map[string]interface{}{
-					"metadata": map[string]interface{}{
+				Properties: testutils.MustNewStruct(t, map[string]any{
+					"metadata": map[string]any{
 						"role":       "admin",
 						"department": "engineering",
 					},
@@ -647,8 +647,8 @@ func TestEvaluation(t *testing.T) {
 			Subject: &authzenv1.Subject{
 				Type: "user",
 				Id:   "alice",
-				Properties: testutils.MustNewStruct(t, map[string]interface{}{
-					"metadata": map[string]interface{}{
+				Properties: testutils.MustNewStruct(t, map[string]any{
+					"metadata": map[string]any{
 						"role":       "viewer",
 						"department": "sales",
 					},
@@ -687,8 +687,8 @@ func TestEvaluation(t *testing.T) {
 			Resource: &authzenv1.Resource{
 				Type: "document",
 				Id:   "doc1",
-				Properties: testutils.MustNewStruct(t, map[string]interface{}{
-					"limits": map[string]interface{}{
+				Properties: testutils.MustNewStruct(t, map[string]any{
+					"limits": map[string]any{
 						"max_views":     float64(50),
 						"max_downloads": float64(10),
 					},
@@ -706,8 +706,8 @@ func TestEvaluation(t *testing.T) {
 			Resource: &authzenv1.Resource{
 				Type: "document",
 				Id:   "doc1",
-				Properties: testutils.MustNewStruct(t, map[string]interface{}{
-					"limits": map[string]interface{}{
+				Properties: testutils.MustNewStruct(t, map[string]any{
+					"limits": map[string]any{
 						"max_views":     float64(200),
 						"max_downloads": float64(10),
 					},
@@ -744,7 +744,7 @@ func TestEvaluation(t *testing.T) {
 			Subject: &authzenv1.Subject{
 				Type:       "user",
 				Id:         "alice",
-				Properties: testutils.MustNewStruct(t, map[string]interface{}{"permissions": []interface{}{"read", "write", "delete"}}),
+				Properties: testutils.MustNewStruct(t, map[string]any{"permissions": []any{"read", "write", "delete"}}),
 			},
 			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
 			Action:   &authzenv1.Action{Name: "reader"},
@@ -758,7 +758,7 @@ func TestEvaluation(t *testing.T) {
 			Subject: &authzenv1.Subject{
 				Type:       "user",
 				Id:         "alice",
-				Properties: testutils.MustNewStruct(t, map[string]interface{}{"permissions": []interface{}{"read"}}),
+				Properties: testutils.MustNewStruct(t, map[string]any{"permissions": []any{"read"}}),
 			},
 			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
 			Action:   &authzenv1.Action{Name: "reader"},
@@ -793,11 +793,11 @@ func TestEvaluation(t *testing.T) {
 			Resource: &authzenv1.Resource{
 				Type:       "server",
 				Id:         "prod-1",
-				Properties: testutils.MustNewStruct(t, map[string]interface{}{"allowed_ports": []interface{}{float64(80), float64(443), float64(8080)}}),
+				Properties: testutils.MustNewStruct(t, map[string]any{"allowed_ports": []any{float64(80), float64(443), float64(8080)}}),
 			},
 			Action: &authzenv1.Action{
 				Name:       "can_connect",
-				Properties: testutils.MustNewStruct(t, map[string]interface{}{"port": float64(443)}),
+				Properties: testutils.MustNewStruct(t, map[string]any{"port": float64(443)}),
 			},
 		})
 		require.NoError(t, err)
@@ -810,11 +810,11 @@ func TestEvaluation(t *testing.T) {
 			Resource: &authzenv1.Resource{
 				Type:       "server",
 				Id:         "prod-1",
-				Properties: testutils.MustNewStruct(t, map[string]interface{}{"allowed_ports": []interface{}{float64(80), float64(443), float64(8080)}}),
+				Properties: testutils.MustNewStruct(t, map[string]any{"allowed_ports": []any{float64(80), float64(443), float64(8080)}}),
 			},
 			Action: &authzenv1.Action{
 				Name:       "can_connect",
-				Properties: testutils.MustNewStruct(t, map[string]interface{}{"port": float64(22)}),
+				Properties: testutils.MustNewStruct(t, map[string]any{"port": float64(22)}),
 			},
 		})
 		require.NoError(t, err)
@@ -846,20 +846,20 @@ func TestEvaluation(t *testing.T) {
 			Subject: &authzenv1.Subject{
 				Type: "user",
 				Id:   "alice",
-				Properties: testutils.MustNewStruct(t, map[string]interface{}{
-					"tags": []interface{}{"vip", "verified"},
+				Properties: testutils.MustNewStruct(t, map[string]any{
+					"tags": []any{"vip", "verified"},
 				}),
 			},
 			Resource: &authzenv1.Resource{
 				Type: "folder",
 				Id:   "shared",
-				Properties: testutils.MustNewStruct(t, map[string]interface{}{
-					"allowed_users": []interface{}{"alice", "bob", "charlie"},
+				Properties: testutils.MustNewStruct(t, map[string]any{
+					"allowed_users": []any{"alice", "bob", "charlie"},
 				}),
 			},
 			Action: &authzenv1.Action{
 				Name: "can_upload",
-				Properties: testutils.MustNewStruct(t, map[string]interface{}{
+				Properties: testutils.MustNewStruct(t, map[string]any{
 					"max_size": float64(10485760),
 				}),
 			},
@@ -873,20 +873,20 @@ func TestEvaluation(t *testing.T) {
 			Subject: &authzenv1.Subject{
 				Type: "user",
 				Id:   "alice",
-				Properties: testutils.MustNewStruct(t, map[string]interface{}{
-					"tags": []interface{}{"vip", "guest"},
+				Properties: testutils.MustNewStruct(t, map[string]any{
+					"tags": []any{"vip", "guest"},
 				}),
 			},
 			Resource: &authzenv1.Resource{
 				Type: "folder",
 				Id:   "shared",
-				Properties: testutils.MustNewStruct(t, map[string]interface{}{
-					"allowed_users": []interface{}{"alice", "bob"},
+				Properties: testutils.MustNewStruct(t, map[string]any{
+					"allowed_users": []any{"alice", "bob"},
 				}),
 			},
 			Action: &authzenv1.Action{
 				Name: "can_upload",
-				Properties: testutils.MustNewStruct(t, map[string]interface{}{
+				Properties: testutils.MustNewStruct(t, map[string]any{
 					"max_size": float64(10485760),
 				}),
 			},
@@ -920,7 +920,7 @@ func TestEvaluation(t *testing.T) {
 			Subject: &authzenv1.Subject{
 				Type:       "user",
 				Id:         "alice",
-				Properties: testutils.MustNewStruct(t, map[string]interface{}{"roles": []interface{}{}}),
+				Properties: testutils.MustNewStruct(t, map[string]any{"roles": []any{}}),
 			},
 			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
 			Action:   &authzenv1.Action{Name: "reader"},
@@ -934,7 +934,7 @@ func TestEvaluation(t *testing.T) {
 			Subject: &authzenv1.Subject{
 				Type:       "user",
 				Id:         "alice",
-				Properties: testutils.MustNewStruct(t, map[string]interface{}{"roles": []interface{}{"admin"}}),
+				Properties: testutils.MustNewStruct(t, map[string]any{"roles": []any{"admin"}}),
 			},
 			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
 			Action:   &authzenv1.Action{Name: "reader"},

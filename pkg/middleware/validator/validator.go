@@ -29,8 +29,8 @@ func RequestIsValidatedFromContext(ctx context.Context) bool {
 func UnaryServerInterceptor() grpc.UnaryServerInterceptor {
 	validator := grpcvalidator.UnaryServerInterceptor()
 
-	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
-		return validator(ctx, req, info, func(ctx context.Context, req interface{}) (interface{}, error) {
+	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
+		return validator(ctx, req, info, func(ctx context.Context, req any) (any, error) {
 			return handler(contextWithRequestIsValidated(ctx), req)
 		})
 	}
@@ -41,8 +41,8 @@ func UnaryServerInterceptor() grpc.UnaryServerInterceptor {
 func StreamServerInterceptor() grpc.StreamServerInterceptor {
 	validator := grpcvalidator.StreamServerInterceptor()
 
-	return func(srv interface{}, stream grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
-		return validator(srv, stream, info, func(srv interface{}, ss grpc.ServerStream) error {
+	return func(srv any, stream grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+		return validator(srv, stream, info, func(srv any, ss grpc.ServerStream) error {
 			return handler(srv, &recvWrapper{
 				ctx:          contextWithRequestIsValidated(stream.Context()),
 				ServerStream: ss,
