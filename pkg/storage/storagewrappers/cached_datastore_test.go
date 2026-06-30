@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/oklog/ulid/v2"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
@@ -1331,7 +1330,6 @@ func TestCachedIterator(t *testing.T) {
 		}
 
 		wg.Go(func() {
-
 			iter.Stop()
 		})
 
@@ -1463,7 +1461,6 @@ func TestCachedIterator(t *testing.T) {
 		}
 
 		wg.Go(func() {
-
 			iter.Stop()
 		})
 
