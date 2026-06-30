@@ -158,3 +158,14 @@ func InvalidRelationTypeError(objectType, relation, relatedObjectType, relatedRe
 
 	return fmt.Errorf("the relation type '%s' on '%s' in object type '%s' is not valid", relationType, relation, objectType)
 }
+
+// InvalidTuplesetRelationTypeRestrictionError returns an error when a tupleset relation
+// includes a userset type restriction (e.g. "company#employee"), which is not allowed.
+// Tupleset relations must only reference direct object types without a relation component.
+func InvalidTuplesetRelationTypeRestrictionError(objectType, relation, relatedObjectType, relatedRelation string) error {
+	relationType := tuple.ToObjectRelationString(relatedObjectType, relatedRelation)
+	return fmt.Errorf(
+		"the '%s#%s' relation is referenced in at least one tupleset and cannot have userset type restrictions; the type restriction '%s' is not valid for a tupleset relation",
+		objectType, relation, relationType,
+	)
+}
