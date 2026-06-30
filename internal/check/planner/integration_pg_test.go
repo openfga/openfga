@@ -1672,3 +1672,63 @@ func TestPlannerIntegrationPostgres_Conditioned(t *testing.T) {
 		})
 	}
 }
+
+// TestPlannerIntegrationPostgres_StaleConditionOnConditionFreeRelation guards a data-integrity
+// edge: a relation declared as plain `[user]` carries no condition, so the plan is condition-free
+// and folds entirely in HAVING. If a conditioned tuple for that relation nonetheless exists in
+// the data — e.g. written while an earlier model still declared the condition, then left stale
+// after the condition was dropped — it must NOT satisfy the Check.
+//
+// The exclusion here is enforced by Postgres, not the executor: the HAVING count atom matches
+// only unconditioned tuples (condition_name IS NULL OR = ''), so a row carrying a condition name
+// contributes NULL to the count and is never counted. This seeds exactly that stale row (a
+// concrete user:alice tuple with condition "is_ok" and a nil context) directly through the
+// datastore, which writes at the storage layer without model validation, and asserts the Check
+// is denied. The control case proves the same model and subject grant on a well-formed
+// unconditioned tuple, so the deny is specific to the stale condition.
+func TestPlannerIntegrationPostgres_StaleConditionOnConditionFreeRelation(t *testing.T) {
+	env := setupPgEnv(t)
+
+	// The model the Check runs against: viewer is plain [user], no condition anywhere, so the
+	// plan is condition-free (unitHaving). The condition "is_ok" exists in the data but not here.
+	const conditionFreeModel = `
+		model
+			schema 1.1
+		type user
+		type document
+			relations
+				define viewer: [user]`
+
+	cases := []plannerCase{
+		{
+			name:       "stale_conditioned_tuple_denied",
+			model:      conditionFreeModel,
+			objectType: "document",
+			relation:   "viewer",
+			subject:    "user:alice",
+			// A tuple that should never exist for a condition-free relation: a concrete subject
+			// carrying a condition name with nil context. The HAVING fold must exclude it.
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKeyWithCondition("document:"+objectID, "viewer", "user:alice", "is_ok", nil),
+			},
+			expected: false,
+		},
+		{
+			name:       "well_formed_unconditioned_tuple_grants",
+			model:      conditionFreeModel,
+			objectType: "document",
+			relation:   "viewer",
+			subject:    "user:alice",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:"+objectID, "viewer", "user:alice"),
+			},
+			expected: true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.expected, env.run(t, tc))
+		})
+	}
+}

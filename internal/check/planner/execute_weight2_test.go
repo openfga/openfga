@@ -3,6 +3,7 @@ package planner
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"strings"
 	"testing"
 
@@ -256,6 +257,47 @@ func TestExecuteW2_ConditionedHop(t *testing.T) {
 		require.NoError(t, err)
 		require.False(t, got)
 	})
+}
+
+// conditionedHopModel is a weight-2 userset hop whose hop-1 edge carries a condition, forcing
+// the join-gather (leafJoinGather) path so the executor evaluates CEL over the joined rows.
+const conditionedHopModel = `
+	model
+		schema 1.1
+	type user
+	type group
+		relations
+			define member: [user]
+	type document
+		relations
+			define viewer: [group#member with cond]
+	condition cond(x: int) {
+		x > 0
+	}`
+
+// TestExecuteW2_JoinGatherEvalError verifies that a CEL error during the conditioned self-join
+// gather surfaces from Execute rather than being swallowed into a deny. The hop-1 condition's
+// evaluator returns an error, so the join-gather fold must fail the whole Check.
+func TestExecuteW2_JoinGatherEvalError(t *testing.T) {
+	row := jRow{intermediateID: "g1", hop1Cond: "cond", hop1CondCtx: []byte("ctx"), hop2Rel: "member", subjectID: "alice"}
+	exec := w2Executor{joinRows: func(string, []any) []jRow { return []jRow{row} }}
+	p := w2PlanFor(t, exec, conditionedHopModel)
+
+	sentinel := errors.New("cel blew up")
+	_, err := p.Execute(context.Background(), evalFunc(func(string, []byte) (bool, error) { return false, sentinel }))
+	require.ErrorIs(t, err, sentinel)
+}
+
+// TestExecuteW2_JoinGatherNilEvaluator verifies the defensive guard on the join-gather path: a
+// joined row carrying a condition with no evaluator supplied must error, not silently deny.
+func TestExecuteW2_JoinGatherNilEvaluator(t *testing.T) {
+	row := jRow{intermediateID: "g1", hop1Cond: "cond", hop1CondCtx: []byte("ctx"), hop2Rel: "member", subjectID: "alice"}
+	exec := w2Executor{joinRows: func(string, []any) []jRow { return []jRow{row} }}
+	p := w2PlanFor(t, exec, conditionedHopModel)
+
+	_, err := p.Execute(context.Background(), nil)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "no evaluator was provided")
 }
 
 // TestExecuteW2_IntersectionMixed covers `viewer: [user] and admin from parent` (a weight-1

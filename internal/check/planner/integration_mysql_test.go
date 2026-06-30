@@ -893,3 +893,50 @@ func TestPlannerIntegrationMySQL_Conditioned(t *testing.T) {
 		})
 	}
 }
+
+// TestPlannerIntegrationMySQL_StaleConditionOnConditionFreeRelation is the MySQL analogue of the
+// Postgres test of the same name: a stale conditioned tuple on a plain `[user]` relation must not
+// satisfy the condition-free (HAVING) plan, because the count atom matches only unconditioned
+// tuples. See the Postgres version for the full rationale.
+func TestPlannerIntegrationMySQL_StaleConditionOnConditionFreeRelation(t *testing.T) {
+	env := setupMysqlEnv(t)
+
+	const conditionFreeModel = `
+		model
+			schema 1.1
+		type user
+		type document
+			relations
+				define viewer: [user]`
+
+	cases := []plannerCase{
+		{
+			name:       "stale_conditioned_tuple_denied",
+			model:      conditionFreeModel,
+			objectType: "document",
+			relation:   "viewer",
+			subject:    "user:alice",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKeyWithCondition("document:"+objectID, "viewer", "user:alice", "is_ok", nil),
+			},
+			expected: false,
+		},
+		{
+			name:       "well_formed_unconditioned_tuple_grants",
+			model:      conditionFreeModel,
+			objectType: "document",
+			relation:   "viewer",
+			subject:    "user:alice",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:"+objectID, "viewer", "user:alice"),
+			},
+			expected: true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.expected, env.run(t, tc))
+		})
+	}
+}

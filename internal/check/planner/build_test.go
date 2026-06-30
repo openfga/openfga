@@ -98,6 +98,29 @@ func TestBuildHavingQuery_Nested(t *testing.T) {
 	require.Contains(t, sql, " THEN ? END) >= ?) AND NOT (COUNT(CASE WHEN ", "outer exclusion subtracts the union")
 }
 
+// TestCombineHaving_EmptyIntersection pins the empty-intersection guard: an intersection with no
+// children folds to constant-false SQL, matching fold and decide. The node is built directly
+// because the normal walk never emits a childless intersection.
+func TestCombineHaving_EmptyIntersection(t *testing.T) {
+	b := adaptertest.New(nil)
+	tup := b.Tuple("t")
+	empty := &CombineNode{Op: CombineIntersect}
+
+	// combineHaving must not panic and must render the constant-false predicate. The
+	// render-only builder parameterizes the literals, so the "1 = 0" sentinel surfaces as a
+	// "? = ?" comparison whose bind args are 1 and 0.
+	pred := combineHaving(b, tup, empty)
+	sql, args := buildSQL(t, b.Select(b.Lit(1)).From(tup).Having(pred))
+	require.Equal(t, "SELECT ? FROM tuple t HAVING ? = ?", sql)
+	require.Equal(t, []any{1, 1, 0}, args, "empty intersection must fold to the constant-false 1 = 0")
+
+	// The three reducers must agree that an empty intersection is false.
+	require.False(t, fold(empty, map[Node]bool{}), "fold of an empty intersection is false")
+	v, known := decide(empty, map[Node]bool{}, map[Node]struct{}{})
+	require.True(t, known, "an empty intersection is decided")
+	require.False(t, v, "decide of an empty intersection is false")
+}
+
 func TestBuildGatherQuery_WorkedExample(t *testing.T) {
 	// super_admin = [user with sudoer] and admin, where admin = [user].
 	leaves := []*QueryNode{

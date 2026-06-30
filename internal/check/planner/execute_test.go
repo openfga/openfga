@@ -3,6 +3,7 @@ package planner
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"strings"
 	"testing"
 
@@ -256,6 +257,157 @@ func TestExecute_GatherWildcard(t *testing.T) {
 	got, err := p.Execute(context.Background(), evalFunc(func(string, []byte) (bool, error) { return false, nil }))
 	require.NoError(t, err)
 	require.True(t, got, "wildcard tuple grants the non-userset subject")
+}
+
+// TestExecute_GatherEvalError verifies that a CEL evaluation error from the gather path
+// surfaces from Execute rather than being swallowed into a (wrong) deny. The conditioned
+// operand's evaluator returns an error, so the per-leaf CEL fold must fail the whole Check.
+func TestExecute_GatherEvalError(t *testing.T) {
+	rows := []gRow{
+		{relation: "viewer", subjectID: "alice", condName: "sudoer", condCtx: []byte("ctx")},
+		{relation: "admin", subjectID: "alice"},
+	}
+	p := planFor(t, rowsFor(rows...), sudoerModel, "account", "user:alice")
+	require.Equal(t, unitGather, p.unit.kind)
+
+	sentinel := errors.New("cel blew up")
+	_, err := p.Execute(context.Background(), evalFunc(func(string, []byte) (bool, error) { return false, sentinel }))
+	require.ErrorIs(t, err, sentinel)
+}
+
+// TestExecute_GatherNilEvaluator verifies the defensive guard for a conditioned tuple with no
+// evaluator supplied: the gather path must error (not silently deny) when a row carries a
+// condition but eval is nil.
+func TestExecute_GatherNilEvaluator(t *testing.T) {
+	rows := []gRow{
+		{relation: "viewer", subjectID: "alice", condName: "sudoer", condCtx: []byte("ctx")},
+		{relation: "admin", subjectID: "alice"},
+	}
+	p := planFor(t, rowsFor(rows...), sudoerModel, "account", "user:alice")
+	require.Equal(t, unitGather, p.unit.kind)
+
+	_, err := p.Execute(context.Background(), nil)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "no evaluator was provided")
+}
+
+// TestExecute_HavingQueryError verifies that a datastore error from a condition-free (unitHaving)
+// plan's single boolean query surfaces from Execute, wrapped, rather than being reported as a
+// clean deny.
+func TestExecute_HavingQueryError(t *testing.T) {
+	sentinel := errors.New("datastore exploded")
+	p := planFor(t, errExecutor{err: sentinel}, unionModel, "document", "user:alice")
+	require.Equal(t, unitHaving, p.unit.kind)
+
+	_, err := p.Execute(context.Background(), nil)
+	require.ErrorIs(t, err, sentinel)
+}
+
+// TestExecute_GatherQueryError verifies that a datastore error from a conditioned (unitGather)
+// plan's scan surfaces from Execute rather than being swallowed.
+func TestExecute_GatherQueryError(t *testing.T) {
+	sentinel := errors.New("datastore exploded")
+	p := planFor(t, errExecutor{err: sentinel}, sudoerModel, "account", "user:alice")
+	require.Equal(t, unitGather, p.unit.kind)
+
+	_, err := p.Execute(context.Background(), evalFunc(func(string, []byte) (bool, error) { return true, nil }))
+	require.ErrorIs(t, err, sentinel)
+}
+
+// TestExecute_StandaloneLeafGatherEvalError covers the standalone conditioned weight-1 leaf
+// gather (the leafGather runLeaf branch for a lone leaf, distinct from a merged region): a CEL
+// error on that leaf must surface from Execute. The model unions a single conditioned direct
+// leaf with a weight-2 hop, so the leaf compiles to its own single-leaf gather beside the join.
+func TestExecute_StandaloneLeafGatherEvalError(t *testing.T) {
+	model := `
+		model
+			schema 1.1
+		type user
+		type group
+			relations
+				define member: [user]
+		type document
+			relations
+				define direct_viewer: [user with cond]
+				define from_group: [group#member]
+				define viewer: direct_viewer or from_group
+		condition cond(x: int) {
+			x > 0
+		}`
+
+	sentinel := errors.New("cel blew up")
+	exec := w2Executor{
+		gatherRows: func(string, []any) []gRow {
+			return []gRow{{relation: "direct_viewer", subjectID: "alice", condName: "cond", condCtx: []byte("c")}}
+		},
+		boolRow: func(string, []any) bool { return false },
+	}
+	p := w2PlanFor(t, exec, model)
+	require.Equal(t, unitMulti, p.unit.kind)
+	// The conditioned direct leaf must be a standalone gather (no sibling to merge with), not a
+	// merged region: assert no unit records subLeaves.
+	for _, lq := range p.unit.multi {
+		require.Nil(t, lq.subLeaves, "the lone conditioned leaf must be a standalone gather, not a merged region")
+	}
+
+	_, err := p.Execute(context.Background(), evalFunc(func(string, []byte) (bool, error) { return false, sentinel }))
+	require.ErrorIs(t, err, sentinel)
+}
+
+// TestExecute_GatherWildcardConditionNotMisattributed guards against malformed data: in
+// `viewer: [user, user:* with isOk]` the condition isOk is declared only on the public-access
+// wildcard assignment, so a concrete-user tuple (user:alice) carrying isOk should never exist.
+// If it somehow does, it must not grant the Check — the conditioned isOk leaf matches only the
+// wildcard subject_id "*", and the unconditioned [user] leaf accepts only unconditioned tuples,
+// so neither leaf attributes the stray row. The gather SQL's WHERE is a superset and does return
+// the row, so this pins the executor's per-leaf attribution as the thing that excludes it. The
+// evaluator returns true throughout, proving the exclusion is structural (subject + condition
+// matching), not a CEL denial — CEL is never consulted for this row.
+func TestExecute_GatherWildcardConditionNotMisattributed(t *testing.T) {
+	model := `
+		model
+			schema 1.1
+		type user
+		type document
+			relations
+				define viewer: [user, user:* with isOk]
+		condition isOk(x: int) {
+			x > 0
+		}`
+	grantAll := evalFunc(func(string, []byte) (bool, error) { return true, nil })
+
+	t.Run("concrete_conditioned_tuple_excluded", func(t *testing.T) {
+		// The malformed row: a concrete subject (alice), the wildcard-only condition isOk, and a
+		// nil context. It must not be attributed to either leaf, so the Check is denied.
+		row := gRow{relation: "viewer", subjectID: "alice", condName: "isOk", condCtx: nil}
+		p := planFor(t, rowsFor(row), model, "document", "user:alice")
+		require.Equal(t, unitGather, p.unit.kind)
+
+		got, err := p.Execute(context.Background(), grantAll)
+		require.NoError(t, err)
+		require.False(t, got, "a concrete-user tuple carrying the wildcard-only condition must not grant")
+	})
+
+	t.Run("legitimate_wildcard_conditioned_grants", func(t *testing.T) {
+		// Control: a well-formed wildcard tuple (subject_id "*") with isOk grants when CEL passes,
+		// proving the model itself can grant this way and the exclusion above is specific.
+		row := gRow{relation: "viewer", subjectID: "*", condName: "isOk", condCtx: nil}
+		p := planFor(t, rowsFor(row), model, "document", "user:alice")
+
+		got, err := p.Execute(context.Background(), grantAll)
+		require.NoError(t, err)
+		require.True(t, got, "a well-formed wildcard tuple with a passing condition grants")
+	})
+
+	t.Run("legitimate_concrete_unconditioned_grants", func(t *testing.T) {
+		// Control: a well-formed concrete tuple ([user], unconditioned) grants regardless of CEL.
+		row := gRow{relation: "viewer", subjectID: "alice", condName: ""}
+		p := planFor(t, rowsFor(row), model, "document", "user:alice")
+
+		got, err := p.Execute(context.Background(), grantAll)
+		require.NoError(t, err)
+		require.True(t, got, "a well-formed unconditioned [user] tuple grants")
+	})
 }
 
 // evalFunc adapts a function to the ConditionEvaluator interface.
