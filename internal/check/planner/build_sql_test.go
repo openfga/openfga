@@ -113,7 +113,7 @@ func TestPlanSQL_DirectHaving(t *testing.T) {
 	// The shared WHERE is pruned to the single referenced relation; the HAVING atom then
 	// re-tests it per leaf.
 	want := "SELECT ? FROM tuple t WHERE " + sharedWhere() + " AND " + relFilter(1) +
-		" HAVING " + countAtom()
+		" GROUP BY t.object_id HAVING " + countAtom()
 	require.Equal(t, want, sql)
 	require.Equal(t, []any{
 		1, "store1", "document", "1", "user", "", "alice", "*", // SELECT 1 + shared WHERE
@@ -128,7 +128,7 @@ func TestPlanSQL_UnionHaving(t *testing.T) {
 	// A union folds to "(atom OR atom)" over the two operand leaves. The relation filter
 	// lists both referenced relations, sorted (editor, viewer).
 	want := "SELECT ? FROM tuple t WHERE " + sharedWhere() + " AND " + relFilter(2) +
-		" HAVING (" + countAtom() + " OR " + countAtom() + ")"
+		" GROUP BY t.object_id HAVING (" + countAtom() + " OR " + countAtom() + ")"
 	require.Equal(t, want, sql)
 	require.Equal(t, []any{
 		1, "store1", "document", "1", "user", "", "alice", "*",
@@ -153,7 +153,7 @@ func TestPlanSQL_IntersectionHaving(t *testing.T) {
 	// An intersection folds to "(atom AND atom)". The relation filter lists both relations,
 	// sorted (editor, viewer).
 	want := "SELECT ? FROM tuple t WHERE " + sharedWhere() + " AND " + relFilter(2) +
-		" HAVING (" + countAtom() + " AND " + countAtom() + ")"
+		" GROUP BY t.object_id HAVING (" + countAtom() + " AND " + countAtom() + ")"
 	require.Equal(t, want, sql)
 	require.Equal(t, []any{
 		1, "store1", "document", "1", "user", "", "alice", "*",
@@ -179,7 +179,7 @@ func TestPlanSQL_ExclusionHaving(t *testing.T) {
 	// subtract leaf's relation (banned): dropping it would force the subtract count to 0 and
 	// silently disable the exclusion. Relations are sorted (banned, viewer).
 	want := "SELECT ? FROM tuple t WHERE " + sharedWhere() + " AND " + relFilter(2) +
-		" HAVING (" + countAtom() + " AND NOT (" + countAtom() + "))"
+		" GROUP BY t.object_id HAVING (" + countAtom() + " AND NOT (" + countAtom() + "))"
 	require.Equal(t, want, sql)
 	require.Equal(t, []any{
 		1, "store1", "document", "1", "user", "", "alice", "*",
@@ -258,7 +258,7 @@ func TestPlanSQL_NestedSetOperationsHaving(t *testing.T) {
 	// All five direct relations are referenced; the filter lists them sorted (already in
 	// direct_a..direct_e order).
 	want := "SELECT ? FROM tuple t WHERE " + sharedWhere() + " AND " + relFilter(5) +
-		" HAVING " + viewer
+		" GROUP BY t.object_id HAVING " + viewer
 	require.Equal(t, want, sql)
 	require.Equal(t, []any{
 		1, "store1", "document", "1", "user", "", "alice", "*",

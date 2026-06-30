@@ -173,12 +173,21 @@ func relationFilter(b adapter.Builder, t adapter.Tuple, root Node) adapter.Predi
 // buildHavingQuery compiles a condition-free plan into one boolean query: the database
 // folds the whole set algebra in HAVING, returning a single row when the Check is granted
 // and no rows otherwise.
+//
+// GROUP BY t.object_id makes the aggregation explicit. The WHERE already pins object_id to
+// the single bound object, so there is exactly one group and the HAVING fold is unchanged on
+// Postgres and MySQL — but those engines also accept a bare HAVING with no GROUP BY (an
+// implicit grand-total aggregation), whereas SQLite rejects it ("HAVING clause on a
+// non-aggregate query"). Naming the group keeps the one emitted query portable across all
+// three engines, matching the explicit GROUP BY buildJoinBoolQuery already uses for the
+// per-object hop-2 fold.
 func buildHavingQuery(b adapter.Builder, bnd bound, root Node) adapter.Query {
 	t := b.Tuple("t")
 	where := append(sharedWherePredicates(b, t, bnd), relationFilter(b, t, root))
 	return b.Select(b.Lit(1)).
 		From(t).
 		Where(where...).
+		GroupBy(t.ObjectID()).
 		Having(combineHaving(b, t, root))
 }
 
