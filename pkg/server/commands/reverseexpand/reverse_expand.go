@@ -250,13 +250,20 @@ func WithLogger(logger logger.Logger) ReverseExpandQueryOption {
 
 // shallowClone creates an identical copy of reverseExpandQuery except
 // candidateObjectsMap as list object candidates need to be validated
-// via check.
+// via check. visitedUsersetsMap and queryDedupeMap are also reset so that
+// concurrent intersection/exclusion traversals do not race on shared state
+// and skip branches they haven't explored yet. queryDedupeMap is
+// intentionally per-branch: sharing it across branches would cause one
+// branch to skip in-flight queries that only delivered results to the
+// other branch's channel, producing incomplete results.
 func (c *ReverseExpandQuery) shallowClone() *ReverseExpandQuery {
 	if c == nil {
 		return nil
 	}
 	copy := *c
 	copy.candidateObjectsMap = new(sync.Map)
+	copy.visitedUsersetsMap = new(sync.Map)
+	copy.queryDedupeMap = new(sync.Map)
 	return &copy
 }
 

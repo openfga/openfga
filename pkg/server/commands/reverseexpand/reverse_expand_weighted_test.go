@@ -3,7 +3,9 @@ package reverseexpand
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
@@ -2939,4 +2941,92 @@ func TestExclusionHandler(t *testing.T) {
 		err = pool.Wait()
 		require.ErrorIs(t, err, errorRet)
 	})
+}
+
+// TestShallowCloneIsolatesSharedMaps guards against a regression where
+// shallowClone shared visitedUsersetsMap and queryDedupeMap with the
+// original query. When intersection/exclusion handlers run the clone and the
+// original concurrently, the goroutine that lost the LoadOrStore race would
+// see the userset as already visited and skip branches it hadn't explored,
+// producing non-deterministic (often empty) results.
+func TestShallowCloneIsolatesSharedMaps(t *testing.T) {
+	ds := memory.New()
+	t.Cleanup(ds.Close)
+
+	// Model with intersection: can_read requires both a direct [user] tuple
+	// and ctx_member on the parent workspace. shallowClone is exercised for
+	// each intersection branch.
+	model := `
+		model
+		  schema 1.1
+		type user
+		type workspace
+		  relations
+		    define ctx_member: [user]
+		type field
+		  relations
+		    define parent_workspace: [workspace]
+		    define can_read: [user] and ctx_member from parent_workspace
+	`
+
+	// Build enough objects that the scheduler will interleave goroutines and
+	// expose a race on visitedUsersetsMap when the clone shares state.
+	const numFields = 20
+	tuples := make([]string, 0, numFields*2+1)
+	expected := make([]string, 0, numFields)
+	for i := 0; i < numFields; i++ {
+		field := fmt.Sprintf("field:%d", i)
+		tuples = append(tuples,
+			fmt.Sprintf("%s#parent_workspace@workspace:w1", field),
+			fmt.Sprintf("%s#can_read@user:alice", field),
+		)
+		expected = append(expected, field)
+	}
+	tuples = append(tuples, "workspace:w1#ctx_member@user:alice")
+
+	storeID, resolvedModel := storagetest.BootstrapFGAStore(t, ds, model, tuples)
+	typesys, err := typesystem.NewAndValidate(context.Background(), resolvedModel)
+	require.NoError(t, err)
+
+	ctx := storage.ContextWithRelationshipTupleReader(context.Background(), ds)
+	ctx = typesystem.ContextWithTypesystem(ctx, typesys)
+
+	// Run many iterations: without the fix, incorrect results appear within
+	// the first handful of runs due to goroutine-scheduling non-determinism.
+	const iterations = 100
+	for iter := 0; iter < iterations; iter++ {
+		resultsChan := make(chan *ReverseExpandResult)
+		errChan := make(chan error, 1)
+
+		go func() {
+			q := NewReverseExpandQuery(ds, typesys, WithListObjectOptimizationsEnabled(true))
+			if execErr := q.Execute(ctx, &ReverseExpandRequest{
+				StoreID:    storeID,
+				ObjectType: "field",
+				Relation:   "can_read",
+				User:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "alice"}},
+			}, resultsChan, NewResolutionMetadata()); execErr != nil {
+				errChan <- execErr
+			}
+		}()
+
+		timeout := time.After(30 * time.Second)
+		var got []string
+	loop:
+		for {
+			select {
+			case res, open := <-resultsChan:
+				if !open {
+					break loop
+				}
+				got = append(got, res.Object)
+			case execErr := <-errChan:
+				require.FailNow(t, "unexpected error", execErr)
+			case <-timeout:
+				require.FailNow(t, "timed out waiting for resultsChan to close")
+			}
+		}
+
+		require.ElementsMatch(t, expected, got, "iteration %d produced wrong results — shallowClone state leak suspected", iter)
+	}
 }
