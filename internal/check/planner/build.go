@@ -28,20 +28,12 @@ type bound struct {
 // per-leaf relation and condition filters are applied above this, in HAVING FILTER atoms
 // or in the gather disjuncts.
 func sharedWherePredicates(b adapter.Builder, t adapter.Tuple, bnd bound) []adapter.Predicate {
-	subjectIDs := []adapter.Expression{b.Lit(bnd.subjectID)}
-	if bnd.subjectRelation == "" {
-		// A non-userset subject can also be granted by the public-access wildcard tuple.
-		subjectIDs = append(subjectIDs, b.Lit(wildcardID))
-	}
-
-	return []adapter.Predicate{
+	preds := []adapter.Predicate{
 		t.Store().Eq(b.Lit(bnd.store)),
 		t.ObjectType().Eq(b.Lit(bnd.objectType)),
 		t.ObjectID().Eq(b.Lit(bnd.objectID)),
-		t.SubjectType().Eq(b.Lit(bnd.subjectType)),
-		t.SubjectRelation().Eq(b.Lit(bnd.subjectRelation)),
-		t.SubjectID().In(subjectIDs...),
 	}
+	return append(preds, subjectBound(b, t, bnd)...)
 }
 
 // subjectBound is the subject portion of sharedWherePredicates for an arbitrary tuple
@@ -119,6 +111,10 @@ func combineHaving(b adapter.Builder, t adapter.Tuple, n Node) adapter.Predicate
 			preds := childHaving(b, t, node.Children)
 			return preds[0].Or(preds[1:]...)
 		case CombineIntersect:
+			if len(node.Children) == 0 {
+				// An empty intersection is false, matching fold and decide.
+				return falsePredicate(b)
+			}
 			preds := childHaving(b, t, node.Children)
 			return preds[0].And(preds[1:]...)
 		case CombineExcept:
