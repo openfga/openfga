@@ -1,18 +1,16 @@
 //go:build docker
 
-// These integration tests are the MySQL analogue of integration_pg_test.go: they drive the
-// planner end to end against a real MySQL database in a test container, proving the SQL the
-// planner emits through the production MySQL adapter (pkg/storage/adapter/mysql) returns
-// correct authorization decisions when MySQL actually runs it.
+// These integration tests are the MySQL analogue of integration_pg_test.go: they drive the planner
+// end to end against a real MySQL database in a test container, proving the SQL the planner emits
+// through the production MySQL adapter (pkg/storage/adapter/mysql) returns correct authorization
+// decisions when MySQL actually runs it.
 //
-// The shared scaffolding — the plannerCase shape, the conditionEvaluator bridge to real CEL,
-// the grant/condGrant helpers, and the nested model fixtures — is declared in
-// integration_pg_test.go (same package, same build tag) and reused verbatim here; this file
-// adds only the MySQL-backed environment and the cases that run against it. The case tables
-// mirror the Postgres suite so both engines walk the same scenarios.
+// The case tables, models, and CEL bridge are engine-agnostic and live in integration_shared_test.go
+// (no build tag); this file adds only the MySQL-backed env and the tests that walk those shared
+// cases, so Postgres, MySQL, and SQLite exercise the same scenarios and must agree.
 //
-// Gated behind the `docker` build tag alongside the rest of the planner integration suite;
-// run with `go test -tags=docker ./internal/check/planner/...`.
+// Gated behind the `docker` build tag alongside the rest of the planner integration suite; run with
+// `go test -tags=docker ./internal/check/planner/...`.
 package planner
 
 import (
@@ -23,15 +21,12 @@ import (
 	"github.com/oklog/ulid/v2"
 	"github.com/stretchr/testify/require"
 
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-
 	"github.com/openfga/openfga/pkg/storage/adapter"
 	mysqladapter "github.com/openfga/openfga/pkg/storage/adapter/mysql"
 	mysqlds "github.com/openfga/openfga/pkg/storage/mysql"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
 	storagefixtures "github.com/openfga/openfga/pkg/testfixtures/storage"
 	"github.com/openfga/openfga/pkg/testutils"
-	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
@@ -44,10 +39,10 @@ type mysqlEnv struct {
 	db      *sql.DB
 }
 
-// setupMysqlEnv boots (or joins) the shared MySQL container and returns an env wired to it.
-// The datastore and adapter handle are closed via t.Cleanup. GetConnectionURI returns a DSN
-// the go-sql-driver/mysql driver accepts directly, so it backs both the datastore and the
-// adapter unchanged.
+// setupMysqlEnv boots (or joins) the shared MySQL container and returns an env wired to it. The
+// datastore and adapter handle are closed via t.Cleanup. GetConnectionURI returns a DSN the
+// go-sql-driver/mysql driver accepts directly, so it backs both the datastore and the adapter
+// unchanged.
 func setupMysqlEnv(t *testing.T) *mysqlEnv {
 	t.Helper()
 
@@ -66,8 +61,8 @@ func setupMysqlEnv(t *testing.T) *mysqlEnv {
 }
 
 // run plans and executes the case against MySQL under a fresh store id (so cases sharing the
-// container's database never collide) and returns the planner's decision. It mirrors
-// pgEnv.run, differing only in the backing datastore and adapter.
+// container's database never collide) and returns the planner's decision. It mirrors pgEnv.run,
+// differing only in the backing datastore and adapter.
 func (e *mysqlEnv) run(t *testing.T, tc plannerCase) bool {
 	t.Helper()
 	ctx := context.Background()
@@ -91,852 +86,88 @@ func (e *mysqlEnv) run(t *testing.T, tc plannerCase) bool {
 	return got
 }
 
-// TestPlannerIntegrationMySQL_ConditionFree covers the HAVING path, where MySQL folds the
-// whole set algebra and a returned row means granted.
+// runCases walks a shared case table against the MySQL env.
+func (e *mysqlEnv) runCases(t *testing.T, cases []plannerCase) {
+	t.Helper()
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.expected, e.run(t, tc))
+		})
+	}
+}
+
+// TestPlannerIntegrationMySQL_ConditionFree covers the HAVING path, where MySQL folds the whole set
+// algebra and a returned row means granted.
 func TestPlannerIntegrationMySQL_ConditionFree(t *testing.T) {
-	env := setupMysqlEnv(t)
-
-	cases := []plannerCase{
-		{
-			name: "direct_grant",
-			model: `
-				model
-					schema 1.1
-				type user
-				type document
-					relations
-						define viewer: [user]`,
-			objectType: "document",
-			relation:   "viewer",
-			subject:    "user:alice",
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("document:"+objectID, "viewer", "user:alice"),
-			},
-			expected: true,
-		},
-		{
-			name: "direct_deny_no_tuple",
-			model: `
-				model
-					schema 1.1
-				type user
-				type document
-					relations
-						define viewer: [user]`,
-			objectType: "document",
-			relation:   "viewer",
-			subject:    "user:alice",
-			expected:   false,
-		},
-		{
-			name: "union_via_operand",
-			model: `
-				model
-					schema 1.1
-				type user
-				type document
-					relations
-						define editor: [user]
-						define viewer: [user] or editor`,
-			objectType: "document",
-			relation:   "viewer",
-			subject:    "user:alice",
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("document:"+objectID, "editor", "user:alice"),
-			},
-			expected: true,
-		},
-		{
-			name: "intersection_both_present",
-			model: `
-				model
-					schema 1.1
-				type user
-				type document
-					relations
-						define author: [user]
-						define owner: [user] and author`,
-			objectType: "document",
-			relation:   "owner",
-			subject:    "user:alice",
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("document:"+objectID, "owner", "user:alice"),
-				tuple.NewTupleKey("document:"+objectID, "author", "user:alice"),
-			},
-			expected: true,
-		},
-		{
-			name: "intersection_missing_operand",
-			model: `
-				model
-					schema 1.1
-				type user
-				type document
-					relations
-						define author: [user]
-						define owner: [user] and author`,
-			objectType: "document",
-			relation:   "owner",
-			subject:    "user:alice",
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("document:"+objectID, "owner", "user:alice"),
-			},
-			expected: false,
-		},
-		{
-			name: "exclusion_grants_when_not_subtracted",
-			model: `
-				model
-					schema 1.1
-				type user
-				type document
-					relations
-						define banned: [user]
-						define viewer: [user] but not banned`,
-			objectType: "document",
-			relation:   "viewer",
-			subject:    "user:alice",
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("document:"+objectID, "viewer", "user:alice"),
-			},
-			expected: true,
-		},
-		{
-			name: "exclusion_denies_when_subtracted",
-			model: `
-				model
-					schema 1.1
-				type user
-				type document
-					relations
-						define banned: [user]
-						define viewer: [user] but not banned`,
-			objectType: "document",
-			relation:   "viewer",
-			subject:    "user:alice",
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("document:"+objectID, "viewer", "user:alice"),
-				tuple.NewTupleKey("document:"+objectID, "banned", "user:alice"),
-			},
-			expected: false,
-		},
-		{
-			name: "wildcard_public_access",
-			model: `
-				model
-					schema 1.1
-				type user
-				type document
-					relations
-						define viewer: [user, user:*]`,
-			objectType: "document",
-			relation:   "viewer",
-			subject:    "user:bob",
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("document:"+objectID, "viewer", "user:*"),
-			},
-			expected: true,
-		},
-		{
-			name: "unreachable_subject_type",
-			model: `
-				model
-					schema 1.1
-				type user
-				type employee
-				type document
-					relations
-						define viewer: [user]`,
-			objectType: "document",
-			relation:   "viewer",
-			subject:    "employee:e1",
-			expected:   false,
-		},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.expected, env.run(t, tc))
-		})
-	}
+	setupMysqlEnv(t).runCases(t, conditionFreeCases(t))
 }
 
-// TestPlannerIntegrationMySQL_NestedConditionFree drives the complex nested tree end to end
-// against MySQL, the integration analogue of TestPlanSQL_NestedSetOperationsHaving. It seeds
-// tuples for representative points in the expression's truth table and asserts the decision
-// MySQL folds out of the HAVING clause.
+// TestPlannerIntegrationMySQL_NestedConditionFree drives the complex nested tree end to end, the
+// integration analogue of TestPlanSQL_NestedSetOperationsHaving.
 func TestPlannerIntegrationMySQL_NestedConditionFree(t *testing.T) {
-	env := setupMysqlEnv(t)
-
-	cases := []plannerCase{
-		{
-			name:       "grant_via_direct_a",
-			model:      nestedModel,
-			objectType: "document",
-			relation:   "viewer",
-			subject:    "user:alice",
-			tuples: []*openfgav1.TupleKey{
-				grant("direct_a"), grant("direct_c"), grant("direct_d"),
-			},
-			expected: true,
-		},
-		{
-			name:       "grant_via_direct_b",
-			model:      nestedModel,
-			objectType: "document",
-			relation:   "viewer",
-			subject:    "user:alice",
-			tuples: []*openfgav1.TupleKey{
-				grant("direct_b"), grant("direct_c"), grant("direct_d"),
-			},
-			expected: true,
-		},
-		{
-			name:       "deny_incomplete_approver",
-			model:      nestedModel,
-			objectType: "document",
-			relation:   "viewer",
-			subject:    "user:alice",
-			tuples: []*openfgav1.TupleKey{
-				grant("direct_a"), grant("direct_c"),
-			},
-			expected: false,
-		},
-		{
-			name:       "deny_empty_editor",
-			model:      nestedModel,
-			objectType: "document",
-			relation:   "viewer",
-			subject:    "user:alice",
-			tuples: []*openfgav1.TupleKey{
-				grant("direct_c"), grant("direct_d"),
-			},
-			expected: false,
-		},
-		{
-			name:       "deny_blocked_by_exclusion",
-			model:      nestedModel,
-			objectType: "document",
-			relation:   "viewer",
-			subject:    "user:alice",
-			tuples: []*openfgav1.TupleKey{
-				grant("direct_a"), grant("direct_b"),
-				grant("direct_c"), grant("direct_d"),
-				grant("direct_e"),
-			},
-			expected: false,
-		},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.expected, env.run(t, tc))
-		})
-	}
+	setupMysqlEnv(t).runCases(t, nestedConditionFreeCases(t))
 }
 
-// TestPlannerIntegrationMySQL_NestedConditioned drives the conditioned nested tree end to end
-// against MySQL, the integration analogue of
-// TestPlanSQL_NestedSetOperationsWithConditionsGather: MySQL only scans the candidate tuples,
-// and the planner folds the set algebra in process after evaluating CEL. Each condition's
-// parameters are stored on the tuple, so the CEL inputs come back from the database and no
-// request context is supplied.
+// TestPlannerIntegrationMySQL_NestedConditioned drives the conditioned nested tree through the
+// gather path, the integration analogue of TestPlanSQL_NestedSetOperationsWithConditionsGather.
 func TestPlannerIntegrationMySQL_NestedConditioned(t *testing.T) {
-	env := setupMysqlEnv(t)
-
-	cases := []plannerCase{
-		{
-			name:       "grant_both_conditions_pass",
-			model:      nestedCondModel,
-			objectType: "document",
-			relation:   "viewer",
-			subject:    "user:alice",
-			tuples: []*openfgav1.TupleKey{
-				condGrant("direct_a", "cond_one", map[string]any{"x": 1}, t),
-				grant("direct_c"),
-				condGrant("direct_d", "cond_two", map[string]any{"y": "ok"}, t),
-			},
-			expected: true,
-		},
-		{
-			name:       "grant_via_unconditioned_direct_b",
-			model:      nestedCondModel,
-			objectType: "document",
-			relation:   "viewer",
-			subject:    "user:alice",
-			tuples: []*openfgav1.TupleKey{
-				condGrant("direct_a", "cond_one", map[string]any{"x": -1}, t),
-				grant("direct_b"),
-				grant("direct_c"),
-				condGrant("direct_d", "cond_two", map[string]any{"y": "ok"}, t),
-			},
-			expected: true,
-		},
-		{
-			name:       "deny_conditioned_approver_operand_fails",
-			model:      nestedCondModel,
-			objectType: "document",
-			relation:   "viewer",
-			subject:    "user:alice",
-			tuples: []*openfgav1.TupleKey{
-				condGrant("direct_a", "cond_one", map[string]any{"x": 1}, t),
-				grant("direct_c"),
-				condGrant("direct_d", "cond_two", map[string]any{"y": "no"}, t),
-			},
-			expected: false,
-		},
-		{
-			name:       "deny_blocked_by_exclusion",
-			model:      nestedCondModel,
-			objectType: "document",
-			relation:   "viewer",
-			subject:    "user:alice",
-			tuples: []*openfgav1.TupleKey{
-				condGrant("direct_a", "cond_one", map[string]any{"x": 1}, t),
-				grant("direct_c"),
-				condGrant("direct_d", "cond_two", map[string]any{"y": "ok"}, t),
-				grant("direct_e"),
-			},
-			expected: false,
-		},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.expected, env.run(t, tc))
-		})
-	}
+	setupMysqlEnv(t).runCases(t, nestedConditionedCases(t))
 }
 
 // TestPlannerIntegrationMySQL_WeightTwo drives weight-2 resolution paths — a single
-// tuple-to-userset or userset hop — end to end against MySQL, proving the emitted self-join
-// SQL returns the decision the two-hop relationship dictates when MySQL runs it.
+// tuple-to-userset or userset hop — end to end against MySQL.
 func TestPlannerIntegrationMySQL_WeightTwo(t *testing.T) {
-	env := setupMysqlEnv(t)
-
-	const ttuModel = `
-		model
-			schema 1.1
-		type user
-		type folder
-			relations
-				define admin: [user]
-		type document
-			relations
-				define parent: [folder]
-				define viewer: admin from parent`
-
-	const usersetModel = `
-		model
-			schema 1.1
-		type user
-		type group
-			relations
-				define member: [user]
-		type document
-			relations
-				define viewer: [group#member]`
-
-	cases := []plannerCase{
-		{
-			name:       "ttu_grant",
-			model:      ttuModel,
-			objectType: "document",
-			relation:   "viewer",
-			subject:    "user:alice",
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("document:"+objectID, "parent", "folder:f1"),
-				tuple.NewTupleKey("folder:f1", "admin", "user:alice"),
-			},
-			expected: true,
-		},
-		{
-			name:       "ttu_deny_no_inner_grant",
-			model:      ttuModel,
-			objectType: "document",
-			relation:   "viewer",
-			subject:    "user:alice",
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("document:"+objectID, "parent", "folder:f1"),
-			},
-			expected: false,
-		},
-		{
-			name:       "userset_grant",
-			model:      usersetModel,
-			objectType: "document",
-			relation:   "viewer",
-			subject:    "user:alice",
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("document:"+objectID, "viewer", "group:g1#member"),
-				tuple.NewTupleKey("group:g1", "member", "user:alice"),
-			},
-			expected: true,
-		},
-		{
-			name:       "userset_deny_not_member",
-			model:      usersetModel,
-			objectType: "document",
-			relation:   "viewer",
-			subject:    "user:alice",
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("document:"+objectID, "viewer", "group:g1#member"),
-				tuple.NewTupleKey("group:g1", "member", "user:bob"),
-			},
-			expected: false,
-		},
-		{
-			name: "mixed_weight_union_grant_via_hop",
-			model: `
-				model
-					schema 1.1
-				type user
-				type group
-					relations
-						define member: [user]
-				type document
-					relations
-						define viewer: [user, group#member]`,
-			objectType: "document",
-			relation:   "viewer",
-			subject:    "user:alice",
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("document:"+objectID, "viewer", "group:g1#member"),
-				tuple.NewTupleKey("group:g1", "member", "user:alice"),
-			},
-			expected: true,
-		},
-		{
-			// Hop-2 intersection satisfied by one folder holding both grants → granted.
-			name: "ttu_hop2_intersection_same_object_grants",
-			model: `
-				model
-					schema 1.1
-				type user
-				type folder
-					relations
-						define admin: [user]
-						define editor: [user]
-						define grant: admin and editor
-				type document
-					relations
-						define parent: [folder]
-						define viewer: grant from parent`,
-			objectType: "document",
-			relation:   "viewer",
-			subject:    "user:alice",
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("document:"+objectID, "parent", "folder:f1"),
-				tuple.NewTupleKey("folder:f1", "admin", "user:alice"),
-				tuple.NewTupleKey("folder:f1", "editor", "user:alice"),
-			},
-			expected: true,
-		},
-		{
-			// Hop-2 intersection operands split across two parent folders → denied.
-			name: "ttu_hop2_intersection_split_objects_denies",
-			model: `
-				model
-					schema 1.1
-				type user
-				type folder
-					relations
-						define admin: [user]
-						define editor: [user]
-						define grant: admin and editor
-				type document
-					relations
-						define parent: [folder]
-						define viewer: grant from parent`,
-			objectType: "document",
-			relation:   "viewer",
-			subject:    "user:alice",
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("document:"+objectID, "parent", "folder:f1"),
-				tuple.NewTupleKey("document:"+objectID, "parent", "folder:f2"),
-				tuple.NewTupleKey("folder:f1", "admin", "user:alice"),
-				tuple.NewTupleKey("folder:f2", "editor", "user:alice"),
-			},
-			expected: false,
-		},
-		{
-			// Hop-2 exclusion: admin and not banned on the parent folder → granted.
-			name: "ttu_hop2_exclusion_grants",
-			model: `
-				model
-					schema 1.1
-				type user
-				type folder
-					relations
-						define admin: [user]
-						define banned: [user]
-						define grant: admin but not banned
-				type document
-					relations
-						define parent: [folder]
-						define viewer: grant from parent`,
-			objectType: "document",
-			relation:   "viewer",
-			subject:    "user:alice",
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("document:"+objectID, "parent", "folder:f1"),
-				tuple.NewTupleKey("folder:f1", "admin", "user:alice"),
-			},
-			expected: true,
-		},
-		{
-			// Same exclusion, subject banned on that folder → denied.
-			name: "ttu_hop2_exclusion_banned_denies",
-			model: `
-				model
-					schema 1.1
-				type user
-				type folder
-					relations
-						define admin: [user]
-						define banned: [user]
-						define grant: admin but not banned
-				type document
-					relations
-						define parent: [folder]
-						define viewer: grant from parent`,
-			objectType: "document",
-			relation:   "viewer",
-			subject:    "user:alice",
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("document:"+objectID, "parent", "folder:f1"),
-				tuple.NewTupleKey("folder:f1", "admin", "user:alice"),
-				tuple.NewTupleKey("folder:f1", "banned", "user:alice"),
-			},
-			expected: false,
-		},
-		{
-			name: "userset_conditioned_hop_grants",
-			model: `
-				model
-					schema 1.1
-				type user
-				type group
-					relations
-						define member: [user]
-				type document
-					relations
-						define viewer: [group#member with non_negative]
-				condition non_negative(x: int) {
-					x >= 0
-				}`,
-			objectType: "document",
-			relation:   "viewer",
-			subject:    "user:alice",
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKeyWithCondition("document:"+objectID, "viewer", "group:g1#member", "non_negative", nil),
-				tuple.NewTupleKey("group:g1", "member", "user:alice"),
-			},
-			requestContext: map[string]any{"x": 1},
-			expected:       true,
-		},
-		{
-			name: "userset_conditioned_hop_denies",
-			model: `
-				model
-					schema 1.1
-				type user
-				type group
-					relations
-						define member: [user]
-				type document
-					relations
-						define viewer: [group#member with non_negative]
-				condition non_negative(x: int) {
-					x >= 0
-				}`,
-			objectType: "document",
-			relation:   "viewer",
-			subject:    "user:alice",
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKeyWithCondition("document:"+objectID, "viewer", "group:g1#member", "non_negative", nil),
-				tuple.NewTupleKey("group:g1", "member", "user:alice"),
-			},
-			requestContext: map[string]any{"x": -1},
-			expected:       false,
-		},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.expected, env.run(t, tc))
-		})
-	}
+	setupMysqlEnv(t).runCases(t, weightTwoCases(t))
 }
 
-// TestPlannerIntegrationMySQL_WeightTwoComplexBothLevels is the MySQL analogue of the
-// Postgres complex-both-levels test: set operations across three weight-2 hops
-// ((from_folder AND from_org) BUT NOT from_blocked) with a hop-2 intersection inside
-// from_folder (admin AND editor on the same folder), run end to end against MySQL.
+// TestPlannerIntegrationMySQL_WeightTwoComplexBothLevels drives set operations across three
+// weight-2 hops with a hop-2 intersection inside from_folder, run end to end against MySQL.
 func TestPlannerIntegrationMySQL_WeightTwoComplexBothLevels(t *testing.T) {
-	env := setupMysqlEnv(t)
-
-	links := []*openfgav1.TupleKey{
-		tuple.NewTupleKey("document:"+objectID, "parent", "folder:f1"),
-		tuple.NewTupleKey("document:"+objectID, "org", "org:o1"),
-		tuple.NewTupleKey("document:"+objectID, "blocked", "folder:b1"),
-	}
-	with := func(extra ...*openfgav1.TupleKey) []*openfgav1.TupleKey {
-		return append(append([]*openfgav1.TupleKey{}, links...), extra...)
-	}
-
-	cases := []plannerCase{
-		{
-			name:       "all_satisfied_not_blocked_grants",
-			model:      complexWeightTwoModel,
-			objectType: "document",
-			relation:   "viewer",
-			subject:    "user:alice",
-			tuples: with(
-				tuple.NewTupleKey("folder:f1", "admin", "user:alice"),
-				tuple.NewTupleKey("folder:f1", "editor", "user:alice"),
-				tuple.NewTupleKey("org:o1", "owner", "user:alice"),
-			),
-			expected: true,
-		},
-		{
-			name:       "hop2_intersection_incomplete_denies",
-			model:      complexWeightTwoModel,
-			objectType: "document",
-			relation:   "viewer",
-			subject:    "user:alice",
-			tuples: with(
-				tuple.NewTupleKey("folder:f1", "admin", "user:alice"),
-				tuple.NewTupleKey("org:o1", "owner", "user:alice"),
-			),
-			expected: false,
-		},
-		{
-			name:       "outer_intersection_missing_org_denies",
-			model:      complexWeightTwoModel,
-			objectType: "document",
-			relation:   "viewer",
-			subject:    "user:alice",
-			tuples: with(
-				tuple.NewTupleKey("folder:f1", "admin", "user:alice"),
-				tuple.NewTupleKey("folder:f1", "editor", "user:alice"),
-			),
-			expected: false,
-		},
-		{
-			name:       "privileged_but_blocked_denies",
-			model:      complexWeightTwoModel,
-			objectType: "document",
-			relation:   "viewer",
-			subject:    "user:alice",
-			tuples: with(
-				tuple.NewTupleKey("folder:f1", "admin", "user:alice"),
-				tuple.NewTupleKey("folder:f1", "editor", "user:alice"),
-				tuple.NewTupleKey("org:o1", "owner", "user:alice"),
-				tuple.NewTupleKey("folder:b1", "editor", "user:alice"),
-			),
-			expected: false,
-		},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.expected, env.run(t, tc))
-		})
-	}
+	setupMysqlEnv(t).runCases(t, weightTwoComplexBothLevelsCases(t))
 }
-
-// The next four tests are the MySQL analogues of the conditioned weight-2 suite that combines a
-// TTU hop and a userset hop with conditions on the left (hop-1 edge), right (hop-2 relation),
-// and both. The fixtures and case tables are declared in integration_pg_test.go and reused
-// verbatim, so both engines walk the same scenarios and must agree.
 
 // TestPlannerIntegrationMySQL_WeightTwoCondLeft drives the LEFT-side conditioned model against
 // MySQL: each hop-1 edge carries a condition, the hop-2 relations do not.
 func TestPlannerIntegrationMySQL_WeightTwoCondLeft(t *testing.T) {
-	env := setupMysqlEnv(t)
-	for _, tc := range weightTwoCondLeftCases(t) {
-		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.expected, env.run(t, tc))
-		})
-	}
+	setupMysqlEnv(t).runCases(t, weightTwoCondLeftCases(t))
 }
 
 // TestPlannerIntegrationMySQL_WeightTwoCondRight drives the RIGHT-side conditioned model against
 // MySQL: the hop-2 relations carry conditions, the hop-1 edges do not.
 func TestPlannerIntegrationMySQL_WeightTwoCondRight(t *testing.T) {
-	env := setupMysqlEnv(t)
-	for _, tc := range weightTwoCondRightCases(t) {
-		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.expected, env.run(t, tc))
-		})
-	}
+	setupMysqlEnv(t).runCases(t, weightTwoCondRightCases(t))
 }
 
 // TestPlannerIntegrationMySQL_WeightTwoCondBoth drives the BOTH-sides conditioned model against
 // MySQL: every traversal carries a condition on its hop-1 edge and its hop-2 relation.
 func TestPlannerIntegrationMySQL_WeightTwoCondBoth(t *testing.T) {
-	env := setupMysqlEnv(t)
-	for _, tc := range weightTwoCondBothCases(t) {
-		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.expected, env.run(t, tc))
-		})
-	}
+	setupMysqlEnv(t).runCases(t, weightTwoCondBothCases(t))
 }
 
-// TestPlannerIntegrationMySQL_WeightTwoComplexMixed drives the combined mixed fixture against
-// MySQL: TTU and userset hops across union/intersection/exclusion with conditions on left,
-// right, and both, plus a hop-2 intersection requiring a single folder.
+// TestPlannerIntegrationMySQL_WeightTwoComplexMixed drives the combined mixed fixture against MySQL:
+// TTU and userset hops across union/intersection/exclusion with conditions on left, right, and both.
 func TestPlannerIntegrationMySQL_WeightTwoComplexMixed(t *testing.T) {
-	env := setupMysqlEnv(t)
-	for _, tc := range complexWeightTwoMixedCases(t) {
-		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.expected, env.run(t, tc))
-		})
-	}
+	setupMysqlEnv(t).runCases(t, complexWeightTwoMixedCases(t))
 }
 
-// TestPlannerIntegrationMySQL_MergedExclusion drives the merged-region exclusion model end to
-// end against MySQL — the analogue of the Postgres test — proving the three compiled units
-// (merged union, TTU self-join, merged intersect) fold to the correct decision across the
-// model's truth table. Model and cases are shared from integration_pg_test.go.
+// TestPlannerIntegrationMySQL_MergedExclusion drives the merged-region exclusion model end to end
+// against MySQL, proving the three compiled units fold to the correct decision across the model's
+// truth table.
 func TestPlannerIntegrationMySQL_MergedExclusion(t *testing.T) {
-	env := setupMysqlEnv(t)
-	for _, tc := range mergedExclusionCases(t) {
-		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.expected, env.run(t, tc))
-		})
-	}
+	setupMysqlEnv(t).runCases(t, mergedExclusionCases(t))
 }
 
 // TestPlannerIntegrationMySQL_Conditioned covers the gather path: the plan mentions an ABAC
-// condition, so MySQL only scans candidate tuples and the planner folds the set algebra in
-// process after evaluating CEL. The request context drives the condition result.
+// condition, so MySQL only scans candidate tuples and the planner folds the set algebra in process
+// after evaluating CEL.
 func TestPlannerIntegrationMySQL_Conditioned(t *testing.T) {
-	env := setupMysqlEnv(t)
-
-	const condModel = `
-		model
-			schema 1.1
-		type user
-		type document
-			relations
-				define viewer: [user with non_negative]
-		condition non_negative(x: int) {
-			x >= 0
-		}`
-
-	cases := []plannerCase{
-		{
-			name:       "condition_passes_grants",
-			model:      condModel,
-			objectType: "document",
-			relation:   "viewer",
-			subject:    "user:alice",
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKeyWithCondition("document:"+objectID, "viewer", "user:alice", "non_negative", nil),
-			},
-			requestContext: map[string]any{"x": 1},
-			expected:       true,
-		},
-		{
-			name:       "condition_fails_denies",
-			model:      condModel,
-			objectType: "document",
-			relation:   "viewer",
-			subject:    "user:alice",
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKeyWithCondition("document:"+objectID, "viewer", "user:alice", "non_negative", nil),
-			},
-			requestContext: map[string]any{"x": -1},
-			expected:       false,
-		},
-		{
-			name:       "condition_context_from_tuple_grants",
-			model:      condModel,
-			objectType: "document",
-			relation:   "viewer",
-			subject:    "user:alice",
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKeyWithCondition("document:"+objectID, "viewer", "user:alice", "non_negative",
-					testutils.MustNewStruct(t, map[string]any{"x": 5})),
-			},
-			expected: true,
-		},
-		{
-			name: "union_conditioned_and_unconditioned_grants_via_unconditioned",
-			model: `
-				model
-					schema 1.1
-				type user
-				type document
-					relations
-						define editor: [user]
-						define viewer: [user with non_negative] or editor
-				condition non_negative(x: int) {
-					x >= 0
-				}`,
-			objectType: "document",
-			relation:   "viewer",
-			subject:    "user:alice",
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("document:"+objectID, "editor", "user:alice"),
-			},
-			requestContext: map[string]any{"x": -1},
-			expected:       true,
-		},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.expected, env.run(t, tc))
-		})
-	}
+	setupMysqlEnv(t).runCases(t, conditionedCases(t))
 }
 
 // TestPlannerIntegrationMySQL_StaleConditionOnConditionFreeRelation is the MySQL analogue of the
 // Postgres test of the same name: a stale conditioned tuple on a plain `[user]` relation must not
 // satisfy the condition-free (HAVING) plan, because the count atom matches only unconditioned
-// tuples. See the Postgres version for the full rationale.
+// tuples.
 func TestPlannerIntegrationMySQL_StaleConditionOnConditionFreeRelation(t *testing.T) {
-	env := setupMysqlEnv(t)
-
-	const conditionFreeModel = `
-		model
-			schema 1.1
-		type user
-		type document
-			relations
-				define viewer: [user]`
-
-	cases := []plannerCase{
-		{
-			name:       "stale_conditioned_tuple_denied",
-			model:      conditionFreeModel,
-			objectType: "document",
-			relation:   "viewer",
-			subject:    "user:alice",
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKeyWithCondition("document:"+objectID, "viewer", "user:alice", "is_ok", nil),
-			},
-			expected: false,
-		},
-		{
-			name:       "well_formed_unconditioned_tuple_grants",
-			model:      conditionFreeModel,
-			objectType: "document",
-			relation:   "viewer",
-			subject:    "user:alice",
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("document:"+objectID, "viewer", "user:alice"),
-			},
-			expected: true,
-		},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.expected, env.run(t, tc))
-		})
-	}
+	setupMysqlEnv(t).runCases(t, staleConditionCases(t))
 }
