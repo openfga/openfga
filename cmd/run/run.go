@@ -238,6 +238,8 @@ func NewRunCommand() *cobra.Command {
 
 	flags.String("log-level", defaultConfig.Log.Level, "the log level to use")
 
+	flags.String("log-request-complete-level", defaultConfig.Log.RequestCompleteLevel, "the log level to use for the per-request 'grpc_req_complete' completion log (e.g. 'debug' to quieten it)")
+
 	flags.String("log-timestamp-format", defaultConfig.Log.TimestampFormat, "the timestamp format to use for log messages")
 
 	flags.Bool("trace-enabled", defaultConfig.Trace.Enabled, "enable tracing")
@@ -598,8 +600,8 @@ func (s *ServerContext) buildServerOpts(ctx context.Context, config *serverconfi
 	serverOpts = append(serverOpts,
 		grpc.ChainUnaryInterceptor(
 			[]grpc.UnaryServerInterceptor{
-				storeid.NewUnaryInterceptor(),           // if available, add store_id to ctxtags
-				logging.NewLoggingInterceptor(s.Logger), // needed to log invalid requests
+				storeid.NewUnaryInterceptor(),                                            // if available, add store_id to ctxtags
+				logging.NewLoggingInterceptor(s.Logger, config.Log.RequestCompleteLevel), // needed to log invalid requests
 				validator.UnaryServerInterceptor(),
 			}...,
 		),
@@ -639,7 +641,7 @@ func (s *ServerContext) buildServerOpts(ctx context.Context, config *serverconfi
 				// The following interceptors wrap the server stream with our own
 				// wrapper and must come last.
 				storeid.NewStreamingInterceptor(),
-				logging.NewStreamingLoggingInterceptor(s.Logger),
+				logging.NewStreamingLoggingInterceptor(s.Logger, config.Log.RequestCompleteLevel),
 			}...,
 		),
 	)

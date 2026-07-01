@@ -11,6 +11,7 @@ import (
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
@@ -41,21 +42,40 @@ const (
 )
 
 // NewLoggingInterceptor creates a new logging interceptor for gRPC unary server requests.
-func NewLoggingInterceptor(logger logger.Logger) grpc.UnaryServerInterceptor {
-	return interceptors.UnaryServerInterceptor(reportable(logger))
+// The requestCompleteLevel is the level used for the per-request "grpc_req_complete"
+// completion log (e.g. "info" or "debug").
+func NewLoggingInterceptor(logger logger.Logger, requestCompleteLevel string) grpc.UnaryServerInterceptor {
+	return interceptors.UnaryServerInterceptor(reportable(logger, requestCompleteLevel))
 }
 
 // NewStreamingLoggingInterceptor creates a new streaming logging interceptor for gRPC stream server requests.
-func NewStreamingLoggingInterceptor(logger logger.Logger) grpc.StreamServerInterceptor {
-	return interceptors.StreamServerInterceptor(reportable(logger))
+// The requestCompleteLevel is the level used for the per-request "grpc_req_complete"
+// completion log (e.g. "info" or "debug").
+func NewStreamingLoggingInterceptor(logger logger.Logger, requestCompleteLevel string) grpc.StreamServerInterceptor {
+	return interceptors.StreamServerInterceptor(reportable(logger, requestCompleteLevel))
 }
 
 type reporter struct {
-	ctx            context.Context
-	logger         logger.Logger
-	fields         []zap.Field
-	protomarshaler protojson.MarshalOptions
-	serviceName    string
+	ctx                  context.Context
+	logger               logger.Logger
+	fields               []zap.Field
+	protomarshaler       protojson.MarshalOptions
+	serviceName          string
+	requestCompleteLevel zapcore.Level
+}
+
+// logRequestComplete writes the grpc_req_complete completion line at the configured level.
+func (r *reporter) logRequestComplete() {
+	switch r.requestCompleteLevel {
+	case zapcore.DebugLevel:
+		r.logger.Debug(grpcReqCompleteKey, r.fields...)
+	case zapcore.WarnLevel:
+		r.logger.Warn(grpcReqCompleteKey, r.fields...)
+	case zapcore.ErrorLevel:
+		r.logger.Error(grpcReqCompleteKey, r.fields...)
+	default:
+		r.logger.Info(grpcReqCompleteKey, r.fields...)
+	}
 }
 
 // PostCall is invoked after all PostMsgSend operations.
@@ -75,7 +95,7 @@ func (r *reporter) PostCall(err error, rpcDuration time.Duration) {
 			r.logger.Error(err.Error(), r.fields...)
 		} else {
 			r.fields = append(r.fields, zap.Error(err))
-			r.logger.Info(grpcReqCompleteKey, r.fields...)
+			r.logRequestComplete()
 		}
 
 		return
@@ -84,7 +104,7 @@ func (r *reporter) PostCall(err error, rpcDuration time.Duration) {
 	if r.serviceName == healthCheckService {
 		r.logger.Debug(grpcReqCompleteKey, r.fields...)
 	} else {
-		r.logger.Info(grpcReqCompleteKey, r.fields...)
+		r.logRequestComplete()
 	}
 }
 
@@ -133,7 +153,8 @@ func userAgentFromContext(ctx context.Context) (string, bool) {
 	return "", false
 }
 
-func reportable(l logger.Logger) interceptors.CommonReportableFunc {
+func reportable(l logger.Logger, requestCompleteLevel string) interceptors.CommonReportableFunc {
+	level := parseLevel(requestCompleteLevel)
 	return func(ctx context.Context, c interceptors.CallMeta) (interceptors.Reporter, context.Context) {
 		fields := []zap.Field{
 			zap.String(grpcServiceKey, c.Service),
@@ -151,11 +172,26 @@ func reportable(l logger.Logger) interceptors.CommonReportableFunc {
 		}
 
 		return &reporter{
-			ctx:            ctx,
-			logger:         l,
-			fields:         fields,
-			protomarshaler: protojson.MarshalOptions{EmitUnpopulated: true},
-			serviceName:    c.Service,
+			ctx:                  ctx,
+			logger:               l,
+			fields:               fields,
+			protomarshaler:       protojson.MarshalOptions{EmitUnpopulated: true},
+			serviceName:          c.Service,
+			requestCompleteLevel: level,
 		}, ctx
+	}
+}
+
+// parseLevel maps a configured level string to a zap level, defaulting to info.
+func parseLevel(level string) zapcore.Level {
+	switch level {
+	case "debug":
+		return zapcore.DebugLevel
+	case "warn":
+		return zapcore.WarnLevel
+	case "error":
+		return zapcore.ErrorLevel
+	default:
+		return zapcore.InfoLevel
 	}
 }

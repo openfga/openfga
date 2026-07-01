@@ -108,6 +108,22 @@ func TestVerifyConfig(t *testing.T) {
 		require.Error(t, err)
 	})
 
+	t.Run("invalid_request_complete_level", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Log.RequestCompleteLevel = "notalevel"
+
+		err := cfg.Verify()
+		require.Error(t, err)
+	})
+
+	t.Run("debug_request_complete_level_is_valid", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Log.RequestCompleteLevel = "debug"
+
+		err := cfg.Verify()
+		require.NoError(t, err)
+	})
+
 	t.Run("invalid_log_timestamp_format", func(t *testing.T) {
 		cfg := DefaultConfig()
 		cfg.Log.TimestampFormat = "notatimestampformat"
