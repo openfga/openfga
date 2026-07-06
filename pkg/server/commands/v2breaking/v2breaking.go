@@ -127,43 +127,31 @@ func ExpandReason(typesys *typesystem.TypeSystem, targetObjectType, targetRelati
 		return ReasonAliasUserset
 	}
 
-	if rewriteContainsAnyComputedUserset(rewrite) {
-		return ReasonComputedUsersetSelfObj
-	}
-
-	if rewriteContainsAnyTTU(rewrite) {
-		return ReasonTTUUserset
+	if reason := computedUsersetOrTTUReason(rewrite); reason != "" {
+		return reason
 	}
 
 	return ""
 }
 
-// rewriteContainsAnyComputedUserset reports whether the rewrite tree contains
-// any ComputedUserset leaf. Used by ExpandReason to detect the
-// computed_userset_self_object shape on Expand — where the v1 tree surfaces
-// the sibling-relation reference as a member of the target.
-func rewriteContainsAnyComputedUserset(rewrite *openfgav1.Userset) bool {
+// computedUsersetOrTTUReason walks the rewrite tree once and returns
+// ReasonComputedUsersetSelfObj if any ComputedUserset leaf is present, or
+// ReasonTTUUserset if any TupleToUserset node is present, or "".
+func computedUsersetOrTTUReason(rewrite *openfgav1.Userset) string {
 	result, _ := typesystem.WalkUsersetRewrite(rewrite, func(r *openfgav1.Userset) interface{} {
-		if _, ok := r.GetUserset().(*openfgav1.Userset_ComputedUserset); ok {
-			return true
+		switch r.GetUserset().(type) {
+		case *openfgav1.Userset_ComputedUserset:
+			return ReasonComputedUsersetSelfObj
+		case *openfgav1.Userset_TupleToUserset:
+			return ReasonTTUUserset
 		}
 		return nil
 	})
-	return result != nil
-}
+	if reason, ok := result.(string); ok {
+		return reason
+	}
 
-// rewriteContainsAnyTTU reports whether the rewrite tree contains any
-// TupleToUserset node. Used by ExpandReason to detect the ttu_userset shape
-// on Expand — where v1 surfaces a TTU leaf naming the tupleset relation in
-// the tree even when no parent tuples exist.
-func rewriteContainsAnyTTU(rewrite *openfgav1.Userset) bool {
-	result, _ := typesystem.WalkUsersetRewrite(rewrite, func(r *openfgav1.Userset) interface{} {
-		if _, ok := r.GetUserset().(*openfgav1.Userset_TupleToUserset); ok {
-			return true
-		}
-		return nil
-	})
-	return result != nil
+	return ""
 }
 
 // anyTypeWildcardReachableUnderDifferenceBase walks every type defined in the
