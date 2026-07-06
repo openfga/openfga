@@ -14,7 +14,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Added diagnostic logging in `Expand` and `ListUsers` when v2 resolution might produce a different result than v1 for the same query. Note that v2 has not been implemented yet for these endpoints; these logs purely add visibility for a future v1 deprecation, and no operator action is required. [#3182](https://github.com/openfga/openfga/pull/3182)
 
 ### Changed
-- Extended experimental `weighted_graph_check` to `BatchCheck`: when the flag is enabled, each item in the batch is evaluated using the weighted graph algorithm, with per-item fallback to the standard algorithm on non-terminal errors. [#3154](https://github.com/openfga/openfga/pull/3154)
+- Extended experimental `weighted_graph_check` to `BatchCheck`: with the flag enabled, each item in the batch is evaluated using the weighted graph algorithm, with per-item fallback to the standard algorithm on non-terminal errors. [#3154](https://github.com/openfga/openfga/pull/3154)
 - Use `proto.MarshalOptions{Deterministic: true}` when serializing authorization models to the `serialized_protobuf` column, ensuring consistent stored bytes within a given OpenFGA version for models with map-keyed type definitions. [#3171](https://github.com/openfga/openfga/pull/3171)
 - The `in_cidr` condition now treats IPv4-mapped IPv6 addresses as their IPv4 equivalents (RFC 4291 §2.5.5.2), so `::ffff:192.168.1.1` matches an IPv4 CIDR such as `192.168.1.0/24`. See `internal/condition/types/ipaddress.go`. [#3181](https://github.com/openfga/openfga/pull/3181)
 
