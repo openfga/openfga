@@ -517,7 +517,7 @@ func walkForWildcardUnderDifference(ts *typesystem.TypeSystem, objectType, relat
 
 // branchAcceptsWildcard walks a Difference's base branch and reports whether
 // userObjectType:* is reachable as a directly-related type of some leaf
-// relation. visited prevents infinite recursion through computed/TTU cycles
+// relation. Visited prevents infinite recursion through computed/TTU cycles
 // and is only updated when crossing a relation edge (ComputedUserset / TTU),
 // not on structural nodes — otherwise Union/Intersection/Difference children
 // that share the parent's (objectType, relation) would short-circuit before
