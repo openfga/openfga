@@ -120,7 +120,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 			span.SetAttributes(attribute.Bool("allowed", res.Allowed))
 
 			// Flag potential v2Check resolution breaking changes for userset requests.
-			// See breakingChangeReason for the scenarios we detect.
+			// See v2breaking.CheckReason for the scenarios we detect.
 			if !res.Allowed && tuple.IsObjectRelation(req.GetTupleKey().GetUser()) {
 				if typesys, err := s.resolveTypesystem(ctx, storeID, req.GetAuthorizationModelId()); err == nil {
 					tk := req.GetTupleKey()

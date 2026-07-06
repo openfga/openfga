@@ -69,8 +69,8 @@ func (s *Server) Expand(ctx context.Context, req *openfgav1.ExpandRequest) (*ope
 	}
 
 	// Flag potential v2 (weighted-graph) resolution breaking changes for this
-	// request shape. Shape predicates may over-report; we additionally confirm
-	// the response tree shows v1 actually walked the divergent path.
+	// request shape. Shape predicates may over-report; where possible we also
+	// confirm the response contains evidence of the v1 behavior.
 	// See v2breaking.ExpandReason / ExpandResponseConfirmsReason.
 	targetObjectType := tuple.GetType(tk.GetObject())
 	if reason := v2breaking.ExpandReason(typesys, targetObjectType, tk.GetRelation()); reason != "" {
