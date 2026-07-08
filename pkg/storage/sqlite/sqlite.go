@@ -700,7 +700,7 @@ func (s *Datastore) ReadUserTuple(ctx context.Context, store string, filter stor
 		Select(
 			"object_type", "object_id", "relation",
 			"user_object_type", "user_object_id", "user_relation",
-			"condition_name", "condition_context",
+			"condition_name", "condition_context", "inserted_at",
 		).
 		From("tuple").
 		Where(sq.Eq{
@@ -728,6 +728,7 @@ func (s *Datastore) ReadUserTuple(ctx context.Context, store string, filter stor
 			&record.UserRelation,
 			&conditionName,
 			&conditionContext,
+			&record.InsertedAt,
 		)
 	if err != nil {
 		return nil, HandleSQLError(err)

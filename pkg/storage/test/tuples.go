@@ -846,6 +846,49 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 
 	t.Run("write_and_delete_many_tuples", WriteTuplesWithMaxTuplesPerWrite(datastore, ctx))
 
+	t.Run("ReadUserTuple_returns_non_empty_timestamp", func(t *testing.T) {
+		storeID := ulid.Make().String()
+		tk := tuple.NewTupleKey("doc:readme", "owner", "user:jon")
+
+		require.NoError(t, datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tk}))
+
+		gotTuple, err := datastore.ReadUserTuple(ctx, storeID, storage.ReadUserTupleFilter{
+			Object:   tk.GetObject(),
+			Relation: tk.GetRelation(),
+			User:     tk.GetUser(),
+		}, storage.ReadUserTupleOptions{})
+		require.NoError(t, err)
+		require.True(t, gotTuple.GetTimestamp().IsValid())
+		require.False(t, gotTuple.GetTimestamp().AsTime().IsZero())
+	})
+
+	t.Run("ReadUsersetTuples_returns_non_empty_timestamp", func(t *testing.T) {
+		storeID := ulid.Make().String()
+		tk := tuple.NewTupleKey("doc:readme", "owner", "group:eng#member")
+
+		require.NoError(t, datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tk}))
+
+		iter, err := datastore.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{
+			Object:   tk.GetObject(),
+			Relation: tk.GetRelation(),
+		}, storage.ReadUsersetTuplesOptions{})
+		require.NoError(t, err)
+		defer iter.Stop()
+
+		var count int
+		for {
+			tp, err := iter.Next(ctx)
+			if err != nil {
+				require.ErrorIs(t, err, storage.ErrIteratorDone)
+				break
+			}
+			require.True(t, tp.GetTimestamp().IsValid())
+			require.False(t, tp.GetTimestamp().AsTime().IsZero())
+			count++
+		}
+		require.Equal(t, 1, count)
+	})
+
 	t.Run("deleting_a_tuple_which_exists_succeeds", func(t *testing.T) {
 		storeID := ulid.Make().String()
 		tk := &openfgav1.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"}
@@ -1862,6 +1905,41 @@ func ReadStartingWithUserTest(t *testing.T, datastore storage.OpenFGADatastore) 
 			storage.ReadStartingWithUserOptions{},
 		)
 		require.NoError(t, err)
+	})
+
+	t.Run("returns_non_empty_timestamp", func(t *testing.T) {
+		storeID := ulid.Make().String()
+
+		err := datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{
+			tuple.NewTupleKey("document:doc1", "viewer", "user:jon"),
+		})
+		require.NoError(t, err)
+
+		iter, err := datastore.ReadStartingWithUser(
+			ctx,
+			storeID,
+			storage.ReadStartingWithUserFilter{
+				ObjectType: "document",
+				Relation:   "viewer",
+				UserFilter: []*openfgav1.ObjectRelation{{Object: "user:jon"}},
+			},
+			storage.ReadStartingWithUserOptions{},
+		)
+		require.NoError(t, err)
+		defer iter.Stop()
+
+		var count int
+		for {
+			tp, err := iter.Next(ctx)
+			if err != nil {
+				require.ErrorIs(t, err, storage.ErrIteratorDone)
+				break
+			}
+			require.True(t, tp.GetTimestamp().IsValid())
+			require.False(t, tp.GetTimestamp().AsTime().IsZero())
+			count++
+		}
+		require.Equal(t, 1, count)
 	})
 
 	t.Run("returns_results_with_two_user_filters", func(t *testing.T) {
