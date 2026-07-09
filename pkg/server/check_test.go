@@ -1143,3 +1143,152 @@ func TestBreakingChangeReason(t *testing.T) {
 		})
 	}
 }
+
+// TestCheck_LogsExclusionShapesOnV2Rejection verifies that when v2Check rejects
+// a request with its wildcard exclusion error (ErrWildcardInvalidRequest) and
+// the caller falls back to v1, the "potential v2 Check resolution breaking
+// changes" log fires with the correct reason field derived from the v2 error.
+func TestCheck_LogsExclusionShapesOnV2Rejection(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	const logMessage = "potential v2 Check resolution breaking changes"
+
+	tests := []struct {
+		name       string
+		modelDSL   string
+		tuples     []*openfgav1.TupleKey
+		user       string
+		wantReason string
+	}{
+		{
+			name: "wildcard_with_exclusion_direct",
+			modelDSL: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define public: [user:*]
+						define blocked: [user]
+						define viewer: public but not blocked
+			`,
+			tuples:     []*openfgav1.TupleKey{tuple.NewTupleKey("document:d1", "public", "user:*")},
+			user:       "user:*",
+			wantReason: v2breaking.ReasonWildcardWithExclusion,
+		},
+		{
+			name: "wildcard_with_exclusion_via_ttu",
+			modelDSL: `
+				model
+					schema 1.1
+				type user
+				type folder
+					relations
+						define blocked: [user]
+						define viewer: [user, user:*] but not blocked
+				type document
+					relations
+						define parent: [folder]
+						define viewer: viewer from parent
+			`,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:d1", "parent", "folder:f1"),
+				tuple.NewTupleKey("folder:f1", "viewer", "user:*"),
+			},
+			user:       "user:*",
+			wantReason: v2breaking.ReasonWildcardWithExclusion,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			core, logs := observer.New(zap.WarnLevel)
+			testLogger := &logger.ZapLogger{Logger: zap.New(core)}
+
+			s, req := setupCheckServer(t, tc.modelDSL, tc.tuples,
+				WithLogger(testLogger),
+				WithFeatureFlagClient(featureflags.NewDefaultClient([]string{serverconfig.ExperimentalWeightedGraphCheck})),
+			)
+
+			req.TupleKey = &openfgav1.CheckRequestTupleKey{
+				Object:   "document:d1",
+				Relation: "viewer",
+				User:     tc.user,
+			}
+
+			_, _ = s.Check(context.Background(), req)
+
+			require.Equal(t, 1, logs.FilterMessage("Weighted graph check failed, falling back").Len(),
+				"expected v2 to have errored and fallen back")
+
+			entries := logs.FilterMessage(logMessage).All()
+			require.Len(t, entries, 1, "expected exactly one breaking-change log")
+			fields := fieldMap(entries[0].Context)
+			require.Equal(t, tc.wantReason, fields["reason"])
+		})
+	}
+}
+
+// TestCheck_LogsExclusionShapesOnV2Fallback verifies that when v2Check fails
+// with a non-terminal error and the request falls back to v1, we still emit
+// the "potential v2 Check resolution breaking changes" log on exclusion shapes.
+//
+// This uses a model that trips ErrInvalidModel in the weighted-graph builder
+// (intersection whose branches reach different terminal types) so v2Check
+// errors out and the v1 path runs.
+func TestCheck_LogsExclusionShapesOnV2Fallback(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	const logMessage = "potential v2 Check resolution breaking changes"
+
+	// The exclusion shape (viewer with a Difference) is nested behind an
+	// intersection with a mixed-terminal-type branch (viewer AND bot_gate).
+	// The weighted graph builder rejects the model outright, so v2Check errors
+	// before it can even inspect the exclusion — forcing the fallback path
+	// where CheckExclusionReason must do the schema walk itself.
+	modelDSL := `
+		model
+			schema 1.1
+		type user
+		type bot
+		type document
+			relations
+				define user_public: [user:*]
+				define user_blocked: [user]
+				define bot_gate: [bot]
+				define viewer: (user_public but not user_blocked) and bot_gate
+	`
+
+	core, logs := observer.New(zap.WarnLevel)
+	testLogger := &logger.ZapLogger{Logger: zap.New(core)}
+
+	s, req := setupCheckServer(t, modelDSL,
+		[]*openfgav1.TupleKey{
+			tuple.NewTupleKey("document:d1", "user_public", "user:*"),
+		},
+		WithLogger(testLogger),
+		WithFeatureFlagClient(featureflags.NewDefaultClient([]string{serverconfig.ExperimentalWeightedGraphCheck})),
+	)
+
+	req.TupleKey = &openfgav1.CheckRequestTupleKey{
+		Object:   "document:d1",
+		Relation: "viewer",
+		User:     "user:alice",
+	}
+
+	// The v1 fallback answer isn't the focus — the log is.
+	_, _ = s.Check(context.Background(), req)
+
+	// Confirm fallback happened.
+	require.Equal(t, 1, logs.FilterMessage("Weighted graph check failed, falling back").Len(),
+		"expected v2 fallback to have occurred")
+
+	entries := logs.FilterMessage(logMessage).All()
+	require.Len(t, entries, 1, "expected exactly one breaking-change log on fallback path")
+	fields := fieldMap(entries[0].Context)
+	require.Equal(t, v2breaking.ReasonWildcardWithExclusion, fields["reason"])
+}

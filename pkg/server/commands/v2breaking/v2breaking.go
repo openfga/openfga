@@ -9,10 +9,12 @@
 package v2breaking
 
 import (
+	"errors"
 	"slices"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
+	"github.com/openfga/openfga/internal/check"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
@@ -72,6 +74,67 @@ func CheckReason(typesys *typesystem.TypeSystem, tk *openfgav1.CheckRequestTuple
 	}
 	if rewriteContainsTTUForUser(typesys, targetObjectType, rewrite, userObjectType, userRelation) {
 		return ReasonTTUUserset
+	}
+	return ""
+}
+
+// CheckReasonFromV2Error maps a v2Check error to a v2-breaking reason when the
+// error is one of the exclusion-shape rejections v2Check emits at request time.
+// Returns "" for any other error (context, throttling, generic failure, etc.).
+//
+// v2Check rejects two exclusion shapes at request time:
+//
+//   - check.ErrWildcardInvalidRequest — a wildcard user reaches a Difference
+//     node (directly or transitively through TTU/ComputedUserset).
+//   - check.ErrUsersetInvalidRequest — a userset user reaches a Difference
+//     node.
+//
+// The v1 fallback path will still produce an answer, so callers should log the
+// reason as a potential-divergence signal alongside the returned v2 error.
+func CheckReasonFromV2Error(err error) string {
+	switch {
+	case errors.Is(err, check.ErrWildcardInvalidRequest):
+		return ReasonWildcardWithExclusion
+	case errors.Is(err, check.ErrUsersetInvalidRequest):
+		return ReasonUsersetWithExclusion
+	}
+	return ""
+}
+
+// CheckExclusionReason returns a non-empty reason string when the Check
+// request's target relation is shaped such that v2 would have rejected the
+// request at request time. Used on the v1 fallback path, where v2Check did
+// not run (or failed before validating request shape) and CheckReasonFromV2Error
+// therefore has no error to map.
+//
+// Detection mirrors ListUsers:
+//
+//   - Userset user + Difference anywhere in the target rewrite → userset_with_exclusion.
+//   - Non-userset user of type T + Difference whose base branch can reach a
+//     T:* wildcard leaf → wildcard_with_exclusion. The reachability walk
+//     crosses ComputedUserset and TupleToUserset edges (see
+//     walkForWildcardUnderDifference), so shapes where the Difference sits
+//     one hop away via TTU are still detected.
+func CheckExclusionReason(typesys *typesystem.TypeSystem, tk *openfgav1.CheckRequestTupleKey) string {
+	targetObjectType := tuple.GetType(tk.GetObject())
+	targetRelation := tk.GetRelation()
+	rel, err := typesys.GetRelation(targetObjectType, targetRelation)
+	if err != nil {
+		return ""
+	}
+	rewrite := rel.GetRewrite()
+
+	if tuple.IsObjectRelation(tk.GetUser()) {
+		if rewriteContainsDifference(rewrite) {
+			return ReasonUsersetWithExclusion
+		}
+		return ""
+	}
+
+	userObject, _ := tuple.SplitObjectRelation(tk.GetUser())
+	userObjectType := tuple.GetType(userObject)
+	if wildcardReachableUnderDifferenceBase(typesys, targetObjectType, targetRelation, rewrite, userObjectType) {
+		return ReasonWildcardWithExclusion
 	}
 	return ""
 }

@@ -66,6 +66,14 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 
 	storeID := req.GetStoreId()
 
+	// v2FellBack tracks whether v2Check ran, errored, and we fell back to v1.
+	// Only in that case does the v1 path need to emit v2-breaking-change logs —
+	// when the flag is off, there is no v2 comparison to signal about.
+	// v2FallbackErr holds the v2Check error so the fallback path can classify
+	// it (e.g. exclusion-shape rejection) without re-walking the schema.
+	var v2FellBack bool
+	var v2FallbackErr error
+
 	if s.featureFlagClient.Boolean(serverconfig.ExperimentalWeightedGraphCheck, storeID) {
 		res, err := s.v2Check(ctx, req, s.sharedDatastoreResources.CheckCache, s.sharedDatastoreResources.CacheController, s.authzModelGraphResolver)
 
@@ -126,7 +134,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 					tk := req.GetTupleKey()
 					if reason := v2breaking.CheckReason(typesys, tk); reason != "" {
 						requestID := requestid.GetRequestIDFromContext(ctx)
-						s.logger.WarnWithContext(ctx, "potential v2 Check resolution breaking change",
+						s.logger.WarnWithContext(ctx, "potential v2 Check resolution breaking changes",
 							zap.String("store_id", storeID),
 							zap.String("model_id", req.GetAuthorizationModelId()),
 							zap.String("request_id", requestID),
@@ -147,6 +155,8 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 			zap.String("request_id", requestID),
 		)
 
+		v2FellBack = true
+		v2FallbackErr = err
 		startTime = time.Now() // reset startTime to avoid counting v2Check duration in case of fallback when it's enabled
 	}
 
@@ -261,6 +271,41 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 
 	res := &openfgav1.CheckResponse{
 		Allowed: resp.Allowed,
+	}
+
+	// If we fell back from v2Check to v1, surface potential resolution
+	// divergences: v2 might have returned a different answer (or rejected the
+	// request outright) for the same input.
+	//
+	// Reason precedence:
+	//  1. If v2Check's error was one of the exclusion-shape rejections, use it
+	//     directly — no schema walk needed and no allowed-gating (v2 rejected
+	//     regardless of the v1 answer).
+	//  2. Otherwise v2 failed for another reason (e.g. weighted-graph build
+	//     failure) and we must inspect the schema ourselves: exclusion shapes
+	//     log unconditionally, per-userset shapes gate on !allowed to match
+	//     the v2-success log path above.
+	if v2FellBack {
+		tk := req.GetTupleKey()
+		requestID := requestid.GetRequestIDFromContext(ctx)
+		logFields := []zap.Field{
+			zap.String("store_id", storeID),
+			zap.String("model_id", req.GetAuthorizationModelId()),
+			zap.String("request_id", requestID),
+		}
+		emit := func(reason string) {
+			s.logger.WarnWithContext(ctx, "potential v2 Check resolution breaking changes",
+				append(logFields, zap.String("reason", reason))...)
+		}
+		if reason := v2breaking.CheckReasonFromV2Error(v2FallbackErr); reason != "" {
+			emit(reason)
+		} else if reason := v2breaking.CheckExclusionReason(typesys, tk); reason != "" {
+			emit(reason)
+		} else if !resp.Allowed && tuple.IsObjectRelation(tk.GetUser()) {
+			if reason := v2breaking.CheckReason(typesys, tk); reason != "" {
+				emit(reason)
+			}
+		}
 	}
 
 	if s.featureFlagClient.Boolean(serverconfig.ExperimentalShadowWeightedGraphCheck, req.GetStoreId()) {
