@@ -499,6 +499,22 @@ func walkForWildcardUnderDifference(ts *typesystem.TypeSystem, objectType, relat
 		if r, err := ts.GetRelation(objectType, nextRel); err == nil {
 			return walkForWildcardUnderDifference(ts, objectType, nextRel, r.GetRewrite(), userObjectType)
 		}
+	case *openfgav1.Userset_TupleToUserset:
+		tuplesetRel := v.TupleToUserset.GetTupleset().GetRelation()
+		computedRel := v.TupleToUserset.GetComputedUserset().GetRelation()
+		directlyRelated, err := ts.GetDirectlyRelatedUserTypes(objectType, tuplesetRel)
+		if err != nil {
+			return false
+		}
+		for _, dr := range directlyRelated {
+			r, err := ts.GetRelation(dr.GetType(), computedRel)
+			if err != nil {
+				continue
+			}
+			if walkForWildcardUnderDifference(ts, dr.GetType(), computedRel, r.GetRewrite(), userObjectType) {
+				return true
+			}
+		}
 	}
 	return false
 }

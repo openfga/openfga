@@ -845,6 +845,30 @@ func TestListUsersBreakingChangeLog(t *testing.T) {
 			wantReason: v2breaking.ReasonWildcardWithExclusion,
 		},
 		{
+			name: "wildcard_with_exclusion_via_ttu",
+			modelDSL: `
+				model
+					schema 1.1
+				type user
+				type folder
+					relations
+						define blocked: [user]
+						define viewer: [user, user:*] but not blocked
+				type document
+					relations
+						define parent: [folder]
+						define viewer: viewer from parent and member
+			`,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:d1", "parent", "folder:f1"),
+				tuple.NewTupleKey("folder:f1", "viewer", "user:*"),
+			},
+			object:     &openfgav1.Object{Type: "document", Id: "d1"},
+			relation:   "viewer",
+			filter:     &openfgav1.UserTypeFilter{Type: "user"},
+			wantReason: v2breaking.ReasonWildcardWithExclusion,
+		},
+		{
 			name: "no_match_alias_userset",
 			modelDSL: `
 				model
