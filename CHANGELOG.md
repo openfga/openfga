@@ -12,6 +12,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Added
 - Added metrics in experimental `weighted_graph_check` for weighted graph edge result caching. [#3184](https://github.com/openfga/openfga/pull/3184)
 - Added diagnostic logging in experimental `weighted_graph_check` when v2 Check resolution might produce a different result than v1 for the same query. These logs surface authorization models that may be affected by a future v1 deprecation, and no operator action is required. [#3149](https://github.com/openfga/openfga/pull/3149)
+- Added diagnostic logging in `Expand` and `ListUsers` when v2 resolution might produce a different result than v1 for the same query. Note that v2 has not been implemented yet for these endpoints; these logs purely add visibility for a future v1 deprecation, and no operator action is required. [#3182](https://github.com/openfga/openfga/pull/3182)
 
 ### Changed
 - Extended experimental `weighted_graph_check` to `BatchCheck`: with the flag enabled, each item in the batch is evaluated using the weighted graph algorithm, with per-item fallback to the standard algorithm on non-terminal errors. [#3154](https://github.com/openfga/openfga/pull/3154)
