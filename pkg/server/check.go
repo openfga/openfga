@@ -134,7 +134,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 					tk := req.GetTupleKey()
 					if reason := v2breaking.CheckReason(typesys, tk); reason != "" {
 						requestID := requestid.GetRequestIDFromContext(ctx)
-						s.logger.WarnWithContext(ctx, "potential v2 Check resolution breaking changes",
+						s.logger.WarnWithContext(ctx, "potential v2 Check resolution breaking change",
 							zap.String("store_id", storeID),
 							zap.String("model_id", req.GetAuthorizationModelId()),
 							zap.String("request_id", requestID),
@@ -294,7 +294,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 			zap.String("request_id", requestID),
 		}
 		emit := func(reason string) {
-			s.logger.WarnWithContext(ctx, "potential v2 Check resolution breaking changes",
+			s.logger.WarnWithContext(ctx, "potential v2 Check resolution breaking change",
 				append(logFields, zap.String("reason", reason))...)
 		}
 		if reason := v2breaking.CheckReasonFromV2Error(v2FallbackErr); reason != "" {
