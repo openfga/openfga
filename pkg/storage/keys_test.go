@@ -715,9 +715,7 @@ func TestCheckCacheKey_ConcurrentUse(t *testing.T) {
 	errs := make(chan keys.Key, goroutines*itersPerG)
 	var wg sync.WaitGroup
 	for range goroutines {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			for range itersPerG {
 				got := CheckCacheKey("store-x", "doc:1", "viewer", "user:alice", 7)
 				if got != want {
@@ -725,7 +723,7 @@ func TestCheckCacheKey_ConcurrentUse(t *testing.T) {
 					return
 				}
 			}
-		}()
+		})
 	}
 	wg.Wait()
 	close(errs)

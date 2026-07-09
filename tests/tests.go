@@ -3,6 +3,7 @@ package tests
 import (
 	"context"
 	"fmt"
+	"slices"
 	"testing"
 
 	"google.golang.org/grpc"
@@ -54,15 +55,12 @@ func StartServerWithContext(t testing.TB, cfg *serverconfig.Config, serverCtx *r
 	grpcPort, grpcPortReleaser := testutils.TCPRandomPort()
 	cfg.GRPC.Addr = fmt.Sprintf("localhost:%d", grpcPort)
 	if cfg.Authzen.BaseURL == "" {
-		for _, exp := range cfg.Experimentals {
-			if exp == serverconfig.ExperimentalAuthZen {
-				scheme := "http"
-				if cfg.HTTP.TLS != nil && cfg.HTTP.TLS.Enabled {
-					scheme = "https"
-				}
-				cfg.Authzen.BaseURL = scheme + "://" + cfg.HTTP.Addr
-				break
+		if slices.Contains(cfg.Experimentals, serverconfig.ExperimentalAuthZen) {
+			scheme := "http"
+			if cfg.HTTP.TLS != nil && cfg.HTTP.TLS.Enabled {
+				scheme = "https"
 			}
+			cfg.Authzen.BaseURL = scheme + "://" + cfg.HTTP.Addr
 		}
 	}
 

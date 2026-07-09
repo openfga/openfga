@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"maps"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -668,7 +669,7 @@ func TestRemoteOidcAuthenticator_RefreshRateLimit(t *testing.T) {
 	hitsBeforeBurst := server.hits()
 
 	// Burst several JWTs with distinct unknown kids in quick succession.
-	for i := 0; i < burst; i++ {
+	for i := range burst {
 		token := generateJWT(privKey, fmt.Sprintf("unknown_kid_%d", i), jwt.MapClaims{
 			"iss": server.server.URL,
 			"aud": "aud",
@@ -709,19 +710,17 @@ func rsaPublicKeyToJWK(kid string, pub *rsa.PublicKey) map[string]string {
 type jwksTestServer struct {
 	mu       sync.Mutex
 	keys     map[string]*rsa.PublicKey
-	jwksHits int32
+	jwksHits atomic.Int32
 	server   *httptest.Server
 }
 
 func newJWKSTestServer(initial map[string]*rsa.PublicKey) *jwksTestServer {
 	j := &jwksTestServer{keys: make(map[string]*rsa.PublicKey)}
-	for k, v := range initial {
-		j.keys[k] = v
-	}
+	maps.Copy(j.keys, initial)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/jwks", func(w http.ResponseWriter, _ *http.Request) {
-		atomic.AddInt32(&j.jwksHits, 1)
+		j.jwksHits.Add(1)
 		j.mu.Lock()
 		defer j.mu.Unlock()
 		jwkList := make([]map[string]string, 0, len(j.keys))
@@ -750,7 +749,7 @@ func (j *jwksTestServer) setKey(kid string, pk *rsa.PublicKey) {
 }
 
 func (j *jwksTestServer) hits() int32 {
-	return atomic.LoadInt32(&j.jwksHits)
+	return j.jwksHits.Load()
 }
 
 func (j *jwksTestServer) close() {

@@ -269,10 +269,7 @@ func (s *MemoryBackend) ReadChanges(ctx context.Context, store string, filter st
 		slices.Reverse(allChanges)
 	}
 
-	to := pageSize
-	if len(allChanges) < to {
-		to = len(allChanges)
-	}
+	to := min(len(allChanges), pageSize)
 	if to == 0 {
 		return nil, "", storage.ErrNotFound
 	}

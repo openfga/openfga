@@ -41,7 +41,7 @@ func TestPlanner_SelectResolver(t *testing.T) {
 
 	// Test probabilistically over multiple runs instead of expecting deterministic behavior
 	counts := make(map[string]int)
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		key := testPlanKey(fmt.Sprintf("test_key_%d", i))
 		kp := p.GetPlanSelector(key)
 		choice := kp.Select(resolvers)
@@ -81,18 +81,18 @@ func TestProfiler_Update(t *testing.T) {
 			Beta:         1,
 		}}
 	// Heavily reward the "fast" strategy
-	for i := 0; i < 150; i++ {
+	for range 150 {
 		kp.UpdateStats(resolvers["fast"], 10*time.Millisecond)
 	}
 	// Heavily penalize the "slow" strategy
-	for i := 0; i < 150; i++ {
+	for range 150 {
 		kp.UpdateStats(resolvers["slow"], 50*time.Millisecond)
 	}
 
 	// After sufficient updates, Thompson sampling should almost always choose the better option.
 	// We test this by seeing if it's chosen a high percentage of the time.
 	counts := make(map[string]int)
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		choice := kp.Select(resolvers)
 		counts[choice.Name]++
 	}

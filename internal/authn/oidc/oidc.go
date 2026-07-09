@@ -169,8 +169,8 @@ func (oidc *RemoteOidcAuthenticator) Authenticate(requestContext context.Context
 	// optional scopes
 	if scopeKey, ok := claims["scope"]; ok {
 		if scope, ok := scopeKey.(string); ok {
-			scopes := strings.Split(scope, " ")
-			for _, s := range scopes {
+			scopes := strings.SplitSeq(scope, " ")
+			for s := range scopes {
 				principal.Scopes[s] = true
 			}
 		}

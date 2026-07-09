@@ -13,15 +13,13 @@ func Drain(ch <-chan *Msg) *sync.WaitGroup {
 	if ch == nil {
 		return wg
 	}
-	wg.Add(1)
-	go func() {
+	wg.Go(func() {
 		for msg := range ch {
 			if msg.Iter != nil {
 				msg.Iter.Stop()
 			}
 		}
-		wg.Done()
-	}()
+	})
 	return wg
 }
 
