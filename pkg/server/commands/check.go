@@ -18,6 +18,7 @@ import (
 	"github.com/openfga/openfga/internal/planner"
 	"github.com/openfga/openfga/internal/shared"
 	"github.com/openfga/openfga/internal/utils"
+	"github.com/openfga/openfga/internal/utils/apimethod"
 	"github.com/openfga/openfga/pkg/logger"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
@@ -164,7 +165,7 @@ func NewCheckQuery(opts ...CheckQueryV2Option) *CheckQueryV2 {
 	q := &CheckQueryV2{
 		logger: logger.NewNoopLogger(),
 		datastoreOp: storagewrappers.Operation{
-			Method:      V2CheckMethodName, // Must be different from base Check to avoid metric pollution when both Check algorithms are running
+			Method:      apimethod.Check,
 			Concurrency: defaultMaxConcurrentReadsForCheck,
 		},
 	}
@@ -241,6 +242,7 @@ func (q *CheckQueryV2) resolve(ctx context.Context, params *CheckCommandParams) 
 			q.sharedResources.SingleflightGroup, // SHARED across requests
 			q.sharedResources.WaitGroup,         // SHARED across requests
 			q.sharedResources.V2IteratorDrainTimeout,
+			storagewrappers.WithMethod(apimethod.Check.String()),
 		)
 	}
 

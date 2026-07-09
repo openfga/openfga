@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/openfga/openfga/internal/utils/apimethod"
 	"go.uber.org/mock/gomock"
 	"golang.org/x/sync/singleflight"
 
@@ -242,7 +243,7 @@ func BenchmarkV1vsV2_CacheMiss_Collection(b *testing.B) {
 
 				iter := newCachingIterator(
 					innerIter, mockCache, testCacheKey("test-key"), size+100, time.Hour, 30*time.Second,
-					sf, wg, "document", "viewer", "ReadUsersetTuples",
+					sf, wg, "document", "viewer", "ReadUsersetTuples", apimethod.Check.String(),
 				)
 
 				for {
@@ -553,7 +554,7 @@ func BenchmarkV1vsV2_EndToEnd(b *testing.B) {
 			innerIter := storage.NewStaticTupleIterator(tuples)
 			cachingIter := newCachingIterator(
 				innerIter, mockCache, testCacheKey("test-key"), size+100, time.Hour, 30*time.Second,
-				sf, wg, "document", "viewer", "ReadUsersetTuples",
+				sf, wg, "document", "viewer", "ReadUsersetTuples", "Check",
 			)
 
 			for {
