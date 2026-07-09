@@ -225,6 +225,32 @@ func TestExpandBreakingChangeLog(t *testing.T) {
 			wantReason: v2breaking.ReasonWildcardWithExclusion,
 		},
 		{
+			// Regression: recursive TTU (folder#parent points back to folder)
+			// combined with an exclusion. Without the visited-set guard in
+			// walkForWildcardUnderDifference, the wildcard reachability walk
+			// would recurse forever through folder#viewer → folder#viewer →
+			// … and crash. The test asserts termination AND that the correct
+			// reason is still logged.
+			name: "wildcard_with_exclusion_recursive_ttu_terminates",
+			modelDSL: `
+				model
+					schema 1.1
+				type user
+				type folder
+					relations
+						define parent: [folder]
+						define blocked: [user]
+						define local_viewer: [user, user:*]
+						define viewer: (local_viewer or viewer from parent) but not blocked
+			`,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("folder:f1", "local_viewer", "user:*"),
+			},
+			object:     "folder:f1",
+			relation:   "viewer",
+			wantReason: v2breaking.ReasonWildcardWithExclusion,
+		},
+		{
 			name: "no_match_alias_userset",
 			modelDSL: `
 				model

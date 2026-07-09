@@ -466,10 +466,18 @@ func rewriteContainsDifference(rewrite *openfgav1.Userset) bool {
 // related user types include userObjectType:*. This is a necessary condition
 // only — it may over-report.
 func wildcardReachableUnderDifferenceBase(ts *typesystem.TypeSystem, targetObjectType, relation string, rewrite *openfgav1.Userset, userObjectType string) bool {
-	return walkForWildcardUnderDifference(ts, targetObjectType, relation, rewrite, userObjectType)
+	return walkForWildcardUnderDifference(ts, targetObjectType, relation, rewrite, userObjectType, map[string]struct{}{})
 }
 
-func walkForWildcardUnderDifference(ts *typesystem.TypeSystem, objectType, relation string, rewrite *openfgav1.Userset, userObjectType string) bool {
+// walkForWildcardUnderDifference searches for a Difference node whose base
+// branch can accept userObjectType:*. Visited prevents infinite recursion
+// through computed/TTU cycles (e.g. recursive `viewer from parent` where
+// parent points back to the same type) and mirrors the guard in
+// branchAcceptsWildcard: it is only updated when crossing a relation edge
+// (ComputedUserset / TTU), not on structural nodes — otherwise
+// Union/Intersection/Difference children that share the parent's
+// (objectType, relation) would short-circuit before being evaluated.
+func walkForWildcardUnderDifference(ts *typesystem.TypeSystem, objectType, relation string, rewrite *openfgav1.Userset, userObjectType string, visited map[string]struct{}) bool {
 	if rewrite == nil {
 		return false
 	}
@@ -480,25 +488,32 @@ func walkForWildcardUnderDifference(ts *typesystem.TypeSystem, objectType, relat
 		}
 		// A Difference may itself be nested inside another Difference's base;
 		// keep walking for outer occurrences.
-		return walkForWildcardUnderDifference(ts, objectType, relation, v.Difference.GetBase(), userObjectType) ||
-			walkForWildcardUnderDifference(ts, objectType, relation, v.Difference.GetSubtract(), userObjectType)
+		return walkForWildcardUnderDifference(ts, objectType, relation, v.Difference.GetBase(), userObjectType, visited) ||
+			walkForWildcardUnderDifference(ts, objectType, relation, v.Difference.GetSubtract(), userObjectType, visited)
 	case *openfgav1.Userset_Union:
 		for _, c := range v.Union.GetChild() {
-			if walkForWildcardUnderDifference(ts, objectType, relation, c, userObjectType) {
+			if walkForWildcardUnderDifference(ts, objectType, relation, c, userObjectType, visited) {
 				return true
 			}
 		}
 	case *openfgav1.Userset_Intersection:
 		for _, c := range v.Intersection.GetChild() {
-			if walkForWildcardUnderDifference(ts, objectType, relation, c, userObjectType) {
+			if walkForWildcardUnderDifference(ts, objectType, relation, c, userObjectType, visited) {
 				return true
 			}
 		}
 	case *openfgav1.Userset_ComputedUserset:
 		nextRel := v.ComputedUserset.GetRelation()
-		if r, err := ts.GetRelation(objectType, nextRel); err == nil {
-			return walkForWildcardUnderDifference(ts, objectType, nextRel, r.GetRewrite(), userObjectType)
+		key := objectType + "#" + nextRel
+		if _, ok := visited[key]; ok {
+			return false
 		}
+		r, err := ts.GetRelation(objectType, nextRel)
+		if err != nil {
+			return false
+		}
+		visited[key] = struct{}{}
+		return walkForWildcardUnderDifference(ts, objectType, nextRel, r.GetRewrite(), userObjectType, visited)
 	case *openfgav1.Userset_TupleToUserset:
 		tuplesetRel := v.TupleToUserset.GetTupleset().GetRelation()
 		computedRel := v.TupleToUserset.GetComputedUserset().GetRelation()
@@ -507,11 +522,16 @@ func walkForWildcardUnderDifference(ts *typesystem.TypeSystem, objectType, relat
 			return false
 		}
 		for _, dr := range directlyRelated {
+			key := dr.GetType() + "#" + computedRel
+			if _, ok := visited[key]; ok {
+				continue
+			}
 			r, err := ts.GetRelation(dr.GetType(), computedRel)
 			if err != nil {
 				continue
 			}
-			if walkForWildcardUnderDifference(ts, dr.GetType(), computedRel, r.GetRewrite(), userObjectType) {
+			visited[key] = struct{}{}
+			if walkForWildcardUnderDifference(ts, dr.GetType(), computedRel, r.GetRewrite(), userObjectType, visited) {
 				return true
 			}
 		}

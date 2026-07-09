@@ -857,13 +857,39 @@ func TestListUsersBreakingChangeLog(t *testing.T) {
 				type document
 					relations
 						define parent: [folder]
-						define viewer: viewer from parent and member
+						define viewer: viewer from parent
 			`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:d1", "parent", "folder:f1"),
 				tuple.NewTupleKey("folder:f1", "viewer", "user:*"),
 			},
 			object:     &openfgav1.Object{Type: "document", Id: "d1"},
+			relation:   "viewer",
+			filter:     &openfgav1.UserTypeFilter{Type: "user"},
+			wantReason: v2breaking.ReasonWildcardWithExclusion,
+		},
+		{
+			// Regression: recursive TTU (folder#parent points to folder) used
+			// to cause unbounded recursion in walkForWildcardUnderDifference
+			// when the target rewrite already contains a Difference. The
+			// visited-set guard must terminate the walk while still returning
+			// the correct reason.
+			name: "wildcard_with_exclusion_recursive_ttu_terminates",
+			modelDSL: `
+				model
+					schema 1.1
+				type user
+				type folder
+					relations
+						define parent: [folder]
+						define blocked: [user]
+						define local_viewer: [user, user:*]
+						define viewer: (local_viewer or viewer from parent) but not blocked
+			`,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("folder:f1", "local_viewer", "user:*"),
+			},
+			object:     &openfgav1.Object{Type: "folder", Id: "f1"},
 			relation:   "viewer",
 			filter:     &openfgav1.UserTypeFilter{Type: "user"},
 			wantReason: v2breaking.ReasonWildcardWithExclusion,
