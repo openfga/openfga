@@ -7,13 +7,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openfga/openfga/internal/utils/apimethod"
 	"go.uber.org/mock/gomock"
 	"golang.org/x/sync/singleflight"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/mocks"
+	"github.com/openfga/openfga/internal/utils/apimethod"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/cache/keys"
@@ -554,7 +554,7 @@ func BenchmarkV1vsV2_EndToEnd(b *testing.B) {
 			innerIter := storage.NewStaticTupleIterator(tuples)
 			cachingIter := newCachingIterator(
 				innerIter, mockCache, testCacheKey("test-key"), size+100, time.Hour, 30*time.Second,
-				sf, wg, "document", "viewer", "ReadUsersetTuples", "Check",
+				sf, wg, "document", "viewer", "ReadUsersetTuples", apimethod.Check.String(),
 			)
 
 			for {
