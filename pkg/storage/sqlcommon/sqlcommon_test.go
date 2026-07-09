@@ -131,7 +131,7 @@ func TestGetDeleteWriteChangelogItems_OperationIsInt32(t *testing.T) {
 
 		opVal := changeLogItems[0][changelogOperationIndex]
 
-		assert.Equal(t, reflect.TypeOf(int32(0)), reflect.TypeOf(opVal),
+		assert.Equal(t, reflect.TypeFor[int32](), reflect.TypeOf(opVal),
 			"operation value must be int32, got %T", opVal)
 		assert.Equal(t, int32(openfgav1.TupleOperation_TUPLE_OPERATION_WRITE), opVal)
 	})
@@ -162,7 +162,7 @@ func TestGetDeleteWriteChangelogItems_OperationIsInt32(t *testing.T) {
 
 		opVal := changeLogItems[0][changelogOperationIndex]
 
-		assert.Equal(t, reflect.TypeOf(int32(0)), reflect.TypeOf(opVal),
+		assert.Equal(t, reflect.TypeFor[int32](), reflect.TypeOf(opVal),
 			"operation value must be int32, got %T", opVal)
 		assert.Equal(t, int32(openfgav1.TupleOperation_TUPLE_OPERATION_DELETE), opVal)
 	})
@@ -194,7 +194,7 @@ func TestGetDeleteWriteChangelogItems_OperationIsInt32(t *testing.T) {
 
 		for i, item := range changeLogItems {
 			opVal := item[changelogOperationIndex]
-			assert.Equal(t, reflect.TypeOf(int32(0)), reflect.TypeOf(opVal),
+			assert.Equal(t, reflect.TypeFor[int32](), reflect.TypeOf(opVal),
 				"changeLogItems[%d] operation must be int32, got %T", i, opVal)
 
 			intVal, ok := opVal.(int32)
@@ -252,7 +252,7 @@ func sqlIterQuerySampleCount(t *testing.T, successVal string) uint64 {
 }
 
 // identityErrHandler passes errors through unchanged (no translation).
-func identityErrHandler(err error, _ ...interface{}) error { return err }
+func identityErrHandler(err error, _ ...any) error { return err }
 
 func TestFetchBufferMetric(t *testing.T) {
 	t.Run("success_records_true_label", func(t *testing.T) {
@@ -274,7 +274,7 @@ func TestFetchBufferMetric(t *testing.T) {
 
 	t.Run("not_found_error_records_true_label", func(t *testing.T) {
 		// errHandler translates the raw error to the storage sentinel, as real backends do.
-		notFoundHandler := func(err error, _ ...interface{}) error { return storage.ErrNotFound }
+		notFoundHandler := func(err error, _ ...any) error { return storage.ErrNotFound }
 		iter := NewSQLTupleIterator(&stubRowGetter{err: errors.New("no rows")}, notFoundHandler)
 		before := sqlIterQuerySampleCount(t, "true")
 		err := iter.fetchBuffer(context.Background())

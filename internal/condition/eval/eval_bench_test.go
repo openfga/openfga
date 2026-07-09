@@ -16,9 +16,9 @@ import (
 // makeTupleKeyWithExpr returns a TupleKey whose $expression condition uses exprStr
 // with one string parameter named "channel".
 func makeTupleKeyWithExpr(object, user, exprStr string) *openfgav1.TupleKey {
-	ctx, _ := structpb.NewStruct(map[string]interface{}{
+	ctx, _ := structpb.NewStruct(map[string]any{
 		"expression": exprStr,
-		"parameters": map[string]interface{}{"channel": "string"},
+		"parameters": map[string]any{"channel": "string"},
 	})
 	return &openfgav1.TupleKey{
 		Object:   object,
@@ -37,7 +37,7 @@ func BenchmarkEvaluateInlineExpression_Repeated(b *testing.B) {
 	const repeats = 1000
 
 	tk := makeTupleKeyWithExpr("document:1", "user:alice", "channel == 'X123'")
-	reqCtx, _ := structpb.NewStruct(map[string]interface{}{"channel": "X123"})
+	reqCtx, _ := structpb.NewStruct(map[string]any{"channel": "X123"})
 	ctx := context.Background()
 
 	for b.Loop() {
@@ -61,7 +61,7 @@ func BenchmarkEvaluateInlineExpression_Distinct(b *testing.B) {
 		)
 	}
 
-	reqCtx, _ := structpb.NewStruct(map[string]interface{}{"channel": "X0"})
+	reqCtx, _ := structpb.NewStruct(map[string]any{"channel": "X0"})
 	ctx := context.Background()
 
 	for b.Loop() {

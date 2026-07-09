@@ -299,8 +299,7 @@ func (c *ReverseExpandQuery) loopOverEdges(
 	// For more detail, see here: https://openfga.dev/api/service#/Relationship%20Queries/ListObjects
 	err := pool.Wait()
 	if err != nil {
-		var executionError *ExecutionError
-		if errors.As(err, &executionError) {
+		if executionError, ok := errors.AsType[*ExecutionError](err); ok {
 			if errors.Is(executionError.cause, context.Canceled) || errors.Is(executionError.cause, context.DeadlineExceeded) {
 				return nil
 			}
