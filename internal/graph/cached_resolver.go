@@ -10,7 +10,7 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
-	"github.com/openfga/openfga/internal/checkmetrics"
+	"github.com/openfga/openfga/internal/check/metrics"
 	"github.com/openfga/openfga/internal/telemetry"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
@@ -151,7 +151,7 @@ func (c *CachedCheckResolver) ResolveCheck(
 	tryCache := req.Consistency != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY
 
 	if tryCache {
-		checkmetrics.CacheLookupCounter.Inc()
+		metrics.CacheLookupCounter.Inc()
 		if cachedResp := c.cache.Get(cacheKey); cachedResp != nil {
 			res := cachedResp.(*CheckResponseCacheEntry)
 			isValid := res.LastModified.After(req.LastCacheInvalidationTime)
@@ -163,13 +163,13 @@ func (c *CachedCheckResolver) ResolveCheck(
 
 			span.SetAttributes(attribute.Bool("cached", isValid))
 			if isValid {
-				checkmetrics.CacheHitCounter.Inc()
+				metrics.CacheHitCounter.Inc()
 				// return a copy to avoid races across goroutines
 				return res.CheckResponse.clone(), nil
 			}
 
 			// we tried the cache and hit an invalid entry
-			checkmetrics.CacheInvalidHitCounter.Inc()
+			metrics.CacheInvalidHitCounter.Inc()
 		} else {
 			c.logger.Debug("CachedCheckResolver not found cache key",
 				zap.String("store_id", req.GetStoreID()),

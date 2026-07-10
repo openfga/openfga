@@ -1,6 +1,6 @@
-// Package checkmetrics holds Prometheus counters shared across the v1 and v2
+// Package metrics holds Prometheus counters shared across the v1 and v2
 // Check cache implementations so both paths report into the same metric names.
-package checkmetrics
+package metrics
 
 import (
 	"github.com/prometheus/client_golang/prometheus"
