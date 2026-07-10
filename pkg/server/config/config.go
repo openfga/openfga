@@ -243,6 +243,11 @@ type LogConfig struct {
 	// Level is the log level to use in the log output (e.g. 'none', 'debug', or 'info')
 	Level string
 
+	// RequestCompleteLevel is the level used for the per-request 'grpc_req_complete'
+	// completion log (e.g. 'info' or 'debug'). Lowering it to 'debug' quietens the
+	// otherwise per-RPC INFO logs without disabling logging entirely.
+	RequestCompleteLevel string
+
 	// Format of the timestamp in the log output (e.g. 'Unix'(default) or 'ISO8601')
 	TimestampFormat string
 }
@@ -592,6 +597,15 @@ func (cfg *Config) VerifyBinarySettings() error {
 		fmt.Println("WARNING: Logging is not enabled. It is highly recommended to enable logging in production environments to avoid masking attacker operations.")
 	}
 
+	if cfg.Log.RequestCompleteLevel != "debug" &&
+		cfg.Log.RequestCompleteLevel != "info" &&
+		cfg.Log.RequestCompleteLevel != "warn" &&
+		cfg.Log.RequestCompleteLevel != "error" {
+		return fmt.Errorf(
+			"config 'log.requestCompleteLevel' must be one of ['debug', 'info', 'warn', 'error']",
+		)
+	}
+
 	if cfg.Log.TimestampFormat != "Unix" && cfg.Log.TimestampFormat != "ISO8601" {
 		return fmt.Errorf("config 'log.TimestampFormat' must be one of ['Unix', 'ISO8601']")
 	}
@@ -909,9 +923,10 @@ func DefaultConfig() *Config {
 			AuthnOIDCConfig:         &AuthnOIDCConfig{},
 		},
 		Log: LogConfig{
-			Format:          "text",
-			Level:           "info",
-			TimestampFormat: "Unix",
+			Format:               "text",
+			Level:                "info",
+			RequestCompleteLevel: "info",
+			TimestampFormat:      "Unix",
 		},
 		Trace: TraceConfig{
 			Enabled: false,
