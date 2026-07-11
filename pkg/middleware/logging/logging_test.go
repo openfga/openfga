@@ -122,8 +122,21 @@ func TestGCPTraceFields(t *testing.T) {
 		assert.Nil(t, fields)
 	})
 
+	t.Run("builds_trace_prefix_from_project_env", func(t *testing.T) {
+		t.Setenv("GOOGLE_CLOUD_PROJECT", "my-project")
+		fn := cloudTraceFieldsFn("gcp")
+
+		var traceValue string
+		for _, f := range fn(spanCtx) {
+			if f.Key == "logging.googleapis.com/trace" {
+				traceValue = f.String
+			}
+		}
+		assert.Equal(t, "projects/my-project/traces/4bf92f3577b34da6a3ce929d0e0e4736", traceValue)
+	})
+
 	t.Run("returns_gcp_fields", func(t *testing.T) {
-		fields := gcpTraceFields(spanCtx, "my-project")
+		fields := gcpTraceFields(spanCtx, "projects/my-project/traces/")
 
 		fieldMap := make(map[string]interface{})
 		for _, f := range fields {
@@ -140,7 +153,7 @@ func TestGCPTraceFields(t *testing.T) {
 		assert.Equal(t, true, fieldMap["logging.googleapis.com/trace_sampled"])
 	})
 
-	t.Run("omits_trace_field_when_no_project", func(t *testing.T) {
+	t.Run("omits_trace_field_when_no_prefix", func(t *testing.T) {
 		fields := gcpTraceFields(spanCtx, "")
 
 		for _, f := range fields {

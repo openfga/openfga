@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"os"
 	"strconv"
 	"time"
@@ -194,9 +193,12 @@ func reportable(l logger.Logger, opts ...InterceptorOption) interceptors.CommonR
 func cloudTraceFieldsFn(provider string) func(trace.SpanContext) []zap.Field {
 	switch provider {
 	case "gcp":
-		gcpProject := os.Getenv("GOOGLE_CLOUD_PROJECT")
+		var tracePrefix string
+		if gcpProject := os.Getenv("GOOGLE_CLOUD_PROJECT"); gcpProject != "" {
+			tracePrefix = "projects/" + gcpProject + "/traces/"
+		}
 		return func(spanCtx trace.SpanContext) []zap.Field {
-			return gcpTraceFields(spanCtx, gcpProject)
+			return gcpTraceFields(spanCtx, tracePrefix)
 		}
 	default:
 		return func(trace.SpanContext) []zap.Field { return nil }
@@ -207,11 +209,13 @@ func cloudTraceFieldsFn(provider string) func(trace.SpanContext) []zap.Field {
 // Cloud Run's log agent promotes these JSON fields to top-level LogEntry
 // fields, enabling log-trace correlation in Cloud Logging.
 // See https://cloud.google.com/run/docs/logging#writing_structured_logs
-func gcpTraceFields(spanCtx trace.SpanContext, gcpProject string) []zap.Field {
-	var fields []zap.Field
-	if gcpProject != "" {
-		fields = append(fields, zap.String("logging.googleapis.com/trace",
-			fmt.Sprintf("projects/%s/traces/%s", gcpProject, spanCtx.TraceID().String())))
+//
+// tracePrefix is the precomputed "projects/<project>/traces/" prefix; when
+// empty, the trace field is omitted.
+func gcpTraceFields(spanCtx trace.SpanContext, tracePrefix string) []zap.Field {
+	fields := make([]zap.Field, 0, 3)
+	if tracePrefix != "" {
+		fields = append(fields, zap.String("logging.googleapis.com/trace", tracePrefix+spanCtx.TraceID().String()))
 	}
 	if spanCtx.HasSpanID() {
 		fields = append(fields, zap.String("logging.googleapis.com/spanId", spanCtx.SpanID().String()))
