@@ -1132,6 +1132,14 @@ func TestVerifyBinarySettings(t *testing.T) {
 		require.EqualError(t, err, "config 'log.cloudTraceFields' must be one of ['', 'gcp']")
 	})
 
+	t.Run("empty_log_cloud_trace_fields", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Log.CloudTraceFields = ""
+
+		err := cfg.VerifyBinarySettings()
+		require.NoError(t, err)
+	})
+
 	t.Run("log_cloud_trace_fields_with_json_format", func(t *testing.T) {
 		cfg := DefaultConfig()
 		cfg.Log.Format = "json"
