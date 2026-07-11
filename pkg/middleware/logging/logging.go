@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"os"
 	"strconv"
 	"time"
 
@@ -40,14 +42,32 @@ const (
 	healthCheckService     string = "grpc.health.v1.Health"
 )
 
+type interceptorOptions struct {
+	cloudTraceFields string
+}
+
+// InterceptorOption configures the logging interceptors.
+type InterceptorOption func(*interceptorOptions)
+
+// WithCloudTraceFields adds cloud-provider-specific trace correlation fields
+// to each request log's structured output. The provider "gcp" emits the
+// logging.googleapis.com/trace, logging.googleapis.com/spanId, and
+// logging.googleapis.com/trace_sampled fields; an empty provider disables
+// the extra fields.
+func WithCloudTraceFields(provider string) InterceptorOption {
+	return func(o *interceptorOptions) {
+		o.cloudTraceFields = provider
+	}
+}
+
 // NewLoggingInterceptor creates a new logging interceptor for gRPC unary server requests.
-func NewLoggingInterceptor(logger logger.Logger) grpc.UnaryServerInterceptor {
-	return interceptors.UnaryServerInterceptor(reportable(logger))
+func NewLoggingInterceptor(logger logger.Logger, opts ...InterceptorOption) grpc.UnaryServerInterceptor {
+	return interceptors.UnaryServerInterceptor(reportable(logger, opts...))
 }
 
 // NewStreamingLoggingInterceptor creates a new streaming logging interceptor for gRPC stream server requests.
-func NewStreamingLoggingInterceptor(logger logger.Logger) grpc.StreamServerInterceptor {
-	return interceptors.StreamServerInterceptor(reportable(logger))
+func NewStreamingLoggingInterceptor(logger logger.Logger, opts ...InterceptorOption) grpc.StreamServerInterceptor {
+	return interceptors.StreamServerInterceptor(reportable(logger, opts...))
 }
 
 type reporter struct {
@@ -133,7 +153,14 @@ func userAgentFromContext(ctx context.Context) (string, bool) {
 	return "", false
 }
 
-func reportable(l logger.Logger) interceptors.CommonReportableFunc {
+func reportable(l logger.Logger, opts ...InterceptorOption) interceptors.CommonReportableFunc {
+	var o interceptorOptions
+	for _, opt := range opts {
+		opt(&o)
+	}
+
+	traceFieldsFn := cloudTraceFieldsFn(o.cloudTraceFields)
+
 	return func(ctx context.Context, c interceptors.CallMeta) (interceptors.Reporter, context.Context) {
 		fields := []zap.Field{
 			zap.String(grpcServiceKey, c.Service),
@@ -144,6 +171,7 @@ func reportable(l logger.Logger) interceptors.CommonReportableFunc {
 		spanCtx := trace.SpanContextFromContext(ctx)
 		if spanCtx.HasTraceID() {
 			fields = append(fields, zap.String(traceIDKey, spanCtx.TraceID().String()))
+			fields = append(fields, traceFieldsFn(spanCtx)...)
 		}
 
 		if userAgent, ok := userAgentFromContext(ctx); ok {
@@ -158,4 +186,36 @@ func reportable(l logger.Logger) interceptors.CommonReportableFunc {
 			serviceName:    c.Service,
 		}, ctx
 	}
+}
+
+// cloudTraceFieldsFn returns a function that produces cloud-provider-specific
+// trace correlation fields for a request's span context. GOOGLE_CLOUD_PROJECT
+// is read once here rather than on every request.
+func cloudTraceFieldsFn(provider string) func(trace.SpanContext) []zap.Field {
+	switch provider {
+	case "gcp":
+		gcpProject := os.Getenv("GOOGLE_CLOUD_PROJECT")
+		return func(spanCtx trace.SpanContext) []zap.Field {
+			return gcpTraceFields(spanCtx, gcpProject)
+		}
+	default:
+		return func(trace.SpanContext) []zap.Field { return nil }
+	}
+}
+
+// gcpTraceFields returns GCP Cloud Logging trace correlation fields.
+// Cloud Run's log agent promotes these JSON fields to top-level LogEntry
+// fields, enabling log-trace correlation in Cloud Logging.
+// See https://cloud.google.com/run/docs/logging#writing_structured_logs
+func gcpTraceFields(spanCtx trace.SpanContext, gcpProject string) []zap.Field {
+	var fields []zap.Field
+	if gcpProject != "" {
+		fields = append(fields, zap.String("logging.googleapis.com/trace",
+			fmt.Sprintf("projects/%s/traces/%s", gcpProject, spanCtx.TraceID().String())))
+	}
+	if spanCtx.HasSpanID() {
+		fields = append(fields, zap.String("logging.googleapis.com/spanId", spanCtx.SpanID().String()))
+	}
+	fields = append(fields, zap.Bool("logging.googleapis.com/trace_sampled", spanCtx.IsSampled()))
+	return fields
 }

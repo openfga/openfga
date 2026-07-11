@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Try to keep listed changes to a concise bulleted list of simple explanations of changes. Aim for the amount of information needed so that readers can understand where they would look in the codebase to investigate the changes' implementation, or where they would look in the documentation to understand how to make use of the change in practice - better yet, link directly to the docs and provide detailed information there. Only elaborate if doing so is required to avoid breaking changes or experimental features from ruining someone's day.
 
 ## [Unreleased]
+### Added
+- Added a `log.cloudTraceFields` config option (`OPENFGA_LOG_CLOUD_TRACE_FIELDS`) that adds cloud-provider-specific trace correlation fields to structured logs. When set to `gcp`, request logs include `logging.googleapis.com/trace`, `logging.googleapis.com/spanId`, and `logging.googleapis.com/trace_sampled`, which Cloud Run's logging agent promotes to top-level `LogEntry` fields so logs are correlated with traces and request logs in Cloud Logging. Requires the `GOOGLE_CLOUD_PROJECT` environment variable. [#3049](https://github.com/openfga/openfga/pull/3049)
 
 ## [1.18.1] - 2026-06-29
 ### Added

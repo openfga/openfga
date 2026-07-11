@@ -240,6 +240,8 @@ func NewRunCommand() *cobra.Command {
 
 	flags.String("log-timestamp-format", defaultConfig.Log.TimestampFormat, "the timestamp format to use for log messages")
 
+	flags.String("log-cloud-trace-fields", defaultConfig.Log.CloudTraceFields, "add cloud-provider-specific trace correlation fields to structured logs. Supported: 'gcp'")
+
 	flags.Bool("trace-enabled", defaultConfig.Trace.Enabled, "enable tracing")
 
 	flags.String("trace-otlp-endpoint", defaultConfig.Trace.OTLP.Endpoint, "the endpoint of the trace collector")
@@ -562,6 +564,10 @@ func (s *ServerContext) authenticatorConfig(config *serverconfig.Config) (authn.
 }
 
 func (s *ServerContext) buildServerOpts(ctx context.Context, config *serverconfig.Config, authenticator authn.Authenticator) ([]grpc.ServerOption, *grpc_prometheus.ServerMetrics, error) {
+	if config.Log.CloudTraceFields == "gcp" && os.Getenv("GOOGLE_CLOUD_PROJECT") == "" {
+		s.Logger.Warn("config 'log.cloudTraceFields' is set to 'gcp' but the GOOGLE_CLOUD_PROJECT environment variable is not set; the 'logging.googleapis.com/trace' field will be omitted and logs will not be correlated with traces in Cloud Logging")
+	}
+
 	serverOpts := []grpc.ServerOption{
 		grpc.MaxRecvMsgSize(config.GRPC.MaxRecvMsgBytes),
 		grpc.ChainUnaryInterceptor(
@@ -598,8 +604,8 @@ func (s *ServerContext) buildServerOpts(ctx context.Context, config *serverconfi
 	serverOpts = append(serverOpts,
 		grpc.ChainUnaryInterceptor(
 			[]grpc.UnaryServerInterceptor{
-				storeid.NewUnaryInterceptor(),           // if available, add store_id to ctxtags
-				logging.NewLoggingInterceptor(s.Logger), // needed to log invalid requests
+				storeid.NewUnaryInterceptor(), // if available, add store_id to ctxtags
+				logging.NewLoggingInterceptor(s.Logger, logging.WithCloudTraceFields(config.Log.CloudTraceFields)), // needed to log invalid requests
 				validator.UnaryServerInterceptor(),
 			}...,
 		),
@@ -639,7 +645,7 @@ func (s *ServerContext) buildServerOpts(ctx context.Context, config *serverconfi
 				// The following interceptors wrap the server stream with our own
 				// wrapper and must come last.
 				storeid.NewStreamingInterceptor(),
-				logging.NewStreamingLoggingInterceptor(s.Logger),
+				logging.NewStreamingLoggingInterceptor(s.Logger, logging.WithCloudTraceFields(config.Log.CloudTraceFields)),
 			}...,
 		),
 	)

@@ -1124,6 +1124,22 @@ func TestVerifyBinarySettings(t *testing.T) {
 		require.Contains(t, err.Error(), "config 'log.level' must be one of ['none', 'debug', 'info', 'warn', 'error', 'panic', 'fatal']")
 	})
 
+	t.Run("invalid_log_cloud_trace_fields", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Log.CloudTraceFields = "aws"
+
+		err := cfg.VerifyBinarySettings()
+		require.EqualError(t, err, "config 'log.cloudTraceFields' must be one of ['', 'gcp']")
+	})
+
+	t.Run("valid_log_cloud_trace_fields", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Log.CloudTraceFields = "gcp"
+
+		err := cfg.VerifyBinarySettings()
+		require.NoError(t, err)
+	})
+
 	t.Run("playground_enabled_without_http", func(t *testing.T) {
 		cfg := DefaultConfig()
 		cfg.Playground.Enabled = true
