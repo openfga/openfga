@@ -245,6 +245,14 @@ type LogConfig struct {
 
 	// Format of the timestamp in the log output (e.g. 'Unix'(default) or 'ISO8601')
 	TimestampFormat string
+
+	// CloudTraceFields controls whether cloud-provider-specific trace correlation
+	// fields are added to structured log output. Supported values:
+	//   - "" (empty/default): no additional trace correlation fields
+	//   - "gcp": adds logging.googleapis.com/trace, logging.googleapis.com/spanId,
+	//     and logging.googleapis.com/trace_sampled fields. Requires Format "json"
+	//     and the GOOGLE_CLOUD_PROJECT env var to be set.
+	CloudTraceFields string
 }
 
 type TraceConfig struct {
@@ -594,6 +602,14 @@ func (cfg *Config) VerifyBinarySettings() error {
 
 	if cfg.Log.TimestampFormat != "Unix" && cfg.Log.TimestampFormat != "ISO8601" {
 		return fmt.Errorf("config 'log.TimestampFormat' must be one of ['Unix', 'ISO8601']")
+	}
+
+	if cfg.Log.CloudTraceFields != "" && cfg.Log.CloudTraceFields != "gcp" {
+		return fmt.Errorf("config 'log.cloudTraceFields' must be one of ['', 'gcp']")
+	}
+
+	if cfg.Log.CloudTraceFields != "" && cfg.Log.Format != "json" {
+		return fmt.Errorf("config 'log.cloudTraceFields' requires 'log.format' to be 'json'")
 	}
 
 	if cfg.Trace.Enabled {

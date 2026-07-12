@@ -486,6 +486,13 @@
                     "enum": ["Unix", "ISO8601"],
                     "default": "Unix",
                     "x-env-variable": "OPENFGA_LOG_TIMESTAMP_FORMAT"
+                },
+                "cloudTraceFields": {
+                    "description": "Add cloud-provider-specific trace correlation fields to structured logs. When set to 'gcp', adds logging.googleapis.com/trace, logging.googleapis.com/spanId and logging.googleapis.com/trace_sampled fields (requires 'log.format' to be 'json' and the GOOGLE_CLOUD_PROJECT environment variable to be set).",
+                    "type": "string",
+                    "enum": ["", "gcp"],
+                    "default": "",
+                    "x-env-variable": "OPENFGA_LOG_CLOUD_TRACE_FIELDS"
                 }
             }
         },
