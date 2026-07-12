@@ -585,7 +585,7 @@ func TestBottomUpResolveUnion(t *testing.T) {
 		defer ctrl.Finish()
 
 		res := make(chan *iterator.Msg)
-		producers := make([]storage.Iterator[string], 0)
+		producers := make([]storage.Iterator[string], 0, 1)
 		iter1 := mocks.NewMockIterator[string](ctrl)
 		iter1.EXPECT().Stop().MaxTimes(1)
 		producer := make(chan *iterator.Msg, 1)
@@ -612,7 +612,7 @@ func TestBottomUpResolveUnion(t *testing.T) {
 		defer ctrl.Finish()
 
 		res := make(chan *iterator.Msg)
-		producers := make([]storage.Iterator[string], 0)
+		producers := make([]storage.Iterator[string], 0, 2)
 		iter1 := mocks.NewMockIterator[string](ctrl)
 		iter1.EXPECT().Next(gomock.Any()).MaxTimes(1).Return("", errors.New("boom"))
 		iter1.EXPECT().Stop().MaxTimes(1)
@@ -839,7 +839,7 @@ func TestBottomUpResolveUnion(t *testing.T) {
 		defer ctrl.Finish()
 
 		res := make(chan *iterator.Msg)
-		producers := make([]storage.Iterator[string], 0)
+		producers := make([]storage.Iterator[string], 0, 2)
 		producer1 := make(chan *iterator.Msg, 1)
 		producer1 <- &iterator.Msg{Err: fmt.Errorf("mock error")}
 		close(producer1)
@@ -870,7 +870,7 @@ func TestBottomUpResolveUnion(t *testing.T) {
 		defer ctrl.Finish()
 
 		res := make(chan *iterator.Msg)
-		producers := make([]storage.Iterator[string], 0)
+		producers := make([]storage.Iterator[string], 0, 2)
 		iter1 := mocks.NewMockIterator[string](ctrl)
 		iter1.EXPECT().Head(gomock.Any()).MaxTimes(1).Return("obj:0", nil)
 		iter1.EXPECT().Next(gomock.Any()).MaxTimes(1).Return("", errors.New("boom"))
@@ -911,7 +911,7 @@ func TestBottomUpResolveIntersection(t *testing.T) {
 		defer ctrl.Finish()
 
 		res := make(chan *iterator.Msg)
-		producers := make([]storage.Iterator[string], 0)
+		producers := make([]storage.Iterator[string], 0, 1)
 		iter1 := mocks.NewMockIterator[string](ctrl)
 		iter1.EXPECT().Stop().MaxTimes(1)
 		producer := make(chan *iterator.Msg, 1)
@@ -937,7 +937,7 @@ func TestBottomUpResolveIntersection(t *testing.T) {
 		defer ctrl.Finish()
 
 		res := make(chan *iterator.Msg)
-		producers := make([]storage.Iterator[string], 0)
+		producers := make([]storage.Iterator[string], 0, 2)
 		iter1 := mocks.NewMockIterator[string](ctrl)
 		iter1.EXPECT().Next(gomock.Any()).MaxTimes(1).Return("", errors.New("boom"))
 		iter1.EXPECT().Stop().MaxTimes(1)
@@ -1164,7 +1164,7 @@ func TestBottomUpResolveIntersection(t *testing.T) {
 		defer ctrl.Finish()
 
 		res := make(chan *iterator.Msg)
-		producers := make([]storage.Iterator[string], 0)
+		producers := make([]storage.Iterator[string], 0, 2)
 		producer1 := make(chan *iterator.Msg, 1)
 		producer1 <- &iterator.Msg{Err: fmt.Errorf("mock error")}
 		close(producer1)
@@ -1192,7 +1192,7 @@ func TestBottomUpResolveIntersection(t *testing.T) {
 		defer ctrl.Finish()
 
 		res := make(chan *iterator.Msg)
-		producers := make([]storage.Iterator[string], 0)
+		producers := make([]storage.Iterator[string], 0, 2)
 		iter1 := mocks.NewMockIterator[string](ctrl)
 		iter1.EXPECT().Next(gomock.Any()).MaxTimes(1).Return("obj:0", nil)
 		iter1.EXPECT().Next(gomock.Any()).MaxTimes(1).Return("", errors.New("boom"))
@@ -1230,7 +1230,7 @@ func TestBottomUpResolveIntersection(t *testing.T) {
 		defer ctrl.Finish()
 
 		res := make(chan *iterator.Msg)
-		producers := make([]storage.Iterator[string], 0)
+		producers := make([]storage.Iterator[string], 0, 2)
 		iter1 := mocks.NewMockIterator[string](ctrl)
 		iter1.EXPECT().Next(gomock.Any()).MaxTimes(1).Return("obj:1", nil)
 		iter1.EXPECT().Next(gomock.Any()).MaxTimes(1).Return("", errors.New("boom"))
@@ -1265,7 +1265,7 @@ func TestBottomUpResolveIntersection(t *testing.T) {
 		defer ctrl.Finish()
 
 		res := make(chan *iterator.Msg)
-		producers := make([]storage.Iterator[string], 0)
+		producers := make([]storage.Iterator[string], 0, 2)
 		iter1 := mocks.NewMockIterator[string](ctrl)
 		// this is to simulate successful remove of item 1
 		iter1.EXPECT().Next(gomock.Any()).MaxTimes(1).Return("obj:1", nil)
@@ -1307,7 +1307,7 @@ func TestBottomUpResolveDifference(t *testing.T) {
 		defer ctrl.Finish()
 
 		res := make(chan *iterator.Msg)
-		producers := make([]storage.Iterator[string], 0)
+		producers := make([]storage.Iterator[string], 0, 2)
 
 		iter1 := mocks.NewMockIterator[string](ctrl)
 		iter1.EXPECT().Stop().MaxTimes(1)
@@ -1341,7 +1341,7 @@ func TestBottomUpResolveDifference(t *testing.T) {
 		defer ctrl.Finish()
 
 		res := make(chan *iterator.Msg)
-		producers := make([]storage.Iterator[string], 0)
+		producers := make([]storage.Iterator[string], 0, 2)
 		iter1 := mocks.NewMockIterator[string](ctrl)
 		iter1.EXPECT().Next(gomock.Any()).MaxTimes(1).Return("", errors.New("boom"))
 		iter1.EXPECT().Stop().MaxTimes(1)
@@ -1527,7 +1527,7 @@ func TestBottomUpResolveDifference(t *testing.T) {
 		defer ctrl.Finish()
 
 		res := make(chan *iterator.Msg)
-		producers := make([]storage.Iterator[string], 0)
+		producers := make([]storage.Iterator[string], 0, 2)
 		producer1 := make(chan *iterator.Msg, 1)
 		producer1 <- &iterator.Msg{Err: fmt.Errorf("mock error")}
 		close(producer1)
@@ -1605,7 +1605,7 @@ func TestBottomUpResolveDifference(t *testing.T) {
 		defer ctrl.Finish()
 
 		res := make(chan *iterator.Msg)
-		producers := make([]storage.Iterator[string], 0)
+		producers := make([]storage.Iterator[string], 0, 2)
 		iter1 := mocks.NewMockIterator[string](ctrl)
 		iter1.EXPECT().Next(gomock.Any()).MaxTimes(1).Return("obj:1", nil)
 		iter1.EXPECT().Next(gomock.Any()).MaxTimes(1).Return("", errors.New("boom"))
@@ -1638,7 +1638,7 @@ func TestBottomUpResolveDifference(t *testing.T) {
 		defer ctrl.Finish()
 
 		res := make(chan *iterator.Msg)
-		producers := make([]storage.Iterator[string], 0)
+		producers := make([]storage.Iterator[string], 0, 2)
 		iter1 := mocks.NewMockIterator[string](ctrl)
 		iter1.EXPECT().Next(gomock.Any()).MaxTimes(1).Return("obj:1", nil)
 		iter1.EXPECT().Next(gomock.Any()).MaxTimes(1).Return("", errors.New("boom"))
@@ -1673,7 +1673,7 @@ func TestBottomUpResolveDifference(t *testing.T) {
 		defer ctrl.Finish()
 
 		res := make(chan *iterator.Msg)
-		producers := make([]storage.Iterator[string], 0)
+		producers := make([]storage.Iterator[string], 0, 2)
 		producer1 := make(chan *iterator.Msg, 1)
 		producer1 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:2"})}
 		close(producer1)

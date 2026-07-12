@@ -108,12 +108,10 @@ func TestPipeline_Shutdown(t *testing.T) {
 	const user string = "user:bob"
 	const nestLevel int = 100
 
-	var tuples []string
-
 	var child string
 	var parent string
-
-	var documents []string
+	tuples := make([]string, 0, nestLevel*24)
+	documents := make([]string, 0, nestLevel)
 
 	for i := range nestLevel {
 		if i%2 == 0 {

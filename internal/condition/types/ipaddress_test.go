@@ -3,6 +3,7 @@ package types
 import (
 	"testing"
 
+	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/common/types"
 	"github.com/google/cel-go/common/types/ref"
 	"github.com/stretchr/testify/require"
@@ -90,6 +91,60 @@ func TestIPaddressCELBinaryBinding(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			val := ipaddressCELBinaryBinding(test.lhs, test.rhs)
 			require.Equal(t, test.result, val)
+		})
+	}
+}
+
+func TestIPAddressWithCompileOptions(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name            string
+		expression      string
+		isErrorExpected bool
+	}{
+		{
+			name:            "valid_ipaddress_function",
+			expression:      `ipaddress("192.168.1.1")`,
+			isErrorExpected: false,
+		},
+		{
+			name:            "invalid_ipaddress_function",
+			expression:      `ipaddress("not-an-ip")`,
+			isErrorExpected: true,
+		},
+	}
+
+	// Construct a CEL environment using only the compile options exposed by the IP address library. This verifies that
+	// the library registers the declarations required for the `ipaddress` function to compile.
+	env, err := cel.NewCustomEnv(ipaddrLib.CompileOptions()...)
+	require.NoError(t, err)
+
+	// With the CEL environment successfully constructed, verify that each test expression can be compiled, converted
+	// into an executable CEL program, and evaluated.
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			// Ensure the expression successfully compiles. Validation of the runtime behavior of `ipaddress` is covered
+			// by the evaluation below.
+			ast, issues := env.Compile(test.expression)
+			require.NoError(t, issues.Err())
+
+			// Ensure the compiled expression can be converted into an executable CEL program using only the compile
+			// options exposed by the IP address library.
+			prg, err := env.Program(ast)
+			require.NoError(t, err)
+
+			// Evaluate the compiled program and verify whether evaluation succeeds or fails as expected.
+			_, _, err = prg.Eval(map[string]any{})
+			if test.isErrorExpected {
+				require.Error(t, err)
+
+				return
+			}
+
+			require.NoError(t, err)
 		})
 	}
 }

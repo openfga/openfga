@@ -356,7 +356,7 @@ func (s *Datastore) ReadStartingWithUser(
 	_, span := startTrace(ctx, "ReadStartingWithUser")
 	defer span.End()
 
-	var targetUsersArg []string
+	targetUsersArg := make([]string, 0, len(filter.UserFilter))
 	for _, u := range filter.UserFilter {
 		targetUser := u.GetObject()
 		if u.GetRelation() != "" {

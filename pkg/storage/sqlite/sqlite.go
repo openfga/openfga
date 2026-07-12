@@ -814,7 +814,7 @@ func (s *Datastore) ReadStartingWithUser(
 	_, span := startTrace(ctx, "ReadStartingWithUser")
 	defer span.End()
 
-	var targetUsersArg sq.Or
+	targetUsersArg := make(sq.Or, 0, len(filter.UserFilter))
 	for _, u := range filter.UserFilter {
 		userObjectType, userObjectID, userRelation := tupleUtils.ToUserPartsFromObjectRelation(u)
 		targetUser := sq.Eq{
