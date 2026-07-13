@@ -30,6 +30,8 @@ import (
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
+const logMessage = "potential v2 Check resolution breaking change"
+
 func TestCheck_Validation(t *testing.T) {
 	t.Parallel()
 
@@ -1147,13 +1149,11 @@ func TestBreakingChangeReason(t *testing.T) {
 // TestCheck_LogsExclusionShapesOnV2Rejection verifies that when v2Check rejects
 // a request with its wildcard exclusion error (ErrWildcardInvalidRequest) and
 // the caller falls back to v1, the "potential v2 Check resolution breaking
-// changes" log fires with the correct reason field derived from the v2 error.
+// change" log fires with the correct reason field derived from the v2 error.
 func TestCheck_LogsExclusionShapesOnV2Rejection(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
-
-	const logMessage = "potential v2 Check resolution breaking changes"
 
 	tests := []struct {
 		name       string
@@ -1233,7 +1233,7 @@ func TestCheck_LogsExclusionShapesOnV2Rejection(t *testing.T) {
 
 // TestCheck_LogsExclusionShapesOnV2Fallback verifies that when v2Check fails
 // with a non-terminal error and the request falls back to v1, we still emit
-// the "potential v2 Check resolution breaking changes" log on exclusion shapes.
+// the "potential v2 Check resolution breaking change" log on exclusion shapes.
 //
 // This uses a model that trips ErrInvalidModel in the weighted-graph builder
 // (intersection whose branches reach different terminal types) so v2Check
@@ -1242,8 +1242,6 @@ func TestCheck_LogsExclusionShapesOnV2Fallback(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
-
-	const logMessage = "potential v2 Check resolution breaking changes"
 
 	// The exclusion shape (viewer with a Difference) is nested behind an
 	// intersection with a mixed-terminal-type branch (viewer AND bot_gate).
