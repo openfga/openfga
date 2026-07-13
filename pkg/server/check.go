@@ -66,12 +66,12 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 
 	storeID := req.GetStoreId()
 
-	// v2FellBack tracks whether v2Check ran, errored, and we fell back to v1.
+	// isV2Fallback tracks whether v2Check ran, errored, and we fell back to v1.
 	// Only in that case does the v1 path need to emit v2-breaking-change logs —
 	// when the flag is off, there is no v2 comparison to signal about.
 	// v2FallbackErr holds the v2Check error so the fallback path can classify
 	// it (e.g. exclusion-shape rejection) without re-walking the schema.
-	var v2FellBack bool
+	var isV2Fallback bool
 	var v2FallbackErr error
 
 	if s.featureFlagClient.Boolean(serverconfig.ExperimentalWeightedGraphCheck, storeID) {
@@ -155,7 +155,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 			zap.String("request_id", requestID),
 		)
 
-		v2FellBack = true
+		isV2Fallback = true
 		v2FallbackErr = err
 		startTime = time.Now() // reset startTime to avoid counting v2Check duration in case of fallback when it's enabled
 	}
@@ -285,7 +285,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 	//     failure) and we must inspect the schema ourselves: exclusion shapes
 	//     log unconditionally, per-userset shapes gate on !allowed to match
 	//     the v2-success log path above.
-	if v2FellBack {
+	if isV2Fallback {
 		tk := req.GetTupleKey()
 		requestID := requestid.GetRequestIDFromContext(ctx)
 		logFields := []zap.Field{

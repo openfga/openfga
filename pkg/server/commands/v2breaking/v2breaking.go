@@ -82,7 +82,7 @@ func CheckReason(typesys *typesystem.TypeSystem, tk *openfgav1.CheckRequestTuple
 // error is one of the exclusion-shape rejections v2Check emits at request time.
 // Returns "" for any other error (context, throttling, generic failure, etc.).
 //
-// v2Check rejects two exclusion shapes at request time:
+// V2Check rejects two exclusion shapes at request time:
 //
 //   - check.ErrWildcardInvalidRequest — a wildcard user reaches a Difference
 //     node (directly or transitively through TTU/ComputedUserset).
@@ -107,7 +107,7 @@ func CheckReasonFromV2Error(err error) string {
 // not run (or failed before validating request shape) and CheckReasonFromV2Error
 // therefore has no error to map.
 //
-// Detection mirrors ListUsers:
+// Detection:
 //
 //   - Userset user + Difference anywhere in the target rewrite → userset_with_exclusion.
 //   - Non-userset user of type T + Difference whose base branch can reach a
