@@ -4,9 +4,11 @@ import (
 	"context"
 	"sync"
 
-	"github.com/openfga/language/pkg/go/graph"
-	"github.com/openfga/openfga/pkg/storage"
 	"golang.org/x/sync/errgroup"
+
+	"github.com/openfga/language/pkg/go/graph"
+
+	"github.com/openfga/openfga/pkg/storage"
 )
 
 type CheckResolver interface {

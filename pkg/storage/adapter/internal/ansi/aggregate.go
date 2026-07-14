@@ -3,7 +3,7 @@ package ansi
 import "github.com/openfga/openfga/pkg/storage/adapter"
 
 // aggregateNode renders an aggregate function call with its optional DISTINCT, ORDER
-// BY (within the argument list), and FILTER (WHERE ...) modifiers. An exprNode wraps it
+// BY (within the argument list), and FILTER (WHERE ...) Modifiers. An exprNode wraps it
 // so the comparison/ordering algebra of an Expression applies to the aggregate result.
 type aggregateNode struct {
 	fn       adapter.AggregateFunc
@@ -46,7 +46,7 @@ type aggExpr struct {
 	expr *exprNode
 }
 
-func (a *aggExpr) writeSQL(r *renderer)             { r.node(a.node) }
+func (a *aggExpr) writeSQL(r *renderer)               { r.node(a.node) }
 func (a *aggExpr) As(alias string) adapter.Projection { return a.expr.As(alias) }
 
 func (a *aggExpr) Compare(op adapter.ComparisonOp, other adapter.Expression) adapter.Predicate {
@@ -67,10 +67,10 @@ func (a *aggExpr) Between(lo, hi adapter.Expression) adapter.Predicate {
 func (a *aggExpr) Like(p adapter.Expression) adapter.Predicate {
 	return a.expr.Like(p)
 }
-func (a *aggExpr) IsNull() adapter.Predicate                     { return a.expr.IsNull() }
+func (a *aggExpr) IsNull() adapter.Predicate                       { return a.expr.IsNull() }
 func (a *aggExpr) Order(d adapter.SortDirection) adapter.OrderTerm { return a.expr.Order(d) }
-func (a *aggExpr) Asc() adapter.OrderTerm                        { return a.expr.Asc() }
-func (a *aggExpr) Desc() adapter.OrderTerm                       { return a.expr.Desc() }
+func (a *aggExpr) Asc() adapter.OrderTerm                          { return a.expr.Asc() }
+func (a *aggExpr) Desc() adapter.OrderTerm                         { return a.expr.Desc() }
 
 func (a *aggExpr) Distinct() adapter.AggregateExpr {
 	a.node.distinct = true

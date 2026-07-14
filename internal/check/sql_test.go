@@ -45,7 +45,7 @@ func entryEdges(t *testing.T, g *modelgraph.AuthorizationModelGraph, req *Reques
 func runWeight1(t *testing.T, g *modelgraph.AuthorizationModelGraph, exec adaptertest.Executor, object, relation, user string, ctxTuples ...*openfgav1.TupleKey) (bool, error) {
 	t.Helper()
 	b := adaptertest.New(exec)
-	s := NewSql(g, &sqlDatastore{builder: b})
+	s := NewSQL(g, &sqlDatastore{builder: b})
 	req, err := NewRequest(RequestParams{
 		StoreID:          "store1",
 		Model:            g,
@@ -172,7 +172,7 @@ func TestSqlWeight1_DirectSQLShape(t *testing.T) {
 	require.NoError(t, err)
 	rec := &adaptertest.Recorder{}
 	b := adaptertest.New(rec)
-	s := NewSql(g, &sqlDatastore{builder: b})
+	s := NewSQL(g, &sqlDatastore{builder: b})
 	req, err := NewRequest(RequestParams{
 		StoreID:  "store1",
 		Model:    g,
@@ -199,16 +199,16 @@ func TestSqlWeight1_Union(t *testing.T) {
 		type user
 		type document
 			relations
-				define editor: [user]
-				define viewer: [user] or editor`
+				define owner: [user]
+				define editor: [user] or owner`
 	g, err := modelgraph.New(testutils.MustTransformDSLToProtoWithID(model))
 	require.NoError(t, err)
 
-	allowed, err := runWeight1(t, g, &fakeExecutor{hasRow: true}, "document:1", "viewer", "user:alice")
+	allowed, err := runWeight1(t, g, &fakeExecutor{hasRow: true}, "document:2", "editor", "user:alice")
 	require.NoError(t, err)
 	require.True(t, allowed)
 
-	allowed, err = runWeight1(t, g, &fakeExecutor{hasRow: false}, "document:1", "viewer", "user:alice")
+	allowed, err = runWeight1(t, g, &fakeExecutor{hasRow: false}, "document:2", "editor", "user:alice")
 	require.NoError(t, err)
 	require.False(t, allowed)
 }
@@ -227,7 +227,7 @@ func TestSqlWeight1_Wildcard(t *testing.T) {
 	// gather-free existence: the wildcard leaf matches subject_id = '*'.
 	rec := &adaptertest.Recorder{}
 	b := adaptertest.New(rec)
-	s := NewSql(g, &sqlDatastore{builder: b})
+	s := NewSQL(g, &sqlDatastore{builder: b})
 	req, err := NewRequest(RequestParams{
 		StoreID:  "store1",
 		Model:    g,
@@ -274,7 +274,7 @@ func TestSqlWeight1_Intersection(t *testing.T) {
 
 	rec := &adaptertest.Recorder{}
 	b := adaptertest.New(rec)
-	s := NewSql(g, &sqlDatastore{builder: b})
+	s := NewSQL(g, &sqlDatastore{builder: b})
 	req, err := NewRequest(RequestParams{
 		StoreID:  "store1",
 		Model:    g,
@@ -305,7 +305,7 @@ func TestSqlWeight1_Exclusion(t *testing.T) {
 
 	rec := &adaptertest.Recorder{}
 	b := adaptertest.New(rec)
-	s := NewSql(g, &sqlDatastore{builder: b})
+	s := NewSQL(g, &sqlDatastore{builder: b})
 	req, err := NewRequest(RequestParams{
 		StoreID:  "store1",
 		Model:    g,
@@ -333,7 +333,7 @@ func TestSqlWeight1_ConditionedGatherShape(t *testing.T) {
 
 	rec := &adaptertest.Recorder{}
 	b := adaptertest.New(rec)
-	s := NewSql(g, &sqlDatastore{builder: b})
+	s := NewSQL(g, &sqlDatastore{builder: b})
 	req, err := NewRequest(RequestParams{
 		StoreID:  "store1",
 		Model:    g,
