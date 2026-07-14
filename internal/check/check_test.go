@@ -40,14 +40,14 @@ func TestResolveUnion(t *testing.T) {
 		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-            model
-              schema 1.1
-            type user
-            type group
-              relations
-                define member: [user] or admin
-                define admin: [user]
-        `)
+           model
+             schema 1.1
+           type user
+           type group
+             relations
+               define member: [user] or admin
+               define admin: [user]
+       `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -112,15 +112,15 @@ func TestResolveUnion(t *testing.T) {
 		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-            model
-              schema 1.1
-            type user
-            type group
-              relations
-                define member: [user] or admin or owner
-                define admin: [user]
-                define owner: [user]
-        `)
+           model
+             schema 1.1
+           type user
+           type group
+             relations
+               define member: [user] or admin or owner
+               define admin: [user]
+               define owner: [user]
+       `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -186,14 +186,14 @@ func TestResolveUnion(t *testing.T) {
 		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-            model
-              schema 1.1
-            type user
-            type group
-              relations
-                define member: [user] or admin
-                define admin: [user]
-        `)
+           model
+             schema 1.1
+           type user
+           type group
+             relations
+               define member: [user] or admin
+               define admin: [user]
+       `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -238,14 +238,14 @@ func TestResolveUnionEdges(t *testing.T) {
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-            model
-              schema 1.1
-            type user
-            type group
-              relations
-                define member: [user] or admin
-                define admin: [user]
-        `)
+           model
+             schema 1.1
+           type user
+           type group
+             relations
+               define member: [user] or admin
+               define admin: [user]
+       `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -293,14 +293,14 @@ func TestResolveUnionEdges(t *testing.T) {
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-            model
-              schema 1.1
-            type user
-            type group
-              relations
-                define member: [user] or admin
-                define admin: [user]
-        `)
+           model
+             schema 1.1
+           type user
+           type group
+             relations
+               define member: [user] or admin
+               define admin: [user]
+       `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -343,14 +343,14 @@ func TestResolveUnionEdges(t *testing.T) {
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-            model
-              schema 1.1
-            type user
-            type group
-              relations
-                define member: [user] or admin
-                define admin: [user]
-        `)
+           model
+             schema 1.1
+           type user
+           type group
+             relations
+               define member: [user] or admin
+               define admin: [user]
+       `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -395,14 +395,14 @@ func TestResolveUnionEdges(t *testing.T) {
 		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-            model
-              schema 1.1
-            type user
-            type group
-              relations
-                define member: [user] or admin
-                define admin: [user]
-        `)
+           model
+             schema 1.1
+           type user
+           type group
+             relations
+               define member: [user] or admin
+               define admin: [user]
+       `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -453,12 +453,12 @@ func TestResolveUnionEdges(t *testing.T) {
 		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-            model
-              schema 1.1
-            type user
-              relations
-                define self: [user]
-        `)
+           model
+             schema 1.1
+           type user
+             relations
+               define self: [user]
+       `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -490,14 +490,14 @@ func TestResolveUnionEdges(t *testing.T) {
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-            model
-              schema 1.1
-            type user
-            type group
-              relations
-                define member: [user:*] or admin
-                define admin: [user]
-        `)
+           model
+             schema 1.1
+           type user
+           type group
+             relations
+               define member: [user:*] or admin
+               define admin: [user]
+       `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -545,14 +545,14 @@ func TestResolveUnionEdges(t *testing.T) {
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-            model
-              schema 1.1
-            type user
-            type group
-              relations
-                define member: [user] or admin
-                define admin: [user]
-        `)
+           model
+             schema 1.1
+           type user
+           type group
+             relations
+               define member: [user] or admin
+               define admin: [user]
+       `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -604,13 +604,13 @@ func TestResolveUnionEdges(t *testing.T) {
 			Return(storage.NewStaticTupleIterator(nil), nil).MinTimes(1)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-            model
-              schema 1.1
-            type user
-            type group
-              relations
-                define member: [user, group#member]
-        `)
+           model
+             schema 1.1
+           type user
+           type group
+             relations
+               define member: [user, group#member]
+       `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -703,14 +703,14 @@ func TestResolveRecursive(t *testing.T) {
 		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-            model
-              schema 1.1
-            type user
-            type group
-              relations
-                define member: [user] or member from parent
-                define parent: [group]
-        `)
+           model
+             schema 1.1
+           type user
+           type group
+             relations
+               define member: [user] or member from parent
+               define parent: [group]
+       `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -756,7 +756,7 @@ func TestResolveRecursive(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
 
-		_, _ = resolver.ResolveRecursive(ctx, req, recursiveEdge, &sync.Map{}, false)
+		_, _ = resolver.ResolveRecursive(ctx, req, recursiveEdge, node.GetUniqueLabel(), &sync.Map{}, false)
 		goroutineDone.Wait() // wait for the recursive goroutine to run past the cache-write point
 		ctrl.Finish()        // now validate Times(0)
 	})
@@ -772,15 +772,15 @@ func TestResolveIntersection(t *testing.T) {
 		mockPlanner := mocks.NewMockManager(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-     define owner: [user]
-     define editor: [user]
-     define viewer: owner and editor
-  `)
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+    define owner: [user]
+    define editor: [user]
+    define viewer: owner and editor
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -834,15 +834,15 @@ func TestResolveIntersection(t *testing.T) {
 		mockPlanner := mocks.NewMockManager(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-     define owner: [user]
-     define editor: [user]
-     define viewer: owner and editor
-  `)
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+    define owner: [user]
+    define editor: [user]
+    define viewer: owner and editor
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -894,15 +894,15 @@ func TestResolveIntersection(t *testing.T) {
 		mockPlanner := mocks.NewMockManager(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-     define owner: [user]
-     define editor: [user]
-     define viewer: owner and editor
-  `)
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+    define owner: [user]
+    define editor: [user]
+    define viewer: owner and editor
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -949,15 +949,15 @@ func TestResolveIntersection(t *testing.T) {
 		mockPlanner := mocks.NewMockManager(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-     define owner: [user]
-     define editor: [user]
-     define viewer: owner and editor
-  `)
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+    define owner: [user]
+    define editor: [user]
+    define viewer: owner and editor
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -1004,14 +1004,14 @@ func TestResolveIntersection(t *testing.T) {
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-            model
-              schema 1.1
-            type user
-            type group
-              relations
-                define member: [user:*] and admin
-                define admin: [user:*]
-        `)
+           model
+             schema 1.1
+           type user
+           type group
+             relations
+               define member: [user:*] and admin
+               define admin: [user:*]
+       `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -1057,14 +1057,14 @@ func TestResolveIntersection(t *testing.T) {
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-            model
-              schema 1.1
-            type user
-            type group
-              relations
-                define member: [user:*] and admin
-                define admin: [user]
-        `)
+           model
+             schema 1.1
+           type user
+           type group
+             relations
+               define member: [user:*] and admin
+               define admin: [user]
+       `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -1099,14 +1099,14 @@ func TestResolveIntersection(t *testing.T) {
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-            model
-              schema 1.1
-            type user
-            type group
-              relations
-                define member: [user] and admin
-                define admin: [user]
-        `)
+           model
+             schema 1.1
+           type user
+           type group
+             relations
+               define member: [user] and admin
+               define admin: [user]
+       `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -1144,15 +1144,15 @@ func TestResolveExclusion(t *testing.T) {
 		mockPlanner := mocks.NewMockManager(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-     define editor: [user]
-     define banned: [user]
-     define viewer: editor but not banned
-  `)
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+    define editor: [user]
+    define banned: [user]
+    define viewer: editor but not banned
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -1201,15 +1201,15 @@ func TestResolveExclusion(t *testing.T) {
 		mockPlanner := mocks.NewMockManager(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-     define editor: [user]
-     define banned: [user]
-     define viewer: editor but not banned
-  `)
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+    define editor: [user]
+    define banned: [user]
+    define viewer: editor but not banned
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -1253,15 +1253,15 @@ func TestResolveExclusion(t *testing.T) {
 		mockPlanner := mocks.NewMockManager(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-     define editor: [user]
-     define banned: [user]
-     define viewer: editor but not banned
-  `)
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+    define editor: [user]
+    define banned: [user]
+    define viewer: editor but not banned
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -1310,15 +1310,15 @@ func TestResolveExclusion(t *testing.T) {
 		mockPlanner := mocks.NewMockManager(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-     define editor: [user]
-     define banned: [user]
-     define viewer: editor but not banned
-  `)
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+    define editor: [user]
+    define banned: [user]
+    define viewer: editor but not banned
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -1369,15 +1369,15 @@ func TestResolveExclusion(t *testing.T) {
 		mockPlanner := mocks.NewMockManager(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-     define editor: [user]
-     define banned: [user]
-     define viewer: editor but not banned
-  `)
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+    define editor: [user]
+    define banned: [user]
+    define viewer: editor but not banned
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -1428,15 +1428,15 @@ func TestResolveExclusion(t *testing.T) {
 		mockPlanner := mocks.NewMockManager(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-     define editor: [user]
-     define banned: [user]
-     define viewer: editor but not banned
-  `)
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+    define editor: [user]
+    define banned: [user]
+    define viewer: editor but not banned
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -1489,16 +1489,16 @@ func TestResolveExclusion(t *testing.T) {
 		mockPlanner := mocks.NewMockManager(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type usergroup
-   type document
-    relations
-     define editor: [user]
-     define banned: [usergroup]
-     define viewer: editor but not banned
-  `)
+  model
+   schema 1.1
+  type user
+  type usergroup
+  type document
+   relations
+    define editor: [user]
+    define banned: [usergroup]
+    define viewer: editor but not banned
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -1542,15 +1542,15 @@ func TestResolveExclusion(t *testing.T) {
 		mockPlanner := mocks.NewMockManager(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-     define editor: [user:*]
-     define banned: [user]
-     define viewer: editor but not banned
-  `)
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+    define editor: [user:*]
+    define banned: [user]
+    define viewer: editor but not banned
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -1588,14 +1588,14 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-     define owner: [user]
-     define viewer: [document#owner]
-  `)
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+    define owner: [user]
+    define viewer: [document#owner]
+ `)
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
@@ -1643,17 +1643,17 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-     define owner: [user]
-     define viewer: [document#owner with tag]
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+    define owner: [user]
+    define viewer: [document#owner with tag]
 	condition tag(tag: string) {
 	                 tag == "valid"
 	               }
-  `)
+ `)
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
@@ -2584,13 +2584,13 @@ func TestSpecificType(t *testing.T) {
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-            model
-              schema 1.1
-            type user
-            type document
-              relations
-                define viewer: [user]
-        `)
+           model
+             schema 1.1
+           type user
+           type document
+             relations
+               define viewer: [user]
+       `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -3044,13 +3044,13 @@ func TestSpecificType(t *testing.T) {
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-  model
-   schema 1.1
-  type user
-  type document
-   relations
-    define viewer: [user]
- `)
+ model
+  schema 1.1
+ type user
+ type document
+  relations
+   define viewer: [user]
+`)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -3092,16 +3092,16 @@ func TestSpecificType(t *testing.T) {
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-  model
-   schema 1.1
-  type user
-  type document
-   relations
-    define viewer: [user with validTime]
-  condition validTime(current_time: timestamp, expiration: timestamp) {
-   current_time < expiration
-  }
- `)
+ model
+  schema 1.1
+ type user
+ type document
+  relations
+   define viewer: [user with validTime]
+ condition validTime(current_time: timestamp, expiration: timestamp) {
+  current_time < expiration
+ }
+`)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -3152,13 +3152,13 @@ func TestSpecificTypeWildcard(t *testing.T) {
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-     define viewer: [user:*]
-  `)
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+    define viewer: [user:*]
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -3209,13 +3209,13 @@ func TestSpecificTypeWildcard(t *testing.T) {
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-     define viewer: [user:*]
-  `)
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+    define viewer: [user:*]
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -3262,13 +3262,13 @@ func TestSpecificTypeWildcard(t *testing.T) {
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-     define viewer: [user:*]
-  `)
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+    define viewer: [user:*]
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -3312,13 +3312,13 @@ func TestSpecificTypeWildcard(t *testing.T) {
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-     define viewer: [user:*]
-  `)
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+    define viewer: [user:*]
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -3369,13 +3369,13 @@ func TestSpecificTypeWildcard(t *testing.T) {
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-     define viewer: [user:*]
-  `)
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+    define viewer: [user:*]
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -3421,17 +3421,17 @@ func TestSpecificTypeWildcard(t *testing.T) {
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-     define viewer: [user:* with non_expired]
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+    define viewer: [user:* with non_expired]
 
-   condition non_expired(current_time: timestamp, expiration: timestamp) {
-    current_time < expiration
-   }
-  `)
+  condition non_expired(current_time: timestamp, expiration: timestamp) {
+   current_time < expiration
+  }
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -3490,17 +3490,17 @@ func TestSpecificTypeWildcard(t *testing.T) {
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-     define viewer: [user:* with non_expired]
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+    define viewer: [user:* with non_expired]
 
-   condition non_expired(current_time: timestamp, expiration: timestamp) {
-    current_time < expiration
-   }
-  `)
+  condition non_expired(current_time: timestamp, expiration: timestamp) {
+   current_time < expiration
+  }
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -3565,13 +3565,13 @@ func TestSpecificTypeWildcard(t *testing.T) {
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-     define viewer: [user:*]
-  `)
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+    define viewer: [user:*]
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -3619,13 +3619,13 @@ func TestSpecificTypeWildcard(t *testing.T) {
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-  model
-   schema 1.1
-  type user
-  type document
-   relations
-    define viewer: [user:*]
- `)
+ model
+  schema 1.1
+ type user
+ type document
+  relations
+   define viewer: [user:*]
+`)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -3668,14 +3668,14 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 		mockSelector := mocks.NewMockSelector(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-     define owner: [user]
-     define viewer: [document#owner]
-  `)
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+    define owner: [user]
+    define viewer: [document#owner]
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -3741,14 +3741,14 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 		mockSelector := mocks.NewMockSelector(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-     define owner: [user]
-     define viewer: [document#owner]
-  `)
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+    define owner: [user]
+    define viewer: [document#owner]
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -3803,14 +3803,14 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 		mockSelector := mocks.NewMockSelector(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-     define owner: [user]
-     define viewer: [document#owner]
-  `)
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+    define owner: [user]
+    define viewer: [document#owner]
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -3862,14 +3862,14 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 		mockSelector := mocks.NewMockSelector(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-     define owner: [user]
-     define viewer: [document#owner]
-  `)
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+    define owner: [user]
+    define viewer: [document#owner]
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -3919,14 +3919,14 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 		mockSelector := mocks.NewMockSelector(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-     define owner: [user]
-     define viewer: [document#owner]
-  `)
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+    define owner: [user]
+    define viewer: [document#owner]
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -3978,14 +3978,14 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 		mockSelector := mocks.NewMockSelector(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-     define owner: [user]
-     define viewer: [document#owner]
-  `)
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+    define owner: [user]
+    define viewer: [document#owner]
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -4042,17 +4042,17 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 		mockSelector := mocks.NewMockSelector(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-  model
-   schema 1.1
-  type user
-  type document
-   relations
-    define owner: [user]
-    define viewer: [document#owner with validTime]
-  condition validTime(current_time: timestamp, expiration: timestamp) {
-   current_time < expiration
-  }
- `)
+ model
+  schema 1.1
+ type user
+ type document
+  relations
+   define owner: [user]
+   define viewer: [document#owner with validTime]
+ condition validTime(current_time: timestamp, expiration: timestamp) {
+  current_time < expiration
+ }
+`)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -4123,17 +4123,17 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 		mockSelector := mocks.NewMockSelector(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-  model
-   schema 1.1
-  type user
-  type document
-   relations
-    define owner: [user]
-    define viewer: [document#owner with validTime]
-  condition validTime(current_time: timestamp, expiration: timestamp) {
-   current_time < expiration
-  }
- `)
+ model
+  schema 1.1
+ type user
+ type document
+  relations
+   define owner: [user]
+   define viewer: [document#owner with validTime]
+ condition validTime(current_time: timestamp, expiration: timestamp) {
+  current_time < expiration
+ }
+`)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -4207,14 +4207,14 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 		mockSelector := mocks.NewMockSelector(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-     define owner: [user]
-     define viewer: [document#owner]
- `)
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+    define owner: [user]
+    define viewer: [document#owner]
+`)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -4286,15 +4286,15 @@ func TestTTU(t *testing.T) {
 		mockSelector := mocks.NewMockSelector(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-     define owner: [user]
-     define parent: [document]
-     define viewer: owner from parent
-  `)
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+    define owner: [user]
+    define parent: [document]
+    define viewer: owner from parent
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -4359,15 +4359,15 @@ func TestTTU(t *testing.T) {
 		mockSelector := mocks.NewMockSelector(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-     define owner: [user]
-     define parent: [document]
-     define viewer: owner from parent
-  `)
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+    define owner: [user]
+    define parent: [document]
+    define viewer: owner from parent
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -4423,15 +4423,15 @@ func TestTTU(t *testing.T) {
 		mockSelector := mocks.NewMockSelector(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-     define owner: [user]
-     define parent: [document]
-     define viewer: owner from parent
-  `)
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+    define owner: [user]
+    define parent: [document]
+    define viewer: owner from parent
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -4482,15 +4482,15 @@ func TestTTU(t *testing.T) {
 		mockPlanner := mocks.NewMockManager(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-     define owner: [user]
-     define parent: [document]
-     define viewer: owner from parent
-  `)
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+    define owner: [user]
+    define parent: [document]
+    define viewer: owner from parent
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -4536,15 +4536,15 @@ func TestTTU(t *testing.T) {
 		mockPlanner := mocks.NewMockManager(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-     define owner: [user]
-     define parent: [document]
-     define viewer: owner from parent
-  `)
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+    define owner: [user]
+    define parent: [document]
+    define viewer: owner from parent
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -4593,15 +4593,15 @@ func TestTTU(t *testing.T) {
 		mockSelector := mocks.NewMockSelector(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-     define owner: [user]
-     define parent: [document]
-     define viewer: owner from parent
-  `)
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+    define owner: [user]
+    define parent: [document]
+    define viewer: owner from parent
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -4658,18 +4658,18 @@ func TestTTU(t *testing.T) {
 		mockSelector := mocks.NewMockSelector(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-     define owner: [user]
-     define parent: [document with non_expired]
-     define viewer: owner from parent
-   condition non_expired(current_time: timestamp, expiration: timestamp) {
-    current_time < expiration
-   }
-  `)
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+    define owner: [user]
+    define parent: [document with non_expired]
+    define viewer: owner from parent
+  condition non_expired(current_time: timestamp, expiration: timestamp) {
+   current_time < expiration
+  }
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -4737,18 +4737,18 @@ func TestTTU(t *testing.T) {
 		mockSelector := mocks.NewMockSelector(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-     define owner: [user]
-     define parent: [document with non_expired]
-     define viewer: owner from parent
-   condition non_expired(current_time: timestamp, expiration: timestamp) {
-    current_time < expiration
-   }
-  `)
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+    define owner: [user]
+    define parent: [document with non_expired]
+    define viewer: owner from parent
+  condition non_expired(current_time: timestamp, expiration: timestamp) {
+   current_time < expiration
+  }
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -4817,17 +4817,17 @@ func TestTTU(t *testing.T) {
 		mockSelector := mocks.NewMockSelector(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-  model
-   schema 1.1
-  type user
-  type folder
-   relations
-    define viewer: [user]
-  type document
-   relations
-    define parent: [folder]
-    define viewer: viewer from parent
- `)
+ model
+  schema 1.1
+ type user
+ type folder
+  relations
+   define viewer: [user]
+ type document
+  relations
+   define parent: [folder]
+   define viewer: viewer from parent
+`)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -4893,14 +4893,14 @@ func TestResolveRecursiveCheck(t *testing.T) {
 		mockSelector := mocks.NewMockSelector(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-       define viewer: [user] or viewer from parent
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+      define viewer: [user] or viewer from parent
 	   define parent: [document]
-  `)
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -4964,20 +4964,20 @@ func TestResolveRecursiveCheck(t *testing.T) {
 		mockSelector := mocks.NewMockSelector(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-       define viewer: [group] or viewer from parent
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+      define viewer: [group] or viewer from parent
 	   define parent: [document, group]
-   type group
-    relations
+  type group
+   relations
 	   define viewer: member
 	   define member: reader or public
 	   define public: [user:*]
 	   define reader: [user]
-  `)
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -5069,20 +5069,20 @@ func TestResolveRecursiveCheck(t *testing.T) {
 		mockSelector := mocks.NewMockSelector(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-       define viewer: [group] or viewer from parent
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+      define viewer: [group] or viewer from parent
 	   define parent: [document, group]
-   type group
-    relations
+  type group
+   relations
 	   define viewer: member
 	   define member: reader or public
 	   define public: [user:*]
 	   define reader: [user]
-  `)
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -5168,13 +5168,13 @@ func TestResolveRecursiveCheck(t *testing.T) {
 		mockSelector := mocks.NewMockSelector(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-       define viewer: [user, document#viewer]
-  `)
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+      define viewer: [user, document#viewer]
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -5236,19 +5236,19 @@ func TestResolveRecursiveCheck(t *testing.T) {
 		mockSelector := mocks.NewMockSelector(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-       define viewer: [group, document#viewer, group#viewer]
-   type group
-    relations
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+      define viewer: [group, document#viewer, group#viewer]
+  type group
+   relations
 	   define viewer: member
 	   define member: reader or public
 	   define public: [user:*]
 	   define reader: [user]
-  `)
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -5339,19 +5339,19 @@ func TestResolveRecursiveCheck(t *testing.T) {
 		mockSelector := mocks.NewMockSelector(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-       define viewer: [group, document#viewer, group#viewer]
-   type group
-    relations
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+      define viewer: [group, document#viewer, group#viewer]
+  type group
+   relations
 	   define viewer: member
 	   define member: reader or public
 	   define public: [user:*]
 	   define reader: [user]
-  `)
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -5437,14 +5437,14 @@ func TestResolveRecursiveCheck(t *testing.T) {
 		mockSelector := mocks.NewMockSelector(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type group
-    relations
+  model
+   schema 1.1
+  type user
+  type group
+   relations
 	   define viewer: [user:*] or viewer from parent
 	   define parent: [group]
-  `)
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -5522,13 +5522,13 @@ func TestResolveRecursiveCheck(t *testing.T) {
 		mockSelector := mocks.NewMockSelector(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-       define viewer: [user:*, document#viewer]
-  `)
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+      define viewer: [user:*, document#viewer]
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -5593,15 +5593,15 @@ func TestResolveRecursiveCheck(t *testing.T) {
 		mockSelector := mocks.NewMockSelector(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type group
-    relations
+  model
+   schema 1.1
+  type user
+  type group
+   relations
 	   define viewer: [user:*] or viewer from parent or admin
 	   define parent: [group]
 	   define admin: [user] or admin from parent
-  `)
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -5679,14 +5679,14 @@ func TestResolveRecursiveCheck(t *testing.T) {
 		mockSelector := mocks.NewMockSelector(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-       define viewer: [user:*, document#viewer] or admin
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+      define viewer: [user:*, document#viewer] or admin
 	   define admin: [user, document#admin]
-  `)
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -5891,22 +5891,22 @@ func TestResolveCheck(t *testing.T) {
 		mockSelector := mocks.NewMockSelector(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type group
+  model
+   schema 1.1
+  type user
+  type group
 	relations
 		define viewer: [user with xcond]
-   type document
-    relations
-       define viewer: [group#viewer with ycond]
-    condition xcond(x: string) {
-  	x == '1'
+  type document
+   relations
+      define viewer: [group#viewer with ycond]
+   condition xcond(x: string) {
+ 	x == '1'
 	}
 	 condition ycond(y: string) {
-  	y == '1'
+ 	y == '1'
 	}
-  `)
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)

@@ -40,7 +40,7 @@ var DefaultRecursivePlan = &planner.PlanConfig{
 const SqlStrategyName = "sql"
 
 var SqlPlan = &planner.PlanConfig{
-	Name:         DefaultStrategyName,
+	Name:         SqlStrategyName,
 	InitialGuess: 50 * time.Millisecond,
 	// Low Lambda: Represents zero confidence. It's a pure guess.
 	Lambda: 1,
