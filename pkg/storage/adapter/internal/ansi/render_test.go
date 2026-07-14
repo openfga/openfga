@@ -54,7 +54,9 @@ func TestSelectBasic(t *testing.T) {
 // ansiSubjectIDView mirrors ANSIDialect's subject-id view so the long synthesized
 // expression is written once where the subject view is only incidental to a test. The
 // view itself is pinned to literal expectations in TestSubjectLogicalView.
-func ansiSubjectIDView(alias string) string { return ANSIDialect{}.StandardColumn(ColumnSubjectID, alias) }
+func ansiSubjectIDView(alias string) string {
+	return ANSIDialect{}.StandardColumn(ColumnSubjectID, alias)
+}
 
 func TestSelectStarNoColumns(t *testing.T) {
 	b := newBuilder()
@@ -263,6 +265,38 @@ func TestQuantifiedAny(t *testing.T) {
 	sql, args := renderQuery(t, b.Select(a.ObjectID()).From(a).Where(p))
 	want := "SELECT a.object_id FROM tuple a WHERE a.object_id = ANY (SELECT b.object_id FROM tuple b)"
 	assertSQL(t, sql, want, args)
+}
+
+// TestProjectionNode exercises the bare-Projection tier directly. No factory produces a
+// projectionNode yet — it backs select-only columns such as Tuple.ConditionContext — so
+// this both documents its contract and keeps its methods reachable.
+func TestProjectionNode(t *testing.T) {
+	inner := writerFunc(func(r *renderer) { r.write("a.condition_context") })
+	p := &projectionNode{inner: inner}
+
+	sql, args := render(p, standardDialect{})
+	if sql != "a.condition_context" {
+		t.Errorf("SQL mismatch: got %q, want %q", sql, "a.condition_context")
+	}
+	if len(args) != 0 {
+		t.Errorf("expected no bind args, got %v", args)
+	}
+	if a := p.alias(); a != "" {
+		t.Errorf("expected empty alias, got %q", a)
+	}
+
+	// As returns a new projectionNode carrying the alias, leaving the rendered SQL of the
+	// inner writer unchanged.
+	aliased, ok := p.As("ctx").(*projectionNode)
+	if !ok {
+		t.Fatalf("As returned %T, want *projectionNode", p.As("ctx"))
+	}
+	if a := aliased.alias(); a != "ctx" {
+		t.Errorf("alias mismatch: got %q, want %q", a, "ctx")
+	}
+	if sql, _ := render(aliased, standardDialect{}); sql != "a.condition_context" {
+		t.Errorf("aliased SQL mismatch: got %q, want %q", sql, "a.condition_context")
+	}
 }
 
 func TestGroupByHavingOffset(t *testing.T) {

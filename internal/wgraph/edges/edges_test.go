@@ -3,10 +3,11 @@ package edges_test
 import (
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/openfga/openfga/internal/modelgraph"
 	"github.com/openfga/openfga/internal/wgraph/edges"
 	"github.com/openfga/openfga/pkg/testutils"
-	"github.com/stretchr/testify/require"
 )
 
 func TestSplitWeightOne(t *testing.T) {

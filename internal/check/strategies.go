@@ -3,7 +3,6 @@ package check
 import (
 	"time"
 
-	authzGraph "github.com/openfga/language/pkg/go/graph"
 	"github.com/openfga/openfga/internal/planner"
 	"github.com/openfga/openfga/pkg/storage/cache/keys"
 )
@@ -37,10 +36,10 @@ var DefaultRecursivePlan = &planner.PlanConfig{
 	Beta:  2.0,
 }
 
-const SqlStrategyName = "sql"
+const SQLStrategyName = "sql"
 
-var SqlPlan = &planner.PlanConfig{
-	Name:         SqlStrategyName,
+var SQLPlan = &planner.PlanConfig{
+	Name:         SQLStrategyName,
 	InitialGuess: 50 * time.Millisecond,
 	// Low Lambda: Represents zero confidence. It's a pure guess.
 	Lambda: 1,
@@ -149,25 +148,5 @@ func createTTUPlanKey(req *Request, tuplesetRelation, computedRelation string) k
 	builder.EncodeString(req.GetUserType())
 	builder.EncodeString(tuplesetRelation)
 	builder.EncodeString(computedRelation)
-	return builder.Key()
-}
-
-func createEdgePlanKey(req *Request, edge *authzGraph.WeightedAuthorizationModelEdge) keys.Key {
-	const version = "V2"
-	const prefix = "EDGE"
-
-	builder := keys.GetBuilder()
-	defer builder.Close()
-
-	builder.EncodeString(version)
-	builder.EncodeString(prefix)
-	builder.EncodeString(req.GetStoreID())
-	builder.EncodeString(req.GetAuthorizationModelID())
-	builder.EncodeString(req.GetObjectType())
-	builder.EncodeString(req.GetTupleKey().GetRelation())
-	builder.EncodeString(req.GetUserType())
-	builder.EncodeUint64(uint64(edge.GetEdgeType()))
-	builder.EncodeString(edge.GetRelationDefinition())
-	builder.EncodeString(edge.GetTo().GetUniqueLabel())
 	return builder.Key()
 }

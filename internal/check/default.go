@@ -10,7 +10,6 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/openfga/language/pkg/go/graph"
-	authzGraph "github.com/openfga/language/pkg/go/graph"
 
 	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/modelgraph"
@@ -18,7 +17,7 @@ import (
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
-type defaultStrategyHandler func(context.Context, *Request, *authzGraph.WeightedAuthorizationModelEdge, storage.TupleKeyIterator, chan requestMsg)
+type defaultStrategyHandler func(context.Context, *Request, *graph.WeightedAuthorizationModelEdge, storage.TupleKeyIterator, chan requestMsg)
 
 type requestMsg struct {
 	err error
@@ -63,7 +62,7 @@ func (s *DefaultStrategy) Resolve(ctx context.Context, req *Request, edges []*gr
 
 // defaultUserset will check userset path.
 // This is the slow path as it requires dispatch on all its children.
-func (s *DefaultStrategy) Userset(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator, visited *sync.Map) (*Response, error) {
+func (s *DefaultStrategy) Userset(ctx context.Context, req *Request, edge *graph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator, visited *sync.Map) (*Response, error) {
 	ctx, span := tracer.Start(ctx, "default.Userset")
 	defer span.End()
 
@@ -74,7 +73,7 @@ func (s *DefaultStrategy) Userset(ctx context.Context, req *Request, edge *authz
 	return res, err
 }
 
-func (s *DefaultStrategy) userset(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator, out chan requestMsg) {
+func (s *DefaultStrategy) userset(ctx context.Context, req *Request, edge *graph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator, out chan requestMsg) {
 	defer close(out)
 	for {
 		t, err := iter.Next(ctx)
@@ -94,7 +93,7 @@ func (s *DefaultStrategy) userset(ctx context.Context, req *Request, edge *authz
 	}
 }
 
-func (s *DefaultStrategy) TTU(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator, visited *sync.Map) (*Response, error) {
+func (s *DefaultStrategy) TTU(ctx context.Context, req *Request, edge *graph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator, visited *sync.Map) (*Response, error) {
 	ctx, span := tracer.Start(ctx, "default.TTU")
 	defer span.End()
 
@@ -105,7 +104,7 @@ func (s *DefaultStrategy) TTU(ctx context.Context, req *Request, edge *authzGrap
 	return res, err
 }
 
-func (s *DefaultStrategy) ttu(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator, out chan requestMsg) {
+func (s *DefaultStrategy) ttu(ctx context.Context, req *Request, edge *graph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator, out chan requestMsg) {
 	defer close(out)
 	_, computedRelation := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
 	for {
@@ -125,7 +124,7 @@ func (s *DefaultStrategy) ttu(ctx context.Context, req *Request, edge *authzGrap
 	}
 }
 
-func (s *DefaultStrategy) execute(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator, handler defaultStrategyHandler, visited *sync.Map) (*Response, error) {
+func (s *DefaultStrategy) execute(ctx context.Context, req *Request, edge *graph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator, handler defaultStrategyHandler, visited *sync.Map) (*Response, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 

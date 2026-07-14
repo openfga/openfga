@@ -96,7 +96,7 @@ func New(cfg Config) *Resolver {
 	if r.groupStrategies == nil {
 		r.groupStrategies = map[string]GroupStrategy{
 			DefaultStrategyName: NewDefault(cfg.Model, r, cfg.ConcurrencyLimit),
-			SqlStrategyName:     NewSql(cfg.Model, cfg.Datastore),
+			SQLStrategyName:     NewSQL(cfg.Model, cfg.Datastore),
 		}
 	}
 	return r
@@ -316,7 +316,7 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, e []*gra
 			selector := r.planner.GetPlanSelector(planKey)
 			candidates := map[string]*planner.PlanConfig{
 				DefaultStrategyName: DefaultPlan,
-				SqlStrategyName:     SqlPlan,
+				SQLStrategyName:     SQLPlan,
 			}
 			plan := selector.Select(candidates)
 
@@ -721,7 +721,7 @@ func (r *Resolver) ResolveIntersection(ctx context.Context, req *Request, node *
 			selector := r.planner.GetPlanSelector(planKey)
 			candidates := map[string]*planner.PlanConfig{
 				DefaultStrategyName: DefaultPlan,
-				SqlStrategyName:     SqlPlan,
+				SQLStrategyName:     SQLPlan,
 			}
 			plan := selector.Select(candidates)
 
@@ -832,7 +832,7 @@ func (r *Resolver) ResolveExclusion(ctx context.Context, req *Request, node *gra
 		selector := r.planner.GetPlanSelector(planKey)
 		candidates := map[string]*planner.PlanConfig{
 			DefaultStrategyName: DefaultPlan,
-			SqlStrategyName:     SqlPlan,
+			SQLStrategyName:     SQLPlan,
 		}
 		plan := selector.Select(candidates)
 
@@ -884,6 +884,7 @@ AfterEval:
 					span.SetAttributes(attribute.Bool("allowed", false))
 					return &Response{Allowed: false}, nil
 				}
+				subtractAllowed = false
 			}
 		}
 	}

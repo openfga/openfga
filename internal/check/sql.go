@@ -7,12 +7,12 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/openfga/language/pkg/go/graph"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/openfga/language/pkg/go/graph"
 
 	"github.com/openfga/openfga/internal/modelgraph"
 	"github.com/openfga/openfga/pkg/storage"
@@ -21,27 +21,27 @@ import (
 )
 
 var (
-	ErrSqlUnsupported = errors.New("datastore does not support SQL algorithms")
+	ErrSQLUnsupported = errors.New("datastore does not support SQL algorithms")
 )
 
-var _ GroupStrategy = &SqlStrategy{}
+var _ GroupStrategy = &SQLStrategy{}
 
-type SqlStrategy struct {
+type SQLStrategy struct {
 	datastore storage.RelationshipTupleReader
 	model     *modelgraph.AuthorizationModelGraph
 }
 
-func NewSql(model *modelgraph.AuthorizationModelGraph, datastore storage.RelationshipTupleReader) *SqlStrategy {
-	return &SqlStrategy{
+func NewSQL(model *modelgraph.AuthorizationModelGraph, datastore storage.RelationshipTupleReader) *SQLStrategy {
+	return &SQLStrategy{
 		model:     model,
 		datastore: datastore,
 	}
 }
 
-func (s *SqlStrategy) Resolve(ctx context.Context, req *Request, edges []*graph.WeightedAuthorizationModelEdge, operation string, out chan<- ResponseMsg, _ *errgroup.Group, _ *sync.Map) {
+func (s *SQLStrategy) Resolve(ctx context.Context, req *Request, edges []*graph.WeightedAuthorizationModelEdge, operation string, out chan<- ResponseMsg, _ *errgroup.Group, _ *sync.Map) {
 	builder := s.datastore.Builder(req.GetConsistency())
 	if builder == nil {
-		out <- ResponseMsg{Edges: edges, Err: ErrSqlUnsupported}
+		out <- ResponseMsg{Edges: edges, Err: ErrSQLUnsupported}
 		return
 	}
 
@@ -84,7 +84,7 @@ type gatheredRow struct {
 // evaluating the whole group of weight-1 edges (combined by operation) in a single SQL
 // round-trip. Without conditions, it issues an existence query (SELECT 1 ... HAVING <tree>);
 // with conditions it gathers candidate tuples and evaluates their conditions in-app.
-func (s *SqlStrategy) weight1(ctx context.Context, req *Request, builder adapter.Builder, edges []*graph.WeightedAuthorizationModelEdge, operation string) (*Response, error) {
+func (s *SQLStrategy) weight1(ctx context.Context, req *Request, builder adapter.Builder, edges []*graph.WeightedAuthorizationModelEdge, operation string) (*Response, error) {
 	w := &walker{
 		s:         s,
 		req:       req,
@@ -123,7 +123,7 @@ func (s *SqlStrategy) weight1(ctx context.Context, req *Request, builder adapter
 
 // walker carries the per-request state shared by the subtree traversals.
 type walker struct {
-	s       *SqlStrategy
+	s       *SQLStrategy
 	req     *Request
 	builder adapter.Builder
 	table   adapter.Tuple
@@ -471,7 +471,7 @@ type residual struct {
 }
 
 // render lowers the subtree to a HAVING predicate. Leaves satisfied by contextual tuples
-// fold to constant-true and drop out; the rest render to COUNT(CASE ...) existence checks
+// fold to constant-true and drop out; the rest render to COUNT(CASE ...) Existence checks
 // combined by the operators.
 func (w *walker) render(edges []*graph.WeightedAuthorizationModelEdge, operation string) (residual, error) {
 	switch operation {
