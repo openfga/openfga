@@ -228,7 +228,7 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, e []*gra
 	defer span.End()
 
 	var weightOneEdges []*graph.WeightedAuthorizationModelEdge
-	weightOneEdges, e = edges.SplitBy(edges.WeightOne(req.GetUserType()), e...)
+	weightOneEdges, e = edges.SplitWeightOne(req.GetUserType(), e...)
 
 	var nodeCacheKey keys.Key
 
@@ -281,7 +281,7 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, e []*gra
 	out := make(chan ResponseMsg, len(e))
 
 	var pool errgroup.Group
-	pool.SetLimit(r.concurrencyLimit)
+	pool.SetLimit(r.concurrencyLimit + 1) // Add 1 for strategy execution goroutine below
 
 	var wg sync.WaitGroup
 
@@ -305,29 +305,24 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, e []*gra
 		}
 	}()
 
-	candidates := map[string]*planner.PlanConfig{
-		DefaultStrategyName: DefaultPlan,
-	}
-
-	if r.datastore.Builder(req.Consistency) != nil {
-		candidates[SqlStrategyName] = SqlPlan
-	}
-
 	if len(weightOneEdges) > 0 {
 		pool.Go(func() error {
-			if len(candidates) == 1 {
+			if r.datastore.Builder(req.Consistency) == nil {
 				r.groupStrategies[DefaultPlan.Name].Resolve(ctx, req, weightOneEdges, graph.UnionOperator, out, &pool, nil)
 				return nil
 			}
 
 			planKey := r.buildW1PlanKey(nodeLabel, req.GetUserType())
 			selector := r.planner.GetPlanSelector(planKey)
-
+			candidates := map[string]*planner.PlanConfig{
+				DefaultStrategyName: DefaultPlan,
+				SqlStrategyName:     SqlPlan,
+			}
 			plan := selector.Select(candidates)
 
 			r.executeStrategy(ctx, selector, plan, func() (*Response, error) {
 				r.groupStrategies[plan.Name].Resolve(ctx, req, weightOneEdges, graph.UnionOperator, out, &pool, nil)
-				return nil, nil
+				return nil, nil // Strategy will send response on out channel
 			})
 			return nil
 		})
@@ -686,7 +681,7 @@ func (r *Resolver) ResolveIntersection(ctx context.Context, req *Request, node *
 	}
 
 	var weightOneEdges []*graph.WeightedAuthorizationModelEdge
-	weightOneEdges, e = edges.SplitBy(edges.WeightOne(req.GetUserType()), e...)
+	weightOneEdges, e = edges.SplitWeightOne(req.GetUserType(), e...)
 
 	ctx, cancel := context.WithCancel(ctx)
 	out := make(chan ResponseMsg, len(e))
@@ -695,7 +690,7 @@ func (r *Resolver) ResolveIntersection(ctx context.Context, req *Request, node *
 
 	// errors will always be sent to the out channel
 	var pool errgroup.Group
-	pool.SetLimit(r.concurrencyLimit)
+	pool.SetLimit(r.concurrencyLimit + 1) // Add 1 for strategy execution goroutine below
 	defer func() {
 		cancel()
 		wg.Wait()
@@ -710,29 +705,24 @@ func (r *Resolver) ResolveIntersection(ctx context.Context, req *Request, node *
 		}
 	}
 
-	candidates := map[string]*planner.PlanConfig{
-		DefaultStrategyName: DefaultPlan,
-	}
-
-	if r.datastore.Builder(req.Consistency) != nil {
-		candidates[SqlStrategyName] = SqlPlan
-	}
-
 	if len(weightOneEdges) > 0 {
 		pool.Go(func() error {
-			if len(candidates) == 1 {
+			if r.datastore.Builder(req.Consistency) == nil {
 				r.groupStrategies[DefaultPlan.Name].Resolve(ctx, req, weightOneEdges, graph.IntersectionOperator, out, &pool, nil)
 				return nil
 			}
 
 			planKey := r.buildW1PlanKey(node.GetUniqueLabel(), req.GetUserType())
 			selector := r.planner.GetPlanSelector(planKey)
-
+			candidates := map[string]*planner.PlanConfig{
+				DefaultStrategyName: DefaultPlan,
+				SqlStrategyName:     SqlPlan,
+			}
 			plan := selector.Select(candidates)
 
 			r.executeStrategy(ctx, selector, plan, func() (*Response, error) {
 				r.groupStrategies[plan.Name].Resolve(ctx, req, weightOneEdges, graph.IntersectionOperator, out, &pool, nil)
-				return nil, nil
+				return nil, nil // Strategy will send response on out channel
 			})
 			return nil
 		})
@@ -785,6 +775,19 @@ func (r *Resolver) ResolveExclusion(ctx context.Context, req *Request, node *gra
 	))
 	defer span.End()
 
+	ctx, cancel := context.WithCancel(ctx)
+	var wg sync.WaitGroup
+
+	defer func() {
+		cancel()
+		wg.Wait()
+	}()
+
+	nodeWeight, ok := node.GetWeight(req.GetUserType())
+	if !ok {
+		return nil, ErrPanicRequest
+	}
+
 	e, ok := r.model.GetEdgesFromNode(node)
 	if !ok {
 		return nil, ErrPanicRequest
@@ -793,98 +796,92 @@ func (r *Resolver) ResolveExclusion(ctx context.Context, req *Request, node *gra
 	if _, ok := r.model.GetEdgeWeight(e[0], req.GetUserType()); !ok {
 		return nil, ErrPanicRequest
 	}
-	ctx, cancel := context.WithCancel(ctx)
-	base := make(chan ResponseMsg, 1)
-	var wg sync.WaitGroup
 
-	scheduledHandlers := 1
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		// exclusion is never part of a cycle or recursion
-		res, err := r.ResolveEdge(ctx, req, e[0], nil)
-		concurrency.TrySendThroughChannel(ctx, ResponseMsg{Res: res, Err: err}, base)
-		close(base)
-	}()
-	defer func() {
-		cancel()
-		wg.Wait()
-	}()
-
-	var subtract chan ResponseMsg
-	// excluded edge
-	_, ok = r.model.GetEdgeWeight(e[1], req.GetUserType())
-	if tuple.IsObjectRelation(req.GetTupleKey().GetUser()) && !ok {
-		// If the user is an object relation and there is no way to the userset in the exclusion part we cannot have an answer,
-		return nil, ErrUsersetInvalidRequest
+	// subtract edge validation
+	_, subtractHasPath := r.model.GetEdgeWeight(e[1], req.GetUserType())
+	if !subtractHasPath {
+		if tuple.IsObjectRelation(req.GetTupleKey().GetUser()) {
+			// If the user is an object relation and there is no way to the userset in the exclusion part we
+			// cannot have an answer, since the system does not perform an exhaustive search to verify if
+			// individual users of the userset have the relation to the object.
+			return nil, ErrUsersetInvalidRequest
+		}
+		e = e[:1]
 	}
 
-	if ok {
-		scheduledHandlers++
-		subtract = make(chan ResponseMsg, 1)
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	out := make(chan ResponseMsg, 2)
+	var pool errgroup.Group
+	pool.SetLimit(3) // 2 for default strategy base & subtract edges, 1 for strategy execution below
+
+	if nodeWeight != 1 || r.datastore.Builder(req.Consistency) == nil {
+		pool.Go(func() error {
 			// exclusion is never part of a cycle or recursion
-			res, err := r.ResolveEdge(ctx, req, e[1], nil)
-			concurrency.TrySendThroughChannel(ctx, ResponseMsg{Res: res, Err: err}, subtract)
-			close(subtract)
-		}()
+			r.groupStrategies[DefaultPlan.Name].Resolve(ctx, req, e, graph.ExclusionOperator, out, &pool, nil)
+			return nil // error is sent on out channel
+		})
+		goto AfterEval
 	}
 
-	// Loop until we have received the necessary results to determine the outcome.
-	resultsReceived := 0
-	for resultsReceived < scheduledHandlers {
+	pool.Go(func() error {
+		planKey := r.buildW1PlanKey(node.GetUniqueLabel(), req.GetUserType())
+		selector := r.planner.GetPlanSelector(planKey)
+		candidates := map[string]*planner.PlanConfig{
+			DefaultStrategyName: DefaultPlan,
+			SqlStrategyName:     SqlPlan,
+		}
+		plan := selector.Select(candidates)
+
+		r.executeStrategy(ctx, selector, plan, func() (*Response, error) {
+			r.groupStrategies[plan.Name].Resolve(ctx, req, e, graph.ExclusionOperator, out, &pool, nil)
+			return nil, nil // Strategy will send response on out channel
+		})
+		return nil // error is sent on out channel
+	})
+
+AfterEval:
+	wg.Go(func() {
+		pool.Wait()
+		close(out)
+	})
+
+	var baseAllowed bool
+	var subtractAllowed bool
+
+	for {
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
-		case msg, ok := <-base:
+		case msg, ok := <-out:
 			if !ok {
-				base = nil // Stop selecting this case.
-				continue
+				span.SetAttributes(attribute.Bool("allowed", baseAllowed && !subtractAllowed))
+				return &Response{Allowed: baseAllowed && !subtractAllowed}, nil
 			}
-			resultsReceived++
 
 			if msg.Err != nil {
-				// NOTE: This is one of the breaking changes from the current check implementation. Delete this after this rollout.
-				// If base returns an error, we return it immediately since the result of the exclusion cannot be determined.
 				return nil, msg.Err
 			}
 
-			// Short-circuit: If base is false, the whole expression is false.
-			if !msg.Res.GetAllowed() {
-				return &Response{Allowed: false}, nil
-			}
-
-			// Short-circuit: If base is true and there's no subtract, the whole expression is true.
-			if msg.Res.GetAllowed() && subtract == nil {
-				span.SetAttributes(attribute.Bool("allowed", true))
+			if len(msg.Edges) > 1 {
+				span.SetAttributes(attribute.Bool("allowed", msg.Res.GetAllowed()))
 				return msg.Res, nil
 			}
 
-		case msg, ok := <-subtract: // subtract can be nil
-			if !ok {
-				subtract = nil // Stop selecting this case.
-				continue
-			}
-			resultsReceived++
-
-			if msg.Err != nil {
-				// NOTE: This is one of the breaking changes from the current check implementation. Delete this after this rollout.
-				// If subtract returns an error, we return it immediately since the result of the exclusion cannot be determined. There will never be a case in which it returns false if it returns an error given there is only one branch.
-				return nil, msg.Err
-			}
-
-			// Short-circuit: If subtract is true, the whole expression is false.
-			if msg.Res.GetAllowed() {
-				return &Response{Allowed: false}, nil
+			if msg.Edges[0] == e[0] {
+				// Short-circuit: If base is false, the whole expression is false.
+				if !msg.Res.GetAllowed() {
+					span.SetAttributes(attribute.Bool("allowed", false))
+					return &Response{Allowed: false}, nil
+				}
+				baseAllowed = true
+			} else {
+				// Short-circuit: If subtract is true, the whole expression is false.
+				if msg.Res.GetAllowed() {
+					span.SetAttributes(attribute.Bool("allowed", false))
+					return &Response{Allowed: false}, nil
+				}
 			}
 		}
 	}
-
-	// The only way to get here is if base was (Allowed: true) and subtract was (Allowed: false).
-	span.SetAttributes(attribute.Bool("allowed", true))
-	return &Response{Allowed: true}, nil
 }
 
 func (r *Resolver) ResolveEdge(ctx context.Context, req *Request, edge *graph.WeightedAuthorizationModelEdge, visited *sync.Map) (*Response, error) {

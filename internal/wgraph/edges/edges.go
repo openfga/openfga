@@ -1,45 +1,21 @@
 package edges
 
-import (
-	"github.com/openfga/language/pkg/go/graph"
-)
+import "github.com/openfga/language/pkg/go/graph"
 
-// Predicate is a type that accepts an edge and retuns a boolean value.
-type Predicate func(*graph.WeightedAuthorizationModelEdge) bool
+func SplitWeightOne(terminal string, edges ...*graph.WeightedAuthorizationModelEdge) ([]*graph.WeightedAuthorizationModelEdge, []*graph.WeightedAuthorizationModelEdge) {
+	// left tracks first non-weight-1
+	// right looks for the first weight 1 to swap with left
 
-// WeightOne returns a predicate that returns true when
-// the given edge has a weight of one to the terminal type.
-func WeightOne(terminal string) Predicate {
-	return func(edge *graph.WeightedAuthorizationModelEdge) bool {
-		weight, _ := edge.GetWeight(terminal)
-		return weight == 1
-	}
-}
+	var left int
 
-// SplitBy splits source into two slices. The first slice
-// contains all edges that return true for fn. The second
-// slice contains all edges that return false for fn.
-func SplitBy(
-	fn Predicate, source ...*graph.WeightedAuthorizationModelEdge,
-) ([]*graph.WeightedAuthorizationModelEdge, []*graph.WeightedAuthorizationModelEdge) {
-	storage := make([]*graph.WeightedAuthorizationModelEdge, len(source))
+	for right := range len(edges) {
+		rightWeight, _ := edges[right].GetWeight(terminal)
 
-	front := 0
-	back := len(source) - 1
-
-	for _, edge := range source {
-		if fn(edge) {
-			storage[front] = edge
-			front++
-			continue
+		if rightWeight == 1 {
+			edges[left], edges[right] = edges[right], edges[left]
+			left++
 		}
-		storage[back] = edge
-		back--
 	}
 
-	// Slice out the exact bounds filled
-	matches := storage[:front]
-	differs := storage[back+1:]
-
-	return matches, differs
+	return edges[:left], edges[left:]
 }

@@ -46,7 +46,9 @@ func (s *DefaultStrategy) Resolve(ctx context.Context, req *Request, edges []*gr
 	for _, edge := range edges {
 		_, ok := s.model.GetEdgeWeight(edge, req.GetUserType())
 		if !ok {
-			concurrency.TrySendThroughChannel(ctx, ResponseMsg{Err: ErrPanicRequest}, out)
+			// For intersection, this is not possible (model error). For union/exclusion,
+			// this edge has no path so treat it as false.
+			concurrency.TrySendThroughChannel(ctx, ResponseMsg{Res: &Response{}}, out)
 			return
 		}
 

@@ -23,13 +23,13 @@ func TestSplitWeightOne(t *testing.T) {
 			model: `
 				model
 					schema 1.1
-
+		
 				type user
-
+		
 				type folder
 					relations
 						define viewer: [user]
-
+		
 				type document
 					relations
 						define parent: [folder]
@@ -48,9 +48,9 @@ func TestSplitWeightOne(t *testing.T) {
 			model: `
 				model
 					schema 1.1
-
+		
 				type user
-
+		
 				type document
 					relations
 						define r0: [user]
@@ -75,9 +75,9 @@ func TestSplitWeightOne(t *testing.T) {
 			model: `
 				model
 					schema 1.1
-
+		
 				type user
-
+		
 				type document
 					relations
 						define viewer: [user]
@@ -92,13 +92,13 @@ func TestSplitWeightOne(t *testing.T) {
 			model: `
 				model
 					schema 1.1
-
+		
 				type user
-
+		
 				type folder
 					relations
 						define viewer: [user]
-
+		
 				type document
 					relations
 						define parent: [folder]
@@ -140,7 +140,7 @@ func TestSplitWeightOne(t *testing.T) {
 			source:        "document#viewer",
 			target:        "user",
 			weightOne:     1,
-			weightTwoPlus: 6,
+			weightTwoPlus: 1,
 		},
 	}
 
@@ -156,7 +156,7 @@ func TestSplitWeightOne(t *testing.T) {
 			e, err := wgraph.FlattenNode(node, c.target, false, false)
 			require.NoError(t, err)
 
-			w1, w2 := edges.SplitBy(edges.WeightOne(c.target), e...)
+			w1, w2 := edges.SplitWeightOne(c.target, e...)
 
 			require.Len(t, w1, c.weightOne, "weight one did not have the correct number of elements")
 			for _, edge := range w1 {

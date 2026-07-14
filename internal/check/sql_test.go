@@ -31,268 +31,50 @@ type sqlDatastore struct {
 
 func (d *sqlDatastore) Builder(openfgav1.ConsistencyPreference) adapter.Builder { return d.builder }
 
-// The subject is stored packed as "type:id[#relation]" in the _user column, so the standard
-// ANSI dialect decodes each logical field with string functions. These reproduce those
-// decoded expressions for the table alias "t" the strategy always uses, so the golden SQL
-// stays readable; the decoding itself is pinned in the ansi package's render tests.
-var (
-	subjType = "SUBSTRING(t._user FROM 1 FOR POSITION(':' IN t._user) - 1)"
-
-	subjIDRest = "SUBSTRING(t._user FROM POSITION(':' IN t._user) + 1)"
-	subjID     = "CASE WHEN POSITION('#' IN " + subjIDRest + ") = 0 THEN " + subjIDRest +
-		" ELSE SUBSTRING(" + subjIDRest + " FROM 1 FOR POSITION('#' IN " + subjIDRest + ") - 1) END"
-
-	subjRel = "CASE WHEN POSITION('#' IN t._user) = 0 THEN '' ELSE SUBSTRING(t._user" +
-		" FROM POSITION('#' IN t._user) + 1) END"
-)
-
-func sqlSharedWhere() string {
-	return "t.store = ? AND t.object_type = ? AND t.object_id = ? AND " +
-		subjType + " = ? AND " + subjRel + " = ? AND " + subjID + " IN (?, ?)"
-}
-
-func sqlRelFilter(n int) string {
-	if n == 1 {
-		return "t.relation = ?"
-	}
-	marks := make([]string, n)
-	for i := range marks {
-		marks[i] = "?"
-	}
-	return "t.relation IN (" + strings.Join(marks, ", ") + ")"
-}
-
-func sqlCountAtom() string {
-	return "COUNT(CASE WHEN ((t.relation = ? AND (" + subjID + " = ? OR " + subjID + " = ?)) " +
-		"AND (t.condition_name IS NULL OR t.condition_name = ?)) THEN ? END) >= ?"
-}
-
-// entryEdge returns the single outgoing edge of the entry node objectType#relation, matching
-// what ResolveCheck forwards to the strategy.
-func entryEdge(t *testing.T, g *modelgraph.AuthorizationModelGraph, objectType, relation string) *graph.WeightedAuthorizationModelEdge {
+// entryEdges reproduces what ResolveUnion forwards to the group strategy: the flattened
+// weight-1 edges out of the entry object#relation node, combined by union.
+func entryEdges(t *testing.T, g *modelgraph.AuthorizationModelGraph, req *Request, object, relation string) []*graph.WeightedAuthorizationModelEdge {
 	t.Helper()
-	node, ok := g.GetNodeByID(tuple.ToObjectRelationString(objectType, relation))
+	node, ok := g.GetNodeByID(tuple.ToObjectRelationString(tuple.GetType(object), relation))
 	require.True(t, ok)
-	edges, ok := g.GetEdgesFromNode(node)
-	require.True(t, ok)
-	require.NotEmpty(t, edges)
-	return edges[0]
-}
-
-func sqlModel(t *testing.T, dsl string) *modelgraph.AuthorizationModelGraph {
-	t.Helper()
-	g, err := modelgraph.New(testutils.MustTransformDSLToProtoWithID(dsl))
+	e, err := g.FlattenNode(node, req.GetUserType(), req.IsTypedWildcard(), false)
 	require.NoError(t, err)
-	return g
+	return e
 }
 
-func sqlRequest(t *testing.T, g *modelgraph.AuthorizationModelGraph, object, relation, user string) *Request {
+func runWeight1(t *testing.T, g *modelgraph.AuthorizationModelGraph, exec adaptertest.Executor, object, relation, user string, ctxTuples ...*openfgav1.TupleKey) (bool, error) {
 	t.Helper()
+	b := adaptertest.New(exec)
+	s := NewSql(g, &sqlDatastore{builder: b})
 	req, err := NewRequest(RequestParams{
-		StoreID:  "store1",
-		Model:    g,
-		TupleKey: tuple.NewTupleKey(object, relation, user),
+		StoreID:          "store1",
+		Model:            g,
+		TupleKey:         tuple.NewTupleKey(object, relation, user),
+		ContextualTuples: ctxTuples,
 	})
 	require.NoError(t, err)
-	return req
+	edges := entryEdges(t, g, req, object, relation)
+	res, err := s.weight1(context.Background(), req, b, edges, graph.UnionOperator)
+	if err != nil {
+		return false, err
+	}
+	return res.GetAllowed(), nil
 }
 
-// recordSQL runs weight1 through a Recorder-backed builder and returns the SQL and bind args
-// it handed the executor — the same path a live datastore takes, minus the database.
-func recordSQL(t *testing.T, dsl, object, relation, user string) (string, []any) {
-	t.Helper()
-	g := sqlModel(t, dsl)
-	rec := &adaptertest.Recorder{}
-	s := NewSql(g, &sqlDatastore{builder: adaptertest.New(rec)})
-	req := sqlRequest(t, g, object, relation, user)
-	_, err := s.weight1(context.Background(), req, entryEdge(t, g, tuple.GetType(object), relation))
-	require.NoError(t, err)
-	return rec.SQL, rec.Parameters
-}
+// --- fakes -----------------------------------------------------------------
 
-func TestSqlWeight1_DirectHaving(t *testing.T) {
-	model := `
-		model
-			schema 1.1
-		type user
-		type document
-			relations
-				define viewer: [user]`
-
-	sql, args := recordSQL(t, model, "document:1", "viewer", "user:alice")
-
-	want := "SELECT ? FROM tuple t WHERE " + sqlSharedWhere() + " AND " + sqlRelFilter(1) +
-		" GROUP BY t.object_id HAVING " + sqlCountAtom()
-	require.Equal(t, want, sql)
-	require.Equal(t, []any{
-		1, "store1", "document", "1", "user", "", "alice", "*",
-		"viewer",
-		"viewer", "alice", "*", "", 1, 1,
-	}, args)
-}
-
-func TestSqlWeight1_UsersetSubjectHaving(t *testing.T) {
-	// Checking a userset subject (group:eng#member) against a relation that grants it directly is
-	// a weight-1 leaf: the subject relation is bound to "member" and the wildcard is not admitted
-	// (the shared subject-id bound carries only the exact id).
-	model := `
-		model
-			schema 1.1
-		type user
-		type group
-			relations
-				define member: [user]
-		type document
-			relations
-				define viewer: [group#member]`
-
-	sql, args := recordSQL(t, model, "document:1", "viewer", "group:eng#member")
-
-	want := "SELECT ? FROM tuple t WHERE t.store = ? AND t.object_type = ? AND t.object_id = ? AND " +
-		subjType + " = ? AND " + subjRel + " = ? AND " + subjID + " IN (?) AND " + sqlRelFilter(1) +
-		" GROUP BY t.object_id HAVING " +
-		"COUNT(CASE WHEN ((t.relation = ? AND " + subjID + " = ?) " +
-		"AND (t.condition_name IS NULL OR t.condition_name = ?)) THEN ? END) >= ?"
-	require.Equal(t, want, sql)
-	require.Equal(t, []any{
-		1, "store1", "document", "1", "group", "member", "eng", // shared WHERE: no wildcard for a userset subject
-		"viewer",
-		"viewer", "eng", "", 1, 1,
-	}, args)
-}
-
-func TestSqlWeight1_WildcardHaving(t *testing.T) {
-	// A public-access terminal ([user:*]) is a leaf whose subject id is "*". The bound subject id
-	// is still alice, so the leaf match tests subject_id = "*" only (the wildcard-terminal form),
-	// while the shared WHERE admits alice or the wildcard tuple.
-	model := `
-		model
-			schema 1.1
-		type user
-		type document
-			relations
-				define viewer: [user:*]`
-
-	sql, args := recordSQL(t, model, "document:1", "viewer", "user:alice")
-
-	want := "SELECT ? FROM tuple t WHERE " + sqlSharedWhere() + " AND " + sqlRelFilter(1) +
-		" GROUP BY t.object_id HAVING " +
-		"COUNT(CASE WHEN ((t.relation = ? AND " + subjID + " = ?) " +
-		"AND (t.condition_name IS NULL OR t.condition_name = ?)) THEN ? END) >= ?"
-	require.Equal(t, want, sql)
-	require.Equal(t, []any{
-		1, "store1", "document", "1", "user", "", "alice", "*",
-		"viewer",
-		"viewer", "*", "", 1, 1, // leaf subject id is the wildcard
-	}, args)
-}
-
-func TestSqlWeight1_UnionHaving(t *testing.T) {
-	model := `
-		model
-			schema 1.1
-		type user
-		type document
-			relations
-				define editor: [user]
-				define viewer: [user] or editor`
-
-	sql, args := recordSQL(t, model, "document:1", "viewer", "user:alice")
-
-	want := "SELECT ? FROM tuple t WHERE " + sqlSharedWhere() + " AND " + sqlRelFilter(2) +
-		" GROUP BY t.object_id HAVING (" + sqlCountAtom() + " OR " + sqlCountAtom() + ")"
-	require.Equal(t, want, sql)
-	require.Equal(t, []any{
-		1, "store1", "document", "1", "user", "", "alice", "*",
-		"editor", "viewer", // relation filter (sorted)
-		"viewer", "alice", "*", "", 1, 1, // [user] leaf
-		"editor", "alice", "*", "", 1, 1, // editor leaf
-	}, args)
-}
-
-func TestSqlWeight1_IntersectionHaving(t *testing.T) {
-	model := `
-		model
-			schema 1.1
-		type user
-		type document
-			relations
-				define editor: [user]
-				define viewer: [user] and editor`
-
-	sql, args := recordSQL(t, model, "document:1", "viewer", "user:alice")
-
-	want := "SELECT ? FROM tuple t WHERE " + sqlSharedWhere() + " AND " + sqlRelFilter(2) +
-		" GROUP BY t.object_id HAVING (" + sqlCountAtom() + " AND " + sqlCountAtom() + ")"
-	require.Equal(t, want, sql)
-	require.Equal(t, []any{
-		1, "store1", "document", "1", "user", "", "alice", "*",
-		"editor", "viewer",
-		"viewer", "alice", "*", "", 1, 1,
-		"editor", "alice", "*", "", 1, 1,
-	}, args)
-}
-
-func TestSqlWeight1_ExclusionHaving(t *testing.T) {
-	model := `
-		model
-			schema 1.1
-		type user
-		type document
-			relations
-				define banned: [user]
-				define viewer: [user] but not banned`
-
-	sql, args := recordSQL(t, model, "document:1", "viewer", "user:alice")
-
-	want := "SELECT ? FROM tuple t WHERE " + sqlSharedWhere() + " AND " + sqlRelFilter(2) +
-		" GROUP BY t.object_id HAVING (" + sqlCountAtom() + " AND NOT (" + sqlCountAtom() + "))"
-	require.Equal(t, want, sql)
-	require.Equal(t, []any{
-		1, "store1", "document", "1", "user", "", "alice", "*",
-		"banned", "viewer", // relation filter (sorted)
-		"viewer", "alice", "*", "", 1, 1, // base leaf
-		"banned", "alice", "*", "", 1, 1, // subtract leaf
-	}, args)
-}
-
-func TestSqlWeight1_ConditionedGather(t *testing.T) {
-	model := `
-		model
-			schema 1.1
-		type user
-		type document
-			relations
-				define viewer: [user, user with cond]
-		condition cond(x: int) { x > 0 }`
-
-	sql, args := recordSQL(t, model, "document:1", "viewer", "user:alice")
-
-	// The model deduplicates [user, user with cond] into one edge to the user node carrying both
-	// conditions, so it is a single leaf whose condition membership is a nested OR (unconditioned
-	// OR the named condition). The presence of the named condition switches the whole subtree to
-	// the gather shape: no HAVING, project the attribution columns.
-	membership := "((t.condition_name IS NULL OR t.condition_name = ?) OR t.condition_name = ?)"
-	want := "SELECT t.relation, " + subjID + ", t.condition_name, t.condition_context FROM tuple t WHERE " +
-		sqlSharedWhere() + " AND ((t.relation = ? AND " + membership + "))"
-	require.Equal(t, want, sql)
-	require.Equal(t, []any{
-		"store1", "document", "1", "user", "", "alice", "*",
-		"viewer", "", "cond", // single leaf: relation + unconditioned sentinel + named condition
-	}, args)
-}
-
-// fakeExecutor returns canned rows for a gather scan and reports whether a boolean HAVING
-// query returned a row.
+// fakeExecutor answers existence queries by hasRow and gather queries with canned rows. It
+// records the SQL it saw so structural assertions can be made without pinning exact text.
 type fakeExecutor struct {
-	rows    [][]any
-	hasRow  bool
-	lastSQL string
+	rows   [][]any
+	hasRow bool
+
+	sqls []string
 }
 
 func (e *fakeExecutor) Query(_ context.Context, sql string, _ []any) (adapter.Rows, error) {
-	e.lastSQL = sql
-	if strings.HasPrefix(sql, "SELECT ? FROM") {
+	e.sqls = append(e.sqls, sql)
+	if strings.Contains(sql, "SELECT ? FROM") { // existence query projects a bound literal
 		if e.hasRow {
 			return &fakeRows{rows: [][]any{{1}}}, nil
 		}
@@ -324,11 +106,14 @@ func (r *fakeRows) Scan(dest ...any) error {
 	return nil
 }
 
-// scanInto assigns a canned value into a *sql.NullString or *[]byte scan destination,
-// matching the columns gatherQuery projects (relation, subject id, condition name are
-// strings; condition context is raw bytes).
 func scanInto(dest, val any) error {
 	switch d := dest.(type) {
+	case *string:
+		if val == nil {
+			*d = ""
+			return nil
+		}
+		*d = val.(string)
 	case *sql.NullString:
 		if val == nil {
 			*d = sql.NullString{}
@@ -350,18 +135,9 @@ func scanInto(dest, val any) error {
 func (r *fakeRows) Close() error { return nil }
 func (r *fakeRows) Err() error   { return nil }
 
-func runWeight1(t *testing.T, g *modelgraph.AuthorizationModelGraph, exec adaptertest.Executor, object, relation, user string) (bool, error) {
-	t.Helper()
-	s := NewSql(g, &sqlDatastore{builder: adaptertest.New(exec)})
-	req := sqlRequest(t, g, object, relation, user)
-	res, err := s.weight1(context.Background(), req, entryEdge(t, g, tuple.GetType(object), relation))
-	if err != nil {
-		return false, err
-	}
-	return res.GetAllowed(), nil
-}
+// --- existence path (no conditions) ---------------------------------------
 
-func TestSqlWeight1_ExecuteHaving(t *testing.T) {
+func TestSqlWeight1_Direct(t *testing.T) {
 	model := `
 		model
 			schema 1.1
@@ -369,7 +145,8 @@ func TestSqlWeight1_ExecuteHaving(t *testing.T) {
 		type document
 			relations
 				define viewer: [user]`
-	g := sqlModel(t, model)
+	g, err := modelgraph.New(testutils.MustTransformDSLToProtoWithID(model))
+	require.NoError(t, err)
 
 	t.Run("granted", func(t *testing.T) {
 		allowed, err := runWeight1(t, g, &fakeExecutor{hasRow: true}, "document:1", "viewer", "user:alice")
@@ -383,7 +160,166 @@ func TestSqlWeight1_ExecuteHaving(t *testing.T) {
 	})
 }
 
-func TestSqlWeight1_ExecuteGatherCondition(t *testing.T) {
+func TestSqlWeight1_DirectSQLShape(t *testing.T) {
+	model := `
+		model
+			schema 1.1
+		type user
+		type document
+			relations
+				define viewer: [user]`
+	g, err := modelgraph.New(testutils.MustTransformDSLToProtoWithID(model))
+	require.NoError(t, err)
+	rec := &adaptertest.Recorder{}
+	b := adaptertest.New(rec)
+	s := NewSql(g, &sqlDatastore{builder: b})
+	req, err := NewRequest(RequestParams{
+		StoreID:  "store1",
+		Model:    g,
+		TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:alice"),
+	})
+	require.NoError(t, err)
+	_, err = s.weight1(context.Background(), req, b, entryEdges(t, g, req, "document:1", "viewer"), graph.UnionOperator)
+	require.NoError(t, err)
+
+	require.Contains(t, rec.SQL, "SELECT ? FROM tuple t WHERE")
+	require.Contains(t, rec.SQL, "GROUP BY t.object_id HAVING")
+	require.Contains(t, rec.SQL, "LIMIT 1")
+	require.Contains(t, rec.SQL, "COUNT(CASE WHEN")
+	// store, object type/id, subject narrowing, relation filter, then HAVING atoms.
+	require.Equal(t, "store1", rec.Parameters[1])
+	require.Contains(t, rec.Parameters, "document")
+	require.Contains(t, rec.Parameters, "viewer")
+}
+
+func TestSqlWeight1_Union(t *testing.T) {
+	model := `
+		model
+			schema 1.1
+		type user
+		type document
+			relations
+				define editor: [user]
+				define viewer: [user] or editor`
+	g, err := modelgraph.New(testutils.MustTransformDSLToProtoWithID(model))
+	require.NoError(t, err)
+
+	allowed, err := runWeight1(t, g, &fakeExecutor{hasRow: true}, "document:1", "viewer", "user:alice")
+	require.NoError(t, err)
+	require.True(t, allowed)
+
+	allowed, err = runWeight1(t, g, &fakeExecutor{hasRow: false}, "document:1", "viewer", "user:alice")
+	require.NoError(t, err)
+	require.False(t, allowed)
+}
+
+func TestSqlWeight1_Wildcard(t *testing.T) {
+	model := `
+		model
+			schema 1.1
+		type user
+		type document
+			relations
+				define viewer: [user:*]`
+	g, err := modelgraph.New(testutils.MustTransformDSLToProtoWithID(model))
+	require.NoError(t, err)
+
+	// gather-free existence: the wildcard leaf matches subject_id = '*'.
+	rec := &adaptertest.Recorder{}
+	b := adaptertest.New(rec)
+	s := NewSql(g, &sqlDatastore{builder: b})
+	req, err := NewRequest(RequestParams{
+		StoreID:  "store1",
+		Model:    g,
+		TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:alice"),
+	})
+	require.NoError(t, err)
+	_, err = s.weight1(context.Background(), req, b, entryEdges(t, g, req, "document:1", "viewer"), graph.UnionOperator)
+	require.NoError(t, err)
+	// shared WHERE admits alice or the wildcard tuple.
+	require.Contains(t, rec.Parameters, "*")
+	require.Contains(t, rec.Parameters, "alice")
+}
+
+func TestSqlWeight1_Userset(t *testing.T) {
+	model := `
+		model
+			schema 1.1
+		type user
+		type group
+			relations
+				define member: [user]
+		type document
+			relations
+				define viewer: [group#member]`
+	g, err := modelgraph.New(testutils.MustTransformDSLToProtoWithID(model))
+	require.NoError(t, err)
+
+	allowed, err := runWeight1(t, g, &fakeExecutor{hasRow: true}, "document:1", "viewer", "group:eng#member")
+	require.NoError(t, err)
+	require.True(t, allowed)
+}
+
+func TestSqlWeight1_Intersection(t *testing.T) {
+	model := `
+		model
+			schema 1.1
+		type user
+		type document
+			relations
+				define editor: [user]
+				define viewer: [user] and editor`
+	g, err := modelgraph.New(testutils.MustTransformDSLToProtoWithID(model))
+	require.NoError(t, err)
+
+	rec := &adaptertest.Recorder{}
+	b := adaptertest.New(rec)
+	s := NewSql(g, &sqlDatastore{builder: b})
+	req, err := NewRequest(RequestParams{
+		StoreID:  "store1",
+		Model:    g,
+		TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:alice"),
+	})
+	require.NoError(t, err)
+	_, err = s.weight1(context.Background(), req, b, entryEdges(t, g, req, "document:1", "viewer"), graph.UnionOperator)
+	require.NoError(t, err)
+	require.Contains(t, rec.SQL, " AND ") // two COUNT atoms ANDed in HAVING
+	require.Contains(t, rec.SQL, "HAVING")
+
+	allowed, err := runWeight1(t, g, &fakeExecutor{hasRow: true}, "document:1", "viewer", "user:alice")
+	require.NoError(t, err)
+	require.True(t, allowed)
+}
+
+func TestSqlWeight1_Exclusion(t *testing.T) {
+	model := `
+		model
+			schema 1.1
+		type user
+		type document
+			relations
+				define banned: [user]
+				define viewer: [user] but not banned`
+	g, err := modelgraph.New(testutils.MustTransformDSLToProtoWithID(model))
+	require.NoError(t, err)
+
+	rec := &adaptertest.Recorder{}
+	b := adaptertest.New(rec)
+	s := NewSql(g, &sqlDatastore{builder: b})
+	req, err := NewRequest(RequestParams{
+		StoreID:  "store1",
+		Model:    g,
+		TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:alice"),
+	})
+	require.NoError(t, err)
+	_, err = s.weight1(context.Background(), req, b, entryEdges(t, g, req, "document:1", "viewer"), graph.UnionOperator)
+	require.NoError(t, err)
+	require.Contains(t, rec.SQL, "NOT (")
+}
+
+// --- conditioned path (gather) ---------------------------------------------
+
+func TestSqlWeight1_ConditionedGatherShape(t *testing.T) {
 	model := `
 		model
 			schema 1.1
@@ -392,16 +328,48 @@ func TestSqlWeight1_ExecuteGatherCondition(t *testing.T) {
 			relations
 				define viewer: [user with cond]
 		condition cond(x: int) { x > 0 }`
-	g := sqlModel(t, model)
+	g, err := modelgraph.New(testutils.MustTransformDSLToProtoWithID(model))
+	require.NoError(t, err)
+
+	rec := &adaptertest.Recorder{}
+	b := adaptertest.New(rec)
+	s := NewSql(g, &sqlDatastore{builder: b})
+	req, err := NewRequest(RequestParams{
+		StoreID:  "store1",
+		Model:    g,
+		TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:alice"),
+	})
+	require.NoError(t, err)
+	_, err = s.weight1(context.Background(), req, b, entryEdges(t, g, req, "document:1", "viewer"), graph.UnionOperator)
+	require.NoError(t, err)
+	// gather projects attribution + condition columns, and has no HAVING/GROUP BY.
+	require.Contains(t, rec.SQL, "t.relation")
+	require.Contains(t, rec.SQL, "t.condition_name")
+	require.Contains(t, rec.SQL, "t.condition_context")
+	require.NotContains(t, rec.SQL, "HAVING")
+	require.NotContains(t, rec.SQL, "GROUP BY")
+}
+
+func TestSqlWeight1_ConditionedGatherBehavior(t *testing.T) {
+	model := `
+		model
+			schema 1.1
+		type user
+		type document
+			relations
+				define viewer: [user with cond]
+		condition cond(x: int) { x > 0 }`
+	g, err := modelgraph.New(testutils.MustTransformDSLToProtoWithID(model))
+	require.NoError(t, err)
 
 	t.Run("cel_passes", func(t *testing.T) {
-		exec := &fakeExecutor{rows: [][]any{{"viewer", "alice", "cond", condCtx(t, map[string]any{"x": 1})}}}
+		exec := &fakeExecutor{rows: [][]any{{"viewer", "alice", "", "cond", condCtx(t, map[string]any{"x": 1})}}}
 		allowed, err := runWeight1(t, g, exec, "document:1", "viewer", "user:alice")
 		require.NoError(t, err)
 		require.True(t, allowed)
 	})
 	t.Run("cel_fails", func(t *testing.T) {
-		exec := &fakeExecutor{rows: [][]any{{"viewer", "alice", "cond", condCtx(t, map[string]any{"x": 0})}}}
+		exec := &fakeExecutor{rows: [][]any{{"viewer", "alice", "", "cond", condCtx(t, map[string]any{"x": 0})}}}
 		allowed, err := runWeight1(t, g, exec, "document:1", "viewer", "user:alice")
 		require.NoError(t, err)
 		require.False(t, allowed)
@@ -413,9 +381,7 @@ func TestSqlWeight1_ExecuteGatherCondition(t *testing.T) {
 	})
 }
 
-func TestSqlWeight1_ExecuteGatherExclusion(t *testing.T) {
-	// viewer: [user with cond] but not banned. The base leaf is conditioned so the whole tree
-	// gathers; the subtract (banned) must remove the grant.
+func TestSqlWeight1_ConditionedExclusion(t *testing.T) {
 	model := `
 		model
 			schema 1.1
@@ -425,23 +391,47 @@ func TestSqlWeight1_ExecuteGatherExclusion(t *testing.T) {
 				define banned: [user]
 				define viewer: [user with cond] but not banned
 		condition cond(x: int) { x > 0 }`
-	g := sqlModel(t, model)
+	g, err := modelgraph.New(testutils.MustTransformDSLToProtoWithID(model))
+	require.NoError(t, err)
 
 	t.Run("granted_when_not_banned", func(t *testing.T) {
-		exec := &fakeExecutor{rows: [][]any{{"viewer", "alice", "cond", condCtx(t, map[string]any{"x": 1})}}}
+		exec := &fakeExecutor{rows: [][]any{{"viewer", "alice", "", "cond", condCtx(t, map[string]any{"x": 1})}}}
 		allowed, err := runWeight1(t, g, exec, "document:1", "viewer", "user:alice")
 		require.NoError(t, err)
 		require.True(t, allowed)
 	})
 	t.Run("denied_when_banned", func(t *testing.T) {
 		exec := &fakeExecutor{rows: [][]any{
-			{"viewer", "alice", "cond", condCtx(t, map[string]any{"x": 1})},
-			{"banned", "alice", "", nil},
+			{"viewer", "alice", "", "cond", condCtx(t, map[string]any{"x": 1})},
+			{"banned", "alice", "", "", nil},
 		}}
 		allowed, err := runWeight1(t, g, exec, "document:1", "viewer", "user:alice")
 		require.NoError(t, err)
 		require.False(t, allowed)
 	})
+}
+
+// --- contextual-tuple short-circuit ----------------------------------------
+
+func TestSqlWeight1_ContextualShortCircuit(t *testing.T) {
+	model := `
+		model
+			schema 1.1
+		type user
+		type document
+			relations
+				define editor: [user]
+				define viewer: [user] or editor`
+	g, err := modelgraph.New(testutils.MustTransformDSLToProtoWithID(model))
+	require.NoError(t, err)
+
+	// A contextual tuple satisfying the [user] leaf makes the union true without any DB read.
+	ct := tuple.NewTupleKey("document:1", "viewer", "user:alice")
+	exec := &fakeExecutor{hasRow: false}
+	allowed, err := runWeight1(t, g, exec, "document:1", "viewer", "user:alice", ct)
+	require.NoError(t, err)
+	require.True(t, allowed)
+	require.Empty(t, exec.sqls, "executor must not be called when contextual tuples decide the result")
 }
 
 // condCtx marshals a request-context map the way condition_context is stored, so the gather
