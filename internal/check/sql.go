@@ -7,6 +7,7 @@ import (
 	"sort"
 	"sync"
 
+	"github.com/openfga/openfga/internal/concurrency"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/structpb"
@@ -41,13 +42,13 @@ func NewSQL(model *modelgraph.AuthorizationModelGraph, datastore storage.Relatio
 func (s *SQLStrategy) Resolve(ctx context.Context, req *Request, edges []*graph.WeightedAuthorizationModelEdge, operation string, out chan<- ResponseMsg, _ *errgroup.Group, _ *sync.Map) {
 	builder := s.datastore.Builder(req.GetConsistency())
 	if builder == nil {
-		out <- ResponseMsg{Edges: edges, Err: ErrSQLUnsupported}
+		concurrency.TrySendThroughChannel(ctx, ResponseMsg{Edges: edges, Err: ErrSQLUnsupported}, out)
 		return
 	}
 
 	// For now, we assume all edges passed in are weight-1 edges.
 	res, err := s.weight1(ctx, req, builder, edges, operation)
-	out <- ResponseMsg{Res: res, Edges: edges, Err: err}
+	concurrency.TrySendThroughChannel(ctx, ResponseMsg{Res: res, Edges: edges, Err: err}, out)
 }
 
 // branchOutcome is what we know about a branch while folding a boolean subtree:
