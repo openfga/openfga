@@ -3,6 +3,8 @@ package server
 import (
 	"context"
 	"errors"
+	"slices"
+	"strconv"
 	"time"
 
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
@@ -19,10 +21,14 @@ import (
 	"github.com/openfga/openfga/internal/telemetry"
 	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/internal/utils/apimethod"
+	"github.com/openfga/openfga/pkg/middleware/requestid"
 	"github.com/openfga/openfga/pkg/middleware/validator"
 	"github.com/openfga/openfga/pkg/server/commands"
+	"github.com/openfga/openfga/pkg/server/commands/v2breaking"
 	"github.com/openfga/openfga/pkg/server/config"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
+	"github.com/openfga/openfga/pkg/tuple"
+	"github.com/openfga/openfga/pkg/typesystem"
 )
 
 func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckRequest) (*openfgav1.BatchCheckResponse, error) {
@@ -216,10 +222,96 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 		s.emitCheckDurationMetric(graph.ResolveCheckResponseMetadata{DatastoreQueryCount: outcome.DatastoreQueryCount, Duration: outcome.Duration}, methodName)
 	}
 
+	if v2Enabled {
+		s.logBatchCheckBreakingChanges(ctx, req, typesys, result)
+	}
+
 	grpc_ctxtags.Extract(ctx).Set(datastoreQueryCountHistogramName, metadata.DatastoreQueryCount)
 	grpc_ctxtags.Extract(ctx).Set(datastoreItemCountHistogramName, metadata.DatastoreItemCount)
 
 	return &openfgav1.BatchCheckResponse{Result: batchResult}, nil
+}
+
+// logBatchCheckBreakingChanges emits a single aggregate log flagging potential
+// v2 (weighted-graph) resolution breaking changes across the whole batch. It
+// mirrors the single-Check detection, minus per-item v2-error attribution:
+// BatchCheck injects CheckQueryV2 as the Checker and handles fallback
+// internally, so the server never sees which items fell back or their v2
+// errors — only an aggregate FallbackCount. We therefore rely on the
+// schema-shape predicates alone, which catch the same shapes as
+// CheckReasonFromV2Error would.
+//
+// Detection precedence per check (matching the single-Check fallback path):
+//  1. Exclusion shapes (userset_with_exclusion / wildcard_with_exclusion) via
+//     CheckExclusionReason — flagged unconditionally, since v2 rejects these at
+//     request time regardless of the v1 answer.
+//  2. Otherwise, for userset users whose result is FALSE, the per-user shapes
+//     via CheckReason.
+//
+// Checks that errored are skipped (no meaningful v1 answer to compare). To keep
+// batch logging bounded, the results are emitted as one warn line rather than
+// one line per check: a `reasons` list of the distinct shapes detected, and a
+// `reasons_by_correlation_id` map attributing each flagged check to its reason
+// so operators can pinpoint which items in the batch are affected.
+//
+// The shape predicates walk the model's rewrite tree (recursively, across
+// ComputedUserset/TupleToUserset edges on the wildcard path), which is the
+// dominant cost. Since the reason is a pure function of the tuple key and the
+// check's allowed result (for a fixed type system), identical shapes within a
+// batch are memoized so each distinct shape is walked at most once — bounding
+// the cost by distinct shapes rather than batch size.
+func (s *Server) logBatchCheckBreakingChanges(ctx context.Context, req *openfgav1.BatchCheckRequest, typesys *typesystem.TypeSystem, result map[commands.CorrelationID]*commands.BatchCheckOutcome) {
+	reasonSet := map[string]struct{}{}
+	reasonsByCorrelationID := map[string]string{}
+	// reasonCache memoizes the (possibly empty) reason for a given shape key so
+	// repeated shapes in the batch skip the rewrite-tree walk. Empty reasons are
+	// cached too, so repeated no-match checks are equally cheap.
+	reasonCache := map[string]string{}
+
+	for _, check := range req.GetChecks() {
+		outcome := result[commands.CorrelationID(check.GetCorrelationId())]
+		if outcome == nil || outcome.Err != nil {
+			continue
+		}
+
+		tk := check.GetTupleKey()
+		// The reason depends only on the tuple key and the allowed bit (the type
+		// system is fixed for the request), so those fully determine the shape.
+		shapeKey := tk.GetObject() + "#" + tk.GetRelation() + "@" + tk.GetUser() + "|" + strconv.FormatBool(outcome.Allowed)
+		reason, cached := reasonCache[shapeKey]
+		if !cached {
+			reason = v2breaking.CheckExclusionReason(typesys, tk)
+			if reason == "" && !outcome.Allowed && tuple.IsObjectRelation(tk.GetUser()) {
+				reason = v2breaking.CheckReason(typesys, tk)
+			}
+			reasonCache[shapeKey] = reason
+		}
+		if reason == "" {
+			continue
+		}
+
+		reasonSet[reason] = struct{}{}
+		reasonsByCorrelationID[check.GetCorrelationId()] = reason
+	}
+
+	if len(reasonSet) == 0 {
+		return
+	}
+
+	reasons := make([]string, 0, len(reasonSet))
+	for reason := range reasonSet {
+		reasons = append(reasons, reason)
+	}
+	slices.Sort(reasons) // stable ordering for log readability
+
+	s.logger.WarnWithContext(ctx, "potential v2 BatchCheck resolution breaking change",
+		zap.String("store_id", req.GetStoreId()),
+		zap.String("model_id", req.GetAuthorizationModelId()),
+		zap.String("request_id", requestid.GetRequestIDFromContext(ctx)),
+		zap.Strings("reasons", reasons),
+		zap.Int("matched_checks", len(reasonsByCorrelationID)),
+		zap.Any("reasons_by_correlation_id", reasonsByCorrelationID),
+	)
 }
 
 // transformCheckResultToProto transforms the internal BatchCheckOutcome into the external-facing
