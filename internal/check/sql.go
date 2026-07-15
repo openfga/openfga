@@ -572,13 +572,14 @@ func (w *walker) renderNode(node *graph.WeightedAuthorizationModelNode) (residua
 // renderLeaf renders a leaf: constant-true if a contextual tuple already satisfies it,
 // otherwise an existence aggregate counting rows for the leaf's relation. The subject and
 // unconditioned-tuple narrowing is uniform across every leaf on the existence path, so it
-// lives once in the shared WHERE (see evalUnconditioned) rather than in each COUNT(CASE).
+// lives once in the shared WHERE (see evalUnconditioned) rather than in each count's FILTER
+// clause.
 func (w *walker) renderLeaf(l leaf) residual {
 	if outcome, _ := w.evalContextLeaf(l); outcome == branchTrue {
 		return residual{state: branchTrue}
 	}
 	match := w.table.ObjectRelation().Eq(w.builder.Lit(l.relation))
-	count := w.builder.Aggregate(adapter.AggCount, w.builder.Case().When(match, w.builder.Lit(1)))
+	count := w.builder.Aggregate(adapter.AggCount, w.builder.Lit(1)).Filter(match)
 	return residual{state: branchNeedsQuery, pred: count.Gt(w.builder.Lit(0))}
 }
 

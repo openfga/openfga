@@ -185,7 +185,7 @@ func TestSqlWeight1_DirectSQLShape(t *testing.T) {
 	require.Contains(t, rec.SQL, "SELECT ? FROM tuple t WHERE")
 	require.Contains(t, rec.SQL, "GROUP BY t.object_id HAVING")
 	require.Contains(t, rec.SQL, "LIMIT 1")
-	require.Contains(t, rec.SQL, "COUNT(CASE WHEN")
+	require.Contains(t, rec.SQL, "COUNT(?) FILTER (WHERE")
 	// store, object type/id, subject narrowing, relation filter, then HAVING atoms.
 	require.Equal(t, "store1", rec.Parameters[1])
 	require.Contains(t, rec.Parameters, "document")
