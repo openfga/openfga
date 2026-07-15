@@ -34,6 +34,8 @@ import (
 
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/storage/adapter"
+	"github.com/openfga/openfga/pkg/storage/adapter/pg"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 )
@@ -315,6 +317,12 @@ func (s *Datastore) Close() {
 		}
 		s.secondaryDB.Close()
 	}
+}
+
+// Builder see [storage.RelationshipTupleReader].Builder. It returns a PostgreSQL adapter Builder
+// over the pool selected for the given consistency preference.
+func (s *Datastore) Builder(consistency openfgav1.ConsistencyPreference) adapter.Builder {
+	return pg.New(s.getPgxPool(consistency))
 }
 
 // getPgxPool returns the pgxpool.Pool based on consistency options.
