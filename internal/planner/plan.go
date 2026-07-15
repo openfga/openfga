@@ -5,7 +5,18 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+
+	"github.com/openfga/openfga/internal/build"
 )
+
+var strategySelectedCounter = promauto.NewCounterVec(prometheus.CounterOpts{
+	Namespace: build.ProjectName,
+	Name:      "planner_strategy_selected_count",
+	Help:      "The total number of times each traversal strategy was selected by the query planner.",
+}, []string{"strategy"})
 
 // keyPlan manages the statistics for a single key and makes decisions about its resolvers.
 // This struct is now entirely lock-free, using a sync.Map to manage its stats.
@@ -64,7 +75,12 @@ func (kp *keyPlan) Select(resolvers map[string]*PlanConfig) *PlanConfig {
 		}
 	}
 
-	return resolvers[bestResolver]
+	selected := resolvers[bestResolver]
+	if selected != nil {
+		strategySelectedCounter.WithLabelValues(selected.Name).Inc()
+	}
+
+	return selected
 }
 
 // UpdateStats performs the Bayesian update for the given resolver's statistics.
