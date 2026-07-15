@@ -30,6 +30,10 @@ func NewWeight2(model *modelgraph.AuthorizationModelGraph, ds storage.Relationsh
 	}
 }
 
+func (s *Weight2) Resolve(_ context.Context, _ *Request, _ *authzGraph.WeightedAuthorizationModelEdge, _ storage.TupleKeyIterator, _ *sync.Map) (*Response, error) {
+	return &Response{}, nil
+}
+
 func (s *Weight2) Userset(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator, _ *sync.Map) (*Response, error) {
 	ctx, span := tracer.Start(ctx, "weight2.Userset")
 	defer span.End()
