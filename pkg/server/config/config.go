@@ -245,6 +245,22 @@ type LogConfig struct {
 
 	// Format of the timestamp in the log output (e.g. 'Unix'(default) or 'ISO8601')
 	TimestampFormat string
+
+	// OTLP configures exporting logs via OTLP. When enabled, logs are
+	// exported to the configured OTLP collector in addition to stdout.
+	OTLP OTLPLogConfig `mapstructure:"otlp"`
+}
+
+// OTLPLogConfig defines configurations for exporting logs via OTLP.
+type OTLPLogConfig struct {
+	Enabled  bool
+	Endpoint string
+	TLS      OTLPLogTLSConfig
+}
+
+// OTLPLogTLSConfig defines TLS settings for the OTLP log exporter.
+type OTLPLogTLSConfig struct {
+	Enabled bool
 }
 
 type TraceConfig struct {
@@ -912,6 +928,13 @@ func DefaultConfig() *Config {
 			Format:          "text",
 			Level:           "info",
 			TimestampFormat: "Unix",
+			OTLP: OTLPLogConfig{
+				Enabled:  false,
+				Endpoint: "0.0.0.0:4317",
+				TLS: OTLPLogTLSConfig{
+					Enabled: false,
+				},
+			},
 		},
 		Trace: TraceConfig{
 			Enabled: false,
