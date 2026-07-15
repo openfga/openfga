@@ -70,6 +70,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Report `allowed` result and `tuple_key` on Check and experimental `weighted_graph_check` resolution trace spans. [#3116](https://github.com/openfga/openfga/pull/3116)
 
 ### Fixed
+- Fixed source build documentation to point at `./dist/openfga`, matching the `make build` output path. [#3120](https://github.com/openfga/openfga/pull/3120)
 - Fixed cache key collisions in experimental `weighted_graph_check` union resolution by moving result caching from the union node level to the individual edge level, preventing collisions across requests that share edges but differ in object or relation. [#3117](https://github.com/openfga/openfga/pull/3117)
 - Fixed a bug in experimental `weighted_graph_check` where in-flight goroutines cancelled by a union short-circuit or recursive resolution could cache a false result, causing subsequent requests to incorrectly return false without querying the datastore. [#3125](https://github.com/openfga/openfga/pull/3125)
 - Fixed experimental `weighted_graph_check` returning an error when v2Check fails; Check now falls back to the standard algorithm instead. [#3126](https://github.com/openfga/openfga/pull/3126)
