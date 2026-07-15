@@ -280,7 +280,7 @@ func TestResolveUnionEdges(t *testing.T) {
 		require.NoError(t, err)
 		require.True(t, ok)
 
-		res, err := resolver.ResolveUnionEdges(context.Background(), req, edges, nil)
+		res, err := resolver.ResolveUnionEdges(context.Background(), req, edges, node.GetUniqueLabel(), nil)
 		require.NoError(t, err)
 		require.True(t, res.GetAllowed())
 	})
@@ -330,7 +330,7 @@ func TestResolveUnionEdges(t *testing.T) {
 		require.NoError(t, err)
 		require.True(t, ok)
 
-		res, err := resolver.ResolveUnionEdges(context.Background(), req, edges, nil)
+		res, err := resolver.ResolveUnionEdges(context.Background(), req, edges, node.GetUniqueLabel(), nil)
 		require.NoError(t, err)
 		require.False(t, res.GetAllowed())
 	})
@@ -380,7 +380,7 @@ func TestResolveUnionEdges(t *testing.T) {
 		require.NoError(t, err)
 		require.True(t, ok)
 
-		res, err := resolver.ResolveUnionEdges(context.Background(), req, edges, nil)
+		res, err := resolver.ResolveUnionEdges(context.Background(), req, edges, node.GetUniqueLabel(), nil)
 		require.Error(t, err)
 		require.ErrorIs(t, err, expectedErr)
 		require.Nil(t, res)
@@ -438,7 +438,7 @@ func TestResolveUnionEdges(t *testing.T) {
 		require.NoError(t, err)
 		require.True(t, ok)
 
-		res, err := resolver.ResolveUnionEdges(ctx, req, edges, nil)
+		res, err := resolver.ResolveUnionEdges(ctx, req, edges, node.GetUniqueLabel(), nil)
 		require.Error(t, err)
 		require.ErrorIs(t, err, context.Canceled)
 		require.Nil(t, res)
@@ -477,7 +477,7 @@ func TestResolveUnionEdges(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		res, err := resolver.ResolveUnionEdges(context.Background(), req, []*authzGraph.WeightedAuthorizationModelEdge{}, nil)
+		res, err := resolver.ResolveUnionEdges(context.Background(), req, []*authzGraph.WeightedAuthorizationModelEdge{}, "", nil)
 		require.NoError(t, err)
 		require.False(t, res.Allowed)
 	})
@@ -532,7 +532,7 @@ func TestResolveUnionEdges(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, edges, 1)
 
-		res, err := resolver.ResolveUnionEdges(context.Background(), req, edges, nil)
+		res, err := resolver.ResolveUnionEdges(context.Background(), req, edges, node.GetUniqueLabel(), nil)
 		require.NoError(t, err)
 		require.True(t, res.GetAllowed())
 	})
@@ -578,7 +578,7 @@ func TestResolveUnionEdges(t *testing.T) {
 		require.NoError(t, err)
 		require.Empty(t, edges)
 
-		res, err := resolver.ResolveUnionEdges(context.Background(), req, edges, nil)
+		res, err := resolver.ResolveUnionEdges(context.Background(), req, edges, node.GetUniqueLabel(), nil)
 		require.NoError(t, err)
 		require.False(t, res.GetAllowed())
 	})
@@ -626,7 +626,7 @@ func TestResolveUnionEdges(t *testing.T) {
 			// Inject a strategy that always returns ({false}, nil) unconditionally,
 			// directly simulating what DefaultStrategy.execute produces under the select race —
 			// ctx.Err() == nil is the only thing blocking the cache write.
-			Strategies: map[string]Strategy{
+			EdgeStrategies: map[string]EdgeStrategy{
 				DefaultStrategyName:   &alwaysFalseNilErrStrategy{},
 				WeightTwoStrategyName: &alwaysFalseNilErrStrategy{},
 				RecursiveStrategyName: &alwaysFalseNilErrStrategy{},
@@ -649,7 +649,7 @@ func TestResolveUnionEdges(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
 
-		_, _ = resolver.ResolveUnionEdges(ctx, req, edges, nil)
+		_, _ = resolver.ResolveUnionEdges(ctx, req, edges, node.GetUniqueLabel(), nil)
 	})
 }
 
@@ -659,6 +659,10 @@ func TestResolveUnionEdges(t *testing.T) {
 // closest available synchronization point to the cache-write decision in check.go.
 type alwaysFalseNilErrStrategy struct {
 	done func()
+}
+
+func (s *alwaysFalseNilErrStrategy) Resolve(_ context.Context, _ *Request, _ *authzGraph.WeightedAuthorizationModelEdge, _ storage.TupleKeyIterator, _ *sync.Map) (*Response, error) {
+	return &Response{}, nil
 }
 
 func (s *alwaysFalseNilErrStrategy) Userset(_ context.Context, _ *Request, _ *authzGraph.WeightedAuthorizationModelEdge, _ storage.TupleKeyIterator, _ *sync.Map) (*Response, error) {
@@ -730,7 +734,7 @@ func TestResolveRecursive(t *testing.T) {
 			LastCacheInvalidationTime: time.Now().Add(-time.Hour),
 			ConcurrencyLimit:          10,
 			Planner:                   planner.New(&planner.Config{}),
-			Strategies: map[string]Strategy{
+			EdgeStrategies: map[string]EdgeStrategy{
 				DefaultStrategyName:   strategy,
 				WeightTwoStrategyName: strategy,
 				RecursiveStrategyName: strategy,
@@ -2623,7 +2627,7 @@ func TestSpecificType(t *testing.T) {
 		edges, ok := mg.GetEdgesFromNodeID("document#viewer")
 		require.True(t, ok)
 
-		res, err := resolver.specificType(context.Background(), req, edges[0])
+		res, err := resolver.SpecificType(context.Background(), req, edges[0])
 		require.NoError(t, err)
 		require.True(t, res.GetAllowed())
 	})
@@ -2675,7 +2679,7 @@ func TestSpecificType(t *testing.T) {
 		edges, ok := mg.GetEdgesFromNodeID("document#viewer")
 		require.True(t, ok)
 
-		res, err := resolver.specificType(context.Background(), req, edges[0])
+		res, err := resolver.SpecificType(context.Background(), req, edges[0])
 		require.NoError(t, err)
 		require.False(t, res.GetAllowed())
 	})
@@ -2724,7 +2728,7 @@ func TestSpecificType(t *testing.T) {
 		edges, ok := mg.GetEdgesFromNodeID("document#viewer")
 		require.True(t, ok)
 
-		res, err := resolver.specificType(context.Background(), req, edges[0])
+		res, err := resolver.SpecificType(context.Background(), req, edges[0])
 		require.Error(t, err)
 		require.ErrorIs(t, err, expectedErr)
 		require.Nil(t, res)
@@ -2786,7 +2790,7 @@ func TestSpecificType(t *testing.T) {
 		edges, ok := mg.GetEdgesFromNodeID("document#viewer")
 		require.True(t, ok)
 
-		res, err := resolver.specificType(context.Background(), req, edges[0])
+		res, err := resolver.SpecificType(context.Background(), req, edges[0])
 		require.NoError(t, err)
 		require.True(t, res.GetAllowed())
 	})
@@ -2837,7 +2841,7 @@ func TestSpecificType(t *testing.T) {
 		edges, ok := mg.GetEdgesFromNodeID("document#viewer")
 		require.True(t, ok)
 
-		res, err := resolver.specificType(ctx, req, edges[0])
+		res, err := resolver.SpecificType(ctx, req, edges[0])
 		require.Error(t, err)
 		require.ErrorIs(t, err, context.Canceled)
 		require.Nil(t, res)
@@ -2901,7 +2905,7 @@ func TestSpecificType(t *testing.T) {
 		edges, ok := mg.GetEdgesFromNodeID("document#viewer")
 		require.True(t, ok)
 
-		res, err := resolver.specificType(context.Background(), req, edges[0])
+		res, err := resolver.SpecificType(context.Background(), req, edges[0])
 		require.NoError(t, err)
 		require.False(t, res.GetAllowed())
 	})
@@ -2965,7 +2969,7 @@ func TestSpecificType(t *testing.T) {
 		edges, ok := mg.GetEdgesFromNodeID("document#viewer")
 		require.True(t, ok)
 
-		res, err := resolver.specificType(context.Background(), req, edges[0])
+		res, err := resolver.SpecificType(context.Background(), req, edges[0])
 		require.NoError(t, err)
 		require.True(t, res.GetAllowed())
 	})
@@ -3027,7 +3031,7 @@ func TestSpecificType(t *testing.T) {
 		edges, ok := mg.GetEdgesFromNodeID("document#viewer")
 		require.True(t, ok)
 
-		res, err := resolver.specificType(context.Background(), req, edges[0])
+		res, err := resolver.SpecificType(context.Background(), req, edges[0])
 		require.Error(t, err)
 		require.Nil(t, res)
 	})
@@ -3075,7 +3079,7 @@ func TestSpecificType(t *testing.T) {
 		edges, ok := mg.GetEdgesFromNodeID("document#viewer")
 		require.True(t, ok)
 
-		res, err := resolver.specificType(context.Background(), req, edges[0])
+		res, err := resolver.SpecificType(context.Background(), req, edges[0])
 		require.NoError(t, err)
 		require.True(t, res.GetAllowed())
 	})
@@ -3133,7 +3137,7 @@ func TestSpecificType(t *testing.T) {
 		edges, ok := mg.GetEdgesFromNodeID("document#viewer")
 		require.True(t, ok)
 
-		res, err := resolver.specificType(context.Background(), req, edges[0])
+		res, err := resolver.SpecificType(context.Background(), req, edges[0])
 		require.NoError(t, err)
 		require.False(t, res.GetAllowed())
 	})
@@ -3192,7 +3196,7 @@ func TestSpecificTypeWildcard(t *testing.T) {
 		edges, ok := mg.GetEdgesFromNodeID("document#viewer")
 		require.True(t, ok)
 
-		res, err := resolver.specificTypeWildcard(context.Background(), req, edges[0])
+		res, err := resolver.SpecificTypeWildcard(context.Background(), req, edges[0])
 		require.NoError(t, err)
 		require.True(t, res.GetAllowed())
 	})
@@ -3245,7 +3249,7 @@ func TestSpecificTypeWildcard(t *testing.T) {
 		edges, ok := mg.GetEdgesFromNodeID("document#viewer")
 		require.True(t, ok)
 
-		res, err := resolver.specificTypeWildcard(context.Background(), req, edges[0])
+		res, err := resolver.SpecificTypeWildcard(context.Background(), req, edges[0])
 		require.NoError(t, err)
 		require.False(t, res.GetAllowed())
 	})
@@ -3294,7 +3298,7 @@ func TestSpecificTypeWildcard(t *testing.T) {
 		edges, ok := mg.GetEdgesFromNodeID("document#viewer")
 		require.True(t, ok)
 
-		res, err := resolver.specificTypeWildcard(context.Background(), req, edges[0])
+		res, err := resolver.SpecificTypeWildcard(context.Background(), req, edges[0])
 		require.Error(t, err)
 		require.ErrorIs(t, err, expectedErr)
 		require.Nil(t, res)
@@ -3352,7 +3356,7 @@ func TestSpecificTypeWildcard(t *testing.T) {
 		edges, ok := mg.GetEdgesFromNodeID("document#viewer")
 		require.True(t, ok)
 
-		res, err := resolver.specificTypeWildcard(context.Background(), req, edges[0])
+		res, err := resolver.SpecificTypeWildcard(context.Background(), req, edges[0])
 		require.NoError(t, err)
 		require.True(t, res.GetAllowed())
 	})
@@ -3403,7 +3407,7 @@ func TestSpecificTypeWildcard(t *testing.T) {
 		edges, ok := mg.GetEdgesFromNodeID("document#viewer")
 		require.True(t, ok)
 
-		res, err := resolver.specificTypeWildcard(ctx, req, edges[0])
+		res, err := resolver.SpecificTypeWildcard(ctx, req, edges[0])
 		require.Error(t, err)
 		require.ErrorIs(t, err, context.Canceled)
 		require.Nil(t, res)
@@ -3473,7 +3477,7 @@ func TestSpecificTypeWildcard(t *testing.T) {
 		edges, ok := mg.GetEdgesFromNodeID("document#viewer")
 		require.True(t, ok)
 
-		res, err := resolver.specificTypeWildcard(context.Background(), req, edges[0])
+		res, err := resolver.SpecificTypeWildcard(context.Background(), req, edges[0])
 		require.NoError(t, err)
 		require.False(t, res.GetAllowed())
 	})
@@ -3548,7 +3552,7 @@ func TestSpecificTypeWildcard(t *testing.T) {
 		edges, ok := mg.GetEdgesFromNodeID("document#viewer")
 		require.True(t, ok)
 
-		res, err := resolver.specificTypeWildcard(context.Background(), req, edges[0])
+		res, err := resolver.SpecificTypeWildcard(context.Background(), req, edges[0])
 		require.NoError(t, err)
 		require.True(t, res.GetAllowed())
 	})
@@ -3601,7 +3605,7 @@ func TestSpecificTypeWildcard(t *testing.T) {
 		edges, ok := mg.GetEdgesFromNodeID("document#viewer")
 		require.True(t, ok)
 
-		res, err := resolver.specificTypeWildcard(context.Background(), req, edges[0])
+		res, err := resolver.SpecificTypeWildcard(context.Background(), req, edges[0])
 		require.Error(t, err)
 		require.ErrorIs(t, err, expectedErr)
 		require.Nil(t, res)
@@ -3647,7 +3651,7 @@ func TestSpecificTypeWildcard(t *testing.T) {
 		edges, ok := mg.GetEdgesFromNodeID("document#viewer")
 		require.True(t, ok)
 
-		res, err := resolver.specificTypeWildcard(context.Background(), req, edges[0])
+		res, err := resolver.SpecificTypeWildcard(context.Background(), req, edges[0])
 		require.NoError(t, err)
 		require.True(t, res.GetAllowed())
 	})
@@ -3722,7 +3726,7 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 		edges, ok := mg.GetEdgesFromNodeID("document#viewer")
 		require.True(t, ok)
 
-		res, err := resolver.specificTypeAndRelation(context.Background(), req, edges[0], nil)
+		res, err := resolver.SpecificTypeAndRelation(context.Background(), req, edges[0], nil)
 		require.NoError(t, err)
 		require.True(t, res.GetAllowed())
 	})
@@ -3784,7 +3788,7 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 		edges, ok := mg.GetEdgesFromNodeID("document#viewer")
 		require.True(t, ok)
 
-		res, err := resolver.specificTypeAndRelation(context.Background(), req, edges[0], nil)
+		res, err := resolver.SpecificTypeAndRelation(context.Background(), req, edges[0], nil)
 		require.NoError(t, err)
 		require.False(t, res.GetAllowed())
 	})
@@ -3843,7 +3847,7 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 		edges, ok := mg.GetEdgesFromNodeID("document#viewer")
 		require.True(t, ok)
 
-		res, err := resolver.specificTypeAndRelation(context.Background(), req, edges[0], nil)
+		res, err := resolver.SpecificTypeAndRelation(context.Background(), req, edges[0], nil)
 		require.NoError(t, err)
 		require.False(t, res.GetAllowed())
 	})
@@ -3899,7 +3903,7 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 		edges, ok := mg.GetEdgesFromNodeID("document#viewer")
 		require.True(t, ok)
 
-		res, err := resolver.specificTypeAndRelation(context.Background(), req, edges[0], nil)
+		res, err := resolver.SpecificTypeAndRelation(context.Background(), req, edges[0], nil)
 		require.Error(t, err)
 		require.ErrorIs(t, err, expectedErr)
 		require.Nil(t, res)
@@ -3958,7 +3962,7 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 		edges, ok := mg.GetEdgesFromNodeID("document#viewer")
 		require.True(t, ok)
 
-		res, err := resolver.specificTypeAndRelation(ctx, req, edges[0], nil)
+		res, err := resolver.SpecificTypeAndRelation(ctx, req, edges[0], nil)
 		require.Error(t, err)
 		require.ErrorIs(t, err, context.Canceled)
 		require.Nil(t, res)
@@ -4024,7 +4028,7 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 		edges, ok := mg.GetEdgesFromNodeID("document#viewer")
 		require.True(t, ok)
 
-		res, err := resolver.specificTypeAndRelation(context.Background(), req, edges[0], nil)
+		res, err := resolver.SpecificTypeAndRelation(context.Background(), req, edges[0], nil)
 		require.NoError(t, err)
 		require.True(t, res.GetAllowed())
 	})
@@ -4104,7 +4108,7 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 		edges, ok := mg.GetEdgesFromNodeID("document#viewer")
 		require.True(t, ok)
 
-		res, err := resolver.specificTypeAndRelation(context.Background(), req, edges[0], nil)
+		res, err := resolver.SpecificTypeAndRelation(context.Background(), req, edges[0], nil)
 		require.NoError(t, err)
 		require.False(t, res.GetAllowed())
 	})
@@ -4188,7 +4192,7 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 		edges, ok := mg.GetEdgesFromNodeID("document#viewer")
 		require.True(t, ok)
 
-		res, err := resolver.specificTypeAndRelation(context.Background(), req, edges[0], nil)
+		res, err := resolver.SpecificTypeAndRelation(context.Background(), req, edges[0], nil)
 		require.NoError(t, err)
 		require.True(t, res.GetAllowed())
 	})
@@ -4265,7 +4269,7 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 		require.True(t, ok)
 		resolver.strategies[DefaultStrategyName] = NewDefault(mg, resolver, 10)
 
-		res, err := resolver.specificTypeAndRelation(context.Background(), req, edges[0], nil)
+		res, err := resolver.SpecificTypeAndRelation(context.Background(), req, edges[0], nil)
 		require.NoError(t, err)
 		require.True(t, res.GetAllowed())
 	})
@@ -4340,7 +4344,7 @@ func TestTTU(t *testing.T) {
 		edges, ok := mg.GetEdgesFromNodeID("document#viewer")
 		require.True(t, ok)
 
-		res, err := resolver.ttu(context.Background(), req, edges[0], nil)
+		res, err := resolver.TTU(context.Background(), req, edges[0], nil)
 		require.NoError(t, err)
 		require.True(t, res.GetAllowed())
 	})
@@ -4404,7 +4408,7 @@ func TestTTU(t *testing.T) {
 		edges, ok := mg.GetEdgesFromNodeID("document#viewer")
 		require.True(t, ok)
 
-		res, err := resolver.ttu(context.Background(), req, edges[0], nil)
+		res, err := resolver.TTU(context.Background(), req, edges[0], nil)
 		require.NoError(t, err)
 		require.False(t, res.GetAllowed())
 	})
@@ -4464,7 +4468,7 @@ func TestTTU(t *testing.T) {
 		edges, ok := mg.GetEdgesFromNodeID("document#viewer")
 		require.True(t, ok)
 
-		res, err := resolver.ttu(context.Background(), req, edges[0], nil)
+		res, err := resolver.TTU(context.Background(), req, edges[0], nil)
 		require.NoError(t, err)
 		require.False(t, res.GetAllowed())
 	})
@@ -4517,7 +4521,7 @@ func TestTTU(t *testing.T) {
 		edges, ok := mg.GetEdgesFromNodeID("document#viewer")
 		require.True(t, ok)
 
-		res, err := resolver.ttu(context.Background(), req, edges[0], nil)
+		res, err := resolver.TTU(context.Background(), req, edges[0], nil)
 		require.Error(t, err)
 		require.ErrorIs(t, err, expectedErr)
 		require.Nil(t, res)
@@ -4573,7 +4577,7 @@ func TestTTU(t *testing.T) {
 		edges, ok := mg.GetEdgesFromNodeID("document#viewer")
 		require.True(t, ok)
 
-		res, err := resolver.ttu(ctx, req, edges[0], nil)
+		res, err := resolver.TTU(ctx, req, edges[0], nil)
 		require.Error(t, err)
 		require.ErrorIs(t, err, context.Canceled)
 		require.Nil(t, res)
@@ -4639,7 +4643,7 @@ func TestTTU(t *testing.T) {
 		edges, ok := mg.GetEdgesFromNodeID("document#viewer")
 		require.True(t, ok)
 
-		res, err := resolver.ttu(context.Background(), req, edges[0], nil)
+		res, err := resolver.TTU(context.Background(), req, edges[0], nil)
 		require.NoError(t, err)
 		require.True(t, res.GetAllowed())
 	})
@@ -4718,7 +4722,7 @@ func TestTTU(t *testing.T) {
 		edges, ok := mg.GetEdgesFromNodeID("document#viewer")
 		require.True(t, ok)
 
-		res, err := resolver.ttu(context.Background(), req, edges[0], nil)
+		res, err := resolver.TTU(context.Background(), req, edges[0], nil)
 		require.NoError(t, err)
 		require.False(t, res.GetAllowed())
 	})
@@ -4799,7 +4803,7 @@ func TestTTU(t *testing.T) {
 		edges, ok := mg.GetEdgesFromNodeID("document#viewer")
 		require.True(t, ok)
 
-		res, err := resolver.ttu(context.Background(), req, edges[0], nil)
+		res, err := resolver.TTU(context.Background(), req, edges[0], nil)
 		require.NoError(t, err)
 		require.True(t, res.GetAllowed())
 	})
@@ -4871,7 +4875,7 @@ func TestTTU(t *testing.T) {
 		edges, ok := mg.GetEdgesFromNodeID("document#viewer")
 		require.True(t, ok)
 
-		res, err := resolver.ttu(context.Background(), req, edges[0], nil)
+		res, err := resolver.TTU(context.Background(), req, edges[0], nil)
 		require.NoError(t, err)
 		require.True(t, res.GetAllowed())
 	})
