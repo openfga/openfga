@@ -356,7 +356,7 @@ func TestCachingIterator_IsOrdered(t *testing.T) {
 	wg := &sync.WaitGroup{}
 
 	inner := storage.NewStaticTupleIterator([]*openfgav1.Tuple{})
-	iter := newCachingIterator(inner, mockCache, testCacheKey("key"), 100, time.Hour, 30*time.Second, sf, wg, "document", "viewer", "Read")
+	iter := newCachingIterator(inner, mockCache, testCacheKey("key"), 100, time.Hour, 30*time.Second, sf, wg, "document", "viewer", "Read", "Check")
 	require.True(t, iter.IsOrdered())
 	iter.Stop()
 	wg.Wait()
@@ -391,7 +391,7 @@ func TestCachingIterator_Next_Basic(t *testing.T) {
 
 	iter := newCachingIterator(
 		innerIter, mockCache, testCacheKey("test-key"), 1000, time.Hour, 30*time.Second,
-		sf, wg, "document", "viewer", "ReadUsersetTuples",
+		sf, wg, "document", "viewer", "ReadUsersetTuples", "Check",
 	)
 
 	t1, err := iter.Next(ctx)
@@ -437,7 +437,7 @@ func TestCachingIterator_Next_NonIteratorDoneError_NilsTuples(t *testing.T) {
 
 	iter := newCachingIterator(
 		innerIter, mockCache, testCacheKey("test-key"), 1000, time.Hour, 30*time.Second,
-		sf, wg, "document", "viewer", "ReadUsersetTuples",
+		sf, wg, "document", "viewer", "ReadUsersetTuples", "Check",
 	)
 
 	// First call succeeds
@@ -483,7 +483,7 @@ func TestCachingIterator_Head_DelegatesToInner(t *testing.T) {
 
 	iter := newCachingIterator(
 		innerIter, mockCache, testCacheKey("test-key"), 1000, time.Hour, 30*time.Second,
-		sf, wg, "document", "viewer", "ReadUsersetTuples",
+		sf, wg, "document", "viewer", "ReadUsersetTuples", "Check",
 	)
 
 	// Head returns first tuple without advancing
@@ -529,7 +529,7 @@ func TestCachingIterator_Head_AfterStop(t *testing.T) {
 
 	iter := newCachingIterator(
 		innerIter, mockCache, testCacheKey("test-key"), 1000, time.Hour, 30*time.Second,
-		sf, wg, "document", "viewer", "ReadUsersetTuples",
+		sf, wg, "document", "viewer", "ReadUsersetTuples", "Check",
 	)
 
 	iter.Stop()
@@ -568,7 +568,7 @@ func TestCachingIterator_ExceedsMaxSize_AbandonsCaching(t *testing.T) {
 
 	iter := newCachingIterator(
 		innerIter, mockCache, testCacheKey("test-key"), maxSize, time.Hour, 30*time.Second,
-		sf, wg, "document", "viewer", "ReadUsersetTuples",
+		sf, wg, "document", "viewer", "ReadUsersetTuples", "Check",
 	)
 
 	// Consume all tuples
@@ -607,7 +607,7 @@ func TestCachingIterator_ConfigurableMaxSize_AbandonsCaching(t *testing.T) {
 
 	iter := newCachingIterator(
 		innerIter, mockCache, testCacheKey("test-key"), customMaxSize, time.Hour, 30*time.Second,
-		sf, wg, "document", "viewer", "ReadUsersetTuples",
+		sf, wg, "document", "viewer", "ReadUsersetTuples", "Check",
 	)
 
 	// Consume all tuples
@@ -654,7 +654,7 @@ func TestCachingIterator_PopulatesCache(t *testing.T) {
 
 	iter := newCachingIterator(
 		innerIter, mockCache, cacheKey, 1000, ttl, 30*time.Second,
-		sf, wg, "document", "viewer", "ReadUsersetTuples",
+		sf, wg, "document", "viewer", "ReadUsersetTuples", "Check",
 	)
 
 	// Consume all tuples
@@ -698,7 +698,7 @@ func TestCachingIterator_InnerError(t *testing.T) {
 
 	iter := newCachingIterator(
 		innerIter, mockCache, testCacheKey("test-key"), 1000, time.Hour, 30*time.Second,
-		sf, wg, "document", "viewer", "ReadUsersetTuples",
+		sf, wg, "document", "viewer", "ReadUsersetTuples", "Check",
 	)
 
 	_, err := iter.Next(ctx)
@@ -733,7 +733,7 @@ func TestCachingIterator_Stop_Idempotent(t *testing.T) {
 
 	iter := newCachingIterator(
 		innerIter, mockCache, testCacheKey("test-key"), 1000, time.Hour, 30*time.Second,
-		sf, wg, "document", "viewer", "ReadUsersetTuples",
+		sf, wg, "document", "viewer", "ReadUsersetTuples", "Check",
 	)
 
 	// Consume all tuples
@@ -773,7 +773,7 @@ func TestCachingIterator_Flush_EmptyAndNil(t *testing.T) {
 		iter := newCachingIterator(
 			storage.NewStaticTupleIterator([]*openfgav1.Tuple{}),
 			mockCache, testCacheKey("test-key"), 1000, time.Hour, 30*time.Second,
-			sf, wg, "document", "viewer", "ReadUsersetTuples",
+			sf, wg, "document", "viewer", "ReadUsersetTuples", "Check",
 		)
 
 		// Manually set tuples to nil to simulate abandoned state
@@ -788,7 +788,7 @@ func TestCachingIterator_Flush_EmptyAndNil(t *testing.T) {
 		iter := newCachingIterator(
 			storage.NewStaticTupleIterator([]*openfgav1.Tuple{}),
 			mockCache, testCacheKey("test-key"), 1000, time.Hour, 30*time.Second,
-			sf, wg, "document", "viewer", "ReadUsersetTuples",
+			sf, wg, "document", "viewer", "ReadUsersetTuples", "Check",
 		)
 
 		// tuples is initialized as empty slice
@@ -829,7 +829,7 @@ func TestCachingIterator_WaitGroup_AddInConstructor(t *testing.T) {
 		innerIter := storage.NewStaticTupleIterator(tuples)
 		iterators[i] = newCachingIterator(
 			innerIter, mockCache, testCacheKey("test-key-"+strconv.Itoa(i)), 1000, time.Hour, 30*time.Second,
-			sf, wg, "document", "viewer", "ReadUsersetTuples",
+			sf, wg, "document", "viewer", "ReadUsersetTuples", "Check",
 		)
 	}
 
@@ -881,7 +881,7 @@ func TestCachingIterator_WaitGroup_DoneCalledOnNilTuples(t *testing.T) {
 
 	iter := newCachingIterator(
 		innerIter, mockCache, testCacheKey("test-key"), maxSize, time.Hour, 30*time.Second,
-		sf, wg, "document", "viewer", "ReadUsersetTuples",
+		sf, wg, "document", "viewer", "ReadUsersetTuples", "Check",
 	)
 
 	ctx := context.Background()
@@ -939,7 +939,7 @@ func TestCachingIterator_ConcurrentNextAndStop(t *testing.T) {
 		innerIter := storage.NewStaticTupleIterator(tuples)
 		iter := newCachingIterator(
 			innerIter, mockCache, testCacheKey(fmt.Sprintf("test-key-%d", i)), 1000, time.Hour, 30*time.Second,
-			sf, wg, "document", "viewer", "ReadUsersetTuples",
+			sf, wg, "document", "viewer", "ReadUsersetTuples", "Check",
 		)
 
 		// Concurrent access pattern that previously caused race
@@ -1010,7 +1010,7 @@ func TestCachingIterator_BackgroundDrainIgnoresRequestContextCancellation(t *tes
 
 	iter := newCachingIterator(
 		innerIter, mockCache, testCacheKey("test-key"), 1000, time.Hour, 30*time.Second,
-		sf, wg, "document", "viewer", "ReadUsersetTuples",
+		sf, wg, "document", "viewer", "ReadUsersetTuples", "Check",
 	)
 
 	// Consume just a few tuples (simulating finding a result early)
@@ -1060,7 +1060,7 @@ func TestCachingIterator_BackgroundDrainCompletes_DoesCache(t *testing.T) {
 
 	iter := newCachingIterator(
 		innerIter, mockCache, testCacheKey("test-key"), 1000, time.Hour, 30*time.Second,
-		sf, wg, "document", "viewer", "ReadUsersetTuples",
+		sf, wg, "document", "viewer", "ReadUsersetTuples", "Check",
 	)
 
 	// Consume just a few tuples (not all)
@@ -1110,7 +1110,7 @@ func TestCachingIterator_DrainTimeout_AbandonsCaching(t *testing.T) {
 		blockIter, mockCache, testCacheKey("test-key"), 1000,
 		time.Hour,
 		1*time.Nanosecond, // Very short drain timeout to trigger context expiry
-		sf, wg, "document", "viewer", "ReadUsersetTuples",
+		sf, wg, "document", "viewer", "ReadUsersetTuples", "Check",
 	)
 
 	ctx := context.Background()
@@ -1152,7 +1152,7 @@ func TestCachingIterator_DrainError_AbandonsCaching(t *testing.T) {
 
 	iter := newCachingIterator(
 		innerIter, mockCache, testCacheKey("test-key"), 1000, time.Hour, 30*time.Second,
-		sf, wg, "document", "viewer", "ReadUsersetTuples",
+		sf, wg, "document", "viewer", "ReadUsersetTuples", "Check",
 	)
 
 	ctx := context.Background()
@@ -1196,7 +1196,7 @@ func TestCachingIterator_DrainExceedsMaxSize_AbandonsCaching(t *testing.T) {
 
 	iter := newCachingIterator(
 		innerIter, mockCache, testCacheKey("test-key"), maxSize, time.Hour, 30*time.Second,
-		sf, wg, "document", "viewer", "ReadUsersetTuples",
+		sf, wg, "document", "viewer", "ReadUsersetTuples", "Check",
 	)
 
 	ctx := context.Background()
@@ -1272,7 +1272,7 @@ func BenchmarkCachingIterator_CacheMiss(b *testing.B) {
 		innerIter := storage.NewStaticTupleIterator(tuples)
 		iter := newCachingIterator(
 			innerIter, mockCache, testCacheKey("test-key"), 1000, time.Hour, 30*time.Second,
-			sf, wg, "document", "viewer", "benchmark",
+			sf, wg, "document", "viewer", "benchmark", "Check",
 		)
 
 		// Consume all tuples
