@@ -40,6 +40,10 @@ func NewRecursive(model *modelgraph.AuthorizationModelGraph, ds storage.Relation
 	}
 }
 
+func (s *Recursive) Resolve(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge, rightIter storage.TupleKeyIterator, _ *sync.Map) (*Response, error) {
+	return &Response{}, nil
+}
+
 func (s *Recursive) Userset(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge, rightIter storage.TupleKeyIterator, _ *sync.Map) (*Response, error) {
 	ctx, span := tracer.Start(ctx, "recursive.Userset")
 	defer span.End()

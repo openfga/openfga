@@ -3,6 +3,7 @@ package check
 import (
 	"time"
 
+	authzGraph "github.com/openfga/language/pkg/go/graph"
 	"github.com/openfga/openfga/internal/planner"
 	"github.com/openfga/openfga/pkg/storage/cache/keys"
 )
@@ -34,6 +35,20 @@ var DefaultRecursivePlan = &planner.PlanConfig{
 	// When α > β, we expect higher precision and more controlled variance.
 	Alpha: 3.0,
 	Beta:  2.0,
+}
+
+const SqlStrategyName = "sql"
+
+var SqlPlan = &planner.PlanConfig{
+	Name:         DefaultStrategyName,
+	InitialGuess: 50 * time.Millisecond,
+	// Low Lambda: Represents zero confidence. It's a pure guess.
+	Lambda: 1,
+	// With α = 0.5 ≤ 1, it means maximum uncertainty about variance; with λ = 1, we also have weak confidence in the mean.
+	// These values will encourage strong exploration of other strategies. Having these values for the default execute helps to enforce the usage of the "faster" strategies,
+	// helping out with the cold start when we don't have enough data.
+	Alpha: 0.5,
+	Beta:  0.5,
 }
 
 const WeightTwoStrategyName = "weight2"
@@ -134,5 +149,25 @@ func createTTUPlanKey(req *Request, tuplesetRelation, computedRelation string) k
 	builder.EncodeString(req.GetUserType())
 	builder.EncodeString(tuplesetRelation)
 	builder.EncodeString(computedRelation)
+	return builder.Key()
+}
+
+func createEdgePlanKey(req *Request, edge *authzGraph.WeightedAuthorizationModelEdge) keys.Key {
+	const version = "V2"
+	const prefix = "EDGE"
+
+	builder := keys.GetBuilder()
+	defer builder.Close()
+
+	builder.EncodeString(version)
+	builder.EncodeString(prefix)
+	builder.EncodeString(req.GetStoreID())
+	builder.EncodeString(req.GetAuthorizationModelID())
+	builder.EncodeString(req.GetObjectType())
+	builder.EncodeString(req.GetTupleKey().GetRelation())
+	builder.EncodeString(req.GetUserType())
+	builder.EncodeUint64(uint64(edge.GetEdgeType()))
+	builder.EncodeString(edge.GetRelationDefinition())
+	builder.EncodeString(edge.GetTo().GetUniqueLabel())
 	return builder.Key()
 }

@@ -9,6 +9,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/openfga/language/pkg/go/graph"
 	authzGraph "github.com/openfga/language/pkg/go/graph"
 
 	"github.com/openfga/openfga/internal/concurrency"
@@ -35,6 +36,26 @@ func NewDefault(model *modelgraph.AuthorizationModelGraph, resolver CheckResolve
 		model:            model,
 		resolver:         resolver,
 		concurrencyLimit: limit,
+	}
+}
+
+var _ GroupStrategy = &DefaultStrategy{}
+var _ EdgeStrategy = &DefaultStrategy{}
+
+func (s *DefaultStrategy) Resolve(ctx context.Context, req *Request, edges []*graph.WeightedAuthorizationModelEdge, _ string, out chan<- ResponseMsg, pool *errgroup.Group, visited *sync.Map) {
+	for _, edge := range edges {
+		_, ok := s.model.GetEdgeWeight(edge, req.GetUserType())
+		if !ok {
+			concurrency.TrySendThroughChannel(ctx, ResponseMsg{Err: ErrPanicRequest}, out)
+			return
+		}
+
+		pool.Go(func() error {
+			// intersection is never part of a cycle or recursion
+			res, err := s.resolver.ResolveEdge(ctx, req, edge, nil)
+			concurrency.TrySendThroughChannel(ctx, ResponseMsg{Res: res, Edges: []*graph.WeightedAuthorizationModelEdge{edge}, Err: err}, out)
+			return nil
+		})
 	}
 }
 
