@@ -57,6 +57,21 @@ func (mr *MockCheckResolverMockRecorder) ResolveCheck(arg0, arg1 any) *gomock.Ca
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResolveCheck", reflect.TypeOf((*MockCheckResolver)(nil).ResolveCheck), arg0, arg1)
 }
 
+// ResolveRewrite mocks base method.
+func (m *MockCheckResolver) ResolveRewrite(arg0 context.Context, arg1 *Request, arg2 *graph.WeightedAuthorizationModelNode, arg3 *sync.Map) (*Response, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ResolveRewrite", arg0, arg1, arg2, arg3)
+	ret0, _ := ret[0].(*Response)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ResolveRewrite indicates an expected call of ResolveRewrite.
+func (mr *MockCheckResolverMockRecorder) ResolveRewrite(arg0, arg1, arg2, arg3 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResolveRewrite", reflect.TypeOf((*MockCheckResolver)(nil).ResolveRewrite), arg0, arg1, arg2, arg3)
+}
+
 // ResolveUnion mocks base method.
 func (m *MockCheckResolver) ResolveUnion(arg0 context.Context, arg1 *Request, arg2 *graph.WeightedAuthorizationModelNode, arg3 *sync.Map) (*Response, error) {
 	m.ctrl.T.Helper()
@@ -70,4 +85,64 @@ func (m *MockCheckResolver) ResolveUnion(arg0 context.Context, arg1 *Request, ar
 func (mr *MockCheckResolverMockRecorder) ResolveUnion(arg0, arg1, arg2, arg3 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResolveUnion", reflect.TypeOf((*MockCheckResolver)(nil).ResolveUnion), arg0, arg1, arg2, arg3)
+}
+
+// SpecificType mocks base method.
+func (m *MockCheckResolver) SpecificType(arg0 context.Context, arg1 *Request, arg2 *graph.WeightedAuthorizationModelEdge) (*Response, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SpecificType", arg0, arg1, arg2)
+	ret0, _ := ret[0].(*Response)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SpecificType indicates an expected call of SpecificType.
+func (mr *MockCheckResolverMockRecorder) SpecificType(arg0, arg1, arg2 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SpecificType", reflect.TypeOf((*MockCheckResolver)(nil).SpecificType), arg0, arg1, arg2)
+}
+
+// SpecificTypeAndRelation mocks base method.
+func (m *MockCheckResolver) SpecificTypeAndRelation(arg0 context.Context, arg1 *Request, arg2 *graph.WeightedAuthorizationModelEdge, arg3 *sync.Map) (*Response, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SpecificTypeAndRelation", arg0, arg1, arg2, arg3)
+	ret0, _ := ret[0].(*Response)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SpecificTypeAndRelation indicates an expected call of SpecificTypeAndRelation.
+func (mr *MockCheckResolverMockRecorder) SpecificTypeAndRelation(arg0, arg1, arg2, arg3 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SpecificTypeAndRelation", reflect.TypeOf((*MockCheckResolver)(nil).SpecificTypeAndRelation), arg0, arg1, arg2, arg3)
+}
+
+// SpecificTypeWildcard mocks base method.
+func (m *MockCheckResolver) SpecificTypeWildcard(arg0 context.Context, arg1 *Request, arg2 *graph.WeightedAuthorizationModelEdge) (*Response, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SpecificTypeWildcard", arg0, arg1, arg2)
+	ret0, _ := ret[0].(*Response)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SpecificTypeWildcard indicates an expected call of SpecificTypeWildcard.
+func (mr *MockCheckResolverMockRecorder) SpecificTypeWildcard(arg0, arg1, arg2 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SpecificTypeWildcard", reflect.TypeOf((*MockCheckResolver)(nil).SpecificTypeWildcard), arg0, arg1, arg2)
+}
+
+// TTU mocks base method.
+func (m *MockCheckResolver) TTU(arg0 context.Context, arg1 *Request, arg2 *graph.WeightedAuthorizationModelEdge, arg3 *sync.Map) (*Response, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "TTU", arg0, arg1, arg2, arg3)
+	ret0, _ := ret[0].(*Response)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// TTU indicates an expected call of TTU.
+func (mr *MockCheckResolverMockRecorder) TTU(arg0, arg1, arg2, arg3 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TTU", reflect.TypeOf((*MockCheckResolver)(nil).TTU), arg0, arg1, arg2, arg3)
 }

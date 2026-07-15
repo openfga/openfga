@@ -3,7 +3,7 @@ package check
 import (
 	"time"
 
-	"github.com/openfga/openfga/pkg/storage/cache/keys"
+	"github.com/openfga/language/pkg/go/graph"
 )
 
 type Response struct {
@@ -18,9 +18,9 @@ func (r *Response) GetAllowed() bool {
 }
 
 type ResponseMsg struct {
-	ID  keys.Key
-	Res *Response
-	Err error
+	Res   *Response
+	Edges []*graph.WeightedAuthorizationModelEdge
+	Err   error
 }
 
 type ResponseCacheEntry struct {

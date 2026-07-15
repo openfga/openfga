@@ -15,6 +15,7 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	storage "github.com/openfga/openfga/pkg/storage"
+	adapter "github.com/openfga/openfga/pkg/storage/adapter"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -40,6 +41,20 @@ func NewMockTupleBackend(ctrl *gomock.Controller) *MockTupleBackend {
 // EXPECT returns an object that allows the caller to indicate expected use.
 func (m *MockTupleBackend) EXPECT() *MockTupleBackendMockRecorder {
 	return m.recorder
+}
+
+// Builder mocks base method.
+func (m *MockTupleBackend) Builder(consistency openfgav1.ConsistencyPreference) adapter.Builder {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Builder", consistency)
+	ret0, _ := ret[0].(adapter.Builder)
+	return ret0
+}
+
+// Builder indicates an expected call of Builder.
+func (mr *MockTupleBackendMockRecorder) Builder(consistency any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Builder", reflect.TypeOf((*MockTupleBackend)(nil).Builder), consistency)
 }
 
 // MaxTuplesPerWrite mocks base method.
@@ -173,6 +188,20 @@ func NewMockRelationshipTupleReader(ctrl *gomock.Controller) *MockRelationshipTu
 // EXPECT returns an object that allows the caller to indicate expected use.
 func (m *MockRelationshipTupleReader) EXPECT() *MockRelationshipTupleReaderMockRecorder {
 	return m.recorder
+}
+
+// Builder mocks base method.
+func (m *MockRelationshipTupleReader) Builder(consistency openfgav1.ConsistencyPreference) adapter.Builder {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Builder", consistency)
+	ret0, _ := ret[0].(adapter.Builder)
+	return ret0
+}
+
+// Builder indicates an expected call of Builder.
+func (mr *MockRelationshipTupleReaderMockRecorder) Builder(consistency any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Builder", reflect.TypeOf((*MockRelationshipTupleReader)(nil).Builder), consistency)
 }
 
 // Read mocks base method.
@@ -727,6 +756,20 @@ func NewMockOpenFGADatastore(ctrl *gomock.Controller) *MockOpenFGADatastore {
 // EXPECT returns an object that allows the caller to indicate expected use.
 func (m *MockOpenFGADatastore) EXPECT() *MockOpenFGADatastoreMockRecorder {
 	return m.recorder
+}
+
+// Builder mocks base method.
+func (m *MockOpenFGADatastore) Builder(consistency openfgav1.ConsistencyPreference) adapter.Builder {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Builder", consistency)
+	ret0, _ := ret[0].(adapter.Builder)
+	return ret0
+}
+
+// Builder indicates an expected call of Builder.
+func (mr *MockOpenFGADatastoreMockRecorder) Builder(consistency any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Builder", reflect.TypeOf((*MockOpenFGADatastore)(nil).Builder), consistency)
 }
 
 // Close mocks base method.
