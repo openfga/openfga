@@ -1,4 +1,4 @@
-// Package sqlite adapts the ANSI query builder (pkg/storage/adapter/internal/ansi) to
+// Package sqlite adapts the ANSI query builder (pkg/storage/adapter/ansi) to
 // SQLite, backed by an in-memory database. It supplies two things to the ansi builder: a
 // dialect that overrides the one construct where SQLite's physical schema diverges from
 // the packed-`_user` layout the ANSI core assumes (the subject view, which maps to the
@@ -22,7 +22,7 @@ import (
 	_ "modernc.org/sqlite"
 
 	"github.com/openfga/openfga/pkg/storage/adapter"
-	"github.com/openfga/openfga/pkg/storage/adapter/internal/ansi"
+	"github.com/openfga/openfga/pkg/storage/adapter/ansi"
 )
 
 // executor runs rendered statements against a *sql.DB using the standard database/sql

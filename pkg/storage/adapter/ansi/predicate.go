@@ -70,7 +70,7 @@ func (o *orderTerm) writeSQL(r *renderer) {
 func orderTermWriter(term adapter.OrderTerm) sqlWriter {
 	w, ok := term.(sqlWriter)
 	if !ok {
-		panic("pkg/storage/adapter/internal/ansi: OrderTerm must be built via Expression.Asc / Desc / Order")
+		panic("pkg/storage/adapter/ansi: OrderTerm must be built via Expression.Asc / Desc / Order")
 	}
 	return w
 }

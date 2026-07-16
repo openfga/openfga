@@ -3,7 +3,7 @@ package pg
 import (
 	"strconv"
 
-	"github.com/openfga/openfga/pkg/storage/adapter/internal/ansi"
+	"github.com/openfga/openfga/pkg/storage/adapter/ansi"
 )
 
 // dialect renders the PostgreSQL-specific constructs, embedding ansi.ANSIDialect for
