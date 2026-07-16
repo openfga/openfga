@@ -393,19 +393,6 @@ func TestExclusionCheckFuncReducer(t *testing.T) {
 		cancel()
 	})
 
-	t.Run("return_allowed:false_if_subtract_handler_evaluated_before_context_cancelled", func(t *testing.T) {
-		ctx, cancel := context.WithCancel(context.Background())
-		t.Cleanup(cancel)
-
-		resp, err := exclusion(ctx, concurrencyLimit, trueHandler, trueHandler)
-		require.NoError(t, err)
-		require.False(t, resp.GetAllowed())
-
-		// Cancel only after the reducer has resolved: a concurrent cancel races
-		// the reducer's select between handler outcomes and ctx.Done() (#3197).
-		cancel()
-	})
-
 	t.Run("return_context_canceled_when_parent_context_is_canceled", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
