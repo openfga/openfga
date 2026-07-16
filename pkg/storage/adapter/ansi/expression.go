@@ -94,7 +94,7 @@ func (e *exprNode) Quantified(op adapter.ComparisonOp, q adapter.Quantifier, rig
 		case adapter.Expression:
 			r.node(exprWriter(v))
 		default:
-			panic("pkg/storage/adapter/internal/ansi: Quantified right must be a Query or Expression")
+			panic("pkg/storage/adapter/ansi: Quantified right must be a Query or Expression")
 		}
 		r.write(")")
 	}))

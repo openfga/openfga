@@ -84,7 +84,7 @@ func (ANSIDialect) StandardColumn(col Column, alias string) string {
 	case ColumnSubjectRelation:
 		return ansiSubjectRelation(alias)
 	default:
-		panic("pkg/storage/adapter/internal/ansi: unknown Column")
+		panic("pkg/storage/adapter/ansi: unknown Column")
 	}
 }
 

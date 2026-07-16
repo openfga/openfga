@@ -89,7 +89,7 @@ func comparisonSQL(op adapter.ComparisonOp) string {
 	case adapter.OpGte:
 		return ">="
 	default:
-		panic("pkg/storage/adapter/internal/ansi: unknown ComparisonOp")
+		panic("pkg/storage/adapter/ansi: unknown ComparisonOp")
 	}
 }
 
@@ -100,7 +100,7 @@ func quantifierSQL(q adapter.Quantifier) string {
 	case adapter.QuantifierAll:
 		return "ALL"
 	default:
-		panic("pkg/storage/adapter/internal/ansi: unknown Quantifier")
+		panic("pkg/storage/adapter/ansi: unknown Quantifier")
 	}
 }
 
@@ -111,7 +111,7 @@ func sortSQL(d adapter.SortDirection) string {
 	case adapter.Descending:
 		return "DESC"
 	default:
-		panic("pkg/storage/adapter/internal/ansi: unknown SortDirection")
+		panic("pkg/storage/adapter/ansi: unknown SortDirection")
 	}
 }
 
@@ -124,7 +124,7 @@ func nullsSQL(n adapter.NullOrdering) string {
 	case adapter.NullsLast:
 		return "NULLS LAST"
 	default:
-		panic("pkg/storage/adapter/internal/ansi: unknown NullOrdering")
+		panic("pkg/storage/adapter/ansi: unknown NullOrdering")
 	}
 }
 
@@ -141,7 +141,7 @@ func joinSQL(jt adapter.JoinType) string {
 	case adapter.CrossJoinType:
 		return "CROSS JOIN"
 	default:
-		panic("pkg/storage/adapter/internal/ansi: unknown JoinType")
+		panic("pkg/storage/adapter/ansi: unknown JoinType")
 	}
 }
 
@@ -154,7 +154,7 @@ func setSQL(op adapter.SetOp) string {
 	case adapter.SetExcept:
 		return "EXCEPT"
 	default:
-		panic("pkg/storage/adapter/internal/ansi: unknown SetOp")
+		panic("pkg/storage/adapter/ansi: unknown SetOp")
 	}
 }
 
@@ -170,7 +170,7 @@ func scalarFuncSQL(fn adapter.ScalarFunc) (name string, jsonPairs bool) {
 	case adapter.FuncJSONArray:
 		return "JSON_ARRAY", false
 	default:
-		panic("pkg/storage/adapter/internal/ansi: unknown ScalarFunc")
+		panic("pkg/storage/adapter/ansi: unknown ScalarFunc")
 	}
 }
 
@@ -191,7 +191,7 @@ func aggregateFuncSQL(fn adapter.AggregateFunc) (name string, jsonPairs bool) {
 	case adapter.AggJSONArrayAgg:
 		return "JSON_ARRAYAGG", false
 	default:
-		panic("pkg/storage/adapter/internal/ansi: unknown AggregateFunc")
+		panic("pkg/storage/adapter/ansi: unknown AggregateFunc")
 	}
 }
 
@@ -205,7 +205,7 @@ func asWriter(v any) sqlWriter {
 	if w, ok := v.(sqlWriter); ok {
 		return w
 	}
-	panic("pkg/storage/adapter/internal/ansi: value did not originate from this builder")
+	panic("pkg/storage/adapter/ansi: value did not originate from this builder")
 }
 
 func exprWriter(e adapter.Expression) sqlWriter { return asWriter(e) }

@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/openfga/openfga/pkg/storage/adapter"
-	"github.com/openfga/openfga/pkg/storage/adapter/internal/ansi"
+	"github.com/openfga/openfga/pkg/storage/adapter/ansi"
 )
 
 // build renders a query through the sqlite dialect, returning its SQL and bind arguments.

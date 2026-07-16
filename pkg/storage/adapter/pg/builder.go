@@ -1,4 +1,4 @@
-// Package pg adapts the ANSI query builder (pkg/storage/adapter/internal/ansi) to PostgreSQL. It supplies
+// Package pg adapts the ANSI query builder (pkg/storage/adapter/ansi) to PostgreSQL. It supplies
 // two things to the ansi builder: a dialect that overrides the constructs where pg
 // diverges from ANSI ($N placeholders and the `_user` subject view), and an executor
 // that runs the rendered statement through the native pgx/v5 driver. The node algebra
@@ -16,7 +16,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/openfga/openfga/pkg/storage/adapter"
-	"github.com/openfga/openfga/pkg/storage/adapter/internal/ansi"
+	"github.com/openfga/openfga/pkg/storage/adapter/ansi"
 )
 
 // executor runs rendered statements against a *pgxpool.Pool using the native pgx driver.

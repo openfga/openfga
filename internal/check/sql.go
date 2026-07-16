@@ -7,7 +7,6 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/openfga/openfga/internal/concurrency"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/structpb"
@@ -15,6 +14,7 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/language/pkg/go/graph"
 
+	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/modelgraph"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/adapter"
