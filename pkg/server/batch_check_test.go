@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"testing"
 
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
@@ -705,186 +704,355 @@ func TestBatchCheck_LogsBreakingChanges(t *testing.T) {
 		require.Equal(t, 0, logs.FilterMessage(batchLogMessage).Len(),
 			"expected no breaking-change log when no request shape matches")
 	})
-}
 
-// --- Benchmarks for logBatchCheckBreakingChanges ---------------------------
-//
-// logBatchCheckBreakingChanges runs synchronously on the BatchCheck response
-// path whenever weighted_graph_check is enabled, so its cost is added directly
-// to request latency. The work is O(checks × schema-walk): for each check it
-// runs the v2breaking shape predicates, which walk the target relation's
-// rewrite tree — and, on the non-userset (wildcard) path, recurse across
-// ComputedUserset/TupleToUserset edges into other relations' rewrites.
-//
-// These benchmarks isolate that cost (no datastore, no check pipeline — the
-// function only touches s.logger) across a matrix of model complexity × batch
-// size, so we can decide whether the synchronous walk needs the mitigations
-// discussed (per-shape dedup, model-level early bail, or moving off the hot
-// path) before it ships as the default.
+	t.Run("logs_when_weighted_graph_fails_to_build", func(t *testing.T) {
+		core, logs := observer.New(zap.WarnLevel)
+		testLogger := &logger.ZapLogger{Logger: zap.New(core)}
 
-// benchPlainModel has no exclusion / TTU / computed-self shapes: the common
-// case where every predicate should bail cheaply.
-func benchPlainModel() string {
-	return `
-		model
-			schema 1.1
-		type user
-		type document
-			relations
-				define viewer: [user]
-	`
-}
+		// This model is valid (WriteAuthorizationModel accepts it) but fails the
+		// weighted-graph build: `gated = user_access and bot_access` is an
+		// intersection whose branches resolve to different terminal types, which
+		// triggers ErrInvalidModel in the builder. With the flag on, that forces
+		// a batch-level fallback to v1 — CheckQueryV2 is never constructed — yet
+		// the schema-shape detection must still fire, since the relation also
+		// carries a wildcard_with_exclusion shape (`viewer = public but not
+		// blocked`). This exercises the "v2 skipped because the graph failed to
+		// build" branch: detection runs off the type system, not the graph.
+		graphFailModel := `
+			model
+				schema 1.1
+			type user
+			type bot
+			type document
+				relations
+					define user_access: [user]
+					define bot_access: [bot]
+					define gated: user_access and bot_access
+					define public: [user:*]
+					define blocked: [user]
+					define viewer: public but not blocked
+		`
 
-// benchShallowExclusionModel has a single wildcard-with-exclusion shape one
-// level deep — the realistic "affected model" case.
-func benchShallowExclusionModel() string {
-	return `
-		model
-			schema 1.1
-		type user
-		type document
-			relations
-				define public: [user:*]
-				define blocked: [user]
-				define viewer: public but not blocked
-	`
-}
+		s, storeID, modelID := setupBatchCheckStore(t, graphFailModel,
+			[]*openfgav1.TupleKey{tuple.NewTupleKey("document:d1", "public", "user:*")},
+			WithLogger(testLogger),
+			WithFeatureFlagClient(featureflags.NewDefaultClient([]string{config.ExperimentalWeightedGraphCheck})),
+		)
 
-// benchDeepTTUChainModel builds the worst case for the recursive wildcard walk:
-// a chain of `depth` distinct folder types linked by TTU (folderN viewer =
-// viewer from parent → folderN+1), terminating in a wildcard-with-exclusion at
-// the deepest level. Distinct types are required because the visited-map guard
-// bounds self-recursion — only a chain of *different* (type, relation) pairs
-// forces the walk to its full depth. Each check that targets the top relation
-// re-walks the entire chain with no memoization.
-func benchDeepTTUChainModel(depth int) string {
-	var b strings.Builder
-	b.WriteString("model\n\tschema 1.1\ntype user\n")
-
-	// The terminal type carries the wildcard-with-exclusion shape.
-	b.WriteString("type terminal\n\trelations\n")
-	b.WriteString("\t\tdefine public: [user:*]\n")
-	b.WriteString("\t\tdefine blocked: [user]\n")
-	b.WriteString("\t\tdefine viewer: public but not blocked\n")
-
-	// folder{depth-1} points at terminal; folderN points at folderN+1.
-	for i := depth - 1; i >= 0; i-- {
-		var childType string
-		if i == depth-1 {
-			childType = "terminal"
-		} else {
-			childType = fmt.Sprintf("folder%d", i+1)
+		req := &openfgav1.BatchCheckRequest{
+			StoreId:              storeID,
+			AuthorizationModelId: modelID,
+			Checks: []*openfgav1.BatchCheckItem{
+				{
+					// wildcard_with_exclusion: viewer = public but not blocked,
+					// queried for a wildcard user.
+					TupleKey:      &openfgav1.CheckRequestTupleKey{Object: "document:d1", Relation: "viewer", User: "user:*"},
+					CorrelationId: "wildcard",
+				},
+			},
 		}
-		fmt.Fprintf(&b, "type folder%d\n\trelations\n", i)
-		fmt.Fprintf(&b, "\t\tdefine parent: [%s]\n", childType)
-		b.WriteString("\t\tdefine viewer: viewer from parent\n")
-	}
 
-	return b.String()
+		_, err := s.BatchCheck(context.Background(), req)
+		require.NoError(t, err)
+
+		// Confirm we actually took the graph-build-failure branch (which logs
+		// this message) rather than v2 running and falling back per item — both
+		// would emit the breaking-change log, so this pins the scenario.
+		require.Equal(t, 1,
+			logs.FilterMessage("Weighted graph model resolution failed for batch check, falling back to main Check").Len(),
+			"expected the weighted-graph build to fail for this model")
+
+		entries := logs.FilterMessage(batchLogMessage).All()
+		require.Len(t, entries, 1,
+			"breaking-change log must still fire when the weighted graph fails to build")
+
+		fields := fieldMap(entries[0].Context)
+		byID, ok := fields["reasons_by_correlation_id"].(map[string]string)
+		require.True(t, ok)
+		require.Equal(t, map[string]string{
+			"wildcard": v2breaking.ReasonWildcardWithExclusion,
+		}, byID)
+	})
 }
 
-// benchTypesystem transforms a DSL model into a validated TypeSystem for use in
-// the benchmarks (mirrors the server's resolveTypesystem output).
-func benchTypesystem(b *testing.B, modelDSL string) *typesystem.TypeSystem {
-	b.Helper()
+// logBatchTypesystem transforms a DSL model into a validated TypeSystem for the
+// direct logBatchCheckBreakingChanges unit tests below.
+func logBatchTypesystem(t *testing.T, modelDSL string) *typesystem.TypeSystem {
+	t.Helper()
 	model := testutils.MustTransformDSLToProtoWithID(modelDSL)
 	typesys, err := typesystem.NewAndValidate(context.Background(), model)
-	require.NoError(b, err)
+	require.NoError(t, err)
 	return typesys
 }
 
-// benchBatchCheckRequest builds a BatchCheckRequest of numChecks items all
-// targeting (object, relation, user). All-distinct correlation IDs match the
-// real request-validation contract.
-func benchBatchCheckRequest(numChecks int, object, relation, user string) *openfgav1.BatchCheckRequest {
-	checks := make([]*openfgav1.BatchCheckItem, numChecks)
-	for i := range numChecks {
-		checks[i] = &openfgav1.BatchCheckItem{
-			TupleKey:      &openfgav1.CheckRequestTupleKey{Object: object, Relation: relation, User: user},
-			CorrelationId: fmt.Sprintf("corr-%d", i),
-		}
-	}
-	return &openfgav1.BatchCheckRequest{
-		StoreId:              ulid.Make().String(),
-		AuthorizationModelId: ulid.Make().String(),
+// batchLogFields runs logBatchCheckBreakingChanges directly (bypassing the full
+// BatchCheck pipeline) and returns the fields of the single aggregate log it
+// emits, or nil if it emitted nothing. Driving the function directly lets each
+// test control outcome.Allowed / outcome.Err — and the result map's contents —
+// deterministically, which is the only way to reach the errored-check,
+// absent-outcome, allowed-gating, and memoization branches.
+func batchLogFields(t *testing.T, typesys *typesystem.TypeSystem, checks []*openfgav1.BatchCheckItem, result map[commands.CorrelationID]*commands.BatchCheckOutcome) map[string]any {
+	t.Helper()
+
+	core, logs := observer.New(zap.WarnLevel)
+	s := &Server{logger: &logger.ZapLogger{Logger: zap.New(core)}}
+
+	req := &openfgav1.BatchCheckRequest{
+		StoreId:              "store-id",
+		AuthorizationModelId: "model-id",
 		Checks:               checks,
 	}
-}
+	s.logBatchCheckBreakingChanges(context.Background(), req, typesys, result)
 
-// benchResultFor builds a result map marking every check FALSE (not allowed) so
-// the CheckReason path is exercised on the userset cases (it is gated on
-// !Allowed). Exclusion-shape detection runs regardless of the result.
-func benchResultFor(req *openfgav1.BatchCheckRequest) map[commands.CorrelationID]*commands.BatchCheckOutcome {
-	result := make(map[commands.CorrelationID]*commands.BatchCheckOutcome, len(req.GetChecks()))
-	for _, check := range req.GetChecks() {
-		result[commands.CorrelationID(check.GetCorrelationId())] = &commands.BatchCheckOutcome{Allowed: false}
+	entries := logs.FilterMessage("potential v2 BatchCheck resolution breaking change").All()
+	if len(entries) == 0 {
+		return nil
 	}
-	return result
+	require.Len(t, entries, 1, "expected at most one aggregate breaking-change log")
+	return fieldMap(entries[0].Context)
 }
 
-func BenchmarkLogBatchCheckBreakingChanges(b *testing.B) {
-	// s.logger is the only server field logBatchCheckBreakingChanges touches; a
-	// noop logger keeps the benchmark focused on the schema-walk cost.
-	s := &Server{logger: logger.NewNoopLogger()}
-	ctx := context.Background()
+// item is a small helper to build a BatchCheckItem.
+func item(correlationID, object, relation, user string) *openfgav1.BatchCheckItem {
+	return &openfgav1.BatchCheckItem{
+		TupleKey:      &openfgav1.CheckRequestTupleKey{Object: object, Relation: relation, User: user},
+		CorrelationId: correlationID,
+	}
+}
 
-	scenarios := []struct {
-		name     string
-		modelDSL string
-		object   string
-		relation string
-		user     string
+// TestLogBatchCheckBreakingChanges_AllReasons drives logBatchCheckBreakingChanges
+// directly to assert that every reason the detection can emit is produced by the
+// corresponding request shape. Each case pins the (shape → reason) mapping so a
+// regression in the predicate wiring is caught here rather than only in the
+// end-to-end aggregate test.
+func TestLogBatchCheckBreakingChanges_AllReasons(t *testing.T) {
+	// A model carrying one instance of every detectable shape.
+	//
+	//   - self_referential_userset:      check(document:d1#viewer, viewer, document:d1)
+	//   - alias_userset:                 viewer accepts document#allowed, allowed => reader
+	//   - computed_userset_self_object:  can_edit computes from editor
+	//   - ttu_userset:                   from_parent = viewer from parent
+	//   - userset_with_exclusion:        guarded = [document#editor] but not blocked (userset user)
+	//   - wildcard_with_exclusion:       pub_guarded = public but not blocked (wildcard)
+	modelDSL := `
+		model
+			schema 1.1
+		type user
+		type folder
+			relations
+				define viewer: [user]
+		type document
+			relations
+				define parent: [folder]
+				define reader: [user]
+				define allowed: reader
+				define editor: [user]
+				define blocked: [user]
+				define public: [user:*]
+				define viewer: [user, document#allowed]
+				define can_edit: editor
+				define from_parent: viewer from parent
+				define guarded: [document#editor] but not blocked
+				define pub_guarded: public but not blocked
+	`
+	typesys := logBatchTypesystem(t, modelDSL)
+
+	tests := []struct {
+		name           string
+		check          *openfgav1.BatchCheckItem
+		allowed        bool
+		expectedReason string
 	}{
 		{
-			// Common case: no shape matches, every predicate bails early.
-			name:     "plain_model_no_match",
-			modelDSL: benchPlainModel(),
-			object:   "document:d1",
-			relation: "viewer",
-			user:     "user:anne",
+			// self_referential_userset: the user is the object's own userset
+			// (document:d1#viewer on document:d1, viewer). v1 short-circuits this
+			// to TRUE unconditionally; v2 evaluates it against schema+storage and
+			// returns FALSE.
+			name:           "self_referential_userset",
+			check:          item("c", "document:d1", "viewer", "document:d1#viewer"),
+			allowed:        false,
+			expectedReason: v2breaking.ReasonSelfReferentialUserset,
 		},
 		{
-			// Realistic affected model: shallow wildcard-with-exclusion. The
-			// wildcard user forces the recursive walk (one level).
-			name:     "shallow_exclusion_wildcard_user",
-			modelDSL: benchShallowExclusionModel(),
-			object:   "document:d1",
-			relation: "viewer",
-			user:     "user:*",
+			// alias_userset: viewer directly accepts document#allowed, and
+			// allowed is a computed_userset alias for reader. Queried with a
+			// document#reader user, v1 follows the allowed→reader alias from a
+			// stored tuple; v2 does not, so the answers diverge.
+			name:           "alias_userset",
+			check:          item("c", "document:d1", "viewer", "document:d3#reader"),
+			allowed:        false,
+			expectedReason: v2breaking.ReasonAliasUserset,
+		},
+		{
+			// computed_userset_self_object: can_edit computes from editor, and
+			// the user's object equals the target object (document:d1). v1
+			// returned TRUE for the self-object computed userset; v2 returns
+			// FALSE.
+			name:           "computed_userset_self_object",
+			check:          item("c", "document:d1", "can_edit", "document:d1#editor"),
+			allowed:        false,
+			expectedReason: v2breaking.ReasonComputedUsersetSelfObj,
+		},
+		{
+			// ttu_userset: from_parent = viewer from parent, and the user's
+			// relation (viewer) matches the TTU's computed relation while the
+			// user's type (folder) is directly related to the parent tupleset.
+			// v1 returned TRUE from schema reachability plus a parent tuple; v2
+			// requires the userset to be explicit.
+			name:           "ttu_userset",
+			check:          item("c", "document:d1", "from_parent", "folder:f2#viewer"),
+			allowed:        false,
+			expectedReason: v2breaking.ReasonTTUUserset,
+		},
+		{
+			// userset_with_exclusion: guarded = editor but not blocked, queried
+			// for a userset user (document:d2#editor). v2 rejects a userset user
+			// reaching a Difference node at request time and falls back to v1,
+			// which still produces an answer — the divergence.
+			name:           "userset_with_exclusion",
+			check:          item("c", "document:d1", "guarded", "document:d2#editor"),
+			allowed:        false,
+			expectedReason: v2breaking.ReasonUsersetWithExclusion,
+		},
+		{
+			// Same userset_with_exclusion shape, but allowed=true: v2 rejects at
+			// request time regardless of the v1 answer, so the exclusion shape is
+			// flagged unconditionally (not gated on !Allowed).
+			name:           "userset_with_exclusion_even_when_allowed",
+			check:          item("c", "document:d1", "guarded", "document:d2#editor"),
+			allowed:        true,
+			expectedReason: v2breaking.ReasonUsersetWithExclusion,
+		},
+		{
+			// wildcard_with_exclusion: pub_guarded = public but not blocked,
+			// where public accepts user:*. Queried for a wildcard user, v2
+			// rejects a wildcard reaching a Difference node at request time and
+			// falls back to v1 — the divergence.
+			name:           "wildcard_with_exclusion",
+			check:          item("c", "document:d1", "pub_guarded", "user:*"),
+			allowed:        false,
+			expectedReason: v2breaking.ReasonWildcardWithExclusion,
 		},
 	}
 
-	batchSizes := []int{1, 10, config.DefaultMaxChecksPerBatchCheck}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := map[commands.CorrelationID]*commands.BatchCheckOutcome{
+				commands.CorrelationID(tt.check.GetCorrelationId()): {Allowed: tt.allowed},
+			}
+			fields := batchLogFields(t, typesys, []*openfgav1.BatchCheckItem{tt.check}, result)
+			require.NotNil(t, fields, "expected a breaking-change log for shape %s", tt.name)
 
-	for _, sc := range scenarios {
-		typesys := benchTypesystem(b, sc.modelDSL)
-		for _, size := range batchSizes {
-			req := benchBatchCheckRequest(size, sc.object, sc.relation, sc.user)
-			result := benchResultFor(req)
-			b.Run(fmt.Sprintf("%s/batch_%d", sc.name, size), func(b *testing.B) {
-				b.ReportAllocs()
-				for range b.N {
-					s.logBatchCheckBreakingChanges(ctx, req, typesys, result)
-				}
-			})
+			byID, ok := fields["reasons_by_correlation_id"].(map[string]string)
+			require.True(t, ok)
+			require.Equal(t, tt.expectedReason, byID[tt.check.GetCorrelationId()])
+		})
+	}
+}
+
+// TestLogBatchCheckBreakingChanges_SkipAndGatingBranches covers the branches
+// that suppress a reason: errored checks, checks absent from the result map,
+// the !Allowed gating on the userset CheckReason path, and no-shape checks.
+func TestLogBatchCheckBreakingChanges_SkipAndGatingBranches(t *testing.T) {
+	modelDSL := `
+		model
+			schema 1.1
+		type user
+		type document
+			relations
+				define editor: [user]
+				define writer: [user]
+				define viewer: editor or writer
+	`
+	typesys := logBatchTypesystem(t, modelDSL)
+
+	// computed_userset_self_object is a userset shape gated on !Allowed.
+	shapedCheck := item("shaped", "document:d1", "viewer", "document:d1#writer")
+
+	t.Run("errored_check_is_skipped", func(t *testing.T) {
+		result := map[commands.CorrelationID]*commands.BatchCheckOutcome{
+			"shaped": {Allowed: false, Err: errors.New("boom")},
 		}
+		require.Nil(t, batchLogFields(t, typesys, []*openfgav1.BatchCheckItem{shapedCheck}, result),
+			"a check whose outcome errored must not contribute a reason")
+	})
+
+	t.Run("check_absent_from_result_is_skipped", func(t *testing.T) {
+		// Empty result map: the check has no outcome to compare.
+		result := map[commands.CorrelationID]*commands.BatchCheckOutcome{}
+		require.Nil(t, batchLogFields(t, typesys, []*openfgav1.BatchCheckItem{shapedCheck}, result),
+			"a check absent from the result map must not contribute a reason")
+	})
+
+	t.Run("allowed_userset_check_is_gated_out", func(t *testing.T) {
+		// The userset CheckReason path only fires on !Allowed; an allowed
+		// result on this (non-exclusion) shape must not log.
+		result := map[commands.CorrelationID]*commands.BatchCheckOutcome{
+			"shaped": {Allowed: true},
+		}
+		require.Nil(t, batchLogFields(t, typesys, []*openfgav1.BatchCheckItem{shapedCheck}, result),
+			"an allowed userset check must be gated out of the non-exclusion path")
+	})
+
+	t.Run("no_shape_check_is_skipped", func(t *testing.T) {
+		plain := item("plain", "document:d1", "editor", "user:anne")
+		result := map[commands.CorrelationID]*commands.BatchCheckOutcome{
+			"plain": {Allowed: true},
+		}
+		require.Nil(t, batchLogFields(t, typesys, []*openfgav1.BatchCheckItem{plain}, result),
+			"a check whose shape matches no reason must not log")
+	})
+}
+
+// TestLogBatchCheckBreakingChanges_MemoizesAndDedupes verifies that identical
+// shapes across many checks are memoized (all attributed to the same reason)
+// and that the aggregate reasons list deduplicates while matched_checks counts
+// every flagged check.
+func TestLogBatchCheckBreakingChanges_MemoizesAndDedupes(t *testing.T) {
+	modelDSL := `
+		model
+			schema 1.1
+		type user
+		type document
+			relations
+				define editor: [user]
+				define writer: [user]
+				define viewer: editor or writer
+	`
+	typesys := logBatchTypesystem(t, modelDSL)
+
+	// Three checks with the identical computed_userset_self_object shape (same
+	// tuple key + same allowed bit) — the second and third hit the memoization
+	// cache — plus one distinct no-shape check.
+	checks := []*openfgav1.BatchCheckItem{
+		item("a", "document:d1", "viewer", "document:d1#writer"),
+		item("b", "document:d1", "viewer", "document:d1#writer"),
+		item("c", "document:d1", "viewer", "document:d1#writer"),
+		item("plain", "document:d1", "editor", "user:anne"),
+	}
+	result := map[commands.CorrelationID]*commands.BatchCheckOutcome{
+		"a":     {Allowed: false},
+		"b":     {Allowed: false},
+		"c":     {Allowed: false},
+		"plain": {Allowed: true},
 	}
 
-	// Worst case: deep TTU chains re-walked per check. Vary depth to expose how
-	// the recursive wildcard walk scales with model depth × batch size.
-	for _, depth := range []int{5, 25, 50} {
-		typesys := benchTypesystem(b, benchDeepTTUChainModel(depth))
-		for _, size := range []int{10, config.DefaultMaxChecksPerBatchCheck} {
-			// Target folder0 (top of the chain) with a wildcard user so each
-			// check recurses the full depth to reach the terminal exclusion.
-			req := benchBatchCheckRequest(size, "folder0:f", "viewer", "user:*")
-			result := benchResultFor(req)
-			b.Run(fmt.Sprintf("deep_ttu_chain/depth_%d/batch_%d", depth, size), func(b *testing.B) {
-				b.ReportAllocs()
-				for range b.N {
-					s.logBatchCheckBreakingChanges(ctx, req, typesys, result)
-				}
-			})
-		}
-	}
+	fields := batchLogFields(t, typesys, checks, result)
+	require.NotNil(t, fields)
+
+	rawReasons, ok := fields["reasons"].([]any)
+	require.True(t, ok)
+	require.Len(t, rawReasons, 1, "distinct reasons should be deduplicated")
+	require.Equal(t, v2breaking.ReasonComputedUsersetSelfObj, rawReasons[0])
+
+	require.EqualValues(t, 3, fields["matched_checks"],
+		"every flagged check counts toward matched_checks even when memoized")
+
+	byID, ok := fields["reasons_by_correlation_id"].(map[string]string)
+	require.True(t, ok)
+	require.Equal(t, map[string]string{
+		"a": v2breaking.ReasonComputedUsersetSelfObj,
+		"b": v2breaking.ReasonComputedUsersetSelfObj,
+		"c": v2breaking.ReasonComputedUsersetSelfObj,
+	}, byID, "the plain no-shape check is absent")
 }
