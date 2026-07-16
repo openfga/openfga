@@ -287,21 +287,6 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, e []*gra
 	defer func() {
 		cancel()
 		wg.Wait()
-
-		for msg := range out {
-			if msg.Err != nil {
-				continue
-			}
-
-			entry := &ResponseCacheEntry{Res: msg.Res, LastModified: time.Now()}
-			var key keys.Key
-			if len(msg.Edges) == 1 {
-				key = edgeCacheKeys[msg.Edges[0]]
-			} else {
-				key = nodeKey
-			}
-			r.cache.Set(key, entry, r.cacheTTL)
-		}
 	}()
 
 	if len(weightOneEdges) > 0 {
@@ -326,9 +311,9 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, e []*gra
 		})
 	}
 
-	for _, evaluation := range weightTwoPlusEdges {
+	for _, edge := range weightTwoPlusEdges {
 		pool.Go(func() error {
-			res, err := r.ResolveEdge(ctx, req, evaluation, visited)
+			res, err := r.ResolveEdge(ctx, req, edge, visited)
 
 			if ctx.Err() != nil {
 				return nil
@@ -338,7 +323,7 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, e []*gra
 				ctx,
 				ResponseMsg{
 					Res:   res,
-					Edges: []*graph.WeightedAuthorizationModelEdge{evaluation},
+					Edges: []*graph.WeightedAuthorizationModelEdge{edge},
 					Err:   err,
 				},
 				out,
@@ -371,14 +356,19 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, e []*gra
 				continue
 			}
 
-			entry := &ResponseCacheEntry{Res: msg.Res, LastModified: time.Now()}
-			var key keys.Key
-			if len(msg.Edges) == 1 {
-				key = edgeCacheKeys[msg.Edges[0]]
-			} else {
-				key = nodeKey
+			// when the resolution is allowed, we should always cache.
+			// when no allowed, a canceled context can be a sign of a
+			// resolution short-circuit, which should not be cached.
+			if msg.Res.GetAllowed() || ctx.Err() == nil {
+				entry := &ResponseCacheEntry{Res: msg.Res, LastModified: time.Now()}
+				var key keys.Key
+				if len(msg.Edges) == 1 {
+					key = edgeCacheKeys[msg.Edges[0]]
+				} else {
+					key = nodeKey
+				}
+				r.cache.Set(key, entry, r.cacheTTL)
 			}
-			r.cache.Set(key, entry, r.cacheTTL)
 
 			if msg.Res.GetAllowed() {
 				// Short-circuit: In a union, if any branch returns true, we can immediately return.
