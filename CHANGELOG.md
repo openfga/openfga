@@ -11,6 +11,9 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Extended experimental `weighted_graph_check` diagnostic logging to cover the `wildcard_with_exclusion` and `userset_with_exclusion` shapes: the log now fires when v2 Check rejects one of these shapes and Check falls back to v1, and when v2 Check is skipped entirely because the weighted graph fails to build. These logs surface authorization models that may be affected by a future v1 deprecation, and no operator action is required. [#3204](https://github.com/openfga/openfga/pull/3204)
 - Extended experimental `weighted_graph_check` diagnostic logging to `BatchCheck`: with the flag enabled, a single aggregate log is emitted per request listing the distinct v1→v2 resolution divergence shapes detected across the batch. These logs surface authorization models that may be affected by a future v1 deprecation, and no operator action is required.
 
+### Changed
+- Matched experimental `weighted_graph_check` cache metrics with original Check cache metrics: iterator cache metrics renamed to `tuples_cache_total_count`, `tuples_cache_hit_count`, `tuples_cache_discard_count`, `tuples_cache_size`; query cache metrics added as `check_cache_total_count`, `check_cache_hit_count`, `check_cache_invalid_hit_count`. [#3184](https://github.com/openfga/openfga/pull/3184)
+
 ## [1.18.1] - 2026-06-29
 ### Added
 - Added diagnostic logging in experimental `weighted_graph_check` when v2 Check resolution might produce a different result than v1 for the same query. These logs surface authorization models that may be affected by a future v1 deprecation, and no operator action is required. [#3149](https://github.com/openfga/openfga/pull/3149)
