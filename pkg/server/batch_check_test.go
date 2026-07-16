@@ -813,6 +813,8 @@ func batchLogFields(t *testing.T, typesys *typesystem.TypeSystem, checks []*open
 }
 
 // item is a small helper to build a BatchCheckItem.
+//
+//nolint:unparam // object is explicit so call sites read as complete tuples.
 func item(correlationID, object, relation, user string) *openfgav1.BatchCheckItem {
 	return &openfgav1.BatchCheckItem{
 		TupleKey:      &openfgav1.CheckRequestTupleKey{Object: object, Relation: relation, User: user},
