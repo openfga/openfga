@@ -102,11 +102,13 @@ func New(cfg Config) *Resolver {
 	return r
 }
 
-func (r *Resolver) buildW1PlanKey(label, userType string) keys.Key {
+func (r *Resolver) buildW1PlanKey(label string, req *Request) keys.Key {
 	builder := keys.GetBuilder()
 	builder.EncodeString("W1")
+	builder.EncodeString(req.GetStoreID())
+	builder.EncodeString(req.GetAuthorizationModelID())
 	builder.EncodeString(label)
-	builder.EncodeString(userType)
+	builder.EncodeString(req.GetUserType())
 	planKey := builder.Key()
 	builder.Close()
 	return planKey
@@ -227,25 +229,20 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, e []*gra
 	))
 	defer span.End()
 
-	var weightOneEdges []*graph.WeightedAuthorizationModelEdge
-	weightOneEdges, e = edges.SplitWeightOne(req.GetUserType(), e...)
+	nodeKey := r.buildW1PlanKey(nodeLabel, req)
 
-	var nodeCacheKey keys.Key
-
-	if len(weightOneEdges) > 0 {
-		nodeCacheKey = r.buildW1PlanKey(nodeLabel, req.GetUserType())
-
-		if res, ok := r.isCached(req.GetConsistency(), nodeCacheKey); ok {
-			if res.GetAllowed() {
-				return &Response{Allowed: true}, nil
-			}
-			weightOneEdges = nil // the cached result was false, so we don't need to process later
+	if res, ok := r.isCached(req.GetConsistency(), nodeKey); ok {
+		if res.GetAllowed() {
+			return &Response{Allowed: true}, nil
 		}
+
+		// the cached result was false, so we don't need to process W=1 edges later
+		_, e = edges.SplitWeightOne(req.GetUserType(), e...)
 	}
 
 	edgeCacheKeys := make(map[*graph.WeightedAuthorizationModelEdge]keys.Key)
 
-	evaluations := make([]*graph.WeightedAuthorizationModelEdge, 0, len(e))
+	uncachedEdges := make([]*graph.WeightedAuthorizationModelEdge, 0, len(e))
 
 	for _, edge := range e {
 		id := EdgeCacheKey(req, edge)
@@ -267,8 +264,10 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, e []*gra
 			continue
 		}
 		edgeCacheKeys[edge] = id
-		evaluations = append(evaluations, edge)
+		uncachedEdges = append(uncachedEdges, edge)
 	}
+
+	weightOneEdges, weightTwoPlusEdges := edges.SplitWeightOne(req.GetUserType(), uncachedEdges...)
 
 	defer func(ctx context.Context) {
 		if err := ctx.Err(); err != nil {
@@ -299,7 +298,7 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, e []*gra
 			if len(msg.Edges) == 1 {
 				key = edgeCacheKeys[msg.Edges[0]]
 			} else {
-				key = nodeCacheKey
+				key = nodeKey
 			}
 			r.cache.Set(key, entry, r.cacheTTL)
 		}
@@ -312,8 +311,7 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, e []*gra
 				return nil
 			}
 
-			planKey := r.buildW1PlanKey(nodeLabel, req.GetUserType())
-			selector := r.planner.GetPlanSelector(planKey)
+			selector := r.planner.GetPlanSelector(nodeKey)
 			candidates := map[string]*planner.PlanConfig{
 				DefaultStrategyName: DefaultPlan,
 				SQLStrategyName:     SQLPlan,
@@ -328,7 +326,7 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, e []*gra
 		})
 	}
 
-	for _, evaluation := range evaluations {
+	for _, evaluation := range weightTwoPlusEdges {
 		pool.Go(func() error {
 			res, err := r.ResolveEdge(ctx, req, evaluation, visited)
 
@@ -378,7 +376,7 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, e []*gra
 			if len(msg.Edges) == 1 {
 				key = edgeCacheKeys[msg.Edges[0]]
 			} else {
-				key = nodeCacheKey
+				key = nodeKey
 			}
 			r.cache.Set(key, entry, r.cacheTTL)
 
@@ -712,7 +710,7 @@ func (r *Resolver) ResolveIntersection(ctx context.Context, req *Request, node *
 				return nil
 			}
 
-			planKey := r.buildW1PlanKey(node.GetUniqueLabel(), req.GetUserType())
+			planKey := r.buildW1PlanKey(node.GetUniqueLabel(), req)
 			selector := r.planner.GetPlanSelector(planKey)
 			candidates := map[string]*planner.PlanConfig{
 				DefaultStrategyName: DefaultPlan,
@@ -823,7 +821,7 @@ func (r *Resolver) ResolveExclusion(ctx context.Context, req *Request, node *gra
 	}
 
 	pool.Go(func() error {
-		planKey := r.buildW1PlanKey(node.GetUniqueLabel(), req.GetUserType())
+		planKey := r.buildW1PlanKey(node.GetUniqueLabel(), req)
 		selector := r.planner.GetPlanSelector(planKey)
 		candidates := map[string]*planner.PlanConfig{
 			DefaultStrategyName: DefaultPlan,
