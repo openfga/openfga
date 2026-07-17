@@ -24,7 +24,6 @@ import (
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/structpb"
@@ -40,8 +39,19 @@ import (
 
 var tracer = otel.Tracer("openfga/pkg/storage/postgres")
 
-func startTrace(ctx context.Context, name string) (context.Context, trace.Span) {
-	return tracer.Start(ctx, "postgres."+name)
+// startTrace creates an OpenTelemetry span and returns a context containing the span, along with a closure to end it.
+func startTrace(ctx context.Context, name string) (context.Context, func()) {
+	ctx, span := tracer.Start(ctx, "postgres."+name)
+
+	// Return the tracer's context and a function that ends the span when called.
+	//
+	// Note: Returning the span directly and calling `span.End()` at the caller causes the `spancheck` linter to report
+	// a false positive. Since the span object escapes this function, the linter cannot reliably track it across the
+	// function boundary (i.e., it is no longer the same local reference). Wrapping `span.End()` in a closure keeps the
+	// span local and allows `spancheck` to detect that it is properly ended.
+	return ctx, func() {
+		span.End()
+	}
 }
 
 // Datastore provides a PostgreSQL based implementation of [storage.OpenFGADatastore].
@@ -338,8 +348,8 @@ func (s *Datastore) Read(
 	filter storage.ReadFilter,
 	options storage.ReadOptions,
 ) (storage.TupleIterator, error) {
-	ctx, span := startTrace(ctx, "Read")
-	defer span.End()
+	ctx, spanEnd := startTrace(ctx, "Read")
+	defer spanEnd()
 
 	readPool := s.getPgxPool(options.Consistency.Preference)
 	return s.read(ctx, store, filter, nil, readPool)
@@ -347,8 +357,8 @@ func (s *Datastore) Read(
 
 // ReadPage see [storage.RelationshipTupleReader].ReadPage.
 func (s *Datastore) ReadPage(ctx context.Context, store string, filter storage.ReadFilter, options storage.ReadPageOptions) ([]*openfgav1.Tuple, string, error) {
-	ctx, span := startTrace(ctx, "ReadPage")
-	defer span.End()
+	ctx, spanEnd := startTrace(ctx, "ReadPage")
+	defer spanEnd()
 
 	readPool := s.getPgxPool(options.Consistency.Preference)
 	iter, err := s.read(ctx, store, filter, &options, readPool)
@@ -361,8 +371,8 @@ func (s *Datastore) ReadPage(ctx context.Context, store string, filter storage.R
 }
 
 func (s *Datastore) read(ctx context.Context, store string, filter storage.ReadFilter, options *storage.ReadPageOptions, db *pgxpool.Pool) (*sqlcommon.SQLTupleIterator, error) {
-	_, span := startTrace(ctx, "read")
-	defer span.End()
+	_, spanEnd := startTrace(ctx, "read")
+	defer spanEnd()
 
 	sb := sq.StatementBuilder.PlaceholderFormat(sq.Dollar).
 		Select(
@@ -425,8 +435,8 @@ func (s *Datastore) Write(
 	writes storage.Writes,
 	opts ...storage.TupleWriteOption,
 ) error {
-	ctx, span := startTrace(ctx, "Write")
-	defer span.End()
+	ctx, spanEnd := startTrace(ctx, "Write")
+	defer spanEnd()
 	return s.write(ctx, store, deletes, writes, storage.NewTupleWriteOptions(opts...), time.Now().UTC())
 }
 
@@ -650,8 +660,8 @@ func (s *Datastore) write(
 
 // ReadUserTuple see [storage.RelationshipTupleReader].ReadUserTuple.
 func (s *Datastore) ReadUserTuple(ctx context.Context, store string, filter storage.ReadUserTupleFilter, options storage.ReadUserTupleOptions) (*openfgav1.Tuple, error) {
-	ctx, span := startTrace(ctx, "ReadUserTuple")
-	defer span.End()
+	ctx, spanEnd := startTrace(ctx, "ReadUserTuple")
+	defer spanEnd()
 
 	readStbl := sq.StatementBuilder.PlaceholderFormat(sq.Dollar)
 	objectType, objectID := tupleUtils.SplitObject(filter.Object)
@@ -722,8 +732,8 @@ func (s *Datastore) ReadUsersetTuples(
 	filter storage.ReadUsersetTuplesFilter,
 	options storage.ReadUsersetTuplesOptions,
 ) (storage.TupleIterator, error) {
-	_, span := startTrace(ctx, "ReadUsersetTuples")
-	defer span.End()
+	_, spanEnd := startTrace(ctx, "ReadUsersetTuples")
+	defer spanEnd()
 
 	db := s.getPgxPool(options.Consistency.Preference)
 	sb := sq.StatementBuilder.PlaceholderFormat(sq.Dollar).
@@ -781,8 +791,8 @@ func (s *Datastore) ReadStartingWithUser(
 	filter storage.ReadStartingWithUserFilter,
 	options storage.ReadStartingWithUserOptions,
 ) (storage.TupleIterator, error) {
-	_, span := startTrace(ctx, "ReadStartingWithUser")
-	defer span.End()
+	_, spanEnd := startTrace(ctx, "ReadStartingWithUser")
+	defer spanEnd()
 
 	db := s.getPgxPool(options.Consistency.Preference)
 	readStbl := sq.StatementBuilder.PlaceholderFormat(sq.Dollar)
@@ -829,8 +839,8 @@ func (s *Datastore) MaxTuplesPerWrite() int {
 
 // ReadAuthorizationModel see [storage.AuthorizationModelReadBackend].ReadAuthorizationModel.
 func (s *Datastore) ReadAuthorizationModel(ctx context.Context, store string, modelID string) (*openfgav1.AuthorizationModel, error) {
-	ctx, span := startTrace(ctx, "ReadAuthorizationModel")
-	defer span.End()
+	ctx, spanEnd := startTrace(ctx, "ReadAuthorizationModel")
+	defer spanEnd()
 
 	db := s.getPgxPool(openfgav1.ConsistencyPreference_MINIMIZE_LATENCY)
 	stmt, args, err := sq.StatementBuilder.PlaceholderFormat(sq.Dollar).
@@ -859,8 +869,8 @@ func (s *Datastore) ReadAuthorizationModel(ctx context.Context, store string, mo
 
 // ReadAuthorizationModels see [storage.AuthorizationModelReadBackend].ReadAuthorizationModels.
 func (s *Datastore) ReadAuthorizationModels(ctx context.Context, store string, options storage.ReadAuthorizationModelsOptions) ([]*openfgav1.AuthorizationModel, string, error) {
-	ctx, span := startTrace(ctx, "ReadAuthorizationModels")
-	defer span.End()
+	ctx, spanEnd := startTrace(ctx, "ReadAuthorizationModels")
+	defer spanEnd()
 
 	db := s.getPgxPool(openfgav1.ConsistencyPreference_MINIMIZE_LATENCY)
 
@@ -930,8 +940,8 @@ func (s *Datastore) ReadAuthorizationModels(ctx context.Context, store string, o
 
 // FindLatestAuthorizationModel see [storage.AuthorizationModelReadBackend].FindLatestAuthorizationModel.
 func (s *Datastore) FindLatestAuthorizationModel(ctx context.Context, store string) (*openfgav1.AuthorizationModel, error) {
-	ctx, span := startTrace(ctx, "FindLatestAuthorizationModel")
-	defer span.End()
+	ctx, spanEnd := startTrace(ctx, "FindLatestAuthorizationModel")
+	defer spanEnd()
 
 	db := s.getPgxPool(openfgav1.ConsistencyPreference_MINIMIZE_LATENCY)
 	stmt, args, err := sq.StatementBuilder.PlaceholderFormat(sq.Dollar).
@@ -962,8 +972,8 @@ func (s *Datastore) MaxTypesPerAuthorizationModel() int {
 
 // WriteAuthorizationModel see [storage.TypeDefinitionWriteBackend].WriteAuthorizationModel.
 func (s *Datastore) WriteAuthorizationModel(ctx context.Context, store string, model *openfgav1.AuthorizationModel) error {
-	ctx, span := startTrace(ctx, "WriteAuthorizationModel")
-	defer span.End()
+	ctx, spanEnd := startTrace(ctx, "WriteAuthorizationModel")
+	defer spanEnd()
 
 	schemaVersion := model.GetSchemaVersion()
 	typeDefinitions := model.GetTypeDefinitions()
@@ -995,8 +1005,8 @@ func (s *Datastore) WriteAuthorizationModel(ctx context.Context, store string, m
 
 // CreateStore adds a new store to storage.
 func (s *Datastore) CreateStore(ctx context.Context, store *openfgav1.Store) (*openfgav1.Store, error) {
-	ctx, span := startTrace(ctx, "CreateStore")
-	defer span.End()
+	ctx, spanEnd := startTrace(ctx, "CreateStore")
+	defer spanEnd()
 
 	var id, name string
 	var createdAt, updatedAt time.Time
@@ -1028,8 +1038,8 @@ func (s *Datastore) CreateStore(ctx context.Context, store *openfgav1.Store) (*o
 
 // GetStore retrieves the details of a specific store using its storeID.
 func (s *Datastore) GetStore(ctx context.Context, id string) (*openfgav1.Store, error) {
-	ctx, span := startTrace(ctx, "GetStore")
-	defer span.End()
+	ctx, spanEnd := startTrace(ctx, "GetStore")
+	defer spanEnd()
 
 	db := s.getPgxPool(openfgav1.ConsistencyPreference_MINIMIZE_LATENCY)
 	stmt, args, err := sq.StatementBuilder.PlaceholderFormat(sq.Dollar).
@@ -1063,8 +1073,8 @@ func (s *Datastore) GetStore(ctx context.Context, id string) (*openfgav1.Store, 
 
 // ListStores provides a paginated list of all stores present in the storage.
 func (s *Datastore) ListStores(ctx context.Context, options storage.ListStoresOptions) ([]*openfgav1.Store, string, error) {
-	ctx, span := startTrace(ctx, "ListStores")
-	defer span.End()
+	ctx, spanEnd := startTrace(ctx, "ListStores")
+	defer spanEnd()
 
 	whereClause := sq.And{
 		sq.Eq{"deleted_at": nil},
@@ -1135,8 +1145,8 @@ func (s *Datastore) ListStores(ctx context.Context, options storage.ListStoresOp
 
 // DeleteStore removes a store from storage.
 func (s *Datastore) DeleteStore(ctx context.Context, id string) error {
-	ctx, span := startTrace(ctx, "DeleteStore")
-	defer span.End()
+	ctx, spanEnd := startTrace(ctx, "DeleteStore")
+	defer spanEnd()
 
 	db := s.primaryDB
 	stmt, args, err := sq.StatementBuilder.PlaceholderFormat(sq.Dollar).
@@ -1157,8 +1167,8 @@ func (s *Datastore) DeleteStore(ctx context.Context, id string) error {
 
 // WriteAssertions see [storage.AssertionsBackend].WriteAssertions.
 func (s *Datastore) WriteAssertions(ctx context.Context, store, modelID string, assertions []*openfgav1.Assertion) error {
-	ctx, span := startTrace(ctx, "WriteAssertions")
-	defer span.End()
+	ctx, spanEnd := startTrace(ctx, "WriteAssertions")
+	defer spanEnd()
 
 	marshalledAssertions, err := proto.Marshal(&openfgav1.Assertions{Assertions: assertions})
 	if err != nil {
@@ -1186,8 +1196,8 @@ func (s *Datastore) WriteAssertions(ctx context.Context, store, modelID string, 
 
 // ReadAssertions see [storage.AssertionsBackend].ReadAssertions.
 func (s *Datastore) ReadAssertions(ctx context.Context, store, modelID string) ([]*openfgav1.Assertion, error) {
-	ctx, span := startTrace(ctx, "ReadAssertions")
-	defer span.End()
+	ctx, spanEnd := startTrace(ctx, "ReadAssertions")
+	defer spanEnd()
 
 	var marshalledAssertions []byte
 	db := s.getPgxPool(openfgav1.ConsistencyPreference_MINIMIZE_LATENCY)
@@ -1223,8 +1233,8 @@ func (s *Datastore) ReadAssertions(ctx context.Context, store, modelID string) (
 
 // ReadChanges see [storage.ChangelogBackend].ReadChanges.
 func (s *Datastore) ReadChanges(ctx context.Context, store string, filter storage.ReadChangesFilter, options storage.ReadChangesOptions) ([]*openfgav1.TupleChange, string, error) {
-	ctx, span := startTrace(ctx, "ReadChanges")
-	defer span.End()
+	ctx, spanEnd := startTrace(ctx, "ReadChanges")
+	defer spanEnd()
 
 	objectTypeFilter := filter.ObjectType
 	horizonOffset := filter.HorizonOffset
