@@ -4,8 +4,6 @@ import (
 	"context"
 	"sync"
 
-	"golang.org/x/sync/errgroup"
-
 	"github.com/openfga/language/pkg/go/graph"
 
 	"github.com/openfga/openfga/pkg/storage"
@@ -14,11 +12,16 @@ import (
 type CheckResolver interface {
 	ResolveCheck(context.Context, *Request) (*Response, error)
 	ResolveUnion(context.Context, *Request, *graph.WeightedAuthorizationModelNode, *sync.Map) (*Response, error)
+	ResolveUnionEdges(context.Context, *Request, []LogicalEdge, *sync.Map) (*Response, error)
+	ResolveIntersectionEdges(context.Context, *Request, []LogicalEdge) (*Response, error)
+	ResolveExclusionEdges(context.Context, *Request, []LogicalEdge) (*Response, error)
 	ResolveEdge(context.Context, *Request, *graph.WeightedAuthorizationModelEdge, *sync.Map) (*Response, error)
 }
 
 type GroupStrategy interface {
-	Resolve(ctx context.Context, req *Request, edges []*graph.WeightedAuthorizationModelEdge, operation string, out chan<- ResponseMsg, pool *errgroup.Group, visited *sync.Map)
+	Union(ctx context.Context, req *Request, edge *GroupEdge) (*Response, error)
+	Intersection(ctx context.Context, req *Request, edge *GroupEdge) (*Response, error)
+	Exclusion(ctx context.Context, req *Request, edge *GroupEdge) (*Response, error)
 }
 
 type EdgeStrategy interface {

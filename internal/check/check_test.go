@@ -291,7 +291,9 @@ func TestResolveUnionEdges(t *testing.T) {
 		require.NoError(t, err)
 		require.True(t, ok)
 
-		res, err := resolver.ResolveUnionEdges(context.Background(), req, edges, node.GetUniqueLabel(), nil)
+		logicalEdges := resolver.GatherLogicalEdges(req, node, edges)
+
+		res, err := resolver.ResolveUnionEdges(context.Background(), req, logicalEdges, nil)
 		require.NoError(t, err)
 		require.True(t, res.GetAllowed())
 	})
@@ -342,7 +344,9 @@ func TestResolveUnionEdges(t *testing.T) {
 		require.NoError(t, err)
 		require.True(t, ok)
 
-		res, err := resolver.ResolveUnionEdges(context.Background(), req, edges, node.GetUniqueLabel(), nil)
+		logicalEdges := resolver.GatherLogicalEdges(req, node, edges)
+
+		res, err := resolver.ResolveUnionEdges(context.Background(), req, logicalEdges, nil)
 		require.NoError(t, err)
 		require.False(t, res.GetAllowed())
 	})
@@ -393,7 +397,9 @@ func TestResolveUnionEdges(t *testing.T) {
 		require.NoError(t, err)
 		require.True(t, ok)
 
-		res, err := resolver.ResolveUnionEdges(context.Background(), req, edges, node.GetUniqueLabel(), nil)
+		logicalEdges := resolver.GatherLogicalEdges(req, node, edges)
+
+		res, err := resolver.ResolveUnionEdges(context.Background(), req, logicalEdges, nil)
 		require.Error(t, err)
 		require.ErrorIs(t, err, expectedErr)
 		require.False(t, res.GetAllowed())
@@ -421,7 +427,7 @@ func TestResolveUnionEdges(t *testing.T) {
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
-		ctx, cancel := context.WithCancel(context.Background())
+		_, cancel := context.WithCancel(context.Background())
 
 		mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
 			DoAndReturn(func(ctx context.Context, _ string, _ storage.ReadUserTupleFilter, _ storage.ReadUserTupleOptions) (*openfgav1.Tuple, error) {
@@ -452,7 +458,9 @@ func TestResolveUnionEdges(t *testing.T) {
 		require.NoError(t, err)
 		require.True(t, ok)
 
-		res, err := resolver.ResolveUnionEdges(ctx, req, edges, node.GetUniqueLabel(), nil)
+		logicalEdges := resolver.GatherLogicalEdges(req, node, edges)
+
+		res, err := resolver.ResolveUnionEdges(context.Background(), req, logicalEdges, nil)
 		require.Error(t, err)
 		require.ErrorIs(t, err, context.Canceled)
 		require.Nil(t, res)
@@ -494,7 +502,7 @@ func TestResolveUnionEdges(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		res, err := resolver.ResolveUnionEdges(context.Background(), req, []*authzGraph.WeightedAuthorizationModelEdge{}, "", nil)
+		res, err := resolver.ResolveUnionEdges(context.Background(), req, []LogicalEdge{}, nil)
 		require.NoError(t, err)
 		require.False(t, res.GetAllowed())
 	})
@@ -550,7 +558,9 @@ func TestResolveUnionEdges(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, edges, 1)
 
-		res, err := resolver.ResolveUnionEdges(context.Background(), req, edges, node.GetUniqueLabel(), nil)
+		logicalEdges := resolver.GatherLogicalEdges(req, node, edges)
+
+		res, err := resolver.ResolveUnionEdges(context.Background(), req, logicalEdges, nil)
 		require.NoError(t, err)
 		require.True(t, res.GetAllowed())
 	})
@@ -597,7 +607,9 @@ func TestResolveUnionEdges(t *testing.T) {
 		require.NoError(t, err)
 		require.Empty(t, edges)
 
-		res, err := resolver.ResolveUnionEdges(context.Background(), req, edges, node.GetUniqueLabel(), nil)
+		logicalEdges := resolver.GatherLogicalEdges(req, node, edges)
+
+		res, err := resolver.ResolveUnionEdges(context.Background(), req, logicalEdges, nil)
 		require.NoError(t, err)
 		require.False(t, res.GetAllowed())
 	})
@@ -670,7 +682,9 @@ func TestResolveUnionEdges(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
 
-		_, _ = resolver.ResolveUnionEdges(ctx, req, edges, node.GetUniqueLabel(), nil)
+		logicalEdges := resolver.GatherLogicalEdges(req, node, edges)
+
+		_, _ = resolver.ResolveUnionEdges(ctx, req, logicalEdges, nil)
 	})
 }
 
@@ -779,7 +793,7 @@ func TestResolveRecursive(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
 
-		_, _ = resolver.ResolveRecursive(ctx, req, recursiveEdge, node.GetUniqueLabel(), &sync.Map{}, false)
+		_, _ = resolver.ResolveRecursive(ctx, req, recursiveEdge, &sync.Map{}, false)
 		goroutineDone.Wait() // wait for the recursive goroutine to run past the cache-write point
 		ctrl.Finish()        // now validate Times(0)
 	})
@@ -963,7 +977,7 @@ func TestResolveIntersection(t *testing.T) {
 		res, err := resolver.ResolveIntersection(context.Background(), req, node)
 		require.Error(t, err)
 		require.ErrorIs(t, err, expectedErr)
-		require.Nil(t, res)
+		require.False(t, res.GetAllowed())
 	})
 
 	t.Run("handles_context_cancellation", func(t *testing.T) {
@@ -2448,7 +2462,7 @@ func TestIsCached(t *testing.T) {
 			lastCacheInvalidationTime: time.Now().Add(-time.Hour),
 		}
 
-		res, ok := resolver.isCached(openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY, testKey)
+		res, ok := resolver.isCached(context.Background(), openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY, testKey)
 		require.False(t, ok)
 		require.Nil(t, res)
 	})
@@ -2471,7 +2485,7 @@ func TestIsCached(t *testing.T) {
 			lastCacheInvalidationTime: time.Time{},
 		}
 
-		res, ok := resolver.isCached(openfgav1.ConsistencyPreference_MINIMIZE_LATENCY, testKey)
+		res, ok := resolver.isCached(context.Background(), openfgav1.ConsistencyPreference_MINIMIZE_LATENCY, testKey)
 		require.True(t, ok)
 		require.Equal(t, expectedResponse, res)
 	})
@@ -2488,7 +2502,7 @@ func TestIsCached(t *testing.T) {
 			lastCacheInvalidationTime: time.Time{},
 		}
 
-		res, ok := resolver.isCached(openfgav1.ConsistencyPreference_MINIMIZE_LATENCY, testKey)
+		res, ok := resolver.isCached(context.Background(), openfgav1.ConsistencyPreference_MINIMIZE_LATENCY, testKey)
 		require.False(t, ok)
 		require.Nil(t, res)
 	})
@@ -2505,7 +2519,7 @@ func TestIsCached(t *testing.T) {
 			lastCacheInvalidationTime: time.Now().Add(-time.Hour),
 		}
 
-		res, ok := resolver.isCached(openfgav1.ConsistencyPreference_MINIMIZE_LATENCY, testKey)
+		res, ok := resolver.isCached(context.Background(), openfgav1.ConsistencyPreference_MINIMIZE_LATENCY, testKey)
 		require.False(t, ok)
 		require.Nil(t, res)
 	})
@@ -2522,7 +2536,7 @@ func TestIsCached(t *testing.T) {
 			lastCacheInvalidationTime: time.Now().Add(-time.Hour),
 		}
 
-		res, ok := resolver.isCached(openfgav1.ConsistencyPreference_MINIMIZE_LATENCY, testKey)
+		res, ok := resolver.isCached(context.Background(), openfgav1.ConsistencyPreference_MINIMIZE_LATENCY, testKey)
 		require.False(t, ok)
 		require.Nil(t, res)
 	})
@@ -2546,7 +2560,7 @@ func TestIsCached(t *testing.T) {
 			lastCacheInvalidationTime: invalidationTime,
 		}
 
-		res, ok := resolver.isCached(openfgav1.ConsistencyPreference_MINIMIZE_LATENCY, testKey)
+		res, ok := resolver.isCached(context.Background(), openfgav1.ConsistencyPreference_MINIMIZE_LATENCY, testKey)
 		require.False(t, ok)
 		require.Nil(t, res)
 	})
@@ -2571,7 +2585,7 @@ func TestIsCached(t *testing.T) {
 			lastCacheInvalidationTime: invalidationTime,
 		}
 
-		res, ok := resolver.isCached(openfgav1.ConsistencyPreference_MINIMIZE_LATENCY, testKey)
+		res, ok := resolver.isCached(context.Background(), openfgav1.ConsistencyPreference_MINIMIZE_LATENCY, testKey)
 		require.True(t, ok)
 		require.Equal(t, expectedResponse, res)
 	})
@@ -2596,7 +2610,7 @@ func TestIsCached(t *testing.T) {
 			lastCacheInvalidationTime: invalidationTime,
 		}
 
-		res, ok := resolver.isCached(openfgav1.ConsistencyPreference_MINIMIZE_LATENCY, testKey)
+		res, ok := resolver.isCached(context.Background(), openfgav1.ConsistencyPreference_MINIMIZE_LATENCY, testKey)
 		require.True(t, ok)
 		require.Equal(t, expectedResponse, res)
 	})
@@ -2620,7 +2634,7 @@ func TestIsCached(t *testing.T) {
 			lastCacheInvalidationTime: time.Now().Add(-time.Hour),
 		}
 
-		res, ok := resolver.isCached(openfgav1.ConsistencyPreference_UNSPECIFIED, testKey)
+		res, ok := resolver.isCached(context.Background(), openfgav1.ConsistencyPreference_UNSPECIFIED, testKey)
 		require.True(t, ok)
 		require.Equal(t, expectedResponse, res)
 	})

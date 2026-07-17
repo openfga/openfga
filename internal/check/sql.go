@@ -5,16 +5,13 @@ import (
 	"database/sql"
 	"errors"
 	"sort"
-	"sync"
 
-	"golang.org/x/sync/errgroup"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/language/pkg/go/graph"
 
-	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/modelgraph"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/adapter"
@@ -39,16 +36,16 @@ func NewSQL(model *modelgraph.AuthorizationModelGraph, datastore storage.Relatio
 	}
 }
 
-func (s *SQLStrategy) Resolve(ctx context.Context, req *Request, edges []*graph.WeightedAuthorizationModelEdge, operation string, out chan<- ResponseMsg, _ *errgroup.Group, _ *sync.Map) {
-	builder := s.datastore.Builder(req.GetConsistency())
-	if builder == nil {
-		concurrency.TrySendThroughChannel(ctx, ResponseMsg{Edges: edges, Err: ErrSQLUnsupported}, out)
-		return
-	}
+func (s *SQLStrategy) Union(ctx context.Context, req *Request, edge *GroupEdge) (*Response, error) {
+	return nil, nil
+}
 
-	// For now, we assume all edges passed in are weight-1 edges.
-	res, err := s.weight1(ctx, req, builder, edges, operation)
-	concurrency.TrySendThroughChannel(ctx, ResponseMsg{Res: res, Edges: edges, Err: err}, out)
+func (s *SQLStrategy) Intersection(ctx context.Context, req *Request, edge *GroupEdge) (*Response, error) {
+	return nil, nil
+}
+
+func (s *SQLStrategy) Exclusion(ctx context.Context, req *Request, edge *GroupEdge) (*Response, error) {
+	return nil, nil
 }
 
 // branchOutcome is what we know about a branch while folding a boolean subtree:
