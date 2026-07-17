@@ -82,9 +82,10 @@ const (
 
 func testStoreModelWithModule() []*openfgav1.TypeDefinition {
 	// Add a module to the test store
-	typeDefs := []*openfgav1.TypeDefinition{{
+	typeDefs := make([]*openfgav1.TypeDefinition, 0, 1+(authz.MaxModulesInRequest+1))
+	typeDefs = append(typeDefs, &openfgav1.TypeDefinition{
 		Type: "user",
-	}}
+	})
 
 	// Add as many modules as necessary (we do this dynamically in case the max modules changes)
 	for moduleIndex := range authz.MaxModulesInRequest + 1 {
@@ -502,7 +503,7 @@ func TestWrite(t *testing.T) {
 		})
 
 		t.Run("errors_when_not_authorized_for_all_modules", func(t *testing.T) {
-			tuples := []*openfgav1.TupleKey{}
+			tuples := make([]*openfgav1.TupleKey, 0, authz.MaxModulesInRequest)
 			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
 
 			for index := range authz.MaxModulesInRequest {
@@ -525,7 +526,7 @@ func TestWrite(t *testing.T) {
 		})
 
 		t.Run("successfully_call_write_for_modules", func(t *testing.T) {
-			tuples := []*openfgav1.TupleKey{}
+			tuples := make([]*openfgav1.TupleKey, 0, authz.MaxModulesInRequest)
 			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
 
 			for index := range authz.MaxModulesInRequest {
@@ -543,7 +544,7 @@ func TestWrite(t *testing.T) {
 			})
 			require.NoError(t, err)
 
-			tuplesInDelete := []*openfgav1.TupleKeyWithoutCondition{}
+			tuplesInDelete := make([]*openfgav1.TupleKeyWithoutCondition, 0, len(tuples))
 			for _, tuple := range tuples {
 				tuplesInDelete = append(tuplesInDelete, &openfgav1.TupleKeyWithoutCondition{
 					User:     tuple.GetUser(),
@@ -563,7 +564,7 @@ func TestWrite(t *testing.T) {
 		})
 
 		t.Run("errors_when_sending_more_than_max_modules", func(t *testing.T) {
-			tuples := []*openfgav1.TupleKey{}
+			tuples := make([]*openfgav1.TupleKey, 0, authz.MaxModulesInRequest+1)
 			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
 
 			for index := range authz.MaxModulesInRequest + 1 {
@@ -582,7 +583,7 @@ func TestWrite(t *testing.T) {
 
 			require.ErrorIs(t, err, authz.ErrUnauthorizedResponse)
 
-			tuplesInDelete := []*openfgav1.TupleKeyWithoutCondition{}
+			tuplesInDelete := make([]*openfgav1.TupleKeyWithoutCondition, 0, len(tuples))
 			for _, tuple := range tuples {
 				tuplesInDelete = append(tuplesInDelete, &openfgav1.TupleKeyWithoutCondition{
 					User:     tuple.GetUser(),
@@ -603,7 +604,7 @@ func TestWrite(t *testing.T) {
 		})
 
 		t.Run("success_when_sending_more_than_max_modules_with_store_level_write_permission", func(t *testing.T) {
-			tuples := []*openfgav1.TupleKey{}
+			tuples := make([]*openfgav1.TupleKey, 0, authz.MaxModulesInRequest+1)
 			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
 
 			// grant access to the store
@@ -623,7 +624,7 @@ func TestWrite(t *testing.T) {
 
 			require.NoError(t, err)
 
-			tuplesInDelete := []*openfgav1.TupleKeyWithoutCondition{}
+			tuplesInDelete := make([]*openfgav1.TupleKeyWithoutCondition, 0, len(tuples))
 			for _, tuple := range tuples {
 				tuplesInDelete = append(tuplesInDelete, &openfgav1.TupleKeyWithoutCondition{
 					User:     tuple.GetUser(),

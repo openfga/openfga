@@ -884,7 +884,7 @@ func TestPostgresDatastore_ReadPageWithUserFiltering(t *testing.T) {
 	store := ulid.Make().String()
 
 	// Create multiple tuples with same user type for pagination testing
-	var tuples []*openfgav1.TupleKey
+	tuples := make([]*openfgav1.TupleKey, 0, 20)
 	for i := range 10 {
 		tuples = append(tuples, &openfgav1.TupleKey{
 			Object:   "doc:group1",
@@ -1078,7 +1078,7 @@ func TestReadFilterWithConditions(t *testing.T) {
 	require.NoError(t, err)
 	defer ds.Close()
 
-	var writeItems [][]interface{}
+	writeItems := make([][]interface{}, 0, 2)
 	writeItems = append(writeItems, []interface{}{
 		"store",
 		"folder",
@@ -1743,7 +1743,7 @@ func TestExecuteWriteTuples(t *testing.T) {
 		mockPgxExec := mocks.NewMockPgxExec(ctrl)
 		mockPgxExec.EXPECT().Exec(gomock.Any(), gomock.Any(), gomock.Any()).Return(pgconn.NewCommandTag("INSERT 1"), nil)
 
-		writeItems := [][]interface{}{}
+		writeItems := make([][]interface{}, 0, 1)
 		writeItems = append(writeItems, []interface{}{
 			"storeID",
 			"objectType1",
@@ -1765,7 +1765,7 @@ func TestExecuteWriteTuples(t *testing.T) {
 		mockPgxExec := mocks.NewMockPgxExec(ctrl)
 		mockPgxExec.EXPECT().Exec(gomock.Any(), gomock.Any(), gomock.Any()).Return(pgconn.NewCommandTag(""), fmt.Errorf("duplicate key value"))
 
-		writeItems := [][]interface{}{}
+		writeItems := make([][]interface{}, 0, 1)
 		writeItems = append(writeItems, []interface{}{
 			"storeID",
 			"objectType1",
@@ -1787,7 +1787,7 @@ func TestExecuteWriteTuples(t *testing.T) {
 		mockPgxExec := mocks.NewMockPgxExec(ctrl)
 		mockPgxExec.EXPECT().Exec(gomock.Any(), gomock.Any(), gomock.Any()).Return(pgconn.NewCommandTag(""), fmt.Errorf("error"))
 
-		writeItems := [][]interface{}{}
+		writeItems := make([][]interface{}, 0, 1)
 		writeItems = append(writeItems, []interface{}{
 			"storeID",
 			"objectType1",
@@ -1819,7 +1819,7 @@ func TestExecuteInsertChanges(t *testing.T) {
 		mockPgxExec := mocks.NewMockPgxExec(ctrl)
 		mockPgxExec.EXPECT().Exec(gomock.Any(), gomock.Any(), gomock.Any()).Return(pgconn.NewCommandTag("INSERT 1"), nil)
 
-		writeItems := [][]interface{}{}
+		writeItems := make([][]interface{}, 0, 1)
 		writeItems = append(writeItems, []interface{}{
 			"storeID",
 			"objectType1",
@@ -1842,7 +1842,7 @@ func TestExecuteInsertChanges(t *testing.T) {
 		mockPgxExec := mocks.NewMockPgxExec(ctrl)
 		mockPgxExec.EXPECT().Exec(gomock.Any(), gomock.Any(), gomock.Any()).Return(pgconn.NewCommandTag(""), fmt.Errorf("error"))
 
-		writeItems := [][]interface{}{}
+		writeItems := make([][]interface{}, 0, 1)
 		writeItems = append(writeItems, []interface{}{
 			"storeID",
 			"objectType1",

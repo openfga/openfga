@@ -639,7 +639,7 @@ func (l *listUsersQuery) expandIntersection(
 	}
 	wg.Wait()
 
-	excludedUsers := []*openfgav1.User{}
+	excludedUsers := make([]*openfgav1.User, 0, len(excludedUsersMap))
 	for key := range excludedUsersMap {
 		excludedUsers = append(excludedUsers, tuple.StringToUserProto(key))
 	}
