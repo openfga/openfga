@@ -23,7 +23,6 @@ import (
 	"github.com/openfga/openfga/internal/modelgraph"
 	"github.com/openfga/openfga/internal/planner"
 	"github.com/openfga/openfga/internal/telemetry"
-	"github.com/openfga/openfga/internal/wgraph/edges"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/cache/keys"
@@ -36,6 +35,34 @@ var ErrValidation = errors.New("object relation does not exist")
 var ErrUsersetInvalidRequest = errors.New("userset request cannot be resolved when exclusion operation is involved")
 var ErrPanicRequest = errors.New("invalid check request")
 var ErrWildcardInvalidRequest = errors.New("wildcard request cannot be resolved when intersection or exclusion is involved")
+
+type LogicalEdge interface {
+	Key(*Request) keys.Key
+}
+
+type GroupEdge struct {
+	node  *graph.WeightedAuthorizationModelNode
+	edges []*graph.WeightedAuthorizationModelEdge
+}
+
+func (e *GroupEdge) Explode() []LogicalEdge {
+	logicalEdges := make([]LogicalEdge, 0, len(e.edges))
+
+	for _, edge := range e.edges {
+		logicalEdges = append(logicalEdges, (*SingleEdge)(edge))
+	}
+	return logicalEdges
+}
+
+func (e *GroupEdge) Key(req *Request) keys.Key {
+	return NodeKey(req, e.node)
+}
+
+type SingleEdge graph.WeightedAuthorizationModelEdge
+
+func (e *SingleEdge) Key(req *Request) keys.Key {
+	return EdgeCacheKey(req, (*graph.WeightedAuthorizationModelEdge)(e))
+}
 
 type Config struct {
 	Model                     *modelgraph.AuthorizationModelGraph
@@ -102,12 +129,14 @@ func New(cfg Config) *Resolver {
 	return r
 }
 
-func (r *Resolver) buildW1PlanKey(label string, req *Request) keys.Key {
+func NodeKey(req *Request, node *graph.WeightedAuthorizationModelNode) keys.Key {
+	const prefix = "NODE"
+
 	builder := keys.GetBuilder()
-	builder.EncodeString("W1")
+	builder.EncodeString(prefix)
 	builder.EncodeString(req.GetStoreID())
 	builder.EncodeString(req.GetAuthorizationModelID())
-	builder.EncodeString(label)
+	builder.EncodeString(node.GetUniqueLabel())
 	builder.EncodeString(req.GetUserType())
 	planKey := builder.Key()
 	builder.Close()
@@ -177,25 +206,42 @@ func (r *Resolver) ResolveCheck(ctx context.Context, req *Request) (*Response, e
 	return res, nil
 }
 
-func (r *Resolver) isCached(consistency openfgav1.ConsistencyPreference, key keys.Key) (*Response, bool) {
+func (r *Resolver) isCached(ctx context.Context, consistency openfgav1.ConsistencyPreference, key keys.Key) (res *Response, hit bool) {
+	defer func() {
+		if !hit {
+			return
+		}
+		metrics.CacheHitCounter.Inc()
+
+		span := trace.SpanFromContext(ctx)
+
+		span.AddEvent("response_cache_hit", trace.WithAttributes(
+			attribute.String("key", key.String()),
+			attribute.Bool("allowed", res.GetAllowed()),
+		))
+	}()
+
 	if consistency == openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
-		return nil, false
+		return
 	}
+
 	metrics.CacheLookupCounter.Inc()
 	v := r.cache.Get(key)
 	if v == nil {
-		return nil, false
+		return
 	}
-	res, ok := v.(*ResponseCacheEntry)
+
+	entry, ok := v.(*ResponseCacheEntry)
 	if !ok {
-		return nil, false
+		return
 	}
-	if !res.LastModified.After(r.lastCacheInvalidationTime) {
+
+	if !entry.LastModified.After(r.lastCacheInvalidationTime) {
 		metrics.CacheInvalidHitCounter.Inc()
-		return nil, false
+		return
 	}
-	metrics.CacheHitCounter.Inc()
-	return res.Res, true
+	res, hit = entry.Res, true
+	return
 }
 
 const PrefixEdgeCacheKey = "EDGE"
@@ -221,53 +267,42 @@ func EdgeCacheKey(req *Request, edge *graph.WeightedAuthorizationModelEdge) keys
 	return builder.Key()
 }
 
-func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, e []*graph.WeightedAuthorizationModelEdge, nodeLabel string, visited *sync.Map) (*Response, error) {
+func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, edges []LogicalEdge, visited *sync.Map) (*Response, error) {
 	ctx, span := tracer.Start(ctx, "ResolveUnionEdges", trace.WithAttributes(
 		attribute.String("tuple_key", req.GetTupleString()),
 		attribute.Bool("allowed", false),
-		attribute.Int("edge_count", len(e)),
+		attribute.Int("edge_count", len(edges)),
 	))
 	defer span.End()
 
-	nodeKey := r.buildW1PlanKey(nodeLabel, req)
+	cacheKeys := make([]keys.Key, 0, len(edges))
 
-	if res, ok := r.isCached(req.GetConsistency(), nodeKey); ok {
-		if res.GetAllowed() {
-			return &Response{Allowed: true}, nil
-		}
+	var i int
 
-		// the cached result was false, so we don't need to process W=1 edges later
-		_, e = edges.SplitWeightOne(req.GetUserType(), e...)
-	}
+	// Check the cache for logical edge entries. Any existing entry with an "allowed" value of `true`
+	// will result in an resolution short-circuit. When the "allowed" value is `false`, the logical edge
+	// is removed from the logicalEdges slice. Any elements not having a cache entry are kept within
+	// the logicalEdges slice for further processing.
+	//
+	// The function slices.DeleteFunc could have been used here similarly, but we need the ability to
+	// short-circuit the entire function when a logical edge's cache entry has an "allowed" value of `true`.
+	for j := 0; j < len(edges); j++ {
+		edge := edges[j]
 
-	edgeCacheKeys := make(map[*graph.WeightedAuthorizationModelEdge]keys.Key)
+		key := edge.Key(req)
 
-	uncachedEdges := make([]*graph.WeightedAuthorizationModelEdge, 0, len(e))
-
-	for _, edge := range e {
-		id := EdgeCacheKey(req, edge)
-
-		if res, ok := r.isCached(req.GetConsistency(), id); ok {
-			span.AddEvent("cache_hit", trace.WithAttributes(
-				attribute.Int64("edge.type", int64(edge.GetEdgeType())),
-				attribute.String("edge.to", edge.GetTo().GetUniqueLabel()),
-				attribute.String("edge.from", edge.GetFrom().GetUniqueLabel()),
-				attribute.String("edge.relation_definition", edge.GetRelationDefinition()),
-				attribute.String("edge.recursive_relation", edge.GetRecursiveRelation()),
-				attribute.String("edge.tupleset_relation", edge.GetTuplesetRelation()),
-				attribute.Bool("allowed", res.GetAllowed()),
-			))
-
+		if res, ok := r.isCached(ctx, req.GetConsistency(), key); ok {
 			if res.GetAllowed() {
 				return &Response{Allowed: true}, nil
 			}
 			continue
 		}
-		edgeCacheKeys[edge] = id
-		uncachedEdges = append(uncachedEdges, edge)
+		edges[i] = edge
+		i++
+		cacheKeys = append(cacheKeys, key)
 	}
-
-	weightOneEdges, weightTwoPlusEdges := edges.SplitWeightOne(req.GetUserType(), uncachedEdges...)
+	clear(edges[i:])  // remove extraneous elements
+	edges = edges[:i] // right-size the slice
 
 	defer func(ctx context.Context) {
 		if err := ctx.Err(); err != nil {
@@ -277,97 +312,68 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, e []*gra
 
 	ctx, cancel := context.WithCancel(ctx)
 
-	out := make(chan ResponseMsg, len(e))
+	out := make(chan ResponseMsg, len(edges))
 
 	var pool errgroup.Group
-	pool.SetLimit(r.concurrencyLimit + 1) // Add 1 for strategy execution goroutine below
-
-	var wg sync.WaitGroup
+	pool.SetLimit(r.concurrencyLimit)
 
 	defer func() {
 		cancel()
-		wg.Wait()
+		pool.Wait()
 	}()
 
-	if len(weightOneEdges) > 0 {
+	var expectedMessages int
+
+	for i, edge := range edges {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+
 		pool.Go(func() error {
-			if r.datastore.Builder(req.Consistency) == nil {
-				r.groupStrategies[DefaultPlan.Name].Resolve(ctx, req, weightOneEdges, graph.UnionOperator, out, &pool, nil)
-				return nil
+			res, err := r.ResolveLogicalEdge(ctx, req, edge, visited)
+
+			if err == nil {
+				err = ctx.Err()
 			}
 
-			selector := r.planner.GetPlanSelector(nodeKey)
-			candidates := map[string]*planner.PlanConfig{
-				DefaultStrategyName: DefaultPlan,
-				SQLStrategyName:     SQLPlan,
-			}
-			plan := selector.Select(candidates)
-
-			r.executeStrategy(ctx, selector, plan, func() (*Response, error) {
-				r.groupStrategies[plan.Name].Resolve(ctx, req, weightOneEdges, graph.UnionOperator, out, &pool, nil)
-				return nil, nil // Strategy will send response on out channel
-			})
-			return nil
-		})
-	}
-
-	for _, edge := range weightTwoPlusEdges {
-		pool.Go(func() error {
-			res, err := r.ResolveEdge(ctx, req, edge, visited)
-
-			if ctx.Err() != nil {
-				return nil
+			if err == nil {
+				r.cache.Set(cacheKeys[i], &ResponseCacheEntry{Res: res, LastModified: time.Now()}, r.cacheTTL)
 			}
 
 			concurrency.TrySendThroughChannel(
 				ctx,
 				ResponseMsg{
-					Res:   res,
-					Edges: []*graph.WeightedAuthorizationModelEdge{edge},
-					Err:   err,
+					Res: res,
+					Err: err,
 				},
 				out,
 			)
 			return nil
 		})
+		expectedMessages++
 	}
 
-	wg.Go(func() {
-		pool.Wait()
-		close(out)
-	})
-
 	var err error
-	for {
+	for expectedMessages > 0 {
+		// Force determinism when the context is canceled.
+		// Without this check, on each iteration, the select
+		// could continue to process messages buffered in out,
+		// instead of taking the ctx.Done() branch even when
+		// the context has already expired/canceled.
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
-		case msg, ok := <-out:
-			if !ok {
-				if err == nil {
-					err = ctx.Err()
-				}
-				return &Response{}, err
-			}
+		case msg := <-out:
+			expectedMessages--
 
 			if msg.Err != nil {
 				err = msg.Err
 				span.RecordError(err)
 				continue
-			}
-
-			// when the resolution is allowed, we should always cache.
-			// when no allowed, a canceled context can be a sign of a
-			// resolution short-circuit, which should not be cached.
-			if msg.Res.GetAllowed() || ctx.Err() == nil {
-				entry := &ResponseCacheEntry{Res: msg.Res, LastModified: time.Now()}
-				var key keys.Key
-				if len(msg.Edges) == 1 {
-					key = edgeCacheKeys[msg.Edges[0]]
-				} else {
-					key = nodeKey
-				}
-				r.cache.Set(key, entry, r.cacheTTL)
 			}
 
 			if msg.Res.GetAllowed() {
@@ -377,6 +383,51 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, e []*gra
 			}
 		}
 	}
+	return nil, err
+}
+
+func (r *Resolver) SplitWeightOne(terminal string, edges ...*graph.WeightedAuthorizationModelEdge) ([]*graph.WeightedAuthorizationModelEdge, []*graph.WeightedAuthorizationModelEdge) {
+	dst := make([]*graph.WeightedAuthorizationModelEdge, len(edges))
+	copy(dst, edges)
+
+	// left tracks first non-weight-1
+	// right looks for the first weight 1 to swap with left
+
+	var left int
+
+	for right := range len(dst) {
+		rightWeight, _ := r.model.GetEdgeWeight(dst[right], terminal)
+
+		if rightWeight == 1 {
+			dst[left], dst[right] = dst[right], dst[left]
+			left++
+		}
+	}
+
+	return dst[:left], dst[left:]
+}
+
+func (r *Resolver) GatherLogicalEdges(req *Request, node *graph.WeightedAuthorizationModelNode, edges []*graph.WeightedAuthorizationModelEdge) []LogicalEdge {
+	if len(edges) == 1 {
+		return []LogicalEdge{(*SingleEdge)(edges[0])}
+	}
+
+	if nodeWeight, _ := r.model.GetNodeWeight(node, req.GetUserType()); nodeWeight == 1 {
+		return []LogicalEdge{&GroupEdge{node: node, edges: edges}}
+	}
+
+	weightOneEdges, weightTwoPlusEdges := r.SplitWeightOne(req.GetUserType(), edges...)
+
+	logicalEdges := make([]LogicalEdge, 0, 1+len(weightTwoPlusEdges))
+
+	if len(weightOneEdges) > 0 {
+		logicalEdges = append(logicalEdges, &GroupEdge{node: node, edges: weightOneEdges})
+	}
+
+	for _, edge := range weightTwoPlusEdges {
+		logicalEdges = append(logicalEdges, (*SingleEdge)(edge))
+	}
+	return logicalEdges
 }
 
 // reduce as a logical union operation (exit the moment we have a single true).
@@ -403,7 +454,7 @@ func (r *Resolver) ResolveUnion(ctx context.Context, req *Request, node *graph.W
 
 	edge, withOptimization := r.model.CanApplyRecursion(node, req.GetUserType(), emptyCycle)
 	if edge != nil {
-		return r.ResolveRecursive(ctx, req, edge, node.GetUniqueLabel(), visited, withOptimization)
+		return r.ResolveRecursive(ctx, req, edge, visited, withOptimization)
 	}
 
 	// flatten the node to get all terminal edges to avoid unnecessary goroutines
@@ -412,7 +463,10 @@ func (r *Resolver) ResolveUnion(ctx context.Context, req *Request, node *graph.W
 		return nil, errors.Join(ErrPanicRequest, err)
 	}
 
-	return r.ResolveUnionEdges(ctx, req, terminalEdges, node.GetUniqueLabel(), visited)
+	// Group weight-one edges together and higher-weight edges separately.
+	logicalEdges := r.GatherLogicalEdges(req, node, terminalEdges)
+
+	return r.ResolveUnionEdges(ctx, req, logicalEdges, visited)
 }
 
 func (r *Resolver) executeStrategy(ctx context.Context, selector planner.Selector, strategy *planner.PlanConfig, fn func() (*Response, error)) (*Response, error) {
@@ -571,7 +625,7 @@ func (r *Resolver) resolveRecursiveTTU(ctx context.Context, req *Request, edge *
 	})
 }
 
-func (r *Resolver) ResolveRecursive(ctx context.Context, req *Request, edge *graph.WeightedAuthorizationModelEdge, nodeLabel string, visited *sync.Map, canApplyOptimization bool) (*Response, error) {
+func (r *Resolver) ResolveRecursive(ctx context.Context, req *Request, edge *graph.WeightedAuthorizationModelEdge, visited *sync.Map, canApplyOptimization bool) (*Response, error) {
 	ctx, span := tracer.Start(ctx, "ResolveRecursive", trace.WithAttributes(
 		attribute.Int64("edge.type", int64(edge.GetEdgeType())),
 		attribute.String("edge.to", edge.GetTo().GetUniqueLabel()),
@@ -588,7 +642,9 @@ func (r *Resolver) ResolveRecursive(ctx context.Context, req *Request, edge *gra
 		}
 	}(ctx)
 
-	nonRecursiveEdges, err := r.model.FlattenNode(edge.GetTo(), req.GetUserType(), req.IsTypedWildcard(), true)
+	node := edge.GetTo()
+
+	nonRecursiveEdges, err := r.model.FlattenNode(node, req.GetUserType(), req.IsTypedWildcard(), true)
 	if err != nil {
 		return nil, errors.Join(ErrPanicRequest, err)
 	}
@@ -599,14 +655,15 @@ func (r *Resolver) ResolveRecursive(ctx context.Context, req *Request, edge *gra
 	out := make(chan ResponseMsg, 2)
 
 	go func() {
-		res, err := r.ResolveUnionEdges(ctx, req, nonRecursiveEdges, nodeLabel, visited)
+		logicalEdges := r.GatherLogicalEdges(req, node, nonRecursiveEdges)
+		res, err := r.ResolveUnionEdges(ctx, req, logicalEdges, visited)
 		concurrency.TrySendThroughChannel(ctx, ResponseMsg{Res: res, Err: err}, out)
 	}()
 
 	go func() {
 		cacheKey := EdgeCacheKey(req, edge)
 
-		if res, ok := r.isCached(req.GetConsistency(), cacheKey); ok {
+		if res, ok := r.isCached(ctx, req.GetConsistency(), cacheKey); ok {
 			concurrency.TrySendThroughChannel(ctx, ResponseMsg{Res: res}, out)
 			return
 		}
@@ -654,6 +711,57 @@ func (r *Resolver) ResolveRecursive(ctx context.Context, req *Request, edge *gra
 	return &Response{Allowed: false}, err
 }
 
+func (r *Resolver) ResolveIntersectionEdges(ctx context.Context, req *Request, edges []LogicalEdge) (*Response, error) {
+	ctx, cancel := context.WithCancel(ctx)
+
+	out := make(chan ResponseMsg, len(edges))
+
+	// errors will always be sent to the out channel
+	var pool errgroup.Group
+	pool.SetLimit(r.concurrencyLimit)
+
+	defer func() {
+		cancel()
+		pool.Wait()
+	}()
+
+	var expectedMessages int
+
+	for _, edge := range edges {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+
+		pool.Go(func() error {
+			// intersection is never part of a cycle or recursion
+			res, err := r.ResolveLogicalEdge(ctx, req, edge, nil)
+			concurrency.TrySendThroughChannel(ctx, ResponseMsg{Res: res, Err: err}, out)
+			return nil
+		})
+		expectedMessages++
+	}
+
+	for expectedMessages > 0 {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case msg := <-out:
+			expectedMessages--
+
+			if msg.Err != nil || !msg.Res.GetAllowed() {
+				// NOTE: This is one of the breaking changes from the current check implementation. Delete this after this rollout.
+				// In intersection _every_ branch must return true.
+				return msg.Res, msg.Err
+			}
+		}
+	}
+	return &Response{Allowed: true}, nil
+}
+
 // reduce as a logical intersection operation (exit the moment we have a single false)
 // should panic if a single handler returns nil.
 func (r *Resolver) ResolveIntersection(ctx context.Context, req *Request, node *graph.WeightedAuthorizationModelNode) (*Response, error) {
@@ -663,95 +771,125 @@ func (r *Resolver) ResolveIntersection(ctx context.Context, req *Request, node *
 	))
 	defer span.End()
 
-	e, ok := r.model.GetEdgesFromNode(node)
+	edges, ok := r.model.GetEdgesFromNode(node)
 	if !ok {
 		return nil, ErrPanicRequest
 	}
 
-	var weightOneEdges []*graph.WeightedAuthorizationModelEdge
-	weightOneEdges, e = edges.SplitWeightOne(req.GetUserType(), e...)
+	for _, edge := range edges {
+		if _, ok := r.model.GetEdgeWeight(edge, req.GetUserType()); !ok {
+			return nil, ErrPanicRequest
+		}
 
+		// in the case wildcard is requested if not all edges have wildcard path for the user type then return FALSE
+		if req.IsTypedWildcard() && !slices.Contains(edge.GetWildcards(), req.GetUserType()) {
+			return &Response{Allowed: false}, nil
+		}
+	}
+
+	logicalEdges := r.GatherLogicalEdges(req, node, edges)
+
+	return r.ResolveIntersectionEdges(ctx, req, logicalEdges)
+}
+
+func (r *Resolver) ResolveExclusionEdges(ctx context.Context, req *Request, edges []LogicalEdge) (*Response, error) {
 	ctx, cancel := context.WithCancel(ctx)
-	out := make(chan ResponseMsg, len(e))
 
-	var wg sync.WaitGroup
+	span := trace.SpanFromContext(ctx)
 
-	// errors will always be sent to the out channel
+	var expectedMessages int
+
 	var pool errgroup.Group
-	pool.SetLimit(r.concurrencyLimit + 1) // Add 1 for strategy execution goroutine below
+	pool.SetLimit(2)
+
 	defer func() {
 		cancel()
-		wg.Wait()
+		pool.Wait()
 	}()
 
-	// in the case wildcard is requested if not all edges have wildcard path for the user type then return FALSE
-	if req.IsTypedWildcard() {
-		for _, edge := range e {
-			if !slices.Contains(edge.GetWildcards(), req.GetUserType()) {
+	chBase := make(chan ResponseMsg, 1)
+	baseEdge := edges[0]
+
+	edges = edges[1:]
+
+	expectedMessages++
+	pool.Go(func() error {
+		res, err := r.ResolveLogicalEdge(ctx, req, baseEdge, nil)
+		concurrency.TrySendThroughChannel(ctx, ResponseMsg{Res: res, Err: err}, chBase)
+		close(chBase)
+		return nil
+	})
+
+	var chSubtract chan ResponseMsg
+
+	if len(edges) > 0 {
+		chSubtract = make(chan ResponseMsg, 1)
+		subtractEdge := edges[0]
+
+		expectedMessages++
+		pool.Go(func() error {
+			res, err := r.ResolveLogicalEdge(ctx, req, subtractEdge, nil)
+			concurrency.TrySendThroughChannel(ctx, ResponseMsg{Res: res, Err: err}, chSubtract)
+			close(chSubtract)
+			return nil
+		})
+	}
+
+	for expectedMessages > 0 {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case msg, ok := <-chBase:
+			expectedMessages--
+
+			if !ok {
+				chBase = nil // Stop selecting this case.
+				continue
+			}
+
+			if msg.Err != nil {
+				// NOTE: This is one of the breaking changes from the current check implementation. Delete this after this rollout.
+				// If base returns an error, we return it immediately since the result of the exclusion cannot be determined.
+				return nil, msg.Err
+			}
+
+			// Short-circuit: If base is false, the whole expression is false.
+			if !msg.Res.GetAllowed() {
+				return &Response{Allowed: false}, nil
+			}
+
+			if msg.Res.GetAllowed() && chSubtract == nil {
+				span.SetAttributes(attribute.Bool("allowed", true))
+				return msg.Res, nil
+			}
+		case msg, ok := <-chSubtract:
+			expectedMessages--
+
+			if !ok {
+				chSubtract = nil
+				continue
+			}
+
+			if msg.Err != nil {
+				// NOTE: This is one of the breaking changes from the current check implementation. Delete this after this rollout.
+				// If subtract returns an error, we return it immediately since the result of the exclusion cannot be determined. There will never be a case in which it returns false if it returns an error given there is only one branch.
+				return nil, msg.Err
+			}
+
+			// Short-circuit: If subtract is true, the whole expression is false.
+			if msg.Res.GetAllowed() {
 				return &Response{Allowed: false}, nil
 			}
 		}
 	}
 
-	if len(weightOneEdges) > 0 {
-		pool.Go(func() error {
-			if r.datastore.Builder(req.Consistency) == nil {
-				r.groupStrategies[DefaultPlan.Name].Resolve(ctx, req, weightOneEdges, graph.IntersectionOperator, out, &pool, nil)
-				return nil
-			}
-
-			planKey := r.buildW1PlanKey(node.GetUniqueLabel(), req)
-			selector := r.planner.GetPlanSelector(planKey)
-			candidates := map[string]*planner.PlanConfig{
-				DefaultStrategyName: DefaultPlan,
-				SQLStrategyName:     SQLPlan,
-			}
-			plan := selector.Select(candidates)
-
-			r.executeStrategy(ctx, selector, plan, func() (*Response, error) {
-				r.groupStrategies[plan.Name].Resolve(ctx, req, weightOneEdges, graph.IntersectionOperator, out, &pool, nil)
-				return nil, nil // Strategy will send response on out channel
-			})
-			return nil
-		})
-	}
-
-	for _, edge := range e {
-		_, ok := r.model.GetEdgeWeight(edge, req.GetUserType())
-		if !ok {
-			return nil, ErrPanicRequest
-		}
-
-		pool.Go(func() error {
-			// intersection is never part of a cycle or recursion
-			res, err := r.ResolveEdge(ctx, req, edge, nil)
-			concurrency.TrySendThroughChannel(ctx, ResponseMsg{Res: res, Err: err}, out)
-			return nil
-		})
-	}
-
-	wg.Go(func() {
-		pool.Wait()
-		close(out)
-	})
-
-	for {
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case msg, ok := <-out:
-			if !ok {
-				span.SetAttributes(attribute.Bool("allowed", true))
-				return &Response{Allowed: true}, nil
-			}
-
-			if msg.Err != nil || !msg.Res.GetAllowed() {
-				// NOTE: This is one of the breaking changes from the current check implementation. Delete this after this rollout.
-				// In intersection _every_ branch must return true.
-				return msg.Res, msg.Err
-			}
-		}
-	}
+	// The only way to get here is if base was (Allowed: true) and subtract was (Allowed: false).
+	span.SetAttributes(attribute.Bool("allowed", true))
+	return &Response{Allowed: true}, nil
 }
 
 // reduce as a logical exclusion operation
@@ -763,30 +901,18 @@ func (r *Resolver) ResolveExclusion(ctx context.Context, req *Request, node *gra
 	))
 	defer span.End()
 
-	ctx, cancel := context.WithCancel(ctx)
-	var wg sync.WaitGroup
-
-	defer func() {
-		cancel()
-		wg.Wait()
-	}()
-
-	nodeWeight, ok := node.GetWeight(req.GetUserType())
+	edges, ok := r.model.GetEdgesFromNode(node)
 	if !ok {
 		return nil, ErrPanicRequest
 	}
 
-	e, ok := r.model.GetEdgesFromNode(node)
-	if !ok {
-		return nil, ErrPanicRequest
-	}
 	// base edge validation
-	if _, ok := r.model.GetEdgeWeight(e[0], req.GetUserType()); !ok {
+	if _, ok := r.model.GetEdgeWeight(edges[0], req.GetUserType()); !ok {
 		return nil, ErrPanicRequest
 	}
 
 	// subtract edge validation
-	_, subtractHasPath := r.model.GetEdgeWeight(e[1], req.GetUserType())
+	_, subtractHasPath := r.model.GetEdgeWeight(edges[1], req.GetUserType())
 	if !subtractHasPath {
 		if tuple.IsObjectRelation(req.GetTupleKey().GetUser()) {
 			// If the user is an object relation and there is no way to the userset in the exclusion part we
@@ -794,83 +920,12 @@ func (r *Resolver) ResolveExclusion(ctx context.Context, req *Request, node *gra
 			// individual users of the userset have the relation to the object.
 			return nil, ErrUsersetInvalidRequest
 		}
-		e = e[:1]
+		edges = edges[:1]
 	}
 
-	out := make(chan ResponseMsg, 2)
-	var pool errgroup.Group
-	pool.SetLimit(3) // 2 for default strategy base & subtract edges, 1 for strategy execution below
+	logicalEdges := r.GatherLogicalEdges(req, node, edges)
 
-	if nodeWeight != 1 || r.datastore.Builder(req.Consistency) == nil {
-		pool.Go(func() error {
-			// exclusion is never part of a cycle or recursion
-			r.groupStrategies[DefaultPlan.Name].Resolve(ctx, req, e, graph.ExclusionOperator, out, &pool, nil)
-			return nil // error is sent on out channel
-		})
-		goto AfterEval
-	}
-
-	pool.Go(func() error {
-		planKey := r.buildW1PlanKey(node.GetUniqueLabel(), req)
-		selector := r.planner.GetPlanSelector(planKey)
-		candidates := map[string]*planner.PlanConfig{
-			DefaultStrategyName: DefaultPlan,
-			SQLStrategyName:     SQLPlan,
-		}
-		plan := selector.Select(candidates)
-
-		r.executeStrategy(ctx, selector, plan, func() (*Response, error) {
-			r.groupStrategies[plan.Name].Resolve(ctx, req, e, graph.ExclusionOperator, out, &pool, nil)
-			return nil, nil // Strategy will send response on out channel
-		})
-		return nil // error is sent on out channel
-	})
-
-AfterEval:
-	wg.Go(func() {
-		pool.Wait()
-		close(out)
-	})
-
-	var baseAllowed bool
-	var subtractAllowed bool
-
-	for {
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case msg, ok := <-out:
-			if !ok {
-				span.SetAttributes(attribute.Bool("allowed", baseAllowed && !subtractAllowed))
-				return &Response{Allowed: baseAllowed && !subtractAllowed}, nil
-			}
-
-			if msg.Err != nil {
-				return nil, msg.Err
-			}
-
-			if len(msg.Edges) > 1 {
-				span.SetAttributes(attribute.Bool("allowed", msg.Res.GetAllowed()))
-				return msg.Res, nil
-			}
-
-			if msg.Edges[0] == e[0] {
-				// Short-circuit: If base is false, the whole expression is false.
-				if !msg.Res.GetAllowed() {
-					span.SetAttributes(attribute.Bool("allowed", false))
-					return &Response{Allowed: false}, nil
-				}
-				baseAllowed = true
-			} else {
-				// Short-circuit: If subtract is true, the whole expression is false.
-				if msg.Res.GetAllowed() {
-					span.SetAttributes(attribute.Bool("allowed", false))
-					return &Response{Allowed: false}, nil
-				}
-				subtractAllowed = false
-			}
-		}
-	}
+	return r.ResolveExclusionEdges(ctx, req, logicalEdges)
 }
 
 func (r *Resolver) ResolveEdge(ctx context.Context, req *Request, edge *graph.WeightedAuthorizationModelEdge, visited *sync.Map) (*Response, error) {
@@ -916,6 +971,49 @@ func (r *Resolver) ResolveEdge(ctx context.Context, req *Request, edge *graph.We
 	default:
 		return nil, ErrPanicRequest
 	}
+}
+
+func (r *Resolver) ResolveLogicalEdge(ctx context.Context, req *Request, logicalEdge LogicalEdge, visited *sync.Map) (*Response, error) {
+	if singleEdge, ok := logicalEdge.(*SingleEdge); ok {
+		return r.ResolveEdge(ctx, req, (*graph.WeightedAuthorizationModelEdge)(singleEdge), visited)
+	}
+
+	groupEdge := logicalEdge.(*GroupEdge)
+
+	if r.datastore.Builder(req.Consistency) == nil {
+		switch groupEdge.node.GetLabel() {
+		case graph.UnionOperator:
+			return r.groupStrategies[DefaultPlan.Name].Union(ctx, req, groupEdge)
+		case graph.IntersectionOperator:
+			return r.groupStrategies[DefaultPlan.Name].Intersection(ctx, req, groupEdge)
+		case graph.ExclusionOperator:
+			return r.groupStrategies[DefaultPlan.Name].Exclusion(ctx, req, groupEdge)
+		default:
+			return nil, ErrPanicRequest
+		}
+	}
+
+	planKey := groupEdge.Key(req)
+	selector := r.planner.GetPlanSelector(planKey)
+
+	candidates := map[string]*planner.PlanConfig{
+		DefaultStrategyName: DefaultPlan,
+		SQLStrategyName:     SQLPlan,
+	}
+
+	plan := selector.Select(candidates)
+
+	return r.executeStrategy(ctx, selector, plan, func() (*Response, error) {
+		switch groupEdge.node.GetLabel() {
+		case graph.UnionOperator:
+			return r.groupStrategies[plan.Name].Union(ctx, req, groupEdge)
+		case graph.IntersectionOperator:
+			return r.groupStrategies[plan.Name].Intersection(ctx, req, groupEdge)
+		case graph.ExclusionOperator:
+			return r.groupStrategies[plan.Name].Exclusion(ctx, req, groupEdge)
+		}
+		return nil, ErrPanicRequest
+	})
 }
 
 func (r *Resolver) ResolveRewrite(ctx context.Context, req *Request, node *graph.WeightedAuthorizationModelNode, visited *sync.Map) (*Response, error) {

@@ -41,23 +41,19 @@ func NewDefault(model *modelgraph.AuthorizationModelGraph, resolver CheckResolve
 var _ GroupStrategy = &DefaultStrategy{}
 var _ EdgeStrategy = &DefaultStrategy{}
 
-func (s *DefaultStrategy) Resolve(ctx context.Context, req *Request, edges []*graph.WeightedAuthorizationModelEdge, _ string, out chan<- ResponseMsg, pool *errgroup.Group, visited *sync.Map) {
-	for _, edge := range edges {
-		_, ok := s.model.GetEdgeWeight(edge, req.GetUserType())
-		if !ok {
-			// For intersection, this is not possible (model error). For union/exclusion,
-			// this edge has no path so treat it as false.
-			concurrency.TrySendThroughChannel(ctx, ResponseMsg{Res: &Response{}}, out)
-			return
-		}
+func (s *DefaultStrategy) Union(ctx context.Context, req *Request, edge *GroupEdge) (*Response, error) {
+	edges := edge.Explode()
+	return s.resolver.ResolveUnionEdges(ctx, req, edges, nil)
+}
 
-		pool.Go(func() error {
-			// intersection is never part of a cycle or recursion
-			res, err := s.resolver.ResolveEdge(ctx, req, edge, nil)
-			concurrency.TrySendThroughChannel(ctx, ResponseMsg{Res: res, Edges: []*graph.WeightedAuthorizationModelEdge{edge}, Err: err}, out)
-			return nil
-		})
-	}
+func (s *DefaultStrategy) Intersection(ctx context.Context, req *Request, edge *GroupEdge) (*Response, error) {
+	edges := edge.Explode()
+	return s.resolver.ResolveIntersectionEdges(ctx, req, edges)
+}
+
+func (s *DefaultStrategy) Exclusion(ctx context.Context, req *Request, edge *GroupEdge) (*Response, error) {
+	edges := edge.Explode()
+	return s.resolver.ResolveExclusionEdges(ctx, req, edges)
 }
 
 // defaultUserset will check userset path.
