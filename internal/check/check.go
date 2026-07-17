@@ -17,6 +17,7 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	authzGraph "github.com/openfga/language/pkg/go/graph"
 
+	"github.com/openfga/openfga/internal/check/metrics"
 	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/iterator"
 	"github.com/openfga/openfga/internal/modelgraph"
@@ -158,6 +159,7 @@ func (r *Resolver) isCached(consistency openfgav1.ConsistencyPreference, key key
 	if consistency == openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
 		return nil, false
 	}
+	metrics.CacheLookupCounter.Inc()
 	v := r.cache.Get(key)
 	if v == nil {
 		return nil, false
@@ -167,8 +169,10 @@ func (r *Resolver) isCached(consistency openfgav1.ConsistencyPreference, key key
 		return nil, false
 	}
 	if !res.LastModified.After(r.lastCacheInvalidationTime) {
+		metrics.CacheInvalidHitCounter.Inc()
 		return nil, false
 	}
+	metrics.CacheHitCounter.Inc()
 	return res.Res, true
 }
 
