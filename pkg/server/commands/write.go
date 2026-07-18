@@ -20,6 +20,13 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
+// maxWriteConflictRetries bounds how many times Execute re-attempts a write that failed with
+// storage.ErrWriteConflictOnInsert under on_duplicate:ignore. Because the conflicting transaction
+// has already committed by the time the uniqueness violation surfaces, a single retry is enough
+// to observe the committed row and ignore it; the extra attempts are a safety margin for
+// datastores with weaker insert-time blocking.
+const maxWriteConflictRetries = 3
+
 // WriteCommand is used to Write and Delete tuples. Instances may be safely shared by multiple goroutines.
 type WriteCommand struct {
 	logger                    logger.Logger
@@ -93,14 +100,31 @@ func (c *WriteCommand) Execute(ctx context.Context, req *openfgav1.WriteRequest)
 		return nil, err
 	}
 
-	err = c.datastore.Write(
-		ctx,
-		req.GetStoreId(),
-		req.GetDeletes().GetTupleKeys(),
-		req.GetWrites().GetTupleKeys(),
-		storage.WithOnMissingDelete(onEmptyDelete),
-		storage.WithOnDuplicateInsert(onDuplicateInsert),
-	)
+	write := func() error {
+		return c.datastore.Write(
+			ctx,
+			req.GetStoreId(),
+			req.GetDeletes().GetTupleKeys(),
+			req.GetWrites().GetTupleKeys(),
+			storage.WithOnMissingDelete(onEmptyDelete),
+			storage.WithOnDuplicateInsert(onDuplicateInsert),
+		)
+	}
+
+	err = write()
+
+	// With on_duplicate:ignore, concurrent first-time inserts of the same tuple can still collide
+	// at INSERT time: the datastore locks tuples with SELECT ... FOR UPDATE, which cannot lock a
+	// row that does not yet exist, so every racing transaction attempts the INSERT and all but one
+	// fail the uniqueness constraint with ErrWriteConflictOnInsert. Retrying lets the losers observe
+	// the now-committed row and ignore it (or surface a condition conflict if it was written with a
+	// different condition).
+	for retries := 0; onDuplicateInsert == storage.OnDuplicateInsertIgnore &&
+		errors.Is(err, storage.ErrWriteConflictOnInsert) &&
+		retries < maxWriteConflictRetries; retries++ {
+		err = write()
+	}
+
 	if err != nil {
 		if errors.Is(err, storage.ErrTransactionalWriteFailed) {
 			return nil, status.Error(codes.Aborted, err.Error())
