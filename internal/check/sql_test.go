@@ -74,7 +74,7 @@ type fakeExecutor struct {
 
 func (e *fakeExecutor) Query(_ context.Context, sql string, _ []any) (adapter.Rows, error) {
 	e.sqls = append(e.sqls, sql)
-	if strings.Contains(sql, "SELECT ? FROM") { // existence query projects a bound literal
+	if strings.Contains(sql, "SELECT 1 FROM") { // existence query projects an inline literal
 		if e.hasRow {
 			return &fakeRows{rows: [][]any{{1}}}, nil
 		}
@@ -182,12 +182,14 @@ func TestSqlWeight1_DirectSQLShape(t *testing.T) {
 	_, err = s.weight1(context.Background(), req, b, entryEdges(t, g, req, "document:1", "viewer"), graph.UnionOperator)
 	require.NoError(t, err)
 
-	require.Contains(t, rec.SQL, "SELECT ? FROM tuple t WHERE")
+	require.Contains(t, rec.SQL, "SELECT 1 FROM tuple t WHERE")
 	require.Contains(t, rec.SQL, "GROUP BY t.object_id HAVING")
 	require.Contains(t, rec.SQL, "LIMIT 1")
-	require.Contains(t, rec.SQL, "COUNT(?) FILTER (WHERE")
-	// store, object type/id, subject narrowing, relation filter, then HAVING atoms.
-	require.Equal(t, "store1", rec.Parameters[1])
+	require.Contains(t, rec.SQL, "COUNT(1) FILTER (WHERE")
+	// The inline SELECT/COUNT/comparison constants bind no parameters, so the store is the
+	// first bound parameter, followed by object type/id, subject narrowing, and the relation
+	// filter (the HAVING relation match).
+	require.Equal(t, "store1", rec.Parameters[0])
 	require.Contains(t, rec.Parameters, "document")
 	require.Contains(t, rec.Parameters, "viewer")
 }

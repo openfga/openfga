@@ -22,15 +22,17 @@
 //	t := b.Tuple("t")
 //	rows, err := b.Select(t.ObjectID(), t.SubjectID()).
 //		From(t).
-//		Where(t.ObjectType().Eq(b.Lit("document")).
-//			And(t.ObjectRelation().Eq(b.Lit("viewer")))).
+//		Where(t.ObjectType().Eq(b.Bind("document")).
+//			And(t.ObjectRelation().Eq(b.Bind("viewer")))).
 //		OrderBy(t.ObjectID().Desc()).
 //		Limit(10).
 //		Execute(ctx)
 //
-// Build a leaf value with a Tuple column accessor, Builder.Lit, or Query.ScalarExpr,
-// then chain operators off it. Negation uses Predicate.Not rather than dedicated
-// NOT-variants (e.g. t.ObjectID().In(b.Lit(1), b.Lit(2)).Not() for NOT IN).
+// Build a leaf value with a Tuple column accessor, Builder.Bind (a parameter placeholder,
+// the safe choice for user-controlled values), Builder.Lit (an inline literal for fixed
+// constants), or Query.ScalarExpr, then chain operators off it. Negation uses Predicate.Not
+// rather than dedicated NOT-variants (e.g. t.ObjectID().In(b.Bind(1), b.Bind(2)).Not() for
+// NOT IN).
 //
 // Operands are Expression throughout; the few argument positions typed `any` accept a
 // small, fixed set of types that each method documents.
@@ -51,8 +53,16 @@ type Builder interface {
 	// aliases denote distinct occurrences for self-joins.
 	Tuple(alias string) Tuple
 
-	// Lit binds a Go value as a parameter literal.
+	// Lit renders a Go value inline as SQL text, using the value's type's string form
+	// (strings single-quoted and escaped, numbers and booleans rendered bare). Reserve it
+	// for fixed, trusted constants; use Bind for user-controlled values so they stay
+	// parameterized.
 	Lit(value any) Expression
+
+	// Bind binds a Go value as a parameter literal, rendering the dialect's placeholder and
+	// contributing the value to the ordinal bind-argument list. This is the safe choice for
+	// any user-controlled value.
+	Bind(value any) Expression
 
 	// Func calls an ANSI SQL scalar function, e.g. Func(FuncLower, t.ObjectID()).
 	// The function is chosen from the ScalarFunc enumeration, so only ANSI-standard

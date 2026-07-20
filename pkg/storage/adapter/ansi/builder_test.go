@@ -14,7 +14,7 @@ import (
 func TestBuildExported(t *testing.T) {
 	b := newBuilder()
 	a := b.Tuple("a")
-	q := b.Select(a.ObjectID()).From(a).Where(a.ObjectType().Eq(b.Lit("doc")))
+	q := b.Select(a.ObjectID()).From(a).Where(a.ObjectType().Eq(b.Bind("doc")))
 
 	bq, ok := q.(Query)
 	if !ok {
@@ -45,7 +45,7 @@ func TestExecuteFeedsExecutor(t *testing.T) {
 	b := New(exec)
 	a := b.Tuple("a")
 
-	_, err := b.Select(a.ObjectID()).From(a).Where(a.Store().Eq(b.Lit("s1"))).Execute(context.Background())
+	_, err := b.Select(a.ObjectID()).From(a).Where(a.Store().Eq(b.Bind("s1"))).Execute(context.Background())
 	if !errors.Is(err, want) {
 		t.Fatalf("Execute error: got %v, want %v", err, want)
 	}

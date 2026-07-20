@@ -1,6 +1,11 @@
 package mysql
 
-import "github.com/openfga/openfga/pkg/storage/adapter"
+import (
+	"fmt"
+	"strings"
+
+	"github.com/openfga/openfga/pkg/storage/adapter"
+)
 
 // aliased is the rendering contract for any projection: it can write its own SQL and
 // report an optional output alias.
@@ -132,11 +137,36 @@ func (e *exprNode) Order(dir adapter.SortDirection) adapter.OrderTerm {
 func (e *exprNode) Asc() adapter.OrderTerm  { return e.Order(adapter.Ascending) }
 func (e *exprNode) Desc() adapter.OrderTerm { return e.Order(adapter.Descending) }
 
-// litNode is a bound parameter literal: it renders as a "?" placeholder and contributes
+// bindNode is a bound parameter literal: it renders as a "?" placeholder and contributes
 // its Go value to the bind-argument list.
+type bindNode struct{ value any }
+
+func (b *bindNode) writeSQL(r *renderer) { r.bind(b.value) }
+
+// litNode is an inline literal: it renders its Go value directly into the SQL text as the
+// value's type's string form (see litSQL), contributing nothing to the bind-argument list.
+// Reserve it for fixed, trusted constants; user-controlled values belong in a bindNode.
 type litNode struct{ value any }
 
-func (l *litNode) writeSQL(r *renderer) { r.bind(l.value) }
+func (l *litNode) writeSQL(r *renderer) { r.write(litSQL(l.value)) }
+
+// litSQL renders a Go value as an inline SQL literal. Strings are single-quoted with any
+// embedded quote doubled per ANSI; numbers and booleans render in their bare Go form. An
+// unsupported type is a programming error — use Builder.Bind for values that cannot be
+// safely inlined.
+func litSQL(value any) string {
+	switch v := value.(type) {
+	case string:
+		return "'" + strings.ReplaceAll(v, "'", "''") + "'"
+	case bool,
+		int, int8, int16, int32, int64,
+		uint, uint8, uint16, uint32, uint64,
+		float32, float64:
+		return fmt.Sprint(v)
+	default:
+		panic(fmt.Sprintf("pkg/storage/adapter/mysql: unsupported Lit type %T; use Bind", value))
+	}
+}
 
 // funcNode renders a scalar function call.
 type funcNode struct {

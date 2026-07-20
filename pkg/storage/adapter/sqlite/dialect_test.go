@@ -43,7 +43,7 @@ func TestPlaceholders(t *testing.T) {
 	b := newBuilder()
 	a := b.Tuple("a")
 	q := b.Select(a.ObjectID()).From(a).Where(
-		a.ObjectType().Eq(b.Lit("doc")).And(a.ObjectRelation().Eq(b.Lit("viewer"))),
+		a.ObjectType().Eq(b.Bind("doc")).And(a.ObjectRelation().Eq(b.Bind("viewer"))),
 	)
 	sql, args := build(t, q)
 	want := "SELECT a.object_id FROM tuple a WHERE (a.object_type = ? AND a.relation = ?)"
@@ -89,7 +89,7 @@ func TestStandardColumns(t *testing.T) {
 func TestLike(t *testing.T) {
 	b := newBuilder()
 	a := b.Tuple("a")
-	q := b.Select(a.ObjectID()).From(a).Where(a.ObjectID().Like(b.Lit("doc%")))
+	q := b.Select(a.ObjectID()).From(a).Where(a.ObjectID().Like(b.Bind("doc%")))
 	sql, args := build(t, q)
 	want := "SELECT a.object_id FROM tuple a WHERE a.object_id LIKE ?"
 	assertSQL(t, sql, want, args, "doc%")

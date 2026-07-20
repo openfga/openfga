@@ -39,8 +39,8 @@ func TestSelectBasic(t *testing.T) {
 	t1 := b.Tuple("t")
 	q := b.Select(t1.ObjectID(), t1.SubjectID()).
 		From(t1).
-		Where(t1.ObjectType().Eq(b.Lit("document")).
-			And(t1.ObjectRelation().Eq(b.Lit("viewer")))).
+		Where(t1.ObjectType().Eq(b.Bind("document")).
+			And(t1.ObjectRelation().Eq(b.Bind("viewer")))).
 		OrderBy(t1.ObjectID().Desc()).
 		Limit(10)
 
@@ -110,8 +110,8 @@ func TestFuncAndAggregateJSON(t *testing.T) {
 	b := newBuilder()
 	a := b.Tuple("a")
 	permission := b.Func(adapter.FuncJSONObject,
-		b.Lit("relation"), a.ObjectRelation(),
-		b.Lit("condition"), a.Condition(),
+		b.Bind("relation"), a.ObjectRelation(),
+		b.Bind("condition"), a.Condition(),
 	)
 	permissions := b.Aggregate(adapter.AggJSONArrayAgg, permission).As("perms")
 	q := b.Select(a.ObjectID(), permissions).From(a).GroupBy(a.ObjectID())
@@ -135,7 +135,7 @@ func TestAggregateModifiers(t *testing.T) {
 	a := b.Tuple("a")
 	agg := b.Aggregate(adapter.AggCount, a.ObjectID()).
 		Distinct().
-		Filter(a.ObjectType().Eq(b.Lit("doc"))).
+		Filter(a.ObjectType().Eq(b.Bind("doc"))).
 		As("n")
 	sql, args := renderQuery(t, b.Select(agg).From(a))
 	want := "SELECT COUNT(DISTINCT a.object_id) FILTER (WHERE a.object_type = ?) AS n FROM tuple a"
@@ -158,9 +158,9 @@ func TestSimpleCase(t *testing.T) {
 	a := b.Tuple("a")
 	expr := b.Case().
 		Value(a.ObjectType()).
-		When(b.Lit("document"), b.Lit(1)).
-		When(b.Lit("folder"), b.Lit(2)).
-		Else(b.Lit(0)).
+		When(b.Bind("document"), b.Bind(1)).
+		When(b.Bind("folder"), b.Bind(2)).
+		Else(b.Bind(0)).
 		As("kind")
 	sql, args := renderQuery(t, b.Select(expr).From(a))
 	want := "SELECT CASE a.object_type WHEN ? THEN ? WHEN ? THEN ? ELSE ? END AS kind FROM tuple a"
@@ -171,9 +171,9 @@ func TestSearchedCase(t *testing.T) {
 	b := newBuilder()
 	a := b.Tuple("a")
 	expr := b.Case().
-		When(a.ObjectType().Eq(b.Lit("document")), b.Lit("doc")).
-		When(a.ObjectType().Eq(b.Lit("folder")), b.Lit("dir")).
-		Else(b.Lit("other")).
+		When(a.ObjectType().Eq(b.Bind("document")), b.Bind("doc")).
+		When(a.ObjectType().Eq(b.Bind("folder")), b.Bind("dir")).
+		Else(b.Bind("other")).
 		As("label")
 	sql, args := renderQuery(t, b.Select(expr).From(a))
 	want := "SELECT CASE WHEN a.object_type = ? THEN ? WHEN a.object_type = ? THEN ? ELSE ? END AS label FROM tuple a"
@@ -183,8 +183,8 @@ func TestSearchedCase(t *testing.T) {
 func TestPredicateAlgebra(t *testing.T) {
 	b := newBuilder()
 	a := b.Tuple("a")
-	p := a.ObjectID().In(b.Lit(1), b.Lit(2)).Not().
-		Or(a.ObjectType().Between(b.Lit("a"), b.Lit("z")))
+	p := a.ObjectID().In(b.Bind(1), b.Bind(2)).Not().
+		Or(a.ObjectType().Between(b.Bind("a"), b.Bind("z")))
 	sql, args := renderQuery(t, b.Select(a.ObjectID()).From(a).Where(p))
 	want := "SELECT a.object_id FROM tuple a WHERE (NOT (a.object_id IN (?, ?)) OR a.object_type BETWEEN ? AND ?)"
 	assertSQL(t, sql, want, args, 1, 2, "a", "z")
@@ -193,7 +193,7 @@ func TestPredicateAlgebra(t *testing.T) {
 func TestLikeAndIsNull(t *testing.T) {
 	b := newBuilder()
 	a := b.Tuple("a")
-	p := a.ObjectID().Like(b.Lit("doc%")).And(a.Condition().IsNull().Not())
+	p := a.ObjectID().Like(b.Bind("doc%")).And(a.Condition().IsNull().Not())
 	sql, args := renderQuery(t, b.Select(a.ObjectID()).From(a).Where(p))
 	want := "SELECT a.object_id FROM tuple a WHERE (a.object_id LIKE ? AND NOT (a.condition_name IS NULL))"
 	assertSQL(t, sql, want, args, "doc%")
@@ -203,8 +203,8 @@ func TestCaseSearched(t *testing.T) {
 	b := newBuilder()
 	a := b.Tuple("a")
 	c := b.Case().
-		When(a.ObjectType().Eq(b.Lit("doc")), b.Lit(1)).
-		Else(b.Lit(0)).
+		When(a.ObjectType().Eq(b.Bind("doc")), b.Bind(1)).
+		Else(b.Bind(0)).
 		As("kind")
 	sql, args := renderQuery(t, b.Select(c).From(a))
 	want := "SELECT CASE WHEN a.object_type = ? THEN ? ELSE ? END AS kind FROM tuple a"
@@ -214,7 +214,7 @@ func TestCaseSearched(t *testing.T) {
 func TestCastAndCoalesce(t *testing.T) {
 	b := newBuilder()
 	a := b.Tuple("a")
-	coalesced := b.Func(adapter.FuncCoalesce, a.Condition(), b.Lit(""))
+	coalesced := b.Func(adapter.FuncCoalesce, a.Condition(), b.Bind(""))
 	casted := b.Cast(a.ConditionContext(), "text")
 	sql, args := renderQuery(t, b.Select(coalesced.As("c"), casted.As("ctx")).From(a))
 	want := "SELECT COALESCE(a.condition_name, ?) AS c, CAST(a.condition_context AS text) AS ctx FROM tuple a"
@@ -299,6 +299,34 @@ func TestProjectionNode(t *testing.T) {
 	}
 }
 
+// TestLitInline verifies that Lit renders its value inline in the SQL text — strings
+// single-quoted (with embedded quotes doubled), numbers bare — and contributes nothing to
+// the bind-argument list, in contrast to Bind's placeholder.
+func TestLitInline(t *testing.T) {
+	b := newBuilder()
+	a := b.Tuple("a")
+	p := a.ObjectType().Eq(b.Lit("viewer")).
+		And(a.ObjectID().Gt(b.Lit(1))).
+		And(a.SubjectID().Eq(b.Lit("O'Brien")))
+	sql, args := renderQuery(t, b.Select(a.ObjectID()).From(a).Where(p))
+	want := "SELECT a.object_id FROM tuple a WHERE ((a.object_type = 'viewer' AND a.object_id > 1) AND " +
+		ansiSubjectIDView("a") + " = 'O''Brien')"
+	assertSQL(t, sql, want, args)
+}
+
+// TestLitUnsupportedTypePanics verifies Lit rejects a type it cannot safely inline, steering
+// callers to Bind for such values.
+func TestLitUnsupportedTypePanics(t *testing.T) {
+	b := newBuilder()
+	a := b.Tuple("a")
+	defer func() {
+		if recover() == nil {
+			t.Fatal("expected panic for unsupported Lit type")
+		}
+	}()
+	renderQuery(t, b.Select(a.ObjectID()).From(a).Where(a.ObjectType().Eq(b.Lit([]byte("x")))))
+}
+
 func TestGroupByHavingOffset(t *testing.T) {
 	b := newBuilder()
 	a := b.Tuple("a")
@@ -306,7 +334,7 @@ func TestGroupByHavingOffset(t *testing.T) {
 	q := b.Select(a.ObjectType(), cnt.As("n")).
 		From(a).
 		GroupBy(a.ObjectType()).
-		Having(cnt.Gt(b.Lit(1))).
+		Having(cnt.Gt(b.Bind(1))).
 		Offset(20)
 	sql, args := renderQuery(t, q)
 	want := "SELECT a.object_type, COUNT(a.object_id) AS n FROM tuple a GROUP BY a.object_type " +

@@ -85,6 +85,10 @@ func (b *builder) Lit(value any) adapter.Expression {
 	return newExpr(&litNode{value: value})
 }
 
+func (b *builder) Bind(value any) adapter.Expression {
+	return newExpr(&bindNode{value: value})
+}
+
 func (b *builder) Func(fn adapter.ScalarFunc, args ...adapter.Operand) adapter.Expression {
 	return newExpr(&funcNode{fn: fn, args: operandWriters(args)})
 }

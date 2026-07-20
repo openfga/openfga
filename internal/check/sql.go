@@ -37,15 +37,15 @@ func NewSQL(model *modelgraph.AuthorizationModelGraph, datastore storage.Relatio
 }
 
 func (s *SQLStrategy) Union(ctx context.Context, req *Request, edge *GroupEdge) (*Response, error) {
-	return nil, nil
+	return s.weight1(ctx, req, s.datastore.Builder(req.GetConsistency()), edge.edges, graph.UnionOperator)
 }
 
 func (s *SQLStrategy) Intersection(ctx context.Context, req *Request, edge *GroupEdge) (*Response, error) {
-	return nil, nil
+	return s.weight1(ctx, req, s.datastore.Builder(req.GetConsistency()), edge.edges, graph.IntersectionOperator)
 }
 
 func (s *SQLStrategy) Exclusion(ctx context.Context, req *Request, edge *GroupEdge) (*Response, error) {
-	return nil, nil
+	return s.weight1(ctx, req, s.datastore.Builder(req.GetConsistency()), edge.edges, graph.ExclusionOperator)
 }
 
 // branchOutcome is what we know about a branch while folding a boolean subtree:
@@ -333,7 +333,7 @@ func (w *walker) evalUnconditioned(ctx context.Context, edges []*graph.WeightedA
 	// would have routed to the gather path, so this narrowing is uniform across every leaf and
 	// lives here in the shared WHERE rather than in each COUNT(CASE).
 	where := append(w.whereShared(),
-		w.table.ObjectRelation().In(w.relationLits()...),
+		w.table.ObjectRelation().In(w.relationBinds()...),
 		w.table.Condition().IsNull().Or(w.table.Condition().Eq(w.builder.Lit(""))),
 	)
 	rows, err := w.builder.Select(w.builder.Lit(1)).
@@ -372,7 +372,7 @@ func (w *walker) evalConditioned(ctx context.Context, edges []*graph.WeightedAut
 		w.table.ConditionContext(),
 	).
 		From(w.table).
-		Where(append(w.whereShared(), w.table.ObjectRelation().In(w.relationLits()...))...).
+		Where(append(w.whereShared(), w.table.ObjectRelation().In(w.relationBinds()...))...).
 		Execute(ctx)
 	if err != nil {
 		return nil, err
@@ -575,7 +575,7 @@ func (w *walker) renderLeaf(l leaf) residual {
 	if outcome, _ := w.evalContextLeaf(l); outcome == branchTrue {
 		return residual{state: branchTrue}
 	}
-	match := w.table.ObjectRelation().Eq(w.builder.Lit(l.relation))
+	match := w.table.ObjectRelation().Eq(w.builder.Bind(l.relation))
 	count := w.builder.Aggregate(adapter.AggCount, w.builder.Lit(1)).Filter(match)
 	return residual{state: branchNeedsQuery, pred: count.Gt(w.builder.Lit(0))}
 }
@@ -585,33 +585,33 @@ func (w *walker) renderLeaf(l leaf) residual {
 // wildcard when a wildcard leaf is present).
 func (w *walker) whereShared() []adapter.Predicate {
 	preds := []adapter.Predicate{
-		w.table.Store().Eq(w.builder.Lit(w.req.GetStoreID())),
-		w.table.ObjectType().Eq(w.builder.Lit(w.objectType)),
-		w.table.ObjectID().Eq(w.builder.Lit(w.objectID)),
-		w.table.SubjectType().Eq(w.builder.Lit(w.subjType)),
-		w.table.SubjectRelation().Eq(w.builder.Lit(w.subjRel)),
+		w.table.Store().Eq(w.builder.Bind(w.req.GetStoreID())),
+		w.table.ObjectType().Eq(w.builder.Bind(w.objectType)),
+		w.table.ObjectID().Eq(w.builder.Bind(w.objectID)),
+		w.table.SubjectType().Eq(w.builder.Bind(w.subjType)),
+		w.table.SubjectRelation().Eq(w.builder.Bind(w.subjRel)),
 	}
 	if w.hasWildcardLeaf && w.subjID != tuple.Wildcard {
-		preds = append(preds, w.table.SubjectID().In(w.builder.Lit(w.subjID), w.builder.Lit(tuple.Wildcard)))
+		preds = append(preds, w.table.SubjectID().In(w.builder.Bind(w.subjID), w.builder.Bind(tuple.Wildcard)))
 	} else {
-		preds = append(preds, w.table.SubjectID().Eq(w.builder.Lit(w.subjID)))
+		preds = append(preds, w.table.SubjectID().Eq(w.builder.Bind(w.subjID)))
 	}
 	return preds
 }
 
-// relationLits renders the accumulated relation set as a sorted list of literals for the
-// WHERE `relation IN (...)` filter (sorted for deterministic SQL).
-func (w *walker) relationLits() []adapter.Expression {
+// relationBinds renders the accumulated relation set as a sorted list of bound parameters
+// for the WHERE `relation IN (...)` filter (sorted for deterministic SQL).
+func (w *walker) relationBinds() []adapter.Expression {
 	names := make([]string, 0, len(w.relations))
 	for r := range w.relations {
 		names = append(names, r)
 	}
 	sort.Strings(names)
-	lits := make([]adapter.Expression, len(names))
+	binds := make([]adapter.Expression, len(names))
 	for i, r := range names {
-		lits[i] = w.builder.Lit(r)
+		binds[i] = w.builder.Bind(r)
 	}
-	return lits
+	return binds
 }
 
 // combinePreds folds preds with join; an empty list yields the given identity state.
