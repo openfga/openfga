@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"testing/iotest"
 	"time"
@@ -28,6 +29,7 @@ import (
 
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/pkg/server/commands"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
 	"github.com/openfga/openfga/pkg/storage/test"
@@ -161,6 +163,134 @@ func TestWriteWithSimpleProtocol(t *testing.T) {
 	}, storage.ReadUserTupleOptions{})
 	require.NoError(t, err)
 	require.Equal(t, "document:2", tk.GetKey().GetObject())
+}
+
+func TestWriteCommandConcurrentDuplicateIgnore(t *testing.T) {
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
+
+	ds, err := New(testDatastore.GetConnectionURI(true), sqlcommon.NewConfig())
+	require.NoError(t, err)
+	defer ds.Close()
+
+	ctx := t.Context()
+	storeID := ulid.Make().String()
+	model := testutils.MustTransformDSLToProtoWithID(`
+		model
+			schema 1.1
+		type user
+		type document
+			relations
+				define viewer: [user]
+	`)
+	require.NoError(t, ds.WriteAuthorizationModel(ctx, storeID, model))
+
+	const (
+		concurrentWrites = 5
+		advisoryLockKey  = 424242
+	)
+
+	// Hold every transaction immediately before its INSERT so all concurrent commands first
+	// observe that the tuple is absent. Releasing the lock then deterministically exercises the
+	// uniqueness-conflict path instead of relying on goroutine scheduling to reproduce the race.
+	_, err = ds.primaryDB.Exec(ctx, `
+		CREATE FUNCTION block_tuple_insert() RETURNS trigger AS $$
+		BEGIN
+			PERFORM pg_advisory_xact_lock(424242);
+			RETURN NEW;
+		END;
+		$$ LANGUAGE plpgsql;
+
+		CREATE TRIGGER block_tuple_insert
+		BEFORE INSERT ON tuple
+		FOR EACH ROW EXECUTE FUNCTION block_tuple_insert();`)
+	require.NoError(t, err)
+	defer func() {
+		_, err := ds.primaryDB.Exec(context.Background(), `
+			DROP TRIGGER block_tuple_insert ON tuple;
+			DROP FUNCTION block_tuple_insert();`)
+		require.NoError(t, err)
+	}()
+
+	barrierConn, err := ds.primaryDB.Acquire(ctx)
+	require.NoError(t, err)
+	defer barrierConn.Release()
+
+	_, err = barrierConn.Exec(ctx, "SELECT pg_advisory_lock($1)", advisoryLockKey)
+	require.NoError(t, err)
+	locked := true
+	defer func() {
+		if !locked {
+			return
+		}
+		err := barrierConn.QueryRow(context.Background(), "SELECT pg_advisory_unlock($1)", advisoryLockKey).Scan(&locked)
+		require.NoError(t, err)
+		require.True(t, locked)
+	}()
+
+	cmd := commands.NewWriteCommand(ds)
+	start := make(chan struct{})
+	var ready sync.WaitGroup
+	ready.Add(concurrentWrites)
+	errs := make(chan error, concurrentWrites)
+
+	for range concurrentWrites {
+		go func() {
+			ready.Done()
+			<-start
+
+			_, err := cmd.Execute(ctx, &openfgav1.WriteRequest{
+				StoreId:              storeID,
+				AuthorizationModelId: model.GetId(),
+				Writes: &openfgav1.WriteRequestWrites{
+					TupleKeys: []*openfgav1.TupleKey{{
+						Object:   "document:1",
+						Relation: "viewer",
+						User:     "user:anne",
+					}},
+					OnDuplicate: "ignore",
+				},
+			})
+			errs <- err
+		}()
+	}
+
+	ready.Wait()
+	close(start)
+	require.Eventually(t, func() bool {
+		var waitingTransactions int
+		err := ds.primaryDB.QueryRow(ctx, `
+			SELECT COUNT(*)
+			FROM pg_locks
+			WHERE locktype = 'advisory' AND objid = $1 AND NOT granted`, advisoryLockKey).Scan(&waitingTransactions)
+		return err == nil && waitingTransactions == concurrentWrites
+	}, 5*time.Second, 10*time.Millisecond)
+
+	err = barrierConn.QueryRow(ctx, "SELECT pg_advisory_unlock($1)", advisoryLockKey).Scan(&locked)
+	require.NoError(t, err)
+	require.True(t, locked)
+	locked = false
+
+	for range concurrentWrites {
+		require.NoError(t, <-errs)
+	}
+
+	var tupleCount int
+	err = ds.primaryDB.QueryRow(ctx, `
+		SELECT COUNT(*)
+		FROM tuple
+		WHERE store = $1 AND object_type = $2 AND object_id = $3 AND relation = $4 AND _user = $5`,
+		storeID, "document", "1", "viewer", "user:anne").Scan(&tupleCount)
+	require.NoError(t, err)
+	require.Equal(t, 1, tupleCount)
+
+	var changeCount int
+	err = ds.primaryDB.QueryRow(ctx, `
+		SELECT COUNT(*)
+		FROM changelog
+		WHERE store = $1 AND object_type = $2 AND object_id = $3 AND relation = $4 AND _user = $5`,
+		storeID, "document", "1", "viewer", "user:anne").Scan(&changeCount)
+	require.NoError(t, err)
+	require.Equal(t, 1, changeCount)
 }
 
 func TestPostgresDatastoreStartup(t *testing.T) {
