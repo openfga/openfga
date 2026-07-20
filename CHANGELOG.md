@@ -64,10 +64,12 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [1.16.0] - 2026-05-20
 ### Added
+- Add Amazon Aurora DSQL as a supported storage backend.
 - Added datastore ping timeout (PingTimeout) and datastore ping retry timeout (PingRetryMaxElapsedTime) configurations. [#3113](https://github.com/openfga/openfga/pull/3113)
 
 ### Changed
 - Report `allowed` result and `tuple_key` on Check and experimental `weighted_graph_check` resolution trace spans. [#3116](https://github.com/openfga/openfga/pull/3116)
+- Replace custom DSQL OCC retry logic with the `occretry` package from `aurora-dsql-connectors/go/pgx` v0.3.0. [#3](https://github.com/amazon-contributing/upstream-to-openfga/pull/3)
 
 ### Fixed
 - Fixed cache key collisions in experimental `weighted_graph_check` union resolution by moving result caching from the union node level to the individual edge level, preventing collisions across requests that share edges but differ in object or relation. [#3117](https://github.com/openfga/openfga/pull/3117)

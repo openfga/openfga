@@ -7,6 +7,7 @@ const (
 	MySQLMigrationDir    = "migrations/mysql"
 	PostgresMigrationDir = "migrations/postgres"
 	SqliteMigrationDir   = "migrations/sqlite"
+	DSQLMigrationDir     = "migrations/dsql"
 )
 
 // EmbedMigrations within the openfga binary.
