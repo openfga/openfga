@@ -166,9 +166,16 @@ func TestWriteWithSimpleProtocol(t *testing.T) {
 }
 
 func TestWriteCommandConcurrentDuplicateIgnore(t *testing.T) {
+	const (
+		concurrentWrites = 5
+		advisoryLockKey  = 424242
+	)
+
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
 
-	ds, err := New(testDatastore.GetConnectionURI(true), sqlcommon.NewConfig())
+	ds, err := New(testDatastore.GetConnectionURI(true), sqlcommon.NewConfig(
+		sqlcommon.WithMaxOpenConns(concurrentWrites+2),
+	))
 	require.NoError(t, err)
 	defer ds.Close()
 
@@ -183,11 +190,6 @@ func TestWriteCommandConcurrentDuplicateIgnore(t *testing.T) {
 				define viewer: [user]
 	`)
 	require.NoError(t, ds.WriteAuthorizationModel(ctx, storeID, model))
-
-	const (
-		concurrentWrites = 5
-		advisoryLockKey  = 424242
-	)
 
 	// Hold every transaction immediately before its INSERT so all concurrent commands first
 	// observe that the tuple is absent. Releasing the lock then deterministically exercises the
