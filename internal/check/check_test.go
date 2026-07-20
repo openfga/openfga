@@ -71,37 +71,12 @@ func TestResolveUnion(t *testing.T) {
 		node, ok := mg.GetNodeByID("group#member")
 		require.True(t, ok)
 
-		edges, ok := mg.GetEdgesFromNode(node)
-		require.True(t, ok)
-
-		union := edges[0].GetTo()
-		edges, ok = mg.GetEdgesFromNode(union)
-		require.True(t, ok)
-
-		// handle the initial call to the cache within ResolveUnionEdges that
-		// is looking for a cache entry for the node group.
-		mockCache.EXPECT().Get(gomock.Any()).Return(nil).Times(1)
-
 		cachedTrue := &ResponseCacheEntry{
 			Res:          &Response{Allowed: true},
 			LastModified: time.Now(),
 		}
-		firstCacheKey := EdgeCacheKey(req, edges[0])
 
-		mockCache.EXPECT().Get(firstCacheKey).Return(cachedTrue).Times(1)
-
-		admin := edges[1].GetTo()
-		edges, ok = mg.GetEdgesFromNode(admin)
-		require.True(t, ok)
-
-		cachedFalse := &ResponseCacheEntry{
-			Res:          &Response{Allowed: false},
-			LastModified: time.Now(),
-		}
-
-		secondCacheKey := EdgeCacheKey(req, edges[0])
-
-		mockCache.EXPECT().Get(secondCacheKey).Return(cachedFalse).MaxTimes(1)
+		mockCache.EXPECT().Get(NodeKey(req, node)).Return(cachedTrue).Times(1)
 
 		res, err := resolver.ResolveUnion(context.Background(), req, node, nil)
 		require.NoError(t, err)
@@ -120,21 +95,23 @@ func TestResolveUnion(t *testing.T) {
 		model := testutils.MustTransformDSLToProtoWithID(`
            model
              schema 1.1
+
            type user
+
+           type org
+             relations
+               define member: [user]
+
            type group
              relations
-               define member: [user] or admin or owner
+               define member: [user] or admin or owner or member from parent
                define admin: [user]
                define owner: [user]
+               define parent: [org]
        `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
-
-		cachedFalse := &ResponseCacheEntry{
-			Res:          &Response{Allowed: false},
-			LastModified: time.Now(),
-		}
 
 		req, err := NewRequest(RequestParams{
 			StoreID:  storeID,
@@ -146,16 +123,37 @@ func TestResolveUnion(t *testing.T) {
 		node, ok := mg.GetNodeByID("group#member")
 		require.True(t, ok)
 
+		edges, err := mg.FlattenNode(node, req.GetUserType(), req.IsTypedWildcard(), false)
+		require.NoError(t, err)
+
 		// simulate a node cache entry with a nil value.
-		mockCache.EXPECT().Get(gomock.Any()).Return(nil).Times(1)
+		mockCache.EXPECT().Get(NodeKey(req, node)).Return(nil).Times(1)
 
-		// simulate an edge with a cached false result
-		mockCache.EXPECT().Get(gomock.Any()).Return(cachedFalse).Times(1)
+		var i int
+		var ttuEdge *authzGraph.WeightedAuthorizationModelEdge
+		for _, edge := range edges {
+			if edge.GetEdgeType() == authzGraph.TTUEdge {
+				ttuEdge = edge
+				continue
+			}
+			edges[i] = edge
+			i++
+		}
+		clear(edges[i:])
+		edges = edges[:i]
+		require.NotNil(t, ttuEdge)
 
-		// other two edges call cache, but get nothing
-		mockCache.EXPECT().Get(gomock.Any()).Return(nil).Times(2)
+		mockCache.EXPECT().Get(EdgeCacheKey(req, ttuEdge)).Return(&ResponseCacheEntry{Res: &Response{Allowed: false}, LastModified: time.Now()}).Times(1)
 
-		// only two edges will call to datastore because one was cached
+		gomock.InAnyOrder(
+			[]*gomock.Call{
+				mockCache.EXPECT().Get(EdgeCacheKey(req, edges[0])).Return(nil).Times(1),
+				mockCache.EXPECT().Get(EdgeCacheKey(req, edges[1])).Return(nil).Times(1),
+				mockCache.EXPECT().Get(EdgeCacheKey(req, edges[2])).Return(nil).Times(1),
+			},
+		)
+
+		// only the three weight-one edges will call to datastore because the weight-two is cached
 		mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
 			DoAndReturn(
 				func(
@@ -165,13 +163,17 @@ func TestResolveUnion(t *testing.T) {
 					_ storage.ReadUserTupleOptions,
 				) (*openfgav1.Tuple, error) {
 					return &openfgav1.Tuple{Key: tuple.NewTupleKey(filter.Object, filter.Relation, filter.User)}, nil
-				}).Times(2)
+				}).MaxTimes(3)
 
-		// edges that complete before the union short-circuits will cache their results;
-		// edges cancelled by the short-circuit will not (ctx.Err() != nil guard).
-		mockCache.EXPECT().
-			Set(gomock.Any(), gomock.Any(), gomock.Any()).
-			MinTimes(1).MaxTimes(2)
+		gomock.InAnyOrder(
+			[]*gomock.Call{
+				mockCache.EXPECT().Set(EdgeCacheKey(req, edges[0]), gomock.Any(), gomock.Any()).MaxTimes(1),
+				mockCache.EXPECT().Set(EdgeCacheKey(req, edges[1]), gomock.Any(), gomock.Any()).MaxTimes(1),
+				mockCache.EXPECT().Set(EdgeCacheKey(req, edges[2]), gomock.Any(), gomock.Any()).MaxTimes(1),
+			},
+		)
+
+		mockCache.EXPECT().Set(NodeKey(req, node), gomock.Any(), gomock.Any()).Times(1)
 
 		resolver := New(Config{
 			Model:                     mg,
@@ -180,6 +182,16 @@ func TestResolveUnion(t *testing.T) {
 			ConcurrencyLimit:          10,
 			LastCacheInvalidationTime: time.Now().Add(-time.Hour),
 		})
+
+		defaultStrategy := NewDefault(mg, resolver, 10)
+
+		resolver.groupStrategies = map[string]GroupStrategy{
+			DefaultStrategyName: defaultStrategy,
+		}
+
+		resolver.edgeStrategies = map[string]EdgeStrategy{
+			DefaultStrategyName: defaultStrategy,
+		}
 
 		res, err := resolver.ResolveUnion(context.Background(), req, node, nil)
 		require.NoError(t, err)
@@ -208,20 +220,8 @@ func TestResolveUnion(t *testing.T) {
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
-		mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
-			Return(nil, storage.ErrNotFound).Times(2)
-
-		mockCache.EXPECT().Get(gomock.Any()).Return(nil).AnyTimes()
-		// Both edges (including the one whose relationDefinition matches objectRelation) must be cached.
-		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).Times(2)
-
-		resolver := New(Config{
-			Model:                     mg,
-			Datastore:                 mockDatastore,
-			Cache:                     mockCache,
-			ConcurrencyLimit:          10,
-			LastCacheInvalidationTime: time.Now().Add(-time.Hour),
-		})
+		node, ok := mg.GetNodeByID("group#member")
+		require.True(t, ok)
 
 		req, err := NewRequest(RequestParams{
 			StoreID:  storeID,
@@ -230,8 +230,32 @@ func TestResolveUnion(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		node, ok := mg.GetNodeByID("group#member")
-		require.True(t, ok)
+		edges, err := mg.FlattenNode(node, req.GetUserType(), req.IsTypedWildcard(), false)
+		require.NoError(t, err)
+		require.Len(t, edges, 2)
+
+		mockCache.EXPECT().Get(NodeKey(req, node)).Return(nil).Times(1)
+		mockCache.EXPECT().Get(EdgeCacheKey(req, edges[0])).Return(nil).Times(1)
+		mockCache.EXPECT().Get(EdgeCacheKey(req, edges[1])).Return(nil).Times(1)
+
+		mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+			Return(nil, storage.ErrNotFound).Times(2)
+
+		// Both edges (including the one whose relationDefinition matches objectRelation) must be cached.
+		gomock.InAnyOrder([]*gomock.Call{
+			mockCache.EXPECT().Set(EdgeCacheKey(req, edges[0]), gomock.Any(), gomock.Any()).Times(1),
+			mockCache.EXPECT().Set(EdgeCacheKey(req, edges[1]), gomock.Any(), gomock.Any()).Times(1),
+		})
+
+		mockCache.EXPECT().Set(NodeKey(req, node), gomock.Any(), gomock.Any()).Times(1)
+
+		resolver := New(Config{
+			Model:                     mg,
+			Datastore:                 mockDatastore,
+			Cache:                     mockCache,
+			ConcurrencyLimit:          10,
+			LastCacheInvalidationTime: time.Now().Add(-time.Hour),
+		})
 
 		res, err := resolver.ResolveUnion(context.Background(), req, node, nil)
 		require.NoError(t, err)
@@ -427,22 +451,15 @@ func TestResolveUnionEdges(t *testing.T) {
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
-		_, cancel := context.WithCancel(context.Background())
+		ctx, cancel := context.WithCancel(context.Background())
 
-		mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
-			DoAndReturn(func(ctx context.Context, _ string, _ storage.ReadUserTupleFilter, _ storage.ReadUserTupleOptions) (*openfgav1.Tuple, error) {
-				cancel()
-				return nil, ctx.Err()
-			}).MaxTimes(2)
+		node, ok := mg.GetNodeByID("group#member")
+		require.True(t, ok)
 
-		mockCache.EXPECT().Get(gomock.Any()).Return(nil).AnyTimes()
-
-		resolver := New(Config{
-			Model:            mg,
-			Datastore:        mockDatastore,
-			Cache:            mockCache,
-			ConcurrencyLimit: 10,
-		})
+		edges, err := mg.FlattenNode(node, "user", false, false)
+		require.NoError(t, err)
+		require.Len(t, edges, 2)
+		require.True(t, ok)
 
 		req, err := NewRequest(RequestParams{
 			StoreID:  storeID,
@@ -451,16 +468,26 @@ func TestResolveUnionEdges(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		node, ok := mg.GetNodeByID("group#member")
-		require.True(t, ok)
+		mockCache.EXPECT().Get(NodeKey(req, node)).Return(nil).Times(1)
+		mockCache.EXPECT().Get(EdgeCacheKey(req, edges[0])).Return(nil).Times(1)
+		mockCache.EXPECT().Get(EdgeCacheKey(req, edges[1])).Return(nil).Times(1)
 
-		edges, err := mg.FlattenNode(node, "user", false, false)
-		require.NoError(t, err)
-		require.True(t, ok)
+		mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+			DoAndReturn(func(ctx context.Context, _ string, _ storage.ReadUserTupleFilter, _ storage.ReadUserTupleOptions) (*openfgav1.Tuple, error) {
+				cancel()
+				return nil, ctx.Err()
+			}).MaxTimes(2)
+
+		resolver := New(Config{
+			Model:            mg,
+			Datastore:        mockDatastore,
+			Cache:            mockCache,
+			ConcurrencyLimit: 10,
+		})
 
 		logicalEdges := resolver.GatherLogicalEdges(req, node, edges)
 
-		res, err := resolver.ResolveUnionEdges(context.Background(), req, logicalEdges, nil)
+		res, err := resolver.ResolveUnionEdges(ctx, req, logicalEdges, nil)
 		require.Error(t, err)
 		require.ErrorIs(t, err, context.Canceled)
 		require.Nil(t, res)
@@ -474,8 +501,6 @@ func TestResolveUnionEdges(t *testing.T) {
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
 		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
 		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
-
-		mockCache.EXPECT().Get(gomock.Any()).Return(nil).Times(1)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
            model
@@ -624,17 +649,7 @@ func TestResolveUnionEdges(t *testing.T) {
 		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
 
-		mockCache.EXPECT().Get(gomock.Any()).Return(nil).AnyTimes()
-		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
-
 		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
-
-		// MinTimes(1) confirms goroutines reached the datastore, so Times(0) on Set is not vacuous.
-		// The mocks ignore ctx, so the cancelled context doesn't prevent these calls.
-		mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
-			Return(nil, storage.ErrNotFound).MinTimes(1)
-		mockDatastore.EXPECT().ReadUsersetTuples(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
-			Return(storage.NewStaticTupleIterator(nil), nil).MinTimes(1)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
            model
@@ -684,7 +699,8 @@ func TestResolveUnionEdges(t *testing.T) {
 
 		logicalEdges := resolver.GatherLogicalEdges(req, node, edges)
 
-		_, _ = resolver.ResolveUnionEdges(ctx, req, logicalEdges, nil)
+		_, err = resolver.ResolveUnionEdges(ctx, req, logicalEdges, nil)
+		require.ErrorIs(t, err, context.Canceled)
 	})
 }
 
@@ -969,7 +985,7 @@ func TestResolveIntersection(t *testing.T) {
 			storeID,
 			gomock.Any(),
 			gomock.Any(),
-		).Return(nil, expectedErr).Times(2)
+		).Return(nil, expectedErr).MaxTimes(2)
 
 		node, ok := mg.GetNodeByID("document#viewer")
 		require.True(t, ok)
@@ -1020,13 +1036,6 @@ func TestResolveIntersection(t *testing.T) {
 
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
-
-		mockDatastore.EXPECT().ReadUserTuple(
-			gomock.Any(),
-			storeID,
-			gomock.Any(),
-			gomock.Any(),
-		).Return(nil, ctx.Err()).Times(2)
 
 		node, ok := mg.GetNodeByID("document#viewer")
 		require.True(t, ok)
@@ -1280,7 +1289,7 @@ func TestResolveExclusion(t *testing.T) {
 			storeID,
 			gomock.Any(),
 			gomock.Any(),
-		).Return(nil, storage.ErrNotFound).Times(2)
+		).Return(nil, storage.ErrNotFound).MaxTimes(2)
 
 		edges, ok := mg.GetEdgesFromNodeID("document#viewer")
 		require.True(t, ok)
@@ -1338,7 +1347,7 @@ func TestResolveExclusion(t *testing.T) {
 				return &openfgav1.Tuple{Key: tuple.NewTupleKey("document:1", "editor", "user:maria")}, nil
 			}
 			return &openfgav1.Tuple{Key: tuple.NewTupleKey("document:1", "banned", "user:maria")}, nil
-		}).Times(2)
+		}).MaxTimes(2)
 
 		edges, ok := mg.GetEdgesFromNodeID("document#viewer")
 		require.True(t, ok)
@@ -1457,7 +1466,7 @@ func TestResolveExclusion(t *testing.T) {
 				return nil, expectedErr
 			}
 			return &openfgav1.Tuple{Key: tuple.NewTupleKey("document:1", "banned", "user:maria")}, nil
-		}).Times(2)
+		}).MaxTimes(2)
 
 		edges, ok := mg.GetEdgesFromNodeID("document#viewer")
 		require.True(t, ok)
@@ -1509,19 +1518,7 @@ func TestResolveExclusion(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
 
-		mockDatastore.EXPECT().ReadUserTuple(
-			gomock.Any(),
-			storeID,
-			gomock.Any(),
-			gomock.Any(),
-		).DoAndReturn(func(_ context.Context, _ string, filter storage.ReadUserTupleFilter, _ storage.ReadUserTupleOptions) (*openfgav1.Tuple, error) {
-			if filter.Relation == "banned" {
-				return nil, storage.ErrNotFound
-			}
-			return &openfgav1.Tuple{Key: tuple.NewTupleKey("document:1", "banned", "user:maria")}, nil
-		}).Times(2)
-
-		edges, ok := mg.GetEdgesFromNodeID("document#viewer")
+		edges, ok := mg.GetEdgesFromNodeId("document#viewer")
 		require.True(t, ok)
 
 		res, err := resolver.ResolveExclusion(ctx, req, edges[0].GetTo())
@@ -2009,21 +2006,6 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 		  `)
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
-
-		expectedTuple := &openfgav1.Tuple{
-			Key: tuple.NewTupleKey("document:1", "viewer", "document:2#owner"),
-		}
-
-		mockDatastore.EXPECT().ReadUserTuple(
-			gomock.Any(),
-			storeID,
-			storage.ReadUserTupleFilter{
-				Object:   expectedTuple.GetKey().GetObject(),
-				Relation: expectedTuple.GetKey().GetRelation(),
-				User:     expectedTuple.GetKey().GetUser(),
-			},
-			gomock.Any(),
-		).Return(expectedTuple, nil).Times(1)
 
 		resolver := New(Config{
 			Model:            mg,

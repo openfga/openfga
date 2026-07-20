@@ -112,9 +112,11 @@ func New(cfg Config) *Resolver {
 		r.cache = storage.NewNoopCache()
 	}
 
+	defaultStrategy := NewDefault(cfg.Model, r, cfg.ConcurrencyLimit)
+
 	if r.edgeStrategies == nil {
 		r.edgeStrategies = map[string]EdgeStrategy{
-			DefaultStrategyName:   NewDefault(cfg.Model, r, cfg.ConcurrencyLimit),
+			DefaultStrategyName:   defaultStrategy,
 			WeightTwoStrategyName: NewWeight2(cfg.Model, cfg.Datastore),
 			RecursiveStrategyName: NewRecursive(cfg.Model, cfg.Datastore, cfg.ConcurrencyLimit),
 		}
@@ -122,7 +124,7 @@ func New(cfg Config) *Resolver {
 
 	if r.groupStrategies == nil {
 		r.groupStrategies = map[string]GroupStrategy{
-			DefaultStrategyName: NewDefault(cfg.Model, r, cfg.ConcurrencyLimit),
+			DefaultStrategyName: defaultStrategy,
 			SQLStrategyName:     NewSQL(cfg.Model, cfg.Datastore),
 		}
 	}
@@ -274,6 +276,10 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, edges []
 		attribute.Int("edge_count", len(edges)),
 	))
 	defer span.End()
+
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
 
 	cacheKeys := make([]keys.Key, 0, len(edges))
 
@@ -797,8 +803,6 @@ func (r *Resolver) ResolveExclusionEdges(ctx context.Context, req *Request, edge
 
 	span := trace.SpanFromContext(ctx)
 
-	var expectedMessages int
-
 	var pool errgroup.Group
 	pool.SetLimit(2)
 
@@ -812,7 +816,6 @@ func (r *Resolver) ResolveExclusionEdges(ctx context.Context, req *Request, edge
 
 	edges = edges[1:]
 
-	expectedMessages++
 	pool.Go(func() error {
 		res, err := r.ResolveLogicalEdge(ctx, req, baseEdge, nil)
 		concurrency.TrySendThroughChannel(ctx, ResponseMsg{Res: res, Err: err}, chBase)
@@ -826,7 +829,6 @@ func (r *Resolver) ResolveExclusionEdges(ctx context.Context, req *Request, edge
 		chSubtract = make(chan ResponseMsg, 1)
 		subtractEdge := edges[0]
 
-		expectedMessages++
 		pool.Go(func() error {
 			res, err := r.ResolveLogicalEdge(ctx, req, subtractEdge, nil)
 			concurrency.TrySendThroughChannel(ctx, ResponseMsg{Res: res, Err: err}, chSubtract)
@@ -835,7 +837,7 @@ func (r *Resolver) ResolveExclusionEdges(ctx context.Context, req *Request, edge
 		})
 	}
 
-	for expectedMessages > 0 {
+	for chBase != nil || chSubtract != nil {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
@@ -844,8 +846,6 @@ func (r *Resolver) ResolveExclusionEdges(ctx context.Context, req *Request, edge
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		case msg, ok := <-chBase:
-			expectedMessages--
-
 			if !ok {
 				chBase = nil // Stop selecting this case.
 				continue
@@ -867,8 +867,6 @@ func (r *Resolver) ResolveExclusionEdges(ctx context.Context, req *Request, edge
 				return msg.Res, nil
 			}
 		case msg, ok := <-chSubtract:
-			expectedMessages--
-
 			if !ok {
 				chSubtract = nil
 				continue
@@ -981,13 +979,20 @@ func (r *Resolver) ResolveLogicalEdge(ctx context.Context, req *Request, logical
 	groupEdge := logicalEdge.(*GroupEdge)
 
 	if r.datastore.Builder(req.Consistency) == nil {
-		switch groupEdge.node.GetLabel() {
-		case graph.UnionOperator:
+		switch groupEdge.node.GetNodeType() {
+		case graph.SpecificTypeAndRelation:
 			return r.groupStrategies[DefaultPlan.Name].Union(ctx, req, groupEdge)
-		case graph.IntersectionOperator:
-			return r.groupStrategies[DefaultPlan.Name].Intersection(ctx, req, groupEdge)
-		case graph.ExclusionOperator:
-			return r.groupStrategies[DefaultPlan.Name].Exclusion(ctx, req, groupEdge)
+		case graph.OperatorNode:
+			switch groupEdge.node.GetLabel() {
+			case graph.UnionOperator:
+				return r.groupStrategies[DefaultPlan.Name].Union(ctx, req, groupEdge)
+			case graph.IntersectionOperator:
+				return r.groupStrategies[DefaultPlan.Name].Intersection(ctx, req, groupEdge)
+			case graph.ExclusionOperator:
+				return r.groupStrategies[DefaultPlan.Name].Exclusion(ctx, req, groupEdge)
+			default:
+				panic("unknown operator node type")
+			}
 		default:
 			return nil, ErrPanicRequest
 		}
@@ -1004,15 +1009,23 @@ func (r *Resolver) ResolveLogicalEdge(ctx context.Context, req *Request, logical
 	plan := selector.Select(candidates)
 
 	return r.executeStrategy(ctx, selector, plan, func() (*Response, error) {
-		switch groupEdge.node.GetLabel() {
-		case graph.UnionOperator:
+		switch groupEdge.node.GetNodeType() {
+		case graph.SpecificTypeAndRelation:
 			return r.groupStrategies[plan.Name].Union(ctx, req, groupEdge)
-		case graph.IntersectionOperator:
-			return r.groupStrategies[plan.Name].Intersection(ctx, req, groupEdge)
-		case graph.ExclusionOperator:
-			return r.groupStrategies[plan.Name].Exclusion(ctx, req, groupEdge)
+		case graph.OperatorNode:
+			switch groupEdge.node.GetLabel() {
+			case graph.UnionOperator:
+				return r.groupStrategies[plan.Name].Union(ctx, req, groupEdge)
+			case graph.IntersectionOperator:
+				return r.groupStrategies[plan.Name].Intersection(ctx, req, groupEdge)
+			case graph.ExclusionOperator:
+				return r.groupStrategies[plan.Name].Exclusion(ctx, req, groupEdge)
+			default:
+				panic("unknown operator node type")
+			}
+		default:
+			return nil, ErrPanicRequest
 		}
-		return nil, ErrPanicRequest
 	})
 }
 

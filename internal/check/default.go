@@ -149,6 +149,7 @@ func (s *DefaultStrategy) execute(ctx context.Context, req *Request, edge *graph
 			if !ok {
 				return &Response{Allowed: false}, err
 			}
+
 			if outcome.Err != nil {
 				err = outcome.Err
 				continue
