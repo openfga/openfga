@@ -155,7 +155,7 @@ func (s *DefaultStrategy) execute(ctx context.Context, req *Request, edge *graph
 				continue
 			}
 
-			if outcome.Res.Allowed {
+			if outcome.Res.GetAllowed() {
 				return outcome.Res, nil
 			}
 		}
