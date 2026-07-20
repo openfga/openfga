@@ -989,6 +989,43 @@ func TestWriteCommand(t *testing.T) {
 			},
 			expectedError: "rpc error: code = Aborted desc = transactional write failed due to conflict",
 		},
+		{
+			name: "deletes_with_ignore_option_retries_write_conflict_then_succeeds",
+			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {
+				gomock.InOrder(
+					mockDatastore.EXPECT().Write(gomock.Any(), storeID, gomock.Any(), gomock.Any(),
+						NewWriteOptsMatcher(storage.OnDuplicateInsertError, storage.OnMissingDeleteIgnore)).Return(storage.ErrWriteConflictOnDelete),
+					mockDatastore.EXPECT().Write(gomock.Any(), storeID, gomock.Any(), gomock.Any(),
+						NewWriteOptsMatcher(storage.OnDuplicateInsertError, storage.OnMissingDeleteIgnore)).Return(nil),
+				)
+			},
+			deletes: &openfgav1.WriteRequestDeletes{
+				TupleKeys: []*openfgav1.TupleKeyWithoutCondition{{
+					Object:   "document:1",
+					Relation: "viewer",
+					User:     "user:maria",
+				}},
+				OnMissing: "ignore",
+			},
+			expectedResponse: &openfgav1.WriteResponse{},
+		},
+		{
+			name: "deletes_with_ignore_option_returns_conflict_after_exhausting_retries",
+			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {
+				mockDatastore.EXPECT().Write(gomock.Any(), storeID, gomock.Any(), gomock.Any(),
+					NewWriteOptsMatcher(storage.OnDuplicateInsertError, storage.OnMissingDeleteIgnore)).
+					Times(maxWriteConflictRetries + 1).Return(storage.ErrWriteConflictOnDelete)
+			},
+			deletes: &openfgav1.WriteRequestDeletes{
+				TupleKeys: []*openfgav1.TupleKeyWithoutCondition{{
+					Object:   "document:1",
+					Relation: "viewer",
+					User:     "user:maria",
+				}},
+				OnMissing: "ignore",
+			},
+			expectedError: "rpc error: code = Aborted desc = transactional write failed due to conflict",
+		},
 	}
 
 	for _, test := range tests {

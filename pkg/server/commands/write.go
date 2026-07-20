@@ -20,11 +20,10 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
-// maxWriteConflictRetries bounds how many times Execute re-attempts a write that failed with
-// storage.ErrWriteConflictOnInsert under on_duplicate:ignore. Because the conflicting transaction
-// has already committed by the time the uniqueness violation surfaces, a single retry is enough
-// to observe the committed row and ignore it; the extra attempts are a safety margin for
-// datastores with weaker insert-time blocking.
+// maxWriteConflictRetries bounds how many times Execute re-attempts an insert or delete conflict
+// when the corresponding operation is configured to ignore an existing or missing tuple. Retrying
+// allows the command to observe the state committed by the conflicting transaction and apply the
+// requested ignore behavior.
 const maxWriteConflictRetries = 3
 
 // WriteCommand is used to Write and Delete tuples. Instances may be safely shared by multiple goroutines.
@@ -95,7 +94,7 @@ func (c *WriteCommand) Execute(ctx context.Context, req *openfgav1.WriteRequest)
 		return nil, err
 	}
 
-	onEmptyDelete, err := parseOptionOnMissing(req.GetDeletes())
+	onMissingDelete, err := parseOptionOnMissing(req.GetDeletes())
 	if err != nil {
 		return nil, err
 	}
@@ -106,22 +105,21 @@ func (c *WriteCommand) Execute(ctx context.Context, req *openfgav1.WriteRequest)
 			req.GetStoreId(),
 			req.GetDeletes().GetTupleKeys(),
 			req.GetWrites().GetTupleKeys(),
-			storage.WithOnMissingDelete(onEmptyDelete),
+			storage.WithOnMissingDelete(onMissingDelete),
 			storage.WithOnDuplicateInsert(onDuplicateInsert),
 		)
 	}
 
 	err = write()
 
-	// With on_duplicate:ignore, concurrent first-time inserts of the same tuple can still collide
-	// at INSERT time: the datastore locks tuples with SELECT ... FOR UPDATE, which cannot lock a
-	// row that does not yet exist, so every racing transaction attempts the INSERT and all but one
-	// fail the uniqueness constraint with ErrWriteConflictOnInsert. Retrying lets the losers observe
-	// the now-committed row and ignore it (or surface a condition conflict if it was written with a
-	// different condition).
-	for retries := 0; onDuplicateInsert == storage.OnDuplicateInsertIgnore &&
-		errors.Is(err, storage.ErrWriteConflictOnInsert) &&
-		retries < maxWriteConflictRetries; retries++ {
+	shouldRetry := func(err error) bool {
+		return (onDuplicateInsert == storage.OnDuplicateInsertIgnore &&
+			errors.Is(err, storage.ErrWriteConflictOnInsert)) ||
+			(onMissingDelete == storage.OnMissingDeleteIgnore &&
+				errors.Is(err, storage.ErrWriteConflictOnDelete))
+	}
+
+	for retries := 0; shouldRetry(err) && retries < maxWriteConflictRetries; retries++ {
 		err = write()
 	}
 
