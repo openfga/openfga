@@ -40,7 +40,7 @@ func TestPlaceholders(t *testing.T) {
 	b := newBuilder()
 	a := b.Tuple("a")
 	q := b.Select(a.ObjectID()).From(a).Where(
-		a.ObjectType().Eq(b.Lit("doc")).And(a.ObjectRelation().Eq(b.Lit("viewer"))),
+		a.ObjectType().Eq(b.Bind("doc")).And(a.ObjectRelation().Eq(b.Bind("viewer"))),
 	)
 	sql, args := build(t, q)
 	want := "SELECT a.object_id FROM tuple a WHERE (a.object_type = ? AND a.relation = ?)"
@@ -85,7 +85,7 @@ func TestStandardColumns(t *testing.T) {
 func TestLike(t *testing.T) {
 	b := newBuilder()
 	a := b.Tuple("a")
-	q := b.Select(a.ObjectID()).From(a).Where(a.ObjectID().Like(b.Lit("doc%")))
+	q := b.Select(a.ObjectID()).From(a).Where(a.ObjectID().Like(b.Bind("doc%")))
 	sql, args := build(t, q)
 	want := "SELECT a.object_id FROM tuple a WHERE a.object_id LIKE ?"
 	assertSQL(t, sql, want, args, "doc%")
@@ -98,7 +98,7 @@ func TestLike(t *testing.T) {
 func TestAggregateFilterNoArgs(t *testing.T) {
 	b := newBuilder()
 	a := b.Tuple("a")
-	count := b.Aggregate(adapter.AggCount).Filter(a.ObjectType().Eq(b.Lit("doc")))
+	count := b.Aggregate(adapter.AggCount).Filter(a.ObjectType().Eq(b.Bind("doc")))
 	q := b.Select(count.As("n")).From(a)
 	sql, args := build(t, q)
 	want := "SELECT COUNT(CASE WHEN a.object_type = ? THEN 1 END) AS n FROM tuple a"
@@ -111,7 +111,7 @@ func TestAggregateFilterWithArg(t *testing.T) {
 	b := newBuilder()
 	a := b.Tuple("a")
 	count := b.Aggregate(adapter.AggCount, a.ObjectID()).
-		Filter(a.ObjectType().Eq(b.Lit("doc")))
+		Filter(a.ObjectType().Eq(b.Bind("doc")))
 	q := b.Select(count.As("n")).From(a)
 	sql, args := build(t, q)
 	want := "SELECT COUNT(CASE WHEN a.object_type = ? THEN a.object_id END) AS n FROM tuple a"
@@ -132,7 +132,7 @@ func TestAggregateNoFilter(t *testing.T) {
 func TestJSONObjectCommaForm(t *testing.T) {
 	b := newBuilder()
 	a := b.Tuple("a")
-	obj := b.Func(adapter.FuncJSONObject, b.Lit("k"), a.ObjectID())
+	obj := b.Func(adapter.FuncJSONObject, b.Bind("k"), a.ObjectID())
 	q := b.Select(obj.As("o")).From(a)
 	sql, args := build(t, q)
 	want := "SELECT JSON_OBJECT(?, a.object_id) AS o FROM tuple a"
@@ -179,9 +179,9 @@ func TestSelectFull(t *testing.T) {
 	a := b.Tuple("t")
 	q := b.Select(a.ObjectID()).
 		From(a).
-		Where(a.ObjectType().Eq(b.Lit("document"))).
+		Where(a.ObjectType().Eq(b.Bind("document"))).
 		GroupBy(a.ObjectID()).
-		Having(b.Aggregate(adapter.AggCount).Gt(b.Lit(1))).
+		Having(b.Aggregate(adapter.AggCount).Gt(b.Bind(1))).
 		OrderBy(a.ObjectID().Desc()).
 		Limit(10).
 		Offset(5)
@@ -208,8 +208,8 @@ func TestJoin(t *testing.T) {
 func TestSetUnion(t *testing.T) {
 	b := newBuilder()
 	a := b.Tuple("a")
-	left := b.Select(a.ObjectID()).From(a).Where(a.ObjectType().Eq(b.Lit("doc")))
-	right := b.Select(a.ObjectID()).From(a).Where(a.ObjectType().Eq(b.Lit("folder")))
+	left := b.Select(a.ObjectID()).From(a).Where(a.ObjectType().Eq(b.Bind("doc")))
+	right := b.Select(a.ObjectID()).From(a).Where(a.ObjectType().Eq(b.Bind("folder")))
 	q := left.Set(adapter.SetUnion, true, right)
 	sql, args := build(t, q)
 	want := "SELECT a.object_id FROM tuple a WHERE a.object_type = ? " +
@@ -222,8 +222,8 @@ func TestSearchedCase(t *testing.T) {
 	b := newBuilder()
 	a := b.Tuple("a")
 	expr := b.Case().
-		When(a.ObjectType().Eq(b.Lit("doc")), b.Lit(1)).
-		Else(b.Lit(0))
+		When(a.ObjectType().Eq(b.Bind("doc")), b.Bind(1)).
+		Else(b.Bind(0))
 	q := b.Select(expr.As("kind")).From(a)
 	sql, args := build(t, q)
 	want := "SELECT CASE WHEN a.object_type = ? THEN ? ELSE ? END AS kind FROM tuple a"
@@ -247,8 +247,35 @@ func TestInList(t *testing.T) {
 	b := newBuilder()
 	a := b.Tuple("a")
 	q := b.Select(a.ObjectID()).From(a).
-		Where(a.ObjectRelation().In(b.Lit("viewer"), b.Lit("editor")))
+		Where(a.ObjectRelation().In(b.Bind("viewer"), b.Bind("editor")))
 	sql, args := build(t, q)
 	want := "SELECT a.object_id FROM tuple a WHERE a.relation IN (?, ?)"
 	assertSQL(t, sql, want, args, "viewer", "editor")
+}
+
+// TestLitInline verifies Lit renders its value inline in the SQL text — strings
+// single-quoted (with embedded quotes doubled), numbers bare — and contributes nothing to
+// the bind-argument list, in contrast to Bind's "?" placeholder.
+func TestLitInline(t *testing.T) {
+	b := newBuilder()
+	a := b.Tuple("a")
+	p := a.ObjectRelation().Eq(b.Lit("viewer")).
+		And(a.ObjectID().Gt(b.Lit(1))).
+		And(a.ObjectType().Eq(b.Lit("O'Brien")))
+	sql, args := build(t, b.Select(a.ObjectID()).From(a).Where(p))
+	want := "SELECT a.object_id FROM tuple a WHERE ((a.relation = 'viewer' AND a.object_id > 1) AND a.object_type = 'O''Brien')"
+	assertSQL(t, sql, want, args)
+}
+
+// TestLitUnsupportedTypePanics verifies Lit rejects a type it cannot safely inline, steering
+// callers to Bind for such values.
+func TestLitUnsupportedTypePanics(t *testing.T) {
+	b := newBuilder()
+	a := b.Tuple("a")
+	defer func() {
+		if recover() == nil {
+			t.Fatal("expected panic for unsupported Lit type")
+		}
+	}()
+	build(t, b.Select(a.ObjectID()).From(a).Where(a.ObjectType().Eq(b.Lit([]byte("x")))))
 }

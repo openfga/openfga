@@ -44,10 +44,10 @@ func TestOpenInMemoryRoundTrip(t *testing.T) {
 	rows, err := b.Select(a.SubjectType(), a.SubjectID(), a.SubjectRelation()).
 		From(a).
 		Where(
-			a.Store().Eq(b.Lit("store1")).
-				And(a.ObjectType().Eq(b.Lit("document"))).
-				And(a.ObjectID().Eq(b.Lit("doc1"))).
-				And(a.ObjectRelation().Eq(b.Lit("viewer"))),
+			a.Store().Eq(b.Bind("store1")).
+				And(a.ObjectType().Eq(b.Bind("document"))).
+				And(a.ObjectID().Eq(b.Bind("doc1"))).
+				And(a.ObjectRelation().Eq(b.Bind("viewer"))),
 		).
 		Execute(ctx)
 	if err != nil {
