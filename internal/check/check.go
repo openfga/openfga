@@ -389,7 +389,7 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, edges []
 			}
 		}
 	}
-	return nil, err
+	return &Response{}, err
 }
 
 func (r *Resolver) SplitWeightOne(terminal string, edges ...*graph.WeightedAuthorizationModelEdge) ([]*graph.WeightedAuthorizationModelEdge, []*graph.WeightedAuthorizationModelEdge) {
