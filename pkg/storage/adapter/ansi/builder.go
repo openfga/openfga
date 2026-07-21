@@ -107,6 +107,12 @@ func (b *builder) Join(jt adapter.JoinType, table adapter.Tuple) adapter.Join {
 	return &joinNode{jt: jt, table: table.(*tupleTable)}
 }
 
+// Build lowers a composed SELECT into its runnable Query. The concrete selectStmt already
+// carries the execution surface, so lowering is just recovering it.
+func (b *builder) Build(stmt adapter.SelectBuilder) adapter.Query {
+	return stmt.(*selectStmt)
+}
+
 // run renders a query node under the builder's dialect and hands the SQL text and bind
 // arguments to the Executor.
 func (b *builder) run(ctx context.Context, q sqlWriter) (adapter.Rows, error) {

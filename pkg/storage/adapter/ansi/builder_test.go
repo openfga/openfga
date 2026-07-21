@@ -45,7 +45,8 @@ func TestExecuteFeedsExecutor(t *testing.T) {
 	b := New(exec)
 	a := b.Tuple("a")
 
-	_, err := b.Select(a.ObjectID()).From(a).Where(a.Store().Eq(b.Bind("s1"))).Execute(context.Background())
+	stmt := b.Select(a.ObjectID()).From(a).Where(a.Store().Eq(b.Bind("s1")))
+	_, err := b.Build(stmt).Execute(context.Background())
 	if !errors.Is(err, want) {
 		t.Fatalf("Execute error: got %v, want %v", err, want)
 	}

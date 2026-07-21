@@ -88,10 +88,6 @@ func (s *selectStmt) Offset(n uint64) adapter.SelectBuilder {
 	return s
 }
 
-func (s *selectStmt) Set(op adapter.SetOp, all bool, other adapter.Query) adapter.SetQueryBuilder {
-	return newSetQuery(s.b, s, op, all, other)
-}
-
 func (s *selectStmt) writeSQL(r *renderer) {
 	r.write("SELECT ")
 	if s.distinct {
@@ -147,7 +143,7 @@ func (s *selectStmt) writeColumns(r *renderer) {
 	}
 }
 
-// --- Query surface shared by selectStmt and setQuery ---
+// --- Query surface ---
 
 func (s *selectStmt) Execute(ctx context.Context) (adapter.Rows, error) {
 	return s.b.run(ctx, s)
@@ -159,82 +155,6 @@ func (s *selectStmt) Build() (string, []any) { return render(s, s.b.dialect) }
 
 func (s *selectStmt) ScalarExpr() adapter.Expression { return scalarSubquery(s) }
 func (s *selectStmt) Exists() adapter.Predicate      { return existsPredicate(s) }
-
-// setQuery composes queries under set operators (UNION / INTERSECT / EXCEPT).
-type setQuery struct {
-	b     *builder
-	left  sqlWriter
-	parts []setPart
-
-	orderBy []sqlWriter
-	limit   *uint64
-	offset  *uint64
-}
-
-type setPart struct {
-	op    adapter.SetOp
-	all   bool
-	query sqlWriter
-}
-
-func newSetQuery(b *builder, left sqlWriter, op adapter.SetOp, all bool, q adapter.Query) *setQuery {
-	return &setQuery{
-		b:     b,
-		left:  left,
-		parts: []setPart{{op: op, all: all, query: queryWriter(q)}},
-	}
-}
-
-func (s *setQuery) Set(op adapter.SetOp, all bool, q adapter.Query) adapter.SetQueryBuilder {
-	s.parts = append(s.parts, setPart{op: op, all: all, query: queryWriter(q)})
-	return s
-}
-
-func (s *setQuery) OrderBy(terms ...adapter.OrderTerm) adapter.SetQueryBuilder {
-	for _, t := range terms {
-		s.orderBy = append(s.orderBy, orderTermWriter(t))
-	}
-	return s
-}
-
-func (s *setQuery) Limit(n uint64) adapter.SetQueryBuilder {
-	s.limit = &n
-	return s
-}
-
-func (s *setQuery) Offset(n uint64) adapter.SetQueryBuilder {
-	s.offset = &n
-	return s
-}
-
-func (s *setQuery) writeSQL(r *renderer) {
-	r.node(s.left)
-	for _, p := range s.parts {
-		r.write(" ")
-		r.write(setSQL(p.op))
-		if p.all {
-			r.write(" ALL")
-		}
-		r.write(" ")
-		r.node(p.query)
-	}
-	if len(s.orderBy) > 0 {
-		r.write(" ORDER BY ")
-		r.list(s.orderBy, ", ")
-	}
-	writeLimitOffset(r, s.limit, s.offset)
-}
-
-func (s *setQuery) Execute(ctx context.Context) (adapter.Rows, error) {
-	return s.b.run(ctx, s)
-}
-
-// Build renders the set operation to SQL text and its bind arguments under the builder's
-// dialect.
-func (s *setQuery) Build() (string, []any) { return render(s, s.b.dialect) }
-
-func (s *setQuery) ScalarExpr() adapter.Expression { return scalarSubquery(s) }
-func (s *setQuery) Exists() adapter.Predicate      { return existsPredicate(s) }
 
 // scalarSubquery wraps a query as a parenthesised scalar expression.
 func scalarSubquery(q sqlWriter) adapter.Expression {

@@ -6,9 +6,10 @@ import (
 	"github.com/openfga/openfga/pkg/storage/adapter"
 )
 
-// renderQuery renders any query produced by this package back to SQL text and bind
-// args. It mirrors what the builder hands its Executor, without a live database.
-func renderQuery(t *testing.T, q adapter.Query) (string, []any) {
+// renderQuery renders any statement or query produced by this package (a SelectBuilder or
+// a lowered Query) back to SQL text and bind args. It mirrors what the builder hands its
+// Executor, without a live database.
+func renderQuery(t *testing.T, q any) (string, []any) {
 	t.Helper()
 	w, ok := q.(sqlWriter)
 	if !ok {
@@ -230,23 +231,11 @@ func TestDistinctOn(t *testing.T) {
 	assertSQL(t, sql, want, args)
 }
 
-func TestSetOperationUnionAll(t *testing.T) {
-	b := newBuilder()
-	a := b.Tuple("a")
-	g := b.Tuple("b")
-	left := b.Select(a.ObjectID()).From(a)
-	right := b.Select(g.ObjectID()).From(g)
-	q := left.Set(adapter.SetUnion, true, right).OrderBy(a.ObjectID().Asc()).Limit(5)
-	sql, args := renderQuery(t, q)
-	want := "SELECT a.object_id FROM tuple a UNION ALL SELECT b.object_id FROM tuple b ORDER BY a.object_id ASC LIMIT 5"
-	assertSQL(t, sql, want, args)
-}
-
 func TestScalarSubqueryAndExists(t *testing.T) {
 	b := newBuilder()
 	a := b.Tuple("a")
 	g := b.Tuple("b")
-	sub := b.Select(g.ObjectID()).From(g).Where(g.Store().Eq(a.Store()))
+	sub := b.Build(b.Select(g.ObjectID()).From(g).Where(g.Store().Eq(a.Store())))
 	q := b.Select(a.ObjectID(), sub.ScalarExpr().As("sub")).
 		From(a).
 		Where(sub.Exists())
@@ -260,7 +249,7 @@ func TestQuantifiedAny(t *testing.T) {
 	b := newBuilder()
 	a := b.Tuple("a")
 	g := b.Tuple("b")
-	sub := b.Select(g.ObjectID()).From(g)
+	sub := b.Build(b.Select(g.ObjectID()).From(g))
 	p := a.ObjectID().Quantified(adapter.OpEq, adapter.QuantifierAny, sub)
 	sql, args := renderQuery(t, b.Select(a.ObjectID()).From(a).Where(p))
 	want := "SELECT a.object_id FROM tuple a WHERE a.object_id = ANY (SELECT b.object_id FROM tuple b)"

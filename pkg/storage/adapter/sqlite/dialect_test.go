@@ -7,9 +7,10 @@ import (
 	"github.com/openfga/openfga/pkg/storage/adapter/ansi"
 )
 
-// build renders a query through the sqlite dialect, returning its SQL and bind arguments.
-// It uses a render-only builder (nil db), exercising the same dialect New installs.
-func build(t *testing.T, q adapter.Query) (string, []any) {
+// build renders a statement or query through the sqlite dialect, returning its SQL and bind
+// arguments. It uses a render-only builder (nil db), exercising the same dialect New
+// installs. It accepts a SelectBuilder or a lowered Query.
+func build(t *testing.T, q any) (string, []any) {
 	t.Helper()
 	bq, ok := q.(ansi.Query)
 	if !ok {
