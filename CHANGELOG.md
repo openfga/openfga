@@ -14,7 +14,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Matched experimental `weighted_graph_check` cache metrics with original Check cache metrics: iterator cache metrics renamed to `tuples_cache_total_count`, `tuples_cache_hit_count`, `tuples_cache_discard_count`, `tuples_cache_size`; query cache metrics added as `check_cache_total_count`, `check_cache_hit_count`, `check_cache_invalid_hit_count`. [#3184](https://github.com/openfga/openfga/pull/3184)
 
 ### Security
-- Update toolchain Go version to 1.26.5 to address CVE-2026-39822 and the other Go standard library vulnerabilities documented in the [Go 1.26.5 release notes](https://go.dev/doc/devel/release#go1.26.5).
+- Update toolchain Go version to 1.26.5 to address CVE-2026-39822 and the other Go standard library vulnerabilities documented in the [Go 1.26.5 release notes](https://go.dev/doc/devel/release#go1.26.5). [#3219](https://github.com/openfga/openfga/pull/3219)
 
 ## [1.18.1] - 2026-06-29
 ### Added
