@@ -859,6 +859,23 @@ condition isOk(ok: bool) { ok }`,
 			errContains: "condition is missing",
 		},
 		{
+			name: "userset_relation_mismatch_on_conditioned_userset_facet",
+			// isOk is bound to `group#member`; a `group#admin` tuple must not borrow it.
+			model: `model
+  schema 1.1
+type user
+type group
+  relations
+    define member: [user]
+    define admin: [user]
+type document
+  relations
+    define b0: [group#admin, group#member with isOk]
+condition isOk(ok: bool) { ok }`,
+			tuple:       tuple.NewTupleKeyWithCondition("document:1", "b0", "group:eng#admin", "isOk", condCtx),
+			errContains: "invalid condition for type restriction",
+		},
+		{
 			name: "valid_wildcard_condition_on_wildcard_facet",
 			model: `model
   schema 1.1
