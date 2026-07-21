@@ -13,6 +13,9 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Changed
 - Matched experimental `weighted_graph_check` cache metrics with original Check cache metrics: iterator cache metrics renamed to `tuples_cache_total_count`, `tuples_cache_hit_count`, `tuples_cache_discard_count`, `tuples_cache_size`; query cache metrics added as `check_cache_total_count`, `check_cache_hit_count`, `check_cache_invalid_hit_count`. [#3184](https://github.com/openfga/openfga/pull/3184)
 
+### Fixed
+- Tuple condition validation now checks that a condition is bound to the specific type-restriction facet (concrete user, typed wildcard, or userset) that matches the tuple's user, not just the user type and condition name. Previously a relation such as `define viewer: [user, user:* with cond]` would accept a tuple like `document:1#viewer@user:alice` carrying `cond`, even though `cond` is only defined on the `user:*` facet. Because this validation also runs when reading tuples during query resolution, such tuples are now consistently rejected across Check and ListObjects. See `internal/validation/validation.go`. [#3218](https://github.com/openfga/openfga/pull/3218)
+
 ## [1.18.1] - 2026-06-29
 ### Added
 - Added diagnostic logging in experimental `weighted_graph_check` when v2 Check resolution might produce a different result than v1 for the same query. These logs surface authorization models that may be affected by a future v1 deprecation, and no operator action is required. [#3149](https://github.com/openfga/openfga/pull/3149)
