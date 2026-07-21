@@ -336,13 +336,13 @@ func (w *walker) evalUnconditioned(ctx context.Context, edges []*graph.WeightedA
 		w.table.ObjectRelation().In(w.relationBinds()...),
 		w.table.Condition().IsNull().Or(w.table.Condition().Eq(w.builder.Lit(""))),
 	)
-	rows, err := w.builder.Select(w.builder.Lit(1)).
+	stmt := w.builder.Select(w.builder.Lit(1)).
 		From(w.table).
 		Where(where...).
 		GroupBy(w.table.ObjectID()).
 		Having(res.pred).
-		Limit(1).
-		Execute(ctx)
+		Limit(1)
+	rows, err := w.builder.Build(stmt).Execute(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -364,7 +364,7 @@ func (w *walker) evalConditioned(ctx context.Context, edges []*graph.WeightedAut
 	if len(w.relations) == 0 {
 		return &Response{Allowed: false}, nil
 	}
-	rows, err := w.builder.Select(
+	stmt := w.builder.Select(
 		w.table.ObjectRelation(),
 		w.table.SubjectID(),
 		w.table.SubjectRelation(),
@@ -372,8 +372,8 @@ func (w *walker) evalConditioned(ctx context.Context, edges []*graph.WeightedAut
 		w.table.ConditionContext(),
 	).
 		From(w.table).
-		Where(append(w.whereShared(), w.table.ObjectRelation().In(w.relationBinds()...))...).
-		Execute(ctx)
+		Where(append(w.whereShared(), w.table.ObjectRelation().In(w.relationBinds()...))...)
+	rows, err := w.builder.Build(stmt).Execute(ctx)
 	if err != nil {
 		return nil, err
 	}

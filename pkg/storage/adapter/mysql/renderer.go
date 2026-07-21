@@ -116,21 +116,6 @@ func joinSQL(jt adapter.JoinType) string {
 	}
 }
 
-func setSQL(op adapter.SetOp) string {
-	switch op {
-	case adapter.SetUnion:
-		return "UNION"
-	case adapter.SetIntersect:
-		// INTERSECT / EXCEPT require MySQL 8.0.31+; the keywords render as-is. The Check
-		// engine does not use them.
-		return "INTERSECT"
-	case adapter.SetExcept:
-		return "EXCEPT"
-	default:
-		panic("pkg/storage/adapter/mysql: unknown SetOp")
-	}
-}
-
 // scalarFuncSQL maps a ScalarFunc to its MySQL function name. The jsonPairs result reports
 // whether the arguments are rendered as comma-separated "k, v" pairs (JSON object
 // construction).

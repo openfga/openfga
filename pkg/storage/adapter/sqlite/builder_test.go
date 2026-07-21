@@ -41,15 +41,15 @@ func TestOpenInMemoryRoundTrip(t *testing.T) {
 	}
 
 	a := b.Tuple("a")
-	rows, err := b.Select(a.SubjectType(), a.SubjectID(), a.SubjectRelation()).
+	stmt := b.Select(a.SubjectType(), a.SubjectID(), a.SubjectRelation()).
 		From(a).
 		Where(
 			a.Store().Eq(b.Bind("store1")).
 				And(a.ObjectType().Eq(b.Bind("document"))).
 				And(a.ObjectID().Eq(b.Bind("doc1"))).
 				And(a.ObjectRelation().Eq(b.Bind("viewer"))),
-		).
-		Execute(ctx)
+		)
+	rows, err := b.Build(stmt).Execute(ctx)
 	if err != nil {
 		t.Fatalf("execute: %v", err)
 	}

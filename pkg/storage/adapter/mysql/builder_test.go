@@ -6,9 +6,10 @@ import (
 	"github.com/openfga/openfga/pkg/storage/adapter"
 )
 
-// build renders a query through the mysql builder, returning its SQL and bind arguments.
-// It uses a render-only builder (nil db), exercising the same rendering New installs.
-func build(t *testing.T, q adapter.Query) (string, []any) {
+// build renders a statement or query through the mysql builder, returning its SQL and bind
+// arguments. It uses a render-only builder (nil db), exercising the same rendering New
+// installs. It accepts a SelectBuilder or a lowered Query.
+func build(t *testing.T, q any) (string, []any) {
 	t.Helper()
 	bq, ok := q.(Query)
 	if !ok {
@@ -204,19 +205,6 @@ func TestJoin(t *testing.T) {
 	assertSQL(t, sql, want, nil)
 }
 
-// TestSetUnion exercises a UNION ALL of two selects.
-func TestSetUnion(t *testing.T) {
-	b := newBuilder()
-	a := b.Tuple("a")
-	left := b.Select(a.ObjectID()).From(a).Where(a.ObjectType().Eq(b.Bind("doc")))
-	right := b.Select(a.ObjectID()).From(a).Where(a.ObjectType().Eq(b.Bind("folder")))
-	q := left.Set(adapter.SetUnion, true, right)
-	sql, args := build(t, q)
-	want := "SELECT a.object_id FROM tuple a WHERE a.object_type = ? " +
-		"UNION ALL SELECT a.object_id FROM tuple a WHERE a.object_type = ?"
-	assertSQL(t, sql, want, args, "doc", "folder")
-}
-
 // TestSearchedCase exercises a searched CASE expression.
 func TestSearchedCase(t *testing.T) {
 	b := newBuilder()
@@ -235,7 +223,7 @@ func TestExistsSubquery(t *testing.T) {
 	b := newBuilder()
 	a := b.Tuple("a")
 	c := b.Tuple("c")
-	sub := b.Select(c.ObjectID()).From(c).Where(c.ObjectID().Eq(a.ObjectID()))
+	sub := b.Build(b.Select(c.ObjectID()).From(c).Where(c.ObjectID().Eq(a.ObjectID())))
 	q := b.Select(a.ObjectID()).From(a).Where(sub.Exists().Not())
 	sql, _ := build(t, q)
 	want := "SELECT a.object_id FROM tuple a WHERE NOT (EXISTS (SELECT c.object_id FROM tuple c WHERE c.object_id = a.object_id))"

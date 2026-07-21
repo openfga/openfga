@@ -145,19 +145,6 @@ func joinSQL(jt adapter.JoinType) string {
 	}
 }
 
-func setSQL(op adapter.SetOp) string {
-	switch op {
-	case adapter.SetUnion:
-		return "UNION"
-	case adapter.SetIntersect:
-		return "INTERSECT"
-	case adapter.SetExcept:
-		return "EXCEPT"
-	default:
-		panic("pkg/storage/adapter/ansi: unknown SetOp")
-	}
-}
-
 // scalarFuncSQL maps a ScalarFunc to its ANSI function name. The jsonPairs result
 // reports whether the arguments are rendered as "k VALUE v" pairs (JSON object
 // construction).

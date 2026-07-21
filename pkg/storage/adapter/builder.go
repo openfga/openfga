@@ -9,24 +9,28 @@
 // never see SQL text or bind arguments.
 //
 // The surface covers a pragmatic subset of ANSI DQL: projections, table references
-// and joins, WHERE / GROUP BY / HAVING, ORDER BY, LIMIT / OFFSET, row locking, set
-// operations, and a full expression and predicate algebra.
+// and joins, WHERE / GROUP BY / HAVING, ORDER BY, LIMIT / OFFSET, and a full expression
+// and predicate algebra.
 //
 // The builder targets a single fixed table, `tuple`, so there are no table- or
 // column-name strings: Builder.Tuple mints an aliased occurrence of that table, and
 // its accessors yield the columns. Every join is a self-join of `tuple`.
 //
-// Builder is the entry point. A typical query reads top-to-bottom and ends in
-// execution:
+// Builder is the entry point. A statement is composed fluently, then lowered to a
+// runnable Query with Builder.Build, which is what executes:
 //
 //	t := b.Tuple("t")
-//	rows, err := b.Select(t.ObjectID(), t.SubjectID()).
+//	stmt := b.Select(t.ObjectID(), t.SubjectID()).
 //		From(t).
 //		Where(t.ObjectType().Eq(b.Bind("document")).
 //			And(t.ObjectRelation().Eq(b.Bind("viewer")))).
 //		OrderBy(t.ObjectID().Desc()).
-//		Limit(10).
-//		Execute(ctx)
+//		Limit(10)
+//	rows, err := b.Build(stmt).Execute(ctx)
+//
+// Splitting composition (SelectBuilder) from execution (Query) lets a Builder be wrapped
+// by overriding only Build (to wrap the Query it returns) and Query.Execute, rather than
+// every fluent SelectBuilder method.
 //
 // Build a leaf value with a Tuple column accessor, Builder.Bind (a parameter placeholder,
 // the safe choice for user-controlled values), Builder.Lit (an inline literal for fixed
@@ -92,6 +96,12 @@ type Builder interface {
 	// Join builds a join clause of the given type against another tuple instance (a
 	// self-join). The condition is attached via the returned Join (On).
 	Join(jt JoinType, table Tuple) Join
+
+	// Build lowers a composed SELECT statement into a runnable Query. This is the seam
+	// that separates statement composition (SelectBuilder) from execution (Query): a
+	// custom Builder can wrap a delegate's Query here — overriding only Build and
+	// Query.Execute — instead of reimplementing every fluent SelectBuilder method.
+	Build(stmt SelectBuilder) Query
 }
 
 // Query is a complete, runnable query — a SELECT or a set operation over SELECTs —
@@ -129,11 +139,10 @@ type Rows interface {
 }
 
 // SelectBuilder composes a single SELECT statement. Every method returns the builder
-// so calls chain fluently; clause methods append unless documented as replacing. It
-// is a Query, so it executes directly or embeds as a subquery / derived table.
+// so calls chain fluently; clause methods append unless documented as replacing. It is
+// not itself runnable: lower it with Builder.Build to obtain a Query that executes
+// directly or embeds as a subquery / derived table.
 type SelectBuilder interface {
-	Query
-
 	// Distinct renders SELECT DISTINCT. With one or more expressions it renders
 	// DISTINCT ON (exprs...).
 	Distinct(on ...Expression) SelectBuilder
@@ -168,25 +177,6 @@ type SelectBuilder interface {
 	// value.
 	Limit(n uint64) SelectBuilder
 	Offset(n uint64) SelectBuilder
-
-	// Set combines this query with another under a set operator, returning a builder
-	// over the combination. all selects the ALL (duplicate-preserving) form.
-	Set(op SetOp, all bool, other Query) SetQueryBuilder
-}
-
-// SetQueryBuilder composes queries combined by set operators, applied left-to-right
-// with ANSI precedence (INTERSECT binds tighter than UNION / EXCEPT) unless
-// parenthesised. It is a Query.
-type SetQueryBuilder interface {
-	Query
-
-	// Set appends "<op> [ALL] <query>" to the combination.
-	Set(op SetOp, all bool, query Query) SetQueryBuilder
-	// OrderBy / Limit / Offset apply to the whole combined result; each term is an
-	// OrderTerm (build one with Expression.Asc / Desc / Order).
-	OrderBy(terms ...OrderTerm) SetQueryBuilder
-	Limit(n uint64) SetQueryBuilder
-	Offset(n uint64) SetQueryBuilder
 }
 
 // Tuple is one aliased occurrence of the sole `tuple` table. It is both a FROM/JOIN
@@ -500,16 +490,4 @@ const (
 	FullOuterJoin
 	// CrossJoinType is "CROSS JOIN".
 	CrossJoinType
-)
-
-// SetOp enumerates the ANSI set operators.
-type SetOp int
-
-const (
-	// SetUnion is UNION.
-	SetUnion SetOp = iota
-	// SetIntersect is INTERSECT.
-	SetIntersect
-	// SetExcept is EXCEPT (left minus right; not commutative).
-	SetExcept
 )
