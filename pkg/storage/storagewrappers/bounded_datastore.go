@@ -14,6 +14,7 @@ import (
 
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/storage/adapter"
 )
 
 const timeWaitingAttribute = "datastore_time_waiting"
@@ -69,6 +70,35 @@ var (
 	}, []string{"operation", "method"})
 )
 
+// boundedQuery wraps a delegate Query so its execution passes through the concurrency
+// bound. Only Execute is overridden; ScalarExpr and Exists (which embed the query as a
+// subquery rather than running it) delegate unchanged.
+type boundedQuery struct {
+	*BoundedTupleReader
+	adapter.Query
+}
+
+func (q *boundedQuery) Execute(ctx context.Context) (adapter.Rows, error) {
+	err := q.bound(ctx, "Builder")
+	if err != nil {
+		return nil, err
+	}
+	defer q.done()
+	return q.Query.Execute(ctx)
+}
+
+type boundedBuilder struct {
+	*BoundedTupleReader
+	adapter.Builder
+}
+
+func (b *boundedBuilder) Build(stmt adapter.SelectBuilder) adapter.Query {
+	return &boundedQuery{
+		b.BoundedTupleReader,
+		b.Builder.Build(stmt),
+	}
+}
+
 type BoundedTupleReader struct {
 	storage.RelationshipTupleReader
 	limiter    chan struct{} // bound concurrency
@@ -103,6 +133,13 @@ func (b *BoundedTupleReader) GetMetadata() Metadata {
 		DatastoreQueryCount: b.countReads.Load(),
 		DatastoreItemCount:  b.countItems.Load(),
 		WasThrottled:        b.throttled.Load(),
+	}
+}
+
+func (b *BoundedTupleReader) Builder(consistency openfgav1.ConsistencyPreference) adapter.Builder {
+	return &boundedBuilder{
+		b,
+		b.RelationshipTupleReader.Builder(consistency),
 	}
 }
 
