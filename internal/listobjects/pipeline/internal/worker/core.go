@@ -356,7 +356,7 @@ func (c *Core) send(ctx context.Context, buffer []string) {
 func (c *Core) Broadcast(ctx context.Context, values Receiver[string]) {
 	buffer, ok := ctx.Value(BufferKey).([]string)
 	if !ok || buffer == nil {
-		buffer = make([]string, c.ChunkSize)
+		buffer = make([]string, 0, c.ChunkSize)
 	}
 	buffer = buffer[:0]
 
