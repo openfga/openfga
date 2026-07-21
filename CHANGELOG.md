@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Try to keep listed changes to a concise bulleted list of simple explanations of changes. Aim for the amount of information needed so that readers can understand where they would look in the codebase to investigate the changes' implementation, or where they would look in the documentation to understand how to make use of the change in practice - better yet, link directly to the docs and provide detailed information there. Only elaborate if doing so is required to avoid breaking changes or experimental features from ruining someone's day.
 
 ## [Unreleased]
+### Fixed
+- Tuple condition validation now checks that a condition is bound to the specific type-restriction facet (concrete user, typed wildcard, or userset) that matches the tuple's user, not just the user type and condition name. Previously a relation such as `define viewer: [user, user:* with cond]` would accept a tuple like `document:1#viewer@user:alice` carrying `cond`, even though `cond` is only defined on the `user:*` facet. Because this validation also runs when reading tuples during query resolution, such tuples are now consistently rejected across Check and ListObjects. See `internal/validation/validation.go`. [#3217](https://github.com/openfga/openfga/pull/3217)
+
 ### Added
 - Extended experimental `weighted_graph_check` diagnostic logging to cover the `wildcard_with_exclusion` and `userset_with_exclusion` shapes: the log now fires when v2 Check rejects one of these shapes and Check falls back to v1, and when v2 Check is skipped entirely because the weighted graph fails to build. These logs surface authorization models that may be affected by a future v1 deprecation, and no operator action is required. [#3204](https://github.com/openfga/openfga/pull/3204)
 
