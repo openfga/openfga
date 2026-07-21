@@ -205,8 +205,8 @@ func validateCondition(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) e
 				if directlyRelatedType.GetWildcard() != nil && !tuple.IsTypedWildcard(tk.GetUser()) {
 					continue
 				}
-			} else if tuple.IsTypedWildcard(tk.GetUser()) {
-				// This is a wildcard tuple but the directlyRelatedType tuple is not for wildcard.
+			} else if tuple.IsTypedWildcard(tk.GetUser()) || userRelation != "" {
+				// The tuple is a wildcard or userset, but this restriction is for a concrete user.
 				continue
 			}
 
@@ -248,7 +248,7 @@ func validateCondition(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) e
 			if directlyRelatedType.GetWildcard() != nil && !tuple.IsTypedWildcard(tk.GetUser()) {
 				continue
 			}
-		} else if tuple.IsTypedWildcard(tk.GetUser()) {
+		} else if tuple.IsTypedWildcard(tk.GetUser()) || userRelation != "" {
 			continue
 		}
 

@@ -777,10 +777,11 @@ func TestValidateConditionFacetMismatch(t *testing.T) {
 	require.NoError(t, err)
 
 	tests := []struct {
-		name    string
-		model   string
-		tuple   *openfgav1.TupleKey
-		wantErr bool
+		name  string
+		model string
+		tuple *openfgav1.TupleKey
+		// errContains is the substring expected in the validation error; "" means the tuple is valid.
+		errContains string
 	}{
 		{
 			name: "wildcard_user_borrows_concrete_facet_condition",
@@ -792,8 +793,8 @@ type document
   relations
     define b0: [user with isOk, user:*]
 condition isOk(ok: bool) { ok }`,
-			tuple:   tuple.NewTupleKeyWithCondition("document:1", "b0", "user:*", "isOk", condCtx),
-			wantErr: true,
+			tuple:       tuple.NewTupleKeyWithCondition("document:1", "b0", "user:*", "isOk", condCtx),
+			errContains: "invalid condition for type restriction",
 		},
 		{
 			name: "concrete_user_borrows_wildcard_facet_condition",
@@ -805,8 +806,8 @@ type document
   relations
     define b0: [user, user:* with isOk]
 condition isOk(ok: bool) { ok }`,
-			tuple:   tuple.NewTupleKeyWithCondition("document:1", "b0", "user:alice", "isOk", condCtx),
-			wantErr: true,
+			tuple:       tuple.NewTupleKeyWithCondition("document:1", "b0", "user:alice", "isOk", condCtx),
+			errContains: "invalid condition for type restriction",
 		},
 		{
 			name: "concrete_user_borrows_userset_facet_condition",
@@ -821,8 +822,41 @@ type document
   relations
     define b0: [user, group#member with isOk]
 condition isOk(ok: bool) { ok }`,
-			tuple:   tuple.NewTupleKeyWithCondition("document:1", "b0", "user:alice", "isOk", condCtx),
-			wantErr: true,
+			tuple:       tuple.NewTupleKeyWithCondition("document:1", "b0", "user:alice", "isOk", condCtx),
+			errContains: "invalid condition for type restriction",
+		},
+		{
+			name: "userset_user_borrows_concrete_facet_condition",
+			// concrete `group` is conditioned; the userset `group#member` facet is not.
+			model: `model
+  schema 1.1
+type user
+type group
+  relations
+    define member: [user]
+type document
+  relations
+    define b0: [group with isOk, group#member]
+condition isOk(ok: bool) { ok }`,
+			tuple:       tuple.NewTupleKeyWithCondition("document:1", "b0", "group:eng#member", "isOk", condCtx),
+			errContains: "invalid condition for type restriction",
+		},
+		{
+			name: "unconditioned_userset_user_matches_concrete_facet",
+			// the userset `group#member` facet requires isOk; the concrete `group` facet does not.
+			// An unconditioned userset tuple must not borrow the unconditioned concrete facet.
+			model: `model
+  schema 1.1
+type user
+type group
+  relations
+    define member: [user]
+type document
+  relations
+    define b0: [group, group#member with isOk]
+condition isOk(ok: bool) { ok }`,
+			tuple:       tuple.NewTupleKey("document:1", "b0", "group:eng#member"),
+			errContains: "condition is missing",
 		},
 		{
 			name: "valid_wildcard_condition_on_wildcard_facet",
@@ -833,8 +867,8 @@ type document
   relations
     define b0: [user, user:* with isOk]
 condition isOk(ok: bool) { ok }`,
-			tuple:   tuple.NewTupleKeyWithCondition("document:1", "b0", "user:*", "isOk", condCtx),
-			wantErr: false,
+			tuple:       tuple.NewTupleKeyWithCondition("document:1", "b0", "user:*", "isOk", condCtx),
+			errContains: "",
 		},
 		{
 			name: "valid_concrete_condition_on_concrete_facet",
@@ -845,8 +879,8 @@ type document
   relations
     define b0: [user with isOk, user:*]
 condition isOk(ok: bool) { ok }`,
-			tuple:   tuple.NewTupleKeyWithCondition("document:1", "b0", "user:alice", "isOk", condCtx),
-			wantErr: false,
+			tuple:       tuple.NewTupleKeyWithCondition("document:1", "b0", "user:alice", "isOk", condCtx),
+			errContains: "",
 		},
 		{
 			name: "valid_userset_condition_on_userset_facet",
@@ -860,8 +894,8 @@ type document
   relations
     define b0: [user, group#member with isOk]
 condition isOk(ok: bool) { ok }`,
-			tuple:   tuple.NewTupleKeyWithCondition("document:1", "b0", "group:eng#member", "isOk", condCtx),
-			wantErr: false,
+			tuple:       tuple.NewTupleKeyWithCondition("document:1", "b0", "group:eng#member", "isOk", condCtx),
+			errContains: "",
 		},
 	}
 
@@ -870,8 +904,8 @@ condition isOk(ok: bool) { ok }`,
 			ts, err := typesystem.New(parser.MustTransformDSLToProto(test.model))
 			require.NoError(t, err)
 			err = ValidateTupleForWrite(ts, test.tuple)
-			if test.wantErr {
-				require.ErrorContains(t, err, "invalid condition for type restriction")
+			if test.errContains != "" {
+				require.ErrorContains(t, err, test.errContains)
 			} else {
 				require.NoError(t, err)
 			}
