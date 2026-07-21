@@ -233,10 +233,27 @@ func validateCondition(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) e
 
 	validCondition := false
 	for _, directlyRelatedType := range typeRestrictions {
-		if directlyRelatedType.GetType() == userType && directlyRelatedType.GetCondition() == tk.GetCondition().GetName() {
-			validCondition = true
-			break
+		if directlyRelatedType.GetType() != userType || directlyRelatedType.GetCondition() != tk.GetCondition().GetName() {
+			continue
 		}
+
+		// The restriction's facet (concrete / typed-wildcard / userset) must also match the
+		// tuple's user shape. Otherwise a condition bound to one facet (e.g. `user:* with C`)
+		// would wrongly validate a tuple for a different facet (e.g. `user:alice with C`).
+		if directlyRelatedType.GetRelationOrWildcard() != nil {
+			if directlyRelatedType.GetRelation() != "" && directlyRelatedType.GetRelation() != userRelation {
+				continue
+			}
+
+			if directlyRelatedType.GetWildcard() != nil && !tuple.IsTypedWildcard(tk.GetUser()) {
+				continue
+			}
+		} else if tuple.IsTypedWildcard(tk.GetUser()) {
+			continue
+		}
+
+		validCondition = true
+		break
 	}
 
 	if !validCondition {
