@@ -233,48 +233,31 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 }
 
 // logBatchCheckBreakingChanges emits a single aggregate log flagging potential
-// v2 (weighted-graph) resolution breaking changes across the whole batch. It
-// mirrors the single-Check detection, minus per-item v2-error attribution:
-// BatchCheck injects CheckQueryV2 as the Checker and handles fallback
-// internally, so the server never sees which items fell back or their v2
-// errors — only an aggregate FallbackCount. We therefore rely on the
-// schema-shape predicates alone, which catch the same shapes as
-// CheckReasonFromV2Error would.
+// v2 (weighted-graph) resolution breaking changes across the whole batch:
+// exclusion shapes via CheckExclusionReason, and (for userset users) the
+// per-user shapes via CheckReason. Errored checks are skipped. Results are
+// emitted as one warn line — a deduplicated `reasons` list plus a
+// `reasons_by_correlation_id` map attributing each flagged check to its reason.
 //
-// Detection precedence per check (matching the single-Check fallback path):
-//  1. Exclusion shapes (userset_with_exclusion / wildcard_with_exclusion) via
-//     CheckExclusionReason — flagged unconditionally, since v2 rejects these at
-//     request time regardless of the v1 answer.
-//  2. Otherwise, for userset users whose result is FALSE, the per-user shapes
-//     via CheckReason.
+// Detection is purely schema-shape and does NOT gate on the check's allowed
+// result: the outcome reflects whichever engine answered (v2 normally, v1 on
+// fallback), so gating on it would silently drop real divergences on the
+// fallback path — the path this telemetry most needs to flag. Being shape-only,
+// the predicates may over-report; confirming against the datastore response is
+// the only way to reduce that noise.
 //
-// Checks that errored are skipped (no meaningful v1 answer to compare). To keep
-// batch logging bounded, the results are emitted as one warn line rather than
-// one line per check: a `reasons` list of the distinct shapes detected, and a
-// `reasons_by_correlation_id` map attributing each flagged check to its reason
-// so operators can pinpoint which items in the batch are affected.
+// The predicates walk the model's rewrite tree, which is the dominant cost. For
+// a fixed type system both reasons are functions of the request's shape (object
+// type, relation, user type[#relation]), not its identifiers, so shapes are
+// memoized and each is walked at most once. Two caches are kept:
 //
-// The shape predicates walk the model's rewrite tree (recursively, across
-// ComputedUserset/TupleToUserset edges on the wildcard path), which is the
-// dominant cost. For a fixed type system, both reasons are functions of the
-// request's *shape* — object type, relation, and user type[#relation] — rather
-// than its concrete identifiers, so identical shapes within a batch are
-// memoized and each distinct shape is walked at most once, bounding the cost by
-// distinct shapes rather than batch size. Two caches are kept because the two
-// reasons key differently:
-//
-//   - exclusionCache (CheckExclusionReason): flagged unconditionally — v2
-//     rejects these shapes at request time regardless of the v1 answer — and
-//     never compares object identity. Its key is pure shape, with no allowed
-//     bit and no identity component, so e.g. document:1@group:eng#member and
-//     document:2@group:sales#member share one entry.
-//
-//   - checkReasonCache (CheckReason): only consulted on the !Allowed userset
-//     path, so the allowed bit is a control-flow gate rather than part of the
-//     key. Its self_referential / computed_userset_self_object shapes depend on
-//     the user's object equalling the target object, so the key adds a
-//     sameObject bool — collapsing the concrete IDs (document:1@document:1#…,
-//     document:2@document:2#…) to a single bit that still keys them together.
+//   - exclusionCache: pure-shape key. CheckExclusionReason never compares object
+//     identity, so e.g. document:1@group:eng#member and document:2@group:sales#member
+//     share one entry.
+//   - checkReasonCache: shape key plus a sameObject bool, since CheckReason's
+//     self_referential / computed_userset_self_object shapes depend on the
+//     user's object equalling the target object — collapsing the concrete IDs to
+//     one bit that still keys them together.
 func (s *Server) logBatchCheckBreakingChanges(ctx context.Context, req *openfgav1.BatchCheckRequest, typesys *typesystem.TypeSystem, result map[commands.CorrelationID]*commands.BatchCheckOutcome) {
 	reasonSet := map[string]struct{}{}
 	reasonsByCorrelationID := map[string]string{}
@@ -303,7 +286,7 @@ func (s *Server) logBatchCheckBreakingChanges(ctx context.Context, req *openfgav
 			exclusionCache[shapeKey] = reason
 		}
 
-		if reason == "" && !outcome.Allowed && tuple.IsObjectRelation(tk.GetUser()) {
+		if reason == "" && tuple.IsObjectRelation(tk.GetUser()) {
 			// CheckReason's self_referential / computed_userset_self_object shapes
 			// depend on the user's object equalling the target object, so add that
 			// as a bool rather than keying on the identifiers themselves.

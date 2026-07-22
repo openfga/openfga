@@ -954,7 +954,8 @@ func TestLogBatchCheckBreakingChanges_AllReasons(t *testing.T) {
 
 // TestLogBatchCheckBreakingChanges_SkipAndGatingBranches covers the branches
 // that suppress a reason: errored checks, checks absent from the result map,
-// the !Allowed gating on the userset CheckReason path, and no-shape checks.
+// and no-shape checks. It also pins that detection is NOT gated on the allowed
+// result — an allowed userset check with a matching shape still logs.
 func TestLogBatchCheckBreakingChanges_SkipAndGatingBranches(t *testing.T) {
 	modelDSL := `
 		model
@@ -968,7 +969,7 @@ func TestLogBatchCheckBreakingChanges_SkipAndGatingBranches(t *testing.T) {
 	`
 	typesys := logBatchTypesystem(t, modelDSL)
 
-	// computed_userset_self_object is a userset shape gated on !Allowed.
+	// computed_userset_self_object is a userset CheckReason shape.
 	shapedCheck := item("shaped", "document:d1", "viewer", "document:d1#writer")
 
 	t.Run("errored_check_is_skipped", func(t *testing.T) {
@@ -986,14 +987,17 @@ func TestLogBatchCheckBreakingChanges_SkipAndGatingBranches(t *testing.T) {
 			"a check absent from the result map must not contribute a reason")
 	})
 
-	t.Run("allowed_userset_check_is_gated_out", func(t *testing.T) {
-		// The userset CheckReason path only fires on !Allowed; an allowed
-		// result on this (non-exclusion) shape must not log.
+	t.Run("allowed_userset_check_still_logs", func(t *testing.T) {
+		// Detection is shape-only: an allowed result on a matching userset shape
+		// is flagged just like a false one, since the outcome may reflect a v1
+		// fallback answer rather than v2's.
 		result := map[commands.CorrelationID]*commands.BatchCheckOutcome{
 			"shaped": {Allowed: true},
 		}
-		require.Nil(t, batchLogFields(t, typesys, []*openfgav1.BatchCheckItem{shapedCheck}, result),
-			"an allowed userset check must be gated out of the non-exclusion path")
+		fields := batchLogFields(t, typesys, []*openfgav1.BatchCheckItem{shapedCheck}, result)
+		require.NotNil(t, fields, "an allowed userset check with a matching shape must still log")
+		require.Equal(t, map[string]string{"shaped": v2breaking.ReasonComputedUsersetSelfObj},
+			fields["reasons_by_correlation_id"])
 	})
 
 	t.Run("no_shape_check_is_skipped", func(t *testing.T) {
