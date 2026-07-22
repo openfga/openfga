@@ -3,7 +3,7 @@ package check
 import (
 	"context"
 	"database/sql"
-	"errors"
+	"slices"
 	"sort"
 
 	"google.golang.org/protobuf/proto"
@@ -16,10 +16,6 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/adapter"
 	"github.com/openfga/openfga/pkg/tuple"
-)
-
-var (
-	ErrSQLUnsupported = errors.New("datastore does not support SQL algorithms")
 )
 
 var _ GroupStrategy = &SQLStrategy{}
@@ -78,6 +74,20 @@ type gatheredRow struct {
 	condCtx    *structpb.Struct
 }
 
+// residual is the outcome of folding a subtree: a definite state, or an unknown state
+// (branchNeedsQuery) optionally carrying the SQL predicate that must hold for the branch to
+// be satisfied. Reducers that cannot express a predicate (contextual and gathered-row
+// evaluation) leave pred nil; the render reducer sets it.
+type residual struct {
+	state branchOutcome
+	pred  adapter.Predicate
+}
+
+// leafReducer reduces a single weight-1 leaf to a residual. The same subtree is folded with
+// three different reducers: contextual-tuple evaluation (short-circuit pass), SQL predicate
+// rendering (existence path), and gathered-row matching (conditioned path).
+type leafReducer func(ctx context.Context, l leaf) (residual, error)
+
 // weight1 answers whether the request's user has the requested relation to the object,
 // evaluating the whole group of weight-1 edges (combined by operation) in a single SQL
 // round-trip. Without conditions, it issues an existence query (SELECT 1 ... HAVING <tree>);
@@ -99,13 +109,19 @@ func (s *SQLStrategy) weight1(ctx context.Context, req *Request, builder adapter
 	obj := req.GetTupleKey().GetObject()
 	w.objectType, w.objectID = tuple.SplitObject(obj)
 
+	// Populate the relation set and the conditioned/wildcard flags up front by visiting every
+	// leaf, so the WHERE filter is complete regardless of how the folds below short-circuit.
+	if err := w.collect(edges); err != nil {
+		return nil, err
+	}
+
 	// Contextual tuples can satisfy (or, via exclusion, deny) the whole subtree without a
 	// database read; evaluate them first and short-circuit if the answer is already determined.
-	outcome, err := w.evalTree(edges, operation, w.evalContextLeaf)
+	res, err := w.fold(ctx, edges, operation, w.reduceContextLeaf)
 	if err != nil {
 		return nil, err
 	}
-	switch outcome {
+	switch res.state {
 	case branchTrue:
 		return &Response{Allowed: true}, nil
 	case branchFalse:
@@ -137,33 +153,62 @@ type walker struct {
 	objectID   string
 
 	// relations accumulates the distinct stored `relation` values referenced by unpruned
-	// leaves, forming the WHERE `relation IN (...)` filter.
+	// leaves, forming the WHERE `relation IN (...)` filter. Populated by collect.
 	relations map[string]struct{}
 	// conditioned is set when any reachable leaf admits a named condition, selecting the
-	// gather path over the existence path.
-	conditioned     bool
+	// gather path over the existence path. Populated by collect.
+	conditioned bool
+	// hasWildcardLeaf is set when any reachable leaf matches the public wildcard subject.
+	// Populated by collect.
 	hasWildcardLeaf bool
 }
 
-// leafFrom derives a leaf descriptor from a terminal direct edge and records its relation
-// and condition/wildcard properties on the walker.
+// leafFrom derives a leaf descriptor from a terminal direct edge. It is pure: the filter
+// state a leaf contributes (relations/conditioned/hasWildcardLeaf) is accumulated separately
+// by collect, so this can be called freely from any fold without side effects.
 func (w *walker) leafFrom(edge *graph.WeightedAuthorizationModelEdge) leaf {
-	l := leaf{
+	return leaf{
 		relation:   tuple.GetRelation(edge.GetRelationDefinition()),
 		wildcard:   edge.GetTo().GetNodeType() == graph.SpecificTypeWildcard,
 		conditions: edge.GetConditions(),
 	}
-	w.relations[l.relation] = struct{}{}
-	if l.wildcard {
-		w.hasWildcardLeaf = true
-	}
-	for _, c := range l.conditions {
-		if c != graph.NoCond {
-			w.conditioned = true
-			break
+}
+
+// collect walks every unpruned leaf in the subtree — without the short-circuiting that fold
+// applies — and records the filter state each leaf contributes. Doing this in a dedicated
+// full pass (rather than as a side effect of fold) keeps the relation set complete no matter
+// how the later folds short-circuit.
+func (w *walker) collect(edges []*graph.WeightedAuthorizationModelEdge) error {
+	for _, edge := range edges {
+		if w.pruned(edge) {
+			continue
+		}
+		switch edge.GetEdgeType() {
+		case graph.DirectEdge:
+			l := w.leafFrom(edge)
+			w.relations[l.relation] = struct{}{}
+			if l.wildcard {
+				w.hasWildcardLeaf = true
+			}
+			for _, c := range l.conditions {
+				if c != graph.NoCond {
+					w.conditioned = true
+					break
+				}
+			}
+		case graph.ComputedEdge, graph.DirectLogicalEdge, graph.TTULogicalEdge, graph.RewriteEdge:
+			children, ok := w.s.model.GetEdgesFromNode(edge.GetTo())
+			if !ok {
+				return ErrPanicRequest
+			}
+			if err := w.collect(children); err != nil {
+				return err
+			}
+		default:
+			return ErrPanicRequest
 		}
 	}
-	return l
+	return nil
 }
 
 // pruned reports whether an edge has no path to the request's user type, mirroring
@@ -172,115 +217,136 @@ func (w *walker) pruned(edge *graph.WeightedAuthorizationModelEdge) bool {
 	if _, ok := w.s.model.GetEdgeWeight(edge, w.userType); !ok {
 		return true
 	}
-	if w.wildcard && !contains(edge.GetWildcards(), w.userType) {
+	if w.wildcard && !slices.Contains(edge.GetWildcards(), w.userType) {
 		return true
 	}
 	return false
 }
 
-// evalTree reduces the subtree formed by edges under operation to a branchOutcome, delegating
-// each leaf to evalLeaf. It is used both for the contextual-tuple short-circuit and for the
-// final combination of gathered (conditioned) results.
-func (w *walker) evalTree(edges []*graph.WeightedAuthorizationModelEdge, operation string, evalLeaf func(leaf) (branchOutcome, error)) (branchOutcome, error) {
+// fold reduces the subtree formed by edges under operation to a residual, delegating each
+// leaf to reduce. State computation (the short-circuiting boolean algebra) is shared by every
+// caller; reducers that yield a predicate (the render path) additionally have those predicates
+// combined into residual.pred, while reducers that yield only a definite/unknown state (the
+// contextual and gathered-result paths) leave pred nil.
+func (w *walker) fold(ctx context.Context, edges []*graph.WeightedAuthorizationModelEdge, operation string, reduce leafReducer) (residual, error) {
 	switch operation {
 	case graph.UnionOperator:
-		result := branchFalse
+		var preds []adapter.Predicate
 		for _, edge := range edges {
-			outcome, err := w.evalEdge(edge, evalLeaf)
+			r, err := w.foldEdge(ctx, edge, reduce)
 			if err != nil {
-				return 0, err
+				return residual{}, err
 			}
-			switch outcome {
+			switch r.state {
 			case branchTrue:
-				return branchTrue, nil
+				return residual{state: branchTrue}, nil
 			case branchNeedsQuery:
-				result = branchNeedsQuery
+				preds = append(preds, r.pred)
 			default: // branchFalse contributes nothing to a union.
 			}
 		}
-		return result, nil
+		return combinePreds(preds, branchFalse, orPred), nil
 	case graph.IntersectionOperator:
-		result := branchTrue
+		var preds []adapter.Predicate
 		for _, edge := range edges {
-			outcome, err := w.evalEdge(edge, evalLeaf)
+			r, err := w.foldEdge(ctx, edge, reduce)
 			if err != nil {
-				return 0, err
+				return residual{}, err
 			}
-			switch outcome {
+			switch r.state {
 			case branchFalse:
-				return branchFalse, nil
+				return residual{state: branchFalse}, nil
 			case branchNeedsQuery:
-				result = branchNeedsQuery
+				preds = append(preds, r.pred)
 			default: // branchTrue contributes nothing to an intersection.
 			}
 		}
-		return result, nil
+		return combinePreds(preds, branchTrue, andPred), nil
 	case graph.ExclusionOperator:
 		if w.wildcard {
-			return 0, ErrWildcardInvalidRequest
+			return residual{}, ErrWildcardInvalidRequest
 		}
 		if len(edges) != 2 {
-			return 0, ErrPanicRequest
+			return residual{}, ErrPanicRequest
 		}
-		base, err := w.evalEdge(edges[0], evalLeaf)
+		base, err := w.foldEdge(ctx, edges[0], reduce)
 		if err != nil {
-			return 0, err
+			return residual{}, err
 		}
-		if base == branchFalse {
-			return branchFalse, nil
+		if base.state == branchFalse {
+			return residual{state: branchFalse}, nil
 		}
-		subtract, err := w.evalEdge(edges[1], evalLeaf)
+		subtract, err := w.foldEdge(ctx, edges[1], reduce)
 		if err != nil {
-			return 0, err
+			return residual{}, err
 		}
-		if subtract == branchTrue {
-			return branchFalse, nil
+		if subtract.state == branchTrue {
+			return residual{state: branchFalse}, nil
 		}
-		// base AND NOT subtract: definite only when both are definite.
-		if base == branchTrue && subtract == branchFalse {
-			return branchTrue, nil
+		if subtract.state == branchFalse {
+			// base AND NOT false == base (definite-true or the base predicate).
+			return base, nil
 		}
-		return branchNeedsQuery, nil
+		// subtract is unknown; base is true or unknown. Both must be expressed in the predicate.
+		if base.state == branchTrue {
+			return residual{state: branchNeedsQuery, pred: notPred(subtract.pred)}, nil
+		}
+		return residual{state: branchNeedsQuery, pred: andPred(base.pred, notPred(subtract.pred))}, nil
 	default:
-		return 0, ErrPanicRequest
+		return residual{}, ErrPanicRequest
 	}
 }
 
-// evalEdge evaluates a single edge: a pruned branch is false, a terminal is evaluated as a
-// leaf, and a rewrite/computed/logical edge recurses into its target node.
-func (w *walker) evalEdge(edge *graph.WeightedAuthorizationModelEdge, evalLeaf func(leaf) (branchOutcome, error)) (branchOutcome, error) {
+// foldEdge folds a single edge: a pruned branch is false, a terminal is reduced as a leaf,
+// and a rewrite/computed/logical edge recurses into its target node.
+func (w *walker) foldEdge(ctx context.Context, edge *graph.WeightedAuthorizationModelEdge, reduce leafReducer) (residual, error) {
 	if w.pruned(edge) {
-		return branchFalse, nil
+		return residual{state: branchFalse}, nil
 	}
 	switch edge.GetEdgeType() {
 	case graph.DirectEdge:
 		// A direct edge always terminates at a type node, which is a weight-1 leaf.
-		return evalLeaf(w.leafFrom(edge))
+		return reduce(ctx, w.leafFrom(edge))
 	case graph.ComputedEdge, graph.DirectLogicalEdge, graph.TTULogicalEdge, graph.RewriteEdge:
-		return w.evalNode(edge.GetTo(), evalLeaf)
+		return w.foldNode(ctx, edge.GetTo(), reduce)
 	default:
-		return 0, ErrPanicRequest
+		return residual{}, ErrPanicRequest
 	}
 }
 
-// evalNode evaluates all edges out of a node. An operator node combines by its label; any
-// other node (a bare relation) combines its definition branches by union.
-func (w *walker) evalNode(node *graph.WeightedAuthorizationModelNode, evalLeaf func(leaf) (branchOutcome, error)) (branchOutcome, error) {
+// foldNode folds all edges out of a node. An operator node combines by its label; any other
+// node (a bare relation) combines its definition branches by union.
+func (w *walker) foldNode(ctx context.Context, node *graph.WeightedAuthorizationModelNode, reduce leafReducer) (residual, error) {
 	edges, ok := w.s.model.GetEdgesFromNode(node)
 	if !ok {
-		return 0, ErrPanicRequest
+		return residual{}, ErrPanicRequest
 	}
 	operation := graph.UnionOperator
 	if node.GetNodeType() == graph.OperatorNode {
 		operation = node.GetLabel()
 	}
-	return w.evalTree(edges, operation, evalLeaf)
+	return w.fold(ctx, edges, operation, reduce)
 }
 
-// evalContextLeaf resolves a leaf against the request's contextual tuples only: branchTrue if a
-// contextual tuple satisfies it (its condition passing), otherwise branchNeedsQuery — absence
+// reduceContextLeaf resolves a leaf against the request's contextual tuples only: branchTrue if
+// a contextual tuple satisfies it (its condition passing), otherwise branchNeedsQuery — absence
 // from the contextual set does not prove absence in the database.
-func (w *walker) evalContextLeaf(l leaf) (branchOutcome, error) {
+func (w *walker) reduceContextLeaf(ctx context.Context, l leaf) (residual, error) {
+	ok, err := w.contextLeafSatisfied(ctx, l)
+	if err != nil {
+		return residual{}, err
+	}
+	if ok {
+		return residual{state: branchTrue}, nil
+	}
+	return residual{state: branchNeedsQuery}, nil
+}
+
+// contextLeafSatisfied reports whether a contextual tuple satisfies the leaf (matching the
+// request subject/object and passing the leaf's condition). An unconditioned leaf carries the
+// NoCond ("") sentinel in l.conditions and an unconditioned tuple has an empty condition name,
+// so evaluateCondition matches and passes it without any per-condition special-casing here.
+func (w *walker) contextLeafSatisfied(ctx context.Context, l leaf) (bool, error) {
 	var candidates []*openfgav1.TupleKey
 	if l.wildcard {
 		cts, ok := w.req.GetContextualTuplesByObjectID(w.req.GetTupleKey().GetObject(), l.relation, w.userType)
@@ -302,22 +368,23 @@ func (w *walker) evalContextLeaf(l leaf) (branchOutcome, error) {
 		}
 	}
 	for _, ct := range candidates {
-		// TODO: what if there are no conditions
-		ok, err := evaluateCondition(context.Background(), w.s.model, l.conditions, ct, w.req.GetContext())
+		ok, err := evaluateCondition(ctx, w.s.model, l.conditions, ct, w.req.GetContext())
 		if err != nil {
-			return 0, err
+			return false, err
 		}
 		if ok {
-			return branchTrue, nil
+			return true, nil
 		}
 	}
-	return branchNeedsQuery, nil
+	return false, nil
 }
 
 // evalUnconditioned answers the no-condition case with a single existence query: SELECT 1 over
-// the referenced relations, grouped by object, with the boolean subtree rendered into HAVING.
+// the referenced relations, with the boolean subtree rendered into HAVING. Because object_id is
+// pinned to a single value by the shared WHERE, the aggregates form one implicit group, so no
+// GROUP BY is needed.
 func (w *walker) evalUnconditioned(ctx context.Context, edges []*graph.WeightedAuthorizationModelEdge, operation string) (*Response, error) {
-	res, err := w.render(edges, operation)
+	res, err := w.fold(ctx, edges, operation, w.reduceRenderLeaf)
 	if err != nil {
 		return nil, err
 	}
@@ -331,7 +398,8 @@ func (w *walker) evalUnconditioned(ctx context.Context, edges []*graph.WeightedA
 
 	// Only unconditioned tuples may satisfy a leaf on the existence path; a conditioned model
 	// would have routed to the gather path, so this narrowing is uniform across every leaf and
-	// lives here in the shared WHERE rather than in each COUNT(CASE).
+	// lives here in the shared WHERE rather than in each COUNT(CASE). The empty-condition
+	// sentinel is a fixed, trusted constant, so it is emitted with Lit rather than Bind.
 	where := append(w.whereShared(),
 		w.table.ObjectRelation().In(w.relationBinds()...),
 		w.table.Condition().IsNull().Or(w.table.Condition().Eq(w.builder.Lit(""))),
@@ -339,7 +407,6 @@ func (w *walker) evalUnconditioned(ctx context.Context, edges []*graph.WeightedA
 	stmt := w.builder.Select(w.builder.Lit(1)).
 		From(w.table).
 		Where(where...).
-		GroupBy(w.table.ObjectID()).
 		Having(res.pred).
 		Limit(1)
 	rows, err := w.builder.Build(stmt).Execute(ctx)
@@ -356,11 +423,11 @@ func (w *walker) evalUnconditioned(ctx context.Context, edges []*graph.WeightedA
 }
 
 // evalConditioned answers the conditioned case: it reads the candidate tuples' attribution and
-// condition columns, evaluates each row's condition in-app, then evaluates the subtree with
-// the per-leaf results.
+// condition columns, evaluates each row's condition in-app, then folds the subtree with the
+// per-leaf results.
 func (w *walker) evalConditioned(ctx context.Context, edges []*graph.WeightedAuthorizationModelEdge, operation string) (*Response, error) {
-	// The relation/wildcard/condition state was already populated by the contextual-tuple
-	// pass in weight1, so the WHERE filter can be built directly.
+	// The relation/wildcard/condition state was already populated by collect in weight1, so the
+	// WHERE filter can be built directly.
 	if len(w.relations) == 0 {
 		return &Response{Allowed: false}, nil
 	}
@@ -402,29 +469,31 @@ func (w *walker) evalConditioned(ctx context.Context, edges []*graph.WeightedAut
 		return nil, err
 	}
 
-	evalLeaf := func(l leaf) (branchOutcome, error) {
-		ok, err := w.leafSatisfied(l, gathered)
+	reduce := func(ctx context.Context, l leaf) (residual, error) {
+		ok, err := w.leafSatisfied(ctx, l, gathered)
 		if err != nil {
-			return 0, err
+			return residual{}, err
 		}
 		if ok {
-			return branchTrue, nil
+			return residual{state: branchTrue}, nil
 		}
-		return branchFalse, nil
+		return residual{state: branchFalse}, nil
 	}
-	outcome, err := w.evalTree(edges, operation, evalLeaf)
+	res, err := w.fold(ctx, edges, operation, reduce)
 	if err != nil {
 		return nil, err
 	}
-	return &Response{Allowed: outcome == branchTrue}, nil
+	return &Response{Allowed: res.state == branchTrue}, nil
 }
 
 // leafSatisfied reports whether a contextual tuple or a gathered database row matches the
-// leaf and passes the leaf's condition.
-func (w *walker) leafSatisfied(l leaf, gathered []gatheredRow) (bool, error) {
-	if outcome, err := w.evalContextLeaf(l); err != nil {
+// leaf and passes the leaf's condition. The contextual re-check here is intentional: it is
+// cheap (contextual tuples are in-memory) and lets a contextual tuple satisfy a leaf that has
+// no matching database row.
+func (w *walker) leafSatisfied(ctx context.Context, l leaf, gathered []gatheredRow) (bool, error) {
+	if ok, err := w.contextLeafSatisfied(ctx, l); err != nil {
 		return false, err
-	} else if outcome == branchTrue {
+	} else if ok {
 		return true, nil
 	}
 
@@ -450,7 +519,7 @@ func (w *walker) leafSatisfied(l leaf, gathered []gatheredRow) (bool, error) {
 			User:      user,
 			Condition: tuple.NewRelationshipCondition(g.condName, g.condCtx),
 		}
-		ok, err := evaluateCondition(context.Background(), w.s.model, l.conditions, tk, w.req.GetContext())
+		ok, err := evaluateCondition(ctx, w.s.model, l.conditions, tk, w.req.GetContext())
 		if err != nil {
 			return false, err
 		}
@@ -461,123 +530,22 @@ func (w *walker) leafSatisfied(l leaf, gathered []gatheredRow) (bool, error) {
 	return false, nil
 }
 
-// residual is the outcome of rendering a subtree to SQL: a definite state, or an
-// unknown state carrying the predicate that must hold for the branch to be satisfied.
-type residual struct {
-	state branchOutcome
-	pred  adapter.Predicate
-}
-
-// render lowers the subtree to a HAVING predicate. Leaves satisfied by contextual tuples
-// fold to constant-true and drop out; the rest render to COUNT(CASE ...) Existence checks
-// combined by the operators.
-func (w *walker) render(edges []*graph.WeightedAuthorizationModelEdge, operation string) (residual, error) {
-	switch operation {
-	case graph.UnionOperator:
-		var preds []adapter.Predicate
-		for _, edge := range edges {
-			r, err := w.renderEdge(edge)
-			if err != nil {
-				return residual{}, err
-			}
-			switch r.state {
-			case branchTrue:
-				return residual{state: branchTrue}, nil
-			case branchNeedsQuery:
-				preds = append(preds, r.pred)
-			default: // branchFalse contributes nothing to a union.
-			}
-		}
-		return combinePreds(preds, branchFalse, func(a, b adapter.Predicate) adapter.Predicate { return a.Or(b) }), nil
-	case graph.IntersectionOperator:
-		var preds []adapter.Predicate
-		for _, edge := range edges {
-			r, err := w.renderEdge(edge)
-			if err != nil {
-				return residual{}, err
-			}
-			switch r.state {
-			case branchFalse:
-				return residual{state: branchFalse}, nil
-			case branchNeedsQuery:
-				preds = append(preds, r.pred)
-			default: // branchTrue contributes nothing to an intersection.
-			}
-		}
-		return combinePreds(preds, branchTrue, func(a, b adapter.Predicate) adapter.Predicate { return a.And(b) }), nil
-	case graph.ExclusionOperator:
-		if w.wildcard {
-			return residual{}, ErrWildcardInvalidRequest
-		}
-		if len(edges) != 2 {
-			return residual{}, ErrPanicRequest
-		}
-		base, err := w.renderEdge(edges[0])
-		if err != nil {
-			return residual{}, err
-		}
-		if base.state == branchFalse {
-			return residual{state: branchFalse}, nil
-		}
-		subtract, err := w.renderEdge(edges[1])
-		if err != nil {
-			return residual{}, err
-		}
-		if subtract.state == branchTrue {
-			return residual{state: branchFalse}, nil
-		}
-		if subtract.state == branchFalse {
-			return base, nil
-		}
-		// subtract is unknown; base is true or unknown.
-		if base.state == branchTrue {
-			return residual{state: branchNeedsQuery, pred: subtract.pred.Not()}, nil
-		}
-		return residual{state: branchNeedsQuery, pred: base.pred.And(subtract.pred.Not())}, nil
-	default:
-		return residual{}, ErrPanicRequest
+// reduceRenderLeaf renders a leaf on the existence path: constant-true if a contextual tuple
+// already satisfies it, otherwise an existence aggregate counting rows for the leaf's relation.
+// The subject and unconditioned-tuple narrowing is uniform across every leaf, so it lives once
+// in the shared WHERE (see evalUnconditioned) rather than in each count's FILTER clause. The
+// contextual re-check mirrors leafSatisfied and is intentional (see its doc).
+func (w *walker) reduceRenderLeaf(ctx context.Context, l leaf) (residual, error) {
+	ok, err := w.contextLeafSatisfied(ctx, l)
+	if err != nil {
+		return residual{}, err
 	}
-}
-
-func (w *walker) renderEdge(edge *graph.WeightedAuthorizationModelEdge) (residual, error) {
-	if w.pruned(edge) {
-		return residual{state: branchFalse}, nil
-	}
-	switch edge.GetEdgeType() {
-	case graph.DirectEdge:
-		// A direct edge always terminates at a type node, which is a weight-1 leaf.
-		return w.renderLeaf(w.leafFrom(edge)), nil
-	case graph.ComputedEdge, graph.DirectLogicalEdge, graph.TTULogicalEdge, graph.RewriteEdge:
-		return w.renderNode(edge.GetTo())
-	default:
-		return residual{}, ErrPanicRequest
-	}
-}
-
-func (w *walker) renderNode(node *graph.WeightedAuthorizationModelNode) (residual, error) {
-	edges, ok := w.s.model.GetEdgesFromNode(node)
-	if !ok {
-		return residual{}, ErrPanicRequest
-	}
-	operation := graph.UnionOperator
-	if node.GetNodeType() == graph.OperatorNode {
-		operation = node.GetLabel()
-	}
-	return w.render(edges, operation)
-}
-
-// renderLeaf renders a leaf: constant-true if a contextual tuple already satisfies it,
-// otherwise an existence aggregate counting rows for the leaf's relation. The subject and
-// unconditioned-tuple narrowing is uniform across every leaf on the existence path, so it
-// lives once in the shared WHERE (see evalUnconditioned) rather than in each count's FILTER
-// clause.
-func (w *walker) renderLeaf(l leaf) residual {
-	if outcome, _ := w.evalContextLeaf(l); outcome == branchTrue {
-		return residual{state: branchTrue}
+	if ok {
+		return residual{state: branchTrue}, nil
 	}
 	match := w.table.ObjectRelation().Eq(w.builder.Bind(l.relation))
 	count := w.builder.Aggregate(adapter.AggCount, w.builder.Lit(1)).Filter(match)
-	return residual{state: branchNeedsQuery, pred: count.Gt(w.builder.Lit(0))}
+	return residual{state: branchNeedsQuery, pred: count.Gt(w.builder.Lit(0))}, nil
 }
 
 // whereShared returns the predicates common to every weight-1 query: the store, the
@@ -614,7 +582,9 @@ func (w *walker) relationBinds() []adapter.Expression {
 	return binds
 }
 
-// combinePreds folds preds with join; an empty list yields the given identity state.
+// combinePreds folds preds with join; an empty list yields the given identity state. Reducers
+// that carry no predicate (the contextual and gathered-result paths) contribute nil preds, in
+// which case join returns nil and the result is a bare branchNeedsQuery.
 func combinePreds(preds []adapter.Predicate, empty branchOutcome, join func(a, b adapter.Predicate) adapter.Predicate) residual {
 	if len(preds) == 0 {
 		return residual{state: empty}
@@ -626,11 +596,27 @@ func combinePreds(preds []adapter.Predicate, empty branchOutcome, join func(a, b
 	return residual{state: branchNeedsQuery, pred: acc}
 }
 
-func contains(s []string, v string) bool {
-	for _, e := range s {
-		if e == v {
-			return true
-		}
+// andPred, orPred, and notPred combine predicates that may be nil. Within a single fold every
+// branchNeedsQuery residual is either all-nil (non-render reducers) or all-non-nil (the render
+// reducer), so returning nil when any operand is nil is correct: the render path always yields
+// a real predicate, while the other paths never read one.
+func andPred(a, b adapter.Predicate) adapter.Predicate {
+	if a == nil || b == nil {
+		return nil
 	}
-	return false
+	return a.And(b)
+}
+
+func orPred(a, b adapter.Predicate) adapter.Predicate {
+	if a == nil || b == nil {
+		return nil
+	}
+	return a.Or(b)
+}
+
+func notPred(a adapter.Predicate) adapter.Predicate {
+	if a == nil {
+		return nil
+	}
+	return a.Not()
 }
