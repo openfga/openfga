@@ -183,7 +183,10 @@ func TestSqlWeight1_DirectSQLShape(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Contains(t, rec.SQL, "SELECT 1 FROM tuple t WHERE")
-	require.Contains(t, rec.SQL, "GROUP BY t.object_id HAVING")
+	// object_id is pinned to a single value by the shared WHERE, so the existence query relies on
+	// one implicit group and emits HAVING without a GROUP BY.
+	require.Contains(t, rec.SQL, "HAVING")
+	require.NotContains(t, rec.SQL, "GROUP BY")
 	require.Contains(t, rec.SQL, "LIMIT 1")
 	require.Contains(t, rec.SQL, "COUNT(1) FILTER (WHERE")
 	// The inline SELECT/COUNT/comparison constants bind no parameters, so the store is the
