@@ -1058,3 +1058,64 @@ func TestLogBatchCheckBreakingChanges_MemoizesAndDedupes(t *testing.T) {
 		"c": v2breaking.ReasonComputedUsersetSelfObj,
 	}, byID, "the plain no-shape check is absent")
 }
+
+// TestLogBatchCheckBreakingChanges_MemoizesAcrossDistinctIDs verifies that the
+// shape-only cache keys collapse the concrete object/user identifiers, so
+// requests that differ only in their IDs share a cache entry and are all
+// flagged with the same reason. This is the property that makes the memoization
+// bound the cost by distinct shapes rather than by batch size.
+func TestLogBatchCheckBreakingChanges_MemoizesAcrossDistinctIDs(t *testing.T) {
+	modelDSL := `
+		model
+			schema 1.1
+		type user
+		type group
+			relations
+				define member: [user]
+		type document
+			relations
+				define editor: [user]
+				define writer: [user]
+				define blocked: [user]
+				define viewer: editor or writer
+				define guarded: [group#member] but not blocked
+	`
+	typesys := logBatchTypesystem(t, modelDSL)
+
+	// Every pair below shares a shape but uses distinct object/user IDs:
+	//   - excl-*:  userset_with_exclusion via the exclusionCache (no allowed gate,
+	//              no sameObject component) — group:eng vs group:sales, document:1
+	//              vs document:2.
+	//   - self-*:  computed_userset_self_object via the checkReasonCache, which
+	//              keys on the sameObject bool — document:1#writer on document:1
+	//              vs document:2#writer on document:2.
+	checks := []*openfgav1.BatchCheckItem{
+		item("excl-1", "document:1", "guarded", "group:eng#member"),
+		item("excl-2", "document:2", "guarded", "group:sales#member"),
+		item("self-1", "document:1", "viewer", "document:1#writer"),
+		item("self-2", "document:2", "viewer", "document:2#writer"),
+	}
+	result := map[commands.CorrelationID]*commands.BatchCheckOutcome{
+		// The exclusion checks are flagged regardless of the allowed bit; use
+		// different values to prove allowed is not part of the exclusion key.
+		"excl-1": {Allowed: true},
+		"excl-2": {Allowed: false},
+		"self-1": {Allowed: false},
+		"self-2": {Allowed: false},
+	}
+
+	fields := batchLogFields(t, typesys, checks, result)
+	require.NotNil(t, fields)
+
+	require.EqualValues(t, 4, fields["matched_checks"],
+		"every check is flagged even though shapes are shared across distinct IDs")
+
+	byID, ok := fields["reasons_by_correlation_id"].(map[string]string)
+	require.True(t, ok)
+	require.Equal(t, map[string]string{
+		"excl-1": v2breaking.ReasonUsersetWithExclusion,
+		"excl-2": v2breaking.ReasonUsersetWithExclusion,
+		"self-1": v2breaking.ReasonComputedUsersetSelfObj,
+		"self-2": v2breaking.ReasonComputedUsersetSelfObj,
+	}, byID)
+}

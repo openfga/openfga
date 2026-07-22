@@ -256,17 +256,33 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 //
 // The shape predicates walk the model's rewrite tree (recursively, across
 // ComputedUserset/TupleToUserset edges on the wildcard path), which is the
-// dominant cost. Since the reason is a pure function of the tuple key and the
-// check's allowed result (for a fixed type system), identical shapes within a
-// batch are memoized so each distinct shape is walked at most once — bounding
-// the cost by distinct shapes rather than batch size.
+// dominant cost. For a fixed type system, both reasons are functions of the
+// request's *shape* — object type, relation, and user type[#relation] — rather
+// than its concrete identifiers, so identical shapes within a batch are
+// memoized and each distinct shape is walked at most once, bounding the cost by
+// distinct shapes rather than batch size. Two caches are kept because the two
+// reasons key differently:
+//
+//   - exclusionCache (CheckExclusionReason): flagged unconditionally — v2
+//     rejects these shapes at request time regardless of the v1 answer — and
+//     never compares object identity. Its key is pure shape, with no allowed
+//     bit and no identity component, so e.g. document:1@group:eng#member and
+//     document:2@group:sales#member share one entry.
+//
+//   - checkReasonCache (CheckReason): only consulted on the !Allowed userset
+//     path, so the allowed bit is a control-flow gate rather than part of the
+//     key. Its self_referential / computed_userset_self_object shapes depend on
+//     the user's object equalling the target object, so the key adds a
+//     sameObject bool — collapsing the concrete IDs (document:1@document:1#…,
+//     document:2@document:2#…) to a single bit that still keys them together.
 func (s *Server) logBatchCheckBreakingChanges(ctx context.Context, req *openfgav1.BatchCheckRequest, typesys *typesystem.TypeSystem, result map[commands.CorrelationID]*commands.BatchCheckOutcome) {
 	reasonSet := map[string]struct{}{}
 	reasonsByCorrelationID := map[string]string{}
-	// reasonCache memoizes the (possibly empty) reason for a given shape key so
-	// repeated shapes in the batch skip the rewrite-tree walk. Empty reasons are
-	// cached too, so repeated no-match checks are equally cheap.
-	reasonCache := map[string]string{}
+	// Both caches memoize the (possibly empty) reason for a shape key so repeated
+	// shapes in the batch skip the rewrite-tree walk. Empty reasons are cached
+	// too, so repeated no-match checks are equally cheap.
+	exclusionCache := map[string]string{}
+	checkReasonCache := map[string]string{}
 
 	for _, check := range req.GetChecks() {
 		outcome := result[commands.CorrelationID(check.GetCorrelationId())]
@@ -275,17 +291,32 @@ func (s *Server) logBatchCheckBreakingChanges(ctx context.Context, req *openfgav
 		}
 
 		tk := check.GetTupleKey()
-		// The reason depends only on the tuple key and the allowed bit (the type
-		// system is fixed for the request), so those fully determine the shape.
-		shapeKey := tk.GetObject() + "#" + tk.GetRelation() + "@" + tk.GetUser() + "|" + strconv.FormatBool(outcome.Allowed)
-		reason, cached := reasonCache[shapeKey]
+		userObject, userRelation := tuple.SplitObjectRelation(tk.GetUser())
+		// Pure-shape key: object type, relation, and user type[#relation]. No
+		// identifiers and no allowed bit, so requests differing only in their
+		// concrete IDs share an entry.
+		shapeKey := tuple.GetType(tk.GetObject()) + "#" + tk.GetRelation() + "@" + tuple.GetType(userObject) + "#" + userRelation
+
+		reason, cached := exclusionCache[shapeKey]
 		if !cached {
 			reason = v2breaking.CheckExclusionReason(typesys, tk)
-			if reason == "" && !outcome.Allowed && tuple.IsObjectRelation(tk.GetUser()) {
-				reason = v2breaking.CheckReason(typesys, tk)
-			}
-			reasonCache[shapeKey] = reason
+			exclusionCache[shapeKey] = reason
 		}
+
+		if reason == "" && !outcome.Allowed && tuple.IsObjectRelation(tk.GetUser()) {
+			// CheckReason's self_referential / computed_userset_self_object shapes
+			// depend on the user's object equalling the target object, so add that
+			// as a bool rather than keying on the identifiers themselves.
+			sameObject := userObject == tk.GetObject()
+			checkKey := shapeKey + "|" + strconv.FormatBool(sameObject)
+			r, ok := checkReasonCache[checkKey]
+			if !ok {
+				r = v2breaking.CheckReason(typesys, tk)
+				checkReasonCache[checkKey] = r
+			}
+			reason = r
+		}
+
 		if reason == "" {
 			continue
 		}
