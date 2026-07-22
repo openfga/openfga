@@ -357,6 +357,75 @@ func TestSqlWeight1Integration_StaleConditionOnPlainRelation(t *testing.T) {
 	require.False(t, e.run(t, g, []*openfgav1.TupleKey{stale}, "document:1", "viewer", "user:alice", nil))
 }
 
+// TestSqlWeight1Integration_GatherFiltersUnknownCondition drives the gather path over a relation
+// admitting one condition while a stored tuple carries a different model condition the edge does
+// not admit. The gather query's condition filter must exclude that tuple, so the request is
+// denied and the tuple never reaches in-app CEL evaluation. A tuple with the admitted condition
+// still satisfies the request, proving the filter does not over-narrow.
+func TestSqlWeight1Integration_GatherFiltersUnknownCondition(t *testing.T) {
+	e := setupPgEnv(t)
+	g := mustGraph(t, `
+		model
+			schema 1.1
+		type user
+		type document
+			relations
+				define viewer: [user with cond]
+		condition cond(x: int) { x > 0 }
+		condition other(x: int) { x > 0 }`)
+
+	t.Run("denied_for_unadmitted_condition", func(t *testing.T) {
+		wrong := tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:alice", "other", nil)
+		require.False(t, e.run(t, g, []*openfgav1.TupleKey{wrong}, "document:1", "viewer", "user:alice", map[string]any{"x": 1}))
+	})
+	t.Run("granted_for_admitted_condition", func(t *testing.T) {
+		right := tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:alice", "cond", nil)
+		require.True(t, e.run(t, g, []*openfgav1.TupleKey{right}, "document:1", "viewer", "user:alice", map[string]any{"x": 1}))
+	})
+}
+
+// TestSqlWeight1Integration_GatherPairsConditionsPerRelation drives the gather path over two
+// relations with disjoint condition sets — rel1 admits [user, user with condA], rel2 admits
+// [user with condB] — and proves conditions are paired per relation. A rel1 tuple carrying condB
+// and a rel2 tuple carrying no condition are each individually within the referenced relation and
+// condition sets, yet neither pairing is admitted by the model, so both must be excluded by the
+// gather query. Tuples with the correct pairing still grant, proving no over-narrowing.
+func TestSqlWeight1Integration_GatherPairsConditionsPerRelation(t *testing.T) {
+	e := setupPgEnv(t)
+	g := mustGraph(t, `
+		model
+			schema 1.1
+		type user
+		type document
+			relations
+				define rel1: [user, user with condA]
+				define rel2: [user with condB]
+				define viewer: rel1 or rel2
+		condition condA(x: int) { x > 0 }
+		condition condB(x: int) { x > 0 }`)
+
+	t.Run("denied_rel1_with_rel2s_condition", func(t *testing.T) {
+		wrong := tuple.NewTupleKeyWithCondition("document:1", "rel1", "user:alice", "condB", nil)
+		require.False(t, e.run(t, g, []*openfgav1.TupleKey{wrong}, "document:1", "viewer", "user:alice", map[string]any{"x": 1}))
+	})
+	t.Run("denied_rel2_unconditioned", func(t *testing.T) {
+		wrong := tuple.NewTupleKey("document:1", "rel2", "user:alice")
+		require.False(t, e.run(t, g, []*openfgav1.TupleKey{wrong}, "document:1", "viewer", "user:alice", map[string]any{"x": 1}))
+	})
+	t.Run("granted_rel1_with_condA", func(t *testing.T) {
+		right := tuple.NewTupleKeyWithCondition("document:1", "rel1", "user:alice", "condA", nil)
+		require.True(t, e.run(t, g, []*openfgav1.TupleKey{right}, "document:1", "viewer", "user:alice", map[string]any{"x": 1}))
+	})
+	t.Run("granted_rel1_unconditioned", func(t *testing.T) {
+		right := tuple.NewTupleKey("document:1", "rel1", "user:alice")
+		require.True(t, e.run(t, g, []*openfgav1.TupleKey{right}, "document:1", "viewer", "user:alice", nil))
+	})
+	t.Run("granted_rel2_with_condB", func(t *testing.T) {
+		right := tuple.NewTupleKeyWithCondition("document:1", "rel2", "user:alice", "condB", nil)
+		require.True(t, e.run(t, g, []*openfgav1.TupleKey{right}, "document:1", "viewer", "user:alice", map[string]any{"x": 1}))
+	})
+}
+
 // --- contextual-tuple short-circuit ----------------------------------------
 
 func TestSqlWeight1Integration_ContextualShortCircuit(t *testing.T) {
