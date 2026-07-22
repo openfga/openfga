@@ -94,13 +94,13 @@ type leafReducer func(ctx context.Context, l leaf) (residual, error)
 // with conditions it gathers candidate tuples and evaluates their conditions in-app.
 func (s *SQLStrategy) weight1(ctx context.Context, req *Request, builder adapter.Builder, edges []*graph.WeightedAuthorizationModelEdge, operation string) (*Response, error) {
 	w := &walker{
-		s:         s,
-		req:       req,
-		builder:   builder,
-		table:     builder.Tuple("t"),
-		userType:  req.GetUserType(),
-		wildcard:  req.IsTypedWildcard(),
-		relations: map[string]struct{}{},
+		s:        s,
+		req:      req,
+		builder:  builder,
+		table:    builder.Tuple("t"),
+		userType: req.GetUserType(),
+		wildcard: req.IsTypedWildcard(),
+		relConds: map[string]map[string]struct{}{},
 	}
 
 	// Decompose the request subject "type:id[#relation]" (or "type:*") into its parts.
@@ -152,9 +152,14 @@ type walker struct {
 	objectType string
 	objectID   string
 
-	// relations accumulates the distinct stored `relation` values referenced by unpruned
-	// leaves, forming the WHERE `relation IN (...)` filter. Populated by collect.
-	relations map[string]struct{}
+	// relConds maps each stored `relation` referenced by an unpruned leaf to the set of
+	// condition names that relation admits (the NoCond "" sentinel included when a leaf admits
+	// unconditioned tuples). It forms both the WHERE `relation IN (...)` filter and — on the
+	// gather path — the per-relation condition filter, so a tuple whose condition its relation
+	// does not admit is excluded in the database rather than gathered and rejected in-app. The
+	// pairing is per relation: a condition admitted for one relation does not admit it for
+	// another. Populated by collect.
+	relConds map[string]map[string]struct{}
 	// conditioned is set when any reachable leaf admits a named condition, selecting the
 	// gather path over the existence path. Populated by collect.
 	conditioned bool
@@ -164,8 +169,8 @@ type walker struct {
 }
 
 // leafFrom derives a leaf descriptor from a terminal direct edge. It is pure: the filter
-// state a leaf contributes (relations/conditioned/hasWildcardLeaf) is accumulated separately
-// by collect, so this can be called freely from any fold without side effects.
+// state a leaf contributes (relConds/conditioned/hasWildcardLeaf) is accumulated separately by
+// collect, so this can be called freely from any fold without side effects.
 func (w *walker) leafFrom(edge *graph.WeightedAuthorizationModelEdge) leaf {
 	return leaf{
 		relation:   tuple.GetRelation(edge.GetRelationDefinition()),
@@ -186,14 +191,18 @@ func (w *walker) collect(edges []*graph.WeightedAuthorizationModelEdge) error {
 		switch edge.GetEdgeType() {
 		case graph.DirectEdge:
 			l := w.leafFrom(edge)
-			w.relations[l.relation] = struct{}{}
+			conds, ok := w.relConds[l.relation]
+			if !ok {
+				conds = map[string]struct{}{}
+				w.relConds[l.relation] = conds
+			}
 			if l.wildcard {
 				w.hasWildcardLeaf = true
 			}
 			for _, c := range l.conditions {
+				conds[c] = struct{}{}
 				if c != graph.NoCond {
 					w.conditioned = true
-					break
 				}
 			}
 		case graph.ComputedEdge, graph.DirectLogicalEdge, graph.TTULogicalEdge, graph.RewriteEdge:
@@ -428,7 +437,7 @@ func (w *walker) evalUnconditioned(ctx context.Context, edges []*graph.WeightedA
 func (w *walker) evalConditioned(ctx context.Context, edges []*graph.WeightedAuthorizationModelEdge, operation string) (*Response, error) {
 	// The relation/wildcard/condition state was already populated by collect in weight1, so the
 	// WHERE filter can be built directly.
-	if len(w.relations) == 0 {
+	if len(w.relConds) == 0 {
 		return &Response{Allowed: false}, nil
 	}
 	stmt := w.builder.Select(
@@ -439,7 +448,7 @@ func (w *walker) evalConditioned(ctx context.Context, edges []*graph.WeightedAut
 		w.table.ConditionContext(),
 	).
 		From(w.table).
-		Where(append(w.whereShared(), w.table.ObjectRelation().In(w.relationBinds()...))...)
+		Where(append(w.whereShared(), w.gatherFilter())...)
 	rows, err := w.builder.Build(stmt).Execute(ctx)
 	if err != nil {
 		return nil, err
@@ -567,19 +576,83 @@ func (w *walker) whereShared() []adapter.Predicate {
 	return preds
 }
 
-// relationBinds renders the accumulated relation set as a sorted list of bound parameters
-// for the WHERE `relation IN (...)` filter (sorted for deterministic SQL).
-func (w *walker) relationBinds() []adapter.Expression {
-	names := make([]string, 0, len(w.relations))
-	for r := range w.relations {
+// sortedRelations returns the accumulated relation names in deterministic order.
+func (w *walker) sortedRelations() []string {
+	names := make([]string, 0, len(w.relConds))
+	for r := range w.relConds {
 		names = append(names, r)
 	}
 	sort.Strings(names)
+	return names
+}
+
+// relationBinds renders the accumulated relation set as a sorted list of bound parameters
+// for the existence path's WHERE `relation IN (...)` filter.
+func (w *walker) relationBinds() []adapter.Expression {
+	names := w.sortedRelations()
 	binds := make([]adapter.Expression, len(names))
 	for i, r := range names {
 		binds[i] = w.builder.Bind(r)
 	}
 	return binds
+}
+
+// gatherFilter restricts the gather query to tuples whose (relation, condition) pairing the
+// model actually admits. A single global `relation IN (...) AND condition IN (...)` would be
+// wrong: it would admit a tuple whose relation and condition are each individually referenced
+// but by different leaves (e.g. relation rel1 carrying a condition only rel2 admits). Instead it
+// emits a disjunction of per-relation clauses — `(relation = r AND <conds for r>) OR ...` — so
+// each relation is paired only with the conditions its own leaves admit. A tuple carrying a
+// condition its relation does not admit is therefore excluded in the database rather than
+// gathered and rejected in-app. Relations are sorted for deterministic SQL, and collect
+// guarantees at least one relation, so the returned predicate is never empty.
+func (w *walker) gatherFilter() adapter.Predicate {
+	var clauses []adapter.Predicate
+	for _, relation := range w.sortedRelations() {
+		clause := w.table.ObjectRelation().Eq(w.builder.Bind(relation)).And(w.conditionPred(w.relConds[relation]))
+		clauses = append(clauses, clause)
+	}
+	pred := clauses[0]
+	for _, c := range clauses[1:] {
+		pred = pred.Or(c)
+	}
+	return pred
+}
+
+// conditionPred renders the predicate admitting exactly the condition names in conds: the named
+// conditions via `condition IN (...)` plus, when the NoCond sentinel is present (the relation
+// admits unconditioned tuples), the unconditioned rows (`condition IS NULL OR condition = ”`).
+// Names are sorted for deterministic SQL. The empty-condition sentinel is a fixed, trusted
+// constant, so it is emitted with Lit rather than Bind.
+func (w *walker) conditionPred(conds map[string]struct{}) adapter.Predicate {
+	names := make([]string, 0, len(conds))
+	unconditioned := false
+	for c := range conds {
+		if c == graph.NoCond {
+			unconditioned = true
+			continue
+		}
+		names = append(names, c)
+	}
+	sort.Strings(names)
+
+	var preds []adapter.Predicate
+	if len(names) > 0 {
+		binds := make([]adapter.Expression, len(names))
+		for i, c := range names {
+			binds[i] = w.builder.Bind(c)
+		}
+		preds = append(preds, w.table.Condition().In(binds...))
+	}
+	if unconditioned {
+		preds = append(preds, w.table.Condition().IsNull().Or(w.table.Condition().Eq(w.builder.Lit(""))))
+	}
+
+	pred := preds[0]
+	for _, p := range preds[1:] {
+		pred = pred.Or(p)
+	}
+	return pred
 }
 
 // combinePreds folds preds with join; an empty list yields the given identity state. Reducers

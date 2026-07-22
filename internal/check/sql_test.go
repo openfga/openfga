@@ -353,6 +353,128 @@ func TestSqlWeight1_ConditionedGatherShape(t *testing.T) {
 	require.Contains(t, rec.SQL, "t.condition_context")
 	require.NotContains(t, rec.SQL, "HAVING")
 	require.NotContains(t, rec.SQL, "GROUP BY")
+	// The gather is narrowed to the condition the model admits, so tuples carrying an
+	// out-of-model condition are excluded in the database rather than gathered and rejected.
+	require.Contains(t, rec.SQL, "t.condition_name IN")
+	require.Contains(t, rec.Parameters, "cond")
+	// This leaf admits only the named condition (no unconditioned assignment), so there is no
+	// IS NULL disjunct.
+	require.NotContains(t, rec.SQL, "t.condition_name IS NULL")
+}
+
+// TestSqlWeight1_ConditionedGatherFiltersUnknownCondition proves the gather query narrows to the
+// model's condition: a tuple whose condition is absent from the model is filtered out in SQL, so
+// it is never gathered nor evaluated in-app.
+func TestSqlWeight1_ConditionedGatherFiltersUnknownCondition(t *testing.T) {
+	model := `
+		model
+			schema 1.1
+		type user
+		type document
+			relations
+				define viewer: [user with cond]
+		condition cond(x: int) { x > 0 }`
+	g, err := modelgraph.New(testutils.MustTransformDSLToProtoWithID(model))
+	require.NoError(t, err)
+
+	rec := &adaptertest.Recorder{}
+	b := adaptertest.New(rec)
+	s := NewSQL(g, &sqlDatastore{builder: b})
+	req, err := NewRequest(RequestParams{
+		StoreID:  "store1",
+		Model:    g,
+		TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:alice"),
+	})
+	require.NoError(t, err)
+	_, err = s.weight1(context.Background(), req, b, entryEdges(t, g, req, "document:1", "viewer"), graph.UnionOperator)
+	require.NoError(t, err)
+
+	require.Contains(t, rec.SQL, "t.condition_name IN")
+	require.Contains(t, rec.Parameters, "cond")
+}
+
+// TestSqlWeight1_ConditionedGatherMixedConditionFilter proves that when a relation admits both an
+// unconditioned assignment and a conditioned one, the gather admits the named condition or an
+// unconditioned tuple (condition IS NULL / empty) — and nothing else.
+func TestSqlWeight1_ConditionedGatherMixedConditionFilter(t *testing.T) {
+	model := `
+		model
+			schema 1.1
+		type user
+		type document
+			relations
+				define viewer: [user, user with cond]
+		condition cond(x: int) { x > 0 }`
+	g, err := modelgraph.New(testutils.MustTransformDSLToProtoWithID(model))
+	require.NoError(t, err)
+
+	rec := &adaptertest.Recorder{}
+	b := adaptertest.New(rec)
+	s := NewSQL(g, &sqlDatastore{builder: b})
+	req, err := NewRequest(RequestParams{
+		StoreID:  "store1",
+		Model:    g,
+		TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:alice"),
+	})
+	require.NoError(t, err)
+	_, err = s.weight1(context.Background(), req, b, entryEdges(t, g, req, "document:1", "viewer"), graph.UnionOperator)
+	require.NoError(t, err)
+
+	require.Contains(t, rec.SQL, "t.condition_name IN")
+	require.Contains(t, rec.SQL, "t.condition_name IS NULL")
+	require.Contains(t, rec.Parameters, "cond")
+}
+
+// TestSqlWeight1_ConditionedGatherPairsConditionsPerRelation guards the per-relation pairing: with
+// rel1 admitting [user, user with condA] and rel2 admitting [user with condB], the gather must not
+// admit a rel1 tuple carrying condB nor a rel2 tuple with no condition. The filter is therefore a
+// disjunction of per-relation clauses, each relation paired only with its own conditions — never a
+// single global `relation IN (...) AND condition IN (...)`.
+func TestSqlWeight1_ConditionedGatherPairsConditionsPerRelation(t *testing.T) {
+	model := `
+		model
+			schema 1.1
+		type user
+		type document
+			relations
+				define rel1: [user, user with condA]
+				define rel2: [user with condB]
+				define viewer: rel1 or rel2
+		condition condA(x: int) { x > 0 }
+		condition condB(x: int) { x > 0 }`
+	g, err := modelgraph.New(testutils.MustTransformDSLToProtoWithID(model))
+	require.NoError(t, err)
+
+	rec := &adaptertest.Recorder{}
+	b := adaptertest.New(rec)
+	s := NewSQL(g, &sqlDatastore{builder: b})
+	req, err := NewRequest(RequestParams{
+		StoreID:  "store1",
+		Model:    g,
+		TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:alice"),
+	})
+	require.NoError(t, err)
+	_, err = s.weight1(context.Background(), req, b, entryEdges(t, g, req, "document:1", "viewer"), graph.UnionOperator)
+	require.NoError(t, err)
+
+	// Each relation is paired with its own conditions in a dedicated clause, so both conditions
+	// bind but only rel1 carries the unconditioned (IS NULL) disjunct.
+	require.Contains(t, rec.SQL, "t.relation = ?")
+	require.Contains(t, rec.Parameters, "condA")
+	require.Contains(t, rec.Parameters, "condB")
+	require.Contains(t, rec.SQL, "t.condition_name IS NULL")
+	// A single global `relation IN (...)` would signal the conditions are not paired per relation.
+	require.NotContains(t, rec.SQL, "t.relation IN")
+
+	// The pairing binds condA adjacent to rel1 and condB adjacent to rel2 (relations sorted), so a
+	// rel1-with-condB or rel2-with-condA row cannot match.
+	rel1 := indexOf(t, rec.Parameters, "rel1")
+	rel2 := indexOf(t, rec.Parameters, "rel2")
+	condA := indexOf(t, rec.Parameters, "condA")
+	condB := indexOf(t, rec.Parameters, "condB")
+	require.Less(t, rel1, condA, "condA must be bound within rel1's clause")
+	require.Less(t, condA, rel2, "rel2's clause must follow rel1's")
+	require.Less(t, rel2, condB, "condB must be bound within rel2's clause")
 }
 
 func TestSqlWeight1_ConditionedGatherBehavior(t *testing.T) {
@@ -447,4 +569,18 @@ func condCtx(t *testing.T, m map[string]any) []byte {
 	b, err := proto.Marshal(s)
 	require.NoError(t, err)
 	return b
+}
+
+// indexOf returns the position of want in the recorded bind parameters, failing the test if it
+// is absent. It lets a test assert the relative ordering of binds (e.g. that a condition binds
+// within its relation's clause).
+func indexOf(t *testing.T, params []any, want string) int {
+	t.Helper()
+	for i, p := range params {
+		if s, ok := p.(string); ok && s == want {
+			return i
+		}
+	}
+	require.Failf(t, "parameter not found", "expected %q in %v", want, params)
+	return -1
 }
