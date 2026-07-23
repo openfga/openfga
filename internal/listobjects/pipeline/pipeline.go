@@ -3,6 +3,7 @@ package pipeline
 import (
 	"context"
 	"errors"
+	"slices"
 	"sync"
 
 	"go.opentelemetry.io/otel"
@@ -349,11 +350,11 @@ func (b *Builder) Build(
 			continue
 		}
 
-		for i := len(edges) - 1; i >= 0; i-- {
+		for _, v := range slices.Backward(edges) {
 			var newStack stacker
-			newStack.node = edges[i].GetTo()
-			newStack.edge = edges[i]
-			if worker.IsCyclical(edges[i]) {
+			newStack.node = v.GetTo()
+			newStack.edge = v
+			if worker.IsCyclical(v) {
 				newStack.group = current.group
 			}
 			newStack.next = stack

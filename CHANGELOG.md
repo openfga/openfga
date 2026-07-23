@@ -11,6 +11,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Extended experimental `weighted_graph_check` diagnostic logging to cover the `wildcard_with_exclusion` and `userset_with_exclusion` shapes: the log now fires when v2 Check rejects one of these shapes and Check falls back to v1, and when v2 Check is skipped entirely because the weighted graph fails to build. These logs surface authorization models that may be affected by a future v1 deprecation, and no operator action is required. [#3204](https://github.com/openfga/openfga/pull/3204)
 
 ### Changed
+- Added the `modernize` linter and applied its fixes across the codebase, simplifying code using newer Go features with no behavior change. [#3202](https://github.com/openfga/openfga/pull/3202)
 - Matched experimental `weighted_graph_check` cache metrics with original Check cache metrics: iterator cache metrics renamed to `tuples_cache_total_count`, `tuples_cache_hit_count`, `tuples_cache_discard_count`, `tuples_cache_size`; query cache metrics added as `check_cache_total_count`, `check_cache_hit_count`, `check_cache_invalid_hit_count`. [#3184](https://github.com/openfga/openfga/pull/3184)
 
 ### Security

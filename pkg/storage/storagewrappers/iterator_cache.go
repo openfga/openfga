@@ -303,7 +303,7 @@ func (c *CachingIterator) drainInBackground() {
 
 	// Optimization 3: Use singleflight only for actual draining.
 	// This prevents multiple goroutines from draining the same iterator key concurrently.
-	_, _, _ = c.sf.Do(c.cacheKey.String(), func() (interface{}, error) {
+	_, _, _ = c.sf.Do(c.cacheKey.String(), func() (any, error) {
 		for {
 			// Check for timeout before each iteration
 			if drainCtx.Err() != nil {
@@ -348,8 +348,8 @@ func (c *CachingIterator) drainInBackground() {
 
 // extractObjectID extracts the ID portion from "type:id" format.
 func extractObjectID(object string) string {
-	if idx := strings.IndexByte(object, ':'); idx >= 0 {
-		return object[idx+1:]
+	if _, after, ok := strings.Cut(object, ":"); ok {
+		return after
 	}
 	return object
 }

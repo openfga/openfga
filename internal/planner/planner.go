@@ -35,7 +35,7 @@ func New(config *Config) *Planner {
 		stopCleanup:       make(chan struct{}),
 		wg:                sync.WaitGroup{},
 	}
-	p.rngPool.New = func() interface{} {
+	p.rngPool.New = func() any {
 		// Each new RNG is seeded to ensure different sequences.
 		return rand.New(rand.NewSource(time.Now().UnixNano()))
 	}
@@ -53,7 +53,7 @@ func NewNoopPlanner() *Planner {
 		stopCleanup:       make(chan struct{}),
 		wg:                sync.WaitGroup{},
 	}
-	p.rngPool.New = func() interface{} {
+	p.rngPool.New = func() any {
 		// Each new RNG is seeded to ensure different sequences.
 		return rand.New(rand.NewSource(time.Now().UnixNano()))
 	}
@@ -98,7 +98,7 @@ func (p *Planner) evictStaleKeys() {
 
 	// NOTE: Consider also bounding the total number of keys stored.
 
-	p.keys.Range(func(key, value interface{}) bool {
+	p.keys.Range(func(key, value any) bool {
 		kp := value.(*keyPlan)
 		lastAccessed := kp.lastAccessed.Load()
 		if (nowNano - lastAccessed) > evictionThresholdNano {

@@ -42,7 +42,7 @@ func contextWithHandle(ctx context.Context) context.Context {
 }
 
 // SetStoreIDInContext sets the store ID in the provided context based on information from the request.
-func SetStoreIDInContext(ctx context.Context, req interface{}) {
+func SetStoreIDInContext(ctx context.Context, req any) {
 	handle := ctx.Value(storeIDCtxKey)
 	if handle == nil {
 		return
@@ -79,10 +79,10 @@ type reporter struct {
 func (r *reporter) PostCall(error, time.Duration) {}
 
 // PostMsgSend is a placeholder for handling actions after sending a message in streaming requests.
-func (r *reporter) PostMsgSend(interface{}, error, time.Duration) {}
+func (r *reporter) PostMsgSend(any, error, time.Duration) {}
 
 // PostMsgReceive is invoked after receiving a message in streaming requests.
-func (r *reporter) PostMsgReceive(msg interface{}, _ error, _ time.Duration) {
+func (r *reporter) PostMsgReceive(msg any, _ error, _ time.Duration) {
 	if m, ok := msg.(hasGetStoreID); ok {
 		storeID := m.GetStoreId()
 

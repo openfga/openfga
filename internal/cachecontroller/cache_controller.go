@@ -217,14 +217,12 @@ func (c *InMemoryCacheController) InvalidateIfNeeded(ctx context.Context, storeI
 
 	span.SetAttributes(attribute.Bool("cache_controller_invalidation", true))
 
-	c.wg.Add(1)
-	go func() {
+	c.wg.Go(func() {
 		// we do not want to propagate context to avoid early cancellation
 		// and pollute span.
 		c.findChangesAndInvalidateIfNecessary(ctx, storeID)
 		c.inflightInvalidations.Delete(storeID)
-		c.wg.Done()
-	}()
+	})
 }
 
 type changelogResultMsg struct {
@@ -263,12 +261,10 @@ func (c *InMemoryCacheController) findChangesAndInvalidateIfNecessary(parentCtx 
 	defer cancel()
 	done := make(chan changelogResultMsg, 1)
 
-	c.wg.Add(1)
-	go func() {
+	c.wg.Go(func() {
 		changes, _, err := c.findChangesDescending(ctx, storeID)
 		concurrency.TrySendThroughChannel(ctx, changelogResultMsg{err: err, changes: changes}, done)
-		c.wg.Done()
-	}()
+	})
 
 	var changes []*openfgav1.TupleChange
 	select {

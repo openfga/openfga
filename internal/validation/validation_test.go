@@ -1161,7 +1161,7 @@ func BenchmarkValidateTupleForWrite(b *testing.B) {
 func TestValidateStruct(t *testing.T) {
 	tests := []struct {
 		name    string
-		context map[string]interface{}
+		context map[string]any
 		wantErr bool
 	}{
 		{
@@ -1171,43 +1171,43 @@ func TestValidateStruct(t *testing.T) {
 		},
 		{
 			name:    "clean_context",
-			context: map[string]interface{}{"key": "value"},
+			context: map[string]any{"key": "value"},
 			wantErr: false,
 		},
 		{
 			name:    "control_char_in_key",
-			context: map[string]interface{}{"key\x00bad": "value"},
+			context: map[string]any{"key\x00bad": "value"},
 			wantErr: true,
 		},
 		{
 			name:    "control_char_in_string_value",
-			context: map[string]interface{}{"key": "value\x01bad"},
+			context: map[string]any{"key": "value\x01bad"},
 			wantErr: true,
 		},
 		{
 			name: "control_char_in_nested_struct_key",
-			context: map[string]interface{}{
-				"nested": map[string]interface{}{"inner\x02key": "value"},
+			context: map[string]any{
+				"nested": map[string]any{"inner\x02key": "value"},
 			},
 			wantErr: true,
 		},
 		{
 			name: "control_char_in_list_value",
-			context: map[string]interface{}{
-				"items": []interface{}{"good", "bad\x03item"},
+			context: map[string]any{
+				"items": []any{"good", "bad\x03item"},
 			},
 			wantErr: true,
 		},
 		{
 			name: "clean_nested_struct",
-			context: map[string]interface{}{
-				"nested": map[string]interface{}{"innerKey": "innerValue"},
+			context: map[string]any{
+				"nested": map[string]any{"innerKey": "innerValue"},
 			},
 			wantErr: false,
 		},
 		{
 			name: "number_and_bool_values_pass",
-			context: map[string]interface{}{
+			context: map[string]any{
 				"count":  42.0,
 				"active": true,
 			},
