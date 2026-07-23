@@ -311,6 +311,88 @@ func ListUsersReason(typesys *typesystem.TypeSystem, object *openfgav1.Object, r
 	return ""
 }
 
+// ListObjectsReason returns a non-empty reason string when the ListObjects
+// request shape matches a known v1→v2 divergence. A userset subject
+// (object#relation) exercises the four per-userset shapes plus
+// userset_with_exclusion; a concrete or wildcard subject can only reach
+// wildcard_with_exclusion.
+//
+// For userset/wildcard subjects the v2 pipeline currently routes to the legacy
+// (v1) algorithm (see the precondition in list_objects.go). They are still
+// reported, but their result might change once ListObjects respects the v2 path.
+func ListObjectsReason(typesys *typesystem.TypeSystem, targetObjectType, relation, subject string) string {
+	if subject == "" {
+		return ""
+	}
+	subjectObject, subjectRelation := tuple.SplitObjectRelation(subject)
+	subjectType := tuple.GetType(subjectObject)
+
+	if subjectRelation != "" {
+		if targetObjectType == subjectType && relation == subjectRelation {
+			return ReasonSelfReferentialUserset
+		}
+		if usersetAliasesTargetRelation(typesys, targetObjectType, relation, subjectType, subjectRelation) {
+			return ReasonAliasUserset
+		}
+	}
+
+	rel, err := typesys.GetRelation(targetObjectType, relation)
+	if err != nil {
+		return ""
+	}
+	rewrite := rel.GetRewrite()
+
+	if subjectRelation != "" {
+		if targetObjectType == subjectType && rewriteContainsComputedUserset(rewrite, subjectRelation) {
+			return ReasonComputedUsersetSelfObj
+		}
+		if rewriteContainsTTUForUser(typesys, targetObjectType, rewrite, subjectType, subjectRelation) {
+			return ReasonTTUUserset
+		}
+		if rewriteContainsDifference(rewrite) {
+			return ReasonUsersetWithExclusion
+		}
+		return ""
+	}
+
+	// Concrete or wildcard subject: only the wildcard-with-exclusion shape is in play.
+	if wildcardReachableUnderDifferenceBase(typesys, targetObjectType, relation, rewrite, subjectType) {
+		return ReasonWildcardWithExclusion
+	}
+	return ""
+}
+
+// ListObjectsResponseConfirmsReason reports whether the ListObjects response is
+// consistent with v1 having actually traversed the divergent path for the given
+// reason. It mirrors ListUsersResponseConfirmsReason and suppresses false-
+// positive logs on shape-matched requests whose responses didn't observably
+// exercise the v1 behaviour.
+//
+// The response is a list of object IDs (the target objects the subject relates
+// to). For the two self-object shapes v1 surfaces the subject's own object
+// (check(o, r, o#r') is unconditionally/structurally TRUE), so the confirmation
+// checks that specific object is present. For the alias, TTU and exclusion
+// shapes we cannot attribute a specific object to the divergent path, so a
+// non-empty response is taken as confirmation that v1 walked it.
+//
+// This lets the breaking-change tests run with the v2 pipeline enabled: today
+// the pipeline routes userset/wildcard subjects to v1 and the divergent object
+// is present, so the log fires; once the v2 pipeline is made consistent with
+// v2 the object will drop out of the response, the log will stop firing, and
+// the tests will fail — signalling they can be removed.
+//
+// Returns true for unknown reasons, so the caller's logic stays simple.
+func ListObjectsResponseConfirmsReason(reason, subject string, objects []string) bool {
+	switch reason {
+	case ReasonSelfReferentialUserset, ReasonComputedUsersetSelfObj:
+		subjectObject, _ := tuple.SplitObjectRelation(subject)
+		return slices.Contains(objects, subjectObject)
+	case ReasonAliasUserset, ReasonTTUUserset, ReasonUsersetWithExclusion, ReasonWildcardWithExclusion:
+		return len(objects) > 0
+	}
+	return true
+}
+
 // ListUsersResponseConfirmsReason reports whether the ListUsers response is
 // consistent with v1 having actually traversed the divergent path for the
 // given reason. It is used to suppress false-positive logs on shape-matched
