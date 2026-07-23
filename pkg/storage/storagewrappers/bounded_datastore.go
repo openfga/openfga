@@ -137,9 +137,13 @@ func (b *BoundedTupleReader) GetMetadata() Metadata {
 }
 
 func (b *BoundedTupleReader) Builder(consistency openfgav1.ConsistencyPreference) adapter.Builder {
+	inner := b.RelationshipTupleReader.Builder(consistency)
+	if inner == nil {
+		return nil
+	}
 	return &boundedBuilder{
 		b,
-		b.RelationshipTupleReader.Builder(consistency),
+		inner,
 	}
 }
 
