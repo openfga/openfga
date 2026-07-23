@@ -76,7 +76,7 @@ func TestResolveUnion(t *testing.T) {
 			LastModified: time.Now(),
 		}
 
-		mockCache.EXPECT().Get(NodeKey(req, node)).Return(cachedTrue).Times(1)
+		mockCache.EXPECT().Get(NodeCacheKey(req, node)).Return(cachedTrue).Times(1)
 
 		res, err := resolver.ResolveUnion(context.Background(), req, node, nil)
 		require.NoError(t, err)
@@ -127,7 +127,7 @@ func TestResolveUnion(t *testing.T) {
 		require.NoError(t, err)
 
 		// simulate a node cache entry with a nil value.
-		mockCache.EXPECT().Get(NodeKey(req, node)).Return(nil).Times(1)
+		mockCache.EXPECT().Get(NodeCacheKey(req, node)).Return(nil).Times(1)
 
 		var i int
 		var ttuEdge *authzGraph.WeightedAuthorizationModelEdge
@@ -173,7 +173,7 @@ func TestResolveUnion(t *testing.T) {
 			},
 		)
 
-		mockCache.EXPECT().Set(NodeKey(req, node), gomock.Any(), gomock.Any()).Times(1)
+		mockCache.EXPECT().Set(NodeCacheKey(req, node), gomock.Any(), gomock.Any()).Times(1)
 
 		resolver := New(Config{
 			Model:                     mg,
@@ -234,7 +234,7 @@ func TestResolveUnion(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, edges, 2)
 
-		mockCache.EXPECT().Get(NodeKey(req, node)).Return(nil).Times(1)
+		mockCache.EXPECT().Get(NodeCacheKey(req, node)).Return(nil).Times(1)
 		mockCache.EXPECT().Get(EdgeCacheKey(req, edges[0])).Return(nil).Times(1)
 		mockCache.EXPECT().Get(EdgeCacheKey(req, edges[1])).Return(nil).Times(1)
 
@@ -247,7 +247,7 @@ func TestResolveUnion(t *testing.T) {
 			mockCache.EXPECT().Set(EdgeCacheKey(req, edges[1]), gomock.Any(), gomock.Any()).Times(1),
 		})
 
-		mockCache.EXPECT().Set(NodeKey(req, node), gomock.Any(), gomock.Any()).Times(1)
+		mockCache.EXPECT().Set(NodeCacheKey(req, node), gomock.Any(), gomock.Any()).Times(1)
 
 		resolver := New(Config{
 			Model:                     mg,
@@ -468,7 +468,7 @@ func TestResolveUnionEdges(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		mockCache.EXPECT().Get(NodeKey(req, node)).Return(nil).Times(1)
+		mockCache.EXPECT().Get(NodeCacheKey(req, node)).Return(nil).Times(1)
 		mockCache.EXPECT().Get(EdgeCacheKey(req, edges[0])).Return(nil).Times(1)
 		mockCache.EXPECT().Get(EdgeCacheKey(req, edges[1])).Return(nil).Times(1)
 
