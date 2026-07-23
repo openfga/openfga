@@ -8,6 +8,7 @@ import (
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -19,8 +20,10 @@ import (
 	"github.com/openfga/openfga/internal/throttler/threshold"
 	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/internal/utils/apimethod"
+	"github.com/openfga/openfga/pkg/middleware/requestid"
 	"github.com/openfga/openfga/pkg/middleware/validator"
 	"github.com/openfga/openfga/pkg/server/commands"
+	"github.com/openfga/openfga/pkg/server/commands/v2breaking"
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -185,6 +188,21 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 
 	checkCounter := float64(result.ResolutionMetadata.CheckCounter.Load())
 	grpc_ctxtags.Extract(ctx).Set(listObjectsCheckCountName, checkCounter)
+
+	// Flag potential v2 (weighted-graph) resolution breaking changes for this
+	// request shape. The predicate is schema-shape only and may over-report; the
+	// response-confirmation check suppresses shape matches whose response didn't
+	// observably exercise the divergent v1 path. See v2breaking.ListObjectsReason
+	// and v2breaking.ListObjectsResponseConfirmsReason.
+	if reason := v2breaking.ListObjectsReason(typesys, targetObjectType, req.GetRelation(), req.GetUser()); reason != "" &&
+		v2breaking.ListObjectsResponseConfirmsReason(reason, req.GetUser(), result.Objects) {
+		s.logger.WarnWithContext(ctx, "potential v2 ListObjects resolution breaking change",
+			zap.String("store_id", storeID),
+			zap.String("model_id", req.GetAuthorizationModelId()),
+			zap.String("request_id", requestid.GetRequestIDFromContext(ctx)),
+			zap.String("reason", reason),
+		)
+	}
 
 	return &openfgav1.ListObjectsResponse{
 		Objects: result.Objects,
