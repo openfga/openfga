@@ -317,10 +317,9 @@ func ListUsersReason(typesys *typesystem.TypeSystem, object *openfgav1.Object, r
 // userset_with_exclusion; a concrete or wildcard subject can only reach
 // wildcard_with_exclusion.
 //
-// For userset/wildcard subjects the v2 pipeline currently punts to the legacy
-// (v1) algorithm (see the precondition in list_objects.go), so these are still
-// reported even though they don't diverge today — they are the shapes whose
-// resolution could change once v2 takes over.
+// For userset/wildcard subjects the v2 pipeline currently routes to the legacy
+// (v1) algorithm (see the precondition in list_objects.go). They are still
+// reported, but their result might change once ListObjects respects the v2 path.
 func ListObjectsReason(typesys *typesystem.TypeSystem, targetObjectType, relation, subject string) string {
 	if subject == "" {
 		return ""
@@ -377,7 +376,7 @@ func ListObjectsReason(typesys *typesystem.TypeSystem, targetObjectType, relatio
 // non-empty response is taken as confirmation that v1 walked it.
 //
 // This lets the breaking-change tests run with the v2 pipeline enabled: today
-// the pipeline punts userset/wildcard subjects to v1 and the divergent object
+// the pipeline routes userset/wildcard subjects to v1 and the divergent object
 // is present, so the log fires; once the v2 pipeline is made consistent with
 // v2 the object will drop out of the response, the log will stop firing, and
 // the tests will fail — signalling they can be removed.

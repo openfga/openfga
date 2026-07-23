@@ -77,7 +77,7 @@ func setupListObjectsServer(t *testing.T, modelDSL string, tuples []*openfgav1.T
 // The subject (ListObjects `user`) plays the role the filter plays in ListUsers,
 // so the cases mirror TestListUsersBreakingChangeLog with the user-side expressed
 // as a subject string. Detection is schema-shape only and intentionally fires
-// even when the v2 pipeline punts userset/wildcard subjects to the legacy
+// even when the v2 pipeline routes userset/wildcard subjects to the legacy
 // algorithm — those are the shapes whose resolution could change once v2 takes
 // over that path.
 func TestListObjectsBreakingChangeLog(t *testing.T) {
@@ -346,10 +346,10 @@ func TestListObjectsBreakingChangeLog(t *testing.T) {
 	}
 
 	// Every divergent shape here uses a userset or wildcard subject, which the
-	// v2 pipeline punts to the legacy algorithm regardless of the flag. Running
+	// v2 pipeline routes to the legacy algorithm regardless of the flag. Running
 	// both modes proves the logging behaves identically today; once the pipeline
-	// stops punting, the pipeline-enabled run's response-confirmation gate will
-	// change and these tests will flag it.
+	// handles these shapes itself, the pipeline-enabled run's response-
+	// confirmation gate will change and these tests will flag it.
 	for _, pipelineEnabled := range []bool{false, true} {
 		t.Run(fmt.Sprintf("pipeline_enabled=%t", pipelineEnabled), func(t *testing.T) {
 			for _, tc := range tests {
