@@ -12,9 +12,11 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ### Changed
 - Matched experimental `weighted_graph_check` cache metrics with original Check cache metrics: iterator cache metrics renamed to `tuples_cache_total_count`, `tuples_cache_hit_count`, `tuples_cache_discard_count`, `tuples_cache_size`; query cache metrics added as `check_cache_total_count`, `check_cache_hit_count`, `check_cache_invalid_hit_count`. [#3184](https://github.com/openfga/openfga/pull/3184)
+- Bumped `github.com/openfga/language/pkg/go` to `v0.3.1` and updated `internal/check` tests to use the renamed `WeightedAuthorizationModelGraph.GetEdgesFromNodeID` (the prior `GetEdgesFromNodeId` is now deprecated). [#3222](https://github.com/openfga/openfga/pull/3222)
 
 ### Security
 - Update toolchain Go version to 1.26.5 and rebuild the embedded `grpc-health-probe` (bumped to `v0.4.53`, built with Go 1.26.5) so released images no longer ship the Go standard library vulnerabilities documented in the [Go 1.26.5 release notes](https://go.dev/doc/devel/release#go1.26.5), including CVE-2026-39822. [#3219](https://github.com/openfga/openfga/pull/3219)
+- Bumped `golang.org/x/text` to `v0.40.0` to resolve [GO-2026-5970](https://pkg.go.dev/vuln/GO-2026-5970) (infinite loop on invalid input in `golang.org/x/text`), reported by `govulncheck` via the SQLite datastore's `sql.Open` path. [#3222](https://github.com/openfga/openfga/pull/3222)
 
 ## [1.18.1] - 2026-06-29
 ### Added
