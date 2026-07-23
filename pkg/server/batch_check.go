@@ -19,10 +19,13 @@ import (
 	"github.com/openfga/openfga/internal/telemetry"
 	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/internal/utils/apimethod"
+	"github.com/openfga/openfga/pkg/middleware/requestid"
 	"github.com/openfga/openfga/pkg/middleware/validator"
 	"github.com/openfga/openfga/pkg/server/commands"
+	"github.com/openfga/openfga/pkg/server/commands/v2breaking"
 	"github.com/openfga/openfga/pkg/server/config"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
+	"github.com/openfga/openfga/pkg/typesystem"
 )
 
 func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckRequest) (*openfgav1.BatchCheckResponse, error) {
@@ -216,10 +219,45 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 		s.emitCheckDurationMetric(graph.ResolveCheckResponseMetadata{DatastoreQueryCount: outcome.DatastoreQueryCount, Duration: outcome.Duration}, methodName)
 	}
 
+	if v2Enabled {
+		s.logBatchCheckBreakingChanges(ctx, req, typesys, result)
+	}
+
 	grpc_ctxtags.Extract(ctx).Set(datastoreQueryCountHistogramName, metadata.DatastoreQueryCount)
 	grpc_ctxtags.Extract(ctx).Set(datastoreItemCountHistogramName, metadata.DatastoreItemCount)
 
 	return &openfgav1.BatchCheckResponse{Result: batchResult}, nil
+}
+
+// logBatchCheckBreakingChanges emits a single aggregate log flagging potential
+// v2 (weighted-graph) resolution breaking changes across the whole batch.
+// Detection, memoization, and aggregation are owned by v2breaking.BatchReasoner;
+// errored checks are skipped. Results are emitted as one warn line — a
+// deduplicated `reasons` list plus a `reasons_by_correlation_id` map attributing
+// each flagged check to its reason.
+func (s *Server) logBatchCheckBreakingChanges(ctx context.Context, req *openfgav1.BatchCheckRequest, typesys *typesystem.TypeSystem, result map[commands.CorrelationID]*commands.BatchCheckOutcome) {
+	reasoner := v2breaking.NewBatchReasoner(typesys)
+
+	for _, check := range req.GetChecks() {
+		outcome := result[commands.CorrelationID(check.GetCorrelationId())]
+		if outcome == nil || outcome.Err != nil {
+			continue
+		}
+		reasoner.Add(check.GetCorrelationId(), check.GetTupleKey())
+	}
+
+	if reasoner.Empty() {
+		return
+	}
+
+	s.logger.WarnWithContext(ctx, "potential v2 BatchCheck resolution breaking change",
+		zap.String("store_id", req.GetStoreId()),
+		zap.String("model_id", req.GetAuthorizationModelId()),
+		zap.String("request_id", requestid.GetRequestIDFromContext(ctx)),
+		zap.Strings("reasons", reasoner.Reasons()),
+		zap.Int("matched_checks", reasoner.MatchedChecks()),
+		zap.Any("reasons_by_correlation_id", reasoner.ReasonsByCorrelationID()),
+	)
 }
 
 // transformCheckResultToProto transforms the internal BatchCheckOutcome into the external-facing
