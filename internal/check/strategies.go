@@ -3,6 +3,7 @@ package check
 import (
 	"time"
 
+	"github.com/openfga/language/pkg/go/graph"
 	"github.com/openfga/openfga/internal/planner"
 	"github.com/openfga/openfga/pkg/storage/cache/keys"
 )
@@ -148,5 +149,18 @@ func createTTUPlanKey(req *Request, tuplesetRelation, computedRelation string) k
 	builder.EncodeString(req.GetUserType())
 	builder.EncodeString(tuplesetRelation)
 	builder.EncodeString(computedRelation)
+	return builder.Key()
+}
+
+func createNodePlanKey(req *Request, node *graph.WeightedAuthorizationModelNode) keys.Key {
+	builder := keys.GetBuilder()
+	defer builder.Close()
+
+	builder.EncodeString("V2")
+	builder.EncodeString("NODE")
+	builder.EncodeString(req.GetStoreID())
+	builder.EncodeString(req.GetAuthorizationModelID())
+	builder.EncodeString(node.GetUniqueLabel())
+	builder.EncodeString(req.GetUserType())
 	return builder.Key()
 }

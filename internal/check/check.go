@@ -37,31 +37,31 @@ var ErrPanicRequest = errors.New("invalid check request")
 var ErrWildcardInvalidRequest = errors.New("wildcard request cannot be resolved when intersection or exclusion is involved")
 
 type LogicalEdge interface {
-	Key(*Request) keys.Key
+	CacheKey(req *Request) keys.Key
 }
 
 type GroupEdge struct {
-	node  *graph.WeightedAuthorizationModelNode
-	edges []*graph.WeightedAuthorizationModelEdge
+	Node  *graph.WeightedAuthorizationModelNode
+	Edges []*graph.WeightedAuthorizationModelEdge
+}
+
+func (e *GroupEdge) CacheKey(req *Request) keys.Key {
+	return NodeCacheKey(req, e.Node)
 }
 
 func (e *GroupEdge) Explode() []LogicalEdge {
-	logicalEdges := make([]LogicalEdge, 0, len(e.edges))
+	logicalEdges := make([]LogicalEdge, 0, len(e.Edges))
 
-	for _, edge := range e.edges {
+	for _, edge := range e.Edges {
 		logicalEdges = append(logicalEdges, (*SingleEdge)(edge))
 	}
 	return logicalEdges
 }
 
-func (e *GroupEdge) Key(req *Request) keys.Key {
-	return NodeKey(req, e.node)
-}
-
 type SingleEdge graph.WeightedAuthorizationModelEdge
 
-func (e *SingleEdge) Key(req *Request) keys.Key {
-	return EdgeCacheKey(req, (*graph.WeightedAuthorizationModelEdge)(e))
+func (s *SingleEdge) CacheKey(req *Request) keys.Key {
+	return EdgeCacheKey(req, (*graph.WeightedAuthorizationModelEdge)(s))
 }
 
 type Config struct {
@@ -129,20 +129,6 @@ func New(cfg Config) *Resolver {
 		}
 	}
 	return r
-}
-
-func NodeKey(req *Request, node *graph.WeightedAuthorizationModelNode) keys.Key {
-	const prefix = "NODE"
-
-	builder := keys.GetBuilder()
-	builder.EncodeString(prefix)
-	builder.EncodeString(req.GetStoreID())
-	builder.EncodeString(req.GetAuthorizationModelID())
-	builder.EncodeString(node.GetUniqueLabel())
-	builder.EncodeString(req.GetUserType())
-	planKey := builder.Key()
-	builder.Close()
-	return planKey
 }
 
 func (r *Resolver) ResolveCheck(ctx context.Context, req *Request) (*Response, error) {
@@ -269,6 +255,21 @@ func EdgeCacheKey(req *Request, edge *graph.WeightedAuthorizationModelEdge) keys
 	return builder.Key()
 }
 
+func NodeCacheKey(req *Request, node *graph.WeightedAuthorizationModelNode) keys.Key {
+	builder := keys.GetBuilder()
+	defer builder.Close()
+
+	builder.EncodeString("NODE")
+	builder.EncodeString(req.GetStoreID())
+	builder.EncodeString(req.GetAuthorizationModelID())
+	builder.EncodeString(req.GetTupleKey().GetObject())
+	builder.EncodeString(req.GetTupleKey().GetUser())
+	builder.EncodeString(node.GetUniqueLabel())
+	builder.EncodeUint64(uint64(node.GetNodeType()))
+	builder.EncodeUint64(req.GetInvariantCacheKey())
+	return builder.Key()
+}
+
 func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, edges []LogicalEdge, visited *sync.Map) (*Response, error) {
 	ctx, span := tracer.Start(ctx, "ResolveUnionEdges", trace.WithAttributes(
 		attribute.String("tuple_key", req.GetTupleString()),
@@ -295,7 +296,7 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, edges []
 	for j := 0; j < len(edges); j++ {
 		edge := edges[j]
 
-		key := edge.Key(req)
+		key := edge.CacheKey(req)
 
 		if res, ok := r.isCached(ctx, req.GetConsistency(), key); ok {
 			if res.GetAllowed() {
@@ -419,7 +420,7 @@ func (r *Resolver) GatherLogicalEdges(req *Request, node *graph.WeightedAuthoriz
 	}
 
 	if nodeWeight, _ := r.model.GetNodeWeight(node, req.GetUserType()); nodeWeight == 1 {
-		return []LogicalEdge{&GroupEdge{node: node, edges: edges}}
+		return []LogicalEdge{&GroupEdge{Node: node, Edges: edges}}
 	}
 
 	weightOneEdges, weightTwoPlusEdges := r.SplitWeightOne(req.GetUserType(), edges...)
@@ -427,7 +428,7 @@ func (r *Resolver) GatherLogicalEdges(req *Request, node *graph.WeightedAuthoriz
 	logicalEdges := make([]LogicalEdge, 0, 1+len(weightTwoPlusEdges))
 
 	if len(weightOneEdges) > 0 {
-		logicalEdges = append(logicalEdges, &GroupEdge{node: node, edges: weightOneEdges})
+		logicalEdges = append(logicalEdges, &GroupEdge{Node: node, Edges: weightOneEdges})
 	}
 
 	for _, edge := range weightTwoPlusEdges {
@@ -436,7 +437,7 @@ func (r *Resolver) GatherLogicalEdges(req *Request, node *graph.WeightedAuthoriz
 	return logicalEdges
 }
 
-// reduce as a logical union operation (exit the moment we have a single true).
+// ResolveUnion reduces as a logical union operation (exit the moment we have a single true).
 func (r *Resolver) ResolveUnion(ctx context.Context, req *Request, node *graph.WeightedAuthorizationModelNode, visited *sync.Map) (*Response, error) {
 	ctx, span := tracer.Start(ctx, "ResolveUnion", trace.WithAttributes(
 		attribute.String("tuple_key", req.GetTupleString()),
@@ -768,7 +769,7 @@ func (r *Resolver) ResolveIntersectionEdges(ctx context.Context, req *Request, e
 	return &Response{Allowed: true}, nil
 }
 
-// reduce as a logical intersection operation (exit the moment we have a single false)
+// ResolveIntersection reduces as a logical intersection operation (exit the moment we have a single false)
 // should panic if a single handler returns nil.
 func (r *Resolver) ResolveIntersection(ctx context.Context, req *Request, node *graph.WeightedAuthorizationModelNode) (*Response, error) {
 	ctx, span := tracer.Start(ctx, "ResolveIntersection", trace.WithAttributes(
@@ -890,7 +891,7 @@ func (r *Resolver) ResolveExclusionEdges(ctx context.Context, req *Request, edge
 	return &Response{Allowed: true}, nil
 }
 
-// reduce as a logical exclusion operation
+// ResolveExclusion reduces as a logical exclusion operation
 // if base is false, short circuit.
 func (r *Resolver) ResolveExclusion(ctx context.Context, req *Request, node *graph.WeightedAuthorizationModelNode) (*Response, error) {
 	ctx, span := tracer.Start(ctx, "ResolveExclusion", trace.WithAttributes(
@@ -979,11 +980,11 @@ func (r *Resolver) ResolveLogicalEdge(ctx context.Context, req *Request, logical
 	groupEdge := logicalEdge.(*GroupEdge)
 
 	if r.datastore.Builder(req.Consistency) == nil {
-		switch groupEdge.node.GetNodeType() {
+		switch groupEdge.Node.GetNodeType() {
 		case graph.SpecificTypeAndRelation:
 			return r.groupStrategies[DefaultPlan.Name].Union(ctx, req, groupEdge)
 		case graph.OperatorNode:
-			switch groupEdge.node.GetLabel() {
+			switch groupEdge.Node.GetLabel() {
 			case graph.UnionOperator:
 				return r.groupStrategies[DefaultPlan.Name].Union(ctx, req, groupEdge)
 			case graph.IntersectionOperator:
@@ -998,7 +999,7 @@ func (r *Resolver) ResolveLogicalEdge(ctx context.Context, req *Request, logical
 		}
 	}
 
-	planKey := groupEdge.Key(req)
+	planKey := createNodePlanKey(req, groupEdge.Node)
 	selector := r.planner.GetPlanSelector(planKey)
 
 	candidates := map[string]*planner.PlanConfig{
@@ -1009,11 +1010,11 @@ func (r *Resolver) ResolveLogicalEdge(ctx context.Context, req *Request, logical
 	plan := selector.Select(candidates)
 
 	return r.executeStrategy(ctx, selector, plan, func() (*Response, error) {
-		switch groupEdge.node.GetNodeType() {
+		switch groupEdge.Node.GetNodeType() {
 		case graph.SpecificTypeAndRelation:
 			return r.groupStrategies[plan.Name].Union(ctx, req, groupEdge)
 		case graph.OperatorNode:
-			switch groupEdge.node.GetLabel() {
+			switch groupEdge.Node.GetLabel() {
 			case graph.UnionOperator:
 				return r.groupStrategies[plan.Name].Union(ctx, req, groupEdge)
 			case graph.IntersectionOperator:

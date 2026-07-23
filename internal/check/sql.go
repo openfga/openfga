@@ -33,15 +33,15 @@ func NewSQL(model *modelgraph.AuthorizationModelGraph, datastore storage.Relatio
 }
 
 func (s *SQLStrategy) Union(ctx context.Context, req *Request, edge *GroupEdge) (*Response, error) {
-	return s.weight1(ctx, req, s.datastore.Builder(req.GetConsistency()), edge.edges, graph.UnionOperator)
+	return s.weight1(ctx, req, s.datastore.Builder(req.GetConsistency()), edge.Edges, graph.UnionOperator)
 }
 
 func (s *SQLStrategy) Intersection(ctx context.Context, req *Request, edge *GroupEdge) (*Response, error) {
-	return s.weight1(ctx, req, s.datastore.Builder(req.GetConsistency()), edge.edges, graph.IntersectionOperator)
+	return s.weight1(ctx, req, s.datastore.Builder(req.GetConsistency()), edge.Edges, graph.IntersectionOperator)
 }
 
 func (s *SQLStrategy) Exclusion(ctx context.Context, req *Request, edge *GroupEdge) (*Response, error) {
-	return s.weight1(ctx, req, s.datastore.Builder(req.GetConsistency()), edge.edges, graph.ExclusionOperator)
+	return s.weight1(ctx, req, s.datastore.Builder(req.GetConsistency()), edge.Edges, graph.ExclusionOperator)
 }
 
 // branchOutcome is what we know about a branch while folding a boolean subtree:
