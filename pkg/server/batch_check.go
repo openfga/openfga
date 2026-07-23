@@ -3,8 +3,6 @@ package server
 import (
 	"context"
 	"errors"
-	"slices"
-	"strconv"
 	"time"
 
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
@@ -27,7 +25,6 @@ import (
 	"github.com/openfga/openfga/pkg/server/commands/v2breaking"
 	"github.com/openfga/openfga/pkg/server/config"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
-	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
@@ -233,98 +230,33 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 }
 
 // logBatchCheckBreakingChanges emits a single aggregate log flagging potential
-// v2 (weighted-graph) resolution breaking changes across the whole batch:
-// exclusion shapes via CheckExclusionReason, and (for userset users) the
-// per-user shapes via CheckReason. Errored checks are skipped. Results are
-// emitted as one warn line — a deduplicated `reasons` list plus a
-// `reasons_by_correlation_id` map attributing each flagged check to its reason.
-//
-// Detection is purely schema-shape and does NOT gate on the check's allowed
-// result: the outcome reflects whichever engine answered (v2 normally, v1 on
-// fallback), so gating on it would silently drop real divergences on the
-// fallback path — the path this telemetry most needs to flag. Being shape-only,
-// the predicates may over-report; confirming against the datastore response is
-// the only way to reduce that noise.
-//
-// The predicates walk the model's rewrite tree, which is the dominant cost. For
-// a fixed type system both reasons are functions of the request's shape (object
-// type, relation, user type[#relation]), not its identifiers, so shapes are
-// memoized and each is walked at most once. Two caches are kept:
-//
-//   - exclusionCache: pure-shape key. CheckExclusionReason never compares object
-//     identity, so e.g. document:1@group:eng#member and document:2@group:sales#member
-//     share one entry.
-//   - checkReasonCache: shape key plus a sameObject bool, since CheckReason's
-//     self_referential / computed_userset_self_object shapes depend on the
-//     user's object equalling the target object — collapsing the concrete IDs to
-//     one bit that still keys them together.
+// v2 (weighted-graph) resolution breaking changes across the whole batch.
+// Detection, memoization, and aggregation are owned by v2breaking.BatchReasoner;
+// errored checks are skipped. Results are emitted as one warn line — a
+// deduplicated `reasons` list plus a `reasons_by_correlation_id` map attributing
+// each flagged check to its reason.
 func (s *Server) logBatchCheckBreakingChanges(ctx context.Context, req *openfgav1.BatchCheckRequest, typesys *typesystem.TypeSystem, result map[commands.CorrelationID]*commands.BatchCheckOutcome) {
-	reasonSet := map[string]struct{}{}
-	reasonsByCorrelationID := map[string]string{}
-	// Both caches memoize the (possibly empty) reason for a shape key so repeated
-	// shapes in the batch skip the rewrite-tree walk. Empty reasons are cached
-	// too, so repeated no-match checks are equally cheap.
-	exclusionCache := map[string]string{}
-	checkReasonCache := map[string]string{}
+	reasoner := v2breaking.NewBatchReasoner(typesys)
 
 	for _, check := range req.GetChecks() {
 		outcome := result[commands.CorrelationID(check.GetCorrelationId())]
 		if outcome == nil || outcome.Err != nil {
 			continue
 		}
-
-		tk := check.GetTupleKey()
-		userObject, userRelation := tuple.SplitObjectRelation(tk.GetUser())
-		// Pure-shape key: object type, relation, and user type[#relation]. No
-		// identifiers and no allowed bit, so requests differing only in their
-		// concrete IDs share an entry.
-		shapeKey := tuple.GetType(tk.GetObject()) + "#" + tk.GetRelation() + "@" + tuple.GetType(userObject) + "#" + userRelation
-
-		reason, cached := exclusionCache[shapeKey]
-		if !cached {
-			reason = v2breaking.CheckExclusionReason(typesys, tk)
-			exclusionCache[shapeKey] = reason
-		}
-
-		if reason == "" && tuple.IsObjectRelation(tk.GetUser()) {
-			// CheckReason's self_referential / computed_userset_self_object shapes
-			// depend on the user's object equalling the target object, so add that
-			// as a bool rather than keying on the identifiers themselves.
-			sameObject := userObject == tk.GetObject()
-			checkKey := shapeKey + "|" + strconv.FormatBool(sameObject)
-			r, ok := checkReasonCache[checkKey]
-			if !ok {
-				r = v2breaking.CheckReason(typesys, tk)
-				checkReasonCache[checkKey] = r
-			}
-			reason = r
-		}
-
-		if reason == "" {
-			continue
-		}
-
-		reasonSet[reason] = struct{}{}
-		reasonsByCorrelationID[check.GetCorrelationId()] = reason
+		reasoner.Add(check.GetCorrelationId(), check.GetTupleKey())
 	}
 
-	if len(reasonSet) == 0 {
+	if reasoner.Empty() {
 		return
 	}
-
-	reasons := make([]string, 0, len(reasonSet))
-	for reason := range reasonSet {
-		reasons = append(reasons, reason)
-	}
-	slices.Sort(reasons) // stable ordering for log readability
 
 	s.logger.WarnWithContext(ctx, "potential v2 BatchCheck resolution breaking change",
 		zap.String("store_id", req.GetStoreId()),
 		zap.String("model_id", req.GetAuthorizationModelId()),
 		zap.String("request_id", requestid.GetRequestIDFromContext(ctx)),
-		zap.Strings("reasons", reasons),
-		zap.Int("matched_checks", len(reasonsByCorrelationID)),
-		zap.Any("reasons_by_correlation_id", reasonsByCorrelationID),
+		zap.Strings("reasons", reasoner.Reasons()),
+		zap.Int("matched_checks", reasoner.MatchedChecks()),
+		zap.Any("reasons_by_correlation_id", reasoner.ReasonsByCorrelationID()),
 	)
 }
 
