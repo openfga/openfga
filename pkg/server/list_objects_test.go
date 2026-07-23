@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -344,32 +345,44 @@ func TestListObjectsBreakingChangeLog(t *testing.T) {
 		},
 	}
 
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			core, logs := observer.New(zap.WarnLevel)
-			testLogger := &logger.ZapLogger{Logger: zap.New(core)}
+	// Every divergent shape here uses a userset or wildcard subject, which the
+	// v2 pipeline punts to the legacy algorithm regardless of the flag. Running
+	// both modes proves the logging behaves identically today; once the pipeline
+	// stops punting, the pipeline-enabled run's response-confirmation gate will
+	// change and these tests will flag it.
+	for _, pipelineEnabled := range []bool{false, true} {
+		t.Run(fmt.Sprintf("pipeline_enabled=%t", pipelineEnabled), func(t *testing.T) {
+			for _, tc := range tests {
+				t.Run(tc.name, func(t *testing.T) {
+					core, logs := observer.New(zap.WarnLevel)
+					testLogger := &logger.ZapLogger{Logger: zap.New(core)}
 
-			s, baseReq := setupListObjectsServer(t, tc.modelDSL, tc.tuples, WithLogger(testLogger))
+					s, baseReq := setupListObjectsServer(t, tc.modelDSL, tc.tuples,
+						WithLogger(testLogger),
+						WithListObjectsPipelineEnabled(pipelineEnabled),
+					)
 
-			res, err := s.ListObjects(context.Background(), &openfgav1.ListObjectsRequest{
-				StoreId:              baseReq.GetStoreId(),
-				AuthorizationModelId: baseReq.GetAuthorizationModelId(),
-				Type:                 tc.objectType,
-				Relation:             tc.relation,
-				User:                 tc.subject,
-			})
-			require.NoError(t, err)
-			require.ElementsMatch(t, tc.wantObjects, res.GetObjects(),
-				"response objects drive the confirmation gate; assert them explicitly")
+					res, err := s.ListObjects(context.Background(), &openfgav1.ListObjectsRequest{
+						StoreId:              baseReq.GetStoreId(),
+						AuthorizationModelId: baseReq.GetAuthorizationModelId(),
+						Type:                 tc.objectType,
+						Relation:             tc.relation,
+						User:                 tc.subject,
+					})
+					require.NoError(t, err)
+					require.ElementsMatch(t, tc.wantObjects, res.GetObjects(),
+						"response objects drive the confirmation gate; assert them explicitly")
 
-			breakingLogs := logs.FilterMessage(logMessage)
-			if tc.wantReason == "" {
-				require.Equal(t, 0, breakingLogs.Len(), "expected no breaking-change log")
-				return
+					breakingLogs := logs.FilterMessage(logMessage)
+					if tc.wantReason == "" {
+						require.Equal(t, 0, breakingLogs.Len(), "expected no breaking-change log")
+						return
+					}
+					require.Equal(t, 1, breakingLogs.Len(), "expected exactly one breaking-change log")
+					fields := fieldMap(breakingLogs.All()[0].Context)
+					require.Equal(t, tc.wantReason, fields["reason"])
+				})
 			}
-			require.Equal(t, 1, breakingLogs.Len(), "expected exactly one breaking-change log")
-			fields := fieldMap(breakingLogs.All()[0].Context)
-			require.Equal(t, tc.wantReason, fields["reason"])
 		})
 	}
 }
