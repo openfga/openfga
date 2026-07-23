@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/openfga/language/pkg/go/graph"
+
 	"github.com/openfga/openfga/internal/planner"
 	"github.com/openfga/openfga/pkg/storage/cache/keys"
 )

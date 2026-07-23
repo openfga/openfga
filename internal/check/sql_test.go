@@ -561,6 +561,44 @@ func TestSqlWeight1_ContextualShortCircuit(t *testing.T) {
 	require.Empty(t, exec.sqls, "executor must not be called when contextual tuples decide the result")
 }
 
+// TestSqlWeight1_ContextualNarrowsExistenceFilter proves the single-pass fold's tightening: when a
+// contextual tuple satisfies one arm of an intersection, that arm is resolved without a database
+// read and drops out of the fold, so its relation never enters the WHERE filter. The emitted
+// existence query references only the still-undetermined arm's relation.
+func TestSqlWeight1_ContextualNarrowsExistenceFilter(t *testing.T) {
+	model := `
+		model
+			schema 1.1
+		type user
+		type document
+			relations
+				define editor: [user]
+				define owner: [user]
+				define viewer: editor and owner`
+	g, err := modelgraph.New(testutils.MustTransformDSLToProtoWithID(model))
+	require.NoError(t, err)
+
+	rec := &adaptertest.Recorder{}
+	b := adaptertest.New(rec)
+	s := NewSQL(g, &sqlDatastore{builder: b})
+	// A contextual tuple satisfies the editor arm, leaving only owner to be queried.
+	ct := tuple.NewTupleKey("document:1", "editor", "user:alice")
+	req, err := NewRequest(RequestParams{
+		StoreID:          "store1",
+		Model:            g,
+		TupleKey:         tuple.NewTupleKey("document:1", "viewer", "user:alice"),
+		ContextualTuples: []*openfgav1.TupleKey{ct},
+	})
+	require.NoError(t, err)
+	_, err = s.weight1(context.Background(), req, b, entryEdges(t, g, req, "document:1", "viewer"), graph.UnionOperator)
+	require.NoError(t, err)
+
+	// Only the undetermined arm (owner) is queried; the contextually-satisfied arm (editor) is
+	// pruned from both the HAVING predicate and the relation IN (...) filter.
+	require.Contains(t, rec.Parameters, "owner")
+	require.NotContains(t, rec.Parameters, "editor")
+}
+
 // condCtx marshals a request-context map the way condition_context is stored, so the gather
 // fold's proto.Unmarshal round-trips it.
 func condCtx(t *testing.T, m map[string]any) []byte {
