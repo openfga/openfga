@@ -340,7 +340,7 @@ func (w *walker) reduceLeaf(ctx context.Context, l leaf) (residual, error) {
 		return residual{state: branchTrue}, nil
 	}
 	w.accumulateFilter(l)
-	match := w.table.ObjectRelation().Eq(w.builder.Bind(l.relation))
+	match := w.table.ObjectRelation().Eq(w.builder.Lit(l.relation))
 	count := w.builder.Aggregate(adapter.AggCount, w.builder.Lit(1)).Filter(match)
 	return residual{state: branchNeedsQuery, pred: count.Gt(w.builder.Lit(0))}, nil
 }
@@ -392,7 +392,7 @@ func (w *walker) evalExistence(ctx context.Context, pred adapter.Predicate) (*Re
 	// lives here in the shared WHERE rather than in each COUNT(CASE). The empty-condition
 	// sentinel is a fixed, trusted constant, so it is emitted with Lit rather than Bind.
 	where := append(w.whereShared(),
-		w.table.ObjectRelation().In(w.relationBinds()...),
+		w.table.ObjectRelation().In(w.relationLits()...),
 		w.table.Condition().IsNull().Or(w.table.Condition().Eq(w.builder.Lit(""))),
 	)
 	stmt := w.builder.Select(w.builder.Lit(1)).
@@ -551,15 +551,16 @@ func (w *walker) sortedRelations() []string {
 	return names
 }
 
-// relationBinds renders the accumulated relation set as a sorted list of bound parameters
-// for the existence path's WHERE `relation IN (...)` filter.
-func (w *walker) relationBinds() []adapter.Expression {
+// relationLits renders the accumulated relation set as a sorted list of inline literals
+// for the existence path's WHERE `relation IN (...)` filter. Relation names come from the
+// model, so they are safe to inline directly rather than bind.
+func (w *walker) relationLits() []adapter.Expression {
 	names := w.sortedRelations()
-	binds := make([]adapter.Expression, len(names))
+	lits := make([]adapter.Expression, len(names))
 	for i, r := range names {
-		binds[i] = w.builder.Bind(r)
+		lits[i] = w.builder.Lit(r)
 	}
-	return binds
+	return lits
 }
 
 // gatherFilter restricts the gather query to tuples whose (relation, condition) pairing the
@@ -574,7 +575,7 @@ func (w *walker) relationBinds() []adapter.Expression {
 func (w *walker) gatherFilter() adapter.Predicate {
 	var clauses []adapter.Predicate
 	for _, relation := range w.sortedRelations() {
-		clause := w.table.ObjectRelation().Eq(w.builder.Bind(relation)).And(w.conditionPred(w.relConds[relation]))
+		clause := w.table.ObjectRelation().Eq(w.builder.Lit(relation)).And(w.conditionPred(w.relConds[relation]))
 		clauses = append(clauses, clause)
 	}
 	pred := clauses[0]
@@ -603,11 +604,12 @@ func (w *walker) conditionPred(conds map[string]struct{}) adapter.Predicate {
 
 	var preds []adapter.Predicate
 	if len(names) > 0 {
-		binds := make([]adapter.Expression, len(names))
+		// Condition names come from the model, so they are safe to inline directly.
+		lits := make([]adapter.Expression, len(names))
 		for i, c := range names {
-			binds[i] = w.builder.Bind(c)
+			lits[i] = w.builder.Lit(c)
 		}
-		preds = append(preds, w.table.Condition().In(binds...))
+		preds = append(preds, w.table.Condition().In(lits...))
 	}
 	if unconditioned {
 		preds = append(preds, w.table.Condition().IsNull().Or(w.table.Condition().Eq(w.builder.Lit(""))))

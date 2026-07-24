@@ -189,12 +189,13 @@ func TestSqlWeight1_DirectSQLShape(t *testing.T) {
 	require.NotContains(t, rec.SQL, "GROUP BY")
 	require.Contains(t, rec.SQL, "LIMIT 1")
 	require.Contains(t, rec.SQL, "COUNT(1) FILTER (WHERE")
-	// The inline SELECT/COUNT/comparison constants bind no parameters, so the store is the
-	// first bound parameter, followed by object type/id, subject narrowing, and the relation
-	// filter (the HAVING relation match).
+	// The relation name is a model component, so it is inlined as a literal in the SQL text. The
+	// store id and the request-derived object type/id and subject narrowing remain bound
+	// parameters. The store is the first bound parameter.
 	require.Equal(t, "store1", rec.Parameters[0])
 	require.Contains(t, rec.Parameters, "document")
-	require.Contains(t, rec.Parameters, "viewer")
+	require.Contains(t, rec.SQL, "'viewer'")
+	require.NotContains(t, rec.Parameters, "viewer")
 }
 
 func TestSqlWeight1_Union(t *testing.T) {
@@ -356,7 +357,9 @@ func TestSqlWeight1_ConditionedGatherShape(t *testing.T) {
 	// The gather is narrowed to the condition the model admits, so tuples carrying an
 	// out-of-model condition are excluded in the database rather than gathered and rejected.
 	require.Contains(t, rec.SQL, "t.condition_name IN")
-	require.Contains(t, rec.Parameters, "cond")
+	// Condition names come from the model, so they are inlined as literals rather than bound.
+	require.Contains(t, rec.SQL, "'cond'")
+	require.NotContains(t, rec.Parameters, "cond")
 	// This leaf admits only the named condition (no unconditioned assignment), so there is no
 	// IS NULL disjunct.
 	require.NotContains(t, rec.SQL, "t.condition_name IS NULL")
@@ -390,7 +393,8 @@ func TestSqlWeight1_ConditionedGatherFiltersUnknownCondition(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Contains(t, rec.SQL, "t.condition_name IN")
-	require.Contains(t, rec.Parameters, "cond")
+	require.Contains(t, rec.SQL, "'cond'")
+	require.NotContains(t, rec.Parameters, "cond")
 }
 
 // TestSqlWeight1_ConditionedGatherMixedConditionFilter proves that when a relation admits both an
@@ -422,7 +426,8 @@ func TestSqlWeight1_ConditionedGatherMixedConditionFilter(t *testing.T) {
 
 	require.Contains(t, rec.SQL, "t.condition_name IN")
 	require.Contains(t, rec.SQL, "t.condition_name IS NULL")
-	require.Contains(t, rec.Parameters, "cond")
+	require.Contains(t, rec.SQL, "'cond'")
+	require.NotContains(t, rec.Parameters, "cond")
 }
 
 // TestSqlWeight1_ConditionedGatherPairsConditionsPerRelation guards the per-relation pairing: with
@@ -457,24 +462,26 @@ func TestSqlWeight1_ConditionedGatherPairsConditionsPerRelation(t *testing.T) {
 	_, err = s.weight1(context.Background(), req, b, entryEdges(t, g, req, "document:1", "viewer"), graph.UnionOperator)
 	require.NoError(t, err)
 
-	// Each relation is paired with its own conditions in a dedicated clause, so both conditions
-	// bind but only rel1 carries the unconditioned (IS NULL) disjunct.
-	require.Contains(t, rec.SQL, "t.relation = ?")
-	require.Contains(t, rec.Parameters, "condA")
-	require.Contains(t, rec.Parameters, "condB")
+	// Each relation is paired with its own conditions in a dedicated clause; relation and
+	// condition names are model components, so they are inlined as literals. Only rel1 carries the
+	// unconditioned (IS NULL) disjunct.
+	require.Contains(t, rec.SQL, "t.relation = 'rel1'")
+	require.Contains(t, rec.SQL, "t.relation = 'rel2'")
+	require.Contains(t, rec.SQL, "'condA'")
+	require.Contains(t, rec.SQL, "'condB'")
 	require.Contains(t, rec.SQL, "t.condition_name IS NULL")
 	// A single global `relation IN (...)` would signal the conditions are not paired per relation.
 	require.NotContains(t, rec.SQL, "t.relation IN")
 
-	// The pairing binds condA adjacent to rel1 and condB adjacent to rel2 (relations sorted), so a
+	// The pairing inlines condA adjacent to rel1 and condB adjacent to rel2 (relations sorted), so a
 	// rel1-with-condB or rel2-with-condA row cannot match.
-	rel1 := indexOf(t, rec.Parameters, "rel1")
-	rel2 := indexOf(t, rec.Parameters, "rel2")
-	condA := indexOf(t, rec.Parameters, "condA")
-	condB := indexOf(t, rec.Parameters, "condB")
-	require.Less(t, rel1, condA, "condA must be bound within rel1's clause")
+	rel1 := strings.Index(rec.SQL, "'rel1'")
+	rel2 := strings.Index(rec.SQL, "'rel2'")
+	condA := strings.Index(rec.SQL, "'condA'")
+	condB := strings.Index(rec.SQL, "'condB'")
+	require.Less(t, rel1, condA, "condA must be inlined within rel1's clause")
 	require.Less(t, condA, rel2, "rel2's clause must follow rel1's")
-	require.Less(t, rel2, condB, "condB must be bound within rel2's clause")
+	require.Less(t, rel2, condB, "condB must be inlined within rel2's clause")
 }
 
 func TestSqlWeight1_ConditionedGatherBehavior(t *testing.T) {
@@ -594,9 +601,10 @@ func TestSqlWeight1_ContextualNarrowsExistenceFilter(t *testing.T) {
 	require.NoError(t, err)
 
 	// Only the undetermined arm (owner) is queried; the contextually-satisfied arm (editor) is
-	// pruned from both the HAVING predicate and the relation IN (...) filter.
-	require.Contains(t, rec.Parameters, "owner")
-	require.NotContains(t, rec.Parameters, "editor")
+	// pruned from both the HAVING predicate and the relation IN (...) filter. Relation names are
+	// model components, so they appear inlined in the SQL rather than as bound parameters.
+	require.Contains(t, rec.SQL, "'owner'")
+	require.NotContains(t, rec.SQL, "'editor'")
 }
 
 // condCtx marshals a request-context map the way condition_context is stored, so the gather
@@ -607,18 +615,4 @@ func condCtx(t *testing.T, m map[string]any) []byte {
 	b, err := proto.Marshal(s)
 	require.NoError(t, err)
 	return b
-}
-
-// indexOf returns the position of want in the recorded bind parameters, failing the test if it
-// is absent. It lets a test assert the relative ordering of binds (e.g. that a condition binds
-// within its relation's clause).
-func indexOf(t *testing.T, params []any, want string) int {
-	t.Helper()
-	for i, p := range params {
-		if s, ok := p.(string); ok && s == want {
-			return i
-		}
-	}
-	require.Failf(t, "parameter not found", "expected %q in %v", want, params)
-	return -1
 }
