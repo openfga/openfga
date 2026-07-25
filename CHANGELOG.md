@@ -13,6 +13,9 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Changed
 - Matched experimental `weighted_graph_check` cache metrics with original Check cache metrics: iterator cache metrics renamed to `tuples_cache_total_count`, `tuples_cache_hit_count`, `tuples_cache_discard_count`, `tuples_cache_size`; query cache metrics added as `check_cache_total_count`, `check_cache_hit_count`, `check_cache_invalid_hit_count`. [#3184](https://github.com/openfga/openfga/pull/3184)
 
+### Fixed
+- Fixed experimental `weighted_graph_check` incorrectly returning `false` for models with two or more independently-recursive relations where satisfying the outer recursive relation requires resolving through an unrelated, nested recursive relation (e.g. `descendant_principal: member or descendant_principal from child_group` where `member` transitively reaches a separately-recursive `admin: direct_admin or admin from parent_group`). `FlattenNode` now only excludes edges belonging to the specific recursive relation currently being unwound, instead of excluding every recursive edge in the graph. [#3195](https://github.com/openfga/openfga/issues/3195)
+
 ### Security
 - Update toolchain Go version to 1.26.5 and rebuild the embedded `grpc-health-probe` (bumped to `v0.4.53`, built with Go 1.26.5) so released images no longer ship the Go standard library vulnerabilities documented in the [Go 1.26.5 release notes](https://go.dev/doc/devel/release#go1.26.5), including CVE-2026-39822. [#3219](https://github.com/openfga/openfga/pull/3219)
 
