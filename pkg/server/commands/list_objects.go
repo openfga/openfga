@@ -10,6 +10,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -28,7 +29,9 @@ import (
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/featureflags"
 	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/pkg/middleware/requestid"
 	"github.com/openfga/openfga/pkg/server/commands/reverseexpand"
+	"github.com/openfga/openfga/pkg/server/commands/v2breaking"
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
@@ -740,6 +743,22 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 		return nil, serverErrors.ValidationError(fmt.Errorf("invalid 'user' value: %w", err))
 	}
 
+	// Detect a potential v2 (weighted-graph) resolution breaking change for this
+	// request shape. The reason is schema-shape only, so compute it once up
+	// front; the response-confirmation check then suppresses shape matches whose
+	// response didn't observably exercise the divergent v1 path. To keep the
+	// streaming path bounded, we fold each streamed object into a single flag
+	// rather than buffering every object (this endpoint returns all results).
+	// The handler never sees the streamed objects, so this must live here.
+	breakingChangeReason := v2breaking.ListObjectsReason(typesys, targetObjectType, targetRelation, req.GetUser())
+	var breakingChangeConfirmed bool
+	confirmBreakingChange := func(object string) {
+		if breakingChangeReason == "" || breakingChangeConfirmed {
+			return
+		}
+		breakingChangeConfirmed = v2breaking.ListObjectsResponseConfirmsReason(breakingChangeReason, req.GetUser(), []string{object})
+	}
+
 	wgraph := typesys.GetWeightedGraph()
 
 	if wgraph != nil && subjectRelation == "" && subjectIdentifier != "*" && q.pipelineEnabled {
@@ -806,6 +825,7 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 			if errRx = srv.Send(&openfgav1.StreamedListObjectsResponse{Object: value}); errRx != nil {
 				break
 			}
+			confirmBreakingChange(value)
 
 			listObjectsCount++
 
@@ -829,6 +849,7 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 		resolutionMetadata.DatastoreThrottled.Store(dsMeta.WasThrottled)
 		resolutionMetadata.DatastoreQueryCount.Add(dsMeta.DatastoreQueryCount)
 		resolutionMetadata.DatastoreItemCount.Add(dsMeta.DatastoreItemCount)
+		q.logListObjectsBreakingChange(ctx, req, breakingChangeReason, breakingChangeConfirmed)
 		return &resolutionMetadata, nil
 	}
 
@@ -860,7 +881,31 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 		}); err != nil {
 			return nil, serverErrors.HandleError("", err)
 		}
+		confirmBreakingChange(result.ObjectID)
 	}
 
+	q.logListObjectsBreakingChange(ctx, req, breakingChangeReason, breakingChangeConfirmed)
+
 	return &resolutionMetadata, nil
+}
+
+// logListObjectsBreakingChange flags a potential v2 (weighted-graph) resolution
+// breaking change for a streamed request shape. The reason comes from the
+// schema-shape-only v2breaking.ListObjectsReason and may over-report; confirmed
+// is the response-confirmation result (see
+// v2breaking.ListObjectsResponseConfirmsReason) that suppresses shape matches
+// whose response didn't observably exercise the divergent v1 path. It mirrors
+// the unary ListObjects handler's hook, but lives here because the handler
+// never sees the streamed objects.
+func (q *ListObjectsQuery) logListObjectsBreakingChange(ctx context.Context, req *openfgav1.StreamedListObjectsRequest, reason string, confirmed bool) {
+	if reason == "" || !confirmed {
+		return
+	}
+
+	q.logger.WarnWithContext(ctx, "potential v2 StreamedListObjects resolution breaking change",
+		zap.String("store_id", req.GetStoreId()),
+		zap.String("model_id", req.GetAuthorizationModelId()),
+		zap.String("request_id", requestid.GetRequestIDFromContext(ctx)),
+		zap.String("reason", reason),
+	)
 }

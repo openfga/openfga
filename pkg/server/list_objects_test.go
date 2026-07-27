@@ -87,16 +87,140 @@ func TestListObjectsBreakingChangeLog(t *testing.T) {
 
 	const logMessage = "potential v2 ListObjects resolution breaking change"
 
-	tests := []struct {
-		name        string
-		modelDSL    string
-		tuples      []*openfgav1.TupleKey
-		objectType  string
-		relation    string
-		subject     string
-		wantObjects []string // objects the response must contain (asserted verbatim)
-		wantReason  string   // empty means: expect no log
-	}{
+	tests := listObjectsBreakingChangeCases()
+
+	// Every divergent shape here uses a userset or wildcard subject, which the
+	// v2 pipeline routes to the legacy algorithm regardless of the flag. Running
+	// both modes proves the logging behaves identically today; once the pipeline
+	// handles these shapes itself, the pipeline-enabled run's response-
+	// confirmation gate will change and these tests will flag it.
+	for _, pipelineEnabled := range []bool{false, true} {
+		t.Run(fmt.Sprintf("pipeline_enabled=%t", pipelineEnabled), func(t *testing.T) {
+			for _, tc := range tests {
+				t.Run(tc.name, func(t *testing.T) {
+					core, logs := observer.New(zap.WarnLevel)
+					testLogger := &logger.ZapLogger{Logger: zap.New(core)}
+
+					s, baseReq := setupListObjectsServer(t, tc.modelDSL, tc.tuples,
+						WithLogger(testLogger),
+						WithListObjectsPipelineEnabled(pipelineEnabled),
+					)
+
+					res, err := s.ListObjects(context.Background(), &openfgav1.ListObjectsRequest{
+						StoreId:              baseReq.GetStoreId(),
+						AuthorizationModelId: baseReq.GetAuthorizationModelId(),
+						Type:                 tc.objectType,
+						Relation:             tc.relation,
+						User:                 tc.subject,
+					})
+					require.NoError(t, err)
+					require.ElementsMatch(t, tc.wantObjects, res.GetObjects(),
+						"response objects drive the confirmation gate; assert them explicitly")
+
+					breakingLogs := logs.FilterMessage(logMessage)
+					if tc.wantReason == "" {
+						require.Equal(t, 0, breakingLogs.Len(), "expected no breaking-change log")
+						return
+					}
+					require.Equal(t, 1, breakingLogs.Len(), "expected exactly one breaking-change log")
+					fields := fieldMap(breakingLogs.All()[0].Context)
+					require.Equal(t, tc.wantReason, fields["reason"])
+				})
+			}
+		})
+	}
+}
+
+// TestStreamedListObjectsBreakingChangeLog is the streaming counterpart of
+// TestListObjectsBreakingChangeLog. StreamedListObjects emits the divergence log
+// from the command layer (ExecuteStreamed) because the handler never sees the
+// streamed objects, so we capture the sent objects to drive the same response-
+// confirmation gate the unary test asserts.
+func TestStreamedListObjectsBreakingChangeLog(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	const logMessage = "potential v2 StreamedListObjects resolution breaking change"
+
+	tests := listObjectsBreakingChangeCases()
+
+	for _, pipelineEnabled := range []bool{false, true} {
+		t.Run(fmt.Sprintf("pipeline_enabled=%t", pipelineEnabled), func(t *testing.T) {
+			for _, tc := range tests {
+				t.Run(tc.name, func(t *testing.T) {
+					core, logs := observer.New(zap.WarnLevel)
+					testLogger := &logger.ZapLogger{Logger: zap.New(core)}
+
+					s, baseReq := setupListObjectsServer(t, tc.modelDSL, tc.tuples,
+						WithLogger(testLogger),
+						WithListObjectsPipelineEnabled(pipelineEnabled),
+					)
+
+					srv := newCapturingStreamServer(context.Background())
+					err := s.StreamedListObjects(&openfgav1.StreamedListObjectsRequest{
+						StoreId:              baseReq.GetStoreId(),
+						AuthorizationModelId: baseReq.GetAuthorizationModelId(),
+						Type:                 tc.objectType,
+						Relation:             tc.relation,
+						User:                 tc.subject,
+					}, srv)
+					require.NoError(t, err)
+					require.ElementsMatch(t, tc.wantObjects, srv.objects,
+						"streamed objects drive the confirmation gate; assert them explicitly")
+
+					breakingLogs := logs.FilterMessage(logMessage)
+					if tc.wantReason == "" {
+						require.Equal(t, 0, breakingLogs.Len(), "expected no breaking-change log")
+						return
+					}
+					require.Equal(t, 1, breakingLogs.Len(), "expected exactly one breaking-change log")
+					fields := fieldMap(breakingLogs.All()[0].Context)
+					require.Equal(t, tc.wantReason, fields["reason"])
+				})
+			}
+		})
+	}
+}
+
+// capturingStreamServer records the objects sent by StreamedListObjects so tests
+// can assert them, mirroring the unary handler's response objects.
+type capturingStreamServer struct {
+	openfgav1.OpenFGAService_StreamedListObjectsServer
+	ctx     context.Context
+	objects []string
+}
+
+func newCapturingStreamServer(ctx context.Context) *capturingStreamServer {
+	return &capturingStreamServer{ctx: ctx}
+}
+
+func (m *capturingStreamServer) Context() context.Context {
+	return m.ctx
+}
+
+func (m *capturingStreamServer) Send(resp *openfgav1.StreamedListObjectsResponse) error {
+	m.objects = append(m.objects, resp.GetObject())
+	return nil
+}
+
+// listObjectsBreakingChangeCase describes a request shape and the breaking-change
+// log expected for it. The subject (ListObjects `user`) plays the role the filter
+// plays in ListUsers, so the cases mirror TestListUsersBreakingChangeLog with the
+// user-side expressed as a subject string.
+type listObjectsBreakingChangeCase struct {
+	name        string
+	modelDSL    string
+	tuples      []*openfgav1.TupleKey
+	objectType  string
+	relation    string
+	subject     string
+	wantObjects []string // objects the response must contain (asserted verbatim)
+	wantReason  string   // empty means: expect no log
+}
+
+func listObjectsBreakingChangeCases() []listObjectsBreakingChangeCase {
+	return []listObjectsBreakingChangeCase{
 		{
 			name: "self_referential_userset",
 			modelDSL: `
@@ -112,6 +236,32 @@ func TestListObjectsBreakingChangeLog(t *testing.T) {
 			relation:    "viewer",
 			subject:     "document:d1#viewer",
 			wantObjects: []string{"document:d1"},
+			wantReason:  v2breaking.ReasonSelfReferentialUserset,
+		},
+		{
+			// Multiple objects come back but only document:d1 (the subject's own
+			// object) is the one v1 structurally surfaces via the self-referential
+			// path, so it is the only one that confirms the reason. document:d2 and
+			// document:d3 are ordinary viewers of the subject userset and would not
+			// confirm on their own. This exercises the streaming fold: it must still
+			// fire the log when just one of several streamed objects confirms.
+			name: "self_referential_userset_multiple_objects",
+			modelDSL: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define viewer: [user, document#viewer]
+			`,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:d2", "viewer", "document:d1#viewer"),
+				tuple.NewTupleKey("document:d3", "viewer", "document:d1#viewer"),
+			},
+			objectType:  "document",
+			relation:    "viewer",
+			subject:     "document:d1#viewer",
+			wantObjects: []string{"document:d1", "document:d2", "document:d3"},
 			wantReason:  v2breaking.ReasonSelfReferentialUserset,
 		},
 		{
@@ -343,46 +493,5 @@ func TestListObjectsBreakingChangeLog(t *testing.T) {
 			wantObjects: []string{},
 			wantReason:  "",
 		},
-	}
-
-	// Every divergent shape here uses a userset or wildcard subject, which the
-	// v2 pipeline routes to the legacy algorithm regardless of the flag. Running
-	// both modes proves the logging behaves identically today; once the pipeline
-	// handles these shapes itself, the pipeline-enabled run's response-
-	// confirmation gate will change and these tests will flag it.
-	for _, pipelineEnabled := range []bool{false, true} {
-		t.Run(fmt.Sprintf("pipeline_enabled=%t", pipelineEnabled), func(t *testing.T) {
-			for _, tc := range tests {
-				t.Run(tc.name, func(t *testing.T) {
-					core, logs := observer.New(zap.WarnLevel)
-					testLogger := &logger.ZapLogger{Logger: zap.New(core)}
-
-					s, baseReq := setupListObjectsServer(t, tc.modelDSL, tc.tuples,
-						WithLogger(testLogger),
-						WithListObjectsPipelineEnabled(pipelineEnabled),
-					)
-
-					res, err := s.ListObjects(context.Background(), &openfgav1.ListObjectsRequest{
-						StoreId:              baseReq.GetStoreId(),
-						AuthorizationModelId: baseReq.GetAuthorizationModelId(),
-						Type:                 tc.objectType,
-						Relation:             tc.relation,
-						User:                 tc.subject,
-					})
-					require.NoError(t, err)
-					require.ElementsMatch(t, tc.wantObjects, res.GetObjects(),
-						"response objects drive the confirmation gate; assert them explicitly")
-
-					breakingLogs := logs.FilterMessage(logMessage)
-					if tc.wantReason == "" {
-						require.Equal(t, 0, breakingLogs.Len(), "expected no breaking-change log")
-						return
-					}
-					require.Equal(t, 1, breakingLogs.Len(), "expected exactly one breaking-change log")
-					fields := fieldMap(breakingLogs.All()[0].Context)
-					require.Equal(t, tc.wantReason, fields["reason"])
-				})
-			}
-		})
 	}
 }
