@@ -177,6 +177,27 @@ func validateTypeRestrictions(typesys *typesystem.TypeSystem, tk *openfgav1.Tupl
 
 // validateCondition returns an error if the condition of the tuple is required but not present,
 // or if the tuple provides a condition but it is invalid according to the model.
+// restrictionFacetMatches reports whether the restriction's facet
+// (concrete / typed-wildcard / userset) matches the tuple user's shape. A condition
+// bound to one facet (e.g. `user:* with C`) must not validate a tuple for a different
+// facet (e.g. `user:alice with C`).
+func restrictionFacetMatches(directlyRelatedType *openfgav1.RelationReference, user, userRelation string) bool {
+	if directlyRelatedType.GetRelationOrWildcard() != nil {
+		if directlyRelatedType.GetRelation() != "" && directlyRelatedType.GetRelation() != userRelation {
+			return false
+		}
+
+		if directlyRelatedType.GetWildcard() != nil && !tuple.IsTypedWildcard(user) {
+			return false
+		}
+
+		return true
+	}
+
+	// The restriction is for a concrete user, so the tuple must not be a wildcard or userset.
+	return !tuple.IsTypedWildcard(user) && userRelation == ""
+}
+
 func validateCondition(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) error {
 	objectType := tuple.GetType(tk.GetObject())
 	userType := tuple.GetType(tk.GetUser())
@@ -197,16 +218,7 @@ func validateCondition(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) e
 				continue
 			}
 
-			if directlyRelatedType.GetRelationOrWildcard() != nil {
-				if directlyRelatedType.GetRelation() != "" && directlyRelatedType.GetRelation() != userRelation {
-					continue
-				}
-
-				if directlyRelatedType.GetWildcard() != nil && !tuple.IsTypedWildcard(tk.GetUser()) {
-					continue
-				}
-			} else if tuple.IsTypedWildcard(tk.GetUser()) || userRelation != "" {
-				// The tuple is a wildcard or userset, but this restriction is for a concrete user.
+			if !restrictionFacetMatches(directlyRelatedType, tk.GetUser(), userRelation) {
 				continue
 			}
 
@@ -237,18 +249,7 @@ func validateCondition(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) e
 			continue
 		}
 
-		// The restriction's facet (concrete / typed-wildcard / userset) must also match the
-		// tuple's user shape. Otherwise a condition bound to one facet (e.g. `user:* with C`)
-		// would wrongly validate a tuple for a different facet (e.g. `user:alice with C`).
-		if directlyRelatedType.GetRelationOrWildcard() != nil {
-			if directlyRelatedType.GetRelation() != "" && directlyRelatedType.GetRelation() != userRelation {
-				continue
-			}
-
-			if directlyRelatedType.GetWildcard() != nil && !tuple.IsTypedWildcard(tk.GetUser()) {
-				continue
-			}
-		} else if tuple.IsTypedWildcard(tk.GetUser()) || userRelation != "" {
+		if !restrictionFacetMatches(directlyRelatedType, tk.GetUser(), userRelation) {
 			continue
 		}
 
