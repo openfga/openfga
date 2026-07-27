@@ -930,6 +930,68 @@ condition isOk(ok: bool) { ok }`,
 	}
 }
 
+func TestRestrictionFacetMatches(t *testing.T) {
+	tests := []struct {
+		name         string
+		restriction  *openfgav1.RelationReference
+		user         string
+		userRelation string
+		expected     bool
+	}{
+		{
+			name:        "concrete_restriction_matches_concrete_user",
+			restriction: typesystem.DirectRelationReference("user", ""),
+			user:        "user:alice",
+			expected:    true,
+		},
+		{
+			name:        "concrete_restriction_rejects_wildcard_user",
+			restriction: typesystem.DirectRelationReference("user", ""),
+			user:        "user:*",
+			expected:    false,
+		},
+		{
+			name:         "concrete_restriction_rejects_userset_user",
+			restriction:  typesystem.DirectRelationReference("group", ""),
+			user:         "group:eng#member",
+			userRelation: "member",
+			expected:     false,
+		},
+		{
+			name:        "wildcard_restriction_matches_wildcard_user",
+			restriction: typesystem.WildcardRelationReference("user"),
+			user:        "user:*",
+			expected:    true,
+		},
+		{
+			name:        "wildcard_restriction_rejects_concrete_user",
+			restriction: typesystem.WildcardRelationReference("user"),
+			user:        "user:alice",
+			expected:    false,
+		},
+		{
+			name:         "userset_restriction_matches_same_relation",
+			restriction:  typesystem.DirectRelationReference("group", "member"),
+			user:         "group:eng#member",
+			userRelation: "member",
+			expected:     true,
+		},
+		{
+			name:         "userset_restriction_rejects_different_relation",
+			restriction:  typesystem.DirectRelationReference("group", "member"),
+			user:         "group:eng#admin",
+			userRelation: "admin",
+			expected:     false,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			require.Equal(t, test.expected, restrictionFacetMatches(test.restriction, test.user, test.userRelation))
+		})
+	}
+}
+
 func TestValidateTupleForRead(t *testing.T) {
 	tests := []struct {
 		name          string
