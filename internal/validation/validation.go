@@ -175,8 +175,6 @@ func validateTypeRestrictions(typesys *typesystem.TypeSystem, tk *openfgav1.Tupl
 	return fmt.Errorf("type '%s' is not an allowed type restriction for '%s#%s'", userType, objectType, tk.GetRelation())
 }
 
-// validateCondition returns an error if the condition of the tuple is required but not present,
-// or if the tuple provides a condition but it is invalid according to the model.
 // restrictionFacetMatches reports whether the restriction's facet
 // (concrete / typed-wildcard / userset) matches the tuple user's shape. A condition
 // bound to one facet (e.g. `user:* with C`) must not validate a tuple for a different
@@ -198,6 +196,8 @@ func restrictionFacetMatches(directlyRelatedType *openfgav1.RelationReference, u
 	return !tuple.IsTypedWildcard(user) && userRelation == ""
 }
 
+// validateCondition returns an error if the condition of the tuple is required but not present,
+// or if the tuple provides a condition but it is invalid according to the model.
 func validateCondition(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) error {
 	objectType := tuple.GetType(tk.GetObject())
 	userType := tuple.GetType(tk.GetUser())
