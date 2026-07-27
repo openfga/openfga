@@ -104,23 +104,30 @@ func captureCheckLogOutput(t *testing.T, requestCompleteLevel string, enabledLev
 		grpc.ChainUnaryInterceptor(grpc_ctxtags.UnaryServerInterceptor(), requestid.NewUnaryInterceptor(), NewLoggingInterceptor(argLogger, requestCompleteLevel)),
 	}
 
-	listner := bufconn.Listen(1024 * 1024)
+	listener := bufconn.Listen(1024 * 1024)
+	t.Cleanup(func() {
+		_ = listener.Close()
+	})
 	srv := grpc.NewServer(serverOpts...)
+	wg := sync.WaitGroup{}
+	t.Cleanup(func() {
+		srv.Stop()
+		wg.Wait()
+	})
 
 	openfgav1.RegisterOpenFGAServiceServer(srv, &fgaServer{})
 
-	wg := sync.WaitGroup{}
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		err := srv.Serve(listner)
+		err := srv.Serve(listener)
 		if err != nil {
 			t.Errorf("failed to serve: %v", err)
 		}
 	}()
 
 	dialer := func(context.Context, string) (net.Conn, error) {
-		return listner.Dial()
+		return listener.Dial()
 	}
 	opts := []grpc.DialOption{
 		grpc.WithContextDialer(dialer),
@@ -129,14 +136,14 @@ func captureCheckLogOutput(t *testing.T, requestCompleteLevel string, enabledLev
 
 	conn, err := grpc.NewClient("passthrough://buffcon", opts...)
 	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, conn.Close())
+	})
 
 	client := openfgav1.NewOpenFGAServiceClient(conn)
 
 	_, err = client.Check(context.Background(), &openfgav1.CheckRequest{})
 	require.NoError(t, err)
-
-	srv.Stop()
-	wg.Wait()
 
 	return gotBuffer
 }
