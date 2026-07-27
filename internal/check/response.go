@@ -2,8 +2,6 @@ package check
 
 import (
 	"time"
-
-	"github.com/openfga/language/pkg/go/graph"
 )
 
 type Response struct {
@@ -18,9 +16,8 @@ func (r *Response) GetAllowed() bool {
 }
 
 type ResponseMsg struct {
-	Res   *Response
-	Edges []*graph.WeightedAuthorizationModelEdge
-	Err   error
+	Res *Response
+	Err error
 }
 
 type ResponseCacheEntry struct {
