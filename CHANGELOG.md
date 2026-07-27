@@ -16,6 +16,9 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Fixed
 - Tuple condition validation now checks that a condition is bound to the specific type-restriction facet (concrete user, typed wildcard, or userset) that matches the tuple's user, not just the user type and condition name. Previously a relation such as `define viewer: [user, user:* with cond]` would accept a tuple like `document:1#viewer@user:alice` carrying `cond`, even though `cond` is only defined on the `user:*` facet. Because this validation also runs when reading tuples during query resolution, such tuples are now consistently rejected across Check and ListObjects. See `internal/validation/validation.go`. [#3218](https://github.com/openfga/openfga/pull/3218)
 
+### Security
+- Update toolchain Go version to 1.26.5 and rebuild the embedded `grpc-health-probe` (bumped to `v0.4.53`, built with Go 1.26.5) so released images no longer ship the Go standard library vulnerabilities documented in the [Go 1.26.5 release notes](https://go.dev/doc/devel/release#go1.26.5), including CVE-2026-39822. [#3219](https://github.com/openfga/openfga/pull/3219)
+
 ## [1.18.1] - 2026-06-29
 ### Added
 - Added diagnostic logging in experimental `weighted_graph_check` when v2 Check resolution might produce a different result than v1 for the same query. These logs surface authorization models that may be affected by a future v1 deprecation, and no operator action is required. [#3149](https://github.com/openfga/openfga/pull/3149)
