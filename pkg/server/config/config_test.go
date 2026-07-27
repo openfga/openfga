@@ -1066,7 +1066,7 @@ func TestVerifyBinarySettings(t *testing.T) {
 		cfg.Log.TimestampFormat = "notatimestampformat"
 
 		err := cfg.VerifyBinarySettings()
-		require.EqualError(t, err, "config 'log.TimestampFormat' must be one of ['Unix', 'ISO8601']")
+		require.EqualError(t, err, "config 'log.timestampFormat' must be one of ['Unix', 'ISO8601']")
 	})
 
 	t.Run("negative_request_timeout_duration", func(t *testing.T) {
