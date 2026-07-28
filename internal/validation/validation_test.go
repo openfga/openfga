@@ -5,8 +5,10 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/types/known/structpb"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	parser "github.com/openfga/language/pkg/go/transformer"
 
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -763,6 +765,229 @@ func TestValidateTupleForWrite(t *testing.T) {
 				require.ErrorIs(t, err, test.expectedError)
 				require.Equal(t, err.Error(), test.expectedError.Error())
 			}
+		})
+	}
+}
+
+func TestValidateConditionFacetMismatch(t *testing.T) {
+	// isOk is bound to different facets depending on the model. A conditioned tuple must
+	// only be accepted when the matching restriction's facet (concrete / typed-wildcard /
+	// userset) also matches the tuple's user shape.
+	condCtx, err := structpb.NewStruct(map[string]interface{}{"ok": true})
+	require.NoError(t, err)
+
+	tests := []struct {
+		name  string
+		model string
+		tuple *openfgav1.TupleKey
+		// errContains is the substring expected in the validation error; "" means the tuple is valid.
+		errContains string
+	}{
+		{
+			name: "wildcard_user_borrows_concrete_facet_condition",
+			// concrete user is conditioned; wildcard is not.
+			model: `model
+  schema 1.1
+type user
+type document
+  relations
+    define b0: [user with isOk, user:*]
+condition isOk(ok: bool) { ok }`,
+			tuple:       tuple.NewTupleKeyWithCondition("document:1", "b0", "user:*", "isOk", condCtx),
+			errContains: "invalid condition for type restriction",
+		},
+		{
+			name: "concrete_user_borrows_wildcard_facet_condition",
+			// wildcard is conditioned; concrete user is not.
+			model: `model
+  schema 1.1
+type user
+type document
+  relations
+    define b0: [user, user:* with isOk]
+condition isOk(ok: bool) { ok }`,
+			tuple:       tuple.NewTupleKeyWithCondition("document:1", "b0", "user:alice", "isOk", condCtx),
+			errContains: "invalid condition for type restriction",
+		},
+		{
+			name: "concrete_user_borrows_userset_facet_condition",
+			// userset facet is conditioned; concrete user is not.
+			model: `model
+  schema 1.1
+type user
+type group
+  relations
+    define member: [user]
+type document
+  relations
+    define b0: [user, group#member with isOk]
+condition isOk(ok: bool) { ok }`,
+			tuple:       tuple.NewTupleKeyWithCondition("document:1", "b0", "user:alice", "isOk", condCtx),
+			errContains: "invalid condition for type restriction",
+		},
+		{
+			name: "userset_user_borrows_concrete_facet_condition",
+			// concrete `group` is conditioned; the userset `group#member` facet is not.
+			model: `model
+  schema 1.1
+type user
+type group
+  relations
+    define member: [user]
+type document
+  relations
+    define b0: [group with isOk, group#member]
+condition isOk(ok: bool) { ok }`,
+			tuple:       tuple.NewTupleKeyWithCondition("document:1", "b0", "group:eng#member", "isOk", condCtx),
+			errContains: "invalid condition for type restriction",
+		},
+		{
+			name: "unconditioned_userset_user_matches_concrete_facet",
+			// the userset `group#member` facet requires isOk; the concrete `group` facet does not.
+			// An unconditioned userset tuple must not borrow the unconditioned concrete facet.
+			model: `model
+  schema 1.1
+type user
+type group
+  relations
+    define member: [user]
+type document
+  relations
+    define b0: [group, group#member with isOk]
+condition isOk(ok: bool) { ok }`,
+			tuple:       tuple.NewTupleKey("document:1", "b0", "group:eng#member"),
+			errContains: "condition is missing",
+		},
+		{
+			name: "userset_relation_mismatch_on_conditioned_userset_facet",
+			// isOk is bound to `group#member`; a `group#admin` tuple must not borrow it.
+			model: `model
+  schema 1.1
+type user
+type group
+  relations
+    define member: [user]
+    define admin: [user]
+type document
+  relations
+    define b0: [group#admin, group#member with isOk]
+condition isOk(ok: bool) { ok }`,
+			tuple:       tuple.NewTupleKeyWithCondition("document:1", "b0", "group:eng#admin", "isOk", condCtx),
+			errContains: "invalid condition for type restriction",
+		},
+		{
+			name: "valid_wildcard_condition_on_wildcard_facet",
+			model: `model
+  schema 1.1
+type user
+type document
+  relations
+    define b0: [user, user:* with isOk]
+condition isOk(ok: bool) { ok }`,
+			tuple:       tuple.NewTupleKeyWithCondition("document:1", "b0", "user:*", "isOk", condCtx),
+			errContains: "",
+		},
+		{
+			name: "valid_concrete_condition_on_concrete_facet",
+			model: `model
+  schema 1.1
+type user
+type document
+  relations
+    define b0: [user with isOk, user:*]
+condition isOk(ok: bool) { ok }`,
+			tuple:       tuple.NewTupleKeyWithCondition("document:1", "b0", "user:alice", "isOk", condCtx),
+			errContains: "",
+		},
+		{
+			name: "valid_userset_condition_on_userset_facet",
+			model: `model
+  schema 1.1
+type user
+type group
+  relations
+    define member: [user]
+type document
+  relations
+    define b0: [user, group#member with isOk]
+condition isOk(ok: bool) { ok }`,
+			tuple:       tuple.NewTupleKeyWithCondition("document:1", "b0", "group:eng#member", "isOk", condCtx),
+			errContains: "",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			ts, err := typesystem.New(parser.MustTransformDSLToProto(test.model))
+			require.NoError(t, err)
+			err = ValidateTupleForWrite(ts, test.tuple)
+			if test.errContains != "" {
+				require.ErrorContains(t, err, test.errContains)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestRestrictionFacetMatches(t *testing.T) {
+	tests := []struct {
+		name         string
+		restriction  *openfgav1.RelationReference
+		user         string
+		userRelation string
+		expected     bool
+	}{
+		{
+			name:        "concrete_restriction_matches_concrete_user",
+			restriction: typesystem.DirectRelationReference("user", ""),
+			user:        "user:alice",
+			expected:    true,
+		},
+		{
+			name:        "concrete_restriction_rejects_wildcard_user",
+			restriction: typesystem.DirectRelationReference("user", ""),
+			user:        "user:*",
+			expected:    false,
+		},
+		{
+			name:         "concrete_restriction_rejects_userset_user",
+			restriction:  typesystem.DirectRelationReference("group", ""),
+			user:         "group:eng#member",
+			userRelation: "member",
+			expected:     false,
+		},
+		{
+			name:        "wildcard_restriction_matches_wildcard_user",
+			restriction: typesystem.WildcardRelationReference("user"),
+			user:        "user:*",
+			expected:    true,
+		},
+		{
+			name:        "wildcard_restriction_rejects_concrete_user",
+			restriction: typesystem.WildcardRelationReference("user"),
+			user:        "user:alice",
+			expected:    false,
+		},
+		{
+			name:         "userset_restriction_matches_same_relation",
+			restriction:  typesystem.DirectRelationReference("group", "member"),
+			user:         "group:eng#member",
+			userRelation: "member",
+			expected:     true,
+		},
+		{
+			name:         "userset_restriction_rejects_different_relation",
+			restriction:  typesystem.DirectRelationReference("group", "member"),
+			user:         "group:eng#admin",
+			userRelation: "admin",
+			expected:     false,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			require.Equal(t, test.expected, restrictionFacetMatches(test.restriction, test.user, test.userRelation))
 		})
 	}
 }

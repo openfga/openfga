@@ -175,6 +175,27 @@ func validateTypeRestrictions(typesys *typesystem.TypeSystem, tk *openfgav1.Tupl
 	return fmt.Errorf("type '%s' is not an allowed type restriction for '%s#%s'", userType, objectType, tk.GetRelation())
 }
 
+// restrictionFacetMatches reports whether the restriction's facet
+// (concrete / typed-wildcard / userset) matches the tuple user's shape. A condition
+// bound to one facet (e.g. `user:* with C`) must not validate a tuple for a different
+// facet (e.g. `user:alice with C`).
+func restrictionFacetMatches(directlyRelatedType *openfgav1.RelationReference, user, userRelation string) bool {
+	if directlyRelatedType.GetRelationOrWildcard() != nil {
+		if directlyRelatedType.GetRelation() != "" && directlyRelatedType.GetRelation() != userRelation {
+			return false
+		}
+
+		if directlyRelatedType.GetWildcard() != nil && !tuple.IsTypedWildcard(user) {
+			return false
+		}
+
+		return true
+	}
+
+	// The restriction is for a concrete user, so the tuple must not be a wildcard or userset.
+	return !tuple.IsTypedWildcard(user) && userRelation == ""
+}
+
 // validateCondition returns an error if the condition of the tuple is required but not present,
 // or if the tuple provides a condition but it is invalid according to the model.
 func validateCondition(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) error {
@@ -197,16 +218,7 @@ func validateCondition(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) e
 				continue
 			}
 
-			if directlyRelatedType.GetRelationOrWildcard() != nil {
-				if directlyRelatedType.GetRelation() != "" && directlyRelatedType.GetRelation() != userRelation {
-					continue
-				}
-
-				if directlyRelatedType.GetWildcard() != nil && !tuple.IsTypedWildcard(tk.GetUser()) {
-					continue
-				}
-			} else if tuple.IsTypedWildcard(tk.GetUser()) {
-				// This is a wildcard tuple but the directlyRelatedType tuple is not for wildcard.
+			if !restrictionFacetMatches(directlyRelatedType, tk.GetUser(), userRelation) {
 				continue
 			}
 
@@ -233,10 +245,16 @@ func validateCondition(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) e
 
 	validCondition := false
 	for _, directlyRelatedType := range typeRestrictions {
-		if directlyRelatedType.GetType() == userType && directlyRelatedType.GetCondition() == tk.GetCondition().GetName() {
-			validCondition = true
-			break
+		if directlyRelatedType.GetType() != userType || directlyRelatedType.GetCondition() != tk.GetCondition().GetName() {
+			continue
 		}
+
+		if !restrictionFacetMatches(directlyRelatedType, tk.GetUser(), userRelation) {
+			continue
+		}
+
+		validCondition = true
+		break
 	}
 
 	if !validCondition {
