@@ -282,3 +282,37 @@ func TestFetchBufferMetric(t *testing.T) {
 		require.GreaterOrEqual(t, sqlIterQuerySampleCount(t, "true"), before+1)
 	})
 }
+
+// TestDeterministicMarshalOpts verifies that DeterministicMarshalOpts produces
+// identical bytes across repeated marshals of the same authorization model,
+// including models with map-keyed relations where plain proto.Marshal is
+// non-deterministic.
+func TestDeterministicMarshalOpts(t *testing.T) {
+	t.Parallel()
+
+	// Build a model with multiple map-keyed relations to expose the non-deterministic
+	// serialization that plain proto.Marshal can produce.
+	model := &openfgav1.AuthorizationModel{
+		Id:            "01HVMMBCMGZNT3SED4Z17ECXCA",
+		SchemaVersion: "1.1",
+		TypeDefinitions: []*openfgav1.TypeDefinition{
+			{
+				Type: "document",
+				Relations: map[string]*openfgav1.Userset{
+					"owner":  {Userset: &openfgav1.Userset_This{This: &openfgav1.DirectUserset{}}},
+					"editor": {Userset: &openfgav1.Userset_This{This: &openfgav1.DirectUserset{}}},
+					"viewer": {Userset: &openfgav1.Userset_This{This: &openfgav1.DirectUserset{}}},
+				},
+			},
+		},
+	}
+
+	b1, err := DeterministicMarshalOpts.Marshal(model)
+	require.NoError(t, err)
+
+	b2, err := DeterministicMarshalOpts.Marshal(model)
+	require.NoError(t, err)
+
+	require.Equal(t, b1, b2, "DeterministicMarshalOpts must produce identical bytes across calls")
+	require.True(t, DeterministicMarshalOpts.Deterministic)
+}

@@ -5,6 +5,7 @@ import (
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -12,8 +13,11 @@ import (
 
 	"github.com/openfga/openfga/internal/telemetry"
 	"github.com/openfga/openfga/internal/utils/apimethod"
+	"github.com/openfga/openfga/pkg/middleware/requestid"
 	"github.com/openfga/openfga/pkg/middleware/validator"
 	"github.com/openfga/openfga/pkg/server/commands"
+	"github.com/openfga/openfga/pkg/server/commands/v2breaking"
+	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
@@ -52,7 +56,7 @@ func (s *Server) Expand(ctx context.Context, req *openfgav1.ExpandRequest) (*ope
 	req.AuthorizationModelId = typesys.GetAuthorizationModelID() // the resolved model id
 
 	q := commands.NewExpandQuery(s.datastore, commands.WithExpandQueryLogger(s.logger))
-	return q.Execute(
+	resp, err := q.Execute(
 		typesystem.ContextWithTypesystem(ctx, typesys),
 		&openfgav1.ExpandRequest{
 			StoreId:          storeID,
@@ -60,4 +64,25 @@ func (s *Server) Expand(ctx context.Context, req *openfgav1.ExpandRequest) (*ope
 			Consistency:      req.GetConsistency(),
 			ContextualTuples: req.GetContextualTuples(),
 		})
+	if err != nil {
+		return nil, err
+	}
+
+	// Flag potential v2 (weighted-graph) resolution breaking changes for this
+	// request shape. Shape predicates may over-report; where possible we also
+	// confirm the response contains evidence of the v1 behavior.
+	// See v2breaking.ExpandReason / ExpandResponseConfirmsReason.
+	targetObjectType := tuple.GetType(tk.GetObject())
+	if reason := v2breaking.ExpandReason(typesys, targetObjectType, tk.GetRelation()); reason != "" {
+		if v2breaking.ExpandResponseConfirmsReason(reason, typesys, targetObjectType, tk.GetRelation(), resp.GetTree()) {
+			s.logger.WarnWithContext(ctx, "potential v2 Expand resolution breaking change",
+				zap.String("store_id", storeID),
+				zap.String("model_id", req.GetAuthorizationModelId()),
+				zap.String("request_id", requestid.GetRequestIDFromContext(ctx)),
+				zap.String("reason", reason),
+			)
+		}
+	}
+
+	return resp, nil
 }

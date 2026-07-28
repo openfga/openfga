@@ -125,6 +125,7 @@ docker_manifests:
       - "ghcr.io/openfga/openfga:v{{ .Major }}.{{ .Minor }}.{{ .Patch }}-arm64"
 
 release:
+  draft: true
   github:
     owner: openfga
     name: openfga

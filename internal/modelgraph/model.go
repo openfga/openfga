@@ -45,6 +45,9 @@ func New(model *openfgav1.AuthorizationModel) (*AuthorizationModelGraph, error) 
 }
 
 func (m *AuthorizationModelGraph) GetModelID() string {
+	if m == nil {
+		return ""
+	}
 	return m.modelID
 }
 

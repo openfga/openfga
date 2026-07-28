@@ -2959,3 +2959,171 @@ tests:
             context:
               "ts": "2023-10-11T11:00:00.000Z"
             expectation: false
+  - name: condition_bound_to_correct_type_restriction_facet
+    # A condition attached to one facet (concrete user / typed wildcard / userset)
+    # must not be honored for a tuple whose user shape matches a different facet.
+    stages:
+      # Valid facet+condition combinations resolve as expected once stored.
+      - model: |
+          model
+            schema 1.1
+          type user
+          type group
+            relations
+              define member: [user]
+          type document
+            relations
+              define concrete_cond: [user with isOk, user:*]
+              define wildcard_cond: [user, user:* with isOk]
+              define userset_cond: [user, group#member with isOk]
+          condition isOk(ok: bool) {
+            ok
+          }
+        tuples:
+          - user: user:alice
+            relation: concrete_cond
+            object: document:1
+            condition:
+              name: isOk
+          - user: user:*
+            relation: wildcard_cond
+            object: document:1
+            condition:
+              name: isOk
+          - user: group:eng#member
+            relation: userset_cond
+            object: document:1
+            condition:
+              name: isOk
+        checkAssertions:
+          # Condition on the concrete facet governs a concrete-user tuple.
+          - tuple:
+              user: user:alice
+              relation: concrete_cond
+              object: document:1
+            context:
+              "ok": true
+            expectation: true
+          - tuple:
+              user: user:alice
+              relation: concrete_cond
+              object: document:1
+            context:
+              "ok": false
+            expectation: false
+          # Condition on the wildcard facet governs a wildcard match.
+          - tuple:
+              user: user:bob
+              relation: wildcard_cond
+              object: document:1
+            context:
+              "ok": true
+            expectation: true
+          - tuple:
+              user: user:bob
+              relation: wildcard_cond
+              object: document:1
+            context:
+              "ok": false
+            expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:alice
+              type: document
+              relation: concrete_cond
+            context:
+              "ok": true
+            expectation:
+              - document:1
+          - request:
+              user: user:alice
+              type: document
+              relation: concrete_cond
+            context:
+              "ok": false
+            expectation: []
+        listUsersAssertions:
+          - request:
+              object: document:1
+              relation: concrete_cond
+              filters:
+                - user
+            context:
+              "ok": true
+            expectation:
+              - user:alice
+      # Facet-mismatched conditioned tuples are rejected when supplied as contextual
+      # tuples (the same validation path used at write time). In this model isOk is
+      # bound only to the `user:*` and concrete `group` facets, so a concrete-user
+      # tuple and a `group#member` userset tuple must not carry isOk.
+      - model: |
+          model
+            schema 1.1
+          type user
+          type group
+            relations
+              define member: [user]
+          type document
+            relations
+              define b0: [user, user:* with isOk, group with isOk, group#member]
+          condition isOk(ok: bool) {
+            ok
+          }
+        checkAssertions:
+          # Concrete-user tuple borrowing the wildcard facet's condition.
+          - tuple:
+              user: user:alice
+              relation: b0
+              object: document:1
+            context:
+              "ok": true
+            contextualTuples:
+              - user: user:alice
+                relation: b0
+                object: document:1
+                condition:
+                  name: isOk
+            errorCode: 2027
+          # Userset tuple borrowing the concrete-group facet's condition.
+          - tuple:
+              user: user:alice
+              relation: b0
+              object: document:1
+            context:
+              "ok": true
+            contextualTuples:
+              - user: group:eng#member
+                relation: b0
+                object: document:1
+                condition:
+                  name: isOk
+            errorCode: 2027
+        listObjectsAssertions:
+          - request:
+              user: user:alice
+              type: document
+              relation: b0
+            context:
+              "ok": true
+            contextualTuples:
+              - user: user:alice
+                relation: b0
+                object: document:1
+                condition:
+                  name: isOk
+            errorCode: 2000
+        listUsersAssertions:
+          - request:
+              object: document:1
+              relation: b0
+              filters:
+                - user
+            context:
+              "ok": true
+            contextualTuples:
+              - user: user:alice
+                relation: b0
+                object: document:1
+                condition:
+                  name: isOk
+            errorCode: 2000

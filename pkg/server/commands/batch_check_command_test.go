@@ -15,6 +15,7 @@ import (
 
 	"github.com/openfga/openfga/internal/graph"
 	mockstorage "github.com/openfga/openfga/internal/mocks"
+	"github.com/openfga/openfga/internal/modelgraph"
 	"github.com/openfga/openfga/pkg/server/config"
 	"github.com/openfga/openfga/pkg/storage/memory"
 	"github.com/openfga/openfga/pkg/testutils"
@@ -28,7 +29,6 @@ func TestBatchCheckCommand(t *testing.T) {
 
 	maxChecks := uint32(50)
 	mockController := gomock.NewController(t)
-	defer mockController.Finish()
 	ds := mockstorage.NewMockOpenFGADatastore(mockController)
 
 	model := testutils.MustTransformDSLToProtoWithID(`
@@ -44,7 +44,7 @@ func TestBatchCheckCommand(t *testing.T) {
 
 	t.Run("calls_check_once_for_each_tuple_in_batch", func(t *testing.T) {
 		mockCheckResolver := graph.NewMockCheckResolver(mockController)
-		cmd := NewBatchCheckCommand(ds, mockCheckResolver, ts)
+		cmd := NewBatchCheckCommand(NewCheckCommand(ds, mockCheckResolver, ts))
 		numChecks := int(maxChecks)
 		checks := make([]*openfgav1.BatchCheckItem, numChecks)
 		for i := 0; i < numChecks; i++ {
@@ -84,7 +84,7 @@ func TestBatchCheckCommand(t *testing.T) {
 
 	t.Run("returns_a_result_for_each_correlation_id", func(t *testing.T) {
 		mockCheckResolver := graph.NewMockCheckResolver(mockController)
-		cmd := NewBatchCheckCommand(ds, mockCheckResolver, ts)
+		cmd := NewBatchCheckCommand(NewCheckCommand(ds, mockCheckResolver, ts))
 		numChecks := 10
 		checks := make([]*openfgav1.BatchCheckItem, numChecks)
 		var ids []string
@@ -128,9 +128,7 @@ func TestBatchCheckCommand(t *testing.T) {
 	t.Run("fails_with_validation_error_if_too_many_tuples", func(t *testing.T) {
 		mockCheckResolver := graph.NewMockCheckResolver(mockController)
 		cmd := NewBatchCheckCommand(
-			ds,
-			mockCheckResolver,
-			ts,
+			NewCheckCommand(ds, mockCheckResolver, ts),
 			WithBatchCheckMaxChecksPerBatch(maxChecks),
 		)
 		numChecks := int(maxChecks) + 1
@@ -160,7 +158,7 @@ func TestBatchCheckCommand(t *testing.T) {
 
 	t.Run("fails_with_validation_error_if_no_tuples", func(t *testing.T) {
 		mockCheckResolver := graph.NewMockCheckResolver(mockController)
-		cmd := NewBatchCheckCommand(ds, mockCheckResolver, ts)
+		cmd := NewBatchCheckCommand(NewCheckCommand(ds, mockCheckResolver, ts))
 		params := &BatchCheckCommandParams{
 			AuthorizationModelID: ts.GetAuthorizationModelID(),
 			Checks:               []*openfgav1.BatchCheckItem{},
@@ -175,7 +173,7 @@ func TestBatchCheckCommand(t *testing.T) {
 
 	t.Run("fails_with_validation_error_if_duplicated_correlation_ids", func(t *testing.T) {
 		mockCheckResolver := graph.NewMockCheckResolver(mockController)
-		cmd := NewBatchCheckCommand(ds, mockCheckResolver, ts)
+		cmd := NewBatchCheckCommand(NewCheckCommand(ds, mockCheckResolver, ts))
 		numChecks := 2
 		checks := make([]*openfgav1.BatchCheckItem, numChecks)
 		for i := 0; i < numChecks; i++ {
@@ -204,7 +202,7 @@ func TestBatchCheckCommand(t *testing.T) {
 
 	t.Run("fails_with_validation_error_if_empty_correlation_id", func(t *testing.T) {
 		mockCheckResolver := graph.NewMockCheckResolver(mockController)
-		cmd := NewBatchCheckCommand(ds, mockCheckResolver, ts)
+		cmd := NewBatchCheckCommand(NewCheckCommand(ds, mockCheckResolver, ts))
 		numChecks := 3
 		checks := make([]*openfgav1.BatchCheckItem, numChecks)
 		for i := 0; i < numChecks; i++ {
@@ -233,7 +231,7 @@ func TestBatchCheckCommand(t *testing.T) {
 
 	t.Run("returns_errors_per_check_if_context_cancelled", func(t *testing.T) {
 		mockCheckResolver := graph.NewMockCheckResolver(mockController)
-		cmd := NewBatchCheckCommand(ds, mockCheckResolver, ts)
+		cmd := NewBatchCheckCommand(NewCheckCommand(ds, mockCheckResolver, ts))
 		numChecks := 3
 		checks := make([]*openfgav1.BatchCheckItem, numChecks)
 		for i := 0; i < numChecks; i++ {
@@ -263,7 +261,7 @@ func TestBatchCheckCommand(t *testing.T) {
 
 		// But all checks should return a context cancelled error
 		for _, v := range response {
-			require.Nil(t, v.CheckResponse)
+			require.False(t, v.Allowed)
 			require.Equal(t, v.Err, context.Canceled)
 		}
 
@@ -277,7 +275,7 @@ func TestBatchCheckCommand(t *testing.T) {
 
 	t.Run("uses_command_cache_to_resolve_dupe_checks", func(t *testing.T) {
 		mockCheckResolver := graph.NewMockCheckResolver(mockController)
-		cmd := NewBatchCheckCommand(ds, mockCheckResolver, ts)
+		cmd := NewBatchCheckCommand(NewCheckCommand(ds, mockCheckResolver, ts))
 
 		justinTuple := &openfgav1.CheckRequestTupleKey{
 			Object:   "doc:doc1",
@@ -323,7 +321,7 @@ func TestBatchCheckCommand(t *testing.T) {
 
 	t.Run("handles_check_failures_gracefully", func(t *testing.T) {
 		mockCheckResolver := graph.NewMockCheckResolver(mockController)
-		cmd := NewBatchCheckCommand(ds, mockCheckResolver, ts)
+		cmd := NewBatchCheckCommand(NewCheckCommand(ds, mockCheckResolver, ts))
 
 		justinTuple := &openfgav1.CheckRequestTupleKey{
 			Object:   "doc:doc1",
@@ -354,7 +352,7 @@ func TestBatchCheckCommand(t *testing.T) {
 
 	t.Run("tracks_dispatch_throttled_in_metadata", func(t *testing.T) {
 		mockCheckResolver := graph.NewMockCheckResolver(mockController)
-		cmd := NewBatchCheckCommand(ds, mockCheckResolver, ts)
+		cmd := NewBatchCheckCommand(NewCheckCommand(ds, mockCheckResolver, ts))
 
 		checks := []*openfgav1.BatchCheckItem{
 			{
@@ -480,6 +478,200 @@ func TestGenerateCacheKeyFromCheck(t *testing.T) {
 	})
 }
 
+func TestBatchCheckCommandV2(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	mockController := gomock.NewController(t)
+	ds := mockstorage.NewMockOpenFGADatastore(mockController)
+
+	model := testutils.MustTransformDSLToProtoWithID(`
+		model
+			schema 1.1
+		type user
+		type doc
+			relations
+				define viewer: [user]
+	`)
+	ts, err := typesystem.NewAndValidate(context.Background(), model)
+	require.NoError(t, err)
+
+	storeID := ulid.Make().String()
+
+	basicChecks := func(n int) []*openfgav1.BatchCheckItem {
+		items := make([]*openfgav1.BatchCheckItem, n)
+		for i := range items {
+			items[i] = &openfgav1.BatchCheckItem{
+				TupleKey: &openfgav1.CheckRequestTupleKey{
+					Object:   "doc:doc1",
+					Relation: "viewer",
+					User:     fmt.Sprintf("user:user%d", i),
+				},
+				CorrelationId: fmt.Sprintf("id%d", i),
+			}
+		}
+		return items
+	}
+
+	t.Run("v1_checker_processes_all_items", func(t *testing.T) {
+		mockCheckResolver := graph.NewMockCheckResolver(mockController)
+		cmd := NewBatchCheckCommand(NewCheckCommand(ds, mockCheckResolver, ts))
+
+		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).
+			Times(2).
+			DoAndReturn(func(_ any, _ any) (*graph.ResolveCheckResponse, error) {
+				return &graph.ResolveCheckResponse{Allowed: true}, nil
+			})
+
+		result, _, err := cmd.Execute(context.Background(), &BatchCheckCommandParams{
+			AuthorizationModelID: ts.GetAuthorizationModelID(),
+			Checks:               basicChecks(2),
+			StoreID:              storeID,
+		})
+
+		require.NoError(t, err)
+		require.Len(t, result, 2)
+		for _, outcome := range result {
+			require.NoError(t, outcome.Err)
+			require.True(t, outcome.Allowed)
+		}
+	})
+
+	t.Run("v2_succeeds_for_all_items", func(t *testing.T) {
+		mockCheckResolver := graph.NewMockCheckResolver(mockController)
+		realDS := memory.New()
+
+		realMG, err := modelgraph.New(model)
+		require.NoError(t, err)
+
+		v1Fallback := NewCheckCommand(realDS, mockCheckResolver, ts)
+		v2Query := NewCheckQuery(
+			WithCheckQueryV2Datastore(realDS),
+			WithCheckQueryV2Model(realMG),
+			WithCheckQueryV2ConcurrencyLimit(config.DefaultResolveNodeBreadthLimit),
+			WithCheckQueryV2Fallback(v1Fallback),
+		)
+
+		cmd := NewBatchCheckCommand(v2Query)
+
+		result, _, err := cmd.Execute(context.Background(), &BatchCheckCommandParams{
+			AuthorizationModelID: ts.GetAuthorizationModelID(),
+			Checks:               basicChecks(2),
+			StoreID:              storeID,
+		})
+
+		require.NoError(t, err)
+		require.Len(t, result, 2)
+		require.Equal(t, 0, v2Query.FallbackCount())
+		for _, outcome := range result {
+			require.NoError(t, outcome.Err)
+			require.False(t, outcome.Allowed) // no tuples, so not allowed
+		}
+	})
+
+	t.Run("v2_nonterminal_error_falls_back_to_v1", func(t *testing.T) {
+		mockCheckResolver := graph.NewMockCheckResolver(mockController)
+
+		// v2 query with nil model: Execute will return a non-terminal error (ErrMissingAuthZModelID)
+		// from check.NewRequest. This triggers per-item fallback to v1.
+		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).
+			Times(1).
+			Return(&graph.ResolveCheckResponse{Allowed: true}, nil)
+
+		v1Fallback := NewCheckCommand(ds, mockCheckResolver, ts)
+		v2QueryNoModel := NewCheckQuery(
+			WithCheckQueryV2Datastore(ds),
+			WithCheckQueryV2ConcurrencyLimit(config.DefaultResolveNodeBreadthLimit),
+			// Model intentionally omitted
+			WithCheckQueryV2Fallback(v1Fallback),
+		)
+
+		cmd := NewBatchCheckCommand(v2QueryNoModel)
+
+		result, _, err := cmd.Execute(context.Background(), &BatchCheckCommandParams{
+			AuthorizationModelID: ts.GetAuthorizationModelID(),
+			Checks:               basicChecks(1),
+			StoreID:              storeID,
+		})
+
+		require.NoError(t, err)
+		require.Len(t, result, 1)
+		require.Equal(t, 1, v2QueryNoModel.FallbackCount())
+		for _, outcome := range result {
+			require.NoError(t, outcome.Err)
+			require.True(t, outcome.Allowed)
+		}
+	})
+
+	t.Run("v2_mixed_per_item_fallback", func(t *testing.T) {
+		// viewer uses exclusion. v2 returns ErrUsersetInvalidRequest (non-terminal) for
+		// userset requests against an exclusion relation, so that item falls back to v1
+		// while a normal user check on the same batch item succeeds via v2.
+		exclusionModel := testutils.MustTransformDSLToProtoWithID(`
+			model
+				schema 1.1
+			type user
+			type document
+				relations
+					define owner: [user]
+					define member: [user]
+					define viewer: [document#owner] but not member
+		`)
+		exclusionTS, err := typesystem.NewAndValidate(context.Background(), exclusionModel)
+		require.NoError(t, err)
+
+		exclusionMG, err := modelgraph.New(exclusionModel)
+		require.NoError(t, err)
+
+		realDS := memory.New()
+
+		// Write tuples: user:alice is an owner; document:2#owner is assigned as viewer of document:1.
+		ctx := context.Background()
+		require.NoError(t, realDS.Write(ctx, storeID, nil, []*openfgav1.TupleKey{
+			{Object: "document:1", Relation: "owner", User: "user:alice"},
+			{Object: "document:1", Relation: "viewer", User: "document:2#owner"},
+		}))
+
+		checkResolver, checkResolverCloser, err := graph.NewOrderedCheckResolvers().Build()
+		require.NoError(t, err)
+		t.Cleanup(checkResolverCloser)
+
+		v1Fallback := NewCheckCommand(realDS, checkResolver, exclusionTS)
+		v2Query := NewCheckQuery(
+			WithCheckQueryV2Datastore(realDS),
+			WithCheckQueryV2Model(exclusionMG),
+			WithCheckQueryV2ConcurrencyLimit(config.DefaultResolveNodeBreadthLimit),
+			WithCheckQueryV2Fallback(v1Fallback),
+		)
+
+		cmd := NewBatchCheckCommand(v2Query)
+
+		result, _, err := cmd.Execute(ctx, &BatchCheckCommandParams{
+			AuthorizationModelID: exclusionTS.GetAuthorizationModelID(),
+			StoreID:              storeID,
+			Checks: []*openfgav1.BatchCheckItem{
+				{
+					// Normal user check — v2 handles this fine.
+					TupleKey:      &openfgav1.CheckRequestTupleKey{Object: "document:1", Relation: "owner", User: "user:alice"},
+					CorrelationId: "normal",
+				},
+				{
+					// Userset check against an exclusion relation — v2 returns ErrUsersetInvalidRequest
+					// (non-terminal), which should trigger per-item fallback to v1 for this item only.
+					TupleKey:      &openfgav1.CheckRequestTupleKey{Object: "document:1", Relation: "viewer", User: "document:2#owner"},
+					CorrelationId: "userset",
+				},
+			},
+		})
+
+		require.NoError(t, err)
+		require.True(t, result["normal"].Allowed)
+		require.True(t, result["userset"].Allowed) // v1 fallback incorrectly returns true
+		require.Equal(t, 1, v2Query.FallbackCount())
+	})
+}
+
 func BenchmarkBatchCheckCommand(b *testing.B) {
 	ds := memory.New()
 	model := testutils.MustTransformDSLToProtoWithID(`
@@ -498,9 +690,7 @@ func BenchmarkBatchCheckCommand(b *testing.B) {
 
 	maxChecks := config.DefaultMaxChecksPerBatchCheck
 	cmd := NewBatchCheckCommand(
-		ds,
-		checkResolver,
-		ts,
+		NewCheckCommand(ds, checkResolver, ts),
 		WithBatchCheckMaxChecksPerBatch(uint32(maxChecks)),
 	)
 

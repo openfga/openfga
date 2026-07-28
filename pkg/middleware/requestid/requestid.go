@@ -58,3 +58,11 @@ func reportable() interceptors.CommonReportableFunc {
 		return interceptors.NoopReporter{}, ctx
 	}
 }
+
+func GetRequestIDFromContext(ctx context.Context) string {
+	requestID, _ := grpc_ctxtags.Extract(ctx).Values()["request_id"].(string)
+	if requestID == "" {
+		requestID = InitRequestID(ctx)
+	}
+	return requestID
+}
