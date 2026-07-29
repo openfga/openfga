@@ -631,24 +631,56 @@ func TestFlattenNodeSkipsOnlyTargetedRecursiveRelation(t *testing.T) {
 // ambiguity is detected, CanApplyRecursion must return (nil, false) so the caller falls back
 // to the generic per-edge resolution path, which handles each recursive edge independently.
 func TestCanApplyRecursionBailsOutOnAmbiguousRecursiveEdges(t *testing.T) {
-	model := testutils.MustTransformDSLToProtoWithID(`
-        model
-          schema 1.1
-        type user
-        type group
-          relations
-            define parent_group: [group]
-            define child_group: [group]
-            define member: [user] or member from parent_group or member from child_group
-    `)
+	tests := []struct {
+		name  string
+		model string
+	}{
+		{
+			// Both recursive edges are plain TTU edges sitting directly on the union node.
+			name: "two_ttu_edges_on_the_same_union",
+			model: `
+                model
+                  schema 1.1
+                type user
+                type group
+                  relations
+                    define parent_group: [group]
+                    define child_group: [group]
+                    define member: [user] or member from parent_group or member from child_group
+            `,
+		},
+		{
+			// Here neither recursive edge sits directly on the union. "[user, group#member]"
+			// becomes a logical direct grouping and "member from parent" (with two parent
+			// types) becomes a logical TTU grouping, so both recursive edges are only reached
+			// by descending into those grouping nodes. The ambiguity must still be detected.
+			name: "recursive_userset_and_ttu_behind_logical_groupings",
+			model: `
+                model
+                  schema 1.1
+                type user
+                type org
+                  relations
+                    define member: [user]
+                type group
+                  relations
+                    define parent: [group, org]
+                    define member: [user, group#member] or member from parent
+            `,
+		},
+	}
 
-	graph, err := New(model)
-	require.NoError(t, err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			graph, err := New(testutils.MustTransformDSLToProtoWithID(tt.model))
+			require.NoError(t, err)
 
-	node, ok := graph.GetNodeByID("group#member")
-	require.True(t, ok)
+			node, ok := graph.GetNodeByID("group#member")
+			require.True(t, ok)
 
-	edge, canApply := graph.CanApplyRecursion(node, "user", true)
-	require.Nil(t, edge, "ambiguous recursive edges must disable the optimization rather than pick one arbitrarily")
-	require.False(t, canApply)
+			edge, canApply := graph.CanApplyRecursion(node, "user", true)
+			require.Nil(t, edge, "ambiguous recursive edges must disable the optimization rather than pick one arbitrarily")
+			require.False(t, canApply)
+		})
+	}
 }
