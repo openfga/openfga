@@ -82,20 +82,33 @@ func (m *AuthorizationModelGraph) GetDirectEdgeFromNodeForUserType(objectRelatio
 // relation reached along a non-recursive branch) are always kept, since dropping them would
 // silently discard valid resolution paths.
 func (m *AuthorizationModelGraph) FlattenNode(node *authzGraph.WeightedAuthorizationModelNode, userType string, hasWildcardRequest bool, skipRecursiveRelation string) ([]*authzGraph.WeightedAuthorizationModelEdge, error) {
+	var result []*authzGraph.WeightedAuthorizationModelEdge
+
 	edges, ok := m.GetEdgesFromNode(node)
 	if !ok {
 		return nil, ErrGraphError
 	}
 
-	result := make([]*authzGraph.WeightedAuthorizationModelEdge, 0, len(edges))
-	for _, edge := range edges {
+	stack := make([]*authzGraph.WeightedAuthorizationModelEdge, len(edges))
+
+	// copy the edges to the stack to avoid mutating the source edge slice
+	// when reversing the sort order.
+	copy(stack, edges)
+
+	// reverse the stack order to preserve DFS order
+	slices.Reverse(stack)
+
+	for len(stack) > 0 {
+		ndx := len(stack) - 1
+		edge := stack[ndx]
+		stack = stack[:ndx]
+
 		_, ok := m.GetEdgeWeight(edge, userType)
-		// in the case the request is a wildcard, we need to check if the edge has a wildcard for the user type
 		if !ok || (hasWildcardRequest && !slices.Contains(edge.GetWildcards(), userType)) {
-			continue // no relation to terminal type / pruning edge traversal
+			continue
 		}
 
-		canFlatten := false
+		var canFlatten bool
 
 		switch edge.GetEdgeType() {
 		case authzGraph.ComputedEdge, authzGraph.DirectLogicalEdge, authzGraph.TTULogicalEdge:
@@ -112,11 +125,17 @@ func (m *AuthorizationModelGraph) FlattenNode(node *authzGraph.WeightedAuthoriza
 		}
 
 		if canFlatten {
-			res, err := m.FlattenNode(edge.GetTo(), userType, hasWildcardRequest, skipRecursiveRelation)
-			if err != nil {
-				return nil, err
+			edges, ok := m.GetEdgesFromNode(edge.GetTo())
+			if !ok {
+				return nil, ErrGraphError
 			}
-			result = append(result, res...)
+
+			// range over the edges in reverse order to preserve DFS order
+			for _, edge := range slices.Backward(edges) {
+				// copy each edge to the stack, avoiding mutating the source
+				// edge slice
+				stack = append(stack, edge)
+			}
 		} else if skipRecursiveRelation == "" || edge.GetRecursiveRelation() != skipRecursiveRelation {
 			result = append(result, edge)
 		}
