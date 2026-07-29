@@ -8,10 +8,25 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 ### Added
-- Added diagnostic logging in experimental `weighted_graph_check` when v2 Check resolution might produce a different result than v1 for the same query. These logs surface authorization models that may be affected by a future v1 deprecation, and no operator action is required. [#3149](https://github.com/openfga/openfga/pull/3149)
+- Extended experimental `weighted_graph_check` diagnostic logging to cover the `wildcard_with_exclusion` and `userset_with_exclusion` shapes: the log now fires when v2 Check rejects one of these shapes and Check falls back to v1, and when v2 Check is skipped entirely because the weighted graph fails to build. These logs surface authorization models that may be affected by a future v1 deprecation, and no operator action is required. [#3204](https://github.com/openfga/openfga/pull/3204)
 
 ### Changed
-- Extended experimental `weighted_graph_check` to `BatchCheck`: when the flag is enabled, each item in the batch is evaluated using the weighted graph algorithm, with per-item fallback to the standard algorithm on non-terminal errors. [#3154](https://github.com/openfga/openfga/pull/3154)
+- Matched experimental `weighted_graph_check` cache metrics with original Check cache metrics: iterator cache metrics renamed to `tuples_cache_total_count`, `tuples_cache_hit_count`, `tuples_cache_discard_count`, `tuples_cache_size`; query cache metrics added as `check_cache_total_count`, `check_cache_hit_count`, `check_cache_invalid_hit_count`. [#3184](https://github.com/openfga/openfga/pull/3184)
+
+### Fixed
+- Fixed experimental `weighted_graph_check` incorrectly returning `false` for models with two or more independently-recursive relations where satisfying the outer recursive relation requires resolving through an unrelated, nested recursive relation (e.g. `descendant_principal: member or descendant_principal from child_group` where `member` transitively reaches a separately-recursive `admin: direct_admin or admin from parent_group`). `FlattenNode` now only excludes edges belonging to the specific recursive relation currently being unwound, instead of excluding every recursive edge in the graph. [#3195](https://github.com/openfga/openfga/issues/3195)
+- Tuple condition validation now checks that a condition is bound to the specific type-restriction facet (concrete user, typed wildcard, or userset) that matches the tuple's user, not just the user type and condition name. Previously a relation such as `define viewer: [user, user:* with cond]` would accept a tuple like `document:1#viewer@user:alice` carrying `cond`, even though `cond` is only defined on the `user:*` facet. Because this validation also runs when reading tuples during query resolution, such tuples are now consistently rejected across Check and ListObjects. See `internal/validation/validation.go`. [#3218](https://github.com/openfga/openfga/pull/3218)
+
+### Security
+- Update toolchain Go version to 1.26.5 and rebuild the embedded `grpc-health-probe` (bumped to `v0.4.53`, built with Go 1.26.5) so released images no longer ship the Go standard library vulnerabilities documented in the [Go 1.26.5 release notes](https://go.dev/doc/devel/release#go1.26.5), including CVE-2026-39822. [#3219](https://github.com/openfga/openfga/pull/3219)
+
+## [1.18.1] - 2026-06-29
+### Added
+- Added diagnostic logging in experimental `weighted_graph_check` when v2 Check resolution might produce a different result than v1 for the same query. These logs surface authorization models that may be affected by a future v1 deprecation, and no operator action is required. [#3149](https://github.com/openfga/openfga/pull/3149)
+- Added diagnostic logging in `Expand` and `ListUsers` when v2 resolution might produce a different result than v1 for the same query. Note that v2 has not been implemented yet for these endpoints; these logs purely add visibility for a future v1 deprecation, and no operator action is required. [#3182](https://github.com/openfga/openfga/pull/3182)
+
+### Changed
+- Extended experimental `weighted_graph_check` to `BatchCheck`: with the flag enabled, each item in the batch is evaluated using the weighted graph algorithm, with per-item fallback to the standard algorithm on non-terminal errors. [#3154](https://github.com/openfga/openfga/pull/3154)
 - Use `proto.MarshalOptions{Deterministic: true}` when serializing authorization models to the `serialized_protobuf` column, ensuring consistent stored bytes within a given OpenFGA version for models with map-keyed type definitions. [#3171](https://github.com/openfga/openfga/pull/3171)
 - The `in_cidr` condition now treats IPv4-mapped IPv6 addresses as their IPv4 equivalents (RFC 4291 §2.5.5.2), so `::ffff:192.168.1.1` matches an IPv4 CIDR such as `192.168.1.0/24`. See `internal/condition/types/ipaddress.go`. [#3181](https://github.com/openfga/openfga/pull/3181)
 
@@ -1691,7 +1706,8 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
 - Memory storage adapter implementation
 - Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.18.0...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.18.1...HEAD
+[1.18.1]: https://github.com/openfga/openfga/compare/v1.18.0...v1.18.1
 [1.18.0]: https://github.com/openfga/openfga/compare/v1.17.1...v1.18.0
 [1.17.1]: https://github.com/openfga/openfga/compare/v1.17.0...v1.17.1
 [1.17.0]: https://github.com/openfga/openfga/compare/v1.16.1...v1.17.0
