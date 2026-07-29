@@ -37,7 +37,7 @@ func entryEdges(t *testing.T, g *modelgraph.AuthorizationModelGraph, req *Reques
 	t.Helper()
 	node, ok := g.GetNodeByID(tuple.ToObjectRelationString(tuple.GetType(object), relation))
 	require.True(t, ok)
-	e, err := g.FlattenNode(node, req.GetUserType(), req.IsTypedWildcard(), false)
+	e, err := g.FlattenNode(node, req.GetUserType(), req.IsTypedWildcard(), "")
 	require.NoError(t, err)
 	return e
 }

@@ -123,7 +123,7 @@ func TestResolveUnion(t *testing.T) {
 		node, ok := mg.GetNodeByID("group#member")
 		require.True(t, ok)
 
-		edges, err := mg.FlattenNode(node, req.GetUserType(), req.IsTypedWildcard(), false)
+		edges, err := mg.FlattenNode(node, req.GetUserType(), req.IsTypedWildcard(), "")
 		require.NoError(t, err)
 
 		// simulate a node cache entry with a nil value.
@@ -230,7 +230,7 @@ func TestResolveUnion(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		edges, err := mg.FlattenNode(node, req.GetUserType(), req.IsTypedWildcard(), false)
+		edges, err := mg.FlattenNode(node, req.GetUserType(), req.IsTypedWildcard(), "")
 		require.NoError(t, err)
 		require.Len(t, edges, 2)
 
@@ -456,7 +456,7 @@ func TestResolveUnionEdges(t *testing.T) {
 		node, ok := mg.GetNodeByID("group#member")
 		require.True(t, ok)
 
-		edges, err := mg.FlattenNode(node, "user", false, false)
+		edges, err := mg.FlattenNode(node, "user", false, "")
 		require.NoError(t, err)
 		require.Len(t, edges, 2)
 		require.True(t, ok)
@@ -6258,6 +6258,8 @@ func TestCheck_NestedRecursiveRelations(t *testing.T) {
 	mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
 	mockPlanner := mocks.NewMockManager(ctrl)
 	mockSelector := mocks.NewMockSelector(ctrl)
+
+	mockDatastore.EXPECT().Builder(gomock.Any()).AnyTimes()
 
 	model := testutils.MustTransformDSLToProtoWithID(`
 		model

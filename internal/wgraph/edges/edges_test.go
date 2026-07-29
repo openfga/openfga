@@ -154,7 +154,7 @@ func TestSplitWeightOne(t *testing.T) {
 			node, ok := wgraph.GetNodeByID(c.source)
 			require.True(t, ok)
 
-			e, err := wgraph.FlattenNode(node, c.target, false, false)
+			e, err := wgraph.FlattenNode(node, c.target, false, "")
 			require.NoError(t, err)
 
 			w1, w2 := edges.SplitWeightOne(c.target, e...)
