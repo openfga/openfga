@@ -74,7 +74,14 @@ func (m *AuthorizationModelGraph) GetDirectEdgeFromNodeForUserType(objectRelatio
 	return nil, ErrGraphError
 }
 
-func (m *AuthorizationModelGraph) FlattenNode(node *authzGraph.WeightedAuthorizationModelNode, userType string, hasWildcardRequest bool, recursivePath bool) ([]*authzGraph.WeightedAuthorizationModelEdge, error) {
+// FlattenNode collapses union/computed/rewrite edges below node into their terminal edges.
+// SkipRecursiveRelation, when non-empty, excludes edges whose RecursiveRelation matches it -
+// this is used by callers that are already handling that specific recursive relation separately
+// (e.g. ResolveRecursive/bottomUp's bottom-up traversal) and must not re-flatten it here.
+// Edges belonging to a *different* recursive relation (e.g. a nested, unrelated recursive
+// relation reached along a non-recursive branch) are always kept, since dropping them would
+// silently discard valid resolution paths.
+func (m *AuthorizationModelGraph) FlattenNode(node *authzGraph.WeightedAuthorizationModelNode, userType string, hasWildcardRequest bool, skipRecursiveRelation string) ([]*authzGraph.WeightedAuthorizationModelEdge, error) {
 	edges, ok := m.GetEdgesFromNode(node)
 	if !ok {
 		return nil, ErrGraphError
@@ -105,12 +112,12 @@ func (m *AuthorizationModelGraph) FlattenNode(node *authzGraph.WeightedAuthoriza
 		}
 
 		if canFlatten {
-			res, err := m.FlattenNode(edge.GetTo(), userType, hasWildcardRequest, recursivePath)
+			res, err := m.FlattenNode(edge.GetTo(), userType, hasWildcardRequest, skipRecursiveRelation)
 			if err != nil {
 				return nil, err
 			}
 			result = append(result, res...)
-		} else if !recursivePath || edge.GetRecursiveRelation() == "" {
+		} else if skipRecursiveRelation == "" || edge.GetRecursiveRelation() != skipRecursiveRelation {
 			result = append(result, edge)
 		}
 	}

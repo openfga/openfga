@@ -343,7 +343,7 @@ func (r *Resolver) ResolveUnion(ctx context.Context, req *Request, node *authzGr
 	}
 
 	// flatten the node to get all terminal edges to avoid unnecessary goroutines
-	terminalEdges, err := r.model.FlattenNode(node, req.GetUserType(), req.IsTypedWildcard(), false)
+	terminalEdges, err := r.model.FlattenNode(node, req.GetUserType(), req.IsTypedWildcard(), "")
 	if err != nil {
 		return nil, errors.Join(ErrPanicRequest, err)
 	}
@@ -507,6 +507,9 @@ func (r *Resolver) resolveRecursiveTTU(ctx context.Context, req *Request, edge *
 	})
 }
 
+// ResolveRecursive unwinds a recursive edge (e.g. `rel from parent`) using a bottom-up strategy:
+// it flattens the edge's non-recursive operands to find terminal/base cases, then expands
+// outward along the recursive relation until the request's object/user pair is reached.
 func (r *Resolver) ResolveRecursive(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge, visited *sync.Map, canApplyOptimization bool) (*Response, error) {
 	ctx, span := tracer.Start(ctx, "ResolveRecursive", trace.WithAttributes(
 		attribute.Int64("edge.type", int64(edge.GetEdgeType())),
@@ -524,7 +527,9 @@ func (r *Resolver) ResolveRecursive(ctx context.Context, req *Request, edge *aut
 		}
 	}(ctx)
 
-	nonRecursiveEdges, err := r.model.FlattenNode(edge.GetTo(), req.GetUserType(), req.IsTypedWildcard(), true)
+	// Only skip edges belonging to the recursive relation we're unwinding here (edge.GetRecursiveRelation());
+	// other, unrelated recursive relations reached along the way must still be flattened normally.
+	nonRecursiveEdges, err := r.model.FlattenNode(edge.GetTo(), req.GetUserType(), req.IsTypedWildcard(), edge.GetRecursiveRelation())
 	if err != nil {
 		return nil, errors.Join(ErrPanicRequest, err)
 	}

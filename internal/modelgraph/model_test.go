@@ -161,7 +161,7 @@ func TestFlattenNodeWithWildcard(t *testing.T) {
 		node, ok := graph.GetNodeByID("group#member")
 		require.True(t, ok)
 
-		edges, err := graph.FlattenNode(node, "user", true, false)
+		edges, err := graph.FlattenNode(node, "user", true, "")
 		require.NoError(t, err)
 		require.Len(t, edges, 2)
 	})
@@ -186,7 +186,7 @@ func TestFlattenNodeWithWildcard(t *testing.T) {
 		node, ok := graph.GetNodeByID("group#member")
 		require.True(t, ok)
 
-		edges, err := graph.FlattenNode(node, "user", true, false)
+		edges, err := graph.FlattenNode(node, "user", true, "")
 		require.NoError(t, err)
 		require.Len(t, edges, 1)
 	})
@@ -211,7 +211,7 @@ func TestFlattenNodeWithWildcard(t *testing.T) {
 		node, ok := graph.GetNodeByID("group#member")
 		require.True(t, ok)
 
-		edges, err := graph.FlattenNode(node, "user", true, false)
+		edges, err := graph.FlattenNode(node, "user", true, "")
 		require.NoError(t, err)
 		require.Empty(t, edges)
 	})
@@ -237,7 +237,7 @@ func TestFlattenNodeWithWildcard(t *testing.T) {
 		node, ok := graph.GetNodeByID("group#member")
 		require.True(t, ok)
 
-		edges, err := graph.FlattenNode(node, "user", true, false)
+		edges, err := graph.FlattenNode(node, "user", true, "")
 		require.NoError(t, err)
 		require.Len(t, edges, 1)
 	})
@@ -263,7 +263,7 @@ func TestFlattenNodeWithWildcard(t *testing.T) {
 		node, ok := graph.GetNodeByID("group#member")
 		require.True(t, ok)
 
-		edges, err := graph.FlattenNode(node, "user", true, false)
+		edges, err := graph.FlattenNode(node, "user", true, "")
 		require.NoError(t, err)
 		require.Len(t, edges, 1)
 	})
@@ -289,7 +289,7 @@ func TestFlattenNodeWithWildcard(t *testing.T) {
 		node, ok := graph.GetNodeByID("group#member")
 		require.True(t, ok)
 
-		edges, err := graph.FlattenNode(node, "user", true, false)
+		edges, err := graph.FlattenNode(node, "user", true, "")
 		require.NoError(t, err)
 		require.Len(t, edges, 2)
 	})
@@ -315,7 +315,7 @@ func TestFlattenNodeWithWildcard(t *testing.T) {
 		node, ok := graph.GetNodeByID("group#member")
 		require.True(t, ok)
 
-		edges, err := graph.FlattenNode(node, "user", true, false)
+		edges, err := graph.FlattenNode(node, "user", true, "")
 		require.NoError(t, err)
 		require.Len(t, edges, 2)
 	})
@@ -341,7 +341,7 @@ func TestFlattenNodeWithWildcard(t *testing.T) {
 		node, ok := graph.GetNodeByID("group#member")
 		require.True(t, ok)
 
-		edges, err := graph.FlattenNode(node, "user", true, false)
+		edges, err := graph.FlattenNode(node, "user", true, "")
 		require.NoError(t, err)
 		require.Len(t, edges, 3)
 	})
@@ -366,7 +366,7 @@ func TestFlattenNodeWithWildcard(t *testing.T) {
 		node, ok := graph.GetNodeByID("group#member")
 		require.True(t, ok)
 
-		edges, err := graph.FlattenNode(node, "user", true, false)
+		edges, err := graph.FlattenNode(node, "user", true, "")
 		require.NoError(t, err)
 		require.Len(t, edges, 1)
 	})
@@ -392,7 +392,7 @@ func TestFlattenNodeWithWildcard(t *testing.T) {
 		node, ok := graph.GetNodeByID("group#member")
 		require.True(t, ok)
 
-		edges, err := graph.FlattenNode(node, "user", true, false)
+		edges, err := graph.FlattenNode(node, "user", true, "")
 		require.NoError(t, err)
 		require.Len(t, edges, 2)
 	})
@@ -418,7 +418,7 @@ func TestFlattenNodeWithWildcard(t *testing.T) {
 		node, ok := graph.GetNodeByID("group#member")
 		require.True(t, ok)
 
-		edges, err := graph.FlattenNode(node, "user", true, false)
+		edges, err := graph.FlattenNode(node, "user", true, "")
 		require.NoError(t, err)
 		require.Len(t, edges, 1)
 	})
@@ -444,7 +444,7 @@ func TestFlattenNodeWithWildcard(t *testing.T) {
 		node, ok := graph.GetNodeByID("group#member")
 		require.True(t, ok)
 
-		edges, err := graph.FlattenNode(node, "user", true, true)
+		edges, err := graph.FlattenNode(node, "user", true, node.GetUniqueLabel())
 		require.NoError(t, err)
 		require.Len(t, edges, 2)
 	})
@@ -469,7 +469,7 @@ func TestFlattenNodeWithWildcard(t *testing.T) {
 		node, ok := graph.GetNodeByID("group#member")
 		require.True(t, ok)
 
-		edges, err := graph.FlattenNode(node, "user", true, true)
+		edges, err := graph.FlattenNode(node, "user", true, node.GetUniqueLabel())
 		require.NoError(t, err)
 		require.Empty(t, edges)
 	})
@@ -495,7 +495,7 @@ func TestFlattenNodeWithWildcard(t *testing.T) {
 		node, ok := graph.GetNodeByID("group#member")
 		require.True(t, ok)
 
-		edges, err := graph.FlattenNode(node, "user", true, true)
+		edges, err := graph.FlattenNode(node, "user", true, node.GetUniqueLabel())
 		require.NoError(t, err)
 		require.Len(t, edges, 1)
 	})
@@ -521,7 +521,7 @@ func TestFlattenNodeWithWildcard(t *testing.T) {
 		node, ok := graph.GetNodeByID("group#member")
 		require.True(t, ok)
 
-		edges, err := graph.FlattenNode(node, "user", true, true)
+		edges, err := graph.FlattenNode(node, "user", true, node.GetUniqueLabel())
 		require.NoError(t, err)
 		require.Len(t, edges, 2)
 	})
@@ -547,7 +547,7 @@ func TestFlattenNodeWithWildcard(t *testing.T) {
 		node, ok := graph.GetNodeByID("group#member")
 		require.True(t, ok)
 
-		edges, err := graph.FlattenNode(node, "user", true, true)
+		edges, err := graph.FlattenNode(node, "user", true, node.GetUniqueLabel())
 		require.NoError(t, err)
 		require.Empty(t, edges)
 	})
@@ -573,8 +573,51 @@ func TestFlattenNodeWithWildcard(t *testing.T) {
 		node, ok := graph.GetNodeByID("group#member")
 		require.True(t, ok)
 
-		edges, err := graph.FlattenNode(node, "user", true, true)
+		edges, err := graph.FlattenNode(node, "user", true, node.GetUniqueLabel())
 		require.NoError(t, err)
 		require.Len(t, edges, 1)
 	})
+}
+
+// TestFlattenNodeSkipsOnlyTargetedRecursiveRelation is a regression test for
+// https://github.com/openfga/openfga/issues/3195. FlattenNode must only skip
+// edges belonging to the specific recursive relation it's told to skip, not
+// any recursive edge encountered while flattening. Here "descendant_principal"
+// is recursive via "child_group", and "admin" is an unrelated, independently
+// recursive relation reached along the "member" branch.
+func TestFlattenNodeSkipsOnlyTargetedRecursiveRelation(t *testing.T) {
+	model := testutils.MustTransformDSLToProtoWithID(`
+        model
+          schema 1.1
+        type user
+        type group
+          relations
+            define admin: direct_admin or admin from parent_group
+            define child_group: [group]
+            define descendant_principal: member or descendant_principal from child_group
+            define direct_admin: [user]
+            define direct_member: [user]
+            define member: direct_member or admin
+            define parent_group: [group]
+    `)
+
+	graph, err := New(model)
+	require.NoError(t, err)
+
+	node, ok := graph.GetNodeByID("group#descendant_principal")
+	require.True(t, ok)
+
+	edges, err := graph.FlattenNode(node, "user", false, "group#descendant_principal")
+	require.NoError(t, err)
+
+	tuplesetRelations := make([]string, 0, len(edges))
+	for _, edge := range edges {
+		tuplesetRelations = append(tuplesetRelations, edge.GetTuplesetRelation())
+	}
+
+	require.Contains(t, tuplesetRelations, "group#parent_group",
+		"admin from parent_group must be kept: it belongs to a different recursive relation (admin), not the one being skipped (descendant_principal)")
+	require.NotContains(t, tuplesetRelations, "group#child_group",
+		"descendant_principal from child_group must be skipped: it belongs to the recursive relation currently being unwound")
+	require.Len(t, edges, 3) // direct_member, direct_admin, admin-from-parent_group
 }
