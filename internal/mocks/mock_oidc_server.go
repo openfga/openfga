@@ -59,7 +59,8 @@ func (server *mockOidcServer) NewAliasMockServer(aliasURL string) *mockOidcServe
 }
 
 func createHTTPServer(issuerURL string, publicKey *rsa.PublicKey) *http.Server {
-	addr := strings.Split(issuerURL, "http://")[1]
+        addr := strings.TrimPrefix(issuerURL, "http://")
+        addr = strings.TrimPrefix(addr, "https://")
 
 	mockHandler := http.NewServeMux()
 
