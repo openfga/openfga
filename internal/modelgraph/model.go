@@ -144,6 +144,13 @@ func (m *AuthorizationModelGraph) canApplyRecursiveOptimization(node *authzGraph
 				continue
 			}
 		} else if edge.GetEdgeType() == authzGraph.DirectEdge || edge.GetEdgeType() == authzGraph.TTUEdge {
+			if recursiveEdge != nil {
+				// Two or more edges independently unwind the same recursive relation (e.g.
+				// "rel: rel from parentA or rel from parentB"). The optimization can only
+				// follow a single recursive edge, so bail out entirely instead of picking one
+				// and silently dropping the other from resolution.
+				return nil, false
+			}
 			recursiveEdge = edge
 		} else {
 			edgeResult, canApply := m.canApplyRecursiveOptimization(edge.GetTo(), recursiveRelation, userType)
@@ -151,6 +158,9 @@ func (m *AuthorizationModelGraph) canApplyRecursiveOptimization(node *authzGraph
 				allEdgesCanApply = false
 			}
 			if edgeResult != nil {
+				if recursiveEdge != nil {
+					return nil, false
+				}
 				recursiveEdge = edgeResult
 			}
 		}

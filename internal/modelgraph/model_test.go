@@ -621,3 +621,34 @@ func TestFlattenNodeSkipsOnlyTargetedRecursiveRelation(t *testing.T) {
 		"descendant_principal from child_group must be skipped: it belongs to the recursive relation currently being unwound")
 	require.Len(t, edges, 3) // direct_member, direct_admin, admin-from-parent_group
 }
+
+// TestCanApplyRecursionBailsOutOnAmbiguousRecursiveEdges is a regression test for the case
+// where a single relation has two or more independent edges that recurse into itself, e.g.
+// "member: [user] or member from parent_group or member from child_group". The recursive
+// optimization can only unwind a single recursive edge; picking one and discarding the other
+// silently drops a valid resolution path (since both edges share the same RecursiveRelation,
+// a subsequent FlattenNode skip would remove both, not just the selected one). When such
+// ambiguity is detected, CanApplyRecursion must return (nil, false) so the caller falls back
+// to the generic per-edge resolution path, which handles each recursive edge independently.
+func TestCanApplyRecursionBailsOutOnAmbiguousRecursiveEdges(t *testing.T) {
+	model := testutils.MustTransformDSLToProtoWithID(`
+        model
+          schema 1.1
+        type user
+        type group
+          relations
+            define parent_group: [group]
+            define child_group: [group]
+            define member: [user] or member from parent_group or member from child_group
+    `)
+
+	graph, err := New(model)
+	require.NoError(t, err)
+
+	node, ok := graph.GetNodeByID("group#member")
+	require.True(t, ok)
+
+	edge, canApply := graph.CanApplyRecursion(node, "user", true)
+	require.Nil(t, edge, "ambiguous recursive edges must disable the optimization rather than pick one arbitrarily")
+	require.False(t, canApply)
+}

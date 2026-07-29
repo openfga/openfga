@@ -6242,3 +6242,111 @@ func TestCheck_NestedRecursiveRelations(t *testing.T) {
 		require.True(t, res.GetAllowed())
 	})
 }
+
+// TestCheck_MultipleRecursiveEdgesForSameRelation is a regression test for the case where a
+// single relation has two independent edges that recurse into itself:
+//
+//	define member: [user] or member from parent_group or member from child_group
+//
+// Both "member from parent_group" and "member from child_group" share the same
+// RecursiveRelation ("group#member"), so the recursive optimization (CanApplyRecursion) must
+// not pick one and silently drop the other - doing so would mean a request satisfiable only
+// through the dropped edge incorrectly returns false. CanApplyRecursion must detect this
+// ambiguity and disable the optimization, falling back to the generic per-edge resolution
+// path where each recursive edge is evaluated independently.
+func TestCheck_MultipleRecursiveEdgesForSameRelation(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	storeID := ulid.Make().String()
+	mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+	mockPlanner := mocks.NewMockManager(ctrl)
+	mockSelector := mocks.NewMockSelector(ctrl)
+
+	model := testutils.MustTransformDSLToProtoWithID(`
+		model
+		  schema 1.1
+		type user
+		type group
+		  relations
+		    define parent_group: [group]
+		    define child_group: [group]
+		    define member: [user] or member from parent_group or member from child_group
+	`)
+
+	mg, err := modelgraph.New(model)
+	require.NoError(t, err)
+
+	mockPlanner.EXPECT().GetPlanSelector(gomock.Any()).Return(mockSelector).AnyTimes()
+	mockSelector.EXPECT().Select(gomock.Any()).Return(DefaultPlan).AnyTimes()
+	mockSelector.EXPECT().UpdateStats(gomock.Any(), gomock.Any()).AnyTimes()
+
+	// Tuples:
+	//   group:g1#member@user:u1        (direct member)
+	//   group:g2#parent_group@group:g1
+	//   group:g3#child_group@group:g1
+	// group:g2 has no child_group tuples, and group:g3 has no parent_group tuples, so each
+	// can only be resolved through its own, distinct recursive edge.
+	mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+		AnyTimes().
+		DoAndReturn(func(_ context.Context, _ string, filter storage.ReadUserTupleFilter, _ storage.ReadUserTupleOptions) (*openfgav1.Tuple, error) {
+			if filter.Object == "group:g1" && filter.Relation == "member" && filter.User == "user:u1" {
+				return &openfgav1.Tuple{Key: tuple.NewTupleKey("group:g1", "member", "user:u1")}, nil
+			}
+			return nil, storage.ErrNotFound
+		})
+
+	mockDatastore.EXPECT().Read(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+		AnyTimes().
+		DoAndReturn(func(_ context.Context, _ string, filter storage.ReadFilter, _ storage.ReadOptions) (storage.TupleIterator, error) {
+			if filter.Object == "group:g2" && filter.Relation == "parent_group" {
+				return storage.NewStaticTupleIterator([]*openfgav1.Tuple{
+					{Key: tuple.NewTupleKey("group:g2", "parent_group", "group:g1")},
+				}), nil
+			}
+			if filter.Object == "group:g3" && filter.Relation == "child_group" {
+				return storage.NewStaticTupleIterator([]*openfgav1.Tuple{
+					{Key: tuple.NewTupleKey("group:g3", "child_group", "group:g1")},
+				}), nil
+			}
+			return storage.NewStaticTupleIterator(nil), nil
+		})
+
+	mockDatastore.EXPECT().ReadUsersetTuples(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+		AnyTimes().
+		Return(storage.NewStaticTupleIterator(nil), nil)
+
+	resolver := New(Config{
+		Model:            mg,
+		Datastore:        mockDatastore,
+		Cache:            storage.NewNoopCache(),
+		Planner:          mockPlanner,
+		ConcurrencyLimit: 10,
+	})
+
+	t.Run("allowed_through_parent_group_only", func(t *testing.T) {
+		req, err := NewRequest(RequestParams{
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("group:g2", "member", "user:u1"),
+		})
+		require.NoError(t, err)
+
+		res, err := resolver.ResolveCheck(context.Background(), req)
+		require.NoError(t, err)
+		require.True(t, res.GetAllowed())
+	})
+
+	t.Run("allowed_through_child_group_only", func(t *testing.T) {
+		req, err := NewRequest(RequestParams{
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("group:g3", "member", "user:u1"),
+		})
+		require.NoError(t, err)
+
+		res, err := resolver.ResolveCheck(context.Background(), req)
+		require.NoError(t, err)
+		require.True(t, res.GetAllowed())
+	})
+}
