@@ -1212,6 +1212,11 @@ type complexity4
     define ttu_and_nested_complex3: and_nested_complex3 from parent
     define or_complex4: userset_or_compute_complex3 or ttu_and_nested_complex3
     define parent: [complexity3]
+type multi-recursive
+  relations
+    define parent: [multi-recursive]
+    define child: [multi-recursive]
+    define multi_recursive_ttu: [user] or multi_recursive_ttu from parent or multi_recursive_ttu from child
 condition xcond(x: string) {
   x == '1'
 }`
