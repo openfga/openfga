@@ -250,9 +250,9 @@ func TestQuantifiedAny(t *testing.T) {
 	a := b.Tuple("a")
 	g := b.Tuple("b")
 	sub := b.Build(b.Select(g.ObjectID()).From(g))
-	p := a.ObjectID().Quantified(adapter.OpEq, adapter.QuantifierAny, sub)
+	p := a.ObjectID().Quantified(adapter.OpEq, adapter.QuantifierAny, sub.SetExpr())
 	sql, args := renderQuery(t, b.Select(a.ObjectID()).From(a).Where(p))
-	want := "SELECT a.object_id FROM tuple a WHERE a.object_id = ANY (SELECT b.object_id FROM tuple b)"
+	want := "SELECT a.object_id FROM tuple a WHERE a.object_id = ANY ((SELECT b.object_id FROM tuple b))"
 	assertSQL(t, sql, want, args)
 }
 

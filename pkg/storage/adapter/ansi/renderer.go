@@ -198,5 +198,4 @@ func asWriter(v any) sqlWriter {
 func exprWriter(e adapter.Expression) sqlWriter { return asWriter(e) }
 func operandWriter(o adapter.Operand) sqlWriter { return asWriter(o) }
 func predWriter(p adapter.Predicate) sqlWriter  { return asWriter(p) }
-func queryWriter(q adapter.Query) sqlWriter     { return asWriter(q) }
 func projWriter(p adapter.Projection) aliased   { return p.(aliased) }

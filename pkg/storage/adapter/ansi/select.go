@@ -154,9 +154,13 @@ func (s *selectStmt) Execute(ctx context.Context) (adapter.Rows, error) {
 func (s *selectStmt) Build() (string, []any) { return render(s, s.b.dialect) }
 
 func (s *selectStmt) ScalarExpr() adapter.Expression { return scalarSubquery(s) }
+func (s *selectStmt) SetExpr() adapter.Expression    { return scalarSubquery(s) }
 func (s *selectStmt) Exists() adapter.Predicate      { return existsPredicate(s) }
 
-// scalarSubquery wraps a query as a parenthesised scalar expression.
+// scalarSubquery wraps a query as a parenthesised subquery expression. It backs both
+// ScalarExpr (single-value) and SetExpr (multi-row set operand): the rendering is
+// identical — a self-parenthesised subquery — and the distinction lives in the
+// adapter.Query contract, not the SQL.
 func scalarSubquery(q sqlWriter) adapter.Expression {
 	return newExpr(writerFunc(func(r *renderer) {
 		r.write("(")
