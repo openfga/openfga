@@ -72,7 +72,7 @@ func (e *exprNode) Gte(other adapter.Expression) adapter.Predicate {
 	return e.Compare(adapter.OpGte, other)
 }
 
-func (e *exprNode) Quantified(op adapter.ComparisonOp, q adapter.Quantifier, right any) adapter.Predicate {
+func (e *exprNode) Quantified(op adapter.ComparisonOp, q adapter.Quantifier, right adapter.Expression) adapter.Predicate {
 	return newPredicate(writerFunc(func(r *renderer) {
 		r.node(e)
 		r.write(" ")
@@ -80,14 +80,7 @@ func (e *exprNode) Quantified(op adapter.ComparisonOp, q adapter.Quantifier, rig
 		r.write(" ")
 		r.write(quantifierSQL(q))
 		r.write(" (")
-		switch v := right.(type) {
-		case adapter.Query:
-			r.node(queryWriter(v))
-		case adapter.Expression:
-			r.node(exprWriter(v))
-		default:
-			panic("pkg/storage/adapter/mysql: Quantified right must be a Query or Expression")
-		}
+		r.node(exprWriter(right))
 		r.write(")")
 	}))
 }

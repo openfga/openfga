@@ -102,7 +102,7 @@ func (a *aggExpr) Lt(o adapter.Expression) adapter.Predicate  { return a.expr.Lt
 func (a *aggExpr) Lte(o adapter.Expression) adapter.Predicate { return a.expr.Lte(o) }
 func (a *aggExpr) Gt(o adapter.Expression) adapter.Predicate  { return a.expr.Gt(o) }
 func (a *aggExpr) Gte(o adapter.Expression) adapter.Predicate { return a.expr.Gte(o) }
-func (a *aggExpr) Quantified(op adapter.ComparisonOp, q adapter.Quantifier, right any) adapter.Predicate {
+func (a *aggExpr) Quantified(op adapter.ComparisonOp, q adapter.Quantifier, right adapter.Expression) adapter.Predicate {
 	return a.expr.Quantified(op, q, right)
 }
 func (a *aggExpr) In(v ...adapter.Expression) adapter.Predicate { return a.expr.In(v...) }
