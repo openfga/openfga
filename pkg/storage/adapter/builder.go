@@ -112,8 +112,18 @@ type Query interface {
 	Execute(ctx context.Context) (Rows, error)
 
 	// ScalarExpr adapts the query for use as a scalar subquery in expression
-	// position (a projected column, comparison operand, etc.).
+	// position (a projected column, comparison operand, etc.). It asserts the query
+	// yields a single value; for a multi-row subquery in a quantified comparison use
+	// SetExpr.
 	ScalarExpr() Expression
+
+	// SetExpr adapts the query for use as a multi-row set operand of a quantified
+	// comparison, e.g. Expression.Quantified(OpEq, QuantifierAny, sub.SetExpr()) ->
+	// "self = ANY (<sub>)" (an IN-subquery). Unlike ScalarExpr it makes no
+	// single-value claim: the returned Expression stands wherever a set operand is
+	// expected. Like ScalarExpr, the result is self-parenthesised and safe in any
+	// operand position.
+	SetExpr() Expression
 
 	// Exists adapts the query into an "EXISTS (<query>)" predicate. Use Not for NOT
 	// EXISTS.
@@ -280,10 +290,11 @@ type Expression interface {
 	Gt(other Expression) Predicate
 	Gte(other Expression) Predicate
 
-	// Quantified applies a comparison against ANY/ALL of a subquery or array, e.g.
-	// Quantified(OpEq, QuantifierAny, sub) -> "self = ANY (<sub>)" (an IN-subquery).
-	// right is a Query (a multi-row subquery) or an array-valued Expression.
-	Quantified(op ComparisonOp, q Quantifier, right any) Predicate
+	// Quantified applies a comparison against ANY/ALL of a set operand, e.g.
+	// Quantified(OpEq, QuantifierAny, sub.SetExpr()) -> "self = ANY (<sub>)" (an
+	// IN-subquery). right is a set-valued Expression: an array-valued expression, or a
+	// multi-row subquery adapted with Query.SetExpr.
+	Quantified(op ComparisonOp, q Quantifier, right Expression) Predicate
 
 	// In renders "self IN (values...)" over a list of scalar operands. For the
 	// subquery form "self IN (<sub>)" use Quantified with QuantifierAny. Use
