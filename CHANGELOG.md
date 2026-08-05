@@ -8,6 +8,8 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+## [1.18.3] - 2026-08-05
+
 ## [1.18.2] - 2026-08-03
 ### Added
 - Extended experimental `weighted_graph_check` diagnostic logging to cover the `wildcard_with_exclusion` and `userset_with_exclusion` shapes: the log now fires when v2 Check rejects one of these shapes and Check falls back to v1, and when v2 Check is skipped entirely because the weighted graph fails to build. These logs surface authorization models that may be affected by a future v1 deprecation, and no operator action is required. [#3204](https://github.com/openfga/openfga/pull/3204)
@@ -1710,7 +1712,8 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
 - Memory storage adapter implementation
 - Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.18.2...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.18.3...HEAD
+[1.18.3]: https://github.com/openfga/openfga/compare/v1.18.2...v1.18.3
 [1.18.2]: https://github.com/openfga/openfga/compare/v1.18.1...v1.18.2
 [1.18.1]: https://github.com/openfga/openfga/compare/v1.18.0...v1.18.1
 [1.18.0]: https://github.com/openfga/openfga/compare/v1.17.1...v1.18.0
