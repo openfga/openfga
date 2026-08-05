@@ -10,6 +10,8 @@ import (
 	"github.com/oklog/ulid/v2"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zaptest/observer"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
@@ -17,6 +19,7 @@ import (
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/pkg/featureflags"
+	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/server/commands"
 	"github.com/openfga/openfga/pkg/server/config"
 	"github.com/openfga/openfga/pkg/testutils"
@@ -402,6 +405,93 @@ func TestBatchCheckV2UsedWhenFlagEnabled(t *testing.T) {
 	v2Fallback, ok := tags["v2_fallback_count"]
 	require.True(t, ok, "v2_fallback_count should be set in context tags")
 	require.EqualValues(t, uint32(0), v2Fallback)
+}
+
+// TestBatchCheckV2BreakingChangeLog verifies that BatchCheck emits the same v1→v2
+// divergence telemetry Check provides: a denied userset check matching a known
+// divergence shape logs a warning with the reason and correlation ID, while
+// allowed checks and non-userset denials stay silent.
+func TestBatchCheckV2BreakingChangeLog(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
+
+	core, logs := observer.New(zap.WarnLevel)
+	testLogger := &logger.ZapLogger{Logger: zap.New(core)}
+
+	s := MustNewServerWithOpts(
+		WithDatastore(ds),
+		WithLogger(testLogger),
+		WithFeatureFlagClient(featureflags.NewDefaultClient([]string{config.ExperimentalWeightedGraphCheck})),
+	)
+	t.Cleanup(s.Close)
+
+	ctx := context.Background()
+
+	createStoreResp, err := s.CreateStore(ctx, &openfgav1.CreateStoreRequest{Name: "test"})
+	require.NoError(t, err)
+	storeID := createStoreResp.GetId()
+
+	model := testutils.MustTransformDSLToProtoWithID(`
+		model
+			schema 1.1
+		type user
+		type document
+			relations
+				define viewer: [user]
+	`)
+	writeModelResp, err := s.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
+		StoreId:         storeID,
+		SchemaVersion:   model.GetSchemaVersion(),
+		TypeDefinitions: model.GetTypeDefinitions(),
+	})
+	require.NoError(t, err)
+	modelID := writeModelResp.GetAuthorizationModelId()
+
+	_, err = s.Write(ctx, &openfgav1.WriteRequest{
+		StoreId:              storeID,
+		AuthorizationModelId: modelID,
+		Writes: &openfgav1.WriteRequestWrites{
+			TupleKeys: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "user:alice"),
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	resp, err := s.BatchCheck(ctx, &openfgav1.BatchCheckRequest{
+		StoreId:              storeID,
+		AuthorizationModelId: modelID,
+		Checks: []*openfgav1.BatchCheckItem{
+			{
+				// self_referential_userset divergence shape: v2 answers false
+				TupleKey:      &openfgav1.CheckRequestTupleKey{Object: "document:1", Relation: "viewer", User: "document:1#viewer"},
+				CorrelationId: "divergent",
+			},
+			{
+				// denied, but user is not a userset — no divergence shape
+				TupleKey:      &openfgav1.CheckRequestTupleKey{Object: "document:1", Relation: "viewer", User: "user:bob"},
+				CorrelationId: "plain-deny",
+			},
+			{
+				// allowed — never logged
+				TupleKey:      &openfgav1.CheckRequestTupleKey{Object: "document:1", Relation: "viewer", User: "user:alice"},
+				CorrelationId: "allow",
+			},
+		},
+	})
+	require.NoError(t, err)
+	require.False(t, resp.GetResult()["divergent"].GetAllowed())
+	require.False(t, resp.GetResult()["plain-deny"].GetAllowed())
+	require.True(t, resp.GetResult()["allow"].GetAllowed())
+
+	breakingLogs := logs.FilterMessage("potential v2 BatchCheck resolution breaking change")
+	require.Equal(t, 1, breakingLogs.Len())
+	fields := fieldMap(breakingLogs.All()[0].Context)
+	require.Equal(t, "divergent", fields["correlation_id"])
+	require.Equal(t, "self_referential_userset", fields["reason"])
 }
 
 // TestBatchCheckV2FallbackCountWhenGraphParseFails verifies that when ExperimentalWeightedGraphCheck

@@ -19,10 +19,13 @@ import (
 	"github.com/openfga/openfga/internal/telemetry"
 	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/internal/utils/apimethod"
+	"github.com/openfga/openfga/pkg/middleware/requestid"
 	"github.com/openfga/openfga/pkg/middleware/validator"
 	"github.com/openfga/openfga/pkg/server/commands"
+	"github.com/openfga/openfga/pkg/server/commands/v2breaking"
 	"github.com/openfga/openfga/pkg/server/config"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
+	"github.com/openfga/openfga/pkg/tuple"
 )
 
 func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckRequest) (*openfgav1.BatchCheckResponse, error) {
@@ -143,6 +146,33 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 		}
 
 		return nil, err
+	}
+
+	// Emit the same v1→v2 divergence telemetry that Check provides (check.go);
+	// the batch path had none, so stores rolling out the weighted-graph resolver
+	// got no per-request signal for checks carried by BatchCheck (up to
+	// maxChecksPerBatchCheck per request). Shape filters may over-report on
+	// per-check v1 fallback but never miss a real divergence.
+	if v2Enabled && !v2GraphResolveFailed {
+		if typesys, tsErr := s.resolveTypesystem(ctx, storeID, req.GetAuthorizationModelId()); tsErr == nil {
+			requestID := requestid.GetRequestIDFromContext(ctx)
+			for _, check := range req.GetChecks() {
+				outcome, ok := result[commands.CorrelationID(check.GetCorrelationId())]
+				tk := check.GetTupleKey()
+				if !ok || outcome.Err != nil || outcome.Allowed || !tuple.IsObjectRelation(tk.GetUser()) {
+					continue
+				}
+				if reason := v2breaking.CheckReason(typesys, tk); reason != "" {
+					s.logger.WarnWithContext(ctx, "potential v2 BatchCheck resolution breaking change",
+						zap.String("store_id", storeID),
+						zap.String("model_id", req.GetAuthorizationModelId()),
+						zap.String("request_id", requestID),
+						zap.String("correlation_id", check.GetCorrelationId()),
+						zap.String("reason", reason),
+					)
+				}
+			}
+		}
 	}
 
 	methodName := "batchcheck"
