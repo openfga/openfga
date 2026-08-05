@@ -51,7 +51,7 @@ func usersetDedupKey(key *openfgav1.TupleKey) string {
 // Including both the tupleset and computed relation keeps TTU-origin entries in
 // a namespace distinct from userset entries (which are bare object#relation)
 // and distinct per (tupleset, computed relation) pair, so recursive relations
-// that share a single `visited` map (e.g. two distinct `... from parent`
+// that share a single `visited` map (for example, two distinct `... From parent`
 // relations reached from the same node) no longer collide on the bare parent
 // object and wrongly drop each other's tuples.
 func ttuDedupKey(tuplesetRelation, computedRelation string) func(key *openfgav1.TupleKey) string {
