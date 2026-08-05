@@ -19,6 +19,7 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -31,7 +32,6 @@ import (
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/tidwall/gjson"
 	"go.uber.org/goleak"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -1154,6 +1154,99 @@ func TestPlaygroundEnabled(t *testing.T) {
 	require.Equal(t, http.StatusOK, resp.StatusCode, "unexpected status code received from server")
 }
 
+// jsonVal is a minimal accessor over values decoded by encoding/json,
+// used to query the config JSON schema in tests via dotted paths.
+type jsonVal struct {
+	v      any
+	exists bool
+}
+
+func parseJSON(t *testing.T, data []byte) jsonVal {
+	t.Helper()
+	var root any
+	require.NoError(t, json.Unmarshal(data, &root))
+	return jsonVal{v: root, exists: true}
+}
+
+// Get traverses a dot-separated path, e.g. "properties.grpc.properties.addr.default".
+func (j jsonVal) Get(path string) jsonVal {
+	cur := j.v
+	for key := range strings.SplitSeq(path, ".") {
+		m, ok := cur.(map[string]any)
+		if !ok {
+			return jsonVal{}
+		}
+		v, ok := m[key]
+		if !ok {
+			return jsonVal{}
+		}
+		cur = v
+	}
+	return jsonVal{v: cur, exists: true}
+}
+
+func (j jsonVal) Exists() bool { return j.exists }
+
+func (j jsonVal) String() string {
+	switch v := j.v.(type) {
+	case string:
+		return v
+	case float64:
+		return strconv.FormatFloat(v, 'f', -1, 64)
+	case bool:
+		return strconv.FormatBool(v)
+	default:
+		return ""
+	}
+}
+
+func (j jsonVal) Bool() bool {
+	switch v := j.v.(type) {
+	case bool:
+		return v
+	case string:
+		return v == "true" || v == "1"
+	default:
+		return false
+	}
+}
+
+func (j jsonVal) Int() int64 {
+	switch v := j.v.(type) {
+	case float64:
+		return int64(v)
+	case string:
+		n, _ := strconv.ParseInt(v, 10, 64)
+		return n
+	default:
+		return 0
+	}
+}
+
+func (j jsonVal) Uint() uint64 {
+	switch v := j.v.(type) {
+	case float64:
+		return uint64(v)
+	case string:
+		n, _ := strconv.ParseUint(v, 10, 64)
+		return n
+	default:
+		return 0
+	}
+}
+
+func (j jsonVal) Array() []jsonVal {
+	arr, ok := j.v.([]any)
+	if !ok {
+		return nil
+	}
+	out := make([]jsonVal, len(arr))
+	for i, v := range arr {
+		out[i] = jsonVal{v: v, exists: true}
+	}
+	return out
+}
+
 func TestDefaultConfig(t *testing.T) {
 	cfg, err := ReadConfig()
 	require.NoError(t, err)
@@ -1162,7 +1255,7 @@ func TestDefaultConfig(t *testing.T) {
 	jsonSchema, err := os.ReadFile(path.Join(filepath.Dir(basepath), "..", "..", ".config-schema.json"))
 	require.NoError(t, err)
 
-	res := gjson.ParseBytes(jsonSchema)
+	res := parseJSON(t, jsonSchema)
 
 	val := res.Get("properties.datastore.properties.engine.default")
 	require.True(t, val.Exists())
