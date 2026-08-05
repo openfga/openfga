@@ -9,6 +9,8 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ## [Unreleased]
 
 ## [1.18.3] - 2026-08-05
+### Fixed
+- Fixed experimental `weighted_graph_check` intermittently returning `false` when evaluating relations that cross two or more distinct recursive TTUs which share the same tupleset relation. [#3244](https://github.com/openfga/openfga/pull/3244)
 
 ## [1.18.2] - 2026-08-03
 ### Added
