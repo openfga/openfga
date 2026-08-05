@@ -399,7 +399,7 @@ func (r *Resolver) resolveRecursiveUserset(ctx context.Context, req *Request, ed
 	}
 	defer tIter.Stop()
 
-	iter := r.buildIterator(ctx, req, tIter, edge.GetConditions(), userRelation, edge.GetTo().GetUniqueLabel(), visited)
+	iter := r.buildIterator(ctx, req, tIter, edge.GetConditions(), userRelation, edge.GetTo().GetUniqueLabel(), visited, usersetDedupKey)
 	if !canApplyOptimization {
 		res, err := r.strategies[DefaultStrategyName].Userset(ctx, req, edge, iter, visited)
 		if err != nil {
@@ -471,7 +471,7 @@ func (r *Resolver) resolveRecursiveTTU(ctx context.Context, req *Request, edge *
 	}
 
 	defer tIter.Stop()
-	iter := r.buildIterator(ctx, req, tIter, conditionEdge.GetConditions(), tuplesetRelation, subjectType, visited)
+	iter := r.buildIterator(ctx, req, tIter, conditionEdge.GetConditions(), tuplesetRelation, subjectType, visited, ttuDedupKey(tuplesetRelation, computedRelation))
 
 	if !canApplyOptimization {
 		res, err := r.strategies[DefaultStrategyName].TTU(ctx, req, edge, iter, visited)
@@ -1000,7 +1000,7 @@ func (r *Resolver) specificTypeAndRelation(ctx context.Context, req *Request, ed
 	}
 	defer tIter.Stop()
 
-	iter := r.buildIterator(ctx, req, tIter, edge.GetConditions(), relation, edge.GetTo().GetUniqueLabel(), visited)
+	iter := r.buildIterator(ctx, req, tIter, edge.GetConditions(), relation, edge.GetTo().GetUniqueLabel(), visited, usersetDedupKey)
 	// when the request usertype is a userset, then only available strategy at the moment is default strategy
 	if tuple.IsObjectRelation(req.GetTupleKey().GetUser()) {
 		res, err := r.strategies[DefaultStrategyName].Userset(ctx, req, edge, iter, visited)
@@ -1076,7 +1076,7 @@ func (r *Resolver) ttu(ctx context.Context, req *Request, edge *authzGraph.Weigh
 
 	defer tIter.Stop()
 
-	iter := r.buildIterator(ctx, req, tIter, tuplesetEdge.GetConditions(), tuplesetRelation, subjectType, visited)
+	iter := r.buildIterator(ctx, req, tIter, tuplesetEdge.GetConditions(), tuplesetRelation, subjectType, visited, ttuDedupKey(tuplesetRelation, computedRelation))
 
 	if tuple.IsObjectRelation(req.GetTupleKey().GetUser()) {
 		res, err := r.strategies[DefaultStrategyName].TTU(ctx, req, edge, iter, visited)
@@ -1117,7 +1117,7 @@ func (r *Resolver) ttu(ctx context.Context, req *Request, edge *authzGraph.Weigh
 	})
 }
 
-func (r *Resolver) buildIterator(ctx context.Context, req *Request, iter storage.TupleIterator, conditions []string, relation string, userType string, visited *sync.Map) storage.TupleKeyIterator {
+func (r *Resolver) buildIterator(ctx context.Context, req *Request, iter storage.TupleIterator, conditions []string, relation string, userType string, visited *sync.Map, dedupKey func(key *openfgav1.TupleKey) string) storage.TupleKeyIterator {
 	// Note: Iterator caching is now handled by CachedTupleReader wrapper at the storage layer.
 	// This method only handles contextual tuples merge and condition filtering.
 
@@ -1132,9 +1132,7 @@ func (r *Resolver) buildIterator(ctx context.Context, req *Request, iter storage
 	// STEP 3: Build filter chain
 	iterFilters := make([]iterator.FilterFunc[*openfgav1.TupleKey], 0, 2)
 	if visited != nil {
-		iterFilters = append(iterFilters, BuildUniqueTupleKeyFilter(visited, func(key *openfgav1.TupleKey) string {
-			return key.GetUser() // this is a userset (object#relation)
-		}))
+		iterFilters = append(iterFilters, BuildUniqueTupleKeyFilter(visited, dedupKey))
 	}
 
 	// STEP 4: Condition filter - evaluates conditions at retrieval time
