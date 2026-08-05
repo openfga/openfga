@@ -154,23 +154,21 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 	// maxChecksPerBatchCheck per request). Shape filters may over-report on
 	// per-check v1 fallback but never miss a real divergence.
 	if v2Enabled && !v2GraphResolveFailed {
-		if typesys, tsErr := s.resolveTypesystem(ctx, storeID, req.GetAuthorizationModelId()); tsErr == nil {
-			requestID := requestid.GetRequestIDFromContext(ctx)
-			for _, check := range req.GetChecks() {
-				outcome, ok := result[commands.CorrelationID(check.GetCorrelationId())]
-				tk := check.GetTupleKey()
-				if !ok || outcome.Err != nil || outcome.Allowed || !tuple.IsObjectRelation(tk.GetUser()) {
-					continue
-				}
-				if reason := v2breaking.CheckReason(typesys, tk); reason != "" {
-					s.logger.WarnWithContext(ctx, "potential v2 BatchCheck resolution breaking change",
-						zap.String("store_id", storeID),
-						zap.String("model_id", req.GetAuthorizationModelId()),
-						zap.String("request_id", requestID),
-						zap.String("correlation_id", check.GetCorrelationId()),
-						zap.String("reason", reason),
-					)
-				}
+		requestID := requestid.GetRequestIDFromContext(ctx)
+		for _, check := range req.GetChecks() {
+			outcome, ok := result[commands.CorrelationID(check.GetCorrelationId())]
+			tk := check.GetTupleKey()
+			if !ok || outcome.Err != nil || outcome.Allowed || !tuple.IsObjectRelation(tk.GetUser()) {
+				continue
+			}
+			if reason := v2breaking.CheckReason(typesys, tk); reason != "" {
+				s.logger.WarnWithContext(ctx, "potential v2 BatchCheck resolution breaking change",
+					zap.String("store_id", storeID),
+					zap.String("model_id", req.GetAuthorizationModelId()),
+					zap.String("request_id", requestID),
+					zap.String("correlation_id", check.GetCorrelationId()),
+					zap.String("reason", reason),
+				)
 			}
 		}
 	}
