@@ -2,14 +2,6 @@
 language: "en-US"
 reviews:
   path_instructions:
-    - path: "Dockerfile"
-      instructions: |
-        When reviewing changes to `Dockerfile`, check if the `ghcr.io/grpc-ecosystem/grpc-health-probe` image reference (version tag and/or digest) was modified.
-
-        If it was changed, verify that `Dockerfile.goreleaser` was also updated in the same PR to use the identical image reference (same version tag and digest). The `COPY --from=ghcr.io/grpc-ecosystem/grpc-health-probe:...` line in `Dockerfile.goreleaser` must match the `FROM ghcr.io/grpc-ecosystem/grpc-health-probe:...` line in `Dockerfile`.
-
-        If `Dockerfile.goreleaser` was not updated to match, flag this as a required change: "The grpc-health-probe image in `Dockerfile.goreleaser` must be updated to match the version in `Dockerfile`."
-
     - path: "CHANGELOG.md"
       instructions: |
         This project uses Keep a Changelog format and Semantic Versioning.

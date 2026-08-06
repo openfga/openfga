@@ -143,68 +143,78 @@ func runOpenFGAContainerWithArgs(t *testing.T, commandArgs []string) OpenFGATest
 		t.Logf("%s: stopped container %s", time.Now(), name)
 	})
 
-	inspectResult, err := dockerClient.ContainerInspect(ctx, cont.ID, client.ContainerInspectOptions{})
-	require.NoError(t, err)
-
-	ports := inspectResult.Container.NetworkSettings.Ports
-
-	m, ok := ports[httpPort]
-	if !ok || len(m) == 0 {
-		t.Fatalf("failed to get HTTP host port mapping from openfga container")
-	}
-	httpHostPort := m[0].HostPort
-
-	m, ok = ports[grpcPort]
-	if !ok || len(m) == 0 {
-		t.Fatalf("failed to get grpc host port mapping from openfga container")
-	}
-	grpcHostPort := m[0].HostPort
-
 	if len(commandArgs) > 0 && commandArgs[0] == "run" {
-		// wait for healthy service
+		// Wait for the container to reach the running state before inspecting
+		// it. Readiness of the service itself is asserted by the caller via
+		// testutils.EnsureServiceHealthy, which is transport-agnostic and does
+		// not depend on Docker's HEALTHCHECK timing.
 		policy := backoff.NewExponentialBackOff(backoff.WithMaxElapsedTime(30 * time.Second))
 
 		err = backoff.Retry(func() error {
 			inspectResult, err := dockerClient.ContainerInspect(ctx, cont.ID, client.ContainerInspectOptions{})
 			require.NoError(t, err)
-			require.NotNil(t, inspectResult.Container.State.Health)
 
-			if inspectResult.Container.State.Health.Status == container.Healthy {
+			state := inspectResult.Container.State
+			if state.Running {
 				return nil
 			}
-			if inspectResult.Container.State.Health.Status == container.Unhealthy {
-				for _, healthLog := range inspectResult.Container.State.Health.Log {
-					t.Log(healthLog.Output)
-				}
-				return fmt.Errorf("container unhealthy")
+			// A container that has already exited or is being removed will never
+			// become running, so stop retrying and surface the exit code instead
+			// of waiting out the full backoff window.
+			if state.Status == container.StateExited || state.Status == container.StateDead || state.Status == container.StateRemoving {
+				return backoff.Permanent(fmt.Errorf("container terminated before running: status %q, exit code %d", state.Status, state.ExitCode))
 			}
-			return fmt.Errorf("container starting")
+			return fmt.Errorf("container not running yet: status %q", state.Status)
 		}, policy)
 		require.NoError(t, err)
-	} else {
-		// wait for command to finish
-		cctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
 
-		waitResult := dockerClient.ContainerWait(cctx, cont.ID, client.ContainerWaitOptions{
-			Condition: container.WaitConditionNotRunning,
-		})
+		// The port bindings are only meaningful for a long-running server, and
+		// are only queried here (once the container is up) because short-lived
+		// commands like `version` may exit before the ports can be inspected.
+		inspectResult, err := dockerClient.ContainerInspect(ctx, cont.ID, client.ContainerInspectOptions{})
+		require.NoError(t, err)
 
-		select {
-		case <-waitResult.Result:
-		case err := <-waitResult.Error:
-			if err != nil && !errdefs.IsNotFound(err) {
-				require.NoError(t, err)
-			}
-		case <-cctx.Done():
-			require.NoError(t, cctx.Err())
+		ports := inspectResult.Container.NetworkSettings.Ports
+
+		m, ok := ports[httpPort]
+		if !ok || len(m) == 0 {
+			t.Fatalf("failed to get HTTP host port mapping from openfga container")
+		}
+		httpHostPort := m[0].HostPort
+
+		m, ok = ports[grpcPort]
+		if !ok || len(m) == 0 {
+			t.Fatalf("failed to get grpc host port mapping from openfga container")
+		}
+		grpcHostPort := m[0].HostPort
+
+		return &serverHandle{
+			grpcAddress: fmt.Sprintf("localhost:%s", grpcHostPort),
+			httpAddress: fmt.Sprintf("localhost:%s", httpHostPort),
 		}
 	}
 
-	return &serverHandle{
-		grpcAddress: fmt.Sprintf("localhost:%s", grpcHostPort),
-		httpAddress: fmt.Sprintf("localhost:%s", httpHostPort),
+	// wait for command to finish
+	cctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	waitResult := dockerClient.ContainerWait(cctx, cont.ID, client.ContainerWaitOptions{
+		Condition: container.WaitConditionNotRunning,
+	})
+
+	select {
+	case <-waitResult.Result:
+	case err := <-waitResult.Error:
+		if err != nil && !errdefs.IsNotFound(err) {
+			require.NoError(t, err)
+		}
+	case <-cctx.Done():
+		require.NoError(t, cctx.Err())
 	}
+
+	// Non-server commands (e.g. version, migrate) do not expose ports; their
+	// callers only assert on the container exit code, so return an empty handle.
+	return &serverHandle{}
 }
 
 // TestDocker does basic sanity tests against the Dockerfile.
