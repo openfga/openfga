@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/openfga/openfga/cmd"
+	"github.com/openfga/openfga/cmd/healthcheck"
 	"github.com/openfga/openfga/cmd/migrate"
 	"github.com/openfga/openfga/cmd/run"
 	"github.com/openfga/openfga/cmd/validatemodels"
@@ -21,6 +22,9 @@ func main() {
 
 	validateModelsCmd := validatemodels.NewValidateCommand()
 	rootCmd.AddCommand(validateModelsCmd)
+
+	healthCheckCmd := healthcheck.NewHealthCheckCommand()
+	rootCmd.AddCommand(healthCheckCmd)
 
 	versionCmd := cmd.NewVersionCommand()
 	rootCmd.AddCommand(versionCmd)

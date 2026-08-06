@@ -144,9 +144,10 @@ func runOpenFGAContainerWithArgs(t *testing.T, commandArgs []string) OpenFGATest
 	})
 
 	if len(commandArgs) > 0 && commandArgs[0] == "run" {
-		// The image no longer defines a Docker HEALTHCHECK, so wait for the
-		// container to reach the running state. Readiness of the service itself
-		// is asserted by the caller via testutils.EnsureServiceHealthy.
+		// Wait for the container to reach the running state before inspecting
+		// it. Readiness of the service itself is asserted by the caller via
+		// testutils.EnsureServiceHealthy, which is transport-agnostic and does
+		// not depend on Docker's HEALTHCHECK timing.
 		policy := backoff.NewExponentialBackOff(backoff.WithMaxElapsedTime(30 * time.Second))
 
 		err = backoff.Retry(func() error {
@@ -157,10 +158,10 @@ func runOpenFGAContainerWithArgs(t *testing.T, commandArgs []string) OpenFGATest
 			if state.Running {
 				return nil
 			}
-			// A container that has already exited will never become running, so
-			// stop retrying and surface the exit code instead of waiting out the
-			// full backoff window.
-			if state.Status == container.StateExited || state.Status == container.StateDead {
+			// A container that has already exited or is being removed will never
+			// become running, so stop retrying and surface the exit code instead
+			// of waiting out the full backoff window.
+			if state.Status == container.StateExited || state.Status == container.StateDead || state.Status == container.StateRemoving {
 				return backoff.Permanent(fmt.Errorf("container terminated before running: status %q, exit code %d", state.Status, state.ExitCode))
 			}
 			return fmt.Errorf("container not running yet: status %q", state.Status)

@@ -22,4 +22,9 @@ EXPOSE 3000
 
 COPY --from=builder /bin/openfga /openfga
 
+# Healthcheck uses the built-in `openfga healthcheck` command, which probes the
+# gRPC Health Checking Protocol endpoint. The container is healthy when the
+# server reports SERVING.
+HEALTHCHECK --interval=5s --timeout=30s --retries=3 CMD ["/openfga", "healthcheck"]
+
 ENTRYPOINT ["/openfga"]
