@@ -6382,15 +6382,12 @@ func TestResolveCheck_PreCancelledContext(t *testing.T) {
 	storeID := ulid.Make().String()
 	mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
 	mockPlanner := mocks.NewMockManager(ctrl)
-	mockSelector := mocks.NewMockSelector(ctrl)
 
-	// If resolution ever starts, a direct match would allow the check.
-	mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
-		AnyTimes().
-		Return(&openfgav1.Tuple{Key: tuple.NewTupleKey("document:1", "viewer", "user:alice")}, nil)
-	mockPlanner.EXPECT().GetPlanSelector(gomock.Any()).Return(mockSelector).AnyTimes()
-	mockSelector.EXPECT().Select(gomock.Any()).Return(DefaultPlan).AnyTimes()
-	mockSelector.EXPECT().UpdateStats(gomock.Any(), gomock.Any()).AnyTimes()
+	// The gate must return before any graph work: the model below would otherwise
+	// resolve to Allowed=true off a direct tuple, so reaching the datastore or the
+	// planner at all means the early exit did not happen.
+	mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).Times(0)
+	mockPlanner.EXPECT().GetPlanSelector(gomock.Any()).Times(0)
 
 	model := testutils.MustTransformDSLToProtoWithID(`
 		model
