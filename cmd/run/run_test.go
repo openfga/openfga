@@ -1246,6 +1246,18 @@ func TestDefaultConfig(t *testing.T) {
 	require.True(t, val.Exists())
 	require.Equal(t, val.String(), cfg.Log.Format)
 
+	val = res.Get("properties.log.properties.otlp.properties.enabled.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.Bool(), cfg.Log.OTLP.Enabled)
+
+	val = res.Get("properties.log.properties.otlp.properties.endpoint.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.String(), cfg.Log.OTLP.Endpoint)
+
+	val = res.Get("properties.log.properties.otlp.properties.tls.properties.enabled.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.Bool(), cfg.Log.OTLP.TLS.Enabled)
+
 	val = res.Get("properties.maxTuplesPerWrite.default")
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), cfg.MaxTuplesPerWrite)
