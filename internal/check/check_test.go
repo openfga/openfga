@@ -6370,3 +6370,127 @@ func TestCheck_MultiBranchRecursionOnSameRelation(t *testing.T) {
 		})
 	}
 }
+
+// TestResolveCheck_PreCancelledContext is a regression for
+// https://github.com/openfga/openfga/issues/3214. A pre-cancelled request must
+// return context.Canceled and never a successful Allowed=true result that raced
+// past cooperative cancellation (see also weight2 cancel guards).
+func TestResolveCheck_PreCancelledContext(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	storeID := ulid.Make().String()
+	mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+	mockPlanner := mocks.NewMockManager(ctrl)
+	mockSelector := mocks.NewMockSelector(ctrl)
+
+	// If resolution ever starts, a direct match would allow the check.
+	mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+		AnyTimes().
+		Return(&openfgav1.Tuple{Key: tuple.NewTupleKey("document:1", "viewer", "user:alice")}, nil)
+	mockPlanner.EXPECT().GetPlanSelector(gomock.Any()).Return(mockSelector).AnyTimes()
+	mockSelector.EXPECT().Select(gomock.Any()).Return(DefaultPlan).AnyTimes()
+	mockSelector.EXPECT().UpdateStats(gomock.Any(), gomock.Any()).AnyTimes()
+
+	model := testutils.MustTransformDSLToProtoWithID(`
+		model
+			schema 1.1
+		type user
+		type document
+			relations
+				define viewer: [user]
+	`)
+	mg, err := modelgraph.New(model)
+	require.NoError(t, err)
+
+	resolver := New(Config{
+		Model:            mg,
+		Datastore:        mockDatastore,
+		Cache:            storage.NewNoopCache(),
+		Planner:          mockPlanner,
+		ConcurrencyLimit: 10,
+	})
+
+	req, err := NewRequest(RequestParams{
+		StoreID:  storeID,
+		Model:    mg,
+		TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:alice"),
+	})
+	require.NoError(t, err)
+
+	// Run many times so a missing early gate or short-circuit recheck would flake.
+	for range 200 {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		res, err := resolver.ResolveCheck(ctx, req)
+		require.ErrorIs(t, err, context.Canceled)
+		require.Nil(t, res)
+	}
+}
+
+// TestResolveUnionEdges_PreCancelledContextPrefersCancel is a regression for
+// https://github.com/openfga/openfga/issues/3214. When ctx is already cancelled and
+// a branch returns Allowed=true, select may pick the message over ctx.Done(); we must
+// re-check ctx.Err() and return cancellation instead of success.
+func TestResolveUnionEdges_PreCancelledContextPrefersCancel(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	storeID := ulid.Make().String()
+	mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+	mockCache := mocks.NewMockInMemoryCache[any](ctrl)
+
+	model := testutils.MustTransformDSLToProtoWithID(`
+		model
+			schema 1.1
+		type user
+		type group
+			relations
+				define member: [user] or admin
+				define admin: [user]
+	`)
+	mg, err := modelgraph.New(model)
+	require.NoError(t, err)
+
+	resolver := New(Config{
+		Model:                     mg,
+		Datastore:                 mockDatastore,
+		Cache:                     mockCache,
+		ConcurrencyLimit:          10,
+		LastCacheInvalidationTime: time.Now().Add(-time.Hour),
+	})
+
+	req, err := NewRequest(RequestParams{
+		StoreID:  storeID,
+		Model:    mg,
+		TupleKey: tuple.NewTupleKey("group:1", "member", "user:maria"),
+	})
+	require.NoError(t, err)
+
+	node, ok := mg.GetNodeByID("group#member")
+	require.True(t, ok)
+	edges, ok := mg.GetEdgesFromNode(node)
+	require.True(t, ok)
+	union := edges[0].GetTo()
+	edges, ok = mg.GetEdgesFromNode(union)
+	require.True(t, ok)
+
+	// Cache hit Allowed=true on every evaluation key so the out channel always
+	// has a ready success message racing ctx.Done().
+	mockCache.EXPECT().Get(gomock.Any()).AnyTimes().DoAndReturn(func(key any) any {
+		return &ResponseCacheEntry{
+			Res:          &Response{Allowed: true},
+			LastModified: time.Now(),
+		}
+	})
+
+	for range 200 {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		res, err := resolver.ResolveUnionEdges(ctx, req, edges, nil)
+		require.ErrorIs(t, err, context.Canceled)
+		require.Nil(t, res)
+	}
+}

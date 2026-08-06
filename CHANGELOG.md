@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Try to keep listed changes to a concise bulleted list of simple explanations of changes. Aim for the amount of information needed so that readers can understand where they would look in the codebase to investigate the changes' implementation, or where they would look in the documentation to understand how to make use of the change in practice - better yet, link directly to the docs and provide detailed information there. Only elaborate if doing so is required to avoid breaking changes or experimental features from ruining someone's day.
 
 ## [Unreleased]
+### Fixed
+- Fixed experimental `weighted_graph_check` incorrectly returning a successful result when the request context was already cancelled, which could race cooperative cancellation during union short-circuit and flake tests that expect a cancel error without v1 fallback. Pre-cancelled requests now fail early in `ResolveCheck`, and `ResolveUnionEdges` / `ResolveRecursive` re-check `ctx.Err()` before returning `allowed=true`, so a request cancelled mid-resolution surfaces the cancellation instead of an `allowed=true` that raced it. [#3214](https://github.com/openfga/openfga/issues/3214)
 
 ## [1.18.3] - 2026-08-05
 ### Fixed
