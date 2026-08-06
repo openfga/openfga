@@ -8,7 +8,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 ### Removed
-- Removed the bundled `grpc_health_probe` binary and the container `HEALTHCHECK` from the released OpenFGA images (`Dockerfile`, `Dockerfile.goreleaser`), along with the `openfga` service healthcheck in `docker-compose.yaml`. This drops the transitive CVE exposure the probe binary introduced. Kubernetes users should switch to the native [`livenessProbe.grpc`](https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/#define-a-grpc-liveness-probe) field (GA since Kubernetes 1.24); anyone who still needs the binary can layer it onto the OpenFGA image in their own Dockerfile. [#3103](https://github.com/openfga/openfga/pull/3103)
+- Removed the bundled `grpc_health_probe` binary and the container `HEALTHCHECK` from the released OpenFGA images (`Dockerfile`, `Dockerfile.goreleaser`), along with the `openfga` service healthcheck in `docker-compose.yaml`. This drops the transitive CVE exposure the probe binary introduced. Kubernetes users should switch to the native [`livenessProbe.grpc`](https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/#define-a-grpc-liveness-probe) field (enabled by default since Kubernetes 1.24, GA since 1.27); anyone who still needs the binary can layer it onto the OpenFGA image in their own Dockerfile. [#3247](https://github.com/openfga/openfga/pull/3247)
 
 ## [1.18.3] - 2026-08-05
 ### Fixed

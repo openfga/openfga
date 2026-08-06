@@ -170,10 +170,17 @@ func runOpenFGAContainerWithArgs(t *testing.T, commandArgs []string) OpenFGATest
 			inspectResult, err := dockerClient.ContainerInspect(ctx, cont.ID, client.ContainerInspectOptions{})
 			require.NoError(t, err)
 
-			if inspectResult.Container.State.Running {
+			state := inspectResult.Container.State
+			if state.Running {
 				return nil
 			}
-			return fmt.Errorf("container not running yet: status %q", inspectResult.Container.State.Status)
+			// A container that has already exited will never become running, so
+			// stop retrying and surface the exit code instead of waiting out the
+			// full backoff window.
+			if state.Status == container.StateExited || state.Status == container.StateDead {
+				return backoff.Permanent(fmt.Errorf("container terminated before running: status %q, exit code %d", state.Status, state.ExitCode))
+			}
+			return fmt.Errorf("container not running yet: status %q", state.Status)
 		}, policy)
 		require.NoError(t, err)
 	} else {
