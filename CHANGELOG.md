@@ -8,7 +8,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 ### Fixed
-- Fixed experimental `weighted_graph_check` incorrectly returning a successful result when the request context was already cancelled, which could race cooperative cancellation during union short-circuit and flake tests that expect a cancel error without v1 fallback. Pre-cancelled requests now fail early in `ResolveCheck`, and `ResolveUnionEdges` / `ResolveRecursive` re-check `ctx.Err()` before returning `allowed=true`, so a union or recursive branch cancelled mid-resolution surfaces the cancellation instead of an `allowed=true` that raced it. Intersection and exclusion keep their existing behaviour. [#3214](https://github.com/openfga/openfga/issues/3214)
+- Fixed experimental `weighted_graph_check` returning a successful result for a request whose context was already cancelled. `ResolveCheck` now checks `ctx.Err()` before doing any graph work, so such a request deterministically returns the cancellation error instead of racing cooperative cancellation in the resolvers. Cancellation during resolution is unchanged: a branch that has already reached a terminal result still returns it. [#3214](https://github.com/openfga/openfga/issues/3214)
 
 ## [1.18.3] - 2026-08-05
 ### Fixed

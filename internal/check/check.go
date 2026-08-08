@@ -111,9 +111,9 @@ func (r *Resolver) ResolveCheck(ctx context.Context, req *Request) (*Response, e
 		}
 	}(ctx)
 
-	// Fail closed on a cancelled or deadline-exceeded request before graph work.
-	// Cooperative cancellation during resolution can still race (see ResolveUnionEdges);
-	// this gate makes a pre-cancelled context deterministic.
+	// Fail closed on a request that is already cancelled or past its deadline, before
+	// doing any graph work. Cancellation during resolution stays cooperative: a branch
+	// that has already reached a terminal result keeps it.
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -302,11 +302,6 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, edges []
 			}
 
 			if msg.Res.GetAllowed() {
-				// select may choose a ready message over ctx.Done(); re-check cancellation
-				// so we do not return success when the request was already cancelled.
-				if err := ctx.Err(); err != nil {
-					return nil, err
-				}
 				// Short-circuit: In a union, if any branch returns true, we can immediately return.
 				span.SetAttributes(attribute.Bool("allowed", true))
 				return msg.Res, nil
@@ -594,11 +589,6 @@ func (r *Resolver) ResolveRecursive(ctx context.Context, req *Request, edge *aut
 			}
 
 			if msg.Res.GetAllowed() {
-				// select may choose a ready message over ctx.Done(); re-check cancellation
-				// so we do not return success when the request was already cancelled.
-				if err := ctx.Err(); err != nil {
-					return nil, err
-				}
 				span.SetAttributes(attribute.Bool("allowed", true))
 				return msg.Res, nil
 			}

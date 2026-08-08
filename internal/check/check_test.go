@@ -6371,123 +6371,83 @@ func TestCheck_MultiBranchRecursionOnSameRelation(t *testing.T) {
 	}
 }
 
-// TestResolveCheck_PreCancelledContext is a regression for
-// https://github.com/openfga/openfga/issues/3214. A pre-cancelled request must
-// return context.Canceled and never a successful Allowed=true result that raced
-// past cooperative cancellation (see also weight2 cancel guards).
-func TestResolveCheck_PreCancelledContext(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	storeID := ulid.Make().String()
-	mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-	mockPlanner := mocks.NewMockManager(ctrl)
-
-	// The gate must return before any graph work: the model below would otherwise
-	// resolve to Allowed=true off a direct tuple, so reaching the datastore or the
-	// planner at all means the early exit did not happen.
-	mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).Times(0)
-	mockPlanner.EXPECT().GetPlanSelector(gomock.Any()).Times(0)
-
-	model := testutils.MustTransformDSLToProtoWithID(`
-		model
-			schema 1.1
-		type user
-		type document
-			relations
-				define viewer: [user]
-	`)
-	mg, err := modelgraph.New(model)
-	require.NoError(t, err)
-
-	resolver := New(Config{
-		Model:            mg,
-		Datastore:        mockDatastore,
-		Cache:            storage.NewNoopCache(),
-		Planner:          mockPlanner,
-		ConcurrencyLimit: 10,
-	})
-
-	req, err := NewRequest(RequestParams{
-		StoreID:  storeID,
-		Model:    mg,
-		TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:alice"),
-	})
-	require.NoError(t, err)
-
-	// Run many times so a missing early gate or short-circuit recheck would flake.
-	for range 200 {
-		ctx, cancel := context.WithCancel(context.Background())
-		cancel()
-
-		res, err := resolver.ResolveCheck(ctx, req)
-		require.ErrorIs(t, err, context.Canceled)
-		require.Nil(t, res)
-	}
-}
-
-// TestResolveUnionEdges_PreCancelledContextPrefersCancel is a regression for
-// https://github.com/openfga/openfga/issues/3214. When ctx is already cancelled and
-// a branch returns Allowed=true, select may pick the message over ctx.Done(); we must
-// re-check ctx.Err() and return cancellation instead of success.
-func TestResolveUnionEdges_PreCancelledContextPrefersCancel(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	storeID := ulid.Make().String()
-	mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-	mockCache := mocks.NewMockInMemoryCache[any](ctrl)
-
+// TestResolveCheck_CancelledBeforeResolution is a regression for
+// https://github.com/openfga/openfga/issues/3214. A request whose context is already
+// done must return that context error, never a successful result, and must not start
+// any graph work.
+func TestResolveCheck_CancelledBeforeResolution(t *testing.T) {
+	// viewer is reachable both directly and through a userset, so a request that
+	// gets past the gate hits the datastore on both paths.
 	model := testutils.MustTransformDSLToProtoWithID(`
 		model
 			schema 1.1
 		type user
 		type group
 			relations
-				define member: [user] or admin
-				define admin: [user]
+				define member: [user]
+		type document
+			relations
+				define viewer: [user, group#member]
 	`)
 	mg, err := modelgraph.New(model)
 	require.NoError(t, err)
 
-	resolver := New(Config{
-		Model:                     mg,
-		Datastore:                 mockDatastore,
-		Cache:                     mockCache,
-		ConcurrencyLimit:          10,
-		LastCacheInvalidationTime: time.Now().Add(-time.Hour),
-	})
+	tests := map[string]struct {
+		ctx      func() (context.Context, context.CancelFunc)
+		expected error
+	}{
+		"cancelled": {
+			ctx: func() (context.Context, context.CancelFunc) {
+				ctx, cancel := context.WithCancel(context.Background())
+				cancel()
+				return ctx, cancel
+			},
+			expected: context.Canceled,
+		},
+		"deadline_exceeded": {
+			ctx: func() (context.Context, context.CancelFunc) {
+				return context.WithDeadline(context.Background(), time.Now().Add(-time.Minute))
+			},
+			expected: context.DeadlineExceeded,
+		},
+	}
 
-	req, err := NewRequest(RequestParams{
-		StoreID:  storeID,
-		Model:    mg,
-		TupleKey: tuple.NewTupleKey("group:1", "member", "user:maria"),
-	})
-	require.NoError(t, err)
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
 
-	node, ok := mg.GetNodeByID("group#member")
-	require.True(t, ok)
-	edges, ok := mg.GetEdgesFromNode(node)
-	require.True(t, ok)
-	union := edges[0].GetTo()
-	edges, ok = mg.GetEdgesFromNode(union)
-	require.True(t, ok)
+			storeID := ulid.Make().String()
+			mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+			mockPlanner := mocks.NewMockManager(ctrl)
 
-	// Cache hit Allowed=true on every evaluation key so the out channel always
-	// has a ready success message racing ctx.Done().
-	mockCache.EXPECT().Get(gomock.Any()).AnyTimes().DoAndReturn(func(key any) any {
-		return &ResponseCacheEntry{
-			Res:          &Response{Allowed: true},
-			LastModified: time.Now(),
-		}
-	})
+			// Without the gate this request reads both the direct tuple and the
+			// userset tuples, so neither Times(0) is vacuous. Any other call on
+			// either mock is unexpected and fails the test as well.
+			mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+			mockDatastore.EXPECT().ReadUsersetTuples(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
 
-	for range 200 {
-		ctx, cancel := context.WithCancel(context.Background())
-		cancel()
+			resolver := New(Config{
+				Model:            mg,
+				Datastore:        mockDatastore,
+				Cache:            storage.NewNoopCache(),
+				Planner:          mockPlanner,
+				ConcurrencyLimit: 10,
+			})
 
-		res, err := resolver.ResolveUnionEdges(ctx, req, edges, nil)
-		require.ErrorIs(t, err, context.Canceled)
-		require.Nil(t, res)
+			req, err := NewRequest(RequestParams{
+				StoreID:  storeID,
+				Model:    mg,
+				TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:alice"),
+			})
+			require.NoError(t, err)
+
+			ctx, cancel := test.ctx()
+			defer cancel()
+
+			res, err := resolver.ResolveCheck(ctx, req)
+			require.ErrorIs(t, err, test.expected)
+			require.Nil(t, res)
+		})
 	}
 }
