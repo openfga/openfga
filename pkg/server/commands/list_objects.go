@@ -750,7 +750,15 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 	// streaming path bounded, we fold each streamed object into a single flag
 	// rather than buffering every object (this endpoint returns all results).
 	// The handler never sees the streamed objects, so this must live here.
-	breakingChangeReason := v2breaking.ListObjectsReason(typesys, targetObjectType, targetRelation, req.GetUser())
+	//
+	// The whole thing is gated on the log level being InfoLevel or lower: when
+	// the log would be dropped anyway we leave breakingChangeReason empty, which
+	// short-circuits both the per-object confirmBreakingChange folding and the
+	// final logListObjectsBreakingChange emit.
+	var breakingChangeReason string
+	if q.logger.Level() <= zap.InfoLevel {
+		breakingChangeReason = v2breaking.ListObjectsReason(typesys, targetObjectType, targetRelation, req.GetUser())
+	}
 	var breakingChangeConfirmed bool
 	confirmBreakingChange := func(object string) {
 		if breakingChangeReason == "" || breakingChangeConfirmed {
@@ -902,7 +910,7 @@ func (q *ListObjectsQuery) logListObjectsBreakingChange(ctx context.Context, req
 		return
 	}
 
-	q.logger.WarnWithContext(ctx, "potential v2 StreamedListObjects resolution breaking change",
+	q.logger.InfoWithContext(ctx, "potential v2 StreamedListObjects resolution breaking change",
 		zap.String("store_id", req.GetStoreId()),
 		zap.String("model_id", req.GetAuthorizationModelId()),
 		zap.String("request_id", requestid.GetRequestIDFromContext(ctx)),
