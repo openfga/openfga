@@ -130,10 +130,10 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 
 			// Flag potential v2Check resolution breaking changes for userset requests.
 			// See v2breaking.CheckReason for the scenarios we detect.
-if s.logger.Level() <= zap.InfoLevel && !res.Allowed && tuple.IsObjectRelation(req.GetTupleKey().GetUser()) {
-	if typesys, err := s.resolveTypesystem(ctx, storeID, req.GetAuthorizationModelId()); err == nil {
-		tk := req.GetTupleKey()
-		if reason := v2breaking.CheckReason(typesys, tk); reason != "" {
+			if s.logger.Level() <= zap.InfoLevel && !res.Allowed && tuple.IsObjectRelation(req.GetTupleKey().GetUser()) {
+				if typesys, err := s.resolveTypesystem(ctx, storeID, req.GetAuthorizationModelId()); err == nil {
+					tk := req.GetTupleKey()
+					if reason := v2breaking.CheckReason(typesys, tk); reason != "" {
 						requestID := requestid.GetRequestIDFromContext(ctx)
 						s.logger.InfoWithContext(ctx, "potential v2 Check resolution breaking change",
 							zap.String("store_id", storeID),
@@ -295,7 +295,7 @@ if s.logger.Level() <= zap.InfoLevel && !res.Allowed && tuple.IsObjectRelation(r
 			zap.String("request_id", requestID),
 		}
 		emit := func(reason string) {
-			s.logger.WarnWithContext(ctx, "potential v2 Check resolution breaking change",
+			s.logger.InfoWithContext(ctx, "potential v2 Check resolution breaking change",
 				append(logFields, zap.String("reason", reason))...)
 		}
 		if reason := v2breaking.CheckReasonFromV2Error(v2FallbackErr); reason != "" {
