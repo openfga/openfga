@@ -600,6 +600,7 @@ type testcase struct {
 	subjectID   string
 	error       error
 	expected    []string
+	skip        bool
 }
 
 func evaluate(t *testing.T, tc testcase, p *pipeline.Pipeline) {
@@ -789,8 +790,90 @@ var cases = []testcase{
 		subjectID:   "justin",
 		expected:    []string{"org:a", "org:b", "org:c", "org:d"},
 	},
-	// userset_as_user removed: the new pipeline interface does not support
-	// type+relation subject types such as "group#member".
+	{
+		name: "userset_as_subject",
+		model: `
+		model
+			schema 1.1
+
+		type user
+
+		type group
+			relations
+				define member: [user, group#member]
+
+		type folder
+			relations
+				define parent: [folder]
+				define viewer: [user, group#member] or viewer from parent
+
+		type document
+			relations
+				define parent: [folder]
+				define viewer: [user, group#member] or viewer from parent	
+		`,
+		tuples: []string{
+			"document:1#viewer@group:A#member",
+			"document:2#parent@folder:1",
+			"folder:1#parent@folder:2",
+			"folder:2#parent@folder:3",
+			"folder:3#viewer@group:C#member",
+			"group:C#member@group:B#member",
+			"group:B#member@group:A#member",
+			"document:3#viewer@group:X#member",
+			"document:4#parent@folder:4",
+			"folder:4#viewer@group:X#member",
+			"document:5#viewer@user:A",
+			"document:6#parent@folder:5",
+			"folder:5#viewer@user:A",
+		},
+		objectType:  "document",
+		relation:    "viewer",
+		subjectType: "group#member",
+		subjectID:   "A",
+		expected:    []string{"document:1", "document:2"},
+	},
+	{
+		name: "wildcard_as_subject",
+		model: `
+		model
+			schema 1.1
+
+		type user
+
+		type group
+			relations
+				define member: [user:*]
+
+		type folder
+			relations
+				define parent: [folder]
+				define viewer: [group#member] or viewer from parent
+
+		type document
+			relations
+				define parent: [folder]
+				define viewer: [group#member] or viewer from parent	
+		`,
+		tuples: []string{
+			"document:1#viewer@group:A#member",
+			"group:A#member@user:*",
+			"document:2#parent@folder:1",
+			"folder:1#parent@folder:2",
+			"folder:2#parent@folder:3",
+			"folder:3#viewer@group:A#member",
+			"document:3#viewer@group:B#member",
+			"document:4#parent@folder:4",
+			"folder:4#viewer@group:B#member",
+			"document:5#viewer@group:X#member",
+			"document:6#parent@folder:5",
+		},
+		objectType:  "document",
+		relation:    "viewer",
+		subjectType: "user",
+		subjectID:   "*",
+		expected:    []string{"document:1", "document:2"},
+	},
 	{
 		name: "err_and_true_return_err",
 		model: `
@@ -2604,6 +2687,9 @@ func BenchmarkPipeline(b *testing.B) {
 func TestPipeline(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			if tc.skip {
+				t.SkipNow()
+			}
 			defer goleak.VerifyNone(t)
 
 			model := testutils.MustTransformDSLToProtoWithID(tc.model)

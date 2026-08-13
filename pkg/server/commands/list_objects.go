@@ -522,6 +522,10 @@ func (q *ListObjectsQuery) Execute(
 
 	subjectType, subjectIdentifier, subjectRelation := tuple.ToUserParts(req.GetUser())
 
+	if subjectRelation != "" {
+		subjectType = tuple.ToObjectRelationString(subjectType, subjectRelation)
+	}
+
 	typesys, ok := typesystem.TypesystemFromContext(ctx)
 	if !ok {
 		return nil, fmt.Errorf("%w: typesystem missing in context", openfgaErrors.ErrUnknown)
@@ -566,7 +570,7 @@ func (q *ListObjectsQuery) Execute(
 
 	wgraph := typesys.GetWeightedGraph()
 
-	if wgraph != nil && subjectRelation == "" && subjectIdentifier != "*" && q.pipelineEnabled {
+	if wgraph != nil && q.pipelineEnabled {
 		ds := storagewrappers.NewRequestStorageWrapperWithCache(
 			q.datastore,
 			req.GetContextualTuples().GetTupleKeys(),
@@ -708,6 +712,10 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 
 	subjectType, subjectIdentifier, subjectRelation := tuple.ToUserParts(req.GetUser())
 
+	if subjectRelation != "" {
+		subjectType = tuple.ToObjectRelationString(subjectType, subjectRelation)
+	}
+
 	typesys, ok := typesystem.TypesystemFromContext(ctx)
 	if !ok {
 		return nil, fmt.Errorf("%w: typesystem missing in context", openfgaErrors.ErrUnknown)
@@ -742,7 +750,7 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 
 	wgraph := typesys.GetWeightedGraph()
 
-	if wgraph != nil && subjectRelation == "" && subjectIdentifier != "*" && q.pipelineEnabled {
+	if wgraph != nil && q.pipelineEnabled {
 		ds := storagewrappers.NewRequestStorageWrapperWithCache(
 			q.datastore,
 			req.GetContextualTuples().GetTupleKeys(),
