@@ -576,7 +576,7 @@ func TestBatchCheck_LogsBreakingChanges(t *testing.T) {
 	}
 
 	t.Run("aggregates_distinct_reasons_across_batch", func(t *testing.T) {
-		core, logs := observer.New(zap.WarnLevel)
+		core, logs := observer.New(zap.InfoLevel)
 		testLogger := &logger.ZapLogger{Logger: zap.New(core)}
 
 		s, storeID, modelID := setupBatchCheckStore(t, modelDSL, tuples,
@@ -637,7 +637,7 @@ func TestBatchCheck_LogsBreakingChanges(t *testing.T) {
 	})
 
 	t.Run("no_log_when_flag_disabled", func(t *testing.T) {
-		core, logs := observer.New(zap.WarnLevel)
+		core, logs := observer.New(zap.InfoLevel)
 		testLogger := &logger.ZapLogger{Logger: zap.New(core)}
 
 		// No ExperimentalWeightedGraphCheck flag — there is no v2 comparison to
@@ -665,7 +665,7 @@ func TestBatchCheck_LogsBreakingChanges(t *testing.T) {
 	})
 
 	t.Run("no_log_when_no_shape_matches", func(t *testing.T) {
-		core, logs := observer.New(zap.WarnLevel)
+		core, logs := observer.New(zap.InfoLevel)
 		testLogger := &logger.ZapLogger{Logger: zap.New(core)}
 
 		// A model with no exclusion / computed-userset / TTU shapes.
@@ -706,7 +706,7 @@ func TestBatchCheck_LogsBreakingChanges(t *testing.T) {
 	})
 
 	t.Run("logs_when_weighted_graph_fails_to_build", func(t *testing.T) {
-		core, logs := observer.New(zap.WarnLevel)
+		core, logs := observer.New(zap.InfoLevel)
 		testLogger := &logger.ZapLogger{Logger: zap.New(core)}
 
 		// This model is valid (WriteAuthorizationModel accepts it) but fails the
@@ -794,7 +794,7 @@ func logBatchTypesystem(t *testing.T, modelDSL string) *typesystem.TypeSystem {
 func batchLogFields(t *testing.T, typesys *typesystem.TypeSystem, checks []*openfgav1.BatchCheckItem, result map[commands.CorrelationID]*commands.BatchCheckOutcome) map[string]any {
 	t.Helper()
 
-	core, logs := observer.New(zap.WarnLevel)
+	core, logs := observer.New(zap.InfoLevel)
 	s := &Server{logger: &logger.ZapLogger{Logger: zap.New(core)}}
 
 	req := &openfgav1.BatchCheckRequest{

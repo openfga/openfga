@@ -219,7 +219,7 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 		s.emitCheckDurationMetric(graph.ResolveCheckResponseMetadata{DatastoreQueryCount: outcome.DatastoreQueryCount, Duration: outcome.Duration}, methodName)
 	}
 
-	if v2Enabled {
+	if v2Enabled && s.logger.Level() <= zap.InfoLevel {
 		s.logBatchCheckBreakingChanges(ctx, req, typesys, result)
 	}
 
@@ -250,7 +250,7 @@ func (s *Server) logBatchCheckBreakingChanges(ctx context.Context, req *openfgav
 		return
 	}
 
-	s.logger.WarnWithContext(ctx, "potential v2 BatchCheck resolution breaking change",
+	s.logger.InfoWithContext(ctx, "potential v2 BatchCheck resolution breaking change",
 		zap.String("store_id", req.GetStoreId()),
 		zap.String("model_id", req.GetAuthorizationModelId()),
 		zap.String("request_id", requestid.GetRequestIDFromContext(ctx)),
