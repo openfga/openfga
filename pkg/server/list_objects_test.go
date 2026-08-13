@@ -354,7 +354,7 @@ func TestListObjectsBreakingChangeLog(t *testing.T) {
 		t.Run(fmt.Sprintf("pipeline_enabled=%t", pipelineEnabled), func(t *testing.T) {
 			for _, tc := range tests {
 				t.Run(tc.name, func(t *testing.T) {
-					core, logs := observer.New(zap.WarnLevel)
+					core, logs := observer.New(zap.InfoLevel)
 					testLogger := &logger.ZapLogger{Logger: zap.New(core)}
 
 					s, baseReq := setupListObjectsServer(t, tc.modelDSL, tc.tuples,
