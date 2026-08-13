@@ -14,7 +14,7 @@ func TestUnaryInterceptor(t *testing.T) {
 	t.Run("unary_interceptor_with_no_storeID_in_request", func(t *testing.T) {
 		interceptor := NewUnaryInterceptor()
 
-		handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		handler := func(ctx context.Context, req any) (any, error) {
 			storeID, ok := StoreIDFromContext(ctx)
 			require.True(t, ok)
 			require.Empty(t, storeID)
@@ -30,7 +30,7 @@ func TestUnaryInterceptor(t *testing.T) {
 		storeID := "abc"
 		interceptor := NewUnaryInterceptor()
 
-		handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		handler := func(ctx context.Context, req any) (any, error) {
 			got, ok := StoreIDFromContext(ctx)
 			require.True(t, ok)
 			require.Equal(t, storeID, got)
@@ -52,13 +52,13 @@ func (s *mockServerStream) Context() context.Context {
 	return s.ctx
 }
 
-func (s *mockServerStream) RecvMsg(interface{}) error {
+func (s *mockServerStream) RecvMsg(any) error {
 	return nil
 }
 
 func TestStreamingInterceptor(t *testing.T) {
 	t.Run("streaming_interceptor_with_no_GetStoreId_in_request", func(t *testing.T) {
-		handler := func(srv interface{}, stream grpc.ServerStream) error {
+		handler := func(srv any, stream grpc.ServerStream) error {
 			err := stream.RecvMsg(nil)
 			require.NoError(t, err)
 
@@ -75,7 +75,7 @@ func TestStreamingInterceptor(t *testing.T) {
 	})
 
 	t.Run("streaming_interceptor_with_GetStoreId_in_request", func(t *testing.T) {
-		handler := func(srv interface{}, stream grpc.ServerStream) error {
+		handler := func(srv any, stream grpc.ServerStream) error {
 			err := stream.RecvMsg(&openfgav1.CheckRequest{StoreId: "abc"})
 			require.NoError(t, err)
 

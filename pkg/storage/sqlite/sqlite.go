@@ -330,12 +330,12 @@ func makeTupleLockKeys(deletes storage.Deletes, writes storage.Writes) []tupleLo
 }
 
 // buildRowConstructorIN builds "((?,?,?,?,?,?,?),(?,?,?,?,?,?,?),...)" and arg list for row-constructor IN.
-func buildRowConstructorIN(keys []tupleLockKey) (string, []interface{}) {
+func buildRowConstructorIN(keys []tupleLockKey) (string, []any) {
 	if len(keys) == 0 {
 		return "", nil
 	}
 	var sb strings.Builder
-	args := make([]interface{}, 0, len(keys)*7)
+	args := make([]any, 0, len(keys)*7)
 	sb.WriteByte('(')
 	for i, k := range keys {
 		if i > 0 {
@@ -420,10 +420,7 @@ func (s *Datastore) write(
 	// 3. If list compiled in step 2 is not empty, execute SELECT … FOR UPDATE statement
 
 	for start := 0; start < total; start += storage.DefaultMaxTuplesPerWrite {
-		end := start + storage.DefaultMaxTuplesPerWrite
-		if end > total {
-			end = total
-		}
+		end := min(start+storage.DefaultMaxTuplesPerWrite, total)
 		keys := lockKeys[start:end]
 
 		if err = s.selectExistingRowsForWrite(ctx, store, keys, txn, existing); err != nil {
@@ -431,7 +428,7 @@ func (s *Datastore) write(
 		}
 	}
 
-	changeLogItems := make([][]interface{}, 0, len(deletes)+len(writes))
+	changeLogItems := make([][]any, 0, len(deletes)+len(writes))
 
 	// ensures increasingly unique values within a single thread
 	entropy := ulid.DefaultEntropy()
@@ -478,7 +475,7 @@ func (s *Datastore) write(
 			"user_type":        tupleUtils.GetUserTypeFromUser(tk.GetUser()),
 		})
 
-		changeLogItems = append(changeLogItems, []interface{}{
+		changeLogItems = append(changeLogItems, []any{
 			store,
 			objectType,
 			objectID,
@@ -494,7 +491,7 @@ func (s *Datastore) write(
 		})
 	}
 
-	writeItems := make([][]interface{}, 0, len(writes))
+	writeItems := make([][]any, 0, len(writes))
 
 	// 5. For writes
 	// a. If on_duplicate: error ( default behavior )
@@ -537,7 +534,7 @@ func (s *Datastore) write(
 			return err
 		}
 
-		writeItems = append(writeItems, []interface{}{
+		writeItems = append(writeItems, []any{
 			store,
 			objectType,
 			objectID,
@@ -552,7 +549,7 @@ func (s *Datastore) write(
 			sq.Expr("datetime('subsec')"),
 		})
 
-		changeLogItems = append(changeLogItems, []interface{}{
+		changeLogItems = append(changeLogItems, []any{
 			store,
 			objectType,
 			objectID,
@@ -569,10 +566,7 @@ func (s *Datastore) write(
 	}
 
 	for start, totalDeletes := 0, len(deleteConditions); start < totalDeletes; start += storage.DefaultMaxTuplesPerWrite {
-		end := start + storage.DefaultMaxTuplesPerWrite
-		if end > totalDeletes {
-			end = totalDeletes
-		}
+		end := min(start+storage.DefaultMaxTuplesPerWrite, totalDeletes)
 
 		deleteConditionsBatch := deleteConditions[start:end]
 
@@ -596,10 +590,7 @@ func (s *Datastore) write(
 	}
 
 	for start, totalWrites := 0, len(writeItems); start < totalWrites; start += storage.DefaultMaxTuplesPerWrite {
-		end := start + storage.DefaultMaxTuplesPerWrite
-		if end > totalWrites {
-			end = totalWrites
-		}
+		end := min(start+storage.DefaultMaxTuplesPerWrite, totalWrites)
 
 		writesBatch := writeItems[start:end]
 
@@ -639,10 +630,7 @@ func (s *Datastore) write(
 
 	// 6. Execute INSERT changelog statements
 	for start, totalItems := 0, len(changeLogItems); start < totalItems; start += storage.DefaultMaxTuplesPerWrite {
-		end := start + storage.DefaultMaxTuplesPerWrite
-		if end > totalItems {
-			end = totalItems
-		}
+		end := min(start+storage.DefaultMaxTuplesPerWrite, totalItems)
 
 		changeLogBatch := changeLogItems[start:end]
 
@@ -1328,7 +1316,7 @@ func (s *Datastore) IsReady(ctx context.Context) (storage.ReadinessStatus, error
 
 // HandleSQLError processes an SQL error and converts it into a more
 // specific error type based on the nature of the SQL error.
-func HandleSQLError(err error, args ...interface{}) error {
+func HandleSQLError(err error, args ...any) error {
 	if errors.Is(err, sql.ErrNoRows) {
 		return storage.ErrNotFound
 	}

@@ -246,7 +246,7 @@ func runListObjectsTests(t *testing.T, ds storage.OpenFGADatastore, passedInOpts
 					Object:   "document:1",
 					Condition: &openfgav1.RelationshipCondition{
 						Name:    "condition1",
-						Context: testutils.MustNewStruct(t, map[string]interface{}{"param1": "ok"}),
+						Context: testutils.MustNewStruct(t, map[string]any{"param1": "ok"}),
 					},
 				},
 				{
@@ -255,7 +255,7 @@ func runListObjectsTests(t *testing.T, ds storage.OpenFGADatastore, passedInOpts
 					Object:   "document:2",
 					Condition: &openfgav1.RelationshipCondition{
 						Name:    "condition1",
-						Context: testutils.MustNewStruct(t, map[string]interface{}{"param1": "notok"}),
+						Context: testutils.MustNewStruct(t, map[string]any{"param1": "notok"}),
 					},
 				},
 			},
@@ -293,7 +293,7 @@ func runListObjectsTests(t *testing.T, ds storage.OpenFGADatastore, passedInOpts
 						Object:   "document:1",
 						Condition: &openfgav1.RelationshipCondition{
 							Name:    "condition1",
-							Context: testutils.MustNewStruct(t, map[string]interface{}{"param1": "ok"}),
+							Context: testutils.MustNewStruct(t, map[string]any{"param1": "ok"}),
 						},
 					},
 					{
@@ -302,7 +302,7 @@ func runListObjectsTests(t *testing.T, ds storage.OpenFGADatastore, passedInOpts
 						Object:   "document:2",
 						Condition: &openfgav1.RelationshipCondition{
 							Name:    "condition1",
-							Context: testutils.MustNewStruct(t, map[string]interface{}{"param1": "notok"}),
+							Context: testutils.MustNewStruct(t, map[string]any{"param1": "notok"}),
 						},
 					},
 				},
@@ -332,7 +332,7 @@ func runListObjectsTests(t *testing.T, ds storage.OpenFGADatastore, passedInOpts
 					Object:   "document:1",
 					Condition: &openfgav1.RelationshipCondition{
 						Name:    "condition1",
-						Context: testutils.MustNewStruct(t, map[string]interface{}{"param1": "notok"}),
+						Context: testutils.MustNewStruct(t, map[string]any{"param1": "notok"}),
 					},
 				},
 				{
@@ -341,7 +341,7 @@ func runListObjectsTests(t *testing.T, ds storage.OpenFGADatastore, passedInOpts
 					Object:   "document:2",
 					Condition: &openfgav1.RelationshipCondition{
 						Name:    "condition1",
-						Context: testutils.MustNewStruct(t, map[string]interface{}{"param1": "notok"}),
+						Context: testutils.MustNewStruct(t, map[string]any{"param1": "notok"}),
 					},
 				},
 			},
@@ -356,7 +356,7 @@ func runListObjectsTests(t *testing.T, ds storage.OpenFGADatastore, passedInOpts
 						Object:   "document:1",
 						Condition: &openfgav1.RelationshipCondition{
 							Name:    "condition1",
-							Context: testutils.MustNewStruct(t, map[string]interface{}{"param1": "ok"}),
+							Context: testutils.MustNewStruct(t, map[string]any{"param1": "ok"}),
 						},
 					},
 					{
@@ -365,7 +365,7 @@ func runListObjectsTests(t *testing.T, ds storage.OpenFGADatastore, passedInOpts
 						Object:   "document:2",
 						Condition: &openfgav1.RelationshipCondition{
 							Name:    "condition1",
-							Context: testutils.MustNewStruct(t, map[string]interface{}{"param1": "ok"}),
+							Context: testutils.MustNewStruct(t, map[string]any{"param1": "ok"}),
 						},
 					},
 				},
@@ -395,7 +395,7 @@ func runListObjectsTests(t *testing.T, ds storage.OpenFGADatastore, passedInOpts
 					Object:   "document:1",
 					Condition: &openfgav1.RelationshipCondition{
 						Name:    "condition1",
-						Context: testutils.MustNewStruct(t, map[string]interface{}{"param1": "ok"}),
+						Context: testutils.MustNewStruct(t, map[string]any{"param1": "ok"}),
 					},
 				},
 				{
@@ -404,14 +404,14 @@ func runListObjectsTests(t *testing.T, ds storage.OpenFGADatastore, passedInOpts
 					Object:   "document:2",
 					Condition: &openfgav1.RelationshipCondition{
 						Name:    "condition1",
-						Context: testutils.MustNewStruct(t, map[string]interface{}{"param1": "ok"}),
+						Context: testutils.MustNewStruct(t, map[string]any{"param1": "ok"}),
 					},
 				},
 			},
 			user:       "user:anne",
 			objectType: "document",
 			relation:   "viewer",
-			context:    testutils.MustNewStruct(t, map[string]interface{}{"param2": "ok"}),
+			context:    testutils.MustNewStruct(t, map[string]any{"param2": "ok"}),
 			contextualTuples: &openfgav1.ContextualTupleKeys{
 				TupleKeys: []*openfgav1.TupleKey{
 					{
@@ -420,7 +420,7 @@ func runListObjectsTests(t *testing.T, ds storage.OpenFGADatastore, passedInOpts
 						Object:   "document:3",
 						Condition: &openfgav1.RelationshipCondition{
 							Name:    "condition1",
-							Context: testutils.MustNewStruct(t, map[string]interface{}{"param1": "ok"}),
+							Context: testutils.MustNewStruct(t, map[string]any{"param1": "ok"}),
 						},
 					},
 					{
@@ -429,7 +429,7 @@ func runListObjectsTests(t *testing.T, ds storage.OpenFGADatastore, passedInOpts
 						Object:   "document:4",
 						Condition: &openfgav1.RelationshipCondition{
 							Name:    "condition1",
-							Context: testutils.MustNewStruct(t, map[string]interface{}{"param1": "ok"}),
+							Context: testutils.MustNewStruct(t, map[string]any{"param1": "ok"}),
 						},
 					},
 				},
@@ -466,7 +466,7 @@ func runListObjectsTests(t *testing.T, ds storage.OpenFGADatastore, passedInOpts
 			user:                   "user:jon",
 			objectType:             "document",
 			relation:               "viewer",
-			context:                testutils.MustNewStruct(t, map[string]interface{}{"x": 50}),
+			context:                testutils.MustNewStruct(t, map[string]any{"x": 50}),
 			minimumResultsExpected: 1,
 			allResults:             []string{"document:1"},
 			useCheckCache:          false,

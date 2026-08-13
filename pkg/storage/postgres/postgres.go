@@ -441,10 +441,7 @@ func selectAllExistingRowsForUpdate(ctx context.Context,
 	existing := make(map[string]*openfgav1.Tuple, total)
 
 	for start := 0; start < total; start += storage.DefaultMaxTuplesPerWrite {
-		end := start + storage.DefaultMaxTuplesPerWrite
-		if end > total {
-			end = total
-		}
+		end := min(start+storage.DefaultMaxTuplesPerWrite, total)
 		keys := lockKeys[start:end]
 
 		if err := selectExistingRowsForWrite(ctx, stbl, txn, store, keys, existing); err != nil {
@@ -459,10 +456,7 @@ func executeDeleteTuples(ctx context.Context, txn PgxExec, store string, deleteC
 	stbl := sq.StatementBuilder.PlaceholderFormat(sq.Dollar)
 
 	for start, totalDeletes := 0, len(deleteConditions); start < totalDeletes; start += storage.DefaultMaxTuplesPerWrite {
-		end := start + storage.DefaultMaxTuplesPerWrite
-		if end > totalDeletes {
-			end = totalDeletes
-		}
+		end := min(start+storage.DefaultMaxTuplesPerWrite, totalDeletes)
 
 		deleteConditionsBatch := deleteConditions[start:end]
 
@@ -488,14 +482,11 @@ func executeDeleteTuples(ctx context.Context, txn PgxExec, store string, deleteC
 }
 
 // For the prepared writeItems, execute insert writeItems.
-func executeWriteTuples(ctx context.Context, txn PgxExec, writeItems [][]interface{}) error {
+func executeWriteTuples(ctx context.Context, txn PgxExec, writeItems [][]any) error {
 	stbl := sq.StatementBuilder.PlaceholderFormat(sq.Dollar)
 
 	for start, totalWrites := 0, len(writeItems); start < totalWrites; start += storage.DefaultMaxTuplesPerWrite {
-		end := start + storage.DefaultMaxTuplesPerWrite
-		if end > totalWrites {
-			end = totalWrites
-		}
+		end := min(start+storage.DefaultMaxTuplesPerWrite, totalWrites)
 
 		writesBatch := writeItems[start:end]
 
@@ -537,13 +528,10 @@ func executeWriteTuples(ctx context.Context, txn PgxExec, writeItems [][]interfa
 	return nil
 }
 
-func executeInsertChanges(ctx context.Context, txn PgxExec, changeLogItems [][]interface{}) error {
+func executeInsertChanges(ctx context.Context, txn PgxExec, changeLogItems [][]any) error {
 	stbl := sq.StatementBuilder.PlaceholderFormat(sq.Dollar)
 	for start, totalItems := 0, len(changeLogItems); start < totalItems; start += storage.DefaultMaxTuplesPerWrite {
-		end := start + storage.DefaultMaxTuplesPerWrite
-		if end > totalItems {
-			end = totalItems
-		}
+		end := min(start+storage.DefaultMaxTuplesPerWrite, totalItems)
 
 		changeLogBatch := changeLogItems[start:end]
 
@@ -1379,7 +1367,7 @@ func (s *Datastore) IsReady(ctx context.Context) (storage.ReadinessStatus, error
 //   - [storage.ErrInvalidWriteInput] — on a duplicate-key violation when a [openfgav1.TupleKey] is provided as args[0]
 //   - [storage.ErrCollision] — on a duplicate-key violation with no tuple key argument
 //   - a wrapped "sql error: ..." — for all other unexpected infrastructure errors
-func HandleSQLError(err error, args ...interface{}) error {
+func HandleSQLError(err error, args ...any) error {
 	if errors.Is(err, sql.ErrNoRows) || errors.Is(err, pgx.ErrNoRows) {
 		return storage.ErrNotFound
 	}

@@ -3,7 +3,7 @@ package commands
 import (
 	"context"
 	"errors"
-	"sort"
+	"slices"
 	"strconv"
 	"testing"
 	"time"
@@ -537,9 +537,7 @@ func TestListObjectsSeqError(t *testing.T) {
 
 func reportLatencies(b *testing.B, latencies []time.Duration) {
 	// Sort latencies ascending
-	sort.Slice(latencies, func(i, j int) bool {
-		return latencies[i] < latencies[j]
-	})
+	slices.Sort(latencies)
 
 	p95 := latencies[len(latencies)*95/100]
 	p99 := latencies[len(latencies)*99/100]

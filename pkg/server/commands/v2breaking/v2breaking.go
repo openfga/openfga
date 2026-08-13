@@ -201,7 +201,7 @@ func ExpandReason(typesys *typesystem.TypeSystem, targetObjectType, targetRelati
 // ReasonComputedUsersetSelfObj if any ComputedUserset leaf is present, or
 // ReasonTTUUserset if any TupleToUserset node is present, or "".
 func computedUsersetOrTTUReason(rewrite *openfgav1.Userset) string {
-	result, _ := typesystem.WalkUsersetRewrite(rewrite, func(r *openfgav1.Userset) interface{} {
+	result, _ := typesystem.WalkUsersetRewrite(rewrite, func(r *openfgav1.Userset) any {
 		switch r.GetUserset().(type) {
 		case *openfgav1.Userset_ComputedUserset:
 			return ReasonComputedUsersetSelfObj
@@ -451,7 +451,7 @@ func treeHasAliasedUserset(typesys *typesystem.TypeSystem, targetObjectType, tar
 // rewriteContainsComputedUserset reports whether any ComputedUserset leaf in
 // the rewrite tree references the given relation name.
 func rewriteContainsComputedUserset(rewrite *openfgav1.Userset, relation string) bool {
-	result, _ := typesystem.WalkUsersetRewrite(rewrite, func(r *openfgav1.Userset) interface{} {
+	result, _ := typesystem.WalkUsersetRewrite(rewrite, func(r *openfgav1.Userset) any {
 		if cu, ok := r.GetUserset().(*openfgav1.Userset_ComputedUserset); ok && cu.ComputedUserset.GetRelation() == relation {
 			return true
 		}
@@ -465,7 +465,7 @@ func rewriteContainsComputedUserset(rewrite *openfgav1.Userset, relation string)
 // tupleset relation on the target object type is directly related to
 // userObjectType.
 func rewriteContainsTTUForUser(ts *typesystem.TypeSystem, targetObjectType string, rewrite *openfgav1.Userset, userObjectType, userRelation string) bool {
-	result, _ := typesystem.WalkUsersetRewrite(rewrite, func(r *openfgav1.Userset) interface{} {
+	result, _ := typesystem.WalkUsersetRewrite(rewrite, func(r *openfgav1.Userset) any {
 		ttu, ok := r.GetUserset().(*openfgav1.Userset_TupleToUserset)
 		if !ok || ttu.TupleToUserset.GetComputedUserset().GetRelation() != userRelation {
 			return nil
@@ -512,7 +512,7 @@ func usersetAliasesTargetRelation(ts *typesystem.TypeSystem, targetObjectType, t
 // rewriteContainsDifference reports whether the rewrite tree contains any
 // Userset_Difference node.
 func rewriteContainsDifference(rewrite *openfgav1.Userset) bool {
-	result, _ := typesystem.WalkUsersetRewrite(rewrite, func(r *openfgav1.Userset) interface{} {
+	result, _ := typesystem.WalkUsersetRewrite(rewrite, func(r *openfgav1.Userset) any {
 		if _, ok := r.GetUserset().(*openfgav1.Userset_Difference); ok {
 			return true
 		}

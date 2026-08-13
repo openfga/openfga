@@ -59,7 +59,7 @@ func AssertionsTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		assertions := make([]*openfgav1.Assertion, 0, numAssertions)
 
 		protoSize := 0
-		for a := 0; a < numAssertions; a++ {
+		for a := range numAssertions {
 			newAssertion := &openfgav1.Assertion{
 				TupleKey: &openfgav1.AssertionTupleKey{
 					Object:   "document:" + strings.Repeat(strconv.Itoa(a), maxBytesPerObject-len("document:")),

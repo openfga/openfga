@@ -168,7 +168,7 @@ func TestServerLogs(t *testing.T) {
 		grpcReq         *openfgav1.CheckRequest
 		httpReqBody     io.Reader
 		expectedError   bool
-		expectedContext map[string]interface{}
+		expectedContext map[string]any
 	}
 
 	tests := []test{
@@ -180,7 +180,7 @@ func TestServerLogs(t *testing.T) {
 				StoreId:              storeID,
 				TupleKey:             tuple.NewCheckRequestTupleKey("document:1", "viewer", "user:anne"),
 			},
-			expectedContext: map[string]interface{}{
+			expectedContext: map[string]any{
 				"grpc_service":                "openfga.v1.OpenFGAService",
 				"grpc_method":                 "Check",
 				"grpc_type":                   "unary",
@@ -205,7 +205,7 @@ func TestServerLogs(t *testing.T) {
   },
   "authorization_model_id": "` + authorizationModelID + `"
 }`),
-			expectedContext: map[string]interface{}{
+			expectedContext: map[string]any{
 				"grpc_service":                "openfga.v1.OpenFGAService",
 				"grpc_method":                 "Check",
 				"grpc_type":                   "unary",
@@ -228,7 +228,7 @@ func TestServerLogs(t *testing.T) {
 				TupleKey:             tuple.NewCheckRequestTupleKey("", "viewer", "user:anne"),
 			},
 			expectedError: true,
-			expectedContext: map[string]interface{}{
+			expectedContext: map[string]any{
 				"grpc_service": "openfga.v1.OpenFGAService",
 				"grpc_method":  "Check",
 				"grpc_type":    "unary",
@@ -250,7 +250,7 @@ func TestServerLogs(t *testing.T) {
   "authorization_model_id": "` + authorizationModelID + `"
 }`),
 			expectedError: true,
-			expectedContext: map[string]interface{}{
+			expectedContext: map[string]any{
 				"grpc_service": "openfga.v1.OpenFGAService",
 				"grpc_method":  "Check",
 				"grpc_type":    "unary",
@@ -271,7 +271,7 @@ func TestServerLogs(t *testing.T) {
   "authorization_model_id": "` + authorizationModelID + `"
 }`),
 			expectedError: false,
-			expectedContext: map[string]interface{}{
+			expectedContext: map[string]any{
 				"grpc_service":                "openfga.v1.OpenFGAService",
 				"grpc_method":                 "StreamedListObjects",
 				"grpc_type":                   "server_stream",

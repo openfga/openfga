@@ -32,7 +32,7 @@ func (ts *StringContinuationTokenSerializer) Serialize(ulid string, objType stri
 	if ulid == "" {
 		return nil, errors.New("empty ulid provided for continuation token")
 	}
-	return []byte(fmt.Sprintf("%s|%s", ulid, objType)), nil
+	return fmt.Appendf(nil, "%s|%s", ulid, objType), nil
 }
 
 // Deserialize deserializes the continuation token from a string, as ulid & type concatenated by a pipe.

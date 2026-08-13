@@ -75,12 +75,12 @@ var ipaddrCelType = cel.ObjectType("IPAddress", traits.ReceiverType)
 //
 // See https://pkg.go.dev/github.com/google/cel-go/common/types/ref#Val
 func (ip IPAddress) ConvertToNative(typeDesc reflect.Type) (any, error) {
-	if reflect.TypeOf(ip).AssignableTo(typeDesc) {
+	if reflect.TypeFor[IPAddress]().AssignableTo(typeDesc) {
 		return ip, nil
 	}
 
 	switch typeDesc {
-	case reflect.TypeOf(""):
+	case reflect.TypeFor[string]():
 		return ip.addr.String(), nil
 	default:
 		return nil, fmt.Errorf("failed to convert from type '%s' to native Go type 'IPAddress'", typeDesc)

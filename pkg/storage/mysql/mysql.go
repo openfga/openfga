@@ -813,7 +813,7 @@ func (s *Datastore) IsReady(ctx context.Context) (storage.ReadinessStatus, error
 
 // HandleSQLError processes an SQL error and converts it into a more
 // specific error type based on the nature of the SQL error.
-func HandleSQLError(err error, args ...interface{}) error {
+func HandleSQLError(err error, args ...any) error {
 	if errors.Is(err, sql.ErrNoRows) {
 		return storage.ErrNotFound
 	}

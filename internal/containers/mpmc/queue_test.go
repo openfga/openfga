@@ -44,18 +44,14 @@ func BenchmarkQueue(b *testing.B) {
 			var count atomic.Uint64
 			var wg sync.WaitGroup
 
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+			wg.Go(func() {
 				feedN(p, benchMessageCount)
 				p.Close()
-			}()
+			})
 
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+			wg.Go(func() {
 				consume(p, &count)
-			}()
+			})
 
 			wg.Wait()
 
@@ -73,18 +69,14 @@ func BenchmarkQueue(b *testing.B) {
 			var cwg sync.WaitGroup
 
 			for range 4 {
-				swg.Add(1)
-				go func() {
-					defer swg.Done()
+				swg.Go(func() {
 					feedN(p, benchMessageCount)
-				}()
+				})
 			}
 
-			cwg.Add(1)
-			go func() {
-				defer cwg.Done()
+			cwg.Go(func() {
 				consume(p, &count)
-			}()
+			})
 
 			swg.Wait()
 			p.Close()
@@ -103,18 +95,14 @@ func BenchmarkQueue(b *testing.B) {
 			var swg sync.WaitGroup
 			var cwg sync.WaitGroup
 
-			swg.Add(1)
-			go func() {
-				defer swg.Done()
+			swg.Go(func() {
 				feedN(p, benchMessageCount)
-			}()
+			})
 
 			for range 4 {
-				cwg.Add(1)
-				go func() {
-					defer cwg.Done()
+				cwg.Go(func() {
 					consume(p, &count)
-				}()
+				})
 			}
 
 			swg.Wait()
@@ -135,19 +123,15 @@ func BenchmarkQueue(b *testing.B) {
 			var cwg sync.WaitGroup
 
 			for range 4 {
-				swg.Add(1)
-				go func() {
-					defer swg.Done()
+				swg.Go(func() {
 					feedN(p, benchMessageCount)
-				}()
+				})
 			}
 
 			for range 4 {
-				cwg.Add(1)
-				go func() {
-					defer cwg.Done()
+				cwg.Go(func() {
 					consume(p, &count)
-				}()
+				})
 			}
 
 			swg.Wait()
@@ -253,18 +237,14 @@ func TestQueue(t *testing.T) {
 		var count atomic.Uint64
 		var wg sync.WaitGroup
 
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			feedN(p, testMessageCount)
 			p.Close()
-		}()
+		})
 
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			consume(p, &count)
-		}()
+		})
 
 		wg.Wait()
 
@@ -280,18 +260,14 @@ func TestQueue(t *testing.T) {
 		var cwg sync.WaitGroup
 
 		for range 4 {
-			swg.Add(1)
-			go func() {
-				defer swg.Done()
+			swg.Go(func() {
 				feedN(p, testMessageCount)
-			}()
+			})
 		}
 
-		cwg.Add(1)
-		go func() {
-			defer cwg.Done()
+		cwg.Go(func() {
 			consume(p, &count)
-		}()
+		})
 
 		swg.Wait()
 		p.Close()
@@ -308,18 +284,14 @@ func TestQueue(t *testing.T) {
 		var swg sync.WaitGroup
 		var cwg sync.WaitGroup
 
-		swg.Add(1)
-		go func() {
-			defer swg.Done()
+		swg.Go(func() {
 			feedN(p, testMessageCount)
-		}()
+		})
 
 		for range 4 {
-			cwg.Add(1)
-			go func() {
-				defer cwg.Done()
+			cwg.Go(func() {
 				consume(p, &count)
-			}()
+			})
 		}
 
 		swg.Wait()
@@ -338,19 +310,15 @@ func TestQueue(t *testing.T) {
 		var cwg sync.WaitGroup
 
 		for range 4 {
-			swg.Add(1)
-			go func() {
-				defer swg.Done()
+			swg.Go(func() {
 				feedN(p, testMessageCount)
-			}()
+			})
 		}
 
 		for range 4 {
-			cwg.Add(1)
-			go func() {
-				defer cwg.Done()
+			cwg.Go(func() {
 				consume(p, &count)
-			}()
+			})
 		}
 
 		swg.Wait()

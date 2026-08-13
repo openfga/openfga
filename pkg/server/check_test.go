@@ -337,7 +337,7 @@ func TestCheck_ShadowV2CheckGoroutine(t *testing.T) {
 }
 
 // fieldMap converts a slice of zap.Field into a map for easy lookup in assertions.
-func fieldMap(fields []zap.Field) map[string]interface{} {
+func fieldMap(fields []zap.Field) map[string]any {
 	enc := zapcore.NewMapObjectEncoder()
 	for _, f := range fields {
 		f.AddTo(enc)

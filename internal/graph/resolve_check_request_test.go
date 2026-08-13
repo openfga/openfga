@@ -15,7 +15,7 @@ import (
 
 func TestCloneResolveCheckRequest(t *testing.T) {
 	t.Run("non_empty_clone", func(t *testing.T) {
-		contextStruct, err := structpb.NewStruct(map[string]interface{}{
+		contextStruct, err := structpb.NewStruct(map[string]any{
 			"x": 10,
 		})
 		require.NoError(t, err)
@@ -112,7 +112,7 @@ func TestCloneResolveCheckRequest(t *testing.T) {
 	})
 
 	t.Run("thread_safe_clone", func(t *testing.T) {
-		contextStruct, err := structpb.NewStruct(map[string]interface{}{
+		contextStruct, err := structpb.NewStruct(map[string]any{
 			"x": 10,
 		})
 		require.NoError(t, err)
@@ -136,7 +136,7 @@ func TestCloneResolveCheckRequest(t *testing.T) {
 
 		clones := make([]*ResolveCheckRequest, clonesCount)
 
-		for i := 0; i < clonesCount; i++ {
+		for i := range clonesCount {
 			go func(i int) {
 				defer wg.Done()
 				cloned := orig.clone()

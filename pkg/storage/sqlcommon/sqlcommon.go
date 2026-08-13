@@ -578,7 +578,7 @@ type DBInfo struct {
 	HandleSQLError errorHandlerFn
 }
 
-type errorHandlerFn func(error, ...interface{}) error
+type errorHandlerFn func(error, ...any) error
 
 // NewDBInfo constructs a [DBInfo] object.
 func NewDBInfo(stbl sq.StatementBuilderType, errorHandler errorHandlerFn, dialect string) *DBInfo {
@@ -658,12 +658,12 @@ func MakeTupleLockKeys(deletes storage.Deletes, writes storage.Writes) []TupleLo
 }
 
 // BuildRowConstructorIN builds "((?,?,?,?,?),(?,?,?,?,?),...)" and arg list for row-constructor IN.
-func BuildRowConstructorIN(keys []TupleLockKey) (string, []interface{}) {
+func BuildRowConstructorIN(keys []TupleLockKey) (string, []any) {
 	if len(keys) == 0 {
 		return "", nil
 	}
 	var sb strings.Builder
-	args := make([]interface{}, 0, len(keys)*5)
+	args := make([]any, 0, len(keys)*5)
 	sb.WriteByte('(')
 	for i, k := range keys {
 		if i > 0 {
@@ -708,8 +708,8 @@ func selectExistingRowsForWrite(ctx context.Context, dbInfo *DBInfo, store strin
 func GetDeleteWriteChangelogItems(
 	store string,
 	existing map[string]*openfgav1.Tuple,
-	writeData WriteData) (sq.Or, [][]interface{}, [][]interface{}, error) {
-	changeLogItems := make([][]interface{}, 0, len(writeData.Deletes)+len(writeData.Writes))
+	writeData WriteData) (sq.Or, [][]any, [][]any, error) {
+	changeLogItems := make([][]any, 0, len(writeData.Deletes)+len(writeData.Writes))
 
 	// ensures increasingly unique values within a single thread
 	entropy := ulid.DefaultEntropy()
@@ -753,7 +753,7 @@ func GetDeleteWriteChangelogItems(
 			"user_type":   tupleUtils.GetUserTypeFromUser(tk.GetUser()),
 		})
 
-		changeLogItems = append(changeLogItems, []interface{}{
+		changeLogItems = append(changeLogItems, []any{
 			store,
 			objectType,
 			objectID,
@@ -767,7 +767,7 @@ func GetDeleteWriteChangelogItems(
 		})
 	}
 
-	writeItems := make([][]interface{}, 0, len(writeData.Writes))
+	writeItems := make([][]any, 0, len(writeData.Writes))
 
 	// 2. For writes
 	// a. If on_duplicate: error ( default behavior )
@@ -809,7 +809,7 @@ func GetDeleteWriteChangelogItems(
 			return nil, nil, nil, err
 		}
 
-		writeItems = append(writeItems, []interface{}{
+		writeItems = append(writeItems, []any{
 			store,
 			objectType,
 			objectID,
@@ -822,7 +822,7 @@ func GetDeleteWriteChangelogItems(
 			sq.Expr("NOW()"),
 		})
 
-		changeLogItems = append(changeLogItems, []interface{}{
+		changeLogItems = append(changeLogItems, []any{
 			store,
 			objectType,
 			objectID,
@@ -874,10 +874,7 @@ func Write(
 	// 3. If list compiled in step 2 is not empty, execute SELECT … FOR UPDATE statement
 
 	for start := 0; start < total; start += storage.DefaultMaxTuplesPerWrite {
-		end := start + storage.DefaultMaxTuplesPerWrite
-		if end > total {
-			end = total
-		}
+		end := min(start+storage.DefaultMaxTuplesPerWrite, total)
 		keys := lockKeys[start:end]
 
 		if err := selectExistingRowsForWrite(ctx, dbInfo, store, keys, txn, existing); err != nil {
@@ -892,10 +889,7 @@ func Write(
 	}
 
 	for start, totalDeletes := 0, len(deleteConditions); start < totalDeletes; start += storage.DefaultMaxTuplesPerWrite {
-		end := start + storage.DefaultMaxTuplesPerWrite
-		if end > totalDeletes {
-			end = totalDeletes
-		}
+		end := min(start+storage.DefaultMaxTuplesPerWrite, totalDeletes)
 
 		deleteConditionsBatch := deleteConditions[start:end]
 
@@ -919,10 +913,7 @@ func Write(
 	}
 
 	for start, totalWrites := 0, len(writeItems); start < totalWrites; start += storage.DefaultMaxTuplesPerWrite {
-		end := start + storage.DefaultMaxTuplesPerWrite
-		if end > totalWrites {
-			end = totalWrites
-		}
+		end := min(start+storage.DefaultMaxTuplesPerWrite, totalWrites)
 
 		writesBatch := writeItems[start:end]
 
@@ -960,10 +951,7 @@ func Write(
 
 	// 5. Execute INSERT changelog statements
 	for start, totalItems := 0, len(changeLogItems); start < totalItems; start += storage.DefaultMaxTuplesPerWrite {
-		end := start + storage.DefaultMaxTuplesPerWrite
-		if end > totalItems {
-			end = totalItems
-		}
+		end := min(start+storage.DefaultMaxTuplesPerWrite, totalItems)
 
 		changeLogBatch := changeLogItems[start:end]
 

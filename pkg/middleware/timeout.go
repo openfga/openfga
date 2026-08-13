@@ -29,7 +29,7 @@ func NewTimeoutInterceptor(timeout time.Duration, logger logger.Logger) *Timeout
 // We need to use this middleware instead of relying on runtime.DefaultContextTimeout to allow us
 // to return proper error code.
 func (h *TimeoutInterceptor) NewUnaryTimeoutInterceptor() grpc.UnaryServerInterceptor {
-	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 		ctx, cancel := context.WithTimeout(ctx, h.timeout)
 		defer cancel()
 		return handler(ctx, req)
@@ -41,8 +41,8 @@ func (h *TimeoutInterceptor) NewUnaryTimeoutInterceptor() grpc.UnaryServerInterc
 // to return proper error code.
 func (h *TimeoutInterceptor) NewStreamTimeoutInterceptor() grpc.StreamServerInterceptor {
 	validator := grpcvalidator.StreamServerInterceptor()
-	return func(srv interface{}, stream grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
-		return validator(srv, stream, info, func(srv interface{}, ss grpc.ServerStream) error {
+	return func(srv any, stream grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+		return validator(srv, stream, info, func(srv any, ss grpc.ServerStream) error {
 			ctx, cancel := context.WithTimeout(stream.Context(), h.timeout)
 			defer cancel()
 

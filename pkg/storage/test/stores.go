@@ -42,12 +42,12 @@ func StoreTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	}
 
 	// Create some stores.
-	for i := 0; i < numStores; i++ {
+	for range numStores {
 		stores = append(stores, createStore(testutils.CreateRandomString(10)))
 	}
 
 	// Stores that shares name are created after numStores so we have an easy way to access them.
-	for i := 0; i < numStoresWithSharedName; i++ {
+	for range numStoresWithSharedName {
 		stores = append(stores, createStore(sharedStoreName))
 	}
 

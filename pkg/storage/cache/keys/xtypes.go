@@ -57,8 +57,8 @@ func (pbvalue *PbValue) WriteTo(kb *Builder) {
 		case *structpb.Value_ListValue:
 			vals := val.ListValue.GetValues()
 			kb.EncodeArrayHeader(len(vals))
-			for i := len(vals) - 1; i >= 0; i-- {
-				stack = append(stack, frame{value: vals[i]})
+			for _, v := range slices.Backward(vals) {
+				stack = append(stack, frame{value: v})
 			}
 		case *structpb.Value_StructValue:
 			fields := val.StructValue.GetFields()
@@ -69,11 +69,11 @@ func (pbvalue *PbValue) WriteTo(kb *Builder) {
 			slices.Sort(keys)
 
 			kb.EncodeMapHeader(len(keys))
-			for i := len(keys) - 1; i >= 0; i-- {
+			for _, v := range slices.Backward(keys) {
 				stack = append(stack, frame{
-					key:    keys[i],
+					key:    v,
 					hasKey: true,
-					value:  fields[keys[i]],
+					value:  fields[v],
 				})
 			}
 		}

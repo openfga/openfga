@@ -215,11 +215,9 @@ func (c *LocalChecker) recursiveMatchUserUserset(ctx context.Context, req *Resol
 		// We need to wait always to avoid a goroutine leak.
 		wg.Wait()
 	}()
-	wg.Add(1)
-	go func() {
+	wg.Go(func() {
 		c.breadthFirstRecursiveMatch(cancellableCtx, req, mapping, &sync.Map{}, currentLevelFromObject, usersetFromUser, checkOutcomeChan)
-		wg.Done()
-	}()
+	})
 
 	var finalErr error
 	finalResult := &ResolveCheckResponse{

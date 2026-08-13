@@ -1078,8 +1078,8 @@ func TestReadFilterWithConditions(t *testing.T) {
 	require.NoError(t, err)
 	defer ds.Close()
 
-	var writeItems [][]interface{}
-	writeItems = append(writeItems, []interface{}{
+	var writeItems [][]any
+	writeItems = append(writeItems, []any{
 		"store",
 		"folder",
 		"2021-budget",
@@ -1092,7 +1092,7 @@ func TestReadFilterWithConditions(t *testing.T) {
 		sq.Expr("NOW()"),
 	})
 
-	writeItems = append(writeItems, []interface{}{
+	writeItems = append(writeItems, []any{
 		"store",
 		"folder",
 		"2022-budget",
@@ -1743,8 +1743,8 @@ func TestExecuteWriteTuples(t *testing.T) {
 		mockPgxExec := mocks.NewMockPgxExec(ctrl)
 		mockPgxExec.EXPECT().Exec(gomock.Any(), gomock.Any(), gomock.Any()).Return(pgconn.NewCommandTag("INSERT 1"), nil)
 
-		writeItems := [][]interface{}{}
-		writeItems = append(writeItems, []interface{}{
+		writeItems := [][]any{}
+		writeItems = append(writeItems, []any{
 			"storeID",
 			"objectType1",
 			"objectID1",
@@ -1765,8 +1765,8 @@ func TestExecuteWriteTuples(t *testing.T) {
 		mockPgxExec := mocks.NewMockPgxExec(ctrl)
 		mockPgxExec.EXPECT().Exec(gomock.Any(), gomock.Any(), gomock.Any()).Return(pgconn.NewCommandTag(""), fmt.Errorf("duplicate key value"))
 
-		writeItems := [][]interface{}{}
-		writeItems = append(writeItems, []interface{}{
+		writeItems := [][]any{}
+		writeItems = append(writeItems, []any{
 			"storeID",
 			"objectType1",
 			"objectID1",
@@ -1787,8 +1787,8 @@ func TestExecuteWriteTuples(t *testing.T) {
 		mockPgxExec := mocks.NewMockPgxExec(ctrl)
 		mockPgxExec.EXPECT().Exec(gomock.Any(), gomock.Any(), gomock.Any()).Return(pgconn.NewCommandTag(""), fmt.Errorf("error"))
 
-		writeItems := [][]interface{}{}
-		writeItems = append(writeItems, []interface{}{
+		writeItems := [][]any{}
+		writeItems = append(writeItems, []any{
 			"storeID",
 			"objectType1",
 			"objectID1",
@@ -1819,8 +1819,8 @@ func TestExecuteInsertChanges(t *testing.T) {
 		mockPgxExec := mocks.NewMockPgxExec(ctrl)
 		mockPgxExec.EXPECT().Exec(gomock.Any(), gomock.Any(), gomock.Any()).Return(pgconn.NewCommandTag("INSERT 1"), nil)
 
-		writeItems := [][]interface{}{}
-		writeItems = append(writeItems, []interface{}{
+		writeItems := [][]any{}
+		writeItems = append(writeItems, []any{
 			"storeID",
 			"objectType1",
 			"objectID1",
@@ -1842,8 +1842,8 @@ func TestExecuteInsertChanges(t *testing.T) {
 		mockPgxExec := mocks.NewMockPgxExec(ctrl)
 		mockPgxExec.EXPECT().Exec(gomock.Any(), gomock.Any(), gomock.Any()).Return(pgconn.NewCommandTag(""), fmt.Errorf("error"))
 
-		writeItems := [][]interface{}{}
-		writeItems = append(writeItems, []interface{}{
+		writeItems := [][]any{}
+		writeItems = append(writeItems, []any{
 			"storeID",
 			"objectType1",
 			"objectID1",

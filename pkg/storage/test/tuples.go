@@ -46,7 +46,7 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		storeID := ulid.Make().String()
 
 		var writtenTuples []*openfgav1.TupleKey
-		for i := 0; i < numOfWrites; i++ {
+		for i := range numOfWrites {
 			newTuple := tuple.NewTupleKey(fmt.Sprintf("document:%d", i), "viewer", "user:jon")
 			err := datastore.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{newTuple})
 			require.NoError(t, err)
@@ -75,7 +75,7 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		storeID := ulid.Make().String()
 
 		var writtenTuplesBefore, writtenTuplesAfter []*openfgav1.TupleKey
-		for i := 0; i < numOfWrites/2; i++ {
+		for i := range numOfWrites / 2 {
 			newTuple := tuple.NewTupleKey(fmt.Sprintf("document:%d", i), "viewer", "user:before")
 			err := datastore.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{newTuple})
 			require.NoError(t, err)
@@ -132,7 +132,7 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		filter := "folder"
 
 		var writtenTuples []*openfgav1.TupleKey
-		for i := 0; i < numOfWrites; i++ {
+		for i := range numOfWrites {
 			newTuple1 := tuple.NewTupleKey(fmt.Sprintf("document:%d", i), "viewer", "user:jon")
 			newTuple2 := tuple.NewTupleKey(fmt.Sprintf("%s:%d", filter, i), "viewer", "user:jon")
 			err := datastore.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{newTuple1, newTuple2})
@@ -167,7 +167,7 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 			User:     "user:anne",
 			Condition: &openfgav1.RelationshipCondition{
 				Name:    "condition",
-				Context: testutils.MustNewStruct(t, map[string]interface{}{"param1": "ok"}),
+				Context: testutils.MustNewStruct(t, map[string]any{"param1": "ok"}),
 			},
 		}
 		tk1WithoutCond := &openfgav1.TupleKeyWithoutCondition{
@@ -312,7 +312,7 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	t.Run("read_changes_returns_deterministic_ordering_and_no_duplicates", func(t *testing.T) {
 		storeID := ulid.Make().String()
 
-		for i := 0; i < 100; i++ {
+		for i := range 100 {
 			object := fmt.Sprintf("document:%d", i)
 			tuple := []*openfgav1.TupleKey{tuple.NewTupleKey(object, "viewer", "user:jon")}
 			err := datastore.Write(context.Background(), storeID, nil, tuple)
@@ -388,7 +388,7 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 			User:     "bill",
 			Condition: &openfgav1.RelationshipCondition{
 				Name:    "condition",
-				Context: testutils.MustNewStruct(t, map[string]interface{}{"param1": "ok"}),
+				Context: testutils.MustNewStruct(t, map[string]any{"param1": "ok"}),
 			},
 		}
 
@@ -429,7 +429,7 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 			User:     "user:jon",
 			Condition: &openfgav1.RelationshipCondition{
 				Name: "mycond",
-				Context: testutils.MustNewStruct(t, map[string]interface{}{
+				Context: testutils.MustNewStruct(t, map[string]any{
 					"x": 10,
 				}),
 			},
@@ -628,7 +628,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		storeID := ulid.Make().String()
 
 		var writtenTuples []*openfgav1.TupleKey
-		for i := 0; i < storage.DefaultPageSize*50; i++ {
+		for i := range storage.DefaultPageSize * 50 {
 			newTuple := tuple.NewTupleKey(fmt.Sprintf("document:%d", i), "viewer", "user:jon")
 			err := datastore.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{newTuple})
 			require.NoError(t, err)
@@ -920,7 +920,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		storeID := ulid.Make().String()
 		tk := &openfgav1.TupleKey{Object: "doc:readme", Relation: "owner", User: "10", Condition: &openfgav1.RelationshipCondition{
 			Name:    "condition1",
-			Context: testutils.MustNewStruct(t, map[string]interface{}{"param1": "ok"}),
+			Context: testutils.MustNewStruct(t, map[string]any{"param1": "ok"}),
 		}}
 
 		// First write should succeed.
@@ -929,7 +929,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 
 		tk2 := &openfgav1.TupleKey{Object: "doc:readme", Relation: "owner", User: "10", Condition: &openfgav1.RelationshipCondition{
 			Name:    "condition1",
-			Context: testutils.MustNewStruct(t, map[string]interface{}{"param1": "ok"}),
+			Context: testutils.MustNewStruct(t, map[string]any{"param1": "ok"}),
 		}}
 		// Second write of the same tuple should not fail.
 		err = datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tk2},
@@ -959,11 +959,11 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		storeID := ulid.Make().String()
 		tk1 := &openfgav1.TupleKey{Object: "doc:readme", Relation: "owner", User: "10", Condition: &openfgav1.RelationshipCondition{
 			Name:    "condition1",
-			Context: testutils.MustNewStruct(t, map[string]interface{}{"param1": "ok"}),
+			Context: testutils.MustNewStruct(t, map[string]any{"param1": "ok"}),
 		}}
 		tk2 := &openfgav1.TupleKey{Object: "doc:readme", Relation: "owner", User: "10", Condition: &openfgav1.RelationshipCondition{
 			Name:    "condition2",
-			Context: testutils.MustNewStruct(t, map[string]interface{}{"param1": "ok"}),
+			Context: testutils.MustNewStruct(t, map[string]any{"param1": "ok"}),
 		}}
 		// First write should succeed.
 		err := datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tk1})
@@ -1000,11 +1000,11 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		storeID := ulid.Make().String()
 		tk1 := &openfgav1.TupleKey{Object: "doc:readme", Relation: "owner", User: "10", Condition: &openfgav1.RelationshipCondition{
 			Name:    "condition1",
-			Context: testutils.MustNewStruct(t, map[string]interface{}{"param1": "ok"}),
+			Context: testutils.MustNewStruct(t, map[string]any{"param1": "ok"}),
 		}}
 		tk2 := &openfgav1.TupleKey{Object: "doc:readme", Relation: "owner", User: "10", Condition: &openfgav1.RelationshipCondition{
 			Name:    "condition1",
-			Context: testutils.MustNewStruct(t, map[string]interface{}{"param1": "bad"}),
+			Context: testutils.MustNewStruct(t, map[string]any{"param1": "bad"}),
 		}}
 		// First write should succeed.
 		err := datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tk1})
@@ -1795,7 +1795,7 @@ func WriteTuplesWithMaxTuplesPerWrite(datastore storage.OpenFGADatastore, ctx co
 		// Write a lot of tuples to both stores to ensure that the delete logic is not
 		// affected by the number of tuples in the database.
 		tuplesToWrite := make([]*openfgav1.TupleKey, numTuples)
-		for i := 0; i < numTuples; i++ {
+		for i := range numTuples {
 			tuplesToWrite[i] = &openfgav1.TupleKey{
 				Object:   fmt.Sprintf("doc:readme%d", i),
 				Relation: "owner",
@@ -1813,7 +1813,7 @@ func WriteTuplesWithMaxTuplesPerWrite(datastore storage.OpenFGADatastore, ctx co
 		require.Equal(t, tkLast.GetKey().String(), tuplesToWrite[len(tuplesToWrite)-1].String())
 
 		tuplesToDelete := make([]*openfgav1.TupleKeyWithoutCondition, numTuples)
-		for i := 0; i < numTuples; i++ {
+		for i := range numTuples {
 			tuplesToDelete[i] = tuple.TupleKeyToTupleKeyWithoutCondition(tuplesToWrite[i])
 		}
 		require.NoError(t, datastore.Write(ctx, storeID, tuplesToDelete, nil))

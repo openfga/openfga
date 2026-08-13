@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"maps"
 	"regexp"
 	"sort"
 	"strconv"
@@ -64,9 +65,7 @@ func mergePropertiesToContext(
 	}
 
 	if requestContext != nil {
-		for k, v := range requestContext.AsMap() {
-			merged[k] = v
-		}
+		maps.Copy(merged, requestContext.AsMap())
 	}
 
 	if len(merged) == 0 {

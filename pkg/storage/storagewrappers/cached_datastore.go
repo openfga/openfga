@@ -520,9 +520,7 @@ func (c *cachedIterator) Stop() {
 		return
 	}
 
-	c.wg.Add(1)
-	go func() {
-		defer c.wg.Done()
+	c.wg.Go(func() {
 		defer c.iter.Stop()
 
 		// if cache is already set by another instance, we don't need to drain the iterator
@@ -553,7 +551,7 @@ func (c *cachedIterator) Stop() {
 		}
 
 		// prevent draining on the same iterator across multiple requests
-		_, _, _ = c.sf.Do(c.cacheKey.String(), func() (interface{}, error) {
+		_, _, _ = c.sf.Do(c.cacheKey.String(), func() (any, error) {
 			for {
 				// attempt to drain the iterator to have it ready for subsequent calls
 				t, err := c.iter.Next(c.ctx)
@@ -570,7 +568,7 @@ func (c *cachedIterator) Stop() {
 			}
 			return nil, nil
 		})
-	}()
+	})
 }
 
 // Head see [storage.Iterator].Head.

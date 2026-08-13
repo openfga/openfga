@@ -17,7 +17,7 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 )
 
-type errorHandlerFn func(error, ...interface{}) error
+type errorHandlerFn func(error, ...any) error
 
 // SQLTupleIterator is a struct that implements the storage.TupleIterator
 // interface for iterating over tuples fetched from a SQL database.

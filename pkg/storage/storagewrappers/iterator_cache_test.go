@@ -143,7 +143,7 @@ func TestLockFreeCachedIterator_Next_WithCondition(t *testing.T) {
 		goleak.VerifyNone(t)
 	})
 
-	condCtx, _ := structpb.NewStruct(map[string]interface{}{"region": "us-east"})
+	condCtx, _ := structpb.NewStruct(map[string]any{"region": "us-east"})
 	entries := []MinimalCacheEntry{
 		{
 			ObjectID:         "1",
@@ -242,7 +242,7 @@ func TestLockFreeCachedIterator_Concurrent_Next(t *testing.T) {
 	})
 
 	entries := make([]MinimalCacheEntry, 100)
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		entries[i] = MinimalCacheEntry{
 			ObjectID: string(rune('a' + i%26)),
 			User:     "user:test",
@@ -256,10 +256,8 @@ func TestLockFreeCachedIterator_Concurrent_Next(t *testing.T) {
 	results := make(chan *openfgav1.Tuple, 200)
 
 	// Start multiple goroutines calling Next concurrently
-	for i := 0; i < 10; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 10 {
+		wg.Go(func() {
 			for {
 				t, err := iter.Next(ctx)
 				if err != nil {
@@ -267,7 +265,7 @@ func TestLockFreeCachedIterator_Concurrent_Next(t *testing.T) {
 				}
 				results <- t
 			}
-		}()
+		})
 	}
 
 	wg.Wait()
@@ -287,7 +285,7 @@ func TestLockFreeCachedIterator_Concurrent_Stop(t *testing.T) {
 	})
 
 	entries := make([]MinimalCacheEntry, 100)
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		entries[i] = MinimalCacheEntry{ObjectID: "1", User: "user:test"}
 	}
 
@@ -297,17 +295,15 @@ func TestLockFreeCachedIterator_Concurrent_Stop(t *testing.T) {
 	var wg sync.WaitGroup
 
 	// Start goroutines calling Next
-	for i := 0; i < 5; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 5 {
+		wg.Go(func() {
 			for {
 				_, err := iter.Next(ctx)
 				if err != nil {
 					return
 				}
 			}
-		}()
+		})
 	}
 
 	// Stop from another goroutine
@@ -647,7 +643,7 @@ func TestCachingIterator_PopulatesCache(t *testing.T) {
 	// Capture the cache entry
 	var capturedEntry *V2IteratorCacheEntry
 	mockCache.EXPECT().Set(cacheKey, gomock.Any(), ttl).DoAndReturn(
-		func(_ keys.Key, value interface{}, _ time.Duration) {
+		func(_ keys.Key, value any, _ time.Duration) {
 			capturedEntry = value.(*V2IteratorCacheEntry)
 		},
 	)
@@ -825,7 +821,7 @@ func TestCachingIterator_WaitGroup_AddInConstructor(t *testing.T) {
 	// This verifies that even if we create iterators rapidly, the WaitGroup
 	// is properly incremented at construction time (not at Stop time)
 	iterators := make([]*CachingIterator, 10)
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		innerIter := storage.NewStaticTupleIterator(tuples)
 		iterators[i] = newCachingIterator(
 			innerIter, mockCache, testCacheKey("test-key-"+strconv.Itoa(i)), 1000, time.Hour, 30*time.Second,
@@ -935,7 +931,7 @@ func TestCachingIterator_ConcurrentNextAndStop(t *testing.T) {
 	wg := &sync.WaitGroup{}
 
 	// Run multiple iterations to increase chance of detecting race
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		innerIter := storage.NewStaticTupleIterator(tuples)
 		iter := newCachingIterator(
 			innerIter, mockCache, testCacheKey(fmt.Sprintf("test-key-%d", i)), 1000, time.Hour, 30*time.Second,
@@ -997,7 +993,7 @@ func TestCachingIterator_BackgroundDrainIgnoresRequestContextCancellation(t *tes
 
 	// Create tuples - use StaticTupleIterator since background drain uses context.Background()
 	tuples := make([]*openfgav1.Tuple, 10)
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		tuples[i] = &openfgav1.Tuple{Key: tuple.NewTupleKey("document:"+string(rune('1'+i)), "viewer", "user:test")}
 	}
 
@@ -1014,7 +1010,7 @@ func TestCachingIterator_BackgroundDrainIgnoresRequestContextCancellation(t *tes
 	)
 
 	// Consume just a few tuples (simulating finding a result early)
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		_, err := iter.Next(requestCtx)
 		require.NoError(t, err)
 	}
@@ -1047,7 +1043,7 @@ func TestCachingIterator_BackgroundDrainCompletes_DoesCache(t *testing.T) {
 	wg := &sync.WaitGroup{}
 
 	tuples := make([]*openfgav1.Tuple, 10)
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		tuples[i] = &openfgav1.Tuple{Key: tuple.NewTupleKey("document:"+string(rune('1'+i)), "viewer", "user:test")}
 	}
 
@@ -1064,7 +1060,7 @@ func TestCachingIterator_BackgroundDrainCompletes_DoesCache(t *testing.T) {
 	)
 
 	// Consume just a few tuples (not all)
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		_, err := iter.Next(ctx)
 		require.NoError(t, err)
 	}
@@ -1188,7 +1184,7 @@ func TestCachingIterator_DrainExceedsMaxSize_AbandonsCaching(t *testing.T) {
 
 	maxSize := 5
 	tuples := make([]*openfgav1.Tuple, 10)
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		tuples[i] = &openfgav1.Tuple{Key: tuple.NewTupleKey("document:"+strconv.Itoa(i), "viewer", "user:test")}
 	}
 
@@ -1202,7 +1198,7 @@ func TestCachingIterator_DrainExceedsMaxSize_AbandonsCaching(t *testing.T) {
 	ctx := context.Background()
 
 	// Consume 3 tuples (under maxSize, so tuples is still collecting)
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		_, err := iter.Next(ctx)
 		require.NoError(t, err)
 	}
@@ -1259,7 +1255,7 @@ func BenchmarkCachingIterator_CacheMiss(b *testing.B) {
 
 	// Create 100 tuples for iteration
 	tuples := make([]*openfgav1.Tuple, 100)
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		tuples[i] = &openfgav1.Tuple{
 			Key: tuple.NewTupleKey("document:"+string(rune('a'+i%26)), "viewer", "user:test"),
 		}
@@ -1290,7 +1286,7 @@ func BenchmarkCachingIterator_CacheMiss(b *testing.B) {
 func BenchmarkCachingIterator_CacheHit(b *testing.B) {
 	// Create 100 cached entries
 	entries := make([]MinimalCacheEntry, 100)
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		entries[i] = MinimalCacheEntry{
 			ObjectID: string(rune('a' + i%26)),
 			User:     "user:test",
@@ -1320,7 +1316,7 @@ func BenchmarkCachingIterator_CacheHit(b *testing.B) {
 func BenchmarkLockFreeCachedIterator_Next(b *testing.B) {
 	// Create 100 cached entries
 	entries := make([]MinimalCacheEntry, 100)
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		entries[i] = MinimalCacheEntry{
 			ObjectID:      string(rune('a' + i%26)),
 			User:          "user:test",
@@ -1352,7 +1348,7 @@ func BenchmarkLockFreeCachedIterator_VsStaticIterator(b *testing.B) {
 	// Create data for both iterators
 	entries := make([]MinimalCacheEntry, 100)
 	tuples := make([]*openfgav1.Tuple, 100)
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		entries[i] = MinimalCacheEntry{
 			ObjectID: string(rune('a' + i%26)),
 			User:     "user:test",
@@ -1398,7 +1394,7 @@ func BenchmarkMinimalCacheEntry_Memory(b *testing.B) {
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
 			entries := make([]MinimalCacheEntry, 100)
-			for j := 0; j < 100; j++ {
+			for j := range 100 {
 				entries[j] = MinimalCacheEntry{
 					ObjectID: "object-" + string(rune('a'+j%26)),
 					User:     "user:test-user",
@@ -1412,7 +1408,7 @@ func BenchmarkMinimalCacheEntry_Memory(b *testing.B) {
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
 			tuples := make([]*openfgav1.Tuple, 100)
-			for j := 0; j < 100; j++ {
+			for j := range 100 {
 				tuples[j] = &openfgav1.Tuple{
 					Key: tuple.NewTupleKey(
 						"document:object-"+string(rune('a'+j%26)),
