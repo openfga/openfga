@@ -12,6 +12,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -129,12 +130,13 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 
 			// Flag potential v2Check resolution breaking changes for userset requests.
 			// See v2breaking.CheckReason for the scenarios we detect.
-			if !res.Allowed && tuple.IsObjectRelation(req.GetTupleKey().GetUser()) {
+			if s.logger.Level() <= zap.InfoLevel && !res.Allowed && tuple.IsObjectRelation(req.GetTupleKey().GetUser()) {
 				if typesys, err := s.resolveTypesystem(ctx, storeID, req.GetAuthorizationModelId()); err == nil {
 					tk := req.GetTupleKey()
+					s.logger.Level()
 					if reason := v2breaking.CheckReason(typesys, tk); reason != "" {
 						requestID := requestid.GetRequestIDFromContext(ctx)
-						s.logger.WarnWithContext(ctx, "potential v2 Check resolution breaking change",
+						s.logger.InfoWithContext(ctx, "potential v2 Check resolution breaking change",
 							zap.String("store_id", storeID),
 							zap.String("model_id", req.GetAuthorizationModelId()),
 							zap.String("request_id", requestID),
@@ -285,7 +287,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 	//     failure) and we must inspect the schema ourselves: exclusion shapes
 	//     log unconditionally, per-userset shapes gate on !allowed to match
 	//     the v2-success log path above.
-	if isV2Fallback {
+	if s.logger.Level() <= zapcore.InfoLevel && isV2Fallback {
 		tk := req.GetTupleKey()
 		requestID := requestid.GetRequestIDFromContext(ctx)
 		logFields := []zap.Field{
