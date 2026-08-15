@@ -59,7 +59,7 @@ type Datastore struct {
 // Ensures that Datastore implements the OpenFGADatastore interface.
 var _ storage.OpenFGADatastore = (*Datastore)(nil)
 
-func parseConfig(uri string, override bool, cfg *sqlcommon.Config) (*pgxpool.Config, error) {
+func parseConfig(uri string, override bool, secondary bool, cfg *sqlcommon.Config) (*pgxpool.Config, error) {
 	c, err := pgxpool.ParseConfig(uri)
 	if err != nil {
 		return nil, fmt.Errorf("pgxpool parse postgres connection uri: %w", err)
@@ -71,18 +71,23 @@ func parseConfig(uri string, override bool, cfg *sqlcommon.Config) (*pgxpool.Con
 			return nil, fmt.Errorf("url parse postgres connection uri: %w", err)
 		}
 
-		if cfg.Username != "" {
-			c.ConnConfig.User = cfg.Username
+		username, password := cfg.Username, cfg.Password
+		if secondary {
+			username, password = cfg.SecondaryUsername, cfg.SecondaryPassword
+		}
+
+		if username != "" {
+			c.ConnConfig.User = username
 		} else if parsed.User != nil {
 			c.ConnConfig.User = parsed.User.Username()
 		}
 
 		switch {
-		case cfg.Password != "":
-			c.ConnConfig.Password = cfg.Password
+		case password != "":
+			c.ConnConfig.Password = password
 		case parsed.User != nil:
-			if password, ok := parsed.User.Password(); ok {
-				c.ConnConfig.Password = password
+			if pw, ok := parsed.User.Password(); ok {
+				c.ConnConfig.Password = pw
 			}
 		}
 	}
@@ -211,8 +216,8 @@ func createBeforeConnect(logger logger.Logger, provider PassfileProvider) func(c
 }
 
 // initDB initializes a new postgres database connection.
-func initDB(uri string, override bool, cfg *sqlcommon.Config) (*pgxpool.Pool, error) {
-	c, err := parseConfig(uri, override, cfg)
+func initDB(uri string, override bool, secondary bool, cfg *sqlcommon.Config) (*pgxpool.Pool, error) {
+	c, err := parseConfig(uri, override, secondary, cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -227,14 +232,14 @@ func initDB(uri string, override bool, cfg *sqlcommon.Config) (*pgxpool.Pool, er
 
 // New creates a new [Datastore] storage.
 func New(uri string, cfg *sqlcommon.Config) (*Datastore, error) {
-	primaryDB, err := initDB(uri, cfg.Username != "" || cfg.Password != "", cfg)
+	primaryDB, err := initDB(uri, cfg.Username != "" || cfg.Password != "", false, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("initialize postgres connection: %w", err)
 	}
 
 	var secondaryDB *pgxpool.Pool
 	if cfg.SecondaryURI != "" {
-		secondaryDB, err = initDB(cfg.SecondaryURI, cfg.SecondaryUsername != "" || cfg.SecondaryPassword != "", cfg)
+		secondaryDB, err = initDB(cfg.SecondaryURI, cfg.SecondaryUsername != "" || cfg.SecondaryPassword != "", true, cfg)
 		if err != nil {
 			return nil, fmt.Errorf("initialize postgres connection: %w", err)
 		}
