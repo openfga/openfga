@@ -9,6 +9,7 @@ import (
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -20,8 +21,10 @@ import (
 	"github.com/openfga/openfga/internal/throttler/threshold"
 	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/internal/utils/apimethod"
+	"github.com/openfga/openfga/pkg/middleware/requestid"
 	"github.com/openfga/openfga/pkg/middleware/validator"
 	"github.com/openfga/openfga/pkg/server/commands/listusers"
+	"github.com/openfga/openfga/pkg/server/commands/v2breaking"
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -154,6 +157,26 @@ func (s *Server) ListUsers(
 	wasDatastoreThrottled := resp.GetMetadata().WasDatastoreThrottled.Load()
 	if wasDatastoreThrottled {
 		throttledRequestCounter.WithLabelValues(s.serviceName, methodName, throttleTypeDatastore).Inc()
+	}
+
+	// Flag potential v2 (weighted-graph) resolution breaking changes for this
+	// request shape. Shape predicates may over-report; for the response-
+	// conditional reasons we additionally confirm the v1-only user actually
+	// came back. See v2breaking.ListUsersReason / ListUsersResponseConfirmsReason.
+	for _, filter := range req.GetUserFilters() {
+		reason := v2breaking.ListUsersReason(typesys, req.GetObject(), req.GetRelation(), filter)
+		if reason == "" {
+			continue
+		}
+		if !v2breaking.ListUsersResponseConfirmsReason(reason, typesys, req.GetObject(), req.GetRelation(), filter, resp.GetUsers()) {
+			continue
+		}
+		s.logger.WarnWithContext(ctx, "potential v2 ListUsers resolution breaking change",
+			zap.String("store_id", storeID),
+			zap.String("model_id", req.GetAuthorizationModelId()),
+			zap.String("request_id", requestid.GetRequestIDFromContext(ctx)),
+			zap.String("reason", reason),
+		)
 	}
 
 	return &openfgav1.ListUsersResponse{

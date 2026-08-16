@@ -1187,6 +1187,57 @@ func TestVerifyBinarySettings(t *testing.T) {
 		io.Copy(&buf, r)
 		require.Contains(t, buf.String(), "WARNING: Logging is not enabled. It is highly recommended to enable logging in production environments to avoid masking attacker operations.")
 	})
+
+	t.Run("oidc_method_requires_issuer", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Authn.Method = "oidc"
+		cfg.Authn.Audience = "some-audience"
+		cfg.Authn.Issuer = ""
+
+		err := cfg.VerifyBinarySettings()
+		require.EqualError(t, err, "'authn.oidc.issuer' config must be set when authn method is 'oidc'")
+	})
+
+	t.Run("oidc_method_requires_audience", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Authn.Method = "oidc"
+		cfg.Authn.Issuer = "https://issuer.example.com"
+		cfg.Authn.Audience = ""
+
+		err := cfg.VerifyBinarySettings()
+		require.EqualError(t, err, "'authn.oidc.audience' config must be set when authn method is 'oidc'")
+	})
+
+	t.Run("oidc_method_with_issuer_and_audience_passes", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Authn.Method = "oidc"
+		cfg.Authn.Issuer = "https://issuer.example.com"
+		cfg.Authn.Audience = "some-audience"
+
+		err := cfg.VerifyBinarySettings()
+		require.NoError(t, err)
+	})
+
+	// whitespace is a valid StringOrURI per RFC 7519 §4.1.1 and §4.1.3; whitespace-only issuer and audience must be accepted
+	t.Run("oidc_method_whitespace_issuer_is_valid", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Authn.Method = "oidc"
+		cfg.Authn.Issuer = "   "
+		cfg.Authn.Audience = "some-audience"
+
+		err := cfg.VerifyBinarySettings()
+		require.NoError(t, err)
+	})
+
+	t.Run("oidc_method_whitespace_audience_is_valid", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Authn.Method = "oidc"
+		cfg.Authn.Issuer = "https://issuer.example.com"
+		cfg.Authn.Audience = "   "
+
+		err := cfg.VerifyBinarySettings()
+		require.NoError(t, err)
+	})
 }
 
 func TestVerifyBinarySettings_TraceSampler(t *testing.T) {

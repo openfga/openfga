@@ -441,7 +441,7 @@ func (q *ListObjectsQuery) evaluate(
 				furtherEvalRequiredCounter.Inc()
 
 				pool.Go(func(ctx context.Context) error {
-					resp, checkRequestMetadata, err := NewCheckCommand(q.datastore, q.checkResolver, typesys,
+					resp, err := NewCheckCommand(q.datastore, q.checkResolver, typesys,
 						WithCheckCommandLogger(q.logger),
 						WithCheckCommandMaxConcurrentReads(q.maxConcurrentReads),
 						WithCheckDatastoreThrottler(
@@ -460,10 +460,10 @@ func (q *ListObjectsQuery) evaluate(
 					if err != nil {
 						return err
 					}
-					resolutionMetadata.DatastoreQueryCount.Add(resp.GetResolutionMetadata().DatastoreQueryCount)
-					resolutionMetadata.DatastoreItemCount.Add(resp.GetResolutionMetadata().DatastoreItemCount)
-					resolutionMetadata.DispatchCounter.Add(checkRequestMetadata.DispatchCounter.Load())
-					if !resolutionMetadata.DispatchThrottled.Load() && checkRequestMetadata.DispatchThrottled.Load() {
+					resolutionMetadata.DatastoreQueryCount.Add(resp.DatastoreQueryCount)
+					resolutionMetadata.DatastoreItemCount.Add(resp.DatastoreItemCount)
+					resolutionMetadata.DispatchCounter.Add(resp.DispatchCount)
+					if !resolutionMetadata.DispatchThrottled.Load() && resp.DispatchThrottled {
 						resolutionMetadata.DispatchThrottled.Store(true)
 					}
 					if resp.Allowed {

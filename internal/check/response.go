@@ -27,3 +27,7 @@ type ResponseCacheEntry struct {
 	LastModified time.Time
 	Res          *Response
 }
+
+func (e *ResponseCacheEntry) CacheEntityType() string {
+	return "check_response"
+}

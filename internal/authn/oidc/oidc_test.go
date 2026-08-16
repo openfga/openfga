@@ -108,8 +108,8 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 				return quickConfigSetup(Config{
 					jwkKid:         "kid_1",
 					jwtKid:         "kid_2",
-					issuerURL:      "",
-					audience:       "",
+					issuerURL:      "right_issuer",
+					audience:       "right_audience",
 					issuerAliases:  nil,
 					subjects:       []string{"openfga client"},
 					clientIDClaims: []string{"azp"},
@@ -128,8 +128,8 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 				return quickConfigSetup(Config{
 					jwkKid:         "kid_1",
 					jwtKid:         "kid_1",
-					issuerURL:      "",
-					audience:       "",
+					issuerURL:      "right_issuer",
+					audience:       "right_audience",
 					issuerAliases:  nil,
 					subjects:       []string{"openfga client"},
 					clientIDClaims: []string{"azp"},
@@ -148,12 +148,13 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 					jwkKid:         "kid_1",
 					jwtKid:         "kid_1",
 					issuerURL:      "right_issuer",
-					audience:       "",
+					audience:       "right_audience",
 					issuerAliases:  nil,
 					subjects:       []string{"openfga client"},
 					clientIDClaims: []string{"azp"},
 					jwtClaims: jwt.MapClaims{
 						"iss": "wrong_issuer",
+						"aud": "right_audience",
 						"exp": time.Now().Add(10 * time.Minute).Unix(),
 					},
 					privateKeyOverride: nil,
@@ -250,29 +251,6 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 		testDescription string
 		testSetup       func() (*RemoteOidcAuthenticator, context.Context, Config, error)
 	}{
-		{
-			testDescription: "empty_audience",
-			testSetup: func() (*RemoteOidcAuthenticator, context.Context, Config, error) {
-				return quickConfigSetup(Config{
-					jwkKid:         "kid_2",
-					jwtKid:         "kid_2",
-					issuerURL:      "right_issuer",
-					audience:       "",
-					issuerAliases:  nil,
-					subjects:       nil,
-					clientIDClaims: []string{"custom_claim", "custom_claim_2"},
-					jwtClaims: jwt.MapClaims{
-						"iss":            "right_issuer",
-						"aud":            "",
-						"sub":            "some-user",
-						"custom_claim_2": customClientID,
-						"scope":          scopes,
-						"exp":            time.Now().Add(10 * time.Minute).Unix(),
-					},
-					privateKeyOverride: nil,
-				})
-			},
-		},
 		{
 			testDescription: "when_the_token_is_valid,_it_MUST_return_the_token_subject_and_its_associated_scopes",
 			testSetup: func() (*RemoteOidcAuthenticator, context.Context, Config, error) {
@@ -467,6 +445,69 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestNewRemoteOidcAuthenticator_RequiresIssuerAndAudience(t *testing.T) {
+	tests := []struct {
+		name        string
+		issuer      string
+		audience    string
+		expectedErr error
+	}{
+		{
+			name:        "empty_issuer_returns_error",
+			issuer:      "",
+			audience:    "some-audience",
+			expectedErr: ErrMissingIssuer,
+		},
+		{
+			name:        "empty_audience_returns_error",
+			issuer:      "https://issuer.example.com",
+			audience:    "",
+			expectedErr: ErrMissingAudience,
+		},
+		{
+			name:        "both_empty_returns_issuer_error_first",
+			issuer:      "",
+			audience:    "",
+			expectedErr: ErrMissingIssuer,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := NewRemoteOidcAuthenticator(tc.issuer, nil, tc.audience, nil, nil)
+			require.ErrorIs(t, err, tc.expectedErr)
+		})
+	}
+
+	t.Run("valid_issuer_and_audience_constructs_successfully", func(t *testing.T) {
+		orig := fetchJWKs
+		t.Cleanup(func() { fetchJWKs = orig })
+		_, publicKey := generateJWTSignatureKeys()
+		fetchJWKs = fetchKeysMock(publicKey, "kid_1")
+		_, err := NewRemoteOidcAuthenticator("https://issuer.example.com", nil, "some-audience", nil, nil)
+		require.NoError(t, err)
+	})
+
+	// whitespace is a valid StringOrURI per RFC 7519 §4.1.1 and §4.1.3; whitespace-only issuer and audience must be accepted
+	t.Run("whitespace_issuer_is_valid", func(t *testing.T) {
+		orig := fetchJWKs
+		t.Cleanup(func() { fetchJWKs = orig })
+		_, publicKey := generateJWTSignatureKeys()
+		fetchJWKs = fetchKeysMock(publicKey, "kid_1")
+		_, err := NewRemoteOidcAuthenticator("   ", nil, "some-audience", nil, nil)
+		require.NoError(t, err)
+	})
+
+	t.Run("whitespace_audience_is_valid", func(t *testing.T) {
+		orig := fetchJWKs
+		t.Cleanup(func() { fetchJWKs = orig })
+		_, publicKey := generateJWTSignatureKeys()
+		fetchJWKs = fetchKeysMock(publicKey, "kid_1")
+		_, err := NewRemoteOidcAuthenticator("https://issuer.example.com", nil, "   ", nil, nil)
+		require.NoError(t, err)
+	})
 }
 
 type Config struct {
