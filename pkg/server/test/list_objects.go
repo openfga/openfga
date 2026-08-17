@@ -471,6 +471,164 @@ func runListObjectsTests(t *testing.T, ds storage.OpenFGADatastore, passedInOpts
 			allResults:             []string{"document:1"},
 			useCheckCache:          false,
 		},
+		{
+			name: "self_referential_usersets",
+			model: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define viewer: [user, document#viewer]
+			`,
+			tuples:                 []*openfgav1.TupleKey{},
+			user:                   "document:d1#viewer",
+			objectType:             "document",
+			relation:               "viewer",
+			minimumResultsExpected: 0,
+			allResults:             []string{},
+			useCheckCache:          false,
+		},
+		{
+			name: "alias_userset",
+			model: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define reader: [user]
+						define allowed: reader
+						define viewer: [user, document#allowed]
+			`,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:d1", "viewer", "document:d3#allowed"),
+			},
+			user:                   "document:d3#reader",
+			objectType:             "document",
+			relation:               "viewer",
+			minimumResultsExpected: 0,
+			allResults:             []string{},
+			useCheckCache:          false,
+		},
+		{
+			name: "computed_userset_self_object",
+			model: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define editor: [user]
+						define writer: [user]
+						define viewer: editor or writer
+			`,
+			tuples:                 []*openfgav1.TupleKey{},
+			user:                   "document:d1#writer",
+			objectType:             "document",
+			relation:               "viewer",
+			minimumResultsExpected: 0,
+			allResults:             []string{},
+			useCheckCache:          false,
+		},
+		{
+			name: "ttu_userset",
+			model: `
+				model
+					schema 1.1
+				type user
+				type folder
+					relations
+						define viewer: [user]
+				type document
+					relations
+						define parent: [folder]
+						define viewer: viewer from parent
+			`,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:d1", "parent", "folder:f1"),
+			},
+			user:                   "folder:f1#viewer",
+			objectType:             "document",
+			relation:               "viewer",
+			minimumResultsExpected: 0,
+			allResults:             []string{},
+			useCheckCache:          false,
+		},
+		{
+			name: "userset_with_exclusion",
+			model: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define member: [user]
+						define owner: [user]
+						define viewer: [user, document#owner] but not member
+			`,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:d1", "viewer", "document:d1#owner"),
+			},
+			user:       "document:d1#owner",
+			objectType: "document",
+			relation:   "viewer",
+			// NOTE: should error
+			minimumResultsExpected: 0,
+			allResults:             []string{},
+			useCheckCache:          false,
+		},
+		{
+			name: "wildcard_with_exclusion",
+			model: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define public: [user:*]
+						define blocked: [user]
+						define viewer: public but not blocked
+			`,
+			tuples: []*openfgav1.TupleKey{
+				// document:d1#public@user:*
+				// document:d1#blocked@user:alice
+				tuple.NewTupleKey("document:d1", "public", "user:*"),
+				tuple.NewTupleKey("document:d1", "blocked", "user:alice"),
+			},
+			user:       "user:*",
+			objectType: "document",
+			relation:   "viewer",
+			// NOTE: should error
+			minimumResultsExpected: 0,
+			allResults:             []string{},
+			useCheckCache:          false,
+		},
+		{
+			name: "self_referential_userset_transitive",
+			model: `
+			model
+				schema 1.1
+			type user
+			type org
+				relations
+					define viewer: [user, org#viewer]
+			type document
+				relations
+					define parent: [org]
+					define viewer: viewer from parent
+			`,
+			tuples: []*openfgav1.TupleKey{
+				// document:d1#parent@org:d1
+				tuple.NewTupleKey("document:d1", "parent", "org:d1"),
+			},
+			user:                   "org:d1#viewer",
+			objectType:             "document",
+			relation:               "viewer",
+			minimumResultsExpected: 0,
+			allResults:             []string{},
+			useCheckCache:          false,
+		},
 	}
 
 	for _, test := range testCases {

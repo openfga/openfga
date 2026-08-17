@@ -2622,6 +2622,154 @@ var cases = []testcase{
 			"thing:7",
 		},
 	},
+	{
+		name: "self_referential_usersets",
+		model: `
+			model
+				schema 1.1
+			type user
+			type document
+				relations
+					define viewer: [user, document#viewer]
+		`,
+		tuples:      []string{},
+		objectType:  "document",
+		relation:    "viewer",
+		subjectType: "document#viewer",
+		subjectID:   "1",
+		expected:    []string{},
+	},
+	{
+		name: "alias_userset",
+		model: `
+			model
+				schema 1.1
+			type user
+			type document
+				relations
+					define reader: [user]
+					define allowed: reader
+					define viewer: [user, document#allowed]
+		`,
+		tuples: []string{
+			"document:d1#viewer@document:d3#allowed",
+		},
+		objectType:  "document",
+		relation:    "viewer",
+		subjectType: "document#reader",
+		subjectID:   "d3",
+		expected:    []string{},
+	},
+	{
+		name: "computed_userset_self_object",
+		model: `
+			model
+				schema 1.1
+			type user
+			type document
+				relations
+					define editor: [user]
+					define writer: [user]
+					define viewer: editor or writer
+			`,
+		tuples:      []string{},
+		objectType:  "document",
+		relation:    "viewer",
+		subjectType: "document#reader",
+		subjectID:   "d1",
+		expected:    []string{},
+	},
+	{
+		name: "ttu_userset",
+		model: `
+			model
+				schema 1.1
+			type user
+			type folder
+				relations
+					define viewer: [user]
+			type document
+				relations
+					define parent: [folder]
+					define viewer: viewer from parent
+			`,
+		tuples: []string{
+			"document:d1#parent@folder:f1",
+		},
+		objectType:  "document",
+		relation:    "viewer",
+		subjectType: "folder#viewer",
+		subjectID:   "f1",
+		expected:    []string{},
+	},
+	{
+		name: "userset_with_exclusion",
+		model: `
+			model
+				schema 1.1
+			type user
+			type document
+				relations
+					define member: [user]
+					define owner: [user]
+					define viewer: [user, document#owner] but not member
+			`,
+		tuples: []string{
+			"document:d1#viewer@document:d1#owner",
+		},
+		objectType:  "document",
+		relation:    "viewer",
+		subjectType: "document#owner",
+		subjectID:   "d1",
+		// NOTE: should error
+		expected: []string{},
+	},
+	{
+		name: "wildcard_with_exclusion",
+		model: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define public: [user:*]
+						define blocked: [user]
+						define viewer: public but not blocked
+			`,
+		tuples: []string{
+			"document:d1#public@user:*",
+			"document:d1#blocked@user:alice",
+		},
+		objectType:  "document",
+		relation:    "viewer",
+		subjectType: "user",
+		subjectID:   "*",
+		// NOTE: should error
+		expected: []string{},
+	},
+	{
+		name: "self_referential_userset_transitive",
+		model: `
+			model
+				schema 1.1
+			type user
+			type org
+				relations
+					define viewer: [user, org#viewer]
+			type document
+				relations
+					define parent: [org]
+					define viewer: viewer from parent
+			`,
+		tuples: []string{
+			"document:d1#parent@org:d1",
+		},
+		objectType:  "document",
+		relation:    "viewer",
+		subjectType: "org#viewer",
+		subjectID:   "d1",
+		expected:    []string{},
+	},
 }
 
 func BenchmarkPipeline(b *testing.B) {
