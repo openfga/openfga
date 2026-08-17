@@ -14,7 +14,9 @@ import (
 
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/mocks"
+	"github.com/openfga/openfga/pkg/featureflags"
 	"github.com/openfga/openfga/pkg/server/commands"
+	"github.com/openfga/openfga/pkg/server/config"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -53,7 +55,8 @@ func TestListObjects(t *testing.T, ds storage.OpenFGADatastore) {
 }
 
 func TestListObjectsWithPipeline(t *testing.T, ds storage.OpenFGADatastore) {
-	runListObjectsTests(t, ds, commands.WithListObjectsPipelineEnabled(true))
+	runListObjectsTests(t, ds, commands.WithListObjectsPipelineEnabled(true), commands.WithFeatureFlagClient(featureflags.NewDefaultClient([]string{config.ExperimentalWeightedGraph})))
+	runListObjectsPipelineTests(t, ds, commands.WithListObjectsPipelineEnabled(true), commands.WithFeatureFlagClient(featureflags.NewDefaultClient([]string{config.ExperimentalWeightedGraph})))
 }
 
 func runListObjectsTests(t *testing.T, ds storage.OpenFGADatastore, passedInOpts ...commands.ListObjectsQueryOption) {
@@ -471,6 +474,124 @@ func runListObjectsTests(t *testing.T, ds storage.OpenFGADatastore, passedInOpts
 			allResults:             []string{"document:1"},
 			useCheckCache:          false,
 		},
+	}
+
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			ctx := context.Background()
+			storeID := ulid.Make().String()
+
+			// arrange: write model
+			model := testutils.MustTransformDSLToProtoWithID(test.model)
+
+			err := ds.WriteAuthorizationModel(ctx, storeID, model)
+			require.NoError(t, err)
+
+			// arrange: write tuples in random order
+			test.tuples = testutils.Shuffle(test.tuples)
+			err = ds.Write(context.Background(), storeID, nil, test.tuples)
+			require.NoError(t, err)
+
+			// act: run ListObjects
+
+			datastore := ds
+			if test.readTuplesDelay > 0 {
+				datastore = mocks.NewMockSlowDataStorage(ds, test.readTuplesDelay)
+			}
+
+			ts, err := typesystem.New(model)
+			require.NoError(t, err)
+
+			ctx = typesystem.ContextWithTypesystem(ctx, ts)
+
+			opts := []commands.ListObjectsQueryOption{
+				commands.WithListObjectsMaxResults(test.maxResults),
+				commands.WithListObjectsDeadline(10 * time.Second),
+				commands.WithMaxConcurrentReads(30),
+			}
+			opts = append(opts, passedInOpts...)
+
+			if test.listObjectsDeadline != 0 {
+				opts = append(opts, commands.WithListObjectsDeadline(test.listObjectsDeadline))
+			}
+
+			var localCheckOpts []graph.LocalCheckerOption
+			cacheOpts := []graph.CachedCheckResolverOpt{
+				graph.WithCacheTTL(10 * time.Second),
+			}
+			checkBuilderOpts := []graph.CheckResolverOrderedBuilderOpt{
+				graph.WithCachedCheckResolverOpts(test.useCheckCache, cacheOpts...),
+				graph.WithLocalCheckerOpts(localCheckOpts...),
+			}
+			checkResolver, closer, err := graph.NewOrderedCheckResolvers(checkBuilderOpts...).Build()
+			require.NoError(t, err)
+			t.Cleanup(closer)
+
+			listObjectsQuery, err := commands.NewListObjectsQuery(datastore, checkResolver, "fake_store_id", opts...)
+			require.NoError(t, err)
+
+			// assertions
+			t.Run("streaming_endpoint", func(t *testing.T) {
+				server := &mockStreamServer{
+					channel: make(chan string, len(test.allResults)),
+				}
+
+				done := make(chan struct{})
+				var streamedObjectIDs []string
+				go func() {
+					for {
+						objectID, open := <-server.channel
+						if !open {
+							close(done)
+							return
+						}
+
+						streamedObjectIDs = append(streamedObjectIDs, objectID)
+					}
+				}()
+
+				_, err := listObjectsQuery.ExecuteStreamed(ctx, &openfgav1.StreamedListObjectsRequest{
+					StoreId:          storeID,
+					Type:             test.objectType,
+					Relation:         test.relation,
+					User:             test.user,
+					ContextualTuples: test.contextualTuples,
+					Context:          test.context,
+				}, server)
+				close(server.channel)
+				<-done
+
+				require.NoError(t, err)
+				// there is no upper bound of the number of results for the streamed version
+				require.GreaterOrEqual(t, len(streamedObjectIDs), int(test.minimumResultsExpected))
+				require.ElementsMatch(t, test.allResults, streamedObjectIDs)
+			})
+
+			t.Run("regular_endpoint", func(t *testing.T) {
+				res, err := listObjectsQuery.Execute(ctx, &openfgav1.ListObjectsRequest{
+					StoreId:          storeID,
+					Type:             test.objectType,
+					Relation:         test.relation,
+					User:             test.user,
+					ContextualTuples: test.contextualTuples,
+					Context:          test.context,
+				})
+
+				require.NotNil(t, res)
+				require.NoError(t, err)
+				if test.maxResults != 0 { // don't get all results
+					require.LessOrEqual(t, len(res.Objects), int(test.maxResults))
+				}
+				require.GreaterOrEqual(t, len(res.Objects), int(test.minimumResultsExpected))
+				require.Subset(t, test.allResults, res.Objects)
+			})
+		})
+	}
+}
+
+func runListObjectsPipelineTests(t *testing.T, ds storage.OpenFGADatastore, passedInOpts ...commands.ListObjectsQueryOption) {
+	testCases := []listObjectsTestCase{
 		{
 			name: "self_referential_usersets",
 			model: `

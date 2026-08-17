@@ -576,7 +576,7 @@ func (q *ListObjectsQuery) Execute(
 	// is enabled, or for non userset/wildcard queries when the pipeline is enabled.
 	// Everything else falls back to reverse expand.
 	usePipeline := wgraph != nil &&
-		(q.ff.Boolean(serverconfig.ExperimentalWeightedGraphCheck, req.GetStoreId()) ||
+		(q.ff.Boolean(serverconfig.ExperimentalWeightedGraph, req.GetStoreId()) ||
 			(q.pipelineEnabled && !isUsersetOrWildcardQuery))
 
 	if usePipeline {
@@ -765,7 +765,7 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 	// is enabled, or for non userset/wildcard queries when the pipeline is enabled.
 	// Everything else falls back to reverse expand.
 	usePipeline := wgraph != nil &&
-		(q.ff.Boolean(serverconfig.ExperimentalWeightedGraphCheck, req.GetStoreId()) ||
+		(q.ff.Boolean(serverconfig.ExperimentalWeightedGraph, req.GetStoreId()) ||
 			(q.pipelineEnabled && !isUsersetOrWildcardQuery))
 
 	if usePipeline {
