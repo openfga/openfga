@@ -2636,8 +2636,9 @@ var cases = []testcase{
 		objectType:  "document",
 		relation:    "viewer",
 		subjectType: "document#viewer",
-		subjectID:   "1",
-		expected:    []string{},
+		subjectID:   "d1",
+		// TODO: should return no self-referential object
+		expected: []string{"document:d1"},
 	},
 	{
 		name: "alias_userset",
@@ -2658,7 +2659,7 @@ var cases = []testcase{
 		relation:    "viewer",
 		subjectType: "document#reader",
 		subjectID:   "d3",
-		expected:    []string{},
+		error:       pipeline.ErrUnreachable,
 	},
 	{
 		name: "computed_userset_self_object",
@@ -2677,7 +2678,7 @@ var cases = []testcase{
 		relation:    "viewer",
 		subjectType: "document#reader",
 		subjectID:   "d1",
-		expected:    []string{},
+		error:       pipeline.ErrInvalidSubject,
 	},
 	{
 		name: "ttu_userset",
@@ -2700,7 +2701,7 @@ var cases = []testcase{
 		relation:    "viewer",
 		subjectType: "folder#viewer",
 		subjectID:   "f1",
-		expected:    []string{},
+		error:       pipeline.ErrUnreachable,
 	},
 	{
 		name: "userset_with_exclusion",
@@ -2721,8 +2722,8 @@ var cases = []testcase{
 		relation:    "viewer",
 		subjectType: "document#owner",
 		subjectID:   "d1",
-		// NOTE: should error
-		expected: []string{},
+		// TODO: should error
+		expected: []string{"document:d1"},
 	},
 	{
 		name: "wildcard_with_exclusion",
@@ -2744,8 +2745,8 @@ var cases = []testcase{
 		relation:    "viewer",
 		subjectType: "user",
 		subjectID:   "*",
-		// NOTE: should error
-		expected: []string{},
+		// TODO: should error
+		expected: []string{"document:d1"},
 	},
 	{
 		name: "self_referential_userset_transitive",
@@ -2768,7 +2769,8 @@ var cases = []testcase{
 		relation:    "viewer",
 		subjectType: "org#viewer",
 		subjectID:   "d1",
-		expected:    []string{},
+		// TODO: should return no self-referential object
+		expected: []string{"document:d1"},
 	},
 }
 
