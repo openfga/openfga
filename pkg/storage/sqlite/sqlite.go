@@ -241,7 +241,11 @@ func (s *Datastore) read(ctx context.Context, store string, filter storage.ReadF
 		sb = sb.Limit(uint64(options.Pagination.PageSize + 1)) // + 1 is used to determine whether to return a continuation token.
 	}
 
-	return NewSQLTupleIterator(sb, HandleSQLError), nil
+	rg, err := sqlcommon.NewRowGetter(sqlcommon.NewSQLConnector(s.db), sb)
+	if err != nil {
+		return nil, err
+	}
+	return NewSQLTupleIterator(rg, HandleSQLError), nil
 }
 
 // Write see [storage.RelationshipTupleWriter].Write.
@@ -373,10 +377,13 @@ func (s *Datastore) selectExistingRowsForWrite(ctx context.Context, store string
 		Where(sq.Eq{"store": store}).
 		From("tuple").
 		// Row-constructor IN on full composite key for precise point locks.
-		Where(sq.Expr("(object_type, object_id, relation, user_object_type, user_object_id, user_relation, user_type) IN "+inExpr, args...)).
-		RunWith(txn) // make sure to run in the same transaction
+		Where(sq.Expr("(object_type, object_id, relation, user_object_type, user_object_id, user_relation, user_type) IN "+inExpr, args...))
 
-	iter := NewSQLTupleIterator(selectBuilder, HandleSQLError)
+	rg, err := sqlcommon.NewRowGetter(sqlcommon.NewTxConnector(txn), selectBuilder)
+	if err != nil {
+		return err
+	}
+	iter := NewSQLTupleIterator(rg, HandleSQLError)
 	defer iter.Stop()
 
 	items, _, err := iter.ToArray(ctx, storage.PaginationOptions{PageSize: len(keys)})
@@ -808,7 +815,11 @@ func (s *Datastore) ReadUsersetTuples(
 		sb = sb.Where(sq.Eq{"COALESCE(condition_name, '')": filter.Conditions})
 	}
 
-	return NewSQLTupleIterator(sb, HandleSQLError), nil
+	rg, err := sqlcommon.NewRowGetter(sqlcommon.NewSQLConnector(s.db), sb)
+	if err != nil {
+		return nil, err
+	}
+	return NewSQLTupleIterator(rg, HandleSQLError), nil
 }
 
 // ReadStartingWithUser see [storage.RelationshipTupleReader].ReadStartingWithUser.
@@ -856,7 +867,11 @@ func (s *Datastore) ReadStartingWithUser(
 		builder = builder.Where(sq.Eq{"COALESCE(condition_name, '')": filter.Conditions})
 	}
 
-	return NewSQLTupleIterator(builder, HandleSQLError), nil
+	rg, err := sqlcommon.NewRowGetter(sqlcommon.NewSQLConnector(s.db), builder)
+	if err != nil {
+		return nil, err
+	}
+	return NewSQLTupleIterator(rg, HandleSQLError), nil
 }
 
 // MaxTuplesPerWrite see [storage.RelationshipTupleWriter].MaxTuplesPerWrite.

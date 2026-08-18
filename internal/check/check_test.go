@@ -9,6 +9,7 @@ import (
 
 	"github.com/oklog/ulid/v2"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
 	"google.golang.org/protobuf/types/known/structpb"
 
@@ -6344,4 +6345,131 @@ func TestCheck_NestedRecursiveRelations(t *testing.T) {
 		require.NoError(t, err)
 		require.True(t, res.GetAllowed())
 	})
+}
+
+// TestCheck_MultiBranchRecursionOnSameRelation ensures that two recursive edges
+// on the same relation (cycle) are handled properly.
+func TestCheck_MultiBranchRecursionOnSameRelation(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	model := testutils.MustTransformDSLToProtoWithID(`
+		model
+		  schema 1.1
+		type user
+		type group
+		  relations
+		    define parent: [group]
+		    define child: [group]
+		    define member: [user] or member from parent or member from child
+	`)
+
+	mg, err := modelgraph.New(model)
+	require.NoError(t, err)
+
+	tests := []struct {
+		name string
+		// readTuples is keyed by "object#relation" and serves the TTU reads.
+		readTuples map[string][]*openfgav1.Tuple
+		// userTuples are the direct group#member assignments.
+		userTuples []*openfgav1.TupleKey
+		checkTuple *openfgav1.TupleKey
+		expected   *Response
+	}{
+		{
+			name: "allowed_through_parent_branch_only",
+			readTuples: map[string][]*openfgav1.Tuple{
+				"group:g2#parent": {{Key: tuple.NewTupleKey("group:g2", "parent", "group:g1")}},
+			},
+			userTuples: []*openfgav1.TupleKey{tuple.NewTupleKey("group:g1", "member", "user:u1")},
+			checkTuple: tuple.NewTupleKey("group:g2", "member", "user:u1"),
+			expected:   &Response{Allowed: true},
+		},
+		{
+			name: "allowed_through_child_branch_only",
+			readTuples: map[string][]*openfgav1.Tuple{
+				"group:g2#child": {{Key: tuple.NewTupleKey("group:g2", "child", "group:g1")}},
+			},
+			userTuples: []*openfgav1.TupleKey{tuple.NewTupleKey("group:g1", "member", "user:u1")},
+			checkTuple: tuple.NewTupleKey("group:g2", "member", "user:u1"),
+			expected:   &Response{Allowed: true},
+		},
+		{
+			name: "allowed_through_alternating_parent_and_child_branches",
+			readTuples: map[string][]*openfgav1.Tuple{
+				"group:g3#parent": {{Key: tuple.NewTupleKey("group:g3", "parent", "group:g2")}},
+				"group:g2#child":  {{Key: tuple.NewTupleKey("group:g2", "child", "group:g1")}},
+			},
+			userTuples: []*openfgav1.TupleKey{tuple.NewTupleKey("group:g1", "member", "user:u1")},
+			checkTuple: tuple.NewTupleKey("group:g3", "member", "user:u1"),
+			expected:   &Response{Allowed: true},
+		},
+		{
+			name: "not_allowed_and_terminates_on_mutual_cycle",
+			readTuples: map[string][]*openfgav1.Tuple{
+				"group:g1#parent": {{Key: tuple.NewTupleKey("group:g1", "parent", "group:g2")}},
+				"group:g2#parent": {{Key: tuple.NewTupleKey("group:g2", "parent", "group:g1")}},
+				"group:g1#child":  {{Key: tuple.NewTupleKey("group:g1", "child", "group:g2")}},
+				"group:g2#child":  {{Key: tuple.NewTupleKey("group:g2", "child", "group:g1")}},
+			},
+			checkTuple: tuple.NewTupleKey("group:g2", "member", "user:u1"),
+			expected:   &Response{Allowed: false},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			storeID := ulid.Make().String()
+			mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+			mockPlanner := mocks.NewMockManager(ctrl)
+			mockSelector := mocks.NewMockSelector(ctrl)
+
+			mockPlanner.EXPECT().GetPlanSelector(gomock.Any()).Return(mockSelector).AnyTimes()
+			mockSelector.EXPECT().Select(gomock.Any()).Return(DefaultPlan).AnyTimes()
+			mockSelector.EXPECT().UpdateStats(gomock.Any(), gomock.Any()).AnyTimes()
+			mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+				AnyTimes().
+				DoAndReturn(func(_ context.Context, _ string, filter storage.ReadUserTupleFilter, _ storage.ReadUserTupleOptions) (*openfgav1.Tuple, error) {
+					for _, tk := range tt.userTuples {
+						if tk.GetObject() == filter.Object && tk.GetRelation() == filter.Relation && tk.GetUser() == filter.User {
+							return &openfgav1.Tuple{Key: tk}, nil
+						}
+					}
+					return nil, storage.ErrNotFound
+				})
+			mockDatastore.EXPECT().Read(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+				AnyTimes().
+				DoAndReturn(func(_ context.Context, _ string, filter storage.ReadFilter, _ storage.ReadOptions) (storage.TupleIterator, error) {
+					return storage.NewStaticTupleIterator(tt.readTuples[filter.Object+"#"+filter.Relation]), nil
+				})
+			mockDatastore.EXPECT().ReadUsersetTuples(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+				AnyTimes().
+				Return(storage.NewStaticTupleIterator(nil), nil)
+			// ReadStartingWithUser is deliberately not stubbed: the bottom-up recursive
+			// strategy must never run for this model, so a call there fails the test.
+
+			resolver := New(Config{
+				Model:            mg,
+				Datastore:        mockDatastore,
+				Cache:            storage.NewNoopCache(),
+				Planner:          mockPlanner,
+				ConcurrencyLimit: 10,
+			})
+
+			req, err := NewRequest(RequestParams{
+				StoreID:  storeID,
+				Model:    mg,
+				TupleKey: tt.checkTuple,
+			})
+			require.NoError(t, err)
+
+			res, err := resolver.ResolveCheck(context.Background(), req)
+			require.NoError(t, err)
+			require.Equal(t, tt.expected.GetAllowed(), res.GetAllowed())
+		})
+	}
 }

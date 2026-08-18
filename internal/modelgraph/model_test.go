@@ -621,3 +621,61 @@ func TestFlattenNodeSkipsOnlyTargetedRecursiveRelation(t *testing.T) {
 		"descendant_principal from child_group must be skipped: it belongs to the recursive relation currently being unwound")
 	require.Len(t, edges, 3) // direct_member, direct_admin, admin-from-parent_group
 }
+
+// TestMultiBranchRecursionIsTupleCycle ensures that two recursive edges
+// on the same relation are treated as a cycle.
+func TestMultiBranchRecursionIsTupleCycle(t *testing.T) {
+	t.Run("multi_branch_recursion", func(t *testing.T) {
+		model := testutils.MustTransformDSLToProtoWithID(`
+			model
+			  schema 1.1
+			type user
+			type group
+			  relations
+				define parent: [group]
+				define child: [group]
+				define member: [user] or member from parent or member from child
+    	`)
+
+		mg, err := New(model)
+		require.NoError(t, err)
+
+		node, ok := mg.GetNodeByID("group#member")
+		require.True(t, ok)
+
+		require.True(t, node.IsPartOfTupleCycle(),
+			"a relation recursive through more than one branch must be reported as a tuple cycle")
+
+		edge, canApply := mg.CanApplyRecursion(node, "user", true)
+		require.Nil(t, edge,
+			"the recursive optimization must be refused: it can only carry one of the two recursive edges")
+		require.False(t, canApply)
+	})
+
+	t.Run("single_branch_recursion_unaffected", func(t *testing.T) {
+		model := testutils.MustTransformDSLToProtoWithID(`
+			model
+			  schema 1.1
+			type user
+			type group
+			  relations
+				define member: [user] or member from parent
+				define parent: [group]
+    	`)
+
+		mg, err := New(model)
+		require.NoError(t, err)
+
+		node, ok := mg.GetNodeByID("group#member")
+		require.True(t, ok)
+
+		require.False(t, node.IsPartOfTupleCycle(),
+			"a relation recursive through a single branch is not a tuple cycle")
+
+		edge, canApply := mg.CanApplyRecursion(node, "user", true)
+		require.NotNil(t, edge,
+			"the recursive optimization must still apply to single-branch recursion")
+		require.True(t, canApply)
+		require.Equal(t, "group#parent", edge.GetTuplesetRelation())
+	})
+}
