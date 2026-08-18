@@ -13,54 +13,9 @@ import (
 	context "context"
 	reflect "reflect"
 
-	pgx "github.com/jackc/pgx/v5"
 	pgconn "github.com/jackc/pgx/v5/pgconn"
 	gomock "go.uber.org/mock/gomock"
 )
-
-// MockPgxQuery is a mock of PgxQuery interface.
-type MockPgxQuery struct {
-	ctrl     *gomock.Controller
-	recorder *MockPgxQueryMockRecorder
-	isgomock struct{}
-}
-
-// MockPgxQueryMockRecorder is the mock recorder for MockPgxQuery.
-type MockPgxQueryMockRecorder struct {
-	mock *MockPgxQuery
-}
-
-// NewMockPgxQuery creates a new mock instance.
-func NewMockPgxQuery(ctrl *gomock.Controller) *MockPgxQuery {
-	mock := &MockPgxQuery{ctrl: ctrl}
-	mock.recorder = &MockPgxQueryMockRecorder{mock}
-	return mock
-}
-
-// EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockPgxQuery) EXPECT() *MockPgxQueryMockRecorder {
-	return m.recorder
-}
-
-// Query mocks base method.
-func (m *MockPgxQuery) Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
-	m.ctrl.T.Helper()
-	varargs := []any{ctx, sql}
-	for _, a := range args {
-		varargs = append(varargs, a)
-	}
-	ret := m.ctrl.Call(m, "Query", varargs...)
-	ret0, _ := ret[0].(pgx.Rows)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// Query indicates an expected call of Query.
-func (mr *MockPgxQueryMockRecorder) Query(ctx, sql any, args ...any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	varargs := append([]any{ctx, sql}, args...)
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Query", reflect.TypeOf((*MockPgxQuery)(nil).Query), varargs...)
-}
 
 // MockPgxExec is a mock of PgxExec interface.
 type MockPgxExec struct {
@@ -104,44 +59,4 @@ func (mr *MockPgxExecMockRecorder) Exec(ctx, sql any, arguments ...any) *gomock.
 	mr.mock.ctrl.T.Helper()
 	varargs := append([]any{ctx, sql}, arguments...)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Exec", reflect.TypeOf((*MockPgxExec)(nil).Exec), varargs...)
-}
-
-// MockSQLBuilder is a mock of SQLBuilder interface.
-type MockSQLBuilder struct {
-	ctrl     *gomock.Controller
-	recorder *MockSQLBuilderMockRecorder
-	isgomock struct{}
-}
-
-// MockSQLBuilderMockRecorder is the mock recorder for MockSQLBuilder.
-type MockSQLBuilderMockRecorder struct {
-	mock *MockSQLBuilder
-}
-
-// NewMockSQLBuilder creates a new mock instance.
-func NewMockSQLBuilder(ctrl *gomock.Controller) *MockSQLBuilder {
-	mock := &MockSQLBuilder{ctrl: ctrl}
-	mock.recorder = &MockSQLBuilderMockRecorder{mock}
-	return mock
-}
-
-// EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockSQLBuilder) EXPECT() *MockSQLBuilderMockRecorder {
-	return m.recorder
-}
-
-// ToSql mocks base method.
-func (m *MockSQLBuilder) ToSql() (string, []any, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ToSql")
-	ret0, _ := ret[0].(string)
-	ret1, _ := ret[1].([]any)
-	ret2, _ := ret[2].(error)
-	return ret0, ret1, ret2
-}
-
-// ToSql indicates an expected call of ToSql.
-func (mr *MockSQLBuilderMockRecorder) ToSql() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ToSql", reflect.TypeOf((*MockSQLBuilder)(nil).ToSql))
 }

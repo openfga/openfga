@@ -9,6 +9,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ## [Unreleased]
 ### Fixed
 - Fixed experimental `weighted_graph_check` returning a successful result for a request whose context was already cancelled. `ResolveCheck` now checks `ctx.Err()` before doing any graph work, so such a request deterministically returns the cancellation error instead of racing cooperative cancellation in the resolvers. Cancellation during resolution is unchanged: a branch that has already reached a terminal result still returns it. [#3214](https://github.com/openfga/openfga/issues/3214)
+- Scope context-cancelation stripping to query execution only. No longer can deadlock on saturated connection pool. [#3255](https://github.com/openfga/openfga/pull/3255)
 
 ## [1.18.3] - 2026-08-05
 ### Fixed
