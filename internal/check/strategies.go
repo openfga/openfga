@@ -41,15 +41,22 @@ var DefaultRecursivePlan = &planner.PlanConfig{
 const SQLStrategyName = "sql"
 
 var SQLPlan = &planner.PlanConfig{
-	Name:         SQLStrategyName,
-	InitialGuess: 50 * time.Millisecond,
-	// Low Lambda: Represents zero confidence. It's a pure guess.
-	Lambda: 1,
-	// With α = 0.5 ≤ 1, it means maximum uncertainty about variance; with λ = 1, we also have weak confidence in the mean.
-	// These values will encourage strong exploration of other strategies. Having these values for the default execute helps to enforce the usage of the "faster" strategies,
-	// helping out with the cold start when we don't have enough data.
-	Alpha: 0.5,
-	Beta:  0.5,
+	Name: SQLStrategyName,
+	// Half of DefaultPlan's guess. InitialGuess is the only parameter that meaningfully
+	// moves the cold-start choice, and the plan key is per-node (see createNodePlanKey),
+	// so the cold start is re-paid for every distinct node and is worth biasing.
+	InitialGuess: 25 * time.Millisecond,
+	// Low Lambda: the prior is worth only two observations, so two real measurements are
+	// enough to outweigh the guess if the expectation above turns out to be wrong.
+	Lambda: 2,
+	// Moderate Alpha/Beta keep the sampled spread narrow enough that the lower mean is
+	// actually acted on, instead of being drowned out by prior jitter.
+	// Expected precision: E[τ] = α/β = 2/1 = 2.
+	// Expected variance: E[σ²] = β/(α−1) = 1/(2−1) = 1.
+	// Keeping α ≥ 1 also matters for cost: ThompsonStats.fastGammaSample only takes the
+	// Marsaglia-Tsang fast path at α ≥ 1 and otherwise falls back to gonum.
+	Alpha: 2,
+	Beta:  1,
 }
 
 const WeightTwoStrategyName = "weight2"
