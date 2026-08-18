@@ -6,6 +6,8 @@ import (
 	"slices"
 	"sort"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/structpb"
 
@@ -13,6 +15,7 @@ import (
 	"github.com/openfga/language/pkg/go/graph"
 
 	"github.com/openfga/openfga/internal/modelgraph"
+	"github.com/openfga/openfga/internal/telemetry"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/adapter"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -95,6 +98,13 @@ type leafReducer func(ctx context.Context, l leaf) (residual, error)
 // round-trip. Without conditions, it issues an existence query (SELECT 1 ... HAVING <tree>);
 // with conditions it gathers candidate tuples and evaluates their conditions in-app.
 func (s *SQLStrategy) weight1(ctx context.Context, req *Request, builder adapter.Builder, edges []*graph.WeightedAuthorizationModelEdge, operation string) (*Response, error) {
+	ctx, span := tracer.Start(ctx, "sql.weight1", trace.WithAttributes(
+		attribute.String("tuple_key", req.GetTupleString()),
+		attribute.String("operation", operation),
+		attribute.Bool("allowed", false),
+	))
+	defer span.End()
+
 	w := &walker{
 		s:        s,
 		req:      req,
@@ -118,12 +128,20 @@ func (s *SQLStrategy) weight1(ctx context.Context, req *Request, builder adapter
 	// an unconditional walk of the whole subtree would produce.
 	res, err := w.fold(ctx, edges, operation, w.reduceLeaf)
 	if err != nil {
+		telemetry.TraceError(span, err)
 		return nil, err
 	}
+	span.SetAttributes(attribute.Int("relation_count", len(w.relConds)))
+
 	switch res.state {
 	case branchTrue:
+		span.SetAttributes(
+			attribute.String("query_path", "no_query"),
+			attribute.Bool("allowed", true),
+		)
 		return &Response{Allowed: true}, nil
 	case branchFalse:
+		span.SetAttributes(attribute.String("query_path", "no_query"))
 		return &Response{Allowed: false}, nil
 	default: // branchNeedsQuery: a database read is required.
 	}
@@ -133,12 +151,30 @@ func (s *SQLStrategy) weight1(ctx context.Context, req *Request, builder adapter
 	// here (it counts rows without checking conditions), so it is discarded — but the filter
 	// state the same fold accumulated drives the gather query.
 	if w.conditioned {
-		return w.evalConditioned(ctx, edges, operation)
+		span.SetAttributes(attribute.String("query_path", "conditioned"))
+		res, err := w.evalConditioned(ctx, edges, operation)
+		if err != nil {
+			telemetry.TraceError(span, err)
+			return nil, err
+		}
+		if res.GetAllowed() {
+			span.SetAttributes(attribute.Bool("allowed", true))
+		}
+		return res, nil
 	}
 
 	// No conditions in play: the rendered predicate is exact, so answer with a single existence
 	// query (SELECT 1 ... HAVING <predicate>).
-	return w.evalExistence(ctx, res.pred)
+	span.SetAttributes(attribute.String("query_path", "existence"))
+	resp, err := w.evalExistence(ctx, res.pred)
+	if err != nil {
+		telemetry.TraceError(span, err)
+		return nil, err
+	}
+	if resp.GetAllowed() {
+		span.SetAttributes(attribute.Bool("allowed", true))
+	}
+	return resp, nil
 }
 
 // walker carries the per-request state shared by the subtree traversals.

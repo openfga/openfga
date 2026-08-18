@@ -38,6 +38,7 @@ var ErrWildcardInvalidRequest = errors.New("wildcard request cannot be resolved 
 
 type LogicalEdge interface {
 	CacheKey(req *Request) keys.Key
+	Label() string
 }
 
 type GroupEdge struct {
@@ -47,6 +48,10 @@ type GroupEdge struct {
 
 func (e *GroupEdge) CacheKey(req *Request) keys.Key {
 	return NodeCacheKey(req, e.Node)
+}
+
+func (e *GroupEdge) Label() string {
+	return e.Node.GetUniqueLabel()
 }
 
 func (e *GroupEdge) Explode() []LogicalEdge {
@@ -62,6 +67,10 @@ type SingleEdge graph.WeightedAuthorizationModelEdge
 
 func (s *SingleEdge) CacheKey(req *Request) keys.Key {
 	return EdgeCacheKey(req, (*graph.WeightedAuthorizationModelEdge)(s))
+}
+
+func (s *SingleEdge) Label() string {
+	return (*graph.WeightedAuthorizationModelEdge)(s).GetTo().GetUniqueLabel()
 }
 
 type Config struct {
@@ -200,9 +209,7 @@ func (r *Resolver) isCached(ctx context.Context, consistency openfgav1.Consisten
 			return
 		}
 		metrics.CacheHitCounter.Inc()
-
 		span := trace.SpanFromContext(ctx)
-
 		span.AddEvent("response_cache_hit", trace.WithAttributes(
 			attribute.String("key", key.String()),
 			attribute.Bool("allowed", res.GetAllowed()),
@@ -287,7 +294,7 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, edges []
 	var i int
 
 	// Check the cache for logical edge entries. Any existing entry with an "allowed" value of `true`
-	// will result in an resolution short-circuit. When the "allowed" value is `false`, the logical edge
+	// will result in a resolution short-circuit. When the "allowed" value is `false`, the logical edge
 	// is removed from the logicalEdges slice. Any elements not having a cache entry are kept within
 	// the logicalEdges slice for further processing.
 	//
@@ -300,6 +307,7 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, edges []
 
 		if res, ok := r.isCached(ctx, req.GetConsistency(), key); ok {
 			if res.GetAllowed() {
+				span.SetAttributes(attribute.Bool("allowed", true))
 				return &Response{Allowed: true}, nil
 			}
 			continue
@@ -338,23 +346,18 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, edges []
 
 		pool.Go(func() error {
 			res, err := r.ResolveLogicalEdge(ctx, req, edge, visited)
-
-			if err == nil {
-				err = ctx.Err()
+			if err != nil {
+				span.RecordError(err, trace.WithAttributes(
+					attribute.String("edge.to", edge.Label()),
+				))
 			}
 
-			if err == nil {
-				r.cache.Set(cacheKeys[i], &ResponseCacheEntry{Res: res, LastModified: time.Now()}, r.cacheTTL)
+			if err == nil && ctx.Err() == nil {
+				entry := &ResponseCacheEntry{Res: res, LastModified: time.Now()}
+				r.cache.Set(cacheKeys[i], entry, r.cacheTTL)
 			}
 
-			concurrency.TrySendThroughChannel(
-				ctx,
-				ResponseMsg{
-					Res: res,
-					Err: err,
-				},
-				out,
-			)
+			concurrency.TrySendThroughChannel(ctx, ResponseMsg{Res: res, Err: err}, out)
 			return nil
 		})
 		expectedMessages++
@@ -724,6 +727,7 @@ func (r *Resolver) ResolveRecursive(ctx context.Context, req *Request, edge *gra
 }
 
 func (r *Resolver) ResolveIntersectionEdges(ctx context.Context, req *Request, edges []LogicalEdge) (*Response, error) {
+	span := trace.SpanFromContext(ctx)
 	ctx, cancel := context.WithCancel(ctx)
 
 	out := make(chan ResponseMsg, len(edges))
@@ -771,6 +775,7 @@ func (r *Resolver) ResolveIntersectionEdges(ctx context.Context, req *Request, e
 			}
 		}
 	}
+	span.SetAttributes(attribute.Bool("allowed", true))
 	return &Response{Allowed: true}, nil
 }
 
@@ -805,9 +810,8 @@ func (r *Resolver) ResolveIntersection(ctx context.Context, req *Request, node *
 }
 
 func (r *Resolver) ResolveExclusionEdges(ctx context.Context, req *Request, edges []LogicalEdge) (*Response, error) {
-	ctx, cancel := context.WithCancel(ctx)
-
 	span := trace.SpanFromContext(ctx)
+	ctx, cancel := context.WithCancel(ctx)
 
 	var pool errgroup.Group
 	pool.SetLimit(2)
@@ -950,31 +954,40 @@ func (r *Resolver) ResolveEdge(ctx context.Context, req *Request, edge *graph.We
 	if edge.IsPartOfTupleCycle() || edge.GetRecursiveRelation() != "" {
 		visitedObjects = visited
 	}
+
+	var res *Response
+	var err error
 	// computed edges are solved by the relation node caller
 	switch edge.GetEdgeType() {
 	case graph.DirectEdge:
 		switch edge.GetTo().GetNodeType() {
 		case graph.SpecificType:
 			// terminal types are never part of a cycle
-			return r.specificType(ctx, req, edge)
+			res, err = r.specificType(ctx, req, edge)
 		case graph.SpecificTypeWildcard:
 			// terminal types are never part of a cycle
-			return r.specificTypeWildcard(ctx, req, edge)
+			res, err = r.specificTypeWildcard(ctx, req, edge)
 		case graph.SpecificTypeAndRelation:
 			// check for recursiveRelation
-			return r.specificTypeAndRelation(ctx, req, edge, visitedObjects)
+			res, err = r.specificTypeAndRelation(ctx, req, edge, visitedObjects)
 		default:
 			return nil, ErrPanicRequest
 		}
 	case graph.DirectLogicalEdge, graph.TTULogicalEdge, graph.ComputedEdge:
-		return r.ResolveUnion(ctx, req, edge.GetTo(), visitedObjects)
+		res, err = r.ResolveUnion(ctx, req, edge.GetTo(), visitedObjects)
 	case graph.TTUEdge:
-		return r.ttu(ctx, req, edge, visitedObjects)
+		res, err = r.ttu(ctx, req, edge, visitedObjects)
 	case graph.RewriteEdge:
-		return r.ResolveRewrite(ctx, req, edge.GetTo(), visitedObjects)
+		res, err = r.ResolveRewrite(ctx, req, edge.GetTo(), visitedObjects)
 	default:
 		return nil, ErrPanicRequest
 	}
+
+	if err != nil {
+		telemetry.TraceError(span, err)
+		return nil, err
+	}
+	return res, nil
 }
 
 func (r *Resolver) ResolveLogicalEdge(ctx context.Context, req *Request, logicalEdge LogicalEdge, visited *sync.Map) (*Response, error) {
@@ -984,24 +997,44 @@ func (r *Resolver) ResolveLogicalEdge(ctx context.Context, req *Request, logical
 
 	groupEdge := logicalEdge.(*GroupEdge)
 
+	ctx, span := tracer.Start(ctx, "ResolveLogicalEdge", trace.WithAttributes(
+		attribute.String("tuple_key", req.GetTupleString()),
+		attribute.String("node", groupEdge.Node.GetUniqueLabel()),
+		attribute.String("strategy", DefaultStrategyName),
+		attribute.Bool("allowed", false),
+	))
+	defer span.End()
+
 	if r.datastore.Builder(req.Consistency) == nil {
+		var res *Response
+		var err error
+
 		switch groupEdge.Node.GetNodeType() {
 		case graph.SpecificTypeAndRelation:
-			return r.groupStrategies[DefaultPlan.Name].Union(ctx, req, groupEdge)
+			res, err = r.groupStrategies[DefaultPlan.Name].Union(ctx, req, groupEdge)
 		case graph.OperatorNode:
 			switch groupEdge.Node.GetLabel() {
 			case graph.UnionOperator:
-				return r.groupStrategies[DefaultPlan.Name].Union(ctx, req, groupEdge)
+				res, err = r.groupStrategies[DefaultPlan.Name].Union(ctx, req, groupEdge)
 			case graph.IntersectionOperator:
-				return r.groupStrategies[DefaultPlan.Name].Intersection(ctx, req, groupEdge)
+				res, err = r.groupStrategies[DefaultPlan.Name].Intersection(ctx, req, groupEdge)
 			case graph.ExclusionOperator:
-				return r.groupStrategies[DefaultPlan.Name].Exclusion(ctx, req, groupEdge)
+				res, err = r.groupStrategies[DefaultPlan.Name].Exclusion(ctx, req, groupEdge)
 			default:
 				panic("unknown operator node type")
 			}
 		default:
 			return nil, ErrPanicRequest
 		}
+
+		if err != nil {
+			telemetry.TraceError(span, err)
+			return nil, err
+		}
+		if res.GetAllowed() {
+			span.SetAttributes(attribute.Bool("allowed", true))
+		}
+		return res, nil
 	}
 
 	planKey := createNodePlanKey(req, groupEdge.Node)
@@ -1013,6 +1046,7 @@ func (r *Resolver) ResolveLogicalEdge(ctx context.Context, req *Request, logical
 	}
 
 	plan := selector.Select(candidates)
+	span.SetAttributes(attribute.String("strategy", plan.Name))
 
 	return r.executeStrategy(ctx, selector, plan, func() (*Response, error) {
 		switch groupEdge.Node.GetNodeType() {
