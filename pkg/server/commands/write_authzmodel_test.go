@@ -1109,7 +1109,28 @@ func TestWriteAuthorizationModel(t *testing.T) {
 						define viewer: [user] or viewer from parent`).GetTypeDefinitions(),
 			},
 			errCode:    codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
-			errMessage: "the relation type 'folder#parent' on 'parent' in object type 'folder' is not valid",
+			errMessage: "the 'folder#parent' relation is referenced in at least one tupleset and cannot have userset type restrictions; the type restriction 'folder#parent' is not valid for a tupleset relation",
+		},
+		`fail_invalid_type_restriction_on_tupleset_implied_relation`: {
+			setMock: func(datastore *mockstorage.MockOpenFGADatastore) {},
+			request: &openfgav1.WriteAuthorizationModelRequest{
+				StoreId: storeID,
+				TypeDefinitions: parser.MustTransformDSLToProto(`
+				model
+					schema 1.1
+				type user
+					relations
+						define manager: [user]
+				type company
+					relations
+						define employee: [user]
+				type group
+					relations
+						define member: [user, company#employee]
+						define manager: manager from member`).GetTypeDefinitions(),
+			},
+			errCode:    codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
+			errMessage: "the 'group#member' relation is referenced in at least one tupleset and cannot have userset type restrictions; the type restriction 'company#employee' is not valid for a tupleset relation",
 		},
 		`fail_undefined_relation_2`: {
 			setMock: func(datastore *mockstorage.MockOpenFGADatastore) {},
