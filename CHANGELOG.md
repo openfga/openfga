@@ -8,6 +8,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 ### Fixed
+- Fixed validation-ordering defect where malformed `RelationReference` (relation_or_wildcard oneof set but yielding neither wildcard nor non-empty relation) panicked `WriteAuthorizationModel`. `NewAndValidate` now runs all validation before graph construction. Also closed gap in `validateTypeRestrictions` that silently accepted a positional variant, causing model-wide nil weighted graph and performance degradation. **Breaking:** Already-persisted malformed models fail to resolve on cache miss with `ErrInvalidModel` rather than silently running degraded. See `pkg/typesystem/typesystem.go`. [#3262](https://github.com/openfga/openfga/pull/3262)
 - Scope context-cancelation stripping to query execution only. No longer can deadlock on saturated connection pool. [#3255](https://github.com/openfga/openfga/pull/3255)
 
 ## [1.18.3] - 2026-08-05
