@@ -12,18 +12,18 @@ import (
 	"github.com/openfga/openfga/internal/mocks"
 )
 
-// TestMalformedRelationReference covers the validation-ordering defect where a RelationReference
-// with a set relation_or_wildcard oneof that yields neither a wildcard nor a non-empty relation
-// previously panicked the server (variant A) or was silently accepted with model-wide performance
-// degradation (variant B).
+// TestMalformedRelationReference verifies that RelationReferences with relation_or_wildcard set but
+// yielding neither a wildcard nor a non-empty relation are rejected by NewAndValidate with
+// ErrEmptyRelationReference. These shapes cannot be expressed in the DSL and must be hand-constructed.
 //
-// These shapes cannot be expressed in the DSL — parser.MustTransformDSLToProto is unusable here,
-// and the protos are hand-constructed.
+// Variant A (first in list): would panic graph.NewAuthorizationModelGraph on nil curNode dereference.
+// Variant B (not first): hasEntrypoints returns true at entry 1, never inspecting entry 2; only
+// validateTypeRestrictions catches this via the exhaustive wildcard/relation/reject check.
+// Variant C (nil wildcard): same failure mode as A.
 //
-// Test A is also the ordering pin: graph.NewAuthorizationModelGraph's only error path is an
-// impossible type-cast failure, so it never *returns* an error — it either succeeds or panics.
-// If a future refactor moves graph construction back in front of validation, test A will panic
-// again rather than return an error.
+// Test A is the ordering pin: if a future refactor moves graph construction before validation,
+// test A will panic rather than return an error, since graph.NewAuthorizationModelGraph's only
+// error path is an impossible type-cast failure.
 func TestMalformedRelationReference(t *testing.T) {
 	t.Parallel()
 
@@ -357,10 +357,10 @@ func TestNewWithValidModel(t *testing.T) {
 	require.NoError(t, err)
 }
 
-// TestMalformedRelationReferenceReadPath documents the accepted consequence: a variant-B model
-// (empty relation, but not first in the list) that was previously accepted and persisted now
-// fails to resolve on cache miss, causing Check/ListObjects/ListUsers to fail with ErrInvalidModel
-// rather than silently running with nil weighted graph and degraded performance.
+// TestMalformedRelationReferenceReadPath verifies that MemoizedTypesystemResolverFunc rejects
+// variant-B models (empty relation not first in the list) on cache miss. The resolver wraps the
+// validation error in ErrInvalidModel, causing Check/ListObjects/ListUsers to fail rather than
+// silently run with nil weighted graph and degraded performance.
 func TestMalformedRelationReferenceReadPath(t *testing.T) {
 	t.Parallel()
 
@@ -369,8 +369,9 @@ func TestMalformedRelationReferenceReadPath(t *testing.T) {
 
 	mockDatastore := mocks.NewMockAuthorizationModelReadBackend(mockController)
 
-	// Variant B: the malformed reference is second, so it was previously accepted at write time
-	// and persisted.
+	// Variant B model: malformed reference is second in the list. hasEntrypoints returns true at
+	// entry 1 without inspecting entry 2; validateTypeRestrictions must iterate all entries to
+	// catch this.
 	variantBModel := &openfgav1.AuthorizationModel{
 		Id:            "01M092CBDNRJ6DPRDN2RX0SNH7",
 		SchemaVersion: SchemaVersion1_1,

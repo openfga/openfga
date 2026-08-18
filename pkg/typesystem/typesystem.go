@@ -1439,8 +1439,8 @@ func (t *TypeSystem) validateTypeRestrictions(objectType string, relationName st
 
 			// The oneof is set; it must yield either a wildcard or a non-empty relation.
 			// An empty relation (or a nil wildcard inside a Wildcard oneof) is malformed and
-			// previously panicked the authorization model graph builder or produced a nil
-			// weighted graph.
+			// would panic the authorization model graph builder or produce a nil weighted graph
+			// if it reached graph construction.
 			if related.GetWildcard() != nil {
 				// Legal [type:*] wildcard reference; nothing further to validate.
 			} else if relatedRelation != "" {
