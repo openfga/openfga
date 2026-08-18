@@ -188,9 +188,11 @@ func (t *TypeSystem) GetWeightedGraph() *graph.WeightedAuthorizationModelGraph {
 	return t.authzWeightedGraph
 }
 
-// New creates a *TypeSystem from an *openfgav1.AuthorizationModel.
-// It assumes that the input model is valid. If you need to run validations, use NewAndValidate.
-func New(model *openfgav1.AuthorizationModel) (*TypeSystem, error) {
+// newWithoutGraphs builds a *TypeSystem from an authorization model, populating all fields except
+// the authorization model graph and weighted graph. This is used by NewAndValidate to run validation
+// before graph construction. Returns a *TypeSystem with all non-graph fields populated; the caller
+// must call attachGraphs to complete initialization.
+func newWithoutGraphs(model *openfgav1.AuthorizationModel) *TypeSystem {
 	tds := make(map[string]*openfgav1.TypeDefinition, len(model.GetTypeDefinitions()))
 	relations := make(map[string]map[string]*openfgav1.Relation, len(model.GetTypeDefinitions()))
 	ttuRelations := make(map[string]map[string][]*openfgav1.TupleToUserset, len(model.GetTypeDefinitions()))
@@ -226,33 +228,68 @@ func New(model *openfgav1.AuthorizationModel) (*TypeSystem, error) {
 			WithMaxEvaluationCost(config.MaxConditionEvaluationCost()).
 			WithInterruptCheckFrequency(config.DefaultInterruptCheckFrequency)
 	}
+
+	return &TypeSystem{
+		modelID:         model.GetId(),
+		schemaVersion:   model.GetSchemaVersion(),
+		typeDefinitions: tds,
+		relations:       relations,
+		conditions:      uncompiledConditions,
+		ttuRelations:    ttuRelations,
+		// authorizationModelGraph and authzWeightedGraph are left as zero values (nil);
+		// attachGraphs will populate them.
+	}
+}
+
+// attachGraphs builds and attaches the authorization model graph and weighted graph to the TypeSystem.
+// This is called after validation to ensure malformed models do not reach the graph builders.
+func (t *TypeSystem) attachGraphs(model *openfgav1.AuthorizationModel) error {
 	authorizationModelGraph, err := graph.NewAuthorizationModelGraph(model)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	if authorizationModelGraph.GetDrawingDirection() != graph.DrawingDirectionListObjects {
 		// by default, this should not happen.  However, this is here in case the default order is changed.
 		authorizationModelGraph, err = authorizationModelGraph.Reversed()
 		if err != nil {
-			return nil, err
+			return err
 		}
 	}
 
 	wgb := graph.NewWeightedAuthorizationModelGraphBuilder()
-	// TODO: this will require a deprecation not ignore the error and remove nil checks
+	// TODO: this will require a deprecation not ignore the error and remove nil checks.
+	// NOTE: This discard is the amplifier that converts a single malformed RelationReference into
+	// model-wide loss of weighted-graph optimization. When wgb.Build fails (e.g., on a reference
+	// whose relation_or_wildcard oneof is set but yields neither a wildcard nor a non-empty
+	// relation), authzWeightedGraph is set to nil here. At query time, every weighted-graph-gated
+	// path (UsersetUseWeight2Resolver, TTUUseWeight2Resolver, the optimized ListObjects pipeline)
+	// nil-guards off. Answers stay correct — DirectlyRelatedUsersets and related helpers skip
+	// GetRelation() == "" — but performance silently degrades. Worth its own audit and PR to
+	// surface this error rather than discard it.
 	weightedGraph, _ := wgb.Build(model)
 
-	return &TypeSystem{
-		modelID:                 model.GetId(),
-		schemaVersion:           model.GetSchemaVersion(),
-		typeDefinitions:         tds,
-		relations:               relations,
-		conditions:              uncompiledConditions,
-		ttuRelations:            ttuRelations,
-		authorizationModelGraph: authorizationModelGraph,
-		authzWeightedGraph:      weightedGraph,
-	}, nil
+	t.authorizationModelGraph = authorizationModelGraph
+	t.authzWeightedGraph = weightedGraph
+	return nil
+}
+
+// New creates a *TypeSystem from an *openfgav1.AuthorizationModel.
+// It assumes that the input model is valid. If you need to run validations, use NewAndValidate.
+//
+// IMPORTANT: This constructor builds both the authorization model graph and the weighted graph from
+// the input model. Neither graph builder is defensive against malformed RelationReferences (e.g., a
+// relation_or_wildcard oneof that is set but yields neither a wildcard nor a non-empty relation).
+// The authorization model graph builder will panic on such input; the weighted graph builder will
+// return an error (which is currently discarded, see the TODO in attachGraphs). If the input may be
+// untrusted or unvalidated, use NewAndValidate instead, which runs all validation checks before
+// constructing the graphs.
+func New(model *openfgav1.AuthorizationModel) (*TypeSystem, error) {
+	t := newWithoutGraphs(model)
+	if err := t.attachGraphs(model); err != nil {
+		return nil, err
+	}
+	return t, nil
 }
 
 func (t *TypeSystem) CacheEntityType() string {
@@ -1128,10 +1165,11 @@ func NewAndValidate(ctx context.Context, model *openfgav1.AuthorizationModel) (*
 	_, span := tracer.Start(ctx, "typesystem.NewAndValidate")
 	defer span.End()
 
-	t, err := New(model)
-	if err != nil {
-		return nil, err
-	}
+	// Build the TypeSystem without constructing the graphs, so validation can run before the
+	// graph builders see the input. This prevents malformed RelationReferences from panicking
+	// the authorization model graph builder or producing a nil weighted graph.
+	t := newWithoutGraphs(model)
+
 	schemaVersion := t.GetSchemaVersion()
 
 	if !IsSchemaVersionSupported(schemaVersion) {
@@ -1177,6 +1215,11 @@ func NewAndValidate(ctx context.Context, model *openfgav1.AuthorizationModel) (*
 	}
 
 	if err := t.validateConditions(); err != nil {
+		return nil, err
+	}
+
+	// All validation passed; now safe to build the graphs.
+	if err := t.attachGraphs(model); err != nil {
 		return nil, err
 	}
 
@@ -1388,10 +1431,22 @@ func (t *TypeSystem) validateTypeRestrictions(objectType string, relationName st
 				return InvalidRelationTypeError(objectType, relationName, relatedObjectType, relatedRelation)
 			}
 
-			if relatedRelation != "" {
+			// The oneof is set; it must yield either a wildcard or a non-empty relation.
+			// An empty relation (or a nil wildcard inside a Wildcard oneof) is malformed and
+			// previously panicked the authorization model graph builder or produced a nil
+			// weighted graph.
+			if related.GetWildcard() != nil {
+				// Legal [type:*] wildcard reference; nothing further to validate.
+			} else if relatedRelation != "" {
+				// Legal [type#relation] userset reference; verify the relation exists.
 				if _, err := t.GetRelation(relatedObjectType, relatedRelation); err != nil {
 					return InvalidRelationTypeError(objectType, relationName, relatedObjectType, relatedRelation)
 				}
+			} else {
+				// The oneof is set but GetWildcard() returned nil and GetRelation() returned "".
+				// This happens with RelationReference{RelationOrWildcard: &Relation{Relation: ""}}
+				// or RelationReference{RelationOrWildcard: &Wildcard{Wildcard: nil}}.
+				return EmptyRelationReferenceError(objectType, relationName, relatedObjectType)
 			}
 		}
 
