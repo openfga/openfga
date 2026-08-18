@@ -243,6 +243,11 @@ func newWithoutGraphs(model *openfgav1.AuthorizationModel) *TypeSystem {
 
 // attachGraphs builds and attaches the authorization model graph and weighted graph to the TypeSystem.
 // This is called after validation to ensure malformed models do not reach the graph builders.
+//
+// Note: The error paths in this function are defensive checks for conditions that should not occur:
+// NewAuthorizationModelGraph's only error is an impossible type-cast failure, and the drawing direction
+// check is a safety net (see "by default, this should not happen" comment below). These paths are not
+// covered by tests because triggering them would require mocking internal graph builder behavior.
 func (t *TypeSystem) attachGraphs(model *openfgav1.AuthorizationModel) error {
 	authorizationModelGraph, err := graph.NewAuthorizationModelGraph(model)
 	if err != nil {
@@ -258,7 +263,8 @@ func (t *TypeSystem) attachGraphs(model *openfgav1.AuthorizationModel) error {
 	}
 
 	wgb := graph.NewWeightedAuthorizationModelGraphBuilder()
-	// TODO: this will require a deprecation not ignore the error and remove nil checks.
+	// TODO: propagate this error instead of discarding it, then remove downstream nil checks
+	// (will require a deprecation cycle).
 	// NOTE: This discard is the amplifier that converts a single malformed RelationReference into
 	// model-wide loss of weighted-graph optimization. When wgb.Build fails (e.g., on a reference
 	// whose relation_or_wildcard oneof is set but yields neither a wildcard nor a non-empty

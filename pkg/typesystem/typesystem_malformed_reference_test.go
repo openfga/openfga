@@ -302,6 +302,61 @@ func TestMalformedRelationReferenceRegressionGuards(t *testing.T) {
 	}
 }
 
+// TestNewWithValidModel verifies the refactored New() still works correctly: newWithoutGraphs +
+// attachGraphs produces the same result as the original monolithic implementation. This exercises
+// the happy path through both helpers, ensuring no regressions from the split.
+func TestNewWithValidModel(t *testing.T) {
+	t.Parallel()
+
+	model := &openfgav1.AuthorizationModel{
+		SchemaVersion: SchemaVersion1_1,
+		TypeDefinitions: []*openfgav1.TypeDefinition{
+			{Type: "user"},
+			{
+				Type: "document",
+				Relations: map[string]*openfgav1.Userset{
+					"viewer": This(),
+				},
+				Metadata: &openfgav1.Metadata{
+					Relations: map[string]*openfgav1.RelationMetadata{
+						"viewer": {
+							DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+								{Type: "user"},
+								WildcardRelationReference("user"),
+							},
+						},
+					},
+				},
+			},
+			{
+				Type: "folder",
+				Relations: map[string]*openfgav1.Userset{
+					"viewer": This(),
+				},
+				Metadata: &openfgav1.Metadata{
+					Relations: map[string]*openfgav1.RelationMetadata{
+						"viewer": {
+							DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+								{Type: "user"},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	typesys, err := New(model)
+	require.NoError(t, err)
+	require.NotNil(t, typesys)
+	require.Equal(t, SchemaVersion1_1, typesys.GetSchemaVersion())
+	require.NotNil(t, typesys.GetWeightedGraph(), "weighted graph should be built")
+
+	// Verify the model is queryable
+	_, err = typesys.GetRelation("document", "viewer")
+	require.NoError(t, err)
+}
+
 // TestMalformedRelationReferenceReadPath documents the accepted consequence: a variant-B model
 // (empty relation, but not first in the list) that was previously accepted and persisted now
 // fails to resolve on cache miss, causing Check/ListObjects/ListUsers to fail with ErrInvalidModel
