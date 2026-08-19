@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"slices"
-	"strings"
 	"sync"
 
 	"go.opentelemetry.io/otel"
@@ -16,6 +15,7 @@ import (
 	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/containers/mpsc"
 	"github.com/openfga/openfga/internal/listobjects/pipeline/internal/worker"
+	"github.com/openfga/openfga/pkg/tuple"
 )
 
 type (
@@ -135,19 +135,9 @@ type Pipeline struct {
 // createInterpreter returns an Interpreter that dispatches to the
 // appropriate edge handler (direct, TTU, or identity) based on edge type.
 func createInterpreter(graph *Graph, store ObjectStore) worker.Interpreter {
-	directEdgeHandler := directEdgeHandler{store}
-
-	ttuEdgeHandler := ttuEdgeHandler{
-		reader: store,
-		graph:  graph,
-	}
-
-	var identityEdgeHandler identityEdgeHandler
-
 	return &edgeInterpreter{
-		direct:   &directEdgeHandler,
-		ttu:      &ttuEdgeHandler,
-		identity: &identityEdgeHandler,
+		store: store,
+		graph: graph,
 	}
 }
 
@@ -175,7 +165,7 @@ func createWorker(node *Node, core worker.Core, group *worker.CycleGroup) worker
 		basic.Membership = group.Join(core.Label)
 		basic.Core = &core
 		basic.MsgFunc = func(m *worker.Message, e *worker.Edge) {
-			if worker.IsCyclical(e) {
+			if worker.IsCyclic(e) {
 				basic.Membership.Inc()
 				fn := m.Callback
 				m.Callback = func() {
@@ -202,7 +192,7 @@ func createWorker(node *Node, core worker.Core, group *worker.CycleGroup) worker
 			basic.Membership = group.Join(core.Label)
 			basic.Core = &core
 			basic.MsgFunc = func(m *worker.Message, e *worker.Edge) {
-				if worker.IsCyclical(e) {
+				if worker.IsCyclic(e) {
 					basic.Membership.Inc()
 					fn := m.Callback
 					m.Callback = func() {
@@ -263,40 +253,53 @@ func (b *Builder) Build(
 	errs := mpsc.NewAccumulator[error]()
 
 	var core worker.Core
-	core.Interpreter = createInterpreter(graph, b.store)
 	core.Errors = errs
 	core.ChunkSize = config.ChunkSize
 	core.NumProcs = config.NumProcs
+	core.Interpreter = createInterpreter(graph, b.store)
 	core.Pool = new(worker.MessagePool)
 
 	workers := make(map[string]worker.Worker)
 	visited := make(map[*Node]struct{})
 
-	object := spec.ObjectType + "#" + spec.ObjectRelation
-	subjectKind := spec.SubjectType
+	object := tuple.ToObjectRelationString(spec.ObjectType, spec.ObjectRelation)
 
-	var subject string
+	isWildcard := spec.SubjectID == "*"
 
-	subjectType, _, _ := strings.Cut(subjectKind, "#")
-	subject = subjectType + ":" + spec.SubjectID
+	subjectType, subjectRelation := tuple.SplitObjectRelation(spec.SubjectType)
+
+	targetLabel := spec.SubjectType
+
+	if isWildcard {
+		if subjectRelation != "" {
+			return nil, ErrInvalidSubject
+		}
+		targetLabel = subjectType + ":*"
+	}
 
 	rootNode, ok := graph.GetNodeByID(object)
 	if !ok {
 		return nil, ErrInvalidObject
 	}
 
-	_, ok = graph.GetNodeByID(subjectKind)
+	_, ok = graph.GetNodeByID(targetLabel)
 	if !ok {
 		return nil, ErrInvalidSubject
 	}
 
-	if _, ok := graph.GetNodeWeight(rootNode, subjectKind); !ok {
+	if _, ok := graph.GetNodeWeight(rootNode, spec.SubjectType); !ok {
 		return nil, ErrUnreachable
 	}
 
-	if spec.SubjectID == "*" && !slices.Contains(rootNode.GetWildcards(), subjectKind) {
+	if isWildcard && !slices.Contains(rootNode.GetWildcards(), subjectType) {
 		return nil, ErrUnreachable
 	}
+
+	targetCore := core
+
+	var targetWorker worker.Terminal
+	targetWorker.Core = &targetCore
+	targetWorker.Label = targetLabel
 
 	var totalListeners int
 
@@ -338,7 +341,7 @@ StackLoop:
 			weights := make([]int, len(edges))
 
 			for i, edge := range edges {
-				weight, ok := graph.GetEdgeWeight(edge, subjectKind)
+				weight, ok := graph.GetEdgeWeight(edge, spec.SubjectType)
 				if !ok && node.GetNodeType() == weightedGraph.OperatorNode {
 					switch node.GetLabel() {
 					case weightedGraph.IntersectionOperator:
@@ -368,7 +371,7 @@ StackLoop:
 					continue
 				}
 
-				if spec.SubjectID == "*" && !slices.Contains(edge.GetWildcards(), subjectKind) {
+				if isWildcard && !slices.Contains(edge.GetWildcards(), subjectType) {
 					continue
 				}
 
@@ -376,7 +379,7 @@ StackLoop:
 					Node: edge.GetTo(),
 				}
 
-				if worker.IsCyclical(edge) {
+				if worker.IsCyclic(edge) {
 					f.Group = group
 				}
 
@@ -393,10 +396,11 @@ StackLoop:
 		}
 
 		for _, edge := range edges {
+			upstreamKey := edge.GetTo().GetUniqueLabel()
+
 			// A worker will exist for any upstream vertex having a path to the
-			// terminal vertex. If the edge is recursive, sender will be equal
-			// to w.
-			sender, ok := workers[edge.GetTo().GetUniqueLabel()]
+			// terminal vertex.
+			upstreamWorker, ok := workers[upstreamKey]
 			if !ok {
 				// A worker does not exist for the edge's target vertex, indicating
 				// that the edge does not have a path to the terminal vertex.
@@ -406,8 +410,9 @@ StackLoop:
 				w.Listen(worker.NewNoopMedium(edge))
 				continue
 			}
+
 			// The worker exists so w must listen to sender on this edge.
-			w.Listen(sender.Subscribe(edge, config.BufferCapacity))
+			w.Listen(upstreamWorker.Subscribe(edge, config.BufferCapacity))
 			totalListeners++
 		}
 	}
@@ -423,20 +428,18 @@ StackLoop:
 	// Bind the pipeline's output to the object worker.
 	output := objectWorker.Subscribe(nil, config.BufferCapacity)
 
-	// It is possible for a valid pipeline not to have a worker for the terminal
-	// vertex when only a path to a wildcard for the terminal type exists.
-	if subjectWorker, ok := workers[subjectKind]; ok && spec.SubjectID != "*" {
-		input := worker.NewStandardMedium(nil, 1)
-		subjectWorker.Listen(input)
+	// It is possible for a valid pipeline not to have a target worker
+	// when only a path to a wildcard for the terminal type exists.
+	input := worker.NewStandardMedium(nil, 1)
+	targetWorker.Listen(input)
 
-		if spec.SubjectID != "" {
-			msg := worker.Message{Value: []string{subject}}
-			if !input.Send(ctx, &msg) {
-				msg.Done()
-			}
+	if spec.SubjectID != "" {
+		msg := worker.Message{Value: []string{tuple.BuildObject(subjectType, spec.SubjectID)}}
+		if !input.Send(ctx, &msg) {
+			msg.Done()
 		}
-		input.Close()
 	}
+	input.Close()
 
 	var wg sync.WaitGroup
 

@@ -28,9 +28,9 @@ func DrainSender(ctx context.Context, sender Sender) {
 	}
 }
 
-// IsCyclical reports whether edge represents a cyclical relationship
+// IsCyclic reports whether edge represents a cyclical relationship
 // in the authorization model graph.
-func IsCyclical(edge *Edge) bool {
+func IsCyclic(edge *Edge) bool {
 	if edge == nil {
 		return false
 	}

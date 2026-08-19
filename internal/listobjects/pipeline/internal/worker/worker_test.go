@@ -35,6 +35,10 @@ func (s *mockSender) Recv(ctx context.Context) (*worker.Message, bool) {
 	}
 }
 
+func (s *mockSender) Cyclic() bool {
+	return worker.IsCyclic(s.edge)
+}
+
 func (s *mockSender) String() string { return "mock-sender" }
 
 // sendItems creates a mockSender that delivers the given values in a single

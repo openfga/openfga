@@ -16,7 +16,7 @@ func TestEdgeLabels_NilEdge(t *testing.T) {
 }
 
 func TestIsCyclical_NilEdge(t *testing.T) {
-	assert.False(t, worker.IsCyclical(nil))
+	assert.False(t, worker.IsCyclic(nil))
 }
 
 func TestDrainSender_EmptySender(t *testing.T) {

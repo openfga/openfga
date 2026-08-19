@@ -23,6 +23,7 @@ func FloorPowerOfTwo(i uint) int {
 // to receive messages produced by upstream workers.
 type Sender interface {
 	Key() *Edge
+	Cyclic() bool
 	Recv(context.Context) (*Message, bool)
 	fmt.Stringer
 }
@@ -59,6 +60,20 @@ func NewCyclicalMedium(edge *Edge, capacity int) Medium {
 	return NewQueueMedium(edge, capacity)
 }
 
+type AcyclicSender struct {
+	Sender
+}
+
+var _ Sender = (*AcyclicSender)(nil)
+
+func ForceAcyclic(sender Sender) Sender {
+	return &AcyclicSender{sender}
+}
+
+func (m *AcyclicSender) Cyclic() bool {
+	return false
+}
+
 // NoopMedium is a [Medium] that discards all sends and never produces
 // values. It is used to satisfy listener slots for edges that are
 // unreachable in the current query.
@@ -67,9 +82,15 @@ type NoopMedium struct {
 	label string
 }
 
+var _ Medium = (*NoopMedium)(nil)
+
 // String returns a label of the form "source->destination".
 func (m *NoopMedium) String() string {
 	return m.label
+}
+
+func (m *NoopMedium) Cyclic() bool {
+	return IsCyclic(m.key)
 }
 
 // NewNoopMedium returns a NoopMedium for the given edge.
@@ -114,9 +135,15 @@ type QueueMedium struct {
 	closed bool
 }
 
+var _ Medium = (*QueueMedium)(nil)
+
 // String returns a label of the form "source->destination".
 func (m *QueueMedium) String() string {
 	return m.label
+}
+
+func (m *QueueMedium) Cyclic() bool {
+	return IsCyclic(m.key)
 }
 
 // NewQueueMedium returns a QueueMedium for the given edge. The capacity
@@ -176,9 +203,15 @@ type AccumulatorMedium struct {
 	closed bool
 }
 
+var _ Medium = (*AccumulatorMedium)(nil)
+
 // String returns a label of the form "source->destination".
 func (m *AccumulatorMedium) String() string {
 	return m.label
+}
+
+func (m *AccumulatorMedium) Cyclic() bool {
+	return IsCyclic(m.key)
 }
 
 // NewAccumulatorMedium returns an [AccumulatorMedium] for the given edge.
@@ -232,6 +265,8 @@ type ChannelMedium struct {
 	closed atomic.Bool
 }
 
+var _ Medium = (*ChannelMedium)(nil)
+
 // NewChannelMedium returns a [ChannelMedium] for the given edge with the
 // specified buffer capacity.
 func NewChannelMedium(edge *Edge, capacity int) *ChannelMedium {
@@ -246,6 +281,10 @@ func NewChannelMedium(edge *Edge, capacity int) *ChannelMedium {
 // String returns a label of the form "source->destination".
 func (m *ChannelMedium) String() string {
 	return m.label
+}
+
+func (m *ChannelMedium) Cyclic() bool {
+	return IsCyclic(m.key)
 }
 
 // Key returns the edge associated with this medium.

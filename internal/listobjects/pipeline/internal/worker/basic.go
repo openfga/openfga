@@ -129,7 +129,7 @@ func (w *Basic) ProcessMessage(ctx context.Context, index int, msg *Message) err
 }
 
 // Execute processes all registered senders concurrently. Standard senders run
-// in parallel goroutines. Cyclical senders run in their own goroutines and
+// in parallel goroutines. Cyclic senders run in their own goroutines and
 // are terminated once all standard senders have been exhausted and the
 // in-flight message count across the cycle group reaches zero.
 //
@@ -164,10 +164,8 @@ func (w *Basic) Execute(ctx context.Context) {
 	var wgRecursive sync.WaitGroup
 
 	for index, sender := range w.senders {
-		edge := sender.Key()
-		cyclical := IsCyclical(edge)
 
-		if cyclical {
+		if sender.Cyclic() {
 			wgRecursive.Go(func() {
 				var err error
 				defer w.error(&err)

@@ -223,7 +223,7 @@ func (c *Core) ProcessSender(ctx context.Context, index int, processor MessagePr
 	edge := sender.Key()
 	src, dst := EdgeLabels(edge)
 
-	cyclical := IsCyclical(edge)
+	cyclical := IsCyclic(edge)
 
 	stats.Cyclical = cyclical
 	stats.Source = src
@@ -301,7 +301,7 @@ MessageLoop:
 var DefaultMediumFunc = func(edge *Edge, capacity int) Medium {
 	var medium Medium
 
-	if IsCyclical(edge) {
+	if IsCyclic(edge) {
 		medium = NewCyclicalMedium(edge, capacity)
 	} else {
 		medium = NewStandardMedium(edge, capacity)

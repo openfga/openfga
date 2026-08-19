@@ -9,18 +9,19 @@ import (
 	"github.com/openfga/openfga/internal/listobjects/pipeline/internal/worker"
 )
 
-// directEdgeHandler queries objects via the edge's relation definition.
-type directEdgeHandler struct {
-	reader ObjectStore
+// edgeInterpreter dispatches to the appropriate handler based on edge type.
+type edgeInterpreter struct {
+	store ObjectStore
+	graph *Graph
 }
 
-// Handle queries storage for objects related to the given items through
-// the edge's relation definition.
-func (h *directEdgeHandler) Handle(
-	ctx context.Context,
-	edge *Edge,
-	objects []string,
-) Receiver[Item] {
+func (e *edgeInterpreter) identity(objects []string) Receiver[Item] {
+	return worker.MapReceiver(worker.NewSliceReceiver(objects), func(s string) Item {
+		return Item{Value: s}
+	})
+}
+
+func (e *edgeInterpreter) direct(ctx context.Context, edge *Edge, objects []string) Receiver[Item] {
 	nodeType, nodeRelation, _ := strings.Cut(edge.GetRelationDefinition(), "#")
 
 	_, userRelation, exists := strings.Cut(edge.GetTo().GetLabel(), "#")
@@ -43,7 +44,7 @@ func (h *directEdgeHandler) Handle(
 			Users:      objects,
 			Conditions: edge.GetConditions(),
 		}
-		results = h.reader.Read(ctx, input)
+		results = e.store.Read(ctx, input)
 	} else {
 		results = emptyReceiver
 	}
@@ -51,30 +52,18 @@ func (h *directEdgeHandler) Handle(
 	return results
 }
 
-// ttuEdgeHandler queries objects via the edge's tupleset relation.
-type ttuEdgeHandler struct {
-	reader ObjectStore
-	graph  *Graph
-}
-
-// Handle resolves the tupleset relation for the edge, then queries storage
-// for objects related to the given items through the tupleset's target type.
-func (h *ttuEdgeHandler) Handle(
-	ctx context.Context,
-	edge *Edge,
-	objects []string,
-) Receiver[Item] {
+func (e *edgeInterpreter) ttu(ctx context.Context, edge *Edge, objects []string) Receiver[Item] {
 	tuplesetType, tuplesetRelation, ok := strings.Cut(edge.GetTuplesetRelation(), "#")
 	if !ok {
 		return worker.NewValueReceiver(Item{Err: errors.New("invalid tupleset relation")})
 	}
 
-	tuplesetNode, ok := h.graph.GetNodeByID(edge.GetTuplesetRelation())
+	tuplesetNode, ok := e.graph.GetNodeByID(edge.GetTuplesetRelation())
 	if !ok {
 		return worker.NewValueReceiver(Item{Err: errors.New("tupleset node not in graph")})
 	}
 
-	edges, ok := h.graph.GetEdgesFromNode(tuplesetNode)
+	edges, ok := e.graph.GetEdgesFromNode(tuplesetNode)
 	if !ok {
 		return worker.NewValueReceiver(Item{Err: errors.New("no edges found for tupleset node")})
 	}
@@ -103,7 +92,7 @@ func (h *ttuEdgeHandler) Handle(
 			Users:      objects,
 			Conditions: targetEdge.GetConditions(),
 		}
-		results = h.reader.Read(ctx, input)
+		results = e.store.Read(ctx, input)
 	} else {
 		results = emptyReceiver
 	}
@@ -111,29 +100,6 @@ func (h *ttuEdgeHandler) Handle(
 	return results
 }
 
-// identityEdgeHandler passes items through without querying storage.
-type identityEdgeHandler struct{}
-
-// Handle returns each input string as a successful Item without querying storage.
-func (h *identityEdgeHandler) Handle(
-	_ context.Context,
-	_ *Edge,
-	items []string,
-) Receiver[Item] {
-	return worker.MapReceiver(worker.NewSliceReceiver(items), func(s string) Item {
-		return Item{Value: s}
-	})
-}
-
-// edgeInterpreter dispatches to the appropriate handler based on edge type.
-type edgeInterpreter struct {
-	direct   *directEdgeHandler
-	ttu      *ttuEdgeHandler
-	identity *identityEdgeHandler
-}
-
-// Interpret dispatches to the handler matching edge's type. A nil edge
-// is treated as an identity pass-through.
 func (e *edgeInterpreter) Interpret(
 	ctx context.Context,
 	edge *Edge,
@@ -143,15 +109,15 @@ func (e *edgeInterpreter) Interpret(
 		return emptyReceiver
 	}
 	if edge == nil {
-		return e.identity.Handle(ctx, edge, items)
+		return e.identity(items)
 	}
 	switch edge.GetEdgeType() {
 	case edgeTypeDirect:
-		return e.direct.Handle(ctx, edge, items)
+		return e.direct(ctx, edge, items)
 	case edgeTypeTTU:
-		return e.ttu.Handle(ctx, edge, items)
+		return e.ttu(ctx, edge, items)
 	case edgeTypeComputed, edgeTypeRewrite, edgeTypeDirectLogical, edgeTypeTTULogical:
-		return e.identity.Handle(ctx, edge, items)
+		return e.identity(items)
 	default:
 		return worker.NewValueReceiver(Item{Err: fmt.Errorf(
 			"no handler for edge type: %v",

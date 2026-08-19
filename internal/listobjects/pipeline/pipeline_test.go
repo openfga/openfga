@@ -621,6 +621,51 @@ func evaluate(t *testing.T, tc testcase, p *pipeline.Pipeline) {
 
 var cases = []testcase{
 	{
+		name: "self_referential_userset_transitive",
+		model: `
+		model
+			schema 1.1
+
+		type user
+
+		type org
+			relations
+				define viewer: [user, org#viewer]
+
+		type document
+			relations
+				define parent: [org]
+				define viewer: viewer from parent
+		`,
+		tuples: []string{
+			"document:d1#parent@org:d1",
+		},
+		objectType:  "document",
+		relation:    "viewer",
+		subjectType: "org#viewer",
+		subjectID:   "d1",
+		expected:    []string{},
+	},
+	{
+		name: "self_reporting",
+		model: `
+		model
+			schema 1.1
+
+		type user
+
+		type document
+			relations
+				define viewer: [user, document#viewer]		
+		`,
+		tuples:      []string{},
+		objectType:  "document",
+		relation:    "viewer",
+		subjectType: "document#viewer",
+		subjectID:   "1",
+		expected:    []string{},
+	},
+	{
 		name: "policy",
 		model: `
 		model
@@ -822,7 +867,7 @@ var cases = []testcase{
 			"group:B#member@group:A#member",
 			"document:3#viewer@group:X#member",
 			"document:4#parent@folder:4",
-			"folder:4#viewer@group:X#member",
+			"folder:4#viewer@group:A#member",
 			"document:5#viewer@user:A",
 			"document:6#parent@folder:5",
 			"folder:5#viewer@user:A",
@@ -831,7 +876,7 @@ var cases = []testcase{
 		relation:    "viewer",
 		subjectType: "group#member",
 		subjectID:   "A",
-		expected:    []string{"document:1", "document:2"},
+		expected:    []string{"document:1", "document:2", "document:4"},
 	},
 	{
 		name: "wildcard_as_subject",
