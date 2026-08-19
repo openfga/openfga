@@ -126,7 +126,7 @@ func TestWriteWithSimpleProtocol(t *testing.T) {
 
 	// Build the pool config the same way New() does, then override the query
 	// execution mode to SimpleProtocol to mimic PgBouncer transaction-pooling mode.
-	poolCfg, err := parseConfig(uri, false, cfg)
+	poolCfg, err := parseConfig(uri, "", "", cfg)
 	require.NoError(t, err)
 	poolCfg.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeSimpleProtocol
 
@@ -191,6 +191,31 @@ func TestPostgresDatastoreStatusWithSecondaryDB(t *testing.T) {
 	cfg.ExportMetrics = true
 
 	ds, err := New(primaryURI, cfg)
+	require.NoError(t, err)
+	defer ds.Close()
+
+	status, err := ds.IsReady(context.Background())
+	require.NoError(t, err)
+	require.True(t, status.IsReady)
+	require.Equal(t, "primary: ready, secondary: ready", status.Message)
+}
+
+// Regression test for #3256. Both URIs are supplied WITHOUT credentials, and the
+// credentials are provided only through the config, exactly as they are when set
+// via OPENFGA_DATASTORE_* / OPENFGA_DATASTORE_SECONDARY_* environment variables.
+// Before the fix the secondary pool was built with the primary's credentials.
+func TestPostgresSecondaryUsesSecondaryCredentials(t *testing.T) {
+	primaryDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
+	require.NoError(t, primaryDatastore.CreateSecondary(t))
+
+	cfg := sqlcommon.NewConfig()
+	cfg.Username = primaryDatastore.GetUsername()
+	cfg.Password = primaryDatastore.GetPassword()
+	cfg.SecondaryURI = primaryDatastore.GetSecondaryConnectionURI(false)
+	cfg.SecondaryUsername = primaryDatastore.GetUsername()
+	cfg.SecondaryPassword = primaryDatastore.GetPassword()
+
+	ds, err := New(primaryDatastore.GetConnectionURI(false), cfg)
 	require.NoError(t, err)
 	defer ds.Close()
 
@@ -358,7 +383,7 @@ func TestParseConfig(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			parsed, err := parseConfig(tt.uri, tt.override, &tt.cfg)
+			parsed, err := parseConfig(tt.uri, tt.cfg.Username, tt.cfg.Password, &tt.cfg)
 			if tt.expectedErr {
 				require.Error(t, err)
 			} else {
@@ -1858,4 +1883,96 @@ func TestExecuteInsertChanges(t *testing.T) {
 		err := executeInsertChanges(context.Background(), mockPgxExec, writeItems)
 		require.ErrorContains(t, err, "sql error: error")
 	})
+}
+
+// Regression tests for #3256: the secondary datastore connected with the primary
+// credentials, because parseConfig always read cfg.Username / cfg.Password
+// regardless of which datastore it was being asked to build.
+
+// The secondary pool must use the secondary credentials.
+func TestParseConfigAppliesSecondaryCredentials(t *testing.T) {
+	cfg := &sqlcommon.Config{
+		Username:          "primary_user",
+		Password:          "primary_password",
+		SecondaryUsername: "secondary_user",
+		SecondaryPassword: "secondary_password",
+		SecondaryURI:      "postgres://replica:5432/defaultdb",
+	}
+
+	c, err := parseConfig(cfg.SecondaryURI, cfg.SecondaryUsername, cfg.SecondaryPassword, cfg)
+	if err != nil {
+		t.Fatalf("parseConfig: %v", err)
+	}
+
+	if got := c.ConnConfig.User; got != cfg.SecondaryUsername {
+		t.Errorf("secondary user = %q, want %q", got, cfg.SecondaryUsername)
+	}
+	if got := c.ConnConfig.Password; got != cfg.SecondaryPassword {
+		t.Errorf("secondary password = %q, want %q", got, cfg.SecondaryPassword)
+	}
+}
+
+// The primary pool must still use the primary credentials.
+func TestParseConfigAppliesPrimaryCredentials(t *testing.T) {
+	cfg := &sqlcommon.Config{
+		Username:          "primary_user",
+		Password:          "primary_password",
+		SecondaryUsername: "secondary_user",
+		SecondaryPassword: "secondary_password",
+	}
+
+	c, err := parseConfig("postgres://primary:5432/defaultdb", cfg.Username, cfg.Password, cfg)
+	if err != nil {
+		t.Fatalf("parseConfig: %v", err)
+	}
+
+	if got := c.ConnConfig.User; got != cfg.Username {
+		t.Errorf("primary user = %q, want %q", got, cfg.Username)
+	}
+	if got := c.ConnConfig.Password; got != cfg.Password {
+		t.Errorf("primary password = %q, want %q", got, cfg.Password)
+	}
+}
+
+// With no explicit secondary credentials, the ones embedded in the secondary URI
+// must be kept rather than replaced by the primary's.
+func TestParseConfigSecondaryFallsBackToURICredentials(t *testing.T) {
+	cfg := &sqlcommon.Config{
+		Username:     "primary_user",
+		Password:     "primary_password",
+		SecondaryURI: "postgres://uri_user:uri_pass@replica:5432/defaultdb",
+	}
+
+	c, err := parseConfig(cfg.SecondaryURI, cfg.SecondaryUsername, cfg.SecondaryPassword, cfg)
+	if err != nil {
+		t.Fatalf("parseConfig: %v", err)
+	}
+
+	if got := c.ConnConfig.User; got != "uri_user" {
+		t.Errorf("secondary user = %q, want uri_user", got)
+	}
+	if got := c.ConnConfig.Password; got != "uri_pass" {
+		t.Errorf("secondary password = %q, want uri_pass", got)
+	}
+}
+
+// When only a password is configured, the username must still come from the URI
+// rather than being dropped.
+func TestParseConfigPasswordOnlyKeepsURIUsername(t *testing.T) {
+	cfg := &sqlcommon.Config{
+		SecondaryURI:      "postgres://uri_user:uri_pass@replica:5432/defaultdb",
+		SecondaryPassword: "explicit_pass",
+	}
+
+	c, err := parseConfig(cfg.SecondaryURI, cfg.SecondaryUsername, cfg.SecondaryPassword, cfg)
+	if err != nil {
+		t.Fatalf("parseConfig: %v", err)
+	}
+
+	if got := c.ConnConfig.User; got != "uri_user" {
+		t.Errorf("user = %q, want uri_user (from URI)", got)
+	}
+	if got := c.ConnConfig.Password; got != "explicit_pass" {
+		t.Errorf("password = %q, want explicit_pass", got)
+	}
 }
