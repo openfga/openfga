@@ -106,7 +106,7 @@ func (w *DifferenceDirectSubtract) Execute(ctx context.Context) {
 	defer w.Cleanup()
 
 	if len(w.senders) != 1 {
-		return
+		panic("difference direct subtract worker requires a single sender")
 	}
 
 	var err error
