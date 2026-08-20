@@ -3,6 +3,7 @@ package pipeline
 import (
 	"context"
 	"errors"
+	"slices"
 	"sync"
 
 	"go.opentelemetry.io/otel"
@@ -80,9 +81,17 @@ type ObjectQuery struct {
 	Conditions []string
 }
 
+type ObjectGet struct {
+	Object     string
+	Relation   string
+	User       string
+	Conditions []string
+}
+
 // ObjectStore reads relationship tuples from storage.
 type ObjectStore interface {
 	Read(context.Context, ObjectQuery) Receiver[Item]
+	Get(context.Context, ObjectGet) *Item
 }
 
 // Spec identifies the target of a reverse expansion query.
@@ -133,19 +142,9 @@ type Pipeline struct {
 // createInterpreter returns an Interpreter that dispatches to the
 // appropriate edge handler (direct, TTU, or identity) based on edge type.
 func createInterpreter(graph *Graph, store ObjectStore) worker.Interpreter {
-	directEdgeHandler := directEdgeHandler{store}
-
-	ttuEdgeHandler := ttuEdgeHandler{
-		reader: store,
-		graph:  graph,
-	}
-
-	var identityEdgeHandler identityEdgeHandler
-
 	return &edgeInterpreter{
-		direct:   &directEdgeHandler,
-		ttu:      &ttuEdgeHandler,
-		identity: &identityEdgeHandler,
+		store: store,
+		graph: graph,
 	}
 }
 
@@ -153,7 +152,13 @@ func createInterpreter(graph *Graph, store ObjectStore) worker.Interpreter {
 // with the given core and cycle group. The core is passed by value so
 // that each worker gets independent listener/sender slices while sharing
 // the pool, error channel, and interpreter via pointers.
-func createWorker(node *Node, core worker.Core, group *worker.CycleGroup) worker.Worker {
+func createWorker(
+	spec Spec,
+	graph *Graph,
+	node *Node,
+	core worker.Core,
+	group *worker.CycleGroup,
+) worker.Worker {
 	var w worker.Worker
 	core.Label = node.GetUniqueLabel()
 
@@ -192,6 +197,20 @@ func createWorker(node *Node, core worker.Core, group *worker.CycleGroup) worker
 			intersection.Core = &core
 			w = &intersection
 		case weightedGraph.ExclusionOperator:
+			edges, _ := graph.GetEdgesFromNode(node)
+			subtractEdge := edges[1]
+			directEdges := FlattenTerminalEdges(graph, subtractEdge, spec.SubjectType)
+
+			if len(directEdges) > 0 {
+				var difference worker.DifferenceDirectSubtract
+				difference.Core = &core
+				difference.Subtracts = directEdges
+				difference.SubjectType = spec.SubjectType
+				difference.SubjectIdentifier = spec.SubjectID
+				w = &difference
+				break
+			}
+
 			var difference worker.Difference
 			difference.Core = &core
 			w = &difference
@@ -333,7 +352,7 @@ func (b *Builder) Build(
 			if current.group == nil {
 				current.group = worker.NewCycleGroup()
 			}
-			w = createWorker(current.node, core, current.group)
+			w = createWorker(spec, graph, current.node, core, current.group)
 			workers[label] = w
 		}
 
@@ -349,11 +368,18 @@ func (b *Builder) Build(
 			continue
 		}
 
-		for i := len(edges) - 1; i >= 0; i-- {
+		_, ok = w.(*worker.DifferenceDirectSubtract)
+		if ok {
+			// remove the subtract edge; the [worker.DifferenceDirectSubtract]
+			// worker handles the subtract edge internally.
+			edges = edges[:1]
+		}
+
+		for _, edge := range slices.Backward(edges) {
 			var newStack stacker
-			newStack.node = edges[i].GetTo()
-			newStack.edge = edges[i]
-			if worker.IsCyclical(edges[i]) {
+			newStack.node = edge.GetTo()
+			newStack.edge = edge
+			if worker.IsCyclical(edge) {
 				newStack.group = current.group
 			}
 			newStack.next = stack

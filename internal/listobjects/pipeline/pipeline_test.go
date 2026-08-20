@@ -64,6 +64,10 @@ func NewErrorReader(err error) *ErrorReader {
 	return &ErrorReader{err: err}
 }
 
+func (e *ErrorReader) Get(_ context.Context, _ pipeline.ObjectGet) *pipeline.Item {
+	return &pipeline.Item{Err: e.err}
+}
+
 func (e *ErrorReader) Read(_ context.Context, _ pipeline.ObjectQuery) pipeline.Receiver[pipeline.Item] {
 	return worker.NewValueReceiver(pipeline.Item{Err: e.err})
 }
@@ -672,6 +676,57 @@ var cases = []testcase{
 		subjectType: "user",
 		subjectID:   "bob",
 		expected:    []string{"resource:document_1", "resource:document_2"},
+	},
+	{
+		name: "difference with direct subtract",
+		model: `
+		model
+			schema 1.1
+
+		type user
+
+		type document
+			relations
+				define blocked: [user, user:*]
+				define rel_a: [user] or blocked		
+				define rel_b: [user] or rel_a
+				define rel_c: [user] or rel_b
+				define rel_x: [user, user:*] or rel_y
+				define rel_y: [user] or rel_z
+				define rel_z: [user, user:*] or rel_c
+				define viewer: [user] but not rel_x
+		`,
+		tuples: []string{
+			"document:0#viewer@user:bob",
+			"document:1#viewer@user:bob",
+			"document:2#viewer@user:bob",
+			"document:3#viewer@user:bob",
+			"document:4#viewer@user:bob",
+			"document:5#viewer@user:bob",
+			"document:6#viewer@user:bob",
+			"document:7#viewer@user:bob",
+			"document:8#viewer@user:bob",
+			"document:9#viewer@user:bob",
+			"document:0#rel_x@user:*",
+			"document:1#rel_x@user:bob",
+			"document:2#rel_y@user:bob",
+			"document:3#rel_x@user:bob",
+			"document:4#rel_x@user:*",
+			"document:5#blocked@user:bob",
+			"document:6#blocked@user:*",
+			"document:7#blocked@user:bobette",
+			"document:8#rel_x@user:bobette",
+			"document:9#rel_a@user:bobette",
+		},
+		objectType:  "document",
+		relation:    "viewer",
+		subjectType: "user",
+		subjectID:   "bob",
+		expected: []string{
+			"document:7",
+			"document:8",
+			"document:9",
+		},
 	},
 	{
 		name: "recursive_ttu_intersection",

@@ -20,12 +20,18 @@ import (
 
 var tracer = otel.Tracer("openfga/internal/listobjects/pipeline/internal/worker")
 
+var (
+	ErrUnexpectedObjectType error = errors.New("unexpected object type encountered in worker")
+	ErrUnexpectedUserType   error = errors.New("unexpected user type encountered in worker")
+)
+
 // Edge is an alias for the weighted authorization model edge type.
 type Edge = weightedGraph.WeightedAuthorizationModelEdge
 
 // Interpreter transforms raw input items by querying storage through
 // an edge's relation definition.
 type Interpreter interface {
+	Get(ctx context.Context, object, relation, user string) *Item
 	Interpret(ctx context.Context, edge *Edge, items []string) Receiver[Item]
 }
 
