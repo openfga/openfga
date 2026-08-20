@@ -198,19 +198,31 @@ func createWorker(
 			w = &intersection
 		case weightedGraph.ExclusionOperator:
 			edges, _ := graph.GetEdgesFromNode(node)
-			subtractEdge := edges[1]
-			directEdges := FlattenTerminalEdges(graph, subtractEdge, spec.SubjectType)
 
-			if len(directEdges) > 0 {
+			// fetch the subtract edge from the difference set operation.
+			// it is an invariant of the weighted graph that an exclusion
+			// operator node have two outgoing edges.
+			subtractEdge := edges[1]
+
+			// wildcardEdges will only contain values when the edge traverses
+			// only to wildcard terminal nodes of the target type. at least one
+			// edge must be present in order to apply an optimization.
+			wildcardEdges := FlattenWildcardEdges(graph, subtractEdge, spec.SubjectType)
+
+			if len(wildcardEdges) > 0 {
+				// directly related wildcard nodes exist in the path to the
+				// target. an optimization can be applied.
 				var difference worker.DifferenceDirectSubtract
 				difference.Core = &core
-				difference.Subtracts = directEdges
+				difference.Subtracts = wildcardEdges
 				difference.SubjectType = spec.SubjectType
 				difference.SubjectIdentifier = spec.SubjectID
 				w = &difference
 				break
 			}
 
+			// this exclusion node does not qualify for an optimization;
+			// construct the generic difference worker.
 			var difference worker.Difference
 			difference.Core = &core
 			w = &difference

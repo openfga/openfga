@@ -6,79 +6,80 @@ import (
 	"github.com/openfga/language/pkg/go/graph"
 )
 
-func FlattenTerminalEdges(
+func FlattenWildcardEdges(
 	g *graph.WeightedAuthorizationModelGraph,
 	edge *graph.WeightedAuthorizationModelEdge,
 	target string,
 ) []*graph.WeightedAuthorizationModelEdge {
 	var out []*graph.WeightedAuthorizationModelEdge
 
-	weight, _ := edge.GetWeight(target)
-	if weight != 1 {
-		return nil
-	}
-
-	var stack []*graph.WeightedAuthorizationModelEdge
-
-	if canFlattenEdge(edge) {
-		edges, _ := g.GetEdgesFromNode(edge.GetTo())
-
-		stack = make([]*graph.WeightedAuthorizationModelEdge, 0, len(edges))
-
-		for _, e := range slices.Backward(edges) {
-			stack = append(stack, e)
-		}
-	}
+	stack := []*graph.WeightedAuthorizationModelEdge{edge}
 
 	for len(stack) > 0 {
 		ndx := len(stack) - 1
 		e := stack[ndx]
 		stack = stack[:ndx]
 
-		if _, ok := e.GetWeight(target); !ok {
-			continue
+		// all edges must have a weight of one, or this optimization
+		// cannot be applied.
+		weight, _ := edge.GetWeight(target)
+		if weight != 1 {
+			return nil
 		}
 
-		toNode := e.GetTo()
+		if !slices.Contains(edge.GetWildcards(), target) {
+			return nil
+		}
 
-		if e.GetEdgeType() == graph.DirectEdge && toNode != nil {
-			switch toNode.GetNodeType() {
+		node := e.GetTo()
+
+		var canFlatten bool
+
+		switch e.GetEdgeType() {
+		case graph.ComputedEdge, graph.DirectLogicalEdge:
+			canFlatten = true
+		case graph.RewriteEdge:
+			switch node.GetNodeType() {
+			case graph.SpecificTypeAndRelation:
+				canFlatten = true
+			case graph.OperatorNode:
+				if node.GetLabel() == graph.UnionOperator {
+					canFlatten = true
+				}
+			}
+		case graph.DirectEdge:
+			switch node.GetNodeType() {
 			case graph.SpecificTypeWildcard:
+				// this optimization specifically gathers all direct wildcards,
+				// since we found one, append it to the output.
 				out = append(out, e)
+
+				// nothing more to see here; move onto next edge.
 				continue
 			case graph.SpecificType:
+				// the path includes non-wildcard terminal nodes; this optimization
+				// cannot be applied.
 				return nil
 			}
 		}
 
-		if !canFlattenEdge(e) {
+		if !canFlatten {
+			// if the edge cannot be flattened, and it is not a direct edge
+			// then the optimization cannot be applied.
 			return nil
 		}
 
-		edges, _ := g.GetEdgesFromNode(toNode)
+		// continue flattening this branch.
+		edges, _ := g.GetEdgesFromNode(node)
 
+		// avoid unnecessary allocations
 		stack = slices.Grow(stack, len(stack)+len(edges))
 
+		// append the edges in reverse order to preserve order during DFS
+		// traversal. original sort order of the edges array is preserved.
 		for _, e := range slices.Backward(edges) {
 			stack = append(stack, e)
 		}
 	}
 	return out
-}
-
-func canFlattenEdge(edge *graph.WeightedAuthorizationModelEdge) bool {
-	switch edge.GetEdgeType() {
-	case graph.ComputedEdge, graph.DirectLogicalEdge:
-		return true
-	case graph.RewriteEdge:
-		switch edge.GetTo().GetNodeType() {
-		case graph.SpecificTypeAndRelation:
-			return true
-		case graph.OperatorNode:
-			if edge.GetTo().GetLabel() == graph.UnionOperator {
-				return true
-			}
-		}
-	}
-	return false
 }
