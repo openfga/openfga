@@ -9,6 +9,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ## [Unreleased]
 ### Fixed
 - Scope context-cancelation stripping to query execution only. No longer can deadlock on saturated connection pool. [#3255](https://github.com/openfga/openfga/pull/3255)
+- Updated v2 resolution diagnostic logging in `Check` and `ListUsers` to gate on InfoLevel log level. Removed diagnostic logging from `Expand` whose resolution will not change. [#3254](https://github.com/openfga/openfga/pull/3254)
 
 ## [1.18.3] - 2026-08-05
 ### Fixed
