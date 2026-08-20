@@ -163,20 +163,22 @@ func (s *Server) ListUsers(
 	// request shape. Shape predicates may over-report; for the response-
 	// conditional reasons we additionally confirm the v1-only user actually
 	// came back. See v2breaking.ListUsersReason / ListUsersResponseConfirmsReason.
-	for _, filter := range req.GetUserFilters() {
-		reason := v2breaking.ListUsersReason(typesys, req.GetObject(), req.GetRelation(), filter)
-		if reason == "" {
-			continue
+	if s.logger.Level() <= zap.InfoLevel {
+		for _, filter := range req.GetUserFilters() {
+			reason := v2breaking.ListUsersReason(typesys, req.GetObject(), req.GetRelation(), filter)
+			if reason == "" {
+				continue
+			}
+			if !v2breaking.ListUsersResponseConfirmsReason(reason, typesys, req.GetObject(), req.GetRelation(), filter, resp.GetUsers()) {
+				continue
+			}
+			s.logger.InfoWithContext(ctx, "potential v2 ListUsers resolution breaking change",
+				zap.String("store_id", storeID),
+				zap.String("model_id", req.GetAuthorizationModelId()),
+				zap.String("request_id", requestid.GetRequestIDFromContext(ctx)),
+				zap.String("reason", reason),
+			)
 		}
-		if !v2breaking.ListUsersResponseConfirmsReason(reason, typesys, req.GetObject(), req.GetRelation(), filter, resp.GetUsers()) {
-			continue
-		}
-		s.logger.WarnWithContext(ctx, "potential v2 ListUsers resolution breaking change",
-			zap.String("store_id", storeID),
-			zap.String("model_id", req.GetAuthorizationModelId()),
-			zap.String("request_id", requestid.GetRequestIDFromContext(ctx)),
-			zap.String("reason", reason),
-		)
 	}
 
 	return &openfgav1.ListUsersResponse{
