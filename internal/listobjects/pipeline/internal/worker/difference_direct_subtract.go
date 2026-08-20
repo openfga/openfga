@@ -18,7 +18,7 @@ type DifferenceDirectSubtract struct {
 }
 
 // ProcessMessage interprets the message values through the sender's edge and
-// adds the results to the adder corresponding to the sender index.
+// chunks the results to the worker's listeners.
 func (w *DifferenceDirectSubtract) ProcessMessage(ctx context.Context, index int, msg *Message) error {
 	sender := w.senders[index]
 	edge := sender.Key()
@@ -94,9 +94,6 @@ SubtractLoop:
 	return err
 }
 
-// Execute processes the base and subtract senders concurrently. Once both
-// complete, it broadcasts the base items that are not present in the subtract
-// set. If the base sender produces no results, the context is cancelled early.
 func (w *DifferenceDirectSubtract) Execute(ctx context.Context) {
 	ctx, span := tracer.Start(ctx, "DifferenceDirectSubtract.Execute", trace.WithAttributes(
 		attribute.String("worker.label", w.String()),
