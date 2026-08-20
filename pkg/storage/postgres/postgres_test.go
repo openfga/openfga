@@ -200,20 +200,47 @@ func TestPostgresDatastoreStatusWithSecondaryDB(t *testing.T) {
 	require.Equal(t, "primary: ready, secondary: ready", status.Message)
 }
 
-// Regression test for #3256. Both URIs are supplied WITHOUT credentials, and the
-// credentials are provided only through the config, exactly as they are when set
-// via OPENFGA_DATASTORE_* / OPENFGA_DATASTORE_SECONDARY_* environment variables.
-// Before the fix the secondary pool was built with the primary's credentials.
+// Regression test for #3256. Both URIs are supplied WITHOUT credentials, so the
+// credentials can only come from the config, exactly as they do when set via
+// OPENFGA_DATASTORE_* / OPENFGA_DATASTORE_SECONDARY_* environment variables.
+//
+// The secondary is given a DISTINCT role. A physical replica shares the primary's
+// roles, so the role is created on the primary before the base backup is taken and
+// then replicates to the standby. That is what makes this test fail before the fix:
+// the secondary pool would connect as the primary user, which is not what the
+// secondary credentials name.
 func TestPostgresSecondaryUsesSecondaryCredentials(t *testing.T) {
 	primaryDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
+
+	const (
+		secondaryUser     = "openfga_secondary"
+		secondaryPassword = "secondary_password"
+	)
+
+	// Create the secondary role on the primary BEFORE the replica is cloned, so it
+	// is carried over by the base backup. It needs read access to the same tables
+	// the readiness check touches.
+	primaryURI := primaryDatastore.GetConnectionURI(true)
+	adminPool, err := pgxpool.New(context.Background(), primaryURI)
+	require.NoError(t, err)
+	for _, stmt := range []string{
+		fmt.Sprintf("CREATE ROLE %s LOGIN PASSWORD '%s'", secondaryUser, secondaryPassword),
+		fmt.Sprintf("GRANT USAGE ON SCHEMA public TO %s", secondaryUser),
+		fmt.Sprintf("GRANT SELECT ON ALL TABLES IN SCHEMA public TO %s", secondaryUser),
+	} {
+		_, err = adminPool.Exec(context.Background(), stmt)
+		require.NoError(t, err, "stmt: %s", stmt)
+	}
+	adminPool.Close()
+
 	require.NoError(t, primaryDatastore.CreateSecondary(t))
 
 	cfg := sqlcommon.NewConfig()
 	cfg.Username = primaryDatastore.GetUsername()
 	cfg.Password = primaryDatastore.GetPassword()
 	cfg.SecondaryURI = primaryDatastore.GetSecondaryConnectionURI(false)
-	cfg.SecondaryUsername = primaryDatastore.GetUsername()
-	cfg.SecondaryPassword = primaryDatastore.GetPassword()
+	cfg.SecondaryUsername = secondaryUser
+	cfg.SecondaryPassword = secondaryPassword
 
 	ds, err := New(primaryDatastore.GetConnectionURI(false), cfg)
 	require.NoError(t, err)
@@ -223,6 +250,14 @@ func TestPostgresSecondaryUsesSecondaryCredentials(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, status.IsReady)
 	require.Equal(t, "primary: ready, secondary: ready", status.Message)
+
+	// Confirm the secondary really connected as the secondary role, rather than
+	// merely being reachable.
+	var connectedAs string
+	require.NoError(t, ds.secondaryDB.QueryRow(
+		context.Background(), "SELECT current_user").Scan(&connectedAs))
+	require.Equal(t, secondaryUser, connectedAs,
+		"secondary pool must authenticate as the configured secondary user")
 }
 
 func TestPostgresDatastoreAfterCloseIsNotReady(t *testing.T) {
