@@ -80,12 +80,16 @@ SubtractLoop:
 
 		// base object is not in the subtract set
 		objects = append(objects, value)
+		if len(objects) == w.ChunkSize {
+			w.send(ctx, objects)
+			clear(objects)
+			objects = objects[:0]
+		}
 	}
 
 	if len(objects) > 0 {
-		receiver := NewSliceReceiver(objects)
-		defer receiver.Close()
-		w.Broadcast(ctx, receiver)
+		w.send(ctx, objects)
+		clear(objects)
 	}
 	return err
 }
