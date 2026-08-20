@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Try to keep listed changes to a concise bulleted list of simple explanations of changes. Aim for the amount of information needed so that readers can understand where they would look in the codebase to investigate the changes' implementation, or where they would look in the documentation to understand how to make use of the change in practice - better yet, link directly to the docs and provide detailed information there. Only elaborate if doing so is required to avoid breaking changes or experimental features from ruining someone's day.
 
 ## [Unreleased]
+### Fixed
+- Scope context-cancelation stripping to query execution only. No longer can deadlock on saturated connection pool. [#3255](https://github.com/openfga/openfga/pull/3255)
+- Updated v2 resolution diagnostic logging in `Check` and `ListUsers` to gate on InfoLevel log level. Removed diagnostic logging from `Expand` whose resolution will not change. [#3254](https://github.com/openfga/openfga/pull/3254)
+
+## [1.18.3] - 2026-08-05
+### Fixed
+- Fixed experimental `weighted_graph_check` intermittently returning `false` when evaluating relations that cross two or more distinct recursive TTUs which share the same tupleset relation. [#3244](https://github.com/openfga/openfga/pull/3244)
 
 ## [1.18.2] - 2026-08-03
 ### Added
@@ -1711,7 +1718,8 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
 - Memory storage adapter implementation
 - Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.18.2...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.18.3...HEAD
+[1.18.3]: https://github.com/openfga/openfga/compare/v1.18.2...v1.18.3
 [1.18.2]: https://github.com/openfga/openfga/compare/v1.18.1...v1.18.2
 [1.18.1]: https://github.com/openfga/openfga/compare/v1.18.0...v1.18.1
 [1.18.0]: https://github.com/openfga/openfga/compare/v1.17.1...v1.18.0

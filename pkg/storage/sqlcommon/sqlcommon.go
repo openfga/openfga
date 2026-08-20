@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"io"
 	"sort"
 	"strconv"
 	"strings"
@@ -267,6 +268,103 @@ func (s *SQLContinuationTokenSerializer) Deserialize(continuationToken string) (
 	return token.Ulid, token.ObjectType, nil
 }
 
+// Connection allows executing a query and returning a sqlcommon.Rows result set.
+type Connection interface {
+	io.Closer
+
+	Query(ctx context.Context, sql string, args ...any) (Rows, error)
+}
+
+type sqlRows struct {
+	*sql.Rows
+
+	conn *sql.Conn
+}
+
+func (r *sqlRows) Next() bool {
+	if !r.Rows.Next() {
+		if r.conn != nil {
+			r.conn.Close()
+			r.conn = nil
+		}
+		return false
+	}
+	return true
+}
+
+func (r *sqlRows) Close() error {
+	r.Rows.Close()
+	if r.conn != nil {
+		r.conn.Close()
+		r.conn = nil
+	}
+	return nil
+}
+
+type sqlConnection sql.Conn
+
+func (c *sqlConnection) Query(ctx context.Context, stmt string, args ...any) (Rows, error) {
+	conn := (*sql.Conn)(c)
+	rows, err := conn.QueryContext(ctx, stmt, args...)
+	if err != nil {
+		return nil, err
+	}
+	return &sqlRows{rows, conn}, nil
+}
+
+func (c *sqlConnection) Close() error {
+	conn := (*sql.Conn)(c)
+	return conn.Close()
+}
+
+type txConnection sql.Tx
+
+func (c *txConnection) Query(ctx context.Context, stmt string, args ...any) (Rows, error) {
+	conn := (*sql.Tx)(c)
+	return conn.QueryContext(ctx, stmt, args...)
+}
+
+func (c *txConnection) Close() error {
+	return nil
+}
+
+type Connector interface {
+	Connect(context.Context) (Connection, error)
+}
+
+type sqlConnector sql.DB
+
+func NewSQLConnector(db *sql.DB) Connector {
+	return (*sqlConnector)(db)
+}
+
+func (c *sqlConnector) Connect(ctx context.Context) (Connection, error) {
+	connector := (*sql.DB)(c)
+
+	conn, err := connector.Conn(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return (*sqlConnection)(conn), nil
+}
+
+type txConnector sql.Tx
+
+func NewTxConnector(tx *sql.Tx) Connector {
+	return (*txConnector)(tx)
+}
+
+func (c *txConnector) Connect(ctx context.Context) (Connection, error) {
+	tx := (*sql.Tx)(c)
+	return (*txConnection)(tx), nil
+}
+
+// SQLBuilder represents any SQL statement builder that can generate
+// SQL strings with parameterized arguments.
+type SQLBuilder interface {
+	ToSql() (string, []any, error)
+}
+
 // SQLIteratorRowGetter is an interface for retrieving rows from a SQL query.
 // Implementations should provide the GetRows method, which executes a query
 // and returns a Rows object for iteration.
@@ -274,6 +372,47 @@ func (s *SQLContinuationTokenSerializer) Deserialize(continuationToken string) (
 // GetRows executes the query and returns the resulting Rows or an error.
 type SQLIteratorRowGetter interface {
 	GetRows(context.Context) (Rows, error)
+}
+
+// rowGetter is a helper to run queries using pgxpool when used in sqlcommon iterator.
+type rowGetter struct {
+	connector Connector
+	statement string
+	args      []any
+}
+
+var _ SQLIteratorRowGetter = (*rowGetter)(nil)
+
+// GetRows executes the txn query and returns the sqlcommon.Rows.
+// Raw driver errors are returned unchanged; error translation to storage-layer sentinels
+// is the responsibility of the caller (sqlcommon.SQLTupleIterator.fetchBuffer via handleSQLError).
+func (p *rowGetter) GetRows(ctx context.Context) (Rows, error) {
+	conn, err := p.connector.Connect(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	ctx = context.WithoutCancel(ctx)
+
+	rows, err := conn.Query(ctx, p.statement, p.args...)
+	if err != nil {
+		conn.Close()
+		return nil, err
+	}
+	return rows, nil
+}
+
+func NewRowGetter(connector Connector, builder SQLBuilder) (SQLIteratorRowGetter, error) {
+	stmt, args, err := builder.ToSql()
+	if err != nil {
+		return nil, err
+	}
+
+	return &rowGetter{
+		connector: connector,
+		statement: stmt,
+		args:      args,
+	}, nil
 }
 
 type SBIteratorQuery struct {
@@ -356,7 +495,6 @@ func NewSQLTupleIterator(rowGetter SQLIteratorRowGetter, errHandler errorHandler
 func (t *SQLTupleIterator) fetchBuffer(ctx context.Context) error {
 	ctx, span := tracer.Start(ctx, "sqlcommon.fetchBuffer", trace.WithAttributes())
 	defer span.End()
-	ctx = context.WithoutCancel(ctx)
 	start := time.Now()
 	curRows, err := t.rowGetter.GetRows(ctx)
 	elapsed := time.Since(start)

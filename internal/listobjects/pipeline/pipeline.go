@@ -422,7 +422,9 @@ func (b *Builder) Build(
 // Recv returns the next result from the pipeline. It is nil-safe and
 // returns ("", false) immediately if the pipeline is nil or has already
 // encountered an error. Otherwise it blocks until a value is available,
-// draining any buffered values before checking for new errors or output.
+// checking for pending errors before surfacing any value, including values
+// that have already been buffered, so that no result computed from an
+// incomplete input set is delivered.
 // When an error is received from a worker, it is stored and the pipeline
 // is automatically closed. When the output stream is exhausted without
 // context cancellation, the pipeline is also closed. On context
@@ -439,9 +441,21 @@ func (p *Pipeline) Recv(ctx context.Context) (string, bool) {
 			return "", false
 		}
 
-		// Drain buffered values before checking for errors. Values in
-		// the buffer were produced before any concurrently arriving
-		// error, so delivering them first preserves ordering.
+		// Check for errors before surfacing any value, including values
+		// already buffered. A worker that fails partway through can still
+		// produce output computed from an incomplete input set (an
+		// exclusion whose subtract branch errored broadcasts base minus a
+		// truncated subtract set), so any pending error taints the buffer
+		// and delivering it would over-grant.
+		e, ok := p.errs.TryRecv()
+		if ok {
+			p.err = e
+			p.pos = 0
+			p.buffer = p.buffer[:0]
+			p.Close()
+			return "", false
+		}
+
 		if p.pos < len(p.buffer) {
 			value := p.buffer[p.pos]
 			p.pos++
@@ -449,13 +463,6 @@ func (p *Pipeline) Recv(ctx context.Context) (string, bool) {
 		}
 		p.pos = 0
 		p.buffer = p.buffer[:0]
-
-		e, ok := p.errs.TryRecv()
-		if ok {
-			p.err = e
-			p.Close()
-			return "", false
-		}
 
 		msg, ok := p.output.Recv(ctx)
 		if !ok {
