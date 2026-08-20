@@ -70,12 +70,12 @@ func sendNothing() *mockSender {
 
 // mockInterpreter implements worker.Interpreter with a configurable function.
 type mockInterpreter struct {
-	get func(context.Context, string, string, string) *worker.Item
+	get func(context.Context, string, string, string, []string) *worker.Item
 	fn  func(context.Context, *worker.Edge, []string) worker.Receiver[worker.Item]
 }
 
-func (m *mockInterpreter) Get(ctx context.Context, object, relation, user string) *worker.Item {
-	return m.get(ctx, object, relation, user)
+func (m *mockInterpreter) Get(ctx context.Context, object, relation, user string, conditions []string) *worker.Item {
+	return m.get(ctx, object, relation, user, conditions)
 }
 
 func (m *mockInterpreter) Interpret(ctx context.Context, edge *worker.Edge, items []string) worker.Receiver[worker.Item] {
@@ -85,7 +85,7 @@ func (m *mockInterpreter) Interpret(ctx context.Context, edge *worker.Edge, item
 // passthroughInterpreter returns each input string as a successful Item.
 func passthroughInterpreter() *mockInterpreter {
 	return &mockInterpreter{
-		get: func(_ context.Context, object, relation, user string) *worker.Item {
+		get: func(_ context.Context, object, relation, user string, conditions []string) *worker.Item {
 			return nil
 		},
 		fn: func(_ context.Context, _ *worker.Edge, items []string) worker.Receiver[worker.Item] {

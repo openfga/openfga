@@ -15,6 +15,8 @@ type edgeInterpreter struct {
 	graph *Graph
 }
 
+var _ worker.Interpreter = (*edgeInterpreter)(nil)
+
 func (e *edgeInterpreter) identity(objects []string) Receiver[Item] {
 	return worker.MapReceiver(worker.NewSliceReceiver(objects), func(s string) Item {
 		return Item{Value: s}
@@ -100,11 +102,12 @@ func (e *edgeInterpreter) ttu(ctx context.Context, edge *Edge, objects []string)
 	return results
 }
 
-func (e *edgeInterpreter) Get(ctx context.Context, object, relation, user string) *Item {
+func (e *edgeInterpreter) Get(ctx context.Context, object, relation, user string, conditions []string) *Item {
 	input := ObjectGet{
-		Object:   object,
-		Relation: relation,
-		User:     user,
+		Object:     object,
+		Relation:   relation,
+		User:       user,
+		Conditions: conditions,
 	}
 	return e.store.Get(ctx, input)
 }

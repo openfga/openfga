@@ -67,7 +67,7 @@ SubtractLoop:
 				break SubtractLoop
 			}
 
-			item := w.Interpreter.Get(ctx, value, relation, subject)
+			item := w.Interpreter.Get(ctx, value, relation, subject, edge.GetConditions())
 			if item != nil {
 				_, err = item.Object()
 				if err != nil {
