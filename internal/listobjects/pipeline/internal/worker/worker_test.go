@@ -489,7 +489,9 @@ func TestDifference_Execute_LessThanTwoSenders(t *testing.T) {
 	w.Listen(sendItems("a"))
 	output := w.Subscribe(nil, chunkSize)
 
-	w.Execute(context.Background())
+	assert.Panics(t, func() {
+		w.Execute(context.Background())
+	})
 
 	assert.Empty(t, collectOutput(output))
 	errs.Close()
@@ -632,7 +634,9 @@ func TestDifference_Execute_NoSenders(t *testing.T) {
 	w := &worker.Difference{Core: newCore(passthroughInterpreter(), errs)}
 	output := w.Subscribe(nil, chunkSize)
 
-	w.Execute(context.Background())
+	assert.Panics(t, func() {
+		w.Execute(context.Background())
+	})
 
 	assert.Empty(t, collectOutput(output))
 	errs.Close()
