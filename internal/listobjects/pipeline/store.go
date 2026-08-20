@@ -211,7 +211,7 @@ func (r *ValidatingStore) Get(ctx context.Context, req ObjectGet) *Item {
 		},
 	)
 	if err != nil {
-		if err == storage.ErrNotFound {
+		if errors.Is(err, storage.ErrNotFound) {
 			return nil
 		}
 		return &Item{Err: err}
