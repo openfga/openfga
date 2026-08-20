@@ -11,11 +11,11 @@ func FlattenTerminalEdges(
 	edge *graph.WeightedAuthorizationModelEdge,
 	target string,
 ) []*graph.WeightedAuthorizationModelEdge {
-	var edges []*graph.WeightedAuthorizationModelEdge
+	var out []*graph.WeightedAuthorizationModelEdge
 
 	weight, _ := edge.GetWeight(target)
 	if weight != 1 {
-		return edges
+		return nil
 	}
 
 	var stack []*graph.WeightedAuthorizationModelEdge
@@ -43,9 +43,11 @@ func FlattenTerminalEdges(
 
 		if e.GetEdgeType() == graph.DirectEdge && toNode != nil {
 			switch toNode.GetNodeType() {
-			case graph.SpecificType, graph.SpecificTypeWildcard:
-				edges = append(edges, e)
+			case graph.SpecificTypeWildcard:
+				out = append(out, e)
 				continue
+			case graph.SpecificType:
+				return nil
 			}
 		}
 
@@ -61,7 +63,7 @@ func FlattenTerminalEdges(
 			stack = append(stack, e)
 		}
 	}
-	return edges
+	return out
 }
 
 func canFlattenEdge(edge *graph.WeightedAuthorizationModelEdge) bool {
