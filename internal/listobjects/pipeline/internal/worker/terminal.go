@@ -17,15 +17,11 @@ type Terminal struct {
 	*Core
 }
 
-// ProcessMessage prepends the worker's type label to each value in msg
-// and broadcasts the results.
+// ProcessMessage broadcasts each value in msg.
 func (w *Terminal) ProcessMessage(ctx context.Context, index int, msg *Message) error {
 	receiver := NewSliceReceiver(msg.Value)
-	values := MapReceiver(receiver, func(value string) string {
-		return w.Label + ":" + value
-	})
-	defer values.Close()
-	w.Broadcast(ctx, values)
+	defer receiver.Close()
+	w.Broadcast(ctx, receiver)
 	return nil
 }
 

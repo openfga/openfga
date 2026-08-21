@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Try to keep listed changes to a concise bulleted list of simple explanations of changes. Aim for the amount of information needed so that readers can understand where they would look in the codebase to investigate the changes' implementation, or where they would look in the documentation to understand how to make use of the change in practice - better yet, link directly to the docs and provide detailed information there. Only elaborate if doing so is required to avoid breaking changes or experimental features from ruining someone's day.
 
 ## [Unreleased]
+### Changed
+- The ListObjects "pipeline" algorithm now supports subject values of userset and wildcard without falling back to the previous "reverse expand" algorithm. [#3258](https://github.com/openfga/openfga/pull/3258)
+
 ### Fixed
 - Fixed validation-ordering defect where malformed `RelationReference` (relation_or_wildcard oneof set but yielding neither wildcard nor non-empty relation) panicked `WriteAuthorizationModel`. `NewAndValidate` now runs all validation before graph construction. Also closed gap in `validateTypeRestrictions` that silently accepted a positional variant, causing model-wide nil weighted graph and performance degradation. **Breaking:** Already-persisted malformed models fail to resolve on cache miss with `ErrInvalidModel` rather than silently running degraded. See `pkg/typesystem/typesystem.go`. [#3262](https://github.com/openfga/openfga/pull/3262)
 - Scope context-cancelation stripping to query execution only. No longer can deadlock on saturated connection pool. [#3255](https://github.com/openfga/openfga/pull/3255)

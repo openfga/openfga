@@ -3,6 +3,8 @@ package pipeline
 import (
 	"context"
 	"errors"
+	"slices"
+	"strings"
 	"sync"
 
 	"go.opentelemetry.io/otel"
@@ -221,13 +223,10 @@ func createWorker(node *Node, core worker.Core, group *worker.CycleGroup) worker
 	return w
 }
 
-// stacker is an intrusive linked-list node used as the DFS stack during
-// pipeline construction.
-type stacker struct {
-	node  *Node
-	edge  *Edge
-	group *worker.CycleGroup
-	next  *stacker
+type frame struct {
+	Node     *Node
+	Group    *worker.CycleGroup
+	Expanded bool
 }
 
 // Build constructs a Pipeline for the given graph and spec, starts all
@@ -271,93 +270,145 @@ func (b *Builder) Build(
 	core.Pool = new(worker.MessagePool)
 
 	workers := make(map[string]worker.Worker)
-	visited := make(map[*Edge]struct{})
+	visited := make(map[*Node]struct{})
 
 	object := spec.ObjectType + "#" + spec.ObjectRelation
-	subject := spec.SubjectType
-	wildcard := spec.SubjectType + ":*"
+	subjectKind := spec.SubjectType
 
-	n, ok := graph.GetNodeByID(object)
+	var subject string
+
+	subjectType, _, _ := strings.Cut(subjectKind, "#")
+	subject = subjectType + ":" + spec.SubjectID
+
+	rootNode, ok := graph.GetNodeByID(object)
 	if !ok {
 		return nil, ErrInvalidObject
 	}
 
-	_, ok = graph.GetNodeByID(subject)
+	_, ok = graph.GetNodeByID(subjectKind)
 	if !ok {
 		return nil, ErrInvalidSubject
 	}
 
+	if _, ok := graph.GetNodeWeight(rootNode, subjectKind); !ok {
+		return nil, ErrUnreachable
+	}
+
+	if spec.SubjectID == "*" && !slices.Contains(rootNode.GetWildcards(), subjectKind) {
+		return nil, ErrUnreachable
+	}
+
 	var totalListeners int
 
-	var root stacker
-	root.node = n
+	stack := []frame{
+		{
+			Node: rootNode,
+		},
+	}
 
-	stack := &root
-
-	for stack != nil {
+StackLoop:
+	for len(stack) > 0 {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
-		current := stack
-		stack = stack.next
+		ndx := len(stack) - 1
+		current := &stack[ndx]
 
-		label := current.node.GetUniqueLabel()
+		node := current.Node
+		group := current.Group
+		expanded := current.Expanded
 
-		if current.edge != nil {
-			key := current.edge
-			if _, ok := visited[key]; ok {
+		edges, _ := graph.GetEdgesFromNode(node)
+
+		label := node.GetUniqueLabel()
+
+		// The first iteration of a vertex frame expands the edges incident to it.
+		// This will add all vertices to the stack in a DFS traversal. Once a leaf
+		// vertex is reached, the stack is walked back, for post-order processing
+		// of each vertex.
+		if !expanded {
+			current.Expanded = true
+
+			if _, ok := visited[node]; ok {
+				stack = stack[:ndx]
 				continue
 			}
-			visited[key] = struct{}{}
+			visited[node] = struct{}{}
 
-			if _, ok := key.GetWeight(subject); !ok {
-				if _, ok := key.GetWeight(wildcard); !ok {
-					// No path exists from this edge to the subject type, so there
-					// is no possibility of it producing results.
-					if w, ok := workers[key.GetFrom().GetUniqueLabel()]; ok {
-						// The worker still needs a sender for this edge. Workers such as
-						// Difference expect a specific number of senders in order to operate.
-						// Therefore, the worker is subscribed to a noop sender.
-						w.Listen(worker.NewNoopMedium(key))
+			weights := make([]int, len(edges))
+
+			for i, edge := range edges {
+				weight, ok := graph.GetEdgeWeight(edge, subjectKind)
+				if !ok && node.GetNodeType() == weightedGraph.OperatorNode {
+					switch node.GetLabel() {
+					case weightedGraph.IntersectionOperator:
+						continue StackLoop
+					case weightedGraph.ExclusionOperator:
+						if i == 0 {
+							continue StackLoop
+						}
 					}
+				}
+				weights[i] = weight
+			}
+
+			// If a cycle group wasn't propagated to this vertex, it is not a part
+			// of a tuple cycle. A new cycle group is started from this point forward.
+			// This is evaluated, specifically when expanding, to ensure that the
+			// cycle group is propagated to all vertices that are part of a cycle in the
+			// current DFS traversal path.
+			if group == nil {
+				group = worker.NewCycleGroup()
+			}
+
+			workers[label] = createWorker(node, core, group)
+
+			for i, edge := range slices.Backward(edges) {
+				if weights[i] == 0 {
 					continue
 				}
+
+				if spec.SubjectID == "*" && !slices.Contains(edge.GetWildcards(), subjectKind) {
+					continue
+				}
+
+				f := frame{
+					Node: edge.GetTo(),
+				}
+
+				if worker.IsCyclical(edge) {
+					f.Group = group
+				}
+
+				stack = append(stack, f)
 			}
+			continue
 		}
 
-		var w worker.Worker
-		var ok bool
+		stack = stack[:ndx]
 
-		w, ok = workers[label]
-		if !ok {
-			if current.group == nil {
-				current.group = worker.NewCycleGroup()
-			}
-			w = createWorker(current.node, core, current.group)
-			workers[label] = w
-		}
-
-		if current.edge != nil {
-			if subscriber, ok := workers[current.edge.GetFrom().GetUniqueLabel()]; ok {
-				subscriber.Listen(w.Subscribe(current.edge, config.BufferCapacity))
-				totalListeners++
-			}
-		}
-
-		edges, ok := graph.GetEdgesFromNode(current.node)
+		w, ok := workers[label]
 		if !ok {
 			continue
 		}
 
-		for i := len(edges) - 1; i >= 0; i-- {
-			var newStack stacker
-			newStack.node = edges[i].GetTo()
-			newStack.edge = edges[i]
-			if worker.IsCyclical(edges[i]) {
-				newStack.group = current.group
+		for _, edge := range edges {
+			// A worker will exist for any upstream vertex having a path to the
+			// terminal vertex. If the edge is recursive, sender will be equal
+			// to w.
+			sender, ok := workers[edge.GetTo().GetUniqueLabel()]
+			if !ok {
+				// A worker does not exist for the edge's target vertex, indicating
+				// that the edge does not have a path to the terminal vertex.
+				// The worker still needs a sender for this edge. Workers such as
+				// Difference expect a specific number of senders in order to operate.
+				// Therefore, the worker listens to a no-op sender.
+				w.Listen(worker.NewNoopMedium(edge))
+				continue
 			}
-			newStack.next = stack
-			stack = &newStack
+			// The worker exists so w must listen to sender on this edge.
+			w.Listen(sender.Subscribe(edge, config.BufferCapacity))
+			totalListeners++
 		}
 	}
 
@@ -372,19 +423,14 @@ func (b *Builder) Build(
 	// Bind the pipeline's output to the object worker.
 	output := objectWorker.Subscribe(nil, config.BufferCapacity)
 
-	subjectWorker, canReachSubject := workers[subject]
-	_, canReachWildcard := workers[wildcard]
-
-	if !canReachSubject && !canReachWildcard {
-		return nil, ErrUnreachable
-	}
-
-	if canReachSubject {
+	// It is possible for a valid pipeline not to have a worker for the terminal
+	// vertex when only a path to a wildcard for the terminal type exists.
+	if subjectWorker, ok := workers[subjectKind]; ok && spec.SubjectID != "*" {
 		input := worker.NewStandardMedium(nil, 1)
 		subjectWorker.Listen(input)
 
 		if spec.SubjectID != "" {
-			msg := worker.Message{Value: []string{spec.SubjectID}}
+			msg := worker.Message{Value: []string{subject}}
 			if !input.Send(ctx, &msg) {
 				msg.Done()
 			}
