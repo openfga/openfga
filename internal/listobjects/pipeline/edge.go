@@ -6,7 +6,10 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/openfga/language/pkg/go/graph"
+
 	"github.com/openfga/openfga/internal/listobjects/pipeline/internal/worker"
+	"github.com/openfga/openfga/pkg/tuple"
 )
 
 // edgeInterpreter dispatches to the appropriate handler based on edge type.
@@ -102,14 +105,99 @@ func (e *edgeInterpreter) ttu(ctx context.Context, edge *Edge, objects []string)
 	return results
 }
 
-func (e *edgeInterpreter) Get(ctx context.Context, object, relation, user string, conditions []string) *Item {
-	input := ObjectGet{
-		Object:     object,
-		Relation:   relation,
-		User:       user,
-		Conditions: conditions,
+func (e *edgeInterpreter) Exists(ctx context.Context, edge *Edge, object, user string) (bool, error) {
+	if t := edge.GetEdgeType(); t != graph.DirectEdge {
+		return false, fmt.Errorf(
+			"%w: expected type '%d'; got '%d'",
+			worker.ErrUnexpectedEdge,
+			graph.DirectEdge,
+			t,
+		)
 	}
-	return e.store.Get(ctx, input)
+
+	targetNode := edge.GetTo()
+
+	switch targetNode.GetNodeType() {
+	case graph.SpecificType, graph.SpecificTypeWildcard, graph.SpecificTypeAndRelation:
+	default:
+		return false, fmt.Errorf(
+			"%w: expected specific type",
+			worker.ErrUnexpectedNode,
+		)
+	}
+	targetLabel := targetNode.GetLabel()
+	targetType, targetRelation := tuple.SplitObjectRelation(targetLabel)
+	targetType = tuple.GetType(targetType)
+
+	userType, userID, userRelation := tuple.ToUserParts(user)
+
+	if userType != targetType {
+		return false, fmt.Errorf(
+			"%w: expected user type '%s'; got '%s'",
+			worker.ErrUnexpectedUserType,
+			targetType,
+			userType,
+		)
+	}
+
+	if userRelation != "" && userRelation != targetRelation {
+		return false, fmt.Errorf(
+			"%w: expected user relation '%s'; got '%s'",
+			worker.ErrUnexpectedRelation,
+			targetRelation,
+			userRelation,
+		)
+	}
+
+	targetID := userID
+
+	if t := targetNode.GetNodeType(); t == graph.SpecificTypeWildcard {
+		// since the target node is a wildcard, the query must
+		// target a wildcard user.
+		targetID = "*"
+	}
+
+	targetUser := tuple.BuildObject(targetType, targetID)
+
+	if targetRelation != "" {
+		targetUser = tuple.ToObjectRelationString(user, targetRelation)
+	}
+
+	sourceLabel := edge.GetRelationDefinition()
+	sourceType, sourceRelation := tuple.SplitObjectRelation(sourceLabel)
+
+	if sourceRelation == "" {
+		return false, fmt.Errorf("%w: expected non-empty source relation", worker.ErrUnexpectedRelation)
+	}
+
+	objectType, objectID := tuple.SplitObject(object)
+
+	if sourceType != objectType {
+		return false, fmt.Errorf(
+			"%w: expected type '%s'; got type '%s'",
+			worker.ErrUnexpectedObjectType,
+			sourceType,
+			objectType,
+		)
+	}
+
+	sourceObject := tuple.BuildObject(sourceType, objectID)
+
+	input := ObjectGet{
+		Object:     sourceObject,
+		Relation:   sourceRelation,
+		User:       targetUser,
+		Conditions: edge.GetConditions(),
+	}
+
+	item := e.store.Get(ctx, input)
+	if item == nil {
+		return false, nil
+	}
+	if item.Err != nil {
+		return false, item.Err
+	}
+	return true, nil
 }
 
 func (e *edgeInterpreter) Interpret(

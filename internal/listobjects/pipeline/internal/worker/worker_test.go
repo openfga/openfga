@@ -70,25 +70,25 @@ func sendNothing() *mockSender {
 
 // mockInterpreter implements worker.Interpreter with a configurable function.
 type mockInterpreter struct {
-	get func(context.Context, string, string, string, []string) *worker.Item
-	fn  func(context.Context, *worker.Edge, []string) worker.Receiver[worker.Item]
+	exists func(context.Context, *worker.Edge, string, string) (bool, error)
+	read   func(context.Context, *worker.Edge, []string) worker.Receiver[worker.Item]
 }
 
-func (m *mockInterpreter) Get(ctx context.Context, object, relation, user string, conditions []string) *worker.Item {
-	return m.get(ctx, object, relation, user, conditions)
+func (m *mockInterpreter) Exists(ctx context.Context, edge *worker.Edge, object, user string) (bool, error) {
+	return m.exists(ctx, edge, object, user)
 }
 
 func (m *mockInterpreter) Interpret(ctx context.Context, edge *worker.Edge, items []string) worker.Receiver[worker.Item] {
-	return m.fn(ctx, edge, items)
+	return m.read(ctx, edge, items)
 }
 
 // passthroughInterpreter returns each input string as a successful Item.
 func passthroughInterpreter() *mockInterpreter {
 	return &mockInterpreter{
-		get: func(_ context.Context, object, relation, user string, conditions []string) *worker.Item {
-			return nil
+		exists: func(_ context.Context, _ *worker.Edge, _, _ string) (bool, error) {
+			return true, nil
 		},
-		fn: func(_ context.Context, _ *worker.Edge, items []string) worker.Receiver[worker.Item] {
+		read: func(_ context.Context, _ *worker.Edge, items []string) worker.Receiver[worker.Item] {
 			return worker.MapReceiver(worker.NewSliceReceiver(items), func(s string) worker.Item {
 				return worker.Item{Value: s}
 			})
@@ -276,7 +276,7 @@ func TestBasic_Execute_InterpreterError(t *testing.T) {
 	errs := mpsc.NewAccumulator[error]()
 
 	interp := &mockInterpreter{
-		fn: func(_ context.Context, _ *worker.Edge, items []string) worker.Receiver[worker.Item] {
+		read: func(_ context.Context, _ *worker.Edge, items []string) worker.Receiver[worker.Item] {
 			return worker.MapReceiver(worker.NewSliceReceiver(items), func(s string) worker.Item {
 				if s == "bad" {
 					return worker.Item{Err: sentinelErr}
@@ -421,7 +421,7 @@ func TestIntersection_Execute_InterpreterError(t *testing.T) {
 	errs := mpsc.NewAccumulator[error]()
 
 	interp := &mockInterpreter{
-		fn: func(_ context.Context, _ *worker.Edge, items []string) worker.Receiver[worker.Item] {
+		read: func(_ context.Context, _ *worker.Edge, items []string) worker.Receiver[worker.Item] {
 			return worker.MapReceiver(worker.NewSliceReceiver(items), func(s string) worker.Item {
 				if s == "bad" {
 					return worker.Item{Err: sentinelErr}
@@ -585,7 +585,7 @@ func TestDifference_Execute_InterpreterError(t *testing.T) {
 	errs := mpsc.NewAccumulator[error]()
 
 	interp := &mockInterpreter{
-		fn: func(_ context.Context, _ *worker.Edge, items []string) worker.Receiver[worker.Item] {
+		read: func(_ context.Context, _ *worker.Edge, items []string) worker.Receiver[worker.Item] {
 			return worker.MapReceiver(worker.NewSliceReceiver(items), func(s string) worker.Item {
 				if s == "bad" {
 					return worker.Item{Err: sentinelErr}

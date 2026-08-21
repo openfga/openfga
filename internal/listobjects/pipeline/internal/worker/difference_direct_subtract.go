@@ -44,49 +44,34 @@ SubtractLoop:
 		}
 
 		for _, subtractEdge := range w.Subtracts {
-			typeAndRelation := subtractEdge.GetRelationDefinition()
-
-			objectType, relation := tuple.SplitObjectRelation(typeAndRelation)
-
-			if objectType != tuple.GetType(value) {
-				err = ErrUnexpectedObjectType
-				break SubtractLoop
-			}
-
-			userType := subtractEdge.GetTo().GetUniqueLabel()
-
 			subject := tuple.BuildObject(w.SubjectType, w.SubjectIdentifier)
 
-			if tuple.IsTypedWildcard(userType) {
-				subject = userType
-				userType = tuple.GetType(userType)
-			}
+			var exists bool
 
-			if w.SubjectType != userType {
-				err = ErrUnexpectedUserType
+			exists, err = w.Interpreter.Exists(ctx, subtractEdge, value, subject)
+			if err != nil {
 				break SubtractLoop
 			}
 
-			item := w.Interpreter.Get(ctx, value, relation, subject, subtractEdge.GetConditions())
-			if item != nil {
-				_, err = item.Object()
-				if err != nil {
-					break SubtractLoop
-				}
-				// base object is in the subtract set
+			if exists {
+				// base object is in the subtract set; do not store the object.
 				continue SubtractLoop
 			}
 		}
 
-		// base object is not in the subtract set
+		// base object is not in the subtract set, store the object.
 		objects = append(objects, value)
 		if len(objects) == w.ChunkSize {
+			// chunk limit reached, broadcast the collected objects to all
+			// of this worker's listeners.
 			w.send(ctx, objects)
 			objects = objects[:0]
 		}
 	}
 
 	if len(objects) > 0 {
+		// objects remain unsent, broadcast the remaining objects to all
+		// of this worker's listeners.
 		w.send(ctx, objects)
 	}
 	return err

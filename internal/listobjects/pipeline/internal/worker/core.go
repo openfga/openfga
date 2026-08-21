@@ -23,6 +23,9 @@ var tracer = otel.Tracer("openfga/internal/listobjects/pipeline/internal/worker"
 var (
 	ErrUnexpectedObjectType error = errors.New("unexpected object type encountered in worker")
 	ErrUnexpectedUserType   error = errors.New("unexpected user type encountered in worker")
+	ErrUnexpectedNode       error = errors.New("unexpected node")
+	ErrUnexpectedEdge       error = errors.New("unexpected edge")
+	ErrUnexpectedRelation   error = errors.New("unexpected relation")
 )
 
 // Edge is an alias for the weighted authorization model edge type.
@@ -31,7 +34,21 @@ type Edge = weightedGraph.WeightedAuthorizationModelEdge
 // Interpreter transforms raw input items by querying storage through
 // an edge's relation definition.
 type Interpreter interface {
-	Get(ctx context.Context, object, relation, user string, conditions []string) *Item
+	// Exists returns `true` when a tuple for `object` and `user` exists for `edge`. A `false` value
+	// will be returned when no tuple exists, or a non-nil [error] is also returned.
+	//
+	// Exists only accepts direct edges that target a [SpecificType], [SpecificTypeWildcard], or
+	// [SpecificTypeAndRelation] node.
+	//
+	// The value of `object` must consist of a type and identifier, and its type must match the type of
+	// `edge`'s source relation. The value of `user` must consist of a type and identifier, and an optional
+	// relation when `edge`'s target is a [SpecificTypeAndRelation]. When `edge`'s target is a
+	// [SpecificTypeWildcard] `user`'s identifier will automatically be changed to a wildcard character `*`.
+	//
+	// Exists will return a non-nil [error] when the underlying data store returns a non-nil [error], or a
+	// function invariant is violated.
+	Exists(ctx context.Context, edge *Edge, object, user string) (bool, error)
+
 	Interpret(ctx context.Context, edge *Edge, items []string) Receiver[Item]
 }
 

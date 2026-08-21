@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -31,6 +32,12 @@ const testStoreID string = "difference-direct-subtract"
 // [pipeline.ObjectStore]. It resolves direct edges only, which is all the
 // [worker.DifferenceDirectSubtract] worker requires: the base edge of an
 // exclusion whose subtract branch flattens to direct wildcard edges.
+//
+// Validation of the edge against the object and user is the interpreter's
+// responsibility, not the worker's, so this stand-in performs none of it. It
+// mirrors only the single piece of edge semantics the worker's output depends
+// on: a subtract edge terminating at a wildcard node is looked up against
+// `type:*` rather than against the concrete subject.
 type storeInterpreter struct {
 	store pipeline.ObjectStore
 }
@@ -54,17 +61,32 @@ func (i *storeInterpreter) Interpret(
 	})
 }
 
-func (i *storeInterpreter) Get(
+func (i *storeInterpreter) Exists(
 	ctx context.Context,
-	object, relation, user string,
-	conditions []string,
-) *worker.Item {
-	return i.store.Get(ctx, pipeline.ObjectGet{
+	edge *worker.Edge,
+	object, user string,
+) (bool, error) {
+	_, sourceRelation := tuple.SplitObjectRelation(edge.GetRelationDefinition())
+
+	if edge.GetTo().GetNodeType() == weightedGraph.SpecificTypeWildcard {
+		user = tuple.TypedPublicWildcard(tuple.GetType(user))
+	}
+
+	item := i.store.Get(ctx, pipeline.ObjectGet{
 		Object:     object,
-		Relation:   relation,
+		Relation:   sourceRelation,
 		User:       user,
-		Conditions: conditions,
+		Conditions: edge.GetConditions(),
 	})
+
+	if item == nil {
+		return false, nil
+	}
+
+	if item.Err != nil {
+		return false, item.Err
+	}
+	return true, nil
 }
 
 // getErrorStore fails every [pipeline.ObjectStore.Get] with a fixed error
@@ -489,7 +511,13 @@ func TestDifferenceDirectSubtract_Execute_SubtractsSpecificSubject(t *testing.T)
 	assert.Empty(t, collectErrors(errs))
 }
 
-func TestDifferenceDirectSubtract_Execute_UnexpectedObjectType(t *testing.T) {
+// TestDifferenceDirectSubtract_Execute_RejectedSubtractEdgeAborts asserts that
+// the worker surfaces an interpreter rejection and abandons the remaining base
+// objects rather than emitting them unfiltered. Validating the subtract edge
+// against the object and subject belongs to the interpreter, so the worker can
+// only treat such a rejection as a fatal lookup failure: it cannot know whether
+// any base object is excluded, and emitting them would over-grant.
+func TestDifferenceDirectSubtract_Execute_RejectedSubtractEdgeAborts(t *testing.T) {
 	defer goleak.VerifyNone(t)
 
 	_, g := newTestModel(t, wildcardSubtractModel)
@@ -498,13 +526,18 @@ func TestDifferenceDirectSubtract_Execute_UnexpectedObjectType(t *testing.T) {
 	subtracts := pipeline.FlattenWildcardEdges(g, subtract, "user")
 	require.NotEmpty(t, subtracts)
 
-	// The base yields folder objects while every subtract edge is defined on
-	// document, so the object type check must fail.
+	var calls atomic.Int64
+
 	interp := &mockInterpreter{
-		fn: func(_ context.Context, _ *worker.Edge, items []string) worker.Receiver[worker.Item] {
-			return worker.MapReceiver(worker.NewSliceReceiver(items), func(string) worker.Item {
-				return worker.Item{Value: "folder:1"}
-			})
+		exists: func(_ context.Context, _ *worker.Edge, _, _ string) (bool, error) {
+			calls.Add(1)
+			return false, worker.ErrUnexpectedUserType
+		},
+		read: func(_ context.Context, _ *worker.Edge, _ []string) worker.Receiver[worker.Item] {
+			return worker.MapReceiver(
+				worker.NewSliceReceiver([]string{"document:1", "document:2", "document:3"}),
+				func(s string) worker.Item { return worker.Item{Value: s} },
+			)
 		},
 	}
 
@@ -522,28 +555,8 @@ func TestDifferenceDirectSubtract_Execute_UnexpectedObjectType(t *testing.T) {
 	errs.Close()
 
 	assert.Empty(t, collectOutput(output))
-	got := collectErrors(errs)
-	require.NotEmpty(t, got)
-	assert.ErrorIs(t, got[0], worker.ErrUnexpectedObjectType)
-}
+	assert.Equal(t, int64(1), calls.Load(), "the first rejection must abort the whole subtract loop")
 
-func TestDifferenceDirectSubtract_Execute_UnexpectedUserType(t *testing.T) {
-	defer goleak.VerifyNone(t)
-
-	errs := mpsc.NewAccumulator[error]()
-	w, base := newWildcardSubtractWorker(t, errs,
-		"document:1#viewer@user:bob",
-	)
-	// The subtract edges terminate at user:*, so an employee subject cannot
-	// be resolved through them.
-	w.SubjectType = "employee"
-	w.Listen(sendOn(base, []string{"user:bob"}))
-	output := w.Subscribe(nil, chunkSize)
-
-	w.Execute(context.Background())
-	errs.Close()
-
-	assert.Empty(t, collectOutput(output))
 	got := collectErrors(errs)
 	require.NotEmpty(t, got)
 	assert.ErrorIs(t, got[0], worker.ErrUnexpectedUserType)
@@ -561,7 +574,7 @@ func TestDifferenceDirectSubtract_Execute_BaseInterpreterError(t *testing.T) {
 	require.NotEmpty(t, subtracts)
 
 	interp := &mockInterpreter{
-		fn: func(_ context.Context, _ *worker.Edge, items []string) worker.Receiver[worker.Item] {
+		read: func(_ context.Context, _ *worker.Edge, items []string) worker.Receiver[worker.Item] {
 			return worker.MapReceiver(worker.NewSliceReceiver(items), func(string) worker.Item {
 				return worker.Item{Err: sentinelErr}
 			})
