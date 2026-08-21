@@ -531,7 +531,7 @@ func TestDifferenceDirectSubtract_Execute_RejectedSubtractEdgeAborts(t *testing.
 	interp := &mockInterpreter{
 		exists: func(_ context.Context, _ *worker.Edge, _, _ string) (bool, error) {
 			calls.Add(1)
-			return false, worker.ErrUnexpectedUserType
+			return false, worker.ErrUnexpectedType
 		},
 		read: func(_ context.Context, _ *worker.Edge, _ []string) worker.Receiver[worker.Item] {
 			return worker.MapReceiver(
@@ -559,7 +559,7 @@ func TestDifferenceDirectSubtract_Execute_RejectedSubtractEdgeAborts(t *testing.
 
 	got := collectErrors(errs)
 	require.NotEmpty(t, got)
-	assert.ErrorIs(t, got[0], worker.ErrUnexpectedUserType)
+	assert.ErrorIs(t, got[0], worker.ErrUnexpectedType)
 }
 
 func TestDifferenceDirectSubtract_Execute_BaseInterpreterError(t *testing.T) {

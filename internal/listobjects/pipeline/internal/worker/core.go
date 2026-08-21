@@ -21,11 +21,11 @@ import (
 var tracer = otel.Tracer("openfga/internal/listobjects/pipeline/internal/worker")
 
 var (
-	ErrUnexpectedObjectType error = errors.New("unexpected object type encountered in worker")
-	ErrUnexpectedUserType   error = errors.New("unexpected user type encountered in worker")
-	ErrUnexpectedNode       error = errors.New("unexpected node")
-	ErrUnexpectedEdge       error = errors.New("unexpected edge")
-	ErrUnexpectedRelation   error = errors.New("unexpected relation")
+	ErrMissingRequirement error = errors.New("missing requirement")
+	ErrUnexpectedType     error = errors.New("unexpected type")
+	ErrUnexpectedRelation error = errors.New("unexpected relation")
+	ErrUnexpectedNode     error = errors.New("unexpected node")
+	ErrUnexpectedEdge     error = errors.New("unexpected edge")
 )
 
 // Edge is an alias for the weighted authorization model edge type.

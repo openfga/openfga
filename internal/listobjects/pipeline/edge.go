@@ -131,10 +131,17 @@ func (e *edgeInterpreter) Exists(ctx context.Context, edge *Edge, object, user s
 
 	userType, userID, userRelation := tuple.ToUserParts(user)
 
+	if userID == "" {
+		return false, fmt.Errorf(
+			"%w: missing user identifier",
+			worker.ErrMissingRequirement,
+		)
+	}
+
 	if userType != targetType {
 		return false, fmt.Errorf(
 			"%w: expected user type '%s'; got '%s'",
-			worker.ErrUnexpectedUserType,
+			worker.ErrUnexpectedType,
 			targetType,
 			userType,
 		)
@@ -172,10 +179,17 @@ func (e *edgeInterpreter) Exists(ctx context.Context, edge *Edge, object, user s
 
 	objectType, objectID := tuple.SplitObject(object)
 
+	if objectID == "" {
+		return false, fmt.Errorf(
+			"%w: missing object identifier",
+			worker.ErrMissingRequirement,
+		)
+	}
+
 	if sourceType != objectType {
 		return false, fmt.Errorf(
-			"%w: expected type '%s'; got type '%s'",
-			worker.ErrUnexpectedObjectType,
+			"%w: expected object type '%s'; got type '%s'",
+			worker.ErrUnexpectedType,
 			sourceType,
 			objectType,
 		)
@@ -195,7 +209,7 @@ func (e *edgeInterpreter) Exists(ctx context.Context, edge *Edge, object, user s
 		return false, nil
 	}
 	if item.Err != nil {
-		return false, item.Err
+		return false, fmt.Errorf("relation exists lookup: %w", item.Err)
 	}
 	return true, nil
 }
