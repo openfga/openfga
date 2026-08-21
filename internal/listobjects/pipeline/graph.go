@@ -22,12 +22,12 @@ func FlattenWildcardEdges(
 
 		// all edges must have a weight of one, or this optimization
 		// cannot be applied.
-		weight, _ := edge.GetWeight(target)
+		weight, _ := e.GetWeight(target)
 		if weight != 1 {
 			return nil
 		}
 
-		if !slices.Contains(edge.GetWildcards(), target) {
+		if !slices.Contains(e.GetWildcards(), target) {
 			return nil
 		}
 
