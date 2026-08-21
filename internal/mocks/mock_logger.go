@@ -16,6 +16,7 @@ import (
 	logger "github.com/openfga/openfga/pkg/logger"
 	gomock "go.uber.org/mock/gomock"
 	zap "go.uber.org/zap"
+	zapcore "go.uber.org/zap/zapcore"
 )
 
 // MockLogger is a mock of Logger interface.
@@ -176,6 +177,20 @@ func (mr *MockLoggerMockRecorder) InfoWithContext(arg0, arg1 any, arg2 ...any) *
 	mr.mock.ctrl.T.Helper()
 	varargs := append([]any{arg0, arg1}, arg2...)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InfoWithContext", reflect.TypeOf((*MockLogger)(nil).InfoWithContext), varargs...)
+}
+
+// Level mocks base method.
+func (m *MockLogger) Level() zapcore.Level {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Level")
+	ret0, _ := ret[0].(zapcore.Level)
+	return ret0
+}
+
+// Level indicates an expected call of Level.
+func (mr *MockLoggerMockRecorder) Level() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Level", reflect.TypeOf((*MockLogger)(nil).Level))
 }
 
 // Panic mocks base method.
