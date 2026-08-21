@@ -152,7 +152,7 @@ func createInterpreter(graph *Graph, store ObjectStore) worker.Interpreter {
 // with the given core and cycle group. The core is passed by value so
 // that each worker gets independent listener/sender slices while sharing
 // the pool, error channel, and interpreter via pointers.
-func createWorker(
+func (b *Builder) createWorker(
 	spec Spec,
 	graph *Graph,
 	node *Node,
@@ -197,28 +197,30 @@ func createWorker(
 			intersection.Core = &core
 			w = &intersection
 		case weightedGraph.ExclusionOperator:
-			edges, _ := graph.GetEdgesFromNode(node)
+			if b.config.Flags&FlagOptimizeSubtract == 1 {
+				edges, _ := graph.GetEdgesFromNode(node)
 
-			// fetch the subtract edge from the difference set operation.
-			// it is an invariant of the weighted graph that an exclusion
-			// operator node have two outgoing edges.
-			subtractEdge := edges[1]
+				// fetch the subtract edge from the difference set operation.
+				// it is an invariant of the weighted graph that an exclusion
+				// operator node have two outgoing edges.
+				subtractEdge := edges[1]
 
-			// wildcardEdges will only contain values when the edge traverses
-			// only to wildcard terminal nodes of the target type. at least one
-			// edge must be present in order to apply an optimization.
-			wildcardEdges := FlattenWildcardEdges(graph, subtractEdge, spec.SubjectType)
+				// wildcardEdges will only contain values when the edge traverses
+				// only to wildcard terminal nodes of the target type. at least one
+				// edge must be present in order to apply an optimization.
+				wildcardEdges := FlattenWildcardEdges(graph, subtractEdge, spec.SubjectType)
 
-			if len(wildcardEdges) > 0 {
-				// directly related wildcard nodes exist in the path to the
-				// target. an optimization can be applied.
-				var difference worker.DifferenceDirectSubtract
-				difference.Core = &core
-				difference.Subtracts = wildcardEdges
-				difference.SubjectType = spec.SubjectType
-				difference.SubjectIdentifier = spec.SubjectID
-				w = &difference
-				break
+				if len(wildcardEdges) > 0 {
+					// directly related wildcard nodes exist in the path to the
+					// target. an optimization can be applied.
+					var difference worker.DifferenceDirectSubtract
+					difference.Core = &core
+					difference.Subtracts = wildcardEdges
+					difference.SubjectType = spec.SubjectType
+					difference.SubjectIdentifier = spec.SubjectID
+					w = &difference
+					break
+				}
 			}
 
 			// this exclusion node does not qualify for an optimization;
@@ -364,7 +366,7 @@ func (b *Builder) Build(
 			if current.group == nil {
 				current.group = worker.NewCycleGroup()
 			}
-			w = createWorker(spec, graph, current.node, core, current.group)
+			w = b.createWorker(spec, graph, current.node, core, current.group)
 			workers[label] = w
 		}
 

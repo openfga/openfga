@@ -596,6 +596,7 @@ func TestPipeline_Error(t *testing.T) {
 
 type testcase struct {
 	name        string
+	flags       pipeline.Flag
 	model       string
 	tuples      []string
 	objectType  string
@@ -678,7 +679,8 @@ var cases = []testcase{
 		expected:    []string{"resource:document_1", "resource:document_2"},
 	},
 	{
-		name: "difference with direct subtract user and wildcard",
+		name:  "difference with direct subtract user and wildcard",
+		flags: pipeline.FlagOptimizeSubtract,
 		model: `
 		model
 			schema 1.1
@@ -729,7 +731,8 @@ var cases = []testcase{
 		},
 	},
 	{
-		name: "difference with direct subtract wildcard only",
+		name:  "difference with direct subtract wildcard only",
+		flags: pipeline.FlagOptimizeSubtract,
 		model: `
 		model
 			schema 1.1
@@ -777,7 +780,8 @@ var cases = []testcase{
 		},
 	},
 	{
-		name: "difference with direct subtract wildcard only with intersection",
+		name:  "difference with direct subtract wildcard only with intersection",
+		flags: pipeline.FlagOptimizeSubtract,
 		model: `
 		model
 			schema 1.1
@@ -2722,7 +2726,7 @@ func BenchmarkPipeline(b *testing.B) {
 				pipeline.WithStoreValidator(validator),
 			)
 
-			builder, err := pipeline.NewBuilder(reader)
+			builder, err := pipeline.NewBuilder(reader, pipeline.WithFlags(tc.flags))
 			require.NoError(b, err)
 
 			spec := pipeline.Spec{
@@ -2784,7 +2788,7 @@ func TestPipeline(t *testing.T) {
 				pipeline.WithStoreValidator(validator),
 			)
 
-			builder, err := pipeline.NewBuilder(reader)
+			builder, err := pipeline.NewBuilder(reader, pipeline.WithFlags(tc.flags))
 			require.NoError(t, err)
 
 			spec := pipeline.Spec{
