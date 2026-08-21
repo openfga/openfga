@@ -3,10 +3,12 @@ package pipeline_test
 import (
 	"testing"
 
-	"github.com/openfga/language/pkg/go/graph"
-	"github.com/openfga/language/pkg/go/transformer"
-	"github.com/openfga/openfga/internal/listobjects/pipeline"
 	"github.com/stretchr/testify/require"
+
+	"github.com/openfga/language/pkg/go/graph"
+	parser "github.com/openfga/language/pkg/go/transformer"
+
+	"github.com/openfga/openfga/internal/listobjects/pipeline"
 )
 
 func TestFlattenWildcardEdges(t *testing.T) {
@@ -194,7 +196,7 @@ func TestFlattenWildcardEdges(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			model := transformer.MustTransformDSLToProto(tt.model)
+			model := parser.MustTransformDSLToProto(tt.model)
 			builder := graph.NewWeightedAuthorizationModelGraphBuilder()
 			g, err := builder.Build(model)
 			require.NoError(t, err)
