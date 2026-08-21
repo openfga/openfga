@@ -21,9 +21,9 @@ type DifferenceDirectSubtract struct {
 // chunks the results to the worker's listeners.
 func (w *DifferenceDirectSubtract) ProcessMessage(ctx context.Context, index int, msg *Message) error {
 	sender := w.senders[index]
-	edge := sender.Key()
+	senderEdge := sender.Key()
 
-	results := w.Interpreter.Interpret(ctx, edge, msg.Value)
+	results := w.Interpreter.Interpret(ctx, senderEdge, msg.Value)
 	defer results.Close()
 
 	var err error
@@ -43,8 +43,8 @@ SubtractLoop:
 			break
 		}
 
-		for _, edge := range w.Subtracts {
-			typeAndRelation := edge.GetRelationDefinition()
+		for _, subtractEdge := range w.Subtracts {
+			typeAndRelation := subtractEdge.GetRelationDefinition()
 
 			objectType, relation := tuple.SplitObjectRelation(typeAndRelation)
 
@@ -53,7 +53,7 @@ SubtractLoop:
 				break SubtractLoop
 			}
 
-			userType := edge.GetTo().GetUniqueLabel()
+			userType := subtractEdge.GetTo().GetUniqueLabel()
 
 			subject := tuple.BuildObject(w.SubjectType, w.SubjectIdentifier)
 
@@ -67,7 +67,7 @@ SubtractLoop:
 				break SubtractLoop
 			}
 
-			item := w.Interpreter.Get(ctx, value, relation, subject, edge.GetConditions())
+			item := w.Interpreter.Get(ctx, value, relation, subject, subtractEdge.GetConditions())
 			if item != nil {
 				_, err = item.Object()
 				if err != nil {
@@ -82,14 +82,12 @@ SubtractLoop:
 		objects = append(objects, value)
 		if len(objects) == w.ChunkSize {
 			w.send(ctx, objects)
-			clear(objects)
 			objects = objects[:0]
 		}
 	}
 
 	if len(objects) > 0 {
 		w.send(ctx, objects)
-		clear(objects)
 	}
 	return err
 }
