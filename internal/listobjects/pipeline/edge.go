@@ -160,7 +160,7 @@ func (e *edgeInterpreter) Exists(ctx context.Context, edge *Edge, object, user s
 	targetUser := tuple.BuildObject(targetType, targetID)
 
 	if targetRelation != "" {
-		targetUser = tuple.ToObjectRelationString(user, targetRelation)
+		targetUser = tuple.ToObjectRelationString(targetUser, targetRelation)
 	}
 
 	sourceLabel := edge.GetRelationDefinition()
