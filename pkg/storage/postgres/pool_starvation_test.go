@@ -93,7 +93,7 @@ func TestIteratorNextRespectsContextDuringPoolAcquire(t *testing.T) {
 
 	select {
 	case err := <-result:
-		require.Error(t, err, "Next must fail once its context deadline expires")
+		require.ErrorIs(t, err, context.DeadlineExceeded, "Next must fail with its context deadline once it expires")
 	case <-time.After(5 * time.Second):
 		holder.Stop() // release the connection so the goroutine can unwind
 		t.Fatal("Next() blocked for 5s waiting for a pool connection, ignoring its 500ms context deadline")
@@ -191,7 +191,8 @@ func TestReverseExpandPoolStarvationDeadlock(t *testing.T) {
 	// The request context expires after 2s, so Execute must return by then.
 	// Allow a generous margin before declaring it deadlocked.
 	select {
-	case <-execDone:
+	case err := <-execDone:
+		require.ErrorIs(t, err, context.DeadlineExceeded, "Execute must return its context deadline error, not nil or an unrelated error")
 	case <-time.After(10 * time.Second):
 		t.Fatal("reverse expansion deadlocked: iterator holds the pool's only connection while its children wait for one, and the request deadline cannot unwind the cycle")
 	}
