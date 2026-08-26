@@ -8,7 +8,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 ### Added
-- Added `WithServiceName` server option to allow embedders to override the `serviceName` field used for the `grpc_service` label on Prometheus metrics and `telemetry.RPCInfo.Service`. This enables multiple `Server` instances in the same process to emit separate metric series. Defaults to `openfgav1.OpenFGAService_ServiceDesc.ServiceName` when omitted (backward compatible). [#3265](https://github.com/openfga/openfga/pull/3265)
+- Added `WithServiceName` server option to allow embedders to override the `serviceName` field used for the `grpc_service` label on OpenFGA's package-level Prometheus metrics and `telemetry.RPCInfo.Service`. This enables multiple `Server` instances in the same process to emit separate metric series. Note it does not rename the standard gRPC server metrics (e.g. `grpc_server_handled_total`), whose labels are derived from the registered gRPC service. Use stable, low-cardinality names, as the value becomes a metric label. Defaults to `openfgav1.OpenFGAService_ServiceDesc.ServiceName` when omitted (backward compatible). [#3265](https://github.com/openfga/openfga/pull/3265)
 
 ### Fixed
 - Scope context-cancelation stripping to query execution only. No longer can deadlock on saturated connection pool. [#3255](https://github.com/openfga/openfga/pull/3255)
