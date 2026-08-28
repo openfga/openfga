@@ -10,6 +10,9 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Added
 - Added `WithServiceName` server option to allow embedders to override the `serviceName` field used for the `grpc_service` label on OpenFGA's package-level Prometheus metrics and `telemetry.RPCInfo.Service`. This enables multiple `Server` instances in the same process to emit separate metric series. Note it does not rename the standard gRPC server metrics (e.g. `grpc_server_handled_total`), whose labels are derived from the registered gRPC service. Use stable, low-cardinality names, as the value becomes a metric label. Defaults to `openfgav1.OpenFGAService_ServiceDesc.ServiceName` when omitted (backward compatible). [#3265](https://github.com/openfga/openfga/pull/3265)
 
+### Security
+- Build with Go 1.26.6 so released binaries and container images pick up the Go standard library security fixes published for go1.26.5 (CVE-2026-33818, CVE-2026-39821, CVE-2026-46600, CVE-2026-56853, CVE-2026-56858/59/60/62).
+
 ## [1.19.0] - 2026-08-24
 ### Added
 - Adds configurable pipeline optimization for weight-one difference subtract edges with high cardinality on wildcard leaves. For now, this configuration is internal only. [#3267](https://github.com/openfga/openfga/pull/3267)
