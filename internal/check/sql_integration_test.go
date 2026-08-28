@@ -2,7 +2,7 @@
 
 // These integration tests drive weight1 end to end against a real PostgreSQL database in a test
 // container. Each case turns a model DSL into a weighted graph, seeds tuples through the real
-// postgres datastore, then runs weight1 against the datastore's own adapter.Builder and asserts
+// postgres datastore, then runs weight1 against the datastore's own adapter.Querier and asserts
 // the boolean decision.
 //
 // sql_test.go pins the emitted SQL shape and folding behavior against a fake executor; this suite
@@ -33,7 +33,7 @@ import (
 )
 
 // pgEnv is the shared PostgreSQL backing for the suite: a single datastore used both to seed
-// tuples and, via its Builder, to run weight1. Storagefixtures bootstraps the container once and
+// tuples and, via its Querier, to run weight1. Storagefixtures bootstraps the container once and
 // tears it down in TestMain; the datastore is closed via t.Cleanup.
 type pgEnv struct {
 	ds *postgres.Datastore
@@ -76,7 +76,7 @@ func (e *pgEnv) run(t *testing.T, g *modelgraph.AuthorizationModelGraph, tuples 
 
 	s := NewSQL(g, e.ds)
 	edges := entryEdges(t, g, req, object, relation)
-	res, err := s.weight1(ctx, req, e.ds.Builder(req.GetConsistency()), edges, graph.UnionOperator)
+	res, err := s.weight1(ctx, req, e.ds.Querier(req.GetConsistency()), edges, graph.UnionOperator)
 	require.NoError(t, err)
 	return res.GetAllowed()
 }

@@ -319,9 +319,16 @@ func (s *Datastore) Close() {
 	}
 }
 
-// Builder see [storage.RelationshipTupleReader].Builder. It returns a PostgreSQL adapter Builder
-// over the pool selected for the given consistency preference.
-func (s *Datastore) Builder(consistency openfgav1.ConsistencyPreference) adapter.Builder {
+// Builder see [storage.RelationshipTupleReader].Builder. PostgreSQL now implements the
+// typed-AST Querier instead of the fluent Builder algebra, so there is no Builder
+// implementation and this returns nil (the capability signal that callers fall back from).
+func (s *Datastore) Builder(_ openfgav1.ConsistencyPreference) adapter.Builder {
+	return nil
+}
+
+// Querier see [storage.RelationshipTupleReader].Querier. It renders and runs typed
+// query.Statements over the pool selected for the given consistency preference.
+func (s *Datastore) Querier(consistency openfgav1.ConsistencyPreference) adapter.Querier {
 	return pg.New(s.getPgxPool(consistency))
 }
 

@@ -984,7 +984,7 @@ func (r *Resolver) ResolveLogicalEdge(ctx context.Context, req *Request, logical
 
 	groupEdge := logicalEdge.(*GroupEdge)
 
-	if r.datastore.Builder(req.Consistency) == nil {
+	if r.datastore.Querier(req.Consistency) == nil {
 		switch groupEdge.Node.GetNodeType() {
 		case graph.SpecificTypeAndRelation:
 			return r.groupStrategies[DefaultPlan.Name].Union(ctx, req, groupEdge)

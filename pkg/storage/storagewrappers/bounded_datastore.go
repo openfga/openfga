@@ -15,6 +15,7 @@ import (
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/adapter"
+	"github.com/openfga/openfga/pkg/storage/adapter/query"
 )
 
 const timeWaitingAttribute = "datastore_time_waiting"
@@ -99,6 +100,21 @@ func (b *boundedBuilder) Build(stmt adapter.SelectBuilder) adapter.Query {
 	}
 }
 
+// boundedQuerier wraps a delegate Querier so each Execute passes through the concurrency
+// bound, mirroring boundedQuery for the Builder path.
+type boundedQuerier struct {
+	*BoundedTupleReader
+	adapter.Querier
+}
+
+func (q *boundedQuerier) Execute(ctx context.Context, stmt *query.Statement) (adapter.Rows, error) {
+	if err := q.bound(ctx, "Querier"); err != nil {
+		return nil, err
+	}
+	defer q.done()
+	return q.Querier.Execute(ctx, stmt)
+}
+
 type BoundedTupleReader struct {
 	storage.RelationshipTupleReader
 	limiter    chan struct{} // bound concurrency
@@ -142,6 +158,20 @@ func (b *BoundedTupleReader) Builder(consistency openfgav1.ConsistencyPreference
 		return nil
 	}
 	return &boundedBuilder{
+		b,
+		inner,
+	}
+}
+
+// Querier wraps the delegate's Querier so each Execute passes through the concurrency
+// bound, mirroring Builder. It preserves the nil capability signal: if the delegate does
+// not support the typed-AST query surface, so does this wrapper.
+func (b *BoundedTupleReader) Querier(consistency openfgav1.ConsistencyPreference) adapter.Querier {
+	inner := b.RelationshipTupleReader.Querier(consistency)
+	if inner == nil {
+		return nil
+	}
+	return &boundedQuerier{
 		b,
 		inner,
 	}

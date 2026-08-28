@@ -1,4 +1,4 @@
-package mysql
+package sqlite
 
 import (
 	"fmt"
@@ -19,7 +19,7 @@ func (r *renderer) write(s string) { r.sb.WriteString(s) }
 
 func (r *renderer) bind(v any) {
 	r.args = append(r.args, v)
-	r.write("?") // MySQL is always positional "?"
+	r.write("?") // SQLite is always positional "?"
 }
 
 // --- statement --------------------------------------------------------------------------
@@ -46,6 +46,7 @@ func (r *renderer) selectStmt(s *ast.Select) {
 	}
 	for _, j := range s.Joins {
 		r.write(" " + joinKeyword(j.Type) + " tuple " + j.Table.Alias)
+		// A CROSS join carries no condition; every other flavour does.
 		if j.On != nil {
 			r.write(" ON ")
 			r.predicate(j.On)
@@ -62,14 +63,15 @@ func (r *renderer) selectStmt(s *ast.Select) {
 		r.write(" ORDER BY ")
 		r.orderBy(s.OrderBy)
 	}
+	// Pointers, so "no LIMIT" stays distinct from "LIMIT 0".
 	if s.Limit != nil {
 		r.write(" LIMIT " + strconv.FormatUint(*s.Limit, 10))
 	}
 	if s.Offset != nil {
-		// MySQL requires a LIMIT before OFFSET. The largest unsigned-64-bit value is the
-		// idiomatic "no limit" stand-in.
+		// SQLite requires a LIMIT ahead of OFFSET. Its own idiom for "no upper bound" is a
+		// negative limit, so a bare OFFSET gets "LIMIT -1" rather than a sentinel row count.
 		if s.Limit == nil {
-			r.write(" LIMIT 18446744073709551615")
+			r.write(" LIMIT -1")
 		}
 		r.write(" OFFSET " + strconv.FormatUint(*s.Offset, 10))
 	}
@@ -117,10 +119,9 @@ func (r *renderer) orderBy(terms []ast.OrderTerm) {
 
 // --- nodes ------------------------------------------------------------------------------
 //
-// One walk function per POSITION CATEGORY, matching ast's four category interfaces. Splitting
-// the walk this way means each switch covers one category, so its default panic is reachable
-// only for a genuinely unknown node kind, and the recursion's position is the function it is
-// in rather than something to track.
+// One walk function per POSITION CATEGORY, matching ast's four category interfaces. Each switch
+// covers one category, so its default panic is reachable only for a genuinely unknown node kind,
+// and the recursion's position is the function it is in rather than something to track.
 
 // predicate renders a truth-valued node.
 func (r *renderer) predicate(n ast.Predicate) {
@@ -183,7 +184,7 @@ func (r *renderer) predicate(n ast.Predicate) {
 		}
 
 	default:
-		panic(fmt.Sprintf("mysql: unhandled predicate %T", n))
+		panic(fmt.Sprintf("sqlite: unhandled predicate %T", n))
 	}
 }
 
@@ -191,7 +192,7 @@ func (r *renderer) predicate(n ast.Predicate) {
 func (r *renderer) value(n ast.ScalarValue) {
 	switch x := n.(type) {
 	case ast.ColNode:
-		r.write(mysqlColumn(x.Name, x.Alias))
+		r.write(sqliteColumn(x.Name, x.Alias))
 
 	case ast.BindNode:
 		r.bind(x.Value)
@@ -202,20 +203,23 @@ func (r *renderer) value(n ast.ScalarValue) {
 	case ast.CastNode:
 		r.write("CAST(")
 		r.value(x.Inner)
-		r.write(" AS " + mysqlType(x.Type) + ")")
+		r.write(" AS " + sqliteType(x.Type) + ")")
 
 	case ast.FuncNode:
-		r.write(mysqlFunc(x.Fn) + "(")
+		r.write(sqliteFunc(x.Fn) + "(")
 		r.values(x.Args)
 		r.write(")")
 
 	case ast.JSONObjectNode:
-		r.write("JSON_OBJECT(")
+		// SQLite spells the constructor json_object and takes a flat "k, v" list.
+		r.write("json_object(")
 		for i, p := range x.Pairs {
 			if i > 0 {
 				r.write(", ")
 			}
-			r.jsonPair(p)
+			r.value(p.Key)
+			r.write(", ")
+			r.value(p.Value)
 		}
 		r.write(")")
 
@@ -249,28 +253,19 @@ func (r *renderer) value(n ast.ScalarValue) {
 		r.write(")")
 
 	default:
-		panic(fmt.Sprintf("mysql: unhandled value %T", n))
+		panic(fmt.Sprintf("sqlite: unhandled value %T", n))
 	}
 }
 
-// set renders a set-valued node. Its only caller is quantified, for the non-bound flavours.
+// set renders a set-valued node. Its only caller is quantified, for the non-bound flavours (a
+// bound set is expanded inline, since SQLite has no array operand).
 func (r *renderer) set(n ast.SetValue) {
 	switch x := n.(type) {
-	case ast.SetBindNode:
-		r.write("(")
-		for i, e := range x.Elems {
-			if i > 0 {
-				r.write(", ")
-			}
-			r.bind(e)
-		}
-		r.write(")")
-
 	case ast.SubqueryNode:
 		r.selectStmt(x.Stmt)
 
 	default:
-		panic(fmt.Sprintf("mysql: unhandled set %T", n))
+		panic(fmt.Sprintf("sqlite: unhandled set %T", n))
 	}
 }
 
@@ -285,36 +280,10 @@ func (r *renderer) projection(n ast.Projection) {
 		// Everything else in the category is a ScalarValue, ScalarValue embedding Projection.
 		v, ok := n.(ast.ScalarValue)
 		if !ok {
-			panic(fmt.Sprintf("mysql: unhandled projection %T", n))
+			panic(fmt.Sprintf("sqlite: unhandled projection %T", n))
 		}
 		r.value(v)
 	}
-}
-
-// jsonPair renders one JSON object pair. MySQL's JSON_OBJECT takes a flat "k, v" argument list,
-// not the ANSI "k VALUE v" — which is why ast keeps the pair as a node instead of flattening it
-// at construction time.
-func (r *renderer) jsonPair(p ast.JSONPairNode) {
-	r.value(p.Key)
-	r.write(", ")
-	r.value(p.Value)
-}
-
-// filtered writes an aggregate's argument, wrapped in the FILTER emulation when there is a
-// filter. This is the crux of MySQL's independence: MySQL has no FILTER clause at all, so a
-// filtered aggregate aggregates a CASE that yields the argument only when the filter holds and
-// NULL otherwise — aggregates skip NULLs, so the filtered-out rows do not contribute, exactly as
-// FILTER would. It is a structural rewrite of the node, which no dialect table could express.
-func (r *renderer) filtered(filter ast.Predicate, arg ast.ScalarValue) {
-	if filter == nil {
-		r.value(arg)
-		return
-	}
-	r.write("CASE WHEN ")
-	r.predicate(filter)
-	r.write(" THEN ")
-	r.value(arg)
-	r.write(" END")
 }
 
 func (r *renderer) caseElse(e ast.ScalarValue) {
@@ -325,34 +294,28 @@ func (r *renderer) caseElse(e ast.ScalarValue) {
 	r.write(" END")
 }
 
-// aggregate renders a value-producing aggregate, emulating FILTER. COUNT(*) has no argument to
-// wrap, so a filtered one becomes COUNT(CASE WHEN <filter> THEN 1 END).
+// aggregate renders a value-producing aggregate. SQLite supports the FILTER (WHERE ...) clause
+// natively (since 3.30), so a filtered aggregate emits it directly rather than emulating it
+// with a CASE — the divergence that forces MySQL to own its renderer.
 func (r *renderer) aggregate(x ast.AggNode) {
-	r.write(mysqlAgg(x.Fn) + "(")
+	r.write(sqliteAgg(x.Fn) + "(")
 	if x.Distinct {
 		r.write("DISTINCT ")
 	}
-
-	switch {
-	case len(x.Args) == 0 && x.Filter != nil:
-		r.write("CASE WHEN ")
-		r.predicate(x.Filter)
-		r.write(" THEN 1 END")
-	case len(x.Args) == 0:
+	if len(x.Args) == 0 {
 		r.write("*")
-	default:
-		for i, a := range x.Args {
-			if i > 0 {
-				r.write(", ")
-			}
-			r.filtered(x.Filter, a)
-		}
+	} else {
+		r.values(x.Args)
 	}
-
 	r.write(")")
+	if x.Filter != nil {
+		r.write(" FILTER (WHERE ")
+		r.predicate(x.Filter)
+		r.write(")")
+	}
 }
 
-// quantified renders a quantified comparison. A bound set is ALWAYS expanded, since MySQL has
+// quantified renders a quantified comparison. A bound set is ALWAYS expanded, since SQLite has
 // no array operand.
 func (r *renderer) quantified(x ast.QuantifiedNode) {
 	sb, ok := x.Set.(ast.SetBindNode)
@@ -367,6 +330,7 @@ func (r *renderer) quantified(x ast.QuantifiedNode) {
 
 	elems := sb.Elems
 	if len(elems) == 0 {
+		// An empty set is a constant: ALL holds vacuously, ANY never does.
 		if x.Q == ast.All {
 			r.write("1 = 1")
 		} else {

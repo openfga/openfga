@@ -203,6 +203,12 @@ func (s *MemoryBackend) Builder(_ openfgav1.ConsistencyPreference) adapter.Build
 	return nil
 }
 
+// Querier see [storage.RelationshipTupleReader].Querier. The in-memory backend is not SQL
+// based and has no typed-AST Querier implementation, so this returns nil.
+func (s *MemoryBackend) Querier(_ openfgav1.ConsistencyPreference) adapter.Querier {
+	return nil
+}
+
 // Close does not do anything for [MemoryBackend].
 func (s *MemoryBackend) Close() {}
 

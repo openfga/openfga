@@ -127,9 +127,17 @@ func NewWithDB(db *sql.DB, cfg *sqlcommon.Config) (*Datastore, error) {
 	}, nil
 }
 
-// Builder see [storage.RelationshipTupleReader].Builder. MySQL uses a single connection pool, so
-// the consistency preference does not influence which connection is used.
+// Builder see [storage.RelationshipTupleReader].Builder. MySQL now implements the typed-AST
+// Querier instead of the fluent Builder algebra, so there is no Builder implementation and
+// this returns nil (the capability signal that callers fall back from).
 func (s *Datastore) Builder(_ openfgav1.ConsistencyPreference) adapter.Builder {
+	return nil
+}
+
+// Querier see [storage.RelationshipTupleReader].Querier. It renders and runs typed
+// query.Statements against the connection pool; MySQL uses a single pool, so the consistency
+// preference does not influence which connection is used.
+func (s *Datastore) Querier(_ openfgav1.ConsistencyPreference) adapter.Querier {
 	return mysqladapter.New(s.db)
 }
 

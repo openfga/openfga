@@ -15,6 +15,7 @@ import (
 	"github.com/openfga/openfga/internal/modelgraph"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/adapter"
+	"github.com/openfga/openfga/pkg/storage/adapter/query"
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
@@ -33,15 +34,15 @@ func NewSQL(model *modelgraph.AuthorizationModelGraph, datastore storage.Relatio
 }
 
 func (s *SQLStrategy) Union(ctx context.Context, req *Request, edge *GroupEdge) (*Response, error) {
-	return s.weight1(ctx, req, s.datastore.Builder(req.GetConsistency()), edge.Edges, graph.UnionOperator)
+	return s.weight1(ctx, req, s.datastore.Querier(req.GetConsistency()), edge.Edges, graph.UnionOperator)
 }
 
 func (s *SQLStrategy) Intersection(ctx context.Context, req *Request, edge *GroupEdge) (*Response, error) {
-	return s.weight1(ctx, req, s.datastore.Builder(req.GetConsistency()), edge.Edges, graph.IntersectionOperator)
+	return s.weight1(ctx, req, s.datastore.Querier(req.GetConsistency()), edge.Edges, graph.IntersectionOperator)
 }
 
 func (s *SQLStrategy) Exclusion(ctx context.Context, req *Request, edge *GroupEdge) (*Response, error) {
-	return s.weight1(ctx, req, s.datastore.Builder(req.GetConsistency()), edge.Edges, graph.ExclusionOperator)
+	return s.weight1(ctx, req, s.datastore.Querier(req.GetConsistency()), edge.Edges, graph.ExclusionOperator)
 }
 
 // branchOutcome is what we know about a branch while folding a boolean subtree:
@@ -79,9 +80,13 @@ type gatheredRow struct {
 // satisfied. The reduceLeaf reducer sets the predicate (consumed on the existence path); the
 // gathered-row reducer leaves it nil (the gather path re-folds against the read rows, not a
 // predicate).
+//
+// pred is a POINTER because query.Predicate is a struct, not a nilable interface: a nil
+// *query.Predicate is how the fold expresses "this branch carries no predicate" (the
+// gathered-row reducer's residuals), the role interface-nil played before the typed surface.
 type residual struct {
 	state branchOutcome
-	pred  adapter.Predicate
+	pred  *query.Predicate
 }
 
 // leafReducer reduces a single weight-1 leaf to a residual. The subtree is folded at most twice:
@@ -94,12 +99,12 @@ type leafReducer func(ctx context.Context, l leaf) (residual, error)
 // evaluating the whole group of weight-1 edges (combined by operation) in a single SQL
 // round-trip. Without conditions, it issues an existence query (SELECT 1 ... HAVING <tree>);
 // with conditions it gathers candidate tuples and evaluates their conditions in-app.
-func (s *SQLStrategy) weight1(ctx context.Context, req *Request, builder adapter.Builder, edges []*graph.WeightedAuthorizationModelEdge, operation string) (*Response, error) {
+func (s *SQLStrategy) weight1(ctx context.Context, req *Request, querier adapter.Querier, edges []*graph.WeightedAuthorizationModelEdge, operation string) (*Response, error) {
 	w := &walker{
 		s:        s,
 		req:      req,
-		builder:  builder,
-		table:    builder.Tuple("t"),
+		querier:  querier,
+		table:    query.NewTuple("t"),
 		userType: req.GetUserType(),
 		wildcard: req.IsTypedWildcard(),
 		relConds: map[string]map[string]struct{}{},
@@ -145,8 +150,8 @@ func (s *SQLStrategy) weight1(ctx context.Context, req *Request, builder adapter
 type walker struct {
 	s       *SQLStrategy
 	req     *Request
-	builder adapter.Builder
-	table   adapter.Tuple
+	querier adapter.Querier
+	table   query.Tuple
 
 	userType string
 	wildcard bool
@@ -225,7 +230,7 @@ func (w *walker) pruned(edge *graph.WeightedAuthorizationModelEdge) bool {
 func (w *walker) fold(ctx context.Context, edges []*graph.WeightedAuthorizationModelEdge, operation string, reduce leafReducer) (residual, error) {
 	switch operation {
 	case graph.UnionOperator:
-		var preds []adapter.Predicate
+		var preds []*query.Predicate
 		for _, edge := range edges {
 			r, err := w.foldEdge(ctx, edge, reduce)
 			if err != nil {
@@ -241,7 +246,7 @@ func (w *walker) fold(ctx context.Context, edges []*graph.WeightedAuthorizationM
 		}
 		return combinePreds(preds, branchFalse, orPred), nil
 	case graph.IntersectionOperator:
-		var preds []adapter.Predicate
+		var preds []*query.Predicate
 		for _, edge := range edges {
 			r, err := w.foldEdge(ctx, edge, reduce)
 			if err != nil {
@@ -340,9 +345,10 @@ func (w *walker) reduceLeaf(ctx context.Context, l leaf) (residual, error) {
 		return residual{state: branchTrue}, nil
 	}
 	w.accumulateFilter(l)
-	match := w.table.ObjectRelation().Eq(w.builder.Lit(l.relation))
-	count := w.builder.Aggregate(adapter.AggCount, w.builder.Lit(1)).Filter(match)
-	return residual{state: branchNeedsQuery, pred: count.Gt(w.builder.Lit(0))}, nil
+	match := query.Eq(w.table.ObjectRelation(), query.Lit(l.relation))
+	count := query.Count(query.Lit[int64](1), query.AggFilter(match))
+	pred := query.Gt(count, query.Lit[int64](0))
+	return residual{state: branchNeedsQuery, pred: &pred}, nil
 }
 
 // contextLeafSatisfied reports whether a contextual tuple satisfies the leaf (matching the
@@ -386,21 +392,24 @@ func (w *walker) contextLeafSatisfied(ctx context.Context, l leaf) (bool, error)
 // surviving relations, with the boolean subtree (rendered by reduceLeaf during the fold in
 // weight1) supplied as pred and placed in HAVING. Because object_id is pinned to a single value
 // by the shared WHERE, the aggregates form one implicit group, so no GROUP BY is needed.
-func (w *walker) evalExistence(ctx context.Context, pred adapter.Predicate) (*Response, error) {
+//
+// pred is a *query.Predicate: on this path the fold always produces one, but a nil pointer would
+// simply omit HAVING (a SELECT 1 filtered only by the shared WHERE), mirroring the renderer's
+// nil-clause contract rather than dereferencing blindly.
+func (w *walker) evalExistence(ctx context.Context, pred *query.Predicate) (*Response, error) {
 	// Only unconditioned tuples may satisfy a leaf on the existence path; a conditioned model
 	// would have routed to the gather path, so this narrowing is uniform across every leaf and
-	// lives here in the shared WHERE rather than in each COUNT(CASE). The empty-condition
+	// lives here in the shared WHERE rather than in each COUNT FILTER. The empty-condition
 	// sentinel is a fixed, trusted constant, so it is emitted with Lit rather than Bind.
-	where := append(w.whereShared(),
-		w.table.ObjectRelation().In(w.relationLits()...),
-		w.table.Condition().IsNull().Or(w.table.Condition().Eq(w.builder.Lit(""))),
-	)
-	stmt := w.builder.Select(w.builder.Lit(1)).
+	where := append(w.whereShared(), w.relationIn(), w.unconditioned())
+	stmt := query.Select(query.Lit[int64](1)).
 		From(w.table).
-		Where(where...).
-		Having(pred).
+		Where(query.And(where[0], where[1:]...)).
 		Limit(1)
-	rows, err := w.builder.Build(stmt).Execute(ctx)
+	if pred != nil {
+		stmt = stmt.Having(*pred)
+	}
+	rows, err := w.querier.Execute(ctx, stmt)
 	if err != nil {
 		return nil, err
 	}
@@ -423,7 +432,8 @@ func (w *walker) evalConditioned(ctx context.Context, edges []*graph.WeightedAut
 	if len(w.relConds) == 0 {
 		return &Response{Allowed: false}, nil
 	}
-	stmt := w.builder.Select(
+	where := append(w.whereShared(), w.gatherFilter())
+	stmt := query.Select(
 		w.table.ObjectRelation(),
 		w.table.SubjectID(),
 		w.table.SubjectRelation(),
@@ -431,8 +441,8 @@ func (w *walker) evalConditioned(ctx context.Context, edges []*graph.WeightedAut
 		w.table.ConditionContext(),
 	).
 		From(w.table).
-		Where(append(w.whereShared(), w.gatherFilter())...)
-	rows, err := w.builder.Build(stmt).Execute(ctx)
+		Where(query.And(where[0], where[1:]...))
+	rows, err := w.querier.Execute(ctx, stmt)
 	if err != nil {
 		return nil, err
 	}
@@ -525,20 +535,30 @@ func (w *walker) leafSatisfied(ctx context.Context, l leaf, gathered []gatheredR
 // whereShared returns the predicates common to every weight-1 query: the store, the
 // object, and a narrowing of the subject to the exact request subject (plus the public
 // wildcard when a wildcard leaf is present).
-func (w *walker) whereShared() []adapter.Predicate {
-	preds := []adapter.Predicate{
-		w.table.Store().Eq(w.builder.Bind(w.req.GetStoreID())),
-		w.table.ObjectType().Eq(w.builder.Bind(w.objectType)),
-		w.table.ObjectID().Eq(w.builder.Bind(w.objectID)),
-		w.table.SubjectType().Eq(w.builder.Bind(w.subjType)),
-		w.table.SubjectRelation().Eq(w.builder.Bind(w.subjRel)),
+func (w *walker) whereShared() []query.Predicate {
+	preds := []query.Predicate{
+		query.Eq(w.table.Store(), query.Bind(w.req.GetStoreID())),
+		query.Eq(w.table.ObjectType(), query.Bind(w.objectType)),
+		query.Eq(w.table.ObjectID(), query.Bind(w.objectID)),
+		query.Eq(w.table.SubjectType(), query.Bind(w.subjType)),
+		query.Eq(w.table.SubjectRelation(), query.Bind(w.subjRel)),
 	}
 	if w.hasWildcardLeaf && w.subjID != tuple.Wildcard {
-		preds = append(preds, w.table.SubjectID().In(w.builder.Bind(w.subjID), w.builder.Bind(tuple.Wildcard)))
+		preds = append(preds, query.In(w.table.SubjectID(), query.Bind(w.subjID), query.Bind(tuple.Wildcard)))
 	} else {
-		preds = append(preds, w.table.SubjectID().Eq(w.builder.Bind(w.subjID)))
+		preds = append(preds, query.Eq(w.table.SubjectID(), query.Bind(w.subjID)))
 	}
 	return preds
+}
+
+// unconditioned admits the rows carrying no condition: a NULL condition name, or the empty-string
+// sentinel some writers store. The sentinel is a fixed, trusted constant, so it is emitted with
+// Lit rather than Bind.
+func (w *walker) unconditioned() query.Predicate {
+	return query.Or(
+		query.IsNull(w.table.Condition()),
+		query.Eq(w.table.Condition(), query.Lit("")),
+	)
 }
 
 // sortedRelations returns the accumulated relation names in deterministic order.
@@ -551,16 +571,16 @@ func (w *walker) sortedRelations() []string {
 	return names
 }
 
-// relationLits renders the accumulated relation set as a sorted list of inline literals
-// for the existence path's WHERE `relation IN (...)` filter. Relation names come from the
-// model, so they are safe to inline directly rather than bind.
-func (w *walker) relationLits() []adapter.Expression {
+// relationIn renders the accumulated relation set as a sorted `relation IN (...)` filter for the
+// existence path. Relation names come from the model, so they are safe to inline directly rather
+// than bind.
+func (w *walker) relationIn() query.Predicate {
 	names := w.sortedRelations()
-	lits := make([]adapter.Expression, len(names))
+	lits := make([]query.Expr[string], len(names))
 	for i, r := range names {
-		lits[i] = w.builder.Lit(r)
+		lits[i] = query.Lit(r)
 	}
-	return lits
+	return query.In(w.table.ObjectRelation(), lits...)
 }
 
 // gatherFilter restricts the gather query to tuples whose (relation, condition) pairing the
@@ -572,15 +592,18 @@ func (w *walker) relationLits() []adapter.Expression {
 // condition its relation does not admit is therefore excluded in the database rather than
 // gathered and rejected in-app. Relations are sorted for deterministic SQL, and evalConditioned
 // guards against an empty relation set before calling, so the returned predicate is never empty.
-func (w *walker) gatherFilter() adapter.Predicate {
-	var clauses []adapter.Predicate
+func (w *walker) gatherFilter() query.Predicate {
+	var clauses []query.Predicate
 	for _, relation := range w.sortedRelations() {
-		clause := w.table.ObjectRelation().Eq(w.builder.Lit(relation)).And(w.conditionPred(w.relConds[relation]))
+		clause := query.And(
+			query.Eq(w.table.ObjectRelation(), query.Lit(relation)),
+			w.conditionPred(w.relConds[relation]),
+		)
 		clauses = append(clauses, clause)
 	}
 	pred := clauses[0]
 	for _, c := range clauses[1:] {
-		pred = pred.Or(c)
+		pred = query.Or(pred, c)
 	}
 	return pred
 }
@@ -588,9 +611,9 @@ func (w *walker) gatherFilter() adapter.Predicate {
 // conditionPred renders the predicate admitting exactly the condition names in conds: the named
 // conditions via `condition IN (...)` plus, when the NoCond sentinel is present (the relation
 // admits unconditioned tuples), the unconditioned rows (`condition IS NULL OR condition = ”`).
-// Names are sorted for deterministic SQL. The empty-condition sentinel is a fixed, trusted
-// constant, so it is emitted with Lit rather than Bind.
-func (w *walker) conditionPred(conds map[string]struct{}) adapter.Predicate {
+// Names are sorted for deterministic SQL. Condition names come from the model, so they are safe
+// to inline directly rather than bind.
+func (w *walker) conditionPred(conds map[string]struct{}) query.Predicate {
 	names := make([]string, 0, len(conds))
 	unconditioned := false
 	for c := range conds {
@@ -602,22 +625,21 @@ func (w *walker) conditionPred(conds map[string]struct{}) adapter.Predicate {
 	}
 	sort.Strings(names)
 
-	var preds []adapter.Predicate
+	var preds []query.Predicate
 	if len(names) > 0 {
-		// Condition names come from the model, so they are safe to inline directly.
-		lits := make([]adapter.Expression, len(names))
+		lits := make([]query.Expr[string], len(names))
 		for i, c := range names {
-			lits[i] = w.builder.Lit(c)
+			lits[i] = query.Lit(c)
 		}
-		preds = append(preds, w.table.Condition().In(lits...))
+		preds = append(preds, query.In(w.table.Condition(), lits...))
 	}
 	if unconditioned {
-		preds = append(preds, w.table.Condition().IsNull().Or(w.table.Condition().Eq(w.builder.Lit(""))))
+		preds = append(preds, w.unconditioned())
 	}
 
 	pred := preds[0]
 	for _, p := range preds[1:] {
-		pred = pred.Or(p)
+		pred = query.Or(pred, p)
 	}
 	return pred
 }
@@ -625,7 +647,7 @@ func (w *walker) conditionPred(conds map[string]struct{}) adapter.Predicate {
 // combinePreds folds preds with join; an empty list yields the given identity state. The
 // gathered-result reducer carries no predicate, contributing nil preds, in which case join
 // returns nil and the result is a bare branchNeedsQuery.
-func combinePreds(preds []adapter.Predicate, empty branchOutcome, join func(a, b adapter.Predicate) adapter.Predicate) residual {
+func combinePreds(preds []*query.Predicate, empty branchOutcome, join func(a, b *query.Predicate) *query.Predicate) residual {
 	if len(preds) == 0 {
 		return residual{state: empty}
 	}
@@ -640,23 +662,26 @@ func combinePreds(preds []adapter.Predicate, empty branchOutcome, join func(a, b
 // branchNeedsQuery residual is either all-nil (the gathered-result reducer) or all-non-nil
 // (reduceLeaf), so returning nil when any operand is nil is correct: reduceLeaf always yields a
 // real predicate, while the gather path never reads one.
-func andPred(a, b adapter.Predicate) adapter.Predicate {
+func andPred(a, b *query.Predicate) *query.Predicate {
 	if a == nil || b == nil {
 		return nil
 	}
-	return a.And(b)
+	p := query.And(*a, *b)
+	return &p
 }
 
-func orPred(a, b adapter.Predicate) adapter.Predicate {
+func orPred(a, b *query.Predicate) *query.Predicate {
 	if a == nil || b == nil {
 		return nil
 	}
-	return a.Or(b)
+	p := query.Or(*a, *b)
+	return &p
 }
 
-func notPred(a adapter.Predicate) adapter.Predicate {
+func notPred(a *query.Predicate) *query.Predicate {
 	if a == nil {
 		return nil
 	}
-	return a.Not()
+	p := query.Not(*a)
+	return &p
 }

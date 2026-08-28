@@ -71,6 +71,20 @@ func (mr *MockTupleBackendMockRecorder) MaxTuplesPerWrite() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MaxTuplesPerWrite", reflect.TypeOf((*MockTupleBackend)(nil).MaxTuplesPerWrite))
 }
 
+// Querier mocks base method.
+func (m *MockTupleBackend) Querier(consistency openfgav1.ConsistencyPreference) adapter.Querier {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Querier", consistency)
+	ret0, _ := ret[0].(adapter.Querier)
+	return ret0
+}
+
+// Querier indicates an expected call of Querier.
+func (mr *MockTupleBackendMockRecorder) Querier(consistency any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Querier", reflect.TypeOf((*MockTupleBackend)(nil).Querier), consistency)
+}
+
 // Read mocks base method.
 func (m *MockTupleBackend) Read(ctx context.Context, store string, filter storage.ReadFilter, options storage.ReadOptions) (storage.TupleIterator, error) {
 	m.ctrl.T.Helper()
@@ -202,6 +216,20 @@ func (m *MockRelationshipTupleReader) Builder(consistency openfgav1.ConsistencyP
 func (mr *MockRelationshipTupleReaderMockRecorder) Builder(consistency any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Builder", reflect.TypeOf((*MockRelationshipTupleReader)(nil).Builder), consistency)
+}
+
+// Querier mocks base method.
+func (m *MockRelationshipTupleReader) Querier(consistency openfgav1.ConsistencyPreference) adapter.Querier {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Querier", consistency)
+	ret0, _ := ret[0].(adapter.Querier)
+	return ret0
+}
+
+// Querier indicates an expected call of Querier.
+func (mr *MockRelationshipTupleReaderMockRecorder) Querier(consistency any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Querier", reflect.TypeOf((*MockRelationshipTupleReader)(nil).Querier), consistency)
 }
 
 // Read mocks base method.
@@ -900,6 +928,20 @@ func (m *MockOpenFGADatastore) MaxTypesPerAuthorizationModel() int {
 func (mr *MockOpenFGADatastoreMockRecorder) MaxTypesPerAuthorizationModel() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MaxTypesPerAuthorizationModel", reflect.TypeOf((*MockOpenFGADatastore)(nil).MaxTypesPerAuthorizationModel))
+}
+
+// Querier mocks base method.
+func (m *MockOpenFGADatastore) Querier(consistency openfgav1.ConsistencyPreference) adapter.Querier {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Querier", consistency)
+	ret0, _ := ret[0].(adapter.Querier)
+	return ret0
+}
+
+// Querier indicates an expected call of Querier.
+func (mr *MockOpenFGADatastoreMockRecorder) Querier(consistency any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Querier", reflect.TypeOf((*MockOpenFGADatastore)(nil).Querier), consistency)
 }
 
 // Read mocks base method.

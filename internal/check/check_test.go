@@ -38,7 +38,7 @@ func TestResolveUnion(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
@@ -90,7 +90,7 @@ func TestResolveUnion(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
@@ -205,7 +205,7 @@ func TestResolveUnion(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
@@ -271,7 +271,7 @@ func TestResolveUnionEdges(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 
 		model := testutils.MustTransformDSLToProtoWithID(`
            model
@@ -329,7 +329,7 @@ func TestResolveUnionEdges(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 
 		model := testutils.MustTransformDSLToProtoWithID(`
            model
@@ -382,7 +382,7 @@ func TestResolveUnionEdges(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 
 		model := testutils.MustTransformDSLToProtoWithID(`
            model
@@ -436,7 +436,7 @@ func TestResolveUnionEdges(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
@@ -500,7 +500,7 @@ func TestResolveUnionEdges(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
@@ -539,7 +539,7 @@ func TestResolveUnionEdges(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 
 		model := testutils.MustTransformDSLToProtoWithID(`
            model
@@ -597,7 +597,7 @@ func TestResolveUnionEdges(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 
 		model := testutils.MustTransformDSLToProtoWithID(`
            model
@@ -650,7 +650,7 @@ func TestResolveUnionEdges(t *testing.T) {
 		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
 
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 
 		model := testutils.MustTransformDSLToProtoWithID(`
            model
@@ -751,7 +751,7 @@ func TestResolveRecursive(t *testing.T) {
 		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
 
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 
 		mockCache.EXPECT().Get(gomock.Any()).Return(nil).AnyTimes()
 		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
@@ -823,7 +823,7 @@ func TestResolveIntersection(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
@@ -886,7 +886,7 @@ func TestResolveIntersection(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
@@ -947,7 +947,7 @@ func TestResolveIntersection(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
@@ -1003,7 +1003,7 @@ func TestResolveIntersection(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
@@ -1053,7 +1053,7 @@ func TestResolveIntersection(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 
 		model := testutils.MustTransformDSLToProtoWithID(`
            model
@@ -1107,7 +1107,7 @@ func TestResolveIntersection(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 
 		model := testutils.MustTransformDSLToProtoWithID(`
            model
@@ -1150,7 +1150,7 @@ func TestResolveIntersection(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 
 		model := testutils.MustTransformDSLToProtoWithID(`
            model
@@ -1195,7 +1195,7 @@ func TestResolveExclusion(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
@@ -1253,7 +1253,7 @@ func TestResolveExclusion(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
@@ -1306,7 +1306,7 @@ func TestResolveExclusion(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
@@ -1364,7 +1364,7 @@ func TestResolveExclusion(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
@@ -1424,7 +1424,7 @@ func TestResolveExclusion(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
@@ -1484,7 +1484,7 @@ func TestResolveExclusion(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
@@ -1534,7 +1534,7 @@ func TestResolveExclusion(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
@@ -1588,7 +1588,7 @@ func TestResolveExclusion(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
@@ -1637,7 +1637,7 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		model := testutils.MustTransformDSLToProtoWithID(`
   model
    schema 1.1
@@ -1693,7 +1693,7 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		model := testutils.MustTransformDSLToProtoWithID(`
   model
    schema 1.1
@@ -1752,7 +1752,7 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		model := testutils.MustTransformDSLToProtoWithID(`
 			   model
 			    schema 1.1
@@ -1811,7 +1811,7 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		model := testutils.MustTransformDSLToProtoWithID(`
 		   model
 		    schema 1.1
@@ -1870,7 +1870,7 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		model := testutils.MustTransformDSLToProtoWithID(`
 		   model
 		    schema 1.1
@@ -1934,7 +1934,7 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		model := testutils.MustTransformDSLToProtoWithID(`
 		   model
 		    schema 1.1
@@ -1993,7 +1993,7 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		model := testutils.MustTransformDSLToProtoWithID(`
 		   model
 		    schema 1.1
@@ -2036,7 +2036,7 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		model := testutils.MustTransformDSLToProtoWithID(`
 		   model
 		    schema 1.1
@@ -2079,7 +2079,7 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		model := testutils.MustTransformDSLToProtoWithID(`
 		   model
 		    schema 1.1
@@ -2153,7 +2153,7 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		model := testutils.MustTransformDSLToProtoWithID(`
 		   model
 		    schema 1.1
@@ -2232,7 +2232,7 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		model := testutils.MustTransformDSLToProtoWithID(`
 		   model
 		    schema 1.1
@@ -2303,7 +2303,7 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		model := testutils.MustTransformDSLToProtoWithID(`
 		   model
 		    schema 1.1
@@ -2365,7 +2365,7 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		model := testutils.MustTransformDSLToProtoWithID(`
 		   model
 		    schema 1.1
@@ -2630,7 +2630,7 @@ func TestSpecificType(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 
 		model := testutils.MustTransformDSLToProtoWithID(`
            model
@@ -2687,7 +2687,7 @@ func TestSpecificType(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 
 		model := testutils.MustTransformDSLToProtoWithID(`
 	               model
@@ -2740,7 +2740,7 @@ func TestSpecificType(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 
 		model := testutils.MustTransformDSLToProtoWithID(`
 	               model
@@ -2791,7 +2791,7 @@ func TestSpecificType(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 
 		model := testutils.MustTransformDSLToProtoWithID(`
 	               model
@@ -2853,7 +2853,7 @@ func TestSpecificType(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 
 		model := testutils.MustTransformDSLToProtoWithID(`
 	               model
@@ -2906,7 +2906,7 @@ func TestSpecificType(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 
 		model := testutils.MustTransformDSLToProtoWithID(`
 	               model
@@ -2970,7 +2970,7 @@ func TestSpecificType(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 
 		model := testutils.MustTransformDSLToProtoWithID(`
 	               model
@@ -3035,7 +3035,7 @@ func TestSpecificType(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 
 		model := testutils.MustTransformDSLToProtoWithID(`
 	               model
@@ -3098,7 +3098,7 @@ func TestSpecificType(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 
 		model := testutils.MustTransformDSLToProtoWithID(`
  model
@@ -3147,7 +3147,7 @@ func TestSpecificType(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 
 		model := testutils.MustTransformDSLToProtoWithID(`
  model
@@ -3208,7 +3208,7 @@ func TestSpecificTypeWildcard(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 
 		model := testutils.MustTransformDSLToProtoWithID(`
   model
@@ -3266,7 +3266,7 @@ func TestSpecificTypeWildcard(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 
 		model := testutils.MustTransformDSLToProtoWithID(`
   model
@@ -3320,7 +3320,7 @@ func TestSpecificTypeWildcard(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 
 		model := testutils.MustTransformDSLToProtoWithID(`
   model
@@ -3371,7 +3371,7 @@ func TestSpecificTypeWildcard(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 
 		model := testutils.MustTransformDSLToProtoWithID(`
   model
@@ -3429,7 +3429,7 @@ func TestSpecificTypeWildcard(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 
 		model := testutils.MustTransformDSLToProtoWithID(`
   model
@@ -3482,7 +3482,7 @@ func TestSpecificTypeWildcard(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 
 		model := testutils.MustTransformDSLToProtoWithID(`
   model
@@ -3552,7 +3552,7 @@ func TestSpecificTypeWildcard(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 
 		model := testutils.MustTransformDSLToProtoWithID(`
   model
@@ -3628,7 +3628,7 @@ func TestSpecificTypeWildcard(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 
 		model := testutils.MustTransformDSLToProtoWithID(`
   model
@@ -3683,7 +3683,7 @@ func TestSpecificTypeWildcard(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 
 		model := testutils.MustTransformDSLToProtoWithID(`
  model
@@ -3731,7 +3731,7 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
@@ -3805,7 +3805,7 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
@@ -3868,7 +3868,7 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
@@ -3928,7 +3928,7 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
@@ -3986,7 +3986,7 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
@@ -4046,7 +4046,7 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
@@ -4111,7 +4111,7 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
@@ -4193,7 +4193,7 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
@@ -4278,7 +4278,7 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
@@ -4358,7 +4358,7 @@ func TestTTU(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
@@ -4432,7 +4432,7 @@ func TestTTU(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
@@ -4497,7 +4497,7 @@ func TestTTU(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
@@ -4558,7 +4558,7 @@ func TestTTU(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
@@ -4613,7 +4613,7 @@ func TestTTU(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
@@ -4670,7 +4670,7 @@ func TestTTU(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
@@ -4736,7 +4736,7 @@ func TestTTU(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
@@ -4816,7 +4816,7 @@ func TestTTU(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
@@ -4897,7 +4897,7 @@ func TestTTU(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
@@ -4974,7 +4974,7 @@ func TestResolveRecursiveCheck(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
@@ -5046,7 +5046,7 @@ func TestResolveRecursiveCheck(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
@@ -5152,7 +5152,7 @@ func TestResolveRecursiveCheck(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
@@ -5252,7 +5252,7 @@ func TestResolveRecursiveCheck(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
@@ -5321,7 +5321,7 @@ func TestResolveRecursiveCheck(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
@@ -5425,7 +5425,7 @@ func TestResolveRecursiveCheck(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
@@ -5524,7 +5524,7 @@ func TestResolveRecursiveCheck(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
@@ -5610,7 +5610,7 @@ func TestResolveRecursiveCheck(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
@@ -5682,7 +5682,7 @@ func TestResolveRecursiveCheck(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
@@ -5769,7 +5769,7 @@ func TestResolveRecursiveCheck(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
@@ -5843,7 +5843,7 @@ func TestResolveRecursiveCheck(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
@@ -5910,7 +5910,7 @@ func TestResolveRecursiveCheck(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
@@ -5984,7 +5984,7 @@ func TestResolveCheck(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().Builder(gomock.Any()).Return(nil).AnyTimes()
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
@@ -6260,7 +6260,7 @@ func TestCheck_NestedRecursiveRelations(t *testing.T) {
 	mockPlanner := mocks.NewMockManager(ctrl)
 	mockSelector := mocks.NewMockSelector(ctrl)
 
-	mockDatastore.EXPECT().Builder(gomock.Any()).AnyTimes()
+	mockDatastore.EXPECT().Querier(gomock.Any()).AnyTimes()
 
 	model := testutils.MustTransformDSLToProtoWithID(`
 		model
@@ -6449,6 +6449,11 @@ func TestCheck_MultiBranchRecursionOnSameRelation(t *testing.T) {
 			mockDatastore.EXPECT().ReadUsersetTuples(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
 				AnyTimes().
 				Return(storage.NewStaticTupleIterator(nil), nil)
+			// Returning nil routes the strategy-selection gate to DefaultPlan, which this
+			// recursive model exercises. Without this stub the gate's Querier call is
+			// unexpected, and gomock's Goexit inside a resolver worker goroutine deadlocks
+			// the whole check instead of failing.
+			mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 			// ReadStartingWithUser is deliberately not stubbed: the bottom-up recursive
 			// strategy must never run for this model, so a call there fails the test.
 

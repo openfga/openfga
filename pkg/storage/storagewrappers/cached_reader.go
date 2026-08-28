@@ -96,6 +96,11 @@ func (c *CachedTupleReader) Builder(consistency openfgav1.ConsistencyPreference)
 	return c.delegate.Builder(consistency)
 }
 
+// Querier see [storage.RelationshipTupleReader].Querier. It delegates to the wrapped reader.
+func (c *CachedTupleReader) Querier(consistency openfgav1.ConsistencyPreference) adapter.Querier {
+	return c.delegate.Querier(consistency)
+}
+
 // ReadUsersetTuples reads userset tuples with caching.
 func (c *CachedTupleReader) ReadUsersetTuples(
 	ctx context.Context,

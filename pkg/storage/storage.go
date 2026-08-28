@@ -157,6 +157,12 @@ type RelationshipTupleReader interface {
 	// (e.g. a read replica vs. the primary).
 	Builder(consistency openfgav1.ConsistencyPreference) adapter.Builder
 
+	// Querier returns a Querier bound to this backend for executing typed query.Statement
+	// values at the given consistency, or nil if the backend does not support the
+	// typed-AST query surface. A non-nil Querier promises the full surface
+	// (all-or-nothing). It is the typed-AST analog of Builder.
+	Querier(consistency openfgav1.ConsistencyPreference) adapter.Querier
+
 	// Read the set of tuples associated with `store` and `tupleKey`, which may be nil or partially filled. If nil,
 	// Read will return an iterator over all the tuples in the given `store`. If the `tupleKey` is partially filled,
 	// it will return an iterator over those tuples which match the `tupleKey`. Note that at least one of `Object`

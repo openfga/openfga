@@ -1,4 +1,4 @@
-package mysql
+package pg
 
 import (
 	"fmt"
@@ -8,7 +8,7 @@ import (
 	"github.com/openfga/openfga/pkg/storage/adapter/ast"
 )
 
-// renderer accumulates SQL text and the positional bind arguments its "?" placeholders refer
+// renderer accumulates SQL text and the positional bind arguments its "$N" placeholders refer
 // to, as it walks the ast tree.
 type renderer struct {
 	sb   strings.Builder
@@ -19,7 +19,7 @@ func (r *renderer) write(s string) { r.sb.WriteString(s) }
 
 func (r *renderer) bind(v any) {
 	r.args = append(r.args, v)
-	r.write("?") // MySQL is always positional "?"
+	r.write("$" + strconv.Itoa(len(r.args))) // PostgreSQL ordinal placeholder
 }
 
 // --- statement --------------------------------------------------------------------------
@@ -46,6 +46,7 @@ func (r *renderer) selectStmt(s *ast.Select) {
 	}
 	for _, j := range s.Joins {
 		r.write(" " + joinKeyword(j.Type) + " tuple " + j.Table.Alias)
+		// A CROSS join carries no condition; every other flavour does.
 		if j.On != nil {
 			r.write(" ON ")
 			r.predicate(j.On)
@@ -62,15 +63,12 @@ func (r *renderer) selectStmt(s *ast.Select) {
 		r.write(" ORDER BY ")
 		r.orderBy(s.OrderBy)
 	}
+	// Pointers, so "no LIMIT" stays distinct from "LIMIT 0". PostgreSQL accepts OFFSET on its
+	// own, so — unlike MySQL — no synthetic LIMIT is needed ahead of it.
 	if s.Limit != nil {
 		r.write(" LIMIT " + strconv.FormatUint(*s.Limit, 10))
 	}
 	if s.Offset != nil {
-		// MySQL requires a LIMIT before OFFSET. The largest unsigned-64-bit value is the
-		// idiomatic "no limit" stand-in.
-		if s.Limit == nil {
-			r.write(" LIMIT 18446744073709551615")
-		}
 		r.write(" OFFSET " + strconv.FormatUint(*s.Offset, 10))
 	}
 }
@@ -117,10 +115,9 @@ func (r *renderer) orderBy(terms []ast.OrderTerm) {
 
 // --- nodes ------------------------------------------------------------------------------
 //
-// One walk function per POSITION CATEGORY, matching ast's four category interfaces. Splitting
-// the walk this way means each switch covers one category, so its default panic is reachable
-// only for a genuinely unknown node kind, and the recursion's position is the function it is
-// in rather than something to track.
+// One walk function per POSITION CATEGORY, matching ast's four category interfaces. Each switch
+// covers one category, so its default panic is reachable only for a genuinely unknown node kind,
+// and the recursion's position is the function it is in rather than something to track.
 
 // predicate renders a truth-valued node.
 func (r *renderer) predicate(n ast.Predicate) {
@@ -183,7 +180,7 @@ func (r *renderer) predicate(n ast.Predicate) {
 		}
 
 	default:
-		panic(fmt.Sprintf("mysql: unhandled predicate %T", n))
+		panic(fmt.Sprintf("pg: unhandled predicate %T", n))
 	}
 }
 
@@ -191,7 +188,7 @@ func (r *renderer) predicate(n ast.Predicate) {
 func (r *renderer) value(n ast.ScalarValue) {
 	switch x := n.(type) {
 	case ast.ColNode:
-		r.write(mysqlColumn(x.Name, x.Alias))
+		r.write(pgColumn(x.Name, x.Alias))
 
 	case ast.BindNode:
 		r.bind(x.Value)
@@ -202,20 +199,23 @@ func (r *renderer) value(n ast.ScalarValue) {
 	case ast.CastNode:
 		r.write("CAST(")
 		r.value(x.Inner)
-		r.write(" AS " + mysqlType(x.Type) + ")")
+		r.write(" AS " + pgType(x.Type) + ")")
 
 	case ast.FuncNode:
-		r.write(mysqlFunc(x.Fn) + "(")
+		r.write(pgFunc(x.Fn) + "(")
 		r.values(x.Args)
 		r.write(")")
 
 	case ast.JSONObjectNode:
-		r.write("JSON_OBJECT(")
+		// PostgreSQL spells the constructor jsonb_build_object and takes a flat "k, v" list.
+		r.write("jsonb_build_object(")
 		for i, p := range x.Pairs {
 			if i > 0 {
 				r.write(", ")
 			}
-			r.jsonPair(p)
+			r.value(p.Key)
+			r.write(", ")
+			r.value(p.Value)
 		}
 		r.write(")")
 
@@ -249,28 +249,19 @@ func (r *renderer) value(n ast.ScalarValue) {
 		r.write(")")
 
 	default:
-		panic(fmt.Sprintf("mysql: unhandled value %T", n))
+		panic(fmt.Sprintf("pg: unhandled value %T", n))
 	}
 }
 
-// set renders a set-valued node. Its only caller is quantified, for the non-bound flavours.
+// set renders a set-valued node. Its only caller is quantified, for the non-bound flavours (a
+// bound set is handled inline as a "= ANY ($N)" array parameter).
 func (r *renderer) set(n ast.SetValue) {
 	switch x := n.(type) {
-	case ast.SetBindNode:
-		r.write("(")
-		for i, e := range x.Elems {
-			if i > 0 {
-				r.write(", ")
-			}
-			r.bind(e)
-		}
-		r.write(")")
-
 	case ast.SubqueryNode:
 		r.selectStmt(x.Stmt)
 
 	default:
-		panic(fmt.Sprintf("mysql: unhandled set %T", n))
+		panic(fmt.Sprintf("pg: unhandled set %T", n))
 	}
 }
 
@@ -285,36 +276,10 @@ func (r *renderer) projection(n ast.Projection) {
 		// Everything else in the category is a ScalarValue, ScalarValue embedding Projection.
 		v, ok := n.(ast.ScalarValue)
 		if !ok {
-			panic(fmt.Sprintf("mysql: unhandled projection %T", n))
+			panic(fmt.Sprintf("pg: unhandled projection %T", n))
 		}
 		r.value(v)
 	}
-}
-
-// jsonPair renders one JSON object pair. MySQL's JSON_OBJECT takes a flat "k, v" argument list,
-// not the ANSI "k VALUE v" — which is why ast keeps the pair as a node instead of flattening it
-// at construction time.
-func (r *renderer) jsonPair(p ast.JSONPairNode) {
-	r.value(p.Key)
-	r.write(", ")
-	r.value(p.Value)
-}
-
-// filtered writes an aggregate's argument, wrapped in the FILTER emulation when there is a
-// filter. This is the crux of MySQL's independence: MySQL has no FILTER clause at all, so a
-// filtered aggregate aggregates a CASE that yields the argument only when the filter holds and
-// NULL otherwise — aggregates skip NULLs, so the filtered-out rows do not contribute, exactly as
-// FILTER would. It is a structural rewrite of the node, which no dialect table could express.
-func (r *renderer) filtered(filter ast.Predicate, arg ast.ScalarValue) {
-	if filter == nil {
-		r.value(arg)
-		return
-	}
-	r.write("CASE WHEN ")
-	r.predicate(filter)
-	r.write(" THEN ")
-	r.value(arg)
-	r.write(" END")
 }
 
 func (r *renderer) caseElse(e ast.ScalarValue) {
@@ -325,79 +290,37 @@ func (r *renderer) caseElse(e ast.ScalarValue) {
 	r.write(" END")
 }
 
-// aggregate renders a value-producing aggregate, emulating FILTER. COUNT(*) has no argument to
-// wrap, so a filtered one becomes COUNT(CASE WHEN <filter> THEN 1 END).
+// aggregate renders a value-producing aggregate. PostgreSQL supports the FILTER (WHERE ...)
+// clause natively, so a filtered aggregate emits it directly rather than emulating it with a
+// CASE — the divergence that forces MySQL to own its renderer.
 func (r *renderer) aggregate(x ast.AggNode) {
-	r.write(mysqlAgg(x.Fn) + "(")
+	r.write(aggFunc(x.Fn) + "(")
 	if x.Distinct {
 		r.write("DISTINCT ")
 	}
-
-	switch {
-	case len(x.Args) == 0 && x.Filter != nil:
-		r.write("CASE WHEN ")
-		r.predicate(x.Filter)
-		r.write(" THEN 1 END")
-	case len(x.Args) == 0:
+	if len(x.Args) == 0 {
 		r.write("*")
-	default:
-		for i, a := range x.Args {
-			if i > 0 {
-				r.write(", ")
-			}
-			r.filtered(x.Filter, a)
-		}
+	} else {
+		r.values(x.Args)
 	}
-
 	r.write(")")
+	if x.Filter != nil {
+		r.write(" FILTER (WHERE ")
+		r.predicate(x.Filter)
+		r.write(")")
+	}
 }
 
-// quantified renders a quantified comparison. A bound set is ALWAYS expanded, since MySQL has
-// no array operand.
+// quantified renders a quantified comparison. A bound set is PostgreSQL's real advantage here:
+// it binds the whole slice as ONE array parameter and compares with "<op> <quant> ($N)", which
+// pgx encodes as a PostgreSQL array — no per-element expansion.
 func (r *renderer) quantified(x ast.QuantifiedNode) {
-	sb, ok := x.Set.(ast.SetBindNode)
-	if !ok {
-		// A non-bound set keeps the standard quantified form.
-		r.value(x.Left)
-		r.write(" " + op(x.Op) + " " + quantifier(x.Q) + " (")
+	r.value(x.Left)
+	r.write(" " + op(x.Op) + " " + quantifier(x.Q) + " (")
+	if sb, ok := x.Set.(ast.SetBindNode); ok {
+		r.bind(sb.Elems)
+	} else {
 		r.set(x.Set)
-		r.write(")")
-		return
-	}
-
-	elems := sb.Elems
-	if len(elems) == 0 {
-		if x.Q == ast.All {
-			r.write("1 = 1")
-		} else {
-			r.write("1 = 0")
-		}
-		return
-	}
-	if x.Op == ast.OpEq && x.Q == ast.Any {
-		r.value(x.Left)
-		r.write(" IN (")
-		for i, e := range elems {
-			if i > 0 {
-				r.write(", ")
-			}
-			r.bind(e)
-		}
-		r.write(")")
-		return
-	}
-	conn := " OR "
-	if x.Q == ast.All {
-		conn = " AND "
-	}
-	r.write("(")
-	for i, e := range elems {
-		if i > 0 {
-			r.write(conn)
-		}
-		r.value(x.Left)
-		r.write(" " + op(x.Op) + " ")
-		r.bind(e)
 	}
 	r.write(")")
 }
