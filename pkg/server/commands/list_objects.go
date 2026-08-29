@@ -274,6 +274,10 @@ func NewListObjectsQuery(
 		query.pipelineEnabled = false
 	}
 
+	if query.ff.Boolean(serverconfig.ExperimentalPipelineOptimizations, storeID) {
+		query.pipelineConfig.Flags |= pipeline.FlagOptimizeSubtract
+	}
+
 	return query, nil
 }
 
