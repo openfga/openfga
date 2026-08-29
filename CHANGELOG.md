@@ -26,6 +26,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ## [1.18.2] - 2026-08-03
 ### Added
 - Extended experimental `weighted_graph_check` diagnostic logging to cover the `wildcard_with_exclusion` and `userset_with_exclusion` shapes: the log now fires when v2 Check rejects one of these shapes and Check falls back to v1, and when v2 Check is skipped entirely because the weighted graph fails to build. These logs surface authorization models that may be affected by a future v1 deprecation, and no operator action is required. [#3204](https://github.com/openfga/openfga/pull/3204)
+- Added `log.requestCompleteLevel` (`--log-request-complete-level` / `OPENFGA_LOG_REQUEST_COMPLETE_LEVEL`, default `info`) to set the level of the per-request `grpc_req_complete` log. Set it to `debug` to quieten high-cardinality endpoints such as ListObjects without disabling logging entirely. See `pkg/middleware/logging/logging.go`. [#2626](https://github.com/openfga/openfga/issues/2626)
 
 ### Changed
 - Matched experimental `weighted_graph_check` cache metrics with original Check cache metrics: iterator cache metrics renamed to `tuples_cache_total_count`, `tuples_cache_hit_count`, `tuples_cache_discard_count`, `tuples_cache_size`; query cache metrics added as `check_cache_total_count`, `check_cache_hit_count`, `check_cache_invalid_hit_count`. [#3184](https://github.com/openfga/openfga/pull/3184)

@@ -480,6 +480,13 @@
                     "default": "info",
                     "x-env-variable": "OPENFGA_LOG_LEVEL"
                 },
+                "requestCompleteLevel": {
+                    "description": "The level used for the per-request 'grpc_req_complete' completion log. Lower it to 'debug' to quieten the otherwise per-RPC INFO logs without disabling logging entirely.",
+                    "type": "string",
+                    "enum": ["debug", "info", "warn", "error"],
+                    "default": "info",
+                    "x-env-variable": "OPENFGA_LOG_REQUEST_COMPLETE_LEVEL"
+                },
                 "timestampFormat": {
                     "description": "The timestamp format to use for the log output.",
                     "type": "string",

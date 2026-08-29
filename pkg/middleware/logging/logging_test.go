@@ -40,54 +40,27 @@ type outputCapture struct {
 }
 
 func TestNewLoggingInterceptor_concrete(t *testing.T) {
-	gotBuffer := new(bytes.Buffer)
+	t.Run("default_info_level", func(t *testing.T) {
+		output := captureCheckLog(t, "info", zap.InfoLevel)
+		assert.Equal(t, "info", output.Level)
+	})
 
-	core := zapcore.NewCore(
-		zapcore.NewJSONEncoder(zap.NewProductionEncoderConfig()),
-		zapcore.AddSync(gotBuffer),
-		zap.InfoLevel,
-	)
-	argLogger := &logger.ZapLogger{Logger: zap.New(core)}
+	t.Run("debug_level_quietens_completion_log", func(t *testing.T) {
+		output := captureCheckLogOutput(t, "debug", zap.InfoLevel)
+		assert.Empty(t, output.String())
+	})
 
-	serverOpts := []grpc.ServerOption{
-		grpc.ChainUnaryInterceptor(grpc_ctxtags.UnaryServerInterceptor(), requestid.NewUnaryInterceptor(), NewLoggingInterceptor(argLogger)),
-	}
+	t.Run("warn_level", func(t *testing.T) {
+		output := captureCheckLog(t, "warn", zap.WarnLevel)
+		assert.Equal(t, "warn", output.Level)
+	})
 
-	listner := bufconn.Listen(1024 * 1024)
-	srv := grpc.NewServer(serverOpts...)
+	t.Run("error_level", func(t *testing.T) {
+		output := captureCheckLog(t, "error", zap.ErrorLevel)
+		assert.Equal(t, "error", output.Level)
+	})
 
-	openfgav1.RegisterOpenFGAServiceServer(srv, &fgaServer{})
-
-	wg := sync.WaitGroup{}
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		err := srv.Serve(listner)
-		if err != nil {
-			t.Errorf("failed to serve: %v", err)
-		}
-	}()
-
-	dialer := func(context.Context, string) (net.Conn, error) {
-		return listner.Dial()
-	}
-	opts := []grpc.DialOption{
-		grpc.WithContextDialer(dialer),
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-	}
-
-	conn, err := grpc.NewClient("passthrough://buffcon", opts...)
-	require.NoError(t, err)
-
-	client := openfgav1.NewOpenFGAServiceClient(conn)
-
-	_, err = client.Check(context.Background(), &openfgav1.CheckRequest{})
-	require.NoError(t, err)
-
-	var output outputCapture
-	err = json.NewDecoder(gotBuffer).Decode(&output)
-	require.NoError(t, err)
-
+	output := captureCheckLog(t, "info", zap.InfoLevel)
 	assert.Equal(t, "info", output.Level)
 	assert.NotEmpty(t, output.TS)
 	assert.Equal(t, "grpc_req_complete", output.Msg)
@@ -101,9 +74,78 @@ func TestNewLoggingInterceptor_concrete(t *testing.T) {
 	assert.NotEmpty(t, output.PeerAddress)
 	assert.NotEmpty(t, output.RequestID)
 	assert.Equal(t, 0, output.GrpcCode)
+}
 
-	srv.Stop()
-	wg.Wait()
+// captureCheckLog runs a single Check RPC through the logging interceptor configured with the
+// given requestCompleteLevel and returns the decoded grpc_req_complete log line.
+func captureCheckLog(t *testing.T, requestCompleteLevel string, enabledLevel zapcore.Level) outputCapture {
+	t.Helper()
+	gotBuffer := captureCheckLogOutput(t, requestCompleteLevel, enabledLevel)
+
+	var output outputCapture
+	err := json.NewDecoder(gotBuffer).Decode(&output)
+	require.NoError(t, err)
+
+	return output
+}
+
+func captureCheckLogOutput(t *testing.T, requestCompleteLevel string, enabledLevel zapcore.Level) *bytes.Buffer {
+	t.Helper()
+	gotBuffer := new(bytes.Buffer)
+
+	core := zapcore.NewCore(
+		zapcore.NewJSONEncoder(zap.NewProductionEncoderConfig()),
+		zapcore.AddSync(gotBuffer),
+		enabledLevel,
+	)
+	argLogger := &logger.ZapLogger{Logger: zap.New(core)}
+
+	serverOpts := []grpc.ServerOption{
+		grpc.ChainUnaryInterceptor(grpc_ctxtags.UnaryServerInterceptor(), requestid.NewUnaryInterceptor(), NewLoggingInterceptor(argLogger, requestCompleteLevel)),
+	}
+
+	listener := bufconn.Listen(1024 * 1024)
+	t.Cleanup(func() {
+		_ = listener.Close()
+	})
+	srv := grpc.NewServer(serverOpts...)
+	wg := sync.WaitGroup{}
+	t.Cleanup(func() {
+		srv.Stop()
+		wg.Wait()
+	})
+
+	openfgav1.RegisterOpenFGAServiceServer(srv, &fgaServer{})
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		err := srv.Serve(listener)
+		if err != nil {
+			t.Errorf("failed to serve: %v", err)
+		}
+	}()
+
+	dialer := func(context.Context, string) (net.Conn, error) {
+		return listener.Dial()
+	}
+	opts := []grpc.DialOption{
+		grpc.WithContextDialer(dialer),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	}
+
+	conn, err := grpc.NewClient("passthrough://buffcon", opts...)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, conn.Close())
+	})
+
+	client := openfgav1.NewOpenFGAServiceClient(conn)
+
+	_, err = client.Check(context.Background(), &openfgav1.CheckRequest{})
+	require.NoError(t, err)
+
+	return gotBuffer
 }
 
 type fgaServer struct {
