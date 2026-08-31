@@ -13,7 +13,7 @@ OpenFGA implements several complementary types of caching:
 
 **NOTE:**
 
-- For any request, if the `HIGHER_CONSISTENCY` consistency preference is specified, caching is bypassed entirely (except for the authorization model and typesystem caches, which are always active).
+- For any request, if the `HIGHER_CONSISTENCY` consistency preference is specified, authorization data caching is bypassed entirely (except for the authorization model and typesystem caches, which are always active). The auth token cache is not affected by this preference because it operates in the authentication layer, not the authorization data path.
 - The cache is in-memory, so different replicas of the service do not share their caches. Therefore, its effectiveness depends on the probability of repeated/similar requests hitting the same replica, which may depend on the model, tuple distribution, number of replicas, and the load balancing algorithm used.
 
 **Cache instances:** There are three independent in-memory cache instances:
