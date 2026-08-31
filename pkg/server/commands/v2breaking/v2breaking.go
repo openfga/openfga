@@ -262,8 +262,6 @@ func ListObjectsReason(typesys *typesystem.TypeSystem, targetObjectType, relatio
 // is present, so the log fires; once the v2 pipeline is made consistent with
 // v2 the object will drop out of the response, the log will stop firing, and
 // the tests will fail — signalling they can be removed.
-//
-// Returns true for unknown reasons, so the caller's logic stays simple.
 func ListObjectsResponseConfirmsReason(reason, subject string, objects []string) bool {
 	switch reason {
 	case ReasonSelfReferentialUserset, ReasonComputedUsersetSelfObj:
@@ -272,7 +270,7 @@ func ListObjectsResponseConfirmsReason(reason, subject string, objects []string)
 	case ReasonAliasUserset, ReasonTTUUserset, ReasonUsersetWithExclusion, ReasonWildcardWithExclusion:
 		return len(objects) > 0
 	}
-	return true
+	return false
 }
 
 // ListUsersResponseConfirmsReason reports whether the ListUsers response is

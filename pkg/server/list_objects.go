@@ -195,9 +195,8 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 	// observably exercise the divergent v1 path. See v2breaking.ListObjectsReason
 	// and v2breaking.ListObjectsResponseConfirmsReason.
 	if s.logger.Level() <= zap.InfoLevel {
-		if reason := v2breaking.ListObjectsReason(typesys, targetObjectType, req.GetRelation(), req.GetUser()); reason != "" &&
-			v2breaking.ListObjectsResponseConfirmsReason(reason, req.GetUser(), result.Objects) {
-			s.logger.WarnWithContext(ctx, "potential v2 ListObjects resolution breaking change",
+		if reason := v2breaking.ListObjectsReason(typesys, targetObjectType, req.GetRelation(), req.GetUser()); v2breaking.ListObjectsResponseConfirmsReason(reason, req.GetUser(), result.Objects) {
+			s.logger.InfoWithContext(ctx, "potential v2 ListObjects resolution breaking change",
 				zap.String("store_id", storeID),
 				zap.String("model_id", req.GetAuthorizationModelId()),
 				zap.String("request_id", requestid.GetRequestIDFromContext(ctx)),
