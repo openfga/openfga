@@ -807,8 +807,13 @@ func (cfg *Config) verifyCacheConfig() error {
 	if cfg.CacheTTLJitterPercentage > 100 {
 		return errors.New("'cacheTTLJitterPercentage' must be between 0 and 100")
 	}
-	if cfg.Authn.TokenCache.Enabled && cfg.Authn.TokenCache.TTL <= 0 {
-		return errors.New("'authn.tokenCache.ttl' must be greater than zero")
+	if cfg.Authn.TokenCache.Enabled {
+		if cfg.Authn.TokenCache.TTL <= 0 {
+			return errors.New("'authn.tokenCache.ttl' must be greater than zero")
+		}
+		if cfg.Authn.TokenCache.MaxSize <= 0 {
+			return errors.New("'authn.tokenCache.maxSize' must be greater than zero")
+		}
 	}
 	return nil
 }

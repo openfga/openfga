@@ -563,7 +563,7 @@ func (s *ServerContext) authenticatorConfig(config *serverconfig.Config) (authn.
 		return nil, fmt.Errorf("failed to initialize authenticator: %w", err)
 	}
 
-	if config.Authn.TokenCache.Enabled {
+	if config.Authn.TokenCache.Enabled && config.Authn.Method == "oidc" {
 		s.Logger.Info("authentication token caching enabled")
 		cache, cacheErr := storage.NewInMemoryLRUCache[any](storage.WithMaxCacheSize[any](config.Authn.TokenCache.MaxSize))
 		if cacheErr != nil {

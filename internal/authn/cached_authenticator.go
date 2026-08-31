@@ -2,8 +2,11 @@ package authn
 
 import (
 	"context"
+	"crypto/sha256"
+	"maps"
 	"time"
 
+	jwt "github.com/golang-jwt/jwt/v5"
 	grpcauth "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/auth"
 
 	"github.com/openfga/openfga/pkg/authclaims"
@@ -11,7 +14,7 @@ import (
 	"github.com/openfga/openfga/pkg/storage/cache/keys"
 )
 
-const PrefixAuthnTokenCache = "AT"
+const prefixAuthnTokenCache = "AT"
 
 var _ storage.CacheItem = (*AuthClaimsCacheEntry)(nil)
 
@@ -40,13 +43,13 @@ func NewCachedAuthenticator(delegate Authenticator, cache storage.InMemoryCache[
 func (c *CachedAuthenticator) Authenticate(requestContext context.Context) (*authclaims.AuthClaims, error) {
 	authHeader, err := grpcauth.AuthFromMD(requestContext, "Bearer")
 	if err != nil {
-		return nil, ErrMissingBearerToken
+		return c.delegate.Authenticate(requestContext)
 	}
 
 	cacheKey := authnTokenCacheKey(authHeader)
 	if cached := c.cache.Get(cacheKey); cached != nil {
 		if entry, ok := cached.(*AuthClaimsCacheEntry); ok {
-			return entry.Claims, nil
+			return cloneClaims(entry.Claims), nil
 		}
 	}
 
@@ -55,7 +58,10 @@ func (c *CachedAuthenticator) Authenticate(requestContext context.Context) (*aut
 		return nil, err
 	}
 
-	c.cache.Set(cacheKey, &AuthClaimsCacheEntry{Claims: claims}, c.ttl)
+	ttl := c.effectiveTTL(authHeader)
+	if ttl > 0 {
+		c.cache.Set(cacheKey, &AuthClaimsCacheEntry{Claims: cloneClaims(claims)}, ttl)
+	}
 
 	return claims, nil
 }
@@ -65,11 +71,47 @@ func (c *CachedAuthenticator) Close() {
 	c.delegate.Close()
 }
 
+// effectiveTTL returns min(configured TTL, time until JWT expiry).
+// If the token is not a JWT or has no exp claim, the configured TTL is used.
+func (c *CachedAuthenticator) effectiveTTL(rawToken string) time.Duration {
+	parser := jwt.NewParser()
+	token, _, err := parser.ParseUnverified(rawToken, jwt.MapClaims{})
+	if err != nil {
+		return c.ttl
+	}
+
+	exp, err := token.Claims.GetExpirationTime()
+	if err != nil || exp == nil {
+		return c.ttl
+	}
+
+	remaining := time.Until(exp.Time)
+	if remaining <= 0 {
+		return 0
+	}
+
+	if remaining < c.ttl {
+		return remaining
+	}
+
+	return c.ttl
+}
+
+func cloneClaims(src *authclaims.AuthClaims) *authclaims.AuthClaims {
+	return &authclaims.AuthClaims{
+		Subject:  src.Subject,
+		ClientID: src.ClientID,
+		Scopes:   maps.Clone(src.Scopes),
+	}
+}
+
 func authnTokenCacheKey(token string) keys.Key {
+	hash := sha256.Sum256([]byte(token))
+
 	builder := keys.GetBuilder()
 	defer builder.Close()
 
-	builder.EncodeString(PrefixAuthnTokenCache)
-	builder.EncodeString(token)
+	builder.EncodeString(prefixAuthnTokenCache)
+	builder.EncodeBytes(hash[:])
 	return builder.Key()
 }
