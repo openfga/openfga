@@ -58,6 +58,10 @@ const (
 	DefaultCacheControllerConfigEnabled = false
 	DefaultCacheControllerConfigTTL     = 10 * time.Second
 
+	DefaultAuthnTokenCacheEnabled  = false
+	DefaultAuthnTokenCacheTTL      = 5 * time.Minute
+	DefaultAuthnTokenCacheMaxSize  = 10000
+
 	DefaultShadowCheckResolverTimeout = 1 * time.Second
 
 	DefaultShadowListObjectsQueryTimeout       = 1 * time.Second
@@ -218,6 +222,14 @@ type AuthnConfig struct {
 	Method                   string
 	*AuthnOIDCConfig         `mapstructure:"oidc"`
 	*AuthnPresharedKeyConfig `mapstructure:"preshared"`
+	TokenCache               AuthnTokenCacheConfig `mapstructure:"tokenCache"`
+}
+
+// AuthnTokenCacheConfig defines configuration for caching authenticated JWT tokens.
+type AuthnTokenCacheConfig struct {
+	Enabled bool
+	TTL     time.Duration
+	MaxSize int64
 }
 
 // AuthnOIDCConfig defines configurations for the 'oidc' method of authentication.
@@ -795,6 +807,9 @@ func (cfg *Config) verifyCacheConfig() error {
 	if cfg.CacheTTLJitterPercentage > 100 {
 		return errors.New("'cacheTTLJitterPercentage' must be between 0 and 100")
 	}
+	if cfg.Authn.TokenCache.Enabled && cfg.Authn.TokenCache.TTL <= 0 {
+		return errors.New("'authn.tokenCache.ttl' must be greater than zero")
+	}
 	return nil
 }
 
@@ -908,6 +923,11 @@ func DefaultConfig() *Config {
 			Method:                  "none",
 			AuthnPresharedKeyConfig: &AuthnPresharedKeyConfig{},
 			AuthnOIDCConfig:         &AuthnOIDCConfig{},
+			TokenCache: AuthnTokenCacheConfig{
+				Enabled: DefaultAuthnTokenCacheEnabled,
+				TTL:     DefaultAuthnTokenCacheTTL,
+				MaxSize: DefaultAuthnTokenCacheMaxSize,
+			},
 		},
 		Log: LogConfig{
 			Format:          "text",

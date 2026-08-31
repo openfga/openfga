@@ -192,6 +192,10 @@ func NewRunCommand() *cobra.Command {
 
 	flags.StringSlice("authn-oidc-client-id-claims", defaultConfig.Authn.ClientIDClaims, "the ClientID claims that will be used to parse the clientID - configure in order of priority (first is highest). Defaults to [`azp`, `client_id`]")
 
+	flags.Bool("authn-token-cache-enabled", defaultConfig.Authn.TokenCache.Enabled, "enable caching of authenticated JWT tokens to avoid repeated signature verification")
+	flags.Duration("authn-token-cache-ttl", defaultConfig.Authn.TokenCache.TTL, "the TTL of cached authentication tokens")
+	flags.Int64("authn-token-cache-max-size", defaultConfig.Authn.TokenCache.MaxSize, "the maximum number of tokens to cache")
+
 	flags.String("datastore-engine", defaultConfig.Datastore.Engine, "the datastore engine that will be used for persistence")
 
 	flags.String("datastore-uri", defaultConfig.Datastore.URI, "the connection uri to use to connect to the datastore (for any engine other than 'memory')")
@@ -558,6 +562,16 @@ func (s *ServerContext) authenticatorConfig(config *serverconfig.Config) (authn.
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize authenticator: %w", err)
 	}
+
+	if config.Authn.TokenCache.Enabled {
+		s.Logger.Info("authentication token caching enabled")
+		cache, cacheErr := storage.NewInMemoryLRUCache[any](storage.WithMaxCacheSize[any](config.Authn.TokenCache.MaxSize))
+		if cacheErr != nil {
+			return nil, fmt.Errorf("failed to initialize authn token cache: %w", cacheErr)
+		}
+		authenticator = authn.NewCachedAuthenticator(authenticator, cache, config.Authn.TokenCache.TTL)
+	}
+
 	return authenticator, nil
 }
 
