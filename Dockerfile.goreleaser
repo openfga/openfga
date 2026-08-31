@@ -7,5 +7,5 @@ COPY openfga /
 #
 # Dependabot is also not capable of updating inline image copies at this time, so
 # this needs to be updated manually until one of these issues is resolved.
-COPY --from=ghcr.io/grpc-ecosystem/grpc-health-probe:v0.4.55@sha256:d261bc6df0fdd676c2f77230e1107636f43ef843cecd9ac05b89e4aabd017679 /ko-app/grpc-health-probe /usr/local/bin/grpc_health_probe
+COPY --from=ghcr.io/grpc-ecosystem/grpc-health-probe:v0.4.56@sha256:d4d9b3d32e3ebe1c14e04564cdcc5470233893d39acea1ed99fc46879dd2e838 /ko-app/grpc-health-probe /usr/local/bin/grpc_health_probe
 ENTRYPOINT ["/openfga"]

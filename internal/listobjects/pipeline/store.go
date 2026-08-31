@@ -77,6 +77,8 @@ type ValidatingStore struct {
 	validator   func(*openfgav1.TupleKey) (bool, error)
 }
 
+var _ ObjectStore = (*ValidatingStore)(nil)
+
 // createIterator queries the datastore for tuples matching the input parameters.
 // Returns an error iterator if the query fails to preserve error information
 // through the iterator interface.
@@ -190,4 +192,40 @@ func (r *ValidatingStore) Read(
 	return &TupleKeyItemReceiver{
 		itr: filtered,
 	}
+}
+
+func (r *ValidatingStore) Get(ctx context.Context, req ObjectGet) *Item {
+	t, err := r.store.ReadUserTuple(
+		ctx,
+		r.storeID,
+		storage.ReadUserTupleFilter{
+			Object:     req.Object,
+			Relation:   req.Relation,
+			User:       req.User,
+			Conditions: req.Conditions,
+		},
+		storage.ReadUserTupleOptions{
+			Consistency: storage.ConsistencyOptions{
+				Preference: r.consistency,
+			},
+		},
+	)
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			return nil
+		}
+		return &Item{Err: err}
+	}
+
+	key := t.GetKey()
+	valid, err := r.validator(key)
+	if err != nil {
+		return &Item{Err: err}
+	}
+
+	if !valid {
+		return nil
+	}
+
+	return &Item{Value: key.GetObject()}
 }
