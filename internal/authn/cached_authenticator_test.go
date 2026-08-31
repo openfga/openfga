@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	jwt "github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/metadata"
 
@@ -163,6 +164,33 @@ func TestEffectiveTTL_NonJWTToken(t *testing.T) {
 
 func TestEffectiveTTL_JWTWithFarExpiry(t *testing.T) {
 	cached := &CachedAuthenticator{ttl: 5 * time.Minute}
-	// effectiveTTL uses ParseUnverified, so we don't need a valid signature
-	require.Equal(t, 5*time.Minute, cached.effectiveTTL("not-a-jwt"))
+	token := buildUnsignedJWT(t, time.Now().Add(1*time.Hour))
+	ttl := cached.effectiveTTL(token)
+	require.Equal(t, 5*time.Minute, ttl)
+}
+
+func TestEffectiveTTL_JWTWithNearExpiry(t *testing.T) {
+	cached := &CachedAuthenticator{ttl: 5 * time.Minute}
+	token := buildUnsignedJWT(t, time.Now().Add(30*time.Second))
+	ttl := cached.effectiveTTL(token)
+	require.True(t, ttl > 0 && ttl <= 30*time.Second,
+		"expected TTL capped at ~30s, got %v", ttl)
+}
+
+func TestEffectiveTTL_JWTAlreadyExpired(t *testing.T) {
+	cached := &CachedAuthenticator{ttl: 5 * time.Minute}
+	token := buildUnsignedJWT(t, time.Now().Add(-10*time.Second))
+	ttl := cached.effectiveTTL(token)
+	require.Equal(t, time.Duration(0), ttl)
+}
+
+func buildUnsignedJWT(t *testing.T, exp time.Time) string {
+	t.Helper()
+	token := jwt.NewWithClaims(jwt.SigningMethodNone, jwt.MapClaims{
+		"exp": exp.Unix(),
+		"sub": "test",
+	})
+	s, err := token.SignedString(jwt.UnsafeAllowNoneSignatureType)
+	require.NoError(t, err)
+	return s
 }
