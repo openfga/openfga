@@ -232,7 +232,7 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 // logBatchCheckBreakingChanges emits a single aggregate log flagging potential
 // v2 (weighted-graph) resolution breaking changes across the whole batch.
 // Detection, memoization, and aggregation are owned by v2breaking.BatchReasoner;
-// errored checks are skipped. Results are emitted as one warn line — a
+// errored checks are skipped. Results are emitted as one log line — a
 // deduplicated `reasons` list plus a `reasons_by_correlation_id` map attributing
 // each flagged check to its reason.
 func (s *Server) logBatchCheckBreakingChanges(ctx context.Context, req *openfgav1.BatchCheckRequest, typesys *typesystem.TypeSystem, result map[commands.CorrelationID]*commands.BatchCheckOutcome) {
