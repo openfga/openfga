@@ -251,7 +251,7 @@ These two caches are always active and are independent of the caching flags desc
 
 - **What it caches**: The `AuthClaims` (subject, scopes, client ID) produced by a successful `Authenticator.Authenticate` call, keyed by the raw bearer token.
 - **Benefits**: Skips repeated JWT parsing and RSA signature verification for the same token across requests, reducing per-request auth overhead at high QPS.
-- **Cache key**: `AT + <bearer token>` — consistent with other OpenFGA cache keys, which use full values in the TLV-encoded key builder.
+- **Cache key**: `AT + SHA-256(<bearer token>)` — the token is hashed so that a replayable credential is not recoverable from a heap dump or diagnostic output.
 - **When enabled**: Applies only when `authn.method = oidc`. The cache is not used for `preshared` keys (to preserve constant-time comparison guarantees) or `none`.
 - **TTL behavior**: The effective TTL per cache entry is `min(configured TTL, token exp − now)`. This ensures a cached entry never outlives the JWT's own expiration claim.
 - **What it does NOT cache**: Authentication failures. Errors from the underlying authenticator (invalid claims, expired token) are always returned fresh from the delegate. If no bearer token is present in the request, the cache is bypassed and the request is forwarded directly to the underlying authenticator.

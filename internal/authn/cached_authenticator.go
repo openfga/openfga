@@ -2,6 +2,7 @@ package authn
 
 import (
 	"context"
+	"crypto/sha256"
 	"maps"
 	"time"
 
@@ -105,10 +106,12 @@ func cloneClaims(src *authclaims.AuthClaims) *authclaims.AuthClaims {
 }
 
 func authnTokenCacheKey(token string) keys.Key {
+	hash := sha256.Sum256([]byte(token))
+
 	builder := keys.GetBuilder()
 	defer builder.Close()
 
 	builder.EncodeString(prefixAuthnTokenCache)
-	builder.EncodeString(token)
+	builder.EncodeBytes(hash[:])
 	return builder.Key()
 }
