@@ -764,12 +764,6 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 		breakingChangeReason = v2breaking.ListObjectsReason(typesys, targetObjectType, targetRelation, req.GetUser())
 	}
 	var breakingChangeConfirmed bool
-	confirmBreakingChange := func(object string) {
-		if breakingChangeReason == "" || breakingChangeConfirmed {
-			return
-		}
-		breakingChangeConfirmed = v2breaking.ListObjectsResponseConfirmsReason(breakingChangeReason, req.GetUser(), []string{object})
-	}
 
 	wgraph := typesys.GetWeightedGraph()
 
@@ -837,7 +831,7 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 			if errRx = srv.Send(&openfgav1.StreamedListObjectsResponse{Object: value}); errRx != nil {
 				break
 			}
-			confirmBreakingChange(value)
+			breakingChangeConfirmed = confirmListObjectsBreakingChange(breakingChangeReason, req.GetUser(), value, breakingChangeConfirmed)
 
 			listObjectsCount++
 
@@ -893,12 +887,24 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 		}); err != nil {
 			return nil, serverErrors.HandleError("", err)
 		}
-		confirmBreakingChange(result.ObjectID)
+		breakingChangeConfirmed = confirmListObjectsBreakingChange(breakingChangeReason, req.GetUser(), result.ObjectID, breakingChangeConfirmed)
 	}
 
 	q.logListObjectsBreakingChange(ctx, req, breakingChangeReason, breakingChangeConfirmed)
 
 	return &resolutionMetadata, nil
+}
+
+// confirmListObjectsBreakingChange folds a single streamed object into the
+// running response-confirmation flag for a potential v2 breaking change. It is
+// a no-op once confirmed (or when there is no reason to confirm), so the
+// streaming loop can call it for every object it sends. See
+// v2breaking.ListObjectsResponseConfirmsReason.
+func confirmListObjectsBreakingChange(reason, subject, object string, confirmed bool) bool {
+	if reason == "" || confirmed {
+		return confirmed
+	}
+	return v2breaking.ListObjectsResponseConfirmsReason(reason, subject, []string{object})
 }
 
 // logListObjectsBreakingChange flags a potential v2 (weighted-graph) resolution
