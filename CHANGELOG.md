@@ -10,6 +10,9 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Added
 - Added `WithServiceName` server option to allow embedders to override the `serviceName` field used for the `grpc_service` label on OpenFGA's package-level Prometheus metrics and `telemetry.RPCInfo.Service`. This enables multiple `Server` instances in the same process to emit separate metric series. Note it does not rename the standard gRPC server metrics (e.g. `grpc_server_handled_total`), whose labels are derived from the registered gRPC service. Use stable, low-cardinality names, as the value becomes a metric label. Defaults to `openfgav1.OpenFGAService_ServiceDesc.ServiceName` when omitted (backward compatible). [#3265](https://github.com/openfga/openfga/pull/3265)
 
+### Fixed
+- Fixed a deadlock in ListUsers that caused a timeout with partial results when the number of union/intersection operands exceeded `OPENFGA_RESOLVE_NODE_BREADTH_LIMIT` and the operands each resolved to more than one user. Thank you to [@fabianluque](https://github.com/fabianluque) for the discovery and detailed report! [#3284](https://github.com/openfga/openfga/pull/3284)
+
 ## [1.19.0] - 2026-08-24
 ### Added
 - Adds configurable pipeline optimization for weight-one difference subtract edges with high cardinality on wildcard leaves. For now, this configuration is internal only. [#3267](https://github.com/openfga/openfga/pull/3267)
