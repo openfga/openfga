@@ -573,24 +573,9 @@ func (l *listUsersQuery) expandIntersection(
 
 	childOperands := rewrite.Intersection.GetChild()
 	intersectionFoundUsersChans := make([]chan foundUser, len(childOperands))
-	for i, rewrite := range childOperands {
+	for i := range childOperands {
 		intersectionFoundUsersChans[i] = make(chan foundUser, 1)
-		pool.Go(func(ctx context.Context) error {
-			resp := l.expandRewrite(ctx, req, rewrite, intersectionFoundUsersChans[i])
-			return resp.err
-		})
 	}
-
-	errChan := make(chan error, 1)
-
-	go func() {
-		err := pool.Wait()
-		for i := range intersectionFoundUsersChans {
-			close(intersectionFoundUsersChans[i])
-		}
-		errChan <- err
-		close(errChan)
-	}()
 
 	var mu sync.Mutex
 
@@ -601,6 +586,9 @@ func (l *listUsersQuery) expandIntersection(
 	wildcardKey := tuple.TypedPublicWildcard(req.GetUserFilters()[0].GetType())
 	foundUsersCountMap := make(map[string]uint32, 0)
 	excludedUsersMap := make(map[string]struct{}, 0)
+	// Consumers must start before the producer pool below: a producer blocks on
+	// its second send into a size-1 channel until drained, so if the bounded
+	// pool fills before consumers run, the submit loop deadlocks.
 	for _, foundUsersChan := range intersectionFoundUsersChans {
 		go func(foundUsersChan chan foundUser) {
 			defer wg.Done()
@@ -637,6 +625,25 @@ func (l *listUsersQuery) expandIntersection(
 			}
 		}(foundUsersChan)
 	}
+
+	for i, rewrite := range childOperands {
+		pool.Go(func(ctx context.Context) error {
+			resp := l.expandRewrite(ctx, req, rewrite, intersectionFoundUsersChans[i])
+			return resp.err
+		})
+	}
+
+	errChan := make(chan error, 1)
+
+	go func() {
+		err := pool.Wait()
+		for i := range intersectionFoundUsersChans {
+			close(intersectionFoundUsersChans[i])
+		}
+		errChan <- err
+		close(errChan)
+	}()
+
 	wg.Wait()
 
 	excludedUsers := []*openfgav1.User{}
@@ -680,24 +687,9 @@ func (l *listUsersQuery) expandUnion(
 
 	childOperands := rewrite.Union.GetChild()
 	unionFoundUsersChans := make([]chan foundUser, len(childOperands))
-	for i, rewrite := range childOperands {
+	for i := range childOperands {
 		unionFoundUsersChans[i] = make(chan foundUser, 1)
-		pool.Go(func(ctx context.Context) error {
-			resp := l.expandRewrite(ctx, req, rewrite, unionFoundUsersChans[i])
-			return resp.err
-		})
 	}
-
-	errChan := make(chan error, 1)
-
-	go func() {
-		err := pool.Wait()
-		for i := range unionFoundUsersChans {
-			close(unionFoundUsersChans[i])
-		}
-		errChan <- err
-		close(errChan)
-	}()
 
 	var mu sync.Mutex
 
@@ -706,6 +698,9 @@ func (l *listUsersQuery) expandUnion(
 
 	foundUsersMap := make(map[string]struct{}, 0)
 	excludedUsersCountMap := make(map[string]uint32, 0)
+	// Consumers must start before the producer pool below: a producer blocks on
+	// its second send into a size-1 channel until drained, so if the bounded
+	// pool fills before consumers run, the submit loop deadlocks.
 	for _, foundUsersChan := range unionFoundUsersChans {
 		go func(foundUsersChan chan foundUser) {
 			defer wg.Done()
@@ -727,6 +722,25 @@ func (l *listUsersQuery) expandUnion(
 			}
 		}(foundUsersChan)
 	}
+
+	for i, rewrite := range childOperands {
+		pool.Go(func(ctx context.Context) error {
+			resp := l.expandRewrite(ctx, req, rewrite, unionFoundUsersChans[i])
+			return resp.err
+		})
+	}
+
+	errChan := make(chan error, 1)
+
+	go func() {
+		err := pool.Wait()
+		for i := range unionFoundUsersChans {
+			close(unionFoundUsersChans[i])
+		}
+		errChan <- err
+		close(errChan)
+	}()
+
 	wg.Wait()
 
 	excludedUsers := []*openfgav1.User{}
