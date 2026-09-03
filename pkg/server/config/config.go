@@ -117,6 +117,7 @@ const (
 	ExperimentalShadowListObjects        = "shadow_list_objects"
 	ExperimentalDatastoreThrottling      = "datastore_throttling"
 	ExperimentalPipelineListObjects      = "pipeline_list_objects"
+	ExperimentalPipelineOptimizations    = "pipeline_optimizations"
 	ExperimentalShadowWeightedGraphCheck = "shadow_weighted_graph_check"
 	ExperimentalWeightedGraphCheck       = "weighted_graph_check"
 	ExperimentalAuthZen                  = "authzen"

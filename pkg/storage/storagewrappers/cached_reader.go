@@ -32,10 +32,20 @@ type CachedTupleReader struct {
 	drainTimeout time.Duration // Timeout for background drain operations
 	sf           *singleflight.Group
 	wg           *sync.WaitGroup
+	method       string
 }
 
 // Ensure CachedTupleReader implements RelationshipTupleReader.
 var _ storage.RelationshipTupleReader = (*CachedTupleReader)(nil)
+
+type CachedTupleReaderOpt func(*CachedTupleReader)
+
+// WithMethod is used in metric differentiation to tell us which caller (e.g. Check) this is.
+func WithMethod(method string) CachedTupleReaderOpt {
+	return func(c *CachedTupleReader) {
+		c.method = method
+	}
+}
 
 // NewCachedTupleReader creates a new CachedTupleReader.
 // The drainTimeout parameter controls how long background drain operations can run.
@@ -49,6 +59,7 @@ func NewCachedTupleReader(
 	sf *singleflight.Group,
 	wg *sync.WaitGroup,
 	drainTimeout time.Duration,
+	opts ...CachedTupleReaderOpt,
 ) *CachedTupleReader {
 	if maxSize <= 0 {
 		maxSize = maxCachedElements // Default to 1000
@@ -64,7 +75,7 @@ func NewCachedTupleReader(
 	if sf == nil {
 		sf = &singleflight.Group{}
 	}
-	return &CachedTupleReader{
+	c := &CachedTupleReader{
 		delegate:     delegate,
 		cache:        cache,
 		maxSize:      maxSize,
@@ -73,6 +84,10 @@ func NewCachedTupleReader(
 		sf:           sf,
 		wg:           wg,
 	}
+	for _, opt := range opts {
+		opt(c)
+	}
+	return c
 }
 
 // ReadUsersetTuples reads userset tuples with caching.
@@ -107,7 +122,7 @@ func (c *CachedTupleReader) ReadUsersetTuples(
 	invalidEntityKey := buildInvalidationKey(storeID, filter.Object, filter.Relation)
 
 	// Track total cache operations (before cache check, like V1)
-	v2IterCacheTotal.WithLabelValues("ReadUsersetTuples").Inc()
+	tuplesCacheTotalCounter.WithLabelValues("ReadUsersetTuples", c.method).Inc()
 
 	// CHECK CACHE FIRST - before any database call
 	if iter := c.tryGetFromCache(cacheKey, storeID, objectType, filter.Relation, "ReadUsersetTuples", []keys.Key{invalidEntityKey}); iter != nil {
@@ -125,7 +140,7 @@ func (c *CachedTupleReader) ReadUsersetTuples(
 	// Return caching iterator
 	return newCachingIterator(
 		dbIter, c.cache, cacheKey, c.maxSize, c.ttl, c.drainTimeout,
-		c.sf, c.wg, objectType, filter.Relation, "ReadUsersetTuples",
+		c.sf, c.wg, objectType, filter.Relation, "ReadUsersetTuples", c.method,
 	), nil
 }
 
@@ -158,7 +173,7 @@ func (c *CachedTupleReader) Read(
 	invalidEntityKey := buildInvalidationKey(storeID, filter.Object, filter.Relation)
 
 	// Track total cache operations (before cache check, like V1)
-	v2IterCacheTotal.WithLabelValues("Read").Inc()
+	tuplesCacheTotalCounter.WithLabelValues("Read", c.method).Inc()
 
 	if iter := c.tryGetFromCache(cacheKey, storeID, objectType, filter.Relation, "Read", []keys.Key{invalidEntityKey}); iter != nil {
 		span.SetAttributes(attribute.Bool("cached", true))
@@ -174,7 +189,7 @@ func (c *CachedTupleReader) Read(
 
 	return newCachingIterator(
 		dbIter, c.cache, cacheKey, c.maxSize, c.ttl, c.drainTimeout,
-		c.sf, c.wg, objectType, filter.Relation, "Read",
+		c.sf, c.wg, objectType, filter.Relation, "Read", c.method,
 	), nil
 }
 
@@ -206,7 +221,7 @@ func (c *CachedTupleReader) ReadStartingWithUser(
 	invalidEntityKeys := buildInvalidationKeysForUser(storeID, filter.UserFilter, filter.ObjectType)
 
 	// Track total cache operations (before cache check, like V1)
-	v2IterCacheTotal.WithLabelValues("ReadStartingWithUser").Inc()
+	tuplesCacheTotalCounter.WithLabelValues("ReadStartingWithUser", c.method).Inc()
 
 	if iter := c.tryGetFromCache(cacheKey, storeID, filter.ObjectType, filter.Relation, "ReadStartingWithUser", invalidEntityKeys); iter != nil {
 		span.SetAttributes(attribute.Bool("cached", true))
@@ -222,7 +237,7 @@ func (c *CachedTupleReader) ReadStartingWithUser(
 
 	return newCachingIterator(
 		dbIter, c.cache, cacheKey, c.maxSize, c.ttl, c.drainTimeout,
-		c.sf, c.wg, filter.ObjectType, filter.Relation, "ReadStartingWithUser",
+		c.sf, c.wg, filter.ObjectType, filter.Relation, "ReadStartingWithUser", c.method,
 	), nil
 }
 
@@ -256,7 +271,7 @@ func (c *CachedTupleReader) tryGetFromCache(
 		}
 	}
 
-	v2IterCacheHits.WithLabelValues(operation).Inc()
+	tuplesCacheHitCounter.WithLabelValues(operation, c.method).Inc()
 	return NewLockFreeCachedIterator(cached.Entries, objectType, relation, cached.Ordered)
 }
 

@@ -52,7 +52,7 @@ func (s *Server) Expand(ctx context.Context, req *openfgav1.ExpandRequest) (*ope
 	req.AuthorizationModelId = typesys.GetAuthorizationModelID() // the resolved model id
 
 	q := commands.NewExpandQuery(s.datastore, commands.WithExpandQueryLogger(s.logger))
-	return q.Execute(
+	resp, err := q.Execute(
 		typesystem.ContextWithTypesystem(ctx, typesys),
 		&openfgav1.ExpandRequest{
 			StoreId:          storeID,
@@ -60,4 +60,9 @@ func (s *Server) Expand(ctx context.Context, req *openfgav1.ExpandRequest) (*ope
 			Consistency:      req.GetConsistency(),
 			ContextualTuples: req.GetContextualTuples(),
 		})
+	if err != nil {
+		return nil, err
+	}
+
+	return resp, nil
 }

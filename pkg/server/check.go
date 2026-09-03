@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"errors"
-	"slices"
 	"strconv"
 	"time"
 
@@ -13,6 +12,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -27,11 +27,11 @@ import (
 	"github.com/openfga/openfga/pkg/middleware/requestid"
 	"github.com/openfga/openfga/pkg/middleware/validator"
 	"github.com/openfga/openfga/pkg/server/commands"
+	"github.com/openfga/openfga/pkg/server/commands/v2breaking"
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
-	"github.com/openfga/openfga/pkg/typesystem"
 )
 
 func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openfgav1.CheckResponse, error) {
@@ -66,6 +66,14 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 	}
 
 	storeID := req.GetStoreId()
+
+	// isV2Fallback tracks whether v2Check ran, errored, and we fell back to v1.
+	// Only in that case does the v1 path need to emit v2-breaking-change logs —
+	// when the flag is off, there is no v2 comparison to signal about.
+	// v2FallbackErr holds the v2Check error so the fallback path can classify
+	// it (e.g. exclusion-shape rejection) without re-walking the schema.
+	var isV2Fallback bool
+	var v2FallbackErr error
 
 	if s.featureFlagClient.Boolean(serverconfig.ExperimentalWeightedGraphCheck, storeID) {
 		res, err := s.v2Check(ctx, req, s.sharedDatastoreResources.CheckCache, s.sharedDatastoreResources.CacheController, s.authzModelGraphResolver)
@@ -121,13 +129,13 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 			span.SetAttributes(attribute.Bool("allowed", res.Allowed))
 
 			// Flag potential v2Check resolution breaking changes for userset requests.
-			// See breakingChangeReason for the scenarios we detect.
-			if !res.Allowed && tuple.IsObjectRelation(req.GetTupleKey().GetUser()) {
+			// See v2breaking.CheckReason for the scenarios we detect.
+			if s.logger.Level() <= zap.InfoLevel && !res.Allowed && tuple.IsObjectRelation(req.GetTupleKey().GetUser()) {
 				if typesys, err := s.resolveTypesystem(ctx, storeID, req.GetAuthorizationModelId()); err == nil {
 					tk := req.GetTupleKey()
-					if reason := breakingChangeReason(typesys, tk); reason != "" {
+					if reason := v2breaking.CheckReason(typesys, tk); reason != "" {
 						requestID := requestid.GetRequestIDFromContext(ctx)
-						s.logger.WarnWithContext(ctx, "potential v2Check resolution breaking change: userset request returned false",
+						s.logger.InfoWithContext(ctx, "potential v2 Check resolution breaking change",
 							zap.String("store_id", storeID),
 							zap.String("model_id", req.GetAuthorizationModelId()),
 							zap.String("request_id", requestID),
@@ -148,6 +156,8 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 			zap.String("request_id", requestID),
 		)
 
+		isV2Fallback = true
+		v2FallbackErr = err
 		startTime = time.Now() // reset startTime to avoid counting v2Check duration in case of fallback when it's enabled
 	}
 
@@ -262,6 +272,41 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 
 	res := &openfgav1.CheckResponse{
 		Allowed: resp.Allowed,
+	}
+
+	// If we fell back from v2Check to v1, surface potential resolution
+	// divergences: v2 might have returned a different answer (or rejected the
+	// request outright) for the same input.
+	//
+	// Reason precedence:
+	//  1. If v2Check's error was one of the exclusion-shape rejections, use it
+	//     directly — no schema walk needed and no allowed-gating (v2 rejected
+	//     regardless of the v1 answer).
+	//  2. Otherwise v2 failed for another reason (e.g. weighted-graph build
+	//     failure) and we must inspect the schema ourselves: exclusion shapes
+	//     log unconditionally, per-userset shapes gate on !allowed to match
+	//     the v2-success log path above.
+	if s.logger.Level() <= zapcore.InfoLevel && isV2Fallback {
+		tk := req.GetTupleKey()
+		requestID := requestid.GetRequestIDFromContext(ctx)
+		logFields := []zap.Field{
+			zap.String("store_id", storeID),
+			zap.String("model_id", req.GetAuthorizationModelId()),
+			zap.String("request_id", requestID),
+		}
+		emit := func(reason string) {
+			s.logger.InfoWithContext(ctx, "potential v2 Check resolution breaking change",
+				append(logFields, zap.String("reason", reason))...)
+		}
+		if reason := v2breaking.CheckReasonFromV2Error(v2FallbackErr); reason != "" {
+			emit(reason)
+		} else if reason := v2breaking.CheckExclusionReason(typesys, tk); reason != "" {
+			emit(reason)
+		} else if !resp.Allowed && tuple.IsObjectRelation(tk.GetUser()) {
+			if reason := v2breaking.CheckReason(typesys, tk); reason != "" {
+				emit(reason)
+			}
+		}
 	}
 
 	if s.featureFlagClient.Boolean(serverconfig.ExperimentalShadowWeightedGraphCheck, req.GetStoreId()) {
@@ -405,158 +450,6 @@ func (s *Server) v2Check(
 
 	span.SetAttributes(attribute.Bool("allowed", res.Allowed))
 	return res, nil
-}
-
-const (
-	reasonSelfReferentialUserset = "self_referential_userset"
-	reasonAliasUserset           = "alias_userset"
-	reasonComputedUsersetSelfObj = "computed_userset_self_object"
-	reasonTTUUserset             = "ttu_userset"
-)
-
-// breakingChangeReason returns a non-empty reason string when the request shape matches a
-// known v1→v2 Check divergence for userset users. Caller has already verified that the
-// user is a userset (object#relation) and that v2Check returned FALSE.
-//
-// Reasons:
-//
-//   - "alias_userset": the target relation directly accepts T#R' where R' resolves via
-//     computed_userset to the user's relation R, and R is not itself directly assignable
-//     on the target. e.g.
-//     model
-//     type user
-//     type document
-//     relations
-//     define reader: [user]
-//     define allowed: reader
-//     define viewer: [user, document#allowed]
-//     With the query `document:d1, viewer, document3#reader`; v1 follows the allowed→reader
-//     alias from a stored `allowed` tuple, v2 does not.
-//
-//   - "self_referential_userset": v1 unconditionally returned TRUE for this shape
-//     regardless of whether any data existed; v2 evaluates against the schema and
-//     storage and correctly returns FALSE. e.g.
-//     model
-//     type user
-//     type document
-//     relations
-//     define viewer: [user]
-//     `document:d1, viewer, document:d1#viewer` v1 returned TRUE, v2 returns FALSE.
-//
-//   - "computed_userset_self_object": user's object equals the target object, and the user's
-//     relation appears as a ComputedUserset leaf in the target relation's rewrite tree.
-//     e.g.
-//     model
-//     type user
-//     type document
-//     relations
-//     define viewer: editor or writer
-//     define editor: [user]
-//     define writer: [user]
-//     `document:d1, viewer, document:d1#writer` v1 returned TRUE, v2 returns FALSE.`
-//
-//   - "ttu_userset": target relation's rewrite contains a TupleToUserset whose computed
-//     relation equals the user's relation, AND the user's object type is directly-related
-//     to the tupleset relation. e.g. document.viewer = viewer from parent; query
-//     viewer@folder:f2#viewer on document:d1. v1 returned TRUE from schema reachability
-//     plus a parent tuple; v2 requires the userset to be explicit. e.g.
-//     model
-//     type user
-//     type folder
-//     relations
-//     define viewer: [user]
-//     type document
-//     relations
-//     define parent: [folder]
-//     define viewer: viewer from parent
-//     With the query `document:d1, viewer, folder:f2#viewer` and the tuple `document:d1, parent, folder:f2`;
-//     v1 returned TRUE, v2 returns FALSE.
-//
-// All schema-shape filters are necessary conditions only — they may over-report when no
-// matching tuple is actually stored, but never miss a real divergence.
-func breakingChangeReason(typesys *typesystem.TypeSystem, tk *openfgav1.CheckRequestTupleKey) string {
-	if tk.GetUser() == tk.GetObject()+"#"+tk.GetRelation() {
-		return reasonSelfReferentialUserset
-	}
-	userObject, userRelation := tuple.SplitObjectRelation(tk.GetUser())
-	userObjectType := tuple.GetType(userObject)
-	targetObjectType := tuple.GetType(tk.GetObject())
-	targetRelation := tk.GetRelation()
-
-	if usersetAliasesTargetRelation(typesys, targetObjectType, targetRelation, userObjectType, userRelation) {
-		return reasonAliasUserset
-	}
-	rel, err := typesys.GetRelation(targetObjectType, targetRelation)
-	if err != nil {
-		return ""
-	}
-	rewrite := rel.GetRewrite()
-	if userObject == tk.GetObject() && rewriteContainsComputedUserset(rewrite, userRelation) {
-		return reasonComputedUsersetSelfObj
-	}
-	if rewriteContainsTTUForUser(typesys, targetObjectType, rewrite, userObjectType, userRelation) {
-		return reasonTTUUserset
-	}
-	return ""
-}
-
-// rewriteContainsComputedUserset reports whether any ComputedUserset leaf in the rewrite
-// tree references the given relation name.
-func rewriteContainsComputedUserset(rewrite *openfgav1.Userset, relation string) bool {
-	result, _ := typesystem.WalkUsersetRewrite(rewrite, func(r *openfgav1.Userset) interface{} {
-		if cu, ok := r.GetUserset().(*openfgav1.Userset_ComputedUserset); ok && cu.ComputedUserset.GetRelation() == relation {
-			return true
-		}
-		return nil
-	})
-	return result != nil
-}
-
-// rewriteContainsTTUForUser reports whether the target's rewrite contains a TupleToUserset
-// whose computed relation equals the user's relation, where the tupleset relation on the
-// target object type is directly related to the user's object type.
-func rewriteContainsTTUForUser(ts *typesystem.TypeSystem, targetObjectType string, rewrite *openfgav1.Userset, userObjectType, userRelation string) bool {
-	result, _ := typesystem.WalkUsersetRewrite(rewrite, func(r *openfgav1.Userset) interface{} {
-		ttu, ok := r.GetUserset().(*openfgav1.Userset_TupleToUserset)
-		if !ok || ttu.TupleToUserset.GetComputedUserset().GetRelation() != userRelation {
-			return nil
-		}
-		tuplesetRel := ttu.TupleToUserset.GetTupleset().GetRelation()
-		// Loose type-only match (ignores relation/wildcard) is intentional: this is an
-		// over-reporting necessary-condition filter. Do not swap in IsDirectlyRelated.
-		directlyRelated, err := ts.GetDirectlyRelatedUserTypes(targetObjectType, tuplesetRel)
-		if err == nil && slices.ContainsFunc(directlyRelated, func(dr *openfgav1.RelationReference) bool {
-			return dr.GetType() == userObjectType
-		}) {
-			return true
-		}
-		return nil
-	})
-	return result != nil
-}
-
-// usersetAliasesTargetRelation reports whether the target's directly-related usersets
-// include some T#R' (where T = user's object type) that is a computed_userset alias for
-// the user's relation R. Excludes the trivial case where T#R is itself directly assignable
-// (since v1 and v2 agree on direct matches).
-func usersetAliasesTargetRelation(ts *typesystem.TypeSystem, targetObjectType, targetRelation, userObjectType, userRelation string) bool {
-	usersets, err := ts.DirectlyRelatedUsersets(targetObjectType, targetRelation)
-	if err != nil {
-		return false
-	}
-	foundAlias := false
-	for _, ref := range usersets {
-		if ref.GetType() != userObjectType {
-			continue
-		}
-		if ref.GetRelation() == userRelation {
-			return false
-		}
-		if resolved, err := ts.ResolveComputedRelation(ref.GetType(), ref.GetRelation()); err == nil && resolved == userRelation {
-			foundAlias = true
-		}
-	}
-	return foundAlias
 }
 
 func (s *Server) getCheckResolverBuilder(storeID string) *graph.CheckResolverOrderedBuilder {
