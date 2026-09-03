@@ -12,6 +12,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ### Fixed
 - Fixed a deadlock in ListUsers that caused a timeout with partial results when the number of union/intersection operands exceeded `OPENFGA_RESOLVE_NODE_BREADTH_LIMIT` and the operands each resolved to more than one user. Thank you to [@fabianluque](https://github.com/fabianluque) for the discovery and detailed report! [#3284](https://github.com/openfga/openfga/pull/3284)
+- `ReadUserTuple` now returns the tuple's timestamp for the Postgres, MySQL, and SQLite datastores; it previously returned a zero timestamp because the query did not select `inserted_at`. [#3194](https://github.com/openfga/openfga/pull/3194)
 
 ## [1.19.0] - 2026-08-24
 ### Added
@@ -39,7 +40,6 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Tuple condition validation now checks that a condition is bound to the specific type-restriction facet (concrete user, typed wildcard, or userset) that matches the tuple's user, not just the user type and condition name. Previously a relation such as `define viewer: [user, user:* with cond]` would accept a tuple like `document:1#viewer@user:alice` carrying `cond`, even though `cond` is only defined on the `user:*` facet. Because this validation also runs when reading tuples during query resolution, such tuples are now consistently rejected across Check and ListObjects. See `internal/validation/validation.go`. [#3218](https://github.com/openfga/openfga/pull/3218)
 - Converted the FlattenNode function of the internal/modelgraph package from a recursive algorithm to an iterative one. This more robustly handles deep relationship nesting. [#3224](https://github.com/openfga/openfga/pull/3224)
 - Fixed experimental `weighted_graph_check` returning incorrect results for multi-branch recursion on the same relation; e.g., `member: [user] or member from parent or member from child`. [#3239](https://github.com/openfga/openfga/pull/3239)
-- `ReadUserTuple` now returns the tuple's timestamp for the Postgres, MySQL, and SQLite datastores; it previously returned a zero timestamp because the query did not select `inserted_at`. [#3194](https://github.com/openfga/openfga/pull/3194)
 
 ### Security
 - Update toolchain Go version to 1.26.5 and rebuild the embedded `grpc-health-probe` (bumped to `v0.4.53`, built with Go 1.26.5) so released images no longer ship the Go standard library vulnerabilities documented in the [Go 1.26.5 release notes](https://go.dev/doc/devel/release#go1.26.5), including CVE-2026-39822. [#3219](https://github.com/openfga/openfga/pull/3219)
