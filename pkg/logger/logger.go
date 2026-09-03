@@ -12,6 +12,11 @@ import (
 )
 
 type Logger interface {
+	// Level reports the minimum enabled log level for this logger. Callers can
+	// use it to skip expensive work that only feeds a log line which would be
+	// dropped anyway (e.g. l.Level() <= zapcore.InfoLevel).
+	Level() zapcore.Level
+
 	// These are ops that call directly to the actual zap implementation
 	Debug(string, ...zap.Field)
 	Info(string, ...zap.Field)

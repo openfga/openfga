@@ -210,7 +210,11 @@ func (s *Datastore) read(ctx context.Context, store string, filter storage.ReadF
 		sb = sb.Limit(uint64(options.Pagination.PageSize + 1)) // + 1 is used to determine whether to return a continuation token.
 	}
 
-	return sqlcommon.NewSQLTupleIterator(sqlcommon.NewSBIteratorQuery(sb), HandleSQLError), nil
+	rg, err := sqlcommon.NewRowGetter(sqlcommon.NewSQLConnector(s.db), sb)
+	if err != nil {
+		return nil, err
+	}
+	return sqlcommon.NewSQLTupleIterator(rg, HandleSQLError), nil
 }
 
 // Write see [storage.RelationshipTupleWriter].Write.
@@ -344,7 +348,11 @@ func (s *Datastore) ReadUsersetTuples(
 		sb = sb.Where(sq.Eq{"COALESCE(condition_name, '')": filter.Conditions})
 	}
 
-	return sqlcommon.NewSQLTupleIterator(sqlcommon.NewSBIteratorQuery(sb), HandleSQLError), nil
+	rg, err := sqlcommon.NewRowGetter(sqlcommon.NewSQLConnector(s.db), sb)
+	if err != nil {
+		return nil, err
+	}
+	return sqlcommon.NewSQLTupleIterator(rg, HandleSQLError), nil
 }
 
 // ReadStartingWithUser see [storage.RelationshipTupleReader].ReadStartingWithUser.
@@ -386,7 +394,12 @@ func (s *Datastore) ReadStartingWithUser(
 	if len(filter.Conditions) > 0 {
 		builder = builder.Where(sq.Eq{"COALESCE(condition_name, '')": filter.Conditions})
 	}
-	return sqlcommon.NewSQLTupleIterator(sqlcommon.NewSBIteratorQuery(builder), HandleSQLError), nil
+
+	rg, err := sqlcommon.NewRowGetter(sqlcommon.NewSQLConnector(s.db), builder)
+	if err != nil {
+		return nil, err
+	}
+	return sqlcommon.NewSQLTupleIterator(rg, HandleSQLError), nil
 }
 
 // MaxTuplesPerWrite see [storage.RelationshipTupleWriter].MaxTuplesPerWrite.

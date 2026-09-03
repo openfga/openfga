@@ -139,124 +139,6 @@ func CheckExclusionReason(typesys *typesystem.TypeSystem, tk *openfgav1.CheckReq
 	return ""
 }
 
-// ExpandReason returns a non-empty reason string when the Expand request shape
-// matches a known v1→v2 resolution divergence. Compared to Check/ListUsers,
-// Expand has no user input — only (object, relation) — so detection is purely
-// schema-shape against the target relation's rewrite.
-//
-// ExpandReason covers the shapes whose v1 Expand tree exposes a divergence
-// from v2:
-//
-//   - The two exclusion shapes (userset_with_exclusion, wildcard_with_exclusion):
-//     v2 rejects the request at request time, so any v1 Expand response on a
-//     Difference-containing rewrite is itself the divergence signal.
-//
-//   - alias_userset: v1 follows `T#R' → R` aliases when materializing leaves,
-//     surfacing aliased usersets that v2's strict storage-validation path
-//     would not.
-//
-//   - computed_userset_self_object: the rewrite contains a ComputedUserset
-//     leaf referring to a sibling relation. v1 Expand emits this leaf as a
-//     direct member of the target relation (e.g. `viewer: editor or writer`
-//     produces a Union with `document:d1#writer` as a leaf), which is
-//     exactly the v1 inference v2's strict resolution would not surface.
-//
-//   - ttu_userset: the rewrite contains a TupleToUserset. v1 Expand emits a
-//     TTU leaf naming the tupleset relation (e.g. `viewer: viewer from
-//     parent` produces a leaf referencing `document:d1#parent`) even when no
-//     parent tuples exist in storage — surfacing structural detail that v2's
-//     strict resolution would not.
-//
-// `self_referential_userset` remains a Check-only boolean shortcut — it
-// doesn't change Expand's emitted tree.
-//
-// Exclusion shapes are checked before the others since they are the more
-// severe divergence (v2 returns a request-time error).
-func ExpandReason(typesys *typesystem.TypeSystem, targetObjectType, targetRelation string) string {
-	rel, err := typesys.GetRelation(targetObjectType, targetRelation)
-	if err != nil {
-		return ""
-	}
-	rewrite := rel.GetRewrite()
-
-	if rewriteContainsDifference(rewrite) {
-		if anyTypeWildcardReachableUnderDifferenceBase(typesys, targetObjectType, targetRelation, rewrite) {
-			return ReasonWildcardWithExclusion
-		}
-		return ReasonUsersetWithExclusion
-	}
-
-	if isAliasedDirectlyRelatedUserset(typesys, targetObjectType, targetRelation, "", "") {
-		return ReasonAliasUserset
-	}
-
-	if reason := computedUsersetOrTTUReason(rewrite); reason != "" {
-		return reason
-	}
-
-	return ""
-}
-
-// computedUsersetOrTTUReason walks the rewrite tree once and returns
-// ReasonComputedUsersetSelfObj if any ComputedUserset leaf is present, or
-// ReasonTTUUserset if any TupleToUserset node is present, or "".
-func computedUsersetOrTTUReason(rewrite *openfgav1.Userset) string {
-	result, _ := typesystem.WalkUsersetRewrite(rewrite, func(r *openfgav1.Userset) interface{} {
-		switch r.GetUserset().(type) {
-		case *openfgav1.Userset_ComputedUserset:
-			return ReasonComputedUsersetSelfObj
-		case *openfgav1.Userset_TupleToUserset:
-			return ReasonTTUUserset
-		}
-		return nil
-	})
-	if reason, ok := result.(string); ok {
-		return reason
-	}
-
-	return ""
-}
-
-// anyTypeWildcardReachableUnderDifferenceBase walks every type defined in the
-// model and reports whether any of them has a typed wildcard reachable under
-// the rewrite's Difference base. Used by ExpandReason where there is no filter
-// to anchor the wildcard search.
-func anyTypeWildcardReachableUnderDifferenceBase(ts *typesystem.TypeSystem, targetObjectType, relation string, rewrite *openfgav1.Userset) bool {
-	for userObjectType := range ts.GetAllRelations() {
-		if wildcardReachableUnderDifferenceBase(ts, targetObjectType, relation, rewrite, userObjectType) {
-			return true
-		}
-	}
-	return false
-}
-
-// isAliasedDirectlyRelatedUserset reports whether (userObjectType, userRelation)
-// is a directly-related userset on (targetObjectType, targetRelation) whose
-// rewrite is a ComputedUserset alias (i.e. `define R' = R` on T). When both
-// userObjectType and userRelation are empty the function returns true if ANY
-// directly-related userset on the target is so aliased — the schema-shape
-// check used by ExpandReason.
-func isAliasedDirectlyRelatedUserset(ts *typesystem.TypeSystem, targetObjectType, targetRelation, userObjectType, userRelation string) bool {
-	usersets, err := ts.DirectlyRelatedUsersets(targetObjectType, targetRelation)
-	if err != nil {
-		return false
-	}
-	matchAny := userObjectType == "" && userRelation == ""
-	for _, ref := range usersets {
-		if !matchAny && (ref.GetType() != userObjectType || ref.GetRelation() != userRelation) {
-			continue
-		}
-		rel, err := ts.GetRelation(ref.GetType(), ref.GetRelation())
-		if err != nil {
-			continue
-		}
-		if _, ok := rel.GetRewrite().GetUserset().(*openfgav1.Userset_ComputedUserset); ok {
-			return true
-		}
-	}
-	return false
-}
-
 // ListUsersReason returns a non-empty reason string when the ListUsers request
 // shape matches a known v1→v2 divergence. Compared to CheckReason, it also
 // detects the two exclusion-shape cases that v2Check rejects at request time
@@ -309,6 +191,86 @@ func ListUsersReason(typesys *typesystem.TypeSystem, object *openfgav1.Object, r
 		return ReasonWildcardWithExclusion
 	}
 	return ""
+}
+
+// ListObjectsReason returns a non-empty reason string when the ListObjects
+// request shape matches a known v1→v2 divergence. A userset subject
+// (object#relation) exercises the four per-userset shapes plus
+// userset_with_exclusion; a concrete or wildcard subject can only reach
+// wildcard_with_exclusion.
+//
+// For userset/wildcard subjects the v2 pipeline currently routes to the legacy
+// (v1) algorithm (see the precondition in list_objects.go). They are still
+// reported, but their result might change once ListObjects respects the v2 path.
+func ListObjectsReason(typesys *typesystem.TypeSystem, targetObjectType, relation, subject string) string {
+	if subject == "" {
+		return ""
+	}
+	subjectObject, subjectRelation := tuple.SplitObjectRelation(subject)
+	subjectType := tuple.GetType(subjectObject)
+
+	if subjectRelation != "" {
+		if targetObjectType == subjectType && relation == subjectRelation {
+			return ReasonSelfReferentialUserset
+		}
+		if usersetAliasesTargetRelation(typesys, targetObjectType, relation, subjectType, subjectRelation) {
+			return ReasonAliasUserset
+		}
+	}
+
+	rel, err := typesys.GetRelation(targetObjectType, relation)
+	if err != nil {
+		return ""
+	}
+	rewrite := rel.GetRewrite()
+
+	if subjectRelation != "" {
+		if targetObjectType == subjectType && rewriteContainsComputedUserset(rewrite, subjectRelation) {
+			return ReasonComputedUsersetSelfObj
+		}
+		if rewriteContainsTTUForUser(typesys, targetObjectType, rewrite, subjectType, subjectRelation) {
+			return ReasonTTUUserset
+		}
+		if rewriteContainsDifference(rewrite) {
+			return ReasonUsersetWithExclusion
+		}
+		return ""
+	}
+
+	// Concrete or wildcard subject: only the wildcard-with-exclusion shape is in play.
+	if wildcardReachableUnderDifferenceBase(typesys, targetObjectType, relation, rewrite, subjectType) {
+		return ReasonWildcardWithExclusion
+	}
+	return ""
+}
+
+// ListObjectsResponseConfirmsReason reports whether the ListObjects response is
+// consistent with v1 having actually traversed the divergent path for the given
+// reason. It mirrors ListUsersResponseConfirmsReason and suppresses false-
+// positive logs on shape-matched requests whose responses didn't observably
+// exercise the v1 behaviour.
+//
+// The response is a list of object IDs (the target objects the subject relates
+// to). For the two self-object shapes v1 surfaces the subject's own object
+// (check(o, r, o#r') is unconditionally/structurally TRUE), so the confirmation
+// checks that specific object is present. For the alias, TTU and exclusion
+// shapes we cannot attribute a specific object to the divergent path, so a
+// non-empty response is taken as confirmation that v1 walked it.
+//
+// This lets the breaking-change tests run with the v2 pipeline enabled: today
+// the pipeline routes userset/wildcard subjects to v1 and the divergent object
+// is present, so the log fires; once the v2 pipeline is made consistent with
+// v2 the object will drop out of the response, the log will stop firing, and
+// the tests will fail — signalling they can be removed.
+func ListObjectsResponseConfirmsReason(reason, subject string, objects []string) bool {
+	switch reason {
+	case ReasonSelfReferentialUserset, ReasonComputedUsersetSelfObj:
+		subjectObject, _ := tuple.SplitObjectRelation(subject)
+		return slices.Contains(objects, subjectObject)
+	case ReasonAliasUserset, ReasonTTUUserset, ReasonUsersetWithExclusion, ReasonWildcardWithExclusion:
+		return len(objects) > 0
+	}
+	return false
 }
 
 // ListUsersResponseConfirmsReason reports whether the ListUsers response is
@@ -372,76 +334,6 @@ func responseContainsUsersetOfType(users []*openfgav1.User, typ, relation string
 			continue
 		}
 		if us.GetType() == typ && us.GetRelation() == relation {
-			return true
-		}
-	}
-	return false
-}
-
-// ExpandResponseConfirmsReason reports whether the Expand response tree is
-// consistent with v1 having actually traversed the divergent path for the
-// given reason. It mirrors ListUsersResponseConfirmsReason: shape predicates
-// fire on schema alone (which may over-report), and this function suppresses
-// the log when the response shows the v1 path wasn't actually exercised.
-//
-// For the exclusion shapes, v2 would reject the request at request time, so
-// any successful response means v1 actually walked the divergent path.
-// For alias_userset, we confirm that v1 surfaced an aliased directly-related
-// userset (T#R' where R' resolves via ComputedUserset to the queried
-// relation) — that exact userset will not appear in a v2 expansion of the
-// same call.
-//
-// Returns true for unknown reasons, so the caller's logic stays simple.
-func ExpandResponseConfirmsReason(reason string, typesys *typesystem.TypeSystem, targetObjectType, targetRelation string, tree *openfgav1.UsersetTree) bool {
-	switch reason {
-	case ReasonUsersetWithExclusion, ReasonWildcardWithExclusion, ReasonComputedUsersetSelfObj, ReasonTTUUserset:
-		// v2 has not yet been ported to Expand, so any response on a shape
-		// known to diverge means the client is observing v1 behavior.
-		return tree.GetRoot() != nil
-	case ReasonAliasUserset:
-		return treeHasAliasedUserset(typesys, targetObjectType, targetRelation, tree.GetRoot())
-	}
-	return true
-}
-
-func treeHasAliasedUserset(typesys *typesystem.TypeSystem, targetObjectType, targetRelation string, node *openfgav1.UsersetTree_Node) bool {
-	if node == nil {
-		return false
-	}
-	if leaf := node.GetLeaf(); leaf != nil {
-		if users := leaf.GetUsers(); users != nil {
-			for _, u := range users.GetUsers() {
-				userObject, userRelation := tuple.SplitObjectRelation(u)
-				if userRelation == "" {
-					continue
-				}
-				userObjectType := tuple.GetType(userObject)
-				if isAliasedDirectlyRelatedUserset(typesys, targetObjectType, targetRelation, userObjectType, userRelation) {
-					return true
-				}
-			}
-		}
-		return false
-	}
-	if union := node.GetUnion(); union != nil {
-		for _, child := range union.GetNodes() {
-			if treeHasAliasedUserset(typesys, targetObjectType, targetRelation, child) {
-				return true
-			}
-		}
-	}
-	if inter := node.GetIntersection(); inter != nil {
-		for _, child := range inter.GetNodes() {
-			if treeHasAliasedUserset(typesys, targetObjectType, targetRelation, child) {
-				return true
-			}
-		}
-	}
-	if diff := node.GetDifference(); diff != nil {
-		if treeHasAliasedUserset(typesys, targetObjectType, targetRelation, diff.GetBase()) {
-			return true
-		}
-		if treeHasAliasedUserset(typesys, targetObjectType, targetRelation, diff.GetSubtract()) {
 			return true
 		}
 	}
