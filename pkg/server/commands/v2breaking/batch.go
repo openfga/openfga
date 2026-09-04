@@ -51,10 +51,10 @@ type BatchReasoner struct {
 }
 
 // NewBatchReasoner returns a BatchReasoner that detects divergences against the
-// given type system. batchSize is the number of checks in the batch and is used
+// given type system. BatchSize is the number of checks in the batch and is used
 // only as a capacity hint for the maps that grow with the batch (the shape
 // caches and the per-correlation-id attribution, each bounded by batchSize); a
-// zero or negative hint is harmless. reasonSet is left unhinted since it is
+// zero or negative hint is harmless. ReasonSet is left unhinted since it is
 // bounded by the small fixed set of reason kinds, not the batch size.
 func NewBatchReasoner(typesys *typesystem.TypeSystem, batchSize int) *BatchReasoner {
 	return &BatchReasoner{
