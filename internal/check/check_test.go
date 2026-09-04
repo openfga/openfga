@@ -6370,3 +6370,84 @@ func TestCheck_MultiBranchRecursionOnSameRelation(t *testing.T) {
 		})
 	}
 }
+
+// TestResolveCheck_CancelledBeforeResolution is a regression for
+// https://github.com/openfga/openfga/issues/3214. A request whose context is already
+// done must return that context error, never a successful result, and must not start
+// any graph work.
+func TestResolveCheck_CancelledBeforeResolution(t *testing.T) {
+	// viewer is reachable both directly and through a userset, so a request that
+	// gets past the gate hits the datastore on both paths.
+	model := testutils.MustTransformDSLToProtoWithID(`
+		model
+			schema 1.1
+		type user
+		type group
+			relations
+				define member: [user]
+		type document
+			relations
+				define viewer: [user, group#member]
+	`)
+	mg, err := modelgraph.New(model)
+	require.NoError(t, err)
+
+	tests := map[string]struct {
+		ctx      func() (context.Context, context.CancelFunc)
+		expected error
+	}{
+		"cancelled": {
+			ctx: func() (context.Context, context.CancelFunc) {
+				ctx, cancel := context.WithCancel(context.Background())
+				cancel()
+				return ctx, cancel
+			},
+			expected: context.Canceled,
+		},
+		"deadline_exceeded": {
+			ctx: func() (context.Context, context.CancelFunc) {
+				return context.WithDeadline(context.Background(), time.Now().Add(-time.Minute))
+			},
+			expected: context.DeadlineExceeded,
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			storeID := ulid.Make().String()
+			mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+			mockPlanner := mocks.NewMockManager(ctrl)
+
+			// Without the gate this request reads both the direct tuple and the
+			// userset tuples, so neither Times(0) is vacuous. Any other call on
+			// either mock is unexpected and fails the test as well.
+			mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+			mockDatastore.EXPECT().ReadUsersetTuples(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+
+			resolver := New(Config{
+				Model:            mg,
+				Datastore:        mockDatastore,
+				Cache:            storage.NewNoopCache(),
+				Planner:          mockPlanner,
+				ConcurrencyLimit: 10,
+			})
+
+			req, err := NewRequest(RequestParams{
+				StoreID:  storeID,
+				Model:    mg,
+				TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:alice"),
+			})
+			require.NoError(t, err)
+
+			ctx, cancel := test.ctx()
+			defer cancel()
+
+			res, err := resolver.ResolveCheck(ctx, req)
+			require.ErrorIs(t, err, test.expected)
+			require.Nil(t, res)
+		})
+	}
+}
