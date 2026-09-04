@@ -236,7 +236,7 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 // deduplicated `reasons` list plus a `reasons_by_correlation_id` map attributing
 // each flagged check to its reason.
 func (s *Server) logBatchCheckBreakingChanges(ctx context.Context, req *openfgav1.BatchCheckRequest, typesys *typesystem.TypeSystem, result map[commands.CorrelationID]*commands.BatchCheckOutcome) {
-	reasoner := v2breaking.NewBatchReasoner(typesys)
+	reasoner := v2breaking.NewBatchReasoner(typesys, len(req.GetChecks()))
 
 	for _, check := range req.GetChecks() {
 		outcome := result[commands.CorrelationID(check.GetCorrelationId())]
