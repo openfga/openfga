@@ -10,6 +10,9 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Added
 - Added `WithServiceName` server option to allow embedders to override the `serviceName` field used for the `grpc_service` label on OpenFGA's package-level Prometheus metrics and `telemetry.RPCInfo.Service`. This enables multiple `Server` instances in the same process to emit separate metric series. Note it does not rename the standard gRPC server metrics (e.g. `grpc_server_handled_total`), whose labels are derived from the registered gRPC service. Use stable, low-cardinality names, as the value becomes a metric label. Defaults to `openfgav1.OpenFGAService_ServiceDesc.ServiceName` when omitted (backward compatible). [#3265](https://github.com/openfga/openfga/pull/3265)
 
+### Fixed
+- Fixed a deadlock in ListUsers that caused a timeout with partial results when the number of union/intersection operands exceeded `OPENFGA_RESOLVE_NODE_BREADTH_LIMIT` and the operands each resolved to more than one user. Thank you to [@fabianluque](https://github.com/fabianluque) for the discovery and detailed report! [#3284](https://github.com/openfga/openfga/pull/3284)
+
 ## [1.19.0] - 2026-08-24
 ### Added
 - Adds configurable pipeline optimization for weight-one difference subtract edges with high cardinality on wildcard leaves. For now, this configuration is internal only. [#3267](https://github.com/openfga/openfga/pull/3267)
@@ -26,6 +29,8 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ## [1.18.2] - 2026-08-03
 ### Added
 - Extended experimental `weighted_graph_check` diagnostic logging to cover the `wildcard_with_exclusion` and `userset_with_exclusion` shapes: the log now fires when v2 Check rejects one of these shapes and Check falls back to v1, and when v2 Check is skipped entirely because the weighted graph fails to build. These logs surface authorization models that may be affected by a future v1 deprecation, and no operator action is required. [#3204](https://github.com/openfga/openfga/pull/3204)
+- Added diagnostic logging in `ListObjects` when log level is InfoLevel and v2 resolution might produce a different result than v1 for the same query. Note that v2 has not been implemented yet for this endpoint; these logs purely add visibility for a future v1 deprecation, and no operator action is required. [#3223](https://github.com/openfga/openfga/pull/3223)
+- Added the same v2 resolution diagnostic logging to `StreamedListObjects` when log level is Info. Note that v2 has not been implemented yet for this endpoint; these logs purely add visibility for a future v1 deprecation, and no operator action is required. [#3230](https://github.com/openfga/openfga/pull/3230)
 - Extended experimental `weighted_graph_check` diagnostic logging to `BatchCheck`: with the flag enabled and log level InfoLevel, a single aggregate log is emitted per request listing the distinct v1→v2 resolution divergence shapes detected across the batch. These logs surface authorization models that may be affected by a future v1 deprecation, and no operator action is required. [#3210](https://github.com/openfga/openfga/pull/3210)
 
 ### Changed
