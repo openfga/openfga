@@ -95,11 +95,13 @@ func (oidc *RemoteOidcAuthenticator) Authenticate(requestContext context.Context
 		return nil, authn.ErrMissingBearerToken
 	}
 
-	options := []jwt.ParserOption{
+	// Preallocate space for 4 options to avoid reallocations, as recommended by the `prealloc` linter.
+	options := make([]jwt.ParserOption, 0, 4)
+	options = append(options,
 		jwt.WithValidMethods([]string{"RS256"}),
 		jwt.WithIssuedAt(),
 		jwt.WithExpirationRequired(),
-	}
+	)
 
 	// constructor enforces non-empty Audience; unconditional to make the invariant explicit
 	options = append(options, jwt.WithAudience(oidc.Audience))
@@ -118,9 +120,10 @@ func (oidc *RemoteOidcAuthenticator) Authenticate(requestContext context.Context
 		return nil, errInvalidClaims
 	}
 
-	validIssuers := []string{
-		oidc.MainIssuer,
-	}
+	// Preallocate space for the main issuer and all issuer aliases to avoid reallocations, as recommended by the
+	// `prealloc` linter.
+	validIssuers := make([]string, 0, 1+len(oidc.IssuerAliases))
+	validIssuers = append(validIssuers, oidc.MainIssuer)
 	validIssuers = append(validIssuers, oidc.IssuerAliases...)
 
 	ok = slices.ContainsFunc(validIssuers, func(issuer string) bool {

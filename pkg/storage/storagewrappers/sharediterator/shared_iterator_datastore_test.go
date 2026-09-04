@@ -55,7 +55,7 @@ func BenchmarkSharedIteratorWithStaticIterator(b *testing.B) {
 		tuple.NewTupleKey("document:5", "viewer", "user:5"),
 	}
 
-	var tuples []*openfgav1.Tuple
+	tuples := make([]*openfgav1.Tuple, 0, len(tks))
 	for _, tk := range tks {
 		ts := timestamppb.New(time.Now())
 		tuples = append(tuples, &openfgav1.Tuple{Key: tk, Timestamp: ts})
@@ -108,7 +108,7 @@ func BenchmarkSharedIteratorConcurrentAccess(b *testing.B) {
 		tuple.NewTupleKey("document:5", "viewer", "user:5"),
 	}
 
-	var tuples []*openfgav1.Tuple
+	tuples := make([]*openfgav1.Tuple, 0, len(tks))
 	for _, tk := range tks {
 		ts := timestamppb.New(time.Now())
 		tuples = append(tuples, &openfgav1.Tuple{Key: tk, Timestamp: ts})
@@ -159,7 +159,7 @@ func BenchmarkSharedIteratorVsDirectAccess(b *testing.B) {
 		tuple.NewTupleKey("document:5", "viewer", "user:5"),
 	}
 
-	var tuples []*openfgav1.Tuple
+	tuples := make([]*openfgav1.Tuple, 0, len(tks))
 	for _, tk := range tks {
 		ts := timestamppb.New(time.Now())
 		tuples = append(tuples, &openfgav1.Tuple{Key: tk, Timestamp: ts})
@@ -407,7 +407,7 @@ func TestSharedIteratorDatastore_Read(t *testing.T) {
 		tuple.NewTupleKey("license:1", "owner", "company:3"),
 	}
 
-	var tuples []*openfgav1.Tuple
+	tuples := make([]*openfgav1.Tuple, 0, len(tks))
 	for _, tk := range tks {
 		ts := timestamppb.New(time.Now())
 		tuples = append(tuples, &openfgav1.Tuple{Key: tk, Timestamp: ts})
@@ -686,7 +686,7 @@ func TestSharedIteratorDatastore_ReadUsersetTuples(t *testing.T) {
 		tuple.NewTupleKey("document:1", "viewer", "company:1#viewer"),
 	}
 
-	var tuples []*openfgav1.Tuple
+	tuples := make([]*openfgav1.Tuple, 0, len(tks))
 	for _, tk := range tks {
 		ts := timestamppb.New(time.Now())
 		tuples = append(tuples, &openfgav1.Tuple{Key: tk, Timestamp: ts})
@@ -961,7 +961,7 @@ func TestSharedIteratorDatastore_ReadStartingWithUser(t *testing.T) {
 		tuple.NewTupleKey("document:5", "viewer", "user:*"),
 	}
 
-	var tuples []*openfgav1.Tuple
+	tuples := make([]*openfgav1.Tuple, 0, len(tks))
 	for _, tk := range tks {
 		ts := timestamppb.New(time.Now())
 		tuples = append(tuples, &openfgav1.Tuple{Key: tk, Timestamp: ts})
@@ -1877,7 +1877,7 @@ func TestSharedIterator_ManyTuples(t *testing.T) {
 		tks = append(tks, tuple.NewTupleKey(fmt.Sprintf("document:%d", i), "viewer", fmt.Sprintf("user:%d", i)))
 	}
 
-	var tuples []*openfgav1.Tuple
+	tuples := make([]*openfgav1.Tuple, 0, len(tks))
 	ts := timestamppb.New(time.Now())
 	for _, tk := range tks {
 		tuples = append(tuples, &openfgav1.Tuple{Key: tk, Timestamp: ts})

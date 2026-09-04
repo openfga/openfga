@@ -212,7 +212,7 @@ func TestAuthorize(t *testing.T) {
 		defer mockController.Finish()
 
 		errorMessage := fmt.Errorf("error")
-		modules := []string{}
+		modules := make([]string, 0, MaxModulesInRequest)
 
 		for moduleIndex := range MaxModulesInRequest {
 			modules = append(modules, fmt.Sprintf("module%d", moduleIndex+1))
@@ -304,7 +304,7 @@ func TestAuthorize(t *testing.T) {
 		mockController, mockServer, authorizer := setupAuthorizerAndController(t, storeID, modelID)
 		defer mockController.Finish()
 
-		modules := []string{}
+		modules := make([]string, 0, MaxModulesInRequest)
 		for moduleIndex := range MaxModulesInRequest {
 			modules = append(modules, fmt.Sprintf("module%d", moduleIndex))
 		}

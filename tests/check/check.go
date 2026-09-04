@@ -61,25 +61,36 @@ func RunAllTests(t *testing.T, client tests.ClientInterface) {
 }
 
 func runTests(t *testing.T, params testParams) {
-	files := []string{
-		"tests/consolidated_1_1_tests.yaml",
-		"tests/abac_tests.yaml",
+	testFiles := []struct {
+		name string
+		// Keep the test count for each test file up to date here so variable `allTestCases` can be preallocated
+		// with a fixed capacity, as recommended by the `prealloc` linter.
+		count int
+	}{
+		{
+			name:  "tests/consolidated_1_1_tests.yaml",
+			count: 137,
+		},
+		{
+			name:  "tests/abac_tests.yaml",
+			count: 23,
+		},
 	}
+	allTestCases := make([]individualTest, 0, 137+23)
 
-	var allTestCases []individualTest
-
-	for _, file := range files {
+	for _, file := range testFiles {
 		var b []byte
 		var err error
 		schemaVersion := params.schemaVersion
 		if schemaVersion == typesystem.SchemaVersion1_1 {
-			b, err = assets.EmbedTests.ReadFile(file)
+			b, err = assets.EmbedTests.ReadFile(file.name)
 		}
 		require.NoError(t, err)
 
 		var testCases checkTests
 		err = yaml.Unmarshal(b, &testCases)
 		require.NoError(t, err)
+		require.Len(t, testCases.Tests, file.count)
 
 		allTestCases = append(allTestCases, testCases.Tests...)
 	}

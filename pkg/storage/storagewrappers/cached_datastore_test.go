@@ -178,8 +178,8 @@ func TestReadStartingWithUser(t *testing.T) {
 		tuple.NewTupleKey("document:4", "viewer", "user:4"),
 		tuple.NewTupleKey("document:5", "viewer", "user:*"),
 	}
-	var tuples []*openfgav1.Tuple
-	var cachedTuples []*storage.TupleRecord
+	tuples := make([]*openfgav1.Tuple, 0, len(tks))
+	cachedTuples := make([]*storage.TupleRecord, 0, len(tks))
 	for _, tk := range tks {
 		ts := timestamppb.New(time.Now())
 		tuples = append(tuples, &openfgav1.Tuple{Key: tk, Timestamp: ts})
@@ -443,8 +443,8 @@ func TestReadUsersetTuples(t *testing.T) {
 		tuple.NewTupleKey("document:1", "viewer", "user:*"),
 		tuple.NewTupleKey("document:1", "viewer", "company:1#viewer"),
 	}
-	var tuples []*openfgav1.Tuple
-	var cachedTuples []*storage.TupleRecord
+	tuples := make([]*openfgav1.Tuple, 0, len(tks))
+	cachedTuples := make([]*storage.TupleRecord, 0, len(tks))
 	for _, tk := range tks {
 		ts := timestamppb.New(time.Now())
 		tuples = append(tuples, &openfgav1.Tuple{Key: tk, Timestamp: ts})
@@ -652,8 +652,8 @@ func TestRead(t *testing.T) {
 		tuple.NewTupleKey("license:1", "owner", "company:1"),
 		tuple.NewTupleKey("license:1", "owner", "company:2"),
 	}
-	var tuples []*openfgav1.Tuple
-	var cachedTuples []*storage.TupleRecord
+	tuples := make([]*openfgav1.Tuple, 0, len(tks))
+	cachedTuples := make([]*storage.TupleRecord, 0, len(tks))
 	for _, tk := range tks {
 		ts := timestamppb.New(time.Now())
 		tuples = append(tuples, &openfgav1.Tuple{Key: tk, Timestamp: ts})

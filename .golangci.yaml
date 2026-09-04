@@ -18,6 +18,7 @@ linters:
     - mirror
     - misspell
     - perfsprint
+    - prealloc
     - protogetter
     - revive
     - recvcheck
