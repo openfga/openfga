@@ -1,6 +1,7 @@
 package v2breaking
 
 import (
+	"maps"
 	"slices"
 	"strconv"
 
@@ -115,12 +116,7 @@ func (b *BatchReasoner) Empty() bool {
 // Reasons returns the distinct divergence reasons found across the batch, sorted
 // for stable log output.
 func (b *BatchReasoner) Reasons() []string {
-	reasons := make([]string, 0, len(b.reasonSet))
-	for reason := range b.reasonSet {
-		reasons = append(reasons, reason)
-	}
-	slices.Sort(reasons)
-	return reasons
+	return slices.Sorted(maps.Keys(b.reasonSet))
 }
 
 // ReasonsByCorrelationID returns the per-check attribution of each flagged check
