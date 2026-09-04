@@ -68,8 +68,10 @@ func (s StoreIDType) String() string {
 
 type ClientIDType string
 
+// String sanitizes c with tuple.SanitizeUserID before building the tuple
+// user. Any tuple granting a client access must use the same sanitized id.
 func (c ClientIDType) String() string {
-	return fmt.Sprintf("%s:%s", ApplicationType, string(c))
+	return fmt.Sprintf("%s:%s", ApplicationType, tuple.SanitizeUserID(string(c)))
 }
 
 type ModuleIDType string
