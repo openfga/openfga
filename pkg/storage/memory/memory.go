@@ -297,10 +297,9 @@ func (s *MemoryBackend) read(ctx context.Context, store string, filter storage.R
 	s.mutexTuples.RLock()
 	defer s.mutexTuples.RUnlock()
 
-	var matches []*storage.TupleRecord
+	matches := make([]*storage.TupleRecord, 0, len(s.tuples[store]))
 	if filter.Object == "" && filter.Relation == "" && filter.User == "" {
-		matches = make([]*storage.TupleRecord, len(s.tuples[store]))
-		copy(matches, s.tuples[store])
+		matches = append(matches, s.tuples[store]...)
 	} else {
 		for _, t := range s.tuples[store] {
 			if match(t, &openfgav1.TupleKey{

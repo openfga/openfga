@@ -227,10 +227,9 @@ func TestQueue(t *testing.T) {
 					require.Equal(t, expected, actual)
 				}
 
-				expected = make([]int, 0, tc.capacity)
 				for i := tc.capacity; i > 0; i-- {
 					p.Send(context.Background(), i)
-					expected = append(expected, i)
+					expected[tc.capacity-i] = i
 				}
 
 				p.Close()
