@@ -570,16 +570,7 @@ func (q *ListObjectsQuery) Execute(
 
 	wgraph := typesys.GetWeightedGraph()
 
-	isUsersetOrWildcardQuery := subjectRelation != "" || subjectIdentifier == "*"
-
-	// Run the pipeline for all queries when the weighted-graph flag
-	// is enabled, or for non userset/wildcard queries when the pipeline is enabled.
-	// Everything else falls back to reverse expand.
-	usePipeline := wgraph != nil &&
-		(q.ff.Boolean(serverconfig.ExperimentalWeightedGraph, req.GetStoreId()) ||
-			(q.pipelineEnabled && !isUsersetOrWildcardQuery))
-
-	if usePipeline {
+	if wgraph != nil && q.pipelineEnabled {
 		ds := storagewrappers.NewRequestStorageWrapperWithCache(
 			q.datastore,
 			req.GetContextualTuples().GetTupleKeys(),
@@ -759,16 +750,7 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 
 	wgraph := typesys.GetWeightedGraph()
 
-	isUsersetOrWildcardQuery := subjectRelation != "" || subjectIdentifier == "*"
-
-	// Run the pipeline for all queries when the weighted-graph flag
-	// is enabled, or for non userset/wildcard queries when the pipeline is enabled.
-	// Everything else falls back to reverse expand.
-	usePipeline := wgraph != nil &&
-		(q.ff.Boolean(serverconfig.ExperimentalWeightedGraph, req.GetStoreId()) ||
-			(q.pipelineEnabled && !isUsersetOrWildcardQuery))
-
-	if usePipeline {
+	if wgraph != nil && q.pipelineEnabled {
 		ds := storagewrappers.NewRequestStorageWrapperWithCache(
 			q.datastore,
 			req.GetContextualTuples().GetTupleKeys(),
