@@ -17,6 +17,7 @@ import (
 	"github.com/openfga/openfga/pkg/authclaims"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/testutils"
+	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
@@ -85,6 +86,18 @@ func TestGetStoreID(t *testing.T) {
 
 		authorizer := NewAuthorizer(nil, mockServer, logger.NewNoopLogger())
 		require.Empty(t, authorizer.AccessControlStoreID())
+	})
+}
+
+func TestClientIDType_String(t *testing.T) {
+	t.Run("plain_client_id_is_unchanged", func(t *testing.T) {
+		require.Equal(t, "application:test-client", ClientIDType("test-client").String())
+	})
+	t.Run("kubernetes_serviceaccount_subject_is_sanitized", func(t *testing.T) {
+		clientID := ClientIDType("system:serviceaccount:openfga:permissions-deployer")
+		result := clientID.String()
+		require.Equal(t, "application:system_serviceaccount_openfga_permissions-deployer", result)
+		require.True(t, tuple.IsValidUser(result))
 	})
 }
 
