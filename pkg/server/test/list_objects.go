@@ -14,7 +14,9 @@ import (
 
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/mocks"
+	"github.com/openfga/openfga/pkg/featureflags"
 	"github.com/openfga/openfga/pkg/server/commands"
+	"github.com/openfga/openfga/pkg/server/config"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -53,7 +55,8 @@ func TestListObjects(t *testing.T, ds storage.OpenFGADatastore) {
 }
 
 func TestListObjectsWithPipeline(t *testing.T, ds storage.OpenFGADatastore) {
-	runListObjectsTests(t, ds, commands.WithListObjectsPipelineEnabled(true))
+	runListObjectsTests(t, ds, commands.WithListObjectsPipelineEnabled(true), commands.WithFeatureFlagClient(featureflags.NewDefaultClient([]string{config.ExperimentalWeightedGraph})))
+	runListObjectsPipelineTests(t, ds, commands.WithListObjectsPipelineEnabled(true), commands.WithFeatureFlagClient(featureflags.NewDefaultClient([]string{config.ExperimentalWeightedGraph})))
 }
 
 func runListObjectsTests(t *testing.T, ds storage.OpenFGADatastore, passedInOpts ...commands.ListObjectsQueryOption) {
@@ -470,6 +473,284 @@ func runListObjectsTests(t *testing.T, ds storage.OpenFGADatastore, passedInOpts
 			minimumResultsExpected: 1,
 			allResults:             []string{"document:1"},
 			useCheckCache:          false,
+		},
+	}
+
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			ctx := context.Background()
+			storeID := ulid.Make().String()
+
+			// arrange: write model
+			model := testutils.MustTransformDSLToProtoWithID(test.model)
+
+			err := ds.WriteAuthorizationModel(ctx, storeID, model)
+			require.NoError(t, err)
+
+			// arrange: write tuples in random order
+			test.tuples = testutils.Shuffle(test.tuples)
+			err = ds.Write(context.Background(), storeID, nil, test.tuples)
+			require.NoError(t, err)
+
+			// act: run ListObjects
+
+			datastore := ds
+			if test.readTuplesDelay > 0 {
+				datastore = mocks.NewMockSlowDataStorage(ds, test.readTuplesDelay)
+			}
+
+			ts, err := typesystem.New(model)
+			require.NoError(t, err)
+
+			ctx = typesystem.ContextWithTypesystem(ctx, ts)
+
+			opts := []commands.ListObjectsQueryOption{
+				commands.WithListObjectsMaxResults(test.maxResults),
+				commands.WithListObjectsDeadline(10 * time.Second),
+				commands.WithMaxConcurrentReads(30),
+			}
+			opts = append(opts, passedInOpts...)
+
+			if test.listObjectsDeadline != 0 {
+				opts = append(opts, commands.WithListObjectsDeadline(test.listObjectsDeadline))
+			}
+
+			var localCheckOpts []graph.LocalCheckerOption
+			cacheOpts := []graph.CachedCheckResolverOpt{
+				graph.WithCacheTTL(10 * time.Second),
+			}
+			checkBuilderOpts := []graph.CheckResolverOrderedBuilderOpt{
+				graph.WithCachedCheckResolverOpts(test.useCheckCache, cacheOpts...),
+				graph.WithLocalCheckerOpts(localCheckOpts...),
+			}
+			checkResolver, closer, err := graph.NewOrderedCheckResolvers(checkBuilderOpts...).Build()
+			require.NoError(t, err)
+			t.Cleanup(closer)
+
+			listObjectsQuery, err := commands.NewListObjectsQuery(datastore, checkResolver, "fake_store_id", opts...)
+			require.NoError(t, err)
+
+			// assertions
+			t.Run("streaming_endpoint", func(t *testing.T) {
+				server := &mockStreamServer{
+					channel: make(chan string, len(test.allResults)),
+				}
+
+				done := make(chan struct{})
+				var streamedObjectIDs []string
+				go func() {
+					for {
+						objectID, open := <-server.channel
+						if !open {
+							close(done)
+							return
+						}
+
+						streamedObjectIDs = append(streamedObjectIDs, objectID)
+					}
+				}()
+
+				_, err := listObjectsQuery.ExecuteStreamed(ctx, &openfgav1.StreamedListObjectsRequest{
+					StoreId:          storeID,
+					Type:             test.objectType,
+					Relation:         test.relation,
+					User:             test.user,
+					ContextualTuples: test.contextualTuples,
+					Context:          test.context,
+				}, server)
+				close(server.channel)
+				<-done
+
+				require.NoError(t, err)
+				// there is no upper bound of the number of results for the streamed version
+				require.GreaterOrEqual(t, len(streamedObjectIDs), int(test.minimumResultsExpected))
+				require.ElementsMatch(t, test.allResults, streamedObjectIDs)
+			})
+
+			t.Run("regular_endpoint", func(t *testing.T) {
+				res, err := listObjectsQuery.Execute(ctx, &openfgav1.ListObjectsRequest{
+					StoreId:          storeID,
+					Type:             test.objectType,
+					Relation:         test.relation,
+					User:             test.user,
+					ContextualTuples: test.contextualTuples,
+					Context:          test.context,
+				})
+
+				require.NotNil(t, res)
+				require.NoError(t, err)
+				if test.maxResults != 0 { // don't get all results
+					require.LessOrEqual(t, len(res.Objects), int(test.maxResults))
+				}
+				require.GreaterOrEqual(t, len(res.Objects), int(test.minimumResultsExpected))
+				require.Subset(t, test.allResults, res.Objects)
+			})
+		})
+	}
+}
+
+func runListObjectsPipelineTests(t *testing.T, ds storage.OpenFGADatastore, passedInOpts ...commands.ListObjectsQueryOption) {
+	testCases := []listObjectsTestCase{
+		{
+			name: "self_referential_usersets",
+			model: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define viewer: [user, document#viewer]
+			`,
+			tuples:                 []*openfgav1.TupleKey{},
+			user:                   "document:d1#viewer",
+			objectType:             "document",
+			relation:               "viewer",
+			minimumResultsExpected: 0,
+			// TODO: should return no self-referential object
+			allResults:    []string{"document:d1"},
+			useCheckCache: false,
+		},
+		{
+			name: "alias_userset",
+			model: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define reader: [user]
+						define allowed: reader
+						define viewer: [user, document#allowed]
+			`,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:d1", "viewer", "document:d3#allowed"),
+			},
+			user:                   "document:d3#reader",
+			objectType:             "document",
+			relation:               "viewer",
+			minimumResultsExpected: 0,
+			allResults:             []string{},
+			useCheckCache:          false,
+		},
+		{
+			name: "computed_userset_self_object",
+			model: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define editor: [user]
+						define writer: [user]
+						define viewer: editor or writer
+			`,
+			tuples:                 []*openfgav1.TupleKey{},
+			user:                   "document:d1#writer",
+			objectType:             "document",
+			relation:               "viewer",
+			minimumResultsExpected: 0,
+			allResults:             []string{},
+			useCheckCache:          false,
+		},
+		{
+			name: "ttu_userset",
+			model: `
+				model
+					schema 1.1
+				type user
+				type folder
+					relations
+						define viewer: [user]
+				type document
+					relations
+						define parent: [folder]
+						define viewer: viewer from parent
+			`,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:d1", "parent", "folder:f1"),
+			},
+			user:                   "folder:f1#viewer",
+			objectType:             "document",
+			relation:               "viewer",
+			minimumResultsExpected: 0,
+			allResults:             []string{},
+			useCheckCache:          false,
+		},
+		{
+			name: "userset_with_exclusion",
+			model: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define member: [user]
+						define owner: [user]
+						define viewer: [user, document#owner] but not member
+			`,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:d1", "viewer", "document:d1#owner"),
+			},
+			user:       "document:d1#owner",
+			objectType: "document",
+			relation:   "viewer",
+			// TODO: should error
+			minimumResultsExpected: 0,
+			allResults:             []string{"document:d1"},
+			useCheckCache:          false,
+		},
+		{
+			name: "wildcard_with_exclusion",
+			model: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define public: [user:*]
+						define blocked: [user]
+						define viewer: public but not blocked
+			`,
+			tuples: []*openfgav1.TupleKey{
+				// document:d1#public@user:*
+				// document:d1#blocked@user:alice
+				tuple.NewTupleKey("document:d1", "public", "user:*"),
+				tuple.NewTupleKey("document:d1", "blocked", "user:alice"),
+			},
+			user:       "user:*",
+			objectType: "document",
+			relation:   "viewer",
+			// TODO: should error
+			minimumResultsExpected: 0,
+			allResults:             []string{"document:d1"},
+			useCheckCache:          false,
+		},
+		{
+			name: "self_referential_userset_transitive",
+			model: `
+			model
+				schema 1.1
+			type user
+			type org
+				relations
+					define viewer: [user, org#viewer]
+			type document
+				relations
+					define parent: [org]
+					define viewer: viewer from parent
+			`,
+			tuples: []*openfgav1.TupleKey{
+				// document:d1#parent@org:d1
+				tuple.NewTupleKey("document:d1", "parent", "org:d1"),
+			},
+			user:                   "org:d1#viewer",
+			objectType:             "document",
+			relation:               "viewer",
+			minimumResultsExpected: 0,
+			// TODO: should return no self-referential object
+			allResults:    []string{"document:d1"},
+			useCheckCache: false,
 		},
 	}
 

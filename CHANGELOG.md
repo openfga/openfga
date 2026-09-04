@@ -8,7 +8,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 ### Changed
-- The ListObjects "pipeline" algorithm now supports subject values of userset and wildcard without falling back to the previous "reverse expand" algorithm. [#3258](https://github.com/openfga/openfga/pull/3258)
+- The ListObjects "pipeline" algorithm now supports subject values of userset and wildcard without falling back to the previous "reverse expand" algorithm when the experimental `weighted_graph` feature flag is enabled. [#3258](https://github.com/openfga/openfga/pull/3258)
 
 ### Fixed
 - Scope context-cancelation stripping to query execution only. No longer can deadlock on saturated connection pool. [#3255](https://github.com/openfga/openfga/pull/3255)
