@@ -2,7 +2,7 @@ module github.com/openfga/openfga
 
 go 1.25.7
 
-toolchain go1.26.5
+toolchain go1.26.8
 
 require (
 	github.com/IBM/pgxpoolprometheus v1.1.3
