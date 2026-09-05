@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/IBM/pgxpoolprometheus"
@@ -54,6 +55,12 @@ type Datastore struct {
 	maxTuplesPerWriteField    int
 	maxTypesPerModelField     int
 	versionReady              bool
+	minIdleConns              int32
+	// primaryPoolWarmedUp and secondaryPoolWarmedUp latch to true the first time
+	// IdleConns >= minIdleConns. Once set they never revert, so normal traffic
+	// draining the idle pool does not flip the pod back to NOT_SERVING.
+	primaryPoolWarmedUp   atomic.Bool
+	secondaryPoolWarmedUp atomic.Bool
 }
 
 // Ensures that Datastore implements the OpenFGADatastore interface.
@@ -296,6 +303,7 @@ func NewWithDB(primaryDB, secondaryDB *pgxpool.Pool, cfg *sqlcommon.Config) (*Da
 		maxTuplesPerWriteField:    cfg.MaxTuplesPerWriteField,
 		maxTypesPerModelField:     cfg.MaxTypesPerModelField,
 		versionReady:              false,
+		minIdleConns:              int32(cfg.MinIdleConns),
 	}, nil
 }
 
@@ -1323,10 +1331,26 @@ func (s *Datastore) ReadChanges(ctx context.Context, store string, filter storag
 	return changes, ulid, nil
 }
 
-func isDBReady(ctx context.Context, versionReady bool, db *pgxpool.Pool) (storage.ReadinessStatus, error) {
+func isDBReady(ctx context.Context, versionReady bool, db *pgxpool.Pool, minIdleConns int32, warmedUp *atomic.Bool) (storage.ReadinessStatus, error) {
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+
 	err := db.Ping(ctx)
 	if err != nil {
 		return storage.ReadinessStatus{}, err
+	}
+
+	// Block readiness on startup until the pool reaches minIdleConns.
+	// warmedUp latches permanently to true on first success so that normal
+	// traffic draining the idle pool does not flip a running pod back to NOT_SERVING.
+	if minIdleConns > 0 && !warmedUp.Load() {
+		if idle := db.Stat().IdleConns(); idle < minIdleConns {
+			return storage.ReadinessStatus{
+				IsReady: false,
+				Message: fmt.Sprintf("waiting for connection pool warm-up: %d/%d idle connections ready", idle, minIdleConns),
+			}, nil
+		}
+		warmedUp.Store(true)
 	}
 
 	sqlDB := stdlib.OpenDBFromPool(db)
@@ -1338,7 +1362,7 @@ func isDBReady(ctx context.Context, versionReady bool, db *pgxpool.Pool) (storag
 
 // IsReady see [sqlcommon.IsReady].
 func (s *Datastore) IsReady(ctx context.Context) (storage.ReadinessStatus, error) {
-	primaryStatus, err := isDBReady(ctx, s.versionReady, s.primaryDB)
+	primaryStatus, err := isDBReady(ctx, s.versionReady, s.primaryDB, s.minIdleConns, &s.primaryPoolWarmedUp)
 	if err != nil {
 		return primaryStatus, err
 	}
@@ -1353,7 +1377,7 @@ func (s *Datastore) IsReady(ctx context.Context) (storage.ReadinessStatus, error
 		primaryStatus.Message = "ready"
 	}
 
-	secondaryStatus, err := isDBReady(ctx, s.versionReady, s.secondaryDB)
+	secondaryStatus, err := isDBReady(ctx, s.versionReady, s.secondaryDB, s.minIdleConns, &s.secondaryPoolWarmedUp)
 	if err != nil {
 		secondaryStatus.Message = err.Error()
 		secondaryStatus.IsReady = false
