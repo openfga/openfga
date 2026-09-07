@@ -20,7 +20,7 @@ import (
 )
 
 func (s *Server) ReadAuthorizationModel(ctx context.Context, req *openfgav1.ReadAuthorizationModelRequest) (*openfgav1.ReadAuthorizationModelResponse, error) {
-	ctx, span := tracer.Start(ctx, apimethod.ReadAuthorizationModel.String(), trace.WithAttributes(
+	ctx, span := s.getTracer().Start(ctx, apimethod.ReadAuthorizationModel.String(), trace.WithAttributes(
 		attribute.String("store_id", req.GetStoreId()),
 		attribute.KeyValue{Key: authorizationModelIDKey, Value: attribute.StringValue(req.GetId())},
 	))
@@ -47,7 +47,7 @@ func (s *Server) ReadAuthorizationModel(ctx context.Context, req *openfgav1.Read
 }
 
 func (s *Server) WriteAuthorizationModel(ctx context.Context, req *openfgav1.WriteAuthorizationModelRequest) (*openfgav1.WriteAuthorizationModelResponse, error) {
-	ctx, span := tracer.Start(ctx, apimethod.WriteAuthorizationModel.String(), trace.WithAttributes(
+	ctx, span := s.getTracer().Start(ctx, apimethod.WriteAuthorizationModel.String(), trace.WithAttributes(
 		attribute.String("store_id", req.GetStoreId()),
 	))
 	defer span.End()
@@ -83,7 +83,7 @@ func (s *Server) WriteAuthorizationModel(ctx context.Context, req *openfgav1.Wri
 }
 
 func (s *Server) ReadAuthorizationModels(ctx context.Context, req *openfgav1.ReadAuthorizationModelsRequest) (*openfgav1.ReadAuthorizationModelsResponse, error) {
-	ctx, span := tracer.Start(ctx, apimethod.ReadAuthorizationModels.String(), trace.WithAttributes(
+	ctx, span := s.getTracer().Start(ctx, apimethod.ReadAuthorizationModels.String(), trace.WithAttributes(
 		attribute.String("store_id", req.GetStoreId()),
 	))
 	defer span.End()

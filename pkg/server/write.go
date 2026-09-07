@@ -22,7 +22,7 @@ import (
 func (s *Server) Write(ctx context.Context, req *openfgav1.WriteRequest) (*openfgav1.WriteResponse, error) {
 	start := time.Now()
 
-	ctx, span := tracer.Start(ctx, apimethod.Write.String(), trace.WithAttributes(
+	ctx, span := s.getTracer().Start(ctx, apimethod.Write.String(), trace.WithAttributes(
 		attribute.String("store_id", req.GetStoreId()),
 	))
 	defer span.End()
