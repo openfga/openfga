@@ -25,16 +25,17 @@ const (
 
 type TypesystemResolverFunc func(ctx context.Context, storeID, modelID string) (*TypeSystem, error)
 
-type typesystemResolverConfig struct {
+// TypesystemResolverConfig configures a memoized typesystem resolver.
+type TypesystemResolverConfig struct {
 	tracer trace.Tracer
 }
 
 // TypesystemResolverOption configures a memoized typesystem resolver.
-type TypesystemResolverOption func(*typesystemResolverConfig)
+type TypesystemResolverOption func(*TypesystemResolverConfig)
 
 // WithTracerProvider sets the OpenTelemetry tracer provider used by the resolver.
 func WithTracerProvider(tracerProvider trace.TracerProvider) TypesystemResolverOption {
-	return func(config *typesystemResolverConfig) {
+	return func(config *TypesystemResolverConfig) {
 		if tracerProvider == nil {
 			return
 		}
@@ -57,7 +58,7 @@ func MemoizedTypesystemResolverFunc(datastore storage.AuthorizationModelReadBack
 // but accepts options that customize the resolver.
 func MemoizedTypesystemResolverFuncWithOpts(datastore storage.AuthorizationModelReadBackend, maxSize int, opts ...TypesystemResolverOption) (TypesystemResolverFunc, func(), error) {
 	lookupGroup := singleflight.Group{}
-	config := &typesystemResolverConfig{
+	config := &TypesystemResolverConfig{
 		tracer: tracer,
 	}
 	for _, opt := range opts {

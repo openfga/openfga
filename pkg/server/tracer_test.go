@@ -67,10 +67,12 @@ func TestWithTracerProviderIsInstanceScoped(t *testing.T) {
 	require.NoError(t, err)
 	require.Greater(t, len(firstRecorder.Ended()), firstSpanCount)
 	require.Len(t, secondRecorder.Ended(), secondSpanCount)
+	firstSpanCountAfterFirst := len(firstRecorder.Ended())
 
 	_, err = secondServer.Check(context.Background(), secondRequest)
 	require.NoError(t, err)
 	require.Greater(t, len(secondRecorder.Ended()), secondSpanCount)
+	require.Len(t, firstRecorder.Ended(), firstSpanCountAfterFirst)
 }
 
 func TestWithTracerProviderRejectsNil(t *testing.T) {
