@@ -170,6 +170,15 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 	wasDatastoreThrottled := result.ResolutionMetadata.DatastoreThrottled.Load()
 	grpc_ctxtags.Extract(ctx).Set("request.datastore_throttled", wasDatastoreThrottled)
 
+	// Resolution that stops at the deadline still returns 200 with whatever it
+	// found, so without this the caller cannot tell a truncated list from an
+	// exhaustive one.
+	deadlineExceeded := result.ResolutionMetadata.DeadlineExceeded.Load()
+	grpc_ctxtags.Extract(ctx).Set("request.deadline_exceeded", deadlineExceeded)
+	if deadlineExceeded {
+		s.transport.SetHeader(ctx, WarningHeader, deadlineExceededWarning)
+	}
+
 	wasWeightedGraphUsed := result.ResolutionMetadata.WasWeightedGraphUsed.Load()
 	grpc_ctxtags.Extract(ctx).Set("request.weighted_graph", wasWeightedGraphUsed)
 
