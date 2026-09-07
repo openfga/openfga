@@ -110,6 +110,12 @@ type ListObjectsResolutionMetadata struct {
 	// DatastoreThrottled indicates whether the request was throttled by the Datastore.
 	DatastoreThrottled atomic.Bool
 
+	// DeadlineExceeded indicates that resolution stopped early because the
+	// ListObjects deadline was reached, so Objects holds whatever was found up
+	// to that point rather than the full set. Callers that surface results to a
+	// client should tell it the list is partial.
+	DeadlineExceeded atomic.Bool
+
 	// WasWeightedGraphUsed indicates whether the weighted graph was used as the algorithm for the ListObjects request.
 	WasWeightedGraphUsed atomic.Bool
 
@@ -486,7 +492,9 @@ func (q *ListObjectsQuery) evaluate(
 			if !errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, context.Canceled) {
 				resultsChan <- ListObjectsResult{Err: err}
 			}
-			// TODO set header to indicate "deadline exceeded"
+			if errors.Is(err, context.DeadlineExceeded) {
+				resolutionMetadata.DeadlineExceeded.Store(true)
+			}
 		}
 		close(resultsChan)
 		dsMeta := ds.GetMetadata()
@@ -644,6 +652,9 @@ func (q *ListObjectsQuery) Execute(
 			// current list objects behavior is to elide context cancelation errors
 			if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
 				return nil, serverErrors.HandleError("", err)
+			}
+			if errors.Is(err, context.DeadlineExceeded) {
+				res.ResolutionMetadata.DeadlineExceeded.Store(true)
 			}
 		}
 
@@ -841,6 +852,10 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 			}
 		}
 		p.Close() // ensure that the pipeline is closed after any early loop exits
+
+		if errors.Is(errRx, context.DeadlineExceeded) {
+			resolutionMetadata.DeadlineExceeded.Store(true)
+		}
 
 		if errRx != nil && !errors.Is(errRx, context.Canceled) && !errors.Is(errRx, context.DeadlineExceeded) {
 			if errors.Is(errRx, condition.ErrEvaluationFailed) {

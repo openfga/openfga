@@ -49,6 +49,13 @@ const (
 	AuthorizationModelIDHeader = "Openfga-Authorization-Model-Id"
 	authorizationModelIDKey    = "authorization_model_id"
 
+	// WarningHeader carries a non-fatal notice about a successful response.
+	WarningHeader = "X-Openfga-Warning"
+
+	// deadlineExceededWarning tells the caller a ListObjects response is
+	// partial because resolution stopped at the configured deadline.
+	deadlineExceededWarning = "deadline-exceeded"
+
 	allowedLabel = "allowed"
 
 	throttleTypeDatastore = "datastore"
