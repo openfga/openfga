@@ -13,6 +13,9 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Fixed
 - Fixed a deadlock in ListUsers that caused a timeout with partial results when the number of union/intersection operands exceeded `OPENFGA_RESOLVE_NODE_BREADTH_LIMIT` and the operands each resolved to more than one user. Thank you to [@fabianluque](https://github.com/fabianluque) for the discovery and detailed report! [#3284](https://github.com/openfga/openfga/pull/3284)
 
+### Security
+- Update toolchain Go version to 1.26.8 and align the `chainguard/go` builder image so released binaries and images no longer ship the Go standard library `net/http`/`golang.org/x/net/idna` vulnerability documented in the [Go 1.26.6 release notes](https://go.dev/doc/devel/release#go1.26.6), CVE-2026-39821 ([GO-2026-5026](https://pkg.go.dev/vuln/GO-2026-5026)). [#3289](https://github.com/openfga/openfga/pull/3289)
+
 ## [1.19.0] - 2026-08-24
 ### Added
 - Adds configurable pipeline optimization for weight-one difference subtract edges with high cardinality on wildcard leaves. For now, this configuration is internal only. [#3267](https://github.com/openfga/openfga/pull/3267)
