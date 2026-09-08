@@ -27,6 +27,9 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Scope context-cancelation stripping to query execution only. No longer can deadlock on saturated connection pool. [#3255](https://github.com/openfga/openfga/pull/3255)
 - Updated v2 resolution diagnostic logging in `Check` and `ListUsers` to gate on InfoLevel log level. Removed diagnostic logging from `Expand` whose resolution will not change. [#3254](https://github.com/openfga/openfga/pull/3254)
 
+### Security
+- Fixed [GHSA-5278-rrxc-mgf7](https://github.com/openfga/openfga/security/advisories/GHSA-5278-rrxc-mgf7), where StreamedListObjects could return a result that should have been excluded during an error. Thank you to [@yxshwanth](https://github.com/yxshwanth) for the detailed report and fix.
+
 ## [1.18.3] - 2026-08-05
 ### Fixed
 - Fixed experimental `weighted_graph_check` intermittently returning `false` when evaluating relations that cross two or more distinct recursive TTUs which share the same tupleset relation. [#3244](https://github.com/openfga/openfga/pull/3244)
