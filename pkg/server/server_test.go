@@ -1946,6 +1946,29 @@ func TestIsAuthZenEnabled(t *testing.T) {
 	})
 }
 
+// recordingTransport captures the response headers a request sets, so a test can
+// assert on them without a real gRPC stream.
+type recordingTransport struct {
+	mu      sync.Mutex
+	headers map[string]string
+}
+
+func newRecordingTransport() *recordingTransport {
+	return &recordingTransport{headers: map[string]string{}}
+}
+
+func (r *recordingTransport) SetHeader(_ context.Context, key, value string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.headers[key] = value
+}
+
+func (r *recordingTransport) get(key string) string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.headers[key]
+}
+
 func TestServer_ThrottleUntilDeadline(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
@@ -1981,8 +2004,11 @@ func TestServer_ThrottleUntilDeadline(t *testing.T) {
 
 	deadline := 50 * time.Millisecond
 
+	transport := newRecordingTransport()
+
 	s := MustNewServerWithOpts(
 		WithDatastore(ds),
+		WithTransport(transport),
 
 		WithListObjectsPipelineEnabled(false),
 		WithDispatchThrottlingCheckResolverEnabled(true),
@@ -2034,6 +2060,10 @@ func TestServer_ThrottleUntilDeadline(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, resp)
 		require.LessOrEqual(t, len(resp.GetObjects()), 1) // race condition of context cancellation
+
+		// The response is a 200 carrying a partial list, so the only thing that
+		// can tell the caller it was truncated is the warning header.
+		require.Equal(t, deadlineExceededWarning, transport.get(WarningHeader))
 	})
 }
 
