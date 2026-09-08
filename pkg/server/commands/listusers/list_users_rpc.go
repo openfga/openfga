@@ -84,7 +84,7 @@ type foundUser struct {
 	// respect to the relation being evaluated so that we can handle subjects which
 	// have been explicitly excluded from a relationship and where that relation is
 	// contained under the subtracted branch of another exclusion. This allows us to
-	// buble up the subject from the subtracted branch of the exclusion.
+	// bubble up the subject from the subtracted branch of the exclusion.
 	relationshipStatus userRelationshipStatus
 }
 
@@ -826,8 +826,12 @@ func (l *listUsersQuery) expandExclusion(
 		switch {
 		case baseWildcardExists:
 			if !userIsSubtracted && !wildcardSubtracted {
+				// Preserve the relationship status and exclusions the base branch
+				// already determined in case base on its own contains another exclusion.
 				concurrency.TrySendThroughChannel(ctx, foundUser{
-					user: tuple.StringToUserProto(userKey),
+					user:               tuple.StringToUserProto(userKey),
+					relationshipStatus: fu.relationshipStatus,
+					excludedUsers:      fu.excludedUsers,
 				}, foundUsersChan)
 			}
 
