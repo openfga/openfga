@@ -80,7 +80,7 @@ func (c *LocalChecker) recursiveTTU(_ context.Context, req *ResolveCheckRequest,
 }
 
 func (c *LocalChecker) recursiveFastPath(ctx context.Context, req *ResolveCheckRequest, iter storage.TupleKeyIterator, mapping *recursiveMapping, objectProvider objectProvider) (*ResolveCheckResponse, error) {
-	ctx, span := tracer.Start(ctx, "recursiveFastPath")
+	ctx, span := c.tracer.Start(ctx, "recursiveFastPath")
 	defer span.End()
 	usersetFromUser := hashset.New()
 	usersetFromObject := hashset.New()
@@ -201,7 +201,7 @@ func buildRecursiveMapper(ctx context.Context, req *ResolveCheckRequest, mapping
 }
 
 func (c *LocalChecker) recursiveMatchUserUserset(ctx context.Context, req *ResolveCheckRequest, mapping *recursiveMapping, currentLevelFromObject *hashset.Set, usersetFromUser *hashset.Set) (*ResolveCheckResponse, error) {
-	ctx, span := tracer.Start(ctx, "recursiveMatchUserUserset", trace.WithAttributes(
+	ctx, span := c.tracer.Start(ctx, "recursiveMatchUserUserset", trace.WithAttributes(
 		attribute.Int("first_level_size", currentLevelFromObject.Size()),
 		attribute.Int("terminal_type_size", usersetFromUser.Size()),
 	))

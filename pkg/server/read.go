@@ -18,7 +18,7 @@ import (
 
 func (s *Server) Read(ctx context.Context, req *openfgav1.ReadRequest) (*openfgav1.ReadResponse, error) {
 	tk := req.GetTupleKey()
-	ctx, span := tracer.Start(ctx, apimethod.Read.String(), trace.WithAttributes(
+	ctx, span := s.getTracer().Start(ctx, apimethod.Read.String(), trace.WithAttributes(
 		attribute.String("store_id", req.GetStoreId()),
 		attribute.KeyValue{Key: "object", Value: attribute.StringValue(tk.GetObject())},
 		attribute.KeyValue{Key: "relation", Value: attribute.StringValue(tk.GetRelation())},
