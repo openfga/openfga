@@ -10,6 +10,8 @@ updates:
       dependencies:
         patterns:
           - "*"
+    cooldown:
+      default-days: 7
 
   - package-ecosystem: "gomod"
     directory: "/tools"
@@ -19,6 +21,8 @@ updates:
       dependencies:
         patterns:
           - "*"
+    cooldown:
+      default-days: 7
 
   - package-ecosystem: "docker"
     directory: "/"
@@ -28,6 +32,8 @@ updates:
       dependencies:
         patterns:
           - "*"
+    cooldown:
+      default-days: 7
 
   - package-ecosystem: "github-actions"
     directory: "/"
@@ -37,3 +43,5 @@ updates:
       dependencies:
         patterns:
           - "*"
+    cooldown:
+      default-days: 7
