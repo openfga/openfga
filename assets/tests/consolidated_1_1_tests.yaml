@@ -2665,6 +2665,82 @@ tests:
               relation: viewer
             expectation:
               - user:cheetah
+  - name: exclusion_and_exclusion_in_base_with_wildcard
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+
+          type document
+            relations
+              define everyone: [user:*]
+              define banned: [user]
+              define suspended: [user]
+              define active: [user]
+              define nested_exclusion: (everyone but not banned) but not suspended
+              define can_view: ((everyone but not banned) but not suspended) and active
+        tuples:
+          - object: document:1
+            relation: everyone
+            user: user:*
+          - object: document:1
+            relation: banned
+            user: user:bob
+          - object: document:1
+            relation: active
+            user: user:bob
+          - object: document:1
+            relation: active
+            user: user:alice
+        checkAssertions:
+          - tuple:
+              object: document:1
+              relation: nested_exclusion
+              user: user:bob
+            expectation: false
+          - tuple:
+              object: document:1
+              relation: nested_exclusion
+              user: user:alice
+            expectation: true
+          - tuple:
+              object: document:1
+              relation: can_view
+              user: user:bob
+            expectation: false
+          - tuple:
+              object: document:1
+              relation: can_view
+              user: user:alice
+            expectation: true
+        listObjectsAssertions:
+          - request:
+              user: user:bob
+              type: document
+              relation: can_view
+            expectation:
+          - request:
+              user: user:alice
+              type: document
+              relation: can_view
+            expectation:
+              - document:1
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: nested_exclusion
+            expectation:
+              - user:*
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: can_view
+            expectation:
+              - user:alice
   - name: exclusion_and_exclusion_in_subtract
     stages:
       - model: |
