@@ -380,6 +380,17 @@ func BenchmarkIsValidUserID(b *testing.B) {
 	outcome = result
 }
 
+func BenchmarkSanitizeUserID(b *testing.B) {
+	value := "system:serviceaccount:openfga:permissions-deployer"
+
+	var result string
+
+	for b.Loop() {
+		result = SanitizeUserID(value)
+	}
+	outcome = result
+}
+
 func BenchmarkIsValidUserset(b *testing.B) {
 	value := "group:1#member"
 
@@ -511,6 +522,31 @@ func FuzzIsValidUserID(f *testing.F) {
 
 		require.Equal(t, result, IsValidUserID(value), "failed idempotence: '%s' -- '%X'", value, value)
 		require.Equal(t, userIDRegex.MatchString(value), result, "failed accuracy: '%s' -- '%X'", value, value)
+	})
+}
+
+func FuzzSanitizeUserID(f *testing.F) {
+	f.Add("")
+	f.Add(" ")
+	f.Add("\x00")
+	f.Add("fo o:bar")
+	f.Add("system:serviceaccount:openfga:permissions-deployer")
+	f.Add("some_identifier")
+	f.Add("👽:🙀")
+
+	f.Fuzz(func(t *testing.T, value string) {
+		result := SanitizeUserID(value)
+
+		if value == "" {
+			require.Empty(t, result)
+			return
+		}
+
+		require.True(t, IsValidUserID(result), "sanitized value must be a valid user id: %q -> %q", value, result)
+
+		if IsValidUserID(value) {
+			require.Equal(t, value, result, "sanitizing an already-valid user id must be a no-op")
+		}
 	})
 }
 
