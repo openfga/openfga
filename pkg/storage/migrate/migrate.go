@@ -74,27 +74,14 @@ func RunMigrations(cfg MigrationConfig) error {
 	case "postgres":
 		driver = "pgx"
 		migrationsPath = assets.PostgresMigrationDir
-		var username, password string
 
-		// Parse the database uri with url.Parse() and update username/password, if set via flags
-		dbURI, err := url.Parse(uri)
+		newURI, err := buildPostgresMigrationURI(uri, cfg.Username, cfg.Password)
 		if err != nil {
 			return fmt.Errorf("invalid database uri: %w", err)
 		}
-		if cfg.Username != "" {
-			username = cfg.Username
-		} else if dbURI.User != nil {
-			username = dbURI.User.Username()
-		}
-		if cfg.Password != "" {
-			password = cfg.Password
-		} else if dbURI.User != nil {
-			password, _ = dbURI.User.Password()
-		}
-		dbURI.User = url.UserPassword(username, password)
 
 		// Replace CLI uri with the one we just updated.
-		uri = dbURI.String()
+		uri = newURI
 	case "sqlite":
 		driver = "sqlite"
 		migrationsPath = assets.SqliteMigrationDir
@@ -164,4 +151,45 @@ func RunMigrations(cfg MigrationConfig) error {
 
 	log.Info("migration done")
 	return nil
+}
+
+// buildPostgresMigrationURI parses the given postgres connection uri, applies the
+// username/password overrides if provided, and disables pgx's default use of
+// server-side prepared statements.
+//
+// Prepared statements are incompatible with connection poolers such as PgBouncer
+// running in transaction pooling mode: a statement prepared against one pooled
+// backend connection may not exist on the backend that serves a later query on the
+// same client connection. Goose's EnsureDBVersion treats any error from its
+// version-check query as evidence that the goose_db_version table is missing, and
+// then fails with "relation \"goose_db_version\" already exists" when it tries (and
+// fails) to recreate a table that was there all along.
+//
+// See https://pkg.go.dev/github.com/jackc/pgx/v5#hdr-PgBouncer.
+func buildPostgresMigrationURI(uri, username, password string) (string, error) {
+	dbURI, err := url.Parse(uri)
+	if err != nil {
+		return "", err
+	}
+
+	var user, pass string
+	if username != "" {
+		user = username
+	} else if dbURI.User != nil {
+		user = dbURI.User.Username()
+	}
+	if password != "" {
+		pass = password
+	} else if dbURI.User != nil {
+		pass, _ = dbURI.User.Password()
+	}
+	dbURI.User = url.UserPassword(user, pass)
+
+	query := dbURI.Query()
+	if query.Get("default_query_exec_mode") == "" {
+		query.Set("default_query_exec_mode", "simple_protocol")
+		dbURI.RawQuery = query.Encode()
+	}
+
+	return dbURI.String(), nil
 }
