@@ -126,7 +126,7 @@ func TestWriteWithSimpleProtocol(t *testing.T) {
 
 	// Build the pool config the same way New() does, then override the query
 	// execution mode to SimpleProtocol to mimic PgBouncer transaction-pooling mode.
-	poolCfg, err := parseConfig(uri, false, cfg)
+	poolCfg, err := parseConfig(uri, false, false, cfg)
 	require.NoError(t, err)
 	poolCfg.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeSimpleProtocol
 
@@ -221,6 +221,7 @@ func TestParseConfig(t *testing.T) {
 		name        string
 		uri         string
 		override    bool
+		secondary   bool
 		cfg         sqlcommon.Config
 		expected    pgxpool.Config
 		expectedErr bool
@@ -347,6 +348,37 @@ func TestParseConfig(t *testing.T) {
 			},
 		},
 		{
+			name:      "override_secondary_username_and_password",
+			uri:       "postgres://abc:passwd@localhost:5346/dbname",
+			override:  true,
+			secondary: true,
+			cfg: sqlcommon.Config{
+				Logger:            logger.NewNoopLogger(),
+				Username:          "primary_user",
+				Password:          "primary_passwd",
+				SecondaryUsername: "secondary_user",
+				SecondaryPassword: "secondary_passwd",
+			},
+			expected: pgxpool.Config{
+				ConnConfig: &pgx.ConnConfig{
+					Config: pgconn.Config{
+						User:     "secondary_user",
+						Password: "secondary_passwd",
+						Host:     "localhost",
+						Port:     5346,
+						Database: "dbname",
+					},
+				},
+				MinIdleConns:          defaultConfig.MinIdleConns,
+				MaxConns:              defaultConfig.MaxConns,
+				MinConns:              defaultConfig.MinConns,
+				MaxConnIdleTime:       defaultConfig.MaxConnIdleTime,
+				MaxConnLifetimeJitter: defaultConfig.MaxConnLifetimeJitter,
+				MaxConnLifetime:       defaultConfig.MaxConnLifetime,
+				BeforeConnect:         nil,
+			},
+		},
+		{
 			name: "bad_uri",
 			uri:  "bad_uri",
 			cfg: sqlcommon.Config{
@@ -358,7 +390,7 @@ func TestParseConfig(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			parsed, err := parseConfig(tt.uri, tt.override, &tt.cfg)
+			parsed, err := parseConfig(tt.uri, tt.override, tt.secondary, &tt.cfg)
 			if tt.expectedErr {
 				require.Error(t, err)
 			} else {
