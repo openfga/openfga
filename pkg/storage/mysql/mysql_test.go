@@ -92,7 +92,7 @@ func TestReadEnsureNoOrder(t *testing.T) {
 
 			err = sqlcommon.Write(ctx,
 				sqlcommon.NewDBInfo(ds.stbl, HandleSQLError, "mysql"),
-				ds.db,
+				ds.primaryDB,
 				store,
 				sqlcommon.WriteData{
 					Deletes: []*openfgav1.TupleKeyWithoutCondition{},
@@ -105,7 +105,7 @@ func TestReadEnsureNoOrder(t *testing.T) {
 			// Tweak time so that ULID is smaller.
 			err = sqlcommon.Write(ctx,
 				sqlcommon.NewDBInfo(ds.stbl, HandleSQLError, "mysql"),
-				ds.db,
+				ds.primaryDB,
 				store,
 				sqlcommon.WriteData{
 					Deletes: []*openfgav1.TupleKeyWithoutCondition{},
@@ -118,7 +118,7 @@ func TestReadEnsureNoOrder(t *testing.T) {
 			// Tweak time so that ULID is smaller.
 			err = sqlcommon.Write(ctx,
 				sqlcommon.NewDBInfo(ds.stbl, HandleSQLError, "mysql"),
-				ds.db,
+				ds.primaryDB,
 				store,
 				sqlcommon.WriteData{
 					Deletes: []*openfgav1.TupleKeyWithoutCondition{},
@@ -207,7 +207,7 @@ func TestCtxCancel(t *testing.T) {
 
 			err = sqlcommon.Write(ctx,
 				sqlcommon.NewDBInfo(ds.stbl, HandleSQLError, "mysql"),
-				ds.db,
+				ds.primaryDB,
 				store,
 				sqlcommon.WriteData{
 					Deletes: []*openfgav1.TupleKeyWithoutCondition{},
@@ -220,7 +220,7 @@ func TestCtxCancel(t *testing.T) {
 			// Tweak time so that ULID is smaller.
 			err = sqlcommon.Write(ctx,
 				sqlcommon.NewDBInfo(ds.stbl, HandleSQLError, "mysql"),
-				ds.db,
+				ds.primaryDB,
 				store,
 				sqlcommon.WriteData{
 					Deletes: []*openfgav1.TupleKeyWithoutCondition{},
@@ -233,7 +233,7 @@ func TestCtxCancel(t *testing.T) {
 			// Tweak time so that ULID is smaller.
 			err = sqlcommon.Write(ctx,
 				sqlcommon.NewDBInfo(ds.stbl, HandleSQLError, "mysql"),
-				ds.db,
+				ds.primaryDB,
 				store,
 				sqlcommon.WriteData{
 					Deletes: []*openfgav1.TupleKeyWithoutCondition{},
@@ -280,7 +280,7 @@ func TestReadPageEnsureOrder(t *testing.T) {
 
 	err = sqlcommon.Write(ctx,
 		sqlcommon.NewDBInfo(ds.stbl, HandleSQLError, "mysql"),
-		ds.db,
+		ds.primaryDB,
 		store,
 		sqlcommon.WriteData{
 			Deletes: []*openfgav1.TupleKeyWithoutCondition{},
@@ -293,7 +293,7 @@ func TestReadPageEnsureOrder(t *testing.T) {
 	// Tweak time so that ULID is smaller.
 	err = sqlcommon.Write(ctx,
 		sqlcommon.NewDBInfo(ds.stbl, HandleSQLError, "mysql"),
-		ds.db,
+		ds.primaryDB,
 		store,
 		sqlcommon.WriteData{
 			Deletes: []*openfgav1.TupleKeyWithoutCondition{},
@@ -399,7 +399,7 @@ func TestReadAuthorizationModelUnmarshallError(t *testing.T) {
 	require.NoError(t, err)
 	pbdata := []byte{0x01, 0x02, 0x03}
 
-	_, err = ds.db.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES (?, ?, ?, ?, ?, ?)", store, modelID, schemaVersion, "document", bytes, pbdata)
+	_, err = ds.primaryDB.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES (?, ?, ?, ?, ?, ?)", store, modelID, schemaVersion, "document", bytes, pbdata)
 	require.NoError(t, err)
 
 	_, err = ds.ReadAuthorizationModel(ctx, store, modelID)
@@ -424,7 +424,7 @@ func TestReadAuthorizationModelReturnValue(t *testing.T) {
 	bytes, err := proto.Marshal(&openfgav1.TypeDefinition{Type: "document"})
 	require.NoError(t, err)
 
-	_, err = ds.db.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES (?, ?, ?, ?, ?, ?)", store, modelID, schemaVersion, "document", bytes, nil)
+	_, err = ds.primaryDB.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES (?, ?, ?, ?, ?, ?)", store, modelID, schemaVersion, "document", bytes, nil)
 
 	require.NoError(t, err)
 
@@ -465,14 +465,14 @@ func TestFindLatestModel(t *testing.T) {
 		// write type "document"
 		bytesDocumentType, err := proto.Marshal(&openfgav1.TypeDefinition{Type: "document"})
 		require.NoError(t, err)
-		_, err = ds.db.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES (?, ?, ?, ?, ?, ?)",
+		_, err = ds.primaryDB.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES (?, ?, ?, ?, ?, ?)",
 			store, modelID, schemaVersion, "document", bytesDocumentType, nil)
 		require.NoError(t, err)
 
 		// write type "user"
 		bytesUserType, err := proto.Marshal(&openfgav1.TypeDefinition{Type: "user"})
 		require.NoError(t, err)
-		_, err = ds.db.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES (?, ?, ?, ?, ?, ?)",
+		_, err = ds.primaryDB.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES (?, ?, ?, ?, ?, ?)",
 			store, modelID, schemaVersion, "user", bytesUserType, nil)
 		require.NoError(t, err)
 
@@ -486,14 +486,14 @@ func TestFindLatestModel(t *testing.T) {
 		// write type "document"
 		bytesDocumentType, err := proto.Marshal(&openfgav1.TypeDefinition{Type: "document"})
 		require.NoError(t, err)
-		_, err = ds.db.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES (?, ?, ?, ?, ?, ?)",
+		_, err = ds.primaryDB.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES (?, ?, ?, ?, ?, ?)",
 			store, modelID, schemaVersion, "document", bytesDocumentType, nil)
 		require.NoError(t, err)
 
 		// write type "user"
 		bytesUserType, err := proto.Marshal(&openfgav1.TypeDefinition{Type: "user"})
 		require.NoError(t, err)
-		_, err = ds.db.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES (?, ?, ?, ?, ?, ?)",
+		_, err = ds.primaryDB.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES (?, ?, ?, ?, ?, ?)",
 			store, modelID, schemaVersion, "user", bytesUserType, nil)
 		require.NoError(t, err)
 
@@ -532,7 +532,7 @@ func TestAllowNullCondition(t *testing.T) {
 			condition_name, condition_context, inserted_at
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW());
 	`
-	_, err = ds.db.ExecContext(
+	_, err = ds.primaryDB.ExecContext(
 		ctx, stmt, "store", "folder", "2021-budget", "owner", "user:anne", "user",
 		ulid.Make().String(), nil, nil,
 	)
@@ -565,7 +565,7 @@ func TestAllowNullCondition(t *testing.T) {
 	require.Equal(t, tk, userTuple.GetKey())
 
 	tk2 := tupleUtils.NewTupleKey("folder:2022-budget", "viewer", "user:anne")
-	_, err = ds.db.ExecContext(
+	_, err = ds.primaryDB.ExecContext(
 		ctx, stmt, "store", "folder", "2022-budget", "viewer", "user:anne", "userset",
 		ulid.Make().String(), nil, nil,
 	)
@@ -599,13 +599,13 @@ func TestAllowNullCondition(t *testing.T) {
 		condition_name, condition_context, inserted_at, operation
 	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?);
 `
-	_, err = ds.db.ExecContext(
+	_, err = ds.primaryDB.ExecContext(
 		ctx, stmt, "store", "folder", "2021-budget", "owner", "user:anne",
 		ulid.Make().String(), nil, nil, openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
 	)
 	require.NoError(t, err)
 
-	_, err = ds.db.ExecContext(
+	_, err = ds.primaryDB.ExecContext(
 		ctx, stmt, "store", "folder", "2021-budget", "owner", "user:anne",
 		ulid.Make().String(), nil, nil, openfgav1.TupleOperation_TUPLE_OPERATION_DELETE,
 	)
@@ -640,7 +640,7 @@ func TestMarshalledAssertions(t *testing.T) {
 			store, authorization_model_id, assertions
 		) VALUES (?, ?, UNHEX('0A2B0A270A12666F6C6465723A323032312D62756467657412056F776E65721A0A757365723A616E6E657A1001'));
 	`
-	_, err = ds.db.ExecContext(ctx, stmt, "store", "model")
+	_, err = ds.primaryDB.ExecContext(ctx, stmt, "store", "model")
 	require.NoError(t, err)
 
 	assertions, err := ds.ReadAssertions(ctx, "store", "model")
@@ -705,13 +705,13 @@ func TestReadFilterWithConditions(t *testing.T) {
 			condition_name, condition_context, inserted_at
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW());
 	`
-	_, err = ds.db.ExecContext(
+	_, err = ds.primaryDB.ExecContext(
 		ctx, stmt, "store", "folder", "2021-budget", "owner", "user:anne", "user",
 		ulid.Make().String(), "cond1", nil,
 	)
 	require.NoError(t, err)
 
-	_, err = ds.db.ExecContext(
+	_, err = ds.primaryDB.ExecContext(
 		ctx, stmt, "store", "folder", "2022-budget", "owner", "user:anne", "user",
 		ulid.Make().String(), nil, nil,
 	)
@@ -788,14 +788,14 @@ func TestReadUserTupleFilterWithConditions(t *testing.T) {
  `
 
 	// Insert tuple with condition
-	_, err = ds.db.ExecContext(
+	_, err = ds.primaryDB.ExecContext(
 		ctx, stmt, "store", "folder", "2021-budget", "owner", "user:anne", "user",
 		ulid.Make().String(), "cond1", nil,
 	)
 	require.NoError(t, err)
 
 	// Insert tuple without condition
-	_, err = ds.db.ExecContext(
+	_, err = ds.primaryDB.ExecContext(
 		ctx, stmt, "store", "folder", "2022-budget", "owner", "user:anne", "user",
 		ulid.Make().String(), nil, nil,
 	)
@@ -1132,6 +1132,19 @@ func TestNew(t *testing.T) {
 			wantErr: true,
 		},
 	}
+	// bad_secondary_uri is tested separately because it requires a running primary container.
+	t.Run("bad_secondary_uri", func(t *testing.T) {
+		testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
+		primaryURI := testDatastore.GetConnectionURI(true)
+		_, err := New(primaryURI, &sqlcommon.Config{
+			SecondaryURI:            "my;uri?bad=true",
+			Logger:                  logger.NewNoopLogger(),
+			PingTimeout:             sqlcommon.NewConfig().PingTimeout,
+			PingRetryMaxElapsedTime: sqlcommon.NewConfig().PingRetryMaxElapsedTime,
+		})
+		require.Error(t, err)
+	})
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := sqlcommon.NewConfig()
@@ -1146,4 +1159,45 @@ func TestNew(t *testing.T) {
 			assert.Equal(t, tt.want, got)
 		})
 	}
+}
+
+func TestMySQLDatastoreStatusWithSecondaryDB(t *testing.T) {
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
+	err := testDatastore.CreateSecondary(t)
+	require.NoError(t, err)
+
+	primaryURI := testDatastore.GetConnectionURI(true)
+
+	cfg := sqlcommon.NewConfig()
+	cfg.SecondaryURI = testDatastore.GetSecondaryConnectionURI(true)
+	cfg.ExportMetrics = true
+
+	ds, err := New(primaryURI, cfg)
+	require.NoError(t, err)
+	defer ds.Close()
+
+	status, err := ds.IsReady(context.Background())
+	require.NoError(t, err)
+	require.True(t, status.IsReady)
+	require.Equal(t, "primary: ready, secondary: ready", status.Message)
+}
+
+func TestGetSQLDB(t *testing.T) {
+	primary := &sql.DB{}
+	secondary := &sql.DB{}
+
+	t.Run("higher_consistency_routes_to_primary", func(t *testing.T) {
+		ds := &Datastore{primaryDB: primary, secondaryDB: secondary}
+		require.Equal(t, primary, ds.getSQLDB(openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY))
+	})
+
+	t.Run("minimize_latency_routes_to_secondary_when_configured", func(t *testing.T) {
+		ds := &Datastore{primaryDB: primary, secondaryDB: secondary}
+		require.Equal(t, secondary, ds.getSQLDB(openfgav1.ConsistencyPreference_MINIMIZE_LATENCY))
+	})
+
+	t.Run("minimize_latency_falls_back_to_primary_when_no_secondary", func(t *testing.T) {
+		ds := &Datastore{primaryDB: primary}
+		require.Equal(t, primary, ds.getSQLDB(openfgav1.ConsistencyPreference_MINIMIZE_LATENCY))
+	})
 }
