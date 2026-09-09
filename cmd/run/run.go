@@ -938,114 +938,63 @@ func (s *ServerContext) createUDS(cleanups *list.List) (net.Listener, error) {
 	return wrappedListener, nil
 }
 
-// Run returns an error if the server was unable to start successfully.
-// If it started and terminated successfully, it returns a nil error.
-func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) error {
-	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, os.Kill, syscall.SIGTERM)
-	defer stop()
+// startProfilerServer starts the pprof profiler HTTP server on the address
+// defined in config.Profiler.Addr and returns it for graceful shutdown.
+func (s *ServerContext) startProfilerServer(config *serverconfig.Config) *http.Server {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/debug/pprof/", pprof.Index)
+	mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+	mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+	mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+	mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
 
-	cleanups := list.New()
-	defer func() {
-		s.Logger.Info("attempting to shutdown gracefully...")
+	profilerServer := &http.Server{Addr: config.Profiler.Addr, Handler: mux}
 
-		ctx, cancel := context.WithTimeout(context.Background(), config.ShutdownTimeout)
-		defer cancel()
+	s.startHTTPServer(profilerServer, fmt.Sprintf("🔬 starting pprof profiler on '%s'", config.Profiler.Addr),
+		"profiler", func(err error) {
+			s.Logger.Fatal("failed to start pprof profiler", zap.Error(err))
+		})
 
-		for el := cleanups.Front(); el != nil; el = el.Next() {
-			clean, ok := el.Value.(cleanup)
-			if !ok {
-				s.Logger.Info("cleanup type casting failed during graceful shutdown", zap.Any("value", el.Value))
-				continue
-			}
+	return profilerServer
+}
 
-			if err := clean(ctx); err != nil {
-				s.Logger.Info("resource cleanup failed during graceful shutdown", zap.Error(err))
+// startMetricsServer starts the Prometheus metrics HTTP server on the address
+// defined in config.Metrics.Addr and returns it for graceful shutdown.
+func (s *ServerContext) startMetricsServer(config *serverconfig.Config) *http.Server {
+	mux := http.NewServeMux()
+	mux.Handle("/metrics", promhttp.Handler())
+
+	metricsServer := &http.Server{Addr: config.Metrics.Addr, Handler: mux}
+
+	s.startHTTPServer(metricsServer, fmt.Sprintf("📈 starting prometheus metrics server on '%s'", config.Metrics.Addr),
+		"metrics server", func(err error) {
+			s.Logger.Fatal("failed to start prometheus metrics server", zap.Error(err))
+		})
+
+	return metricsServer
+}
+
+// startHTTPServer serves the given HTTP server in a background goroutine,
+// logging startMessage before serving and shutdownMessage once it stops.
+// The onError callback is invoked if serving fails with an error other
+// than http.ErrServerClosed.
+func (s *ServerContext) startHTTPServer(httpServer *http.Server, startMessage, shutdownMessage string, onError func(error)) {
+	go func() {
+		s.Logger.Info(startMessage)
+
+		if err := httpServer.ListenAndServe(); err != nil {
+			if !errors.Is(err, http.ErrServerClosed) {
+				onError(err)
 			}
 		}
-
-		s.Logger.Info("graceful shutdown completed successfully")
+		s.Logger.Info(shutdownMessage + " shut down.")
 	}()
+}
 
-	tracerProviderCloser := s.telemetryConfig(config)
-	cleanups.PushFront(cleanupWithMessage(tracerProviderCloser, "tracing"))
-
-	// Added temporarily to allow us to enable experimental features by default without allowing the user to disable them,
-	// eg for pipeline_list_objects.
-	config.Experimentals = append(serverconfig.DefaultConfig().Experimentals, config.Experimentals...)
-
-	if len(config.Experimentals) > 0 {
-		s.Logger.Info(fmt.Sprintf("🧪 experimental features enabled: %v", config.Experimentals))
-	}
-
-	if slices.Contains(config.Experimentals, serverconfig.ExperimentalAuthZen) && config.Authzen.BaseURL == "" {
-		s.Logger.Warn("AuthZEN experimental is enabled but 'authzen.baseURL' is not configured. The discovery endpoint (/.well-known/authzen-configuration/{store_id}) will not work. Set --authzen-base-url or OPENFGA_AUTHZEN_BASE_URL to fix this.")
-	}
-
-	datastore, continuationTokenSerializer, err := s.datastoreConfig(config)
-	if err != nil {
-		return err
-	}
-
-	authenticator, err := s.authenticatorConfig(config)
-	if err != nil {
-		return err
-	}
-	cleanups.PushFront(cleanupFromPlainFunc(authenticator.Close, "authenticator"))
-
-	serverOpts, prometheusMetrics, err := s.buildServerOpts(ctx, config, authenticator)
-	if prometheusMetrics != nil {
-		defer prometheus.Unregister(prometheusMetrics)
-	}
-	if err != nil {
-		return err
-	}
-
-	var profilerServer *http.Server
-	if config.Profiler.Enabled {
-		mux := http.NewServeMux()
-		mux.HandleFunc("/debug/pprof/", pprof.Index)
-		mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
-		mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
-		mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
-		mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
-
-		profilerServer = &http.Server{Addr: config.Profiler.Addr, Handler: mux}
-
-		go func() {
-			s.Logger.Info(fmt.Sprintf("🔬 starting pprof profiler on '%s'", config.Profiler.Addr))
-
-			if err := profilerServer.ListenAndServe(); err != nil {
-				if !errors.Is(err, http.ErrServerClosed) {
-					s.Logger.Fatal("failed to start pprof profiler", zap.Error(err))
-				}
-			}
-			s.Logger.Info("profiler shut down.")
-		}()
-
-		cleanups.PushFront(cleanupWithMessage(profilerServer.Shutdown, "profiler"))
-	}
-
-	var metricsServer *http.Server
-	if config.Metrics.Enabled {
-		mux := http.NewServeMux()
-		mux.Handle("/metrics", promhttp.Handler())
-
-		metricsServer = &http.Server{Addr: config.Metrics.Addr, Handler: mux}
-
-		go func() {
-			s.Logger.Info(fmt.Sprintf("📈 starting prometheus metrics server on '%s'", config.Metrics.Addr))
-			if err := metricsServer.ListenAndServe(); err != nil {
-				if !errors.Is(err, http.ErrServerClosed) {
-					s.Logger.Fatal("failed to start prometheus metrics server", zap.Error(err))
-				}
-			}
-			s.Logger.Info("metrics server shut down.")
-		}()
-
-		cleanups.PushFront(cleanupWithMessage(metricsServer.Shutdown, "prometheus metrics server"))
-	}
-
-	svr := server.MustNewServerWithOpts(
+// buildOpenFGAServer constructs the core OpenFGA server from the resolved
+// datastore and the provided server configuration.
+func (s *ServerContext) buildOpenFGAServer(ctx context.Context, config *serverconfig.Config, datastore storage.OpenFGADatastore, continuationTokenSerializer encoder.ContinuationTokenSerializer) (*server.Server, error) {
+	return server.NewServerWithOpts(
 		server.WithDatastore(datastore),
 		server.WithAuthzenBaseURL(config.Authzen.BaseURL),
 		server.WithContinuationTokenSerializer(continuationTokenSerializer),
@@ -1111,18 +1060,23 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		server.WithAccessControlParams(config.AccessControl.Enabled, config.AccessControl.StoreID, config.AccessControl.ModelID, config.Authn.Method),
 		server.WithContext(ctx),
 	)
+}
 
-	cleanups.PushFront(cleanupFromPlainFunc(svr.Close, "server"))
+// logExperimentalFeatures logs the enabled experimental features and warns
+// about misconfigured AuthZEN discovery.
+func (s *ServerContext) logExperimentalFeatures(config *serverconfig.Config) {
+	if len(config.Experimentals) > 0 {
+		s.Logger.Info(fmt.Sprintf("🧪 experimental features enabled: %v", config.Experimentals))
+	}
 
-	s.Logger.Info(
-		"starting openfga service...",
-		zap.String("version", build.Version),
-		zap.String("date", build.Date),
-		zap.String("commit", build.Commit),
-		zap.String("go-version", runtime.Version()),
-		zap.Any("config", config),
-	)
+	if slices.Contains(config.Experimentals, serverconfig.ExperimentalAuthZen) && config.Authzen.BaseURL == "" {
+		s.Logger.Warn("AuthZEN experimental is enabled but 'authzen.baseURL' is not configured. The discovery endpoint (/.well-known/authzen-configuration/{store_id}) will not work. Set --authzen-base-url or OPENFGA_AUTHZEN_BASE_URL to fix this.")
+	}
+}
 
+// newGRPCServer constructs the gRPC server with all OpenFGA service
+// registrations, health checks and reflection enabled.
+func (s *ServerContext) newGRPCServer(serverOpts []grpc.ServerOption, svr *server.Server) *grpc.Server {
 	// nosemgrep: grpc-server-insecure-connection
 	grpcServer := grpc.NewServer(serverOpts...)
 	openfgav1.RegisterOpenFGAServiceServer(grpcServer, svr)
@@ -1130,8 +1084,11 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	healthServer := &health.Checker{TargetService: svr, TargetServiceName: openfgav1.OpenFGAService_ServiceDesc.ServiceName}
 	healthv1pb.RegisterHealthServer(grpcServer, healthServer)
 	reflection.Register(grpcServer)
-	cleanups.PushFront(cleanupGrpcServer(grpcServer))
+	return grpcServer
+}
 
+// serveGRPC starts serving the gRPC server on the configured TCP address.
+func (s *ServerContext) serveGRPC(grpcServer *grpc.Server, config *serverconfig.Config) error {
 	lis, err := net.Listen(tcp, config.GRPC.Addr)
 	if err != nil {
 		return fmt.Errorf("failed to listen: %w", err)
@@ -1147,54 +1104,161 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		s.Logger.Info("gRPC server shut down.")
 	}()
 
-	var httpServer *http.Server
-	if config.HTTP.Enabled {
-		network, address := tcp, config.GRPC.Addr
+	return nil
+}
 
-		if runtime.GOOS != windows {
-			listener, err := s.createUDS(cleanups)
-			if err != nil {
-				s.Logger.Warn("http server failed to establish unix socket to grpc server, falling back to tcp", zap.Error(err))
-				goto DIAL_SERVER
-			}
+// runHTTPGateway wires up the HTTP server that proxies requests to the gRPC
+// server. It prefers connecting to the gRPC server over a Unix domain socket
+// and falls back to TCP if the socket cannot be established.
+func (s *ServerContext) runHTTPGateway(ctx context.Context, config *serverconfig.Config, grpcServer *grpc.Server, cleanups *list.List) error {
+	network, address := s.serveGRPCOverUDS(grpcServer, config.GRPC.Addr, cleanups)
 
-			go func() {
-				// Serving the same gRPC server on a second listener (UDS) in addition to
-				// the TCP listener is intentional: the HTTP gateway's internal client uses
-				// UDS while external gRPC clients continue to use TCP.
-				if err := grpcServer.Serve(listener); err != nil {
-					if !errors.Is(err, grpc.ErrServerStopped) {
-						s.Logger.Fatal("failed to start internal gRPC server on unix socket", zap.Error(err))
-					}
-				}
-			}()
+	grpc_runtime.DefaultContextTimeout = serverconfig.DefaultContextTimeout(config)
 
-			udsAddr := listener.Addr()
-			network = udsAddr.Network()
-			address = udsAddr.String()
-		}
+	grpcConn := s.dialLocalGrpc(network, address, config)
 
-	DIAL_SERVER:
+	cleanups.PushFront(cleanupFromPlainFunc(func() {
+		_ = grpcConn.Close()
+	}, "internal grpc client connection"))
 
-		grpc_runtime.DefaultContextTimeout = serverconfig.DefaultContextTimeout(config)
-
-		grpcConn := s.dialLocalGrpc(network, address, config)
-
-		cleanups.PushFront(cleanupFromPlainFunc(func() {
-			_ = grpcConn.Close()
-		}, "internal grpc client connection"))
-
-		httpServer, err = s.runHTTPServer(ctx, config, grpcConn)
-		if err != nil {
-			return err
-		}
-
-		cleanups.PushFront(cleanupWithMessage(httpServer.Shutdown, "http server"))
+	httpServer, err := s.runHTTPServer(ctx, config, grpcConn)
+	if err != nil {
+		return err
 	}
 
-	var playground *http.Server
+	cleanups.PushFront(cleanupWithMessage(httpServer.Shutdown, "http server"))
+
+	return nil
+}
+
+// serveGRPCOverUDS additionally serves the gRPC server on a Unix domain
+// socket so the HTTP gateway can connect over UDS instead of TCP. If the
+// socket cannot be established, it falls back to the given gRPC TCP address.
+func (s *ServerContext) serveGRPCOverUDS(grpcServer *grpc.Server, grpcAddr string, cleanups *list.List) (network, address string) {
+	network, address = tcp, grpcAddr
+
+	if runtime.GOOS == windows {
+		return network, address
+	}
+
+	listener, err := s.createUDS(cleanups)
+	if err != nil {
+		s.Logger.Warn("http server failed to establish unix socket to grpc server, falling back to tcp", zap.Error(err))
+		return network, address
+	}
+
+	go func() {
+		// Serving the same gRPC server on a second listener (UDS) in addition to
+		// the TCP listener is intentional: the HTTP gateway's internal client uses
+		// UDS while external gRPC clients continue to use TCP.
+		if err := grpcServer.Serve(listener); err != nil {
+			if !errors.Is(err, grpc.ErrServerStopped) {
+				s.Logger.Fatal("failed to start internal gRPC server on unix socket", zap.Error(err))
+			}
+		}
+	}()
+
+	udsAddr := listener.Addr()
+	return udsAddr.Network(), udsAddr.String()
+}
+
+// Run returns an error if the server was unable to start successfully.
+// If it started and terminated successfully, it returns a nil error.
+func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) error {
+	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, os.Kill, syscall.SIGTERM)
+	defer stop()
+
+	cleanups := list.New()
+	defer func() {
+		s.Logger.Info("attempting to shutdown gracefully...")
+
+		ctx, cancel := context.WithTimeout(context.Background(), config.ShutdownTimeout)
+		defer cancel()
+
+		for el := cleanups.Front(); el != nil; el = el.Next() {
+			clean, ok := el.Value.(cleanup)
+			if !ok {
+				s.Logger.Info("cleanup type casting failed during graceful shutdown", zap.Any("value", el.Value))
+				continue
+			}
+
+			if err := clean(ctx); err != nil {
+				s.Logger.Info("resource cleanup failed during graceful shutdown", zap.Error(err))
+			}
+		}
+
+		s.Logger.Info("graceful shutdown completed successfully")
+	}()
+
+	tracerProviderCloser := s.telemetryConfig(config)
+	cleanups.PushFront(cleanupWithMessage(tracerProviderCloser, "tracing"))
+
+	// Added temporarily to allow us to enable experimental features by default without allowing the user to disable them,
+	// eg for pipeline_list_objects.
+	config.Experimentals = append(serverconfig.DefaultConfig().Experimentals, config.Experimentals...)
+
+	s.logExperimentalFeatures(config)
+
+	datastore, continuationTokenSerializer, err := s.datastoreConfig(config)
+	if err != nil {
+		return err
+	}
+
+	authenticator, err := s.authenticatorConfig(config)
+	if err != nil {
+		return err
+	}
+	cleanups.PushFront(cleanupFromPlainFunc(authenticator.Close, "authenticator"))
+
+	serverOpts, prometheusMetrics, err := s.buildServerOpts(ctx, config, authenticator)
+	if prometheusMetrics != nil {
+		defer prometheus.Unregister(prometheusMetrics)
+	}
+	if err != nil {
+		return err
+	}
+
+	var profilerServer *http.Server
+	if config.Profiler.Enabled {
+		profilerServer = s.startProfilerServer(config)
+		cleanups.PushFront(cleanupWithMessage(profilerServer.Shutdown, "profiler"))
+	}
+
+	var metricsServer *http.Server
+	if config.Metrics.Enabled {
+		metricsServer = s.startMetricsServer(config)
+		cleanups.PushFront(cleanupWithMessage(metricsServer.Shutdown, "prometheus metrics server"))
+	}
+
+	svr, err := s.buildOpenFGAServer(ctx, config, datastore, continuationTokenSerializer)
+	if err != nil {
+		return err
+	}
+	cleanups.PushFront(cleanupFromPlainFunc(svr.Close, "server"))
+
+	s.Logger.Info(
+		"starting openfga service...",
+		zap.String("version", build.Version),
+		zap.String("date", build.Date),
+		zap.String("commit", build.Commit),
+		zap.String("go-version", runtime.Version()),
+		zap.Any("config", config),
+	)
+
+	grpcServer := s.newGRPCServer(serverOpts, svr)
+	if err := s.serveGRPC(grpcServer, config); err != nil {
+		return err
+	}
+	cleanups.PushFront(cleanupGrpcServer(grpcServer))
+
+	if config.HTTP.Enabled {
+		if err := s.runHTTPGateway(ctx, config, grpcServer, cleanups); err != nil {
+			return err
+		}
+	}
+
 	if config.Playground.Enabled {
-		playground, err = s.runPlaygroundServer(config)
+		playground, err := s.runPlaygroundServer(config)
 		if err != nil {
 			return err
 		}
