@@ -9,10 +9,11 @@ OpenFGA implements several complementary types of caching:
 3. [**List Objects Iterator Cache**](#list-objects-iterator-cache): Same as Check Iterator Cache, but used for List Objects requests.
 4. [**Cache Controller**](#cache-controller): Periodically invalidates cache entries in the background based on recent writes to the store.
 5. [**Authorization Model & Typesystem Cache**](#authorization-model--typesystem-cache): Always-on caches for authorization models and their compiled typesystems.
+6. [**Auth Token Cache**](#auth-token-cache): Caches authenticated JWT tokens to avoid repeated signature verification.
 
 **NOTE:**
 
-- For any request, if the `HIGHER_CONSISTENCY` consistency preference is specified, caching is bypassed entirely (except for the authorization model and typesystem caches, which are always active).
+- For any request, if the `HIGHER_CONSISTENCY` consistency preference is specified, authorization data caching is bypassed entirely (except for the authorization model and typesystem caches, which are always active). The auth token cache is not affected by this preference because it operates in the authentication layer, not the authorization data path.
 - The cache is in-memory, so different replicas of the service do not share their caches. Therefore, its effectiveness depends on the probability of repeated/similar requests hitting the same replica, which may depend on the model, tuple distribution, number of replicas, and the load balancing algorithm used.
 
 **Cache instances:** There are three independent in-memory cache instances:
@@ -245,6 +246,31 @@ These two caches are always active and are independent of the caching flags desc
 - **Cache key**: `TS + storeID + modelID`
 - **TTL**: 7 days (same rationale as model cache - models are immutable)
 - **Size config**: `OPENFGA_DATASTORE_MAX_TYPESYSTEM_CACHE_SIZE` / `--datastore-max-typesystem-cache-size` (default `100000`)
+
+## Auth Token Cache
+
+- **What it caches**: The `AuthClaims` (subject, scopes, client ID) produced by a successful `Authenticator.Authenticate` call, keyed by the raw bearer token.
+- **Benefits**: Skips repeated JWT parsing and RSA signature verification for the same token across requests, reducing per-request auth overhead at high QPS.
+- **Cache key**: `AT + SHA-256(<bearer token>)` — the token is hashed so that a replayable credential is not recoverable from a heap dump or diagnostic output.
+- **When enabled**: Applies only when `authn.method = oidc`. The cache is not used for `preshared` keys (to preserve constant-time comparison guarantees) or `none`.
+- **TTL behavior**: The effective TTL per cache entry is `min(configured TTL, token exp − now)`. This ensures a cached entry never outlives the JWT's own expiration claim.
+- **What it does NOT cache**: Authentication failures. Errors from the underlying authenticator (invalid claims, expired token) are always returned fresh from the delegate. If no bearer token is present in the request, the cache is bypassed and the request is forwarded directly to the underlying authenticator.
+
+Implementation lives in `internal/authn/cached_authenticator.go` and is wired in `cmd/run/run.go` via the `authenticatorConfig` function. It uses the same Theine-backed `InMemoryLRUCache` as the check caches.
+
+### Trade-offs
+
+- The OIDC authenticator enforces the JWT `exp` claim on first validation, and the cache respects it: each entry's effective TTL is capped at the token's remaining lifetime. However, a cached token is not re-validated against the JWKS on cache hit. If signing keys are rotated mid-TTL, tokens signed by the old key remain cached until they expire or are evicted. Operators should size the configured TTL relative to their key-rotation and revocation SLA.
+- The cache is separate from the check-pipeline caches: enabling / sizing / TTL are configured independently and it is not affected by the cache controller or `HIGHER_CONSISTENCY` consistency preference.
+- The cache is in-memory per replica, so different replicas of the service do not share cached tokens.
+
+### Configuration
+
+| Config File | Env Var | Flag Name | Type | Description | Default Value |
+|-------------|---------|-----------|------|-------------|---------------|
+| `authn.tokenCache.enabled` | <div id="OPENFGA_AUTHN_TOKEN_CACHE_ENABLED"><code>OPENFGA_AUTHN_TOKEN_CACHE_ENABLED</code></div> | `authn-token-cache-enabled` | boolean | enable caching of authenticated JWT tokens to avoid repeated signature verification. Successful authentications are cached; errors are not. | `false` |
+| `authn.tokenCache.ttl` | <div id="OPENFGA_AUTHN_TOKEN_CACHE_TTL"><code>OPENFGA_AUTHN_TOKEN_CACHE_TTL</code></div> | `authn-token-cache-ttl` | string (duration) | if the auth token cache is enabled, this is the TTL of each cached token's claims. Must be greater than zero when the cache is enabled. | `5m` |
+| `authn.tokenCache.maxSize` | <div id="OPENFGA_AUTHN_TOKEN_CACHE_MAX_SIZE"><code>OPENFGA_AUTHN_TOKEN_CACHE_MAX_SIZE</code></div> | `authn-token-cache-max-size` | integer | the maximum number of tokens to cache. When the cache is full, entries are evicted via LRU with W-TinyLFU admission. | `10000` |
 
 ## TTL Jitter
 
