@@ -71,37 +71,8 @@ var (
 	}, []string{"operation", "method"})
 )
 
-// boundedQuery wraps a delegate Query so its execution passes through the concurrency
-// bound. Only Execute is overridden; ScalarExpr and Exists (which embed the query as a
-// subquery rather than running it) delegate unchanged.
-type boundedQuery struct {
-	*BoundedTupleReader
-	adapter.Query
-}
-
-func (q *boundedQuery) Execute(ctx context.Context) (adapter.Rows, error) {
-	err := q.bound(ctx, "Builder")
-	if err != nil {
-		return nil, err
-	}
-	defer q.done()
-	return q.Query.Execute(ctx)
-}
-
-type boundedBuilder struct {
-	*BoundedTupleReader
-	adapter.Builder
-}
-
-func (b *boundedBuilder) Build(stmt adapter.SelectBuilder) adapter.Query {
-	return &boundedQuery{
-		b.BoundedTupleReader,
-		b.Builder.Build(stmt),
-	}
-}
-
 // boundedQuerier wraps a delegate Querier so each Execute passes through the concurrency
-// bound, mirroring boundedQuery for the Builder path.
+// bound.
 type boundedQuerier struct {
 	*BoundedTupleReader
 	adapter.Querier
@@ -152,20 +123,9 @@ func (b *BoundedTupleReader) GetMetadata() Metadata {
 	}
 }
 
-func (b *BoundedTupleReader) Builder(consistency openfgav1.ConsistencyPreference) adapter.Builder {
-	inner := b.RelationshipTupleReader.Builder(consistency)
-	if inner == nil {
-		return nil
-	}
-	return &boundedBuilder{
-		b,
-		inner,
-	}
-}
-
 // Querier wraps the delegate's Querier so each Execute passes through the concurrency
-// bound, mirroring Builder. It preserves the nil capability signal: if the delegate does
-// not support the typed-AST query surface, so does this wrapper.
+// bound. It preserves the nil capability signal: if the delegate does not support the
+// typed-AST query surface, so does this wrapper.
 func (b *BoundedTupleReader) Querier(consistency openfgav1.ConsistencyPreference) adapter.Querier {
 	inner := b.RelationshipTupleReader.Querier(consistency)
 	if inner == nil {

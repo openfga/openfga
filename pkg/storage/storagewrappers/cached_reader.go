@@ -91,11 +91,6 @@ func NewCachedTupleReader(
 	return c
 }
 
-// Builder see [storage.RelationshipTupleReader].Builder. It delegates to the wrapped reader.
-func (c *CachedTupleReader) Builder(consistency openfgav1.ConsistencyPreference) adapter.Builder {
-	return c.delegate.Builder(consistency)
-}
-
 // Querier see [storage.RelationshipTupleReader].Querier. It delegates to the wrapped reader.
 func (c *CachedTupleReader) Querier(consistency openfgav1.ConsistencyPreference) adapter.Querier {
 	return c.delegate.Querier(consistency)

@@ -141,12 +141,6 @@ func NewWithDB(db *sql.DB, cfg *sqlcommon.Config) (*Datastore, error) {
 	}, nil
 }
 
-// Builder see [storage.RelationshipTupleReader].Builder. SQLite implements the typed-AST
-// Querier instead; there is no Builder implementation, so this returns nil.
-func (s *Datastore) Builder(_ openfgav1.ConsistencyPreference) adapter.Builder {
-	return nil
-}
-
 // Querier see [storage.RelationshipTupleReader].Querier. Renders and runs typed
 // query.Statements against the SQLite connection.
 func (s *Datastore) Querier(_ openfgav1.ConsistencyPreference) adapter.Querier {
