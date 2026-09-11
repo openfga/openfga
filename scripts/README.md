@@ -1,6 +1,13 @@
-# Release Scripts
+# Scripts
 
-This performs the following steps:
+Maintenance and release helper scripts for OpenFGA.
+
+- [`create-release-pr.sh`](#release-scripts) — open a release PR.
+- [`upgrade-go.sh`](#upgrade-go) — upgrade the Go toolchain and pinned container images.
+
+## Release Scripts
+
+`create-release-pr.sh` performs the following steps:
 - Checkout the base branch
 - Creates the release branch off of the base
 - Creates the pull request against the base branch
@@ -63,3 +70,33 @@ Next, run the script by passing the tag version:
 ```
 
 If the tag already exists, or the branch was already used, the script will be cancelled and you will need to proceed further manually.
+
+## Upgrade Go
+
+`upgrade-go.sh` replaces the manual Go-upgrade playbook. It auto-detects the latest stable Go release and rewrites, in one step:
+
+- `go.mod` — the `toolchain` line only (the `go 1.X` language directive is never touched).
+- `Dockerfile` and `Dockerfile.goreleaser` — the pinned `chainguard/go` builder, `chainguard/static`, and `grpc-health-probe` image digests.
+- `CHANGELOG.md` — a `### Security` entry under `[Unreleased]` with a `#PLACEHOLDER` PR number to fill in.
+
+The script only edits files; it never runs `git`. Review the diff, replace the CHANGELOG `#PLACEHOLDER` with the real PR number, commit, and open the PR.
+
+### Requirements
+
+`docker` (with a running daemon), `curl`, `jq`, `perl`, and `awk`. Image digests are read from the registry without downloading layers; the `chainguard/go` builder image is pulled once to verify its Go version matches the target.
+
+### Usage
+
+```sh
+# Preview the planned changes without editing any files:
+make upgrade-go ARGS="--dry-run"
+
+# Apply the upgrade:
+make upgrade-go
+
+# Or run the script directly:
+./scripts/upgrade-go.sh --dry-run
+./scripts/upgrade-go.sh
+```
+
+The script is idempotent: if everything is already at the latest versions it prints `already up to date` and makes no changes. If Chainguard has not yet published the latest Go release, it aborts with a clear message so the toolchain and builder image never drift out of sync — retry once Chainguard catches up.
