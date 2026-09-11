@@ -56,6 +56,38 @@ preflight() {
   docker info >/dev/null 2>&1 || die "Docker daemon is not running or not reachable."
 }
 
+# Echo the latest STABLE Go version, e.g. "1.26.8".
+latest_go_version() {
+  curl -fsSL "https://go.dev/dl/?mode=json" \
+    | jq -r 'map(select(.stable == true)) | .[0].version' \
+    | sed 's/^go//'
+}
+
+# Pull an image ref and echo its "sha256:..." digest (empty on failure).
+# $1 = full image reference to pull.
+pull_digest() {
+  docker pull "$1" 2>/dev/null | grep 'Digest:' | cut -d ' ' -f 2 || true
+}
+
+# Resolve the chainguard/go digest for a specific Go version and verify the tag
+# pins to it. Aborts if Chainguard has not yet published that version.
+# $1 = Go version (e.g. "1.26.8"). Echoes the digest on success.
+resolve_chainguard_go() {
+  local ver="$1" digest
+  digest="$(pull_digest "cgr.dev/chainguard/go:latest")"
+  [[ -n "$digest" ]] || die "Could not resolve cgr.dev/chainguard/go:latest digest."
+  if ! docker pull "cgr.dev/chainguard/go:${ver}@${digest}" >/dev/null 2>&1; then
+    die "Chainguard has not published go ${ver} yet (go.dev is ahead). Retry later."
+  fi
+  printf '%s' "$digest"
+}
+
+# Echo the latest grpc-health-probe release tag, e.g. "v0.4.57".
+latest_probe_tag() {
+  curl -fsSL "https://api.github.com/repos/grpc-ecosystem/grpc-health-probe/releases/latest" \
+    | jq -r '.tag_name'
+}
+
 main() {
   parse_args "$@"
   # Resolve the repo root so the script works from any CWD.
