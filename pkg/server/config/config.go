@@ -153,7 +153,7 @@ type DatastoreConfig struct {
 	MinOpenConns int
 
 	// MaxIdleConns is the maximum number of connections to the datastore in the idle connection
-	// pool. This is only used for some datastore engines (non-PostgresSQL that uses sql.DB).
+	// pool. This is only used for some datastore engines (non-PostgreSQL that uses sql.DB).
 	MaxIdleConns int
 
 	// MinIdleConns is the minimum number of connections to the datastore in the idle connection
