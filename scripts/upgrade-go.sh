@@ -167,12 +167,14 @@ main() {
   preflight
 
   log "Resolving latest versions..."
-  GO_VERSION="$(latest_go_version)"
+  # `|| die` catches pipeline failures (e.g. go.dev unreachable): under
+  # `set -e` + pipefail the assignment itself aborts before the check below.
+  GO_VERSION="$(latest_go_version)" || die "Could not reach go.dev to determine the latest Go version."
   [[ -n "$GO_VERSION" && "$GO_VERSION" != "null" ]] || die "Could not determine latest Go version."
   GO_DIGEST="$(resolve_chainguard_go "$GO_VERSION")"      # aborts on Chainguard lag
   STATIC_DIGEST="$(image_digest "cgr.dev/chainguard/static:latest")"
   [[ -n "$STATIC_DIGEST" ]] || die "Could not resolve cgr.dev/chainguard/static digest."
-  PROBE_TAG="$(latest_probe_tag)"
+  PROBE_TAG="$(latest_probe_tag)" || die "Could not reach the GitHub API to determine the grpc-health-probe release."
   [[ -n "$PROBE_TAG" && "$PROBE_TAG" != "null" ]] || die "Could not determine grpc-health-probe release."
   PROBE_DIGEST="$(image_digest "ghcr.io/grpc-ecosystem/grpc-health-probe:${PROBE_TAG}")"
   [[ -n "$PROBE_DIGEST" ]] || die "Could not resolve grpc-health-probe digest for ${PROBE_TAG}."

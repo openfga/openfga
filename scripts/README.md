@@ -76,14 +76,15 @@ If the tag already exists, or the branch was already used, the script will be ca
 `upgrade-go.sh` replaces the manual Go-upgrade playbook. It auto-detects the latest stable Go release and rewrites, in one step:
 
 - `go.mod` — the `toolchain` line only (the `go 1.X` language directive is never touched).
-- `Dockerfile` and `Dockerfile.goreleaser` — the pinned `chainguard/go` builder, `chainguard/static`, and `grpc-health-probe` image digests.
+- `Dockerfile` — the pinned `chainguard/go` builder, `chainguard/static`, and `grpc-health-probe` image digests.
+- `Dockerfile.goreleaser` — the pinned `chainguard/static` and `grpc-health-probe` image digests (it has no builder stage).
 - `CHANGELOG.md` — a `### Security` entry under `[Unreleased]` with a `#PLACEHOLDER` PR number to fill in.
 
 The script only edits files; it never runs `git`. Review the diff, replace the CHANGELOG `#PLACEHOLDER` with the real PR number, commit, and open the PR.
 
 ### Requirements
 
-`docker` (with a running daemon), `curl`, `jq`, `perl`, and `awk`. Image digests are read from the registry without downloading layers; the `chainguard/go` builder image is pulled once to verify its Go version matches the target.
+`docker` (with a running daemon and the `buildx` plugin), `curl`, `jq`, `perl`, and `awk`. Image digests are read from the registry without downloading layers; the `chainguard/go` builder image is pulled once to verify its Go version matches the target.
 
 ### Usage
 
