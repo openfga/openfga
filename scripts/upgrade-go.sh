@@ -139,8 +139,7 @@ insert_changelog() {
 
   local tmp
   tmp="$(mktemp)"
-  trap 'rm -f "$tmp"' RETURN
-  awk -v bullet="$bullet" '
+  if awk -v bullet="$bullet" '
     BEGIN { in_unreleased=0; done=0 }
     /^## \[Unreleased\]/ { in_unreleased=1; print; next }
     /^## \[/ && in_unreleased==1 {
@@ -152,7 +151,12 @@ insert_changelog() {
     }
     { print }
     END { if (in_unreleased==1 && done==0) { print "### Security"; print bullet } }
-  ' CHANGELOG.md > "$tmp" && mv "$tmp" CHANGELOG.md
+  ' CHANGELOG.md > "$tmp"; then
+    mv "$tmp" CHANGELOG.md
+  else
+    rm -f "$tmp"
+    die "Failed to rewrite CHANGELOG.md"
+  fi
 }
 
 main() {
