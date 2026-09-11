@@ -29,6 +29,7 @@ Auto-detects the latest stable Go release and refreshes:
 
 Options:
   --dry-run   Resolve versions and print planned changes without editing files.
+              (Still pulls the chainguard/go image once to verify its Go version.)
   --help      Show this help.
 EOF
 }
@@ -54,6 +55,8 @@ preflight() {
     die "Missing required commands: ${missing[*]}"
   fi
   docker info >/dev/null 2>&1 || die "Docker daemon is not running or not reachable."
+  docker buildx version >/dev/null 2>&1 \
+    || die "docker buildx is required (used to read image digests) but is not available."
 }
 
 # Echo the latest STABLE Go version, e.g. "1.26.8".
@@ -98,8 +101,15 @@ latest_probe_tag() {
 # Rewrite go.mod toolchain + both Dockerfiles to the resolved target refs.
 # Requires GO_VERSION, GO_DIGEST, STATIC_DIGEST, PROBE_TAG, PROBE_DIGEST in scope.
 apply_file_edits() {
-  # go.mod: toolchain line only (never the `go 1.X` directive).
-  perl -pi -e "s{^toolchain go\\S+}{toolchain go${GO_VERSION}}" go.mod
+  # go.mod: toolchain line only (never the `go 1.X` directive). Replace an
+  # existing `toolchain` line, or insert one right after the `go 1.X` directive
+  # if absent (so a missing line is never a silent no-op).
+  if grep -qE '^toolchain ' go.mod; then
+    perl -pi -e "s{^toolchain go\\S+}{toolchain go${GO_VERSION}}" go.mod
+  else
+    GO_VERSION="${GO_VERSION}" \
+      perl -pi -e 's{^go (\d+\.\d+(?:\.\d+)?)\n}{go $1\ntoolchain go$ENV{GO_VERSION}\n}' go.mod
+  fi
 
   # chainguard/go builder image (Dockerfile only).
   GO_IMAGE_REF="cgr.dev/chainguard/go:${GO_VERSION}@${GO_DIGEST}" \
@@ -129,6 +139,7 @@ insert_changelog() {
 
   local tmp
   tmp="$(mktemp)"
+  trap 'rm -f "$tmp"' RETURN
   awk -v bullet="$bullet" '
     BEGIN { in_unreleased=0; done=0 }
     /^## \[Unreleased\]/ { in_unreleased=1; print; next }
@@ -174,6 +185,12 @@ main() {
   cur_static="$(grep -oE 'cgr\.dev/chainguard/static\S*' Dockerfile | head -1 || true)"
   cur_probe="$(grep -oE 'ghcr\.io/grpc-ecosystem/grpc-health-probe:\S+' Dockerfile | head -1 || true)"
 
+  # Dockerfile.goreleaser shares the static + probe pins; track it too so drift
+  # in the goreleaser file alone is not reported as "already up to date".
+  local cur_static_gr cur_probe_gr
+  cur_static_gr="$(grep -oE 'cgr\.dev/chainguard/static\S*' Dockerfile.goreleaser | head -1 || true)"
+  cur_probe_gr="$(grep -oE 'ghcr\.io/grpc-ecosystem/grpc-health-probe:\S+' Dockerfile.goreleaser | head -1 || true)"
+
   local changed=0
   _row() {  # $1 label, $2 current, $3 target
     local mark="unchanged"
@@ -189,6 +206,11 @@ main() {
   _row "chainguard/go" "$cur_go_image" "$target_go_image"
   _row "chainguard/static" "$cur_static" "$target_static"
   _row "grpc-health-probe" "$cur_probe" "$target_probe"
+
+  # goreleaser drift (not shown as its own row; it mirrors static + probe above).
+  if [[ "$cur_static_gr" != "$target_static" || "$cur_probe_gr" != "$target_probe" ]]; then
+    changed=1
+  fi
   log ""
 
   if (( changed == 0 )); then
