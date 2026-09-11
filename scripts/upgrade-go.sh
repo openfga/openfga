@@ -88,6 +88,27 @@ latest_probe_tag() {
     | jq -r '.tag_name'
 }
 
+# Rewrite go.mod toolchain + both Dockerfiles to the resolved target refs.
+# Requires GO_VERSION, GO_DIGEST, STATIC_DIGEST, PROBE_TAG, PROBE_DIGEST in scope.
+apply_file_edits() {
+  # go.mod: toolchain line only (never the `go 1.X` directive).
+  perl -pi -e "s{^toolchain go\\S+}{toolchain go${GO_VERSION}}" go.mod
+
+  # chainguard/go builder image (Dockerfile only).
+  GO_IMAGE_REF="cgr.dev/chainguard/go:${GO_VERSION}@${GO_DIGEST}" \
+    perl -pi -e 's{cgr\.dev/chainguard/go:\S+}{$ENV{GO_IMAGE_REF}}g' Dockerfile
+
+  # chainguard/static (both Dockerfiles).
+  STATIC_REF="cgr.dev/chainguard/static@${STATIC_DIGEST}" \
+    perl -pi -e 's{cgr\.dev/chainguard/static\S*}{$ENV{STATIC_REF}}g' \
+    Dockerfile Dockerfile.goreleaser
+
+  # grpc-health-probe (both Dockerfiles).
+  PROBE_REF="ghcr.io/grpc-ecosystem/grpc-health-probe:${PROBE_TAG}@${PROBE_DIGEST}" \
+    perl -pi -e 's{ghcr\.io/grpc-ecosystem/grpc-health-probe:\S+}{$ENV{PROBE_REF}}g' \
+    Dockerfile Dockerfile.goreleaser
+}
+
 main() {
   parse_args "$@"
   # Resolve the repo root so the script works from any CWD.
