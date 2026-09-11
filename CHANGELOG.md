@@ -14,6 +14,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ### Fixed
 - Fixed a deadlock in ListUsers that caused a timeout with partial results when the number of union/intersection operands exceeded `OPENFGA_RESOLVE_NODE_BREADTH_LIMIT` and the operands each resolved to more than one user. Thank you to [@fabianluque](https://github.com/fabianluque) for the discovery and detailed report! [#3284](https://github.com/openfga/openfga/pull/3284)
+- `ReadUserTuple` now returns the tuple's timestamp for the Postgres, MySQL, and SQLite datastores; it previously returned a zero timestamp because the query did not select `inserted_at`. [#3194](https://github.com/openfga/openfga/pull/3194)
 
 ### Security
 - Upgraded go toolchain and images to use go1.26.8 to fix [CVE-2026-39821](https://pkg.go.dev/vuln/GO-2026-5026). [#3287](https://github.com/openfga/openfga/pull/3287)
