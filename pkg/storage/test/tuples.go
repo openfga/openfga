@@ -2039,7 +2039,7 @@ func ReadStartingWithUserTest(t *testing.T, datastore storage.OpenFGADatastore) 
 		require.NoError(t, err)
 
 		tuples := iterateThroughAllTuples(t, tupleIterator)
-		var actualObjectIDs []string
+		actualObjectIDs := make([]string, 0, len(tuples))
 		for _, item := range tuples {
 			_, objectID := tuple.SplitObject(item.GetObject())
 			actualObjectIDs = append(actualObjectIDs, objectID)
@@ -2086,7 +2086,7 @@ func ReadStartingWithUserTest(t *testing.T, datastore storage.OpenFGADatastore) 
 		require.NoError(t, err)
 
 		tuples := iterateThroughAllTuples(t, tupleIterator)
-		var actualObjectIDs []string
+		actualObjectIDs := make([]string, 0, len(tuples))
 		for _, item := range tuples {
 			_, objectID := tuple.SplitObject(item.GetObject())
 			actualObjectIDs = append(actualObjectIDs, objectID)
@@ -2136,7 +2136,7 @@ func ReadStartingWithUserTest(t *testing.T, datastore storage.OpenFGADatastore) 
 		require.NoError(t, err)
 
 		tuples := iterateThroughAllTuples(t, tupleIterator)
-		var actualObjectIDs []string
+		actualObjectIDs := make([]string, 0, len(tuples))
 		for _, item := range tuples {
 			_, objectID := tuple.SplitObject(item.GetObject())
 			actualObjectIDs = append(actualObjectIDs, objectID)
@@ -2192,7 +2192,7 @@ func ReadStartingWithUserTest(t *testing.T, datastore storage.OpenFGADatastore) 
 		require.NoError(t, err)
 
 		tuples := iterateThroughAllTuples(t, tupleIterator)
-		var actualObjectIDs []string
+		actualObjectIDs := make([]string, 0, len(tuples))
 		for _, item := range tuples {
 			_, objectID := tuple.SplitObject(item.GetObject())
 			actualObjectIDs = append(actualObjectIDs, objectID)

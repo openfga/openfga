@@ -617,7 +617,7 @@ func TestOrderedCombinedIterator(t *testing.T) {
 					t.Run(name, func(t *testing.T) {
 						mapper := combinedTest.mapper
 
-						var iters []TupleIterator
+						iters := make([]TupleIterator, 0, len(tc.iter))
 						for _, curIter := range tc.iter {
 							iters = append(iters, NewStaticTupleIterator(curIter))
 						}
@@ -698,7 +698,7 @@ func TestOrderedCombinedIterator(t *testing.T) {
 						t.Run(name, func(t *testing.T) {
 							mapper := combinedTest.mapper
 
-							var iters []TupleIterator
+							iters := make([]TupleIterator, 0, len(tc.iter))
 							for _, curIter := range tc.iter {
 								iters = append(iters, NewStaticTupleIterator(curIter))
 							}
@@ -738,7 +738,7 @@ func TestOrderedCombinedIterator(t *testing.T) {
 						t.Run(name, func(t *testing.T) {
 							mapper := combinedTest.mapper
 
-							var iters []TupleIterator
+							iters := make([]TupleIterator, 0, len(tc.iter))
 							for _, curIter := range tc.iter {
 								iters = append(iters, NewStaticTupleIterator(curIter))
 							}

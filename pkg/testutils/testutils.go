@@ -171,10 +171,11 @@ func MustTransformDSLToProtoWithID(s string) *openfgav1.AuthorizationModel {
 func CreateGrpcConnection(t *testing.T, grpcAddress string, opts ...grpc.DialOption) *grpc.ClientConn {
 	t.Helper()
 
-	defaultOptions := []grpc.DialOption{
+	defaultOptions := make([]grpc.DialOption, 0, 2+len(opts))
+	defaultOptions = append(defaultOptions,
 		grpc.WithConnectParams(grpc.ConnectParams{Backoff: grpcbackoff.DefaultConfig}),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-	}
+	)
 
 	defaultOptions = append(defaultOptions, opts...)
 

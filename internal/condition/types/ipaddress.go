@@ -26,7 +26,7 @@ func IPAddressEnvOption() cel.EnvOption {
 }
 
 func (ip IPAddress) CompileOptions() []cel.EnvOption {
-	options := []cel.EnvOption{}
+	options := make([]cel.EnvOption, 0, len(ipaddrLibraryDecls))
 	for name, overloads := range ipaddrLibraryDecls {
 		options = append(options, cel.Function(name, overloads...))
 	}

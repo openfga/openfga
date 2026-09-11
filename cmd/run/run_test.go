@@ -1065,9 +1065,8 @@ func testServerMetricsReporting(t *testing.T, engine string, connectionMetricNam
 		"openfga_condition_evaluation_cost",
 		"openfga_condition_compilation_duration_ms",
 		"openfga_condition_evaluation_duration_ms",
+		connectionMetricName,
 	}
-
-	expectedMetrics = append(expectedMetrics, connectionMetricName)
 
 	for _, metric := range expectedMetrics {
 		count, err := testutil.GatherAndCount(prometheus.DefaultGatherer, metric)
