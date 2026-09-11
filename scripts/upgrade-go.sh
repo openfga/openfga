@@ -63,23 +63,30 @@ latest_go_version() {
     | sed 's/^go//'
 }
 
-# Pull an image ref and echo its "sha256:..." digest (empty on failure).
-# $1 = full image reference to pull.
-pull_digest() {
-  docker pull "$1" 2>/dev/null | grep 'Digest:' | cut -d ' ' -f 2 || true
+# Echo the "sha256:..." manifest digest of an image ref, read from the registry
+# WITHOUT downloading image layers (empty on failure). Matches the digest that
+# `docker pull` reports. $1 = image reference (tag).
+image_digest() {
+  docker buildx imagetools inspect "$1" --format '{{.Manifest.Digest}}' 2>/dev/null || true
 }
 
-# Resolve the chainguard/go digest for a specific Go version and verify the tag
-# pins to it. Aborts if Chainguard has not yet published that version.
-# $1 = Go version (e.g. "1.26.8"). Echoes the digest on success.
+# Resolve the chainguard/go:latest digest and verify the image is actually the
+# target Go version. Chainguard's public registry serves only :latest (versioned
+# tags need a paid tier) and the image carries NO version label, so the only
+# ground truth is running it. Aborts if Chainguard's latest lags the target.
+# $1 = target Go version (e.g. "1.26.8"). Echoes the digest on success.
 resolve_chainguard_go() {
-  local ver="$1" digest
-  digest="$(pull_digest "cgr.dev/chainguard/go:latest")"
-  [[ -n "$digest" ]] || die "Could not resolve cgr.dev/chainguard/go:latest digest."
-  if ! docker pull "cgr.dev/chainguard/go:${ver}@${digest}" >/dev/null 2>&1; then
-    die "Chainguard has not published go ${ver} yet (go.dev is ahead). Retry later."
+  local ver="$1" latest_digest actual_version
+  latest_digest="$(image_digest "cgr.dev/chainguard/go:latest")"
+  [[ -n "$latest_digest" ]] || die "Could not resolve cgr.dev/chainguard/go:latest digest."
+  # Pin to the digest we just resolved so the version we read is the version we pin.
+  actual_version="$(docker run --rm --entrypoint go "cgr.dev/chainguard/go:latest@${latest_digest}" version 2>/dev/null \
+    | awk '{print $3}' | sed 's/^go//')"
+  [[ -n "$actual_version" ]] || die "Could not read Go version from cgr.dev/chainguard/go:latest."
+  if [[ "$actual_version" != "$ver" ]]; then
+    die "Chainguard go:latest is ${actual_version}, not ${ver} (go.dev is ahead). Retry later."
   fi
-  printf '%s' "$digest"
+  printf '%s' "$latest_digest"
 }
 
 # Echo the latest grpc-health-probe release tag, e.g. "v0.4.57".
@@ -139,13 +146,68 @@ insert_changelog() {
 
 main() {
   parse_args "$@"
-  # Resolve the repo root so the script works from any CWD.
   local repo_root
   repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
   cd "$repo_root"
   preflight
-  log "preflight OK (repo root: $repo_root)"
-  # Resolution + edits are added in later tasks.
+
+  log "Resolving latest versions..."
+  GO_VERSION="$(latest_go_version)"
+  [[ -n "$GO_VERSION" && "$GO_VERSION" != "null" ]] || die "Could not determine latest Go version."
+  GO_DIGEST="$(resolve_chainguard_go "$GO_VERSION")"      # aborts on Chainguard lag
+  STATIC_DIGEST="$(image_digest "cgr.dev/chainguard/static:latest")"
+  [[ -n "$STATIC_DIGEST" ]] || die "Could not resolve cgr.dev/chainguard/static digest."
+  PROBE_TAG="$(latest_probe_tag)"
+  [[ -n "$PROBE_TAG" && "$PROBE_TAG" != "null" ]] || die "Could not determine grpc-health-probe release."
+  PROBE_DIGEST="$(image_digest "ghcr.io/grpc-ecosystem/grpc-health-probe:${PROBE_TAG}")"
+  [[ -n "$PROBE_DIGEST" ]] || die "Could not resolve grpc-health-probe digest for ${PROBE_TAG}."
+
+  local target_toolchain="go${GO_VERSION}"
+  local target_go_image="cgr.dev/chainguard/go:${GO_VERSION}@${GO_DIGEST}"
+  local target_static="cgr.dev/chainguard/static@${STATIC_DIGEST}"
+  local target_probe="ghcr.io/grpc-ecosystem/grpc-health-probe:${PROBE_TAG}@${PROBE_DIGEST}"
+
+  # Current values (|| true so `set -e` + grep-miss doesn't abort).
+  local cur_toolchain cur_go_image cur_static cur_probe
+  cur_toolchain="$(grep -E '^toolchain ' go.mod | awk '{print $2}' || true)"
+  cur_go_image="$(grep -oE 'cgr\.dev/chainguard/go:\S+' Dockerfile | head -1 || true)"
+  cur_static="$(grep -oE 'cgr\.dev/chainguard/static\S*' Dockerfile | head -1 || true)"
+  cur_probe="$(grep -oE 'ghcr\.io/grpc-ecosystem/grpc-health-probe:\S+' Dockerfile | head -1 || true)"
+
+  local changed=0
+  _row() {  # $1 label, $2 current, $3 target
+    local mark="unchanged"
+    if [[ "$2" != "$3" ]]; then mark="CHANGED"; changed=1; fi
+    printf '  %-16s %s\n' "$1:" "$mark"
+    printf '    from: %s\n' "$2"
+    printf '    to:   %s\n' "$3"
+  }
+
+  log ""
+  log "Planned changes:"
+  _row "toolchain"  "$cur_toolchain" "$target_toolchain"
+  _row "chainguard/go" "$cur_go_image" "$target_go_image"
+  _row "chainguard/static" "$cur_static" "$target_static"
+  _row "grpc-health-probe" "$cur_probe" "$target_probe"
+  log ""
+
+  if (( changed == 0 )); then
+    log "already up to date"
+    exit 0
+  fi
+
+  if (( DRY_RUN == 1 )); then
+    log "(dry run — no files modified)"
+    exit 0
+  fi
+
+  apply_file_edits
+  insert_changelog
+
+  log "Files updated. Next steps:"
+  log "  1. Review the diff:  git diff"
+  log "  2. Replace #PLACEHOLDER in CHANGELOG.md with the real PR number."
+  log "  3. Commit and open a PR."
 }
 
 # Only run main when executed directly, not when sourced (so functions are unit-testable).
