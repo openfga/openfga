@@ -109,6 +109,34 @@ apply_file_edits() {
     Dockerfile Dockerfile.goreleaser
 }
 
+# Insert a Security bullet under [Unreleased] in CHANGELOG.md.
+# Requires GO_VERSION and PROBE_TAG in scope. Idempotent per Go version.
+insert_changelog() {
+  local bullet
+  bullet="- Update Go toolchain to ${GO_VERSION}, align the \`chainguard/go\` builder image, refresh \`chainguard/static\`, and rebuild the embedded \`grpc-health-probe\` (${PROBE_TAG}). [#PLACEHOLDER](https://github.com/openfga/openfga/pull/PLACEHOLDER)"
+
+  # Skip if an entry for this Go version already exists (idempotence).
+  if grep -qF "Update Go toolchain to ${GO_VERSION}," CHANGELOG.md; then
+    return 0
+  fi
+
+  local tmp
+  tmp="$(mktemp)"
+  awk -v bullet="$bullet" '
+    BEGIN { in_unreleased=0; done=0 }
+    /^## \[Unreleased\]/ { in_unreleased=1; print; next }
+    /^## \[/ && in_unreleased==1 {
+      if (!done) { print "### Security"; print bullet; print ""; done=1 }
+      in_unreleased=0
+    }
+    in_unreleased==1 && /^### Security/ && done==0 {
+      print; print bullet; done=1; next
+    }
+    { print }
+    END { if (in_unreleased==1 && done==0) { print "### Security"; print bullet } }
+  ' CHANGELOG.md > "$tmp" && mv "$tmp" CHANGELOG.md
+}
+
 main() {
   parse_args "$@"
   # Resolve the repo root so the script works from any CWD.
