@@ -111,6 +111,13 @@ func (r *Resolver) ResolveCheck(ctx context.Context, req *Request) (*Response, e
 		}
 	}(ctx)
 
+	// Fail closed on a request that is already cancelled or past its deadline, before
+	// doing any graph work. Cancellation during resolution stays cooperative: a branch
+	// that has already reached a terminal result keeps it.
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	node, ok := r.model.GetNodeByID(tuple.ToObjectRelationString(req.GetObjectType(), req.GetTupleKey().GetRelation()))
 	if !ok {
 		// this should never happen as the request is already validated before
