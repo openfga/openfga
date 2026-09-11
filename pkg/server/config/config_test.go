@@ -1124,6 +1124,39 @@ func TestVerifyBinarySettings(t *testing.T) {
 		require.Contains(t, err.Error(), "config 'log.level' must be one of ['none', 'debug', 'info', 'warn', 'error', 'panic', 'fatal']")
 	})
 
+	t.Run("invalid_log_cloud_trace_fields", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Log.CloudTraceFields = "aws"
+
+		err := cfg.VerifyBinarySettings()
+		require.EqualError(t, err, "config 'log.cloudTraceFields' must be one of ['', 'gcp']")
+	})
+
+	t.Run("empty_log_cloud_trace_fields", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Log.CloudTraceFields = ""
+
+		err := cfg.VerifyBinarySettings()
+		require.NoError(t, err)
+	})
+
+	t.Run("log_cloud_trace_fields_with_json_format", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Log.Format = "json"
+		cfg.Log.CloudTraceFields = "gcp"
+
+		err := cfg.VerifyBinarySettings()
+		require.NoError(t, err)
+	})
+
+	t.Run("log_cloud_trace_fields_without_json_format", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Log.CloudTraceFields = "gcp"
+
+		err := cfg.VerifyBinarySettings()
+		require.EqualError(t, err, "config 'log.cloudTraceFields' requires 'log.format' to be 'json'")
+	})
+
 	t.Run("playground_enabled_without_http", func(t *testing.T) {
 		cfg := DefaultConfig()
 		cfg.Playground.Enabled = true
