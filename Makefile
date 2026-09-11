@@ -62,8 +62,9 @@ generate-mocks: $(GO_BIN)/mockgen ## Generate mock stubs
 #-----------------------------------------------------------------------------------------------------------------------
 .PHONY: build install
 
-build: ## Build the OpenFGA service binary. Build directory can be overridden using BUILD_DIR="desired/path", default is ".dist/". Usage `BUILD_DIR="." make build`
+build: ## Build the OpenFGA service binary. Build directory can be overridden using BUILD_DIR="desired/path", default is "./dist". Usage `BUILD_DIR="." make build`
 	${call print, "Building the OpenFGA binary within ${BUILD_DIR}/${BINARY_NAME}"}
+	@mkdir -p "${BUILD_DIR}"
 	@go build -v -o "${BUILD_DIR}/${BINARY_NAME}" "$(CURDIR)/cmd/openfga"
 
 install: ## Install the OpenFGA service within $GO_BIN. Ensure that $GO_BIN is available on the $PATH to run the executable from anywhere
