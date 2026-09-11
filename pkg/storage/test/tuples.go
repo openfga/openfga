@@ -243,6 +243,7 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		require.NoError(t, err)
 		require.Len(t, gotTuples, 1)
 		require.Equal(t, tk.GetObject(), gotTuples[0].GetKey().GetObject())
+		require.Equal(t, tk.GetUser(), gotTuples[0].GetKey().GetUser())
 	})
 
 	t.Run("read_changes_with_no_changes_should_return_not_found", func(t *testing.T) {
