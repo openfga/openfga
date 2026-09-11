@@ -7,7 +7,7 @@ before:
     - make generate-mocks
 
 builds:
-  -
+  - id: openfga
     main: ./cmd/openfga
     binary: openfga
     env:
@@ -26,8 +26,31 @@ builds:
     flags:
       - -trimpath
 
+  - id: openfga-fips
+    main: ./cmd/openfga
+    binary: openfga
+    env:
+      - CGO_ENABLED=0
+      - GOFIPS140=v1.0.0
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - "-s -w"
+      - "-X github.com/openfga/openfga/internal/build.Version=v{{ .Version }}"
+      - "-X github.com/openfga/openfga/internal/build.Commit={{.Commit}}"
+      - "-X github.com/openfga/openfga/internal/build.Date={{.CommitDate}}"
+      - "-X github.com/openfga/openfga/internal/build.ProjectName={{.ProjectName}}"
+      - "-X github.com/openfga/openfga/internal/build.fipsEnabled=true"
+    mod_timestamp: "{{.CommitTimestamp}}"
+    flags:
+      - -trimpath
+
 dockers:
-  - goos: linux
+  - ids: [openfga]
+    goos: linux
     goarch: amd64
 
     dockerfile: Dockerfile.goreleaser
@@ -54,7 +77,8 @@ dockers:
     extra_files:
       - assets
 
-  - goos: linux
+  - ids: [openfga]
+    goos: linux
     goarch: arm64
 
     dockerfile: Dockerfile.goreleaser
@@ -73,6 +97,64 @@ dockers:
       - "ghcr.io/openfga/openfga:v{{ .Major }}-arm64"
       - "ghcr.io/openfga/openfga:v{{ .Major }}.{{ .Minor }}-arm64"
       - "ghcr.io/openfga/openfga:v{{ .Major }}.{{ .Minor }}.{{ .Patch }}-arm64"
+
+    use: buildx
+
+    build_flag_templates:
+      - "--platform=linux/arm64"
+
+    extra_files:
+      - assets
+
+  # FIPS 140-3 variant images (built with GOFIPS140=v1.0.0)
+  - ids: [openfga-fips]
+    goos: linux
+    goarch: amd64
+
+    dockerfile: Dockerfile.goreleaser-fips
+
+    image_templates:
+      - "openfga/openfga:latest-fips-amd64"
+      - "openfga/openfga:{{ .Tag }}-fips-amd64"
+      - "openfga/openfga:v{{ .Version }}-fips-amd64"
+      - "openfga/openfga:v{{ .Major }}-fips-amd64"
+      - "openfga/openfga:v{{ .Major }}.{{ .Minor }}-fips-amd64"
+      - "openfga/openfga:v{{ .Major }}.{{ .Minor }}.{{ .Patch }}-fips-amd64"
+      # ghcr.io
+      - "ghcr.io/openfga/openfga:latest-fips-amd64"
+      - "ghcr.io/openfga/openfga:{{ .Tag }}-fips-amd64"
+      - "ghcr.io/openfga/openfga:v{{ .Version }}-fips-amd64"
+      - "ghcr.io/openfga/openfga:v{{ .Major }}-fips-amd64"
+      - "ghcr.io/openfga/openfga:v{{ .Major }}.{{ .Minor }}-fips-amd64"
+      - "ghcr.io/openfga/openfga:v{{ .Major }}.{{ .Minor }}.{{ .Patch }}-fips-amd64"
+
+    use: buildx
+    build_flag_templates:
+      - "--platform=linux/amd64"
+
+    extra_files:
+      - assets
+
+  - ids: [openfga-fips]
+    goos: linux
+    goarch: arm64
+
+    dockerfile: Dockerfile.goreleaser-fips
+
+    image_templates:
+      - "openfga/openfga:latest-fips-arm64"
+      - "openfga/openfga:{{ .Tag }}-fips-arm64"
+      - "openfga/openfga:v{{ .Version }}-fips-arm64"
+      - "openfga/openfga:v{{ .Major }}-fips-arm64"
+      - "openfga/openfga:v{{ .Major }}.{{ .Minor }}-fips-arm64"
+      - "openfga/openfga:v{{ .Major }}.{{ .Minor }}.{{ .Patch }}-fips-arm64"
+      # ghcr.io
+      - "ghcr.io/openfga/openfga:latest-fips-arm64"
+      - "ghcr.io/openfga/openfga:{{ .Tag }}-fips-arm64"
+      - "ghcr.io/openfga/openfga:v{{ .Version }}-fips-arm64"
+      - "ghcr.io/openfga/openfga:v{{ .Major }}-fips-arm64"
+      - "ghcr.io/openfga/openfga:v{{ .Major }}.{{ .Minor }}-fips-arm64"
+      - "ghcr.io/openfga/openfga:v{{ .Major }}.{{ .Minor }}.{{ .Patch }}-fips-arm64"
 
     use: buildx
 
@@ -123,6 +205,48 @@ docker_manifests:
     image_templates:
       - "ghcr.io/openfga/openfga:v{{ .Major }}.{{ .Minor }}.{{ .Patch }}-amd64"
       - "ghcr.io/openfga/openfga:v{{ .Major }}.{{ .Minor }}.{{ .Patch }}-arm64"
+
+  # FIPS 140-3 variant manifests
+  - name_template: openfga/openfga:latest-fips
+    image_templates:
+      - openfga/openfga:latest-fips-amd64
+      - openfga/openfga:latest-fips-arm64
+  - name_template: openfga/openfga:v{{ .Version }}-fips
+    image_templates:
+      - openfga/openfga:v{{ .Version }}-fips-amd64
+      - openfga/openfga:v{{ .Version }}-fips-arm64
+  - name_template: openfga/openfga:v{{ .Major }}-fips
+    image_templates:
+      - openfga/openfga:v{{ .Major }}-fips-amd64
+      - openfga/openfga:v{{ .Major }}-fips-arm64
+  - name_template: openfga/openfga:v{{ .Major }}.{{ .Minor }}-fips
+    image_templates:
+      - openfga/openfga:v{{ .Major }}.{{ .Minor }}-fips-amd64
+      - openfga/openfga:v{{ .Major }}.{{ .Minor }}-fips-arm64
+  - name_template: openfga/openfga:v{{ .Major }}.{{ .Minor }}.{{ .Patch }}-fips
+    image_templates:
+      - openfga/openfga:v{{ .Major }}.{{ .Minor }}.{{ .Patch }}-fips-amd64
+      - openfga/openfga:v{{ .Major }}.{{ .Minor }}.{{ .Patch }}-fips-arm64
+  - name_template: ghcr.io/openfga/openfga:latest-fips
+    image_templates:
+      - "ghcr.io/openfga/openfga:latest-fips-amd64"
+      - "ghcr.io/openfga/openfga:latest-fips-arm64"
+  - name_template: ghcr.io/openfga/openfga:v{{ .Version }}-fips
+    image_templates:
+      - "ghcr.io/openfga/openfga:v{{ .Version }}-fips-amd64"
+      - "ghcr.io/openfga/openfga:v{{ .Version }}-fips-arm64"
+  - name_template: ghcr.io/openfga/openfga:v{{ .Major }}-fips
+    image_templates:
+      - "ghcr.io/openfga/openfga:v{{ .Major }}-fips-amd64"
+      - "ghcr.io/openfga/openfga:v{{ .Major }}-fips-arm64"
+  - name_template: ghcr.io/openfga/openfga:v{{ .Major }}.{{ .Minor }}-fips
+    image_templates:
+      - "ghcr.io/openfga/openfga:v{{ .Major }}.{{ .Minor }}-fips-amd64"
+      - "ghcr.io/openfga/openfga:v{{ .Major }}.{{ .Minor }}-fips-arm64"
+  - name_template: ghcr.io/openfga/openfga:v{{ .Major }}.{{ .Minor }}.{{ .Patch }}-fips
+    image_templates:
+      - "ghcr.io/openfga/openfga:v{{ .Major }}.{{ .Minor }}.{{ .Patch }}-fips-amd64"
+      - "ghcr.io/openfga/openfga:v{{ .Major }}.{{ .Minor }}.{{ .Patch }}-fips-arm64"
 
 release:
   draft: true
@@ -185,7 +309,8 @@ brews:
       system "#{bin}/openfga version"
 
 archives:
-  - files:
+  - ids: [openfga]
+    files:
       - assets
 
 checksum:
