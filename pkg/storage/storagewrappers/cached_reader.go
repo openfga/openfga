@@ -33,6 +33,22 @@ type CachedTupleReader struct {
 	sf           *singleflight.Group
 	wg           *sync.WaitGroup
 	method       string
+
+	// inflight tracks cache-miss reads currently in flight, keyed by the read
+	// cache key. The first caller for a key becomes the "leader" and stores its
+	// entry; concurrent callers ("followers") that miss the cache while the leader
+	// is in flight block on the entry until the leader settles, then serve from the
+	// cache the leader populated. This coalesces the recursive resolver's concurrent
+	// fan-out of the same tupleset to a single datastore read. See missRead.
+	inflight sync.Map // map[string]*inflightRead
+}
+
+// inflightRead coordinates followers waiting on a leader's cache-miss read.
+type inflightRead struct {
+	// done is closed exactly once, when the leader has reached a terminal state
+	// (cache populated, or caching abandoned). Followers block on it, then check
+	// the cache.
+	done chan struct{}
 }
 
 // Ensure CachedTupleReader implements RelationshipTupleReader.
@@ -130,18 +146,18 @@ func (c *CachedTupleReader) ReadUsersetTuples(
 		return iter, nil
 	}
 
-	// CACHE MISS - execute database call
-
-	dbIter, err := c.delegate.ReadUsersetTuples(ctx, storeID, filter, opts)
-	if err != nil {
-		return nil, err
-	}
-
-	// Return caching iterator
-	return newCachingIterator(
-		dbIter, c.cache, cacheKey, c.maxSize, c.ttl, c.drainTimeout,
-		c.sf, c.wg, objectType, filter.Relation, "ReadUsersetTuples", c.method,
-	), nil
+	// CACHE MISS - coalesce concurrent identical reads so the recursive resolver's
+	// fan-out of the same tupleset results in a single datastore read. The leader
+	// still returns a streaming CachingIterator; only concurrent followers wait.
+	return c.missRead(ctx, cacheKey,
+		func() storage.TupleIterator {
+			return c.tryGetFromCache(cacheKey, storeID, objectType, filter.Relation, "ReadUsersetTuples", []keys.Key{invalidEntityKey})
+		},
+		func(readCtx context.Context) (storage.TupleIterator, error) {
+			return c.delegate.ReadUsersetTuples(readCtx, storeID, filter, opts)
+		},
+		objectType, filter.Relation, "ReadUsersetTuples",
+	)
 }
 
 // Read reads tuples with caching.
@@ -180,17 +196,18 @@ func (c *CachedTupleReader) Read(
 		return iter, nil
 	}
 
-	// CACHE MISS - execute database call
-
-	dbIter, err := c.delegate.Read(ctx, storeID, filter, opts)
-	if err != nil {
-		return nil, err
-	}
-
-	return newCachingIterator(
-		dbIter, c.cache, cacheKey, c.maxSize, c.ttl, c.drainTimeout,
-		c.sf, c.wg, objectType, filter.Relation, "Read", c.method,
-	), nil
+	// CACHE MISS - coalesce concurrent identical reads so the recursive resolver's
+	// fan-out of the same tupleset results in a single datastore read. The leader
+	// still returns a streaming CachingIterator; only concurrent followers wait.
+	return c.missRead(ctx, cacheKey,
+		func() storage.TupleIterator {
+			return c.tryGetFromCache(cacheKey, storeID, objectType, filter.Relation, "Read", []keys.Key{invalidEntityKey})
+		},
+		func(readCtx context.Context) (storage.TupleIterator, error) {
+			return c.delegate.Read(readCtx, storeID, filter, opts)
+		},
+		objectType, filter.Relation, "Read",
+	)
 }
 
 // ReadStartingWithUser reads tuples starting with a user, with caching.
@@ -228,16 +245,108 @@ func (c *CachedTupleReader) ReadStartingWithUser(
 		return iter, nil
 	}
 
-	// CACHE MISS - execute database call
+	// CACHE MISS - coalesce concurrent identical reads so the recursive resolver's
+	// fan-out of the same tupleset results in a single datastore read. The leader
+	// still returns a streaming CachingIterator; only concurrent followers wait.
+	return c.missRead(ctx, cacheKey,
+		func() storage.TupleIterator {
+			return c.tryGetFromCache(cacheKey, storeID, filter.ObjectType, filter.Relation, "ReadStartingWithUser", invalidEntityKeys)
+		},
+		func(readCtx context.Context) (storage.TupleIterator, error) {
+			return c.delegate.ReadStartingWithUser(readCtx, storeID, filter, opts)
+		},
+		filter.ObjectType, filter.Relation, "ReadStartingWithUser",
+	)
+}
 
-	dbIter, err := c.delegate.ReadStartingWithUser(ctx, storeID, filter, opts)
+// missRead handles a cache miss with follower coalescing.
+//
+// The recursive check resolver fans out many identical reads of the same tupleset
+// (e.g. workgroup:X#child) concurrently. Without coalescing, each races the
+// not-yet-populated cache, misses, and hits the datastore — the intra-request read
+// amplification observed in production.
+//
+// The first caller for a key becomes the "leader": it performs the read and
+// returns a streaming CachingIterator to its OWN caller, populating the cache as a
+// side effect (eager flush on exhaustion, or background drain on Stop). Crucially
+// the leader keeps streaming — its read is not converted into a blocking full
+// materialization — so short-circuit evaluation (e.g. a union operand answering
+// early) is preserved. Concurrent callers that miss while the leader is in flight
+// become "followers": they block until the leader settles, then serve from the
+// cache the leader populated. If the leader did not cache (result exceeded maxSize,
+// or its read failed), followers fall back to their own direct streaming read.
+func (c *CachedTupleReader) missRead(
+	ctx context.Context,
+	cacheKey keys.Key,
+	getFromCache func() storage.TupleIterator,
+	doRead func(context.Context) (storage.TupleIterator, error),
+	objectType, relation, operation string,
+) (storage.TupleIterator, error) {
+	keyStr := cacheKey.String()
+	entry := &inflightRead{done: make(chan struct{})}
+
+	if existing, loaded := c.inflight.LoadOrStore(keyStr, entry); loaded {
+		// Follower: a leader is (or was) reading this key. Wait for it to settle,
+		// then serve from the cache it populated. Because the inflight entry is
+		// retained for the reader's (request's) lifetime, a straggler that arrives
+		// AFTER the leader already settled still finds the entry, observes done as
+		// already closed, and serves from cache — instead of racing a not-yet-seen
+		// deletion and issuing a redundant read (the TOCTOU gap a delete-on-settle
+		// scheme would leave open between the caller's cache-miss check and this
+		// LoadOrStore).
+		leader := existing.(*inflightRead)
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-leader.done:
+		}
+		if iter := getFromCache(); iter != nil {
+			return iter, nil
+		}
+		// Leader settled without caching (result too large, or read error). Fall
+		// back to a direct, non-coalesced streaming read of our own.
+		return c.streamingMiss(ctx, cacheKey, doRead, objectType, relation, operation)
+	}
+
+	// Leader: perform the read. On failure, close done so followers stop waiting
+	// and fall back. The inflight entry is deliberately NOT removed: the map is
+	// scoped to a single request (a fresh CachedTupleReader is built per Check —
+	// see CheckQueryV2.resolve), so retaining it bounds coalescing to the
+	// intra-request window while guaranteeing stragglers coalesce onto the cache
+	// rather than re-reading.
+	dbIter, err := doRead(ctx)
 	if err != nil {
+		close(entry.done)
 		return nil, err
 	}
 
+	// Return a streaming caching iterator wired to close done once it reaches a
+	// terminal state (cache populated via eager flush / background drain, or
+	// caching abandoned). Followers block on done until then. The iterator invokes
+	// onSettled at most once (guarded by settleOnce), so done is closed exactly
+	// once on this path.
 	return newCachingIterator(
 		dbIter, c.cache, cacheKey, c.maxSize, c.ttl, c.drainTimeout,
-		c.sf, c.wg, filter.ObjectType, filter.Relation, "ReadStartingWithUser", c.method,
+		c.sf, c.wg, objectType, relation, operation, c.method,
+		withOnSettled(func() { close(entry.done) }),
+	), nil
+}
+
+// streamingMiss performs a direct, non-coalesced cache-miss read and wraps it in a
+// caching iterator. Used for the follower fallback path (leader did not cache).
+func (c *CachedTupleReader) streamingMiss(
+	ctx context.Context,
+	cacheKey keys.Key,
+	doRead func(context.Context) (storage.TupleIterator, error),
+	objectType, relation, operation string,
+) (storage.TupleIterator, error) {
+	dbIter, err := doRead(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return newCachingIterator(
+		dbIter, c.cache, cacheKey, c.maxSize, c.ttl, c.drainTimeout,
+		c.sf, c.wg, objectType, relation, operation, c.method,
 	), nil
 }
 
