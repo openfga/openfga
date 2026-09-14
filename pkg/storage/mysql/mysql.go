@@ -123,6 +123,7 @@ func New(uri string, cfg *sqlcommon.Config) (*Datastore, error) {
 	if cfg.SecondaryURI != "" {
 		secondaryDB, err = initDB(cfg.SecondaryURI, cfg.SecondaryUsername, cfg.SecondaryPassword)
 		if err != nil {
+			primaryDB.Close()
 			return nil, fmt.Errorf("initialize mysql secondary connection: %w", err)
 		}
 	}
