@@ -142,7 +142,8 @@ func NewWithDB(primaryDB, secondaryDB *sql.DB, cfg *sqlcommon.Config) (*Datastor
 	if secondaryDB != nil {
 		secondaryCollector, err = configureDB(secondaryDB, cfg, "openfga_secondary")
 		if err != nil {
-			// Close the primary resources to avoid a leak.
+			// Clean up secondary and primary resources on failure to avoid a leak
+			secondaryDB.Close()
 			if primaryCollector != nil {
 				prometheus.Unregister(primaryCollector)
 			}
