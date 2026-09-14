@@ -1137,12 +1137,11 @@ func TestNew(t *testing.T) {
 		testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
 		primaryURI := testDatastore.GetConnectionURI(true)
 		_, err := New(primaryURI, &sqlcommon.Config{
-			SecondaryURI:            "my;uri?bad=true",
-			Logger:                  logger.NewNoopLogger(),
-			PingTimeout:             sqlcommon.NewConfig().PingTimeout,
-			PingRetryMaxElapsedTime: sqlcommon.NewConfig().PingRetryMaxElapsedTime,
+			SecondaryURI:      "my;uri?bad=true",
+			SecondaryUsername: "unused",
+			Logger:            logger.NewNoopLogger(),
 		})
-		require.Error(t, err)
+		require.ErrorContains(t, err, "missing the slash separating the database name")
 	})
 
 	for _, tt := range tests {
@@ -1200,4 +1199,98 @@ func TestGetSQLDB(t *testing.T) {
 		ds := &Datastore{primaryDB: primary}
 		require.Equal(t, primary, ds.getSQLDB(openfgav1.ConsistencyPreference_MINIMIZE_LATENCY))
 	})
+}
+
+// TestSecondaryRoutingData verifies that Read with default consistency (MINIMIZE_LATENCY)
+// is served from the secondary DB, while HIGHER_CONSISTENCY routes to the primary.
+// A marker tuple is inserted directly into the secondary DB to make the distinction observable.
+func TestSecondaryRoutingData(t *testing.T) {
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
+	err := testDatastore.CreateSecondary(t)
+	require.NoError(t, err)
+
+	primaryURI := testDatastore.GetConnectionURI(true)
+	secondaryURI := testDatastore.GetSecondaryConnectionURI(true)
+
+	cfg := sqlcommon.NewConfig()
+	cfg.SecondaryURI = secondaryURI
+
+	ds, err := New(primaryURI, cfg)
+	require.NoError(t, err)
+	defer ds.Close()
+
+	ctx := context.Background()
+	store := ulid.Make().String()
+
+	// Insert a marker tuple directly into the secondary DB only.
+	// The primary DB does not have this row, so only reads hitting
+	// the secondary will see it.
+	stmt := `
+		INSERT INTO tuple (
+			store, object_type, object_id, relation, _user, user_type, ulid,
+			condition_name, condition_context, inserted_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW());
+	`
+	markerULID := ulid.Make().String()
+	_, err = ds.secondaryDB.ExecContext(
+		ctx, stmt, store, "doc", "marker", "viewer", "user:secondary-only", "user",
+		markerULID, nil, nil,
+	)
+	require.NoError(t, err)
+
+	t.Run("default_consistency_reads_from_secondary", func(t *testing.T) {
+		// Default (MINIMIZE_LATENCY) should hit the secondary and see the marker.
+		iter, err := ds.Read(ctx, store,
+			storage.ReadFilter{Object: "doc:marker", Relation: "viewer"},
+			storage.ReadOptions{})
+		require.NoError(t, err)
+		defer iter.Stop()
+
+		tuple, err := iter.Next(ctx)
+		require.NoError(t, err)
+		require.Equal(t, "user:secondary-only", tuple.GetKey().GetUser())
+	})
+
+	t.Run("higher_consistency_reads_from_primary", func(t *testing.T) {
+		// HIGHER_CONSISTENCY must hit the primary, which does NOT have the marker.
+		iter, err := ds.Read(ctx, store,
+			storage.ReadFilter{Object: "doc:marker", Relation: "viewer"},
+			storage.ReadOptions{
+				Consistency: storage.ConsistencyOptions{
+					Preference: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
+				},
+			})
+		require.NoError(t, err)
+		defer iter.Stop()
+
+		_, err = iter.Next(ctx)
+		require.ErrorIs(t, err, storage.ErrIteratorDone)
+	})
+}
+
+// TestSecondaryUsernamePassword verifies that mysql.New correctly applies
+// cfg.SecondaryUsername and cfg.SecondaryPassword when opening the secondary
+// connection, overriding the credentials embedded in the secondary DSN.
+func TestSecondaryUsernamePassword(t *testing.T) {
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
+	err := testDatastore.CreateSecondary(t)
+	require.NoError(t, err)
+
+	primaryURI := testDatastore.GetConnectionURI(true)
+	secondaryURI := testDatastore.GetSecondaryConnectionURI(false) // no credentials in URI
+
+	cfg := sqlcommon.NewConfig()
+	cfg.SecondaryURI = secondaryURI
+	cfg.SecondaryUsername = testDatastore.GetUsername()
+	cfg.SecondaryPassword = testDatastore.GetPassword()
+	cfg.PingRetryMaxElapsedTime = 5 * time.Second
+
+	ds, err := New(primaryURI, cfg)
+	require.NoError(t, err)
+	defer ds.Close()
+
+	status, err := ds.IsReady(context.Background())
+	require.NoError(t, err)
+	require.True(t, status.IsReady)
+	require.Equal(t, "primary: ready, secondary: ready", status.Message)
 }

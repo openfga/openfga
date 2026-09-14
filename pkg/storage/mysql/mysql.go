@@ -70,7 +70,7 @@ func initDB(uri, username, password string) (*sql.DB, error) {
 
 	db, err := sql.Open("mysql", uri)
 	if err != nil {
-		return nil, fmt.Errorf("initialize mysql connection: %w", err)
+		return nil, err
 	}
 	return db, nil
 }
@@ -138,13 +138,15 @@ func NewWithDB(primaryDB, secondaryDB *sql.DB, cfg *sqlcommon.Config) (*Datastor
 		return nil, fmt.Errorf("configure primary db: %w", err)
 	}
 
-	// TODO: if configureDB for the secondary fails, primaryDB and its collector are leaked.
-	// The same pre-existing issue exists in the postgres backend. A follow-up fix in both
-	// backends should close primaryDB and unregister primaryCollector before returning here.
 	var secondaryCollector prometheus.Collector
 	if secondaryDB != nil {
 		secondaryCollector, err = configureDB(secondaryDB, cfg, "openfga_secondary")
 		if err != nil {
+			// Close the primary resources to avoid a leak.
+			if primaryCollector != nil {
+				prometheus.Unregister(primaryCollector)
+			}
+			primaryDB.Close()
 			return nil, fmt.Errorf("configure secondary db: %w", err)
 		}
 	}
@@ -229,7 +231,7 @@ func (s *Datastore) read(ctx context.Context, store string, filter storage.ReadF
 	_, span := startTrace(ctx, "read")
 	defer span.End()
 
-	sb := sq.StatementBuilder.RunWith(db).
+	sb := sq.StatementBuilder.
 		Select(
 			"store", "object_type", "object_id", "relation",
 			"_user",
