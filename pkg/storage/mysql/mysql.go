@@ -128,7 +128,15 @@ func New(uri string, cfg *sqlcommon.Config) (*Datastore, error) {
 		}
 	}
 
-	return NewWithDB(primaryDB, secondaryDB, cfg)
+	ds, err := NewWithDB(primaryDB, secondaryDB, cfg)
+	if err != nil {
+		if secondaryDB != nil {
+			secondaryDB.Close()
+		}
+		primaryDB.Close()
+		return nil, err
+	}
+	return ds, nil
 }
 
 // NewWithDB creates a new [Datastore] storage with the provided database connections.
@@ -143,12 +151,10 @@ func NewWithDB(primaryDB, secondaryDB *sql.DB, cfg *sqlcommon.Config) (*Datastor
 	if secondaryDB != nil {
 		secondaryCollector, err = configureDB(secondaryDB, cfg, "openfga_secondary")
 		if err != nil {
-			// Clean up secondary and primary resources on failure to avoid a leak
-			secondaryDB.Close()
+			// Unregister the primary collector; connections are the caller's responsibility.
 			if primaryCollector != nil {
 				prometheus.Unregister(primaryCollector)
 			}
-			primaryDB.Close()
 			return nil, fmt.Errorf("configure secondary db: %w", err)
 		}
 	}
@@ -175,7 +181,7 @@ func (s *Datastore) isSecondaryConfigured() bool {
 }
 
 // getSQLDB returns the *sql.DB to use based on the requested consistency preference.
-// HIGHER_CONSISTENCY routes to primaryDB; MINIMIZE_LATENCY routes to secondaryDB when configured.
+// HIGHER_CONSISTENCY routes to primaryDB; everything else routes to secondaryDB when configured.
 func (s *Datastore) getSQLDB(consistency openfgav1.ConsistencyPreference) *sql.DB {
 	if consistency == openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
 		return s.primaryDB

@@ -1115,10 +1115,11 @@ func TestNew(t *testing.T) {
 		cfg *sqlcommon.Config
 	}
 	tests := []struct {
-		name    string
-		args    args
-		want    *Datastore
-		wantErr bool
+		name            string
+		args            args
+		want            *Datastore
+		wantErr         bool
+		wantErrContains []string
 	}{
 		{
 			name: "bad_uri",
@@ -1131,29 +1132,41 @@ func TestNew(t *testing.T) {
 			want:    nil,
 			wantErr: true,
 		},
+		{
+			// The primary URI is syntactically valid so sql.Open succeeds without a network
+			// connection. The secondary URI is then parsed via mysql.ParseDSN (triggered by
+			// the non-empty SecondaryUsername) and fails immediately — no running container
+			// is required.
+			name: "bad_secondary_uri",
+			args: args{
+				uri: "root@tcp(localhost:3306)/test",
+				cfg: &sqlcommon.Config{
+					SecondaryURI:      "my;uri?bad=true",
+					SecondaryUsername: "unused",
+					Logger:            logger.NewNoopLogger(),
+				},
+			},
+			want:    nil,
+			wantErr: true,
+			wantErrContains: []string{
+				"initialize mysql secondary connection",
+				"missing the slash separating the database name",
+			},
+		},
 	}
-	// bad_secondary_uri is tested separately because it requires a running primary container.
-	t.Run("bad_secondary_uri", func(t *testing.T) {
-		testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
-		primaryURI := testDatastore.GetConnectionURI(true)
-		_, err := New(primaryURI, &sqlcommon.Config{
-			SecondaryURI:      "my;uri?bad=true",
-			SecondaryUsername: "unused",
-			Logger:            logger.NewNoopLogger(),
-		})
-		require.ErrorContains(t, err, "missing the slash separating the database name")
-	})
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg := sqlcommon.NewConfig()
-			got, err := New(tt.args.uri, cfg)
+			got, err := New(tt.args.uri, tt.args.cfg)
 			if got != nil {
 				defer got.Close()
 			}
 			if (err != nil) != tt.wantErr {
 				t.Errorf("New() error = %v, wantErr %v", err, tt.wantErr)
 				return
+			}
+			for _, substr := range tt.wantErrContains {
+				require.ErrorContains(t, err, substr)
 			}
 			assert.Equal(t, tt.want, got)
 		})
