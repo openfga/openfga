@@ -191,6 +191,15 @@ dev-run: $(GO_BIN)/CompileDaemon $(GO_BIN)/openfga ## Run the OpenFGA server wit
 	esac; \
 
 #-----------------------------------------------------------------------------------------------------------------------
+# Maintenance
+#-----------------------------------------------------------------------------------------------------------------------
+.PHONY: upgrade-go
+
+upgrade-go: ## Upgrade the Go toolchain and pinned container images to the latest stable Go release. Requires Docker. Preview without editing files using `make upgrade-go ARGS="--dry-run"`
+	${call print, "Upgrading Go toolchain and pinned images"}
+	@./scripts/upgrade-go.sh $(ARGS)
+
+#-----------------------------------------------------------------------------------------------------------------------
 # Helpers
 #-----------------------------------------------------------------------------------------------------------------------
 define print
