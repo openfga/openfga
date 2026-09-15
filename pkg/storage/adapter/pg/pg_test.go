@@ -3,7 +3,6 @@ package pg_test
 import (
 	"testing"
 
-	"github.com/openfga/openfga/pkg/storage/adapter/ast"
 	"github.com/openfga/openfga/pkg/storage/adapter/pg"
 	"github.com/openfga/openfga/pkg/storage/adapter/query"
 )
@@ -63,35 +62,6 @@ func TestPGMapsEveryLogicalColumn(t *testing.T) {
 		"split_part(substring(a._user FROM position(':' IN a._user) + 1), '#', 1), " +
 		"split_part(a._user, '#', 2), " +
 		"a.store, a.condition_name, a.condition_context FROM tuple a"
-	assertSQL(t, sql, want)
-}
-
-// TestWithColumns verifies WithColumnRenderer swaps in a caller-supplied column mapping — the
-// seam a Postgres-like adapter (e.g. DSQL, whose separate schema owns its full mapping and stores
-// the subject as separate columns) uses. The mapping here covers only the columns the statement
-// selects and panics on the rest, matching pgColumn's own contract.
-func TestWithColumns(t *testing.T) {
-	// columns() has a different ColSubjectType, ColSubjectID, ColSubjectRelation mapping from pgColumn().
-	columns := func(name ast.Column, alias string) string {
-		switch name {
-		case ast.ColStore:
-			return alias + ".store"
-		case ast.ColSubjectType:
-			return alias + ".user_object_type"
-		case ast.ColSubjectID:
-			return alias + ".user_object_id"
-		case ast.ColSubjectRelation:
-			return alias + ".user_relation"
-		default:
-			t.Fatalf("unexpected column %v", name)
-			return ""
-		}
-	}
-
-	a := query.NewTuple("a")
-	stmt := query.Select(a.Store(), a.SubjectType(), a.SubjectID(), a.SubjectRelation()).From(a)
-	sql, _ := pg.Render(stmt, pg.WithColumnRenderer(columns))
-	want := "SELECT a.store, a.user_object_type, a.user_object_id, a.user_relation FROM tuple a"
 	assertSQL(t, sql, want)
 }
 

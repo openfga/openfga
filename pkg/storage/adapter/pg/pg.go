@@ -28,32 +28,18 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/openfga/openfga/pkg/storage/adapter"
-	"github.com/openfga/openfga/pkg/storage/adapter/ast"
 	"github.com/openfga/openfga/pkg/storage/adapter/query"
 )
 
-// ColumnRenderer maps a logical ast.Column, qualified by its table alias, to physical SQL text.
-type ColumnRenderer func(name ast.Column, alias string) string
-
-// Option functions configure the provided renderer.
-type Option func(*renderer)
-
-// WithColumnRenderer overrides the logical-to-physical column mapping, used for Postgres-like
-// adapters whose schema differs from PostgreSQL's.
-func WithColumnRenderer(c ColumnRenderer) Option {
-	return func(r *renderer) { r.column = c }
-}
-
 // New returns an adapter.Querier that renders PostgreSQL SQL and runs it through the supplied
 // pool. The caller owns the pool's lifecycle.
-func New(pool *pgxpool.Pool, opts ...Option) adapter.Querier {
-	return &querier{pool: pool, opts: opts}
+func New(pool *pgxpool.Pool) adapter.Querier {
+	return &querier{pool: pool}
 }
 
 // querier renders statements to PostgreSQL SQL and executes them against a connection pool.
 type querier struct {
 	pool *pgxpool.Pool
-	opts []Option
 }
 
 // Execute renders stmt to PostgreSQL SQL and runs it against the pool. The "$N" placeholders
@@ -68,7 +54,7 @@ type querier struct {
 // []byte as bytea. The mode is passed per query so it holds regardless of how the pool was
 // configured.
 func (q *querier) Execute(ctx context.Context, stmt *query.Statement) (adapter.Rows, error) {
-	sqlText, args := Render(stmt, q.opts...)
+	sqlText, args := Render(stmt)
 	queryArgs := append([]any{pgx.QueryExecModeExec}, args...)
 	rows, err := q.pool.Query(ctx, sqlText, queryArgs...)
 	if err != nil {
@@ -91,11 +77,8 @@ func (r rowCursor) Close() error {
 // Render renders a statement to PostgreSQL SQL text and positional bind arguments by walking
 // the embedded ast.Select. It is exported so callers can render without a pool — to log or
 // inspect the rendered statement, and for tests that assert on SQL text rather than run it.
-func Render(stmt *query.Statement, opts ...Option) (sql string, args []any) {
-	r := &renderer{column: pgColumn}
-	for _, opt := range opts {
-		opt(r)
-	}
+func Render(stmt *query.Statement) (sql string, args []any) {
+	r := &renderer{}
 	r.selectStmt(&stmt.Select)
 	return r.sb.String(), r.args
 }
