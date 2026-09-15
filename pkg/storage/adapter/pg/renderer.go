@@ -13,6 +13,8 @@ import (
 type renderer struct {
 	sb   strings.Builder
 	args []any
+	// column is a function which maps an ast.Column to physical SQL, to allow for different column schemas.
+	column ColumnRenderer
 }
 
 func (r *renderer) write(s string) { r.sb.WriteString(s) }
@@ -188,7 +190,7 @@ func (r *renderer) predicate(n ast.Predicate) {
 func (r *renderer) value(n ast.ScalarValue) {
 	switch x := n.(type) {
 	case ast.ColNode:
-		r.write(pgColumn(x.Name, x.Alias))
+		r.write(r.column(x.Name, x.Alias))
 
 	case ast.BindNode:
 		r.bind(x.Value)
