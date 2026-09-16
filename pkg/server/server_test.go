@@ -1969,6 +1969,12 @@ func (r *recordingTransport) get(key string) string {
 	return r.headers[key]
 }
 
+func (r *recordingTransport) reset() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.headers = map[string]string{}
+}
+
 func TestServer_ThrottleUntilDeadline(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
@@ -2030,6 +2036,8 @@ func TestServer_ThrottleUntilDeadline(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("list_users_return_no_error_and_partial_results", func(t *testing.T) {
+		transport.reset()
+
 		resp, err := s.ListUsers(ctx, &openfgav1.ListUsersRequest{
 			StoreId:              storeID,
 			AuthorizationModelId: model.GetId(),
@@ -2046,9 +2054,15 @@ func TestServer_ThrottleUntilDeadline(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, resp)
 		require.LessOrEqual(t, len(resp.GetUsers()), 1) // race condition of context cancellation
+
+		// The response is a 200 carrying a partial list, so the only thing that
+		// can tell the caller it was truncated is the warning header.
+		require.Equal(t, deadlineExceededWarning, transport.get(WarningHeader))
 	})
 
 	t.Run("list_objects_return_no_error_and_partial_results", func(t *testing.T) {
+		transport.reset()
+
 		resp, err := s.ListObjects(ctx, &openfgav1.ListObjectsRequest{
 			StoreId:              storeID,
 			AuthorizationModelId: model.GetId(),

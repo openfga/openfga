@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Try to keep listed changes to a concise bulleted list of simple explanations of changes. Aim for the amount of information needed so that readers can understand where they would look in the codebase to investigate the changes' implementation, or where they would look in the documentation to understand how to make use of the change in practice - better yet, link directly to the docs and provide detailed information there. Only elaborate if doing so is required to avoid breaking changes or experimental features from ruining someone's day.
 
 ## [Unreleased]
+### Added
+- ListObjects and ListUsers now set `X-Openfga-Warning: deadline-exceeded` (and the `request.deadline_exceeded` log tag) when resolution stops at the configured deadline and returns partial results. StreamedListObjects records the same log tag (a late response header cannot be sent after the first streamed message). [#3311](https://github.com/openfga/openfga/pull/3311)
 
 ## [1.20.0] - 2026-09-08
 ### Added

@@ -342,6 +342,11 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 	wasDatastoreThrottled := resolutionMetadata.DatastoreThrottled.Load()
 	grpc_ctxtags.Extract(ctx).Set("request.datastore_throttled", wasDatastoreThrottled)
 
+	// Streamed responses cannot attach a late warning header (headers go out
+	// with the first message), but the tag still belongs in request logs.
+	deadlineExceeded := resolutionMetadata.DeadlineExceeded.Load()
+	grpc_ctxtags.Extract(ctx).Set("request.deadline_exceeded", deadlineExceeded)
+
 	wasWeightedGraphUsed := resolutionMetadata.WasWeightedGraphUsed.Load()
 	grpc_ctxtags.Extract(ctx).Set("request.weighted_graph", wasWeightedGraphUsed)
 

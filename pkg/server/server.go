@@ -52,7 +52,7 @@ const (
 	// WarningHeader carries a non-fatal notice about a successful response.
 	WarningHeader = "X-Openfga-Warning"
 
-	// deadlineExceededWarning tells the caller a ListObjects response is
+	// Value placed in WarningHeader when a ListObjects or ListUsers response is
 	// partial because resolution stopped at the configured deadline.
 	deadlineExceededWarning = "deadline-exceeded"
 
