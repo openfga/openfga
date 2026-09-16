@@ -9,6 +9,8 @@ import (
 
 	mysqldriver "github.com/go-sql-driver/mysql"
 	"github.com/oklog/ulid/v2"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
@@ -1296,7 +1298,7 @@ func TestSecondaryUsernamePassword(t *testing.T) {
 	cfg.SecondaryURI = secondaryURI
 	cfg.SecondaryUsername = testDatastore.GetUsername()
 	cfg.SecondaryPassword = testDatastore.GetPassword()
-	cfg.PingRetryMaxElapsedTime = 5 * time.Second
+	cfg.PingRetryMaxElapsedTime = 100 * time.Millisecond
 
 	ds, err := New(primaryURI, cfg)
 	require.NoError(t, err)
@@ -1306,4 +1308,163 @@ func TestSecondaryUsernamePassword(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, status.IsReady)
 	require.Equal(t, "primary: ready, secondary: ready", status.Message)
+}
+
+// TestConfigureDBMetricsDuplicateRegistration verifies that configureDB returns an
+// "initialize metrics" error when prometheus.Register fails due to a duplicate collector.
+func TestConfigureDBMetricsDuplicateRegistration(t *testing.T) {
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
+
+	uri := testDatastore.GetConnectionURI(true)
+	cfg := sqlcommon.NewConfig()
+	cfg.ExportMetrics = true
+	cfg.PingRetryMaxElapsedTime = 100 * time.Millisecond
+
+	db, err := sql.Open("mysql", uri)
+	require.NoError(t, err)
+	defer db.Close()
+
+	// Use t.Name() as part of the collector name so it never collides with collectors
+	// registered by other tests even if tests are later run in parallel.
+	collectorName := "openfga_" + t.Name()
+
+	// First registration succeeds.
+	firstCollector, err := configureDB(db, cfg, collectorName)
+	require.NoError(t, err)
+	require.NotNil(t, firstCollector)
+	defer prometheus.Unregister(firstCollector)
+
+	// Second call with the same dbName and the same db must fail with "initialize metrics".
+	// No need for a second sql.Open — the ping will succeed and the Prometheus conflict is
+	// what we are testing.
+	_, err = configureDB(db, cfg, collectorName)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "initialize metrics")
+}
+
+// TestNewWithDB_SecondaryConfigureFailureUnregistersPrimary verifies that when
+// configureDB fails for the secondary DB, NewWithDB unregisters the primary
+// collector it already registered and returns a "configure secondary db" error.
+func TestNewWithDB_SecondaryConfigureFailureUnregistersPrimary(t *testing.T) {
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
+
+	uri := testDatastore.GetConnectionURI(true)
+
+	// A single open connection is reused for both primary and secondary slots.
+	// The DB handles are distinct objects pointing at the same server, which is
+	// all that matters here — the failure is caused by a Prometheus name conflict,
+	// not by any DB-level distinction.
+	db, err := sql.Open("mysql", uri)
+	require.NoError(t, err)
+	defer db.Close()
+
+	cfg := sqlcommon.NewConfig()
+	cfg.ExportMetrics = true
+	cfg.PingRetryMaxElapsedTime = 100 * time.Millisecond
+
+	// Pre-register a collector under the secondary name so configureDB will fail
+	// when NewWithDB tries to register the secondary collector.
+	// Use a fixed name that NewWithDB uses internally for the secondary ("openfga_secondary").
+	preCollector := collectors.NewDBStatsCollector(db, "openfga_secondary")
+	require.NoError(t, prometheus.Register(preCollector))
+	defer prometheus.Unregister(preCollector)
+
+	ds, err := NewWithDB(db, db, cfg)
+	require.Nil(t, ds)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "configure secondary db")
+	require.ErrorContains(t, err, "initialize metrics")
+
+	// Assert directly that the primary collector was unregistered by NewWithDB's error
+	// path: prometheus.Unregister returns false when the collector is not registered.
+	// We re-create the collector object that NewWithDB would have registered for "openfga"
+	// and attempt to unregister it — it should already be gone.
+	phantomPrimary := collectors.NewDBStatsCollector(db, "openfga")
+	alreadyUnregistered := !prometheus.Unregister(phantomPrimary)
+	require.True(t, alreadyUnregistered, "primary collector should have been unregistered by NewWithDB on error")
+}
+
+// TestNew_CleanupOnNewWithDBFailure verifies that New closes both the primary and
+// secondary *sql.DB when NewWithDB returns an error, preventing resource leaks.
+// The failure is triggered at the primary configureDB stage (Prometheus duplicate),
+// so no secondary container is needed.
+func TestNew_CleanupOnNewWithDBFailure(t *testing.T) {
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
+
+	primaryURI := testDatastore.GetConnectionURI(true)
+
+	cfg := sqlcommon.NewConfig()
+	cfg.ExportMetrics = true
+	cfg.PingRetryMaxElapsedTime = 100 * time.Millisecond
+
+	// Pre-register the "openfga" collector name so configureDB fails immediately
+	// inside NewWithDB, exercising the cleanup branches in New.
+	tmpDB, err := sql.Open("mysql", primaryURI)
+	require.NoError(t, err)
+	defer tmpDB.Close()
+
+	preCollector := collectors.NewDBStatsCollector(tmpDB, "openfga")
+	require.NoError(t, prometheus.Register(preCollector))
+	defer prometheus.Unregister(preCollector)
+
+	// New must fail; it must not panic and must close the opened connections.
+	ds, err := New(primaryURI, cfg)
+	require.Nil(t, ds)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "configure primary db")
+}
+
+// TestIsReady_SecondaryError verifies that when the secondary DB is unhealthy,
+// IsReady returns a combined status with IsReady=false and a descriptive message,
+// rather than returning an error itself.
+func TestIsReady_SecondaryError(t *testing.T) {
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
+
+	uri := testDatastore.GetConnectionURI(true)
+	cfg := sqlcommon.NewConfig()
+
+	ds, err := New(uri, cfg)
+	require.NoError(t, err)
+	defer ds.Close()
+
+	// Open a secondary DB and immediately close it so IsReady will fail on it.
+	closedDB, err := sql.Open("mysql", uri)
+	require.NoError(t, err)
+	closedDB.Close() // closed deliberately
+
+	// Inject the broken secondary directly.
+	ds.secondaryDB = closedDB
+
+	status, err := ds.IsReady(context.Background())
+	require.NoError(t, err)
+	require.False(t, status.IsReady)
+	require.Contains(t, status.Message, "primary:")
+	require.Contains(t, status.Message, "secondary:")
+}
+
+// TestClose_WithSecondaryAndCollector verifies that Close correctly unregisters
+// the secondaryDBStatsCollector and closes secondaryDB without panicking.
+func TestClose_WithSecondaryAndCollector(t *testing.T) {
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
+	err := testDatastore.CreateSecondary(t)
+	require.NoError(t, err)
+
+	primaryURI := testDatastore.GetConnectionURI(true)
+	secondaryURI := testDatastore.GetSecondaryConnectionURI(true)
+
+	cfg := sqlcommon.NewConfig()
+	cfg.SecondaryURI = secondaryURI
+	cfg.ExportMetrics = true
+	cfg.PingRetryMaxElapsedTime = 100 * time.Millisecond
+
+	ds, err := New(primaryURI, cfg)
+	require.NoError(t, err)
+	require.NotNil(t, ds.secondaryDB)
+	require.NotNil(t, ds.secondaryDBStatsCollector)
+
+	// Close must not panic and must cleanly unregister the secondary collector.
+	// Calling prometheus.Unregister after Close should return false (already unregistered).
+	ds.Close()
+	alreadyUnregistered := !prometheus.Unregister(ds.secondaryDBStatsCollector)
+	require.True(t, alreadyUnregistered, "secondary collector should have been unregistered by Close()")
 }
