@@ -5,7 +5,7 @@
 // postgres datastore, then runs weight1 against the datastore's own adapter.Querier and asserts
 // the boolean decision.
 //
-// sql_test.go pins the emitted SQL shape and folding behavior against a fake executor; this suite
+// sql_test.go pins the emitted SQL shape and evaluation behavior against a fake executor; this suite
 // closes the remaining gap by proving the emitted SQL returns correct authorization decisions when
 // Postgres actually runs it — the existence (HAVING) path, the conditioned (gather) path, and the
 // contextual-tuple short-circuit.

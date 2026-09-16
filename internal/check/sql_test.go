@@ -569,10 +569,10 @@ func TestSqlWeight1_ContextualShortCircuit(t *testing.T) {
 	require.Empty(t, q.sqls, "executor must not be called when contextual tuples decide the result")
 }
 
-// TestSqlWeight1_ContextualNarrowsExistenceFilter proves the single-pass fold's tightening: when a
-// contextual tuple satisfies one arm of an intersection, that arm is resolved without a database
-// read and drops out of the fold, so its relation never enters the WHERE filter. The emitted
-// existence query references only the still-undetermined arm's relation.
+// TestSqlWeight1_ContextualNarrowsExistenceFilter proves the single-pass evaluation's tightening:
+// when a contextual tuple satisfies one arm of an intersection, that arm is resolved without a
+// database read and drops out of the evaluation, so its relation never enters the WHERE filter. The
+// emitted existence query references only the still-undetermined arm's relation.
 func TestSqlWeight1_ContextualNarrowsExistenceFilter(t *testing.T) {
 	model := `
 		model
@@ -608,7 +608,7 @@ func TestSqlWeight1_ContextualNarrowsExistenceFilter(t *testing.T) {
 }
 
 // condCtx marshals a request-context map the way condition_context is stored, so the gather
-// fold's proto.Unmarshal round-trips it.
+// path's proto.Unmarshal round-trips it.
 func condCtx(t *testing.T, m map[string]any) []byte {
 	t.Helper()
 	s := testutils.MustNewStruct(t, m)
