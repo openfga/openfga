@@ -110,6 +110,12 @@ type ListObjectsResolutionMetadata struct {
 	// DatastoreThrottled indicates whether the request was throttled by the Datastore.
 	DatastoreThrottled atomic.Bool
 
+	// DeadlineExceeded indicates that resolution stopped early because the
+	// ListObjects deadline was reached, so Objects holds whatever was found up
+	// to that point rather than the full set. Callers that surface results to a
+	// client should tell it the list is partial.
+	DeadlineExceeded atomic.Bool
+
 	// WasWeightedGraphUsed indicates whether the weighted graph was used as the algorithm for the ListObjects request.
 	WasWeightedGraphUsed atomic.Bool
 
@@ -486,7 +492,9 @@ func (q *ListObjectsQuery) evaluate(
 			if !errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, context.Canceled) {
 				resultsChan <- ListObjectsResult{Err: err}
 			}
-			// TODO set header to indicate "deadline exceeded"
+			if errors.Is(err, context.DeadlineExceeded) {
+				resolutionMetadata.DeadlineExceeded.Store(true)
+			}
 		}
 		close(resultsChan)
 		dsMeta := ds.GetMetadata()
@@ -645,6 +653,11 @@ func (q *ListObjectsQuery) Execute(
 			if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
 				return nil, serverErrors.HandleError("", err)
 			}
+		}
+		// Pipeline.Recv returns ok=false on timeoutCtx expiry without recording
+		// that on p.Err(); use the configured timeout context directly.
+		if errors.Is(timeoutCtx.Err(), context.DeadlineExceeded) {
+			res.ResolutionMetadata.DeadlineExceeded.Store(true)
 		}
 
 		dsMeta := ds.GetMetadata()
@@ -819,16 +832,17 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 
 		var listObjectsCount uint32 = 0
 
-		var errRx error
+		var pipelineErr error
+		var sendErr error
 
 		for {
 			value, ok := p.Recv(timeoutCtx)
 			if !ok {
-				errRx = p.Err()
+				pipelineErr = p.Err()
 				break
 			}
 
-			if errRx = srv.Send(&openfgav1.StreamedListObjectsResponse{Object: value}); errRx != nil {
+			if sendErr = srv.Send(&openfgav1.StreamedListObjectsResponse{Object: value}); sendErr != nil {
 				break
 			}
 			breakingChangeConfirmed = confirmListObjectsBreakingChange(breakingChangeReason, req.GetUser(), value, breakingChangeConfirmed)
@@ -842,11 +856,27 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 		}
 		p.Close() // ensure that the pipeline is closed after any early loop exits
 
-		if errRx != nil && !errors.Is(errRx, context.Canceled) && !errors.Is(errRx, context.DeadlineExceeded) {
-			if errors.Is(errRx, condition.ErrEvaluationFailed) {
-				err = serverErrors.ValidationError(errRx)
+		// Pipeline.Recv returns ok=false on timeoutCtx expiry without recording
+		// that on p.Err(). Key off the configured listObjects deadline context,
+		// not pipelineErr or srv.Send (transport) deadlines.
+		if errors.Is(timeoutCtx.Err(), context.DeadlineExceeded) {
+			resolutionMetadata.DeadlineExceeded.Store(true)
+		}
+
+		if sendErr != nil {
+			if errors.Is(sendErr, condition.ErrEvaluationFailed) {
+				err = serverErrors.ValidationError(sendErr)
 			} else {
-				err = serverErrors.HandleError("", errRx)
+				err = serverErrors.HandleError("", sendErr)
+			}
+			return nil, err
+		}
+
+		if pipelineErr != nil && !errors.Is(pipelineErr, context.Canceled) && !errors.Is(pipelineErr, context.DeadlineExceeded) {
+			if errors.Is(pipelineErr, condition.ErrEvaluationFailed) {
+				err = serverErrors.ValidationError(pipelineErr)
+			} else {
+				err = serverErrors.HandleError("", pipelineErr)
 			}
 			return nil, err
 		}
