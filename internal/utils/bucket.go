@@ -21,15 +21,27 @@ func Bucketize(value uint, buckets []uint) string {
 
 // LinearBuckets returns an evenly distributed range of buckets in the closed interval
 // [min...max]. The min and max count toward the bucket count since they are included
-// in the range.
+// in the range. It returns nil if count is not positive.
 func LinearBuckets(minValue, maxValue float64, count int) []float64 {
-	var buckets []float64
+	if count <= 0 {
+		return nil
+	}
+
+	if count == 1 {
+		return []float64{minValue}
+	}
 
 	width := (maxValue - minValue) / float64(count-1)
 
-	for i := minValue; i <= maxValue; i += width {
-		buckets = append(buckets, i)
+	buckets := make([]float64, count)
+	for i := range count {
+		buckets[i] = minValue + width*float64(i)
 	}
+
+	// Assign the endpoints directly so that rounding in the multiplication above cannot
+	// push them off the requested interval.
+	buckets[0] = minValue
+	buckets[count-1] = maxValue
 
 	return buckets
 }
