@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Try to keep listed changes to a concise bulleted list of simple explanations of changes. Aim for the amount of information needed so that readers can understand where they would look in the codebase to investigate the changes' implementation, or where they would look in the documentation to understand how to make use of the change in practice - better yet, link directly to the docs and provide detailed information there. Only elaborate if doing so is required to avoid breaking changes or experimental features from ruining someone's day.
 
 ## [Unreleased]
+### Added
+- Added read-replica (primary/secondary) support to the MySQL datastore backend, matching the existing PostgreSQL behaviour. Configure a secondary connection via `--datastore-secondary-uri` (or `OPENFGA_DATASTORE_SECONDARY_URI`); all reads except those requesting `HIGHER_CONSISTENCY` are routed to the replica while all writes remain on the primary. `GetStore`, `ListStores`, `ReadAssertions`, `ReadAuthorizationModel`, `ReadAuthorizationModels`, `FindLatestAuthorizationModel`, and `ReadChanges` always hit the replica when configured regardless of requested consistency — callers should be aware of read-after-write risk on a lagging replica. See `pkg/storage/mysql/mysql.go`. **Breaking:** `mysql.NewWithDB` gained a required `secondaryDB *sql.DB` parameter (pass `nil` if no replica is configured); `sqlcommon.ReadAuthorizationModel` and `sqlcommon.FindLatestAuthorizationModel` were removed and moved to per-backend implementations. [#3290](https://github.com/openfga/openfga/pull/3290)
 
 ## [1.20.0] - 2026-09-08
 ### Added

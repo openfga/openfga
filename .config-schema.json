@@ -250,7 +250,7 @@
                     "x-env-variable": "OPENFGA_DATASTORE_URI"
                 },
                 "secondaryUri": {
-                    "description": "The connection uri to use to connect to the secondary datastore (for postgres only).",
+                    "description": "The connection uri to use to connect to the secondary datastore (for postgres and mysql).",
                     "type": "string",
                     "examples": [
                         "postgres://user:pass@host:port/datastore?opts"
