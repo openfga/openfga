@@ -653,9 +653,11 @@ func (q *ListObjectsQuery) Execute(
 			if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
 				return nil, serverErrors.HandleError("", err)
 			}
-			if errors.Is(err, context.DeadlineExceeded) {
-				res.ResolutionMetadata.DeadlineExceeded.Store(true)
-			}
+		}
+		// Pipeline.Recv returns ok=false on timeoutCtx expiry without recording
+		// that on p.Err(); use the configured timeout context directly.
+		if errors.Is(timeoutCtx.Err(), context.DeadlineExceeded) {
+			res.ResolutionMetadata.DeadlineExceeded.Store(true)
 		}
 
 		dsMeta := ds.GetMetadata()
@@ -854,9 +856,10 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 		}
 		p.Close() // ensure that the pipeline is closed after any early loop exits
 
-		// Only resolution-deadline failures mark DeadlineExceeded. A transport
-		// deadline from srv.Send must not be treated as listObjects-deadline.
-		if errors.Is(pipelineErr, context.DeadlineExceeded) {
+		// Pipeline.Recv returns ok=false on timeoutCtx expiry without recording
+		// that on p.Err(). Key off the configured listObjects deadline context,
+		// not pipelineErr or srv.Send (transport) deadlines.
+		if errors.Is(timeoutCtx.Err(), context.DeadlineExceeded) {
 			resolutionMetadata.DeadlineExceeded.Store(true)
 		}
 
