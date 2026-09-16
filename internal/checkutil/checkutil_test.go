@@ -126,6 +126,95 @@ func TestBuildTupleKeyConditionFilter(t *testing.T) {
 			expectedErr: condition.NewEvaluationError("x_y",
 				fmt.Errorf("tuple 'document:1#can_view@user:maria' is missing context parameters '[y]'")),
 		},
+		{
+			name: "inline_expression_condition_met",
+			tupleKey: tuple.NewTupleKeyWithCondition("document:1", "editor", "user:alice",
+				condition.InlineExpressionName,
+				testutils.MustNewStruct(t, map[string]interface{}{
+					"expression": "channel_id == 'X123456'",
+					"parameters": map[string]interface{}{"channel_id": "string"},
+				}),
+			),
+			model: parser.MustTransformDSLToProto(`
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define editor: [user with $expression]
+			`),
+			context:      map[string]interface{}{"channel_id": "X123456"},
+			conditionMet: true,
+			expectedErr:  nil,
+		},
+		{
+			name: "inline_expression_condition_not_met",
+			tupleKey: tuple.NewTupleKeyWithCondition("document:1", "editor", "user:alice",
+				condition.InlineExpressionName,
+				testutils.MustNewStruct(t, map[string]interface{}{
+					"expression": "channel_id == 'X123456'",
+					"parameters": map[string]interface{}{"channel_id": "string"},
+				}),
+			),
+			model: parser.MustTransformDSLToProto(`
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define editor: [user with $expression]
+			`),
+			context:      map[string]interface{}{"channel_id": "WRONG"},
+			conditionMet: false,
+			expectedErr:  nil,
+		},
+		{
+			name: "inline_expression_missing_parameter_is_hard_error",
+			tupleKey: tuple.NewTupleKeyWithCondition("document:1", "editor", "user:alice",
+				condition.InlineExpressionName,
+				testutils.MustNewStruct(t, map[string]interface{}{
+					"expression": "channel_id == 'X123456'",
+					"parameters": map[string]interface{}{"channel_id": "string"},
+				}),
+			),
+			model: parser.MustTransformDSLToProto(`
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define editor: [user with $expression]
+			`),
+			// channel_id is not provided in the request context
+			context:      map[string]interface{}{},
+			conditionMet: false,
+			expectedErr: condition.NewEvaluationError(
+				condition.InlineExpressionName,
+				fmt.Errorf("missing required parameters: [channel_id]"),
+			),
+		},
+		{
+			name: "inline_expression_extra_request_keys_ignored",
+			tupleKey: tuple.NewTupleKeyWithCondition("document:1", "editor", "user:alice",
+				condition.InlineExpressionName,
+				testutils.MustNewStruct(t, map[string]interface{}{
+					"expression": "channel_id == 'X123456'",
+					"parameters": map[string]interface{}{"channel_id": "string"},
+				}),
+			),
+			model: parser.MustTransformDSLToProto(`
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define editor: [user with $expression]
+			`),
+			// extra key "unrelated" is present in context but not in the expression
+			context:      map[string]interface{}{"channel_id": "X123456", "unrelated": "value"},
+			conditionMet: true,
+			expectedErr:  nil,
+		},
 	}
 
 	for _, tt := range tests {

@@ -14,6 +14,8 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest/observer"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/structpb"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	parser "github.com/openfga/language/pkg/go/transformer"
@@ -72,9 +74,103 @@ func runMatrixWithEngine(t *testing.T, engine string) {
 }
 
 func TestCheckMemory(t *testing.T) {
-	testRunAll(t, "memory", config.ExperimentalCheckOptimizations)
+	testRunAll(t, "memory", config.ExperimentalCheckOptimizations, config.ExperimentalInlineExpressions)
 	// need to deprecate some tests first before re-enabling
 	// testRunAll(t, "memory", config.ExperimentalWeightedGraphCheck)
+}
+
+// TestCheckInlineExpressionsWeightedGraph verifies that $expression tuples evaluate
+// correctly when the ExperimentalWeightedGraphCheck resolver is active.
+func TestCheckInlineExpressionsWeightedGraph(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	cfg := testutils.MustDefaultConfigForParallelTests()
+	cfg.Experimentals = append(cfg.Experimentals,
+		config.ExperimentalWeightedGraphCheck,
+		config.ExperimentalInlineExpressions,
+	)
+	cfg.Log.Level = "error"
+	cfg.Datastore.Engine = "memory"
+
+	tests.StartServer(t, cfg)
+	conn := testutils.CreateGrpcConnection(t, cfg.GRPC.Addr)
+	client := openfgav1.NewOpenFGAServiceClient(conn)
+
+	ctx := context.Background()
+
+	// Create store + model
+	store, err := client.CreateStore(ctx, &openfgav1.CreateStoreRequest{Name: "inline-wg-test"})
+	require.NoError(t, err)
+
+	model := parser.MustTransformDSLToProto(`
+		model
+		  schema 1.1
+		type user
+
+		type document
+		  relations
+		    define editor: [user with $expression]
+	`)
+	writeModelResp, err := client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
+		StoreId:         store.GetId(),
+		TypeDefinitions: model.GetTypeDefinitions(),
+		SchemaVersion:   model.GetSchemaVersion(),
+	})
+	require.NoError(t, err)
+
+	condCtx, err := structpb.NewStruct(map[string]interface{}{
+		"expression": "channel_id == 'X123456'",
+		"parameters": map[string]interface{}{"channel_id": "string"},
+	})
+	require.NoError(t, err)
+
+	_, err = client.Write(ctx, &openfgav1.WriteRequest{
+		StoreId:              store.GetId(),
+		AuthorizationModelId: writeModelResp.GetAuthorizationModelId(),
+		Writes: &openfgav1.WriteRequestWrites{
+			TupleKeys: []*openfgav1.TupleKey{
+				tuple.NewTupleKeyWithCondition("document:1", "editor", "user:alice",
+					"$expression", condCtx),
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	checkReq := func(channelID string) *openfgav1.CheckRequest {
+		reqCtx, err := structpb.NewStruct(map[string]interface{}{"channel_id": channelID})
+		require.NoError(t, err)
+		return &openfgav1.CheckRequest{
+			StoreId:              store.GetId(),
+			AuthorizationModelId: writeModelResp.GetAuthorizationModelId(),
+			TupleKey:             tuple.NewCheckRequestTupleKey("document:1", "editor", "user:alice"),
+			Context:              reqCtx,
+		}
+	}
+
+	t.Run("matching_context_allows", func(t *testing.T) {
+		resp, err := client.Check(ctx, checkReq("X123456"))
+		require.NoError(t, err)
+		require.True(t, resp.GetAllowed())
+	})
+
+	t.Run("non_matching_context_denies", func(t *testing.T) {
+		resp, err := client.Check(ctx, checkReq("WRONG"))
+		require.NoError(t, err)
+		require.False(t, resp.GetAllowed())
+	})
+
+	t.Run("missing_context_is_hard_error", func(t *testing.T) {
+		_, err := client.Check(ctx, &openfgav1.CheckRequest{
+			StoreId:              store.GetId(),
+			AuthorizationModelId: writeModelResp.GetAuthorizationModelId(),
+			TupleKey:             tuple.NewCheckRequestTupleKey("document:1", "editor", "user:alice"),
+		})
+		require.Error(t, err)
+		e, ok := status.FromError(err)
+		require.True(t, ok)
+		require.Equal(t, 2000, int(e.Code()))
+	})
 }
 
 func TestCheckPostgres(t *testing.T) {

@@ -3127,3 +3127,149 @@ tests:
                 condition:
                   name: isOk
             errorCode: 2000
+
+  - name: inline_expression_basic
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+
+          type document
+            relations
+              define editor: [user with $expression]
+              define viewer: [user] or editor
+        tuples:
+          - user: user:alice
+            relation: editor
+            object: document:1
+            condition:
+              name: $expression
+              context:
+                expression: "channel_id == 'X123456'"
+                parameters:
+                  channel_id: string
+        checkAssertions:
+          - tuple:
+              user: user:alice
+              relation: editor
+              object: document:1
+            context:
+              channel_id: "X123456"
+            expectation: true
+          - tuple:
+              user: user:alice
+              relation: editor
+              object: document:1
+            context:
+              channel_id: "WRONG"
+            expectation: false
+          - tuple:
+              user: user:alice
+              relation: editor
+              object: document:1
+            errorCode: 2000
+        listObjectsAssertions:
+          - request:
+              user: user:alice
+              type: document
+              relation: editor
+            context:
+              channel_id: "X123456"
+            expectation:
+              objects:
+                - document:1
+          - request:
+              user: user:alice
+              type: document
+              relation: editor
+            context:
+              channel_id: "WRONG"
+            expectation:
+              objects: []
+
+  - name: inline_expression_inferred_string_param
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+
+          type document
+            relations
+              define viewer: [user with $expression]
+        tuples:
+          - user: user:bob
+            relation: viewer
+            object: document:2
+            condition:
+              name: $expression
+              context:
+                expression: "env == 'prod'"
+        checkAssertions:
+          - tuple:
+              user: user:bob
+              relation: viewer
+              object: document:2
+            context:
+              env: "prod"
+            expectation: true
+          - tuple:
+              user: user:bob
+              relation: viewer
+              object: document:2
+            context:
+              env: "staging"
+            expectation: false
+
+  - name: inline_expression_alongside_named_condition
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+
+          type document
+            relations
+              define viewer: [user with $expression, user with is_employee]
+
+          condition is_employee(emp: bool) {
+            emp == true
+          }
+        tuples:
+          - user: user:alice
+            relation: viewer
+            object: document:1
+            condition:
+              name: $expression
+              context:
+                expression: "dept == 'eng'"
+                parameters:
+                  dept: string
+          - user: user:bob
+            relation: viewer
+            object: document:1
+            condition:
+              name: is_employee
+        checkAssertions:
+          - tuple:
+              user: user:alice
+              relation: viewer
+              object: document:1
+            context:
+              dept: "eng"
+            expectation: true
+          - tuple:
+              user: user:alice
+              relation: viewer
+              object: document:1
+            context:
+              dept: "sales"
+            expectation: false
+          - tuple:
+              user: user:bob
+              relation: viewer
+              object: document:1
+            context:
+              emp: true
+            expectation: true

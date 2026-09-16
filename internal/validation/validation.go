@@ -8,6 +8,7 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
+	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -236,7 +237,13 @@ func validateCondition(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) e
 		}
 	}
 
-	condition, ok := typesys.GetConditions()[tk.GetCondition().GetName()]
+	// $expression is a reserved inline condition — validate its context and type restriction
+	// without looking it up in the model's named conditions map.
+	if condition.IsInlineExpression(tk.GetCondition().GetName()) {
+		return validateInlineExpressionCondition(tk, typeRestrictions, userType, userRelation)
+	}
+
+	namedCondition, ok := typesys.GetConditions()[tk.GetCondition().GetName()]
 	if !ok {
 		return &tuple.InvalidConditionalTupleError{
 			Cause: fmt.Errorf("undefined condition"), TupleKey: tk,
@@ -273,7 +280,7 @@ func validateCondition(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) e
 
 	contextFieldMap := contextStruct.GetFields()
 
-	typedParams, err := condition.CastContextToTypedParameters(contextFieldMap)
+	typedParams, err := namedCondition.CastContextToTypedParameters(contextFieldMap)
 	if err != nil {
 		return &tuple.InvalidConditionalTupleError{
 			Cause: err, TupleKey: tk,
@@ -290,6 +297,38 @@ func validateCondition(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) e
 		}
 	}
 
+	return nil
+}
+
+// validateInlineExpressionCondition validates that a $expression tuple is well-formed:
+// - the type restriction on the relation includes $expression for the user type
+// - the condition context contains a valid, compilable CEL expression.
+func validateInlineExpressionCondition(
+	tk *openfgav1.TupleKey,
+	typeRestrictions []*openfgav1.RelationReference,
+	userType string,
+	userRelation string,
+) error {
+	validCondition := false
+	for _, directlyRelatedType := range typeRestrictions {
+		if directlyRelatedType.GetType() != userType || directlyRelatedType.GetCondition() != condition.InlineExpressionName {
+			continue
+		}
+		if !restrictionFacetMatches(directlyRelatedType, tk.GetUser(), userRelation) {
+			continue
+		}
+		validCondition = true
+		break
+	}
+	if !validCondition {
+		return &tuple.InvalidConditionalTupleError{
+			Cause: fmt.Errorf("invalid condition for type restriction"), TupleKey: tk,
+		}
+	}
+
+	if _, err := condition.NewCompiledFromInlineExpression(tk.GetCondition().GetContext()); err != nil {
+		return &tuple.InvalidConditionalTupleError{Cause: err, TupleKey: tk}
+	}
 	return nil
 }
 
