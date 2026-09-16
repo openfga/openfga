@@ -42,14 +42,14 @@ const SQLStrategyName = "sql"
 
 var SQLPlan = &planner.PlanConfig{
 	Name:         SQLStrategyName,
-	InitialGuess: 50 * time.Millisecond,
-	// Low Lambda: Represents zero confidence. It's a pure guess.
-	Lambda: 1,
-	// With α = 0.5 ≤ 1, it means maximum uncertainty about variance; with λ = 1, we also have weak confidence in the mean.
-	// These values will encourage strong exploration of other strategies. Having these values for the default execute helps to enforce the usage of the "faster" strategies,
-	// helping out with the cold start when we don't have enough data.
-	Alpha: 0.5,
-	Beta:  0.5,
+	InitialGuess: 25 * time.Millisecond, // below default's 50ms so SQL's draws center lower
+	// Medium confidence: we lean toward SQL but stay willing to unlearn if it proves slower.
+	Lambda: 5.0,
+	// Alpha > Beta → higher expected precision (E[τ]=α/β=2.5) and a narrower belief
+	// (E[σ²]=β/(α−1)=0.5). Keeps SQL's draws clustered below default's wide prior so it
+	// wins most selections, without the near-certainty of the proven weight2 plan.
+	Alpha: 5.0,
+	Beta:  2.0,
 }
 
 const WeightTwoStrategyName = "weight2"
