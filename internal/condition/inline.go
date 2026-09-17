@@ -27,6 +27,37 @@ func IsInlineExpression(name string) bool {
 	return name == InlineExpressionName
 }
 
+type conditionParameters = map[string]*openfgav1.ConditionParamTypeRef
+
+func extractDeclaredParameters(fields map[string]*structpb.Value) (conditionParameters, error) {
+	var declaredParams conditionParameters
+
+	if paramVal, ok := fields[inlineContextParametersKey]; ok {
+		ps := paramVal.GetStructValue()
+		if ps == nil {
+			return nil, fmt.Errorf("%s: context field %q must be a struct", InlineExpressionName, inlineContextParametersKey)
+		}
+		for paramName, typeVal := range ps.GetFields() {
+			if paramName == inlineContextExpressionKey || paramName == inlineContextParametersKey {
+				return nil, fmt.Errorf(
+					"%s: parameter name %q is reserved and cannot be used", InlineExpressionName, paramName,
+				)
+			}
+			typeName, knownType := types.TypeNameFromString(typeVal.GetStringValue())
+			if !knownType {
+				return nil, fmt.Errorf(
+					"%s: unknown parameter type %q for parameter %q", InlineExpressionName, typeVal.GetStringValue(), paramName,
+				)
+			}
+			if declaredParams == nil {
+				declaredParams = make(conditionParameters)
+			}
+			declaredParams[paramName] = &openfgav1.ConditionParamTypeRef{TypeName: typeName}
+		}
+	}
+	return declaredParams, nil
+}
+
 // NewCompiledFromInlineExpression builds a fully compiled EvaluableCondition from
 // the context Struct attached to a $expression tuple condition. The Struct must
 // contain an "expression" string key (required) and may contain a "parameters"
@@ -50,26 +81,9 @@ func NewCompiledFromInlineExpression(ctx *structpb.Struct) (*EvaluableCondition,
 	}
 
 	// 2. Extract explicitly declared parameter types (optional).
-	declaredParams := map[string]*openfgav1.ConditionParamTypeRef{}
-	if paramVal, ok := fields[inlineContextParametersKey]; ok {
-		ps := paramVal.GetStructValue()
-		if ps == nil {
-			return nil, fmt.Errorf("%s: context field %q must be a struct", InlineExpressionName, inlineContextParametersKey)
-		}
-		for paramName, typeVal := range ps.GetFields() {
-			if paramName == inlineContextExpressionKey || paramName == inlineContextParametersKey {
-				return nil, fmt.Errorf(
-					"%s: parameter name %q is reserved and cannot be used", InlineExpressionName, paramName,
-				)
-			}
-			typeName, knownType := types.TypeNameFromString(typeVal.GetStringValue())
-			if !knownType {
-				return nil, fmt.Errorf(
-					"%s: unknown parameter type %q for parameter %q", InlineExpressionName, typeVal.GetStringValue(), paramName,
-				)
-			}
-			declaredParams[paramName] = &openfgav1.ConditionParamTypeRef{TypeName: typeName}
-		}
+	declaredParams, err := extractDeclaredParameters(fields)
+	if err != nil {
+		return nil, err
 	}
 
 	// 3. Parse the CEL expression and infer undeclared identifiers as string.
@@ -79,6 +93,9 @@ func NewCompiledFromInlineExpression(ctx *structpb.Struct) (*EvaluableCondition,
 	}
 
 	inferredIdents := extractIdents(ast.NativeRep().Expr(), nil)
+	if declaredParams == nil && len(inferredIdents) > 0 {
+		declaredParams = make(conditionParameters, len(inferredIdents))
+	}
 	for _, ident := range inferredIdents {
 		if _, alreadyDeclared := declaredParams[ident]; !alreadyDeclared {
 			declaredParams[ident] = &openfgav1.ConditionParamTypeRef{
