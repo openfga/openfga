@@ -142,7 +142,7 @@ func extractIdents(expr celast.Expr) []string {
 		case celast.IdentKind:
 			name := expr.AsIdent()
 			if locals[name] {
-				return nil
+				continue
 			}
 			results = append(results, name)
 
