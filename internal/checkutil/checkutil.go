@@ -3,6 +3,7 @@ package checkutil
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"google.golang.org/protobuf/types/known/structpb"
 
@@ -53,7 +54,7 @@ func evalInlineExpressionCondition(ctx context.Context, t *openfgav1.TupleKey, r
 	if len(result.MissingParameters) > 0 {
 		return false, condition.NewEvaluationError(
 			condition.InlineExpressionName,
-			fmt.Errorf("missing required parameters: %v", result.MissingParameters),
+			fmt.Errorf("missing required parameters: %s", strings.Join(result.MissingParameters, ", ")),
 		)
 	}
 

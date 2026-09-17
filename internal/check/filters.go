@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strings"
 	"sync"
 
 	"google.golang.org/protobuf/types/known/structpb"
@@ -51,7 +52,7 @@ func evalInlineCondition(ctx context.Context, t *openfgav1.TupleKey, reqCtx *str
 	if len(result.MissingParameters) > 0 {
 		return false, condition.NewEvaluationError(
 			condition.InlineExpressionName,
-			fmt.Errorf("missing required parameters: %v", result.MissingParameters),
+			fmt.Errorf("missing required parameters: %s", strings.Join(result.MissingParameters, ", ")),
 		)
 	}
 
