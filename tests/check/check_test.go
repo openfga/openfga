@@ -174,15 +174,15 @@ func TestCheckInlineExpressionsWeightedGraph(t *testing.T) {
 }
 
 func TestCheckPostgres(t *testing.T) {
-	testRunAll(t, "postgres", config.ExperimentalCheckOptimizations)
+	testRunAll(t, "postgres", config.ExperimentalCheckOptimizations, config.ExperimentalInlineExpressions)
 }
 
 func TestCheckMySQL(t *testing.T) {
-	testRunAll(t, "mysql", config.ExperimentalCheckOptimizations)
+	testRunAll(t, "mysql", config.ExperimentalCheckOptimizations, config.ExperimentalInlineExpressions)
 }
 
 func TestCheckSQLite(t *testing.T) {
-	testRunAll(t, "sqlite", config.ExperimentalCheckOptimizations)
+	testRunAll(t, "sqlite", config.ExperimentalCheckOptimizations, config.ExperimentalInlineExpressions)
 }
 
 // TODO move elsewhere as this isn't asserting on just Check API logs.

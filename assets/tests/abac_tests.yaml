@@ -3177,16 +3177,14 @@ tests:
             context:
               channel_id: "X123456"
             expectation:
-              objects:
-                - document:1
+              - document:1
           - request:
               user: user:alice
               type: document
               relation: editor
             context:
               channel_id: "WRONG"
-            expectation:
-              objects: []
+            expectation: []
 
   - name: inline_expression_inferred_string_param
     stages:
