@@ -120,6 +120,102 @@ func TestNewCompiledFromInlineExpression(t *testing.T) {
 			},
 			expectErr: "found no matching overload",
 		},
+		// Non-string scalar types
+		{
+			name: "valid_int_param",
+			ctx: map[string]interface{}{
+				"expression": "count > 5",
+				"parameters": map[string]interface{}{
+					"count": "int",
+				},
+			},
+		},
+		{
+			name: "valid_uint_param",
+			ctx: map[string]interface{}{
+				"expression": "size > uint(0)",
+				"parameters": map[string]interface{}{
+					"size": "uint",
+				},
+			},
+		},
+		{
+			name: "valid_double_param",
+			ctx: map[string]interface{}{
+				"expression": "ratio > 0.5",
+				"parameters": map[string]interface{}{
+					"ratio": "double",
+				},
+			},
+		},
+		{
+			name: "valid_bool_param",
+			ctx: map[string]interface{}{
+				"expression": "flag == true",
+				"parameters": map[string]interface{}{
+					"flag": "bool",
+				},
+			},
+		},
+		{
+			name: "valid_timestamp_param",
+			ctx: map[string]interface{}{
+				"expression": `ts < timestamp("2023-10-11T10:00:00.000Z")`,
+				"parameters": map[string]interface{}{
+					"ts": "timestamp",
+				},
+			},
+		},
+		{
+			name: "valid_duration_param",
+			ctx: map[string]interface{}{
+				"expression": `elapsed > duration("1h")`,
+				"parameters": map[string]interface{}{
+					"elapsed": "duration",
+				},
+			},
+		},
+		// OpenFGA custom type
+		{
+			name: "valid_ipaddress_param",
+			ctx: map[string]interface{}{
+				"expression": `ip.in_cidr("10.0.0.0/8")`,
+				"parameters": map[string]interface{}{
+					"ip": "ipaddress",
+				},
+			},
+		},
+		{
+			name: "type_mismatch_int_param_used_as_string",
+			ctx: map[string]interface{}{
+				"expression": "count == 'notanint'",
+				"parameters": map[string]interface{}{
+					"count": "int",
+				},
+			},
+			expectErr: "found no matching overload",
+		},
+		{
+			name: "type_mismatch_bool_param_used_as_int",
+			ctx: map[string]interface{}{
+				"expression": "flag > 0",
+				"parameters": map[string]interface{}{
+					"flag": "bool",
+				},
+			},
+			expectErr: "found no matching overload",
+		},
+		{
+			name: "type_mismatch_ipaddress_compared_as_string",
+			ctx: map[string]interface{}{
+				// ipaddress is not a string; direct string equality should fail type-checking
+				"expression": `ip == "10.0.0.1"`,
+				"parameters": map[string]interface{}{
+					"ip": "ipaddress",
+				},
+			},
+			expectErr: "found no matching overload",
+		},
 	}
 
 	for _, tt := range tests {

@@ -3273,3 +3273,111 @@ tests:
             context:
               emp: true
             expectation: true
+
+  - name: inline_expression_int_param
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+
+          type document
+            relations
+              define viewer: [user with $expression]
+        tuples:
+          - user: user:alice
+            relation: viewer
+            object: document:1
+            condition:
+              name: $expression
+              context:
+                expression: "count > 5"
+                parameters:
+                  count: int
+        checkAssertions:
+          - tuple:
+              user: user:alice
+              relation: viewer
+              object: document:1
+            context:
+              count: 10
+            expectation: true
+          - tuple:
+              user: user:alice
+              relation: viewer
+              object: document:1
+            context:
+              count: 3
+            expectation: false
+
+  - name: inline_expression_timestamp_param
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+
+          type document
+            relations
+              define viewer: [user with $expression]
+        tuples:
+          - user: user:alice
+            relation: viewer
+            object: document:1
+            condition:
+              name: $expression
+              context:
+                expression: "ts < timestamp(\"2023-10-11T10:00:00.000Z\")"
+                parameters:
+                  ts: timestamp
+        checkAssertions:
+          - tuple:
+              user: user:alice
+              relation: viewer
+              object: document:1
+            context:
+              ts: "2023-10-11T09:00:00.000Z"
+            expectation: true
+          - tuple:
+              user: user:alice
+              relation: viewer
+              object: document:1
+            context:
+              ts: "2023-10-11T11:00:00.000Z"
+            expectation: false
+
+  - name: inline_expression_ipaddress_param
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+
+          type document
+            relations
+              define viewer: [user with $expression]
+        tuples:
+          - user: user:alice
+            relation: viewer
+            object: document:1
+            condition:
+              name: $expression
+              context:
+                expression: "ip.in_cidr(\"10.0.0.0/8\")"
+                parameters:
+                  ip: ipaddress
+        checkAssertions:
+          - tuple:
+              user: user:alice
+              relation: viewer
+              object: document:1
+            context:
+              ip: "10.1.2.3"
+            expectation: true
+          - tuple:
+              user: user:alice
+              relation: viewer
+              object: document:1
+            context:
+              ip: "192.168.1.1"
+            expectation: false
