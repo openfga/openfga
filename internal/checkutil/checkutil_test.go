@@ -190,7 +190,7 @@ func TestBuildTupleKeyConditionFilter(t *testing.T) {
 			conditionMet: false,
 			expectedErr: condition.NewEvaluationError(
 				condition.InlineExpressionName,
-				fmt.Errorf("missing required parameters: [channel_id]"),
+				fmt.Errorf("missing required parameters: channel_id"),
 			),
 		},
 		{
