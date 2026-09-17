@@ -145,6 +145,8 @@ test-docker: ## Run tests requiring Docker
 		docker build -t="openfga/openfga:dockertest" .; \
 	fi
 	@go test -v -count=1 -timeout=5m -tags=docker ./cmd/openfga/...
+	# internal/check shares a package with unit tests, so filter to the docker-only Integration tests.
+	@go test -v -count=1 -timeout=5m -tags=docker -run 'Integration' ./internal/check/...
 
 test-bench: generate-mocks ## Run benchmark tests. See https://pkg.go.dev/cmd/go#hdr-Testing_flags
 	${call print, "Running benchmark tests"}
