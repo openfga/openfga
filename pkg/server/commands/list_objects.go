@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"sort"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -41,6 +43,13 @@ import (
 )
 
 const streamedBufferSize = 100
+
+// listObjectsWildcardType is the sentinel object type that requests objects
+// across all types defining the requested relation in a single ListObjects or
+// StreamedListObjects call. It passes proto validation and previously always
+// failed with type_not_found, so treating it as a wildcard is backward
+// compatible. See https://github.com/openfga/openfga/issues/3076.
+const listObjectsWildcardType = "*"
 
 var (
 	furtherEvalRequiredCounter = promauto.NewCounter(prometheus.CounterOpts{
@@ -544,6 +553,23 @@ func (q *ListObjectsQuery) Execute(
 		}
 	}
 
+	if targetObjectType == listObjectsWildcardType {
+		if err := validation.ValidateUser(typesys, req.GetUser()); err != nil {
+			return nil, serverErrors.ValidationError(fmt.Errorf("invalid 'user' value: %w", err))
+		}
+
+		if req.GetConsistency() != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
+			if q.cacheSettings.ShouldCacheListObjectsIterators() {
+				q.sharedDatastoreResources.CacheController.InvalidateIfNeeded(ctx, req.GetStoreId())
+			}
+			if q.cacheSettings.ShouldShadowCacheListObjectsIterators() {
+				q.sharedDatastoreResources.ShadowCacheController.InvalidateIfNeeded(ctx, req.GetStoreId())
+			}
+		}
+
+		return q.executeWildcard(timeoutCtx, req, maxResults)
+	}
+
 	_, err := typesys.GetRelation(targetObjectType, targetRelation)
 	if err != nil {
 		if errors.Is(err, typesystem.ErrObjectTypeUndefined) {
@@ -730,6 +756,14 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 		}
 	}
 
+	if targetObjectType == listObjectsWildcardType {
+		if err := validation.ValidateUser(typesys, req.GetUser()); err != nil {
+			return nil, serverErrors.ValidationError(fmt.Errorf("invalid 'user' value: %w", err))
+		}
+
+		return q.executeWildcardStreamed(timeoutCtx, req, srv)
+	}
+
 	_, err := typesys.GetRelation(targetObjectType, targetRelation)
 	if err != nil {
 		if errors.Is(err, typesystem.ErrObjectTypeUndefined) {
@@ -893,6 +927,190 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 	q.logListObjectsBreakingChange(ctx, req, breakingChangeReason, breakingChangeConfirmed)
 
 	return &resolutionMetadata, nil
+}
+
+// typesWithRelation returns the sorted names of all object types that define
+// the given relation. It powers wildcard ListObjects requests.
+func typesWithRelation(typesys *typesystem.TypeSystem, relation string) []string {
+	var out []string
+	for objectType, relations := range typesys.GetAllRelations() {
+		if _, ok := relations[relation]; ok {
+			out = append(out, objectType)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// wildcardConcurrency bounds the number of concurrent per-type ListObjects
+// evaluations for a wildcard request using the existing breadth limit.
+func (q *ListObjectsQuery) wildcardConcurrency(numTypes int) int {
+	maxGoroutines := int(q.resolveNodeBreadthLimit)
+	if maxGoroutines <= 0 {
+		maxGoroutines = 1
+	}
+	if maxGoroutines > numTypes {
+		maxGoroutines = numTypes
+	}
+	return maxGoroutines
+}
+
+// executeWildcard fans a ListObjects request with type "*" out to every object
+// type defining the requested relation and merges the results. Each per-type
+// evaluation reuses Execute so pipeline selection, caching, throttling, and
+// validation stay identical to single-type calls. Metadata is summed across
+// types and throttled/weighted flags are OR-ed.
+func (q *ListObjectsQuery) executeWildcard(
+	ctx context.Context,
+	req *openfgav1.ListObjectsRequest,
+	maxResults uint32,
+) (*ListObjectsResponse, error) {
+	typesys, ok := typesystem.TypesystemFromContext(ctx)
+	if !ok {
+		return nil, fmt.Errorf("%w: typesystem missing in context", openfgaErrors.ErrUnknown)
+	}
+
+	targetRelation := req.GetRelation()
+	targetTypes := typesWithRelation(typesys, targetRelation)
+	if len(targetTypes) == 0 {
+		return nil, serverErrors.RelationNotFound(targetRelation, listObjectsWildcardType, nil)
+	}
+
+	var out ListObjectsResponse
+	out.Objects = make([]string, 0)
+	var mu sync.Mutex
+
+	pool := concurrency.NewPool(ctx, q.wildcardConcurrency(len(targetTypes)))
+	for _, objectType := range targetTypes {
+		objectType := objectType
+		pool.Go(func(ctx context.Context) error {
+			res, err := q.Execute(ctx, &openfgav1.ListObjectsRequest{
+				StoreId:              req.GetStoreId(),
+				AuthorizationModelId: req.GetAuthorizationModelId(),
+				Type:                 objectType,
+				Relation:             targetRelation,
+				User:                 req.GetUser(),
+				ContextualTuples:     req.GetContextualTuples(),
+				Context:              req.GetContext(),
+				Consistency:          req.GetConsistency(),
+			})
+			if err != nil {
+				return err
+			}
+
+			out.ResolutionMetadata.DatastoreQueryCount.Add(res.ResolutionMetadata.DatastoreQueryCount.Load())
+			out.ResolutionMetadata.DatastoreItemCount.Add(res.ResolutionMetadata.DatastoreItemCount.Load())
+			out.ResolutionMetadata.DispatchCounter.Add(res.ResolutionMetadata.DispatchCounter.Load())
+			out.ResolutionMetadata.CheckCounter.Add(res.ResolutionMetadata.CheckCounter.Load())
+			if res.ResolutionMetadata.DispatchThrottled.Load() {
+				out.ResolutionMetadata.DispatchThrottled.Store(true)
+			}
+			if res.ResolutionMetadata.DatastoreThrottled.Load() {
+				out.ResolutionMetadata.DatastoreThrottled.Store(true)
+			}
+			if res.ResolutionMetadata.WasWeightedGraphUsed.Load() {
+				out.ResolutionMetadata.WasWeightedGraphUsed.Store(true)
+			}
+
+			mu.Lock()
+			out.Objects = append(out.Objects, res.Objects...)
+			mu.Unlock()
+			return nil
+		})
+	}
+
+	if err := pool.Wait(); err != nil {
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+			return &out, nil
+		}
+		return nil, err
+	}
+
+	if maxResults > 0 && uint32(len(out.Objects)) > maxResults {
+		out.Objects = out.Objects[:maxResults]
+	}
+
+	return &out, nil
+}
+
+// mutexStreamServer serializes concurrent Send calls for wildcard streaming.
+type mutexStreamServer struct {
+	openfgav1.OpenFGAService_StreamedListObjectsServer
+	mu sync.Mutex
+}
+
+func (m *mutexStreamServer) Send(resp *openfgav1.StreamedListObjectsResponse) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.OpenFGAService_StreamedListObjectsServer.Send(resp)
+}
+
+// executeWildcardStreamed fans a StreamedListObjects request with type "*"
+// out to every object type defining the requested relation. Each per-type
+// evaluation reuses ExecuteStreamed so deadline, caching, and throttling stay
+// identical to single-type calls. Objects stream as each type completes.
+func (q *ListObjectsQuery) executeWildcardStreamed(
+	ctx context.Context,
+	req *openfgav1.StreamedListObjectsRequest,
+	srv openfgav1.OpenFGAService_StreamedListObjectsServer,
+) (*ListObjectsResolutionMetadata, error) {
+	typesys, ok := typesystem.TypesystemFromContext(ctx)
+	if !ok {
+		return nil, fmt.Errorf("%w: typesystem missing in context", openfgaErrors.ErrUnknown)
+	}
+
+	targetRelation := req.GetRelation()
+	targetTypes := typesWithRelation(typesys, targetRelation)
+	if len(targetTypes) == 0 {
+		return nil, serverErrors.RelationNotFound(targetRelation, listObjectsWildcardType, nil)
+	}
+
+	var agg ListObjectsResolutionMetadata
+	syncSrv := &mutexStreamServer{OpenFGAService_StreamedListObjectsServer: srv}
+
+	pool := concurrency.NewPool(ctx, q.wildcardConcurrency(len(targetTypes)))
+	for _, objectType := range targetTypes {
+		objectType := objectType
+		pool.Go(func(ctx context.Context) error {
+			meta, err := q.ExecuteStreamed(ctx, &openfgav1.StreamedListObjectsRequest{
+				StoreId:              req.GetStoreId(),
+				AuthorizationModelId: req.GetAuthorizationModelId(),
+				Type:                 objectType,
+				Relation:             targetRelation,
+				User:                 req.GetUser(),
+				ContextualTuples:     req.GetContextualTuples(),
+				Context:              req.GetContext(),
+				Consistency:          req.GetConsistency(),
+			}, syncSrv)
+			if err != nil {
+				return err
+			}
+
+			agg.DatastoreQueryCount.Add(meta.DatastoreQueryCount.Load())
+			agg.DatastoreItemCount.Add(meta.DatastoreItemCount.Load())
+			agg.DispatchCounter.Add(meta.DispatchCounter.Load())
+			agg.CheckCounter.Add(meta.CheckCounter.Load())
+			if meta.DispatchThrottled.Load() {
+				agg.DispatchThrottled.Store(true)
+			}
+			if meta.DatastoreThrottled.Load() {
+				agg.DatastoreThrottled.Store(true)
+			}
+			if meta.WasWeightedGraphUsed.Load() {
+				agg.WasWeightedGraphUsed.Store(true)
+			}
+			return nil
+		})
+	}
+
+	if err := pool.Wait(); err != nil {
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+			return &agg, nil
+		}
+		return nil, err
+	}
+
+	return &agg, nil
 }
 
 // confirmListObjectsBreakingChange folds a single streamed object into the
