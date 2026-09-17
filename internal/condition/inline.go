@@ -3,6 +3,7 @@ package condition
 import (
 	"fmt"
 	"maps"
+	"slices"
 
 	celast "github.com/google/cel-go/common/ast"
 	"google.golang.org/protobuf/types/known/structpb"
@@ -92,7 +93,7 @@ func NewCompiledFromInlineExpression(ctx *structpb.Struct) (*EvaluableCondition,
 		return nil, fmt.Errorf("%s: invalid CEL expression: %w", InlineExpressionName, issues.Err())
 	}
 
-	inferredIdents := extractIdents(ast.NativeRep().Expr(), nil)
+	inferredIdents := extractIdents(ast.NativeRep().Expr())
 	if declaredParams == nil && len(inferredIdents) > 0 {
 		declaredParams = make(conditionParameters, len(inferredIdents))
 	}
@@ -113,77 +114,88 @@ func NewCompiledFromInlineExpression(ctx *structpb.Struct) (*EvaluableCondition,
 	return NewCompiled(cond)
 }
 
-// extractIdents recursively walks a CEL expression and returns the names of all
+// extractIdents iteratively walks a CEL expression and returns the names of all
 // variable identifiers, excluding those bound by enclosing comprehensions (locals).
-func extractIdents(expr celast.Expr, locals map[string]bool) []string {
+func extractIdents(expr celast.Expr) []string {
 	if expr == nil {
 		return nil
 	}
-	switch expr.Kind() {
-	case celast.IdentKind:
-		name := expr.AsIdent()
-		if locals[name] {
-			return nil
-		}
-		return []string{name}
 
-	case celast.SelectKind:
-		return extractIdents(expr.AsSelect().Operand(), locals)
-
-	case celast.CallKind:
-		call := expr.AsCall()
-		var result []string
-		if call.IsMemberFunction() {
-			result = append(result, extractIdents(call.Target(), locals)...)
-		}
-		for _, arg := range call.Args() {
-			result = append(result, extractIdents(arg, locals)...)
-		}
-		return result
-
-	case celast.ListKind:
-		var result []string
-		for _, elem := range expr.AsList().Elements() {
-			result = append(result, extractIdents(elem, locals)...)
-		}
-		return result
-
-	case celast.MapKind:
-		var result []string
-		for _, entry := range expr.AsMap().Entries() {
-			me := entry.AsMapEntry()
-			result = append(result, extractIdents(me.Key(), locals)...)
-			result = append(result, extractIdents(me.Value(), locals)...)
-		}
-		return result
-
-	case celast.StructKind:
-		var result []string
-		for _, field := range expr.AsStruct().Fields() {
-			result = append(result, extractIdents(field.AsStructField().Value(), locals)...)
-		}
-		return result
-
-	case celast.ComprehensionKind:
-		comp := expr.AsComprehension()
-		// Create a new locals scope that includes the comprehension-bound variables.
-		innerLocals := maps.Clone(locals)
-		if innerLocals == nil {
-			innerLocals = map[string]bool{}
-		}
-		innerLocals[comp.IterVar()] = true
-		if comp.HasIterVar2() {
-			innerLocals[comp.IterVar2()] = true
-		}
-		innerLocals[comp.AccuVar()] = true
-
-		var result []string
-		result = append(result, extractIdents(comp.IterRange(), locals)...)
-		result = append(result, extractIdents(comp.AccuInit(), innerLocals)...)
-		result = append(result, extractIdents(comp.LoopCondition(), innerLocals)...)
-		result = append(result, extractIdents(comp.LoopStep(), innerLocals)...)
-		result = append(result, extractIdents(comp.Result(), innerLocals)...)
-		return result
+	type stackItem struct {
+		expr   celast.Expr
+		locals map[string]bool
 	}
-	return nil
+
+	var results []string
+
+	stack := []stackItem{{expr: expr, locals: nil}}
+
+	for len(stack) > 0 {
+		idx := len(stack) - 1
+		current := stack[idx]
+		stack = stack[:idx]
+
+		expr := current.expr
+		locals := current.locals
+
+		switch expr.Kind() {
+		case celast.IdentKind:
+			name := expr.AsIdent()
+			if locals[name] {
+				return nil
+			}
+			results = append(results, name)
+
+		case celast.SelectKind:
+			stack = append(stack, stackItem{expr: expr.AsSelect().Operand(), locals: locals})
+
+		case celast.CallKind:
+			call := expr.AsCall()
+
+			for _, arg := range slices.Backward(call.Args()) {
+				stack = append(stack, stackItem{expr: arg, locals: locals})
+			}
+
+			if call.IsMemberFunction() {
+				stack = append(stack, stackItem{expr: call.Target(), locals: locals})
+			}
+
+		case celast.ListKind:
+			for _, elem := range slices.Backward(expr.AsList().Elements()) {
+				stack = append(stack, stackItem{expr: elem, locals: locals})
+			}
+
+		case celast.MapKind:
+			for _, entry := range slices.Backward(expr.AsMap().Entries()) {
+				me := entry.AsMapEntry()
+				stack = append(stack, stackItem{expr: me.Key(), locals: locals})
+				stack = append(stack, stackItem{expr: me.Value(), locals: locals})
+			}
+
+		case celast.StructKind:
+			for _, field := range slices.Backward(expr.AsStruct().Fields()) {
+				stack = append(stack, stackItem{expr: field.AsStructField().Value(), locals: locals})
+			}
+
+		case celast.ComprehensionKind:
+			comp := expr.AsComprehension()
+			// Create a new locals scope that includes the comprehension-bound variables.
+			innerLocals := maps.Clone(locals)
+			if innerLocals == nil {
+				innerLocals = map[string]bool{}
+			}
+			innerLocals[comp.IterVar()] = true
+			if comp.HasIterVar2() {
+				innerLocals[comp.IterVar2()] = true
+			}
+			innerLocals[comp.AccuVar()] = true
+
+			stack = append(stack, stackItem{expr: comp.Result(), locals: innerLocals})
+			stack = append(stack, stackItem{expr: comp.LoopStep(), locals: innerLocals})
+			stack = append(stack, stackItem{expr: comp.LoopCondition(), locals: innerLocals})
+			stack = append(stack, stackItem{expr: comp.AccuInit(), locals: innerLocals})
+			stack = append(stack, stackItem{expr: comp.IterRange(), locals: locals})
+		}
+	}
+	return results
 }
