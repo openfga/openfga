@@ -141,8 +141,7 @@ func NewWithDB(db *sql.DB, cfg *sqlcommon.Config) (*Datastore, error) {
 	}, nil
 }
 
-// Querier see [storage.RelationshipTupleReader].Querier. Renders and runs typed
-// query.Statements against the SQLite connection.
+// Querier see [storage.RelationshipTupleReader].Querier.
 func (s *Datastore) Querier(_ openfgav1.ConsistencyPreference) adapter.Querier {
 	return sqliteadapter.New(s.db)
 }

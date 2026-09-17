@@ -14,9 +14,9 @@ func assertSQL(t *testing.T, got, want string) {
 	}
 }
 
-// TestSQLiteSubjectColumnsAreDiscrete is SQLite's defining divergence: the subject is stored
-// across three physical columns, so a subject field is a plain column reference — none of the
-// packed-_user string surgery MySQL and PostgreSQL emit.
+// TestSQLiteSubjectColumnsAreDiscrete verifies a subject field is a plain column reference:
+// SQLite stores the subject across three physical columns, unlike the packed _user in
+// MySQL/PostgreSQL.
 func TestSQLiteSubjectColumnsAreDiscrete(t *testing.T) {
 	a := query.NewTuple("a")
 	stmt := query.Select(a.SubjectID()).
@@ -47,8 +47,7 @@ func TestSQLiteMapsEveryLogicalColumn(t *testing.T) {
 	assertSQL(t, sql, want)
 }
 
-// TestSQLiteSelfJoinAndCast exercises the join clause and an erasure-hatch node (CAST). The
-// cast target is the CastType ENUM, and SQLite spells TypeVarchar as TEXT.
+// TestSQLiteSelfJoinAndCast exercises a self-join and a CAST; SQLite spells TypeVarchar as TEXT.
 func TestSQLiteSelfJoinAndCast(t *testing.T) {
 	a := query.NewTuple("a")
 	g := query.NewTuple("g")
@@ -65,9 +64,8 @@ func TestSQLiteSelfJoinAndCast(t *testing.T) {
 	assertSQL(t, sql, want)
 }
 
-// TestSQLiteNativeFilter is the divergence that separates SQLite from MySQL: SQLite has a real
-// FILTER (WHERE ...) clause, so a filtered aggregate emits it directly with no CASE emulation.
-// Relation literals are inlined, so no binds appear.
+// TestSQLiteNativeFilter verifies SQLite emits a real FILTER (WHERE ...) clause for a filtered
+// aggregate, with no CASE emulation. Relation literals are inlined, so no binds appear.
 func TestSQLiteNativeFilter(t *testing.T) {
 	a := query.NewTuple("a")
 	match := query.Eq(a.ObjectRelation(), query.Lit("viewer"))
@@ -88,7 +86,7 @@ func TestSQLiteFilteredCountStar(t *testing.T) {
 	assertSQL(t, sql, "SELECT COUNT(*) FILTER (WHERE a.relation = 'viewer') FROM tuple a")
 }
 
-// TestSQLitePlainDistinct covers the one DISTINCT flavour the tightened surface keeps.
+// TestSQLitePlainDistinct covers a plain SELECT DISTINCT.
 func TestSQLitePlainDistinct(t *testing.T) {
 	a := query.NewTuple("a")
 	stmt := query.Select(a.ObjectID()).From(a).Distinct()

@@ -65,8 +65,8 @@ func TestPGMapsEveryLogicalColumn(t *testing.T) {
 	assertSQL(t, sql, want)
 }
 
-// TestPGBindsSetAsArray is PostgreSQL's headline optimization: a bound set binds as ONE array
-// parameter compared with "= ANY ($N)", rather than being expanded to IN(?, ?, ...).
+// TestPGBindsSetAsArray verifies a bound set binds as one array parameter with "= ANY ($N)",
+// rather than being expanded to IN(?, ?, ...).
 func TestPGBindsSetAsArray(t *testing.T) {
 	a := query.NewTuple("a")
 	stmt := query.Select(a.ObjectID()).
@@ -79,7 +79,7 @@ func TestPGBindsSetAsArray(t *testing.T) {
 	sql, args := pg.Render(stmt)
 	assertSQL(t, sql,
 		"SELECT a.object_id FROM tuple a WHERE (a.object_type = $1 AND a.relation = ANY ($2))")
-	if len(args) != 2 { // the set is ONE array param
+	if len(args) != 2 { // the set is one array param
 		t.Errorf("args: got %d %v, want 2", len(args), args)
 	}
 }
@@ -140,8 +140,7 @@ func TestPGLike(t *testing.T) {
 	}
 }
 
-// TestPGOffsetWithoutLimit verifies PostgreSQL accepts a bare OFFSET, with no synthetic LIMIT
-// (the MySQL quirk PostgreSQL does not share).
+// TestPGOffsetWithoutLimit verifies PostgreSQL accepts a bare OFFSET with no synthetic LIMIT.
 func TestPGOffsetWithoutLimit(t *testing.T) {
 	a := query.NewTuple("a")
 	stmt := query.Select(a.ObjectID()).From(a).Offset(20)

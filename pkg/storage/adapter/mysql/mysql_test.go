@@ -14,8 +14,7 @@ func assertSQL(t *testing.T, got, want string) {
 	}
 }
 
-// TestMySQLOwnsColumnMapping shows the renderer applying its OWN packed-_user decode for
-// subject columns — divergent SQL no other adapter produces.
+// TestMySQLOwnsColumnMapping verifies subject columns render with MySQL's packed-_user decode.
 func TestMySQLOwnsColumnMapping(t *testing.T) {
 	a := query.NewTuple("a")
 	stmt := query.Select(a.SubjectID()).
@@ -49,8 +48,7 @@ func TestMySQLMapsEveryLogicalColumn(t *testing.T) {
 	assertSQL(t, sql, want)
 }
 
-// TestMySQLSelfJoinAndCast exercises the join clause and an erasure-hatch node (CAST). The cast
-// target is the CastType ENUM, and MySQL spells TypeVarchar as CHAR.
+// TestMySQLSelfJoinAndCast exercises a self-join and a CAST; MySQL spells TypeVarchar as CHAR.
 func TestMySQLSelfJoinAndCast(t *testing.T) {
 	a := query.NewTuple("a")
 	g := query.NewTuple("g")
@@ -67,11 +65,8 @@ func TestMySQLSelfJoinAndCast(t *testing.T) {
 	assertSQL(t, sql, want)
 }
 
-// --- the divergences that justify MySQL owning its renderer -----------------------------
-
-// TestMySQLEmulatesAggregateFilter is the most important test in this package: a filtered
-// aggregate renders as a MySQL CASE-wrapped argument, not a FILTER clause. The node is
-// restructured rather than renamed, which no dialect table of names could produce.
+// TestMySQLEmulatesAggregateFilter verifies a filtered aggregate renders as a CASE-wrapped
+// argument, not a FILTER clause, since MySQL has no FILTER.
 func TestMySQLEmulatesAggregateFilter(t *testing.T) {
 	a := query.NewTuple("a")
 	match := query.Eq(a.ObjectRelation(), query.Lit("viewer"))
@@ -94,8 +89,7 @@ func TestMySQLEmulatesFilteredCountStar(t *testing.T) {
 	assertSQL(t, sql, "SELECT COUNT(CASE WHEN a.relation = 'viewer' THEN 1 END) FROM tuple a")
 }
 
-// TestMySQLPlainDistinct covers the one DISTINCT flavour the tightened surface keeps: a plain
-// SELECT DISTINCT.
+// TestMySQLPlainDistinct covers a plain SELECT DISTINCT.
 func TestMySQLPlainDistinct(t *testing.T) {
 	a := query.NewTuple("a")
 	stmt := query.Select(a.ObjectID()).From(a).Distinct()
@@ -114,8 +108,7 @@ func TestMySQLOffsetImpliesLimit(t *testing.T) {
 	assertSQL(t, sql, "SELECT a.object_id FROM tuple a LIMIT 18446744073709551615 OFFSET 20")
 }
 
-// TestMySQLJSONPairArgumentForm shows a divergence in argument STRUCTURE rather than name:
-// MySQL's JSON_OBJECT takes the flat "k, v" argument form.
+// TestMySQLJSONPairArgumentForm verifies MySQL's JSON_OBJECT takes the flat "k, v" argument form.
 func TestMySQLJSONPairArgumentForm(t *testing.T) {
 	a := query.NewTuple("a")
 	obj := query.JSONObject(query.Pair(query.Lit("rel"), a.ObjectRelation()))

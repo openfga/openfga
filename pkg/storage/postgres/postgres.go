@@ -319,8 +319,8 @@ func (s *Datastore) Close() {
 	}
 }
 
-// Querier see [storage.RelationshipTupleReader].Querier. It renders and runs typed
-// query.Statements over the pool selected for the given consistency preference.
+// Querier see [storage.RelationshipTupleReader].Querier. It uses the pool selected for
+// the given consistency preference.
 func (s *Datastore) Querier(consistency openfgav1.ConsistencyPreference) adapter.Querier {
 	return pg.New(s.getPgxPool(consistency))
 }

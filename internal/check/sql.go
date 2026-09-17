@@ -45,9 +45,8 @@ func (s *SQLStrategy) Exclusion(ctx context.Context, req *Request, edge *GroupEd
 	return s.weight1(ctx, req, s.datastore.Querier(req.GetConsistency()), edge.Edges, graph.ExclusionOperator)
 }
 
-// branchOutcome is what we know about a branch while evaluating a boolean subtree:
-// branchTrue / branchFalse are definite, branchNeedsQuery means the answer cannot be
-// determined without a database read.
+// branchOutcome is what is known about a branch: branchTrue/branchFalse are definite,
+// branchNeedsQuery means the answer requires a database read.
 type branchOutcome uint8
 
 const (
@@ -56,17 +55,17 @@ const (
 	branchFalse
 )
 
-// leaf is a weight-1 terminal (direct assignment) reached while walking the subtree: a
-// stored `relation` value, whether it matches the public wildcard subject `type:*` rather
-// than the exact request subject, and the set of condition names the edge admits.
+// leaf is a weight-1 terminal (direct assignment): its stored `relation`, whether it
+// matches the public wildcard subject `type:*` (rather than the exact request subject),
+// and the set of condition names the edge admits.
 type leaf struct {
 	relation   string
 	wildcard   bool
 	conditions []string
 }
 
-// gatheredRow is one row of the conditioned gather query, decoded into the fields needed
-// to match it back to a leaf and to run the tuple's condition.
+// gatheredRow is one row of the conditioned gather query, holding the fields needed to
+// match it to a leaf and to run the tuple's condition.
 type gatheredRow struct {
 	relation   string
 	subjectID  string
@@ -75,24 +74,18 @@ type gatheredRow struct {
 	condCtx    *structpb.Struct
 }
 
-// residual is the outcome of evaluating a subtree: a definite state, or an unknown state
-// (branchNeedsQuery) optionally carrying the SQL predicate that must hold for the branch to be
-// satisfied. The reduceLeaf reducer sets the predicate (consumed on the existence path); the
-// gathered-row reducer leaves it nil (the gather path re-evaluates against the read rows, not a
-// predicate).
-//
-// pred is a POINTER because query.Predicate is a struct, not a nilable interface: a nil
-// *query.Predicate is how the evaluation expresses "this branch carries no predicate" (the
-// gathered-row reducer's residuals), the role interface-nil played before the typed surface.
+// residual is the outcome of evaluating a subtree: a definite state, or branchNeedsQuery
+// optionally carrying the SQL predicate that must hold for the branch to be satisfied.
+// reduceLeaf sets pred (consumed on the existence path); the gathered-row reducer leaves it
+// nil, since the gather path re-evaluates against the read rows rather than a predicate.
 type residual struct {
 	state branchOutcome
 	pred  *query.Predicate
 }
 
 // leafReducer reduces a single weight-1 leaf to a residual. The subtree is evaluated at most
-// twice: once with reduceLeaf (contextual short-circuit + filter accumulation + existence
-// rendering in a single pass), and again on the conditioned path with a gathered-row reducer that
-// matches each leaf against the rows read back.
+// twice: once with reduceLeaf, and again on the conditioned path with a reducer that matches
+// each leaf against the gathered rows.
 type leafReducer func(ctx context.Context, l leaf) (residual, error)
 
 // weight1 answers whether the request's user has the requested relation to the object,
@@ -116,11 +109,10 @@ func (s *SQLStrategy) weight1(ctx context.Context, req *Request, querier adapter
 	obj := req.GetTupleKey().GetObject()
 	w.objectType, w.objectID = tuple.SplitObject(obj)
 
-	// A single evaluation pass does three jobs at once: it short-circuits on contextual tuples,
-	// accumulates the WHERE filter state (relConds/conditioned/hasWildcardLeaf) for every leaf it
-	// visits, and renders the existence predicate. Because the evaluation prunes determined
-	// branches, only leaves that actually need a database read contribute to the filter — so the
-	// query is narrower than an unconditional walk of the whole subtree would produce.
+	// A single evaluation pass short-circuits on contextual tuples, accumulates the WHERE filter
+	// state (relConds/conditioned/hasWildcardLeaf), and renders the existence predicate. Since
+	// determined branches are pruned, only leaves that need a database read contribute to the
+	// filter, keeping the query narrower than a full walk of the subtree would.
 	res, err := w.evaluateSubtree(ctx, edges, operation, w.reduceLeaf)
 	if err != nil {
 		return nil, err
@@ -133,10 +125,9 @@ func (s *SQLStrategy) weight1(ctx context.Context, req *Request, querier adapter
 	default: // branchNeedsQuery: a database read is required.
 	}
 
-	// A conditioned leaf survived evaluation, so tuple conditions must be evaluated in-app: gather
-	// the candidate rows and re-evaluate against them. The rendered existence predicate is unusable
-	// here (it counts rows without checking conditions), so it is discarded — but the filter
-	// state the same evaluation pass accumulated drives the gather query.
+	// A conditioned leaf survived, so conditions must be evaluated in-app: gather the candidate
+	// rows and re-evaluate against them. The existence predicate counts rows without checking
+	// conditions, so it is discarded, but the accumulated filter state drives the gather query.
 	if w.conditioned {
 		return w.evalConditioned(ctx, edges, operation)
 	}
@@ -163,14 +154,11 @@ type walker struct {
 	objectType string
 	objectID   string
 
-	// relConds maps each stored `relation` referenced by a leaf that survived evaluation (was not
-	// pruned, nor resolved by a contextual tuple, nor short-circuited away) to the set of
-	// condition names that relation admits (the NoCond "" sentinel included when a leaf admits
-	// unconditioned tuples). It forms both the WHERE `relation IN (...)` filter and — on the
-	// gather path — the per-relation condition filter, so a tuple whose condition its relation
-	// does not admit is excluded in the database rather than gathered and rejected in-app. The
-	// pairing is per relation: a condition admitted for one relation does not admit it for
-	// another. Accumulated by reduceLeaf as the evaluation visits each leaf.
+	// relConds maps each stored `relation` referenced by a surviving leaf to the set of condition
+	// names that relation admits (including the NoCond "" sentinel when unconditioned tuples are
+	// admitted). It forms the WHERE `relation IN (...)` filter and, on the gather path, the
+	// per-relation condition filter. The pairing is per relation: a condition admitted for one
+	// relation is not admitted for another. Accumulated by reduceLeaf.
 	relConds map[string]map[string]struct{}
 	// conditioned is set when a surviving leaf admits a named condition, selecting the gather
 	// path over the existence path. Accumulated by reduceLeaf.
@@ -190,10 +178,8 @@ func (w *walker) leafFrom(edge *graph.WeightedAuthorizationModelEdge) leaf {
 }
 
 // accumulateFilter records the WHERE filter state a leaf contributes (its relation, admitted
-// conditions, wildcard and conditioned flags). The reduceLeaf reducer calls it for every leaf the
-// evaluation reaches, so the filter reflects exactly the leaves that survive to need a database
-// read — a leaf resolved by a contextual tuple or dropped by a short-circuit contributes nothing,
-// keeping the query as narrow as the boolean structure allows.
+// conditions, wildcard and conditioned flags). reduceLeaf calls it only for leaves that survive
+// to need a database read, so the filter stays as narrow as the boolean structure allows.
 func (w *walker) accumulateFilter(l leaf) {
 	conds, ok := w.relConds[l.relation]
 	if !ok {
@@ -224,9 +210,9 @@ func (w *walker) pruned(edge *graph.WeightedAuthorizationModelEdge) bool {
 }
 
 // evaluateSubtree reduces the subtree formed by edges under operation to a residual, delegating
-// each leaf to reduce. State computation (the short-circuiting boolean algebra) is shared by both
-// callers; reduceLeaf additionally yields a predicate that is combined into residual.pred, while
-// the gathered-result reducer yields only a definite state and leaves pred nil.
+// each leaf to reduce. The short-circuiting boolean algebra is shared by both callers; reduceLeaf
+// additionally combines a predicate into residual.pred, while the gathered-result reducer leaves
+// pred nil.
 func (w *walker) evaluateSubtree(ctx context.Context, edges []*graph.WeightedAuthorizationModelEdge, operation string, reduce leafReducer) (residual, error) {
 	switch operation {
 	case graph.UnionOperator:
@@ -327,15 +313,11 @@ func (w *walker) evaluateNode(ctx context.Context, node *graph.WeightedAuthoriza
 	return w.evaluateSubtree(ctx, edges, operation, reduce)
 }
 
-// reduceLeaf is the single first-pass reducer. A contextual tuple satisfying the leaf resolves it
-// to branchTrue without any database dependency — and, since a resolved leaf needs no row, its
-// filter state is not accumulated. Otherwise the leaf needs a database read: its filter state is
-// recorded (so the WHERE covers exactly the surviving leaves) and it renders the existence
-// aggregate counting rows for its relation. The subject and unconditioned-tuple narrowing is
-// uniform across every leaf, so it lives once in the shared WHERE (see evalExistence) rather than
-// in each count's FILTER clause. On the gather path the rendered predicate is discarded, but the
-// accumulated filter state still drives the query (see weight1). Absence from the contextual set
-// does not prove absence in the database, so a miss is branchNeedsQuery, never branchFalse.
+// reduceLeaf is the first-pass reducer. A contextual tuple satisfying the leaf resolves it to
+// branchTrue and accumulates no filter state, since it needs no row. Otherwise the leaf needs a
+// database read: its filter state is recorded and it renders the existence aggregate counting
+// rows for its relation. Absence from the contextual set does not prove absence in the database,
+// so a miss is branchNeedsQuery, never branchFalse.
 func (w *walker) reduceLeaf(ctx context.Context, l leaf) (residual, error) {
 	ok, err := w.contextLeafSatisfied(ctx, l)
 	if err != nil {
@@ -353,8 +335,8 @@ func (w *walker) reduceLeaf(ctx context.Context, l leaf) (residual, error) {
 
 // contextLeafSatisfied reports whether a contextual tuple satisfies the leaf (matching the
 // request subject/object and passing the leaf's condition). An unconditioned leaf carries the
-// NoCond ("") sentinel in l.conditions and an unconditioned tuple has an empty condition name,
-// so evaluateCondition matches and passes it without any per-condition special-casing here.
+// NoCond ("") sentinel and an unconditioned tuple has an empty condition name, so
+// evaluateCondition matches and passes it without special-casing here.
 func (w *walker) contextLeafSatisfied(ctx context.Context, l leaf) (bool, error) {
 	var candidates []*openfgav1.TupleKey
 	if l.wildcard {
@@ -389,18 +371,13 @@ func (w *walker) contextLeafSatisfied(ctx context.Context, l leaf) (bool, error)
 }
 
 // evalExistence answers the no-condition case with a single existence query: SELECT 1 over the
-// surviving relations, with the boolean subtree (rendered by reduceLeaf during evaluation in
-// weight1) supplied as pred and placed in HAVING. Because object_id is pinned to a single value
-// by the shared WHERE, the aggregates form one implicit group, so no GROUP BY is needed.
-//
-// pred is a *query.Predicate: on this path evaluation always produces one, but a nil pointer would
-// simply omit HAVING (a SELECT 1 filtered only by the shared WHERE), mirroring the renderer's
-// nil-clause contract rather than dereferencing blindly.
+// surviving relations, with the boolean subtree supplied as pred in HAVING. Because object_id is
+// pinned to a single value by the shared WHERE, the aggregates form one implicit group, so no
+// GROUP BY is needed. A nil pred simply omits HAVING.
 func (w *walker) evalExistence(ctx context.Context, pred *query.Predicate) (*Response, error) {
-	// Only unconditioned tuples may satisfy a leaf on the existence path; a conditioned model
-	// would have routed to the gather path, so this narrowing is uniform across every leaf and
-	// lives here in the shared WHERE rather than in each COUNT FILTER. The empty-condition
-	// sentinel is a fixed, trusted constant, so it is emitted with Lit rather than Bind.
+	// Only unconditioned tuples reach the existence path (a conditioned model routes to the gather
+	// path), so this narrowing is uniform across every leaf and lives in the shared WHERE rather
+	// than in each COUNT FILTER.
 	where := append(w.whereShared(), w.relationIn(), w.unconditioned())
 	stmt := query.Select(query.Lit[int64](1)).
 		From(w.table).
@@ -426,9 +403,8 @@ func (w *walker) evalExistence(ctx context.Context, pred *query.Predicate) (*Res
 // condition columns, evaluates each row's condition in-app, then evaluates the subtree with the
 // per-leaf results.
 func (w *walker) evalConditioned(ctx context.Context, edges []*graph.WeightedAuthorizationModelEdge, operation string) (*Response, error) {
-	// The relation/wildcard/condition filter state was accumulated by reduceLeaf during evaluation
-	// in weight1, so the WHERE filter can be built directly. Reaching here implies a conditioned
-	// leaf survived that evaluation, so relConds is non-empty; the guard is defensive.
+	// reduceLeaf already accumulated the filter state, so the WHERE can be built directly. Reaching
+	// here implies a conditioned leaf survived, so relConds is non-empty; the guard is defensive.
 	if len(w.relConds) == 0 {
 		return &Response{Allowed: false}, nil
 	}
@@ -488,10 +464,9 @@ func (w *walker) evalConditioned(ctx context.Context, edges []*graph.WeightedAut
 	return &Response{Allowed: res.state == branchTrue}, nil
 }
 
-// leafSatisfied reports whether a contextual tuple or a gathered database row matches the
-// leaf and passes the leaf's condition. The contextual re-check here is intentional: it is
-// cheap (contextual tuples are in-memory) and lets a contextual tuple satisfy a leaf that has
-// no matching database row.
+// leafSatisfied reports whether a contextual tuple or a gathered database row matches the leaf
+// and passes its condition. The contextual re-check is intentional: it is cheap (in-memory) and
+// lets a contextual tuple satisfy a leaf that has no matching database row.
 func (w *walker) leafSatisfied(ctx context.Context, l leaf, gathered []gatheredRow) (bool, error) {
 	if ok, err := w.contextLeafSatisfied(ctx, l); err != nil {
 		return false, err
@@ -551,9 +526,8 @@ func (w *walker) whereShared() []query.Predicate {
 	return preds
 }
 
-// unconditioned admits the rows carrying no condition: a NULL condition name, or the empty-string
-// sentinel some writers store. The sentinel is a fixed, trusted constant, so it is emitted with
-// Lit rather than Bind.
+// unconditioned admits rows carrying no condition: a NULL condition name, or the empty-string
+// sentinel some writers store.
 func (w *walker) unconditioned() query.Predicate {
 	return query.Or(
 		query.IsNull(w.table.Condition()),
@@ -572,8 +546,7 @@ func (w *walker) sortedRelations() []string {
 }
 
 // relationIn renders the accumulated relation set as a sorted `relation IN (...)` filter for the
-// existence path. Relation names come from the model, so they are safe to inline directly rather
-// than bind.
+// existence path. Relation names come from the model, so they are safe to inline rather than bind.
 func (w *walker) relationIn() query.Predicate {
 	names := w.sortedRelations()
 	lits := make([]query.Expr[string], len(names))
@@ -583,15 +556,13 @@ func (w *walker) relationIn() query.Predicate {
 	return query.In(w.table.ObjectRelation(), lits...)
 }
 
-// gatherFilter restricts the gather query to tuples whose (relation, condition) pairing the
-// model actually admits. A single global `relation IN (...) AND condition IN (...)` would be
-// wrong: it would admit a tuple whose relation and condition are each individually referenced
-// but by different leaves (e.g. relation rel1 carrying a condition only rel2 admits). Instead it
-// emits a disjunction of per-relation clauses — `(relation = r AND <conds for r>) OR ...` — so
-// each relation is paired only with the conditions its own leaves admit. A tuple carrying a
-// condition its relation does not admit is therefore excluded in the database rather than
-// gathered and rejected in-app. Relations are sorted for deterministic SQL, and evalConditioned
-// guards against an empty relation set before calling, so the returned predicate is never empty.
+// gatherFilter restricts the gather query to tuples whose (relation, condition) pairing the model
+// admits. A single global `relation IN (...) AND condition IN (...)` would be wrong: it would
+// admit a tuple whose relation and condition are each referenced but by different leaves (e.g.
+// rel1 carrying a condition only rel2 admits). Instead it emits a disjunction of per-relation
+// clauses — `(relation = r AND <conds for r>) OR ...` — so each relation is paired only with the
+// conditions its own leaves admit. Relations are sorted for deterministic SQL; evalConditioned
+// guards against an empty relation set, so the returned predicate is never empty.
 func (w *walker) gatherFilter() query.Predicate {
 	var clauses []query.Predicate
 	for _, relation := range w.sortedRelations() {
@@ -609,10 +580,9 @@ func (w *walker) gatherFilter() query.Predicate {
 }
 
 // conditionPred renders the predicate admitting exactly the condition names in conds: the named
-// conditions via `condition IN (...)` plus, when the NoCond sentinel is present (the relation
-// admits unconditioned tuples), the unconditioned rows (`condition IS NULL OR condition = ”`).
-// Names are sorted for deterministic SQL. Condition names come from the model, so they are safe
-// to inline directly rather than bind.
+// conditions via `condition IN (...)` plus, when the NoCond sentinel is present, the
+// unconditioned rows. Names are sorted for deterministic SQL and, coming from the model, are safe
+// to inline rather than bind.
 func (w *walker) conditionPred(conds map[string]struct{}) query.Predicate {
 	names := make([]string, 0, len(conds))
 	unconditioned := false
@@ -645,8 +615,8 @@ func (w *walker) conditionPred(conds map[string]struct{}) query.Predicate {
 }
 
 // combinePreds reduces preds with join; an empty list yields the given identity state. The
-// gathered-result reducer carries no predicate, contributing nil preds, in which case join
-// returns nil and the result is a bare branchNeedsQuery.
+// gathered-result reducer contributes nil preds, in which case join returns nil and the result is
+// a bare branchNeedsQuery.
 func combinePreds(preds []*query.Predicate, empty branchOutcome, join func(a, b *query.Predicate) *query.Predicate) residual {
 	if len(preds) == 0 {
 		return residual{state: empty}
@@ -658,10 +628,9 @@ func combinePreds(preds []*query.Predicate, empty branchOutcome, join func(a, b 
 	return residual{state: branchNeedsQuery, pred: acc}
 }
 
-// andPred, orPred, and notPred combine predicates that may be nil. Within a single evaluation every
-// branchNeedsQuery residual is either all-nil (the gathered-result reducer) or all-non-nil
-// (reduceLeaf), so returning nil when any operand is nil is correct: reduceLeaf always yields a
-// real predicate, while the gather path never reads one.
+// andPred, orPred, and notPred combine predicates that may be nil. Within a single evaluation the
+// operands are either all-nil (gathered-result reducer) or all-non-nil (reduceLeaf), so returning
+// nil when any operand is nil is correct.
 func andPred(a, b *query.Predicate) *query.Predicate {
 	if a == nil || b == nil {
 		return nil

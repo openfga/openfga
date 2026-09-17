@@ -1,17 +1,11 @@
 //go:build docker
 
-// These integration tests drive weight1 end to end against a real PostgreSQL database in a test
-// container. Each case turns a model DSL into a weighted graph, seeds tuples through the real
-// postgres datastore, then runs weight1 against the datastore's own adapter.Querier and asserts
-// the boolean decision.
+// These integration tests drive weight1 end to end against a real PostgreSQL container: each case
+// seeds tuples through the postgres datastore, runs weight1 against the datastore's Querier, and
+// asserts the decision. Where sql_test.go pins the emitted SQL against a fake, this suite proves
+// Postgres returns correct decisions when it runs that SQL.
 //
-// sql_test.go pins the emitted SQL shape and evaluation behavior against a fake executor; this suite
-// closes the remaining gap by proving the emitted SQL returns correct authorization decisions when
-// Postgres actually runs it — the existence (HAVING) path, the conditioned (gather) path, and the
-// contextual-tuple short-circuit.
-//
-// Gated behind the `docker` build tag so the check package stays Docker-free in the
-// `make test-unit` / `make test` lanes; run with `go test -tags=docker ./internal/check/...`.
+// Gated behind the `docker` build tag; run with `go test -tags=docker ./internal/check/...`.
 package check
 
 import (
@@ -32,9 +26,7 @@ import (
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
-// pgEnv is the shared PostgreSQL backing for the suite: a single datastore used both to seed
-// tuples and, via its Querier, to run weight1. Storagefixtures bootstraps the container once and
-// tears it down in TestMain; the datastore is closed via t.Cleanup.
+// pgEnv is a single datastore used both to seed tuples and, via its Querier, to run weight1.
 type pgEnv struct {
 	ds *postgres.Datastore
 }
@@ -50,9 +42,8 @@ func setupPgEnv(t *testing.T) *pgEnv {
 	return &pgEnv{ds: ds}
 }
 
-// run seeds tuples under a fresh store id (so cases sharing the container's database never
-// collide), then evaluates weight1 for object#relation@user and returns the decision. ReqCtx may
-// be nil; when set it is supplied for CEL evaluation on the gather path.
+// run seeds tuples under a fresh store id (so cases never collide), evaluates weight1 for
+// object#relation@user, and returns the decision. reqCtx, when set, feeds CEL on the gather path.
 func (e *pgEnv) run(t *testing.T, g *modelgraph.AuthorizationModelGraph, tuples []*openfgav1.TupleKey, object, relation, user string, reqCtx map[string]any, ctxTuples ...*openfgav1.TupleKey) bool {
 	t.Helper()
 	ctx := context.Background()
@@ -220,8 +211,8 @@ func TestSqlWeight1Integration_Wildcard(t *testing.T) {
 	})
 }
 
-// TestSqlWeight1Integration_NestedTree drives a deeply nested weight 1 set-operation model.
-// It proves the single existence query's HAVING tree evaluates the whole boolean structure correctly against Postgres.
+// TestSqlWeight1Integration_NestedTree pins that the single existence query's HAVING tree
+// evaluates a deeply nested boolean model correctly against Postgres.
 func TestSqlWeight1Integration_NestedTree(t *testing.T) {
 	e := setupPgEnv(t)
 	g := mustGraph(t, `
@@ -310,8 +301,8 @@ func TestSqlWeight1Integration_Conditioned(t *testing.T) {
 	})
 }
 
-// TestSqlWeight1Integration_ConditionedExclusion drives the gather path through an exclusion: a
-// conditioned base and an unconditioned subtract.
+// TestSqlWeight1Integration_ConditionedExclusion drives the gather path through an exclusion with
+// a conditioned base and an unconditioned subtract.
 func TestSqlWeight1Integration_ConditionedExclusion(t *testing.T) {
 	e := setupPgEnv(t)
 	g := mustGraph(t, `
@@ -338,10 +329,9 @@ func TestSqlWeight1Integration_ConditionedExclusion(t *testing.T) {
 	})
 }
 
-// TestSqlWeight1Integration_StaleConditionOnPlainRelation guards a data-integrity edge: a
-// conditioned tuple stored against a plain [user] relation must not satisfy the existence (HAVING)
-// plan, whose count atoms match only unconditioned rows. The stale row is written directly through
-// the datastore, which persists at the storage layer without model validation.
+// TestSqlWeight1Integration_StaleConditionOnPlainRelation pins that a conditioned tuple stored
+// (directly, bypassing model validation) against a plain [user] relation does not satisfy the
+// existence plan, whose count atoms match only unconditioned rows.
 func TestSqlWeight1Integration_StaleConditionOnPlainRelation(t *testing.T) {
 	e := setupPgEnv(t)
 	g := mustGraph(t, `
@@ -357,11 +347,9 @@ func TestSqlWeight1Integration_StaleConditionOnPlainRelation(t *testing.T) {
 	require.False(t, e.run(t, g, []*openfgav1.TupleKey{stale}, "document:1", "viewer", "user:alice", nil))
 }
 
-// TestSqlWeight1Integration_GatherFiltersUnknownCondition drives the gather path over a relation
-// admitting one condition while a stored tuple carries a different model condition the edge does
-// not admit. The gather query's condition filter must exclude that tuple, so the request is
-// denied and the tuple never reaches in-app CEL evaluation. A tuple with the admitted condition
-// still satisfies the request, proving the filter does not over-narrow.
+// TestSqlWeight1Integration_GatherFiltersUnknownCondition pins that the gather filter excludes a
+// tuple carrying a condition the edge does not admit, while a tuple with the admitted condition
+// still grants (so the filter does not over-narrow).
 func TestSqlWeight1Integration_GatherFiltersUnknownCondition(t *testing.T) {
 	e := setupPgEnv(t)
 	g := mustGraph(t, `
@@ -384,12 +372,9 @@ func TestSqlWeight1Integration_GatherFiltersUnknownCondition(t *testing.T) {
 	})
 }
 
-// TestSqlWeight1Integration_GatherPairsConditionsPerRelation drives the gather path over two
-// relations with disjoint condition sets — rel1 admits [user, user with condA], rel2 admits
-// [user with condB] — and proves conditions are paired per relation. A rel1 tuple carrying condB
-// and a rel2 tuple carrying no condition are each individually within the referenced relation and
-// condition sets, yet neither pairing is admitted by the model, so both must be excluded by the
-// gather query. Tuples with the correct pairing still grant, proving no over-narrowing.
+// TestSqlWeight1Integration_GatherPairsConditionsPerRelation pins per-relation condition pairing:
+// a rel1 tuple carrying rel2's condB and an unconditioned rel2 tuple are each excluded even though
+// their relation and condition appear elsewhere in the model, while correctly-paired tuples grant.
 func TestSqlWeight1Integration_GatherPairsConditionsPerRelation(t *testing.T) {
 	e := setupPgEnv(t)
 	g := mustGraph(t, `

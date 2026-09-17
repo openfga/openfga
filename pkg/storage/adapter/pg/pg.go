@@ -2,23 +2,18 @@
 // *query.Statement to PostgreSQL SQL by walking the shared ast tree, and runs it through the
 // native pgx/v5 driver.
 //
-// It owns its rendering end to end: it consumes the SHARED ast tree (walked via the
-// *query.Statement handed to Render) but shares none of the node algebra with the other
-// adapters. Owning the walk lets it lean on PostgreSQL's own dialect rather than a
-// lowest-common-denominator one:
+// PostgreSQL-specific rendering choices:
 //   - placeholders are ordinal "$N";
-//   - a bound set binds as ONE array parameter and compares with "= ANY ($N)", instead of
-//     being expanded to "IN (?, ?, ...)"; pgx encodes a Go slice as a PostgreSQL array;
+//   - a bound set binds as one array parameter and compares with "= ANY ($N)" rather than
+//     expanding to "IN (?, ?, ...)"; pgx encodes a Go slice as a PostgreSQL array;
 //   - an aggregate FILTER (WHERE ...) is emitted natively — no CASE emulation;
-//   - the packed `_user` subject column is decoded with PostgreSQL's split_part, and casts and
-//     JSON constructors carry PostgreSQL's spelling (text/bytea, jsonb_build_object,
+//   - the packed `_user` subject column is decoded with split_part, and casts and JSON
+//     constructors carry PostgreSQL's spelling (text/bytea, jsonb_build_object,
 //     jsonb_build_array) (see mapping.go).
 //
-// Per the all-or-nothing capability rule, the tightened AST carries only constructs every
-// supported backend can express, so PostgreSQL renders the ENTIRE surface — there is no
-// construct it rejects. Render therefore has no error return; the panics in the node walk are
-// reserved for tree corruption (an unknown node kind), a programming error that must crash
-// rather than be reported as a capability gap.
+// The AST carries only constructs every supported backend can express, so PostgreSQL renders
+// the entire surface and Render has no error return; the node-walk panics are reserved for
+// tree corruption (an unknown node kind).
 package pg
 
 import (
@@ -42,17 +37,14 @@ type querier struct {
 	pool *pgxpool.Pool
 }
 
-// Execute renders stmt to PostgreSQL SQL and runs it against the pool. The "$N" placeholders
-// Render emits are PostgreSQL's native ordinal form, so args bind in order.
+// Execute renders stmt to PostgreSQL SQL and runs it against the pool, binding args in order
+// via the native "$N" placeholders.
 //
-// It runs under pgx's QueryExecModeExec, which still uses the extended protocol but infers each
-// parameter's PostgreSQL type from the Go argument's type rather than from a server describe.
-// Render emits untyped literals — most notably the bare "SELECT $1" the check planner uses as
-// an existence marker — for which the server has no column context to infer a type and so
-// describes the parameter as text; pgx then cannot encode a Go int into text. Inferring the
-// type from the Go value side-steps that: an int is sent as an integer, a string as text,
-// []byte as bytea. The mode is passed per query so it holds regardless of how the pool was
-// configured.
+// It runs under pgx's QueryExecModeExec, which infers each parameter's type from the Go
+// argument rather than from a server describe. Render emits untyped literals (notably the bare
+// "SELECT $1" existence marker) that the server would otherwise describe as text, which fails
+// to encode a Go int; inferring from the Go value side-steps that. The mode is passed per query
+// so it holds regardless of pool configuration.
 func (q *querier) Execute(ctx context.Context, stmt *query.Statement) (adapter.Rows, error) {
 	sqlText, args := Render(stmt)
 	queryArgs := append([]any{pgx.QueryExecModeExec}, args...)

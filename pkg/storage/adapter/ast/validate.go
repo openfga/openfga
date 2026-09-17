@@ -9,42 +9,31 @@ import (
 
 // --- validation -------------------------------------------------------------------------
 //
-// Validate is this package's answer to the three things the position categories cannot type,
-// enumerated in the package doc: CARDINALITY, REQUIRED-NON-NIL, and CROSS-FIELD relationships.
-// Those rules were documented per-node long before they were checked, which left every consumer
-// to either re-derive them or trust them; a tree violating one still compiled, and several
-// violations rendered as valid-looking nonsense (`WHERE ()`, `COUNT(DISTINCT *)`) rather than
-// failing. Validate makes those rules mechanical.
+// Validate mechanically checks the three things the position categories cannot type — cardinality,
+// required-non-nil, and cross-field relationships — that were previously only documented per node.
 //
-// Each node checks its OWN rules and then calls Validate on each direct child node, returning the
-// FIRST error it finds and stopping there. Two consequences worth planning for:
+// Each node checks its own rules and then calls Validate on each direct child, returning the first
+// error and stopping. So one call on the root validates the whole tree, and the result names one
+// violation, not all: fixing it reveals the next. The error carries the path it was found at
+// (`Where: Parts[1]: Left: required field is nil`).
 //
-//   - One call on the root validates the WHOLE tree. A consumer needs exactly one call, at its
-//     boundary, and does not walk anything itself to get this.
-//   - The result names ONE violation, not all of them. A tree with three faults reports one, and
-//     fixing it reveals the next. The error carries the path it was found at (`Where: Parts[1]:
-//     Left: required field is nil`), which is what makes a single finding actionable.
+// Because only the first fault is reported, the check ORDER is part of the behaviour: every node
+// checks its own local rules first — enum range, arity, alias, cross-field — then recurses into
+// children in field order. That reports the shallowest fault, which is most likely the cause rather
+// than a consequence.
 //
-// Because only the first fault is reported, the ORDER of the checks is part of the behaviour rather
-// than an implementation detail. Every node checks in the same order: its own local rules first —
-// enum range, arity, alias, cross-field — and only then recurses into children, in field order.
-// That reports the shallowest, cheapest fault available, which is also the one most likely to be
-// the cause rather than a consequence: a node whose Fn is a Count sentinel is worth hearing about
-// before the arity that sentinel makes meaningless.
-//
-// Every error wraps one of the sentinels below, so a consumer can branch on the KIND of
-// violation with errors.Is without parsing text. The path prefix is for humans only.
+// Every error wraps one of the sentinels below, so a consumer can branch on the kind of violation
+// with errors.Is. The path prefix is for humans only.
 //
 // What Validate deliberately does NOT check:
 //
-//   - ALIAS SCOPE. That a ColNode.Alias names a Table in From or Joins is checkable only with the
-//     enclosing Select in hand, and for a correlated subquery only with the whole enclosing chain.
-//     A node validating its own subtree cannot see either. Select does check for DUPLICATE aliases
-//     among its own tables, which is local and makes a ColNode ambiguous.
-//   - WHETHER A BOUND VALUE IS ENCODABLE. Which Go types a driver accepts is the driver's fact.
-//     Validate rejects only the values this tree's own model excludes — a bool, and an AST node.
-//   - GROUPING CORRECTNESS. That every non-aggregated projection appears in GROUP BY is a rule
-//     about the whole statement's semantics, not its shape, and engines themselves disagree on it.
+//   - Alias scope. That a ColNode.Alias names a Table in From or Joins needs the enclosing Select,
+//     and for a correlated subquery the whole enclosing chain; a node cannot see either. Select
+//     does check for duplicate aliases among its own tables.
+//   - Whether a bound value is encodable. Which Go types a driver accepts is the driver's fact;
+//     Validate rejects only what the tree's own model excludes — a bool, and an AST node.
+//   - Grouping correctness. That every non-aggregated projection appears in GROUP BY is a rule
+//     about semantics, not shape, and engines disagree on it.
 var (
 	// ErrMissing reports a required interface-typed or pointer field left nil.
 	ErrMissing = errors.New("required field is nil")
@@ -72,17 +61,16 @@ var (
 
 // --- helpers ----------------------------------------------------------------------------
 
-// validator is what the helpers below range over. It is every Node, plus the five clause-item
-// types that hold child nodes without belonging to a category themselves (SearchedBranch,
-// SimpleBranch, OrderTerm, Table, JoinClause).
+// validator is what the helpers below range over: every Node, plus the five clause-item types that
+// hold child nodes without belonging to a category (SearchedBranch, SimpleBranch, OrderTerm, Table,
+// JoinClause).
 type validator interface{ Validate() error }
 
 // enum is the underlying kind of every enum in this package.
 type enum interface{ ~int | ~uint8 }
 
 // at labels an error with the field it was found in, building the path prefix one frame at a time
-// as the recursion returns. Wrapping with %w keeps errors.Is working through every frame, so a
-// consumer can still branch on the sentinel however deep the finding was.
+// as the recursion returns. Wrapping with %w keeps errors.Is working through every frame.
 func at(field string, err error) error {
 	if err == nil {
 		return nil
@@ -90,8 +78,8 @@ func at(field string, err error) error {
 	return fmt.Errorf("%s: %w", field, err)
 }
 
-// required validates a child that must be present. It reports ErrMissing for a nil interface
-// rather than panicking, since reporting is the whole point of this pass.
+// required validates a child that must be present, reporting ErrMissing for a nil interface rather
+// than panicking.
 func required[T validator](field string, x T) error {
 	if any(x) == nil {
 		return fmt.Errorf("%s: %w", field, ErrMissing)
@@ -107,8 +95,8 @@ func optional[T validator](field string, x T) error {
 	return at(field, x.Validate())
 }
 
-// stmt validates a required *Select. It cannot go through required, because a typed nil pointer
-// in an interface is not a nil interface — exactly the case that would otherwise nil-dereference.
+// stmt validates a required *Select. It cannot go through required, because a typed nil pointer in
+// an interface is not a nil interface.
 func stmt(field string, s *Select) error {
 	if s == nil {
 		return fmt.Errorf("%s: %w", field, ErrMissing)
@@ -117,8 +105,7 @@ func stmt(field string, s *Select) error {
 }
 
 // each validates elements in order and returns at the first bad one, labelling the error with that
-// element's index. Stopping early means an element's subtree is never walked once an earlier
-// sibling has failed.
+// element's index.
 func each[T validator](field string, xs []T) error {
 	for i, x := range xs {
 		if err := required(field+"["+strconv.Itoa(i)+"]", x); err != nil {
@@ -128,17 +115,15 @@ func each[T validator](field string, xs []T) error {
 	return nil
 }
 
-// fault reports a violation at a named field. It exists so a message can LEAD with a field name —
-// capitalized, as every exported Go field is — without each call site tripping the lint against
-// capitalized error strings. The field is data here rather than the start of a sentence.
+// fault reports a violation at a named field. It exists so a message can lead with a capitalized
+// field name without tripping the lint against capitalized error strings.
 func fault(field string, sentinel error, msg string) error {
 	return fmt.Errorf("%s: %w: %s", field, sentinel, msg)
 }
 
 // nonEmpty enforces the minimum arity shared by every slice field that has one: at least one
-// element. No node in this package requires two or more — the meaningful-but-not-required cases
-// (a second LogicalNode part, a second COALESCE argument) are documented, not checked, because a
-// one-element form still renders correctly.
+// element. No node requires two or more — the meaningful-but-not-required cases are documented,
+// not checked, because a one-element form still renders correctly.
 func nonEmpty[T any](field string, xs []T) error {
 	if len(xs) == 0 {
 		return fmt.Errorf("%s: %w: empty, need at least one element", field, ErrArity)
@@ -174,8 +159,7 @@ func alias(field, s string) error {
 }
 
 // value rejects the Go values this tree's model excludes from a bound or inlined slot. The bool
-// test is on reflect.Kind, not on the concrete type, so a NAMED bool (type flag bool) is caught
-// too — the same reason package sql dispatches literals on kind.
+// test is on reflect.Kind, so a named bool (type flag bool) is caught too.
 func value(field string, v any) error {
 	if v == nil {
 		return nil // a bound or inlined NULL.
@@ -201,17 +185,16 @@ func (n ColNode) Validate() error {
 	return inRange("Name", n.Name, ColObjectType, ColCount-1)
 }
 
-// Validate reports a Value this tree cannot carry. It does NOT report a value the driver cannot
-// encode, which is the driver's rule to state — see the note on BindNode about the width of this
-// field.
+// Validate reports a Value this tree cannot carry. It does not report a value the driver cannot
+// encode; see BindNode.
 func (n BindNode) Validate() error { return value("Value", n.Value) }
 
 // Validate reports a Value this tree cannot carry. Whether the value can be SPELLED inline is a
 // separate, target-specific question that a consumer's literal rendering answers.
 func (n LitNode) Validate() error { return value("Value", n.Value) }
 
-// Validate checks elements in order and returns at the first bad one. An EMPTY Elems is valid — the
-// one arity exception in the package — and QuantifiedNode documents the constant it lowers to.
+// Validate checks elements in order and returns at the first bad one. An empty Elems is valid — the
+// one arity exception in the package.
 func (n SetBindNode) Validate() error {
 	for i, e := range n.Elems {
 		if err := value("Elems["+strconv.Itoa(i)+"]", e); err != nil {
@@ -257,7 +240,7 @@ func (n BetweenNode) Validate() error {
 // Validate checks the operand.
 func (n IsNullNode) Validate() error { return required("Inner", n.Inner) }
 
-// Validate rejects an EMPTY Elems: "x IN ()" has no rendering on any engine. A caller meaning
+// Validate rejects an empty Elems: "x IN ()" has no rendering on any engine. A caller meaning
 // "matches nothing" writes ConstPredNode{Value: false}.
 func (n InNode) Validate() error {
 	if err := nonEmpty("Elems", n.Elems); err != nil {
@@ -270,7 +253,7 @@ func (n InNode) Validate() error {
 }
 
 // Validate checks the operator, the quantifier, and both operands. An empty SetBindNode in Set is
-// valid and carries the lowering documented on this node.
+// valid; QuantifiedNode documents the lowering.
 func (n QuantifiedNode) Validate() error {
 	if err := inRange("Op", n.Op, OpEq, OpGte); err != nil {
 		return err
@@ -287,8 +270,8 @@ func (n QuantifiedNode) Validate() error {
 // Validate checks the subquery.
 func (n ExistsNode) Validate() error { return stmt("Stmt", n.Stmt) }
 
-// Validate rejects an EMPTY Parts: "WHERE ()" is a syntax error. A single part is valid, per the
-// note on this node.
+// Validate rejects an empty Parts: "WHERE ()" is a syntax error. A single part is valid, per
+// LogicalNode.
 func (n LogicalNode) Validate() error {
 	if err := inRange("Op", n.Op, And, Or); err != nil {
 		return err
@@ -315,9 +298,9 @@ func (n CastNode) Validate() error {
 	return required("Inner", n.Inner)
 }
 
-// Validate enforces the PER-FUNCTION arity documented on each ScalarFunc member. The arity is not
-// a property of Args — one slice serves every function — so it can only be checked against Fn, and
-// Fn is therefore checked FIRST: an out-of-range Fn makes any arity verdict meaningless.
+// Validate enforces the per-function arity documented on each ScalarFunc member. The arity is not a
+// property of Args — one slice serves every function — so it is checked against Fn, and Fn is
+// checked first: an out-of-range Fn makes any arity verdict meaningless.
 func (n FuncNode) Validate() error {
 	if err := inRange("Fn", n.Fn, FuncCoalesce, FuncCount-1); err != nil {
 		return err
@@ -344,8 +327,7 @@ func (n FuncNode) argArity() error {
 	}
 }
 
-// Validate checks both halves of the pair. A pair is reachable only from the two JSON object
-// constructors, so this is never called from a projection walk.
+// Validate checks both halves of the pair.
 func (n JSONPairNode) Validate() error {
 	if err := required("Key", n.Key); err != nil {
 		return err
@@ -353,7 +335,7 @@ func (n JSONPairNode) Validate() error {
 	return required("Value", n.Value)
 }
 
-// Validate rejects an EMPTY Pairs. The empty object is excluded because it is not portable —
+// Validate rejects an empty Pairs. The empty object is excluded because it is not portable;
 // contrast FuncJSONArray, whose empty form is admitted.
 func (n JSONObjectNode) Validate() error {
 	if err := nonEmpty("Pairs", n.Pairs); err != nil {
@@ -362,10 +344,8 @@ func (n JSONObjectNode) Validate() error {
 	return each("Pairs", n.Pairs)
 }
 
-// Validate enforces the PER-AGGREGATE arity documented on each AggFunc member — AggCount takes
-// zero or one — and rejects Distinct without an argument, since COUNT(DISTINCT *) is not a
-// construct. Those two rules together are what stops the empty-Args form from rendering as a
-// fabricated "*" operand for an aggregate that has no such form.
+// Validate enforces the per-aggregate arity documented on each AggFunc member — AggCount takes zero
+// or one — and rejects Distinct without an argument, since COUNT(DISTINCT *) is not a construct.
 func (n AggNode) Validate() error {
 	if err := inRange("Fn", n.Fn, AggCount, AggCount_-1); err != nil {
 		return err
@@ -399,8 +379,7 @@ func (n AggNode) argArity() error {
 	}
 }
 
-// Validate rejects an EMPTY Branches: "CASE END" is a syntax error, and a CASE with only an ELSE
-// is just that value.
+// Validate rejects an empty Branches: "CASE END" is a syntax error.
 func (n CaseSearchedNode) Validate() error {
 	if err := nonEmpty("Branches", n.Branches); err != nil {
 		return err
@@ -419,8 +398,8 @@ func (b SearchedBranch) Validate() error {
 	return required("Then", b.Then)
 }
 
-// Validate rejects a nil Base as well as an empty Branches. A nil Base is not the searched form —
-// that is a separate node — but a malformed simple one.
+// Validate rejects a nil Base as well as an empty Branches. A nil Base is not the searched form but
+// a malformed simple one.
 func (n CaseSimpleNode) Validate() error {
 	if err := nonEmpty("Branches", n.Branches); err != nil {
 		return err
@@ -442,9 +421,8 @@ func (b SimpleBranch) Validate() error {
 	return required("Then", b.Then)
 }
 
-// Validate checks the aliased projection and rejects an empty output name. Nothing else about the
-// name is checked: whether it needs quoting, and whether it collides with another output name in
-// the same list, are decided in the Select that holds it and the target that renders it.
+// Validate checks the aliased projection and rejects an empty output name. Whether the name needs
+// quoting or collides with another output name is decided by the Select and the target.
 func (n AliasNode) Validate() error {
 	if err := alias("Alias", n.Alias); err != nil {
 		return err
@@ -457,18 +435,15 @@ func (n SubqueryNode) Validate() error { return stmt("Stmt", n.Stmt) }
 
 // --- statement and clause items ---------------------------------------------------------
 
-// Validate checks the one cross-field rule local to this statement — no two of its tables may
-// share an alias — and then every clause, in source order. Having without GroupBy is permitted,
-// as documented, and so is an empty From.
+// Validate checks the one cross-field rule local to this statement — no two of its tables may share
+// an alias — and then every clause, in source order. Having without GroupBy is permitted, and so is
+// an empty From.
 //
-// The alias check comes first deliberately. It is cheap, and its consequence is quiet: an
-// ambiguous column returns wrong rows rather than failing, so it is worth reporting ahead of a
-// nil operand that would announce itself.
+// The alias check comes first deliberately: it is cheap, and an ambiguous column returns wrong rows
+// rather than failing, so it is worth reporting ahead of a nil operand that would announce itself.
 //
-// It does NOT check that a ColNode anywhere below names an alias in scope. Doing so would mean
-// collecting column references from every clause and threading enclosing scopes through
-// subqueries, which is a different traversal than this one — a resolver rather than a
-// shape-checker — and a correlated subquery makes it non-local in principle.
+// It does not check that a ColNode below names an alias in scope; that is a resolver's traversal,
+// not a shape-checker's, and a correlated subquery makes it non-local.
 func (s *Select) Validate() error {
 	if s == nil {
 		return ErrMissing
@@ -493,8 +468,7 @@ func (s *Select) Validate() error {
 }
 
 // aliasErr reports the first table alias used twice in one statement, which makes every ColNode
-// naming it ambiguous. Empty aliases are left to Table.Validate, so they are not also reported here
-// as duplicates of each other.
+// naming it ambiguous. Empty aliases are left to Table.Validate.
 func (s *Select) aliasErr() error {
 	seen := make(map[string]struct{}, len(s.From)+len(s.Joins))
 	for _, a := range s.aliases() {

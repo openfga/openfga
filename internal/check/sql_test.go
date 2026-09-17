@@ -22,9 +22,8 @@ import (
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
-// sqlDatastore is a minimal storage.RelationshipTupleReader whose only meaningful method is
-// Querier: weight1 obtains its adapter.Querier from here and touches nothing else, so the
-// other reads panic if ever called (they must not be, for the SQL path).
+// sqlDatastore is a minimal RelationshipTupleReader: weight1 uses only Querier, so any other
+// read panics if the SQL path unexpectedly touches it.
 type sqlDatastore struct {
 	storage.RelationshipTupleReader
 	querier adapter.Querier
@@ -32,8 +31,8 @@ type sqlDatastore struct {
 
 func (d *sqlDatastore) Querier(openfgav1.ConsistencyPreference) adapter.Querier { return d.querier }
 
-// entryEdges reproduces what ResolveUnion forwards to the group strategy: the flattened
-// weight-1 edges out of the entry object#relation node, combined by union.
+// entryEdges returns the flattened weight-1 edges out of the entry object#relation node,
+// as ResolveUnion would forward them to the group strategy.
 func entryEdges(t *testing.T, g *modelgraph.AuthorizationModelGraph, req *Request, object, relation string) []*graph.WeightedAuthorizationModelEdge {
 	t.Helper()
 	node, ok := g.GetNodeByID(tuple.ToObjectRelationString(tuple.GetType(object), relation))
@@ -63,10 +62,9 @@ func runWeight1(t *testing.T, g *modelgraph.AuthorizationModelGraph, q *fakeQuer
 
 // --- fakes -----------------------------------------------------------------
 
-// fakeQuerier is a test adapter.Querier. It renders each statement to SQL via the sqlite adapter
-// (the query AST is dialect-agnostic, and sqlite's native FILTER / discrete columns keep the
-// rendered text closest to what these structural assertions pin), records that text and its bind
-// args, and answers existence queries by hasRow and gather queries with canned rows.
+// fakeQuerier renders each statement via the sqlite adapter (chosen because its FILTER/discrete
+// columns keep the text closest to what these assertions pin), records it, and answers existence
+// queries by hasRow and gather queries with canned rows.
 type fakeQuerier struct {
 	rows   [][]any
 	hasRow bool
@@ -74,7 +72,7 @@ type fakeQuerier struct {
 	// SQL and Parameters hold the most recently rendered statement, for structural assertions.
 	SQL        string
 	Parameters []any
-	// sqls records every statement seen, so a test can assert the executor was never called.
+	// sqls records every statement seen, letting a test assert the executor was never called.
 	sqls []string
 }
 
@@ -191,15 +189,12 @@ func TestSqlWeight1_DirectSQLShape(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Contains(t, q.SQL, "SELECT 1 FROM tuple t WHERE")
-	// object_id is pinned to a single value by the shared WHERE, so the existence query relies on
-	// one implicit group and emits HAVING without a GROUP BY.
+	// A single object_id means one implicit group, so HAVING appears without a GROUP BY.
 	require.Contains(t, q.SQL, "HAVING")
 	require.NotContains(t, q.SQL, "GROUP BY")
 	require.Contains(t, q.SQL, "LIMIT 1")
 	require.Contains(t, q.SQL, "COUNT(1) FILTER (WHERE")
-	// The relation name is a model component, so it is inlined as a literal in the SQL text. The
-	// store id and the request-derived object type/id and subject narrowing remain bound
-	// parameters. The store is the first bound parameter.
+	// Relation names are inlined as literals; store id and object type stay bound (store first).
 	require.Equal(t, "store1", q.Parameters[0])
 	require.Contains(t, q.Parameters, "document")
 	require.Contains(t, q.SQL, "'viewer'")
@@ -352,26 +347,23 @@ func TestSqlWeight1_ConditionedGatherShape(t *testing.T) {
 	require.NoError(t, err)
 	_, err = s.weight1(context.Background(), req, q, entryEdges(t, g, req, "document:1", "viewer"), graph.UnionOperator)
 	require.NoError(t, err)
-	// gather projects attribution + condition columns, and has no HAVING/GROUP BY.
+	// gather projects attribution + condition columns, with no HAVING/GROUP BY.
 	require.Contains(t, q.SQL, "t.relation")
 	require.Contains(t, q.SQL, "t.condition_name")
 	require.Contains(t, q.SQL, "t.condition_context")
 	require.NotContains(t, q.SQL, "HAVING")
 	require.NotContains(t, q.SQL, "GROUP BY")
-	// The gather is narrowed to the condition the model admits, so tuples carrying an
-	// out-of-model condition are excluded in the database rather than gathered and rejected.
+	// The gather is narrowed to the model's condition, excluding out-of-model conditions in the DB.
 	require.Contains(t, q.SQL, "t.condition_name IN")
-	// Condition names come from the model, so they are inlined as literals rather than bound.
+	// Condition names are inlined as literals rather than bound.
 	require.Contains(t, q.SQL, "'cond'")
 	require.NotContains(t, q.Parameters, "cond")
-	// This leaf admits only the named condition (no unconditioned assignment), so there is no
-	// IS NULL disjunct.
+	// This leaf admits only the named condition, so there is no IS NULL disjunct.
 	require.NotContains(t, q.SQL, "t.condition_name IS NULL")
 }
 
-// TestSqlWeight1_ConditionedGatherFiltersUnknownCondition proves the gather query narrows to the
-// model's condition: a tuple whose condition is absent from the model is filtered out in SQL, so
-// it is never gathered nor evaluated in-app.
+// TestSqlWeight1_ConditionedGatherFiltersUnknownCondition pins that the gather query narrows to
+// the model's condition, so a tuple with an out-of-model condition is filtered out in SQL.
 func TestSqlWeight1_ConditionedGatherFiltersUnknownCondition(t *testing.T) {
 	model := `
 		model
@@ -400,9 +392,8 @@ func TestSqlWeight1_ConditionedGatherFiltersUnknownCondition(t *testing.T) {
 	require.NotContains(t, q.Parameters, "cond")
 }
 
-// TestSqlWeight1_ConditionedGatherMixedConditionFilter proves that when a relation admits both an
-// unconditioned assignment and a conditioned one, the gather admits the named condition or an
-// unconditioned tuple (condition IS NULL / empty) — and nothing else.
+// TestSqlWeight1_ConditionedGatherMixedConditionFilter pins that a relation admitting both an
+// unconditioned and a conditioned assignment gathers the named condition or an unconditioned tuple.
 func TestSqlWeight1_ConditionedGatherMixedConditionFilter(t *testing.T) {
 	model := `
 		model
@@ -432,11 +423,9 @@ func TestSqlWeight1_ConditionedGatherMixedConditionFilter(t *testing.T) {
 	require.NotContains(t, q.Parameters, "cond")
 }
 
-// TestSqlWeight1_ConditionedGatherPairsConditionsPerRelation guards the per-relation pairing: with
-// rel1 admitting [user, user with condA] and rel2 admitting [user with condB], the gather must not
-// admit a rel1 tuple carrying condB nor a rel2 tuple with no condition. The filter is therefore a
-// disjunction of per-relation clauses, each relation paired only with its own conditions — never a
-// single global `relation IN (...) AND condition IN (...)`.
+// TestSqlWeight1_ConditionedGatherPairsConditionsPerRelation pins that the gather filter is a
+// disjunction of per-relation clauses, each relation paired only with its own conditions, rather
+// than a single global `relation IN (...) AND condition IN (...)`.
 func TestSqlWeight1_ConditionedGatherPairsConditionsPerRelation(t *testing.T) {
 	model := `
 		model
@@ -463,19 +452,16 @@ func TestSqlWeight1_ConditionedGatherPairsConditionsPerRelation(t *testing.T) {
 	_, err = s.weight1(context.Background(), req, q, entryEdges(t, g, req, "document:1", "viewer"), graph.UnionOperator)
 	require.NoError(t, err)
 
-	// Each relation is paired with its own conditions in a dedicated clause; relation and
-	// condition names are model components, so they are inlined as literals. Only rel1 carries the
-	// unconditioned (IS NULL) disjunct.
+	// Each relation gets a dedicated clause; only rel1 carries the unconditioned (IS NULL) disjunct.
 	require.Contains(t, q.SQL, "t.relation = 'rel1'")
 	require.Contains(t, q.SQL, "t.relation = 'rel2'")
 	require.Contains(t, q.SQL, "'condA'")
 	require.Contains(t, q.SQL, "'condB'")
 	require.Contains(t, q.SQL, "t.condition_name IS NULL")
-	// A single global `relation IN (...)` would signal the conditions are not paired per relation.
+	// A single global `relation IN (...)` would mean the conditions are not paired per relation.
 	require.NotContains(t, q.SQL, "t.relation IN")
 
-	// The pairing inlines condA adjacent to rel1 and condB adjacent to rel2 (relations sorted), so a
-	// rel1-with-condB or rel2-with-condA row cannot match.
+	// condA must be inlined adjacent to rel1 and condB adjacent to rel2 (relations sorted).
 	rel1 := strings.Index(q.SQL, "'rel1'")
 	rel2 := strings.Index(q.SQL, "'rel2'")
 	condA := strings.Index(q.SQL, "'condA'")
@@ -569,10 +555,9 @@ func TestSqlWeight1_ContextualShortCircuit(t *testing.T) {
 	require.Empty(t, q.sqls, "executor must not be called when contextual tuples decide the result")
 }
 
-// TestSqlWeight1_ContextualNarrowsExistenceFilter proves the single-pass evaluation's tightening:
-// when a contextual tuple satisfies one arm of an intersection, that arm is resolved without a
-// database read and drops out of the evaluation, so its relation never enters the WHERE filter. The
-// emitted existence query references only the still-undetermined arm's relation.
+// TestSqlWeight1_ContextualNarrowsExistenceFilter pins that when a contextual tuple satisfies one
+// arm of an intersection, that arm drops out and only the undetermined arm's relation enters the
+// existence query.
 func TestSqlWeight1_ContextualNarrowsExistenceFilter(t *testing.T) {
 	model := `
 		model
@@ -600,15 +585,13 @@ func TestSqlWeight1_ContextualNarrowsExistenceFilter(t *testing.T) {
 	_, err = s.weight1(context.Background(), req, q, entryEdges(t, g, req, "document:1", "viewer"), graph.UnionOperator)
 	require.NoError(t, err)
 
-	// Only the undetermined arm (owner) is queried; the contextually-satisfied arm (editor) is
-	// pruned from both the HAVING predicate and the relation IN (...) filter. Relation names are
-	// model components, so they appear inlined in the SQL rather than as bound parameters.
+	// Only owner is queried; the contextually-satisfied editor arm is pruned from the SQL entirely.
 	require.Contains(t, q.SQL, "'owner'")
 	require.NotContains(t, q.SQL, "'editor'")
 }
 
-// condCtx marshals a request-context map the way condition_context is stored, so the gather
-// path's proto.Unmarshal round-trips it.
+// condCtx marshals a context map the way condition_context is stored, so the gather path's
+// proto.Unmarshal round-trips it.
 func condCtx(t *testing.T, m map[string]any) []byte {
 	t.Helper()
 	s := testutils.MustNewStruct(t, m)

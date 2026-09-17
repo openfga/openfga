@@ -290,9 +290,8 @@ func (r *renderer) caseElse(e ast.ScalarValue) {
 	r.write(" END")
 }
 
-// aggregate renders a value-producing aggregate. PostgreSQL supports the FILTER (WHERE ...)
-// clause natively, so a filtered aggregate emits it directly rather than emulating it with a
-// CASE — the divergence that forces MySQL to own its renderer.
+// aggregate renders a value-producing aggregate. PostgreSQL supports FILTER (WHERE ...)
+// natively, so a filtered aggregate emits it directly rather than emulating it with a CASE.
 func (r *renderer) aggregate(x ast.AggNode) {
 	r.write(aggFunc(x.Fn) + "(")
 	if x.Distinct {
@@ -311,9 +310,9 @@ func (r *renderer) aggregate(x ast.AggNode) {
 	}
 }
 
-// quantified renders a quantified comparison. A bound set is PostgreSQL's real advantage here:
-// it binds the whole slice as ONE array parameter and compares with "<op> <quant> ($N)", which
-// pgx encodes as a PostgreSQL array — no per-element expansion.
+// quantified renders a quantified comparison. A bound set binds the whole slice as one array
+// parameter compared with "<op> <quant> ($N)", which pgx encodes as a PostgreSQL array — no
+// per-element expansion.
 func (r *renderer) quantified(x ast.QuantifiedNode) {
 	r.value(x.Left)
 	r.write(" " + op(x.Op) + " " + quantifier(x.Q) + " (")

@@ -2,27 +2,21 @@
 // *query.Statement to SQLite SQL by walking the shared ast tree, and runs it against a
 // *sql.DB backed by the modernc.org/sqlite driver.
 //
-// It owns its rendering end to end: it consumes the SHARED ast tree (walked via the
-// *query.Statement handed to Render) but shares none of the node algebra or schema
-// assumptions of the other SQL adapters. That independence lets it lean on SQLite's own
-// dialect — and, crucially, on SQLite's physical schema, which is where it diverges most:
-//   - the subject is stored as THREE DISCRETE columns (user_object_type / user_object_id /
+// SQLite-specific rendering choices:
+//   - the subject is stored as three discrete columns (user_object_type / user_object_id /
 //     user_relation), not a packed `_user` column, so the subject view is a plain column
 //     reference with none of the string surgery MySQL and PostgreSQL need (see mapping.go);
-//   - an aggregate FILTER (WHERE ...) is emitted NATIVELY — SQLite has supported it since
-//     3.30, so a filtered aggregate needs no CASE emulation (the rewrite MySQL is forced into);
+//   - an aggregate FILTER (WHERE ...) is emitted natively (supported since 3.30), so a filtered
+//     aggregate needs no CASE emulation;
 //   - a bare OFFSET is written as "LIMIT -1 OFFSET n", SQLite's own idiom for an unbounded
 //     limit, rather than a magic sentinel row count;
+//   - a bound set is expanded to IN(...); like MySQL, SQLite has no array operand;
 //   - placeholders are always "?", and casts and JSON constructors carry SQLite's spelling
 //     (TEXT/INTEGER/REAL/BLOB, json_object, json_array).
 //
-// A bound set is still expanded to IN(...): SQLite, like MySQL, has no array operand.
-//
-// Per the all-or-nothing capability rule, the tightened AST carries only constructs every
-// supported backend can express, so SQLite renders the ENTIRE surface — there is no construct
-// it rejects. Render therefore has no error return; the panics in the node walk are reserved
-// for tree corruption (an unknown node kind), a programming error that must crash rather than
-// be reported as a capability gap.
+// The AST carries only constructs every supported backend can express, so SQLite renders the
+// entire surface and Render has no error return; the node-walk panics are reserved for tree
+// corruption (an unknown node kind).
 package sqlite
 
 import (

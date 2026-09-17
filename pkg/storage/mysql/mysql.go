@@ -127,9 +127,8 @@ func NewWithDB(db *sql.DB, cfg *sqlcommon.Config) (*Datastore, error) {
 	}, nil
 }
 
-// Querier see [storage.RelationshipTupleReader].Querier. It renders and runs typed
-// query.Statements against the connection pool; MySQL uses a single pool, so the consistency
-// preference does not influence which connection is used.
+// Querier see [storage.RelationshipTupleReader].Querier. MySQL uses a single pool, so
+// consistency does not affect connection selection.
 func (s *Datastore) Querier(_ openfgav1.ConsistencyPreference) adapter.Querier {
 	return mysqladapter.New(s.db)
 }

@@ -301,10 +301,9 @@ func (r *renderer) jsonPair(p ast.JSONPairNode) {
 }
 
 // filtered writes an aggregate's argument, wrapped in the FILTER emulation when there is a
-// filter. This is the crux of MySQL's independence: MySQL has no FILTER clause at all, so a
-// filtered aggregate aggregates a CASE that yields the argument only when the filter holds and
-// NULL otherwise — aggregates skip NULLs, so the filtered-out rows do not contribute, exactly as
-// FILTER would. It is a structural rewrite of the node, which no dialect table could express.
+// filter. MySQL has no FILTER clause, so a filtered aggregate aggregates a CASE that yields the
+// argument only when the filter holds and NULL otherwise; aggregates skip NULLs, so filtered-out
+// rows do not contribute, exactly as FILTER would.
 func (r *renderer) filtered(filter ast.Predicate, arg ast.ScalarValue) {
 	if filter == nil {
 		r.value(arg)

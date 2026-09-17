@@ -8,25 +8,19 @@ import (
 	"github.com/openfga/openfga/pkg/storage/adapter/ast"
 )
 
-// This file holds PostgreSQL's SQL spellings of the ast constructs. It is deliberately
-// self-contained: the constructs SQL engines spell identically (operators, connectives, the
-// inline-literal form) are COPIED here as unexported helpers rather than imported from a
-// shared package, so this production adapter carries no dependency on the throwaway spike
-// tree. A little copying is better than that dependency.
-//
-// The constructs that genuinely diverge — columns, cast targets, scalar and aggregate function
-// names — are PostgreSQL's own, and each switch below is exhaustive with no default
-// pass-through, so adding a logical construct forces this adapter to state how it is spelled.
+// This file holds PostgreSQL's SQL spellings of the ast constructs. Spellings that are
+// identical across SQL engines (operators, connectives, inline literals) are copied here as
+// unexported helpers rather than shared, so the adapter carries no cross-adapter dependency.
+// Each switch is exhaustive with no default pass-through, so a new construct must be given an
+// explicit spelling.
 
 // --- PostgreSQL's own mappings (divergent across engines) -------------------------------
 
-// pgColumn maps a logical column to PostgreSQL SQL. Because ast.ColNode carries no SQL text,
-// this adapter owns the FULL mapping — physical names included, not just the divergent bits.
+// pgColumn maps a logical column to PostgreSQL SQL, owning the full physical mapping.
 //
 // The three subject columns are decoded from the packed `_user` column with PostgreSQL's
-// split_part, a proprietary function that reads more directly than the portable
-// SUBSTRING/POSITION surgery: split_part returns the empty string when the delimiter is absent,
-// which is exactly the wanted behaviour for a subject that carries no "#relation" suffix.
+// split_part, which returns the empty string when the delimiter is absent — exactly the wanted
+// behaviour for a subject that carries no "#relation" suffix.
 func pgColumn(name ast.Column, alias string) string {
 	u := alias + "._user"
 	switch name {
@@ -180,10 +174,9 @@ func sortDirection(s ast.SortDirection) string {
 }
 
 // literal renders an ast.LitNode value as inline SQL text. It dispatches on reflect.Kind, not
-// concrete type, so a NAMED scalar (type storeID string) is inlined as its underlying kind.
-// Kinds outside package query's Literal constraint are rejected: a type whose literal spelling
-// diverges across engines — a timestamp above all — must be bound, not inlined, and panicking
-// here is how that stays true instead of silently emitting a Go-formatted value as SQL.
+// concrete type, so a named scalar (type storeID string) is inlined as its underlying kind.
+// Kinds outside package query's Literal constraint panic: a type whose literal spelling
+// diverges across engines (a timestamp, above all) must be bound, not inlined.
 func literal(v any) string {
 	rv := reflect.ValueOf(v)
 	switch rv.Kind() {

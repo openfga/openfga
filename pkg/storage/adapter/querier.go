@@ -1,7 +1,6 @@
 // Package adapter declares the dialect-agnostic contract a datastore exposes for
-// executing typed query.Statement values (built via pkg/storage/adapter/query)
-// against its backend. It is an interface-only contract: a concrete implementation
-// owns both the rendering of SQL for its dialect and its execution.
+// executing typed query.Statement values against its backend. A concrete implementation
+// owns both rendering SQL for its dialect and executing it.
 package adapter
 
 import (
@@ -10,12 +9,10 @@ import (
 	"github.com/openfga/openfga/pkg/storage/adapter/query"
 )
 
-// Querier executes a typed query.Statement (built via pkg/storage/adapter/query) and
-// returns its result cursor.
+// Querier executes a typed query.Statement and returns its result cursor.
 //
-// Per the all-or-nothing capability rule, a backend returns a non-nil Querier only if it
-// can render and run the ENTIRE query surface. Because non-nil therefore promises full
-// support, Execute returns only operational errors — never a capability/unsupported
+// A backend returns a non-nil Querier only if it can render and run the entire query
+// surface, so Execute returns only operational errors, never a capability/unsupported
 // sentinel. A backend that cannot support the surface returns nil from
 // RelationshipTupleReader.Querier.
 type Querier interface {

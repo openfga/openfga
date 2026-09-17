@@ -286,11 +286,8 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, edges []
 
 	var i int
 
-	// Check the cache for logical edge entries. Any existing entry with an "allowed" value of `true`
-	// will result in an resolution short-circuit. When the "allowed" value is `false`, the logical edge
-	// is removed from the logicalEdges slice. Any elements not having a cache entry are kept within
-	// the logicalEdges slice for further processing.
-	//
+	// Check the cache for each edge: a cached "allowed" short-circuits the whole union,
+	// a cached "false" drops the edge, and uncached edges are compacted in place for evaluation below.
 	// The function slices.DeleteFunc could have been used here similarly, but we need the ability to
 	// short-circuit the entire function when a logical edge's cache entry has an "allowed" value of `true`.
 	for j := 0; j < len(edges); j++ {
@@ -362,11 +359,8 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, edges []
 
 	var err error
 	for expectedMessages > 0 {
-		// Force determinism when the context is canceled.
-		// Without this check, on each iteration, the select
-		// could continue to process messages buffered in out,
-		// instead of taking the ctx.Done() branch even when
-		// the context has already expired/canceled.
+		// Prefer cancellation over buffered messages: select may otherwise keep
+		// draining out instead of taking ctx.Done() once the context is canceled.
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}

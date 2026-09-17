@@ -124,8 +124,7 @@ func (b *BoundedTupleReader) GetMetadata() Metadata {
 }
 
 // Querier wraps the delegate's Querier so each Execute passes through the concurrency
-// bound. It preserves the nil capability signal: if the delegate does not support the
-// typed-AST query surface, so does this wrapper.
+// bound, preserving the nil capability signal (nil delegate Querier -> nil here).
 func (b *BoundedTupleReader) Querier(consistency openfgav1.ConsistencyPreference) adapter.Querier {
 	inner := b.RelationshipTupleReader.Querier(consistency)
 	if inner == nil {

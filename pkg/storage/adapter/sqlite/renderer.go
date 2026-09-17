@@ -294,9 +294,8 @@ func (r *renderer) caseElse(e ast.ScalarValue) {
 	r.write(" END")
 }
 
-// aggregate renders a value-producing aggregate. SQLite supports the FILTER (WHERE ...) clause
-// natively (since 3.30), so a filtered aggregate emits it directly rather than emulating it
-// with a CASE — the divergence that forces MySQL to own its renderer.
+// aggregate renders a value-producing aggregate. SQLite supports FILTER (WHERE ...) natively
+// (since 3.30), so a filtered aggregate emits it directly rather than emulating it with a CASE.
 func (r *renderer) aggregate(x ast.AggNode) {
 	r.write(sqliteAgg(x.Fn) + "(")
 	if x.Distinct {
