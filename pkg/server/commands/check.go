@@ -58,6 +58,7 @@ type CheckQueryV2 struct {
 	planner                   planner.Manager
 	concurrencyLimit          int
 	upstreamTimeout           time.Duration
+	sqlOptimizationsEnabled   bool
 
 	// Shared resources for iterator cache (singleflight, waitgroup)
 	sharedResources *shared.SharedDatastoreResources
@@ -141,6 +142,15 @@ func WithCheckQueryV2DatastoreThrottling(enabled bool, threshold int, duration t
 func WithCheckQueryV2UpstreamTimeout(timeout time.Duration) CheckQueryV2Option {
 	return func(cmd *CheckQueryV2) {
 		cmd.upstreamTimeout = timeout
+	}
+}
+
+// WithCheckQueryV2SQLOptimizations gates the SQL group strategy for this query. The
+// value is evaluated once per request from the feature flag client so the flag
+// is not re-checked during graph resolution.
+func WithCheckQueryV2SQLOptimizations(enabled bool) CheckQueryV2Option {
+	return func(cmd *CheckQueryV2) {
+		cmd.sqlOptimizationsEnabled = enabled
 	}
 }
 
@@ -261,6 +271,7 @@ func (q *CheckQueryV2) resolve(ctx context.Context, params *CheckCommandParams) 
 		ConcurrencyLimit:          q.concurrencyLimit,
 		UpstreamTimeout:           q.upstreamTimeout,
 		Logger:                    q.logger,
+		SQLOptimizationsEnabled:   q.sqlOptimizationsEnabled,
 	})
 
 	res, err := resolver.ResolveCheck(ctx, r)

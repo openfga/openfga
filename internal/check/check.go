@@ -76,6 +76,7 @@ type Config struct {
 	Logger                    logger.Logger
 	GroupStrategies           map[string]GroupStrategy
 	EdgeStrategies            map[string]EdgeStrategy
+	SQLOptimizationsEnabled   bool // SQLOptimizationsEnabled gates the SQLStrategy evaluating edges.
 }
 
 type Resolver struct {
@@ -91,6 +92,8 @@ type Resolver struct {
 
 	groupStrategies map[string]GroupStrategy
 	edgeStrategies  map[string]EdgeStrategy
+
+	sqlOptimizationsEnabled bool
 }
 
 func New(cfg Config) *Resolver {
@@ -106,6 +109,7 @@ func New(cfg Config) *Resolver {
 		logger:                    cfg.Logger,
 		groupStrategies:           cfg.GroupStrategies,
 		edgeStrategies:            cfg.EdgeStrategies,
+		sqlOptimizationsEnabled:   cfg.SQLOptimizationsEnabled,
 	}
 
 	if r.cache == nil {
@@ -978,7 +982,7 @@ func (r *Resolver) ResolveLogicalEdge(ctx context.Context, req *Request, logical
 
 	groupEdge := logicalEdge.(*GroupEdge)
 
-	if r.datastore.Querier(req.Consistency) == nil {
+	if r.datastore.Querier(req.Consistency) == nil || !r.sqlOptimizationsEnabled {
 		switch groupEdge.Node.GetNodeType() {
 		case graph.SpecificTypeAndRelation:
 			return r.groupStrategies[DefaultPlan.Name].Union(ctx, req, groupEdge)

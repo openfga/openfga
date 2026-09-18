@@ -120,6 +120,7 @@ const (
 	ExperimentalPipelineOptimizations    = "pipeline_optimizations"
 	ExperimentalShadowWeightedGraphCheck = "shadow_weighted_graph_check"
 	ExperimentalWeightedGraphCheck       = "weighted_graph_check"
+	ExperimentalCheckSQLOptimizations    = "check_sql_optimizations"
 	ExperimentalAuthZen                  = "authzen"
 )
 
