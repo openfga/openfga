@@ -2,8 +2,6 @@ package checkutil
 
 import (
 	"context"
-	"fmt"
-	"strings"
 
 	"google.golang.org/protobuf/types/known/structpb"
 
@@ -22,43 +20,13 @@ import (
 func BuildTupleKeyConditionFilter(ctx context.Context, reqCtx *structpb.Struct, typesys *typesystem.TypeSystem) storage.TupleKeyConditionFilterFunc {
 	return func(t *openfgav1.TupleKey) (bool, error) {
 		if condition.IsInlineExpression(t.GetCondition().GetName()) {
-			return evalInlineExpressionCondition(ctx, t, reqCtx)
+			return eval.EvaluateInlineExpression(ctx, t, reqCtx)
 		}
 
 		// no condition on tuple or not found gets handled by eval.EvaluateTupleCondition
 		cond, _ := typesys.GetCondition(t.GetCondition().GetName())
 		return eval.EvaluateTupleCondition(ctx, t, cond, reqCtx)
 	}
-}
-
-// evalInlineExpressionCondition evaluates a $expression tuple against the request context only.
-// The tuple condition context carries the CEL expression and parameter type declarations, not
-// runtime values, so it must not be merged into the CEL activation.
-// A missing declared parameter is a hard error rather than a silent deny.
-func evalInlineExpressionCondition(ctx context.Context, t *openfgav1.TupleKey, reqCtx *structpb.Struct) (bool, error) {
-	dynCond, err := condition.NewCompiledFromInlineExpression(t.GetCondition().GetContext())
-	if err != nil {
-		return false, err
-	}
-
-	var reqFields map[string]*structpb.Value
-	if reqCtx != nil {
-		reqFields = reqCtx.GetFields()
-	}
-
-	result, err := dynCond.Evaluate(ctx, reqFields)
-	if err != nil {
-		return false, err
-	}
-
-	if len(result.MissingParameters) > 0 {
-		return false, condition.NewEvaluationError(
-			condition.InlineExpressionName,
-			fmt.Errorf("missing required parameters: %s", strings.Join(result.MissingParameters, ", ")),
-		)
-	}
-
-	return result.ConditionMet, nil
 }
 
 // userFilter returns the ObjectRelation where the object is the specified user.

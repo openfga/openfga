@@ -16,11 +16,15 @@ func TestIsInlineExpression(t *testing.T) {
 	require.False(t, condition.IsInlineExpression("$other"))
 }
 
-func TestNewCompiledFromInlineExpression(t *testing.T) {
+// TestFromInlineExpression covers the parse/validation phase of FromInlineExpression.
+// Type-mismatch errors (caught by CEL type-checking) are surfaced by Compile(), so cases
+// that expect a compile-time error use expectCompileErr instead of expectErr.
+func TestFromInlineExpression(t *testing.T) {
 	tests := []struct {
-		name      string
-		ctx       map[string]interface{}
-		expectErr string
+		name             string
+		ctx              map[string]interface{}
+		expectErr        string // error from FromInlineExpression (parse/structural)
+		expectCompileErr string // error from ec.Compile() (CEL type-check)
 	}{
 		{
 			name: "valid_with_declared_params",
@@ -110,6 +114,8 @@ func TestNewCompiledFromInlineExpression(t *testing.T) {
 			},
 			expectErr: `parameter name "parameters" is reserved`,
 		},
+		// Type mismatches are caught by CEL type-checking inside Compile(), not by
+		// FromInlineExpression (which only parses syntax and structural fields).
 		{
 			name: "type_mismatch_fails_compilation",
 			ctx: map[string]interface{}{
@@ -118,7 +124,7 @@ func TestNewCompiledFromInlineExpression(t *testing.T) {
 					"count": "int",
 				},
 			},
-			expectErr: "found no matching overload",
+			expectCompileErr: "found no matching overload",
 		},
 		// Non-string scalar types
 		{
@@ -193,7 +199,7 @@ func TestNewCompiledFromInlineExpression(t *testing.T) {
 					"count": "int",
 				},
 			},
-			expectErr: "found no matching overload",
+			expectCompileErr: "found no matching overload",
 		},
 		{
 			name: "type_mismatch_bool_param_used_as_int",
@@ -203,7 +209,7 @@ func TestNewCompiledFromInlineExpression(t *testing.T) {
 					"flag": "bool",
 				},
 			},
-			expectErr: "found no matching overload",
+			expectCompileErr: "found no matching overload",
 		},
 		{
 			name: "type_mismatch_ipaddress_compared_as_string",
@@ -214,7 +220,7 @@ func TestNewCompiledFromInlineExpression(t *testing.T) {
 					"ip": "ipaddress",
 				},
 			},
-			expectErr: "found no matching overload",
+			expectCompileErr: "found no matching overload",
 		},
 	}
 
@@ -223,14 +229,22 @@ func TestNewCompiledFromInlineExpression(t *testing.T) {
 			s, err := structpb.NewStruct(tt.ctx)
 			require.NoError(t, err)
 
-			cond, err := condition.NewCompiledFromInlineExpression(s)
+			ec, err := condition.FromInlineExpression(s)
 			if tt.expectErr != "" {
 				require.Error(t, err)
 				require.ErrorContains(t, err, tt.expectErr)
-				require.Nil(t, cond)
+				require.Nil(t, ec)
+				return
+			}
+			require.NoError(t, err)
+			require.NotNil(t, ec)
+
+			compileErr := ec.Compile()
+			if tt.expectCompileErr != "" {
+				require.Error(t, compileErr)
+				require.ErrorContains(t, compileErr, tt.expectCompileErr)
 			} else {
-				require.NoError(t, err)
-				require.NotNil(t, cond)
+				require.NoError(t, compileErr)
 			}
 		})
 	}

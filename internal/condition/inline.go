@@ -11,6 +11,7 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/condition/types"
+	"github.com/openfga/openfga/pkg/server/config"
 )
 
 // InlineExpressionName is the reserved condition name used for $expression inline conditions.
@@ -59,44 +60,35 @@ func extractDeclaredParameters(fields map[string]*structpb.Value) (conditionPara
 	return declaredParams, nil
 }
 
-// NewCompiledFromInlineExpression builds a fully compiled EvaluableCondition from
-// the context Struct attached to a $expression tuple condition. The Struct must
-// contain an "expression" string key (required) and may contain a "parameters"
-// nested Struct whose values are type-name strings (e.g. "string", "int").
-//
-// Any identifiers used in the expression that are not declared in "parameters" are
-// automatically inferred as type string. Comprehension-scoped variables are excluded.
-//
-// The reserved keys "expression" and "parameters" cannot be used as parameter names.
-func NewCompiledFromInlineExpression(ctx *structpb.Struct) (*EvaluableCondition, error) {
+func FromInlineExpression(ctx *structpb.Struct) (*EvaluableCondition, error) {
 	fields := ctx.GetFields()
 
-	// 1. Extract the CEL expression string (required).
 	exprVal, ok := fields[inlineContextExpressionKey]
 	if !ok {
 		return nil, fmt.Errorf("%s: missing required context field %q", InlineExpressionName, inlineContextExpressionKey)
 	}
+
 	exprStr := exprVal.GetStringValue()
 	if exprStr == "" {
 		return nil, fmt.Errorf("%s: context field %q must be a non-empty string", InlineExpressionName, inlineContextExpressionKey)
 	}
 
-	// 2. Extract explicitly declared parameter types (optional).
 	declaredParams, err := extractDeclaredParameters(fields)
 	if err != nil {
 		return nil, err
 	}
 
-	// 3. Parse the CEL expression and infer undeclared identifiers as string.
 	ast, issues := celBaseEnv.Parse(exprStr)
 	if issues != nil && issues.Err() != nil {
 		return nil, fmt.Errorf("%s: invalid CEL expression: %w", InlineExpressionName, issues.Err())
 	}
 
 	inferredIdents := extractIdents(ast.NativeRep().Expr())
+
 	if declaredParams == nil && len(inferredIdents) > 0 {
 		declaredParams = make(conditionParameters, len(inferredIdents))
 	}
+
 	for _, ident := range inferredIdents {
 		if _, alreadyDeclared := declaredParams[ident]; !alreadyDeclared {
 			declaredParams[ident] = &openfgav1.ConditionParamTypeRef{
@@ -105,13 +97,14 @@ func NewCompiledFromInlineExpression(ctx *structpb.Struct) (*EvaluableCondition,
 		}
 	}
 
-	// 4. Build and fully compile the condition.
-	cond := &openfgav1.Condition{
+	return NewUncompiled(&openfgav1.Condition{
 		Name:       InlineExpressionName,
 		Expression: exprStr,
 		Parameters: declaredParams,
-	}
-	return NewCompiled(cond)
+	}).
+		WithTrackEvaluationCost().
+		WithMaxEvaluationCost(config.MaxConditionEvaluationCost()).
+		WithInterruptCheckFrequency(config.DefaultInterruptCheckFrequency), nil
 }
 
 // extractIdents iteratively walks a CEL expression and returns the names of all

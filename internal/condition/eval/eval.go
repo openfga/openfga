@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -20,6 +21,46 @@ import (
 )
 
 var tracer = otel.Tracer("openfga/internal/condition/eval")
+
+func EvaluateInlineExpression(ctx context.Context, tk *openfgav1.TupleKey, reqCtx *structpb.Struct) (bool, error) {
+	cond := tk.GetCondition()
+
+	if cond == nil || cond.GetName() == "" {
+		return true, nil
+	}
+
+	if !condition.IsInlineExpression(cond.GetName()) {
+		err := condition.NewEvaluationError(cond.GetName(), fmt.Errorf("condition is not $expression"))
+		return false, err
+	}
+
+	ieCond, err := condition.FromInlineExpression(cond.GetContext())
+	if err != nil {
+		return false, condition.NewEvaluationError(
+			condition.InlineExpressionName,
+			err,
+		)
+	}
+
+	var reqFields map[string]*structpb.Value
+	if reqCtx != nil {
+		reqFields = reqCtx.GetFields()
+	}
+
+	result, err := ieCond.Evaluate(ctx, reqFields)
+	if err != nil {
+		return false, err
+	}
+
+	if len(result.MissingParameters) > 0 {
+		return false, condition.NewEvaluationError(
+			condition.InlineExpressionName,
+			fmt.Errorf("missing required parameters: %s", strings.Join(result.MissingParameters, ", ")),
+		)
+	}
+
+	return result.ConditionMet, nil
+}
 
 // EvaluateTupleCondition looks at the given tuple's condition and returns an evaluation result for the given context.
 // If the tuple doesn't have a condition, it exits early and doesn't create a span.

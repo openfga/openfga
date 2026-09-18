@@ -240,7 +240,7 @@ func validateCondition(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) e
 	// $expression is a reserved inline condition — validate its context and type restriction
 	// without looking it up in the model's named conditions map.
 	if condition.IsInlineExpression(tk.GetCondition().GetName()) {
-		return validateInlineExpressionCondition(tk, typeRestrictions, userType, userRelation)
+		return validateInlineExpressionCondition(typesys, tk)
 	}
 
 	namedCondition, ok := typesys.GetConditions()[tk.GetCondition().GetName()]
@@ -303,13 +303,39 @@ func validateCondition(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) e
 // validateInlineExpressionCondition validates that a $expression tuple is well-formed:
 // - the type restriction on the relation includes $expression for the user type
 // - the condition context contains a valid, compilable CEL expression.
-func validateInlineExpressionCondition(
-	tk *openfgav1.TupleKey,
-	typeRestrictions []*openfgav1.RelationReference,
-	userType string,
-	userRelation string,
-) error {
-	validCondition := false
+func validateInlineExpressionCondition(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) error {
+	cond := tk.GetCondition()
+
+	if cond == nil {
+		return &tuple.InvalidConditionalTupleError{
+			Cause: fmt.Errorf("condition is missing"), TupleKey: tk,
+		}
+	}
+
+	if !condition.IsInlineExpression(cond.GetName()) {
+		return &tuple.InvalidConditionalTupleError{
+			Cause:    fmt.Errorf("expected $expression got: %s", cond.GetName()),
+			TupleKey: tk,
+		}
+	}
+
+	objectType := tuple.GetType(tk.GetObject())
+	userType := tuple.GetType(tk.GetUser())
+	userRelation := tuple.GetRelation(tk.GetUser())
+
+	typeRestrictions, err := typesys.GetDirectlyRelatedUserTypes(objectType, tk.GetRelation())
+	if err != nil {
+		return err
+	}
+
+	if utils.ContainsForbiddenChars(cond.GetName()) {
+		return &tuple.InvalidConditionalTupleError{
+			Cause: fmt.Errorf("condition name contains forbidden characters"), TupleKey: tk,
+		}
+	}
+
+	var validCondition bool
+
 	for _, directlyRelatedType := range typeRestrictions {
 		if directlyRelatedType.GetType() != userType || directlyRelatedType.GetCondition() != condition.InlineExpressionName {
 			continue
@@ -320,13 +346,26 @@ func validateInlineExpressionCondition(
 		validCondition = true
 		break
 	}
+
 	if !validCondition {
 		return &tuple.InvalidConditionalTupleError{
 			Cause: fmt.Errorf("invalid condition for type restriction"), TupleKey: tk,
 		}
 	}
 
-	if _, err := condition.NewCompiledFromInlineExpression(tk.GetCondition().GetContext()); err != nil {
+	contextStruct := cond.GetContext()
+
+	if err := ValidateStruct(contextStruct); err != nil {
+		return &tuple.InvalidConditionalTupleError{
+			Cause: err, TupleKey: tk,
+		}
+	}
+
+	ec, err := condition.FromInlineExpression(contextStruct)
+	if err != nil {
+		return &tuple.InvalidConditionalTupleError{Cause: err, TupleKey: tk}
+	}
+	if err := ec.Compile(); err != nil {
 		return &tuple.InvalidConditionalTupleError{Cause: err, TupleKey: tk}
 	}
 	return nil

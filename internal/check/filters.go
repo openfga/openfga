@@ -34,7 +34,7 @@ func evaluateCondition(ctx context.Context, model *modelgraph.AuthorizationModel
 }
 
 func evalInlineCondition(ctx context.Context, t *openfgav1.TupleKey, reqCtx *structpb.Struct) (bool, error) {
-	dynCond, err := condition.NewCompiledFromInlineExpression(t.GetCondition().GetContext())
+	dynCond, err := condition.FromInlineExpression(t.GetCondition().GetContext())
 	if err != nil {
 		return false, err
 	}
