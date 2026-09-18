@@ -3185,6 +3185,24 @@ tests:
             context:
               channel_id: "WRONG"
             expectation: []
+        listUsersAssertions:
+          - request:
+              object: document:1
+              relation: editor
+              filters:
+                - user
+            context:
+              channel_id: "X123456"
+            expectation:
+              - user:alice
+          - request:
+              object: document:1
+              relation: editor
+              filters:
+                - user
+            context:
+              channel_id: "WRONG"
+            expectation: []
 
   - name: inline_expression_inferred_string_param
     stages:
@@ -3379,3 +3397,124 @@ tests:
             context:
               ip: "192.168.1.1"
             expectation: false
+
+  - name: inline_expression_userset_subject
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+
+          type group
+            relations
+              define member: [user]
+
+          type document
+            relations
+              define viewer: [group#member with $expression]
+        tuples:
+          - user: group:eng#member
+            relation: viewer
+            object: document:1
+            condition:
+              name: $expression
+              context:
+                expression: "env == 'prod'"
+                parameters:
+                  env: string
+          - user: user:alice
+            relation: member
+            object: group:eng
+        checkAssertions:
+          - tuple:
+              user: group:eng#member
+              relation: viewer
+              object: document:1
+            context:
+              env: "prod"
+            expectation: true
+          - tuple:
+              user: group:eng#member
+              relation: viewer
+              object: document:1
+            context:
+              env: "staging"
+            expectation: false
+        listObjectsAssertions:
+          - request:
+              user: group:eng#member
+              type: document
+              relation: viewer
+            context:
+              env: "prod"
+            expectation:
+              - document:1
+          - request:
+              user: group:eng#member
+              type: document
+              relation: viewer
+            context:
+              env: "staging"
+            expectation: []
+
+  - name: inline_expression_ttu
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+
+          type folder
+            relations
+              define owner: [user]
+
+          type document
+            relations
+              define parent: [folder with $expression]
+              define viewer: owner from parent
+        tuples:
+          - user: folder:1
+            relation: parent
+            object: document:1
+            condition:
+              name: $expression
+              context:
+                expression: "env == 'prod'"
+                parameters:
+                  env: string
+          - user: user:alice
+            relation: owner
+            object: folder:1
+        checkAssertions:
+          - tuple:
+              user: user:alice
+              relation: viewer
+              object: document:1
+            context:
+              env: "prod"
+            expectation: true
+          - tuple:
+              user: user:alice
+              relation: viewer
+              object: document:1
+            context:
+              env: "staging"
+            expectation: false
+        listUsersAssertions:
+          - request:
+              object: document:1
+              relation: viewer
+              filters:
+                - user
+            context:
+              env: "prod"
+            expectation:
+              - user:alice
+          - request:
+              object: document:1
+              relation: viewer
+              filters:
+                - user
+            context:
+              env: "staging"
+            expectation: []
