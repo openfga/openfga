@@ -13,6 +13,7 @@ import (
 
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/condition/eval"
+	interrors "github.com/openfga/openfga/internal/errors"
 	"github.com/openfga/openfga/internal/iterator"
 	"github.com/openfga/openfga/internal/modelgraph"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -36,7 +37,7 @@ func evaluateCondition(ctx context.Context, model *modelgraph.AuthorizationModel
 func evalInlineCondition(ctx context.Context, t *openfgav1.TupleKey, reqCtx *structpb.Struct) (bool, error) {
 	dynCond, err := condition.FromInlineExpression(t.GetCondition().GetContext())
 	if err != nil {
-		return false, err
+		return false, &interrors.ErrFatal{Cause: err}
 	}
 
 	var reqFields map[string]*structpb.Value
@@ -46,14 +47,16 @@ func evalInlineCondition(ctx context.Context, t *openfgav1.TupleKey, reqCtx *str
 
 	result, err := dynCond.Evaluate(ctx, reqFields)
 	if err != nil {
-		return false, err
+		return false, &interrors.ErrFatal{Cause: err}
 	}
 
 	if len(result.MissingParameters) > 0 {
-		return false, condition.NewEvaluationError(
-			condition.InlineExpressionName,
-			fmt.Errorf("missing required parameters: %s", strings.Join(result.MissingParameters, ", ")),
-		)
+		return false, &interrors.ErrFatal{
+			Cause: condition.NewEvaluationError(
+				condition.InlineExpressionName,
+				fmt.Errorf("missing required parameters: %s", strings.Join(result.MissingParameters, ", ")),
+			),
+		}
 	}
 
 	return result.ConditionMet, nil
