@@ -731,6 +731,128 @@ func (s *alwaysFalseNilErrStrategy) TTU(_ context.Context, _ *Request, _ *authzG
 	return &Response{Allowed: false}, nil
 }
 
+func TestResolveLogicalEdge_SQLOptimizationsFlag(t *testing.T) {
+	// group#member fans out into multiple weight-1 edges, so ResolveLogicalEdge routes it
+	// through a GroupStrategy (the SQL-gated path) rather than a single-edge resolution.
+	model := testutils.MustTransformDSLToProtoWithID(`
+		model
+		  schema 1.1
+		type user
+		type group
+		  relations
+		    define member: [user] or admin
+		    define admin: [user]
+	`)
+
+	mg, err := modelgraph.New(model)
+	require.NoError(t, err)
+
+	node, ok := mg.GetNodeByID("group#member")
+	require.True(t, ok)
+
+	t.Run("flag_off_uses_default_and_skips_planner_and_sql", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		storeID := ulid.Make().String()
+
+		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		// A non-nil querier normally makes the SQL strategy eligible; the disabled flag must
+		// still force the default strategy.
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(&fakeQuerier{}).AnyTimes()
+
+		// The planner must not be consulted when the flag is off: a strict mock with no
+		// expectations fails the test if GetPlanSelector is called.
+		mockPlanner := mocks.NewMockManager(ctrl)
+
+		defaultStrategy := NewMockGroupStrategy(ctrl)
+		sqlStrategy := NewMockGroupStrategy(ctrl)
+
+		defaultStrategy.EXPECT().Union(gomock.Any(), gomock.Any(), gomock.Any()).Return(&Response{Allowed: true}, nil).Times(1)
+		// sqlStrategy has no expectations, so any call to it fails the test.
+
+		resolver := New(Config{
+			Model:                   mg,
+			Datastore:               mockDatastore,
+			Cache:                   storage.NewNoopCache(),
+			Planner:                 mockPlanner,
+			ConcurrencyLimit:        10,
+			SQLOptimizationsEnabled: false,
+		})
+		resolver.groupStrategies = map[string]GroupStrategy{
+			DefaultStrategyName: defaultStrategy,
+			SQLStrategyName:     sqlStrategy,
+		}
+
+		req, err := NewRequest(RequestParams{
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("group:1", "member", "user:maria"),
+		})
+		require.NoError(t, err)
+		edges, err := mg.FlattenNode(node, req.GetUserType(), req.IsTypedWildcard(), "")
+		require.NoError(t, err)
+
+		res, err := resolver.ResolveLogicalEdge(context.Background(), req, &GroupEdge{Node: node, Edges: edges}, nil)
+		require.NoError(t, err)
+		require.True(t, res.GetAllowed())
+	})
+
+	t.Run("flag_on_offers_sql_candidate_to_planner", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		storeID := ulid.Make().String()
+
+		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(&fakeQuerier{}).AnyTimes()
+
+		mockPlanner := mocks.NewMockManager(ctrl)
+		mockSelector := mocks.NewMockSelector(ctrl)
+
+		mockPlanner.EXPECT().GetPlanSelector(gomock.Any()).Return(mockSelector).Times(1)
+		// When the flag is on, the SQL strategy must be among the candidates handed to the planner.
+		mockSelector.EXPECT().Select(gomock.Any()).DoAndReturn(func(candidates map[string]*planner.PlanConfig) *planner.PlanConfig {
+			require.Contains(t, candidates, DefaultStrategyName)
+			require.Contains(t, candidates, SQLStrategyName)
+			return SQLPlan
+		}).Times(1)
+		mockSelector.EXPECT().UpdateStats(SQLPlan, gomock.Any()).Times(1)
+
+		defaultStrategy := NewMockGroupStrategy(ctrl)
+		sqlStrategy := NewMockGroupStrategy(ctrl)
+
+		// The planner selected SQL, so only the SQL strategy runs; default has no expectations.
+		sqlStrategy.EXPECT().Union(gomock.Any(), gomock.Any(), gomock.Any()).Return(&Response{Allowed: true}, nil).Times(1)
+
+		resolver := New(Config{
+			Model:                   mg,
+			Datastore:               mockDatastore,
+			Cache:                   storage.NewNoopCache(),
+			Planner:                 mockPlanner,
+			ConcurrencyLimit:        10,
+			SQLOptimizationsEnabled: true,
+		})
+		resolver.groupStrategies = map[string]GroupStrategy{
+			DefaultStrategyName: defaultStrategy,
+			SQLStrategyName:     sqlStrategy,
+		}
+
+		req, err := NewRequest(RequestParams{
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("group:1", "member", "user:maria"),
+		})
+		require.NoError(t, err)
+		edges, err := mg.FlattenNode(node, req.GetUserType(), req.IsTypedWildcard(), "")
+		require.NoError(t, err)
+
+		res, err := resolver.ResolveLogicalEdge(context.Background(), req, &GroupEdge{Node: node, Edges: edges}, nil)
+		require.NoError(t, err)
+		require.True(t, res.GetAllowed())
+	})
+}
+
 func TestResolveRecursive(t *testing.T) {
 	t.Run("cancelled_context_does_not_write_to_cache", func(t *testing.T) {
 		// Same invariant as ResolveUnionEdges: the goroutine must not write to cache when

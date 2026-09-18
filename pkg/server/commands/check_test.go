@@ -14,6 +14,16 @@ import (
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
+func TestWithCheckQueryV2SQLOptimizations(t *testing.T) {
+	t.Parallel()
+
+	// The SQL optimizations flag is evaluated once per request in the server layer and threaded
+	// onto CheckQueryV2 via this option; verify it survives to the field the resolver reads.
+	require.False(t, NewCheckQuery().sqlOptimizationsEnabled)
+	require.True(t, NewCheckQuery(WithCheckQueryV2SQLOptimizations(true)).sqlOptimizationsEnabled)
+	require.False(t, NewCheckQuery(WithCheckQueryV2SQLOptimizations(false)).sqlOptimizationsEnabled)
+}
+
 func TestIsV2CheckTerminalError(t *testing.T) {
 	t.Parallel()
 
