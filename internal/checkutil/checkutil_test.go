@@ -2,6 +2,7 @@ package checkutil
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 
@@ -236,6 +237,69 @@ func TestBuildTupleKeyConditionFilter(t *testing.T) {
 			require.Equal(t, tt.conditionMet, result)
 		})
 	}
+}
+
+// TestConditionsFilteredIteratorInlineExpressionFatalError verifies that a missing-parameter
+// error from a $expression tuple is propagated even when an earlier tuple already passed the
+// filter. The bug: ConditionsFilteredTupleKeyIterator stored filter errors in lastError and
+// discarded them at ErrIteratorDone when onceValid was true, so a valid candidate silently hid
+// the hard error from an $expression tuple with missing request context.
+func TestConditionsFilteredIteratorInlineExpressionFatalError(t *testing.T) {
+	model := parser.MustTransformDSLToProto(`
+		model
+			schema 1.1
+		type user
+		type document
+			relations
+				define editor: [user with $expression]
+	`)
+	ts, err := typesystem.NewAndValidate(context.Background(), model)
+	require.NoError(t, err)
+
+	exprAlwaysTrue := testutils.MustNewStruct(t, map[string]interface{}{"expression": "true"})
+	exprMissingParam := testutils.MustNewStruct(t, map[string]interface{}{"expression": "channel == 'X'"})
+
+	tuples := []*openfgav1.TupleKey{
+		// Tuple A: always-true $expression — passes the filter, sets onceValid=true.
+		{
+			Object:   "document:1",
+			Relation: "editor",
+			User:     "user:alice",
+			Condition: &openfgav1.RelationshipCondition{
+				Name:    condition.InlineExpressionName,
+				Context: exprAlwaysTrue,
+			},
+		},
+		// Tuple B: $expression that requires "channel" which is absent from request context.
+		{
+			Object:   "document:1",
+			Relation: "editor",
+			User:     "user:bob",
+			Condition: &openfgav1.RelationshipCondition{
+				Name:    condition.InlineExpressionName,
+				Context: exprMissingParam,
+			},
+		},
+	}
+
+	// No request context — "channel" is missing for Tuple B.
+	iter := storage.NewConditionsFilteredTupleKeyIterator(
+		storage.NewStaticTupleKeyIterator(tuples),
+		BuildTupleKeyConditionFilter(context.Background(), nil, ts),
+	)
+	defer iter.Stop()
+
+	// First Next() returns Tuple A (valid).
+	tk, err := iter.Next(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, "user:alice", tk.GetUser())
+
+	// Second Next() must return the missing-parameter error, not ErrIteratorDone.
+	// Previously, onceValid=true caused the error stored in lastError to be discarded.
+	_, err = iter.Next(context.Background())
+	require.Error(t, err)
+	require.False(t, errors.Is(err, storage.ErrIteratorDone))
+	require.ErrorContains(t, err, "missing required parameters")
 }
 
 func TestUserFilter(t *testing.T) {

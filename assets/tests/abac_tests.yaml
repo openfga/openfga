@@ -3128,6 +3128,83 @@ tests:
                   name: isOk
             errorCode: 2000
 
+  # Regression test: when the subtract side of a "but not" exclusion has a userset $expression
+  # with a missing request parameter, the missing-parameter error must surface rather than be
+  # silently discarded. The bug: ConditionsFilteredTupleKeyIterator records the always-true
+  # group:1 tuple (onceValid=true), then stores group:2's missing-param error in lastError;
+  # when the iterator is exhausted with onceValid=true it returns ErrIteratorDone instead of
+  # the error. The caller then finds alice is not in group:1, misses group:2 entirely, and
+  # concludes alice is not excluded — returning Allowed: true instead of an error.
+  - name: inline_expression_exclusion_subtract_userset_missing_param
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type group
+            relations
+              define member: [user]
+          type document
+            relations
+              define viewer: [group#member] but not excluded
+              define excluded: [group#member with $expression]
+        tuples:
+          # alice is ONLY in group:2 — not group:1
+          - user: user:alice
+            relation: member
+            object: group:2
+          # both groups grant viewer access to document:1
+          - user: group:1#member
+            relation: viewer
+            object: document:1
+          - user: group:2#member
+            relation: viewer
+            object: document:1
+          # group:1 members are always excluded (no parameters required)
+          - user: group:1#member
+            relation: excluded
+            object: document:1
+            condition:
+              name: $expression
+              context:
+                expression: "true"
+          # group:2 members are excluded only when channel == 'X'
+          - user: group:2#member
+            relation: excluded
+            object: document:1
+            condition:
+              name: $expression
+              context:
+                expression: "channel == 'X'"
+                parameters:
+                  channel: string
+        checkAssertions:
+          # alice (group:2 only) with channel=X → excluded → not allowed
+          - tuple:
+              user: user:alice
+              relation: viewer
+              object: document:1
+            context:
+              channel: "X"
+            expectation: false
+          # alice (group:2 only) with channel=Y → not excluded → allowed
+          - tuple:
+              user: user:alice
+              relation: viewer
+              object: document:1
+            context:
+              channel: "Y"
+            expectation: true
+          # alice (group:2 only) with no context → group:2's $expression cannot be evaluated →
+          # must return an error. Without the fix, the always-true group:1 tuple sets
+          # onceValid=true, group:2's missing-param error is discarded, alice appears
+          # not-excluded, and the check incorrectly returns Allowed: true.
+          - tuple:
+              user: user:alice
+              relation: viewer
+              object: document:1
+            errorCode: 2000
+
   - name: inline_expression_basic
     stages:
       - model: |

@@ -9,6 +9,7 @@ import (
 
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/condition/eval"
+	interrors "github.com/openfga/openfga/internal/errors"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -20,7 +21,11 @@ import (
 func BuildTupleKeyConditionFilter(ctx context.Context, reqCtx *structpb.Struct, typesys *typesystem.TypeSystem) storage.TupleKeyConditionFilterFunc {
 	return func(t *openfgav1.TupleKey) (bool, error) {
 		if condition.IsInlineExpression(t.GetCondition().GetName()) {
-			return eval.EvaluateInlineExpression(ctx, t, reqCtx)
+			met, err := eval.EvaluateInlineExpression(ctx, t, reqCtx)
+			if err != nil {
+				return false, &interrors.ErrFatal{Cause: err}
+			}
+			return met, nil
 		}
 
 		// no condition on tuple or not found gets handled by eval.EvaluateTupleCondition
