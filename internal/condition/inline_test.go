@@ -224,6 +224,45 @@ func TestFromInlineExpression(t *testing.T) {
 			},
 			expectErr: "found no matching overload",
 		},
+		// Container types with generic element
+		{
+			name: "valid_map_of_string_param",
+			ctx: map[string]interface{}{
+				"expression": `"admin" in roles`,
+				"parameters": map[string]interface{}{
+					"roles": "map<string>",
+				},
+			},
+		},
+		{
+			name: "valid_list_of_string_param",
+			ctx: map[string]interface{}{
+				"expression": `"admin" in tags`,
+				"parameters": map[string]interface{}{
+					"tags": "list<string>",
+				},
+			},
+		},
+		{
+			name: "map_param_missing_generic",
+			ctx: map[string]interface{}{
+				"expression": `m.size() > 0`,
+				"parameters": map[string]interface{}{
+					"m": "map",
+				},
+			},
+			expectErr: `requires a generic element type`,
+		},
+		{
+			name: "list_param_missing_generic",
+			ctx: map[string]interface{}{
+				"expression": `l.size() > 0`,
+				"parameters": map[string]interface{}{
+					"l": "list",
+				},
+			},
+			expectErr: `requires a generic element type`,
+		},
 	}
 
 	for _, tt := range tests {

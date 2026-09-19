@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strings"
 
 	celast "github.com/google/cel-go/common/ast"
 	"google.golang.org/protobuf/types/known/structpb"
@@ -33,6 +34,42 @@ func IsInlineExpression(name string) bool {
 
 type conditionParameters = map[string]*openfgav1.ConditionParamTypeRef
 
+// parseTypeRef converts a type-spec string (e.g. "string", "map<int>", "list<string>")
+// to a ConditionParamTypeRef. Container types require an explicit element type:
+// bare "map" or "list" are rejected early with a descriptive error rather than letting
+// the opaque "requires 1 generic types; found 0" surface from DecodeParameterType.
+func parseTypeRef(typeStr string) (*openfgav1.ConditionParamTypeRef, error) {
+	open := strings.IndexByte(typeStr, '<')
+	if open >= 0 {
+		if !strings.HasSuffix(typeStr, ">") {
+			return nil, fmt.Errorf("malformed generic type %q: missing closing >", typeStr)
+		}
+		outerName, ok := types.TypeNameFromString(typeStr[:open])
+		if !ok {
+			return nil, fmt.Errorf("unknown parameter type %q", typeStr[:open])
+		}
+		innerRef, err := parseTypeRef(typeStr[open+1 : len(typeStr)-1])
+		if err != nil {
+			return nil, err
+		}
+		return &openfgav1.ConditionParamTypeRef{
+			TypeName:     outerName,
+			GenericTypes: []*openfgav1.ConditionParamTypeRef{innerRef},
+		}, nil
+	}
+
+	typeName, ok := types.TypeNameFromString(typeStr)
+	if !ok {
+		return nil, fmt.Errorf("unknown parameter type %q", typeStr)
+	}
+	ref := &openfgav1.ConditionParamTypeRef{TypeName: typeName}
+	// Use DecodeParameterType to detect container types that require a generic element.
+	if _, err := types.DecodeParameterType(ref); err != nil {
+		return nil, fmt.Errorf("parameter type %q requires a generic element type, e.g. %q", typeStr, typeStr+"<any>")
+	}
+	return ref, nil
+}
+
 func extractDeclaredParameters(fields map[string]*structpb.Value) (conditionParameters, error) {
 	var declaredParams conditionParameters
 
@@ -47,16 +84,16 @@ func extractDeclaredParameters(fields map[string]*structpb.Value) (conditionPara
 					"%s: parameter name %q is reserved and cannot be used", InlineExpressionName, paramName,
 				)
 			}
-			typeName, knownType := types.TypeNameFromString(typeVal.GetStringValue())
-			if !knownType {
+			typeRef, err := parseTypeRef(typeVal.GetStringValue())
+			if err != nil {
 				return nil, fmt.Errorf(
-					"%s: unknown parameter type %q for parameter %q", InlineExpressionName, typeVal.GetStringValue(), paramName,
+					"%s: invalid parameter type for parameter %q: %w", InlineExpressionName, paramName, err,
 				)
 			}
 			if declaredParams == nil {
 				declaredParams = make(conditionParameters)
 			}
-			declaredParams[paramName] = &openfgav1.ConditionParamTypeRef{TypeName: typeName}
+			declaredParams[paramName] = typeRef
 		}
 	}
 	return declaredParams, nil
