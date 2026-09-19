@@ -150,7 +150,7 @@ func TestFilter_Conditions(t *testing.T) {
 			case "condition1":
 				return true, nil
 			default:
-				return false, &interrors.ErrFatal{Cause: fatalErr}
+				return false, &interrors.FatalError{Cause: fatalErr}
 			}
 		}
 
@@ -171,9 +171,9 @@ func TestFilter_Conditions(t *testing.T) {
 
 		// Second Next() returns the FatalFilterError (wrapping fatalErr), not ErrIteratorDone.
 		_, err = iter.Next(context.Background())
-		require.ErrorIs(t, err, fatalErr)         // unwraps through FatalFilterError
-		require.False(t, errors.Is(err, storage.ErrIteratorDone))
-		var fatal *interrors.ErrFatal
+		require.ErrorIs(t, err, fatalErr) // unwraps through FatalFilterError
+		require.NotErrorIs(t, err, storage.ErrIteratorDone)
+		var fatal *interrors.FatalError
 		require.ErrorAs(t, err, &fatal)
 	})
 

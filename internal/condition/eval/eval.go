@@ -31,14 +31,14 @@ func EvaluateInlineExpression(ctx context.Context, tk *openfgav1.TupleKey, reqCt
 	}
 
 	if !condition.IsInlineExpression(cond.GetName()) {
-		return false, &interrors.ErrFatal{
+		return false, &interrors.FatalError{
 			Cause: condition.NewEvaluationError(cond.GetName(), fmt.Errorf("condition is not $expression")),
 		}
 	}
 
 	ieCond, err := condition.FromInlineExpression(ctx, tk)
 	if err != nil {
-		return false, &interrors.ErrFatal{
+		return false, &interrors.FatalError{
 			Cause: condition.NewEvaluationError(condition.InlineExpressionName, err),
 		}
 	}
@@ -61,11 +61,11 @@ func EvaluateInlineExpression(ctx context.Context, tk *openfgav1.TupleKey, reqCt
 	result, err := ieCond.Evaluate(ctx, reqFields)
 	if err != nil {
 		telemetry.TraceError(span, err)
-		return false, &interrors.ErrFatal{Cause: err}
+		return false, &interrors.FatalError{Cause: err}
 	}
 
 	if len(result.MissingParameters) > 0 {
-		return false, &interrors.ErrFatal{
+		return false, &interrors.FatalError{
 			Cause: condition.NewEvaluationError(
 				condition.InlineExpressionName,
 				fmt.Errorf("missing required parameters: %s", strings.Join(result.MissingParameters, ", ")),

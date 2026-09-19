@@ -31,7 +31,6 @@ func evaluateCondition(ctx context.Context, model *modelgraph.AuthorizationModel
 	return eval.EvaluateTupleCondition(ctx, t, model.GetConditions()[name], reqCtx)
 }
 
-
 func BuildConditionTupleKeyFilter(ctx context.Context, model *modelgraph.AuthorizationModelGraph, conditions []string, reqCtx *structpb.Struct) iterator.FilterFunc[*openfgav1.TupleKey] {
 	return func(t *openfgav1.TupleKey) (bool, error) {
 		return evaluateCondition(ctx, model, conditions, t, reqCtx)

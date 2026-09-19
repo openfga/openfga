@@ -8,13 +8,13 @@ import "errors"
 
 var ErrUnknown = errors.New("internal server error")
 
-// ErrFatal wraps an error that must be propagated immediately by any consumer,
+// FatalError wraps an error that must be propagated immediately by any consumer,
 // regardless of whether other results have already been produced. It is not tied
 // to any specific layer: any producer (filter, evaluator, resolver) may wrap an
 // error as fatal, and any consumer can detect it with errors.As.
-type ErrFatal struct {
+type FatalError struct {
 	Cause error
 }
 
-func (e *ErrFatal) Error() string { return e.Cause.Error() }
-func (e *ErrFatal) Unwrap() error { return e.Cause }
+func (e *FatalError) Error() string { return e.Cause.Error() }
+func (e *FatalError) Unwrap() error { return e.Cause }

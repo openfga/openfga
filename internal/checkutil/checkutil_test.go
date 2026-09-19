@@ -2,7 +2,6 @@ package checkutil
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"testing"
 
@@ -298,7 +297,7 @@ func TestConditionsFilteredIteratorInlineExpressionFatalError(t *testing.T) {
 	// Previously, onceValid=true caused the error stored in lastError to be discarded.
 	_, err = iter.Next(context.Background())
 	require.Error(t, err)
-	require.False(t, errors.Is(err, storage.ErrIteratorDone))
+	require.NotErrorIs(t, err, storage.ErrIteratorDone)
 	require.ErrorContains(t, err, "missing required parameters")
 }
 

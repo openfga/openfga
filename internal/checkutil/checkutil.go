@@ -23,7 +23,7 @@ func BuildTupleKeyConditionFilter(ctx context.Context, reqCtx *structpb.Struct, 
 		if condition.IsInlineExpression(t.GetCondition().GetName()) {
 			met, err := eval.EvaluateInlineExpression(ctx, t, reqCtx)
 			if err != nil {
-				return false, &interrors.ErrFatal{Cause: err}
+				return false, &interrors.FatalError{Cause: err}
 			}
 			return met, nil
 		}
