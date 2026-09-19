@@ -34,7 +34,7 @@ func NewContextWithInlineConditionCache(ctx context.Context) context.Context {
 }
 
 // inlineConditionCacheKey builds a deterministic string key from the condition
-// name and context payload only. compileInlineExpression depends solely on the
+// name and context payload only. CompileInlineExpression depends solely on the
 // condition payload, so keying by the full tuple (object+relation+user) would
 // cause every distinct tuple carrying the same expression to compile a separate
 // CEL program, defeating the request cache for ListObjects/ListUsers fan-outs.
