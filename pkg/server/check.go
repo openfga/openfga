@@ -19,7 +19,6 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/cachecontroller"
-	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/modelgraph"
 	"github.com/openfga/openfga/internal/telemetry"
@@ -49,7 +48,6 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		attribute.KeyValue{Key: "consistency", Value: attribute.StringValue(req.GetConsistency().String())},
 	))
 	defer span.End()
-	ctx = condition.NewContextWithInlineConditionCache(ctx)
 
 	if !validator.RequestIsValidatedFromContext(ctx) {
 		if err := req.Validate(); err != nil {
@@ -68,6 +66,11 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 	}
 
 	storeID := req.GetStoreId()
+
+	ctx, err = s.enableInlineExpressions(ctx, storeID, req.GetContextualTuples().GetTupleKeys())
+	if err != nil {
+		return nil, err
+	}
 
 	// isV2Fallback tracks whether v2Check ran, errored, and we fell back to v1.
 	// Only in that case does the v1 path need to emit v2-breaking-change logs —

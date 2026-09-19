@@ -47,7 +47,11 @@ func (s *Server) ListUsers(
 		attribute.String("consistency", req.GetConsistency().String()),
 	))
 	defer span.End()
-	ctx = condition.NewContextWithInlineConditionCache(ctx)
+
+	ctx, gateErr := s.enableInlineExpressions(ctx, storeID, req.GetContextualTuples())
+	if gateErr != nil {
+		return nil, gateErr
+	}
 
 	if !validator.RequestIsValidatedFromContext(ctx) {
 		if err := req.Validate(); err != nil {

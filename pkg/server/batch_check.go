@@ -61,6 +61,15 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 	}
 	req.AuthorizationModelId = typesys.GetAuthorizationModelID() // the resolved model id
 
+	var contextualTuples []*openfgav1.TupleKey
+	for _, check := range req.GetChecks() {
+		contextualTuples = append(contextualTuples, check.GetContextualTuples().GetTupleKeys()...)
+	}
+	ctx, err = s.enableInlineExpressions(ctx, storeID, contextualTuples)
+	if err != nil {
+		return nil, err
+	}
+
 	builder := s.getCheckResolverBuilder(req.GetStoreId())
 	checkResolver, checkResolverCloser, err := builder.Build()
 	if err != nil {

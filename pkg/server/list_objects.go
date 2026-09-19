@@ -43,7 +43,11 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		attribute.String("consistency", req.GetConsistency().String()),
 	))
 	defer span.End()
-	ctx = condition.NewContextWithInlineConditionCache(ctx)
+
+	ctx, gateErr := s.enableInlineExpressions(ctx, storeID, req.GetContextualTuples().GetTupleKeys())
+	if gateErr != nil {
+		return nil, gateErr
+	}
 
 	if !validator.RequestIsValidatedFromContext(ctx) {
 		if err := req.Validate(); err != nil {
@@ -225,7 +229,11 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 		attribute.String("consistency", req.GetConsistency().String()),
 	))
 	defer span.End()
-	ctx = condition.NewContextWithInlineConditionCache(ctx)
+
+	ctx, gateErr := s.enableInlineExpressions(ctx, storeID, req.GetContextualTuples().GetTupleKeys())
+	if gateErr != nil {
+		return gateErr
+	}
 
 	if !validator.RequestIsValidatedFromContext(ctx) {
 		if err := req.Validate(); err != nil {
