@@ -71,28 +71,19 @@ func runMatrixWithEngine(t *testing.T, engine string) {
 			name: "with optimizations",
 			experimentals: []string{
 				config.ExperimentalCheckOptimizations,
+				config.ExperimentalInlineExpressions,
 			},
 		},
 		{
-			name:          "without optimizations",
-			experimentals: []string{},
+			name: "without optimizations",
+			experimentals: []string{
+				config.ExperimentalInlineExpressions,
+			},
 		},
 		{
 			name: "with weighted graph",
 			experimentals: []string{
 				config.ExperimentalWeightedGraphCheck,
-			},
-		},
-		{
-			name: "with inline expressions and weighted graph",
-			experimentals: []string{
-				config.ExperimentalWeightedGraphCheck,
-				config.ExperimentalInlineExpressions,
-			},
-		},
-		{
-			name: "with inline expressions only",
-			experimentals: []string{
 				config.ExperimentalInlineExpressions,
 			},
 		},

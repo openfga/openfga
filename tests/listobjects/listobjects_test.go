@@ -44,24 +44,19 @@ func runMatrixWithEngine(t *testing.T, engine string) {
 			experimentals: []string{
 				config.ExperimentalCheckOptimizations,
 				config.ExperimentalListObjectsOptimizations,
+				config.ExperimentalInlineExpressions,
 			},
 		},
 		{
-			name:          "without optimizations",
-			experimentals: []string{},
+			name: "without optimizations",
+			experimentals: []string{
+				config.ExperimentalInlineExpressions,
+			},
 		},
 		{
 			name: "with inline expressions pipeline",
 			experimentals: []string{
 				config.ExperimentalPipelineListObjects,
-				config.ExperimentalInlineExpressions,
-			},
-		},
-		{
-			name: "without pipeline inline expressions",
-			experimentals: []string{
-				config.ExperimentalCheckOptimizations,
-				config.ExperimentalListObjectsOptimizations,
 				config.ExperimentalInlineExpressions,
 			},
 		},
