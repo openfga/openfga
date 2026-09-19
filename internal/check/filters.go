@@ -2,9 +2,7 @@ package check
 
 import (
 	"context"
-	"fmt"
 	"slices"
-	"strings"
 	"sync"
 
 	"google.golang.org/protobuf/types/known/structpb"
@@ -13,7 +11,6 @@ import (
 
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/condition/eval"
-	interrors "github.com/openfga/openfga/internal/errors"
 	"github.com/openfga/openfga/internal/iterator"
 	"github.com/openfga/openfga/internal/modelgraph"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -27,43 +24,13 @@ func evaluateCondition(ctx context.Context, model *modelgraph.AuthorizationModel
 	}
 
 	if condition.IsInlineExpression(name) {
-		return evalInlineCondition(ctx, t, reqCtx)
+		return eval.EvaluateInlineExpression(ctx, t, reqCtx)
 	}
 
 	// consider converting slice to map for faster lookup once we see a large adoption in conditions
 	return eval.EvaluateTupleCondition(ctx, t, model.GetConditions()[name], reqCtx)
 }
 
-func evalInlineCondition(ctx context.Context, t *openfgav1.TupleKey, reqCtx *structpb.Struct) (bool, error) {
-	dynCond, err := condition.FromInlineExpression(ctx, t)
-	if err != nil {
-		return false, &interrors.ErrFatal{Cause: err}
-	}
-
-	// Only pass request-context fields that the expression actually declares as parameters.
-	// Extra fields in the shared request context must not trigger "no parameters defined"
-	// errors on zero-param expressions (e.g. `true`).
-	var reqFields map[string]*structpb.Value
-	if reqCtx != nil && len(dynCond.GetParameters()) > 0 {
-		reqFields = reqCtx.GetFields()
-	}
-
-	result, err := dynCond.Evaluate(ctx, reqFields)
-	if err != nil {
-		return false, &interrors.ErrFatal{Cause: err}
-	}
-
-	if len(result.MissingParameters) > 0 {
-		return false, &interrors.ErrFatal{
-			Cause: condition.NewEvaluationError(
-				condition.InlineExpressionName,
-				fmt.Errorf("missing required parameters: %s", strings.Join(result.MissingParameters, ", ")),
-			),
-		}
-	}
-
-	return result.ConditionMet, nil
-}
 
 func BuildConditionTupleKeyFilter(ctx context.Context, model *modelgraph.AuthorizationModelGraph, conditions []string, reqCtx *structpb.Struct) iterator.FilterFunc[*openfgav1.TupleKey] {
 	return func(t *openfgav1.TupleKey) (bool, error) {

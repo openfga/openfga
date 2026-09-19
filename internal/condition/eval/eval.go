@@ -16,6 +16,7 @@ import (
 
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/condition/metrics"
+	interrors "github.com/openfga/openfga/internal/errors"
 	"github.com/openfga/openfga/internal/telemetry"
 	"github.com/openfga/openfga/pkg/tuple"
 )
@@ -30,17 +31,24 @@ func EvaluateInlineExpression(ctx context.Context, tk *openfgav1.TupleKey, reqCt
 	}
 
 	if !condition.IsInlineExpression(cond.GetName()) {
-		err := condition.NewEvaluationError(cond.GetName(), fmt.Errorf("condition is not $expression"))
-		return false, err
+		return false, &interrors.ErrFatal{
+			Cause: condition.NewEvaluationError(cond.GetName(), fmt.Errorf("condition is not $expression")),
+		}
 	}
 
 	ieCond, err := condition.FromInlineExpression(ctx, tk)
 	if err != nil {
-		return false, condition.NewEvaluationError(
-			condition.InlineExpressionName,
-			err,
-		)
+		return false, &interrors.ErrFatal{
+			Cause: condition.NewEvaluationError(condition.InlineExpressionName, err),
+		}
 	}
+
+	ctx, span := tracer.Start(ctx, "EvaluateInlineExpression", trace.WithAttributes(
+		attribute.String("tuple_key", tuple.TupleKeyWithConditionToString(tk)),
+		attribute.String("condition_name", condition.InlineExpressionName)))
+	defer span.End()
+
+	start := time.Now()
 
 	// Only pass request-context fields that the expression actually declares as parameters.
 	// Extra fields in the shared request context (provided for other tuples in the same
@@ -52,15 +60,26 @@ func EvaluateInlineExpression(ctx context.Context, tk *openfgav1.TupleKey, reqCt
 
 	result, err := ieCond.Evaluate(ctx, reqFields)
 	if err != nil {
-		return false, err
+		telemetry.TraceError(span, err)
+		return false, &interrors.ErrFatal{Cause: err}
 	}
 
 	if len(result.MissingParameters) > 0 {
-		return false, condition.NewEvaluationError(
-			condition.InlineExpressionName,
-			fmt.Errorf("missing required parameters: %s", strings.Join(result.MissingParameters, ", ")),
-		)
+		return false, &interrors.ErrFatal{
+			Cause: condition.NewEvaluationError(
+				condition.InlineExpressionName,
+				fmt.Errorf("missing required parameters: %s", strings.Join(result.MissingParameters, ", ")),
+			),
+		}
 	}
+
+	metrics.Metrics.ObserveEvaluationDuration(time.Since(start))
+	metrics.Metrics.ObserveEvaluationCost(result.Cost)
+
+	span.SetAttributes(attribute.Bool("condition_met", result.ConditionMet),
+		attribute.String("condition_cost", strconv.FormatUint(result.Cost, 10)),
+		attribute.StringSlice("condition_missing_params", result.MissingParameters),
+	)
 
 	return result.ConditionMet, nil
 }
