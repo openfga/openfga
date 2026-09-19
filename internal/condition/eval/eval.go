@@ -36,7 +36,7 @@ func EvaluateInlineExpression(ctx context.Context, tk *openfgav1.TupleKey, reqCt
 		}
 	}
 
-	ieCond, err := condition.FromInlineExpression(ctx, tk)
+	ieCond, err := condition.FromInlineExpression(tk)
 	if err != nil {
 		return false, &interrors.FatalError{
 			Cause: condition.NewEvaluationError(condition.InlineExpressionName, err),

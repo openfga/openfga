@@ -31,29 +31,25 @@ func makeTupleKeyWithExpr(object, user, exprStr string) *openfgav1.TupleKey {
 	}
 }
 
-// BenchmarkEvaluateInlineExpression_CacheHit simulates a tuple that is evaluated
-// many times within the same request (e.g., the same userset tuple dispatched across
-// multiple concurrent resolver paths, or the validation pass populating the cache
-// before the evaluation pass). The first evaluation compiles; the remaining 999
-// calls return the cached compiled condition.
-func BenchmarkEvaluateInlineExpression_CacheHit(b *testing.B) {
+// BenchmarkEvaluateInlineExpression_Repeated measures evaluating the same expression
+// tuple 1000 times. Each call compiles the CEL expression on demand.
+func BenchmarkEvaluateInlineExpression_Repeated(b *testing.B) {
 	const repeats = 1000
 
 	tk := makeTupleKeyWithExpr("document:1", "user:alice", "channel == 'X123'")
 	reqCtx, _ := structpb.NewStruct(map[string]interface{}{"channel": "X123"})
+	ctx := context.Background()
 
 	for b.Loop() {
-		ctx := condition.NewContextWithInlineConditionCache(context.Background())
 		for range repeats {
 			_, _ = eval.EvaluateInlineExpression(ctx, tk, reqCtx)
 		}
 	}
 }
 
-// BenchmarkEvaluateInlineExpression_CacheMiss establishes the worst-case baseline:
-// every tuple in the scan has a distinct (object, user) pair and a unique expression,
-// so every evaluation is a cache miss and triggers a full CEL compilation.
-func BenchmarkEvaluateInlineExpression_CacheMiss(b *testing.B) {
+// BenchmarkEvaluateInlineExpression_Distinct measures evaluating 100 tuples
+// each with a unique expression, exercising full compile-per-tuple cost.
+func BenchmarkEvaluateInlineExpression_Distinct(b *testing.B) {
 	const n = 100
 
 	tuples := make([]*openfgav1.TupleKey, n)
@@ -66,9 +62,9 @@ func BenchmarkEvaluateInlineExpression_CacheMiss(b *testing.B) {
 	}
 
 	reqCtx, _ := structpb.NewStruct(map[string]interface{}{"channel": "X0"})
+	ctx := context.Background()
 
 	for b.Loop() {
-		ctx := condition.NewContextWithInlineConditionCache(context.Background())
 		for _, tk := range tuples {
 			_, _ = eval.EvaluateInlineExpression(ctx, tk, reqCtx)
 		}

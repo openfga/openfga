@@ -166,7 +166,7 @@ func (q *ExpandQuery) resolveThis(ctx context.Context, store string, tk *openfga
 
 	filteredIter := storage.NewFilteredTupleKeyIterator(
 		storage.NewTupleKeyIteratorFromTupleIterator(tupleIter),
-		validation.FilterInvalidTuples(ctx, typesys),
+		validation.FilterInvalidTuples(typesys),
 	)
 	defer filteredIter.Stop()
 
@@ -291,7 +291,7 @@ func (q *ExpandQuery) resolveTupleToUserset(
 
 	filteredIter := storage.NewFilteredTupleKeyIterator(
 		storage.NewTupleKeyIteratorFromTupleIterator(tupleIter),
-		validation.FilterInvalidTuples(ctx, typesys),
+		validation.FilterInvalidTuples(typesys),
 	)
 	defer filteredIter.Stop()
 

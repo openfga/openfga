@@ -524,7 +524,7 @@ func (c *LocalChecker) checkPublicAssignable(ctx context.Context, req *ResolveCh
 		filteredIter := storage.NewConditionsFilteredTupleKeyIterator(
 			storage.NewFilteredTupleKeyIterator(
 				storage.NewTupleKeyIteratorFromTupleIterator(iter),
-				validation.FilterInvalidTuples(ctx, typesys),
+				validation.FilterInvalidTuples(typesys),
 			),
 			checkutil.BuildTupleKeyConditionFilter(ctx, req.GetContext(), typesys),
 		)
@@ -577,7 +577,7 @@ func (c *LocalChecker) checkDirectUserTuple(ctx context.Context, req *ResolveChe
 
 		// filter out invalid tuples yielded by the database query
 		tupleKey := t.GetKey()
-		err = validation.ValidateTupleForRead(ctx, typesys, tupleKey)
+		err = validation.ValidateTupleForRead(typesys, tupleKey)
 		if err != nil {
 			return response, nil
 		}
@@ -909,7 +909,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 		filteredIter := storage.NewConditionsFilteredTupleKeyIterator(
 			storage.NewFilteredTupleKeyIterator(
 				storage.NewTupleKeyIteratorFromTupleIterator(iter),
-				validation.FilterInvalidTuples(ctx, typesys),
+				validation.FilterInvalidTuples(typesys),
 			),
 			checkutil.BuildTupleKeyConditionFilter(ctx, req.GetContext(), typesys),
 		)

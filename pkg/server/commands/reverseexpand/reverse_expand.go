@@ -625,7 +625,7 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 	// filter out invalid tuples yielded by the database iterator
 	filteredIter := storage.NewFilteredTupleKeyIterator(
 		storage.NewTupleKeyIteratorFromTupleIterator(iter),
-		validation.FilterInvalidTuples(ctx, c.typesystem),
+		validation.FilterInvalidTuples(c.typesystem),
 	)
 	defer filteredIter.Stop()
 

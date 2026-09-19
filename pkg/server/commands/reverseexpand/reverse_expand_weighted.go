@@ -529,7 +529,7 @@ func (c *ReverseExpandQuery) buildFilteredIterator(
 	return storage.NewConditionsFilteredTupleKeyIterator(
 		storage.NewFilteredTupleKeyIterator(
 			storage.NewTupleKeyIteratorFromTupleIterator(iter),
-			validation.FilterInvalidTuples(ctx, c.typesystem),
+			validation.FilterInvalidTuples(c.typesystem),
 		),
 		checkutil.BuildTupleKeyConditionFilter(ctx, req.Context, c.typesystem),
 	), nil

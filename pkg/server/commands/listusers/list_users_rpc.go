@@ -478,7 +478,7 @@ func (l *listUsersQuery) expandDirect(
 
 	filteredIter := storage.NewFilteredTupleKeyIterator(
 		storage.NewTupleKeyIteratorFromTupleIterator(iter),
-		validation.FilterInvalidTuples(ctx, typesys),
+		validation.FilterInvalidTuples(typesys),
 	)
 	defer filteredIter.Stop()
 
@@ -934,7 +934,7 @@ func (l *listUsersQuery) expandTTU(
 
 	filteredIter := storage.NewFilteredTupleKeyIterator(
 		storage.NewTupleKeyIteratorFromTupleIterator(iter),
-		validation.FilterInvalidTuples(ctx, typesys),
+		validation.FilterInvalidTuples(typesys),
 	)
 	defer filteredIter.Stop()
 

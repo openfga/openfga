@@ -1,7 +1,6 @@
 package condition
 
 import (
-	"context"
 	"fmt"
 	"maps"
 	"slices"
@@ -94,38 +93,8 @@ func extractDeclaredParameters(fields map[string]*structpb.Value) (conditionPara
 }
 
 // FromInlineExpression parses, compiles, and returns an EvaluableCondition for the
-// $expression inline condition carried by tk. When the request context contains an
-// inlineConditionCache (injected by NewContextWithInlineConditionCache), the compiled
-// result is stored and reused across all calls within the same request, eliminating
-// redundant CEL compilation for repeated tuple evaluations.
-func FromInlineExpression(ctx context.Context, tk *openfgav1.TupleKey) (*EvaluableCondition, error) {
-	c, hasCache := ctx.Value(inlineConditionCacheCtxKey{}).(*inlineConditionCache)
-	if hasCache {
-		cacheKey := inlineConditionCacheKey(tk)
-
-		c.mu.RLock()
-		ec, hit := c.m[cacheKey]
-		c.mu.RUnlock()
-		if hit {
-			return ec, nil
-		}
-
-		v, err, _ := c.sf.Do(cacheKey, func() (any, error) {
-			ec, err := compileInlineExpression(tk.GetCondition().GetContext())
-			if err != nil {
-				return nil, err
-			}
-			c.mu.Lock()
-			c.m[cacheKey] = ec
-			c.mu.Unlock()
-			return ec, nil
-		})
-		if err != nil {
-			return nil, err
-		}
-		return v.(*EvaluableCondition), nil
-	}
-
+// $expression inline condition carried by tk.
+func FromInlineExpression(tk *openfgav1.TupleKey) (*EvaluableCondition, error) {
 	return compileInlineExpression(tk.GetCondition().GetContext())
 }
 

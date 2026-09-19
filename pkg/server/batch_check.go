@@ -65,8 +65,7 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 	for _, check := range req.GetChecks() {
 		contextualTuples = append(contextualTuples, check.GetContextualTuples().GetTupleKeys()...)
 	}
-	ctx, err = s.enableInlineExpressions(ctx, storeID, contextualTuples)
-	if err != nil {
+	if err = s.enableInlineExpressions(storeID, contextualTuples); err != nil {
 		return nil, err
 	}
 

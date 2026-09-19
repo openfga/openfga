@@ -67,8 +67,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 
 	storeID := req.GetStoreId()
 
-	ctx, err = s.enableInlineExpressions(ctx, storeID, req.GetContextualTuples().GetTupleKeys())
-	if err != nil {
+	if err = s.enableInlineExpressions(storeID, req.GetContextualTuples().GetTupleKeys()); err != nil {
 		return nil, err
 	}
 

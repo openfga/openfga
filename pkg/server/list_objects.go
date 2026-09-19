@@ -44,7 +44,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 	))
 	defer span.End()
 
-	ctx, gateErr := s.enableInlineExpressions(ctx, storeID, req.GetContextualTuples().GetTupleKeys())
+	gateErr := s.enableInlineExpressions(storeID, req.GetContextualTuples().GetTupleKeys())
 	if gateErr != nil {
 		return nil, gateErr
 	}
@@ -230,7 +230,7 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 	))
 	defer span.End()
 
-	ctx, gateErr := s.enableInlineExpressions(ctx, storeID, req.GetContextualTuples().GetTupleKeys())
+	gateErr := s.enableInlineExpressions(storeID, req.GetContextualTuples().GetTupleKeys())
 	if gateErr != nil {
 		return gateErr
 	}

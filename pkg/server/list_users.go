@@ -48,7 +48,7 @@ func (s *Server) ListUsers(
 	))
 	defer span.End()
 
-	ctx, gateErr := s.enableInlineExpressions(ctx, storeID, req.GetContextualTuples())
+	gateErr := s.enableInlineExpressions(storeID, req.GetContextualTuples())
 	if gateErr != nil {
 		return nil, gateErr
 	}

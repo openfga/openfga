@@ -1,7 +1,6 @@
 package validation
 
 import (
-	"context"
 	"errors"
 	"fmt"
 
@@ -42,12 +41,23 @@ func ValidateTupleForWrite(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKe
 	}
 	// now we assume our tuple is well-formed, it's time to check
 	// the tuple against other model and type-restriction constraints
-	return ValidateTupleForRead(context.Background(), typesys, tk)
+	if err := ValidateTupleForRead(typesys, tk); err != nil {
+		return err
+	}
+	// Inline expressions are compiled only on write so that malformed
+	// expressions are rejected at write time. Read paths skip compilation
+	// and let any error surface during evaluation.
+	if condition.IsInlineExpression(tk.GetCondition().GetName()) {
+		if _, err := condition.FromInlineExpression(tk); err != nil {
+			return &tuple.InvalidConditionalTupleError{Cause: err, TupleKey: tk}
+		}
+	}
+	return nil
 }
 
 // ValidateTupleForRead returns nil if a tuple is valid according to the provided model.
 // It also validates TTU relations and type restrictions.
-func ValidateTupleForRead(ctx context.Context, typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) error {
+func ValidateTupleForRead(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) error {
 	if err := validateTuplesetRestrictions(typesys, tk); err != nil {
 		return &tuple.InvalidTupleError{Cause: err, TupleKey: tk}
 	}
@@ -66,7 +76,7 @@ func ValidateTupleForRead(ctx context.Context, typesys *typesystem.TypeSystem, t
 			return &tuple.InvalidTupleError{Cause: err, TupleKey: tk}
 		}
 
-		if err := validateCondition(ctx, typesys, tk); err != nil {
+		if err := validateCondition(typesys, tk); err != nil {
 			return err
 		}
 	}
@@ -200,7 +210,7 @@ func restrictionFacetMatches(directlyRelatedType *openfgav1.RelationReference, u
 
 // validateCondition returns an error if the condition of the tuple is required but not present,
 // or if the tuple provides a condition but it is invalid according to the model.
-func validateCondition(ctx context.Context, typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) error {
+func validateCondition(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) error {
 	objectType := tuple.GetType(tk.GetObject())
 	userType := tuple.GetType(tk.GetUser())
 	userRelation := tuple.GetRelation(tk.GetUser())
@@ -241,7 +251,7 @@ func validateCondition(ctx context.Context, typesys *typesystem.TypeSystem, tk *
 	// $expression is a reserved inline condition — validate its context and type restriction
 	// without looking it up in the model's named conditions map.
 	if condition.IsInlineExpression(tk.GetCondition().GetName()) {
-		return validateInlineExpressionCondition(ctx, typesys, tk)
+		return validateInlineExpressionCondition(typesys, tk)
 	}
 
 	namedCondition, ok := typesys.GetConditions()[tk.GetCondition().GetName()]
@@ -303,8 +313,8 @@ func validateCondition(ctx context.Context, typesys *typesystem.TypeSystem, tk *
 
 // validateInlineExpressionCondition validates that a $expression tuple is well-formed:
 // - the type restriction on the relation includes $expression for the user type
-// - the condition context contains a valid, compilable CEL expression.
-func validateInlineExpressionCondition(ctx context.Context, typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) error {
+// - the condition context is structurally valid.
+func validateInlineExpressionCondition(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) error {
 	cond := tk.GetCondition()
 
 	if cond == nil {
@@ -362,17 +372,13 @@ func validateInlineExpressionCondition(ctx context.Context, typesys *typesystem.
 		}
 	}
 
-	_, err = condition.FromInlineExpression(ctx, tk)
-	if err != nil {
-		return &tuple.InvalidConditionalTupleError{Cause: err, TupleKey: tk}
-	}
 	return nil
 }
 
 // FilterInvalidTuples filters out tuples that aren't valid according to the provided model.
-func FilterInvalidTuples(ctx context.Context, typesys *typesystem.TypeSystem) storage.TupleKeyFilterFunc {
+func FilterInvalidTuples(typesys *typesystem.TypeSystem) storage.TupleKeyFilterFunc {
 	return func(tupleKey *openfgav1.TupleKey) bool {
-		err := ValidateTupleForRead(ctx, typesys, tupleKey)
+		err := ValidateTupleForRead(typesys, tupleKey)
 		return err == nil
 	}
 }

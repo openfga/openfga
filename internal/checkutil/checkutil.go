@@ -85,7 +85,7 @@ func IteratorReadUsersetTuples(ctx context.Context,
 	return storage.NewConditionsFilteredTupleKeyIterator(
 		storage.NewFilteredTupleKeyIterator(
 			storage.NewTupleKeyIteratorFromTupleIterator(iter),
-			validation.FilterInvalidTuples(ctx, typesys),
+			validation.FilterInvalidTuples(typesys),
 		),
 		BuildTupleKeyConditionFilter(ctx, req.GetContext(), typesys),
 	), nil
@@ -133,7 +133,7 @@ func IteratorReadStartingFromUser(ctx context.Context,
 	return storage.NewConditionsFilteredTupleKeyIterator(
 		storage.NewFilteredTupleKeyIterator(
 			storage.NewTupleKeyIteratorFromTupleIterator(iter),
-			validation.FilterInvalidTuples(ctx, typesys),
+			validation.FilterInvalidTuples(typesys),
 		),
 		BuildTupleKeyConditionFilter(ctx, req.GetContext(), typesys),
 	), nil

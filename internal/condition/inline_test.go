@@ -1,7 +1,6 @@
 package condition_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -278,7 +277,7 @@ func TestFromInlineExpression(t *testing.T) {
 				},
 			}
 
-			ec, err := condition.FromInlineExpression(context.Background(), tk)
+			ec, err := condition.FromInlineExpression(tk)
 			if tt.expectErr != "" {
 				require.Error(t, err)
 				require.ErrorContains(t, err, tt.expectErr)
