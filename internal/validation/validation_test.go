@@ -1,6 +1,7 @@
 package validation
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
@@ -1324,7 +1325,7 @@ func TestValidateTupleForRead(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			ts, err := typesystem.New(test.model)
 			require.NoError(t, err)
-			err = ValidateTupleForRead(ts, test.tuple)
+			err = ValidateTupleForRead(context.Background(), ts, test.tuple)
 			if test.expectedError != nil {
 				require.ErrorIs(t, err, test.expectedError)
 				require.Equal(t, err.Error(), test.expectedError.Error())
@@ -1500,7 +1501,7 @@ func BenchmarkValidateTupleForRead(b *testing.B) {
 	t := tuple.NewTupleKey("folder:x", "viewer", "user:1")
 
 	for b.Loop() {
-		err := ValidateTupleForRead(ts, t)
+		err := ValidateTupleForRead(context.Background(), ts, t)
 		require.NoError(b, err)
 	}
 }

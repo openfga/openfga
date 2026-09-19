@@ -1,6 +1,7 @@
 package condition
 
 import (
+	"context"
 	"fmt"
 	"maps"
 	"slices"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/openfga/openfga/internal/condition/types"
 	"github.com/openfga/openfga/pkg/server/config"
+	"github.com/openfga/openfga/pkg/tuple"
 )
 
 // InlineExpressionName is the reserved condition name used for $expression inline conditions.
@@ -60,8 +62,46 @@ func extractDeclaredParameters(fields map[string]*structpb.Value) (conditionPara
 	return declaredParams, nil
 }
 
-func FromInlineExpression(ctx *structpb.Struct) (*EvaluableCondition, error) {
-	fields := ctx.GetFields()
+// FromInlineExpression parses, compiles, and returns an EvaluableCondition for the
+// $expression inline condition carried by tk. When the request context contains an
+// inlineConditionCache (injected by NewContextWithInlineConditionCache), the compiled
+// result is stored and reused across all calls within the same request, eliminating
+// redundant CEL compilation for repeated tuple evaluations.
+func FromInlineExpression(ctx context.Context, tk *openfgav1.TupleKey) (*EvaluableCondition, error) {
+	c, hasCache := ctx.Value(inlineConditionCacheCtxKey{}).(*inlineConditionCache)
+	if hasCache {
+		cacheKey := tuple.TupleKeyToString(tk)
+
+		c.mu.RLock()
+		ec, hit := c.m[cacheKey]
+		c.mu.RUnlock()
+		if hit {
+			return ec, nil
+		}
+
+		v, err, _ := c.sf.Do(cacheKey, func() (any, error) {
+			ec, err := compileInlineExpression(tk.GetCondition().GetContext())
+			if err != nil {
+				return nil, err
+			}
+			c.mu.Lock()
+			c.m[cacheKey] = ec
+			c.mu.Unlock()
+			return ec, nil
+		})
+		if err != nil {
+			return nil, err
+		}
+		return v.(*EvaluableCondition), nil
+	}
+
+	return compileInlineExpression(tk.GetCondition().GetContext())
+}
+
+// compileInlineExpression parses the $expression struct, infers parameter types,
+// creates an EvaluableCondition, and compiles the CEL program before returning.
+func compileInlineExpression(structCtx *structpb.Struct) (*EvaluableCondition, error) {
+	fields := structCtx.GetFields()
 
 	exprVal, ok := fields[inlineContextExpressionKey]
 	if !ok {
@@ -97,14 +137,19 @@ func FromInlineExpression(ctx *structpb.Struct) (*EvaluableCondition, error) {
 		}
 	}
 
-	return NewUncompiled(&openfgav1.Condition{
+	ec := NewUncompiled(&openfgav1.Condition{
 		Name:       InlineExpressionName,
 		Expression: exprStr,
 		Parameters: declaredParams,
 	}).
 		WithTrackEvaluationCost().
 		WithMaxEvaluationCost(config.MaxConditionEvaluationCost()).
-		WithInterruptCheckFrequency(config.DefaultInterruptCheckFrequency), nil
+		WithInterruptCheckFrequency(config.DefaultInterruptCheckFrequency)
+
+	if err := ec.Compile(); err != nil {
+		return nil, err
+	}
+	return ec, nil
 }
 
 // extractIdents iteratively walks a CEL expression and returns the names of all

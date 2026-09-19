@@ -47,6 +47,7 @@ func (s *Server) ListUsers(
 		attribute.String("consistency", req.GetConsistency().String()),
 	))
 	defer span.End()
+	ctx = condition.NewContextWithInlineConditionCache(ctx)
 
 	if !validator.RequestIsValidatedFromContext(ctx) {
 		if err := req.Validate(); err != nil {

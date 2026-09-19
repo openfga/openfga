@@ -3135,7 +3135,7 @@ tests:
   # when the iterator is exhausted with onceValid=true it returns ErrIteratorDone instead of
   # the error. The caller then finds alice is not in group:1, misses group:2 entirely, and
   # concludes alice is not excluded — returning Allowed: true instead of an error.
-  - name: inline_expression_exclusion_subtract_userset_missing_param
+  - name: inline_expression_exclusion_subtract_missing_param
     stages:
       - model: |
           model

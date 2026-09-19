@@ -43,6 +43,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		attribute.String("consistency", req.GetConsistency().String()),
 	))
 	defer span.End()
+	ctx = condition.NewContextWithInlineConditionCache(ctx)
 
 	if !validator.RequestIsValidatedFromContext(ctx) {
 		if err := req.Validate(); err != nil {

@@ -32,7 +32,7 @@ func NewValidator(
 			ts,
 		)),
 		validation.MakeFallible(
-			validation.FilterInvalidTuples(ts),
+			validation.FilterInvalidTuples(ctx, ts),
 		),
 	)
 }

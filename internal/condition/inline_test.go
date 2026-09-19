@@ -1,10 +1,13 @@
 package condition_test
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/structpb"
+
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/condition"
 )
@@ -16,15 +19,14 @@ func TestIsInlineExpression(t *testing.T) {
 	require.False(t, condition.IsInlineExpression("$other"))
 }
 
-// TestFromInlineExpression covers the parse/validation phase of FromInlineExpression.
-// Type-mismatch errors (caught by CEL type-checking) are surfaced by Compile(), so cases
-// that expect a compile-time error use expectCompileErr instead of expectErr.
+// TestFromInlineExpression covers the parse/validation/compile phase of FromInlineExpression.
+// FromInlineExpression pre-compiles the CEL program, so both structural parse errors and
+// CEL type-check errors are returned directly from the function.
 func TestFromInlineExpression(t *testing.T) {
 	tests := []struct {
-		name             string
-		ctx              map[string]interface{}
-		expectErr        string // error from FromInlineExpression (parse/structural)
-		expectCompileErr string // error from ec.Compile() (CEL type-check)
+		name      string
+		ctx       map[string]interface{}
+		expectErr string // error from FromInlineExpression (parse/structural/compile)
 	}{
 		{
 			name: "valid_with_declared_params",
@@ -114,8 +116,8 @@ func TestFromInlineExpression(t *testing.T) {
 			},
 			expectErr: `parameter name "parameters" is reserved`,
 		},
-		// Type mismatches are caught by CEL type-checking inside Compile(), not by
-		// FromInlineExpression (which only parses syntax and structural fields).
+		// Type mismatches are caught by CEL type-checking inside Compile(), which is
+		// called inside FromInlineExpression.
 		{
 			name: "type_mismatch_fails_compilation",
 			ctx: map[string]interface{}{
@@ -124,7 +126,7 @@ func TestFromInlineExpression(t *testing.T) {
 					"count": "int",
 				},
 			},
-			expectCompileErr: "found no matching overload",
+			expectErr: "found no matching overload",
 		},
 		// Non-string scalar types
 		{
@@ -199,7 +201,7 @@ func TestFromInlineExpression(t *testing.T) {
 					"count": "int",
 				},
 			},
-			expectCompileErr: "found no matching overload",
+			expectErr: "found no matching overload",
 		},
 		{
 			name: "type_mismatch_bool_param_used_as_int",
@@ -209,7 +211,7 @@ func TestFromInlineExpression(t *testing.T) {
 					"flag": "bool",
 				},
 			},
-			expectCompileErr: "found no matching overload",
+			expectErr: "found no matching overload",
 		},
 		{
 			name: "type_mismatch_ipaddress_compared_as_string",
@@ -220,7 +222,7 @@ func TestFromInlineExpression(t *testing.T) {
 					"ip": "ipaddress",
 				},
 			},
-			expectCompileErr: "found no matching overload",
+			expectErr: "found no matching overload",
 		},
 	}
 
@@ -229,7 +231,17 @@ func TestFromInlineExpression(t *testing.T) {
 			s, err := structpb.NewStruct(tt.ctx)
 			require.NoError(t, err)
 
-			ec, err := condition.FromInlineExpression(s)
+			tk := &openfgav1.TupleKey{
+				Object:   "document:1",
+				Relation: "viewer",
+				User:     "user:alice",
+				Condition: &openfgav1.RelationshipCondition{
+					Name:    condition.InlineExpressionName,
+					Context: s,
+				},
+			}
+
+			ec, err := condition.FromInlineExpression(context.Background(), tk)
 			if tt.expectErr != "" {
 				require.Error(t, err)
 				require.ErrorContains(t, err, tt.expectErr)
@@ -238,14 +250,6 @@ func TestFromInlineExpression(t *testing.T) {
 			}
 			require.NoError(t, err)
 			require.NotNil(t, ec)
-
-			compileErr := ec.Compile()
-			if tt.expectCompileErr != "" {
-				require.Error(t, compileErr)
-				require.ErrorContains(t, compileErr, tt.expectCompileErr)
-			} else {
-				require.NoError(t, compileErr)
-			}
 		})
 	}
 }

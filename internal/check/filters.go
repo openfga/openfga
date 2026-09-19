@@ -35,13 +35,16 @@ func evaluateCondition(ctx context.Context, model *modelgraph.AuthorizationModel
 }
 
 func evalInlineCondition(ctx context.Context, t *openfgav1.TupleKey, reqCtx *structpb.Struct) (bool, error) {
-	dynCond, err := condition.FromInlineExpression(t.GetCondition().GetContext())
+	dynCond, err := condition.FromInlineExpression(ctx, t)
 	if err != nil {
 		return false, &interrors.ErrFatal{Cause: err}
 	}
 
+	// Only pass request-context fields that the expression actually declares as parameters.
+	// Extra fields in the shared request context must not trigger "no parameters defined"
+	// errors on zero-param expressions (e.g. `true`).
 	var reqFields map[string]*structpb.Value
-	if reqCtx != nil {
+	if reqCtx != nil && len(dynCond.GetParameters()) > 0 {
 		reqFields = reqCtx.GetFields()
 	}
 

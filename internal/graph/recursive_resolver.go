@@ -193,7 +193,7 @@ func buildRecursiveMapper(ctx context.Context, req *ResolveCheckRequest, mapping
 	filteredIter := storage.NewConditionsFilteredTupleKeyIterator(
 		storage.NewFilteredTupleKeyIterator(
 			storage.NewTupleKeyIteratorFromTupleIterator(iter),
-			validation.FilterInvalidTuples(typesys),
+			validation.FilterInvalidTuples(ctx, typesys),
 		),
 		checkutil.BuildTupleKeyConditionFilter(ctx, req.GetContext(), typesys),
 	)

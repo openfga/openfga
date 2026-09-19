@@ -34,7 +34,7 @@ func EvaluateInlineExpression(ctx context.Context, tk *openfgav1.TupleKey, reqCt
 		return false, err
 	}
 
-	ieCond, err := condition.FromInlineExpression(cond.GetContext())
+	ieCond, err := condition.FromInlineExpression(ctx, tk)
 	if err != nil {
 		return false, condition.NewEvaluationError(
 			condition.InlineExpressionName,
@@ -42,8 +42,11 @@ func EvaluateInlineExpression(ctx context.Context, tk *openfgav1.TupleKey, reqCt
 		)
 	}
 
+	// Only pass request-context fields that the expression actually declares as parameters.
+	// Extra fields in the shared request context (provided for other tuples in the same
+	// request) must not trigger "no parameters defined" errors on zero-param expressions.
 	var reqFields map[string]*structpb.Value
-	if reqCtx != nil {
+	if reqCtx != nil && len(ieCond.GetParameters()) > 0 {
 		reqFields = reqCtx.GetFields()
 	}
 
