@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"golang.org/x/sync/singleflight"
+	"google.golang.org/protobuf/types/known/structpb"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
@@ -32,14 +33,16 @@ func NewContextWithInlineConditionCache(ctx context.Context) context.Context {
 	})
 }
 
-// inlineConditionCacheKey builds a deterministic string key from the full tuple
-// including condition name and context payload. Two tuples can share the same
-// object+relation+user but carry distinct inline expressions or parameter schemas
-// (e.g. via CombinedTupleReader mixing stored and contextual tuples), so the key
-// must cover the complete condition content, not just the base tuple identity.
+// inlineConditionCacheKey builds a deterministic string key from the condition
+// name and context payload only. compileInlineExpression depends solely on the
+// condition payload, so keying by the full tuple (object+relation+user) would
+// cause every distinct tuple carrying the same expression to compile a separate
+// CEL program, defeating the request cache for ListObjects/ListUsers fan-outs.
 func inlineConditionCacheKey(tk *openfgav1.TupleKey) string {
 	b := keys.GetBuilder()
 	defer b.Close()
-	(*keys.Tuple)(tk).WriteTo(b.Builder)
-	return string(b.Bytes())
+	cond := tk.GetCondition()
+	keys.String(cond.GetName()).WriteTo(b.Builder)
+	(*keys.PbValue)(structpb.NewStructValue(cond.GetContext())).WriteTo(b.Builder)
+	return b.Key().String()
 }
