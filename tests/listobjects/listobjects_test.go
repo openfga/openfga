@@ -35,12 +35,42 @@ func runMatrixWithEngine(t *testing.T, engine string) {
 		goleak.VerifyNone(t)
 	})
 
-	experimentals := []string{config.ExperimentalCheckOptimizations, config.ExperimentalListObjectsOptimizations}
-	clientWithExperimentals := tests.BuildClientInterface(t, engine, experimentals)
-	RunMatrixTests(t, engine, true, clientWithExperimentals)
+	cases := []struct {
+		name          string
+		experimentals []string
+	}{
+		{
+			name: "with optimizations",
+			experimentals: []string{
+				config.ExperimentalCheckOptimizations,
+				config.ExperimentalListObjectsOptimizations,
+			},
+		},
+		{
+			name:          "without optimizations",
+			experimentals: []string{},
+		},
+		{
+			name: "with inline expressions pipeline",
+			experimentals: []string{
+				config.ExperimentalPipelineListObjects,
+				config.ExperimentalInlineExpressions,
+			},
+		},
+		{
+			name: "without pipeline inline expressions",
+			experimentals: []string{
+				config.ExperimentalCheckOptimizations,
+				config.ExperimentalListObjectsOptimizations,
+				config.ExperimentalInlineExpressions,
+			},
+		},
+	}
 
-	clientWithoutExperimentals := tests.BuildClientInterface(t, engine, []string{})
-	RunMatrixTests(t, engine, false, clientWithoutExperimentals)
+	for _, tc := range cases {
+		client := tests.BuildClientInterface(t, engine, tc.experimentals)
+		RunMatrixTests(t, engine, tc.name, client)
+	}
 }
 
 func TestListObjectsMemory(t *testing.T) {
