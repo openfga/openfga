@@ -5,6 +5,10 @@ import (
 	"sync"
 
 	"golang.org/x/sync/singleflight"
+
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+
+	"github.com/openfga/openfga/pkg/storage/cache/keys"
 )
 
 // inlineConditionCache is a request-scoped cache of compiled inline conditions.
@@ -26,4 +30,16 @@ func NewContextWithInlineConditionCache(ctx context.Context) context.Context {
 	return context.WithValue(ctx, inlineConditionCacheCtxKey{}, &inlineConditionCache{
 		m: make(map[string]*EvaluableCondition),
 	})
+}
+
+// inlineConditionCacheKey builds a deterministic string key from the full tuple
+// including condition name and context payload. Two tuples can share the same
+// object+relation+user but carry distinct inline expressions or parameter schemas
+// (e.g. via CombinedTupleReader mixing stored and contextual tuples), so the key
+// must cover the complete condition content, not just the base tuple identity.
+func inlineConditionCacheKey(tk *openfgav1.TupleKey) string {
+	b := keys.GetBuilder()
+	defer b.Close()
+	(*keys.Tuple)(tk).WriteTo(b.Builder)
+	return string(b.Bytes())
 }

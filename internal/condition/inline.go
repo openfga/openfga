@@ -14,7 +14,6 @@ import (
 
 	"github.com/openfga/openfga/internal/condition/types"
 	"github.com/openfga/openfga/pkg/server/config"
-	"github.com/openfga/openfga/pkg/tuple"
 )
 
 // InlineExpressionName is the reserved condition name used for $expression inline conditions.
@@ -102,7 +101,7 @@ func extractDeclaredParameters(fields map[string]*structpb.Value) (conditionPara
 func FromInlineExpression(ctx context.Context, tk *openfgav1.TupleKey) (*EvaluableCondition, error) {
 	c, hasCache := ctx.Value(inlineConditionCacheCtxKey{}).(*inlineConditionCache)
 	if hasCache {
-		cacheKey := tuple.TupleKeyToString(tk)
+		cacheKey := inlineConditionCacheKey(tk)
 
 		c.mu.RLock()
 		ec, hit := c.m[cacheKey]
