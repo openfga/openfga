@@ -8,6 +8,8 @@ import (
 	"sync"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+
+	interrors "github.com/openfga/openfga/internal/errors"
 )
 
 var ErrIteratorDone = errors.New("iterator done")
@@ -358,6 +360,10 @@ func (f *ConditionsFilteredTupleKeyIterator) Next(ctx context.Context) (*openfga
 
 		valid, err := f.filter(tuple)
 		if err != nil {
+			var fatal *interrors.FatalError
+			if errors.As(err, &fatal) {
+				return nil, err // propagate immediately; keep wrapper intact
+			}
 			f.lastError = err
 			continue
 		}
@@ -397,6 +403,10 @@ func (f *ConditionsFilteredTupleKeyIterator) Head(ctx context.Context) (*openfga
 		valid, err := f.filter(tuple)
 		if err != nil || !valid {
 			if err != nil {
+				var fatal *interrors.FatalError
+				if errors.As(err, &fatal) {
+					return nil, err // propagate immediately; keep wrapper intact
+				}
 				f.lastError = err
 			}
 			// Note that we don't care about the item returned by Next() as this is already via Head(). We call Next() solely

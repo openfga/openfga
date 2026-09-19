@@ -63,6 +63,10 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		return nil, err
 	}
 
+	if gateErr := s.enableInlineExpressions(storeID, req.GetContextualTuples().GetTupleKeys()); gateErr != nil {
+		return nil, gateErr
+	}
+
 	typesys, err := s.resolveTypesystem(ctx, storeID, req.GetAuthorizationModelId())
 	if err != nil {
 		return nil, err
@@ -242,6 +246,10 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 	err := s.checkAuthz(ctx, storeID, apimethod.StreamedListObjects)
 	if err != nil {
 		return err
+	}
+
+	if gateErr := s.enableInlineExpressions(storeID, req.GetContextualTuples().GetTupleKeys()); gateErr != nil {
+		return gateErr
 	}
 
 	typesys, err := s.resolveTypesystem(ctx, storeID, req.GetAuthorizationModelId())
