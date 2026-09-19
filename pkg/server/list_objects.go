@@ -44,11 +44,6 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 	))
 	defer span.End()
 
-	gateErr := s.enableInlineExpressions(storeID, req.GetContextualTuples().GetTupleKeys())
-	if gateErr != nil {
-		return nil, gateErr
-	}
-
 	if !validator.RequestIsValidatedFromContext(ctx) {
 		if err := req.Validate(); err != nil {
 			return nil, status.Error(codes.InvalidArgument, err.Error())
@@ -66,6 +61,10 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 	err := s.checkAuthz(ctx, storeID, apimethod.ListObjects)
 	if err != nil {
 		return nil, err
+	}
+
+	if gateErr := s.enableInlineExpressions(storeID, req.GetContextualTuples().GetTupleKeys()); gateErr != nil {
+		return nil, gateErr
 	}
 
 	typesys, err := s.resolveTypesystem(ctx, storeID, req.GetAuthorizationModelId())
@@ -230,11 +229,6 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 	))
 	defer span.End()
 
-	gateErr := s.enableInlineExpressions(storeID, req.GetContextualTuples().GetTupleKeys())
-	if gateErr != nil {
-		return gateErr
-	}
-
 	if !validator.RequestIsValidatedFromContext(ctx) {
 		if err := req.Validate(); err != nil {
 			return status.Error(codes.InvalidArgument, err.Error())
@@ -252,6 +246,10 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 	err := s.checkAuthz(ctx, storeID, apimethod.StreamedListObjects)
 	if err != nil {
 		return err
+	}
+
+	if gateErr := s.enableInlineExpressions(storeID, req.GetContextualTuples().GetTupleKeys()); gateErr != nil {
+		return gateErr
 	}
 
 	typesys, err := s.resolveTypesystem(ctx, storeID, req.GetAuthorizationModelId())

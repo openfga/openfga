@@ -48,11 +48,6 @@ func (s *Server) ListUsers(
 	))
 	defer span.End()
 
-	gateErr := s.enableInlineExpressions(storeID, req.GetContextualTuples())
-	if gateErr != nil {
-		return nil, gateErr
-	}
-
 	if !validator.RequestIsValidatedFromContext(ctx) {
 		if err := req.Validate(); err != nil {
 			return nil, status.Error(codes.InvalidArgument, err.Error())
@@ -70,6 +65,10 @@ func (s *Server) ListUsers(
 	err := s.checkAuthz(ctx, storeID, apimethod.ListUsers)
 	if err != nil {
 		return nil, err
+	}
+
+	if gateErr := s.enableInlineExpressions(storeID, req.GetContextualTuples()); gateErr != nil {
+		return nil, gateErr
 	}
 
 	typesys, err := s.resolveTypesystem(ctx, storeID, req.GetAuthorizationModelId())
