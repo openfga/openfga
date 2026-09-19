@@ -97,24 +97,22 @@ func TestFromInlineExpression(t *testing.T) {
 			expectErr: `unknown parameter type "bigdecimal"`,
 		},
 		{
-			name: "reserved_param_name_expression",
+			name: "param_named_expression_is_allowed",
 			ctx: map[string]interface{}{
 				"expression": "expression == 'foo'",
 				"parameters": map[string]interface{}{
 					"expression": "string",
 				},
 			},
-			expectErr: `parameter name "expression" is reserved`,
 		},
 		{
-			name: "reserved_param_name_parameters",
+			name: "param_named_parameters_is_allowed",
 			ctx: map[string]interface{}{
 				"expression": "parameters == 'foo'",
 				"parameters": map[string]interface{}{
 					"parameters": "string",
 				},
 			},
-			expectErr: `parameter name "parameters" is reserved`,
 		},
 		// Type mismatches are caught by CEL type-checking inside Compile(), which is
 		// called inside FromInlineExpression.

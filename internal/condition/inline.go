@@ -79,11 +79,6 @@ func extractDeclaredParameters(fields map[string]*structpb.Value) (conditionPara
 			return nil, fmt.Errorf("%s: context field %q must be a struct", InlineExpressionName, inlineContextParametersKey)
 		}
 		for paramName, typeVal := range ps.GetFields() {
-			if paramName == inlineContextExpressionKey || paramName == inlineContextParametersKey {
-				return nil, fmt.Errorf(
-					"%s: parameter name %q is reserved and cannot be used", InlineExpressionName, paramName,
-				)
-			}
 			typeRef, err := parseTypeRef(typeVal.GetStringValue())
 			if err != nil {
 				return nil, fmt.Errorf(
