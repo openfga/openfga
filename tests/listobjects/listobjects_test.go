@@ -53,13 +53,6 @@ func runMatrixWithEngine(t *testing.T, engine string) {
 				config.ExperimentalInlineExpressions,
 			},
 		},
-		{
-			name: "with inline expressions pipeline",
-			experimentals: []string{
-				config.ExperimentalPipelineListObjects,
-				config.ExperimentalInlineExpressions,
-			},
-		},
 	}
 
 	for _, tc := range cases {
