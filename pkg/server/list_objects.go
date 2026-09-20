@@ -244,10 +244,6 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 		return err
 	}
 
-	if gateErr := s.enableInlineExpressions(storeID, req.GetContextualTuples().GetTupleKeys()); gateErr != nil {
-		return gateErr
-	}
-
 	typesys, err := s.resolveTypesystem(ctx, storeID, req.GetAuthorizationModelId())
 	if err != nil {
 		return err
