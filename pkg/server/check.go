@@ -67,10 +67,6 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 
 	storeID := req.GetStoreId()
 
-	if err = s.enableInlineExpressions(storeID, req.GetContextualTuples().GetTupleKeys()); err != nil {
-		return nil, err
-	}
-
 	// isV2Fallback tracks whether v2Check ran, errored, and we fell back to v1.
 	// Only in that case does the v1 path need to emit v2-breaking-change logs —
 	// when the flag is off, there is no v2 comparison to signal about.

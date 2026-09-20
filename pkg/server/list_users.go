@@ -67,10 +67,6 @@ func (s *Server) ListUsers(
 		return nil, err
 	}
 
-	if gateErr := s.enableInlineExpressions(storeID, req.GetContextualTuples()); gateErr != nil {
-		return nil, gateErr
-	}
-
 	typesys, err := s.resolveTypesystem(ctx, storeID, req.GetAuthorizationModelId())
 	if err != nil {
 		return nil, err
