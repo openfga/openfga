@@ -42,14 +42,14 @@ const SQLStrategyName = "sql"
 
 var SQLPlan = &planner.PlanConfig{
 	Name:         SQLStrategyName,
-	InitialGuess: 25 * time.Millisecond, // below default's 50ms so SQL's draws center lower
-	// Medium confidence: we lean toward SQL but stay willing to unlearn if it proves slower.
-	Lambda: 5.0,
-	// Alpha > Beta → higher expected precision (E[τ]=α/β=2.5) and a narrower belief
-	// (E[σ²]=β/(α−1)=0.5). Keeps SQL's draws clustered below default's wide prior so it
-	// wins most selections, without the near-certainty of the proven weight2 plan.
-	Alpha: 5.0,
-	Beta:  2.0,
+	InitialGuess: 20 * time.Millisecond, // below default's 50ms
+	// High Lambda: Represents strong confidence in the initial guess. It's like
+	// starting with the belief of having already seen 10 good runs.
+	Lambda: 10.0,
+	// Moderate expected precision: 𝐸[𝜏]= 𝛼/𝛽 = 6/3 = 2
+	// Moderate expected variance: E[σ2]= β/(α−1) =3/5 = 0.6
+	Alpha: 6.0,
+	Beta:  3.0,
 }
 
 const WeightTwoStrategyName = "weight2"
@@ -67,7 +67,7 @@ var weight2Plan = &planner.PlanConfig{
 	// and will dramatically shift this belief.
 
 	// High expected precision: 𝐸[𝜏]= 𝛼/𝛽 = 20/2 = 10
-	// Low expected variance: E[σ2]= β/(α−1) =2/9 = 0.105, narrow jitter
+	// Low expected variance: E[σ2]= β/(α−1) =2/19 = 0.105, narrow jitter
 	// A slow sample will look like an outlier and move the posterior noticeably but overall this prior exploits.
 	Alpha: 20,
 	Beta:  2,
