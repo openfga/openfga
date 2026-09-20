@@ -497,8 +497,13 @@ LoopOnIterator:
 			break LoopOnIterator
 		}
 
-		cond, _ := typesys.GetCondition(tupleKey.GetCondition().GetName())
-		condMet, err := eval.EvaluateTupleCondition(ctx, tupleKey, cond, req.Context)
+		var condMet bool
+		if condition.IsInlineExpression(tupleKey.GetCondition().GetName()) {
+			condMet, err = eval.EvaluateInlineExpression(ctx, tupleKey, req.Context)
+		} else {
+			cond, _ := typesys.GetCondition(tupleKey.GetCondition().GetName())
+			condMet, err = eval.EvaluateTupleCondition(ctx, tupleKey, cond, req.Context)
+		}
 		if err != nil {
 			errs = errors.Join(errs, err)
 			if !errors.Is(err, condition.ErrEvaluationFailed) {
@@ -948,8 +953,13 @@ LoopOnIterator:
 			break LoopOnIterator
 		}
 
-		cond, _ := typesys.GetCondition(tupleKey.GetCondition().GetName())
-		condMet, err := eval.EvaluateTupleCondition(ctx, tupleKey, cond, req.Context)
+		var condMet bool
+		if condition.IsInlineExpression(tupleKey.GetCondition().GetName()) {
+			condMet, err = eval.EvaluateInlineExpression(ctx, tupleKey, req.Context)
+		} else {
+			cond, _ := typesys.GetCondition(tupleKey.GetCondition().GetName())
+			condMet, err = eval.EvaluateTupleCondition(ctx, tupleKey, cond, req.Context)
+		}
 		if err != nil {
 			errs = errors.Join(errs, err)
 			if !errors.Is(err, condition.ErrEvaluationFailed) {
