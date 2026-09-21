@@ -37,7 +37,7 @@ jobs:
         run: make test-unit
 
       - name: upload coverage to codecov
-        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           files: ./coverageunit.out
           flags: unit
@@ -74,7 +74,7 @@ jobs:
         run: make test-storage
 
       - name: upload coverage to codecov
-        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           files: ./coverageunit.out
           flags: storage
@@ -111,7 +111,7 @@ jobs:
         run: make test-matrix
 
       - name: upload coverage to codecov
-        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           files: ./coverageunit.out
           flags: matrix
@@ -153,7 +153,7 @@ jobs:
           make test-bench | tee bench_output.txt
 
       - name: Get benchmark as JSON
-        uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba # v1.22.1
+        uses: benchmark-action/github-action-benchmark@4322e5726e6334590d251fc4f92bec0efafc45dc # v1.22.2
         with:
           # What benchmark tool the output.txt came from
           tool: 'go'
