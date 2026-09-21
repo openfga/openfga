@@ -30,7 +30,7 @@ func (t *TestListUsersRequest) ToString() string {
 }
 
 func FromUsersProto(r []*openfgav1.User) []string {
-	var users []string
+	users := make([]string, 0, len(r))
 	for _, user := range r {
 		users = append(users, tuple.UserProtoToString(user))
 	}
@@ -38,7 +38,7 @@ func FromUsersProto(r []*openfgav1.User) []string {
 }
 
 func (t *TestListUsersRequest) ToProtoRequest() *openfgav1.ListUsersRequest {
-	var userTypeFilters []*openfgav1.UserTypeFilter
+	userTypeFilters := make([]*openfgav1.UserTypeFilter, 0, len(t.Filters))
 
 	for _, filterString := range t.Filters {
 		userTypeFilters = append(userTypeFilters, toProtoUserTypeFilter(filterString))

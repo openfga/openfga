@@ -990,8 +990,7 @@ func TestGRPCListStores(t *testing.T) {
 
 	require.NotEmpty(t, response1.GetContinuationToken())
 
-	var received []*openfgav1.Store
-	received = append(received, response1.GetStores()...)
+	require.Len(t, response1.GetStores(), 1)
 
 	response2, err := client.ListStores(context.Background(), &openfgav1.ListStoresRequest{
 		PageSize:          wrapperspb.Int32(2),
@@ -1001,9 +1000,7 @@ func TestGRPCListStores(t *testing.T) {
 
 	require.Empty(t, response2.GetContinuationToken())
 
-	received = append(received, response2.GetStores()...)
-
-	require.Len(t, received, 2)
+	require.Len(t, response2.GetStores(), 1)
 	// todo: add assertions on received Store objects
 }
 

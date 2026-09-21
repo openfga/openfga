@@ -819,7 +819,7 @@ func TestConstructUserset(t *testing.T) {
 		innerUnionUserset := innerUnion.Union
 		require.NotNil(t, innerUnionUserset)
 		require.Len(t, innerUnionUserset.GetChild(), 2)
-		var relationName []string
+		relationName := make([]string, 0, len(innerUnionUserset.GetChild()))
 		for _, child := range innerUnionUserset.GetChild() {
 			cu := child.GetUserset()
 			require.NotNil(t, cu)
@@ -870,7 +870,7 @@ func TestConstructUserset(t *testing.T) {
 		innerIntersectionUserset := innerIntersection.Intersection
 		require.NotNil(t, innerIntersectionUserset)
 		require.Len(t, innerIntersectionUserset.GetChild(), 2)
-		var relationName []string
+		relationName := make([]string, 0, len(innerIntersectionUserset.GetChild()))
 		for _, child := range innerIntersectionUserset.GetChild() {
 			cu := child.GetUserset()
 			require.NotNil(t, cu)

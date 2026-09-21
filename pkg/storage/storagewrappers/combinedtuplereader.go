@@ -162,7 +162,7 @@ func (c *CombinedTupleReader) ReadStartingWithUser(
 	filter storage.ReadStartingWithUserFilter,
 	options storage.ReadStartingWithUserOptions,
 ) (storage.TupleIterator, error) {
-	var userFilters []string
+	userFilters := make([]string, 0, len(filter.UserFilter))
 	for _, u := range filter.UserFilter {
 		uf := u.GetObject()
 		if u.GetRelation() != "" {

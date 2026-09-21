@@ -131,9 +131,8 @@ func setupCheckServer(t *testing.T, modelDSL string, tuples []*openfgav1.TupleKe
 
 	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
 
-	defaultOpts := []OpenFGAServiceV1Option{
-		WithDatastore(ds),
-	}
+	defaultOpts := make([]OpenFGAServiceV1Option, 0, 1+len(opts))
+	defaultOpts = append(defaultOpts, WithDatastore(ds))
 	defaultOpts = append(defaultOpts, opts...)
 
 	s := MustNewServerWithOpts(defaultOpts...)

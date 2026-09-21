@@ -453,7 +453,7 @@ func TestReaderRead(t *testing.T) {
 
 		reader := pipeline.NewValidatingStore(store, "store-1")
 
-		var got []string
+		got := make([]string, 0, 1)
 		receiver := reader.Read(context.Background(), pipeline.ObjectQuery{
 			ObjectType: "document",
 			Relation:   "viewer",
