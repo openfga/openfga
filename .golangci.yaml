@@ -6,6 +6,7 @@ run:
   allow-parallel-runners: true
 linters:
   enable:
+    # List of enabled linters, sorted alphabetically.
     - bodyclose
     - copyloopvar
     - errname
@@ -19,8 +20,9 @@ linters:
     - misspell
     - perfsprint
     - protogetter
-    - revive
     - recvcheck
+    - revive
+    - spancheck
     - staticcheck
     - tagalign
     - testifylint
