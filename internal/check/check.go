@@ -1039,8 +1039,8 @@ func (r *Resolver) ResolveLogicalEdge(ctx context.Context, req *Request, logical
 	selector := r.planner.GetPlanSelector(planKey)
 
 	candidates := map[string]*planner.PlanConfig{
-		DefaultStrategyName: DefaultPlan,
-		SQLStrategyName:     SQLPlan,
+		// DefaultStrategyName: DefaultPlan, // TEMP FOR TESTING: always take SQL strategy
+		SQLStrategyName: SQLPlan,
 	}
 
 	plan := selector.Select(candidates)
