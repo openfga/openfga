@@ -1,5 +1,7 @@
 package storage
 
+//go:generate mockgen -source storage.go -destination ../../internal/mocks/mock_storage.go -package mocks OpenFGADatastore
+
 import (
 	"context"
 	"time"
