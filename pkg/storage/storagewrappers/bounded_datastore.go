@@ -14,6 +14,8 @@ import (
 
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/storage/adapter"
+	"github.com/openfga/openfga/pkg/storage/adapter/query"
 )
 
 const timeWaitingAttribute = "datastore_time_waiting"
@@ -69,6 +71,21 @@ var (
 	}, []string{"operation", "method"})
 )
 
+// boundedQuerier wraps a delegate Querier so each Execute passes through the concurrency
+// bound.
+type boundedQuerier struct {
+	*BoundedTupleReader
+	adapter.Querier
+}
+
+func (q *boundedQuerier) Execute(ctx context.Context, stmt *query.Statement) (adapter.Rows, error) {
+	if err := q.bound(ctx, "Querier"); err != nil {
+		return nil, err
+	}
+	defer q.done()
+	return q.Querier.Execute(ctx, stmt)
+}
+
 type BoundedTupleReader struct {
 	storage.RelationshipTupleReader
 	limiter    chan struct{} // bound concurrency
@@ -103,6 +120,19 @@ func (b *BoundedTupleReader) GetMetadata() Metadata {
 		DatastoreQueryCount: b.countReads.Load(),
 		DatastoreItemCount:  b.countItems.Load(),
 		WasThrottled:        b.throttled.Load(),
+	}
+}
+
+// Querier wraps the delegate's Querier so each Execute passes through the concurrency
+// bound, preserving the nil capability signal (nil delegate Querier -> nil here).
+func (b *BoundedTupleReader) Querier(consistency openfgav1.ConsistencyPreference) adapter.Querier {
+	inner := b.RelationshipTupleReader.Querier(consistency)
+	if inner == nil {
+		return nil
+	}
+	return &boundedQuerier{
+		b,
+		inner,
 	}
 }
 
