@@ -120,7 +120,7 @@ type Ordered interface {
 
 // Literal admits the types Lit may inline. It is ordinal rather than Ordered because a
 // time.Time has no portable inline form (its literal syntax differs across engines) and so
-// must be bound, never inlined. bool is absent for the same reason it is absent from Scalar.
+// must be bound, never inlined. Bool is absent for the same reason it is absent from Scalar.
 type Literal interface {
 	ordinal
 }
