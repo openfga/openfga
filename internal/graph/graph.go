@@ -371,6 +371,6 @@ func (g *RelationshipGraph) getRelationshipEdgesWithTargetRewrite(
 
 		return edges, nil
 	default:
-		panic("unexpected userset rewrite encountered")
+		return nil, fmt.Errorf("unexpected userset rewrite type: %T", targetRewrite.GetUserset())
 	}
 }
