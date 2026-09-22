@@ -129,6 +129,7 @@ func (c *LocalChecker) recursiveFastPath(ctx context.Context, req *ResolveCheckR
 		case userToUsersetMessage, ok := <-userToUsersetMessageChan:
 			if !ok {
 				userToUsersetDone = true
+				userToUsersetMessageChan = nil
 				if usersetFromUser.Size() == 0 {
 					return res, ctx.Err()
 				}
@@ -145,6 +146,7 @@ func (c *LocalChecker) recursiveFastPath(ctx context.Context, req *ResolveCheckR
 			if !ok {
 				// usersetFromObject must not be empty because we would have caught it earlier.
 				objectToUsersetDone = true
+				objectToUsersetMessageChan = nil
 				break
 			}
 			if objectToUsersetMessage.err != nil {
