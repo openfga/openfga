@@ -8,6 +8,16 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+### Added
+
+- Added a typed query AST and a `Querier` interface so backends can run queries as structured statements instead of
+  hand-built SQL. This lays the groundwork for future SQL
+  optimizations. [#3316](https://github.com/openfga/openfga/issues/3316)
+  - **Breaking change:** This only applies if you use openfga as a library and implement a custom
+    `RelationshipTupleReader`. The interface now has a `Querier` method which must be implemented (see
+    `pkg/storage/adapter`). Returning `nil` is safe (especially for non-SQL datastores) but skips future SQL
+    optimizations.
+
 ## [1.21.0] - 2026-09-20
 ### Added
 - Added "Dynamic Conditions" as a new experimental feature. [#3313](https://github.com/openfga/openfga/pull/3313)
