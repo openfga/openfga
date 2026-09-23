@@ -9,8 +9,6 @@
 </head>
 
 <body>
-  <!-- Chrome only lets a cross-origin frame reach the loopback address space when the
-       embedder delegates the local-network-access permission to it. -->
   <iframe title="Embedded Playground" src="https://play.fga.dev/sandbox/?fga_api_host={{.HTTPServerURL}}&fga_api_scheme=http&fga_api_token={{.PlaygroundAPIToken}}" allow="local-network-access" frameborder="0" marginheight="0" marginwidth="0" width="100%" height="100%" scrolling="auto"></iframe>
 </body>
 
