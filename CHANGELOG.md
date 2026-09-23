@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Try to keep listed changes to a concise bulleted list of simple explanations of changes. Aim for the amount of information needed so that readers can understand where they would look in the codebase to investigate the changes' implementation, or where they would look in the documentation to understand how to make use of the change in practice - better yet, link directly to the docs and provide detailed information there. Only elaborate if doing so is required to avoid breaking changes or experimental features from ruining someone's day.
 
 ## [Unreleased]
+### Fixed
+- Fixed `utils.LinearBuckets` accumulating its step in a float64 loop variable, which compounded rounding error and could drop the final bucket. The `condition_evaluation_cost` histogram requests `LinearBuckets(0, 100, 10)`, whose width is `100/9`, so it was built with 9 buckets topping out at ~88.89 instead of 10 buckets ending at 100 — evaluations costing more than ~88.89 were recorded in `+Inf` rather than a real bucket. Boundaries are now computed by index with exact endpoints, and a non-positive `count` returns `nil` instead of looping forever. See `internal/utils/bucket.go`. [#3226](https://github.com/openfga/openfga/pull/3226)
 
 ## [1.21.0] - 2026-09-20
 ### Added
