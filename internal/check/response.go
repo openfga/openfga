@@ -2,8 +2,6 @@ package check
 
 import (
 	"time"
-
-	"github.com/openfga/openfga/pkg/storage/cache/keys"
 )
 
 type Response struct {
@@ -18,7 +16,6 @@ func (r *Response) GetAllowed() bool {
 }
 
 type ResponseMsg struct {
-	ID  keys.Key
 	Res *Response
 	Err error
 }
