@@ -1,5 +1,7 @@
 package check
 
+//go:generate mockgen -source interface.go -destination ./mock_resolver.go -package check
+
 import (
 	"context"
 	"sync"
