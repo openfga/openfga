@@ -40,7 +40,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 	startTime := time.Now()
 
 	tk := req.GetTupleKey()
-	ctx, span := tracer.Start(ctx, apimethod.Check.String(), trace.WithAttributes(
+	ctx, span := s.getTracer().Start(ctx, apimethod.Check.String(), trace.WithAttributes(
 		attribute.KeyValue{Key: "store_id", Value: attribute.StringValue(req.GetStoreId())},
 		attribute.KeyValue{Key: "object", Value: attribute.StringValue(tk.GetObject())},
 		attribute.KeyValue{Key: "relation", Value: attribute.StringValue(tk.GetRelation())},
@@ -328,7 +328,7 @@ func (s *Server) shadowV2Check(ctx context.Context, req *openfgav1.CheckRequest,
 		defer cancel()
 		// Inject the original span context so shadow spans share the same trace ID.
 		newCtx = trace.ContextWithSpanContext(newCtx, originalSpanCtx)
-		newCtx, shadowSpan := tracer.Start(newCtx, "shadowV2Check", trace.WithAttributes(
+		newCtx, shadowSpan := s.getTracer().Start(newCtx, "shadowV2Check", trace.WithAttributes(
 			attribute.String("store_id", req.GetStoreId()),
 		))
 		defer shadowSpan.End()
@@ -393,7 +393,7 @@ func (s *Server) v2Check(
 	storeID := req.GetStoreId()
 	tk := req.GetTupleKey()
 
-	ctx, span := tracer.Start(ctx, commands.V2CheckMethodName, trace.WithAttributes(
+	ctx, span := s.getTracer().Start(ctx, commands.V2CheckMethodName, trace.WithAttributes(
 		attribute.String("store_id", storeID),
 		attribute.String("object", tk.GetObject()),
 		attribute.String("relation", tk.GetRelation()),
@@ -463,12 +463,14 @@ func (s *Server) getCheckResolverBuilder(storeID string) *graph.CheckResolverOrd
 			graph.WithPlanner(s.planner),
 			graph.WithUpstreamTimeout(s.requestTimeout),
 			graph.WithLocalCheckerLogger(s.logger),
+			graph.WithTracerProvider(s.tracerProvider),
 		}...),
 		graph.WithLocalShadowCheckerOpts([]graph.LocalCheckerOption{
 			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
 			graph.WithOptimizations(true), // shadow checker always uses optimizations
 			graph.WithMaxResolutionDepth(s.resolveNodeLimit),
 			graph.WithPlanner(s.planner),
+			graph.WithTracerProvider(s.tracerProvider),
 		}...),
 		graph.WithShadowResolverEnabled(s.featureFlagClient.Boolean(serverconfig.ExperimentalShadowCheck, storeID)),
 		graph.WithShadowResolverOpts([]graph.ShadowResolverOpt{

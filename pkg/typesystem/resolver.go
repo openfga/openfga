@@ -25,6 +25,24 @@ const (
 
 type TypesystemResolverFunc func(ctx context.Context, storeID, modelID string) (*TypeSystem, error)
 
+// TypesystemResolverConfig configures a memoized typesystem resolver.
+type TypesystemResolverConfig struct {
+	tracer trace.Tracer
+}
+
+// TypesystemResolverOption configures a memoized typesystem resolver.
+type TypesystemResolverOption func(*TypesystemResolverConfig)
+
+// WithTracerProvider sets the OpenTelemetry tracer provider used by the resolver.
+func WithTracerProvider(tracerProvider trace.TracerProvider) TypesystemResolverOption {
+	return func(config *TypesystemResolverConfig) {
+		if tracerProvider == nil {
+			return
+		}
+		config.tracer = tracerProvider.Tracer("openfga/pkg/typesystem")
+	}
+}
+
 // MemoizedTypesystemResolverFunc does several things.
 //
 // If given a model ID: validates the model ID, and tries to fetch it from the cache.
@@ -33,7 +51,19 @@ type TypesystemResolverFunc func(ctx context.Context, storeID, modelID string) (
 // If not given a model ID: fetches the latest model ID from the datastore, then sees if the model ID is in the cache.
 // If it is, returns it. Else, validates it and returns it.
 func MemoizedTypesystemResolverFunc(datastore storage.AuthorizationModelReadBackend, maxSize int) (TypesystemResolverFunc, func(), error) {
+	return MemoizedTypesystemResolverFuncWithOpts(datastore, maxSize)
+}
+
+// MemoizedTypesystemResolverFuncWithOpts is like MemoizedTypesystemResolverFunc
+// but accepts options that customize the resolver.
+func MemoizedTypesystemResolverFuncWithOpts(datastore storage.AuthorizationModelReadBackend, maxSize int, opts ...TypesystemResolverOption) (TypesystemResolverFunc, func(), error) {
 	lookupGroup := singleflight.Group{}
+	config := &TypesystemResolverConfig{
+		tracer: tracer,
+	}
+	for _, opt := range opts {
+		opt(config)
+	}
 
 	// cache holds models that have already been validated.
 	cache, err := storage.NewInMemoryLRUCache[*TypeSystem](
@@ -44,7 +74,7 @@ func MemoizedTypesystemResolverFunc(datastore storage.AuthorizationModelReadBack
 	}
 
 	return func(ctx context.Context, storeID, modelID string) (*TypeSystem, error) {
-		ctx, span := tracer.Start(ctx, "resolveTypesystem", trace.WithAttributes(
+		ctx, span := config.tracer.Start(ctx, "resolveTypesystem", trace.WithAttributes(
 			attribute.String("store_id", storeID),
 		))
 		defer func() {
@@ -105,7 +135,7 @@ func MemoizedTypesystemResolverFunc(datastore storage.AuthorizationModelReadBack
 			model = v.(*openfgav1.AuthorizationModel)
 		}
 
-		typesys, err := NewAndValidate(ctx, model)
+		typesys, err := newAndValidate(ctx, model, config.tracer)
 		if err != nil {
 			return nil, fmt.Errorf("%w: %w", ErrInvalidModel, err)
 		}
