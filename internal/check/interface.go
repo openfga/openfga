@@ -1,20 +1,30 @@
 package check
 
+//go:generate mockgen -source interface.go -destination ./mock_resolver.go -package check
+
 import (
 	"context"
 	"sync"
 
-	authzGraph "github.com/openfga/language/pkg/go/graph"
+	"github.com/openfga/language/pkg/go/graph"
 
 	"github.com/openfga/openfga/pkg/storage"
 )
 
 type CheckResolver interface {
-	ResolveCheck(context.Context, *Request) (*Response, error)
-	ResolveUnion(context.Context, *Request, *authzGraph.WeightedAuthorizationModelNode, *sync.Map) (*Response, error)
+	ResolveUnion(context.Context, *Request, *graph.WeightedAuthorizationModelNode, *sync.Map) (*Response, error)
+	ResolveUnionEdges(context.Context, *Request, []LogicalEdge, *sync.Map) (*Response, error)
+	ResolveIntersectionEdges(context.Context, *Request, []LogicalEdge) (*Response, error)
+	ResolveExclusionEdges(context.Context, *Request, []LogicalEdge) (*Response, error)
 }
 
-type Strategy interface {
-	Userset(context.Context, *Request, *authzGraph.WeightedAuthorizationModelEdge, storage.TupleKeyIterator, *sync.Map) (*Response, error)
-	TTU(context.Context, *Request, *authzGraph.WeightedAuthorizationModelEdge, storage.TupleKeyIterator, *sync.Map) (*Response, error)
+type GroupStrategy interface {
+	Union(ctx context.Context, req *Request, edge *GroupEdge) (*Response, error)
+	Intersection(ctx context.Context, req *Request, edge *GroupEdge) (*Response, error)
+	Exclusion(ctx context.Context, req *Request, edge *GroupEdge) (*Response, error)
+}
+
+type EdgeStrategy interface {
+	Userset(ctx context.Context, req *Request, edge *graph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator, _ *sync.Map) (*Response, error)
+	TTU(ctx context.Context, req *Request, edge *graph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator, _ *sync.Map) (*Response, error)
 }
