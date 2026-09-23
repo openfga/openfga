@@ -62,12 +62,12 @@
 // Nothing here holds query text. Every operator, connective, quantifier, join flavour, column,
 // cast target, function, and aggregate is a closed enum carrying no spelling of its own, and nodes
 // carry values rather than rendered fragments. Turning any of it into text is a consumer's job.
-// The shared SQL spellings live in package sql, which SQL adapters may use and others ignore.
+// SQL adapters own these spellings; non-SQL adapters can ignore them.
 //
 // The enums divide by how much work a consumer owns:
 //
 //   - Invariant across SQL engines: Op, LogicalOp, Quantifier, JoinType, SortDirection. A SQL
-//     adapter can take these spellings from package sql.
+//     adapter can map these consistently across dialects.
 //   - Divergent even among SQL engines, so every adapter owns the mapping: Column, CastType,
 //     ScalarFunc, AggFunc (Postgres casts to `text` where MySQL casts to `CHAR`; Postgres builds
 //     JSON with `jsonb_build_object` where the ANSI form is `JSON_OBJECT`). Each carries a Count
