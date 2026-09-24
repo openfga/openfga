@@ -1,5 +1,7 @@
 package storage
 
+//go:generate mockgen -source tuple_iterators.go -destination ../../internal/mocks/mock_iterator.go -package mocks
+
 import (
 	"context"
 	"errors"

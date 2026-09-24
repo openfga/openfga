@@ -1,5 +1,7 @@
 package cachecontroller
 
+//go:generate mockgen -source cache_controller.go -destination ../mocks/mock_cachecontroller.go -package mocks
+
 import (
 	"context"
 	"math"
