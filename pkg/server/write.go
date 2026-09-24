@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"time"
 
@@ -12,11 +13,14 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
+	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/telemetry"
 	"github.com/openfga/openfga/internal/utils/apimethod"
 	"github.com/openfga/openfga/pkg/authclaims"
 	"github.com/openfga/openfga/pkg/middleware/validator"
 	"github.com/openfga/openfga/pkg/server/commands"
+	serverconfig "github.com/openfga/openfga/pkg/server/config"
+	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 )
 
 func (s *Server) Write(ctx context.Context, req *openfgav1.WriteRequest) (*openfgav1.WriteResponse, error) {
@@ -49,6 +53,16 @@ func (s *Server) Write(ctx context.Context, req *openfgav1.WriteRequest) (*openf
 	err = s.checkWriteAuthz(ctx, req, typesys)
 	if err != nil {
 		return nil, err
+	}
+
+	if !s.featureFlagClient.Boolean(serverconfig.ExperimentalInlineExpressions, storeID) {
+		for _, tk := range req.GetWrites().GetTupleKeys() {
+			if condition.IsInlineExpression(tk.GetCondition().GetName()) {
+				return nil, serverErrors.ValidationError(
+					fmt.Errorf("$expression requires the %q experimental feature flag", serverconfig.ExperimentalInlineExpressions),
+				)
+			}
+		}
 	}
 
 	cmd := commands.NewWriteCommand(
