@@ -153,10 +153,21 @@ func (s *Server) ListUsers(
 	if wasDispatchThrottled {
 		throttledRequestCounter.WithLabelValues(s.serviceName, methodName, throttleTypeDispatch).Inc()
 	}
+	grpc_ctxtags.Extract(ctx).Set("request.dispatch_throttled", wasDispatchThrottled)
 
 	wasDatastoreThrottled := resp.GetMetadata().WasDatastoreThrottled.Load()
 	if wasDatastoreThrottled {
 		throttledRequestCounter.WithLabelValues(s.serviceName, methodName, throttleTypeDatastore).Inc()
+	}
+	grpc_ctxtags.Extract(ctx).Set("request.datastore_throttled", wasDatastoreThrottled)
+
+	// Resolution that stops at the deadline still returns 200 with whatever it
+	// found, so without this the caller cannot tell a truncated list from an
+	// exhaustive one.
+	deadlineExceeded := resp.GetMetadata().WasDeadlineExceeded.Load()
+	grpc_ctxtags.Extract(ctx).Set("request.deadline_exceeded", deadlineExceeded)
+	if deadlineExceeded {
+		s.transport.SetHeader(ctx, WarningHeader, deadlineExceededWarning)
 	}
 
 	// Flag potential v2 (weighted-graph) resolution breaking changes for this

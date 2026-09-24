@@ -278,7 +278,10 @@ func TestListUsersLogs(t *testing.T) {
 				require.GreaterOrEqual(t, fields["datastore_query_count"], float64(1))
 				require.GreaterOrEqual(t, fields["datastore_item_count"], float64(1))
 				require.GreaterOrEqual(t, fields["dispatch_count"], float64(1))
-				require.Len(t, fields, 16)
+				require.Equal(t, false, fields["request.dispatch_throttled"])
+				require.Equal(t, false, fields["request.datastore_throttled"])
+				require.Equal(t, false, fields["request.deadline_exceeded"])
+				require.Len(t, fields, 19)
 			} else {
 				require.Len(t, fields, 13)
 			}
