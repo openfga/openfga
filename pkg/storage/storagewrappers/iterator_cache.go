@@ -111,10 +111,34 @@ type CachingIterator struct {
 	relation   string
 	operation  string
 	method     string
+
+	// onSettled, if set, is invoked exactly once when the iterator reaches a
+	// terminal state: the cache has been populated (via eager flush or background
+	// drain) or caching has been abandoned. CachedTupleReader uses this to signal
+	// follower reads that are coalescing onto this (leader) iterator — see
+	// CachedTupleReader.missRead.
+	onSettled  func()
+	settleOnce sync.Once
 }
 
 // Ensure CachingIterator implements TupleIterator.
 var _ storage.TupleIterator = (*CachingIterator)(nil)
+
+// cachingIteratorOpt configures optional CachingIterator behavior.
+type cachingIteratorOpt func(*CachingIterator)
+
+// withOnSettled registers a callback invoked exactly once when the iterator
+// reaches a terminal state (cache populated or caching abandoned).
+func withOnSettled(fn func()) cachingIteratorOpt {
+	return func(c *CachingIterator) { c.onSettled = fn }
+}
+
+// settle invokes the onSettled callback at most once.
+func (c *CachingIterator) settle() {
+	if c.onSettled != nil {
+		c.settleOnce.Do(c.onSettled)
+	}
+}
 
 // newCachingIterator creates a new caching iterator for cache miss scenarios.
 func newCachingIterator(
@@ -127,6 +151,7 @@ func newCachingIterator(
 	sf *singleflight.Group,
 	wg *sync.WaitGroup,
 	objectType, relation, operation, method string,
+	opts ...cachingIteratorOpt,
 ) *CachingIterator {
 	// Cap initial capacity to avoid over-allocation for large maxSize values.
 	// Most queries return few tuples, so initialBufferCapacity is usually sufficient.
@@ -138,7 +163,7 @@ func newCachingIterator(
 		wg.Add(1)
 	}
 
-	return &CachingIterator{
+	c := &CachingIterator{
 		inner:        inner,
 		tuples:       make([]*openfgav1.Tuple, 0, initCap),
 		cache:        cache,
@@ -154,6 +179,10 @@ func newCachingIterator(
 		operation:    operation,
 		method:       method,
 	}
+	for _, opt := range opts {
+		opt(c)
+	}
+	return c
 }
 
 // Next returns the next tuple from the underlying iterator.
@@ -170,6 +199,19 @@ func (c *CachingIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
 	if err != nil {
 		if !storage.IterIsDoneOrCancelled(err) {
 			c.tuples = nil // Don't cache incomplete results
+		} else if errors.Is(err, storage.ErrIteratorDone) {
+			// Natural end of stream reached during consumption: populate the cache
+			// eagerly (the mutex is already held) instead of waiting for the
+			// deferred post-Stop() background drain. Identical reads issued later
+			// within the SAME request are then served from cache immediately.
+			// That population gap is the dominant source of intra-request read
+			// amplification — the same object#relation tupleset re-read many times
+			// within one Check because each read misses the not-yet-populated
+			// cache. flush() is idempotent (it nils c.tuples), so a subsequent
+			// Stop()/drain will not re-flush.
+			c.flush()
+			// Signal any coalescing followers: the cache is now populated.
+			c.settle()
 		}
 		return nil, err
 	}
@@ -215,6 +257,9 @@ func (c *CachingIterator) Stop() {
 	if c.tuples == nil {
 		c.mu.Unlock()
 		c.inner.Stop()
+		// Terminal state reached without a background drain (already flushed via
+		// eager population, or caching abandoned). Signal any coalescing followers.
+		c.settle()
 		// Must call Done since we Added in constructor
 		if c.wg != nil {
 			c.wg.Done()
@@ -232,7 +277,12 @@ func (c *CachingIterator) Stop() {
 // flush transforms collected tuples to MinimalCacheEntry and stores in cache.
 // Must be called with mutex held or after closing is set.
 func (c *CachingIterator) flush() {
-	if len(c.tuples) == 0 {
+	// A nil slice means caching was abandoned (result exceeded maxSize, or an
+	// error/cancellation left an incomplete result) — do not cache it. A non-nil
+	// but empty slice is a genuine empty result, which we DO cache so that repeat
+	// reads of an empty tupleset (e.g. a leaf object's #child) are served from
+	// cache instead of re-querying the datastore on every read.
+	if c.tuples == nil {
 		return
 	}
 
@@ -274,6 +324,9 @@ func (c *CachingIterator) drainInBackground() {
 		defer c.wg.Done()
 	}
 	defer c.inner.Stop()
+	// Whatever the outcome (flushed to cache, or abandoned), signal coalescing
+	// followers once the drain settles.
+	defer c.settle()
 
 	// Optimization 1: Check if cache is already populated by another goroutine.
 	// This avoids redundant work when multiple iterators for the same key finish concurrently.
