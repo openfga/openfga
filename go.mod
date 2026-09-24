@@ -2,7 +2,7 @@ module github.com/openfga/openfga
 
 go 1.25.7
 
-toolchain go1.26.5
+toolchain go1.26.8
 
 require (
 	github.com/IBM/pgxpoolprometheus v1.1.3
@@ -31,7 +31,7 @@ require (
 	github.com/natefinch/wrap v0.2.0
 	github.com/oklog/ulid/v2 v2.1.2
 	github.com/openfga/api/proto v0.0.0-20260319214821-f153694bfc20
-	github.com/openfga/language/pkg/go v0.3.2-0.20260730144454-83fedf8a4e70
+	github.com/openfga/language/pkg/go v0.3.2-0.20260818192608-0d2ad7fb7c40
 	github.com/pressly/goose/v3 v3.27.3
 	github.com/prometheus/client_golang v1.24.1
 	github.com/rs/cors v1.11.1
@@ -53,7 +53,7 @@ require (
 	go.uber.org/zap v1.28.0
 	golang.org/x/sync v0.22.0
 	gonum.org/v1/gonum v0.17.0
-	google.golang.org/grpc v1.83.1
+	google.golang.org/grpc v1.83.2
 	google.golang.org/protobuf v1.36.12
 	modernc.org/sqlite v1.57.0
 	sigs.k8s.io/controller-runtime v0.23.3
@@ -136,11 +136,11 @@ require (
 	go.yaml.in/yaml/v2 v2.4.4 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/exp v0.0.0-20260718201538-764159d718ef // indirect
-	golang.org/x/net v0.57.0 // indirect
+	golang.org/x/net v0.58.0 // indirect
 	golang.org/x/oauth2 v0.36.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/term v0.45.0 // indirect
-	golang.org/x/text v0.40.0 // indirect
+	golang.org/x/text v0.41.0 // indirect
 	golang.org/x/time v0.11.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260803160001-6ac0973c030d // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260803160001-6ac0973c030d // indirect
