@@ -183,6 +183,42 @@ func TestServerPanicIfValidationsFail(t *testing.T) {
 		})
 	})
 
+	t.Run("zero_max_concurrent_reads_for_list_users", func(t *testing.T) {
+		require.PanicsWithError(t, "failed to construct the OpenFGA server: config 'maxConcurrentReadsForListUsers' cannot be 0", func() {
+			mockController := gomock.NewController(t)
+			defer mockController.Finish()
+			mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+			_ = MustNewServerWithOpts(
+				WithDatastore(mockDatastore),
+				WithMaxConcurrentReadsForListUsers(0),
+			)
+		})
+	})
+
+	t.Run("negative_list_objects_deadline", func(t *testing.T) {
+		require.PanicsWithError(t, "failed to construct the OpenFGA server: listObjectsDeadline must be non-negative time duration", func() {
+			mockController := gomock.NewController(t)
+			defer mockController.Finish()
+			mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+			_ = MustNewServerWithOpts(
+				WithDatastore(mockDatastore),
+				WithListObjectsDeadline(-1*time.Second),
+			)
+		})
+	})
+
+	t.Run("negative_list_users_deadline", func(t *testing.T) {
+		require.PanicsWithError(t, "failed to construct the OpenFGA server: listUsersDeadline must be non-negative time duration", func() {
+			mockController := gomock.NewController(t)
+			defer mockController.Finish()
+			mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+			_ = MustNewServerWithOpts(
+				WithDatastore(mockDatastore),
+				WithListUsersDeadline(-1*time.Second),
+			)
+		})
+	})
+
 	t.Run("invalid_access_control_setup", func(t *testing.T) {
 		require.PanicsWithError(t, "failed to construct the OpenFGA server: access control parameters are not enabled. They can be enabled for experimental use by passing the `--experimentals enable-access-control` configuration option when running OpenFGA server. Additionally, the `--access-control-store-id` and `--access-control-model-id` parameters must not be empty", func() {
 			mockController := gomock.NewController(t)
