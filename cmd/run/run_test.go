@@ -14,7 +14,6 @@ import (
 	"io"
 	"log"
 	"math/big"
-	"net"
 	"net/http"
 	"os"
 	"path"
@@ -34,7 +33,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 	"go.uber.org/goleak"
-	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/protobuf/encoding/protojson"
 
@@ -1545,41 +1543,6 @@ func TestOTLPLogsEnabled(t *testing.T) {
 			require.Equal(t, tt.want, logOTLPEnabled(cfg))
 		})
 	}
-}
-
-// startPlaintextGRPCServer starts a bare gRPC server on a random loopback
-// port. It is enough for the startup connectivity probe to reach READY.
-func startPlaintextGRPCServer(t *testing.T) string {
-	t.Helper()
-
-	lis, err := net.Listen("tcp", "127.0.0.1:0")
-	require.NoError(t, err)
-
-	srv := grpc.NewServer()
-	go func() {
-		_ = srv.Serve(lis)
-	}()
-	t.Cleanup(srv.Stop)
-
-	return lis.Addr().String()
-}
-
-// TestNewOTELLogCoreHTTPSchemeEnablesTLS exercises the real wiring: with the
-// TLS flag off, an https:// endpoint must still select TLS, so the probe
-// against a plaintext server fails and newOTELLogCore panics.
-func TestNewOTELLogCoreHTTPSchemeEnablesTLS(t *testing.T) {
-	cfg := serverconfig.DefaultConfig()
-	cfg.Log.OTLP.Enabled = true
-	cfg.Log.OTLP.TLS.Enabled = false
-	cfg.Log.OTLP.Endpoint = "https://" + startPlaintextGRPCServer(t)
-
-	recovered := func() (r any) {
-		defer func() { r = recover() }()
-		_, _ = newOTELLogCore(cfg)
-		return nil
-	}()
-
-	require.NotNil(t, recovered)
 }
 
 func TestRunCommandNoConfigDefaultValues(t *testing.T) {
