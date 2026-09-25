@@ -486,6 +486,34 @@
                     "enum": ["Unix", "ISO8601"],
                     "default": "Unix",
                     "x-env-variable": "OPENFGA_LOG_TIMESTAMP_FORMAT"
+                },
+                "otlp": {
+                    "type": "object",
+                    "properties": {
+                        "enabled": {
+                            "description": "Enable OTLP log export. When enabled, logs are exported to the OTLP log collector in addition to stdout.",
+                            "type": "boolean",
+                            "default": false,
+                            "x-env-variable": "OPENFGA_LOG_OTLP_ENABLED"
+                        },
+                        "endpoint": {
+                            "description": "The grpc endpoint of the OTLP log collector",
+                            "type": "string",
+                            "default": "0.0.0.0:4317",
+                            "x-env-variable": ["OPENFGA_LOG_OTLP_ENDPOINT", "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT", "OTEL_EXPORTER_OTLP_ENDPOINT"]
+                        },
+                        "tls": {
+                            "type": "object",
+                            "properties": {
+                                "enabled": {
+                                    "description": "Whether to use TLS connection for the OTLP log collector.",
+                                    "type": "boolean",
+                                    "default": false,
+                                    "x-env-variable": "OPENFGA_LOG_OTLP_TLS_ENABLED"
+                                }
+                            }
+                        }
+                    }
                 }
             }
         },
