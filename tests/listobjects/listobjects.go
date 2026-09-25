@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -62,8 +61,8 @@ type matrixTest struct {
 	ListObjectAssertions []*listobjectstest.Assertion `json:"listObjectsAssertions"`
 }
 
-func RunMatrixTests(t *testing.T, engine string, experimentalsEnabled bool, client tests.ClientInterface) {
-	t.Run("test_matrix_"+engine+"_experimental_"+strconv.FormatBool(experimentalsEnabled), func(t *testing.T) {
+func RunMatrixTests(t *testing.T, engine string, desc string, client tests.ClientInterface) {
+	t.Run("test matrix "+engine+" "+desc, func(t *testing.T) {
 		t.Parallel()
 		runTestMatrix(t, testParams{
 			schemaVersion: typesystem.SchemaVersion1_1,

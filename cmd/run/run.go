@@ -136,7 +136,20 @@ func NewRunCommand() *cobra.Command {
 	defaultConfig := serverconfig.DefaultConfig()
 	flags := cmd.Flags()
 
-	flags.StringSlice("experimentals", defaultConfig.Experimentals, fmt.Sprintf("a comma-separated list of experimental features to enable. Allowed values: %s, %s, %s, %s, %s", serverconfig.ExperimentalCheckOptimizations, serverconfig.ExperimentalListObjectsOptimizations, serverconfig.ExperimentalAccessControlParams, serverconfig.ExperimentalDatastoreThrottling, serverconfig.ExperimentalAuthZen))
+	flags.StringSlice(
+		"experimentals",
+		defaultConfig.Experimentals,
+		fmt.Sprintf(
+			"a comma-separated list of experimental features to enable. "+
+				"Allowed values: %s, %s, %s, %s, %s, %s",
+			serverconfig.ExperimentalCheckOptimizations,
+			serverconfig.ExperimentalListObjectsOptimizations,
+			serverconfig.ExperimentalAccessControlParams,
+			serverconfig.ExperimentalDatastoreThrottling,
+			serverconfig.ExperimentalAuthZen,
+			serverconfig.ExperimentalInlineExpressions,
+		),
+	)
 
 	flags.Bool("access-control-enabled", defaultConfig.AccessControl.Enabled, "enable/disable the access control feature")
 
@@ -196,7 +209,7 @@ func NewRunCommand() *cobra.Command {
 
 	flags.String("datastore-uri", defaultConfig.Datastore.URI, "the connection uri to use to connect to the datastore (for any engine other than 'memory')")
 
-	flags.String("datastore-secondary-uri", defaultConfig.Datastore.SecondaryURI, "the connection uri to use to connect to the secondary datastore (for postgres only)")
+	flags.String("datastore-secondary-uri", defaultConfig.Datastore.SecondaryURI, "the connection uri to use to connect to the secondary datastore (for postgres and mysql)")
 
 	flags.String("datastore-username", "", "the connection username to use to connect to the datastore (overwrites any username provided in the connection uri)")
 

@@ -8,6 +8,25 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 ### Added
+- Added read-replica (primary/secondary) support to the MySQL datastore backend, matching the existing PostgreSQL behaviour. Configure a secondary connection via `--datastore-secondary-uri` (or `OPENFGA_DATASTORE_SECONDARY_URI`); all reads except those requesting `HIGHER_CONSISTENCY` are routed to the replica while all writes remain on the primary. `GetStore`, `ListStores`, `ReadAssertions`, `ReadAuthorizationModel`, `ReadAuthorizationModels`, `FindLatestAuthorizationModel`, and `ReadChanges` always hit the replica when configured regardless of requested consistency — callers should be aware of read-after-write risk on a lagging replica. See `pkg/storage/mysql/mysql.go`. **Breaking:** `mysql.NewWithDB` gained a required `secondaryDB *sql.DB` parameter (pass `nil` if no replica is configured); `sqlcommon.ReadAuthorizationModel` and `sqlcommon.FindLatestAuthorizationModel` were removed and moved to per-backend implementations. [#3290](https://github.com/openfga/openfga/pull/3290)
+
+## [1.21.0] - 2026-09-20
+### Added
+- Added "Dynamic Conditions" as a new experimental feature. [#3313](https://github.com/openfga/openfga/pull/3313)
+
+## [1.20.0] - 2026-09-08
+### Added
+- Added `WithServiceName` server option to allow embedders to override the `serviceName` field used for the `grpc_service` label on OpenFGA's package-level Prometheus metrics and `telemetry.RPCInfo.Service`. This enables multiple `Server` instances in the same process to emit separate metric series. Note it does not rename the standard gRPC server metrics (e.g. `grpc_server_handled_total`), whose labels are derived from the registered gRPC service. Use stable, low-cardinality names, as the value becomes a metric label. Defaults to `openfgav1.OpenFGAService_ServiceDesc.ServiceName` when omitted (backward compatible). [#3265](https://github.com/openfga/openfga/pull/3265)
+
+### Fixed
+- Fixed a deadlock in ListUsers that caused a timeout with partial results when the number of union/intersection operands exceeded `OPENFGA_RESOLVE_NODE_BREADTH_LIMIT` and the operands each resolved to more than one user. Thank you to [@fabianluque](https://github.com/fabianluque) for the discovery and detailed report! [#3284](https://github.com/openfga/openfga/pull/3284)
+
+### Security
+- Upgraded go toolchain and images to use go1.26.8 to fix [CVE-2026-39821](https://pkg.go.dev/vuln/GO-2026-5026). [#3287](https://github.com/openfga/openfga/pull/3287)
+- Rebuilt the embedded `grpc-health-probe` (bumped to `v0.4.57`, built with Go 1.26.8) to match the server toolchain and pick up `google.golang.org/grpc` v1.83.2, which fixes [GHSA-vp52-pcj8-j9qc](https://github.com/advisories/GHSA-vp52-pcj8-j9qc). [#3289](https://github.com/openfga/openfga/pull/3289)
+
+## [1.19.0] - 2026-08-24
+### Added
 - Adds configurable pipeline optimization for weight-one difference subtract edges with high cardinality on wildcard leaves. For now, this configuration is internal only. [#3267](https://github.com/openfga/openfga/pull/3267)
 
 ### Fixed
@@ -16,6 +35,9 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Scope context-cancelation stripping to query execution only. No longer can deadlock on saturated connection pool. [#3255](https://github.com/openfga/openfga/pull/3255)
 - Updated v2 resolution diagnostic logging in `Check` and `ListUsers` to gate on InfoLevel log level. Removed diagnostic logging from `Expand` whose resolution will not change. [#3254](https://github.com/openfga/openfga/pull/3254)
 
+### Security
+- Fixed [GHSA-5278-rrxc-mgf7](https://github.com/openfga/openfga/security/advisories/GHSA-5278-rrxc-mgf7), where StreamedListObjects could return a result that should have been excluded during an error. Thank you to [@yxshwanth](https://github.com/yxshwanth) for the detailed report and fix.
+
 ## [1.18.3] - 2026-08-05
 ### Fixed
 - Fixed experimental `weighted_graph_check` intermittently returning `false` when evaluating relations that cross two or more distinct recursive TTUs which share the same tupleset relation. [#3244](https://github.com/openfga/openfga/pull/3244)
@@ -23,6 +45,9 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ## [1.18.2] - 2026-08-03
 ### Added
 - Extended experimental `weighted_graph_check` diagnostic logging to cover the `wildcard_with_exclusion` and `userset_with_exclusion` shapes: the log now fires when v2 Check rejects one of these shapes and Check falls back to v1, and when v2 Check is skipped entirely because the weighted graph fails to build. These logs surface authorization models that may be affected by a future v1 deprecation, and no operator action is required. [#3204](https://github.com/openfga/openfga/pull/3204)
+- Added diagnostic logging in `ListObjects` when log level is InfoLevel and v2 resolution might produce a different result than v1 for the same query. Note that v2 has not been implemented yet for this endpoint; these logs purely add visibility for a future v1 deprecation, and no operator action is required. [#3223](https://github.com/openfga/openfga/pull/3223)
+- Added the same v2 resolution diagnostic logging to `StreamedListObjects` when log level is Info. Note that v2 has not been implemented yet for this endpoint; these logs purely add visibility for a future v1 deprecation, and no operator action is required. [#3230](https://github.com/openfga/openfga/pull/3230)
+- Extended experimental `weighted_graph_check` diagnostic logging to `BatchCheck`: with the flag enabled and log level InfoLevel, a single aggregate log is emitted per request listing the distinct v1→v2 resolution divergence shapes detected across the batch. These logs surface authorization models that may be affected by a future v1 deprecation, and no operator action is required. [#3210](https://github.com/openfga/openfga/pull/3210)
 
 ### Changed
 - Matched experimental `weighted_graph_check` cache metrics with original Check cache metrics: iterator cache metrics renamed to `tuples_cache_total_count`, `tuples_cache_hit_count`, `tuples_cache_discard_count`, `tuples_cache_size`; query cache metrics added as `check_cache_total_count`, `check_cache_hit_count`, `check_cache_invalid_hit_count`. [#3184](https://github.com/openfga/openfga/pull/3184)
@@ -1722,7 +1747,10 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
 - Memory storage adapter implementation
 - Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.18.3...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.21.0...HEAD
+[1.21.0]: https://github.com/openfga/openfga/compare/v1.20.0...v1.21.0
+[1.20.0]: https://github.com/openfga/openfga/compare/v1.19.0...v1.20.0
+[1.19.0]: https://github.com/openfga/openfga/compare/v1.18.3...v1.19.0
 [1.18.3]: https://github.com/openfga/openfga/compare/v1.18.2...v1.18.3
 [1.18.2]: https://github.com/openfga/openfga/compare/v1.18.1...v1.18.2
 [1.18.1]: https://github.com/openfga/openfga/compare/v1.18.0...v1.18.1

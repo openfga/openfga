@@ -121,6 +121,7 @@ const (
 	ExperimentalShadowWeightedGraphCheck = "shadow_weighted_graph_check"
 	ExperimentalWeightedGraphCheck       = "weighted_graph_check"
 	ExperimentalAuthZen                  = "authzen"
+	ExperimentalInlineExpressions        = "inline_expressions"
 )
 
 type DatastoreMetricsConfig struct {

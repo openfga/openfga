@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"maps"
 	"reflect"
+	"slices"
 	"sync"
 	"time"
 
@@ -239,6 +240,7 @@ func (e *EvaluableCondition) Evaluate(
 
 		missingParameters = append(missingParameters, key)
 	}
+	slices.Sort(missingParameters)
 
 	out, details, err := e.celProgram.ContextEval(ctx, activation)
 	if err != nil {

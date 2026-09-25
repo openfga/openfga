@@ -148,7 +148,7 @@
             "type": "array",
             "items": {
                 "type": "string",
-                "enum": ["enable-check-optimizations", "enable-list-objects-optimizations", "enable-access-control", "datastore_throttling", "pipeline_list_objects", "authzen"]
+                "enum": ["enable-check-optimizations", "enable-list-objects-optimizations", "enable-access-control", "datastore_throttling", "pipeline_list_objects", "authzen", "inline_expressions"]
             },
             "default": ["pipeline_list_objects"],
             "x-env-variable": "OPENFGA_EXPERIMENTALS"
@@ -250,7 +250,7 @@
                     "x-env-variable": "OPENFGA_DATASTORE_URI"
                 },
                 "secondaryUri": {
-                    "description": "The connection uri to use to connect to the secondary datastore (for postgres only).",
+                    "description": "The connection uri to use to connect to the secondary datastore (for postgres and mysql).",
                     "type": "string",
                     "examples": [
                         "postgres://user:pass@host:port/datastore?opts"
