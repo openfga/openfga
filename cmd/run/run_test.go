@@ -14,6 +14,7 @@ import (
 	"io"
 	"log"
 	"math/big"
+	"net"
 	"net/http"
 	"os"
 	"path"
@@ -33,6 +34,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 	"go.uber.org/goleak"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/protobuf/encoding/protojson"
 
@@ -1246,6 +1248,18 @@ func TestDefaultConfig(t *testing.T) {
 	require.True(t, val.Exists())
 	require.Equal(t, val.String(), cfg.Log.Format)
 
+	val = res.Get("properties.log.properties.otlp.properties.enabled.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.Bool(), cfg.Log.OTLP.Enabled)
+
+	val = res.Get("properties.log.properties.otlp.properties.endpoint.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.String(), cfg.Log.OTLP.Endpoint)
+
+	val = res.Get("properties.log.properties.otlp.properties.tls.properties.enabled.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.Bool(), cfg.Log.OTLP.TLS.Enabled)
+
 	val = res.Get("properties.maxTuplesPerWrite.default")
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), cfg.MaxTuplesPerWrite)
@@ -1509,6 +1523,65 @@ func TestDefaultConfig(t *testing.T) {
 	require.Equal(t, val.String(), cfg.ShutdownTimeout.String())
 }
 
+func TestOTLPLogsEnabled(t *testing.T) {
+	tests := []struct {
+		name     string
+		otlp     bool
+		endpoint string
+		level    string
+		want     bool
+	}{
+		{name: "disabled_by_default", otlp: false, level: "info", want: false},
+		{name: "explicit_flag_enables_export", otlp: true, level: "info", want: true},
+		{name: "endpoint_alone_does_not_enable_export", otlp: false, endpoint: "collector:4317", level: "info", want: false},
+		{name: "none_level_disables_export", otlp: true, endpoint: "collector:4317", level: "none", want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := serverconfig.DefaultConfig()
+			cfg.Log.OTLP.Enabled = tt.otlp
+			cfg.Log.OTLP.Endpoint = tt.endpoint
+			cfg.Log.Level = tt.level
+			require.Equal(t, tt.want, logOTLPEnabled(cfg))
+		})
+	}
+}
+
+// startPlaintextGRPCServer starts a bare gRPC server on a random loopback
+// port. It is enough for the startup connectivity probe to reach READY.
+func startPlaintextGRPCServer(t *testing.T) string {
+	t.Helper()
+
+	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+
+	srv := grpc.NewServer()
+	go func() {
+		_ = srv.Serve(lis)
+	}()
+	t.Cleanup(srv.Stop)
+
+	return lis.Addr().String()
+}
+
+// TestNewOTELLogCoreHTTPSchemeEnablesTLS exercises the real wiring: with the
+// TLS flag off, an https:// endpoint must still select TLS, so the probe
+// against a plaintext server fails and newOTELLogCore panics.
+func TestNewOTELLogCoreHTTPSchemeEnablesTLS(t *testing.T) {
+	cfg := serverconfig.DefaultConfig()
+	cfg.Log.OTLP.Enabled = true
+	cfg.Log.OTLP.TLS.Enabled = false
+	cfg.Log.OTLP.Endpoint = "https://" + startPlaintextGRPCServer(t)
+
+	recovered := func() (r any) {
+		defer func() { r = recover() }()
+		_, _ = newOTELLogCore(cfg)
+		return nil
+	}()
+
+	require.NotNil(t, recovered)
+}
+
 func TestRunCommandNoConfigDefaultValues(t *testing.T) {
 	util.PrepareTempConfigDir(t)
 	runCmd := NewRunCommand()
@@ -1614,6 +1687,74 @@ func TestParseConfigCacheTTLJitterPercentageFromEnv(t *testing.T) {
 	cfg, err := ReadConfig()
 	require.NoError(t, err)
 	require.Equal(t, uint32(18), cfg.CacheTTLJitterPercentage)
+}
+
+func TestLogOTLPEnvBindings(t *testing.T) {
+	tests := []struct {
+		name         string
+		env          map[string]string
+		wantEndpoint string
+		wantEnabled  bool
+	}{
+		{
+			name:         "generic_otel_endpoint_sets_destination_but_does_not_enable_export",
+			env:          map[string]string{"OTEL_EXPORTER_OTLP_ENDPOINT": "generic-collector:4317"},
+			wantEndpoint: "generic-collector:4317",
+			wantEnabled:  false,
+		},
+		{
+			name:         "explicit_openfga_flag_enables_export",
+			env:          map[string]string{"OPENFGA_LOG_OTLP_ENABLED": "true", "OPENFGA_LOG_OTLP_ENDPOINT": "logs-collector:4317"},
+			wantEndpoint: "logs-collector:4317",
+			wantEnabled:  true,
+		},
+		{
+			name:         "otel_logs_endpoint_takes_precedence_over_generic",
+			env:          map[string]string{"OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": "logs-collector:4317", "OTEL_EXPORTER_OTLP_ENDPOINT": "generic-collector:4317"},
+			wantEndpoint: "logs-collector:4317",
+			wantEnabled:  false,
+		},
+		{
+			name:         "openfga_endpoint_takes_precedence_over_otel_vars",
+			env:          map[string]string{"OPENFGA_LOG_OTLP_ENDPOINT": "openfga-collector:4317", "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": "logs-collector:4317", "OTEL_EXPORTER_OTLP_ENDPOINT": "generic-collector:4317"},
+			wantEndpoint: "openfga-collector:4317",
+			wantEnabled:  false,
+		},
+	}
+
+	// Neutralize any ambient OTLP env so the assertions are deterministic on
+	// any CI host; each subtest then sets only the vars it exercises.
+	for _, k := range []string{
+		"OPENFGA_LOG_OTLP_ENABLED",
+		"OPENFGA_LOG_OTLP_ENDPOINT",
+		"OTEL_EXPORTER_OTLP_LOGS_ENDPOINT",
+		"OTEL_EXPORTER_OTLP_ENDPOINT",
+	} {
+		t.Setenv(k, "")
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			viper.Reset()
+			t.Cleanup(viper.Reset)
+			util.PrepareTempConfigDir(t)
+			for k, v := range tt.env {
+				t.Setenv(k, v)
+			}
+
+			runCmd := NewRunCommand()
+			runCmd.RunE = func(cmd *cobra.Command, _ []string) error { return nil }
+			rootCmd := cmd.NewRootCommand()
+			rootCmd.AddCommand(runCmd)
+			rootCmd.SetArgs([]string{"run"})
+			require.NoError(t, rootCmd.Execute())
+
+			cfg, err := ReadConfig()
+			require.NoError(t, err)
+			require.Equal(t, tt.wantEndpoint, cfg.Log.OTLP.Endpoint)
+			require.Equal(t, tt.wantEnabled, cfg.Log.OTLP.Enabled)
+		})
+	}
 }
 
 func TestRunCommandConfigIsMerged(t *testing.T) {
