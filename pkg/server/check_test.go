@@ -1204,7 +1204,7 @@ func TestCheck_LogsExclusionShapesOnV2Rejection(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			core, logs := observer.New(zap.WarnLevel)
+			core, logs := observer.New(zap.InfoLevel)
 			testLogger := &logger.ZapLogger{Logger: zap.New(core)}
 
 			s, req := setupCheckServer(t, tc.modelDSL, tc.tuples,
@@ -1261,7 +1261,7 @@ func TestCheck_LogsExclusionShapesOnV2Fallback(t *testing.T) {
 				define viewer: (user_public but not user_blocked) and bot_gate
 	`
 
-	core, logs := observer.New(zap.WarnLevel)
+	core, logs := observer.New(zap.InfoLevel)
 	testLogger := &logger.ZapLogger{Logger: zap.New(core)}
 
 	s, req := setupCheckServer(t, modelDSL,

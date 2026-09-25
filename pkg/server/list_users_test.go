@@ -1025,7 +1025,7 @@ func TestListUsersBreakingChangeLog(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			core, logs := observer.New(zap.WarnLevel)
+			core, logs := observer.New(zap.InfoLevel)
 			testLogger := &logger.ZapLogger{Logger: zap.New(core)}
 
 			s, baseReq := setupListUsersServer(t, tc.modelDSL, tc.tuples, WithLogger(testLogger))
