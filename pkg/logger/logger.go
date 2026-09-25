@@ -37,10 +37,16 @@ type Logger interface {
 	FatalWithContext(context.Context, string, ...zap.Field)
 }
 
+// ctxFieldKey names the field that carries a context.Context through zap to
+// the otelzap bridge, which uses it to extract trace/span IDs. The bridge
+// detects the field by its value's type, not by this key; contextFilterCore
+// strips it from stdout output the same way.
+const ctxFieldKey = "ctx"
+
 // NewNoopLogger provides a noop logger.
 func NewNoopLogger() *ZapLogger {
 	return &ZapLogger{
-		zap.NewNop(),
+		Logger: zap.NewNop(),
 	}
 }
 
@@ -48,6 +54,11 @@ func NewNoopLogger() *ZapLogger {
 // It provides additional methods such as ones that logs based on context.
 type ZapLogger struct {
 	*zap.Logger
+
+	// hasOTELCore is true when an otelzap bridge core is teed into the logger.
+	// Only then do the *WithContext methods attach the context as a field, so
+	// that the default (stdout-only) path pays no extra cost.
+	hasOTELCore bool
 }
 
 var _ Logger = (*ZapLogger)(nil)
@@ -56,7 +67,7 @@ var _ Logger = (*ZapLogger)(nil)
 // to the child don't affect the parent, and vice versa. Any fields that
 // require evaluation (such as Objects) are evaluated upon invocation of With.
 func (l *ZapLogger) With(fields ...zap.Field) Logger {
-	return &ZapLogger{l.Logger.With(fields...)}
+	return &ZapLogger{Logger: l.Logger.With(fields...), hasOTELCore: l.hasOTELCore}
 }
 
 func (l *ZapLogger) Debug(msg string, fields ...zap.Field) {
@@ -83,29 +94,38 @@ func (l *ZapLogger) Fatal(msg string, fields ...zap.Field) {
 	l.Logger.Fatal(msg, fields...)
 }
 
+// withContextField attaches ctx as a field for the otelzap bridge to consume.
+// It is a no-op unless an OTEL core is configured.
+func (l *ZapLogger) withContextField(ctx context.Context, fields []zap.Field) []zap.Field {
+	if !l.hasOTELCore {
+		return fields
+	}
+	return append(fields, zap.Any(ctxFieldKey, ctx))
+}
+
 func (l *ZapLogger) DebugWithContext(ctx context.Context, msg string, fields ...zap.Field) {
-	l.Logger.Debug(msg, fields...)
+	l.Logger.Debug(msg, l.withContextField(ctx, fields)...)
 }
 
 func (l *ZapLogger) InfoWithContext(ctx context.Context, msg string, fields ...zap.Field) {
-	l.Logger.Info(msg, fields...)
+	l.Logger.Info(msg, l.withContextField(ctx, fields)...)
 }
 
 func (l *ZapLogger) WarnWithContext(ctx context.Context, msg string, fields ...zap.Field) {
-	l.Logger.Warn(msg, fields...)
+	l.Logger.Warn(msg, l.withContextField(ctx, fields)...)
 }
 
 func (l *ZapLogger) ErrorWithContext(ctx context.Context, msg string, fields ...zap.Field) {
 	fields = append(fields, ctxzap.TagsToFields(ctx)...)
-	l.Logger.Error(msg, fields...)
+	l.Logger.Error(msg, l.withContextField(ctx, fields)...)
 }
 
 func (l *ZapLogger) PanicWithContext(ctx context.Context, msg string, fields ...zap.Field) {
-	l.Logger.Panic(msg, fields...)
+	l.Logger.Panic(msg, l.withContextField(ctx, fields)...)
 }
 
 func (l *ZapLogger) FatalWithContext(ctx context.Context, msg string, fields ...zap.Field) {
-	l.Logger.Fatal(msg, fields...)
+	l.Logger.Fatal(msg, l.withContextField(ctx, fields)...)
 }
 
 // OptionsLogger Implements options for logger.
@@ -114,6 +134,7 @@ type OptionsLogger struct {
 	level           string
 	timestampFormat string
 	outputPaths     []string
+	otelCore        zapcore.Core
 }
 
 type OptionLogger func(ol *OptionsLogger)
@@ -151,6 +172,16 @@ func WithTimestampFormat(timestampFormat string) OptionLogger {
 func WithOutputPaths(paths ...string) OptionLogger {
 	return func(ol *OptionsLogger) {
 		ol.outputPaths = paths
+	}
+}
+
+// WithOTELCore adds an additional zapcore.Core (typically an otelzap bridge)
+// that receives a copy of every log entry via zapcore.NewTee. The stdout core
+// is wrapped with a contextFilterCore that strips context.Context fields
+// which are only meaningful to the OTEL bridge.
+func WithOTELCore(core zapcore.Core) OptionLogger {
+	return func(ol *OptionsLogger) {
+		ol.otelCore = core
 	}
 }
 
@@ -199,11 +230,90 @@ func NewLogger(options ...OptionLogger) (*ZapLogger, error) {
 		return nil, err
 	}
 
+	var otelCore zapcore.Core
+	if logOptions.otelCore != nil {
+		// The otelzap core enables all levels by default (filtering is deferred
+		// to the OTEL SDK), so raise it to the configured level to keep OTLP
+		// export consistent with stdout.
+		otelCore, err = zapcore.NewIncreaseLevelCore(logOptions.otelCore, level)
+		if err != nil {
+			return nil, fmt.Errorf("failed to apply log level to the OTEL core: %w", err)
+		}
+	}
+
+	// cfg.Build already wraps the stdout core with zap's production sampler.
+	// When an OTEL core is present, the stdout core is wrapped with
+	// contextFilterCore to strip the bridge-only context field, and the OTEL
+	// core is teed in as a sibling, outside the sampler, so it receives every
+	// record unsampled.
+	log = log.WithOptions(zap.WrapCore(func(c zapcore.Core) zapcore.Core {
+		if otelCore == nil {
+			return c
+		}
+		return zapcore.NewTee(&contextFilterCore{Core: c}, otelCore)
+	}))
+
 	if logOptions.format == "json" {
 		log = log.With(zap.String("build.version", build.Version), zap.String("build.commit", build.Commit))
 	}
 
-	return &ZapLogger{log}, nil
+	return &ZapLogger{Logger: log, hasOTELCore: logOptions.otelCore != nil}, nil
+}
+
+// contextFilterCore wraps a zapcore.Core and strips context.Context fields
+// before passing entries to the underlying core. Such fields carry the request
+// context for the otelzap bridge (which detects them by type) to extract
+// trace/span IDs; the stdout core does not need them and would otherwise
+// serialize a meaningless object.
+type contextFilterCore struct {
+	zapcore.Core
+}
+
+func (c *contextFilterCore) With(fields []zapcore.Field) zapcore.Core {
+	return &contextFilterCore{Core: c.Core.With(filterContextFields(fields))}
+}
+
+// Check asks the wrapped core whether the entry is admitted, so that its
+// level and sampling logic still apply, then registers this core rather than
+// the wrapped one so Write can strip context fields before stdout sees them.
+func (c *contextFilterCore) Check(entry zapcore.Entry, ce *zapcore.CheckedEntry) *zapcore.CheckedEntry {
+	if c.Core.Check(entry, nil) == nil {
+		return ce
+	}
+	return ce.AddCore(entry, c)
+}
+
+func (c *contextFilterCore) Write(entry zapcore.Entry, fields []zapcore.Field) error {
+	return c.Core.Write(entry, filterContextFields(fields))
+}
+
+// isContextField mirrors the otelzap bridge's detection of context fields:
+// any field whose value is a context.Context, regardless of key.
+func isContextField(f zapcore.Field) bool {
+	_, ok := f.Interface.(context.Context)
+	return ok
+}
+
+func filterContextFields(fields []zapcore.Field) []zapcore.Field {
+	needsFilter := false
+	for _, f := range fields {
+		if isContextField(f) {
+			needsFilter = true
+			break
+		}
+	}
+	// Most entries carry no context field; avoid copying in that case.
+	if !needsFilter {
+		return fields
+	}
+
+	filtered := make([]zapcore.Field, 0, len(fields)-1)
+	for _, f := range fields {
+		if !isContextField(f) {
+			filtered = append(filtered, f)
+		}
+	}
+	return filtered
 }
 
 func MustNewLogger(logFormat, logLevel, logTimestampFormat string) *ZapLogger {
