@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Try to keep listed changes to a concise bulleted list of simple explanations of changes. Aim for the amount of information needed so that readers can understand where they would look in the codebase to investigate the changes' implementation, or where they would look in the documentation to understand how to make use of the change in practice - better yet, link directly to the docs and provide detailed information there. Only elaborate if doing so is required to avoid breaking changes or experimental features from ruining someone's day.
 
 ## [Unreleased]
+### Added
+- Added optional OTLP/gRPC log export, so logs can be correlated with traces in collector-based observability stacks. Enable it with `--log-otlp-enabled` (`OPENFGA_LOG_OTLP_ENABLED`) and configure the destination via `--log-otlp-endpoint`/`--log-otlp-tls-enabled`; the explicit flag is the sole gate (standard `OTEL_LOGS_EXPORTER`/`OTEL_EXPORTER_OTLP_*` variables supply the destination only, mirroring `trace.enabled`). When enabled, logs emitted with a span-bearing context carry `TraceId`/`SpanId`. stdout output is unchanged, including its production sampling; the OTLP stream is unsampled, so log volume control belongs in the collector. See `internal/telemetry/logging.go`. [#3022](https://github.com/openfga/openfga/issues/3022)
+
 ### Fixed
 - Fixed `recursiveFastPath` and `weight2` in Check spinning at full CPU on a closed producer channel until the other producer finished, which also made the planner avoid the `weight2` strategy. [#3299](https://github.com/openfga/openfga/issues/3299)
 
