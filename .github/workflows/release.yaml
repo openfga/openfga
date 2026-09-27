@@ -84,7 +84,7 @@ jobs:
           hashes=$(echo "$ARTIFACTS" | jq --raw-output '[.[] | {name, "digest": (.extra.Digest // .extra.Checksum)}] | unique | .[] | select(.digest) | {digest} + {name} | join("  ") | sub("^sha256:";"")' | base64 -w0)
           echo "$hashes" > digests.txt
 
-      - uses: slsa-framework/slsa-github-generator/actions/generator/generic/create-base64-subjects-from-file@4d014fae4dbd39eb09e8d40348b73db095e6ba9a # pin@v2.1.0
+      - uses: slsa-framework/slsa-github-generator/actions/generator/generic/create-base64-subjects-from-file@bb91a05077afa6601a3d7538c4cbbdbf0abe7ed9 # pin@v2.1.0
         id: hashes
         with:
           path: digests.txt
@@ -133,7 +133,7 @@ jobs:
           mv snyk.categorized.sarif snyk.sarif
 
       - name: Upload result to GitHub Code Scanning
-        uses: github/codeql-action/upload-sarif@f205ea1c3313d32999d8d6a48b4f6530d4437b38 # pin@v2
+        uses: github/codeql-action/upload-sarif@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4.37.8
         with:
           sarif_file: snyk.sarif
 

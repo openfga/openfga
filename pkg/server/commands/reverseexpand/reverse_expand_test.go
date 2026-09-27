@@ -802,6 +802,82 @@ func TestReverseExpandSkipWeighted(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestReverseExpandInlineExpression(t *testing.T) {
+	// Exercises the non-optimized path (reverse_expand.go:647) which calls
+	// eval.EvaluateInlineExpression for $expression tuples. The weighted-graph
+	// optimisation is intentionally NOT enabled so the fallback path is taken.
+	t.Cleanup(func() { goleak.VerifyNone(t) })
+
+	storeID := ulid.Make().String()
+
+	model := testutils.MustTransformDSLToProtoWithID(`
+		model
+			schema 1.1
+		type user
+		type document
+			relations
+				define viewer: [user with $expression]
+	`)
+
+	ts, err := typesystem.New(model)
+	require.NoError(t, err)
+
+	condCtx := testutils.MustNewStruct(t, map[string]interface{}{
+		"expression": "env == 'prod'",
+		"parameters": map[string]interface{}{"env": "string"},
+	})
+
+	mockController := gomock.NewController(t)
+	t.Cleanup(mockController.Finish)
+
+	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+	mockDatastore.EXPECT().
+		ReadStartingWithUser(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+		Times(1).
+		DoAndReturn(func(_ context.Context, _ string, _ storage.ReadStartingWithUserFilter, _ storage.ReadStartingWithUserOptions) (storage.TupleIterator, error) {
+			return storage.NewStaticTupleIterator([]*openfgav1.Tuple{
+				{Key: tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:alice", "$expression", condCtx)},
+			}), nil
+		})
+
+	ctx := context.Background()
+
+	t.Run("condition_met", func(t *testing.T) {
+		reqCtx := testutils.MustNewStruct(t, map[string]interface{}{"env": "prod"})
+		resultChan := make(chan *ReverseExpandResult, 2)
+		errChan := make(chan error, 1)
+
+		go func() {
+			q := NewReverseExpandQuery(mockDatastore, ts) // no WithListObjectOptimizationsEnabled — uses non-weighted path
+			if err := q.Execute(ctx, &ReverseExpandRequest{
+				StoreID:          storeID,
+				ObjectType:       "document",
+				Relation:         "viewer",
+				User:             &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "alice"}},
+				ContextualTuples: []*openfgav1.TupleKey{},
+				Context:          reqCtx,
+			}, resultChan, NewResolutionMetadata()); err != nil {
+				errChan <- err
+			}
+		}()
+
+		var results []string
+		for {
+			select {
+			case res, open := <-resultChan:
+				if !open {
+					require.ElementsMatch(t, []string{"document:1"}, results)
+					return
+				}
+				results = append(results, res.Object)
+			case err := <-errChan:
+				require.FailNow(t, "unexpected error", err.Error())
+				return
+			}
+		}
+	})
+}
+
 func TestReverseExpandHonorsConsistency(t *testing.T) {
 	defer goleak.VerifyNone(t)
 

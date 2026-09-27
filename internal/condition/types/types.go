@@ -49,6 +49,23 @@ var paramTypeString = map[openfgav1.ConditionParamTypeRef_TypeName]string{
 	openfgav1.ConditionParamTypeRef_TYPE_NAME_IPADDRESS: "ipaddress",
 }
 
+// typeNameFromString is the inverse of paramTypeString: maps a type name string to its enum value.
+var typeNameFromString map[string]openfgav1.ConditionParamTypeRef_TypeName
+
+func init() {
+	typeNameFromString = make(map[string]openfgav1.ConditionParamTypeRef_TypeName, len(paramTypeString))
+	for enum, str := range paramTypeString {
+		typeNameFromString[str] = enum
+	}
+}
+
+// TypeNameFromString converts a type name string (e.g. "string", "int") to its
+// ConditionParamTypeRef_TypeName enum value. Returns false if the name is unknown.
+func TypeNameFromString(s string) (openfgav1.ConditionParamTypeRef_TypeName, bool) {
+	v, ok := typeNameFromString[s]
+	return v, ok
+}
+
 func registerParamTypeWithGenerics(
 	paramTypeKeyword openfgav1.ConditionParamTypeRef_TypeName,
 	genericTypeCount uint,

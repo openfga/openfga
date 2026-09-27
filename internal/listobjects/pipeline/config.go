@@ -1,5 +1,13 @@
 package pipeline
 
+type Flag uint64
+
+const (
+	// FlagOptimizeSubtract enables an optimization for subtract
+	// edges with high cardinality.
+	FlagOptimizeSubtract Flag = 1 << iota
+)
+
 // Option configures a [Builder].
 type Option func(*Config)
 
@@ -28,6 +36,13 @@ func WithNumProcs(num int) Option {
 	}
 }
 
+// WithFlags sets provided flags.
+func WithFlags(flags Flag) Option {
+	return func(config *Config) {
+		config.Flags |= flags
+	}
+}
+
 // WithConfig replaces the entire configuration.
 func WithConfig(c Config) Option {
 	return func(config *Config) {
@@ -40,6 +55,7 @@ type Config struct {
 	BufferCapacity int
 	ChunkSize      int
 	NumProcs       int
+	Flags          Flag
 }
 
 // DefaultConfig returns a balanced configuration suitable for most workloads.

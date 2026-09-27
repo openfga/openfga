@@ -3,6 +3,7 @@ package pipeline
 import (
 	"context"
 	"errors"
+	"slices"
 	"sync"
 
 	"go.opentelemetry.io/otel"
@@ -80,9 +81,17 @@ type ObjectQuery struct {
 	Conditions []string
 }
 
+type ObjectGet struct {
+	Object     string
+	Relation   string
+	User       string
+	Conditions []string
+}
+
 // ObjectStore reads relationship tuples from storage.
 type ObjectStore interface {
 	Read(context.Context, ObjectQuery) Receiver[Item]
+	Get(context.Context, ObjectGet) *Item
 }
 
 // Spec identifies the target of a reverse expansion query.
@@ -133,19 +142,9 @@ type Pipeline struct {
 // createInterpreter returns an Interpreter that dispatches to the
 // appropriate edge handler (direct, TTU, or identity) based on edge type.
 func createInterpreter(graph *Graph, store ObjectStore) worker.Interpreter {
-	directEdgeHandler := directEdgeHandler{store}
-
-	ttuEdgeHandler := ttuEdgeHandler{
-		reader: store,
-		graph:  graph,
-	}
-
-	var identityEdgeHandler identityEdgeHandler
-
 	return &edgeInterpreter{
-		direct:   &directEdgeHandler,
-		ttu:      &ttuEdgeHandler,
-		identity: &identityEdgeHandler,
+		store: store,
+		graph: graph,
 	}
 }
 
@@ -153,7 +152,13 @@ func createInterpreter(graph *Graph, store ObjectStore) worker.Interpreter {
 // with the given core and cycle group. The core is passed by value so
 // that each worker gets independent listener/sender slices while sharing
 // the pool, error channel, and interpreter via pointers.
-func createWorker(node *Node, core worker.Core, group *worker.CycleGroup) worker.Worker {
+func (b *Builder) createWorker(
+	spec Spec,
+	graph *Graph,
+	node *Node,
+	core worker.Core,
+	group *worker.CycleGroup,
+) worker.Worker {
 	var w worker.Worker
 	core.Label = node.GetUniqueLabel()
 
@@ -192,6 +197,34 @@ func createWorker(node *Node, core worker.Core, group *worker.CycleGroup) worker
 			intersection.Core = &core
 			w = &intersection
 		case weightedGraph.ExclusionOperator:
+			if b.config.Flags&FlagOptimizeSubtract == 1 {
+				edges, _ := graph.GetEdgesFromNode(node)
+
+				// fetch the subtract edge from the difference set operation.
+				// it is an invariant of the weighted graph that an exclusion
+				// operator node have two outgoing edges.
+				subtractEdge := edges[1]
+
+				// wildcardEdges will only contain values when the edge traverses
+				// only to wildcard terminal nodes of the target type. at least one
+				// edge must be present in order to apply an optimization.
+				wildcardEdges := FlattenWildcardEdges(graph, subtractEdge, spec.SubjectType)
+
+				if len(wildcardEdges) > 0 {
+					// directly related wildcard nodes exist in the path to the
+					// target. an optimization can be applied.
+					var difference worker.DifferenceDirectSubtract
+					difference.Core = &core
+					difference.Subtracts = wildcardEdges
+					difference.SubjectType = spec.SubjectType
+					difference.SubjectIdentifier = spec.SubjectID
+					w = &difference
+					break
+				}
+			}
+
+			// this exclusion node does not qualify for an optimization;
+			// construct the generic difference worker.
 			var difference worker.Difference
 			difference.Core = &core
 			w = &difference
@@ -333,7 +366,7 @@ func (b *Builder) Build(
 			if current.group == nil {
 				current.group = worker.NewCycleGroup()
 			}
-			w = createWorker(current.node, core, current.group)
+			w = b.createWorker(spec, graph, current.node, core, current.group)
 			workers[label] = w
 		}
 
@@ -349,11 +382,18 @@ func (b *Builder) Build(
 			continue
 		}
 
-		for i := len(edges) - 1; i >= 0; i-- {
+		_, ok = w.(*worker.DifferenceDirectSubtract)
+		if ok {
+			// remove the subtract edge; the [worker.DifferenceDirectSubtract]
+			// worker handles the subtract edge internally.
+			edges = edges[:1]
+		}
+
+		for _, edge := range slices.Backward(edges) {
 			var newStack stacker
-			newStack.node = edges[i].GetTo()
-			newStack.edge = edges[i]
-			if worker.IsCyclical(edges[i]) {
+			newStack.node = edge.GetTo()
+			newStack.edge = edge
+			if worker.IsCyclical(edge) {
 				newStack.group = current.group
 			}
 			newStack.next = stack
@@ -422,7 +462,9 @@ func (b *Builder) Build(
 // Recv returns the next result from the pipeline. It is nil-safe and
 // returns ("", false) immediately if the pipeline is nil or has already
 // encountered an error. Otherwise it blocks until a value is available,
-// draining any buffered values before checking for new errors or output.
+// checking for pending errors before surfacing any value, including values
+// that have already been buffered, so that no result computed from an
+// incomplete input set is delivered.
 // When an error is received from a worker, it is stored and the pipeline
 // is automatically closed. When the output stream is exhausted without
 // context cancellation, the pipeline is also closed. On context
@@ -439,9 +481,21 @@ func (p *Pipeline) Recv(ctx context.Context) (string, bool) {
 			return "", false
 		}
 
-		// Drain buffered values before checking for errors. Values in
-		// the buffer were produced before any concurrently arriving
-		// error, so delivering them first preserves ordering.
+		// Check for errors before surfacing any value, including values
+		// already buffered. A worker that fails partway through can still
+		// produce output computed from an incomplete input set (an
+		// exclusion whose subtract branch errored broadcasts base minus a
+		// truncated subtract set), so any pending error taints the buffer
+		// and delivering it would over-grant.
+		e, ok := p.errs.TryRecv()
+		if ok {
+			p.err = e
+			p.pos = 0
+			p.buffer = p.buffer[:0]
+			p.Close()
+			return "", false
+		}
+
 		if p.pos < len(p.buffer) {
 			value := p.buffer[p.pos]
 			p.pos++
@@ -449,13 +503,6 @@ func (p *Pipeline) Recv(ctx context.Context) (string, bool) {
 		}
 		p.pos = 0
 		p.buffer = p.buffer[:0]
-
-		e, ok := p.errs.TryRecv()
-		if ok {
-			p.err = e
-			p.Close()
-			return "", false
-		}
 
 		msg, ok := p.output.Recv(ctx)
 		if !ok {

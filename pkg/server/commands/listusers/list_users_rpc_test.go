@@ -4349,3 +4349,87 @@ func TestListUsersDatastoreThrottler(t *testing.T) {
 		require.False(t, resp.GetMetadata().WasDatastoreThrottled.Load(), "Should not be throttled when threshold is zero")
 	})
 }
+
+// TestListUsersOperandsExceedingBreadthLimit verifies that a union or
+// intersection whose number of child operands exceeds resolveNodeBreadthLimit
+// is still expanded completely. Each operand resolves to more than one user, so
+// the whole result set must be returned regardless of how operand expansion is
+// scheduled against the breadth limit.
+func TestListUsersOperandsExceedingBreadthLimit(t *testing.T) {
+	// A breadth limit of 1 is smaller than the 2 operands in each model below.
+	const breadthLimit = 1
+
+	// r1 and r2 each resolve to more than one user; user:a and user:b belong to
+	// both, so the intersection is non-empty.
+	tuples := []*openfgav1.TupleKey{
+		tuple.NewTupleKey("doc:1", "r1", "user:a"),
+		tuple.NewTupleKey("doc:1", "r1", "user:b"),
+		tuple.NewTupleKey("doc:1", "r1", "user:c"),
+		tuple.NewTupleKey("doc:1", "r2", "user:a"),
+		tuple.NewTupleKey("doc:1", "r2", "user:b"),
+		tuple.NewTupleKey("doc:1", "r2", "user:d"),
+	}
+
+	tests := map[string]struct {
+		model    string
+		expected []string
+	}{
+		"union": {
+			model: `
+				model
+					schema 1.1
+				type user
+				type doc
+					relations
+						define r1: [user]
+						define r2: [user]
+						define viewer: r1 or r2`,
+			expected: []string{"user:a", "user:b", "user:c", "user:d"},
+		},
+		"intersection": {
+			model: `
+				model
+					schema 1.1
+				type user
+				type doc
+					relations
+						define r1: [user]
+						define r2: [user]
+						define viewer: r1 and r2`,
+			expected: []string{"user:a", "user:b"},
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctx := context.Background()
+			ds := memory.New()
+			t.Cleanup(ds.Close)
+
+			model := testutils.MustTransformDSLToProtoWithID(tc.model)
+			storeID := ulid.Make().String()
+			require.NoError(t, ds.WriteAuthorizationModel(ctx, storeID, model))
+			require.NoError(t, ds.Write(ctx, storeID, nil, tuples))
+
+			typesys, err := typesystem.NewAndValidate(ctx, model)
+			require.NoError(t, err)
+			ctx = typesystem.ContextWithTypesystem(ctx, typesys)
+
+			res, err := NewListUsersQuery(ds, nil,
+				WithResolveNodeBreadthLimit(breadthLimit),
+			).ListUsers(ctx, &openfgav1.ListUsersRequest{
+				StoreId:     storeID,
+				Object:      &openfgav1.Object{Type: "doc", Id: "1"},
+				Relation:    "viewer",
+				UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			})
+			require.NoError(t, err)
+
+			got := make([]string, 0, len(res.GetUsers()))
+			for _, u := range res.GetUsers() {
+				got = append(got, tuple.UserProtoToString(u))
+			}
+			require.ElementsMatch(t, tc.expected, got)
+		})
+	}
+}

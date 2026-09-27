@@ -9,6 +9,7 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
+	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/condition/eval"
 	"github.com/openfga/openfga/internal/iterator"
 	"github.com/openfga/openfga/internal/modelgraph"
@@ -16,12 +17,18 @@ import (
 )
 
 func evaluateCondition(ctx context.Context, model *modelgraph.AuthorizationModelGraph, conditions []string, t *openfgav1.TupleKey, reqCtx *structpb.Struct) (bool, error) {
-	if !slices.Contains(conditions, t.GetCondition().GetName()) {
+	name := t.GetCondition().GetName()
+
+	if !slices.Contains(conditions, name) {
 		return false, nil
 	}
 
+	if condition.IsInlineExpression(name) {
+		return eval.EvaluateInlineExpression(ctx, t, reqCtx)
+	}
+
 	// consider converting slice to map for faster lookup once we see a large adoption in conditions
-	return eval.EvaluateTupleCondition(ctx, t, model.GetConditions()[t.GetCondition().GetName()], reqCtx)
+	return eval.EvaluateTupleCondition(ctx, t, model.GetConditions()[name], reqCtx)
 }
 
 func BuildConditionTupleKeyFilter(ctx context.Context, model *modelgraph.AuthorizationModelGraph, conditions []string, reqCtx *structpb.Struct) iterator.FilterFunc[*openfgav1.TupleKey] {

@@ -84,7 +84,7 @@ type foundUser struct {
 	// respect to the relation being evaluated so that we can handle subjects which
 	// have been explicitly excluded from a relationship and where that relation is
 	// contained under the subtracted branch of another exclusion. This allows us to
-	// buble up the subject from the subtracted branch of the exclusion.
+	// bubble up the subject from the subtracted branch of the exclusion.
 	relationshipStatus userRelationshipStatus
 }
 
@@ -497,8 +497,13 @@ LoopOnIterator:
 			break LoopOnIterator
 		}
 
-		cond, _ := typesys.GetCondition(tupleKey.GetCondition().GetName())
-		condMet, err := eval.EvaluateTupleCondition(ctx, tupleKey, cond, req.Context)
+		var condMet bool
+		if condition.IsInlineExpression(tupleKey.GetCondition().GetName()) {
+			condMet, err = eval.EvaluateInlineExpression(ctx, tupleKey, req.Context)
+		} else {
+			cond, _ := typesys.GetCondition(tupleKey.GetCondition().GetName())
+			condMet, err = eval.EvaluateTupleCondition(ctx, tupleKey, cond, req.Context)
+		}
 		if err != nil {
 			errs = errors.Join(errs, err)
 			if !errors.Is(err, condition.ErrEvaluationFailed) {
@@ -573,24 +578,9 @@ func (l *listUsersQuery) expandIntersection(
 
 	childOperands := rewrite.Intersection.GetChild()
 	intersectionFoundUsersChans := make([]chan foundUser, len(childOperands))
-	for i, rewrite := range childOperands {
+	for i := range childOperands {
 		intersectionFoundUsersChans[i] = make(chan foundUser, 1)
-		pool.Go(func(ctx context.Context) error {
-			resp := l.expandRewrite(ctx, req, rewrite, intersectionFoundUsersChans[i])
-			return resp.err
-		})
 	}
-
-	errChan := make(chan error, 1)
-
-	go func() {
-		err := pool.Wait()
-		for i := range intersectionFoundUsersChans {
-			close(intersectionFoundUsersChans[i])
-		}
-		errChan <- err
-		close(errChan)
-	}()
 
 	var mu sync.Mutex
 
@@ -601,6 +591,9 @@ func (l *listUsersQuery) expandIntersection(
 	wildcardKey := tuple.TypedPublicWildcard(req.GetUserFilters()[0].GetType())
 	foundUsersCountMap := make(map[string]uint32, 0)
 	excludedUsersMap := make(map[string]struct{}, 0)
+	// Consumers must start before the producer pool below: a producer blocks on
+	// its second send into a size-1 channel until drained, so if the bounded
+	// pool fills before consumers run, the submit loop deadlocks.
 	for _, foundUsersChan := range intersectionFoundUsersChans {
 		go func(foundUsersChan chan foundUser) {
 			defer wg.Done()
@@ -637,6 +630,25 @@ func (l *listUsersQuery) expandIntersection(
 			}
 		}(foundUsersChan)
 	}
+
+	for i, rewrite := range childOperands {
+		pool.Go(func(ctx context.Context) error {
+			resp := l.expandRewrite(ctx, req, rewrite, intersectionFoundUsersChans[i])
+			return resp.err
+		})
+	}
+
+	errChan := make(chan error, 1)
+
+	go func() {
+		err := pool.Wait()
+		for i := range intersectionFoundUsersChans {
+			close(intersectionFoundUsersChans[i])
+		}
+		errChan <- err
+		close(errChan)
+	}()
+
 	wg.Wait()
 
 	excludedUsers := []*openfgav1.User{}
@@ -680,24 +692,9 @@ func (l *listUsersQuery) expandUnion(
 
 	childOperands := rewrite.Union.GetChild()
 	unionFoundUsersChans := make([]chan foundUser, len(childOperands))
-	for i, rewrite := range childOperands {
+	for i := range childOperands {
 		unionFoundUsersChans[i] = make(chan foundUser, 1)
-		pool.Go(func(ctx context.Context) error {
-			resp := l.expandRewrite(ctx, req, rewrite, unionFoundUsersChans[i])
-			return resp.err
-		})
 	}
-
-	errChan := make(chan error, 1)
-
-	go func() {
-		err := pool.Wait()
-		for i := range unionFoundUsersChans {
-			close(unionFoundUsersChans[i])
-		}
-		errChan <- err
-		close(errChan)
-	}()
 
 	var mu sync.Mutex
 
@@ -706,6 +703,9 @@ func (l *listUsersQuery) expandUnion(
 
 	foundUsersMap := make(map[string]struct{}, 0)
 	excludedUsersCountMap := make(map[string]uint32, 0)
+	// Consumers must start before the producer pool below: a producer blocks on
+	// its second send into a size-1 channel until drained, so if the bounded
+	// pool fills before consumers run, the submit loop deadlocks.
 	for _, foundUsersChan := range unionFoundUsersChans {
 		go func(foundUsersChan chan foundUser) {
 			defer wg.Done()
@@ -727,6 +727,25 @@ func (l *listUsersQuery) expandUnion(
 			}
 		}(foundUsersChan)
 	}
+
+	for i, rewrite := range childOperands {
+		pool.Go(func(ctx context.Context) error {
+			resp := l.expandRewrite(ctx, req, rewrite, unionFoundUsersChans[i])
+			return resp.err
+		})
+	}
+
+	errChan := make(chan error, 1)
+
+	go func() {
+		err := pool.Wait()
+		for i := range unionFoundUsersChans {
+			close(unionFoundUsersChans[i])
+		}
+		errChan <- err
+		close(errChan)
+	}()
+
 	wg.Wait()
 
 	excludedUsers := []*openfgav1.User{}
@@ -812,8 +831,12 @@ func (l *listUsersQuery) expandExclusion(
 		switch {
 		case baseWildcardExists:
 			if !userIsSubtracted && !wildcardSubtracted {
+				// Preserve the relationship status and exclusions the base branch
+				// already determined in case base on its own contains another exclusion.
 				concurrency.TrySendThroughChannel(ctx, foundUser{
-					user: tuple.StringToUserProto(userKey),
+					user:               tuple.StringToUserProto(userKey),
+					relationshipStatus: fu.relationshipStatus,
+					excludedUsers:      fu.excludedUsers,
 				}, foundUsersChan)
 			}
 
@@ -930,8 +953,13 @@ LoopOnIterator:
 			break LoopOnIterator
 		}
 
-		cond, _ := typesys.GetCondition(tupleKey.GetCondition().GetName())
-		condMet, err := eval.EvaluateTupleCondition(ctx, tupleKey, cond, req.Context)
+		var condMet bool
+		if condition.IsInlineExpression(tupleKey.GetCondition().GetName()) {
+			condMet, err = eval.EvaluateInlineExpression(ctx, tupleKey, req.Context)
+		} else {
+			cond, _ := typesys.GetCondition(tupleKey.GetCondition().GetName())
+			condMet, err = eval.EvaluateTupleCondition(ctx, tupleKey, cond, req.Context)
+		}
 		if err != nil {
 			errs = errors.Join(errs, err)
 			if !errors.Is(err, condition.ErrEvaluationFailed) {

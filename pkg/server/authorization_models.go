@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -12,11 +13,14 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
+	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/telemetry"
 	"github.com/openfga/openfga/internal/utils/apimethod"
 	httpmiddleware "github.com/openfga/openfga/pkg/middleware/http"
 	"github.com/openfga/openfga/pkg/middleware/validator"
 	"github.com/openfga/openfga/pkg/server/commands"
+	serverconfig "github.com/openfga/openfga/pkg/server/config"
+	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 )
 
 func (s *Server) ReadAuthorizationModel(ctx context.Context, req *openfgav1.ReadAuthorizationModelRequest) (*openfgav1.ReadAuthorizationModelResponse, error) {
@@ -68,6 +72,14 @@ func (s *Server) WriteAuthorizationModel(ctx context.Context, req *openfgav1.Wri
 		return nil, err
 	}
 
+	if !s.featureFlagClient.Boolean(serverconfig.ExperimentalInlineExpressions, req.GetStoreId()) {
+		if modelUsesInlineExpressions(req.GetTypeDefinitions()) {
+			return nil, serverErrors.ValidationError(
+				fmt.Errorf("$expression requires the %q experimental feature flag", serverconfig.ExperimentalInlineExpressions),
+			)
+		}
+	}
+
 	c := commands.NewWriteAuthorizationModelCommand(s.datastore,
 		commands.WithWriteAuthModelLogger(s.logger),
 		commands.WithWriteAuthModelMaxSizeInBytes(s.maxAuthorizationModelSizeInBytes),
@@ -109,4 +121,19 @@ func (s *Server) ReadAuthorizationModels(ctx context.Context, req *openfgav1.Rea
 		commands.WithReadAuthModelsQueryEncoder(s.encoder),
 	)
 	return c.Execute(ctx, req)
+}
+
+// modelUsesInlineExpressions reports whether any relation type restriction in the provided
+// type definitions references the $expression reserved condition name.
+func modelUsesInlineExpressions(tds []*openfgav1.TypeDefinition) bool {
+	for _, td := range tds {
+		for _, relMeta := range td.GetMetadata().GetRelations() {
+			for _, rr := range relMeta.GetDirectlyRelatedUserTypes() {
+				if condition.IsInlineExpression(rr.GetCondition()) {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
