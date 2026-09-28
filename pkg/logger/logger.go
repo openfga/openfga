@@ -37,10 +37,9 @@ type Logger interface {
 	FatalWithContext(context.Context, string, ...zap.Field)
 }
 
-// ctxFieldKey names the field that carries a context.Context through zap to
-// the otelzap bridge, which uses it to extract trace/span IDs. The bridge
-// detects the field by its value's type, not by this key; contextFilterCore
-// strips it from stdout output the same way.
+// ctxFieldKey is the key under which the *WithContext methods attach the
+// request context. The otelzap bridge and contextFilterCore both detect the
+// field by its value's type (context.Context), not by this key.
 const ctxFieldKey = "ctx"
 
 // NewNoopLogger provides a noop logger.
@@ -241,11 +240,9 @@ func NewLogger(options ...OptionLogger) (*ZapLogger, error) {
 		}
 	}
 
-	// cfg.Build already wraps the stdout core with zap's production sampler.
-	// When an OTEL core is present, the stdout core is wrapped with
-	// contextFilterCore to strip the bridge-only context field, and the OTEL
-	// core is teed in as a sibling, outside the sampler, so it receives every
-	// record unsampled.
+	// Tee the OTEL core outside the sampler: it receives every record
+	// unsampled, while stdout keeps zap's production sampling. The stdout
+	// core is wrapped to strip the bridge-only context field.
 	log = log.WithOptions(zap.WrapCore(func(c zapcore.Core) zapcore.Core {
 		if otelCore == nil {
 			return c
