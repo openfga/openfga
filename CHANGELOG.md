@@ -27,6 +27,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Security
 - Upgraded go toolchain and images to use go1.26.8 to fix [CVE-2026-39821](https://pkg.go.dev/vuln/GO-2026-5026). [#3287](https://github.com/openfga/openfga/pull/3287)
 - Rebuilt the embedded `grpc-health-probe` (bumped to `v0.4.57`, built with Go 1.26.8) to match the server toolchain and pick up `google.golang.org/grpc` v1.83.2, which fixes [GHSA-vp52-pcj8-j9qc](https://github.com/advisories/GHSA-vp52-pcj8-j9qc). [#3289](https://github.com/openfga/openfga/pull/3289)
+- Fixed [GHSA-h7w8-xr72-cv4r](https://github.com/openfga/openfga/security/advisories/GHSA-h7w8-xr72-cv4r), where ListUsers could return a user that should have been excluded when a relation contains nested exclusion on a type-bound public wildcard. Thank you to [@euriconicacio](https://github.com/euriconicacio) for the discovery and responsible disclosure.
 
 ## [1.19.0] - 2026-08-24
 ### Added
