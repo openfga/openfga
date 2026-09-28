@@ -446,7 +446,12 @@ func run(_ *cobra.Command, _ []string) {
 	if otlpLogsEnabled {
 		otelCore, closer := newOTELLogCore(config)
 		logProviderCloser = closer
-		logOpts = append(logOpts, logger.WithOTELCore(otelCore))
+		logOpts = append(logOpts,
+			logger.WithOTELCore(otelCore),
+			// zap.Fatal calls os.Exit, which skips deferred functions. Flush
+			// the buffered records (including the fatal one) via the fatal hook.
+			logger.WithFatalHook(func() { _ = logProviderCloser() }),
+		)
 	}
 
 	l, err := logger.NewLogger(logOpts...)
