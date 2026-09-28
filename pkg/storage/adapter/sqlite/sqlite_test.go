@@ -64,7 +64,7 @@ func TestSQLiteSelfJoinAndCast(t *testing.T) {
 	assertSQL(t, sql, want)
 }
 
-// TestSQLiteNativeFilter verifies SQLite emits a real FILTER (WHERE ...) clause for a filtered
+// TestSQLiteNativeFilter verifies SQLite emits a real `FILTER (WHERE ...)` clause for a filtered
 // aggregate, with no CASE emulation. Relation literals are inlined, so no binds appear.
 func TestSQLiteNativeFilter(t *testing.T) {
 	a := query.NewTuple("a")
