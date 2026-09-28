@@ -5,6 +5,7 @@ package logger
 import (
 	"context"
 	"fmt"
+	"os"
 
 	"github.com/grpc-ecosystem/go-grpc-middleware/logging/zap/ctxzap"
 	"go.uber.org/zap"
@@ -134,6 +135,7 @@ type OptionsLogger struct {
 	timestampFormat string
 	outputPaths     []string
 	otelCore        zapcore.Core
+	fatalHook       func()
 }
 
 type OptionLogger func(ol *OptionsLogger)
@@ -184,6 +186,22 @@ func WithOTELCore(core zapcore.Core) OptionLogger {
 	}
 }
 
+// WithFatalHook installs a function that runs after a Fatal entry has been
+// written, before the process exits. It is used to flush buffered log records
+// (e.g. the OTLP provider) that os.Exit would otherwise discard.
+func WithFatalHook(hook func()) OptionLogger {
+	return func(ol *OptionsLogger) {
+		ol.fatalHook = hook
+	}
+}
+
+type fatalHookFunc func()
+
+func (f fatalHookFunc) OnWrite(*zapcore.CheckedEntry, []zapcore.Field) {
+	f()
+	os.Exit(1)
+}
+
 func NewLogger(options ...OptionLogger) (*ZapLogger, error) {
 	logOptions := &OptionsLogger{
 		level:           "info",
@@ -224,7 +242,12 @@ func NewLogger(options ...OptionLogger) (*ZapLogger, error) {
 		}
 	}
 
-	log, err := cfg.Build()
+	var buildOpts []zap.Option
+	if logOptions.fatalHook != nil {
+		buildOpts = append(buildOpts, zap.WithFatalHook(fatalHookFunc(logOptions.fatalHook)))
+	}
+
+	log, err := cfg.Build(buildOpts...)
 	if err != nil {
 		return nil, err
 	}
