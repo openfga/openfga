@@ -1,8 +1,12 @@
 package logger
 
 import (
+	"bytes"
 	"context"
+	"fmt"
+	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -314,6 +318,51 @@ func TestHasOTELCorePropagatesThroughWith(t *testing.T) {
 	gotSpanCtx := trace.SpanContextFromContext(records[0].Context)
 	require.Equal(t, spanCtx.TraceID(), gotSpanCtx.TraceID())
 	require.Equal(t, spanCtx.SpanID(), gotSpanCtx.SpanID())
+}
+
+const fatalHookChildEnv = "OPENFGA_TEST_FATAL_HOOK_CHILD"
+
+// TestFatalHook verifies via a subprocess that WithFatalHook runs the hook
+// after the fatal entry is written and before os.Exit, and that the option is
+// inert when unset. Os.Exit cannot be asserted in-process.
+func TestFatalHook(t *testing.T) {
+	if mode := os.Getenv(fatalHookChildEnv); mode != "" {
+		var opts []OptionLogger
+		if mode == "with-hook" {
+			opts = append(opts, WithFatalHook(func() {
+				fmt.Fprintln(os.Stderr, "fatal-hook-ran")
+			}))
+		}
+		l, err := NewLogger(opts...)
+		if err != nil {
+			t.Fatalf("NewLogger: %v", err)
+		}
+		l.Fatal("boom")
+		return
+	}
+
+	for _, tc := range []struct {
+		name     string
+		mode     string
+		expected bool
+	}{
+		{name: "hook runs before exit", mode: "with-hook", expected: true},
+		{name: "inert when unset", mode: "no-hook", expected: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd := exec.Command(os.Args[0], "-test.run=^TestFatalHook$") //nolint:gosec // os.Args[0] is the test binary
+			cmd.Env = append(os.Environ(), fatalHookChildEnv+"="+tc.mode)
+			cmd.Stdout = io.Discard
+			var stderr bytes.Buffer
+			cmd.Stderr = &stderr
+
+			err := cmd.Run()
+			var exitErr *exec.ExitError
+			require.ErrorAs(t, err, &exitErr)
+			require.NotEqual(t, 0, exitErr.ExitCode())
+			require.Equal(t, tc.expected, strings.Contains(stderr.String(), "fatal-hook-ran"))
+		})
+	}
 }
 
 func TestWithFields(t *testing.T) {
