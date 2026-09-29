@@ -11,20 +11,24 @@ import (
 	"google.golang.org/grpc/credentials"
 )
 
+// LoggerOption configures the OTLP log logger provider built by [MustNewLoggerProvider].
 type LoggerOption func(d *customLogger)
 
+// WithLogOTLPEndpoint sets the OTLP collector endpoint for log export.
 func WithLogOTLPEndpoint(endpoint string) LoggerOption {
 	return func(d *customLogger) {
 		d.endpoint = endpoint
 	}
 }
 
+// WithLogOTLPInsecure disables TLS for the OTLP log export connection.
 func WithLogOTLPInsecure() LoggerOption {
 	return func(d *customLogger) {
 		d.insecure = true
 	}
 }
 
+// WithLogAttributes sets the resource attributes attached to emitted logs.
 func WithLogAttributes(attrs ...attribute.KeyValue) LoggerOption {
 	return func(d *customLogger) {
 		d.attributes = attrs
@@ -37,6 +41,9 @@ type customLogger struct {
 	attributes []attribute.KeyValue
 }
 
+// MustNewLoggerProvider builds an OTLP log provider from opts, panicking if the
+// resource cannot be built. The exporter dials lazily, so an unreachable
+// collector does not panic here.
 func MustNewLoggerProvider(opts ...LoggerOption) *sdklog.LoggerProvider {
 	l := &customLogger{
 		attributes: []attribute.KeyValue{},
