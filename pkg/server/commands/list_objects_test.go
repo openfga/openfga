@@ -5,6 +5,7 @@ import (
 	"errors"
 	"sort"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
 	"golang.org/x/sync/singleflight"
+	"google.golang.org/grpc"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	parser "github.com/openfga/language/pkg/go/transformer"
@@ -800,4 +802,163 @@ func createRecursiveRelations(b *testing.B, ctx context.Context, datastore stora
 		err := datastore.Write(ctx, storeID, nil, tuples)
 		require.NoError(b, err)
 	}
+}
+
+// wildcardStreamCollector collects streamed wildcard results in tests.
+type wildcardStreamCollector struct {
+	grpc.ServerStream
+	ctx     context.Context
+	mu      sync.Mutex
+	objects []string
+}
+
+func (c *wildcardStreamCollector) Context() context.Context { return c.ctx }
+
+func (c *wildcardStreamCollector) Send(resp *openfgav1.StreamedListObjectsResponse) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.objects = append(c.objects, resp.GetObject())
+	return nil
+}
+
+// TestListObjectsWildcardType covers ListObjects and StreamedListObjects with
+// type "*" (all types defining the relation) for issue #3076.
+func TestListObjectsWildcardType(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	ds := memory.New()
+	t.Cleanup(ds.Close)
+
+	model := `
+		model
+			schema 1.1
+		type user
+		type document
+			relations
+				define viewer: [user]
+		type folder
+			relations
+				define viewer: [user]
+		type group
+			relations
+				define member: [user]
+	`
+	tuples := []string{
+		"document:1#viewer@user:anne",
+		"document:2#viewer@user:anne",
+		"folder:1#viewer@user:anne",
+		"group:1#member@user:anne",
+	}
+
+	storeID, modelProto := storagetest.BootstrapFGAStore(t, ds, model, tuples)
+	ts, err := typesystem.NewAndValidate(context.Background(), modelProto)
+	require.NoError(t, err)
+	ctx := typesystem.ContextWithTypesystem(context.Background(), ts)
+
+	checker, checkResolverCloser, err := graph.NewOrderedCheckResolvers().Build()
+	require.NoError(t, err)
+	t.Cleanup(checkResolverCloser)
+
+	newQuery := func(t *testing.T, opts ...ListObjectsQueryOption) *ListObjectsQuery {
+		t.Helper()
+		base := []ListObjectsQueryOption{WithListObjectsPipelineEnabled(false)}
+		q, err := NewListObjectsQuery(ds, checker, storeID, append(base, opts...)...)
+		require.NoError(t, err)
+		return q
+	}
+
+	t.Run("unary_fans_out_to_types_defining_relation", func(t *testing.T) {
+		q := newQuery(t)
+		resp, err := q.Execute(ctx, &openfgav1.ListObjectsRequest{
+			StoreId:  storeID,
+			Type:     "*",
+			Relation: "viewer",
+			User:     "user:anne",
+		})
+		require.NoError(t, err)
+		require.ElementsMatch(t,
+			[]string{"document:1", "document:2", "folder:1"},
+			resp.Objects,
+		)
+	})
+
+	t.Run("unary_ignores_types_without_relation", func(t *testing.T) {
+		q := newQuery(t)
+		resp, err := q.Execute(ctx, &openfgav1.ListObjectsRequest{
+			StoreId:  storeID,
+			Type:     "*",
+			Relation: "member",
+			User:     "user:anne",
+		})
+		require.NoError(t, err)
+		require.ElementsMatch(t, []string{"group:1"}, resp.Objects)
+	})
+
+	t.Run("unary_unknown_relation_returns_not_found", func(t *testing.T) {
+		q := newQuery(t)
+		_, err := q.Execute(ctx, &openfgav1.ListObjectsRequest{
+			StoreId:  storeID,
+			Type:     "*",
+			Relation: "undefined",
+			User:     "user:anne",
+		})
+		require.Error(t, err)
+	})
+
+	t.Run("unary_respects_max_results", func(t *testing.T) {
+		q := newQuery(t, WithListObjectsMaxResults(2))
+		resp, err := q.Execute(ctx, &openfgav1.ListObjectsRequest{
+			StoreId:  storeID,
+			Type:     "*",
+			Relation: "viewer",
+			User:     "user:anne",
+		})
+		require.NoError(t, err)
+		require.Len(t, resp.Objects, 2)
+	})
+
+	t.Run("unary_fans_out_with_pipeline_enabled", func(t *testing.T) {
+		q := newQuery(t, WithListObjectsPipelineEnabled(true))
+		resp, err := q.Execute(ctx, &openfgav1.ListObjectsRequest{
+			StoreId:  storeID,
+			Type:     "*",
+			Relation: "viewer",
+			User:     "user:anne",
+		})
+		require.NoError(t, err)
+		require.ElementsMatch(t,
+			[]string{"document:1", "document:2", "folder:1"},
+			resp.Objects,
+		)
+	})
+
+	t.Run("streamed_fans_out_to_types_defining_relation", func(t *testing.T) {
+		q := newQuery(t)
+		collector := &wildcardStreamCollector{ctx: ctx}
+		_, err := q.ExecuteStreamed(ctx, &openfgav1.StreamedListObjectsRequest{
+			StoreId:  storeID,
+			Type:     "*",
+			Relation: "viewer",
+			User:     "user:anne",
+		}, collector)
+		require.NoError(t, err)
+		require.ElementsMatch(t,
+			[]string{"document:1", "document:2", "folder:1"},
+			collector.objects,
+		)
+	})
+
+	t.Run("streamed_unknown_relation_returns_not_found", func(t *testing.T) {
+		q := newQuery(t)
+		collector := &wildcardStreamCollector{ctx: ctx}
+		_, err := q.ExecuteStreamed(ctx, &openfgav1.StreamedListObjectsRequest{
+			StoreId:  storeID,
+			Type:     "*",
+			Relation: "undefined",
+			User:     "user:anne",
+		}, collector)
+		require.Error(t, err)
+		require.Empty(t, collector.objects)
+	})
 }
