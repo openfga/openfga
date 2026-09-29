@@ -441,7 +441,7 @@ func (l *listUsersQuery) expandRewrite(
 	case *openfgav1.Userset_Union:
 		resp = l.expandUnion(ctx, req, rewrite, foundUsersChan)
 	default:
-		panic("unexpected userset rewrite encountered")
+		resp = expandResponse{err: fmt.Errorf("unexpected userset rewrite type: %T", rewrite)}
 	}
 
 	if resp.err != nil {
