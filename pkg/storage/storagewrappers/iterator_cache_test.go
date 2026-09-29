@@ -384,9 +384,9 @@ func TestCachingIterator_Next_Basic(t *testing.T) {
 	// Use static iterator
 	innerIter := storage.NewStaticTupleIterator(tuples)
 
-	// Expect cache.Get to check if already cached (optimization 1), return nil (not cached)
-	mockCache.EXPECT().Get(testCacheKey("test-key")).Return(nil).Times(1)
-	// Expect cache.Set when Stop() is called after iterator is exhausted
+	// The iterator is consumed to completion, so the cache is populated EAGERLY on
+	// the final Next() that returns ErrIteratorDone. No background drain runs, so
+	// the drain-path Get (optimization 1) is never called.
 	mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).Times(1)
 
 	iter := newCachingIterator(
@@ -402,11 +402,11 @@ func TestCachingIterator_Next_Basic(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "document:2", t2.GetKey().GetObject())
 
-	// Iterator done
+	// Iterator done — cache is flushed here, eagerly, under the mutex.
 	_, err = iter.Next(ctx)
 	require.ErrorIs(t, err, storage.ErrIteratorDone)
 
-	// Stop triggers flush to cache (now async via goroutine)
+	// Stop after eager flush is a no-op for caching (tuples already released).
 	iter.Stop()
 
 	// Wait for background goroutine to complete
@@ -642,9 +642,9 @@ func TestCachingIterator_PopulatesCache(t *testing.T) {
 
 	innerIter := storage.NewStaticTupleIterator(tuples)
 
-	// Expect cache.Get to check if already cached (optimization 1), return nil (not cached)
-	mockCache.EXPECT().Get(cacheKey).Return(nil).Times(1)
-	// Capture the cache entry
+	// The iterator is fully consumed, so the cache is populated eagerly on the
+	// final Next() that returns ErrIteratorDone — no background drain runs, so the
+	// drain-path Get (optimization 1) is never called.
 	var capturedEntry *V2IteratorCacheEntry
 	mockCache.EXPECT().Set(cacheKey, gomock.Any(), ttl).DoAndReturn(
 		func(_ keys.Key, value interface{}, _ time.Duration) {
@@ -664,7 +664,7 @@ func TestCachingIterator_PopulatesCache(t *testing.T) {
 	_, err = iter.Next(ctx)
 	require.ErrorIs(t, err, storage.ErrIteratorDone)
 
-	// Stop triggers flush to cache (now async via goroutine)
+	// Stop after eager flush is a no-op for caching.
 	iter.Stop()
 
 	// Wait for background goroutine to complete
@@ -677,7 +677,12 @@ func TestCachingIterator_PopulatesCache(t *testing.T) {
 	require.Equal(t, "user:alice", capturedEntry.Entries[0].User)
 }
 
-func TestCachingIterator_InnerError(t *testing.T) {
+// TestCachingIterator_EmptyResult_IsCached verifies that a genuinely empty
+// result (the inner iterator returns ErrIteratorDone immediately) is cached as
+// an empty entry. This lets repeat reads of an empty tupleset — e.g. a leaf
+// object's #child during a recursive TTU walk — be served from cache instead of
+// re-querying the datastore on every read.
+func TestCachingIterator_EmptyResult_IsCached(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
@@ -691,10 +696,16 @@ func TestCachingIterator_InnerError(t *testing.T) {
 	sf := &singleflight.Group{}
 	wg := &sync.WaitGroup{}
 
-	// Empty iterator returns ErrIteratorDone immediately
+	// Empty iterator returns ErrIteratorDone immediately.
 	innerIter := storage.NewStaticTupleIterator([]*openfgav1.Tuple{})
 
-	// No cache.Set expected on empty iteration
+	// The empty result is cached eagerly on the Next() that returns ErrIteratorDone.
+	var capturedEntry *V2IteratorCacheEntry
+	mockCache.EXPECT().Set(testCacheKey("test-key"), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ keys.Key, value interface{}, _ time.Duration) {
+			capturedEntry = value.(*V2IteratorCacheEntry)
+		},
+	).Times(1)
 
 	iter := newCachingIterator(
 		innerIter, mockCache, testCacheKey("test-key"), 1000, time.Hour, 30*time.Second,
@@ -703,6 +714,13 @@ func TestCachingIterator_InnerError(t *testing.T) {
 
 	_, err := iter.Next(ctx)
 	require.ErrorIs(t, err, storage.ErrIteratorDone)
+
+	// Stop after eager flush releases the iterator without re-flushing.
+	iter.Stop()
+	wg.Wait()
+
+	require.NotNil(t, capturedEntry)
+	require.Empty(t, capturedEntry.Entries)
 }
 
 // TestCachingIterator_Stop_Idempotent verifies that Stop() can be called
@@ -784,19 +802,30 @@ func TestCachingIterator_Flush_EmptyAndNil(t *testing.T) {
 		iter.flush()
 	})
 
-	t.Run("flush_with_empty_tuples_does_not_cache", func(t *testing.T) {
+	t.Run("flush_with_empty_tuples_caches_empty_result", func(t *testing.T) {
 		iter := newCachingIterator(
 			storage.NewStaticTupleIterator([]*openfgav1.Tuple{}),
 			mockCache, testCacheKey("test-key"), 1000, time.Hour, 30*time.Second,
 			sf, wg, "document", "viewer", "ReadUsersetTuples", "Check",
 		)
 
-		// tuples is initialized as empty slice
+		// tuples is initialized as a non-nil empty slice — a genuine empty result.
 		require.NotNil(t, iter.tuples)
 		require.Empty(t, iter.tuples)
 
-		// flush should not panic and should not call cache.Set
+		// A genuine empty result (non-nil, len 0) IS cached, so repeat reads of an
+		// empty tupleset hit the cache instead of re-querying the datastore.
+		var capturedEntry *V2IteratorCacheEntry
+		mockCache.EXPECT().Set(testCacheKey("test-key"), gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ keys.Key, value interface{}, _ time.Duration) {
+				capturedEntry = value.(*V2IteratorCacheEntry)
+			},
+		).Times(1)
+
 		iter.flush()
+
+		require.NotNil(t, capturedEntry)
+		require.Empty(t, capturedEntry.Entries)
 	})
 }
 
