@@ -159,7 +159,11 @@ func TestMergePropertiesToContext(t *testing.T) {
 		require.InDelta(t, float64(1000), resultMap["action_max_size"], 0.001)
 	})
 
-	t.Run("request_context_takes_precedence", func(t *testing.T) {
+	t.Run("namespaced_properties_take_precedence_over_request_context", func(t *testing.T) {
+		// Server-derived subject_/resource_/action_* properties are
+		// authoritative - a requestContext key that collides with a
+		// namespaced key must not overwrite it (#3063). Non-colliding
+		// requestContext keys still pass through unchanged.
 		subjectProps, err := structpb.NewStruct(map[string]interface{}{
 			"department": "engineering",
 		})
@@ -182,7 +186,7 @@ func TestMergePropertiesToContext(t *testing.T) {
 		require.NotNil(t, result)
 
 		resultMap := result.AsMap()
-		require.Equal(t, "overridden_value", resultMap["subject_department"])
+		require.Equal(t, "engineering", resultMap["subject_department"])
 		require.Equal(t, "custom_value", resultMap["custom_field"])
 	})
 
