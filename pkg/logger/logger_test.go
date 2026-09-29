@@ -275,7 +275,7 @@ func TestTeeDeliversToBothCores(t *testing.T) {
 	require.Len(t, allRecords(recorder.Result()), 1)
 }
 
-func TestSamplingOnlyAppliesToStdout(t *testing.T) {
+func TestSamplingAppliesToBothSinks(t *testing.T) {
 	recorder := logtest.NewRecorder()
 	core := otelzap.NewCore("openfga", otelzap.WithLoggerProvider(recorder))
 
@@ -288,11 +288,12 @@ func TestSamplingOnlyAppliesToStdout(t *testing.T) {
 		l.InfoWithContext(context.Background(), "repeated message")
 	}
 
-	// The OTEL core is teed in outside the sampler: every record is exported.
-	require.Len(t, allRecords(recorder.Result()), total)
-
-	// stdout keeps zap's production sampling.
+	// The sampler wraps the tee, so both sinks receive the identical sampled
+	// stream: every record the OTEL core exports also reaches stdout, and both
+	// are below the unsampled total for repeated identical messages.
+	records := allRecords(recorder.Result())
 	lines := countLines(t, out)
+	require.Len(t, records, lines)
 	require.GreaterOrEqual(t, lines, 100)
 	require.Less(t, lines, total)
 }
