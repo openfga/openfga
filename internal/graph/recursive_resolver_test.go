@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/emirpasic/gods/sets/hashset"
 	"github.com/oklog/ulid/v2"
@@ -491,6 +492,56 @@ type group
 		result, err := checker.recursiveTTU(ctx, req, typesystem.TupleToUserset("parent", "member"), storage.NewStaticTupleKeyIterator(tupleKeys), "recursive")(ctx)
 		require.Nil(t, result)
 		require.Equal(t, ErrResolutionDepthExceeded, err)
+	})
+
+	t.Run("waits_for_the_user_side_without_spinning_once_the_object_side_has_closed", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		storeID := ulid.Make().String()
+		release := make(chan struct{})
+		time.AfterFunc(blockedProducerDelay, func() { close(release) })
+
+		blockUntilReleased := func(ctx context.Context) (*openfgav1.Tuple, error) {
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-release:
+				return nil, storage.ErrIteratorDone
+			}
+		}
+		blockedIter := mocks.NewMockIterator[*openfgav1.Tuple](ctrl)
+		blockedIter.EXPECT().Head(gomock.Any()).MaxTimes(1).DoAndReturn(blockUntilReleased)
+		blockedIter.EXPECT().Next(gomock.Any()).MaxTimes(1).DoAndReturn(blockUntilReleased)
+		blockedIter.EXPECT().IsOrdered().MaxTimes(1).Return(true)
+		blockedIter.EXPECT().Stop().MaxTimes(1)
+
+		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, gomock.Any(), gomock.Any()).MaxTimes(1).Return(blockedIter, nil)
+		mockDatastore.EXPECT().Read(gomock.Any(), storeID, gomock.Any(), gomock.Any()).AnyTimes().Return(storage.NewStaticTupleIterator(nil), nil)
+
+		req := &ResolveCheckRequest{
+			StoreID:              storeID,
+			AuthorizationModelID: ulid.Make().String(),
+			TupleKey:             tuple.NewTupleKey("group:1", "member", "user:maria"),
+			RequestMetadata:      NewCheckRequestMetadata(),
+		}
+		ctx := setRequestContext(context.Background(), ts, mockDatastore, nil)
+		checker := NewLocalChecker()
+		parents := storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{
+			tuple.NewTupleKey("group:1", "parent", "group:2"),
+		})
+
+		var (
+			result   *ResolveCheckResponse
+			checkErr error
+		)
+
+		requireNoSpin(t, func() {
+			result, checkErr = checker.recursiveTTU(ctx, req, typesystem.TupleToUserset("parent", "member"), parents, "recursive")(ctx)
+		})
+		require.NoError(t, checkErr)
+		require.False(t, result.GetAllowed())
 	})
 }
 

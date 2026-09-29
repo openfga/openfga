@@ -154,6 +154,7 @@ ConsumerLoop:
 		case msg, ok := <-leftChan:
 			if !ok {
 				leftOpen = false
+				leftChan = nil
 				if leftSet.Size() == 0 {
 					if ctx.Err() != nil {
 						lastErr = ctx.Err()
@@ -186,6 +187,7 @@ ConsumerLoop:
 		case msg, ok := <-rightChan:
 			if !ok {
 				rightOpen = false
+				rightChan = nil
 				break
 			}
 			if msg.err != nil {
