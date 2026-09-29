@@ -12,6 +12,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ### Fixed
 - `ReadUserTuple` now returns the tuple's timestamp for the Postgres, MySQL, and SQLite datastores; it previously returned a zero timestamp because the query did not select `inserted_at`. [#3194](https://github.com/openfga/openfga/pull/3194)
+- Fixed `recursiveFastPath` and `weight2` in Check spinning at full CPU on a closed producer channel until the other producer finished, which also made the planner avoid the `weight2` strategy. [#3299](https://github.com/openfga/openfga/issues/3299)
 
 ## [1.21.0] - 2026-09-20
 ### Added
