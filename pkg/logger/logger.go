@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/grpc-ecosystem/go-grpc-middleware/logging/zap/ctxzap"
 	"go.uber.org/zap"
@@ -230,6 +231,14 @@ func NewLogger(options ...OptionLogger) (*ZapLogger, error) {
 	cfg.EncoderConfig.CallerKey = "" // remove the "caller" field
 	cfg.DisableStacktrace = true
 
+	// Capture the production sampling policy before disabling the config's
+	// built-in sampler. When an OTEL core is attached the sampler must wrap the
+	// combined tee (not just stdout), so it is applied below instead.
+	sampling := cfg.Sampling
+	if logOptions.otelCore != nil {
+		cfg.Sampling = nil
+	}
+
 	if logOptions.format == "text" {
 		cfg.Encoding = "console"
 		cfg.DisableCaller = true
@@ -261,17 +270,19 @@ func NewLogger(options ...OptionLogger) (*ZapLogger, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to apply log level to the OTEL core: %w", err)
 		}
-	}
 
-	// Tee the OTEL core outside the sampler: it receives every record
-	// unsampled, while stdout keeps zap's production sampling. The stdout
-	// core is wrapped to strip the bridge-only context field.
-	log = log.WithOptions(zap.WrapCore(func(c zapcore.Core) zapcore.Core {
-		if otelCore == nil {
-			return c
-		}
-		return zapcore.NewTee(&contextFilterCore{Core: c}, otelCore)
-	}))
+		// Tee stdout (wrapped to strip the bridge-only context field) and the
+		// OTEL core, then wrap the combined core in the production sampler so
+		// both sinks receive the identical sampled stream.
+		log = log.WithOptions(zap.WrapCore(func(c zapcore.Core) zapcore.Core {
+			tee := zapcore.NewTee(&contextFilterCore{Core: c}, otelCore)
+			var samplerOpts []zapcore.SamplerOption
+			if sampling.Hook != nil {
+				samplerOpts = append(samplerOpts, zapcore.SamplerHook(sampling.Hook))
+			}
+			return zapcore.NewSamplerWithOptions(tee, time.Second, sampling.Initial, sampling.Thereafter, samplerOpts...)
+		}))
+	}
 
 	if logOptions.format == "json" {
 		log = log.With(zap.String("build.version", build.Version), zap.String("build.commit", build.Commit))
