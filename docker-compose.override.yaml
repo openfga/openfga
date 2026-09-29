@@ -74,7 +74,7 @@ services:
   grafana:
     image: grafana/grafana
     ports:
-      - 3001:3000 # UI
+      - 127.0.0.1:3001:3000 # UI
     restart: unless-stopped
     environment:
       - GF_AUTH_ANONYMOUS_ENABLED=true
