@@ -78,10 +78,22 @@ func at(field string, err error) error {
 	return fmt.Errorf("%s: %w", field, err)
 }
 
-// required validates a child that must be present, reporting ErrMissing for a nil interface rather
+// isNil reports whether x carries no node: a nil interface, or an interface holding a typed nil
+// pointer such as (*NotNode)(nil). The second case matters because the node methods have value
+// receivers, so a typed nil satisfies the interface yet panics when Validate dereferences it to
+// materialize the receiver. The stmt helper makes the same distinction for *Select by hand.
+func isNil[T validator](x T) bool {
+	if any(x) == nil {
+		return true
+	}
+	v := reflect.ValueOf(any(x))
+	return v.Kind() == reflect.Pointer && v.IsNil()
+}
+
+// required validates a child that must be present, reporting ErrMissing for a missing child rather
 // than panicking.
 func required[T validator](field string, x T) error {
-	if any(x) == nil {
+	if isNil(x) {
 		return fmt.Errorf("%s: %w", field, ErrMissing)
 	}
 	return at(field, x.Validate())
@@ -89,7 +101,7 @@ func required[T validator](field string, x T) error {
 
 // optional validates a child that may be absent.
 func optional[T validator](field string, x T) error {
-	if any(x) == nil {
+	if isNil(x) {
 		return nil
 	}
 	return at(field, x.Validate())
