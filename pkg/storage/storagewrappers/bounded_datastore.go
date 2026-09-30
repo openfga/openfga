@@ -2,6 +2,7 @@ package storagewrappers
 
 import (
 	"context"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -49,6 +50,7 @@ var (
 	_ storage.RelationshipTupleReader = (*BoundedTupleReader)(nil)
 	_ StorageInstrumentation          = (*BoundedTupleReader)(nil)
 	_ storage.TupleIterator           = (*countingTupleIterator)(nil)
+	_ adapter.Rows                    = (*boundedRows)(nil)
 
 	concurrentReadDelayMsHistogram = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace:                       build.ProjectName,
@@ -78,12 +80,50 @@ type boundedQuerier struct {
 	adapter.Querier
 }
 
+// Execute runs the statement under the concurrency bound. It holds the slot until the backing
+// connection is freed rather than until Execute returns, since the returned cursor can retain a
+// connection after the call.
 func (q *boundedQuerier) Execute(ctx context.Context, stmt *query.Statement) (adapter.Rows, error) {
 	if err := q.bound(ctx, "Querier"); err != nil {
 		return nil, err
 	}
-	defer q.done()
-	return q.Querier.Execute(ctx, stmt)
+	rows, err := q.Querier.Execute(ctx, stmt)
+	if err != nil {
+		q.done() // nothing acquired a connection; release the slot now.
+		return nil, err
+	}
+	if n, ok := rows.(adapter.ConnReleaseNotifier); ok {
+		// The connection is freed by the backend (e.g. an async drain), not on Close.
+		n.OnConnRelease(q.done)
+		return rows, nil
+	}
+	// Streaming cursor: the connection lives until it's drained or closed.
+	return &boundedRows{Rows: rows, release: q.done}, nil
+}
+
+// boundedRows releases the concurrency bound when the DB cursor is closed, since
+// the underlying DB connection is retained until then.
+type boundedRows struct {
+	adapter.Rows
+	// release releases the concurrency slot these boundedRows occupied
+	release func()
+	once    sync.Once
+}
+
+// Next defensively releases the bound on exhaustion, in case a caller drains
+// the cursor without calling Close.
+func (r *boundedRows) Next() bool {
+	ok := r.Rows.Next()
+	if !ok {
+		r.once.Do(r.release)
+	}
+	return ok
+}
+
+// Close releases the concurrency slot taken by r and closes the underlying Rows.
+func (r *boundedRows) Close() error {
+	defer r.once.Do(r.release)
+	return r.Rows.Close()
 }
 
 type BoundedTupleReader struct {
@@ -100,8 +140,9 @@ type BoundedTupleReader struct {
 }
 
 // NewBoundedTupleReader returns a wrapper over a datastore that makes sure that there are, at most,
-// "concurrency" concurrent calls to Read, ReadUserTuple and ReadUsersetTuples.
+// op.Concurrency concurrent calls to Read, ReadUserTuple, ReadUsersetTuples, and Querier.Execute.
 // Consumers can then rest assured that one client will not hoard all the database connections available.
+// If op.ThrottlingEnabled, calls beyond op.ThrottleThreshold additionally incur op.ThrottleDuration of latency.
 func NewBoundedTupleReader(wrapped storage.RelationshipTupleReader, op *Operation) *BoundedTupleReader {
 	return &BoundedTupleReader{
 		RelationshipTupleReader: wrapped,
@@ -123,8 +164,7 @@ func (b *BoundedTupleReader) GetMetadata() Metadata {
 	}
 }
 
-// Querier wraps the delegate's Querier so each Execute passes through the concurrency
-// bound, preserving the nil capability signal (nil delegate Querier -> nil here).
+// Querier returns a concurrency-bounded Querier, or nil when the delegate does.
 func (b *BoundedTupleReader) Querier(consistency openfgav1.ConsistencyPreference) adapter.Querier {
 	inner := b.RelationshipTupleReader.Querier(consistency)
 	if inner == nil {
