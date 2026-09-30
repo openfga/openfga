@@ -363,8 +363,8 @@ rows return without saying so, and is the mistake to avoid.
 `LitNode` is *not* on the unsupported list: bind the value instead and the query is unchanged.
 
 The categories shorten this list — a projected predicate, a grouped predicate, a cast to boolean, a
-boolean literal, and a projected bound set are all compile errors at the call site now, not failure
-modes you write code for.
+boolean literal, a projected bound set, and a quantified comparison whose set element type differs
+from the operand are all compile errors at the call site now, not failure modes you write code for.
 
 ## Recommended order of work
 
