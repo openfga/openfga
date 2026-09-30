@@ -1239,56 +1239,6 @@ func ConstructAuthorizationModelFromSQLRows(rows Rows) (*openfgav1.Authorization
 	}, nil
 }
 
-// FindLatestAuthorizationModel reads the latest authorization model corresponding to the store.
-func FindLatestAuthorizationModel(
-	ctx context.Context,
-	dbInfo *DBInfo,
-	store string,
-) (*openfgav1.AuthorizationModel, error) {
-	rows, err := dbInfo.stbl.
-		Select("authorization_model_id", "schema_version", "type", "type_definition", "serialized_protobuf").
-		From("authorization_model").
-		Where(sq.Eq{"store": store}).
-		OrderBy("authorization_model_id desc").
-		QueryContext(ctx)
-	if err != nil {
-		return nil, dbInfo.HandleSQLError(err)
-	}
-	defer rows.Close()
-	ret, err := ConstructAuthorizationModelFromSQLRows(rows)
-	if err != nil {
-		return nil, dbInfo.HandleSQLError(err)
-	}
-
-	return ret, nil
-}
-
-// ReadAuthorizationModel reads the model corresponding to store and model ID.
-func ReadAuthorizationModel(
-	ctx context.Context,
-	dbInfo *DBInfo,
-	store, modelID string,
-) (*openfgav1.AuthorizationModel, error) {
-	rows, err := dbInfo.stbl.
-		Select("authorization_model_id", "schema_version", "type", "type_definition", "serialized_protobuf").
-		From("authorization_model").
-		Where(sq.Eq{
-			"store":                  store,
-			"authorization_model_id": modelID,
-		}).
-		QueryContext(ctx)
-	if err != nil {
-		return nil, dbInfo.HandleSQLError(err)
-	}
-	defer rows.Close()
-	ret, err := ConstructAuthorizationModelFromSQLRows(rows)
-	if err != nil {
-		return nil, dbInfo.HandleSQLError(err)
-	}
-
-	return ret, nil
-}
-
 // IsVersionReady checks if the database schema revision is at least the minimum supported revision.
 // The passed in context should have a timeout.
 func IsVersionReady(ctx context.Context, skipVersionCheck bool, db *sql.DB) (storage.ReadinessStatus, error) {

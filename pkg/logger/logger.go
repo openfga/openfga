@@ -1,5 +1,7 @@
 package logger
 
+//go:generate mockgen -source logger.go -destination ../../internal/mocks/mock_logger.go -package mocks
+
 import (
 	"context"
 	"fmt"

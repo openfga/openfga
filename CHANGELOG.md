@@ -8,8 +8,12 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 ### Added
+- Added read-replica (primary/secondary) support to the MySQL datastore backend, matching the existing PostgreSQL behaviour. Configure a secondary connection via `--datastore-secondary-uri` (or `OPENFGA_DATASTORE_SECONDARY_URI`); all reads except those requesting `HIGHER_CONSISTENCY` are routed to the replica while all writes remain on the primary. `GetStore`, `ListStores`, `ReadAssertions`, `ReadAuthorizationModel`, `ReadAuthorizationModels`, `FindLatestAuthorizationModel`, and `ReadChanges` always hit the replica when configured regardless of requested consistency — callers should be aware of read-after-write risk on a lagging replica. See `pkg/storage/mysql/mysql.go`. **Breaking:** `mysql.NewWithDB` gained a required `secondaryDB *sql.DB` parameter (pass `nil` if no replica is configured); `sqlcommon.ReadAuthorizationModel` and `sqlcommon.FindLatestAuthorizationModel` were removed and moved to per-backend implementations. [#3290](https://github.com/openfga/openfga/pull/3290)
 - Added a typed query AST and a `Querier` interface so backends can run queries as structured statements instead of hand-built SQL. This lays the groundwork for future SQL optimizations. [#3316](https://github.com/openfga/openfga/pull/3316)
-  - **Breaking change:** This only applies if you use openfga as a library and implement a custom `RelationshipTupleReader`. The interface now has a `Querier` method which must be implemented (see `pkg/storage/adapter`). Returning `nil` is safe (especially for non-SQL datastores) but skips future SQL optimizations.
+    - **Breaking change:** This only applies if you use openfga as a library and implement a custom `RelationshipTupleReader`. The interface now has a `Querier` method which must be implemented (see `pkg/storage/adapter`). Returning `nil` is safe (especially for non-SQL datastores) but skips future SQL optimizations.
+
+### Fixed
+- `ReadUserTuple` now returns the tuple's timestamp for the Postgres, MySQL, and SQLite datastores; it previously returned a zero timestamp because the query did not select `inserted_at`. [#3194](https://github.com/openfga/openfga/pull/3194)
 
 ## [1.21.0] - 2026-09-20
 ### Added
@@ -25,6 +29,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Security
 - Upgraded go toolchain and images to use go1.26.8 to fix [CVE-2026-39821](https://pkg.go.dev/vuln/GO-2026-5026). [#3287](https://github.com/openfga/openfga/pull/3287)
 - Rebuilt the embedded `grpc-health-probe` (bumped to `v0.4.57`, built with Go 1.26.8) to match the server toolchain and pick up `google.golang.org/grpc` v1.83.2, which fixes [GHSA-vp52-pcj8-j9qc](https://github.com/advisories/GHSA-vp52-pcj8-j9qc). [#3289](https://github.com/openfga/openfga/pull/3289)
+- Fixed [GHSA-h7w8-xr72-cv4r](https://github.com/openfga/openfga/security/advisories/GHSA-h7w8-xr72-cv4r), where ListUsers could return a user that should have been excluded when a relation contains nested exclusion on a type-bound public wildcard. Thank you to [@euriconicacio](https://github.com/euriconicacio) for the discovery and responsible disclosure.
 
 ## [1.19.0] - 2026-08-24
 ### Added

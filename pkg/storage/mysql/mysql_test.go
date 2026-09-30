@@ -9,6 +9,8 @@ import (
 
 	mysqldriver "github.com/go-sql-driver/mysql"
 	"github.com/oklog/ulid/v2"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
@@ -92,7 +94,7 @@ func TestReadEnsureNoOrder(t *testing.T) {
 
 			err = sqlcommon.Write(ctx,
 				sqlcommon.NewDBInfo(ds.stbl, HandleSQLError, "mysql"),
-				ds.db,
+				ds.primaryDB,
 				store,
 				sqlcommon.WriteData{
 					Deletes: []*openfgav1.TupleKeyWithoutCondition{},
@@ -105,7 +107,7 @@ func TestReadEnsureNoOrder(t *testing.T) {
 			// Tweak time so that ULID is smaller.
 			err = sqlcommon.Write(ctx,
 				sqlcommon.NewDBInfo(ds.stbl, HandleSQLError, "mysql"),
-				ds.db,
+				ds.primaryDB,
 				store,
 				sqlcommon.WriteData{
 					Deletes: []*openfgav1.TupleKeyWithoutCondition{},
@@ -118,7 +120,7 @@ func TestReadEnsureNoOrder(t *testing.T) {
 			// Tweak time so that ULID is smaller.
 			err = sqlcommon.Write(ctx,
 				sqlcommon.NewDBInfo(ds.stbl, HandleSQLError, "mysql"),
-				ds.db,
+				ds.primaryDB,
 				store,
 				sqlcommon.WriteData{
 					Deletes: []*openfgav1.TupleKeyWithoutCondition{},
@@ -207,7 +209,7 @@ func TestCtxCancel(t *testing.T) {
 
 			err = sqlcommon.Write(ctx,
 				sqlcommon.NewDBInfo(ds.stbl, HandleSQLError, "mysql"),
-				ds.db,
+				ds.primaryDB,
 				store,
 				sqlcommon.WriteData{
 					Deletes: []*openfgav1.TupleKeyWithoutCondition{},
@@ -220,7 +222,7 @@ func TestCtxCancel(t *testing.T) {
 			// Tweak time so that ULID is smaller.
 			err = sqlcommon.Write(ctx,
 				sqlcommon.NewDBInfo(ds.stbl, HandleSQLError, "mysql"),
-				ds.db,
+				ds.primaryDB,
 				store,
 				sqlcommon.WriteData{
 					Deletes: []*openfgav1.TupleKeyWithoutCondition{},
@@ -233,7 +235,7 @@ func TestCtxCancel(t *testing.T) {
 			// Tweak time so that ULID is smaller.
 			err = sqlcommon.Write(ctx,
 				sqlcommon.NewDBInfo(ds.stbl, HandleSQLError, "mysql"),
-				ds.db,
+				ds.primaryDB,
 				store,
 				sqlcommon.WriteData{
 					Deletes: []*openfgav1.TupleKeyWithoutCondition{},
@@ -280,7 +282,7 @@ func TestReadPageEnsureOrder(t *testing.T) {
 
 	err = sqlcommon.Write(ctx,
 		sqlcommon.NewDBInfo(ds.stbl, HandleSQLError, "mysql"),
-		ds.db,
+		ds.primaryDB,
 		store,
 		sqlcommon.WriteData{
 			Deletes: []*openfgav1.TupleKeyWithoutCondition{},
@@ -293,7 +295,7 @@ func TestReadPageEnsureOrder(t *testing.T) {
 	// Tweak time so that ULID is smaller.
 	err = sqlcommon.Write(ctx,
 		sqlcommon.NewDBInfo(ds.stbl, HandleSQLError, "mysql"),
-		ds.db,
+		ds.primaryDB,
 		store,
 		sqlcommon.WriteData{
 			Deletes: []*openfgav1.TupleKeyWithoutCondition{},
@@ -399,7 +401,7 @@ func TestReadAuthorizationModelUnmarshallError(t *testing.T) {
 	require.NoError(t, err)
 	pbdata := []byte{0x01, 0x02, 0x03}
 
-	_, err = ds.db.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES (?, ?, ?, ?, ?, ?)", store, modelID, schemaVersion, "document", bytes, pbdata)
+	_, err = ds.primaryDB.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES (?, ?, ?, ?, ?, ?)", store, modelID, schemaVersion, "document", bytes, pbdata)
 	require.NoError(t, err)
 
 	_, err = ds.ReadAuthorizationModel(ctx, store, modelID)
@@ -424,7 +426,7 @@ func TestReadAuthorizationModelReturnValue(t *testing.T) {
 	bytes, err := proto.Marshal(&openfgav1.TypeDefinition{Type: "document"})
 	require.NoError(t, err)
 
-	_, err = ds.db.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES (?, ?, ?, ?, ?, ?)", store, modelID, schemaVersion, "document", bytes, nil)
+	_, err = ds.primaryDB.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES (?, ?, ?, ?, ?, ?)", store, modelID, schemaVersion, "document", bytes, nil)
 
 	require.NoError(t, err)
 
@@ -465,14 +467,14 @@ func TestFindLatestModel(t *testing.T) {
 		// write type "document"
 		bytesDocumentType, err := proto.Marshal(&openfgav1.TypeDefinition{Type: "document"})
 		require.NoError(t, err)
-		_, err = ds.db.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES (?, ?, ?, ?, ?, ?)",
+		_, err = ds.primaryDB.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES (?, ?, ?, ?, ?, ?)",
 			store, modelID, schemaVersion, "document", bytesDocumentType, nil)
 		require.NoError(t, err)
 
 		// write type "user"
 		bytesUserType, err := proto.Marshal(&openfgav1.TypeDefinition{Type: "user"})
 		require.NoError(t, err)
-		_, err = ds.db.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES (?, ?, ?, ?, ?, ?)",
+		_, err = ds.primaryDB.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES (?, ?, ?, ?, ?, ?)",
 			store, modelID, schemaVersion, "user", bytesUserType, nil)
 		require.NoError(t, err)
 
@@ -486,14 +488,14 @@ func TestFindLatestModel(t *testing.T) {
 		// write type "document"
 		bytesDocumentType, err := proto.Marshal(&openfgav1.TypeDefinition{Type: "document"})
 		require.NoError(t, err)
-		_, err = ds.db.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES (?, ?, ?, ?, ?, ?)",
+		_, err = ds.primaryDB.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES (?, ?, ?, ?, ?, ?)",
 			store, modelID, schemaVersion, "document", bytesDocumentType, nil)
 		require.NoError(t, err)
 
 		// write type "user"
 		bytesUserType, err := proto.Marshal(&openfgav1.TypeDefinition{Type: "user"})
 		require.NoError(t, err)
-		_, err = ds.db.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES (?, ?, ?, ?, ?, ?)",
+		_, err = ds.primaryDB.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES (?, ?, ?, ?, ?, ?)",
 			store, modelID, schemaVersion, "user", bytesUserType, nil)
 		require.NoError(t, err)
 
@@ -532,7 +534,7 @@ func TestAllowNullCondition(t *testing.T) {
 			condition_name, condition_context, inserted_at
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW());
 	`
-	_, err = ds.db.ExecContext(
+	_, err = ds.primaryDB.ExecContext(
 		ctx, stmt, "store", "folder", "2021-budget", "owner", "user:anne", "user",
 		ulid.Make().String(), nil, nil,
 	)
@@ -565,7 +567,7 @@ func TestAllowNullCondition(t *testing.T) {
 	require.Equal(t, tk, userTuple.GetKey())
 
 	tk2 := tupleUtils.NewTupleKey("folder:2022-budget", "viewer", "user:anne")
-	_, err = ds.db.ExecContext(
+	_, err = ds.primaryDB.ExecContext(
 		ctx, stmt, "store", "folder", "2022-budget", "viewer", "user:anne", "userset",
 		ulid.Make().String(), nil, nil,
 	)
@@ -599,13 +601,13 @@ func TestAllowNullCondition(t *testing.T) {
 		condition_name, condition_context, inserted_at, operation
 	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?);
 `
-	_, err = ds.db.ExecContext(
+	_, err = ds.primaryDB.ExecContext(
 		ctx, stmt, "store", "folder", "2021-budget", "owner", "user:anne",
 		ulid.Make().String(), nil, nil, openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
 	)
 	require.NoError(t, err)
 
-	_, err = ds.db.ExecContext(
+	_, err = ds.primaryDB.ExecContext(
 		ctx, stmt, "store", "folder", "2021-budget", "owner", "user:anne",
 		ulid.Make().String(), nil, nil, openfgav1.TupleOperation_TUPLE_OPERATION_DELETE,
 	)
@@ -640,7 +642,7 @@ func TestMarshalledAssertions(t *testing.T) {
 			store, authorization_model_id, assertions
 		) VALUES (?, ?, UNHEX('0A2B0A270A12666F6C6465723A323032312D62756467657412056F776E65721A0A757365723A616E6E657A1001'));
 	`
-	_, err = ds.db.ExecContext(ctx, stmt, "store", "model")
+	_, err = ds.primaryDB.ExecContext(ctx, stmt, "store", "model")
 	require.NoError(t, err)
 
 	assertions, err := ds.ReadAssertions(ctx, "store", "model")
@@ -705,13 +707,13 @@ func TestReadFilterWithConditions(t *testing.T) {
 			condition_name, condition_context, inserted_at
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW());
 	`
-	_, err = ds.db.ExecContext(
+	_, err = ds.primaryDB.ExecContext(
 		ctx, stmt, "store", "folder", "2021-budget", "owner", "user:anne", "user",
 		ulid.Make().String(), "cond1", nil,
 	)
 	require.NoError(t, err)
 
-	_, err = ds.db.ExecContext(
+	_, err = ds.primaryDB.ExecContext(
 		ctx, stmt, "store", "folder", "2022-budget", "owner", "user:anne", "user",
 		ulid.Make().String(), nil, nil,
 	)
@@ -788,14 +790,14 @@ func TestReadUserTupleFilterWithConditions(t *testing.T) {
  `
 
 	// Insert tuple with condition
-	_, err = ds.db.ExecContext(
+	_, err = ds.primaryDB.ExecContext(
 		ctx, stmt, "store", "folder", "2021-budget", "owner", "user:anne", "user",
 		ulid.Make().String(), "cond1", nil,
 	)
 	require.NoError(t, err)
 
 	// Insert tuple without condition
-	_, err = ds.db.ExecContext(
+	_, err = ds.primaryDB.ExecContext(
 		ctx, stmt, "store", "folder", "2022-budget", "owner", "user:anne", "user",
 		ulid.Make().String(), nil, nil,
 	)
@@ -1115,10 +1117,11 @@ func TestNew(t *testing.T) {
 		cfg *sqlcommon.Config
 	}
 	tests := []struct {
-		name    string
-		args    args
-		want    *Datastore
-		wantErr bool
+		name            string
+		args            args
+		want            *Datastore
+		wantErr         bool
+		wantErrContains []string
 	}{
 		{
 			name: "bad_uri",
@@ -1131,11 +1134,32 @@ func TestNew(t *testing.T) {
 			want:    nil,
 			wantErr: true,
 		},
+		{
+			// The primary URI is syntactically valid so sql.Open succeeds without a network
+			// connection. The secondary URI is then parsed via mysql.ParseDSN (triggered by
+			// the non-empty SecondaryUsername) and fails immediately — no running container
+			// is required.
+			name: "bad_secondary_uri",
+			args: args{
+				uri: "root@tcp(localhost:3306)/test",
+				cfg: &sqlcommon.Config{
+					SecondaryURI:      "my;uri?bad=true",
+					SecondaryUsername: "unused",
+					Logger:            logger.NewNoopLogger(),
+				},
+			},
+			want:    nil,
+			wantErr: true,
+			wantErrContains: []string{
+				"initialize mysql secondary connection",
+				"missing the slash separating the database name",
+			},
+		},
 	}
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg := sqlcommon.NewConfig()
-			got, err := New(tt.args.uri, cfg)
+			got, err := New(tt.args.uri, tt.args.cfg)
 			if got != nil {
 				defer got.Close()
 			}
@@ -1143,7 +1167,304 @@ func TestNew(t *testing.T) {
 				t.Errorf("New() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
+			for _, substr := range tt.wantErrContains {
+				require.ErrorContains(t, err, substr)
+			}
 			assert.Equal(t, tt.want, got)
 		})
 	}
+}
+
+func TestMySQLDatastoreStatusWithSecondaryDB(t *testing.T) {
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
+	err := testDatastore.CreateSecondary(t)
+	require.NoError(t, err)
+
+	primaryURI := testDatastore.GetConnectionURI(true)
+
+	cfg := sqlcommon.NewConfig()
+	cfg.SecondaryURI = testDatastore.GetSecondaryConnectionURI(true)
+	cfg.ExportMetrics = true
+
+	ds, err := New(primaryURI, cfg)
+	require.NoError(t, err)
+	defer ds.Close()
+
+	status, err := ds.IsReady(context.Background())
+	require.NoError(t, err)
+	require.True(t, status.IsReady)
+	require.Equal(t, "primary: ready, secondary: ready", status.Message)
+}
+
+func TestGetSQLDB(t *testing.T) {
+	primary := &sql.DB{}
+	secondary := &sql.DB{}
+
+	t.Run("higher_consistency_routes_to_primary", func(t *testing.T) {
+		ds := &Datastore{primaryDB: primary, secondaryDB: secondary}
+		require.Equal(t, primary, ds.getSQLDB(openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY))
+	})
+
+	t.Run("minimize_latency_routes_to_secondary_when_configured", func(t *testing.T) {
+		ds := &Datastore{primaryDB: primary, secondaryDB: secondary}
+		require.Equal(t, secondary, ds.getSQLDB(openfgav1.ConsistencyPreference_MINIMIZE_LATENCY))
+	})
+
+	t.Run("minimize_latency_falls_back_to_primary_when_no_secondary", func(t *testing.T) {
+		ds := &Datastore{primaryDB: primary}
+		require.Equal(t, primary, ds.getSQLDB(openfgav1.ConsistencyPreference_MINIMIZE_LATENCY))
+	})
+}
+
+// TestSecondaryRoutingData verifies that Read with default consistency (MINIMIZE_LATENCY)
+// is served from the secondary DB, while HIGHER_CONSISTENCY routes to the primary.
+// A marker tuple is inserted directly into the secondary DB to make the distinction observable.
+func TestSecondaryRoutingData(t *testing.T) {
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
+	err := testDatastore.CreateSecondary(t)
+	require.NoError(t, err)
+
+	primaryURI := testDatastore.GetConnectionURI(true)
+	secondaryURI := testDatastore.GetSecondaryConnectionURI(true)
+
+	cfg := sqlcommon.NewConfig()
+	cfg.SecondaryURI = secondaryURI
+
+	ds, err := New(primaryURI, cfg)
+	require.NoError(t, err)
+	defer ds.Close()
+
+	ctx := context.Background()
+	store := ulid.Make().String()
+
+	// Insert a marker tuple directly into the secondary DB only.
+	// The primary DB does not have this row, so only reads hitting
+	// the secondary will see it.
+	stmt := `
+		INSERT INTO tuple (
+			store, object_type, object_id, relation, _user, user_type, ulid,
+			condition_name, condition_context, inserted_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW());
+	`
+	markerULID := ulid.Make().String()
+	_, err = ds.secondaryDB.ExecContext(
+		ctx, stmt, store, "doc", "marker", "viewer", "user:secondary-only", "user",
+		markerULID, nil, nil,
+	)
+	require.NoError(t, err)
+
+	t.Run("default_consistency_reads_from_secondary", func(t *testing.T) {
+		// Default (MINIMIZE_LATENCY) should hit the secondary and see the marker.
+		iter, err := ds.Read(ctx, store,
+			storage.ReadFilter{Object: "doc:marker", Relation: "viewer"},
+			storage.ReadOptions{})
+		require.NoError(t, err)
+		defer iter.Stop()
+
+		tuple, err := iter.Next(ctx)
+		require.NoError(t, err)
+		require.Equal(t, "user:secondary-only", tuple.GetKey().GetUser())
+	})
+
+	t.Run("higher_consistency_reads_from_primary", func(t *testing.T) {
+		// HIGHER_CONSISTENCY must hit the primary, which does NOT have the marker.
+		iter, err := ds.Read(ctx, store,
+			storage.ReadFilter{Object: "doc:marker", Relation: "viewer"},
+			storage.ReadOptions{
+				Consistency: storage.ConsistencyOptions{
+					Preference: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
+				},
+			})
+		require.NoError(t, err)
+		defer iter.Stop()
+
+		_, err = iter.Next(ctx)
+		require.ErrorIs(t, err, storage.ErrIteratorDone)
+	})
+}
+
+// TestSecondaryUsernamePassword verifies that mysql.New correctly applies
+// cfg.SecondaryUsername and cfg.SecondaryPassword when opening the secondary
+// connection, overriding the credentials embedded in the secondary DSN.
+func TestSecondaryUsernamePassword(t *testing.T) {
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
+	err := testDatastore.CreateSecondary(t)
+	require.NoError(t, err)
+
+	primaryURI := testDatastore.GetConnectionURI(true)
+	secondaryURI := testDatastore.GetSecondaryConnectionURI(false) // no credentials in URI
+
+	cfg := sqlcommon.NewConfig()
+	cfg.SecondaryURI = secondaryURI
+	cfg.SecondaryUsername = testDatastore.GetUsername()
+	cfg.SecondaryPassword = testDatastore.GetPassword()
+	cfg.PingRetryMaxElapsedTime = 100 * time.Millisecond
+
+	ds, err := New(primaryURI, cfg)
+	require.NoError(t, err)
+	defer ds.Close()
+
+	status, err := ds.IsReady(context.Background())
+	require.NoError(t, err)
+	require.True(t, status.IsReady)
+	require.Equal(t, "primary: ready, secondary: ready", status.Message)
+}
+
+// TestConfigureDBMetricsDuplicateRegistration verifies that configureDB returns an
+// "initialize metrics" error when prometheus.Register fails due to a duplicate collector.
+func TestConfigureDBMetricsDuplicateRegistration(t *testing.T) {
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
+
+	uri := testDatastore.GetConnectionURI(true)
+	cfg := sqlcommon.NewConfig()
+	cfg.ExportMetrics = true
+	cfg.PingRetryMaxElapsedTime = 100 * time.Millisecond
+
+	db, err := sql.Open("mysql", uri)
+	require.NoError(t, err)
+	defer db.Close()
+
+	// Use t.Name() as part of the collector name so it never collides with collectors
+	// registered by other tests even if tests are later run in parallel.
+	collectorName := "openfga_" + t.Name()
+
+	// First registration succeeds.
+	firstCollector, err := configureDB(db, cfg, collectorName)
+	require.NoError(t, err)
+	require.NotNil(t, firstCollector)
+	defer prometheus.Unregister(firstCollector)
+
+	// Second call with the same dbName and the same db must fail with "initialize metrics".
+	// No need for a second sql.Open — the ping will succeed and the Prometheus conflict is
+	// what we are testing.
+	_, err = configureDB(db, cfg, collectorName)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "initialize metrics")
+}
+
+// TestNewWithDB_SecondaryConfigureFailureUnregistersPrimary verifies that when
+// configureDB fails for the secondary DB, NewWithDB unregisters the primary
+// collector it already registered and returns a "configure secondary db" error.
+func TestNewWithDB_SecondaryConfigureFailureUnregistersPrimary(t *testing.T) {
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
+
+	uri := testDatastore.GetConnectionURI(true)
+
+	// A single open connection is reused for both primary and secondary slots.
+	// The DB handles are distinct objects pointing at the same server, which is
+	// all that matters here — the failure is caused by a Prometheus name conflict,
+	// not by any DB-level distinction.
+	db, err := sql.Open("mysql", uri)
+	require.NoError(t, err)
+	defer db.Close()
+
+	cfg := sqlcommon.NewConfig()
+	cfg.ExportMetrics = true
+	cfg.PingRetryMaxElapsedTime = 100 * time.Millisecond
+
+	// Pre-register a collector under the secondary name so configureDB will fail
+	// when NewWithDB tries to register the secondary collector.
+	// Use a fixed name that NewWithDB uses internally for the secondary ("openfga_secondary").
+	preCollector := collectors.NewDBStatsCollector(db, "openfga_secondary")
+	require.NoError(t, prometheus.Register(preCollector))
+	defer prometheus.Unregister(preCollector)
+
+	ds, err := NewWithDB(db, db, cfg)
+	require.Nil(t, ds)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "configure secondary db")
+	require.ErrorContains(t, err, "initialize metrics")
+
+	// Assert directly that the primary collector was unregistered by NewWithDB's error
+	// path: prometheus.Unregister returns false when the collector is not registered.
+	// We re-create the collector object that NewWithDB would have registered for "openfga"
+	// and attempt to unregister it — it should already be gone.
+	phantomPrimary := collectors.NewDBStatsCollector(db, "openfga")
+	alreadyUnregistered := !prometheus.Unregister(phantomPrimary)
+	require.True(t, alreadyUnregistered, "primary collector should have been unregistered by NewWithDB on error")
+}
+
+// TestNew_CleanupOnNewWithDBFailure verifies that New closes both the primary and
+// secondary *sql.DB when NewWithDB returns an error, preventing resource leaks.
+// The failure is triggered at the primary configureDB stage (Prometheus duplicate),
+// so no secondary container is needed.
+func TestNew_CleanupOnNewWithDBFailure(t *testing.T) {
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
+
+	primaryURI := testDatastore.GetConnectionURI(true)
+
+	cfg := sqlcommon.NewConfig()
+	cfg.ExportMetrics = true
+	cfg.PingRetryMaxElapsedTime = 100 * time.Millisecond
+
+	// Pre-register the "openfga" collector name so configureDB fails immediately
+	// inside NewWithDB, exercising the cleanup branches in New.
+	tmpDB, err := sql.Open("mysql", primaryURI)
+	require.NoError(t, err)
+	defer tmpDB.Close()
+
+	preCollector := collectors.NewDBStatsCollector(tmpDB, "openfga")
+	require.NoError(t, prometheus.Register(preCollector))
+	defer prometheus.Unregister(preCollector)
+
+	// New must fail; it must not panic and must close the opened connections.
+	ds, err := New(primaryURI, cfg)
+	require.Nil(t, ds)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "configure primary db")
+}
+
+// TestIsReady_SecondaryError verifies that when the secondary DB is unhealthy,
+// IsReady returns a combined status with IsReady=false and a descriptive message,
+// rather than returning an error itself.
+func TestIsReady_SecondaryError(t *testing.T) {
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
+
+	uri := testDatastore.GetConnectionURI(true)
+	cfg := sqlcommon.NewConfig()
+
+	ds, err := New(uri, cfg)
+	require.NoError(t, err)
+	defer ds.Close()
+
+	// Open a secondary DB and immediately close it so IsReady will fail on it.
+	closedDB, err := sql.Open("mysql", uri)
+	require.NoError(t, err)
+	closedDB.Close() // closed deliberately
+
+	// Inject the broken secondary directly.
+	ds.secondaryDB = closedDB
+
+	status, err := ds.IsReady(context.Background())
+	require.NoError(t, err)
+	require.False(t, status.IsReady)
+	require.Contains(t, status.Message, "primary:")
+	require.Contains(t, status.Message, "secondary:")
+}
+
+// TestClose_WithSecondaryAndCollector verifies that Close correctly unregisters
+// the secondaryDBStatsCollector and closes secondaryDB without panicking.
+func TestClose_WithSecondaryAndCollector(t *testing.T) {
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
+	err := testDatastore.CreateSecondary(t)
+	require.NoError(t, err)
+
+	primaryURI := testDatastore.GetConnectionURI(true)
+	secondaryURI := testDatastore.GetSecondaryConnectionURI(true)
+
+	cfg := sqlcommon.NewConfig()
+	cfg.SecondaryURI = secondaryURI
+	cfg.ExportMetrics = true
+	cfg.PingRetryMaxElapsedTime = 100 * time.Millisecond
+
+	ds, err := New(primaryURI, cfg)
+	require.NoError(t, err)
+	require.NotNil(t, ds.secondaryDB)
+	require.NotNil(t, ds.secondaryDBStatsCollector)
+
+	// Close must not panic and must cleanly unregister the secondary collector.
+	// Calling prometheus.Unregister after Close should return false (already unregistered).
+	ds.Close()
+	alreadyUnregistered := !prometheus.Unregister(ds.secondaryDBStatsCollector)
+	require.True(t, alreadyUnregistered, "secondary collector should have been unregistered by Close()")
 }
