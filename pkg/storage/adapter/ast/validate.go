@@ -531,9 +531,9 @@ func (j JoinClause) Validate() error {
 // onErr applies the cross-field rule between Type and On.
 func (j JoinClause) onErr() error {
 	switch cross := j.Type == JoinCross; {
-	case cross && j.On != nil:
+	case cross && !isNil(j.On):
 		return fault("On", ErrCrossField, "a cross join carries no condition")
-	case !cross && j.On == nil:
+	case !cross && isNil(j.On):
 		return fault("On", ErrMissing, "only a cross join may omit it")
 	default:
 		return nil
