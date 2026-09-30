@@ -73,9 +73,13 @@ type AnyExpr interface {
 
 // AnySet is the erased-T set operand: either a BoundSet or a SetExpr. Quantified takes one, so
 // the two flavours are interchangeable exactly where a set operand is legal, and nowhere else.
-// T is carried so the element type is still checked against the left operand.
+// T is carried so the element type is still checked against the left operand: elem is never
+// called, but naming T in the method set is what makes satisfaction element-type-specific
+// (BoundSet[int] must not satisfy AnySet[string]); without it T would be phantom and the check
+// would erase.
 type AnySet[T Scalar] interface {
 	set() ast.SetValue
+	elem() T
 }
 
 // Projection is anything that can stand in a SELECT list: a scalar expression, a projectable
@@ -92,7 +96,9 @@ func (e Expr[T]) value() ast.ScalarValue        { return e.n }
 func (e Expr[T]) projection() ast.Projection    { return e.n }
 func (e Expr[T]) countArg() []ast.ScalarValue   { return []ast.ScalarValue{e.n} }
 func (s BoundSet[T]) set() ast.SetValue         { return s.n }
+func (s BoundSet[T]) elem() (_ T)               { return }
 func (s SetExpr[T]) set() ast.SetValue          { return s.n }
+func (s SetExpr[T]) elem() (_ T)                { return }
 func (s SetExpr[T]) projection() ast.Projection { return s.n }
 func (a Aliased) projection() ast.Projection    { return a.n }
 
