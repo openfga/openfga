@@ -3,6 +3,8 @@ package check
 import (
 	"context"
 	"errors"
+	"sort"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -261,6 +263,209 @@ func TestResolveUnion(t *testing.T) {
 		res, err := resolver.ResolveUnion(context.Background(), req, node, nil)
 		require.NoError(t, err)
 		require.False(t, res.GetAllowed())
+	})
+}
+
+func TestGatherLogicalEdges(t *testing.T) {
+	// describe renders each LogicalEdge as a comparable string so results can be asserted
+	// with ElementsMatch; ordering is intentionally ignored since GatherLogicalEdges does
+	// not preserve edge ordering. A GroupEdge is rendered as "group:[<sorted to labels>]"
+	// and a SingleEdge as "single:<to label>".
+	describe := func(t *testing.T, les []LogicalEdge) []string {
+		t.Helper()
+		out := make([]string, 0, len(les))
+		for _, le := range les {
+			switch e := le.(type) {
+			case *SingleEdge:
+				out = append(out, "single:"+(*authzGraph.WeightedAuthorizationModelEdge)(e).GetTo().GetUniqueLabel())
+			case *GroupEdge:
+				labels := make([]string, 0, len(e.Edges))
+				for _, edge := range e.Edges {
+					labels = append(labels, edge.GetTo().GetUniqueLabel())
+				}
+				sort.Strings(labels)
+				out = append(out, "group:["+strings.Join(labels, ",")+"]")
+			default:
+				t.Fatalf("unexpected LogicalEdge type %T", le)
+			}
+		}
+		return out
+	}
+
+	tests := []struct {
+		name     string
+		model    string
+		object   string
+		relation string
+		nodeID   string
+		numEdges int
+		expected []string
+	}{
+		{
+			name: "single_weight_one_edge_returns_single_edge",
+			model: `
+				model
+				  schema 1.1
+				type user
+				type document
+				  relations
+				    define viewer: [user]`,
+			object:   "document:1",
+			relation: "viewer",
+			nodeID:   "document#viewer",
+			numEdges: 1,
+			expected: []string{"single:user"},
+		},
+		{
+			name: "single_weight_two_edge_returns_single_edge",
+			model: `
+				model
+				  schema 1.1
+				type user
+				type group
+				  relations
+				    define member: [user]
+				type document
+				  relations
+				    define viewer: [group#member]`,
+			object:   "document:1",
+			relation: "viewer",
+			nodeID:   "document#viewer",
+			numEdges: 1,
+			expected: []string{"single:group#member"},
+		},
+		{
+			// node weight-1: all edges are weight-1 and combined into a single GroupEdge.
+			name: "node_weight_one_multiple_edges_returns_single_group_edge",
+			model: `
+				model
+				  schema 1.1
+				type user
+				type group
+				  relations
+				    define member: [user] or admin
+				    define admin: [user]`,
+			object:   "group:1",
+			relation: "member",
+			nodeID:   "group#member",
+			numEdges: 2,
+			expected: []string{"group:[user,user]"},
+		},
+		{
+			// node weight > 1 with no weight-1 edges: every edge becomes its own SingleEdge.
+			name: "split_zero_weight_one_edges",
+			model: `
+				model
+				  schema 1.1
+				type user
+				type group
+				  relations
+				    define member: [user]
+				type team
+				  relations
+				    define member: [user]
+				type document
+				  relations
+				    define viewer: [group#member, team#member]`,
+			object:   "document:1",
+			relation: "viewer",
+			nodeID:   "document#viewer",
+			numEdges: 2,
+			expected: []string{"single:group#member", "single:team#member"},
+		},
+		{
+			// node weight > 1 with exactly one weight-1 edge: the lone weight-1 edge becomes a
+			// SingleEdge (not a GroupEdge), alongside the weight-2 edge as its own SingleEdge.
+			name: "split_single_weight_one_edge",
+			model: `
+				model
+				  schema 1.1
+				type user
+				type group
+				  relations
+				    define member: [user]
+				type document
+				  relations
+				    define viewer: [user, group#member]`,
+			object:   "document:1",
+			relation: "viewer",
+			nodeID:   "document#viewer",
+			numEdges: 2,
+			expected: []string{"single:user", "single:group#member"},
+		},
+		{
+			// node weight > 1 with two weight-1 edges: the weight-1 edges are combined into a
+			// single GroupEdge, and the weight-2 edge is its own SingleEdge.
+			name: "split_multiple_weight_one_edges",
+			model: `
+				model
+				  schema 1.1
+				type user
+				type group
+				  relations
+				    define member: [user]
+				type document
+				  relations
+				    define viewer: [user, user:*, group#member]`,
+			object:   "document:1",
+			relation: "viewer",
+			nodeID:   "document#viewer",
+			numEdges: 3,
+			expected: []string{"group:[user,user:*]", "single:group#member"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mg, err := modelgraph.New(testutils.MustTransformDSLToProtoWithID(tt.model))
+			require.NoError(t, err)
+
+			resolver := New(Config{Model: mg})
+
+			req, err := NewRequest(RequestParams{
+				StoreID:  ulid.Make().String(),
+				Model:    mg,
+				TupleKey: tuple.NewTupleKey(tt.object, tt.relation, "user:alice"),
+			})
+			require.NoError(t, err)
+
+			node, ok := mg.GetNodeByID(tt.nodeID)
+			require.True(t, ok)
+
+			edges, err := mg.FlattenNode(node, "user", false, "")
+			require.NoError(t, err)
+			require.Len(t, edges, tt.numEdges)
+
+			require.ElementsMatch(t, tt.expected, describe(t, resolver.GatherLogicalEdges(req, node, edges)))
+		})
+	}
+
+	t.Run("empty_edges_returns_no_logical_edges", func(t *testing.T) {
+		mg, err := modelgraph.New(testutils.MustTransformDSLToProtoWithID(`
+			model
+			  schema 1.1
+			type user
+			type group
+			  relations
+			    define member: [user]
+			type document
+			  relations
+			    define viewer: [group#member]`))
+		require.NoError(t, err)
+
+		resolver := New(Config{Model: mg})
+
+		req, err := NewRequest(RequestParams{
+			StoreID:  ulid.Make().String(),
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:alice"),
+		})
+		require.NoError(t, err)
+
+		node, ok := mg.GetNodeByID("document#viewer")
+		require.True(t, ok)
+
+		require.Empty(t, resolver.GatherLogicalEdges(req, node, nil))
 	})
 }
 
