@@ -80,9 +80,9 @@ type boundedQuerier struct {
 	adapter.Querier
 }
 
-// Execute runs the statement under the concurrency bound. It holds the slot until the backing
-// connection is freed rather than until Execute returns, since the returned cursor can retain a
-// connection after the call.
+// Execute runs the statement under the concurrency bound. It holds the slot until the returned
+// cursor is drained or closed, not just until Execute returns, since the cursor retains the
+// backing connection until then.
 func (q *boundedQuerier) Execute(ctx context.Context, stmt *query.Statement) (adapter.Rows, error) {
 	if err := q.bound(ctx, "Querier"); err != nil {
 		return nil, err
@@ -92,12 +92,6 @@ func (q *boundedQuerier) Execute(ctx context.Context, stmt *query.Statement) (ad
 		q.done() // nothing acquired a connection; release the slot now.
 		return nil, err
 	}
-	if n, ok := rows.(adapter.ConnReleaseNotifier); ok {
-		// The connection is freed by the backend (e.g. an async drain), not on Close.
-		n.OnConnRelease(q.done)
-		return rows, nil
-	}
-	// Streaming cursor: the connection lives until it's drained or closed.
 	return &boundedRows{Rows: rows, release: q.done}, nil
 }
 

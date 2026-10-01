@@ -243,16 +243,6 @@ func (r *fakeRows) Scan(...any) error { return nil }
 func (r *fakeRows) Close() error      { r.closed = true; return nil }
 func (r *fakeRows) Err() error        { return nil }
 
-// fakeAsyncRows additionally implements adapter.ConnReleaseNotifier.
-type fakeAsyncRows struct {
-	fakeRows
-	onRelease func()
-}
-
-func (r *fakeAsyncRows) OnConnRelease(f func()) { r.onRelease = f }
-
-var _ adapter.ConnReleaseNotifier = (*fakeAsyncRows)(nil)
-
 func TestBoundedTupleReaderQuerier(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
@@ -296,22 +286,6 @@ func TestBoundedQuerierExecute(t *testing.T) {
 		require.NoError(t, br.Close())
 		require.Empty(t, b.limiter, "slot released on Close")
 		require.True(t, rows.closed, "underlying rows closed")
-	})
-
-	t.Run("async rows release the slot when the backend signals, not on Close", func(t *testing.T) {
-		rows := &fakeAsyncRows{fakeRows: fakeRows{remaining: 1}}
-		b := NewBoundedTupleReader(memory.New(), &Operation{Method: apimethod.Check, Concurrency: 1})
-		q := &boundedQuerier{b, &fakeQuerier{rows: rows}}
-
-		got, err := q.Execute(ctx, &query.Statement{})
-		require.NoError(t, err)
-		_, wrapped := got.(*boundedRows)
-		require.False(t, wrapped, "async rows are returned unwrapped")
-		require.Len(t, b.limiter, 1, "slot held until the backend frees the connection")
-		require.NotNil(t, rows.onRelease, "release hook registered")
-
-		rows.onRelease() // backend drained and freed the connection
-		require.Empty(t, b.limiter, "slot released when the connection is freed")
 	})
 
 	t.Run("delegate error releases the slot immediately", func(t *testing.T) {

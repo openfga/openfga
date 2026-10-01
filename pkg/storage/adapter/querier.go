@@ -17,8 +17,7 @@ import (
 // RelationshipTupleReader.Querier.
 type Querier interface {
 	// Execute renders the statement for the backend's dialect, runs it, and returns the
-	// result cursor. If that cursor frees its backing connection before Close, the Rows
-	// should implement ConnReleaseNotifier.
+	// result cursor.
 	Execute(ctx context.Context, stmt *query.Statement) (Rows, error)
 }
 
@@ -33,19 +32,9 @@ type Rows interface {
 	// Scan copies the current row's columns into the destinations.
 	Scan(dest ...any) error
 
-	// Close releases the cursor's resources. If the backing connection is instead freed
-	// earlier, the Rows should implement ConnReleaseNotifier.
+	// Close releases the cursor's resources.
 	Close() error
 
 	// Err reports the error, if any, that terminated iteration.
 	Err() error
-}
-
-// ConnReleaseNotifier is optionally implemented by a Rows that frees its backing
-// connection before Close, e.g. it drains the result into memory and releases on
-// exhaustion. Absent this, callers assume the connection is held until Close (or drain).
-type ConnReleaseNotifier interface {
-	// OnConnRelease registers f to run once, when the connection is released (or now,
-	// if already released).
-	OnConnRelease(f func())
 }
