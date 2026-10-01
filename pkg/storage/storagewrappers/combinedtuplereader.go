@@ -8,6 +8,7 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/storage/adapter"
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
@@ -41,6 +42,12 @@ type CombinedTupleReader struct {
 }
 
 var _ storage.RelationshipTupleReader = (*CombinedTupleReader)(nil)
+
+// Querier returns nil: the typed query surface cannot express contextual tuples, so it
+// is not exposed. Overrides the embedded reader's promoted Querier, which would omit them.
+func (c *CombinedTupleReader) Querier(openfgav1.ConsistencyPreference) adapter.Querier {
+	return nil
+}
 
 // filterTuples filters out the tuples in the provided slice by removing any tuples in the slice
 // that don't match the object, relation or user provided in the filterKey.
