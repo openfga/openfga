@@ -27,6 +27,7 @@ import (
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/adapter"
+	sqliteadapter "github.com/openfga/openfga/pkg/storage/adapter/sqlite"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 )
@@ -141,9 +142,8 @@ func NewWithDB(db *sql.DB, cfg *sqlcommon.Config) (*Datastore, error) {
 }
 
 // Querier see [storage.RelationshipTupleReader].Querier.
-// Returns nil for now but will be updated in the future.
 func (s *Datastore) Querier(_ openfgav1.ConsistencyPreference) adapter.Querier {
-	return nil
+	return sqliteadapter.New(s.db)
 }
 
 // Close see [storage.OpenFGADatastore].Close.
