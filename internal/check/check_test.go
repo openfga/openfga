@@ -1628,6 +1628,140 @@ func TestResolveExclusion(t *testing.T) {
 		require.ErrorContains(t, err, "wildcard request cannot be resolved when intersection or exclusion is involved")
 		require.Nil(t, res)
 	})
+
+	// Exclusion expects one base and one subtract edge in order. Branch weights decide how edges
+	// are grouped and ordered, so verify that weight does not change which branch is base and
+	// which is subtract.
+	t.Run("preserves_base_and_subtract_roles_regardless_of_branch_weight", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		storeID := ulid.Make().String()
+		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
+
+		// document#viewer is an exclusion with weight-2 base and weight-1 subtract
+		model := testutils.MustTransformDSLToProtoWithID(`
+			model
+				schema 1.1
+			type user
+			type team
+				relations
+					define member: [user]
+			type document
+				relations
+					define banned: [user]
+					define viewer: [team#member] but not banned
+		`)
+
+		mg, err := modelgraph.New(model)
+		require.NoError(t, err)
+
+		// Force base (a Userset) to allow, ignoring tuples, so that we can compare base vs. subtract.
+		mockStrategy := NewMockEdgeStrategy(ctrl)
+		mockStrategy.EXPECT().Userset(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(&Response{Allowed: true}, nil).AnyTimes()
+
+		resolver := New(Config{
+			Model:            mg,
+			Datastore:        mockDatastore,
+			Cache:            storage.NewNoopCache(),
+			Planner:          planner.New(&planner.Config{}),
+			ConcurrencyLimit: 10,
+			// Register the mockStrategy under every userset strategy name so the planner's pick doesn't matter.
+			EdgeStrategies: map[string]EdgeStrategy{
+				DefaultStrategyName:   mockStrategy,
+				WeightTwoStrategyName: mockStrategy,
+			},
+		})
+
+		req, err := NewRequest(RequestParams{
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+		})
+		require.NoError(t, err)
+
+		// Empty iterator: mockStrategy ignores it; needed only to reach the strategy call.
+		mockDatastore.EXPECT().ReadUsersetTuples(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+			Return(storage.NewStaticTupleIterator(nil), nil).AnyTimes()
+		// The user is not banned.
+		mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+			Return(nil, storage.ErrNotFound).AnyTimes()
+
+		edges, ok := mg.GetEdgesFromNodeID("document#viewer")
+		require.True(t, ok)
+
+		res, err := resolver.ResolveExclusion(context.Background(), req, edges[0].GetTo())
+		require.NoError(t, err)
+		// Base (weight-2) was allowed and subtract (weight-1) was false: result should be true
+		// if edges are ordered properly.
+		require.True(t, res.GetAllowed())
+	})
+
+	t.Run("returns_true_when_subtract_cannot_apply_to_user_type", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		storeID := ulid.Make().String()
+		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
+
+		// document#viewer is an exclusion with weight-2 base and weight-0 subtract for type user
+		model := testutils.MustTransformDSLToProtoWithID(`
+			model
+				schema 1.1
+			type user
+			type employee
+			type team
+				relations
+					define member: [user]
+			type document
+				relations
+					define banned: [employee]
+					define viewer: [team#member] but not banned
+		`)
+
+		mg, err := modelgraph.New(model)
+		require.NoError(t, err)
+
+		// Force base (a Userset) to allow, ignoring tuples, so that we can compare base vs. subtract.
+		mockStrategy := NewMockEdgeStrategy(ctrl)
+		mockStrategy.EXPECT().Userset(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(&Response{Allowed: true}, nil).AnyTimes()
+
+		resolver := New(Config{
+			Model:            mg,
+			Datastore:        mockDatastore,
+			Cache:            storage.NewNoopCache(),
+			Planner:          planner.New(&planner.Config{}),
+			ConcurrencyLimit: 10,
+			// Register the mockStrategy under every userset strategy name so the planner's pick doesn't matter.
+			EdgeStrategies: map[string]EdgeStrategy{
+				DefaultStrategyName:   mockStrategy,
+				WeightTwoStrategyName: mockStrategy,
+			},
+		})
+
+		req, err := NewRequest(RequestParams{
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+		})
+		require.NoError(t, err)
+
+		// Empty iterator: mockStrategy ignores it; needed only to reach the strategy call.
+		mockDatastore.EXPECT().ReadUsersetTuples(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+			Return(storage.NewStaticTupleIterator(nil), nil).AnyTimes()
+		// No ReadUserTuple call since subtract should be pruned.
+
+		edges, ok := mg.GetEdgesFromNodeID("document#viewer")
+		require.True(t, ok)
+
+		res, err := resolver.ResolveExclusion(context.Background(), req, edges[0].GetTo())
+		require.NoError(t, err)
+		require.True(t, res.GetAllowed())
+	})
 }
 
 func TestResolveCheckUsersetRequest(t *testing.T) {
