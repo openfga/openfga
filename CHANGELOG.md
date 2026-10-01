@@ -12,6 +12,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ### Fixed
 - `ReadUserTuple` now returns the tuple's timestamp for the Postgres, MySQL, and SQLite datastores; it previously returned a zero timestamp because the query did not select `inserted_at`. [#3194](https://github.com/openfga/openfga/pull/3194)
+- Fixed `utils.LinearBuckets` accumulating its step in a float64 loop variable, which compounded rounding error and could drop the final bucket. The `condition_evaluation_cost` histogram requests `LinearBuckets(0, 100, 10)`, whose width is `100/9`, so it was built with 9 buckets topping out at ~88.89 instead of 10 buckets ending at 100 — evaluations costing more than ~88.89 were recorded in `+Inf` rather than a real bucket. Boundaries are now computed by index with exact endpoints, and a non-positive `count` returns `nil` instead of looping forever. See `internal/utils/bucket.go`. [#3226](https://github.com/openfga/openfga/pull/3226)
 
 ## [1.21.0] - 2026-09-20
 ### Added
