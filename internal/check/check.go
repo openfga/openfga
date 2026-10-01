@@ -391,7 +391,7 @@ func (r *Resolver) SplitWeightOne(terminal string, edges ...*graph.WeightedAutho
 }
 
 // GatherLogicalEdges returns the LogicalEdge-s for edges. All weight-1 edges are combined in a
-// GroupEdge and each weight > 1 edge is a SingleEdge.
+// GroupEdge and each weight > 1 edge is a SingleEdge. Edge ordering is NOT preserved.
 func (r *Resolver) GatherLogicalEdges(req *Request, node *graph.WeightedAuthorizationModelNode, edges []*graph.WeightedAuthorizationModelEdge) []LogicalEdge {
 	if len(edges) == 1 {
 		return []LogicalEdge{(*SingleEdge)(edges[0])}
