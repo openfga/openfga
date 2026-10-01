@@ -407,7 +407,11 @@ func (r *Resolver) GatherLogicalEdges(req *Request, node *graph.WeightedAuthoriz
 	// One LogicalEdge for all weightOneEdges + one LogicalEdge for each weightTwoPlusEdges
 	logicalEdges := make([]LogicalEdge, 0, 1+len(weightTwoPlusEdges))
 
-	if len(weightOneEdges) > 0 {
+	switch len(weightOneEdges) {
+	case 0:
+	case 1:
+		logicalEdges = append(logicalEdges, (*SingleEdge)(weightOneEdges[0]))
+	default:
 		logicalEdges = append(logicalEdges, &GroupEdge{Node: node, Edges: weightOneEdges})
 	}
 
