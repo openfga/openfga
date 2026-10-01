@@ -813,11 +813,12 @@ func (r *Resolver) ResolveExclusionEdges(ctx context.Context, req *Request, edge
 	}()
 
 	chBase := make(chan ResponseMsg, 1)
-	baseEdge := edges[0]
 
+	// edges[0] is either *SingleEdge (base) or *GroupEdge{base, subtract}.
+	// ResolveLogicalEdge will handle resolving the GroupEdge as an exclusion.
 	pool.Go(func() error {
 		// nil visited, since exclusion is never part of a cycle or recursion
-		res, err := r.ResolveLogicalEdge(ctx, req, baseEdge, nil)
+		res, err := r.ResolveLogicalEdge(ctx, req, edges[0], nil)
 		concurrency.TrySendThroughChannel(ctx, ResponseMsg{Res: res, Err: err}, chBase)
 		close(chBase)
 		return nil
@@ -892,8 +893,7 @@ func (r *Resolver) ResolveExclusionEdges(ctx context.Context, req *Request, edge
 	return &Response{Allowed: true}, nil
 }
 
-// ResolveExclusion reduces as a logical exclusion operation
-// if base is false, short circuit.
+// ResolveExclusion reduces as a logical exclusion operation. If base is false, short circuit.
 func (r *Resolver) ResolveExclusion(ctx context.Context, req *Request, node *graph.WeightedAuthorizationModelNode) (*Response, error) {
 	ctx, span := tracer.Start(ctx, "ResolveExclusion", trace.WithAttributes(
 		attribute.String("tuple_key", req.GetTupleString()),
@@ -902,17 +902,16 @@ func (r *Resolver) ResolveExclusion(ctx context.Context, req *Request, node *gra
 	defer span.End()
 
 	edges, ok := r.model.GetEdgesFromNode(node)
+	if !ok || len(edges) != 2 { // exclusion always has one base and one subtract edge
+		return nil, ErrPanicRequest
+	}
+
+	baseWeight, ok := r.model.GetEdgeWeight(edges[0], req.GetUserType())
 	if !ok {
 		return nil, ErrPanicRequest
 	}
 
-	// base edge validation
-	if _, ok := r.model.GetEdgeWeight(edges[0], req.GetUserType()); !ok {
-		return nil, ErrPanicRequest
-	}
-
-	// subtract edge validation
-	_, subtractHasPath := r.model.GetEdgeWeight(edges[1], req.GetUserType())
+	subtractWeight, subtractHasPath := r.model.GetEdgeWeight(edges[1], req.GetUserType())
 	if !subtractHasPath {
 		if tuple.IsObjectRelation(req.GetTupleKey().GetUser()) {
 			// If the user is an object relation and there is no way to the userset in the exclusion part we
@@ -923,7 +922,20 @@ func (r *Resolver) ResolveExclusion(ctx context.Context, req *Request, node *gra
 		edges = edges[:1]
 	}
 
-	logicalEdges := r.GatherLogicalEdges(req, node, edges)
+	// Exclusion expects edges[0] to be the base edge or GroupEdge{base, subtract} if both are
+	// weight-1, and edges[1] to be the subtract edge if applicable; can't call GatherLogicalEdges
+	// as that may change the order.
+	var logicalEdges []LogicalEdge
+	switch {
+	case !subtractHasPath:
+		logicalEdges = []LogicalEdge{(*SingleEdge)(edges[0])}
+	case baseWeight == 1 && subtractWeight == 1:
+		logicalEdges = []LogicalEdge{&GroupEdge{Node: node, Edges: edges}}
+	default:
+		// at least one edge has weight > 1, can't group
+		logicalEdges = []LogicalEdge{(*SingleEdge)(edges[0]), (*SingleEdge)(edges[1])}
+	}
+
 	return r.ResolveExclusionEdges(ctx, req, logicalEdges)
 }
 
