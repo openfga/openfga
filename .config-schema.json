@@ -357,6 +357,31 @@
                 "oidc": {
                     "description": "The OIDC provider specific settings. This must be set if 'authn.method=oidc'.",
                     "$ref": "#/definitions/oidc"
+                },
+                "tokenCache": {
+                    "type": "object",
+                    "description": "Configuration for caching authenticated JWT tokens to avoid repeated signature verification. Only applies when authn.method=oidc.",
+                    "properties": {
+                        "enabled": {
+                            "description": "Enable caching of authenticated JWT tokens.",
+                            "type": "boolean",
+                            "default": false,
+                            "x-env-variable": "OPENFGA_AUTHN_TOKEN_CACHE_ENABLED"
+                        },
+                        "ttl": {
+                            "description": "The TTL of cached authentication tokens. The effective TTL per entry is min(this value, token exp - now).",
+                            "type": "string",
+                            "default": "5m",
+                            "x-env-variable": "OPENFGA_AUTHN_TOKEN_CACHE_TTL"
+                        },
+                        "maxSize": {
+                            "description": "The maximum number of tokens to cache.",
+                            "type": "integer",
+                            "default": 10000,
+                            "minimum": 1,
+                            "x-env-variable": "OPENFGA_AUTHN_TOKEN_CACHE_MAX_SIZE"
+                        }
+                    }
                 }
 
             }

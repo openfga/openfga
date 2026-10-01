@@ -92,6 +92,15 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 		util.MustBindPFlag("authn.oidc.clientIdClaims", flags.Lookup("authn-oidc-client-id-claims"))
 		util.MustBindEnv("authn.oidc.clientIdClaims", "OPENFGA_AUTHN_OIDC_CLIENT_ID_CLAIMS")
 
+		util.MustBindPFlag("authn.tokenCache.enabled", flags.Lookup("authn-token-cache-enabled"))
+		util.MustBindEnv("authn.tokenCache.enabled", "OPENFGA_AUTHN_TOKEN_CACHE_ENABLED")
+
+		util.MustBindPFlag("authn.tokenCache.ttl", flags.Lookup("authn-token-cache-ttl"))
+		util.MustBindEnv("authn.tokenCache.ttl", "OPENFGA_AUTHN_TOKEN_CACHE_TTL")
+
+		util.MustBindPFlag("authn.tokenCache.maxSize", flags.Lookup("authn-token-cache-max-size"))
+		util.MustBindEnv("authn.tokenCache.maxSize", "OPENFGA_AUTHN_TOKEN_CACHE_MAX_SIZE")
+
 		util.MustBindPFlag("datastore.engine", flags.Lookup("datastore-engine"))
 		util.MustBindEnv("datastore.engine", "OPENFGA_DATASTORE_ENGINE")
 
