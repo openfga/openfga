@@ -40,6 +40,7 @@ type LogicalEdge interface {
 	CacheKey(req *Request) keys.Key
 }
 
+// GroupEdge bundles weight-1 Edges that share a parent Node.
 type GroupEdge struct {
 	Node  *graph.WeightedAuthorizationModelNode
 	Edges []*graph.WeightedAuthorizationModelEdge
