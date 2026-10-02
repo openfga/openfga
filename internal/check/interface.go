@@ -11,6 +11,8 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 )
 
+// CheckResolver resolves the query for a node or multiple edges into an allowed/denied result.
+// Strategies can delegate to it to resolve the smaller sub-queries they may break a Check into.
 type CheckResolver interface {
 	ResolveUnion(context.Context, *Request, *graph.WeightedAuthorizationModelNode, *sync.Map) (*Response, error)
 	ResolveUnionEdges(context.Context, *Request, []LogicalEdge, *sync.Map) (*Response, error)
@@ -18,13 +20,15 @@ type CheckResolver interface {
 	ResolveExclusionEdges(context.Context, *Request, []LogicalEdge) (*Response, error)
 }
 
+// GroupStrategy resolves a GroupEdge (edges bundled under one operator node) as a set operation.
 type GroupStrategy interface {
-	Union(ctx context.Context, req *Request, edge *GroupEdge) (*Response, error)
-	Intersection(ctx context.Context, req *Request, edge *GroupEdge) (*Response, error)
-	Exclusion(ctx context.Context, req *Request, edge *GroupEdge) (*Response, error)
+	Union(context.Context, *Request, *GroupEdge) (*Response, error)
+	Intersection(context.Context, *Request, *GroupEdge) (*Response, error)
+	Exclusion(context.Context, *Request, *GroupEdge) (*Response, error)
 }
 
+// EdgeStrategy resolves a single userset or TTU edge by expanding its tuples.
 type EdgeStrategy interface {
-	Userset(ctx context.Context, req *Request, edge *graph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator, _ *sync.Map) (*Response, error)
-	TTU(ctx context.Context, req *Request, edge *graph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator, _ *sync.Map) (*Response, error)
+	Userset(context.Context, *Request, *graph.WeightedAuthorizationModelEdge, storage.TupleKeyIterator, *sync.Map) (*Response, error)
+	TTU(context.Context, *Request, *graph.WeightedAuthorizationModelEdge, storage.TupleKeyIterator, *sync.Map) (*Response, error)
 }
