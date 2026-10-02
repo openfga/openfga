@@ -43,6 +43,7 @@ var _ EdgeStrategy = &DefaultStrategy{}
 
 func (s *DefaultStrategy) Union(ctx context.Context, req *Request, edge *GroupEdge) (*Response, error) {
 	edges := edge.Explode()
+	// nil visited: a GroupEdge holds only weight-1 edges, which are never cyclic or recursive.
 	return s.resolver.ResolveUnionEdges(ctx, req, edges, nil)
 }
 
