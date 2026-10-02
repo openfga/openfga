@@ -14,6 +14,7 @@ import (
 	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
 	"golang.org/x/sync/singleflight"
+	"google.golang.org/grpc"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	parser "github.com/openfga/language/pkg/go/transformer"
@@ -533,6 +534,67 @@ func TestListObjectsSeqError(t *testing.T) {
 		}, srv)
 		require.ErrorIs(t, err, errorRet)
 	})
+}
+
+// erroringStreamServer fails every Send, so tests can exercise the transport-error
+// path in ExecuteStreamed independently of pipeline/resolution errors.
+type erroringStreamServer struct {
+	grpc.ServerStream
+	err error
+}
+
+func (s *erroringStreamServer) Send(*openfgav1.StreamedListObjectsResponse) error {
+	return s.err
+}
+
+// TestExecuteStreamedPipelineSendError asserts that ExecuteStreamed's pipeline path
+// distinguishes a transport (srv.Send) failure from a resolution-deadline failure:
+// a Send error must be returned as the RPC error and must NOT set DeadlineExceeded,
+// since the list wasn't truncated by the configured ListObjects deadline.
+func TestExecuteStreamedPipelineSendError(t *testing.T) {
+	ds := memory.New()
+	t.Cleanup(ds.Close)
+
+	modelDsl := `
+		model
+			schema 1.1
+		type user
+		type document
+			relations
+				define viewer: [user]`
+	tuples := []string{"document:1#viewer@user:anne"}
+
+	storeID, model := storagetest.BootstrapFGAStore(t, ds, modelDsl, tuples)
+	ts, err := typesystem.NewAndValidate(context.Background(), model)
+	require.NoError(t, err)
+	ctx := typesystem.ContextWithTypesystem(context.Background(), ts)
+
+	checkResolver, checkResolverCloser, err := graph.NewOrderedCheckResolvers().Build()
+	require.NoError(t, err)
+	t.Cleanup(checkResolverCloser)
+
+	q, err := NewListObjectsQuery(
+		ds,
+		checkResolver,
+		fakeStoreID,
+		WithListObjectsPipelineEnabled(true),
+	)
+	require.NoError(t, err)
+
+	sendErr := errors.New("transport send failed")
+	srv := &erroringStreamServer{err: sendErr}
+
+	metadata, err := q.ExecuteStreamed(ctx, &openfgav1.StreamedListObjectsRequest{
+		StoreId:  storeID,
+		Type:     "document",
+		Relation: "viewer",
+		User:     "user:anne",
+	}, srv)
+
+	require.Nil(t, metadata)
+	require.ErrorIs(t, err, sendErr)
+	require.NotErrorIs(t, err, context.DeadlineExceeded,
+		"a transport Send error must not be classified as a deadline-exceeded (truncated list) error")
 }
 
 func reportLatencies(b *testing.B, latencies []time.Duration) {

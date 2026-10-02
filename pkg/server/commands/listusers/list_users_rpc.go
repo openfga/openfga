@@ -232,6 +232,7 @@ func (l *listUsersQuery) ListUsers(
 					DispatchCounter:       new(atomic.Uint32),
 					WasDispatchThrottled:  new(atomic.Bool),
 					WasDatastoreThrottled: new(atomic.Bool),
+					WasDeadlineExceeded:   new(atomic.Bool),
 				},
 			}, nil
 		}
@@ -284,13 +285,22 @@ func (l *listUsersQuery) ListUsers(
 	select {
 	case err := <-expandErrCh:
 		if deadlineExceeded || errors.Is(err, context.DeadlineExceeded) {
-			// We skip the error because we want to send at least partial results to the user (but we should probably set response headers)
+			// Skip the error so partial results still reach the caller. The
+			// WasDeadlineExceeded metadata flag lets the handler warn them the
+			// list is truncated.
 			break
 		}
 		telemetry.TraceError(span, err)
 		return nil, err
 	default:
 		break
+	}
+
+	// Capture before cancelCtx(); canceling a timeout context replaces
+	// DeadlineExceeded with Canceled.
+	wasDeadlineExceeded := new(atomic.Bool)
+	if errors.Is(cancellableCtx.Err(), context.DeadlineExceeded) {
+		wasDeadlineExceeded.Store(true)
 	}
 
 	cancelCtx()
@@ -316,6 +326,7 @@ func (l *listUsersQuery) ListUsers(
 			DispatchCounter:       &dispatchCount,
 			WasDispatchThrottled:  l.wasDispatchThrottled,
 			WasDatastoreThrottled: l.wasDatastoreThrottled,
+			WasDeadlineExceeded:   wasDeadlineExceeded,
 		},
 	}, nil
 }

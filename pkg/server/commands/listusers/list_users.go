@@ -115,6 +115,12 @@ type listUsersResponseMetadata struct {
 
 	// WasDatastoreThrottled indicates whether the request was datastore throttled.
 	WasDatastoreThrottled *atomic.Bool
+
+	// WasDeadlineExceeded indicates that resolution stopped early because the
+	// ListUsers deadline was reached, so Users holds whatever was found up to
+	// that point rather than the full set. Callers that surface results to a
+	// client should tell it the list is partial.
+	WasDeadlineExceeded *atomic.Bool
 }
 
 func (r *listUsersResponse) GetUsers() []*openfgav1.User {
