@@ -9,8 +9,19 @@ permissions:
 
 jobs:
   tests-unit:
+    name: Unit tests (${{ matrix.test-mode.name }})
     runs-on: ubuntu-latest-4-cores
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        test-mode:
+          - name: standard
+            gofips140: "off"
+          - name: fips
+            gofips140: "v1.0.0"
+    env:
+      GOFIPS140: ${{ matrix.test-mode.gofips140 }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -40,14 +51,25 @@ jobs:
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
         with:
           files: ./coverageunit.out
-          flags: unit
+          flags: unit-${{ matrix.test-mode.name }}
           verbose: true
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: true
 
   tests-storage:
+    name: Storage integration tests (${{ matrix.test-mode.name }})
     runs-on: ubuntu-latest-4-cores
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        test-mode:
+          - name: standard
+            gofips140: "off"
+          - name: fips
+            gofips140: "v1.0.0"
+    env:
+      GOFIPS140: ${{ matrix.test-mode.gofips140 }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -77,14 +99,25 @@ jobs:
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
         with:
           files: ./coverageunit.out
-          flags: storage
+          flags: storage-${{ matrix.test-mode.name }}
           verbose: true
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: true
 
   tests-matrix:
+    name: Matrix integration tests (${{ matrix.test-mode.name }})
     runs-on: ubuntu-latest-4-cores
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        test-mode:
+          - name: standard
+            gofips140: "off"
+          - name: fips
+            gofips140: "v1.0.0"
+    env:
+      GOFIPS140: ${{ matrix.test-mode.gofips140 }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -114,7 +147,7 @@ jobs:
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
         with:
           files: ./coverageunit.out
-          flags: matrix
+          flags: matrix-${{ matrix.test-mode.name }}
           verbose: true
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: true
