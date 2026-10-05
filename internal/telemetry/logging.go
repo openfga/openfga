@@ -32,6 +32,10 @@ type customLogger struct {
 // OTEL_LOGS_EXPORTER to "otlp", which would make OpenFGA export logs by
 // default and change behavior on upgrade. OpenFGA deliberately treats an
 // unset (or empty) value as disabled; "none" is also disabled.
+//
+// "console" is accepted for standard-OTel parity, but it duplicates
+// OpenFGA's own stdout sink (every log is written to stdout twice), so it is
+// only useful for debugging.
 func OTLPLogsEnabled() bool {
 	exporter := os.Getenv("OTEL_LOGS_EXPORTER")
 	return exporter != "" && exporter != "none"
