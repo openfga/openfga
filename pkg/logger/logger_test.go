@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -259,6 +260,27 @@ func TestSamplingDropsRepeatedEntries(t *testing.T) {
 	lines := countLines(t, out)
 	require.GreaterOrEqual(t, lines, 100)
 	require.Less(t, lines, total)
+}
+
+func TestDefaultPathTeesNopCore(t *testing.T) {
+	out := filepath.Join(t.TempDir(), "out.log")
+	l, err := NewLogger(WithLevel("info"), WithOutputPaths(out))
+	require.NoError(t, err)
+
+	// The default path must still apply the unconditional tee, so the top-level
+	// core is the multiCore slice returned by zapcore.NewTee. Walking it by
+	// reflection proves the second core is a NopCore. That the sampler is not
+	// the top-level core also shows stdout sampling remains inside the tee,
+	// exactly as before the tee was made unconditional (D18).
+	v := reflect.ValueOf(l.Core())
+	require.Equal(t, reflect.Slice, v.Kind())
+
+	cores := make([]zapcore.Core, v.Len())
+	for i := 0; i < v.Len(); i++ {
+		cores[i] = v.Index(i).Interface().(zapcore.Core)
+	}
+	require.Len(t, cores, 2)
+	require.Contains(t, cores, zapcore.NewNopCore())
 }
 
 func TestTeeDeliversToBothCores(t *testing.T) {
