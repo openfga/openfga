@@ -231,11 +231,14 @@ func NewLogger(options ...OptionLogger) (*ZapLogger, error) {
 	cfg.EncoderConfig.CallerKey = "" // remove the "caller" field
 	cfg.DisableStacktrace = true
 
-	// Capture the production sampling policy before disabling the config's
-	// built-in sampler. When an OTEL core is attached the sampler must wrap the
-	// combined tee (not just stdout), so it is applied below instead.
+	// Capture the production sampling policy. When an OTEL core is present the
+	// sampler must wrap the combined tee (not just stdout), so disable the
+	// config's built-in sampler and apply the policy after teeing. Without an
+	// OTEL core the config's sampler is left intact, so stdout sampling is
+	// unchanged.
 	sampling := cfg.Sampling
-	if logOptions.otelCore != nil {
+	hasOTELCore := logOptions.otelCore != nil
+	if hasOTELCore {
 		cfg.Sampling = nil
 	}
 
@@ -261,34 +264,39 @@ func NewLogger(options ...OptionLogger) (*ZapLogger, error) {
 		return nil, err
 	}
 
-	var otelCore zapcore.Core
-	if logOptions.otelCore != nil {
+	// Always tee stdout (wrapped to strip the bridge-only context field) with
+	// the OTEL core. When OTLP is not configured the second core is a NopCore,
+	// so there is no conditional core construction.
+	otelCore := zapcore.NewNopCore()
+	if hasOTELCore {
 		// The otelzap core enables all levels by default (filtering is deferred
 		// to the OTEL SDK), so raise it to the configured level to keep OTLP
-		// export consistent with stdout.
+		// export consistent with stdout. NopCore needs no level wrapping.
 		otelCore, err = zapcore.NewIncreaseLevelCore(logOptions.otelCore, level)
 		if err != nil {
 			return nil, fmt.Errorf("failed to apply log level to the OTEL core: %w", err)
 		}
-
-		// Tee stdout (wrapped to strip the bridge-only context field) and the
-		// OTEL core, then wrap the combined core in the production sampler so
-		// both sinks receive the identical sampled stream.
-		log = log.WithOptions(zap.WrapCore(func(c zapcore.Core) zapcore.Core {
-			tee := zapcore.NewTee(&contextFilterCore{Core: c}, otelCore)
-			var samplerOpts []zapcore.SamplerOption
-			if sampling.Hook != nil {
-				samplerOpts = append(samplerOpts, zapcore.SamplerHook(sampling.Hook))
-			}
-			return zapcore.NewSamplerWithOptions(tee, time.Second, sampling.Initial, sampling.Thereafter, samplerOpts...)
-		}))
 	}
+
+	log = log.WithOptions(zap.WrapCore(func(c zapcore.Core) zapcore.Core {
+		tee := zapcore.NewTee(&contextFilterCore{Core: c}, otelCore)
+		if !hasOTELCore {
+			return tee
+		}
+		// Wrap the combined core in the production sampler so both sinks
+		// receive the identical sampled stream.
+		var samplerOpts []zapcore.SamplerOption
+		if sampling.Hook != nil {
+			samplerOpts = append(samplerOpts, zapcore.SamplerHook(sampling.Hook))
+		}
+		return zapcore.NewSamplerWithOptions(tee, time.Second, sampling.Initial, sampling.Thereafter, samplerOpts...)
+	}))
 
 	if logOptions.format == "json" {
 		log = log.With(zap.String("build.version", build.Version), zap.String("build.commit", build.Commit))
 	}
 
-	return &ZapLogger{Logger: log, hasOTELCore: logOptions.otelCore != nil}, nil
+	return &ZapLogger{Logger: log, hasOTELCore: hasOTELCore}, nil
 }
 
 // contextFilterCore wraps a zapcore.Core and strips context.Context fields
