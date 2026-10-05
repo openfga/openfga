@@ -265,8 +265,8 @@ func NewLogger(options ...OptionLogger) (*ZapLogger, error) {
 	}
 
 	// Always tee stdout (wrapped to strip the bridge-only context field) with
-	// the OTEL core. When OTLP is not configured the second core is a NopCore,
-	// so there is no conditional core construction.
+	// the OTEL core. When OTLP is not configured the OTEL side is a NopCore;
+	// only a real OTEL core is level-wrapped.
 	otelCore := zapcore.NewNopCore()
 	if hasOTELCore {
 		// The otelzap core enables all levels by default (filtering is deferred

@@ -268,10 +268,9 @@ func TestDefaultPathTeesNopCore(t *testing.T) {
 	require.NoError(t, err)
 
 	// The default path must still apply the unconditional tee, so the top-level
-	// core is the multiCore slice returned by zapcore.NewTee. Walking it by
-	// reflection proves the second core is a NopCore. That the sampler is not
-	// the top-level core also shows stdout sampling remains inside the tee,
-	// exactly as before the tee was made unconditional (D18).
+	// core is the multiCore slice returned by zapcore.NewTee with a filtered
+	// stdout core and a NopCore. Walking it by reflection is the only way to
+	// observe the tee's shape (a NopCore is behaviorally invisible).
 	v := reflect.ValueOf(l.Core())
 	require.Equal(t, reflect.Slice, v.Kind())
 
@@ -280,7 +279,18 @@ func TestDefaultPathTeesNopCore(t *testing.T) {
 		cores[i] = v.Index(i).Interface().(zapcore.Core)
 	}
 	require.Len(t, cores, 2)
-	require.Contains(t, cores, zapcore.NewNopCore())
+	require.IsType(t, &contextFilterCore{}, cores[0])
+	require.IsType(t, zapcore.NewNopCore(), cores[1])
+
+	// Sampling is unchanged: repeated identical messages beyond the production
+	// sampler's budget are still dropped on the stdout side (D18).
+	const total = 500
+	for i := 0; i < total; i++ {
+		l.Info("repeated message")
+	}
+	lines := countLines(t, out)
+	require.GreaterOrEqual(t, lines, 100)
+	require.Less(t, lines, total)
 }
 
 func TestTeeDeliversToBothCores(t *testing.T) {
