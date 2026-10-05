@@ -1246,18 +1246,6 @@ func TestDefaultConfig(t *testing.T) {
 	require.True(t, val.Exists())
 	require.Equal(t, val.String(), cfg.Log.Format)
 
-	val = res.Get("properties.log.properties.otlp.properties.enabled.default")
-	require.True(t, val.Exists())
-	require.Equal(t, val.Bool(), cfg.Log.OTLP.Enabled)
-
-	val = res.Get("properties.log.properties.otlp.properties.endpoint.default")
-	require.True(t, val.Exists())
-	require.Equal(t, val.String(), cfg.Log.OTLP.Endpoint)
-
-	val = res.Get("properties.log.properties.otlp.properties.tls.properties.enabled.default")
-	require.True(t, val.Exists())
-	require.Equal(t, val.Bool(), cfg.Log.OTLP.TLS.Enabled)
-
 	val = res.Get("properties.maxTuplesPerWrite.default")
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), cfg.MaxTuplesPerWrite)
@@ -1523,22 +1511,21 @@ func TestDefaultConfig(t *testing.T) {
 
 func TestOTLPLogsEnabled(t *testing.T) {
 	tests := []struct {
-		name     string
-		otlp     bool
-		endpoint string
-		level    string
-		want     bool
+		name         string
+		logsExporter string
+		level        string
+		want         bool
 	}{
-		{name: "disabled_by_default", otlp: false, level: "info", want: false},
-		{name: "explicit_flag_enables_export", otlp: true, level: "info", want: true},
-		{name: "endpoint_alone_does_not_enable_export", otlp: false, endpoint: "collector:4317", level: "info", want: false},
-		{name: "none_level_disables_export", otlp: true, endpoint: "collector:4317", level: "none", want: false},
+		{name: "unset_is_disabled", logsExporter: "", level: "info", want: false},
+		{name: "none_is_disabled", logsExporter: "none", level: "info", want: false},
+		{name: "otlp_enables_export", logsExporter: "otlp", level: "info", want: true},
+		{name: "console_enables_export", logsExporter: "console", level: "info", want: true},
+		{name: "none_level_disables_export", logsExporter: "otlp", level: "none", want: false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("OTEL_LOGS_EXPORTER", tt.logsExporter)
 			cfg := serverconfig.DefaultConfig()
-			cfg.Log.OTLP.Enabled = tt.otlp
-			cfg.Log.OTLP.Endpoint = tt.endpoint
 			cfg.Log.Level = tt.level
 			require.Equal(t, tt.want, logOTLPEnabled(cfg))
 		})
@@ -1650,74 +1637,6 @@ func TestParseConfigCacheTTLJitterPercentageFromEnv(t *testing.T) {
 	cfg, err := ReadConfig()
 	require.NoError(t, err)
 	require.Equal(t, uint32(18), cfg.CacheTTLJitterPercentage)
-}
-
-func TestLogOTLPEnvBindings(t *testing.T) {
-	tests := []struct {
-		name         string
-		env          map[string]string
-		wantEndpoint string
-		wantEnabled  bool
-	}{
-		{
-			name:         "generic_otel_endpoint_sets_destination_but_does_not_enable_export",
-			env:          map[string]string{"OTEL_EXPORTER_OTLP_ENDPOINT": "generic-collector:4317"},
-			wantEndpoint: "generic-collector:4317",
-			wantEnabled:  false,
-		},
-		{
-			name:         "explicit_openfga_flag_enables_export",
-			env:          map[string]string{"OPENFGA_LOG_OTLP_ENABLED": "true", "OPENFGA_LOG_OTLP_ENDPOINT": "logs-collector:4317"},
-			wantEndpoint: "logs-collector:4317",
-			wantEnabled:  true,
-		},
-		{
-			name:         "otel_logs_endpoint_takes_precedence_over_generic",
-			env:          map[string]string{"OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": "logs-collector:4317", "OTEL_EXPORTER_OTLP_ENDPOINT": "generic-collector:4317"},
-			wantEndpoint: "logs-collector:4317",
-			wantEnabled:  false,
-		},
-		{
-			name:         "openfga_endpoint_takes_precedence_over_otel_vars",
-			env:          map[string]string{"OPENFGA_LOG_OTLP_ENDPOINT": "openfga-collector:4317", "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": "logs-collector:4317", "OTEL_EXPORTER_OTLP_ENDPOINT": "generic-collector:4317"},
-			wantEndpoint: "openfga-collector:4317",
-			wantEnabled:  false,
-		},
-	}
-
-	// Neutralize any ambient OTLP env so the assertions are deterministic on
-	// any CI host; each subtest then sets only the vars it exercises.
-	for _, k := range []string{
-		"OPENFGA_LOG_OTLP_ENABLED",
-		"OPENFGA_LOG_OTLP_ENDPOINT",
-		"OTEL_EXPORTER_OTLP_LOGS_ENDPOINT",
-		"OTEL_EXPORTER_OTLP_ENDPOINT",
-	} {
-		t.Setenv(k, "")
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			viper.Reset()
-			t.Cleanup(viper.Reset)
-			util.PrepareTempConfigDir(t)
-			for k, v := range tt.env {
-				t.Setenv(k, v)
-			}
-
-			runCmd := NewRunCommand()
-			runCmd.RunE = func(cmd *cobra.Command, _ []string) error { return nil }
-			rootCmd := cmd.NewRootCommand()
-			rootCmd.AddCommand(runCmd)
-			rootCmd.SetArgs([]string{"run"})
-			require.NoError(t, rootCmd.Execute())
-
-			cfg, err := ReadConfig()
-			require.NoError(t, err)
-			require.Equal(t, tt.wantEndpoint, cfg.Log.OTLP.Endpoint)
-			require.Equal(t, tt.wantEnabled, cfg.Log.OTLP.Enabled)
-		})
-	}
 }
 
 func TestRunCommandConfigIsMerged(t *testing.T) {
