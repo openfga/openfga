@@ -3,30 +3,16 @@ package telemetry
 import (
 	"context"
 	"fmt"
+	"os"
 
+	"go.opentelemetry.io/contrib/exporters/autoexport"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 	"go.opentelemetry.io/otel/sdk/resource"
-	"google.golang.org/grpc/credentials"
 )
 
 // LoggerOption configures the OTLP log logger provider built by [MustNewLoggerProvider].
 type LoggerOption func(d *customLogger)
-
-// WithLogOTLPEndpoint sets the OTLP collector endpoint for log export.
-func WithLogOTLPEndpoint(endpoint string) LoggerOption {
-	return func(d *customLogger) {
-		d.endpoint = endpoint
-	}
-}
-
-// WithLogOTLPInsecure disables TLS for the OTLP log export connection.
-func WithLogOTLPInsecure() LoggerOption {
-	return func(d *customLogger) {
-		d.insecure = true
-	}
-}
 
 // WithLogAttributes sets the resource attributes attached to emitted logs.
 func WithLogAttributes(attrs ...attribute.KeyValue) LoggerOption {
@@ -36,15 +22,26 @@ func WithLogAttributes(attrs ...attribute.KeyValue) LoggerOption {
 }
 
 type customLogger struct {
-	endpoint   string
-	insecure   bool
 	attributes []attribute.KeyValue
 }
 
+// OTLPLogsEnabled reports whether OTLP log export is configured via the
+// standard OTEL_LOGS_EXPORTER environment variable.
+//
+// Deviation from the OpenTelemetry specification: the spec defaults
+// OTEL_LOGS_EXPORTER to "otlp", which would make OpenFGA export logs by
+// default and change behavior on upgrade. OpenFGA deliberately treats an
+// unset (or empty) value as disabled; "none" is also disabled.
+func OTLPLogsEnabled() bool {
+	exporter := os.Getenv("OTEL_LOGS_EXPORTER")
+	return exporter != "" && exporter != "none"
+}
+
 // MustNewLoggerProvider builds an OTLP log provider from opts, panicking if the
-// resource cannot be built. The exporter dials lazily, so an unreachable
-// collector does not panic here.
-func MustNewLoggerProvider(opts ...LoggerOption) *sdklog.LoggerProvider {
+// resource or exporter cannot be built. The exporter is selected by the
+// standard OTEL_LOGS_EXPORTER environment variable and dials lazily, so an
+// unreachable collector does not panic here.
+func MustNewLoggerProvider(ctx context.Context, opts ...LoggerOption) *sdklog.LoggerProvider {
 	l := &customLogger{
 		attributes: []attribute.KeyValue{},
 	}
@@ -65,23 +62,9 @@ func MustNewLoggerProvider(opts ...LoggerOption) *sdklog.LoggerProvider {
 		panic(err)
 	}
 
-	endpoint, schemeSecure := ParseOTLPEndpoint(l.endpoint)
-	secure := ResolveOTLPSecurity(!l.insecure, schemeSecure)
-
-	options := []otlploggrpc.Option{
-		otlploggrpc.WithEndpoint(endpoint),
-	}
-
-	// Explicit creds keep OpenFGA's resolved security authoritative over the OTel insecure env vars.
-	if secure {
-		options = append(options, otlploggrpc.WithTLSCredentials(credentials.NewTLS(nil)))
-	} else {
-		options = append(options, otlploggrpc.WithInsecure())
-	}
-
-	exp, err := otlploggrpc.New(context.Background(), options...)
+	exp, err := autoexport.NewLogExporter(ctx)
 	if err != nil {
-		panic(fmt.Sprintf("failed to establish a connection with the otlp log exporter: %v", err))
+		panic(fmt.Sprintf("failed to build the otlp log exporter: %v", err))
 	}
 
 	lp := sdklog.NewLoggerProvider(
