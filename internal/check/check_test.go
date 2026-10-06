@@ -3,6 +3,8 @@ package check
 import (
 	"context"
 	"errors"
+	"sort"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -38,17 +40,18 @@ func TestResolveUnion(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-            model
-              schema 1.1
-            type user
-            type group
-              relations
-                define member: [user] or admin
-                define admin: [user]
-        `)
+           model
+             schema 1.1
+           type user
+           type group
+             relations
+               define member: [user] or admin
+               define admin: [user]
+       `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -71,33 +74,12 @@ func TestResolveUnion(t *testing.T) {
 		node, ok := mg.GetNodeByID("group#member")
 		require.True(t, ok)
 
-		edges, ok := mg.GetEdgesFromNode(node)
-		require.True(t, ok)
-
-		union := edges[0].GetTo()
-		edges, ok = mg.GetEdgesFromNode(union)
-		require.True(t, ok)
-
 		cachedTrue := &ResponseCacheEntry{
 			Res:          &Response{Allowed: true},
 			LastModified: time.Now(),
 		}
-		firstCacheKey := EdgeCacheKey(req, edges[0])
 
-		mockCache.EXPECT().Get(firstCacheKey).Return(cachedTrue).Times(1)
-
-		admin := edges[1].GetTo()
-		edges, ok = mg.GetEdgesFromNode(admin)
-		require.True(t, ok)
-
-		cachedFalse := &ResponseCacheEntry{
-			Res:          &Response{Allowed: false},
-			LastModified: time.Now(),
-		}
-
-		secondCacheKey := EdgeCacheKey(req, edges[0])
-
-		mockCache.EXPECT().Get(secondCacheKey).Return(cachedFalse).MaxTimes(1)
+		mockCache.EXPECT().Get(NodeCacheKey(req, node)).Return(cachedTrue).Times(1)
 
 		res, err := resolver.ResolveUnion(context.Background(), req, node, nil)
 		require.NoError(t, err)
@@ -110,26 +92,29 @@ func TestResolveUnion(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-            model
-              schema 1.1
-            type user
-            type group
-              relations
-                define member: [user] or admin or owner
-                define admin: [user]
-                define owner: [user]
-        `)
+           model
+             schema 1.1
+
+           type user
+
+           type org
+             relations
+               define member: [user]
+
+           type group
+             relations
+               define member: [user] or admin or owner or member from parent
+               define admin: [user]
+               define owner: [user]
+               define parent: [org]
+       `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
-
-		cachedFalse := &ResponseCacheEntry{
-			Res:          &Response{Allowed: false},
-			LastModified: time.Now(),
-		}
 
 		req, err := NewRequest(RequestParams{
 			StoreID:  storeID,
@@ -141,13 +126,37 @@ func TestResolveUnion(t *testing.T) {
 		node, ok := mg.GetNodeByID("group#member")
 		require.True(t, ok)
 
-		// simulate an edge with a cached false result
-		mockCache.EXPECT().Get(gomock.Any()).Return(cachedFalse).Times(1)
+		edges, err := mg.FlattenNode(node, req.GetUserType(), req.IsTypedWildcard(), "")
+		require.NoError(t, err)
 
-		// other two edges call cache, but get nothing
-		mockCache.EXPECT().Get(gomock.Any()).Return(nil).Times(2)
+		// simulate a node cache entry with a nil value.
+		mockCache.EXPECT().Get(NodeCacheKey(req, node)).Return(nil).Times(1)
 
-		// only two edges will call to datastore because one was cached
+		var i int
+		var ttuEdge *authzGraph.WeightedAuthorizationModelEdge
+		for _, edge := range edges {
+			if edge.GetEdgeType() == authzGraph.TTUEdge {
+				ttuEdge = edge
+				continue
+			}
+			edges[i] = edge
+			i++
+		}
+		clear(edges[i:])
+		edges = edges[:i]
+		require.NotNil(t, ttuEdge)
+
+		mockCache.EXPECT().Get(EdgeCacheKey(req, ttuEdge)).Return(&ResponseCacheEntry{Res: &Response{Allowed: false}, LastModified: time.Now()}).Times(1)
+
+		gomock.InAnyOrder(
+			[]*gomock.Call{
+				mockCache.EXPECT().Get(EdgeCacheKey(req, edges[0])).Return(nil).Times(1),
+				mockCache.EXPECT().Get(EdgeCacheKey(req, edges[1])).Return(nil).Times(1),
+				mockCache.EXPECT().Get(EdgeCacheKey(req, edges[2])).Return(nil).Times(1),
+			},
+		)
+
+		// only the three weight-one edges will call to datastore because the weight-two is cached
 		mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
 			DoAndReturn(
 				func(
@@ -157,13 +166,17 @@ func TestResolveUnion(t *testing.T) {
 					_ storage.ReadUserTupleOptions,
 				) (*openfgav1.Tuple, error) {
 					return &openfgav1.Tuple{Key: tuple.NewTupleKey(filter.Object, filter.Relation, filter.User)}, nil
-				}).Times(2)
+				}).MaxTimes(3)
 
-		// edges that complete before the union short-circuits will cache their results;
-		// edges cancelled by the short-circuit will not (ctx.Err() != nil guard).
-		mockCache.EXPECT().
-			Set(gomock.Any(), gomock.Any(), gomock.Any()).
-			MinTimes(1).MaxTimes(2)
+		gomock.InAnyOrder(
+			[]*gomock.Call{
+				mockCache.EXPECT().Set(EdgeCacheKey(req, edges[0]), gomock.Any(), gomock.Any()).MaxTimes(1),
+				mockCache.EXPECT().Set(EdgeCacheKey(req, edges[1]), gomock.Any(), gomock.Any()).MaxTimes(1),
+				mockCache.EXPECT().Set(EdgeCacheKey(req, edges[2]), gomock.Any(), gomock.Any()).MaxTimes(1),
+			},
+		)
+
+		mockCache.EXPECT().Set(NodeCacheKey(req, node), gomock.Any(), gomock.Any()).Times(1)
 
 		resolver := New(Config{
 			Model:                     mg,
@@ -172,6 +185,16 @@ func TestResolveUnion(t *testing.T) {
 			ConcurrencyLimit:          10,
 			LastCacheInvalidationTime: time.Now().Add(-time.Hour),
 		})
+
+		defaultStrategy := NewDefault(mg, resolver, 10)
+
+		resolver.groupStrategies = map[string]GroupStrategy{
+			DefaultStrategyName: defaultStrategy,
+		}
+
+		resolver.edgeStrategies = map[string]EdgeStrategy{
+			DefaultStrategyName: defaultStrategy,
+		}
 
 		res, err := resolver.ResolveUnion(context.Background(), req, node, nil)
 		require.NoError(t, err)
@@ -184,27 +207,50 @@ func TestResolveUnion(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-            model
-              schema 1.1
-            type user
-            type group
-              relations
-                define member: [user] or admin
-                define admin: [user]
-        `)
+           model
+             schema 1.1
+           type user
+           type group
+             relations
+               define member: [user] or admin
+               define admin: [user]
+       `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
+		node, ok := mg.GetNodeByID("group#member")
+		require.True(t, ok)
+
+		req, err := NewRequest(RequestParams{
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("group:1", "member", "user:maria"),
+		})
+		require.NoError(t, err)
+
+		edges, err := mg.FlattenNode(node, req.GetUserType(), req.IsTypedWildcard(), "")
+		require.NoError(t, err)
+		require.Len(t, edges, 2)
+
+		mockCache.EXPECT().Get(NodeCacheKey(req, node)).Return(nil).Times(1)
+		mockCache.EXPECT().Get(EdgeCacheKey(req, edges[0])).Return(nil).Times(1)
+		mockCache.EXPECT().Get(EdgeCacheKey(req, edges[1])).Return(nil).Times(1)
+
 		mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
 			Return(nil, storage.ErrNotFound).Times(2)
 
-		mockCache.EXPECT().Get(gomock.Any()).Return(nil).AnyTimes()
 		// Both edges (including the one whose relationDefinition matches objectRelation) must be cached.
-		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).Times(2)
+		gomock.InAnyOrder([]*gomock.Call{
+			mockCache.EXPECT().Set(EdgeCacheKey(req, edges[0]), gomock.Any(), gomock.Any()).Times(1),
+			mockCache.EXPECT().Set(EdgeCacheKey(req, edges[1]), gomock.Any(), gomock.Any()).Times(1),
+		})
+
+		mockCache.EXPECT().Set(NodeCacheKey(req, node), gomock.Any(), gomock.Any()).Times(1)
 
 		resolver := New(Config{
 			Model:                     mg,
@@ -214,19 +260,212 @@ func TestResolveUnion(t *testing.T) {
 			LastCacheInvalidationTime: time.Now().Add(-time.Hour),
 		})
 
-		req, err := NewRequest(RequestParams{
-			StoreID:  storeID,
-			Model:    mg,
-			TupleKey: tuple.NewTupleKey("group:1", "member", "user:maria"),
-		})
-		require.NoError(t, err)
-
-		node, ok := mg.GetNodeByID("group#member")
-		require.True(t, ok)
-
 		res, err := resolver.ResolveUnion(context.Background(), req, node, nil)
 		require.NoError(t, err)
 		require.False(t, res.GetAllowed())
+	})
+}
+
+func TestGatherLogicalEdges(t *testing.T) {
+	// describe renders each LogicalEdge as a comparable string so results can be asserted
+	// with ElementsMatch; ordering is intentionally ignored since GatherLogicalEdges does
+	// not preserve edge ordering. A GroupEdge is rendered as "group:[<sorted to labels>]"
+	// and a SingleEdge as "single:<to label>".
+	describe := func(t *testing.T, les []LogicalEdge) []string {
+		t.Helper()
+		out := make([]string, 0, len(les))
+		for _, le := range les {
+			switch e := le.(type) {
+			case *SingleEdge:
+				out = append(out, "single:"+(*authzGraph.WeightedAuthorizationModelEdge)(e).GetTo().GetUniqueLabel())
+			case *GroupEdge:
+				labels := make([]string, 0, len(e.Edges))
+				for _, edge := range e.Edges {
+					labels = append(labels, edge.GetTo().GetUniqueLabel())
+				}
+				sort.Strings(labels)
+				out = append(out, "group:["+strings.Join(labels, ",")+"]")
+			default:
+				t.Fatalf("unexpected LogicalEdge type %T", le)
+			}
+		}
+		return out
+	}
+
+	tests := []struct {
+		name     string
+		model    string
+		object   string
+		relation string
+		nodeID   string
+		numEdges int
+		expected []string
+	}{
+		{
+			name: "single_weight_one_edge_returns_single_edge",
+			model: `
+				model
+				  schema 1.1
+				type user
+				type document
+				  relations
+				    define viewer: [user]`,
+			object:   "document:1",
+			relation: "viewer",
+			nodeID:   "document#viewer",
+			numEdges: 1,
+			expected: []string{"single:user"},
+		},
+		{
+			name: "single_weight_two_edge_returns_single_edge",
+			model: `
+				model
+				  schema 1.1
+				type user
+				type group
+				  relations
+				    define member: [user]
+				type document
+				  relations
+				    define viewer: [group#member]`,
+			object:   "document:1",
+			relation: "viewer",
+			nodeID:   "document#viewer",
+			numEdges: 1,
+			expected: []string{"single:group#member"},
+		},
+		{
+			// node weight-1: all edges are weight-1 and combined into a single GroupEdge.
+			name: "node_weight_one_multiple_edges_returns_single_group_edge",
+			model: `
+				model
+				  schema 1.1
+				type user
+				type group
+				  relations
+				    define member: [user] or admin
+				    define admin: [user]`,
+			object:   "group:1",
+			relation: "member",
+			nodeID:   "group#member",
+			numEdges: 2,
+			expected: []string{"group:[user,user]"},
+		},
+		{
+			// node weight > 1 with no weight-1 edges: every edge becomes its own SingleEdge.
+			name: "split_zero_weight_one_edges",
+			model: `
+				model
+				  schema 1.1
+				type user
+				type group
+				  relations
+				    define member: [user]
+				type team
+				  relations
+				    define member: [user]
+				type document
+				  relations
+				    define viewer: [group#member, team#member]`,
+			object:   "document:1",
+			relation: "viewer",
+			nodeID:   "document#viewer",
+			numEdges: 2,
+			expected: []string{"single:group#member", "single:team#member"},
+		},
+		{
+			// node weight > 1 with exactly one weight-1 edge: the lone weight-1 edge becomes a
+			// SingleEdge (not a GroupEdge), alongside the weight-2 edge as its own SingleEdge.
+			name: "split_single_weight_one_edge",
+			model: `
+				model
+				  schema 1.1
+				type user
+				type group
+				  relations
+				    define member: [user]
+				type document
+				  relations
+				    define viewer: [user, group#member]`,
+			object:   "document:1",
+			relation: "viewer",
+			nodeID:   "document#viewer",
+			numEdges: 2,
+			expected: []string{"single:user", "single:group#member"},
+		},
+		{
+			// node weight > 1 with two weight-1 edges: the weight-1 edges are combined into a
+			// single GroupEdge, and the weight-2 edge is its own SingleEdge.
+			name: "split_multiple_weight_one_edges",
+			model: `
+				model
+				  schema 1.1
+				type user
+				type group
+				  relations
+				    define member: [user]
+				type document
+				  relations
+				    define viewer: [user, user:*, group#member]`,
+			object:   "document:1",
+			relation: "viewer",
+			nodeID:   "document#viewer",
+			numEdges: 3,
+			expected: []string{"group:[user,user:*]", "single:group#member"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mg, err := modelgraph.New(testutils.MustTransformDSLToProtoWithID(tt.model))
+			require.NoError(t, err)
+
+			resolver := New(Config{Model: mg})
+
+			req, err := NewRequest(RequestParams{
+				StoreID:  ulid.Make().String(),
+				Model:    mg,
+				TupleKey: tuple.NewTupleKey(tt.object, tt.relation, "user:alice"),
+			})
+			require.NoError(t, err)
+
+			node, ok := mg.GetNodeByID(tt.nodeID)
+			require.True(t, ok)
+
+			edges, err := mg.FlattenNode(node, "user", false, "")
+			require.NoError(t, err)
+			require.Len(t, edges, tt.numEdges)
+
+			require.ElementsMatch(t, tt.expected, describe(t, resolver.GatherLogicalEdges(req, node, edges)))
+		})
+	}
+
+	t.Run("empty_edges_returns_no_logical_edges", func(t *testing.T) {
+		mg, err := modelgraph.New(testutils.MustTransformDSLToProtoWithID(`
+			model
+			  schema 1.1
+			type user
+			type group
+			  relations
+			    define member: [user]
+			type document
+			  relations
+			    define viewer: [group#member]`))
+		require.NoError(t, err)
+
+		resolver := New(Config{Model: mg})
+
+		req, err := NewRequest(RequestParams{
+			StoreID:  ulid.Make().String(),
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:alice"),
+		})
+		require.NoError(t, err)
+
+		node, ok := mg.GetNodeByID("document#viewer")
+		require.True(t, ok)
+
+		require.Empty(t, resolver.GatherLogicalEdges(req, node, nil))
 	})
 }
 
@@ -237,16 +476,17 @@ func TestResolveUnionEdges(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-            model
-              schema 1.1
-            type user
-            type group
-              relations
-                define member: [user] or admin
-                define admin: [user]
-        `)
+           model
+             schema 1.1
+           type user
+           type group
+             relations
+               define member: [user] or admin
+               define admin: [user]
+       `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -281,7 +521,9 @@ func TestResolveUnionEdges(t *testing.T) {
 		require.NoError(t, err)
 		require.True(t, ok)
 
-		res, err := resolver.ResolveUnionEdges(context.Background(), req, edges, nil)
+		logicalEdges := resolver.GatherLogicalEdges(req, node, edges)
+
+		res, err := resolver.ResolveUnionEdges(context.Background(), req, logicalEdges, nil)
 		require.NoError(t, err)
 		require.True(t, res.GetAllowed())
 	})
@@ -292,16 +534,17 @@ func TestResolveUnionEdges(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-            model
-              schema 1.1
-            type user
-            type group
-              relations
-                define member: [user] or admin
-                define admin: [user]
-        `)
+           model
+             schema 1.1
+           type user
+           type group
+             relations
+               define member: [user] or admin
+               define admin: [user]
+       `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -331,7 +574,9 @@ func TestResolveUnionEdges(t *testing.T) {
 		require.NoError(t, err)
 		require.True(t, ok)
 
-		res, err := resolver.ResolveUnionEdges(context.Background(), req, edges, nil)
+		logicalEdges := resolver.GatherLogicalEdges(req, node, edges)
+
+		res, err := resolver.ResolveUnionEdges(context.Background(), req, logicalEdges, nil)
 		require.NoError(t, err)
 		require.False(t, res.GetAllowed())
 	})
@@ -342,16 +587,17 @@ func TestResolveUnionEdges(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-            model
-              schema 1.1
-            type user
-            type group
-              relations
-                define member: [user] or admin
-                define admin: [user]
-        `)
+           model
+             schema 1.1
+           type user
+           type group
+             relations
+               define member: [user] or admin
+               define admin: [user]
+       `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -381,10 +627,12 @@ func TestResolveUnionEdges(t *testing.T) {
 		require.NoError(t, err)
 		require.True(t, ok)
 
-		res, err := resolver.ResolveUnionEdges(context.Background(), req, edges, nil)
+		logicalEdges := resolver.GatherLogicalEdges(req, node, edges)
+
+		res, err := resolver.ResolveUnionEdges(context.Background(), req, logicalEdges, nil)
 		require.Error(t, err)
 		require.ErrorIs(t, err, expectedErr)
-		require.Nil(t, res)
+		require.False(t, res.GetAllowed())
 	})
 
 	t.Run("context_cancelled", func(t *testing.T) {
@@ -393,37 +641,31 @@ func TestResolveUnionEdges(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-            model
-              schema 1.1
-            type user
-            type group
-              relations
-                define member: [user] or admin
-                define admin: [user]
-        `)
+           model
+             schema 1.1
+           type user
+           type group
+             relations
+               define member: [user] or admin
+               define admin: [user]
+       `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		ctx, cancel := context.WithCancel(context.Background())
 
-		mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
-			DoAndReturn(func(ctx context.Context, _ string, _ storage.ReadUserTupleFilter, _ storage.ReadUserTupleOptions) (*openfgav1.Tuple, error) {
-				cancel()
-				return nil, ctx.Err()
-			}).MaxTimes(2)
+		node, ok := mg.GetNodeByID("group#member")
+		require.True(t, ok)
 
-		mockCache.EXPECT().Get(gomock.Any()).Return(nil).AnyTimes()
-
-		resolver := New(Config{
-			Model:            mg,
-			Datastore:        mockDatastore,
-			Cache:            mockCache,
-			ConcurrencyLimit: 10,
-		})
+		edges, err := mg.FlattenNode(node, "user", false, "")
+		require.NoError(t, err)
+		require.Len(t, edges, 2)
+		require.True(t, ok)
 
 		req, err := NewRequest(RequestParams{
 			StoreID:  storeID,
@@ -432,14 +674,26 @@ func TestResolveUnionEdges(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		node, ok := mg.GetNodeByID("group#member")
-		require.True(t, ok)
+		mockCache.EXPECT().Get(NodeCacheKey(req, node)).Return(nil).Times(1)
+		mockCache.EXPECT().Get(EdgeCacheKey(req, edges[0])).Return(nil).Times(1)
+		mockCache.EXPECT().Get(EdgeCacheKey(req, edges[1])).Return(nil).Times(1)
 
-		edges, err := mg.FlattenNode(node, "user", false, "")
-		require.NoError(t, err)
-		require.True(t, ok)
+		mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+			DoAndReturn(func(ctx context.Context, _ string, _ storage.ReadUserTupleFilter, _ storage.ReadUserTupleOptions) (*openfgav1.Tuple, error) {
+				cancel()
+				return nil, ctx.Err()
+			}).MaxTimes(2)
 
-		res, err := resolver.ResolveUnionEdges(ctx, req, edges, nil)
+		resolver := New(Config{
+			Model:            mg,
+			Datastore:        mockDatastore,
+			Cache:            mockCache,
+			ConcurrencyLimit: 10,
+		})
+
+		logicalEdges := resolver.GatherLogicalEdges(req, node, edges)
+
+		res, err := resolver.ResolveUnionEdges(ctx, req, logicalEdges, nil)
 		require.Error(t, err)
 		require.ErrorIs(t, err, context.Canceled)
 		require.Nil(t, res)
@@ -451,15 +705,16 @@ func TestResolveUnionEdges(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-            model
-              schema 1.1
-            type user
-              relations
-                define self: [user]
-        `)
+           model
+             schema 1.1
+           type user
+             relations
+               define self: [user]
+       `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -478,9 +733,9 @@ func TestResolveUnionEdges(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		res, err := resolver.ResolveUnionEdges(context.Background(), req, []*authzGraph.WeightedAuthorizationModelEdge{}, nil)
+		res, err := resolver.ResolveUnionEdges(context.Background(), req, []LogicalEdge{}, nil)
 		require.NoError(t, err)
-		require.False(t, res.Allowed)
+		require.False(t, res.GetAllowed())
 	})
 
 	t.Run("partial_wildcard", func(t *testing.T) {
@@ -489,16 +744,17 @@ func TestResolveUnionEdges(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-            model
-              schema 1.1
-            type user
-            type group
-              relations
-                define member: [user:*] or admin
-                define admin: [user]
-        `)
+           model
+             schema 1.1
+           type user
+           type group
+             relations
+               define member: [user:*] or admin
+               define admin: [user]
+       `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -533,7 +789,9 @@ func TestResolveUnionEdges(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, edges, 1)
 
-		res, err := resolver.ResolveUnionEdges(context.Background(), req, edges, nil)
+		logicalEdges := resolver.GatherLogicalEdges(req, node, edges)
+
+		res, err := resolver.ResolveUnionEdges(context.Background(), req, logicalEdges, nil)
 		require.NoError(t, err)
 		require.True(t, res.GetAllowed())
 	})
@@ -544,16 +802,17 @@ func TestResolveUnionEdges(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-            model
-              schema 1.1
-            type user
-            type group
-              relations
-                define member: [user] or admin
-                define admin: [user]
-        `)
+           model
+             schema 1.1
+           type user
+           type group
+             relations
+               define member: [user] or admin
+               define admin: [user]
+       `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -579,7 +838,9 @@ func TestResolveUnionEdges(t *testing.T) {
 		require.NoError(t, err)
 		require.Empty(t, edges)
 
-		res, err := resolver.ResolveUnionEdges(context.Background(), req, edges, nil)
+		logicalEdges := resolver.GatherLogicalEdges(req, node, edges)
+
+		res, err := resolver.ResolveUnionEdges(context.Background(), req, logicalEdges, nil)
 		require.NoError(t, err)
 		require.False(t, res.GetAllowed())
 	})
@@ -594,24 +855,16 @@ func TestResolveUnionEdges(t *testing.T) {
 		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
 
-		mockCache.EXPECT().Get(gomock.Any()).Return(nil).AnyTimes()
-		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
-
-		// MinTimes(1) confirms goroutines reached the datastore, so Times(0) on Set is not vacuous.
-		// The mocks ignore ctx, so the cancelled context doesn't prevent these calls.
-		mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
-			Return(nil, storage.ErrNotFound).MinTimes(1)
-		mockDatastore.EXPECT().ReadUsersetTuples(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
-			Return(storage.NewStaticTupleIterator(nil), nil).MinTimes(1)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-            model
-              schema 1.1
-            type user
-            type group
-              relations
-                define member: [user, group#member]
-        `)
+           model
+             schema 1.1
+           type user
+           type group
+             relations
+               define member: [user, group#member]
+       `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -627,7 +880,7 @@ func TestResolveUnionEdges(t *testing.T) {
 			// Inject a strategy that always returns ({false}, nil) unconditionally,
 			// directly simulating what DefaultStrategy.execute produces under the select race —
 			// ctx.Err() == nil is the only thing blocking the cache write.
-			Strategies: map[string]Strategy{
+			EdgeStrategies: map[string]EdgeStrategy{
 				DefaultStrategyName:   &alwaysFalseNilErrStrategy{},
 				WeightTwoStrategyName: &alwaysFalseNilErrStrategy{},
 				RecursiveStrategyName: &alwaysFalseNilErrStrategy{},
@@ -650,7 +903,10 @@ func TestResolveUnionEdges(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
 
-		_, _ = resolver.ResolveUnionEdges(ctx, req, edges, nil)
+		logicalEdges := resolver.GatherLogicalEdges(req, node, edges)
+
+		_, err = resolver.ResolveUnionEdges(ctx, req, logicalEdges, nil)
+		require.ErrorIs(t, err, context.Canceled)
 	})
 }
 
@@ -660,6 +916,10 @@ func TestResolveUnionEdges(t *testing.T) {
 // closest available synchronization point to the cache-write decision in check.go.
 type alwaysFalseNilErrStrategy struct {
 	done func()
+}
+
+func (s *alwaysFalseNilErrStrategy) Resolve(_ context.Context, _ *Request, _ *authzGraph.WeightedAuthorizationModelEdge, _ storage.TupleKeyIterator, _ *sync.Map) (*Response, error) {
+	return &Response{}, nil
 }
 
 func (s *alwaysFalseNilErrStrategy) Userset(_ context.Context, _ *Request, _ *authzGraph.WeightedAuthorizationModelEdge, _ storage.TupleKeyIterator, _ *sync.Map) (*Response, error) {
@@ -696,18 +956,20 @@ func TestResolveRecursive(t *testing.T) {
 		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
 
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
+
 		mockCache.EXPECT().Get(gomock.Any()).Return(nil).AnyTimes()
 		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-            model
-              schema 1.1
-            type user
-            type group
-              relations
-                define member: [user] or member from parent
-                define parent: [group]
-        `)
+           model
+             schema 1.1
+           type user
+           type group
+             relations
+               define member: [user] or member from parent
+               define parent: [group]
+       `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -731,7 +993,7 @@ func TestResolveRecursive(t *testing.T) {
 			LastCacheInvalidationTime: time.Now().Add(-time.Hour),
 			ConcurrencyLimit:          10,
 			Planner:                   planner.New(&planner.Config{}),
-			Strategies: map[string]Strategy{
+			EdgeStrategies: map[string]EdgeStrategy{
 				DefaultStrategyName:   strategy,
 				WeightTwoStrategyName: strategy,
 				RecursiveStrategyName: strategy,
@@ -766,18 +1028,19 @@ func TestResolveIntersection(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-     define owner: [user]
-     define editor: [user]
-     define viewer: owner and editor
-  `)
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+    define owner: [user]
+    define editor: [user]
+    define viewer: owner and editor
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -828,18 +1091,19 @@ func TestResolveIntersection(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-     define owner: [user]
-     define editor: [user]
-     define viewer: owner and editor
-  `)
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+    define owner: [user]
+    define editor: [user]
+    define viewer: owner and editor
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -888,18 +1152,19 @@ func TestResolveIntersection(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-     define owner: [user]
-     define editor: [user]
-     define viewer: owner and editor
-  `)
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+    define owner: [user]
+    define editor: [user]
+    define viewer: owner and editor
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -926,7 +1191,7 @@ func TestResolveIntersection(t *testing.T) {
 			storeID,
 			gomock.Any(),
 			gomock.Any(),
-		).Return(nil, expectedErr).Times(2)
+		).Return(nil, expectedErr).MaxTimes(2)
 
 		node, ok := mg.GetNodeByID("document#viewer")
 		require.True(t, ok)
@@ -934,7 +1199,7 @@ func TestResolveIntersection(t *testing.T) {
 		res, err := resolver.ResolveIntersection(context.Background(), req, node)
 		require.Error(t, err)
 		require.ErrorIs(t, err, expectedErr)
-		require.Nil(t, res)
+		require.False(t, res.GetAllowed())
 	})
 
 	t.Run("handles_context_cancellation", func(t *testing.T) {
@@ -943,18 +1208,19 @@ func TestResolveIntersection(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-     define owner: [user]
-     define editor: [user]
-     define viewer: owner and editor
-  `)
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+    define owner: [user]
+    define editor: [user]
+    define viewer: owner and editor
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -977,13 +1243,6 @@ func TestResolveIntersection(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
 
-		mockDatastore.EXPECT().ReadUserTuple(
-			gomock.Any(),
-			storeID,
-			gomock.Any(),
-			gomock.Any(),
-		).Return(nil, ctx.Err()).Times(2)
-
 		node, ok := mg.GetNodeByID("document#viewer")
 		require.True(t, ok)
 
@@ -999,16 +1258,17 @@ func TestResolveIntersection(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-            model
-              schema 1.1
-            type user
-            type group
-              relations
-                define member: [user:*] and admin
-                define admin: [user:*]
-        `)
+           model
+             schema 1.1
+           type user
+           type group
+             relations
+               define member: [user:*] and admin
+               define admin: [user:*]
+       `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -1052,16 +1312,17 @@ func TestResolveIntersection(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-            model
-              schema 1.1
-            type user
-            type group
-              relations
-                define member: [user:*] and admin
-                define admin: [user]
-        `)
+           model
+             schema 1.1
+           type user
+           type group
+             relations
+               define member: [user:*] and admin
+               define admin: [user]
+       `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -1094,16 +1355,17 @@ func TestResolveIntersection(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-            model
-              schema 1.1
-            type user
-            type group
-              relations
-                define member: [user] and admin
-                define admin: [user]
-        `)
+           model
+             schema 1.1
+           type user
+           type group
+             relations
+               define member: [user] and admin
+               define admin: [user]
+       `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -1138,18 +1400,19 @@ func TestResolveExclusion(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-     define editor: [user]
-     define banned: [user]
-     define viewer: editor but not banned
-  `)
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+    define editor: [user]
+    define banned: [user]
+    define viewer: editor but not banned
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -1195,18 +1458,19 @@ func TestResolveExclusion(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-     define editor: [user]
-     define banned: [user]
-     define viewer: editor but not banned
-  `)
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+    define editor: [user]
+    define banned: [user]
+    define viewer: editor but not banned
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -1231,7 +1495,7 @@ func TestResolveExclusion(t *testing.T) {
 			storeID,
 			gomock.Any(),
 			gomock.Any(),
-		).Return(nil, storage.ErrNotFound).Times(2)
+		).Return(nil, storage.ErrNotFound).MaxTimes(2)
 
 		edges, ok := mg.GetEdgesFromNodeID("document#viewer")
 		require.True(t, ok)
@@ -1247,18 +1511,19 @@ func TestResolveExclusion(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-     define editor: [user]
-     define banned: [user]
-     define viewer: editor but not banned
-  `)
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+    define editor: [user]
+    define banned: [user]
+    define viewer: editor but not banned
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -1288,7 +1553,7 @@ func TestResolveExclusion(t *testing.T) {
 				return &openfgav1.Tuple{Key: tuple.NewTupleKey("document:1", "editor", "user:maria")}, nil
 			}
 			return &openfgav1.Tuple{Key: tuple.NewTupleKey("document:1", "banned", "user:maria")}, nil
-		}).Times(2)
+		}).MaxTimes(2)
 
 		edges, ok := mg.GetEdgesFromNodeID("document#viewer")
 		require.True(t, ok)
@@ -1304,18 +1569,19 @@ func TestResolveExclusion(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-     define editor: [user]
-     define banned: [user]
-     define viewer: editor but not banned
-  `)
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+    define editor: [user]
+    define banned: [user]
+    define viewer: editor but not banned
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -1363,18 +1629,19 @@ func TestResolveExclusion(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-     define editor: [user]
-     define banned: [user]
-     define viewer: editor but not banned
-  `)
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+    define editor: [user]
+    define banned: [user]
+    define viewer: editor but not banned
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -1405,7 +1672,7 @@ func TestResolveExclusion(t *testing.T) {
 				return nil, expectedErr
 			}
 			return &openfgav1.Tuple{Key: tuple.NewTupleKey("document:1", "banned", "user:maria")}, nil
-		}).Times(2)
+		}).MaxTimes(2)
 
 		edges, ok := mg.GetEdgesFromNodeID("document#viewer")
 		require.True(t, ok)
@@ -1422,18 +1689,19 @@ func TestResolveExclusion(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-     define editor: [user]
-     define banned: [user]
-     define viewer: editor but not banned
-  `)
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+    define editor: [user]
+    define banned: [user]
+    define viewer: editor but not banned
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -1456,18 +1724,6 @@ func TestResolveExclusion(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
 
-		mockDatastore.EXPECT().ReadUserTuple(
-			gomock.Any(),
-			storeID,
-			gomock.Any(),
-			gomock.Any(),
-		).DoAndReturn(func(_ context.Context, _ string, filter storage.ReadUserTupleFilter, _ storage.ReadUserTupleOptions) (*openfgav1.Tuple, error) {
-			if filter.Relation == "banned" {
-				return nil, storage.ErrNotFound
-			}
-			return &openfgav1.Tuple{Key: tuple.NewTupleKey("document:1", "banned", "user:maria")}, nil
-		}).Times(2)
-
 		edges, ok := mg.GetEdgesFromNodeID("document#viewer")
 		require.True(t, ok)
 
@@ -1483,19 +1739,20 @@ func TestResolveExclusion(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type usergroup
-   type document
-    relations
-     define editor: [user]
-     define banned: [usergroup]
-     define viewer: editor but not banned
-  `)
+  model
+   schema 1.1
+  type user
+  type usergroup
+  type document
+   relations
+    define editor: [user]
+    define banned: [usergroup]
+    define viewer: editor but not banned
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -1536,18 +1793,19 @@ func TestResolveExclusion(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-     define editor: [user:*]
-     define banned: [user]
-     define viewer: editor but not banned
-  `)
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+    define editor: [user:*]
+    define banned: [user]
+    define viewer: editor but not banned
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -1575,6 +1833,140 @@ func TestResolveExclusion(t *testing.T) {
 		require.ErrorContains(t, err, "wildcard request cannot be resolved when intersection or exclusion is involved")
 		require.Nil(t, res)
 	})
+
+	// Exclusion expects one base and one subtract edge in order. Branch weights decide how edges
+	// are grouped and ordered, so verify that weight does not change which branch is base and
+	// which is subtract.
+	t.Run("preserves_base_and_subtract_roles_regardless_of_branch_weight", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		storeID := ulid.Make().String()
+		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
+
+		// document#viewer is an exclusion with weight-2 base and weight-1 subtract
+		model := testutils.MustTransformDSLToProtoWithID(`
+			model
+				schema 1.1
+			type user
+			type team
+				relations
+					define member: [user]
+			type document
+				relations
+					define banned: [user]
+					define viewer: [team#member] but not banned
+		`)
+
+		mg, err := modelgraph.New(model)
+		require.NoError(t, err)
+
+		// Force base (a Userset) to allow, ignoring tuples, so that we can compare base vs. subtract.
+		mockStrategy := NewMockEdgeStrategy(ctrl)
+		mockStrategy.EXPECT().Userset(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(&Response{Allowed: true}, nil).AnyTimes()
+
+		resolver := New(Config{
+			Model:            mg,
+			Datastore:        mockDatastore,
+			Cache:            storage.NewNoopCache(),
+			Planner:          planner.New(&planner.Config{}),
+			ConcurrencyLimit: 10,
+			// Register the mockStrategy under every userset strategy name so the planner's pick doesn't matter.
+			EdgeStrategies: map[string]EdgeStrategy{
+				DefaultStrategyName:   mockStrategy,
+				WeightTwoStrategyName: mockStrategy,
+			},
+		})
+
+		req, err := NewRequest(RequestParams{
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+		})
+		require.NoError(t, err)
+
+		// Empty iterator: mockStrategy ignores it; needed only to reach the strategy call.
+		mockDatastore.EXPECT().ReadUsersetTuples(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+			Return(storage.NewStaticTupleIterator(nil), nil).AnyTimes()
+		// The user is not banned.
+		mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+			Return(nil, storage.ErrNotFound).AnyTimes()
+
+		edges, ok := mg.GetEdgesFromNodeID("document#viewer")
+		require.True(t, ok)
+
+		res, err := resolver.ResolveExclusion(context.Background(), req, edges[0].GetTo())
+		require.NoError(t, err)
+		// Base (weight-2) was allowed and subtract (weight-1) was false: result should be true
+		// if edges are ordered properly.
+		require.True(t, res.GetAllowed())
+	})
+
+	t.Run("returns_true_when_subtract_cannot_apply_to_user_type", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		storeID := ulid.Make().String()
+		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
+
+		// document#viewer is an exclusion with weight-2 base and weight-0 subtract for type user
+		model := testutils.MustTransformDSLToProtoWithID(`
+			model
+				schema 1.1
+			type user
+			type employee
+			type team
+				relations
+					define member: [user]
+			type document
+				relations
+					define banned: [employee]
+					define viewer: [team#member] but not banned
+		`)
+
+		mg, err := modelgraph.New(model)
+		require.NoError(t, err)
+
+		// Force base (a Userset) to allow, ignoring tuples, so that we can compare base vs. subtract.
+		mockStrategy := NewMockEdgeStrategy(ctrl)
+		mockStrategy.EXPECT().Userset(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(&Response{Allowed: true}, nil).AnyTimes()
+
+		resolver := New(Config{
+			Model:            mg,
+			Datastore:        mockDatastore,
+			Cache:            storage.NewNoopCache(),
+			Planner:          planner.New(&planner.Config{}),
+			ConcurrencyLimit: 10,
+			// Register the mockStrategy under every userset strategy name so the planner's pick doesn't matter.
+			EdgeStrategies: map[string]EdgeStrategy{
+				DefaultStrategyName:   mockStrategy,
+				WeightTwoStrategyName: mockStrategy,
+			},
+		})
+
+		req, err := NewRequest(RequestParams{
+			StoreID:  storeID,
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+		})
+		require.NoError(t, err)
+
+		// Empty iterator: mockStrategy ignores it; needed only to reach the strategy call.
+		mockDatastore.EXPECT().ReadUsersetTuples(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+			Return(storage.NewStaticTupleIterator(nil), nil).AnyTimes()
+		// No ReadUserTuple call since subtract should be pruned.
+
+		edges, ok := mg.GetEdgesFromNodeID("document#viewer")
+		require.True(t, ok)
+
+		res, err := resolver.ResolveExclusion(context.Background(), req, edges[0].GetTo())
+		require.NoError(t, err)
+		require.True(t, res.GetAllowed())
+	})
 }
 
 func TestResolveCheckUsersetRequest(t *testing.T) {
@@ -1584,15 +1976,16 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-     define owner: [user]
-     define viewer: [document#owner]
-  `)
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+    define owner: [user]
+    define viewer: [document#owner]
+ `)
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
@@ -1626,7 +2019,7 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 		require.NoError(t, err)
 
 		mockResolver := NewMockCheckResolver(ctrl)
-		resolver.strategies[DefaultStrategyName] = NewDefault(mg, mockResolver, 10)
+		resolver.edgeStrategies[DefaultStrategyName] = NewDefault(mg, mockResolver, 10)
 
 		res, err := resolver.ResolveCheck(context.Background(), req)
 		require.NoError(t, err)
@@ -1639,18 +2032,19 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-     define owner: [user]
-     define viewer: [document#owner with tag]
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+    define owner: [user]
+    define viewer: [document#owner with tag]
 	condition tag(tag: string) {
 	                 tag == "valid"
 	               }
-  `)
+ `)
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
@@ -1684,7 +2078,7 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 		require.NoError(t, err)
 
 		mockResolver := NewMockCheckResolver(ctrl)
-		resolver.strategies[DefaultStrategyName] = NewDefault(mg, mockResolver, 10)
+		resolver.edgeStrategies[DefaultStrategyName] = NewDefault(mg, mockResolver, 10)
 
 		res, err := resolver.ResolveCheck(context.Background(), req)
 		require.NoError(t, err)
@@ -1697,6 +2091,7 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		model := testutils.MustTransformDSLToProtoWithID(`
 			   model
 			    schema 1.1
@@ -1742,7 +2137,7 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 		require.NoError(t, err)
 
 		mockResolver := NewMockCheckResolver(ctrl)
-		resolver.strategies[DefaultStrategyName] = NewDefault(mg, mockResolver, 10)
+		resolver.edgeStrategies[DefaultStrategyName] = NewDefault(mg, mockResolver, 10)
 
 		res, err := resolver.ResolveCheck(context.Background(), req)
 		require.NoError(t, err)
@@ -1755,6 +2150,7 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		model := testutils.MustTransformDSLToProtoWithID(`
 		   model
 		    schema 1.1
@@ -1800,7 +2196,7 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 		require.NoError(t, err)
 
 		mockResolver := NewMockCheckResolver(ctrl)
-		resolver.strategies[DefaultStrategyName] = NewDefault(mg, mockResolver, 10)
+		resolver.edgeStrategies[DefaultStrategyName] = NewDefault(mg, mockResolver, 10)
 
 		res, err := resolver.ResolveCheck(context.Background(), req)
 		require.NoError(t, err)
@@ -1813,6 +2209,7 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		model := testutils.MustTransformDSLToProtoWithID(`
 		   model
 		    schema 1.1
@@ -1863,7 +2260,7 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 		require.NoError(t, err)
 
 		mockResolver := NewMockCheckResolver(ctrl)
-		resolver.strategies[DefaultStrategyName] = NewDefault(mg, mockResolver, 10)
+		resolver.edgeStrategies[DefaultStrategyName] = NewDefault(mg, mockResolver, 10)
 
 		res, err := resolver.ResolveCheck(context.Background(), req)
 		require.NoError(t, err)
@@ -1876,6 +2273,7 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		model := testutils.MustTransformDSLToProtoWithID(`
 		   model
 		    schema 1.1
@@ -1921,7 +2319,7 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 		require.NoError(t, err)
 
 		mockResolver := NewMockCheckResolver(ctrl)
-		resolver.strategies[DefaultStrategyName] = NewDefault(mg, mockResolver, 10)
+		resolver.edgeStrategies[DefaultStrategyName] = NewDefault(mg, mockResolver, 10)
 
 		res, err := resolver.ResolveCheck(context.Background(), req)
 		require.NoError(t, err)
@@ -1934,6 +2332,7 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		model := testutils.MustTransformDSLToProtoWithID(`
 		   model
 		    schema 1.1
@@ -1947,21 +2346,6 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 		  `)
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
-
-		expectedTuple := &openfgav1.Tuple{
-			Key: tuple.NewTupleKey("document:1", "viewer", "document:2#owner"),
-		}
-
-		mockDatastore.EXPECT().ReadUserTuple(
-			gomock.Any(),
-			storeID,
-			storage.ReadUserTupleFilter{
-				Object:   expectedTuple.GetKey().GetObject(),
-				Relation: expectedTuple.GetKey().GetRelation(),
-				User:     expectedTuple.GetKey().GetUser(),
-			},
-			gomock.Any(),
-		).Return(expectedTuple, nil).Times(1)
 
 		resolver := New(Config{
 			Model:            mg,
@@ -1978,7 +2362,7 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 		require.NoError(t, err)
 
 		mockResolver := NewMockCheckResolver(ctrl)
-		resolver.strategies[DefaultStrategyName] = NewDefault(mg, mockResolver, 10)
+		resolver.edgeStrategies[DefaultStrategyName] = NewDefault(mg, mockResolver, 10)
 
 		_, err = resolver.ResolveCheck(context.Background(), req)
 		require.Error(t, err)
@@ -1991,6 +2375,7 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		model := testutils.MustTransformDSLToProtoWithID(`
 		   model
 		    schema 1.1
@@ -2020,7 +2405,7 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 		require.NoError(t, err)
 
 		mockResolver := NewMockCheckResolver(ctrl)
-		resolver.strategies[DefaultStrategyName] = NewDefault(mg, mockResolver, 10)
+		resolver.edgeStrategies[DefaultStrategyName] = NewDefault(mg, mockResolver, 10)
 
 		res, err := resolver.ResolveCheck(context.Background(), req)
 		require.NoError(t, err)
@@ -2033,6 +2418,7 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		model := testutils.MustTransformDSLToProtoWithID(`
 		   model
 		    schema 1.1
@@ -2093,7 +2479,7 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 		require.NoError(t, err)
 
 		// mockResolver := NewMockCheckResolver(ctrl)
-		resolver.strategies[DefaultStrategyName] = NewDefault(mg, resolver, 10)
+		resolver.edgeStrategies[DefaultStrategyName] = NewDefault(mg, resolver, 10)
 
 		res, err := resolver.ResolveCheck(context.Background(), req)
 		require.NoError(t, err)
@@ -2106,6 +2492,7 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		model := testutils.MustTransformDSLToProtoWithID(`
 		   model
 		    schema 1.1
@@ -2171,7 +2558,7 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 		require.NoError(t, err)
 
 		// mockResolver := NewMockCheckResolver(ctrl)
-		resolver.strategies[DefaultStrategyName] = NewDefault(mg, resolver, 10)
+		resolver.edgeStrategies[DefaultStrategyName] = NewDefault(mg, resolver, 10)
 
 		res, err := resolver.ResolveCheck(context.Background(), req)
 		require.NoError(t, err)
@@ -2184,6 +2571,7 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		model := testutils.MustTransformDSLToProtoWithID(`
 		   model
 		    schema 1.1
@@ -2242,7 +2630,7 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 		require.NoError(t, err)
 
 		// mockResolver := NewMockCheckResolver(ctrl)
-		resolver.strategies[DefaultStrategyName] = NewDefault(mg, resolver, 10)
+		resolver.edgeStrategies[DefaultStrategyName] = NewDefault(mg, resolver, 10)
 
 		res, err := resolver.ResolveCheck(context.Background(), req)
 		require.NoError(t, err)
@@ -2254,6 +2642,7 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		model := testutils.MustTransformDSLToProtoWithID(`
 		   model
 		    schema 1.1
@@ -2303,7 +2692,7 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 		require.NoError(t, err)
 
 		// mockResolver := NewMockCheckResolver(ctrl)
-		resolver.strategies[DefaultStrategyName] = NewDefault(mg, resolver, 10)
+		resolver.edgeStrategies[DefaultStrategyName] = NewDefault(mg, resolver, 10)
 
 		res, err := resolver.ResolveCheck(context.Background(), req)
 		require.NoError(t, err)
@@ -2315,6 +2704,7 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		model := testutils.MustTransformDSLToProtoWithID(`
 		   model
 		    schema 1.1
@@ -2374,7 +2764,7 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 		require.NoError(t, err)
 
 		// mockResolver := NewMockCheckResolver(ctrl)
-		resolver.strategies[DefaultStrategyName] = NewDefault(mg, resolver, 10)
+		resolver.edgeStrategies[DefaultStrategyName] = NewDefault(mg, resolver, 10)
 
 		res, err := resolver.ResolveCheck(context.Background(), req)
 		require.NoError(t, err)
@@ -2394,7 +2784,7 @@ func TestIsCached(t *testing.T) {
 			lastCacheInvalidationTime: time.Now().Add(-time.Hour),
 		}
 
-		res, ok := resolver.isCached(openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY, testKey)
+		res, ok := resolver.isCached(context.Background(), openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY, testKey)
 		require.False(t, ok)
 		require.Nil(t, res)
 	})
@@ -2417,7 +2807,7 @@ func TestIsCached(t *testing.T) {
 			lastCacheInvalidationTime: time.Time{},
 		}
 
-		res, ok := resolver.isCached(openfgav1.ConsistencyPreference_MINIMIZE_LATENCY, testKey)
+		res, ok := resolver.isCached(context.Background(), openfgav1.ConsistencyPreference_MINIMIZE_LATENCY, testKey)
 		require.True(t, ok)
 		require.Equal(t, expectedResponse, res)
 	})
@@ -2434,7 +2824,7 @@ func TestIsCached(t *testing.T) {
 			lastCacheInvalidationTime: time.Time{},
 		}
 
-		res, ok := resolver.isCached(openfgav1.ConsistencyPreference_MINIMIZE_LATENCY, testKey)
+		res, ok := resolver.isCached(context.Background(), openfgav1.ConsistencyPreference_MINIMIZE_LATENCY, testKey)
 		require.False(t, ok)
 		require.Nil(t, res)
 	})
@@ -2451,7 +2841,7 @@ func TestIsCached(t *testing.T) {
 			lastCacheInvalidationTime: time.Now().Add(-time.Hour),
 		}
 
-		res, ok := resolver.isCached(openfgav1.ConsistencyPreference_MINIMIZE_LATENCY, testKey)
+		res, ok := resolver.isCached(context.Background(), openfgav1.ConsistencyPreference_MINIMIZE_LATENCY, testKey)
 		require.False(t, ok)
 		require.Nil(t, res)
 	})
@@ -2468,7 +2858,7 @@ func TestIsCached(t *testing.T) {
 			lastCacheInvalidationTime: time.Now().Add(-time.Hour),
 		}
 
-		res, ok := resolver.isCached(openfgav1.ConsistencyPreference_MINIMIZE_LATENCY, testKey)
+		res, ok := resolver.isCached(context.Background(), openfgav1.ConsistencyPreference_MINIMIZE_LATENCY, testKey)
 		require.False(t, ok)
 		require.Nil(t, res)
 	})
@@ -2492,7 +2882,7 @@ func TestIsCached(t *testing.T) {
 			lastCacheInvalidationTime: invalidationTime,
 		}
 
-		res, ok := resolver.isCached(openfgav1.ConsistencyPreference_MINIMIZE_LATENCY, testKey)
+		res, ok := resolver.isCached(context.Background(), openfgav1.ConsistencyPreference_MINIMIZE_LATENCY, testKey)
 		require.False(t, ok)
 		require.Nil(t, res)
 	})
@@ -2517,7 +2907,7 @@ func TestIsCached(t *testing.T) {
 			lastCacheInvalidationTime: invalidationTime,
 		}
 
-		res, ok := resolver.isCached(openfgav1.ConsistencyPreference_MINIMIZE_LATENCY, testKey)
+		res, ok := resolver.isCached(context.Background(), openfgav1.ConsistencyPreference_MINIMIZE_LATENCY, testKey)
 		require.True(t, ok)
 		require.Equal(t, expectedResponse, res)
 	})
@@ -2542,7 +2932,7 @@ func TestIsCached(t *testing.T) {
 			lastCacheInvalidationTime: invalidationTime,
 		}
 
-		res, ok := resolver.isCached(openfgav1.ConsistencyPreference_MINIMIZE_LATENCY, testKey)
+		res, ok := resolver.isCached(context.Background(), openfgav1.ConsistencyPreference_MINIMIZE_LATENCY, testKey)
 		require.True(t, ok)
 		require.Equal(t, expectedResponse, res)
 	})
@@ -2566,7 +2956,7 @@ func TestIsCached(t *testing.T) {
 			lastCacheInvalidationTime: time.Now().Add(-time.Hour),
 		}
 
-		res, ok := resolver.isCached(openfgav1.ConsistencyPreference_UNSPECIFIED, testKey)
+		res, ok := resolver.isCached(context.Background(), openfgav1.ConsistencyPreference_UNSPECIFIED, testKey)
 		require.True(t, ok)
 		require.Equal(t, expectedResponse, res)
 	})
@@ -2579,15 +2969,16 @@ func TestSpecificType(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-            model
-              schema 1.1
-            type user
-            type document
-              relations
-                define viewer: [user]
-        `)
+           model
+             schema 1.1
+           type user
+           type document
+             relations
+               define viewer: [user]
+       `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -2635,6 +3026,7 @@ func TestSpecificType(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 
 		model := testutils.MustTransformDSLToProtoWithID(`
 	               model
@@ -2687,6 +3079,7 @@ func TestSpecificType(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 
 		model := testutils.MustTransformDSLToProtoWithID(`
 	               model
@@ -2737,6 +3130,7 @@ func TestSpecificType(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 
 		model := testutils.MustTransformDSLToProtoWithID(`
 	               model
@@ -2798,6 +3192,7 @@ func TestSpecificType(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 
 		model := testutils.MustTransformDSLToProtoWithID(`
 	               model
@@ -2850,6 +3245,7 @@ func TestSpecificType(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 
 		model := testutils.MustTransformDSLToProtoWithID(`
 	               model
@@ -2913,6 +3309,7 @@ func TestSpecificType(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 
 		model := testutils.MustTransformDSLToProtoWithID(`
 	               model
@@ -2977,6 +3374,7 @@ func TestSpecificType(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 
 		model := testutils.MustTransformDSLToProtoWithID(`
 	               model
@@ -3039,15 +3437,16 @@ func TestSpecificType(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-  model
-   schema 1.1
-  type user
-  type document
-   relations
-    define viewer: [user]
- `)
+ model
+  schema 1.1
+ type user
+ type document
+  relations
+   define viewer: [user]
+`)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -3087,18 +3486,19 @@ func TestSpecificType(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-  model
-   schema 1.1
-  type user
-  type document
-   relations
-    define viewer: [user with validTime]
-  condition validTime(current_time: timestamp, expiration: timestamp) {
-   current_time < expiration
-  }
- `)
+ model
+  schema 1.1
+ type user
+ type document
+  relations
+   define viewer: [user with validTime]
+ condition validTime(current_time: timestamp, expiration: timestamp) {
+  current_time < expiration
+ }
+`)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -3147,15 +3547,16 @@ func TestSpecificTypeWildcard(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-     define viewer: [user:*]
-  `)
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+    define viewer: [user:*]
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -3204,15 +3605,16 @@ func TestSpecificTypeWildcard(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-     define viewer: [user:*]
-  `)
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+    define viewer: [user:*]
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -3257,15 +3659,16 @@ func TestSpecificTypeWildcard(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-     define viewer: [user:*]
-  `)
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+    define viewer: [user:*]
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -3307,15 +3710,16 @@ func TestSpecificTypeWildcard(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-     define viewer: [user:*]
-  `)
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+    define viewer: [user:*]
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -3364,15 +3768,16 @@ func TestSpecificTypeWildcard(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-     define viewer: [user:*]
-  `)
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+    define viewer: [user:*]
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -3416,19 +3821,20 @@ func TestSpecificTypeWildcard(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-     define viewer: [user:* with non_expired]
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+    define viewer: [user:* with non_expired]
 
-   condition non_expired(current_time: timestamp, expiration: timestamp) {
-    current_time < expiration
-   }
-  `)
+  condition non_expired(current_time: timestamp, expiration: timestamp) {
+   current_time < expiration
+  }
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -3485,19 +3891,20 @@ func TestSpecificTypeWildcard(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-     define viewer: [user:* with non_expired]
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+    define viewer: [user:* with non_expired]
 
-   condition non_expired(current_time: timestamp, expiration: timestamp) {
-    current_time < expiration
-   }
-  `)
+  condition non_expired(current_time: timestamp, expiration: timestamp) {
+   current_time < expiration
+  }
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -3560,15 +3967,16 @@ func TestSpecificTypeWildcard(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-     define viewer: [user:*]
-  `)
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+    define viewer: [user:*]
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -3614,15 +4022,16 @@ func TestSpecificTypeWildcard(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-  model
-   schema 1.1
-  type user
-  type document
-   relations
-    define viewer: [user:*]
- `)
+ model
+  schema 1.1
+ type user
+ type document
+  relations
+   define viewer: [user:*]
+`)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -3661,18 +4070,19 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-     define owner: [user]
-     define viewer: [document#owner]
-  `)
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+    define owner: [user]
+    define viewer: [document#owner]
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -3718,7 +4128,7 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 			return tk.GetObject() == "document:2" && tk.GetRelation() == "owner" && tk.GetUser() == "user:maria"
 		}), gomock.Any(), nil).Return(&Response{Allowed: true}, nil).Times(1)
 
-		resolver.strategies[DefaultStrategyName] = NewDefault(mg, mockResolver, 10)
+		resolver.edgeStrategies[DefaultStrategyName] = NewDefault(mg, mockResolver, 10)
 
 		edges, ok := mg.GetEdgesFromNodeID("document#viewer")
 		require.True(t, ok)
@@ -3734,18 +4144,19 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-     define owner: [user]
-     define viewer: [document#owner]
-  `)
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+    define owner: [user]
+    define viewer: [document#owner]
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -3780,7 +4191,7 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 
 		mockResolver.EXPECT().ResolveUnion(gomock.Any(), gomock.Any(), gomock.Any(), nil).Return(&Response{Allowed: false}, nil).Times(1)
 
-		resolver.strategies[DefaultStrategyName] = NewDefault(mg, mockResolver, 10)
+		resolver.edgeStrategies[DefaultStrategyName] = NewDefault(mg, mockResolver, 10)
 
 		edges, ok := mg.GetEdgesFromNodeID("document#viewer")
 		require.True(t, ok)
@@ -3796,18 +4207,19 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-     define owner: [user]
-     define viewer: [document#owner]
-  `)
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+    define owner: [user]
+    define viewer: [document#owner]
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -3839,7 +4251,7 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 		require.NoError(t, err)
 
 		mockResolver := NewMockCheckResolver(ctrl)
-		resolver.strategies[DefaultStrategyName] = NewDefault(mg, mockResolver, 10)
+		resolver.edgeStrategies[DefaultStrategyName] = NewDefault(mg, mockResolver, 10)
 
 		edges, ok := mg.GetEdgesFromNodeID("document#viewer")
 		require.True(t, ok)
@@ -3855,18 +4267,19 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-     define owner: [user]
-     define viewer: [document#owner]
-  `)
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+    define owner: [user]
+    define viewer: [document#owner]
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -3912,18 +4325,19 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-     define owner: [user]
-     define viewer: [document#owner]
-  `)
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+    define owner: [user]
+    define viewer: [document#owner]
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -3971,18 +4385,19 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-     define owner: [user]
-     define viewer: [document#owner]
-  `)
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+    define owner: [user]
+    define viewer: [document#owner]
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -4020,7 +4435,7 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 
 		mockResolver.EXPECT().ResolveUnion(gomock.Any(), gomock.Any(), gomock.Any(), nil).Return(&Response{Allowed: true}, nil).Times(1)
 
-		resolver.strategies[DefaultStrategyName] = NewDefault(mg, mockResolver, 10)
+		resolver.edgeStrategies[DefaultStrategyName] = NewDefault(mg, mockResolver, 10)
 
 		edges, ok := mg.GetEdgesFromNodeID("document#viewer")
 		require.True(t, ok)
@@ -4035,21 +4450,22 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-  model
-   schema 1.1
-  type user
-  type document
-   relations
-    define owner: [user]
-    define viewer: [document#owner with validTime]
-  condition validTime(current_time: timestamp, expiration: timestamp) {
-   current_time < expiration
-  }
- `)
+ model
+  schema 1.1
+ type user
+ type document
+  relations
+   define owner: [user]
+   define viewer: [document#owner with validTime]
+ condition validTime(current_time: timestamp, expiration: timestamp) {
+  current_time < expiration
+ }
+`)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -4100,7 +4516,7 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 		require.NoError(t, err)
 
 		mockResolver := NewMockCheckResolver(ctrl)
-		resolver.strategies[DefaultStrategyName] = NewDefault(mg, mockResolver, 10)
+		resolver.edgeStrategies[DefaultStrategyName] = NewDefault(mg, mockResolver, 10)
 
 		edges, ok := mg.GetEdgesFromNodeID("document#viewer")
 		require.True(t, ok)
@@ -4116,21 +4532,22 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-  model
-   schema 1.1
-  type user
-  type document
-   relations
-    define owner: [user]
-    define viewer: [document#owner with validTime]
-  condition validTime(current_time: timestamp, expiration: timestamp) {
-   current_time < expiration
-  }
- `)
+ model
+  schema 1.1
+ type user
+ type document
+  relations
+   define owner: [user]
+   define viewer: [document#owner with validTime]
+ condition validTime(current_time: timestamp, expiration: timestamp) {
+  current_time < expiration
+ }
+`)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -4184,7 +4601,7 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 
 		mockResolver.EXPECT().ResolveUnion(gomock.Any(), gomock.Any(), gomock.Any(), nil).Return(&Response{Allowed: true}, nil).Times(1)
 
-		resolver.strategies[DefaultStrategyName] = NewDefault(mg, mockResolver, 10)
+		resolver.edgeStrategies[DefaultStrategyName] = NewDefault(mg, mockResolver, 10)
 
 		edges, ok := mg.GetEdgesFromNodeID("document#viewer")
 		require.True(t, ok)
@@ -4200,18 +4617,19 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-     define owner: [user]
-     define viewer: [document#owner]
- `)
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+    define owner: [user]
+    define viewer: [document#owner]
+`)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -4264,7 +4682,7 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 
 		edges, ok := mg.GetEdgesFromNodeID("document#viewer")
 		require.True(t, ok)
-		resolver.strategies[DefaultStrategyName] = NewDefault(mg, resolver, 10)
+		resolver.edgeStrategies[DefaultStrategyName] = NewDefault(mg, resolver, 10)
 
 		res, err := resolver.specificTypeAndRelation(context.Background(), req, edges[0], nil)
 		require.NoError(t, err)
@@ -4279,19 +4697,20 @@ func TestTTU(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-     define owner: [user]
-     define parent: [document]
-     define viewer: owner from parent
-  `)
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+    define owner: [user]
+    define parent: [document]
+    define viewer: owner from parent
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -4336,7 +4755,7 @@ func TestTTU(t *testing.T) {
 				req.GetTupleKey().GetUser() == "user:maria"
 		}), gomock.Any(), nil).Return(&Response{Allowed: true}, nil).Times(1)
 
-		resolver.strategies[DefaultStrategyName] = NewDefault(mg, mockResolver, 10)
+		resolver.edgeStrategies[DefaultStrategyName] = NewDefault(mg, mockResolver, 10)
 
 		edges, ok := mg.GetEdgesFromNodeID("document#viewer")
 		require.True(t, ok)
@@ -4352,19 +4771,20 @@ func TestTTU(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-     define owner: [user]
-     define parent: [document]
-     define viewer: owner from parent
-  `)
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+    define owner: [user]
+    define parent: [document]
+    define viewer: owner from parent
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -4400,7 +4820,7 @@ func TestTTU(t *testing.T) {
 		mockResolver := NewMockCheckResolver(ctrl)
 		mockResolver.EXPECT().ResolveUnion(gomock.Any(), gomock.Any(), gomock.Any(), nil).Return(&Response{Allowed: false}, nil).Times(1)
 
-		resolver.strategies[DefaultStrategyName] = NewDefault(mg, mockResolver, 10)
+		resolver.edgeStrategies[DefaultStrategyName] = NewDefault(mg, mockResolver, 10)
 
 		edges, ok := mg.GetEdgesFromNodeID("document#viewer")
 		require.True(t, ok)
@@ -4416,19 +4836,20 @@ func TestTTU(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-     define owner: [user]
-     define parent: [document]
-     define viewer: owner from parent
-  `)
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+    define owner: [user]
+    define parent: [document]
+    define viewer: owner from parent
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -4460,7 +4881,7 @@ func TestTTU(t *testing.T) {
 		require.NoError(t, err)
 
 		mockResolver := NewMockCheckResolver(ctrl)
-		resolver.strategies[DefaultStrategyName] = NewDefault(mg, mockResolver, 10)
+		resolver.edgeStrategies[DefaultStrategyName] = NewDefault(mg, mockResolver, 10)
 
 		edges, ok := mg.GetEdgesFromNodeID("document#viewer")
 		require.True(t, ok)
@@ -4476,18 +4897,19 @@ func TestTTU(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-     define owner: [user]
-     define parent: [document]
-     define viewer: owner from parent
-  `)
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+    define owner: [user]
+    define parent: [document]
+    define viewer: owner from parent
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -4530,18 +4952,19 @@ func TestTTU(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-     define owner: [user]
-     define parent: [document]
-     define viewer: owner from parent
-  `)
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+    define owner: [user]
+    define parent: [document]
+    define viewer: owner from parent
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -4586,19 +5009,20 @@ func TestTTU(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-     define owner: [user]
-     define parent: [document]
-     define viewer: owner from parent
-  `)
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+    define owner: [user]
+    define parent: [document]
+    define viewer: owner from parent
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -4635,7 +5059,7 @@ func TestTTU(t *testing.T) {
 		mockResolver := NewMockCheckResolver(ctrl)
 		mockResolver.EXPECT().ResolveUnion(gomock.Any(), gomock.Any(), gomock.Any(), nil).Return(&Response{Allowed: true}, nil).Times(1)
 
-		resolver.strategies[DefaultStrategyName] = NewDefault(mg, mockResolver, 10)
+		resolver.edgeStrategies[DefaultStrategyName] = NewDefault(mg, mockResolver, 10)
 
 		edges, ok := mg.GetEdgesFromNodeID("document#viewer")
 		require.True(t, ok)
@@ -4651,22 +5075,23 @@ func TestTTU(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-     define owner: [user]
-     define parent: [document with non_expired]
-     define viewer: owner from parent
-   condition non_expired(current_time: timestamp, expiration: timestamp) {
-    current_time < expiration
-   }
-  `)
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+    define owner: [user]
+    define parent: [document with non_expired]
+    define viewer: owner from parent
+  condition non_expired(current_time: timestamp, expiration: timestamp) {
+   current_time < expiration
+  }
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -4714,7 +5139,7 @@ func TestTTU(t *testing.T) {
 		require.NoError(t, err)
 
 		mockResolver := NewMockCheckResolver(ctrl)
-		resolver.strategies[DefaultStrategyName] = NewDefault(mg, mockResolver, 10)
+		resolver.edgeStrategies[DefaultStrategyName] = NewDefault(mg, mockResolver, 10)
 
 		edges, ok := mg.GetEdgesFromNodeID("document#viewer")
 		require.True(t, ok)
@@ -4730,22 +5155,23 @@ func TestTTU(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-     define owner: [user]
-     define parent: [document with non_expired]
-     define viewer: owner from parent
-   condition non_expired(current_time: timestamp, expiration: timestamp) {
-    current_time < expiration
-   }
-  `)
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+    define owner: [user]
+    define parent: [document with non_expired]
+    define viewer: owner from parent
+  condition non_expired(current_time: timestamp, expiration: timestamp) {
+   current_time < expiration
+  }
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -4795,7 +5221,7 @@ func TestTTU(t *testing.T) {
 		mockResolver := NewMockCheckResolver(ctrl)
 		mockResolver.EXPECT().ResolveUnion(gomock.Any(), gomock.Any(), gomock.Any(), nil).Return(&Response{Allowed: true}, nil).Times(1)
 
-		resolver.strategies[DefaultStrategyName] = NewDefault(mg, mockResolver, 10)
+		resolver.edgeStrategies[DefaultStrategyName] = NewDefault(mg, mockResolver, 10)
 
 		edges, ok := mg.GetEdgesFromNodeID("document#viewer")
 		require.True(t, ok)
@@ -4810,21 +5236,22 @@ func TestTTU(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-  model
-   schema 1.1
-  type user
-  type folder
-   relations
-    define viewer: [user]
-  type document
-   relations
-    define parent: [folder]
-    define viewer: viewer from parent
- `)
+ model
+  schema 1.1
+ type user
+ type folder
+  relations
+   define viewer: [user]
+ type document
+  relations
+   define parent: [folder]
+   define viewer: viewer from parent
+`)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -4867,7 +5294,7 @@ func TestTTU(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		resolver.strategies[DefaultStrategyName] = NewDefault(mg, resolver, 10)
+		resolver.edgeStrategies[DefaultStrategyName] = NewDefault(mg, resolver, 10)
 
 		edges, ok := mg.GetEdgesFromNodeID("document#viewer")
 		require.True(t, ok)
@@ -4886,18 +5313,19 @@ func TestResolveRecursiveCheck(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-       define viewer: [user] or viewer from parent
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+      define viewer: [user] or viewer from parent
 	   define parent: [document]
-  `)
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -4945,7 +5373,7 @@ func TestResolveRecursiveCheck(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		resolver.strategies[DefaultStrategyName] = NewDefault(mg, resolver, 10)
+		resolver.edgeStrategies[DefaultStrategyName] = NewDefault(mg, resolver, 10)
 
 		res, err := resolver.ResolveCheck(context.Background(), req)
 		require.NoError(t, err)
@@ -4957,24 +5385,25 @@ func TestResolveRecursiveCheck(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-       define viewer: [group] or viewer from parent
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+      define viewer: [group] or viewer from parent
 	   define parent: [document, group]
-   type group
-    relations
+  type group
+   relations
 	   define viewer: member
 	   define member: reader or public
 	   define public: [user:*]
 	   define reader: [user]
-  `)
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -5049,8 +5478,8 @@ func TestResolveRecursiveCheck(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		resolver.strategies[DefaultStrategyName] = NewDefault(mg, resolver, 10)
-		resolver.strategies[WeightTwoStrategyName] = NewWeight2(mg, mockDatastore)
+		resolver.edgeStrategies[DefaultStrategyName] = NewDefault(mg, resolver, 10)
+		resolver.edgeStrategies[WeightTwoStrategyName] = NewWeight2(mg, mockDatastore)
 
 		res, err := resolver.ResolveCheck(context.Background(), req)
 		require.NoError(t, err)
@@ -5062,24 +5491,25 @@ func TestResolveRecursiveCheck(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-       define viewer: [group] or viewer from parent
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+      define viewer: [group] or viewer from parent
 	   define parent: [document, group]
-   type group
-    relations
+  type group
+   relations
 	   define viewer: member
 	   define member: reader or public
 	   define public: [user:*]
 	   define reader: [user]
-  `)
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -5148,8 +5578,8 @@ func TestResolveRecursiveCheck(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		resolver.strategies[DefaultStrategyName] = NewDefault(mg, resolver, 10)
-		resolver.strategies[WeightTwoStrategyName] = NewWeight2(mg, mockDatastore)
+		resolver.edgeStrategies[DefaultStrategyName] = NewDefault(mg, resolver, 10)
+		resolver.edgeStrategies[WeightTwoStrategyName] = NewWeight2(mg, mockDatastore)
 
 		res, err := resolver.ResolveCheck(context.Background(), req)
 		require.NoError(t, err)
@@ -5161,17 +5591,18 @@ func TestResolveRecursiveCheck(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-       define viewer: [user, document#viewer]
-  `)
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+      define viewer: [user, document#viewer]
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -5217,7 +5648,7 @@ func TestResolveRecursiveCheck(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		resolver.strategies[DefaultStrategyName] = NewDefault(mg, resolver, 10)
+		resolver.edgeStrategies[DefaultStrategyName] = NewDefault(mg, resolver, 10)
 
 		res, err := resolver.ResolveCheck(context.Background(), req)
 		require.NoError(t, err)
@@ -5229,23 +5660,24 @@ func TestResolveRecursiveCheck(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-       define viewer: [group, document#viewer, group#viewer]
-   type group
-    relations
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+      define viewer: [group, document#viewer, group#viewer]
+  type group
+   relations
 	   define viewer: member
 	   define member: reader or public
 	   define public: [user:*]
 	   define reader: [user]
-  `)
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -5319,8 +5751,8 @@ func TestResolveRecursiveCheck(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		resolver.strategies[DefaultStrategyName] = NewDefault(mg, resolver, 10)
-		resolver.strategies[WeightTwoStrategyName] = NewWeight2(mg, mockDatastore)
+		resolver.edgeStrategies[DefaultStrategyName] = NewDefault(mg, resolver, 10)
+		resolver.edgeStrategies[WeightTwoStrategyName] = NewWeight2(mg, mockDatastore)
 
 		res, err := resolver.ResolveCheck(context.Background(), req)
 		require.NoError(t, err)
@@ -5332,23 +5764,24 @@ func TestResolveRecursiveCheck(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-       define viewer: [group, document#viewer, group#viewer]
-   type group
-    relations
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+      define viewer: [group, document#viewer, group#viewer]
+  type group
+   relations
 	   define viewer: member
 	   define member: reader or public
 	   define public: [user:*]
 	   define reader: [user]
-  `)
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -5417,8 +5850,8 @@ func TestResolveRecursiveCheck(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		resolver.strategies[DefaultStrategyName] = NewDefault(mg, resolver, 10)
-		resolver.strategies[WeightTwoStrategyName] = NewWeight2(mg, mockDatastore)
+		resolver.edgeStrategies[DefaultStrategyName] = NewDefault(mg, resolver, 10)
+		resolver.edgeStrategies[WeightTwoStrategyName] = NewWeight2(mg, mockDatastore)
 
 		res, err := resolver.ResolveCheck(context.Background(), req)
 		require.NoError(t, err)
@@ -5430,18 +5863,19 @@ func TestResolveRecursiveCheck(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type group
-    relations
+  model
+   schema 1.1
+  type user
+  type group
+   relations
 	   define viewer: [user:*] or viewer from parent
 	   define parent: [group]
-  `)
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -5503,7 +5937,7 @@ func TestResolveRecursiveCheck(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		resolver.strategies[DefaultStrategyName] = NewDefault(mg, resolver, 10)
+		resolver.edgeStrategies[DefaultStrategyName] = NewDefault(mg, resolver, 10)
 
 		res, err := resolver.ResolveCheck(context.Background(), req)
 		require.NoError(t, err)
@@ -5515,17 +5949,18 @@ func TestResolveRecursiveCheck(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-       define viewer: [user:*, document#viewer]
-  `)
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+      define viewer: [user:*, document#viewer]
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -5574,7 +6009,7 @@ func TestResolveRecursiveCheck(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		resolver.strategies[DefaultStrategyName] = NewDefault(mg, resolver, 10)
+		resolver.edgeStrategies[DefaultStrategyName] = NewDefault(mg, resolver, 10)
 
 		res, err := resolver.ResolveCheck(context.Background(), req)
 		require.NoError(t, err)
@@ -5586,19 +6021,20 @@ func TestResolveRecursiveCheck(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type group
-    relations
+  model
+   schema 1.1
+  type user
+  type group
+   relations
 	   define viewer: [user:*] or viewer from parent or admin
 	   define parent: [group]
 	   define admin: [user] or admin from parent
-  `)
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -5660,7 +6096,7 @@ func TestResolveRecursiveCheck(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		resolver.strategies[DefaultStrategyName] = NewDefault(mg, resolver, 10)
+		resolver.edgeStrategies[DefaultStrategyName] = NewDefault(mg, resolver, 10)
 
 		res, err := resolver.ResolveCheck(context.Background(), req)
 		require.NoError(t, err)
@@ -5672,18 +6108,19 @@ func TestResolveRecursiveCheck(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type document
-    relations
-       define viewer: [user:*, document#viewer] or admin
+  model
+   schema 1.1
+  type user
+  type document
+   relations
+      define viewer: [user:*, document#viewer] or admin
 	   define admin: [user, document#admin]
-  `)
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -5732,7 +6169,7 @@ func TestResolveRecursiveCheck(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		resolver.strategies[DefaultStrategyName] = NewDefault(mg, resolver, 10)
+		resolver.edgeStrategies[DefaultStrategyName] = NewDefault(mg, resolver, 10)
 
 		res, err := resolver.ResolveCheck(context.Background(), req)
 		require.NoError(t, err)
@@ -5745,6 +6182,7 @@ func TestResolveRecursiveCheck(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
@@ -5798,7 +6236,7 @@ func TestResolveRecursiveCheck(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		resolver.strategies[DefaultStrategyName] = NewDefault(mg, resolver, 10)
+		resolver.edgeStrategies[DefaultStrategyName] = NewDefault(mg, resolver, 10)
 
 		res, err := resolver.ResolveCheck(context.Background(), req)
 		require.NoError(t, err)
@@ -5811,6 +6249,7 @@ func TestResolveRecursiveCheck(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
@@ -5869,7 +6308,7 @@ func TestResolveRecursiveCheck(t *testing.T) {
 			LastCacheInvalidationTime: time.Now().Add(-time.Hour),
 		})
 
-		resolver.strategies[DefaultStrategyName] = NewDefault(mg, resolver, 10)
+		resolver.edgeStrategies[DefaultStrategyName] = NewDefault(mg, resolver, 10)
 
 		res, err := resolver.ResolveCheck(context.Background(), req)
 		require.NoError(t, err)
@@ -5884,26 +6323,27 @@ func TestResolveCheck(t *testing.T) {
 
 		storeID := ulid.Make().String()
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 		mockPlanner := mocks.NewMockManager(ctrl)
 		mockSelector := mocks.NewMockSelector(ctrl)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-   model
-    schema 1.1
-   type user
-   type group
+  model
+   schema 1.1
+  type user
+  type group
 	relations
 		define viewer: [user with xcond]
-   type document
-    relations
-       define viewer: [group#viewer with ycond]
-    condition xcond(x: string) {
-  	x == '1'
+  type document
+   relations
+      define viewer: [group#viewer with ycond]
+   condition xcond(x: string) {
+ 	x == '1'
 	}
 	 condition ycond(y: string) {
-  	y == '1'
+ 	y == '1'
 	}
-  `)
+ `)
 
 		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
@@ -5981,8 +6421,8 @@ func TestResolveCheck(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		resolver.strategies[DefaultStrategyName] = NewDefault(mg, resolver, 10)
-		resolver.strategies[WeightTwoStrategyName] = NewWeight2(mg, mockDatastore)
+		resolver.edgeStrategies[DefaultStrategyName] = NewDefault(mg, resolver, 10)
+		resolver.edgeStrategies[WeightTwoStrategyName] = NewWeight2(mg, mockDatastore)
 
 		_, err = resolver.ResolveCheck(context.Background(), req)
 		require.Error(t, err)
@@ -6158,6 +6598,8 @@ func TestCheck_NestedRecursiveRelations(t *testing.T) {
 	mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
 	mockPlanner := mocks.NewMockManager(ctrl)
 	mockSelector := mocks.NewMockSelector(ctrl)
+
+	mockDatastore.EXPECT().Querier(gomock.Any()).AnyTimes()
 
 	model := testutils.MustTransformDSLToProtoWithID(`
 		model
@@ -6346,6 +6788,11 @@ func TestCheck_MultiBranchRecursionOnSameRelation(t *testing.T) {
 			mockDatastore.EXPECT().ReadUsersetTuples(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
 				AnyTimes().
 				Return(storage.NewStaticTupleIterator(nil), nil)
+			// Returning nil routes the strategy-selection gate to DefaultPlan, which this
+			// recursive model exercises. Without this stub the gate's Querier call is
+			// unexpected, and gomock's Goexit inside a resolver worker goroutine deadlocks
+			// the whole check instead of failing.
+			mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
 			// ReadStartingWithUser is deliberately not stubbed: the bottom-up recursive
 			// strategy must never run for this model, so a call there fails the test.
 
