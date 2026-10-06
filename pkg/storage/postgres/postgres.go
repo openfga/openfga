@@ -34,6 +34,7 @@ import (
 
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/storage/adapter"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 )
@@ -315,6 +316,12 @@ func (s *Datastore) Close() {
 		}
 		s.secondaryDB.Close()
 	}
+}
+
+// Querier see [storage.RelationshipTupleReader].Querier.
+// Returns nil for now but will be updated in the future.
+func (s *Datastore) Querier(_ openfgav1.ConsistencyPreference) adapter.Querier {
+	return nil
 }
 
 // getPgxPool returns the pgxpool.Pool based on consistency options.
