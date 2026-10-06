@@ -53,7 +53,7 @@ require (
 	go.uber.org/zap v1.28.0
 	golang.org/x/sync v0.23.0
 	gonum.org/v1/gonum v0.17.0
-	google.golang.org/grpc v1.84.0
+	google.golang.org/grpc v1.83.2
 	google.golang.org/protobuf v1.36.12
 	modernc.org/sqlite v1.60.1
 	sigs.k8s.io/controller-runtime v0.25.2
