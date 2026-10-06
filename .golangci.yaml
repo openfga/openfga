@@ -21,6 +21,7 @@ linters:
     - protogetter
     - revive
     - recvcheck
+    - spancheck
     - staticcheck
     - tagalign
     - testifylint
@@ -54,6 +55,14 @@ linters:
     perfsprint:
       err-error: false
       errorf: false
+    spancheck:
+      # The storage adapters wrap tracer.Start in a startTrace helper.
+      # Registering the wrappers lets spancheck verify their call sites
+      # instead of flagging the wrappers themselves.
+      extra-start-span-signatures:
+        - github.com/openfga/openfga/pkg/storage/mysql.startTrace:opentelemetry
+        - github.com/openfga/openfga/pkg/storage/postgres.startTrace:opentelemetry
+        - github.com/openfga/openfga/pkg/storage/sqlite.startTrace:opentelemetry
     staticcheck:
       checks:
         - all
