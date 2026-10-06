@@ -786,7 +786,6 @@ func createRecursiveRelations(b *testing.B, ctx context.Context, datastore stora
 				obj := "org:" + strconv.Itoa(objID)
 				tk := tuple.NewTupleKey(obj, "recursive", "user:justin")
 				tuples[j] = tk
-				tuples = append(tuples, tk)
 				objID++
 				continue
 			}
