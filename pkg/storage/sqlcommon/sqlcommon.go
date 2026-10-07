@@ -392,14 +392,29 @@ func (p *rowGetter) GetRows(ctx context.Context) (Rows, error) {
 		return nil, err
 	}
 
-	ctx = context.WithoutCancel(ctx)
+	queryCtx := context.WithoutCancel(ctx)
+	var cancel context.CancelFunc = func() {}
+	if deadline, ok := ctx.Deadline(); ok {
+		queryCtx, cancel = context.WithDeadline(queryCtx, deadline)
+	}
 
-	rows, err := conn.Query(ctx, p.statement, p.args...)
+	rows, err := conn.Query(queryCtx, p.statement, p.args...)
 	if err != nil {
+		cancel()
 		conn.Close()
 		return nil, err
 	}
-	return rows, nil
+	return &rowsWithCancel{Rows: rows, cancel: cancel}, nil
+}
+
+type rowsWithCancel struct {
+	Rows
+	cancel context.CancelFunc
+}
+
+func (r *rowsWithCancel) Close() error {
+	r.cancel()
+	return r.Rows.Close()
 }
 
 func NewRowGetter(connector Connector, builder SQLBuilder) (SQLIteratorRowGetter, error) {
