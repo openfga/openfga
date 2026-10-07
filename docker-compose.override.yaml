@@ -16,8 +16,10 @@ services:
       - OPENFGA_METRICS_ENABLE_RPC_HISTOGRAMS=true
       - OPENFGA_DATASTORE_METRICS_ENABLED=true
       - OPENFGA_METRICS_ENABLED=true
-      - OPENFGA_LOG_OTLP_ENABLED=true
-      - OPENFGA_LOG_OTLP_ENDPOINT=otel-collector:4317
+      - OTEL_LOGS_EXPORTER=otlp
+      - OTEL_EXPORTER_OTLP_LOGS_PROTOCOL=grpc
+      - OTEL_EXPORTER_OTLP_LOGS_ENDPOINT=http://otel-collector:4317
+      - OTEL_EXPORTER_OTLP_LOGS_INSECURE=true
 
   otel-collector:
     image: otel/opentelemetry-collector:latest
