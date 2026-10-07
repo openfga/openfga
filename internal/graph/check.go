@@ -54,6 +54,7 @@ type LocalChecker struct {
 	upstreamTimeout      time.Duration
 	planner              planner.Manager
 	logger               logger.Logger
+	tracer               trace.Tracer
 	optimizationsEnabled bool
 	maxResolutionDepth   uint32
 }
@@ -85,6 +86,16 @@ func WithLocalCheckerLogger(logger logger.Logger) LocalCheckerOption {
 	}
 }
 
+// WithTracerProvider sets the OpenTelemetry tracer provider used by the checker.
+func WithTracerProvider(tracerProvider trace.TracerProvider) LocalCheckerOption {
+	return func(d *LocalChecker) {
+		if tracerProvider == nil {
+			return
+		}
+		d.tracer = tracerProvider.Tracer("internal/graph/check")
+	}
+}
+
 func WithMaxResolutionDepth(depth uint32) LocalCheckerOption {
 	return func(d *LocalChecker) {
 		d.maxResolutionDepth = depth
@@ -109,6 +120,7 @@ func NewLocalChecker(opts ...LocalCheckerOption) *LocalChecker {
 		upstreamTimeout:    serverconfig.DefaultRequestTimeout,
 		logger:             logger.NewNoopLogger(),
 		planner:            planner.NewNoopPlanner(),
+		tracer:             tracer,
 	}
 	// by default, a LocalChecker delegates/dispatches subproblems to itself (e.g. local dispatch) unless otherwise configured.
 	checker.delegate = checker
@@ -400,7 +412,7 @@ func (c *LocalChecker) ResolveCheck(
 		return nil, ctx.Err()
 	}
 
-	ctx, span := tracer.Start(ctx, "ResolveCheck", trace.WithAttributes(
+	ctx, span := c.tracer.Start(ctx, "ResolveCheck", trace.WithAttributes(
 		attribute.String("store_id", req.GetStoreID()),
 		attribute.String("resolver_type", "LocalChecker"),
 		attribute.String("tuple_key", tuple.TupleKeyWithConditionToString(req.GetTupleKey())),
@@ -495,7 +507,7 @@ func (c *LocalChecker) checkPublicAssignable(ctx context.Context, req *ResolveCh
 	userType := tuple.GetType(reqTupleKey.GetUser())
 	wildcardRelationReference := typesystem.WildcardRelationReference(userType)
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
-		ctx, span := tracer.Start(ctx, "checkPublicAssignable")
+		ctx, span := c.tracer.Start(ctx, "checkPublicAssignable")
 		defer span.End()
 
 		response := &ResolveCheckResponse{
@@ -550,7 +562,7 @@ func (c *LocalChecker) checkDirectUserTuple(ctx context.Context, req *ResolveChe
 	reqTupleKey := req.GetTupleKey()
 
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
-		ctx, span := tracer.Start(ctx, "checkDirectUserTuple",
+		ctx, span := c.tracer.Start(ctx, "checkDirectUserTuple",
 			trace.WithAttributes(attribute.String("tuple_key", tuple.TupleKeyWithConditionToString(reqTupleKey))))
 		defer span.End()
 
@@ -650,7 +662,7 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 	reqTupleKey := req.GetTupleKey()
 
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
-		ctx, span := tracer.Start(ctx, "checkDirectUsersetTuples", trace.WithAttributes(
+		ctx, span := c.tracer.Start(ctx, "checkDirectUsersetTuples", trace.WithAttributes(
 			attribute.String("userset", tuple.ToObjectRelationString(reqTupleKey.GetObject(), reqTupleKey.GetRelation())),
 		))
 		defer span.End()
@@ -798,7 +810,7 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 // related to it.
 func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckRequest) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
-		ctx, span := tracer.Start(ctx, "checkDirect", trace.WithAttributes(
+		ctx, span := c.tracer.Start(ctx, "checkDirect", trace.WithAttributes(
 			attribute.String("tuple_key", tuple.TupleKeyWithConditionToString(req.GetTupleKey())),
 		))
 		defer span.End()
@@ -848,7 +860,7 @@ func (c *LocalChecker) checkComputedUserset(_ context.Context, req *ResolveCheck
 	childRequest.TupleKey = rewrittenTupleKey
 
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
-		ctx, span := tracer.Start(ctx, "checkComputedUserset", trace.WithAttributes(
+		ctx, span := c.tracer.Start(ctx, "checkComputedUserset", trace.WithAttributes(
 			attribute.String("tuple_key", tuple.TupleKeyWithConditionToString(rewrittenTupleKey)),
 		))
 		defer span.End()
@@ -861,7 +873,7 @@ func (c *LocalChecker) checkComputedUserset(_ context.Context, req *ResolveCheck
 // of them evaluates the computed userset of the TTU rewrite rule for them.
 func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
-		ctx, span := tracer.Start(ctx, "checkTTU", trace.WithAttributes(
+		ctx, span := c.tracer.Start(ctx, "checkTTU", trace.WithAttributes(
 			attribute.String("tuple_key", tuple.TupleKeyWithConditionToString(req.GetTupleKey())),
 		))
 		defer span.End()
@@ -1020,7 +1032,7 @@ func (c *LocalChecker) checkSetOperation(
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
 		var err error
 		var resp *ResolveCheckResponse
-		ctx, span := tracer.Start(ctx, reducerKey, trace.WithAttributes(
+		ctx, span := c.tracer.Start(ctx, reducerKey, trace.WithAttributes(
 			attribute.String("tuple_key", tuple.TupleKeyWithConditionToString(req.GetTupleKey())),
 		))
 		defer func() {

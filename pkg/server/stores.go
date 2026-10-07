@@ -20,7 +20,7 @@ import (
 )
 
 func (s *Server) CreateStore(ctx context.Context, req *openfgav1.CreateStoreRequest) (*openfgav1.CreateStoreResponse, error) {
-	ctx, span := tracer.Start(ctx, apimethod.CreateStore.String())
+	ctx, span := s.getTracer().Start(ctx, apimethod.CreateStore.String())
 	defer span.End()
 
 	if !validator.RequestIsValidatedFromContext(ctx) {
@@ -51,7 +51,7 @@ func (s *Server) CreateStore(ctx context.Context, req *openfgav1.CreateStoreRequ
 }
 
 func (s *Server) DeleteStore(ctx context.Context, req *openfgav1.DeleteStoreRequest) (*openfgav1.DeleteStoreResponse, error) {
-	ctx, span := tracer.Start(ctx, apimethod.DeleteStore.String(), trace.WithAttributes(
+	ctx, span := s.getTracer().Start(ctx, apimethod.DeleteStore.String(), trace.WithAttributes(
 		attribute.String("store_id", req.GetStoreId()),
 	))
 	defer span.End()
@@ -84,7 +84,7 @@ func (s *Server) DeleteStore(ctx context.Context, req *openfgav1.DeleteStoreRequ
 }
 
 func (s *Server) GetStore(ctx context.Context, req *openfgav1.GetStoreRequest) (*openfgav1.GetStoreResponse, error) {
-	ctx, span := tracer.Start(ctx, apimethod.GetStore.String(), trace.WithAttributes(
+	ctx, span := s.getTracer().Start(ctx, apimethod.GetStore.String(), trace.WithAttributes(
 		attribute.String("store_id", req.GetStoreId()),
 	))
 	defer span.End()
@@ -111,7 +111,7 @@ func (s *Server) GetStore(ctx context.Context, req *openfgav1.GetStoreRequest) (
 
 func (s *Server) ListStores(ctx context.Context, req *openfgav1.ListStoresRequest) (*openfgav1.ListStoresResponse, error) {
 	method := "ListStores"
-	ctx, span := tracer.Start(ctx, method)
+	ctx, span := s.getTracer().Start(ctx, method)
 	defer span.End()
 
 	if !validator.RequestIsValidatedFromContext(ctx) {

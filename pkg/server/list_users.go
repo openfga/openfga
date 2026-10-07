@@ -39,7 +39,7 @@ func (s *Server) ListUsers(
 ) (*openfgav1.ListUsersResponse, error) {
 	start := time.Now()
 	storeID := req.GetStoreId()
-	ctx, span := tracer.Start(ctx, apimethod.ListUsers.String(), trace.WithAttributes(
+	ctx, span := s.getTracer().Start(ctx, apimethod.ListUsers.String(), trace.WithAttributes(
 		attribute.String("store_id", storeID),
 		attribute.String("object", tuple.BuildObject(req.GetObject().GetType(), req.GetObject().GetId())),
 		attribute.String("relation", req.GetRelation()),

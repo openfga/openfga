@@ -31,7 +31,7 @@ import (
 func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckRequest) (*openfgav1.BatchCheckResponse, error) {
 	startTime := time.Now()
 
-	ctx, span := tracer.Start(ctx, apimethod.BatchCheck.String(), trace.WithAttributes(
+	ctx, span := s.getTracer().Start(ctx, apimethod.BatchCheck.String(), trace.WithAttributes(
 		attribute.KeyValue{Key: "store_id", Value: attribute.StringValue(req.GetStoreId())},
 		attribute.KeyValue{Key: "batch_size", Value: attribute.IntValue(len(req.GetChecks()))},
 		attribute.KeyValue{Key: "consistency", Value: attribute.StringValue(req.GetConsistency().String())},
