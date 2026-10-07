@@ -8,6 +8,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 ### Fixed
+- Fixed `OPENFGA_PROFILER_ADDR` being ignored when configuring the profiler address. The existing `OPENFGA_PROFILER_ADDRESS` remains supported and takes precedence when both are set.
 - Fixed `recursiveFastPath` and `weight2` in Check spinning at full CPU on a closed producer channel until the other producer finished, which also made the planner avoid the `weight2` strategy. [#3299](https://github.com/openfga/openfga/issues/3299)
 
 ## [1.22.0] - 2026-10-06
