@@ -74,27 +74,12 @@ func RunMigrations(cfg MigrationConfig) error {
 	case "postgres":
 		driver = "pgx"
 		migrationsPath = assets.PostgresMigrationDir
-		var username, password string
 
-		// Parse the database uri with url.Parse() and update username/password, if set via flags
-		dbURI, err := url.Parse(uri)
+		var err error
+		uri, err = applyPostgresCredentials(uri, cfg.Username, cfg.Password)
 		if err != nil {
-			return fmt.Errorf("invalid database uri: %w", err)
+			return err
 		}
-		if cfg.Username != "" {
-			username = cfg.Username
-		} else if dbURI.User != nil {
-			username = dbURI.User.Username()
-		}
-		if cfg.Password != "" {
-			password = cfg.Password
-		} else if dbURI.User != nil {
-			password, _ = dbURI.User.Password()
-		}
-		dbURI.User = url.UserPassword(username, password)
-
-		// Replace CLI uri with the one we just updated.
-		uri = dbURI.String()
 	case "sqlite":
 		driver = "sqlite"
 		migrationsPath = assets.SqliteMigrationDir
@@ -164,4 +149,35 @@ func RunMigrations(cfg MigrationConfig) error {
 
 	log.Info("migration done")
 	return nil
+}
+
+// applyPostgresCredentials overlays optional username/password flags onto a
+// Postgres connection URI. When both flags are empty the parsed userinfo is
+// left unchanged so PGPASSFILE / IAM / env-based auth can supply credentials.
+func applyPostgresCredentials(uri, username, password string) (string, error) {
+	dbURI, err := url.Parse(uri)
+	if err != nil {
+		return "", fmt.Errorf("invalid database uri: %w", err)
+	}
+
+	if username == "" && password == "" {
+		return uri, nil
+	}
+
+	if username == "" && dbURI.User != nil {
+		username = dbURI.User.Username()
+	}
+	if password == "" && dbURI.User != nil {
+		if existing, ok := dbURI.User.Password(); ok {
+			password = existing
+		}
+	}
+
+	if password != "" {
+		dbURI.User = url.UserPassword(username, password)
+	} else {
+		dbURI.User = url.User(username)
+	}
+
+	return dbURI.String(), nil
 }
