@@ -161,24 +161,22 @@ func runOpenFGAContainerWithArgs(t *testing.T, commandArgs []string) OpenFGATest
 	grpcHostPort := m[0].HostPort
 
 	if len(commandArgs) > 0 && commandArgs[0] == "run" {
-		// wait for healthy service
+		// The image no longer bundles grpc_health_probe, so it declares no
+		// HEALTHCHECK and the container has no health state to poll. Wait for it
+		// to be running; readiness is asserted from the test process by
+		// EnsureServiceHealthy, which calls the real gRPC and HTTP health
+		// endpoints and is a stronger check than the probe was.
 		policy := backoff.NewExponentialBackOff(backoff.WithMaxElapsedTime(30 * time.Second))
 
 		err = backoff.Retry(func() error {
 			inspectResult, err := dockerClient.ContainerInspect(ctx, cont.ID, client.ContainerInspectOptions{})
 			require.NoError(t, err)
-			require.NotNil(t, inspectResult.Container.State.Health)
 
-			if inspectResult.Container.State.Health.Status == container.Healthy {
+			state := inspectResult.Container.State
+			if state.Running {
 				return nil
 			}
-			if inspectResult.Container.State.Health.Status == container.Unhealthy {
-				for _, healthLog := range inspectResult.Container.State.Health.Log {
-					t.Log(healthLog.Output)
-				}
-				return fmt.Errorf("container unhealthy")
-			}
-			return fmt.Errorf("container starting")
+			return fmt.Errorf("container not running (status %q)", state.Status)
 		}, policy)
 		require.NoError(t, err)
 	} else {
