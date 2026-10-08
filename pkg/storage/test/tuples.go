@@ -224,6 +224,28 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		}
 	})
 
+	t.Run("write_tuples_with_max_length_object_type_and_id", func(t *testing.T) {
+		storeID := ulid.Make().String()
+		maxObjectType := strings.Repeat("a", 128)
+		maxObjectID := strings.Repeat("b", 128)
+		maxUser := strings.Repeat("u", 256)
+
+		tk := &openfgav1.TupleKey{
+			Object:   tuple.BuildObject(maxObjectType, maxObjectID),
+			Relation: "viewer",
+			User:     maxUser,
+		}
+
+		err := datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tk})
+		require.NoError(t, err)
+
+		gotTuples, err := datastore.Read(ctx, storeID, tk)
+		require.NoError(t, err)
+		require.Len(t, gotTuples, 1)
+		require.Equal(t, tk.GetObject(), gotTuples[0].GetKey().GetObject())
+		require.Equal(t, tk.GetUser(), gotTuples[0].GetKey().GetUser())
+	})
+
 	t.Run("read_changes_with_no_changes_should_return_not_found", func(t *testing.T) {
 		storeID := ulid.Make().String()
 
