@@ -10,6 +10,9 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Added
 - Added optional OTLP log export, so logs can be correlated with traces in collector-based observability stacks. Enable it with the standard `OTEL_LOGS_EXPORTER=otlp` environment variable and configure the destination via the standard `OTEL_EXPORTER_OTLP_LOGS_*` variables (falling back to `OTEL_EXPORTER_OTLP_*`). Unlike the OpenTelemetry specification, which defaults `OTEL_LOGS_EXPORTER` to `otlp`, an unset `OTEL_LOGS_EXPORTER` disables export, so upgrading does not start exporting logs. When enabled, logs emitted with a span-bearing context carry `TraceId`/`SpanId`. stdout output is unchanged, including its production sampling; the OTLP stream is sampled by the same policy, so both sinks stay consistent. See `internal/telemetry/logging.go`. [#3022](https://github.com/openfga/openfga/issues/3022)
 
+### Changed
+- Dependency updates: the OTLP log exporter (`autoexport v0.72.0`) raises the transitive `google.golang.org/grpc` floor to v1.84.0 (from v1.83.2), a stable superset that retains the fix for [GO-2026-6443](https://pkg.go.dev/vuln/GO-2026-6443). [#3022](https://github.com/openfga/openfga/issues/3022)
+
 ### Fixed
 - Fixed `recursiveFastPath` and `weight2` in Check spinning at full CPU on a closed producer channel until the other producer finished, which also made the planner avoid the `weight2` strategy. [#3299](https://github.com/openfga/openfga/issues/3299)
 
