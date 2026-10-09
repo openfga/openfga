@@ -144,7 +144,7 @@ func TestListUsersLogs(t *testing.T) {
 		grpcReq         *openfgav1.ListUsersRequest
 		httpReqBody     io.Reader
 		expectedError   bool
-		expectedContext map[string]interface{}
+		expectedContext map[string]any
 	}
 
 	tests := []test{
@@ -160,7 +160,7 @@ func TestListUsersLogs(t *testing.T) {
 				},
 				UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
 			},
-			expectedContext: map[string]interface{}{
+			expectedContext: map[string]any{
 				"grpc_service":           "openfga.v1.OpenFGAService",
 				"grpc_method":            "ListUsers",
 				"grpc_type":              "unary",
@@ -180,7 +180,7 @@ func TestListUsersLogs(t *testing.T) {
 		  "object":{"type":"document","id":"1"},
 		  "user_filters":[{"type":"user"}]
 		}`),
-			expectedContext: map[string]interface{}{
+			expectedContext: map[string]any{
 				"grpc_service":           "openfga.v1.OpenFGAService",
 				"grpc_method":            "ListUsers",
 				"grpc_type":              "unary",
@@ -202,7 +202,7 @@ func TestListUsersLogs(t *testing.T) {
 				UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
 			},
 			expectedError: true,
-			expectedContext: map[string]interface{}{
+			expectedContext: map[string]any{
 				"grpc_service": "openfga.v1.OpenFGAService",
 				"grpc_method":  "ListUsers",
 				"grpc_type":    "unary",
@@ -221,7 +221,7 @@ func TestListUsersLogs(t *testing.T) {
 				"user_filters":[{"type":"user"}]
 			  }`),
 			expectedError: true,
-			expectedContext: map[string]interface{}{
+			expectedContext: map[string]any{
 				"grpc_service": "openfga.v1.OpenFGAService",
 				"grpc_method":  "ListUsers",
 				"grpc_type":    "unary",

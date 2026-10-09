@@ -220,8 +220,7 @@ func TestBuildServiceWithNoAuth(t *testing.T) {
 		goleak.VerifyNone(t)
 	})
 	cfg := testutils.MustDefaultConfigWithRandomPorts()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	go func() {
 		if err := runServer(ctx, cfg); err != nil {
@@ -250,8 +249,7 @@ func TestBuildServiceWithPresharedKeyAuthentication(t *testing.T) {
 		Keys: []string{"KEYONE", "KEYTWO"},
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	go func() {
 		if err := runServer(ctx, cfg); err != nil {
@@ -458,8 +456,7 @@ func TestHTTPServerWithCORS(t *testing.T) {
 	cfg.HTTP.CORSAllowedOrigins = []string{"http://openfga.dev", "http://localhost"}
 	cfg.HTTP.CORSAllowedHeaders = []string{"Origin", "Accept", "Content-Type", "X-Requested-With", "Authorization", "X-Custom-Header"}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	go func() {
 		if err := runServer(ctx, cfg); err != nil {
@@ -570,8 +567,7 @@ func TestBuildServerWithOIDCAuthentication(t *testing.T) {
 	trustedToken, err := trustedIssuerServer.GetToken("openfga.dev", "some-user")
 	require.NoError(t, err)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	go func() {
 		if err := runServer(ctx, cfg); err != nil {
@@ -651,8 +647,7 @@ func TestBuildServerWithOIDCAuthenticationAlias(t *testing.T) {
 	trustedTokenFromAlias, err := trustedIssuerServer2.GetToken("openfga.dev", "some-user")
 	require.NoError(t, err)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	go func() {
 		if err := runServer(ctx, cfg); err != nil {
@@ -694,8 +689,7 @@ func TestHTTPServingTLS(t *testing.T) {
 		}
 		cfg.HTTP.Addr = "localhost:8080"
 
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+		ctx := t.Context()
 
 		go func() {
 			if err := runServer(ctx, cfg); err != nil {
@@ -718,8 +712,7 @@ func TestHTTPServingTLS(t *testing.T) {
 		}
 		cfg.HTTP.Addr = "localhost:8080"
 
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+		ctx := t.Context()
 
 		go func() {
 			if err := runServer(ctx, cfg); err != nil {
@@ -759,8 +752,7 @@ func TestGRPCServingTLS(t *testing.T) {
 		}
 		cfg.GRPC.Addr = "localhost:8082"
 
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+		ctx := t.Context()
 
 		go func() {
 			if err := runServer(ctx, cfg); err != nil {
@@ -784,8 +776,7 @@ func TestGRPCServingTLS(t *testing.T) {
 		}
 		cfg.GRPC.Addr = "localhost:8082"
 
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+		ctx := t.Context()
 
 		go func() {
 			if err := runServer(ctx, cfg); err != nil {
@@ -817,8 +808,7 @@ func TestHTTPServerWithGRPCTLSEnabled(t *testing.T) {
 		}
 		cfg.GRPC.Addr = "localhost:8082"
 
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+		ctx := t.Context()
 
 		go func() {
 			if err := runServer(ctx, cfg); err != nil {
@@ -856,8 +846,7 @@ func TestHTTPServerWithGRPCTLSEnabled(t *testing.T) {
 		}
 		cfg.GRPC.Addr = "localhost:8082"
 
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+		ctx := t.Context()
 
 		go func() {
 			if err := runServer(ctx, cfg); err != nil {
@@ -1030,7 +1019,7 @@ func testServerMetricsReporting(t *testing.T, engine string, connectionMetricNam
 	checkResp, err := client.Check(ctx, &openfgav1.CheckRequest{
 		StoreId:  storeID,
 		TupleKey: tuple.NewCheckRequestTupleKey("document:1", "viewer", "user:jon"),
-		Context: testutils.MustNewStruct(t, map[string]interface{}{
+		Context: testutils.MustNewStruct(t, map[string]any{
 			"x": 10,
 		}),
 	})
@@ -1042,7 +1031,7 @@ func testServerMetricsReporting(t *testing.T, engine string, connectionMetricNam
 		Type:     "document",
 		Relation: "viewer",
 		User:     "user:jon",
-		Context: testutils.MustNewStruct(t, map[string]interface{}{
+		Context: testutils.MustNewStruct(t, map[string]any{
 			"x": 10,
 		}),
 	})
@@ -1083,8 +1072,7 @@ func TestHTTPServerDisabled(t *testing.T) {
 	cfg := testutils.MustDefaultConfigWithRandomPorts()
 	cfg.HTTP.Enabled = false
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	go func() {
 		if err := runServer(ctx, cfg); err != nil {
@@ -1105,8 +1093,7 @@ func TestHTTPServerEnabled(t *testing.T) {
 	})
 	cfg := testutils.MustDefaultConfigWithRandomPorts()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	go func() {
 		if err := runServer(ctx, cfg); err != nil {
@@ -1124,17 +1111,14 @@ func TestPlaygroundEnabled(t *testing.T) {
 	cfg := testutils.MustDefaultConfigWithRandomPorts()
 	cfg.Playground.Enabled = true
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		if err := runServer(ctx, cfg); err != nil {
 			log.Fatal(err)
 		}
-	}()
+	})
 	t.Cleanup(func() {
 		wg.Wait()
 	})
@@ -1789,7 +1773,7 @@ func TestServerContext_datastoreConfig(t *testing.T) {
 	tests := []struct {
 		name           string
 		config         *serverconfig.Config
-		wantDSType     interface{}
+		wantDSType     any
 		wantSerializer encoder.ContinuationTokenSerializer
 		wantErr        error
 	}{

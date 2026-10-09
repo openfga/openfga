@@ -184,7 +184,7 @@ func union(ctx context.Context, concurrencyLimit int, handlers ...CheckHandlerFu
 	var finalErr error
 	finalResult := &ResolveCheckResponse{Allowed: false}
 
-	for i := 0; i < len(handlers); i++ {
+	for range handlers {
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
@@ -252,7 +252,7 @@ func intersection(ctx context.Context, concurrencyLimit int, handlers ...CheckHa
 		Allowed: true,
 	}
 
-	for i := 0; i < len(handlers); i++ {
+	for range handlers {
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()

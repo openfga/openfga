@@ -52,7 +52,7 @@ func TestWithoutContext(t *testing.T) {
 		actualMessage := logs.All()[0]
 		require.Equal(t, testMessage, actualMessage.Message)
 
-		expectedZapFields := map[string]interface{}{}
+		expectedZapFields := map[string]any{}
 		require.Equal(t, expectedZapFields, actualMessage.ContextMap())
 		require.Equal(t, tc.expectedLevel, actualMessage.Level)
 	}
@@ -101,7 +101,7 @@ func TestWithContext(t *testing.T) {
 			actualMessage := logs.All()[0]
 			require.Equal(t, testMessage, actualMessage.Message)
 
-			expectedZapFields := map[string]interface{}{}
+			expectedZapFields := map[string]any{}
 			require.Equal(t, expectedZapFields, actualMessage.ContextMap())
 			require.Equal(t, tc.expectedLevel, actualMessage.Level)
 		})
@@ -121,7 +121,7 @@ func TestWithFields(t *testing.T) {
 	newLogger.Info(testMessage)
 
 	// Check that child message carries the context fields
-	expectedZapFields := map[string]interface{}{
+	expectedZapFields := map[string]any{
 		"TestOption": "Message",
 	}
 	childMessage := logs.All()[0]

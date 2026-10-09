@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sort"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -218,7 +218,7 @@ func BenchmarkIteratorDatastoreReadLatencyWithDifferentLoads(b *testing.B) {
 
 	// Create test data
 	var tuples []*openfgav1.Tuple
-	for i := 0; i < 50; i++ {
+	for i := range 50 {
 		tk := tuple.NewTupleKey(fmt.Sprintf("document:%d", i), "viewer", fmt.Sprintf("user:%d", i))
 		ts := timestamppb.New(time.Now())
 		tuples = append(tuples, &openfgav1.Tuple{Key: tk, Timestamp: ts})
@@ -262,10 +262,8 @@ func BenchmarkIteratorDatastoreReadLatencyWithDifferentLoads(b *testing.B) {
 			for b.Loop() {
 				var wg sync.WaitGroup
 
-				for j := 0; j < concurrency; j++ {
-					wg.Add(1)
-					go func() {
-						defer wg.Done()
+				for range concurrency {
+					wg.Go(func() {
 						start := time.Now()
 						iter, err := ds.Read(ctx, storeID, filter, storage.ReadOptions{})
 						if err != nil {
@@ -278,7 +276,7 @@ func BenchmarkIteratorDatastoreReadLatencyWithDifferentLoads(b *testing.B) {
 						mu.Unlock()
 
 						iter.Stop()
-					}()
+					})
 				}
 				wg.Wait()
 			}
@@ -289,9 +287,7 @@ func BenchmarkIteratorDatastoreReadLatencyWithDifferentLoads(b *testing.B) {
 			b.ReportMetric(float64(dbCalls.Load()), "db_calls")
 
 			if len(latencies) > 0 {
-				sort.Slice(latencies, func(i, j int) bool {
-					return latencies[i] < latencies[j]
-				})
+				slices.Sort(latencies)
 
 				var total time.Duration
 				for _, lat := range latencies {
@@ -360,7 +356,7 @@ func helperValidateMultipleClients(ctx context.Context, t *testing.T, internalSt
 	}
 
 	require.NotEmpty(t, length(internalStorage))
-	for i := 0; i < len(iterInfos); i++ {
+	for i := range iterInfos {
 		require.NoError(t, iterInfos[i].err)
 		require.NotNil(t, iterInfos[i].iter)
 	}
@@ -452,7 +448,7 @@ func TestSharedIteratorDatastore_Read(t *testing.T) {
 		iterInfos := make([]testIteratorInfo, numClient)
 		wg := sync.WaitGroup{}
 
-		for i := 0; i < numClient; i++ {
+		for i := range numClient {
 			wg.Add(1)
 			go func(i int) {
 				defer wg.Done()
@@ -562,7 +558,7 @@ func TestSharedIteratorDatastore_Read(t *testing.T) {
 			}).MaxTimes(numClient)
 		p := pool.New().WithErrors()
 
-		for i := 0; i < numClient; i++ {
+		for range numClient {
 			p.Go(func() error {
 				iter, err := ds.Read(ctx, storeID, filter, storage.ReadOptions{})
 				if err != nil {
@@ -732,7 +728,7 @@ func TestSharedIteratorDatastore_ReadUsersetTuples(t *testing.T) {
 		iterInfos := make([]testIteratorInfo, numClient)
 		wg := sync.WaitGroup{}
 
-		for i := 0; i < numClient; i++ {
+		for i := range numClient {
 			wg.Add(1)
 			go func(i int) {
 				curIter, err := ds.ReadUsersetTuples(ctx, storeID, filter, options)
@@ -838,7 +834,7 @@ func TestSharedIteratorDatastore_ReadUsersetTuples(t *testing.T) {
 			}).MaxTimes(numClient)
 		p := pool.New().WithErrors()
 
-		for i := 0; i < numClient; i++ {
+		for range numClient {
 			p.Go(func() error {
 				iter, err := ds.ReadUsersetTuples(ctx, storeID, filter, options)
 				if err != nil {
@@ -1008,7 +1004,7 @@ func TestSharedIteratorDatastore_ReadStartingWithUser(t *testing.T) {
 		iterInfos := make([]testIteratorInfo, numClient)
 		wg := sync.WaitGroup{}
 
-		for i := 0; i < numClient; i++ {
+		for i := range numClient {
 			wg.Add(1)
 			go func(i int) {
 				curIter, err := ds.ReadStartingWithUser(ctx, storeID, filter, options)
@@ -1144,7 +1140,7 @@ func TestSharedIteratorDatastore_ReadStartingWithUser(t *testing.T) {
 			}).MaxTimes(numClient)
 		p := pool.New().WithErrors()
 
-		for i := 0; i < numClient; i++ {
+		for range numClient {
 			p.Go(func() error {
 				iter, err := ds.ReadStartingWithUser(ctx, storeID, filter, options)
 				if err != nil {
@@ -1873,7 +1869,7 @@ func TestSharedIterator_ManyTuples(t *testing.T) {
 	// Create 150 test tuples
 	const numTuples = bufferSize + 1
 	var tks []*openfgav1.TupleKey
-	for i := 0; i < numTuples; i++ {
+	for i := range numTuples {
 		tks = append(tks, tuple.NewTupleKey(fmt.Sprintf("document:%d", i), "viewer", fmt.Sprintf("user:%d", i)))
 	}
 

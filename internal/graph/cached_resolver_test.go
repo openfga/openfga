@@ -477,7 +477,7 @@ func TestResolveCheck_ConcurrentCachedReadsAndWrites(t *testing.T) {
 	require.NoError(t, err)
 
 	// run multiple times to increase probability of ensuring we detect the race
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		var wg sync.WaitGroup
 		wg.Add(2)
 

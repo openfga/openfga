@@ -27,7 +27,7 @@ func TestDrain(t *testing.T) {
 			name: "should_drain_channel_with_iterators",
 			setupChan: func(ctrl *gomock.Controller) <-chan *Msg {
 				ch := make(chan *Msg, 3)
-				for i := 0; i < 3; i++ {
+				for range 3 {
 					iter := mocks.NewMockIterator[string](ctrl)
 					iter.EXPECT().Stop().Times(1)
 					ch <- &Msg{Iter: iter}

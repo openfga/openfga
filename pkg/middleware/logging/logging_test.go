@@ -59,14 +59,12 @@ func TestNewLoggingInterceptor_concrete(t *testing.T) {
 	openfgav1.RegisterOpenFGAServiceServer(srv, &fgaServer{})
 
 	wg := sync.WaitGroup{}
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		err := srv.Serve(listner)
 		if err != nil {
 			t.Errorf("failed to serve: %v", err)
 		}
-	}()
+	})
 
 	dialer := func(context.Context, string) (net.Conn, error) {
 		return listner.Dial()

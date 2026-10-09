@@ -362,8 +362,7 @@ func (f *ConditionsFilteredTupleKeyIterator) Next(ctx context.Context) (*openfga
 
 		valid, err := f.filter(tuple)
 		if err != nil {
-			var fatal *interrors.FatalError
-			if errors.As(err, &fatal) {
+			if _, ok := errors.AsType[*interrors.FatalError](err); ok {
 				return nil, err // propagate immediately; keep wrapper intact
 			}
 			f.lastError = err
@@ -405,8 +404,7 @@ func (f *ConditionsFilteredTupleKeyIterator) Head(ctx context.Context) (*openfga
 		valid, err := f.filter(tuple)
 		if err != nil || !valid {
 			if err != nil {
-				var fatal *interrors.FatalError
-				if errors.As(err, &fatal) {
+				if _, ok := errors.AsType[*interrors.FatalError](err); ok {
 					return nil, err // propagate immediately; keep wrapper intact
 				}
 				f.lastError = err

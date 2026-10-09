@@ -110,7 +110,7 @@ func TestStaticTupleIteratorNoRace(t *testing.T) {
 		const numIterator = 50
 
 		tupleRecords := make([]*storage.TupleRecord, numIterator)
-		for i := 0; i < numIterator; i++ {
+		for i := range numIterator {
 			tupleRecords[i] = &storage.TupleRecord{
 				Store:            "store",
 				ObjectType:       "document",
@@ -130,7 +130,7 @@ func TestStaticTupleIteratorNoRace(t *testing.T) {
 
 		var wg errgroup.Group
 
-		for i := 0; i < numIterator; i++ {
+		for range numIterator {
 			wg.Go(func() error {
 				_, err := iter.Head(context.Background())
 				return err
@@ -138,7 +138,7 @@ func TestStaticTupleIteratorNoRace(t *testing.T) {
 		}
 		// important that when we call next, we will have 1 less
 		// element because we don't want to be done.
-		for i := 0; i < numIterator-1; i++ {
+		for range numIterator - 1 {
 			wg.Go(func() error {
 				_, err := iter.Next(context.Background())
 				return err

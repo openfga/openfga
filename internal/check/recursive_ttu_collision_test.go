@@ -49,7 +49,7 @@ func TestRecursiveTTUVisitedCollision(t *testing.T) {
 	// So organization:o1#billing_user@user:anne must be true via
 	// "billing_user from parent" -> o2#billing_user (direct).
 	const iterations = 300
-	for i := 0; i < iterations; i++ {
+	for i := range iterations {
 		ds := memory.New()
 		storeID := ulid.Make().String()
 		writeErr := ds.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{

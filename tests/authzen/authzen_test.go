@@ -165,18 +165,18 @@ func (tc *testContext) evaluate(subject, resource, action string) (*authzenv1.Ev
 
 // parseType extracts the type from "type:id" format.
 func parseType(s string) string {
-	idx := strings.Index(s, ":")
-	if idx == -1 {
+	before, _, ok := strings.Cut(s, ":")
+	if !ok {
 		return s
 	}
-	return s[:idx]
+	return before
 }
 
 // parseID extracts the id from "type:id" format.
 func parseID(s string) string {
-	idx := strings.Index(s, ":")
-	if idx == -1 {
+	_, after, ok := strings.Cut(s, ":")
+	if !ok {
 		return s
 	}
-	return s[idx+1:]
+	return after
 }
