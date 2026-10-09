@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 	"unsafe"
 
 	"google.golang.org/protobuf/types/known/structpb"
@@ -472,6 +473,33 @@ func IsValidUserID(s string) bool {
 		}
 	}
 	return count > 0
+}
+
+// SanitizeUserID replaces every character IsValidUserID rejects (a Unicode
+// control character, '#', ':', or ' ') with '_'. Invalid UTF-8 passes through
+// unchanged, and for any non-empty s, IsValidUserID(SanitizeUserID(s)) is true.
+func SanitizeUserID(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+
+	for i := 0; i < len(s); {
+		chr, size := utf8.DecodeRuneInString(s[i:])
+		if chr == utf8.RuneError && size == 1 {
+			b.WriteByte(s[i])
+			i++
+			continue
+		}
+
+		switch {
+		case unicode.IsControl(chr), chr == '#', chr == ':', chr == ' ':
+			b.WriteByte('_')
+		default:
+			b.WriteRune(chr)
+		}
+		i += size
+	}
+
+	return b.String()
 }
 
 func IsValidUserset(s string) bool {
