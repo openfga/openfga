@@ -101,6 +101,23 @@ func TestInvariantCacheKey(t *testing.T) {
 		require.Equal(t, a, b)
 	})
 
+	t.Run("contextual_tuple_order_is_ignored_when_condition_contexts_differ", func(t *testing.T) {
+		s1, err := structpb.NewStruct(map[string]any{"k": "foo"})
+		require.NoError(t, err)
+		s2, err := structpb.NewStruct(map[string]any{"k": "bar"})
+		require.NoError(t, err)
+
+		// These tuples are identical except for their condition context, so they
+		// tie on every field TupleKeys.Less compares, and the sort in
+		// InvariantCacheKey must still order them deterministically.
+		t1 := tuple.NewTupleKeyWithCondition("document:2", "admin", "user:jon", "cond", s1)
+		t2 := tuple.NewTupleKeyWithCondition("document:2", "admin", "user:jon", "cond", s2)
+
+		a := InvariantCacheKey(storeID, modelID, nil, t1, t2)
+		b := InvariantCacheKey(storeID, modelID, nil, t2, t1)
+		require.Equal(t, a, b)
+	})
+
 	t.Run("different_conditions_produce_different_keys", func(t *testing.T) {
 		t1 := tuple.NewTupleKeyWithCondition("document:2", "admin", "user:jon", "cond_a", nil)
 		t2 := tuple.NewTupleKeyWithCondition("document:2", "admin", "user:jon", "cond_b", nil)
