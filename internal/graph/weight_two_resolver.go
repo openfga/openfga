@@ -680,6 +680,15 @@ func weight2FastPathLeafReads(ctx context.Context, req *ResolveCheckRequest, rew
 // models stay far below this bound; it exists purely as a safety net.
 const defaultMaxWeight2RewriteDepth = 100
 
+// weight2RewriteLeafReads counts, without issuing any I/O, the eager leaf
+// reads that fastPathRewrite would start when resolving req through the
+// rewrite tree rooted at rewrite. It mirrors fastPathRewrite case by case:
+// Userset_This starts one read, a computed userset recurses into the
+// computed relation's own rewrite, a set operation sums its children, and a
+// nested TTU maps to fastPathNoop (no read). ok is false when the tree
+// contains a shape the fast path cannot statically resolve (unknown
+// relation, unknown set operator, or depth beyond the safety bound), in
+// which case callers fall back to the default resolver.
 func weight2RewriteLeafReads(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset, depth int) (reads int, ok bool) {
 	if rewrite == nil {
 		return 0, true
@@ -735,6 +744,10 @@ func weight2RewriteLeafReads(ctx context.Context, req *ResolveCheckRequest, rewr
 	}
 }
 
+// weight2OperationLeafReads sums the leaf reads of every child of a set
+// operation, mirroring fastPathOperationSetup, which walks each child with
+// fastPathRewrite before the merge algorithm can consume anything. ok is
+// false as soon as any child is not statically resolvable.
 func weight2OperationLeafReads(ctx context.Context, req *ResolveCheckRequest, children []*openfgav1.Userset, depth int) (reads int, ok bool) {
 	for _, child := range children {
 		childReads, ok := weight2RewriteLeafReads(ctx, req, child, depth+1)

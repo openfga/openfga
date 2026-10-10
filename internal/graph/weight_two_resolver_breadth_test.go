@@ -27,6 +27,9 @@ type countingReadStartingWithUser struct {
 	total int64
 }
 
+// ReadStartingWithUser counts every call and delegates to the wrapped
+// RelationshipTupleReader, so tests can assert how many eager leaf reads a
+// resolve actually issued.
 func (c *countingReadStartingWithUser) ReadStartingWithUser(ctx context.Context, store string, filter storage.ReadStartingWithUserFilter, options storage.ReadStartingWithUserOptions) (storage.TupleIterator, error) {
 	atomic.AddInt64(&c.total, 1)
 	return c.RelationshipTupleReader.ReadStartingWithUser(ctx, store, filter, options)
@@ -38,11 +41,18 @@ func (c *countingReadStartingWithUser) ReadStartingWithUser(ctx context.Context,
 // real planner contract.
 type stubPlanner struct{ want string }
 
+// GetPlanSelector returns a selector that always picks the stub's wanted
+// strategy when offered, mirroring the real planner contract.
 func (p *stubPlanner) GetPlanSelector(keys.Key) planner.Selector { return &stubSelector{want: p.want} }
-func (p *stubPlanner) Stop()                                     {}
+
+// Stop satisfies the planner interface; the stub holds no resources.
+func (p *stubPlanner) Stop() {}
 
 type stubSelector struct{ want string }
 
+// Select returns the wanted strategy when it is offered, falling back to
+// whatever strategy remains (the default) so the test can observe whether
+// weight2 was gated off.
 func (s *stubSelector) Select(resolvers map[string]*planner.PlanConfig) *planner.PlanConfig {
 	if p, ok := resolvers[s.want]; ok {
 		return p
@@ -53,6 +63,7 @@ func (s *stubSelector) Select(resolvers map[string]*planner.PlanConfig) *planner
 	return nil
 }
 
+// UpdateStats satisfies the selector interface; selection is stateless here.
 func (s *stubSelector) UpdateStats(*planner.PlanConfig, time.Duration) {}
 
 // DSL fixtures for the leaf-read counter tests.
@@ -151,6 +162,8 @@ const union26DSL = `model
     relations
       define viewer: [group#all]`
 
+// mustTypesystem builds and validates a TypeSystem from the given DSL
+// fixture, failing the test on any validation error.
 func mustTypesystem(t *testing.T, dsl string) *typesystem.TypeSystem {
 	t.Helper()
 	ts, err := typesystem.NewAndValidate(context.Background(), testutils.MustTransformDSLToProtoWithID(dsl))
@@ -158,6 +171,9 @@ func mustTypesystem(t *testing.T, dsl string) *typesystem.TypeSystem {
 	return ts
 }
 
+// weight2CheckRequest builds the minimal check request the leaf-read
+// counter needs: a store id, the fixture's authorization model, and a
+// document:1#viewer@user:1 tuple key with fresh request metadata.
 func weight2CheckRequest(ts *typesystem.TypeSystem) *ResolveCheckRequest {
 	return &ResolveCheckRequest{
 		StoreID:              "s1",
