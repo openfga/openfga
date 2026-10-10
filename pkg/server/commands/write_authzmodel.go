@@ -88,25 +88,27 @@ func (w *WriteAuthorizationModelCommand) Execute(ctx context.Context, req *openf
 		return nil, serverErrors.InvalidAuthorizationModelInput(err)
 	}
 
-	// The model passed validation, but the weighted authorization-model graph
-	// can still fail to build (e.g., a TTU whose computed relation is missing
-	// on one of the tupleset's directly related types). In that case every
-	// weighted-graph-gated evaluation path silently falls back to the default
-	// Check evaluator for the whole model. Surface the failure here, at
-	// model-write time, so an operator sees the strategy change when the
-	// model is deployed rather than only inferring it from degraded
-	// performance later. See typesystem.WeightedGraphBuildError (issue #3306).
+	err = w.backend.WriteAuthorizationModel(ctx, req.GetStoreId(), model)
+	if err != nil {
+		return nil, serverErrors.
+			HandleError("Error writing authorization model configuration", err)
+	}
+
+	// The model passed validation and was persisted, but the weighted
+	// authorization-model graph can still fail to build (e.g., a TTU whose
+	// computed relation is missing on one of the tupleset's directly
+	// related types). In that case every weighted-graph-gated evaluation
+	// path silently falls back to the default Check evaluator for the whole
+	// model. Surface the failure here, after the write succeeded, so an
+	// operator sees the strategy change when the model is deployed rather
+	// than only inferring it from degraded performance later, and so a
+	// failed write is never reported as accepted. See
+	// typesystem.WeightedGraphBuildError (issue #3306).
 	if buildErr := typesys.WeightedGraphBuildError(); buildErr != nil {
 		w.logger.WarnWithContext(ctx, "authorization model accepted, but the weighted graph failed to build; all relations fall back to the default Check evaluator",
 			zap.String("authorization_model_id", model.GetId()),
 			zap.Error(buildErr),
 		)
-	}
-
-	err = w.backend.WriteAuthorizationModel(ctx, req.GetStoreId(), model)
-	if err != nil {
-		return nil, serverErrors.
-			HandleError("Error writing authorization model configuration", err)
 	}
 
 	return &openfgav1.WriteAuthorizationModelResponse{
