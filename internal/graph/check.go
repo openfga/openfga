@@ -730,8 +730,6 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 		keyPlanPrefix := make([]byte, len(prefix))
 		copy(keyPlanPrefix, prefix)
 
-		possibleStrategies[weightTwoResolver] = weight2Plan
-
 		// Check if a strategy was already selected by a parent call
 		selectedStrategy := req.GetSelectedStrategy()
 
@@ -739,6 +737,22 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 			if !typesys.UsersetUseWeight2Resolver(objectType, relation, userType, userset) {
 				remainingUsersetTypes = append(remainingUsersetTypes, userset)
 				continue
+			}
+
+			// The weight-two fast path issues its left-hand leaf reads eagerly
+			// (one ReadStartingWithUser per direct leaf, before the merge
+			// algorithms can consume anything), so the operator's resolve
+			// breadth limit can only be enforced before the walk starts. Offer
+			// weight2 only when the walk fits within the limit; otherwise fall
+			// back to the default resolver, which enforces the limit through
+			// its bounded dispatch channel. See weight2FastPathLeafReads.
+			// The strategy the parent call selected is honored without
+			// re-planning only if it is still offered for this userset.
+			usersetStrategies := map[string]*planner.PlanConfig{
+				defaultResolver: possibleStrategies[defaultResolver],
+			}
+			if leafReads, ok := c.weight2UsersetLeafReadBudget(ctx, req, userset); ok && leafReads <= c.concurrencyLimit {
+				usersetStrategies[weightTwoResolver] = weight2Plan
 			}
 			usersets := []*openfgav1.RelationReference{userset}
 			iter, err := checkutil.IteratorReadUsersetTuples(ctx, req, usersets)
@@ -750,7 +764,7 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 
 			// If a strategy was already selected, use it without re-planning
 			if selectedStrategy != "" {
-				if _, exists := possibleStrategies[selectedStrategy]; exists {
+				if _, exists := usersetStrategies[selectedStrategy]; exists {
 					resolver := c.defaultUserset
 					if selectedStrategy == weightTwoResolver {
 						resolver = c.weight2Userset
@@ -768,7 +782,7 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 			key := builder.Key()
 
 			keyPlan := c.planner.GetPlanSelector(key)
-			strategy := keyPlan.Select(possibleStrategies)
+			strategy := keyPlan.Select(usersetStrategies)
 
 			resolver := c.defaultUserset
 			if strategy.Name == weightTwoResolver {
@@ -923,8 +937,18 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 
 		if !isUserset {
 			if typesys.TTUUseWeight2Resolver(objectType, relation, userType, rewrite.GetTupleToUserset()) {
-				possibleStrategies[weightTwoResolver] = weight2Plan
-				resolver = c.weight2TTU
+				// The weight-two fast path issues its left-hand leaf reads
+				// eagerly (one ReadStartingWithUser per direct leaf, before the
+				// merge algorithms can consume anything), so the operator's
+				// resolve breadth limit can only be enforced before the walk
+				// starts. Offer weight2 only when the walk fits within the
+				// limit; otherwise fall back to the default resolver, which
+				// enforces the limit through its bounded dispatch channel. See
+				// weight2TTULeafReadBudget.
+				if leafReads, ok := c.weight2TTULeafReadBudget(ctx, req, rewrite); ok && leafReads <= c.concurrencyLimit {
+					possibleStrategies[weightTwoResolver] = weight2Plan
+					resolver = c.weight2TTU
+				}
 			} else if typesys.TTUUseRecursiveResolver(objectType, relation, userType, rewrite.GetTupleToUserset()) {
 				possibleStrategies[defaultResolver] = defaultRecursivePlan
 				possibleStrategies[recursiveResolver] = recursivePlan
