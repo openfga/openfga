@@ -2,8 +2,12 @@ package oidc
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/ed25519"
+	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -764,4 +768,222 @@ func withRealFetchJWK(t *testing.T) {
 	prev := fetchJWKs
 	fetchJWKs = fetchJWK
 	t.Cleanup(func() { fetchJWKs = prev })
+}
+
+// TestRemoteOidcAuthenticator_SigningAlgorithms verifies that tokens signed with any supported
+// asymmetric JWS algorithm are accepted when the issuer publishes the matching public key in its
+// JWKS, and that symmetric, unsigned, or mismatched tokens are always rejected.
+func TestRemoteOidcAuthenticator_SigningAlgorithms(t *testing.T) {
+	rsaKey, _ := generateJWTSignatureKeys()
+	p256Key := generateECDSAKey(t, elliptic.P256())
+	p384Key := generateECDSAKey(t, elliptic.P384())
+	p521Key := generateECDSAKey(t, elliptic.P521())
+	edPublicKey, edPrivateKey, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+
+	t.Run("accepted", func(t *testing.T) {
+		testCases := []struct {
+			name       string
+			method     jwt.SigningMethod
+			signingKey any
+			jwk        map[string]string
+		}{
+			{name: "RS256", method: jwt.SigningMethodRS256, signingKey: rsaKey, jwk: rsaJWK("RS256", &rsaKey.PublicKey)},
+			{name: "RS384", method: jwt.SigningMethodRS384, signingKey: rsaKey, jwk: rsaJWK("RS384", &rsaKey.PublicKey)},
+			{name: "RS512", method: jwt.SigningMethodRS512, signingKey: rsaKey, jwk: rsaJWK("RS512", &rsaKey.PublicKey)},
+			{name: "PS256", method: jwt.SigningMethodPS256, signingKey: rsaKey, jwk: rsaJWK("PS256", &rsaKey.PublicKey)},
+			{name: "PS384", method: jwt.SigningMethodPS384, signingKey: rsaKey, jwk: rsaJWK("PS384", &rsaKey.PublicKey)},
+			{name: "PS512", method: jwt.SigningMethodPS512, signingKey: rsaKey, jwk: rsaJWK("PS512", &rsaKey.PublicKey)},
+			{name: "ES256", method: jwt.SigningMethodES256, signingKey: p256Key, jwk: ecdsaJWK(t, "ES256", &p256Key.PublicKey)},
+			{name: "ES384", method: jwt.SigningMethodES384, signingKey: p384Key, jwk: ecdsaJWK(t, "ES384", &p384Key.PublicKey)},
+			{name: "ES512", method: jwt.SigningMethodES512, signingKey: p521Key, jwk: ecdsaJWK(t, "ES512", &p521Key.PublicKey)},
+			{name: "EdDSA", method: jwt.SigningMethodEdDSA, signingKey: edPrivateKey, jwk: ed25519JWK("EdDSA", edPublicKey)},
+			{name: "RS256_with_JWK_without_alg", method: jwt.SigningMethodRS256, signingKey: rsaKey, jwk: rsaJWK("", &rsaKey.PublicKey)},
+			{name: "ES256_with_JWK_without_alg", method: jwt.SigningMethodES256, signingKey: p256Key, jwk: ecdsaJWK(t, "", &p256Key.PublicKey)},
+		}
+
+		for _, tc := range testCases {
+			t.Run(tc.name, func(t *testing.T) {
+				oidc, issuer := newStaticJWKSAuthenticator(t, tc.jwk)
+
+				token := signJWT(t, tc.method, tc.signingKey, validClaims(issuer))
+				authClaims, err := oidc.Authenticate(generateContext(token))
+				require.NoError(t, err)
+				require.Equal(t, "some-user", authClaims.Subject)
+			})
+		}
+	})
+
+	t.Run("rejected", func(t *testing.T) {
+		hmacSecret := []byte("a-shared-secret-that-must-never-be-accepted")
+		rsaPublicKeyDER, err := x509.MarshalPKIXPublicKey(&rsaKey.PublicKey)
+		require.NoError(t, err)
+
+		testCases := []struct {
+			name       string
+			method     jwt.SigningMethod
+			signingKey any
+			jwk        map[string]string
+		}{
+			{
+				// a symmetric key published in the JWKS must not enable HMAC-signed tokens
+				name:       "HS256_with_symmetric_JWK",
+				method:     jwt.SigningMethodHS256,
+				signingKey: hmacSecret,
+				jwk:        octJWK("", hmacSecret),
+			},
+			{
+				// classic algorithm-confusion attack: the RSA public key used as an HMAC secret
+				name:       "HS256_signed_with_RSA_public_key",
+				method:     jwt.SigningMethodHS256,
+				signingKey: rsaPublicKeyDER,
+				jwk:        rsaJWK("", &rsaKey.PublicKey),
+			},
+			{
+				name:       "none",
+				method:     jwt.SigningMethodNone,
+				signingKey: jwt.UnsafeAllowNoneSignatureType,
+				jwk:        rsaJWK("", &rsaKey.PublicKey),
+			},
+			{
+				// the token's alg must match the algorithm the issuer declared for the key
+				name:       "PS256_with_RS256_JWK",
+				method:     jwt.SigningMethodPS256,
+				signingKey: rsaKey,
+				jwk:        rsaJWK("RS256", &rsaKey.PublicKey),
+			},
+			{
+				// the token's alg must match the type of the key published under its kid
+				name:       "ES256_with_RSA_JWK",
+				method:     jwt.SigningMethodES256,
+				signingKey: p256Key,
+				jwk:        rsaJWK("", &rsaKey.PublicKey),
+			},
+			{
+				name:       "ES256_signed_with_a_different_key",
+				method:     jwt.SigningMethodES256,
+				signingKey: generateECDSAKey(t, elliptic.P256()),
+				jwk:        ecdsaJWK(t, "ES256", &p256Key.PublicKey),
+			},
+		}
+
+		for _, tc := range testCases {
+			t.Run(tc.name, func(t *testing.T) {
+				oidc, issuer := newStaticJWKSAuthenticator(t, tc.jwk)
+
+				token := signJWT(t, tc.method, tc.signingKey, validClaims(issuer))
+				_, err := oidc.Authenticate(generateContext(token))
+				require.ErrorIs(t, err, errInvalidClaims)
+			})
+		}
+	})
+}
+
+const staticJWKSKid = "kid_1"
+
+// newStaticJWKSAuthenticator starts an OIDC issuer that publishes the given JWK under
+// staticJWKSKid and returns an authenticator wired to it through the real discovery and
+// JWKS fetching code path, along with the issuer URL.
+func newStaticJWKSAuthenticator(t *testing.T, jwk map[string]string) (*RemoteOidcAuthenticator, string) {
+	t.Helper()
+	withRealFetchJWK(t)
+
+	jwk["kid"] = staticJWKSKid
+	jwk["use"] = "sig"
+
+	var server *httptest.Server
+	mux := http.NewServeMux()
+	mux.HandleFunc("/jwks", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"keys": []map[string]string{jwk}})
+	})
+	mux.HandleFunc("/.well-known/openid-configuration", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"issuer":   server.URL,
+			"jwks_uri": server.URL + "/jwks",
+		})
+	})
+	server = httptest.NewServer(mux)
+	t.Cleanup(server.Close)
+
+	oidc, err := NewRemoteOidcAuthenticator(server.URL, nil, "aud", nil, nil)
+	require.NoError(t, err)
+	t.Cleanup(oidc.Close)
+
+	return oidc, server.URL
+}
+
+func validClaims(issuer string) jwt.MapClaims {
+	return jwt.MapClaims{
+		"iss": issuer,
+		"aud": "aud",
+		"sub": "some-user",
+		"exp": time.Now().Add(10 * time.Minute).Unix(),
+	}
+}
+
+func signJWT(t *testing.T, method jwt.SigningMethod, key any, claims jwt.MapClaims) string {
+	t.Helper()
+	token := jwt.NewWithClaims(method, claims)
+	token.Header["kid"] = staticJWKSKid
+	signedToken, err := token.SignedString(key)
+	require.NoError(t, err)
+	return signedToken
+}
+
+func generateECDSAKey(t *testing.T, curve elliptic.Curve) *ecdsa.PrivateKey {
+	t.Helper()
+	key, err := ecdsa.GenerateKey(curve, rand.Reader)
+	require.NoError(t, err)
+	return key
+}
+
+// rsaJWK encodes an RSA public key as a JWK (RFC 7517). The "alg" member is omitted when alg is empty.
+func rsaJWK(alg string, pub *rsa.PublicKey) map[string]string {
+	return withAlg(alg, map[string]string{
+		"kty": "RSA",
+		"n":   base64.RawURLEncoding.EncodeToString(pub.N.Bytes()),
+		"e":   base64.RawURLEncoding.EncodeToString(big.NewInt(int64(pub.E)).Bytes()),
+	})
+}
+
+// ecdsaJWK encodes an ECDSA public key as a JWK (RFC 7518 §6.2). The "alg" member is omitted when alg is empty.
+func ecdsaJWK(t *testing.T, alg string, pub *ecdsa.PublicKey) map[string]string {
+	t.Helper()
+	// uncompressed SEC 1 point: 0x04 || X || Y, each coordinate padded to the curve size
+	point, err := pub.Bytes()
+	require.NoError(t, err)
+	coordinates := point[1:]
+	size := len(coordinates) / 2
+	return withAlg(alg, map[string]string{
+		"kty": "EC",
+		"crv": pub.Curve.Params().Name,
+		"x":   base64.RawURLEncoding.EncodeToString(coordinates[:size]),
+		"y":   base64.RawURLEncoding.EncodeToString(coordinates[size:]),
+	})
+}
+
+// ed25519JWK encodes an Ed25519 public key as an OKP JWK (RFC 8037). The "alg" member is omitted when alg is empty.
+func ed25519JWK(alg string, pub ed25519.PublicKey) map[string]string {
+	return withAlg(alg, map[string]string{
+		"kty": "OKP",
+		"crv": "Ed25519",
+		"x":   base64.RawURLEncoding.EncodeToString(pub),
+	})
+}
+
+// octJWK encodes a symmetric key as an oct JWK (RFC 7518 §6.4). The "alg" member is omitted when alg is empty.
+func octJWK(alg string, secret []byte) map[string]string {
+	return withAlg(alg, map[string]string{
+		"kty": "oct",
+		"k":   base64.RawURLEncoding.EncodeToString(secret),
+	})
+}
+
+func withAlg(alg string, jwk map[string]string) map[string]string {
+	if alg != "" {
+		jwk["alg"] = alg
+	}
+	return jwk
 }

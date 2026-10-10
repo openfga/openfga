@@ -43,6 +43,22 @@ var (
 
 	errInvalidClaims = status.Error(codes.Code(openfgav1.AuthErrorCode_invalid_claims), "invalid claims")
 	fetchJWKs        = fetchJWK
+
+	// Access tokens are verified against the issuer's public JWKS, so only asymmetric JWS
+	// algorithms are accepted. HMAC (HS*) and "none" are deliberately excluded to rule out
+	// algorithm-confusion attacks.
+	validSigningMethods = []string{
+		jwt.SigningMethodRS256.Alg(),
+		jwt.SigningMethodRS384.Alg(),
+		jwt.SigningMethodRS512.Alg(),
+		jwt.SigningMethodPS256.Alg(),
+		jwt.SigningMethodPS384.Alg(),
+		jwt.SigningMethodPS512.Alg(),
+		jwt.SigningMethodES256.Alg(),
+		jwt.SigningMethodES384.Alg(),
+		jwt.SigningMethodES512.Alg(),
+		jwt.SigningMethodEdDSA.Alg(),
+	}
 )
 
 var (
@@ -96,7 +112,7 @@ func (oidc *RemoteOidcAuthenticator) Authenticate(requestContext context.Context
 	}
 
 	options := []jwt.ParserOption{
-		jwt.WithValidMethods([]string{"RS256"}),
+		jwt.WithValidMethods(validSigningMethods),
 		jwt.WithIssuedAt(),
 		jwt.WithExpirationRequired(),
 	}
