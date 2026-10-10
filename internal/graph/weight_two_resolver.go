@@ -581,6 +581,171 @@ func fastPathDifference(ctx context.Context, streams *iterator.Streams, outChan 
 	}
 }
 
+// weight2UsersetLeafReadBudget returns the number of eager leaf reads the
+// weight-two userset fast path would start for the given userset reference,
+// mirroring how produceLeftChannels turns each relation reference into a
+// fastPathRewrite walk (relationFunc selects the userset relation or the TTU
+// computed relation), and whether the walk is statically resolvable.
+func (c *LocalChecker) weight2UsersetLeafReadBudget(ctx context.Context, req *ResolveCheckRequest, userset *openfgav1.RelationReference) (reads int, ok bool) {
+	return weight2LeftChannelLeafReads(ctx, req, checkutil.BuildUsersetV2RelationFunc(), []*openfgav1.RelationReference{userset})
+}
+
+// weight2TTULeafReadBudget returns the number of eager leaf reads the
+// weight-two TTU fast path would start for the given TTU rewrite, mirroring
+// how weight2TTU turns each directly related user type of the tupleset into a
+// fastPathRewrite walk over the computed relation, and whether the walk is
+// statically resolvable.
+func (c *LocalChecker) weight2TTULeafReadBudget(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset) (reads int, ok bool) {
+	typesys, ok2 := typesystem.TypesystemFromContext(ctx)
+	if !ok2 {
+		return 0, false
+	}
+	objectType := tuple.GetType(req.GetTupleKey().GetObject())
+	tuplesetRelation := rewrite.GetTupleToUserset().GetTupleset().GetRelation()
+	computedRelation := rewrite.GetTupleToUserset().GetComputedUserset().GetRelation()
+
+	possibleParents, err := typesys.GetDirectlyRelatedUserTypes(objectType, tuplesetRelation)
+	if err != nil {
+		return 0, false
+	}
+	return weight2LeftChannelLeafReads(ctx, req, checkutil.BuildTTUV2RelationFunc(computedRelation), possibleParents)
+}
+
+// weight2LeftChannelLeafReads mirrors produceLeftChannels: for every relation
+// reference that resolves to a valid relation, the fast path starts one
+// fastPathRewrite walk; the total leaf-read budget is the sum of the walks.
+// References whose relation does not resolve are skipped exactly as
+// produceLeftChannels skips them (GetRelation error => continue).
+func weight2LeftChannelLeafReads(ctx context.Context, req *ResolveCheckRequest, relationFunc checkutil.V2RelationFunc, relationReferences []*openfgav1.RelationReference) (reads int, ok bool) {
+	typesys, ok2 := typesystem.TypesystemFromContext(ctx)
+	if !ok2 {
+		return 0, false
+	}
+	for _, parentType := range relationReferences {
+		relation := relationFunc(parentType)
+		rel, err := typesys.GetRelation(parentType.GetType(), relation)
+		if err != nil {
+			// produceLeftChannels skips unresolvable references; they start no
+			// read, so they contribute nothing to the budget.
+			continue
+		}
+		// produceLeftChannels resolves each relation reference against the
+		// parent type's rewrite tree, with a request whose object is rewritten
+		// to the parent type (so fastPathComputed resolves computed relations
+		// on the parent type, not on the original object type). Mirror that
+		// clone here so the walk sees exactly the tree the real one walks.
+		r := req.clone()
+		r.TupleKey = &openfgav1.TupleKey{
+			Object:   tuple.BuildObject(parentType.GetType(), "ignore"),
+			Relation: relation,
+			User:     r.GetTupleKey().GetUser(),
+		}
+		walkReads, ok := weight2FastPathLeafReads(ctx, r, rel.GetRewrite())
+		if !ok {
+			return 0, false
+		}
+		reads += walkReads
+	}
+	return reads, true
+}
+
+// weight2FastPathLeafReads returns the number of ReadStartingWithUser reads
+// that resolving req through the weight-two fast path would issue before any
+// result is consumed, and whether the walk is statically resolvable at all.
+//
+// The fast path issues its leaf datastore reads eagerly: produceLeftChannels
+// (weight2Userset/weight2TTU) and fastPathOperationSetup walk the whole rewrite
+// tree of each left-hand relation and start one read per direct leaf before the
+// union/intersection/difference merge algorithms pull the first head (they
+// block until every stream has produced an iterator). Gating these reads
+// lazily would starve the merges, so the breadth check has to happen before
+// the walk. This counter walks the same userset structure fastPathRewrite
+// walks, but issues no I/O:
+//
+//   - a directly assignable leaf (Userset_This) starts one read;
+//   - a computed userset starts the reads of the computed relation own rewrite;
+//   - a set operation starts the reads of every child.
+//
+// ok is false when the walk encounters a shape the fast path itself cannot
+// statically resolve (an unknown relation or an unknown set operator); callers
+// treat that as too expensive and fall back to the default resolver.
+func weight2FastPathLeafReads(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset) (reads int, ok bool) {
+	return weight2RewriteLeafReads(ctx, req, rewrite, 0)
+}
+
+// defaultMaxWeight2RewriteDepth bounds the recursion of the static rewrite
+// walk so that a pathological model cannot spin it. The fast path only ever
+// qualifies for rewrite trees the weighted graph proved acyclic (cycles and
+// recursive relations fall back to the default/recursive resolvers), so real
+// models stay far below this bound; it exists purely as a safety net.
+const defaultMaxWeight2RewriteDepth = 100
+
+func weight2RewriteLeafReads(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset, depth int) (reads int, ok bool) {
+	if rewrite == nil {
+		return 0, true
+	}
+	if depth > defaultMaxWeight2RewriteDepth {
+		return 0, false
+	}
+
+	switch rw := rewrite.GetUserset().(type) {
+	case *openfgav1.Userset_This:
+		return 1, true
+
+	case *openfgav1.Userset_ComputedUserset:
+		typesys, ok := typesystem.TypesystemFromContext(ctx)
+		if !ok {
+			return 0, false
+		}
+		objectType := tuple.GetType(req.GetTupleKey().GetObject())
+		computedRelation := rewrite.GetComputedUserset().GetRelation()
+		rel, err := typesys.GetRelation(objectType, computedRelation)
+		if err != nil {
+			return 0, false
+		}
+		return weight2RewriteLeafReads(ctx, req, rel.GetRewrite(), depth+1)
+
+	case *openfgav1.Userset_Union:
+		return weight2OperationLeafReads(ctx, req, rw.Union.GetChild(), depth)
+
+	case *openfgav1.Userset_Intersection:
+		return weight2OperationLeafReads(ctx, req, rw.Intersection.GetChild(), depth)
+
+	case *openfgav1.Userset_Difference:
+		base, ok := weight2RewriteLeafReads(ctx, req, rw.Difference.GetBase(), depth+1)
+		if !ok {
+			return 0, false
+		}
+		sub, ok := weight2RewriteLeafReads(ctx, req, rw.Difference.GetSubtract(), depth+1)
+		if !ok {
+			return 0, false
+		}
+		return base + sub, true
+
+	case *openfgav1.Userset_TupleToUserset:
+		// fastPathRewrite maps a TTU to fastPathNoop: no read is started and
+		// the producer channel closes immediately. (A TTU userset nested in a
+		// qualifying left-hand walk carries weight 2, which the weighted graph
+		// filters out before the fast path qualifies; mirrored here anyway so
+		// the counter can never diverge from the walk it models.)
+		return 0, true
+
+	default:
+		return 0, false
+	}
+}
+
+func weight2OperationLeafReads(ctx context.Context, req *ResolveCheckRequest, children []*openfgav1.Userset, depth int) (reads int, ok bool) {
+	for _, child := range children {
+		childReads, ok := weight2RewriteLeafReads(ctx, req, child, depth+1)
+		if !ok {
+			return 0, false
+		}
+		reads += childReads
+	}
+	return reads, true
+}
+
 // fastPathOperationSetup returns a channel with a number of elements that is >= the number of children.
 // Each element is an iterator.
 // The caller must wait until the channel is closed.
