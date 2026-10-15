@@ -643,6 +643,9 @@ func (q *ListObjectsQuery) Execute(
 		if err := p.Err(); err != nil {
 			// current list objects behavior is to elide context cancelation errors
 			if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+				if errors.Is(err, condition.ErrEvaluationFailed) {
+					return nil, serverErrors.ValidationError(err)
+				}
 				return nil, serverErrors.HandleError("", err)
 			}
 		}
