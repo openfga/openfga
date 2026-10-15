@@ -2,6 +2,7 @@ package check
 
 import (
 	"context"
+	"io"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -240,6 +241,51 @@ func runConditionAnyTests(t *testing.T, client tests.ClientInterface) {
 				} else {
 					require.Empty(t, resp.GetObjects())
 				}
+			})
+		}
+	})
+
+	t.Run("StreamedListObjects", func(t *testing.T) {
+		t.Run("no_context_returns_error", func(t *testing.T) {
+			t.Parallel()
+			stream, err := client.StreamedListObjects(ctx, &openfgav1.StreamedListObjectsRequest{
+				StoreId:              storeID,
+				AuthorizationModelId: modelID,
+				User:                 "user:jon",
+				Relation:             "viewer",
+				Type:                 "document",
+			})
+			require.NoError(t, err)
+			_, err = stream.Recv()
+			require.Error(t, err)
+			e, ok := status.FromError(err)
+			require.True(t, ok)
+			require.Equal(t, 2000, int(e.Code()))
+		})
+
+		for _, tc := range testCases {
+			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
+				stream, err := client.StreamedListObjects(ctx, &openfgav1.StreamedListObjectsRequest{
+					StoreId:              storeID,
+					AuthorizationModelId: modelID,
+					User:                 "user:jon",
+					Relation:             "viewer",
+					Type:                 "document",
+					Context:              tc.context,
+				})
+				require.NoError(t, err)
+
+				if tc.allowed {
+					resp, err := stream.Recv()
+					require.NoError(t, err)
+					require.Equal(t, "document:1", resp.GetObject())
+				}
+
+				// A satisfied condition emits exactly one object, while a null
+				// parameter emits none. Both streams must complete successfully.
+				_, err = stream.Recv()
+				require.ErrorIs(t, err, io.EOF)
 			})
 		}
 	})
