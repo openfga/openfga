@@ -120,9 +120,7 @@ func TestPooledBuilder_ConcurrentGetAndClose(t *testing.T) {
 
 	var wg sync.WaitGroup
 	for range goroutines {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			for j := range iterations {
 				b := GetBuilder()
 				b.EncodeString(fmt.Sprintf("goroutine-%d", j))
@@ -130,7 +128,7 @@ func TestPooledBuilder_ConcurrentGetAndClose(t *testing.T) {
 				assert.NotEmpty(t, key.String())
 				b.Close()
 			}
-		}()
+		})
 	}
 	wg.Wait()
 }
@@ -141,16 +139,14 @@ func TestPooledDigest_ConcurrentGetAndClose(t *testing.T) {
 
 	var wg sync.WaitGroup
 	for range goroutines {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			for j := range iterations {
 				d := GetDigest()
 				_, _ = fmt.Fprintf(d, "data-%d", j)
 				assert.NotZero(t, d.Sum64())
 				d.Close()
 			}
-		}()
+		})
 	}
 	wg.Wait()
 }

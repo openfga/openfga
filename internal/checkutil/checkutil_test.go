@@ -26,7 +26,7 @@ func TestBuildTupleKeyConditionFilter(t *testing.T) {
 		name         string
 		tupleKey     *openfgav1.TupleKey
 		model        *openfgav1.AuthorizationModel
-		context      map[string]interface{}
+		context      map[string]any
 		conditionMet bool
 		expectedErr  error
 	}{
@@ -42,7 +42,7 @@ func TestBuildTupleKeyConditionFilter(t *testing.T) {
 				type document
 					relations
 						define can_view: [user]`),
-			context:      map[string]interface{}{},
+			context:      map[string]any{},
 			conditionMet: true,
 			expectedErr:  nil,
 		},
@@ -58,7 +58,7 @@ func TestBuildTupleKeyConditionFilter(t *testing.T) {
 				type document
 					relations
 						define can_view: [user]`),
-			context:      map[string]interface{}{},
+			context:      map[string]any{},
 			conditionMet: false,
 			expectedErr:  condition.NewEvaluationError("correct_ip", fmt.Errorf("condition was not found")),
 		},
@@ -79,7 +79,7 @@ func TestBuildTupleKeyConditionFilter(t *testing.T) {
 					x == 1
 				}
 `),
-			context:      map[string]interface{}{"x": 1},
+			context:      map[string]any{"x": 1},
 			conditionMet: true,
 			expectedErr:  nil,
 		},
@@ -100,7 +100,7 @@ func TestBuildTupleKeyConditionFilter(t *testing.T) {
 					x == 1
 				}
 `),
-			context:      map[string]interface{}{"x": 15},
+			context:      map[string]any{"x": 15},
 			conditionMet: false,
 			expectedErr:  nil,
 		},
@@ -121,7 +121,7 @@ func TestBuildTupleKeyConditionFilter(t *testing.T) {
 					x == 1 && y == 0
 				}
 `),
-			context:      map[string]interface{}{"x": 5},
+			context:      map[string]any{"x": 5},
 			conditionMet: false,
 			expectedErr: condition.NewEvaluationError("x_y",
 				fmt.Errorf("tuple 'document:1#can_view@user:maria' is missing context parameters '[y]'")),
@@ -130,9 +130,9 @@ func TestBuildTupleKeyConditionFilter(t *testing.T) {
 			name: "inline_expression_condition_met",
 			tupleKey: tuple.NewTupleKeyWithCondition("document:1", "editor", "user:alice",
 				condition.InlineExpressionName,
-				testutils.MustNewStruct(t, map[string]interface{}{
+				testutils.MustNewStruct(t, map[string]any{
 					"expression": "channel_id == 'X123456'",
-					"parameters": map[string]interface{}{"channel_id": "string"},
+					"parameters": map[string]any{"channel_id": "string"},
 				}),
 			),
 			model: parser.MustTransformDSLToProto(`
@@ -143,7 +143,7 @@ func TestBuildTupleKeyConditionFilter(t *testing.T) {
 					relations
 						define editor: [user with $expression]
 			`),
-			context:      map[string]interface{}{"channel_id": "X123456"},
+			context:      map[string]any{"channel_id": "X123456"},
 			conditionMet: true,
 			expectedErr:  nil,
 		},
@@ -151,9 +151,9 @@ func TestBuildTupleKeyConditionFilter(t *testing.T) {
 			name: "inline_expression_condition_not_met",
 			tupleKey: tuple.NewTupleKeyWithCondition("document:1", "editor", "user:alice",
 				condition.InlineExpressionName,
-				testutils.MustNewStruct(t, map[string]interface{}{
+				testutils.MustNewStruct(t, map[string]any{
 					"expression": "channel_id == 'X123456'",
-					"parameters": map[string]interface{}{"channel_id": "string"},
+					"parameters": map[string]any{"channel_id": "string"},
 				}),
 			),
 			model: parser.MustTransformDSLToProto(`
@@ -164,7 +164,7 @@ func TestBuildTupleKeyConditionFilter(t *testing.T) {
 					relations
 						define editor: [user with $expression]
 			`),
-			context:      map[string]interface{}{"channel_id": "WRONG"},
+			context:      map[string]any{"channel_id": "WRONG"},
 			conditionMet: false,
 			expectedErr:  nil,
 		},
@@ -172,9 +172,9 @@ func TestBuildTupleKeyConditionFilter(t *testing.T) {
 			name: "inline_expression_missing_parameter_is_hard_error",
 			tupleKey: tuple.NewTupleKeyWithCondition("document:1", "editor", "user:alice",
 				condition.InlineExpressionName,
-				testutils.MustNewStruct(t, map[string]interface{}{
+				testutils.MustNewStruct(t, map[string]any{
 					"expression": "channel_id == 'X123456'",
-					"parameters": map[string]interface{}{"channel_id": "string"},
+					"parameters": map[string]any{"channel_id": "string"},
 				}),
 			),
 			model: parser.MustTransformDSLToProto(`
@@ -186,7 +186,7 @@ func TestBuildTupleKeyConditionFilter(t *testing.T) {
 						define editor: [user with $expression]
 			`),
 			// channel_id is not provided in the request context
-			context:      map[string]interface{}{},
+			context:      map[string]any{},
 			conditionMet: false,
 			expectedErr: condition.NewEvaluationError(
 				condition.InlineExpressionName,
@@ -197,9 +197,9 @@ func TestBuildTupleKeyConditionFilter(t *testing.T) {
 			name: "inline_expression_extra_request_keys_ignored",
 			tupleKey: tuple.NewTupleKeyWithCondition("document:1", "editor", "user:alice",
 				condition.InlineExpressionName,
-				testutils.MustNewStruct(t, map[string]interface{}{
+				testutils.MustNewStruct(t, map[string]any{
 					"expression": "channel_id == 'X123456'",
-					"parameters": map[string]interface{}{"channel_id": "string"},
+					"parameters": map[string]any{"channel_id": "string"},
 				}),
 			),
 			model: parser.MustTransformDSLToProto(`
@@ -211,7 +211,7 @@ func TestBuildTupleKeyConditionFilter(t *testing.T) {
 						define editor: [user with $expression]
 			`),
 			// extra key "unrelated" is present in context but not in the expression
-			context:      map[string]interface{}{"channel_id": "X123456", "unrelated": "value"},
+			context:      map[string]any{"channel_id": "X123456", "unrelated": "value"},
 			conditionMet: true,
 			expectedErr:  nil,
 		},
@@ -255,8 +255,8 @@ func TestConditionsFilteredIteratorInlineExpressionFatalError(t *testing.T) {
 	ts, err := typesystem.NewAndValidate(context.Background(), model)
 	require.NoError(t, err)
 
-	exprAlwaysTrue := testutils.MustNewStruct(t, map[string]interface{}{"expression": "true"})
-	exprMissingParam := testutils.MustNewStruct(t, map[string]interface{}{"expression": "channel == 'X'"})
+	exprAlwaysTrue := testutils.MustNewStruct(t, map[string]any{"expression": "true"})
+	exprMissingParam := testutils.MustNewStruct(t, map[string]any{"expression": "channel == 'X'"})
 
 	tuples := []*openfgav1.TupleKey{
 		// Tuple A: always-true $expression — passes the filter, sets onceValid=true.

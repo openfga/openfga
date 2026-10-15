@@ -63,8 +63,7 @@ func (f *filter[T]) Next(ctx context.Context) (T, error) {
 
 		valid, err := f.applyFilters(entry)
 		if err != nil {
-			var fatal *interrors.FatalError
-			if errors.As(err, &fatal) {
+			if _, ok := errors.AsType[*interrors.FatalError](err); ok {
 				return null, err // propagate immediately; keep wrapper so callers can detect it
 			}
 			f.lastErr = err

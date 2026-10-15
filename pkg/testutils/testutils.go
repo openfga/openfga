@@ -124,7 +124,7 @@ func CreateRandomString(n int) string {
 	return string(b)
 }
 
-func MustNewStruct(t require.TestingT, v map[string]interface{}) *structpb.Struct {
+func MustNewStruct(t require.TestingT, v map[string]any) *structpb.Struct {
 	conditionContext, err := structpb.NewStruct(v)
 	require.NoError(t, err)
 	return conditionContext
@@ -135,7 +135,7 @@ func MustNewStruct(t require.TestingT, v map[string]interface{}) *structpb.Struc
 func MakeSliceWithGenerator[T any](n uint64, generator func(n uint64) any) []T {
 	s := make([]T, 0, n)
 
-	for i := uint64(0); i < n; i++ {
+	for i := range n {
 		s = append(s, generator(i).(T))
 	}
 
@@ -150,7 +150,7 @@ func NumericalStringGenerator(n uint64) any {
 
 func MakeStringWithRuneset(n uint64, runeSet []rune) string {
 	var sb strings.Builder
-	for i := uint64(0); i < n; i++ {
+	for range n {
 		sb.WriteRune(runeSet[rand.Intn(len(runeSet))])
 	}
 	return sb.String()

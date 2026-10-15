@@ -113,7 +113,7 @@ func TestEvaluate(t *testing.T) {
 	var tests = []struct {
 		name      string
 		condition *openfgav1.Condition
-		context   map[string]interface{}
+		context   map[string]any
 		result    condition.EvaluationResult
 		err       *condition.EvaluationError
 	}{
@@ -128,7 +128,7 @@ func TestEvaluate(t *testing.T) {
 					},
 				},
 			},
-			context: map[string]interface{}{
+			context: map[string]any{
 				"param1": "ok",
 			},
 			result: condition.EvaluationResult{ConditionMet: true},
@@ -144,7 +144,7 @@ func TestEvaluate(t *testing.T) {
 					},
 				},
 			},
-			context: map[string]interface{}{"param1": "notok"},
+			context: map[string]any{"param1": "notok"},
 			result:  condition.EvaluationResult{ConditionMet: false},
 		},
 		{
@@ -175,7 +175,7 @@ func TestEvaluate(t *testing.T) {
 					},
 				},
 			},
-			context: map[string]interface{}{},
+			context: map[string]any{},
 			result: condition.EvaluationResult{
 				ConditionMet:      false,
 				MissingParameters: []string{"param1"},
@@ -192,7 +192,7 @@ func TestEvaluate(t *testing.T) {
 					},
 				},
 			},
-			context: map[string]interface{}{
+			context: map[string]any{
 				"param2": "ok",
 			},
 			result: condition.EvaluationResult{
@@ -214,7 +214,7 @@ func TestEvaluate(t *testing.T) {
 					},
 				},
 			},
-			context: map[string]interface{}{
+			context: map[string]any{
 				"param1": "ok",
 			},
 			result: condition.EvaluationResult{
@@ -236,7 +236,7 @@ func TestEvaluate(t *testing.T) {
 					},
 				},
 			},
-			context: map[string]interface{}{
+			context: map[string]any{
 				"param1": "ok",
 			},
 			result: condition.EvaluationResult{
@@ -255,7 +255,7 @@ func TestEvaluate(t *testing.T) {
 					},
 				},
 			},
-			context: map[string]interface{}{
+			context: map[string]any{
 				"param1": true,
 			},
 			result: condition.EvaluationResult{ConditionMet: false},
@@ -274,7 +274,7 @@ func TestEvaluate(t *testing.T) {
 				Expression: `ipaddress("192.168.0.1").in_cidr("192.168.0.0/24")`,
 				Parameters: map[string]*openfgav1.ConditionParamTypeRef{},
 			},
-			context: map[string]interface{}{},
+			context: map[string]any{},
 			result:  condition.EvaluationResult{ConditionMet: true},
 		},
 		{
@@ -284,7 +284,7 @@ func TestEvaluate(t *testing.T) {
 				Expression: `ipaddress("192.168.0").in_cidr("192.168.0.0/24")`,
 				Parameters: map[string]*openfgav1.ConditionParamTypeRef{},
 			},
-			context: map[string]interface{}{},
+			context: map[string]any{},
 			result:  condition.EvaluationResult{ConditionMet: false},
 			err: &condition.EvaluationError{
 				Condition: "condition1",
@@ -339,7 +339,7 @@ func TestEvaluateWithMaxCost(t *testing.T) {
 					},
 				},
 			},
-			context: map[string]interface{}{
+			context: map[string]any{
 				"x": int64(1),
 				"y": int64(2),
 			},
@@ -360,7 +360,7 @@ func TestEvaluateWithMaxCost(t *testing.T) {
 					},
 				},
 			},
-			context: map[string]interface{}{
+			context: map[string]any{
 				"x": int64(1),
 				"y": int64(2),
 			},
@@ -384,7 +384,7 @@ func TestEvaluateWithMaxCost(t *testing.T) {
 					},
 				},
 			},
-			context: map[string]interface{}{
+			context: map[string]any{
 				"x": "ab",
 				"y": "ab",
 			},
@@ -407,8 +407,8 @@ func TestEvaluateWithMaxCost(t *testing.T) {
 					},
 				},
 			},
-			context: map[string]interface{}{
-				"strlist": []interface{}{"c", "b", "a"},
+			context: map[string]any{
+				"strlist": []any{"c", "b", "a"},
 			},
 			maxCost: 3,
 			err:     fmt.Errorf("operation cancelled: actual cost limit exceeded"),
@@ -429,8 +429,8 @@ func TestEvaluateWithMaxCost(t *testing.T) {
 					},
 				},
 			},
-			context: map[string]interface{}{
-				"strlist": []interface{}{"a", "b", "c"},
+			context: map[string]any{
+				"strlist": []any{"a", "b", "c"},
 			},
 			maxCost: 4,
 			result: condition.EvaluationResult{
@@ -549,9 +549,9 @@ func TestCastContextToTypedParameters(t *testing.T) {
 }
 
 func TestEvaluateWithInterruptCheckFrequency(t *testing.T) {
-	makeItems := func(size int) []interface{} {
-		items := make([]interface{}, size)
-		for i := int(0); i < size; i++ {
+	makeItems := func(size int) []any {
+		items := make([]any, size)
+		for i := range size {
 			items[i] = i
 		}
 		return items
@@ -587,7 +587,7 @@ func TestEvaluateWithInterruptCheckFrequency(t *testing.T) {
 				},
 			},
 			checkFrequency: uint(numLoops),
-			context: map[string]interface{}{
+			context: map[string]any{
 				"items": makeItems(numLoops),
 			},
 			result: condition.EvaluationResult{
@@ -612,7 +612,7 @@ func TestEvaluateWithInterruptCheckFrequency(t *testing.T) {
 				},
 			},
 			checkFrequency: uint(numLoops),
-			context: map[string]interface{}{
+			context: map[string]any{
 				"items": makeItems(numLoops - 1),
 			},
 			result: condition.EvaluationResult{
@@ -637,7 +637,7 @@ func TestEvaluateWithInterruptCheckFrequency(t *testing.T) {
 				},
 			},
 			checkFrequency: uint(numLoops),
-			context: map[string]interface{}{
+			context: map[string]any{
 				"items": makeItems(numLoops),
 			},
 			result: condition.EvaluationResult{
@@ -662,7 +662,7 @@ func TestEvaluateWithInterruptCheckFrequency(t *testing.T) {
 				},
 			},
 			checkFrequency: uint(numLoops),
-			context: map[string]interface{}{
+			context: map[string]any{
 				"items": makeItems(numLoops - 1),
 			},
 			result: condition.EvaluationResult{

@@ -384,7 +384,7 @@ func typeSystemEquals(t *testing.T, a, b *TypeSystem) {
 
 			// nil case covered by len check
 			require.Len(t, relationB, len(relationA))
-			for i := 0; i < len(relationA); i++ {
+			for i := range relationA {
 				tupleToUsersetEquals(t, relationA[i], relationB[i])
 			}
 		}

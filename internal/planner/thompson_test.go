@@ -39,7 +39,7 @@ func TestThompsonStats_Sample(t *testing.T) {
 		// Helper to calculate Median
 		getMedian := func() float64 {
 			samples := make([]float64, numSamples)
-			for i := 0; i < numSamples; i++ {
+			for i := range numSamples {
 				samples[i] = stats.Sample(r)
 			}
 			sort.Float64s(samples) // Requires "sort" package
@@ -50,7 +50,7 @@ func TestThompsonStats_Sample(t *testing.T) {
 		medianBefore := getMedian()
 
 		// 2. Update with high latency (500ms)
-		for i := 0; i < 20; i++ {
+		for range 20 {
 			stats.Update(500 * time.Millisecond)
 		}
 
@@ -68,7 +68,7 @@ func BenchmarkThompsonStats_SampleParallel(b *testing.B) {
 	ts := NewThompsonStats(10*time.Millisecond, 1, 1, 1)
 
 	// Add some sample data
-	for i := 0; i < 1000; i++ {
+	for i := range 1000 {
 		ts.Update(time.Duration(5+i) * time.Millisecond)
 	}
 

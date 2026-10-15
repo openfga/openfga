@@ -54,7 +54,7 @@ func BenchmarkCheck(b *testing.B, ds storage.OpenFGADatastore) {
 						define member: [user]`,
 			tupleGenerator: func() []*openfgav1.TupleKey {
 				var tuples []*openfgav1.TupleKey
-				for i := 0; i < 1000; i++ { // add user:anne to many teams
+				for i := range 1000 { // add user:anne to many teams
 					tuples = append(tuples, &openfgav1.TupleKey{
 						Object:   fmt.Sprintf("team:%d", i),
 						Relation: "member",
@@ -94,7 +94,7 @@ func BenchmarkCheck(b *testing.B, ds storage.OpenFGADatastore) {
 						define member: [user]`,
 			tupleGenerator: func() []*openfgav1.TupleKey {
 				var tuples []*openfgav1.TupleKey
-				for i := 0; i < 1000; i++ { // add user:anne to many teams
+				for i := range 1000 { // add user:anne to many teams
 					tuples = append(tuples, &openfgav1.TupleKey{
 						Object:   fmt.Sprintf("team:%d", i),
 						Relation: "member",
@@ -307,7 +307,7 @@ func BenchmarkCheck(b *testing.B, ds storage.OpenFGADatastore) {
 				Object: "doc:x", Relation: "viewer", User: "user:maria",
 			},
 			contextGenerator: func() *structpb.Struct {
-				s, err := structpb.NewStruct(map[string]interface{}{
+				s, err := structpb.NewStruct(map[string]any{
 					"p": "secret",
 				})
 				if err != nil {
@@ -337,7 +337,7 @@ func BenchmarkCheck(b *testing.B, ds storage.OpenFGADatastore) {
 				}
 			},
 			contextGenerator: func() *structpb.Struct {
-				s, err := structpb.NewStruct(map[string]interface{}{
+				s, err := structpb.NewStruct(map[string]any{
 					"b":  true,
 					"s":  "s",
 					"i":  1,
@@ -431,7 +431,7 @@ func benchmarkCheckWithBypassUsersetReads(b *testing.B, ds storage.OpenFGADatast
 
 	// add user to many usersets according to model A
 	var tuples []*openfgav1.TupleKey
-	for i := 0; i < 1000; i++ {
+	for i := range 1000 {
 		tuples = append(tuples, &openfgav1.TupleKey{
 			Object:   fmt.Sprintf("group:%d", i),
 			Relation: "member",

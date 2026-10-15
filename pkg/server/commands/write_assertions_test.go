@@ -38,7 +38,7 @@ func TestWriteAssertions(t *testing.T) {
 		contextualTuples := make([]*openfgav1.TupleKey, 0, ctxTuples)
 		assertions := make([]*openfgav1.Assertion, 0, numAssertions)
 
-		for ct := 0; ct < ctxTuples; ct++ {
+		for ct := range ctxTuples {
 			contextualTuples = append(contextualTuples, &openfgav1.TupleKey{
 				Object:   "document:" + strings.Repeat(strconv.Itoa(ct), maxBytesPerObject-len("document:")),
 				Relation: longRelationName,
@@ -46,7 +46,7 @@ func TestWriteAssertions(t *testing.T) {
 			})
 		}
 
-		for a := 0; a < numAssertions; a++ {
+		for a := range numAssertions {
 			assertions = append(assertions, &openfgav1.Assertion{
 				TupleKey: &openfgav1.AssertionTupleKey{
 					Object:   "document:" + strings.Repeat(strconv.Itoa(a), maxBytesPerObject-len("document:")),
@@ -55,7 +55,7 @@ func TestWriteAssertions(t *testing.T) {
 				},
 				Expectation:      true,
 				ContextualTuples: contextualTuples,
-				Context: testutils.MustNewStruct(t, map[string]interface{}{
+				Context: testutils.MustNewStruct(t, map[string]any{
 					"x": 10,
 				}),
 			})
@@ -107,8 +107,8 @@ func TestWriteAssertions(t *testing.T) {
 		modelID := ulid.Make().String()
 		maxBytesPerContextField := 512
 
-		fgaContext := map[string]interface{}{}
-		for index := 0; index < 100; index++ {
+		fgaContext := map[string]any{}
+		for index := range 100 {
 			key := strings.Repeat("a", maxBytesPerContextField) + strconv.Itoa(index)
 			fgaContext[key] = key
 		}
@@ -288,7 +288,7 @@ func TestWriteAssertions(t *testing.T) {
 					{
 						TupleKey:    tuple.NewAssertionTupleKey("repo:test", "can_read", "user:elbuo"),
 						Expectation: false,
-						Context: testutils.MustNewStruct(t, map[string]interface{}{
+						Context: testutils.MustNewStruct(t, map[string]any{
 							"x": 10,
 						}),
 					},
@@ -310,7 +310,7 @@ func TestWriteAssertions(t *testing.T) {
 						Expectation: false,
 						ContextualTuples: []*openfgav1.TupleKey{
 							tuple.NewTupleKeyWithCondition("repo:test", "reader", "user:elbuo", "condX",
-								testutils.MustNewStruct(t, map[string]interface{}{"x": 0})),
+								testutils.MustNewStruct(t, map[string]any{"x": 0})),
 						},
 					},
 				},
@@ -343,7 +343,7 @@ func TestWriteAssertions(t *testing.T) {
 						Expectation: false,
 						ContextualTuples: []*openfgav1.TupleKey{
 							tuple.NewTupleKeyWithCondition("repo:test", "reader", "user:elbuo", "condX",
-								testutils.MustNewStruct(t, map[string]interface{}{"unknownparam": 0})),
+								testutils.MustNewStruct(t, map[string]any{"unknownparam": 0})),
 						},
 					},
 				},

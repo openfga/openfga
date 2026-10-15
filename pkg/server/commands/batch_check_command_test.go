@@ -47,7 +47,7 @@ func TestBatchCheckCommand(t *testing.T) {
 		cmd := NewBatchCheckCommand(NewCheckCommand(ds, mockCheckResolver, ts))
 		numChecks := int(maxChecks)
 		checks := make([]*openfgav1.BatchCheckItem, numChecks)
-		for i := 0; i < numChecks; i++ {
+		for i := range numChecks {
 			checks[i] = &openfgav1.BatchCheckItem{
 				TupleKey: &openfgav1.CheckRequestTupleKey{
 					Object:   fmt.Sprintf("doc:doc%d", i),
@@ -88,7 +88,7 @@ func TestBatchCheckCommand(t *testing.T) {
 		numChecks := 10
 		checks := make([]*openfgav1.BatchCheckItem, numChecks)
 		var ids []string
-		for i := 0; i < numChecks; i++ {
+		for i := range numChecks {
 			correlationID := fmt.Sprintf("fakeid%d", i)
 			ids = append(ids, correlationID)
 			checks[i] = &openfgav1.BatchCheckItem{
@@ -133,7 +133,7 @@ func TestBatchCheckCommand(t *testing.T) {
 		)
 		numChecks := int(maxChecks) + 1
 		checks := make([]*openfgav1.BatchCheckItem, numChecks)
-		for i := 0; i < numChecks; i++ {
+		for i := range numChecks {
 			checks[i] = &openfgav1.BatchCheckItem{
 				TupleKey: &openfgav1.CheckRequestTupleKey{
 					Object:   "doc:doc1",
@@ -176,7 +176,7 @@ func TestBatchCheckCommand(t *testing.T) {
 		cmd := NewBatchCheckCommand(NewCheckCommand(ds, mockCheckResolver, ts))
 		numChecks := 2
 		checks := make([]*openfgav1.BatchCheckItem, numChecks)
-		for i := 0; i < numChecks; i++ {
+		for i := range numChecks {
 			checks[i] = &openfgav1.BatchCheckItem{
 				TupleKey: &openfgav1.CheckRequestTupleKey{
 					Object:   "doc:doc1",
@@ -205,7 +205,7 @@ func TestBatchCheckCommand(t *testing.T) {
 		cmd := NewBatchCheckCommand(NewCheckCommand(ds, mockCheckResolver, ts))
 		numChecks := 3
 		checks := make([]*openfgav1.BatchCheckItem, numChecks)
-		for i := 0; i < numChecks; i++ {
+		for i := range numChecks {
 			checks[i] = &openfgav1.BatchCheckItem{
 				TupleKey: &openfgav1.CheckRequestTupleKey{
 					Object:   "doc:doc1",
@@ -234,7 +234,7 @@ func TestBatchCheckCommand(t *testing.T) {
 		cmd := NewBatchCheckCommand(NewCheckCommand(ds, mockCheckResolver, ts))
 		numChecks := 3
 		checks := make([]*openfgav1.BatchCheckItem, numChecks)
-		for i := 0; i < numChecks; i++ {
+		for i := range numChecks {
 			checks[i] = &openfgav1.BatchCheckItem{
 				TupleKey: &openfgav1.CheckRequestTupleKey{
 					Object:   "doc:doc1",
@@ -434,7 +434,7 @@ func TestGenerateCacheKeyFromCheck(t *testing.T) {
 	}
 
 	t.Run("context_affects_key", func(t *testing.T) {
-		ctx, err := structpb.NewStruct(map[string]interface{}{
+		ctx, err := structpb.NewStruct(map[string]any{
 			"ip_address": "10.0.0.1",
 		})
 		require.NoError(t, err)
@@ -453,13 +453,13 @@ func TestGenerateCacheKeyFromCheck(t *testing.T) {
 		// A single-element list whose string contains a comma should NOT
 		// collide with a multi-element list whose elements are separated
 		// by that same comma.
-		singleElement, err := structpb.NewStruct(map[string]interface{}{
-			"roles": []interface{}{"editor,viewer"},
+		singleElement, err := structpb.NewStruct(map[string]any{
+			"roles": []any{"editor,viewer"},
 		})
 		require.NoError(t, err)
 
-		twoElements, err := structpb.NewStruct(map[string]interface{}{
-			"roles": []interface{}{"editor", "viewer"},
+		twoElements, err := structpb.NewStruct(map[string]any{
+			"roles": []any{"editor", "viewer"},
 		})
 		require.NoError(t, err)
 
@@ -695,7 +695,7 @@ func BenchmarkBatchCheckCommand(b *testing.B) {
 	)
 
 	checks := make([]*openfgav1.BatchCheckItem, maxChecks)
-	for i := 0; i < maxChecks; i++ {
+	for i := range maxChecks {
 		correlationID := fmt.Sprintf("fakeid%d", i)
 		checks[i] = &openfgav1.BatchCheckItem{
 			TupleKey: &openfgav1.CheckRequestTupleKey{
