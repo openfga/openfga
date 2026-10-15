@@ -55,7 +55,7 @@ const (
 	throttleTypeDispatch  = "dispatch"
 )
 
-var tracer = otel.Tracer("openfga/pkg/server")
+var defaultServerTracer = otel.Tracer("openfga/pkg/server")
 
 var (
 	dispatchCountHistogramName = "dispatch_count"
@@ -169,6 +169,8 @@ type Server struct {
 	authzenv1.UnimplementedAuthZenServiceServer
 
 	logger                           logger.Logger
+	tracerProvider                   trace.TracerProvider
+	tracer                           trace.Tracer
 	datastore                        storage.OpenFGADatastore
 	tokenSerializer                  encoder.ContinuationTokenSerializer
 	encoder                          encoder.Encoder
@@ -260,6 +262,13 @@ type Server struct {
 
 type OpenFGAServiceV1Option func(s *Server)
 
+func (s *Server) getTracer() trace.Tracer {
+	if s.tracer != nil {
+		return s.tracer
+	}
+	return defaultServerTracer
+}
+
 // WithDatastore passes a datastore to the Server.
 // You must call [storage.OpenFGADatastore.Close] on it after you have stopped using it.
 func WithDatastore(ds storage.OpenFGADatastore) OpenFGAServiceV1Option {
@@ -298,6 +307,14 @@ func WithTypesystemCacheSize(maxTypesystemCacheSize int) OpenFGAServiceV1Option 
 func WithLogger(l logger.Logger) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.logger = l
+	}
+}
+
+// WithTracerProvider sets the OpenTelemetry tracer provider used by the server,
+// typesystem resolver, and authorization graph.
+func WithTracerProvider(tracerProvider trace.TracerProvider) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.tracerProvider = tracerProvider
 	}
 }
 
@@ -884,6 +901,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 	s := &Server{
 		ctx:                              context.Background(),
 		logger:                           logger.NewNoopLogger(),
+		tracerProvider:                   otel.GetTracerProvider(),
 		encoder:                          encoder.NewBase64Encoder(),
 		transport:                        gateway.NewNoopTransport(),
 		changelogHorizonOffset:           serverconfig.DefaultChangelogHorizonOffset,
@@ -955,6 +973,12 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		return nil, fmt.Errorf("server cannot be started with nil context")
 	}
 
+	if s.tracerProvider == nil {
+		return nil, fmt.Errorf("tracer provider must not be nil")
+	}
+
+	s.tracer = s.tracerProvider.Tracer("openfga/pkg/server")
+
 	if len(s.requestDurationByQueryHistogramBuckets) == 0 {
 		return nil, fmt.Errorf("request duration datastore count buckets must not be empty")
 	}
@@ -1021,7 +1045,11 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		s.listUsersDispatchThrottler = throttler.NewConstantRateThrottler(s.listUsersDispatchThrottlingFrequency, "list_users_dispatch_throttle")
 	}
 
-	s.typesystemResolver, s.typesystemResolverStop, err = typesystem.MemoizedTypesystemResolverFunc(s.datastore, s.maxTypesystemCacheSize)
+	s.typesystemResolver, s.typesystemResolverStop, err = typesystem.MemoizedTypesystemResolverFuncWithOpts(
+		s.datastore,
+		s.maxTypesystemCacheSize,
+		typesystem.WithTracerProvider(s.tracerProvider),
+	)
 	if err != nil {
 		return nil, err
 	}
