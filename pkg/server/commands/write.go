@@ -20,6 +20,12 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
+// maxWriteConflictRetries bounds how many times Execute re-attempts an insert or delete conflict
+// when the corresponding operation is configured to ignore an existing or missing tuple. Retrying
+// allows the command to observe the state committed by the conflicting transaction and apply the
+// requested ignore behavior.
+const maxWriteConflictRetries = 3
+
 // WriteCommand is used to Write and Delete tuples. Instances may be safely shared by multiple goroutines.
 type WriteCommand struct {
 	logger                    logger.Logger
@@ -88,19 +94,35 @@ func (c *WriteCommand) Execute(ctx context.Context, req *openfgav1.WriteRequest)
 		return nil, err
 	}
 
-	onEmptyDelete, err := parseOptionOnMissing(req.GetDeletes())
+	onMissingDelete, err := parseOptionOnMissing(req.GetDeletes())
 	if err != nil {
 		return nil, err
 	}
 
-	err = c.datastore.Write(
-		ctx,
-		req.GetStoreId(),
-		req.GetDeletes().GetTupleKeys(),
-		req.GetWrites().GetTupleKeys(),
-		storage.WithOnMissingDelete(onEmptyDelete),
-		storage.WithOnDuplicateInsert(onDuplicateInsert),
-	)
+	write := func() error {
+		return c.datastore.Write(
+			ctx,
+			req.GetStoreId(),
+			req.GetDeletes().GetTupleKeys(),
+			req.GetWrites().GetTupleKeys(),
+			storage.WithOnMissingDelete(onMissingDelete),
+			storage.WithOnDuplicateInsert(onDuplicateInsert),
+		)
+	}
+
+	err = write()
+
+	shouldRetry := func(err error) bool {
+		return (onDuplicateInsert == storage.OnDuplicateInsertIgnore &&
+			errors.Is(err, storage.ErrWriteConflictOnInsert)) ||
+			(onMissingDelete == storage.OnMissingDeleteIgnore &&
+				errors.Is(err, storage.ErrWriteConflictOnDelete))
+	}
+
+	for retries := 0; shouldRetry(err) && retries < maxWriteConflictRetries; retries++ {
+		err = write()
+	}
+
 	if err != nil {
 		if errors.Is(err, storage.ErrTransactionalWriteFailed) {
 			return nil, status.Error(codes.Aborted, err.Error())
