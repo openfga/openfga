@@ -1,49 +1,5 @@
-// Package ast holds the Abstract Syntax Tree (AST) which represents parts of a DB query, as a tree
-// of plain data - no SQL text, no execution, no DB driver. Package query builds the tree through
-// type-safe functions and each backend turns the tree into SQL for its own database.
-//
-// # Where a node can go
-//
-// A node is one piece of the query as a plain Go struct - a single operator, value, clause, or
-// subquery. Nodes nest - each node holds its children in slots, i.e., its typed fields. A slot
-// stands for a place in the SQL: a function argument, a WHERE clause, a SELECT column. Each slot
-// accepts only one kind of node. The four interfaces below (Predicate, ScalarValue, SetValue,
-// Projection) are those kinds, and every slot is typed with the one it accepts, so a node put in the
-// wrong slot does not compile. Each interface's own doc lists where it is allowed.
-//
-// SubqueryNode is the one node that fits three slots (a value, a set, and a result column), since a
-// subquery can be used in all three.
-//
-// # Closed set, open to read
-//
-// Each of the four interfaces has a hidden method, so only nodes in this package can satisfy it; no
-// outside type can add itself. But every node type and field is exported, so any package can read
-// the tree by switching on the concrete type.
-//
-// # What the types do not enforce
-//
-// The four interfaces control what KIND of node goes in a slot, but not three further rules.
-// Node.Validate checks those instead:
-//
-//   - How many: some lists must not be empty (e.g., an IN list).
-//   - Must be present: an interface or pointer field is required unless its doc says it can be nil.
-//   - Rules across fields: e.g., a CROSS join must not have an ON condition.
-//
-// Calling Validate on the top node checks the whole tree and returns the first problem it finds.
-// See validate.go.
-//
-// # No SQL text
-//
-// The tree holds no SQL text. Every operator, column, cast type, function, and aggregate is a number
-// (an enum) with no spelling attached; writing the SQL is the backend's job. The enums split in two:
-//
-//   - Same on every SQL database: Op, LogicalOp, Quantifier, JoinType, SortDirection.
-//   - Different between databases, so each backend writes its own spelling: Column, CastType,
-//     ScalarFunc, AggFunc (e.g., Postgres casts to `text`, MySQL to `CHAR`; Postgres builds JSON
-//     with `jsonb_build_object`, the ANSI name is `JSON_OBJECT`). Each of these has a Count value
-//     so a backend can check that it handles every case.
-//
-// The only free text in the tree is a table alias and a result-column alias.
+// Package ast holds a SELECT query as a tree of plain Go structs with no SQL text. Package query
+// builds the tree; each backend writes it as SQL. See README.md for writing a backend.
 package ast
 
 import "strconv"
