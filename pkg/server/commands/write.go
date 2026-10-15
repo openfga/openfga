@@ -167,7 +167,24 @@ func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgav1.
 	}
 
 	for _, tk := range deletes {
-		// TODO validate relation format and object format
+		if ok := tupleUtils.IsValidObject(tk.GetObject()); !ok {
+			return serverErrors.ValidationError(
+				&tupleUtils.InvalidTupleError{
+					Cause:    fmt.Errorf("the 'object' field is malformed"),
+					TupleKey: tk,
+				},
+			)
+		}
+
+		if ok := tupleUtils.IsValidRelation(tk.GetRelation()); !ok {
+			return serverErrors.ValidationError(
+				&tupleUtils.InvalidTupleError{
+					Cause:    fmt.Errorf("the 'relation' field is malformed"),
+					TupleKey: tk,
+				},
+			)
+		}
+
 		if ok := tupleUtils.IsValidUser(tk.GetUser()); !ok {
 			return serverErrors.ValidationError(
 				&tupleUtils.InvalidTupleError{
