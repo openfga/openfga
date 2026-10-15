@@ -15,6 +15,7 @@ linters:
     - gocyclo
     - godot
     - importas
+    - makezero
     - mirror
     - misspell
     - perfsprint
