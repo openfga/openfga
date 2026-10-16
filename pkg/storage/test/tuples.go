@@ -1874,8 +1874,12 @@ func WriteTuplesWithMaxTuplesPerWrite(datastore storage.OpenFGADatastore, ctx co
 // ReadChangesWithHorizonAfterDelayedWrite checks that a follower using a continuation token and a horizon
 // receives a write that waited for a database connection while a later write committed.
 // The stalled datastore uses the same database as datastore, and its writes block until release is called.
-func ReadChangesWithHorizonAfterDelayedWrite(datastore, stalled storage.OpenFGADatastore, release func()) func(t *testing.T) {
+// Waiting reports whether a write of the stalled datastore waits for a connection.
+func ReadChangesWithHorizonAfterDelayedWrite(datastore, stalled storage.OpenFGADatastore, waiting func() bool, release func()) func(t *testing.T) {
 	return func(t *testing.T) {
+		release = sync.OnceFunc(release)
+		t.Cleanup(release)
+
 		ctx := context.Background()
 		storeID := ulid.Make().String()
 		filter := storage.ReadChangesFilter{HorizonOffset: 200 * time.Millisecond}
@@ -1904,7 +1908,11 @@ func ReadChangesWithHorizonAfterDelayedWrite(datastore, stalled storage.OpenFGAD
 		go func() {
 			delayedErr <- stalled.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tuple.NewTupleKey("document:delayed", "viewer", "user:jon")})
 		}()
-		time.Sleep(50 * time.Millisecond)
+		require.Eventually(t, waiting, 5*time.Second, time.Millisecond)
+		// The later write takes its time in a later millisecond than the delayed write.
+		for waited := time.Now().UnixMilli(); time.Now().UnixMilli() == waited; {
+			time.Sleep(100 * time.Microsecond)
+		}
 		require.NoError(t, datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tuple.NewTupleKey("document:later", "viewer", "user:jon")}))
 
 		objects, token := readUntil("", "document:later")

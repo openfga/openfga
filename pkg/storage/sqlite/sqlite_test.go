@@ -55,7 +55,8 @@ func TestReadChangesWithHorizonAfterDelayedWrite(t *testing.T) {
 	conn, err := stalled.db.Conn(context.Background())
 	require.NoError(t, err)
 
-	test.ReadChangesWithHorizonAfterDelayedWrite(ds, stalled, func() { _ = conn.Close() })(t)
+	waiting := func() bool { return stalled.db.Stats().WaitCount > 0 }
+	test.ReadChangesWithHorizonAfterDelayedWrite(ds, stalled, waiting, func() { _ = conn.Close() })(t)
 }
 
 func TestSQLiteDatastoreAfterCloseIsNotReady(t *testing.T) {

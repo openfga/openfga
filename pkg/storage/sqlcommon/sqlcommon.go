@@ -732,9 +732,10 @@ func NewDBInfo(stbl sq.StatementBuilderType, errorHandler errorHandlerFn, dialec
 	}
 }
 
-// nowQueries maps a dialect to the query that returns the current UTC time of the database.
+// nowQueries maps a dialect to the query that returns the current time of the database in microseconds since the Unix epoch.
 var nowQueries = map[string]string{
-	"mysql": "SELECT UTC_TIMESTAMP(6)",
+	// UTC_TIMESTAMP does not depend on the session time zone, and TIMESTAMPDIFF converts no time zone.
+	"mysql": "SELECT TIMESTAMPDIFF(MICROSECOND, '1970-01-01 00:00:00', UTC_TIMESTAMP(6))",
 }
 
 type rowQuerier interface {
@@ -747,11 +748,11 @@ func (d *DBInfo) Now(ctx context.Context, q rowQuerier) (time.Time, error) {
 	if d.nowQuery == "" {
 		return time.Now().UTC(), nil
 	}
-	var now time.Time
-	if err := q.QueryRowContext(ctx, d.nowQuery).Scan(&now); err != nil {
+	var micros int64
+	if err := q.QueryRowContext(ctx, d.nowQuery).Scan(&micros); err != nil {
 		return time.Time{}, d.HandleSQLError(err)
 	}
-	return now.UTC(), nil
+	return time.UnixMicro(micros).UTC(), nil
 }
 
 // TupleLockKey represents the composite key we lock on.

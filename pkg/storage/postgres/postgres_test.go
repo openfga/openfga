@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"testing/iotest"
 	"time"
@@ -120,15 +121,43 @@ func TestReadChangesWithHorizonAfterDelayedWrite(t *testing.T) {
 	require.NoError(t, err)
 	defer ds.Close()
 
-	stalled, err := New(uri, sqlcommon.NewConfig(sqlcommon.WithMaxOpenConns(1)))
+	cfg := sqlcommon.NewConfig(sqlcommon.WithMaxOpenConns(1))
+	poolConfig, err := parseConfig(uri, false, cfg)
+	require.NoError(t, err)
+	acquires := &acquireCounter{}
+	poolConfig.ConnConfig.Tracer = acquires
+	pool, err := pgxpool.NewWithConfig(context.Background(), poolConfig)
+	require.NoError(t, err)
+	stalled, err := NewWithDB(pool, nil, cfg)
 	require.NoError(t, err)
 	defer stalled.Close()
 
 	conn, err := stalled.primaryDB.Acquire(context.Background())
 	require.NoError(t, err)
 
-	test.ReadChangesWithHorizonAfterDelayedWrite(ds, stalled, conn.Release)(t)
+	held := acquires.count.Load()
+	waiting := func() bool { return acquires.count.Load() > held }
+	test.ReadChangesWithHorizonAfterDelayedWrite(ds, stalled, waiting, conn.Release)(t)
 }
+
+// acquireCounter counts the calls of Acquire on a pool.
+type acquireCounter struct {
+	count atomic.Int64
+}
+
+func (a *acquireCounter) TraceAcquireStart(ctx context.Context, _ *pgxpool.Pool, _ pgxpool.TraceAcquireStartData) context.Context {
+	a.count.Add(1)
+	return ctx
+}
+
+func (a *acquireCounter) TraceAcquireEnd(context.Context, *pgxpool.Pool, pgxpool.TraceAcquireEndData) {
+}
+
+func (a *acquireCounter) TraceQueryStart(ctx context.Context, _ *pgx.Conn, _ pgx.TraceQueryStartData) context.Context {
+	return ctx
+}
+
+func (a *acquireCounter) TraceQueryEnd(context.Context, *pgx.Conn, pgx.TraceQueryEndData) {}
 
 // TestWriteWithSimpleProtocol is a regression test for a bug where Write operations
 // failed with "invalid input syntax for type integer: TUPLE_OPERATION_WRITE" (SQLSTATE 22P02)
