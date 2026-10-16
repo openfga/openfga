@@ -8,6 +8,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 ### Fixed
+- Fixed ListUsers returning a user that the base branch of an exclusion had already excluded, when the subtracted branch is itself an exclusion whose inner `but not` removes that same user (e.g. `(viewer but not banned) but not (restricted but not suspended)` with wildcards). Check and ListObjects were unaffected. See `pkg/server/commands/listusers/list_users_rpc.go`.
 - Fixed ListObjects returning `validation_error` with the message "Internal Server Error" instead of the condition evaluation error (e.g. a missing context parameter) when the ListObjects pipeline is enabled. [#3338](https://github.com/openfga/openfga/pull/3338)
 - Fixed `recursiveFastPath` and `weight2` in Check spinning at full CPU on a closed producer channel until the other producer finished, which also made the planner avoid the `weight2` strategy. [#3299](https://github.com/openfga/openfga/issues/3299)
 
