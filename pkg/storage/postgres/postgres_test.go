@@ -112,6 +112,24 @@ func TestPostgresDatastore(t *testing.T) {
 	t.Run("WriteTuplesWithMaxTuplesPerWrite", test.WriteTuplesWithMaxTuplesPerWrite(dsCustom, context.Background()))
 }
 
+func TestReadChangesWithHorizonAfterDelayedWrite(t *testing.T) {
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
+
+	uri := testDatastore.GetConnectionURI(true)
+	ds, err := New(uri, sqlcommon.NewConfig())
+	require.NoError(t, err)
+	defer ds.Close()
+
+	stalled, err := New(uri, sqlcommon.NewConfig(sqlcommon.WithMaxOpenConns(1)))
+	require.NoError(t, err)
+	defer stalled.Close()
+
+	conn, err := stalled.primaryDB.Acquire(context.Background())
+	require.NoError(t, err)
+
+	test.ReadChangesWithHorizonAfterDelayedWrite(ds, stalled, conn.Release)(t)
+}
+
 // TestWriteWithSimpleProtocol is a regression test for a bug where Write operations
 // failed with "invalid input syntax for type integer: TUPLE_OPERATION_WRITE" (SQLSTATE 22P02)
 // when the connection uses PostgreSQL's simple query protocol (e.g. behind PgBouncer in

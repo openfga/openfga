@@ -714,6 +714,7 @@ func (t *SQLTupleIterator) IsOrdered() bool { return false }
 type DBInfo struct {
 	stbl           sq.StatementBuilderType
 	HandleSQLError errorHandlerFn
+	nowQuery       string
 }
 
 type errorHandlerFn func(error, ...interface{}) error
@@ -727,7 +728,30 @@ func NewDBInfo(stbl sq.StatementBuilderType, errorHandler errorHandlerFn, dialec
 	return &DBInfo{
 		stbl:           stbl,
 		HandleSQLError: errorHandler,
+		nowQuery:       nowQueries[dialect],
 	}
+}
+
+// nowQueries maps a dialect to the query that returns the current UTC time of the database.
+var nowQueries = map[string]string{
+	"mysql": "SELECT UTC_TIMESTAMP(6)",
+}
+
+type rowQuerier interface {
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
+// Now returns the current time of the database. For a dialect without a query in nowQueries,
+// it returns the current time of the process.
+func (d *DBInfo) Now(ctx context.Context, q rowQuerier) (time.Time, error) {
+	if d.nowQuery == "" {
+		return time.Now().UTC(), nil
+	}
+	var now time.Time
+	if err := q.QueryRowContext(ctx, d.nowQuery).Scan(&now); err != nil {
+		return time.Time{}, d.HandleSQLError(err)
+	}
+	return now.UTC(), nil
 }
 
 // TupleLockKey represents the composite key we lock on.
@@ -980,7 +1004,8 @@ type WriteData struct {
 	Deletes storage.Deletes
 	Writes  storage.Writes
 	Opts    storage.TupleWriteOptions
-	Now     time.Time
+	// Now is the time of the changes. If it is zero, Write uses the database time inside the transaction.
+	Now time.Time
 }
 
 // Write provides the common method for writing to database across sql storage.
@@ -997,6 +1022,14 @@ func Write(
 		return dbInfo.HandleSQLError(err)
 	}
 	defer func() { _ = txn.Rollback() }()
+
+	// Taking the time inside the transaction keeps the changelog ULIDs close to the commit order.
+	if writeData.Now.IsZero() {
+		writeData.Now, err = dbInfo.Now(ctx, txn)
+		if err != nil {
+			return err
+		}
+	}
 
 	// 2. Compile a SELECT … FOR UPDATE statement to read the tuples for writes and lock tuples for Deletes
 	// Build a deduped, sorted list of keys to lock.
@@ -1280,6 +1313,16 @@ func IsReady(ctx context.Context, skipVersionCheck bool, db *sql.DB) (storage.Re
 		return storage.ReadinessStatus{}, pingErr
 	}
 	return IsVersionReady(ctx, skipVersionCheck, db)
+}
+
+// AddHorizon returns sb filtered to the changes whose ULID time is before now minus horizonOffset.
+// The horizon filters on the ULID, the same value the continuation token is ordered by, so a follower
+// does not skip a change that committed after a later one.
+func AddHorizon(sb sq.SelectBuilder, now time.Time, horizonOffset time.Duration) sq.SelectBuilder {
+	// A ULID with zero entropy is the smallest ULID of that millisecond.
+	var horizon ulid.ULID
+	_ = horizon.SetTime(ulid.Timestamp(now.Add(-horizonOffset)))
+	return sb.Where(sq.Lt{"ulid": horizon.String()})
 }
 
 func AddFromUlid(sb sq.SelectBuilder, fromUlid string, sortDescending bool) sq.SelectBuilder {

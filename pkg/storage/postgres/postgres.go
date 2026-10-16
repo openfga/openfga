@@ -427,7 +427,7 @@ func (s *Datastore) Write(
 ) error {
 	ctx, span := startTrace(ctx, "Write")
 	defer span.End()
-	return s.write(ctx, store, deletes, writes, storage.NewTupleWriteOptions(opts...), time.Now().UTC())
+	return s.write(ctx, store, deletes, writes, storage.NewTupleWriteOptions(opts...), time.Time{})
 }
 
 // execute SELECT … FOR UPDATE statement for all the rows indicated by the lockKeys
@@ -596,6 +596,14 @@ func (s *Datastore) write(
 	// Important - use the same txn (instead of via db) to ensure all works are done as a transaction
 
 	defer func() { _ = txn.Rollback(ctx) }()
+
+	// If now is zero, use the transaction start time, the same value NOW() writes to inserted_at.
+	if now.IsZero() {
+		if err := txn.QueryRow(ctx, "SELECT NOW()").Scan(&now); err != nil {
+			return HandleSQLError(err)
+		}
+		now = now.UTC()
+	}
 
 	// 2. Compile a SELECT … FOR UPDATE statement to read the tuples for writes and lock tuples for deletes
 	// Build a deduped, sorted list of keys to lock.
@@ -1245,8 +1253,15 @@ func (s *Datastore) ReadChanges(ctx context.Context, store string, filter storag
 		).
 		From("changelog").
 		Where(sq.Eq{"store": store}).
-		Where(fmt.Sprintf("inserted_at < NOW() - interval '%dms'", horizonOffset.Milliseconds())).
 		OrderBy(orderBy)
+
+	if horizonOffset > 0 {
+		var now time.Time
+		if err := db.QueryRow(ctx, "SELECT NOW()").Scan(&now); err != nil {
+			return nil, "", HandleSQLError(err)
+		}
+		sb = sqlcommon.AddHorizon(sb, now, horizonOffset)
+	}
 
 	if objectTypeFilter != "" {
 		sb = sb.Where(sq.Eq{"object_type": objectTypeFilter})

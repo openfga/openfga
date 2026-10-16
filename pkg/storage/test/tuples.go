@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"sync"
 	"testing"
@@ -1867,6 +1868,54 @@ func WriteTuplesWithMaxTuplesPerWrite(datastore storage.OpenFGADatastore, ctx co
 		require.ErrorIs(t, err, storage.ErrNotFound)
 		_, err = datastore.ReadUserTuple(ctx, storeID, storage.ReadUserTupleFilter{Object: tuplesToWrite[len(tuplesToWrite)-1].GetObject(), Relation: tuplesToWrite[len(tuplesToWrite)-1].GetRelation(), User: tuplesToWrite[len(tuplesToWrite)-1].GetUser()}, storage.ReadUserTupleOptions{})
 		require.ErrorIs(t, err, storage.ErrNotFound)
+	}
+}
+
+// ReadChangesWithHorizonAfterDelayedWrite checks that a follower using a continuation token and a horizon
+// receives a write that waited for a database connection while a later write committed.
+// The stalled datastore uses the same database as datastore, and its writes block until release is called.
+func ReadChangesWithHorizonAfterDelayedWrite(datastore, stalled storage.OpenFGADatastore, release func()) func(t *testing.T) {
+	return func(t *testing.T) {
+		ctx := context.Background()
+		storeID := ulid.Make().String()
+		filter := storage.ReadChangesFilter{HorizonOffset: 200 * time.Millisecond}
+
+		// readUntil reads the changes after token until the change of object is past the horizon.
+		readUntil := func(token, object string) ([]string, string) {
+			var objects []string
+			for deadline := time.Now().Add(5 * time.Second); !slices.Contains(objects, object); {
+				require.True(t, time.Now().Before(deadline), "no change of %s within 5 seconds", object)
+				time.Sleep(50 * time.Millisecond)
+				opts := storage.ReadChangesOptions{Pagination: storage.NewPaginationOptions(storage.DefaultPageSize, token)}
+				changes, next, err := datastore.ReadChanges(ctx, storeID, filter, opts)
+				if errors.Is(err, storage.ErrNotFound) {
+					continue
+				}
+				require.NoError(t, err)
+				token = next
+				for _, change := range changes {
+					objects = append(objects, change.GetTupleKey().GetObject())
+				}
+			}
+			return objects, token
+		}
+
+		delayedErr := make(chan error, 1)
+		go func() {
+			delayedErr <- stalled.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tuple.NewTupleKey("document:delayed", "viewer", "user:jon")})
+		}()
+		time.Sleep(50 * time.Millisecond)
+		require.NoError(t, datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tuple.NewTupleKey("document:later", "viewer", "user:jon")}))
+
+		objects, token := readUntil("", "document:later")
+		require.Equal(t, []string{"document:later"}, objects)
+
+		release()
+		require.NoError(t, <-delayedErr)
+		require.NoError(t, datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tuple.NewTupleKey("document:last", "viewer", "user:jon")}))
+
+		objects, _ = readUntil(token, "document:last")
+		require.Equal(t, []string{"document:delayed", "document:last"}, objects)
 	}
 }
 

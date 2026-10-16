@@ -39,6 +39,25 @@ func TestSQLiteDatastore(t *testing.T) {
 	t.Run("WriteTuplesWithMaxTuplesPerWrite", test.WriteTuplesWithMaxTuplesPerWrite(dsCustom, context.Background()))
 }
 
+func TestReadChangesWithHorizonAfterDelayedWrite(t *testing.T) {
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "sqlite")
+
+	uri := testDatastore.GetConnectionURI(true)
+	ds, err := New(uri, sqlcommon.NewConfig())
+	require.NoError(t, err)
+	defer ds.Close()
+
+	stalled, err := New(uri, sqlcommon.NewConfig())
+	require.NoError(t, err)
+	defer stalled.Close()
+	stalled.db.SetMaxOpenConns(1)
+
+	conn, err := stalled.db.Conn(context.Background())
+	require.NoError(t, err)
+
+	test.ReadChangesWithHorizonAfterDelayedWrite(ds, stalled, func() { _ = conn.Close() })(t)
+}
+
 func TestSQLiteDatastoreAfterCloseIsNotReady(t *testing.T) {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "sqlite")
 
