@@ -308,7 +308,6 @@ func (s *Datastore) Write(
 			Deletes: deletes,
 			Writes:  writes,
 			Opts:    storage.NewTupleWriteOptions(opts...),
-			Now:     time.Now().UTC(),
 		})
 }
 
@@ -876,8 +875,15 @@ func (s *Datastore) ReadChanges(ctx context.Context, store string, filter storag
 		).
 		From("changelog").
 		Where(sq.Eq{"store": store}).
-		Where(fmt.Sprintf("inserted_at <= NOW() - INTERVAL %d MICROSECOND", horizonOffset.Microseconds())).
 		OrderBy(orderBy)
+
+	if horizonOffset > 0 {
+		now, err := s.dbInfo.Now(ctx, db)
+		if err != nil {
+			return nil, "", err
+		}
+		sb = sqlcommon.AddHorizon(sb, now, horizonOffset)
+	}
 
 	if objectTypeFilter != "" {
 		sb = sb.Where(sq.Eq{"object_type": objectTypeFilter})
