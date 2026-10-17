@@ -8,6 +8,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 ### Fixed
+- Fixed `Check` and `BatchCheck` in `internal/graph` returning partial `Allowed` outcomes instead of `context.Canceled` / `context.DeadlineExceeded` when a check or sibling sub-check is cancelled mid-evaluation, which could return false grants on timeouts and cache false grants or false denies in `CachedCheckResolver`. [#3348](https://github.com/openfga/openfga/pull/3348)
 - Fixed ListObjects returning `validation_error` with the message "Internal Server Error" instead of the condition evaluation error (e.g. a missing context parameter) when the ListObjects pipeline is enabled. [#3338](https://github.com/openfga/openfga/pull/3338)
 - Fixed `recursiveFastPath` and `weight2` in Check spinning at full CPU on a closed producer channel until the other producer finished, which also made the planner avoid the `weight2` strategy. [#3299](https://github.com/openfga/openfga/issues/3299)
 

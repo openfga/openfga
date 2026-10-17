@@ -171,7 +171,7 @@ func union(ctx context.Context, concurrencyLimit int, handlers ...CheckHandlerFu
 	for _, handler := range handlers {
 		h := handler
 		pool.Go(func(ctx context.Context) error {
-			concurrency.TrySendThroughChannel(cancellableCtx, runHandler(ctx, h), out)
+			out <- runHandler(ctx, h)
 			return nil
 		})
 	}
@@ -189,11 +189,7 @@ func union(ctx context.Context, concurrencyLimit int, handlers ...CheckHandlerFu
 		case <-ctx.Done():
 			return nil, ctx.Err()
 
-		case outcome, ok := <-out:
-			if !ok {
-				break
-			}
-
+		case outcome := <-out:
 			if outcome.err != nil {
 				finalErr = outcome.err
 				continue // Continue to see if we find an 'Allowed: true'
@@ -237,7 +233,7 @@ func intersection(ctx context.Context, concurrencyLimit int, handlers ...CheckHa
 	for _, handler := range handlers {
 		h := handler // Capture loop variable for the goroutine
 		pool.Go(func(ctx context.Context) error {
-			concurrency.TrySendThroughChannel(cancellableCtx, runHandler(ctx, h), out)
+			out <- runHandler(ctx, h)
 			return nil
 		})
 	}
@@ -257,11 +253,7 @@ func intersection(ctx context.Context, concurrencyLimit int, handlers ...CheckHa
 		case <-ctx.Done():
 			return nil, ctx.Err()
 
-		case outcome, ok := <-out:
-			if !ok {
-				break
-			}
-
+		case outcome := <-out:
 			if outcome.err != nil {
 				// Store the first error we see, but don't exit yet.
 				// A definitive 'false' result from another handler can override this.
@@ -301,19 +293,17 @@ func exclusion(ctx context.Context, _ int, handlers ...CheckHandlerFunc) (*Resol
 		return nil, ctx.Err()
 	}
 
-	ctx, cancel := context.WithCancel(ctx)
+	cancellableCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	baseChan := make(chan checkOutcome, 1)
 	subChan := make(chan checkOutcome, 1)
 
 	go func() {
-		concurrency.TrySendThroughChannel(ctx, runHandler(ctx, handlers[0]), baseChan)
-		close(baseChan)
+		baseChan <- runHandler(cancellableCtx, handlers[0])
 	}()
 	go func() {
-		concurrency.TrySendThroughChannel(ctx, runHandler(ctx, handlers[1]), subChan)
-		close(subChan)
+		subChan <- runHandler(cancellableCtx, handlers[1])
 	}()
 
 	var baseErr, subErr error
@@ -325,11 +315,8 @@ func exclusion(ctx context.Context, _ int, handlers ...CheckHandlerFunc) (*Resol
 		case <-ctx.Done():
 			return nil, ctx.Err()
 
-		case res, ok := <-baseChan:
-			if !ok {
-				baseChan = nil // Stop selecting this case.
-				continue
-			}
+		case res := <-baseChan:
+			baseChan = nil
 			resultsReceived++
 
 			if res.err != nil {
@@ -342,11 +329,8 @@ func exclusion(ctx context.Context, _ int, handlers ...CheckHandlerFunc) (*Resol
 				return &ResolveCheckResponse{Allowed: false, ResolutionMetadata: ResolveCheckResponseMetadata{CycleDetected: res.resp.GetCycleDetected()}}, nil
 			}
 
-		case res, ok := <-subChan:
-			if !ok {
-				subChan = nil // Stop selecting this case.
-				continue
-			}
+		case res := <-subChan:
+			subChan = nil
 			resultsReceived++
 
 			if res.err != nil {
