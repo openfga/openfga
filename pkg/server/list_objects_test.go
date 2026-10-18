@@ -12,6 +12,8 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest/observer"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -61,6 +63,7 @@ func (s *recordingStreamServer) sent() []string {
 // user:anne is a viewer of document:1 but is also `restricted` via a
 // conditioned tuple. The request context omits the condition parameter `x`, so
 // evaluating the subtract branch errors instead of cleanly returning false.
+// The error must be a validation error that names the missing parameter.
 func TestListObjectsUnevaluableExclusion(t *testing.T) {
 	ctx := context.Background()
 
@@ -118,6 +121,11 @@ func TestListObjectsUnevaluableExclusion(t *testing.T) {
 	badContext, err := structpb.NewStruct(map[string]any{})
 	require.NoError(t, err)
 
+	requireMissingParamError := func(t *testing.T, err error) {
+		require.Equal(t, codes.Code(openfgav1.ErrorCode_validation_error), status.Code(err))
+		require.ErrorContains(t, err, "is missing context parameters '[x]'")
+	}
+
 	t.Run("list_objects_returns_no_objects", func(t *testing.T) {
 		resp, err := s.ListObjects(ctx, &openfgav1.ListObjectsRequest{
 			StoreId:              storeID,
@@ -127,7 +135,7 @@ func TestListObjectsUnevaluableExclusion(t *testing.T) {
 			User:                 "user:anne",
 			Context:              badContext,
 		})
-		require.Error(t, err)
+		requireMissingParamError(t, err)
 		require.Nil(t, resp)
 	})
 
@@ -143,7 +151,7 @@ func TestListObjectsUnevaluableExclusion(t *testing.T) {
 			Context:              badContext,
 		}, srv)
 
-		require.Error(t, err)
+		requireMissingParamError(t, err)
 		require.Empty(t, srv.sent(),
 			"objects were streamed although their exclusion could not be evaluated: %v", srv.sent())
 	})
