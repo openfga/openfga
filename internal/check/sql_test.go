@@ -540,6 +540,41 @@ func TestSqlWeight1_ConditionedExclusion(t *testing.T) {
 	})
 }
 
+// TestSqlWeight1_ConditionedLazyContextDecode pins that a gathered row's condition context is
+// decoded only when its leaf is visited: a malformed context on a row whose leaf is pruned by
+// short-circuiting must not fail the check, while one on a visited leaf still errors.
+func TestSqlWeight1_ConditionedLazyContextDecode(t *testing.T) {
+	model := `
+		model
+			schema 1.1
+		type user
+		type document
+			relations
+				define banned: [user with cond]
+				define viewer: [user with cond] but not banned
+		condition cond(x: int) { x > 0 }`
+	g, err := modelgraph.New(testutils.MustTransformDSLToProtoWithID(model))
+	require.NoError(t, err)
+
+	malformed := []byte{0xff}
+
+	t.Run("unvisited_row_not_decoded", func(t *testing.T) {
+		// The base fails, so the exclusion short-circuits and the banned leaf is never visited.
+		exec := &fakeQuerier{rows: [][]any{
+			{"viewer", "alice", "cond", condCtx(t, map[string]any{"x": 0})},
+			{"banned", "alice", "cond", malformed},
+		}}
+		allowed, err := runWeight1(t, g, exec, "document:1", "viewer", "user:alice")
+		require.NoError(t, err)
+		require.False(t, allowed)
+	})
+	t.Run("visited_row_decode_error", func(t *testing.T) {
+		exec := &fakeQuerier{rows: [][]any{{"viewer", "alice", "cond", malformed}}}
+		_, err := runWeight1(t, g, exec, "document:1", "viewer", "user:alice")
+		require.Error(t, err)
+	})
+}
+
 // TestSqlWeight1_ConditionedWildcardMatrix exercises wildcard-vs-direct row routing across the
 // conditioned/unconditioned combos: an exclusion whose base unions direct and wildcard leaves,
 // queried by a direct user so the gather returns both '*' and exact-subject rows.

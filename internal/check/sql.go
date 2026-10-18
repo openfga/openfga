@@ -76,12 +76,27 @@ type relKey struct {
 }
 
 // gatheredRow is one row of the conditioned gather query, holding the fields needed to
-// match it to a leaf and to run the tuple's condition.
+// match it to a leaf and to run the tuple's condition. The condition context is kept as raw
+// bytes and decoded into condCtx only when a visited leaf matches the row (see conditionContext),
+// so rows whose leaves are pruned by short-circuiting are never decoded.
 type gatheredRow struct {
-	relation  string
-	subjectID string
-	condName  string
-	condCtx   *structpb.Struct
+	relation   string
+	subjectID  string
+	condName   string
+	condCtxRaw []byte
+	condCtx    *structpb.Struct
+}
+
+// conditionContext returns the row's decoded condition context, decoding it on first use.
+func (g *gatheredRow) conditionContext() (*structpb.Struct, error) {
+	if g.condCtx == nil && len(g.condCtxRaw) > 0 {
+		ctx := &structpb.Struct{}
+		if err := proto.Unmarshal(g.condCtxRaw, ctx); err != nil {
+			return nil, err
+		}
+		g.condCtx = ctx
+	}
+	return g.condCtx, nil
 }
 
 // residual is the outcome of evaluating a subtree: a definite state, or branchNeedsQuery
@@ -532,14 +547,7 @@ func (w *walker) evalConditioned(ctx context.Context, edges []*graph.WeightedAut
 		if err := rows.Scan(&relation, &subjectID, &condName, &condCtx); err != nil {
 			return nil, err
 		}
-		g := gatheredRow{relation: relation, subjectID: subjectID, condName: condName.String}
-		if len(condCtx) > 0 {
-			g.condCtx = &structpb.Struct{}
-			if err := proto.Unmarshal(condCtx, g.condCtx); err != nil {
-				return nil, err
-			}
-		}
-		gathered = append(gathered, g)
+		gathered = append(gathered, gatheredRow{relation: relation, subjectID: subjectID, condName: condName.String, condCtxRaw: condCtx})
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -574,7 +582,8 @@ func (w *walker) leafSatisfied(ctx context.Context, l leaf, gathered []gatheredR
 		}
 	}
 
-	for _, g := range gathered {
+	for i := range gathered {
+		g := &gathered[i]
 		if g.relation != l.relation {
 			continue
 		}
@@ -586,6 +595,10 @@ func (w *walker) leafSatisfied(ctx context.Context, l leaf, gathered []gatheredR
 			continue
 		}
 
+		condCtx, err := g.conditionContext()
+		if err != nil {
+			return false, err
+		}
 		user := tuple.BuildObject(w.subjType, g.subjectID)
 		if w.subjRel != "" {
 			user = tuple.ToObjectRelationString(user, w.subjRel)
@@ -594,7 +607,7 @@ func (w *walker) leafSatisfied(ctx context.Context, l leaf, gathered []gatheredR
 			Object:    w.req.GetTupleKey().GetObject(),
 			Relation:  l.relation,
 			User:      user,
-			Condition: tuple.NewRelationshipCondition(g.condName, g.condCtx),
+			Condition: tuple.NewRelationshipCondition(g.condName, condCtx),
 		}
 		ok, err := evaluateCondition(ctx, w.s.model, l.conditions, tk, w.req.GetContext())
 		if err != nil {
