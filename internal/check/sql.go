@@ -7,6 +7,9 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/openfga/openfga/internal/telemetry"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/structpb"
 
@@ -92,7 +95,24 @@ type leafEvaluator func(ctx context.Context, l leaf) (residual, error)
 // evaluating the whole group of weight-1 edges (combined by operation) in a single SQL
 // round-trip. Without conditions, it issues an unconditioned query (SELECT 1 ... HAVING <tree>);
 // with conditions it gathers candidate tuples and evaluates their conditions in-app.
-func (s *SQLStrategy) weight1(ctx context.Context, req *Request, querier adapter.Querier, edges []*graph.WeightedAuthorizationModelEdge, operation string) (*Response, error) {
+func (s *SQLStrategy) weight1(ctx context.Context, req *Request, querier adapter.Querier, edges []*graph.WeightedAuthorizationModelEdge, operation string) (resp *Response, err error) {
+	ctx, span := tracer.Start(ctx, "sql.weight1", trace.WithAttributes(
+		attribute.String("tuple_key", req.GetTupleString()),
+		attribute.String("operation", operation),
+		attribute.Bool("allowed", false),
+	))
+	defer span.End()
+
+	defer func() {
+		if err != nil {
+			telemetry.TraceError(span, err)
+			return
+		}
+		if resp.GetAllowed() {
+			span.SetAttributes(attribute.Bool("allowed", true))
+		}
+	}()
+
 	w := &walker{
 		s:           s,
 		req:         req,
@@ -119,10 +139,17 @@ func (s *SQLStrategy) weight1(ctx context.Context, req *Request, querier adapter
 	if err != nil {
 		return nil, err
 	}
+	span.SetAttributes(attribute.Int("relation_count", len(w.relConds)))
+
 	switch res.state {
 	case branchTrue:
+		span.SetAttributes(
+			attribute.String("query_path", "no_query"),
+			attribute.Bool("allowed", true),
+		)
 		return &Response{Allowed: true}, nil
 	case branchFalse:
+		span.SetAttributes(attribute.String("query_path", "no_query"))
 		return &Response{Allowed: false}, nil
 	default: // branchNeedsQuery: a database read is required.
 	}
@@ -131,9 +158,11 @@ func (s *SQLStrategy) weight1(ctx context.Context, req *Request, querier adapter
 	// rows and re-evaluate against them. The unconditioned predicate counts rows without checking
 	// conditions, so it is discarded, but the accumulated filter state drives the gather query.
 	if w.conditioned {
+		span.SetAttributes(attribute.String("query_path", "conditioned"))
 		return w.evalConditioned(ctx, edges, operation)
 	}
 
+	span.SetAttributes(attribute.String("query_path", "unconditioned"))
 	return w.evalUnconditioned(ctx, res.pred)
 }
 
