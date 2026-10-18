@@ -3,6 +3,7 @@ package storagewrappers
 import (
 	"context"
 	"errors"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -329,7 +330,7 @@ func TestBoundedRows(t *testing.T) {
 
 	t.Run("Next releases on exhaustion", func(t *testing.T) {
 		var released int
-		br := &boundedRows{Rows: &fakeRows{remaining: 1}, release: func() { released++ }}
+		br := &boundedRows{Rows: &fakeRows{remaining: 1}, release: func() { released++ }, counter: &atomic.Uint64{}}
 
 		require.True(t, br.Next()) // first row
 		require.Equal(t, 0, released)
@@ -341,10 +342,23 @@ func TestBoundedRows(t *testing.T) {
 
 	t.Run("drain then Close releases exactly once", func(t *testing.T) {
 		var released int
-		br := &boundedRows{Rows: &fakeRows{}, release: func() { released++ }}
+		br := &boundedRows{Rows: &fakeRows{}, release: func() { released++ }, counter: &atomic.Uint64{}}
 
 		require.False(t, br.Next()) // exhausted -> release
 		require.NoError(t, br.Close())
 		require.Equal(t, 1, released)
 	})
+}
+
+func TestBoundedQuerierExecuteCountsItems(t *testing.T) {
+	b := NewBoundedTupleReader(memory.New(), &Operation{Method: apimethod.Check, Concurrency: 1})
+	q := &boundedQuerier{b, &fakeQuerier{rows: &fakeRows{remaining: 3}}}
+
+	rows, err := q.Execute(context.Background(), &query.Statement{})
+	require.NoError(t, err)
+	for rows.Next() {
+	}
+	require.NoError(t, rows.Close())
+
+	require.Equal(t, uint64(3), b.GetMetadata().DatastoreItemCount)
 }
