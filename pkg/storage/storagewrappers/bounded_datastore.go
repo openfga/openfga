@@ -92,7 +92,7 @@ func (q *boundedQuerier) Execute(ctx context.Context, stmt *query.Statement) (ad
 		q.done() // nothing acquired a connection; release the slot now.
 		return nil, err
 	}
-	return &boundedRows{Rows: rows, release: q.done}, nil
+	return &boundedRows{Rows: rows, release: q.done, counter: &q.countItems}, nil
 }
 
 // boundedRows releases the concurrency bound when the DB cursor is closed, since
@@ -102,6 +102,8 @@ type boundedRows struct {
 	// release releases the concurrency slot these boundedRows occupied
 	release func()
 	once    sync.Once
+	// counter is incremented for every row returned by Next
+	counter *atomic.Uint64
 }
 
 // Next defensively releases the bound on exhaustion, in case a caller drains
@@ -110,8 +112,10 @@ func (r *boundedRows) Next() bool {
 	ok := r.Rows.Next()
 	if !ok {
 		r.once.Do(r.release)
+		return false
 	}
-	return ok
+	r.counter.Add(1)
+	return true
 }
 
 // Close releases the concurrency slot taken by r and closes the underlying Rows.
