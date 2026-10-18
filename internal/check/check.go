@@ -325,8 +325,9 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, edges []
 
 		pool.Go(func() error {
 			res, err := r.ResolveLogicalEdge(ctx, req, edge, visited)
-
-			if err == nil && ctx.Err() == nil {
+			if err != nil {
+				telemetry.TraceError(span, err)
+			} else if ctx.Err() == nil {
 				r.cache.Set(cacheKeys[i], &ResponseCacheEntry{Res: res, LastModified: time.Now()}, r.cacheTTL)
 			}
 
