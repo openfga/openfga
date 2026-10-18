@@ -34,7 +34,7 @@ var tracer = otel.Tracer("internal/check")
 var ErrValidation = errors.New("object relation does not exist")
 var ErrUsersetInvalidRequest = errors.New("userset request cannot be resolved when exclusion operation is involved")
 var ErrPanicRequest = errors.New("invalid check request")
-var ErrWildcardInvalidRequest = errors.New("wildcard request cannot be resolved when intersection or exclusion is involved")
+var ErrWildcardInvalidRequest = errors.New("wildcard request cannot be resolved when exclusion is involved")
 
 type LogicalEdge interface {
 	CacheKey(req *Request) keys.Key
@@ -78,6 +78,7 @@ type Config struct {
 	Logger                    logger.Logger
 	GroupStrategies           map[string]GroupStrategy
 	EdgeStrategies            map[string]EdgeStrategy
+	SQLOptimizationsEnabled   bool // SQLOptimizationsEnabled gates the SQLStrategy evaluating edges.
 }
 
 type Resolver struct {
@@ -91,8 +92,9 @@ type Resolver struct {
 	upstreamTimeout           time.Duration
 	logger                    logger.Logger
 
-	groupStrategies map[string]GroupStrategy
-	edgeStrategies  map[string]EdgeStrategy
+	groupStrategies         map[string]GroupStrategy
+	edgeStrategies          map[string]EdgeStrategy
+	sqlOptimizationsEnabled bool
 }
 
 func New(cfg Config) *Resolver {
@@ -108,6 +110,7 @@ func New(cfg Config) *Resolver {
 		logger:                    cfg.Logger,
 		groupStrategies:           cfg.GroupStrategies,
 		edgeStrategies:            cfg.EdgeStrategies,
+		sqlOptimizationsEnabled:   cfg.SQLOptimizationsEnabled,
 	}
 
 	if r.cache == nil {
@@ -127,7 +130,7 @@ func New(cfg Config) *Resolver {
 	if r.groupStrategies == nil {
 		r.groupStrategies = map[string]GroupStrategy{
 			DefaultStrategyName: defaultStrategy,
-			//SQLStrategyName:     NewSQL(cfg.Model, cfg.Datastore), // TODO: add later
+			SQLStrategyName:     NewSQL(cfg.Model, cfg.Datastore),
 		}
 	}
 	return r
@@ -997,8 +1000,7 @@ func (r *Resolver) ResolveLogicalEdge(ctx context.Context, req *Request, logical
 
 	groupEdge := logicalEdge.(*GroupEdge)
 
-	if true { // TODO: always take this path for now, update after SQL strategy is added
-		// if r.datastore.Querier(req.Consistency) == nil {{
+	if r.datastore.Querier(req.Consistency) == nil || !r.sqlOptimizationsEnabled {
 		switch groupEdge.Node.GetNodeType() {
 		case graph.SpecificTypeAndRelation:
 			return r.groupStrategies[DefaultPlan.Name].Union(ctx, req, groupEdge)
@@ -1023,7 +1025,7 @@ func (r *Resolver) ResolveLogicalEdge(ctx context.Context, req *Request, logical
 
 	candidates := map[string]*planner.PlanConfig{
 		DefaultStrategyName: DefaultPlan,
-		//SQLStrategyName:     SQLPlan, // TODO: add later
+		SQLStrategyName:     SQLPlan,
 	}
 
 	plan := selector.Select(candidates)
