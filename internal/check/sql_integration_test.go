@@ -347,6 +347,47 @@ func TestSqlWeight1Integration_StaleConditionOnPlainRelation(t *testing.T) {
 	require.False(t, e.run(t, g, []*openfgav1.TupleKey{stale}, "document:1", "viewer", "user:alice", nil))
 }
 
+// TestSqlWeight1Integration_StaleWildcardOnDirectLeaf pins that a wildcard tuple stored (directly,
+// bypassing model validation) against a relation the model types as plain [user] does not satisfy
+// that relation's direct leaf, even though another leaf's wildcard widens the shared WHERE to '*'.
+func TestSqlWeight1Integration_StaleWildcardOnDirectLeaf(t *testing.T) {
+	e := setupPgEnv(t)
+	tests := []struct {
+		name, viewer string
+		reqCtx       map[string]any
+	}{
+		{name: "unconditioned", viewer: "[user]"},
+		{name: "conditioned", viewer: "[user with cond]", reqCtx: map[string]any{"x": 1}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			g := mustGraph(t, `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define viewer: `+tc.viewer+`
+						define editor: [user:*]
+						define can_view: viewer and editor
+				condition cond(x: int) { x > 0 }`)
+
+			editor := tuple.NewTupleKey("document:1", "editor", "user:*")
+			t.Run("denied_stale_wildcard", func(t *testing.T) {
+				stale := tuple.NewTupleKey("document:1", "viewer", "user:*")
+				require.False(t, e.run(t, g, []*openfgav1.TupleKey{stale, editor}, "document:1", "can_view", "user:alice", tc.reqCtx))
+			})
+			t.Run("granted_direct", func(t *testing.T) {
+				direct := tuple.NewTupleKey("document:1", "viewer", "user:alice")
+				if tc.reqCtx != nil {
+					direct = tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:alice", "cond", nil)
+				}
+				require.True(t, e.run(t, g, []*openfgav1.TupleKey{direct, editor}, "document:1", "can_view", "user:alice", tc.reqCtx))
+			})
+		})
+	}
+}
+
 // TestSqlWeight1Integration_GatherFiltersUnknownCondition pins that the gather filter excludes a
 // tuple carrying a condition the edge does not admit, while a tuple with the admitted condition
 // still grants (so the filter does not over-narrow).
