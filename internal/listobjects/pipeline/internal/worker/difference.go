@@ -104,8 +104,8 @@ func (w *Difference) Execute(ctx context.Context) {
 
 	defer w.Cleanup()
 
-	if len(w.senders) < 2 {
-		return
+	if len(w.senders) != 2 {
+		panic("difference worker requires two senders")
 	}
 
 	w.base = mpsc.NewAccumulator[string]()

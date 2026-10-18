@@ -2790,3 +2790,30 @@ func TestV2CheckWithIteratorCache_Conditions(t *testing.T) {
 		return len(cache.KeysWithPrefix(testCachePrefix)) > 0
 	}, 2*time.Second, 10*time.Millisecond, "iterator cache should contain entries for conditioned model")
 }
+
+func TestWithServiceName(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	t.Run("defaults_to_openfga_service_name", func(t *testing.T) {
+		ds := memory.New()
+		s := MustNewServerWithOpts(
+			WithDatastore(ds),
+		)
+		t.Cleanup(s.Close)
+
+		require.Equal(t, openfgav1.OpenFGAService_ServiceDesc.ServiceName, s.serviceName)
+	})
+
+	t.Run("overrides_service_name", func(t *testing.T) {
+		ds := memory.New()
+		s := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithServiceName("openfga.v1.ShadowOpenFGAService"),
+		)
+		t.Cleanup(s.Close)
+
+		require.Equal(t, "openfga.v1.ShadowOpenFGAService", s.serviceName)
+	})
+}

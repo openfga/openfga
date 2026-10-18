@@ -58,16 +58,27 @@ jobs:
           fi
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
+      # helm-charts must be in the releaser app's installed repositories, and
+      # the app needs contents:write + pull_requests:write there.
+      - name: Generate token for helm-charts
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ secrets.RELEASER_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASER_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: helm-charts
+
       - name: Checkout helm-charts
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: openfga/helm-charts
-          token: ${{ secrets.GORELEASER_GITHUB_TOKEN }}
+          token: ${{ steps.app-token.outputs.token }}
           path: helm-charts
 
       - name: Update Chart.yaml and create PR
         env:
-          GH_TOKEN: ${{ secrets.GORELEASER_GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
           TAG: ${{ steps.version.outputs.tag }}
         run: |
           cd helm-charts

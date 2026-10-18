@@ -18,6 +18,7 @@ import (
 	weightedGraph "github.com/openfga/language/pkg/go/graph"
 
 	"github.com/openfga/openfga/internal/concurrency"
+	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/condition/eval"
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/stack"
@@ -643,8 +644,13 @@ LoopOnIterator:
 			break LoopOnIterator
 		}
 
-		cond, _ := c.typesystem.GetCondition(tk.GetCondition().GetName())
-		condMet, err := eval.EvaluateTupleCondition(ctx, tk, cond, req.Context)
+		var condMet bool
+		if condition.IsInlineExpression(tk.GetCondition().GetName()) {
+			condMet, err = eval.EvaluateInlineExpression(ctx, tk, req.Context)
+		} else {
+			cond, _ := c.typesystem.GetCondition(tk.GetCondition().GetName())
+			condMet, err = eval.EvaluateTupleCondition(ctx, tk, cond, req.Context)
+		}
 		if err != nil {
 			errs = errors.Join(errs, err)
 			continue

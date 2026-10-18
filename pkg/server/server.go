@@ -868,6 +868,16 @@ func WithCheckCache(c storage.InMemoryCache[any]) OpenFGAServiceV1Option {
 	}
 }
 
+// WithServiceName overrides the value used for the `grpc_service` label on this server's
+// Prometheus metrics (and for telemetry.RPCInfo.Service). It has no functional effect.
+// Set it when embedding more than one Server in the same process so each instance emits a
+// distinct metric series; defaults to openfgav1.OpenFGAService_ServiceDesc.ServiceName.
+func WithServiceName(name string) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.serviceName = name
+	}
+}
+
 // NewServerWithOpts returns a new server.
 // You must call Close on it after you are done using it.
 func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {

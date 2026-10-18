@@ -4,8 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"runtime"
+	"runtime/metrics"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/oklog/ulid/v2"
 	"github.com/stretchr/testify/require"
@@ -25,6 +28,28 @@ import (
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
+
+const (
+	blockedProducerDelay = 300 * time.Millisecond
+	spinCPUBudget        = 100 * time.Millisecond
+)
+
+func processUserCPUTime() time.Duration {
+	runtime.GC()
+	samples := []metrics.Sample{{Name: "/cpu/classes/user:cpu-seconds"}}
+	metrics.Read(samples)
+	return time.Duration(samples[0].Value.Float64() * float64(time.Second))
+}
+
+func requireNoSpin(t *testing.T, run func()) {
+	t.Helper()
+
+	before := processUserCPUTime()
+	run()
+	spent := processUserCPUTime() - before
+
+	require.Less(t, spent, spinCPUBudget, "process burned %s of CPU while one producer was blocked for %s", spent, blockedProducerDelay)
+}
 
 // setRequestContext creates the correct storage wrappers in the request. NOTE: "ds" can be a mock.
 func setRequestContext(ctx context.Context, ts *typesystem.TypeSystem, ds storage.RelationshipTupleReader, ctxTuples []*openfgav1.TupleKey) context.Context {
@@ -1303,6 +1328,35 @@ func TestFastPathOperationSetup(t *testing.T) {
 		outcome := <-outChan
 		require.ErrorContains(t, outcome.Err, errMessage)
 		require.ErrorIs(t, outcome.Err, ErrPanic)
+	})
+}
+
+func TestWeight2(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	t.Run("waits_for_the_left_side_without_spinning_once_the_right_side_has_closed", func(t *testing.T) {
+		leftChan := make(chan *iterator.Msg, 1)
+		time.AfterFunc(blockedProducerDelay, func() {
+			leftChan <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"group:2#member"})}
+			close(leftChan)
+		})
+
+		right := storage.WrapIterator(storage.UsersetKind, storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{
+			tuple.NewTupleKey("document:1", "viewer", "group:1#member"),
+		}))
+
+		var (
+			result   *ResolveCheckResponse
+			checkErr error
+		)
+
+		requireNoSpin(t, func() {
+			result, checkErr = NewLocalChecker().weight2(context.Background(), []<-chan *iterator.Msg{leftChan}, right)
+		})
+		require.NoError(t, checkErr)
+		require.False(t, result.GetAllowed())
 	})
 }
 

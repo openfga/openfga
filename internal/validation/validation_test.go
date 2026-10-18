@@ -1504,3 +1504,100 @@ func BenchmarkValidateTupleForRead(b *testing.B) {
 		require.NoError(b, err)
 	}
 }
+
+func TestValidateInlineExpressionCondition(t *testing.T) {
+	const model = `model
+  schema 1.1
+type user
+type document
+  relations
+    define editor: [user with $expression]
+    define viewer: [user] or editor`
+
+	ts, err := typesystem.NewAndValidate(t.Context(), parser.MustTransformDSLToProto(model))
+	require.NoError(t, err)
+
+	makeCtx := func(ctx map[string]interface{}) *structpb.Struct {
+		s, e := structpb.NewStruct(ctx)
+		require.NoError(t, e)
+		return s
+	}
+
+	tests := []struct {
+		name        string
+		tuple       *openfgav1.TupleKey
+		expectedErr string
+	}{
+		{
+			name: "valid_with_declared_param",
+			tuple: tuple.NewTupleKeyWithCondition("document:1", "editor", "user:alice",
+				"$expression",
+				makeCtx(map[string]interface{}{
+					"expression": "channel_id == 'X123456'",
+					"parameters": map[string]interface{}{"channel_id": "string"},
+				}),
+			),
+		},
+		{
+			name: "valid_with_inferred_string_param",
+			tuple: tuple.NewTupleKeyWithCondition("document:1", "editor", "user:alice",
+				"$expression",
+				makeCtx(map[string]interface{}{
+					"expression": "channel_id == 'X123456'",
+				}),
+			),
+		},
+		{
+			name: "missing_expression_field",
+			tuple: tuple.NewTupleKeyWithCondition("document:1", "editor", "user:alice",
+				"$expression",
+				makeCtx(map[string]interface{}{}),
+			),
+			expectedErr: "Invalid tuple",
+		},
+		{
+			name: "invalid_cel_syntax",
+			tuple: tuple.NewTupleKeyWithCondition("document:1", "editor", "user:alice",
+				"$expression",
+				makeCtx(map[string]interface{}{
+					"expression": "channel_id ==",
+				}),
+			),
+			expectedErr: "Invalid tuple",
+		},
+		{
+			name: "unknown_parameter_type",
+			tuple: tuple.NewTupleKeyWithCondition("document:1", "editor", "user:alice",
+				"$expression",
+				makeCtx(map[string]interface{}{
+					"expression": "x == 1",
+					"parameters": map[string]interface{}{"x": "bigdecimal"},
+				}),
+			),
+			expectedErr: "Invalid tuple",
+		},
+		{
+			name: "wrong_relation_no_expression_restriction",
+			// viewer does not have $expression in its type restrictions
+			tuple: tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:alice",
+				"$expression",
+				makeCtx(map[string]interface{}{
+					"expression": "x == 'y'",
+				}),
+			),
+			expectedErr: "Invalid tuple",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateTupleForWrite(ts, tt.tuple)
+			if tt.expectedErr != "" {
+				require.Error(t, err)
+				require.ErrorContains(t, err, tt.expectedErr)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
