@@ -68,6 +68,13 @@ type leaf struct {
 	conditions []string
 }
 
+// relKey identifies the rows a leaf reads: its stored relation and whether it is a wildcard for
+// the subject type but the request is for a direct subject.
+type relKey struct {
+	relation string
+	wildcard bool
+}
+
 // gatheredRow is one row of the conditioned gather query, holding the fields needed to
 // match it to a leaf and to run the tuple's condition.
 type gatheredRow struct {
@@ -120,7 +127,7 @@ func (s *SQLStrategy) weight1(ctx context.Context, req *Request, querier adapter
 		table:       query.NewTuple("t"),
 		userType:    req.GetUserType(),
 		wildcardReq: req.IsTypedWildcard(),
-		relConds:    map[string]map[string]struct{}{},
+		relConds:    map[relKey]map[string]struct{}{},
 	}
 
 	if len(req.GetContextualTuples()) > 0 {
@@ -131,10 +138,18 @@ func (s *SQLStrategy) weight1(ctx context.Context, req *Request, querier adapter
 	w.subjType, w.subjID, w.subjRel = tuple.ToUserParts(req.GetTupleKey().GetUser())
 	w.objectType, w.objectID = tuple.SplitObject(req.GetTupleKey().GetObject())
 
+	// Determine if the request was for a direct subject but a wildcard for the subject type is
+	// also reachable. In that case, we will need to query for both subject IDs and specify the
+	// subject ID each relation filter should match.
+	w.queriesDirectAndWildcardSubject = w.subjID != tuple.Wildcard && slices.ContainsFunc(edges, func(e *graph.WeightedAuthorizationModelEdge) bool {
+		// An edge's wildcards cover every wildcard reachable through it
+		return slices.Contains(e.GetWildcards(), w.userType)
+	})
+
 	// A single evaluation pass short-circuits on contextual tuples, accumulates the WHERE filter
-	// state (relConds/conditioned/hasWildcardLeaf), and renders the unconditioned predicate. Since
-	// determined branches are pruned, only leaves that need a database read contribute to the
-	// filter, keeping the query narrower than a full walk of the subtree would.
+	// state (relConds/conditioned), and renders the unconditioned predicate. Since determined
+	// branches are pruned, only leaves that need a database read contribute to the filter,
+	// keeping the query narrower than a full walk of the subtree would.
 	res, err := w.evaluateSubtree(ctx, edges, operation, w.evaluateLeaf)
 	if err != nil {
 		return nil, err
@@ -183,21 +198,20 @@ type walker struct {
 	objectType string
 	objectID   string
 
-	// relConds maps each stored `relation` referenced by a surviving leaf to the set of condition
-	// names that relation admits (including the NoCond "" sentinel when unconditioned tuples are
-	// admitted). It forms the WHERE `relation IN (...)` filter and, on the gather path, the
-	// per-relation condition filter. The pairing is per relation: a condition admitted for one
-	// relation is not admitted for another. Accumulated by evaluateLeaf.
-	relConds map[string]map[string]struct{}
+	// relConds maps each relKey referenced by a surviving leaf to the set of condition names it
+	// admits (including NoCond). It is used to form the  WHERE `relation IN (...)` filter and,
+	// on the conditioned path, the per-relation condition filter. Accumulated by evaluateLeaf.
+	relConds map[relKey]map[string]struct{}
 	// conditioned is set when a surviving leaf admits a named condition, selecting the gather
 	// path over the unconditioned path. Accumulated by evaluateLeaf.
 	conditioned bool
-	// hasWildcardLeaf is set when a surviving leaf matches the public wildcard subject.
-	// Accumulated by evaluateLeaf.
-	hasWildcardLeaf bool
-	// hasCtxTuples is set once when the request carries contextual tuples. When false,
-	// contextLeafSatisfied returns immediately without building a lookup key, so leaves on the
-	// common (no-contextual-tuple) path skip that work entirely.
+	// queriesDirectAndWildcardSubject is whether the request is on a direct subject but a wildcard
+	// for the subject type is also reachable. In this case, both the direct and the wildcard
+	// subject IDs must be admitted in the WHERE, and each relation filter must specify which
+	// subject ID it's for, to avoid matching a row for the wrong subject (e.g., a wildcard tuple
+	// left over from an older model).
+	queriesDirectAndWildcardSubject bool
+	// hasCtxTuples is whether the request carries contextual tuples.
 	hasCtxTuples bool
 	// ctxSatisfied holds the leafKey of every leaf that a contextual tuple satisfied during the
 	// first pass. The gather pass reads it instead of re-evaluating the same contextual tuples, so
@@ -215,17 +229,40 @@ func (w *walker) leafFrom(edge *graph.WeightedAuthorizationModelEdge) leaf {
 	}
 }
 
-// accumulateFilter records the WHERE filter state a leaf contributes (its relation, admitted
-// conditions, wildcard and conditioned flags). evaluateLeaf calls it only for leaves that survive
-// to need a database read, so the filter stays as narrow as the boolean structure allows.
-func (w *walker) accumulateFilter(l leaf) {
-	conds, ok := w.relConds[l.relation]
+// relKeyOf derives the relKey a leaf reads, distinguishing wildcard leaves only when w.splitSubjects == true.
+func (w *walker) relKeyOf(l leaf) relKey {
+	return relKey{relation: l.relation, wildcard: w.queriesDirectAndWildcardSubject && l.wildcard}
+}
+
+// relationFilter builds the predicate matching rows that belong to the relation key k, with any
+// extra predicates in rest ANDed on. When subjects are split, it also pins the subject ID (the
+// wildcard for wildcard keys, the request subject otherwise) so a row for the other subject can't
+// match this relation.
+func (w *walker) relationFilter(k relKey, rest ...query.Predicate) query.Predicate {
+	rel := query.Eq(w.table.ObjectRelation(), query.Lit(k.relation))
+
+	if w.queriesDirectAndWildcardSubject {
+		// There is more than one subject ID, so we need to specify which one this relation is for.
+		var subj query.Predicate
+		if k.wildcard {
+			subj = query.Eq(w.table.SubjectID(), query.Lit(tuple.Wildcard))
+		} else {
+			subj = query.Eq(w.table.SubjectID(), query.Bind(w.subjID))
+		}
+		rest = append([]query.Predicate{subj}, rest...)
+	}
+
+	return query.And(rel, rest...)
+}
+
+// accumulateLeafConditions adds l's condition names into w's relConds under l's relKey, and sets
+// w.conditioned if any is a named condition.
+func (w *walker) accumulateLeafConditions(l leaf) {
+	k := w.relKeyOf(l)
+	conds, ok := w.relConds[k]
 	if !ok {
 		conds = map[string]struct{}{}
-		w.relConds[l.relation] = conds
-	}
-	if l.wildcard {
-		w.hasWildcardLeaf = true
+		w.relConds[k] = conds
 	}
 	for _, c := range l.conditions {
 		conds[c] = struct{}{}
@@ -368,9 +405,9 @@ func (w *walker) evaluateLeaf(ctx context.Context, l leaf) (residual, error) {
 		w.ctxSatisfied[leafKey(l)] = struct{}{}
 		return residual{state: branchTrue}, nil
 	}
-	w.accumulateFilter(l)
+	w.accumulateLeafConditions(l)
 	// Return a predicate for existence of this leaf's relation, which is used in the unconditioned path.
-	count := query.Count(query.Lit[int64](1), query.AggFilter(query.Eq(w.table.ObjectRelation(), query.Lit(l.relation))))
+	count := query.Count(query.Lit[int64](1), query.AggFilter(w.relationFilter(w.relKeyOf(l))))
 	pred := query.Gt(count, query.Lit[int64](0))
 	return residual{state: branchNeedsQuery, pred: &pred}, nil
 }
@@ -572,7 +609,7 @@ func (w *walker) leafSatisfied(ctx context.Context, l leaf, gathered []gatheredR
 
 // whereShared returns the predicates common to every weight-1 query: the store, the
 // object, and a narrowing of the subject to the exact request subject (plus the public
-// wildcard when a wildcard leaf is present).
+// wildcard when subjects are split).
 func (w *walker) whereShared() []query.Predicate {
 	preds := []query.Predicate{
 		query.Eq(w.table.Store(), query.Bind(w.req.GetStoreID())),
@@ -581,7 +618,7 @@ func (w *walker) whereShared() []query.Predicate {
 		query.Eq(w.table.SubjectType(), query.Bind(w.subjType)),
 		query.Eq(w.table.SubjectRelation(), query.Bind(w.subjRel)),
 	}
-	if w.hasWildcardLeaf && w.subjID != tuple.Wildcard {
+	if w.queriesDirectAndWildcardSubject {
 		preds = append(preds, query.In(w.table.SubjectID(), query.Bind(w.subjID), query.Bind(tuple.Wildcard)))
 	} else {
 		preds = append(preds, query.Eq(w.table.SubjectID(), query.Bind(w.subjID)))
@@ -597,14 +634,24 @@ func (w *walker) unconditioned() query.Predicate {
 	)
 }
 
-// sortedRelations returns w's accumulated relation names in deterministic order.
-func (w *walker) sortedRelations() []string {
-	relNames := make([]string, 0, len(w.relConds))
-	for r := range w.relConds {
-		relNames = append(relNames, r)
+// sortedKeys returns w's accumulated relKeys in deterministic order: by relation, with the exact
+// subject's key before the wildcard's.
+func (w *walker) sortedKeys() []relKey {
+	keys := make([]relKey, 0, len(w.relConds))
+	for k := range w.relConds {
+		keys = append(keys, k)
 	}
-	sort.Strings(relNames)
-	return relNames
+	slices.SortFunc(keys, func(a, b relKey) int {
+		if c := strings.Compare(a.relation, b.relation); c != 0 {
+			return c
+		}
+		// Keys are unique, so equal relations differ in wildcard.
+		if b.wildcard {
+			return -1
+		}
+		return 1
+	})
+	return keys
 }
 
 // relationIn renders the accumulated relation set as a sorted `relation IN (...)` filter for the
@@ -612,7 +659,14 @@ func (w *walker) sortedRelations() []string {
 // relation survives. Relation names are inlined rather than bound since they come from the model
 // and cannot contain special characters like spaces for SQL injection.
 func (w *walker) relationIn() query.Predicate {
-	rels := w.sortedRelations()
+	keys := w.sortedKeys()
+	rels := make([]string, 0, len(keys))
+	for _, k := range keys {
+		// A relation read by both an exact-subject and a wildcard leaf has adjacent keys.
+		if len(rels) == 0 || rels[len(rels)-1] != k.relation {
+			rels = append(rels, k.relation)
+		}
+	}
 	if len(rels) == 1 {
 		return query.Eq(w.table.ObjectRelation(), query.Lit(rels[0]))
 	}
@@ -627,16 +681,13 @@ func (w *walker) relationIn() query.Predicate {
 // global `relation IN (...) AND condition IN (...)` would be wrong: it would admit a tuple whose
 // relation and condition are each referenced but by different leaves (e.g. rel1 carrying a
 // condition only rel2 admits). Instead, it emits a disjunction of per-relation clauses —
-// `(relation = r AND <conds for r>) OR ...`. Relations are sorted for deterministic SQL;
-// evalConditioned guards against an empty relation set, so the returned predicate is never empty.
+// `(relation = r AND <conds for r>) OR ...`, each also naming its subject when subjects are split
+// (see relationFilter). Keys are sorted for deterministic SQL; evalConditioned guards against an
+// empty relation set, so the returned predicate is never empty.
 func (w *walker) conditionPairing() query.Predicate {
 	var clauses []query.Predicate
-	for _, relation := range w.sortedRelations() {
-		clause := query.And(
-			query.Eq(w.table.ObjectRelation(), query.Lit(relation)),
-			w.conditionPred(w.relConds[relation]),
-		)
-		clauses = append(clauses, clause)
+	for _, k := range w.sortedKeys() {
+		clauses = append(clauses, w.relationFilter(k, w.conditionPred(w.relConds[k])))
 	}
 	pred := clauses[0]
 	for _, c := range clauses[1:] {

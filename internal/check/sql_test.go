@@ -707,3 +707,115 @@ func condCtx(t *testing.T, m map[string]any) []byte {
 	require.NoError(t, err)
 	return b
 }
+
+// --- subject scoping -------------------------------------------------------
+
+// TestSqlWeight1_SubjectScopingSQL pins the exact SQL for each combination of request subject
+// (direct or wildcard), wildcard leaf, and conditions. Only a direct-user request with a reachable
+// wildcard leaf widens the WHERE to the public wildcard, so only then does each relation filter
+// (HAVING count on the unconditioned path, per-relation clause on the gather path) also name its
+// subject; every other combination keeps a single pinned subject and no per-relation subject term.
+func TestSqlWeight1_SubjectScopingSQL(t *testing.T) {
+	const (
+		selectOne = "SELECT 1 FROM tuple t WHERE (t.store = ? AND t.object_type = ? AND t.object_id = ? AND t.user_object_type = ? AND t.user_relation = ? AND "
+		gather    = "SELECT t.relation, t.user_object_id, t.condition_name, t.condition_context FROM tuple t WHERE (t.store = ? AND t.object_type = ? AND t.object_id = ? AND t.user_object_type = ? AND t.user_relation = ? AND "
+		uncond    = "(t.condition_name IS NULL OR t.condition_name = '')"
+	)
+	tests := []struct {
+		name   string
+		rels   string
+		user   string
+		sql    string
+		params []any
+	}{
+		{
+			name:   "case1_direct_user",
+			rels:   "define can_view: [user]",
+			user:   "user:alice",
+			sql:    selectOne + "t.user_object_id = ? AND t.relation = 'can_view' AND " + uncond + ") HAVING COUNT(1) FILTER (WHERE t.relation = 'can_view') > 0 LIMIT 1",
+			params: []any{"store1", "document", "1", "user", "", "alice"},
+		},
+		{
+			name:   "case2_direct_user_conditioned",
+			rels:   "define can_view: [user with cond]",
+			user:   "user:alice",
+			sql:    gather + "t.user_object_id = ? AND t.relation = 'can_view' AND (t.relation = 'can_view' AND t.condition_name = 'cond'))",
+			params: []any{"store1", "document", "1", "user", "", "alice"},
+		},
+		{
+			name: "case3_direct_user_wildcard_leaf",
+			rels: "define viewer: [user]\n define editor: [user:*]\n define can_view: viewer and editor",
+			user: "user:alice",
+			sql: selectOne + "t.user_object_id IN (?, ?) AND t.relation IN ('editor', 'viewer') AND " + uncond + ") HAVING (" +
+				"COUNT(1) FILTER (WHERE (t.relation = 'viewer' AND t.user_object_id = ?)) > 0 AND " +
+				"COUNT(1) FILTER (WHERE (t.relation = 'editor' AND t.user_object_id = '*')) > 0) LIMIT 1",
+			params: []any{"store1", "document", "1", "user", "", "alice", "*", "alice"},
+		},
+		{
+			name: "case3_direct_user_wildcard_leaf_same_relation",
+			rels: "define can_view: [user, user:*]",
+			user: "user:alice",
+			sql: selectOne + "t.user_object_id IN (?, ?) AND t.relation = 'can_view' AND " + uncond + ") HAVING (" +
+				"COUNT(1) FILTER (WHERE (t.relation = 'can_view' AND t.user_object_id = ?)) > 0 OR " +
+				"COUNT(1) FILTER (WHERE (t.relation = 'can_view' AND t.user_object_id = '*')) > 0) LIMIT 1",
+			params: []any{"store1", "document", "1", "user", "", "alice", "*", "alice"},
+		},
+		{
+			name: "case4_direct_user_wildcard_leaf_conditioned",
+			rels: "define viewer: [user with cond]\n define editor: [user:*]\n define can_view: viewer and editor",
+			user: "user:alice",
+			sql: gather + "t.user_object_id IN (?, ?) AND t.relation IN ('editor', 'viewer') AND (" +
+				"(t.relation = 'editor' AND t.user_object_id = '*' AND " + uncond + ") OR " +
+				"(t.relation = 'viewer' AND t.user_object_id = ? AND t.condition_name = 'cond')))",
+			params: []any{"store1", "document", "1", "user", "", "alice", "*", "alice"},
+		},
+		{
+			// Every leaf is pruned for a wildcard request without a wildcard leaf: no query.
+			name: "case5_wildcard_user",
+			rels: "define can_view: [user]",
+			user: "user:*",
+		},
+		{
+			name: "case6_wildcard_user_conditioned",
+			rels: "define can_view: [user with cond]",
+			user: "user:*",
+		},
+		{
+			name:   "case7_wildcard_user_wildcard_leaf",
+			rels:   "define viewer: [user]\n define editor: [user:*]\n define can_view: viewer or editor",
+			user:   "user:*",
+			sql:    selectOne + "t.user_object_id = ? AND t.relation = 'editor' AND " + uncond + ") HAVING COUNT(1) FILTER (WHERE t.relation = 'editor') > 0 LIMIT 1",
+			params: []any{"store1", "document", "1", "user", "", "*"},
+		},
+		{
+			name:   "case8_wildcard_user_wildcard_leaf_conditioned",
+			rels:   "define viewer: [user with cond]\n define editor: [user:* with cond]\n define can_view: viewer or editor",
+			user:   "user:*",
+			sql:    gather + "t.user_object_id = ? AND t.relation = 'editor' AND (t.relation = 'editor' AND t.condition_name = 'cond'))",
+			params: []any{"store1", "document", "1", "user", "", "*"},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			model := "model\n schema 1.1\ntype user\ntype document\n relations\n " + tc.rels + "\ncondition cond(x: int) { x > 0 }"
+			g, err := modelgraph.New(testutils.MustTransformDSLToProtoWithID(model))
+			require.NoError(t, err)
+			q := &fakeQuerier{}
+			s := NewSQL(g, &sqlDatastore{querier: q})
+			req, err := NewRequest(RequestParams{
+				StoreID:  "store1",
+				Model:    g,
+				TupleKey: tuple.NewTupleKey("document:1", "can_view", tc.user),
+			})
+			require.NoError(t, err)
+			_, err = s.weight1(context.Background(), req, q, entryEdges(t, g, req, "document:1", "can_view"), graph.UnionOperator)
+			require.NoError(t, err)
+			if tc.sql == "" {
+				require.Empty(t, q.sqls)
+				return
+			}
+			require.Equal(t, tc.sql, q.SQL)
+			require.Equal(t, tc.params, q.Parameters)
+		})
+	}
+}
