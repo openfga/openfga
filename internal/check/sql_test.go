@@ -189,11 +189,11 @@ func TestSqlWeight1_DirectSQLShape(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Contains(t, q.SQL, "SELECT 1 FROM tuple t WHERE")
-	// A single object_id means one implicit group, so HAVING appears without a GROUP BY.
-	require.Contains(t, q.SQL, "HAVING")
+	// A single leaf needs no counts: the WHERE alone answers, so LIMIT 1 can stop at the first row.
+	require.NotContains(t, q.SQL, "HAVING")
 	require.NotContains(t, q.SQL, "GROUP BY")
 	require.Contains(t, q.SQL, "LIMIT 1")
-	require.Contains(t, q.SQL, "COUNT(1) FILTER (WHERE")
+	require.NotContains(t, q.SQL, "COUNT(")
 	// Relation names are inlined as literals; store id and object type stay bound (store first).
 	require.Equal(t, "store1", q.Parameters[0])
 	require.Contains(t, q.Parameters, "document")
@@ -213,9 +213,15 @@ func TestSqlWeight1_Union(t *testing.T) {
 	g, err := modelgraph.New(testutils.MustTransformDSLToProtoWithID(model))
 	require.NoError(t, err)
 
-	allowed, err := runWeight1(t, g, &fakeQuerier{hasRow: true}, "document:2", "editor", "user:alice")
+	q := &fakeQuerier{hasRow: true}
+	allowed, err := runWeight1(t, g, q, "document:2", "editor", "user:alice")
 	require.NoError(t, err)
 	require.True(t, allowed)
+	// A pure union (here nested, through the computed owner arm) is answered by the WHERE alone, so
+	// LIMIT 1 can stop at the first matching row.
+	require.Contains(t, q.SQL, "t.relation IN ('editor', 'owner')")
+	require.NotContains(t, q.SQL, "HAVING")
+	require.NotContains(t, q.SQL, "COUNT(")
 
 	allowed, err = runWeight1(t, g, &fakeQuerier{hasRow: false}, "document:2", "editor", "user:alice")
 	require.NoError(t, err)
@@ -760,6 +766,31 @@ func TestSqlWeight1_ContextualNarrowsUnconditionedFilter(t *testing.T) {
 	require.NotContains(t, q.SQL, "'editor'")
 }
 
+// TestSqlWeight1_ContextualCollapsedUnionBranch pins that HAVING is kept for a union containing an
+// exclusion, even once a contextual tuple collapses it. The viewer leaf enters relConds before the
+// contextual banned tuple collapses its exclusion to false, so the WHERE still admits viewer rows;
+// only HAVING (which counts editor alone) stops a stored viewer row from granting a banned user.
+func TestSqlWeight1_ContextualCollapsedUnionBranch(t *testing.T) {
+	model := `
+		model
+			schema 1.1
+		type user
+		type document
+			relations
+				define banned: [user]
+				define editor: [user]
+				define viewer: ([user] but not banned) or editor`
+	g, err := modelgraph.New(testutils.MustTransformDSLToProtoWithID(model))
+	require.NoError(t, err)
+
+	banned := tuple.NewTupleKey("document:1", "banned", "user:alice")
+	q := &fakeQuerier{}
+	_, err = runWeight1(t, g, q, "document:1", "viewer", "user:alice", banned)
+	require.NoError(t, err)
+	require.Contains(t, q.SQL, "t.relation IN ('editor', 'viewer')")
+	require.Contains(t, q.SQL, "HAVING COUNT(1) FILTER (WHERE t.relation = 'editor') > 0 LIMIT 1")
+}
+
 // TestSqlWeight1_ContextualSatisfiesArmOnGatherPath covers the carry-forward from the first pass
 // to the gather pass: an intersection where one arm is conditioned (forcing the gather path) and
 // the other arm is satisfied only by a contextual tuple. The contextual arm contributes no row and
@@ -837,7 +868,7 @@ func TestSqlWeight1_SubjectScopingSQL(t *testing.T) {
 			name:   "case1_direct_user",
 			rels:   "define can_view: [user]",
 			user:   "user:alice",
-			sql:    selectOne + "t.user_object_id = ? AND t.relation = 'can_view' AND " + uncond + ") HAVING COUNT(1) FILTER (WHERE t.relation = 'can_view') > 0 LIMIT 1",
+			sql:    selectOne + "t.user_object_id = ? AND t.relation = 'can_view' AND " + uncond + ") LIMIT 1",
 			params: []any{"store1", "document", "1", "user", "", "alice"},
 		},
 		{
@@ -866,6 +897,36 @@ func TestSqlWeight1_SubjectScopingSQL(t *testing.T) {
 			params: []any{"store1", "document", "1", "user", "", "alice", "*", "alice"},
 		},
 		{
+			// Like case3 but a union: HAVING is kept even though the tree is a pure union, since its
+			// per-relation filters are what keep a stale viewer@user:* row from matching the viewer leaf.
+			name: "case3_direct_user_wildcard_leaf_union",
+			rels: "define viewer: [user]\n define editor: [user:*]\n define can_view: viewer or editor",
+			user: "user:alice",
+			sql: selectOne + "t.user_object_id IN (?, ?) AND t.relation IN ('editor', 'viewer') AND " + uncond + ") HAVING (" +
+				"COUNT(1) FILTER (WHERE (t.relation = 'viewer' AND t.user_object_id = ?)) > 0 OR " +
+				"COUNT(1) FILTER (WHERE (t.relation = 'editor' AND t.user_object_id = '*')) > 0) LIMIT 1",
+			params: []any{"store1", "document", "1", "user", "", "alice", "*", "alice"},
+		},
+		{
+			name: "union_of_intersections",
+			rels: "define a: [user]\n define b: [user]\n define c: [user]\n define d: [user]\n define can_view: (a and b) or (c and d)",
+			user: "user:alice",
+			sql: selectOne + "t.user_object_id = ? AND t.relation IN ('a', 'b', 'c', 'd') AND " + uncond + ") HAVING (" +
+				"(COUNT(1) FILTER (WHERE t.relation = 'a') > 0 AND COUNT(1) FILTER (WHERE t.relation = 'b') > 0) OR " +
+				"(COUNT(1) FILTER (WHERE t.relation = 'c') > 0 AND COUNT(1) FILTER (WHERE t.relation = 'd') > 0)) LIMIT 1",
+			params: []any{"store1", "document", "1", "user", "", "alice"},
+		},
+		{
+			// One intersection under the union keeps the whole tree in HAVING, the bare leaf included.
+			name: "union_of_intersection_and_leaf",
+			rels: "define a: [user]\n define b: [user]\n define c: [user]\n define can_view: (a and b) or c",
+			user: "user:alice",
+			sql: selectOne + "t.user_object_id = ? AND t.relation IN ('a', 'b', 'c') AND " + uncond + ") HAVING (" +
+				"(COUNT(1) FILTER (WHERE t.relation = 'a') > 0 AND COUNT(1) FILTER (WHERE t.relation = 'b') > 0) OR " +
+				"COUNT(1) FILTER (WHERE t.relation = 'c') > 0) LIMIT 1",
+			params: []any{"store1", "document", "1", "user", "", "alice"},
+		},
+		{
 			name: "case4_direct_user_wildcard_leaf_conditioned",
 			rels: "define viewer: [user with cond]\n define editor: [user:*]\n define can_view: viewer and editor",
 			user: "user:alice",
@@ -889,7 +950,7 @@ func TestSqlWeight1_SubjectScopingSQL(t *testing.T) {
 			name:   "case7_wildcard_user_wildcard_leaf",
 			rels:   "define viewer: [user]\n define editor: [user:*]\n define can_view: viewer or editor",
 			user:   "user:*",
-			sql:    selectOne + "t.user_object_id = ? AND t.relation = 'editor' AND " + uncond + ") HAVING COUNT(1) FILTER (WHERE t.relation = 'editor') > 0 LIMIT 1",
+			sql:    selectOne + "t.user_object_id = ? AND t.relation = 'editor' AND " + uncond + ") LIMIT 1",
 			params: []any{"store1", "document", "1", "user", "", "*"},
 		},
 		{

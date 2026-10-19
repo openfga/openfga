@@ -132,6 +132,40 @@ func TestSqlWeight1Integration_Union(t *testing.T) {
 	})
 }
 
+// TestSqlWeight1Integration_UnionOfIntersections pins that each intersection under a union still
+// needs all of its relations, so one relation from each arm does not grant.
+func TestSqlWeight1Integration_UnionOfIntersections(t *testing.T) {
+	e := setupPgEnv(t)
+	g := mustGraph(t, `
+		model
+			schema 1.1
+		type user
+		type document
+			relations
+				define a: [user]
+				define b: [user]
+				define c: [user]
+				define d: [user]
+				define viewer: (a and b) or (c and d)`)
+
+	tk := func(rel string) *openfgav1.TupleKey { return tuple.NewTupleKey("document:1", rel, "user:alice") }
+	tests := []struct {
+		name    string
+		tuples  []*openfgav1.TupleKey
+		allowed bool
+	}{
+		{name: "granted_first_arm", tuples: []*openfgav1.TupleKey{tk("a"), tk("b")}, allowed: true},
+		{name: "granted_second_arm", tuples: []*openfgav1.TupleKey{tk("c"), tk("d")}, allowed: true},
+		{name: "denied_one_from_each_arm", tuples: []*openfgav1.TupleKey{tk("a"), tk("d")}, allowed: false},
+		{name: "denied_single_relation", tuples: []*openfgav1.TupleKey{tk("b")}, allowed: false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.allowed, e.run(t, g, tc.tuples, "document:1", "viewer", "user:alice", nil))
+		})
+	}
+}
+
 func TestSqlWeight1Integration_Intersection(t *testing.T) {
 	e := setupPgEnv(t)
 	g := mustGraph(t, `
@@ -370,12 +404,21 @@ func TestSqlWeight1Integration_StaleWildcardOnDirectLeaf(t *testing.T) {
 						define viewer: `+tc.viewer+`
 						define editor: [user:*]
 						define can_view: viewer and editor
+						define can_view_any: viewer or editor
 				condition cond(x: int) { x > 0 }`)
 
 			editor := tuple.NewTupleKey("document:1", "editor", "user:*")
 			t.Run("denied_stale_wildcard", func(t *testing.T) {
 				stale := tuple.NewTupleKey("document:1", "viewer", "user:*")
 				require.False(t, e.run(t, g, []*openfgav1.TupleKey{stale, editor}, "document:1", "can_view", "user:alice", tc.reqCtx))
+			})
+			t.Run("denied_stale_wildcard_union", func(t *testing.T) {
+				// The unconditioned union is answered without HAVING, so the WHERE must pin the subject.
+				stale := tuple.NewTupleKey("document:1", "viewer", "user:*")
+				require.False(t, e.run(t, g, []*openfgav1.TupleKey{stale}, "document:1", "can_view_any", "user:alice", tc.reqCtx))
+			})
+			t.Run("granted_wildcard_union", func(t *testing.T) {
+				require.True(t, e.run(t, g, []*openfgav1.TupleKey{editor}, "document:1", "can_view_any", "user:alice", tc.reqCtx))
 			})
 			t.Run("granted_direct", func(t *testing.T) {
 				direct := tuple.NewTupleKey("document:1", "viewer", "user:alice")
