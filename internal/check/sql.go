@@ -526,7 +526,7 @@ func (w *walker) evalConditioned(ctx context.Context, edges []*graph.WeightedAut
 	}
 	defer rows.Close()
 
-	var gathered []gatheredRow
+	gathered := make([]gatheredRow, 0, len(w.relConds))
 	for rows.Next() {
 		var (
 			relation, subjectID string
