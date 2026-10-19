@@ -209,6 +209,9 @@ type walker struct {
 	// conditioned is set when a surviving leaf admits a named condition, selecting the gather
 	// path over the unconditioned path. Accumulated by evaluateLeaf.
 	conditioned bool
+	// sawNonUnion is set when the walk reaches an intersection or exclusion. When this is false
+	// (i.e., pure union), the HAVING clause in the unconditioned path can be omitted.
+	sawNonUnion bool
 	// queriesDirectAndWildcardSubject is whether the request is on a direct subject but a wildcard
 	// for the subject type is also reachable. In this case, both the direct and the wildcard
 	// subject IDs must be admitted in the WHERE, and each relation filter must specify which
@@ -311,6 +314,7 @@ func (w *walker) evaluateSubtree(ctx context.Context, edges []*graph.WeightedAut
 		}
 		return combinePreds(preds, branchFalse, orPred), nil
 	case graph.IntersectionOperator:
+		w.sawNonUnion = true
 		var preds []*query.Predicate
 		for _, edge := range edges {
 			r, err := w.evaluateEdge(ctx, edge, evalLeaf)
@@ -327,6 +331,7 @@ func (w *walker) evaluateSubtree(ctx context.Context, edges []*graph.WeightedAut
 		}
 		return combinePreds(preds, branchTrue, andPred), nil
 	case graph.ExclusionOperator:
+		w.sawNonUnion = true
 		if w.wildcardReq {
 			return residual{}, ErrWildcardInvalidRequest
 		}
@@ -476,16 +481,16 @@ func leafKey(l leaf) string {
 }
 
 // evalUnconditioned answers the no-condition case with a single SELECT 1 query over the
-// surviving relations, with the boolean subtree supplied as pred in HAVING. Because object_id is
-// pinned to a single value by the shared WHERE, the aggregates form one implicit group, so no
-// GROUP BY is needed. A nil pred simply omits HAVING.
+// surviving relations, with the boolean subtree supplied as pred in HAVING. In the case of a pure
+// union (see sawNonUnion), the HAVING clause is omitted so that LIMIT 1 can stop the scan at the
+// first matching row.
 func (w *walker) evalUnconditioned(ctx context.Context, pred *query.Predicate) (*Response, error) {
 	where := append(w.whereShared(), w.relationIn(), w.unconditioned())
 	stmt := query.Select(query.Lit[int64](1)).
 		From(w.table).
 		Where(query.And(where[0], where[1:]...)).
 		Limit(1)
-	if pred != nil {
+	if pred != nil && (w.sawNonUnion || w.queriesDirectAndWildcardSubject) {
 		stmt = stmt.Having(*pred)
 	}
 	rows, err := w.querier.Execute(ctx, stmt)
