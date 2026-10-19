@@ -764,6 +764,10 @@ func (s *ServerContext) runHTTPServer(ctx context.Context, config *serverconfig.
 	muxOpts := []grpc_runtime.ServeMuxOption{
 		grpc_runtime.WithForwardResponseOption(httpmiddleware.HTTPResponseModifier),
 		grpc_runtime.WithErrorHandler(func(c context.Context, sr *grpc_runtime.ServeMux, mm grpc_runtime.Marshaler, w http.ResponseWriter, r *http.Request, e error) {
+			if strings.Contains(e.Error(), "http: request body too large") {
+				http.Error(w, http.StatusText(http.StatusRequestEntityTooLarge), http.StatusRequestEntityTooLarge)
+				return
+			}
 			intCode := serverErrors.ConvertToEncodedErrorCode(status.Convert(e))
 			httpmiddleware.CustomHTTPErrorHandler(c, w, r, serverErrors.NewEncodedError(intCode, e.Error()))
 		}),
@@ -795,6 +799,8 @@ func (s *ServerContext) runHTTPServer(ctx context.Context, config *serverconfig.
 	if config.Trace.Enabled {
 		handler = otelhttp.NewHandler(handler, "grpc-gateway")
 	}
+
+	handler = httpmiddleware.MaxBytesMiddleware(int64(config.GRPC.MaxRecvMsgBytes), handler)
 
 	httpServer := &http.Server{
 		Addr: config.HTTP.Addr,
