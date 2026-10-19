@@ -76,27 +76,16 @@ type relKey struct {
 }
 
 // gatheredRow is one row of the conditioned gather query, holding the fields needed to
-// match it to a leaf and to run the tuple's condition. The condition context is kept as raw
-// bytes and decoded into condCtx only when a visited leaf matches the row (see conditionContext),
-// so rows whose leaves are pruned by short-circuiting are never decoded.
+// match it to a leaf and to run the tuple's condition.
 type gatheredRow struct {
-	relation   string
-	subjectID  string
-	condName   string
-	condCtxRaw []byte
-	condCtx    *structpb.Struct
-}
+	relation  string
+	subjectID string
+	condName  string
+	condCtx   []byte
 
-// conditionContext returns the row's decoded condition context, decoding it on first use.
-func (g *gatheredRow) conditionContext() (*structpb.Struct, error) {
-	if g.condCtx == nil && len(g.condCtxRaw) > 0 {
-		ctx := &structpb.Struct{}
-		if err := proto.Unmarshal(g.condCtxRaw, ctx); err != nil {
-			return nil, err
-		}
-		g.condCtx = ctx
-	}
-	return g.condCtx, nil
+	// evaluated reports whether satisfied holds the row's condition result.
+	evaluated bool
+	satisfied bool
 }
 
 // residual is the outcome of evaluating a subtree: a definite state, or branchNeedsQuery
@@ -547,7 +536,7 @@ func (w *walker) evalConditioned(ctx context.Context, edges []*graph.WeightedAut
 		if err := rows.Scan(&relation, &subjectID, &condName, &condCtx); err != nil {
 			return nil, err
 		}
-		gathered = append(gathered, gatheredRow{relation: relation, subjectID: subjectID, condName: condName.String, condCtxRaw: condCtx})
+		gathered = append(gathered, gatheredRow{relation: relation, subjectID: subjectID, condName: condName.String, condCtx: condCtx})
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -595,29 +584,44 @@ func (w *walker) leafSatisfied(ctx context.Context, l leaf, gathered []gatheredR
 			continue
 		}
 
-		condCtx, err := g.conditionContext()
-		if err != nil {
-			return false, err
+		// The result may have been computed for an earlier leaf. Reusing it is sound because every
+		// leaf that reaches a row comes from the same edge (a relation's conditions for one target
+		// type are merged onto a single edge), so all of them admit the same conditions.
+		if !g.evaluated {
+			ok, err := w.evaluateRow(ctx, g, l)
+			if err != nil {
+				return false, err
+			}
+			g.evaluated, g.satisfied = true, ok
 		}
-		user := tuple.BuildObject(w.subjType, g.subjectID)
-		if w.subjRel != "" {
-			user = tuple.ToObjectRelationString(user, w.subjRel)
-		}
-		tk := &openfgav1.TupleKey{
-			Object:    w.req.GetTupleKey().GetObject(),
-			Relation:  l.relation,
-			User:      user,
-			Condition: tuple.NewRelationshipCondition(g.condName, condCtx),
-		}
-		ok, err := evaluateCondition(ctx, w.s.model, l.conditions, tk, w.req.GetContext())
-		if err != nil {
-			return false, err
-		}
-		if ok {
-			return true, nil
-		}
+		// Tuples are unique per (object, relation, user), and the shared WHERE plus the relation and
+		// subject checks above fix all of these, so no other row can match this leaf.
+		return g.satisfied, nil
 	}
 	return false, nil
+}
+
+// evaluateRow decodes the row's condition context and runs its condition against the request
+// context, reporting whether the tuple the row represents is satisfied.
+func (w *walker) evaluateRow(ctx context.Context, g *gatheredRow, l leaf) (bool, error) {
+	var condCtx *structpb.Struct
+	if len(g.condCtx) > 0 {
+		condCtx = &structpb.Struct{}
+		if err := proto.Unmarshal(g.condCtx, condCtx); err != nil {
+			return false, err
+		}
+	}
+	user := tuple.BuildObject(w.subjType, g.subjectID)
+	if w.subjRel != "" {
+		user = tuple.ToObjectRelationString(user, w.subjRel)
+	}
+	tk := &openfgav1.TupleKey{
+		Object:    w.req.GetTupleKey().GetObject(),
+		Relation:  g.relation,
+		User:      user,
+		Condition: tuple.NewRelationshipCondition(g.condName, condCtx),
+	}
+	return evaluateCondition(ctx, w.s.model, l.conditions, tk, w.req.GetContext())
 }
 
 // whereShared returns the predicates common to every weight-1 query: the store, the

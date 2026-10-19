@@ -575,6 +575,76 @@ func TestSqlWeight1_ConditionedLazyContextDecode(t *testing.T) {
 	})
 }
 
+// TestSqlWeight1_ConditionedRepeatedLeaf covers a relation reached by two paths in one subtree
+// (editor directly and via can_edit), so the gather pass visits the same leaf, and row, twice.
+func TestSqlWeight1_ConditionedRepeatedLeaf(t *testing.T) {
+	model := `
+		model
+			schema 1.1
+		type user
+		type document
+			relations
+				define owner: [user]
+				define editor: [user with cond]
+				define can_edit: editor and owner
+				define can_view: editor or can_edit
+		condition cond(x: int) { x > 0 }`
+	g, err := modelgraph.New(testutils.MustTransformDSLToProtoWithID(model))
+	require.NoError(t, err)
+
+	t.Run("granted_when_condition_passes", func(t *testing.T) {
+		exec := &fakeQuerier{rows: [][]any{{"editor", "alice", "cond", condCtx(t, map[string]any{"x": 1})}}}
+		allowed, err := runWeight1(t, g, exec, "document:1", "can_view", "user:alice")
+		require.NoError(t, err)
+		require.True(t, allowed)
+	})
+	t.Run("denied_when_condition_fails_on_both_paths", func(t *testing.T) {
+		exec := &fakeQuerier{rows: [][]any{
+			{"editor", "alice", "cond", condCtx(t, map[string]any{"x": 0})},
+			{"owner", "alice", "", nil},
+		}}
+		allowed, err := runWeight1(t, g, exec, "document:1", "can_view", "user:alice")
+		require.NoError(t, err)
+		require.False(t, allowed)
+	})
+}
+
+// TestSqlWeight1_LeafSatisfiedCachesRowEvaluation pins that a gathered row's condition is
+// evaluated at most once per request: after the first evaluation, changing the request context
+// (which would flip a fresh CEL result) does not change the verdict a second visit returns.
+func TestSqlWeight1_LeafSatisfiedCachesRowEvaluation(t *testing.T) {
+	model := `
+		model
+			schema 1.1
+		type user
+		type document
+			relations
+				define viewer: [user with cond]
+		condition cond(x: int) { x > 0 }`
+	g, err := modelgraph.New(testutils.MustTransformDSLToProtoWithID(model))
+	require.NoError(t, err)
+
+	req, err := NewRequest(RequestParams{
+		StoreID:  "store1",
+		Model:    g,
+		TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:alice"),
+		Context:  testutils.MustNewStruct(t, map[string]any{"x": 1}),
+	})
+	require.NoError(t, err)
+	w := &walker{s: NewSQL(g, nil), req: req, subjType: "user", subjID: "alice"}
+	l := leaf{relation: "viewer", conditions: []string{"cond"}}
+	gathered := []gatheredRow{{relation: "viewer", subjectID: "alice", condName: "cond"}}
+
+	ok, err := w.leafSatisfied(context.Background(), l, gathered)
+	require.NoError(t, err)
+	require.True(t, ok)
+
+	req.Context = testutils.MustNewStruct(t, map[string]any{"x": 0})
+	ok, err = w.leafSatisfied(context.Background(), l, gathered)
+	require.NoError(t, err)
+	require.True(t, ok, "second visit must reuse the cached evaluation")
+}
+
 // TestSqlWeight1_ConditionedWildcardMatrix exercises wildcard-vs-direct row routing across the
 // conditioned/unconditioned combos: an exclusion whose base unions direct and wildcard leaves,
 // queried by a direct user so the gather returns both '*' and exact-subject rows.
