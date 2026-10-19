@@ -33,6 +33,10 @@ func (s *Server) Expand(ctx context.Context, req *openfgav1.ExpandRequest) (*ope
 		}
 	}
 
+	if err := s.checkContextualTupleCount(len(req.GetContextualTuples().GetTupleKeys())); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+
 	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
 		Service: s.serviceName,
 		Method:  apimethod.Expand.String(),
