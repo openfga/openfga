@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -25,6 +26,10 @@ func (r *renderer) bind(v any) {
 // --- statement --------------------------------------------------------------------------
 
 func (r *renderer) selectStmt(s *ast.Select) {
+	if s.Having != nil && len(s.GroupBy) == 0 && !hasAggregate(s.Columns) {
+		r.implicitGroup(s)
+		return
+	}
 	r.write("SELECT ")
 	if s.Distinct {
 		r.write("DISTINCT ")
@@ -74,6 +79,85 @@ func (r *renderer) selectStmt(s *ast.Select) {
 			r.write(" LIMIT -1")
 		}
 		r.write(" OFFSET " + strconv.FormatUint(*s.Offset, 10))
+	}
+}
+
+// implicitGroup renders HAVING without GROUP BY, which SQLite rejects unless a result column is an
+// aggregate. The grouped part becomes an EXISTS made aggregate by COUNT(*), keeping the single
+// group (even over no rows). ORDER BY is dropped, as at most one row comes back.
+func (r *renderer) implicitGroup(s *ast.Select) {
+	inner := *s
+	inner.Distinct = false
+	inner.Columns = []ast.Projection{ast.AggNode{Fn: ast.AggCount}}
+	inner.OrderBy, inner.Limit, inner.Offset = nil, nil, nil
+	r.selectStmt(&ast.Select{
+		Distinct: s.Distinct,
+		Columns:  s.Columns,
+		Where:    ast.ExistsNode{Stmt: &inner},
+		Limit:    s.Limit,
+		Offset:   s.Offset,
+	})
+}
+
+// hasAggregate reports whether a result column aggregates at this SELECT's level; a subquery's
+// aggregates belong to the subquery.
+func hasAggregate(cols []ast.Projection) bool {
+	for _, c := range cols {
+		if a, ok := c.(ast.AliasNode); ok {
+			c = a.Inner
+		}
+		if v, ok := c.(ast.ScalarValue); ok && valueAgg(v) {
+			return true
+		}
+	}
+	return false
+}
+
+func valueAgg(n ast.ScalarValue) bool {
+	switch x := n.(type) {
+	case ast.AggNode:
+		return true
+	case ast.CastNode:
+		return valueAgg(x.Inner)
+	case ast.FuncNode:
+		return slices.ContainsFunc(x.Args, valueAgg)
+	case ast.JSONObjectNode:
+		return slices.ContainsFunc(x.Pairs, func(p ast.JSONPairNode) bool { return valueAgg(p.Key) || valueAgg(p.Value) })
+	case ast.CaseSearchedNode:
+		return (x.Else != nil && valueAgg(x.Else)) ||
+			slices.ContainsFunc(x.Branches, func(b ast.SearchedBranch) bool { return predAgg(b.When) || valueAgg(b.Then) })
+	case ast.CaseSimpleNode:
+		return valueAgg(x.Base) || (x.Else != nil && valueAgg(x.Else)) ||
+			slices.ContainsFunc(x.Branches, func(b ast.SimpleBranch) bool { return valueAgg(b.When) || valueAgg(b.Then) })
+	case ast.ColNode, ast.BindNode, ast.LitNode, ast.SubqueryNode:
+		return false
+	default:
+		panic(fmt.Sprintf("sqlite: unhandled value %T", n))
+	}
+}
+
+func predAgg(n ast.Predicate) bool {
+	switch x := n.(type) {
+	case ast.CompareNode:
+		return valueAgg(x.Left) || valueAgg(x.Right)
+	case ast.LikeNode:
+		return valueAgg(x.Left) || valueAgg(x.Pattern)
+	case ast.BetweenNode:
+		return valueAgg(x.Inner) || valueAgg(x.Lo) || valueAgg(x.Hi)
+	case ast.IsNullNode:
+		return valueAgg(x.Inner)
+	case ast.InNode:
+		return valueAgg(x.Left) || slices.ContainsFunc(x.Elems, valueAgg)
+	case ast.QuantifiedNode:
+		return valueAgg(x.Left)
+	case ast.LogicalNode:
+		return slices.ContainsFunc(x.Parts, predAgg)
+	case ast.NotNode:
+		return predAgg(x.Inner)
+	case ast.ExistsNode, ast.ConstPredNode:
+		return false
+	default:
+		panic(fmt.Sprintf("sqlite: unhandled predicate %T", n))
 	}
 }
 
