@@ -3127,3 +3127,471 @@ tests:
                 condition:
                   name: isOk
             errorCode: 2000
+
+  # Regression test: when the subtract side of a "but not" exclusion has a userset $expression
+  # with a missing request parameter, the missing-parameter error must surface rather than be
+  # silently discarded. The bug: ConditionsFilteredTupleKeyIterator records the always-true
+  # group:1 tuple (onceValid=true), then stores group:2's missing-param error in lastError;
+  # when the iterator is exhausted with onceValid=true it returns ErrIteratorDone instead of
+  # the error. The caller then finds alice is not in group:1, misses group:2 entirely, and
+  # concludes alice is not excluded — returning Allowed: true instead of an error.
+  - name: inline_expression_exclusion_subtract_missing_param
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type group
+            relations
+              define member: [user]
+          type document
+            relations
+              define viewer: [group#member] but not excluded
+              define excluded: [group#member with $expression]
+        tuples:
+          # alice is ONLY in group:2 — not group:1
+          - user: user:alice
+            relation: member
+            object: group:2
+          # both groups grant viewer access to document:1
+          - user: group:1#member
+            relation: viewer
+            object: document:1
+          - user: group:2#member
+            relation: viewer
+            object: document:1
+          # group:1 members are always excluded (no parameters required)
+          - user: group:1#member
+            relation: excluded
+            object: document:1
+            condition:
+              name: $expression
+              context:
+                expression: "true"
+          # group:2 members are excluded only when channel == 'X'
+          - user: group:2#member
+            relation: excluded
+            object: document:1
+            condition:
+              name: $expression
+              context:
+                expression: "channel == 'X'"
+                parameters:
+                  channel: string
+        checkAssertions:
+          # alice (group:2 only) with channel=X → excluded → not allowed
+          - tuple:
+              user: user:alice
+              relation: viewer
+              object: document:1
+            context:
+              channel: "X"
+            expectation: false
+          # alice (group:2 only) with channel=Y → not excluded → allowed
+          - tuple:
+              user: user:alice
+              relation: viewer
+              object: document:1
+            context:
+              channel: "Y"
+            expectation: true
+          # alice (group:2 only) with no context → group:2's $expression cannot be evaluated →
+          # must return an error. Without the fix, the always-true group:1 tuple sets
+          # onceValid=true, group:2's missing-param error is discarded, alice appears
+          # not-excluded, and the check incorrectly returns Allowed: true.
+          - tuple:
+              user: user:alice
+              relation: viewer
+              object: document:1
+            errorCode: 2000
+
+  - name: inline_expression_basic
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+
+          type document
+            relations
+              define editor: [user with $expression]
+              define viewer: [user] or editor
+        tuples:
+          - user: user:alice
+            relation: editor
+            object: document:1
+            condition:
+              name: $expression
+              context:
+                expression: "channel_id == 'X123456'"
+                parameters:
+                  channel_id: string
+        checkAssertions:
+          - tuple:
+              user: user:alice
+              relation: editor
+              object: document:1
+            context:
+              channel_id: "X123456"
+            expectation: true
+          - tuple:
+              user: user:alice
+              relation: editor
+              object: document:1
+            context:
+              channel_id: "WRONG"
+            expectation: false
+          - tuple:
+              user: user:alice
+              relation: editor
+              object: document:1
+            errorCode: 2000
+        listObjectsAssertions:
+          - request:
+              user: user:alice
+              type: document
+              relation: editor
+            context:
+              channel_id: "X123456"
+            expectation:
+              - document:1
+          - request:
+              user: user:alice
+              type: document
+              relation: editor
+            context:
+              channel_id: "WRONG"
+            expectation: []
+        listUsersAssertions:
+          - request:
+              object: document:1
+              relation: editor
+              filters:
+                - user
+            context:
+              channel_id: "X123456"
+            expectation:
+              - user:alice
+          - request:
+              object: document:1
+              relation: editor
+              filters:
+                - user
+            context:
+              channel_id: "WRONG"
+            expectation: []
+
+  - name: inline_expression_inferred_string_param
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+
+          type document
+            relations
+              define viewer: [user with $expression]
+        tuples:
+          - user: user:bob
+            relation: viewer
+            object: document:2
+            condition:
+              name: $expression
+              context:
+                expression: "env == 'prod'"
+        checkAssertions:
+          - tuple:
+              user: user:bob
+              relation: viewer
+              object: document:2
+            context:
+              env: "prod"
+            expectation: true
+          - tuple:
+              user: user:bob
+              relation: viewer
+              object: document:2
+            context:
+              env: "staging"
+            expectation: false
+
+  - name: inline_expression_alongside_named_condition
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+
+          type document
+            relations
+              define viewer: [user with $expression, user with is_employee]
+
+          condition is_employee(emp: bool) {
+            emp == true
+          }
+        tuples:
+          - user: user:alice
+            relation: viewer
+            object: document:1
+            condition:
+              name: $expression
+              context:
+                expression: "dept == 'eng'"
+                parameters:
+                  dept: string
+          - user: user:bob
+            relation: viewer
+            object: document:1
+            condition:
+              name: is_employee
+        checkAssertions:
+          - tuple:
+              user: user:alice
+              relation: viewer
+              object: document:1
+            context:
+              dept: "eng"
+            expectation: true
+          - tuple:
+              user: user:alice
+              relation: viewer
+              object: document:1
+            context:
+              dept: "sales"
+            expectation: false
+          - tuple:
+              user: user:bob
+              relation: viewer
+              object: document:1
+            context:
+              emp: true
+            expectation: true
+
+  - name: inline_expression_int_param
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+
+          type document
+            relations
+              define viewer: [user with $expression]
+        tuples:
+          - user: user:alice
+            relation: viewer
+            object: document:1
+            condition:
+              name: $expression
+              context:
+                expression: "count > 5"
+                parameters:
+                  count: int
+        checkAssertions:
+          - tuple:
+              user: user:alice
+              relation: viewer
+              object: document:1
+            context:
+              count: 10
+            expectation: true
+          - tuple:
+              user: user:alice
+              relation: viewer
+              object: document:1
+            context:
+              count: 3
+            expectation: false
+
+  - name: inline_expression_timestamp_param
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+
+          type document
+            relations
+              define viewer: [user with $expression]
+        tuples:
+          - user: user:alice
+            relation: viewer
+            object: document:1
+            condition:
+              name: $expression
+              context:
+                expression: "ts < timestamp(\"2023-10-11T10:00:00.000Z\")"
+                parameters:
+                  ts: timestamp
+        checkAssertions:
+          - tuple:
+              user: user:alice
+              relation: viewer
+              object: document:1
+            context:
+              ts: "2023-10-11T09:00:00.000Z"
+            expectation: true
+          - tuple:
+              user: user:alice
+              relation: viewer
+              object: document:1
+            context:
+              ts: "2023-10-11T11:00:00.000Z"
+            expectation: false
+
+  - name: inline_expression_ipaddress_param
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+
+          type document
+            relations
+              define viewer: [user with $expression]
+        tuples:
+          - user: user:alice
+            relation: viewer
+            object: document:1
+            condition:
+              name: $expression
+              context:
+                expression: "ip.in_cidr(\"10.0.0.0/8\")"
+                parameters:
+                  ip: ipaddress
+        checkAssertions:
+          - tuple:
+              user: user:alice
+              relation: viewer
+              object: document:1
+            context:
+              ip: "10.1.2.3"
+            expectation: true
+          - tuple:
+              user: user:alice
+              relation: viewer
+              object: document:1
+            context:
+              ip: "192.168.1.1"
+            expectation: false
+
+  - name: inline_expression_userset_subject
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+
+          type group
+            relations
+              define member: [user]
+
+          type document
+            relations
+              define viewer: [group#member with $expression]
+        tuples:
+          - user: group:eng#member
+            relation: viewer
+            object: document:1
+            condition:
+              name: $expression
+              context:
+                expression: "env == 'prod'"
+                parameters:
+                  env: string
+          - user: user:alice
+            relation: member
+            object: group:eng
+        checkAssertions:
+          - tuple:
+              user: group:eng#member
+              relation: viewer
+              object: document:1
+            context:
+              env: "prod"
+            expectation: true
+          - tuple:
+              user: group:eng#member
+              relation: viewer
+              object: document:1
+            context:
+              env: "staging"
+            expectation: false
+        listObjectsAssertions:
+          - request:
+              user: group:eng#member
+              type: document
+              relation: viewer
+            context:
+              env: "prod"
+            expectation:
+              - document:1
+          - request:
+              user: group:eng#member
+              type: document
+              relation: viewer
+            context:
+              env: "staging"
+            expectation: []
+
+  - name: inline_expression_ttu
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+
+          type folder
+            relations
+              define owner: [user]
+
+          type document
+            relations
+              define parent: [folder with $expression]
+              define viewer: owner from parent
+        tuples:
+          - user: folder:1
+            relation: parent
+            object: document:1
+            condition:
+              name: $expression
+              context:
+                expression: "env == 'prod'"
+                parameters:
+                  env: string
+          - user: user:alice
+            relation: owner
+            object: folder:1
+        checkAssertions:
+          - tuple:
+              user: user:alice
+              relation: viewer
+              object: document:1
+            context:
+              env: "prod"
+            expectation: true
+          - tuple:
+              user: user:alice
+              relation: viewer
+              object: document:1
+            context:
+              env: "staging"
+            expectation: false
+        listUsersAssertions:
+          - request:
+              object: document:1
+              relation: viewer
+              filters:
+                - user
+            context:
+              env: "prod"
+            expectation:
+              - user:alice
+          - request:
+              object: document:1
+              relation: viewer
+              filters:
+                - user
+            context:
+              env: "staging"
+            expectation: []

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"sync"
 
+	interrors "github.com/openfga/openfga/internal/errors"
 	"github.com/openfga/openfga/pkg/storage"
 )
 
@@ -62,6 +63,10 @@ func (f *filter[T]) Next(ctx context.Context) (T, error) {
 
 		valid, err := f.applyFilters(entry)
 		if err != nil {
+			var fatal *interrors.FatalError
+			if errors.As(err, &fatal) {
+				return null, err // propagate immediately; keep wrapper so callers can detect it
+			}
 			f.lastErr = err
 			continue
 		}

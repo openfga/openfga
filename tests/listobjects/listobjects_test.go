@@ -35,12 +35,30 @@ func runMatrixWithEngine(t *testing.T, engine string) {
 		goleak.VerifyNone(t)
 	})
 
-	experimentals := []string{config.ExperimentalCheckOptimizations, config.ExperimentalListObjectsOptimizations}
-	clientWithExperimentals := tests.BuildClientInterface(t, engine, experimentals)
-	RunMatrixTests(t, engine, true, clientWithExperimentals)
+	cases := []struct {
+		name          string
+		experimentals []string
+	}{
+		{
+			name: "with optimizations",
+			experimentals: []string{
+				config.ExperimentalCheckOptimizations,
+				config.ExperimentalListObjectsOptimizations,
+				config.ExperimentalInlineExpressions,
+			},
+		},
+		{
+			name: "without optimizations",
+			experimentals: []string{
+				config.ExperimentalInlineExpressions,
+			},
+		},
+	}
 
-	clientWithoutExperimentals := tests.BuildClientInterface(t, engine, []string{})
-	RunMatrixTests(t, engine, false, clientWithoutExperimentals)
+	for _, tc := range cases {
+		client := tests.BuildClientInterface(t, engine, tc.experimentals)
+		RunMatrixTests(t, engine, tc.name, client)
+	}
 }
 
 func TestListObjectsMemory(t *testing.T) {
@@ -70,7 +88,7 @@ func testRunAll(t *testing.T, engine string) {
 		goleak.VerifyNone(t, goleak.IgnoreTopFunction("github.com/go-sql-driver/mysql.(*mysqlConn).startWatcher.func1"))
 	})
 	cfg := testutils.MustDefaultConfigForParallelTests()
-	cfg.Experimentals = append(cfg.Experimentals, config.ExperimentalCheckOptimizations)
+	cfg.Experimentals = append(cfg.Experimentals, config.ExperimentalCheckOptimizations, config.ExperimentalInlineExpressions)
 	cfg.Log.Level = "error"
 	cfg.Datastore.Engine = engine
 	cfg.ListObjectsDeadline = 0 // no deadline

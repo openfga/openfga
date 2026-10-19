@@ -1,5 +1,7 @@
 package planner
 
+//go:generate mockgen -package=mocks -destination=../mocks/mock_planner.go github.com/openfga/openfga/internal/planner Manager,Selector
+
 import (
 	"time"
 

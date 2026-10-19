@@ -8,6 +8,7 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
+	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -40,7 +41,18 @@ func ValidateTupleForWrite(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKe
 	}
 	// now we assume our tuple is well-formed, it's time to check
 	// the tuple against other model and type-restriction constraints
-	return ValidateTupleForRead(typesys, tk)
+	if err := ValidateTupleForRead(typesys, tk); err != nil {
+		return err
+	}
+	// Inline expressions are compiled only on write so that malformed
+	// expressions are rejected at write time. Read paths skip compilation
+	// and let any error surface during evaluation.
+	if condition.IsInlineExpression(tk.GetCondition().GetName()) {
+		if _, err := condition.FromInlineExpression(tk); err != nil {
+			return &tuple.InvalidConditionalTupleError{Cause: err, TupleKey: tk}
+		}
+	}
+	return nil
 }
 
 // ValidateTupleForRead returns nil if a tuple is valid according to the provided model.
@@ -236,7 +248,13 @@ func validateCondition(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) e
 		}
 	}
 
-	condition, ok := typesys.GetConditions()[tk.GetCondition().GetName()]
+	// $expression is a reserved inline condition — validate its context and type restriction
+	// without looking it up in the model's named conditions map.
+	if condition.IsInlineExpression(tk.GetCondition().GetName()) {
+		return validateInlineExpressionCondition(typesys, tk)
+	}
+
+	namedCondition, ok := typesys.GetConditions()[tk.GetCondition().GetName()]
 	if !ok {
 		return &tuple.InvalidConditionalTupleError{
 			Cause: fmt.Errorf("undefined condition"), TupleKey: tk,
@@ -273,7 +291,7 @@ func validateCondition(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) e
 
 	contextFieldMap := contextStruct.GetFields()
 
-	typedParams, err := condition.CastContextToTypedParameters(contextFieldMap)
+	typedParams, err := namedCondition.CastContextToTypedParameters(contextFieldMap)
 	if err != nil {
 		return &tuple.InvalidConditionalTupleError{
 			Cause: err, TupleKey: tk,
@@ -287,6 +305,70 @@ func validateCondition(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) e
 				Cause:    fmt.Errorf("found invalid context parameter: %s", key),
 				TupleKey: tk,
 			}
+		}
+	}
+
+	return nil
+}
+
+// validateInlineExpressionCondition validates that a $expression tuple is well-formed:
+// - the type restriction on the relation includes $expression for the user type
+// - the condition context is structurally valid.
+func validateInlineExpressionCondition(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) error {
+	cond := tk.GetCondition()
+
+	if cond == nil {
+		return &tuple.InvalidConditionalTupleError{
+			Cause: fmt.Errorf("condition is missing"), TupleKey: tk,
+		}
+	}
+
+	if !condition.IsInlineExpression(cond.GetName()) {
+		return &tuple.InvalidConditionalTupleError{
+			Cause:    fmt.Errorf("expected $expression got: %s", cond.GetName()),
+			TupleKey: tk,
+		}
+	}
+
+	objectType := tuple.GetType(tk.GetObject())
+	userType := tuple.GetType(tk.GetUser())
+	userRelation := tuple.GetRelation(tk.GetUser())
+
+	typeRestrictions, err := typesys.GetDirectlyRelatedUserTypes(objectType, tk.GetRelation())
+	if err != nil {
+		return err
+	}
+
+	if utils.ContainsForbiddenChars(cond.GetName()) {
+		return &tuple.InvalidConditionalTupleError{
+			Cause: fmt.Errorf("condition name contains forbidden characters"), TupleKey: tk,
+		}
+	}
+
+	var validCondition bool
+
+	for _, directlyRelatedType := range typeRestrictions {
+		if directlyRelatedType.GetType() != userType || directlyRelatedType.GetCondition() != condition.InlineExpressionName {
+			continue
+		}
+		if !restrictionFacetMatches(directlyRelatedType, tk.GetUser(), userRelation) {
+			continue
+		}
+		validCondition = true
+		break
+	}
+
+	if !validCondition {
+		return &tuple.InvalidConditionalTupleError{
+			Cause: fmt.Errorf("invalid condition for type restriction"), TupleKey: tk,
+		}
+	}
+
+	contextStruct := cond.GetContext()
+
+	if err := ValidateStruct(contextStruct); err != nil {
+		return &tuple.InvalidConditionalTupleError{
+			Cause: err, TupleKey: tk,
 		}
 	}
 

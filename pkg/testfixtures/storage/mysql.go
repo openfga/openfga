@@ -44,9 +44,10 @@ type mysqlTestContainer struct {
 	host string
 	port string
 
-	database string
-	username string
-	password string
+	database          string
+	secondaryDatabase string // non-empty after CreateSecondary
+	username          string
+	password          string
 
 	version int64
 }
@@ -74,12 +75,74 @@ func (m *mysqlTestContainer) GetPassword() string {
 	return m.password
 }
 
+// CreateSecondary creates a second migrated database in the same MySQL container.
+// The secondary database is a distinct connection target (different database name),
+// which is sufficient to prove that getSQLDB routing uses a separate *sql.DB handle.
+// Full MySQL binary-log replication is not required for this purpose.
 func (m *mysqlTestContainer) CreateSecondary(t testing.TB) error {
+	docker, err := testutils.NewDockerClient()
+	if err != nil {
+		return fmt.Errorf("create docker client: %w", err)
+	}
+	t.Cleanup(func() { docker.Close() })
+
+	dockerCont := mysqlDockerCont.Load()
+	if dockerCont == nil {
+		return fmt.Errorf("mysql container is not running")
+	}
+
+	secondaryDB := mysqlDBPrefix + ulid.Make().String() + "-secondary"
+
+	createExec := client.ExecCreateOptions{
+		Cmd: []string{"mysql", "-u", m.username, "-e", fmt.Sprintf("CREATE DATABASE `%s`;", secondaryDB)},
+		Env: []string{"MYSQL_PWD=" + m.password},
+	}
+	if err := docker.ExecCommand(t.Context(), dockerCont.ID, createExec); err != nil {
+		return fmt.Errorf("create secondary mysql database: %w", err)
+	}
+
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		dropQuery := fmt.Sprintf("DROP DATABASE IF EXISTS `%s`;", secondaryDB)
+		dropExec := client.ExecCreateOptions{
+			Cmd: []string{"mysql", "-u", m.username, "-e", dropQuery},
+			Env: []string{"MYSQL_PWD=" + m.password},
+		}
+		if err := docker.ExecCommand(ctx, dockerCont.ID, dropExec); err != nil {
+			t.Errorf("drop secondary test database in the mysql container: %v", err)
+		}
+	})
+
+	copyShell := fmt.Sprintf("mysql -u %s %s < %s", m.username, secondaryDB, mysqlTemplateDBDump)
+	copyExec := client.ExecCreateOptions{
+		Cmd: []string{"sh", "-ec", copyShell},
+		Env: []string{"MYSQL_PWD=" + m.password},
+	}
+	if err := docker.ExecCommand(t.Context(), dockerCont.ID, copyExec); err != nil {
+		return fmt.Errorf("copy schema to secondary mysql database: %w", err)
+	}
+
+	secondaryURI := mysqlConnectionURI(m.host, m.port, secondaryDB, m.username, m.password)
+	if err := waitForMigrationVersion("mysql", secondaryURI, m.version); err != nil {
+		return fmt.Errorf("wait for secondary mysql migration version: %w", err)
+	}
+
+	m.secondaryDatabase = secondaryDB
 	return nil
 }
 
 func (m *mysqlTestContainer) GetSecondaryConnectionURI(includeCredentials bool) string {
-	return ""
+	if m.secondaryDatabase == "" {
+		return ""
+	}
+	var username, password string
+	if includeCredentials {
+		username = m.username
+		password = m.password
+	}
+	return mysqlConnectionURI(m.host, m.port, m.secondaryDatabase, username, password)
 }
 
 func RunMysqlTestContainer(t testing.TB) DatastoreTestContainer {

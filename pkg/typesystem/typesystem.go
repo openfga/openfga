@@ -1456,12 +1456,13 @@ func (t *TypeSystem) validateTypeRestrictions(objectType string, relationName st
 			}
 		}
 
-		if related.GetCondition() != "" {
+		if condName := related.GetCondition(); condName != "" && !condition.IsInlineExpression(condName) {
 			// Validate the conditions referenced by the relations are included in the model.
-			if _, ok := t.conditions[related.GetCondition()]; !ok {
+			// $expression is a reserved inline condition and is not stored in the model's conditions map.
+			if _, ok := t.conditions[condName]; !ok {
 				return &RelationConditionError{
 					Relation:  relationName,
-					Condition: related.GetCondition(),
+					Condition: condName,
 					Err:       ErrNoConditionForRelation,
 				}
 			}
