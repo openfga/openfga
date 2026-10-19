@@ -308,11 +308,6 @@ func TestInMemoryCacheController_findChangesAndInvalidateIfNecessary(t *testing.
 					cache.EXPECT().Get(storage.ChangelogCacheKey("0")).Return(nil),
 					datastore.EXPECT().ReadChanges(gomock.Any(), "0", gomock.Any(), expectedReadChangesOpts).Times(1).
 						DoAndReturn(func(ctx context.Context, _ string, _ storage.ReadChangesFilter, _ storage.ReadChangesOptions) ([]*openfgav1.TupleChange, string, error) {
-							// Block until the caller's timeout (findChanges wraps this
-							// call in a 1s context) fires, rather than sleeping a fixed
-							// duration. This exercises the identical timeout path but
-							// returns the instant the real deadline elapses, and stays
-							// correct if that timeout is ever changed.
 							<-ctx.Done()
 							return nil, "", storage.ErrCollision
 						}),
