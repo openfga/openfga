@@ -852,9 +852,19 @@ func (l *listUsersQuery) expandExclusion(
 				}
 
 				if subtractedFu.relationshipStatus == NoRelationship {
+					// The subtracted branch explicitly does not relate this user, so the
+					// base wildcard applies unless the base branch itself already excluded
+					// the user (e.g. base is another exclusion). Preserve what base decided.
+					status := HasRelationship
+					var excludedUsers []*openfgav1.User
+					if baseFu, ok := baseFoundUsersMap[subtractedUserKey]; ok {
+						status = baseFu.relationshipStatus
+						excludedUsers = baseFu.excludedUsers
+					}
 					concurrency.TrySendThroughChannel(ctx, foundUser{
 						user:               tuple.StringToUserProto(subtractedUserKey),
-						relationshipStatus: HasRelationship,
+						relationshipStatus: status,
+						excludedUsers:      excludedUsers,
 					}, foundUsersChan)
 				}
 
@@ -879,9 +889,13 @@ func (l *listUsersQuery) expandExclusion(
 			}
 
 			if subtractedUser.relationshipStatus == NoRelationship {
+				// The subtracted branch explicitly does not relate this user, so the
+				// outcome is whatever the base branch decided for it. The base may have
+				// excluded the user already (e.g. base is another exclusion).
 				concurrency.TrySendThroughChannel(ctx, foundUser{
 					user:               tuple.StringToUserProto(userKey),
-					relationshipStatus: HasRelationship,
+					relationshipStatus: fu.relationshipStatus,
+					excludedUsers:      fu.excludedUsers,
 				}, foundUsersChan)
 			}
 
