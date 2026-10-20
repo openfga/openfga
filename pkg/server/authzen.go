@@ -117,7 +117,7 @@ func (s *Server) prepareAuthZenRequest(ctx context.Context, method string, req a
 		return ctx, func() {}, err
 	}
 
-	ctx, span := tracer.Start(ctx, method)
+	ctx, span := s.getTracer().Start(ctx, method)
 
 	ctx, err := s.initAuthZenRequest(ctx, method, req)
 	if err != nil {
