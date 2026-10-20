@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/structpb"
 
@@ -14,6 +15,14 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/tests"
 )
+
+// expandCapableClient is a tests.ClientInterface that also supports the
+// Expand API. The gRPC service client returned by tests.BuildClientInterface
+// satisfies this interface.
+type expandCapableClient interface {
+	tests.ClientInterface
+	Expand(ctx context.Context, in *openfgav1.ExpandRequest, opts ...grpc.CallOption) (*openfgav1.ExpandResponse, error)
+}
 
 // conditionAnyModel returns an authorization model with a condition that has
 // a parameter of type 'any'. The DSL parser does not support 'any' as a
@@ -240,6 +249,63 @@ func runConditionAnyTests(t *testing.T, client tests.ClientInterface) {
 				} else {
 					require.Empty(t, resp.GetObjects())
 				}
+			})
+		}
+	})
+
+	// The Expand API has no request-level 'context' field and does not
+	// evaluate conditions: it returns the userset tree derived from stored
+	// and contextual tuples regardless of condition outcomes. These tests
+	// confirm that a model with an 'any'-typed condition parameter does not
+	// break Expand, and that condition context of arbitrary complexity is
+	// accepted on contextual tuples.
+	t.Run("Expand", func(t *testing.T) {
+		expandClient, ok := client.(expandCapableClient)
+		require.True(t, ok, "test client does not implement the Expand API")
+
+		t.Run("no_context_returns_conditioned_tuple_in_tree", func(t *testing.T) {
+			t.Parallel()
+			resp, err := expandClient.Expand(ctx, &openfgav1.ExpandRequest{
+				StoreId:              storeID,
+				AuthorizationModelId: modelID,
+				TupleKey:             tuple.NewExpandRequestTupleKey("document:1", "viewer"),
+			})
+			require.NoError(t, err)
+
+			root := resp.GetTree().GetRoot()
+			require.Equal(t, "document:1#viewer", root.GetName())
+			require.Equal(t, []string{"user:jon"}, root.GetLeaf().GetUsers().GetUsers())
+		})
+
+		for _, tc := range testCases {
+			t.Run("contextual_tuple_condition_context_"+tc.name, func(t *testing.T) {
+				t.Parallel()
+				resp, err := expandClient.Expand(ctx, &openfgav1.ExpandRequest{
+					StoreId:              storeID,
+					AuthorizationModelId: modelID,
+					TupleKey:             tuple.NewExpandRequestTupleKey("document:1", "viewer"),
+					ContextualTuples: &openfgav1.ContextualTupleKeys{
+						TupleKeys: []*openfgav1.TupleKey{
+							{
+								User:     "user:anne",
+								Relation: "viewer",
+								Object:   "document:1",
+								Condition: &openfgav1.RelationshipCondition{
+									Name:    "any_cond",
+									Context: tc.context,
+								},
+							},
+						},
+					},
+				})
+				require.NoError(t, err)
+
+				// Expand returns users sorted; the conditioned contextual
+				// tuple must appear alongside the stored tuple even though
+				// no condition is evaluated.
+				root := resp.GetTree().GetRoot()
+				require.Equal(t, "document:1#viewer", root.GetName())
+				require.Equal(t, []string{"user:anne", "user:jon"}, root.GetLeaf().GetUsers().GetUsers())
 			})
 		}
 	})
