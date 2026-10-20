@@ -111,7 +111,7 @@ func TestSingleFlightFindLatestAuthorizationModel(t *testing.T) {
 	)
 
 	var wg errgroup.Group
-	for i := 0; i < numGoroutines; i++ {
+	for range numGoroutines {
 		wg.Go(func() error {
 			latestModel, err := cachingBackend.FindLatestAuthorizationModel(context.Background(), storeID)
 			if err != nil {

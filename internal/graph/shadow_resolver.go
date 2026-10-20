@@ -56,10 +56,7 @@ func (s ShadowResolver) ResolveCheck(ctx context.Context, req *ResolveCheckReque
 	resClone := res.clone()
 	reqClone := req.clone()
 	reqClone.VisitedPaths = nil // reset completely for evaluation
-	s.wg.Add(1)
-	go func() {
-		defer s.wg.Done()
-
+	s.wg.Go(func() {
 		defer func() {
 			if r := recover(); r != nil {
 				s.logger.ErrorWithContext(ctx, "panic recovered",
@@ -107,7 +104,7 @@ func (s ShadowResolver) ResolveCheck(ctx context.Context, req *ResolveCheckReque
 				zap.Int64("shadow_latency", shadowDuration.Milliseconds()),
 			)
 		}
-	}()
+	})
 
 	return res, nil
 }

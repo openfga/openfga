@@ -37,7 +37,7 @@ var benchSink any
 // createTestTuples generates test tuples for benchmarking.
 func createTestTuples(count int) []*openfgav1.Tuple {
 	tuples := make([]*openfgav1.Tuple, count)
-	for i := 0; i < count; i++ {
+	for i := range count {
 		tuples[i] = &openfgav1.Tuple{
 			Key: tuple.NewTupleKey(
 				fmt.Sprintf("document:%d", i),
@@ -52,7 +52,7 @@ func createTestTuples(count int) []*openfgav1.Tuple {
 // createMinimalCacheEntries generates MinimalCacheEntry for V2 benchmarks.
 func createMinimalCacheEntries(count int) []MinimalCacheEntry {
 	entries := make([]MinimalCacheEntry, count)
-	for i := 0; i < count; i++ {
+	for i := range count {
 		entries[i] = MinimalCacheEntry{
 			ObjectID: fmt.Sprintf("%d", i),
 			User:     fmt.Sprintf("user:user%d", i%100),
@@ -64,7 +64,7 @@ func createMinimalCacheEntries(count int) []MinimalCacheEntry {
 // createTupleRecords generates TupleRecord for V1 benchmarks.
 func createTupleRecords(count int) []*storage.TupleRecord {
 	records := make([]*storage.TupleRecord, count)
-	for i := 0; i < count; i++ {
+	for i := range count {
 		records[i] = &storage.TupleRecord{
 			ObjectID:       fmt.Sprintf("%d", i),
 			ObjectType:     "document",
@@ -271,7 +271,7 @@ func BenchmarkV1vsV2_Memory_CacheEntry(b *testing.B) {
 			b.ReportAllocs()
 			for i := 0; i < b.N; i++ {
 				records := make([]*storage.TupleRecord, size)
-				for j := 0; j < size; j++ {
+				for j := range size {
 					records[j] = &storage.TupleRecord{
 						ObjectID:       fmt.Sprintf("object-%d", j),
 						ObjectType:     "document",
@@ -294,7 +294,7 @@ func BenchmarkV1vsV2_Memory_CacheEntry(b *testing.B) {
 			b.ReportAllocs()
 			for i := 0; i < b.N; i++ {
 				entries := make([]MinimalCacheEntry, size)
-				for j := 0; j < size; j++ {
+				for j := range size {
 					entries[j] = MinimalCacheEntry{
 						ObjectID: fmt.Sprintf("object-%d", j),
 						User:     fmt.Sprintf("user:user%d", j%100),
@@ -338,7 +338,7 @@ func BenchmarkV1vsV2_Concurrent_Next(b *testing.B) {
 				var wg sync.WaitGroup
 				wg.Add(numGoroutines)
 
-				for g := 0; g < numGoroutines; g++ {
+				for range numGoroutines {
 					go func() {
 						defer wg.Done()
 						for {
@@ -367,7 +367,7 @@ func BenchmarkV1vsV2_Concurrent_Next(b *testing.B) {
 				var wg sync.WaitGroup
 				wg.Add(numGoroutines)
 
-				for g := 0; g < numGoroutines; g++ {
+				for range numGoroutines {
 					go func() {
 						defer wg.Done()
 						for {
@@ -400,7 +400,7 @@ func BenchmarkV1vsV2_BufferAllocation(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			// V1 allocates slice of tuple pointers
 			tuples := make([]*openfgav1.Tuple, 0, size/2)
-			for j := 0; j < size; j++ {
+			for j := range size {
 				tuples = append(tuples, &openfgav1.Tuple{
 					Key: tuple.NewTupleKey(
 						fmt.Sprintf("document:%d", j),
@@ -420,7 +420,7 @@ func BenchmarkV1vsV2_BufferAllocation(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			// V2 now uses same pattern: collect pointers, then transform at flush
 			tuples := make([]*openfgav1.Tuple, 0, size/2)
-			for j := 0; j < size; j++ {
+			for j := range size {
 				tuples = append(tuples, &openfgav1.Tuple{
 					Key: tuple.NewTupleKey(
 						fmt.Sprintf("document:%d", j),

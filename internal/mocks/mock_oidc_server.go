@@ -74,7 +74,7 @@ func createHTTPServer(issuerURL string, publicKey *rsa.PublicKey) *http.Server {
 	})
 
 	mockHandler.HandleFunc("/jwks.json", func(w http.ResponseWriter, r *http.Request) {
-		err := json.NewEncoder(w).Encode(map[string]interface{}{
+		err := json.NewEncoder(w).Encode(map[string]any{
 			"keys": []map[string]string{
 				{
 					"kid": kidHeader,

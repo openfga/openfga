@@ -213,7 +213,7 @@ func TestJitteredTTL(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			for i := 0; i < 100; i++ {
+			for range 100 {
 				result := JitteredTTL(tt.baseTTL, tt.jitterPercentage)
 				require.GreaterOrEqual(t, result, tt.expectedMin, "result %v is less than minimum %v", result, tt.expectedMin)
 				require.LessOrEqual(t, result, tt.expectedMax, "result %v is greater than maximum %v", result, tt.expectedMax)
@@ -225,7 +225,7 @@ func TestJitteredTTL(t *testing.T) {
 		baseTTL := 10 * time.Second
 		jitterPct := uint32(50)
 		results := make(map[time.Duration]struct{})
-		for i := 0; i < 1000; i++ {
+		for range 1000 {
 			results[JitteredTTL(baseTTL, jitterPct)] = struct{}{}
 		}
 		require.Greater(t, len(results), 1, "expected variation in jittered TTL values")
@@ -262,15 +262,15 @@ func BenchmarkInvariantCacheKeyWithContextualTuples(b *testing.B) {
 // BenchmarkInvariantCacheKeyWithContext measures the cost of computing the
 // invariant cache key for a representative request context.
 func BenchmarkInvariantCacheKeyWithContext(b *testing.B) {
-	contextStruct, err := structpb.NewStruct(map[string]interface{}{
+	contextStruct, err := structpb.NewStruct(map[string]any{
 		"boolKey":   true,
 		"stringKey": "hello",
 		"numberKey": 1.2,
 		"nullKey":   nil,
-		"structKey": map[string]interface{}{
+		"structKey": map[string]any{
 			"key1": "value1",
 		},
-		"listKey": []interface{}{"item1", "item2"},
+		"listKey": []any{"item1", "item2"},
 	})
 	require.NoError(b, err)
 

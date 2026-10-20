@@ -383,7 +383,7 @@ func TestWeight2Userset(t *testing.T) {
 				Key: tuple.NewTupleKey("group:2", "public_restricted", "user:*"),
 			},
 		}
-		contextStruct := testutils.MustNewStruct(t, map[string]interface{}{"tcond": "restricted"})
+		contextStruct := testutils.MustNewStruct(t, map[string]any{"tcond": "restricted"})
 		readStartingWithUserRestricted := []*openfgav1.Tuple{
 			{
 				Key: &openfgav1.TupleKey{
@@ -840,7 +840,7 @@ func TestWeight2TTU(t *testing.T) {
 				Key: tuple.NewTupleKey("group:2", "public_restricted", "user:*"),
 			},
 		}
-		contextStruct := testutils.MustNewStruct(t, map[string]interface{}{"tcond": "restricted"})
+		contextStruct := testutils.MustNewStruct(t, map[string]any{"tcond": "restricted"})
 		readStartingWithUserRestricted := []*openfgav1.Tuple{
 			{
 				Key: &openfgav1.TupleKey{

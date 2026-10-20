@@ -141,9 +141,9 @@ func TestCheckInlineExpressionsWeightedGraph(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	condCtx, err := structpb.NewStruct(map[string]interface{}{
+	condCtx, err := structpb.NewStruct(map[string]any{
 		"expression": "channel_id == 'X123456'",
-		"parameters": map[string]interface{}{"channel_id": "string"},
+		"parameters": map[string]any{"channel_id": "string"},
 	})
 	require.NoError(t, err)
 
@@ -160,7 +160,7 @@ func TestCheckInlineExpressionsWeightedGraph(t *testing.T) {
 	require.NoError(t, err)
 
 	checkReq := func(channelID string) *openfgav1.CheckRequest {
-		reqCtx, err := structpb.NewStruct(map[string]interface{}{"channel_id": channelID})
+		reqCtx, err := structpb.NewStruct(map[string]any{"channel_id": channelID})
 		require.NoError(t, err)
 		return &openfgav1.CheckRequest{
 			StoreId:              store.GetId(),
@@ -286,7 +286,7 @@ func TestServerLogs(t *testing.T) {
 		grpcReq         *openfgav1.CheckRequest
 		httpReqBody     io.Reader
 		expectedError   bool
-		expectedContext map[string]interface{}
+		expectedContext map[string]any
 	}
 
 	tests := []test{
@@ -298,7 +298,7 @@ func TestServerLogs(t *testing.T) {
 				StoreId:              storeID,
 				TupleKey:             tuple.NewCheckRequestTupleKey("document:1", "viewer", "user:anne"),
 			},
-			expectedContext: map[string]interface{}{
+			expectedContext: map[string]any{
 				"grpc_service":                "openfga.v1.OpenFGAService",
 				"grpc_method":                 "Check",
 				"grpc_type":                   "unary",
@@ -323,7 +323,7 @@ func TestServerLogs(t *testing.T) {
   },
   "authorization_model_id": "` + authorizationModelID + `"
 }`),
-			expectedContext: map[string]interface{}{
+			expectedContext: map[string]any{
 				"grpc_service":                "openfga.v1.OpenFGAService",
 				"grpc_method":                 "Check",
 				"grpc_type":                   "unary",
@@ -346,7 +346,7 @@ func TestServerLogs(t *testing.T) {
 				TupleKey:             tuple.NewCheckRequestTupleKey("", "viewer", "user:anne"),
 			},
 			expectedError: true,
-			expectedContext: map[string]interface{}{
+			expectedContext: map[string]any{
 				"grpc_service": "openfga.v1.OpenFGAService",
 				"grpc_method":  "Check",
 				"grpc_type":    "unary",
@@ -368,7 +368,7 @@ func TestServerLogs(t *testing.T) {
   "authorization_model_id": "` + authorizationModelID + `"
 }`),
 			expectedError: true,
-			expectedContext: map[string]interface{}{
+			expectedContext: map[string]any{
 				"grpc_service": "openfga.v1.OpenFGAService",
 				"grpc_method":  "Check",
 				"grpc_type":    "unary",
@@ -389,7 +389,7 @@ func TestServerLogs(t *testing.T) {
   "authorization_model_id": "` + authorizationModelID + `"
 }`),
 			expectedError: false,
-			expectedContext: map[string]interface{}{
+			expectedContext: map[string]any{
 				"grpc_service":                "openfga.v1.OpenFGAService",
 				"grpc_method":                 "StreamedListObjects",
 				"grpc_type":                   "server_stream",

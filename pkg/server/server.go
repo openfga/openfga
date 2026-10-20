@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"sort"
+	"slices"
 	"time"
 
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
@@ -573,7 +573,7 @@ func WithCacheTTLJitterPercentage(pct uint32) OpenFGAServiceV1Option {
 // WithRequestDurationByQueryHistogramBuckets sets the buckets used in labelling the requestDurationByQueryAndDispatchHistogram.
 func WithRequestDurationByQueryHistogramBuckets(buckets []uint) OpenFGAServiceV1Option {
 	return func(s *Server) {
-		sort.Slice(buckets, func(i, j int) bool { return buckets[i] < buckets[j] })
+		slices.Sort(buckets)
 		s.requestDurationByQueryHistogramBuckets = buckets
 	}
 }
@@ -581,7 +581,7 @@ func WithRequestDurationByQueryHistogramBuckets(buckets []uint) OpenFGAServiceV1
 // WithRequestDurationByDispatchCountHistogramBuckets sets the buckets used in labelling the requestDurationByQueryAndDispatchHistogram.
 func WithRequestDurationByDispatchCountHistogramBuckets(buckets []uint) OpenFGAServiceV1Option {
 	return func(s *Server) {
-		sort.Slice(buckets, func(i, j int) bool { return buckets[i] < buckets[j] })
+		slices.Sort(buckets)
 		s.requestDurationByDispatchCountHistogramBuckets = buckets
 	}
 }
