@@ -441,6 +441,69 @@ func NewConditionsFilteredTupleKeyIterator(iter TupleKeyIterator, filter TupleKe
 	}
 }
 
+type uniqueObjectTupleKeyIterator struct {
+	iter       TupleKeyIterator
+	lastObject string
+	hasLast    bool
+	once       *sync.Once
+}
+
+var _ TupleKeyIterator = (*uniqueObjectTupleKeyIterator)(nil)
+
+// Next returns the next tuple whose object differs from the object of the tuple last returned by Next.
+func (u *uniqueObjectTupleKeyIterator) Next(ctx context.Context) (*openfgav1.TupleKey, error) {
+	for {
+		tuple, err := u.iter.Next(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if u.hasLast && tuple.GetObject() == u.lastObject {
+			continue
+		}
+		u.lastObject = tuple.GetObject()
+		u.hasLast = true
+		return tuple, nil
+	}
+}
+
+// Head returns the tuple that the next call to Next would return, without advancing past it.
+func (u *uniqueObjectTupleKeyIterator) Head(ctx context.Context) (*openfgav1.TupleKey, error) {
+	for {
+		tuple, err := u.iter.Head(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if u.hasLast && tuple.GetObject() == u.lastObject {
+			if _, err := u.iter.Next(ctx); err != nil {
+				return nil, err
+			}
+			continue
+		}
+		return tuple, nil
+	}
+}
+
+// Stop see [Iterator.Stop].
+func (u *uniqueObjectTupleKeyIterator) Stop() {
+	u.once.Do(func() {
+		u.iter.Stop()
+	})
+}
+
+// IsOrdered forwards from the inner iterator; skipping items never reorders them.
+func (u *uniqueObjectTupleKeyIterator) IsOrdered() bool { return u.iter.IsOrdered() }
+
+// NewUniqueObjectTupleKeyIterator returns a [TupleKeyIterator] that yields at most one tuple per object.
+// The underlying iterator must be sorted by object so that tuples for the same object are adjacent.
+// Apply it after any filtering (e.g. condition evaluation): a filtered-out tuple must not hide another
+// tuple for the same object, such as a public wildcard tuple that grants the relation unconditionally.
+func NewUniqueObjectTupleKeyIterator(iter TupleKeyIterator) TupleKeyIterator {
+	return &uniqueObjectTupleKeyIterator{
+		iter: iter,
+		once: &sync.Once{},
+	}
+}
+
 type OrderedCombinedIterator struct {
 	mu          *sync.Mutex
 	once        *sync.Once
@@ -455,7 +518,8 @@ var _ TupleIterator = (*OrderedCombinedIterator)(nil)
 
 // NewOrderedCombinedIterator is a thread-safe iterator that combines a list of iterators into a single ordered iterator.
 // All the input iterators must be individually ordered already according to mapper.
-// Iterators can yield the same value (as defined by mapper) multiple times, but it will only be returned once.
+// Tuples that map to the same value are all returned (adjacent to each other). Deduplication is left to the caller,
+// so that it can happen after any filtering (such as condition evaluation) that decides which tuples are relevant.
 func NewOrderedCombinedIterator(mapper TupleMapperFunc, sortedIters ...TupleIterator) *OrderedCombinedIterator {
 	pending := make([]TupleIterator, 0, len(sortedIters))
 	ordered := true
@@ -513,7 +577,6 @@ func (c *OrderedCombinedIterator) head(ctx context.Context) (int, error) {
 	var headMin *openfgav1.Tuple
 	minIdx := -1
 
-IterateOverPending:
 	for pendingIdx, iter := range c.pending {
 		head, err := iter.Head(ctx)
 		if err != nil {
@@ -525,34 +588,8 @@ IterateOverPending:
 			return -1, err
 		}
 
-		if c.lastYielded != nil {
-			if c.mapper(head) < c.mapper(c.lastYielded) {
-				return -1, fmt.Errorf("iterator %d is not in ascending order", pendingIdx)
-			}
-			// Discard duplicate values.
-			// We do this based on the previous Head() returned for performance reasons.
-			// If on every call to Head() we discarded, we would need to iterate twice over pending:
-			// one time to find the minIdx, and one time to move the corresponding iterators.
-			for c.mapper(head) == c.mapper(c.lastYielded) {
-				// We want to advance to the new tuple. However, notice the "Next"'s returned
-				// tuple is still "old".  Therefore, we will need to load it with "Head" in the
-				// next step.
-				_, err = iter.Next(ctx)
-				if err == nil {
-					// We need to fetch the iter's Head so that head is updated properly.
-					// Otherwise, we will be looking at outdated data
-					head, err = iter.Head(ctx)
-				}
-
-				if err != nil {
-					if errors.Is(err, ErrIteratorDone) {
-						iter.Stop()
-						c.pending[pendingIdx] = nil
-						continue IterateOverPending
-					}
-					return -1, err
-				}
-			}
+		if c.lastYielded != nil && c.mapper(head) < c.mapper(c.lastYielded) {
+			return -1, fmt.Errorf("iterator %d is not in ascending order", pendingIdx)
 		}
 
 		// initialize or found a new lower value at head

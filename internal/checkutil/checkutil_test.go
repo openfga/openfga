@@ -16,6 +16,7 @@ import (
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -464,4 +465,69 @@ func TestIteratorReadStartingFromUser(t *testing.T) {
 			_, _ = IteratorReadStartingFromUser(context.Background(), ts, ds, &req, "group#member", objectIDs, true)
 		})
 	}
+}
+
+// A tuple whose condition is not met must not hide another tuple for the same object
+// (such as a public wildcard) when the sorted iterator is de-duplicated by object.
+func TestIteratorReadStartingFromUserDeduplicatesAfterConditions(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+
+	model := `
+	model
+		schema 1.1
+	type user
+	type group
+		relations
+			define member: [user, user:*, user with x_is_a]
+	condition x_is_a(x: string) {
+		x == "a"
+	}
+`
+	ts, err := typesystem.New(testutils.MustTransformDSLToProtoWithID(model))
+	require.NoError(t, err)
+
+	reqContext, err := structpb.NewStruct(map[string]any{"x": "b"})
+	require.NoError(t, err)
+
+	req := mockResolveCheckRequest{
+		StoreID:     ulid.Make().String(),
+		TupleKey:    tuple.NewTupleKey("group:ignore", "member", "user:bob"),
+		Consistency: openfgav1.ConsistencyPreference_MINIMIZE_LATENCY,
+		Context:     reqContext,
+	}
+
+	// sorted by object, as the datastore returns them when WithResultsSortedAscending is set
+	ds := mocks.NewMockRelationshipTupleReader(ctrl)
+	ds.EXPECT().ReadStartingWithUser(gomock.Any(), req.StoreID, gomock.Any(), gomock.Any()).Times(1).
+		Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{
+			{Key: tuple.NewTupleKeyWithCondition("group:1", "member", "user:bob", "x_is_a", nil)},
+			{Key: tuple.NewTupleKey("group:1", "member", "user:*")},
+			{Key: tuple.NewTupleKeyWithCondition("group:2", "member", "user:bob", "x_is_a", nil)},
+			{Key: tuple.NewTupleKey("group:3", "member", "user:*")},
+		}), nil)
+
+	// Check always reads through the combined reader, which merges contextual tuples into the sorted stream.
+	reader := storagewrappers.NewCombinedTupleReader(ds, []*openfgav1.TupleKey{
+		tuple.NewTupleKeyWithCondition("group:3", "member", "user:bob", "x_is_a", nil),
+		tuple.NewTupleKeyWithCondition("group:4", "member", "user:bob", "x_is_a", nil),
+		tuple.NewTupleKey("group:4", "member", "user:*"),
+	})
+
+	iter, err := IteratorReadStartingFromUser(context.Background(), ts, reader, &req, "group#member", nil, true)
+	require.NoError(t, err)
+	defer iter.Stop()
+
+	var got []string
+	for {
+		tk, err := iter.Next(context.Background())
+		if err != nil {
+			require.ErrorIs(t, err, storage.ErrIteratorDone)
+			break
+		}
+		got = append(got, tuple.TupleKeyToString(tk))
+	}
+	// group:1 and group:4 are kept through their wildcard tuple even though a conditional tuple for the
+	// same object sorted first; group:2 is only related through the unmet condition; group:3 is returned once.
+	require.Equal(t, []string{"group:1#member@user:*", "group:3#member@user:*", "group:4#member@user:*"}, got)
 }

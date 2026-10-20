@@ -8,6 +8,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 ### Fixed
+- Fixed Check granting access through a `but not` exclusion (and ListObjects listing the object) when the excluded user was related to an object through both a conditional tuple and an unconditional tuple such as `user:*`. The sorted `ReadStartingWithUser` path used by the recursive and weight-2 Check strategies collapsed tuples by object before evaluating their conditions, so a conditional tuple whose condition was not met (including one supplied as a contextual tuple) hid the wildcard tuple. Deduplication now happens after condition evaluation.
 - Fixed ListObjects returning `validation_error` with the message "Internal Server Error" instead of the condition evaluation error (e.g. a missing context parameter) when the ListObjects pipeline is enabled. [#3338](https://github.com/openfga/openfga/pull/3338)
 - Fixed `recursiveFastPath` and `weight2` in Check spinning at full CPU on a closed producer channel until the other producer finished, which also made the planner avoid the `weight2` strategy. [#3299](https://github.com/openfga/openfga/issues/3299)
 
