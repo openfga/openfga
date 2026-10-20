@@ -10,6 +10,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Fixed
 - Fixed ListObjects returning `validation_error` with the message "Internal Server Error" instead of the condition evaluation error (e.g. a missing context parameter) when the ListObjects pipeline is enabled. [#3338](https://github.com/openfga/openfga/pull/3338)
 - Fixed `recursiveFastPath` and `weight2` in Check spinning at full CPU on a closed producer channel until the other producer finished, which also made the planner avoid the `weight2` strategy. [#3299](https://github.com/openfga/openfga/issues/3299)
+- Fixed `utils.LinearBuckets` accumulating its step in a float64 loop variable, which compounded rounding error and could drop the final bucket. The `condition_evaluation_cost` histogram requests `LinearBuckets(0, 100, 10)`, whose width is `100/9`, so it was built with 9 buckets topping out at ~88.89 instead of 10 buckets ending at 100 — evaluations costing more than ~88.89 were recorded in `+Inf` rather than a real bucket. Boundaries are now computed by index with exact endpoints, and a non-positive `count` returns `nil` instead of looping forever. See `internal/utils/bucket.go`. [#3226](https://github.com/openfga/openfga/pull/3226)
 
 ## [1.22.0] - 2026-10-06
 ### Added
