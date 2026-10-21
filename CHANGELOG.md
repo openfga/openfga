@@ -8,7 +8,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 ### Removed
-- Removed the bundled `grpc_health_probe` binary and the `HEALTHCHECK` directive from the released images, so they no longer carry the probe's Go standard library CVE exposure. Kubernetes has supported native gRPC health checking via `livenessProbe.grpc` since v1.23 (GA in v1.24), which covers the primary use case. If you invoke `grpc_health_probe` directly, either switch to `livenessProbe.grpc` or layer the binary on top of the OpenFGA image in your own Dockerfile. [#2373](https://github.com/openfga/openfga/issues/2373)
+- Removed the bundled `grpc_health_probe` binary and the `HEALTHCHECK` directive from the released images, so they no longer carry the probe's Go standard library CVE exposure. Kubernetes has supported native gRPC health checking via `livenessProbe.grpc` since v1.23 (beta in v1.24, GA in v1.27), which covers the primary use case. If you invoke `grpc_health_probe` directly, either switch to `livenessProbe.grpc` or layer the binary on top of the OpenFGA image in your own Dockerfile. [#2373](https://github.com/openfga/openfga/issues/2373)
 
 ### Fixed
 - Fixed ListObjects returning `validation_error` with the message "Internal Server Error" instead of the condition evaluation error (e.g. a missing context parameter) when the ListObjects pipeline is enabled. [#3338](https://github.com/openfga/openfga/pull/3338)
