@@ -217,7 +217,7 @@ func TestBoundedConcurrencyWrapper_Exits_Early_If_Context_Error(t *testing.T) {
 	}
 }
 
-// fakeQuerier is a stub adapter.Querier that returns preconfigured results.
+// fakeQuerier is an adapter.Querier that returns preconfigured results.
 type fakeQuerier struct {
 	rows adapter.Rows
 	err  error
@@ -227,7 +227,7 @@ func (q *fakeQuerier) Execute(context.Context, *query.Statement) (adapter.Rows, 
 	return q.rows, q.err
 }
 
-// fakeRows is a minimal adapter.Rows whose Next reports true `remaining` times.
+// fakeRows is an adapter.Rows whose Next reports true `remaining` times.
 type fakeRows struct {
 	remaining int
 	closed    bool

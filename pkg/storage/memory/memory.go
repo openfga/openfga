@@ -197,8 +197,7 @@ func WithMaxTypesPerAuthorizationModel(n int) StorageOption {
 	return func(ds *MemoryBackend) { ds.maxTypesPerAuthorizationModel = n }
 }
 
-// Querier see [storage.RelationshipTupleReader].Querier. The in-memory backend has no
-// typed-AST query surface, so this returns nil.
+// Querier see [storage.RelationshipTupleReader].Querier.
 func (s *MemoryBackend) Querier(_ openfgav1.ConsistencyPreference) adapter.Querier {
 	return nil
 }

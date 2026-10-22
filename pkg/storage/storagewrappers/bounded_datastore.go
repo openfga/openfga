@@ -73,41 +73,32 @@ var (
 	}, []string{"operation", "method"})
 )
 
-// boundedQuerier wraps a delegate Querier so each Execute passes through the concurrency
-// bound.
 type boundedQuerier struct {
 	*BoundedTupleReader
 	adapter.Querier
 }
 
-// Execute runs the statement under the concurrency bound. It holds the slot until the returned
-// cursor is drained or closed, not just until Execute returns, since the cursor retains the
-// backing connection until then.
+// Execute holds the concurrency slot until the returned Rows are drained or closed, since they
+// retain the connection.
 func (q *boundedQuerier) Execute(ctx context.Context, stmt *query.Statement) (adapter.Rows, error) {
 	if err := q.bound(ctx, "Querier"); err != nil {
 		return nil, err
 	}
 	rows, err := q.Querier.Execute(ctx, stmt)
 	if err != nil {
-		q.done() // nothing acquired a connection; release the slot now.
+		q.done()
 		return nil, err
 	}
 	return &boundedRows{Rows: rows, release: q.done, counter: &q.countItems}, nil
 }
 
-// boundedRows releases the concurrency bound when the DB cursor is closed, since
-// the underlying DB connection is retained until then.
 type boundedRows struct {
 	adapter.Rows
-	// release releases the concurrency slot these boundedRows occupied
 	release func()
 	once    sync.Once
-	// counter is incremented for every row returned by Next
 	counter *atomic.Uint64
 }
 
-// Next defensively releases the bound on exhaustion, in case a caller drains
-// the cursor without calling Close.
 func (r *boundedRows) Next() bool {
 	ok := r.Rows.Next()
 	if !ok {
@@ -118,7 +109,6 @@ func (r *boundedRows) Next() bool {
 	return true
 }
 
-// Close releases the concurrency slot taken by r and closes the underlying Rows.
 func (r *boundedRows) Close() error {
 	defer r.once.Do(r.release)
 	return r.Rows.Close()
@@ -162,16 +152,13 @@ func (b *BoundedTupleReader) GetMetadata() Metadata {
 	}
 }
 
-// Querier returns a concurrency-bounded Querier, or nil when the delegate does.
+// Querier returns a concurrency-bounded Querier, or nil if the delegate's is nil.
 func (b *BoundedTupleReader) Querier(consistency openfgav1.ConsistencyPreference) adapter.Querier {
 	inner := b.RelationshipTupleReader.Querier(consistency)
 	if inner == nil {
 		return nil
 	}
-	return &boundedQuerier{
-		b,
-		inner,
-	}
+	return &boundedQuerier{b, inner}
 }
 
 // ReadUserTuple tries to return one tuple that matches the provided key exactly.

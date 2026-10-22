@@ -319,7 +319,6 @@ func (s *Datastore) Close() {
 }
 
 // Querier see [storage.RelationshipTupleReader].Querier.
-// Returns nil for now but will be updated in the future.
 func (s *Datastore) Querier(_ openfgav1.ConsistencyPreference) adapter.Querier {
 	return nil
 }

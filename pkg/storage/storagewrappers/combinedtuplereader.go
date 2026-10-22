@@ -43,8 +43,7 @@ type CombinedTupleReader struct {
 
 var _ storage.RelationshipTupleReader = (*CombinedTupleReader)(nil)
 
-// Querier returns nil: the typed query surface cannot express contextual tuples, so it
-// is not exposed. Overrides the embedded reader's promoted Querier, which would omit them.
+// Querier returns nil because the delegate's Querier would ignore contextual tuples.
 func (c *CombinedTupleReader) Querier(openfgav1.ConsistencyPreference) adapter.Querier {
 	return nil
 }

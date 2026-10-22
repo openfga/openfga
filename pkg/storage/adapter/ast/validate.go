@@ -7,70 +7,23 @@ import (
 	"strconv"
 )
 
-// --- validation -------------------------------------------------------------------------
-//
-// Validate mechanically checks the three things the position categories cannot type — cardinality,
-// required-non-nil, and cross-field relationships — that were previously only documented per node.
-//
-// Each node checks its own rules and then calls Validate on each direct child, returning the first
-// error and stopping. So one call on the root validates the whole tree, and the result names one
-// violation, not all: fixing it reveals the next. The error carries the path it was found at
-// (`Where: Parts[1]: Left: required field is nil`).
-//
-// Because only the first fault is reported, the check ORDER is part of the behaviour: every node
-// checks its own local rules first — enum range, arity, alias, cross-field — then recurses into
-// children in field order. That reports the shallowest fault, which is most likely the cause rather
-// than a consequence.
-//
-// Every error wraps one of the sentinels below, so a consumer can branch on the kind of violation
-// with errors.Is. The path prefix is for humans only.
-//
-// What Validate deliberately does NOT check:
-//
-//   - Alias scope. That a ColNode.Alias names a Table in From or Joins needs the enclosing Select,
-//     and for a correlated subquery the whole enclosing chain; a node cannot see either. Select
-//     does check for duplicate aliases among its own tables.
-//   - Whether a bound value is encodable. Which Go types a driver accepts is the driver's fact;
-//     Validate rejects only what the tree's own model excludes — a bool, and an AST node.
-//   - Grouping correctness. That every non-aggregated projection appears in GROUP BY is a rule
-//     about semantics, not shape, and engines disagree on it.
 var (
-	// ErrMissing reports a required interface-typed or pointer field left nil.
-	ErrMissing = errors.New("required field is nil")
-
-	// ErrArity reports a slice field whose length violates the node's documented minimum, or the
-	// per-function arity of a FuncNode or AggNode.
-	ErrArity = errors.New("wrong number of elements")
-
-	// ErrEnum reports an enum field outside its defined set — most often a Count sentinel, which
-	// is assignable to the field it counts and which Go cannot prevent.
-	ErrEnum = errors.New("enum value out of range")
-
-	// ErrCrossField reports fields that are each individually well-formed but jointly meaningless,
-	// such as a COUNT(DISTINCT *) — Distinct set with no aggregate argument.
+	ErrMissing    = errors.New("required field is nil")
+	ErrArity      = errors.New("wrong number of elements")
+	ErrEnum       = errors.New("enum value out of range")
 	ErrCrossField = errors.New("invalid combination of fields")
-
-	// ErrValue reports a bound or inlined Go value this tree cannot carry: a bool, since truth
-	// values are the Predicate category, or an AST node.
-	ErrValue = errors.New("invalid value")
-
-	// ErrAlias reports an empty alias string. Nothing else about an alias is checked here —
-	// character set and quoting are a target's concern.
-	ErrAlias = errors.New("invalid alias")
+	ErrValue      = errors.New("invalid value")
+	ErrAlias      = errors.New("invalid alias")
 )
 
 // --- helpers ----------------------------------------------------------------------------
 
-// validator is what the helpers below range over: every Node, plus the five clause-item types that
-// hold child nodes without belonging to a category (SearchedBranch, SimpleBranch, OrderTerm, Table,
-// JoinClause).
+// validator is used instead of Node so the helpers also accept clause items like OrderTerm.
 type validator interface{ Validate() error }
 
-// enum is the underlying kind of every enum in this package.
 type enum interface{ ~int | ~uint8 }
 
-// at labels an error with the field it was found in, building the path prefix one frame at a time
-// as the recursion returns. Wrapping with %w keeps errors.Is working through every frame.
+// at prefixes err with field, building the error path.
 func at(field string, err error) error {
 	if err == nil {
 		return nil
@@ -78,10 +31,7 @@ func at(field string, err error) error {
 	return fmt.Errorf("%s: %w", field, err)
 }
 
-// isNil reports whether x carries no node: a nil interface, or an interface holding a typed nil
-// pointer such as (*NotNode)(nil). The second case matters because the node methods have value
-// receivers, so a typed nil satisfies the interface yet panics when Validate dereferences it to
-// materialize the receiver. The stmt helper makes the same distinction for *Select by hand.
+// isNil also treats a typed nil pointer as nil, since calling a value-receiver Validate on it panics.
 func isNil[T validator](x T) bool {
 	if any(x) == nil {
 		return true
@@ -90,8 +40,6 @@ func isNil[T validator](x T) bool {
 	return v.Kind() == reflect.Pointer && v.IsNil()
 }
 
-// required validates a child that must be present, reporting ErrMissing for a missing child rather
-// than panicking.
 func required[T validator](field string, x T) error {
 	if isNil(x) {
 		return fmt.Errorf("%s: %w", field, ErrMissing)
@@ -99,7 +47,6 @@ func required[T validator](field string, x T) error {
 	return at(field, x.Validate())
 }
 
-// optional validates a child that may be absent.
 func optional[T validator](field string, x T) error {
 	if isNil(x) {
 		return nil
@@ -107,8 +54,6 @@ func optional[T validator](field string, x T) error {
 	return at(field, x.Validate())
 }
 
-// stmt validates a required *Select. It cannot go through required, because a typed nil pointer in
-// an interface is not a nil interface.
 func stmt(field string, s *Select) error {
 	if s == nil {
 		return fmt.Errorf("%s: %w", field, ErrMissing)
@@ -116,8 +61,6 @@ func stmt(field string, s *Select) error {
 	return at(field, s.Validate())
 }
 
-// each validates elements in order and returns at the first bad one, labelling the error with that
-// element's index.
 func each[T validator](field string, xs []T) error {
 	for i, x := range xs {
 		if err := required(field+"["+strconv.Itoa(i)+"]", x); err != nil {
@@ -127,15 +70,11 @@ func each[T validator](field string, xs []T) error {
 	return nil
 }
 
-// fault reports a violation at a named field. It exists so a message can lead with a capitalized
-// field name without tripping the lint against capitalized error strings.
+// fault exists so messages can start with a capitalized field name without tripping lint.
 func fault(field string, sentinel error, msg string) error {
 	return fmt.Errorf("%s: %w: %s", field, sentinel, msg)
 }
 
-// nonEmpty enforces the minimum arity shared by every slice field that has one: at least one
-// element. No node requires two or more — the meaningful-but-not-required cases are documented,
-// not checked, because a one-element form still renders correctly.
 func nonEmpty[T any](field string, xs []T) error {
 	if len(xs) == 0 {
 		return fmt.Errorf("%s: %w: empty, need at least one element", field, ErrArity)
@@ -143,7 +82,6 @@ func nonEmpty[T any](field string, xs []T) error {
 	return nil
 }
 
-// arity enforces an exact arity, or a range when lo and hi differ.
 func arity(field string, have, lo, hi int) error {
 	if have < lo || have > hi {
 		if lo == hi {
@@ -154,7 +92,6 @@ func arity(field string, have, lo, hi int) error {
 	return nil
 }
 
-// inRange rejects an enum value outside its defined set, Count sentinels included.
 func inRange[T enum](field string, v, lo, hi T) error {
 	if v < lo || v > hi {
 		return fmt.Errorf("%s: %w: %v", field, ErrEnum, v)
@@ -162,7 +99,6 @@ func inRange[T enum](field string, v, lo, hi T) error {
 	return nil
 }
 
-// alias rejects an empty alias string.
 func alias(field, s string) error {
 	if s == "" {
 		return fmt.Errorf("%s: %w: empty", field, ErrAlias)
@@ -170,11 +106,10 @@ func alias(field, s string) error {
 	return nil
 }
 
-// value rejects the Go values this tree's model excludes from a bound or inlined slot. The bool
-// test is on reflect.Kind, so a named bool (type flag bool) is caught too.
+// value checks Kind rather than type so named bools are rejected too.
 func value(field string, v any) error {
 	if v == nil {
-		return nil // a bound or inlined NULL.
+		return nil // NULL
 	}
 	if _, ok := v.(Node); ok {
 		return fmt.Errorf("%s: %w: %T is an AST node, not a value", field, ErrValue, v)
@@ -188,8 +123,6 @@ func value(field string, v any) error {
 
 // --- leaf nodes -------------------------------------------------------------------------
 
-// Validate reports an unnamed table or an out-of-range column. It cannot check that Alias is in
-// SCOPE; only the enclosing Select could, and not even it for a correlated reference.
 func (n ColNode) Validate() error {
 	if err := alias("Alias", n.Alias); err != nil {
 		return err
@@ -197,16 +130,10 @@ func (n ColNode) Validate() error {
 	return inRange("Name", n.Name, ColObjectType, ColCount-1)
 }
 
-// Validate reports a Value this tree cannot carry. It does not report a value the driver cannot
-// encode; see BindNode.
 func (n BindNode) Validate() error { return value("Value", n.Value) }
 
-// Validate reports a Value this tree cannot carry. Whether the value can be SPELLED inline is a
-// separate, target-specific question that a consumer's literal rendering answers.
 func (n LitNode) Validate() error { return value("Value", n.Value) }
 
-// Validate checks elements in order and returns at the first bad one. An empty Elems is valid — the
-// one arity exception in the package.
 func (n SetBindNode) Validate() error {
 	for i, e := range n.Elems {
 		if err := value("Elems["+strconv.Itoa(i)+"]", e); err != nil {
@@ -218,7 +145,6 @@ func (n SetBindNode) Validate() error {
 
 // --- predicate nodes --------------------------------------------------------------------
 
-// Validate checks the operator and both operands.
 func (n CompareNode) Validate() error {
 	if err := inRange("Op", n.Op, OpEq, OpGte); err != nil {
 		return err
@@ -229,7 +155,6 @@ func (n CompareNode) Validate() error {
 	return required("Right", n.Right)
 }
 
-// Validate checks both operands.
 func (n LikeNode) Validate() error {
 	if err := required("Left", n.Left); err != nil {
 		return err
@@ -237,8 +162,6 @@ func (n LikeNode) Validate() error {
 	return required("Pattern", n.Pattern)
 }
 
-// Validate checks all three operands. It does not check that Lo precedes Hi, which is a fact
-// about values rather than shape and may not be knowable until execution.
 func (n BetweenNode) Validate() error {
 	if err := required("Inner", n.Inner); err != nil {
 		return err
@@ -249,11 +172,8 @@ func (n BetweenNode) Validate() error {
 	return required("Hi", n.Hi)
 }
 
-// Validate checks the operand.
 func (n IsNullNode) Validate() error { return required("Inner", n.Inner) }
 
-// Validate rejects an empty Elems: "x IN ()" has no rendering on any engine. A caller meaning
-// "matches nothing" writes ConstPredNode{Value: false}.
 func (n InNode) Validate() error {
 	if err := nonEmpty("Elems", n.Elems); err != nil {
 		return err
@@ -264,8 +184,6 @@ func (n InNode) Validate() error {
 	return each("Elems", n.Elems)
 }
 
-// Validate checks the operator, the quantifier, and both operands. An empty SetBindNode in Set is
-// valid; QuantifiedNode documents the lowering.
 func (n QuantifiedNode) Validate() error {
 	if err := inRange("Op", n.Op, OpEq, OpGte); err != nil {
 		return err
@@ -279,11 +197,8 @@ func (n QuantifiedNode) Validate() error {
 	return required("Set", n.Set)
 }
 
-// Validate checks the subquery.
 func (n ExistsNode) Validate() error { return stmt("Stmt", n.Stmt) }
 
-// Validate rejects an empty Parts: "WHERE ()" is a syntax error. A single part is valid, per
-// LogicalNode.
 func (n LogicalNode) Validate() error {
 	if err := inRange("Op", n.Op, And, Or); err != nil {
 		return err
@@ -294,15 +209,12 @@ func (n LogicalNode) Validate() error {
 	return each("Parts", n.Parts)
 }
 
-// Validate checks the negated predicate.
 func (n NotNode) Validate() error { return required("Inner", n.Inner) }
 
-// Validate always succeeds: both truth values are meaningful and there is nothing else to check.
 func (ConstPredNode) Validate() error { return nil }
 
 // --- value nodes ------------------------------------------------------------------------
 
-// Validate checks the cast target and its operand.
 func (n CastNode) Validate() error {
 	if err := inRange("Type", n.Type, TypeVarchar, TypeCount-1); err != nil {
 		return err
@@ -310,9 +222,7 @@ func (n CastNode) Validate() error {
 	return required("Inner", n.Inner)
 }
 
-// Validate enforces the per-function arity documented on each ScalarFunc member. The arity is not a
-// property of Args — one slice serves every function — so it is checked against Fn, and Fn is
-// checked first: an out-of-range Fn makes any arity verdict meaningless.
+// Validate checks Fn before arity, since arity depends on Fn.
 func (n FuncNode) Validate() error {
 	if err := inRange("Fn", n.Fn, FuncCoalesce, FuncCount-1); err != nil {
 		return err
@@ -323,7 +233,6 @@ func (n FuncNode) Validate() error {
 	return each("Args", n.Args)
 }
 
-// argArity applies the per-Fn rule stated on each ScalarFunc member.
 func (n FuncNode) argArity() error {
 	switch n.Fn {
 	case FuncCoalesce:
@@ -331,15 +240,12 @@ func (n FuncNode) argArity() error {
 	case FuncLower, FuncUpper:
 		return arity("Args", len(n.Args), 1, 1)
 	case FuncJSONArray:
-		return nil // Zero or more: JSON_ARRAY() is meaningful, and the only such function here.
-	case FuncCount:
-		return nil // Not a function; already reported by Validate's range check.
+		return nil
 	default:
 		return nil
 	}
 }
 
-// Validate checks both halves of the pair.
 func (n JSONPairNode) Validate() error {
 	if err := required("Key", n.Key); err != nil {
 		return err
@@ -347,8 +253,6 @@ func (n JSONPairNode) Validate() error {
 	return required("Value", n.Value)
 }
 
-// Validate rejects an empty Pairs. The empty object is excluded because it is not portable;
-// contrast FuncJSONArray, whose empty form is admitted.
 func (n JSONObjectNode) Validate() error {
 	if err := nonEmpty("Pairs", n.Pairs); err != nil {
 		return err
@@ -356,8 +260,6 @@ func (n JSONObjectNode) Validate() error {
 	return each("Pairs", n.Pairs)
 }
 
-// Validate enforces the per-aggregate arity documented on each AggFunc member — AggCount takes zero
-// or one — and rejects Distinct without an argument, since COUNT(DISTINCT *) is not a construct.
 func (n AggNode) Validate() error {
 	if err := inRange("Fn", n.Fn, AggCount, AggCount_-1); err != nil {
 		return err
@@ -371,8 +273,6 @@ func (n AggNode) Validate() error {
 	return optional("Filter", n.Filter)
 }
 
-// argArity applies the per-Fn rule stated on each AggFunc member, plus the one cross-field rule it
-// implies: Distinct is meaningful only alongside an argument.
 func (n AggNode) argArity() error {
 	switch n.Fn {
 	case AggCount:
@@ -384,14 +284,11 @@ func (n AggNode) argArity() error {
 				"COUNT(DISTINCT *) is not a construct; Distinct needs an argument")
 		}
 		return nil
-	case AggCount_:
-		return nil // Not an aggregate; already reported by Validate's range check.
 	default:
 		return nil
 	}
 }
 
-// Validate rejects an empty Branches: "CASE END" is a syntax error.
 func (n CaseSearchedNode) Validate() error {
 	if err := nonEmpty("Branches", n.Branches); err != nil {
 		return err
@@ -402,7 +299,6 @@ func (n CaseSearchedNode) Validate() error {
 	return optional("Else", n.Else)
 }
 
-// Validate checks the guard and the result.
 func (b SearchedBranch) Validate() error {
 	if err := required("When", b.When); err != nil {
 		return err
@@ -410,8 +306,6 @@ func (b SearchedBranch) Validate() error {
 	return required("Then", b.Then)
 }
 
-// Validate rejects a nil Base as well as an empty Branches. A nil Base is not the searched form but
-// a malformed simple one.
 func (n CaseSimpleNode) Validate() error {
 	if err := nonEmpty("Branches", n.Branches); err != nil {
 		return err
@@ -425,7 +319,6 @@ func (n CaseSimpleNode) Validate() error {
 	return optional("Else", n.Else)
 }
 
-// Validate checks both sides of the pair.
 func (b SimpleBranch) Validate() error {
 	if err := required("When", b.When); err != nil {
 		return err
@@ -433,8 +326,6 @@ func (b SimpleBranch) Validate() error {
 	return required("Then", b.Then)
 }
 
-// Validate checks the aliased projection and rejects an empty output name. Whether the name needs
-// quoting or collides with another output name is decided by the Select and the target.
 func (n AliasNode) Validate() error {
 	if err := alias("Alias", n.Alias); err != nil {
 		return err
@@ -442,20 +333,10 @@ func (n AliasNode) Validate() error {
 	return required("Inner", n.Inner)
 }
 
-// Validate checks the embedded statement.
 func (n SubqueryNode) Validate() error { return stmt("Stmt", n.Stmt) }
 
 // --- statement and clause items ---------------------------------------------------------
 
-// Validate checks the one cross-field rule local to this statement — no two of its tables may share
-// an alias — and then every clause, in source order. Having without GroupBy is permitted, and so is
-// an empty From.
-//
-// The alias check comes first deliberately: it is cheap, and an ambiguous column returns wrong rows
-// rather than failing, so it is worth reporting ahead of a nil operand that would announce itself.
-//
-// It does not check that a ColNode below names an alias in scope; that is a resolver's traversal,
-// not a shape-checker's, and a correlated subquery makes it non-local.
 func (s *Select) Validate() error {
 	if s == nil {
 		return ErrMissing
@@ -479,8 +360,7 @@ func (s *Select) Validate() error {
 	return nil
 }
 
-// aliasErr reports the first table alias used twice in one statement, which makes every ColNode
-// naming it ambiguous. Empty aliases are left to Table.Validate.
+// aliasErr reports a table alias used twice. Empty aliases are left to Table.Validate.
 func (s *Select) aliasErr() error {
 	seen := make(map[string]struct{}, len(s.From)+len(s.Joins))
 	for _, a := range s.aliases() {
@@ -496,7 +376,6 @@ func (s *Select) aliasErr() error {
 	return nil
 }
 
-// aliases lists every table alias the statement introduces, in source order.
 func (s *Select) aliases() []string {
 	out := make([]string, 0, len(s.From)+len(s.Joins))
 	for _, t := range s.From {
@@ -508,13 +387,8 @@ func (s *Select) aliases() []string {
 	return out
 }
 
-// Validate rejects an unnamed table occurrence, which would render as a bare table name that no
-// column could qualify against.
 func (t Table) Validate() error { return alias("Alias", t.Alias) }
 
-// Validate checks the join flavour, the joined table, and On's presence — required for every
-// flavour but JoinCross, and forbidden for that one, since a consumer silently dropping the
-// condition would change which rows return.
 func (j JoinClause) Validate() error {
 	if err := inRange("Type", j.Type, JoinInner, JoinCross); err != nil {
 		return err
@@ -528,7 +402,6 @@ func (j JoinClause) Validate() error {
 	return optional("On", j.On)
 }
 
-// onErr applies the cross-field rule between Type and On.
 func (j JoinClause) onErr() error {
 	switch cross := j.Type == JoinCross; {
 	case cross && !isNil(j.On):
@@ -540,8 +413,6 @@ func (j JoinClause) onErr() error {
 	}
 }
 
-// Validate checks the ordering expression and its direction. Dir has a meaningful zero value, so
-// only Expr can be missing.
 func (t OrderTerm) Validate() error {
 	if err := inRange("Dir", t.Dir, Ascending, Descending); err != nil {
 		return err

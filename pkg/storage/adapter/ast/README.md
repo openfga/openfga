@@ -1,89 +1,60 @@
 # Walking the query AST
 
-This package is the query AST. If you are writing a datastore adapter for a backend this
-repository does not ship, this document tells you how to consume the tree correctly.
+This package holds a SELECT query as a tree of plain Go structs. Package `query` builds the tree; a
+backend walks it and writes SQL for its own database. This file is for someone writing that walker:
+the mistakes a walker can make, and the order to do the work in. The type docs in `ast.go` cover
+each node.
 
-Nothing here parses, renders, executes, or validates against a schema. The tree is a *build
-target*: a typed builder (package `query`) constructs it, and your adapter walks the result. It is
-data and nothing else — every decision about how a construct maps to a real datastore is yours.
+The tree holds no SQL text. Every operator, column, cast type, function, and aggregate is an enum
+with no spelling, and values are raw Go values. Writing the SQL, and escaping it, is your job.
 
-The package doc comment in `ast.go` covers the type model in full; this file covers the traps a
-walker hits and the order to attack them in.
+## Two assumptions
 
-## The two assumptions the tree makes
+- **The query is relational**: result columns, tables, joins, filters, grouping, aggregates, ordering,
+  and limits. A backend that is not relational has to translate, and some nodes may have no match.
+- **Every table is the `tuple` table.** `Table` holds only an alias, so every join is a self-join.
+  You choose the real table name.
 
-**It is relational.** The node algebra is projections, aliased table occurrences, joins, filters,
-grouping, aggregates, ordering, row limits. A non-relational backend is translating between models,
-not respelling constructs — some nodes may have no counterpart. No reinterpretation removes this.
+## Four kinds of node
 
-**Every table is the `tuple` table.** `Table` carries only an alias, so every join is a self-join.
-What that table is actually called is yours to decide.
+A node holds its children in slots (its typed fields). Each slot accepts one of four kinds of node,
+and each kind is an interface, so a node in the wrong slot does not compile.
 
-It makes no assumption about a *target language*: every operator, connective, quantifier, join
-flavour, column, cast target, function, and aggregate is a closed, textless enum, and value-bearing
-nodes carry values, not rendered fragments. Producing text is entirely your job.
-
-## Position is part of the type
-
-The node set divides into four **position categories**, each a sealed sub-interface of `Node`, and
-**every field is typed with the category it accepts** — so a mis-positioned tree does not compile.
-
-| Category | Legal positions |
+| Kind | Allowed in |
 | --- | --- |
-| `Predicate` | `Select.Where`/`Having`, `JoinClause.On`, a searched `CASE`'s `When`, `AggNode.Filter`, `NotNode.Inner`, a connective's parts |
-| `ScalarValue` | any single-value slot: a comparison operand, function argument, cast input, `GroupBy`, `OrderTerm.Expr`, a `THEN`/`ELSE` |
-| `SetValue` | `QuantifiedNode.Set`, and nowhere else |
-| `Projection` | `Select.Columns`, `AliasNode.Inner` |
+| `Predicate` (a true/false test) | `Select.Where`/`Having`, `JoinClause.On`, a searched CASE's `When`, `AggNode.Filter`, `NotNode.Inner`, `LogicalNode.Parts` |
+| `ScalarValue` (one value) | a comparison side, function argument, cast input, `GroupBy`, `OrderTerm.Expr`, a CASE `Then`/`Else` |
+| `SetValue` (a group of values) | `QuantifiedNode.Set` only |
+| `Projection` (a result column) | `Select.Columns`, `AliasNode.Inner` |
 
-`ScalarValue` **embeds** `Projection`, so every single-valued expression can also project without a
-cast. `SetValue` does not: whether a set is projectable depends on the node.
+Every `ScalarValue` is also a `Projection`. A `SetValue` is not.
 
-The payoff: **write one walk function per category, not one per node kind.** You never thread an
-"am I in value or predicate position?" parameter — the compiler already knows it as the static type
-of the field you are visiting. (Oracle before 23c forced this design: with no boolean value type,
-`SELECT (a.store = :1)` is unwriteable there, so predicates and values must stay separate worlds.)
-
-There is **no boolean value** in the tree: `Predicate` is not a `ScalarValue`, there is no boolean
-`CastType`, and no `LitNode` carries a `bool`. A caller wanting a boolean *column* writes the `CASE`
-that produces one.
-
-You may rely on **position** but not **provenance**: every field is exported, so a hand-written
-struct literal is as valid as anything the builder produces, and nothing records where a tree came
-from.
-
-### The 24 node types
-
-| Category | Types |
+| Kind | Node types |
 | --- | --- |
 | `Predicate` | `CompareNode`, `LikeNode`, `BetweenNode`, `IsNullNode`, `InNode`, `QuantifiedNode`, `ExistsNode`, `LogicalNode`, `NotNode`, `ConstPredNode` |
-| `ScalarValue` (hence `Projection`) | `ColNode`, `BindNode`, `LitNode`, `CastNode`, `FuncNode`, `JSONObjectNode`, `AggNode`, `CaseSearchedNode`, `CaseSimpleNode`, `SubqueryNode` |
+| `ScalarValue` (so also `Projection`) | `ColNode`, `BindNode`, `LitNode`, `CastNode`, `FuncNode`, `JSONObjectNode`, `AggNode`, `CaseSearchedNode`, `CaseSimpleNode`, `SubqueryNode` |
 | `SetValue` | `SetBindNode`, `SubqueryNode` |
 | `Projection` only | `AliasNode` |
-| no category | `JSONPairNode`, `*Select` |
+| none | `JSONPairNode`, `*Select` |
 
-`SubqueryNode` spans three categories — a scalar, set, and projected subquery are the same
-construct — and crossing between them still takes an explicit assertion, so it stays visible.
+`SubqueryNode` is the only node in three kinds, since a subquery can be a value, a set, or a result
+column.
 
-The two **no-category** entries matter. `JSONPairNode` is not an expression; keeping it out of every
-category confines it to `JSONObjectNode.Pairs` (otherwise a bare pair could be dropped into a
-projection list). `*Select` is discussed in rule 2.
+**Write one walk function per kind**, not one switch over `Node`. The type of the field you are
+reading tells you which function to call, so you never need an "is this a value or a test?" flag.
 
-### Sealed to construct, open to inspect
+**There is no boolean value.** A `Predicate` is not a `ScalarValue`, there is no boolean `CastType`,
+and `LitNode`/`BindNode` must not hold a `bool`. Some databases have no boolean type (e.g., Oracle
+before 23c). For a true/false result column, the caller writes a CASE.
 
-Every category interface carries an unexported marker method, so the node set is **closed**: you
-cannot add a kind — a construct the tree can't express is a change to this package, not a local
-workaround. Because it can't grow behind your back, your per-category type switch is **total**, and
-a `default` clause is unreachable for a well-formed tree — which is why panicking there is correct.
-Per-category switches are far smaller than one 24-way switch over `Node`, and each category's
-`default` is genuinely unreachable rather than a catch-all for mis-positioning.
-
-Every concrete type and field is exported, so you can walk the tree with no privileged access.
+Each kind interface has an unexported method, so only this package can add node types, and a switch
+per kind can list every case. Still panic in `default`: every type and field is exported, so a
+hand-built tree can hold anything.
 
 ## `Validate` checks what the types cannot
 
-`Node` has one method beyond its marker: `Validate() error`. Each node checks its own rules — arity,
-required fields, cross-field relationships, enum range — then recurses into its children, so **one
-call at your boundary validates the whole tree**:
+`Validate` checks each node's own rules (list lengths, required fields, rules across fields, enum
+ranges), then its children. One call on the statement checks the whole tree:
 
 ```go
 if err := stmt.Validate(); err != nil {
@@ -91,295 +62,244 @@ if err := stmt.Validate(); err != nil {
 }
 ```
 
-It returns the **first** violation and stops; fixing it reveals the next. Because only the first is
-reported, check order is deliberate: each node checks its own local rules before recursing in field
-order, surfacing the shallowest fault. The error carries the path it was found at:
+It returns the first problem only. Parents are checked before children, so that problem is usually
+the cause. The error starts with the path to the bad field:
 
 ```text
 Where: Parts[1]: Inner: Right: required field is nil
 ```
 
-Each error wraps one of six sentinels — `ErrMissing`, `ErrArity`, `ErrEnum`, `ErrCrossField`,
-`ErrValue`, `ErrAlias` — so you can branch on the *kind* with `errors.Is`. The path prefix is for
-humans.
+Each error wraps one sentinel (`ErrMissing`, `ErrArity`, `ErrEnum`, `ErrCrossField`, `ErrValue`,
+`ErrAlias`), so you can check its kind with `errors.Is`. The path is for people.
 
-So the rules below are no longer things you check by hand: you check them once, mechanically, and
-each rule tells you **what a violation means**. Keep a panicking `default` regardless — validation
-is a caller's choice, not a precondition the types enforce.
+`Validate` does **not** check alias scope (rule 9), whether your driver accepts a value (rule 15),
+or whether non-aggregated columns are in GROUP BY.
 
-Three things `Validate` deliberately does **not** check: **alias scope** (rule 8b — though it does
-catch a *duplicate* alias within one `Select`), **whether a bound value is encodable by your
-driver** (rule 14), and **grouping correctness**.
+Rules marked *(Validate)* below are checked for you; the rule says what a failure means. Calling
+`Validate` is optional, so keep a panicking `default` anyway.
 
-## Rules a walker must get right
+## Rules for a walker
 
 ### 1. Nodes are values, not pointers
 
-Every node satisfies its categories as a value — except `Select`, which satisfies `Node` as
-`*Select`. Switch on `ColNode`, never `*ColNode`: a pointer case compiles and silently never
-matches, falling through to your `default`.
+Switch on `ColNode`, never `*ColNode`. `query` never builds pointer nodes; the one exception is
+`*Select`. Because the methods have value receivers, a hand-built `*ColNode` still fits a slot and
+passes `Validate`, so it ends up in your `default`, which should panic.
 
-### 2. `*Select` is a `Node` but belongs to no category
+### 2. `*Select` is in no kind
 
-`ExistsNode.Stmt` and `SubqueryNode.Stmt` are typed concretely as `*Select`, so a bare statement
-never appears in an operand position. Your category walkers never see one — recurse into a subquery
-through your statement-level function.
+`ExistsNode.Stmt` and `SubqueryNode.Stmt` are typed `*Select`, so a statement never appears where a
+value or test is expected. Your per-kind functions never see one; handle a subquery with your
+statement function.
 
-### 3. Two classes of enum, both textless
+### 3. Enums: some are the same everywhere, some are not
 
-Every enum owes you a mapping. They divide by how much of it is yours to invent:
+- **Same on every SQL database**: `Op`, `LogicalOp`, `Quantifier`, `JoinType`, `SortDirection`. One
+  mapping can often serve several backends. `Ascending` is the zero value; most databases write
+  nothing for it. `JoinType` has only inner, left outer, and cross joins.
+- **Different between databases**: `Column`, `CastType`, `ScalarFunc`, `AggFunc`. Write these
+  yourself; for example, the text cast type has a different name on almost every database.
+  `AggFunc` has only `AggCount`.
 
-- **Convergent** — `Op`, `LogicalOp`, `Quantifier`, `JoinType`, `SortDirection`. Backends of a
-  family tend to agree, so a mapping is often shareable across adapters rather than written per
-  one. Caution: `Ascending` is the default and most targets emit *nothing* for it — guard against
-  emitting a stray separator.
-  `JoinType` holds only `JoinInner`, `JoinLeftOuter`, `JoinCross`; `RIGHT`/`FULL OUTER` are absent.
-- **Divergent** — `Column`, `CastType`, `ScalarFunc`, `AggFunc`. Write these yourself; a "text" cast
-  is named differently on nearly every engine. `AggFunc` holds only `AggCount` — collecting and
-  truth-valued aggregates were left out as non-portable.
+**`Column` is the easy one to get wrong.** It names a logical column, with no default stored
+column. If your table stores the subject as one `_user` string (`type:id` or `type:id#relation`),
+`ColSubjectID` means taking that string apart, not naming a column. Decide how you get every column.
 
-`Column` is the one that bites: it is a **logical** column with **no default physical mapping**.
-Under a layout packing the subject into a single `_user` value (`"type:id"` or `"type:id#relation"`),
-obtaining `ColSubjectID` means *decomposing* that value, not naming a field. State how every logical
-column is obtained.
-
-`CastType` carries **no boolean target** (a cast yields a `ScalarValue`; truth values are disjoint)
-and **no length/precision** — an adapter needing a size (Oracle `VARCHAR2`, `RAW`) must choose a
+`CastType` has no boolean target and no length or precision. If your database needs a size, pick a
 maximum and document it.
 
-Every divergent enum has a `String` method for **diagnostics only** — it must never reach output.
-`Column.String` returns `"ObjectType"`, not a stored field name.
+The `String` methods on these enums are for error messages only. Never write them into SQL:
+`Column.String` returns `"ObjectType"`, not a real column name.
 
-### 4. Prove exhaustiveness with the `Count` sentinels
+### 4. Use the `Count` values to cover every case
 
-Each divergent enum ends with a count member — `ColCount`, `TypeCount`, `FuncCount`, `AggCount_`
-(trailing underscore, since `AggCount` is the counting aggregate). These are **not enum members**;
-they let you prove coverage two ways:
+Each enum that differs between databases ends with a count value: `ColCount`, `TypeCount`,
+`FuncCount`, `AggCount_` (with an underscore, since `AggCount` is COUNT). It is not a real member.
+Use it in one of two ways:
 
-- *Table sized by the sentinel*: `[ColCount]func(alias string) string`, keyed by each `Col…`
-  constant, with an `init` assertion that no element is the zero value. Adding an enum member breaks
-  the literal at startup.
-- *Exhaustive switch with a panicking default*: cheaper, catches gaps at run time.
+- An array `[ColCount]func(alias string) string` keyed by each `Col…` constant, plus an `init` check
+  that no element is empty. A new column then fails at startup.
+- A switch over every member with a panicking `default`. Simpler, but a gap shows up only when that
+  case runs.
 
-Falling back to a zero value for an unmapped column is the **worst** failure available: a well-formed
-query that returns wrong rows.
+Never fall back to a default for an unknown column. The query still runs and returns wrong rows.
 
-Two caveats: a sentinel is **assignable** to the field it counts (`ColNode{Name: ColCount}`
-compiles), so it can reach your `default` — one more reason it should panic; `Validate` reports all
-four as `ErrEnum`, the only place this is caught. And the **position categories have no `Count`** —
-a category walker's exhaustiveness rests on the membership lists in the interface docs. A
-`Projection` walker handles `AliasNode` and `SubqueryNode`, then asserts the rest to `ScalarValue`;
-make that assertion fail loudly.
+A count value can still be assigned (`ColNode{Name: ColCount}` compiles), so it can reach your
+`default`; `Validate` reports it as `ErrEnum`. Node kinds have no count value, so for them, rely on
+the member lists above. A `Projection` walker handles `AliasNode` and `SubqueryNode`, then asserts
+the rest to `ScalarValue`; make that assertion panic if it fails.
 
-### 5. Arity is not typed, and it is PER-FUNCTION — *checked by `Validate`*
+### 5. List lengths *(Validate)*
 
-Nothing types *how many*. Several empty slices have no rendering — `WHERE ()`, `CASE END`, `IN ()` —
-so each is a malformed tree. `Validate` reports them as `ErrArity`.
+The types do not say how many elements a list needs. An empty list often has no SQL form (`WHERE ()`,
+`CASE END`, `IN ()`), so `Validate` reports it as `ErrArity`.
 
-| Field | Requirement |
+| Field | Needs |
 | --- | --- |
-| `LogicalNode.Parts` | ≥ 1 (a single part renders as its one operand) |
-| `InNode.Elems` | ≥ 1 — for "matches nothing", use `ConstPredNode{Value: false}` |
-| `CaseSearchedNode.Branches`, `CaseSimpleNode.Branches` | ≥ 1 |
-| `JSONObjectNode.Pairs` | ≥ 1 (the empty object is unportable) |
-| `FuncNode.Args` | **per `Fn`** — `Lower`/`Upper` take one, `Coalesce` one or more, `JSONArray` zero or more |
-| `AggNode.Args` | **per `Fn`** |
-| `SetBindNode.Elems` | **may be empty** — the one exception; rule 7 |
+| `LogicalNode.Parts` | 1 or more (one part is written as just that part) |
+| `InNode.Elems` | 1 or more; for "matches nothing", use `ConstPredNode{Value: false}` |
+| `CaseSearchedNode.Branches`, `CaseSimpleNode.Branches` | 1 or more |
+| `JSONObjectNode.Pairs` | 1 or more (an empty JSON object does not work everywhere) |
+| `FuncNode.Args` | depends on `Fn`: `Lower`/`Upper` 1, `Coalesce` 1 or more, `JSONArray` 0 or more |
+| `AggNode.Args` | depends on `Fn`: `AggCount` 0 or 1 |
+| `SetBindNode.Elems` | may be empty (rule 7) |
 
-The two per-function rows are the trap: an arity check keyed *above* the switch on `Fn` is wrong.
-For `AggCount`, empty `Args` means **count rows** (`COUNT(*)`) and one argument counts that
-expression — so the `*` rendering belongs *inside* the `AggCount` case, keyed on `len(Args) == 0`,
-never above the switch where a future aggregate would inherit a spurious `*`. `Validate` rejects a
-malformed tree but not a walker that mis-renders a valid one, so this stays yours.
-
-That the row-counting form is an *absent argument* rather than a flag is load-bearing: a backend
-that must push a filter into the aggregated expression can substitute a constant for the absent
-argument — a rewrite that would produce nonsense if the form were a fabricated `*` operand.
+For `AggCount`, no argument means `COUNT(*)`, and one argument counts that value. Write the `*` inside
+your `AggCount` case, not before the switch on `Fn`, or a future aggregate would get a `*` it should
+not have. Because `COUNT(*)` is an empty list rather than a `*` argument, a backend emulating a filter
+(rule 11) can put a constant in the empty place.
 
 ### 6. `SetBindNode.Elems` is `[]any`; `InNode.Elems` is `[]ScalarValue`
 
-Easy to conflate. Set elements are raw Go values to supply as parameters; `InNode` elements are
-subtrees to recurse into.
+Set elements are raw Go values to send as parameters. `InNode` elements are nodes to walk.
 
-### 7. `QuantifiedNode.Set` is a `SetValue` — `SetBindNode` or `SubqueryNode`
+### 7. `QuantifiedNode.Set` is a `SetBindNode` or a `SubqueryNode`
 
-Lowering a bound set is yours: one collection-valued parameter where supported, an expanded
-per-element form where not. If you expand, two cases must be explicit:
+You choose how to write a bound set: one array parameter where your database supports it, or one
+parameter per element. If you expand it, handle two cases:
 
-- **Empty set.** `All` is vacuously true, `Any` vacuously false — emit a `ConstPredNode` (rule 15);
-  most backends can't represent an empty set operand. Route it through the same helper as rule 15 so
-  the two agree.
-- **`OpEq` with `Any`** is a membership test, often expressible more directly. Other
-  operator/quantifier combinations become a disjunction (`Any`) or conjunction (`All`).
+- **Empty set.** `ALL` of an empty set is true, `ANY` is false. Write a `ConstPredNode` (rule 16);
+  most databases cannot write an empty set.
+- **`OpEq` with `Any`** is the same as IN. Other combinations become an OR (`Any`) or AND (`All`) of
+  comparisons.
 
-### 8. Nil-able fields are a closed list; everything else is required — *checked by `Validate`*
+### 8. Which fields may be nil *(Validate)*
 
-An interface-typed or pointer field is required **unless its doc says it is nil-able**. The complete
-nil-able set: `AggNode.Filter`, every `Else` (both CASE nodes), `JoinClause.On` (nil for
-`JoinCross`, required otherwise), `Select.Where`, `Select.Having`, `Select.Limit`, `Select.Offset`.
+An interface or pointer field is required unless listed here. The fields that can be nil: `AggNode.Filter`, `Else` on both CASE nodes, `JoinClause.On` (nil only for
+`JoinCross`), `Select.Where`, `Select.Having`, `Select.Limit`, `Select.Offset`. A nil required field
+is `ErrMissing`.
 
-Everything else must be populated, including `ExistsNode.Stmt`, `SubqueryNode.Stmt`,
-`AliasNode.Inner`, `CaseSimpleNode.Base`, and every operand of `CompareNode`, `LikeNode`,
-`BetweenNode`, `IsNullNode`. Getting a `Stmt` wrong costs a nil dereference rather than a clean
-panic — which is why `Validate` reports a nil `Stmt` as `ErrMissing`.
+`Where` and `Having` each hold one predicate, not a list. Several conditions are one `LogicalNode`.
 
-`Where` and `Having` are each a **single** predicate node, nil when absent — not a list to combine.
-Several conditions are composed into one `LogicalNode`, so the connective is in the tree. A nil check
-is the whole contract.
+An empty `Select.Columns` means all columns (`SELECT *`); an empty `Select.From` means no table.
 
-`Limit`/`Offset` are pointers **so "no limit" stays distinct from "limit zero"** — compare against
-nil, never test the pointed-to value for truthiness.
+`Limit` and `Offset` are pointers so that "no limit" is different from "limit 0". Check for nil, not
+for zero.
 
-### 8a. Relationships between fields, typed by nothing — *checked by `Validate`*
+### 9. Rules across fields *(Validate)*, and alias scope (not checked)
 
-- **`Having` without `GroupBy`** is legal ("over the whole result as one group").
-- **`AggNode.Distinct` requires an argument** — `COUNT(DISTINCT *)` is not a construct.
-- **`JoinClause.On` is required for every flavour but `JoinCross`, and forbidden for that one.** A
-  nil `On` with `JoinInner` is not an implicit cross join; dropping a condition changes which rows
-  return.
-- **No two of a `Select`'s tables may share an alias**, since a `ColNode` naming it is ambiguous.
+- `AggNode.Distinct` needs an argument: `COUNT(DISTINCT *)` does not exist.
+- `JoinClause.On` is required for every join except `JoinCross`, and not allowed for `JoinCross`. A
+  nil `On` on an inner join is not a cross join; dropping a condition changes which rows return.
+- Two tables in one `Select` must not share an alias, since a column naming it would be ambiguous.
 
-Each reports as `ErrCrossField`, except a missing `On`, which is `ErrMissing`.
+These are `ErrCrossField`, except a missing `On`, which is `ErrMissing`. `Having` without `GroupBy`
+is allowed (the whole result is one group).
 
-### 8b. Alias *scope* is still unchecked
+**Alias scope is not checked.** A `ColNode.Alias` should name a `Table` in its `Select`, or in an
+outer one for a correlated subquery. A node cannot see that. A wrong alias becomes SQL that looks
+fine and fails at the database. `Validate` only rejects an empty alias (`ErrAlias`) and a duplicate
+table alias. Quoting aliases and clashes between result-column names are your job.
 
-The one rule `Validate` can't take off your hands. A `ColNode.Alias` should name a `Table` in the
-`Select` it appears in (or an enclosing one, for a correlated subquery) — which a node validating its
-own subtree cannot see. An out-of-scope alias renders as a plausible qualified column and fails at
-the engine. What *is* checked: an **empty** alias on `ColNode`/`Table`/`AliasNode` (`ErrAlias`), and
-a **duplicate** table alias within one `Select` (`ErrCrossField`). Beyond emptiness, aliases are free
-strings — quoting and collision among output names are yours (rule 14's closing note).
+### 10. The two CASE forms are two node types
 
-### 9. The two conditional forms are two node types
+- `CaseSearchedNode`: each `When` is a test.
+- `CaseSimpleNode`: each `When` is a value, compared for equality with `Base` (never nil).
 
-Distinguished by node type, not by a nil `Base`:
+Branches are checked in order and the first match wins. `Else` may be nil.
 
-- `CaseSearchedNode` — each `When` is a full **predicate**.
-- `CaseSimpleNode` — each `When` is a **value**, compared for equality against `Base` (never nil).
+### 11. `AggNode.Filter` limits which rows the aggregate sees
 
-They are separate types because their `When` differs in *category*; one node could only type that
-slot as the union, putting the discrimination back on your walker. Both are `ScalarValue`s;
-branches evaluate in order, first match wins, `Else` is the nil-able fallback.
+If your database has no `FILTER` clause and you move the test into the counted value, a skipped row
+must become NULL, not some other value the aggregate would still count. `COUNT(*)` with a filter
+becomes `COUNT(CASE WHEN <filter> THEN 1 END)`.
 
-### 10. Some children are not in any category
+### 12. Some children are in no kind
 
-`OrderTerm`, `SearchedBranch`, `SimpleBranch`, `Table`, `JoinClause` are clause items — not nodes —
-and `JSONPairNode` is a `Node` in no category. A walk driven purely off the four categories never
-reaches them. Descend explicitly into `Select.From`/`Joins`/`OrderBy`, the two `…Branches`, and
-`JSONObjectNode.Pairs`.
+`OrderTerm`, `SearchedBranch`, `SimpleBranch`, `Table`, and `JoinClause` are parts of a clause, not
+nodes. `JSONPairNode` is a node in no kind. A walk that only follows the four kinds never reaches
+them, so walk `Select.From`/`Joins`/`OrderBy`, both CASE `Branches`, and `JSONObjectNode.Pairs`
+yourself. `JSONPairNode` keeps key and value together so you can write either ANSI `k VALUE v` or the
+flat `k, v` list MySQL and Postgres use.
 
-### 11. `Filter` restricts which rows reach an aggregate
+### 13. Parameter order is walk order
 
-`AggNode.Filter` narrows the aggregate's input; `Distinct` is an independent modifier. If your engine
-has no native `FILTER` and you push the condition into the aggregated expression, a filtered-out row
-must yield **NULL**, not a substitute the aggregate would still count. `COUNT(*)` becomes
-`COUNT(CASE WHEN <filter> THEN 1 END)`.
+With positional parameters, collect them in the order you write the SQL: clauses in output order,
+left to right. Walking out of order misnumbers every later parameter.
 
-### 12. `JSONPairNode` appears only under `JSONObjectNode.Pairs`
+### 14. `BindNode` and `LitNode` hold the same values
 
-The key/value pairing survives as a node rather than being flattened because backends consume it in
-different shapes: ANSI `k VALUE v`, Oracle `KEY k VALUE v`, MySQL and Postgres a flat `k, v` list.
+Both hold a raw Go value. `BindNode` asks you to send it as a parameter; `LitNode` asks you to write
+it into the SQL text. Inlining is only a preference (for plan caching or readable logs). Every
+`LitNode` value could be a parameter, so treating a `LitNode` as a `BindNode` is always correct.
 
-### 13. Parameter ordering is traversal order
+### 15. If you inline a value, escaping is yours
 
-If your backend identifies parameters *positionally*, the order of the flat parameter list you
-accumulate is fixed by your traversal — visit clauses in output order, left-to-right. Reordering for
-convenience silently misnumbers every subsequent parameter. Named parameters are immune.
+This is the security-critical part of a backend.
 
-### 14. `LitNode` is a request, not a capability — and escaping is yours
+- **Switch on the value's underlying kind (`reflect.Kind`), not its Go type.** A named type
+  (`type storeID string`) does not match `case string`, and an unquoted fallback lets SQL in.
+- **Some values have no inline form that works everywhere**, such as a timestamp. If you cannot write
+  a value exactly, bind it.
+- **A `bool` should never reach you**; a constant true/false is `ConstPredNode`.
 
-`LitNode.Value` and `BindNode.Value` hold the same thing: a raw Go value (`any`). A `BindNode` asks
-you to supply it out of band as a parameter; a `LitNode` asks you to write it directly into the
-query. That request is a preference (plan-cache behaviour, log readability), never a capability —
-**every value a `LitNode` can carry, a `BindNode` can too**, so if you cannot inline safely, treat a
-`LitNode` exactly as a `BindNode`. That is always correct.
+`Validate` rejects a `bool` or a node as a `LitNode`/`BindNode` value (`ErrValue`). It cannot tell
+whether your driver accepts a value: `BindNode{Value: someStruct}` passes `Validate` and fails only
+when the query runs. If you need that checked, check it where you bind.
 
-If you do inline, **escaping is yours and is the security-critical part of your adapter.** Three
-traps:
+Aliases are the only free-text identifiers (`Table.Alias`, `ColNode.Alias`, `AliasNode.Alias`).
+Quote them.
 
-- **Dispatch on the underlying kind, not the concrete type.** A named type (`type storeID string`)
-  is *not* `string` in a Go type switch; a `case string` arm misses it, and an unquoted fallback is
-  an injection hole.
-- **Not every value has a portable inline form.** A timestamp's spelling varies by engine; if you
-  cannot render a value faithfully, bind it.
-- **A `bool` should not reach you at all** — a constant truth value is `ConstPredNode`.
+### 16. `ConstPredNode` needs a spelling
 
-**On validation:** `Validate` rejects the two Go values the tree's own model excludes from a bound or
-inlined slot — a `bool` and an AST node (`ErrValue`) — for both `LitNode` and `BindNode`. What it
-**cannot** check is whether your driver can *encode* a value, because that is your driver's fact, not
-this package's: `BindNode{Value: someUnencodableStruct}` passes `Validate` and surfaces (if at all)
-as a driver error at execution. That residual gap is **the widest hole left in the tree** — the one
-place a tree that passes validation can still produce a query that runs and is wrong. If you want the
-guarantee, check the value at your bind boundary. (The inline path has a second line of defence: a
-`LitNode`'s value also runs through your escaping logic, which rejects what it cannot spell.)
+A constant true or false. Databases write it differently (e.g., Oracle has to write `1 = 1` and
+`1 = 0`). You also need it for the empty set in rule 7, so write one helper for both.
 
-The only caller-supplied strings anywhere in the tree are a table alias and an output alias
-(`AliasNode.Alias`); everything else is a closed enum.
+### 17. `LikeNode` means ANSI `LIKE`, which no database does by default
 
-### 15. `ConstPredNode` is the constant predicate, and you owe it a spelling
+A `LikeNode` is case-sensitive, and only `%` and `_` are special. Each database departs from that
+differently, so the same pattern can match different rows:
 
-Unconditionally true or false. It exists because no target spells a bare truth value the same way —
-Oracle renders the two as `1 = 1` and `1 = 0`. You need this rendering anyway for the empty-set
-lowering in rule 7, so decide it once and use it in both places.
+- **Case**: Postgres `LIKE` is case-sensitive. MySQL's depends on the column collation and is
+  usually case-insensitive. SQLite's is case-insensitive for ASCII.
+- **Backslash**: Postgres and MySQL treat `\` as an escape by default; SQLite does not.
 
-## Type erasure: there is no Go type to recover
+Write SQL that gives the ANSI meaning (e.g., Postgres `ESCAPE ''` turns off the backslash escape). If
+you cannot, return an error rather than writing a plain `LIKE`.
 
-The tree records no Go type for an expression. A builder may be generically typed, but that parameter
-is *phantom* — two expressions of different Go types produce identical nodes. This is why position is
-a category, not a phantom `bool`: a category is a fact the compiler checks and a walker reads.
+## The tree has no Go types
 
-What survives is narrower and per-node:
+`query` builds expressions with Go generics, but the type is gone in the tree: two expressions of
+different Go types give the same nodes. What you can still find:
 
-| Node | Recoverable | How |
+| Node | What you can find | How |
 | --- | --- | --- |
-| `BindNode`, `LitNode` | the **runtime** type of the value | `Value.(type)` — a real `string`, `int32`, `time.Time`, … |
+| `BindNode`, `LitNode` | the value's runtime type | `Value.(type)` |
 | `SetBindNode` | the same, per element | `Elems[i].(type)` |
-| `CastNode` | the requested **target** type | `Type` — a `CastType`, not a Go type |
-| `ColNode` | nothing | only the `Column` enum tag |
-| every node | its position **category** | the static type of the field it was reached through |
+| `CastNode` | the target type | `Type`, a `CastType` |
+| `ColNode` | nothing | only the `Column` enum |
+| any node | its kind | the type of the field you reached it through |
 
-Drive your walker off structure and position, never off inferred Go types. A *named* type reaches you
-as itself — `type storeID string` arrives as `storeID`, not `string` — so what you recover is what
-your driver will see.
+Walk by structure and kind, never by guessed Go types. A named type stays itself: `type storeID
+string` arrives as `storeID`, which is also what your driver sees.
 
-## Failure modes: distinguish the two
+## Two kinds of failure
 
-**Tree corruption** — an unknown node kind, an unmapped enum member, a `bool` or AST node in a
-`LitNode`/`BindNode`, a required field left nil, a slice below its minimum arity, a violated
-cross-field rule. None can happen for a well-formed tree, so reaching one is a programming error
-upstream: **panic**. Do not paper over it with a zero-value fallback (wrong rows) or by emitting the
-degenerate construct (`WHERE ()` is not a query). `Validate` turns most of this class into one error
-with a path, but keep the panicking `default`s — an unvalidated tree can still reach you.
+**A broken tree**: an unknown node type, an unmapped enum value, a `bool` or node as a value, a
+missing required field, a list that is too short, or a broken rule across fields. A correct builder
+never makes one, so this is a bug upstream: **panic**. Never fall back to a default (wrong rows) or
+write the broken SQL (`WHERE ()` is not a query). `Validate` turns most of these into one error with
+a path; keep the panicking `default`s for trees that skip it.
 
-**Legitimately unsupported construct** — valid input your backend cannot express: return a distinct
-error naming the construct so a caller can fall back. The tree is deliberately tightened to the
-intersection of what Postgres, MySQL, and SQLite render (`RIGHT`/`FULL OUTER JOIN`, `DISTINCT ON`,
-`NULLS FIRST`/`LAST`, ordered-input and collecting aggregates were *removed*, not left for each
-adapter to reject), so a shipped SQL backend should have little to reject. A backend further afield
-might still hit one: a bound-set expansion it cannot lower, or a `Filter` it cannot push inward.
-Silently dropping such a construct — ignoring a `Filter`, discarding a join condition — changes which
-rows return without saying so, and is the mistake to avoid.
+**A valid construct your database cannot write**: return an error that names the construct, so the
+caller can fall back. The tree only has what Postgres, MySQL, and SQLite can all write, so a backend
+for one of them should have little to reject. A backend for another database might hit some, such as
+a bound set it cannot expand or a `Filter` it cannot move inward. Never drop a construct silently:
+ignoring a `Filter` or a join condition changes which rows return without any error.
 
-`LitNode` is *not* on the unsupported list: bind the value instead and the query is unchanged.
+A `LitNode` is never unsupported: bind the value instead and the query means the same thing.
 
-The categories shorten this list — a projected predicate, a grouped predicate, a cast to boolean, a
-boolean literal, a projected bound set, and a quantified comparison whose set element type differs
-from the operand are all compile errors at the call site now, not failure modes you write code for.
+## Order of work
 
-## Recommended order of work
-
-1. **Map every `Column`.** The largest source of silently wrong results, with no default to inherit.
-2. **Map `CastType`, `ScalarFunc`, `AggFunc`**, with a coverage assertion driven by the `Count`
-   sentinels.
-3. **Walk `Select` clause by clause.** Traversal order fixes positional parameter numbering — settle
-   it first.
-4. **Write four node functions**, one per category, each with a panicking default. Not one function
-   over `Node` — that discards the position information the field types hand you.
-5. **Call `Validate` once**, at the boundary where a tree enters your adapter, before writing
-   defensive checks of your own — almost all become redundant.
-6. **Decide your unsupported-construct set** and return errors for it. This is a *different* set from
-   anything `Validate` reports.
-7. **Test both the query and the parameter list** — including parameter *order* (rule 13).
-8. **Test malformed trees too**, with hand-written struct literals, *without* your `Validate` call,
-   so you learn how your walker itself fails: you want a panic, not a rendered string. `ast`'s own
-   `validate_test.go` is a worked list of which literals violate which rule.
+1. **Map every `Column`.** This is the largest source of wrong results, and there is no default.
+2. **Map `CastType`, `ScalarFunc`, and `AggFunc`**, with a coverage check using the `Count` values.
+3. **Walk `Select` clause by clause.** Fix the walk order first, since it sets parameter numbers.
+4. **Write four node functions**, one per kind, each with a panicking `default`.
+5. **Call `Validate` once**, where a tree enters your backend, before writing checks of your own.
+   Most of them will not be needed.
+6. **Decide which constructs you do not support**, and return errors for them. This is a different
+   list from what `Validate` reports.
+7. **Test the SQL and the parameter list**, including parameter order (rule 13).
+8. **Test broken trees without calling `Validate`**, using hand-built struct literals, to see how
+   your walker fails: you want a panic, not SQL. `validate_test.go` has broken literals for each
+   rule.

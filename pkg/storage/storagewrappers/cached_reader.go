@@ -91,7 +91,7 @@ func NewCachedTupleReader(
 	return c
 }
 
-// Querier see [storage.RelationshipTupleReader].Querier. It delegates to the wrapped reader.
+// Querier see [storage.RelationshipTupleReader].Querier.
 func (c *CachedTupleReader) Querier(consistency openfgav1.ConsistencyPreference) adapter.Querier {
 	return c.delegate.Querier(consistency)
 }
