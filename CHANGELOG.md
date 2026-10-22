@@ -10,6 +10,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Added
 - Added a typed query AST and a `Querier` interface so backends can run queries as structured statements instead of hand-built SQL. This lays the groundwork for future SQL optimizations. [#3316](https://github.com/openfga/openfga/pull/3316)
   - **Breaking change:** This only applies if you use openfga as a library and implement a custom `RelationshipTupleReader`. The interface now has a `Querier` method which must be implemented (see `pkg/storage/adapter`). Returning `nil` is safe (especially for non-SQL datastores) but skips future SQL optimizations.
+- Implemented the `Querier` interface for SQLite. [#3322](https://github.com/openfga/openfga/pull/3322)
 
 ### Fixed
 - Fixed ListObjects returning `validation_error` with the message "Internal Server Error" instead of the condition evaluation error (e.g. a missing context parameter) when the ListObjects pipeline is enabled. [#3338](https://github.com/openfga/openfga/pull/3338)
