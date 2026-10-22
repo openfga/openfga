@@ -154,10 +154,9 @@ type TupleBackend interface {
 // RelationshipTupleReader is an interface that defines the set of
 // methods required to read relationship tuples from a data store.
 type RelationshipTupleReader interface {
-	// Querier returns a Querier bound to this backend for executing typed query.Statement
-	// values at the given consistency, or nil if the backend does not support the
-	// typed-AST query surface. A non-nil Querier promises the full surface
-	// (all-or-nothing).
+	// Querier returns an adapter.Querier bound to this backend for executing typed query.Statement
+	// values at the given consistency, or nil if the backend does not support the typed-AST query
+	// surface. A non-nil Querier must support the full surface.
 	Querier(consistency openfgav1.ConsistencyPreference) adapter.Querier
 
 	// Read the set of tuples associated with `store` and `tupleKey`, which may be nil or partially filled. If nil,
