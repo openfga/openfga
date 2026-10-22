@@ -247,7 +247,11 @@ func (l *listUsersQuery) ListUsers(
 	doneWithFoundUsersCh := make(chan struct{}, 1)
 	go func() {
 		for foundUser := range foundUsersCh {
-			foundUsersUnique[tuple.UserProtoToString(foundUser.user)] = foundUser
+			key := tuple.UserProtoToString(foundUser.user)
+			if existing, ok := foundUsersUnique[key]; ok && existing.relationshipStatus == HasRelationship {
+				continue
+			}
+			foundUsersUnique[key] = foundUser
 
 			if l.maxResults > 0 {
 				if uint32(len(foundUsersUnique)) >= l.maxResults {
@@ -798,6 +802,11 @@ func (l *listUsersQuery) expandExclusion(
 	baseFoundUsersMap := make(map[string]foundUser, 0)
 	for fu := range baseFoundUsersCh {
 		key := tuple.UserProtoToString(fu.user)
+		// A user may be reported by more than one path (e.g. a direct tuple and a userset tuple).
+		// If any path relates the user, a NoRelationship from another path must not override it.
+		if existing, ok := baseFoundUsersMap[key]; ok && existing.relationshipStatus == HasRelationship {
+			continue
+		}
 		baseFoundUsersMap[key] = fu
 	}
 
@@ -805,6 +814,9 @@ func (l *listUsersQuery) expandExclusion(
 
 	for fu := range subtractFoundUsersCh {
 		key := tuple.UserProtoToString(fu.user)
+		if existing, ok := subtractFoundUsersMap[key]; ok && existing.relationshipStatus == HasRelationship {
+			continue
+		}
 		subtractFoundUsersMap[key] = fu
 	}
 
