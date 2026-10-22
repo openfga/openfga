@@ -1,4 +1,3 @@
-// Package ast_test builds trees through exported types and package query, as an adapter would.
 package ast_test
 
 import (
@@ -10,13 +9,11 @@ import (
 	"github.com/openfga/openfga/pkg/storage/adapter/query"
 )
 
-// col is a valid ColNode used as filler wherever a test cares about some other field.
+// col and pred are valid filler nodes.
 func col() ast.ColNode { return ast.ColNode{Alias: "t", Name: ast.ColObjectID} }
 
-// pred is a valid Predicate, used the same way.
 func pred() ast.Predicate { return ast.ConstPredNode{Value: true} }
 
-// assertValid fails if a well-formed tree is rejected.
 func assertValid(t *testing.T, n ast.Node) {
 	t.Helper()
 	if err := n.Validate(); err != nil {
@@ -24,8 +21,6 @@ func assertValid(t *testing.T, n ast.Node) {
 	}
 }
 
-// assertInvalid fails unless the tree is rejected with the expected sentinel and a message
-// mentioning the field path.
 func assertInvalid(t *testing.T, n ast.Node, want error, path string) {
 	t.Helper()
 	err := n.Validate()
@@ -40,7 +35,6 @@ func assertInvalid(t *testing.T, n ast.Node, want error, path string) {
 	}
 }
 
-// TestBuilderProducesValidTrees checks that every statement package query can build validates clean.
 func TestBuilderProducesValidTrees(t *testing.T) {
 	a, b := query.NewTuple("a"), query.NewTuple("b")
 
@@ -58,7 +52,6 @@ func TestBuilderProducesValidTrees(t *testing.T) {
 			query.Eq(a.ObjectType(), query.Lit("document")),
 		)),
 
-		// A single-part LogicalNode is legal.
 		"where single-part and": query.Select(a.ObjectID()).From(a).
 			Where(query.And(query.Eq(a.Store(), query.Bind("s")))),
 
@@ -75,7 +68,6 @@ func TestBuilderProducesValidTrees(t *testing.T) {
 				query.BindAll([]string{"document", "folder"})),
 		),
 
-		// The empty bound set is a documented arity exception.
 		"quantified over empty bound set": query.Select(a.ObjectID()).From(a).Where(
 			query.Quantified(a.ObjectType(), ast.OpEq, ast.Any, query.BindAll([]string{})),
 		),
@@ -85,7 +77,6 @@ func TestBuilderProducesValidTrees(t *testing.T) {
 
 		"distinct": query.Select(a.ObjectID()).From(a).Distinct(),
 
-		// Having with no GroupBy is explicitly permitted.
 		"having without group by": query.Select(query.Count(query.Star)).From(a).
 			Having(query.Gt(query.Count(query.Star), query.Lit(int64(1)))),
 
@@ -106,10 +97,8 @@ func TestBuilderProducesValidTrees(t *testing.T) {
 
 		"json array": query.Select(query.JSONArray(a.ObjectID(), a.ObjectType())).From(a),
 
-		// The empty JSON array is legal.
 		"empty json array": query.Select(query.JSONArray()).From(a),
 
-		// A COUNT with FILTER and DISTINCT exercises the aggregate modifiers.
 		"count distinct filtered": query.Select(query.Count(a.SubjectID(),
 			query.AggDistinct,
 			query.AggFilter(query.Eq(a.ObjectType(), query.Lit("document"))),
@@ -150,7 +139,6 @@ func TestBuilderProducesValidTrees(t *testing.T) {
 	}
 }
 
-// TestRequiredFields covers the rule that an interface-typed field is required unless documented otherwise.
 func TestRequiredFields(t *testing.T) {
 	tests := []struct {
 		name string
@@ -191,21 +179,16 @@ func TestRequiredFields(t *testing.T) {
 	}
 }
 
-// TestNilStatementPointers checks a nil *Select is reported, not dereferenced: a typed nil pointer
-// inside an interface is not a nil interface.
 func TestNilStatementPointers(t *testing.T) {
 	assertInvalid(t, ast.ExistsNode{}, ast.ErrMissing, "Stmt")
 	assertInvalid(t, ast.SubqueryNode{}, ast.ErrMissing, "Stmt")
 
-	// Reached through a field rather than at the root.
 	assertInvalid(t, &ast.Select{
 		From:  []ast.Table{{Alias: "t"}},
 		Where: ast.ExistsNode{},
 	}, ast.ErrMissing, "Where: Stmt")
 }
 
-// TestArity covers the minimum-length rules the slice types cannot express: WHERE (), x IN (),
-// CASE END, COALESCE().
 func TestArity(t *testing.T) {
 	tests := []struct {
 		name string
@@ -227,8 +210,6 @@ func TestArity(t *testing.T) {
 	}
 }
 
-// TestPerFunctionArity covers the per-Fn argument-count rules: COALESCE one or more, LOWER/UPPER
-// exactly one, JSON_ARRAY any number including zero, COUNT zero (COUNT(*)) or one.
 func TestPerFunctionArity(t *testing.T) {
 	one := []ast.ScalarValue{col()}
 	two := []ast.ScalarValue{col(), col()}
@@ -238,7 +219,7 @@ func TestPerFunctionArity(t *testing.T) {
 			ast.FuncNode{Fn: ast.FuncCoalesce, Args: one},
 			ast.FuncNode{Fn: ast.FuncCoalesce, Args: two},
 			ast.FuncNode{Fn: ast.FuncLower, Args: one},
-			ast.FuncNode{Fn: ast.FuncJSONArray}, // the one empty-argument function.
+			ast.FuncNode{Fn: ast.FuncJSONArray},
 			ast.FuncNode{Fn: ast.FuncJSONArray, Args: two},
 			ast.AggNode{Fn: ast.AggCount},            // COUNT(*).
 			ast.AggNode{Fn: ast.AggCount, Args: one}, // COUNT(x).
@@ -258,8 +239,6 @@ func TestPerFunctionArity(t *testing.T) {
 	})
 }
 
-// TestCrossFieldRules covers rules between fields that are each individually well-formed, e.g.
-// COUNT(DISTINCT *) is malformed though each field alone looks fine.
 func TestCrossFieldRules(t *testing.T) {
 	t.Run("count distinct star", func(t *testing.T) {
 		assertInvalid(t, ast.AggNode{Fn: ast.AggCount, Distinct: true},
@@ -287,7 +266,6 @@ func TestCrossFieldRules(t *testing.T) {
 			From: []ast.Table{{Alias: "a"}, {Alias: "a"}},
 		}, ast.ErrCrossField, `"a"`)
 
-		// Also across the FROM list and the joins.
 		assertInvalid(t, &ast.Select{
 			From: []ast.Table{{Alias: "a"}},
 			Joins: []ast.JoinClause{
@@ -297,7 +275,6 @@ func TestCrossFieldRules(t *testing.T) {
 	})
 }
 
-// TestEnumRanges checks that out-of-range enum values, including the Count sentinels, are rejected.
 func TestEnumRanges(t *testing.T) {
 	tests := []struct {
 		name string
@@ -322,10 +299,8 @@ func TestEnumRanges(t *testing.T) {
 	}
 }
 
-// TestValueRules covers what a bound or inlined slot may hold: a bool is rejected (truth values are
-// the Predicate category) and an AST node in a value slot is rejected.
 func TestValueRules(t *testing.T) {
-	type flag bool // a named bool, which a concrete-type check would miss.
+	type flag bool
 
 	t.Run("valid", func(t *testing.T) {
 		for _, n := range []ast.Node{
@@ -333,7 +308,7 @@ func TestValueRules(t *testing.T) {
 			ast.BindNode{Value: int64(1)},
 			ast.BindNode{Value: nil}, // a bound NULL.
 			ast.LitNode{Value: 1.5},
-			ast.SetBindNode{}, // the arity exception.
+			ast.SetBindNode{},
 			ast.SetBindNode{Elems: []any{"a", int64(2)}},
 		} {
 			assertValid(t, n)
@@ -357,14 +332,12 @@ func TestValueRules(t *testing.T) {
 	})
 }
 
-// TestAliasRules checks that only emptiness is validated; character set and quoting belong to the renderer.
 func TestAliasRules(t *testing.T) {
 	assertInvalid(t, ast.ColNode{Name: ast.ColObjectID}, ast.ErrAlias, "Alias")
 	assertInvalid(t, ast.AliasNode{Inner: col()}, ast.ErrAlias, "Alias")
 	assertInvalid(t, &ast.Select{From: []ast.Table{{}}}, ast.ErrAlias, "From[0]: Alias")
 }
 
-// TestReportsOneViolation checks fail-fast: a tree with four independent faults yields one finding.
 func TestReportsOneViolation(t *testing.T) {
 	bad := &ast.Select{
 		Columns: []ast.Projection{ast.AliasNode{Alias: "x"}}, // Inner nil.
@@ -385,11 +358,9 @@ func TestReportsOneViolation(t *testing.T) {
 	}
 }
 
-// TestChecksInOrder pins the order Validate reaches faults: local rules before children, and among
-// local rules the quietly-wrong ones before the loud ones. Each fixture carries more than one fault.
+// TestChecksInOrder checks that a node's own rules are reported before its children's.
 func TestChecksInOrder(t *testing.T) {
 	t.Run("select reports its cross-field rules before any clause", func(t *testing.T) {
-		// A duplicate alias silently returns wrong rows, so it is reached before the clause's nil operand.
 		assertInvalid(t, &ast.Select{
 			From:  []ast.Table{{Alias: "a"}, {Alias: "a"}},
 			Where: ast.NotNode{},
@@ -405,20 +376,18 @@ func TestChecksInOrder(t *testing.T) {
 	})
 
 	t.Run("a bad Fn is reported before the arity it makes meaningless", func(t *testing.T) {
-		// FuncCount is a sentinel, not a function, so an arity verdict would be meaningless.
 		assertInvalid(t, ast.FuncNode{Fn: ast.FuncCount}, ast.ErrEnum, "Fn")
 		assertInvalid(t, ast.AggNode{Fn: ast.AggCount_}, ast.ErrEnum, "Fn")
 	})
 
 	t.Run("a node reports its first bad element, not its last", func(t *testing.T) {
 		assertInvalid(t, ast.LogicalNode{Op: ast.Or, Parts: []ast.Predicate{
-			ast.NotNode{},                            // fault one.
-			ast.CompareNode{Op: ast.OpEq, Left: nil}, // fault two.
+			ast.NotNode{},
+			ast.CompareNode{Op: ast.OpEq, Left: nil},
 		}}, ast.ErrMissing, "Parts[0]: Inner")
 	})
 }
 
-// TestNestedErrorPathIsBuiltUp checks that the path prefix accumulates as the recursion returns.
 func TestNestedErrorPathIsBuiltUp(t *testing.T) {
 	deep := &ast.Select{
 		From: []ast.Table{{Alias: "a"}},
@@ -434,12 +403,10 @@ func TestNestedErrorPathIsBuiltUp(t *testing.T) {
 	}
 }
 
-// TestFindingIsFullyQualified checks the path is complete from the root, not just the frame the
-// fault was found in.
 func TestFindingIsFullyQualified(t *testing.T) {
 	two := &ast.Select{
 		From:  []ast.Table{{Alias: "a"}},
-		Where: ast.NotNode{Inner: ast.CompareNode{Op: ast.OpEq}}, // BOTH operands nil.
+		Where: ast.NotNode{Inner: ast.CompareNode{Op: ast.OpEq}}, // both operands nil.
 	}
 
 	err := two.Validate()
@@ -452,7 +419,6 @@ func TestFindingIsFullyQualified(t *testing.T) {
 	}
 }
 
-// TestValidateRecursesThroughSubqueries checks one call at the root reaches every nested statement.
 func TestValidateRecursesThroughSubqueries(t *testing.T) {
 	inner := &ast.Select{From: []ast.Table{{Alias: "b"}}, Where: ast.NotNode{}} // Inner nil.
 
@@ -481,7 +447,6 @@ func TestValidateRecursesThroughSubqueries(t *testing.T) {
 	})
 }
 
-// TestZeroSelectIsValid checks an empty statement is valid: both an empty From and empty Columns are allowed.
 func TestZeroSelectIsValid(t *testing.T) {
 	assertValid(t, &ast.Select{})
 }
