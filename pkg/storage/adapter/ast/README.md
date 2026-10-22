@@ -1,9 +1,9 @@
 # Walking the query AST
 
 This package holds a SELECT query as a tree of plain Go structs. Package `query` builds the tree; a
-backend walks it and writes SQL for its own database. This file is for someone writing that walker.
-The package doc in `ast.go` explains the types; this file lists the mistakes a walker can make and
-the order to do the work in.
+backend walks it and writes SQL for its own database. This file is for someone writing that walker:
+the mistakes a walker can make, and the order to do the work in. The type docs in `ast.go` cover
+each node.
 
 The tree holds no SQL text. Every operator, column, cast type, function, and aggregate is an enum
 with no spelling, and values are raw Go values. Writing the SQL, and escaping it, is your job.
@@ -82,8 +82,9 @@ Rules marked *(Validate)* below are checked for you; the rule says what a failur
 
 ### 1. Nodes are values, not pointers
 
-Switch on `ColNode`, never `*ColNode`. A pointer case compiles but never matches. The one exception
-is `*Select`.
+Switch on `ColNode`, never `*ColNode`. `query` never builds pointer nodes; the one exception is
+`*Select`. Because the methods have value receivers, a hand-built `*ColNode` still fits a slot and
+passes `Validate`, so it ends up in your `default`, which should panic.
 
 ### 2. `*Select` is in no kind
 
@@ -94,9 +95,8 @@ statement function.
 ### 3. Enums: some are the same everywhere, some are not
 
 - **Same on every SQL database**: `Op`, `LogicalOp`, `Quantifier`, `JoinType`, `SortDirection`. One
-  mapping can often serve several backends. `Ascending` is the default and most databases write
-  nothing for it, so do not write a stray space or comma. `JoinType` has only inner, left outer, and
-  cross joins.
+  mapping can often serve several backends. `Ascending` is the zero value; most databases write
+  nothing for it. `JoinType` has only inner, left outer, and cross joins.
 - **Different between databases**: `Column`, `CastType`, `ScalarFunc`, `AggFunc`. Write these
   yourself; for example, the text cast type has a different name on almost every database.
   `AggFunc` has only `AggCount`.
@@ -146,10 +146,8 @@ The types do not say how many elements a list needs. An empty list often has no 
 
 For `AggCount`, no argument means `COUNT(*)`, and one argument counts that value. Write the `*` inside
 your `AggCount` case, not before the switch on `Fn`, or a future aggregate would get a `*` it should
-not have. `Validate` cannot catch a walker that writes a valid tree wrongly.
-
-The `COUNT(*)` form is an empty list, not a `*` argument. So a backend that has to move a filter into
-the counted value (rule 11) can put a constant in the empty place.
+not have. Because `COUNT(*)` is an empty list rather than a `*` argument, a backend emulating a filter
+(rule 11) can put a constant in the empty place.
 
 ### 6. `SetBindNode.Elems` is `[]any`; `InNode.Elems` is `[]ScalarValue`
 
@@ -167,12 +165,13 @@ parameter per element. If you expand it, handle two cases:
 
 ### 8. Which fields may be nil *(Validate)*
 
-An interface or pointer field is required unless its doc says it can be nil. The full list of fields
-that can be nil: `AggNode.Filter`, `Else` on both CASE nodes, `JoinClause.On` (nil only for
+An interface or pointer field is required unless listed here. The fields that can be nil: `AggNode.Filter`, `Else` on both CASE nodes, `JoinClause.On` (nil only for
 `JoinCross`), `Select.Where`, `Select.Having`, `Select.Limit`, `Select.Offset`. A nil required field
 is `ErrMissing`.
 
 `Where` and `Having` each hold one predicate, not a list. Several conditions are one `LogicalNode`.
+
+An empty `Select.Columns` means all columns (`SELECT *`); an empty `Select.From` means no table.
 
 `Limit` and `Offset` are pointers so that "no limit" is different from "limit 0". Check for nil, not
 for zero.
@@ -210,16 +209,13 @@ becomes `COUNT(CASE WHEN <filter> THEN 1 END)`.
 `OrderTerm`, `SearchedBranch`, `SimpleBranch`, `Table`, and `JoinClause` are parts of a clause, not
 nodes. `JSONPairNode` is a node in no kind. A walk that only follows the four kinds never reaches
 them, so walk `Select.From`/`Joins`/`OrderBy`, both CASE `Branches`, and `JSONObjectNode.Pairs`
-yourself.
-
-`JSONPairNode` keeps each key and value together because databases want different shapes: ANSI
-`k VALUE v`, but a flat `k, v` list on MySQL and Postgres.
+yourself. `JSONPairNode` keeps key and value together so you can write either ANSI `k VALUE v` or the
+flat `k, v` list MySQL and Postgres use.
 
 ### 13. Parameter order is walk order
 
-If your database numbers parameters by position, the order you collect them in is the order you walk.
-Walk clauses in the order you write them, left to right. Walking out of order gives every later
-parameter the wrong number. Named parameters do not have this problem.
+With positional parameters, collect them in the order you write the SQL: clauses in output order,
+left to right. Walking out of order misnumbers every later parameter.
 
 ### 14. `BindNode` and `LitNode` hold the same values
 
@@ -241,12 +237,25 @@ This is the security-critical part of a backend.
 whether your driver accepts a value: `BindNode{Value: someStruct}` passes `Validate` and fails only
 when the query runs. If you need that checked, check it where you bind.
 
-The only free text in the tree is a table alias and a result-column alias (`AliasNode.Alias`).
+Aliases are the only free-text identifiers (`Table.Alias`, `ColNode.Alias`, `AliasNode.Alias`).
+Quote them.
 
 ### 16. `ConstPredNode` needs a spelling
 
 A constant true or false. Databases write it differently (e.g., Oracle has to write `1 = 1` and
 `1 = 0`). You also need it for the empty set in rule 7, so write one helper for both.
+
+### 17. `LikeNode` means ANSI `LIKE`, which no database does by default
+
+A `LikeNode` is case-sensitive, and only `%` and `_` are special. Each database departs from that
+differently, so the same pattern can match different rows:
+
+- **Case**: Postgres `LIKE` is case-sensitive. MySQL's depends on the column collation and is
+  usually case-insensitive. SQLite's is case-insensitive for ASCII.
+- **Backslash**: Postgres and MySQL treat `\` as an escape by default; SQLite does not.
+
+Write SQL that gives the ANSI meaning (e.g., Postgres `ESCAPE ''` turns off the backslash escape). If
+you cannot, return an error rather than writing a plain `LIKE`.
 
 ## The tree has no Go types
 
@@ -292,5 +301,5 @@ A `LitNode` is never unsupported: bind the value instead and the query means the
    list from what `Validate` reports.
 7. **Test the SQL and the parameter list**, including parameter order (rule 13).
 8. **Test broken trees without calling `Validate`**, using hand-built struct literals, to see how
-   your walker fails: you want a panic, not SQL. `validate_test.go` lists which literals break which
+   your walker fails: you want a panic, not SQL. `validate_test.go` has broken literals for each
    rule.

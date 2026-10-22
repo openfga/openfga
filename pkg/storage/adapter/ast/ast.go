@@ -248,7 +248,7 @@ type CompareNode struct {
 	Left, Right ScalarValue
 }
 
-// LikeNode is "Left LIKE Pattern". There is no ESCAPE, so % and _ in Pattern are always wildcards.
+// LikeNode is "Left LIKE Pattern", case-sensitive, with only % and _ special. See README rule 17.
 type LikeNode struct {
 	Left, Pattern ScalarValue
 }
