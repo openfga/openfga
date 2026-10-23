@@ -92,6 +92,9 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 		util.MustBindPFlag("authn.oidc.clientIdClaims", flags.Lookup("authn-oidc-client-id-claims"))
 		util.MustBindEnv("authn.oidc.clientIdClaims", "OPENFGA_AUTHN_OIDC_CLIENT_ID_CLAIMS")
 
+		util.MustBindPFlag("authn.oidc.validSigningAlgorithms", flags.Lookup("authn-oidc-valid-signing-algorithms"))
+		util.MustBindEnv("authn.oidc.validSigningAlgorithms", "OPENFGA_AUTHN_OIDC_VALID_SIGNING_ALGORITHMS")
+
 		util.MustBindPFlag("datastore.engine", flags.Lookup("datastore-engine"))
 		util.MustBindEnv("datastore.engine", "OPENFGA_DATASTORE_ENGINE")
 
