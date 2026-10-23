@@ -2,6 +2,8 @@ package oidc
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/base64"
@@ -476,7 +478,7 @@ func TestNewRemoteOidcAuthenticator_RequiresIssuerAndAudience(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := NewRemoteOidcAuthenticator(tc.issuer, nil, tc.audience, nil, nil)
+			_, err := NewRemoteOidcAuthenticator(tc.issuer, nil, tc.audience, nil, nil, nil)
 			require.ErrorIs(t, err, tc.expectedErr)
 		})
 	}
@@ -486,7 +488,7 @@ func TestNewRemoteOidcAuthenticator_RequiresIssuerAndAudience(t *testing.T) {
 		t.Cleanup(func() { fetchJWKs = orig })
 		_, publicKey := generateJWTSignatureKeys()
 		fetchJWKs = fetchKeysMock(publicKey, "kid_1")
-		_, err := NewRemoteOidcAuthenticator("https://issuer.example.com", nil, "some-audience", nil, nil)
+		_, err := NewRemoteOidcAuthenticator("https://issuer.example.com", nil, "some-audience", nil, nil, nil)
 		require.NoError(t, err)
 	})
 
@@ -496,7 +498,7 @@ func TestNewRemoteOidcAuthenticator_RequiresIssuerAndAudience(t *testing.T) {
 		t.Cleanup(func() { fetchJWKs = orig })
 		_, publicKey := generateJWTSignatureKeys()
 		fetchJWKs = fetchKeysMock(publicKey, "kid_1")
-		_, err := NewRemoteOidcAuthenticator("   ", nil, "some-audience", nil, nil)
+		_, err := NewRemoteOidcAuthenticator("   ", nil, "some-audience", nil, nil, nil)
 		require.NoError(t, err)
 	})
 
@@ -505,21 +507,22 @@ func TestNewRemoteOidcAuthenticator_RequiresIssuerAndAudience(t *testing.T) {
 		t.Cleanup(func() { fetchJWKs = orig })
 		_, publicKey := generateJWTSignatureKeys()
 		fetchJWKs = fetchKeysMock(publicKey, "kid_1")
-		_, err := NewRemoteOidcAuthenticator("https://issuer.example.com", nil, "   ", nil, nil)
+		_, err := NewRemoteOidcAuthenticator("https://issuer.example.com", nil, "   ", nil, nil, nil)
 		require.NoError(t, err)
 	})
 }
 
 type Config struct {
-	jwkKid             string
-	jwtKid             string
-	issuerURL          string
-	audience           string
-	issuerAliases      []string
-	subjects           []string
-	clientIDClaims     []string
-	jwtClaims          jwt.MapClaims
-	privateKeyOverride *rsa.PrivateKey
+	jwkKid                 string
+	jwtKid                 string
+	issuerURL              string
+	audience               string
+	issuerAliases          []string
+	subjects               []string
+	clientIDClaims         []string
+	validSigningAlgorithms []string
+	jwtClaims              jwt.MapClaims
+	privateKeyOverride     *rsa.PrivateKey
 }
 
 // quickConfigSetup sets up a basic configuration for testing purposes.
@@ -533,7 +536,7 @@ func quickConfigSetup(c Config) (*RemoteOidcAuthenticator, context.Context, Conf
 	fetchJWKs = fetchKeysMock(publicKey, c.jwkKid)
 
 	// Initialize RemoteOidcAuthenticator
-	oidc, err := NewRemoteOidcAuthenticator(c.issuerURL, c.issuerAliases, c.audience, c.subjects, c.clientIDClaims)
+	oidc, err := NewRemoteOidcAuthenticator(c.issuerURL, c.issuerAliases, c.audience, c.subjects, c.clientIDClaims, c.validSigningAlgorithms)
 	if err != nil {
 		return nil, nil, c, err
 	}
@@ -601,7 +604,7 @@ func TestRemoteOidcAuthenticator_RefreshUnknownKID(t *testing.T) {
 	server := newJWKSTestServer(map[string]*rsa.PublicKey{"kid_1": pubKey1})
 	defer server.close()
 
-	oidc, err := NewRemoteOidcAuthenticator(server.server.URL, nil, "aud", nil, nil)
+	oidc, err := NewRemoteOidcAuthenticator(server.server.URL, nil, "aud", nil, nil, nil)
 	require.NoError(t, err)
 	defer oidc.Close()
 
@@ -654,7 +657,7 @@ func TestRemoteOidcAuthenticator_RefreshRateLimit(t *testing.T) {
 	server := newJWKSTestServer(map[string]*rsa.PublicKey{"kid_1": pubKey1})
 	defer server.close()
 
-	oidc, err := NewRemoteOidcAuthenticator(server.server.URL, nil, "aud", nil, nil)
+	oidc, err := NewRemoteOidcAuthenticator(server.server.URL, nil, "aud", nil, nil, nil)
 	require.NoError(t, err)
 	defer oidc.Close()
 
@@ -764,4 +767,79 @@ func withRealFetchJWK(t *testing.T) {
 	prev := fetchJWKs
 	fetchJWKs = fetchJWK
 	t.Cleanup(func() { fetchJWKs = prev })
+}
+
+func TestNewRemoteOidcAuthenticator_ValidSigningAlgorithms(t *testing.T) {
+	orig := fetchJWKs
+	t.Cleanup(func() { fetchJWKs = orig })
+	_, publicKey := generateJWTSignatureKeys()
+	fetchJWKs = fetchKeysMock(publicKey, "kid_1")
+
+	t.Run("defaults_to_RS256", func(t *testing.T) {
+		oidc, err := NewRemoteOidcAuthenticator("https://issuer.example.com", nil, "aud", nil, nil, nil)
+		require.NoError(t, err)
+		require.Equal(t, []string{"RS256"}, oidc.ValidSigningAlgorithms)
+	})
+
+	t.Run("accepts_supported_algorithms", func(t *testing.T) {
+		oidc, err := NewRemoteOidcAuthenticator("https://issuer.example.com", nil, "aud", nil, nil, []string{"ES256", "RS256"})
+		require.NoError(t, err)
+		require.Equal(t, []string{"ES256", "RS256"}, oidc.ValidSigningAlgorithms)
+	})
+
+	for _, alg := range []string{"none", "HS256", "rs256", "unknown"} {
+		t.Run("rejects_"+alg, func(t *testing.T) {
+			_, err := NewRemoteOidcAuthenticator("https://issuer.example.com", nil, "aud", nil, nil, []string{alg})
+			require.ErrorContains(t, err, "unsupported signing algorithm")
+		})
+	}
+}
+
+func TestRemoteOidcAuthenticator_Authenticate_ES256(t *testing.T) {
+	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+
+	claims := jwt.MapClaims{
+		"iss": "right_issuer",
+		"aud": "right_audience",
+		"sub": "openfga client",
+		"exp": time.Now().Add(10 * time.Minute).Unix(),
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodES256, claims)
+	token.Header["kid"] = "kid_1"
+	signed, err := token.SignedString(privateKey)
+	require.NoError(t, err)
+
+	orig := fetchJWKs
+	t.Cleanup(func() { fetchJWKs = orig })
+	fetchJWKs = func(oidc *RemoteOidcAuthenticator) error {
+		oidc.JWKs = keyfunc.NewGiven(map[string]keyfunc.GivenKey{
+			"kid_1": keyfunc.NewGivenECDSA(&privateKey.PublicKey, keyfunc.GivenKeyOptions{Algorithm: "ES256"}),
+		})
+		return nil
+	}
+
+	t.Run("rejected_by_default", func(t *testing.T) {
+		oidc, err := NewRemoteOidcAuthenticator("right_issuer", nil, "right_audience", nil, nil, nil)
+		require.NoError(t, err)
+		_, err = oidc.Authenticate(generateContext(signed))
+		require.ErrorContains(t, err, "invalid claims")
+	})
+
+	t.Run("accepted_when_configured", func(t *testing.T) {
+		oidc, err := NewRemoteOidcAuthenticator("right_issuer", nil, "right_audience", nil, nil, []string{"ES256"})
+		require.NoError(t, err)
+		principal, err := oidc.Authenticate(generateContext(signed))
+		require.NoError(t, err)
+		require.Equal(t, "openfga client", principal.Subject)
+	})
+
+	t.Run("rs256_tokens_rejected_when_only_ES256_configured", func(t *testing.T) {
+		rsaKey, _ := generateJWTSignatureKeys()
+		rsToken := generateJWT(rsaKey, "kid_1", claims)
+		oidc, err := NewRemoteOidcAuthenticator("right_issuer", nil, "right_audience", nil, nil, []string{"ES256"})
+		require.NoError(t, err)
+		_, err = oidc.Authenticate(generateContext(rsToken))
+		require.ErrorContains(t, err, "invalid claims")
+	})
 }
