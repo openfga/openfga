@@ -228,6 +228,8 @@ type AuthnOIDCConfig struct {
 	Subjects       []string
 	Audience       string
 	ClientIDClaims []string
+	// ValidSigningAlgorithms are the JWT signing algorithms accepted for tokens. Defaults to RS256.
+	ValidSigningAlgorithms []string
 }
 
 // AuthnPresharedKeyConfig defines configurations for the 'preshared' method of authentication.
