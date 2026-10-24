@@ -1050,3 +1050,28 @@ func TestListUsersBreakingChangeLog(t *testing.T) {
 		})
 	}
 }
+
+func TestListUsers_ContextualTupleLimit(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	testServer := &Server{maxContextualTuples: 2}
+
+	_, err := testServer.ListUsers(ctx, &openfgav1.ListUsersRequest{
+		StoreId:  "01K3RZVNE3NJ4FYKK99QN013G2",
+		Object:   &openfgav1.Object{Type: "document", Id: "1"},
+		Relation: "viewer",
+		UserFilters: []*openfgav1.UserTypeFilter{
+			{Type: "user"},
+		},
+		ContextualTuples: []*openfgav1.TupleKey{
+			tuple.NewTupleKey("document:1", "viewer", "user:bob"),
+			tuple.NewTupleKey("document:1", "viewer", "user:carol"),
+			tuple.NewTupleKey("document:1", "viewer", "user:dave"),
+		},
+	})
+
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+	require.Contains(t, status.Convert(err).Message(), "exceeds server limit")
+}
+

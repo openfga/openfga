@@ -11,6 +11,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestDefaultConfig_PassesValidation(t *testing.T) {
+	cfg := DefaultConfig()
+	require.NoError(t, cfg.Verify(), "DefaultConfig() must pass all validation checks")
+}
+
 func TestVerifyConfig(t *testing.T) {
 	t.Run("UpstreamTimeout_cannot_be_less_than_ListObjectsDeadline", func(t *testing.T) {
 		cfg := DefaultConfig()
@@ -46,6 +51,22 @@ func TestVerifyConfig(t *testing.T) {
 
 		err := cfg.Verify()
 		require.EqualError(t, err, "config 'grpc.maxRecvMsgBytes' must be greater than 0")
+	})
+
+	t.Run("maxContextualTuples_zero_is_invalid", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.MaxContextualTuples = 0
+
+		err := cfg.Verify()
+		require.EqualError(t, err, "'maxContextualTuples' must be greater than zero")
+	})
+
+	t.Run("maxContextualTuples_positive_is_valid", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.MaxContextualTuples = 50
+
+		err := cfg.Verify()
+		require.NoError(t, err)
 	})
 
 	t.Run("failing_to_set_http_cert_path_will_not_allow_server_to_start", func(t *testing.T) {
