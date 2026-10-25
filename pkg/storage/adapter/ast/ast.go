@@ -101,6 +101,8 @@ const (
 	ColSubjectID
 	// ColSubjectRelation is e.g., `member` in `group:eng#member`.
 	ColSubjectRelation
+	// ColSubjectKind is "userset" when (SubjectRelation != "" || SubjectID = "*"), else "user".
+	ColSubjectKind
 
 	ColStore
 
@@ -126,6 +128,8 @@ func (c Column) String() string {
 		return "SubjectID"
 	case ColSubjectRelation:
 		return "SubjectRelation"
+	case ColSubjectKind:
+		return "SubjectKind"
 	case ColStore:
 		return "Store"
 	case ColCondition:

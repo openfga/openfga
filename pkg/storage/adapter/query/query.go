@@ -394,6 +394,9 @@ func (t Tuple) SubjectID() Expr[string]   { return t.str(ast.ColSubjectID) }
 // `user:*`, so empty does not imply a non-userset subject.
 func (t Tuple) SubjectRelation() Expr[string] { return t.str(ast.ColSubjectRelation) }
 
+// SubjectKind is "userset" for usersets and wildcards, else "user" (see tuple.GetUserTypeFromUser).
+func (t Tuple) SubjectKind() Expr[string] { return t.str(ast.ColSubjectKind) }
+
 func (t Tuple) Store() Expr[string] { return t.str(ast.ColStore) }
 
 func (t Tuple) Condition() Expr[string] { return t.str(ast.ColCondition) }
