@@ -159,7 +159,7 @@ func TestMergePropertiesToContext(t *testing.T) {
 		require.InDelta(t, float64(1000), resultMap["action_max_size"], 0.001)
 	})
 
-	t.Run("request_context_takes_precedence", func(t *testing.T) {
+	t.Run("rejects_request_context_conflicting_with_properties", func(t *testing.T) {
 		subjectProps, err := structpb.NewStruct(map[string]interface{}{
 			"department": "engineering",
 		})
@@ -178,12 +178,8 @@ func TestMergePropertiesToContext(t *testing.T) {
 		require.NoError(t, err)
 
 		result, err := mergePropertiesToContext(requestContext, subject, nil, nil)
-		require.NoError(t, err)
-		require.NotNil(t, result)
-
-		resultMap := result.AsMap()
-		require.Equal(t, "overridden_value", resultMap["subject_department"])
-		require.Equal(t, "custom_value", resultMap["custom_field"])
+		require.ErrorContains(t, err, "subject_department")
+		require.Nil(t, result)
 	})
 
 	t.Run("merges_all_sources_with_correct_precedence", func(t *testing.T) {
