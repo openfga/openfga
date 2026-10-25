@@ -285,6 +285,32 @@ func TestEvaluation(t *testing.T) {
 		}
 	})
 
+	t.Run("context_conflicting_with_properties_is_invalid_argument", func(t *testing.T) {
+		s, storeID := newExperimentalAuthZenServerAndStore(t, ds)
+
+		writeModel(t, s, storeID, simpleModel("reader"))
+
+		subjectProps, err := structpb.NewStruct(map[string]interface{}{"role": "viewer"})
+		require.NoError(t, err)
+		reqContext, err := structpb.NewStruct(map[string]interface{}{"subject_role": "admin"})
+		require.NoError(t, err)
+
+		resp, err := s.Evaluation(context.Background(), &authzenv1.EvaluationRequest{
+			StoreId:  storeID,
+			Subject:  &authzenv1.Subject{Type: "user", Id: "alice", Properties: subjectProps},
+			Resource: &authzenv1.Resource{Type: "document", Id: "doc1"},
+			Action:   &authzenv1.Action{Name: "reader"},
+			Context:  reqContext,
+		})
+		require.Error(t, err)
+		require.Nil(t, resp)
+
+		st, ok := status.FromError(err)
+		require.True(t, ok)
+		require.Equal(t, codes.InvalidArgument, st.Code())
+		require.Contains(t, st.Message(), "subject_role")
+	})
+
 	t.Run("returns_validation_error_for_invalid_type", func(t *testing.T) {
 		s, storeID := newExperimentalAuthZenServerAndStore(t, ds)
 

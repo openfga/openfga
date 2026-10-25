@@ -35,8 +35,8 @@ type propertiesProvider interface {
 // the context struct. Properties are namespaced with their source prefix using
 // underscore as separator (e.g., "subject_department") because OpenFGA does not
 // allow condition parameters with "." in their names.
-// Precedence (lowest to highest): subject.properties, resource.properties,
-// action.properties, request context (request context wins on conflicts).
+// A request context key that matches one of the namespaced property keys is
+// rejected with an error, since neither value can be picked over the other.
 func mergePropertiesToContext(
 	requestContext *structpb.Struct,
 	subject propertiesProvider,
@@ -64,8 +64,17 @@ func mergePropertiesToContext(
 	}
 
 	if requestContext != nil {
+		var conflicts []string
 		for k, v := range requestContext.AsMap() {
+			if _, ok := merged[k]; ok {
+				conflicts = append(conflicts, k)
+				continue
+			}
 			merged[k] = v
+		}
+		if len(conflicts) > 0 {
+			sort.Strings(conflicts)
+			return nil, fmt.Errorf("context keys conflict with subject, resource or action properties: %s", strings.Join(conflicts, ", "))
 		}
 	}
 
