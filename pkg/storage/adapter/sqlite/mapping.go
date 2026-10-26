@@ -10,7 +10,6 @@ import (
 
 // --- SQLite's own mappings --------------------------------------------------------------
 
-// sqliteColumn maps a logical column to SQLite SQL, owning the full physical mapping.
 func sqliteColumn(name ast.Column, alias string) string {
 	alias = quoteAlias(alias)
 	switch name {
@@ -31,7 +30,7 @@ func sqliteColumn(name ast.Column, alias string) string {
 	case ast.ColStore:
 		return alias + ".store"
 	case ast.ColCondition:
-		// The column is nullable; the datastore treats NULL as no condition, i.e. "".
+		// Use coalesce to handle NULL condition_name.
 		return "COALESCE(" + alias + ".condition_name, '')"
 	case ast.ColConditionContext:
 		return alias + ".condition_context"
@@ -40,13 +39,12 @@ func sqliteColumn(name ast.Column, alias string) string {
 	}
 }
 
-// sqliteType spells each cast target as one of SQLite's type affinities.
 func sqliteType(t ast.CastType) string {
 	switch t {
 	case ast.TypeVarchar:
 		return "TEXT"
 	case ast.TypeInteger, ast.TypeBigint:
-		// SQLite has a single integer affinity.
+		// SQLite has one integer affinity.
 		return "INTEGER"
 	case ast.TypeNumeric:
 		return "REAL"
@@ -57,9 +55,6 @@ func sqliteType(t ast.CastType) string {
 	}
 }
 
-// sqliteFunc spells each scalar function SQLite's way. The JSON array constructor is
-// json_array; the JSON object constructor is not in this enum (its arguments are pairs) and is
-// spelled at its case in renderer.value.
 func sqliteFunc(f ast.ScalarFunc) string {
 	switch f {
 	case ast.FuncCoalesce:
@@ -75,7 +70,6 @@ func sqliteFunc(f ast.ScalarFunc) string {
 	}
 }
 
-// sqliteAgg spells each value-producing aggregate SQLite's way.
 func sqliteAgg(a ast.AggFunc) string {
 	switch a {
 	case ast.AggCount:
@@ -87,7 +81,6 @@ func sqliteAgg(a ast.AggFunc) string {
 
 // --- shared spellings (invariant across SQL engines) ------------------------------------
 
-// op renders a comparison operator.
 func op(o ast.Op) string {
 	switch o {
 	case ast.OpEq:
@@ -107,7 +100,6 @@ func op(o ast.Op) string {
 	}
 }
 
-// logical renders a boolean connective keyword.
 func logical(l ast.LogicalOp) string {
 	switch l {
 	case ast.And:
@@ -119,7 +111,6 @@ func logical(l ast.LogicalOp) string {
 	}
 }
 
-// quantifier renders the ANY / ALL keyword.
 func quantifier(q ast.Quantifier) string {
 	switch q {
 	case ast.Any:
@@ -131,7 +122,6 @@ func quantifier(q ast.Quantifier) string {
 	}
 }
 
-// joinKeyword renders the join keywords.
 func joinKeyword(j ast.JoinType) string {
 	switch j {
 	case ast.JoinInner:
@@ -145,8 +135,7 @@ func joinKeyword(j ast.JoinType) string {
 	}
 }
 
-// sortDirection renders the direction keyword, or "" for the default (ascending). Callers must
-// guard on the empty string rather than concatenating unconditionally.
+// sortDirection returns "" for ascending, the SQL default.
 func sortDirection(s ast.SortDirection) string {
 	switch s {
 	case ast.Ascending:
@@ -158,10 +147,8 @@ func sortDirection(s ast.SortDirection) string {
 	}
 }
 
-// literal renders an ast.LitNode value as inline SQL text. It dispatches on reflect.Kind, not
-// concrete type, so a named scalar (type storeID string) is inlined as its underlying kind.
-// Kinds outside package query's Literal constraint panic: a type whose literal spelling
-// diverges across engines (a timestamp, above all) must be bound, not inlined.
+// literal switches on reflect.Kind so named scalar types (type storeID string) inline too.
+// Other kinds panic: types whose literal spelling varies by engine (timestamps) must be bound.
 func literal(v any) string {
 	rv := reflect.ValueOf(v)
 	switch rv.Kind() {
@@ -180,14 +167,10 @@ func literal(v any) string {
 	}
 }
 
-// quoteLit renders a string as a single-quoted SQL literal.
 func quoteLit(s string) string { return quoteWith(s, '\'') }
 
-// quoteAlias renders an alias as a double-quoted SQL identifier, so reserved words and arbitrary
-// characters are safe.
 func quoteAlias(s string) string { return quoteWith(s, '"') }
 
-// quoteWith wraps s in q, doubling each embedded q.
 func quoteWith(s string, q byte) string {
 	out := make([]byte, 0, len(s)+2)
 	out = append(out, q)

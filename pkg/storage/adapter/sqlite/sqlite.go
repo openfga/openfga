@@ -1,6 +1,4 @@
-// Package sqlite is a self-contained adapter.Querier for SQLite. It renders a pre-built
-// *query.Statement to SQLite SQL by walking the shared ast tree, and runs it against a
-// *sql.DB backed by the modernc.org/sqlite driver.
+// Package sqlite implements adapter.Querier for SQLite.
 package sqlite
 
 import (
@@ -15,20 +13,15 @@ import (
 // ErrUnsupported reports a valid query construct that SQLite cannot express.
 var ErrUnsupported = errors.New("sqlite: unsupported construct")
 
-// New returns an adapter.Querier that renders typed query.Statements to SQLite SQL and runs
-// them against db. The caller owns db's lifecycle.
+// New returns an adapter.Querier backed by db. The caller owns db's lifecycle.
 func New(db *sql.DB) adapter.Querier {
 	return &querier{db: db}
 }
 
-// querier renders statements to SQLite SQL and executes them against a database handle.
 type querier struct {
 	db *sql.DB
 }
 
-// Execute renders stmt to SQLite SQL and runs it. The "?" placeholders Render emits are
-// SQLite's native positional form, so args bind in order, and *sql.Rows already satisfies
-// adapter.Rows, so the cursor is returned directly.
 func (q *querier) Execute(ctx context.Context, stmt *query.Statement) (adapter.Rows, error) {
 	sqlText, args, err := Render(stmt)
 	if err != nil {
@@ -36,16 +29,14 @@ func (q *querier) Execute(ctx context.Context, stmt *query.Statement) (adapter.R
 	}
 	rows, err := q.db.QueryContext(ctx, sqlText, args...)
 	if err != nil {
-		// Return a nil interface, not a non-nil adapter.Rows wrapping a nil *sql.Rows.
+		// Avoid a non-nil adapter.Rows wrapping a nil *sql.Rows.
 		return nil, err
 	}
 	return rows, nil
 }
 
-// Render renders a statement to SQLite SQL text and positional bind arguments by walking the
-// embedded ast.Select. It is exported so callers can render without a DB — to log or inspect
-// the rendered statement, and for tests that assert on SQL text rather than run it. A valid
-// construct SQLite cannot express returns an error wrapping ErrUnsupported.
+// Render returns stmt as SQLite SQL and its positional bind args, without executing it.
+// Constructs SQLite cannot express return an error wrapping ErrUnsupported.
 func Render(stmt *query.Statement) (sql string, args []any, err error) {
 	r := &renderer{}
 	r.selectStmt(&stmt.Select)

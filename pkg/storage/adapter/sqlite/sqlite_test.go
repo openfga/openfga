@@ -19,8 +19,7 @@ func assertSQL(t *testing.T, got, want string) {
 	}
 }
 
-// newDB opens an in-memory database whose tuple table holds the given object_ids, each with a
-// NULL condition_name.
+// newDB returns an in-memory tuple table with one row per object ID; condition_name is NULL.
 func newDB(t *testing.T, objectIDs ...string) *sql.DB {
 	t.Helper()
 	db, err := sql.Open("sqlite", ":memory:")
@@ -35,7 +34,6 @@ func newDB(t *testing.T, objectIDs ...string) *sql.DB {
 	return db
 }
 
-// queryStrings executes stmt and collects its single string column.
 func queryStrings(t *testing.T, db *sql.DB, stmt *query.Statement) []string {
 	t.Helper()
 	rows, err := sqlite.New(db).Execute(context.Background(), stmt)
@@ -51,9 +49,7 @@ func queryStrings(t *testing.T, db *sql.DB, stmt *query.Statement) []string {
 	return out
 }
 
-// TestSQLiteSubjectColumnsAreDiscrete verifies a subject field is a plain column reference:
-// SQLite stores the subject across three physical columns, unlike the packed _user in
-// MySQL/PostgreSQL.
+// Unlike MySQL/PostgreSQL's packed _user, SQLite stores the subject in discrete columns.
 func TestSQLiteSubjectColumnsAreDiscrete(t *testing.T) {
 	a := query.NewTuple("a")
 	stmt := query.Select(a.SubjectID()).
@@ -68,9 +64,7 @@ func TestSQLiteSubjectColumnsAreDiscrete(t *testing.T) {
 	}
 }
 
-// TestSQLiteMapsEveryLogicalColumn walks the whole logical schema: the four subject columns
-// map to their discrete physical names, the other six pass through. It also guards the
-// exhaustive switch — an unmapped column would panic here.
+// Guards sqliteColumn's exhaustive switch: an unmapped column panics.
 func TestSQLiteMapsEveryLogicalColumn(t *testing.T) {
 	a := query.NewTuple("a")
 	stmt := query.Select(
@@ -86,7 +80,6 @@ func TestSQLiteMapsEveryLogicalColumn(t *testing.T) {
 	assertSQL(t, sqlText, want)
 }
 
-// TestSQLiteSelfJoinAndCast exercises a self-join and a CAST; SQLite spells TypeVarchar as TEXT.
 func TestSQLiteSelfJoinAndCast(t *testing.T) {
 	a := query.NewTuple("a")
 	g := query.NewTuple("g")
@@ -104,8 +97,6 @@ func TestSQLiteSelfJoinAndCast(t *testing.T) {
 	assertSQL(t, sqlText, want)
 }
 
-// TestSQLiteNativeFilter verifies SQLite emits a real `FILTER (WHERE ...)` clause for a filtered
-// aggregate, with no CASE emulation. Relation literals are inlined, so no binds appear.
 func TestSQLiteNativeFilter(t *testing.T) {
 	a := query.NewTuple("a")
 	match := query.Eq(a.ObjectRelation(), query.Lit("viewer"))
@@ -117,7 +108,6 @@ func TestSQLiteNativeFilter(t *testing.T) {
 		`SELECT COUNT("a".object_id) FILTER (WHERE "a".relation = 'viewer') FROM tuple "a"`)
 }
 
-// TestSQLiteFilteredCountStar covers the no-argument aggregate: COUNT(*) with a native FILTER.
 func TestSQLiteFilteredCountStar(t *testing.T) {
 	a := query.NewTuple("a")
 	match := query.Eq(a.ObjectRelation(), query.Lit("viewer"))
@@ -128,7 +118,6 @@ func TestSQLiteFilteredCountStar(t *testing.T) {
 	assertSQL(t, sqlText, `SELECT COUNT(*) FILTER (WHERE "a".relation = 'viewer') FROM tuple "a"`)
 }
 
-// TestSQLitePlainDistinct covers a plain SELECT DISTINCT.
 func TestSQLitePlainDistinct(t *testing.T) {
 	a := query.NewTuple("a")
 	stmt := query.Select(a.ObjectID()).From(a).Distinct()
@@ -138,8 +127,6 @@ func TestSQLitePlainDistinct(t *testing.T) {
 	assertSQL(t, sqlText, `SELECT DISTINCT "a".object_id FROM tuple "a"`)
 }
 
-// TestSQLiteOffsetUsesNegativeLimit covers SQLite's idiom: OFFSET is legal only after a LIMIT,
-// and SQLite's own "no upper bound" spelling is a negative limit.
 func TestSQLiteOffsetUsesNegativeLimit(t *testing.T) {
 	a := query.NewTuple("a")
 	stmt := query.Select(a.ObjectID()).From(a).Offset(20)
@@ -149,8 +136,6 @@ func TestSQLiteOffsetUsesNegativeLimit(t *testing.T) {
 	assertSQL(t, sqlText, `SELECT "a".object_id FROM tuple "a" LIMIT -1 OFFSET 20`)
 }
 
-// TestSQLiteJSONObject shows the object constructor is json_object with the flat "k, v"
-// argument form.
 func TestSQLiteJSONObject(t *testing.T) {
 	a := query.NewTuple("a")
 	obj := query.JSONObject(query.Pair(query.Lit("rel"), a.ObjectRelation()))
@@ -161,8 +146,6 @@ func TestSQLiteJSONObject(t *testing.T) {
 	assertSQL(t, sqlText, `SELECT json_object('rel', "a".relation) FROM tuple "a"`)
 }
 
-// TestSQLiteExpandsBoundSet shows a bound set expanding to IN(...), since SQLite has no array
-// operand.
 func TestSQLiteExpandsBoundSet(t *testing.T) {
 	a := query.NewTuple("a")
 	stmt := query.Select(a.ObjectID()).
@@ -182,8 +165,7 @@ func TestSQLiteExpandsBoundSet(t *testing.T) {
 	}
 }
 
-// TestSQLiteHavingWithoutGroupBy covers the EXISTS rewrite: ORDER BY is dropped, LIMIT stays
-// outside, and binds keep their order.
+// ORDER BY's bind must be dropped with it, keeping the remaining binds in order.
 func TestSQLiteHavingWithoutGroupBy(t *testing.T) {
 	a := query.NewTuple("a")
 	stmt := query.Select(query.Bind[int64](7)).
@@ -202,7 +184,7 @@ func TestSQLiteHavingWithoutGroupBy(t *testing.T) {
 	}
 }
 
-// TestSQLiteHavingAlreadyAggregate covers shapes SQLite accepts as-is, so they are not rewritten.
+// Shapes SQLite already accepts must not be rewritten.
 func TestSQLiteHavingAlreadyAggregate(t *testing.T) {
 	a := query.NewTuple("a")
 	having := query.Gt(query.Count(query.Star), query.Lit[int64](0))
@@ -216,7 +198,7 @@ func TestSQLiteHavingAlreadyAggregate(t *testing.T) {
 	assertSQL(t, sqlText, `SELECT "a".object_id FROM tuple "a" GROUP BY "a".object_id HAVING COUNT(*) > 0`)
 }
 
-// TestSQLiteHavingWithoutGroupByExecutes pins that there is one group even over no rows.
+// The rewrite must keep the single implicit group even over no rows.
 func TestSQLiteHavingWithoutGroupByExecutes(t *testing.T) {
 	db, err := sql.Open("sqlite", ":memory:")
 	require.NoError(t, err)
@@ -256,8 +238,7 @@ func TestSQLiteHavingWithoutGroupByExecutes(t *testing.T) {
 	}
 }
 
-// TestSQLiteQuotesAliases runs table and result-column aliases that are only valid quoted: a
-// reserved word, a space, and an embedded double quote.
+// Each alias is only valid when quoted.
 func TestSQLiteQuotesAliases(t *testing.T) {
 	db := newDB(t, "doc1")
 	for _, alias := range []string{"group", "tuple alias", `we"ird`} {
@@ -272,7 +253,7 @@ func TestSQLiteQuotesAliases(t *testing.T) {
 	}
 }
 
-// TestSQLiteSingleArgCoalesce runs a one-argument COALESCE, which SQLite itself rejects.
+// SQLite itself rejects 1-arg COALESCE.
 func TestSQLiteSingleArgCoalesce(t *testing.T) {
 	db := newDB(t)
 	sqlText, _, err := sqlite.Render(query.Select(query.Coalesce(query.Lit("x"))))
@@ -281,8 +262,6 @@ func TestSQLiteSingleArgCoalesce(t *testing.T) {
 	require.Equal(t, []string{"x"}, queryStrings(t, db, query.Select(query.Coalesce(query.Lit("x")))))
 }
 
-// TestSQLiteQuantifiedSubquery runs the subquery forms SQLite can express (=ANY as IN, <>ALL as
-// NOT IN), and pins that the others return ErrUnsupported rather than render invalid SQL.
 func TestSQLiteQuantifiedSubquery(t *testing.T) {
 	db := newDB(t, "doc1", "doc2")
 	a := query.NewTuple("a")
@@ -315,8 +294,7 @@ func TestSQLiteQuantifiedSubquery(t *testing.T) {
 	}
 }
 
-// TestSQLiteNullConditionIsEmpty pins that a NULL condition_name reads and matches as "", as
-// the SQLite datastore's own reader treats it.
+// Matches the SQLite datastore, which reads a NULL condition_name as "".
 func TestSQLiteNullConditionIsEmpty(t *testing.T) {
 	db := newDB(t, "doc1")
 	a := query.NewTuple("a")

@@ -9,20 +9,17 @@ import (
 	"github.com/openfga/openfga/pkg/storage/adapter/ast"
 )
 
-// renderer accumulates SQL text and the positional bind arguments its "?" placeholders refer
-// to, as it walks the ast tree. Its err field records the first valid construct SQLite cannot
-// express; once set, the rendered text is discarded.
 type renderer struct {
 	sb   strings.Builder
 	args []any
-	err  error
+	err  error // first ErrUnsupported; output is discarded once set
 }
 
 func (r *renderer) write(s string) { r.sb.WriteString(s) }
 
 func (r *renderer) bind(v any) {
 	r.args = append(r.args, v)
-	r.write("?") // SQLite is always positional "?"
+	r.write("?")
 }
 
 // --- statement --------------------------------------------------------------------------
@@ -53,7 +50,6 @@ func (r *renderer) selectStmt(s *ast.Select) {
 	}
 	for _, j := range s.Joins {
 		r.write(" " + joinKeyword(j.Type) + " tuple " + quoteAlias(j.Table.Alias))
-		// A CROSS join carries no condition; every other flavour does.
 		if j.On != nil {
 			r.write(" ON ")
 			r.predicate(j.On)
@@ -70,23 +66,21 @@ func (r *renderer) selectStmt(s *ast.Select) {
 		r.write(" ORDER BY ")
 		r.orderBy(s.OrderBy)
 	}
-	// Pointers, so "no LIMIT" stays distinct from "LIMIT 0".
 	if s.Limit != nil {
 		r.write(" LIMIT " + strconv.FormatUint(*s.Limit, 10))
 	}
 	if s.Offset != nil {
-		// SQLite requires a LIMIT ahead of OFFSET.
+		// SQLite requires LIMIT before OFFSET; -1 means unbounded.
 		if s.Limit == nil {
-			// SQLite's own idiom for "no upper bound" is a negative limit.
 			r.write(" LIMIT -1")
 		}
 		r.write(" OFFSET " + strconv.FormatUint(*s.Offset, 10))
 	}
 }
 
-// implicitGroup renders HAVING without GROUP BY, which SQLite rejects unless a result column is an
-// aggregate. The grouped part becomes an EXISTS made aggregate by COUNT(*), keeping the single
-// group (even over no rows). ORDER BY is dropped, as at most one row comes back.
+// implicitGroup rewrites HAVING without GROUP BY, which SQLite rejects unless a result column
+// aggregates, as WHERE EXISTS (SELECT COUNT(*) ... HAVING ...). COUNT(*) keeps the single
+// implicit group even over no rows. ORDER BY is dropped: at most one row is returned.
 func (r *renderer) implicitGroup(s *ast.Select) {
 	inner := *s
 	inner.Distinct = false
@@ -101,8 +95,7 @@ func (r *renderer) implicitGroup(s *ast.Select) {
 	})
 }
 
-// hasAggregate reports whether a result column aggregates at this SELECT's level; a subquery's
-// aggregates belong to the subquery.
+// hasAggregate ignores aggregates inside subqueries; they don't make this SELECT aggregate.
 func hasAggregate(cols []ast.Projection) bool {
 	for _, c := range cols {
 		if a, ok := c.(ast.AliasNode); ok {
@@ -163,8 +156,6 @@ func predAgg(n ast.Predicate) bool {
 	}
 }
 
-// clause renders a keyword-introduced predicate, or nothing when absent. The predicate carries
-// its own grouping, so a nil check is the whole contract.
 func (r *renderer) clause(keyword string, pred ast.Predicate) {
 	if pred == nil {
 		return
@@ -203,13 +194,8 @@ func (r *renderer) orderBy(terms []ast.OrderTerm) {
 	}
 }
 
-// --- nodes ------------------------------------------------------------------------------
-//
-// One walk function per POSITION CATEGORY, matching ast's four category interfaces. Each switch
-// covers one category, so its default panic is reachable only for a genuinely unknown node kind,
-// and the recursion's position is the function it is in rather than something to track.
+// --- nodes (one walk function per ast category interface) ------------------------------
 
-// predicate renders a truth-valued node.
 func (r *renderer) predicate(n ast.Predicate) {
 	switch x := n.(type) {
 	case ast.CompareNode:
@@ -274,7 +260,6 @@ func (r *renderer) predicate(n ast.Predicate) {
 	}
 }
 
-// value renders a single-valued node.
 func (r *renderer) value(n ast.ScalarValue) {
 	switch x := n.(type) {
 	case ast.ColNode:
@@ -292,7 +277,7 @@ func (r *renderer) value(n ast.ScalarValue) {
 		r.write(" AS " + sqliteType(x.Type) + ")")
 
 	case ast.FuncNode:
-		// SQLite's COALESCE needs two or more arguments; with one it is just that argument.
+		// SQLite rejects 1-arg COALESCE, which is just its argument.
 		if x.Fn == ast.FuncCoalesce && len(x.Args) == 1 {
 			r.value(x.Args[0])
 			return
@@ -302,7 +287,6 @@ func (r *renderer) value(n ast.ScalarValue) {
 		r.write(")")
 
 	case ast.JSONObjectNode:
-		// SQLite spells the constructor json_object and takes a flat "k, v" list.
 		r.write("json_object(")
 		for i, p := range x.Pairs {
 			if i > 0 {
@@ -348,8 +332,6 @@ func (r *renderer) value(n ast.ScalarValue) {
 	}
 }
 
-// set renders a set-valued node. Its only caller is quantified, for the non-bound flavours (a
-// bound set is expanded inline, since SQLite has no array operand).
 func (r *renderer) set(n ast.SetValue) {
 	switch x := n.(type) {
 	case ast.SubqueryNode:
@@ -360,7 +342,6 @@ func (r *renderer) set(n ast.SetValue) {
 	}
 }
 
-// projection renders a SELECT-list item.
 func (r *renderer) projection(n ast.Projection) {
 	switch x := n.(type) {
 	case ast.AliasNode:
@@ -368,7 +349,7 @@ func (r *renderer) projection(n ast.Projection) {
 		r.write(" AS " + quoteAlias(x.Alias))
 
 	default:
-		// Everything else in the category is a ScalarValue, ScalarValue embedding Projection.
+		// ScalarValue embeds Projection.
 		v, ok := n.(ast.ScalarValue)
 		if !ok {
 			panic(fmt.Sprintf("sqlite: unhandled projection %T", n))
@@ -385,8 +366,7 @@ func (r *renderer) caseElse(e ast.ScalarValue) {
 	r.write(" END")
 }
 
-// aggregate renders a value-producing aggregate. SQLite supports `FILTER (WHERE ...)` natively
-// (since 3.30), so a filtered aggregate emits it directly rather than emulating it with a CASE.
+// aggregate emits FILTER natively (SQLite 3.30+), with no CASE emulation.
 func (r *renderer) aggregate(x ast.AggNode) {
 	r.write(sqliteAgg(x.Fn) + "(")
 	if x.Distinct {
@@ -405,8 +385,7 @@ func (r *renderer) aggregate(x ast.AggNode) {
 	}
 }
 
-// quantified renders a quantified comparison. A bound set is ALWAYS expanded, since SQLite has
-// no array operand.
+// quantified expands a bound set inline, since SQLite has no array operand.
 func (r *renderer) quantified(x ast.QuantifiedNode) {
 	sb, ok := x.Set.(ast.SetBindNode)
 	if !ok {
