@@ -84,7 +84,10 @@ type fakeQuerier struct {
 }
 
 func (q *fakeQuerier) Execute(_ context.Context, stmt *query.Statement) (adapter.Rows, error) {
-	sqlText, args := sqlite.Render(stmt)
+	sqlText, args, err := sqlite.Render(stmt)
+	if err != nil {
+		return nil, err
+	}
 	q.SQL = sqlText
 	q.Parameters = args
 	q.sqls = append(q.sqls, sqlText)
@@ -195,7 +198,7 @@ func TestSqlWeight1_DirectSQLShape(t *testing.T) {
 	_, err = s.weight1(context.Background(), req, q, entryEdges(t, g, req, "document:1", "viewer"), graph.UnionOperator)
 	require.NoError(t, err)
 
-	require.Contains(t, q.SQL, "SELECT 1 FROM tuple t WHERE")
+	require.Contains(t, q.SQL, "SELECT 1 FROM tuple \"t\" WHERE")
 	// A single leaf needs no counts: the WHERE alone answers, so LIMIT 1 can stop at the first row.
 	require.NotContains(t, q.SQL, "HAVING")
 	require.NotContains(t, q.SQL, "GROUP BY")
@@ -226,7 +229,7 @@ func TestSqlWeight1_Union(t *testing.T) {
 	require.True(t, allowed)
 	// A pure union (here nested, through the computed owner arm) is answered by the WHERE alone, so
 	// LIMIT 1 can stop at the first matching row.
-	require.Contains(t, q.SQL, "t.relation IN ('editor', 'owner')")
+	require.Contains(t, q.SQL, "\"t\".relation IN ('editor', 'owner')")
 	require.NotContains(t, q.SQL, "HAVING")
 	require.NotContains(t, q.SQL, "COUNT(")
 
@@ -361,22 +364,22 @@ func TestSqlWeight1_ConditionedGatherShape(t *testing.T) {
 	_, err = s.weight1(context.Background(), req, q, entryEdges(t, g, req, "document:1", "viewer"), graph.UnionOperator)
 	require.NoError(t, err)
 	// gather projects attribution + condition columns.
-	require.Contains(t, q.SQL, "t.relation")
-	require.Contains(t, q.SQL, "t.condition_name")
-	require.Contains(t, q.SQL, "t.condition_context")
+	require.Contains(t, q.SQL, "\"t\".relation")
+	require.Contains(t, q.SQL, "COALESCE(\"t\".condition_name, '')")
+	require.Contains(t, q.SQL, "\"t\".condition_context")
 	// WHERE keeps a flat `relation = ...` (single surviving relation) alongside the (relation,
 	// condition) pairing; there is no GROUP BY / HAVING aggregate — everything narrows in the WHERE.
-	require.Contains(t, q.SQL, "t.relation =")
+	require.Contains(t, q.SQL, "\"t\".relation =")
 	require.NotContains(t, q.SQL, "GROUP BY")
 	require.NotContains(t, q.SQL, "HAVING")
 	require.NotContains(t, q.SQL, "COUNT(1) FILTER (WHERE")
 	// The gather is narrowed to the model's single condition, excluding out-of-model conditions in the DB.
-	require.Contains(t, q.SQL, "t.condition_name =")
+	require.Contains(t, q.SQL, "COALESCE(\"t\".condition_name, '') =")
 	// Condition names are inlined as literals rather than bound.
 	require.Contains(t, q.SQL, "'cond'")
 	require.NotContains(t, q.Parameters, "cond")
 	// This leaf admits only the named condition, so there is no IS NULL disjunct.
-	require.NotContains(t, q.SQL, "t.condition_name IS NULL")
+	require.NotContains(t, q.SQL, "COALESCE(\"t\".condition_name, '') IS NULL")
 }
 
 // TestSqlWeight1_ConditionedGatherFiltersUnknownCondition pins that the gather query narrows to
@@ -404,7 +407,7 @@ func TestSqlWeight1_ConditionedGatherFiltersUnknownCondition(t *testing.T) {
 	_, err = s.weight1(context.Background(), req, q, entryEdges(t, g, req, "document:1", "viewer"), graph.UnionOperator)
 	require.NoError(t, err)
 
-	require.Contains(t, q.SQL, "t.condition_name =")
+	require.Contains(t, q.SQL, "COALESCE(\"t\".condition_name, '') =")
 	require.Contains(t, q.SQL, "'cond'")
 	require.NotContains(t, q.Parameters, "cond")
 }
@@ -434,8 +437,8 @@ func TestSqlWeight1_ConditionedGatherMixedConditionFilter(t *testing.T) {
 	_, err = s.weight1(context.Background(), req, q, entryEdges(t, g, req, "document:1", "viewer"), graph.UnionOperator)
 	require.NoError(t, err)
 
-	require.Contains(t, q.SQL, "t.condition_name =")
-	require.Contains(t, q.SQL, "t.condition_name IS NULL")
+	require.Contains(t, q.SQL, "COALESCE(\"t\".condition_name, '') =")
+	require.Contains(t, q.SQL, "COALESCE(\"t\".condition_name, '') IS NULL")
 	require.Contains(t, q.SQL, "'cond'")
 	require.NotContains(t, q.Parameters, "cond")
 }
@@ -471,20 +474,20 @@ func TestSqlWeight1_ConditionedGatherPairsConditionsPerRelation(t *testing.T) {
 
 	// WHERE carries the flat `relation IN (...)` and the per-relation pairing, each relation in its
 	// own clause and only rel1 carrying the unconditioned (IS NULL) disjunct. No GROUP BY / HAVING.
-	require.Contains(t, q.SQL, "t.relation IN")
-	require.Contains(t, q.SQL, "t.relation = 'rel1'")
-	require.Contains(t, q.SQL, "t.relation = 'rel2'")
+	require.Contains(t, q.SQL, "\"t\".relation IN")
+	require.Contains(t, q.SQL, "\"t\".relation = 'rel1'")
+	require.Contains(t, q.SQL, "\"t\".relation = 'rel2'")
 	require.Contains(t, q.SQL, "'condA'")
 	require.Contains(t, q.SQL, "'condB'")
-	require.Contains(t, q.SQL, "t.condition_name IS NULL")
+	require.Contains(t, q.SQL, "COALESCE(\"t\".condition_name, '') IS NULL")
 	require.NotContains(t, q.SQL, "HAVING")
 	require.NotContains(t, q.SQL, "COUNT(1) FILTER (WHERE")
 
 	// condA inlined within rel1's clause, condB within rel2's (relations sorted). Measure after the
 	// flat `relation IN (...)`, whose sorted list also names the relations.
-	pairing := q.SQL[strings.LastIndex(q.SQL, "t.relation IN"):]
-	rel1 := strings.Index(pairing, "t.relation = 'rel1'")
-	rel2 := strings.Index(pairing, "t.relation = 'rel2'")
+	pairing := q.SQL[strings.LastIndex(q.SQL, "\"t\".relation IN"):]
+	rel1 := strings.Index(pairing, "\"t\".relation = 'rel1'")
+	rel2 := strings.Index(pairing, "\"t\".relation = 'rel2'")
 	condA := strings.Index(pairing, "'condA'")
 	condB := strings.Index(pairing, "'condB'")
 	require.Less(t, rel1, condA, "condA must be inlined within rel1's clause")
@@ -794,8 +797,8 @@ func TestSqlWeight1_ContextualCollapsedUnionBranch(t *testing.T) {
 	q := &fakeQuerier{}
 	_, err = runWeight1(t, g, q, "document:1", "viewer", "user:alice", banned)
 	require.NoError(t, err)
-	require.Contains(t, q.SQL, "t.relation IN ('editor', 'viewer')")
-	require.Contains(t, q.SQL, "HAVING COUNT(1) FILTER (WHERE t.relation = 'editor') > 0) LIMIT 1")
+	require.Contains(t, q.SQL, "\"t\".relation IN ('editor', 'viewer')")
+	require.Contains(t, q.SQL, "HAVING COUNT(1) FILTER (WHERE \"t\".relation = 'editor') > 0) LIMIT 1")
 }
 
 // TestSqlWeight1_ContextualSatisfiesArmOnGatherPath covers the carry-forward from the first pass
@@ -860,11 +863,11 @@ func condCtx(t *testing.T, m map[string]any) []byte {
 // subject; every other combination keeps a single pinned subject and no per-relation subject term.
 func TestSqlWeight1_SubjectScopingSQL(t *testing.T) {
 	const (
-		selectOne = "SELECT 1 FROM tuple t WHERE (t.store = ? AND t.object_type = ? AND t.object_id = ? AND t.user_object_type = ? AND t.user_relation = ? AND "
+		selectOne = "SELECT 1 FROM tuple \"t\" WHERE (\"t\".store = ? AND \"t\".object_type = ? AND \"t\".object_id = ? AND \"t\".user_object_type = ? AND \"t\".user_relation = ? AND "
 		// sqlite nests a HAVING without GROUP BY in an EXISTS.
-		selectHaving = "SELECT 1 WHERE EXISTS (SELECT COUNT(*) FROM tuple t WHERE (t.store = ? AND t.object_type = ? AND t.object_id = ? AND t.user_object_type = ? AND t.user_relation = ? AND "
-		gather       = "SELECT t.relation, t.user_object_id, t.condition_name, t.condition_context FROM tuple t WHERE (t.store = ? AND t.object_type = ? AND t.object_id = ? AND t.user_object_type = ? AND t.user_relation = ? AND "
-		uncond       = "(t.condition_name IS NULL OR t.condition_name = '')"
+		selectHaving = "SELECT 1 WHERE EXISTS (SELECT COUNT(*) FROM tuple \"t\" WHERE (\"t\".store = ? AND \"t\".object_type = ? AND \"t\".object_id = ? AND \"t\".user_object_type = ? AND \"t\".user_relation = ? AND "
+		gather       = "SELECT \"t\".relation, \"t\".user_object_id, COALESCE(\"t\".condition_name, ''), \"t\".condition_context FROM tuple \"t\" WHERE (\"t\".store = ? AND \"t\".object_type = ? AND \"t\".object_id = ? AND \"t\".user_object_type = ? AND \"t\".user_relation = ? AND "
+		uncond       = "(COALESCE(\"t\".condition_name, '') IS NULL OR COALESCE(\"t\".condition_name, '') = '')"
 	)
 	tests := []struct {
 		name   string
@@ -877,32 +880,32 @@ func TestSqlWeight1_SubjectScopingSQL(t *testing.T) {
 			name:   "case1_direct_user",
 			rels:   "define can_view: [user]",
 			user:   "user:alice",
-			sql:    selectOne + "t.user_object_id = ? AND t.user_type = 'user' AND t.relation = 'can_view' AND " + uncond + ") LIMIT 1",
+			sql:    selectOne + "\"t\".user_object_id = ? AND \"t\".user_type = 'user' AND \"t\".relation = 'can_view' AND " + uncond + ") LIMIT 1",
 			params: []any{"store1", "document", "1", "user", "", "alice"},
 		},
 		{
 			name:   "case2_direct_user_conditioned",
 			rels:   "define can_view: [user with cond]",
 			user:   "user:alice",
-			sql:    gather + "t.user_object_id = ? AND t.user_type = 'user' AND t.relation = 'can_view' AND (t.relation = 'can_view' AND t.condition_name = 'cond'))",
+			sql:    gather + "\"t\".user_object_id = ? AND \"t\".user_type = 'user' AND \"t\".relation = 'can_view' AND (\"t\".relation = 'can_view' AND COALESCE(\"t\".condition_name, '') = 'cond'))",
 			params: []any{"store1", "document", "1", "user", "", "alice"},
 		},
 		{
 			name: "case3_direct_user_wildcard_leaf",
 			rels: "define viewer: [user]\n define editor: [user:*]\n define can_view: viewer and editor",
 			user: "user:alice",
-			sql: selectHaving + "t.user_object_id IN (?, ?) AND t.user_type IN ('user', 'userset') AND t.relation IN ('editor', 'viewer') AND " + uncond + ") HAVING (" +
-				"COUNT(1) FILTER (WHERE (t.relation = 'viewer' AND t.user_object_id = ?)) > 0 AND " +
-				"COUNT(1) FILTER (WHERE (t.relation = 'editor' AND t.user_object_id = '*')) > 0)) LIMIT 1",
+			sql: selectHaving + "\"t\".user_object_id IN (?, ?) AND \"t\".user_type IN ('user', 'userset') AND \"t\".relation IN ('editor', 'viewer') AND " + uncond + ") HAVING (" +
+				"COUNT(1) FILTER (WHERE (\"t\".relation = 'viewer' AND \"t\".user_object_id = ?)) > 0 AND " +
+				"COUNT(1) FILTER (WHERE (\"t\".relation = 'editor' AND \"t\".user_object_id = '*')) > 0)) LIMIT 1",
 			params: []any{"store1", "document", "1", "user", "", "alice", "*", "alice"},
 		},
 		{
 			name: "case3_direct_user_wildcard_leaf_same_relation",
 			rels: "define can_view: [user, user:*]",
 			user: "user:alice",
-			sql: selectHaving + "t.user_object_id IN (?, ?) AND t.user_type IN ('user', 'userset') AND t.relation = 'can_view' AND " + uncond + ") HAVING (" +
-				"COUNT(1) FILTER (WHERE (t.relation = 'can_view' AND t.user_object_id = ?)) > 0 OR " +
-				"COUNT(1) FILTER (WHERE (t.relation = 'can_view' AND t.user_object_id = '*')) > 0)) LIMIT 1",
+			sql: selectHaving + "\"t\".user_object_id IN (?, ?) AND \"t\".user_type IN ('user', 'userset') AND \"t\".relation = 'can_view' AND " + uncond + ") HAVING (" +
+				"COUNT(1) FILTER (WHERE (\"t\".relation = 'can_view' AND \"t\".user_object_id = ?)) > 0 OR " +
+				"COUNT(1) FILTER (WHERE (\"t\".relation = 'can_view' AND \"t\".user_object_id = '*')) > 0)) LIMIT 1",
 			params: []any{"store1", "document", "1", "user", "", "alice", "*", "alice"},
 		},
 		{
@@ -911,18 +914,18 @@ func TestSqlWeight1_SubjectScopingSQL(t *testing.T) {
 			name: "case3_direct_user_wildcard_leaf_union",
 			rels: "define viewer: [user]\n define editor: [user:*]\n define can_view: viewer or editor",
 			user: "user:alice",
-			sql: selectHaving + "t.user_object_id IN (?, ?) AND t.user_type IN ('user', 'userset') AND t.relation IN ('editor', 'viewer') AND " + uncond + ") HAVING (" +
-				"COUNT(1) FILTER (WHERE (t.relation = 'viewer' AND t.user_object_id = ?)) > 0 OR " +
-				"COUNT(1) FILTER (WHERE (t.relation = 'editor' AND t.user_object_id = '*')) > 0)) LIMIT 1",
+			sql: selectHaving + "\"t\".user_object_id IN (?, ?) AND \"t\".user_type IN ('user', 'userset') AND \"t\".relation IN ('editor', 'viewer') AND " + uncond + ") HAVING (" +
+				"COUNT(1) FILTER (WHERE (\"t\".relation = 'viewer' AND \"t\".user_object_id = ?)) > 0 OR " +
+				"COUNT(1) FILTER (WHERE (\"t\".relation = 'editor' AND \"t\".user_object_id = '*')) > 0)) LIMIT 1",
 			params: []any{"store1", "document", "1", "user", "", "alice", "*", "alice"},
 		},
 		{
 			name: "union_of_intersections",
 			rels: "define a: [user]\n define b: [user]\n define c: [user]\n define d: [user]\n define can_view: (a and b) or (c and d)",
 			user: "user:alice",
-			sql: selectHaving + "t.user_object_id = ? AND t.user_type = 'user' AND t.relation IN ('a', 'b', 'c', 'd') AND " + uncond + ") HAVING (" +
-				"(COUNT(1) FILTER (WHERE t.relation = 'a') > 0 AND COUNT(1) FILTER (WHERE t.relation = 'b') > 0) OR " +
-				"(COUNT(1) FILTER (WHERE t.relation = 'c') > 0 AND COUNT(1) FILTER (WHERE t.relation = 'd') > 0))) LIMIT 1",
+			sql: selectHaving + "\"t\".user_object_id = ? AND \"t\".user_type = 'user' AND \"t\".relation IN ('a', 'b', 'c', 'd') AND " + uncond + ") HAVING (" +
+				"(COUNT(1) FILTER (WHERE \"t\".relation = 'a') > 0 AND COUNT(1) FILTER (WHERE \"t\".relation = 'b') > 0) OR " +
+				"(COUNT(1) FILTER (WHERE \"t\".relation = 'c') > 0 AND COUNT(1) FILTER (WHERE \"t\".relation = 'd') > 0))) LIMIT 1",
 			params: []any{"store1", "document", "1", "user", "", "alice"},
 		},
 		{
@@ -930,18 +933,18 @@ func TestSqlWeight1_SubjectScopingSQL(t *testing.T) {
 			name: "union_of_intersection_and_leaf",
 			rels: "define a: [user]\n define b: [user]\n define c: [user]\n define can_view: (a and b) or c",
 			user: "user:alice",
-			sql: selectHaving + "t.user_object_id = ? AND t.user_type = 'user' AND t.relation IN ('a', 'b', 'c') AND " + uncond + ") HAVING (" +
-				"(COUNT(1) FILTER (WHERE t.relation = 'a') > 0 AND COUNT(1) FILTER (WHERE t.relation = 'b') > 0) OR " +
-				"COUNT(1) FILTER (WHERE t.relation = 'c') > 0)) LIMIT 1",
+			sql: selectHaving + "\"t\".user_object_id = ? AND \"t\".user_type = 'user' AND \"t\".relation IN ('a', 'b', 'c') AND " + uncond + ") HAVING (" +
+				"(COUNT(1) FILTER (WHERE \"t\".relation = 'a') > 0 AND COUNT(1) FILTER (WHERE \"t\".relation = 'b') > 0) OR " +
+				"COUNT(1) FILTER (WHERE \"t\".relation = 'c') > 0)) LIMIT 1",
 			params: []any{"store1", "document", "1", "user", "", "alice"},
 		},
 		{
 			name: "case4_direct_user_wildcard_leaf_conditioned",
 			rels: "define viewer: [user with cond]\n define editor: [user:*]\n define can_view: viewer and editor",
 			user: "user:alice",
-			sql: gather + "t.user_object_id IN (?, ?) AND t.user_type IN ('user', 'userset') AND t.relation IN ('editor', 'viewer') AND (" +
-				"(t.relation = 'editor' AND t.user_object_id = '*' AND " + uncond + ") OR " +
-				"(t.relation = 'viewer' AND t.user_object_id = ? AND t.condition_name = 'cond')))",
+			sql: gather + "\"t\".user_object_id IN (?, ?) AND \"t\".user_type IN ('user', 'userset') AND \"t\".relation IN ('editor', 'viewer') AND (" +
+				"(\"t\".relation = 'editor' AND \"t\".user_object_id = '*' AND " + uncond + ") OR " +
+				"(\"t\".relation = 'viewer' AND \"t\".user_object_id = ? AND COALESCE(\"t\".condition_name, '') = 'cond')))",
 			params: []any{"store1", "document", "1", "user", "", "alice", "*", "alice"},
 		},
 		{
@@ -959,21 +962,21 @@ func TestSqlWeight1_SubjectScopingSQL(t *testing.T) {
 			name:   "case7_wildcard_user_wildcard_leaf",
 			rels:   "define viewer: [user]\n define editor: [user:*]\n define can_view: viewer or editor",
 			user:   "user:*",
-			sql:    selectOne + "t.user_object_id = ? AND t.user_type = 'userset' AND t.relation = 'editor' AND " + uncond + ") LIMIT 1",
+			sql:    selectOne + "\"t\".user_object_id = ? AND \"t\".user_type = 'userset' AND \"t\".relation = 'editor' AND " + uncond + ") LIMIT 1",
 			params: []any{"store1", "document", "1", "user", "", "*"},
 		},
 		{
 			name:   "case8_wildcard_user_wildcard_leaf_conditioned",
 			rels:   "define viewer: [user with cond]\n define editor: [user:* with cond]\n define can_view: viewer or editor",
 			user:   "user:*",
-			sql:    gather + "t.user_object_id = ? AND t.user_type = 'userset' AND t.relation = 'editor' AND (t.relation = 'editor' AND t.condition_name = 'cond'))",
+			sql:    gather + "\"t\".user_object_id = ? AND \"t\".user_type = 'userset' AND \"t\".relation = 'editor' AND (\"t\".relation = 'editor' AND COALESCE(\"t\".condition_name, '') = 'cond'))",
 			params: []any{"store1", "document", "1", "user", "", "*"},
 		},
 		{
 			name:   "case9_userset_subject",
 			rels:   "define can_view: [group#member]",
 			user:   "group:eng#member",
-			sql:    selectOne + "t.user_object_id = ? AND t.user_type = 'userset' AND t.relation = 'can_view' AND " + uncond + ") LIMIT 1",
+			sql:    selectOne + "\"t\".user_object_id = ? AND \"t\".user_type = 'userset' AND \"t\".relation = 'can_view' AND " + uncond + ") LIMIT 1",
 			params: []any{"store1", "document", "1", "group", "member", "eng"},
 		},
 	}
