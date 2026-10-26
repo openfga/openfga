@@ -72,9 +72,8 @@ func runWeight1(t *testing.T, g *modelgraph.AuthorizationModelGraph, q *fakeQuer
 
 // --- fakes -----------------------------------------------------------------
 
-// fakeQuerier renders each statement via the sqlite adapter (chosen because its FILTER/discrete
-// columns keep the text closest to what these assertions pin), records it, and answers unconditioned
-// queries by hasRow and gather queries with canned rows.
+// fakeQuerier renders and records each statement via the sqlite adapter, answering unconditioned
+// queries by hasRow and conditioned queries with canned rows.
 type fakeQuerier struct {
 	rows   [][]any
 	hasRow bool
@@ -252,7 +251,6 @@ func TestSqlWeight1_Wildcard(t *testing.T) {
 	g, err := modelgraph.New(testutils.MustTransformDSLToProtoWithID(model))
 	require.NoError(t, err)
 
-	// gather-free unconditioned path: the wildcard leaf matches subject_id = '*'.
 	q := &fakeQuerier{}
 	s := NewSQL(g, &sqlDatastore{querier: q})
 	req, err := NewRequest(RequestParams{
@@ -263,7 +261,7 @@ func TestSqlWeight1_Wildcard(t *testing.T) {
 	require.NoError(t, err)
 	_, err = s.weight1(context.Background(), req, q, entryEdges(t, g, req, "document:1", "viewer"), graph.UnionOperator)
 	require.NoError(t, err)
-	// shared WHERE admits alice or the wildcard tuple.
+	// The WHERE admits both alice and the wildcard.
 	require.Contains(t, q.Parameters, "*")
 	require.Contains(t, q.Parameters, "alice")
 }
@@ -342,9 +340,9 @@ func TestSqlWeight1_Exclusion(t *testing.T) {
 	require.Contains(t, q.SQL, "NOT (")
 }
 
-// --- conditioned path (gather) ---------------------------------------------
+// --- conditioned path ------------------------------------------------------
 
-func TestSqlWeight1_ConditionedGatherShape(t *testing.T) {
+func TestSqlWeight1_ConditionedShape(t *testing.T) {
 	model := `
 		model
 			schema 1.1
@@ -366,28 +364,25 @@ func TestSqlWeight1_ConditionedGatherShape(t *testing.T) {
 	require.NoError(t, err)
 	_, err = s.weight1(context.Background(), req, q, entryEdges(t, g, req, "document:1", "viewer"), graph.UnionOperator)
 	require.NoError(t, err)
-	// gather projects attribution + condition columns.
 	require.Contains(t, q.SQL, "\"t\".relation")
 	require.Contains(t, q.SQL, "COALESCE(\"t\".condition_name, '')")
 	require.Contains(t, q.SQL, "\"t\".condition_context")
-	// WHERE keeps a flat `relation = ...` (single surviving relation) alongside the (relation,
-	// condition) pairing; there is no GROUP BY / HAVING aggregate — everything narrows in the WHERE.
+	// The conditioned query narrows entirely in the WHERE; no aggregate.
 	require.Contains(t, q.SQL, "\"t\".relation =")
 	require.NotContains(t, q.SQL, "GROUP BY")
 	require.NotContains(t, q.SQL, "HAVING")
 	require.NotContains(t, q.SQL, "COUNT(1) FILTER (WHERE")
-	// The gather is narrowed to the model's single condition, excluding out-of-model conditions in the DB.
+	// Narrowed to the model's condition, so out-of-model conditions in the DB are excluded.
 	require.Contains(t, q.SQL, "COALESCE(\"t\".condition_name, '') =")
-	// Condition names are inlined as literals rather than bound.
 	require.Contains(t, q.SQL, "'cond'")
 	require.NotContains(t, q.Parameters, "cond")
 	// This leaf admits only the named condition, so there is no IS NULL disjunct.
 	require.NotContains(t, q.SQL, "COALESCE(\"t\".condition_name, '') IS NULL")
 }
 
-// TestSqlWeight1_ConditionedGatherFiltersUnknownCondition pins that the gather query narrows to
+// TestSqlWeight1_ConditionedFiltersUnknownCondition pins that the conditioned query narrows to
 // the model's condition, so a tuple with an out-of-model condition is filtered out in SQL.
-func TestSqlWeight1_ConditionedGatherFiltersUnknownCondition(t *testing.T) {
+func TestSqlWeight1_ConditionedFiltersUnknownCondition(t *testing.T) {
 	model := `
 		model
 			schema 1.1
@@ -415,9 +410,9 @@ func TestSqlWeight1_ConditionedGatherFiltersUnknownCondition(t *testing.T) {
 	require.NotContains(t, q.Parameters, "cond")
 }
 
-// TestSqlWeight1_ConditionedGatherMixedConditionFilter pins that a relation admitting both an
+// TestSqlWeight1_ConditionedMixedConditionFilter pins that a relation admitting both an
 // unconditioned and a conditioned assignment gathers the named condition or an unconditioned tuple.
-func TestSqlWeight1_ConditionedGatherMixedConditionFilter(t *testing.T) {
+func TestSqlWeight1_ConditionedMixedConditionFilter(t *testing.T) {
 	model := `
 		model
 			schema 1.1
@@ -446,10 +441,10 @@ func TestSqlWeight1_ConditionedGatherMixedConditionFilter(t *testing.T) {
 	require.NotContains(t, q.Parameters, "cond")
 }
 
-// TestSqlWeight1_ConditionedGatherPairsConditionsPerRelation pins that the gather filter is a
+// TestSqlWeight1_ConditionedPairsConditionsPerRelation pins that the conditioned filter is a
 // disjunction of per-relation clauses, each relation paired only with its own conditions, rather
 // than a single global `relation IN (...) AND condition IN (...)`.
-func TestSqlWeight1_ConditionedGatherPairsConditionsPerRelation(t *testing.T) {
+func TestSqlWeight1_ConditionedPairsConditionsPerRelation(t *testing.T) {
 	model := `
 		model
 			schema 1.1
@@ -475,8 +470,7 @@ func TestSqlWeight1_ConditionedGatherPairsConditionsPerRelation(t *testing.T) {
 	_, err = s.weight1(context.Background(), req, q, entryEdges(t, g, req, "document:1", "viewer"), graph.UnionOperator)
 	require.NoError(t, err)
 
-	// WHERE carries the flat `relation IN (...)` and the per-relation pairing, each relation in its
-	// own clause and only rel1 carrying the unconditioned (IS NULL) disjunct. No GROUP BY / HAVING.
+	// Only rel1 admits unconditioned tuples, so only it gets the IS NULL disjunct.
 	require.Contains(t, q.SQL, "\"t\".relation IN")
 	require.Contains(t, q.SQL, "\"t\".relation = 'rel1'")
 	require.Contains(t, q.SQL, "\"t\".relation = 'rel2'")
@@ -486,8 +480,7 @@ func TestSqlWeight1_ConditionedGatherPairsConditionsPerRelation(t *testing.T) {
 	require.NotContains(t, q.SQL, "HAVING")
 	require.NotContains(t, q.SQL, "COUNT(1) FILTER (WHERE")
 
-	// condA inlined within rel1's clause, condB within rel2's (relations sorted). Measure after the
-	// flat `relation IN (...)`, whose sorted list also names the relations.
+	// Search after `relation IN (...)`, whose list also names the relations.
 	pairing := q.SQL[strings.LastIndex(q.SQL, "\"t\".relation IN"):]
 	rel1 := strings.Index(pairing, "\"t\".relation = 'rel1'")
 	rel2 := strings.Index(pairing, "\"t\".relation = 'rel2'")
@@ -498,7 +491,7 @@ func TestSqlWeight1_ConditionedGatherPairsConditionsPerRelation(t *testing.T) {
 	require.Less(t, rel2, condB, "condB must be inlined within rel2's clause")
 }
 
-func TestSqlWeight1_ConditionedGatherBehavior(t *testing.T) {
+func TestSqlWeight1_ConditionedBehavior(t *testing.T) {
 	model := `
 		model
 			schema 1.1
@@ -595,7 +588,7 @@ func TestSqlWeight1_ConditionedLazyContextDecode(t *testing.T) {
 }
 
 // TestSqlWeight1_ConditionedRepeatedLeaf covers a relation reached by two paths in one subtree
-// (editor directly and via can_edit), so the gather pass visits the same leaf, and row, twice.
+// (editor directly and via can_edit), so the conditioned pass visits the same leaf, and row, twice.
 func TestSqlWeight1_ConditionedRepeatedLeaf(t *testing.T) {
 	model := `
 		model
@@ -628,10 +621,10 @@ func TestSqlWeight1_ConditionedRepeatedLeaf(t *testing.T) {
 	})
 }
 
-// TestSqlWeight1_LeafSatisfiedCachesRowEvaluation pins that a gathered row's condition is
-// evaluated at most once per request: after the first evaluation, changing the request context
+// TestSqlWeight1_ConditionedLeafSatisfiedCachesRowEvaluation pins that a gathered row's condition
+// is evaluated at most once per request: after the first evaluation, changing the request context
 // (which would flip a fresh CEL result) does not change the verdict a second visit returns.
-func TestSqlWeight1_LeafSatisfiedCachesRowEvaluation(t *testing.T) {
+func TestSqlWeight1_ConditionedLeafSatisfiedCachesRowEvaluation(t *testing.T) {
 	model := `
 		model
 			schema 1.1
@@ -650,23 +643,23 @@ func TestSqlWeight1_LeafSatisfiedCachesRowEvaluation(t *testing.T) {
 		Context:  testutils.MustNewStruct(t, map[string]any{"x": 1}),
 	})
 	require.NoError(t, err)
-	w := &walker{s: NewSQL(g, nil), req: req, subjType: "user", subjID: "alice"}
+	w := &walker{model: g, req: req, subjType: "user", subjID: "alice"}
 	l := leaf{relation: "viewer", conditions: []string{"cond"}}
 	gathered := []gatheredRow{{relation: "viewer", subjectID: "alice", condName: "cond"}}
 
-	ok, err := w.leafSatisfied(context.Background(), l, gathered)
+	ok, err := w.conditionedLeafSatisfied(context.Background(), l, gathered)
 	require.NoError(t, err)
 	require.True(t, ok)
 
 	req.Context = testutils.MustNewStruct(t, map[string]any{"x": 0})
-	ok, err = w.leafSatisfied(context.Background(), l, gathered)
+	ok, err = w.conditionedLeafSatisfied(context.Background(), l, gathered)
 	require.NoError(t, err)
 	require.True(t, ok, "second visit must reuse the cached evaluation")
 }
 
 // TestSqlWeight1_ConditionedWildcardMatrix exercises wildcard-vs-direct row routing across the
 // conditioned/unconditioned combos: an exclusion whose base unions direct and wildcard leaves,
-// queried by a direct user so the gather returns both '*' and exact-subject rows.
+// queried by a direct user so the conditioned query returns both '*' and exact-subject rows.
 func TestSqlWeight1_ConditionedWildcardMatrix(t *testing.T) {
 	model := `
 		model
@@ -804,11 +797,12 @@ func TestSqlWeight1_ContextualCollapsedUnionBranch(t *testing.T) {
 	require.Contains(t, q.SQL, "HAVING COUNT(1) FILTER (WHERE \"t\".relation = 'editor') > 0) LIMIT 1")
 }
 
-// TestSqlWeight1_ContextualSatisfiesArmOnGatherPath covers the carry-forward from the first pass
-// to the gather pass: an intersection where one arm is conditioned (forcing the gather path) and
-// the other arm is satisfied only by a contextual tuple. The contextual arm contributes no row and
-// is never queried, so the gather pass can only find it true by reusing the first pass's verdict.
-func TestSqlWeight1_ContextualSatisfiesArmOnGatherPath(t *testing.T) {
+// TestSqlWeight1_ContextualSatisfiesArmOnConditionedPath covers the carry-forward from the first
+// pass to the conditioned pass: an intersection where one arm is conditioned (forcing the
+// conditioned path) and the other arm is satisfied only by a contextual tuple. The contextual arm
+// contributes no row and is never queried, so the conditioned pass can only find it true by
+// reusing the first pass's verdict.
+func TestSqlWeight1_ContextualSatisfiesArmOnConditionedPath(t *testing.T) {
 	model := `
 		model
 			schema 1.1
@@ -822,7 +816,7 @@ func TestSqlWeight1_ContextualSatisfiesArmOnGatherPath(t *testing.T) {
 	require.NoError(t, err)
 
 	// A contextual tuple satisfies the (unconditioned) editor arm; it is never queried. The
-	// conditioned viewer arm forces the gather path and is answered by the gathered row.
+	// conditioned viewer arm forces the conditioned path and is answered by the gathered row.
 	ct := tuple.NewTupleKey("document:1", "editor", "user:alice")
 
 	t.Run("granted_when_conditioned_arm_row_passes", func(t *testing.T) {
@@ -847,7 +841,7 @@ func TestSqlWeight1_ContextualSatisfiesArmOnGatherPath(t *testing.T) {
 	})
 }
 
-// condCtx marshals a context map the way condition_context is stored, so the gather path's
+// condCtx marshals a context map the way condition_context is stored, so the conditioned path's
 // proto.Unmarshal round-trips it.
 func condCtx(t *testing.T, m map[string]any) []byte {
 	t.Helper()
@@ -862,15 +856,16 @@ func condCtx(t *testing.T, m map[string]any) []byte {
 // TestSqlWeight1_SubjectScopingSQL pins the exact SQL for each combination of request subject
 // (direct or wildcard), wildcard leaf, and conditions. Only a direct-user request with a reachable
 // wildcard leaf widens the WHERE to the public wildcard, so only then does each relation filter
-// (HAVING count on the unconditioned path, per-relation clause on the gather path) also name its
-// subject; every other combination keeps a single pinned subject and no per-relation subject term.
+// (HAVING count on the unconditioned path, per-relation clause on the conditioned path) also name
+// its subject; every other combination keeps a single pinned subject and no per-relation subject
+// term.
 func TestSqlWeight1_SubjectScopingSQL(t *testing.T) {
 	const (
 		selectOne = "SELECT 1 FROM tuple \"t\" WHERE (\"t\".store = ? AND \"t\".object_type = ? AND \"t\".object_id = ? AND \"t\".user_object_type = ? AND \"t\".user_relation = ? AND "
 		// sqlite nests a HAVING without GROUP BY in an EXISTS.
-		selectHaving = "SELECT 1 WHERE EXISTS (SELECT COUNT(*) FROM tuple \"t\" WHERE (\"t\".store = ? AND \"t\".object_type = ? AND \"t\".object_id = ? AND \"t\".user_object_type = ? AND \"t\".user_relation = ? AND "
-		gather       = "SELECT \"t\".relation, \"t\".user_object_id, COALESCE(\"t\".condition_name, ''), \"t\".condition_context FROM tuple \"t\" WHERE (\"t\".store = ? AND \"t\".object_type = ? AND \"t\".object_id = ? AND \"t\".user_object_type = ? AND \"t\".user_relation = ? AND "
-		uncond       = "(COALESCE(\"t\".condition_name, '') IS NULL OR COALESCE(\"t\".condition_name, '') = '')"
+		selectHaving      = "SELECT 1 WHERE EXISTS (SELECT COUNT(*) FROM tuple \"t\" WHERE (\"t\".store = ? AND \"t\".object_type = ? AND \"t\".object_id = ? AND \"t\".user_object_type = ? AND \"t\".user_relation = ? AND "
+		selectConditioned = "SELECT \"t\".relation, \"t\".user_object_id, COALESCE(\"t\".condition_name, ''), \"t\".condition_context FROM tuple \"t\" WHERE (\"t\".store = ? AND \"t\".object_type = ? AND \"t\".object_id = ? AND \"t\".user_object_type = ? AND \"t\".user_relation = ? AND "
+		uncond            = "(COALESCE(\"t\".condition_name, '') IS NULL OR COALESCE(\"t\".condition_name, '') = '')"
 	)
 	tests := []struct {
 		name   string
@@ -890,7 +885,7 @@ func TestSqlWeight1_SubjectScopingSQL(t *testing.T) {
 			name:   "direct_user_conditioned",
 			rels:   "define can_view: [user with cond]",
 			user:   "user:alice",
-			sql:    gather + "\"t\".user_object_id = ? AND \"t\".user_type = 'user' AND \"t\".relation = 'can_view' AND (\"t\".relation = 'can_view' AND COALESCE(\"t\".condition_name, '') = 'cond'))",
+			sql:    selectConditioned + "\"t\".user_object_id = ? AND \"t\".user_type = 'user' AND \"t\".relation = 'can_view' AND (\"t\".relation = 'can_view' AND COALESCE(\"t\".condition_name, '') = 'cond'))",
 			params: []any{"store1", "document", "1", "user", "", "alice"},
 		},
 		{
@@ -912,8 +907,7 @@ func TestSqlWeight1_SubjectScopingSQL(t *testing.T) {
 			params: []any{"store1", "document", "1", "user", "", "alice", "*", "alice"},
 		},
 		{
-			// Since there are two subject IDs, HAVING is kept even though the tree is a pure union,
-			// since it specifies which relation is for which subject ID.
+			// HAVING is kept despite the pure union: it pins each relation to its subject ID.
 			name: "direct_user_wildcard_leaf_pure_union",
 			rels: "define viewer: [user]\n define editor: [user:*]\n define can_view: viewer or editor",
 			user: "user:alice",
@@ -945,7 +939,7 @@ func TestSqlWeight1_SubjectScopingSQL(t *testing.T) {
 			name: "direct_user_wildcard_leaf_conditioned",
 			rels: "define viewer: [user with cond]\n define editor: [user:*]\n define can_view: viewer and editor",
 			user: "user:alice",
-			sql: gather + "\"t\".user_object_id IN (?, ?) AND \"t\".user_type IN ('user', 'userset') AND \"t\".relation IN ('editor', 'viewer') AND (" +
+			sql: selectConditioned + "\"t\".user_object_id IN (?, ?) AND \"t\".user_type IN ('user', 'userset') AND \"t\".relation IN ('editor', 'viewer') AND (" +
 				"(\"t\".relation = 'editor' AND \"t\".user_object_id = '*' AND " + uncond + ") OR " +
 				"(\"t\".relation = 'viewer' AND \"t\".user_object_id = ? AND COALESCE(\"t\".condition_name, '') = 'cond')))",
 			params: []any{"store1", "document", "1", "user", "", "alice", "*", "alice"},
@@ -972,7 +966,7 @@ func TestSqlWeight1_SubjectScopingSQL(t *testing.T) {
 			name:   "wildcard_user_wildcard_leaf_conditioned",
 			rels:   "define viewer: [user with cond]\n define editor: [user:* with cond]\n define can_view: viewer or editor",
 			user:   "user:*",
-			sql:    gather + "\"t\".user_object_id = ? AND \"t\".user_type = 'userset' AND \"t\".relation = 'editor' AND (\"t\".relation = 'editor' AND COALESCE(\"t\".condition_name, '') = 'cond'))",
+			sql:    selectConditioned + "\"t\".user_object_id = ? AND \"t\".user_type = 'userset' AND \"t\".relation = 'editor' AND (\"t\".relation = 'editor' AND COALESCE(\"t\".condition_name, '') = 'cond'))",
 			params: []any{"store1", "document", "1", "user", "", "*"},
 		},
 		{
@@ -1043,7 +1037,8 @@ func setupSQLiteEnv(t *testing.T) *sqliteEnv {
 }
 
 // run seeds tuples under a fresh store id (so cases never collide), evaluates weight1 for
-// object#relation@user, and returns the decision. reqCtx, when set, feeds CEL on the gather path.
+// object#relation@user, and returns the decision. When set, reqCtx feeds CEL on the conditioned
+// path.
 func (e *sqliteEnv) run(t *testing.T, g *modelgraph.AuthorizationModelGraph, tuples []*openfgav1.TupleKey, object, relation, user string, reqCtx map[string]any, ctxTuples ...*openfgav1.TupleKey) bool {
 	t.Helper()
 	ctx := context.Background()
@@ -1278,7 +1273,7 @@ func TestSQLWeight1Integration_UsersetSubject(t *testing.T) {
 }
 
 // TestSQLWeight1Integration_NestedTree pins that the single unconditioned query's HAVING tree
-// evaluates a deeply nested boolean model correctly against Postgres.
+// evaluates a deeply nested boolean model correctly.
 func TestSQLWeight1Integration_NestedTree(t *testing.T) {
 	e := setupSQLiteEnv(t)
 	g := mustGraph(t, `
@@ -1367,8 +1362,8 @@ func TestSQLWeight1Integration_Conditioned(t *testing.T) {
 	})
 }
 
-// TestSQLWeight1Integration_ConditionedExclusion drives the gather path through an exclusion with
-// a conditioned base and an unconditioned subtract.
+// TestSQLWeight1Integration_ConditionedExclusion drives the conditioned path through an exclusion
+// with a conditioned base and an unconditioned subtract.
 func TestSQLWeight1Integration_ConditionedExclusion(t *testing.T) {
 	e := setupSQLiteEnv(t)
 	g := mustGraph(t, `
@@ -1463,10 +1458,10 @@ func TestSQLWeight1Integration_StaleWildcardOnDirectLeaf(t *testing.T) {
 	}
 }
 
-// TestSQLWeight1Integration_GatherFiltersUnknownCondition pins that the gather filter excludes a
-// tuple carrying a condition the edge does not admit, while a tuple with the admitted condition
-// still grants (so the filter does not over-narrow).
-func TestSQLWeight1Integration_GatherFiltersUnknownCondition(t *testing.T) {
+// TestSQLWeight1Integration_ConditionedFiltersUnknownCondition pins that the conditioned filter
+// excludes a tuple carrying a condition the edge does not admit, while a tuple with the admitted
+// condition still grants (so the filter does not over-narrow).
+func TestSQLWeight1Integration_ConditionedFiltersUnknownCondition(t *testing.T) {
 	e := setupSQLiteEnv(t)
 	g := mustGraph(t, `
 		model
@@ -1488,10 +1483,11 @@ func TestSQLWeight1Integration_GatherFiltersUnknownCondition(t *testing.T) {
 	})
 }
 
-// TestSQLWeight1Integration_GatherPairsConditionsPerRelation pins per-relation condition pairing:
-// a rel1 tuple carrying rel2's condB and an unconditioned rel2 tuple are each excluded even though
-// their relation and condition appear elsewhere in the model, while correctly-paired tuples grant.
-func TestSQLWeight1Integration_GatherPairsConditionsPerRelation(t *testing.T) {
+// TestSQLWeight1Integration_ConditionedPairsConditionsPerRelation pins per-relation condition
+// pairing: a rel1 tuple carrying rel2's condB and an unconditioned rel2 tuple are each excluded
+// even though their relation and condition appear elsewhere in the model, while correctly-paired
+// tuples grant.
+func TestSQLWeight1Integration_ConditionedPairsConditionsPerRelation(t *testing.T) {
 	e := setupSQLiteEnv(t)
 	g := mustGraph(t, `
 		model

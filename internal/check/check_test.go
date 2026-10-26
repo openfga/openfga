@@ -1027,15 +1027,13 @@ func TestResolveLogicalEdge_SQLOptimizationsFlag(t *testing.T) {
 		// still force the default strategy.
 		mockDatastore.EXPECT().Querier(gomock.Any()).Return(&fakeQuerier{}).AnyTimes()
 
-		// The planner must not be consulted when the flag is off: a strict mock with no
-		// expectations fails the test if GetPlanSelector is called.
+		// No expectations: the planner must not be consulted.
 		mockPlanner := mocks.NewMockManager(ctrl)
 
 		defaultStrategy := NewMockGroupStrategy(ctrl)
 		sqlStrategy := NewMockGroupStrategy(ctrl)
 
 		defaultStrategy.EXPECT().Union(gomock.Any(), gomock.Any(), gomock.Any()).Return(&Response{Allowed: true}, nil).Times(1)
-		// sqlStrategy has no expectations, so any call to it fails the test.
 
 		resolver := New(Config{
 			Model:                   mg,
@@ -1077,7 +1075,6 @@ func TestResolveLogicalEdge_SQLOptimizationsFlag(t *testing.T) {
 		mockSelector := mocks.NewMockSelector(ctrl)
 
 		mockPlanner.EXPECT().GetPlanSelector(gomock.Any()).Return(mockSelector).Times(1)
-		// When the flag is on, the SQL strategy must be among the candidates handed to the planner.
 		mockSelector.EXPECT().Select(gomock.Any()).DoAndReturn(func(candidates map[string]*planner.PlanConfig) *planner.PlanConfig {
 			require.Contains(t, candidates, DefaultStrategyName)
 			require.Contains(t, candidates, SQLStrategyName)
@@ -1088,7 +1085,6 @@ func TestResolveLogicalEdge_SQLOptimizationsFlag(t *testing.T) {
 		defaultStrategy := NewMockGroupStrategy(ctrl)
 		sqlStrategy := NewMockGroupStrategy(ctrl)
 
-		// The planner selected SQL, so only the SQL strategy runs; default has no expectations.
 		sqlStrategy.EXPECT().Union(gomock.Any(), gomock.Any(), gomock.Any()).Return(&Response{Allowed: true}, nil).Times(1)
 
 		resolver := New(Config{
