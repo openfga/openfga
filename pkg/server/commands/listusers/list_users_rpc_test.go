@@ -2605,8 +2605,8 @@ func TestListUsersCycleDetection(t *testing.T) {
 		}()
 
 		select {
-		case <-channelWithError:
-			require.FailNow(t, "expected 0 errors")
+		case err := <-channelWithError:
+			require.FailNow(t, "expected 0 errors", "got: %v", err)
 		case <-channelWithResults:
 			require.FailNow(t, "expected 0 results")
 		case <-channelDone:
@@ -3816,8 +3816,8 @@ func TestListUsers_ExpandExclusionHandler(t *testing.T) {
 	OUTER:
 		for {
 			select {
-			case <-channelWithError:
-				require.FailNow(t, "expected 0 errors")
+			case err := <-channelWithError:
+				require.FailNow(t, "expected 0 errors", "got: %v", err)
 			case result := <-channelWithResults:
 				actualResults = append(actualResults, struct {
 					user               string
