@@ -10,10 +10,12 @@ import (
 )
 
 // renderer accumulates SQL text and the positional bind arguments its "?" placeholders refer
-// to, as it walks the ast tree.
+// to, as it walks the ast tree. Its err field records the first valid construct SQLite cannot
+// express; once set, the rendered text is discarded.
 type renderer struct {
 	sb   strings.Builder
 	args []any
+	err  error
 }
 
 func (r *renderer) write(s string) { r.sb.WriteString(s) }
@@ -46,11 +48,11 @@ func (r *renderer) selectStmt(s *ast.Select) {
 			if i > 0 {
 				r.write(", ")
 			}
-			r.write("tuple " + t.Alias)
+			r.write("tuple " + quoteAlias(t.Alias))
 		}
 	}
 	for _, j := range s.Joins {
-		r.write(" " + joinKeyword(j.Type) + " tuple " + j.Table.Alias)
+		r.write(" " + joinKeyword(j.Type) + " tuple " + quoteAlias(j.Table.Alias))
 		// A CROSS join carries no condition; every other flavour does.
 		if j.On != nil {
 			r.write(" ON ")
@@ -290,6 +292,11 @@ func (r *renderer) value(n ast.ScalarValue) {
 		r.write(" AS " + sqliteType(x.Type) + ")")
 
 	case ast.FuncNode:
+		// SQLite's COALESCE needs two or more arguments; with one it is just that argument.
+		if x.Fn == ast.FuncCoalesce && len(x.Args) == 1 {
+			r.value(x.Args[0])
+			return
+		}
 		r.write(sqliteFunc(x.Fn) + "(")
 		r.values(x.Args)
 		r.write(")")
@@ -358,7 +365,7 @@ func (r *renderer) projection(n ast.Projection) {
 	switch x := n.(type) {
 	case ast.AliasNode:
 		r.projection(x.Inner)
-		r.write(" AS " + x.Alias)
+		r.write(" AS " + quoteAlias(x.Alias))
 
 	default:
 		// Everything else in the category is a ScalarValue, ScalarValue embedding Projection.
@@ -403,9 +410,21 @@ func (r *renderer) aggregate(x ast.AggNode) {
 func (r *renderer) quantified(x ast.QuantifiedNode) {
 	sb, ok := x.Set.(ast.SetBindNode)
 	if !ok {
-		// A non-bound set keeps the standard quantified form.
+		// SQLite has no ANY / ALL operator; only the IN-equivalent forms translate exactly.
+		var kw string
+		switch {
+		case x.Op == ast.OpEq && x.Q == ast.Any:
+			kw = " IN ("
+		case x.Op == ast.OpNe && x.Q == ast.All:
+			kw = " NOT IN ("
+		default:
+			if r.err == nil {
+				r.err = fmt.Errorf("%w: %s %s over a subquery", ErrUnsupported, op(x.Op), quantifier(x.Q))
+			}
+			return
+		}
 		r.value(x.Left)
-		r.write(" " + op(x.Op) + " " + quantifier(x.Q) + " (")
+		r.write(kw)
 		r.set(x.Set)
 		r.write(")")
 		return

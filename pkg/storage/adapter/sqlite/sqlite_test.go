@@ -19,6 +19,38 @@ func assertSQL(t *testing.T, got, want string) {
 	}
 }
 
+// newDB opens an in-memory database whose tuple table holds the given object_ids, each with a
+// NULL condition_name.
+func newDB(t *testing.T, objectIDs ...string) *sql.DB {
+	t.Helper()
+	db, err := sql.Open("sqlite", ":memory:")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+	_, err = db.Exec("CREATE TABLE tuple (object_id TEXT, relation TEXT, condition_name TEXT)")
+	require.NoError(t, err)
+	for _, id := range objectIDs {
+		_, err := db.Exec("INSERT INTO tuple (object_id) VALUES (?)", id)
+		require.NoError(t, err)
+	}
+	return db
+}
+
+// queryStrings executes stmt and collects its single string column.
+func queryStrings(t *testing.T, db *sql.DB, stmt *query.Statement) []string {
+	t.Helper()
+	rows, err := sqlite.New(db).Execute(context.Background(), stmt)
+	require.NoError(t, err)
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var s string
+		require.NoError(t, rows.Scan(&s))
+		out = append(out, s)
+	}
+	require.NoError(t, rows.Err())
+	return out
+}
+
 // TestSQLiteSubjectColumnsAreDiscrete verifies a subject field is a plain column reference:
 // SQLite stores the subject across three physical columns, unlike the packed _user in
 // MySQL/PostgreSQL.
@@ -27,8 +59,9 @@ func TestSQLiteSubjectColumnsAreDiscrete(t *testing.T) {
 	stmt := query.Select(a.SubjectID()).
 		From(a).
 		Where(query.Eq(a.SubjectID(), query.Bind("bob")))
-	sqlText, args := sqlite.Render(stmt)
-	want := "SELECT a.user_object_id FROM tuple a WHERE a.user_object_id = ?"
+	sqlText, args, err := sqlite.Render(stmt)
+	require.NoError(t, err)
+	want := `SELECT "a".user_object_id FROM tuple "a" WHERE "a".user_object_id = ?`
 	assertSQL(t, sqlText, want)
 	if len(args) != 1 || args[0] != "bob" {
 		t.Errorf("args: got %v", args)
@@ -45,10 +78,11 @@ func TestSQLiteMapsEveryLogicalColumn(t *testing.T) {
 		a.SubjectType(), a.SubjectID(), a.SubjectRelation(), a.SubjectKind(),
 		a.Store(), a.Condition(), a.ConditionContext(),
 	).From(a)
-	sqlText, _ := sqlite.Render(stmt)
-	want := "SELECT a.object_type, a.object_id, a.relation, " +
-		"a.user_object_type, a.user_object_id, a.user_relation, a.user_type, " +
-		"a.store, a.condition_name, a.condition_context FROM tuple a"
+	sqlText, _, err := sqlite.Render(stmt)
+	require.NoError(t, err)
+	want := `SELECT "a".object_type, "a".object_id, "a".relation, ` +
+		`"a".user_object_type, "a".user_object_id, "a".user_relation, "a".user_type, ` +
+		`"a".store, COALESCE("a".condition_name, ''), "a".condition_context FROM tuple "a"`
 	assertSQL(t, sqlText, want)
 }
 
@@ -62,10 +96,11 @@ func TestSQLiteSelfJoinAndCast(t *testing.T) {
 		Join(g, query.Eq(a.SubjectID(), g.ObjectID())).
 		Where(query.Eq(ctxText, query.Bind("{}")))
 
-	sqlText, _ := sqlite.Render(stmt)
-	want := "SELECT a.object_id, CAST(a.condition_context AS TEXT) " +
-		"FROM tuple a INNER JOIN tuple g ON a.user_object_id = g.object_id " +
-		"WHERE CAST(a.condition_context AS TEXT) = ?"
+	sqlText, _, err := sqlite.Render(stmt)
+	require.NoError(t, err)
+	want := `SELECT "a".object_id, CAST("a".condition_context AS TEXT) ` +
+		`FROM tuple "a" INNER JOIN tuple "g" ON "a".user_object_id = "g".object_id ` +
+		`WHERE CAST("a".condition_context AS TEXT) = ?`
 	assertSQL(t, sqlText, want)
 }
 
@@ -76,9 +111,10 @@ func TestSQLiteNativeFilter(t *testing.T) {
 	match := query.Eq(a.ObjectRelation(), query.Lit("viewer"))
 	stmt := query.Select(query.Count(a.ObjectID(), query.AggFilter(match))).From(a)
 
-	sqlText, _ := sqlite.Render(stmt)
+	sqlText, _, err := sqlite.Render(stmt)
+	require.NoError(t, err)
 	assertSQL(t, sqlText,
-		"SELECT COUNT(a.object_id) FILTER (WHERE a.relation = 'viewer') FROM tuple a")
+		`SELECT COUNT("a".object_id) FILTER (WHERE "a".relation = 'viewer') FROM tuple "a"`)
 }
 
 // TestSQLiteFilteredCountStar covers the no-argument aggregate: COUNT(*) with a native FILTER.
@@ -87,8 +123,9 @@ func TestSQLiteFilteredCountStar(t *testing.T) {
 	match := query.Eq(a.ObjectRelation(), query.Lit("viewer"))
 	stmt := query.Select(query.Count(query.Star, query.AggFilter(match))).From(a)
 
-	sqlText, _ := sqlite.Render(stmt)
-	assertSQL(t, sqlText, "SELECT COUNT(*) FILTER (WHERE a.relation = 'viewer') FROM tuple a")
+	sqlText, _, err := sqlite.Render(stmt)
+	require.NoError(t, err)
+	assertSQL(t, sqlText, `SELECT COUNT(*) FILTER (WHERE "a".relation = 'viewer') FROM tuple "a"`)
 }
 
 // TestSQLitePlainDistinct covers a plain SELECT DISTINCT.
@@ -96,8 +133,9 @@ func TestSQLitePlainDistinct(t *testing.T) {
 	a := query.NewTuple("a")
 	stmt := query.Select(a.ObjectID()).From(a).Distinct()
 
-	sqlText, _ := sqlite.Render(stmt)
-	assertSQL(t, sqlText, "SELECT DISTINCT a.object_id FROM tuple a")
+	sqlText, _, err := sqlite.Render(stmt)
+	require.NoError(t, err)
+	assertSQL(t, sqlText, `SELECT DISTINCT "a".object_id FROM tuple "a"`)
 }
 
 // TestSQLiteOffsetUsesNegativeLimit covers SQLite's idiom: OFFSET is legal only after a LIMIT,
@@ -106,8 +144,9 @@ func TestSQLiteOffsetUsesNegativeLimit(t *testing.T) {
 	a := query.NewTuple("a")
 	stmt := query.Select(a.ObjectID()).From(a).Offset(20)
 
-	sqlText, _ := sqlite.Render(stmt)
-	assertSQL(t, sqlText, "SELECT a.object_id FROM tuple a LIMIT -1 OFFSET 20")
+	sqlText, _, err := sqlite.Render(stmt)
+	require.NoError(t, err)
+	assertSQL(t, sqlText, `SELECT "a".object_id FROM tuple "a" LIMIT -1 OFFSET 20`)
 }
 
 // TestSQLiteJSONObject shows the object constructor is json_object with the flat "k, v"
@@ -117,8 +156,9 @@ func TestSQLiteJSONObject(t *testing.T) {
 	obj := query.JSONObject(query.Pair(query.Lit("rel"), a.ObjectRelation()))
 	stmt := query.Select(obj).From(a)
 
-	sqlText, _ := sqlite.Render(stmt)
-	assertSQL(t, sqlText, "SELECT json_object('rel', a.relation) FROM tuple a")
+	sqlText, _, err := sqlite.Render(stmt)
+	require.NoError(t, err)
+	assertSQL(t, sqlText, `SELECT json_object('rel', "a".relation) FROM tuple "a"`)
 }
 
 // TestSQLiteExpandsBoundSet shows a bound set expanding to IN(...), since SQLite has no array
@@ -133,9 +173,10 @@ func TestSQLiteExpandsBoundSet(t *testing.T) {
 				query.BindAll([]string{"viewer", "editor"})),
 		))
 
-	sqlText, args := sqlite.Render(stmt)
+	sqlText, args, err := sqlite.Render(stmt)
+	require.NoError(t, err)
 	assertSQL(t, sqlText,
-		"SELECT a.object_id FROM tuple a WHERE (a.object_type = ? AND a.relation IN (?, ?))")
+		`SELECT "a".object_id FROM tuple "a" WHERE ("a".object_type = ? AND "a".relation IN (?, ?))`)
 	if len(args) != 3 {
 		t.Errorf("args: got %v", args)
 	}
@@ -152,9 +193,10 @@ func TestSQLiteHavingWithoutGroupBy(t *testing.T) {
 		OrderBy(query.Asc(query.Count(query.Star, query.AggFilter(query.Eq(a.ObjectRelation(), query.Bind("dropped")))))).
 		Limit(1)
 
-	sqlText, args := sqlite.Render(stmt)
-	assertSQL(t, sqlText, "SELECT ? WHERE EXISTS (SELECT COUNT(*) FROM tuple a WHERE a.object_id = ? "+
-		"HAVING COUNT(*) FILTER (WHERE a.relation = ?) > 0) LIMIT 1")
+	sqlText, args, err := sqlite.Render(stmt)
+	require.NoError(t, err)
+	assertSQL(t, sqlText, `SELECT ? WHERE EXISTS (SELECT COUNT(*) FROM tuple "a" WHERE "a".object_id = ? `+
+		`HAVING COUNT(*) FILTER (WHERE "a".relation = ?) > 0) LIMIT 1`)
 	if len(args) != 3 || args[0] != int64(7) || args[1] != "1" || args[2] != "viewer" {
 		t.Errorf("args: got %v", args)
 	}
@@ -165,11 +207,13 @@ func TestSQLiteHavingAlreadyAggregate(t *testing.T) {
 	a := query.NewTuple("a")
 	having := query.Gt(query.Count(query.Star), query.Lit[int64](0))
 
-	sqlText, _ := sqlite.Render(query.Select(query.Cast[string](query.Count(query.Star), query.TypeVarchar)).From(a).Having(having))
-	assertSQL(t, sqlText, "SELECT CAST(COUNT(*) AS TEXT) FROM tuple a HAVING COUNT(*) > 0")
+	sqlText, _, err := sqlite.Render(query.Select(query.Cast[string](query.Count(query.Star), query.TypeVarchar)).From(a).Having(having))
+	require.NoError(t, err)
+	assertSQL(t, sqlText, `SELECT CAST(COUNT(*) AS TEXT) FROM tuple "a" HAVING COUNT(*) > 0`)
 
-	sqlText, _ = sqlite.Render(query.Select(a.ObjectID()).From(a).GroupBy(a.ObjectID()).Having(having))
-	assertSQL(t, sqlText, "SELECT a.object_id FROM tuple a GROUP BY a.object_id HAVING COUNT(*) > 0")
+	sqlText, _, err = sqlite.Render(query.Select(a.ObjectID()).From(a).GroupBy(a.ObjectID()).Having(having))
+	require.NoError(t, err)
+	assertSQL(t, sqlText, `SELECT "a".object_id FROM tuple "a" GROUP BY "a".object_id HAVING COUNT(*) > 0`)
 }
 
 // TestSQLiteHavingWithoutGroupByExecutes pins that there is one group even over no rows.
@@ -210,4 +254,72 @@ func TestSQLiteHavingWithoutGroupByExecutes(t *testing.T) {
 			require.NoError(t, rows.Err())
 		})
 	}
+}
+
+// TestSQLiteQuotesAliases runs table and result-column aliases that are only valid quoted: a
+// reserved word, a space, and an embedded double quote.
+func TestSQLiteQuotesAliases(t *testing.T) {
+	db := newDB(t, "doc1")
+	for _, alias := range []string{"group", "tuple alias", `we"ird`} {
+		t.Run(alias, func(t *testing.T) {
+			g := query.NewTuple(alias)
+			h := query.NewTuple(alias + "2")
+			stmt := query.Select(query.As(g.ObjectID(), alias)).
+				From(g).
+				Join(h, query.Eq(g.ObjectID(), h.ObjectID()))
+			require.Equal(t, []string{"doc1"}, queryStrings(t, db, stmt))
+		})
+	}
+}
+
+// TestSQLiteSingleArgCoalesce runs a one-argument COALESCE, which SQLite itself rejects.
+func TestSQLiteSingleArgCoalesce(t *testing.T) {
+	db := newDB(t)
+	sqlText, _, err := sqlite.Render(query.Select(query.Coalesce(query.Lit("x"))))
+	require.NoError(t, err)
+	assertSQL(t, sqlText, "SELECT 'x'")
+	require.Equal(t, []string{"x"}, queryStrings(t, db, query.Select(query.Coalesce(query.Lit("x")))))
+}
+
+// TestSQLiteQuantifiedSubquery runs the subquery forms SQLite can express (=ANY as IN, <>ALL as
+// NOT IN), and pins that the others return ErrUnsupported rather than render invalid SQL.
+func TestSQLiteQuantifiedSubquery(t *testing.T) {
+	db := newDB(t, "doc1", "doc2")
+	a := query.NewTuple("a")
+	b := query.NewTuple("b")
+	sub := query.SetSubExpr[string](query.Select(b.ObjectID()).From(b).Where(query.Eq(b.ObjectID(), query.Bind("doc1"))))
+
+	anyStmt := query.Select(a.ObjectID()).From(a).Where(query.Quantified(a.ObjectID(), query.OpEq, query.Any, sub))
+	sqlText, _, err := sqlite.Render(anyStmt)
+	require.NoError(t, err)
+	assertSQL(t, sqlText, `SELECT "a".object_id FROM tuple "a" WHERE "a".object_id IN `+
+		`(SELECT "b".object_id FROM tuple "b" WHERE "b".object_id = ?)`)
+	require.Equal(t, []string{"doc1"}, queryStrings(t, db, anyStmt))
+
+	allStmt := query.Select(a.ObjectID()).From(a).Where(query.Quantified(a.ObjectID(), query.OpNe, query.All, sub))
+	sqlText, _, err = sqlite.Render(allStmt)
+	require.NoError(t, err)
+	assertSQL(t, sqlText, `SELECT "a".object_id FROM tuple "a" WHERE "a".object_id NOT IN `+
+		`(SELECT "b".object_id FROM tuple "b" WHERE "b".object_id = ?)`)
+	require.Equal(t, []string{"doc2"}, queryStrings(t, db, allStmt))
+
+	for _, unsupported := range []query.Predicate{
+		query.Quantified(a.ObjectID(), query.OpLt, query.All, sub),
+		query.Quantified(a.ObjectID(), query.OpEq, query.All, sub),
+	} {
+		stmt := query.Select(a.ObjectID()).From(a).Where(unsupported)
+		_, _, err := sqlite.Render(stmt)
+		require.ErrorIs(t, err, sqlite.ErrUnsupported)
+		_, err = sqlite.New(db).Execute(context.Background(), stmt)
+		require.ErrorIs(t, err, sqlite.ErrUnsupported)
+	}
+}
+
+// TestSQLiteNullConditionIsEmpty pins that a NULL condition_name reads and matches as "", as
+// the SQLite datastore's own reader treats it.
+func TestSQLiteNullConditionIsEmpty(t *testing.T) {
+	db := newDB(t, "doc1")
+	a := query.NewTuple("a")
+	stmt := query.Select(a.Condition()).From(a).Where(query.Eq(a.Condition(), query.Lit("")))
+	require.Equal(t, []string{""}, queryStrings(t, db, stmt))
 }

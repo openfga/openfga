@@ -6,10 +6,14 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"errors"
 
 	"github.com/openfga/openfga/pkg/storage/adapter"
 	"github.com/openfga/openfga/pkg/storage/adapter/query"
 )
+
+// ErrUnsupported reports a valid query construct that SQLite cannot express.
+var ErrUnsupported = errors.New("sqlite: unsupported construct")
 
 // New returns an adapter.Querier that renders typed query.Statements to SQLite SQL and runs
 // them against db. The caller owns db's lifecycle.
@@ -26,7 +30,10 @@ type querier struct {
 // SQLite's native positional form, so args bind in order, and *sql.Rows already satisfies
 // adapter.Rows, so the cursor is returned directly.
 func (q *querier) Execute(ctx context.Context, stmt *query.Statement) (adapter.Rows, error) {
-	sqlText, args := Render(stmt)
+	sqlText, args, err := Render(stmt)
+	if err != nil {
+		return nil, err
+	}
 	rows, err := q.db.QueryContext(ctx, sqlText, args...)
 	if err != nil {
 		// Return a nil interface, not a non-nil adapter.Rows wrapping a nil *sql.Rows.
@@ -37,9 +44,13 @@ func (q *querier) Execute(ctx context.Context, stmt *query.Statement) (adapter.R
 
 // Render renders a statement to SQLite SQL text and positional bind arguments by walking the
 // embedded ast.Select. It is exported so callers can render without a DB — to log or inspect
-// the rendered statement, and for tests that assert on SQL text rather than run it.
-func Render(stmt *query.Statement) (sql string, args []any) {
+// the rendered statement, and for tests that assert on SQL text rather than run it. A valid
+// construct SQLite cannot express returns an error wrapping ErrUnsupported.
+func Render(stmt *query.Statement) (sql string, args []any, err error) {
 	r := &renderer{}
 	r.selectStmt(&stmt.Select)
-	return r.sb.String(), r.args
+	if r.err != nil {
+		return "", nil, r.err
+	}
+	return r.sb.String(), r.args, nil
 }

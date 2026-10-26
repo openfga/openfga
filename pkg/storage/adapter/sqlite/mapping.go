@@ -12,6 +12,7 @@ import (
 
 // sqliteColumn maps a logical column to SQLite SQL, owning the full physical mapping.
 func sqliteColumn(name ast.Column, alias string) string {
+	alias = quoteAlias(alias)
 	switch name {
 	case ast.ColSubjectType:
 		return alias + ".user_object_type"
@@ -30,7 +31,8 @@ func sqliteColumn(name ast.Column, alias string) string {
 	case ast.ColStore:
 		return alias + ".store"
 	case ast.ColCondition:
-		return alias + ".condition_name"
+		// The column is nullable; the datastore treats NULL as no condition, i.e. "".
+		return "COALESCE(" + alias + ".condition_name, '')"
 	case ast.ColConditionContext:
 		return alias + ".condition_context"
 	default:
@@ -164,7 +166,7 @@ func literal(v any) string {
 	rv := reflect.ValueOf(v)
 	switch rv.Kind() {
 	case reflect.String:
-		return quote(rv.String())
+		return quoteLit(rv.String())
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		return strconv.FormatInt(rv.Int(), 10)
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
@@ -178,15 +180,22 @@ func literal(v any) string {
 	}
 }
 
-// quote renders a string as a single-quoted SQL literal, doubling embedded quotes.
-func quote(s string) string {
+// quoteLit renders a string as a single-quoted SQL literal.
+func quoteLit(s string) string { return quoteWith(s, '\'') }
+
+// quoteAlias renders an alias as a double-quoted SQL identifier, so reserved words and arbitrary
+// characters are safe.
+func quoteAlias(s string) string { return quoteWith(s, '"') }
+
+// quoteWith wraps s in q, doubling each embedded q.
+func quoteWith(s string, q byte) string {
 	out := make([]byte, 0, len(s)+2)
-	out = append(out, '\'')
+	out = append(out, q)
 	for i := range len(s) {
-		if s[i] == '\'' {
-			out = append(out, '\'')
+		if s[i] == q {
+			out = append(out, q)
 		}
 		out = append(out, s[i])
 	}
-	return string(append(out, '\''))
+	return string(append(out, q))
 }
