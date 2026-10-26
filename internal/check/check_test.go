@@ -2108,7 +2108,7 @@ func TestResolveExclusion(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
 
-		edges, ok := mg.GetEdgesFromNodeId("document#viewer")
+		edges, ok := mg.GetEdgesFromNodeID("document#viewer")
 		require.True(t, ok)
 
 		res, err := resolver.ResolveExclusion(ctx, req, edges[0].GetTo())
