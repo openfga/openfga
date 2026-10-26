@@ -27,9 +27,9 @@ func TestSQLiteSubjectColumnsAreDiscrete(t *testing.T) {
 	stmt := query.Select(a.SubjectID()).
 		From(a).
 		Where(query.Eq(a.SubjectID(), query.Bind("bob")))
-	sql, args := sqlite.Render(stmt)
+	sqlText, args := sqlite.Render(stmt)
 	want := "SELECT a.user_object_id FROM tuple a WHERE a.user_object_id = ?"
-	assertSQL(t, sql, want)
+	assertSQL(t, sqlText, want)
 	if len(args) != 1 || args[0] != "bob" {
 		t.Errorf("args: got %v", args)
 	}
@@ -45,11 +45,11 @@ func TestSQLiteMapsEveryLogicalColumn(t *testing.T) {
 		a.SubjectType(), a.SubjectID(), a.SubjectRelation(), a.SubjectKind(),
 		a.Store(), a.Condition(), a.ConditionContext(),
 	).From(a)
-	sql, _ := sqlite.Render(stmt)
+	sqlText, _ := sqlite.Render(stmt)
 	want := "SELECT a.object_type, a.object_id, a.relation, " +
 		"a.user_object_type, a.user_object_id, a.user_relation, a.user_type, " +
 		"a.store, a.condition_name, a.condition_context FROM tuple a"
-	assertSQL(t, sql, want)
+	assertSQL(t, sqlText, want)
 }
 
 // TestSQLiteSelfJoinAndCast exercises a self-join and a CAST; SQLite spells TypeVarchar as TEXT.
@@ -62,11 +62,11 @@ func TestSQLiteSelfJoinAndCast(t *testing.T) {
 		Join(g, query.Eq(a.SubjectID(), g.ObjectID())).
 		Where(query.Eq(ctxText, query.Bind("{}")))
 
-	sql, _ := sqlite.Render(stmt)
+	sqlText, _ := sqlite.Render(stmt)
 	want := "SELECT a.object_id, CAST(a.condition_context AS TEXT) " +
 		"FROM tuple a INNER JOIN tuple g ON a.user_object_id = g.object_id " +
 		"WHERE CAST(a.condition_context AS TEXT) = ?"
-	assertSQL(t, sql, want)
+	assertSQL(t, sqlText, want)
 }
 
 // TestSQLiteNativeFilter verifies SQLite emits a real `FILTER (WHERE ...)` clause for a filtered
@@ -76,8 +76,8 @@ func TestSQLiteNativeFilter(t *testing.T) {
 	match := query.Eq(a.ObjectRelation(), query.Lit("viewer"))
 	stmt := query.Select(query.Count(a.ObjectID(), query.AggFilter(match))).From(a)
 
-	sql, _ := sqlite.Render(stmt)
-	assertSQL(t, sql,
+	sqlText, _ := sqlite.Render(stmt)
+	assertSQL(t, sqlText,
 		"SELECT COUNT(a.object_id) FILTER (WHERE a.relation = 'viewer') FROM tuple a")
 }
 
@@ -87,8 +87,8 @@ func TestSQLiteFilteredCountStar(t *testing.T) {
 	match := query.Eq(a.ObjectRelation(), query.Lit("viewer"))
 	stmt := query.Select(query.Count(query.Star, query.AggFilter(match))).From(a)
 
-	sql, _ := sqlite.Render(stmt)
-	assertSQL(t, sql, "SELECT COUNT(*) FILTER (WHERE a.relation = 'viewer') FROM tuple a")
+	sqlText, _ := sqlite.Render(stmt)
+	assertSQL(t, sqlText, "SELECT COUNT(*) FILTER (WHERE a.relation = 'viewer') FROM tuple a")
 }
 
 // TestSQLitePlainDistinct covers a plain SELECT DISTINCT.
@@ -96,8 +96,8 @@ func TestSQLitePlainDistinct(t *testing.T) {
 	a := query.NewTuple("a")
 	stmt := query.Select(a.ObjectID()).From(a).Distinct()
 
-	sql, _ := sqlite.Render(stmt)
-	assertSQL(t, sql, "SELECT DISTINCT a.object_id FROM tuple a")
+	sqlText, _ := sqlite.Render(stmt)
+	assertSQL(t, sqlText, "SELECT DISTINCT a.object_id FROM tuple a")
 }
 
 // TestSQLiteOffsetUsesNegativeLimit covers SQLite's idiom: OFFSET is legal only after a LIMIT,
@@ -106,8 +106,8 @@ func TestSQLiteOffsetUsesNegativeLimit(t *testing.T) {
 	a := query.NewTuple("a")
 	stmt := query.Select(a.ObjectID()).From(a).Offset(20)
 
-	sql, _ := sqlite.Render(stmt)
-	assertSQL(t, sql, "SELECT a.object_id FROM tuple a LIMIT -1 OFFSET 20")
+	sqlText, _ := sqlite.Render(stmt)
+	assertSQL(t, sqlText, "SELECT a.object_id FROM tuple a LIMIT -1 OFFSET 20")
 }
 
 // TestSQLiteJSONObject shows the object constructor is json_object with the flat "k, v"
@@ -117,8 +117,8 @@ func TestSQLiteJSONObject(t *testing.T) {
 	obj := query.JSONObject(query.Pair(query.Lit("rel"), a.ObjectRelation()))
 	stmt := query.Select(obj).From(a)
 
-	sql, _ := sqlite.Render(stmt)
-	assertSQL(t, sql, "SELECT json_object('rel', a.relation) FROM tuple a")
+	sqlText, _ := sqlite.Render(stmt)
+	assertSQL(t, sqlText, "SELECT json_object('rel', a.relation) FROM tuple a")
 }
 
 // TestSQLiteExpandsBoundSet shows a bound set expanding to IN(...), since SQLite has no array
@@ -133,8 +133,8 @@ func TestSQLiteExpandsBoundSet(t *testing.T) {
 				query.BindAll([]string{"viewer", "editor"})),
 		))
 
-	sql, args := sqlite.Render(stmt)
-	assertSQL(t, sql,
+	sqlText, args := sqlite.Render(stmt)
+	assertSQL(t, sqlText,
 		"SELECT a.object_id FROM tuple a WHERE (a.object_type = ? AND a.relation IN (?, ?))")
 	if len(args) != 3 {
 		t.Errorf("args: got %v", args)
@@ -152,8 +152,8 @@ func TestSQLiteHavingWithoutGroupBy(t *testing.T) {
 		OrderBy(query.Asc(query.Count(query.Star, query.AggFilter(query.Eq(a.ObjectRelation(), query.Bind("dropped")))))).
 		Limit(1)
 
-	sql, args := sqlite.Render(stmt)
-	assertSQL(t, sql, "SELECT ? WHERE EXISTS (SELECT COUNT(*) FROM tuple a WHERE a.object_id = ? "+
+	sqlText, args := sqlite.Render(stmt)
+	assertSQL(t, sqlText, "SELECT ? WHERE EXISTS (SELECT COUNT(*) FROM tuple a WHERE a.object_id = ? "+
 		"HAVING COUNT(*) FILTER (WHERE a.relation = ?) > 0) LIMIT 1")
 	if len(args) != 3 || args[0] != int64(7) || args[1] != "1" || args[2] != "viewer" {
 		t.Errorf("args: got %v", args)
@@ -165,11 +165,11 @@ func TestSQLiteHavingAlreadyAggregate(t *testing.T) {
 	a := query.NewTuple("a")
 	having := query.Gt(query.Count(query.Star), query.Lit[int64](0))
 
-	sql, _ := sqlite.Render(query.Select(query.Cast[string](query.Count(query.Star), query.TypeVarchar)).From(a).Having(having))
-	assertSQL(t, sql, "SELECT CAST(COUNT(*) AS TEXT) FROM tuple a HAVING COUNT(*) > 0")
+	sqlText, _ := sqlite.Render(query.Select(query.Cast[string](query.Count(query.Star), query.TypeVarchar)).From(a).Having(having))
+	assertSQL(t, sqlText, "SELECT CAST(COUNT(*) AS TEXT) FROM tuple a HAVING COUNT(*) > 0")
 
-	sql, _ = sqlite.Render(query.Select(a.ObjectID()).From(a).GroupBy(a.ObjectID()).Having(having))
-	assertSQL(t, sql, "SELECT a.object_id FROM tuple a GROUP BY a.object_id HAVING COUNT(*) > 0")
+	sqlText, _ = sqlite.Render(query.Select(a.ObjectID()).From(a).GroupBy(a.ObjectID()).Having(having))
+	assertSQL(t, sqlText, "SELECT a.object_id FROM tuple a GROUP BY a.object_id HAVING COUNT(*) > 0")
 }
 
 // TestSQLiteHavingWithoutGroupByExecutes pins that there is one group even over no rows.
