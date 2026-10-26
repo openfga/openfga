@@ -877,21 +877,21 @@ func TestSqlWeight1_SubjectScopingSQL(t *testing.T) {
 		params []any
 	}{
 		{
-			name:   "case1_direct_user",
+			name:   "direct_user",
 			rels:   "define can_view: [user]",
 			user:   "user:alice",
 			sql:    selectOne + "\"t\".user_object_id = ? AND \"t\".user_type = 'user' AND \"t\".relation = 'can_view' AND " + uncond + ") LIMIT 1",
 			params: []any{"store1", "document", "1", "user", "", "alice"},
 		},
 		{
-			name:   "case2_direct_user_conditioned",
+			name:   "direct_user_conditioned",
 			rels:   "define can_view: [user with cond]",
 			user:   "user:alice",
 			sql:    gather + "\"t\".user_object_id = ? AND \"t\".user_type = 'user' AND \"t\".relation = 'can_view' AND (\"t\".relation = 'can_view' AND COALESCE(\"t\".condition_name, '') = 'cond'))",
 			params: []any{"store1", "document", "1", "user", "", "alice"},
 		},
 		{
-			name: "case3_direct_user_wildcard_leaf",
+			name: "direct_user_wildcard_leaf",
 			rels: "define viewer: [user]\n define editor: [user:*]\n define can_view: viewer and editor",
 			user: "user:alice",
 			sql: selectHaving + "\"t\".user_object_id IN (?, ?) AND \"t\".user_type IN ('user', 'userset') AND \"t\".relation IN ('editor', 'viewer') AND " + uncond + ") HAVING (" +
@@ -900,7 +900,7 @@ func TestSqlWeight1_SubjectScopingSQL(t *testing.T) {
 			params: []any{"store1", "document", "1", "user", "", "alice", "*", "alice"},
 		},
 		{
-			name: "case3_direct_user_wildcard_leaf_same_relation",
+			name: "direct_user_wildcard_leaf_same_relation",
 			rels: "define can_view: [user, user:*]",
 			user: "user:alice",
 			sql: selectHaving + "\"t\".user_object_id IN (?, ?) AND \"t\".user_type IN ('user', 'userset') AND \"t\".relation = 'can_view' AND " + uncond + ") HAVING (" +
@@ -909,9 +909,9 @@ func TestSqlWeight1_SubjectScopingSQL(t *testing.T) {
 			params: []any{"store1", "document", "1", "user", "", "alice", "*", "alice"},
 		},
 		{
-			// Like case3 but a union: HAVING is kept even though the tree is a pure union, since its
-			// per-relation filters are what keep a stale viewer@user:* row from matching the viewer leaf.
-			name: "case3_direct_user_wildcard_leaf_union",
+			// Since there are two subject IDs, HAVING is kept even though the tree is a pure union,
+			// since it specifies which relation is for which subject ID.
+			name: "direct_user_wildcard_leaf_pure_union",
 			rels: "define viewer: [user]\n define editor: [user:*]\n define can_view: viewer or editor",
 			user: "user:alice",
 			sql: selectHaving + "\"t\".user_object_id IN (?, ?) AND \"t\".user_type IN ('user', 'userset') AND \"t\".relation IN ('editor', 'viewer') AND " + uncond + ") HAVING (" +
@@ -939,7 +939,7 @@ func TestSqlWeight1_SubjectScopingSQL(t *testing.T) {
 			params: []any{"store1", "document", "1", "user", "", "alice"},
 		},
 		{
-			name: "case4_direct_user_wildcard_leaf_conditioned",
+			name: "direct_user_wildcard_leaf_conditioned",
 			rels: "define viewer: [user with cond]\n define editor: [user:*]\n define can_view: viewer and editor",
 			user: "user:alice",
 			sql: gather + "\"t\".user_object_id IN (?, ?) AND \"t\".user_type IN ('user', 'userset') AND \"t\".relation IN ('editor', 'viewer') AND (" +
@@ -949,31 +949,31 @@ func TestSqlWeight1_SubjectScopingSQL(t *testing.T) {
 		},
 		{
 			// Every leaf is pruned for a wildcard request without a wildcard leaf: no query.
-			name: "case5_wildcard_user",
+			name: "wildcard_user",
 			rels: "define can_view: [user]",
 			user: "user:*",
 		},
 		{
-			name: "case6_wildcard_user_conditioned",
+			name: "wildcard_user_conditioned",
 			rels: "define can_view: [user with cond]",
 			user: "user:*",
 		},
 		{
-			name:   "case7_wildcard_user_wildcard_leaf",
+			name:   "wildcard_user_wildcard_leaf",
 			rels:   "define viewer: [user]\n define editor: [user:*]\n define can_view: viewer or editor",
 			user:   "user:*",
 			sql:    selectOne + "\"t\".user_object_id = ? AND \"t\".user_type = 'userset' AND \"t\".relation = 'editor' AND " + uncond + ") LIMIT 1",
 			params: []any{"store1", "document", "1", "user", "", "*"},
 		},
 		{
-			name:   "case8_wildcard_user_wildcard_leaf_conditioned",
+			name:   "wildcard_user_wildcard_leaf_conditioned",
 			rels:   "define viewer: [user with cond]\n define editor: [user:* with cond]\n define can_view: viewer or editor",
 			user:   "user:*",
 			sql:    gather + "\"t\".user_object_id = ? AND \"t\".user_type = 'userset' AND \"t\".relation = 'editor' AND (\"t\".relation = 'editor' AND COALESCE(\"t\".condition_name, '') = 'cond'))",
 			params: []any{"store1", "document", "1", "user", "", "*"},
 		},
 		{
-			name:   "case9_userset_subject",
+			name:   "userset_subject",
 			rels:   "define can_view: [group#member]",
 			user:   "group:eng#member",
 			sql:    selectOne + "\"t\".user_object_id = ? AND \"t\".user_type = 'userset' AND \"t\".relation = 'can_view' AND " + uncond + ") LIMIT 1",
