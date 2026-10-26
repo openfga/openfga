@@ -82,7 +82,7 @@ type Config struct {
 	Logger                    logger.Logger
 	GroupStrategies           map[string]GroupStrategy
 	EdgeStrategies            map[string]EdgeStrategy
-	SQLOptimizationsEnabled   bool // SQLOptimizationsEnabled gates the SQLStrategy evaluating edges.
+	SQLOptimizationsEnabled   bool
 }
 
 type Resolver struct {

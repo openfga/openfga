@@ -49,63 +49,56 @@ func (s *SQLStrategy) Exclusion(ctx context.Context, req *Request, edge *GroupEd
 	return s.weight1(ctx, req, s.datastore.Querier(req.GetConsistency()), edge.Edges, graph.ExclusionOperator)
 }
 
-// branchOutcome is what is known about a branch: branchTrue/branchFalse are definite,
-// branchNeedsQuery means the answer requires a database read.
-type branchOutcome uint8
+// branchState is a branch's value: decided without a read (branchTrue/branchFalse), or pending
+// one (branchNeedsQuery).
+type branchState uint8
 
 const (
-	branchNeedsQuery branchOutcome = iota
+	branchNeedsQuery branchState = iota
 	branchTrue
 	branchFalse
 )
 
-// leaf represents a terminal node in the weighted graph (direct assignment, weight-1):
-// its stored `relation`, whether it matches the public wildcard subject `type:*` (rather
-// than the exact request subject), and the set of condition names the edge admits.
+// leaf is a weight-1 direct assignment. A wildcard leaf's edge targets `type:*`, so it matches
+// only wildcard tuples.
 type leaf struct {
 	relation   string
 	wildcard   bool
 	conditions []string
 }
 
-// relKey identifies the rows a leaf reads: its stored relation and whether it is a wildcard for
-// the subject type but the request is for a direct subject.
+// relKey identifies the rows a leaf reads (see relKeyOf).
 type relKey struct {
 	relation string
 	wildcard bool
 }
 
-// gatheredRow is one row of the conditioned gather query, holding the fields needed to
-// match it to a leaf and to run the tuple's condition.
+// gatheredRow is one row of the conditioned query.
 type gatheredRow struct {
 	relation  string
 	subjectID string
 	condName  string
 	condCtx   []byte
 
-	// evaluated reports whether satisfied holds the row's condition result.
+	// evaluated and satisfied memoize the row's condition result across leaves.
 	evaluated bool
 	satisfied bool
 }
 
-// residual is the outcome of evaluating a subtree: a definite state, or branchNeedsQuery
-// optionally carrying the SQL predicate that must hold for the branch to be satisfied.
-// evaluateLeaf sets pred (consumed on the unconditioned path); the gathered-row evaluator leaves
-// it nil, since the gather path re-evaluates against the read rows rather than a predicate.
-type residual struct {
-	state branchOutcome
+// branchResult is the outcome of evaluating a subtree. When state is branchNeedsQuery, pred is the
+// HAVING predicate for the unconditioned path; it is nil throughout the conditioned pass, which
+// evaluates against the read rows instead, so the pred combinators just propagate nil.
+type branchResult struct {
+	state branchState
 	pred  *query.Predicate
 }
 
-// leafEvaluator evaluates a single weight-1 leaf to a residual. The subtree is evaluated at most
-// twice: once with evaluateLeaf, and again on the conditioned path with an evaluator that matches
-// each leaf against the gathered rows.
-type leafEvaluator func(ctx context.Context, l leaf) (residual, error)
+// leafEvaluator lets the same subtree walk serve both passes: evaluateLeaf first, then a
+// gathered-row evaluator on the conditioned path.
+type leafEvaluator func(ctx context.Context, l leaf) (branchResult, error)
 
-// weight1 answers whether the request's user has the requested relation to the object,
-// evaluating the whole group of weight-1 edges (combined by operation) in a single SQL
-// round-trip. Without conditions, it issues an unconditioned query (SELECT 1 ... HAVING <tree>);
-// with conditions it gathers candidate tuples and evaluates their conditions in-app.
+// weight1 resolves a group of weight-1 edges in a single SQL round-trip. When conditions are
+// encountered, the candidate rows are gathered and conditions are evaluated in-app.
 func (s *SQLStrategy) weight1(ctx context.Context, req *Request, querier adapter.Querier, edges []*graph.WeightedAuthorizationModelEdge, operation string) (resp *Response, err error) {
 	ctx, span := tracer.Start(ctx, "sql.weight1", trace.WithAttributes(
 		attribute.String("tuple_key", req.GetTupleString()),
@@ -125,13 +118,13 @@ func (s *SQLStrategy) weight1(ctx context.Context, req *Request, querier adapter
 	}()
 
 	w := &walker{
-		s:           s,
-		req:         req,
-		querier:     querier,
-		table:       query.NewTuple("t"),
-		subjNodeID:  req.GetUserType(),
-		wildcardReq: req.IsTypedWildcard(),
-		relConds:    map[relKey]map[string]struct{}{},
+		model:          s.model,
+		req:            req,
+		querier:        querier,
+		table:          query.NewTuple("t"),
+		subjNodeID:     req.GetUserType(),
+		subjIsWildcard: req.IsTypedWildcard(),
+		relConds:       map[relKey]map[string]struct{}{},
 	}
 
 	if len(req.GetContextualTuples()) > 0 {
@@ -142,18 +135,13 @@ func (s *SQLStrategy) weight1(ctx context.Context, req *Request, querier adapter
 	w.subjType, w.subjID, w.subjRel = tuple.ToUserParts(req.GetTupleKey().GetUser())
 	w.objectType, w.objectID = tuple.SplitObject(req.GetTupleKey().GetObject())
 
-	// Determine if the request was for a direct subject but a wildcard for the subject type is
-	// also reachable. In that case, we will need to query for both subject IDs and specify the
-	// subject ID each relation filter should match.
-	w.queriesDirectAndWildcardSubject = w.subjID != tuple.Wildcard && slices.ContainsFunc(edges, func(e *graph.WeightedAuthorizationModelEdge) bool {
-		// An edge's wildcards cover every wildcard reachable through it
+	w.alsoQueriesWildcard = !w.subjIsWildcard && slices.ContainsFunc(edges, func(e *graph.WeightedAuthorizationModelEdge) bool {
+		// An edge's wildcards cover every wildcard reachable through it.
 		return slices.Contains(e.GetWildcards(), w.subjNodeID)
 	})
 
-	// A single evaluation pass short-circuits on contextual tuples, accumulates the WHERE filter
-	// state (relConds/conditioned), and renders the unconditioned predicate. Since determined
-	// branches are pruned, only leaves that need a database read contribute to the filter,
-	// keeping the query narrower than a full walk of the subtree would.
+	// Branches decided without a read (e.g. by contextual tuples) are short-circuited, so only
+	// leaves that need a read contribute to the WHERE filter.
 	res, err := w.evaluateSubtree(ctx, edges, operation, w.evaluateLeaf)
 	if err != nil {
 		return nil, err
@@ -173,9 +161,8 @@ func (s *SQLStrategy) weight1(ctx context.Context, req *Request, querier adapter
 	default: // branchNeedsQuery: a database read is required.
 	}
 
-	// A conditioned leaf survived, so conditions must be evaluated in-app: gather the candidate
-	// rows and re-evaluate against them. The unconditioned predicate counts rows without checking
-	// conditions, so it is discarded, but the accumulated filter state drives the gather query.
+	// res.pred ignores conditions, so it's discarded; the filter state from the first pass still
+	// drives the conditioned query.
 	if w.conditioned {
 		span.SetAttributes(attribute.String("query_path", "conditioned"))
 		return w.evalConditioned(ctx, edges, operation)
@@ -187,12 +174,12 @@ func (s *SQLStrategy) weight1(ctx context.Context, req *Request, querier adapter
 
 // walker carries the per-request state shared by the subtree traversals.
 type walker struct {
-	s       *SQLStrategy
+	model   *modelgraph.AuthorizationModelGraph
 	req     *Request
 	querier adapter.Querier
 	table   query.Tuple
 
-	wildcardReq bool
+	subjIsWildcard bool
 
 	objectType string
 	objectID   string
@@ -202,32 +189,22 @@ type walker struct {
 	subjID     string
 	subjRel    string
 
-	// relConds maps each relKey referenced by a surviving leaf to the set of condition names it
-	// admits (including NoCond). It is used to form the  WHERE `relation IN (...)` filter and,
-	// on the conditioned path, the per-relation condition filter. Accumulated by evaluateLeaf.
+	// relConds holds, per relKey of a surviving leaf, the condition names it admits (incl. NoCond).
 	relConds map[relKey]map[string]struct{}
-	// conditioned is set when a surviving leaf admits a named condition, selecting the gather
-	// path over the unconditioned path. Accumulated by evaluateLeaf.
+	// conditioned is set when a surviving leaf admits a named condition, selecting that query path.
 	conditioned bool
-	// sawNonUnion is set when the walk reaches an intersection or exclusion. When this is false
-	// (i.e., pure union), the HAVING clause in the unconditioned path can be omitted.
+	// sawNonUnion is set on reaching an intersection or exclusion; a pure union needs no HAVING.
 	sawNonUnion bool
-	// queriesDirectAndWildcardSubject is whether the request is on a direct subject but a wildcard
-	// for the subject type is also reachable. In this case, both the direct and the wildcard
-	// subject IDs must be admitted in the WHERE, and each relation filter must specify which
-	// subject ID it's for, to avoid matching a row for the wrong subject (e.g., a wildcard tuple
-	// left over from an older model).
-	queriesDirectAndWildcardSubject bool
-	// hasCtxTuples is whether the request carries contextual tuples.
-	hasCtxTuples bool
-	// ctxSatisfied holds the leafKey of every leaf that a contextual tuple satisfied during the
-	// first pass. The gather pass reads it instead of re-evaluating the same contextual tuples, so
-	// their conditions are evaluated once per request rather than once per pass. Nil (and unused)
-	// when hasCtxTuples is false.
+	// alsoQueriesWildcard is true when the request is for a direct subject but a wildcard for its
+	// type is also reachable. In this case, both subject IDs must be queried for, and each relation
+	// filter must specify which subject ID it is for.
+	alsoQueriesWildcard bool
+	hasCtxTuples        bool
+	// ctxSatisfied records, by leafKey, leaves satisfied by a contextual tuple in the first pass so
+	// the conditioned pass doesn't re-evaluate their conditions. Nil when !hasCtxTuples.
 	ctxSatisfied map[string]struct{}
 }
 
-// leafFrom derives a leaf descriptor from a terminal direct edge.
 func (w *walker) leafFrom(edge *graph.WeightedAuthorizationModelEdge) leaf {
 	return leaf{
 		relation:   tuple.GetRelation(edge.GetRelationDefinition()),
@@ -236,20 +213,18 @@ func (w *walker) leafFrom(edge *graph.WeightedAuthorizationModelEdge) leaf {
 	}
 }
 
-// relKeyOf derives the relKey a leaf reads, distinguishing wildcard leaves only when w.splitSubjects == true.
+// relKeyOf keys wildcard leaves separately only when alsoQueriesWildcard; otherwise the
+// WHERE admits a single subject ID, so the relation alone identifies the rows.
 func (w *walker) relKeyOf(l leaf) relKey {
-	return relKey{relation: l.relation, wildcard: w.queriesDirectAndWildcardSubject && l.wildcard}
+	return relKey{relation: l.relation, wildcard: w.alsoQueriesWildcard && l.wildcard}
 }
 
-// relationFilter builds the predicate matching rows that belong to the relation key k, with any
-// extra predicates in rest ANDed on. When subjects are split, it also pins the subject ID (the
-// wildcard for wildcard keys, the request subject otherwise) so a row for the other subject can't
-// match this relation.
+// relationFilter matches rows for k, ANDed with rest. It pins the subject ID when alsoQueriesWildcard,
+// so a stale tuple (e.g., a wildcard left over from an older model) can't satisfy the wrong leaf.
 func (w *walker) relationFilter(k relKey, rest ...query.Predicate) query.Predicate {
 	rel := query.Eq(w.table.ObjectRelation(), query.Lit(k.relation))
 
-	if w.queriesDirectAndWildcardSubject {
-		// There is more than one subject ID, so we need to specify which one this relation is for.
+	if w.alsoQueriesWildcard {
 		var subj query.Predicate
 		if k.wildcard {
 			subj = query.Eq(w.table.SubjectID(), query.Lit(tuple.Wildcard))
@@ -262,8 +237,6 @@ func (w *walker) relationFilter(k relKey, rest ...query.Predicate) query.Predica
 	return query.And(rel, rest...)
 }
 
-// accumulateLeafConditions adds l's condition names into w's relConds under l's relKey, and sets
-// w.conditioned if any is a named condition.
 func (w *walker) accumulateLeafConditions(l leaf) {
 	k := w.relKeyOf(l)
 	conds, ok := w.relConds[k]
@@ -279,34 +252,31 @@ func (w *walker) accumulateLeafConditions(l leaf) {
 	}
 }
 
-// pruned reports whether an edge has no path to the request's user type, mirroring
-// FlattenNode: such an edge contributes nothing (an unsatisfiable branch).
+// pruned reports whether an edge can't reach the request's subject, mirroring FlattenNode.
 func (w *walker) pruned(edge *graph.WeightedAuthorizationModelEdge) bool {
-	if _, ok := w.s.model.GetEdgeWeight(edge, w.subjNodeID); !ok {
+	if _, ok := w.model.GetEdgeWeight(edge, w.subjNodeID); !ok {
 		return true
 	}
-	if w.wildcardReq && !slices.Contains(edge.GetWildcards(), w.subjNodeID) {
+	if w.subjIsWildcard && !slices.Contains(edge.GetWildcards(), w.subjNodeID) {
 		return true
 	}
 	return false
 }
 
-// evaluateSubtree evaluates the subtree formed by edges under operation to a residual, delegating
-// each leaf to evalLeaf. The short-circuiting boolean algebra is shared by both callers; evaluateLeaf
-// additionally combines a predicate into residual.pred, while the gathered-result evaluator leaves
-// pred nil.
-func (w *walker) evaluateSubtree(ctx context.Context, edges []*graph.WeightedAuthorizationModelEdge, operation string, evalLeaf leafEvaluator) (residual, error) {
+// evaluateSubtree combines edges under operation with short-circuiting, delegating leaves to
+// evalLeaf.
+func (w *walker) evaluateSubtree(ctx context.Context, edges []*graph.WeightedAuthorizationModelEdge, operation string, evalLeaf leafEvaluator) (branchResult, error) {
 	switch operation {
 	case graph.UnionOperator:
 		var preds []*query.Predicate
 		for _, edge := range edges {
 			r, err := w.evaluateEdge(ctx, edge, evalLeaf)
 			if err != nil {
-				return residual{}, err
+				return branchResult{}, err
 			}
 			switch r.state {
 			case branchTrue:
-				return residual{state: branchTrue}, nil
+				return branchResult{state: branchTrue}, nil
 			case branchNeedsQuery:
 				preds = append(preds, r.pred)
 			default: // branchFalse contributes nothing to a union.
@@ -319,11 +289,11 @@ func (w *walker) evaluateSubtree(ctx context.Context, edges []*graph.WeightedAut
 		for _, edge := range edges {
 			r, err := w.evaluateEdge(ctx, edge, evalLeaf)
 			if err != nil {
-				return residual{}, err
+				return branchResult{}, err
 			}
 			switch r.state {
 			case branchFalse:
-				return residual{state: branchFalse}, nil
+				return branchResult{state: branchFalse}, nil
 			case branchNeedsQuery:
 				preds = append(preds, r.pred)
 			default: // branchTrue contributes nothing to an intersection.
@@ -332,45 +302,41 @@ func (w *walker) evaluateSubtree(ctx context.Context, edges []*graph.WeightedAut
 		return combinePreds(preds, branchTrue, andPred), nil
 	case graph.ExclusionOperator:
 		w.sawNonUnion = true
-		if w.wildcardReq {
-			return residual{}, ErrWildcardInvalidRequest
+		if w.subjIsWildcard {
+			return branchResult{}, ErrWildcardInvalidRequest
 		}
 		if len(edges) != 2 {
-			return residual{}, ErrPanicRequest
+			return branchResult{}, ErrPanicRequest
 		}
 		base, err := w.evaluateEdge(ctx, edges[0], evalLeaf)
 		if err != nil {
-			return residual{}, err
+			return branchResult{}, err
 		}
 		if base.state == branchFalse {
-			return residual{state: branchFalse}, nil
+			return branchResult{state: branchFalse}, nil
 		}
 		subtract, err := w.evaluateEdge(ctx, edges[1], evalLeaf)
 		if err != nil {
-			return residual{}, err
+			return branchResult{}, err
 		}
 		if subtract.state == branchTrue {
-			return residual{state: branchFalse}, nil
+			return branchResult{state: branchFalse}, nil
 		}
 		if subtract.state == branchFalse {
-			// base AND NOT false == base (definite-true or the base predicate).
 			return base, nil
 		}
-		// subtract is unknown; base is true or unknown. Both must be expressed in the predicate.
 		if base.state == branchTrue {
-			return residual{state: branchNeedsQuery, pred: notPred(subtract.pred)}, nil
+			return branchResult{state: branchNeedsQuery, pred: notPred(subtract.pred)}, nil
 		}
-		return residual{state: branchNeedsQuery, pred: andPred(base.pred, notPred(subtract.pred))}, nil
+		return branchResult{state: branchNeedsQuery, pred: andPred(base.pred, notPred(subtract.pred))}, nil
 	default:
-		return residual{}, ErrPanicRequest
+		return branchResult{}, ErrPanicRequest
 	}
 }
 
-// evaluateEdge evaluates a single edge: a pruned branch is false, a terminal is reduced as a leaf,
-// and a rewrite/computed/logical edge recurses into its target node.
-func (w *walker) evaluateEdge(ctx context.Context, edge *graph.WeightedAuthorizationModelEdge, evalLeaf leafEvaluator) (residual, error) {
+func (w *walker) evaluateEdge(ctx context.Context, edge *graph.WeightedAuthorizationModelEdge, evalLeaf leafEvaluator) (branchResult, error) {
 	if w.pruned(edge) {
-		return residual{state: branchFalse}, nil
+		return branchResult{state: branchFalse}, nil
 	}
 	switch edge.GetEdgeType() {
 	case graph.DirectEdge:
@@ -379,16 +345,15 @@ func (w *walker) evaluateEdge(ctx context.Context, edge *graph.WeightedAuthoriza
 	case graph.ComputedEdge, graph.DirectLogicalEdge, graph.TTULogicalEdge, graph.RewriteEdge:
 		return w.evaluateNode(ctx, edge.GetTo(), evalLeaf)
 	default:
-		return residual{}, ErrPanicRequest
+		return branchResult{}, ErrPanicRequest
 	}
 }
 
-// evaluateNode evaluates all edges out of a node. An operator node combines by its label; any
-// other node (a bare relation) combines its definition branches by union.
-func (w *walker) evaluateNode(ctx context.Context, node *graph.WeightedAuthorizationModelNode, evalLeaf leafEvaluator) (residual, error) {
-	edges, ok := w.s.model.GetEdgesFromNode(node)
+// evaluateNode combines a node's edges by its operator, or by union for a non-operator node.
+func (w *walker) evaluateNode(ctx context.Context, node *graph.WeightedAuthorizationModelNode, evalLeaf leafEvaluator) (branchResult, error) {
+	edges, ok := w.model.GetEdgesFromNode(node)
 	if !ok {
-		return residual{}, ErrPanicRequest
+		return branchResult{}, ErrPanicRequest
 	}
 	operation := graph.UnionOperator
 	if node.GetNodeType() == graph.OperatorNode {
@@ -397,36 +362,27 @@ func (w *walker) evaluateNode(ctx context.Context, node *graph.WeightedAuthoriza
 	return w.evaluateSubtree(ctx, edges, operation, evalLeaf)
 }
 
-// evaluateLeaf is the first-pass evaluator. A contextual tuple satisfying the leaf resolves it to
-// branchTrue and accumulates no filter state, since it needs no row. Otherwise the leaf needs a
-// database read: its filter state is recorded and it renders the unconditioned aggregate counting
-// rows for its relation. Absence from the contextual set does not prove absence in the database,
-// so a miss is branchNeedsQuery, never branchFalse.
-func (w *walker) evaluateLeaf(ctx context.Context, l leaf) (residual, error) {
+// evaluateLeaf is the first-pass evaluator. A contextual-tuple miss doesn't prove the tuple is
+// absent from the database, so it yields branchNeedsQuery, never branchFalse.
+func (w *walker) evaluateLeaf(ctx context.Context, l leaf) (branchResult, error) {
 	ok, err := w.contextLeafSatisfied(ctx, l)
 	if err != nil {
-		return residual{}, err
+		return branchResult{}, err
 	}
 	if ok {
-		// Record the verdict so the gather pass can reuse it instead of re-evaluating the same
-		// contextual tuples (see leafSatisfied). Only reachable when hasCtxTuples, so ctxSatisfied
-		// is non-nil.
+		// ok implies hasCtxTuples, so ctxSatisfied is non-nil.
 		w.ctxSatisfied[leafKey(l)] = struct{}{}
-		return residual{state: branchTrue}, nil
+		return branchResult{state: branchTrue}, nil
 	}
 	w.accumulateLeafConditions(l)
-	// Return a predicate for existence of this leaf's relation, which is used in the unconditioned path.
 	count := query.Count(query.Lit[int64](1), query.AggFilter(w.relationFilter(w.relKeyOf(l))))
 	pred := query.Gt(count, query.Lit[int64](0))
-	return residual{state: branchNeedsQuery, pred: &pred}, nil
+	return branchResult{state: branchNeedsQuery, pred: &pred}, nil
 }
 
-// contextLeafSatisfied reports whether a contextual tuple satisfies the leaf (matching the
-// request subject/object and passing the leaf's condition). An unconditioned leaf carries the
-// NoCond ("") sentinel and an unconditioned tuple has an empty condition name, so
-// evaluateCondition matches and passes it without special-casing here. Candidates are matched and
-// their conditions evaluated in a single pass, so no intermediate slice is built; a request with
-// no contextual tuples returns before building any lookup key.
+// contextLeafSatisfied reports whether a contextual tuple matches the leaf and passes its
+// condition. Unconditioned leaves need no special case: NoCond ("") matches an unconditioned
+// tuple's empty condition name in evaluateCondition.
 func (w *walker) contextLeafSatisfied(ctx context.Context, l leaf) (bool, error) {
 	if !w.hasCtxTuples {
 		return false, nil
@@ -449,7 +405,7 @@ func (w *walker) contextLeafSatisfied(ctx context.Context, l leaf) (bool, error)
 		} else if ct.GetObject() != w.req.GetTupleKey().GetObject() {
 			continue
 		}
-		satisfied, err := evaluateCondition(ctx, w.s.model, l.conditions, ct, w.req.GetContext())
+		satisfied, err := evaluateCondition(ctx, w.model, l.conditions, ct, w.req.GetContext())
 		if err != nil {
 			return false, err
 		}
@@ -460,10 +416,8 @@ func (w *walker) contextLeafSatisfied(ctx context.Context, l leaf) (bool, error)
 	return false, nil
 }
 
-// leafKey identifies a leaf by the fields that determine its contextual-tuple verdict: its
-// relation, whether it matches the wildcard subject, and the condition names it admits. leafFrom
-// derives leaves from the same edges on both passes, so a leaf produces the same key each time.
-// Condition names are model identifiers and never contain a NUL byte, so NUL is a safe separator.
+// leafKey identifies a leaf across passes by every field that affects its contextual-tuple
+// verdict. Model identifiers can't contain NUL, so it's a safe separator.
 func leafKey(l leaf) string {
 	var b strings.Builder
 	b.WriteString(l.relation)
@@ -480,17 +434,16 @@ func leafKey(l leaf) string {
 	return b.String()
 }
 
-// evalUnconditioned answers the no-condition case with a single SELECT 1 query over the
-// surviving relations, with the boolean subtree supplied as pred in HAVING. In the case of a pure
-// union (see sawNonUnion), the HAVING clause is omitted so that LIMIT 1 can stop the scan at the
-// first matching row.
+// evalUnconditioned evaluates pred in HAVING. HAVING is omitted for a pure union, where any WHERE
+// match suffices, so LIMIT 1 can stop at the first row; it's kept when both subject IDs are
+// queried, since only pred pins each relation to its subject ID.
 func (w *walker) evalUnconditioned(ctx context.Context, pred *query.Predicate) (*Response, error) {
-	where := append(w.whereShared(), w.relationIn(), w.unconditioned())
+	where := append(w.whereShared(), w.relationIn(), w.unconditionedPred())
 	stmt := query.Select(query.Lit[int64](1)).
 		From(w.table).
 		Where(query.And(where[0], where[1:]...)).
 		Limit(1)
-	if pred != nil && (w.sawNonUnion || w.queriesDirectAndWildcardSubject) {
+	if pred != nil && (w.sawNonUnion || w.alsoQueriesWildcard) {
 		stmt = stmt.Having(*pred)
 	}
 	rows, err := w.querier.Execute(ctx, stmt)
@@ -506,12 +459,10 @@ func (w *walker) evalUnconditioned(ctx context.Context, pred *query.Predicate) (
 	return &Response{Allowed: allowed}, nil
 }
 
-// evalConditioned answers the conditioned case: it reads the candidate tuples' attribution and
-// condition columns, evaluates each row's condition in-app, then evaluates the subtree with the
-// per-leaf results.
+// evalConditioned gathers the candidate rows and re-walks the subtree against them, evaluating
+// conditions in-app.
 func (w *walker) evalConditioned(ctx context.Context, edges []*graph.WeightedAuthorizationModelEdge, operation string) (*Response, error) {
-	// Defensive: this should never happen since reaching here implies a conditioned leaf survived
-	// and relConds is non-empty.
+	// Unreachable: w.conditioned implies a surviving leaf. Guards conditionPairing's clauses[0].
 	if len(w.relConds) == 0 {
 		return &Response{Allowed: false}, nil
 	}
@@ -547,15 +498,15 @@ func (w *walker) evalConditioned(ctx context.Context, edges []*graph.WeightedAut
 		return nil, err
 	}
 
-	evalLeaf := func(ctx context.Context, l leaf) (residual, error) {
-		ok, err := w.leafSatisfied(ctx, l, gathered)
+	evalLeaf := func(ctx context.Context, l leaf) (branchResult, error) {
+		ok, err := w.conditionedLeafSatisfied(ctx, l, gathered)
 		if err != nil {
-			return residual{}, err
+			return branchResult{}, err
 		}
 		if ok {
-			return residual{state: branchTrue}, nil
+			return branchResult{state: branchTrue}, nil
 		}
-		return residual{state: branchFalse}, nil
+		return branchResult{state: branchFalse}, nil
 	}
 	res, err := w.evaluateSubtree(ctx, edges, operation, evalLeaf)
 	if err != nil {
@@ -564,12 +515,10 @@ func (w *walker) evalConditioned(ctx context.Context, edges []*graph.WeightedAut
 	return &Response{Allowed: res.state == branchTrue}, nil
 }
 
-// leafSatisfied reports whether a contextual tuple or a gathered database row matches the leaf and
-// passes its condition. The contextual verdict is not recomputed here: the first pass recorded
-// every context-satisfied leaf in ctxSatisfied, and this pass visits a subset of those leaves (its
-// extra short-circuits only prune further), so a set lookup answers the contextual case. This still
-// lets a contextual tuple satisfy a leaf that has no matching database row.
-func (w *walker) leafSatisfied(ctx context.Context, l leaf, gathered []gatheredRow) (bool, error) {
+// conditionedLeafSatisfied reports whether a contextual tuple or a gathered row satisfies the leaf.
+// This pass only visits leaves the first pass visited, so ctxSatisfied fully answers the
+// contextual case.
+func (w *walker) conditionedLeafSatisfied(ctx context.Context, l leaf, gathered []gatheredRow) (bool, error) {
 	if w.hasCtxTuples {
 		if _, ok := w.ctxSatisfied[leafKey(l)]; ok {
 			return true, nil
@@ -589,9 +538,8 @@ func (w *walker) leafSatisfied(ctx context.Context, l leaf, gathered []gatheredR
 			continue
 		}
 
-		// The result may have been computed for an earlier leaf. Reusing it is sound because every
-		// leaf that reaches a row comes from the same edge (a relation's conditions for one target
-		// type are merged onto a single edge), so all of them admit the same conditions.
+		// Reusing an earlier leaf's result is sound: a relation's conditions for one target type are
+		// merged onto a single edge, so every leaf reaching this row admits the same conditions.
 		if !g.evaluated {
 			ok, err := w.evaluateRow(ctx, g, l)
 			if err != nil {
@@ -599,15 +547,13 @@ func (w *walker) leafSatisfied(ctx context.Context, l leaf, gathered []gatheredR
 			}
 			g.evaluated, g.satisfied = true, ok
 		}
-		// Tuples are unique per (object, relation, user), and the shared WHERE plus the relation and
-		// subject checks above fix all of these, so no other row can match this leaf.
+		// Tuples are unique per (object, relation, user), all fixed by now, so no other row can match.
 		return g.satisfied, nil
 	}
 	return false, nil
 }
 
-// evaluateRow decodes the row's condition context and runs its condition against the request
-// context, reporting whether the tuple the row represents is satisfied.
+// evaluateRow decodes the row's condition context lazily, only for rows a leaf reaches.
 func (w *walker) evaluateRow(ctx context.Context, g *gatheredRow, l leaf) (bool, error) {
 	var condCtx *structpb.Struct
 	if len(g.condCtx) > 0 {
@@ -626,10 +572,9 @@ func (w *walker) evaluateRow(ctx context.Context, g *gatheredRow, l leaf) (bool,
 		User:      user,
 		Condition: tuple.NewRelationshipCondition(g.condName, condCtx),
 	}
-	return evaluateCondition(ctx, w.s.model, l.conditions, tk, w.req.GetContext())
+	return evaluateCondition(ctx, w.model, l.conditions, tk, w.req.GetContext())
 }
 
-// whereShared returns the predicates common to every weight-1 query.
 func (w *walker) whereShared() []query.Predicate {
 	preds := []query.Predicate{
 		query.Eq(w.table.Store(), query.Bind(w.req.GetStoreID())),
@@ -638,7 +583,7 @@ func (w *walker) whereShared() []query.Predicate {
 		query.Eq(w.table.SubjectType(), query.Bind(w.subjType)),
 		query.Eq(w.table.SubjectRelation(), query.Bind(w.subjRel)),
 	}
-	if w.queriesDirectAndWildcardSubject {
+	if w.alsoQueriesWildcard {
 		preds = append(preds,
 			query.In(w.table.SubjectID(), query.Bind(w.subjID), query.Bind(tuple.Wildcard)),
 			query.In(w.table.SubjectKind(), query.Lit(string(tuple.User)), query.Lit(string(tuple.UserSet))),
@@ -652,16 +597,14 @@ func (w *walker) whereShared() []query.Predicate {
 	return preds
 }
 
-// unconditioned returns the predicate for rows carrying no condition.
-func (w *walker) unconditioned() query.Predicate {
+func (w *walker) unconditionedPred() query.Predicate {
 	return query.Or(
 		query.IsNull(w.table.Condition()),
 		query.Eq(w.table.Condition(), query.Lit(graph.NoCond)),
 	)
 }
 
-// sortedKeys returns w's accumulated relKeys in deterministic order: by relation, with the exact
-// subject's key before the wildcard's.
+// sortedKeys orders relKeys for deterministic SQL: by relation, exact subject before wildcard.
 func (w *walker) sortedKeys() []relKey {
 	keys := make([]relKey, 0, len(w.relConds))
 	for k := range w.relConds {
@@ -680,10 +623,8 @@ func (w *walker) sortedKeys() []relKey {
 	return keys
 }
 
-// relationIn renders the accumulated relation set as a sorted `relation IN (...)` filter for the
-// WHERE of both the unconditioned and gather paths, collapsing to `relation = r` when a single
-// relation survives. Relation names are inlined rather than bound since they come from the model
-// and cannot contain special characters like spaces for SQL injection.
+// relationIn renders the surviving relations as `relation IN (...)`. Names come from the model, not
+// the request, so they're inlined; the renderer escapes literals.
 func (w *walker) relationIn() query.Predicate {
 	keys := w.sortedKeys()
 	rels := make([]string, 0, len(keys))
@@ -703,13 +644,9 @@ func (w *walker) relationIn() query.Predicate {
 	return query.In(w.table.ObjectRelation(), lits...)
 }
 
-// conditionPairing pairs each relation with the conditions the model admits for it. A single
-// global `relation IN (...) AND condition IN (...)` would be wrong: it would admit a tuple whose
-// relation and condition are each referenced but by different leaves (e.g. rel1 carrying a
-// condition only rel2 admits). Instead, it emits a disjunction of per-relation clauses —
-// `(relation = r AND <conds for r>) OR ...`, each also naming its subject when subjects are split
-// (see relationFilter). Keys are sorted for deterministic SQL; evalConditioned guards against an
-// empty relation set, so the returned predicate is never empty.
+// conditionPairing emits `(relation = r AND <conds for r>) OR ...`. Separate `relation IN` and
+// `condition IN` filters would admit a tuple whose condition is only admitted by a different
+// relation.
 func (w *walker) conditionPairing() query.Predicate {
 	var clauses []query.Predicate
 	for _, k := range w.sortedKeys() {
@@ -722,10 +659,8 @@ func (w *walker) conditionPairing() query.Predicate {
 	return pred
 }
 
-// conditionPred renders the predicate admitting exactly the condition names in conds: the named
-// conditions via `condition IN (...)` plus, when the NoCond sentinel is present, the
-// unconditioned rows. Names are sorted for deterministic SQL and, coming from the model, are safe
-// to inline rather than bind.
+// conditionPred admits exactly the condition names in conds, with NoCond admitting unconditioned
+// rows. Names are inlined as in relationIn.
 func (w *walker) conditionPred(conds map[string]struct{}) query.Predicate {
 	condNames := make([]string, 0, len(conds))
 	unconditioned := false
@@ -738,7 +673,6 @@ func (w *walker) conditionPred(conds map[string]struct{}) query.Predicate {
 	}
 	sort.Strings(condNames)
 
-	// At most two preds: one condition pred (Eq or In, mutually exclusive) and the unconditioned pred.
 	preds := make([]query.Predicate, 0, 2)
 	if len(condNames) == 1 {
 		preds = append(preds, query.Eq(w.table.Condition(), query.Lit(condNames[0])))
@@ -750,10 +684,10 @@ func (w *walker) conditionPred(conds map[string]struct{}) query.Predicate {
 		preds = append(preds, query.In(w.table.Condition(), lits...))
 	}
 	if unconditioned {
-		preds = append(preds, w.unconditioned())
+		preds = append(preds, w.unconditionedPred())
 	}
 
-	// preds is never empty: every edge's GetConditions is normalized to at least NoCond
+	// Never empty: GetConditions always includes at least NoCond.
 	pred := preds[0]
 	for _, p := range preds[1:] {
 		pred = query.Or(pred, p)
@@ -761,23 +695,18 @@ func (w *walker) conditionPred(conds map[string]struct{}) query.Predicate {
 	return pred
 }
 
-// combinePreds combines preds with join; an empty list yields the given identity state. The
-// gathered-result evaluator contributes nil preds, in which case join returns nil and the result is
-// a bare branchNeedsQuery.
-func combinePreds(preds []*query.Predicate, empty branchOutcome, join func(a, b *query.Predicate) *query.Predicate) residual {
+// combinePreds folds preds with join; no preds yields identity.
+func combinePreds(preds []*query.Predicate, identity branchState, join func(a, b *query.Predicate) *query.Predicate) branchResult {
 	if len(preds) == 0 {
-		return residual{state: empty}
+		return branchResult{state: identity}
 	}
 	acc := preds[0]
 	for _, p := range preds[1:] {
 		acc = join(acc, p)
 	}
-	return residual{state: branchNeedsQuery, pred: acc}
+	return branchResult{state: branchNeedsQuery, pred: acc}
 }
 
-// andPred, orPred, and notPred combine predicates that may be nil. Within a single evaluation the
-// operands are either all-nil (gathered-result evaluator) or all-non-nil (evaluateLeaf), so returning
-// nil when any operand is nil is correct.
 func andPred(a, b *query.Predicate) *query.Predicate {
 	if a == nil || b == nil {
 		return nil
