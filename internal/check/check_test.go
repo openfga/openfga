@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/oklog/ulid/v2"
@@ -23,6 +24,7 @@ import (
 	"github.com/openfga/openfga/internal/planner"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/cache/keys"
+	"github.com/openfga/openfga/pkg/storage/memory"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 )
@@ -466,6 +468,65 @@ func TestGatherLogicalEdges(t *testing.T) {
 		require.True(t, ok)
 
 		require.Empty(t, resolver.GatherLogicalEdges(req, node, nil))
+	})
+
+	t.Run("recursive_flatten_groups_same_weight_one_edges", func(t *testing.T) {
+		// A GroupEdge is cached under NodeCacheKey(node), so ResolveRecursive (which flattens
+		// node while skipping the recursive relation) must group the same weight-1 edges that
+		// ResolveUnion's full flatten of node would.
+		models := map[string]string{
+			"recursive_ttu": `
+				model
+				  schema 1.1
+				type user
+				type document
+				  relations
+				    define parent: [document]
+				    define viewer: [user, user:*] or viewer from parent`,
+			"recursive_userset": `
+				model
+				  schema 1.1
+				type user
+				type document
+				  relations
+				    define viewer: [user, user:*, document#viewer]`,
+			"recursive_ttu_with_computed_operand": `
+				model
+				  schema 1.1
+				type user
+				type document
+				  relations
+				    define parent: [document]
+				    define editor: [user]
+				    define viewer: [user, user:*] or editor or viewer from parent`,
+		}
+
+		for name, model := range models {
+			t.Run(name, func(t *testing.T) {
+				mg, err := modelgraph.New(testutils.MustTransformDSLToProtoWithID(model))
+				require.NoError(t, err)
+
+				resolver := New(Config{Model: mg})
+
+				node, ok := mg.GetNodeByID("document#viewer")
+				require.True(t, ok)
+
+				recursiveEdge, _ := mg.CanApplyRecursion(node, "user", true)
+				require.NotNil(t, recursiveEdge)
+				// ResolveRecursive groups under recursiveEdge.GetTo(); it shares node's cache key.
+				require.Equal(t, node.GetUniqueLabel(), recursiveEdge.GetTo().GetUniqueLabel())
+
+				fullEdges, err := mg.FlattenNode(node, "user", false, "")
+				require.NoError(t, err)
+				nonRecursiveEdges, err := mg.FlattenNode(recursiveEdge.GetTo(), "user", false, recursiveEdge.GetRecursiveRelation())
+				require.NoError(t, err)
+
+				fullWeightOne, _ := resolver.SplitWeightOne("user", fullEdges...)
+				nonRecursiveWeightOne, _ := resolver.SplitWeightOne("user", nonRecursiveEdges...)
+				require.GreaterOrEqual(t, len(fullWeightOne), 2)
+				require.ElementsMatch(t, fullWeightOne, nonRecursiveWeightOne)
+			})
+		}
 	})
 }
 
@@ -1391,6 +1452,211 @@ func TestResolveIntersection(t *testing.T) {
 		require.NoError(t, err)
 		require.False(t, res.GetAllowed())
 	})
+
+	t.Run("groups_weight_one_edges_alongside_higher_weight_edge", func(t *testing.T) {
+		// The intersection has weight 2 for user: owner and editor (weight-1) are grouped into
+		// one GroupEdge, while member from parent (weight-2) stays a separate SingleEdge.
+		model := testutils.MustTransformDSLToProtoWithID(`
+			model
+			  schema 1.1
+			type user
+			type org
+			  relations
+			    define member: [user]
+			type document
+			  relations
+			    define parent: [org]
+			    define owner: [user]
+			    define editor: [user]
+			    define viewer: owner and editor and member from parent
+		`)
+
+		mg, err := modelgraph.New(model)
+		require.NoError(t, err)
+
+		viewerEdges, ok := mg.GetEdgesFromNodeID("document#viewer")
+		require.True(t, ok)
+		node := viewerEdges[0].GetTo()
+		require.Equal(t, authzGraph.IntersectionOperator, node.GetLabel())
+
+		owner := tuple.NewTupleKey("document:1", "owner", "user:maria")
+		editor := tuple.NewTupleKey("document:1", "editor", "user:maria")
+		parent := tuple.NewTupleKey("document:1", "parent", "org:1")
+		member := tuple.NewTupleKey("org:1", "member", "user:maria")
+
+		tests := []struct {
+			name     string
+			tuples   []*openfgav1.TupleKey
+			expected bool
+		}{
+			{name: "all_operands_true", tuples: []*openfgav1.TupleKey{owner, editor, parent, member}, expected: true},
+			{name: "grouped_owner_false", tuples: []*openfgav1.TupleKey{editor, parent, member}, expected: false},
+			{name: "grouped_editor_false", tuples: []*openfgav1.TupleKey{owner, parent, member}, expected: false},
+			{name: "single_ttu_false", tuples: []*openfgav1.TupleKey{owner, editor, parent}, expected: false},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				ds := memory.New()
+				storeID := ulid.Make().String()
+				require.NoError(t, ds.Write(context.Background(), storeID, nil, tt.tuples))
+
+				resolver := New(Config{
+					Model:            mg,
+					Datastore:        ds,
+					Cache:            storage.NewNoopCache(),
+					Planner:          planner.New(&planner.Config{}),
+					ConcurrencyLimit: 10,
+				})
+
+				req, err := NewRequest(RequestParams{
+					StoreID:  storeID,
+					Model:    mg,
+					TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+				})
+				require.NoError(t, err)
+
+				edges, ok := mg.GetEdgesFromNode(node)
+				require.True(t, ok)
+				logicalEdges := resolver.GatherLogicalEdges(req, node, edges)
+				require.Len(t, logicalEdges, 2)
+				require.IsType(t, &GroupEdge{}, logicalEdges[0])
+				require.Len(t, logicalEdges[0].(*GroupEdge).Edges, 2)
+				require.IsType(t, &SingleEdge{}, logicalEdges[1])
+
+				res, err := resolver.ResolveIntersection(context.Background(), req, node)
+				require.NoError(t, err)
+				require.Equal(t, tt.expected, res.GetAllowed())
+			})
+		}
+	})
+
+	t.Run("resolves_nested_union_operand_as_group_edge", func(t *testing.T) {
+		// (a or b) is a weight-1 union operator node; resolving it produces a GroupEdge on the union
+		// operator node rather than on a relation node.
+		model := testutils.MustTransformDSLToProtoWithID(`
+			model
+			  schema 1.1
+			type user
+			type document
+			  relations
+			    define a: [user]
+			    define b: [user]
+			    define c: [user]
+			    define viewer: (a or b) and c
+		`)
+
+		mg, err := modelgraph.New(model)
+		require.NoError(t, err)
+
+		viewerEdges, ok := mg.GetEdgesFromNodeID("document#viewer")
+		require.True(t, ok)
+		node := viewerEdges[0].GetTo()
+		require.Equal(t, authzGraph.IntersectionOperator, node.GetLabel())
+
+		a := tuple.NewTupleKey("document:1", "a", "user:maria")
+		b := tuple.NewTupleKey("document:1", "b", "user:maria")
+		c := tuple.NewTupleKey("document:1", "c", "user:maria")
+
+		tests := []struct {
+			name     string
+			tuples   []*openfgav1.TupleKey
+			expected bool
+		}{
+			{name: "first_union_operand_true", tuples: []*openfgav1.TupleKey{a, c}, expected: true},
+			{name: "second_union_operand_true", tuples: []*openfgav1.TupleKey{b, c}, expected: true},
+			{name: "union_false", tuples: []*openfgav1.TupleKey{c}, expected: false},
+			{name: "union_true_other_operand_false", tuples: []*openfgav1.TupleKey{a, b}, expected: false},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				ds := memory.New()
+				storeID := ulid.Make().String()
+				require.NoError(t, ds.Write(context.Background(), storeID, nil, tt.tuples))
+
+				resolver := New(Config{
+					Model:            mg,
+					Datastore:        ds,
+					Cache:            storage.NewNoopCache(),
+					ConcurrencyLimit: 10,
+				})
+
+				req, err := NewRequest(RequestParams{
+					StoreID:  storeID,
+					Model:    mg,
+					TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+				})
+				require.NoError(t, err)
+
+				res, err := resolver.ResolveIntersection(context.Background(), req, node)
+				require.NoError(t, err)
+				require.Equal(t, tt.expected, res.GetAllowed())
+			})
+		}
+	})
+
+	t.Run("returns_error_when_node_has_no_edges", func(t *testing.T) {
+		mg, err := modelgraph.New(testutils.MustTransformDSLToProtoWithID(`
+			model
+			  schema 1.1
+			type user
+			type document
+			  relations
+			    define owner: [user]
+			    define editor: [user]
+			    define viewer: owner and editor
+		`))
+		require.NoError(t, err)
+
+		resolver := New(Config{Model: mg, ConcurrencyLimit: 10})
+
+		req, err := NewRequest(RequestParams{
+			StoreID:  ulid.Make().String(),
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+		})
+		require.NoError(t, err)
+
+		// A terminal type node has no outgoing edges.
+		node, ok := mg.GetNodeByID("user")
+		require.True(t, ok)
+
+		_, err = resolver.ResolveIntersection(context.Background(), req, node)
+		require.ErrorIs(t, err, ErrPanicRequest)
+	})
+
+	t.Run("returns_error_when_edge_has_no_path_to_user_type", func(t *testing.T) {
+		// The model graph rejects intersections whose operands reach different types, so use a
+		// user type that no operand reaches. ResolveCheck returns false before getting here.
+		mg, err := modelgraph.New(testutils.MustTransformDSLToProtoWithID(`
+			model
+			  schema 1.1
+			type user
+			type employee
+			type document
+			  relations
+			    define owner: [user]
+			    define editor: [user]
+			    define viewer: owner and editor
+		`))
+		require.NoError(t, err)
+
+		resolver := New(Config{Model: mg, ConcurrencyLimit: 10})
+
+		req, err := NewRequest(RequestParams{
+			StoreID:  ulid.Make().String(),
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "employee:maria"),
+		})
+		require.NoError(t, err)
+
+		viewerEdges, ok := mg.GetEdgesFromNodeID("document#viewer")
+		require.True(t, ok)
+
+		_, err = resolver.ResolveIntersection(context.Background(), req, viewerEdges[0].GetTo())
+		require.ErrorIs(t, err, ErrPanicRequest)
+	})
 }
 
 func TestResolveExclusion(t *testing.T) {
@@ -1966,6 +2232,143 @@ func TestResolveExclusion(t *testing.T) {
 		res, err := resolver.ResolveExclusion(context.Background(), req, edges[0].GetTo())
 		require.NoError(t, err)
 		require.True(t, res.GetAllowed())
+	})
+
+	t.Run("returns_true_when_base_resolves_before_subtract", func(t *testing.T) {
+		// Base and subtract resolve concurrently. When subtract finishes first, a true base returns
+		// via the no-subtract short-circuit; this pins the opposite order, where the base result is
+		// received while subtract is still pending and both channels must be drained.
+		synctest.Test(t, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+
+			storeID := ulid.Make().String()
+			mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+			mockDatastore.EXPECT().Querier(gomock.Any()).Return(nil).AnyTimes()
+
+			// weight-2 base and weight-1 subtract, so they are resolved as two separate SingleEdges.
+			model := testutils.MustTransformDSLToProtoWithID(`
+				model
+					schema 1.1
+				type user
+				type team
+					relations
+						define member: [user]
+				type document
+					relations
+						define banned: [user]
+						define viewer: [team#member] but not banned
+			`)
+
+			mg, err := modelgraph.New(model)
+			require.NoError(t, err)
+
+			baseDone := make(chan struct{})
+			mockStrategy := NewMockEdgeStrategy(ctrl)
+			mockStrategy.EXPECT().Userset(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+				DoAndReturn(func(context.Context, *Request, *authzGraph.WeightedAuthorizationModelEdge, storage.TupleKeyIterator, *sync.Map) (*Response, error) {
+					close(baseDone)
+					return &Response{Allowed: true}, nil
+				}).Times(1)
+
+			resolver := New(Config{
+				Model:            mg,
+				Datastore:        mockDatastore,
+				Cache:            storage.NewNoopCache(),
+				Planner:          planner.New(&planner.Config{}),
+				ConcurrencyLimit: 10,
+				EdgeStrategies: map[string]EdgeStrategy{
+					DefaultStrategyName:   mockStrategy,
+					WeightTwoStrategyName: mockStrategy,
+				},
+			})
+
+			req, err := NewRequest(RequestParams{
+				StoreID:  storeID,
+				Model:    mg,
+				TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+			})
+			require.NoError(t, err)
+
+			mockDatastore.EXPECT().ReadUsersetTuples(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+				Return(storage.NewStaticTupleIterator(nil), nil).Times(1)
+			// The user is not banned, but only answer once base has resolved and every other goroutine
+			// is blocked: synctest advances the fake clock only then, i.e. once the base result has been
+			// received and ResolveExclusionEdges is waiting on subtract.
+			mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+				DoAndReturn(func(context.Context, string, storage.ReadUserTupleFilter, storage.ReadUserTupleOptions) (*openfgav1.Tuple, error) {
+					<-baseDone
+					time.Sleep(time.Second)
+					return nil, storage.ErrNotFound
+				}).Times(1)
+
+			edges, ok := mg.GetEdgesFromNodeID("document#viewer")
+			require.True(t, ok)
+
+			res, err := resolver.ResolveExclusion(context.Background(), req, edges[0].GetTo())
+			require.NoError(t, err)
+			require.True(t, res.GetAllowed())
+		})
+	})
+
+	t.Run("returns_error_when_node_is_not_exclusion", func(t *testing.T) {
+		mg, err := modelgraph.New(testutils.MustTransformDSLToProtoWithID(`
+			model
+			  schema 1.1
+			type user
+			type document
+			  relations
+			    define editor: [user]
+			    define banned: [user]
+			    define viewer: editor but not banned
+		`))
+		require.NoError(t, err)
+
+		resolver := New(Config{Model: mg, ConcurrencyLimit: 10})
+
+		req, err := NewRequest(RequestParams{
+			StoreID:  ulid.Make().String(),
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+		})
+		require.NoError(t, err)
+
+		// The relation node has a single rewrite edge to the exclusion operator, not base and subtract.
+		node, ok := mg.GetNodeByID("document#viewer")
+		require.True(t, ok)
+
+		_, err = resolver.ResolveExclusion(context.Background(), req, node)
+		require.ErrorIs(t, err, ErrPanicRequest)
+	})
+
+	t.Run("returns_error_when_base_has_no_path_to_user_type", func(t *testing.T) {
+		// Only subtract reaches employee. ResolveCheck returns false before getting here.
+		mg, err := modelgraph.New(testutils.MustTransformDSLToProtoWithID(`
+			model
+			  schema 1.1
+			type user
+			type employee
+			type document
+			  relations
+			    define editor: [user]
+			    define banned: [employee]
+			    define viewer: editor but not banned
+		`))
+		require.NoError(t, err)
+
+		resolver := New(Config{Model: mg, ConcurrencyLimit: 10})
+
+		req, err := NewRequest(RequestParams{
+			StoreID:  ulid.Make().String(),
+			Model:    mg,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "employee:maria"),
+		})
+		require.NoError(t, err)
+
+		edges, ok := mg.GetEdgesFromNodeID("document#viewer")
+		require.True(t, ok)
+
+		_, err = resolver.ResolveExclusion(context.Background(), req, edges[0].GetTo())
+		require.ErrorIs(t, err, ErrPanicRequest)
 	})
 }
 
@@ -6578,6 +6981,93 @@ func TestEdgeCacheKey_CollisionFreedom(t *testing.T) {
 		require.Len(t, keys, 2)
 		assertAllDistinct(t, keys)
 	})
+}
+
+func TestNodeCacheKey_CollisionFreedom(t *testing.T) {
+	// NodeCacheKey uses: storeID, modelID, object, user, node.UniqueLabel, node type, invariantCacheKey.
+	// Changing any of them must produce a distinct key, and no NodeCacheKey may equal the
+	// EdgeCacheKey of an edge it groups.
+	modelDSL := `
+		model
+		  schema 1.1
+		type user
+		type document
+		  relations
+		    define a: [user]
+		    define b: [user]
+		    define c: [user]
+		    define d: [user]
+		    define viewer: [user, user:*]
+		    define editor: (a and b) or (c and d)`
+
+	mg, err := modelgraph.New(testutils.MustTransformDSLToProtoWithID(modelDSL))
+	require.NoError(t, err)
+	otherMg, err := modelgraph.New(testutils.MustTransformDSLToProtoWithID(modelDSL))
+	require.NoError(t, err)
+	require.NotEqual(t, mg.GetModelID(), otherMg.GetModelID())
+
+	storeID := ulid.Make().String()
+
+	newReq := func(t *testing.T, params RequestParams) *Request {
+		t.Helper()
+		if params.StoreID == "" {
+			params.StoreID = storeID
+		}
+		if params.Model == nil {
+			params.Model = mg
+		}
+		if params.TupleKey == nil {
+			params.TupleKey = tuple.NewTupleKey("document:1", "viewer", "user:alice")
+		}
+		req, err := NewRequest(params)
+		require.NoError(t, err)
+		return req
+	}
+
+	viewer, ok := mg.GetNodeByID("document#viewer")
+	require.True(t, ok)
+	otherViewer, ok := otherMg.GetNodeByID("document#viewer")
+	require.True(t, ok)
+
+	// editor is a rewrite to a union of two sibling intersection operator nodes.
+	editorEdges, ok := mg.GetEdgesFromNodeID("document#editor")
+	require.True(t, ok)
+	intersections, ok := mg.GetEdgesFromNode(editorEdges[0].GetTo())
+	require.True(t, ok)
+	require.Len(t, intersections, 2)
+
+	base := newReq(t, RequestParams{})
+
+	reqContext, err := structpb.NewStruct(map[string]any{"x": 1})
+	require.NoError(t, err)
+
+	cacheKeys := map[string]keys.Key{
+		"base":                NodeCacheKey(base, viewer),
+		"first_intersection":  NodeCacheKey(base, intersections[0].GetTo()),
+		"second_intersection": NodeCacheKey(base, intersections[1].GetTo()),
+		"other_store":         NodeCacheKey(newReq(t, RequestParams{StoreID: ulid.Make().String()}), viewer),
+		"other_model":         NodeCacheKey(newReq(t, RequestParams{Model: otherMg}), otherViewer),
+		"other_object":        NodeCacheKey(newReq(t, RequestParams{TupleKey: tuple.NewTupleKey("document:2", "viewer", "user:alice")}), viewer),
+		"other_user":          NodeCacheKey(newReq(t, RequestParams{TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:bob")}), viewer),
+		"wildcard_user":       NodeCacheKey(newReq(t, RequestParams{TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:*")}), viewer),
+		"with_context":        NodeCacheKey(newReq(t, RequestParams{Context: reqContext}), viewer),
+		"with_contextual_tuples": NodeCacheKey(newReq(t, RequestParams{
+			ContextualTuples: []*openfgav1.TupleKey{tuple.NewTupleKey("document:1", "viewer", "user:bob")},
+		}), viewer),
+	}
+
+	viewerEdges, err := mg.FlattenNode(viewer, "user", false, "")
+	require.NoError(t, err)
+	for _, edge := range viewerEdges {
+		cacheKeys["edge_"+edge.GetTo().GetUniqueLabel()] = EdgeCacheKey(base, edge)
+	}
+
+	seen := make(map[keys.Key]string, len(cacheKeys))
+	for name, k := range cacheKeys {
+		other, exists := seen[k]
+		require.False(t, exists, "cache key for %q collides with %q", name, other)
+		seen[k] = name
+	}
 }
 
 // TestCheck_NestedRecursiveRelations is a regression test for
