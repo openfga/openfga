@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/oklog/ulid/v2"
@@ -15,10 +16,12 @@ import (
 	"github.com/openfga/language/pkg/go/graph"
 
 	"github.com/openfga/openfga/internal/modelgraph"
+	"github.com/openfga/openfga/internal/planner"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/adapter"
 	"github.com/openfga/openfga/pkg/storage/adapter/query"
 	"github.com/openfga/openfga/pkg/storage/adapter/sqlite"
+	"github.com/openfga/openfga/pkg/storage/cache/keys"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
 	sqlitestorage "github.com/openfga/openfga/pkg/storage/sqlite"
 	storagefixtures "github.com/openfga/openfga/pkg/testfixtures/storage"
@@ -1540,4 +1543,363 @@ func TestSQLWeight1Integration_ContextualShortCircuit(t *testing.T) {
 	// A contextual tuple satisfies the union with no stored tuples at all.
 	ct := tuple.NewTupleKey("document:1", "viewer", "user:alice")
 	require.True(t, e.run(t, g, nil, "document:1", "viewer", "user:alice", nil, ct))
+}
+
+// =============================================================================
+// Resolver integration tests: ResolveCheck against a real sqlite datastore with SQLStrategy
+// forced for every GroupEdge, cross-checked against DefaultStrategy. These verify that the
+// GroupEdges built by GatherLogicalEdges reach weight1 intact when mixed with weight-2+ edges
+// or nested under intersections and exclusions.
+// =============================================================================
+
+// forceSQLPlanner selects SQLPlan whenever it is a candidate and otherwise delegates, so edge
+// strategies keep their usual selection.
+type forceSQLPlanner struct {
+	planner.Manager
+	sqlSelections atomic.Int64
+}
+
+func (p *forceSQLPlanner) GetPlanSelector(key keys.Key) planner.Selector {
+	return &forceSQLSelector{Selector: p.Manager.GetPlanSelector(key), p: p}
+}
+
+type forceSQLSelector struct {
+	planner.Selector
+	p *forceSQLPlanner
+}
+
+func (s *forceSQLSelector) Select(candidates map[string]*planner.PlanConfig) *planner.PlanConfig {
+	if plan, ok := candidates[SQLStrategyName]; ok {
+		s.p.sqlSelections.Add(1)
+		return plan
+	}
+	return s.Selector.Select(candidates)
+}
+
+type resolveEnv struct {
+	*sqliteEnv
+	base   *planner.Planner
+	forced *forceSQLPlanner
+}
+
+// setupResolveEnv fails the test at cleanup if SQLStrategy was never selected. The check is
+// per test rather than per resolve because a union may short-circuit before its GroupEdge is
+// dispatched; denied cases always evaluate it.
+func setupResolveEnv(t *testing.T) *resolveEnv {
+	t.Helper()
+	base := planner.New(&planner.Config{})
+	e := &resolveEnv{sqliteEnv: setupSQLiteEnv(t), base: base, forced: &forceSQLPlanner{Manager: base}}
+	t.Cleanup(func() {
+		base.Stop()
+		require.Positive(t, e.forced.sqlSelections.Load(), "SQLStrategy was never selected")
+	})
+	return e
+}
+
+// resolve seeds tuples under a fresh store id and runs ResolveCheck for object#relation@user
+// with SQLStrategy forced and with SQL optimizations off, requires the two to agree, and
+// returns the decision.
+func (e *resolveEnv) resolve(t *testing.T, g *modelgraph.AuthorizationModelGraph, tuples []*openfgav1.TupleKey, object, relation, user string, reqCtx map[string]any, ctxTuples ...*openfgav1.TupleKey) bool {
+	t.Helper()
+	ctx := context.Background()
+	store := ulid.Make().String()
+
+	if len(tuples) > 0 {
+		require.NoError(t, e.ds.Write(ctx, store, nil, tuples))
+	}
+
+	resolveWith := func(p planner.Manager, sqlEnabled bool) bool {
+		params := RequestParams{
+			StoreID:          store,
+			Model:            g,
+			TupleKey:         tuple.NewTupleKey(object, relation, user),
+			ContextualTuples: ctxTuples,
+		}
+		if reqCtx != nil {
+			params.Context = testutils.MustNewStruct(t, reqCtx)
+		}
+		req, err := NewRequest(params)
+		require.NoError(t, err)
+
+		res, err := New(Config{
+			Model:                   g,
+			Datastore:               e.ds,
+			Planner:                 p,
+			ConcurrencyLimit:        10,
+			SQLOptimizationsEnabled: sqlEnabled,
+		}).ResolveCheck(ctx, req)
+		require.NoError(t, err)
+		return res.GetAllowed()
+	}
+
+	allowed := resolveWith(e.forced, true)
+	require.Equal(t, resolveWith(e.base, false), allowed, "SQLStrategy disagrees with DefaultStrategy")
+	return allowed
+}
+
+func TestSQLResolverIntegration_UnionGroupWithTTU(t *testing.T) {
+	e := setupResolveEnv(t)
+	g := mustGraph(t, `
+		model
+			schema 1.1
+		type user
+		type folder
+			relations
+				define viewer: [user]
+		type document
+			relations
+				define parent: [folder]
+				define editor: [user]
+				define viewer: [user] or editor or viewer from parent`)
+
+	parent := tuple.NewTupleKey("document:1", "parent", "folder:1")
+
+	t.Run("granted_via_direct", func(t *testing.T) {
+		tuples := []*openfgav1.TupleKey{parent, tuple.NewTupleKey("document:1", "viewer", "user:alice")}
+		require.True(t, e.resolve(t, g, tuples, "document:1", "viewer", "user:alice", nil))
+	})
+	t.Run("granted_via_editor", func(t *testing.T) {
+		tuples := []*openfgav1.TupleKey{parent, tuple.NewTupleKey("document:1", "editor", "user:alice")}
+		require.True(t, e.resolve(t, g, tuples, "document:1", "viewer", "user:alice", nil))
+	})
+	t.Run("granted_via_parent", func(t *testing.T) {
+		tuples := []*openfgav1.TupleKey{parent, tuple.NewTupleKey("folder:1", "viewer", "user:alice")}
+		require.True(t, e.resolve(t, g, tuples, "document:1", "viewer", "user:alice", nil))
+	})
+	t.Run("granted_via_contextual_editor", func(t *testing.T) {
+		ct := tuple.NewTupleKey("document:1", "editor", "user:alice")
+		require.True(t, e.resolve(t, g, []*openfgav1.TupleKey{parent}, "document:1", "viewer", "user:alice", nil, ct))
+	})
+	t.Run("denied", func(t *testing.T) {
+		tuples := []*openfgav1.TupleKey{parent, tuple.NewTupleKey("document:1", "editor", "user:bob")}
+		require.False(t, e.resolve(t, g, tuples, "document:1", "viewer", "user:alice", nil))
+	})
+	t.Run("denied_other_object", func(t *testing.T) {
+		tuples := []*openfgav1.TupleKey{parent, tuple.NewTupleKey("document:1", "editor", "user:alice")}
+		require.False(t, e.resolve(t, g, tuples, "document:2", "viewer", "user:alice", nil))
+	})
+}
+
+func TestSQLResolverIntegration_UnionGroupWithUserset(t *testing.T) {
+	e := setupResolveEnv(t)
+	g := mustGraph(t, `
+		model
+			schema 1.1
+		type user
+		type group
+			relations
+				define member: [user]
+		type document
+			relations
+				define editor: [user]
+				define viewer: [user, group#member] or editor`)
+
+	t.Run("granted_via_direct", func(t *testing.T) {
+		tuples := []*openfgav1.TupleKey{tuple.NewTupleKey("document:1", "viewer", "user:alice")}
+		require.True(t, e.resolve(t, g, tuples, "document:1", "viewer", "user:alice", nil))
+	})
+	t.Run("granted_via_editor", func(t *testing.T) {
+		tuples := []*openfgav1.TupleKey{tuple.NewTupleKey("document:1", "editor", "user:alice")}
+		require.True(t, e.resolve(t, g, tuples, "document:1", "viewer", "user:alice", nil))
+	})
+	t.Run("granted_via_group", func(t *testing.T) {
+		tuples := []*openfgav1.TupleKey{
+			tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
+			tuple.NewTupleKey("group:eng", "member", "user:alice"),
+		}
+		require.True(t, e.resolve(t, g, tuples, "document:1", "viewer", "user:alice", nil))
+	})
+	t.Run("denied", func(t *testing.T) {
+		tuples := []*openfgav1.TupleKey{tuple.NewTupleKey("document:1", "viewer", "group:eng#member")}
+		require.False(t, e.resolve(t, g, tuples, "document:1", "viewer", "user:alice", nil))
+	})
+}
+
+func TestSQLResolverIntegration_IntersectionGroupWithTTU(t *testing.T) {
+	e := setupResolveEnv(t)
+	g := mustGraph(t, `
+		model
+			schema 1.1
+		type user
+		type folder
+			relations
+				define viewer: [user]
+		type document
+			relations
+				define parent: [folder]
+				define allowed: [user]
+				define can_view: [user] and allowed and viewer from parent`)
+
+	all := []*openfgav1.TupleKey{
+		tuple.NewTupleKey("document:1", "parent", "folder:1"),
+		tuple.NewTupleKey("document:1", "can_view", "user:alice"),
+		tuple.NewTupleKey("document:1", "allowed", "user:alice"),
+		tuple.NewTupleKey("folder:1", "viewer", "user:alice"),
+	}
+	without := func(i int) []*openfgav1.TupleKey {
+		out := append([]*openfgav1.TupleKey{}, all[:i]...)
+		return append(out, all[i+1:]...)
+	}
+
+	t.Run("granted_all_operands", func(t *testing.T) {
+		require.True(t, e.resolve(t, g, all, "document:1", "can_view", "user:alice", nil))
+	})
+	t.Run("denied_missing_direct", func(t *testing.T) {
+		require.False(t, e.resolve(t, g, without(1), "document:1", "can_view", "user:alice", nil))
+	})
+	t.Run("denied_missing_allowed", func(t *testing.T) {
+		require.False(t, e.resolve(t, g, without(2), "document:1", "can_view", "user:alice", nil))
+	})
+	t.Run("denied_missing_parent_viewer", func(t *testing.T) {
+		require.False(t, e.resolve(t, g, without(3), "document:1", "can_view", "user:alice", nil))
+	})
+	t.Run("denied_other_user", func(t *testing.T) {
+		require.False(t, e.resolve(t, g, all, "document:1", "can_view", "user:bob", nil))
+	})
+}
+
+func TestSQLResolverIntegration_ExclusionGroupBase(t *testing.T) {
+	e := setupResolveEnv(t)
+	g := mustGraph(t, `
+		model
+			schema 1.1
+		type user
+		type folder
+			relations
+				define blocked: [user]
+		type document
+			relations
+				define parent: [folder]
+				define editor: [user]
+				define viewer: [user]
+				define can_view: (viewer or editor) but not blocked from parent`)
+
+	parent := tuple.NewTupleKey("document:1", "parent", "folder:1")
+	blocked := tuple.NewTupleKey("folder:1", "blocked", "user:alice")
+
+	t.Run("granted_via_viewer", func(t *testing.T) {
+		tuples := []*openfgav1.TupleKey{parent, tuple.NewTupleKey("document:1", "viewer", "user:alice")}
+		require.True(t, e.resolve(t, g, tuples, "document:1", "can_view", "user:alice", nil))
+	})
+	t.Run("granted_via_editor", func(t *testing.T) {
+		tuples := []*openfgav1.TupleKey{parent, tuple.NewTupleKey("document:1", "editor", "user:alice")}
+		require.True(t, e.resolve(t, g, tuples, "document:1", "can_view", "user:alice", nil))
+	})
+	t.Run("denied_blocked", func(t *testing.T) {
+		tuples := []*openfgav1.TupleKey{parent, blocked, tuple.NewTupleKey("document:1", "editor", "user:alice")}
+		require.False(t, e.resolve(t, g, tuples, "document:1", "can_view", "user:alice", nil))
+	})
+	t.Run("denied_no_base", func(t *testing.T) {
+		require.False(t, e.resolve(t, g, []*openfgav1.TupleKey{parent}, "document:1", "can_view", "user:alice", nil))
+	})
+}
+
+// TestSQLResolverIntegration_ExclusionGroupSubtract pins that a weight-1 group in the subtract
+// position stays the subtract even though the base is heavier.
+func TestSQLResolverIntegration_ExclusionGroupSubtract(t *testing.T) {
+	e := setupResolveEnv(t)
+	g := mustGraph(t, `
+		model
+			schema 1.1
+		type user
+		type folder
+			relations
+				define viewer: [user]
+		type document
+			relations
+				define parent: [folder]
+				define blocked: [user]
+				define banned: [user]
+				define can_view: viewer from parent but not (blocked or banned)`)
+
+	base := []*openfgav1.TupleKey{
+		tuple.NewTupleKey("document:1", "parent", "folder:1"),
+		tuple.NewTupleKey("folder:1", "viewer", "user:alice"),
+	}
+
+	t.Run("granted", func(t *testing.T) {
+		require.True(t, e.resolve(t, g, base, "document:1", "can_view", "user:alice", nil))
+	})
+	t.Run("denied_blocked", func(t *testing.T) {
+		tuples := append([]*openfgav1.TupleKey{tuple.NewTupleKey("document:1", "blocked", "user:alice")}, base...)
+		require.False(t, e.resolve(t, g, tuples, "document:1", "can_view", "user:alice", nil))
+	})
+	t.Run("denied_banned", func(t *testing.T) {
+		tuples := append([]*openfgav1.TupleKey{tuple.NewTupleKey("document:1", "banned", "user:alice")}, base...)
+		require.False(t, e.resolve(t, g, tuples, "document:1", "can_view", "user:alice", nil))
+	})
+	t.Run("denied_subtract_without_base", func(t *testing.T) {
+		tuples := []*openfgav1.TupleKey{tuple.NewTupleKey("document:1", "blocked", "user:alice")}
+		require.False(t, e.resolve(t, g, tuples, "document:1", "can_view", "user:alice", nil))
+	})
+}
+
+// TestSQLResolverIntegration_ExclusionGroupInUnion covers an all-weight-1 exclusion, resolved as
+// GroupEdge{base, subtract}, alongside a TTU in a union.
+func TestSQLResolverIntegration_ExclusionGroupInUnion(t *testing.T) {
+	e := setupResolveEnv(t)
+	g := mustGraph(t, `
+		model
+			schema 1.1
+		type user
+		type folder
+			relations
+				define viewer: [user]
+		type document
+			relations
+				define parent: [folder]
+				define blocked: [user]
+				define viewer: [user]
+				define can_view: (viewer but not blocked) or viewer from parent`)
+
+	parent := tuple.NewTupleKey("document:1", "parent", "folder:1")
+	viewer := tuple.NewTupleKey("document:1", "viewer", "user:alice")
+	blocked := tuple.NewTupleKey("document:1", "blocked", "user:alice")
+
+	t.Run("granted_via_exclusion", func(t *testing.T) {
+		require.True(t, e.resolve(t, g, []*openfgav1.TupleKey{parent, viewer}, "document:1", "can_view", "user:alice", nil))
+	})
+	t.Run("denied_blocked", func(t *testing.T) {
+		require.False(t, e.resolve(t, g, []*openfgav1.TupleKey{parent, viewer, blocked}, "document:1", "can_view", "user:alice", nil))
+	})
+	t.Run("denied_blocked_only", func(t *testing.T) {
+		require.False(t, e.resolve(t, g, []*openfgav1.TupleKey{parent, blocked}, "document:1", "can_view", "user:alice", nil))
+	})
+	t.Run("granted_blocked_but_via_parent", func(t *testing.T) {
+		tuples := []*openfgav1.TupleKey{parent, viewer, blocked, tuple.NewTupleKey("folder:1", "viewer", "user:alice")}
+		require.True(t, e.resolve(t, g, tuples, "document:1", "can_view", "user:alice", nil))
+	})
+}
+
+func TestSQLResolverIntegration_ConditionedGroupWithTTU(t *testing.T) {
+	e := setupResolveEnv(t)
+	g := mustGraph(t, `
+		model
+			schema 1.1
+		type user
+		type folder
+			relations
+				define viewer: [user]
+		type document
+			relations
+				define parent: [folder]
+				define editor: [user]
+				define viewer: [user with xcond] or editor or viewer from parent
+		condition xcond(x: int) {
+			x < 100
+		}`)
+
+	parent := tuple.NewTupleKey("document:1", "parent", "folder:1")
+	conditioned := tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:alice", "xcond", nil)
+
+	t.Run("granted_condition_met", func(t *testing.T) {
+		require.True(t, e.resolve(t, g, []*openfgav1.TupleKey{parent, conditioned}, "document:1", "viewer", "user:alice", map[string]any{"x": 1}))
+	})
+	t.Run("denied_condition_unmet", func(t *testing.T) {
+		require.False(t, e.resolve(t, g, []*openfgav1.TupleKey{parent, conditioned}, "document:1", "viewer", "user:alice", map[string]any{"x": 500}))
+	})
+	t.Run("granted_condition_unmet_but_editor", func(t *testing.T) {
+		tuples := []*openfgav1.TupleKey{parent, conditioned, tuple.NewTupleKey("document:1", "editor", "user:alice")}
+		require.True(t, e.resolve(t, g, tuples, "document:1", "viewer", "user:alice", map[string]any{"x": 500}))
+	})
 }
