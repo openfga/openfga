@@ -129,7 +129,7 @@ func (s *SQLStrategy) weight1(ctx context.Context, req *Request, querier adapter
 		req:         req,
 		querier:     querier,
 		table:       query.NewTuple("t"),
-		userType:    req.GetUserType(),
+		subjNodeID:  req.GetUserType(),
 		wildcardReq: req.IsTypedWildcard(),
 		relConds:    map[relKey]map[string]struct{}{},
 	}
@@ -147,7 +147,7 @@ func (s *SQLStrategy) weight1(ctx context.Context, req *Request, querier adapter
 	// subject ID each relation filter should match.
 	w.queriesDirectAndWildcardSubject = w.subjID != tuple.Wildcard && slices.ContainsFunc(edges, func(e *graph.WeightedAuthorizationModelEdge) bool {
 		// An edge's wildcards cover every wildcard reachable through it
-		return slices.Contains(e.GetWildcards(), w.userType)
+		return slices.Contains(e.GetWildcards(), w.subjNodeID)
 	})
 
 	// A single evaluation pass short-circuits on contextual tuples, accumulates the WHERE filter
@@ -192,15 +192,15 @@ type walker struct {
 	querier adapter.Querier
 	table   query.Tuple
 
-	userType    string
 	wildcardReq bool
-
-	subjType string
-	subjID   string
-	subjRel  string
 
 	objectType string
 	objectID   string
+	// subjNodeID is the subject's weighted-graph node ID: "type", or "type#rel" for usersets.
+	subjNodeID string
+	subjType   string
+	subjID     string
+	subjRel    string
 
 	// relConds maps each relKey referenced by a surviving leaf to the set of condition names it
 	// admits (including NoCond). It is used to form the  WHERE `relation IN (...)` filter and,
@@ -282,10 +282,10 @@ func (w *walker) accumulateLeafConditions(l leaf) {
 // pruned reports whether an edge has no path to the request's user type, mirroring
 // FlattenNode: such an edge contributes nothing (an unsatisfiable branch).
 func (w *walker) pruned(edge *graph.WeightedAuthorizationModelEdge) bool {
-	if _, ok := w.s.model.GetEdgeWeight(edge, w.userType); !ok {
+	if _, ok := w.s.model.GetEdgeWeight(edge, w.subjNodeID); !ok {
 		return true
 	}
-	if w.wildcardReq && !slices.Contains(edge.GetWildcards(), w.userType) {
+	if w.wildcardReq && !slices.Contains(edge.GetWildcards(), w.subjNodeID) {
 		return true
 	}
 	return false
@@ -434,7 +434,7 @@ func (w *walker) contextLeafSatisfied(ctx context.Context, l leaf) (bool, error)
 	var cts []*openfgav1.TupleKey
 	var ok bool
 	if l.wildcard {
-		cts, ok = w.req.GetContextualTuplesByObjectID(w.req.GetTupleKey().GetObject(), l.relation, w.userType)
+		cts, ok = w.req.GetContextualTuplesByObjectID(w.req.GetTupleKey().GetObject(), l.relation, w.subjNodeID)
 	} else {
 		cts, ok = w.req.GetContextualTuplesByUserID(w.req.GetTupleKey().GetUser(), l.relation, w.objectType)
 	}
