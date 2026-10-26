@@ -7,7 +7,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/openfga/openfga/internal/telemetry"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/proto"
@@ -17,6 +16,7 @@ import (
 	"github.com/openfga/language/pkg/go/graph"
 
 	"github.com/openfga/openfga/internal/modelgraph"
+	"github.com/openfga/openfga/internal/telemetry"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/adapter"
 	"github.com/openfga/openfga/pkg/storage/adapter/query"
@@ -629,9 +629,7 @@ func (w *walker) evaluateRow(ctx context.Context, g *gatheredRow, l leaf) (bool,
 	return evaluateCondition(ctx, w.s.model, l.conditions, tk, w.req.GetContext())
 }
 
-// whereShared returns the predicates common to every weight-1 query: the store, the
-// object, and a narrowing of the subject to the exact request subject (plus the public
-// wildcard when subjects are split).
+// whereShared returns the predicates common to every weight-1 query.
 func (w *walker) whereShared() []query.Predicate {
 	preds := []query.Predicate{
 		query.Eq(w.table.Store(), query.Bind(w.req.GetStoreID())),
@@ -641,9 +639,15 @@ func (w *walker) whereShared() []query.Predicate {
 		query.Eq(w.table.SubjectRelation(), query.Bind(w.subjRel)),
 	}
 	if w.queriesDirectAndWildcardSubject {
-		preds = append(preds, query.In(w.table.SubjectID(), query.Bind(w.subjID), query.Bind(tuple.Wildcard)))
+		preds = append(preds,
+			query.In(w.table.SubjectID(), query.Bind(w.subjID), query.Bind(tuple.Wildcard)),
+			query.In(w.table.SubjectKind(), query.Lit(string(tuple.User)), query.Lit(string(tuple.UserSet))),
+		)
 	} else {
-		preds = append(preds, query.Eq(w.table.SubjectID(), query.Bind(w.subjID)))
+		preds = append(preds,
+			query.Eq(w.table.SubjectID(), query.Bind(w.subjID)),
+			query.Eq(w.table.SubjectKind(), query.Lit(string(tuple.GetUserTypeFromUser(w.req.GetTupleKey().GetUser())))),
+		)
 	}
 	return preds
 }
