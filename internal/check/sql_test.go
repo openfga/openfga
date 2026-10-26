@@ -88,7 +88,7 @@ func (q *fakeQuerier) Execute(_ context.Context, stmt *query.Statement) (adapter
 	q.SQL = sqlText
 	q.Parameters = args
 	q.sqls = append(q.sqls, sqlText)
-	if strings.Contains(sqlText, "SELECT 1 FROM") { // unconditioned query projects an inline literal
+	if strings.HasPrefix(sqlText, "SELECT 1 ") { // unconditioned query projects an inline literal
 		if q.hasRow {
 			return &fakeRows{rows: [][]any{{1}}}, nil
 		}
@@ -795,7 +795,7 @@ func TestSqlWeight1_ContextualCollapsedUnionBranch(t *testing.T) {
 	_, err = runWeight1(t, g, q, "document:1", "viewer", "user:alice", banned)
 	require.NoError(t, err)
 	require.Contains(t, q.SQL, "t.relation IN ('editor', 'viewer')")
-	require.Contains(t, q.SQL, "HAVING COUNT(1) FILTER (WHERE t.relation = 'editor') > 0 LIMIT 1")
+	require.Contains(t, q.SQL, "HAVING COUNT(1) FILTER (WHERE t.relation = 'editor') > 0) LIMIT 1")
 }
 
 // TestSqlWeight1_ContextualSatisfiesArmOnGatherPath covers the carry-forward from the first pass
@@ -861,8 +861,10 @@ func condCtx(t *testing.T, m map[string]any) []byte {
 func TestSqlWeight1_SubjectScopingSQL(t *testing.T) {
 	const (
 		selectOne = "SELECT 1 FROM tuple t WHERE (t.store = ? AND t.object_type = ? AND t.object_id = ? AND t.user_object_type = ? AND t.user_relation = ? AND "
-		gather    = "SELECT t.relation, t.user_object_id, t.condition_name, t.condition_context FROM tuple t WHERE (t.store = ? AND t.object_type = ? AND t.object_id = ? AND t.user_object_type = ? AND t.user_relation = ? AND "
-		uncond    = "(t.condition_name IS NULL OR t.condition_name = '')"
+		// sqlite nests a HAVING without GROUP BY in an EXISTS.
+		selectHaving = "SELECT 1 WHERE EXISTS (SELECT COUNT(*) FROM tuple t WHERE (t.store = ? AND t.object_type = ? AND t.object_id = ? AND t.user_object_type = ? AND t.user_relation = ? AND "
+		gather       = "SELECT t.relation, t.user_object_id, t.condition_name, t.condition_context FROM tuple t WHERE (t.store = ? AND t.object_type = ? AND t.object_id = ? AND t.user_object_type = ? AND t.user_relation = ? AND "
+		uncond       = "(t.condition_name IS NULL OR t.condition_name = '')"
 	)
 	tests := []struct {
 		name   string
@@ -889,18 +891,18 @@ func TestSqlWeight1_SubjectScopingSQL(t *testing.T) {
 			name: "case3_direct_user_wildcard_leaf",
 			rels: "define viewer: [user]\n define editor: [user:*]\n define can_view: viewer and editor",
 			user: "user:alice",
-			sql: selectOne + "t.user_object_id IN (?, ?) AND t.relation IN ('editor', 'viewer') AND " + uncond + ") HAVING (" +
+			sql: selectHaving + "t.user_object_id IN (?, ?) AND t.relation IN ('editor', 'viewer') AND " + uncond + ") HAVING (" +
 				"COUNT(1) FILTER (WHERE (t.relation = 'viewer' AND t.user_object_id = ?)) > 0 AND " +
-				"COUNT(1) FILTER (WHERE (t.relation = 'editor' AND t.user_object_id = '*')) > 0) LIMIT 1",
+				"COUNT(1) FILTER (WHERE (t.relation = 'editor' AND t.user_object_id = '*')) > 0)) LIMIT 1",
 			params: []any{"store1", "document", "1", "user", "", "alice", "*", "alice"},
 		},
 		{
 			name: "case3_direct_user_wildcard_leaf_same_relation",
 			rels: "define can_view: [user, user:*]",
 			user: "user:alice",
-			sql: selectOne + "t.user_object_id IN (?, ?) AND t.relation = 'can_view' AND " + uncond + ") HAVING (" +
+			sql: selectHaving + "t.user_object_id IN (?, ?) AND t.relation = 'can_view' AND " + uncond + ") HAVING (" +
 				"COUNT(1) FILTER (WHERE (t.relation = 'can_view' AND t.user_object_id = ?)) > 0 OR " +
-				"COUNT(1) FILTER (WHERE (t.relation = 'can_view' AND t.user_object_id = '*')) > 0) LIMIT 1",
+				"COUNT(1) FILTER (WHERE (t.relation = 'can_view' AND t.user_object_id = '*')) > 0)) LIMIT 1",
 			params: []any{"store1", "document", "1", "user", "", "alice", "*", "alice"},
 		},
 		{
@@ -909,18 +911,18 @@ func TestSqlWeight1_SubjectScopingSQL(t *testing.T) {
 			name: "case3_direct_user_wildcard_leaf_union",
 			rels: "define viewer: [user]\n define editor: [user:*]\n define can_view: viewer or editor",
 			user: "user:alice",
-			sql: selectOne + "t.user_object_id IN (?, ?) AND t.relation IN ('editor', 'viewer') AND " + uncond + ") HAVING (" +
+			sql: selectHaving + "t.user_object_id IN (?, ?) AND t.relation IN ('editor', 'viewer') AND " + uncond + ") HAVING (" +
 				"COUNT(1) FILTER (WHERE (t.relation = 'viewer' AND t.user_object_id = ?)) > 0 OR " +
-				"COUNT(1) FILTER (WHERE (t.relation = 'editor' AND t.user_object_id = '*')) > 0) LIMIT 1",
+				"COUNT(1) FILTER (WHERE (t.relation = 'editor' AND t.user_object_id = '*')) > 0)) LIMIT 1",
 			params: []any{"store1", "document", "1", "user", "", "alice", "*", "alice"},
 		},
 		{
 			name: "union_of_intersections",
 			rels: "define a: [user]\n define b: [user]\n define c: [user]\n define d: [user]\n define can_view: (a and b) or (c and d)",
 			user: "user:alice",
-			sql: selectOne + "t.user_object_id = ? AND t.relation IN ('a', 'b', 'c', 'd') AND " + uncond + ") HAVING (" +
+			sql: selectHaving + "t.user_object_id = ? AND t.relation IN ('a', 'b', 'c', 'd') AND " + uncond + ") HAVING (" +
 				"(COUNT(1) FILTER (WHERE t.relation = 'a') > 0 AND COUNT(1) FILTER (WHERE t.relation = 'b') > 0) OR " +
-				"(COUNT(1) FILTER (WHERE t.relation = 'c') > 0 AND COUNT(1) FILTER (WHERE t.relation = 'd') > 0)) LIMIT 1",
+				"(COUNT(1) FILTER (WHERE t.relation = 'c') > 0 AND COUNT(1) FILTER (WHERE t.relation = 'd') > 0))) LIMIT 1",
 			params: []any{"store1", "document", "1", "user", "", "alice"},
 		},
 		{
@@ -928,9 +930,9 @@ func TestSqlWeight1_SubjectScopingSQL(t *testing.T) {
 			name: "union_of_intersection_and_leaf",
 			rels: "define a: [user]\n define b: [user]\n define c: [user]\n define can_view: (a and b) or c",
 			user: "user:alice",
-			sql: selectOne + "t.user_object_id = ? AND t.relation IN ('a', 'b', 'c') AND " + uncond + ") HAVING (" +
+			sql: selectHaving + "t.user_object_id = ? AND t.relation IN ('a', 'b', 'c') AND " + uncond + ") HAVING (" +
 				"(COUNT(1) FILTER (WHERE t.relation = 'a') > 0 AND COUNT(1) FILTER (WHERE t.relation = 'b') > 0) OR " +
-				"COUNT(1) FILTER (WHERE t.relation = 'c') > 0) LIMIT 1",
+				"COUNT(1) FILTER (WHERE t.relation = 'c') > 0)) LIMIT 1",
 			params: []any{"store1", "document", "1", "user", "", "alice"},
 		},
 		{
