@@ -68,6 +68,7 @@ import (
 	"github.com/openfga/openfga/pkg/middleware"
 	httpmiddleware "github.com/openfga/openfga/pkg/middleware/http"
 	"github.com/openfga/openfga/pkg/middleware/logging"
+	"github.com/openfga/openfga/pkg/middleware/queryduration"
 	"github.com/openfga/openfga/pkg/middleware/recovery"
 	"github.com/openfga/openfga/pkg/middleware/requestid"
 	"github.com/openfga/openfga/pkg/middleware/storeid"
@@ -586,6 +587,7 @@ func (s *ServerContext) buildServerOpts(ctx context.Context, config *serverconfi
 				),
 				grpc_ctxtags.UnaryServerInterceptor(), // needed for logging
 				requestid.NewUnaryInterceptor(),       // add request_id to ctxtags
+				queryduration.NewUnaryInterceptor(),   // add the query duration response header
 			}...,
 		),
 		grpc.ChainStreamInterceptor(
