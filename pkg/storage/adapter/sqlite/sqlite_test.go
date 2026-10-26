@@ -35,19 +35,19 @@ func TestSQLiteSubjectColumnsAreDiscrete(t *testing.T) {
 	}
 }
 
-// TestSQLiteMapsEveryLogicalColumn walks the whole logical schema: the three subject columns
+// TestSQLiteMapsEveryLogicalColumn walks the whole logical schema: the four subject columns
 // map to their discrete physical names, the other six pass through. It also guards the
 // exhaustive switch — an unmapped column would panic here.
 func TestSQLiteMapsEveryLogicalColumn(t *testing.T) {
 	a := query.NewTuple("a")
 	stmt := query.Select(
 		a.ObjectType(), a.ObjectID(), a.ObjectRelation(),
-		a.SubjectType(), a.SubjectID(), a.SubjectRelation(),
+		a.SubjectType(), a.SubjectID(), a.SubjectRelation(), a.SubjectKind(),
 		a.Store(), a.Condition(), a.ConditionContext(),
 	).From(a)
 	sql, _ := sqlite.Render(stmt)
 	want := "SELECT a.object_type, a.object_id, a.relation, " +
-		"a.user_object_type, a.user_object_id, a.user_relation, " +
+		"a.user_object_type, a.user_object_id, a.user_relation, a.user_type, " +
 		"a.store, a.condition_name, a.condition_context FROM tuple a"
 	assertSQL(t, sql, want)
 }

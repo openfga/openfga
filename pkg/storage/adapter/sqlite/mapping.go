@@ -11,7 +11,6 @@ import (
 // --- SQLite's own mappings --------------------------------------------------------------
 
 // sqliteColumn maps a logical column to SQLite SQL, owning the full physical mapping.
-// SQLite's user_type column has no ast.Column counterpart so it is never referenced here.
 func sqliteColumn(name ast.Column, alias string) string {
 	switch name {
 	case ast.ColSubjectType:
@@ -20,6 +19,8 @@ func sqliteColumn(name ast.Column, alias string) string {
 		return alias + ".user_object_id"
 	case ast.ColSubjectRelation:
 		return alias + ".user_relation"
+	case ast.ColSubjectKind:
+		return alias + ".user_type"
 	case ast.ColObjectType:
 		return alias + ".object_type"
 	case ast.ColObjectID:
