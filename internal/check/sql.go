@@ -20,6 +20,7 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/adapter"
 	"github.com/openfga/openfga/pkg/storage/adapter/query"
+	"github.com/openfga/openfga/pkg/storage/cache/keys"
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
@@ -129,7 +130,7 @@ func (s *SQLStrategy) weight1(ctx context.Context, req *Request, querier adapter
 
 	if len(req.GetContextualTuples()) > 0 {
 		w.hasCtxTuples = true
-		w.ctxVerdicts = map[string]bool{}
+		w.ctxVerdicts = map[keys.Key]bool{}
 	}
 
 	w.subjType, w.subjID, w.subjRel = tuple.ToUserParts(req.GetTupleKey().GetUser())
@@ -202,7 +203,7 @@ type walker struct {
 	hasCtxTuples        bool
 	// ctxVerdicts maps leafKey to the verdict of the contextual tuple matching that leaf. Nil when
 	// !hasCtxTuples.
-	ctxVerdicts map[string]bool
+	ctxVerdicts map[keys.Key]bool
 }
 
 func (w *walker) leafFrom(edge *graph.WeightedAuthorizationModelEdge) leaf {
@@ -423,21 +424,17 @@ func (w *walker) contextLeafSatisfied(ctx context.Context, l leaf) (satisfied, m
 }
 
 // leafKey identifies a leaf across passes by every field that affects its contextual-tuple
-// verdict. Model identifiers can't contain NUL, so it's a safe separator.
-func leafKey(l leaf) string {
-	var b strings.Builder
-	b.WriteString(l.relation)
-	b.WriteByte(0)
-	if l.wildcard {
-		b.WriteByte('1')
-	} else {
-		b.WriteByte('0')
-	}
+// verdict.
+func leafKey(l leaf) keys.Key {
+	b := keys.GetBuilder()
+	defer b.Close()
+	b.EncodeString(l.relation)
+	b.EncodeBool(l.wildcard)
+	b.EncodeArrayHeader(len(l.conditions))
 	for _, c := range l.conditions {
-		b.WriteByte(0)
-		b.WriteString(c)
+		b.EncodeString(c)
 	}
-	return b.String()
+	return b.Key()
 }
 
 // evalUnconditioned evaluates pred in HAVING. HAVING is omitted for a pure union, where any WHERE
