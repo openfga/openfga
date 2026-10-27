@@ -841,6 +841,48 @@ func TestSqlWeight1_ContextualSatisfiesArmOnConditionedPath(t *testing.T) {
 	})
 }
 
+// TestSqlWeight1_ContextualFalseConditionDecidesLeaf pins that a contextual tuple with a false
+// condition overrides a stored tuple with the same key. The fake returns the stored row regardless
+// of WHERE, so only ctxVerdicts can deny on the conditioned path.
+func TestSqlWeight1_ContextualFalseConditionDecidesLeaf(t *testing.T) {
+	stored := []any{"viewer", "alice", "", nil}
+	ct := tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:alice", "cond", testutils.MustNewStruct(t, map[string]any{"x": 0}))
+
+	t.Run("unconditioned_path", func(t *testing.T) {
+		g := mustGraph(t, `
+			model
+				schema 1.1
+			type user
+			type document
+				relations
+					define editor: [user]
+					define viewer: [user, user with cond] or editor
+			condition cond(x: int) { x > 0 }`)
+		q := &fakeQuerier{rows: [][]any{stored}}
+		allowed, err := runWeight1(t, g, q, "document:1", "viewer", "user:alice", ct)
+		require.NoError(t, err)
+		require.False(t, allowed)
+		require.Contains(t, q.SQL, "\"t\".relation = 'editor'")
+		require.NotContains(t, q.SQL, "'viewer'")
+	})
+	t.Run("conditioned_path", func(t *testing.T) {
+		g := mustGraph(t, `
+			model
+				schema 1.1
+			type user
+			type document
+				relations
+					define editor: [user with cond]
+					define viewer: [user, user with cond] or editor
+			condition cond(x: int) { x > 0 }`)
+		q := &fakeQuerier{rows: [][]any{stored}}
+		allowed, err := runWeight1(t, g, q, "document:1", "viewer", "user:alice", ct)
+		require.NoError(t, err)
+		require.False(t, allowed)
+		require.NotContains(t, q.SQL, "'viewer'")
+	})
+}
+
 // condCtx marshals a context map the way condition_context is stored, so the conditioned path's
 // proto.Unmarshal round-trips it.
 func condCtx(t *testing.T, m map[string]any) []byte {
@@ -1898,4 +1940,46 @@ func TestSQLResolverIntegration_ConditionedGroupWithTTU(t *testing.T) {
 		tuples := []*openfgav1.TupleKey{parent, conditioned, tuple.NewTupleKey("document:1", "editor", "user:alice")}
 		require.True(t, e.resolve(t, g, tuples, "document:1", "viewer", "user:alice", map[string]any{"x": 500}))
 	})
+}
+
+// TestSQLResolverIntegration_ContextualTuplePrecedence cross-checks that a contextual tuple with a
+// false condition overrides a stored tuple with the same key. editor's restriction selects the
+// query path.
+func TestSQLResolverIntegration_ContextualTuplePrecedence(t *testing.T) {
+	e := setupResolveEnv(t)
+
+	for _, editor := range []string{"[user]", "[user with cond]"} {
+		g := mustGraph(t, `
+			model
+				schema 1.1
+			type user
+			type document
+				relations
+					define editor: `+editor+`
+					define viewer: [user, user with cond, user:*, user:* with cond] or editor
+			condition cond(x: int) { x > 0 }`)
+
+		for _, user := range []string{"user:alice", "user:*"} {
+			stored := tuple.NewTupleKey("document:1", "viewer", user)
+			ctxTuple := func(x int) *openfgav1.TupleKey {
+				return tuple.NewTupleKeyWithCondition("document:1", "viewer", user, "cond", testutils.MustNewStruct(t, map[string]any{"x": x}))
+			}
+
+			t.Run("editor_"+editor+"/"+user, func(t *testing.T) {
+				t.Run("denied_when_contextual_condition_false", func(t *testing.T) {
+					require.False(t, e.resolve(t, g, []*openfgav1.TupleKey{stored}, "document:1", "viewer", "user:alice", nil, ctxTuple(0)))
+				})
+				t.Run("granted_when_contextual_condition_true", func(t *testing.T) {
+					require.True(t, e.resolve(t, g, nil, "document:1", "viewer", "user:alice", nil, ctxTuple(1)))
+				})
+				t.Run("granted_by_editor_despite_false_contextual", func(t *testing.T) {
+					tuples := []*openfgav1.TupleKey{stored, tuple.NewTupleKeyWithCondition("document:1", "editor", "user:alice", "cond", testutils.MustNewStruct(t, map[string]any{"x": 1}))}
+					if editor == "[user]" {
+						tuples[1] = tuple.NewTupleKey("document:1", "editor", "user:alice")
+					}
+					require.True(t, e.resolve(t, g, tuples, "document:1", "viewer", "user:alice", nil, ctxTuple(0)))
+				})
+			})
+		}
+	}
 }
