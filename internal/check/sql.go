@@ -308,6 +308,11 @@ func (w *walker) evaluateSubtree(ctx context.Context, edges []*graph.WeightedAut
 		if len(edges) != 2 {
 			return branchResult{}, ErrPanicRequest
 		}
+		if w.subjRel != "" {
+			if _, ok := w.model.GetEdgeWeight(edges[1], w.subjNodeID); !ok {
+				return branchResult{}, ErrUsersetInvalidRequest
+			}
+		}
 		base, err := w.evaluateEdge(ctx, edges[0], evalLeaf)
 		if err != nil {
 			return branchResult{}, err

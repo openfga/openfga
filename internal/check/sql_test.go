@@ -340,6 +340,29 @@ func TestSqlWeight1_Exclusion(t *testing.T) {
 	require.Contains(t, q.SQL, "NOT (")
 }
 
+// TestSqlWeight1_ExclusionUsersetUnreachableSubtract pins that a userset subject the subtract arm
+// can't reach errors, as in ResolveExclusion, rather than granting via the base arm.
+func TestSqlWeight1_ExclusionUsersetUnreachableSubtract(t *testing.T) {
+	g := mustGraph(t, `
+		model
+			schema 1.1
+		type user
+		type group
+			relations
+				define member: [user]
+		type document
+			relations
+				define allowed: [user, group#member]
+				define banned: [user]
+				define owner: [user, group#member]
+				define viewer: (allowed but not banned) or owner`)
+
+	q := &fakeQuerier{hasRow: true}
+	_, err := runWeight1(t, g, q, "document:1", "viewer", "group:x#member")
+	require.ErrorIs(t, err, ErrUsersetInvalidRequest)
+	require.Empty(t, q.sqls)
+}
+
 // --- conditioned path ------------------------------------------------------
 
 func TestSqlWeight1_ConditionedShape(t *testing.T) {
@@ -1639,6 +1662,14 @@ func setupResolveEnv(t *testing.T) *resolveEnv {
 // returns the decision.
 func (e *resolveEnv) resolve(t *testing.T, g *modelgraph.AuthorizationModelGraph, tuples []*openfgav1.TupleKey, object, relation, user string, reqCtx map[string]any, ctxTuples ...*openfgav1.TupleKey) bool {
 	t.Helper()
+	allowed, err := e.tryResolve(t, g, tuples, object, relation, user, reqCtx, ctxTuples...)
+	require.NoError(t, err)
+	return allowed
+}
+
+// tryResolve is resolve without requiring success; the two must also agree on the error.
+func (e *resolveEnv) tryResolve(t *testing.T, g *modelgraph.AuthorizationModelGraph, tuples []*openfgav1.TupleKey, object, relation, user string, reqCtx map[string]any, ctxTuples ...*openfgav1.TupleKey) (bool, error) {
+	t.Helper()
 	ctx := context.Background()
 	store := ulid.Make().String()
 
@@ -1646,7 +1677,7 @@ func (e *resolveEnv) resolve(t *testing.T, g *modelgraph.AuthorizationModelGraph
 		require.NoError(t, e.ds.Write(ctx, store, nil, tuples))
 	}
 
-	resolveWith := func(p planner.Manager, sqlEnabled bool) bool {
+	resolveWith := func(p planner.Manager, sqlEnabled bool) (bool, error) {
 		params := RequestParams{
 			StoreID:          store,
 			Model:            g,
@@ -1666,13 +1697,14 @@ func (e *resolveEnv) resolve(t *testing.T, g *modelgraph.AuthorizationModelGraph
 			ConcurrencyLimit:        10,
 			SQLOptimizationsEnabled: sqlEnabled,
 		}).ResolveCheck(ctx, req)
-		require.NoError(t, err)
-		return res.GetAllowed()
+		return res.GetAllowed(), err
 	}
 
-	allowed := resolveWith(e.forced, true)
-	require.Equal(t, resolveWith(e.base, false), allowed, "SQLStrategy disagrees with DefaultStrategy")
-	return allowed
+	allowed, err := resolveWith(e.forced, true)
+	baseAllowed, baseErr := resolveWith(e.base, false)
+	require.Equal(t, baseErr, err, "SQLStrategy disagrees with DefaultStrategy")
+	require.Equal(t, baseAllowed, allowed, "SQLStrategy disagrees with DefaultStrategy")
+	return allowed, err
 }
 
 func TestSQLResolverIntegration_UnionGroupWithTTU(t *testing.T) {
@@ -1909,6 +1941,42 @@ func TestSQLResolverIntegration_ExclusionGroupInUnion(t *testing.T) {
 	})
 }
 
+// TestSQLResolverIntegration_ExclusionUsersetUnreachableSubtract cross-checks a userset subject that
+// a nested exclusion's subtract arm can't reach.
+func TestSQLResolverIntegration_ExclusionUsersetUnreachableSubtract(t *testing.T) {
+	e := setupResolveEnv(t)
+	g := mustGraph(t, `
+		model
+			schema 1.1
+		type user
+		type group
+			relations
+				define member: [user]
+		type document
+			relations
+				define allowed: [user, group#member]
+				define banned: [user]
+				define owner: [user, group#member]
+				define viewer: (allowed but not banned) or owner`)
+
+	t.Run("userset_errors", func(t *testing.T) {
+		tuples := []*openfgav1.TupleKey{tuple.NewTupleKey("document:1", "allowed", "group:x#member")}
+		_, err := e.tryResolve(t, g, tuples, "document:1", "viewer", "group:x#member", nil)
+		require.ErrorIs(t, err, ErrUsersetInvalidRequest)
+	})
+	t.Run("user_granted", func(t *testing.T) {
+		tuples := []*openfgav1.TupleKey{tuple.NewTupleKey("document:1", "allowed", "user:alice")}
+		require.True(t, e.resolve(t, g, tuples, "document:1", "viewer", "user:alice", nil))
+	})
+	t.Run("user_denied_banned", func(t *testing.T) {
+		tuples := []*openfgav1.TupleKey{
+			tuple.NewTupleKey("document:1", "allowed", "user:alice"),
+			tuple.NewTupleKey("document:1", "banned", "user:alice"),
+		}
+		require.False(t, e.resolve(t, g, tuples, "document:1", "viewer", "user:alice", nil))
+	})
+}
+
 func TestSQLResolverIntegration_ConditionedGroupWithTTU(t *testing.T) {
 	e := setupResolveEnv(t)
 	g := mustGraph(t, `
@@ -1943,7 +2011,7 @@ func TestSQLResolverIntegration_ConditionedGroupWithTTU(t *testing.T) {
 }
 
 // TestSQLResolverIntegration_ContextualTuplePrecedence cross-checks that a contextual tuple with a
-// false condition overrides a stored tuple with the same key. editor's restriction selects the
+// false condition overrides a stored tuple with the same key. `editor`'s restriction selects the
 // query path.
 func TestSQLResolverIntegration_ContextualTuplePrecedence(t *testing.T) {
 	e := setupResolveEnv(t)
