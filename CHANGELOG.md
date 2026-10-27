@@ -9,6 +9,9 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ## [Unreleased]
 
 ## [1.22.1] - 2026-10-27
+### Changed
+- Moved the build toolchain and Docker builder image to Go 1.27.3 and pinned golangci-lint to v2.15.0. The minimum Go version stays at `1.26.0`. [#3359](https://github.com/openfga/openfga/pull/3359)
+
 ### Fixed
 - Fixed ListObjects returning `validation_error` with the message "Internal Server Error" instead of the condition evaluation error (e.g. a missing context parameter) when the ListObjects pipeline is enabled. [#3338](https://github.com/openfga/openfga/pull/3338)
 - Fixed `recursiveFastPath` and `weight2` in Check spinning at full CPU on a closed producer channel until the other producer finished, which also made the planner avoid the `weight2` strategy. [#3299](https://github.com/openfga/openfga/issues/3299)
