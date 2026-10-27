@@ -129,7 +129,7 @@ func (s *SQLStrategy) weight1(ctx context.Context, req *Request, querier adapter
 
 	if len(req.GetContextualTuples()) > 0 {
 		w.hasCtxTuples = true
-		w.ctxSatisfied = map[string]struct{}{}
+		w.ctxVerdicts = map[string]bool{}
 	}
 
 	w.subjType, w.subjID, w.subjRel = tuple.ToUserParts(req.GetTupleKey().GetUser())
@@ -200,9 +200,9 @@ type walker struct {
 	// filter must specify which subject ID it is for.
 	alsoQueriesWildcard bool
 	hasCtxTuples        bool
-	// ctxSatisfied records, by leafKey, leaves satisfied by a contextual tuple in the first pass so
-	// the conditioned pass doesn't re-evaluate their conditions. Nil when !hasCtxTuples.
-	ctxSatisfied map[string]struct{}
+	// ctxVerdicts maps leafKey to the verdict of the contextual tuple matching that leaf. Nil when
+	// !hasCtxTuples.
+	ctxVerdicts map[string]bool
 }
 
 func (w *walker) leafFrom(edge *graph.WeightedAuthorizationModelEdge) leaf {
@@ -362,17 +362,20 @@ func (w *walker) evaluateNode(ctx context.Context, node *graph.WeightedAuthoriza
 	return w.evaluateSubtree(ctx, edges, operation, evalLeaf)
 }
 
-// evaluateLeaf is the first-pass evaluator. A contextual-tuple miss doesn't prove the tuple is
-// absent from the database, so it yields branchNeedsQuery, never branchFalse.
+// evaluateLeaf is the first-pass evaluator. A matching contextual tuple overrides stored tuples; a
+// miss yields branchNeedsQuery, since the tuple may be stored.
 func (w *walker) evaluateLeaf(ctx context.Context, l leaf) (branchResult, error) {
-	ok, err := w.contextLeafSatisfied(ctx, l)
+	satisfied, matched, err := w.contextLeafSatisfied(ctx, l)
 	if err != nil {
 		return branchResult{}, err
 	}
-	if ok {
-		// ok implies hasCtxTuples, so ctxSatisfied is non-nil.
-		w.ctxSatisfied[leafKey(l)] = struct{}{}
-		return branchResult{state: branchTrue}, nil
+	if matched {
+		// matched implies hasCtxTuples, so ctxVerdicts is non-nil.
+		w.ctxVerdicts[leafKey(l)] = satisfied
+		if satisfied {
+			return branchResult{state: branchTrue}, nil
+		}
+		return branchResult{state: branchFalse}, nil
 	}
 	w.accumulateLeafConditions(l)
 	count := query.Count(query.Lit[int64](1), query.AggFilter(w.relationFilter(w.relKeyOf(l))))
@@ -380,12 +383,12 @@ func (w *walker) evaluateLeaf(ctx context.Context, l leaf) (branchResult, error)
 	return branchResult{state: branchNeedsQuery, pred: &pred}, nil
 }
 
-// contextLeafSatisfied reports whether a contextual tuple matches the leaf and passes its
-// condition. Unconditioned leaves need no special case: NoCond ("") matches an unconditioned
-// tuple's empty condition name in evaluateCondition.
-func (w *walker) contextLeafSatisfied(ctx context.Context, l leaf) (bool, error) {
+// contextLeafSatisfied reports whether a contextual tuple matches the leaf and, if so, whether it
+// passes the leaf's condition. Unconditioned leaves need no special case: NoCond ("") matches an
+// unconditioned tuple's empty condition name in evaluateCondition.
+func (w *walker) contextLeafSatisfied(ctx context.Context, l leaf) (satisfied, matched bool, err error) {
 	if !w.hasCtxTuples {
-		return false, nil
+		return false, false, nil
 	}
 	var cts []*openfgav1.TupleKey
 	var ok bool
@@ -395,7 +398,7 @@ func (w *walker) contextLeafSatisfied(ctx context.Context, l leaf) (bool, error)
 		cts, ok = w.req.GetContextualTuplesByUserID(w.req.GetTupleKey().GetUser(), l.relation, w.objectType)
 	}
 	if !ok {
-		return false, nil
+		return false, false, nil
 	}
 	for _, ct := range cts {
 		if l.wildcard {
@@ -407,13 +410,11 @@ func (w *walker) contextLeafSatisfied(ctx context.Context, l leaf) (bool, error)
 		}
 		satisfied, err := evaluateCondition(ctx, w.model, l.conditions, ct, w.req.GetContext())
 		if err != nil {
-			return false, err
+			return false, false, err
 		}
-		if satisfied {
-			return true, nil
-		}
+		return satisfied, true, nil
 	}
-	return false, nil
+	return false, false, nil
 }
 
 // leafKey identifies a leaf across passes by every field that affects its contextual-tuple
@@ -516,12 +517,12 @@ func (w *walker) evalConditioned(ctx context.Context, edges []*graph.WeightedAut
 }
 
 // conditionedLeafSatisfied reports whether a contextual tuple or a gathered row satisfies the leaf.
-// This pass only visits leaves the first pass visited, so ctxSatisfied fully answers the
+// This pass only visits leaves the first pass visited, so ctxVerdicts fully answers the
 // contextual case.
 func (w *walker) conditionedLeafSatisfied(ctx context.Context, l leaf, gathered []gatheredRow) (bool, error) {
 	if w.hasCtxTuples {
-		if _, ok := w.ctxSatisfied[leafKey(l)]; ok {
-			return true, nil
+		if satisfied, ok := w.ctxVerdicts[leafKey(l)]; ok {
+			return satisfied, nil
 		}
 	}
 
