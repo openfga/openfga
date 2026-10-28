@@ -4,8 +4,6 @@
 
 Please report security vulnerabilities privately through GitHub via [this link](https://github.com/openfga/openfga/security/advisories/new). See GitHub's documentation on [privately reporting a security vulnerability](https://docs.github.com/en/code-security/security-advisories/guidance-on-reporting-and-writing-information-about-vulnerabilities/privately-reporting-a-security-vulnerability) for details. Please avoid using public GitHub issues/discussions for the same.
 
-If you are unable to report through GitHub, you can reach us at security@openfga.dev.
-
 If AI tools were used to find the vulnerability, please include the prompts or prompt history used to discover the issue in your report.
 
 All vulnerabilities and associated information will be treated with full confidentiality. We strive to reply within 5 business days.
