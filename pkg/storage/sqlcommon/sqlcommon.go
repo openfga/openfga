@@ -133,7 +133,7 @@ func WithMaxOpenConns(c int) DatastoreOption {
 // WithMinOpenConns returns a DatastoreOption that sets the
 // minimum number of open connections in the Config.
 // This is only used by some SQL drivers (e.g., pgxpool that is used
-// in PostgresSQL).
+// in PostgreSQL).
 func WithMinOpenConns(c int) DatastoreOption {
 	return func(cfg *Config) {
 		cfg.MinOpenConns = c
@@ -151,7 +151,7 @@ func WithMaxIdleConns(c int) DatastoreOption {
 // WithMinIdleConns returns a DatastoreOption that sets the
 // minimum number of idle connections in the Config.
 // This is only used by some SQL drivers (e.g., pgxpool that is used
-// in PostgresSQL).
+// in PostgreSQL).
 func WithMinIdleConns(c int) DatastoreOption {
 	return func(cfg *Config) {
 		cfg.MinIdleConns = c
