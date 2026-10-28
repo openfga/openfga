@@ -9833,3 +9833,111 @@ tests:
               relation: access
               object: resource:1
             expectation: false
+  - name: conditional_tuple_not_shadowing_wildcard
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type group
+            relations
+              define member: [user, user:*, group#member, user with x_is_a]
+          type document
+            relations
+              define viewer: [user]
+              define banned: [group#member]
+              define can_view: viewer but not banned
+          condition x_is_a(x: string) {
+            x == "a"
+          }
+        tuples:
+          - user: user:bob
+            relation: viewer
+            object: document:1
+          - user: group:outer#member
+            relation: banned
+            object: document:1
+          - user: group:inner#member
+            relation: member
+            object: group:outer
+          - user: user:bob
+            relation: member
+            object: group:inner
+            condition:
+              name: x_is_a
+          - user: user:*
+            relation: member
+            object: group:inner
+        checkAssertions:
+          - tuple:
+              user: user:bob
+              relation: member
+              object: group:outer
+            context:
+              x: "b"
+            expectation: true
+          - tuple:
+              user: user:bob
+              relation: can_view
+              object: document:1
+            context:
+              x: "b"
+            expectation: false
+          - tuple:
+              user: user:bob
+              relation: can_view
+              object: document:1
+            context:
+              x: "a"
+            expectation: false
+          - tuple:
+              user: user:bob
+              relation: can_view
+              object: document:1
+            contextualTuples:
+              - user: user:bob
+                relation: member
+                object: group:inner
+                condition:
+                  name: x_is_a
+            context:
+              x: "b"
+            expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:bob
+              type: group
+              relation: member
+            context:
+              x: "b"
+            expectation:
+              - group:inner
+              - group:outer
+          - request:
+              user: user:bob
+              type: document
+              relation: can_view
+            context:
+              x: "b"
+            expectation: []
+          - request:
+              user: user:bob
+              type: document
+              relation: can_view
+            contextualTuples:
+              - user: user:bob
+                relation: member
+                object: group:inner
+                condition:
+                  name: x_is_a
+            context:
+              x: "b"
+            expectation: []
+        listUsersAssertions:
+          - request:
+              object: document:1
+              relation: can_view
+              filters: [user]
+            context:
+              x: "b"
+            expectation: []

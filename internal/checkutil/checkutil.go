@@ -130,13 +130,21 @@ func IteratorReadStartingFromUser(ctx context.Context,
 		return nil, err
 	}
 
-	return storage.NewConditionsFilteredTupleKeyIterator(
+	filteredIter := storage.NewConditionsFilteredTupleKeyIterator(
 		storage.NewFilteredTupleKeyIterator(
 			storage.NewTupleKeyIteratorFromTupleIterator(iter),
 			validation.FilterInvalidTuples(typesys),
 		),
 		BuildTupleKeyConditionFilter(ctx, req.GetContext(), typesys),
-	), nil
+	)
+	if sortContextualTuples {
+		// The sorted iterator feeds set operations that expect at most one entry per object.
+		// Deduplicate only after conditions have been evaluated: the same object may be related
+		// through several tuples (e.g. "user:bob with cond" and "user:*"), and a tuple whose
+		// condition is not met must not hide the one that grants the relation.
+		return storage.NewUniqueObjectTupleKeyIterator(filteredIter), nil
+	}
+	return filteredIter, nil
 }
 
 type V2RelationFunc func(*openfgav1.RelationReference) string
