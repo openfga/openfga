@@ -6,7 +6,7 @@ Please report security vulnerabilities privately through GitHub via [this link](
 
 If you are unable to report through GitHub, you can reach us at security@openfga.dev.
 
-All vulnerabilities and associated information will be treated with full confidentiality. We strive to reply within 5 business days.
+All vulnerabilities and associated information will be treated with full confidentiality.
 
 ## Scope
 
