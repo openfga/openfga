@@ -8,7 +8,7 @@ If you are unable to report through GitHub, you can reach us at security@openfga
 
 If AI tools were used to find the vulnerability, please include the prompts or prompt history used to discover the issue in your report.
 
-All vulnerabilities and associated information will be treated with full confidentiality.
+All vulnerabilities and associated information will be treated with full confidentiality. We strive to reply within 5 business days.
 
 ## Scope
 
