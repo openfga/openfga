@@ -13,9 +13,6 @@ All vulnerabilities and associated information will be treated with full confide
 The following are **in scope** for CVE assignment:
 
 - OpenFGA server and its stable APIs
-- Official OpenFGA SDKs (stable releases)
-- OpenFGA CLI (stable releases)
-- Official tooling (stable releases), including IDE extensions, Helm Charts, GitHub Actions, and Terraform Provider
 
 The following are **out of scope** for CVE assignment:
 
