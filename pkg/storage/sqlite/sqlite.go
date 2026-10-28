@@ -24,6 +24,7 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
+	"github.com/openfga/openfga/internal/telemetry"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
@@ -738,7 +739,11 @@ func (s *Datastore) ReadUserTuple(ctx context.Context, store string, filter stor
 			&record.InsertedAt,
 		)
 	if err != nil {
-		return nil, HandleSQLError(err)
+		storageErr := HandleSQLError(err)
+		if !storage.SuccessLabel(storageErr) {
+			telemetry.TraceError(span, storageErr)
+		}
+		return nil, storageErr
 	}
 
 	if conditionName.String != "" {
