@@ -64,7 +64,7 @@ type dispatchMsg struct {
 // This is the slow path as it requires dispatch on all its children.
 func (c *LocalChecker) defaultUserset(_ context.Context, req *ResolveCheckRequest, _ []*openfgav1.RelationReference, iter storage.TupleKeyIterator, selectedStrategy string) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
-		ctx, span := tracer.Start(ctx, "defaultUserset")
+		ctx, span := c.tracer.Start(ctx, "defaultUserset")
 		defer span.End()
 		dispatchChan := make(chan dispatchMsg, c.concurrencyLimit)
 
@@ -132,7 +132,7 @@ func (c *LocalChecker) produceUsersetDispatches(ctx context.Context, req *Resolv
 // resort to dispatch check on its children.
 func (c *LocalChecker) defaultTTU(_ context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset, iter storage.TupleKeyIterator, selectedStrategy string) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
-		ctx, span := tracer.Start(ctx, "defaultTTU")
+		ctx, span := c.tracer.Start(ctx, "defaultTTU")
 		defer span.End()
 		computedRelation := rewrite.GetTupleToUserset().GetComputedUserset().GetRelation()
 

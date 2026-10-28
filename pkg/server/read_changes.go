@@ -17,7 +17,7 @@ import (
 )
 
 func (s *Server) ReadChanges(ctx context.Context, req *openfgav1.ReadChangesRequest) (*openfgav1.ReadChangesResponse, error) {
-	ctx, span := tracer.Start(ctx, apimethod.ReadChanges.String(), trace.WithAttributes(
+	ctx, span := s.getTracer().Start(ctx, apimethod.ReadChanges.String(), trace.WithAttributes(
 		attribute.String("store_id", req.GetStoreId()),
 		attribute.KeyValue{Key: "type", Value: attribute.StringValue(req.GetType())},
 	))
