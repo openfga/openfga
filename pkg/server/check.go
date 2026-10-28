@@ -55,6 +55,10 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		}
 	}
 
+	if err := s.checkContextualTupleCount(len(req.GetContextualTuples().GetTupleKeys())); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+
 	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
 		Service: s.serviceName,
 		Method:  apimethod.Check.String(),
