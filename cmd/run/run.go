@@ -802,6 +802,7 @@ func (s *ServerContext) runHTTPServer(ctx context.Context, config *serverconfig.
 			AllowedOrigins:   config.HTTP.CORSAllowedOrigins,
 			AllowCredentials: true,
 			AllowedHeaders:   config.HTTP.CORSAllowedHeaders,
+			ExposedHeaders:   []string{queryduration.QueryDurationHeader},
 			AllowedMethods: []string{
 				http.MethodGet, http.MethodPost,
 				http.MethodHead, http.MethodPatch, http.MethodDelete, http.MethodPut,

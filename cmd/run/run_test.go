@@ -1798,6 +1798,20 @@ func TestHTTPHeaders(t *testing.T) {
 		})
 	}
 
+	t.Run("query_duration_header_exposed_to_cors", func(t *testing.T) {
+		t.Parallel()
+		req, err := retryablehttp.NewRequest("POST", fmt.Sprintf("http://%s/stores/%s/check", cfg.HTTP.Addr, storeID), strings.NewReader(`{"tuple_key": {"user": "user:anne",  "relation": "viewer", "object": "document:1"}}`))
+		require.NoError(t, err, "Failed to construct request")
+		req.Header.Set("Origin", "http://example.com")
+
+		httpResponse, err := httpClient.Do(req)
+		require.NoError(t, err)
+		defer httpResponse.Body.Close()
+
+		require.Equal(t, http.StatusOK, httpResponse.StatusCode)
+		require.Contains(t, httpResponse.Header.Get("Access-Control-Expose-Headers"), queryduration.QueryDurationHeader)
+	})
+
 	t.Run("query_duration_header_on_error", func(t *testing.T) {
 		t.Parallel()
 		req, err := retryablehttp.NewRequest("POST", fmt.Sprintf("http://%s/stores/%s/check", cfg.HTTP.Addr, "not-a-valid-store-id"), strings.NewReader(`{"tuple_key": {"user": "user:anne",  "relation": "viewer", "object": "document:1"}}`))

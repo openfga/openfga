@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	grpc_recovery "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/recovery"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/testing/testpb"
 	"github.com/stretchr/testify/suite"
 	"google.golang.org/grpc"
@@ -27,12 +28,21 @@ func (s *slowPingService) PingError(ctx context.Context, req *testpb.PingErrorRe
 	return s.TestServiceServer.PingError(ctx, req)
 }
 
+// PingEmpty panics so the header can be checked when an outer recovery
+// interceptor turns the panic into an error.
+func (s *slowPingService) PingEmpty(context.Context, *testpb.PingEmptyRequest) (*testpb.PingEmptyResponse, error) {
+	panic("boom")
+}
+
 func TestQueryDurationTestSuite(t *testing.T) {
 	s := &QueryDurationTestSuite{
 		InterceptorTestSuite: &testpb.InterceptorTestSuite{
 			TestService: &slowPingService{&testpb.TestPingService{}},
 			ServerOpts: []grpc.ServerOption{
-				grpc.UnaryInterceptor(NewUnaryInterceptor()),
+				grpc.ChainUnaryInterceptor(
+					grpc_recovery.UnaryServerInterceptor(),
+					NewUnaryInterceptor(),
+				),
 			},
 		},
 	}
@@ -70,6 +80,14 @@ func (s *QueryDurationTestSuite) TestPingErrorSetsHeader() {
 	s.Require().Equal(codes.InvalidArgument, status.Code(err))
 
 	s.requireDurationHeader(header, slowPingDuration.Milliseconds())
+}
+
+func (s *QueryDurationTestSuite) TestPanicSetsHeader() {
+	var header metadata.MD
+	_, err := s.Client.PingEmpty(s.SimpleCtx(), &testpb.PingEmptyRequest{}, grpc.Header(&header))
+	s.Require().Error(err)
+
+	s.requireDurationHeader(header, 0)
 }
 
 func (s *QueryDurationTestSuite) TestStreamingPingHasNoHeader() {

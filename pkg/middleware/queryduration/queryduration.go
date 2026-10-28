@@ -25,11 +25,13 @@ func NewUnaryInterceptor() grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req interface{}, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 		start := time.Now()
 
-		resp, err := handler(ctx, req)
+		// Deferred so the header is also set when the handler panics and an
+		// outer recovery interceptor turns the panic into an error.
+		defer func() {
+			durationMs := strconv.FormatInt(time.Since(start).Milliseconds(), 10)
+			_ = grpc.SetHeader(ctx, metadata.Pairs(QueryDurationHeader, durationMs))
+		}()
 
-		durationMs := strconv.FormatInt(time.Since(start).Milliseconds(), 10)
-		_ = grpc.SetHeader(ctx, metadata.Pairs(QueryDurationHeader, durationMs))
-
-		return resp, err
+		return handler(ctx, req)
 	}
 }
