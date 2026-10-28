@@ -8,7 +8,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 ### Added
-- Added the `openfga.v1.OpenFGAService.liveness` and `openfga.v1.OpenFGAService.readiness` health services. `liveness` reports `SERVING` without checking the datastore, so a liveness probe on `/healthz?service=openfga.v1.OpenFGAService.liveness` (or a gRPC probe on that service) no longer restarts instances when the datastore is slow or unreachable. `readiness` behaves like the default health check, which is unchanged. [#TBD](https://github.com/openfga/openfga/pull/TBD)
+- Added the `openfga.v1.OpenFGAService.liveness` and `openfga.v1.OpenFGAService.readiness` health services. `liveness` reports `SERVING` without checking the datastore, so a liveness probe on `/healthz?service=openfga.v1.OpenFGAService.liveness` (or a gRPC probe on that service) no longer restarts instances when the datastore is slow or unreachable. `readiness` behaves like the default health check, which is unchanged. [#3370](https://github.com/openfga/openfga/pull/3370)
 
 ### Changed
 - Moved the build toolchain and Docker builder image to Go 1.27.3 and pinned golangci-lint to v2.15.0. The minimum Go version stays at `1.26.0`. [#3359](https://github.com/openfga/openfga/pull/3359)
