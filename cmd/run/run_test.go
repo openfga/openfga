@@ -1117,6 +1117,45 @@ func TestHTTPServerEnabled(t *testing.T) {
 	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil)
 }
 
+func TestHTTPHealthzServices(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	cfg := testutils.MustDefaultConfigWithRandomPorts()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go func() {
+		if err := runServer(ctx, cfg); err != nil {
+			log.Fatal(err)
+		}
+	}()
+
+	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil)
+
+	tests := []struct {
+		service        string
+		expectedStatus int
+	}{
+		{service: "openfga.v1.OpenFGAService.liveness", expectedStatus: http.StatusOK},
+		{service: "openfga.v1.OpenFGAService.readiness", expectedStatus: http.StatusOK},
+		{service: "unknown", expectedStatus: http.StatusNotFound},
+	}
+
+	for _, test := range tests {
+		t.Run(test.service, func(t *testing.T) {
+			resp, err := http.Get(fmt.Sprintf("http://%s/healthz?service=%s", cfg.HTTP.Addr, test.service))
+			require.NoError(t, err)
+			t.Cleanup(func() {
+				require.NoError(t, resp.Body.Close())
+			})
+
+			require.Equal(t, test.expectedStatus, resp.StatusCode)
+		})
+	}
+}
+
 func TestPlaygroundEnabled(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
