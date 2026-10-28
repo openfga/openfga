@@ -68,28 +68,33 @@ func TestShadowResolver_ResolveCheck(t *testing.T) {
 		require.NoError(t, err)
 		require.False(t, res.Allowed)
 	})
-	t.Run("should_recover_from_panic", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		defer ctrl.Finish()
-		main := NewMockCheckResolver(ctrl)
-		main.EXPECT().Close().MaxTimes(1)
-		shadow := NewMockCheckResolver(ctrl)
-		shadow.EXPECT().Close().MaxTimes(1)
-		logger := mocks.NewMockLogger(ctrl)
-		checker := NewShadowChecker(main, shadow, ShadowResolverWithLogger(logger), ShadowResolverWithTimeout(1*time.Second))
-		defer checker.Close()
-		main.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Return(&ResolveCheckResponse{
-			Allowed: false,
-		}, nil)
-		shadow.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, request *ResolveCheckRequest) (*ResolveCheckResponse, error) {
-			panic(errors.New("test error"))
+	for name, panicValue := range map[string]any{
+		"error":  errors.New("test error"),
+		"string": "test panic",
+	} {
+		t.Run("should_recover_from_panic/"+name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+			main := NewMockCheckResolver(ctrl)
+			main.EXPECT().Close().MaxTimes(1)
+			shadow := NewMockCheckResolver(ctrl)
+			shadow.EXPECT().Close().MaxTimes(1)
+			logger := mocks.NewMockLogger(ctrl)
+			checker := NewShadowChecker(main, shadow, ShadowResolverWithLogger(logger), ShadowResolverWithTimeout(1*time.Second))
+			defer checker.Close()
+			main.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Return(&ResolveCheckResponse{
+				Allowed: false,
+			}, nil)
+			shadow.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, request *ResolveCheckRequest) (*ResolveCheckResponse, error) {
+				panic(panicValue)
+			})
+			logger.EXPECT().ErrorWithContext(gomock.Any(), "panic recovered", gomock.Any(), zap.Any("error", panicValue), gomock.Any(), gomock.Any(), gomock.Any(), zap.String("function", "ShadowResolver.ResolveCheck"))
+			res, err := checker.ResolveCheck(context.Background(), &ResolveCheckRequest{})
+			require.NoError(t, err)
+			require.False(t, res.Allowed)
+			checker.wg.Wait()
 		})
-		logger.EXPECT().ErrorWithContext(gomock.Any(), "panic recovered", gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), zap.String("function", "ShadowResolver.ResolveCheck"))
-		res, err := checker.ResolveCheck(context.Background(), &ResolveCheckRequest{})
-		require.NoError(t, err)
-		require.False(t, res.Allowed)
-		checker.wg.Wait()
-	})
+	}
 	t.Run("output_difference", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
