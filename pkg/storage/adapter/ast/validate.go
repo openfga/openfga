@@ -99,9 +99,9 @@ func inRange[T enum](field string, v, lo, hi T) error {
 	return nil
 }
 
-func alias(field, s string) error {
+func alias(s string) error {
 	if s == "" {
-		return fmt.Errorf("%s: %w: empty", field, ErrAlias)
+		return fault("Alias", ErrAlias, "empty")
 	}
 	return nil
 }
@@ -124,7 +124,7 @@ func value(field string, v any) error {
 // --- leaf nodes -------------------------------------------------------------------------
 
 func (n ColNode) Validate() error {
-	if err := alias("Alias", n.Alias); err != nil {
+	if err := alias(n.Alias); err != nil {
 		return err
 	}
 	return inRange("Name", n.Name, ColObjectType, ColCount-1)
@@ -214,7 +214,7 @@ func (n NotNode) Validate() error { return required("Inner", n.Inner) }
 func (ConstPredNode) Validate() error { return nil }
 
 func (n SubjectKindNode) Validate() error {
-	if err := alias("Alias", n.Alias); err != nil {
+	if err := alias(n.Alias); err != nil {
 		return err
 	}
 	if n.Kinds&^KindAll != 0 {
@@ -337,7 +337,7 @@ func (b SimpleBranch) Validate() error {
 }
 
 func (n AliasNode) Validate() error {
-	if err := alias("Alias", n.Alias); err != nil {
+	if err := alias(n.Alias); err != nil {
 		return err
 	}
 	return required("Inner", n.Inner)
@@ -397,7 +397,7 @@ func (s *Select) aliases() []string {
 	return out
 }
 
-func (t Table) Validate() error { return alias("Alias", t.Alias) }
+func (t Table) Validate() error { return alias(t.Alias) }
 
 func (j JoinClause) Validate() error {
 	if err := inRange("Type", j.Type, JoinInner, JoinCross); err != nil {
