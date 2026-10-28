@@ -19,8 +19,6 @@ func sqliteColumn(name ast.Column, alias string) string {
 		return alias + ".user_object_id"
 	case ast.ColSubjectRelation:
 		return alias + ".user_relation"
-	case ast.ColSubjectKind:
-		return alias + ".user_type"
 	case ast.ColObjectType:
 		return alias + ".object_type"
 	case ast.ColObjectID:
@@ -36,6 +34,22 @@ func sqliteColumn(name ast.Column, alias string) string {
 		return alias + ".condition_context"
 	default:
 		panic(fmt.Sprintf("sqlite: unmapped column %v", name))
+	}
+}
+
+// sqliteSubjectKind reads SQLite's user_type column, which stores tuple.GetUserTypeFromUser.
+func sqliteSubjectKind(kinds ast.SubjectKinds, alias string) string {
+	switch kinds {
+	case 0:
+		return "1 = 0"
+	case ast.KindAll:
+		return "1 = 1"
+	case ast.KindUser:
+		return quoteAlias(alias) + ".user_type = 'user'"
+	case ast.KindUserset:
+		return quoteAlias(alias) + ".user_type = 'userset'"
+	default:
+		panic(fmt.Sprintf("sqlite: bad ast.SubjectKinds %#b", kinds))
 	}
 }
 

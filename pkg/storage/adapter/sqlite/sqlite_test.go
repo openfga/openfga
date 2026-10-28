@@ -69,15 +69,31 @@ func TestSQLiteMapsEveryLogicalColumn(t *testing.T) {
 	a := query.NewTuple("a")
 	stmt := query.Select(
 		a.ObjectType(), a.ObjectID(), a.ObjectRelation(),
-		a.SubjectType(), a.SubjectID(), a.SubjectRelation(), a.SubjectKind(),
+		a.SubjectType(), a.SubjectID(), a.SubjectRelation(),
 		a.Store(), a.Condition(), a.ConditionContext(),
 	).From(a)
 	sqlText, _, err := sqlite.Render(stmt)
 	require.NoError(t, err)
 	want := `SELECT "a".object_type, "a".object_id, "a".relation, ` +
-		`"a".user_object_type, "a".user_object_id, "a".user_relation, "a".user_type, ` +
+		`"a".user_object_type, "a".user_object_id, "a".user_relation, ` +
 		`"a".store, COALESCE("a".condition_name, ''), "a".condition_context FROM tuple "a"`
 	assertSQL(t, sqlText, want)
+}
+
+func TestSQLiteSubjectKind(t *testing.T) {
+	a := query.NewTuple("a")
+	cases := map[query.SubjectKinds]string{
+		0:                 `1 = 0`,
+		query.KindUser:    `"a".user_type = 'user'`,
+		query.KindUserset: `"a".user_type = 'userset'`,
+		query.KindAll:     `1 = 1`,
+	}
+	for kinds, want := range cases {
+		stmt := query.Select(a.ObjectID()).From(a).Where(a.SubjectKindIn(kinds))
+		sqlText, _, err := sqlite.Render(stmt)
+		require.NoError(t, err)
+		assertSQL(t, sqlText, `SELECT "a".object_id FROM tuple "a" WHERE `+want)
+	}
 }
 
 func TestSQLiteSelfJoinAndCast(t *testing.T) {

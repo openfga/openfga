@@ -149,7 +149,7 @@ func predAgg(n ast.Predicate) bool {
 		return slices.ContainsFunc(x.Parts, predAgg)
 	case ast.NotNode:
 		return predAgg(x.Inner)
-	case ast.ExistsNode, ast.ConstPredNode:
+	case ast.ExistsNode, ast.ConstPredNode, ast.SubjectKindNode:
 		return false
 	default:
 		panic(fmt.Sprintf("sqlite: unhandled predicate %T", n))
@@ -254,6 +254,9 @@ func (r *renderer) predicate(n ast.Predicate) {
 		} else {
 			r.write("1 = 0")
 		}
+
+	case ast.SubjectKindNode:
+		r.write(sqliteSubjectKind(x.Kinds, x.Alias))
 
 	default:
 		panic(fmt.Sprintf("sqlite: unhandled predicate %T", n))
