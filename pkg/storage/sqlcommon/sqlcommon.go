@@ -392,14 +392,34 @@ func (p *rowGetter) GetRows(ctx context.Context) (Rows, error) {
 		return nil, err
 	}
 
-	ctx = context.WithoutCancel(ctx)
+	queryCtx := context.WithoutCancel(ctx)
+	cancel := context.CancelFunc(func() {})
+	if deadline, ok := ctx.Deadline(); ok {
+		queryCtx, cancel = context.WithDeadline(queryCtx, deadline)
+	}
 
-	rows, err := conn.Query(ctx, p.statement, p.args...)
+	rows, err := conn.Query(queryCtx, p.statement, p.args...)
 	if err != nil {
+		cancel()
 		conn.Close()
 		return nil, err
 	}
-	return rows, nil
+	// the deadline has to outlive GetRows because rows are read lazily, so it
+	// is released when the caller closes them.
+	return &deadlineRows{Rows: rows, cancel: cancel}, nil
+}
+
+// deadlineRows releases the query deadline context once the rows are closed.
+type deadlineRows struct {
+	Rows
+
+	cancel context.CancelFunc
+}
+
+func (r *deadlineRows) Close() error {
+	err := r.Rows.Close()
+	r.cancel()
+	return err
 }
 
 func NewRowGetter(connector Connector, builder SQLBuilder) (SQLIteratorRowGetter, error) {
