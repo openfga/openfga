@@ -589,12 +589,16 @@ func (w *walker) whereShared() []query.Predicate {
 	if w.alsoQueriesWildcard {
 		preds = append(preds,
 			query.In(w.table.SubjectID(), query.Bind(w.subjID), query.Bind(tuple.Wildcard)),
-			query.In(w.table.SubjectKind(), query.Lit(string(tuple.User)), query.Lit(string(tuple.UserSet))),
+			w.table.SubjectKindIn(query.KindUser|query.KindUserset),
 		)
 	} else {
+		kind := query.KindUser
+		if tuple.GetUserTypeFromUser(w.req.GetTupleKey().GetUser()) == tuple.UserSet {
+			kind = query.KindUserset
+		}
 		preds = append(preds,
 			query.Eq(w.table.SubjectID(), query.Bind(w.subjID)),
-			query.Eq(w.table.SubjectKind(), query.Lit(string(tuple.GetUserTypeFromUser(w.req.GetTupleKey().GetUser())))),
+			w.table.SubjectKindIn(kind),
 		)
 	}
 	return preds
