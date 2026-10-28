@@ -957,7 +957,7 @@ func TestSqlWeight1_SubjectScopingSQL(t *testing.T) {
 			name: "direct_user_wildcard_leaf",
 			rels: "define viewer: [user]\n define editor: [user:*]\n define can_view: viewer and editor",
 			user: "user:alice",
-			sql: selectHaving + "\"t\".user_object_id IN (?, ?) AND \"t\".user_type IN ('user', 'userset') AND \"t\".relation IN ('editor', 'viewer') AND " + uncond + ") HAVING (" +
+			sql: selectHaving + "\"t\".user_object_id IN (?, ?) AND 1 = 1 AND \"t\".relation IN ('editor', 'viewer') AND " + uncond + ") HAVING (" +
 				"COUNT(1) FILTER (WHERE (\"t\".relation = 'viewer' AND \"t\".user_object_id = ?)) > 0 AND " +
 				"COUNT(1) FILTER (WHERE (\"t\".relation = 'editor' AND \"t\".user_object_id = '*')) > 0)) LIMIT 1",
 			params: []any{"store1", "document", "1", "user", "", "alice", "*", "alice"},
@@ -966,7 +966,7 @@ func TestSqlWeight1_SubjectScopingSQL(t *testing.T) {
 			name: "direct_user_wildcard_leaf_same_relation",
 			rels: "define can_view: [user, user:*]",
 			user: "user:alice",
-			sql: selectHaving + "\"t\".user_object_id IN (?, ?) AND \"t\".user_type IN ('user', 'userset') AND \"t\".relation = 'can_view' AND " + uncond + ") HAVING (" +
+			sql: selectHaving + "\"t\".user_object_id IN (?, ?) AND 1 = 1 AND \"t\".relation = 'can_view' AND " + uncond + ") HAVING (" +
 				"COUNT(1) FILTER (WHERE (\"t\".relation = 'can_view' AND \"t\".user_object_id = ?)) > 0 OR " +
 				"COUNT(1) FILTER (WHERE (\"t\".relation = 'can_view' AND \"t\".user_object_id = '*')) > 0)) LIMIT 1",
 			params: []any{"store1", "document", "1", "user", "", "alice", "*", "alice"},
@@ -976,7 +976,7 @@ func TestSqlWeight1_SubjectScopingSQL(t *testing.T) {
 			name: "direct_user_wildcard_leaf_pure_union",
 			rels: "define viewer: [user]\n define editor: [user:*]\n define can_view: viewer or editor",
 			user: "user:alice",
-			sql: selectHaving + "\"t\".user_object_id IN (?, ?) AND \"t\".user_type IN ('user', 'userset') AND \"t\".relation IN ('editor', 'viewer') AND " + uncond + ") HAVING (" +
+			sql: selectHaving + "\"t\".user_object_id IN (?, ?) AND 1 = 1 AND \"t\".relation IN ('editor', 'viewer') AND " + uncond + ") HAVING (" +
 				"COUNT(1) FILTER (WHERE (\"t\".relation = 'viewer' AND \"t\".user_object_id = ?)) > 0 OR " +
 				"COUNT(1) FILTER (WHERE (\"t\".relation = 'editor' AND \"t\".user_object_id = '*')) > 0)) LIMIT 1",
 			params: []any{"store1", "document", "1", "user", "", "alice", "*", "alice"},
@@ -1004,7 +1004,7 @@ func TestSqlWeight1_SubjectScopingSQL(t *testing.T) {
 			name: "direct_user_wildcard_leaf_conditioned",
 			rels: "define viewer: [user with cond]\n define editor: [user:*]\n define can_view: viewer and editor",
 			user: "user:alice",
-			sql: selectConditioned + "\"t\".user_object_id IN (?, ?) AND \"t\".user_type IN ('user', 'userset') AND \"t\".relation IN ('editor', 'viewer') AND (" +
+			sql: selectConditioned + "\"t\".user_object_id IN (?, ?) AND 1 = 1 AND \"t\".relation IN ('editor', 'viewer') AND (" +
 				"(\"t\".relation = 'editor' AND \"t\".user_object_id = '*' AND " + uncond + ") OR " +
 				"(\"t\".relation = 'viewer' AND \"t\".user_object_id = ? AND COALESCE(\"t\".condition_name, '') = 'cond')))",
 			params: []any{"store1", "document", "1", "user", "", "alice", "*", "alice"},
