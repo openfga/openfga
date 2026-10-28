@@ -97,6 +97,7 @@ type (
 	JoinType      = ast.JoinType
 	SortDirection = ast.SortDirection
 	CastType      = ast.CastType
+	SubjectKinds  = ast.SubjectKinds
 )
 
 const (
@@ -122,6 +123,10 @@ const (
 	TypeBigint    = ast.TypeBigint
 	TypeNumeric   = ast.TypeNumeric
 	TypeVarbinary = ast.TypeVarbinary
+
+	KindUser    = ast.KindUser
+	KindUserset = ast.KindUserset
+	KindAll     = ast.KindAll
 )
 
 // --- leaves -----------------------------------------------------------------------------
@@ -394,8 +399,10 @@ func (t Tuple) SubjectID() Expr[string]   { return t.str(ast.ColSubjectID) }
 // `user:*`, so empty does not imply a non-userset subject.
 func (t Tuple) SubjectRelation() Expr[string] { return t.str(ast.ColSubjectRelation) }
 
-// SubjectKind is "userset" for usersets and wildcards, else "user" (see tuple.GetUserTypeFromUser).
-func (t Tuple) SubjectKind() Expr[string] { return t.str(ast.ColSubjectKind) }
+// SubjectKindIn is true when the subject is one of kinds.
+func (t Tuple) SubjectKindIn(kinds SubjectKinds) Predicate {
+	return Predicate{n: ast.SubjectKindNode{Alias: t.t.Alias, Kinds: kinds}}
+}
 
 func (t Tuple) Store() Expr[string] { return t.str(ast.ColStore) }
 

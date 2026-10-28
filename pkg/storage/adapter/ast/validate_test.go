@@ -130,6 +130,13 @@ func TestBuilderProducesValidTrees(t *testing.T) {
 			Limit(10).Offset(5),
 
 		"constant projection, no from": query.Select(query.Lit("x")),
+
+		"subject kind": query.Select(a.ObjectID()).From(a).Where(query.And(
+			query.In(a.SubjectID(), query.Bind("alice"), query.Bind("*")),
+			a.SubjectKindIn(query.KindUser|query.KindUserset),
+		)),
+
+		"empty subject kinds": query.Select(a.ObjectID()).From(a).Where(a.SubjectKindIn(0)),
 	}
 
 	for name, s := range stmts {
@@ -284,6 +291,7 @@ func TestEnumRanges(t *testing.T) {
 		{"cast type sentinel", ast.CastNode{Inner: col(), Type: ast.TypeCount}},
 		{"scalar func sentinel", ast.FuncNode{Fn: ast.FuncCount, Args: []ast.ScalarValue{col()}}},
 		{"agg func sentinel", ast.AggNode{Fn: ast.AggCount_}},
+		{"subject kinds outside KindAll", ast.SubjectKindNode{Alias: "t", Kinds: ast.KindAll + 1}},
 		{"op out of range", ast.CompareNode{Op: ast.Op(99), Left: col(), Right: col()}},
 		{"logical op out of range", ast.LogicalNode{
 			Op: ast.LogicalOp(99), Parts: []ast.Predicate{pred()},
@@ -335,6 +343,7 @@ func TestValueRules(t *testing.T) {
 func TestAliasRules(t *testing.T) {
 	assertInvalid(t, ast.ColNode{Name: ast.ColObjectID}, ast.ErrAlias, "Alias")
 	assertInvalid(t, ast.AliasNode{Inner: col()}, ast.ErrAlias, "Alias")
+	assertInvalid(t, ast.SubjectKindNode{Kinds: ast.KindUser}, ast.ErrAlias, "Alias")
 	assertInvalid(t, &ast.Select{From: []ast.Table{{}}}, ast.ErrAlias, "From[0]: Alias")
 }
 

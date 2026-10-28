@@ -213,6 +213,16 @@ func (n NotNode) Validate() error { return required("Inner", n.Inner) }
 
 func (ConstPredNode) Validate() error { return nil }
 
+func (n SubjectKindNode) Validate() error {
+	if err := alias("Alias", n.Alias); err != nil {
+		return err
+	}
+	if n.Kinds&^KindAll != 0 {
+		return fmt.Errorf("%s: %w: %#b", "Kinds", ErrEnum, n.Kinds)
+	}
+	return nil
+}
+
 // --- value nodes ------------------------------------------------------------------------
 
 func (n CastNode) Validate() error {

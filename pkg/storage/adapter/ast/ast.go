@@ -101,8 +101,6 @@ const (
 	ColSubjectID
 	// ColSubjectRelation is e.g., `member` in `group:eng#member`.
 	ColSubjectRelation
-	// ColSubjectKind is "userset" when (SubjectRelation != "" || SubjectID = "*"), else "user".
-	ColSubjectKind
 
 	ColStore
 
@@ -128,8 +126,6 @@ func (c Column) String() string {
 		return "SubjectID"
 	case ColSubjectRelation:
 		return "SubjectRelation"
-	case ColSubjectKind:
-		return "SubjectKind"
 	case ColStore:
 		return "Store"
 	case ColCondition:
@@ -140,6 +136,18 @@ func (c Column) String() string {
 		return "Column(" + strconv.Itoa(int(c)) + ")"
 	}
 }
+
+// SubjectKinds is a set of subject kinds; it is a userset when
+// (SubjectRelation != "" || SubjectID = "*"), else a user (see tuple.GetUserTypeFromUser).
+type SubjectKinds uint8
+
+const (
+	KindUser SubjectKinds = 1 << iota
+	KindUserset
+
+	// KindAll is not a kind - it's every kind, so backends can ensure full coverage.
+	KindAll = KindUser | KindUserset
+)
 
 // CastType is the target type of a CAST. It has no boolean member and no length/precision.
 type CastType uint8
@@ -297,6 +305,13 @@ type NotNode struct{ Inner Predicate }
 // ConstPredNode is a constant true or false.
 type ConstPredNode struct{ Value bool }
 
+// SubjectKindNode is true when the subject of the table with the given alias is one of Kinds.
+// Empty Kinds is always false.
+type SubjectKindNode struct {
+	Alias string
+	Kinds SubjectKinds
+}
+
 // --- value nodes ------------------------------------------------------------------------
 
 // CastNode casts Inner to Type.
@@ -425,6 +440,9 @@ func (NotNode) isPredicate() {}
 
 func (ConstPredNode) isNode()      {}
 func (ConstPredNode) isPredicate() {}
+
+func (SubjectKindNode) isNode()      {}
+func (SubjectKindNode) isPredicate() {}
 
 func (ColNode) isNode()        {}
 func (ColNode) isProjection()  {}
