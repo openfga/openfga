@@ -2,7 +2,7 @@
 
 ## Reporting a Vulnerability
 
-Please report security vulnerabilities privately through GitHub by [creating a new security advisory](https://github.com/openfga/openfga/security/advisories/new). See GitHub's documentation on [privately reporting a security vulnerability](https://docs.github.com/en/code-security/security-advisories/guidance-on-reporting-and-writing-information-about-vulnerabilities/privately-reporting-a-security-vulnerability) for details. Please avoid using public GitHub issues/discussions for these.
+Please report security vulnerabilities privately through GitHub by [creating a new security advisory](https://github.com/openfga/openfga/security/advisories/new). See GitHub's documentation on [privately reporting a security vulnerability](https://docs.github.com/en/code-security/security-advisories/guidance-on-reporting-and-writing-information-about-vulnerabilities/privately-reporting-a-security-vulnerability) for details. Please avoid using public GitHub issues/discussions/pull requests for these.
 
 If AI tools were used to find the vulnerability, please include the prompts or prompt history used to discover the issue in your report.
 
