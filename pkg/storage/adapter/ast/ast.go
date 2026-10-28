@@ -1,5 +1,5 @@
 // Package ast holds a SELECT query as plain Go structs with no SQL text. Package query builds it;
-// each backend renders it. See README.md.
+// each backend renders it.
 package ast
 
 import "strconv"
@@ -89,7 +89,7 @@ const (
 
 // --- enums that differ between databases (each backend supplies the spelling) ----------
 
-// Column is a column of the tuple table.
+// Column is a logical column of the tuple table.
 type Column uint8
 
 const (
@@ -231,10 +231,11 @@ type ColNode struct {
 }
 
 // BindNode is a value sent as a parameter. Value is passed to the driver as-is, so unsupported
-// types fail only at execution.
+// types fail only at execution. Positional parameters must be numbered in SQL output order.
 type BindNode struct{ Value any }
 
 // LitNode is a value inlined into the SQL text. The backend escapes it, or may bind it instead.
+// Switch on reflect.Kind, not Go type: a named string type misses "case string" and may be inlined unquoted.
 type LitNode struct{ Value any }
 
 // SetBindNode is a list of values sent as a parameter. Elems may be empty.
@@ -248,7 +249,8 @@ type CompareNode struct {
 	Left, Right ScalarValue
 }
 
-// LikeNode is "Left LIKE Pattern", case-sensitive, with only % and _ special. See README rule 17.
+// LikeNode is "Left LIKE Pattern", case-sensitive, with only % and _ special (no backslash escape).
+// LIKE differs on databases; backends must add what's needed (e.g., Postgres ESCAPE), or return an error.
 type LikeNode struct {
 	Left, Pattern ScalarValue
 }
