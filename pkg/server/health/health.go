@@ -10,6 +10,15 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+const (
+	// LivenessSuffix is appended to the target service name to get the health service
+	// that reports SERVING as long as the server answers, without checking its dependencies.
+	LivenessSuffix = ".liveness"
+	// ReadinessSuffix is appended to the target service name to get the health service
+	// that reports whether the target service is ready, like the target service name itself.
+	ReadinessSuffix = ".readiness"
+)
+
 // TargetService defines an interface that services can implement for server health checks.
 type TargetService interface {
 	IsReady(ctx context.Context) (bool, error)
@@ -30,7 +39,11 @@ func (o *Checker) AuthFuncOverride(ctx context.Context, fullMethodName string) (
 
 func (o *Checker) Check(ctx context.Context, req *healthv1pb.HealthCheckRequest) (*healthv1pb.HealthCheckResponse, error) {
 	requestedService := req.GetService()
-	if requestedService == "" || requestedService == o.TargetServiceName {
+	if requestedService == o.TargetServiceName+LivenessSuffix {
+		return &healthv1pb.HealthCheckResponse{Status: healthv1pb.HealthCheckResponse_SERVING}, nil
+	}
+
+	if requestedService == "" || requestedService == o.TargetServiceName || requestedService == o.TargetServiceName+ReadinessSuffix {
 		ready, err := o.IsReady(ctx)
 		if err != nil {
 			return &healthv1pb.HealthCheckResponse{Status: healthv1pb.HealthCheckResponse_NOT_SERVING}, err
