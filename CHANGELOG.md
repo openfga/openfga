@@ -8,6 +8,9 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+### Fixed
+- Recorded SQL execution errors in SQLite `ReadUserTuple` and lazy iterator fetch spans, preserving the existing treatment of not-found results and caller cancellation. [#3024](https://github.com/openfga/openfga/issues/3024)
+
 ## [1.22.1] - 2026-10-27
 ### Changed
 - Moved the build toolchain and Docker builder image to Go 1.27.3 and pinned golangci-lint to v2.15.0. The minimum Go version stays at `1.26.0`. [#3359](https://github.com/openfga/openfga/pull/3359)
