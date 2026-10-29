@@ -23,6 +23,10 @@ func NewVersionCommand() *cobra.Command {
 
 // print out the built version.
 func version(_ *cobra.Command, _ []string) error {
-	log.Printf("OpenFGA version `%s` build from `%s` on `%s` ", build.Version, build.Commit, build.Date)
+	if build.FIPSEnabled {
+		log.Printf("OpenFGA version `%s` build from `%s` on `%s` (FIPS 140-3)", build.Version, build.Commit, build.Date)
+	} else {
+		log.Printf("OpenFGA version `%s` build from `%s` on `%s` ", build.Version, build.Commit, build.Date)
+	}
 	return nil
 }
