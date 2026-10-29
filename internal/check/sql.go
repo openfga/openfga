@@ -588,7 +588,7 @@ func (w *walker) whereShared() []query.Predicate {
 	}
 	if w.alsoQueriesWildcard {
 		preds = append(preds,
-			query.In(w.table.SubjectID(), query.Bind(w.subjID), query.Bind(tuple.Wildcard)),
+			query.In(w.table.SubjectID(), query.Bind(w.subjID), query.Lit(tuple.Wildcard)),
 			w.table.SubjectKindIn(query.KindUser|query.KindUserset),
 		)
 	} else {
