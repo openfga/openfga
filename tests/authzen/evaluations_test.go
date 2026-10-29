@@ -1,7 +1,11 @@
 package authzen_test
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"io"
+	"net/http"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -758,5 +762,56 @@ func TestEvaluations(t *testing.T) {
 		require.True(t, ok)
 		require.Equal(t, codes.InvalidArgument, st.Code())
 		require.Contains(t, st.Message(), "defined enum values")
+	})
+
+	// A context key that overlaps a property fails the whole request with a 400 in
+	// every semantic, even when it comes after an item that would end the batch.
+	t.Run("context_property_conflict_rejects_request", func(t *testing.T) {
+		tc := setupTestContextWithStoreAndModel(t, simpleReaderModel)
+		tc.writeTuples([]*openfgav1.TupleKey{
+			{User: "user:alice", Relation: "reader", Object: "document:doc1"},
+		})
+
+		evaluationsURL := "http://" + tc.httpAddr + "/stores/" + tc.storeID + "/access/v1/evaluations"
+
+		tests := []struct {
+			semantic string
+			first    string
+		}{
+			{"execute_all", "doc1"},
+			{"permit_on_first_permit", "doc1"}, // allowed, so the batch would stop here
+			{"deny_on_first_deny", "doc2"},     // denied, so the batch would stop here
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.semantic, func(t *testing.T) {
+				body, err := json.Marshal(map[string]any{
+					"subject": map[string]any{"type": "user", "id": "alice"},
+					"action":  map[string]any{"name": "reader"},
+					"options": map[string]any{"evaluations_semantic": tt.semantic},
+					"evaluations": []any{
+						map[string]any{"resource": map[string]any{"type": "document", "id": tt.first}},
+						map[string]any{
+							"resource": map[string]any{"type": "document", "id": "doc3", "properties": map[string]any{"owner": "alice"}},
+							"context":  map[string]any{"resource_owner": "alice"},
+						},
+					},
+				})
+				require.NoError(t, err)
+
+				req, err := http.NewRequest("POST", evaluationsURL, bytes.NewReader(body))
+				require.NoError(t, err)
+				req.Header.Set("Content-Type", "application/json")
+
+				resp, err := http.DefaultClient.Do(req)
+				require.NoError(t, err)
+				defer resp.Body.Close()
+
+				respBody, err := io.ReadAll(resp.Body)
+				require.NoError(t, err)
+				require.Equal(t, http.StatusBadRequest, resp.StatusCode, "body: %s", respBody)
+				require.Contains(t, string(respBody), "resource_owner")
+			})
+		}
 	})
 }

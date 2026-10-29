@@ -160,25 +160,28 @@ func TestMergePropertiesToContext(t *testing.T) {
 	})
 
 	t.Run("rejects_request_context_conflicting_with_properties", func(t *testing.T) {
-		subjectProps, err := structpb.NewStruct(map[string]interface{}{
+		props, err := structpb.NewStruct(map[string]interface{}{
 			"department": "engineering",
 		})
 		require.NoError(t, err)
 
-		subject := &authzenv1.Subject{
-			Type:       "user",
-			Id:         "alice",
-			Properties: subjectProps,
-		}
+		subject := &authzenv1.Subject{Type: "user", Id: "alice", Properties: props}
+		resource := &authzenv1.Resource{Type: "document", Id: "doc1", Properties: props}
+		action := &authzenv1.Action{Name: "read", Properties: props}
 
+		// Overlapping keys are rejected whether or not the values match, while
+		// prefixed keys without a matching property are not conflicts.
 		requestContext, err := structpb.NewStruct(map[string]interface{}{
-			"subject_department": "overridden_value",
-			"custom_field":       "custom_value",
+			"subject_department":  "engineering",
+			"resource_department": "sales",
+			"action_department":   "engineering",
+			"subject_level":       "senior",
+			"custom_field":        "custom_value",
 		})
 		require.NoError(t, err)
 
-		result, err := mergePropertiesToContext(requestContext, subject, nil, nil)
-		require.ErrorContains(t, err, "subject_department")
+		result, err := mergePropertiesToContext(requestContext, subject, resource, action)
+		require.EqualError(t, err, "context keys conflict with subject, resource or action properties: action_department, resource_department, subject_department")
 		require.Nil(t, result)
 	})
 

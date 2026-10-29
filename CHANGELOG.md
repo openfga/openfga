@@ -7,13 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Try to keep listed changes to a concise bulleted list of simple explanations of changes. Aim for the amount of information needed so that readers can understand where they would look in the codebase to investigate the changes' implementation, or where they would look in the documentation to understand how to make use of the change in practice - better yet, link directly to the docs and provide detailed information there. Only elaborate if doing so is required to avoid breaking changes or experimental features from ruining someone's day.
 
 ## [Unreleased]
+### Changed
+- AuthZEN requests whose `context` sets a key that is also derived from `subject`, `resource` or `action` properties (e.g. `context.subject_role` together with `subject.properties.role`) are now rejected with a 400, even when both values are the same, instead of the `context` value silently overriding the property. For `evaluations`, every item is checked after applying the top-level defaults, and an overlap in any item rejects the whole request in all `evaluations_semantic` modes. **Breaking:** requests with overlapping keys that were previously accepted now fail. See `docs/authzen/README.md`. [#3080](https://github.com/openfga/openfga/pull/3080)
 
 ## [1.22.1] - 2026-10-27
 ### Changed
 - Moved the build toolchain and Docker builder image to Go 1.27.3 and pinned golangci-lint to v2.15.0. The minimum Go version stays at `1.26.0`. [#3359](https://github.com/openfga/openfga/pull/3359)
 
 ### Fixed
-- AuthZEN requests whose `context` sets a key that is also derived from `subject`, `resource` or `action` properties (e.g. `subject_role`) are now rejected with a 400 instead of the `context` value silently overriding the property. [#3080](https://github.com/openfga/openfga/pull/3080)
 - Fixed ListObjects returning `validation_error` with the message "Internal Server Error" instead of the condition evaluation error (e.g. a missing context parameter) when the ListObjects pipeline is enabled. [#3338](https://github.com/openfga/openfga/pull/3338)
 - Fixed `recursiveFastPath` and `weight2` in Check spinning at full CPU on a closed producer channel until the other producer finished, which also made the planner avoid the `weight2` strategy. [#3299](https://github.com/openfga/openfga/issues/3299)
 - Fixed logging json package to be compatible with golang v1.27. [#3354](https://github.com/openfga/openfga/pull/3354)
