@@ -20,6 +20,7 @@ import (
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
+// TestSQLiteTupleReadSpans checks SQL errors and expected tuple-read outcomes.
 func TestSQLiteTupleReadSpans(t *testing.T) {
 	for _, operation := range []string{"eager", "lazy_next", "lazy_head"} {
 		t.Run(operation, func(t *testing.T) {
@@ -140,6 +141,73 @@ func TestSQLiteTupleReadSpans(t *testing.T) {
 					}
 				})
 			}
+		})
+	}
+}
+
+// cancelOnFetchStartProcessor cancels after a lazy read enters its fetch span.
+type cancelOnFetchStartProcessor struct {
+	sdktrace.SpanProcessor
+	cancel          context.CancelFunc
+	fetchStarts     int
+	contextStartErr error
+}
+
+func (p *cancelOnFetchStartProcessor) OnStart(ctx context.Context, span sdktrace.ReadWriteSpan) {
+	p.SpanProcessor.OnStart(ctx, span)
+	if span.Name() == "sqlite.fetchBuffer" {
+		p.fetchStarts++
+		p.contextStartErr = ctx.Err()
+		p.cancel()
+	}
+}
+
+// TestSQLiteTupleReadSpansCancellationAfterFetchStart checks cancellation after
+// the iteration precheck and span start, before SQL connection acquisition.
+func TestSQLiteTupleReadSpansCancellationAfterFetchStart(t *testing.T) {
+	for _, operation := range []string{"lazy_next", "lazy_head"} {
+		t.Run(operation, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			t.Cleanup(cancel)
+			fixture := storagefixtures.RunDatastoreTestContainer(t, "sqlite")
+			ds, err := New(fixture.GetConnectionURI(true), sqlcommon.NewConfig())
+			require.NoError(t, err)
+			t.Cleanup(ds.Close)
+			store := ulid.Make().String()
+			require.NoError(t, ds.Write(ctx, store, nil, storage.Writes{
+				tuple.NewTupleKey("document:1", "viewer", "user:anne"),
+			}))
+			iter, err := ds.Read(ctx, store, storage.ReadFilter{
+				Object: "document:1", Relation: "viewer",
+			}, storage.ReadOptions{})
+			require.NoError(t, err)
+			t.Cleanup(iter.Stop)
+
+			recorder := tracetest.NewSpanRecorder()
+			processor := &cancelOnFetchStartProcessor{SpanProcessor: recorder, cancel: cancel}
+			provider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(processor))
+			previousTracer := tracer
+			tracer = provider.Tracer("openfga/pkg/storage/sqlite")
+			t.Cleanup(func() {
+				tracer = previousTracer
+				require.NoError(t, provider.Shutdown(context.Background()))
+			})
+
+			require.NoError(t, ctx.Err(), "iteration must pass its cancellation precheck")
+			if operation == "lazy_next" {
+				_, err = iter.Next(ctx)
+			} else {
+				_, err = iter.Head(ctx)
+			}
+			require.ErrorIs(t, err, context.Canceled)
+			require.Equal(t, 1, processor.fetchStarts)
+			require.NoError(t, processor.contextStartErr, "fetch must begin with a live context")
+			require.ErrorIs(t, ctx.Err(), context.Canceled)
+			ended := recorder.Ended()
+			require.Len(t, ended, 1, "cancelled SQL execution span must end")
+			require.Equal(t, "sqlite.fetchBuffer", ended[0].Name())
+			require.Equal(t, codes.Unset, ended[0].Status().Code)
+			require.Empty(t, ended[0].Events())
 		})
 	}
 }
