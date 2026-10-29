@@ -20,6 +20,7 @@ import (
 	"github.com/openfga/openfga/cmd/util"
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/testutils"
 )
 
 // getContextError extracts the "error" field from an evaluation response context struct.
@@ -281,6 +282,42 @@ func TestEvaluation(t *testing.T) {
 				st, ok := status.FromError(err)
 				require.True(t, ok)
 				require.Equal(t, codes.InvalidArgument, st.Code())
+			})
+		}
+	})
+
+	t.Run("context_conflicting_with_properties_is_invalid_argument", func(t *testing.T) {
+		s, storeID := newExperimentalAuthZenServerAndStore(t, ds)
+
+		writeModel(t, s, storeID, simpleModel("reader"))
+
+		props := testutils.MustNewStruct(t, map[string]interface{}{"role": "viewer"})
+
+		// Every source has role=viewer, so each pair checks a same and a different value.
+		tests := []struct {
+			key   string
+			value string
+		}{
+			{"subject_role", "viewer"},
+			{"subject_role", "admin"},
+			{"resource_role", "viewer"},
+			{"resource_role", "admin"},
+			{"action_role", "viewer"},
+			{"action_role", "admin"},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.key+"_"+tt.value, func(t *testing.T) {
+				resp, err := s.Evaluation(context.Background(), &authzenv1.EvaluationRequest{
+					StoreId:  storeID,
+					Subject:  &authzenv1.Subject{Type: "user", Id: "alice", Properties: props},
+					Resource: &authzenv1.Resource{Type: "document", Id: "doc1", Properties: props},
+					Action:   &authzenv1.Action{Name: "reader", Properties: props},
+					Context:  testutils.MustNewStruct(t, map[string]interface{}{tt.key: tt.value}),
+				})
+				require.Nil(t, resp)
+				require.Equal(t, codes.InvalidArgument, status.Code(err))
+				require.ErrorContains(t, err, tt.key)
 			})
 		}
 	})
@@ -915,6 +952,129 @@ func TestEvaluations(t *testing.T) {
 		require.False(t, resp.GetEvaluations()[1].GetDecision()) // doc2 = deny
 		require.True(t, resp.GetEvaluations()[2].GetDecision())  // doc3 = permit
 	})
+
+	t.Run("context_conflict_rejects_whole_request", func(t *testing.T) {
+		s, storeID := newExperimentalAuthZenServerAndStore(t, ds)
+
+		writeModel(t, s, storeID, simpleModel("reader"))
+
+		writeTuples(t, s, storeID, &openfgav1.TupleKey{Object: "document:doc1", Relation: "reader", User: "user:alice"})
+
+		alice := &authzenv1.Subject{Type: "user", Id: "alice"}
+		bob := &authzenv1.Subject{Type: "user", Id: "bob"}
+		doc1 := &authzenv1.Resource{Type: "document", Id: "doc1"}
+		reader := &authzenv1.Action{Name: "reader"}
+
+		// The second item's context overlaps its resource properties.
+		conflicting := &authzenv1.EvaluationsItemRequest{
+			Subject: alice,
+			Resource: &authzenv1.Resource{
+				Type: "document", Id: "doc2",
+				Properties: testutils.MustNewStruct(t, map[string]interface{}{"owner": "alice"}),
+			},
+			Action:  reader,
+			Context: testutils.MustNewStruct(t, map[string]interface{}{"resource_owner": "alice"}),
+		}
+
+		tests := []struct {
+			semantic authzenv1.EvaluationsSemantic
+			first    *authzenv1.Subject
+		}{
+			{authzenv1.EvaluationsSemantic_execute_all, alice},
+			// alice is allowed on doc1, so the batch would stop before the conflicting item
+			{authzenv1.EvaluationsSemantic_permit_on_first_permit, alice},
+			// bob is denied on doc1, so the batch would stop before the conflicting item
+			{authzenv1.EvaluationsSemantic_deny_on_first_deny, bob},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.semantic.String(), func(t *testing.T) {
+				resp, err := s.Evaluations(context.Background(), &authzenv1.EvaluationsRequest{
+					StoreId: storeID,
+					Evaluations: []*authzenv1.EvaluationsItemRequest{
+						{Subject: tt.first, Resource: doc1, Action: reader},
+						conflicting,
+					},
+					Options: &authzenv1.EvaluationsOptions{EvaluationsSemantic: tt.semantic},
+				})
+				require.Nil(t, resp)
+				require.Equal(t, codes.InvalidArgument, status.Code(err))
+				require.ErrorContains(t, err, "evaluation 1")
+				require.ErrorContains(t, err, "resource_owner")
+			})
+		}
+	})
+
+	t.Run("context_conflict_detected_after_resolving_defaults", func(t *testing.T) {
+		s, storeID := newExperimentalAuthZenServerAndStore(t, ds)
+
+		writeModel(t, s, storeID, simpleModel("reader"))
+
+		writeTuples(t, s, storeID, &openfgav1.TupleKey{Object: "document:doc1", Relation: "reader", User: "user:alice"})
+
+		doc1 := &authzenv1.Resource{Type: "document", Id: "doc1"}
+
+		// In both cases the first item is allowed and has no conflict, and the second
+		// item only conflicts once its missing fields come from the top-level defaults.
+		tests := []struct {
+			name        string
+			subject     *authzenv1.Subject
+			context     *structpb.Struct
+			evaluations []*authzenv1.EvaluationsItemRequest
+			conflict    string
+		}{
+			{
+				name: "item_context_overlaps_inherited_subject_properties",
+				subject: &authzenv1.Subject{
+					Type: "user", Id: "alice",
+					Properties: testutils.MustNewStruct(t, map[string]interface{}{"role": "viewer"}),
+				},
+				evaluations: []*authzenv1.EvaluationsItemRequest{
+					{Resource: doc1},
+					{Resource: doc1, Context: testutils.MustNewStruct(t, map[string]interface{}{"subject_role": "viewer"})},
+				},
+				conflict: "subject_role",
+			},
+			{
+				name:    "item_properties_overlap_inherited_context",
+				subject: &authzenv1.Subject{Type: "user", Id: "alice"},
+				context: testutils.MustNewStruct(t, map[string]interface{}{"resource_owner": "alice"}),
+				evaluations: []*authzenv1.EvaluationsItemRequest{
+					{Resource: doc1},
+					{Resource: &authzenv1.Resource{
+						Type: "document", Id: "doc1",
+						Properties: testutils.MustNewStruct(t, map[string]interface{}{"owner": "alice"}),
+					}},
+				},
+				conflict: "resource_owner",
+			},
+		}
+
+		semantics := []authzenv1.EvaluationsSemantic{
+			authzenv1.EvaluationsSemantic_execute_all,
+			authzenv1.EvaluationsSemantic_deny_on_first_deny,
+			authzenv1.EvaluationsSemantic_permit_on_first_permit,
+		}
+
+		for _, tt := range tests {
+			for _, semantic := range semantics {
+				t.Run(tt.name+"/"+semantic.String(), func(t *testing.T) {
+					resp, err := s.Evaluations(context.Background(), &authzenv1.EvaluationsRequest{
+						StoreId:     storeID,
+						Subject:     tt.subject,
+						Action:      &authzenv1.Action{Name: "reader"},
+						Context:     tt.context,
+						Evaluations: tt.evaluations,
+						Options:     &authzenv1.EvaluationsOptions{EvaluationsSemantic: semantic},
+					})
+					require.Nil(t, resp)
+					require.Equal(t, codes.InvalidArgument, status.Code(err))
+					require.ErrorContains(t, err, "evaluation 1")
+					require.ErrorContains(t, err, tt.conflict)
+				})
+			}
+		}
+	})
 }
 
 func TestSubjectSearch(t *testing.T) {
@@ -1073,6 +1233,31 @@ func TestSubjectSearch(t *testing.T) {
 		require.Equal(t, "user", subjects[0].GetType())
 		require.Equal(t, "*", subjects[0].GetId())
 	})
+
+	t.Run("context_conflicting_with_properties_is_invalid_argument", func(t *testing.T) {
+		s, storeID := newExperimentalAuthZenServerAndStore(t, ds)
+
+		modelID := writeModel(t, s, storeID, simpleModel("reader"))
+
+		ctx := contextWithAuthorizationModelID(modelID)
+
+		props := testutils.MustNewStruct(t, map[string]interface{}{"region": "eu"})
+
+		for _, key := range []string{"subject_region", "resource_region", "action_region"} {
+			t.Run(key, func(t *testing.T) {
+				resp, err := s.SubjectSearch(ctx, &authzenv1.SubjectSearchRequest{
+					StoreId:  storeID,
+					Subject:  &authzenv1.SubjectFilter{Type: "user", Properties: props},
+					Resource: &authzenv1.Resource{Type: "document", Id: "doc1", Properties: props},
+					Action:   &authzenv1.Action{Name: "reader", Properties: props},
+					Context:  testutils.MustNewStruct(t, map[string]interface{}{key: "eu"}),
+				})
+				require.Nil(t, resp)
+				require.Equal(t, codes.InvalidArgument, status.Code(err))
+				require.ErrorContains(t, err, key)
+			})
+		}
+	})
 }
 
 func TestResourceSearch(t *testing.T) {
@@ -1148,6 +1333,31 @@ func TestResourceSearch(t *testing.T) {
 		// Should find doc1 and doc2
 		resources := resp.GetResults()
 		require.GreaterOrEqual(t, len(resources), 2)
+	})
+
+	t.Run("context_conflicting_with_properties_is_invalid_argument", func(t *testing.T) {
+		s, storeID := newExperimentalAuthZenServerAndStore(t, ds)
+
+		modelID := writeModel(t, s, storeID, simpleModel("reader"))
+
+		ctx := contextWithAuthorizationModelID(modelID)
+
+		props := testutils.MustNewStruct(t, map[string]interface{}{"region": "eu"})
+
+		for _, key := range []string{"subject_region", "resource_region", "action_region"} {
+			t.Run(key, func(t *testing.T) {
+				resp, err := s.ResourceSearch(ctx, &authzenv1.ResourceSearchRequest{
+					StoreId:  storeID,
+					Subject:  &authzenv1.Subject{Type: "user", Id: "alice", Properties: props},
+					Resource: &authzenv1.ResourceFilter{Type: "document", Properties: props},
+					Action:   &authzenv1.Action{Name: "reader", Properties: props},
+					Context:  testutils.MustNewStruct(t, map[string]interface{}{key: "eu"}),
+				})
+				require.Nil(t, resp)
+				require.Equal(t, codes.InvalidArgument, status.Code(err))
+				require.ErrorContains(t, err, key)
+			})
+		}
 	})
 }
 
@@ -1328,6 +1538,31 @@ func TestActionSearch(t *testing.T) {
 		st, ok := status.FromError(err)
 		require.True(t, ok)
 		require.Equal(t, codes.InvalidArgument, st.Code())
+	})
+
+	t.Run("context_conflicting_with_properties_is_invalid_argument", func(t *testing.T) {
+		s, storeID := newExperimentalAuthZenServerAndStore(t, ds)
+
+		modelID := writeModel(t, s, storeID, simpleModel("reader"))
+
+		ctx := contextWithAuthorizationModelID(modelID)
+
+		props := testutils.MustNewStruct(t, map[string]interface{}{"region": "eu"})
+
+		// ActionSearch requests carry no action, so only subject and resource properties apply.
+		for _, key := range []string{"subject_region", "resource_region"} {
+			t.Run(key, func(t *testing.T) {
+				resp, err := s.ActionSearch(ctx, &authzenv1.ActionSearchRequest{
+					StoreId:  storeID,
+					Subject:  &authzenv1.Subject{Type: "user", Id: "alice", Properties: props},
+					Resource: &authzenv1.Resource{Type: "document", Id: "doc1", Properties: props},
+					Context:  testutils.MustNewStruct(t, map[string]interface{}{key: "eu"}),
+				})
+				require.Nil(t, resp)
+				require.Equal(t, codes.InvalidArgument, status.Code(err))
+				require.ErrorContains(t, err, key)
+			})
+		}
 	})
 }
 

@@ -9,6 +9,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	authzenv1 "github.com/openfga/api/proto/authzen/v1"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -112,10 +114,6 @@ func TestEvaluation(t *testing.T) {
 				Properties: testutils.MustNewStruct(t, map[string]interface{}{"department": "engineering"}),
 			},
 			Action: &authzenv1.Action{Name: "reader"},
-			Context: testutils.MustNewStruct(t, map[string]interface{}{
-				"subject_department":  "engineering",
-				"resource_department": "engineering",
-			}),
 		})
 		require.NoError(t, err)
 		require.True(t, resp.GetDecision())
@@ -134,10 +132,6 @@ func TestEvaluation(t *testing.T) {
 				Properties: testutils.MustNewStruct(t, map[string]interface{}{"department": "sales"}),
 			},
 			Action: &authzenv1.Action{Name: "reader"},
-			Context: testutils.MustNewStruct(t, map[string]interface{}{
-				"subject_department":  "engineering",
-				"resource_department": "sales",
-			}),
 		})
 		require.NoError(t, err)
 		require.False(t, resp.GetDecision())
@@ -446,7 +440,7 @@ func TestEvaluation(t *testing.T) {
 		require.False(t, resp.GetDecision(), "Expected deny when departments don't match")
 	})
 
-	t.Run("properties_context_precedence", func(t *testing.T) {
+	t.Run("properties_context_conflict_is_rejected", func(t *testing.T) {
 		tc := setupTestContext(t)
 		tc.createStore("test-store")
 		tc.writeModel(`
@@ -465,8 +459,8 @@ func TestEvaluation(t *testing.T) {
 			{User: "user:alice", Relation: "reader", Object: "document:doc1", Condition: &openfgav1.RelationshipCondition{Name: "check_level"}},
 		})
 
-		// Test that properties would deny (level=1) but context override permits (level=10)
-		resp, err := tc.authzenClient.Evaluation(context.Background(), &authzenv1.EvaluationRequest{
+		// subject.properties and context both set subject_level, so the request is invalid
+		_, err := tc.authzenClient.Evaluation(context.Background(), &authzenv1.EvaluationRequest{
 			StoreId: tc.storeID,
 			Subject: &authzenv1.Subject{
 				Type:       "user",
@@ -477,11 +471,11 @@ func TestEvaluation(t *testing.T) {
 			Action:   &authzenv1.Action{Name: "reader"},
 			Context:  testutils.MustNewStruct(t, map[string]interface{}{"subject_level": 10}),
 		})
-		require.NoError(t, err)
-		require.True(t, resp.GetDecision(), "Expected permit because context overrides properties")
+		require.Error(t, err)
+		require.Equal(t, codes.InvalidArgument, status.Code(err))
 
 		// Verify properties alone would deny
-		resp, err = tc.authzenClient.Evaluation(context.Background(), &authzenv1.EvaluationRequest{
+		resp, err := tc.authzenClient.Evaluation(context.Background(), &authzenv1.EvaluationRequest{
 			StoreId: tc.storeID,
 			Subject: &authzenv1.Subject{
 				Type:       "user",

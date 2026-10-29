@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Try to keep listed changes to a concise bulleted list of simple explanations of changes. Aim for the amount of information needed so that readers can understand where they would look in the codebase to investigate the changes' implementation, or where they would look in the documentation to understand how to make use of the change in practice - better yet, link directly to the docs and provide detailed information there. Only elaborate if doing so is required to avoid breaking changes or experimental features from ruining someone's day.
 
 ## [Unreleased]
+### Changed
+- AuthZEN requests whose `context` sets a key that is also derived from `subject`, `resource` or `action` properties (e.g. `context.subject_role` together with `subject.properties.role`) are now rejected with a 400, even when both values are the same, instead of the `context` value silently overriding the property. For `evaluations`, every item is checked after applying the top-level defaults, and an overlap in any item rejects the whole request in all `evaluations_semantic` modes. **Breaking:** requests with overlapping keys that were previously accepted now fail. See `docs/authzen/README.md`. [#3080](https://github.com/openfga/openfga/pull/3080)
 
 ## [1.22.1] - 2026-10-27
 ### Changed
