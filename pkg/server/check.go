@@ -433,6 +433,7 @@ func (s *Server) v2Check(
 		commands.WithCheckQueryV2ConcurrencyLimit(int(s.resolveNodeBreadthLimit)),
 		commands.WithCheckQueryV2UpstreamTimeout(s.requestTimeout),
 		commands.WithCheckQueryV2SharedResources(s.sharedDatastoreResources),
+		commands.WithCheckQueryV2SQLOptimizations(s.featureFlagClient.Boolean(serverconfig.ExperimentalCheckSQLOptimizations, storeID)),
 	)
 
 	res, err := q.Execute(ctx, &commands.CheckCommandParams{
