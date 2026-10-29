@@ -16,6 +16,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Moved the CEL dependency from `github.com/google/cel-go` to its new module path `cel.dev/cel-go` (v0.33.2), as the upstream project has relocated to `github.com/cel-expr/cel-go`. Condition compilation errors no longer end with ` (in container '')`. [#3391](https://github.com/openfga/openfga/pull/3391)
 - Various dependency updates. **Breaking (HTTP API):** grpc-gateway v2.33.0 no longer forwards `Grpc-Metadata-*` request headers to gRPC metadata, and rejects malformed query parameters (e.g. non-decimal float spellings, `field[key]` on non-map fields) that were previously accepted. [#3363](https://github.com/openfga/openfga/pull/3363)
 - PostgreSQL: `FindLatestAuthorizationModel` reads only the rows of the store's latest model instead of every model version, so Check and other requests without `authorization_model_id` no longer slow down as the model history grows. [#3377](https://github.com/openfga/openfga/pull/3377)
+- AuthZEN requests whose `context` sets a key that is also derived from `subject`, `resource` or `action` properties (e.g. `context.subject_role` together with `subject.properties.role`) are now rejected with a 400, even when both values are the same, instead of the `context` value silently overriding the property. For `evaluations`, every item is checked after applying the top-level defaults, and an overlap in any item rejects the whole request in all `evaluations_semantic` modes. **Breaking:** requests with overlapping keys that were previously accepted now fail. See `docs/authzen/README.md`. [#3080](https://github.com/openfga/openfga/pull/3080)
 
 ### Fixed
 - Improved error handling in graph evaluation and iterator processing.
@@ -26,7 +27,6 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Moved the build toolchain and Docker builder image to Go 1.27.3 and pinned golangci-lint to v2.15.0. The minimum Go version stays at `1.26.0`. [#3359](https://github.com/openfga/openfga/pull/3359)
 
 ### Fixed
-- AuthZEN requests whose `context` sets a key that is also derived from `subject`, `resource` or `action` properties (e.g. `subject_role`) are now rejected with a 400 instead of the `context` value silently overriding the property. [#3080](https://github.com/openfga/openfga/pull/3080)
 - Fixed ListObjects returning `validation_error` with the message "Internal Server Error" instead of the condition evaluation error (e.g. a missing context parameter) when the ListObjects pipeline is enabled. [#3338](https://github.com/openfga/openfga/pull/3338)
 - Fixed `recursiveFastPath` and `weight2` in Check spinning at full CPU on a closed producer channel until the other producer finished, which also made the planner avoid the `weight2` strategy. [#3299](https://github.com/openfga/openfga/issues/3299)
 - Fixed logging json package to be compatible with golang v1.27. [#3354](https://github.com/openfga/openfga/pull/3354)
